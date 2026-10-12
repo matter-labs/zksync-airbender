@@ -32,7 +32,7 @@ use crate::proth120::backward::main_tail::{
     bind_main_tail_pr, launch_main_tail_pr, MainTailRuntimePr,
 };
 use crate::proth120::backward::scheduled_execution::{
-    gather_pr, LayerInputPr, ScheduledLayerExecutionPr,
+    gather_pr, note_device, note_resource, LayerInputPr, ResourceEventPr, ScheduledLayerExecutionPr,
 };
 use crate::proth120::backward::window::binding::WindowRuntimeScratchPr;
 use crate::proth120::backward::window::{
@@ -83,6 +83,22 @@ impl MainLayerBackwardStatePr {
             max_partials_len(self.trace_len / 2).max(r0_partials_len_pr(self.trace_len, 1)),
             AllocationPlacement::Top,
         )?;
+        note_device(
+            context,
+            "backward.main",
+            Some(layer_idx),
+            ResourceEventPr::Allocated,
+            "bwd.main.eq_low",
+            &eq_low,
+        );
+        note_device(
+            context,
+            "backward.main",
+            Some(layer_idx),
+            ResourceEventPr::Allocated,
+            "bwd.main.r0_partials",
+            &partials,
+        );
         let bank = CoefficientBankPr::new(tables, layer_idx, context)?;
         let r0 = bind_r0_pr(
             &programs.r0[layer_idx],
@@ -388,7 +404,22 @@ impl MainLayerPlanPr {
             )?)
         };
         if release_scratch {
-            release_scratch_views(storage);
+            if let Some((id, counts)) = release_scratch_views(storage) {
+                for event in [
+                    ResourceEventPr::LastReaderEnqueued,
+                    ResourceEventPr::Released,
+                ] {
+                    note_resource(
+                        context,
+                        "backward.main",
+                        Some(layer),
+                        event,
+                        "m5.scratch",
+                        id,
+                        Some(counts),
+                    );
+                }
+            }
         }
         transcript_commit_fields(&mut seed, &new_claims, stream)?;
         transcript_draw_fields(&mut seed, &mut point_out[n..n + 1], stream)?;

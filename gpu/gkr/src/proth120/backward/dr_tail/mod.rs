@@ -18,6 +18,7 @@ use gpu_gkr_compiler::KERNEL_ARGUMENT_CEILING_BYTES;
 use gpu_prover_context::ProverContext;
 
 use super::capacity::DrTailCapacityDecisionPr;
+use super::scheduled_execution::{note_device, ResourceEventPr};
 use crate::backward::{
     GpuGKRDimensionReducingLayerSlots, GKR_DIM_REDUCING_INPUTS_PER_SLOT,
     GKR_DIM_REDUCING_OUTPUTS_PER_SLOT, GKR_DIM_REDUCING_SLOTS,
@@ -158,8 +159,24 @@ pub(crate) fn launch_dr_tail_megakernel_pr(
         .dynamic_smem_bytes(capacity.dynamic_smem_bytes)
         .stream(context.get_exec_stream())
         .build();
+    note_device(
+        context,
+        "backward.dr",
+        None,
+        ResourceEventPr::Allocated,
+        "bwd.dr_tail.state",
+        &state,
+    );
     PrDrTailMegakernelFunction::default()
         .launch(&config, &PrDrTailMegakernelArguments::new(desc, state_ptr))?;
+    note_device(
+        context,
+        "backward.dr",
+        None,
+        ResourceEventPr::Released,
+        "bwd.dr_tail.state",
+        &state,
+    );
     drop(state);
     Ok(())
 }

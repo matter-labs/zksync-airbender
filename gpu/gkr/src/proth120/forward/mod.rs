@@ -1,11 +1,16 @@
 use std::sync::Arc;
 
 use era_cudart::result::CudaResult;
+use gpu_core::primitives::device_structures::DeviceMatrixImpl;
 use gpu_core::primitives::device_tracing::Range;
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::holder::TraceHolder;
 use gpu_trace::trace::packed::PackedCosetRecomputeOracle;
 
+use super::backward::scheduled_execution::{
+    note_device, note_resource, note_storage_inventory, resource_ledger_active, ResourceEventPr,
+    ResourceIdPr,
+};
 use super::inputs::Proth120GkrWitnessInputs;
 use super::programs::GkrProgramsPr;
 use crate::forward::{
@@ -138,9 +143,18 @@ pub fn schedule_forward_pass_pr(
         "Proth120 forward final trace log must be 4"
     );
     let mut storage = bootstrap_storage(base, setup, witness, programs);
+    note_storage_inventory(context, "forward", None, ResourceEventPr::Cloned, &storage);
     let range = Range::new("gkr.proth120.forward.schedule")?;
     range.start(context.get_exec_stream())?;
     let setup = setup::schedule_setup(setup, &programs.runtime_circuit, banks, context)?;
+    note_device(
+        context,
+        "forward",
+        None,
+        ResourceEventPr::Allocated,
+        "forward.setup_generic_lookup",
+        &setup.generic_lookup,
+    );
     let mut lowered = bind::prepare_vm(
         programs,
         &mut storage,
@@ -163,6 +177,54 @@ pub fn schedule_forward_pass_pr(
     let start_round = bind::schedule_vm(&mut lowered, &prepared, context)?;
     schedule_prepared_dimension_reduction_forward(&prepared, start_round, context)?;
     range.end(context.get_exec_stream())?;
+    if resource_ledger_active() {
+        for (owner, mapping) in [
+            ("m5.mapping.generic", witness.generic_lookup_mapping.slice()),
+            (
+                "m5.mapping.range_check_16",
+                witness.range_check_16_lookup_mapping.slice(),
+            ),
+            (
+                "m5.mapping.timestamp",
+                witness.range_check_timestamp_lookup_mapping.slice(),
+            ),
+            ("m5.mapping.decoder", witness.decoder_lookup_mapping),
+        ] {
+            note_device(
+                context,
+                "forward",
+                None,
+                ResourceEventPr::LastReaderEnqueued,
+                owner,
+                mapping,
+            );
+        }
+        note_device(
+            context,
+            "forward",
+            None,
+            ResourceEventPr::Released,
+            "forward.setup_generic_lookup",
+            &setup.generic_lookup,
+        );
+    }
+    drop(setup);
+    note_storage_inventory(
+        context,
+        "forward",
+        None,
+        ResourceEventPr::Observed,
+        &storage,
+    );
+    note_resource(
+        context,
+        "forward",
+        None,
+        ResourceEventPr::Mark,
+        "forward_enqueued",
+        ResourceIdPr::default(),
+        None,
+    );
     Ok(GpuGKRForwardOutput::new(
         vec![range],
         storage,
