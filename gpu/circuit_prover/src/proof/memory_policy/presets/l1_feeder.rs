@@ -12,8 +12,8 @@ pub const POLICY: ProofMemoryPolicy = ProofMemoryPolicy {
     setup: OpeningStrategy::PerCoset,
     memory: OpeningStrategy::PerCoset,
     witness: WitnessMemoryPolicy {
-        commitment: WitnessCommitmentStrategy::InPlace,
-        post_commitment: WitnessPostCommitStorage::RawEvaluations,
+        commitment: WitnessCommitmentStrategy::PerCoset,
+        post_commitment: WitnessPostCommitStorage::RawAndMonomials,
         opening: WitnessOpeningStrategy::Recompute(OpeningStrategy::PerCoset),
     },
 };

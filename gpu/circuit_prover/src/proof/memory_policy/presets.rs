@@ -68,7 +68,7 @@ pub fn admit_l1_feeder(arena_bytes: usize) {
 pub fn merged_commit_strategy(circuit: CircuitType, profile: ProofProfile) -> MergedCommitStrategy {
     match (circuit, profile) {
         (CircuitType::Unrolled(UnrolledCircuitType::Unified), ProofProfile::L1Feeder) => {
-            MergedCommitStrategy::InPlace
+            MergedCommitStrategy::Monomials
         }
         _ => MergedCommitStrategy::AllCosets,
     }
@@ -96,11 +96,11 @@ mod cpu_tests {
         assert_eq!(selected.memory, OpeningStrategy::PerCoset);
         assert_eq!(
             selected.witness.commitment,
-            WitnessCommitmentStrategy::InPlace
+            WitnessCommitmentStrategy::PerCoset
         );
         assert_eq!(
             selected.witness.post_commitment,
-            WitnessPostCommitStorage::RawEvaluations
+            WitnessPostCommitStorage::RawAndMonomials
         );
         assert_eq!(
             selected.witness.opening,
@@ -108,7 +108,7 @@ mod cpu_tests {
         );
         assert_eq!(
             merged_commit_strategy(unified, ProofProfile::L1Feeder),
-            MergedCommitStrategy::InPlace
+            MergedCommitStrategy::Monomials
         );
         assert_eq!(
             merged_commit_strategy(unified, ProofProfile::Standard),
