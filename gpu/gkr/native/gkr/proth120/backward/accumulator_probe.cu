@@ -2,6 +2,9 @@
 
 namespace airbender::gkr::proth120::backward {
 
+static_assert(sizeof(void *) == 8 && sizeof(u32) == 4);
+static_assert(3 * sizeof(void *) + sizeof(u32) <= 32764);
+
 EXTERN __global__ void ab_pr_gkr_sum32_probe_kernel(const pr *values, const u32 *segment_offsets, const u32 segment_count, pr *sums) {
   const u32 segment = blockIdx.x * blockDim.x + threadIdx.x;
   if (segment >= segment_count)
