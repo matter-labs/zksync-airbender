@@ -1078,9 +1078,6 @@ impl ProgramProver {
         blake: PipelineBlakeModes,
         start: Option<ProofTarget>,
     ) -> Result<Self, String> {
-        if config.target == ProofTarget::L1 && config.backend == ProverBackend::Gpu {
-            return Err("GPU backend does not support L1Wrap".into());
-        }
         let backend = match config.backend {
             ProverBackend::Cpu => BackendImpl::Cpu(PipelineBackend::new(&config)),
             ProverBackend::Gpu => {

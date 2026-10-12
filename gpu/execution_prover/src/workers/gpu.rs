@@ -158,7 +158,7 @@ fn gpu_worker(
     );
     let mut context = ProverContext::new_with_auto_arena_size(
         &prover_context_config,
-        crate::memory_policy::select_arena_bytes,
+        crate::memory_policy::select_auto_arena_bytes,
     )?;
     crate::memory_policy::select_arena_bytes(context.get_mem_size());
     info!(
