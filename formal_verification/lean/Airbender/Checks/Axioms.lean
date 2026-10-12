@@ -1697,3 +1697,13 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.mixed_custom_cycle
 #print axioms Airbender.UnifiedReduced.Caller.custom_cycle_soundness
 #print axioms Tests.UnifiedDelegation.copy_then_custom_retirement
+
+#print axioms Airbender.UnifiedReduced.Binary.Proofs.soundness_from_history
+#print axioms Airbender.UnifiedReduced.Shift.Proofs.soundness_from_history
+#print axioms Airbender.UnifiedReduced.Proofs.binary_metadata
+#print axioms Airbender.UnifiedReduced.Proofs.binary_register_retirement
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.binary_fields
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.binary_ordinary
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.mixed_binary_cycle
+#print axioms Airbender.UnifiedReduced.Caller.binary_cycle_soundness
+#print axioms Tests.UnifiedDelegation.copy_then_xori_retirement

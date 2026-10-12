@@ -34,31 +34,26 @@ private theorem decoded_metadata {input : Input} {entry : ProgramEntry}
     zero, Setup.binaryTag] at fields ⊢
   all_goals exact fields.symm
 
-theorem soundness_from_memory [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem soundness_from_history [Fact p.Prime] (hp : 524288 < p)
     (byteInverse : 256 * (-7864320 : ZMod p) = 1)
-    {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
-    {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
-    (inputs : NativeInputs projection trace initial cells program) (accepted : Accepted trace)
-    (memory : MemoryExecution trace initial cells) (setup : trace.rom = Setup.table initial)
-    {input : Input} {output : Output} {w : Nat → ZMod p}
-    (member : (⟨.machine, w⟩ : Row p UnifiedFamily) ∈ trace.rows)
+    {setup : Table (ZMod p) (fields 10)} {initial : State} {cells : List Cell}
+    {input : Input} {output : Output} {w : Nat → ZMod p} {after : State} {epoch : Nat}
+    (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (active : w importedConstraintsTraceColumns.execute = 1)
+    (setupBinding : setup = Setup.table initial)
+    (history : SailHistory cells (rowEvents epoch (⟨.machine, w⟩ : Row p UnifiedFamily)).reverse input.before after)
+    (rightBound : (readToken w importedConstraintsMemoryPorts[1]).word.Bounded)
     (words : WordMapping input output w)
-    (position : RowPosition trace initial cells ⟨.machine, w⟩ input.before)
-    {entry : ProgramEntry} (source : entry.SourceWith initial decoderFields)
-    (query : decoderQuery w = entry.query)
-    (encoding : instruction input = some entry.instruction)
-    : ShiftBinop.spec input output := by
-  have limbSize : limbBase < p := by dsimp [limbBase, timestampBase] at *; omega
-  have decoderSize : 524288 < p := by dsimp [timestampBase] at hp; omega
-  have arithmeticSize : 131072 < p := by dsimp [timestampBase] at hp; omega
-  have core := Verification.holds_of_sublist (accepted.constraints _ member)
-    (List.sublist_append_left (importedConstraints trace.rom) importedConstraintsTimestampLookups)
-  obtain ⟨events, after, past, history⟩ := UnifiedReduced.Proofs.row_position_from_memory hp clockInverse
-    accepted inputs.clocks memory position
-  obtain ⟨dataFields, binary⟩ := decoded_metadata source.fields encoding
+    {entry : ProgramEntry} (fields : decoderFields entry.instruction = some entry.data)
+    (query : decoderQuery w = entry.query) (encoding : instruction input = some entry.instruction)
+    (pcRead : run (SailRV32.Functions.get_arch_pc ()) input.before = .ok input.pc.toBitVec input.before) :
+    ShiftBinop.spec input output := by
+  have limbSize : limbBase < p := by dsimp [limbBase]; omega
+  have decoderSize : 524288 < p := hp
+  have arithmeticSize : 131072 < p := by omega
+  obtain ⟨dataFields, binary⟩ := decoded_metadata fields encoding
   have flags := UnifiedReduced.Proofs.decoder_selectors decoderSize core
-    (UnifiedReduced.Proofs.decoder_field_bounds source.fields).2.1 query
+    (UnifiedReduced.Proofs.decoder_field_bounds fields).2.1 query
   have selected : w 26 = 0 ∧ w 27 = 1 := by
     have shift := flags 15
     have operation := flags 16
@@ -92,8 +87,8 @@ theorem soundness_from_memory [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have valid : input.operation.tag = 4 ∨ input.operation.tag = 6 ∨ input.operation.tag = 7 := by
     cases operation : input.operation <;> simp_all [ShiftBinop.Operation.isShift, ShiftBinop.Operation.tag]
   have modelCore := core
-  rw [setup] at modelCore
-  have registers := UnifiedReduced.Proofs.register_reads limbSize core load query trace.memoryEpoch history
+  rw [setupBinding] at modelCore
+  have registers := UnifiedReduced.Proofs.register_reads limbSize core load query epoch history
   rw [dataFields] at registers immediate
   have leftBytes := UnifiedReduced.Proofs.binary_left_bytes (by dsimp [limbBase] at limbSize; omega)
     byteInverse modelCore selected other input.operation.tag valid funct3
@@ -104,10 +99,7 @@ theorem soundness_from_memory [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
       have right := UnifiedReduced.Proofs.binary_register_bytes (by dsimp [limbBase] at limbSize; omega)
         byteInverse modelCore selected other load plain input.operation.tag valid funct3
       simpa only [words.right, rightOperand, form, Bool.false_eq_true, if_false, rightWord] using right
-    · have values := UnifiedReduced.Proofs.value_bounds hp clockInverse accepted
-        inputs.clocks inputs.image
-      have bounded := values.1 ⟨.machine, w⟩ member importedConstraintsMemoryPorts[1]
-        (by simp [Row.ports, CircuitLayout.ports, importedConstraintsMemoryPorts])
+    · have bounded := rightBound
       have bounded : (rightWord w).Bounded := by
         simpa [readToken, MemoryToken.word, MemoryPort.readCode, WordColumns.code, pairCode,
           importedConstraintsMemoryPorts, rightWord] using bounded
@@ -152,15 +144,41 @@ theorem soundness_from_memory [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have pcBound : input.pc.Bounded := by
     rw [words.pc, canonical]
     exact Word.ofBitVec_bound _
-  have pcRead : run (SailRV32.Functions.get_arch_pc ()) input.before = .ok input.pc.toBitVec input.before := by
-    obtain ⟨newer, older, middle, permutation, ordered, writes, state⟩ := position
-    rw [state, words.pc]
-    exact retired_state_pc middle _
-  have successor := UnifiedReduced.Proofs.pc_successor arithmeticSize core (accepted.active _ member) other
+  have successor := UnifiedReduced.Proofs.pc_successor arithmeticSize core (active) other
     (initial := input.pc) (final := output.pc) (by
       rw [words.pc, words.nextPC]
       exact ⟨(ZMod.natCast_zmod_val _).symm, (ZMod.natCast_zmod_val _).symm, rfl, rfl⟩) pcBound
   exact retire_binary input output binary leftRead rightRead immediateValue pcRead successor.2.2 result
+
+
+theorem soundness_from_memory [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+    {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
+    {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
+    (inputs : NativeInputs projection trace initial cells program) (accepted : Accepted trace)
+    (memory : MemoryExecution trace initial cells) (setup : trace.rom = Setup.table initial)
+    {input : Input} {output : Output} {w : Nat → ZMod p}
+    (member : (⟨.machine, w⟩ : Row p UnifiedFamily) ∈ trace.rows)
+    (words : WordMapping input output w)
+    (position : RowPosition trace initial cells ⟨.machine, w⟩ input.before)
+    {entry : ProgramEntry} (source : entry.SourceWith initial decoderFields)
+    (query : decoderQuery w = entry.query)
+    (encoding : instruction input = some entry.instruction)
+    : ShiftBinop.spec input output := by
+  have core := Verification.holds_of_sublist (accepted.constraints _ member)
+    (List.sublist_append_left (importedConstraints trace.rom) importedConstraintsTimestampLookups)
+  obtain ⟨events, after, past, history⟩ := UnifiedReduced.Proofs.row_position_from_memory hp clockInverse
+    accepted inputs.clocks memory position
+  have bounded := (UnifiedReduced.Proofs.value_bounds hp clockInverse accepted inputs.clocks inputs.image).1
+    ⟨.machine, w⟩ member importedConstraintsMemoryPorts[1]
+    (by simp [Row.ports, CircuitLayout.ports, importedConstraintsMemoryPorts])
+  have pcRead : run (SailRV32.Functions.get_arch_pc ()) input.before = .ok input.pc.toBitVec input.before := by
+    obtain ⟨newer, older, middle, permutation, ordered, writes, state⟩ := position
+    rw [state, words.pc]
+    exact retired_state_pc middle _
+  exact soundness_from_history (by dsimp [timestampBase] at hp; omega) byteInverse core
+    (accepted.active _ member) setup history bounded words source.fields query encoding pcRead
 
 theorem soundness [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)

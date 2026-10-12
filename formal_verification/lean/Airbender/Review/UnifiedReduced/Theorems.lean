@@ -3,6 +3,7 @@ import Airbender.Proofs.UnifiedReduced.RequestTrace
 import Airbender.Proofs.UnifiedReduced.MixedMemory
 import Airbender.Proofs.UnifiedReduced.MixedRetirement
 import Airbender.Proofs.UnifiedReduced.MixedCustomRetirement
+import Airbender.Proofs.UnifiedReduced.MixedBinaryRetirement
 import Airbender.Proofs.UnifiedReduced.MixedComposition
 import Airbender.Proofs.UnifiedReduced.MixedHistory
 import Airbender.Proofs.UnifiedReduced.CustomHistory
@@ -415,5 +416,30 @@ theorem Caller.custom_cycle_soundness
       Trace.Proofs.SailHistory cells events initial finalState ∧
       Caller.RetiresCycle cells events initial finalState (⟨.machine, w⟩ : Trace.Row babyBearModulus Trace.UnifiedFamily) clause :=
   Caller.Proofs.mixed_custom_cycle accepted inputs started member present query supported
+
+/-- Standard XOR/OR/AND, their immediates, all shifts and REV8 retire in the
+    actual machine/worker history. `shift` chooses the represented family;
+    `instruction` ties that choice to original public Sail decoding. The named
+    word mapping identifies observations, and history/lookups derive every read,
+    range, byte interpretation and shift amount. The actual cycle pre-state
+    replaces `input.before`. Current-state fetch and whole mixed composition
+    remain separate. -/
+theorem Caller.binary_cycle_soundness
+    {data : Caller.RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
+    {initial : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.MixedMemoryInputs data program initial ca oa cells)
+    (started : 0 < (Trace.timeOfPair data.machine.initial.timestamp).value) (shift : Bool)
+    {w : Nat → ZMod babyBearModulus} {input : Binary.Input}
+    (member : (⟨.machine, w⟩ : Trace.Row babyBearModulus Trace.UnifiedFamily) ∈ data.machine.rows)
+    (words : Binary.WordMapping input ⟨Control.destination w, Control.finalPC w⟩ w)
+    (instruction : ∃ entry ∈ program, decoderQuery w = entry.query ∧
+      (if shift then Shift.instruction input else Binary.instruction input) = some entry.instruction) :
+    ∃ events finalState,
+      events.Perm (data.mixedSteps.map Trace.transferEvent) ∧
+      Trace.Proofs.SailHistory cells events initial finalState ∧
+      Caller.RetiresCycle cells events initial finalState (⟨.machine, w⟩ : Trace.Row babyBearModulus Trace.UnifiedFamily)
+        (ShiftBinop.execution input) :=
+  Caller.Proofs.mixed_binary_cycle accepted inputs started shift member words instruction
 
 end Airbender.UnifiedReduced
