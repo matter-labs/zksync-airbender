@@ -18,6 +18,7 @@ cs = { workspace = true, features = ["compiler"] }
 fft = { workspace = true }
 field = { workspace = true }
 prover = { workspace = true, features = ["prover"] }
+execution_prover = { workspace = true }
 # GPU crates orchestrated by the apex prover.
 gpu_core = { workspace = true }
 gpu_hash = { workspace = true }
