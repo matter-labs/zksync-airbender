@@ -1,6 +1,10 @@
 mod coverage;
 mod fixture;
 
+use execution_prover_model::allocator::CpuTraceAllocator;
+use execution_prover_model::trace::{
+    ChunkedTraceHolder, InitsAndTeardownsTraceHost, PAGE_SIZE_LOG2,
+};
 use field::Proth120;
 
 #[test]
@@ -26,6 +30,29 @@ fn cpu_fixture_contract() {
         decoded.raw_u128_value(),
         "Proth120 fixture typed u128 bytes"
     );
+
+    let empty: InitsAndTeardownsTraceHost<CpuTraceAllocator> = InitsAndTeardownsTraceHost {
+        page_indices: ChunkedTraceHolder { chunks: Vec::new() },
+        values_packed: ChunkedTraceHolder { chunks: Vec::new() },
+        timestamps_packed: ChunkedTraceHolder { chunks: Vec::new() },
+        top_bits: vec![0, 1],
+    };
+    let teardown_sets =
+        cpu_execution_prover::test_support::expand_inits_and_teardowns(&empty, 2, PAGE_SIZE_LOG2);
+    assert_eq!(teardown_sets.len(), 2, "Proth120 fixture CPU teardown sets");
+    for (timestamps, values) in teardown_sets {
+        for column in timestamps.into_iter().chain(values) {
+            assert_eq!(
+                column.len(),
+                1 << PAGE_SIZE_LOG2,
+                "Proth120 fixture CPU teardown rows"
+            );
+            assert!(
+                column.iter().all(|&value| value == Proth120::new(0)),
+                "Proth120 fixture CPU empty teardown"
+            );
+        }
+    }
 
     let actual = [Proth120::new(0), Proth120::new(1), Proth120::new(2)];
     let mut copied_cpu_column = actual.to_vec();
