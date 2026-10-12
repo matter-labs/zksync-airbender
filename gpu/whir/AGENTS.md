@@ -101,6 +101,15 @@ contribution to `[f0, f1, 4*f_half]` before the transcript update, then fold ter
 coefficients, weights and points on exec. Recomputed leaves are refreshed by
 Horner evaluation directly from monomial coefficients.
 
+The Proth120 L1 phase (`proth120/`, `schedule_l1_whir_fold`) commits each
+intermediate oracle coset by coset through one fixed tile of
+`L1_WHIR_TILE_BYTES` (32 passes of batched LDE, leaf conversion and keccak
+partial trees) and keeps only the retained slabs, the top tree and a monomial
+copy. Its openings recompute the queried bottom subtrees by Horner evaluation
+from that copy and never repeat an LDE; the base oracles open through
+`gpu_trace`'s packed replay. Proof fields are read back into pinned twins and
+assembled in one exec-stream callback (`L1WhirScheduled`).
+
 ## Widening convention
 
 - `GpuWhirExtensionOracle` and its keepalive stay `pub(crate)`; they are
