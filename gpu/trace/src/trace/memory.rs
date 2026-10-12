@@ -1,4 +1,6 @@
-use crate::trace::holder::{bitreverse_index, TraceHolder, TreesCacheMode};
+use crate::trace::holder::{
+    bitreverse_index, TraceHolder, TreesCacheMode, WitnessPostCommitStorage,
+};
 use crate::trace::tracing_data::{
     DelegationTracingDataDevice, TracingDataDevice, UnrolledTracingDataDevice,
 };
@@ -285,6 +287,18 @@ pub fn schedule_memory_commitment_job_in_place<'a>(
     holder.install_partial_trees(context)?;
     holder.commit_in_place(None, context)?;
     schedule_memory_cap_readback(holder, callbacks, inputs, range, context)
+}
+
+pub fn schedule_memory_commitment_job_with_monomials<'a>(
+    holder: &mut TraceHolder<BF>,
+    callbacks: Callbacks<'a>,
+    range: Range,
+    context: &ProverContext,
+) -> CudaResult<MemoryCommitmentJob<'a>> {
+    holder.install_partial_trees(context)?;
+    holder.commit_with_monomials(None, context)?;
+    holder.retain_after_commitment(WitnessPostCommitStorage::RawAndMonomials);
+    schedule_memory_cap_readback(holder, callbacks, range, context)
 }
 
 fn schedule_memory_cap_readback<'a>(
