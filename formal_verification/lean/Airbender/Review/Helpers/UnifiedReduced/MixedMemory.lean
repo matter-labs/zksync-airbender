@@ -1,7 +1,7 @@
 import Airbender.Review.Helpers.UnifiedReduced.RequestTrace
 import Airbender.Review.Helpers.UnifiedReduced.Program
 import Airbender.Review.Helpers.Delegation.SharedOperations
-import Airbender.Review.Helpers.SailHistory
+import Airbender.Review.Helpers.Memory.SailHistory
 
 namespace Airbender.UnifiedReduced.Caller
 open Trace

@@ -1,5 +1,5 @@
-import Airbender.Review.Helpers.Instruction
-import Airbender.Review.Helpers.Boundary
+import Airbender.Review.Helpers.Decoder.Instruction
+import Airbender.Review.Helpers.Context.Boundary
 import Mathlib.Logic.Relation
 
 namespace Airbender.Trace

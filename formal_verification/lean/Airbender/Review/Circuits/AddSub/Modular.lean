@@ -1,7 +1,7 @@
 import Airbender.Review.Circuits.AddSub.Artifact
 import Airbender.Review.Helpers.Properties
-import Airbender.Review.Helpers.Sail
-import Airbender.Review.Helpers.Field
+import Airbender.Review.Helpers.Core.Sail
+import Airbender.Review.Helpers.Core.Field
 
 namespace Airbender.AddSub.Modular
 open Airbender.Arithmetic

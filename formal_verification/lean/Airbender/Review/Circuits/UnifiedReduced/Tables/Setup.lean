@@ -1,5 +1,5 @@
 import Airbender.Review.Helpers.Tables.Bytes
-import Airbender.Review.Helpers.ROM
+import Airbender.Review.Helpers.Memory.ROM
 
 namespace Airbender.UnifiedReduced.Setup
 open Verification Trace

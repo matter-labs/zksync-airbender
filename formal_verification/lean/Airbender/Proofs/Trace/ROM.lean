@@ -1,4 +1,4 @@
-import Airbender.Review.Helpers.ROM
+import Airbender.Review.Helpers.Memory.ROM
 import Airbender.Proofs.Trace.InitialImage
 
 namespace Airbender.Trace.ROM.Proofs

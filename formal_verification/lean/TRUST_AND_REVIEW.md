@@ -8,22 +8,32 @@ objects faithfully represent Rust artifacts or express the intended system claim
 
 ## Review entry points
 
+The [directory review guide](Airbender/Review/README.md) separates
+[individual circuits](Airbender/Review/Circuits/README.md) from
+[whole-trace execution](Airbender/Review/Trace/README.md). Subdirectory READMEs
+identify the local claim, relevant helpers and scope boundaries.
+
+Start with [the property definitions](Airbender/Review/Helpers/Properties.lean).
+They depend only on Clean and state soundness, completeness and the circuit relation.
+The helper topics are `Core/`, `Decoder/`, `Memory/` and `Context/`; tables,
+delegation and unified-machine context retain their own groups.
+
 For individual circuit soundness, start with its `Circuits/<family>/` model and
-local claim, then [shared history inputs](Airbender/Review/Helpers/Interfaces.lean),
-[public initialization](Airbender/Review/Helpers/Boundary.lean),
-[accepted native matching](Airbender/Review/Helpers/Model.lean) and
-[the selected row's pre-state](Airbender/Review/Helpers/RowContext.lean).
+local claim, then [shared history inputs](Airbender/Review/Helpers/Context/Interfaces.lean),
+[public initialization](Airbender/Review/Helpers/Context/Boundary.lean),
+[accepted native matching](Airbender/Review/Helpers/Context/Model.lean) and
+[the selected row's pre-state](Airbender/Review/Helpers/Context/RowContext.lean).
 The accepted initialized history is still part of these claims; reads and ranges
 remain conclusions. Circuit setup definitions live in each family's `Tables/`;
 shared range/byte/subword constructions live in `Helpers/Tables/`.
 
 For whole execution, start with [Trace/Soundness.lean](Airbender/Review/Trace/Soundness.lean), then
-[pooled public inputs](Airbender/Review/Helpers/PooledBoundary.lean),
-[native matching](Airbender/Review/Helpers/Model.lean), the
-[family registry](Airbender/Review/Helpers/Pooled.lean), and
-[actual public decoding](Airbender/Review/Helpers/PooledProgram.lean).
+[pooled public inputs](Airbender/Review/Helpers/Context/PooledBoundary.lean),
+[native matching](Airbender/Review/Helpers/Context/Model.lean), the
+[family registry](Airbender/Review/Helpers/Context/Registries/Pooled.lean), and
+[actual public decoding](Airbender/Review/Helpers/Decoder/PooledProgram.lean).
 [Execution.lean](Airbender/Review/Trace/Execution.lean) states the shared `Realizes`
-conclusion; [SailHistory.lean](Airbender/Review/Helpers/SailHistory.lean) defines native
+conclusion; [SailHistory.lean](Airbender/Review/Helpers/Memory/SailHistory.lean) defines native
 row events and the meaning of intermediate and retired states.
 
 `Circuits/` owns row references, artifacts, named mappings and local assumptions.
@@ -37,7 +47,7 @@ calculations, interfaces, proof assembly and artifact guards. Review `Import/`
 separately for fidelity. Per-circuit `circuitModel` and `InterfaceAssumptions`
 remain visible; accepted row membership supplies that row's imported constraints.
 Shared initialized history derives bounds, actual reads and preprocessing.
-[RowPosition](Airbender/Review/Helpers/RowContext.lean) applies earlier native writes
+[RowPosition](Airbender/Review/Helpers/Context/RowContext.lean) applies earlier native writes
 without assuming successful reads or ISA execution.
 
 Unified models and workers retain their own explicit public contracts. For their
@@ -173,14 +183,14 @@ are separate obligations.
 
 ## Public state, profiles and external inputs
 
-[InitialImage.lean](Airbender/Review/Helpers/InitialImage.lean) reads actual Sail GPRs
+[InitialImage.lean](Airbender/Review/Helpers/Memory/InitialImage.lean) reads actual Sail GPRs
 and bytes over a distinct public cell domain; missing cells fail. Public inputs
 bind initial PC/clock, configuration, program bytes and modeled ROM. Relevant
 memory claims retain alignment, ordinary-address/domain and platform conditions.
 Per-row expected reads, operand bounds and execution results are conclusions.
 
-The [initialization profile](Airbender/Review/Helpers/Initialization.lean) fixes zero
-GPR/non-ROM RAM and PC zero. [NativeMemory.lean](Airbender/Review/Helpers/NativeMemory.lean)
+The [initialization profile](Airbender/Review/Helpers/Memory/Initialization.lean) fixes zero
+GPR/non-ROM RAM and PC zero. [Native ROM view](Airbender/Review/Helpers/Memory/Native.lean)
 keeps zero native ROM shadow slots separate from public code bytes. Slot masking
 comes from `mask_read_for_witness` in `riscv_transpiler/src/replayer/mod.rs`;
 zero seeds come from `inits_or_teardowns_as_flattened_relation` in
@@ -197,7 +207,7 @@ can fail an actual Sail load under sparse memory, as
 ADDI x0,x0,0 clause. Keep that profile connection distinct from original LOAD
 semantics. Arithmetic writes to x0 use their original clauses.
 
-[NonDeterminism.lean](Airbender/Review/Helpers/ExternalInput.lean) receives an external
+[NonDeterminism.lean](Airbender/Review/Helpers/Decoder/ExternalInput.lean) receives an external
 stream independently of the witness. `StreamPorts` explicitly connects native
 response ports; the circuit does not authenticate a fixed stream and permits
 different responses. Native clocks derive positions, and the execution claim

@@ -1,5 +1,5 @@
 import Airbender.Review.Helpers.Delegation.Requests
-import Airbender.Review.Helpers.Program
+import Airbender.Review.Helpers.Decoder.Program
 
 namespace Airbender.Delegation.Caller
 open Trace Arithmetic

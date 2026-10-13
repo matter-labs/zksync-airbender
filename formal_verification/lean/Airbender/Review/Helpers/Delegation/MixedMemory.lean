@@ -1,6 +1,6 @@
 import Airbender.Review.Helpers.Delegation.SharedOperations
-import Airbender.Review.Helpers.PooledProgram
-import Airbender.Review.Helpers.ROM
+import Airbender.Review.Helpers.Decoder.PooledProgram
+import Airbender.Review.Helpers.Memory.ROM
 import Airbender.Review.Helpers.Tables.Subword
 
 namespace Airbender.Delegation.Caller

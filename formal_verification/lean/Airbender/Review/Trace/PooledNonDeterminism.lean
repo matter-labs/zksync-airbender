@@ -1,5 +1,5 @@
 import Airbender.Review.Trace.NonDeterminism
-import Airbender.Review.Helpers.PooledExternalInput
+import Airbender.Review.Helpers.Decoder.PooledExternalInput
 
 namespace Airbender.Trace.NonDeterminism.Pooled
 variable {p : Nat} [Fact p.Prime]
