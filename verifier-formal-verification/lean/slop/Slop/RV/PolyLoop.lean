@@ -26,8 +26,8 @@ theorem reg_20_27 (i : Reg) (h1 : 20 ≤ i.toNat) (h2 : i.toNat ≤ 27) :
 set_option maxHeartbeats 1000000 in
 /-- The Horner loop of `poly_eval` placed at any address `A` (callees at their relative offsets), over any table
 `C` of field elements at any ROM address `T`; `k` coefficients remain. -/
-theorem poly_loop (A T : Word) (C : List Word) (hA : 256 ≤ A.toNat) (hAr : A.toNat + 124 ≤ 2097152)
-    (hT : T.toNat + 4 * C.length ≤ 2097152) (hT4 : T.toNat % 4 = 0) (hC : ∀ i (h : i < C.length), C[i].toNat ≤ P) (k : Nat) :
+theorem poly_loop (A T : Word) (C : List Word) (hA : 256 ≤ A.toNat) (hAr : A.toNat + 124 ≤ 4194304)
+    (hT : T.toNat + 4 * C.length ≤ 4194304) (hT4 : T.toNat % 4 = 0) (hC : ∀ i (h : i < C.length), C[i].toNat ≤ P) (k : Nat) :
     ∀ (S : State) (sp0 ra0 v8 v9 v18 v19 x acc : Word),
     1 ≤ k → k ≤ C.length →
     S.pc = A + 60#32 → S.r 2#5 = sp0 + 4294967264#32 → S.r 9#5 = x → S.r 18#5 = BitVec.ofNat 32 k →
@@ -38,7 +38,7 @@ theorem poly_loop (A T : Word) (C : List Word) (hA : 256 ≤ A.toNat) (hAr : A.t
     read S.mem (sp0 + 4294967276#32) 4 = v19 →
     CodeAt S A Code.poly_eval → CodeAt S (A + 4294967236#32) Code.mul_mod →
     CodeAt S (A + 4294967040#32) Code.add_mod → CodeAt S T C →
-    sp0.toNat % 16 = 0 → 2097152 + 48 ≤ sp0.toNat → sp0.toNat ≤ 1073741824 → ra0.toNat % 4 = 0 →
+    sp0.toNat % 16 = 0 → 4194304 + 48 ≤ sp0.toNat → sp0.toNat ≤ 1073741824 → ra0.toNat % 4 = 0 →
     A.toNat % 4 = 0 →
     ∃ n s', run n S = some s' ∧ s'.pc = ra0 ∧ (s'.r 10#5).toNat ≤ P ∧
       (s'.r 10#5).toNat % P = polyW C x.toNat % P ∧

@@ -8,7 +8,7 @@ namespace RV
 /-- Precondition of `poly_eval`: `a0` points to the table `C` (word-aligned, in ROM), `a1 = C.length`,
 `a2 = x ≤ P`. -/
 def polyPre (C : List Word) : State → Prop := fun s =>
-  CodeAt s (s.r 10) C ∧ s.r 11 = BitVec.ofNat 32 C.length ∧ (s.r 10).toNat + 4 * C.length ≤ 2097152 ∧
+  CodeAt s (s.r 10) C ∧ s.r 11 = BitVec.ofNat 32 C.length ∧ (s.r 10).toNat + 4 * C.length ≤ 4194304 ∧
     (s.r 10).toNat % 4 = 0 ∧ (s.r 12).toNat ≤ P
 
 def polyPost (C : List Word) : State → State → Prop := fun s s' =>

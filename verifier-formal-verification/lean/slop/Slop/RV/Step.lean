@@ -219,12 +219,15 @@ theorem exec_branch_f (s : State) c rs1 rs2 off (h : c.holds (s.r rs1) (s.r rs2)
     exec s (.branch c rs1 rs2 off) = some s.next := by
   simp only [exec, h, Bool.false_eq_true, ite_false]
 
-theorem exec_load (s : State) n sg rd rs1 off (ha : aligned (s.r rs1 + off) n) (hr : readable (s.r rs1 + off) n) :
+theorem exec_load (s : State) n sg rd rs1 off (hrd : ¬ rd = 0) (ha : aligned (s.r rs1 + off) n)
+    (hr : readable (s.r rs1 + off) n) :
     exec s (.load n sg rd rs1 off) = some (s.set rd
       (if sg then ((read s.mem (s.r rs1 + off) n).setWidth (8 * n)).signExtend 32 else read s.mem (s.r rs1 + off) n)).next := by
-  simp only [exec]; split
+  simp only [exec, hrd, ↓reduceIte]; split
   · rfl
   · rename_i h; exact absurd ⟨ha, hr⟩ h
+theorem exec_load_x0 (s : State) n sg rs1 off : exec s (.load n sg 0 rs1 off) = some s.next := by
+  simp only [exec, ↓reduceIte]
 theorem exec_store (s : State) n rs2 rs1 off (ha : aligned (s.r rs1 + off) n) (hw : writable (s.r rs1 + off) n) :
     exec s (.store n rs2 rs1 off) = some (s.store (s.r rs1 + off) (s.r rs2) n).next := by
   simp only [exec]; split
@@ -240,6 +243,6 @@ attribute [rv_side] ROM_END RAM_END aligned writable readable and_not_one_of_ali
   bne_eq_false_iff_eq beq_iff_eq beq_eq_false_iff_ne ne_eq
 attribute [rv_exec high] read_write_rom
 attribute [rv_exec] step_ok Option.elim_some Option.bind_some read_write_disjoint read_write_same4
-  exec_lui exec_auipc exec_opImm exec_op exec_jal exec_jalr0 exec_jalr exec_load exec_store alu
+  exec_lui exec_auipc exec_opImm exec_op exec_jal exec_jalr0 exec_jalr exec_load exec_load_x0 exec_store alu
   exec_branch_t exec_branch_f
 end RV

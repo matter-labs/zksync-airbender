@@ -15,7 +15,7 @@ theorem program_run (s : State) (x : Word) (hpc : s.pc = 0)
     (hinc : CodeAt s 0x128 Code.inc) (hdbl : CodeAt s 0x104 Code.double)
     (hpoly : CodeAt s 0x188 Code.poly_eval) (hmul : CodeAt s 0x14c Code.mul_mod)
     (hadd : CodeAt s 0x88 Code.add_mod) (hcoef : CodeAt s 0x204 Code.COEFFS)
-    (hin : read s.mem 0x4200000 4 = x) (hx : x.toNat ≤ P) :
+    (hin : read s.mem 0x4400000 4 = x) (hx : x.toNat ≤ P) :
     ∃ n s', run n s = some s' ∧ s'.pc = 0x38 ∧ s'.r 10 = 3 * x + 1 ∧
       (s'.r 11).toNat ≤ P ∧ (s'.r 11).toNat % P = polyW Code.COEFFS x.toNat % P ∧
       CodeAt s' 0 Code.boot := by

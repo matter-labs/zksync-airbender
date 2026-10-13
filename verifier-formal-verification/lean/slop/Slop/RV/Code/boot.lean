@@ -6,14 +6,14 @@ import Slop.RV.Attr
 namespace RV
 
 def Code.boot : List Word :=
-  [0x00000097#32, 0x00c08093#32, 0x00008067#32, 0x04200197#32, 0x7f418193#32, 0x04200117#32, 0xfec10113#32, 0x00010433#32, 0x0040006f#32, 0xff010113#32, 0x00112623#32, 0x00812423#32, 0x01010413#32, 0x008000ef#32, 0x0000006f#32, 0xff010113#32, 0x00112623#32, 0x00812423#32, 0x00912223#32, 0x01212023#32, 0x01010413#32, 0x04200537#32, 0x00052483#32, 0x00048513#32, 0x05c000ef#32, 0x00050913#32, 0x20400513#32, 0x06400593#32, 0x00048613#32, 0x114000ef#32, 0x00050593#32, 0x00090513#32, 0xfb9ff06f#32, 0xc0001073#32]
+  [0x00000097#32, 0x00c08093#32, 0x00008067#32, 0x04400197#32, 0x7f418193#32, 0x04400117#32, 0xfec10113#32, 0x00010433#32, 0x0040006f#32, 0xff010113#32, 0x00112623#32, 0x00812423#32, 0x01010413#32, 0x008000ef#32, 0x0000006f#32, 0xff010113#32, 0x00112623#32, 0x00812423#32, 0x00912223#32, 0x01212023#32, 0x01010413#32, 0x04400537#32, 0x00052483#32, 0x00048513#32, 0x05c000ef#32, 0x00050913#32, 0x20400513#32, 0x06400593#32, 0x00048613#32, 0x114000ef#32, 0x00050593#32, 0x00090513#32, 0xfb9ff06f#32, 0xc0001073#32]
 
 @[rv_word] theorem decode_boot_00000097 : decode 0x00000097#32 = some (RV.Instr.auipc 0x01#5 0x00000000#32) := rfl
 @[rv_word] theorem decode_boot_00c08093 : decode 0x00c08093#32 = some (RV.Instr.opImm (RV.Op.add) 0x01#5 0x01#5 0x0000000c#32) := rfl
 @[rv_word] theorem decode_boot_00008067 : decode 0x00008067#32 = some (RV.Instr.jalr 0x00#5 0x01#5 0x00000000#32) := rfl
-@[rv_word] theorem decode_boot_04200197 : decode 0x04200197#32 = some (RV.Instr.auipc 0x03#5 0x04200000#32) := rfl
+@[rv_word] theorem decode_boot_04400197 : decode 0x04400197#32 = some (RV.Instr.auipc 0x03#5 0x04400000#32) := rfl
 @[rv_word] theorem decode_boot_7f418193 : decode 0x7f418193#32 = some (RV.Instr.opImm (RV.Op.add) 0x03#5 0x03#5 0x000007f4#32) := rfl
-@[rv_word] theorem decode_boot_04200117 : decode 0x04200117#32 = some (RV.Instr.auipc 0x02#5 0x04200000#32) := rfl
+@[rv_word] theorem decode_boot_04400117 : decode 0x04400117#32 = some (RV.Instr.auipc 0x02#5 0x04400000#32) := rfl
 @[rv_word] theorem decode_boot_fec10113 : decode 0xfec10113#32 = some (RV.Instr.opImm (RV.Op.add) 0x02#5 0x02#5 0xffffffec#32) := rfl
 @[rv_word] theorem decode_boot_00010433 : decode 0x00010433#32 = some (RV.Instr.op (RV.Op.add) 0x08#5 0x02#5 0x00#5) := rfl
 @[rv_word] theorem decode_boot_0040006f : decode 0x0040006f#32 = some (RV.Instr.jal 0x00#5 0x00000004#32) := rfl
@@ -25,7 +25,7 @@ def Code.boot : List Word :=
 @[rv_word] theorem decode_boot_0000006f : decode 0x0000006f#32 = some (RV.Instr.jal 0x00#5 0x00000000#32) := rfl
 @[rv_word] theorem decode_boot_00912223 : decode 0x00912223#32 = some (RV.Instr.store 4 0x09#5 0x02#5 0x00000004#32) := rfl
 @[rv_word] theorem decode_boot_01212023 : decode 0x01212023#32 = some (RV.Instr.store 4 0x12#5 0x02#5 0x00000000#32) := rfl
-@[rv_word] theorem decode_boot_04200537 : decode 0x04200537#32 = some (RV.Instr.lui 0x0a#5 0x04200000#32) := rfl
+@[rv_word] theorem decode_boot_04400537 : decode 0x04400537#32 = some (RV.Instr.lui 0x0a#5 0x04400000#32) := rfl
 @[rv_word] theorem decode_boot_00052483 : decode 0x00052483#32 = some (RV.Instr.load 4 false 0x09#5 0x0a#5 0x00000000#32) := rfl
 @[rv_word] theorem decode_boot_00048513 : decode 0x00048513#32 = some (RV.Instr.opImm (RV.Op.add) 0x0a#5 0x09#5 0x00000000#32) := rfl
 @[rv_word] theorem decode_boot_05c000ef : decode 0x05c000ef#32 = some (RV.Instr.jal 0x01#5 0x0000005c#32) := rfl

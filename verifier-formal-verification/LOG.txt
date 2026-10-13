@@ -13,6 +13,12 @@ NOT imported).
   (halt_forever: generic lemma for `j .` at any aligned ROM pc, induction on k), program_run now also returns
   `CodeAt s' 0 Code.boot`; ./verify.sh passes on macOS (exit 0, axioms propext/choice/Quot.sound).
 - Without the generated Sail model only Human + Slop.RV.* build; Slop.Sail.* needs sail/regen.sh first.
+- RV32.lean aligned with Airbender's ISA table (zksync-airbender mb_gkr_compiler, spec/top-down/00 master.md):
+  signed MULH/MULHSU/DIV/REM removed (no next state); load into x0 = PC+4 only; JALR any funct3; SLT/SLTU/XOR/OR/
+  AND any funct7 except 0000001. Memory map = av_gkr_compiler riscv_common/src/lds/1gb_total: ROM [0,4M), RAM
+  [4M,1G) (was 2M from airbender's default branch); rust/lds/memory.x, RV32.lean, Slop/Sail/Airbender.lean.
+  New binary sha256 16c1e8c1… (only the 3 gp/sp/INPUT words moved; INPUT = 0x4400000). verify.sh passes.
+  build/app.dis + app.sym are now the macOS build (they differ from Linux only in symbol-name hashes).
 
 === HANDOFF (2026-10-13, end of day; resume from another machine) ===
 State: main @ this commit, pushed; ./verify.sh passes (exit 0). Proven on the exact binary build/app.bin

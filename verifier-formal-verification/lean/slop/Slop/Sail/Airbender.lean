@@ -31,8 +31,8 @@ def region (base size : Nat) (readable writable executable : Bool) : PMA_Region 
     supports_pte_read := false, supports_pte_write := false,
     misaligned_atomicity_granule_size_exp := 0, vector_misaligned_atomicity_granule_size_exp := 0 }
 
-/-- rust/lds/memory.x: ROM [0, 2M) holds the program, RAM [2M, 1G) the stack. Nothing else exists. -/
-def RAM_START : Nat := 0x200000
+/-- rust/lds/memory.x: ROM [0, 4M) holds the program, RAM [4M, 1G) the stack. Nothing else exists. -/
+def RAM_START : Nat := 0x400000
 def RAM_END   : Nat := 0x40000000
 def memoryMap : List PMA_Region :=
   [ region 0         RAM_START               (readable := true) (writable := false) (executable := true),

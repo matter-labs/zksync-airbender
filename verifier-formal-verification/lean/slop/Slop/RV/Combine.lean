@@ -7,7 +7,7 @@ set_option maxHeartbeats 1000000
 namespace RV
 
 /-- `combine` at any address `A`, calling `inc` and `double` at their relative offsets (`A + 0x6c`, `A + 0x48`). -/
-theorem combine_impl (A : Word) (hA : A.toNat + 0x6c + 36 ≤ 2097152) :
+theorem combine_impl (A : Word) (hA : A.toNat + 0x6c + 36 ≤ 4194304) :
     ImplementsAt A Code.combine [(A + 0x6c#32, Code.inc), (A + 0x48#32, Code.double)] 32 (fn₁ (3 * · + 1)) := by
   intro s hentry hcallees hcall
   have hinc : CodeAt s (A + 0x6c#32) Code.inc := hcallees (A + 0x6c#32, Code.inc) (by simp)

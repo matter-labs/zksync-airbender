@@ -9,11 +9,11 @@ Disassembly of section .text:
        8:      	jalr	zero, 0x0(ra)
 
 0000000c <_abs_start>:
-       c:      	auipc	gp, 0x4200
+       c:      	auipc	gp, 0x4400
       10:      	addi	gp, gp, 0x7f4
 
 00000014 <.Lpcrel_hi2>:
-      14:      	auipc	sp, 0x4200
+      14:      	auipc	sp, 0x4400
       18:      	addi	sp, sp, -0x14
       1c:      	add	s0, sp, zero
       20:      	jal	zero, 0x24 <_start_rust>
@@ -23,19 +23,19 @@ Disassembly of section .text:
       28:      	sw	ra, 0xc(sp)
       2c:      	sw	s0, 0x8(sp)
       30:      	addi	s0, sp, 0x10
-      34:      	jal	ra, 0x3c <_RNvCscpenPlUuKfg_3app4main>
+      34:      	jal	ra, 0x3c <_RNvCs2NgtINBuHt5_3app4main>
 
 00000038 <_halt>:
       38:      	jal	zero, 0x38 <_halt>
 
-0000003c <_RNvCscpenPlUuKfg_3app4main>:
+0000003c <_RNvCs2NgtINBuHt5_3app4main>:
       3c:      	addi	sp, sp, -0x10
       40:      	sw	ra, 0xc(sp)
       44:      	sw	s0, 0x8(sp)
       48:      	sw	s1, 0x4(sp)
       4c:      	sw	s2, 0x0(sp)
       50:      	addi	s0, sp, 0x10
-      54:      	lui	a0, 0x4200
+      54:      	lui	a0, 0x4400
       58:      	lw	s1, 0x0(a0)
       5c:      	addi	a0, s1, 0x0
       60:      	jal	ra, 0xbc <combine>
