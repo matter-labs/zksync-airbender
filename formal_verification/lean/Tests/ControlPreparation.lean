@@ -211,7 +211,7 @@ private theorem round_inputs :
     UnifiedReduced.Caller.PreparedRoundInputs (data 1) (before 1) [] [0] (cells 1) [entry 1] 0 8 := by
   have context := inputs 1
   refine ⟨context.publicProgram, context.ordinaryProgram, context.initialization, context.distinct,
-    context.aligned, context.setup, context.tables, ?_, preparation 1, ?_, ?_⟩
+    context.aligned, context.setup, context.tables, ?_, preparation 1, by decide, ?_, ?_⟩
   · intro row member
     cases member
   · decide +kernel

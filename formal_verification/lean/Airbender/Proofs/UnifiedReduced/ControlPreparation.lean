@@ -82,7 +82,8 @@ theorem preparation_row [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (requests.clocks worker matched.1).1 (requests.clocks worker matched.1).2
   have invocation : (timeOfPair (Delegation.Requests.fulfillment worker).time).value =
       Delegation.Caller.startClock row + 1 := matched.2.2.invocation
-  have prior : worker ∈ data.workers.prefixRows cut := List.mem_filter.mpr ⟨matched.1, decide_eq_true (by omega)⟩
+  have prior : worker ∈ data.workers.windowRows (cut - 4) cut :=
+    List.mem_filter.mpr ⟨matched.1, decide_eq_true (by omega)⟩
   rw [scope.prefixScope] at prior
   cases prior
 
@@ -112,9 +113,15 @@ theorem prefix_write_before_preparation_cut [Fact p.Prime] (hp : 2 * timestampBa
     have time := Delegation.Proofs.row_write_time row (by simpa using included)
     change (timeOfPair (row.writeToken port).time).value < cut at raw
     change (timeOfPair (row.writeToken port).time).value = row.writeTime at time
-    have prior : row ∈ data.workers.prefixRows cut := List.mem_filter.mpr ⟨present, decide_eq_true (by omega)⟩
-    rw [scope.prefixScope] at prior
-    cases prior
+    have earlier : row.writeTime ≤ cut - 4 := by
+      by_contra later
+      have prior : row ∈ data.workers.windowRows (cut - 4) cut :=
+        List.mem_filter.mpr ⟨present, decide_eq_true (by omega)⟩
+      rw [scope.prefixScope] at prior
+      cases prior
+    change (timeOfPair (row.writeToken port).time).value ≤ cut - 2
+    rw [time]
+    omega
 
 theorem literal_row_output_of_program [Fact p.Prime] (hp : 524288 < p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
