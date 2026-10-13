@@ -1,5 +1,5 @@
 import Airbender.Proofs.Keccak.DeferredIota
-import Airbender.Review.Keccak.Iota
+import Airbender.Review.Circuits.Keccak.Iota
 
 namespace Airbender.Keccak.Proofs
 open Specs.Keccak256

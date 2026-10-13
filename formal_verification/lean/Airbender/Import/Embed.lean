@@ -1,8 +1,9 @@
 import Airbender.Import.Parse
 import Airbender.Import.Coefficients
-import Airbender.Review.RangeChecks
-import Airbender.Review.Lookups
-import Airbender.Review.ByteTables
+import Airbender.Review.Helpers.Tables.Range
+import Airbender.Review.Helpers.Tables.Lookups
+import Airbender.Review.Circuits.JumpBranchSlt.Tables.Control
+import Airbender.Review.Helpers.Tables.Bytes
 import Lean
 
 open Lean Elab Command

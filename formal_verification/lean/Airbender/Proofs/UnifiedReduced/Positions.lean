@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.Memory
+import Airbender.Review.Trace.UnifiedReduced.Memory
 import Airbender.Proofs.UnifiedReduced.Trace
 import Airbender.Proofs.Trace.RowContext
 

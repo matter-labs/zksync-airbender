@@ -1,4 +1,4 @@
-import Airbender.Review.Blake2Round.Preparation
+import Airbender.Review.Circuits.Blake2Round.Preparation
 
 namespace Airbender.Blake2Round.Preparation.Proofs
 open Arithmetic

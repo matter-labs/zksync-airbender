@@ -1,4 +1,4 @@
-import Airbender.Review.Blake2Round.Addresses
+import Airbender.Review.Circuits.Blake2Round.Addresses
 import Airbender.Proofs.Blake2Round.Addresses
 import Airbender.Proofs.MemoryPorts
 

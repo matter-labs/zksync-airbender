@@ -1,4 +1,5 @@
-import Airbender.Review.JumpBranchSlt.Theorems
+import Airbender.Review.Circuits.JumpBranchSlt.Theorems
+import Airbender.Review.Trace.Families.JumpBranchSlt.Theorems
 import Airbender.Proofs.JumpBranchSlt.RowClaims
 import Airbender.Proofs.JumpBranchSlt.TraceSoundness
 import Airbender.Proofs.JumpBranchSlt.BranchSoundness

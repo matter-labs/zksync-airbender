@@ -47,9 +47,9 @@ import Tests.DelegationTimestamps
 import Tests.DelegationMemory
 import Tests.WordMemory
 import Airbender.Proofs.AddSub.ArtifactChecks
-import Airbender.Review.JumpBranchSlt.Artifact
+import Airbender.Review.Circuits.JumpBranchSlt.Artifact
 import Airbender.Import.Parse
-import Airbender.Review.Properties
+import Airbender.Review.Helpers.Properties
 import Airbender.Proofs.BabyBear
 import Airbender.Proofs.Constraints
 import Tests.ZeroRegister

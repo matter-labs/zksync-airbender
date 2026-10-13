@@ -1,4 +1,4 @@
-import Airbender.Review.ByteTables
+import Airbender.Review.Helpers.Tables.Bytes
 
 namespace Airbender.Verification
 

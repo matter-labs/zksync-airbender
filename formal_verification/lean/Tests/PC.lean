@@ -1,5 +1,5 @@
 import Airbender.Proofs.AddSub.RowClaims
-import Airbender.Review.AddSub.Theorems
+import Airbender.Review.Circuits.AddSub.Theorems
 import Airbender.Proofs.Sail.PC
 
 namespace Tests.PC

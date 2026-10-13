@@ -1,4 +1,4 @@
-import Airbender.Review.Delegation.Schedule
+import Airbender.Review.Helpers.Delegation.Schedule
 import Airbender.Proofs.Delegation.RequestTrace
 
 namespace Airbender.Delegation.Caller.Proofs

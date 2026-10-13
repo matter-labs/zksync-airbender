@@ -1,5 +1,5 @@
-import Airbender.Review.Blake2G.Artifact
-import Airbender.Review.Properties
+import Airbender.Review.Circuits.Blake2G.Artifact
+import Airbender.Review.Helpers.Properties
 import Airbender.Proofs.Constraints
 import Airbender.Proofs.Arithmetic.Chunks
 import Airbender.Proofs.Blake2G.Lookups

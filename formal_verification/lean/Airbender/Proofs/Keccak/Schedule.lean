@@ -1,5 +1,5 @@
 import Airbender.Proofs.Keccak.ControlUpdate
-import Airbender.Review.Keccak.Call
+import Airbender.Review.Trace.Workers.Keccak.Call
 import Mathlib.Tactic.IntervalCases
 
 namespace Airbender.Keccak.Proofs

@@ -1,5 +1,5 @@
 import Airbender.Proofs.MulDiv.ArtifactChecks
-import Airbender.Review.Properties
+import Airbender.Review.Helpers.Properties
 import Airbender.Proofs.Constraints
 import Airbender.Proofs.Trace.Timestamps
 

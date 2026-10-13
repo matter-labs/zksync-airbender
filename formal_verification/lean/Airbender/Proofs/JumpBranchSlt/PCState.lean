@@ -1,4 +1,4 @@
-import Airbender.Review.PCState.Theorems
+import Airbender.Review.Helpers.PCState.Theorems
 import Airbender.Proofs.JumpBranchSlt
 
 namespace Airbender.JumpBranchSlt.Proofs

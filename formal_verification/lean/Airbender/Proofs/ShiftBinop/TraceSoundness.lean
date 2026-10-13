@@ -1,4 +1,4 @@
-import Airbender.Review.ShiftBinop.Model
+import Airbender.Review.Circuits.ShiftBinop.Model
 import Airbender.Proofs.Trace.RowContext
 import Airbender.Proofs.Trace.PooledExecution
 

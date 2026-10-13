@@ -1,6 +1,6 @@
-import Airbender.Review.Blake2G.Execution
+import Airbender.Review.Circuits.Blake2G.Execution
 import Airbender.Proofs.Blake2G.Soundness
-import Airbender.Review.Delegation.Theorems
+import Airbender.Review.Trace.Delegation.Theorems
 
 namespace Airbender.Blake2G.Native.Proofs
 open Trace

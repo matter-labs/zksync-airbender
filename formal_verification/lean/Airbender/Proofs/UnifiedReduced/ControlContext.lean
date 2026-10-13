@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.Control
+import Airbender.Review.Circuits.UnifiedReduced.Control
 import Airbender.Proofs.UnifiedReduced.RegisterReads
 import Airbender.Proofs.UnifiedReduced.ControlMembership
 

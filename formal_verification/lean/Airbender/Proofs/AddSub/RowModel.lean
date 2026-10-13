@@ -1,6 +1,6 @@
 import Airbender.Proofs.AddSub.ArtifactChecks
 import Airbender.Proofs.AddSub.SailContract
-import Airbender.Review.Properties
+import Airbender.Review.Helpers.Properties
 
 namespace Airbender.AddSub
 open Airbender.Reference.RiscV

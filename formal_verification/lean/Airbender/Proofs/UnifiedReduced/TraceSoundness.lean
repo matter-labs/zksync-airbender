@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.Model
+import Airbender.Review.Circuits.UnifiedReduced.Model
 import Airbender.Proofs.UnifiedReduced.AddSub
 import Airbender.Proofs.UnifiedReduced.RegisterReads
 import Airbender.Proofs.AddSub.DecodedInterface

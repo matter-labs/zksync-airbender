@@ -1,5 +1,5 @@
 import Airbender.Proofs.AddSub.ArtifactChecks
-import Airbender.Review.WordMemory.Artifact
+import Airbender.Review.Circuits.WordMemory.Artifact
 import Airbender.Proofs.AddSub.Timestamp
 import Airbender.Proofs.Trace.Timestamps
 

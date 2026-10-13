@@ -1,5 +1,5 @@
 import Airbender.Proofs.Blake2Round.Control
-import Airbender.Review.Blake2Round.Memory
+import Airbender.Review.Circuits.Blake2Round.Memory
 
 namespace Airbender.Blake2Round.Proofs
 open Arithmetic

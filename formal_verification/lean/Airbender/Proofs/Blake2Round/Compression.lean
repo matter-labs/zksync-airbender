@@ -1,4 +1,4 @@
-import Airbender.Review.Blake2Round.Compression
+import Airbender.Review.Trace.Workers.Blake2Round.Compression
 import Airbender.Proofs.Arithmetic.Word
 
 namespace Airbender.Blake2Round.Proofs

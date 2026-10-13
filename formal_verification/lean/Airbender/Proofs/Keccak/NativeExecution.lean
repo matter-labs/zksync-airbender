@@ -1,6 +1,6 @@
 import Airbender.Proofs.Keccak.MixStage
 import Airbender.Proofs.Keccak.Iota
-import Airbender.Review.Keccak.Execution
+import Airbender.Review.Circuits.Keccak.Execution
 import Airbender.Proofs.Keccak.ControllerLayout
 import Airbender.Proofs.Keccak.Addresses
 import Airbender.Proofs.Keccak.Chi
@@ -8,7 +8,7 @@ import Airbender.Proofs.Keccak.RhoRotation
 import Airbender.Proofs.Keccak.Rho
 import Airbender.Proofs.Keccak.Theta
 import Airbender.Proofs.Keccak.DecodeControl
-import Airbender.Review.Delegation.Theorems
+import Airbender.Review.Trace.Delegation.Theorems
 
 namespace Airbender.Keccak.Native.Proofs
 open Trace Arithmetic

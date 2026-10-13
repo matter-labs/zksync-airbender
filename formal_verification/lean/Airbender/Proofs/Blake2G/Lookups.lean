@@ -1,7 +1,7 @@
 import Airbender.Proofs.Blake2G.ArtifactChecks
 import Airbender.Proofs.Blake2G.Tables
 import Airbender.Proofs.Blake2G.Fragment
-import Airbender.Review.Properties
+import Airbender.Review.Helpers.Properties
 import Airbender.Proofs.Constraints
 
 namespace Airbender.Blake2G.Proofs
