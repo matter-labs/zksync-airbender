@@ -48,6 +48,9 @@ else
   echo "skipped: no generated Sail model (run sail/regen.sh)"
 fi
 
+echo "NOT YET PROVEN: Airbender.StepIsAirbender (our RV.step = Sail's execute + the listed changes), so the"
+echo "  final theorem still trusts lean/human/Human/RV32.lean's execution rules (see HumanSail/Theorems.lean)."
+
 echo "== 6. Sanity (not a proof): run the image on the RV32 spec for a few inputs"
 (cd lean && lake build run_image >/dev/null && lake exe run_image)
 echo "OK: the image at build/app.bin satisfies RV.ProgramCorrect (lean/human/Human/Theorems.lean)"
