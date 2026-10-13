@@ -93,12 +93,16 @@ permutations. Decoder membership and caller/request matching are likewise logica
 conditions. [Caller request windows](Airbender/Review/Delegation/RequestHashWindows.lean)
 reuse these checks at aligned instruction cuts after clock two. Exact worker/caller
 multiplicity, slots and full CSR families are derived; zero-clock worker effects
-stay in the actual prefix. Hash-window claims retain explicit worker-only memory
+stay in the actual prefix. Standalone hash-window claims retain explicit worker-only
 matching and protocol ABI. [Joint instruction windows](Airbender/Review/UnifiedReduced/MixedWindows.lean)
 now derive actual shared cut states and canonical boundary tokens from architectural
 matching. Machine ports include native offset zero; Clean event clocks add one.
-Protocol control preparation, joint hash-reference binding and whole mixed retirement
-remain open. Native columns retain full address/time/value limbs, including readonly
+[Joint caller-only hash windows](Airbender/Review/UnifiedReduced/JointHashWindows.lean)
+now bind the complete references at those same states. Worker boundaries are
+projected from shared matching and x0 refreshes are removed as Sail no-ops. Public
+mode/count, prefix scope and modeled tables remain explicit; no worker-only
+permutation or intermediate state is an input. Mixed-history spans, ordinary
+protocol preparation and whole mixed retirement remain open. Native columns retain full address/time/value limbs, including readonly
 clock refreshes. Bounds, latest-write reads and Clean online-consistent histories
 are derived from those relations and public initialization. Retiming introduces
 initialization writes and preserves addresses/values; it does not prove cryptographic

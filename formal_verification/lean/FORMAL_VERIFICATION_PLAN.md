@@ -62,11 +62,15 @@ G entry controls, extended round masks and terminal agreement. Pooled and unifie
 instruction-boundary cuts now derive exact caller/worker request permutations,
 unique slots, caller counts and full-width CSR families for these hash windows.
 Cuts are aligned and follow clock two; zero-clock workers retain their actual
-prefix effects. Hash-reference binding still keeps worker-only matching explicit.
+prefix effects. The worker-only interfaces remain available.
 Unified joint instruction windows now derive actual cut states, full architectural
 matching and canonical tokens with retained clocks across ordinary instructions,
 callers and all four worker families. Complete machine ports and worker rows stay
-in the same window; earlier unissued effects remain in the prefix.
+in the same window; earlier unissued effects remain in the prefix. Caller-only
+joint hash windows now reach all three complete references at those same actual
+cut states. Shared matching projects worker boundaries and removes x0 refreshes
+as Sail no-ops; entry controls and extended-round masks are derived. No independent
+worker permutation or intermediate state is supplied.
 
 1. **Hash references on subspans.** Reuse complete caller-only G, extended BLAKE and
    Keccak references for segmented spans. Derive worker boundaries, ranges,
@@ -75,8 +79,10 @@ in the same window; earlier unissued effects remain in the prefix.
    bindings now derive G controls and extended-BLAKE round masks as well as Keccak
    controls; the public initialization entry points remain. Selected worker
    windows and their caller request spans are checked in the scopes above.
-   Apply the hash references to the derived joint architectural windows and
-   recover protocol control preparation through actual instruction history.
+   Caller-only joint windows now bind repeated G spans in one mode and the first
+   extended-BLAKE/Keccak span, retaining their existing public mode/count and prefix
+   ABI. Recover protocol control preparation through actual ordinary instructions
+   and extend the window projection to spans inside mixed instruction history.
    COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed
    retained for the second window. Extended BLAKE and Keccak completion controls
    do not restart their protocols; checked regressions forbid treating their
