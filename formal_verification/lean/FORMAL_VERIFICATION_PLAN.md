@@ -91,6 +91,12 @@ transport, retaining the preparation timestamp. Public suffix duration derives a
 uninterrupted caller region; the empty worker prefix and ten-position controller
 remain explicit. Selected seven-/ten-round windows may leave later rounds outside
 the window within that controller. Broader preparation/chaining remains open.
+Caller cycles now connect original current-state fetch, the uniquely matched public
+worker family, all actual port reads/writes, existing operation references and
+Sail PC retirement at the same boundaries in one history. Prepared extended-round
+cycles derive their masks first. Surplus zero-clock effects remain in the prefix;
+issued bigint control gaps still admit these cycle observations. Whole custom-CSR
+ABI and whole mixed execution remain separate.
 
 1. **Hash references on subspans.** Reuse complete caller-only G, extended BLAKE and
    Keccak references for segmented spans. Derive worker boundaries, ranges,
@@ -109,8 +115,9 @@ the window within that controller. Broader preparation/chaining remains open.
    retained for the second window. Extended BLAKE and Keccak completion controls
    do not restart their protocols; checked regressions forbid treating their
    windows as automatically repeating.
-2. **Whole mixed caller retirement.** Compose caller/worker spans with existing
-   actual current-state fetch and ordinary/custom clause retirement. Recover exact
+2. **Whole mixed caller retirement.** Use the shared caller-cycle boundaries and
+   fetch to compose caller/worker spans with ordinary/custom clause retirement.
+   Bind full caller ABI only where the available inputs justify it. Recover exact
    instruction/call windows and terminal PC/cells from shared history; do not
    supply intermediate states or scheduling results as premises.
 3. **Native worker ROM and invalid-call binding.** Connect zero native ROM shadows

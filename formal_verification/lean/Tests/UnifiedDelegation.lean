@@ -1650,11 +1650,8 @@ theorem copy_then_ram_retirement [Sail.ArchSem.MemoryPlatform SailRV32.exception
   · cases store <;> constructor <;> decide +kernel
   · exact ⟨memoryEntry store, List.mem_cons_self, by cases store <;> decide +kernel, by cases store <;> rfl⟩
 
-theorem copy_then_ram_current_fetch (store : Bool) : ∃ events finalState,
-    events.Perm ((memoryData store).mixedSteps.map transferEvent) ∧
-    Trace.SailHistory cells events (memoryBefore store) finalState ∧
-    UnifiedReduced.Caller.CurrentFetch (memoryData store) [memoryEntry store] (memoryBefore store) cells events := by
-  apply UnifiedReduced.Caller.current_fetch_soundness (memoryAccepted store) (memoryInputs store)
+private theorem memoryCode (store : Bool) :
+    UnifiedReduced.Caller.CodeProfile (memoryData store) [memoryEntry store] cells := by
   constructor
   · intro address member
     simp [Tests.DelegationOperationEffects.sharedCells, Tests.BigintMemory.cells] at member
@@ -1671,6 +1668,17 @@ theorem copy_then_ram_current_fetch (store : Bool) : ∃ events finalState,
     change (0 : Nat) < ROM.limit ∧ (0 : Nat) % 4 = 0
     decide +kernel
 
+
+theorem copy_then_ram_current_fetch (store : Bool) : ∃ events finalState,
+    events.Perm ((memoryData store).mixedSteps.map transferEvent) ∧
+    Trace.SailHistory cells events (memoryBefore store) finalState ∧
+    UnifiedReduced.Caller.CurrentFetch (memoryData store) [memoryEntry store] (memoryBefore store) cells events :=
+  UnifiedReduced.Caller.current_fetch_soundness (memoryAccepted store) (memoryInputs store) (memoryCode store)
+
+theorem copy_then_ram_caller_cycles (store : Bool) :
+    UnifiedReduced.Caller.CallerCycleEffects (memoryData store) [memoryEntry store] (memoryBefore store) cells :=
+  UnifiedReduced.Caller.caller_cycles_soundness (memoryAccepted store) (memoryInputs store) (memoryCode store)
+    (by change (0 : Nat) < 4; decide)
 
 private def abiAssignment (highControl : Bool) (column : Nat) : ZMod babyBearModulus :=
   if column = 55 ∨ column = 56 ∨ column = 59 then (if highControl then 1 else 0)
@@ -1807,11 +1815,8 @@ private theorem abiInputs (highControl : Bool) : UnifiedReduced.Caller.MixedMemo
     subst row
     cases family
 
-private theorem abiCurrentFetch (highControl : Bool) : ∃ events finalState,
-    events.Perm ((abiData highControl).mixedSteps.map transferEvent) ∧
-    Trace.SailHistory cells events (abiBefore highControl) finalState ∧
-    UnifiedReduced.Caller.CurrentFetch (abiData highControl) [] (abiBefore highControl) cells events := by
-  apply UnifiedReduced.Caller.current_fetch_soundness (abiAccepted highControl) (abiInputs highControl)
+private theorem abiCode (highControl : Bool) :
+    UnifiedReduced.Caller.CodeProfile (abiData highControl) [] cells := by
   constructor
   · intro address member
     simp [Tests.DelegationOperationEffects.sharedCells, Tests.BigintMemory.cells] at member
@@ -1824,6 +1829,17 @@ private theorem abiCurrentFetch (highControl : Bool) : ∃ events finalState,
     subst entry
     change (0 : Nat) < ROM.limit ∧ (0 : Nat) % 4 = 0
     decide +kernel
+
+private theorem abiCurrentFetch (highControl : Bool) : ∃ events finalState,
+    events.Perm ((abiData highControl).mixedSteps.map transferEvent) ∧
+    Trace.SailHistory cells events (abiBefore highControl) finalState ∧
+    UnifiedReduced.Caller.CurrentFetch (abiData highControl) [] (abiBefore highControl) cells events :=
+  UnifiedReduced.Caller.current_fetch_soundness (abiAccepted highControl) (abiInputs highControl) (abiCode highControl)
+
+theorem issued_bigint_abi_gap_caller_cycles (highControl : Bool) :
+    UnifiedReduced.Caller.CallerCycleEffects (abiData highControl) [] (abiBefore highControl) cells :=
+  UnifiedReduced.Caller.caller_cycles_soundness (abiAccepted highControl) (abiInputs highControl) (abiCode highControl)
+    (by change (0 : Nat) < 4; decide)
 
 theorem issued_bigint_without_opcode :
     UnifiedReduced.Caller.MixedMemoryAccepted (abiData false) [] ∧
