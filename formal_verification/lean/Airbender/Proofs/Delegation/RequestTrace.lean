@@ -1,5 +1,5 @@
-import Airbender.Review.Delegation.Theorems
-import Airbender.Review.Delegation.RequestTrace
+import Airbender.Review.Trace.Delegation.Theorems
+import Airbender.Review.Trace.Delegation.RequestTrace
 import Airbender.Proofs.Delegation.CallerPC
 import Airbender.Proofs.Trace.Pooled
 import Airbender.Proofs.Trace.Slots

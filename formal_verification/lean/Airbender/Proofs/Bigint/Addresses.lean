@@ -1,5 +1,5 @@
 import Airbender.Proofs.Bigint.ArtifactChecks
-import Airbender.Review.Bigint.Addresses
+import Airbender.Review.Circuits.Bigint.Addresses
 import Airbender.Proofs.MemoryPorts
 import Airbender.Proofs.Constraints
 import Airbender.Proofs.Lookups

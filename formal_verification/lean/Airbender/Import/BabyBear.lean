@@ -1,5 +1,5 @@
 import Airbender.Import.Json
-import Airbender.Review.Field
+import Airbender.Review.Helpers.Field
 
 namespace Airbender
 open Lean

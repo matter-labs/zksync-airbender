@@ -1,5 +1,5 @@
 import Airbender.Proofs.AddSub.ArtifactChecks
-import Airbender.Review.Properties
+import Airbender.Review.Helpers.Properties
 import Airbender.Proofs.BabyBear
 import Airbender.Proofs.Constraints
 

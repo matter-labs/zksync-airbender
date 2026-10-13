@@ -1,5 +1,6 @@
-import Airbender.Review.Delegation.CallerTheorems
-import Airbender.Review.UnifiedReduced.Theorems
+import Airbender.Review.Circuits.AddSub.CallerTheorems
+import Airbender.Review.Trace.Delegation.CallerTheorems
+import Airbender.Review.Trace.UnifiedReduced.Theorems
 import Airbender.Proofs.Blake2G.Claims
 import Airbender.Proofs.Delegation.Requests
 import Mathlib.Tactic.IntervalCases

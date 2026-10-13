@@ -1,4 +1,4 @@
-import Airbender.Review.Bigint.Memory
+import Airbender.Review.Circuits.Bigint.Memory
 import Airbender.Proofs.Bigint.Memory
 import Airbender.Proofs.Bigint.Addresses
 

@@ -1,4 +1,4 @@
-import Airbender.Review.SubwordTables
+import Airbender.Review.Helpers.Tables.Subword
 import Airbender.Proofs.Arithmetic.Word
 import Airbender.Proofs.Sail.Memory
 

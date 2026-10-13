@@ -1,4 +1,4 @@
-import Airbender.Review.JumpBranchSlt.Jump
+import Airbender.Review.Circuits.JumpBranchSlt.Jump
 import Airbender.Proofs.Sail.ControlFlow
 
 namespace Airbender.Reference.RiscV.Sail

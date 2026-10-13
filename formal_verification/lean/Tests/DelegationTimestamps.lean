@@ -1,4 +1,4 @@
-import Airbender.Review.Delegation.Theorems
+import Airbender.Review.Trace.Delegation.Theorems
 import Airbender.Proofs.BabyBear
 
 namespace Tests.DelegationTimestamps

@@ -1,5 +1,5 @@
 import Airbender.Proofs.UnifiedReduced.ROMData
-import Airbender.Review.UnifiedReduced.WordROM
+import Airbender.Review.Circuits.UnifiedReduced.WordROM
 import Airbender.Proofs.UnifiedReduced.WordMemorySoundness
 import Airbender.Proofs.UnifiedReduced.ROMCopy
 

@@ -1,6 +1,6 @@
-import Airbender.Review.Blake2Round.Tables
-import Airbender.Review.Blake2Round.Artifact
-import Airbender.Review.Properties
+import Airbender.Review.Circuits.Blake2Round.Tables.Setup
+import Airbender.Review.Circuits.Blake2Round.Artifact
+import Airbender.Review.Helpers.Properties
 import Airbender.Proofs.Blake2G.Tables
 import Airbender.Proofs.Constraints
 import Mathlib.Tactic.IntervalCases

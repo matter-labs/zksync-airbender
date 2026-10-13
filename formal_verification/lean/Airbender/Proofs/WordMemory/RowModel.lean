@@ -1,4 +1,4 @@
-import Airbender.Review.WordMemory.Model
+import Airbender.Review.Circuits.WordMemory.Model
 
 namespace Airbender.WordMemory
 open Airbender.Arithmetic Airbender.Reference.RiscV Airbender.Reference.Sail

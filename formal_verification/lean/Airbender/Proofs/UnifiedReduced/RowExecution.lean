@@ -3,7 +3,7 @@ import Airbender.Proofs.UnifiedReduced.ArithmeticIndex
 import Airbender.Proofs.UnifiedReduced.ControlExecution
 import Airbender.Proofs.UnifiedReduced.BinaryExecution
 import Airbender.Proofs.UnifiedReduced.MemoryExecution
-import Airbender.Review.UnifiedReduced.Execution
+import Airbender.Review.Trace.UnifiedReduced.Execution
 
 namespace Airbender.UnifiedReduced.Proofs
 open Arithmetic Reference.RiscV Reference.RiscV.Sail Reference.Sail Trace Trace.Proofs

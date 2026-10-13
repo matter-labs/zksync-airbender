@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.NativeROM
+import Airbender.Review.Helpers.UnifiedReduced.NativeROM
 import Airbender.Proofs.UnifiedReduced.ArtifactChecks
 import Airbender.Proofs.UnifiedReduced.ROMLookups
 import Airbender.Proofs.Trace.ROMView

@@ -1,4 +1,4 @@
-import Airbender.Review.Blake2Round.BoundaryCall
+import Airbender.Review.Trace.Workers.Blake2Round.BoundaryCall
 import Airbender.Proofs.Delegation.BoundaryInputs
 
 namespace Airbender.Blake2Round.Proofs

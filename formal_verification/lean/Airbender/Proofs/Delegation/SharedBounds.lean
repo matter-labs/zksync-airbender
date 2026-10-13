@@ -1,4 +1,4 @@
-import Airbender.Review.Delegation.SharedOperations
+import Airbender.Review.Trace.Delegation.SharedOperations
 import Airbender.Proofs.Delegation.SharedMemory
 import Airbender.Proofs.Delegation.Operations
 import Airbender.Proofs.Trace.TransferBounds

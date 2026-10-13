@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.WorkerProjection
+import Airbender.Review.Helpers.UnifiedReduced.WorkerProjection
 import Airbender.Proofs.UnifiedReduced.MixedMemoryClocks
 import Airbender.Proofs.Delegation.WorkerProjection
 

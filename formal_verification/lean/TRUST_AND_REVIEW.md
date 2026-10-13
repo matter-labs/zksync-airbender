@@ -8,22 +8,36 @@ objects faithfully represent Rust artifacts or express the intended system claim
 
 ## Review entry points
 
-Start with [Trace/Soundness.lean](Airbender/Review/Trace/Soundness.lean), then
-[pooled public inputs](Airbender/Review/Trace/PooledExecution.lean),
-[native matching](Airbender/Review/Trace/Model.lean), the
-[family registry](Airbender/Review/Trace/Pooled.lean), and
-[actual public decoding](Airbender/Review/Trace/PooledProgram.lean).
+For individual circuit soundness, start with its `Circuits/<family>/` model and
+local claim, then [shared history inputs](Airbender/Review/Helpers/Interfaces.lean),
+[public initialization](Airbender/Review/Helpers/Boundary.lean),
+[accepted native matching](Airbender/Review/Helpers/Model.lean) and
+[the selected row's pre-state](Airbender/Review/Helpers/RowContext.lean).
+The accepted initialized history is still part of these claims; reads and ranges
+remain conclusions. Circuit setup definitions live in each family's `Tables/`;
+shared range/byte/subword constructions live in `Helpers/Tables/`.
+
+For whole execution, start with [Trace/Soundness.lean](Airbender/Review/Trace/Soundness.lean), then
+[pooled public inputs](Airbender/Review/Helpers/PooledBoundary.lean),
+[native matching](Airbender/Review/Helpers/Model.lean), the
+[family registry](Airbender/Review/Helpers/Pooled.lean), and
+[actual public decoding](Airbender/Review/Helpers/PooledProgram.lean).
 [Execution.lean](Airbender/Review/Trace/Execution.lean) states the shared `Realizes`
-conclusion; [SailHistory.lean](Airbender/Review/Trace/SailHistory.lean) defines native
+conclusion; [SailHistory.lean](Airbender/Review/Helpers/SailHistory.lean) defines native
 row events and the meaning of intermediate and retired states.
 
-`Review/` contains references, artifact selection, named word/port mappings,
-properties, public assumptions and primary claims. `Proofs/` contains supporting
+`Circuits/` owns row references, artifacts, named mappings and local assumptions.
+`Helpers/` owns the shared context; `Trace/` owns instruction execution, terminal
+realization and composition. The helper import graph is independent of `Trace/`.
+Three circuit theorem modules (jump/branch/SLT, MUL/DIV and shift/binop) still reuse
+`Proofs/Trace/PooledExecution.lean`, whose implementation imports jump composition.
+Their statements/models remain local; this retained proof dependency is checked
+and does not add assumptions. `Proofs/` contains supporting
 calculations, interfaces, proof assembly and artifact guards. Review `Import/`
 separately for fidelity. Per-circuit `circuitModel` and `InterfaceAssumptions`
 remain visible; accepted row membership supplies that row's imported constraints.
 Shared initialized history derives bounds, actual reads and preprocessing.
-[RowPosition](Airbender/Review/Trace/RowContext.lean) applies earlier native writes
+[RowPosition](Airbender/Review/Helpers/RowContext.lean) applies earlier native writes
 without assuming successful reads or ISA execution.
 
 Unified models and workers retain their own explicit public contracts. For their
@@ -97,7 +111,7 @@ reference and explicit reviewed clauses rather than standard CSR execution.
 
 ## Modeled tables and logical arguments
 
-[RangeChecks.lean](Airbender/Review/RangeChecks.lean) enumerates 16-bit limbs using
+[RangeChecks.lean](Airbender/Review/Helpers/Tables/Range.lean) enumerates 16-bit limbs using
 Clean's `StaticTable`; membership characterization is kernel checked. Its rows
 reconstruct [Rust range setup](../../prover/src/gkr/virtual_polys/range_check.rs),
 selected with 16 bits in [the prover](../../prover/src/gkr/prover/mod.rs).
@@ -107,42 +121,42 @@ query binding and padding remain deferred provenance work.
 
 `Accepted` checks imported equations/lookups and logical native state/memory
 permutations. Decoder membership and caller/request matching are likewise logical
-conditions. [Caller request windows](Airbender/Review/Delegation/RequestHashWindows.lean)
+conditions. [Caller request windows](Airbender/Review/Trace/Delegation/RequestHashWindows.lean)
 reuse these checks at aligned instruction cuts after clock two. Exact worker/caller
 multiplicity, slots and full CSR families are derived; zero-clock worker effects
 stay in the actual prefix. Standalone hash-window claims retain explicit worker-only
-matching and protocol ABI. [Joint instruction windows](Airbender/Review/UnifiedReduced/MixedWindows.lean)
+matching and protocol ABI. [Joint instruction windows](Airbender/Review/Helpers/UnifiedReduced/Windows.lean)
 now derive actual shared cut states and canonical boundary tokens from architectural
 matching. Machine ports include native offset zero; Clean event clocks add one.
-[Joint caller-only hash windows](Airbender/Review/UnifiedReduced/JointHashWindows.lean)
+[Joint caller-only hash windows](Airbender/Review/Trace/UnifiedReduced/JointHashWindows.lean)
 now bind the complete references at those same states. Worker boundaries are
 projected from shared matching and x0 refreshes are removed as Sail no-ops. Public
 mode/count, prefix scope and modeled tables remain explicit; no worker-only
 permutation or intermediate state is an input.
-[Mixed-history worker projections](Airbender/Review/UnifiedReduced/MixedWindowProjection.lean)
+[Mixed-history worker projections](Airbender/Review/Helpers/UnifiedReduced/WindowSchedule.lean)
 derive selected caller regions from accepted clock/request matching. Public cuts
 must lie inside the native path, with duration four times the selected worker
 count; no caller selector or instruction schedule is supplied. Earlier ordinary
 effects remain in the joint prefix, rather than a worker-only prefix projection.
 Prepared G and Keccak first spans now reach their complete references through
-[prepared hash windows](Airbender/Review/UnifiedReduced/PreparedHashWindows.lean).
+[prepared hash windows](Airbender/Review/Trace/UnifiedReduced/PreparedHashWindows.lean).
 The public instruction registry, empty worker-prefix scope, homogeneous family,
 call count and four-tick duration remain explicit. Worker boundaries, controls
 and caller regions are derived from shared matching, with no supplied worker masks.
-[Prepared extended-BLAKE windows](Airbender/Review/UnifiedReduced/PreparedRoundWindows.lean)
+[Prepared extended-BLAKE windows](Airbender/Review/Trace/UnifiedReduced/PreparedRoundWindows.lean)
 also bind complete compression at those actual cut states. Raw matching and the
 ordinary LUI token derive exclusive round masks before Sail value transport.
 Public suffix duration derives its caller selectors; the empty worker prefix and
 ten-position controller stay explicit. Later rounds may remain outside a selected
 seven-/ten-round window. Broader preparation/chaining and whole mixed retirement
 remain open.
-[Control preparation](Airbender/Review/UnifiedReduced/ControlPreparation.lean)
+[Control preparation](Airbender/Review/Helpers/UnifiedReduced/ControlPreparation.lean)
 uses a public ordinary ADDI-from-x0/LUI registry and the existing first-span empty
 worker-prefix scope. Accepted decoding, clock matching and writes derive the
 actual control read and its retained timestamp. The selected registry and cut
 bounds remain public; no desired control value at an intermediate state is assumed.
 This is preparation/transport, with whole instruction retirement separate.
-[Caller cycles](Airbender/Review/UnifiedReduced/CallerCycles.lean) now bind original
+[Caller cycles](Airbender/Review/Trace/UnifiedReduced/CallerCycles.lean) now bind original
 public fetch, the full-CSR matched worker family, existing local operation references,
 all actual worker observations and Sail PC retirement at the same boundaries.
 The public physical/code domain, positive machine start and existing worker ABI
@@ -159,20 +173,20 @@ are separate obligations.
 
 ## Public state, profiles and external inputs
 
-[InitialImage.lean](Airbender/Review/Trace/InitialImage.lean) reads actual Sail GPRs
+[InitialImage.lean](Airbender/Review/Helpers/InitialImage.lean) reads actual Sail GPRs
 and bytes over a distinct public cell domain; missing cells fail. Public inputs
 bind initial PC/clock, configuration, program bytes and modeled ROM. Relevant
 memory claims retain alignment, ordinary-address/domain and platform conditions.
 Per-row expected reads, operand bounds and execution results are conclusions.
 
-The [initialization profile](Airbender/Review/Trace/Initialization.lean) fixes zero
-GPR/non-ROM RAM and PC zero. [NativeMemory.lean](Airbender/Review/Trace/NativeMemory.lean)
+The [initialization profile](Airbender/Review/Helpers/Initialization.lean) fixes zero
+GPR/non-ROM RAM and PC zero. [NativeMemory.lean](Airbender/Review/Helpers/NativeMemory.lean)
 keeps zero native ROM shadow slots separate from public code bytes. Slot masking
 comes from `mask_read_for_witness` in `riscv_transpiler/src/replayer/mod.rs`;
 zero seeds come from `inits_or_teardowns_as_flattened_relation` in
 `prover/src/gkr/prover/forward_loop/utils.rs`. Checked public-byte view conversions
 preserve the relevant constraints, queries, ports, clocks, outputs and matching.
-[Unified NativeROM.lean](Airbender/Review/UnifiedReduced/NativeROM.lean) exposes its
+[Unified NativeROM.lean](Airbender/Review/Helpers/UnifiedReduced/NativeROM.lean) exposes its
 projection explicitly. Rust fidelity and cryptographic enforcement remain external;
 worker ROM transport retains the gap recorded in the status table.
 
@@ -183,7 +197,7 @@ can fail an actual Sail load under sparse memory, as
 ADDI x0,x0,0 clause. Keep that profile connection distinct from original LOAD
 semantics. Arithmetic writes to x0 use their original clauses.
 
-[NonDeterminism.lean](Airbender/Review/Trace/NonDeterminism.lean) receives an external
+[NonDeterminism.lean](Airbender/Review/Helpers/ExternalInput.lean) receives an external
 stream independently of the witness. `StreamPorts` explicitly connects native
 response ports; the circuit does not authenticate a fixed stream and permits
 different responses. Native clocks derive positions, and the execution claim

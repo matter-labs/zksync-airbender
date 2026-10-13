@@ -1,4 +1,4 @@
-import Airbender.Review.MulDiv.Model
+import Airbender.Review.Circuits.MulDiv.Model
 namespace Airbender.MulDiv
 open Arithmetic Reference.RiscV Reference.Sail
 

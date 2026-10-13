@@ -1,4 +1,4 @@
-import Airbender.Review.Delegation.Requests
+import Airbender.Review.Helpers.Delegation.Requests
 import Airbender.Proofs.AddSub.Selectors
 
 namespace Airbender.Delegation.Requests.Proofs

@@ -1,9 +1,9 @@
-import Airbender.Review.UnifiedReduced.Theorems
+import Airbender.Review.Trace.UnifiedReduced.Theorems
 import Tests.DelegationCaller
 import Tests.BigintMemory
 import Tests.DelegationOperationEffects
 import Airbender.Proofs.UnifiedReduced.Claims
-import Airbender.Review.UnifiedReduced.Setup
+import Airbender.Review.Circuits.UnifiedReduced.Tables.Setup
 
 namespace Tests.UnifiedDelegation
 open Airbender Trace Arithmetic Reference.RiscV.Sail Reference.Sail

@@ -1,4 +1,4 @@
-import Airbender.Review.AddSub.Discarded
+import Airbender.Review.Circuits.AddSub.Discarded
 import Airbender.Proofs.AddSub.PC
 import Airbender.Proofs.Sail.PC
 

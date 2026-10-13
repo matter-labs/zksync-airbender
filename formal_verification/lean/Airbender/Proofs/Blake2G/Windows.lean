@@ -1,4 +1,4 @@
-import Airbender.Review.Blake2G.Windows
+import Airbender.Review.Trace.Workers.Blake2G.Windows
 import Airbender.Proofs.Blake2G.ControlPool
 import Airbender.Proofs.Blake2G.WorkVectorBinding
 import Airbender.Proofs.Blake2G.Memory

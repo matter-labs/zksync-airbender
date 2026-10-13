@@ -1,5 +1,5 @@
 import Airbender.Proofs.Delegation.CallGroups
-import Airbender.Review.Delegation.Execution
+import Airbender.Review.Trace.Delegation.Execution
 import Airbender.Proofs.Trace.RowHistory
 
 namespace Airbender.Delegation.Proofs

@@ -1,5 +1,5 @@
 import Airbender.Proofs.Sail.Decoder
-import Airbender.Review.JumpBranchSlt.Decoder
+import Airbender.Review.Circuits.JumpBranchSlt.Decoder
 import Airbender.Proofs.Trace.Program
 import Airbender.Proofs.JumpBranchSlt
 

@@ -1,6 +1,6 @@
-import Airbender.Review.Trace.SailHistory
+import Airbender.Review.Helpers.SailHistory
 import Airbender.Proofs.Trace.SailCells
-import Airbender.Review.Trace.MemoryHistory
+import Airbender.Review.Helpers.MemoryHistory
 import Airbender.Proofs.Trace.MemoryHistory
 
 namespace Airbender.Trace.Proofs

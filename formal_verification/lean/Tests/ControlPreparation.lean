@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.Theorems
+import Airbender.Review.Trace.UnifiedReduced.Theorems
 import Airbender.Proofs.Sail.WordMemoryState
 
 namespace Tests.ControlPreparation

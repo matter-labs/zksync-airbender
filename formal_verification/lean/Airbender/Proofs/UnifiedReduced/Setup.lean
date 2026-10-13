@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.Setup
+import Airbender.Review.Circuits.UnifiedReduced.Tables.Setup
 import Airbender.Proofs.ByteTables
 
 namespace Airbender.UnifiedReduced.Setup.Proofs

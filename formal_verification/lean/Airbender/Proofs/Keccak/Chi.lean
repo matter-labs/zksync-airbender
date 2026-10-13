@@ -1,4 +1,4 @@
-import Airbender.Review.Keccak.Chi
+import Airbender.Review.Circuits.Keccak.Chi
 import Airbender.Proofs.Keccak.FixedLookups
 import Airbender.Proofs.Arithmetic.BitwiseAssembly
 
