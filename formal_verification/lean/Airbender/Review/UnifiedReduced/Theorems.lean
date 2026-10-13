@@ -8,6 +8,7 @@ import Airbender.Proofs.UnifiedReduced.JointHashWindows
 import Airbender.Proofs.UnifiedReduced.MixedWindowProjection
 import Airbender.Proofs.UnifiedReduced.ControlPreparation
 import Airbender.Proofs.UnifiedReduced.PreparedHashWindows
+import Airbender.Proofs.UnifiedReduced.PreparedRoundWindows
 import Airbender.Proofs.Delegation.RequestHashWindows
 
 namespace Airbender.UnifiedReduced
@@ -211,5 +212,30 @@ theorem Caller.prepared_hash_window_soundness [Fact p.Prime] (hp : 16777216 ≤ 
     (first : lower % 4 = 0) (last : upper % 4 = 0) :
     Caller.JointHashWindowResult data before cells span lower upper :=
   Caller.Proofs.prepared_hash_window hp clockInverse accepted inputs first last
+
+/-- Public LUI preparation and native matching derive all extended-BLAKE masks
+    before Sail transport. The public suffix duration and ten-position ABI remain explicit. -/
+theorem Caller.prepared_round_masks_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State}
+    {ca oa : List (BitVec 32)} {cells : List Trace.Cell} {program : List UnifiedReduced.ProgramEntry}
+    {flags : Fin 8} {lower : Nat}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.PreparedRoundInputs data before ca oa cells program flags lower) (first : lower % 4 = 0) :
+    ∀ row ∈ data.workers.rows, ∃ round, Blake2Round.Memory.RoundMask row.assignment round :=
+  Caller.Proofs.prepared_round_masks hp clockInverse accepted inputs first
+
+/-- Complete extended-BLAKE compression reaches the actual prepared mixed-history
+    cut states. Controls, masks, caller selectors and worker boundaries are derived. -/
+theorem Caller.prepared_round_window_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State}
+    {ca oa : List (BitVec 32)} {cells : List Trace.Cell} {program : List UnifiedReduced.ProgramEntry}
+    {flags : Fin 8} {lower upper : Nat}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.PreparedRoundWindowInputs data before ca oa cells program flags lower upper)
+    (first : lower % 4 = 0) (last : upper % 4 = 0) :
+    Caller.JointHashWindowResult data before cells (.blakeRound flags) lower upper :=
+  Caller.Proofs.prepared_round_window hp clockInverse accepted inputs first last
 
 end Airbender.UnifiedReduced

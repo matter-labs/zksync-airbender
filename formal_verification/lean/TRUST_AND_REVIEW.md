@@ -112,8 +112,13 @@ Prepared G and Keccak first spans now reach their complete references through
 The public instruction registry, empty worker-prefix scope, homogeneous family,
 call count and four-tick duration remain explicit. Worker boundaries, controls
 and caller regions are derived from shared matching, with no supplied worker masks.
-Extended-BLAKE masks before mixed transport, broader preparation/chaining and
-whole mixed retirement remain open.
+[Prepared extended-BLAKE windows](Airbender/Review/UnifiedReduced/PreparedRoundWindows.lean)
+also bind complete compression at those actual cut states. Raw matching and the
+ordinary LUI token derive exclusive round masks before Sail value transport.
+Public suffix duration derives its caller selectors; the empty worker prefix and
+ten-position controller stay explicit. Later rounds may remain outside a selected
+seven-/ten-round window. Broader preparation/chaining and whole mixed retirement
+remain open.
 [Control preparation](Airbender/Review/UnifiedReduced/ControlPreparation.lean)
 uses a public ordinary ADDI-from-x0/LUI registry and the existing first-span empty
 worker-prefix scope. Accepted decoding, clock matching and writes derive the

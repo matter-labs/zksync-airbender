@@ -207,4 +207,81 @@ theorem incomplete_prepared_keccak_span_rejected :
   change 0 = 649 at count
   contradiction
 
+private theorem round_inputs :
+    UnifiedReduced.Caller.PreparedRoundInputs (data 1) (before 1) [] [0] (cells 1) [entry 1] 0 8 := by
+  have context := inputs 1
+  refine ⟨context.publicProgram, context.ordinaryProgram, context.initialization, context.distinct,
+    context.aligned, context.setup, context.tables, ?_, preparation 1, ?_, ?_⟩
+  · intro row member
+    cases member
+  · decide +kernel
+  · decide +kernel
+
+theorem round_literal_token_before_transport :
+    ∃ tokens : List (MemoryToken babyBearModulus),
+      ((data 1).machine.initialMemory ++ ((data 1).prefixSteps 8).map Prod.snd).Perm
+        (tokens ++ ((data 1).prefixSteps 8).map Prod.fst) ∧
+      ∃ token ∈ tokens, token.address = (Cell.register 12).addressCode ∧
+        (timeOfPair token.time).value = 6 ∧ token.word = ⟨0, 8⟩ := by
+  have accepted := accepted 1
+  have context := round_inputs
+  have requests := UnifiedReduced.Caller.Proofs.request_binding (by decide +kernel) (by decide +kernel)
+    accepted.toRequestChecks context.publicProgram
+  have facts := UnifiedReduced.Caller.Proofs.mixed_memory_facts (by decide +kernel) (by decide +kernel)
+    accepted context.publicProgram context.initialization requests
+  obtain ⟨tokens, earlier, _⟩ := Proofs.Transfer.split_at facts 7
+  have prefixEqual : Proofs.Transfer.beforeSteps (UnifiedReduced.Caller.Proofs.mixedData (data 1)) 7 =
+      (data 1).prefixSteps 8 := by
+    apply List.filter_congr
+    intro edge _
+    apply Bool.eq_iff_iff.mpr
+    simp only [decide_eq_true_eq]
+    omega
+  have matching := earlier.matching
+  rw [prefixEqual] at matching
+  refine ⟨tokens, matching, ?_⟩
+  exact UnifiedReduced.Caller.Proofs.preparation_token (by decide +kernel) (by decide +kernel) accepted
+    context.publicProgram context.ordinaryProgram context.initialization context.preparation (by decide) (by decide) matching
+
+theorem round_memory_inputs_without_masks :
+    UnifiedReduced.Caller.MixedMemoryInputs (data 1) [entry 1] (before 1) [] [0] (cells 1) :=
+  UnifiedReduced.Caller.Proofs.prepared_round_memory_inputs (by decide +kernel) (by decide +kernel)
+    (accepted 1) round_inputs (by decide)
+
+theorem mismatched_round_preparation_flags_rejected :
+    ¬ UnifiedReduced.Caller.PreparedRoundInputs (data 1) (before 1) [] [0] (cells 1) [entry 1] 1 8 := by
+  intro context
+  have instruction := context.preparation.program (entry 1) (List.mem_singleton_self _)
+  change SailRV32.instruction.UTYPE (128, .Regidx 12, .LUI) =
+    SailRV32.instruction.UTYPE (144, .Regidx 12, .LUI) at instruction
+  cases instruction
+
+theorem incomplete_prepared_round_span_rejected :
+    ¬ UnifiedReduced.Caller.PreparedRoundWindowInputs (data 1) (before 1) [] [0] (cells 1) [entry 1] 0 8 8 := by
+  intro context
+  have count := context.calls
+  change 0 = 10 at count
+  contradiction
+
+theorem prepared_round_two_bits_rejected [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {trace : UnifiedReduced.Caller.RequestTrace p} {initial : State} {ca oa : List (BitVec 32)} {domain : List Cell}
+    {program : List UnifiedReduced.ProgramEntry} {flags : Fin 8} {lower : Nat}
+    (accepted : UnifiedReduced.Caller.MixedMemoryAccepted trace program)
+    (context : UnifiedReduced.Caller.PreparedRoundInputs trace initial ca oa domain program flags lower)
+    (aligned : lower % 4 = 0) {worker : Delegation.Row p} (member : worker ∈ trace.workers.rows)
+    {first last : Fin 10} (different : first ≠ last)
+    (firstBit : worker.assignment Blake2Round.Variables.roundBits[first] = 1)
+    (lastBit : worker.assignment Blake2Round.Variables.roundBits[last] = 1) : False := by
+  obtain ⟨round, mask⟩ := UnifiedReduced.Caller.prepared_round_masks_soundness hp clockInverse accepted context aligned worker member
+  haveI : Fact (1 < p) := ⟨(Fact.out : p.Prime).one_lt⟩
+  by_cases same : first = round
+  · have other : last ≠ round := by omega
+    have zero := mask last
+    rw [if_neg other, lastBit] at zero
+    exact one_ne_zero zero
+  · have zero := mask first
+    rw [if_neg same, firstBit] at zero
+    exact one_ne_zero zero
+
 end Tests.ControlPreparation
