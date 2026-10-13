@@ -63,4 +63,15 @@ theorem bits_sub {w : BitVec 32} {lo n k : Nat} (lo' n' : Nat) (h : Bits w lo n 
   rw [← h', slice_of_slice _ _ _ _ _ (by omega)]
   congr 2; omega
 
+/-- Bit `i` of a slice, when that bit of the word is known. -/
+theorem access_slice_lit {w : BitVec 32} {hi lo : Nat} (i k : Nat) (hk : Bits w (lo + i) 1 k)
+    (hi' : i < hi - lo + 1) : Sail.BitVec.access (Sail.BitVec.extractLsb w hi lo) i = BitVec.ofNat 1 k := by
+  have hk' : ((w.toNat >>> (lo + i)) % 2 ^ 1) = k := hk
+  apply BitVec.eq_of_toNat_eq
+  simp only [Sail.BitVec.access, Sail.BitVec.extractLsb, BitVec.extractLsb, BitVec.toNat_ofBool, BitVec.toNat_ofNat]
+  simp [hi']
+  rw [← hk', BitVec.getLsbD, Nat.shiftRight_eq_div_pow, pow_one, Nat.mod_mod]
+  rcases Nat.mod_two_eq_zero_or_one (w.toNat / 2 ^ (lo + i)) with h | h <;>
+    simp [Nat.testBit_eq_decide_div_mod_eq, h]
+
 end Slop.Equiv

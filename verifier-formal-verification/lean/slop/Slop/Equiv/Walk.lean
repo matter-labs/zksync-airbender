@@ -1,5 +1,6 @@
 import Slop.Equiv.Slice
 import Slop.Sail.Oracle
+import Slop.Equiv.Hints
 
 /-! `walk_decoder hs`: run Sail's decoder (a chain of ~400 clauses) on a word of which only some bits are known
 (`Bits w lo n k` hypotheses), clause by clause, without ever simplifying the rest of the chain:
@@ -29,6 +30,10 @@ theorem run_bind_ok {α β : Type} (m : SailM α) (f : α → SailM β) (σ : FS
     (hm : runF m σ = .ok a σ) (h : runF (f a) σ = r) : runF (m >>= f) σ = r := by
   rw [runF_bind_ok m f σ σ a hm]; exact h
 
+theorem run_eq_pure_bind {α β : Type} (m : SailM α) (a : α) (f : α → SailM β) (σ : FState) {r}
+    (hm : m = pure a) (h : runF (f a) σ = r) : runF (m >>= f) σ = r := by
+  subst hm; exact run_pure_bind a f σ h
+
 theorem run_bind_assoc {α β γ : Type} (m : SailM α) (f : α → SailM β) (g : β → SailM γ) (σ : FState) {r}
     (h : runF (m >>= fun x => f x >>= g) σ = r) : runF ((m >>= f) >>= g) σ = r := by
   rw [← h]
@@ -40,6 +45,18 @@ theorem run_bind_ite_false {α β : Type} {G : Bool} {A B : SailM α} (g : α �
 theorem run_bind_ite_true {α β : Type} {G : Bool} {A B : SailM α} (g : α → SailM β) {σ : FState} {r}
     (hG : G = true) (h : runF (A >>= g) σ = r) : runF ((if G = true then A else B) >>= g) σ = r := by
   subst hG; exact h
+
+theorem run_bind_pure_ex {α β : Type} (m : SailM α) (k : α → SailM β) (σ : FState) {r}
+    (hm : ∃ a, m = pure a) (h : ∀ a, runF (k a) σ = r) : runF (m >>= k) σ = r := by
+  obtain ⟨a, rfl⟩ := hm; exact run_pure_bind a k σ (h a)
+theorem run_ite_undec {α β : Type} {G : Bool} (body : SailM (Option α)) (jp : Option α → SailM β) {σ : FState}
+    {r} (hb : G = true → runF body σ = .ok none σ) (h : runF (jp none) σ = r) :
+    runF (if G = true then body >>= jp else pure none >>= jp) σ = r := by
+  cases hG : G
+  · exact run_pure_bind none jp σ h
+  · exact run_bind_ok body jp σ none (hb hG) h
+theorem and_left {x y : Bool} (h : (x && y) = true) : x = true := by simp_all
+theorem and_right {x y : Bool} (h : (x && y) = true) : y = true := by simp_all
 
 theorem known_sys {σ : FState} (hs : Airbender.Sys σ) : ∀ r v, knownDemo r = some v → σ.regs r = v := by
   intro r v h
@@ -156,6 +173,30 @@ def substKnown (facts : Array Fact) (e : Expr) : MetaM (Expr × Option Expr) := 
   let mut pf : Option Expr := none
   let ref ← IO.mkRef (#[] : Array Expr)
   forEachExpr e fun x => do
+    if x.isAppOfArity ``Sail.BitVec.access 3 && (x.getArg! 1).isAppOfArity ``Sail.BitVec.extractLsb 4 then
+      ref.modify (·.push x)
+  for x in ← ref.get do
+    -- `access (extractLsb w hi lo) i`: one known bit
+    let s := x.getArg! 1
+    let some hi ← (evalNat (s.getArg! 2)).run | continue
+    let some lo ← (evalNat (s.getArg! 3)).run | continue
+    let some i ← (evalNat (x.getArg! 2)).run | continue
+    unless i < hi - lo + 1 do continue
+    let some f ← exactFact facts (lo + i) 1 | continue
+    let hfact ← mkExpectedTypeHint f.pf (← mkAppM ``Bits #[s.getArg! 1, ← mkAppM ``HAdd.hAdd #[s.getArg! 3, x.getArg! 2],
+      natLit 1, natLit f.k])
+    let hi' ← mkDecideProof (← mkAppM ``LT.lt #[x.getArg! 2, ← mkAppM ``HAdd.hAdd #[← mkAppM ``HSub.hSub
+      #[s.getArg! 2, s.getArg! 3], natLit 1]])
+    let hx ← mkAppOptM ``access_slice_lit #[s.getArg! 1, s.getArg! 2, s.getArg! 3, x.getArg! 2, natLit f.k, hfact, hi']
+    let lit := mkApp2 (mkConst ``BitVec.ofNat) (natLit 1) (mkNatLit f.k)
+    let ty ← inferType x
+    let motive ← kabstract e x
+    unless motive.hasLooseBVars do continue
+    let step ← mkCongrArg (.lam `y ty motive .default) hx
+    pf := some (← match pf with | some p => mkEqTrans p step | none => pure step)
+    e := motive.instantiate1 lit
+  let ref ← IO.mkRef (#[] : Array Expr)
+  forEachExpr e fun x => do
     if x.isAppOfArity ``Sail.BitVec.extractLsb 4 then ref.modify (·.push x)
   let occs ← ref.get
   for x in occs do
@@ -212,11 +253,9 @@ partial def evalGuard (facts : Array Fact) (G : Expr) : MetaM (Option (Bool × E
       let some lo ← (evalNat (lhs'.getArg! 3)).run | return none
       if let some r ← evalSlice facts lhs' c hi lo false then
         return some (r.1, ← mkExpectedTypeHint r.2 (← mkEq G (toExpr r.1)))
-      return none
-    if (← inferType lhs') == mkApp (mkConst ``BitVec) (mkNatLit 32) && lhs'.isFVar then
+    else if (← inferType lhs') == mkApp (mkConst ``BitVec) (mkNatLit 32) && lhs'.isFVar then
       if let some r ← evalSlice facts lhs' c 31 0 true then
         return some (r.1, ← mkExpectedTypeHint r.2 (← mkEq G (toExpr r.1)))
-    return none
   -- anything else (e.g. `encdec_uop_backwards_matches (extractLsb w 6 0)`): put in the known slices, then reduce
   let (G, pSub) ← substKnown facts G
   let r ← withTransparency .default <| whnf G
@@ -246,11 +285,33 @@ def step1 (g : MVarId) (lem : Name) (args : Array (Option Expr)) : MetaM MVarId 
   g.assign (mkApp e next)
   return next.mvarId!
 
-def walkDecoder (hs : Syntax) (survey : Bool) : TacticM Unit := withMainContext do
-  let hs ← elabTerm hs none
-  let facts ← getFacts
-  let mut g ← getMainGoal
-  let mut cache : Std.HashMap Name (Bool × Expr) := {}
+/-- Hint field decoders: (decoder, its `_matches` test, lemma "valid ⇒ plain value"). -/
+def hintHelpers : List (Name × Name × Name) :=
+  [(``encdec_ntl_backwards, ``encdec_ntl_backwards_matches, ``ntl_pure),
+   (``encdec_cbop_zicbop_backwards, ``encdec_cbop_zicbop_backwards_matches, ``cbop_pure)]
+
+/-- From `pG : G = true`, a proof of `a = true` for a conjunct `a` of `G` satisfying `pred`. -/
+partial def findConj (pred : Expr → MetaM Bool) (G pG : Expr) : MetaM (Option Expr) := do
+  let G ← whnfCore G
+  if ← pred G then return some (← mkExpectedTypeHint pG (← mkEq G (toExpr true)))
+  if G.isAppOfArity ``Bool.and 2 then
+    let (x, y) := (G.getArg! 0, G.getArg! 1)
+    if let some p ← findConj pred x (← mkAppOptM ``and_left #[x, y, pG]) then return some p
+    return ← findConj pred y (← mkAppOptM ``and_right #[x, y, pG])
+  return none
+
+structure Ctx where
+  facts : Array Fact
+  hs : Expr
+  survey : Bool
+  cache : IO.Ref (Std.HashMap Name (Bool × Expr))
+  /-- guards known to hold (inside a clause body): `G = true` proofs -/
+  hyps : Array Expr := #[]
+
+mutual
+/-- Walk the goal `runF M σ = r` as far as possible; returns the remaining goal and the clauses skipped. -/
+partial def walkLoop (ctx : Ctx) (g0 : MVarId) : MetaM (MVarId × Nat) := do
+  let mut g := g0
   let mut skipped : Nat := 0
   for _ in [0:100000] do
     let (M, σ, r) ← g.withContext (splitGoal g)
@@ -259,32 +320,30 @@ def walkDecoder (hs : Syntax) (survey : Bool) : TacticM Unit := withMainContext 
       let M' ← whnfCore M
       if M'.isAppOf ``ext_decode || M'.isAppOf ``encdec_backwards then
         let some M'' ← delta? M' (fun n => n == ``ext_decode || n == ``encdec_backwards) | pure M'
-        pure (← whnfCore M'')
+        let M'' ← whnfCore M''
+        if M''.isAppOf ``encdec_backwards then
+          let some M3 ← delta? M'' (· == ``encdec_backwards) | pure M''
+          pure (← whnfCore M3)
+        else pure M''
       else pure M'
-    let M ← do
-      let M' ← whnfCore M
-      if M'.isAppOf ``encdec_backwards then
-        let some M'' ← delta? M' (· == ``encdec_backwards) | pure M'
-        pure (← whnfCore M'')
-      else pure M'
-    let tgt ← g.withContext (mkEq (← mkAppM ``runF #[M, σ]) r)
-    g ← g.replaceTargetDefEq tgt
+    g ← g.replaceTargetDefEq (← g.withContext (mkEq (← mkAppM ``runF #[M, σ]) r))
     if M.isAppOfArity ``ite 5 then
-      let c := M.getArg! 1
-      let some (_, G, _) := c.eq? | break
-      match ← g.withContext (evalGuard facts G) with
+      let some (_, G, _) := (M.getArg! 1).eq? | break
+      match ← g.withContext (evalGuard ctx.facts G) with
       | some (false, pG) =>
         g ← g.withContext (step1 g ``run_ite_false #[none, G, M.getArg! 3, M.getArg! 4, σ, r, pG])
         skipped := skipped + 1
       | some (true, pG) =>
         g ← g.withContext (step1 g ``run_ite_true #[none, G, M.getArg! 3, M.getArg! 4, σ, r, pG])
-        break
       | none =>
-        unless survey do throwError "walk_decoder: undecided guard after {skipped} clauses:{indentExpr G}"
-        logInfo m!"survey: undecided guard after {skipped} clauses:{indentExpr G}"
-        let pG ← mkSorry (← mkEq G (toExpr false)) false
-        g ← g.withContext (step1 g ``run_ite_false #[none, G, M.getArg! 3, M.getArg! 4, σ, r, pG])
-        skipped := skipped + 1
+        if let some g' ← g.withContext (bodyNone ctx g M σ r G) then
+          g := g'; skipped := skipped + 1
+        else
+          unless ctx.survey do throwError "walk_decoder: undecided guard after {skipped} clauses:{indentExpr G}"
+          logInfo m!"survey: undecided guard after {skipped} clauses:{indentExpr G}"
+          let pG ← mkSorry (← mkEq G (toExpr false)) false
+          g ← g.withContext (step1 g ``run_ite_false #[none, G, M.getArg! 3, M.getArg! 4, σ, r, pG])
+          skipped := skipped + 1
     else if M.isAppOfArity ``Bind.bind 6 then
       let (m, f) := (M.getArg! 4, M.getArg! 5)
       let m' ← whnfCore m
@@ -294,14 +353,14 @@ def walkDecoder (hs : Syntax) (survey : Bool) : TacticM Unit := withMainContext 
         g ← g.withContext (step1 g ``run_bind_assoc #[none, none, none, m'.getArg! 4, m'.getArg! 5, f, σ, r])
       else if m'.isAppOfArity ``ite 5 then
         let some (_, G, _) := (m'.getArg! 1).eq? | break
-        match ← g.withContext (evalGuard facts G) with
+        match ← g.withContext (evalGuard ctx.facts G) with
         | some (false, pG) =>
           g ← g.withContext (step1 g ``run_bind_ite_false #[none, none, G, m'.getArg! 3, m'.getArg! 4, f, σ, r, pG])
           skipped := skipped + 1
         | some (true, pG) =>
           g ← g.withContext (step1 g ``run_bind_ite_true #[none, none, G, m'.getArg! 3, m'.getArg! 4, f, σ, r, pG])
         | none =>
-          unless survey do throwError "walk_decoder: undecided guard after {skipped} clauses:{indentExpr G}"
+          unless ctx.survey do throwError "walk_decoder: undecided guard after {skipped} clauses:{indentExpr G}"
           logInfo m!"survey: undecided guard after {skipped} clauses:{indentExpr G}"
           let pG ← mkSorry (← mkEq G (toExpr false)) false
           g ← g.withContext (step1 g ``run_bind_ite_false #[none, none, G, m'.getArg! 3, m'.getArg! 4, f, σ, r, pG])
@@ -309,7 +368,7 @@ def walkDecoder (hs : Syntax) (survey : Bool) : TacticM Unit := withMainContext 
       else if m'.isAppOfArity ``currentlyEnabled 1 then
         let X := m'.getArg! 0
         let key := X.getAppFn.constName?.getD `_
-        let (b, pb) ← match cache.get? key with
+        let (b, pb) ← match (← ctx.cache.get).get? key with
           | some v => pure v
           | none => g.withContext do
             let mut res : Option (Bool × Expr) := none
@@ -318,18 +377,76 @@ def walkDecoder (hs : Syntax) (survey : Bool) : TacticM Unit := withMainContext 
               try res := some (b, ← kernelDecide p); break catch _ => pure ()
             let some v := res | throwError "walk_decoder: cannot evaluate {m'}"
             pure v
-        cache := cache.insert key (b, pb)
-        let hm ← g.withContext (mkAppM ``en_run #[hs, X, toExpr b, pb])
+        ctx.cache.modify (·.insert key (b, pb))
+        let hm ← g.withContext (mkAppM ``en_run #[ctx.hs, X, toExpr b, pb])
         g ← g.withContext (step1 g ``run_bind_ok #[none, none, m', f, σ, toExpr b, r, hm])
-      else break
+      else
+        -- a small helper (e.g. `encdec_reg_backwards x`): reduce it to `pure a` if it is one
+        let (mSub, pSub) ← g.withContext (substKnown ctx.facts m')
+        let m'' ← withTransparency .default <| whnf mSub
+        if m''.isAppOf ``Sail.ArchSem.FreeM.pure then
+          let a := m''.appArg!
+          let hm ← g.withContext do
+            let pa ← mkAppOptM ``Pure.pure #[M.getArg! 0, none, none, a]
+            let p ← mkExpectedTypeHint (← mkEqRefl mSub) (← mkEq mSub pa)
+            match pSub with | some ps => mkEqTrans ps p | none => pure p
+          g ← g.withContext (step1 g ``run_eq_pure_bind #[none, none, m', a, f, σ, r, hm])
+        else
+          -- a hint field decoder, valid by a guard we are inside of
+          let some (_, mname, lem) := hintHelpers.find? (fun (h, _, _) => m'.isAppOf h) | break
+          let x := m'.appArg!
+          let mut pm : Option Expr := none
+          for h in ctx.hyps do
+            let some (_, Gh, _) := (← inferType h).eq? | continue
+            if let some p ← g.withContext (findConj (fun a => do
+                pure (a.isAppOf mname) <&&> isDefEq a.appArg! x) Gh h) then
+              pm := some p; break
+          let some pmatch := pm | break
+          let hm ← g.withContext (mkAppM lem #[x, pmatch])
+          let g1 ← g.withContext (step1 g ``run_bind_pure_ex #[none, none, m', f, σ, r, hm])
+          let (_, g2) ← g1.intro1
+          g := g2
     else break
+  return (g, skipped)
+
+/-- An undecided guard `G` of a clause `if G then body >>= jp else pure none >>= jp`: prove that `body` returns
+`none` whenever `G` holds (a hint whose extension is off), so the clause is skipped either way. -/
+partial def bodyNone (ctx : Ctx) (g : MVarId) (M σ r G : Expr) : MetaM (Option MVarId) := do
+  let A ← whnfCore (M.getArg! 3)
+  unless A.isAppOfArity ``Bind.bind 6 do return none
+  let (body, jp) := (A.getArg! 4, A.getArg! 5)
+  let bodyTy ← inferType body
+  let optTy := bodyTy.appArg!
+  let noneE ← mkAppOptM ``Option.none #[optTy.appArg!]
+  let ε := (← inferType r).getArg! 0
+  let rhs ← mkAppOptM ``EStateM.Result.ok #[ε, none, optTy, noneE, σ]
+  let hbTy ← withLocalDeclD `hG (← mkEq G (toExpr true)) fun hG => do
+    mkForallFVars #[hG] (← mkEq (← mkAppM ``runF #[body, σ]) rhs)
+  let hbMv ← mkFreshExprSyntheticOpaqueMVar hbTy
+  let (hG, g1) ← hbMv.mvarId!.intro1
+  let ok ← g1.withContext do
+    try
+      let (g2, _) ← walkLoop { ctx with hyps := ctx.hyps.push (mkFVar hG) } g1
+      g2.withContext do
+        let (M2, _, _) ← splitGoal g2
+        let M2 ← whnfCore M2
+        unless M2.isAppOfArity ``Pure.pure 4 do return false
+        let pf ← mkAppM ``runF_pure #[M2.getArg! 3, σ]
+        unless ← isDefEq (← inferType pf) (← g2.getType) do return false
+        g2.assign pf
+        return true
+    catch _ => return false
+  unless ok do return none
+  return some (← step1 g ``run_ite_undec #[none, none, G, body, jp, σ, r, hbMv])
+end
+
+def walkDecoder (hs : Syntax) (survey : Bool) : TacticM Unit := withMainContext do
+  let hs ← elabTerm hs none
+  let facts ← getFacts
+  let cache ← IO.mkRef {}
+  let (g, skipped) ← walkLoop { facts, hs, survey, cache } (← getMainGoal)
   replaceMainGoal [g]
-  let (M, _, _) ← g.withContext (splitGoal g)
-  let M ← whnfCore M
-  let inner ← if M.isAppOfArity ``Bind.bind 6 then do
-      let m ← whnfCore (M.getArg! 4); pure m!" (first action {m.getAppFn} / {m.getAppNumArgs} args)"
-    else pure m!""
-  logInfo m!"walk_decoder: skipped {skipped} clauses; stopped at {M.getAppFn} with {M.getAppNumArgs} args{inner}"
+  logInfo m!"walk_decoder: skipped {skipped} clauses"
 
 elab "walk_decoder " hs:term : tactic => walkDecoder hs false
 /-- Exploration only (uses `sorry`): log undecided guards and treat them as false. -/
