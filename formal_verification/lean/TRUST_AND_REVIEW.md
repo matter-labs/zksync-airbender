@@ -108,6 +108,12 @@ must lie inside the native path, with duration four times the selected worker
 count; no caller selector or instruction schedule is supplied. Earlier ordinary
 effects remain in the joint prefix, rather than a worker-only prefix projection.
 Complete mixed-history hash protocols and whole mixed retirement remain open.
+[Control preparation](Airbender/Review/UnifiedReduced/ControlPreparation.lean)
+uses a public ordinary ADDI-from-x0/LUI registry and the existing first-span empty
+worker-prefix scope. Accepted decoding, clock matching and writes derive the
+actual control read and its retained timestamp. The selected registry and cut
+bounds remain public; no desired control value at an intermediate state is assumed.
+This is preparation/transport, with whole instruction retirement separate.
 Native columns retain full address/time/value limbs, including readonly
 clock refreshes. Bounds, latest-write reads and Clean online-consistent histories
 are derived from those relations and public initialization. Retiming introduces
