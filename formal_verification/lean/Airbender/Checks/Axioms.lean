@@ -1,3 +1,4 @@
+import Airbender.Review.Trace.Families.AddSub.Theorems
 import Airbender.Review.Circuits.JumpBranchSlt.Theorems
 import Airbender.Review.Trace.Families.JumpBranchSlt.Theorems
 import Airbender.Review.Circuits.MulDiv.Theorems
@@ -2082,3 +2083,7 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Trace.NonDeterminism.Pooled.native_soundness
 #print axioms Airbender.Trace.WordColumns.code_u16
 #print axioms Airbender.Trace.WordColumns.evaluate_u16
+
+#print axioms Airbender.Trace.sail_soundness
+#print axioms Airbender.Trace.airbender_soundness
+#print axioms Airbender.Trace.native_boot_soundness

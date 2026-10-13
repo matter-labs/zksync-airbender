@@ -1,3 +1,4 @@
+import Airbender.Review.Trace.Families.AddSub.Theorems
 import Airbender.Review.Trace.Soundness
 import Airbender.Proofs.Trace.OfflineMemory
 import Airbender.Proofs.Trace.Values
@@ -27,44 +28,6 @@ theorem pooled_sail_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.excep
     (accepted : Accepted trace) (decoded : PooledDecoded trace program) :
     Realizes (PooledStep program) trace before cells :=
   Proofs.pooled_trace_execution (by decide) (by decide) inputs accepted decoded
-
-
-theorem sail_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    {trace : Data babyBearModulus} {before : Reference.RiscV.Sail.State}
-    {cells : List Cell} {program : List ProgramEntry}
-    (inputs : ExecutionBoundary trace before cells program)
-    (loads : NoDiscardedLoads program)
-    (accepted : Accepted trace) (decoded : Decoded trace program) :
-    Realizes (SailStep program) trace before cells :=
-  Proofs.restricted_trace_execution .sail (by decide) (by decide) inputs (fun _ => loads) accepted decoded
-
-
-theorem airbender_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    {trace : Data babyBearModulus} {before : Reference.RiscV.Sail.State}
-    {cells : List Cell} {program : List ProgramEntry}
-    (inputs : ExecutionBoundary trace before cells program)
-    (accepted : Accepted trace) (decoded : Decoded trace program) :
-    Realizes (Step .airbender program) trace before cells :=
-  Proofs.restricted_trace_execution .airbender (by decide) (by decide) inputs
-    (by intro impossible; cases impossible) accepted decoded
-
-
-theorem native_boot_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    {trace : Data babyBearModulus} {before : Reference.RiscV.Sail.State}
-    {cells : List Cell} {program : List ProgramEntry}
-    (inputs : NativeBootBoundary trace before cells program)
-    (accepted : Accepted trace) (decoded : Decoded trace program) :
-    Realizes (Step .airbender program) trace before cells (ROMView.token before) := by
-  have clocks := ROMView.native_clocks (by decide) inputs.seed inputs.initial
-  obtain ⟨after, execution, pc, terminal⟩ := airbender_soundness
-    (ROMView.execution_boundary (by decide) inputs)
-    (ROMView.accepted (by decide) (by decide) before accepted clocks inputs.seed)
-    (ROMView.decoded before decoded)
-  refine ⟨after, execution, pc, ?_⟩
-  intro sink member
-  have lifted := terminal (ROMView.token before sink) (List.mem_map_of_mem member)
-  simpa only [ROMView.token_address, id_eq] using lifted
-
 
 
 theorem boot_boundary {trace : Data babyBearModulus}
