@@ -304,6 +304,7 @@ fn forward_production_vm_binds_adjacent_pairs_vs_cpu() {
         0,
         0,
         false,
+        None,
         context
             .alloc::<E4>(2, AllocationPlacement::BestFit)
             .unwrap(),
@@ -318,6 +319,7 @@ fn forward_production_vm_binds_adjacent_pairs_vs_cpu() {
         desc: unsafe { core::mem::zeroed() },
         lookup_additive_slot: None,
         decoder_fill_slot: None,
+        setup_fill_slot: None,
     };
     lowered.desc.count = initial_trace_len as u32;
     lowered.desc.layer_count = 1;

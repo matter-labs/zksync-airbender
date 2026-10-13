@@ -69,7 +69,7 @@ const _: () = {
 //   rsvd:8 [24..32) } — set_index needs 16 bits (blake2 L0 has 208 generic
 // sets); vkind is the native `gkr_base_source_kind` value (2..=5) stored
 // VERBATIM (../support/descriptors.cuh:12-18; pinned by the const asserts
-// above).
+// above), or the const-derived-E4 slot for SD_DECODER and SD_SETUP.
 pub(crate) const DESC_KIND_SHIFT: u32 = 0;
 #[cfg(test)]
 pub(crate) const DESC_KIND_MASK: u32 = 0x7;
@@ -88,10 +88,10 @@ pub(crate) const DESC_VKIND_MASK: u32 = 0x7;
 pub(crate) fn pack_desc(kind: u32, arena: u32, set_index: u16, vkind: u32) -> u32 {
     assert!(kind <= SD_INITS_TOP_BITS, "desc kind {kind} out of range");
     assert!(arena <= ARENA_TIMESTAMP, "desc arena {arena} out of range");
-    if kind == SD_DECODER {
+    if kind == SD_DECODER || kind == SD_SETUP {
         assert!(
             vkind < CONST_DERIVED_E4_CAP as u32,
-            "decoder const-derived-E4 slot {vkind} out of range"
+            "const-derived-E4 slot {vkind} out of range"
         );
     } else {
         assert!(
@@ -247,6 +247,22 @@ mod tests {
                 (3, 0, 17, slot)
             );
         }
+    }
+
+    #[test]
+    fn setup_descriptor_carries_its_const_derived_e4_slot_in_vkind() {
+        for slot in 0..CONST_DERIVED_E4_CAP as u32 {
+            assert_eq!(
+                unpack_desc(pack_desc(SD_SETUP, 0, 0, slot)),
+                (SD_SETUP, 0, 0, slot)
+            );
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "const-derived-E4 slot 8 out of range")]
+    fn setup_descriptor_rejects_out_of_range_const_derived_e4_slot() {
+        pack_desc(SD_SETUP, 0, 0, CONST_DERIVED_E4_CAP as u32);
     }
 
     #[test]

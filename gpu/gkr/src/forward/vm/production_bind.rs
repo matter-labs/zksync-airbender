@@ -20,7 +20,9 @@ use crate::forward::dimension_reducing::{
     LoweredSlotInitialInput, LoweredSlotOutput, PreparedDimensionReductionForward,
 };
 use crate::gkr_address_audit::AddressClass;
-use crate::setup::GpuGKRForwardSetup;
+use crate::setup::{
+    GpuGKRForwardSetup, DECODER_FILL_INDEX, LOOKUP_FILL_COUNT, SETUP_PADDING_FILL_INDEX,
+};
 use crate::stage1::{GpuGKRLookupMappings, GpuGKRStage1Output};
 use crate::upstream::{
     ChallengeKey, ChallengePower, ChallengeRef, Field, GKRAddress, GKRCircuitArtifact,
@@ -120,15 +122,21 @@ fn copy_one_e4_into_bank(
 pub(crate) fn stage_derived_e4_slots(
     lowered: &LoweredFwdVm,
     lookup_additive: &DeviceSlice<E4>,
-    decoder_fill: &DeviceSlice<E4>,
+    lookup_fill_values: &DeviceSlice<E4>,
     context: &ProverContext,
 ) -> CudaResult<()> {
+    assert_eq!(lookup_fill_values.len(), LOOKUP_FILL_COUNT);
     let bank = const_derived_e4_bank_device_ptr();
     if let Some(slot) = lowered.lookup_additive_slot {
         copy_one_e4_into_bank(bank, slot, lookup_additive, context)?;
     }
     if let Some(slot) = lowered.decoder_fill_slot {
-        copy_one_e4_into_bank(bank, slot, &decoder_fill[..1], context)?;
+        let fill = &lookup_fill_values[DECODER_FILL_INDEX..DECODER_FILL_INDEX + 1];
+        copy_one_e4_into_bank(bank, slot, fill, context)?;
+    }
+    if let Some(slot) = lowered.setup_fill_slot {
+        let fill = &lookup_fill_values[SETUP_PADDING_FILL_INDEX..SETUP_PADDING_FILL_INDEX + 1];
+        copy_one_e4_into_bank(bank, slot, fill, context)?;
     }
     Ok(())
 }
@@ -366,7 +374,7 @@ pub(in crate::forward) fn schedule_vm(
     stage_derived_e4_slots(
         lowered,
         forward_setup.lookup_additive_part_device(),
-        forward_setup.decoder_lookup_fill_value_device(),
+        forward_setup.lookup_fill_values_device(),
         context,
     )
     .unwrap_or_else(|error| panic!("forward VM constant staging failed: {error:?}"));
