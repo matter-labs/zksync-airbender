@@ -35,7 +35,7 @@ use verifier_common::GKRExternalChallenges;
 #[inline(always)]
 #[allow(unused_variables)]
 unsafe fn layer_0_compute_claim(
-    output_claims: &[BabyBearExt4; 91usize],
+    output_claims: &[BabyBearExt4; 90usize],
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
     const DESCS: [(usize, usize, usize); 241usize] = [
@@ -71,28 +71,28 @@ unsafe fn layer_0_compute_claim(
         (2usize, 41usize, 42usize),
         (2usize, 43usize, 44usize),
         (2usize, 45usize, 46usize),
-        (2usize, 47usize, 48usize),
-        (2usize, 49usize, 50usize),
-        (2usize, 51usize, 52usize),
-        (2usize, 53usize, 54usize),
-        (2usize, 55usize, 56usize),
-        (2usize, 57usize, 58usize),
-        (2usize, 59usize, 60usize),
-        (2usize, 61usize, 62usize),
-        (2usize, 63usize, 64usize),
-        (2usize, 65usize, 66usize),
-        (2usize, 67usize, 68usize),
-        (2usize, 69usize, 70usize),
-        (2usize, 71usize, 72usize),
-        (2usize, 73usize, 74usize),
-        (2usize, 75usize, 76usize),
-        (2usize, 77usize, 78usize),
-        (2usize, 79usize, 80usize),
-        (2usize, 81usize, 82usize),
-        (2usize, 83usize, 84usize),
-        (2usize, 85usize, 86usize),
-        (2usize, 87usize, 88usize),
-        (2usize, 89usize, 90usize),
+        (1usize, 47usize, 0usize),
+        (2usize, 48usize, 49usize),
+        (2usize, 50usize, 51usize),
+        (2usize, 52usize, 53usize),
+        (2usize, 54usize, 55usize),
+        (2usize, 56usize, 57usize),
+        (2usize, 58usize, 59usize),
+        (2usize, 60usize, 61usize),
+        (2usize, 62usize, 63usize),
+        (2usize, 64usize, 65usize),
+        (2usize, 66usize, 67usize),
+        (2usize, 68usize, 69usize),
+        (2usize, 70usize, 71usize),
+        (2usize, 72usize, 73usize),
+        (2usize, 74usize, 75usize),
+        (2usize, 76usize, 77usize),
+        (2usize, 78usize, 79usize),
+        (2usize, 80usize, 81usize),
+        (2usize, 82usize, 83usize),
+        (2usize, 84usize, 85usize),
+        (2usize, 86usize, 87usize),
+        (2usize, 88usize, 89usize),
         (0usize, 0usize, 0usize),
         (0usize, 0usize, 0usize),
         (0usize, 0usize, 0usize),
@@ -299,7 +299,11 @@ unsafe fn layer_0_final_step_accumulator(
     let mut current_batch = BabyBearExt4::ONE;
     {
         const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 54usize] = [
-            (SimpleGateType::Copy, [228usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [227usize, 0usize, 0usize, 0usize]),
+            (
+                SimpleGateType::Product,
+                [229usize, 230usize, 0usize, 0usize],
+            ),
             (
                 SimpleGateType::Product,
                 [231usize, 232usize, 0usize, 0usize],
@@ -352,79 +356,76 @@ unsafe fn layer_0_final_step_accumulator(
                 SimpleGateType::Product,
                 [255usize, 256usize, 0usize, 0usize],
             ),
-            (
-                SimpleGateType::Product,
-                [257usize, 258usize, 0usize, 0usize],
-            ),
-            (SimpleGateType::Copy, [259usize, 0usize, 0usize, 0usize]),
-            (SimpleGateType::Copy, [260usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [257usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [258usize, 0usize, 0usize, 0usize]),
             (
                 SimpleGateType::LookupWithSetup,
-                [261usize, 173usize, 229usize, 0usize],
+                [259usize, 173usize, 228usize, 0usize],
             ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [260usize, 261usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [262usize, 263usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [264usize, 265usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [266usize, 267usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [268usize, 269usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [270usize, 271usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [272usize, 273usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [274usize, 275usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [276usize, 277usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [278usize, 279usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [280usize, 281usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [282usize, 283usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [284usize, 285usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [286usize, 287usize, 0usize, 0usize],
+            ),
+            (SimpleGateType::Copy, [288usize, 0usize, 0usize, 0usize]),
             (
                 SimpleGateType::LookupWithSetup,
-                [262usize, 174usize, 230usize, 0usize],
+                [289usize, 174usize, 290usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [263usize, 264usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [265usize, 266usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [267usize, 268usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [269usize, 270usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [271usize, 272usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [273usize, 274usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [275usize, 276usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [277usize, 278usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [279usize, 280usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [281usize, 282usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [283usize, 284usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [285usize, 286usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [287usize, 288usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [289usize, 290usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupWithSetup,
-                [291usize, 175usize, 292usize, 0usize],
+                [291usize, 292usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
@@ -501,10 +502,6 @@ unsafe fn layer_0_final_step_accumulator(
             (
                 SimpleGateType::LookupInitialPair,
                 [329usize, 330usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [331usize, 332usize, 0usize, 0usize],
             ),
         ];
         let mut _sg = 0;
@@ -698,9 +695,9 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
-            const VAL_QO: [(usize, usize); 1usize] = [(228usize, 1usize)];
-            const VAL_QI: [(usize, usize); 1usize] = [(228usize, 268435454usize)];
-            const VAL_LN: [(usize, usize); 1usize] = [(228usize, 1744830467usize)];
+            const VAL_QO: [(usize, usize); 1usize] = [(227usize, 1usize)];
+            const VAL_QI: [(usize, usize); 1usize] = [(227usize, 268435454usize)];
+            const VAL_LN: [(usize, usize); 1usize] = [(227usize, 1744830467usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -714,7 +711,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 0usize] = [];
             const VAL_QI: [(usize, usize); 0usize] = [];
-            const VAL_LN: [(usize, usize); 1usize] = [(177usize, 268435454usize)];
+            const VAL_LN: [(usize, usize); 1usize] = [(176usize, 268435454usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -728,7 +725,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 0usize] = [];
             const VAL_QI: [(usize, usize); 0usize] = [];
-            const VAL_LN: [(usize, usize); 1usize] = [(179usize, 268435454usize)];
+            const VAL_LN: [(usize, usize); 1usize] = [(178usize, 268435454usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -758,7 +755,7 @@ unsafe fn layer_0_final_step_accumulator(
                 (14usize, 268434910usize),
                 (15usize, 536869820usize),
                 (16usize, 1073739640usize),
-                (176usize, 1744830467usize),
+                (175usize, 1744830467usize),
             ];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -781,15 +778,15 @@ unsafe fn layer_0_final_step_accumulator(
                 (6usize, 1usize),
             ];
             const VAL_QI: [(usize, usize); 7usize] = [
-                (228usize, 268435454usize),
-                (228usize, 268435454usize),
-                (228usize, 268435454usize),
-                (228usize, 268435454usize),
-                (228usize, 268435454usize),
-                (228usize, 268435454usize),
-                (228usize, 268435454usize),
+                (227usize, 268435454usize),
+                (227usize, 268435454usize),
+                (227usize, 268435454usize),
+                (227usize, 268435454usize),
+                (227usize, 268435454usize),
+                (227usize, 268435454usize),
+                (227usize, 268435454usize),
             ];
-            const VAL_LN: [(usize, usize); 1usize] = [(228usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 1usize] = [(227usize, 1744830467usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -809,13 +806,13 @@ unsafe fn layer_0_final_step_accumulator(
                 (11usize, 1usize),
             ];
             const VAL_QI: [(usize, usize); 5usize] = [
-                (228usize, 268435454usize),
-                (228usize, 268435454usize),
-                (228usize, 268435454usize),
-                (228usize, 268435454usize),
-                (228usize, 268435454usize),
+                (227usize, 268435454usize),
+                (227usize, 268435454usize),
+                (227usize, 268435454usize),
+                (227usize, 268435454usize),
+                (227usize, 268435454usize),
             ];
-            const VAL_LN: [(usize, usize); 1usize] = [(228usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 1usize] = [(227usize, 1744830467usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -837,13 +834,13 @@ unsafe fn layer_0_final_step_accumulator(
                 (6usize, 1usize),
             ];
             const VAL_QI: [(usize, usize); 7usize] = [
-                (228usize, 1744830467usize),
-                (228usize, 1744830467usize),
-                (228usize, 1744830467usize),
-                (228usize, 1744830467usize),
-                (228usize, 1744830467usize),
-                (228usize, 1744830467usize),
-                (228usize, 1744830467usize),
+                (227usize, 1744830467usize),
+                (227usize, 1744830467usize),
+                (227usize, 1744830467usize),
+                (227usize, 1744830467usize),
+                (227usize, 1744830467usize),
+                (227usize, 1744830467usize),
+                (227usize, 1744830467usize),
             ];
             const VAL_LN: [(usize, usize); 7usize] = [
                 (0usize, 268435454usize),
@@ -873,11 +870,11 @@ unsafe fn layer_0_final_step_accumulator(
                 (11usize, 1usize),
             ];
             const VAL_QI: [(usize, usize); 5usize] = [
-                (228usize, 1744830467usize),
-                (228usize, 1744830467usize),
-                (228usize, 1744830467usize),
-                (228usize, 1744830467usize),
-                (228usize, 1744830467usize),
+                (227usize, 1744830467usize),
+                (227usize, 1744830467usize),
+                (227usize, 1744830467usize),
+                (227usize, 1744830467usize),
+                (227usize, 1744830467usize),
             ];
             const VAL_LN: [(usize, usize); 5usize] = [
                 (7usize, 268435454usize),
@@ -926,7 +923,7 @@ unsafe fn layer_0_final_step_accumulator(
                 (14usize, 268434910usize),
                 (15usize, 536869820usize),
                 (16usize, 1073739640usize),
-                (178usize, 1744830467usize),
+                (177usize, 1744830467usize),
             ];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -1149,7 +1146,7 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 41usize] = [
-                (180usize, 1744830467usize),
+                (179usize, 1744830467usize),
                 (1usize, 1744970275usize),
                 (2usize, 1476674629usize),
                 (17usize, 1744970275usize),
@@ -1158,7 +1155,7 @@ unsafe fn layer_0_final_step_accumulator(
                 (20usize, 538688444usize),
                 (21usize, 806984090usize),
                 (40usize, 1744831011usize),
-                (180usize, 1744830467usize),
+                (179usize, 1744830467usize),
                 (2usize, 1744970275usize),
                 (17usize, 1744970275usize),
                 (18usize, 1476674629usize),
@@ -1166,11 +1163,11 @@ unsafe fn layer_0_final_step_accumulator(
                 (20usize, 538688444usize),
                 (21usize, 806984090usize),
                 (40usize, 1744831011usize),
-                (188usize, 1744830467usize),
-                (180usize, 1744830467usize),
-                (180usize, 1744830467usize),
-                (180usize, 1744830467usize),
-                (196usize, 1744830467usize),
+                (187usize, 1744830467usize),
+                (179usize, 1744830467usize),
+                (179usize, 1744830467usize),
+                (179usize, 1744830467usize),
+                (195usize, 1744830467usize),
                 (18usize, 1744970275usize),
                 (19usize, 270392798usize),
                 (20usize, 806984090usize),
@@ -1223,9 +1220,9 @@ unsafe fn layer_0_final_step_accumulator(
                 (48usize, 1744831011usize),
                 (47usize, 1744830467usize),
                 (48usize, 1744831011usize),
-                (220usize, 1744830467usize),
-                (188usize, 1744830467usize),
-                (180usize, 1744830467usize),
+                (219usize, 1744830467usize),
+                (187usize, 1744830467usize),
+                (179usize, 1744830467usize),
                 (47usize, 1744830467usize),
                 (48usize, 1744831011usize),
                 (47usize, 1744830467usize),
@@ -1265,16 +1262,16 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 4usize),
             ];
             const VAL_QI: [(usize, usize); 26usize] = [
-                (182usize, 1744830467usize),
+                (181usize, 1744830467usize),
                 (50usize, 268435454usize),
                 (56usize, 1744831011usize),
-                (222usize, 1744830467usize),
+                (221usize, 1744830467usize),
                 (27usize, 1744830467usize),
                 (50usize, 268435454usize),
                 (56usize, 1744831011usize),
-                (182usize, 1744830467usize),
-                (182usize, 1744830467usize),
-                (214usize, 1744830467usize),
+                (181usize, 1744830467usize),
+                (181usize, 1744830467usize),
+                (213usize, 1744830467usize),
                 (27usize, 1744830467usize),
                 (50usize, 268435454usize),
                 (56usize, 1744831011usize),
@@ -1320,7 +1317,7 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 4usize),
             ];
             const VAL_QI: [(usize, usize); 55usize] = [
-                (181usize, 1744830467usize),
+                (180usize, 1744830467usize),
                 (1usize, 1744970275usize),
                 (2usize, 1476674629usize),
                 (17usize, 1744970275usize),
@@ -1331,7 +1328,7 @@ unsafe fn layer_0_final_step_accumulator(
                 (40usize, 268435454usize),
                 (41usize, 1744830467usize),
                 (42usize, 1744831011usize),
-                (181usize, 1744830467usize),
+                (180usize, 1744830467usize),
                 (2usize, 1744970275usize),
                 (17usize, 1744970275usize),
                 (18usize, 1476674629usize),
@@ -1341,11 +1338,11 @@ unsafe fn layer_0_final_step_accumulator(
                 (40usize, 268435454usize),
                 (41usize, 1744830467usize),
                 (42usize, 1744831011usize),
-                (189usize, 1744830467usize),
-                (181usize, 1744830467usize),
-                (181usize, 1744830467usize),
-                (181usize, 1744830467usize),
-                (197usize, 1744830467usize),
+                (188usize, 1744830467usize),
+                (180usize, 1744830467usize),
+                (180usize, 1744830467usize),
+                (180usize, 1744830467usize),
+                (196usize, 1744830467usize),
                 (18usize, 1744970275usize),
                 (19usize, 270392798usize),
                 (20usize, 806984090usize),
@@ -1408,9 +1405,9 @@ unsafe fn layer_0_final_step_accumulator(
                 (50usize, 1744831011usize),
                 (49usize, 1744830467usize),
                 (50usize, 1744831011usize),
-                (221usize, 1744830467usize),
-                (189usize, 1744830467usize),
-                (181usize, 1744830467usize),
+                (220usize, 1744830467usize),
+                (188usize, 1744830467usize),
+                (180usize, 1744830467usize),
                 (49usize, 1744830467usize),
                 (50usize, 1744831011usize),
                 (49usize, 1744830467usize),
@@ -1450,20 +1447,20 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 4usize),
             ];
             const VAL_QI: [(usize, usize); 33usize] = [
-                (183usize, 1744830467usize),
+                (182usize, 1744830467usize),
                 (47usize, 268435454usize),
                 (56usize, 268435454usize),
                 (57usize, 1744830467usize),
                 (58usize, 1744831011usize),
-                (223usize, 1744830467usize),
+                (222usize, 1744830467usize),
                 (28usize, 1744830467usize),
                 (47usize, 268435454usize),
                 (56usize, 268435454usize),
                 (57usize, 1744830467usize),
                 (58usize, 1744831011usize),
-                (183usize, 1744830467usize),
-                (183usize, 1744830467usize),
-                (215usize, 1744830467usize),
+                (182usize, 1744830467usize),
+                (182usize, 1744830467usize),
+                (214usize, 1744830467usize),
                 (28usize, 1744830467usize),
                 (47usize, 268435454usize),
                 (56usize, 268435454usize),
@@ -1512,7 +1509,7 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 4usize),
             ];
             const VAL_QI: [(usize, usize); 55usize] = [
-                (184usize, 1744830467usize),
+                (183usize, 1744830467usize),
                 (1usize, 1744970275usize),
                 (2usize, 1476674629usize),
                 (17usize, 1744970275usize),
@@ -1523,7 +1520,7 @@ unsafe fn layer_0_final_step_accumulator(
                 (41usize, 268435454usize),
                 (43usize, 1744830467usize),
                 (44usize, 1744831011usize),
-                (184usize, 1744830467usize),
+                (183usize, 1744830467usize),
                 (2usize, 1744970275usize),
                 (17usize, 1744970275usize),
                 (18usize, 1476674629usize),
@@ -1533,11 +1530,11 @@ unsafe fn layer_0_final_step_accumulator(
                 (41usize, 268435454usize),
                 (43usize, 1744830467usize),
                 (44usize, 1744831011usize),
-                (192usize, 1744830467usize),
-                (184usize, 1744830467usize),
-                (184usize, 1744830467usize),
-                (184usize, 1744830467usize),
-                (200usize, 1744830467usize),
+                (191usize, 1744830467usize),
+                (183usize, 1744830467usize),
+                (183usize, 1744830467usize),
+                (183usize, 1744830467usize),
+                (199usize, 1744830467usize),
                 (18usize, 1744970275usize),
                 (19usize, 270392798usize),
                 (20usize, 806984090usize),
@@ -1600,9 +1597,9 @@ unsafe fn layer_0_final_step_accumulator(
                 (52usize, 1744831011usize),
                 (51usize, 1744830467usize),
                 (52usize, 1744831011usize),
-                (224usize, 1744830467usize),
-                (192usize, 1744830467usize),
-                (184usize, 1744830467usize),
+                (223usize, 1744830467usize),
+                (191usize, 1744830467usize),
+                (183usize, 1744830467usize),
                 (51usize, 1744830467usize),
                 (52usize, 1744831011usize),
                 (51usize, 1744830467usize),
@@ -1642,20 +1639,20 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 4usize),
             ];
             const VAL_QI: [(usize, usize); 35usize] = [
-                (186usize, 1744830467usize),
+                (185usize, 1744830467usize),
                 (48usize, 268435454usize),
                 (57usize, 268435454usize),
                 (59usize, 1744830467usize),
                 (60usize, 1744831011usize),
-                (226usize, 1744830467usize),
+                (225usize, 1744830467usize),
                 (29usize, 1744830467usize),
                 (48usize, 268435454usize),
                 (57usize, 268435454usize),
                 (59usize, 1744830467usize),
                 (60usize, 1744831011usize),
-                (186usize, 1744830467usize),
-                (186usize, 1744830467usize),
-                (218usize, 1744830467usize),
+                (185usize, 1744830467usize),
+                (185usize, 1744830467usize),
+                (217usize, 1744830467usize),
                 (29usize, 1744830467usize),
                 (48usize, 268435454usize),
                 (57usize, 268435454usize),
@@ -1706,7 +1703,7 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 4usize),
             ];
             const VAL_QI: [(usize, usize); 55usize] = [
-                (185usize, 1744830467usize),
+                (184usize, 1744830467usize),
                 (1usize, 1744970275usize),
                 (2usize, 1476674629usize),
                 (17usize, 1744970275usize),
@@ -1717,7 +1714,7 @@ unsafe fn layer_0_final_step_accumulator(
                 (42usize, 268435454usize),
                 (45usize, 1744830467usize),
                 (46usize, 1744831011usize),
-                (185usize, 1744830467usize),
+                (184usize, 1744830467usize),
                 (2usize, 1744970275usize),
                 (17usize, 1744970275usize),
                 (18usize, 1476674629usize),
@@ -1727,11 +1724,11 @@ unsafe fn layer_0_final_step_accumulator(
                 (42usize, 268435454usize),
                 (45usize, 1744830467usize),
                 (46usize, 1744831011usize),
-                (193usize, 1744830467usize),
-                (185usize, 1744830467usize),
-                (185usize, 1744830467usize),
-                (185usize, 1744830467usize),
-                (201usize, 1744830467usize),
+                (192usize, 1744830467usize),
+                (184usize, 1744830467usize),
+                (184usize, 1744830467usize),
+                (184usize, 1744830467usize),
+                (200usize, 1744830467usize),
                 (18usize, 1744970275usize),
                 (19usize, 270392798usize),
                 (20usize, 806984090usize),
@@ -1794,9 +1791,9 @@ unsafe fn layer_0_final_step_accumulator(
                 (54usize, 1744831011usize),
                 (53usize, 1744830467usize),
                 (54usize, 1744831011usize),
-                (225usize, 1744830467usize),
-                (193usize, 1744830467usize),
-                (185usize, 1744830467usize),
+                (224usize, 1744830467usize),
+                (192usize, 1744830467usize),
+                (184usize, 1744830467usize),
                 (53usize, 1744830467usize),
                 (54usize, 1744831011usize),
                 (53usize, 1744830467usize),
@@ -1836,20 +1833,20 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 4usize),
             ];
             const VAL_QI: [(usize, usize); 35usize] = [
-                (187usize, 1744830467usize),
+                (186usize, 1744830467usize),
                 (49usize, 268435454usize),
                 (58usize, 268435454usize),
                 (61usize, 1744830467usize),
                 (62usize, 1744831011usize),
-                (227usize, 1744830467usize),
+                (226usize, 1744830467usize),
                 (30usize, 1744830467usize),
                 (49usize, 268435454usize),
                 (58usize, 268435454usize),
                 (61usize, 1744830467usize),
                 (62usize, 1744831011usize),
-                (187usize, 1744830467usize),
-                (187usize, 1744830467usize),
-                (219usize, 1744830467usize),
+                (186usize, 1744830467usize),
+                (186usize, 1744830467usize),
+                (218usize, 1744830467usize),
                 (30usize, 1744830467usize),
                 (49usize, 268435454usize),
                 (58usize, 268435454usize),
@@ -1921,7 +1918,7 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 34usize] = [
-                (182usize, 1744830467usize),
+                (181usize, 1744830467usize),
                 (1usize, 1744970275usize),
                 (17usize, 671787691usize),
                 (18usize, 538688444usize),
@@ -1929,12 +1926,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (20usize, 1880166674usize),
                 (21usize, 671787691usize),
                 (64usize, 1744831011usize),
-                (196usize, 1744830467usize),
-                (212usize, 1744830467usize),
-                (188usize, 1744830467usize),
-                (188usize, 1744830467usize),
-                (188usize, 1744830467usize),
-                (188usize, 1744830467usize),
+                (195usize, 1744830467usize),
+                (211usize, 1744830467usize),
+                (187usize, 1744830467usize),
+                (187usize, 1744830467usize),
+                (187usize, 1744830467usize),
+                (187usize, 1744830467usize),
                 (17usize, 940083337usize),
                 (18usize, 1747067427usize),
                 (19usize, 1343575382usize),
@@ -1983,12 +1980,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 17usize] = [
-                (188usize, 1744830467usize),
+                (187usize, 1744830467usize),
                 (71usize, 1744830467usize),
                 (72usize, 1744831011usize),
                 (27usize, 1744830467usize),
-                (220usize, 1744830467usize),
-                (196usize, 1744830467usize),
+                (219usize, 1744830467usize),
+                (195usize, 1744830467usize),
                 (27usize, 1744830467usize),
                 (71usize, 1744830467usize),
                 (72usize, 1744831011usize),
@@ -2033,11 +2030,11 @@ unsafe fn layer_0_final_step_accumulator(
                 (27usize, 1744830467usize),
                 (74usize, 268435454usize),
                 (80usize, 1744831011usize),
-                (214usize, 1744830467usize),
-                (190usize, 1744830467usize),
-                (190usize, 1744830467usize),
+                (213usize, 1744830467usize),
+                (189usize, 1744830467usize),
+                (189usize, 1744830467usize),
                 (27usize, 1744830467usize),
-                (190usize, 1744830467usize),
+                (189usize, 1744830467usize),
                 (72usize, 268435454usize),
                 (79usize, 1744830467usize),
                 (80usize, 1744831011usize),
@@ -2084,7 +2081,7 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 4usize),
             ];
             const VAL_QI: [(usize, usize); 46usize] = [
-                (183usize, 1744830467usize),
+                (182usize, 1744830467usize),
                 (1usize, 1744970275usize),
                 (17usize, 671787691usize),
                 (18usize, 538688444usize),
@@ -2094,12 +2091,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (64usize, 268435454usize),
                 (65usize, 1744830467usize),
                 (66usize, 1744831011usize),
-                (197usize, 1744830467usize),
-                (213usize, 1744830467usize),
-                (189usize, 1744830467usize),
-                (189usize, 1744830467usize),
-                (189usize, 1744830467usize),
-                (189usize, 1744830467usize),
+                (196usize, 1744830467usize),
+                (212usize, 1744830467usize),
+                (188usize, 1744830467usize),
+                (188usize, 1744830467usize),
+                (188usize, 1744830467usize),
+                (188usize, 1744830467usize),
                 (17usize, 940083337usize),
                 (18usize, 1747067427usize),
                 (19usize, 1343575382usize),
@@ -2158,12 +2155,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 17usize] = [
-                (189usize, 1744830467usize),
+                (188usize, 1744830467usize),
                 (73usize, 1744830467usize),
                 (74usize, 1744831011usize),
                 (28usize, 1744830467usize),
-                (221usize, 1744830467usize),
-                (197usize, 1744830467usize),
+                (220usize, 1744830467usize),
+                (196usize, 1744830467usize),
                 (28usize, 1744830467usize),
                 (73usize, 1744830467usize),
                 (74usize, 1744831011usize),
@@ -2210,11 +2207,11 @@ unsafe fn layer_0_final_step_accumulator(
                 (80usize, 268435454usize),
                 (81usize, 1744830467usize),
                 (82usize, 1744831011usize),
-                (215usize, 1744830467usize),
-                (191usize, 1744830467usize),
-                (191usize, 1744830467usize),
+                (214usize, 1744830467usize),
+                (190usize, 1744830467usize),
+                (190usize, 1744830467usize),
                 (28usize, 1744830467usize),
-                (191usize, 1744830467usize),
+                (190usize, 1744830467usize),
                 (73usize, 268435454usize),
                 (81usize, 1744830467usize),
                 (82usize, 544usize),
@@ -2260,7 +2257,7 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 4usize),
             ];
             const VAL_QI: [(usize, usize); 46usize] = [
-                (186usize, 1744830467usize),
+                (185usize, 1744830467usize),
                 (1usize, 1744970275usize),
                 (17usize, 671787691usize),
                 (18usize, 538688444usize),
@@ -2270,12 +2267,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (65usize, 268435454usize),
                 (67usize, 1744830467usize),
                 (68usize, 1744831011usize),
-                (200usize, 1744830467usize),
-                (216usize, 1744830467usize),
-                (192usize, 1744830467usize),
-                (192usize, 1744830467usize),
-                (192usize, 1744830467usize),
-                (192usize, 1744830467usize),
+                (199usize, 1744830467usize),
+                (215usize, 1744830467usize),
+                (191usize, 1744830467usize),
+                (191usize, 1744830467usize),
+                (191usize, 1744830467usize),
+                (191usize, 1744830467usize),
                 (17usize, 940083337usize),
                 (18usize, 1747067427usize),
                 (19usize, 1343575382usize),
@@ -2334,12 +2331,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 17usize] = [
-                (192usize, 1744830467usize),
+                (191usize, 1744830467usize),
                 (75usize, 1744830467usize),
                 (76usize, 1744831011usize),
                 (29usize, 1744830467usize),
-                (224usize, 1744830467usize),
-                (200usize, 1744830467usize),
+                (223usize, 1744830467usize),
+                (199usize, 1744830467usize),
                 (29usize, 1744830467usize),
                 (75usize, 1744830467usize),
                 (76usize, 1744831011usize),
@@ -2386,11 +2383,11 @@ unsafe fn layer_0_final_step_accumulator(
                 (81usize, 268435454usize),
                 (83usize, 1744830467usize),
                 (84usize, 1744831011usize),
-                (218usize, 1744830467usize),
-                (194usize, 1744830467usize),
-                (194usize, 1744830467usize),
+                (217usize, 1744830467usize),
+                (193usize, 1744830467usize),
+                (193usize, 1744830467usize),
                 (29usize, 1744830467usize),
-                (194usize, 1744830467usize),
+                (193usize, 1744830467usize),
                 (74usize, 268435454usize),
                 (79usize, 268435454usize),
                 (83usize, 1744830467usize),
@@ -2440,7 +2437,7 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 4usize),
             ];
             const VAL_QI: [(usize, usize); 46usize] = [
-                (187usize, 1744830467usize),
+                (186usize, 1744830467usize),
                 (1usize, 1744970275usize),
                 (17usize, 671787691usize),
                 (18usize, 538688444usize),
@@ -2450,12 +2447,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (66usize, 268435454usize),
                 (69usize, 1744830467usize),
                 (70usize, 1744831011usize),
-                (201usize, 1744830467usize),
-                (217usize, 1744830467usize),
-                (193usize, 1744830467usize),
-                (193usize, 1744830467usize),
-                (193usize, 1744830467usize),
-                (193usize, 1744830467usize),
+                (200usize, 1744830467usize),
+                (216usize, 1744830467usize),
+                (192usize, 1744830467usize),
+                (192usize, 1744830467usize),
+                (192usize, 1744830467usize),
+                (192usize, 1744830467usize),
                 (17usize, 940083337usize),
                 (18usize, 1747067427usize),
                 (19usize, 1343575382usize),
@@ -2514,12 +2511,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 17usize] = [
-                (193usize, 1744830467usize),
+                (192usize, 1744830467usize),
                 (77usize, 1744830467usize),
                 (78usize, 1744831011usize),
                 (30usize, 1744830467usize),
-                (225usize, 1744830467usize),
-                (201usize, 1744830467usize),
+                (224usize, 1744830467usize),
+                (200usize, 1744830467usize),
                 (30usize, 1744830467usize),
                 (77usize, 1744830467usize),
                 (78usize, 1744831011usize),
@@ -2566,11 +2563,11 @@ unsafe fn layer_0_final_step_accumulator(
                 (82usize, 268435454usize),
                 (85usize, 1744830467usize),
                 (86usize, 1744831011usize),
-                (219usize, 1744830467usize),
-                (195usize, 1744830467usize),
-                (195usize, 1744830467usize),
+                (218usize, 1744830467usize),
+                (194usize, 1744830467usize),
+                (194usize, 1744830467usize),
                 (30usize, 1744830467usize),
-                (195usize, 1744830467usize),
+                (194usize, 1744830467usize),
                 (71usize, 268435454usize),
                 (80usize, 268435454usize),
                 (85usize, 1744830467usize),
@@ -2642,7 +2639,7 @@ unsafe fn layer_0_final_step_accumulator(
             ];
             const VAL_QI: [(usize, usize); 34usize] = [
                 (27usize, 1744830467usize),
-                (180usize, 1744830467usize),
+                (179usize, 1744830467usize),
                 (2usize, 1744970275usize),
                 (17usize, 940083337usize),
                 (18usize, 1075279736usize),
@@ -2650,11 +2647,11 @@ unsafe fn layer_0_final_step_accumulator(
                 (20usize, 1343575382usize),
                 (21usize, 1880166674usize),
                 (88usize, 1744831011usize),
-                (204usize, 1744830467usize),
-                (196usize, 1744830467usize),
-                (196usize, 1744830467usize),
-                (180usize, 1744830467usize),
-                (180usize, 1744830467usize),
+                (203usize, 1744830467usize),
+                (195usize, 1744830467usize),
+                (195usize, 1744830467usize),
+                (179usize, 1744830467usize),
+                (179usize, 1744830467usize),
                 (17usize, 1208378983usize),
                 (18usize, 538688444usize),
                 (19usize, 270392798usize),
@@ -2703,13 +2700,13 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 17usize] = [
-                (196usize, 1744830467usize),
+                (195usize, 1744830467usize),
                 (27usize, 1744830467usize),
                 (95usize, 1744830467usize),
                 (96usize, 1744831011usize),
-                (220usize, 1744830467usize),
+                (219usize, 1744830467usize),
                 (27usize, 1744830467usize),
-                (212usize, 1744830467usize),
+                (211usize, 1744830467usize),
                 (95usize, 1744830467usize),
                 (96usize, 1744831011usize),
                 (95usize, 1744830467usize),
@@ -2750,13 +2747,13 @@ unsafe fn layer_0_final_step_accumulator(
             ];
             const VAL_QI: [(usize, usize); 25usize] = [
                 (31usize, 1744830467usize),
-                (182usize, 1744830467usize),
+                (181usize, 1744830467usize),
                 (31usize, 1744830467usize),
                 (98usize, 268435454usize),
                 (104usize, 1744831011usize),
-                (198usize, 1744830467usize),
-                (198usize, 1744830467usize),
-                (182usize, 1744830467usize),
+                (197usize, 1744830467usize),
+                (197usize, 1744830467usize),
+                (181usize, 1744830467usize),
                 (31usize, 1744830467usize),
                 (98usize, 268435454usize),
                 (104usize, 1744831011usize),
@@ -2804,7 +2801,7 @@ unsafe fn layer_0_final_step_accumulator(
             ];
             const VAL_QI: [(usize, usize); 46usize] = [
                 (28usize, 1744830467usize),
-                (181usize, 1744830467usize),
+                (180usize, 1744830467usize),
                 (2usize, 1744970275usize),
                 (17usize, 940083337usize),
                 (18usize, 1075279736usize),
@@ -2814,11 +2811,11 @@ unsafe fn layer_0_final_step_accumulator(
                 (88usize, 268435454usize),
                 (89usize, 1744830467usize),
                 (90usize, 1744831011usize),
-                (205usize, 1744830467usize),
-                (197usize, 1744830467usize),
-                (197usize, 1744830467usize),
-                (181usize, 1744830467usize),
-                (181usize, 1744830467usize),
+                (204usize, 1744830467usize),
+                (196usize, 1744830467usize),
+                (196usize, 1744830467usize),
+                (180usize, 1744830467usize),
+                (180usize, 1744830467usize),
                 (17usize, 1208378983usize),
                 (18usize, 538688444usize),
                 (19usize, 270392798usize),
@@ -2877,13 +2874,13 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 17usize] = [
-                (197usize, 1744830467usize),
+                (196usize, 1744830467usize),
                 (28usize, 1744830467usize),
                 (97usize, 1744830467usize),
                 (98usize, 1744831011usize),
-                (221usize, 1744830467usize),
+                (220usize, 1744830467usize),
                 (28usize, 1744830467usize),
-                (213usize, 1744830467usize),
+                (212usize, 1744830467usize),
                 (97usize, 1744830467usize),
                 (98usize, 1744831011usize),
                 (97usize, 1744830467usize),
@@ -2924,15 +2921,15 @@ unsafe fn layer_0_final_step_accumulator(
             ];
             const VAL_QI: [(usize, usize); 29usize] = [
                 (32usize, 1744830467usize),
-                (183usize, 1744830467usize),
+                (182usize, 1744830467usize),
                 (32usize, 1744830467usize),
                 (95usize, 268435454usize),
                 (104usize, 268435454usize),
                 (105usize, 1744830467usize),
                 (106usize, 1744831011usize),
-                (199usize, 1744830467usize),
-                (199usize, 1744830467usize),
-                (183usize, 1744830467usize),
+                (198usize, 1744830467usize),
+                (198usize, 1744830467usize),
+                (182usize, 1744830467usize),
                 (32usize, 1744830467usize),
                 (95usize, 268435454usize),
                 (104usize, 268435454usize),
@@ -2982,7 +2979,7 @@ unsafe fn layer_0_final_step_accumulator(
             ];
             const VAL_QI: [(usize, usize); 46usize] = [
                 (29usize, 1744830467usize),
-                (184usize, 1744830467usize),
+                (183usize, 1744830467usize),
                 (2usize, 1744970275usize),
                 (17usize, 940083337usize),
                 (18usize, 1075279736usize),
@@ -2992,11 +2989,11 @@ unsafe fn layer_0_final_step_accumulator(
                 (89usize, 268435454usize),
                 (91usize, 1744830467usize),
                 (92usize, 1744831011usize),
-                (208usize, 1744830467usize),
-                (200usize, 1744830467usize),
-                (200usize, 1744830467usize),
-                (184usize, 1744830467usize),
-                (184usize, 1744830467usize),
+                (207usize, 1744830467usize),
+                (199usize, 1744830467usize),
+                (199usize, 1744830467usize),
+                (183usize, 1744830467usize),
+                (183usize, 1744830467usize),
                 (17usize, 1208378983usize),
                 (18usize, 538688444usize),
                 (19usize, 270392798usize),
@@ -3055,13 +3052,13 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 17usize] = [
-                (200usize, 1744830467usize),
+                (199usize, 1744830467usize),
                 (29usize, 1744830467usize),
                 (99usize, 1744830467usize),
                 (100usize, 1744831011usize),
-                (224usize, 1744830467usize),
+                (223usize, 1744830467usize),
                 (29usize, 1744830467usize),
-                (216usize, 1744830467usize),
+                (215usize, 1744830467usize),
                 (99usize, 1744830467usize),
                 (100usize, 1744831011usize),
                 (99usize, 1744830467usize),
@@ -3102,15 +3099,15 @@ unsafe fn layer_0_final_step_accumulator(
             ];
             const VAL_QI: [(usize, usize); 31usize] = [
                 (33usize, 1744830467usize),
-                (186usize, 1744830467usize),
+                (185usize, 1744830467usize),
                 (33usize, 1744830467usize),
                 (96usize, 268435454usize),
                 (105usize, 268435454usize),
                 (107usize, 1744830467usize),
                 (108usize, 1744831011usize),
-                (202usize, 1744830467usize),
-                (202usize, 1744830467usize),
-                (186usize, 1744830467usize),
+                (201usize, 1744830467usize),
+                (201usize, 1744830467usize),
+                (185usize, 1744830467usize),
                 (33usize, 1744830467usize),
                 (96usize, 268435454usize),
                 (105usize, 268435454usize),
@@ -3162,7 +3159,7 @@ unsafe fn layer_0_final_step_accumulator(
             ];
             const VAL_QI: [(usize, usize); 46usize] = [
                 (30usize, 1744830467usize),
-                (185usize, 1744830467usize),
+                (184usize, 1744830467usize),
                 (2usize, 1744970275usize),
                 (17usize, 940083337usize),
                 (18usize, 1075279736usize),
@@ -3172,11 +3169,11 @@ unsafe fn layer_0_final_step_accumulator(
                 (90usize, 268435454usize),
                 (93usize, 1744830467usize),
                 (94usize, 1744831011usize),
-                (209usize, 1744830467usize),
-                (201usize, 1744830467usize),
-                (201usize, 1744830467usize),
-                (185usize, 1744830467usize),
-                (185usize, 1744830467usize),
+                (208usize, 1744830467usize),
+                (200usize, 1744830467usize),
+                (200usize, 1744830467usize),
+                (184usize, 1744830467usize),
+                (184usize, 1744830467usize),
                 (17usize, 1208378983usize),
                 (18usize, 538688444usize),
                 (19usize, 270392798usize),
@@ -3235,13 +3232,13 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 17usize] = [
-                (201usize, 1744830467usize),
+                (200usize, 1744830467usize),
                 (30usize, 1744830467usize),
                 (101usize, 1744830467usize),
                 (102usize, 1744831011usize),
-                (225usize, 1744830467usize),
+                (224usize, 1744830467usize),
                 (30usize, 1744830467usize),
-                (217usize, 1744830467usize),
+                (216usize, 1744830467usize),
                 (101usize, 1744830467usize),
                 (102usize, 1744831011usize),
                 (101usize, 1744830467usize),
@@ -3282,15 +3279,15 @@ unsafe fn layer_0_final_step_accumulator(
             ];
             const VAL_QI: [(usize, usize); 31usize] = [
                 (34usize, 1744830467usize),
-                (187usize, 1744830467usize),
+                (186usize, 1744830467usize),
                 (34usize, 1744830467usize),
                 (97usize, 268435454usize),
                 (106usize, 268435454usize),
                 (109usize, 1744830467usize),
                 (110usize, 1744831011usize),
-                (203usize, 1744830467usize),
-                (203usize, 1744830467usize),
-                (187usize, 1744830467usize),
+                (202usize, 1744830467usize),
+                (202usize, 1744830467usize),
+                (186usize, 1744830467usize),
                 (34usize, 1744830467usize),
                 (97usize, 268435454usize),
                 (106usize, 268435454usize),
@@ -3370,12 +3367,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (20usize, 403492045usize),
                 (21usize, 1611871028usize),
                 (112usize, 1744831011usize),
-                (212usize, 1744830467usize),
-                (188usize, 1744830467usize),
-                (204usize, 1744830467usize),
-                (204usize, 1744830467usize),
-                (196usize, 1744830467usize),
-                (196usize, 1744830467usize),
+                (211usize, 1744830467usize),
+                (187usize, 1744830467usize),
+                (203usize, 1744830467usize),
+                (203usize, 1744830467usize),
+                (195usize, 1744830467usize),
+                (195usize, 1744830467usize),
                 (17usize, 1611871028usize),
                 (18usize, 137293551usize),
                 (19usize, 1613968180usize),
@@ -3424,12 +3421,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 17usize] = [
-                (204usize, 1744830467usize),
+                (203usize, 1744830467usize),
                 (119usize, 1744830467usize),
                 (120usize, 1744831011usize),
                 (31usize, 1744830467usize),
-                (220usize, 1744830467usize),
-                (204usize, 1744830467usize),
+                (219usize, 1744830467usize),
+                (203usize, 1744830467usize),
                 (31usize, 1744830467usize),
                 (119usize, 1744830467usize),
                 (120usize, 1744831011usize),
@@ -3474,11 +3471,11 @@ unsafe fn layer_0_final_step_accumulator(
                 (31usize, 1744830467usize),
                 (122usize, 268435454usize),
                 (128usize, 1744831011usize),
-                (190usize, 1744830467usize),
-                (206usize, 1744830467usize),
-                (206usize, 1744830467usize),
+                (189usize, 1744830467usize),
+                (205usize, 1744830467usize),
+                (205usize, 1744830467usize),
                 (31usize, 1744830467usize),
-                (198usize, 1744830467usize),
+                (197usize, 1744830467usize),
                 (120usize, 268435454usize),
                 (127usize, 1744830467usize),
                 (128usize, 1744831011usize),
@@ -3534,12 +3531,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (112usize, 268435454usize),
                 (113usize, 1744830467usize),
                 (114usize, 1744831011usize),
-                (213usize, 1744830467usize),
-                (189usize, 1744830467usize),
-                (205usize, 1744830467usize),
-                (205usize, 1744830467usize),
-                (197usize, 1744830467usize),
-                (197usize, 1744830467usize),
+                (212usize, 1744830467usize),
+                (188usize, 1744830467usize),
+                (204usize, 1744830467usize),
+                (204usize, 1744830467usize),
+                (196usize, 1744830467usize),
+                (196usize, 1744830467usize),
                 (17usize, 1611871028usize),
                 (18usize, 137293551usize),
                 (19usize, 1613968180usize),
@@ -3598,12 +3595,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 17usize] = [
-                (205usize, 1744830467usize),
+                (204usize, 1744830467usize),
                 (121usize, 1744830467usize),
                 (122usize, 1744831011usize),
                 (32usize, 1744830467usize),
-                (221usize, 1744830467usize),
-                (205usize, 1744830467usize),
+                (220usize, 1744830467usize),
+                (204usize, 1744830467usize),
                 (32usize, 1744830467usize),
                 (121usize, 1744830467usize),
                 (122usize, 1744831011usize),
@@ -3650,11 +3647,11 @@ unsafe fn layer_0_final_step_accumulator(
                 (128usize, 268435454usize),
                 (129usize, 1744830467usize),
                 (130usize, 1744831011usize),
-                (191usize, 1744830467usize),
-                (207usize, 1744830467usize),
-                (207usize, 1744830467usize),
+                (190usize, 1744830467usize),
+                (206usize, 1744830467usize),
+                (206usize, 1744830467usize),
                 (32usize, 1744830467usize),
-                (199usize, 1744830467usize),
+                (198usize, 1744830467usize),
                 (121usize, 268435454usize),
                 (129usize, 1744830467usize),
                 (130usize, 544usize),
@@ -3712,12 +3709,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (113usize, 268435454usize),
                 (115usize, 1744830467usize),
                 (116usize, 1744831011usize),
-                (216usize, 1744830467usize),
-                (192usize, 1744830467usize),
-                (208usize, 1744830467usize),
-                (208usize, 1744830467usize),
-                (200usize, 1744830467usize),
-                (200usize, 1744830467usize),
+                (215usize, 1744830467usize),
+                (191usize, 1744830467usize),
+                (207usize, 1744830467usize),
+                (207usize, 1744830467usize),
+                (199usize, 1744830467usize),
+                (199usize, 1744830467usize),
                 (17usize, 1611871028usize),
                 (18usize, 137293551usize),
                 (19usize, 1613968180usize),
@@ -3776,12 +3773,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 17usize] = [
-                (208usize, 1744830467usize),
+                (207usize, 1744830467usize),
                 (123usize, 1744830467usize),
                 (124usize, 1744831011usize),
                 (33usize, 1744830467usize),
-                (224usize, 1744830467usize),
-                (208usize, 1744830467usize),
+                (223usize, 1744830467usize),
+                (207usize, 1744830467usize),
                 (33usize, 1744830467usize),
                 (123usize, 1744830467usize),
                 (124usize, 1744831011usize),
@@ -3828,11 +3825,11 @@ unsafe fn layer_0_final_step_accumulator(
                 (129usize, 268435454usize),
                 (131usize, 1744830467usize),
                 (132usize, 1744831011usize),
-                (194usize, 1744830467usize),
-                (210usize, 1744830467usize),
-                (210usize, 1744830467usize),
+                (193usize, 1744830467usize),
+                (209usize, 1744830467usize),
+                (209usize, 1744830467usize),
                 (33usize, 1744830467usize),
-                (202usize, 1744830467usize),
+                (201usize, 1744830467usize),
                 (122usize, 268435454usize),
                 (127usize, 268435454usize),
                 (131usize, 1744830467usize),
@@ -3892,12 +3889,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (114usize, 268435454usize),
                 (117usize, 1744830467usize),
                 (118usize, 1744831011usize),
-                (217usize, 1744830467usize),
-                (193usize, 1744830467usize),
-                (209usize, 1744830467usize),
-                (209usize, 1744830467usize),
-                (201usize, 1744830467usize),
-                (201usize, 1744830467usize),
+                (216usize, 1744830467usize),
+                (192usize, 1744830467usize),
+                (208usize, 1744830467usize),
+                (208usize, 1744830467usize),
+                (200usize, 1744830467usize),
+                (200usize, 1744830467usize),
                 (17usize, 1611871028usize),
                 (18usize, 137293551usize),
                 (19usize, 1613968180usize),
@@ -3956,12 +3953,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 17usize] = [
-                (209usize, 1744830467usize),
+                (208usize, 1744830467usize),
                 (125usize, 1744830467usize),
                 (126usize, 1744831011usize),
                 (34usize, 1744830467usize),
-                (225usize, 1744830467usize),
-                (209usize, 1744830467usize),
+                (224usize, 1744830467usize),
+                (208usize, 1744830467usize),
                 (34usize, 1744830467usize),
                 (125usize, 1744830467usize),
                 (126usize, 1744831011usize),
@@ -4008,11 +4005,11 @@ unsafe fn layer_0_final_step_accumulator(
                 (130usize, 268435454usize),
                 (133usize, 1744830467usize),
                 (134usize, 1744831011usize),
-                (195usize, 1744830467usize),
-                (211usize, 1744830467usize),
-                (211usize, 1744830467usize),
+                (194usize, 1744830467usize),
+                (210usize, 1744830467usize),
+                (210usize, 1744830467usize),
                 (34usize, 1744830467usize),
-                (203usize, 1744830467usize),
+                (202usize, 1744830467usize),
                 (119usize, 268435454usize),
                 (128usize, 268435454usize),
                 (133usize, 1744830467usize),
@@ -4084,12 +4081,12 @@ unsafe fn layer_0_final_step_accumulator(
             ];
             const VAL_QI: [(usize, usize); 27usize] = [
                 (35usize, 1744830467usize),
-                (196usize, 1744830467usize),
-                (204usize, 1744830467usize),
-                (212usize, 1744830467usize),
-                (212usize, 1744830467usize),
-                (188usize, 1744830467usize),
-                (180usize, 1744830467usize),
+                (195usize, 1744830467usize),
+                (203usize, 1744830467usize),
+                (211usize, 1744830467usize),
+                (211usize, 1744830467usize),
+                (187usize, 1744830467usize),
+                (179usize, 1744830467usize),
                 (17usize, 1476674629usize),
                 (18usize, 940083337usize),
                 (19usize, 2097152usize),
@@ -4138,12 +4135,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 16usize] = [
-                (212usize, 1744830467usize),
+                (211usize, 1744830467usize),
                 (31usize, 1744830467usize),
-                (220usize, 1744830467usize),
-                (220usize, 1744830467usize),
+                (219usize, 1744830467usize),
+                (219usize, 1744830467usize),
                 (31usize, 1744830467usize),
-                (204usize, 1744830467usize),
+                (203usize, 1744830467usize),
                 (143usize, 1744830467usize),
                 (144usize, 1744831011usize),
                 (143usize, 1744830467usize),
@@ -4183,13 +4180,13 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 21usize] = [
-                (222usize, 1744830467usize),
-                (198usize, 1744830467usize),
-                (206usize, 1744830467usize),
-                (214usize, 1744830467usize),
-                (214usize, 1744830467usize),
-                (190usize, 1744830467usize),
-                (182usize, 1744830467usize),
+                (221usize, 1744830467usize),
+                (197usize, 1744830467usize),
+                (205usize, 1744830467usize),
+                (213usize, 1744830467usize),
+                (213usize, 1744830467usize),
+                (189usize, 1744830467usize),
+                (181usize, 1744830467usize),
                 (145usize, 268435454usize),
                 (151usize, 1744830467usize),
                 (152usize, 1744831011usize),
@@ -4234,12 +4231,12 @@ unsafe fn layer_0_final_step_accumulator(
             ];
             const VAL_QI: [(usize, usize); 37usize] = [
                 (36usize, 1744830467usize),
-                (197usize, 1744830467usize),
-                (205usize, 1744830467usize),
-                (213usize, 1744830467usize),
-                (213usize, 1744830467usize),
-                (189usize, 1744830467usize),
-                (181usize, 1744830467usize),
+                (196usize, 1744830467usize),
+                (204usize, 1744830467usize),
+                (212usize, 1744830467usize),
+                (212usize, 1744830467usize),
+                (188usize, 1744830467usize),
+                (180usize, 1744830467usize),
                 (17usize, 1476674629usize),
                 (18usize, 940083337usize),
                 (19usize, 2097152usize),
@@ -4298,12 +4295,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 16usize] = [
-                (213usize, 1744830467usize),
+                (212usize, 1744830467usize),
                 (32usize, 1744830467usize),
-                (221usize, 1744830467usize),
-                (221usize, 1744830467usize),
+                (220usize, 1744830467usize),
+                (220usize, 1744830467usize),
                 (32usize, 1744830467usize),
-                (205usize, 1744830467usize),
+                (204usize, 1744830467usize),
                 (145usize, 1744830467usize),
                 (146usize, 1744831011usize),
                 (145usize, 1744830467usize),
@@ -4343,13 +4340,13 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 4usize),
             ];
             const VAL_QI: [(usize, usize); 23usize] = [
-                (223usize, 1744830467usize),
-                (199usize, 1744830467usize),
-                (207usize, 1744830467usize),
-                (215usize, 1744830467usize),
-                (215usize, 1744830467usize),
-                (191usize, 1744830467usize),
-                (183usize, 1744830467usize),
+                (222usize, 1744830467usize),
+                (198usize, 1744830467usize),
+                (206usize, 1744830467usize),
+                (214usize, 1744830467usize),
+                (214usize, 1744830467usize),
+                (190usize, 1744830467usize),
+                (182usize, 1744830467usize),
                 (146usize, 268435454usize),
                 (151usize, 268435454usize),
                 (153usize, 1744830467usize),
@@ -4396,12 +4393,12 @@ unsafe fn layer_0_final_step_accumulator(
             ];
             const VAL_QI: [(usize, usize); 37usize] = [
                 (37usize, 1744830467usize),
-                (200usize, 1744830467usize),
-                (208usize, 1744830467usize),
-                (216usize, 1744830467usize),
-                (216usize, 1744830467usize),
-                (192usize, 1744830467usize),
-                (184usize, 1744830467usize),
+                (199usize, 1744830467usize),
+                (207usize, 1744830467usize),
+                (215usize, 1744830467usize),
+                (215usize, 1744830467usize),
+                (191usize, 1744830467usize),
+                (183usize, 1744830467usize),
                 (17usize, 1476674629usize),
                 (18usize, 940083337usize),
                 (19usize, 2097152usize),
@@ -4460,12 +4457,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 16usize] = [
-                (216usize, 1744830467usize),
+                (215usize, 1744830467usize),
                 (33usize, 1744830467usize),
-                (224usize, 1744830467usize),
-                (224usize, 1744830467usize),
+                (223usize, 1744830467usize),
+                (223usize, 1744830467usize),
                 (33usize, 1744830467usize),
-                (208usize, 1744830467usize),
+                (207usize, 1744830467usize),
                 (147usize, 1744830467usize),
                 (148usize, 1744831011usize),
                 (147usize, 1744830467usize),
@@ -4505,13 +4502,13 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 4usize),
             ];
             const VAL_QI: [(usize, usize); 27usize] = [
-                (226usize, 1744830467usize),
-                (202usize, 1744830467usize),
-                (210usize, 1744830467usize),
-                (218usize, 1744830467usize),
-                (218usize, 1744830467usize),
-                (194usize, 1744830467usize),
-                (186usize, 1744830467usize),
+                (225usize, 1744830467usize),
+                (201usize, 1744830467usize),
+                (209usize, 1744830467usize),
+                (217usize, 1744830467usize),
+                (217usize, 1744830467usize),
+                (193usize, 1744830467usize),
+                (185usize, 1744830467usize),
                 (143usize, 268435454usize),
                 (152usize, 268435454usize),
                 (155usize, 1744830467usize),
@@ -4562,12 +4559,12 @@ unsafe fn layer_0_final_step_accumulator(
             ];
             const VAL_QI: [(usize, usize); 37usize] = [
                 (38usize, 1744830467usize),
-                (201usize, 1744830467usize),
-                (209usize, 1744830467usize),
-                (217usize, 1744830467usize),
-                (217usize, 1744830467usize),
-                (193usize, 1744830467usize),
-                (185usize, 1744830467usize),
+                (200usize, 1744830467usize),
+                (208usize, 1744830467usize),
+                (216usize, 1744830467usize),
+                (216usize, 1744830467usize),
+                (192usize, 1744830467usize),
+                (184usize, 1744830467usize),
                 (17usize, 1476674629usize),
                 (18usize, 940083337usize),
                 (19usize, 2097152usize),
@@ -4626,12 +4623,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 16usize] = [
-                (217usize, 1744830467usize),
+                (216usize, 1744830467usize),
                 (34usize, 1744830467usize),
-                (225usize, 1744830467usize),
-                (225usize, 1744830467usize),
+                (224usize, 1744830467usize),
+                (224usize, 1744830467usize),
                 (34usize, 1744830467usize),
-                (209usize, 1744830467usize),
+                (208usize, 1744830467usize),
                 (149usize, 1744830467usize),
                 (150usize, 1744831011usize),
                 (149usize, 1744830467usize),
@@ -4671,13 +4668,13 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 4usize),
             ];
             const VAL_QI: [(usize, usize); 27usize] = [
-                (227usize, 1744830467usize),
-                (203usize, 1744830467usize),
-                (211usize, 1744830467usize),
-                (219usize, 1744830467usize),
-                (219usize, 1744830467usize),
-                (195usize, 1744830467usize),
-                (187usize, 1744830467usize),
+                (226usize, 1744830467usize),
+                (202usize, 1744830467usize),
+                (210usize, 1744830467usize),
+                (218usize, 1744830467usize),
+                (218usize, 1744830467usize),
+                (194usize, 1744830467usize),
+                (186usize, 1744830467usize),
                 (144usize, 268435454usize),
                 (153usize, 268435454usize),
                 (157usize, 1744830467usize),
@@ -4714,6 +4711,21 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 1usize] = [(0usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
+                [(187usize, 268435454usize), (189usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 0usize] = [];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..1 {
+            const VAL_QO: [(usize, usize); 1usize] = [(0usize, 2usize)];
+            const VAL_QI: [(usize, usize); 2usize] =
                 [(188usize, 268435454usize), (190usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
@@ -4729,7 +4741,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 1usize] = [(0usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(189usize, 268435454usize), (191usize, 1744830467usize)];
+                [(191usize, 268435454usize), (193usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -4759,7 +4771,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 1usize] = [(0usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(193usize, 268435454usize), (195usize, 1744830467usize)];
+                [(195usize, 268435454usize), (197usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -4789,7 +4801,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 1usize] = [(0usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(197usize, 268435454usize), (199usize, 1744830467usize)];
+                [(199usize, 268435454usize), (201usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -4819,7 +4831,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 1usize] = [(0usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(201usize, 268435454usize), (203usize, 1744830467usize)];
+                [(203usize, 268435454usize), (205usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -4849,7 +4861,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 1usize] = [(0usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(205usize, 268435454usize), (207usize, 1744830467usize)];
+                [(207usize, 268435454usize), (209usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -4879,7 +4891,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 1usize] = [(0usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(209usize, 268435454usize), (211usize, 1744830467usize)];
+                [(211usize, 268435454usize), (213usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -4909,7 +4921,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 1usize] = [(0usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(213usize, 268435454usize), (215usize, 1744830467usize)];
+                [(215usize, 268435454usize), (217usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -4937,9 +4949,9 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
-            const VAL_QO: [(usize, usize); 1usize] = [(0usize, 2usize)];
+            const VAL_QO: [(usize, usize); 1usize] = [(1usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(217usize, 268435454usize), (219usize, 1744830467usize)];
+                [(187usize, 268435454usize), (189usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -4969,7 +4981,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 1usize] = [(1usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(189usize, 268435454usize), (191usize, 1744830467usize)];
+                [(191usize, 268435454usize), (193usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -4999,7 +5011,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 1usize] = [(1usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(193usize, 268435454usize), (195usize, 1744830467usize)];
+                [(203usize, 268435454usize), (205usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -5029,7 +5041,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 1usize] = [(1usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(205usize, 268435454usize), (207usize, 1744830467usize)];
+                [(207usize, 268435454usize), (209usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -5059,7 +5071,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 1usize] = [(1usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(209usize, 268435454usize), (211usize, 1744830467usize)];
+                [(211usize, 268435454usize), (213usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -5089,7 +5101,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 1usize] = [(1usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(213usize, 268435454usize), (215usize, 1744830467usize)];
+                [(215usize, 268435454usize), (217usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -5117,9 +5129,9 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
-            const VAL_QO: [(usize, usize); 1usize] = [(1usize, 2usize)];
+            const VAL_QO: [(usize, usize); 1usize] = [(2usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(217usize, 268435454usize), (219usize, 1744830467usize)];
+                [(179usize, 268435454usize), (181usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -5149,7 +5161,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 1usize] = [(2usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(181usize, 268435454usize), (183usize, 1744830467usize)];
+                [(183usize, 268435454usize), (185usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -5179,7 +5191,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 1usize] = [(2usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(185usize, 268435454usize), (187usize, 1744830467usize)];
+                [(195usize, 268435454usize), (197usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -5209,7 +5221,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 1usize] = [(2usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(197usize, 268435454usize), (199usize, 1744830467usize)];
+                [(199usize, 268435454usize), (201usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -5239,7 +5251,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 1usize] = [(2usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(201usize, 268435454usize), (203usize, 1744830467usize)];
+                [(219usize, 268435454usize), (221usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -5269,7 +5281,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 1usize] = [(2usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(221usize, 268435454usize), (223usize, 1744830467usize)];
+                [(223usize, 268435454usize), (225usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -5297,9 +5309,9 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
-            const VAL_QO: [(usize, usize); 1usize] = [(2usize, 2usize)];
+            const VAL_QO: [(usize, usize); 1usize] = [(3usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(225usize, 268435454usize), (227usize, 1744830467usize)];
+                [(219usize, 268435454usize), (221usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -5329,7 +5341,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 1usize] = [(3usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(221usize, 268435454usize), (223usize, 1744830467usize)];
+                [(223usize, 268435454usize), (225usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -5357,9 +5369,9 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
-            const VAL_QO: [(usize, usize); 1usize] = [(3usize, 2usize)];
+            const VAL_QO: [(usize, usize); 1usize] = [(4usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(225usize, 268435454usize), (227usize, 1744830467usize)];
+                [(219usize, 268435454usize), (221usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -5389,7 +5401,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 1usize] = [(4usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(221usize, 268435454usize), (223usize, 1744830467usize)];
+                [(223usize, 268435454usize), (225usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -5417,9 +5429,9 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
-            const VAL_QO: [(usize, usize); 1usize] = [(4usize, 2usize)];
+            const VAL_QO: [(usize, usize); 1usize] = [(5usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(225usize, 268435454usize), (227usize, 1744830467usize)];
+                [(179usize, 268435454usize), (221usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -5449,7 +5461,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 1usize] = [(5usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(181usize, 268435454usize), (223usize, 1744830467usize)];
+                [(183usize, 268435454usize), (225usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -5479,7 +5491,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 1usize] = [(5usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(185usize, 268435454usize), (227usize, 1744830467usize)];
+                [(195usize, 268435454usize), (197usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -5509,7 +5521,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 1usize] = [(5usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(197usize, 268435454usize), (199usize, 1744830467usize)];
+                [(199usize, 268435454usize), (201usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -5539,7 +5551,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 1usize] = [(5usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(201usize, 268435454usize), (203usize, 1744830467usize)];
+                [(203usize, 268435454usize), (205usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -5569,7 +5581,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 1usize] = [(5usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(205usize, 268435454usize), (207usize, 1744830467usize)];
+                [(207usize, 268435454usize), (209usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -5597,9 +5609,9 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
-            const VAL_QO: [(usize, usize); 1usize] = [(5usize, 2usize)];
+            const VAL_QO: [(usize, usize); 1usize] = [(6usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(209usize, 268435454usize), (211usize, 1744830467usize)];
+                [(203usize, 268435454usize), (205usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -5629,7 +5641,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 1usize] = [(6usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(205usize, 268435454usize), (207usize, 1744830467usize)];
+                [(207usize, 268435454usize), (209usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -5659,7 +5671,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 1usize] = [(6usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(209usize, 268435454usize), (211usize, 1744830467usize)];
+                [(211usize, 268435454usize), (213usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -5689,7 +5701,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 1usize] = [(6usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(213usize, 268435454usize), (215usize, 1744830467usize)];
+                [(215usize, 268435454usize), (217usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -5719,7 +5731,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 1usize] = [(6usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(217usize, 268435454usize), (219usize, 1744830467usize)];
+                [(219usize, 268435454usize), (221usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -5749,7 +5761,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 1usize] = [(6usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(221usize, 268435454usize), (223usize, 1744830467usize)];
+                [(223usize, 268435454usize), (225usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -5765,21 +5777,6 @@ unsafe fn layer_0_final_step_accumulator(
             const VAL_QO: [(usize, usize); 1usize] = [(6usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
                 [(224usize, 268435454usize), (226usize, 1744830467usize)];
-            const VAL_LN: [(usize, usize); 0usize] = [];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..1 {
-            const VAL_QO: [(usize, usize); 1usize] = [(6usize, 2usize)];
-            const VAL_QI: [(usize, usize); 2usize] =
-                [(225usize, 268435454usize), (227usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -6227,10 +6224,10 @@ unsafe fn layer_0_final_step_accumulator(
 #[inline(always)]
 #[allow(unused_variables)]
 unsafe fn layer_1_compute_claim(
-    output_claims: &[BabyBearExt4; 49usize],
+    output_claims: &[BabyBearExt4; 47usize],
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    const DESCS: [(usize, usize, usize); 32usize] = [
+    const DESCS: [(usize, usize, usize); 29usize] = [
         (1usize, 0usize, 0usize),
         (1usize, 1usize, 0usize),
         (1usize, 2usize, 0usize),
@@ -6247,8 +6244,7 @@ unsafe fn layer_1_compute_claim(
         (2usize, 17usize, 18usize),
         (2usize, 19usize, 20usize),
         (2usize, 21usize, 22usize),
-        (1usize, 23usize, 0usize),
-        (1usize, 24usize, 0usize),
+        (2usize, 23usize, 24usize),
         (2usize, 25usize, 26usize),
         (2usize, 27usize, 28usize),
         (2usize, 29usize, 30usize),
@@ -6261,8 +6257,6 @@ unsafe fn layer_1_compute_claim(
         (2usize, 43usize, 44usize),
         (1usize, 45usize, 0usize),
         (1usize, 46usize, 0usize),
-        (1usize, 47usize, 0usize),
-        (1usize, 48usize, 0usize),
     ];
     super::common::compute_claim(output_claims, &DESCS, batch_base)
 }
@@ -6281,7 +6275,7 @@ unsafe fn layer_1_final_step_accumulator(
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
     {
-        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 32usize] = [
+        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 29usize] = [
             (SimpleGateType::Copy, [0usize, 0usize, 0usize, 0usize]),
             (SimpleGateType::Product, [1usize, 3usize, 0usize, 0usize]),
             (SimpleGateType::Product, [5usize, 7usize, 0usize, 0usize]),
@@ -6292,8 +6286,8 @@ unsafe fn layer_1_final_step_accumulator(
             (SimpleGateType::Product, [10usize, 12usize, 0usize, 0usize]),
             (SimpleGateType::Product, [14usize, 16usize, 0usize, 0usize]),
             (
-                SimpleGateType::LookupAggregatePair,
-                [47usize, 48usize, 45usize, 46usize],
+                SimpleGateType::LookupUnbalanced,
+                [45usize, 46usize, 47usize, 0usize],
             ),
             (
                 SimpleGateType::LookupAggregatePair,
@@ -6319,55 +6313,55 @@ unsafe fn layer_1_final_step_accumulator(
                 SimpleGateType::LookupAggregatePair,
                 [23usize, 24usize, 21usize, 22usize],
             ),
-            (SimpleGateType::Copy, [19usize, 0usize, 0usize, 0usize]),
-            (SimpleGateType::Copy, [20usize, 0usize, 0usize, 0usize]),
             (
                 SimpleGateType::LookupAggregatePair,
-                [89usize, 90usize, 87usize, 88usize],
+                [19usize, 20usize, 17usize, 18usize],
             ),
             (
                 SimpleGateType::LookupAggregatePair,
-                [85usize, 86usize, 83usize, 84usize],
+                [88usize, 89usize, 86usize, 87usize],
             ),
             (
                 SimpleGateType::LookupAggregatePair,
-                [81usize, 82usize, 79usize, 80usize],
+                [84usize, 85usize, 82usize, 83usize],
             ),
             (
                 SimpleGateType::LookupAggregatePair,
-                [77usize, 78usize, 75usize, 76usize],
+                [80usize, 81usize, 78usize, 79usize],
             ),
             (
                 SimpleGateType::LookupAggregatePair,
-                [73usize, 74usize, 71usize, 72usize],
+                [76usize, 77usize, 74usize, 75usize],
             ),
             (
                 SimpleGateType::LookupAggregatePair,
-                [69usize, 70usize, 67usize, 68usize],
+                [72usize, 73usize, 70usize, 71usize],
             ),
             (
                 SimpleGateType::LookupAggregatePair,
-                [65usize, 66usize, 63usize, 64usize],
+                [68usize, 69usize, 66usize, 67usize],
             ),
             (
                 SimpleGateType::LookupAggregatePair,
-                [61usize, 62usize, 59usize, 60usize],
+                [64usize, 65usize, 62usize, 63usize],
             ),
             (
                 SimpleGateType::LookupAggregatePair,
-                [57usize, 58usize, 55usize, 56usize],
+                [60usize, 61usize, 58usize, 59usize],
             ),
             (
                 SimpleGateType::LookupAggregatePair,
-                [53usize, 54usize, 51usize, 52usize],
+                [56usize, 57usize, 54usize, 55usize],
             ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [52usize, 53usize, 50usize, 51usize],
+            ),
+            (SimpleGateType::Copy, [48usize, 0usize, 0usize, 0usize]),
             (SimpleGateType::Copy, [49usize, 0usize, 0usize, 0usize]),
-            (SimpleGateType::Copy, [50usize, 0usize, 0usize, 0usize]),
-            (SimpleGateType::Copy, [17usize, 0usize, 0usize, 0usize]),
-            (SimpleGateType::Copy, [18usize, 0usize, 0usize, 0usize]),
         ];
         let mut _sg = 0;
-        while _sg < 32usize {
+        while _sg < 29usize {
             let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
             match gt {
                 SimpleGateType::Copy => {
@@ -6558,10 +6552,10 @@ unsafe fn layer_1_final_step_accumulator(
 #[inline(always)]
 #[allow(unused_variables)]
 unsafe fn layer_2_compute_claim(
-    output_claims: &[BabyBearExt4; 27usize],
+    output_claims: &[BabyBearExt4; 25usize],
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    const DESCS: [(usize, usize, usize); 18usize] = [
+    const DESCS: [(usize, usize, usize); 16usize] = [
         (1usize, 0usize, 0usize),
         (1usize, 1usize, 0usize),
         (1usize, 2usize, 0usize),
@@ -6578,8 +6572,6 @@ unsafe fn layer_2_compute_claim(
         (2usize, 21usize, 22usize),
         (1usize, 23usize, 0usize),
         (1usize, 24usize, 0usize),
-        (1usize, 25usize, 0usize),
-        (1usize, 26usize, 0usize),
     ];
     super::common::compute_claim(output_claims, &DESCS, batch_base)
 }
@@ -6598,7 +6590,7 @@ unsafe fn layer_2_final_step_accumulator(
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
     {
-        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 18usize] = [
+        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 16usize] = [
             (SimpleGateType::Copy, [0usize, 0usize, 0usize, 0usize]),
             (SimpleGateType::Product, [1usize, 2usize, 0usize, 0usize]),
             (SimpleGateType::Product, [3usize, 4usize, 0usize, 0usize]),
@@ -6642,11 +6634,9 @@ unsafe fn layer_2_final_step_accumulator(
             ),
             (SimpleGateType::Copy, [25usize, 0usize, 0usize, 0usize]),
             (SimpleGateType::Copy, [26usize, 0usize, 0usize, 0usize]),
-            (SimpleGateType::Copy, [47usize, 0usize, 0usize, 0usize]),
-            (SimpleGateType::Copy, [48usize, 0usize, 0usize, 0usize]),
         ];
         let mut _sg = 0;
-        while _sg < 18usize {
+        while _sg < 16usize {
             let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
             match gt {
                 SimpleGateType::Copy => {
@@ -6837,10 +6827,10 @@ unsafe fn layer_2_final_step_accumulator(
 #[inline(always)]
 #[allow(unused_variables)]
 unsafe fn layer_3_compute_claim(
-    output_claims: &[BabyBearExt4; 15usize],
+    output_claims: &[BabyBearExt4; 13usize],
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    const DESCS: [(usize, usize, usize); 10usize] = [
+    const DESCS: [(usize, usize, usize); 8usize] = [
         (1usize, 0usize, 0usize),
         (1usize, 1usize, 0usize),
         (1usize, 2usize, 0usize),
@@ -6849,8 +6839,6 @@ unsafe fn layer_3_compute_claim(
         (2usize, 7usize, 8usize),
         (2usize, 9usize, 10usize),
         (2usize, 11usize, 12usize),
-        (1usize, 13usize, 0usize),
-        (1usize, 14usize, 0usize),
     ];
     super::common::compute_claim(output_claims, &DESCS, batch_base)
 }
@@ -6869,7 +6857,7 @@ unsafe fn layer_3_final_step_accumulator(
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
     {
-        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 10usize] = [
+        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 8usize] = [
             (SimpleGateType::Copy, [0usize, 0usize, 0usize, 0usize]),
             (SimpleGateType::Product, [1usize, 2usize, 0usize, 0usize]),
             (SimpleGateType::Product, [3usize, 4usize, 0usize, 0usize]),
@@ -6893,252 +6881,6 @@ unsafe fn layer_3_final_step_accumulator(
                 SimpleGateType::LookupAggregatePair,
                 [15usize, 16usize, 13usize, 14usize],
             ),
-            (SimpleGateType::Copy, [25usize, 0usize, 0usize, 0usize]),
-            (SimpleGateType::Copy, [26usize, 0usize, 0usize, 0usize]),
-        ];
-        let mut _sg = 0;
-        while _sg < 10usize {
-            let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
-            match gt {
-                SimpleGateType::Copy => {
-                    let bc = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    for j in 0..1 {
-                        let val = evals.get_unchecked(idx[0])[j];
-                        let mut contrib = bc;
-                        field_ops::mul_assign(&mut contrib, &val);
-                        field_ops::add_assign(&mut acc[j], &contrib);
-                    }
-                }
-                SimpleGateType::Product => {
-                    let bc = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    for j in 0..1 {
-                        let mut val = evals.get_unchecked(idx[0])[j];
-                        let vb = evals.get_unchecked(idx[1])[j];
-                        field_ops::mul_assign(&mut val, &vb);
-                        let mut contrib = bc;
-                        field_ops::mul_assign(&mut contrib, &val);
-                        field_ops::add_assign(&mut acc[j], &contrib);
-                    }
-                }
-                SimpleGateType::MaskToIdentity => {
-                    let bc = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    for j in 0..1 {
-                        let mut val = evals.get_unchecked(idx[0])[j];
-                        let mask_val = evals.get_unchecked(idx[1])[j];
-                        field_ops::sub_assign_base(&mut val, &BabyBearField::ONE);
-                        field_ops::mul_assign(&mut val, &mask_val);
-                        field_ops::add_assign_base(&mut val, &BabyBearField::ONE);
-                        let mut contrib = bc;
-                        field_ops::mul_assign(&mut contrib, &val);
-                        field_ops::add_assign(&mut acc[j], &contrib);
-                    }
-                }
-                SimpleGateType::UnbalancedProduct => {
-                    let bc = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    for j in 0..1 {
-                        let mut val = evals.get_unchecked(idx[0])[j];
-                        let vi = evals.get_unchecked(idx[1])[j];
-                        field_ops::mul_assign(&mut val, &vi);
-                        let mut contrib = bc;
-                        field_ops::mul_assign(&mut contrib, &val);
-                        field_ops::add_assign(&mut acc[j], &contrib);
-                    }
-                }
-                SimpleGateType::LookupInitialPair => {
-                    let bc0 = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    let bc1 = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    for j in 0..1 {
-                        let mut bg = evals.get_unchecked(idx[0])[j];
-                        let mut dg = evals.get_unchecked(idx[1])[j];
-                        field_ops::add_assign(&mut bg, &lookup_additive_challenge);
-                        field_ops::add_assign(&mut dg, &lookup_additive_challenge);
-                        let mut num = bg;
-                        field_ops::add_assign(&mut num, &dg);
-                        let mut den = bg;
-                        field_ops::mul_assign(&mut den, &dg);
-                        let out0 = num;
-                        let out1 = den;
-                        let mut c0 = bc0;
-                        field_ops::mul_assign(&mut c0, &out0);
-                        field_ops::add_assign(&mut acc[j], &c0);
-                        let mut c1 = bc1;
-                        field_ops::mul_assign(&mut c1, &out1);
-                        field_ops::add_assign(&mut acc[j], &c1);
-                    }
-                }
-                SimpleGateType::LookupWithSetup => {
-                    let bc0 = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    let bc1 = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    for j in 0..1 {
-                        let mut bg = evals.get_unchecked(idx[0])[j];
-                        let mut dg = evals.get_unchecked(idx[2])[j];
-                        let mut cb = evals.get_unchecked(idx[1])[j];
-                        field_ops::add_assign(&mut bg, &lookup_additive_challenge);
-                        field_ops::add_assign(&mut dg, &lookup_additive_challenge);
-                        field_ops::mul_assign(&mut cb, &bg);
-                        let mut num = dg;
-                        field_ops::sub_assign(&mut num, &cb);
-                        let mut den = bg;
-                        field_ops::mul_assign(&mut den, &dg);
-                        let out0 = num;
-                        let out1 = den;
-                        let mut c0 = bc0;
-                        field_ops::mul_assign(&mut c0, &out0);
-                        field_ops::add_assign(&mut acc[j], &c0);
-                        let mut c1 = bc1;
-                        field_ops::mul_assign(&mut c1, &out1);
-                        field_ops::add_assign(&mut acc[j], &c1);
-                    }
-                }
-                SimpleGateType::LookupUnbalanced => {
-                    let bc0 = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    let bc1 = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    for j in 0..1 {
-                        let a_val = evals.get_unchecked(idx[0])[j];
-                        let b_val = evals.get_unchecked(idx[1])[j];
-                        let mut r_g = evals.get_unchecked(idx[2])[j];
-                        field_ops::add_assign(&mut r_g, &lookup_additive_challenge);
-                        let mut num = a_val;
-                        field_ops::mul_assign(&mut num, &r_g);
-                        field_ops::add_assign(&mut num, &b_val);
-                        let mut den = b_val;
-                        field_ops::mul_assign(&mut den, &r_g);
-                        let out0 = num;
-                        let out1 = den;
-                        let mut c0 = bc0;
-                        field_ops::mul_assign(&mut c0, &out0);
-                        field_ops::add_assign(&mut acc[j], &c0);
-                        let mut c1 = bc1;
-                        field_ops::mul_assign(&mut c1, &out1);
-                        field_ops::add_assign(&mut acc[j], &c1);
-                    }
-                }
-                SimpleGateType::LookupAggregatePair => {
-                    let bc0 = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    let bc1 = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    for j in 0..1 {
-                        let a_val = evals.get_unchecked(idx[0])[j];
-                        let b_val = evals.get_unchecked(idx[1])[j];
-                        let c_val = evals.get_unchecked(idx[2])[j];
-                        let d_val = evals.get_unchecked(idx[3])[j];
-                        let mut num = a_val;
-                        field_ops::mul_assign(&mut num, &d_val);
-                        let mut cb_tmp = c_val;
-                        field_ops::mul_assign(&mut cb_tmp, &b_val);
-                        field_ops::add_assign(&mut num, &cb_tmp);
-                        let mut den = b_val;
-                        field_ops::mul_assign(&mut den, &d_val);
-                        let out0 = num;
-                        let out1 = den;
-                        let mut c0 = bc0;
-                        field_ops::mul_assign(&mut c0, &out0);
-                        field_ops::add_assign(&mut acc[j], &c0);
-                        let mut c1 = bc1;
-                        field_ops::mul_assign(&mut c1, &out1);
-                        field_ops::add_assign(&mut acc[j], &c1);
-                    }
-                }
-                SimpleGateType::LookupInitialWithCachedDenominators => {
-                    let bc0 = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    let bc1 = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    for j in 0..1 {
-                        let a_val = evals.get_unchecked(idx[0])[j];
-                        let mut b_cd = evals.get_unchecked(idx[1])[j];
-                        let c_val = evals.get_unchecked(idx[2])[j];
-                        let mut d_cd = evals.get_unchecked(idx[3])[j];
-                        field_ops::add_assign(&mut b_cd, &lookup_additive_challenge);
-                        field_ops::add_assign(&mut d_cd, &lookup_additive_challenge);
-                        let mut ad_cd = a_val;
-                        field_ops::mul_assign(&mut ad_cd, &d_cd);
-                        let mut cb_cd = c_val;
-                        field_ops::mul_assign(&mut cb_cd, &b_cd);
-                        field_ops::sub_assign(&mut ad_cd, &cb_cd);
-                        let mut den = b_cd;
-                        field_ops::mul_assign(&mut den, &d_cd);
-                        let out0 = ad_cd;
-                        let out1 = den;
-                        let mut c0 = bc0;
-                        field_ops::mul_assign(&mut c0, &out0);
-                        field_ops::add_assign(&mut acc[j], &c0);
-                        let mut c1 = bc1;
-                        field_ops::mul_assign(&mut c1, &out1);
-                        field_ops::add_assign(&mut acc[j], &c1);
-                    }
-                }
-            }
-            _sg += 1;
-        }
-    }
-    acc
-}
-#[inline(always)]
-#[allow(unused_variables)]
-unsafe fn layer_4_compute_claim(
-    output_claims: &[BabyBearExt4; 10usize],
-    batch_base: BabyBearExt4,
-) -> BabyBearExt4 {
-    const DESCS: [(usize, usize, usize); 8usize] = [
-        (1usize, 0usize, 0usize),
-        (1usize, 1usize, 0usize),
-        (2usize, 2usize, 3usize),
-        (2usize, 4usize, 5usize),
-        (1usize, 6usize, 0usize),
-        (1usize, 7usize, 0usize),
-        (1usize, 8usize, 0usize),
-        (1usize, 9usize, 0usize),
-    ];
-    super::common::compute_claim(output_claims, &DESCS, batch_base)
-}
-#[inline(always)]
-#[allow(unused_variables, unused_mut, unused_unsafe)]
-unsafe fn layer_4_final_step_accumulator(
-    evals: &[[BabyBearExt4; 1]],
-    batch_base: BabyBearExt4,
-    lookup_additive_challenge: BabyBearExt4,
-    lookup_alpha: BabyBearExt4,
-    linearization_challenges: &[BabyBearExt4],
-    permutation_argument_additive_part: BabyBearExt4,
-    address_high_bits_shift: u32,
-    inits_and_teardowns_top_bits: &[u32],
-) -> [BabyBearExt4; 2] {
-    let mut acc = [BabyBearExt4::ZERO; 2];
-    let mut current_batch = BabyBearExt4::ONE;
-    {
-        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 8usize] = [
-            (
-                SimpleGateType::MaskToIdentity,
-                [1usize, 0usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::MaskToIdentity,
-                [2usize, 0usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupAggregatePair,
-                [5usize, 6usize, 3usize, 4usize],
-            ),
-            (
-                SimpleGateType::LookupAggregatePair,
-                [11usize, 12usize, 9usize, 10usize],
-            ),
-            (SimpleGateType::Copy, [7usize, 0usize, 0usize, 0usize]),
-            (SimpleGateType::Copy, [8usize, 0usize, 0usize, 0usize]),
-            (SimpleGateType::Copy, [13usize, 0usize, 0usize, 0usize]),
-            (SimpleGateType::Copy, [14usize, 0usize, 0usize, 0usize]),
         ];
         let mut _sg = 0;
         while _sg < 8usize {
@@ -7331,18 +7073,256 @@ unsafe fn layer_4_final_step_accumulator(
 }
 #[inline(always)]
 #[allow(unused_variables)]
-unsafe fn layer_5_compute_claim(
+unsafe fn layer_4_compute_claim(
     output_claims: &[BabyBearExt4; 8usize],
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    const DESCS: [(usize, usize, usize); 7usize] = [
+    const DESCS: [(usize, usize, usize); 6usize] = [
+        (1usize, 0usize, 0usize),
+        (1usize, 1usize, 0usize),
+        (2usize, 2usize, 3usize),
+        (2usize, 4usize, 5usize),
+        (1usize, 6usize, 0usize),
+        (1usize, 7usize, 0usize),
+    ];
+    super::common::compute_claim(output_claims, &DESCS, batch_base)
+}
+#[inline(always)]
+#[allow(unused_variables, unused_mut, unused_unsafe)]
+unsafe fn layer_4_final_step_accumulator(
+    evals: &[[BabyBearExt4; 1]],
+    batch_base: BabyBearExt4,
+    lookup_additive_challenge: BabyBearExt4,
+    lookup_alpha: BabyBearExt4,
+    linearization_challenges: &[BabyBearExt4],
+    permutation_argument_additive_part: BabyBearExt4,
+    address_high_bits_shift: u32,
+    inits_and_teardowns_top_bits: &[u32],
+) -> [BabyBearExt4; 2] {
+    let mut acc = [BabyBearExt4::ZERO; 2];
+    let mut current_batch = BabyBearExt4::ONE;
+    {
+        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 6usize] = [
+            (
+                SimpleGateType::MaskToIdentity,
+                [1usize, 0usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::MaskToIdentity,
+                [2usize, 0usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [5usize, 6usize, 3usize, 4usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [11usize, 12usize, 9usize, 10usize],
+            ),
+            (SimpleGateType::Copy, [7usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [8usize, 0usize, 0usize, 0usize]),
+        ];
+        let mut _sg = 0;
+        while _sg < 6usize {
+            let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
+            match gt {
+                SimpleGateType::Copy => {
+                    let bc = current_batch;
+                    field_ops::mul_assign(&mut current_batch, &batch_base);
+                    for j in 0..1 {
+                        let val = evals.get_unchecked(idx[0])[j];
+                        let mut contrib = bc;
+                        field_ops::mul_assign(&mut contrib, &val);
+                        field_ops::add_assign(&mut acc[j], &contrib);
+                    }
+                }
+                SimpleGateType::Product => {
+                    let bc = current_batch;
+                    field_ops::mul_assign(&mut current_batch, &batch_base);
+                    for j in 0..1 {
+                        let mut val = evals.get_unchecked(idx[0])[j];
+                        let vb = evals.get_unchecked(idx[1])[j];
+                        field_ops::mul_assign(&mut val, &vb);
+                        let mut contrib = bc;
+                        field_ops::mul_assign(&mut contrib, &val);
+                        field_ops::add_assign(&mut acc[j], &contrib);
+                    }
+                }
+                SimpleGateType::MaskToIdentity => {
+                    let bc = current_batch;
+                    field_ops::mul_assign(&mut current_batch, &batch_base);
+                    for j in 0..1 {
+                        let mut val = evals.get_unchecked(idx[0])[j];
+                        let mask_val = evals.get_unchecked(idx[1])[j];
+                        field_ops::sub_assign_base(&mut val, &BabyBearField::ONE);
+                        field_ops::mul_assign(&mut val, &mask_val);
+                        field_ops::add_assign_base(&mut val, &BabyBearField::ONE);
+                        let mut contrib = bc;
+                        field_ops::mul_assign(&mut contrib, &val);
+                        field_ops::add_assign(&mut acc[j], &contrib);
+                    }
+                }
+                SimpleGateType::UnbalancedProduct => {
+                    let bc = current_batch;
+                    field_ops::mul_assign(&mut current_batch, &batch_base);
+                    for j in 0..1 {
+                        let mut val = evals.get_unchecked(idx[0])[j];
+                        let vi = evals.get_unchecked(idx[1])[j];
+                        field_ops::mul_assign(&mut val, &vi);
+                        let mut contrib = bc;
+                        field_ops::mul_assign(&mut contrib, &val);
+                        field_ops::add_assign(&mut acc[j], &contrib);
+                    }
+                }
+                SimpleGateType::LookupInitialPair => {
+                    let bc0 = current_batch;
+                    field_ops::mul_assign(&mut current_batch, &batch_base);
+                    let bc1 = current_batch;
+                    field_ops::mul_assign(&mut current_batch, &batch_base);
+                    for j in 0..1 {
+                        let mut bg = evals.get_unchecked(idx[0])[j];
+                        let mut dg = evals.get_unchecked(idx[1])[j];
+                        field_ops::add_assign(&mut bg, &lookup_additive_challenge);
+                        field_ops::add_assign(&mut dg, &lookup_additive_challenge);
+                        let mut num = bg;
+                        field_ops::add_assign(&mut num, &dg);
+                        let mut den = bg;
+                        field_ops::mul_assign(&mut den, &dg);
+                        let out0 = num;
+                        let out1 = den;
+                        let mut c0 = bc0;
+                        field_ops::mul_assign(&mut c0, &out0);
+                        field_ops::add_assign(&mut acc[j], &c0);
+                        let mut c1 = bc1;
+                        field_ops::mul_assign(&mut c1, &out1);
+                        field_ops::add_assign(&mut acc[j], &c1);
+                    }
+                }
+                SimpleGateType::LookupWithSetup => {
+                    let bc0 = current_batch;
+                    field_ops::mul_assign(&mut current_batch, &batch_base);
+                    let bc1 = current_batch;
+                    field_ops::mul_assign(&mut current_batch, &batch_base);
+                    for j in 0..1 {
+                        let mut bg = evals.get_unchecked(idx[0])[j];
+                        let mut dg = evals.get_unchecked(idx[2])[j];
+                        let mut cb = evals.get_unchecked(idx[1])[j];
+                        field_ops::add_assign(&mut bg, &lookup_additive_challenge);
+                        field_ops::add_assign(&mut dg, &lookup_additive_challenge);
+                        field_ops::mul_assign(&mut cb, &bg);
+                        let mut num = dg;
+                        field_ops::sub_assign(&mut num, &cb);
+                        let mut den = bg;
+                        field_ops::mul_assign(&mut den, &dg);
+                        let out0 = num;
+                        let out1 = den;
+                        let mut c0 = bc0;
+                        field_ops::mul_assign(&mut c0, &out0);
+                        field_ops::add_assign(&mut acc[j], &c0);
+                        let mut c1 = bc1;
+                        field_ops::mul_assign(&mut c1, &out1);
+                        field_ops::add_assign(&mut acc[j], &c1);
+                    }
+                }
+                SimpleGateType::LookupUnbalanced => {
+                    let bc0 = current_batch;
+                    field_ops::mul_assign(&mut current_batch, &batch_base);
+                    let bc1 = current_batch;
+                    field_ops::mul_assign(&mut current_batch, &batch_base);
+                    for j in 0..1 {
+                        let a_val = evals.get_unchecked(idx[0])[j];
+                        let b_val = evals.get_unchecked(idx[1])[j];
+                        let mut r_g = evals.get_unchecked(idx[2])[j];
+                        field_ops::add_assign(&mut r_g, &lookup_additive_challenge);
+                        let mut num = a_val;
+                        field_ops::mul_assign(&mut num, &r_g);
+                        field_ops::add_assign(&mut num, &b_val);
+                        let mut den = b_val;
+                        field_ops::mul_assign(&mut den, &r_g);
+                        let out0 = num;
+                        let out1 = den;
+                        let mut c0 = bc0;
+                        field_ops::mul_assign(&mut c0, &out0);
+                        field_ops::add_assign(&mut acc[j], &c0);
+                        let mut c1 = bc1;
+                        field_ops::mul_assign(&mut c1, &out1);
+                        field_ops::add_assign(&mut acc[j], &c1);
+                    }
+                }
+                SimpleGateType::LookupAggregatePair => {
+                    let bc0 = current_batch;
+                    field_ops::mul_assign(&mut current_batch, &batch_base);
+                    let bc1 = current_batch;
+                    field_ops::mul_assign(&mut current_batch, &batch_base);
+                    for j in 0..1 {
+                        let a_val = evals.get_unchecked(idx[0])[j];
+                        let b_val = evals.get_unchecked(idx[1])[j];
+                        let c_val = evals.get_unchecked(idx[2])[j];
+                        let d_val = evals.get_unchecked(idx[3])[j];
+                        let mut num = a_val;
+                        field_ops::mul_assign(&mut num, &d_val);
+                        let mut cb_tmp = c_val;
+                        field_ops::mul_assign(&mut cb_tmp, &b_val);
+                        field_ops::add_assign(&mut num, &cb_tmp);
+                        let mut den = b_val;
+                        field_ops::mul_assign(&mut den, &d_val);
+                        let out0 = num;
+                        let out1 = den;
+                        let mut c0 = bc0;
+                        field_ops::mul_assign(&mut c0, &out0);
+                        field_ops::add_assign(&mut acc[j], &c0);
+                        let mut c1 = bc1;
+                        field_ops::mul_assign(&mut c1, &out1);
+                        field_ops::add_assign(&mut acc[j], &c1);
+                    }
+                }
+                SimpleGateType::LookupInitialWithCachedDenominators => {
+                    let bc0 = current_batch;
+                    field_ops::mul_assign(&mut current_batch, &batch_base);
+                    let bc1 = current_batch;
+                    field_ops::mul_assign(&mut current_batch, &batch_base);
+                    for j in 0..1 {
+                        let a_val = evals.get_unchecked(idx[0])[j];
+                        let mut b_cd = evals.get_unchecked(idx[1])[j];
+                        let c_val = evals.get_unchecked(idx[2])[j];
+                        let mut d_cd = evals.get_unchecked(idx[3])[j];
+                        field_ops::add_assign(&mut b_cd, &lookup_additive_challenge);
+                        field_ops::add_assign(&mut d_cd, &lookup_additive_challenge);
+                        let mut ad_cd = a_val;
+                        field_ops::mul_assign(&mut ad_cd, &d_cd);
+                        let mut cb_cd = c_val;
+                        field_ops::mul_assign(&mut cb_cd, &b_cd);
+                        field_ops::sub_assign(&mut ad_cd, &cb_cd);
+                        let mut den = b_cd;
+                        field_ops::mul_assign(&mut den, &d_cd);
+                        let out0 = ad_cd;
+                        let out1 = den;
+                        let mut c0 = bc0;
+                        field_ops::mul_assign(&mut c0, &out0);
+                        field_ops::add_assign(&mut acc[j], &c0);
+                        let mut c1 = bc1;
+                        field_ops::mul_assign(&mut c1, &out1);
+                        field_ops::add_assign(&mut acc[j], &c1);
+                    }
+                }
+            }
+            _sg += 1;
+        }
+    }
+    acc
+}
+#[inline(always)]
+#[allow(unused_variables)]
+unsafe fn layer_5_compute_claim(
+    output_claims: &[BabyBearExt4; 6usize],
+    batch_base: BabyBearExt4,
+) -> BabyBearExt4 {
+    const DESCS: [(usize, usize, usize); 5usize] = [
         (2usize, 0usize, 1usize),
         (1usize, 2usize, 0usize),
         (1usize, 3usize, 0usize),
         (1usize, 4usize, 0usize),
         (1usize, 5usize, 0usize),
-        (1usize, 6usize, 0usize),
-        (1usize, 7usize, 0usize),
     ];
     super::common::compute_claim(output_claims, &DESCS, batch_base)
 }
@@ -7361,20 +7341,18 @@ unsafe fn layer_5_final_step_accumulator(
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
     {
-        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 7usize] = [
+        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 5usize] = [
             (
                 SimpleGateType::LookupAggregatePair,
                 [6usize, 7usize, 4usize, 5usize],
             ),
             (SimpleGateType::Copy, [0usize, 0usize, 0usize, 0usize]),
             (SimpleGateType::Copy, [1usize, 0usize, 0usize, 0usize]),
-            (SimpleGateType::Copy, [8usize, 0usize, 0usize, 0usize]),
-            (SimpleGateType::Copy, [9usize, 0usize, 0usize, 0usize]),
             (SimpleGateType::Copy, [2usize, 0usize, 0usize, 0usize]),
             (SimpleGateType::Copy, [3usize, 0usize, 0usize, 0usize]),
         ];
         let mut _sg = 0;
-        while _sg < 7usize {
+        while _sg < 5usize {
             let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
             match gt {
                 SimpleGateType::Copy => {
@@ -7565,7 +7543,7 @@ unsafe fn layer_5_final_step_accumulator(
 #[inline(always)]
 #[allow(unused_unsafe)]
 unsafe fn dim_reducing_compute_claim(
-    output_claims: &[BabyBearExt4; 8usize],
+    output_claims: &[BabyBearExt4; 6usize],
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
     let mut current_batch = BabyBearExt4::ONE;
@@ -7604,18 +7582,6 @@ unsafe fn dim_reducing_compute_claim(
         let bc1 = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for (bc, idx) in [(bc0, 4usize), (bc1, 5usize)] {
-            let claim = *output_claims.get_unchecked(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 6usize), (bc1, 7usize)] {
             let claim = *output_claims.get_unchecked(idx);
             let mut t = bc;
             field_ops::mul_assign(&mut t, &claim);
@@ -7722,70 +7688,7 @@ unsafe fn dim_reducing_final_step_accumulator(
             field_ops::add_assign(&mut acc, &c1_tmp);
         }
     }
-    {
-        let si0 = unsafe { *indices.get_unchecked(_idx) };
-        let si1 = unsafe { *indices.get_unchecked(_idx + 1) };
-        _idx += 2;
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(si0) };
-        let v1 = unsafe { evals.get_unchecked(si1) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0) };
-            let v0b = unsafe { *v0.get_unchecked(1) };
-            let v1a = unsafe { *v1.get_unchecked(0) };
-            let v1b = unsafe { *v1.get_unchecked(1) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc, &c0_tmp);
-            field_ops::add_assign(&mut acc, &c1_tmp);
-        }
-    }
     acc
-}
-#[doc = " Closed-form eval of VirtualSetup(RangeCheck16Bits) at `state.prev_point` (lower 16 bits free, top bits forced to zero)."]
-#[doc = " Source: prover/src/gkr/virtual_polys/range_check.rs."]
-#[doc = " The `prev_claims` index is the position assigned to this VirtualSetup poly by the"]
-#[doc = " canonical layer-0 layout (memory cols → witness cols → setup cols → virtual setups → others)."]
-#[inline(always)]
-fn check_virtual_setup_range_check_16bits<E: ErrorCreator>(
-    state: &LayerState<BabyBearExt4, GKR_ROUNDS, GKR_ADDRS>,
-) -> Result<(), E::Error> {
-    unsafe {
-        let pt = state.prev_point.get_unchecked(..22usize);
-        let mut result: BabyBearExt4 = BabyBearExt4::ZERO;
-        let mut prefactor: BabyBearField = BabyBearField::ONE;
-        let mut k: usize = 0;
-        while k < 16usize {
-            let mut t = *pt.get_unchecked(k);
-            field_ops::mul_assign_by_base(&mut t, &prefactor);
-            field_ops::add_assign(&mut result, &t);
-            field_ops::double(&mut prefactor);
-            k += 1;
-        }
-        while k < 22usize {
-            let mut t: BabyBearExt4 = BabyBearExt4::ONE;
-            let p = pt.get_unchecked(k);
-            field_ops::sub_assign(&mut t, &*p);
-            field_ops::mul_assign(&mut result, &t);
-            k += 1;
-        }
-        if result != *state.prev_claims.get_unchecked(275usize) {
-            return Err(E::gkr_virtual_setup_eval_mismatch(275usize));
-        }
-    }
-    Ok(())
 }
 #[doc = " Closed-form eval of VirtualSetup(RangeCheckTimestamp) at `state.prev_point` (lower 19 bits free, top bits forced to zero)."]
 #[doc = " Source: prover/src/gkr/virtual_polys/range_check.rs."]
@@ -7814,8 +7717,8 @@ fn check_virtual_setup_range_check_timestamp<E: ErrorCreator>(
             field_ops::mul_assign(&mut result, &t);
             k += 1;
         }
-        if result != *state.prev_claims.get_unchecked(276usize) {
-            return Err(E::gkr_virtual_setup_eval_mismatch(276usize));
+        if result != *state.prev_claims.get_unchecked(274usize) {
+            return Err(E::gkr_virtual_setup_eval_mismatch(274usize));
         }
     }
     Ok(())
@@ -7838,7 +7741,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         let lookup_additive_challenge = *init_challenges.get(1);
         let address_high_bits_shift: u32 = 0u32;
         let mut evals_commit_buf = CommitBuf::<GKR_EVALS_COMMIT_BUF>::new();
-        let evals_data_words = 128usize * EXT_DEGREE;
+        let evals_data_words = 96usize * EXT_DEGREE;
         {
             let mut i = 0;
             while i < evals_data_words {
@@ -7848,7 +7751,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
         }
         ts.commit(&mut evals_commit_buf, evals_data_words);
-        let evals_slice: &[BabyBearExt4] = unsafe { evals_commit_buf.data_as(128usize) };
+        let evals_slice: &[BabyBearExt4] = unsafe { evals_commit_buf.data_as(96usize) };
         let mut all_challenges = LazyVec::<BabyBearExt4, { GKR_ROUNDS + 1 }>::new();
         unsafe {
             all_challenges.set_len(5usize);
@@ -7903,21 +7806,6 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             let claim = dot_eq(vals, eq_arr);
             prev_claims.push(claim);
         }
-        {
-            let vals: &[BabyBearExt4; 16usize] =
-                evals_slice[96usize..112usize].try_into().unwrap_unchecked();
-            let eq_arr: &[BabyBearExt4; 16usize] = eq_buf.as_slice().try_into().unwrap_unchecked();
-            let claim = dot_eq(vals, eq_arr);
-            prev_claims.push(claim);
-        }
-        {
-            let vals: &[BabyBearExt4; 16usize] = evals_slice[112usize..128usize]
-                .try_into()
-                .unwrap_unchecked();
-            let eq_arr: &[BabyBearExt4; 16usize] = eq_buf.as_slice().try_into().unwrap_unchecked();
-            let claim = dot_eq(vals, eq_arr);
-            prev_claims.push(claim);
-        }
         let prev_point = {
             let mut lv = LazyVec::<BabyBearExt4, GKR_ROUNDS>::new();
             for i in 0..4usize {
@@ -7935,65 +7823,47 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             batching_challenge,
         };
         let mut eval_buf = CommitBuf::<GKR_EVAL_BUF>::new();
-        const DIM_REDUCE_INDICES_6: [usize; 8usize] = [
-            2usize, 3usize, 4usize, 5usize, 6usize, 7usize, 0usize, 1usize,
-        ];
-        const DIM_REDUCE_INDICES_7: [usize; 8usize] = [
-            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
-        ];
-        const DIM_REDUCE_INDICES_8: [usize; 8usize] = [
-            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
-        ];
-        const DIM_REDUCE_INDICES_9: [usize; 8usize] = [
-            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
-        ];
-        const DIM_REDUCE_INDICES_10: [usize; 8usize] = [
-            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
-        ];
-        const DIM_REDUCE_INDICES_11: [usize; 8usize] = [
-            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
-        ];
-        const DIM_REDUCE_INDICES_12: [usize; 8usize] = [
-            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
-        ];
-        const DIM_REDUCE_INDICES_13: [usize; 8usize] = [
-            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
-        ];
-        const DIM_REDUCE_INDICES_14: [usize; 8usize] = [
-            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
-        ];
-        const DIM_REDUCE_INDICES_15: [usize; 8usize] = [
-            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
-        ];
-        const DIM_REDUCE_INDICES_16: [usize; 8usize] = [
-            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
-        ];
-        const DIM_REDUCE_INDICES_17: [usize; 8usize] = [
-            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
-        ];
-        const DIM_REDUCE_INDICES_18: [usize; 8usize] = [
-            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
-        ];
-        const DIM_REDUCE_INDICES_19: [usize; 8usize] = [
-            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
-        ];
-        const DIM_REDUCE_INDICES_20: [usize; 8usize] = [
-            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
-        ];
-        const DIM_REDUCE_INDICES_21: [usize; 8usize] = [
-            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
-        ];
-        const DIM_REDUCE_INDICES_22: [usize; 8usize] = [
-            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
-        ];
-        const DIM_REDUCE_INDICES_23: [usize; 8usize] = [
-            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
-        ];
+        const DIM_REDUCE_INDICES_6: [usize; 6usize] =
+            [2usize, 3usize, 4usize, 5usize, 0usize, 1usize];
+        const DIM_REDUCE_INDICES_7: [usize; 6usize] =
+            [0usize, 1usize, 2usize, 3usize, 4usize, 5usize];
+        const DIM_REDUCE_INDICES_8: [usize; 6usize] =
+            [0usize, 1usize, 2usize, 3usize, 4usize, 5usize];
+        const DIM_REDUCE_INDICES_9: [usize; 6usize] =
+            [0usize, 1usize, 2usize, 3usize, 4usize, 5usize];
+        const DIM_REDUCE_INDICES_10: [usize; 6usize] =
+            [0usize, 1usize, 2usize, 3usize, 4usize, 5usize];
+        const DIM_REDUCE_INDICES_11: [usize; 6usize] =
+            [0usize, 1usize, 2usize, 3usize, 4usize, 5usize];
+        const DIM_REDUCE_INDICES_12: [usize; 6usize] =
+            [0usize, 1usize, 2usize, 3usize, 4usize, 5usize];
+        const DIM_REDUCE_INDICES_13: [usize; 6usize] =
+            [0usize, 1usize, 2usize, 3usize, 4usize, 5usize];
+        const DIM_REDUCE_INDICES_14: [usize; 6usize] =
+            [0usize, 1usize, 2usize, 3usize, 4usize, 5usize];
+        const DIM_REDUCE_INDICES_15: [usize; 6usize] =
+            [0usize, 1usize, 2usize, 3usize, 4usize, 5usize];
+        const DIM_REDUCE_INDICES_16: [usize; 6usize] =
+            [0usize, 1usize, 2usize, 3usize, 4usize, 5usize];
+        const DIM_REDUCE_INDICES_17: [usize; 6usize] =
+            [0usize, 1usize, 2usize, 3usize, 4usize, 5usize];
+        const DIM_REDUCE_INDICES_18: [usize; 6usize] =
+            [0usize, 1usize, 2usize, 3usize, 4usize, 5usize];
+        const DIM_REDUCE_INDICES_19: [usize; 6usize] =
+            [0usize, 1usize, 2usize, 3usize, 4usize, 5usize];
+        const DIM_REDUCE_INDICES_20: [usize; 6usize] =
+            [0usize, 1usize, 2usize, 3usize, 4usize, 5usize];
+        const DIM_REDUCE_INDICES_21: [usize; 6usize] =
+            [0usize, 1usize, 2usize, 3usize, 4usize, 5usize];
+        const DIM_REDUCE_INDICES_22: [usize; 6usize] =
+            [0usize, 1usize, 2usize, 3usize, 4usize, 5usize];
+        const DIM_REDUCE_INDICES_23: [usize; 6usize] =
+            [0usize, 1usize, 2usize, 3usize, 4usize, 5usize];
         #[cfg(feature = "verifier_stats")]
         verifier_common::stats::log("GKR COMPRESSION INIT");
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -8005,7 +7875,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 4usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -8014,7 +7884,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -8043,11 +7913,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -8058,7 +7928,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -8070,7 +7940,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 5usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -8079,7 +7949,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -8108,11 +7978,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -8123,7 +7993,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -8135,7 +8005,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 6usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -8144,7 +8014,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -8173,11 +8043,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -8188,7 +8058,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -8200,7 +8070,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 7usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -8209,7 +8079,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -8238,11 +8108,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -8253,7 +8123,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -8265,7 +8135,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 8usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -8274,7 +8144,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -8303,11 +8173,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -8318,7 +8188,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -8330,7 +8200,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 9usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -8339,7 +8209,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -8368,11 +8238,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -8383,7 +8253,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -8395,7 +8265,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 10usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -8404,7 +8274,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -8433,11 +8303,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -8448,7 +8318,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -8460,7 +8330,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 11usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -8469,7 +8339,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -8498,11 +8368,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -8513,7 +8383,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -8525,7 +8395,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 12usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -8534,7 +8404,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -8563,11 +8433,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -8578,7 +8448,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -8590,7 +8460,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 13usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -8599,7 +8469,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -8628,11 +8498,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -8643,7 +8513,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -8655,7 +8525,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 14usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -8664,7 +8534,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -8693,11 +8563,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -8708,7 +8578,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -8720,7 +8590,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 15usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -8729,7 +8599,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -8758,11 +8628,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -8773,7 +8643,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -8785,7 +8655,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 16usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -8794,7 +8664,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -8823,11 +8693,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -8838,7 +8708,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -8850,7 +8720,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 17usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -8859,7 +8729,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -8888,11 +8758,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -8903,7 +8773,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -8915,7 +8785,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 18usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -8924,7 +8794,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -8953,11 +8823,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -8968,7 +8838,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -8980,7 +8850,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 19usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -8989,7 +8859,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -9018,11 +8888,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -9033,7 +8903,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -9045,7 +8915,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 20usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -9054,7 +8924,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -9083,11 +8953,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -9098,7 +8968,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -9110,7 +8980,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 21usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -9119,7 +8989,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -9148,11 +9018,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -9163,7 +9033,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = layer_5_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -9175,7 +9045,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let fc_len = 22usize;
-            const NUM_AT_POINT_EVALS: usize = 10usize;
+            const NUM_AT_POINT_EVALS: usize = 8usize;
             let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -9200,7 +9070,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let next_batching = draw_single_field_el(ts);
-            fold_standard_claims::<10usize, GKR_ADDRS, GKR_EVAL_BUF>(
+            fold_standard_claims::<8usize, GKR_ADDRS, GKR_EVAL_BUF>(
                 &eval_buf,
                 &mut state.prev_claims,
             );
@@ -9211,7 +9081,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = layer_4_compute_claim(
-                state.prev_claims.as_array::<10usize>(),
+                state.prev_claims.as_array::<8usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -9223,7 +9093,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let fc_len = 22usize;
-            const NUM_AT_POINT_EVALS: usize = 15usize;
+            const NUM_AT_POINT_EVALS: usize = 13usize;
             let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -9248,7 +9118,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let next_batching = draw_single_field_el(ts);
-            fold_standard_claims::<15usize, GKR_ADDRS, GKR_EVAL_BUF>(
+            fold_standard_claims::<13usize, GKR_ADDRS, GKR_EVAL_BUF>(
                 &eval_buf,
                 &mut state.prev_claims,
             );
@@ -9259,7 +9129,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = layer_3_compute_claim(
-                state.prev_claims.as_array::<15usize>(),
+                state.prev_claims.as_array::<13usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -9271,7 +9141,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let fc_len = 22usize;
-            const NUM_AT_POINT_EVALS: usize = 27usize;
+            const NUM_AT_POINT_EVALS: usize = 25usize;
             let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -9296,7 +9166,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let next_batching = draw_single_field_el(ts);
-            fold_standard_claims::<27usize, GKR_ADDRS, GKR_EVAL_BUF>(
+            fold_standard_claims::<25usize, GKR_ADDRS, GKR_EVAL_BUF>(
                 &eval_buf,
                 &mut state.prev_claims,
             );
@@ -9307,7 +9177,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = layer_2_compute_claim(
-                state.prev_claims.as_array::<27usize>(),
+                state.prev_claims.as_array::<25usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -9319,7 +9189,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let fc_len = 22usize;
-            const NUM_AT_POINT_EVALS: usize = 49usize;
+            const NUM_AT_POINT_EVALS: usize = 47usize;
             let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -9344,7 +9214,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let next_batching = draw_single_field_el(ts);
-            fold_standard_claims::<49usize, GKR_ADDRS, GKR_EVAL_BUF>(
+            fold_standard_claims::<47usize, GKR_ADDRS, GKR_EVAL_BUF>(
                 &eval_buf,
                 &mut state.prev_claims,
             );
@@ -9355,7 +9225,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = layer_1_compute_claim(
-                state.prev_claims.as_array::<49usize>(),
+                state.prev_claims.as_array::<47usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -9367,7 +9237,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let fc_len = 22usize;
-            const NUM_AT_POINT_EVALS: usize = 91usize;
+            const NUM_AT_POINT_EVALS: usize = 90usize;
             let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -9392,7 +9262,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let next_batching = draw_single_field_el(ts);
-            fold_standard_claims::<91usize, GKR_ADDRS, GKR_EVAL_BUF>(
+            fold_standard_claims::<90usize, GKR_ADDRS, GKR_EVAL_BUF>(
                 &eval_buf,
                 &mut state.prev_claims,
             );
@@ -9403,7 +9273,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = layer_0_compute_claim(
-                state.prev_claims.as_array::<91usize>(),
+                state.prev_claims.as_array::<90usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -9415,7 +9285,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let fc_len = 22usize;
-            const NUM_AT_POINT_EVALS: usize = 333usize;
+            const NUM_AT_POINT_EVALS: usize = 331usize;
             let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -9465,7 +9335,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 unsafe { eval_buf.data_as(NUM_AT_POINT_EVALS) };
             state.prev_claims.clear();
             {
-                const LAYOUT_KIND: [usize; 379usize] = [
+                const LAYOUT_KIND: [usize; 377usize] = [
                     1usize, 1usize, 0usize, 0usize, 0usize, 0usize, 1usize, 1usize, 1usize, 1usize,
                     1usize, 1usize, 0usize, 0usize, 1usize, 0usize, 0usize, 1usize, 1usize, 0usize,
                     0usize, 0usize, 0usize, 1usize, 1usize, 0usize, 0usize, 1usize, 0usize, 0usize,
@@ -9492,8 +9362,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
-                    0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 1usize, 1usize, 1usize,
-                    1usize, 1usize, 1usize, 1usize, 1usize, 0usize, 0usize, 0usize, 0usize, 0usize,
+                    0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 1usize, 1usize, 1usize, 1usize,
+                    1usize, 1usize, 1usize, 1usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
@@ -9503,20 +9373,20 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
-                    0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
+                    0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                 ];
-                const LAYOUT_POS: [usize; 379usize] = [
-                    0usize, 1usize, 176usize, 177usize, 178usize, 179usize, 2usize, 3usize, 4usize,
-                    5usize, 6usize, 7usize, 180usize, 181usize, 8usize, 182usize, 183usize, 9usize,
-                    10usize, 184usize, 185usize, 186usize, 187usize, 11usize, 12usize, 188usize,
-                    189usize, 13usize, 190usize, 191usize, 14usize, 15usize, 192usize, 193usize,
-                    194usize, 195usize, 16usize, 17usize, 196usize, 197usize, 18usize, 198usize,
-                    199usize, 19usize, 20usize, 200usize, 201usize, 202usize, 203usize, 21usize,
-                    22usize, 204usize, 205usize, 23usize, 206usize, 207usize, 24usize, 25usize,
-                    208usize, 209usize, 210usize, 211usize, 26usize, 27usize, 212usize, 213usize,
-                    28usize, 214usize, 215usize, 29usize, 30usize, 216usize, 217usize, 218usize,
-                    219usize, 31usize, 32usize, 220usize, 221usize, 33usize, 222usize, 223usize,
-                    34usize, 35usize, 224usize, 225usize, 226usize, 227usize, 228usize, 36usize,
+                const LAYOUT_POS: [usize; 377usize] = [
+                    0usize, 1usize, 175usize, 176usize, 177usize, 178usize, 2usize, 3usize, 4usize,
+                    5usize, 6usize, 7usize, 179usize, 180usize, 8usize, 181usize, 182usize, 9usize,
+                    10usize, 183usize, 184usize, 185usize, 186usize, 11usize, 12usize, 187usize,
+                    188usize, 13usize, 189usize, 190usize, 14usize, 15usize, 191usize, 192usize,
+                    193usize, 194usize, 16usize, 17usize, 195usize, 196usize, 18usize, 197usize,
+                    198usize, 19usize, 20usize, 199usize, 200usize, 201usize, 202usize, 21usize,
+                    22usize, 203usize, 204usize, 23usize, 205usize, 206usize, 24usize, 25usize,
+                    207usize, 208usize, 209usize, 210usize, 26usize, 27usize, 211usize, 212usize,
+                    28usize, 213usize, 214usize, 29usize, 30usize, 215usize, 216usize, 217usize,
+                    218usize, 31usize, 32usize, 219usize, 220usize, 33usize, 221usize, 222usize,
+                    34usize, 35usize, 223usize, 224usize, 225usize, 226usize, 227usize, 36usize,
                     37usize, 0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
                     8usize, 9usize, 10usize, 11usize, 12usize, 13usize, 14usize, 15usize, 16usize,
                     17usize, 18usize, 19usize, 20usize, 21usize, 22usize, 23usize, 24usize,
@@ -9538,8 +9408,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     145usize, 146usize, 147usize, 148usize, 149usize, 150usize, 151usize, 152usize,
                     153usize, 154usize, 155usize, 156usize, 157usize, 158usize, 159usize, 160usize,
                     161usize, 162usize, 163usize, 164usize, 165usize, 166usize, 167usize, 168usize,
-                    169usize, 170usize, 171usize, 172usize, 173usize, 174usize, 175usize, 38usize,
-                    39usize, 40usize, 41usize, 42usize, 43usize, 44usize, 45usize, 229usize,
+                    169usize, 170usize, 171usize, 172usize, 173usize, 174usize, 38usize, 39usize,
+                    40usize, 41usize, 42usize, 43usize, 44usize, 45usize, 228usize, 229usize,
                     230usize, 231usize, 232usize, 233usize, 234usize, 235usize, 236usize, 237usize,
                     238usize, 239usize, 240usize, 241usize, 242usize, 243usize, 244usize, 245usize,
                     246usize, 247usize, 248usize, 249usize, 250usize, 251usize, 252usize, 253usize,
@@ -9552,10 +9422,10 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     302usize, 303usize, 304usize, 305usize, 306usize, 307usize, 308usize, 309usize,
                     310usize, 311usize, 312usize, 313usize, 314usize, 315usize, 316usize, 317usize,
                     318usize, 319usize, 320usize, 321usize, 322usize, 323usize, 324usize, 325usize,
-                    326usize, 327usize, 328usize, 329usize, 330usize, 331usize, 332usize,
+                    326usize, 327usize, 328usize, 329usize, 330usize,
                 ];
                 let mut i = 0usize;
-                while i < 379usize {
+                while i < 377usize {
                     let kind = unsafe { *LAYOUT_KIND.get_unchecked(i) };
                     let pos = unsafe { *LAYOUT_POS.get_unchecked(i) };
                     let claim: BabyBearExt4 = if kind == 0usize {
@@ -9569,39 +9439,38 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             {
                 const SC_DESCS: [(usize, u32, usize, usize); 30usize] = [
-                    (307usize, 0u32, 0usize, 1usize),
-                    (308usize, 0u32, 1usize, 2usize),
-                    (309usize, 1476395013u32, 3usize, 3usize),
-                    (310usize, 133099247u32, 6usize, 3usize),
-                    (311usize, 1476395013u32, 9usize, 3usize),
-                    (312usize, 133099247u32, 12usize, 3usize),
-                    (313usize, 1476395013u32, 15usize, 3usize),
-                    (314usize, 133099247u32, 18usize, 3usize),
-                    (315usize, 1476395013u32, 21usize, 3usize),
-                    (316usize, 133099247u32, 24usize, 3usize),
-                    (317usize, 1476395013u32, 27usize, 3usize),
-                    (318usize, 133099247u32, 30usize, 3usize),
-                    (319usize, 1476395013u32, 33usize, 3usize),
-                    (320usize, 133099247u32, 36usize, 3usize),
-                    (321usize, 1476395013u32, 39usize, 3usize),
-                    (322usize, 133099247u32, 42usize, 3usize),
-                    (323usize, 1476395013u32, 45usize, 3usize),
-                    (324usize, 133099247u32, 48usize, 3usize),
-                    (325usize, 1476395013u32, 51usize, 3usize),
-                    (326usize, 133099247u32, 54usize, 3usize),
-                    (327usize, 1476395013u32, 57usize, 3usize),
-                    (328usize, 133099247u32, 60usize, 3usize),
-                    (329usize, 1476395013u32, 63usize, 3usize),
-                    (330usize, 133099247u32, 66usize, 3usize),
-                    (331usize, 1476395013u32, 69usize, 3usize),
-                    (332usize, 133099247u32, 72usize, 3usize),
-                    (333usize, 1476395013u32, 75usize, 3usize),
-                    (334usize, 133099247u32, 78usize, 3usize),
-                    (335usize, 1476395013u32, 81usize, 3usize),
-                    (336usize, 133099247u32, 84usize, 3usize),
+                    (305usize, 0u32, 0usize, 2usize),
+                    (306usize, 1476395013u32, 2usize, 3usize),
+                    (307usize, 133099247u32, 5usize, 3usize),
+                    (308usize, 1476395013u32, 8usize, 3usize),
+                    (309usize, 133099247u32, 11usize, 3usize),
+                    (310usize, 1476395013u32, 14usize, 3usize),
+                    (311usize, 133099247u32, 17usize, 3usize),
+                    (312usize, 1476395013u32, 20usize, 3usize),
+                    (313usize, 133099247u32, 23usize, 3usize),
+                    (314usize, 1476395013u32, 26usize, 3usize),
+                    (315usize, 133099247u32, 29usize, 3usize),
+                    (316usize, 1476395013u32, 32usize, 3usize),
+                    (317usize, 133099247u32, 35usize, 3usize),
+                    (318usize, 1476395013u32, 38usize, 3usize),
+                    (319usize, 133099247u32, 41usize, 3usize),
+                    (320usize, 1476395013u32, 44usize, 3usize),
+                    (321usize, 133099247u32, 47usize, 3usize),
+                    (322usize, 1476395013u32, 50usize, 3usize),
+                    (323usize, 133099247u32, 53usize, 3usize),
+                    (324usize, 1476395013u32, 56usize, 3usize),
+                    (325usize, 133099247u32, 59usize, 3usize),
+                    (326usize, 1476395013u32, 62usize, 3usize),
+                    (327usize, 133099247u32, 65usize, 3usize),
+                    (328usize, 1476395013u32, 68usize, 3usize),
+                    (329usize, 133099247u32, 71usize, 3usize),
+                    (330usize, 1476395013u32, 74usize, 3usize),
+                    (331usize, 133099247u32, 77usize, 3usize),
+                    (332usize, 1476395013u32, 80usize, 3usize),
+                    (333usize, 133099247u32, 83usize, 3usize),
+                    (334usize, 0u32, 86usize, 1usize),
                 ];
                 const SC_TERMS: [(u32, usize); 87usize] = [
-                    (16777216u32, 8usize),
                     (1073741824u32, 89usize),
                     (939524097u32, 88usize),
                     (1744830467u32, 89usize),
@@ -9688,6 +9557,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     (1744830467u32, 90usize),
                     (268435454u32, 83usize),
                     (1744830467u32, 263usize),
+                    (16777216u32, 8usize),
                 ];
                 let mut _sc = 0;
                 while _sc < 30usize {
@@ -9714,47 +9584,47 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             {
                 const VL_DESCS: [(usize, usize, usize); 41usize] = [
-                    (337usize, 0usize, 8usize),
-                    (339usize, 8usize, 8usize),
-                    (340usize, 16usize, 8usize),
-                    (341usize, 24usize, 8usize),
-                    (342usize, 32usize, 8usize),
-                    (343usize, 40usize, 8usize),
-                    (344usize, 48usize, 8usize),
-                    (345usize, 56usize, 8usize),
-                    (346usize, 64usize, 8usize),
-                    (347usize, 72usize, 8usize),
-                    (348usize, 80usize, 8usize),
-                    (349usize, 88usize, 8usize),
-                    (350usize, 96usize, 8usize),
-                    (351usize, 104usize, 8usize),
-                    (352usize, 112usize, 8usize),
-                    (353usize, 120usize, 8usize),
-                    (354usize, 128usize, 8usize),
-                    (355usize, 136usize, 8usize),
-                    (356usize, 144usize, 8usize),
-                    (357usize, 152usize, 8usize),
-                    (358usize, 160usize, 8usize),
-                    (359usize, 168usize, 8usize),
-                    (360usize, 176usize, 8usize),
-                    (361usize, 184usize, 8usize),
-                    (362usize, 192usize, 8usize),
-                    (363usize, 200usize, 8usize),
-                    (364usize, 208usize, 8usize),
-                    (365usize, 216usize, 8usize),
-                    (366usize, 224usize, 8usize),
-                    (367usize, 232usize, 8usize),
-                    (368usize, 240usize, 8usize),
-                    (369usize, 248usize, 8usize),
-                    (370usize, 256usize, 8usize),
-                    (371usize, 264usize, 8usize),
-                    (372usize, 272usize, 8usize),
-                    (373usize, 280usize, 8usize),
-                    (374usize, 288usize, 8usize),
-                    (375usize, 296usize, 8usize),
-                    (376usize, 304usize, 8usize),
-                    (377usize, 312usize, 8usize),
-                    (378usize, 320usize, 8usize),
+                    (335usize, 0usize, 8usize),
+                    (337usize, 8usize, 8usize),
+                    (338usize, 16usize, 8usize),
+                    (339usize, 24usize, 8usize),
+                    (340usize, 32usize, 8usize),
+                    (341usize, 40usize, 8usize),
+                    (342usize, 48usize, 8usize),
+                    (343usize, 56usize, 8usize),
+                    (344usize, 64usize, 8usize),
+                    (345usize, 72usize, 8usize),
+                    (346usize, 80usize, 8usize),
+                    (347usize, 88usize, 8usize),
+                    (348usize, 96usize, 8usize),
+                    (349usize, 104usize, 8usize),
+                    (350usize, 112usize, 8usize),
+                    (351usize, 120usize, 8usize),
+                    (352usize, 128usize, 8usize),
+                    (353usize, 136usize, 8usize),
+                    (354usize, 144usize, 8usize),
+                    (355usize, 152usize, 8usize),
+                    (356usize, 160usize, 8usize),
+                    (357usize, 168usize, 8usize),
+                    (358usize, 176usize, 8usize),
+                    (359usize, 184usize, 8usize),
+                    (360usize, 192usize, 8usize),
+                    (361usize, 200usize, 8usize),
+                    (362usize, 208usize, 8usize),
+                    (363usize, 216usize, 8usize),
+                    (364usize, 224usize, 8usize),
+                    (365usize, 232usize, 8usize),
+                    (366usize, 240usize, 8usize),
+                    (367usize, 248usize, 8usize),
+                    (368usize, 256usize, 8usize),
+                    (369usize, 264usize, 8usize),
+                    (370usize, 272usize, 8usize),
+                    (371usize, 280usize, 8usize),
+                    (372usize, 288usize, 8usize),
+                    (373usize, 296usize, 8usize),
+                    (374usize, 304usize, 8usize),
+                    (375usize, 312usize, 8usize),
+                    (376usize, 320usize, 8usize),
                 ];
                 const VL_COLS: [(u32, usize, usize); 328usize] = [
                     (0u32, 0usize, 2usize),
@@ -10532,9 +10402,9 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                const VS_DESCS: [(usize, usize, usize); 1usize] = [(338usize, 0usize, 8usize)];
+                const VS_DESCS: [(usize, usize, usize); 1usize] = [(336usize, 0usize, 8usize)];
                 const VS_DEPS: [usize; 8usize] = [
-                    267usize, 268usize, 269usize, 270usize, 271usize, 272usize, 273usize, 274usize,
+                    266usize, 267usize, 268usize, 269usize, 270usize, 271usize, 272usize, 273usize,
                 ];
                 let mut _vs = 0;
                 while _vs < 1usize {
@@ -10601,7 +10471,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(277usize);
+                let cached = *state.prev_claims.get_unchecked(275usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 1usize));
                 }
@@ -10650,7 +10520,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(278usize);
+                let cached = *state.prev_claims.get_unchecked(276usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 2usize));
                 }
@@ -10699,7 +10569,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(279usize);
+                let cached = *state.prev_claims.get_unchecked(277usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 3usize));
                 }
@@ -10748,7 +10618,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(280usize);
+                let cached = *state.prev_claims.get_unchecked(278usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 4usize));
                 }
@@ -10814,7 +10684,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(281usize);
+                let cached = *state.prev_claims.get_unchecked(279usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 5usize));
                 }
@@ -10880,7 +10750,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(282usize);
+                let cached = *state.prev_claims.get_unchecked(280usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 6usize));
                 }
@@ -10946,7 +10816,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(283usize);
+                let cached = *state.prev_claims.get_unchecked(281usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 7usize));
                 }
@@ -11012,7 +10882,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(284usize);
+                let cached = *state.prev_claims.get_unchecked(282usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 8usize));
                 }
@@ -11078,7 +10948,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(285usize);
+                let cached = *state.prev_claims.get_unchecked(283usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 9usize));
                 }
@@ -11144,7 +11014,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(286usize);
+                let cached = *state.prev_claims.get_unchecked(284usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 10usize));
                 }
@@ -11210,7 +11080,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(287usize);
+                let cached = *state.prev_claims.get_unchecked(285usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 11usize));
                 }
@@ -11276,7 +11146,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(288usize);
+                let cached = *state.prev_claims.get_unchecked(286usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 12usize));
                 }
@@ -11342,7 +11212,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(289usize);
+                let cached = *state.prev_claims.get_unchecked(287usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 13usize));
                 }
@@ -11408,7 +11278,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(290usize);
+                let cached = *state.prev_claims.get_unchecked(288usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 14usize));
                 }
@@ -11474,7 +11344,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(291usize);
+                let cached = *state.prev_claims.get_unchecked(289usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 15usize));
                 }
@@ -11540,7 +11410,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(292usize);
+                let cached = *state.prev_claims.get_unchecked(290usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 16usize));
                 }
@@ -11606,7 +11476,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(293usize);
+                let cached = *state.prev_claims.get_unchecked(291usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 17usize));
                 }
@@ -11672,7 +11542,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(294usize);
+                let cached = *state.prev_claims.get_unchecked(292usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 18usize));
                 }
@@ -11738,7 +11608,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(295usize);
+                let cached = *state.prev_claims.get_unchecked(293usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 19usize));
                 }
@@ -11804,7 +11674,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(296usize);
+                let cached = *state.prev_claims.get_unchecked(294usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 20usize));
                 }
@@ -11870,7 +11740,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(297usize);
+                let cached = *state.prev_claims.get_unchecked(295usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 21usize));
                 }
@@ -11936,7 +11806,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(298usize);
+                let cached = *state.prev_claims.get_unchecked(296usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 22usize));
                 }
@@ -12002,7 +11872,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(299usize);
+                let cached = *state.prev_claims.get_unchecked(297usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 23usize));
                 }
@@ -12068,7 +11938,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(300usize);
+                let cached = *state.prev_claims.get_unchecked(298usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 24usize));
                 }
@@ -12134,7 +12004,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(301usize);
+                let cached = *state.prev_claims.get_unchecked(299usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 25usize));
                 }
@@ -12200,7 +12070,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(302usize);
+                let cached = *state.prev_claims.get_unchecked(300usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 26usize));
                 }
@@ -12266,7 +12136,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(303usize);
+                let cached = *state.prev_claims.get_unchecked(301usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 27usize));
                 }
@@ -12332,7 +12202,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(304usize);
+                let cached = *state.prev_claims.get_unchecked(302usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 28usize));
                 }
@@ -12367,7 +12237,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_ts, &ts_high);
                     field_ops::add_assign(&mut expected, &t_ts);
                 }
-                let cached = *state.prev_claims.get_unchecked(305usize);
+                let cached = *state.prev_claims.get_unchecked(303usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 29usize));
                 }
@@ -12384,12 +12254,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     &BabyBearField::from_reduced_raw_repr(2013261665u32),
                 );
                 field_ops::add_assign(&mut expected, &t_addr);
-                let cached = *state.prev_claims.get_unchecked(306usize);
+                let cached = *state.prev_claims.get_unchecked(304usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 30usize));
                 }
             }
-            check_virtual_setup_range_check_16bits::<E>(&state)?;
             check_virtual_setup_range_check_timestamp::<E>(&state)?;
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
@@ -12448,22 +12317,6 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             if !acc_num.is_zero() || acc_den.is_zero() {
                 return Err(E::gkr_lookup_identity_failed(1usize));
-            }
-        }
-        {
-            let mut acc_num = BabyBearExt4::ZERO;
-            let mut acc_den = BabyBearExt4::ONE;
-            for i in 0..16usize {
-                let n = *evals_slice.get_unchecked(96usize + i);
-                let d = *evals_slice.get_unchecked(112usize + i);
-                field_ops::mul_assign(&mut acc_num, &d);
-                let mut t = n;
-                field_ops::mul_assign(&mut t, &acc_den);
-                field_ops::add_assign(&mut acc_num, &t);
-                field_ops::mul_assign(&mut acc_den, &d);
-            }
-            if !acc_num.is_zero() || acc_den.is_zero() {
-                return Err(E::gkr_lookup_identity_failed(2usize));
             }
         }
         #[cfg(feature = "verifier_stats")]

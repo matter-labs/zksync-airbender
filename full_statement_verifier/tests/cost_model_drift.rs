@@ -20,13 +20,13 @@ const EXPECTED: &[(&str, u64)] = &[
     ("mem_word_only", 1029783),
     ("mem_subword_only", 1048980),
     ("inits_and_teardowns", 816741),
-    ("blake2_with_extended_control", 2846311),
+    ("blake2_with_extended_control", 2831445),
     ("bigint_with_extended_control", 1595665),
-    ("keccak_special5", 1608561),
-    ("blake2_g_function", 1100704),
-    ("keccak_column_parity", 1251926),
-    ("keccak_theta_rho", 1376432),
-    ("keccak_chi5", 1298178),
+    ("keccak_special5", 1592840),
+    ("blake2_g_function", 1084711),
+    ("keccak_column_parity", 1237128),
+    ("keccak_theta_rho", 1361139),
+    ("keccak_chi5", 1284269),
 ];
 
 fn repo_root() -> String {
