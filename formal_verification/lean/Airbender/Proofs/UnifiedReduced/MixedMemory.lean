@@ -23,6 +23,19 @@ theorem mixed_worker_member [Fact p.Prime] {data : RequestTrace p}
   List.mem_append.mpr (Or.inr (List.mem_flatMap.mpr ⟨row, member,
     List.mem_map.mpr ⟨port, by simpa using present, rfl⟩⟩))
 
+theorem mixed_machine_time_of_program [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {ca : List (BitVec 32)}
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    {row : Trace.Row p UnifiedFamily} (member : row ∈ data.machine.rows)
+    {port : MemoryPort} (present : port ∈ row.ports) :
+    (timeOfPair (writeToken row.columns row.assignment port).time).value = (port.event row.columns row.assignment).1 := by
+  have clock := state_clock_inputs hp inverse accepted.constraints accepted.states
+    publicProgram.initialClock publicProgram.initialAligned row member
+  exact (write_time (by omega) (base := rawPair row.assignment row.columns.initialTime)
+    clock.1 clock.2 (Trace.Proofs.port_offset row port present)).2
+
 theorem mixed_machine_time [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
@@ -30,16 +43,13 @@ theorem mixed_machine_time [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)
     {row : Trace.Row p UnifiedFamily} (member : row ∈ data.machine.rows)
     {port : MemoryPort} (present : port ∈ row.ports) :
-    (timeOfPair (writeToken row.columns row.assignment port).time).value = (port.event row.columns row.assignment).1 := by
-  have clock := state_clock_inputs hp inverse accepted.constraints accepted.states
-    inputs.publicProgram.initialClock inputs.publicProgram.initialAligned row member
-  exact (write_time (by omega) (base := rawPair row.assignment row.columns.initialTime)
-    clock.1 clock.2 (Trace.Proofs.port_offset row port present)).2
+    (timeOfPair (writeToken row.columns row.assignment port).time).value = (port.event row.columns row.assignment).1 :=
+  mixed_machine_time_of_program hp inverse accepted inputs.publicProgram member present
 
-theorem ordinary_zero_preserving [Fact p.Prime] (hp : 524288 < p)
+theorem ordinary_zero_preserving_of_program [Fact p.Prime] (hp : 524288 < p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
-    {ca oa : List (BitVec 32)} {cells : List Cell}
-    (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)
+    {oa : List (BitVec 32)}
+    (accepted : MixedMemoryAccepted data program) (ordinaryProgram : Mixed.programImage before oa = some program)
     {row : Trace.Row p UnifiedFamily} (member : row ∈ data.machine.rows) (ordinary : row ∉ data.callers) :
     RowZeroPreserving row := by
   cases row with
@@ -48,7 +58,7 @@ theorem ordinary_zero_preserving [Fact p.Prime] (hp : 524288 < p)
     have core := Verification.holds_of_sublist (accepted.constraints _ member)
       (List.sublist_append_left (importedConstraints data.machine.rom) importedConstraintsTimestampLookups)
     obtain ⟨entry, present, _, query⟩ := decoder_member (accepted.ordinaryDecoded _ member ordinary)
-    have source := run_program_sources inputs.ordinaryProgram entry present
+    have source := run_program_sources ordinaryProgram entry present
     rcases Mixed.Proofs.fields_cases source.fields with standard | custom
     · have fetched : Fetched w before :=
         ⟨entry, ⟨source.bytes, source.decoded, standard⟩, query,
@@ -57,11 +67,20 @@ theorem ordinary_zero_preserving [Fact p.Prime] (hp : 524288 < p)
       exact UnifiedReduced.Proofs.row_zero_preserving hp core (accepted.active _ member) fetched
     · exact UnifiedReduced.Proofs.custom_row_zero_preserving hp core custom query
 
-theorem mixed_zero_rules [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem ordinary_zero_preserving [Fact p.Prime] (hp : 524288 < p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)
+    {row : Trace.Row p UnifiedFamily} (member : row ∈ data.machine.rows) (ordinary : row ∉ data.callers) :
+    RowZeroPreserving row :=
+  ordinary_zero_preserving_of_program hp accepted inputs.ordinaryProgram member ordinary
+
+theorem mixed_zero_rules_of_program [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {ca oa : List (BitVec 32)}
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    (ordinaryProgram : Mixed.programImage before oa = some program)
     (requests : RequestBinding data before) : Transfer.CellWriteRules (mixedData data) (Cell.register 0).addressCode 0 := by
   intro edge present same reads
   rcases List.mem_append.mp present with machine | worker
@@ -79,17 +98,25 @@ theorem mixed_zero_rules [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
         change _ = Nat.pair 0 0
         simpa only [destinationToken, MemoryToken.word, Nat.pair_unpair,
           Trace.Row.columns, CircuitLayout.columns] using zero
-    · have preserving := ordinary_zero_preserving (by dsimp [timestampBase] at hp; omega) accepted inputs member caller
+    · have preserving := ordinary_zero_preserving_of_program (by dsimp [timestampBase] at hp; omega) accepted ordinaryProgram member caller
       apply preserving port native same
       intro earlier earlierMember order zero
       apply reads _ (mixed_machine_member member (by rwa [machine_ports_ordinary member caller]))
-      · rw [mixed_machine_time hp inverse accepted inputs member earlierMember,
-          mixed_machine_time hp inverse accepted inputs member native]
+      · rw [mixed_machine_time_of_program hp inverse accepted publicProgram member earlierMember,
+          mixed_machine_time_of_program hp inverse accepted publicProgram member native]
         exact order
       · exact zero
   · obtain ⟨row, _, step⟩ := List.mem_flatMap.mp worker
     obtain ⟨port, portMember, rfl⟩ := List.mem_map.mp step
     exact False.elim (Delegation.Proofs.port_not_zero row (by simpa using portMember) same)
+
+theorem mixed_zero_rules [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {ca oa : List (BitVec 32)} {cells : List Cell}
+    (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)
+    (requests : RequestBinding data before) : Transfer.CellWriteRules (mixedData data) (Cell.register 0).addressCode 0 :=
+  mixed_zero_rules_of_program hp inverse accepted inputs.publicProgram inputs.ordinaryProgram requests
 
 theorem mixed_write_rules [Fact p.Prime] (hp : 8388608 ≤ p)
     (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
