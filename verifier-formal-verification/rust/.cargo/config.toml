@@ -1,0 +1,9 @@
+# Same flags as zksync-airbender/examples/*/.cargo/config.toml (stable toolchain instead of nightly).
+[build]
+target = "riscv32i-unknown-none-elf"
+rustflags = [
+  "-C", "target-feature=+m,-unaligned-scalar-mem,+relax",
+  "-C", "link-arg=-Tlds/memory.x",
+  "-C", "link-arg=-Tlds/link.x",
+  "-C", "force-frame-pointers",
+]

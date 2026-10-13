@@ -1,0 +1,184 @@
+/-! # RV32IM as Airbender runs it — our own spec, meant to be read
+
+One instruction = at most one register or memory write, plus the PC update.
+No next state (`step = none`, i.e. unprovable in Airbender) for: anything outside RV32IM (and FENCE,
+ECALL, CSRs, …), misaligned or out-of-range loads/stores, misaligned jump targets, fetch outside ROM.
+Each instruction is to be proven equal to the official Sail model (slop/, TODO). -/
+
+namespace RV
+
+abbrev Word := BitVec 32
+abbrev Reg  := BitVec 5
+
+/-- Airbender memory map: ROM `[0, 2 MiB)` (code + constants, read-only), RAM `[2 MiB, 1 GiB)`. -/
+def ROM_END : Nat := 0x200000
+def RAM_END : Nat := 0x40000000
+
+abbrev readable (a : Word) (n : Nat) : Prop := a.toNat + n ≤ RAM_END
+abbrev writable (a : Word) (n : Nat) : Prop := ROM_END ≤ a.toNat ∧ a.toNat + n ≤ RAM_END
+abbrev aligned (a : Word) (n : Nat) : Prop := a.toNat % n = 0
+
+structure State where
+  pc  : Word
+  x   : Reg → Word          -- reads of x0 go through `r` and give 0
+  mem : Word → BitVec 8     -- byte-addressed, little-endian
+
+namespace State
+def r    (s : State) (i : Reg) : Word := if i = 0 then 0 else s.x i
+def set  (s : State) (rd : Reg) (v : Word) : State := { s with x := fun i => if i = rd then v else s.x i }
+def next (s : State) : State := { s with pc := s.pc + 4 }
+def jump (s : State) (t : Word) : State := { s with pc := t }
+/-- Jump; the target must be 4-byte aligned (no compressed instructions). -/
+def goto (s : State) (t : Word) : Option State := if t.toNat % 4 = 0 then some (s.jump t) else none
+end State
+
+/-- `n` bytes at `a`, little-endian. -/
+def read (m : Word → BitVec 8) (a : Word) : Nat → Word
+  | 0     => 0
+  | n + 1 => (m a).zeroExtend 32 ||| (read m (a + 1) n <<< 8)
+
+/-- The low `n` bytes of `v` written at `a`, little-endian. -/
+def write (m : Word → BitVec 8) (a : Word) (v : Word) : Nat → (Word → BitVec 8)
+  | 0     => m
+  | n + 1 => write (fun b => if b = a then v.setWidth 8 else m b) (a + 1) (v >>> 8) n
+
+/-- Store the low `n` bytes of `v` at `a`. -/
+def State.store (s : State) (a v : Word) (n : Nat) : State := { s with mem := write s.mem a v n }
+
+inductive Op | add | sub | sll | slt | sltu | xor | srl | sra | or | and
+             | mul | mulh | mulhsu | mulhu | div | divu | rem | remu
+
+def alu : Op → Word → Word → Word
+  | .add,    a, b => a + b
+  | .sub,    a, b => a - b
+  | .sll,    a, b => a <<< (b.setWidth 5).toNat
+  | .slt,    a, b => if a.slt b then 1 else 0
+  | .sltu,   a, b => if a.ult b then 1 else 0
+  | .xor,    a, b => a ^^^ b
+  | .srl,    a, b => a >>> (b.setWidth 5).toNat
+  | .sra,    a, b => a.sshiftRight (b.setWidth 5).toNat
+  | .or,     a, b => a ||| b
+  | .and,    a, b => a &&& b
+  | .mul,    a, b => a * b
+  | .mulh,   a, b => (a.signExtend 64 * b.signExtend 64).extractLsb' 32 32
+  | .mulhsu, a, b => (a.signExtend 64 * b.zeroExtend 64).extractLsb' 32 32
+  | .mulhu,  a, b => (a.zeroExtend 64 * b.zeroExtend 64).extractLsb' 32 32
+  | .div,    a, b => if b = 0 then -1 else a.sdiv b    -- sdiv: INT_MIN / -1 = INT_MIN
+  | .divu,   a, b => if b = 0 then -1 else a / b
+  | .rem,    a, b => if b = 0 then a else a.srem b     -- srem: INT_MIN % -1 = 0
+  | .remu,   a, b => if b = 0 then a else a % b
+
+inductive Cond | eq | ne | lt | ge | ltu | geu
+
+def Cond.holds : Cond → Word → Word → Bool
+  | .eq,  a, b => a == b
+  | .ne,  a, b => a != b
+  | .lt,  a, b => a.slt b
+  | .ge,  a, b => !a.slt b
+  | .ltu, a, b => a.ult b
+  | .geu, a, b => !a.ult b
+
+/-- Immediates are stored already decoded (sign-extended / shifted). -/
+inductive Instr
+  | lui    (rd : Reg) (imm : Word)
+  | auipc  (rd : Reg) (imm : Word)
+  | jal    (rd : Reg) (off : Word)
+  | jalr   (rd rs1 : Reg) (off : Word)
+  | branch (c : Cond) (rs1 rs2 : Reg) (off : Word)
+  | load   (n : Nat) (signed : Bool) (rd rs1 : Reg) (off : Word)
+  | store  (n : Nat) (rs2 rs1 : Reg) (off : Word)
+  | opImm  (op : Op) (rd rs1 : Reg) (imm : Word)
+  | op     (op : Op) (rd rs1 rs2 : Reg)
+
+def exec (s : State) : Instr → Option State
+  | .lui rd imm         => some (s.set rd imm).next
+  | .auipc rd imm       => some (s.set rd (s.pc + imm)).next
+  | .jal rd off         => (s.goto (s.pc + off)).map (·.set rd (s.pc + 4))
+  | .jalr rd rs1 off    => (s.goto ((s.r rs1 + off) &&& ~~~1)).map (·.set rd (s.pc + 4))
+  | .branch c rs1 rs2 off =>
+      if c.holds (s.r rs1) (s.r rs2) then s.goto (s.pc + off) else some s.next
+  | .load n sg rd rs1 off =>
+      let a := s.r rs1 + off
+      let v := read s.mem a n
+      let v := if sg then (v.setWidth (8 * n)).signExtend 32 else v
+      if aligned a n ∧ readable a n then some (s.set rd v).next else none
+  | .store n rs2 rs1 off =>
+      let a := s.r rs1 + off
+      if aligned a n ∧ writable a n then some (s.store a (s.r rs2) n).next else none
+  | .opImm op rd rs1 imm => some (s.set rd (alu op (s.r rs1) imm)).next
+  | .op op rd rs1 rs2    => some (s.set rd (alu op (s.r rs1) (s.r rs2))).next
+
+/-- Standard RV32IM encodings (unprivileged spec, ch. 2 and 13). -/
+def decode (w : Word) : Option Instr :=
+  let opc := (w.extractLsb' 0 7).toNat
+  let f3  := (w.extractLsb' 12 3).toNat
+  let f7  := (w.extractLsb' 25 7).toNat
+  let rd  : Reg := w.extractLsb' 7 5
+  let rs1 : Reg := w.extractLsb' 15 5
+  let rs2 : Reg := w.extractLsb' 20 5
+  let immI : Word := (w.extractLsb' 20 12).signExtend 32
+  let immS : Word := (w.extractLsb' 25 7 ++ w.extractLsb' 7 5).signExtend 32
+  let immB : Word := (w.extractLsb' 31 1 ++ w.extractLsb' 7 1 ++ w.extractLsb' 25 6 ++ w.extractLsb' 8 4
+                      ++ (0 : BitVec 1)).signExtend 32
+  let immU : Word := w.extractLsb' 12 20 ++ (0 : BitVec 12)
+  let immJ : Word := (w.extractLsb' 31 1 ++ w.extractLsb' 12 8 ++ w.extractLsb' 20 1 ++ w.extractLsb' 21 10
+                      ++ (0 : BitVec 1)).signExtend 32
+  let shamt : Word := rs2.zeroExtend 32
+  match opc, f3, f7 with
+  | 0x37, _, _    => some (.lui rd immU)
+  | 0x17, _, _    => some (.auipc rd immU)
+  | 0x6f, _, _    => some (.jal rd immJ)
+  | 0x67, 0, _    => some (.jalr rd rs1 immI)
+  | 0x63, 0, _    => some (.branch .eq  rs1 rs2 immB)
+  | 0x63, 1, _    => some (.branch .ne  rs1 rs2 immB)
+  | 0x63, 4, _    => some (.branch .lt  rs1 rs2 immB)
+  | 0x63, 5, _    => some (.branch .ge  rs1 rs2 immB)
+  | 0x63, 6, _    => some (.branch .ltu rs1 rs2 immB)
+  | 0x63, 7, _    => some (.branch .geu rs1 rs2 immB)
+  | 0x03, 0, _    => some (.load 1 true  rd rs1 immI)    -- lb
+  | 0x03, 1, _    => some (.load 2 true  rd rs1 immI)    -- lh
+  | 0x03, 2, _    => some (.load 4 false rd rs1 immI)    -- lw
+  | 0x03, 4, _    => some (.load 1 false rd rs1 immI)    -- lbu
+  | 0x03, 5, _    => some (.load 2 false rd rs1 immI)    -- lhu
+  | 0x23, 0, _    => some (.store 1 rs2 rs1 immS)        -- sb
+  | 0x23, 1, _    => some (.store 2 rs2 rs1 immS)        -- sh
+  | 0x23, 2, _    => some (.store 4 rs2 rs1 immS)        -- sw
+  | 0x13, 0, _    => some (.opImm .add  rd rs1 immI)
+  | 0x13, 2, _    => some (.opImm .slt  rd rs1 immI)
+  | 0x13, 3, _    => some (.opImm .sltu rd rs1 immI)
+  | 0x13, 4, _    => some (.opImm .xor  rd rs1 immI)
+  | 0x13, 6, _    => some (.opImm .or   rd rs1 immI)
+  | 0x13, 7, _    => some (.opImm .and  rd rs1 immI)
+  | 0x13, 1, 0x00 => some (.opImm .sll  rd rs1 shamt)
+  | 0x13, 5, 0x00 => some (.opImm .srl  rd rs1 shamt)
+  | 0x13, 5, 0x20 => some (.opImm .sra  rd rs1 shamt)
+  | 0x33, 0, 0x00 => some (.op .add    rd rs1 rs2)
+  | 0x33, 0, 0x20 => some (.op .sub    rd rs1 rs2)
+  | 0x33, 1, 0x00 => some (.op .sll    rd rs1 rs2)
+  | 0x33, 2, 0x00 => some (.op .slt    rd rs1 rs2)
+  | 0x33, 3, 0x00 => some (.op .sltu   rd rs1 rs2)
+  | 0x33, 4, 0x00 => some (.op .xor    rd rs1 rs2)
+  | 0x33, 5, 0x00 => some (.op .srl    rd rs1 rs2)
+  | 0x33, 5, 0x20 => some (.op .sra    rd rs1 rs2)
+  | 0x33, 6, 0x00 => some (.op .or     rd rs1 rs2)
+  | 0x33, 7, 0x00 => some (.op .and    rd rs1 rs2)
+  | 0x33, 0, 0x01 => some (.op .mul    rd rs1 rs2)
+  | 0x33, 1, 0x01 => some (.op .mulh   rd rs1 rs2)
+  | 0x33, 2, 0x01 => some (.op .mulhsu rd rs1 rs2)
+  | 0x33, 3, 0x01 => some (.op .mulhu  rd rs1 rs2)
+  | 0x33, 4, 0x01 => some (.op .div    rd rs1 rs2)
+  | 0x33, 5, 0x01 => some (.op .divu   rd rs1 rs2)
+  | 0x33, 6, 0x01 => some (.op .rem    rd rs1 rs2)
+  | 0x33, 7, 0x01 => some (.op .remu   rd rs1 rs2)
+  | _, _, _       => none
+
+/-- One step: fetch from ROM at an aligned PC, decode, execute. -/
+def step (s : State) : Option State :=
+  if s.pc.toNat % 4 = 0 ∧ s.pc.toNat + 4 ≤ ROM_END then (decode (read s.mem s.pc 4)).bind (exec s) else none
+
+/-- `n` steps. -/
+def run : Nat → State → Option State
+  | 0,     s => some s
+  | n + 1, s => (step s).bind (run n)
+
+end RV

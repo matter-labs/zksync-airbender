@@ -1,0 +1,12 @@
+**/target/
+lean/.lake/
+lean/**/.lake/
+*.olean
+*.ilean
+build/app.elf
+build/sail-work/
+.claude/
+build/*.log
+# Generated Sail RV32 model (~52 MB): never commit; regenerate with sail/regen.sh
+lean/sail-rv32/SailRV32/
+lean/sail-rv32/SailRV32.lean

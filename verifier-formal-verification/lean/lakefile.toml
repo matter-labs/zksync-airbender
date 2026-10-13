@@ -1,0 +1,37 @@
+name = "airbender_fv"
+defaultTargets = ["Human"]
+
+[[require]]
+name = "mathlib"
+scope = "leanprover-community"
+rev = "v4.34.1"
+
+# the official Sail RISC-V model, regenerated for RV32 by sail/regen.sh
+[[require]]
+name = "sail_rv32"
+path = "sail-rv32"
+
+[[lean_lib]]
+name = "Human"
+srcDir = "human"
+roots = ["Human"]
+
+[[lean_lib]]
+name = "Slop"
+srcDir = "slop"
+roots = ["Slop"]
+
+[[lean_lib]]
+name = "Image"
+srcDir = "image"
+roots = ["Image"]
+
+[[lean_exe]]
+name = "dump_image"
+srcDir = "image"
+root = "DumpImage"
+
+[[lean_exe]]
+name = "run_image"
+srcDir = "test"
+root = "RunImage"

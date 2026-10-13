@@ -1,0 +1,157 @@
+
+../build/app.elf:	file format elf32-littleriscv
+
+Disassembly of section .text:
+
+00000000 <_start>:
+       0:      	auipc	ra, 0x0
+       4:      	addi	ra, ra, 0xc
+       8:      	jalr	zero, 0x0(ra)
+
+0000000c <_abs_start>:
+       c:      	auipc	gp, 0x4200
+      10:      	addi	gp, gp, 0x7f4
+
+00000014 <.Lpcrel_hi2>:
+      14:      	auipc	sp, 0x4200
+      18:      	addi	sp, sp, -0x14
+      1c:      	add	s0, sp, zero
+      20:      	jal	zero, 0x24 <_start_rust>
+
+00000024 <_start_rust>:
+      24:      	addi	sp, sp, -0x10
+      28:      	sw	ra, 0xc(sp)
+      2c:      	sw	s0, 0x8(sp)
+      30:      	addi	s0, sp, 0x10
+      34:      	jal	ra, 0x3c <_RNvCscpenPlUuKfg_3app4main>
+
+00000038 <_halt>:
+      38:      	jal	zero, 0x38 <_halt>
+
+0000003c <_RNvCscpenPlUuKfg_3app4main>:
+      3c:      	addi	sp, sp, -0x10
+      40:      	sw	ra, 0xc(sp)
+      44:      	sw	s0, 0x8(sp)
+      48:      	sw	s1, 0x4(sp)
+      4c:      	sw	s2, 0x0(sp)
+      50:      	addi	s0, sp, 0x10
+      54:      	lui	a0, 0x4200
+      58:      	lw	s1, 0x0(a0)
+      5c:      	addi	a0, s1, 0x0
+      60:      	jal	ra, 0xbc <combine>
+      64:      	addi	s2, a0, 0x0
+      68:      	addi	a0, zero, 0x204
+      6c:      	addi	a1, zero, 0x64
+      70:      	addi	a2, s1, 0x0
+      74:      	jal	ra, 0x188 <poly_eval>
+      78:      	addi	a1, a0, 0x0
+      7c:      	addi	a0, s2, 0x0
+      80:      	jal	zero, 0x38 <_halt>
+      84:      	unimp
+
+00000088 <add_mod>:
+      88:      	addi	sp, sp, -0x10
+      8c:      	sw	ra, 0xc(sp)
+      90:      	sw	s0, 0x8(sp)
+      94:      	addi	s0, sp, 0x10
+      98:      	add	a0, a1, a0
+      9c:      	slli	a1, a0, 0x1
+      a0:      	srli	a1, a1, 0x1
+      a4:      	srli	a0, a0, 0x1f
+      a8:      	add	a0, a1, a0
+      ac:      	lw	ra, 0xc(sp)
+      b0:      	lw	s0, 0x8(sp)
+      b4:      	addi	sp, sp, 0x10
+      b8:      	jalr	zero, 0x0(ra)
+
+000000bc <combine>:
+      bc:      	addi	sp, sp, -0x10
+      c0:      	sw	ra, 0xc(sp)
+      c4:      	sw	s0, 0x8(sp)
+      c8:      	sw	s1, 0x4(sp)
+      cc:      	sw	s2, 0x0(sp)
+      d0:      	addi	s0, sp, 0x10
+      d4:      	addi	s1, a0, 0x0
+      d8:      	jal	ra, 0x128 <inc>
+      dc:      	addi	s2, a0, 0x0
+      e0:      	addi	a0, s1, 0x0
+      e4:      	jal	ra, 0x104 <double>
+      e8:      	add	a0, a0, s2
+      ec:      	lw	ra, 0xc(sp)
+      f0:      	lw	s0, 0x8(sp)
+      f4:      	lw	s1, 0x4(sp)
+      f8:      	lw	s2, 0x0(sp)
+      fc:      	addi	sp, sp, 0x10
+     100:      	jalr	zero, 0x0(ra)
+
+00000104 <double>:
+     104:      	addi	sp, sp, -0x10
+     108:      	sw	ra, 0xc(sp)
+     10c:      	sw	s0, 0x8(sp)
+     110:      	addi	s0, sp, 0x10
+     114:      	slli	a0, a0, 0x1
+     118:      	lw	ra, 0xc(sp)
+     11c:      	lw	s0, 0x8(sp)
+     120:      	addi	sp, sp, 0x10
+     124:      	jalr	zero, 0x0(ra)
+
+00000128 <inc>:
+     128:      	addi	sp, sp, -0x10
+     12c:      	sw	ra, 0xc(sp)
+     130:      	sw	s0, 0x8(sp)
+     134:      	addi	s0, sp, 0x10
+     138:      	addi	a0, a0, 0x1
+     13c:      	lw	ra, 0xc(sp)
+     140:      	lw	s0, 0x8(sp)
+     144:      	addi	sp, sp, 0x10
+     148:      	jalr	zero, 0x0(ra)
+
+0000014c <mul_mod>:
+     14c:      	addi	sp, sp, -0x10
+     150:      	sw	ra, 0xc(sp)
+     154:      	sw	s0, 0x8(sp)
+     158:      	addi	s0, sp, 0x10
+     15c:      	mul	a2, a1, a0
+     160:      	mulhu	a0, a1, a0
+     164:      	slli	a1, a2, 0x1
+     168:      	slli	a3, a0, 0x1
+     16c:      	srli	a2, a2, 0x1f
+     170:      	srli	a0, a1, 0x1
+     174:      	or	a1, a2, a3
+     178:      	lw	ra, 0xc(sp)
+     17c:      	lw	s0, 0x8(sp)
+     180:      	addi	sp, sp, 0x10
+     184:      	jal	zero, 0x88 <add_mod>
+
+00000188 <poly_eval>:
+     188:      	addi	sp, sp, -0x20
+     18c:      	sw	ra, 0x1c(sp)
+     190:      	sw	s0, 0x18(sp)
+     194:      	sw	s1, 0x14(sp)
+     198:      	sw	s2, 0x10(sp)
+     19c:      	sw	s3, 0xc(sp)
+     1a0:      	addi	s0, sp, 0x20
+     1a4:      	addi	s2, a1, 0x0
+     1a8:      	beq	a1, zero, 0x1e4 <poly_eval+0x5c>
+     1ac:      	addi	s1, a2, 0x0
+     1b0:      	addi	a1, a0, 0x0
+     1b4:      	addi	a0, zero, 0x0
+     1b8:      	slli	a2, s2, 0x2
+     1bc:      	add	a1, a2, a1
+     1c0:      	addi	s3, a1, -0x4
+     1c4:      	addi	s2, s2, -0x1
+     1c8:      	addi	a1, s1, 0x0
+     1cc:      	jal	ra, 0x14c <mul_mod>
+     1d0:      	lw	a1, 0x0(s3)
+     1d4:      	jal	ra, 0x88 <add_mod>
+     1d8:      	addi	s3, s3, -0x4
+     1dc:      	bne	s2, zero, 0x1c4 <poly_eval+0x3c>
+     1e0:      	jal	zero, 0x1e8 <poly_eval+0x60>
+     1e4:      	addi	a0, zero, 0x0
+     1e8:      	lw	ra, 0x1c(sp)
+     1ec:      	lw	s0, 0x18(sp)
+     1f0:      	lw	s1, 0x14(sp)
+     1f4:      	lw	s2, 0x10(sp)
+     1f8:      	lw	s3, 0xc(sp)
+     1fc:      	addi	sp, sp, 0x20
+     200:      	jalr	zero, 0x0(ra)

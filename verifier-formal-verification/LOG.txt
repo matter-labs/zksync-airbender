@@ -1,0 +1,180 @@
+=== REPO RULE: NEVER COMMIT LARGE DATA (2026-10-13) ===
+This folder lives in the PUBLIC repo matter-labs/zksync-airbender (branch mb_formal_verification, off
+av_gkr_compiler, folder verifier-formal-verification/). Never commit generated models, build outputs, .lake/,
+binaries beyond the tiny build/app.*, logs or caches. In particular the generated Sail model
+(lean/sail-rv32/SailRV32/, SailRV32.lean, ~52 MB) is gitignored: regenerate it with sail/regen.sh. Before each
+commit check `git diff --cached --stat` and that no staged file is over ~200 KB.
+Moved here from an earlier prototype repo (as a snapshot; its history, which contains the large Sail model, was
+NOT imported).
+
+=== MOVE TO AIRBENDER (2026-10-13) ===
+- ProgramCorrect (human/Human/Theorems.lean) strengthened: after _halt, any number of further steps keeps the PC
+  and every register unchanged (Airbender reads the outputs some steps later). NOT yet re-proven:
+  slop/Slop/RV/Final.lean fails, so verify.sh fails until it is.
+- Without the generated Sail model only Human + Slop.RV.* build; Slop.Sail.* needs sail/regen.sh first.
+
+=== HANDOFF (2026-10-13, end of day; resume from another machine) ===
+State: main @ this commit, pushed; ./verify.sh passes (exit 0). Proven on the exact binary build/app.bin
+(sha256 c9c2781c…): RV.program_correct : RV.ProgramCorrect (lean/human/Human/Theorems.lean): from pc 0, image
+loaded, INPUT word x ≤ 2^31-1 → reaches _halt with a0 = combine x = 3x+1 and a1 ≡ Σ_{i<100} (31i²+7)xⁱ in
+ZMod (2^31-1) (a1 ≤ P), and stays there. Axioms: propext, Classical.choice, Quot.sound only.
+Machine model used by that theorem: OUR spec lean/human/Human/RV32.lean (NOT yet related to Sail).
+Branch demo-plus5 = incremental demo (table +5), not to be merged.
+
+New machine setup:
+- Rust: rustup; rust/rust-toolchain.toml pins 1.99.0 + riscv32i-unknown-none-elf + llvm-tools (installed on demand).
+  rust/build.sh → build/app.{bin,dis,sym,sha256} + lean/image/Image.lean (deterministic).
+- Lean: elan; lean/lean-toolchain = v4.34.1. cd lean && lake exe cache get (Mathlib), then lake build.
+  First build compiles the generated Sail model lean/sail-rv32 (sources NOT committed here: sail/regen.sh; 249 MB with build; ~4.5 min,
+  ~4.8 GB peak — the one exception to the 4 GB convention, do it once). lean/check.sh <Module> = build under 60 s /
+  4 GB cgroup (needs systemd --user; otherwise use `timeout 60 lake build <Module>` and watch RSS).
+- Sail toolchain (only to REGENERATE the Sail model; not needed to build): opam 2.6.1 + z3 in ~/.local/bin, opam
+  switch `sail` (OCaml 5.4.1) with Sail 0.20.3; see sail/README.md, sail/PINS.md, sail/regen.sh.
+- lean/gen/words.sh regenerates slop/Slop/RV/Code/*.lean from the image (run after rust/build.sh).
+- ./verify.sh: rebuild binary + generated files must equal committed ones, lake build, statement + axioms check,
+  concrete runs (lake exe run_image).
+
+NEXT (agreed with user): prove our mini RV32IM spec equivalent to the official Sail RV32IM model, with a short list
+of documented deviations; only after that, more serious program proving. See plan item 10 below.
+
+=== PROCESS ===
+- SPEED / RAM (user, 2026-10-12): "loops that take minutes are wrong; everything must be fast, modular, baby steps;
+  don't run things that use a lot of RAM". Working conventions chosen by the agent (not user rules): aim for a few
+  seconds per Lean file (~10 s is a soft target, not a reason to split on its own), hard kill at 60 s and ~4 GB
+  (lean/check.sh: timeout + cgroup; `ulimit -v` breaks Lean's threads). Minutes = design bug, not a wait.
+  Work in baby steps: one small lemma/file at a time, measure it, then combine. Never rebuild the Sail model casually.
+- RULE OF THUMB (user, 2026-10-13): whenever large data or many cases are involved (big symbolic states, long
+  tables, many instructions), avoid anything whose cost grows with that size: unfolding definitions, "by
+  computation" steps (rfl / decide / kernel evaluation on big terms), re-deriving the same fact at every step.
+  Instead prove small general lemmas once (on a tiny variable state / one entry / one instruction) and use them
+  as ordinary rewrites, so each use costs the same however big the data is.
+  Examples so far: state-accessor lemmas proved by `Eq.trans rfl rfl` (not `rfl`); register-read simproc instead
+  of if-chains; per-word decode lemmas; table entries read by `table_read`; link check as one list equality
+  instead of per-word evaluation; loops by one-iteration lemma + induction (never unrolled).
+
+=== PLAN (current, in order; each step a few seconds per Lean file, committed + pushed when done) ===
+1. [done] combine 7.5 s, inc/double 3.2 s (register-read simproc instead of if-chains: simp with a discharger was
+   slow on if-chains)
+2.+3. [done] slop/Slop/RV/Program.lean: from pc = 0 (any registers) through _start, _start_rust, main, the call to
+   combine (by its contract), to _halt with a0 = 3x+1, given code facts + INPUT word (5 s)
+4.-7. [done] link check (Final.lean, kernel decide), human/Theorems.lean (ProgramCorrect), verify.sh, human/ is
+   Sail-free (Sail route moved to slop/Slop/Sail/)
+8. [done] poly PoC: guest now also computes poly_eval(COEFFS, 100, x) (Horner over Mersenne31 with
+   add_mod/mul_mod copied from airbender field/src/ops.rs), result in a1.
+   [done] rust + image (COEFFS in ROM at 0x204); combine proof moved to the new layout; add_mod (4 s), mul_mod
+   (tail call into add_mod, 6 s) proven in Nat-mod form.
+   [done] PolyLoop.lean: the Horner loop by induction on the remaining count (one symbolic iteration incl. the
+   calls to mul_mod/add_mod, exit path to ret; 7.5 s).
+   [done] Poly.lean (prologue → loop lemma, 6 s), Program.lean (boot, main, both calls, 4.7 s), Link.lean (byte-list
+   link check, COEFFS 1 s instead of 33 s), PolyZMod.lean (Horner Nat value = ∑ cᵢ xⁱ in ZMod P), Final.lean.
+9. [done] modularity: generated code split per block (slop/Slop/RV/Code/<fn>.lean, no addresses inside, rewritten
+   only when the block's bytes change), each proof imports only its blocks.
+   [done] incremental demo (branch demo-plus5): Rust table cᵢ += 5 → only Code/COEFFS.lean regenerated; without a
+   spec change the build fails exactly at PolyZMod.coeffs_check (bytes ≠ spec); after one spec line
+   (Spec.coeffNat) it passes. Re-checked: Code.COEFFS, Spec*, Theorems, Link, PolyLoop, PolyZMod, Poly, Program,
+   Final (no proof script edited); untouched: inc/double/combine/add_mod/mul_mod. Rust+codegen+Lean: 24 s.
+   [idea] make PolyLoop generic in the table (length + entries ≤ P as hypotheses) so a table change skips it (-6 s)
+10. NEXT: RV32 spec ⇔ Sail RV32IM (Airbender config), with documented deviations. Plan (baby steps, small lemmas):
+   a. Relation R between a Sail state (slop/Slop/Sail: FState + Sys, config = misa I+M, M-mode, memory map ROM rx /
+      RAM rw, no CLINT/Zicntr) and an RV32.State: same pc, x1..x31, memory bytes; Sail-only state (CSRs, minstret,
+      nextPC, …) fixed by Sys / tracked separately.
+   b. Decode: for every 32-bit word w: Sail decode w is the instruction corresponding to RV32.decode w, or RV32.decode
+      w = none (then Sail gives illegal/unsupported → no Airbender step). Sail's decoder is one huge match: do NOT
+      unfold it symbolically. Options: per instruction format with symbolic fields via the Sail encdec mapping
+      lemmas, or (fallback) per concrete word of the image (closed evaluation, ~0.3 s/word, already have the oracle).
+   c. Execute: per instruction kind, one lemma relating Sail execute_X (small functions: execute_ITYPE, RTYPE, LOAD,
+      STORE, JAL, JALR, BTYPE, UTYPE, SHIFTIOP, MUL, DIV, REM) on R-related states to RV32.exec. rX/wX lemmas first
+      (x0, register file), then memory: one lemma per layer of Sail's access path (M-mode translation = identity,
+      empty PMP passes, PMA check = our readable/writable, alignment) proven ONCE, then loads/stores reuse them.
+      Follow the rule of thumb (constant cost per use; no evaluation of try_step on symbolic states — that was the
+      original minutes-long failure).
+   d. Step: Sail try_step (fetch + decode + execute + PC update + minstret) ⇔ RV32.step under R; then run n.
+   e. Deviations to document (expected): Sail traps where RV32 has no next state (misaligned access/jump, illegal
+      instruction, fetch outside ROM); counters (minstret) not in RV32; CSRs (Airbender 0x7c0/0x7c7/0x7ca) not yet
+      in RV32; interrupts disabled. State them in human/ next to RV32.lean.
+   f. Transfer: ProgramCorrect for RV32 ⇒ same statement for Sail (simulation lemma), so the trusted base becomes Sail.
+
+11. GENERIC COMPONENTS (user, 2026-10-13): by default prove components generically, so that changing one does not
+   force re-proving another; specialise where it buys a lot (e.g. much simpler or faster proofs), and say so.
+   Concretely:
+   a. data generic: PolyLoop/Poly for any table C (any length n, entries ≤ P) at any address T in ROM
+   b. position generic: each function proven at a symbolic base A, callees at A + (fixed relative offset, which is
+      what the jal words encode); only Program instantiates absolute addresses. Then moving code (e.g. main grows)
+      re-checks only Program/Link/Final.
+   c. argument generic: poly_eval for any n (incl. n = 0) and pointer, as the Rust function is
+   Measure after each: a table change / a main change must not re-run any function proof.
+   [done a, c] PolyLoop/PolyEmpty/Poly generic in table, length (incl. n = 0) and address; table facts only in
+   Coeffs.lean/PolyZMod.lean. Table change (+5) now re-checks only Code.COEFFS, Coeffs, Spec*, Theorems, Link,
+   PolyZMod, Program, Final: 13.6 s total (was 24 s); no function proof re-runs.
+   [done b] mul_mod, combine, poly_eval proven at any address (callees at relative offsets); inc/double/add_mod were
+   already position independent. Only Program.lean fixes addresses (exception: it is the link step).
+   [todo] Program: take addresses from Image symbols instead of literals, so relinking needs no manual edit.
+   Pitfall found: simp + rfl-lemmas on big symbolic states hung / blew the kernel stack: state accessor lemmas are now
+   proved by `Eq.trans rfl rfl` (non-definitional rewrites).
+
+=== TODO (backlog) ===
+- Program.lean: take addresses from Image symbols instead of literals (relinking without manual edits)
+- ROM padding: user asks whether Airbender pads the ROM image to a power of 2 (with UNIMP); check Airbender
+  (prover/cli loading of app.bin) and, if so, pad in rust/build.sh and make ImageLoaded cover the padded image
+- optional: one lemma "tables in this image are 4-aligned" from the symbol table (instead of decide per call site)
+- differential test RV32 vs Sail C emulator / Airbender simulator on random instructions (cheap cross-check)
+- CSRs 0x7c0/0x7c7/0x7ca not in RV32 spec yet; PoC input via fixed RAM word INPUT (Airbender uses CSR 0x7c0)
+- report upstream: sail-riscv Lean backend missing externs (event_csr_write_callback, event_callback, validate_event_selectors)
+- incremental demo: add unrelated fn, relink, old proofs reused
+- DIRECTION CHANGE (user, 2026-10-12): Sail symbolic execution too slow (sym_step on ret > 6 min). Program proofs now
+  run against our own readable spec human/Human/RV32.lean; Sail kept for a later per-instruction equivalence proof.
+
+=== DONE ===
+----- v0.0.13 per-function generated code files -----
+- lean/gen/words.sh writes slop/Slop/RV/Code/<block>.lean (words + decode lemmas), unchanged files untouched;
+  Words.lean removed; all RV proof files 3-8 s each
+----- v0.0.10 inc/double/combine proven on the RV32 spec -----
+- human/Human/Call.lean: CodeAt, Call (entry conditions), Returns (ret to ra, callee-saved, frame), Implements,
+  ImplementsAt (fixed address + callees' code), fn₁
+- slop/Slop/RV: Mem (read/write lemmas), Step (per-kind exec lemmas, goal-directed run, calls), Words (generated:
+  decode lemma per image word + Code.<fn> lists, lean/gen/words.sh), Tactic (rv_start/rv_steps/rv_call_ok/
+  rv_returned/rv_ret/rv_regs/rv_callee/rv_frame), Inc (4.6 s), Double (4.7 s), Combine (11 s, calls inc + double
+  through their contracts); axioms: propext, Classical.choice, Quot.sound only (no bv_decide / native code)
+- lean/check.sh: lake build under 60 s / 4 GB cgroup limits, prints time and peak RSS
+- pitfalls: simp needs implicitDefEqProofs := false (else the kernel unfolds `run`); keep literals in BitVec.ofNat
+  form; dischargers must not run with error recovery (`first | … | fail`); clear fetch facts before omega
+ renumbered 2026-10-12: commit messages v0.1.0/v0.2.0/v0.3.0/v0.4.0/v0.5.0 = v0.0.6/7/8/8/9 here)
+----- v0.0.9 own RV32IM spec -----
+- human/Human/RV32.lean: readable RV32IM spec (decoder from the encoding tables, exec with <= 1 reg/mem write + PC,
+  Airbender memory map, none = unprovable); ~150 lines, builds in ~8 s
+- slop/RVRun: compiled program run concretely on the spec: input 5 -> a0 = 16 at _halt (kernel-checked, ~5 s, 1.3 GB)
+- sym_step experiments (build/symreal, symtest) dropped from the repo
+----- v0.0.8 Airbender filters in Lean + first Sail step proof -----
+- architecture review -> docs/architecture.md
+- human/: Machine (Sail interpreter on FState), Airbender (misa, memory map, Supported, NopCSR, step, Sys, Runs),
+  Contract (ImageLoaded, Implements), Spec (inc/double/combine), Config (kernel-checked sanity facts)
+- sail config reduced to stock minus CLINT / interrupt generator / Zicntr (sail/config/airbender-base.json)
+- slop/Monad: runF simp lemmas
+- slop/StepAddi: FIRST SYMBOLIC STEP: ∀ s, Sys s → addi a0,a0,1 at 0xd8 → step s = some s' with a0+1, PC 0xdc,
+  minstret+1, mem unchanged, Sys s', other GPRs unchanged (6 s, axioms: propext/choice/Quot.sound)
+- slop/KernelEval: #kernel_eval debug command (kernel whnf normaliser)
+- slop/KernelRfl: `kernel_rfl` tactic (Eq.refl checked only by the kernel; works with free variables):
+  whole symbolic try_step of addi (a0, minstret symbolic) evaluates in ~1 s (StepDemo.try_step_addi_vals)
+- slop/Writes: write-tracking oracle + soundness
+- slop/Oracle: closed oracle evaluator + soundness vs runF; decode of concrete words under Sys by decide +kernel (~0.3 s/word)
+----- v0.0.7 Airbender Sail config (superseded by v0.0.8) -----
+----- v0.0.6 Sail RV32 Lean model -----
+- opam 2.6.1 + z3 5.1.0 in ~/.local/bin, opam switch `sail` (OCaml 5.4.1) with Sail 0.20.3 (sail2 @ 2ba3212); opam init in ~/.zshrc
+- sail/regen.sh: pinned sail-riscv @ 6136f84 -> lean/sail-rv32 (full module scope, 51MB, lake build 4.5min/4.8GB)
+- lean-sail v6 vendored + patched for Lean 4.34.1; patch for 3 missing Lean externs in sail-riscv; RvfiDii uses legacy do-elab
+- 'proof' variant: zero custom axioms (try_step/decode/execute use only propext, Classical.choice, Quot.sound)
+- smoke test (decide +kernel, FState interpreter): decode ADD/MUL, one try_step executes ADD from reset
+----- v0.0.5 Lean image -----
+- rust/build.sh emits lean/image/Image.lean (bytes + symbol addrs); `lake exe dump_image` == build/app.bin
+----- v0.0.4 Lean skeleton -----
+- lean/: Lean v4.34.1 + Mathlib v4.34.1 (cache fetched), libs Human (human/) and Slop (slop/)
+- history rewritten to drop a 64MB app.elf blob; app.elf no longer tracked
+----- v0.0.3 ELF fix -----
+- linker script: .data NOLOAD (ELF was 64MB); build.rs relinks on lds/asm change
+----- v0.0.2 Airbender-style Rust guest -----
+- research Airbender guest style/ISA -> docs/airbender-notes.md (zksync-airbender @ 6ec4ea7)
+- rust/: stable 1.99.0, riscv32i + (+m,-unaligned-scalar-mem,+relax), force-frame-pointers, lto, Airbender linker script (ROM@0, stack RAM@2M) + _start asm
+- guest: inc, double, combine (extern "C", inline(never)); main reads INPUT, result in a0, halts on `j .`; panic = unimp
+- rust/build.sh -> build/app.{bin,dis,sym,sha256}; byte-identical when built from another directory
+----- v0.0.1 repo skeleton -----
+- private GitHub repo, README, LOG.txt, design context in docs/
