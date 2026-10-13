@@ -577,9 +577,16 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
             // easy case for extra var if jump
             let should_jump = {
                 let is_branch = placer.get_boolean(is_branch_var);
-                let jump_resolution = placer.get_boolean(should_jump_or_slt_value);
-
-                is_branch.and(&jump_resolution)
+                // Other families reuse this slot for non-Boolean values. Mask
+                // the field value before interpreting it as a branch decision.
+                let jump_resolution = placer.get_field(should_jump_or_slt_value);
+                let zero = <CS::WitnessPlacer as WitnessTypeSet<F>>::Field::constant(F::ZERO);
+                <CS::WitnessPlacer as WitnessTypeSet<F>>::Field::select(
+                    &is_branch,
+                    &jump_resolution,
+                    &zero,
+                )
+                .into_mask()
             };
             placer.assign_mask(should_jump_if_branch, &should_jump);
 
