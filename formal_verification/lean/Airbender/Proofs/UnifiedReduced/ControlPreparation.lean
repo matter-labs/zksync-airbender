@@ -116,10 +116,10 @@ theorem prefix_write_before_preparation_cut [Fact p.Prime] (hp : 2 * timestampBa
     rw [scope.prefixScope] at prior
     cases prior
 
-theorem literal_row_output [Fact p.Prime] (hp : 524288 < p)
+theorem literal_row_output_of_program [Fact p.Prime] (hp : 524288 < p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
-    {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat} {register : BitVec 5} {literal : ControlLiteral}
-    (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)
+    {oa : List (BitVec 32)} {cut : Nat} {register : BitVec 5} {literal : ControlLiteral}
+    (accepted : MixedMemoryAccepted data program) (ordinaryProgram : Mixed.programImage before oa = some program)
     (scope : ControlPreparation data program cut register literal) (nonzero : register ≠ 0)
     (zeroReads : ∀ edge ∈ data.mixedSteps, edge.1.address = (Cell.register 0).addressCode → edge.1.value = 0)
     {w : Nat → ZMod p} (member : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∈ data.machine.rows)
@@ -130,7 +130,7 @@ theorem literal_row_output [Fact p.Prime] (hp : 524288 < p)
     (List.sublist_append_left (importedConstraints data.machine.rom) importedConstraintsTimestampLookups)
   obtain ⟨entry, present, _, query⟩ := decoder_member (accepted.ordinaryDecoded _ member ordinary)
   change decoderQuery w = entry.query at query
-  have source := run_program_sources inputs.ordinaryProgram entry present
+  have source := run_program_sources ordinaryProgram entry present
   have fields := source.fields
   rw [scope.program entry present, literal_fields nonzero] at fields
   have data : entry.data = ⟨.machine, 0, 0, register, Word.ofBitVec literal.value, 1, 0⟩ := (Option.some.inj fields).symm
@@ -179,34 +179,49 @@ theorem literal_row_output [Fact p.Prime] (hp : 524288 < p)
       destinationRAM, outputLocation, outputUpper, indices.2.2]
   · simpa [write_word, importedConstraintsMemoryPorts, WordColumns.evaluate] using result
 
-theorem preparation_at_boundary [Fact p.Prime] (hp : 8388608 ≤ p)
+theorem literal_row_output [Fact p.Prime] (hp : 524288 < p)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat} {register : BitVec 5} {literal : ControlLiteral}
+    (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)
+    (scope : ControlPreparation data program cut register literal) (nonzero : register ≠ 0)
+    (zeroReads : ∀ edge ∈ data.mixedSteps, edge.1.address = (Cell.register 0).addressCode → edge.1.value = 0)
+    {w : Nat → ZMod p} (member : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∈ data.machine.rows)
+    (ordinary : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∉ data.callers) :
+    (writeToken importedConstraintsTraceColumns w importedConstraintsMemoryPorts[2]).address = (Cell.register register).addressCode ∧
+      (writeToken importedConstraintsTraceColumns w importedConstraintsMemoryPorts[2]).word.toBitVec = literal.value :=
+  literal_row_output_of_program hp accepted inputs.ordinaryProgram scope nonzero zeroReads member ordinary
+
+theorem preparation_token [Fact p.Prime] (hp : 8388608 ≤ p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before atCut : State}
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat} {register : BitVec 5} {literal : ControlLiteral}
     {tokens : List (MemoryToken p)}
-    (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    (ordinaryProgram : Mixed.programImage before oa = some program)
+    (initialization : initialImage before cells = some data.machine.initialMemory)
     (scope : ControlPreparation data program cut register literal) (nonzero : register ≠ 0) (aligned : cut % 4 = 0)
     (matching : (data.machine.initialMemory ++ (data.prefixSteps cut).map Prod.snd).Perm
-      (tokens ++ (data.prefixSteps cut).map Prod.fst)) (boundary : NativeBoundary tokens atCut cells) :
-    PreparedControl tokens atCut cut register literal := by
+      (tokens ++ (data.prefixSteps cut).map Prod.fst)) :
+    ∃ token ∈ tokens, token.address = (Cell.register register).addressCode ∧
+      (timeOfPair token.time).value = cut - 2 ∧ token.word = Word.ofBitVec literal.value := by
   have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
-  have requests := request_binding size clockInverse accepted.toRequestChecks inputs.publicProgram
-  have facts := mixed_memory_facts size clockInverse accepted inputs.publicProgram inputs.initialization requests
+  have requests := request_binding size clockInverse accepted.toRequestChecks publicProgram
+  have facts := mixed_memory_facts size clockInverse accepted publicProgram initialization requests
   have zero := Transfer.read_cell_values_of_rules facts (Cell.register 0).addressCode 0
-    (Delegation.Caller.Proofs.initial_zero inputs.initialization)
-    (mixed_zero_rules size clockInverse accepted inputs requests)
-  obtain ⟨row, member, last, ordinary⟩ := preparation_row size clockInverse accepted.toRequestChecks inputs.publicProgram scope aligned
+    (Delegation.Caller.Proofs.initial_zero initialization)
+    (mixed_zero_rules_of_program size clockInverse accepted publicProgram ordinaryProgram requests)
+  obtain ⟨row, member, last, ordinary⟩ := preparation_row size clockInverse accepted.toRequestChecks publicProgram scope aligned
   cases row with
   | mk family w =>
     cases family
     let token := writeToken importedConstraintsTraceColumns w importedConstraintsMemoryPorts[2]
-    have output := literal_row_output (by omega) accepted inputs scope nonzero zero member ordinary
+    have output := literal_row_output_of_program (by omega) accepted ordinaryProgram scope nonzero zero member ordinary
     have included : importedConstraintsMemoryPorts[2] ∈ machinePorts (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) := by
       rw [machine_ports_ordinary member ordinary]
       simp [Trace.Row.ports, CircuitLayout.ports, importedConstraintsMemoryPorts]
     have edge := mixed_machine_member member included
     have clocks := state_clock_inputs size clockInverse accepted.constraints accepted.states
-      inputs.publicProgram.initialClock inputs.publicProgram.initialAligned _ member
+      publicProgram.initialClock publicProgram.initialAligned _ member
     have time := (write_time (by omega) (base := rawPair w importedConstraintsTraceColumns.initialTime)
       clocks.1 clocks.2 (by decide : importedConstraintsMemoryPorts[2].clock.offset < 4)).2
     have timestamp : (timeOfPair token.time).value = cut - 2 := by
@@ -220,15 +235,38 @@ theorem preparation_at_boundary [Fact p.Prime] (hp : 8388608 ≤ p)
       · exact present
       · obtain ⟨access, accessMember, same⟩ := List.mem_map.mp consumed
         have earlier := facts.order access (List.mem_of_mem_filter accessMember)
-        have bound := prefix_write_before_preparation_cut size clockInverse accepted.toRequestChecks inputs.publicProgram scope aligned access accessMember
+        have bound := prefix_write_before_preparation_cut size clockInverse accepted.toRequestChecks publicProgram scope aligned access accessMember
         rw [same, timestamp] at earlier
         omega
-    obtain ⟨cell, _, address, read⟩ := native_boundary_read boundary present
-    have same : cell = Cell.register register := cell_address_injective (address.trans output.1)
-    subst cell
-    refine ⟨?_, token, present, output.1, timestamp, output.2⟩
-    rw [show token.word.toBitVec = literal.value from output.2] at read
-    exact read
+    have core := Verification.holds_of_sublist (accepted.constraints _ member)
+      (List.sublist_append_left (importedConstraints data.machine.rom) importedConstraintsTimestampLookups)
+    have bounded : token.word.Bounded := by
+      simpa [token, writeToken, MemoryToken.word, importedConstraintsMemoryPorts, WordColumns.code, MemoryPort.writeCode, pairCode, Word.Bounded]
+        using UnifiedReduced.Proofs.destination_bounds core
+    have word : token.word = Word.ofBitVec literal.value := by
+      apply Word.eq_of_value bounded (Word.ofBitVec_bound _)
+      have equal := congrArg BitVec.toNat output.2
+      rw [Word.toBitVec_toNat bounded] at equal
+      exact equal.trans (Word.ofBitVec_value _).symm
+    exact ⟨token, present, output.1, timestamp, word⟩
+
+theorem preparation_at_boundary [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before atCut : State}
+    {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat} {register : BitVec 5} {literal : ControlLiteral}
+    {tokens : List (MemoryToken p)}
+    (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)
+    (scope : ControlPreparation data program cut register literal) (nonzero : register ≠ 0) (aligned : cut % 4 = 0)
+    (matching : (data.machine.initialMemory ++ (data.prefixSteps cut).map Prod.snd).Perm
+      (tokens ++ (data.prefixSteps cut).map Prod.fst)) (boundary : NativeBoundary tokens atCut cells) :
+    PreparedControl tokens atCut cut register literal := by
+  obtain ⟨token, present, address, timestamp, word⟩ := preparation_token hp clockInverse accepted
+    inputs.publicProgram inputs.ordinaryProgram inputs.initialization scope nonzero aligned matching
+  obtain ⟨cell, _, code, read⟩ := native_boundary_read boundary present
+  have same : cell = Cell.register register := cell_address_injective (code.trans address)
+  subst cell
+  have bits : token.word.toBitVec = literal.value := by rw [word, Word.ofBitVec_roundtrip]
+  exact ⟨bits ▸ read, token, present, address, timestamp, bits⟩
 
 theorem control_preparation [Fact p.Prime] (hp : 8388608 ≤ p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1) (rotationInverse : 64 * (-31457280 : ZMod p) = 1)

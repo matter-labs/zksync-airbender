@@ -85,7 +85,12 @@ Prepared G and Keccak first spans now reach their complete references at those
 same mixed-history cut states. Shared matching derives caller regions, worker
 boundaries and actual controls; no worker masks or desired reads are supplied.
 Public preparation/first-span scope, call count and duration remain explicit.
-Extended BLAKE still needs its round masks derived before mixed transport.
+Prepared extended-BLAKE spans now also reach complete compression at those cut
+states. Raw matching and the actual LUI token derive round masks before Sail
+transport, retaining the preparation timestamp. Public suffix duration derives an
+uninterrupted caller region; the empty worker prefix and ten-position controller
+remain explicit. Selected seven-/ten-round windows may leave later rounds outside
+the window within that controller. Broader preparation/chaining remains open.
 
 1. **Hash references on subspans.** Reuse complete caller-only G, extended BLAKE and
    Keccak references for segmented spans. Derive worker boundaries, ranges,
@@ -98,9 +103,8 @@ Extended BLAKE still needs its round masks derived before mixed transport.
    extended-BLAKE/Keccak span, retaining their existing public mode/count and prefix
    ABI. Mixed-history worker projections now derive caller regions as above.
    ADDI-from-x0/LUI preparation reaches actual first-span control boundaries.
-   Prepared G and Keccak references are checked within mixed-history regions.
-   Derive extended-BLAKE round masks before mixed transport, then bind its prepared
-   span. Extend the public preparation/chaining registry as composition requires.
+   Prepared G, Keccak and extended-BLAKE references are checked within the mixed
+   scopes above. Extend the public preparation/chaining registry as composition requires.
    COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed
    retained for the second window. Extended BLAKE and Keccak completion controls
    do not restart their protocols; checked regressions forbid treating their
