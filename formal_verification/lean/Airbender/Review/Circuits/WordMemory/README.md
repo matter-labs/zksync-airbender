@@ -6,6 +6,14 @@ observables and interpret them through the original Sail memory clause on the
 declared platform. Native ROM-shadow columns and independent public ROM bytes are
 kept separate.
 
+## Checked results
+
+The [local soundness claims](Theorems.lean) prove effective addresses, actual
+LW/SW register/memory effects and PC retirement under the ordinary-domain and
+flat-memory configuration. Reads and address/word bounds follow from accepted
+initialized history. Public-ROM interpretation is connected explicitly; the
+discarded-LW profile remains distinct from unchanged Sail.
+
 1. Read [Theorems](Theorems.lean) for the exact local claim.
 2. Read [Model](Model.lean) for satisfaction, named observable mappings and interface assumptions.
 3. Follow [the selected reference](Model.lean) and [Artifact](Artifact.lean) for semantics and imported variable placement.

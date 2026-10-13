@@ -5,6 +5,20 @@ relations, the shared context needed to interpret their witnesses, and complete
 execution contracts. It exposes the selected references, observable mappings and
 assumptions for human review; supporting proof calculations live in Proofs.
 
+## Main checked results
+
+| Result | Where to review it |
+| --- | --- |
+| Matching plus timestamp/initialization conditions forces complete memory histories and latest-write reads. | [Logical memory result](Helpers/Memory/README.md#logical-memory-result) |
+| Public bytes and original Sail decoding bind the instruction and metadata used by retirement. | [Decoder connections](Helpers/Decoder/README.md#checked-connections) |
+| Accepted selected circuit rows have the stated reference effects under their visible interfaces. | [Circuit results](Circuits/README.md#checked-results) |
+| Admitted ordinary instruction traces reach the native terminal PC and tracked values; external-read extensions also prove consumption. | [Trace results](Trace/README.md#checked-results) |
+| Native worker operations and complete selected hash spans reach their references on actual history values. | [Worker results](Trace/Workers/README.md#checked-results) |
+| Joint native cuts, caller placement and prepared references use derived states/schedules. | [Unified results](Trace/UnifiedReduced/README.md#checked-results) |
+
+Each link states the remaining premises and scope. A memory-consistency result,
+an operation effect and a whole-instruction retirement result are distinct claims.
+
 Choose one of the two routes below. Start with [Properties](Helpers/Properties.lean)
 for the meaning of soundness, completeness and the observable circuit relation.
 That module imports only Clean.

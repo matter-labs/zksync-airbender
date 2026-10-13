@@ -6,6 +6,19 @@ specializes the step relation to its public decoder and registry, then states
 agreement with native terminal PC/cells under explicit public boundaries and
 accepted matching.
 
+## Checked results
+
+The family trace theorems take imported constraints, logical state/memory matching,
+public initialization/program and their configuration/field conditions, then prove
+actual Sail execution and terminal PC/cell agreement. Intermediate reads and row
+order are derived, rather than supplied as the desired execution.
+
+For [AddSub](AddSub/Theorems.lean), unchanged Sail retains the discarded-load
+restriction; the Airbender profile and native-boot claims state their distinct
+semantics and ROM view. [Subword memory](SubwordMemory/Theorems.lean) is RAM-only
+here; [pooled execution](../Soundness.lean) separately includes public-ROM transport.
+Jump termination retains its explicit canonical endpoint condition.
+
 Each directory separates its step/trace definitions from its public trace theorem.
 
 | Scope | Entry |
