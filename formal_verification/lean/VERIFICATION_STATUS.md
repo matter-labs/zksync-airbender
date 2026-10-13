@@ -82,7 +82,7 @@ these trace claims.
 | Gate | Current result |
 | --- | --- |
 | Full Lean build | Verification library, all 116 test modules, both executables and the full axiom-audit root pass. |
-| Full-family import guards | 151 checks. |
+| Full-family import guards | 143 checks. |
 | Full-family axiom audit | 1851 declarations, including 44 with no axioms; only `propext`, `Classical.choice` and `Quot.sound`. |
 | Caller decoder/request-effect gate | All four public caller forms, original decoding, native PC advancement/ranges, timestamp constraints and truncated-CSR rejection checked; an initialized Keccak caller/worker fixture executes actual memory. A concrete decoded bigint caller reaches its actual initialized COPY worker and the selected project COPY reference. Missing, wrong-clock and wrong-family workers are rejected. All supporting declarations are included in the full axiom audit. |
 | Unified caller gate | All four original public CSR forms satisfy imported unified equations, modeled setup and timestamp queries. The local binding derives selectors, full-width request tokens, x0 destination and PC + 4. Truncated CSRs satisfy local equations but are rejected by the public decoder table. A real unified caller/COPY-worker pool checks original public family decoding, exact invocation/write/end clocks 5/7/8, and rejection of missing or wrong-clock workers. One shared physical caller/worker architecture also derives actual reads and bounds, checks COPY→ADDI and rejects a fabricated read. Complete hash references also bind the unified caller-only shared terminal state; empty worker-only boundaries do not affect the derived projection. Native ROM-shadow transport, mixed-span segmentation and whole caller retirement remain open. |
