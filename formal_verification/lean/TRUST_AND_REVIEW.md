@@ -101,8 +101,14 @@ matching. Machine ports include native offset zero; Clean event clocks add one.
 now bind the complete references at those same states. Worker boundaries are
 projected from shared matching and x0 refreshes are removed as Sail no-ops. Public
 mode/count, prefix scope and modeled tables remain explicit; no worker-only
-permutation or intermediate state is an input. Mixed-history spans, ordinary
-protocol preparation and whole mixed retirement remain open. Native columns retain full address/time/value limbs, including readonly
+permutation or intermediate state is an input.
+[Mixed-history worker projections](Airbender/Review/UnifiedReduced/MixedWindowProjection.lean)
+derive selected caller regions from accepted clock/request matching. Public cuts
+must lie inside the native path, with duration four times the selected worker
+count; no caller selector or instruction schedule is supplied. Earlier ordinary
+effects remain in the joint prefix, rather than a worker-only prefix projection.
+Complete mixed-history hash protocols and whole mixed retirement remain open.
+Native columns retain full address/time/value limbs, including readonly
 clock refreshes. Bounds, latest-write reads and Clean online-consistent histories
 are derived from those relations and public initialization. Retiming introduces
 initialization writes and preserves addresses/values; it does not prove cryptographic
