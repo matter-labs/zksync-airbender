@@ -21,8 +21,8 @@ pub(super) fn collect_stacktrace_raw<C: Counters, R: FlamegraphReadableRam>(
 
 /// Reconstructs a raw callstack (current `pc` first, then the callsites up the
 /// frame-pointer chain) into `callstack`, which is cleared first. The buffer is
-/// left empty when there is no usable frame-pointer chain. Reusing one buffer
-/// across samples keeps the hot sampling path allocation-free.
+/// left with only the current `pc` when there is no usable frame-pointer chain.
+/// Reusing one buffer across samples keeps the hot sampling path allocation-free.
 ///
 /// This is intentionally best-effort: any suspicious memory/layout condition is
 /// treated as end-of-stack so profiling never interferes with VM execution.
@@ -115,10 +115,10 @@ mod tests {
     }
 
     #[test]
-    fn skips_sample_without_frame_pointer() {
+    fn records_current_pc_without_frame_pointer() {
         let ram = [0u32; 64];
         let state = state_with_pc_and_fp(0x100, 0);
         let (_pc, frames) = collect_stacktrace_raw(&state, &ram);
-        assert!(frames.is_empty());
+        assert_eq!(frames, vec![0x100]);
     }
 }
