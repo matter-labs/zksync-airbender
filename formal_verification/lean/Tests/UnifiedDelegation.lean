@@ -466,6 +466,93 @@ theorem joint_preparation_controls : ∃ earlier current start finish,
     boundary_control seedImage initialMember, boundary_control finalImage finalMember,
     seeds, seedImage, initialMember⟩
 
+private def callerOnlyData : UnifiedReduced.Caller.RequestTrace babyBearModulus where
+  machine := {
+    rows := [sharedCaller]
+    rom := UnifiedReduced.Setup.table mixedBefore
+    initial := sharedCaller.start
+    terminal := sharedCaller.finish
+    initialMemory := base.machine.initialMemory
+    terminalMemory := base.machine.terminalMemory }
+  workers := { base.workers with initial := [], terminal := [] }
+  program := [Tests.DelegationCaller.entry .bigint]
+
+private theorem callerOnlyAccepted : UnifiedReduced.Caller.MixedMemoryAccepted callerOnlyData [] := by
+  refine ⟨⟨?_, ?_, List.Perm.swap _ _ [], ?_, mixedChecks.workerConstraints,
+    mixedChecks.workerActive, mixedChecks.requests⟩, ?_, ?_⟩
+  · intro row member
+    have same : row = sharedCaller := List.mem_singleton.mp member
+    subst row
+    exact mixedChecks.constraints sharedCaller (by simp [mixedData])
+  · intro row member
+    have same : row = sharedCaller := List.mem_singleton.mp member
+    subst row
+    exact mixedChecks.active sharedCaller (by simp [mixedData])
+  · intro row member
+    exact mixedChecks.decoded row member
+  · intro row member ordinaryRow
+    have same : row = sharedCaller := List.mem_singleton.mp member
+    subst row
+    have caller : sharedCaller ∈ callerOnlyData.callers := by
+      change sharedCaller ∈ [sharedCaller]
+      exact List.mem_singleton_self _
+    exact False.elim (ordinaryRow caller)
+  · decide +kernel
+
+private theorem callerOnlyInputs :
+    UnifiedReduced.Caller.MixedMemoryInputs callerOnlyData [] mixedBefore [0] [] cells :=
+  ⟨⟨mixedInputs.publicProgram.image, mixedInputs.publicProgram.initialClock, mixedInputs.publicProgram.initialAligned⟩,
+    rfl, mixedInitialization, mixedInputs.distinct, mixedInputs.aligned,
+    rfl, mixedInputs.tables, mixedInputs.rounds⟩
+
+theorem worker_window_ignores_supplied_boundaries :
+    UnifiedReduced.Caller.ProjectedWindowExecution callerOnlyData mixedBefore cells 4 8 :=
+  UnifiedReduced.Caller.window_projection_soundness (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    callerOnlyAccepted callerOnlyInputs (by decide) (by decide) (by decide) (by decide)
+
+theorem projected_window_native_control : callerOnlyData.workers.initial = [] ∧ callerOnlyData.workers.terminal = [] ∧
+    ∃ start finish : State, ∃ workerData : Delegation.MemoryData babyBearModulus,
+      Delegation.BoundaryMemoryInputs workerData start (Delegation.Caller.workerCells cells) ∧
+      Delegation.TraceMapping workerData start finish (Delegation.Caller.workerCells cells) ∧
+      (Cell.register 12).read start = .ok 128 start ∧ (Cell.register 12).read finish = .ok 0 finish ∧
+      (⟨(Cell.register 12).addressCode, (7, 0), 0⟩ : MemoryToken babyBearModulus) ∈ workerData.terminal := by
+  obtain ⟨seeds, terminal, _, _, start, finish, _, _, _, _, _, _, prior, _, selected,
+    initialized, _, mapping⟩ := worker_window_ignores_supplied_boundaries.execution
+  have empty : (callerOnlyData.prefixProjection 4 seeds).steps = [] := by
+    change ((callerOnlyData.workers.prefixRows 4).flatMap Delegation.Row.memorySteps) = []
+    decide +kernel
+  have initial : callerOnlyData.workerProjection.initial.Perm
+      (callerOnlyData.windowProjection 4 8 seeds terminal).initial := by
+    have fresh := prior.matching
+    simp only [empty, List.map_nil, List.append_nil] at fresh
+    exact fresh
+  have actual := (initial.append_right _).trans selected.matching
+  have expected : (callerOnlyData.workerProjection.initial ++
+      (callerOnlyData.windowProjection 4 8 seeds terminal).steps.map Prod.snd).Perm
+      (callerOnlyData.workerProjection.terminal ++
+        (callerOnlyData.windowProjection 4 8 seeds terminal).steps.map Prod.fst) := by
+    change (callerOnlyData.workerProjection.initial ++
+      ((callerOnlyData.workers.windowRows 4 8).flatMap Delegation.Row.memorySteps).map Prod.snd).Perm
+      (callerOnlyData.workerProjection.terminal ++
+        ((callerOnlyData.workers.windowRows 4 8).flatMap Delegation.Row.memorySteps).map Prod.fst)
+    decide +kernel
+  have finalPerm := endpoint_permutation actual expected
+  have firstToken : (⟨(Cell.register 12).addressCode, (0, 0), Nat.pair 128 0⟩ : MemoryToken babyBearModulus) ∈
+      (callerOnlyData.windowProjection 4 8 seeds terminal).initial := initial.mem_iff.mp (by decide +kernel)
+  have lastToken : (⟨(Cell.register 12).addressCode, (7, 0), 0⟩ : MemoryToken babyBearModulus) ∈
+      (callerOnlyData.windowProjection 4 8 seeds terminal).terminal := finalPerm.mem_iff.mpr (by decide +kernel)
+  obtain ⟨firstCell, _, firstCode, firstRead⟩ := initialized.toBoundaryInputs.reads _ firstToken
+  obtain ⟨lastCell, _, lastCode, lastRead⟩ := mapping.finalCells _ lastToken
+  change firstCell.addressCode = (Cell.register 12).addressCode at firstCode
+  change lastCell.addressCode = (Cell.register 12).addressCode at lastCode
+  have firstEq := Trace.Proofs.cell_address_injective firstCode
+  have lastEq := Trace.Proofs.cell_address_injective lastCode
+  subst firstCell
+  subst lastCell
+  refine ⟨rfl, rfl, start, finish, _, initialized, mapping, ?_, lastRead, lastToken⟩
+  have value : (Word.mk 128 0).toBitVec = (128 : BitVec 32) := by decide +kernel
+  simpa only [memoryWord, Nat.unpair_pair, value] using firstRead
+
 theorem actual_terminal_control : ∃ after : State, (Cell.register 12).read after = .ok 1 after := by
   obtain ⟨_, after, _, _, _, _, _, final⟩ := shared_machine_worker_effects.execution
   have token : (⟨(Cell.register 12).addressCode, (10, 0), Nat.pair 1 0⟩ : MemoryToken babyBearModulus) ∈
