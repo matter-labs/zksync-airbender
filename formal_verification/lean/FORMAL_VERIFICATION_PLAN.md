@@ -76,6 +76,11 @@ state matching and four-tick advancement. Public cuts inside the machine path an
 a duration matching the selected worker count derive every caller selector in
 the region. Worker matching and retained boundary images are then projected only
 within that region; earlier ordinary effects stay in the actual joint prefix.
+Public ADDI-from-x0/LUI preparation registries now derive actual control reads at
+the first-span cut. Native state matching identifies the final ordinary row and
+its accepted write; the boundary retains that write's raw timestamp. The existing
+empty worker-prefix scope stays explicit. No desired read or preparation-row
+selector is supplied; whole instruction retirement remains separate.
 
 1. **Hash references on subspans.** Reuse complete caller-only G, extended BLAKE and
    Keccak references for segmented spans. Derive worker boundaries, ranges,
@@ -87,8 +92,9 @@ within that region; earlier ordinary effects stay in the actual joint prefix.
    Caller-only joint windows now bind repeated G spans in one mode and the first
    extended-BLAKE/Keccak span, retaining their existing public mode/count and prefix
    ABI. Mixed-history worker projections now derive caller regions as above.
-   Recover protocol control preparation through actual ordinary instructions
-   and bind the complete references to those mixed-history regions.
+   ADDI-from-x0/LUI preparation reaches actual first-span control boundaries.
+   Bind these prepared states to the complete references in mixed-history regions,
+   and extend the public preparation registry as composition requires.
    COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed
    retained for the second window. Extended BLAKE and Keccak completion controls
    do not restart their protocols; checked regressions forbid treating their
