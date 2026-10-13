@@ -1,4 +1,4 @@
-import Airbender.Review.MulDiv.Model
+import Airbender.Review.Circuits.MulDiv.Model
 import Airbender.Proofs.Trace.RowContext
 import Airbender.Proofs.Trace.PooledExecution
 

@@ -1,4 +1,4 @@
-import Airbender.Review.Keccak.Mix
+import Airbender.Review.Circuits.Keccak.Mix
 
 namespace Airbender.Keccak.Proofs
 set_option warningAsError true

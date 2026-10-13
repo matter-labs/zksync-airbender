@@ -1,6 +1,6 @@
-import Airbender.Review.WordMemory.Artifact
+import Airbender.Review.Circuits.WordMemory.Artifact
 import Airbender.Proofs.WordMemory.ArtifactChecks
-import Airbender.Review.Properties
+import Airbender.Review.Helpers.Properties
 import Airbender.Proofs.Arithmetic.Word
 import Airbender.Proofs.Constraints
 import Mathlib.Tactic.FinCases

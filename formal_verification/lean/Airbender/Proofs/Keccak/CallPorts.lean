@@ -1,6 +1,6 @@
-import Airbender.Review.Keccak.Call
+import Airbender.Review.Trace.Workers.Keccak.Call
 import Airbender.Proofs.Keccak.ControllerLayout
-import Airbender.Review.Keccak.Execution
+import Airbender.Review.Circuits.Keccak.Execution
 import Mathlib.Data.List.Nodup
 
 namespace Airbender.Keccak.Proofs

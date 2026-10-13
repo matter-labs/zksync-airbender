@@ -1,4 +1,4 @@
-import Airbender.Review.Word
+import Airbender.Review.Helpers.Word
 import Airbender.Proofs.Arithmetic.Lemmas
 import Mathlib.Data.Nat.Basic
 

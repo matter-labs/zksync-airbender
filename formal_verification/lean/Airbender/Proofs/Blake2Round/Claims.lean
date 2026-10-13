@@ -1,4 +1,4 @@
-import Airbender.Review.Blake2Round.Theorems
+import Airbender.Review.Trace.Workers.Blake2Round.Theorems
 import Airbender.Proofs.Blake2Round.NativeExecution
 import Airbender.Proofs.Blake2Round.CallExecution
 import Airbender.Proofs.Blake2Round.CompressionBinding

@@ -1,4 +1,4 @@
-import Airbender.Review.ShiftBinop.Execution
+import Airbender.Review.Trace.Families.ShiftBinop.Execution
 import Airbender.Proofs.ShiftBinop.Execution
 import Airbender.Proofs.Trace.CompositionCore
 import Airbender.Proofs.Trace.Terminal

@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.Shift
+import Airbender.Review.Circuits.UnifiedReduced.Shift
 import Airbender.Proofs.UnifiedReduced.Shift
 import Airbender.Proofs.UnifiedReduced.RegisterReads
 import Airbender.Proofs.Arithmetic.WordBytes

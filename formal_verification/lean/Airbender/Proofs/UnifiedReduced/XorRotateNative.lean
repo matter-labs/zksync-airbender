@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.XorRotate
+import Airbender.Review.Circuits.UnifiedReduced.XorRotate
 import Airbender.Proofs.UnifiedReduced.XorRotateArithmetic
 import Airbender.Proofs.UnifiedReduced.TriAddNative
 

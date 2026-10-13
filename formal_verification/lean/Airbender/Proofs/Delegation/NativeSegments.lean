@@ -1,4 +1,4 @@
-import Airbender.Review.Delegation.NativeWindows
+import Airbender.Review.Helpers.Delegation.NativeWindows
 import Airbender.Proofs.Delegation.Values
 import Airbender.Proofs.Delegation.SailHistory
 import Airbender.Proofs.Trace.TransferBoundary

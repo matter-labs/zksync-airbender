@@ -1,4 +1,4 @@
-import Airbender.Review.Keccak.Theta
+import Airbender.Review.Circuits.Keccak.Theta
 import Airbender.Proofs.Keccak.Lookups
 import Airbender.Proofs.Arithmetic.ByteAssembly
 

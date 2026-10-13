@@ -1,6 +1,6 @@
 import Airbender.Proofs.Blake2G.CallHistory
 import Airbender.Proofs.Delegation.Readonly
-import Airbender.Review.Blake2G.Execution
+import Airbender.Review.Circuits.Blake2G.Execution
 
 namespace Airbender.Blake2G.Proofs
 open Trace Trace.Proofs Arithmetic Reference.RiscV.Sail Reference.Sail

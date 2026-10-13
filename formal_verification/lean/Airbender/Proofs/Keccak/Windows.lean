@@ -1,4 +1,4 @@
-import Airbender.Review.Keccak.Windows
+import Airbender.Review.Trace.Workers.Keccak.Windows
 import Airbender.Proofs.Keccak.PermutationBinding
 import Airbender.Proofs.Keccak.MemorySoundness
 import Airbender.Proofs.Delegation.HashWindowTransport

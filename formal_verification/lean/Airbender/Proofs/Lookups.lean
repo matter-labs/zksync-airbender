@@ -1,4 +1,5 @@
-import Airbender.Review.Lookups
+import Airbender.Review.Helpers.Tables.Lookups
+import Airbender.Review.Circuits.JumpBranchSlt.Tables.Control
 
 namespace Airbender.Verification
 

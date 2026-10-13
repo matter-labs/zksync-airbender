@@ -1,4 +1,5 @@
-import Airbender.Review.SubwordMemory.Theorems
+import Airbender.Review.Circuits.SubwordMemory.Theorems
+import Airbender.Review.Trace.Families.SubwordMemory.Theorems
 import Airbender.Proofs.SubwordMemory.RowClaims
 import Airbender.Proofs.SubwordMemory.TraceSoundness
 import Airbender.Proofs.BabyBear

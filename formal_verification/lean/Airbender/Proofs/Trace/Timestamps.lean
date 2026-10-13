@@ -1,4 +1,4 @@
-import Airbender.Review.Trace.Model
+import Airbender.Review.Helpers.Model
 import Airbender.Proofs.Arithmetic.Lemmas
 
 namespace Airbender.Trace.Proofs

@@ -1,4 +1,4 @@
-import Airbender.Review.AddSub.NonDeterminism
+import Airbender.Review.Circuits.AddSub.NonDeterminism
 import Airbender.Proofs.AddSub.PC
 import Airbender.Proofs.Sail.PC
 import Airbender.Proofs.AddSub

@@ -1,4 +1,4 @@
-import Airbender.Review.Sail
+import Airbender.Review.Helpers.Sail
 import Airbender.Proofs.Sail.RiscV
 
 namespace Airbender.Reference.RiscV.Sail

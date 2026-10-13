@@ -1,4 +1,5 @@
-import Airbender.Review.Blake2G.Theorems
+import Airbender.Review.Circuits.Blake2G.Theorems
+import Airbender.Review.Trace.Workers.Blake2G.Theorems
 import Airbender.Proofs.Blake2G.WorkVectorBinding
 import Airbender.Proofs.Blake2G.BlockFrame
 import Airbender.Proofs.Blake2G.NativeExecution

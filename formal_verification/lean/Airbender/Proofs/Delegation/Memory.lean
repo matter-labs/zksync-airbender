@@ -1,4 +1,4 @@
-import Airbender.Review.Delegation.Memory
+import Airbender.Review.Helpers.Delegation.Memory
 import Airbender.Proofs.Bigint.Timestamp
 import Airbender.Proofs.Blake2G.Timestamp
 import Airbender.Proofs.Blake2Round.Timestamp

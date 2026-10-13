@@ -1,4 +1,4 @@
-import Airbender.Review.Keccak.Mix
+import Airbender.Review.Circuits.Keccak.Mix
 import Airbender.Proofs.Keccak.DecodeControl
 import Airbender.Proofs.Keccak.FixedLookups
 import Airbender.Proofs.Arithmetic.ByteAssembly

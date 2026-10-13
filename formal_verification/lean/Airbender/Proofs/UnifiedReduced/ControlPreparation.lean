@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.ControlPreparation
+import Airbender.Review.Trace.UnifiedReduced.ControlPreparation
 import Airbender.Proofs.UnifiedReduced.MixedWindowProjection
 import Airbender.Proofs.UnifiedReduced.ZeroRegister
 import Airbender.Proofs.Arithmetic.Word

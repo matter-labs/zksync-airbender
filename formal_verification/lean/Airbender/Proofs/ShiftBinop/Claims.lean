@@ -1,4 +1,5 @@
-import Airbender.Review.ShiftBinop.Theorems
+import Airbender.Review.Circuits.ShiftBinop.Theorems
+import Airbender.Review.Trace.Families.ShiftBinop.Theorems
 import Airbender.Proofs.ShiftBinop
 import Airbender.Proofs.ShiftBinop.RowClaims
 import Airbender.Proofs.ShiftBinop.TraceSoundness
