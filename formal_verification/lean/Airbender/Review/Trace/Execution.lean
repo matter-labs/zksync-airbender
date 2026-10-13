@@ -24,16 +24,6 @@ def StepWith {Kind : Type}
     ∃ clause, clauseFor entry.instruction = some clause ∧
       run (normalStep clause) before = .ok SailRV32.Functions.RETIRE_SUCCESS after
 
-abbrev Step (profile : ISAProfile) := StepWith decoderFields (profileClause profile)
-
-/-- A finite sequence of the checked Sail steps, including an empty trace. -/
-abbrev ExecutionTrace (profile : ISAProfile) (program : List ProgramEntry) :=
-  Relation.ReflTransGen (Step profile program)
-
-abbrev SailStep := Step .sail
-abbrev SailTrace := ExecutionTrace .sail
-abbrev AirbenderTrace := ExecutionTrace .airbender
-
 /-- The shared conclusion of trace soundness. Starting at public Sail state
     `initial`, a finite sequence of `step` reaches an `after` state whose PC
     and tracked register/RAM values match `trace`'s terminal tokens.
