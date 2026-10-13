@@ -136,4 +136,40 @@ private theorem memoryInputs : Caller.RequestMemoryInputs data before [0] Tests.
 theorem actual_worker_effects : Caller.RequestExecution data before Tests.DelegationMemory.cells :=
   Caller.request_memory_soundness (by decide) (by decide) (by decide) accepted memoryInputs
 
+theorem native_request_window : Caller.RequestWindowBinding data.callers data.workers 4 8 :=
+  Caller.request_window_soundness (by decide) (by decide) (by decide)
+    accepted.toRequestChecks publicProgram (by decide) (by decide) (by decide)
+
+theorem native_request_window_count : (Caller.windowCallers data.callers 4 8).length = 1 := by
+  exact (Caller.Proofs.window_call_count native_request_window).trans (by decide +kernel)
+
+theorem native_request_window_family :
+    ∀ row ∈ Caller.windowCallers data.callers 4 8,
+      (Requests.caller row.assignment).csr = Requests.csr .keccak := by
+  intro row member
+  obtain ⟨worker, matched, _⟩ := native_request_window.callerMatches row member
+  have family : worker.family = .keccak := by
+    have present := List.mem_of_mem_filter matched.1
+    have same : worker = Tests.DelegationMemory.data.rows[0] := by
+      simpa only [data, Tests.DelegationMemory.data, List.mem_singleton, List.getElem_cons_zero] using present
+    subst worker
+    rfl
+  exact (congrArg Requests.Request.csr matched.2.1).symm.trans (congrArg Requests.csr family)
+
+theorem native_request_outside_cuts :
+    Caller.RequestWindowBinding data.callers data.workers 8 12 ∧
+    Caller.windowCallers data.callers 8 12 = [] ∧ data.workers.windowRows 8 12 = [] :=
+  ⟨Caller.request_window_soundness (by decide) (by decide) (by decide)
+    accepted.toRequestChecks publicProgram (by decide) (by decide) (by decide),
+    by decide +kernel, by decide +kernel⟩
+
+theorem unaligned_request_cut_rejected :
+    ¬ Caller.RequestWindowBinding data.callers data.workers 5 8 := by
+  intro binding
+  have count := Caller.Proofs.window_call_count binding
+  have empty : (Caller.windowCallers data.callers 5 8).length = 0 := by decide +kernel
+  have present : (data.workers.windowRows 5 8).length = 1 := by decide +kernel
+  rw [empty, present] at count
+  contradiction
+
 end Tests.DelegationRequestTrace

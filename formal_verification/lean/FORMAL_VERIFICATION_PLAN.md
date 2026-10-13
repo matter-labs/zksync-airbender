@@ -58,7 +58,11 @@ windows to actual cut states: repeated G spans in one public mode, the first
 extended-BLAKE span within one ten-position controller, and the first 649-call
 Keccak span. Later workers may remain outside the selected window. Native cuts
 also start from retained boundary images. History derives intermediate values,
-G entry controls, extended round masks and terminal agreement.
+G entry controls, extended round masks and terminal agreement. Pooled and unified
+instruction-boundary cuts now derive exact caller/worker request permutations,
+unique slots, caller counts and full-width CSR families for these hash windows.
+Cuts are aligned and follow clock two; zero-clock workers retain their actual
+prefix effects. This connection keeps worker-only memory matching explicit.
 
 1. **Hash references on subspans.** Reuse complete caller-only G, extended BLAKE and
    Keccak references for segmented spans. Derive worker boundaries, ranges,
@@ -66,9 +70,10 @@ G entry controls, extended round masks and terminal agreement.
    public mode/span-size ABI, modeled tables and logical matching. Native-boundary
    bindings now derive G controls and extended-BLAKE round masks as well as Keccak
    controls; the public initialization entry points remain. Selected worker
-   windows are checked in the scopes above. Connect them to caller request spans
-   and recover control preparation through actual instruction history. Extended
-   BLAKE and Keccak completion controls do not restart their protocols; checked
+   windows and their caller request spans are checked in the scopes above.
+   Recover control preparation and joint architectural boundaries through actual
+   instruction history. Extended BLAKE and Keccak completion controls do not
+   restart their protocols; checked
    regressions forbid treating their windows as automatically repeating.
 2. **Whole mixed caller retirement.** Compose caller/worker spans with existing
    actual current-state fetch and ordinary/custom clause retirement. Recover exact

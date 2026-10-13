@@ -1,3 +1,4 @@
+import Airbender.Review.UnifiedReduced.Theorems
 import Tests.DelegationCaller
 import Tests.BigintMemory
 import Tests.DelegationOperationEffects
@@ -171,6 +172,15 @@ theorem copy_inside_native_cycle :
   refine ⟨slot.invocation.trans (by rw [initial]), ?_, slot.finish.trans (by rw [initial])⟩
   intro port present
   exact (slot.writes port present).trans (by rw [initial])
+
+theorem issued_copy_window :
+    Delegation.Caller.RequestWindowBinding requests.callers requests.workers 4 8 :=
+  UnifiedReduced.Caller.request_window_soundness (by decide +kernel) (by decide +kernel)
+    requestChecks requestInputs (by decide) (by decide) (by decide)
+
+theorem issued_copy_window_count :
+    (Delegation.Caller.windowCallers requests.callers 4 8).length = 1 :=
+  (Delegation.Caller.Proofs.window_call_count issued_copy_window).trans (by decide +kernel)
 
 theorem worker_family_from_public_bytes :
     ∃ entry ∈ requests.program,

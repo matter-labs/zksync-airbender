@@ -1,4 +1,5 @@
 import Airbender.Proofs.Delegation.Schedule
+import Airbender.Proofs.Delegation.RequestHashWindows
 import Airbender.Proofs.Delegation.MixedMemory
 import Airbender.Proofs.Delegation.SharedSpans
 import Airbender.Proofs.Delegation.SharedOperations
@@ -142,5 +143,36 @@ theorem worker_schedule_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase +
     (inputs : RequestInputs data before addresses) : WorkerSchedule data :=
   Proofs.worker_schedule hp clockInverse accepted inputs
     (Proofs.request_binding_checks hp clockInverse pcInverse accepted inputs)
+
+/-- Instruction-boundary cuts select exactly the callers issuing the native
+    worker window. Counts, full CSR tokens and unique slots are derived.
+    Cuts follow clock two; surplus zero-clock effects remain in the prefix. -/
+theorem request_window_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (pcInverse : (-30720 : ZMod p) * 65536 = 1)
+    {data : RequestTrace p} {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
+    (accepted : RequestChecks data) (inputs : RequestInputs data before addresses)
+    {lower upper : Nat} (first : lower % 4 = 0) (last : upper % 4 = 0) (pastZero : 2 ≤ lower) :
+    RequestWindowBinding data.callers data.workers lower upper :=
+  Proofs.request_windows hp clockInverse pcInverse accepted inputs first last pastZero
+
+/-- The same selected workers bind actual caller requests and a complete pinned
+    hash reference at derived Sail cut states. The existing public worker-window
+    ABI and worker-only matching remain explicit; mixed retirement is separate. -/
+theorem request_hash_window_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (pcInverse : (-30720 : ZMod p) * 65536 = 1)
+    (wordInverse : 64 * (-31457280 : ZMod p) = 1)
+    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+    {data : RequestTrace p} {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
+    {cells : List Trace.Cell} {span : HashSpan} {lower upper : Nat}
+    (accepted : RequestAccepted data) (program : RequestInputs data before addresses)
+    (inputs : span.RequestWindowInputs data.workers before cells lower upper)
+    (aligned : ∀ cell ∈ cells, cell.Aligned)
+    (first : lower % 4 = 0) (last : upper % 4 = 0) (pastZero : 2 ≤ lower) :
+    span.RequestWindowResult data.callers data.workers before cells lower upper :=
+  Proofs.bind_hash_window hp wordInverse byteInverse accepted.workers inputs aligned
+    (Proofs.request_windows (by norm_num [Trace.timestampBase]; omega) clockInverse pcInverse
+      accepted.toRequestChecks program first last pastZero)
 
 end Airbender.Delegation.Caller
