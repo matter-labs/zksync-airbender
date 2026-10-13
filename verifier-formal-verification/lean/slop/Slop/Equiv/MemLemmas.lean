@@ -174,4 +174,8 @@ macro "mem_side" : tactic => `(tactic| first
       | exact Slop.Equiv.same_page _ 4 (by decide) ‹_›
       | exact Slop.Equiv.same_page _ 2 (by decide) ‹_›
       | exact Slop.Equiv.same_page _ 1 (by decide) ‹_›)
+  | (eval_closed
+     simp only [Int.toNat_zero, Slop.Equiv.pm_transform_PA_zero, Slop.Equiv.is_aligned_vaddr_iff, decide_true,
+       decide_false, Bool.true_and, Bool.and_true, Bool.false_and, Bool.and_false, Bool.true_or, Bool.or_true,
+       Bool.false_or, Bool.or_false, *] <;> first | decide | with_reducible rfl)
   | (simp [SailRV32.not, *]; done))
