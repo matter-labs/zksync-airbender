@@ -30,6 +30,22 @@ Unified models and workers retain their own explicit public contracts. For their
 claims and remaining scope, use the status table rather than inferring whole-machine
 coverage from a local operation theorem.
 
+## Checked scope boundaries
+
+These fixtures explain restrictions on the current claims. They concern the
+imported richer relations and logical matching; they do not establish a
+whole-system or cryptographic exploit. Keep their public inputs and scope visible
+when reviewing or strengthening a theorem.
+
+| Boundary | Checked fixture and consequence |
+| --- | --- |
+| Inactive padding | [Inactive ADD/SUB row](Tests/InactiveRow.lean): execute zero admits PC 0→4 and result 123 under the retained local constraints. Padding neutrality needs global state/write obligations; the selected trace model includes active rows. |
+| Jump termination | [Noncanonical JAL endpoint](Tests/JumpSailHistory.lean): imported constraints, decoding and native matching admit a field-aliased terminal PC that disagrees with Sail. The public terminal-PC bound remains required; teardown binding is open. |
+| Discarded LW | [Sparse-memory load](Tests/DiscardedLoad.lean): an accepted native NOP can fail original Sail's LW-to-x0 access. The unchanged-Sail claim retains `NoDiscardedLoads`; the named Airbender profile uses the pinned PC-only NOP rule. |
+| Unissued workers | [Zero-clock G worker](Tests/DelegationZeroInvocation.lean): an active worker matches no caller and changes actual x12 from 0 to 1. Issued-worker uniqueness does not exclude this prefix effect. |
+| Bigint controls | [Issued unified calls](Tests/UnifiedDelegation.lean): x12 = 0 admits no opcode; x12 = 65537 admits ADD with a nonzero high limb. Current caller-cycle observations hold, while the pinned reference rejects these control words. Full custom-CSR ABI remains open. |
+| Worker ROM | [COPY with ROM pointers](Tests/DelegationROMBoundary.lean): zero native shadows and exactly matched worker values can differ from public ROM bytes. Replacing shadow tokens with public bytes breaks matching; RAM-profile claims retain their stated domain. |
+
 ## Sources and pins
 
 | Component | Source and review obligation |
