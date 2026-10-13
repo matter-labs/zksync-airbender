@@ -8,9 +8,7 @@
 
 // Same nightly features the prover crate builds with: its orchestration API
 // surfaces `Global` and a const-generic snapshotter parameter.
-#![allow(incomplete_features)]
 #![feature(allocator_api)]
-#![feature(generic_const_exprs)]
 
 use common_constants::ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX;
 use cs::definitions::{

@@ -510,10 +510,7 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
         query_indices: &[usize],
         twiddles: &Twiddles<F, Global>,
         worker: &Worker,
-    ) -> Vec<(Vec<Vec<F>>, BaseFieldQuery<F, T>)>
-    where
-        [(); F::DEGREE]: Sized,
-    {
+    ) -> Vec<(Vec<Vec<F>>, BaseFieldQuery<F, T>)> {
         match self {
             Self::InMemory(o) => query_indices
                 .iter()
@@ -871,7 +868,6 @@ where
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
     T: ColumnMajorMerkleTreeConstructor<F>,
-    [(); E::DEGREE]: Sized,
 {
     /// Number of LDE cosets (sizes the next round's query domain).
     fn num_cosets(&self) -> usize {
@@ -977,7 +973,6 @@ where
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
     T: ColumnMajorMerkleTreeConstructor<F>,
-    [(); E::DEGREE]: Sized,
 {
     assert_eq!(monomial_form.len(), evaluation_form.len());
     match mode {
@@ -1118,11 +1113,7 @@ pub fn whir_fold<
     intermediate_oracle_mode: WhirIntermediateOracleMode,
     pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
-) -> WhirPolyCommitProof<F, E, T>
-where
-    [(); F::DEGREE]: Sized,
-    [(); E::DEGREE]: Sized,
-{
+) -> WhirPolyCommitProof<F, E, T> {
     let two_inv = F::TWO.inverse().unwrap();
 
     let evals_refs = [&mem_polys_claims, &wit_polys_claims, &setup_polys_claims];
@@ -2614,10 +2605,7 @@ fn commit_single_ext_poly<
     tree_cap_size: usize,
     backend: &B,
     worker: &Worker,
-) -> ColumnMajorExtensionOracleForLDE<F, E, T>
-where
-    [(); E::DEGREE]: Sized,
-{
+) -> ColumnMajorExtensionOracleForLDE<F, E, T> {
     let trace_len_log2 = cosets[0].0.len().trailing_zeros() as usize;
     let trace_len = 1usize << trace_len_log2;
     let conv = backend.ext_coeff_conv(trace_len, values_per_leaf);
@@ -2711,10 +2699,7 @@ fn commit_single_ext_poly_continuous<
     tree_cap_size: usize,
     backend: &B,
     worker: &Worker,
-) -> ContinuousExtensionOracleForLDE<F, E, T>
-where
-    [(); E::DEGREE]: Sized,
-{
+) -> ContinuousExtensionOracleForLDE<F, E, T> {
     let num_cosets = coset_offsets.len();
     assert!(num_cosets.is_power_of_two());
     assert_eq!(buffer.len() % num_cosets, 0);
@@ -2791,10 +2776,7 @@ pub fn commit_single_ext_poly_for_test<
     values_per_leaf: usize,
     tree_cap_size: usize,
     worker: &Worker,
-) -> ColumnMajorExtensionOracleForLDE<F, E, T>
-where
-    [(); E::DEGREE]: Sized,
-{
+) -> ColumnMajorExtensionOracleForLDE<F, E, T> {
     commit_single_ext_poly::<F, E, T, _>(
         cosets,
         values_per_leaf,
@@ -2818,10 +2800,7 @@ pub fn commit_single_ext_poly_no_transform_for_test<
     values_per_leaf: usize,
     tree_cap_size: usize,
     worker: &Worker,
-) -> ColumnMajorExtensionOracleForLDE<F, E, T>
-where
-    [(); E::DEGREE]: Sized,
-{
+) -> ColumnMajorExtensionOracleForLDE<F, E, T> {
     let mut t = Vec::with_capacity(cosets.len());
     let trace_len_log2 = cosets[0].0.len().trailing_zeros() as usize;
     for (column, offset) in cosets.into_iter() {
@@ -2884,10 +2863,7 @@ pub fn commit_single_ext_poly_with_transform_for_test<
     values_per_leaf: usize,
     tree_cap_size: usize,
     worker: &Worker,
-) -> ColumnMajorExtensionOracleForLDE<F, E, T>
-where
-    [(); E::DEGREE]: Sized,
-{
+) -> ColumnMajorExtensionOracleForLDE<F, E, T> {
     let num_folding_rounds = values_per_leaf.trailing_zeros() as usize;
     let mut t = Vec::with_capacity(cosets.len());
     let trace_len_log2 = cosets[0].0.len().trailing_zeros() as usize;
@@ -3781,10 +3757,7 @@ mod test {
     type F = BabyBearField;
     type E = BabyBearExt4;
 
-    fn random_e(rng: &mut ThreadRng) -> E
-    where
-        [(); <E as FieldExtension<F>>::DEGREE]: Sized,
-    {
+    fn random_e(rng: &mut ThreadRng) -> E {
         let coefs = [(); <E as FieldExtension<F>>::DEGREE]
             .map(|_| F::from_u32_with_reduction(rng.next_u32()));
 

@@ -1,5 +1,3 @@
-#![allow(incomplete_features)]
-#![feature(generic_const_exprs)]
 #![cfg(all(feature = "host_utils", feature = "verifiers"))]
 
 //! Manual calibration harness for `src/host_utils/cost_model/census.rs`. Every

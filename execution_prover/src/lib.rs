@@ -1,8 +1,6 @@
 //! Backend-independent execution proving: setup construction, simulation and
 //! replay, the trace cache and the commit/prove protocol. Builds without CUDA.
-#![allow(incomplete_features)]
 #![feature(allocator_api)]
-#![feature(generic_const_exprs)]
 #![feature(get_mut_unchecked)]
 #![feature(likely_unlikely)]
 #![feature(pointer_is_aligned_to)]

@@ -88,10 +88,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRExternalChallenges<F, E> {
     }
 
     #[cfg(feature = "prover")]
-    pub fn flatten_into_buffer(&self, dst: &mut Vec<u32>)
-    where
-        [(); E::DEGREE]: Sized,
-    {
+    pub fn flatten_into_buffer(&self, dst: &mut Vec<u32>) {
         use crate::gkr::prover::transcript_utils::flatten_field_els_into;
         flatten_field_els_into(&self.permutation_argument_linearization_challenges, dst);
         flatten_field_els_into(&[self.permutation_argument_additive_part], dst);
@@ -99,24 +96,21 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRExternalChallenges<F, E> {
 
     #[cfg(feature = "prover")]
     #[inline(always)]
-    pub fn flatten_into_fixed_size_buffer_dst<const N: usize>(&self, dst: &mut [u32; N])
-    where
-        [(); E::DEGREE]: Sized,
-    {
+    pub fn flatten_into_fixed_size_buffer_dst<const N: usize>(&self, dst: &mut [u32; N]) {
         assert_eq!(
             N,
             E::DEGREE * (NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES + 1)
         );
-        unsafe {
-            let mut it = dst.as_chunks_unchecked_mut::<{ E::DEGREE }>().iter_mut();
-            for src in self.permutation_argument_linearization_challenges.iter() {
-                *it.next().unwrap_unchecked() = E::into_coeffs(*src)
-                    .into_array::<{ E::DEGREE }>()
-                    .map(|el: F| el.as_u32_raw_repr_reduced());
+        let mut it = dst.chunks_exact_mut(E::DEGREE);
+        for src in self
+            .permutation_argument_linearization_challenges
+            .iter()
+            .chain(core::iter::once(&self.permutation_argument_additive_part))
+        {
+            let chunk = it.next().unwrap();
+            for (dst, el) in chunk.iter_mut().zip(E::into_coeffs(*src).as_ref()) {
+                *dst = el.as_u32_raw_repr_reduced();
             }
-            *it.next().unwrap_unchecked() = E::into_coeffs(self.permutation_argument_additive_part)
-                .into_array::<{ E::DEGREE }>()
-                .map(|el: F| el.as_u32_raw_repr_reduced());
         }
     }
 

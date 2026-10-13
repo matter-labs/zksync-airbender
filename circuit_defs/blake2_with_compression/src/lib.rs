@@ -1,6 +1,3 @@
-#![allow(incomplete_features)]
-#![feature(generic_const_exprs)]
-
 use crate::cs::gkr_circuits::delegation::blake2_round_with_extended_control::*;
 use crate::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
 use prover::cs;

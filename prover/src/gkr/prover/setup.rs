@@ -357,10 +357,7 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
         tree_cap_size: usize,
         trace_len_log2: usize,
         worker: &Worker,
-    ) -> SetupCommitment<F, T>
-    where
-        [(); F::DEGREE]: Sized,
-    {
+    ) -> SetupCommitment<F, T> {
         let inputs: Vec<_> = self.hypercube_evals.iter().map(|el| &el[..]).collect();
         use crate::gkr::prover::commitment_utils::commit_trace_part;
 
@@ -394,10 +391,7 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
         tree_cap_size: usize,
         trace_len_log2: usize,
         worker: &Worker,
-    ) -> SetupCommitment<F, T>
-    where
-        [(); F::DEGREE]: Sized,
-    {
+    ) -> SetupCommitment<F, T> {
         let inputs: Vec<_> = self.hypercube_evals.iter().map(|el| &el[..]).collect();
         use crate::gkr::prover::commitment_utils::commit_trace_part;
 
@@ -432,10 +426,7 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
         trace_len_log2: usize,
         pack_log2: usize,
         worker: &Worker,
-    ) -> ColumnMajorBaseOracleForLDE<F, T>
-    where
-        [(); F::DEGREE]: Sized,
-    {
+    ) -> ColumnMajorBaseOracleForLDE<F, T> {
         let inputs: Vec<_> = self.hypercube_evals.iter().map(|el| &el[..]).collect();
         use crate::gkr::prover::commitment_utils::commit_trace_part_packed;
 

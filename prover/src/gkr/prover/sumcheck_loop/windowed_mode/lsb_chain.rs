@@ -140,8 +140,6 @@ pub fn quasi<T: Send + Sync, const A: bool>(
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> SameSizeChainOps<F, E>
     for GenericSameSizeChain<F, E>
-where
-    [(); E::DEGREE]: Sized,
 {
     fn uniskip_initial_pass(
         &self,

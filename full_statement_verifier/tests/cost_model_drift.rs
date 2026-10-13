@@ -1,5 +1,3 @@
-#![allow(incomplete_features)]
-#![feature(generic_const_exprs)]
 #![cfg(all(feature = "host_utils", feature = "verifiers"))]
 
 //! Proof fixtures must use the current schedule; CI's Docker clean-diff check

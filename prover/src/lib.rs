@@ -1,6 +1,5 @@
 #![cfg_attr(not(feature = "prover"), no_std)]
 #![cfg_attr(feature = "prover", allow(incomplete_features))]
-#![cfg_attr(feature = "prover", feature(generic_const_exprs))]
 #![cfg_attr(feature = "prover", feature(allocator_api))]
 #![cfg_attr(feature = "prover", feature(checked_type_aliases))] // NECESSARY TO AVOID UGLY LIFETIME BOUND ISSUE
 #![cfg_attr(

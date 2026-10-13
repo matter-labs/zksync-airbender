@@ -816,10 +816,7 @@ mod tests {
     type F = BabyBearField;
     type E = BabyBearExt4;
 
-    fn random_in_ext(rng: &mut ThreadRng) -> E
-    where
-        [(); <E as FieldExtension<F>>::DEGREE]: Sized,
-    {
+    fn random_in_ext(rng: &mut ThreadRng) -> E {
         let coefs = [(); <E as FieldExtension<F>>::DEGREE]
             .map(|_| F::from_u32_with_reduction(rng.next_u32()));
         <E as FieldExtension<F>>::from_coeffs(coefs)

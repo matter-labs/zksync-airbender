@@ -1,6 +1,3 @@
-#![allow(incomplete_features)]
-#![feature(generic_const_exprs)]
-
 use base64::Engine;
 use clap::{Parser, Subcommand, ValueEnum};
 use prover_pipeline::{

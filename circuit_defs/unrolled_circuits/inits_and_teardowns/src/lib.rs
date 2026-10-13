@@ -1,6 +1,3 @@
-#![allow(incomplete_features)]
-#![feature(generic_const_exprs)]
-
 use crate::gkr_compiler::compile_inits_and_teardowns_circuit;
 use common_constants::circuit_families::INITS_AND_TEARDOWNS_FORMAL_CIRCUIT_FAMILY_IDX;
 use prover::cs::gkr_compiler::GKRCircuitArtifact;

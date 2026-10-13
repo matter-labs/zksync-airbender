@@ -1,6 +1,4 @@
-#![allow(incomplete_features)]
 #![feature(allocator_api)]
-#![feature(generic_const_exprs)]
 #![feature(once_cell_try)]
 
 use host_storage::GpuTraceAllocator;

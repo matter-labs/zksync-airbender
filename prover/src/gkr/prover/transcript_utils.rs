@@ -2,18 +2,17 @@ use super::*;
 use crate::gkr::whir::WhirCommitment;
 use crate::query_utils::BitSource;
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
-use field::FixedArrayConvertible;
 use transcript::Transcript;
 
-pub fn flatten_field_els_into<F: PrimeField, E: FieldExtension<F>>(src: &[E], dst: &mut Vec<u32>)
-where
-    [(); E::DEGREE]: Sized,
-{
+pub fn flatten_field_els_into<F: PrimeField, E: FieldExtension<F>>(src: &[E], dst: &mut Vec<u32>) {
     for el in src.iter() {
-        let coeffs = E::into_coeffs(*el)
-            .into_array::<{ E::DEGREE }>()
-            .map(|el: F| el.as_u32_raw_repr_reduced());
-        dst.extend(coeffs);
+        let coeffs = E::into_coeffs(*el);
+        dst.extend(
+            coeffs
+                .as_ref()
+                .iter()
+                .map(|el| el.as_u32_raw_repr_reduced()),
+        );
     }
 }
 
@@ -61,10 +60,7 @@ pub fn draw_random_field_els_with_pow<
     num_challenges: usize,
     pow_bits: u32,
     worker: &Worker,
-) -> (u64, Vec<E>)
-where
-    [(); E::DEGREE]: Sized,
-{
+) -> (u64, Vec<E>) {
     let mut all_challenges = vec![E::ZERO; num_challenges];
     let (new_seed, pow_challenge) =
         TR::draw_random_field_elements_with_pow(&*seed, pow_bits, &mut all_challenges, worker);

@@ -145,10 +145,7 @@ impl<B: GoodAllocator + 'static, const USE_REDUCED_BLAKE2_ROUNDS: bool>
         bitreverse_cosets: bool,
         bitreverse_leaf_hashes: bool,
         worker: &Worker,
-    ) -> std::io::Result<()>
-    where
-        [(); E::DEGREE]: Sized,
-    {
+    ) -> std::io::Result<()> {
         crate::merkle_trees::on_disk::write_disk_artifacts::<BabyBearField, Self, E, _>(
             base_path,
             layout,
@@ -191,10 +188,7 @@ impl<B: GoodAllocator + 'static, const USE_REDUCED_BLAKE2_ROUNDS: bool>
         bitreverse_cosets: bool,
         bitreverse_leaf_hashes: bool,
         worker: &Worker,
-    ) -> Self
-    where
-        [(); E::DEGREE]: Sized,
-    {
+    ) -> Self {
         use crate::merkle_trees::blake2s_hash_leafs::blake2s_leaf_hashes_from_cosets;
         let leaf_hashes =
             blake2s_leaf_hashes_from_cosets::<BabyBearField, E, A, B, USE_REDUCED_BLAKE2_ROUNDS>(
@@ -218,10 +212,7 @@ impl<B: GoodAllocator + 'static, const USE_REDUCED_BLAKE2_ROUNDS: bool>
         bitreverse_cosets: bool,
         bitreverse_leaf_hashes: bool,
         worker: &Worker,
-    ) -> Self
-    where
-        [(); E::DEGREE]: Sized,
-    {
+    ) -> Self {
         use crate::merkle_trees::blake2s_hash_leafs::blake2s_leaf_hashes_from_leaf_accessors;
         let leaf_hashes = blake2s_leaf_hashes_from_leaf_accessors::<
             BabyBearField,

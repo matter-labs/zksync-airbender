@@ -1,6 +1,3 @@
-#![allow(incomplete_features)]
-#![feature(generic_const_exprs)]
-
 //! GKR wiring for the unified reduced-machine circuit.
 //!
 //! The unified circuit folds every executor family (and its inline

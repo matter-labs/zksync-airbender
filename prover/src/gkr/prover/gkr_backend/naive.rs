@@ -21,10 +21,7 @@ use worker::Worker;
 #[derive(Clone, Copy, Debug, Default)]
 pub struct NaiveGKRBackend;
 
-impl<F: PrimeField, E: FieldExtension<F> + Field> GKRBackend<F, E> for NaiveGKRBackend
-where
-    [(); E::DEGREE]: Sized,
-{
+impl<F: PrimeField, E: FieldExtension<F> + Field> GKRBackend<F, E> for NaiveGKRBackend {
     type DimensionReducingBuffer = DimReducingSumcheckScratch<E, [E; 2]>;
 
     fn make_dim_reducing_work_buffers(
@@ -83,10 +80,7 @@ where
         pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
         buffers: &mut Self::DimensionReducingBuffer,
-    ) -> SumcheckIntermediateProofValues<F, E>
-    where
-        [(); E::DEGREE]: Sized,
-    {
+    ) -> SumcheckIntermediateProofValues<F, E> {
         super::super::sumcheck_loop::evaluate_dimension_reducing_sumcheck_for_layer_lsb::<
             F,
             E,
@@ -198,7 +192,6 @@ where
     ) -> SumcheckIntermediateProofValues<F, E>
     where
         F: field::TwoAdicField,
-        [(); E::DEGREE]: Sized,
     {
         super::super::sumcheck_loop::evaluate_sumcheck_for_layer::<F, E, TR, _>(
             layer_idx,

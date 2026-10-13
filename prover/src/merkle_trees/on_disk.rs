@@ -531,7 +531,6 @@ where
     T: ColumnMajorMerkleTreeConstructor<F>,
     E: FieldExtension<F> + 'a,
     LayersFn: for<'b> Fn(&'b T) -> SerializableTreeLayers<'b>,
-    [(); E::DEGREE]: Sized,
 {
     use std::io::BufWriter;
     match layout {

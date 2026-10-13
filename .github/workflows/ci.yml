@@ -66,6 +66,12 @@ jobs:
           rustup set profile minimal
       - name: Rustfmt Check
         uses: actions-rust-lang/rustfmt@v1
+      - name: Forbid the generic_const_exprs feature gate
+        run: |
+          if grep -rn --include='*.rs' --exclude-dir=target 'feature(generic_const_exprs)' . ; then
+            echo 'generic_const_exprs is incompatible with the next-generation trait solver; use FieldExtension::Coeffs instead'
+            exit 1
+          fi
 
   warnings:
     name: warnings (${{ matrix.name }})

@@ -115,10 +115,7 @@ pub(crate) fn build_tree_over_cosets<
     values_per_leaf: usize,
     tree_cap_size: usize,
     worker: &Worker,
-) -> T
-where
-    [(); F::DEGREE]: Sized,
-{
+) -> T {
     let layout = cosets
         .first()
         .and_then(|c| c.original_values_normal_order.first())
@@ -710,10 +707,7 @@ pub fn commit_trace_part<
     trace_len_log2: usize,
     pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
-) -> ColumnMajorBaseOracleForLDE<F, T>
-where
-    [(); F::DEGREE]: Sized,
-{
+) -> ColumnMajorBaseOracleForLDE<F, T> {
     if input_on_hypercube.is_empty() {
         let mut cosets = Vec::with_capacity(lde_factor);
         let next_root = domain_generator_for_size::<F>(((1 << trace_len_log2) * lde_factor) as u64);
@@ -808,10 +802,7 @@ pub fn commit_trace_part_packed<
     pack_log2: usize,
     pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
-) -> ColumnMajorBaseOracleForLDE<F, T>
-where
-    [(); F::DEGREE]: Sized,
-{
+) -> ColumnMajorBaseOracleForLDE<F, T> {
     use crate::gkr::whir::ColumnMajorBaseOracleForCoset;
 
     let values_per_leaf = 1 << whir_first_fold_step_log2;

@@ -5,8 +5,6 @@
 //! `ntt_twiddles` are co-located here with their `__constant__` definitions in
 //! `native/ntt`, so this crate device-links self-contained.
 
-#![allow(incomplete_features)]
-#![feature(generic_const_exprs)]
 #![cfg_attr(test, feature(allocator_api))]
 // `no_cuda` gates out every GPU test body, leaving their helpers and imports dead
 // by construction. That mode only ever compiles, so this is not a real finding.

@@ -138,10 +138,7 @@ impl<B: GoodAllocator + 'static> ColumnMajorMerkleTreeConstructor<Proth120>
         bitreverse_cosets: bool,
         bitreverse_leaf_hashes: bool,
         worker: &Worker,
-    ) -> std::io::Result<()>
-    where
-        [(); E::DEGREE]: Sized,
-    {
+    ) -> std::io::Result<()> {
         crate::merkle_trees::on_disk::write_disk_artifacts::<Proth120, Self, E, _>(
             base_path,
             layout,
@@ -184,10 +181,7 @@ impl<B: GoodAllocator + 'static> ColumnMajorMerkleTreeConstructor<Proth120>
         bitreverse_cosets: bool,
         bitreverse_leaf_hashes: bool,
         worker: &Worker,
-    ) -> Self
-    where
-        [(); E::DEGREE]: Sized,
-    {
+    ) -> Self {
         let leaf_hashes = keccak256_leaf_hashes_from_cosets::<E, A, B>(
             trace,
             combine_by,
@@ -209,10 +203,7 @@ impl<B: GoodAllocator + 'static> ColumnMajorMerkleTreeConstructor<Proth120>
         bitreverse_cosets: bool,
         bitreverse_leaf_hashes: bool,
         worker: &Worker,
-    ) -> Self
-    where
-        [(); E::DEGREE]: Sized,
-    {
+    ) -> Self {
         use crate::merkle_trees::keccak256_hash_leafs::keccak256_leaf_hashes_from_leaf_accessors;
         let leaf_hashes = keccak256_leaf_hashes_from_leaf_accessors::<E, L, B>(
             cosets,

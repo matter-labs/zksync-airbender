@@ -1,6 +1,3 @@
-#![allow(incomplete_features)]
-#![feature(generic_const_exprs)]
-
 use crate::cs::gkr_circuits::jump_branch_slt_family::*;
 use crate::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
 use prover::cs;
