@@ -1,4 +1,4 @@
-import Airbender.Review.Keccak.Controller
+import Airbender.Review.Circuits.Keccak.Tables.Controller
 import Airbender.Proofs.Keccak.Controller
 
 namespace Airbender.Keccak.Controller.Proofs

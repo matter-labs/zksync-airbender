@@ -1,4 +1,4 @@
-import Airbender.Review.Sail
+import Airbender.Review.Helpers.Sail
 
 namespace Airbender.Reference.Sail
 open _root_.Sail.ArchSem

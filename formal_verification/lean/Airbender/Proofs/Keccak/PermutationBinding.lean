@@ -1,5 +1,5 @@
 import Airbender.Proofs.Keccak.CallPermutation
-import Airbender.Review.Keccak.Permutation
+import Airbender.Review.Trace.Workers.Keccak.Permutation
 
 namespace Airbender.Keccak.Proofs
 open Trace Trace.Proofs Delegation.Proofs Reference.RiscV.Sail

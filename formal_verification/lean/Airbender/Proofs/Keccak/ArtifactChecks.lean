@@ -1,4 +1,4 @@
-import Airbender.Review.Keccak.Artifact
+import Airbender.Review.Circuits.Keccak.Artifact
 
 namespace Airbender.Keccak
 

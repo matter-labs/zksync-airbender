@@ -2,7 +2,8 @@ import Airbender.Proofs.Bigint.Control
 import Airbender.Proofs.Bigint.SetupSoundness
 import Airbender.Proofs.Bigint.Multiplication
 import Airbender.Proofs.BabyBear
-import Airbender.Review.Bigint.Theorems
+import Airbender.Review.Circuits.Bigint.Theorems
+import Airbender.Review.Trace.Workers.Bigint.Theorems
 
 namespace Airbender.Bigint.Control
 

@@ -1,5 +1,5 @@
-import Airbender.Review.JumpBranchSlt.Branch
-import Airbender.Review.JumpBranchSlt.Jump
+import Airbender.Review.Circuits.JumpBranchSlt.Branch
+import Airbender.Review.Circuits.JumpBranchSlt.Jump
 import Airbender.Proofs.Trace.RowContext
 import Airbender.Proofs.Trace.PooledExecution
 

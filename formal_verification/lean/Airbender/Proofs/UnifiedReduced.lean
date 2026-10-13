@@ -1,6 +1,6 @@
 import Airbender.Proofs.UnifiedReduced.ArtifactChecks
-import Airbender.Review.UnifiedReduced.Artifact
-import Airbender.Review.Properties
+import Airbender.Review.Circuits.UnifiedReduced.Artifact
+import Airbender.Review.Helpers.Properties
 import Airbender.Proofs.Arithmetic.Word
 import Airbender.Proofs.Constraints
 import Mathlib.Tactic.FinCases

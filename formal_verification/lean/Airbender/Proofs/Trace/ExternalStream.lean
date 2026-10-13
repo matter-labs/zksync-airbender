@@ -1,4 +1,4 @@
-import Airbender.Review.Trace.ExternalStream
+import Airbender.Review.Helpers.ExternalStream
 import Airbender.Proofs.Trace.RowHistory
 
 namespace Airbender.Trace.ExternalStream.Proofs

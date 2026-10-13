@@ -1,4 +1,4 @@
-import Airbender.Review.Blake2G.Model
+import Airbender.Review.Circuits.Blake2G.Model
 import Airbender.Proofs.Blake2G.Assembly
 import Airbender.Proofs.BabyBear
 

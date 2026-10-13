@@ -1,4 +1,4 @@
-import Airbender.Review.Blake2G.Call
+import Airbender.Review.Trace.Workers.Blake2G.Call
 import Airbender.Proofs.Blake2G.Control
 
 namespace Airbender.Blake2G.Proofs

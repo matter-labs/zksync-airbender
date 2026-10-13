@@ -1,5 +1,5 @@
 import Airbender.Proofs.UnifiedReduced.ControlResolution
-import Airbender.Review.JumpBranchSlt.Artifact
+import Airbender.Review.Circuits.JumpBranchSlt.Artifact
 
 namespace Airbender.UnifiedReduced.Proofs
 open Arithmetic Verification

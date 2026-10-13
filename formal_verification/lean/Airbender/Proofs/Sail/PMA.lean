@@ -1,5 +1,5 @@
 import Airbender.Proofs.Sail.PMP
-import Airbender.Review.Trace.Platform
+import Airbender.Review.Helpers.Platform
 
 namespace Airbender.Reference.RiscV.Sail
 open Airbender.Reference.Sail

@@ -1,4 +1,4 @@
-import Airbender.Review.Blake2Round.Finalization
+import Airbender.Review.Circuits.Blake2Round.Finalization
 import Airbender.Proofs.Blake2Round.ArtifactChecks
 import Airbender.Proofs.Blake2Round.Lookups
 import Airbender.Proofs.Blake2G.Soundness

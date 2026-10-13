@@ -1,4 +1,4 @@
-import Airbender.Review.Blake2G.State
+import Airbender.Review.Circuits.Blake2G.State
 import Airbender.Proofs.Blake2G.Soundness
 import Airbender.Proofs.Blake2G.Control
 

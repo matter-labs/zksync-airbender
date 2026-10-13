@@ -1,4 +1,4 @@
-import Airbender.Review.Blake2Round.Windows
+import Airbender.Review.Trace.Workers.Blake2Round.Windows
 import Airbender.Proofs.Blake2Round.ControlPool
 import Airbender.Proofs.Blake2Round.CompressionBinding
 import Airbender.Proofs.Blake2Round.Memory

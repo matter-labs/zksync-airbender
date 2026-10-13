@@ -1,4 +1,5 @@
-import Airbender.Review.MulDiv.Theorems
+import Airbender.Review.Circuits.MulDiv.Theorems
+import Airbender.Review.Trace.Families.MulDiv.Theorems
 import Airbender.Proofs.MulDiv
 import Airbender.Proofs.MulDiv.Soundness
 import Airbender.Proofs.MulDiv.Product

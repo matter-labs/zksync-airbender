@@ -1,4 +1,4 @@
-import Airbender.Review.Blake2G.Row
+import Airbender.Review.Circuits.Blake2G.Row
 import Airbender.Proofs.Blake2G.Control
 import Airbender.Proofs.Blake2G.Addresses
 import Airbender.Proofs.Blake2G.State

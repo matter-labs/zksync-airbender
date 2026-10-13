@@ -1,5 +1,5 @@
-import Airbender.Review.UnifiedReduced.Artifact
-import Airbender.Review.Properties
+import Airbender.Review.Circuits.UnifiedReduced.Artifact
+import Airbender.Review.Helpers.Properties
 import Airbender.Proofs.Constraints
 import Airbender.Proofs.Trace.Timestamps
 

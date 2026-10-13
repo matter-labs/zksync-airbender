@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.Artifact
+import Airbender.Review.Circuits.UnifiedReduced.Artifact
 import Airbender.Proofs.AddSub.RowModel
 
 namespace Airbender.UnifiedReduced

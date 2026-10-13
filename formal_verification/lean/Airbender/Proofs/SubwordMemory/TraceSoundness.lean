@@ -1,4 +1,4 @@
-import Airbender.Review.SubwordMemory.Model
+import Airbender.Review.Circuits.SubwordMemory.Model
 import Airbender.Proofs.Trace.RowContext
 import Airbender.Proofs.Trace.PooledSubword
 

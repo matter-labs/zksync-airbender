@@ -2,7 +2,8 @@ import Airbender.Proofs.SubwordMemory.Address
 import Airbender.Proofs.SubwordMemory.Soundness
 import Airbender.Proofs.Trace.Retirement
 import Airbender.Proofs.Trace.CodeHistory
-import Airbender.Review.Trace.Execution
+import Airbender.Review.Helpers.Boundary
+import Airbender.Review.Helpers.Instruction
 
 namespace Airbender.SubwordMemory.Proofs
 open Arithmetic Trace Reference.RiscV.Sail Reference.Sail

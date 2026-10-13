@@ -1,5 +1,5 @@
 import Airbender.Proofs.Keccak.StateCells
-import Airbender.Review.Keccak.Permutation
+import Airbender.Review.Trace.Workers.Keccak.Permutation
 import Airbender.Proofs.Delegation.CallBoundaries
 
 namespace Airbender.Keccak.Proofs

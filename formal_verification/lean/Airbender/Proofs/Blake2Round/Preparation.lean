@@ -1,5 +1,5 @@
 import Airbender.Proofs.Blake2Round.ArtifactChecks
-import Airbender.Review.Blake2Round.Preparation
+import Airbender.Review.Circuits.Blake2Round.Preparation
 import Airbender.Proofs.Constraints
 import Airbender.Proofs.Arithmetic.Lemmas
 import Mathlib.Tactic.FinCases

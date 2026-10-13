@@ -1,4 +1,4 @@
-import Airbender.Review.JumpBranchSlt.Branch
+import Airbender.Review.Circuits.JumpBranchSlt.Branch
 
 namespace Airbender.JumpBranchSlt.Branch
 open Airbender.Arithmetic Variables Airbender.Reference.RiscV Airbender.Reference.Sail
