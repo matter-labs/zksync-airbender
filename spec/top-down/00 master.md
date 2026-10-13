@@ -287,7 +287,9 @@ delegation entries share or separate their namespaces._
 - **Tuple Address Ranges**
   - ROM: (id, addr)
   - RAM: (id, addr)
-  - ...
+  | pc_lo | pc_hi | rs1 | rs2 | rd | imm_lo | imm_hi | funct3 | mask |
+  |---|---|---|---|---|---|---|---|---|
+  | pc[15:0] | pc[31:16] | first register index | second register index | destination register index | immediate[15:0] | immediate[31:16] | family-specific | opcode-family bitmask |
 
 ### Grand-product multiset argument
 
@@ -374,6 +376,12 @@ chunks, including active rows, padding, and the argument contributions they prod
 _Describe how an active row binds its PC to one supported instruction and selects
 exactly one local operation relation._
 
+- the **Decoder Lookup** is our implementation of RISCV32IM decoding through a pre-processed binary table, which relates to the binary that is being proven. The binary is pre-processed as a table that maps 32-bit program counter addresses to their instructions' common RISCV counterparts (such as rs1, rs2, rd, etc..) as well as special flag bitmasks and values used by our circuits. Since the binaries are never any longer than 4MB, the total table size does not exceed 2^22 rows and remains efficient to prove. We further split the table into ISA spec families, such that each circuit comes with its own valid decoder. Any lookups to PC addresses that fall outside the scope of that circuit are either not found by the lookup or, if found in the table's padding row, mapped to unprovable decodings.
+
+  | pc_lo | pc_hi | rs1 | rs2 | rd | imm_lo | imm_hi | funct3 | mask |
+  |---|---|---|---|---|---|---|---|---|
+  | input pc[15:0] | input pc[31:16] | first register index | second register index | destination register index | immediate[15:0] | immediate[31:16] | family-specific | opcode-family bitmask |
+
 ### Active-cycle transition
 
 _Describe how a row reads the current PC, timestamp, registers, and memory; applies
@@ -402,6 +410,24 @@ for later cross-chunk aggregation._
 _Describe decoder membership, fixed semantic tables, limb range checks, timestamp
 range checks, and how their local claims are closed._
 
+- **LogUp** is our preferred lookup argument, instantiated according to **Improving logarithmic derivative lookups using GKR**(https://eprint.iacr.org/2023/1284). We encode three separate Lookup arguments, which we keep separate at a minor extra cost for the Verifier and as a precautionary step to avoid overflowing the Field size limit for the number of proven lookups (which is otherwise inferior to the total number of cycles that an Airbender machine can prove). Our three arguments are: range checks for 16-bit word limbs, range checks for 19-bit timestamp limbs, and generic 10-column lookups; the generic lookups are further distinguished by a `table_id` field, which is nearly always a constant in our circuits.
+
+  | 16-bit range-check |
+  |---|
+  | input[15:0] |
+
+  | 19-bit range-check |
+  |---|
+  | input[18:0] |
+
+  | c0 | c1 | c2 | c3 | c4 | c5 | c6 | c7 | c8 | table_id |
+  |---|---|---|---|---|---|---|---|---|---|
+  | t[0] | t[1] | t[2] | t[3] | t[4] | t[5] | t[6] | t[7] | t[8] | const table identifier |
+
+- **Table Padding** is a technique used to pad table sizes to powers of two. As table setups are injected via special columns in each circuit, they must align with the 2-smooth padding of the circuit chunks. We typically pad tables with values that are unsatisfiable within circuits, as in the decoder tables. Where padding values can satisfy a lookup, they remain subject to the circuit constraints; range-check padding does not extend the permitted range.
+
+- **Lookup Membership** proves that a queried tuple is present in its setup table. Circuit constraints enforce the instruction semantics selected by that tuple, while the global memory argument guarantees consistency of the claimed register and memory inputs across cycles.
+
 - <mark><strong>Lookup Channels</strong> separate generic tuple membership from 16-bit and 19-bit timestamp-limb ranges. The generic setup concatenates the circuit's fixed semantic tables and program decoder table, padded to the trace capacity. Tuples share a fixed width, with zero padding and a table identifier when distinct table classes coexist. The range tables are fixed virtual polynomials containing the respective integer ranges and padding zeros. Queries use the same encoding as their table; ordinary queries have coefficient 1, while decoder queries have coefficient execute.</mark>
 
 - <mark><strong>LogUp Multiplicities</strong> are witness columns aligned with the lookup tables. Honest multiplicities count the contributing queries at each table entry. For a channel with queries q, contribution coefficients a(q), table rows T[i], and multiplicities m[i], the required identity is Σ_q a(q)/(β + enc_α(q)) − Σ_i m[i]/(β + enc_α(T[i])) = 0. Here enc_α(t) = Σ_j α^j × t[j], and α and β are extension-field challenges drawn after commitment of the queries and multiplicities. Honest counts are embedded in the base field; the channel's query bound must prevent multiplicity wraparound. The circuit represents the identity through numerator/denominator pairs, completed as described in Section 5.</mark>
@@ -410,6 +436,10 @@ range checks, and how their local claims are closed._
 
 _Summarize the circuit families and only the nonstandard instruction behavior or
 family-specific invariants that must be known at this level._
+
+- **Quadratic Constraints and Expressions** are the bread and butter of our circuits: every single instruction is mapped to a set of quadratic constraints which are either proven equal to zero (STARK AIR-style), or quadratic expressions which end up as outputs for each circuit row: memory or lookup tuples which must be validated by the Verifier at the end of the chunk's proof.
+
+- **Variables** are the unit of witness data input as encoed by circuits. Each variable corresponds to either a *base layer* input variable, ie a raw source of witness data for the Prover to prove, or as a derivate variable that is linked by quadratic constraints and expressions to other variables (sequentially leading back to base layer inputs).
 
 ### Precompile fulfillment circuits
 
@@ -432,6 +462,23 @@ verifier._
 
 _Describe how the chunk relation becomes a layered algebraic circuit and which
 polynomials or columns are committed._
+
+- **MLE Polynomials**
+
+- **MLE EQ Polynomials**
+
+- **Small Prime-Field MLE GKR** is Airbender v3's proof system of choice, as described in previous literature such as _"Delegating Computation: Interactive Proofs for Muggles"_ (https://www.microsoft.com/en-us/research/publication/delegating-computation-interactive-proofs-muggles/) and _"HyperPlonk: Plonk with Linear-Time Prover and High-Degree Custom Gates"_ (https://eprint.iacr.org/2022/1355) and _"A Note on the GKR Protocol"_ (https://people.cs.georgetown.edu/jthaler/GKRNote.pdf). Whereas previous Airbender versions were based only on AIR constraints, the GKR Prover splits its circuit into layers of inputs/outputs that feed into one another, leading to base layer "input" polynomials and final layer "output" polynomials. Basic AIR-like constraints which contain only a quadratic relation and no outputs are mapped to "Zerocheck" outputs (see the Hyperplonk paper), or constant zero values. Seeing as the PCS (Polynomial Commitment Scheme) is the most expensive step of a Prime-Field STARK prover, the main advantage of this approach is that GKR only requires PCS openings for the polynomials describing the base layer inputs, allowing us to push any derivate values into intermediate layer variables which significantly reduces pressure on the Commitment phase. GKR works by reduction in reverse: each output polynomial is derived via quadratic expressions from one or more input MLE polynomials present at the previous layer. The reductions are akin to many polynomial interpolations, as described in more detail later in the MLE Sumchecks section. Seeing as each GKR layer needs to prove multiple output polynomials, each layer bastches MLE Sumchecks for this purpose. The final output of each GKR layer is the proven circuit chunk's output: a pair of local memory argument ReadSet and WriteSet values, as well as three pairs of rational-split numerator-denominator values for the three LogUp arguments present in each circuit. The LogUp pairs are checked locally, while the global memory argument values are appended to the global memory argumment ReadSet and WriteSet accumulators. Each proven chunk contains a set of input polynomials as defined by its respective circuit family, with each polynomial representing an individual variable in that circuit. The GKR layers are then split into two parts: the "accumulation" layers and the "main circuit" layers. The main circuit layers take many 2^N sized base layer inputs polynomials for that circuti chunk and reduce them to a constant number of 2^N sized circuit outputs (the same as the total chunk outputs); the accumulation layers then take this same amount of outputs and compress them by accumulating them pairwise in the polynomials so that they become 2^const sized, where 2^const is a small constant number of values that can be read directly by the Verifier. The Verifier is then tasked with completing the compression of the constant sized polynomials into single pair values, which completes the GKR proving phase.
+  - gkr layers equations \$$...
+  
+- **Batched MLE Sumchecks** are the core proving protocol used by Airbender v3. MLE Sumchecks themselves are simple protocols used to prove the summation of multivariate witness trace Polynomials over a MLE domain, with each polynomial variable in the original witness trace being a single bit. This summation argument is applied to a structured Lagrange-like polynomial decomposition, which gates polynomial values with Lagrange-bases in the MLE domain (so-called $eq(x,y)$ polynomials, see the equations below). Such an approach allows us to leverage Sumcheck steps as reductions between output polynomials and input polynomials. Since each layer contains multiple polynomials which must be reduced, we leverage randomised RLC batching _"A Zero Knowledge Sumcheck and its Applications"_ (https://arxiv.org/abs/1704.02086) and _"HyperPlonk: Plonk with Linear-Time Prover and High-Degree Custom Gates"_ (https://eprint.iacr.org/2022/1355) to prove multiple polynomial reductions with a single one, leading to a great efficienty boost.
+  - ... batched mle sumcheck equation, eq equation, protocol equations \$$
+
+- **Sumcheck Variable Order**
+
+- **EQ polynomial optimisation**
+
+- **Reduced Coefficient + Coeff interpolation optimisations**
+
 
 - <mark><strong>Polynomial Representations</strong> associate each column of 2^k rows with a multilinear polynomial whose evaluations on {0,1}^k are the column entries. Its multilinear coefficients also define a univariate polynomial by assigning coefficient index i to X^i; LDE evaluations use this univariate encoding on the commitment domain. A random multilinear evaluation is therefore distinct from a trace-row query or an LDE evaluation. Memory, witness, and nonvirtual setup columns are committed; intermediate circuit values are derived, and virtual setup evaluations are computed by the Verifier.</mark>
 
