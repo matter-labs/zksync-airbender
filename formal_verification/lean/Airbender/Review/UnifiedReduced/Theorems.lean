@@ -5,6 +5,7 @@ import Airbender.Proofs.UnifiedReduced.SharedSpans
 import Airbender.Proofs.UnifiedReduced.RequestWindows
 import Airbender.Proofs.UnifiedReduced.MixedWindows
 import Airbender.Proofs.UnifiedReduced.JointHashWindows
+import Airbender.Proofs.UnifiedReduced.MixedWindowProjection
 import Airbender.Proofs.Delegation.RequestHashWindows
 
 namespace Airbender.UnifiedReduced
@@ -144,5 +145,37 @@ theorem Caller.window_projection_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
     {lower upper : Nat} (first : lower % 4 = 0) (last : upper % 4 = 0) (positive : 2 ≤ lower) (ordered : lower ≤ upper) :
     Caller.ProjectedWindowExecution data before cells lower upper :=
   Caller.Proofs.projected_window hp clockInverse rotationInverse accepted inputs first last positive ordered
+
+/-- Accepted state matching counts every instruction between the public cuts.
+    The four-tick duration and request matching derive a caller-only region
+    without supplying selectors or an instruction schedule. -/
+theorem Caller.window_schedule_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
+    (accepted : Caller.RequestChecks data) (inputs : Caller.RequestInputs data before addresses)
+    {lower upper : Nat} (first : lower % 4 = 0) (last : upper % 4 = 0) (positive : 2 ≤ lower) (ordered : lower ≤ upper)
+    (afterInitial : (Trace.timeOfPair data.machine.initial.timestamp).value ≤ lower)
+    (beforeTerminal : upper ≤ (Trace.timeOfPair data.machine.terminal.timestamp).value)
+    (duration : upper = lower + 4 * (data.workers.windowRows lower upper).length) :
+    Caller.CallerWindowSchedule data lower upper :=
+  Caller.Proofs.caller_window_schedule hp clockInverse accepted inputs first last positive ordered afterInitial beforeTerminal duration
+
+/-- Caller regions within mixed history derive worker matching and retained
+    boundary images at the actual cut states. Earlier ordinary effects remain
+    in the joint prefix; complete hash entry protocols and retirement are separate. -/
+theorem Caller.mixed_window_projection_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+    {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
+    {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.MixedMemoryInputs data program before ca oa cells)
+    {lower upper : Nat} (first : lower % 4 = 0) (last : upper % 4 = 0) (positive : 2 ≤ lower) (ordered : lower ≤ upper)
+    (afterInitial : (Trace.timeOfPair data.machine.initial.timestamp).value ≤ lower)
+    (beforeTerminal : upper ≤ (Trace.timeOfPair data.machine.terminal.timestamp).value)
+    (duration : upper = lower + 4 * (data.workers.windowRows lower upper).length) :
+    Caller.MixedProjectedWindowExecution data before cells lower upper :=
+  Caller.Proofs.mixed_projected_window hp clockInverse rotationInverse accepted inputs
+    first last positive ordered afterInitial beforeTerminal duration
 
 end Airbender.UnifiedReduced

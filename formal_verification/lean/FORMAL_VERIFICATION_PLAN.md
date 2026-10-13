@@ -71,6 +71,11 @@ joint hash windows now reach all three complete references at those same actual
 cut states. Shared matching projects worker boundaries and removes x0 refreshes
 as Sail no-ops; entry controls and extended-round masks are derived. No independent
 worker permutation or intermediate state is supplied.
+Mixed-history caller regions now derive their exact instruction count from native
+state matching and four-tick advancement. Public cuts inside the machine path and
+a duration matching the selected worker count derive every caller selector in
+the region. Worker matching and retained boundary images are then projected only
+within that region; earlier ordinary effects stay in the actual joint prefix.
 
 1. **Hash references on subspans.** Reuse complete caller-only G, extended BLAKE and
    Keccak references for segmented spans. Derive worker boundaries, ranges,
@@ -81,8 +86,9 @@ worker permutation or intermediate state is supplied.
    windows and their caller request spans are checked in the scopes above.
    Caller-only joint windows now bind repeated G spans in one mode and the first
    extended-BLAKE/Keccak span, retaining their existing public mode/count and prefix
-   ABI. Recover protocol control preparation through actual ordinary instructions
-   and extend the window projection to spans inside mixed instruction history.
+   ABI. Mixed-history worker projections now derive caller regions as above.
+   Recover protocol control preparation through actual ordinary instructions
+   and bind the complete references to those mixed-history regions.
    COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed
    retained for the second window. Extended BLAKE and Keccak completion controls
    do not restart their protocols; checked regressions forbid treating their
