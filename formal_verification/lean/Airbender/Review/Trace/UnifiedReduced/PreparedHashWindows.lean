@@ -10,9 +10,9 @@ def hashPreparation : Delegation.Caller.HashSpan → ControlLiteral
   | .blakeRound flags => .lui (BitVec.ofNat 20 ((8 + flags.val) * 16))
   | .keccak => .addi 0
 
-/-- Public preparation and complete first-span ABI in a mixed architecture.
-    G and Keccak need no supplied worker masks; extended BLAKE's mixed transport
-    still requires a separate derivation. No control read or worker boundary is an input. -/
+/-- Public preparation and a complete hash span in a mixed architecture.
+    G and Keccak need no supplied worker masks; extended BLAKE uses its separate
+    prepared-round claim. No control read or worker boundary is an input. -/
 structure PreparedHashWindowInputs [Fact p.Prime] (data : RequestTrace p) (before : State)
     (ca oa : List (BitVec 32)) (cells : List Cell) (program : List UnifiedReduced.ProgramEntry)
     (span : Delegation.Caller.HashSpan) (lower upper : Nat) : Prop where
@@ -34,7 +34,7 @@ structure PreparedHashWindowInputs [Fact p.Prime] (data : RequestTrace p) (befor
   family : ∀ row ∈ data.workers.rows, row.family = span.family
   /-- This prepared mixed-span claim admits G and Keccak. -/
   profile : span.family ≠ .blakeRound
-  /-- Public literal registry and the existing empty worker-prefix scope. -/
+  /-- Public literal registry; earlier worker effects remain in the history. -/
   preparation : ControlPreparation data program lower span.controlRegister (hashPreparation span)
   /-- The complete span has the existing public protocol call count. -/
   calls : (data.workers.windowRows lower upper).length = span.callCount

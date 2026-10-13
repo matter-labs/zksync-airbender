@@ -18,14 +18,14 @@ def ControlLiteral.value : ControlLiteral → BitVec 32
   | .addi immediate => SailRV32.Functions.sign_extend (m := 32) immediate
   | .lui immediate => immediate ++ (0 : BitVec 12)
 
-/-- Public preparation registry and first-span scope. Native matching identifies
+/-- Public preparation registry and its final cycle. Native matching identifies
     the final preparation row; no row selector, control read or write is supplied. -/
 structure ControlPreparation [Fact p.Prime] (data : RequestTrace p)
     (program : List UnifiedReduced.ProgramEntry) (cut : Nat) (register : BitVec 5) (literal : ControlLiteral) : Prop where
   /-- The ordinary public instruction registry prepares this constant. -/
   program : ∀ entry ∈ program, entry.instruction = literal.instruction register
-  /-- Existing first-span ABI: earlier workers, including surplus rows, are absent. -/
-  prefixScope : data.workers.prefixRows cut = []
+  /-- Workers may precede preparation, but none writes in its final cycle. -/
+  prefixScope : data.workers.windowRows (cut - 4) cut = []
   /-- At least one complete preparation cycle follows the public initial clock. -/
   afterInitial : (timeOfPair data.machine.initial.timestamp).value + 4 ≤ cut
   /-- The cut lies within the accepted native machine path. -/
