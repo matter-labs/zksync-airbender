@@ -183,8 +183,9 @@ theorem Caller.mixed_window_projection_soundness [Fact p.Prime] (hp : 8388608 â‰
     first last positive ordered afterInitial beforeTerminal duration
 
 /-- Original public ADDI-from-x0/LUI decoding and accepted native writes prepare
-    the actual control at the prepared cut, retaining earlier worker effects. Clock matching identifies the
-    preparation row; its timestamp survives. Public program and prefix scope
+    the actual control at the prepared cut, retaining earlier worker effects.
+    Uniform or straight-path registries admit successive literal writes. Native
+    PC/clock matching identifies the preparation row; its timestamp survives. Public program and prefix scope
     remain explicit, with no desired control read or row selector as an input. -/
 theorem Caller.control_preparation_soundness [Fact p.Prime] (hp : 8388608 â‰¤ p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)

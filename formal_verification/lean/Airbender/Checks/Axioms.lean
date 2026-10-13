@@ -2010,6 +2010,8 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Caller.ControlLiteral
 #print axioms Airbender.UnifiedReduced.Caller.ControlLiteral.instruction
 #print axioms Airbender.UnifiedReduced.Caller.ControlLiteral.value
+#print axioms Airbender.UnifiedReduced.Caller.LiteralProgram
+#print axioms Airbender.UnifiedReduced.Caller.PreparationProgram
 #print axioms Airbender.UnifiedReduced.Caller.ControlPreparation
 #print axioms Airbender.UnifiedReduced.Caller.PreparedControl
 #print axioms Airbender.UnifiedReduced.Caller.PreparedBoundaryExecution
@@ -2017,6 +2019,9 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.literal_operands_result
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.preparation_row
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.prefix_write_before_preparation_cut
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.literal_program_pc_advance
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.literal_program_pc_clock
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.preparation_instruction
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.literal_row_output
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.preparation_at_boundary
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.control_preparation
@@ -2024,6 +2029,10 @@ import Clean.Specs.Keccak256
 #print axioms Tests.ControlPreparation.literal_prepares_actual_control
 #print axioms Tests.ControlPreparation.initial_control_is_different
 #print axioms Tests.ControlPreparation.wrong_preparation_instruction_rejected
+#print axioms Tests.ControlPreparation.distinct_literals_prepare_successive_cuts
+#print axioms Tests.ControlPreparation.chained_preparation_uses_previous_write
+#print axioms Tests.ControlPreparation.chained_wrong_literal_rejected
+#print axioms Tests.ControlPreparation.chained_fabricated_read_rejected
 #print axioms Airbender.UnifiedReduced.Caller.hashPreparation
 #print axioms Airbender.UnifiedReduced.Caller.PreparedHashWindowInputs
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.hash_preparation_value

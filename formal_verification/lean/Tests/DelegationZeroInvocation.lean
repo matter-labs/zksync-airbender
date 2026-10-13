@@ -547,7 +547,8 @@ theorem control_preparation_after_unissued_worker :
   · apply UnifiedReduced.Caller.control_preparation_soundness (by decide +kernel) (by decide +kernel) (by decide +kernel)
       preparationAccepted preparationInputs _ (by decide) (by decide)
     refine ⟨?_, ?_, by decide +kernel, by decide +kernel⟩
-    · intro entry member
+    · apply UnifiedReduced.Caller.PreparationProgram.uniform
+      intro entry member
       have same : entry = preparationEntry := List.mem_singleton.mp member
       subst entry
       rfl

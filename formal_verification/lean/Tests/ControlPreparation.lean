@@ -142,7 +142,8 @@ private theorem inputs (mode : Fin 3) : UnifiedReduced.Caller.MixedMemoryInputs 
 private theorem preparation (mode : Fin 3) :
     UnifiedReduced.Caller.ControlPreparation (data mode) [entry mode] 8 (register mode) (literal mode) := by
   refine ⟨?_, ?_, ?_, ?_⟩
-  · intro current member
+  · apply UnifiedReduced.Caller.PreparationProgram.uniform
+    intro current member
     have same : current = entry mode := List.mem_singleton.mp member
     subst current
     rfl
@@ -187,7 +188,10 @@ theorem keccak_initial_control_is_different :
 theorem wrong_preparation_instruction_rejected :
     ¬ UnifiedReduced.Caller.ControlPreparation (data 0) [entry 0] 8 12 (.addi 0) := by
   intro scope
-  have mismatch := scope.program (entry 0) (List.mem_singleton_self _)
+  have mismatch : (entry 0).instruction = UnifiedReduced.Caller.ControlLiteral.instruction (.addi 0) 12 := by
+    cases scope.program with
+    | uniform entries => exact entries (entry 0) (List.mem_singleton_self _)
+    | straight _ atCut => exact atCut (entry 0) (List.mem_singleton_self _) (by decide +kernel)
   simp [entry, literal, register, UnifiedReduced.Caller.hashPreparation,
     UnifiedReduced.Caller.ControlLiteral.instruction] at mismatch
 
@@ -251,7 +255,11 @@ theorem round_memory_inputs_without_masks :
 theorem mismatched_round_preparation_flags_rejected :
     ¬ UnifiedReduced.Caller.PreparedRoundInputs (data 1) (before 1) [] [0] (cells 1) [entry 1] 1 8 := by
   intro context
-  have instruction := context.preparation.program (entry 1) (List.mem_singleton_self _)
+  have instruction : (entry 1).instruction =
+      (UnifiedReduced.Caller.hashPreparation (.blakeRound 1)).instruction 12 := by
+    cases context.preparation.program with
+    | uniform entries => exact entries (entry 1) (List.mem_singleton_self _)
+    | straight _ atCut => exact atCut (entry 1) (List.mem_singleton_self _) (by decide +kernel)
   change SailRV32.instruction.UTYPE (128, .Regidx 12, .LUI) =
     SailRV32.instruction.UTYPE (144, .Regidx 12, .LUI) at instruction
   cases instruction
@@ -283,5 +291,189 @@ theorem prepared_round_two_bits_rejected [Fact p.Prime] (hp : 8388608 ≤ p)
   · have zero := mask first
     rw [if_neg same, firstBit] at zero
     exact one_ne_zero zero
+
+private def chainedBefore : State := wordWriteState (before 0) 4 0x00000613
+private def chainedEntry : UnifiedReduced.ProgramEntry :=
+  ⟨4, 0x00000613, UnifiedReduced.Caller.ControlLiteral.instruction (.addi 0) 12,
+    ⟨.machine, 0, 0, 12, ⟨0, 0⟩, 1, 0⟩⟩
+private def chainedAssignment (column : Nat) : ZMod babyBearModulus :=
+  if column = 0 then 4
+  else if column = 2 || column = 30 || column = 40 then 8
+  else if column = 32 then 12
+  else if column = 34 then 5
+  else if column = 46 then 6
+  else if column = 48 then 128
+  else if column = 7 || column = 44 then 12
+  else if column = 4 || column = 11 || column = 129 || column = 130 ||
+      column = 131 || column = 132 || column = 133 then 1
+  else 0
+private def chainedRow : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, chainedAssignment⟩
+private def chainedProgram : List UnifiedReduced.ProgramEntry := [entry 0, chainedEntry]
+private def chainedData : UnifiedReduced.Caller.RequestTrace babyBearModulus where
+  machine := { (data 0).machine with
+    rows := [chainedRow, row 0]
+    rom := UnifiedReduced.Setup.table chainedBefore
+    terminal := chainedRow.finish
+    terminalMemory := [⟨(Cell.register 0).addressCode, (9, 0), 0⟩,
+      ⟨(Cell.register 12).addressCode, (10, 0), 0⟩] }
+  workers := (data 0).workers
+  program := []
+
+private theorem chainedCore (second : Bool) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (if second then chainedAssignment else assignment 0))
+    (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table chainedBefore)) := by
+  cases second
+  all_goals simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
+    Verification.environment, Expression.eval, assignment, chainedAssignment, Lookup.Contains, Table.toRaw, fromElements]
+  all_goals repeat' apply And.intro
+  all_goals solve
+    | decide +kernel
+    | (apply Verification.range16_contains; decide +kernel)
+    | (refine ⟨(0 : Fin 2097537), ?_⟩
+       change (#v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0] : Vector (ZMod babyBearModulus) 10) =
+         (UnifiedReduced.Setup.fixedRow (0 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
+       decide +kernel)
+
+private theorem chainedTimestamps : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment chainedAssignment) UnifiedReduced.importedConstraintsTimestampLookups := by
+  rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
+  constructor
+  · simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.constraints]
+  · rw [List.forall_mem_iff_forall_getElem]
+    intro i bound
+    have short : i < 8 := by simpa only [UnifiedReduced.timestamp_count] using bound
+    interval_cases i
+    all_goals apply Trace.Proofs.range_contains
+    all_goals decide +kernel
+
+private theorem chainedAccepted : UnifiedReduced.Caller.MixedMemoryAccepted chainedData chainedProgram := by
+  constructor
+  · constructor
+    · intro current member
+      have rows : current = chainedRow ∨ current = row 0 := by simpa [chainedData] using member
+      rcases rows with rfl | rfl
+      · exact Verification.holds_append (chainedCore true) chainedTimestamps
+      · exact Verification.holds_append (chainedCore false) (timestamps 0)
+    · intro current member
+      have rows : current = chainedRow ∨ current = row 0 := by simpa [chainedData] using member
+      rcases rows with rfl | rfl <;> decide +kernel
+    · change [((row 0).start), chainedRow.finish, (row 0).finish].Perm
+        [chainedRow.finish, chainedRow.start, (row 0).start]
+      have same : (row 0).finish = chainedRow.start := rfl
+      rw [same]
+      exact (List.Perm.swap _ _ _).trans (List.Perm.cons _ (List.Perm.swap _ _ []))
+    · intro current member
+      have empty : chainedData.callers = [] := by decide +kernel
+      rw [empty] at member
+      cases member
+    · intro current member
+      cases member
+    · intro current member
+      cases member
+    · have empty : chainedData.calls = [] := by decide +kernel
+      rw [empty]
+      exact List.Perm.refl []
+  · intro current member _
+    have rows : current = chainedRow ∨ current = row 0 := by simpa [chainedData] using member
+    rcases rows with rfl | rfl
+    · change ∃ i : Fin 2, chainedRow.decoderQuery = (chainedProgram.get i).query
+      exact ⟨1, by decide +kernel⟩
+    · change ∃ i : Fin 2, (row 0).decoderQuery = (chainedProgram.get i).query
+      exact ⟨0, by decide +kernel⟩
+  · decide +kernel
+
+private theorem chainedImage : UnifiedReduced.Mixed.programImage chainedBefore [0, 4] = some chainedProgram := by
+  have first : (Cell.ram 0).read chainedBefore = .ok (bits 0) chainedBefore :=
+    written_word_disjoint 4 0x00000613 (by decide) (written_word_read initialState 0 (bits 0))
+  have second : (Cell.ram 4).read chainedBefore = .ok 0x00000613 chainedBefore :=
+    written_word_read (before 0) 4 0x00000613
+  have decodeFirst : run (SailRV32.Functions.encdec_backwards (bits 0)) chainedBefore =
+      .ok ((literal 0).instruction 12) chainedBefore := by with_unfolding_all rfl
+  have decodeSecond : run (SailRV32.Functions.encdec_backwards 0x00000613) chainedBefore =
+      .ok (UnifiedReduced.Caller.ControlLiteral.instruction (.addi 0) 12) chainedBefore := by with_unfolding_all rfl
+  have fieldsFirst : UnifiedReduced.Mixed.decoderFields ((literal 0).instruction 12) = some (entry 0).data := by
+    with_unfolding_all rfl
+  have fieldsSecond : UnifiedReduced.Mixed.decoderFields (UnifiedReduced.Caller.ControlLiteral.instruction (.addi 0) 12) =
+      some chainedEntry.data := by with_unfolding_all rfl
+  simp only [UnifiedReduced.Mixed.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
+    programEntryRunWith, first, second, decodeFirst, decodeSecond, fieldsFirst, fieldsSecond, bind, Option.bind, pure]
+  rfl
+
+private theorem chainedInputs :
+    UnifiedReduced.Caller.MixedMemoryInputs chainedData chainedProgram chainedBefore [] [0, 4] (cells 0) := by
+  refine ⟨⟨rfl, ?_, by decide +kernel⟩, chainedImage, ?_, by decide +kernel, ?_, rfl, rfl, ?_⟩
+  · change 4 < timestampBase ∧ 0 < timestampBase
+    norm_num [timestampBase]
+  · have zero : (Cell.register 0).read chainedBefore = .ok 0 chainedBefore := by with_unfolding_all rfl
+    have control : (Cell.register 12).read chainedBefore = .ok 65537 chainedBefore := by
+      apply rX_register_frame (before := initialState) (after := chainedBefore) rfl 12
+      apply read_register
+      simp [initialState, Std.ExtDHashMap.get?_insert]
+    change initialImage chainedBefore [.register 0, .register 12] = some chainedData.machine.initialMemory
+    simp only [initialImage, zero, control, List.mapM_cons, List.mapM_nil, bind, pure]
+    rfl
+  · intro cell member
+    have choices : cell = .register 0 ∨ cell = .register 12 := by simpa [cells, register] using member
+    rcases choices with rfl | rfl <;> trivial
+  · intro current member
+    cases member
+
+private theorem chainedScope (second : Bool) : UnifiedReduced.Caller.ControlPreparation chainedData chainedProgram
+    (if second then 12 else 8) 12 (if second then .addi 0 else .addi 128) := by
+  refine ⟨.straight ?_ ?_, ?_, ?_, ?_⟩
+  · intro current member
+    have entries : current = entry 0 ∨ current = chainedEntry := by simpa [chainedProgram] using member
+    rcases entries with rfl | rfl
+    · exact ⟨12, .addi 128, by decide, rfl⟩
+    · exact ⟨12, .addi 0, by decide, rfl⟩
+  · intro current member address
+    have entries : current = entry 0 ∨ current = chainedEntry := by simpa [chainedProgram] using member
+    rcases entries with rfl | rfl
+    · cases second
+      · rfl
+      · change 4 = 8 at address
+        omega
+    · cases second
+      · change 8 = 4 at address
+        omega
+      · rfl
+  · cases second <;> rfl
+  · cases second <;> decide +kernel
+  · cases second <;> decide +kernel
+
+theorem distinct_literals_prepare_successive_cuts (second : Bool) :
+    UnifiedReduced.Caller.PreparedBoundaryExecution chainedData chainedBefore (cells 0)
+      (if second then 12 else 8) 12 (if second then .addi 0 else .addi 128) :=
+  UnifiedReduced.Caller.control_preparation_soundness (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    chainedAccepted chainedInputs (chainedScope second) (by decide) (by cases second <;> decide)
+
+theorem chained_preparation_uses_previous_write :
+    (readToken chainedAssignment UnifiedReduced.importedConstraintsMemoryPorts[2]).time = (6, 0) ∧
+      (readToken chainedAssignment UnifiedReduced.importedConstraintsMemoryPorts[2]).word.toBitVec = 128 := by
+  decide +kernel
+
+theorem chained_wrong_literal_rejected :
+    ¬ UnifiedReduced.Caller.ControlPreparation chainedData chainedProgram 12 12 (.addi 128) := by
+  intro scope
+  have encoding := UnifiedReduced.Caller.Proofs.preparation_instruction (by decide +kernel) (by decide +kernel)
+    chainedAccepted chainedInputs.publicProgram chainedInputs.ordinaryProgram scope
+    (row := chainedRow) (by simp [chainedData]) (by decide +kernel)
+    (entry := chainedEntry) (by simp [chainedProgram]) (by decide +kernel)
+  cases encoding
+
+private def chainedFabricatedAssignment (column : Nat) : ZMod babyBearModulus :=
+  if column = 48 then 0 else chainedAssignment column
+private def chainedFabricatedData : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
+  { chainedData with machine := { chainedData.machine with
+    rows := [⟨.machine, chainedFabricatedAssignment⟩, row 0] } }
+
+theorem chained_fabricated_read_rejected :
+    ¬ UnifiedReduced.Caller.MixedMemoryAccepted chainedFabricatedData chainedProgram := by
+  intro accepted
+  let token := readToken chainedFabricatedAssignment UnifiedReduced.importedConstraintsMemoryPorts[2]
+  have consumed : token ∈ chainedFabricatedData.mixedSteps.map Prod.fst := by decide +kernel
+  have absent : token ∉ chainedFabricatedData.machine.initialMemory ++
+      chainedFabricatedData.mixedSteps.map Prod.snd := by decide +kernel
+  exact absent (accepted.memory.mem_iff.mpr (List.mem_append_right _ consumed))
 
 end Tests.ControlPreparation

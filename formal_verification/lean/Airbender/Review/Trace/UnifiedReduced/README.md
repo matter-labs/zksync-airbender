@@ -15,7 +15,7 @@ mixed execution with delegation callers remains a separate obligation.
 | Machine and worker reads/writes, bounds and references share one actual initialized history. | [`Caller.mixed_memory_soundness`](Theorems.lean) |
 | Exact caller regions, counts and slots follow from state/request matching and public cuts/duration. | [`Caller.window_schedule_soundness` and `Caller.request_window_soundness`](Theorems.lean) |
 | Actual joint cut states and projected worker boundaries retain native timestamps. | [`Caller.mixed_window_soundness` and `Caller.mixed_window_projection_soundness`](Theorems.lean) |
-| Public ADDI-from-x0/LUI preparation yields actual controls after earlier workers, without desired control reads. | [`Caller.control_preparation_soundness`](Theorems.lean) |
+| Uniform or successive public ADDI-from-x0/LUI preparation yields actual controls; native PC/clock matching derives the instruction at each cut. | [`Caller.control_preparation_soundness`](Theorems.lean) |
 | Complete prepared G/Keccak and extended-BLAKE references reach the selected actual cut states; masks are derived. | [`Caller.prepared_hash_window_soundness` and `Caller.prepared_round_window_soundness`](Theorems.lean) |
 | Original current-state caller fetch, selected worker observations and PC retirement meet at the same boundaries. | [`Caller.caller_cycles_soundness`](Theorems.lean) |
 
@@ -47,6 +47,10 @@ at those boundaries. Prepared G/Keccak spans admit earlier workers, including
 unissued effects; only the last preparation cycle is worker-free. Extended BLAKE
 retains its empty prefix. Public preparation/count/duration and these restrictions
 remain explicit; cuts do not reset clocks or supply intermediate states.
+The public ordinary registry may contain different literal writes along a straight
+path with callers. Each preparation cut derives its own literal and register from
+that public address. Prepared G/Keccak windows inherit this scope, allowing explicit
+mode changes or resets between spans; completion alone does not restart a protocol.
 
 Keep surplus zero-clock prefix effects, worker ROM-shadow transport, broader
 span chaining, full mixed caller retirement and inactive padding as separate

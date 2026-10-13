@@ -34,7 +34,7 @@ structure PreparedHashWindowInputs [Fact p.Prime] (data : RequestTrace p) (befor
   family : ∀ row ∈ data.workers.rows, row.family = span.family
   /-- This prepared mixed-span claim admits G and Keccak. -/
   profile : span.family ≠ .blakeRound
-  /-- Public literal registry; earlier worker effects remain in the history. -/
+  /-- Uniform or straight-path literal preparation; earlier workers remain in history. -/
   preparation : ControlPreparation data program lower span.controlRegister (hashPreparation span)
   /-- The complete span has the existing public protocol call count. -/
   calls : (data.workers.windowRows lower upper).length = span.callCount

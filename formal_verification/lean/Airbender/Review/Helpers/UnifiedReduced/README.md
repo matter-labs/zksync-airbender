@@ -32,10 +32,17 @@ binds current-state fetch.
 [Windows](Windows.lean), [WindowProjection](WindowProjection.lean) and
 [WindowSchedule](WindowSchedule.lean) describe native-clock cuts and selected regions.
 [ControlPreparation](ControlPreparation.lean) names the public preparation registry.
+It accepts either one uniform literal or different ADDI-from-x0/LUI literals along
+a straight path with callers. Native PC/clock matching identifies the public
+instruction at each preparation cut, without a selected-row or control-read premise.
 Only its final cycle is worker-free; earlier worker effects remain in the same
 history. The extended-round scope separately retains an empty worker prefix.
 Boundary timestamps are retained; scheduling, actual controls and intermediate
 states are derived rather than supplied.
+
+[Successive preparation regressions](../../../../Tests/ControlPreparation.lean)
+check actual x12 values 65537→128→0 with reversed row order, retained write clocks,
+and rejection of a wrong literal or fabricated second read.
 
 The native domain, public program, protocol counts and existing prefix scope
 remain explicit. These helpers do not claim whole mixed caller retirement.
