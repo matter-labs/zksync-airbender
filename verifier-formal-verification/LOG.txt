@@ -9,8 +9,9 @@ NOT imported).
 
 === MOVE TO AIRBENDER (2026-10-13) ===
 - ProgramCorrect (human/Human/Theorems.lean) strengthened: after _halt, any number of further steps keeps the PC
-  and every register unchanged (Airbender reads the outputs some steps later). NOT yet re-proven:
-  slop/Slop/RV/Final.lean fails, so verify.sh fails until it is.
+  and every register unchanged (Airbender reads the outputs some steps later). Re-proven: slop/Slop/RV/Halt.lean
+  (halt_forever: generic lemma for `j .` at any aligned ROM pc, induction on k), program_run now also returns
+  `CodeAt s' 0 Code.boot`; ./verify.sh passes on macOS (exit 0, axioms propext/choice/Quot.sound).
 - Without the generated Sail model only Human + Slop.RV.* build; Slop.Sail.* needs sail/regen.sh first.
 
 === HANDOFF (2026-10-13, end of day; resume from another machine) ===

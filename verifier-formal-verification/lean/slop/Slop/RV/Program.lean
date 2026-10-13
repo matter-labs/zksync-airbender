@@ -8,7 +8,8 @@ set_option maxHeartbeats 0
 namespace RV
 
 /-- From reset (pc = 0, any registers) with the code in memory and a field element `x` at `INPUT`, the program
-reaches `_halt` with `a0 = 3x + 1` and `a1 ≡ polyW COEFFS x (mod P)`, `a1 ≤ P`, where it stays. -/
+reaches `_halt` with `a0 = 3x + 1` and `a1 ≡ polyW COEFFS x (mod P)`, `a1 ≤ P`, with the boot code (which holds
+the `_halt` loop) still in memory. -/
 theorem program_run (s : State) (x : Word) (hpc : s.pc = 0)
     (hboot : CodeAt s 0 Code.boot) (hcomb : CodeAt s 0xbc Code.combine)
     (hinc : CodeAt s 0x128 Code.inc) (hdbl : CodeAt s 0x104 Code.double)
@@ -17,7 +18,7 @@ theorem program_run (s : State) (x : Word) (hpc : s.pc = 0)
     (hin : read s.mem 0x4200000 4 = x) (hx : x.toNat ≤ P) :
     ∃ n s', run n s = some s' ∧ s'.pc = 0x38 ∧ s'.r 10 = 3 * x + 1 ∧
       (s'.r 11).toNat ≤ P ∧ (s'.r 11).toNat % P = polyW Code.COEFFS x.toNat % P ∧
-      (step s').map (·.pc) = some 0x38 := by
+      CodeAt s' 0 Code.boot := by
   simp only [BitVec.ofNat_eq_ofNat] at hpc hboot hcomb hinc hdbl hpoly hmul hadd hcoef hin ⊢
   rv_code_facts hboot Code.boot
   rv_steps 24 with hpc, hin
@@ -49,7 +50,6 @@ theorem program_run (s : State) (x : Word) (hpc : s.pc = 0)
   refine ⟨by rv_regs, by rv_regs; exact hpost1, ?_, ?_, ?_⟩
   · rv_regs; exact hpost2.1
   · rv_regs; exact hpost2.2
-  · rv_step_simp with hpc2, read_of_frame hmem2, read_of_frame hmem1
-    rfl
+  · rv_codeAt hboot Code.boot with hcs2, hcs1
 
 end RV
