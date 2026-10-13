@@ -1,6 +1,6 @@
 import Airbender.Review.Helpers.Delegation.Memory
-import Airbender.Review.Helpers.SailHistory
-import Airbender.Review.Helpers.Platform
+import Airbender.Review.Helpers.Memory.SailHistory
+import Airbender.Review.Helpers.Memory.Platform
 
 namespace Airbender.Delegation
 open Trace

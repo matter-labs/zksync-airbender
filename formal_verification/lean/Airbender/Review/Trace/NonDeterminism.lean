@@ -1,5 +1,5 @@
 import Airbender.Review.Trace.Execution
-import Airbender.Review.Helpers.ExternalInput
+import Airbender.Review.Helpers.Decoder.ExternalInput
 
 namespace Airbender.Trace.NonDeterminism
 variable {p : Nat} [Fact p.Prime]

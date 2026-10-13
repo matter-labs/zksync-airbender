@@ -1,4 +1,4 @@
-import Airbender.Review.Helpers.Registries.MulDivInputs
+import Airbender.Review.Helpers.Context.Registries.MulDivInputs
 import Airbender.Review.Trace.Execution
 
 namespace Airbender.MulDiv

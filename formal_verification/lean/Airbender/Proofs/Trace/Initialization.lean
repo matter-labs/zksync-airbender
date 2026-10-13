@@ -1,4 +1,4 @@
-import Airbender.Review.Helpers.Initialization
+import Airbender.Review.Helpers.Memory.Initialization
 import Airbender.Proofs.Trace.InitialImage
 
 namespace Airbender.Trace.Proofs

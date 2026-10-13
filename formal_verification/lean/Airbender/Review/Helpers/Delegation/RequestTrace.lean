@@ -1,6 +1,6 @@
 import Airbender.Review.Helpers.Delegation.Decoder
 import Airbender.Review.Helpers.Delegation.WorkerContext
-import Airbender.Review.Helpers.Pooled
+import Airbender.Review.Helpers.Context.Registries.Pooled
 
 namespace Airbender.Delegation.Caller
 open Trace

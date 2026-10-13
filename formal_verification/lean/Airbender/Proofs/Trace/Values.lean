@@ -1,4 +1,4 @@
-import Airbender.Review.Helpers.Values
+import Airbender.Review.Helpers.Memory.Values
 import Airbender.Proofs.Trace.MemoryOrigins
 import Airbender.Proofs.AddSub
 import Airbender.Proofs.WordMemory

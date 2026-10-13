@@ -1,10 +1,10 @@
-import Airbender.Review.Helpers.Boundary
-import Airbender.Review.Helpers.Instruction
+import Airbender.Review.Helpers.Context.Boundary
+import Airbender.Review.Helpers.Decoder.Instruction
 import Airbender.Review.Circuits.ShiftBinop.Artifact
 import Airbender.Review.Helpers.Properties
-import Airbender.Review.Helpers.Sail
-import Airbender.Review.Helpers.PooledProgram
-import Airbender.Review.Helpers.RowContext
+import Airbender.Review.Helpers.Core.Sail
+import Airbender.Review.Helpers.Decoder.PooledProgram
+import Airbender.Review.Helpers.Context.RowContext
 
 namespace Airbender.ShiftBinop
 open Airbender.Arithmetic

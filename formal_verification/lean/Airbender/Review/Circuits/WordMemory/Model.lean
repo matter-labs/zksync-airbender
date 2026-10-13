@@ -1,10 +1,10 @@
-import Airbender.Review.Helpers.Instruction
+import Airbender.Review.Helpers.Decoder.Instruction
 import Airbender.Review.Circuits.WordMemory.Artifact
-import Airbender.Review.Helpers.Sail
+import Airbender.Review.Helpers.Core.Sail
 import Airbender.Review.Helpers.Properties
-import Airbender.Review.Helpers.PooledProgram
-import Airbender.Review.Helpers.RowContext
-import Airbender.Review.Helpers.Interfaces
+import Airbender.Review.Helpers.Decoder.PooledProgram
+import Airbender.Review.Helpers.Context.RowContext
+import Airbender.Review.Helpers.Context.Interfaces
 
 namespace Airbender.WordMemory
 open Airbender.Arithmetic Airbender.Reference.RiscV Airbender.Reference.Sail

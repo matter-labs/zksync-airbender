@@ -1,4 +1,4 @@
-import Airbender.Review.Helpers.PooledBoundary
+import Airbender.Review.Helpers.Context.PooledBoundary
 import Airbender.Review.Trace.Execution
 
 namespace Airbender.Trace

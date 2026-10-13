@@ -1,6 +1,6 @@
 import Airbender.Proofs.UnifiedReduced.ROMView
 import Airbender.Proofs.UnifiedReduced
-import Airbender.Review.Helpers.UnifiedReduced
+import Airbender.Review.Helpers.UnifiedReduced.Registry
 
 namespace Airbender.UnifiedReduced.ROMView
 open Trace Arithmetic

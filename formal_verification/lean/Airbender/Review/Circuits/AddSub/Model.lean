@@ -1,9 +1,9 @@
 import Airbender.Review.Circuits.AddSub.Artifact
 import Airbender.Review.Circuits.AddSub.Reference
 import Airbender.Review.Helpers.Properties
-import Airbender.Review.Helpers.PooledProgram
-import Airbender.Review.Helpers.Interfaces
-import Airbender.Review.Helpers.RowContext
+import Airbender.Review.Helpers.Decoder.PooledProgram
+import Airbender.Review.Helpers.Context.Interfaces
+import Airbender.Review.Helpers.Context.RowContext
 
 namespace Airbender.AddSub
 open Arithmetic Reference.RiscV Reference.RiscV.Sail Trace

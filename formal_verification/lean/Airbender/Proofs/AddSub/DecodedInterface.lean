@@ -1,5 +1,5 @@
 import Airbender.Proofs.AddSub.RowModel
-import Airbender.Review.Helpers.Program
+import Airbender.Review.Helpers.Decoder.Program
 import Airbender.Proofs.Arithmetic.Word
 
 namespace Airbender.AddSub.Proofs

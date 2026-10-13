@@ -1,6 +1,6 @@
 import Airbender.Review.Circuits.Bigint.Addresses
 import Airbender.Review.Helpers.Delegation.Memory
-import Airbender.Review.Helpers.ROM
+import Airbender.Review.Helpers.Memory.ROM
 
 namespace Airbender.Bigint.Addresses
 

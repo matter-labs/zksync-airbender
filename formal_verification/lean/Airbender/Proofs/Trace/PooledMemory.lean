@@ -1,7 +1,7 @@
 import Airbender.Proofs.Trace.PooledCode
 import Airbender.Proofs.Trace.WordMemory
-import Airbender.Review.Helpers.Boundary
-import Airbender.Review.Helpers.Instruction
+import Airbender.Review.Helpers.Context.Boundary
+import Airbender.Review.Helpers.Decoder.Instruction
 
 namespace Airbender.Trace.Proofs
 open Arithmetic Reference.RiscV.Sail Reference.Sail

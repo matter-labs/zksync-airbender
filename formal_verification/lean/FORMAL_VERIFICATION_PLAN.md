@@ -4,6 +4,7 @@ Circuit-coverage expansion is paused for manual review. Resume the pending
 integration work when the user asks to continue coverage. Current
 coverage, checked counterexamples and machine-check results live in
 [Verification status](VERIFICATION_STATUS.md).
+[Directory review guide](Airbender/Review/README.md) separates per-circuit and whole-trace reading.
 [Trust and review boundaries](TRUST_AND_REVIEW.md) records provenance and unchecked
 connections. Keep these documents as snapshots, without completed-work history.
 
@@ -11,7 +12,7 @@ connections. Keep these documents as snapshots, without completed-work history.
 
 Start with the composed execution claim in
 [Trace/Soundness.lean](Airbender/Review/Trace/Soundness.lean) and its
-[public inputs](Airbender/Review/Helpers/PooledBoundary.lean). The proof path is:
+[public inputs](Airbender/Review/Helpers/Context/PooledBoundary.lean). The proof path is:
 
 ```text
 public initialization → preserved write bounds → latest-write reads
@@ -33,6 +34,9 @@ explicit port connections do not establish circuit authentication of the stream.
 `Review/Circuits/` owns row contracts, reference selection, artifact paths and named
 mappings. `Review/Helpers/` owns initialized history, logical matching, public
 boundaries and selected-row context; it is independent of whole-execution contracts.
+Its property definitions remain the root entry point; `Core/`, `Decoder/`,
+`Memory/` and `Context/` group the common review topics. Tables, delegation and
+unified-machine context retain their separate groups.
 `Review/Trace/` owns execution, terminal realization and composition. Three local
 theorem modules retain the documented pooled proof-assembly dependency.
 Explain declaration roles and parameters briefly,

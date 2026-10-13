@@ -1,4 +1,4 @@
-import Airbender.Review.Helpers.MemoryHistory
+import Airbender.Review.Helpers.Memory.History
 import Airbender.Proofs.Trace.OfflineMemory
 
 namespace Airbender.Trace.Proofs

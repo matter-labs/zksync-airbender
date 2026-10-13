@@ -2,7 +2,7 @@ import Tests.BigintMemory
 import Tests.DelegationCaller
 import Tests.DelegationOperationEffects
 import Airbender.Proofs.Delegation.RequestTrace
-import Airbender.Review.Helpers.NativeMemory
+import Airbender.Review.Helpers.Memory.Native
 import Airbender.Proofs.Trace.ROMView
 
 namespace Tests.DelegationROMBoundary

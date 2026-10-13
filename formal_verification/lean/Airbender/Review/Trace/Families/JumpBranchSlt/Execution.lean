@@ -1,4 +1,4 @@
-import Airbender.Review.Helpers.Registries.JumpBranchSltInputs
+import Airbender.Review.Helpers.Context.Registries.JumpBranchSltInputs
 import Airbender.Review.Trace.Execution
 
 namespace Airbender.JumpBranchSlt

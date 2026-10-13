@@ -1,4 +1,4 @@
-import Airbender.Review.Helpers.Program
+import Airbender.Review.Helpers.Decoder.Program
 import Airbender.Review.Circuits.MulDiv.Artifact
 
 namespace Airbender.MulDiv

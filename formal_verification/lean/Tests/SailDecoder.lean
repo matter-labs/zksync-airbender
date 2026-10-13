@@ -1,4 +1,4 @@
-import Airbender.Review.Helpers.Sail
+import Airbender.Review.Helpers.Core.Sail
 import Airbender.Proofs.Sail.PC
 
 namespace Tests.SailDecoder

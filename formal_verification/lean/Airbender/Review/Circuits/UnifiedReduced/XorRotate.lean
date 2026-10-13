@@ -1,4 +1,4 @@
-import Airbender.Review.Helpers.Boundary
+import Airbender.Review.Helpers.Context.Boundary
 import Airbender.Review.Circuits.UnifiedReduced.TriAdd
 
 namespace Airbender.UnifiedReduced.XorRotate

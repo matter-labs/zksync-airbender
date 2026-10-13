@@ -1,5 +1,5 @@
 import Airbender.Review.Circuits.JumpBranchSlt.Model
-import Airbender.Review.Helpers.Sail
+import Airbender.Review.Helpers.Core.Sail
 import Airbender.Review.Helpers.Properties
 
 namespace Airbender.JumpBranchSlt.Jump

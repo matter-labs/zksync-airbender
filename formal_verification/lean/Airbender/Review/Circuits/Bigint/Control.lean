@@ -1,5 +1,5 @@
 import Airbender.Review.Circuits.Bigint.Artifact
-import Airbender.Review.Helpers.Word
+import Airbender.Review.Helpers.Core.Word
 import Airbender.Review.Helpers.Properties
 
 namespace Airbender.Bigint.Control

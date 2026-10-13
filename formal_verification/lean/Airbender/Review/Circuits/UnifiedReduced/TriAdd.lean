@@ -1,9 +1,9 @@
-import Airbender.Review.Helpers.Boundary
+import Airbender.Review.Helpers.Context.Boundary
 import Airbender.Review.Circuits.UnifiedReduced.Artifact
 import Airbender.Review.Helpers.Properties
-import Airbender.Review.Helpers.Sail
+import Airbender.Review.Helpers.Core.Sail
 import Airbender.Review.Circuits.UnifiedReduced.Control
-import Airbender.Review.Helpers.RowContext
+import Airbender.Review.Helpers.Context.RowContext
 
 namespace Airbender.UnifiedReduced.TriAdd
 open Airbender.Reference.RiscV

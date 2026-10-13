@@ -3,7 +3,7 @@ import Airbender.Proofs.Trace.RowHistory
 import Airbender.Proofs.Trace.PortReads
 import Airbender.Proofs.Trace.Arithmetic
 import Airbender.Proofs.BabyBear
-import Airbender.Review.Helpers.ROM
+import Airbender.Review.Helpers.Memory.ROM
 
 namespace Tests.TraceZeroRegister
 open Airbender Arithmetic Trace

@@ -1,4 +1,4 @@
-import Airbender.Review.Helpers.PooledProgram
+import Airbender.Review.Helpers.Decoder.PooledProgram
 import Airbender.Proofs.Trace.Program
 import Airbender.Proofs.Trace.ZeroRegister
 

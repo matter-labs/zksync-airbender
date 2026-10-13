@@ -1,4 +1,4 @@
-import Airbender.Review.Helpers.IndirectPorts
+import Airbender.Review.Helpers.Memory.IndirectPorts
 import Airbender.Proofs.Arithmetic.Word
 
 namespace Airbender.Verification
