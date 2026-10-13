@@ -7,7 +7,13 @@ import HumanSail.Airbender
 open Sail SailRV32 SailRV32.Functions
 
 namespace Human
-export Airbender (misa region RAM_START RAM_END memoryMap initResult stInit Volatile Sys Supported)
+export Airbender (misa region RAM_START RAM_END memoryMap initResult stInit Volatile Sys)
+
+/-- RV32IM instructions (Sail's decoder already rejects RV64-only forms such as `ld`). -/
+def Supported : instruction → Bool
+  | .UTYPE _ | .JAL _ | .JALR _ | .BTYPE _ | .ITYPE _ | .SHIFTIOP _ | .RTYPE _
+  | .LOAD _ | .STORE _ | .MUL _ | .DIV _ | .REM _ => true
+  | _ => false
 
 /-- Airbender's CSRs, accessed with `csrrw` only: 0x7c0 (input/output oracle), 0x7c7, 0x7ca (precompiles).
 For now they do nothing (the instruction is skipped). -/

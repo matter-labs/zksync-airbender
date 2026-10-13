@@ -1,4 +1,5 @@
 import HumanSail.Machine
+import Human.RV32
 
 /-! # Airbender = the official Sail RISC-V model, with the changes listed here
 
@@ -6,7 +7,8 @@ The Sail model is riscv/sail-riscv, turned into Lean by `sail/regen.sh` (pins: `
 `sail/config/airbender-base.json`: the stock RV32 config with every extension except M and Zicsr switched off,
 and no timer or interrupt devices. Everything Airbender does differently from that model is in this file,
 marked `-- Airbender:`, following Airbender's ISA table (zksync-airbender `spec/top-down/00 master.md`,
-"Supported instruction set").
+"Supported instruction set"). Airbender's instruction formats are our own table `RV.decode`; their effect is
+Sail's `execute`.
 
 Our own fast spec `RV.step` (`Human/RV32.lean`), which the program proofs run on, is proven to follow this
 machine in `HumanSail/Theorems.lean`. -/
@@ -61,34 +63,59 @@ def Volatile : Register → Bool
 is as after reset. -/
 def Sys (s : FState) : Prop := ∀ r, Volatile r = false → s.regs r = stInit.regs r
 
-/-! ## The changes -/
+/-! ## The Sail model as generated
 
-/-- The RV32IM instructions Airbender runs. -/
-def Supported : instruction → Bool
-  | .UTYPE _ | .JAL _ | .JALR _ | .BTYPE _ | .ITYPE _ | .SHIFTIOP _ | .RTYPE _ | .LOAD _ | .STORE _ => true
-  | .MUL (_, _, _, op) => op.result_part == .Low || op.signed_rs1 == .Unsigned  -- Airbender: no MULH, MULHSU
-  | .DIV (_, _, _, isUnsigned) | .REM (_, _, _, isUnsigned) => isUnsigned        -- Airbender: no DIV, REM
-  | _ => false
+`sail/config/airbender-base.json` switches these extensions off. Airbender has none of them; the ones marked (*)
+would otherwise re-decode instructions Airbender runs as plain RV32I. Checked here against the generated model. -/
+theorem sail_extensions_off :
+    hartSupports .Ext_Zihintntl = false ∧   -- (*) `add x0, x0, x2..x5` would be an NTL hint
+    hartSupports .Ext_Zicbop = false ∧      -- (*) `ori x0, rs1, imm` would be a prefetch
+    hartSupports .Ext_Zicfilp = false ∧     -- landing pads (would check JALR targets)
+    hartSupports .Ext_Zicfiss = false ∧     -- shadow stack
+    hartSupports .Ext_C = false ∧ hartSupports .Ext_Zca = false := by  -- compressed instructions
+  decide +kernel
 
-/-- Decode a 32-bit instruction word: as Sail does, except for the first two rows. -/
-noncomputable def decode (w : BitVec 32) : SailM (Option instruction) := do
-  let opcode := w.extractLsb' 0 7
-  let funct3 := w.extractLsb' 12 3
-  let funct7 := w.extractLsb' 25 7
-  let rd := regidx.Regidx (w.extractLsb' 7 5)
-  let rs1 := regidx.Regidx (w.extractLsb' 15 5)
-  let rs2 := regidx.Regidx (w.extractLsb' 20 5)
-  if opcode = 0b1100111 then                                     -- Airbender: JALR with any funct3
-    pure (some (.JALR (w.extractLsb' 20 12, rs1, rd)))
-  else if opcode = 0b0110011 ∧ funct7 ≠ 1 ∧ funct3 = 2 then pure (some (.RTYPE (rs2, rs1, rd, .SLT)))
-  else if opcode = 0b0110011 ∧ funct7 ≠ 1 ∧ funct3 = 3 then pure (some (.RTYPE (rs2, rs1, rd, .SLTU)))
-  else if opcode = 0b0110011 ∧ funct7 ≠ 1 ∧ funct3 = 4 then pure (some (.RTYPE (rs2, rs1, rd, .XOR)))
-  else if opcode = 0b0110011 ∧ funct7 ≠ 1 ∧ funct3 = 6 then pure (some (.RTYPE (rs2, rs1, rd, .OR)))
-  else if opcode = 0b0110011 ∧ funct7 ≠ 1 ∧ funct3 = 7 then      -- Airbender: SLT…AND above with any funct7
-    pure (some (.RTYPE (rs2, rs1, rd, .AND)))                     -- (except 0000001, the M extension)
-  else
-    let i ← ext_decode w                                          -- Sail's decoder
-    pure (if Supported i then some i else none)
+/-! ## Airbender's instructions, named as in Sail -/
+
+def sailBop : RV.Cond → bop
+  | .eq => .BEQ | .ne => .BNE | .lt => .BLT | .ge => .BGE | .ltu => .BLTU | .geu => .BGEU
+
+def sailRop : RV.Op → rop
+  | .sub => .SUB | .sll => .SLL | .slt => .SLT | .sltu => .SLTU | .xor => .XOR | .srl => .SRL | .sra => .SRA
+  | .or => .OR | .and => .AND | _ => .ADD   -- (M ops are mapped to MUL/DIV/REM below)
+
+/-- Our instructions (`Human/RV32.lean`) in Sail's vocabulary. Immediates: Sail keeps the encoded bits, we keep
+the decoded value, so `toSail` takes the encoded bits back out. -/
+def toSail : RV.Instr → instruction
+  | .lui rd imm              => .UTYPE (imm.extractLsb' 12 20, .Regidx rd, .LUI)
+  | .auipc rd imm            => .UTYPE (imm.extractLsb' 12 20, .Regidx rd, .AUIPC)
+  | .jal rd off              => .JAL (off.extractLsb' 0 21, .Regidx rd)
+  | .jalr rd rs1 off         => .JALR (off.extractLsb' 0 12, .Regidx rs1, .Regidx rd)
+  | .branch c rs1 rs2 off    => .BTYPE (off.extractLsb' 0 13, .Regidx rs2, .Regidx rs1, sailBop c)
+  | .load n sg rd rs1 off    => .LOAD (off.extractLsb' 0 12, .Regidx rs1, .Regidx rd, !sg, n)
+  | .store n rs2 rs1 off     => .STORE (off.extractLsb' 0 12, .Regidx rs2, .Regidx rs1, n)
+  | .opImm .add rd rs1 imm   => .ITYPE (imm.extractLsb' 0 12, .Regidx rs1, .Regidx rd, .ADDI)
+  | .opImm .slt rd rs1 imm   => .ITYPE (imm.extractLsb' 0 12, .Regidx rs1, .Regidx rd, .SLTI)
+  | .opImm .sltu rd rs1 imm  => .ITYPE (imm.extractLsb' 0 12, .Regidx rs1, .Regidx rd, .SLTIU)
+  | .opImm .xor rd rs1 imm   => .ITYPE (imm.extractLsb' 0 12, .Regidx rs1, .Regidx rd, .XORI)
+  | .opImm .or rd rs1 imm    => .ITYPE (imm.extractLsb' 0 12, .Regidx rs1, .Regidx rd, .ORI)
+  | .opImm .and rd rs1 imm   => .ITYPE (imm.extractLsb' 0 12, .Regidx rs1, .Regidx rd, .ANDI)
+  | .opImm .sll rd rs1 imm   => .SHIFTIOP (imm.extractLsb' 0 6, .Regidx rs1, .Regidx rd, .SLLI)
+  | .opImm .srl rd rs1 imm   => .SHIFTIOP (imm.extractLsb' 0 6, .Regidx rs1, .Regidx rd, .SRLI)
+  | .opImm .sra rd rs1 imm   => .SHIFTIOP (imm.extractLsb' 0 6, .Regidx rs1, .Regidx rd, .SRAI)
+  | .opImm _ _ _ imm         => .ILLEGAL imm                    -- never decoded (no M op takes an immediate)
+  | .op .mul rd rs1 rs2      => .MUL (.Regidx rs2, .Regidx rs1, .Regidx rd, ⟨.Low, .Signed, .Signed⟩)
+  | .op .mulhu rd rs1 rs2    => .MUL (.Regidx rs2, .Regidx rs1, .Regidx rd, ⟨.High, .Unsigned, .Unsigned⟩)
+  | .op .divu rd rs1 rs2     => .DIV (.Regidx rs2, .Regidx rs1, .Regidx rd, true)
+  | .op .remu rd rs1 rs2     => .REM (.Regidx rs2, .Regidx rs1, .Regidx rd, true)
+  | .op op rd rs1 rs2        => .RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, sailRop op)
+
+/-! ## The machine -/
+
+/-- Airbender's decoder is our encoding table `RV.decode` (`Human/RV32.lean`, with its `-- Airbender:` rows).
+`HumanSail/Theorems.lean` states that Sail's own decoder gives the same instruction for every word of that table,
+except the extra encodings Airbender accepts (`Lenient`). -/
+def decode (w : BitVec 32) : Option instruction := (RV.decode w).map toSail
 
 /-- Execute one instruction: as Sail does, except loads into x0. -/
 noncomputable def execute (i : instruction) : SailM ExecutionResult :=
@@ -99,16 +126,17 @@ noncomputable def execute (i : instruction) : SailM ExecutionResult :=
 
 /-- One step, the way Sail's own `run_hart_active` + `try_step` run a 32-bit instruction: fetch, decode,
 `nextPC := PC + 4`, execute, `PC := nextPC`. Anything else is not a step of Airbender (`none`): a fetch fault,
-an instruction not listed above, or any trap (misaligned or out-of-range access, misaligned jump target, write
-to ROM, …). -/
+a word outside the table, or any trap (misaligned or out-of-range access, write to ROM, …). -/
 noncomputable def step (s : FState) : Option FState :=
   let run : SailM Bool := do
     let .F_Base w ← fetch () | pure false
-    let some i ← decode w | pure false
+    let some i := decode w | pure false
     writeReg Register.nextPC ((← readReg Register.PC) + 4)
     let .Retire_Success () ← execute i | pure false
-    tick_pc ()
-    pure true
+    if (← readReg Register.nextPC).toNat % 4 ≠ 0 then pure false  -- Airbender: jump targets 4-byte aligned
+    else                                                          --   (no compressed instructions)
+      tick_pc ()
+      pure true
   match runF run s with
   | .ok true s' => some s'
   | _ => none
