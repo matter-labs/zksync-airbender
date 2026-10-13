@@ -163,7 +163,10 @@ seven-/ten-round window. Broader preparation/chaining and whole mixed retirement
 remain open.
 [Control preparation](Airbender/Review/Helpers/UnifiedReduced/ControlPreparation.lean)
 uses a public ordinary ADDI-from-x0/LUI registry and a worker-free final preparation
-cycle. Earlier workers remain connected; the extended-round scope additionally
+cycle. The registry may be uniform or contain different literals/registers on a
+straight path with callers. Accepted native PC/clock increments and exact state
+matching identify the final row's instruction address, rather than assuming a
+selected row or desired output. Earlier workers remain connected; the extended-round scope additionally
 retains its empty worker prefix. Accepted decoding, clock matching and writes derive the
 actual control read and its retained timestamp. The selected registry and cut
 bounds remain public; no desired control value at an intermediate state is assumed.
