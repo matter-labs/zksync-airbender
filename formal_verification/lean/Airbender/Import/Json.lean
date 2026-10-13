@@ -59,7 +59,7 @@ class ObjectKey (κ : Type) where
 
 instance : ObjectKey Nat where
   decode s := match s.toNat? with
-    | some n => if toString n == s then .ok n else .error "noncanonical numeric object key"
+    | some n => .ok n
     | none => .error "expected a natural-number object key"
   encode := toString
 
