@@ -148,10 +148,11 @@ derive selected caller regions from accepted clock/request matching. Public cuts
 must lie inside the native path, with duration four times the selected worker
 count; no caller selector or instruction schedule is supplied. Earlier ordinary
 effects remain in the joint prefix, rather than a worker-only prefix projection.
-Prepared G and Keccak first spans now reach their complete references through
+Prepared G and Keccak spans now reach their complete references through
 [prepared hash windows](Airbender/Review/Trace/UnifiedReduced/PreparedHashWindows.lean).
-The public instruction registry, empty worker-prefix scope, homogeneous family,
-call count and four-tick duration remain explicit. Worker boundaries, controls
+The public instruction registry, worker-free final preparation cycle, homogeneous
+family, call count and four-tick duration remain explicit. Earlier worker effects,
+including zero-clock effects, stay in the actual prefix. Worker boundaries, controls
 and caller regions are derived from shared matching, with no supplied worker masks.
 [Prepared extended-BLAKE windows](Airbender/Review/Trace/UnifiedReduced/PreparedRoundWindows.lean)
 also bind complete compression at those actual cut states. Raw matching and the
@@ -161,8 +162,9 @@ ten-position controller stay explicit. Later rounds may remain outside a selecte
 seven-/ten-round window. Broader preparation/chaining and whole mixed retirement
 remain open.
 [Control preparation](Airbender/Review/Helpers/UnifiedReduced/ControlPreparation.lean)
-uses a public ordinary ADDI-from-x0/LUI registry and the existing first-span empty
-worker-prefix scope. Accepted decoding, clock matching and writes derive the
+uses a public ordinary ADDI-from-x0/LUI registry and a worker-free final preparation
+cycle. Earlier workers remain connected; the extended-round scope additionally
+retains its empty worker prefix. Accepted decoding, clock matching and writes derive the
 actual control read and its retained timestamp. The selected registry and cut
 bounds remain public; no desired control value at an intermediate state is assumed.
 This is preparation/transport, with whole instruction retirement separate.

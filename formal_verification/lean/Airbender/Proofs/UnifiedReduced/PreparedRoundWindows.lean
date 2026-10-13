@@ -9,13 +9,13 @@ set_option maxRecDepth 16384
 set_option maxHeartbeats 2400000
 
 theorem prepared_worker_after_cut [Fact p.Prime]
-    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {flags : Fin 8} {lower : Nat}
-    (scope : ControlPreparation data program lower 12 (hashPreparation (.blakeRound flags)))
+    {data : RequestTrace p} {lower : Nat}
+    (prefixEmpty : data.workers.prefixRows lower = [])
     {worker : Delegation.Row p} (member : worker ∈ data.workers.rows) : lower < worker.writeTime := by
   by_contra earlier
   have present : worker ∈ data.workers.prefixRows lower :=
     List.mem_filter.mpr ⟨member, decide_eq_true (by omega)⟩
-  rw [scope.prefixScope] at present
+  rw [prefixEmpty] at present
   cases present
 
 theorem prepared_round_caller_suffix [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
@@ -31,7 +31,7 @@ theorem prepared_round_caller_suffix [Fact p.Prime] (hp : 2 * timestampBase + 4 
     have time := Delegation.Caller.Proofs.worker_write_time (by omega)
       (requests.clocks worker member).1 (requests.clocks worker member).2
     have time : worker.writeTime = 2 := by simpa [zero, timeOfPair, Timestamp.value] using time
-    have later := prepared_worker_after_cut inputs.preparation member
+    have later := prepared_worker_after_cut inputs.prefixEmpty member
     omega
   have allLive : data.fulfillments.filter (fun call => decide (Delegation.Requests.Live call)) = data.fulfillments := by
     apply List.filter_eq_self.mpr
@@ -45,7 +45,7 @@ theorem prepared_round_caller_suffix [Fact p.Prime] (hp : 2 * timestampBase + 4 
   have callersAfter : ∀ row ∈ data.callers, lower ≤ Delegation.Caller.startClock row := by
     intro row member
     obtain ⟨worker, matched, _⟩ := requests.workers row member
-    have later := prepared_worker_after_cut inputs.preparation matched.1
+    have later := prepared_worker_after_cut inputs.prefixEmpty matched.1
     have write := Delegation.Caller.Proofs.worker_write_time (by omega)
       (requests.clocks worker matched.1).1 (requests.clocks worker matched.1).2
     change worker.writeTime = (timeOfPair (Delegation.Requests.fulfillment worker).time).value + 2 at write
@@ -120,7 +120,7 @@ theorem prepared_round_suffix_tokens [Fact p.Prime] (hp : 2 * timestampBase + 4 
     obtain ⟨row, present, step⟩ := List.mem_flatMap.mp member
     obtain ⟨port, included, rfl⟩ := List.mem_map.mp step
     have time := Delegation.Proofs.row_write_time row (by simpa using included)
-    have later := prepared_worker_after_cut inputs.preparation present
+    have later := prepared_worker_after_cut inputs.prefixEmpty present
     simp only [time, Delegation.Proofs.rowWriteTime, Bool.not_eq_true', decide_eq_false_iff_not]
     omega
   have steps : Transfer.afterSteps (mixedData data) (lower - 1) = machine ++ data.workers.steps := by
