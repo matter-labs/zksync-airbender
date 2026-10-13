@@ -167,12 +167,22 @@ struct gkr_forward_setup_generic_lookup_descriptor {
 template <typename E> struct gkr_forward_setup_generic_lookup_batch {
   u32 column_count;
   u32 decoder_table_id;
-  u32 padding_value;
+  bf padding_value;
   E *output;
   E *decoder_fill_value_out;
   E *padding_fill_value_out;
   gkr_forward_setup_generic_lookup_descriptor descriptors[GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS];
 };
+
+static_assert(alignof(gkr_forward_setup_generic_lookup_batch<e4>) == 8 && sizeof(gkr_forward_setup_generic_lookup_batch<e4>) == 128,
+              "setup generic lookup batch ABI drift");
+static_assert(__builtin_offsetof(gkr_forward_setup_generic_lookup_batch<e4>, decoder_table_id) == 4 &&
+                  __builtin_offsetof(gkr_forward_setup_generic_lookup_batch<e4>, padding_value) == 8 &&
+                  __builtin_offsetof(gkr_forward_setup_generic_lookup_batch<e4>, output) == 16 &&
+                  __builtin_offsetof(gkr_forward_setup_generic_lookup_batch<e4>, decoder_fill_value_out) == 24 &&
+                  __builtin_offsetof(gkr_forward_setup_generic_lookup_batch<e4>, padding_fill_value_out) == 32 &&
+                  __builtin_offsetof(gkr_forward_setup_generic_lookup_batch<e4>, descriptors) == 40,
+              "setup generic lookup batch offsets drift");
 
 static constexpr unsigned GKR_TIMESTAMP_COLUMNS_NUM_BITS = 19;
 

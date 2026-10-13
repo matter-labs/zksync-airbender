@@ -45,6 +45,28 @@ fn make_test_cpu_setup(
     }
 }
 
+fn make_padded_test_cpu_setup(
+    trace_len: usize,
+    generic_lookup_width: usize,
+    total_tables_size: usize,
+    padding: BF,
+) -> CpuGKRSetup<BF> {
+    let setup = make_test_cpu_setup(trace_len, generic_lookup_width, total_tables_size);
+    CpuGKRSetup {
+        hypercube_evals: setup
+            .hypercube_evals
+            .iter()
+            .map(|column| {
+                let mut values = column.as_ref().to_vec();
+                values[total_tables_size..].fill(padding);
+                Arc::new(prover::allocation_pool::AllocationType::from(
+                    values.into_boxed_slice(),
+                ))
+            })
+            .collect(),
+    }
+}
+
 fn flatten_setup(setup: &CpuGKRSetup<BF>) -> Vec<BF> {
     if setup.hypercube_evals.is_empty() {
         return Vec::new();
@@ -158,6 +180,7 @@ fn launch_generic_lookup_preprocessing(
     generic_lookup_width: usize,
     generic_lookup_len: usize,
     lookup_alpha: E4,
+    fill_values: Option<&mut DeviceAllocation<E4>>,
     context: &ProverContext,
 ) -> Vec<E4> {
     let log_lde_factor = 1u32;
@@ -197,12 +220,17 @@ fn launch_generic_lookup_preprocessing(
     let mut generic_lookup = context
         .alloc(generic_lookup_len, AllocationPlacement::BestFit)
         .unwrap();
-    let batch = lower_forward_setup_generic_lookup_batch(
+    let mut batch = lower_forward_setup_generic_lookup_batch(
         host.as_ref(),
         transfer.trace_holder.get_hypercube_evals(),
         generic_lookup_width,
         &mut generic_lookup,
     );
+    if let Some(fill_values) = fill_values {
+        let fill_values = fill_values.as_mut_ptr();
+        batch.decoder_fill_value_out = fill_values.wrapping_add(DECODER_FILL_INDEX);
+        batch.padding_fill_value_out = fill_values.wrapping_add(SETUP_PADDING_FILL_INDEX);
+    }
     launch_forward_setup_generic_lookup(&batch, generic_lookup_len, context).unwrap();
 
     read_ext_allocation(&generic_lookup, context)
@@ -589,6 +617,7 @@ fn forward_setup_generic_lookup_fused_kernel_matches_expected_for_max_width() {
         generic_lookup_width,
         generic_lookup_len,
         lookup_alpha,
+        None,
         &context,
     );
     let expected = expected_generic_lookup_preprocessing(
@@ -617,6 +646,7 @@ fn forward_setup_generic_lookup_fused_kernel_handles_single_column() {
         generic_lookup_width,
         generic_lookup_len,
         lookup_alpha,
+        None,
         &context,
     );
     let expected = expected_generic_lookup_preprocessing(
@@ -635,74 +665,134 @@ fn forward_setup_schedule_generic_lookup_matches_cpu() {
     let trace_len = 1usize << 10;
     let generic_lookup_width = 4;
     let generic_lookup_len = 32;
-    let setup = make_test_cpu_setup(trace_len, generic_lookup_width, generic_lookup_len);
     let context = make_test_context(256, 64);
     let log_lde_factor = 1u32;
     let log_rows_per_leaf = 1u32;
     let log_tree_cap_size = 1u32;
-    let host = Arc::new(
-        GpuGKRSetupHost::precompute_from_cpu_setup(
-            &setup,
-            log_lde_factor,
-            log_rows_per_leaf,
-            log_tree_cap_size,
-            &context,
-        )
-        .unwrap(),
-    );
-    let mut transfer = GpuGKRSetupTransfer::new(Arc::clone(&host), &context).unwrap();
-    let _h2d = gpu_prover_context::transfer::single_shot_h2d(
-        |t| transfer.schedule_transfer(t, &context),
-        &context,
-    )
-    .unwrap();
-    context.get_h2d_stream().synchronize().unwrap();
-
     let lookup_alpha = E4::from_array_of_base([BF::new(3), BF::new(5), BF::new(7), BF::new(11)]);
     let lookup_additive_part =
         E4::from_array_of_base([BF::new(13), BF::new(17), BF::new(19), BF::new(23)]);
     let constraints_batch_challenge =
         E4::from_array_of_base([BF::new(29), BF::new(31), BF::new(37), BF::new(41)]);
-    let mut d_lookup_challenges: DeviceAllocation<E4> =
-        context.alloc(3, AllocationPlacement::BestFit).unwrap();
-    memory_copy_async(
-        &mut d_lookup_challenges,
-        &[
+
+    for padding in [Some(BF::MINUS_ONE), None, Some(BF::new(7))] {
+        let setup = make_padded_test_cpu_setup(
+            trace_len,
+            generic_lookup_width,
+            generic_lookup_len,
+            padding.unwrap_or(BF::ZERO),
+        );
+        let host = Arc::new(
+            GpuGKRSetupHost::precompute_from_cpu_setup(
+                &setup,
+                log_lde_factor,
+                log_rows_per_leaf,
+                log_tree_cap_size,
+                &context,
+            )
+            .unwrap(),
+        );
+        let mut transfer = GpuGKRSetupTransfer::new(Arc::clone(&host), &context).unwrap();
+        let _h2d = gpu_prover_context::transfer::single_shot_h2d(
+            |t| transfer.schedule_transfer(t, &context),
+            &context,
+        )
+        .unwrap();
+        context.get_h2d_stream().synchronize().unwrap();
+
+        let mut d_lookup_challenges: DeviceAllocation<E4> =
+            context.alloc(3, AllocationPlacement::BestFit).unwrap();
+        memory_copy_async(
+            &mut d_lookup_challenges,
+            &[
+                lookup_alpha,
+                lookup_additive_part,
+                constraints_batch_challenge,
+            ][..],
+            context.get_exec_stream(),
+        )
+        .unwrap();
+
+        let scheduled = schedule_forward_setup_for_shape(
+            Some((&transfer.trace_holder, transfer.host.columns_count)),
+            trace_len,
+            generic_lookup_width,
+            generic_lookup_len,
+            false,
+            padding,
+            d_lookup_challenges,
+            &context,
+        )
+        .unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+
+        // Folding every row of the padded setup yields the table rows followed by the tail fill.
+        let expected = expected_generic_lookup_preprocessing(
+            &setup,
+            generic_lookup_width,
+            trace_len,
             lookup_alpha,
-            lookup_additive_part,
-            constraints_batch_challenge,
-        ][..],
+        );
+        let expected_padding_fill = expected[trace_len - 1];
+        assert_eq!(padding.is_some(), expected_padding_fill != E4::ZERO);
+
+        let actual_generic_lookup = read_ext_allocation(
+            scheduled
+                .generic_lookup
+                .as_ref()
+                .expect("expected generic lookup"),
+            &context,
+        );
+        assert_eq!(
+            actual_generic_lookup,
+            expected[..generic_lookup_len].to_vec()
+        );
+        let fill_values = read_ext_allocation(scheduled.lookup_fill_values_device(), &context);
+        assert_eq!(fill_values[DECODER_FILL_INDEX], E4::ZERO);
+        assert_eq!(fill_values[SETUP_PADDING_FILL_INDEX], expected_padding_fill);
+    }
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+fn forward_setup_generic_lookup_fused_kernel_overwrites_stale_fill_values() {
+    let trace_len = 1usize << 10;
+    let generic_lookup_width = 4;
+    let generic_lookup_len = 32;
+    let setup = make_test_cpu_setup(trace_len, generic_lookup_width, generic_lookup_len);
+    let context = make_test_context(256, 64);
+    let lookup_alpha = E4::from_array_of_base([BF::new(3), BF::new(5), BF::new(7), BF::new(11)]);
+    let stale = E4::from_array_of_base([BF::new(1), BF::new(2), BF::new(3), BF::new(4)]);
+    let mut fill_values: DeviceAllocation<E4> = context
+        .alloc(LOOKUP_FILL_COUNT, AllocationPlacement::BestFit)
+        .unwrap();
+    memory_copy_async(
+        &mut fill_values,
+        &[stale; LOOKUP_FILL_COUNT][..],
         context.get_exec_stream(),
     )
     .unwrap();
 
-    let scheduled = schedule_forward_setup_for_shape(
-        Some((&transfer.trace_holder, transfer.host.columns_count)),
-        trace_len,
+    let actual = launch_generic_lookup_preprocessing(
+        &setup,
         generic_lookup_width,
         generic_lookup_len,
-        false,
-        None,
-        d_lookup_challenges,
-        &context,
-    )
-    .unwrap();
-    context.get_exec_stream().synchronize().unwrap();
-
-    let actual_generic_lookup = read_ext_allocation(
-        scheduled
-            .generic_lookup
-            .as_ref()
-            .expect("expected generic lookup"),
+        lookup_alpha,
+        Some(&mut fill_values),
         &context,
     );
-    let expected_generic_lookup = expected_generic_lookup_preprocessing(
+    let expected = expected_generic_lookup_preprocessing(
         &setup,
         generic_lookup_width,
         generic_lookup_len,
         lookup_alpha,
     );
-    assert_eq!(actual_generic_lookup, expected_generic_lookup);
+
+    assert_eq!(actual, expected);
+    assert_eq!(
+        read_ext_allocation(&fill_values, &context),
+        vec![E4::ZERO; LOOKUP_FILL_COUNT]
+    );
 }
 
 #[test]
@@ -715,23 +805,6 @@ fn forward_setup_generic_lookup_batch_panics_when_width_exceeds_cap() {
         null_mut(),
         null_mut(),
         0,
-        0,
+        BF::ZERO,
     );
-}
-
-#[test]
-fn forward_setup_generic_lookup_batch_carries_padding_value() {
-    let columns = [null(); 8];
-    let padding = canonical_padding_value(Some(BF::MINUS_ONE));
-    assert_eq!(padding, BF::ORDER - 1);
-    assert_ne!(padding, BF::MINUS_ONE.raw_u32_value());
-    let batch = pack_forward_setup_generic_lookup_batch::<E4>(
-        &columns,
-        null_mut(),
-        null_mut(),
-        null_mut(),
-        0,
-        padding,
-    );
-    assert_eq!(batch.padding_value, padding);
 }

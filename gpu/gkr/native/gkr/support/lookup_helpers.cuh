@@ -63,21 +63,24 @@ template <typename E>
 DEVICE_FORCEINLINE void gkr_forward_setup_generic_lookup(const gkr_forward_setup_generic_lookup_batch<E> &batch, const unsigned row_count) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
 
-  // Thread 0 also folds the decoder fill value (alpha^(column_count-1) * decoder_table_id)
-  // into a 1-element device slot for the forward VM.
-  if (gid == 0 && batch.decoder_fill_value_out != nullptr && batch.decoder_table_id != 0 && batch.column_count > 0) {
-    const E last_alpha_power = ::ab_gkr_lookup_alpha_powers[batch.column_count - 1];
-    const bf table_id = bf::from_u32_unchecked(batch.decoder_table_id);
-    const E fill = E::mul(last_alpha_power, table_id);
-    store<E, st_modifier::cs>(batch.decoder_fill_value_out, fill, 0);
-  }
-
-  if (gid == 0 && batch.padding_value != 0 && batch.padding_fill_value_out != nullptr) {
-    E sum = E::ZERO();
-    for (unsigned j = 0; j < batch.column_count; ++j)
-      sum = E::add(sum, ::ab_gkr_lookup_alpha_powers[j]);
-    const bf padding = bf::from_u32_unchecked(batch.padding_value);
-    store<E, st_modifier::cs>(batch.padding_fill_value_out, E::mul(sum, padding), 0);
+  // Thread 0 also writes the forward VM's scalar fills, zero when absent: the decoder fill
+  // alpha^(column_count-1) * decoder_table_id and the setup padding fill padding * sum(alpha^j).
+  if (gid == 0) {
+    if (batch.decoder_fill_value_out != nullptr) {
+      E fill = E::ZERO();
+      if (batch.decoder_table_id != 0 && batch.column_count > 0)
+        fill = E::mul(::ab_gkr_lookup_alpha_powers[batch.column_count - 1], bf::from_u32_unchecked(batch.decoder_table_id));
+      store<E, st_modifier::cs>(batch.decoder_fill_value_out, fill, 0);
+    }
+    if (batch.padding_fill_value_out != nullptr) {
+      E fill = E::ZERO();
+      if (batch.padding_value.limb != 0) {
+        for (unsigned j = 0; j < batch.column_count; ++j)
+          fill = E::add(fill, ::ab_gkr_lookup_alpha_powers[j]);
+        fill = E::mul(fill, batch.padding_value);
+      }
+      store<E, st_modifier::cs>(batch.padding_fill_value_out, fill, 0);
+    }
   }
 
   if (gid >= row_count)

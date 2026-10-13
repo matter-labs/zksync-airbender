@@ -787,8 +787,8 @@ pub(crate) fn lower_desc(
                     pack_desc(
                         SD_SETUP,
                         0,
-                        setup_fill_slot.expect("setup slot exists") as u16,
                         0,
+                        setup_fill_slot.expect("setup slot exists") as u32,
                     )
                 }
                 SpecialStrategy::PeekDecoder { predicate } => {

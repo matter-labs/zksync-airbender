@@ -11,7 +11,7 @@ use era_cudart_sys::{cudaGetSymbolAddress, cuda_struct_and_stub};
 
 use super::super::{GpuBaseFieldPoly, GpuGKRStorage};
 use super::{flatten_setup_columns_into_pinned_buffer, precompute_partial_tree_cache};
-use crate::upstream::{CpuGKRSetup, GKRAddress};
+use crate::upstream::{CpuGKRSetup, Field, GKRAddress};
 #[cfg(test)]
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::{BF, E4};
@@ -206,7 +206,7 @@ pub(crate) struct GpuGKRForwardSetupGenericLookupBatch<
 > {
     pub(super) column_count: u32,
     pub(super) decoder_table_id: u32,
-    pub(super) padding_value: u32,
+    pub(super) padding_value: BF,
     pub(super) output: *mut E,
     pub(super) decoder_fill_value_out: *mut E,
     pub(super) padding_fill_value_out: *mut E,
@@ -226,7 +226,7 @@ impl<E, const MAX_COLUMNS: usize> Default for GpuGKRForwardSetupGenericLookupBat
         Self {
             column_count: 0,
             decoder_table_id: 0,
-            padding_value: 0,
+            padding_value: BF::ZERO,
             output: null_mut(),
             decoder_fill_value_out: null_mut(),
             padding_fill_value_out: null_mut(),
@@ -234,6 +234,19 @@ impl<E, const MAX_COLUMNS: usize> Default for GpuGKRForwardSetupGenericLookupBat
         }
     }
 }
+
+const _: () = {
+    use std::mem::{align_of, offset_of, size_of};
+    type Batch = GpuGKRForwardSetupGenericLookupBatch<E4>;
+    assert!(size_of::<Batch>() == 128);
+    assert!(align_of::<Batch>() == 8);
+    assert!(offset_of!(Batch, decoder_table_id) == 4);
+    assert!(offset_of!(Batch, padding_value) == 8);
+    assert!(offset_of!(Batch, output) == 16);
+    assert!(offset_of!(Batch, decoder_fill_value_out) == 24);
+    assert!(offset_of!(Batch, padding_fill_value_out) == 32);
+    assert!(offset_of!(Batch, descriptors) == 40);
+};
 
 cuda_kernel_signature_arguments_and_function!(
     pub(crate) GpuGKRForwardSetupGenericLookup<T>,
@@ -254,7 +267,7 @@ pub(super) fn pack_forward_setup_generic_lookup_batch<E>(
     decoder_fill_value_out: *mut E,
     padding_fill_value_out: *mut E,
     decoder_table_id: u32,
-    padding_value: u32,
+    padding_value: BF,
 ) -> GpuGKRForwardSetupGenericLookupBatch<E> {
     assert!(
         setup_columns.len() <= GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS,
@@ -306,7 +319,7 @@ pub(super) fn lower_forward_setup_generic_lookup_batch<E>(
         null_mut(),
         null_mut(),
         0,
-        0,
+        BF::ZERO,
     )
 }
 
