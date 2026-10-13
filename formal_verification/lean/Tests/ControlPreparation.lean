@@ -447,6 +447,17 @@ theorem distinct_literals_prepare_successive_cuts (second : Bool) :
   UnifiedReduced.Caller.control_preparation_soundness (by decide +kernel) (by decide +kernel) (by decide +kernel)
     chainedAccepted chainedInputs (chainedScope second) (by decide) (by cases second <;> decide)
 
+theorem successive_controls_share_one_history :
+    UnifiedReduced.Caller.PreparedControlWindow chainedData chainedBefore (cells 0) 8 12 12 (.addi 128) 12 (.addi 0) :=
+  UnifiedReduced.Caller.control_preparation_window_soundness (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    chainedAccepted chainedInputs (chainedScope false) (chainedScope true) (by decide) (by decide)
+    (by decide) (by decide) (by decide)
+
+theorem preparation_window_retains_all_prefix_steps :
+    (chainedData.prefixSteps 8 ++ chainedData.windowSteps 8 12).Perm (chainedData.prefixSteps 12) :=
+  UnifiedReduced.Caller.Proofs.prefix_window_partition (by decide +kernel) (by decide +kernel)
+    chainedAccepted.toRequestChecks chainedInputs.publicProgram (by decide) (by decide) (by decide) (by decide)
+
 theorem chained_preparation_uses_previous_write :
     (readToken chainedAssignment UnifiedReduced.importedConstraintsMemoryPorts[2]).time = (6, 0) ∧
       (readToken chainedAssignment UnifiedReduced.importedConstraintsMemoryPorts[2]).word.toBitVec = 128 := by

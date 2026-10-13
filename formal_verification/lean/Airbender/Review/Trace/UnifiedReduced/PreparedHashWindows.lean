@@ -30,8 +30,10 @@ structure PreparedHashWindowInputs [Fact p.Prime] (data : RequestTrace p) (befor
   setup : data.machine.rom = Setup.table before
   /-- Existing worker tables and the pinned modeled Keccak controller. -/
   tables : data.workers.setup = Delegation.modeledSetup Keccak.Controller.rows
-  /-- One hash family owns the native worker pool. -/
-  family : ∀ row ∈ data.workers.rows, row.family = span.family
+  /-- Only selected workers belong to this uninterrupted hash protocol. -/
+  family : ∀ row ∈ data.workers.windowRows lower upper, row.family = span.family
+  /-- Other workers may be bigint, G or Keccak; round-mask transport is separate. -/
+  roundsAbsent : ∀ row ∈ data.workers.rows, row.family ≠ .blakeRound
   /-- This prepared mixed-span claim admits G and Keccak. -/
   profile : span.family ≠ .blakeRound
   /-- Uniform or straight-path literal preparation; earlier workers remain in history. -/

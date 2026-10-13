@@ -39,10 +39,15 @@ Only its final cycle is worker-free; earlier worker effects remain in the same
 history. The extended-round scope separately retains an empty worker prefix.
 Boundary timestamps are retained; scheduling, actual controls and intermediate
 states are derived rather than supplied.
+The [prepared control window](../../Trace/UnifiedReduced/ControlPreparation.lean)
+connects two prepared controls through the same actual intervening history, keeping
+all ordinary and worker accesses. Both controls follow from the public registry
+and joint prefix/window matching.
 
 [Successive preparation regressions](../../../../Tests/ControlPreparation.lean)
 check actual x12 values 65537→128→0 with reversed row order, retained write clocks,
-and rejection of a wrong literal or fabricated second read.
+one connected history across both preparation cuts, and rejection of a wrong
+literal or fabricated second read.
 
 The native domain, public program, protocol counts and existing prefix scope
 remain explicit. These helpers do not claim whole mixed caller retirement.

@@ -92,11 +92,16 @@ matching derives the final row's public instruction address. State matching iden
 its accepted write; the boundary retains that write's raw timestamp. Only the final preparation cycle must be free of worker writes; earlier worker
 effects remain in the actual prefix. Extended-BLAKE retains its separate empty
 worker-prefix scope. No desired read or preparation-row
-selector is supplied; whole instruction retirement remains separate.
+selector is supplied. Two preparation cuts now share the same actual states and
+complete intervening machine/worker history; joint matching composes their prefix
+boundaries and derives both retained controls. Whole instruction retirement remains separate.
 Prepared G and Keccak spans now reach their complete references at those
 same mixed-history cut states even after earlier workers. Shared matching derives caller regions, worker
 boundaries and actual controls; no worker masks or desired reads are supplied.
 Public preparation/first-span scope, call count and duration remain explicit.
+G/Keccak require homogeneity only inside the selected span; other bigint/G/Keccak
+workers may precede or follow it. Extended-round workers remain outside this
+mask-free scope rather than receiving an assumed mask.
 Prepared extended-BLAKE spans now also reach complete compression at those cut
 states. Raw matching and the actual LUI token derive round masks before Sail
 transport, retaining the preparation timestamp. Public suffix duration derives an
@@ -123,8 +128,10 @@ ABI and whole mixed execution remain separate.
    ADDI-from-x0/LUI preparation reaches actual control boundaries, including
    successive distinct literals in one public straight-path registry.
    Prepared G, Keccak and extended-BLAKE references are checked within the mixed
-   scopes above. Extend chaining beyond the literal/caller straight-path registry
-   and derive segmented protocol composition from the same history.
+   scopes above. Preparation pairs now share one intervening native history, and
+   prepared G/Keccak spans allow other nonround families outside the window.
+   Compose several complete reference spans and intervening preparations in one
+   execution; extend chaining beyond the literal/caller straight-path registry.
    COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed
    retained for the second window. Extended BLAKE and Keccak completion controls
    do not restart their protocols; checked regressions forbid treating their

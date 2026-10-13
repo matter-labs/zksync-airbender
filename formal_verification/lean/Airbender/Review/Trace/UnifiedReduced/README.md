@@ -16,6 +16,7 @@ mixed execution with delegation callers remains a separate obligation.
 | Exact caller regions, counts and slots follow from state/request matching and public cuts/duration. | [`Caller.window_schedule_soundness` and `Caller.request_window_soundness`](Theorems.lean) |
 | Actual joint cut states and projected worker boundaries retain native timestamps. | [`Caller.mixed_window_soundness` and `Caller.mixed_window_projection_soundness`](Theorems.lean) |
 | Uniform or successive public ADDI-from-x0/LUI preparation yields actual controls; native PC/clock matching derives the instruction at each cut. | [`Caller.control_preparation_soundness`](Theorems.lean) |
+| Two preparations share their actual cut states and the complete intervening machine/worker history; neither control is supplied. | [`Caller.control_preparation_window_soundness`](Theorems.lean) |
 | Complete prepared G/Keccak and extended-BLAKE references reach the selected actual cut states; masks are derived. | [`Caller.prepared_hash_window_soundness` and `Caller.prepared_round_window_soundness`](Theorems.lean) |
 | Original current-state caller fetch, selected worker observations and PC retirement meet at the same boundaries. | [`Caller.caller_cycles_soundness`](Theorems.lean) |
 
@@ -51,6 +52,11 @@ The public ordinary registry may contain different literal writes along a straig
 path with callers. Each preparation cut derives its own literal and register from
 that public address. Prepared G/Keccak windows inherit this scope, allowing explicit
 mode changes or resets between spans; completion alone does not restart a protocol.
+G/Keccak require their own family only inside the selected span. Bigint, G and
+Keccak workers outside it remain in joint history; this scope excludes extended
+round workers because their masks need separate transport. It adds no bigint
+control-validity condition. [Control preparation](ControlPreparation.lean) also
+connects two prepared controls through one intervening native window.
 
 Keep surplus zero-clock prefix effects, worker ROM-shadow transport, broader
 span chaining, full mixed caller retirement and inactive padding as separate

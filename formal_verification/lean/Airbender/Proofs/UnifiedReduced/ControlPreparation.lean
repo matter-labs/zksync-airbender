@@ -403,4 +403,75 @@ theorem control_preparation [Fact p.Prime] (hp : 8388608 ≤ p)
   exact ⟨start, earlier, atStart, earlierPerm, earlierHistory, boundary,
     preparation_at_boundary hp clockInverse accepted inputs scope nonzero aligned matching boundary⟩
 
+theorem prefix_window_partition [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {before : State} {ca : List (BitVec 32)}
+    (accepted : RequestChecks data) (inputs : RequestInputs data before ca)
+    {lower upper : Nat} (first : lower % 4 = 0) (last : upper % 4 = 0)
+    (positive : 2 ≤ lower) (ordered : lower ≤ upper) :
+    (data.prefixSteps lower ++ data.windowSteps lower upper).Perm (data.prefixSteps upper) := by
+  rw [mixed_window_steps hp clockInverse accepted inputs first last positive ordered]
+  have partition := List.filter_append_perm
+    (fun edge : MemoryToken p × MemoryToken p => decide ((timeOfPair edge.2.time).value < lower))
+    (data.prefixSteps upper)
+  have earlier : (data.prefixSteps upper).filter (fun edge => decide
+      ((timeOfPair edge.2.time).value < lower)) = data.prefixSteps lower := by
+    rw [RequestTrace.prefixSteps, List.filter_filter]
+    apply List.filter_congr
+    intro edge _
+    apply Bool.eq_iff_iff.mpr
+    simp only [Bool.and_eq_true, decide_eq_true_eq]
+    omega
+  have window : (data.prefixSteps upper).filter (fun edge => !decide
+      ((timeOfPair edge.2.time).value < lower)) =
+      Transfer.windowSteps (mixedData data) (lower - 1) (upper - 1) := by
+    simp only [RequestTrace.prefixSteps, Transfer.windowSteps, Transfer.beforeSteps,
+      Transfer.afterSteps, mixedData, List.filter_filter]
+    apply List.filter_congr
+    intro edge _
+    apply Bool.eq_iff_iff.mpr
+    simp only [Bool.and_eq_true, Bool.not_eq_true', decide_eq_false_iff_not, decide_eq_true_eq]
+    omega
+  rwa [earlier, window] at partition
+
+theorem prefix_window_matching {initial start finish : List (MemoryToken p)}
+    {earlier current : List (MemoryToken p × MemoryToken p)}
+    (prefixMatching : (initial ++ earlier.map Prod.snd).Perm (start ++ earlier.map Prod.fst))
+    (window : (start ++ current.map Prod.snd).Perm (finish ++ current.map Prod.fst)) :
+    (initial ++ (earlier ++ current).map Prod.snd).Perm
+      (finish ++ (earlier ++ current).map Prod.fst) := by
+  apply List.perm_iff_count.mpr
+  intro token
+  have first := prefixMatching.count_eq token
+  have last := window.count_eq token
+  simp only [List.map_append, List.count_append] at first last ⊢
+  omega
+
+theorem control_preparation_window [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1) (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {ca oa : List (BitVec 32)} {cells : List Cell} {lower upper : Nat}
+    {firstRegister lastRegister : BitVec 5} {firstLiteral lastLiteral : ControlLiteral}
+    (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)
+    (firstScope : ControlPreparation data program lower firstRegister firstLiteral)
+    (lastScope : ControlPreparation data program upper lastRegister lastLiteral)
+    (firstNonzero : firstRegister ≠ 0) (lastNonzero : lastRegister ≠ 0)
+    (first : lower % 4 = 0) (last : upper % 4 = 0) (ordered : lower ≤ upper) :
+    PreparedControlWindow data before cells lower upper firstRegister firstLiteral lastRegister lastLiteral := by
+  have floor := firstScope.afterInitial
+  have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
+  have execution := mixed_window_execution hp clockInverse rotationInverse accepted inputs first last (by omega) ordered
+  obtain ⟨start, finish, earlierEvents, windowEvents, atStart, atFinish, prefixPerm, windowPerm,
+    earlierHistory, windowHistory, prefixMatching, windowMatching, startBoundary, finishBoundary⟩ := execution.execution
+  have partition := prefix_window_partition size clockInverse accepted.toRequestChecks inputs.publicProgram first last (by omega) ordered
+  have finalMatching := prefix_window_matching prefixMatching windowMatching
+  have finalPrefix : (data.machine.initialMemory ++ (data.prefixSteps upper).map Prod.snd).Perm
+      (finish ++ (data.prefixSteps upper).map Prod.fst) :=
+    ((partition.map Prod.snd).symm.append_left _).trans
+      (finalMatching.trans ((partition.map Prod.fst).append_left _))
+  exact ⟨start, finish, earlierEvents, windowEvents, atStart, atFinish, prefixPerm, windowPerm,
+    earlierHistory, windowHistory, startBoundary, finishBoundary,
+    preparation_at_boundary hp clockInverse accepted inputs firstScope firstNonzero first prefixMatching startBoundary,
+    preparation_at_boundary hp clockInverse accepted inputs lastScope lastNonzero last finalPrefix finishBoundary⟩
+
 end Airbender.UnifiedReduced.Caller.Proofs
