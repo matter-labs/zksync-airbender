@@ -150,8 +150,10 @@ count; no caller selector or instruction schedule is supplied. Earlier ordinary
 effects remain in the joint prefix, rather than a worker-only prefix projection.
 Prepared G and Keccak spans now reach their complete references through
 [prepared hash windows](Airbender/Review/Trace/UnifiedReduced/PreparedHashWindows.lean).
-The public instruction registry, worker-free final preparation cycle, homogeneous
-family, call count and four-tick duration remain explicit. Earlier worker effects,
+The public instruction registry, worker-free final preparation cycle, selected-span
+family, call count and four-tick duration remain explicit. Bigint, G and Keccak
+workers outside that span stay in joint matching; extended-round workers require
+separate mask transport. No bigint opcode-validity condition is added. Earlier worker effects,
 including zero-clock effects, stay in the actual prefix. Worker boundaries, controls
 and caller regions are derived from shared matching, with no supplied worker masks.
 [Prepared extended-BLAKE windows](Airbender/Review/Trace/UnifiedReduced/PreparedRoundWindows.lean)
@@ -170,7 +172,10 @@ selected row or desired output. Earlier workers remain connected; the extended-r
 retains its empty worker prefix. Accepted decoding, clock matching and writes derive the
 actual control read and its retained timestamp. The selected registry and cut
 bounds remain public; no desired control value at an intermediate state is assumed.
-This is preparation/transport, with whole instruction retirement separate.
+The [prepared control window](Airbender/Review/Trace/UnifiedReduced/ControlPreparation.lean)
+connects two prepared controls through the same actual intervening machine/worker
+history. Prefix/window matching composes the second boundary; neither state nor
+control is an input. This is preparation/transport, with whole instruction retirement separate.
 [Caller cycles](Airbender/Review/Trace/UnifiedReduced/CallerCycles.lean) now bind original
 public fetch, the full-CSR matched worker family, existing local operation references,
 all actual worker observations and Sail PC retirement at the same boundaries.
