@@ -1,6 +1,7 @@
 //! Regenerates the on-chain verifier Solidity into `generated_contracts/merged/src/` from the
 //! circuit artifact. The Foundry project scaffolding (foundry.toml + the single-transaction
-//! test) is committed static; only the verifier source is (re)generated here.
+//! test) is committed static. The production verifier binds the checked-in feeder binary; a
+//! separate test-only verifier binds the saved proof's program, which may be an older feeder.
 //!
 //! NOTE: on macOS/aarch64 nightly, rustc may SIGBUS in debuginfo emission while compiling the
 //! `keccak_special5` circuit crate this test transitively depends on; run with
@@ -61,8 +62,7 @@ fn whir_batch_pow_bits(circuit: &GKRCircuitArtifact<Proth120>, config: &ProverCo
     )
 }
 
-#[test]
-fn generate_contract_into_dir() {
+fn generate_contract(final_pc: u32) -> String {
     let json = std::fs::read_to_string(
         "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
     )
@@ -70,17 +70,44 @@ fn generate_contract_into_dir() {
     let circuit: GKRCircuitArtifact<Proth120> = serde_json::from_str(&json).unwrap();
 
     let prover_config = production_prover_config();
-    let src = verifier_evm::generate_verifier(
+    verifier_evm::generate_verifier(
         &circuit,
         &prover_config,
         EVM_PRODUCTION_PACK_LOG2,
         EXTERNAL_POW_BITS,
         whir_batch_pow_bits(&circuit, &prover_config),
-        feeder_exit_pc(),
+        final_pc,
         INITS_TEARDOWNS_TOP_BITS,
-    );
+    )
+}
+
+#[test]
+fn generate_contract_into_dir() {
+    let src = generate_contract(feeder_exit_pc());
 
     let p = Path::new("generated_contracts/merged/src/GkrWhirVerifier.sol");
+    std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+    std::fs::write(p, &src).unwrap();
+    eprintln!("wrote {} ({} bytes)", p.display(), src.len());
+}
+
+#[test]
+fn generate_fixture_contract_into_dir() {
+    // This preimage is checked against the saved proof by flatten_roundtrip. Its final PC is
+    // a property of that proof's program, not a deployment parameter for the production
+    // verifier above. The preimage begins with 32 registers of three LE u32 words each.
+    let preimage = hex::decode(
+        std::fs::read_to_string("debug_data/gkr_step1_preimage.hex")
+            .unwrap()
+            .trim(),
+    )
+    .unwrap();
+    let final_pc = u32::from_le_bytes(preimage[32 * 12..32 * 12 + 4].try_into().unwrap());
+    let src = generate_contract(final_pc);
+    let declaration = "contract GkrWhirVerifier {";
+    assert_eq!(src.matches(declaration).count(), 1);
+    let src = src.replacen(declaration, "contract GkrWhirVerifierFixture {", 1);
+    let p = Path::new("generated_contracts/merged/test/fixtures/GkrWhirVerifierFixture.sol");
     std::fs::create_dir_all(p.parent().unwrap()).unwrap();
     std::fs::write(p, &src).unwrap();
     eprintln!("wrote {} ({} bytes)", p.display(), src.len());

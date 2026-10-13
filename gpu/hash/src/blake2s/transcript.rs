@@ -75,6 +75,11 @@ cuda_kernel!(
 );
 
 cuda_kernel!(
+    TranscriptPowUpdate,
+    ab_transcript_pow_update_kernel(seed_io: *mut u32, nonce_words: *const u32)
+);
+
+cuda_kernel!(
     TranscriptSqueeze,
     ab_transcript_squeeze_kernel(seed_io: *mut u32, output: *mut u32, output_len: u32)
 );
@@ -126,7 +131,8 @@ pub fn transcript_commit_initial_chunked(
     TranscriptCommitInitialChunkedFunction::default().launch(&config, &args)
 }
 
-/// Device-side `commit_with_seed`: computes `new_seed = Blake2s(old_seed || input)`.
+/// Device-side `commit_with_seed`: hashes `input` with `old_seed` as the Blake2s chaining
+/// value, writing the new seed.
 ///
 /// `seed` must be exactly `STATE_SIZE` u32 words. Updated in place.
 /// `input` contains the u32 words to absorb after the seed.
@@ -142,6 +148,20 @@ pub fn transcript_commit(
     let config = CudaLaunchConfig::basic(1u32, 1u32, stream);
     let args = TranscriptCommitArguments::new(seed_ptr, input_ptr, input_len);
     TranscriptCommitFunction::default().launch(&config, &args)
+}
+
+/// Device-side seed update of the host `verify_pow`: `seed = Blake2s(seed || nonce)` from the
+/// IV, where `nonce_words` holds the little-endian `[lo, hi]` halves of the `u64` nonce.
+pub fn transcript_pow_update(
+    seed: &mut DeviceSlice<u32>,
+    nonce_words: &DeviceSlice<u32>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert_eq!(seed.len(), STATE_SIZE);
+    assert_eq!(nonce_words.len(), 2);
+    let config = CudaLaunchConfig::basic(1u32, 1u32, stream);
+    let args = TranscriptPowUpdateArguments::new(seed.as_mut_ptr(), nonce_words.as_ptr());
+    TranscriptPowUpdateFunction::default().launch(&config, &args)
 }
 
 /// Device-side `draw_randomness`: expands the seed into `output.len()` u32 words.

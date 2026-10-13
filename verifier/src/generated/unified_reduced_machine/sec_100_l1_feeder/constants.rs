@@ -50,15 +50,15 @@ pub const GKR_EVAL_BUF: usize = {
         standard
     };
     let max_data = if max_data > evals { max_data } else { evals };
-    let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + max_data;
+    let total = max_data;
     total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
 };
 pub const GKR_COMMIT_BUF: usize = {
-    let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + SUMCHECK_POLY_COEFFS * EXT_DEGREE;
+    let total = SUMCHECK_POLY_COEFFS * EXT_DEGREE;
     total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
 };
 pub const GKR_EVALS_COMMIT_BUF: usize = {
-    let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + 160usize * EXT_DEGREE;
+    let total = 160usize * EXT_DEGREE;
     total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
 };
 pub const DRAW_BUF_CAPACITY: usize = {

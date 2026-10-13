@@ -98,7 +98,7 @@ contract GkrWhirVerifier {
     uint8 constant __TEMPLATE_INITS_TEARDOWNS_TOP_BITS_0 = 0;
     uint8 constant __TEMPLATE_INITS_TEARDOWNS_TOP_BITS_1 = 1;
     uint256 constant __TEMPLATE_EXTERNAL_POW_BITS = 20; // external-challenge PoW difficulty
-    uint256 constant __TEMPLATE_EXPECTED_FINAL_PC = 2303948; // program's terminal PC — binds the verified statement to this program
+    uint256 constant __TEMPLATE_EXPECTED_FINAL_PC = 2116984; // program's terminal PC — binds the verified statement to this program
 
     // ── GKR entry + dimension reduction (generated from the circuit / config) ─────────────────
     uint256 constant __TEMPLATE_GKR_NUM_OUTPUTS        = 5 * 2; // GKR output polys (global_output_map lines)

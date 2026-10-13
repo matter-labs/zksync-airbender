@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-/// Single-transaction GKR+WHIR verification with the merged `GkrWhirVerifier`: one call on
+/// Single-transaction GKR+WHIR verification with a fixture-generated `GkrWhirVerifier`: one call on
 /// `merged_calldata.hex` (= GKR stream ‖ WHIR proof stream). The verifier hands the WHIR start
 /// state over in memory and, on success, reports `(publicInput, auxInput, setupCommitment)` to
 /// the registry it was constructed with. The test checks the TestRegistry's record against
@@ -13,11 +13,15 @@ pragma solidity ^0.8.28;
 /// Plus the registry hardening: a zero / code-less registry is rejected at construction and a
 /// registry that refuses the mark makes the verification transaction fail.
 ///
-/// Prereq: `forge build` here (the verifier is compiled in this project).
+/// The fixture verifier binds the saved proof's program. The production verifier separately
+/// binds the current checked-in feeder binary and must reject this proof when its PC differs.
+/// Regenerate both verifiers with `cargo test -p verifier_evm --test generate_contracts`.
+/// Prereq: `forge build` here (the verifiers are compiled in this project).
 ///   forge test -vv                 (pure execution gas: --no-isolate)
 ///   forge test -vv --isolate       (tx-level gas incl. intrinsic + EIP-7623 floor)
 
-import {GkrWhirVerifier, IVerificationRegistry} from "../src/GkrWhirVerifier.sol";
+import {GkrWhirVerifier as ProductionGkrWhirVerifier, IVerificationRegistry} from "../src/GkrWhirVerifier.sol";
+import {GkrWhirVerifierFixture as GkrWhirVerifier} from "./fixtures/GkrWhirVerifierFixture.sol";
 import {TestRegistry} from "../src/TestRegistry.sol";
 
 interface Vm {
@@ -107,6 +111,15 @@ contract GkrWhirMergedTest {
         require(setupCommitment == _slice32(expected, 64), "setupCommitment != Rust verified_mark");
         // the verifier returns the same tuple
         require(ret.length == 96 && keccak256(ret) == keccak256(expected), "unexpected return data");
+    }
+
+    function test_production_verifier_rejects_other_program() external {
+        TestRegistry registry = new TestRegistry();
+        ProductionGkrWhirVerifier v = new ProductionGkrWhirVerifier(address(registry));
+        bytes memory cd = _hex("../../debug_data/merged_calldata.hex");
+        (bool ok,) = address(v).call(cd);
+        require(!ok, "a proof for a different program must be rejected");
+        require(registry.count() == 0, "nothing may be marked");
     }
 
     // The first dim-reduce round's [c0:16][c1:16] word sits right after preimage (916 B) + PoW
