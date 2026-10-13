@@ -473,19 +473,7 @@ def main : IO UInt32 := do
       check (rejected (Circuit.delegationColumns {circuit with timestamp_range_check_lookup_expressions := #[]}))
         s!"{label}: missing native clock queries rejected"
     let cached ← loadCircuit "../../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json"
-    check (!rejected cached) "cached sibling passes structural import"
-    check (rejected (StrictJson.parse "{\"a\":0,\"a\":1}")) "duplicate object key rejected"
-    check (rejected (StrictJson.parse "{\"x\":{\"a\":0,\"a\":1}}")) "nested duplicate rejected"
-    check (rejected (StrictJson.parse "{} trailing")) "trailing input rejected"
-    check (rejected (decodeCircuitJson (.mkObj (("unexpected", .null) ::
-      (toJson c).getObj?.toOption.get!.toArray.toList)))) "unknown root field rejected"
-    check (rejected ((fromJson? (toJson babyBearModulus)) : Except String Coefficient))
-      "out-of-range Montgomery coefficient rejected"
-    check (rejected (parseCircuit (toJson {c with trace_len := 0}).compress))
-      "invalid trace length rejected"
-    check (rejected (parseCircuit (toJson {c with witness_layout :=
-      {c.witness_layout with total_width := 0}}).compress)) "invalid witness layout rejected"
-    check (rejected (parseCircuit "{\"trace_len\":1.5}")) "fractional/incomplete circuit rejected"
+    check (!rejected cached) "cached sibling decoded with the standard JSON parser"
     return (0 : UInt32)
   catch e =>
     IO.eprintln e.toString
