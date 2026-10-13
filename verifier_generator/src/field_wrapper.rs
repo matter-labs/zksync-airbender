@@ -1,9 +1,10 @@
 use proc_macro2::TokenStream;
-use prover::field::PrimeField;
+use prover::field::{FieldExtension, PrimeField};
 use quote::quote;
 
 pub trait FieldWrapper {
     type BaseField: PrimeField;
+    type ChallengeField: FieldExtension<Self::BaseField>;
 
     fn coeff_to_internal_repr(coeff: u32) -> u32 {
         Self::BaseField::from_u32_with_reduction(coeff).as_u32_raw_repr_reduced()
@@ -62,6 +63,7 @@ pub struct DefaultBabyBearField;
 
 impl FieldWrapper for DefaultBabyBearField {
     type BaseField = prover::field::baby_bear::base::BabyBearField;
+    type ChallengeField = prover::field::baby_bear::ext4::BabyBearExt4;
 
     fn field_struct() -> TokenStream {
         quote! { BabyBearField }
@@ -179,6 +181,7 @@ pub struct DefaultMersenne31Field;
 
 impl FieldWrapper for DefaultMersenne31Field {
     type BaseField = prover::field::Mersenne31Field;
+    type ChallengeField = prover::field::Mersenne31Quartic;
 
     fn field_struct() -> TokenStream {
         quote! { Mersenne31Field }

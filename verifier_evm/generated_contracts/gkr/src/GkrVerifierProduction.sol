@@ -70,7 +70,7 @@ contract GKRVerifier {
     uint256 constant MARK_GKR_SELECTOR = 0xef4f148a; // mark_gkr_verified(bytes32,bytes32,bytes32)
     uint256 constant __TEMPLATE_WHIR_Z_COORDS     = 26;         // 22 base + 4 packing extra coords
     uint256 constant __TEMPLATE_WHIR_CAP          = 8;          // CAP (witness+setup base-oracle caps)
-    uint256 constant __TEMPLATE_WHIR_BATCH_POW_BITS = 11;       // batched_proximity_check_pow_bits (Sec100)
+    uint256 constant __TEMPLATE_WHIR_BATCH_POW_BITS = 16;       // batched_proximity_check_pow_bits (Sec100)
     // GKR->WHIR handoff (MergedAndPackedMemoryAndWitness, pack_log2=4). Base-layer at-point
     // claims (dense in layer0's calldata eval block): mem++wit = 104 cols, setup = 10 cols.
     // Merge folds each 2^pack_log2=16-chunk by the 4 packing coords: 104->7, 10->1.

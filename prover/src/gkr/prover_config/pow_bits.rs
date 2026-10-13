@@ -1,15 +1,25 @@
 use common_constants::TIMESTAMP_COLUMNS_NUM_BITS;
 use cs::gkr_compiler::GKRCircuitArtifact;
-use field::PrimeField;
+use field::{FieldExtension, PrimeField};
 
-/// log2 of the challenge-field size (BabyBear quartic).
+/// `floor(log2 |E|)` for the challenge field `E` of degree `E::DEGREE` over `F`.
 ///
-/// BabyBear order `p = 2^31 - 2^27 + 1 = 2013265921`, so `log2(p) ≈ 30.907` and
-/// the degree-4 extension has `≈ 4·30.907 = 123.63` bits. We take the
-/// conservative floor `123`: a smaller field size in the formulas can only
-/// *increase* the required PoW, never decrease it, so rounding down is the
-/// soundness-safe choice.
-pub const CHALLENGE_FIELD_SIZE_LOG2: usize = 123;
+/// BabyBear quartic: `p = 2^31 - 2^27 + 1`, `4·log2(p) ≈ 123.63` → `123`.
+/// Proth120: `p = 7·2^120 + 1`, `log2(p) ≈ 122.81` → `122`. Rounding down is
+/// the soundness-safe choice: a smaller field size in the formulas can only
+/// *increase* the required PoW, never decrease it.
+pub const fn challenge_field_size_log2<F: PrimeField, E: FieldExtension<F>>() -> usize {
+    let mut size = 1u128;
+    let mut i = 0;
+    while i < E::DEGREE {
+        size = match size.checked_mul(F::CHARACTERISTICS_U128) {
+            Some(size) => size,
+            None => panic!("challenge field order exceeds u128"),
+        };
+        i += 1;
+    }
+    size.ilog2() as usize
+}
 
 /// Total degree (in the lookup challenges α = `lookup_alpha`, γ = `lookup_additive`)
 /// of the cleared logUp identity, which bounds the lookup-argument soundness error
@@ -74,8 +84,15 @@ pub const fn pow_bits_for_cq_lookup(
 
 /// PoW bits for the lookup challenges at the given security level, for a logUp
 /// identity of total degree `identity_degree` (see [`lookup_identity_degree`]).
-pub const fn lookup_challenges_pow_bits(security_bits: usize, identity_degree: usize) -> u32 {
-    pow_bits_for_cq_lookup(security_bits, identity_degree, CHALLENGE_FIELD_SIZE_LOG2) as u32
+pub const fn lookup_challenges_pow_bits<F: PrimeField, E: FieldExtension<F>>(
+    security_bits: usize,
+    identity_degree: usize,
+) -> u32 {
+    pow_bits_for_cq_lookup(
+        security_bits,
+        identity_degree,
+        challenge_field_size_log2::<F, E>(),
+    ) as u32
 }
 
 pub fn total_base_oracle_columns<F: PrimeField>(compiled_circuit: &GKRCircuitArtifact<F>) -> usize {
@@ -100,52 +117,83 @@ pub const fn pow_bits_for_batched_proximity(
     security_bits.saturating_sub(no_pow_security_bits)
 }
 
-/// PoW bits for the WHIR batching challenge at the given security level, trace
-/// length, base LDE rate (`lde_factor_log2 = log2(base_lde_factor)`) and number
-/// of batched base-oracle columns
-pub const fn batched_proximity_check_pow_bits(
+/// PoW bits for the WHIR batching challenge at the given security level, size
+/// of the batched polynomials (`message_size_log2`: the trace length, or the
+/// trace length plus `pack_log2` in the packed commitment mode), base LDE rate
+/// (`lde_factor_log2 = log2(base_lde_factor)`) and number of batched
+/// base-oracle columns
+pub const fn batched_proximity_check_pow_bits<F: PrimeField, E: FieldExtension<F>>(
     security_bits: usize,
-    trace_len_log_2: usize,
+    message_size_log2: usize,
     lde_factor_log2: usize,
     num_batched_oracles: usize,
 ) -> u32 {
     pow_bits_for_batched_proximity(
         security_bits,
-        trace_len_log_2,
+        message_size_log2,
         lde_factor_log2,
         num_batched_oracles,
-        CHALLENGE_FIELD_SIZE_LOG2,
+        challenge_field_size_log2::<F, E>(),
     ) as u32
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use field::baby_bear::base::BabyBearField;
+    use field::baby_bear::ext4::BabyBearExt4;
+    use field::Proth120;
+
+    fn lookup_bits(security_bits: usize, identity_degree: usize) -> u32 {
+        lookup_challenges_pow_bits::<BabyBearField, BabyBearExt4>(security_bits, identity_degree)
+    }
+
+    fn batched_bits(security_bits: usize, message_log2: usize, lde: usize, ell: usize) -> u32 {
+        batched_proximity_check_pow_bits::<BabyBearField, BabyBearExt4>(
+            security_bits,
+            message_log2,
+            lde,
+            ell,
+        )
+    }
+
+    #[test]
+    fn challenge_field_sizes() {
+        assert_eq!(
+            challenge_field_size_log2::<BabyBearField, BabyBearExt4>(),
+            123
+        );
+        assert_eq!(
+            challenge_field_size_log2::<BabyBearField, BabyBearField>(),
+            30
+        );
+        assert_eq!(challenge_field_size_log2::<Proth120, Proth120>(), 122);
+    }
 
     #[test]
     fn lookup_pow_is_zero_at_80_bits() {
         // no_pow = 123 - ceil(log2 D); for any realistic degree (D <= 2^43 ⇒
         // no_pow >= 80) the lookup PoW is 0 at 80-bit security.
         for degree_log2 in [20u32, 30, 40] {
-            assert_eq!(lookup_challenges_pow_bits(80, 1usize << degree_log2), 0);
+            assert_eq!(lookup_bits(80, 1usize << degree_log2), 0);
         }
     }
 
     #[test]
     fn lookup_pow_at_100_scales_with_identity_degree() {
         // no_pow = 123 - ceil(log2 D); pow = max(0, 100 - no_pow) = max(0, ceil(log2 D) - 23).
-        assert_eq!(lookup_challenges_pow_bits(100, 1usize << 24), 1); // 24 - 23
-        assert_eq!(lookup_challenges_pow_bits(100, 1usize << 30), 7); // 30 - 23
-        assert_eq!(lookup_challenges_pow_bits(100, 1usize << 33), 10); // 33 - 23
-                                                                       // ceil(log2) rounds a non-power-of-two up: D = 2^30 + 1 ⇒ 31 ⇒ pow 8.
-        assert_eq!(lookup_challenges_pow_bits(100, (1usize << 30) + 1), 8);
+        assert_eq!(lookup_bits(100, 1usize << 24), 1); // 24 - 23
+        assert_eq!(lookup_bits(100, 1usize << 30), 7); // 30 - 23
+        assert_eq!(lookup_bits(100, 1usize << 33), 10); // 33 - 23
+                                                        // ceil(log2) rounds a non-power-of-two up: D = 2^30 + 1 ⇒ 31 ⇒ pow 8.
+        assert_eq!(lookup_bits(100, (1usize << 30) + 1), 8);
     }
 
     #[test]
     fn batched_proximity_pow_is_zero_at_80_bits() {
         // batch_bits = ceil_log2(ℓ) ≤ 10 for ℓ ≤ 1024; no_pow = 123 - (trace+1) - batch_bits ≥ 87 > 80.
         for &(trace, ell) in &[(20usize, 49usize), (24, 875)] {
-            assert_eq!(batched_proximity_check_pow_bits(80, trace, 1, ell), 0);
+            assert_eq!(batched_bits(80, trace, 1, ell), 0);
         }
     }
 
@@ -153,9 +201,19 @@ mod tests {
     fn batched_proximity_pow_at_100_scales_with_oracle_count() {
         // no_pow = 123 - (trace + lde) - ceil_log2(ℓ); pow = max(0, 100 - no_pow).
         // trace 24, lde 1: ℓ=49 → ceil_log2=6 → no_pow=92 → pow=8; ℓ=875 → 10 → no_pow=88 → pow=12.
-        assert_eq!(batched_proximity_check_pow_bits(100, 24, 1, 49), 8);
-        assert_eq!(batched_proximity_check_pow_bits(100, 24, 1, 875), 12);
+        assert_eq!(batched_bits(100, 24, 1, 49), 8);
+        assert_eq!(batched_bits(100, 24, 1, 875), 12);
         // smaller trace ⇒ fewer bits: trace 20, ℓ=875 → no_pow=92 → pow=8.
-        assert_eq!(batched_proximity_check_pow_bits(100, 20, 1, 875), 8);
+        assert_eq!(batched_bits(100, 20, 1, 875), 8);
+    }
+
+    #[test]
+    fn batched_proximity_pow_for_packed_proth120() {
+        // 2^22 trace packed by 2^4 → 2^26 message at LDE 32, ℓ=114:
+        // no_pow = 122 - (26 + 5) - 7 = 84 → pow = 16.
+        assert_eq!(
+            batched_proximity_check_pow_bits::<Proth120, Proth120>(100, 26, 5, 114),
+            16
+        );
     }
 }

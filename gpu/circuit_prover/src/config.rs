@@ -11,7 +11,7 @@ use crate::upstream::{
     config_for_security_level_under_pessimistic_conjecture, pow_bits, GKRCircuitArtifact,
     ProverConfig, SecurityLevel,
 };
-use gpu_core::primitives::field::BF;
+use gpu_core::primitives::field::{BF, E4};
 use gpu_trace::witness::circuit_type::CircuitType;
 
 /// Security levels the GPU prover supports.
@@ -66,7 +66,7 @@ pub(crate) fn lookup_challenges_pow_bits(
     prover_config: &ProverConfig,
     compiled_circuit: &GKRCircuitArtifact<BF>,
 ) -> u32 {
-    pow_bits::lookup_challenges_pow_bits(
+    pow_bits::lookup_challenges_pow_bits::<BF, E4>(
         prover_config.security_level.security_bits(),
         pow_bits::lookup_identity_degree(compiled_circuit),
     )
@@ -80,7 +80,7 @@ pub(crate) fn batched_proximity_check_pow_bits(
     prover_config: &ProverConfig,
     compiled_circuit: &GKRCircuitArtifact<BF>,
 ) -> u32 {
-    pow_bits::batched_proximity_check_pow_bits(
+    pow_bits::batched_proximity_check_pow_bits::<BF, E4>(
         prover_config.security_level.security_bits(),
         compiled_circuit.trace_len.trailing_zeros() as usize,
         prover_config.whir_schedule.base_lde_factor.trailing_zeros() as usize,

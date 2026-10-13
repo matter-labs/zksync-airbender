@@ -48,7 +48,7 @@ contract GKRVerifier {
     // 520 for this proof (unified_reduced_machine, 2^22, pack_log2=4). See gkr_transcript_reference.md.
     uint256 constant __TEMPLATE_GKR_INIT_PREIMAGE_BYTES = 916; // registers(384) + final_pc(12) + top_bits(8) + setup_cap(256) + memory_cap(256)
     uint256 constant __TEMPLATE_EXTERNAL_POW_BITS       = 20;  // external-challenge PoW difficulty (max(lookup, 20))
-    uint256 constant __TEMPLATE_EXPECTED_FINAL_PC       = 1716376; // program's terminal PC — binds the verified statement to this program
+    uint256 constant __TEMPLATE_EXPECTED_FINAL_PC       = 2303948; // program's terminal PC — binds the verified statement to this program
 
     // ── GKR init (fold the 8 init polys into the first sumcheck claim) ────────
     uint256 constant GKR_INIT_BYTES          = 2560; // 10 output polys * 16 elems * 16 bytes (Proth120)
@@ -70,7 +70,7 @@ contract GKRVerifier {
     uint256 constant MARK_GKR_SELECTOR = 0xef4f148a; // mark_gkr_verified(bytes32,bytes32,bytes32)
     uint256 constant __TEMPLATE_WHIR_Z_COORDS     = 26;         // 22 base + 4 packing extra coords
     uint256 constant __TEMPLATE_WHIR_CAP          = 8;          // CAP (witness+setup base-oracle caps)
-    uint256 constant __TEMPLATE_WHIR_BATCH_POW_BITS = 11;       // batched_proximity_check_pow_bits (Sec100)
+    uint256 constant __TEMPLATE_WHIR_BATCH_POW_BITS = 16;       // batched_proximity_check_pow_bits (Sec100)
     // GKR->WHIR handoff (MergedAndPackedMemoryAndWitness, pack_log2=4). Base-layer at-point
     // claims (dense in layer0's calldata eval block): mem++wit = 104 cols, setup = 10 cols.
     // Merge folds each 2^pack_log2=16-chunk by the 4 packing coords: 104->7, 10->1.

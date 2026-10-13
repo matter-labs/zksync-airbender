@@ -2008,18 +2008,20 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
     let whir_pow_bits = &whir_schedule.whir_pow_schedule;
     let whir_lde_factors = &whir_schedule.whir_steps_lde_factors;
     let whir_base_lde_factor = whir_schedule.base_lde_factor;
-    let batched_proximity_pow_bits = pow_bits::batched_proximity_check_pow_bits(
-        security_bits as usize,
-        trace_len_log_2,
-        whir_base_lde_factor.trailing_zeros() as usize,
-        pow_bits::total_base_oracle_columns(compiled_circuit),
-    );
+    let batched_proximity_pow_bits =
+        pow_bits::batched_proximity_check_pow_bits::<MW::BaseField, MW::ChallengeField>(
+            security_bits as usize,
+            trace_len_log_2,
+            whir_base_lde_factor.trailing_zeros() as usize,
+            pow_bits::total_base_oracle_columns(compiled_circuit),
+        );
     // Derived per-circuit from `security_bits` (same as the batched-proximity bits
     // above), so prover grind and this baked const cannot diverge.
-    let lookup_challenges_pow_bits = pow_bits::lookup_challenges_pow_bits(
-        security_bits as usize,
-        pow_bits::lookup_identity_degree(compiled_circuit),
-    );
+    let lookup_challenges_pow_bits =
+        pow_bits::lookup_challenges_pow_bits::<MW::BaseField, MW::ChallengeField>(
+            security_bits as usize,
+            pow_bits::lookup_identity_degree(compiled_circuit),
+        );
     let whir_cap_size = whir_schedule.cap_size;
     let whir_cap_size_log2 = whir_cap_size.trailing_zeros() as usize;
 
