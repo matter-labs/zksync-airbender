@@ -1,4 +1,5 @@
 import Slop.Equiv.MemLemmas
+import Slop.Sail.KernelRfl
 
 /-! Sail's memory path on Airbender, one layer per lemma (each its own small kernel check). Generic in the address
 and the width (1, 2 or 4 bytes); only the region (ROM or RAM) and the alignment are hypotheses. -/
@@ -44,5 +45,31 @@ theorem pma_rom_fetch (σ : FState) (hs : Airbender.Sys σ) (a : BitVec 32) (w :
   rw [pma_regions_eq hs, match_rom a w (by omega) (by omega) h2]
   sail_run hs using mem_side
   rfl
+
+theorem physaddr_eq (a : BitVec 32) (h : a.toNat < 2 ^ 34) :
+    (physaddr.Physaddr (BitVec.ofFin (w := 34) ⟨a.toNat, h⟩)) = .Physaddr (zero_extend a) := by
+  congr 1
+
+/-- Address translation in machine mode: the identity (any address). -/
+theorem translate_load (σ : FState) (hs : Airbender.Sys σ) (a : BitVec 32) :
+    runF (translateAddr (.Virtaddr a) (.Load .Data) .Machine) σ = .ok (.Ok (.Physaddr (zero_extend a), .PBMT_PMA, ())) σ := by
+  have hlt : a.toNat < 2 ^ 34 := by have := a.isLt; omega
+  rw [oracle_run hs _ (.Ok (.Physaddr (BitVec.ofFin (w := 34) ⟨a.toNat, hlt⟩), .PBMT_PMA, ())) (by kernel_rfl), physaddr_eq]
+
+/-- Address translation in machine mode: the identity (any address). -/
+theorem translate_store (σ : FState) (hs : Airbender.Sys σ) (a : BitVec 32) :
+    runF (translateAddr (.Virtaddr a) (.Store .Data) .Machine) σ = .ok (.Ok (.Physaddr (zero_extend a), .PBMT_PMA, ())) σ := by
+  have hlt : a.toNat < 2 ^ 34 := by have := a.isLt; omega
+  rw [oracle_run hs _ (.Ok (.Physaddr (BitVec.ofFin (w := 34) ⟨a.toNat, hlt⟩), .PBMT_PMA, ())) (by kernel_rfl), physaddr_eq]
+
+/-- Address translation in machine mode: the identity (any address). -/
+theorem translate_fetch (σ : FState) (hs : Airbender.Sys σ) (a : BitVec 32) :
+    runF (translateAddr (.Virtaddr a) (.InstructionFetch ()) .Machine) σ = .ok (.Ok (.Physaddr (zero_extend a), .PBMT_PMA, ())) σ := by
+  have hlt : a.toNat < 2 ^ 34 := by have := a.isLt; omega
+  rw [oracle_run hs _ (.Ok (.Physaddr (BitVec.ofFin (w := 34) ⟨a.toNat, hlt⟩), .PBMT_PMA, ())) (by kernel_rfl), physaddr_eq]
+
+/-- Machine mode: no address translation (any Airbender state). -/
+theorem satp_mode_machine (σ : FState) (hs : Airbender.Sys σ) : runF (satp_mode .Machine) σ = .ok .Bare σ :=
+  oracle_run hs _ _ (by kernel_rfl)
 
 end Slop.Equiv

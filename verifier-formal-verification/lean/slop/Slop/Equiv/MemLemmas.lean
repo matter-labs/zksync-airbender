@@ -1,4 +1,5 @@
 import Slop.Equiv.Run
+import Slop.Sail.KernelRfl
 
 /-! Address facts for Sail's memory path on Airbender (machine mode, no pointer masking, no paging). -/
 
@@ -6,10 +7,20 @@ open Sail SailRV32 SailRV32.Functions Human
 
 namespace Slop.Equiv
 
-theorem pm_transform_PA_zero (a : BitVec 32) : pm_transform_PA (.Virtaddr a) 0 = .Virtaddr a := by
+@[sail_norm] theorem pm_transform_PA_zero (a : BitVec 32) : pm_transform_PA (.Virtaddr a) 0 = .Virtaddr a := by
   simp only [pm_transform_PA, zero_extend, Sail.BitVec.zeroExtend, Sail.BitVec.extractLsb, BitVec.extractLsb,
     Functions.xlen]
   congr 1; apply BitVec.eq_of_toNat_eq; simp
+
+@[sail_norm] theorem bits_of_virtaddr_mk (a : BitVec 32) : bits_of_virtaddr (.Virtaddr a) = a := rfl
+
+set_option maxRecDepth 1000000 in
+@[sail_norm] theorem stInit_cur_privilege : Airbender.stInit.regs .cur_privilege = .Machine := by kernel_rfl
+
+attribute [sail_norm] Int.toNat_zero ite_self Int.toNat_natCast bne_self_eq_false Bool.false_and Bool.and_false
+  Bool.false_eq_true ite_false ite_true Bool.true_and Bool.and_true
+
+@[sail_norm] theorem int_toNat_ofNat (n : Nat) : (OfNat.ofNat n : Int).toNat = OfNat.ofNat n := rfl
 
 theorem is_aligned_vaddr_iff (a : BitVec 32) (n : Nat) :
     is_aligned_vaddr (.Virtaddr a) n = decide (a.toNat % n = 0) := by
@@ -128,9 +139,9 @@ elab "eval_bv" : tactic => withMainContext do
 /-- Side conditions on the memory path (alignment, page split), from the hypotheses in context. -/
 macro "mem_side" : tactic => `(tactic| first
   | (simp only [Int.toNat_zero, Slop.Equiv.pm_transform_PA_zero, Slop.Equiv.is_aligned_vaddr_iff, decide_true,
-      decide_false, *] <;> rfl)
+      decide_false, *] <;> first | decide | with_reducible rfl)
   | (simp (disch := decide) only [Slop.Equiv.is_aligned_paddr_iff', Slop.Equiv.zero_extend_toNat, decide_true,
-      Bool.true_or, *] <;> rfl)
+      Bool.true_or, *] <;> first | decide | with_reducible rfl)
   | (simp only [Int.toNat_zero, Slop.Equiv.pm_transform_PA_zero, bits_of_virtaddr, BitVec.addInt, BitVec.subInt,
       Sail.BitVec.updateSubrange, Sail.BitVec.updateSubrange', ones, zeros, Functions.pagesize_bits, Sail.BitVec.length,
       sail_ones]
