@@ -1,3 +1,8 @@
+import Airbender.Review.JumpBranchSlt.Theorems
+import Airbender.Review.MulDiv.Theorems
+import Airbender.Review.ShiftBinop.Theorems
+import Airbender.Review.SubwordMemory.Theorems
+import Airbender.Review.Trace.Soundness
 import Airbender.Proofs.AddSub.RowClaims
 import Airbender.Proofs.AddSub.ArtifactChecks
 import Airbender.Proofs.MulDiv.ArtifactChecks
@@ -2064,3 +2069,12 @@ import Clean.Specs.Keccak256
 #print axioms Tests.DelegationZeroInvocation.unified_unissued_worker_caller_cycles
 #print axioms Tests.DelegationZeroInvocation.unified_unissued_control_update
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.caller_worker_family
+
+#print axioms Airbender.JumpBranchSlt.trace_soundness
+#print axioms Airbender.MulDiv.trace_soundness
+#print axioms Airbender.ShiftBinop.trace_soundness
+#print axioms Airbender.SubwordMemory.ram_trace_soundness
+#print axioms Airbender.Trace.pooled_native_soundness
+#print axioms Airbender.Trace.NonDeterminism.Pooled.native_soundness
+#print axioms Airbender.Trace.WordColumns.code_u16
+#print axioms Airbender.Trace.WordColumns.evaluate_u16
