@@ -1224,6 +1224,39 @@
                 "input": {
                   "linear_terms": [
                     [
+                      1073741824,
+                      {
+                        "BaseLayerMemory": 89
+                      }
+                    ],
+                    [
+                      939524097,
+                      {
+                        "BaseLayerMemory": 88
+                      }
+                    ]
+                  ],
+                  "constant": 0
+                },
+                "lookup_set_index": 0
+              },
+              "range_check_width": 19
+            }
+          }
+        ],
+        [
+          {
+            "Cached": {
+              "layer": 0,
+              "offset": 32
+            }
+          },
+          {
+            "SingleColumnLookup": {
+              "relation": {
+                "input": {
+                  "linear_terms": [
+                    [
                       1744830467,
                       {
                         "BaseLayerMemory": 89
@@ -1244,7 +1277,7 @@
                   ],
                   "constant": 1476395013
                 },
-                "lookup_set_index": 2
+                "lookup_set_index": 1
               },
               "range_check_width": 19
             }
@@ -1254,7 +1287,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 32
+              "offset": 33
             }
           },
           {
@@ -1283,7 +1316,7 @@
                   ],
                   "constant": 133099247
                 },
-                "lookup_set_index": 3
+                "lookup_set_index": 2
               },
               "range_check_width": 19
             }
@@ -1293,7 +1326,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 33
+              "offset": 34
             }
           },
           {
@@ -1322,7 +1355,7 @@
                   ],
                   "constant": 1476395013
                 },
-                "lookup_set_index": 4
+                "lookup_set_index": 3
               },
               "range_check_width": 19
             }
@@ -1332,7 +1365,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 34
+              "offset": 35
             }
           },
           {
@@ -1361,7 +1394,7 @@
                   ],
                   "constant": 133099247
                 },
-                "lookup_set_index": 5
+                "lookup_set_index": 4
               },
               "range_check_width": 19
             }
@@ -1371,7 +1404,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 35
+              "offset": 36
             }
           },
           {
@@ -1400,7 +1433,7 @@
                   ],
                   "constant": 1476395013
                 },
-                "lookup_set_index": 6
+                "lookup_set_index": 5
               },
               "range_check_width": 19
             }
@@ -1410,7 +1443,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 36
+              "offset": 37
             }
           },
           {
@@ -1439,7 +1472,7 @@
                   ],
                   "constant": 133099247
                 },
-                "lookup_set_index": 7
+                "lookup_set_index": 6
               },
               "range_check_width": 19
             }
@@ -1449,7 +1482,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 37
+              "offset": 38
             }
           },
           {
@@ -1478,7 +1511,7 @@
                   ],
                   "constant": 1476395013
                 },
-                "lookup_set_index": 8
+                "lookup_set_index": 7
               },
               "range_check_width": 19
             }
@@ -1488,7 +1521,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 38
+              "offset": 39
             }
           },
           {
@@ -1517,7 +1550,7 @@
                   ],
                   "constant": 133099247
                 },
-                "lookup_set_index": 9
+                "lookup_set_index": 8
               },
               "range_check_width": 19
             }
@@ -1527,7 +1560,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 39
+              "offset": 40
             }
           },
           {
@@ -1556,7 +1589,7 @@
                   ],
                   "constant": 1476395013
                 },
-                "lookup_set_index": 10
+                "lookup_set_index": 9
               },
               "range_check_width": 19
             }
@@ -1566,7 +1599,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 40
+              "offset": 41
             }
           },
           {
@@ -1595,7 +1628,7 @@
                   ],
                   "constant": 133099247
                 },
-                "lookup_set_index": 11
+                "lookup_set_index": 10
               },
               "range_check_width": 19
             }
@@ -1605,7 +1638,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 41
+              "offset": 42
             }
           },
           {
@@ -1634,7 +1667,7 @@
                   ],
                   "constant": 1476395013
                 },
-                "lookup_set_index": 12
+                "lookup_set_index": 11
               },
               "range_check_width": 19
             }
@@ -1644,7 +1677,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 42
+              "offset": 43
             }
           },
           {
@@ -1673,7 +1706,7 @@
                   ],
                   "constant": 133099247
                 },
-                "lookup_set_index": 13
+                "lookup_set_index": 12
               },
               "range_check_width": 19
             }
@@ -1683,7 +1716,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 43
+              "offset": 44
             }
           },
           {
@@ -1712,7 +1745,7 @@
                   ],
                   "constant": 1476395013
                 },
-                "lookup_set_index": 14
+                "lookup_set_index": 13
               },
               "range_check_width": 19
             }
@@ -1722,7 +1755,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 44
+              "offset": 45
             }
           },
           {
@@ -1751,7 +1784,7 @@
                   ],
                   "constant": 133099247
                 },
-                "lookup_set_index": 15
+                "lookup_set_index": 14
               },
               "range_check_width": 19
             }
@@ -1761,7 +1794,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 45
+              "offset": 46
             }
           },
           {
@@ -1790,7 +1823,7 @@
                   ],
                   "constant": 1476395013
                 },
-                "lookup_set_index": 16
+                "lookup_set_index": 15
               },
               "range_check_width": 19
             }
@@ -1800,7 +1833,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 46
+              "offset": 47
             }
           },
           {
@@ -1829,7 +1862,7 @@
                   ],
                   "constant": 133099247
                 },
-                "lookup_set_index": 17
+                "lookup_set_index": 16
               },
               "range_check_width": 19
             }
@@ -1839,7 +1872,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 47
+              "offset": 48
             }
           },
           {
@@ -1868,7 +1901,7 @@
                   ],
                   "constant": 1476395013
                 },
-                "lookup_set_index": 18
+                "lookup_set_index": 17
               },
               "range_check_width": 19
             }
@@ -1878,7 +1911,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 48
+              "offset": 49
             }
           },
           {
@@ -1907,7 +1940,7 @@
                   ],
                   "constant": 133099247
                 },
-                "lookup_set_index": 19
+                "lookup_set_index": 18
               },
               "range_check_width": 19
             }
@@ -1917,7 +1950,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 49
+              "offset": 50
             }
           },
           {
@@ -1946,7 +1979,7 @@
                   ],
                   "constant": 1476395013
                 },
-                "lookup_set_index": 20
+                "lookup_set_index": 19
               },
               "range_check_width": 19
             }
@@ -1956,7 +1989,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 50
+              "offset": 51
             }
           },
           {
@@ -1985,7 +2018,7 @@
                   ],
                   "constant": 133099247
                 },
-                "lookup_set_index": 21
+                "lookup_set_index": 20
               },
               "range_check_width": 19
             }
@@ -1995,7 +2028,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 51
+              "offset": 52
             }
           },
           {
@@ -2024,7 +2057,7 @@
                   ],
                   "constant": 1476395013
                 },
-                "lookup_set_index": 22
+                "lookup_set_index": 21
               },
               "range_check_width": 19
             }
@@ -2034,7 +2067,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 52
+              "offset": 53
             }
           },
           {
@@ -2063,7 +2096,7 @@
                   ],
                   "constant": 133099247
                 },
-                "lookup_set_index": 23
+                "lookup_set_index": 22
               },
               "range_check_width": 19
             }
@@ -2073,7 +2106,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 53
+              "offset": 54
             }
           },
           {
@@ -2102,7 +2135,7 @@
                   ],
                   "constant": 1476395013
                 },
-                "lookup_set_index": 24
+                "lookup_set_index": 23
               },
               "range_check_width": 19
             }
@@ -2112,7 +2145,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 54
+              "offset": 55
             }
           },
           {
@@ -2141,7 +2174,7 @@
                   ],
                   "constant": 133099247
                 },
-                "lookup_set_index": 25
+                "lookup_set_index": 24
               },
               "range_check_width": 19
             }
@@ -2151,7 +2184,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 55
+              "offset": 56
             }
           },
           {
@@ -2180,7 +2213,7 @@
                   ],
                   "constant": 1476395013
                 },
-                "lookup_set_index": 26
+                "lookup_set_index": 25
               },
               "range_check_width": 19
             }
@@ -2190,7 +2223,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 56
+              "offset": 57
             }
           },
           {
@@ -2219,7 +2252,7 @@
                   ],
                   "constant": 133099247
                 },
-                "lookup_set_index": 27
+                "lookup_set_index": 26
               },
               "range_check_width": 19
             }
@@ -2229,7 +2262,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 57
+              "offset": 58
             }
           },
           {
@@ -2258,7 +2291,7 @@
                   ],
                   "constant": 1476395013
                 },
-                "lookup_set_index": 28
+                "lookup_set_index": 27
               },
               "range_check_width": 19
             }
@@ -2268,7 +2301,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 58
+              "offset": 59
             }
           },
           {
@@ -2297,7 +2330,7 @@
                   ],
                   "constant": 133099247
                 },
-                "lookup_set_index": 29
+                "lookup_set_index": 28
               },
               "range_check_width": 19
             }
@@ -2307,7 +2340,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 59
+              "offset": 60
             }
           },
           {
@@ -2409,7 +2442,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 60
+              "offset": 61
             }
           },
           {
@@ -2445,7 +2478,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 61
+              "offset": 62
             }
           },
           {
@@ -2556,7 +2589,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 62
+              "offset": 63
             }
           },
           {
@@ -2667,7 +2700,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 63
+              "offset": 64
             }
           },
           {
@@ -2778,7 +2811,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 64
+              "offset": 65
             }
           },
           {
@@ -2889,7 +2922,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 65
+              "offset": 66
             }
           },
           {
@@ -3000,7 +3033,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 66
+              "offset": 67
             }
           },
           {
@@ -3111,7 +3144,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 67
+              "offset": 68
             }
           },
           {
@@ -3222,7 +3255,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 68
+              "offset": 69
             }
           },
           {
@@ -3333,7 +3366,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 69
+              "offset": 70
             }
           },
           {
@@ -3444,7 +3477,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 70
+              "offset": 71
             }
           },
           {
@@ -3555,7 +3588,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 71
+              "offset": 72
             }
           },
           {
@@ -3666,7 +3699,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 72
+              "offset": 73
             }
           },
           {
@@ -3777,7 +3810,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 73
+              "offset": 74
             }
           },
           {
@@ -3888,7 +3921,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 74
+              "offset": 75
             }
           },
           {
@@ -3999,7 +4032,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 75
+              "offset": 76
             }
           },
           {
@@ -4110,7 +4143,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 76
+              "offset": 77
             }
           },
           {
@@ -4221,7 +4254,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 77
+              "offset": 78
             }
           },
           {
@@ -4332,7 +4365,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 78
+              "offset": 79
             }
           },
           {
@@ -4443,7 +4476,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 79
+              "offset": 80
             }
           },
           {
@@ -4554,7 +4587,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 80
+              "offset": 81
             }
           },
           {
@@ -4665,7 +4698,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 81
+              "offset": 82
             }
           },
           {
@@ -4776,7 +4809,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 82
+              "offset": 83
             }
           },
           {
@@ -4887,7 +4920,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 83
+              "offset": 84
             }
           },
           {
@@ -4998,7 +5031,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 84
+              "offset": 85
             }
           },
           {
@@ -5109,7 +5142,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 85
+              "offset": 86
             }
           },
           {
@@ -5220,7 +5253,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 86
+              "offset": 87
             }
           },
           {
@@ -5331,7 +5364,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 87
+              "offset": 88
             }
           },
           {
@@ -5442,7 +5475,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 88
+              "offset": 89
             }
           },
           {
@@ -5553,7 +5586,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 89
+              "offset": 90
             }
           },
           {
@@ -5664,7 +5697,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 90
+              "offset": 91
             }
           },
           {
@@ -5775,7 +5808,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 91
+              "offset": 92
             }
           },
           {
@@ -5886,7 +5919,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 92
+              "offset": 93
             }
           },
           {
@@ -5997,7 +6030,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 93
+              "offset": 94
             }
           },
           {
@@ -6108,7 +6141,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 94
+              "offset": 95
             }
           },
           {
@@ -6219,7 +6252,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 95
+              "offset": 96
             }
           },
           {
@@ -6330,7 +6363,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 96
+              "offset": 97
             }
           },
           {
@@ -6441,7 +6474,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 97
+              "offset": 98
             }
           },
           {
@@ -6552,7 +6585,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 98
+              "offset": 99
             }
           },
           {
@@ -6663,7 +6696,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 99
+              "offset": 100
             }
           },
           {
@@ -6774,7 +6807,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 100
+              "offset": 101
             }
           },
           {
@@ -7355,7 +7388,10 @@
           "enforced_relation": {
             "LookupFromMaterializedBaseInputWithSetup": {
               "input": {
-                "BaseLayerMemory": 89
+                "Cached": {
+                  "layer": 0,
+                  "offset": 31
+                }
               },
               "setup": [
                 {
@@ -7388,12 +7424,15 @@
             "LookupPairFromMaterializedBaseInputs": {
               "input": [
                 {
-                  "BaseLayerMemory": 90
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 32
+                  }
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 31
+                    "offset": 33
                   }
                 }
               ],
@@ -7422,13 +7461,13 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 32
+                    "offset": 34
                   }
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 33
+                    "offset": 35
                   }
                 }
               ],
@@ -7457,13 +7496,13 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 34
+                    "offset": 36
                   }
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 35
+                    "offset": 37
                   }
                 }
               ],
@@ -7492,13 +7531,13 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 36
+                    "offset": 38
                   }
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 37
+                    "offset": 39
                   }
                 }
               ],
@@ -7527,13 +7566,13 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 38
+                    "offset": 40
                   }
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 39
+                    "offset": 41
                   }
                 }
               ],
@@ -7562,13 +7601,13 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 40
+                    "offset": 42
                   }
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 41
+                    "offset": 43
                   }
                 }
               ],
@@ -7597,13 +7636,13 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 42
+                    "offset": 44
                   }
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 43
+                    "offset": 45
                   }
                 }
               ],
@@ -7632,13 +7671,13 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 44
+                    "offset": 46
                   }
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 45
+                    "offset": 47
                   }
                 }
               ],
@@ -7667,13 +7706,13 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 46
+                    "offset": 48
                   }
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 47
+                    "offset": 49
                   }
                 }
               ],
@@ -7702,13 +7741,13 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 48
+                    "offset": 50
                   }
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 49
+                    "offset": 51
                   }
                 }
               ],
@@ -7737,13 +7776,13 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 50
+                    "offset": 52
                   }
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 51
+                    "offset": 53
                   }
                 }
               ],
@@ -7772,13 +7811,13 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 52
+                    "offset": 54
                   }
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 53
+                    "offset": 55
                   }
                 }
               ],
@@ -7807,13 +7846,13 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 54
+                    "offset": 56
                   }
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 55
+                    "offset": 57
                   }
                 }
               ],
@@ -7842,13 +7881,13 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 56
+                    "offset": 58
                   }
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 57
+                    "offset": 59
                   }
                 }
               ],
@@ -7872,30 +7911,11 @@
         {
           "output_layer": 1,
           "enforced_relation": {
-            "CopyInBaseField": {
-              "input": {
-                "Cached": {
-                  "layer": 0,
-                  "offset": 58
-                }
-              },
-              "output": {
-                "InnerLayer": {
-                  "layer": 1,
-                  "offset": 51
-                }
-              }
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
             "LookupFromMaterializedVectorInputWithSetup": {
               "input": {
                 "Cached": {
                   "layer": 0,
-                  "offset": 59
+                  "offset": 60
                 }
               },
               "setup": [
@@ -7905,582 +7925,582 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 60
+                    "offset": 61
                   }
                 }
               ],
               "output": [
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 51
+                  }
+                },
                 {
                   "InnerLayer": {
                     "layer": 1,
                     "offset": 52
                   }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "LookupPairFromMaterializedVectorInputs": {
+              "input": [
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 62
+                  }
                 },
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 63
+                  }
+                }
+              ],
+              "output": [
                 {
                   "InnerLayer": {
                     "layer": 1,
                     "offset": 53
                   }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "LookupPairFromMaterializedVectorInputs": {
-              "input": [
-                {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 61
-                  }
                 },
-                {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 62
-                  }
-                }
-              ],
-              "output": [
                 {
                   "InnerLayer": {
                     "layer": 1,
                     "offset": 54
                   }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "LookupPairFromMaterializedVectorInputs": {
+              "input": [
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 64
+                  }
                 },
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 65
+                  }
+                }
+              ],
+              "output": [
                 {
                   "InnerLayer": {
                     "layer": 1,
                     "offset": 55
                   }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "LookupPairFromMaterializedVectorInputs": {
-              "input": [
-                {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 63
-                  }
                 },
-                {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 64
-                  }
-                }
-              ],
-              "output": [
                 {
                   "InnerLayer": {
                     "layer": 1,
                     "offset": 56
                   }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "LookupPairFromMaterializedVectorInputs": {
+              "input": [
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 66
+                  }
                 },
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 67
+                  }
+                }
+              ],
+              "output": [
                 {
                   "InnerLayer": {
                     "layer": 1,
                     "offset": 57
                   }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "LookupPairFromMaterializedVectorInputs": {
-              "input": [
-                {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 65
-                  }
                 },
-                {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 66
-                  }
-                }
-              ],
-              "output": [
                 {
                   "InnerLayer": {
                     "layer": 1,
                     "offset": 58
                   }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "LookupPairFromMaterializedVectorInputs": {
+              "input": [
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 68
+                  }
                 },
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 69
+                  }
+                }
+              ],
+              "output": [
                 {
                   "InnerLayer": {
                     "layer": 1,
                     "offset": 59
                   }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "LookupPairFromMaterializedVectorInputs": {
-              "input": [
-                {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 67
-                  }
                 },
-                {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 68
-                  }
-                }
-              ],
-              "output": [
                 {
                   "InnerLayer": {
                     "layer": 1,
                     "offset": 60
                   }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "LookupPairFromMaterializedVectorInputs": {
+              "input": [
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 70
+                  }
                 },
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 71
+                  }
+                }
+              ],
+              "output": [
                 {
                   "InnerLayer": {
                     "layer": 1,
                     "offset": 61
                   }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "LookupPairFromMaterializedVectorInputs": {
-              "input": [
-                {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 69
-                  }
                 },
-                {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 70
-                  }
-                }
-              ],
-              "output": [
                 {
                   "InnerLayer": {
                     "layer": 1,
                     "offset": 62
                   }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "LookupPairFromMaterializedVectorInputs": {
+              "input": [
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 72
+                  }
                 },
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 73
+                  }
+                }
+              ],
+              "output": [
                 {
                   "InnerLayer": {
                     "layer": 1,
                     "offset": 63
                   }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "LookupPairFromMaterializedVectorInputs": {
-              "input": [
-                {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 71
-                  }
                 },
-                {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 72
-                  }
-                }
-              ],
-              "output": [
                 {
                   "InnerLayer": {
                     "layer": 1,
                     "offset": 64
                   }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "LookupPairFromMaterializedVectorInputs": {
+              "input": [
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 74
+                  }
                 },
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 75
+                  }
+                }
+              ],
+              "output": [
                 {
                   "InnerLayer": {
                     "layer": 1,
                     "offset": 65
                   }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "LookupPairFromMaterializedVectorInputs": {
-              "input": [
-                {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 73
-                  }
                 },
-                {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 74
-                  }
-                }
-              ],
-              "output": [
                 {
                   "InnerLayer": {
                     "layer": 1,
                     "offset": 66
                   }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "LookupPairFromMaterializedVectorInputs": {
+              "input": [
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 76
+                  }
                 },
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 77
+                  }
+                }
+              ],
+              "output": [
                 {
                   "InnerLayer": {
                     "layer": 1,
                     "offset": 67
                   }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "LookupPairFromMaterializedVectorInputs": {
-              "input": [
-                {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 75
-                  }
                 },
-                {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 76
-                  }
-                }
-              ],
-              "output": [
                 {
                   "InnerLayer": {
                     "layer": 1,
                     "offset": 68
                   }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "LookupPairFromMaterializedVectorInputs": {
+              "input": [
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 78
+                  }
                 },
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 79
+                  }
+                }
+              ],
+              "output": [
                 {
                   "InnerLayer": {
                     "layer": 1,
                     "offset": 69
                   }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "LookupPairFromMaterializedVectorInputs": {
-              "input": [
-                {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 77
-                  }
                 },
-                {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 78
-                  }
-                }
-              ],
-              "output": [
                 {
                   "InnerLayer": {
                     "layer": 1,
                     "offset": 70
                   }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "LookupPairFromMaterializedVectorInputs": {
+              "input": [
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 80
+                  }
                 },
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 81
+                  }
+                }
+              ],
+              "output": [
                 {
                   "InnerLayer": {
                     "layer": 1,
                     "offset": 71
                   }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "LookupPairFromMaterializedVectorInputs": {
-              "input": [
-                {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 79
-                  }
                 },
-                {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 80
-                  }
-                }
-              ],
-              "output": [
                 {
                   "InnerLayer": {
                     "layer": 1,
                     "offset": 72
                   }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "LookupPairFromMaterializedVectorInputs": {
+              "input": [
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 82
+                  }
                 },
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 83
+                  }
+                }
+              ],
+              "output": [
                 {
                   "InnerLayer": {
                     "layer": 1,
                     "offset": 73
                   }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "LookupPairFromMaterializedVectorInputs": {
-              "input": [
-                {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 81
-                  }
                 },
-                {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 82
-                  }
-                }
-              ],
-              "output": [
                 {
                   "InnerLayer": {
                     "layer": 1,
                     "offset": 74
                   }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "LookupPairFromMaterializedVectorInputs": {
+              "input": [
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 84
+                  }
                 },
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 85
+                  }
+                }
+              ],
+              "output": [
                 {
                   "InnerLayer": {
                     "layer": 1,
                     "offset": 75
                   }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "LookupPairFromMaterializedVectorInputs": {
-              "input": [
-                {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 83
-                  }
                 },
-                {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 84
-                  }
-                }
-              ],
-              "output": [
                 {
                   "InnerLayer": {
                     "layer": 1,
                     "offset": 76
                   }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "LookupPairFromMaterializedVectorInputs": {
+              "input": [
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 86
+                  }
                 },
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 87
+                  }
+                }
+              ],
+              "output": [
                 {
                   "InnerLayer": {
                     "layer": 1,
                     "offset": 77
                   }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "LookupPairFromMaterializedVectorInputs": {
-              "input": [
-                {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 85
-                  }
                 },
-                {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 86
-                  }
-                }
-              ],
-              "output": [
                 {
                   "InnerLayer": {
                     "layer": 1,
                     "offset": 78
                   }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "LookupPairFromMaterializedVectorInputs": {
+              "input": [
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 88
+                  }
                 },
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 89
+                  }
+                }
+              ],
+              "output": [
                 {
                   "InnerLayer": {
                     "layer": 1,
                     "offset": 79
                   }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "LookupPairFromMaterializedVectorInputs": {
-              "input": [
-                {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 87
-                  }
                 },
-                {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 88
-                  }
-                }
-              ],
-              "output": [
                 {
                   "InnerLayer": {
                     "layer": 1,
                     "offset": 80
                   }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "LookupPairFromMaterializedVectorInputs": {
+              "input": [
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 90
+                  }
                 },
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 91
+                  }
+                }
+              ],
+              "output": [
                 {
                   "InnerLayer": {
                     "layer": 1,
                     "offset": 81
                   }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "LookupPairFromMaterializedVectorInputs": {
-              "input": [
-                {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 89
-                  }
                 },
-                {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 90
-                  }
-                }
-              ],
-              "output": [
                 {
                   "InnerLayer": {
                     "layer": 1,
                     "offset": 82
                   }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "LookupPairFromMaterializedVectorInputs": {
+              "input": [
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 92
+                  }
                 },
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 93
+                  }
+                }
+              ],
+              "output": [
                 {
                   "InnerLayer": {
                     "layer": 1,
                     "offset": 83
                   }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "LookupPairFromMaterializedVectorInputs": {
-              "input": [
-                {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 91
-                  }
                 },
-                {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 92
-                  }
-                }
-              ],
-              "output": [
                 {
                   "InnerLayer": {
                     "layer": 1,
                     "offset": 84
                   }
-                },
-                {
-                  "InnerLayer": {
-                    "layer": 1,
-                    "offset": 85
-                  }
                 }
               ]
             }
@@ -8491,100 +8511,65 @@
           "enforced_relation": {
             "LookupPairFromMaterializedVectorInputs": {
               "input": [
-                {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 93
-                  }
-                },
                 {
                   "Cached": {
                     "layer": 0,
                     "offset": 94
                   }
-                }
-              ],
-              "output": [
-                {
-                  "InnerLayer": {
-                    "layer": 1,
-                    "offset": 86
-                  }
                 },
-                {
-                  "InnerLayer": {
-                    "layer": 1,
-                    "offset": 87
-                  }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "LookupPairFromMaterializedVectorInputs": {
-              "input": [
                 {
                   "Cached": {
                     "layer": 0,
                     "offset": 95
                   }
+                }
+              ],
+              "output": [
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 85
+                  }
                 },
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 86
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "LookupPairFromMaterializedVectorInputs": {
+              "input": [
                 {
                   "Cached": {
                     "layer": 0,
                     "offset": 96
                   }
-                }
-              ],
-              "output": [
-                {
-                  "InnerLayer": {
-                    "layer": 1,
-                    "offset": 88
-                  }
                 },
-                {
-                  "InnerLayer": {
-                    "layer": 1,
-                    "offset": 89
-                  }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "LookupPairFromMaterializedVectorInputs": {
-              "input": [
                 {
                   "Cached": {
                     "layer": 0,
                     "offset": 97
                   }
-                },
-                {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 98
-                  }
                 }
               ],
               "output": [
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 90
+                    "offset": 87
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 91
+                    "offset": 88
                   }
                 }
               ]
@@ -8599,13 +8584,13 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 99
+                    "offset": 98
                   }
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 100
+                    "offset": 99
                   }
                 }
               ],
@@ -8613,13 +8598,48 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 92
+                    "offset": 89
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 93
+                    "offset": 90
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "LookupPairFromMaterializedVectorInputs": {
+              "input": [
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 100
+                  }
+                },
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 101
+                  }
+                }
+              ],
+              "output": [
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 91
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 92
                   }
                 }
               ]
@@ -49819,27 +49839,37 @@
         {
           "output_layer": 2,
           "enforced_relation": {
-            "LookupUnbalancedPairWithMaterializedBaseInputs": {
+            "AggregateLookupRationalPair": {
               "input": [
-                {
-                  "InnerLayer": {
-                    "layer": 1,
-                    "offset": 49
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 49
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 50
+                    }
                   }
-                },
-                {
-                  "InnerLayer": {
-                    "layer": 1,
-                    "offset": 50
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 47
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 48
+                    }
                   }
-                }
+                ]
               ],
-              "remainder": {
-                "InnerLayer": {
-                  "layer": 1,
-                  "offset": 51
-                }
-              },
               "output": [
                 {
                   "InnerLayer": {
@@ -49866,20 +49896,6 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 47
-                    }
-                  },
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 48
-                    }
-                  }
-                ],
-                [
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
                       "offset": 45
                     }
                   },
@@ -49887,6 +49903,20 @@
                     "InnerLayer": {
                       "layer": 1,
                       "offset": 46
+                    }
+                  }
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 43
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 44
                     }
                   }
                 ]
@@ -49917,20 +49947,6 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 43
-                    }
-                  },
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 44
-                    }
-                  }
-                ],
-                [
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
                       "offset": 41
                     }
                   },
@@ -49938,6 +49954,20 @@
                     "InnerLayer": {
                       "layer": 1,
                       "offset": 42
+                    }
+                  }
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 39
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 40
                     }
                   }
                 ]
@@ -49968,20 +49998,6 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 39
-                    }
-                  },
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 40
-                    }
-                  }
-                ],
-                [
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
                       "offset": 37
                     }
                   },
@@ -49989,6 +50005,20 @@
                     "InnerLayer": {
                       "layer": 1,
                       "offset": 38
+                    }
+                  }
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 35
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 36
                     }
                   }
                 ]
@@ -50019,20 +50049,6 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 35
-                    }
-                  },
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 36
-                    }
-                  }
-                ],
-                [
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
                       "offset": 33
                     }
                   },
@@ -50040,6 +50056,20 @@
                     "InnerLayer": {
                       "layer": 1,
                       "offset": 34
+                    }
+                  }
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 31
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 32
                     }
                   }
                 ]
@@ -50070,20 +50100,6 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 31
-                    }
-                  },
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 32
-                    }
-                  }
-                ],
-                [
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
                       "offset": 29
                     }
                   },
@@ -50091,6 +50107,20 @@
                     "InnerLayer": {
                       "layer": 1,
                       "offset": 30
+                    }
+                  }
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 27
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 28
                     }
                   }
                 ]
@@ -50121,20 +50151,6 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 27
-                    }
-                  },
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 28
-                    }
-                  }
-                ],
-                [
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
                       "offset": 25
                     }
                   },
@@ -50142,6 +50158,20 @@
                     "InnerLayer": {
                       "layer": 1,
                       "offset": 26
+                    }
+                  }
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 23
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 24
                     }
                   }
                 ]
@@ -50166,51 +50196,38 @@
         {
           "output_layer": 2,
           "enforced_relation": {
-            "AggregateLookupRationalPair": {
-              "input": [
-                [
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 23
-                    }
-                  },
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 24
-                    }
-                  }
-                ],
-                [
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 21
-                    }
-                  },
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 22
-                    }
-                  }
-                ]
-              ],
-              "output": [
-                {
-                  "InnerLayer": {
-                    "layer": 2,
-                    "offset": 23
-                  }
-                },
-                {
-                  "InnerLayer": {
-                    "layer": 2,
-                    "offset": 24
-                  }
+            "CopyInExtensionField": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 21
                 }
-              ]
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 23
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 2,
+          "enforced_relation": {
+            "CopyInExtensionField": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 22
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 24
+                }
+              }
             }
           }
         },
@@ -50223,13 +50240,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 92
+                      "offset": 91
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 93
+                      "offset": 92
                     }
                   }
                 ],
@@ -50237,13 +50254,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 90
+                      "offset": 89
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 91
+                      "offset": 90
                     }
                   }
                 ]
@@ -50274,13 +50291,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 88
+                      "offset": 87
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 89
+                      "offset": 88
                     }
                   }
                 ],
@@ -50288,13 +50305,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 86
+                      "offset": 85
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 87
+                      "offset": 86
                     }
                   }
                 ]
@@ -50325,13 +50342,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 84
+                      "offset": 83
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 85
+                      "offset": 84
                     }
                   }
                 ],
@@ -50339,13 +50356,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 82
+                      "offset": 81
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 83
+                      "offset": 82
                     }
                   }
                 ]
@@ -50376,13 +50393,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 80
+                      "offset": 79
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 81
+                      "offset": 80
                     }
                   }
                 ],
@@ -50390,13 +50407,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 78
+                      "offset": 77
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 79
+                      "offset": 78
                     }
                   }
                 ]
@@ -50427,13 +50444,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 76
+                      "offset": 75
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 77
+                      "offset": 76
                     }
                   }
                 ],
@@ -50441,13 +50458,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 74
+                      "offset": 73
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 75
+                      "offset": 74
                     }
                   }
                 ]
@@ -50478,13 +50495,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 72
+                      "offset": 71
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 73
+                      "offset": 72
                     }
                   }
                 ],
@@ -50492,13 +50509,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 70
+                      "offset": 69
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 71
+                      "offset": 70
                     }
                   }
                 ]
@@ -50529,13 +50546,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 68
+                      "offset": 67
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 69
+                      "offset": 68
                     }
                   }
                 ],
@@ -50543,13 +50560,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 66
+                      "offset": 65
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 67
+                      "offset": 66
                     }
                   }
                 ]
@@ -50580,13 +50597,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 64
+                      "offset": 63
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 65
+                      "offset": 64
                     }
                   }
                 ],
@@ -50594,13 +50611,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 62
+                      "offset": 61
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 63
+                      "offset": 62
                     }
                   }
                 ]
@@ -50631,13 +50648,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 60
+                      "offset": 59
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 61
+                      "offset": 60
                     }
                   }
                 ],
@@ -50645,13 +50662,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 58
+                      "offset": 57
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 59
+                      "offset": 58
                     }
                   }
                 ]
@@ -50682,13 +50699,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 56
+                      "offset": 55
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 57
+                      "offset": 56
                     }
                   }
                 ],
@@ -50696,13 +50713,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 54
+                      "offset": 53
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 55
+                      "offset": 54
                     }
                   }
                 ]
@@ -50731,7 +50748,7 @@
               "input": {
                 "InnerLayer": {
                   "layer": 1,
-                  "offset": 52
+                  "offset": 51
                 }
               },
               "output": {
@@ -50750,7 +50767,7 @@
               "input": {
                 "InnerLayer": {
                   "layer": 1,
-                  "offset": 53
+                  "offset": 52
                 }
               },
               "output": {
@@ -50801,7 +50818,7 @@
           }
         }
       ],
-      "intermediate_layer_width": 94
+      "intermediate_layer_width": 93
     },
     {
       "layer": 2,
@@ -113218,29 +113235,21 @@
       "input": {
         "linear_terms": [
           [
-            268435454,
+            1073741824,
             {
               "BaseLayerMemory": 89
+            }
+          ],
+          [
+            939524097,
+            {
+              "BaseLayerMemory": 88
             }
           ]
         ],
         "constant": 0
       },
       "lookup_set_index": 0
-    },
-    {
-      "input": {
-        "linear_terms": [
-          [
-            268435454,
-            {
-              "BaseLayerMemory": 90
-            }
-          ]
-        ],
-        "constant": 0
-      },
-      "lookup_set_index": 1
     },
     {
       "input": {
@@ -113266,7 +113275,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 2
+      "lookup_set_index": 1
     },
     {
       "input": {
@@ -113292,7 +113301,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 3
+      "lookup_set_index": 2
     },
     {
       "input": {
@@ -113318,7 +113327,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 4
+      "lookup_set_index": 3
     },
     {
       "input": {
@@ -113344,7 +113353,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 5
+      "lookup_set_index": 4
     },
     {
       "input": {
@@ -113370,7 +113379,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 6
+      "lookup_set_index": 5
     },
     {
       "input": {
@@ -113396,7 +113405,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 7
+      "lookup_set_index": 6
     },
     {
       "input": {
@@ -113422,7 +113431,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 8
+      "lookup_set_index": 7
     },
     {
       "input": {
@@ -113448,7 +113457,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 9
+      "lookup_set_index": 8
     },
     {
       "input": {
@@ -113474,7 +113483,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 10
+      "lookup_set_index": 9
     },
     {
       "input": {
@@ -113500,7 +113509,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 11
+      "lookup_set_index": 10
     },
     {
       "input": {
@@ -113526,7 +113535,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 12
+      "lookup_set_index": 11
     },
     {
       "input": {
@@ -113552,7 +113561,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 13
+      "lookup_set_index": 12
     },
     {
       "input": {
@@ -113578,7 +113587,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 14
+      "lookup_set_index": 13
     },
     {
       "input": {
@@ -113604,7 +113613,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 15
+      "lookup_set_index": 14
     },
     {
       "input": {
@@ -113630,7 +113639,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 16
+      "lookup_set_index": 15
     },
     {
       "input": {
@@ -113656,7 +113665,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 17
+      "lookup_set_index": 16
     },
     {
       "input": {
@@ -113682,7 +113691,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 18
+      "lookup_set_index": 17
     },
     {
       "input": {
@@ -113708,7 +113717,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 19
+      "lookup_set_index": 18
     },
     {
       "input": {
@@ -113734,7 +113743,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 20
+      "lookup_set_index": 19
     },
     {
       "input": {
@@ -113760,7 +113769,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 21
+      "lookup_set_index": 20
     },
     {
       "input": {
@@ -113786,7 +113795,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 22
+      "lookup_set_index": 21
     },
     {
       "input": {
@@ -113812,7 +113821,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 23
+      "lookup_set_index": 22
     },
     {
       "input": {
@@ -113838,7 +113847,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 24
+      "lookup_set_index": 23
     },
     {
       "input": {
@@ -113864,7 +113873,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 25
+      "lookup_set_index": 24
     },
     {
       "input": {
@@ -113890,7 +113899,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 26
+      "lookup_set_index": 25
     },
     {
       "input": {
@@ -113916,7 +113925,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 27
+      "lookup_set_index": 26
     },
     {
       "input": {
@@ -113942,7 +113951,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 28
+      "lookup_set_index": 27
     },
     {
       "input": {
@@ -113968,7 +113977,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 29
+      "lookup_set_index": 28
     }
   ],
   "variable_names": {

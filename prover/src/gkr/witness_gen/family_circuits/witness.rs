@@ -678,7 +678,11 @@ pub(crate) unsafe fn gkr_count_special_multiplicities<'a, F: PrimeField, O: Orac
 
     let timestamp_range_check_relations =
         &compiled_circuit.timestamp_range_check_lookup_expressions;
-    assert!(timestamp_range_check_relations.len().is_multiple_of(2));
+
+    // we reduced number of checks in precompile circuits
+    if compiled_circuit.memory_layout.delegation_state.is_none() {
+        assert!(timestamp_range_check_relations.len().is_multiple_of(2));
+    }
 
     for (idx, range_check_expression) in timestamp_range_check_relations.iter().enumerate() {
         let value = evaluate_linear_relation(&range_check_expression.input, &*proxy);
@@ -909,4 +913,73 @@ pub(crate) unsafe fn gkr_postprocess_multiplicities<
     PROFILING_TABLE.with_borrow_mut(|el| {
         *el.entry("Multiplicities copy-back took").or_default() += t.elapsed();
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tracers::oracles::transpiler_oracles::delegation::BigintDelegationOracle;
+    use field::baby_bear::base::BabyBearField;
+    use field::Field;
+
+    fn count_one_timestamp_lookup(is_delegation: bool) -> (u32, u32, u32) {
+        let path = format!(
+            "{}/../cs/compiled_circuits/bigint_with_extended_control_layout_gkr.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let mut circuit: GKRCircuitArtifact<BabyBearField> =
+            serde_json::from_reader(std::fs::File::open(path).unwrap()).unwrap();
+        circuit.range_check_16_lookup_expressions.clear();
+        circuit.timestamp_range_check_lookup_expressions.truncate(1);
+        let state = circuit.memory_layout.delegation_state.as_ref().unwrap();
+        let mut memory = vec![BabyBearField::ZERO; circuit.memory_layout.total_width];
+        memory[state.execute] = BabyBearField::ONE;
+        memory[state.invocation_timestamp[0]] = BabyBearField::from_u32_unchecked(5);
+        if !is_delegation {
+            circuit.memory_layout.delegation_state = None;
+        }
+        let oracle = BigintDelegationOracle {
+            cycle_data: &[],
+            marker: core::marker::PhantomData,
+        };
+        let table_driver = TableDriver::new();
+        let mut proxy = ColumnMajorWitnessProxy {
+            witness_rows_starts: Box::new([]),
+            memory_rows_starts: memory.iter_mut().map(|value| value as *mut _).collect(),
+            scratch_space: Box::new([]),
+            table_driver: &table_driver,
+            multiplicity_counting_scratch: &mut [],
+            lookup_mapping_rows_starts: Box::new([]),
+            oracle: &oracle,
+            absolute_row_idx: 0,
+        };
+        let mut range_16_chunk: Box<[*mut u16]> = Box::new([]);
+        let mut mapping = [0u32];
+        let mut timestamp_chunk = mapping.iter_mut().map(|value| value as *mut _).collect();
+        let mut multiplicities = vec![0u32; 1 << TIMESTAMP_COLUMNS_NUM_BITS];
+        // Every raw pointer above refers to a live, distinct cell for this one row.
+        unsafe {
+            gkr_count_special_multiplicities(
+                &mut proxy,
+                &mut range_16_chunk,
+                &mut timestamp_chunk,
+                &circuit,
+                0,
+                &mut [],
+                &mut multiplicities,
+            );
+        }
+        (mapping[0], multiplicities[1], multiplicities.iter().sum())
+    }
+
+    #[test]
+    fn odd_timestamp_lookup_count_updates_mapping_and_multiplicities() {
+        assert_eq!(count_one_timestamp_lookup(true), (1, 1, 1));
+    }
+
+    #[test]
+    #[should_panic(expected = "timestamp_range_check_relations.len().is_multiple_of(2)")]
+    fn main_circuits_still_require_even_timestamp_lookup_counts() {
+        count_one_timestamp_lookup(false);
+    }
 }

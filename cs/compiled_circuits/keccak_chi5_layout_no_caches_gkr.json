@@ -1043,9 +1043,15 @@
                 "input": {
                   "linear_terms": [
                     [
-                      268435454,
+                      1073741824,
                       {
                         "BaseLayerMemory": 76
+                      }
+                    ],
+                    [
+                      939524097,
+                      {
+                        "BaseLayerMemory": 75
                       }
                     ]
                   ],
@@ -1088,20 +1094,6 @@
                   "input": {
                     "linear_terms": [
                       [
-                        268435454,
-                        {
-                          "BaseLayerMemory": 77
-                        }
-                      ]
-                    ],
-                    "constant": 0
-                  },
-                  "lookup_set_index": 1
-                },
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
                         1744830467,
                         {
                           "BaseLayerMemory": 76
@@ -1121,6 +1113,32 @@
                       ]
                     ],
                     "constant": 1476395013
+                  },
+                  "lookup_set_index": 1
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 77
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 1
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 120
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
                   },
                   "lookup_set_index": 2
                 }
@@ -1154,32 +1172,6 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerMemory": 77
-                        }
-                      ],
-                      [
-                        268435454,
-                        {
-                          "BaseLayerMemory": 1
-                        }
-                      ],
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 120
-                        }
-                      ]
-                    ],
-                    "constant": 133099247
-                  },
-                  "lookup_set_index": 3
-                },
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
-                        1744830467,
-                        {
                           "BaseLayerMemory": 76
                         }
                       ],
@@ -1197,6 +1189,32 @@
                       ]
                     ],
                     "constant": 1476395013
+                  },
+                  "lookup_set_index": 3
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 77
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 7
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 121
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
                   },
                   "lookup_set_index": 4
                 }
@@ -1230,32 +1248,6 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerMemory": 77
-                        }
-                      ],
-                      [
-                        268435454,
-                        {
-                          "BaseLayerMemory": 7
-                        }
-                      ],
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 121
-                        }
-                      ]
-                    ],
-                    "constant": 133099247
-                  },
-                  "lookup_set_index": 5
-                },
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
-                        1744830467,
-                        {
                           "BaseLayerMemory": 76
                         }
                       ],
@@ -1273,6 +1265,32 @@
                       ]
                     ],
                     "constant": 1476395013
+                  },
+                  "lookup_set_index": 5
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 77
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 11
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 122
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
                   },
                   "lookup_set_index": 6
                 }
@@ -1306,32 +1324,6 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerMemory": 77
-                        }
-                      ],
-                      [
-                        268435454,
-                        {
-                          "BaseLayerMemory": 11
-                        }
-                      ],
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 122
-                        }
-                      ]
-                    ],
-                    "constant": 133099247
-                  },
-                  "lookup_set_index": 7
-                },
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
-                        1744830467,
-                        {
                           "BaseLayerMemory": 76
                         }
                       ],
@@ -1349,6 +1341,32 @@
                       ]
                     ],
                     "constant": 1476395013
+                  },
+                  "lookup_set_index": 7
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 77
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 18
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 123
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
                   },
                   "lookup_set_index": 8
                 }
@@ -1382,32 +1400,6 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerMemory": 77
-                        }
-                      ],
-                      [
-                        268435454,
-                        {
-                          "BaseLayerMemory": 18
-                        }
-                      ],
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 123
-                        }
-                      ]
-                    ],
-                    "constant": 133099247
-                  },
-                  "lookup_set_index": 9
-                },
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
-                        1744830467,
-                        {
                           "BaseLayerMemory": 76
                         }
                       ],
@@ -1425,6 +1417,32 @@
                       ]
                     ],
                     "constant": 1476395013
+                  },
+                  "lookup_set_index": 9
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 77
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 24
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 124
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
                   },
                   "lookup_set_index": 10
                 }
@@ -1458,32 +1476,6 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerMemory": 77
-                        }
-                      ],
-                      [
-                        268435454,
-                        {
-                          "BaseLayerMemory": 24
-                        }
-                      ],
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 124
-                        }
-                      ]
-                    ],
-                    "constant": 133099247
-                  },
-                  "lookup_set_index": 11
-                },
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
-                        1744830467,
-                        {
                           "BaseLayerMemory": 76
                         }
                       ],
@@ -1501,6 +1493,32 @@
                       ]
                     ],
                     "constant": 1476395013
+                  },
+                  "lookup_set_index": 11
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 77
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 31
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 125
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
                   },
                   "lookup_set_index": 12
                 }
@@ -1534,32 +1552,6 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerMemory": 77
-                        }
-                      ],
-                      [
-                        268435454,
-                        {
-                          "BaseLayerMemory": 31
-                        }
-                      ],
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 125
-                        }
-                      ]
-                    ],
-                    "constant": 133099247
-                  },
-                  "lookup_set_index": 13
-                },
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
-                        1744830467,
-                        {
                           "BaseLayerMemory": 76
                         }
                       ],
@@ -1577,6 +1569,32 @@
                       ]
                     ],
                     "constant": 1476395013
+                  },
+                  "lookup_set_index": 13
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 77
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 37
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 126
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
                   },
                   "lookup_set_index": 14
                 }
@@ -1610,32 +1628,6 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerMemory": 77
-                        }
-                      ],
-                      [
-                        268435454,
-                        {
-                          "BaseLayerMemory": 37
-                        }
-                      ],
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 126
-                        }
-                      ]
-                    ],
-                    "constant": 133099247
-                  },
-                  "lookup_set_index": 15
-                },
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
-                        1744830467,
-                        {
                           "BaseLayerMemory": 76
                         }
                       ],
@@ -1653,6 +1645,32 @@
                       ]
                     ],
                     "constant": 1476395013
+                  },
+                  "lookup_set_index": 15
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 77
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 44
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 127
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
                   },
                   "lookup_set_index": 16
                 }
@@ -1686,32 +1704,6 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerMemory": 77
-                        }
-                      ],
-                      [
-                        268435454,
-                        {
-                          "BaseLayerMemory": 44
-                        }
-                      ],
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 127
-                        }
-                      ]
-                    ],
-                    "constant": 133099247
-                  },
-                  "lookup_set_index": 17
-                },
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
-                        1744830467,
-                        {
                           "BaseLayerMemory": 76
                         }
                       ],
@@ -1729,6 +1721,32 @@
                       ]
                     ],
                     "constant": 1476395013
+                  },
+                  "lookup_set_index": 17
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 77
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 50
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 128
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
                   },
                   "lookup_set_index": 18
                 }
@@ -1762,32 +1780,6 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerMemory": 77
-                        }
-                      ],
-                      [
-                        268435454,
-                        {
-                          "BaseLayerMemory": 50
-                        }
-                      ],
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 128
-                        }
-                      ]
-                    ],
-                    "constant": 133099247
-                  },
-                  "lookup_set_index": 19
-                },
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
-                        1744830467,
-                        {
                           "BaseLayerMemory": 76
                         }
                       ],
@@ -1805,6 +1797,32 @@
                       ]
                     ],
                     "constant": 1476395013
+                  },
+                  "lookup_set_index": 19
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 77
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 57
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 129
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
                   },
                   "lookup_set_index": 20
                 }
@@ -1838,32 +1856,6 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerMemory": 77
-                        }
-                      ],
-                      [
-                        268435454,
-                        {
-                          "BaseLayerMemory": 57
-                        }
-                      ],
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 129
-                        }
-                      ]
-                    ],
-                    "constant": 133099247
-                  },
-                  "lookup_set_index": 21
-                },
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
-                        1744830467,
-                        {
                           "BaseLayerMemory": 76
                         }
                       ],
@@ -1881,6 +1873,32 @@
                       ]
                     ],
                     "constant": 1476395013
+                  },
+                  "lookup_set_index": 21
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 77
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 63
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 130
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
                   },
                   "lookup_set_index": 22
                 }
@@ -1914,32 +1932,6 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerMemory": 77
-                        }
-                      ],
-                      [
-                        268435454,
-                        {
-                          "BaseLayerMemory": 63
-                        }
-                      ],
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 130
-                        }
-                      ]
-                    ],
-                    "constant": 133099247
-                  },
-                  "lookup_set_index": 23
-                },
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
-                        1744830467,
-                        {
                           "BaseLayerMemory": 76
                         }
                       ],
@@ -1958,6 +1950,32 @@
                     ],
                     "constant": 1476395013
                   },
+                  "lookup_set_index": 23
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 77
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 70
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 131
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
+                  },
                   "lookup_set_index": 24
                 }
               ],
@@ -1975,46 +1993,6 @@
                   }
                 }
               ],
-              "range_check_width": 19
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "MaterializeSingleLookupInput": {
-              "input": {
-                "input": {
-                  "linear_terms": [
-                    [
-                      1744830467,
-                      {
-                        "BaseLayerMemory": 77
-                      }
-                    ],
-                    [
-                      268435454,
-                      {
-                        "BaseLayerMemory": 70
-                      }
-                    ],
-                    [
-                      1744830467,
-                      {
-                        "BaseLayerWitness": 131
-                      }
-                    ]
-                  ],
-                  "constant": 133099247
-                },
-                "lookup_set_index": 25
-              },
-              "output": {
-                "InnerLayer": {
-                  "layer": 1,
-                  "offset": 45
-                }
-              },
               "range_check_width": 19
             }
           }
@@ -2172,13 +2150,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 46
+                    "offset": 45
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 47
+                    "offset": 46
                   }
                 }
               ]
@@ -2433,13 +2411,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 48
+                    "offset": 47
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 49
+                    "offset": 48
                   }
                 }
               ]
@@ -2874,13 +2852,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 50
+                    "offset": 49
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 51
+                    "offset": 50
                   }
                 }
               ]
@@ -3135,13 +3113,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 52
+                    "offset": 51
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 53
+                    "offset": 52
                   }
                 }
               ]
@@ -3576,13 +3554,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 54
+                    "offset": 53
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 55
+                    "offset": 54
                   }
                 }
               ]
@@ -3837,13 +3815,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 56
+                    "offset": 55
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 57
+                    "offset": 56
                   }
                 }
               ]
@@ -4278,13 +4256,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 58
+                    "offset": 57
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 59
+                    "offset": 58
                   }
                 }
               ]
@@ -4539,13 +4517,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 60
+                    "offset": 59
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 61
+                    "offset": 60
                   }
                 }
               ]
@@ -4980,13 +4958,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 62
+                    "offset": 61
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 63
+                    "offset": 62
                   }
                 }
               ]
@@ -5973,27 +5951,37 @@
         {
           "output_layer": 2,
           "enforced_relation": {
-            "LookupUnbalancedPairWithMaterializedBaseInputs": {
+            "AggregateLookupRationalPair": {
               "input": [
-                {
-                  "InnerLayer": {
-                    "layer": 1,
-                    "offset": 43
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 43
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 44
+                    }
                   }
-                },
-                {
-                  "InnerLayer": {
-                    "layer": 1,
-                    "offset": 44
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 41
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 42
+                    }
                   }
-                }
+                ]
               ],
-              "remainder": {
-                "InnerLayer": {
-                  "layer": 1,
-                  "offset": 45
-                }
-              },
               "output": [
                 {
                   "InnerLayer": {
@@ -6020,20 +6008,6 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 41
-                    }
-                  },
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 42
-                    }
-                  }
-                ],
-                [
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
                       "offset": 39
                     }
                   },
@@ -6041,6 +6015,20 @@
                     "InnerLayer": {
                       "layer": 1,
                       "offset": 40
+                    }
+                  }
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 37
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 38
                     }
                   }
                 ]
@@ -6071,20 +6059,6 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 37
-                    }
-                  },
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 38
-                    }
-                  }
-                ],
-                [
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
                       "offset": 35
                     }
                   },
@@ -6092,6 +6066,20 @@
                     "InnerLayer": {
                       "layer": 1,
                       "offset": 36
+                    }
+                  }
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 33
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 34
                     }
                   }
                 ]
@@ -6122,20 +6110,6 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 33
-                    }
-                  },
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 34
-                    }
-                  }
-                ],
-                [
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
                       "offset": 31
                     }
                   },
@@ -6143,6 +6117,20 @@
                     "InnerLayer": {
                       "layer": 1,
                       "offset": 32
+                    }
+                  }
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 29
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 30
                     }
                   }
                 ]
@@ -6173,20 +6161,6 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 29
-                    }
-                  },
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 30
-                    }
-                  }
-                ],
-                [
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
                       "offset": 27
                     }
                   },
@@ -6194,6 +6168,20 @@
                     "InnerLayer": {
                       "layer": 1,
                       "offset": 28
+                    }
+                  }
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 25
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 26
                     }
                   }
                 ]
@@ -6224,20 +6212,6 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 25
-                    }
-                  },
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 26
-                    }
-                  }
-                ],
-                [
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
                       "offset": 23
                     }
                   },
@@ -6245,6 +6219,20 @@
                     "InnerLayer": {
                       "layer": 1,
                       "offset": 24
+                    }
+                  }
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 21
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 22
                     }
                   }
                 ]
@@ -6269,51 +6257,38 @@
         {
           "output_layer": 2,
           "enforced_relation": {
-            "AggregateLookupRationalPair": {
-              "input": [
-                [
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 21
-                    }
-                  },
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 22
-                    }
-                  }
-                ],
-                [
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 19
-                    }
-                  },
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 20
-                    }
-                  }
-                ]
-              ],
-              "output": [
-                {
-                  "InnerLayer": {
-                    "layer": 2,
-                    "offset": 21
-                  }
-                },
-                {
-                  "InnerLayer": {
-                    "layer": 2,
-                    "offset": 22
-                  }
+            "CopyInExtensionField": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 19
                 }
-              ]
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 21
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 2,
+          "enforced_relation": {
+            "CopyInExtensionField": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 20
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 22
+                }
+              }
             }
           }
         },
@@ -6326,13 +6301,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 62
+                      "offset": 61
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 63
+                      "offset": 62
                     }
                   }
                 ],
@@ -6340,13 +6315,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 60
+                      "offset": 59
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 61
+                      "offset": 60
                     }
                   }
                 ]
@@ -6377,13 +6352,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 58
+                      "offset": 57
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 59
+                      "offset": 58
                     }
                   }
                 ],
@@ -6391,13 +6366,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 56
+                      "offset": 55
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 57
+                      "offset": 56
                     }
                   }
                 ]
@@ -6428,13 +6403,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 54
+                      "offset": 53
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 55
+                      "offset": 54
                     }
                   }
                 ],
@@ -6442,13 +6417,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 52
+                      "offset": 51
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 53
+                      "offset": 52
                     }
                   }
                 ]
@@ -6479,13 +6454,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 50
+                      "offset": 49
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 51
+                      "offset": 50
                     }
                   }
                 ],
@@ -6493,13 +6468,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 48
+                      "offset": 47
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 49
+                      "offset": 48
                     }
                   }
                 ]
@@ -6528,7 +6503,7 @@
               "input": {
                 "InnerLayer": {
                   "layer": 1,
-                  "offset": 46
+                  "offset": 45
                 }
               },
               "output": {
@@ -6547,7 +6522,7 @@
               "input": {
                 "InnerLayer": {
                   "layer": 1,
-                  "offset": 47
+                  "offset": 46
                 }
               },
               "output": {
@@ -6598,7 +6573,7 @@
           }
         }
       ],
-      "intermediate_layer_width": 64
+      "intermediate_layer_width": 63
     },
     {
       "layer": 2,
@@ -12439,29 +12414,21 @@
       "input": {
         "linear_terms": [
           [
-            268435454,
+            1073741824,
             {
               "BaseLayerMemory": 76
+            }
+          ],
+          [
+            939524097,
+            {
+              "BaseLayerMemory": 75
             }
           ]
         ],
         "constant": 0
       },
       "lookup_set_index": 0
-    },
-    {
-      "input": {
-        "linear_terms": [
-          [
-            268435454,
-            {
-              "BaseLayerMemory": 77
-            }
-          ]
-        ],
-        "constant": 0
-      },
-      "lookup_set_index": 1
     },
     {
       "input": {
@@ -12487,7 +12454,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 2
+      "lookup_set_index": 1
     },
     {
       "input": {
@@ -12513,7 +12480,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 3
+      "lookup_set_index": 2
     },
     {
       "input": {
@@ -12539,7 +12506,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 4
+      "lookup_set_index": 3
     },
     {
       "input": {
@@ -12565,7 +12532,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 5
+      "lookup_set_index": 4
     },
     {
       "input": {
@@ -12591,7 +12558,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 6
+      "lookup_set_index": 5
     },
     {
       "input": {
@@ -12617,7 +12584,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 7
+      "lookup_set_index": 6
     },
     {
       "input": {
@@ -12643,7 +12610,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 8
+      "lookup_set_index": 7
     },
     {
       "input": {
@@ -12669,7 +12636,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 9
+      "lookup_set_index": 8
     },
     {
       "input": {
@@ -12695,7 +12662,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 10
+      "lookup_set_index": 9
     },
     {
       "input": {
@@ -12721,7 +12688,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 11
+      "lookup_set_index": 10
     },
     {
       "input": {
@@ -12747,7 +12714,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 12
+      "lookup_set_index": 11
     },
     {
       "input": {
@@ -12773,7 +12740,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 13
+      "lookup_set_index": 12
     },
     {
       "input": {
@@ -12799,7 +12766,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 14
+      "lookup_set_index": 13
     },
     {
       "input": {
@@ -12825,7 +12792,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 15
+      "lookup_set_index": 14
     },
     {
       "input": {
@@ -12851,7 +12818,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 16
+      "lookup_set_index": 15
     },
     {
       "input": {
@@ -12877,7 +12844,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 17
+      "lookup_set_index": 16
     },
     {
       "input": {
@@ -12903,7 +12870,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 18
+      "lookup_set_index": 17
     },
     {
       "input": {
@@ -12929,7 +12896,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 19
+      "lookup_set_index": 18
     },
     {
       "input": {
@@ -12955,7 +12922,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 20
+      "lookup_set_index": 19
     },
     {
       "input": {
@@ -12981,7 +12948,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 21
+      "lookup_set_index": 20
     },
     {
       "input": {
@@ -13007,7 +12974,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 22
+      "lookup_set_index": 21
     },
     {
       "input": {
@@ -13033,7 +13000,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 23
+      "lookup_set_index": 22
     },
     {
       "input": {
@@ -13059,7 +13026,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 24
+      "lookup_set_index": 23
     },
     {
       "input": {
@@ -13085,7 +13052,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 25
+      "lookup_set_index": 24
     }
   ],
   "variable_names": {
