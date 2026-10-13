@@ -777,7 +777,7 @@ mod keccak_theta_rho {
 
     use ::cs::witness_placer::WitnessTypeSet;
     use ::cs::witness_placer::{
-        WitnessComputationalField, WitnessComputationalInteger, WitnessMask,
+        WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger, WitnessMask,
     };
     use ::field::baby_bear::base::BabyBearField;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;

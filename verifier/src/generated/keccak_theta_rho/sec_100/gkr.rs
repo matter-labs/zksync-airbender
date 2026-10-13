@@ -35,7 +35,7 @@ use verifier_common::GKRExternalChallenges;
 #[inline(always)]
 #[allow(unused_variables)]
 unsafe fn layer_0_compute_claim(
-    output_claims: &[BabyBearExt4; 114usize],
+    output_claims: &[BabyBearExt4; 106usize],
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
     const DESCS: [(usize, usize, usize); 106usize] = [
@@ -101,11 +101,11 @@ unsafe fn layer_0_compute_claim(
         (2usize, 99usize, 100usize),
         (2usize, 101usize, 102usize),
         (2usize, 103usize, 104usize),
-        (2usize, 105usize, 106usize),
-        (2usize, 107usize, 108usize),
-        (2usize, 109usize, 110usize),
-        (2usize, 111usize, 112usize),
-        (1usize, 113usize, 0usize),
+        (1usize, 105usize, 0usize),
+        (0usize, 0usize, 0usize),
+        (0usize, 0usize, 0usize),
+        (0usize, 0usize, 0usize),
+        (0usize, 0usize, 0usize),
         (0usize, 0usize, 0usize),
         (0usize, 0usize, 0usize),
         (0usize, 0usize, 0usize),
@@ -163,265 +163,249 @@ unsafe fn layer_0_final_step_accumulator(
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
     {
-        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 66usize] = [
-            (SimpleGateType::Copy, [130usize, 0usize, 0usize, 0usize]),
+        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 62usize] = [
+            (SimpleGateType::Copy, [133usize, 0usize, 0usize, 0usize]),
             (
                 SimpleGateType::Product,
-                [133usize, 134usize, 0usize, 0usize],
+                [136usize, 137usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::Product,
-                [135usize, 136usize, 0usize, 0usize],
+                [138usize, 139usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::Product,
-                [137usize, 138usize, 0usize, 0usize],
+                [140usize, 141usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::Product,
-                [139usize, 140usize, 0usize, 0usize],
+                [142usize, 143usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::Product,
-                [141usize, 142usize, 0usize, 0usize],
+                [144usize, 145usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::Product,
-                [143usize, 144usize, 0usize, 0usize],
+                [146usize, 147usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::Product,
-                [145usize, 146usize, 0usize, 0usize],
+                [148usize, 149usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::Product,
-                [147usize, 148usize, 0usize, 0usize],
+                [150usize, 151usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::Product,
-                [149usize, 150usize, 0usize, 0usize],
+                [152usize, 153usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::Product,
-                [151usize, 152usize, 0usize, 0usize],
+                [154usize, 155usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::Product,
-                [153usize, 154usize, 0usize, 0usize],
+                [156usize, 157usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::Product,
-                [155usize, 156usize, 0usize, 0usize],
+                [158usize, 159usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::Product,
-                [157usize, 158usize, 0usize, 0usize],
+                [160usize, 161usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::Product,
-                [159usize, 160usize, 0usize, 0usize],
+                [162usize, 163usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::Product,
-                [161usize, 162usize, 0usize, 0usize],
+                [164usize, 165usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::Product,
-                [163usize, 164usize, 0usize, 0usize],
+                [166usize, 167usize, 0usize, 0usize],
             ),
-            (SimpleGateType::Copy, [165usize, 0usize, 0usize, 0usize]),
-            (SimpleGateType::Copy, [166usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [168usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [169usize, 0usize, 0usize, 0usize]),
             (
                 SimpleGateType::LookupWithSetup,
-                [167usize, 104usize, 131usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupWithSetup,
-                [168usize, 105usize, 132usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [169usize, 170usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [171usize, 172usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [173usize, 174usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [175usize, 176usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [177usize, 178usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [179usize, 180usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [181usize, 182usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [183usize, 184usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [185usize, 186usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [187usize, 188usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [189usize, 190usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [191usize, 192usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [193usize, 194usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [195usize, 196usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [197usize, 198usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [199usize, 200usize, 0usize, 0usize],
+                [170usize, 107usize, 134usize, 0usize],
             ),
             (
                 SimpleGateType::LookupWithSetup,
-                [201usize, 106usize, 202usize, 0usize],
+                [171usize, 108usize, 135usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [203usize, 204usize, 0usize, 0usize],
+                [172usize, 173usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [205usize, 206usize, 0usize, 0usize],
+                [174usize, 175usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [207usize, 208usize, 0usize, 0usize],
+                [176usize, 177usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [209usize, 210usize, 0usize, 0usize],
+                [178usize, 179usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [211usize, 212usize, 0usize, 0usize],
+                [180usize, 181usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [213usize, 214usize, 0usize, 0usize],
+                [182usize, 183usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [215usize, 216usize, 0usize, 0usize],
+                [184usize, 185usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [217usize, 218usize, 0usize, 0usize],
+                [186usize, 187usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [219usize, 220usize, 0usize, 0usize],
+                [188usize, 189usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [221usize, 222usize, 0usize, 0usize],
+                [190usize, 191usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [223usize, 224usize, 0usize, 0usize],
+                [192usize, 193usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [225usize, 226usize, 0usize, 0usize],
+                [194usize, 195usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [227usize, 228usize, 0usize, 0usize],
+                [196usize, 197usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [229usize, 230usize, 0usize, 0usize],
+                [198usize, 199usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [231usize, 232usize, 0usize, 0usize],
+                [200usize, 201usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [233usize, 234usize, 0usize, 0usize],
+                [202usize, 203usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupWithSetup,
+                [204usize, 109usize, 205usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [235usize, 236usize, 0usize, 0usize],
+                [206usize, 207usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [237usize, 238usize, 0usize, 0usize],
+                [208usize, 209usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [239usize, 240usize, 0usize, 0usize],
+                [210usize, 211usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [241usize, 242usize, 0usize, 0usize],
+                [212usize, 213usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [243usize, 244usize, 0usize, 0usize],
+                [214usize, 215usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [245usize, 246usize, 0usize, 0usize],
+                [216usize, 217usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [247usize, 248usize, 0usize, 0usize],
+                [218usize, 219usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [249usize, 250usize, 0usize, 0usize],
+                [220usize, 221usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [251usize, 252usize, 0usize, 0usize],
+                [222usize, 223usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [253usize, 254usize, 0usize, 0usize],
+                [224usize, 225usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [255usize, 256usize, 0usize, 0usize],
+                [226usize, 227usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [257usize, 258usize, 0usize, 0usize],
+                [228usize, 229usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [230usize, 231usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [232usize, 233usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [234usize, 235usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [236usize, 237usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [238usize, 239usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [240usize, 241usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [242usize, 243usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [244usize, 245usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [246usize, 247usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [248usize, 249usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [250usize, 251usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [252usize, 253usize, 0usize, 0usize],
             ),
         ];
         let mut _sg = 0;
-        while _sg < 66usize {
+        while _sg < 62usize {
             let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
             match gt {
                 SimpleGateType::Copy => {
@@ -619,20 +603,19 @@ unsafe fn layer_0_final_step_accumulator(
                 (0usize, 1usize),
                 (0usize, 1usize),
                 (0usize, 4usize),
-                (0usize, 2usize),
+                (0usize, 1usize),
                 (0usize, 2usize),
             ];
-            const VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (87usize, 268435454usize),
-                (86usize, 268435454usize),
-                (2usize, 536870908usize),
-                (3usize, 536870908usize),
-                (4usize, 1342177270usize),
-                (6usize, 1610612724usize),
-                (0usize, 268435454usize),
-                (1usize, 268435422usize),
-                (127usize, 16777216usize),
-                (71usize, 1996488705usize),
+            const VAL_VL_TERMS: [(usize, usize); 9usize] = [
+                (90usize, 268435454usize),
+                (89usize, 268435454usize),
+                (5usize, 536870908usize),
+                (6usize, 536870908usize),
+                (7usize, 1342177270usize),
+                (9usize, 1610612724usize),
+                (4usize, 268435454usize),
+                (130usize, 16777216usize),
+                (74usize, 1996488705usize),
             ];
             let mut val =
                 super::common::eval_vector_lookup(evals, lookup_alpha, &VAL_COLS, &VAL_VL_TERMS, j);
@@ -645,9 +628,9 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
-            const VAL_QO: [(usize, usize); 1usize] = [(130usize, 1usize)];
-            const VAL_QI: [(usize, usize); 1usize] = [(130usize, 268435454usize)];
-            const VAL_LN: [(usize, usize); 1usize] = [(130usize, 1744830467usize)];
+            const VAL_QO: [(usize, usize); 1usize] = [(133usize, 1usize)];
+            const VAL_QI: [(usize, usize); 1usize] = [(133usize, 268435454usize)];
+            const VAL_LN: [(usize, usize); 1usize] = [(133usize, 1744830467usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -661,7 +644,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 0usize] = [];
             const VAL_QI: [(usize, usize); 0usize] = [];
-            const VAL_LN: [(usize, usize); 1usize] = [(107usize, 268435454usize)];
+            const VAL_LN: [(usize, usize); 1usize] = [(110usize, 268435454usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -675,7 +658,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 0usize] = [];
             const VAL_QI: [(usize, usize); 0usize] = [];
-            const VAL_LN: [(usize, usize); 1usize] = [(108usize, 268435454usize)];
+            const VAL_LN: [(usize, usize); 1usize] = [(111usize, 268435454usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -688,148 +671,31 @@ unsafe fn layer_0_final_step_accumulator(
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 5usize] = [
-                (2usize, 2usize),
-                (3usize, 4usize),
-                (4usize, 4usize),
-                (5usize, 4usize),
+                (5usize, 2usize),
                 (6usize, 4usize),
+                (7usize, 4usize),
+                (8usize, 4usize),
+                (9usize, 4usize),
             ];
             const VAL_QI: [(usize, usize); 18usize] = [
-                (7usize, 268435454usize),
-                (9usize, 268434910usize),
-                (7usize, 268435454usize),
-                (8usize, 268434910usize),
-                (9usize, 268434910usize),
-                (22usize, 268435454usize),
-                (8usize, 268435454usize),
-                (9usize, 268435454usize),
-                (10usize, 268434910usize),
-                (11usize, 268434910usize),
-                (16usize, 268435454usize),
-                (17usize, 268435454usize),
-                (18usize, 268434910usize),
-                (19usize, 268434910usize),
-                (16usize, 268435454usize),
-                (17usize, 268435454usize),
-                (18usize, 268434910usize),
-                (19usize, 268434910usize),
-            ];
-            const VAL_LN: [(usize, usize); 1usize] = [(109usize, 1744830467usize)];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..1 {
-            const VAL_QO: [(usize, usize); 5usize] = [
-                (2usize, 2usize),
-                (3usize, 4usize),
-                (4usize, 4usize),
-                (5usize, 4usize),
-                (6usize, 4usize),
-            ];
-            const VAL_QI: [(usize, usize); 18usize] = [
-                (11usize, 268435454usize),
-                (13usize, 268434910usize),
                 (10usize, 268435454usize),
-                (11usize, 268435454usize),
                 (12usize, 268434910usize),
+                (10usize, 268435454usize),
+                (11usize, 268434910usize),
+                (12usize, 268434910usize),
+                (25usize, 268435454usize),
+                (11usize, 268435454usize),
+                (12usize, 268435454usize),
                 (13usize, 268434910usize),
-                (12usize, 268435454usize),
-                (13usize, 268435454usize),
                 (14usize, 268434910usize),
-                (15usize, 268434910usize),
-                (7usize, 268434910usize),
-                (20usize, 268435454usize),
-                (21usize, 268435454usize),
-                (22usize, 268434910usize),
-                (7usize, 268434910usize),
-                (20usize, 268435454usize),
-                (21usize, 268435454usize),
-                (22usize, 268434910usize),
-            ];
-            const VAL_LN: [(usize, usize); 1usize] = [(110usize, 1744830467usize)];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..1 {
-            const VAL_QO: [(usize, usize); 5usize] = [
-                (2usize, 2usize),
-                (3usize, 4usize),
-                (4usize, 4usize),
-                (5usize, 4usize),
-                (6usize, 4usize),
-            ];
-            const VAL_QI: [(usize, usize); 18usize] = [
-                (15usize, 268435454usize),
-                (17usize, 268434910usize),
-                (14usize, 268435454usize),
-                (15usize, 268435454usize),
-                (16usize, 268434910usize),
-                (17usize, 268434910usize),
-                (16usize, 268435454usize),
-                (17usize, 268435454usize),
-                (18usize, 268434910usize),
-                (19usize, 268434910usize),
-                (8usize, 268435454usize),
-                (9usize, 268435454usize),
-                (10usize, 268434910usize),
-                (11usize, 268434910usize),
-                (8usize, 268435454usize),
-                (9usize, 268435454usize),
-                (10usize, 268434910usize),
-                (11usize, 268434910usize),
-            ];
-            const VAL_LN: [(usize, usize); 1usize] = [(111usize, 1744830467usize)];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..1 {
-            const VAL_QO: [(usize, usize); 5usize] = [
-                (2usize, 2usize),
-                (3usize, 4usize),
-                (4usize, 4usize),
-                (5usize, 4usize),
-                (6usize, 4usize),
-            ];
-            const VAL_QI: [(usize, usize); 18usize] = [
                 (19usize, 268435454usize),
-                (21usize, 268434910usize),
-                (18usize, 268435454usize),
-                (19usize, 268435454usize),
-                (20usize, 268434910usize),
-                (21usize, 268434910usize),
-                (7usize, 268434910usize),
                 (20usize, 268435454usize),
-                (21usize, 268435454usize),
+                (21usize, 268434910usize),
                 (22usize, 268434910usize),
-                (12usize, 268435454usize),
-                (13usize, 268435454usize),
-                (14usize, 268434910usize),
-                (15usize, 268434910usize),
-                (12usize, 268435454usize),
-                (13usize, 268435454usize),
-                (14usize, 268434910usize),
-                (15usize, 268434910usize),
+                (19usize, 268435454usize),
+                (20usize, 268435454usize),
+                (21usize, 268434910usize),
+                (22usize, 268434910usize),
             ];
             const VAL_LN: [(usize, usize); 1usize] = [(112usize, 1744830467usize)];
             let val =
@@ -844,33 +710,31 @@ unsafe fn layer_0_final_step_accumulator(
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 5usize] = [
-                (2usize, 4usize),
-                (3usize, 4usize),
-                (4usize, 4usize),
-                (5usize, 4usize),
+                (5usize, 2usize),
                 (6usize, 4usize),
+                (7usize, 4usize),
+                (8usize, 4usize),
+                (9usize, 4usize),
             ];
-            const VAL_QI: [(usize, usize); 20usize] = [
-                (30usize, 268435454usize),
-                (31usize, 268435454usize),
-                (32usize, 268434910usize),
-                (33usize, 268434910usize),
-                (28usize, 268435454usize),
-                (29usize, 268435454usize),
-                (30usize, 268434910usize),
-                (31usize, 268434910usize),
+            const VAL_QI: [(usize, usize); 18usize] = [
+                (14usize, 268435454usize),
+                (16usize, 268434910usize),
+                (13usize, 268435454usize),
+                (14usize, 268435454usize),
+                (15usize, 268434910usize),
+                (16usize, 268434910usize),
+                (15usize, 268435454usize),
+                (16usize, 268435454usize),
+                (17usize, 268434910usize),
+                (18usize, 268434910usize),
+                (10usize, 268434910usize),
                 (23usize, 268435454usize),
-                (24usize, 268434910usize),
+                (24usize, 268435454usize),
                 (25usize, 268434910usize),
-                (38usize, 268435454usize),
-                (26usize, 268435454usize),
-                (27usize, 268435454usize),
-                (28usize, 268434910usize),
-                (29usize, 268434910usize),
-                (34usize, 268435454usize),
-                (35usize, 268435454usize),
-                (36usize, 268434910usize),
-                (37usize, 268434910usize),
+                (10usize, 268434910usize),
+                (23usize, 268435454usize),
+                (24usize, 268435454usize),
+                (25usize, 268434910usize),
             ];
             const VAL_LN: [(usize, usize); 1usize] = [(113usize, 1744830467usize)];
             let val =
@@ -885,33 +749,31 @@ unsafe fn layer_0_final_step_accumulator(
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 5usize] = [
-                (2usize, 4usize),
-                (3usize, 4usize),
-                (4usize, 4usize),
-                (5usize, 4usize),
+                (5usize, 2usize),
                 (6usize, 4usize),
+                (7usize, 4usize),
+                (8usize, 4usize),
+                (9usize, 4usize),
             ];
-            const VAL_QI: [(usize, usize); 20usize] = [
-                (34usize, 268435454usize),
-                (35usize, 268435454usize),
-                (36usize, 268434910usize),
-                (37usize, 268434910usize),
-                (32usize, 268435454usize),
-                (33usize, 268435454usize),
-                (34usize, 268434910usize),
-                (35usize, 268434910usize),
-                (26usize, 268435454usize),
-                (27usize, 268435454usize),
-                (28usize, 268434910usize),
-                (29usize, 268434910usize),
-                (30usize, 268435454usize),
-                (31usize, 268435454usize),
-                (32usize, 268434910usize),
-                (33usize, 268434910usize),
-                (23usize, 268435454usize),
-                (24usize, 268434910usize),
-                (25usize, 268434910usize),
-                (38usize, 268435454usize),
+            const VAL_QI: [(usize, usize); 18usize] = [
+                (18usize, 268435454usize),
+                (20usize, 268434910usize),
+                (17usize, 268435454usize),
+                (18usize, 268435454usize),
+                (19usize, 268434910usize),
+                (20usize, 268434910usize),
+                (19usize, 268435454usize),
+                (20usize, 268435454usize),
+                (21usize, 268434910usize),
+                (22usize, 268434910usize),
+                (11usize, 268435454usize),
+                (12usize, 268435454usize),
+                (13usize, 268434910usize),
+                (14usize, 268434910usize),
+                (11usize, 268435454usize),
+                (12usize, 268435454usize),
+                (13usize, 268434910usize),
+                (14usize, 268434910usize),
             ];
             const VAL_LN: [(usize, usize); 1usize] = [(114usize, 1744830467usize)];
             let val =
@@ -926,33 +788,31 @@ unsafe fn layer_0_final_step_accumulator(
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 5usize] = [
-                (2usize, 4usize),
-                (3usize, 4usize),
-                (4usize, 4usize),
-                (5usize, 4usize),
+                (5usize, 2usize),
                 (6usize, 4usize),
+                (7usize, 4usize),
+                (8usize, 4usize),
+                (9usize, 4usize),
             ];
-            const VAL_QI: [(usize, usize); 20usize] = [
-                (23usize, 268435454usize),
+            const VAL_QI: [(usize, usize); 18usize] = [
+                (22usize, 268435454usize),
                 (24usize, 268434910usize),
-                (25usize, 268434910usize),
-                (38usize, 268435454usize),
+                (21usize, 268435454usize),
+                (22usize, 268435454usize),
                 (23usize, 268434910usize),
-                (36usize, 268435454usize),
-                (37usize, 268435454usize),
-                (38usize, 268434910usize),
-                (30usize, 268435454usize),
-                (31usize, 268435454usize),
-                (32usize, 268434910usize),
-                (33usize, 268434910usize),
-                (34usize, 268435454usize),
-                (35usize, 268435454usize),
-                (36usize, 268434910usize),
-                (37usize, 268434910usize),
-                (26usize, 268435454usize),
-                (27usize, 268435454usize),
-                (28usize, 268434910usize),
-                (29usize, 268434910usize),
+                (24usize, 268434910usize),
+                (10usize, 268434910usize),
+                (23usize, 268435454usize),
+                (24usize, 268435454usize),
+                (25usize, 268434910usize),
+                (15usize, 268435454usize),
+                (16usize, 268435454usize),
+                (17usize, 268434910usize),
+                (18usize, 268434910usize),
+                (15usize, 268435454usize),
+                (16usize, 268435454usize),
+                (17usize, 268434910usize),
+                (18usize, 268434910usize),
             ];
             const VAL_LN: [(usize, usize); 1usize] = [(115usize, 1744830467usize)];
             let val =
@@ -967,33 +827,33 @@ unsafe fn layer_0_final_step_accumulator(
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 5usize] = [
-                (2usize, 4usize),
-                (3usize, 4usize),
-                (4usize, 4usize),
                 (5usize, 4usize),
                 (6usize, 4usize),
+                (7usize, 4usize),
+                (8usize, 4usize),
+                (9usize, 4usize),
             ];
             const VAL_QI: [(usize, usize); 20usize] = [
-                (26usize, 268435454usize),
-                (27usize, 268435454usize),
-                (28usize, 268434910usize),
-                (29usize, 268434910usize),
-                (24usize, 268435454usize),
-                (25usize, 268435454usize),
-                (26usize, 268434910usize),
-                (27usize, 268434910usize),
+                (33usize, 268435454usize),
                 (34usize, 268435454usize),
-                (35usize, 268435454usize),
+                (35usize, 268434910usize),
                 (36usize, 268434910usize),
-                (37usize, 268434910usize),
-                (23usize, 268435454usize),
-                (24usize, 268434910usize),
-                (25usize, 268434910usize),
-                (38usize, 268435454usize),
-                (30usize, 268435454usize),
                 (31usize, 268435454usize),
-                (32usize, 268434910usize),
+                (32usize, 268435454usize),
                 (33usize, 268434910usize),
+                (34usize, 268434910usize),
+                (26usize, 268435454usize),
+                (27usize, 268434910usize),
+                (28usize, 268434910usize),
+                (41usize, 268435454usize),
+                (29usize, 268435454usize),
+                (30usize, 268435454usize),
+                (31usize, 268434910usize),
+                (32usize, 268434910usize),
+                (37usize, 268435454usize),
+                (38usize, 268435454usize),
+                (39usize, 268434910usize),
+                (40usize, 268434910usize),
             ];
             const VAL_LN: [(usize, usize); 1usize] = [(116usize, 1744830467usize)];
             let val =
@@ -1008,33 +868,33 @@ unsafe fn layer_0_final_step_accumulator(
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 5usize] = [
-                (2usize, 4usize),
-                (3usize, 4usize),
-                (4usize, 4usize),
                 (5usize, 4usize),
                 (6usize, 4usize),
+                (7usize, 4usize),
+                (8usize, 4usize),
+                (9usize, 4usize),
             ];
             const VAL_QI: [(usize, usize); 20usize] = [
-                (39usize, 268435454usize),
-                (40usize, 268434910usize),
-                (41usize, 268434910usize),
-                (54usize, 268435454usize),
+                (37usize, 268435454usize),
+                (38usize, 268435454usize),
                 (39usize, 268434910usize),
-                (52usize, 268435454usize),
-                (53usize, 268435454usize),
-                (54usize, 268434910usize),
-                (44usize, 268435454usize),
-                (45usize, 268435454usize),
-                (46usize, 268434910usize),
-                (47usize, 268434910usize),
-                (48usize, 268435454usize),
-                (49usize, 268435454usize),
-                (50usize, 268434910usize),
-                (51usize, 268434910usize),
-                (46usize, 268435454usize),
-                (47usize, 268435454usize),
-                (48usize, 268434910usize),
-                (49usize, 268434910usize),
+                (40usize, 268434910usize),
+                (35usize, 268435454usize),
+                (36usize, 268435454usize),
+                (37usize, 268434910usize),
+                (38usize, 268434910usize),
+                (29usize, 268435454usize),
+                (30usize, 268435454usize),
+                (31usize, 268434910usize),
+                (32usize, 268434910usize),
+                (33usize, 268435454usize),
+                (34usize, 268435454usize),
+                (35usize, 268434910usize),
+                (36usize, 268434910usize),
+                (26usize, 268435454usize),
+                (27usize, 268434910usize),
+                (28usize, 268434910usize),
+                (41usize, 268435454usize),
             ];
             const VAL_LN: [(usize, usize); 1usize] = [(117usize, 1744830467usize)];
             let val =
@@ -1049,33 +909,33 @@ unsafe fn layer_0_final_step_accumulator(
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 5usize] = [
-                (2usize, 4usize),
-                (3usize, 4usize),
-                (4usize, 4usize),
                 (5usize, 4usize),
                 (6usize, 4usize),
+                (7usize, 4usize),
+                (8usize, 4usize),
+                (9usize, 4usize),
             ];
             const VAL_QI: [(usize, usize); 20usize] = [
-                (42usize, 268435454usize),
-                (43usize, 268435454usize),
-                (44usize, 268434910usize),
-                (45usize, 268434910usize),
-                (40usize, 268435454usize),
+                (26usize, 268435454usize),
+                (27usize, 268434910usize),
+                (28usize, 268434910usize),
                 (41usize, 268435454usize),
-                (42usize, 268434910usize),
-                (43usize, 268434910usize),
-                (48usize, 268435454usize),
-                (49usize, 268435454usize),
-                (50usize, 268434910usize),
-                (51usize, 268434910usize),
+                (26usize, 268434910usize),
+                (39usize, 268435454usize),
+                (40usize, 268435454usize),
+                (41usize, 268434910usize),
+                (33usize, 268435454usize),
+                (34usize, 268435454usize),
+                (35usize, 268434910usize),
+                (36usize, 268434910usize),
+                (37usize, 268435454usize),
+                (38usize, 268435454usize),
                 (39usize, 268434910usize),
-                (52usize, 268435454usize),
-                (53usize, 268435454usize),
-                (54usize, 268434910usize),
-                (50usize, 268435454usize),
-                (51usize, 268435454usize),
-                (52usize, 268434910usize),
-                (53usize, 268434910usize),
+                (40usize, 268434910usize),
+                (29usize, 268435454usize),
+                (30usize, 268435454usize),
+                (31usize, 268434910usize),
+                (32usize, 268434910usize),
             ];
             const VAL_LN: [(usize, usize); 1usize] = [(118usize, 1744830467usize)];
             let val =
@@ -1090,33 +950,33 @@ unsafe fn layer_0_final_step_accumulator(
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 5usize] = [
-                (2usize, 4usize),
-                (3usize, 4usize),
-                (4usize, 4usize),
                 (5usize, 4usize),
                 (6usize, 4usize),
+                (7usize, 4usize),
+                (8usize, 4usize),
+                (9usize, 4usize),
             ];
             const VAL_QI: [(usize, usize); 20usize] = [
-                (46usize, 268435454usize),
-                (47usize, 268435454usize),
-                (48usize, 268434910usize),
-                (49usize, 268434910usize),
-                (44usize, 268435454usize),
-                (45usize, 268435454usize),
-                (46usize, 268434910usize),
-                (47usize, 268434910usize),
+                (29usize, 268435454usize),
+                (30usize, 268435454usize),
+                (31usize, 268434910usize),
+                (32usize, 268434910usize),
+                (27usize, 268435454usize),
+                (28usize, 268435454usize),
+                (29usize, 268434910usize),
+                (30usize, 268434910usize),
+                (37usize, 268435454usize),
+                (38usize, 268435454usize),
                 (39usize, 268434910usize),
-                (52usize, 268435454usize),
-                (53usize, 268435454usize),
-                (54usize, 268434910usize),
-                (40usize, 268435454usize),
-                (41usize, 268435454usize),
-                (42usize, 268434910usize),
-                (43usize, 268434910usize),
-                (39usize, 268435454usize),
                 (40usize, 268434910usize),
-                (41usize, 268434910usize),
-                (54usize, 268435454usize),
+                (26usize, 268435454usize),
+                (27usize, 268434910usize),
+                (28usize, 268434910usize),
+                (41usize, 268435454usize),
+                (33usize, 268435454usize),
+                (34usize, 268435454usize),
+                (35usize, 268434910usize),
+                (36usize, 268434910usize),
             ];
             const VAL_LN: [(usize, usize); 1usize] = [(119usize, 1744830467usize)];
             let val =
@@ -1131,33 +991,33 @@ unsafe fn layer_0_final_step_accumulator(
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 5usize] = [
-                (2usize, 4usize),
-                (3usize, 4usize),
-                (4usize, 4usize),
                 (5usize, 4usize),
                 (6usize, 4usize),
+                (7usize, 4usize),
+                (8usize, 4usize),
+                (9usize, 4usize),
             ];
             const VAL_QI: [(usize, usize); 20usize] = [
-                (50usize, 268435454usize),
-                (51usize, 268435454usize),
-                (52usize, 268434910usize),
-                (53usize, 268434910usize),
-                (48usize, 268435454usize),
-                (49usize, 268435454usize),
-                (50usize, 268434910usize),
-                (51usize, 268434910usize),
-                (40usize, 268435454usize),
-                (41usize, 268435454usize),
-                (42usize, 268434910usize),
-                (43usize, 268434910usize),
-                (44usize, 268435454usize),
-                (45usize, 268435454usize),
-                (46usize, 268434910usize),
-                (47usize, 268434910usize),
                 (42usize, 268435454usize),
-                (43usize, 268435454usize),
+                (43usize, 268434910usize),
                 (44usize, 268434910usize),
-                (45usize, 268434910usize),
+                (57usize, 268435454usize),
+                (42usize, 268434910usize),
+                (55usize, 268435454usize),
+                (56usize, 268435454usize),
+                (57usize, 268434910usize),
+                (47usize, 268435454usize),
+                (48usize, 268435454usize),
+                (49usize, 268434910usize),
+                (50usize, 268434910usize),
+                (51usize, 268435454usize),
+                (52usize, 268435454usize),
+                (53usize, 268434910usize),
+                (54usize, 268434910usize),
+                (49usize, 268435454usize),
+                (50usize, 268435454usize),
+                (51usize, 268434910usize),
+                (52usize, 268434910usize),
             ];
             const VAL_LN: [(usize, usize); 1usize] = [(120usize, 1744830467usize)];
             let val =
@@ -1172,31 +1032,33 @@ unsafe fn layer_0_final_step_accumulator(
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 5usize] = [
-                (2usize, 4usize),
-                (3usize, 4usize),
-                (4usize, 4usize),
                 (5usize, 4usize),
-                (6usize, 2usize),
+                (6usize, 4usize),
+                (7usize, 4usize),
+                (8usize, 4usize),
+                (9usize, 4usize),
             ];
-            const VAL_QI: [(usize, usize); 18usize] = [
-                (60usize, 268435454usize),
-                (61usize, 268435454usize),
-                (62usize, 268434910usize),
-                (63usize, 268434910usize),
-                (60usize, 268435454usize),
-                (61usize, 268435454usize),
-                (62usize, 268434910usize),
-                (63usize, 268434910usize),
+            const VAL_QI: [(usize, usize); 20usize] = [
+                (45usize, 268435454usize),
+                (46usize, 268435454usize),
+                (47usize, 268434910usize),
+                (48usize, 268434910usize),
+                (43usize, 268435454usize),
+                (44usize, 268435454usize),
+                (45usize, 268434910usize),
+                (46usize, 268434910usize),
+                (51usize, 268435454usize),
+                (52usize, 268435454usize),
+                (53usize, 268434910usize),
+                (54usize, 268434910usize),
+                (42usize, 268434910usize),
+                (55usize, 268435454usize),
+                (56usize, 268435454usize),
+                (57usize, 268434910usize),
+                (53usize, 268435454usize),
+                (54usize, 268435454usize),
                 (55usize, 268434910usize),
-                (68usize, 268435454usize),
-                (69usize, 268435454usize),
-                (70usize, 268434910usize),
-                (66usize, 268435454usize),
-                (67usize, 268435454usize),
-                (68usize, 268434910usize),
-                (69usize, 268434910usize),
-                (55usize, 268434910usize),
-                (69usize, 268435454usize),
+                (56usize, 268434910usize),
             ];
             const VAL_LN: [(usize, usize); 1usize] = [(121usize, 1744830467usize)];
             let val =
@@ -1211,31 +1073,33 @@ unsafe fn layer_0_final_step_accumulator(
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 5usize] = [
-                (2usize, 4usize),
-                (3usize, 4usize),
-                (4usize, 4usize),
                 (5usize, 4usize),
-                (6usize, 2usize),
+                (6usize, 4usize),
+                (7usize, 4usize),
+                (8usize, 4usize),
+                (9usize, 4usize),
             ];
-            const VAL_QI: [(usize, usize); 18usize] = [
-                (64usize, 268435454usize),
-                (65usize, 268435454usize),
-                (66usize, 268434910usize),
-                (67usize, 268434910usize),
-                (64usize, 268435454usize),
-                (65usize, 268435454usize),
-                (66usize, 268434910usize),
-                (67usize, 268434910usize),
-                (56usize, 268435454usize),
-                (57usize, 268435454usize),
-                (58usize, 268434910usize),
-                (59usize, 268434910usize),
+            const VAL_QI: [(usize, usize); 20usize] = [
+                (49usize, 268435454usize),
+                (50usize, 268435454usize),
+                (51usize, 268434910usize),
+                (52usize, 268434910usize),
+                (47usize, 268435454usize),
+                (48usize, 268435454usize),
+                (49usize, 268434910usize),
+                (50usize, 268434910usize),
+                (42usize, 268434910usize),
                 (55usize, 268435454usize),
-                (56usize, 268434910usize),
+                (56usize, 268435454usize),
                 (57usize, 268434910usize),
-                (70usize, 268435454usize),
+                (43usize, 268435454usize),
+                (44usize, 268435454usize),
+                (45usize, 268434910usize),
+                (46usize, 268434910usize),
+                (42usize, 268435454usize),
+                (43usize, 268434910usize),
+                (44usize, 268434910usize),
                 (57usize, 268435454usize),
-                (59usize, 268434910usize),
             ];
             const VAL_LN: [(usize, usize); 1usize] = [(122usize, 1744830467usize)];
             let val =
@@ -1250,31 +1114,33 @@ unsafe fn layer_0_final_step_accumulator(
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 5usize] = [
-                (2usize, 4usize),
-                (3usize, 4usize),
-                (4usize, 4usize),
                 (5usize, 4usize),
-                (6usize, 2usize),
+                (6usize, 4usize),
+                (7usize, 4usize),
+                (8usize, 4usize),
+                (9usize, 4usize),
             ];
-            const VAL_QI: [(usize, usize); 18usize] = [
+            const VAL_QI: [(usize, usize); 20usize] = [
+                (53usize, 268435454usize),
+                (54usize, 268435454usize),
                 (55usize, 268434910usize),
-                (68usize, 268435454usize),
-                (69usize, 268435454usize),
-                (70usize, 268434910usize),
-                (55usize, 268434910usize),
-                (68usize, 268435454usize),
-                (69usize, 268435454usize),
-                (70usize, 268434910usize),
-                (60usize, 268435454usize),
-                (61usize, 268435454usize),
-                (62usize, 268434910usize),
-                (63usize, 268434910usize),
-                (58usize, 268435454usize),
-                (59usize, 268435454usize),
-                (60usize, 268434910usize),
-                (61usize, 268434910usize),
-                (61usize, 268435454usize),
-                (63usize, 268434910usize),
+                (56usize, 268434910usize),
+                (51usize, 268435454usize),
+                (52usize, 268435454usize),
+                (53usize, 268434910usize),
+                (54usize, 268434910usize),
+                (43usize, 268435454usize),
+                (44usize, 268435454usize),
+                (45usize, 268434910usize),
+                (46usize, 268434910usize),
+                (47usize, 268435454usize),
+                (48usize, 268435454usize),
+                (49usize, 268434910usize),
+                (50usize, 268434910usize),
+                (45usize, 268435454usize),
+                (46usize, 268435454usize),
+                (47usize, 268434910usize),
+                (48usize, 268434910usize),
             ];
             const VAL_LN: [(usize, usize); 1usize] = [(123usize, 1744830467usize)];
             let val =
@@ -1289,31 +1155,31 @@ unsafe fn layer_0_final_step_accumulator(
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 5usize] = [
-                (2usize, 4usize),
-                (3usize, 4usize),
-                (4usize, 4usize),
                 (5usize, 4usize),
-                (6usize, 2usize),
+                (6usize, 4usize),
+                (7usize, 4usize),
+                (8usize, 4usize),
+                (9usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 18usize] = [
-                (56usize, 268435454usize),
-                (57usize, 268435454usize),
-                (58usize, 268434910usize),
-                (59usize, 268434910usize),
-                (56usize, 268435454usize),
-                (57usize, 268435454usize),
-                (58usize, 268434910usize),
-                (59usize, 268434910usize),
-                (64usize, 268435454usize),
-                (65usize, 268435454usize),
-                (66usize, 268434910usize),
-                (67usize, 268434910usize),
-                (62usize, 268435454usize),
                 (63usize, 268435454usize),
-                (64usize, 268434910usize),
+                (64usize, 268435454usize),
                 (65usize, 268434910usize),
-                (65usize, 268435454usize),
-                (67usize, 268434910usize),
+                (66usize, 268434910usize),
+                (63usize, 268435454usize),
+                (64usize, 268435454usize),
+                (65usize, 268434910usize),
+                (66usize, 268434910usize),
+                (58usize, 268434910usize),
+                (71usize, 268435454usize),
+                (72usize, 268435454usize),
+                (73usize, 268434910usize),
+                (69usize, 268435454usize),
+                (70usize, 268435454usize),
+                (71usize, 268434910usize),
+                (72usize, 268434910usize),
+                (58usize, 268434910usize),
+                (72usize, 268435454usize),
             ];
             const VAL_LN: [(usize, usize); 1usize] = [(124usize, 1744830467usize)];
             let val =
@@ -1328,31 +1194,31 @@ unsafe fn layer_0_final_step_accumulator(
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 5usize] = [
-                (2usize, 4usize),
-                (3usize, 4usize),
-                (4usize, 4usize),
-                (5usize, 2usize),
+                (5usize, 4usize),
                 (6usize, 4usize),
+                (7usize, 4usize),
+                (8usize, 4usize),
+                (9usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 18usize] = [
-                (83usize, 268435454usize),
-                (84usize, 268435454usize),
-                (85usize, 268434910usize),
-                (86usize, 268434910usize),
-                (72usize, 268435454usize),
-                (73usize, 268434910usize),
-                (74usize, 268434910usize),
-                (87usize, 268435454usize),
+                (67usize, 268435454usize),
+                (68usize, 268435454usize),
+                (69usize, 268434910usize),
+                (70usize, 268434910usize),
+                (67usize, 268435454usize),
+                (68usize, 268435454usize),
+                (69usize, 268434910usize),
+                (70usize, 268434910usize),
+                (59usize, 268435454usize),
+                (60usize, 268435454usize),
+                (61usize, 268434910usize),
+                (62usize, 268434910usize),
+                (58usize, 268435454usize),
+                (59usize, 268434910usize),
+                (60usize, 268434910usize),
                 (73usize, 268435454usize),
-                (74usize, 268435454usize),
-                (75usize, 268434910usize),
-                (76usize, 268434910usize),
-                (74usize, 268435454usize),
-                (76usize, 268434910usize),
-                (72usize, 268434910usize),
-                (85usize, 268435454usize),
-                (86usize, 268435454usize),
-                (87usize, 268434910usize),
+                (60usize, 268435454usize),
+                (62usize, 268434910usize),
             ];
             const VAL_LN: [(usize, usize); 1usize] = [(125usize, 1744830467usize)];
             let val =
@@ -1367,31 +1233,31 @@ unsafe fn layer_0_final_step_accumulator(
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 5usize] = [
-                (2usize, 4usize),
-                (3usize, 4usize),
-                (4usize, 4usize),
-                (5usize, 2usize),
+                (5usize, 4usize),
                 (6usize, 4usize),
+                (7usize, 4usize),
+                (8usize, 4usize),
+                (9usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 18usize] = [
+                (58usize, 268434910usize),
+                (71usize, 268435454usize),
                 (72usize, 268435454usize),
                 (73usize, 268434910usize),
-                (74usize, 268434910usize),
-                (87usize, 268435454usize),
-                (75usize, 268435454usize),
-                (76usize, 268435454usize),
-                (77usize, 268434910usize),
-                (78usize, 268434910usize),
-                (77usize, 268435454usize),
-                (78usize, 268435454usize),
-                (79usize, 268434910usize),
-                (80usize, 268434910usize),
-                (78usize, 268435454usize),
-                (80usize, 268434910usize),
-                (73usize, 268435454usize),
-                (74usize, 268435454usize),
-                (75usize, 268434910usize),
-                (76usize, 268434910usize),
+                (58usize, 268434910usize),
+                (71usize, 268435454usize),
+                (72usize, 268435454usize),
+                (73usize, 268434910usize),
+                (63usize, 268435454usize),
+                (64usize, 268435454usize),
+                (65usize, 268434910usize),
+                (66usize, 268434910usize),
+                (61usize, 268435454usize),
+                (62usize, 268435454usize),
+                (63usize, 268434910usize),
+                (64usize, 268434910usize),
+                (64usize, 268435454usize),
+                (66usize, 268434910usize),
             ];
             const VAL_LN: [(usize, usize); 1usize] = [(126usize, 1744830467usize)];
             let val =
@@ -1406,31 +1272,70 @@ unsafe fn layer_0_final_step_accumulator(
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 5usize] = [
-                (2usize, 4usize),
-                (3usize, 4usize),
-                (4usize, 4usize),
-                (5usize, 2usize),
+                (5usize, 4usize),
                 (6usize, 4usize),
+                (7usize, 4usize),
+                (8usize, 4usize),
+                (9usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 18usize] = [
+                (59usize, 268435454usize),
+                (60usize, 268435454usize),
+                (61usize, 268434910usize),
+                (62usize, 268434910usize),
+                (59usize, 268435454usize),
+                (60usize, 268435454usize),
+                (61usize, 268434910usize),
+                (62usize, 268434910usize),
+                (67usize, 268435454usize),
+                (68usize, 268435454usize),
+                (69usize, 268434910usize),
+                (70usize, 268434910usize),
+                (65usize, 268435454usize),
+                (66usize, 268435454usize),
+                (67usize, 268434910usize),
+                (68usize, 268434910usize),
+                (68usize, 268435454usize),
+                (70usize, 268434910usize),
+            ];
+            const VAL_LN: [(usize, usize); 1usize] = [(127usize, 1744830467usize)];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..1 {
+            const VAL_QO: [(usize, usize); 5usize] = [
+                (5usize, 4usize),
+                (6usize, 4usize),
+                (7usize, 4usize),
+                (8usize, 2usize),
+                (9usize, 4usize),
+            ];
+            const VAL_QI: [(usize, usize); 18usize] = [
+                (86usize, 268435454usize),
+                (87usize, 268435454usize),
+                (88usize, 268434910usize),
+                (89usize, 268434910usize),
                 (75usize, 268435454usize),
-                (76usize, 268435454usize),
+                (76usize, 268434910usize),
                 (77usize, 268434910usize),
-                (78usize, 268434910usize),
-                (79usize, 268435454usize),
-                (80usize, 268435454usize),
-                (81usize, 268434910usize),
-                (82usize, 268434910usize),
-                (81usize, 268435454usize),
-                (82usize, 268435454usize),
-                (83usize, 268434910usize),
-                (84usize, 268434910usize),
-                (82usize, 268435454usize),
-                (84usize, 268434910usize),
+                (90usize, 268435454usize),
+                (76usize, 268435454usize),
                 (77usize, 268435454usize),
-                (78usize, 268435454usize),
+                (78usize, 268434910usize),
                 (79usize, 268434910usize),
-                (80usize, 268434910usize),
+                (77usize, 268435454usize),
+                (79usize, 268434910usize),
+                (75usize, 268434910usize),
+                (88usize, 268435454usize),
+                (89usize, 268435454usize),
+                (90usize, 268434910usize),
             ];
             const VAL_LN: [(usize, usize); 1usize] = [(128usize, 1744830467usize)];
             let val =
@@ -1445,31 +1350,31 @@ unsafe fn layer_0_final_step_accumulator(
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 5usize] = [
-                (2usize, 4usize),
-                (3usize, 4usize),
-                (4usize, 4usize),
-                (5usize, 2usize),
+                (5usize, 4usize),
                 (6usize, 4usize),
+                (7usize, 4usize),
+                (8usize, 2usize),
+                (9usize, 4usize),
             ];
             const VAL_QI: [(usize, usize); 18usize] = [
+                (75usize, 268435454usize),
+                (76usize, 268434910usize),
+                (77usize, 268434910usize),
+                (90usize, 268435454usize),
+                (78usize, 268435454usize),
                 (79usize, 268435454usize),
-                (80usize, 268435454usize),
+                (80usize, 268434910usize),
                 (81usize, 268434910usize),
-                (82usize, 268434910usize),
-                (83usize, 268435454usize),
-                (84usize, 268435454usize),
-                (85usize, 268434910usize),
-                (86usize, 268434910usize),
-                (72usize, 268434910usize),
-                (85usize, 268435454usize),
-                (86usize, 268435454usize),
-                (87usize, 268434910usize),
-                (72usize, 268434910usize),
-                (86usize, 268435454usize),
+                (80usize, 268435454usize),
                 (81usize, 268435454usize),
-                (82usize, 268435454usize),
+                (82usize, 268434910usize),
                 (83usize, 268434910usize),
-                (84usize, 268434910usize),
+                (81usize, 268435454usize),
+                (83usize, 268434910usize),
+                (76usize, 268435454usize),
+                (77usize, 268435454usize),
+                (78usize, 268434910usize),
+                (79usize, 268434910usize),
             ];
             const VAL_LN: [(usize, usize); 1usize] = [(129usize, 1744830467usize)];
             let val =
@@ -1483,9 +1388,34 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
-            const VAL_QO: [(usize, usize); 1usize] = [(88usize, 1usize)];
-            const VAL_QI: [(usize, usize); 1usize] = [(88usize, 268435454usize)];
-            const VAL_LN: [(usize, usize); 1usize] = [(88usize, 1744830467usize)];
+            const VAL_QO: [(usize, usize); 5usize] = [
+                (5usize, 4usize),
+                (6usize, 4usize),
+                (7usize, 4usize),
+                (8usize, 2usize),
+                (9usize, 4usize),
+            ];
+            const VAL_QI: [(usize, usize); 18usize] = [
+                (78usize, 268435454usize),
+                (79usize, 268435454usize),
+                (80usize, 268434910usize),
+                (81usize, 268434910usize),
+                (82usize, 268435454usize),
+                (83usize, 268435454usize),
+                (84usize, 268434910usize),
+                (85usize, 268434910usize),
+                (84usize, 268435454usize),
+                (85usize, 268435454usize),
+                (86usize, 268434910usize),
+                (87usize, 268434910usize),
+                (85usize, 268435454usize),
+                (87usize, 268434910usize),
+                (80usize, 268435454usize),
+                (81usize, 268435454usize),
+                (82usize, 268434910usize),
+                (83usize, 268434910usize),
+            ];
+            const VAL_LN: [(usize, usize); 1usize] = [(131usize, 1744830467usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -1497,9 +1427,34 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
-            const VAL_QO: [(usize, usize); 1usize] = [(89usize, 1usize)];
-            const VAL_QI: [(usize, usize); 1usize] = [(89usize, 268435454usize)];
-            const VAL_LN: [(usize, usize); 1usize] = [(89usize, 1744830467usize)];
+            const VAL_QO: [(usize, usize); 5usize] = [
+                (5usize, 4usize),
+                (6usize, 4usize),
+                (7usize, 4usize),
+                (8usize, 2usize),
+                (9usize, 4usize),
+            ];
+            const VAL_QI: [(usize, usize); 18usize] = [
+                (82usize, 268435454usize),
+                (83usize, 268435454usize),
+                (84usize, 268434910usize),
+                (85usize, 268434910usize),
+                (86usize, 268435454usize),
+                (87usize, 268435454usize),
+                (88usize, 268434910usize),
+                (89usize, 268434910usize),
+                (75usize, 268434910usize),
+                (88usize, 268435454usize),
+                (89usize, 268435454usize),
+                (90usize, 268434910usize),
+                (75usize, 268434910usize),
+                (89usize, 268435454usize),
+                (84usize, 268435454usize),
+                (85usize, 268435454usize),
+                (86usize, 268434910usize),
+                (87usize, 268434910usize),
+            ];
+            const VAL_LN: [(usize, usize); 1usize] = [(132usize, 1744830467usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -1511,9 +1466,51 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
-            const VAL_QO: [(usize, usize); 1usize] = [(90usize, 1usize)];
-            const VAL_QI: [(usize, usize); 1usize] = [(90usize, 268435454usize)];
-            const VAL_LN: [(usize, usize); 1usize] = [(90usize, 1744830467usize)];
+            const VAL_QO: [(usize, usize); 1usize] = [(0usize, 1usize)];
+            const VAL_QI: [(usize, usize); 1usize] = [(0usize, 268435454usize)];
+            const VAL_LN: [(usize, usize); 1usize] = [(0usize, 1744830467usize)];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..1 {
+            const VAL_QO: [(usize, usize); 1usize] = [(1usize, 1usize)];
+            const VAL_QI: [(usize, usize); 1usize] = [(1usize, 268435454usize)];
+            const VAL_LN: [(usize, usize); 1usize] = [(1usize, 1744830467usize)];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..1 {
+            const VAL_QO: [(usize, usize); 1usize] = [(2usize, 1usize)];
+            const VAL_QI: [(usize, usize); 1usize] = [(2usize, 268435454usize)];
+            const VAL_LN: [(usize, usize); 1usize] = [(2usize, 1744830467usize)];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..1 {
+            const VAL_QO: [(usize, usize); 1usize] = [(3usize, 1usize)];
+            const VAL_QI: [(usize, usize); 1usize] = [(3usize, 268435454usize)];
+            const VAL_LN: [(usize, usize); 1usize] = [(3usize, 1744830467usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -1703,15 +1700,57 @@ unsafe fn layer_0_final_step_accumulator(
             field_ops::add_assign(&mut acc[j], &contrib);
         }
     }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..1 {
+            const VAL_QO: [(usize, usize); 1usize] = [(104usize, 1usize)];
+            const VAL_QI: [(usize, usize); 1usize] = [(104usize, 268435454usize)];
+            const VAL_LN: [(usize, usize); 1usize] = [(104usize, 1744830467usize)];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..1 {
+            const VAL_QO: [(usize, usize); 1usize] = [(105usize, 1usize)];
+            const VAL_QI: [(usize, usize); 1usize] = [(105usize, 268435454usize)];
+            const VAL_LN: [(usize, usize); 1usize] = [(105usize, 1744830467usize)];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..1 {
+            const VAL_QO: [(usize, usize); 1usize] = [(106usize, 1usize)];
+            const VAL_QI: [(usize, usize); 1usize] = [(106usize, 268435454usize)];
+            const VAL_LN: [(usize, usize); 1usize] = [(106usize, 1744830467usize)];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
     acc
 }
 #[inline(always)]
 #[allow(unused_variables)]
 unsafe fn layer_1_compute_claim(
-    output_claims: &[BabyBearExt4; 61usize],
+    output_claims: &[BabyBearExt4; 57usize],
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    const DESCS: [(usize, usize, usize); 38usize] = [
+    const DESCS: [(usize, usize, usize); 36usize] = [
         (1usize, 0usize, 0usize),
         (1usize, 1usize, 0usize),
         (1usize, 2usize, 0usize),
@@ -1746,10 +1785,8 @@ unsafe fn layer_1_compute_claim(
         (2usize, 49usize, 50usize),
         (2usize, 51usize, 52usize),
         (2usize, 53usize, 54usize),
-        (2usize, 55usize, 56usize),
-        (2usize, 57usize, 58usize),
-        (1usize, 59usize, 0usize),
-        (1usize, 60usize, 0usize),
+        (1usize, 55usize, 0usize),
+        (1usize, 56usize, 0usize),
     ];
     super::common::compute_claim(output_claims, &DESCS, batch_base)
 }
@@ -1768,7 +1805,7 @@ unsafe fn layer_1_final_step_accumulator(
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
     {
-        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 38usize] = [
+        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 36usize] = [
             (SimpleGateType::Copy, [0usize, 0usize, 0usize, 0usize]),
             (SimpleGateType::Product, [1usize, 3usize, 0usize, 0usize]),
             (SimpleGateType::Product, [5usize, 7usize, 0usize, 0usize]),
@@ -1816,15 +1853,7 @@ unsafe fn layer_1_final_step_accumulator(
             (SimpleGateType::Copy, [22usize, 0usize, 0usize, 0usize]),
             (
                 SimpleGateType::LookupUnbalanced,
-                [111usize, 112usize, 113usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupAggregatePair,
-                [109usize, 110usize, 107usize, 108usize],
-            ),
-            (
-                SimpleGateType::LookupAggregatePair,
-                [105usize, 106usize, 103usize, 104usize],
+                [103usize, 104usize, 105usize, 0usize],
             ),
             (
                 SimpleGateType::LookupAggregatePair,
@@ -1878,7 +1907,7 @@ unsafe fn layer_1_final_step_accumulator(
             (SimpleGateType::Copy, [20usize, 0usize, 0usize, 0usize]),
         ];
         let mut _sg = 0;
-        while _sg < 38usize {
+        while _sg < 36usize {
             let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
             match gt {
                 SimpleGateType::Copy => {
@@ -2069,10 +2098,10 @@ unsafe fn layer_1_final_step_accumulator(
 #[inline(always)]
 #[allow(unused_variables)]
 unsafe fn layer_2_compute_claim(
-    output_claims: &[BabyBearExt4; 35usize],
+    output_claims: &[BabyBearExt4; 33usize],
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    const DESCS: [(usize, usize, usize); 24usize] = [
+    const DESCS: [(usize, usize, usize); 23usize] = [
         (1usize, 0usize, 0usize),
         (1usize, 1usize, 0usize),
         (1usize, 2usize, 0usize),
@@ -2092,11 +2121,10 @@ unsafe fn layer_2_compute_claim(
         (2usize, 23usize, 24usize),
         (2usize, 25usize, 26usize),
         (2usize, 27usize, 28usize),
-        (2usize, 29usize, 30usize),
+        (1usize, 29usize, 0usize),
+        (1usize, 30usize, 0usize),
         (1usize, 31usize, 0usize),
         (1usize, 32usize, 0usize),
-        (1usize, 33usize, 0usize),
-        (1usize, 34usize, 0usize),
     ];
     super::common::compute_claim(output_claims, &DESCS, batch_base)
 }
@@ -2115,7 +2143,7 @@ unsafe fn layer_2_final_step_accumulator(
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
     {
-        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 24usize] = [
+        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 23usize] = [
             (SimpleGateType::Copy, [0usize, 0usize, 0usize, 0usize]),
             (SimpleGateType::Product, [1usize, 2usize, 0usize, 0usize]),
             (SimpleGateType::Product, [3usize, 4usize, 0usize, 0usize]),
@@ -2143,10 +2171,6 @@ unsafe fn layer_2_final_step_accumulator(
             (SimpleGateType::Copy, [12usize, 0usize, 0usize, 0usize]),
             (
                 SimpleGateType::LookupAggregatePair,
-                [57usize, 58usize, 55usize, 56usize],
-            ),
-            (
-                SimpleGateType::LookupAggregatePair,
                 [53usize, 54usize, 51usize, 52usize],
             ),
             (
@@ -2171,11 +2195,11 @@ unsafe fn layer_2_final_step_accumulator(
             ),
             (SimpleGateType::Copy, [29usize, 0usize, 0usize, 0usize]),
             (SimpleGateType::Copy, [30usize, 0usize, 0usize, 0usize]),
-            (SimpleGateType::Copy, [59usize, 0usize, 0usize, 0usize]),
-            (SimpleGateType::Copy, [60usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [55usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [56usize, 0usize, 0usize, 0usize]),
         ];
         let mut _sg = 0;
-        while _sg < 24usize {
+        while _sg < 23usize {
             let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
             match gt {
                 SimpleGateType::Copy => {
@@ -2369,7 +2393,7 @@ unsafe fn layer_3_compute_claim(
     output_claims: &[BabyBearExt4; 21usize],
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    const DESCS: [(usize, usize, usize); 15usize] = [
+    const DESCS: [(usize, usize, usize); 16usize] = [
         (1usize, 0usize, 0usize),
         (1usize, 1usize, 0usize),
         (1usize, 2usize, 0usize),
@@ -2382,7 +2406,8 @@ unsafe fn layer_3_compute_claim(
         (2usize, 11usize, 12usize),
         (2usize, 13usize, 14usize),
         (2usize, 15usize, 16usize),
-        (2usize, 17usize, 18usize),
+        (1usize, 17usize, 0usize),
+        (1usize, 18usize, 0usize),
         (1usize, 19usize, 0usize),
         (1usize, 20usize, 0usize),
     ];
@@ -2403,7 +2428,7 @@ unsafe fn layer_3_final_step_accumulator(
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
     {
-        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 15usize] = [
+        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 16usize] = [
             (SimpleGateType::Copy, [0usize, 0usize, 0usize, 0usize]),
             (SimpleGateType::Product, [1usize, 2usize, 0usize, 0usize]),
             (SimpleGateType::Copy, [3usize, 0usize, 0usize, 0usize]),
@@ -2421,25 +2446,23 @@ unsafe fn layer_3_final_step_accumulator(
             (SimpleGateType::Copy, [8usize, 0usize, 0usize, 0usize]),
             (
                 SimpleGateType::LookupAggregatePair,
-                [31usize, 32usize, 29usize, 30usize],
+                [29usize, 30usize, 27usize, 28usize],
             ),
             (
                 SimpleGateType::LookupAggregatePair,
-                [27usize, 28usize, 25usize, 26usize],
+                [25usize, 26usize, 23usize, 24usize],
             ),
             (
                 SimpleGateType::LookupAggregatePair,
-                [23usize, 24usize, 21usize, 22usize],
+                [21usize, 22usize, 19usize, 20usize],
             ),
-            (
-                SimpleGateType::LookupAggregatePair,
-                [19usize, 20usize, 17usize, 18usize],
-            ),
-            (SimpleGateType::Copy, [33usize, 0usize, 0usize, 0usize]),
-            (SimpleGateType::Copy, [34usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [17usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [18usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [31usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [32usize, 0usize, 0usize, 0usize]),
         ];
         let mut _sg = 0;
-        while _sg < 15usize {
+        while _sg < 16usize {
             let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
             match gt {
                 SimpleGateType::Copy => {
@@ -3331,8 +3354,8 @@ fn check_virtual_setup_range_check_16bits<E: ErrorCreator>(
             field_ops::mul_assign(&mut result, &t);
             k += 1;
         }
-        if result != *state.prev_claims.get_unchecked(269usize) {
-            return Err(E::gkr_virtual_setup_eval_mismatch(269usize));
+        if result != *state.prev_claims.get_unchecked(249usize) {
+            return Err(E::gkr_virtual_setup_eval_mismatch(249usize));
         }
     }
     Ok(())
@@ -3364,8 +3387,8 @@ fn check_virtual_setup_range_check_timestamp<E: ErrorCreator>(
             field_ops::mul_assign(&mut result, &t);
             k += 1;
         }
-        if result != *state.prev_claims.get_unchecked(270usize) {
-            return Err(E::gkr_virtual_setup_eval_mismatch(270usize));
+        if result != *state.prev_claims.get_unchecked(250usize) {
+            return Err(E::gkr_virtual_setup_eval_mismatch(250usize));
         }
     }
     Ok(())
@@ -4821,7 +4844,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let fc_len = 22usize;
-            const NUM_AT_POINT_EVALS: usize = 35usize;
+            const NUM_AT_POINT_EVALS: usize = 33usize;
             let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -4846,7 +4869,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let next_batching = draw_single_field_el(ts);
-            fold_standard_claims::<35usize, GKR_ADDRS, GKR_EVAL_BUF>(
+            fold_standard_claims::<33usize, GKR_ADDRS, GKR_EVAL_BUF>(
                 &eval_buf,
                 &mut state.prev_claims,
             );
@@ -4857,7 +4880,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = layer_2_compute_claim(
-                state.prev_claims.as_array::<35usize>(),
+                state.prev_claims.as_array::<33usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -4869,7 +4892,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let fc_len = 22usize;
-            const NUM_AT_POINT_EVALS: usize = 61usize;
+            const NUM_AT_POINT_EVALS: usize = 57usize;
             let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -4894,7 +4917,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let next_batching = draw_single_field_el(ts);
-            fold_standard_claims::<61usize, GKR_ADDRS, GKR_EVAL_BUF>(
+            fold_standard_claims::<57usize, GKR_ADDRS, GKR_EVAL_BUF>(
                 &eval_buf,
                 &mut state.prev_claims,
             );
@@ -4905,7 +4928,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = layer_1_compute_claim(
-                state.prev_claims.as_array::<61usize>(),
+                state.prev_claims.as_array::<57usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -4917,7 +4940,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let fc_len = 22usize;
-            const NUM_AT_POINT_EVALS: usize = 114usize;
+            const NUM_AT_POINT_EVALS: usize = 106usize;
             let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -4942,7 +4965,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let next_batching = draw_single_field_el(ts);
-            fold_standard_claims::<114usize, GKR_ADDRS, GKR_EVAL_BUF>(
+            fold_standard_claims::<106usize, GKR_ADDRS, GKR_EVAL_BUF>(
                 &eval_buf,
                 &mut state.prev_claims,
             );
@@ -4953,7 +4976,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = layer_0_compute_claim(
-                state.prev_claims.as_array::<114usize>(),
+                state.prev_claims.as_array::<106usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -4965,7 +4988,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let fc_len = 22usize;
-            const NUM_AT_POINT_EVALS: usize = 259usize;
+            const NUM_AT_POINT_EVALS: usize = 254usize;
             let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -4988,7 +5011,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 );
                 verify_final_step_check::<E>(f[0], final_eq_prefactor, final_claim, 0usize)?;
             }
-            const NUM_EXTRA_EVALS: usize = 138usize;
+            const NUM_EXTRA_EVALS: usize = 115usize;
             {
                 let mut i = 0;
                 while i < NUM_EXTRA_EVALS * EXT_DEGREE {
@@ -5015,7 +5038,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 unsafe { eval_buf.data_as(NUM_AT_POINT_EVALS) };
             state.prev_claims.clear();
             {
-                const LAYOUT_KIND: [usize; 397usize] = [
+                const LAYOUT_KIND: [usize; 369usize] = [
                     1usize, 1usize, 1usize, 0usize, 1usize, 0usize, 1usize, 1usize, 1usize, 1usize,
                     1usize, 1usize, 1usize, 1usize, 1usize, 0usize, 0usize, 1usize, 1usize, 1usize,
                     1usize, 0usize, 0usize, 1usize, 1usize, 1usize, 1usize, 1usize, 0usize, 0usize,
@@ -5026,10 +5049,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     1usize, 1usize, 0usize, 0usize, 0usize, 1usize, 1usize, 1usize, 1usize, 1usize,
                     1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
                     1usize, 1usize, 1usize, 0usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
-                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
-                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
-                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
-                    1usize, 1usize, 1usize, 1usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
+                    0usize, 0usize, 0usize, 0usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
+                    1usize, 1usize, 1usize, 1usize, 1usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 1usize, 1usize, 1usize, 1usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 1usize, 1usize, 1usize, 1usize, 0usize, 0usize, 0usize, 0usize, 0usize,
@@ -5054,63 +5075,58 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
-                    0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
-                    0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
+                    0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                 ];
-                const LAYOUT_POS: [usize; 397usize] = [
-                    57usize, 58usize, 59usize, 107usize, 60usize, 108usize, 61usize, 62usize,
-                    63usize, 64usize, 65usize, 66usize, 67usize, 68usize, 69usize, 109usize,
-                    110usize, 70usize, 71usize, 72usize, 73usize, 111usize, 112usize, 74usize,
-                    75usize, 76usize, 77usize, 78usize, 113usize, 114usize, 79usize, 80usize,
-                    81usize, 82usize, 115usize, 116usize, 83usize, 84usize, 85usize, 86usize,
-                    87usize, 117usize, 118usize, 88usize, 89usize, 90usize, 91usize, 119usize,
-                    120usize, 92usize, 93usize, 94usize, 95usize, 96usize, 121usize, 122usize,
-                    97usize, 98usize, 99usize, 100usize, 123usize, 124usize, 101usize, 102usize,
-                    103usize, 104usize, 105usize, 125usize, 126usize, 106usize, 107usize, 108usize,
-                    127usize, 128usize, 129usize, 109usize, 110usize, 111usize, 112usize, 113usize,
-                    114usize, 115usize, 116usize, 117usize, 118usize, 119usize, 120usize, 121usize,
-                    122usize, 123usize, 124usize, 125usize, 126usize, 130usize, 127usize, 128usize,
-                    0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize, 8usize, 9usize,
-                    10usize, 11usize, 12usize, 13usize, 14usize, 15usize, 16usize, 17usize,
-                    18usize, 19usize, 20usize, 21usize, 22usize, 23usize, 24usize, 25usize,
-                    26usize, 27usize, 28usize, 29usize, 30usize, 31usize, 32usize, 33usize,
-                    34usize, 35usize, 36usize, 37usize, 0usize, 1usize, 2usize, 3usize, 4usize,
-                    5usize, 6usize, 38usize, 39usize, 40usize, 41usize, 7usize, 8usize, 9usize,
-                    10usize, 11usize, 12usize, 13usize, 14usize, 15usize, 16usize, 17usize,
-                    18usize, 19usize, 20usize, 21usize, 22usize, 42usize, 43usize, 44usize,
-                    45usize, 23usize, 24usize, 25usize, 26usize, 27usize, 28usize, 29usize,
-                    30usize, 31usize, 32usize, 33usize, 34usize, 35usize, 36usize, 37usize,
-                    38usize, 46usize, 47usize, 48usize, 49usize, 39usize, 40usize, 41usize,
-                    42usize, 43usize, 44usize, 45usize, 46usize, 47usize, 48usize, 49usize,
-                    50usize, 51usize, 52usize, 53usize, 54usize, 50usize, 51usize, 52usize,
-                    53usize, 55usize, 56usize, 57usize, 58usize, 59usize, 60usize, 61usize,
-                    62usize, 63usize, 64usize, 65usize, 66usize, 67usize, 68usize, 69usize,
-                    70usize, 54usize, 55usize, 56usize, 71usize, 72usize, 73usize, 74usize,
-                    75usize, 76usize, 77usize, 78usize, 79usize, 80usize, 81usize, 82usize,
-                    83usize, 84usize, 85usize, 86usize, 87usize, 88usize, 89usize, 90usize,
+                const LAYOUT_POS: [usize; 369usize] = [
+                    34usize, 35usize, 36usize, 110usize, 37usize, 111usize, 38usize, 39usize,
+                    40usize, 41usize, 42usize, 43usize, 44usize, 45usize, 46usize, 112usize,
+                    113usize, 47usize, 48usize, 49usize, 50usize, 114usize, 115usize, 51usize,
+                    52usize, 53usize, 54usize, 55usize, 116usize, 117usize, 56usize, 57usize,
+                    58usize, 59usize, 118usize, 119usize, 60usize, 61usize, 62usize, 63usize,
+                    64usize, 120usize, 121usize, 65usize, 66usize, 67usize, 68usize, 122usize,
+                    123usize, 69usize, 70usize, 71usize, 72usize, 73usize, 124usize, 125usize,
+                    74usize, 75usize, 76usize, 77usize, 126usize, 127usize, 78usize, 79usize,
+                    80usize, 81usize, 82usize, 128usize, 129usize, 83usize, 84usize, 85usize,
+                    130usize, 131usize, 132usize, 86usize, 87usize, 88usize, 89usize, 90usize,
                     91usize, 92usize, 93usize, 94usize, 95usize, 96usize, 97usize, 98usize,
-                    99usize, 100usize, 101usize, 102usize, 103usize, 104usize, 105usize, 106usize,
-                    129usize, 130usize, 131usize, 132usize, 133usize, 134usize, 135usize, 136usize,
-                    137usize, 131usize, 132usize, 133usize, 134usize, 135usize, 136usize, 137usize,
-                    138usize, 139usize, 140usize, 141usize, 142usize, 143usize, 144usize, 145usize,
-                    146usize, 147usize, 148usize, 149usize, 150usize, 151usize, 152usize, 153usize,
-                    154usize, 155usize, 156usize, 157usize, 158usize, 159usize, 160usize, 161usize,
-                    162usize, 163usize, 164usize, 165usize, 166usize, 167usize, 168usize, 169usize,
-                    170usize, 171usize, 172usize, 173usize, 174usize, 175usize, 176usize, 177usize,
-                    178usize, 179usize, 180usize, 181usize, 182usize, 183usize, 184usize, 185usize,
-                    186usize, 187usize, 188usize, 189usize, 190usize, 191usize, 192usize, 193usize,
-                    194usize, 195usize, 196usize, 197usize, 198usize, 199usize, 200usize, 201usize,
-                    202usize, 203usize, 204usize, 205usize, 206usize, 207usize, 208usize, 209usize,
-                    210usize, 211usize, 212usize, 213usize, 214usize, 215usize, 216usize, 217usize,
-                    218usize, 219usize, 220usize, 221usize, 222usize, 223usize, 224usize, 225usize,
-                    226usize, 227usize, 228usize, 229usize, 230usize, 231usize, 232usize, 233usize,
-                    234usize, 235usize, 236usize, 237usize, 238usize, 239usize, 240usize, 241usize,
-                    242usize, 243usize, 244usize, 245usize, 246usize, 247usize, 248usize, 249usize,
-                    250usize, 251usize, 252usize, 253usize, 254usize, 255usize, 256usize, 257usize,
-                    258usize,
+                    99usize, 100usize, 101usize, 102usize, 103usize, 133usize, 104usize, 105usize,
+                    0usize, 1usize, 2usize, 3usize, 0usize, 1usize, 2usize, 3usize, 4usize, 5usize,
+                    6usize, 7usize, 8usize, 9usize, 10usize, 11usize, 12usize, 13usize, 14usize,
+                    4usize, 5usize, 6usize, 7usize, 8usize, 9usize, 15usize, 16usize, 17usize,
+                    18usize, 10usize, 11usize, 12usize, 13usize, 14usize, 15usize, 16usize,
+                    17usize, 18usize, 19usize, 20usize, 21usize, 22usize, 23usize, 24usize,
+                    25usize, 19usize, 20usize, 21usize, 22usize, 26usize, 27usize, 28usize,
+                    29usize, 30usize, 31usize, 32usize, 33usize, 34usize, 35usize, 36usize,
+                    37usize, 38usize, 39usize, 40usize, 41usize, 23usize, 24usize, 25usize,
+                    26usize, 42usize, 43usize, 44usize, 45usize, 46usize, 47usize, 48usize,
+                    49usize, 50usize, 51usize, 52usize, 53usize, 54usize, 55usize, 56usize,
+                    57usize, 27usize, 28usize, 29usize, 30usize, 58usize, 59usize, 60usize,
+                    61usize, 62usize, 63usize, 64usize, 65usize, 66usize, 67usize, 68usize,
+                    69usize, 70usize, 71usize, 72usize, 73usize, 31usize, 32usize, 33usize,
+                    74usize, 75usize, 76usize, 77usize, 78usize, 79usize, 80usize, 81usize,
+                    82usize, 83usize, 84usize, 85usize, 86usize, 87usize, 88usize, 89usize,
+                    90usize, 91usize, 92usize, 93usize, 94usize, 95usize, 96usize, 97usize,
+                    98usize, 99usize, 100usize, 101usize, 102usize, 103usize, 104usize, 105usize,
+                    106usize, 107usize, 108usize, 109usize, 106usize, 107usize, 108usize, 109usize,
+                    110usize, 111usize, 112usize, 113usize, 114usize, 134usize, 135usize, 136usize,
+                    137usize, 138usize, 139usize, 140usize, 141usize, 142usize, 143usize, 144usize,
+                    145usize, 146usize, 147usize, 148usize, 149usize, 150usize, 151usize, 152usize,
+                    153usize, 154usize, 155usize, 156usize, 157usize, 158usize, 159usize, 160usize,
+                    161usize, 162usize, 163usize, 164usize, 165usize, 166usize, 167usize, 168usize,
+                    169usize, 170usize, 171usize, 172usize, 173usize, 174usize, 175usize, 176usize,
+                    177usize, 178usize, 179usize, 180usize, 181usize, 182usize, 183usize, 184usize,
+                    185usize, 186usize, 187usize, 188usize, 189usize, 190usize, 191usize, 192usize,
+                    193usize, 194usize, 195usize, 196usize, 197usize, 198usize, 199usize, 200usize,
+                    201usize, 202usize, 203usize, 204usize, 205usize, 206usize, 207usize, 208usize,
+                    209usize, 210usize, 211usize, 212usize, 213usize, 214usize, 215usize, 216usize,
+                    217usize, 218usize, 219usize, 220usize, 221usize, 222usize, 223usize, 224usize,
+                    225usize, 226usize, 227usize, 228usize, 229usize, 230usize, 231usize, 232usize,
+                    233usize, 234usize, 235usize, 236usize, 237usize, 238usize, 239usize, 240usize,
+                    241usize, 242usize, 243usize, 244usize, 245usize, 246usize, 247usize, 248usize,
+                    249usize, 250usize, 251usize, 252usize, 253usize,
                 ];
                 let mut i = 0usize;
-                while i < 397usize {
+                while i < 369usize {
                     let kind = unsafe { *LAYOUT_KIND.get_unchecked(i) };
                     let pos = unsafe { *LAYOUT_POS.get_unchecked(i) };
                     let claim: BabyBearExt4 = if kind == 0usize {
@@ -5124,40 +5140,40 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             {
                 const SC_DESCS: [(usize, u32, usize, usize); 34usize] = [
-                    (305usize, 0u32, 0usize, 1usize),
-                    (306usize, 0u32, 1usize, 2usize),
-                    (307usize, 1476395013u32, 3usize, 3usize),
-                    (308usize, 133099247u32, 6usize, 3usize),
-                    (309usize, 1476395013u32, 9usize, 3usize),
-                    (310usize, 133099247u32, 12usize, 3usize),
-                    (311usize, 1476395013u32, 15usize, 3usize),
-                    (312usize, 133099247u32, 18usize, 3usize),
-                    (313usize, 1476395013u32, 21usize, 3usize),
-                    (314usize, 133099247u32, 24usize, 3usize),
-                    (315usize, 1476395013u32, 27usize, 3usize),
-                    (316usize, 133099247u32, 30usize, 3usize),
-                    (317usize, 1476395013u32, 33usize, 3usize),
-                    (318usize, 133099247u32, 36usize, 3usize),
-                    (319usize, 1476395013u32, 39usize, 3usize),
-                    (320usize, 133099247u32, 42usize, 3usize),
-                    (321usize, 1476395013u32, 45usize, 3usize),
-                    (322usize, 133099247u32, 48usize, 3usize),
-                    (323usize, 1476395013u32, 51usize, 3usize),
-                    (324usize, 133099247u32, 54usize, 3usize),
-                    (325usize, 1476395013u32, 57usize, 3usize),
-                    (326usize, 133099247u32, 60usize, 3usize),
-                    (327usize, 1476395013u32, 63usize, 3usize),
-                    (328usize, 133099247u32, 66usize, 3usize),
-                    (329usize, 1476395013u32, 69usize, 3usize),
-                    (330usize, 133099247u32, 72usize, 3usize),
-                    (331usize, 1476395013u32, 75usize, 3usize),
-                    (332usize, 133099247u32, 78usize, 3usize),
-                    (333usize, 1476395013u32, 81usize, 3usize),
-                    (334usize, 133099247u32, 84usize, 3usize),
-                    (335usize, 1476395013u32, 87usize, 3usize),
-                    (336usize, 133099247u32, 90usize, 3usize),
-                    (337usize, 1476395013u32, 93usize, 3usize),
-                    (338usize, 133099247u32, 96usize, 3usize),
+                    (285usize, 0u32, 0usize, 1usize),
+                    (286usize, 0u32, 1usize, 2usize),
+                    (287usize, 1476395013u32, 3usize, 3usize),
+                    (288usize, 133099247u32, 6usize, 3usize),
+                    (289usize, 1476395013u32, 9usize, 3usize),
+                    (290usize, 133099247u32, 12usize, 3usize),
+                    (291usize, 1476395013u32, 15usize, 3usize),
+                    (292usize, 133099247u32, 18usize, 3usize),
+                    (293usize, 1476395013u32, 21usize, 3usize),
+                    (294usize, 133099247u32, 24usize, 3usize),
+                    (295usize, 1476395013u32, 27usize, 3usize),
+                    (296usize, 133099247u32, 30usize, 3usize),
+                    (297usize, 1476395013u32, 33usize, 3usize),
+                    (298usize, 133099247u32, 36usize, 3usize),
+                    (299usize, 1476395013u32, 39usize, 3usize),
+                    (300usize, 133099247u32, 42usize, 3usize),
+                    (301usize, 1476395013u32, 45usize, 3usize),
+                    (302usize, 133099247u32, 48usize, 3usize),
+                    (303usize, 1476395013u32, 51usize, 3usize),
+                    (304usize, 133099247u32, 54usize, 3usize),
+                    (305usize, 1476395013u32, 57usize, 3usize),
+                    (306usize, 133099247u32, 60usize, 3usize),
+                    (307usize, 1476395013u32, 63usize, 3usize),
+                    (308usize, 133099247u32, 66usize, 3usize),
+                    (309usize, 1476395013u32, 69usize, 3usize),
+                    (310usize, 133099247u32, 72usize, 3usize),
+                    (311usize, 1476395013u32, 75usize, 3usize),
+                    (312usize, 133099247u32, 78usize, 3usize),
+                    (313usize, 1476395013u32, 81usize, 3usize),
+                    (314usize, 133099247u32, 84usize, 3usize),
+                    (315usize, 1476395013u32, 87usize, 3usize),
+                    (316usize, 133099247u32, 90usize, 3usize),
+                    (317usize, 1476395013u32, 93usize, 3usize),
+                    (318usize, 133099247u32, 96usize, 3usize),
                 ];
                 const SC_TERMS: [(u32, usize); 99usize] = [
                     (16777216u32, 8usize),
@@ -5165,100 +5181,100 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     (939524097u32, 93usize),
                     (1744830467u32, 94usize),
                     (268435454u32, 0usize),
-                    (133099247u32, 241usize),
+                    (133099247u32, 221usize),
                     (1744830467u32, 95usize),
                     (268435454u32, 1usize),
-                    (1744830467u32, 241usize),
+                    (1744830467u32, 221usize),
                     (1744830467u32, 94usize),
                     (268435454u32, 6usize),
-                    (133099247u32, 242usize),
+                    (133099247u32, 222usize),
                     (1744830467u32, 95usize),
                     (268435454u32, 7usize),
-                    (1744830467u32, 242usize),
+                    (1744830467u32, 222usize),
                     (1744830467u32, 94usize),
                     (268435454u32, 10usize),
-                    (133099247u32, 243usize),
+                    (133099247u32, 223usize),
                     (1744830467u32, 95usize),
                     (268435454u32, 11usize),
-                    (1744830467u32, 243usize),
+                    (1744830467u32, 223usize),
                     (1744830467u32, 94usize),
                     (268435454u32, 17usize),
-                    (133099247u32, 244usize),
+                    (133099247u32, 224usize),
                     (1744830467u32, 95usize),
                     (268435454u32, 18usize),
-                    (1744830467u32, 244usize),
+                    (1744830467u32, 224usize),
                     (1744830467u32, 94usize),
                     (268435454u32, 23usize),
-                    (133099247u32, 245usize),
+                    (133099247u32, 225usize),
                     (1744830467u32, 95usize),
                     (268435454u32, 24usize),
-                    (1744830467u32, 245usize),
+                    (1744830467u32, 225usize),
                     (1744830467u32, 94usize),
                     (268435454u32, 30usize),
-                    (133099247u32, 246usize),
+                    (133099247u32, 226usize),
                     (1744830467u32, 95usize),
                     (268435454u32, 31usize),
-                    (1744830467u32, 246usize),
+                    (1744830467u32, 226usize),
                     (1744830467u32, 94usize),
                     (268435454u32, 36usize),
-                    (133099247u32, 247usize),
+                    (133099247u32, 227usize),
                     (1744830467u32, 95usize),
                     (268435454u32, 37usize),
-                    (1744830467u32, 247usize),
+                    (1744830467u32, 227usize),
                     (1744830467u32, 94usize),
                     (268435454u32, 43usize),
-                    (133099247u32, 248usize),
+                    (133099247u32, 228usize),
                     (1744830467u32, 95usize),
                     (268435454u32, 44usize),
-                    (1744830467u32, 248usize),
+                    (1744830467u32, 228usize),
                     (1744830467u32, 94usize),
                     (268435454u32, 49usize),
-                    (133099247u32, 249usize),
+                    (133099247u32, 229usize),
                     (1744830467u32, 95usize),
                     (268435454u32, 50usize),
-                    (1744830467u32, 249usize),
+                    (1744830467u32, 229usize),
                     (1744830467u32, 94usize),
                     (268435454u32, 56usize),
-                    (133099247u32, 250usize),
+                    (133099247u32, 230usize),
                     (1744830467u32, 95usize),
                     (268435454u32, 57usize),
-                    (1744830467u32, 250usize),
+                    (1744830467u32, 230usize),
                     (1744830467u32, 94usize),
                     (268435454u32, 62usize),
-                    (133099247u32, 251usize),
+                    (133099247u32, 231usize),
                     (1744830467u32, 95usize),
                     (268435454u32, 63usize),
-                    (1744830467u32, 251usize),
+                    (1744830467u32, 231usize),
                     (1744830467u32, 94usize),
                     (268435454u32, 69usize),
-                    (133099247u32, 252usize),
+                    (133099247u32, 232usize),
                     (1744830467u32, 95usize),
                     (268435454u32, 70usize),
-                    (1744830467u32, 252usize),
+                    (1744830467u32, 232usize),
                     (1744830467u32, 94usize),
                     (268435454u32, 75usize),
-                    (133099247u32, 253usize),
+                    (133099247u32, 233usize),
                     (1744830467u32, 95usize),
                     (268435454u32, 76usize),
-                    (1744830467u32, 253usize),
+                    (1744830467u32, 233usize),
                     (1744830467u32, 94usize),
                     (268435454u32, 80usize),
-                    (133099247u32, 254usize),
+                    (133099247u32, 234usize),
                     (1744830467u32, 95usize),
                     (268435454u32, 81usize),
-                    (1744830467u32, 254usize),
+                    (1744830467u32, 234usize),
                     (1744830467u32, 94usize),
                     (268435454u32, 84usize),
-                    (133099247u32, 255usize),
+                    (133099247u32, 235usize),
                     (1744830467u32, 95usize),
                     (268435454u32, 85usize),
-                    (1744830467u32, 255usize),
+                    (1744830467u32, 235usize),
                     (1744830467u32, 94usize),
                     (268435454u32, 89usize),
-                    (133099247u32, 256usize),
+                    (133099247u32, 236usize),
                     (1744830467u32, 95usize),
                     (268435454u32, 90usize),
-                    (1744830467u32, 256usize),
+                    (1744830467u32, 236usize),
                 ];
                 let mut _sc = 0;
                 while _sc < 34usize {
@@ -5284,66 +5300,58 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                const VL_DESCS: [(usize, usize, usize); 57usize] = [
-                    (339usize, 0usize, 9usize),
-                    (341usize, 9usize, 9usize),
-                    (342usize, 18usize, 9usize),
-                    (343usize, 27usize, 9usize),
-                    (344usize, 36usize, 9usize),
-                    (345usize, 45usize, 9usize),
-                    (346usize, 54usize, 9usize),
-                    (347usize, 63usize, 9usize),
-                    (348usize, 72usize, 9usize),
-                    (349usize, 81usize, 9usize),
-                    (350usize, 90usize, 9usize),
-                    (351usize, 99usize, 9usize),
-                    (352usize, 108usize, 9usize),
-                    (353usize, 117usize, 9usize),
-                    (354usize, 126usize, 9usize),
-                    (355usize, 135usize, 9usize),
-                    (356usize, 144usize, 9usize),
-                    (357usize, 153usize, 9usize),
-                    (358usize, 162usize, 9usize),
-                    (359usize, 171usize, 9usize),
-                    (360usize, 180usize, 9usize),
-                    (361usize, 189usize, 9usize),
-                    (362usize, 198usize, 9usize),
-                    (363usize, 207usize, 9usize),
-                    (364usize, 216usize, 9usize),
-                    (365usize, 225usize, 9usize),
-                    (366usize, 234usize, 9usize),
-                    (367usize, 243usize, 9usize),
-                    (368usize, 252usize, 9usize),
-                    (369usize, 261usize, 9usize),
-                    (370usize, 270usize, 9usize),
-                    (371usize, 279usize, 9usize),
-                    (372usize, 288usize, 9usize),
-                    (373usize, 297usize, 9usize),
-                    (374usize, 306usize, 9usize),
-                    (375usize, 315usize, 9usize),
-                    (376usize, 324usize, 9usize),
-                    (377usize, 333usize, 9usize),
-                    (378usize, 342usize, 9usize),
-                    (379usize, 351usize, 9usize),
-                    (380usize, 360usize, 9usize),
-                    (381usize, 369usize, 9usize),
-                    (382usize, 378usize, 9usize),
-                    (383usize, 387usize, 9usize),
-                    (384usize, 396usize, 9usize),
-                    (385usize, 405usize, 9usize),
-                    (386usize, 414usize, 9usize),
-                    (387usize, 423usize, 9usize),
-                    (388usize, 432usize, 9usize),
-                    (389usize, 441usize, 9usize),
-                    (390usize, 450usize, 9usize),
-                    (391usize, 459usize, 9usize),
-                    (392usize, 468usize, 9usize),
-                    (393usize, 477usize, 9usize),
-                    (394usize, 486usize, 9usize),
-                    (395usize, 495usize, 9usize),
-                    (396usize, 504usize, 9usize),
+                const VL_DESCS: [(usize, usize, usize); 49usize] = [
+                    (319usize, 0usize, 9usize),
+                    (321usize, 9usize, 9usize),
+                    (322usize, 18usize, 9usize),
+                    (323usize, 27usize, 9usize),
+                    (324usize, 36usize, 9usize),
+                    (325usize, 45usize, 9usize),
+                    (326usize, 54usize, 9usize),
+                    (327usize, 63usize, 9usize),
+                    (328usize, 72usize, 9usize),
+                    (329usize, 81usize, 9usize),
+                    (330usize, 90usize, 9usize),
+                    (331usize, 99usize, 9usize),
+                    (332usize, 108usize, 9usize),
+                    (333usize, 117usize, 9usize),
+                    (334usize, 126usize, 9usize),
+                    (335usize, 135usize, 9usize),
+                    (336usize, 144usize, 9usize),
+                    (337usize, 153usize, 9usize),
+                    (338usize, 162usize, 9usize),
+                    (339usize, 171usize, 9usize),
+                    (340usize, 180usize, 9usize),
+                    (341usize, 189usize, 9usize),
+                    (342usize, 198usize, 9usize),
+                    (343usize, 207usize, 9usize),
+                    (344usize, 216usize, 9usize),
+                    (345usize, 225usize, 9usize),
+                    (346usize, 234usize, 9usize),
+                    (347usize, 243usize, 9usize),
+                    (348usize, 252usize, 9usize),
+                    (349usize, 261usize, 9usize),
+                    (350usize, 270usize, 9usize),
+                    (351usize, 279usize, 9usize),
+                    (352usize, 288usize, 9usize),
+                    (353usize, 297usize, 9usize),
+                    (354usize, 306usize, 9usize),
+                    (355usize, 315usize, 9usize),
+                    (356usize, 324usize, 9usize),
+                    (357usize, 333usize, 9usize),
+                    (358usize, 342usize, 9usize),
+                    (359usize, 351usize, 9usize),
+                    (360usize, 360usize, 9usize),
+                    (361usize, 369usize, 9usize),
+                    (362usize, 378usize, 9usize),
+                    (363usize, 387usize, 9usize),
+                    (364usize, 396usize, 9usize),
+                    (365usize, 405usize, 9usize),
+                    (366usize, 414usize, 9usize),
+                    (367usize, 423usize, 9usize),
+                    (368usize, 432usize, 9usize),
                 ];
-                const VL_COLS: [(u32, usize, usize); 513usize] = [
+                const VL_COLS: [(u32, usize, usize); 441usize] = [
                     (0u32, 0usize, 2usize),
                     (0u32, 2usize, 1usize),
                     (0u32, 3usize, 1usize),
@@ -5353,296 +5361,296 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     (0u32, 7usize, 1usize),
                     (0u32, 8usize, 1usize),
                     (2013265793u32, 9usize, 0usize),
-                    (0u32, 9usize, 4usize),
-                    (0u32, 13usize, 1usize),
-                    (0u32, 14usize, 1usize),
-                    (0u32, 15usize, 1usize),
-                    (0u32, 16usize, 0usize),
-                    (0u32, 16usize, 0usize),
-                    (0u32, 16usize, 0usize),
-                    (0u32, 16usize, 0usize),
-                    (268435326u32, 16usize, 0usize),
-                    (0u32, 16usize, 1usize),
-                    (0u32, 17usize, 1usize),
+                    (0u32, 9usize, 1usize),
+                    (0u32, 10usize, 1usize),
+                    (0u32, 11usize, 1usize),
+                    (0u32, 12usize, 0usize),
+                    (0u32, 12usize, 0usize),
+                    (0u32, 12usize, 0usize),
+                    (0u32, 12usize, 0usize),
+                    (0u32, 12usize, 0usize),
+                    (1073741816u32, 12usize, 0usize),
+                    (0u32, 12usize, 2usize),
+                    (0u32, 14usize, 4usize),
                     (0u32, 18usize, 1usize),
+                    (0u32, 19usize, 0usize),
+                    (0u32, 19usize, 0usize),
+                    (0u32, 19usize, 0usize),
+                    (0u32, 19usize, 0usize),
+                    (0u32, 19usize, 0usize),
+                    (1073741816u32, 19usize, 0usize),
                     (0u32, 19usize, 1usize),
-                    (0u32, 20usize, 0usize),
-                    (0u32, 20usize, 0usize),
-                    (0u32, 20usize, 0usize),
-                    (0u32, 20usize, 0usize),
-                    (268435326u32, 20usize, 0usize),
                     (0u32, 20usize, 1usize),
                     (0u32, 21usize, 1usize),
-                    (0u32, 22usize, 1usize),
-                    (0u32, 23usize, 1usize),
-                    (0u32, 24usize, 0usize),
-                    (0u32, 24usize, 0usize),
-                    (0u32, 24usize, 0usize),
-                    (0u32, 24usize, 0usize),
-                    (268435326u32, 24usize, 0usize),
-                    (0u32, 24usize, 1usize),
-                    (0u32, 25usize, 4usize),
-                    (0u32, 29usize, 4usize),
-                    (0u32, 33usize, 1usize),
-                    (0u32, 34usize, 0usize),
-                    (0u32, 34usize, 0usize),
-                    (0u32, 34usize, 0usize),
-                    (0u32, 34usize, 0usize),
-                    (268435326u32, 34usize, 0usize),
+                    (0u32, 22usize, 0usize),
+                    (0u32, 22usize, 0usize),
+                    (0u32, 22usize, 0usize),
+                    (0u32, 22usize, 0usize),
+                    (0u32, 22usize, 0usize),
+                    (1073741816u32, 22usize, 0usize),
+                    (0u32, 22usize, 2usize),
+                    (0u32, 24usize, 4usize),
+                    (0u32, 28usize, 1usize),
+                    (0u32, 29usize, 0usize),
+                    (0u32, 29usize, 0usize),
+                    (0u32, 29usize, 0usize),
+                    (0u32, 29usize, 0usize),
+                    (0u32, 29usize, 0usize),
+                    (1073741816u32, 29usize, 0usize),
+                    (0u32, 29usize, 1usize),
+                    (0u32, 30usize, 1usize),
+                    (0u32, 31usize, 1usize),
+                    (0u32, 32usize, 0usize),
+                    (0u32, 32usize, 0usize),
+                    (0u32, 32usize, 0usize),
+                    (0u32, 32usize, 0usize),
+                    (0u32, 32usize, 0usize),
+                    (1073741816u32, 32usize, 0usize),
+                    (0u32, 32usize, 2usize),
                     (0u32, 34usize, 4usize),
                     (0u32, 38usize, 1usize),
+                    (0u32, 39usize, 0usize),
+                    (0u32, 39usize, 0usize),
+                    (0u32, 39usize, 0usize),
+                    (0u32, 39usize, 0usize),
+                    (0u32, 39usize, 0usize),
+                    (1073741816u32, 39usize, 0usize),
                     (0u32, 39usize, 1usize),
                     (0u32, 40usize, 1usize),
-                    (0u32, 41usize, 0usize),
-                    (0u32, 41usize, 0usize),
-                    (0u32, 41usize, 0usize),
-                    (0u32, 41usize, 0usize),
-                    (268435326u32, 41usize, 0usize),
                     (0u32, 41usize, 1usize),
-                    (0u32, 42usize, 1usize),
-                    (0u32, 43usize, 1usize),
-                    (0u32, 44usize, 1usize),
-                    (0u32, 45usize, 0usize),
-                    (0u32, 45usize, 0usize),
-                    (0u32, 45usize, 0usize),
-                    (0u32, 45usize, 0usize),
-                    (268435326u32, 45usize, 0usize),
-                    (0u32, 45usize, 1usize),
-                    (0u32, 46usize, 1usize),
-                    (0u32, 47usize, 1usize),
+                    (0u32, 42usize, 0usize),
+                    (0u32, 42usize, 0usize),
+                    (0u32, 42usize, 0usize),
+                    (0u32, 42usize, 0usize),
+                    (0u32, 42usize, 0usize),
+                    (1073741816u32, 42usize, 0usize),
+                    (0u32, 42usize, 2usize),
+                    (0u32, 44usize, 4usize),
                     (0u32, 48usize, 1usize),
                     (0u32, 49usize, 0usize),
                     (0u32, 49usize, 0usize),
                     (0u32, 49usize, 0usize),
                     (0u32, 49usize, 0usize),
-                    (268435326u32, 49usize, 0usize),
+                    (0u32, 49usize, 0usize),
+                    (1073741816u32, 49usize, 0usize),
                     (0u32, 49usize, 1usize),
-                    (0u32, 50usize, 4usize),
-                    (0u32, 54usize, 4usize),
+                    (0u32, 50usize, 1usize),
+                    (0u32, 51usize, 1usize),
+                    (0u32, 52usize, 1usize),
+                    (0u32, 53usize, 1usize),
+                    (0u32, 54usize, 1usize),
+                    (0u32, 55usize, 1usize),
+                    (0u32, 56usize, 1usize),
+                    (1744830339u32, 57usize, 0usize),
+                    (0u32, 57usize, 1usize),
                     (0u32, 58usize, 1usize),
-                    (0u32, 59usize, 0usize),
-                    (0u32, 59usize, 0usize),
-                    (0u32, 59usize, 0usize),
-                    (0u32, 59usize, 0usize),
-                    (268435326u32, 59usize, 0usize),
                     (0u32, 59usize, 4usize),
                     (0u32, 63usize, 1usize),
                     (0u32, 64usize, 1usize),
-                    (0u32, 65usize, 1usize),
-                    (0u32, 66usize, 0usize),
-                    (0u32, 66usize, 0usize),
-                    (0u32, 66usize, 0usize),
-                    (0u32, 66usize, 0usize),
-                    (268435326u32, 66usize, 0usize),
-                    (0u32, 66usize, 1usize),
+                    (0u32, 65usize, 0usize),
+                    (0u32, 65usize, 0usize),
+                    (0u32, 65usize, 0usize),
+                    (1476394885u32, 65usize, 0usize),
+                    (0u32, 65usize, 2usize),
                     (0u32, 67usize, 1usize),
-                    (0u32, 68usize, 1usize),
-                    (0u32, 69usize, 1usize),
-                    (0u32, 70usize, 0usize),
-                    (0u32, 70usize, 0usize),
-                    (0u32, 70usize, 0usize),
-                    (0u32, 70usize, 0usize),
-                    (268435326u32, 70usize, 0usize),
-                    (0u32, 70usize, 1usize),
-                    (0u32, 71usize, 1usize),
+                    (0u32, 68usize, 4usize),
                     (0u32, 72usize, 1usize),
                     (0u32, 73usize, 1usize),
                     (0u32, 74usize, 0usize),
                     (0u32, 74usize, 0usize),
                     (0u32, 74usize, 0usize),
-                    (0u32, 74usize, 0usize),
-                    (268435326u32, 74usize, 0usize),
+                    (1476394885u32, 74usize, 0usize),
                     (0u32, 74usize, 1usize),
-                    (0u32, 75usize, 4usize),
-                    (0u32, 79usize, 4usize),
-                    (0u32, 83usize, 1usize),
-                    (0u32, 84usize, 0usize),
-                    (0u32, 84usize, 0usize),
-                    (0u32, 84usize, 0usize),
-                    (0u32, 84usize, 0usize),
-                    (268435326u32, 84usize, 0usize),
-                    (0u32, 84usize, 4usize),
-                    (0u32, 88usize, 1usize),
+                    (0u32, 75usize, 1usize),
+                    (0u32, 76usize, 4usize),
+                    (0u32, 80usize, 1usize),
+                    (0u32, 81usize, 1usize),
+                    (0u32, 82usize, 0usize),
+                    (0u32, 82usize, 0usize),
+                    (0u32, 82usize, 0usize),
+                    (1476394885u32, 82usize, 0usize),
+                    (0u32, 82usize, 2usize),
+                    (0u32, 84usize, 1usize),
+                    (0u32, 85usize, 4usize),
                     (0u32, 89usize, 1usize),
                     (0u32, 90usize, 1usize),
                     (0u32, 91usize, 0usize),
                     (0u32, 91usize, 0usize),
                     (0u32, 91usize, 0usize),
-                    (0u32, 91usize, 0usize),
-                    (268435326u32, 91usize, 0usize),
+                    (1476394885u32, 91usize, 0usize),
                     (0u32, 91usize, 1usize),
                     (0u32, 92usize, 1usize),
-                    (0u32, 93usize, 1usize),
-                    (0u32, 94usize, 1usize),
-                    (0u32, 95usize, 0usize),
-                    (0u32, 95usize, 0usize),
-                    (0u32, 95usize, 0usize),
-                    (0u32, 95usize, 0usize),
-                    (268435326u32, 95usize, 0usize),
-                    (0u32, 95usize, 1usize),
-                    (0u32, 96usize, 1usize),
+                    (0u32, 93usize, 4usize),
                     (0u32, 97usize, 1usize),
                     (0u32, 98usize, 1usize),
                     (0u32, 99usize, 0usize),
                     (0u32, 99usize, 0usize),
                     (0u32, 99usize, 0usize),
-                    (0u32, 99usize, 0usize),
-                    (268435326u32, 99usize, 0usize),
-                    (0u32, 99usize, 1usize),
-                    (0u32, 100usize, 4usize),
-                    (0u32, 104usize, 4usize),
+                    (1476394885u32, 99usize, 0usize),
+                    (0u32, 99usize, 2usize),
+                    (0u32, 101usize, 1usize),
+                    (0u32, 102usize, 4usize),
+                    (0u32, 106usize, 1usize),
+                    (0u32, 107usize, 1usize),
+                    (0u32, 108usize, 0usize),
+                    (0u32, 108usize, 0usize),
+                    (0u32, 108usize, 0usize),
+                    (1476394885u32, 108usize, 0usize),
                     (0u32, 108usize, 1usize),
-                    (0u32, 109usize, 0usize),
-                    (0u32, 109usize, 0usize),
-                    (0u32, 109usize, 0usize),
-                    (0u32, 109usize, 0usize),
-                    (268435326u32, 109usize, 0usize),
                     (0u32, 109usize, 1usize),
-                    (0u32, 110usize, 1usize),
-                    (0u32, 111usize, 1usize),
-                    (0u32, 112usize, 1usize),
-                    (0u32, 113usize, 1usize),
+                    (0u32, 110usize, 4usize),
                     (0u32, 114usize, 1usize),
                     (0u32, 115usize, 1usize),
-                    (0u32, 116usize, 1usize),
-                    (1744830339u32, 117usize, 0usize),
-                    (0u32, 117usize, 1usize),
-                    (0u32, 118usize, 2usize),
-                    (0u32, 120usize, 4usize),
+                    (0u32, 116usize, 0usize),
+                    (0u32, 116usize, 0usize),
+                    (0u32, 116usize, 0usize),
+                    (1476394885u32, 116usize, 0usize),
+                    (0u32, 116usize, 2usize),
+                    (0u32, 118usize, 1usize),
+                    (0u32, 119usize, 4usize),
+                    (0u32, 123usize, 1usize),
                     (0u32, 124usize, 1usize),
+                    (0u32, 125usize, 0usize),
+                    (0u32, 125usize, 0usize),
+                    (0u32, 125usize, 0usize),
+                    (1476394885u32, 125usize, 0usize),
                     (0u32, 125usize, 1usize),
-                    (0u32, 126usize, 0usize),
-                    (0u32, 126usize, 0usize),
-                    (0u32, 126usize, 0usize),
-                    (1476394885u32, 126usize, 0usize),
-                    (0u32, 126usize, 2usize),
-                    (0u32, 128usize, 2usize),
-                    (0u32, 130usize, 4usize),
-                    (0u32, 134usize, 1usize),
-                    (0u32, 135usize, 1usize),
-                    (0u32, 136usize, 0usize),
-                    (0u32, 136usize, 0usize),
-                    (0u32, 136usize, 0usize),
-                    (1476394885u32, 136usize, 0usize),
+                    (0u32, 126usize, 1usize),
+                    (0u32, 127usize, 5usize),
+                    (0u32, 132usize, 1usize),
+                    (0u32, 133usize, 1usize),
+                    (0u32, 134usize, 0usize),
+                    (0u32, 134usize, 0usize),
+                    (0u32, 134usize, 0usize),
+                    (1476394885u32, 134usize, 0usize),
+                    (0u32, 134usize, 2usize),
                     (0u32, 136usize, 1usize),
-                    (0u32, 137usize, 2usize),
-                    (0u32, 139usize, 4usize),
+                    (0u32, 137usize, 5usize),
+                    (0u32, 142usize, 1usize),
                     (0u32, 143usize, 1usize),
+                    (0u32, 144usize, 0usize),
+                    (0u32, 144usize, 0usize),
+                    (0u32, 144usize, 0usize),
+                    (1476394885u32, 144usize, 0usize),
                     (0u32, 144usize, 1usize),
-                    (0u32, 145usize, 0usize),
-                    (0u32, 145usize, 0usize),
-                    (0u32, 145usize, 0usize),
-                    (1476394885u32, 145usize, 0usize),
-                    (0u32, 145usize, 2usize),
-                    (0u32, 147usize, 2usize),
-                    (0u32, 149usize, 4usize),
-                    (0u32, 153usize, 1usize),
-                    (0u32, 154usize, 1usize),
-                    (0u32, 155usize, 0usize),
-                    (0u32, 155usize, 0usize),
-                    (0u32, 155usize, 0usize),
-                    (1476394885u32, 155usize, 0usize),
+                    (0u32, 145usize, 1usize),
+                    (0u32, 146usize, 5usize),
+                    (0u32, 151usize, 1usize),
+                    (0u32, 152usize, 1usize),
+                    (0u32, 153usize, 0usize),
+                    (0u32, 153usize, 0usize),
+                    (0u32, 153usize, 0usize),
+                    (1476394885u32, 153usize, 0usize),
+                    (0u32, 153usize, 2usize),
                     (0u32, 155usize, 1usize),
-                    (0u32, 156usize, 2usize),
-                    (0u32, 158usize, 4usize),
+                    (0u32, 156usize, 5usize),
+                    (0u32, 161usize, 1usize),
                     (0u32, 162usize, 1usize),
+                    (0u32, 163usize, 0usize),
+                    (0u32, 163usize, 0usize),
+                    (0u32, 163usize, 0usize),
+                    (1476394885u32, 163usize, 0usize),
                     (0u32, 163usize, 1usize),
-                    (0u32, 164usize, 0usize),
-                    (0u32, 164usize, 0usize),
-                    (0u32, 164usize, 0usize),
-                    (1476394885u32, 164usize, 0usize),
-                    (0u32, 164usize, 2usize),
-                    (0u32, 166usize, 2usize),
-                    (0u32, 168usize, 4usize),
-                    (0u32, 172usize, 1usize),
-                    (0u32, 173usize, 1usize),
-                    (0u32, 174usize, 0usize),
-                    (0u32, 174usize, 0usize),
-                    (0u32, 174usize, 0usize),
-                    (1476394885u32, 174usize, 0usize),
+                    (0u32, 164usize, 1usize),
+                    (0u32, 165usize, 5usize),
+                    (0u32, 170usize, 1usize),
+                    (0u32, 171usize, 1usize),
+                    (0u32, 172usize, 0usize),
+                    (0u32, 172usize, 0usize),
+                    (0u32, 172usize, 0usize),
+                    (1476394885u32, 172usize, 0usize),
+                    (0u32, 172usize, 2usize),
                     (0u32, 174usize, 1usize),
-                    (0u32, 175usize, 2usize),
-                    (0u32, 177usize, 4usize),
+                    (0u32, 175usize, 5usize),
+                    (0u32, 180usize, 1usize),
                     (0u32, 181usize, 1usize),
+                    (0u32, 182usize, 0usize),
+                    (0u32, 182usize, 0usize),
+                    (0u32, 182usize, 0usize),
+                    (1476394885u32, 182usize, 0usize),
                     (0u32, 182usize, 1usize),
-                    (0u32, 183usize, 0usize),
-                    (0u32, 183usize, 0usize),
-                    (0u32, 183usize, 0usize),
-                    (1476394885u32, 183usize, 0usize),
-                    (0u32, 183usize, 2usize),
-                    (0u32, 185usize, 2usize),
-                    (0u32, 187usize, 4usize),
-                    (0u32, 191usize, 1usize),
-                    (0u32, 192usize, 1usize),
-                    (0u32, 193usize, 0usize),
-                    (0u32, 193usize, 0usize),
-                    (0u32, 193usize, 0usize),
-                    (1476394885u32, 193usize, 0usize),
+                    (0u32, 183usize, 1usize),
+                    (0u32, 184usize, 5usize),
+                    (0u32, 189usize, 1usize),
+                    (0u32, 190usize, 1usize),
+                    (0u32, 191usize, 0usize),
+                    (0u32, 191usize, 0usize),
+                    (0u32, 191usize, 0usize),
+                    (1476394885u32, 191usize, 0usize),
+                    (0u32, 191usize, 2usize),
                     (0u32, 193usize, 1usize),
-                    (0u32, 194usize, 2usize),
-                    (0u32, 196usize, 5usize),
+                    (0u32, 194usize, 5usize),
+                    (0u32, 199usize, 1usize),
+                    (0u32, 200usize, 1usize),
+                    (0u32, 201usize, 0usize),
+                    (0u32, 201usize, 0usize),
+                    (0u32, 201usize, 0usize),
+                    (1476394885u32, 201usize, 0usize),
                     (0u32, 201usize, 1usize),
                     (0u32, 202usize, 1usize),
-                    (0u32, 203usize, 0usize),
-                    (0u32, 203usize, 0usize),
-                    (0u32, 203usize, 0usize),
-                    (1476394885u32, 203usize, 0usize),
-                    (0u32, 203usize, 2usize),
-                    (0u32, 205usize, 2usize),
-                    (0u32, 207usize, 5usize),
+                    (0u32, 203usize, 5usize),
+                    (0u32, 208usize, 1usize),
+                    (0u32, 209usize, 1usize),
+                    (0u32, 210usize, 0usize),
+                    (0u32, 210usize, 0usize),
+                    (0u32, 210usize, 0usize),
+                    (1476394885u32, 210usize, 0usize),
+                    (0u32, 210usize, 2usize),
                     (0u32, 212usize, 1usize),
-                    (0u32, 213usize, 1usize),
-                    (0u32, 214usize, 0usize),
-                    (0u32, 214usize, 0usize),
-                    (0u32, 214usize, 0usize),
-                    (1476394885u32, 214usize, 0usize),
-                    (0u32, 214usize, 1usize),
-                    (0u32, 215usize, 2usize),
-                    (0u32, 217usize, 5usize),
-                    (0u32, 222usize, 1usize),
-                    (0u32, 223usize, 1usize),
-                    (0u32, 224usize, 0usize),
-                    (0u32, 224usize, 0usize),
-                    (0u32, 224usize, 0usize),
-                    (1476394885u32, 224usize, 0usize),
-                    (0u32, 224usize, 2usize),
-                    (0u32, 226usize, 2usize),
-                    (0u32, 228usize, 5usize),
-                    (0u32, 233usize, 1usize),
-                    (0u32, 234usize, 1usize),
-                    (0u32, 235usize, 0usize),
-                    (0u32, 235usize, 0usize),
-                    (0u32, 235usize, 0usize),
-                    (1476394885u32, 235usize, 0usize),
-                    (0u32, 235usize, 1usize),
-                    (0u32, 236usize, 2usize),
-                    (0u32, 238usize, 5usize),
-                    (0u32, 243usize, 1usize),
-                    (0u32, 244usize, 1usize),
-                    (0u32, 245usize, 0usize),
-                    (0u32, 245usize, 0usize),
-                    (0u32, 245usize, 0usize),
-                    (1476394885u32, 245usize, 0usize),
-                    (0u32, 245usize, 2usize),
-                    (0u32, 247usize, 2usize),
-                    (0u32, 249usize, 5usize),
-                    (0u32, 254usize, 1usize),
-                    (0u32, 255usize, 1usize),
-                    (0u32, 256usize, 0usize),
-                    (0u32, 256usize, 0usize),
-                    (0u32, 256usize, 0usize),
-                    (1476394885u32, 256usize, 0usize),
+                    (0u32, 213usize, 5usize),
+                    (0u32, 218usize, 1usize),
+                    (0u32, 219usize, 1usize),
+                    (0u32, 220usize, 0usize),
+                    (0u32, 220usize, 0usize),
+                    (0u32, 220usize, 0usize),
+                    (1476394885u32, 220usize, 0usize),
+                    (0u32, 220usize, 1usize),
+                    (0u32, 221usize, 1usize),
+                    (0u32, 222usize, 5usize),
+                    (0u32, 227usize, 1usize),
+                    (0u32, 228usize, 1usize),
+                    (0u32, 229usize, 0usize),
+                    (0u32, 229usize, 0usize),
+                    (0u32, 229usize, 0usize),
+                    (1476394885u32, 229usize, 0usize),
+                    (0u32, 229usize, 2usize),
+                    (0u32, 231usize, 1usize),
+                    (0u32, 232usize, 5usize),
+                    (0u32, 237usize, 1usize),
+                    (0u32, 238usize, 1usize),
+                    (0u32, 239usize, 0usize),
+                    (0u32, 239usize, 0usize),
+                    (0u32, 239usize, 0usize),
+                    (1476394885u32, 239usize, 0usize),
+                    (0u32, 239usize, 1usize),
+                    (0u32, 240usize, 1usize),
+                    (0u32, 241usize, 5usize),
+                    (0u32, 246usize, 1usize),
+                    (0u32, 247usize, 1usize),
+                    (0u32, 248usize, 0usize),
+                    (0u32, 248usize, 0usize),
+                    (0u32, 248usize, 0usize),
+                    (1476394885u32, 248usize, 0usize),
+                    (0u32, 248usize, 2usize),
+                    (0u32, 250usize, 1usize),
+                    (0u32, 251usize, 5usize),
                     (0u32, 256usize, 1usize),
-                    (0u32, 257usize, 2usize),
-                    (0u32, 259usize, 5usize),
-                    (0u32, 264usize, 1usize),
+                    (0u32, 257usize, 1usize),
+                    (0u32, 258usize, 0usize),
+                    (0u32, 258usize, 0usize),
+                    (0u32, 258usize, 0usize),
+                    (1476394885u32, 258usize, 0usize),
+                    (0u32, 258usize, 1usize),
+                    (0u32, 259usize, 1usize),
+                    (0u32, 260usize, 5usize),
                     (0u32, 265usize, 1usize),
-                    (0u32, 266usize, 0usize),
-                    (0u32, 266usize, 0usize),
-                    (0u32, 266usize, 0usize),
-                    (1476394885u32, 266usize, 0usize),
-                    (0u32, 266usize, 2usize),
-                    (0u32, 268usize, 2usize),
+                    (0u32, 266usize, 1usize),
+                    (0u32, 267usize, 0usize),
+                    (0u32, 267usize, 0usize),
+                    (0u32, 267usize, 0usize),
+                    (1476394885u32, 267usize, 0usize),
+                    (0u32, 267usize, 2usize),
+                    (0u32, 269usize, 1usize),
                     (0u32, 270usize, 5usize),
                     (0u32, 275usize, 1usize),
                     (0u32, 276usize, 1usize),
@@ -5651,79 +5659,97 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     (0u32, 277usize, 0usize),
                     (1476394885u32, 277usize, 0usize),
                     (0u32, 277usize, 1usize),
-                    (0u32, 278usize, 2usize),
-                    (0u32, 280usize, 5usize),
-                    (0u32, 285usize, 1usize),
-                    (0u32, 286usize, 1usize),
-                    (0u32, 287usize, 0usize),
-                    (0u32, 287usize, 0usize),
-                    (0u32, 287usize, 0usize),
-                    (1476394885u32, 287usize, 0usize),
-                    (0u32, 287usize, 2usize),
-                    (0u32, 289usize, 2usize),
-                    (0u32, 291usize, 5usize),
-                    (0u32, 296usize, 1usize),
-                    (0u32, 297usize, 1usize),
-                    (0u32, 298usize, 0usize),
-                    (0u32, 298usize, 0usize),
-                    (0u32, 298usize, 0usize),
-                    (1476394885u32, 298usize, 0usize),
-                    (0u32, 298usize, 1usize),
-                    (0u32, 299usize, 2usize),
-                    (0u32, 301usize, 5usize),
-                    (0u32, 306usize, 1usize),
-                    (0u32, 307usize, 1usize),
-                    (0u32, 308usize, 0usize),
-                    (0u32, 308usize, 0usize),
-                    (0u32, 308usize, 0usize),
-                    (1476394885u32, 308usize, 0usize),
-                    (0u32, 308usize, 2usize),
-                    (0u32, 310usize, 2usize),
-                    (0u32, 312usize, 5usize),
+                    (0u32, 278usize, 1usize),
+                    (0u32, 279usize, 4usize),
+                    (0u32, 283usize, 1usize),
+                    (0u32, 284usize, 1usize),
+                    (0u32, 285usize, 0usize),
+                    (0u32, 285usize, 0usize),
+                    (0u32, 285usize, 0usize),
+                    (1476394885u32, 285usize, 0usize),
+                    (0u32, 285usize, 2usize),
+                    (0u32, 287usize, 1usize),
+                    (0u32, 288usize, 4usize),
+                    (0u32, 292usize, 1usize),
+                    (0u32, 293usize, 1usize),
+                    (0u32, 294usize, 0usize),
+                    (0u32, 294usize, 0usize),
+                    (0u32, 294usize, 0usize),
+                    (1476394885u32, 294usize, 0usize),
+                    (0u32, 294usize, 1usize),
+                    (0u32, 295usize, 1usize),
+                    (0u32, 296usize, 4usize),
+                    (0u32, 300usize, 1usize),
+                    (0u32, 301usize, 1usize),
+                    (0u32, 302usize, 0usize),
+                    (0u32, 302usize, 0usize),
+                    (0u32, 302usize, 0usize),
+                    (1476394885u32, 302usize, 0usize),
+                    (0u32, 302usize, 2usize),
+                    (0u32, 304usize, 1usize),
+                    (0u32, 305usize, 4usize),
+                    (0u32, 309usize, 1usize),
+                    (0u32, 310usize, 1usize),
+                    (0u32, 311usize, 0usize),
+                    (0u32, 311usize, 0usize),
+                    (0u32, 311usize, 0usize),
+                    (1476394885u32, 311usize, 0usize),
+                    (0u32, 311usize, 1usize),
+                    (0u32, 312usize, 1usize),
+                    (0u32, 313usize, 4usize),
                     (0u32, 317usize, 1usize),
                     (0u32, 318usize, 1usize),
                     (0u32, 319usize, 0usize),
                     (0u32, 319usize, 0usize),
                     (0u32, 319usize, 0usize),
                     (1476394885u32, 319usize, 0usize),
-                    (0u32, 319usize, 1usize),
-                    (0u32, 320usize, 2usize),
-                    (0u32, 322usize, 5usize),
+                    (0u32, 319usize, 2usize),
+                    (0u32, 321usize, 1usize),
+                    (0u32, 322usize, 4usize),
+                    (0u32, 326usize, 1usize),
                     (0u32, 327usize, 1usize),
+                    (0u32, 328usize, 0usize),
+                    (0u32, 328usize, 0usize),
+                    (0u32, 328usize, 0usize),
+                    (1476394885u32, 328usize, 0usize),
                     (0u32, 328usize, 1usize),
-                    (0u32, 329usize, 0usize),
-                    (0u32, 329usize, 0usize),
-                    (0u32, 329usize, 0usize),
-                    (1476394885u32, 329usize, 0usize),
-                    (0u32, 329usize, 2usize),
-                    (0u32, 331usize, 2usize),
-                    (0u32, 333usize, 5usize),
+                    (0u32, 329usize, 1usize),
+                    (0u32, 330usize, 4usize),
+                    (0u32, 334usize, 1usize),
+                    (0u32, 335usize, 1usize),
+                    (0u32, 336usize, 0usize),
+                    (0u32, 336usize, 0usize),
+                    (0u32, 336usize, 0usize),
+                    (1476394885u32, 336usize, 0usize),
+                    (0u32, 336usize, 2usize),
                     (0u32, 338usize, 1usize),
-                    (0u32, 339usize, 1usize),
-                    (0u32, 340usize, 0usize),
-                    (0u32, 340usize, 0usize),
-                    (0u32, 340usize, 0usize),
-                    (1476394885u32, 340usize, 0usize),
-                    (0u32, 340usize, 1usize),
-                    (0u32, 341usize, 2usize),
-                    (0u32, 343usize, 5usize),
-                    (0u32, 348usize, 1usize),
-                    (0u32, 349usize, 1usize),
-                    (0u32, 350usize, 0usize),
-                    (0u32, 350usize, 0usize),
-                    (0u32, 350usize, 0usize),
-                    (1476394885u32, 350usize, 0usize),
-                    (0u32, 350usize, 2usize),
-                    (0u32, 352usize, 2usize),
-                    (0u32, 354usize, 5usize),
-                    (0u32, 359usize, 1usize),
+                    (0u32, 339usize, 4usize),
+                    (0u32, 343usize, 1usize),
+                    (0u32, 344usize, 1usize),
+                    (0u32, 345usize, 0usize),
+                    (0u32, 345usize, 0usize),
+                    (0u32, 345usize, 0usize),
+                    (1476394885u32, 345usize, 0usize),
+                    (0u32, 345usize, 1usize),
+                    (0u32, 346usize, 1usize),
+                    (0u32, 347usize, 4usize),
+                    (0u32, 351usize, 1usize),
+                    (0u32, 352usize, 1usize),
+                    (0u32, 353usize, 0usize),
+                    (0u32, 353usize, 0usize),
+                    (0u32, 353usize, 0usize),
+                    (1476394885u32, 353usize, 0usize),
+                    (0u32, 353usize, 2usize),
+                    (0u32, 355usize, 1usize),
+                    (0u32, 356usize, 4usize),
                     (0u32, 360usize, 1usize),
-                    (0u32, 361usize, 0usize),
-                    (0u32, 361usize, 0usize),
-                    (0u32, 361usize, 0usize),
-                    (1476394885u32, 361usize, 0usize),
                     (0u32, 361usize, 1usize),
-                    (0u32, 362usize, 2usize),
+                    (0u32, 362usize, 0usize),
+                    (0u32, 362usize, 0usize),
+                    (0u32, 362usize, 0usize),
+                    (1476394885u32, 362usize, 0usize),
+                    (0u32, 362usize, 1usize),
+                    (0u32, 363usize, 1usize),
                     (0u32, 364usize, 4usize),
                     (0u32, 368usize, 1usize),
                     (0u32, 369usize, 1usize),
@@ -5732,133 +5758,43 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     (0u32, 370usize, 0usize),
                     (1476394885u32, 370usize, 0usize),
                     (0u32, 370usize, 2usize),
-                    (0u32, 372usize, 2usize),
-                    (0u32, 374usize, 4usize),
+                    (0u32, 372usize, 1usize),
+                    (0u32, 373usize, 4usize),
+                    (0u32, 377usize, 1usize),
                     (0u32, 378usize, 1usize),
+                    (0u32, 379usize, 0usize),
+                    (0u32, 379usize, 0usize),
+                    (0u32, 379usize, 0usize),
+                    (1476394885u32, 379usize, 0usize),
                     (0u32, 379usize, 1usize),
-                    (0u32, 380usize, 0usize),
-                    (0u32, 380usize, 0usize),
-                    (0u32, 380usize, 0usize),
-                    (1476394885u32, 380usize, 0usize),
                     (0u32, 380usize, 1usize),
-                    (0u32, 381usize, 2usize),
-                    (0u32, 383usize, 4usize),
-                    (0u32, 387usize, 1usize),
-                    (0u32, 388usize, 1usize),
-                    (0u32, 389usize, 0usize),
-                    (0u32, 389usize, 0usize),
-                    (0u32, 389usize, 0usize),
-                    (1476394885u32, 389usize, 0usize),
-                    (0u32, 389usize, 2usize),
-                    (0u32, 391usize, 2usize),
-                    (0u32, 393usize, 4usize),
+                    (0u32, 381usize, 4usize),
+                    (0u32, 385usize, 1usize),
+                    (0u32, 386usize, 1usize),
+                    (0u32, 387usize, 0usize),
+                    (0u32, 387usize, 0usize),
+                    (0u32, 387usize, 0usize),
+                    (1476394885u32, 387usize, 0usize),
+                    (0u32, 387usize, 2usize),
+                    (0u32, 389usize, 1usize),
+                    (0u32, 390usize, 4usize),
+                    (0u32, 394usize, 1usize),
+                    (0u32, 395usize, 1usize),
+                    (0u32, 396usize, 0usize),
+                    (0u32, 396usize, 0usize),
+                    (0u32, 396usize, 0usize),
+                    (1476394885u32, 396usize, 0usize),
+                    (0u32, 396usize, 1usize),
                     (0u32, 397usize, 1usize),
-                    (0u32, 398usize, 1usize),
-                    (0u32, 399usize, 0usize),
-                    (0u32, 399usize, 0usize),
-                    (0u32, 399usize, 0usize),
-                    (1476394885u32, 399usize, 0usize),
-                    (0u32, 399usize, 1usize),
-                    (0u32, 400usize, 2usize),
-                    (0u32, 402usize, 4usize),
-                    (0u32, 406usize, 1usize),
-                    (0u32, 407usize, 1usize),
-                    (0u32, 408usize, 0usize),
-                    (0u32, 408usize, 0usize),
-                    (0u32, 408usize, 0usize),
-                    (1476394885u32, 408usize, 0usize),
-                    (0u32, 408usize, 2usize),
-                    (0u32, 410usize, 2usize),
-                    (0u32, 412usize, 4usize),
-                    (0u32, 416usize, 1usize),
-                    (0u32, 417usize, 1usize),
-                    (0u32, 418usize, 0usize),
-                    (0u32, 418usize, 0usize),
-                    (0u32, 418usize, 0usize),
-                    (1476394885u32, 418usize, 0usize),
-                    (0u32, 418usize, 1usize),
-                    (0u32, 419usize, 2usize),
-                    (0u32, 421usize, 4usize),
-                    (0u32, 425usize, 1usize),
-                    (0u32, 426usize, 1usize),
-                    (0u32, 427usize, 0usize),
-                    (0u32, 427usize, 0usize),
-                    (0u32, 427usize, 0usize),
-                    (1476394885u32, 427usize, 0usize),
-                    (0u32, 427usize, 2usize),
-                    (0u32, 429usize, 2usize),
-                    (0u32, 431usize, 4usize),
-                    (0u32, 435usize, 1usize),
-                    (0u32, 436usize, 1usize),
-                    (0u32, 437usize, 0usize),
-                    (0u32, 437usize, 0usize),
-                    (0u32, 437usize, 0usize),
-                    (1476394885u32, 437usize, 0usize),
-                    (0u32, 437usize, 1usize),
-                    (0u32, 438usize, 2usize),
-                    (0u32, 440usize, 4usize),
-                    (0u32, 444usize, 1usize),
-                    (0u32, 445usize, 1usize),
-                    (0u32, 446usize, 0usize),
-                    (0u32, 446usize, 0usize),
-                    (0u32, 446usize, 0usize),
-                    (1476394885u32, 446usize, 0usize),
-                    (0u32, 446usize, 2usize),
-                    (0u32, 448usize, 2usize),
-                    (0u32, 450usize, 4usize),
-                    (0u32, 454usize, 1usize),
-                    (0u32, 455usize, 1usize),
-                    (0u32, 456usize, 0usize),
-                    (0u32, 456usize, 0usize),
-                    (0u32, 456usize, 0usize),
-                    (1476394885u32, 456usize, 0usize),
-                    (0u32, 456usize, 1usize),
-                    (0u32, 457usize, 2usize),
-                    (0u32, 459usize, 4usize),
-                    (0u32, 463usize, 1usize),
-                    (0u32, 464usize, 1usize),
-                    (0u32, 465usize, 0usize),
-                    (0u32, 465usize, 0usize),
-                    (0u32, 465usize, 0usize),
-                    (1476394885u32, 465usize, 0usize),
-                    (0u32, 465usize, 2usize),
-                    (0u32, 467usize, 2usize),
-                    (0u32, 469usize, 4usize),
-                    (0u32, 473usize, 1usize),
-                    (0u32, 474usize, 1usize),
-                    (0u32, 475usize, 0usize),
-                    (0u32, 475usize, 0usize),
-                    (0u32, 475usize, 0usize),
-                    (1476394885u32, 475usize, 0usize),
-                    (0u32, 475usize, 1usize),
-                    (0u32, 476usize, 2usize),
-                    (0u32, 478usize, 4usize),
-                    (0u32, 482usize, 1usize),
-                    (0u32, 483usize, 1usize),
-                    (0u32, 484usize, 0usize),
-                    (0u32, 484usize, 0usize),
-                    (0u32, 484usize, 0usize),
-                    (1476394885u32, 484usize, 0usize),
-                    (0u32, 484usize, 2usize),
-                    (0u32, 486usize, 2usize),
-                    (0u32, 488usize, 4usize),
-                    (0u32, 492usize, 1usize),
-                    (0u32, 493usize, 1usize),
-                    (0u32, 494usize, 0usize),
-                    (0u32, 494usize, 0usize),
-                    (0u32, 494usize, 0usize),
-                    (1476394885u32, 494usize, 0usize),
-                    (0u32, 494usize, 1usize),
-                    (0u32, 495usize, 2usize),
-                    (0u32, 497usize, 4usize),
-                    (0u32, 501usize, 1usize),
-                    (0u32, 502usize, 1usize),
-                    (0u32, 503usize, 0usize),
-                    (0u32, 503usize, 0usize),
-                    (0u32, 503usize, 0usize),
-                    (1476394885u32, 503usize, 0usize),
+                    (0u32, 398usize, 4usize),
+                    (0u32, 402usize, 1usize),
+                    (0u32, 403usize, 1usize),
+                    (0u32, 404usize, 0usize),
+                    (0u32, 404usize, 0usize),
+                    (0u32, 404usize, 0usize),
+                    (1476394885u32, 404usize, 0usize),
                 ];
-                const VL_TERMS: [(u32, usize); 503usize] = [
+                const VL_TERMS: [(u32, usize); 404usize] = [
                     (134213359u32, 93usize),
                     (268435454u32, 2usize),
                     (268435454u32, 14usize),
@@ -5868,503 +5804,404 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     (268435454u32, 66usize),
                     (268435454u32, 79usize),
                     (268435454u32, 88usize),
-                    (1048576u32, 92usize),
-                    (2012217345u32, 117usize),
-                    (1996488705u32, 118usize),
-                    (1744830465u32, 119usize),
-                    (268435454u32, 108usize),
                     (268435454u32, 96usize),
-                    (268435454u32, 120usize),
+                    (268435454u32, 104usize),
                     (268435454u32, 108usize),
+                    (16777216u32, 77usize),
+                    (1996488705u32, 96usize),
+                    (33554432u32, 86usize),
+                    (1744831011u32, 100usize),
+                    (16777216u32, 103usize),
+                    (1996488705u32, 104usize),
                     (268435454u32, 109usize),
                     (268435454u32, 97usize),
-                    (268435454u32, 121usize),
-                    (268435454u32, 109usize),
-                    (268435454u32, 110usize),
-                    (268435454u32, 98usize),
-                    (268435454u32, 122usize),
-                    (268435454u32, 110usize),
-                    (1048576u32, 86usize),
-                    (2012217345u32, 108usize),
-                    (1996488705u32, 109usize),
-                    (1744830465u32, 110usize),
-                    (1048576u32, 77usize),
-                    (2012217345u32, 96usize),
-                    (1996488705u32, 97usize),
-                    (1744830465u32, 98usize),
-                    (268435454u32, 123usize),
-                    (1048576u32, 86usize),
-                    (2012217345u32, 108usize),
-                    (1996488705u32, 109usize),
-                    (1744830465u32, 110usize),
-                    (268435454u32, 111usize),
-                    (268435454u32, 99usize),
-                    (268435454u32, 124usize),
-                    (268435454u32, 111usize),
-                    (268435454u32, 112usize),
-                    (268435454u32, 100usize),
-                    (268435454u32, 125usize),
-                    (268435454u32, 112usize),
-                    (268435454u32, 113usize),
-                    (268435454u32, 101usize),
-                    (268435454u32, 126usize),
-                    (268435454u32, 113usize),
-                    (1048576u32, 87usize),
-                    (2012217345u32, 111usize),
-                    (1996488705u32, 112usize),
-                    (1744830465u32, 113usize),
-                    (1048576u32, 78usize),
-                    (2012217345u32, 99usize),
-                    (1996488705u32, 100usize),
-                    (1744830465u32, 101usize),
-                    (268435454u32, 127usize),
-                    (1048576u32, 87usize),
-                    (2012217345u32, 111usize),
-                    (1996488705u32, 112usize),
-                    (1744830465u32, 113usize),
-                    (268435454u32, 114usize),
-                    (268435454u32, 102usize),
-                    (268435454u32, 128usize),
-                    (268435454u32, 114usize),
-                    (268435454u32, 115usize),
-                    (268435454u32, 103usize),
-                    (268435454u32, 129usize),
-                    (268435454u32, 115usize),
-                    (268435454u32, 116usize),
-                    (268435454u32, 104usize),
-                    (268435454u32, 130usize),
-                    (268435454u32, 116usize),
-                    (1048576u32, 91usize),
-                    (2012217345u32, 114usize),
-                    (1996488705u32, 115usize),
-                    (1744830465u32, 116usize),
-                    (1048576u32, 82usize),
-                    (2012217345u32, 102usize),
-                    (1996488705u32, 103usize),
-                    (1744830465u32, 104usize),
-                    (268435454u32, 131usize),
-                    (1048576u32, 91usize),
-                    (2012217345u32, 114usize),
-                    (1996488705u32, 115usize),
-                    (1744830465u32, 116usize),
-                    (268435454u32, 117usize),
                     (268435454u32, 105usize),
-                    (268435454u32, 132usize),
-                    (268435454u32, 117usize),
-                    (268435454u32, 118usize),
+                    (268435454u32, 110usize),
+                    (16777216u32, 78usize),
+                    (1996488705u32, 97usize),
+                    (33554432u32, 87usize),
+                    (16777216u32, 100usize),
+                    (1744831011u32, 101usize),
+                    (1996488705u32, 105usize),
+                    (268435454u32, 111usize),
+                    (268435454u32, 98usize),
                     (268435454u32, 106usize),
-                    (268435454u32, 133usize),
-                    (268435454u32, 118usize),
-                    (268435454u32, 119usize),
-                    (268435454u32, 107usize),
-                    (268435454u32, 134usize),
-                    (268435454u32, 119usize),
-                    (1048576u32, 92usize),
-                    (2012217345u32, 117usize),
-                    (1996488705u32, 118usize),
-                    (1744830465u32, 119usize),
-                    (1048576u32, 83usize),
-                    (2012217345u32, 105usize),
+                    (268435454u32, 112usize),
+                    (16777216u32, 82usize),
+                    (1996488705u32, 98usize),
+                    (33554432u32, 91usize),
+                    (16777216u32, 101usize),
+                    (1744831011u32, 102usize),
                     (1996488705u32, 106usize),
-                    (1744830465u32, 107usize),
-                    (268435454u32, 135usize),
+                    (268435454u32, 113usize),
+                    (268435454u32, 99usize),
+                    (268435454u32, 107usize),
+                    (268435454u32, 114usize),
+                    (16777216u32, 83usize),
+                    (1996488705u32, 99usize),
+                    (33554432u32, 92usize),
+                    (16777216u32, 102usize),
+                    (1744831011u32, 103usize),
+                    (1996488705u32, 107usize),
+                    (268435454u32, 115usize),
                     (268435454u32, 2usize),
                     (268435454u32, 93usize),
                     (268435454u32, 4usize),
+                    (268435454u32, 116usize),
+                    (268435454u32, 117usize),
+                    (268435454u32, 118usize),
+                    (268435454u32, 119usize),
+                    (268435454u32, 120usize),
+                    (268435454u32, 121usize),
+                    (268435454u32, 108usize),
+                    (268435454u32, 117usize),
+                    (1610612724u32, 118usize),
+                    (1073741816u32, 119usize),
+                    (805306362u32, 120usize),
+                    (268435454u32, 125usize),
+                    (268435454u32, 126usize),
+                    (16777216u32, 12usize),
+                    (1996488705u32, 121usize),
+                    (268435454u32, 109usize),
+                    (268435454u32, 117usize),
+                    (1610612724u32, 118usize),
+                    (1073741816u32, 119usize),
+                    (805306362u32, 120usize),
+                    (268435454u32, 127usize),
+                    (268435454u32, 128usize),
+                    (268435454u32, 122usize),
+                    (268435454u32, 110usize),
+                    (268435454u32, 117usize),
+                    (1610612724u32, 118usize),
+                    (1073741816u32, 119usize),
+                    (805306362u32, 120usize),
+                    (268435454u32, 129usize),
+                    (268435454u32, 130usize),
+                    (16777216u32, 13usize),
+                    (1996488705u32, 122usize),
+                    (268435454u32, 111usize),
+                    (268435454u32, 117usize),
+                    (1610612724u32, 118usize),
+                    (1073741816u32, 119usize),
+                    (805306362u32, 120usize),
+                    (268435454u32, 131usize),
+                    (268435454u32, 132usize),
+                    (268435454u32, 123usize),
+                    (268435454u32, 112usize),
+                    (268435454u32, 117usize),
+                    (1610612724u32, 118usize),
+                    (1073741816u32, 119usize),
+                    (805306362u32, 120usize),
+                    (268435454u32, 133usize),
+                    (268435454u32, 134usize),
+                    (16777216u32, 19usize),
+                    (1996488705u32, 123usize),
+                    (268435454u32, 113usize),
+                    (268435454u32, 117usize),
+                    (1610612724u32, 118usize),
+                    (1073741816u32, 119usize),
+                    (805306362u32, 120usize),
+                    (268435454u32, 135usize),
                     (268435454u32, 136usize),
+                    (268435454u32, 124usize),
+                    (268435454u32, 114usize),
+                    (268435454u32, 117usize),
+                    (1610612724u32, 118usize),
+                    (1073741816u32, 119usize),
+                    (805306362u32, 120usize),
                     (268435454u32, 137usize),
                     (268435454u32, 138usize),
+                    (16777216u32, 20usize),
+                    (1996488705u32, 124usize),
+                    (268435454u32, 115usize),
+                    (268435454u32, 117usize),
+                    (1610612724u32, 118usize),
+                    (1073741816u32, 119usize),
+                    (805306362u32, 120usize),
                     (268435454u32, 139usize),
                     (268435454u32, 140usize),
                     (268435454u32, 141usize),
-                    (268435454u32, 120usize),
-                    (268435422u32, 121usize),
-                    (268435454u32, 137usize),
-                    (1610612724u32, 138usize),
-                    (1073741816u32, 139usize),
-                    (805306362u32, 140usize),
+                    (268435454u32, 108usize),
+                    (1073741816u32, 116usize),
+                    (1073741816u32, 117usize),
+                    (1610612724u32, 118usize),
+                    (1879048178u32, 119usize),
+                    (1073741816u32, 120usize),
                     (268435454u32, 145usize),
                     (268435454u32, 146usize),
-                    (16777216u32, 12usize),
+                    (16777216u32, 25usize),
                     (1996488705u32, 141usize),
-                    (268435454u32, 122usize),
-                    (268435422u32, 123usize),
-                    (268435454u32, 137usize),
-                    (1610612724u32, 138usize),
-                    (1073741816u32, 139usize),
-                    (805306362u32, 140usize),
+                    (268435454u32, 109usize),
+                    (1073741816u32, 116usize),
+                    (1073741816u32, 117usize),
+                    (1610612724u32, 118usize),
+                    (1879048178u32, 119usize),
+                    (1073741816u32, 120usize),
                     (268435454u32, 147usize),
                     (268435454u32, 148usize),
                     (268435454u32, 142usize),
-                    (268435454u32, 124usize),
-                    (268435422u32, 125usize),
-                    (268435454u32, 137usize),
-                    (1610612724u32, 138usize),
-                    (1073741816u32, 139usize),
-                    (805306362u32, 140usize),
+                    (268435454u32, 110usize),
+                    (1073741816u32, 116usize),
+                    (1073741816u32, 117usize),
+                    (1610612724u32, 118usize),
+                    (1879048178u32, 119usize),
+                    (1073741816u32, 120usize),
                     (268435454u32, 149usize),
                     (268435454u32, 150usize),
-                    (16777216u32, 13usize),
+                    (16777216u32, 26usize),
                     (1996488705u32, 142usize),
-                    (268435454u32, 126usize),
-                    (268435422u32, 127usize),
-                    (268435454u32, 137usize),
-                    (1610612724u32, 138usize),
-                    (1073741816u32, 139usize),
-                    (805306362u32, 140usize),
+                    (268435454u32, 111usize),
+                    (1073741816u32, 116usize),
+                    (1073741816u32, 117usize),
+                    (1610612724u32, 118usize),
+                    (1879048178u32, 119usize),
+                    (1073741816u32, 120usize),
                     (268435454u32, 151usize),
                     (268435454u32, 152usize),
                     (268435454u32, 143usize),
-                    (268435454u32, 128usize),
-                    (268435422u32, 129usize),
-                    (268435454u32, 137usize),
-                    (1610612724u32, 138usize),
-                    (1073741816u32, 139usize),
-                    (805306362u32, 140usize),
+                    (268435454u32, 112usize),
+                    (1073741816u32, 116usize),
+                    (1073741816u32, 117usize),
+                    (1610612724u32, 118usize),
+                    (1879048178u32, 119usize),
+                    (1073741816u32, 120usize),
                     (268435454u32, 153usize),
                     (268435454u32, 154usize),
-                    (16777216u32, 19usize),
+                    (16777216u32, 32usize),
                     (1996488705u32, 143usize),
-                    (268435454u32, 130usize),
-                    (268435422u32, 131usize),
-                    (268435454u32, 137usize),
-                    (1610612724u32, 138usize),
-                    (1073741816u32, 139usize),
-                    (805306362u32, 140usize),
+                    (268435454u32, 113usize),
+                    (1073741816u32, 116usize),
+                    (1073741816u32, 117usize),
+                    (1610612724u32, 118usize),
+                    (1879048178u32, 119usize),
+                    (1073741816u32, 120usize),
                     (268435454u32, 155usize),
                     (268435454u32, 156usize),
                     (268435454u32, 144usize),
-                    (268435454u32, 132usize),
-                    (268435422u32, 133usize),
-                    (268435454u32, 137usize),
-                    (1610612724u32, 138usize),
-                    (1073741816u32, 139usize),
-                    (805306362u32, 140usize),
+                    (268435454u32, 114usize),
+                    (1073741816u32, 116usize),
+                    (1073741816u32, 117usize),
+                    (1610612724u32, 118usize),
+                    (1879048178u32, 119usize),
+                    (1073741816u32, 120usize),
                     (268435454u32, 157usize),
                     (268435454u32, 158usize),
-                    (16777216u32, 20usize),
+                    (16777216u32, 33usize),
                     (1996488705u32, 144usize),
-                    (268435454u32, 134usize),
-                    (268435422u32, 135usize),
-                    (268435454u32, 137usize),
-                    (1610612724u32, 138usize),
-                    (1073741816u32, 139usize),
-                    (805306362u32, 140usize),
+                    (268435454u32, 115usize),
+                    (1073741816u32, 116usize),
+                    (1073741816u32, 117usize),
+                    (1610612724u32, 118usize),
+                    (1879048178u32, 119usize),
+                    (1073741816u32, 120usize),
                     (268435454u32, 159usize),
                     (268435454u32, 160usize),
                     (268435454u32, 161usize),
-                    (268435454u32, 120usize),
-                    (268435422u32, 121usize),
-                    (1073741816u32, 136usize),
-                    (1073741816u32, 137usize),
-                    (1610612724u32, 138usize),
-                    (1879048178u32, 139usize),
-                    (1073741816u32, 140usize),
+                    (268435454u32, 108usize),
+                    (805306362u32, 116usize),
+                    (536870908u32, 117usize),
+                    (805306362u32, 118usize),
+                    (268435454u32, 119usize),
+                    (1879048178u32, 120usize),
                     (268435454u32, 165usize),
                     (268435454u32, 166usize),
-                    (16777216u32, 25usize),
+                    (16777216u32, 38usize),
                     (1996488705u32, 161usize),
-                    (268435454u32, 122usize),
-                    (268435422u32, 123usize),
-                    (1073741816u32, 136usize),
-                    (1073741816u32, 137usize),
-                    (1610612724u32, 138usize),
-                    (1879048178u32, 139usize),
-                    (1073741816u32, 140usize),
+                    (268435454u32, 109usize),
+                    (805306362u32, 116usize),
+                    (536870908u32, 117usize),
+                    (805306362u32, 118usize),
+                    (268435454u32, 119usize),
+                    (1879048178u32, 120usize),
                     (268435454u32, 167usize),
                     (268435454u32, 168usize),
                     (268435454u32, 162usize),
-                    (268435454u32, 124usize),
-                    (268435422u32, 125usize),
-                    (1073741816u32, 136usize),
-                    (1073741816u32, 137usize),
-                    (1610612724u32, 138usize),
-                    (1879048178u32, 139usize),
-                    (1073741816u32, 140usize),
+                    (268435454u32, 110usize),
+                    (805306362u32, 116usize),
+                    (536870908u32, 117usize),
+                    (805306362u32, 118usize),
+                    (268435454u32, 119usize),
+                    (1879048178u32, 120usize),
                     (268435454u32, 169usize),
                     (268435454u32, 170usize),
-                    (16777216u32, 26usize),
+                    (16777216u32, 39usize),
                     (1996488705u32, 162usize),
-                    (268435454u32, 126usize),
-                    (268435422u32, 127usize),
-                    (1073741816u32, 136usize),
-                    (1073741816u32, 137usize),
-                    (1610612724u32, 138usize),
-                    (1879048178u32, 139usize),
-                    (1073741816u32, 140usize),
+                    (268435454u32, 111usize),
+                    (805306362u32, 116usize),
+                    (536870908u32, 117usize),
+                    (805306362u32, 118usize),
+                    (268435454u32, 119usize),
+                    (1879048178u32, 120usize),
                     (268435454u32, 171usize),
                     (268435454u32, 172usize),
                     (268435454u32, 163usize),
-                    (268435454u32, 128usize),
-                    (268435422u32, 129usize),
-                    (1073741816u32, 136usize),
-                    (1073741816u32, 137usize),
-                    (1610612724u32, 138usize),
-                    (1879048178u32, 139usize),
-                    (1073741816u32, 140usize),
+                    (268435454u32, 112usize),
+                    (805306362u32, 116usize),
+                    (536870908u32, 117usize),
+                    (805306362u32, 118usize),
+                    (268435454u32, 119usize),
+                    (1879048178u32, 120usize),
                     (268435454u32, 173usize),
                     (268435454u32, 174usize),
-                    (16777216u32, 32usize),
+                    (16777216u32, 45usize),
                     (1996488705u32, 163usize),
-                    (268435454u32, 130usize),
-                    (268435422u32, 131usize),
-                    (1073741816u32, 136usize),
-                    (1073741816u32, 137usize),
-                    (1610612724u32, 138usize),
-                    (1879048178u32, 139usize),
-                    (1073741816u32, 140usize),
+                    (268435454u32, 113usize),
+                    (805306362u32, 116usize),
+                    (536870908u32, 117usize),
+                    (805306362u32, 118usize),
+                    (268435454u32, 119usize),
+                    (1879048178u32, 120usize),
                     (268435454u32, 175usize),
                     (268435454u32, 176usize),
                     (268435454u32, 164usize),
-                    (268435454u32, 132usize),
-                    (268435422u32, 133usize),
-                    (1073741816u32, 136usize),
-                    (1073741816u32, 137usize),
-                    (1610612724u32, 138usize),
-                    (1879048178u32, 139usize),
-                    (1073741816u32, 140usize),
+                    (268435454u32, 114usize),
+                    (805306362u32, 116usize),
+                    (536870908u32, 117usize),
+                    (805306362u32, 118usize),
+                    (268435454u32, 119usize),
+                    (1879048178u32, 120usize),
                     (268435454u32, 177usize),
                     (268435454u32, 178usize),
-                    (16777216u32, 33usize),
+                    (16777216u32, 46usize),
                     (1996488705u32, 164usize),
-                    (268435454u32, 134usize),
-                    (268435422u32, 135usize),
-                    (1073741816u32, 136usize),
-                    (1073741816u32, 137usize),
-                    (1610612724u32, 138usize),
-                    (1879048178u32, 139usize),
-                    (1073741816u32, 140usize),
+                    (268435454u32, 115usize),
+                    (805306362u32, 116usize),
+                    (536870908u32, 117usize),
+                    (805306362u32, 118usize),
+                    (268435454u32, 119usize),
+                    (1879048178u32, 120usize),
                     (268435454u32, 179usize),
                     (268435454u32, 180usize),
                     (268435454u32, 181usize),
-                    (268435454u32, 120usize),
-                    (268435422u32, 121usize),
-                    (805306362u32, 136usize),
-                    (536870908u32, 137usize),
-                    (805306362u32, 138usize),
-                    (268435454u32, 139usize),
-                    (1879048178u32, 140usize),
+                    (268435454u32, 108usize),
+                    (268435454u32, 116usize),
+                    (1342177270u32, 117usize),
+                    (1879048178u32, 118usize),
+                    (1342177270u32, 119usize),
                     (268435454u32, 185usize),
                     (268435454u32, 186usize),
-                    (16777216u32, 38usize),
+                    (16777216u32, 51usize),
                     (1996488705u32, 181usize),
-                    (268435454u32, 122usize),
-                    (268435422u32, 123usize),
-                    (805306362u32, 136usize),
-                    (536870908u32, 137usize),
-                    (805306362u32, 138usize),
-                    (268435454u32, 139usize),
-                    (1879048178u32, 140usize),
+                    (268435454u32, 109usize),
+                    (268435454u32, 116usize),
+                    (1342177270u32, 117usize),
+                    (1879048178u32, 118usize),
+                    (1342177270u32, 119usize),
                     (268435454u32, 187usize),
                     (268435454u32, 188usize),
                     (268435454u32, 182usize),
-                    (268435454u32, 124usize),
-                    (268435422u32, 125usize),
-                    (805306362u32, 136usize),
-                    (536870908u32, 137usize),
-                    (805306362u32, 138usize),
-                    (268435454u32, 139usize),
-                    (1879048178u32, 140usize),
+                    (268435454u32, 110usize),
+                    (268435454u32, 116usize),
+                    (1342177270u32, 117usize),
+                    (1879048178u32, 118usize),
+                    (1342177270u32, 119usize),
                     (268435454u32, 189usize),
                     (268435454u32, 190usize),
-                    (16777216u32, 39usize),
+                    (16777216u32, 52usize),
                     (1996488705u32, 182usize),
-                    (268435454u32, 126usize),
-                    (268435422u32, 127usize),
-                    (805306362u32, 136usize),
-                    (536870908u32, 137usize),
-                    (805306362u32, 138usize),
-                    (268435454u32, 139usize),
-                    (1879048178u32, 140usize),
+                    (268435454u32, 111usize),
+                    (268435454u32, 116usize),
+                    (1342177270u32, 117usize),
+                    (1879048178u32, 118usize),
+                    (1342177270u32, 119usize),
                     (268435454u32, 191usize),
                     (268435454u32, 192usize),
                     (268435454u32, 183usize),
-                    (268435454u32, 128usize),
-                    (268435422u32, 129usize),
-                    (805306362u32, 136usize),
-                    (536870908u32, 137usize),
-                    (805306362u32, 138usize),
-                    (268435454u32, 139usize),
-                    (1879048178u32, 140usize),
+                    (268435454u32, 112usize),
+                    (268435454u32, 116usize),
+                    (1342177270u32, 117usize),
+                    (1879048178u32, 118usize),
+                    (1342177270u32, 119usize),
                     (268435454u32, 193usize),
                     (268435454u32, 194usize),
-                    (16777216u32, 45usize),
+                    (16777216u32, 58usize),
                     (1996488705u32, 183usize),
-                    (268435454u32, 130usize),
-                    (268435422u32, 131usize),
-                    (805306362u32, 136usize),
-                    (536870908u32, 137usize),
-                    (805306362u32, 138usize),
-                    (268435454u32, 139usize),
-                    (1879048178u32, 140usize),
+                    (268435454u32, 113usize),
+                    (268435454u32, 116usize),
+                    (1342177270u32, 117usize),
+                    (1879048178u32, 118usize),
+                    (1342177270u32, 119usize),
                     (268435454u32, 195usize),
                     (268435454u32, 196usize),
                     (268435454u32, 184usize),
-                    (268435454u32, 132usize),
-                    (268435422u32, 133usize),
-                    (805306362u32, 136usize),
-                    (536870908u32, 137usize),
-                    (805306362u32, 138usize),
-                    (268435454u32, 139usize),
-                    (1879048178u32, 140usize),
+                    (268435454u32, 114usize),
+                    (268435454u32, 116usize),
+                    (1342177270u32, 117usize),
+                    (1879048178u32, 118usize),
+                    (1342177270u32, 119usize),
                     (268435454u32, 197usize),
                     (268435454u32, 198usize),
-                    (16777216u32, 46usize),
+                    (16777216u32, 59usize),
                     (1996488705u32, 184usize),
-                    (268435454u32, 134usize),
-                    (268435422u32, 135usize),
-                    (805306362u32, 136usize),
-                    (536870908u32, 137usize),
-                    (805306362u32, 138usize),
-                    (268435454u32, 139usize),
-                    (1879048178u32, 140usize),
+                    (268435454u32, 115usize),
+                    (268435454u32, 116usize),
+                    (1342177270u32, 117usize),
+                    (1879048178u32, 118usize),
+                    (1342177270u32, 119usize),
                     (268435454u32, 199usize),
                     (268435454u32, 200usize),
                     (268435454u32, 201usize),
-                    (268435454u32, 120usize),
-                    (268435422u32, 121usize),
-                    (268435454u32, 136usize),
-                    (1342177270u32, 137usize),
-                    (1879048178u32, 138usize),
-                    (1342177270u32, 139usize),
+                    (268435454u32, 108usize),
+                    (536870908u32, 116usize),
+                    (536870908u32, 117usize),
+                    (1342177270u32, 118usize),
+                    (1610612724u32, 120usize),
                     (268435454u32, 205usize),
                     (268435454u32, 206usize),
-                    (16777216u32, 51usize),
+                    (16777216u32, 64usize),
                     (1996488705u32, 201usize),
-                    (268435454u32, 122usize),
-                    (268435422u32, 123usize),
-                    (268435454u32, 136usize),
-                    (1342177270u32, 137usize),
-                    (1879048178u32, 138usize),
-                    (1342177270u32, 139usize),
+                    (268435454u32, 109usize),
+                    (536870908u32, 116usize),
+                    (536870908u32, 117usize),
+                    (1342177270u32, 118usize),
+                    (1610612724u32, 120usize),
                     (268435454u32, 207usize),
                     (268435454u32, 208usize),
                     (268435454u32, 202usize),
-                    (268435454u32, 124usize),
-                    (268435422u32, 125usize),
-                    (268435454u32, 136usize),
-                    (1342177270u32, 137usize),
-                    (1879048178u32, 138usize),
-                    (1342177270u32, 139usize),
+                    (268435454u32, 110usize),
+                    (536870908u32, 116usize),
+                    (536870908u32, 117usize),
+                    (1342177270u32, 118usize),
+                    (1610612724u32, 120usize),
                     (268435454u32, 209usize),
                     (268435454u32, 210usize),
-                    (16777216u32, 52usize),
+                    (16777216u32, 65usize),
                     (1996488705u32, 202usize),
-                    (268435454u32, 126usize),
-                    (268435422u32, 127usize),
-                    (268435454u32, 136usize),
-                    (1342177270u32, 137usize),
-                    (1879048178u32, 138usize),
-                    (1342177270u32, 139usize),
+                    (268435454u32, 111usize),
+                    (536870908u32, 116usize),
+                    (536870908u32, 117usize),
+                    (1342177270u32, 118usize),
+                    (1610612724u32, 120usize),
                     (268435454u32, 211usize),
                     (268435454u32, 212usize),
                     (268435454u32, 203usize),
-                    (268435454u32, 128usize),
-                    (268435422u32, 129usize),
-                    (268435454u32, 136usize),
-                    (1342177270u32, 137usize),
-                    (1879048178u32, 138usize),
-                    (1342177270u32, 139usize),
+                    (268435454u32, 112usize),
+                    (536870908u32, 116usize),
+                    (536870908u32, 117usize),
+                    (1342177270u32, 118usize),
+                    (1610612724u32, 120usize),
                     (268435454u32, 213usize),
                     (268435454u32, 214usize),
-                    (16777216u32, 58usize),
+                    (16777216u32, 71usize),
                     (1996488705u32, 203usize),
-                    (268435454u32, 130usize),
-                    (268435422u32, 131usize),
-                    (268435454u32, 136usize),
-                    (1342177270u32, 137usize),
-                    (1879048178u32, 138usize),
-                    (1342177270u32, 139usize),
+                    (268435454u32, 113usize),
+                    (536870908u32, 116usize),
+                    (536870908u32, 117usize),
+                    (1342177270u32, 118usize),
+                    (1610612724u32, 120usize),
                     (268435454u32, 215usize),
                     (268435454u32, 216usize),
                     (268435454u32, 204usize),
-                    (268435454u32, 132usize),
-                    (268435422u32, 133usize),
-                    (268435454u32, 136usize),
-                    (1342177270u32, 137usize),
-                    (1879048178u32, 138usize),
-                    (1342177270u32, 139usize),
+                    (268435454u32, 114usize),
+                    (536870908u32, 116usize),
+                    (536870908u32, 117usize),
+                    (1342177270u32, 118usize),
+                    (1610612724u32, 120usize),
                     (268435454u32, 217usize),
                     (268435454u32, 218usize),
-                    (16777216u32, 59usize),
-                    (1996488705u32, 204usize),
-                    (268435454u32, 134usize),
-                    (268435422u32, 135usize),
-                    (268435454u32, 136usize),
-                    (1342177270u32, 137usize),
-                    (1879048178u32, 138usize),
-                    (1342177270u32, 139usize),
-                    (268435454u32, 219usize),
-                    (268435454u32, 220usize),
-                    (268435454u32, 221usize),
-                    (268435454u32, 120usize),
-                    (268435422u32, 121usize),
-                    (536870908u32, 136usize),
-                    (536870908u32, 137usize),
-                    (1342177270u32, 138usize),
-                    (1610612724u32, 140usize),
-                    (268435454u32, 225usize),
-                    (268435454u32, 226usize),
-                    (16777216u32, 64usize),
-                    (1996488705u32, 221usize),
-                    (268435454u32, 122usize),
-                    (268435422u32, 123usize),
-                    (536870908u32, 136usize),
-                    (536870908u32, 137usize),
-                    (1342177270u32, 138usize),
-                    (1610612724u32, 140usize),
-                    (268435454u32, 227usize),
-                    (268435454u32, 228usize),
-                    (268435454u32, 222usize),
-                    (268435454u32, 124usize),
-                    (268435422u32, 125usize),
-                    (536870908u32, 136usize),
-                    (536870908u32, 137usize),
-                    (1342177270u32, 138usize),
-                    (1610612724u32, 140usize),
-                    (268435454u32, 229usize),
-                    (268435454u32, 230usize),
-                    (16777216u32, 65usize),
-                    (1996488705u32, 222usize),
-                    (268435454u32, 126usize),
-                    (268435422u32, 127usize),
-                    (536870908u32, 136usize),
-                    (536870908u32, 137usize),
-                    (1342177270u32, 138usize),
-                    (1610612724u32, 140usize),
-                    (268435454u32, 231usize),
-                    (268435454u32, 232usize),
-                    (268435454u32, 223usize),
-                    (268435454u32, 128usize),
-                    (268435422u32, 129usize),
-                    (536870908u32, 136usize),
-                    (536870908u32, 137usize),
-                    (1342177270u32, 138usize),
-                    (1610612724u32, 140usize),
-                    (268435454u32, 233usize),
-                    (268435454u32, 234usize),
-                    (16777216u32, 71usize),
-                    (1996488705u32, 223usize),
-                    (268435454u32, 130usize),
-                    (268435422u32, 131usize),
-                    (536870908u32, 136usize),
-                    (536870908u32, 137usize),
-                    (1342177270u32, 138usize),
-                    (1610612724u32, 140usize),
-                    (268435454u32, 235usize),
-                    (268435454u32, 236usize),
-                    (268435454u32, 224usize),
-                    (268435454u32, 132usize),
-                    (268435422u32, 133usize),
-                    (536870908u32, 136usize),
-                    (536870908u32, 137usize),
-                    (1342177270u32, 138usize),
-                    (1610612724u32, 140usize),
-                    (268435454u32, 237usize),
-                    (268435454u32, 238usize),
                 ];
                 let mut _vl = 0;
-                while _vl < 57usize {
+                while _vl < 49usize {
                     let (cached_idx, col_start, col_count) = VL_DESCS[_vl];
                     let mut expected: BabyBearExt4 = BabyBearExt4::ZERO;
                     let mut alpha_power: BabyBearExt4 = BabyBearExt4::ONE;
@@ -6399,10 +6236,10 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                const VS_DESCS: [(usize, usize, usize); 1usize] = [(340usize, 0usize, 9usize)];
+                const VS_DESCS: [(usize, usize, usize); 1usize] = [(320usize, 0usize, 9usize)];
                 const VS_DEPS: [usize; 9usize] = [
-                    260usize, 261usize, 262usize, 263usize, 264usize, 265usize, 266usize, 267usize,
-                    268usize,
+                    240usize, 241usize, 242usize, 243usize, 244usize, 245usize, 246usize, 247usize,
+                    248usize,
                 ];
                 let mut _vs = 0;
                 while _vs < 1usize {
@@ -6469,7 +6306,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(271usize);
+                let cached = *state.prev_claims.get_unchecked(251usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 1usize));
                 }
@@ -6518,7 +6355,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(272usize);
+                let cached = *state.prev_claims.get_unchecked(252usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 2usize));
                 }
@@ -6567,7 +6404,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(273usize);
+                let cached = *state.prev_claims.get_unchecked(253usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 3usize));
                 }
@@ -6616,7 +6453,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(274usize);
+                let cached = *state.prev_claims.get_unchecked(254usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 4usize));
                 }
@@ -6682,7 +6519,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(275usize);
+                let cached = *state.prev_claims.get_unchecked(255usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 5usize));
                 }
@@ -6748,7 +6585,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(276usize);
+                let cached = *state.prev_claims.get_unchecked(256usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 6usize));
                 }
@@ -6814,7 +6651,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(277usize);
+                let cached = *state.prev_claims.get_unchecked(257usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 7usize));
                 }
@@ -6880,7 +6717,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(278usize);
+                let cached = *state.prev_claims.get_unchecked(258usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 8usize));
                 }
@@ -6946,7 +6783,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(279usize);
+                let cached = *state.prev_claims.get_unchecked(259usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 9usize));
                 }
@@ -7012,7 +6849,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(280usize);
+                let cached = *state.prev_claims.get_unchecked(260usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 10usize));
                 }
@@ -7078,7 +6915,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(281usize);
+                let cached = *state.prev_claims.get_unchecked(261usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 11usize));
                 }
@@ -7144,7 +6981,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(282usize);
+                let cached = *state.prev_claims.get_unchecked(262usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 12usize));
                 }
@@ -7210,7 +7047,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(283usize);
+                let cached = *state.prev_claims.get_unchecked(263usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 13usize));
                 }
@@ -7276,7 +7113,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(284usize);
+                let cached = *state.prev_claims.get_unchecked(264usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 14usize));
                 }
@@ -7342,7 +7179,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(285usize);
+                let cached = *state.prev_claims.get_unchecked(265usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 15usize));
                 }
@@ -7408,7 +7245,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(286usize);
+                let cached = *state.prev_claims.get_unchecked(266usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 16usize));
                 }
@@ -7474,7 +7311,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(287usize);
+                let cached = *state.prev_claims.get_unchecked(267usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 17usize));
                 }
@@ -7540,7 +7377,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(288usize);
+                let cached = *state.prev_claims.get_unchecked(268usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 18usize));
                 }
@@ -7606,7 +7443,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(289usize);
+                let cached = *state.prev_claims.get_unchecked(269usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 19usize));
                 }
@@ -7672,7 +7509,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(290usize);
+                let cached = *state.prev_claims.get_unchecked(270usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 20usize));
                 }
@@ -7738,7 +7575,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(291usize);
+                let cached = *state.prev_claims.get_unchecked(271usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 21usize));
                 }
@@ -7804,7 +7641,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(292usize);
+                let cached = *state.prev_claims.get_unchecked(272usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 22usize));
                 }
@@ -7870,7 +7707,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(293usize);
+                let cached = *state.prev_claims.get_unchecked(273usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 23usize));
                 }
@@ -7936,7 +7773,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(294usize);
+                let cached = *state.prev_claims.get_unchecked(274usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 24usize));
                 }
@@ -8002,7 +7839,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(295usize);
+                let cached = *state.prev_claims.get_unchecked(275usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 25usize));
                 }
@@ -8068,7 +7905,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(296usize);
+                let cached = *state.prev_claims.get_unchecked(276usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 26usize));
                 }
@@ -8134,7 +7971,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(297usize);
+                let cached = *state.prev_claims.get_unchecked(277usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 27usize));
                 }
@@ -8200,7 +8037,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(298usize);
+                let cached = *state.prev_claims.get_unchecked(278usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 28usize));
                 }
@@ -8266,7 +8103,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(299usize);
+                let cached = *state.prev_claims.get_unchecked(279usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 29usize));
                 }
@@ -8332,7 +8169,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(300usize);
+                let cached = *state.prev_claims.get_unchecked(280usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 30usize));
                 }
@@ -8398,7 +8235,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(301usize);
+                let cached = *state.prev_claims.get_unchecked(281usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 31usize));
                 }
@@ -8464,7 +8301,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(302usize);
+                let cached = *state.prev_claims.get_unchecked(282usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 32usize));
                 }
@@ -8499,7 +8336,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_ts, &ts_high);
                     field_ops::add_assign(&mut expected, &t_ts);
                 }
-                let cached = *state.prev_claims.get_unchecked(303usize);
+                let cached = *state.prev_claims.get_unchecked(283usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 33usize));
                 }
@@ -8516,7 +8353,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     &BabyBearField::from_reduced_raw_repr(268431198u32),
                 );
                 field_ops::add_assign(&mut expected, &t_addr);
-                let cached = *state.prev_claims.get_unchecked(304usize);
+                let cached = *state.prev_claims.get_unchecked(284usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 34usize));
                 }

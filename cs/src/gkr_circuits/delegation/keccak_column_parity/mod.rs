@@ -38,6 +38,7 @@ use core::array::from_fn;
 pub use common_constants::delegation_types::keccak_f1600::KECCAK_COLUMN_PARITY_CSR_REGISTER;
 
 const IOTA_BYTES: [usize; 4] = [0, 1, 3, 7];
+const IOTA_LIMBS: [usize; 3] = [0, 1, 3];
 
 const TOTAL_TABLE_WIDTH: usize = 7;
 
@@ -111,24 +112,30 @@ pub fn define_keccak_column_parity_delegation_circuit<F: PrimeField, CS: Circuit
         false,
     );
 
-    let first_lane_in = split_bytes(cs, lanes_in[0]);
+    let first_lane_in = split_bytes(cs, IOTA_LIMBS.map(|m| lanes_in[0][m]));
     let first_lane = split_nibbles(cs, lanes_out[0]);
-    for j in 0..8 {
-        let written = first_lane[2 * j].clone() + Expr::from(16u32) * first_lane[2 * j + 1].clone();
-        if IOTA_BYTES.contains(&j) {
-            cs.enforce_lookup_tuple_for_fixed_table(
-                &[
-                    LookupInput::from(first_lane_in[j].clone()),
-                    LookupInput::from(Expr::var(iota_round) + Expr::from(32 * j as u32)),
-                    LookupInput::from(written),
-                ],
-                TableType::XorSpecialIota,
-                false,
-            );
-        } else {
-            cs.add_constraint_expr_allow_explicit_linear(first_lane_in[j].clone() - written);
+    for (m, bytes) in IOTA_LIMBS.into_iter().zip(first_lane_in) {
+        for (j, byte) in [2 * m, 2 * m + 1].into_iter().zip(bytes) {
+            let written =
+                first_lane[2 * j].clone() + Expr::from(16u32) * first_lane[2 * j + 1].clone();
+            if IOTA_BYTES.contains(&j) {
+                cs.enforce_lookup_tuple_for_fixed_table(
+                    &[
+                        LookupInput::from(byte),
+                        LookupInput::from(Expr::var(iota_round) + Expr::from(32 * j as u32)),
+                        LookupInput::from(written),
+                    ],
+                    TableType::XorSpecialIota,
+                    false,
+                );
+            } else {
+                cs.add_constraint_expr_allow_explicit_linear(byte - written);
+            }
         }
     }
+    cs.add_constraint_expr_allow_explicit_linear(
+        Expr::var(lanes_in[0][2]) - Expr::var(lanes_out[0][2]),
+    );
 
     let others: [[Expr<F>; 16]; 4] = from_fn(|y| split_nibbles(cs, lanes_in[y + 1]));
     let parity = split_nibbles(cs, lanes_out[5]);
@@ -144,6 +151,29 @@ pub fn define_keccak_column_parity_delegation_circuit<F: PrimeField, CS: Circuit
         );
     }
 }
+
+// the round constants have bits only in the iota bytes, and each iota byte lies in an iota limb
+const _: () = {
+    use common_constants::delegation_types::keccak_f1600::KECCAK_F1600_ROUND_CONSTANTS_ADJUSTED;
+    let mut mask = 0u64;
+    let mut j = 0;
+    while j < IOTA_BYTES.len() {
+        mask |= 0xffu64 << (8 * IOTA_BYTES[j]);
+        let mut in_limbs = false;
+        let mut m = 0;
+        while m < IOTA_LIMBS.len() {
+            in_limbs |= IOTA_LIMBS[m] == IOTA_BYTES[j] / 2;
+            m += 1;
+        }
+        assert!(in_limbs);
+        j += 1;
+    }
+    let mut r = 0;
+    while r < KECCAK_F1600_ROUND_CONSTANTS_ADJUSTED.len() {
+        assert!(KECCAK_F1600_ROUND_CONSTANTS_ADJUSTED[r] & !mask == 0);
+        r += 1;
+    }
+};
 
 #[cfg(test)]
 mod test;
