@@ -20,10 +20,10 @@ def Code.combine : List Word :=
 @[rv_word] theorem decode_combine_00048513 : decode 0x00048513#32 = some (RV.Instr.opImm (RV.Op.add) 0x0a#5 0x09#5 0x00000000#32) := rfl
 @[rv_word] theorem decode_combine_020000ef : decode 0x020000ef#32 = some (RV.Instr.jal 0x01#5 0x00000020#32) := rfl
 @[rv_word] theorem decode_combine_01250533 : decode 0x01250533#32 = some (RV.Instr.op (RV.Op.add) 0x0a#5 0x0a#5 0x12#5) := rfl
-@[rv_word] theorem decode_combine_00c12083 : decode 0x00c12083#32 = some (RV.Instr.load 4 false 0x01#5 0x02#5 0x0000000c#32) := rfl
-@[rv_word] theorem decode_combine_00812403 : decode 0x00812403#32 = some (RV.Instr.load 4 false 0x08#5 0x02#5 0x00000008#32) := rfl
-@[rv_word] theorem decode_combine_00412483 : decode 0x00412483#32 = some (RV.Instr.load 4 false 0x09#5 0x02#5 0x00000004#32) := rfl
-@[rv_word] theorem decode_combine_00012903 : decode 0x00012903#32 = some (RV.Instr.load 4 false 0x12#5 0x02#5 0x00000000#32) := rfl
+@[rv_word] theorem decode_combine_00c12083 : decode 0x00c12083#32 = some (RV.Instr.load 4 true 0x01#5 0x02#5 0x0000000c#32) := rfl
+@[rv_word] theorem decode_combine_00812403 : decode 0x00812403#32 = some (RV.Instr.load 4 true 0x08#5 0x02#5 0x00000008#32) := rfl
+@[rv_word] theorem decode_combine_00412483 : decode 0x00412483#32 = some (RV.Instr.load 4 true 0x09#5 0x02#5 0x00000004#32) := rfl
+@[rv_word] theorem decode_combine_00012903 : decode 0x00012903#32 = some (RV.Instr.load 4 true 0x12#5 0x02#5 0x00000000#32) := rfl
 @[rv_word] theorem decode_combine_01010113 : decode 0x01010113#32 = some (RV.Instr.opImm (RV.Op.add) 0x02#5 0x02#5 0x00000010#32) := rfl
 @[rv_word] theorem decode_combine_00008067 : decode 0x00008067#32 = some (RV.Instr.jalr 0x00#5 0x01#5 0x00000000#32) := rfl
 

@@ -34,6 +34,19 @@ NOT imported).
 - DECODE COST: symbolic Sail decode (encdec_backwards, ~30k lines) via simp > 120 s for ONE instruction class
   -> not viable. Plan: execute lemmas general (symbolic); decode agreement per image word by kernel evaluation
   (closed, generated next to the per-word RV.decode lemmas). General decode = open item.
+- SUPERSEDED (same day): decode equivalence IS general now. HumanSail: Airbender.decode := (RV.decode w).map toSail
+  (our table, in Sail's names); Airbender.DecodeIsSail (Sail's own ext_decode gives toSail i for every word of the
+  table except `Lenient` encodings, on any Sys state) PROVEN: Slop.Equiv.decode_is_sail, axioms std only.
+  How: walk_decoder (Slop/Equiv/Walk.lean) walks Sail's ~400-clause encdec chain clause by clause with head-only
+  reduction (never simp over the 30k-line term): guards decided from known bits (`Bits w lo n k`, Slice.lean:
+  one general lemma, each use a closed numeric check), currentlyEnabled by the oracle (closed kernel eval, valid
+  on every Sys state), hint clauses (NTL, Zicbop) by "body is none" (Hints.lean). Rows: lean/gen/decode_rows.py ->
+  Dec*.lean (41 rows, 8-17 s/file, ~1-2 s/row), closed field by field (Close.lean). Assembly: Decode.lean (9 s).
+  verify.sh step 5 checks it when lean/sail-rv32/SailRV32 exists.
+- FOUND BY THE PROOF: our table had LW as unsigned (`load 4 false`); Sail (and funct3 bit 2 = 0) says signed.
+  Same behaviour for a full word, but a different instruction: RV32.lean now `load 4 true`, + sext_word lemma.
+- NEXT: StepIsAirbender (execute side): per instruction kind, RV.exec vs Sail execute (toSail i) under Agree;
+  then transfer ProgramCorrect to the Airbender machine.
 
 === HANDOFF (2026-10-13, end of day; resume from another machine) ===
 State: main @ this commit, pushed; ./verify.sh passes (exit 0). Proven on the exact binary build/app.bin

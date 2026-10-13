@@ -32,6 +32,22 @@ echo "$out"
 echo "$out" | grep -q "^RV.program_correct : RV.ProgramCorrect$" || { echo "FAIL: statement"; exit 1; }
 echo "$out" | grep -q "depends on axioms: \[propext, Classical.choice, Quot.sound\]$" \
   || { echo "FAIL: unexpected axioms"; exit 1; }
-echo "== 5. Sanity (not a proof): run the image on the RV32 spec for a few inputs"
+echo "== 5. Our spec vs Sail (needs the generated Sail model: sail/regen.sh)"
+if [[ -d lean/sail-rv32/SailRV32 ]]; then
+  out=$(cd lean && lake build HumanSail Slop.Sail.Config Slop.Equiv.Decode 2>&1 | grep -E "error|Build completed" ; lake env lean --stdin <<'LEAN'
+import Slop.Equiv.Decode
+#check (Slop.Equiv.decode_is_sail : Airbender.DecodeIsSail)
+#print axioms Slop.Equiv.decode_is_sail
+LEAN
+)
+  echo "$out"
+  echo "$out" | grep -q "^Slop.Equiv.decode_is_sail : Airbender.DecodeIsSail$" || { echo "FAIL: DecodeIsSail"; exit 1; }
+  echo "$out" | grep -q "decode_is_sail' depends on axioms: \[propext, Classical.choice, Quot.sound\]$" \
+    || { echo "FAIL: unexpected axioms (DecodeIsSail)"; exit 1; }
+else
+  echo "skipped: no generated Sail model (run sail/regen.sh)"
+fi
+
+echo "== 6. Sanity (not a proof): run the image on the RV32 spec for a few inputs"
 (cd lean && lake build run_image >/dev/null && lake exe run_image)
 echo "OK: the image at build/app.bin satisfies RV.ProgramCorrect (lean/human/Human/Theorems.lean)"

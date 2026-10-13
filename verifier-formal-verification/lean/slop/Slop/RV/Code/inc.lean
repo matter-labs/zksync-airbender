@@ -13,8 +13,8 @@ def Code.inc : List Word :=
 @[rv_word] theorem decode_inc_00812423 : decode 0x00812423#32 = some (RV.Instr.store 4 0x08#5 0x02#5 0x00000008#32) := rfl
 @[rv_word] theorem decode_inc_01010413 : decode 0x01010413#32 = some (RV.Instr.opImm (RV.Op.add) 0x08#5 0x02#5 0x00000010#32) := rfl
 @[rv_word] theorem decode_inc_00150513 : decode 0x00150513#32 = some (RV.Instr.opImm (RV.Op.add) 0x0a#5 0x0a#5 0x00000001#32) := rfl
-@[rv_word] theorem decode_inc_00c12083 : decode 0x00c12083#32 = some (RV.Instr.load 4 false 0x01#5 0x02#5 0x0000000c#32) := rfl
-@[rv_word] theorem decode_inc_00812403 : decode 0x00812403#32 = some (RV.Instr.load 4 false 0x08#5 0x02#5 0x00000008#32) := rfl
+@[rv_word] theorem decode_inc_00c12083 : decode 0x00c12083#32 = some (RV.Instr.load 4 true 0x01#5 0x02#5 0x0000000c#32) := rfl
+@[rv_word] theorem decode_inc_00812403 : decode 0x00812403#32 = some (RV.Instr.load 4 true 0x08#5 0x02#5 0x00000008#32) := rfl
 @[rv_word] theorem decode_inc_01010113 : decode 0x01010113#32 = some (RV.Instr.opImm (RV.Op.add) 0x02#5 0x02#5 0x00000010#32) := rfl
 @[rv_word] theorem decode_inc_00008067 : decode 0x00008067#32 = some (RV.Instr.jalr 0x00#5 0x01#5 0x00000000#32) := rfl
 

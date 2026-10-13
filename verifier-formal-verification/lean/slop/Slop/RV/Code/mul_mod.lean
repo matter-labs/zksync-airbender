@@ -19,8 +19,8 @@ def Code.mul_mod : List Word :=
 @[rv_word] theorem decode_mul_mod_01f65613 : decode 0x01f65613#32 = some (RV.Instr.opImm (RV.Op.srl) 0x0c#5 0x0c#5 0x0000001f#32) := rfl
 @[rv_word] theorem decode_mul_mod_0015d513 : decode 0x0015d513#32 = some (RV.Instr.opImm (RV.Op.srl) 0x0a#5 0x0b#5 0x00000001#32) := rfl
 @[rv_word] theorem decode_mul_mod_00d665b3 : decode 0x00d665b3#32 = some (RV.Instr.op (RV.Op.or) 0x0b#5 0x0c#5 0x0d#5) := rfl
-@[rv_word] theorem decode_mul_mod_00c12083 : decode 0x00c12083#32 = some (RV.Instr.load 4 false 0x01#5 0x02#5 0x0000000c#32) := rfl
-@[rv_word] theorem decode_mul_mod_00812403 : decode 0x00812403#32 = some (RV.Instr.load 4 false 0x08#5 0x02#5 0x00000008#32) := rfl
+@[rv_word] theorem decode_mul_mod_00c12083 : decode 0x00c12083#32 = some (RV.Instr.load 4 true 0x01#5 0x02#5 0x0000000c#32) := rfl
+@[rv_word] theorem decode_mul_mod_00812403 : decode 0x00812403#32 = some (RV.Instr.load 4 true 0x08#5 0x02#5 0x00000008#32) := rfl
 @[rv_word] theorem decode_mul_mod_01010113 : decode 0x01010113#32 = some (RV.Instr.opImm (RV.Op.add) 0x02#5 0x02#5 0x00000010#32) := rfl
 @[rv_word] theorem decode_mul_mod_f05ff06f : decode 0xf05ff06f#32 = some (RV.Instr.jal 0x00#5 0xffffff04#32) := rfl
 

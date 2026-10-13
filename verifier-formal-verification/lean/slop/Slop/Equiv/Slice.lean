@@ -74,4 +74,12 @@ theorem access_slice_lit {w : BitVec 32} {hi lo : Nat} (i k : Nat) (hk : Bits w 
   rcases Nat.mod_two_eq_zero_or_one (w.toNat / 2 ^ (lo + i)) with h | h <;>
     simp [Nat.testBit_eq_decide_div_mod_eq, h]
 
+/-- Known bits, one at a time. -/
+theorem getLsbD_of_bits {w : BitVec 32} {lo n k : Nat} (h : Bits w lo n k) (i : Nat) (h1 : lo ≤ i)
+    (h2 : i < lo + n) : w.getLsbD i = k.testBit (i - lo) := by
+  have h' : ((w.toNat >>> lo) % 2 ^ n) = k := h
+  rw [← h', Nat.testBit_mod_two_pow, Nat.testBit_shiftRight, BitVec.getLsbD]
+  simp only [show i - lo < n by omega, decide_true, Bool.true_and]
+  congr 1; omega
+
 end Slop.Equiv

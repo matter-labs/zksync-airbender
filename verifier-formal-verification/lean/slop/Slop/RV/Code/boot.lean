@@ -26,7 +26,7 @@ def Code.boot : List Word :=
 @[rv_word] theorem decode_boot_00912223 : decode 0x00912223#32 = some (RV.Instr.store 4 0x09#5 0x02#5 0x00000004#32) := rfl
 @[rv_word] theorem decode_boot_01212023 : decode 0x01212023#32 = some (RV.Instr.store 4 0x12#5 0x02#5 0x00000000#32) := rfl
 @[rv_word] theorem decode_boot_04400537 : decode 0x04400537#32 = some (RV.Instr.lui 0x0a#5 0x04400000#32) := rfl
-@[rv_word] theorem decode_boot_00052483 : decode 0x00052483#32 = some (RV.Instr.load 4 false 0x09#5 0x0a#5 0x00000000#32) := rfl
+@[rv_word] theorem decode_boot_00052483 : decode 0x00052483#32 = some (RV.Instr.load 4 true 0x09#5 0x0a#5 0x00000000#32) := rfl
 @[rv_word] theorem decode_boot_00048513 : decode 0x00048513#32 = some (RV.Instr.opImm (RV.Op.add) 0x0a#5 0x09#5 0x00000000#32) := rfl
 @[rv_word] theorem decode_boot_05c000ef : decode 0x05c000ef#32 = some (RV.Instr.jal 0x01#5 0x0000005c#32) := rfl
 @[rv_word] theorem decode_boot_00050913 : decode 0x00050913#32 = some (RV.Instr.opImm (RV.Op.add) 0x12#5 0x0a#5 0x00000000#32) := rfl

@@ -26,16 +26,16 @@ def Code.poly_eval : List Word :=
 @[rv_word] theorem decode_poly_eval_fff90913 : decode 0xfff90913#32 = some (RV.Instr.opImm (RV.Op.add) 0x12#5 0x12#5 0xffffffff#32) := rfl
 @[rv_word] theorem decode_poly_eval_00048593 : decode 0x00048593#32 = some (RV.Instr.opImm (RV.Op.add) 0x0b#5 0x09#5 0x00000000#32) := rfl
 @[rv_word] theorem decode_poly_eval_f81ff0ef : decode 0xf81ff0ef#32 = some (RV.Instr.jal 0x01#5 0xffffff80#32) := rfl
-@[rv_word] theorem decode_poly_eval_0009a583 : decode 0x0009a583#32 = some (RV.Instr.load 4 false 0x0b#5 0x13#5 0x00000000#32) := rfl
+@[rv_word] theorem decode_poly_eval_0009a583 : decode 0x0009a583#32 = some (RV.Instr.load 4 true 0x0b#5 0x13#5 0x00000000#32) := rfl
 @[rv_word] theorem decode_poly_eval_eb5ff0ef : decode 0xeb5ff0ef#32 = some (RV.Instr.jal 0x01#5 0xfffffeb4#32) := rfl
 @[rv_word] theorem decode_poly_eval_ffc98993 : decode 0xffc98993#32 = some (RV.Instr.opImm (RV.Op.add) 0x13#5 0x13#5 0xfffffffc#32) := rfl
 @[rv_word] theorem decode_poly_eval_fe0914e3 : decode 0xfe0914e3#32 = some (RV.Instr.branch (RV.Cond.ne) 0x12#5 0x00#5 0xffffffe8#32) := rfl
 @[rv_word] theorem decode_poly_eval_0080006f : decode 0x0080006f#32 = some (RV.Instr.jal 0x00#5 0x00000008#32) := rfl
-@[rv_word] theorem decode_poly_eval_01c12083 : decode 0x01c12083#32 = some (RV.Instr.load 4 false 0x01#5 0x02#5 0x0000001c#32) := rfl
-@[rv_word] theorem decode_poly_eval_01812403 : decode 0x01812403#32 = some (RV.Instr.load 4 false 0x08#5 0x02#5 0x00000018#32) := rfl
-@[rv_word] theorem decode_poly_eval_01412483 : decode 0x01412483#32 = some (RV.Instr.load 4 false 0x09#5 0x02#5 0x00000014#32) := rfl
-@[rv_word] theorem decode_poly_eval_01012903 : decode 0x01012903#32 = some (RV.Instr.load 4 false 0x12#5 0x02#5 0x00000010#32) := rfl
-@[rv_word] theorem decode_poly_eval_00c12983 : decode 0x00c12983#32 = some (RV.Instr.load 4 false 0x13#5 0x02#5 0x0000000c#32) := rfl
+@[rv_word] theorem decode_poly_eval_01c12083 : decode 0x01c12083#32 = some (RV.Instr.load 4 true 0x01#5 0x02#5 0x0000001c#32) := rfl
+@[rv_word] theorem decode_poly_eval_01812403 : decode 0x01812403#32 = some (RV.Instr.load 4 true 0x08#5 0x02#5 0x00000018#32) := rfl
+@[rv_word] theorem decode_poly_eval_01412483 : decode 0x01412483#32 = some (RV.Instr.load 4 true 0x09#5 0x02#5 0x00000014#32) := rfl
+@[rv_word] theorem decode_poly_eval_01012903 : decode 0x01012903#32 = some (RV.Instr.load 4 true 0x12#5 0x02#5 0x00000010#32) := rfl
+@[rv_word] theorem decode_poly_eval_00c12983 : decode 0x00c12983#32 = some (RV.Instr.load 4 true 0x13#5 0x02#5 0x0000000c#32) := rfl
 @[rv_word] theorem decode_poly_eval_02010113 : decode 0x02010113#32 = some (RV.Instr.opImm (RV.Op.add) 0x02#5 0x02#5 0x00000020#32) := rfl
 @[rv_word] theorem decode_poly_eval_00008067 : decode 0x00008067#32 = some (RV.Instr.jalr 0x00#5 0x01#5 0x00000000#32) := rfl
 

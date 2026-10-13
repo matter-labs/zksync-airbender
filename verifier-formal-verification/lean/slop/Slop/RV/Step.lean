@@ -228,6 +228,9 @@ theorem exec_load (s : State) n sg rd rs1 off (hrd : ¬ rd = 0) (ha : aligned (s
   · rename_i h; exact absurd ⟨ha, hr⟩ h
 theorem exec_load_x0 (s : State) n sg rs1 off : exec s (.load n sg 0 rs1 off) = some s.next := by
   simp only [exec, ↓reduceIte]
+/-- `lw` is a signed load (funct3 bit 2 = 0, as in Sail); for a full word that changes nothing. -/
+theorem sext_word (x : Word) : BitVec.signExtend 32 (BitVec.setWidth (8 * 4) x) = x := by
+  simp [BitVec.signExtend_eq]
 theorem exec_store (s : State) n rs2 rs1 off (ha : aligned (s.r rs1 + off) n) (hw : writable (s.r rs1 + off) n) :
     exec s (.store n rs2 rs1 off) = some (s.store (s.r rs1 + off) (s.r rs2) n).next := by
   simp only [exec]; split
@@ -243,6 +246,6 @@ attribute [rv_side] ROM_END RAM_END aligned writable readable and_not_one_of_ali
   bne_eq_false_iff_eq beq_iff_eq beq_eq_false_iff_ne ne_eq
 attribute [rv_exec high] read_write_rom
 attribute [rv_exec] step_ok Option.elim_some Option.bind_some read_write_disjoint read_write_same4
-  exec_lui exec_auipc exec_opImm exec_op exec_jal exec_jalr0 exec_jalr exec_load exec_load_x0 exec_store alu
+  exec_lui exec_auipc exec_opImm exec_op exec_jal exec_jalr0 exec_jalr exec_load exec_load_x0 sext_word exec_store alu
   exec_branch_t exec_branch_f
 end RV
