@@ -3,6 +3,7 @@ import Airbender.Proofs.UnifiedReduced.Composition
 import Airbender.Proofs.UnifiedReduced.MixedMemory
 import Airbender.Proofs.UnifiedReduced.SharedSpans
 import Airbender.Proofs.UnifiedReduced.RequestWindows
+import Airbender.Proofs.UnifiedReduced.MixedWindows
 import Airbender.Proofs.Delegation.RequestHashWindows
 
 namespace Airbender.UnifiedReduced
@@ -100,5 +101,21 @@ theorem Caller.request_hash_window_soundness [Fact p.Prime] (hp : 16777216 ≤ p
   Delegation.Caller.Proofs.bind_hash_window hp wordInverse byteInverse workers inputs aligned
     (Caller.Proofs.request_windows (by norm_num [Trace.timestampBase]; omega) clockInverse
       accepted program first last pastZero)
+
+/-- Complete instruction and worker rows between public aligned cuts execute
+    in one initialized architectural history. Actual cut states, canonical words,
+    retained timestamps and request slots are derived from joint matching.
+    This is memory transport; whole caller retirement and hash ABI remain separate. -/
+theorem Caller.mixed_window_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+    {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
+    {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.MixedMemoryInputs data program before ca oa cells)
+    {lower upper : Nat} (first : lower % 4 = 0) (last : upper % 4 = 0)
+    (pastZero : 2 ≤ lower) (ordered : lower ≤ upper) :
+    Caller.MixedWindowExecution data before cells lower upper :=
+  Caller.Proofs.mixed_window_execution hp clockInverse rotationInverse accepted inputs first last pastZero ordered
 
 end Airbender.UnifiedReduced

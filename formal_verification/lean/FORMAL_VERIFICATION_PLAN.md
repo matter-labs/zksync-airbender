@@ -62,7 +62,11 @@ G entry controls, extended round masks and terminal agreement. Pooled and unifie
 instruction-boundary cuts now derive exact caller/worker request permutations,
 unique slots, caller counts and full-width CSR families for these hash windows.
 Cuts are aligned and follow clock two; zero-clock workers retain their actual
-prefix effects. This connection keeps worker-only memory matching explicit.
+prefix effects. Hash-reference binding still keeps worker-only matching explicit.
+Unified joint instruction windows now derive actual cut states, full architectural
+matching and canonical tokens with retained clocks across ordinary instructions,
+callers and all four worker families. Complete machine ports and worker rows stay
+in the same window; earlier unissued effects remain in the prefix.
 
 1. **Hash references on subspans.** Reuse complete caller-only G, extended BLAKE and
    Keccak references for segmented spans. Derive worker boundaries, ranges,
@@ -71,10 +75,12 @@ prefix effects. This connection keeps worker-only memory matching explicit.
    bindings now derive G controls and extended-BLAKE round masks as well as Keccak
    controls; the public initialization entry points remain. Selected worker
    windows and their caller request spans are checked in the scopes above.
-   Recover control preparation and joint architectural boundaries through actual
-   instruction history. Extended BLAKE and Keccak completion controls do not
-   restart their protocols; checked
-   regressions forbid treating their windows as automatically repeating.
+   Apply the hash references to the derived joint architectural windows and
+   recover protocol control preparation through actual instruction history.
+   COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed
+   retained for the second window. Extended BLAKE and Keccak completion controls
+   do not restart their protocols; checked regressions forbid treating their
+   windows as automatically repeating.
 2. **Whole mixed caller retirement.** Compose caller/worker spans with existing
    actual current-state fetch and ordinary/custom clause retirement. Recover exact
    instruction/call windows and terminal PC/cells from shared history; do not
