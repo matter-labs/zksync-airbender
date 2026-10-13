@@ -125,6 +125,14 @@ worker-prefix scope. Accepted decoding, clock matching and writes derive the
 actual control read and its retained timestamp. The selected registry and cut
 bounds remain public; no desired control value at an intermediate state is assumed.
 This is preparation/transport, with whole instruction retirement separate.
+[Caller cycles](Airbender/Review/UnifiedReduced/CallerCycles.lean) now bind original
+public fetch, the full-CSR matched worker family, existing local operation references,
+all actual worker observations and Sail PC retirement at the same boundaries.
+The public physical/code domain, positive machine start and existing worker ABI
+remain explicit; prepared extended-round cycles derive their masks. This establishes
+cycle observations and PC retirement, with full custom-CSR ABI and whole mixed
+execution still separate. Both issued bigint control gaps remain admitted, and
+surplus zero-clock effects remain in the shared prefix.
 Native columns retain full address/time/value limbs, including readonly
 clock refreshes. Bounds, latest-write reads and Clean online-consistent histories
 are derived from those relations and public initialization. Retiming introduces
