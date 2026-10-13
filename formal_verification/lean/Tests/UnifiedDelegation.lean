@@ -400,6 +400,40 @@ theorem joint_preparation_window :
   UnifiedReduced.Caller.mixed_window_soundness (by decide +kernel) (by decide +kernel) (by decide +kernel)
     mixedAccepted mixedInputs (by decide) (by decide) (by decide) (by decide)
 
+theorem mixed_instruction_window_counts :
+    ((mixedData 0).windowMachineRows 4 12).length = (12 - 4) / 4 ∧
+      ((mixedData 0).windowMachineRows 8 12).length = (12 - 8) / 4 := by
+  constructor
+  all_goals
+    exact UnifiedReduced.Caller.Proofs.machine_window_count (by decide +kernel) (by decide +kernel)
+      mixedChecks mixedInputs.publicProgram (by decide) (by decide) (by decide) (by decide) (by decide)
+
+theorem derived_copy_region : UnifiedReduced.Caller.CallerWindowSchedule (mixedData 0) 4 8 :=
+  UnifiedReduced.Caller.window_schedule_soundness (by decide +kernel) (by decide +kernel)
+    mixedChecks mixedInputs.publicProgram (by decide) (by decide) (by decide) (by decide)
+    (by decide) (by decide) (by decide +kernel)
+
+theorem ordinary_region_rejected : ¬ UnifiedReduced.Caller.CallerWindowSchedule (mixedData 0) 8 12 := by
+  intro schedule
+  have rows := schedule.rows
+  change [] = [ordinary 0] at rows
+  contradiction
+
+theorem ordinary_region_duration_rejected :
+    ¬ 12 = 8 + 4 * ((mixedData 0).workers.windowRows 8 12).length := by decide +kernel
+
+theorem mixed_caller_region_projection :
+    UnifiedReduced.Caller.MixedProjectedWindowExecution (mixedData 0) mixedBefore cells 4 8 :=
+  UnifiedReduced.Caller.mixed_window_projection_soundness (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    mixedAccepted mixedInputs (by decide) (by decide) (by decide) (by decide)
+    (by decide) (by decide) (by decide +kernel)
+
+theorem empty_region_after_preparation :
+    UnifiedReduced.Caller.MixedProjectedWindowExecution (mixedData 0) mixedBefore cells 12 12 :=
+  UnifiedReduced.Caller.mixed_window_projection_soundness (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    mixedAccepted mixedInputs (by decide) (by decide) (by decide) (by decide)
+    (by decide) (by decide) (by decide +kernel)
+
 private theorem boundary_control {tokens : List (MemoryToken babyBearModulus)} {state : State}
     (image : UnifiedReduced.Caller.NativeBoundary tokens state cells)
     {clock value : Nat} (member : (⟨(Cell.register 12).addressCode, (clock, 0), Nat.pair value 0⟩ :
@@ -416,6 +450,24 @@ private theorem endpoint_permutation {start finish target : List (MemoryToken ba
     (matching : (start ++ steps.map Prod.snd).Perm (finish ++ steps.map Prod.fst))
     (expected : (start ++ steps.map Prod.snd).Perm (target ++ steps.map Prod.fst)) : finish.Perm target :=
   (List.perm_append_right_iff _).mp (matching.symm.trans expected)
+
+theorem mixed_projected_prefix_control : ∃ tokens events state,
+    events.Perm (((mixedData 0).prefixSteps 12).map transferEvent) ∧
+    Trace.SailHistory cells events mixedBefore state ∧
+    UnifiedReduced.Caller.NativeBoundary tokens state cells ∧
+    (Cell.register 12).read state = .ok 1 state ∧
+    (⟨(Cell.register 12).addressCode, (10, 0), Nat.pair 1 0⟩ : MemoryToken babyBearModulus) ∈ tokens := by
+  obtain ⟨start, finish, earlier, current, atStart, atFinish, earlierPerm, _,
+    earlierHistory, _, prefixMatching, _, startBoundary, _⟩ := empty_region_after_preparation.execution
+  have allSteps : (mixedData 0).prefixSteps 12 = (mixedData 0).mixedSteps := by decide +kernel
+  rw [allSteps] at prefixMatching
+  have actual : start.Perm (mixedData 0).machine.terminalMemory :=
+    (List.perm_append_right_iff _).mp (prefixMatching.symm.trans mixedAccepted.memory)
+  have present : (⟨(Cell.register 12).addressCode, (10, 0), Nat.pair 1 0⟩ : MemoryToken babyBearModulus) ∈ start :=
+    actual.mem_iff.mpr (by decide +kernel)
+  refine ⟨start, earlier, atStart, earlierPerm, earlierHistory, startBoundary, ?_, present⟩
+  have word : (Word.mk 1 0).toBitVec = (1 : BitVec 32) := by decide +kernel
+  simpa only [word] using boundary_control startBoundary present
 
 theorem joint_copy_controls : ∃ earlier current start finish,
     earlier.Perm (((mixedData 0).prefixSteps 4).map transferEvent) ∧
