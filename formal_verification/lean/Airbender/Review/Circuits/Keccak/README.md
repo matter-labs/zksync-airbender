@@ -6,13 +6,22 @@ components, while address/controller contracts identify the physical indirect
 ports. These local effects are distinct from the complete call schedule and
 permutation-state binding.
 
+## Checked results
+
+[`Native.operation_execution`](../../Trace/Workers/Keccak/Theorems.lean)
+proves all seven native lane-mode effects against the existing Clean references,
+including actual ports and modeled physical lane selection. History derives
+pointer/read/range facts. Complete permutation and window claims additionally
+bind the reference output and terminal tokens for the 649-call protocol;
+invalid-control fallback is outside that complete protocol.
+
 Start with [Artifact](Artifact.lean), [Execution](Execution.lean) and
 [Controls](Controls.lean) for the seven native modes.
 [Theta](Theta.lean), [Rho](Rho.lean), [Mix](Mix.lean), [Chi](Chi.lean) and [Iota](Iota.lean)
 select the original Clean operations and the circuit's phased lane effects.
 
 [Controller](Controller.lean) describes physical lane selection;
-[controller rows](Tables/Controller.lean) and [setup](Tables/Setup.lean) are modeled tables.
+[controller rows](Tables/Controller.lean) and [`setup`](Tables/Setup.lean) are modeled tables.
 [Addresses](Addresses.lean), [ControlUpdate](ControlUpdate.lean) and [Memory](Memory.lean)
 connect the actual indirect ports and controls to shared initialized history.
 
