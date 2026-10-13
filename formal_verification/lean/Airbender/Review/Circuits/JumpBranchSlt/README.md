@@ -6,6 +6,14 @@ decoded operations and destination/PC effects. Public configuration and
 terminal-PC normalization remain part of the stated interface rather than
 consequences of the local equations alone.
 
+## Checked results
+
+The [comparison, branch and jump soundness claims](Theorems.lean) prove original
+Sail register/PC effects for each admitted row, with reads and local ranges derived
+from initialized history. Aligned code, public ISA/configuration and canonical
+terminal PC remain visible conditions. The shared PC-range interface does not
+yet discharge standalone jump teardown; the checked aliased endpoint remains.
+
 1. Read [Theorems](Theorems.lean) for the exact local claim.
 2. Read [Model](Model.lean) for satisfaction, named observable mappings and interface assumptions.
 3. Follow [the selected reference](Branch.lean) and [Artifact](Artifact.lean) for semantics and imported variable placement.

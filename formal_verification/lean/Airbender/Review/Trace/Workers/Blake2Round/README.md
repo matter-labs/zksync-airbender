@@ -6,6 +6,16 @@ controllers and initialized history connect preparation, mixing and chaining
 through the actual Sail states. Selected windows retain their native timestamps
 and controller-prefix restrictions.
 
+## Checked results
+
+[`operation_execution`](Theorems.lean) proves local phase effects with the
+standalone exclusive-mask ABI still explicit. [`compression_soundness`](Theorems.lean)
+and [`compression_boundary_soundness`](Theorems.lean) prove the complete reference
+output on actual RAM, linked to every terminal token; [`window_soundness`](Theorems.lean)
+does so at selected first-span cut states within the ten-position controller.
+Reads, ranges and intermediate states are derived. Broader restart/chaining and
+full mixed caller retirement remain separate.
+
 Read [Theorems](Theorems.lean), [Call](Call.lean) and
 [BoundaryCall](BoundaryCall.lean). [Compression](Compression.lean) names
 the complete seven-/ten-round reference and actual initial/final block reads.
