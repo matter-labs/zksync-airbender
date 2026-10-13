@@ -16,6 +16,12 @@ name = "Human"
 srcDir = "human"
 roots = ["Human"]
 
+# what a human reads about the official Sail model (needs the generated Sail model: sail/regen.sh)
+[[lean_lib]]
+name = "HumanSail"
+srcDir = "human"
+roots = ["HumanSail"]
+
 [[lean_lib]]
 name = "Slop"
 srcDir = "slop"

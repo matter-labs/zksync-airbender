@@ -19,6 +19,21 @@ NOT imported).
   [4M,1G) (was 2M from airbender's default branch); rust/lds/memory.x, RV32.lean, Slop/Sail/Airbender.lean.
   New binary sha256 16c1e8c1… (only the 3 gp/sp/INPUT words moved; INPUT = 0x4400000). verify.sh passes.
   build/app.dis + app.sym are now the macOS build (they differ from Linux only in symbol-name hashes).
+- lean-sail no longer vendored (no upstream licence): sail/fetch-lean-sail.sh holds the pin, fetches + patches into
+  the gitignored lean/sail-rv32/lean-sail/; verify.sh, lean/check.sh, regen.sh call it. Branch history rewritten so
+  no commit contains it (user, 2026-10-13).
+- Sail toolchain on macOS: opam release sail 0.20.3 fails (Sdtrig); pinned 2ba3212 built with dune in opam switch
+  `sailsys` (system OCaml 5.5.1), run from its _build dir (see sail/PINS.md). regen with the old config is
+  byte-identical to the Linux model. regen.sh fixes: no GNU grep -P; heredoc backticks ran `lake build` (bug).
+- Sail config: Zihintntl, Zicbop (re-decode base instructions), Zicfilp, Zicfiss, Zca (+Zcb/Zcf/Zcd/Zcmop) off.
+  Turning ALL extensions off fails Sail's config_is_valid (PMA attrs, physaddr_bits, FS/vector deps), so the rest
+  stay and HumanSail's `Supported` filters them.
+- human/HumanSail/Airbender.lean (new lib HumanSail): Airbender = Sail fetch/decode/execute/tick_pc with the
+  master.md changes (lenient JALR/SLT..AND encodings, no signed M, load into x0 = PC+4). Kernel checks of each
+  change in slop/Slop/Sail/Config.lean (all pass). Old try_step route kept as legacy in slop/Slop/Sail/Airbender.lean.
+- DECODE COST: symbolic Sail decode (encdec_backwards, ~30k lines) via simp > 120 s for ONE instruction class
+  -> not viable. Plan: execute lemmas general (symbolic); decode agreement per image word by kernel evaluation
+  (closed, generated next to the per-word RV.decode lemmas). General decode = open item.
 
 === HANDOFF (2026-10-13, end of day; resume from another machine) ===
 State: main @ this commit, pushed; ./verify.sh passes (exit 0). Proven on the exact binary build/app.bin

@@ -66,6 +66,12 @@ stock only where Lean cannot help (`diff rv32.json airbender-base.json`, marked 
   RAM [2M, 1G) and Sail routes those addresses to the devices before looking at the PMA list.
 * Zicntr off: `config_is_valid` requires a time source (the CLINT) for it. Its instructions are CSR reads, which the Lean
   whitelist rejects anyway.
+* Zihintntl, Zicbop off: they re-decode base instructions Airbender runs as plain RV32I (`add x0, x0, x2..x5` -> NTL,
+  `ori x0, rs1, imm` -> PREFETCH). Whether an extension is on is a compile-time constant (`hartSupports`), so Lean
+  cannot switch it off. Zicfilp, Zicfiss off: landing-pad / shadow-stack checks in JALR and the step. Zca (and Zcb,
+  Zcf, Zcd, Zcmop, which need it) off: no compressed instructions, so 2-byte-aligned jump targets trap, as in Airbender.
+  Other extensions stay as stock: `HumanSail/Airbender.lean`'s `Supported` rejects their instructions. (Switching
+  every extension off fails `config_is_valid`: PMA attributes, `physaddr_bits`, FS/vector settings depend on them.)
 
 ### Patches and mechanical edits
 * `patches/sail-riscv-lean-missing-externs.patch`: upstream HEAD (and release 0.15) declares three `val`s with only a

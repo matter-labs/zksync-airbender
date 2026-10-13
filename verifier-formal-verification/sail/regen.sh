@@ -166,7 +166,7 @@ name = "$LEAN_PKG"
 leanOptions.weak.linter.style.nameCheck = false
 moreLeancArgs = ["-fbracket-depth=500"]
 
-# `lake build SailRV32Smoke`: kernel-checked smoke test (sail/smoke/SailRV32Smoke.lean); not a default target
+# \`lake build SailRV32Smoke\`: kernel-checked smoke test (sail/smoke/SailRV32Smoke.lean); not a default target
 [[lean_lib]]
 name = "SailRV32Smoke"
 leanOptions.weak.linter.style.nameCheck = false

@@ -756,7 +756,7 @@
       "supported": true
     },
     "Zicbop": {
-      "supported": true
+      "supported": false // AIRBENDER: re-decodes `ori x0, rs1, imm`, which Airbender runs as ORI
     },
     "Zicboz": {
       "supported": true
@@ -777,10 +777,10 @@
       "supported": true
     },
     "Zicfilp": {
-      "supported": true
+      "supported": false // AIRBENDER: landing-pad checks on JALR; Airbender has none
     },
     "Zicfiss": {
-      "supported": true
+      "supported": false // AIRBENDER: shadow stack; Airbender has none
     },
     "Zicond": {
       "supported": true
@@ -795,7 +795,7 @@
       "supported": true
     },
     "Zihintntl": {
-      "supported": true
+      "supported": false // AIRBENDER: re-decodes `add x0, x0, x2..x5`, which Airbender runs as ADD
     },
     "Zihintpause": {
       "supported": true
@@ -864,19 +864,19 @@
       "supported": false
     },
     "Zca": {
-      "supported": true
+      "supported": false // AIRBENDER: no compressed instructions: Airbender rejects 2-byte-aligned jump targets
     },
     "Zcf": {
-      "supported": true
+      "supported": false // AIRBENDER: needs Zca
     },
     "Zcd": {
-      "supported": true
+      "supported": false // AIRBENDER: needs Zca
     },
     "Zcb": {
-      "supported": true
+      "supported": false // AIRBENDER: needs Zca
     },
     "Zcmop": {
-      "supported": true
+      "supported": false // AIRBENDER: needs Zca
     },
     "Zba": {
       "supported": false
