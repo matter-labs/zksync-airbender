@@ -43,4 +43,15 @@ theorem exec_shiftiop (σ : FState) (rs1 rd sh : BitVec 5) (o : RV.Op) (ho : o =
   simp only [Airbender.toSail, Airbender.execute, execute, execute_SHIFTIOP, Slop.runF_bind, rX_run, wX_run,
     Slop.runF_pure, RV.alu, sll6_eq, srl6_eq, sra6_eq]
 
+theorem exec_mext (σ : FState) (rs2 rs1 rd : BitVec 5) (o : RV.Op) (ho : o = .mul ∨ o = .mulhu ∨ o = .divu ∨ o = .remu) :
+    runF (Airbender.execute (Airbender.toSail (.op o rd rs1 rs2))) σ =
+      .ok RETIRE_SUCCESS (xset σ rd (RV.alu o (xget σ rs1) (xget σ rs2))) := by
+  rcases ho with rfl | rfl | rfl | rfl <;>
+  simp only [Airbender.toSail, Airbender.execute, execute, execute_MUL, execute_DIV, execute_REM, Slop.runF_bind,
+    rX_run, Slop.runF_pure, RV.alu, mult_to_bits_half, Functions.xlen, ite_true, SailRV32.not,
+    Bool.not_true, Bool.false_and, Bool.false_eq_true, ite_false] <;> simp only [wX_run, Slop.runF_pure] <;>
+  congr 2 <;> apply BitVec.eq_of_toNat_eq <;>
+  simp [to_bits_truncate, get_slice_int, Sail.BitVec.extractLsb, BitVec.extractLsb, BitVec.toNatInt,
+    mul_int, mulhu_nat, divu_nat, remu_nat]
+
 end Slop.Equiv
