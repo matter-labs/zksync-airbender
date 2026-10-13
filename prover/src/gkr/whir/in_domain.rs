@@ -40,7 +40,7 @@ struct Term<F, E> {
     point: F,
     /// exponent of `point` w.r.t. the generator of the field's maximal
     /// two-adic subgroup (`2^F::TWO_ADICITY`), kept exactly under squaring
-    exp: u64,
+    exp: u128,
     /// the round's leaf, folded `s` times: evaluations of the current folded
     /// polynomial on `base^{2^s} * mu_{2^{k-s}}`, coset order bit-reversed
     values: Vec<E>,
@@ -79,7 +79,7 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> InDomainTerms<F
     /// size `2^query_domain_log2`, with weight `ch`.
     pub(crate) fn add(&mut self, point: F, query_index: usize, query_domain_log2: usize, ch: E) {
         assert!(query_domain_log2 <= F::TWO_ADICITY);
-        let exp = (query_index as u64) << (F::TWO_ADICITY - query_domain_log2);
+        let exp = (query_index as u128) << (F::TWO_ADICITY - query_domain_log2);
         self.terms.push(Term {
             ch,
             factor: E::ONE,
@@ -132,12 +132,12 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> InDomainTerms<F
         for term in self.terms.iter_mut() {
             let shift = F::TWO_ADICITY - domain_log2;
             assert_eq!(
-                term.exp & ((1u64 << shift) - 1),
+                term.exp & ((1u128 << shift) - 1),
                 0,
                 "an in-domain point must lie in the current oracle's domain"
             );
             let e = term.exp >> shift;
-            let leaf_index = (e & ((1u64 << num_leaves_log2) - 1)) as usize;
+            let leaf_index = (e & ((1u128 << num_leaves_log2) - 1)) as usize;
             let natural_pos = (e >> num_leaves_log2) as usize;
             term.pos = bitreverse_index(natural_pos, k as u32);
             term.base_root = generator.pow(leaf_index as u32);
@@ -281,7 +281,7 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> InDomainTerms<F
             term.values.truncate(half);
             term.pos >>= 1;
             term.point.square();
-            term.exp = (term.exp << 1) & ((1u64 << F::TWO_ADICITY) - 1);
+            term.exp = (term.exp << 1) & ((1u128 << F::TWO_ADICITY) - 1);
             term.base_root.square();
             term.base_root_inv.square();
         }
