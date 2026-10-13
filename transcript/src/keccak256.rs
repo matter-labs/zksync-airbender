@@ -239,6 +239,11 @@ impl Transcript<Proth120, Proth120> for Keccak256Transcript {
         }
     }
 
+    fn draw_fresh_random_field_elements(seed: &mut Self::Seed, buffer: &mut [Proth120]) {
+        // `draw_field` hashes the seed before reading it.
+        Self::draw_random_field_elements(seed, buffer);
+    }
+
     #[cfg(feature = "pow")]
     fn draw_random_field_elements_with_pow(
         seed: &Self::Seed,
@@ -271,6 +276,24 @@ mod test {
     #[test]
     fn keccak_empty_vector() {
         assert_eq!(keccak(&[]), KECCAK_EMPTY);
+    }
+
+    #[test]
+    fn fresh_field_draw_is_the_plain_draw() {
+        let mut plain_seed = Keccak256Seed([7u8; 32]);
+        let mut fresh_seed = plain_seed;
+        let mut plain = [Proth120::new(0); 2];
+        let mut fresh = [Proth120::new(0); 2];
+        <Keccak256Transcript as Transcript<Proth120, Proth120>>::draw_random_field_elements(
+            &mut plain_seed,
+            &mut plain,
+        );
+        <Keccak256Transcript as Transcript<Proth120, Proth120>>::draw_fresh_random_field_elements(
+            &mut fresh_seed,
+            &mut fresh,
+        );
+        assert_eq!(plain, fresh);
+        assert_eq!(plain_seed.0, fresh_seed.0);
     }
 
     #[test]

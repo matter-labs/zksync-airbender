@@ -81,6 +81,13 @@ pub fn draw_single_field_el(ts: &mut TranscriptState) -> BabyBearExt4 {
     let raw = unsafe { words.as_array::<EXT_DEGREE>() };
     ext_from_raw_words::<BabyBearField, BabyBearExt4, EXT_DEGREE>(raw)
 }
+#[doc = r" Variant of [`draw_single_field_el`] that first moves past the digest the preceding"]
+#[doc = r" raw draw emitted. Matches the prover's `draw_fresh_random_field_els`."]
+#[inline(always)]
+pub fn draw_fresh_single_field_el(ts: &mut TranscriptState) -> BabyBearExt4 {
+    ts.advance();
+    draw_single_field_el(ts)
+}
 #[doc = r" Variant of [`draw_field_els_into`] used immediately after a `read_and_verify_pow`:"]
 #[doc = r" the first drawn word was consumed by the PoW, so we draw one extra word and skip it."]
 #[doc = r" The drawn word count matches the prover's `draw_random_field_els_with_pow` exactly."]

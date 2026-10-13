@@ -9,7 +9,8 @@ use super::super::*;
 
 use super::{bitreverse_index, BLOCK_SIZE};
 use crate::upstream::{
-    draw_random_field_els, Blake2sState, Blake2sTranscript, Field, Seed, USE_REDUCED_BLAKE2_ROUNDS,
+    draw_fresh_random_field_els, draw_random_field_els, Blake2sState, Blake2sTranscript, Field,
+    Seed, USE_REDUCED_BLAKE2_ROUNDS,
 };
 
 #[test]
@@ -481,5 +482,29 @@ fn transcript_squeeze_e4_parity_randomized() {
         let (h_out, h_seed) = host_draw_e4(&seed, count);
         assert_eq!(d_out, h_out, "output mismatch for count={count}");
         assert_eq!(d_seed, h_seed, "seed mismatch for count={count}");
+    }
+}
+
+#[test]
+fn transcript_squeeze_fresh_e4_parity() {
+    let mut rng = rand::rng();
+    for count in [1, 2, 3, 8, 9] {
+        let seed: [u32; STATE_SIZE] = std::array::from_fn(|_| rng.random());
+        let stream = CudaStream::default();
+        let mut d_seed = DeviceAllocation::alloc(STATE_SIZE).unwrap();
+        let mut d_output: DeviceAllocation<E4> = DeviceAllocation::alloc(count).unwrap();
+        memory_copy_async(&mut d_seed, &seed[..], &stream).unwrap();
+        super::transcript_squeeze_fresh_e4(&mut d_seed, &mut d_output, &stream).unwrap();
+        let mut d_out = vec![E4::ZERO; count];
+        let mut d_final_seed = [0u32; STATE_SIZE];
+        memory_copy_async(&mut d_out, &d_output, &stream).unwrap();
+        memory_copy_async(&mut d_final_seed[..], &d_seed, &stream).unwrap();
+        stream.synchronize().unwrap();
+
+        let mut h_seed = Seed(seed);
+        let h_out = draw_fresh_random_field_els::<BF, E4, Blake2sTranscript>(&mut h_seed, count);
+        assert_eq!(d_out, h_out, "output mismatch for count={count}");
+        assert_eq!(d_final_seed, h_seed.0, "seed mismatch for count={count}");
+        assert_ne!(d_out[0], host_draw_e4(&seed, 1).0[0]);
     }
 }
