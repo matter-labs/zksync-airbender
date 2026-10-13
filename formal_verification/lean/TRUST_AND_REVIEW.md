@@ -94,8 +94,11 @@ conditions. [Caller request windows](Airbender/Review/Delegation/RequestHashWind
 reuse these checks at aligned instruction cuts after clock two. Exact worker/caller
 multiplicity, slots and full CSR families are derived; zero-clock worker effects
 stay in the actual prefix. Hash-window claims retain explicit worker-only memory
-matching and protocol ABI; joint mixed retirement and control preparation remain
-open. Native columns retain full address/time/value limbs, including readonly
+matching and protocol ABI. [Joint instruction windows](Airbender/Review/UnifiedReduced/MixedWindows.lean)
+now derive actual shared cut states and canonical boundary tokens from architectural
+matching. Machine ports include native offset zero; Clean event clocks add one.
+Protocol control preparation, joint hash-reference binding and whole mixed retirement
+remain open. Native columns retain full address/time/value limbs, including readonly
 clock refreshes. Bounds, latest-write reads and Clean online-consistent histories
 are derived from those relations and public initialization. Retiming introduces
 initialization writes and preserves addresses/values; it does not prove cryptographic
