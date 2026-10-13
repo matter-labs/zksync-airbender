@@ -26,6 +26,8 @@ edge cases, and wiring behind each rule.
   pool: the scheduling thread writes once during construction, and every stream
   operation thereafter only reads. See *SchedulerHostAllocator* below for the
   construction invariant and what belongs there.
+- **MUST NOT** pin host memory per request. Small per-request H2D sources go
+  through `Transfer::stage` and the context's fixed staging buffer.
 - **MUST** consume D2H readback buffers via a scheduled host callback, never
   from the scheduling thread.
 - **MUST** fork/join any op on an auxiliary stream (`h2d_stream`)
@@ -142,6 +144,11 @@ access semantics** vs. the stream-ordered pool above: the scheduling thread
 writes once during construction, and every stream operation thereafter only
 reads.
 
+Each `StaticPinnedBox` (`alloc_static_pinned_box_uninit`) is its own
+`cudaHostAlloc`, released with `cudaFreeHost` on drop. Use it only for data
+allocated once per context or circuit (setup, decoder); per-request sources use
+`Transfer::stage` (see *H2D copies*).
+
 **Why a second pool.** The "fill via callback" rule guards against a
 scheduling-thread write racing a prior owner's outstanding DMA on a recycled
 block. That hazard only exists for buffers the stream *writes*.
@@ -167,7 +174,7 @@ holds for everything else.
 
 | Use                                              | Pool                       |
 | ------------------------------------------------ | -------------------------- |
-| H2D source for transcript-derived challenge data | stream-ordered host pool   |
+| Small per-request H2D source                     | `Transfer::stage`          |
 | H2D source for compiled / scheduling-time data   | `SchedulerHostAllocator`   |
 | D2H readback destination                         | stream-ordered host pool   |
 | Callback-populated staging                       | stream-ordered host pool   |
@@ -201,18 +208,29 @@ it implements. This is only worthwhile when meaningful exec-stream compute can
 be overlapped with the transfer.
 
 ```text
-exec_stream: alloc device buffer D
-exec_stream: record E_alloc          ("buffer D is allocated")
-h2d_stream:  wait_event(E_alloc)     ("don't copy before D exists")
-h2d_stream:  memory_copy_async(D, src)
-h2d_stream:  schedule keepalive cb   (holds src alive until copy completes)
-h2d_stream:  record E_xfer           ("copy complete")
-exec_stream: wait_event(E_xfer)      ("don't use D before data arrives")
+exec_stream: alloc device buffers D_i
+exec_stream: record E_alloc          ("buffers D_i are allocated")
+h2d_stream:  fill staging cb         (only if values were staged)
+h2d_stream:  wait_event(E_alloc)     ("don't copy before D_i exist"), once per bundle
+h2d_stream:  memory_copy_async(D_i, staging or src_i)
+h2d_stream:  record E_xfer           ("copies complete")
+exec_stream: wait_event(E_xfer)      ("don't use D_i before data arrives")
 ```
 
 The E_alloc fence ensures h2d_stream does not start writing to a device buffer
 before it has been allocated on the exec side. The E_xfer fence ensures exec
 kernels do not read a buffer that is still being transferred.
+
+A `Transfer` issues the `E_alloc` wait once, at its first copy or at
+`record_transferred`.
+
+**Per-request sources.** Small inputs that change with every request (top bits,
+external challenges, the unified memory cap) are recorded with
+`Transfer::stage` before any direct copy of the bundle. They are packed into
+the context's fixed pinned staging buffer (`H2D_STAGING_BYTES`) by one
+`h2d_stream` callback enqueued ahead of the wait, and copied right after it.
+Each bundle's fill sits behind every earlier staged copy on the in-order
+`h2d_stream`, so all bundles reuse the same buffer.
 
 ## D2H copies
 
@@ -221,20 +239,20 @@ The stream-ordered host-pool destination may be released once that callback is
 scheduled. Keep the callback owner alive until stream or event synchronization
 confirms completion: the CUDA callback dispatch holds only a weak reference.
 
-## H2D keepalive callbacks
+## H2D source lifetime
 
-The owning `Callbacks` list must survive until stream or event synchronization
-confirms that its callbacks completed. Dropping an owner sooner can skip the
-callback and release its captured sources while a transfer is still in flight.
-This differs from the scheduled-use lifetime of stream-ordered pool reservations.
+A `Transfer` owns the `Arc` sources of its direct copies and its staging fill
+callback. `Transfer::into_keepalive` hands them to the job, which must keep
+them until stream or event synchronization confirms completion (`finish()`).
+Dropping them sooner can release a source while its copy is in flight, or skip
+the fill. This differs from the scheduled-use lifetime of stream-ordered pool
+reservations.
 
-`Transfer::schedule` places a callback on h2d_stream that holds an `Arc`
-reference to the source buffer alive until h2d_stream executes past the copy.
-These callbacks are distinct from exec-stream callbacks:
+The staging fill callback is distinct from exec-stream callbacks:
 
-- They do **not** compute challenge data.
-- They are not subject to transcript-ordering restrictions.
-- They may **not** call CUDA APIs (same rule applies to all stream callbacks).
+- It does **not** compute challenge data.
+- It is not subject to transcript-ordering restrictions.
+- It may **not** call CUDA APIs (same rule applies to all stream callbacks).
 
 ## Stream fence at end of prove()
 
