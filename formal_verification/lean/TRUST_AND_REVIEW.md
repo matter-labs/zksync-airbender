@@ -107,7 +107,13 @@ derive selected caller regions from accepted clock/request matching. Public cuts
 must lie inside the native path, with duration four times the selected worker
 count; no caller selector or instruction schedule is supplied. Earlier ordinary
 effects remain in the joint prefix, rather than a worker-only prefix projection.
-Complete mixed-history hash protocols and whole mixed retirement remain open.
+Prepared G and Keccak first spans now reach their complete references through
+[prepared hash windows](Airbender/Review/UnifiedReduced/PreparedHashWindows.lean).
+The public instruction registry, empty worker-prefix scope, homogeneous family,
+call count and four-tick duration remain explicit. Worker boundaries, controls
+and caller regions are derived from shared matching, with no supplied worker masks.
+Extended-BLAKE masks before mixed transport, broader preparation/chaining and
+whole mixed retirement remain open.
 [Control preparation](Airbender/Review/UnifiedReduced/ControlPreparation.lean)
 uses a public ordinary ADDI-from-x0/LUI registry and the existing first-span empty
 worker-prefix scope. Accepted decoding, clock matching and writes derive the
