@@ -1,6 +1,6 @@
-import Airbender.Review.Blake2Round.Finalization
-import Airbender.Review.Blake2Round.Mixing
-import Airbender.Review.Blake2Round.Artifact
+import Airbender.Review.Circuits.Blake2Round.Finalization
+import Airbender.Review.Circuits.Blake2Round.Mixing
+import Airbender.Review.Circuits.Blake2Round.Artifact
 
 namespace Airbender.Blake2Round
 

@@ -1,5 +1,5 @@
 import Airbender.Proofs.Blake2G.Addresses
-import Airbender.Review.Blake2G.Execution
+import Airbender.Review.Circuits.Blake2G.Execution
 import Airbender.Proofs.Delegation.NativeViews
 
 namespace Airbender.Blake2G.Proofs

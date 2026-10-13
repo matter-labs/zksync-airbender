@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.Delegation
+import Airbender.Review.Circuits.UnifiedReduced.Delegation
 import Airbender.Proofs.UnifiedReduced.Decoder
 import Airbender.Proofs.Delegation.CallerPC
 

@@ -1,4 +1,4 @@
-import Airbender.Review.Delegation.RequestHashWindows
+import Airbender.Review.Trace.Delegation.RequestHashWindows
 import Airbender.Proofs.Delegation.RequestWindows
 import Airbender.Proofs.Blake2G.Windows
 import Airbender.Proofs.Blake2Round.Windows

@@ -1,5 +1,6 @@
 import Tests.DelegationOperationEffects
-import Airbender.Review.Delegation.CallerTheorems
+import Airbender.Review.Circuits.AddSub.CallerTheorems
+import Airbender.Review.Trace.Delegation.CallerTheorems
 
 namespace Tests.DelegationMixedMemory
 open Airbender Delegation Trace Arithmetic Reference.RiscV.Sail Reference.Sail

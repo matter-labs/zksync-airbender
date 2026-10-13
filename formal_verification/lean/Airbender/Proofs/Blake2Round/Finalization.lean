@@ -1,4 +1,4 @@
-import Airbender.Review.Blake2Round.Finalization
+import Airbender.Review.Circuits.Blake2Round.Finalization
 import Airbender.Proofs.Constraints
 import Airbender.Proofs.Blake2Round.FinalWriteback
 import Mathlib.Tactic.LinearCombination

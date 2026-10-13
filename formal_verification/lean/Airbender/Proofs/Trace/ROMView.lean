@@ -1,7 +1,7 @@
 import Airbender.Proofs.WordMemory
 import Airbender.Proofs.Trace.Initialization
 import Airbender.Proofs.Trace.Addresses
-import Airbender.Review.Trace.NativeMemory
+import Airbender.Review.Helpers.NativeMemory
 
 namespace Airbender.Trace.ROMView
 open Arithmetic

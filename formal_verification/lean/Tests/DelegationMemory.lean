@@ -1,5 +1,5 @@
 import Tests.KeccakTheta
-import Airbender.Review.Delegation.Theorems
+import Airbender.Review.Trace.Delegation.Theorems
 import Airbender.Proofs.Keccak.CallHistory
 import Airbender.Proofs.Delegation.AtomicHistory
 import Airbender.Proofs.Keccak.StateTransport

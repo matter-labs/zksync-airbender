@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.MixedMemory
+import Airbender.Review.Trace.UnifiedReduced.MixedMemory
 import Airbender.Proofs.UnifiedReduced.RequestTrace
 import Airbender.Proofs.Trace.TransferHistory
 

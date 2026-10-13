@@ -11,7 +11,7 @@ connections. Keep these documents as snapshots, without completed-work history.
 
 Start with the composed execution claim in
 [Trace/Soundness.lean](Airbender/Review/Trace/Soundness.lean) and its
-[public inputs](Airbender/Review/Trace/PooledExecution.lean). The proof path is:
+[public inputs](Airbender/Review/Helpers/PooledBoundary.lean). The proof path is:
 
 ```text
 public initialization → preserved write bounds → latest-write reads
@@ -30,8 +30,12 @@ unchanged-Sail discarded-load restriction distinct from the named Airbender
 PC-only-NOP profile. External input streams remain independent of the witness;
 explicit port connections do not establish circuit authentication of the stream.
 
-`Review/` owns properties, reference selection, artifact paths, named mappings,
-public inputs and primary claims. Explain declaration roles and parameters briefly,
+`Review/Circuits/` owns row contracts, reference selection, artifact paths and named
+mappings. `Review/Helpers/` owns initialized history, logical matching, public
+boundaries and selected-row context; it is independent of whole-execution contracts.
+`Review/Trace/` owns execution, terminal realization and composition. Three local
+theorem modules retain the documented pooled proof-assembly dependency.
+Explain declaration roles and parameters briefly,
 with field comments for substantive assumptions. `Proofs/` owns calculation
 interfaces, helper lemmas, proof assembly and mechanical guards; do not add proof
 prose. `Import/` has a separate fidelity boundary. Consolidate identical contracts

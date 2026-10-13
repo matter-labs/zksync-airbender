@@ -1,4 +1,4 @@
-import Airbender.Review.SubwordMemory.Model
+import Airbender.Review.Circuits.SubwordMemory.Model
 
 namespace Airbender.SubwordMemory
 open Airbender.Arithmetic Airbender.Reference.RiscV Airbender.Reference.Sail

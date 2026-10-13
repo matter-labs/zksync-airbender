@@ -1,4 +1,4 @@
-import Airbender.Review.AddSub.Artifact
+import Airbender.Review.Circuits.AddSub.Artifact
 
 namespace Airbender.AddSub
 

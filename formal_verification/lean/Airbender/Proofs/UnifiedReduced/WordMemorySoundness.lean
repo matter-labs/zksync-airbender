@@ -1,5 +1,5 @@
 import Airbender.Proofs.Trace.NativeCell
-import Airbender.Review.UnifiedReduced.WordMemory
+import Airbender.Review.Circuits.UnifiedReduced.WordMemory
 import Airbender.Proofs.UnifiedReduced.WordMemory
 import Airbender.Proofs.UnifiedReduced.History
 import Airbender.Proofs.WordMemory.MemoryAccess

@@ -1,5 +1,5 @@
 import Airbender.Proofs.Keccak.ArtifactChecks
-import Airbender.Review.Keccak.Controls
+import Airbender.Review.Circuits.Keccak.Controls
 import Airbender.Proofs.Constraints
 import Airbender.Proofs.Arithmetic.Chunks
 import Airbender.Proofs.Arithmetic.OneHot

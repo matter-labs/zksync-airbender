@@ -1,4 +1,4 @@
-import Airbender.Review.Blake2Round.Row
+import Airbender.Review.Circuits.Blake2Round.Row
 import Airbender.Proofs.Blake2Round.Control
 import Airbender.Proofs.Blake2Round.Preparation
 import Airbender.Proofs.Blake2Round.PreparationBounds

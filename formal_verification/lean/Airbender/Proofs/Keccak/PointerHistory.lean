@@ -1,6 +1,6 @@
 import Airbender.Proofs.Keccak.BoundaryInputs
 import Airbender.Proofs.Delegation.Readonly
-import Airbender.Review.Keccak.Call
+import Airbender.Review.Trace.Workers.Keccak.Call
 
 namespace Airbender.Keccak.Proofs
 open Trace Arithmetic Reference.RiscV.Sail Reference.Sail

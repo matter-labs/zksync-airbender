@@ -1,4 +1,4 @@
-import Airbender.Review.Keccak.Theorems
+import Airbender.Review.Trace.Workers.Keccak.Theorems
 import Airbender.Proofs.Keccak.NativeExecution
 import Airbender.Proofs.Keccak.PermutationBinding
 import Airbender.Proofs.Keccak.ControlHistory

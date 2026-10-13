@@ -1,4 +1,4 @@
-import Airbender.Review.Field
+import Airbender.Review.Helpers.Field
 import Mathlib.Algebra.Field.ZMod
 import Mathlib.Tactic.NormNum.Prime
 

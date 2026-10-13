@@ -1,4 +1,4 @@
-import Airbender.Review.Keccak.Iota
+import Airbender.Review.Circuits.Keccak.Iota
 import Airbender.Proofs.Keccak.DecodeControl
 import Airbender.Proofs.Keccak.FixedLookups
 import Airbender.Proofs.Arithmetic.ByteAssembly

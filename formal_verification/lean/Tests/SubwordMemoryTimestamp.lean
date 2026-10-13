@@ -1,6 +1,6 @@
 import Tests.SubwordMemory
 import Airbender.Proofs.SubwordMemory.Trace
-import Airbender.Review.SubwordTables
+import Airbender.Review.Helpers.Tables.Subword
 
 namespace Tests.SubwordMemoryTimestamp
 open Airbender Arithmetic Trace

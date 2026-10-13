@@ -1,4 +1,5 @@
-import Airbender.Review.Delegation.CallerTheorems
+import Airbender.Review.Circuits.AddSub.CallerTheorems
+import Airbender.Review.Trace.Delegation.CallerTheorems
 import Airbender.Proofs.Sail.WordMemoryState
 import Airbender.Proofs.Delegation.Requests
 import Airbender.Proofs.BabyBear

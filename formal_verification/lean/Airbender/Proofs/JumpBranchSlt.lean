@@ -1,6 +1,6 @@
-import Airbender.Review.JumpBranchSlt.Artifact
+import Airbender.Review.Circuits.JumpBranchSlt.Artifact
 import Airbender.Proofs.JumpBranchSlt.ArtifactChecks
-import Airbender.Review.Properties
+import Airbender.Review.Helpers.Properties
 import Airbender.Proofs.Arithmetic.Lemmas
 import Airbender.Proofs.Arithmetic.Word
 import Airbender.Proofs.Constraints

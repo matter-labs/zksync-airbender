@@ -1,4 +1,4 @@
-import Airbender.Review.Blake2G.Tables
+import Airbender.Review.Circuits.Blake2G.Tables.Setup
 import Mathlib.Tactic.FinCases
 
 namespace Airbender.Blake2G.Proofs

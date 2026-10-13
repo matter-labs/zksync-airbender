@@ -1,4 +1,4 @@
-import Airbender.Review.SubwordMemory.Artifact
+import Airbender.Review.Circuits.SubwordMemory.Artifact
 
 namespace Airbender.SubwordMemory
 

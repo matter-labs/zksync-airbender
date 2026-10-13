@@ -1,7 +1,11 @@
-import Airbender.Review.JumpBranchSlt.Theorems
-import Airbender.Review.MulDiv.Theorems
-import Airbender.Review.ShiftBinop.Theorems
-import Airbender.Review.SubwordMemory.Theorems
+import Airbender.Review.Circuits.JumpBranchSlt.Theorems
+import Airbender.Review.Trace.Families.JumpBranchSlt.Theorems
+import Airbender.Review.Circuits.MulDiv.Theorems
+import Airbender.Review.Trace.Families.MulDiv.Theorems
+import Airbender.Review.Circuits.ShiftBinop.Theorems
+import Airbender.Review.Trace.Families.ShiftBinop.Theorems
+import Airbender.Review.Circuits.SubwordMemory.Theorems
+import Airbender.Review.Trace.Families.SubwordMemory.Theorems
 import Airbender.Review.Trace.Soundness
 import Airbender.Proofs.AddSub.RowClaims
 import Airbender.Proofs.AddSub.ArtifactChecks
@@ -78,7 +82,7 @@ import Airbender.Proofs.UnifiedReduced.Claims
 import Airbender.Proofs.SubwordMemory.Claims
 import Airbender.Proofs.SubwordMemory.Stores
 import Airbender.Proofs.WordMemory
-import Airbender.Review.AddSub.Theorems
+import Airbender.Review.Circuits.AddSub.Theorems
 import Airbender.Proofs.AddSub.Timestamp
 import Airbender.Proofs.AddSub.Selectors
 import Airbender.Proofs.JumpBranchSlt.Claims
@@ -86,7 +90,7 @@ import Airbender.Proofs.MulDiv.Claims
 import Airbender.Proofs.ShiftBinop.Claims
 import Airbender.Proofs.ShiftBinop.Shifts
 import Airbender.Proofs.Sail.Runtime
-import Airbender.Review.WordMemory.Theorems
+import Airbender.Review.Circuits.WordMemory.Theorems
 import Tests.Comparison
 import Tests.NonDeterminism
 import Tests.Blake2G

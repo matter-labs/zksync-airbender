@@ -1,6 +1,6 @@
-import Airbender.Review.Delegation.Memory
-import Airbender.Review.Delegation.Operations
-import Airbender.Review.Delegation.BoundaryMemory
+import Airbender.Review.Helpers.Delegation.Memory
+import Airbender.Review.Helpers.Delegation.Operations
+import Airbender.Review.Helpers.Delegation.BoundaryMemory
 import Airbender.Proofs.Trace.TransferBoundary
 
 namespace Airbender.Delegation.Proofs

@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.Decoder
+import Airbender.Review.Circuits.UnifiedReduced.Decoder
 import Airbender.Proofs.UnifiedReduced
 import Airbender.Proofs.Trace.Program
 import Airbender.Proofs.JumpBranchSlt.Decoder

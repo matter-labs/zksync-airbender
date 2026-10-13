@@ -1,5 +1,5 @@
 import Clean.Circuit.Operations
-import Airbender.Review.RangeChecks
+import Airbender.Review.Helpers.Tables.Range
 
 namespace Airbender.Verification
 

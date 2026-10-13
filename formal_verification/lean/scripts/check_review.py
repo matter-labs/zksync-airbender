@@ -2,6 +2,7 @@
 """Check public Review theorem audit coverage and the review guide's references."""
 
 from pathlib import Path
+from collections import deque
 import re
 import subprocess
 import tempfile
@@ -116,6 +117,39 @@ def check_theorems(output, audit):
     return len(declarations)
 
 
+def check_layers():
+    graph = {".".join(path.relative_to(ROOT).with_suffix("").parts):
+             re.findall(r"^import (\S+)$", path.read_text(), re.M)
+             for path in (ROOT / "Airbender").rglob("*.lean")}
+    if (ROOT / "Airbender.lean").is_file():
+        graph["Airbender"] = re.findall(r"^import (\S+)$", (ROOT / "Airbender.lean").read_text(), re.M)
+    # These existing proof assemblies reuse pooled retirement lemmas. Their
+    # circuit models and statements do not require a whole-execution contract.
+    assemblies = {f"Airbender.Review.Circuits.{family}.Theorems"
+                  for family in ("JumpBranchSlt", "MulDiv", "ShiftBinop")}
+    coupled = set()
+    for module, dependencies in graph.items():
+        for dependency in dependencies:
+            if dependency.startswith("Airbender.Review.") and dependency not in graph:
+                raise ValueError(f"Missing review module: {module} → {dependency}")
+        if not module.startswith(("Airbender.Review.Helpers.", "Airbender.Review.Circuits.")):
+            continue
+        pending, seen = deque([[module]]), set()
+        while pending:
+            path = pending.popleft()
+            current = path[-1]
+            if current in seen:
+                continue
+            seen.add(current)
+            if current.startswith("Airbender.Review.Trace."):
+                if module in assemblies and path[1].startswith("Airbender.Proofs."):
+                    coupled.add(module)
+                    break
+                raise ValueError("Whole-execution dependency in circuit context: " + " → ".join(path))
+            pending.extend(path + [dependency] for dependency in graph.get(current, []))
+    return len(coupled)
+
+
 def main():
     modules = [".".join(path.relative_to(ROOT).with_suffix("").parts)
                for path in sorted((ROOT / "Airbender/Review").rglob("*.lean"))]
@@ -130,6 +164,7 @@ def main():
     print(f"PASS {count} public Review theorems have explicit axiom audit roots")
     print(f"PASS {len(references)} guide declaration names resolve in Lean")
     print(f"PASS {check_links()} local guide links and heading anchors resolve")
+    print(f"PASS context/trace separation; {check_layers()} documented proof-assembly dependencies")
 
 
 if __name__ == "__main__":

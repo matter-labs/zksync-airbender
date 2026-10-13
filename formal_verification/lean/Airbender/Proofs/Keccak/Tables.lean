@@ -1,4 +1,4 @@
-import Airbender.Review.Keccak.Tables
+import Airbender.Review.Circuits.Keccak.Tables.Setup
 
 namespace Airbender.Keccak.Proofs
 set_option warningAsError true

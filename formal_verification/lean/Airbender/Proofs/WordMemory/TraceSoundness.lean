@@ -1,4 +1,4 @@
-import Airbender.Review.WordMemory.Model
+import Airbender.Review.Circuits.WordMemory.Model
 import Airbender.Proofs.Trace.RowContext
 import Airbender.Proofs.Trace.PooledMemory
 

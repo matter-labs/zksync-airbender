@@ -1,4 +1,5 @@
-import Airbender.Review.Delegation.RequestWindows
+import Airbender.Review.Helpers.Delegation.RequestWindows
+import Airbender.Review.Helpers.Delegation.SpanABI
 import Airbender.Proofs.Delegation.Schedule
 
 namespace Airbender.Delegation.Caller.Proofs

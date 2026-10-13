@@ -1,4 +1,4 @@
-import Airbender.Review.SubwordMemory.Execution
+import Airbender.Review.Trace.Families.SubwordMemory.Execution
 import Airbender.Proofs.SubwordMemory.Execution
 import Airbender.Proofs.Trace.CompositionCore
 

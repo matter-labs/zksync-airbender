@@ -1,4 +1,4 @@
-import Airbender.Review.Keccak.Addresses
+import Airbender.Review.Circuits.Keccak.Addresses
 import Airbender.Proofs.Keccak.Controller
 import Airbender.Proofs.ScaledMemoryPorts
 

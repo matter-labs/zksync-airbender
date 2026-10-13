@@ -1,4 +1,4 @@
-import Airbender.Review.Bigint.Artifact
+import Airbender.Review.Circuits.Bigint.Artifact
 
 namespace Airbender.Bigint
 

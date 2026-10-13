@@ -1,4 +1,4 @@
-import Airbender.Review.ShiftBinop.Artifact
+import Airbender.Review.Circuits.ShiftBinop.Artifact
 
 namespace Airbender.ShiftBinop
 

@@ -1,5 +1,5 @@
 import Airbender.Proofs.AddSub.RowClaims
-import Airbender.Review.AddSub.Theorems
+import Airbender.Review.Circuits.AddSub.Theorems
 
 namespace Tests.NonDeterminism
 open Airbender

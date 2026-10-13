@@ -1,4 +1,4 @@
-import Airbender.Review.Bigint.Equality
+import Airbender.Review.Circuits.Bigint.Equality
 import Airbender.Proofs.Bigint.AdditiveFields
 
 namespace Airbender.Bigint.Equality.Proofs

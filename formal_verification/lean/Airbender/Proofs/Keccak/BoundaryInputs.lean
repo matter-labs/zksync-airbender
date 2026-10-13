@@ -1,6 +1,6 @@
-import Airbender.Review.Keccak.Call
-import Airbender.Review.Keccak.Memory
-import Airbender.Review.Keccak.BoundaryCall
+import Airbender.Review.Trace.Workers.Keccak.Call
+import Airbender.Review.Circuits.Keccak.Memory
+import Airbender.Review.Trace.Workers.Keccak.BoundaryCall
 import Airbender.Proofs.Delegation.BoundaryInputs
 import Airbender.Proofs.Delegation.Readonly
 

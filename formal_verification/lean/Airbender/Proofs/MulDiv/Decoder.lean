@@ -1,4 +1,4 @@
-import Airbender.Review.MulDiv.Decoder
+import Airbender.Review.Circuits.MulDiv.Decoder
 import Airbender.Proofs.Trace.Program
 import Airbender.Proofs.MulDiv
 

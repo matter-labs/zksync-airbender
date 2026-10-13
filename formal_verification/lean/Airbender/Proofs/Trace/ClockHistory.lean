@@ -1,4 +1,4 @@
-import Airbender.Review.Trace.Timestamps
+import Airbender.Review.Helpers.Timestamps
 import Mathlib.Data.List.Perm.Basic
 
 namespace Airbender.Trace.Proofs

@@ -1,7 +1,7 @@
-import Airbender.Review.Delegation.Columns
+import Airbender.Review.Helpers.Delegation.Columns
 import Airbender.Proofs.Trace.Timestamps
 import Airbender.Proofs.Constraints
-import Airbender.Review.Properties
+import Airbender.Review.Helpers.Properties
 
 namespace Airbender.Delegation.Proofs
 set_option warningAsError true

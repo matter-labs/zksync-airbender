@@ -1,10 +1,10 @@
 import Airbender.Proofs.Bigint.ArtifactChecks
-import Airbender.Review.Bigint.Tables
-import Airbender.Review.Bigint.Artifact
+import Airbender.Review.Circuits.Bigint.Tables.Setup
+import Airbender.Review.Circuits.Bigint.Artifact
 import Airbender.Proofs.Lookups
 import Airbender.Proofs.Constraints
 import Airbender.Proofs.Arithmetic.Lemmas
-import Airbender.Review.Properties
+import Airbender.Review.Helpers.Properties
 
 namespace Airbender.Bigint.Proofs
 set_option warningAsError true

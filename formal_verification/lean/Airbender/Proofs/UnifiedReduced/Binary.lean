@@ -1,7 +1,7 @@
 import Airbender.Proofs.UnifiedReduced.ArtifactChecks
 import Airbender.Proofs.UnifiedReduced.BinaryLookups
 import Airbender.Proofs.UnifiedReduced.ShiftLookups
-import Airbender.Review.UnifiedReduced.Artifact
+import Airbender.Review.Circuits.UnifiedReduced.Artifact
 import Airbender.Proofs.Constraints
 import Airbender.Proofs.Arithmetic.Bytes
 

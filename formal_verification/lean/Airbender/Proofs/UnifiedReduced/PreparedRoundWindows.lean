@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.PreparedRoundWindows
+import Airbender.Review.Trace.UnifiedReduced.PreparedRoundWindows
 import Airbender.Proofs.UnifiedReduced.PreparedHashWindows
 import Airbender.Proofs.Blake2Round.ControlPool
 

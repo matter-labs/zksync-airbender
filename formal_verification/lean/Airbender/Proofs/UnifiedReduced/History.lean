@@ -1,5 +1,5 @@
 import Airbender.Proofs.UnifiedReduced.Positions
-import Airbender.Review.UnifiedReduced.Memory
+import Airbender.Review.Trace.UnifiedReduced.Memory
 import Airbender.Proofs.UnifiedReduced.ZeroRegister
 import Airbender.Proofs.UnifiedReduced.Values
 import Airbender.Proofs.Trace.RowContext

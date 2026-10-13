@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.RequestTrace
+import Airbender.Review.Helpers.UnifiedReduced.RequestTrace
 import Airbender.Proofs.UnifiedReduced.Delegation
 import Airbender.Proofs.UnifiedReduced.Trace
 import Airbender.Proofs.Delegation.Schedule

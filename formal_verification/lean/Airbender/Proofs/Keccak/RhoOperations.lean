@@ -1,4 +1,4 @@
-import Airbender.Review.Keccak.Rho
+import Airbender.Review.Circuits.Keccak.Rho
 import Airbender.Proofs.Keccak.DecodeControl
 import Airbender.Proofs.Keccak.FixedLookups
 import Airbender.Proofs.Arithmetic.LaneRotation

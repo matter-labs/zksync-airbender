@@ -1,4 +1,4 @@
-import Airbender.Review.Delegation.WorkerProjection
+import Airbender.Review.Helpers.Delegation.WorkerProjection
 import Airbender.Proofs.Delegation.SharedMemory
 import Airbender.Proofs.Trace.ImageRestriction
 

@@ -1,7 +1,7 @@
 import Airbender.Proofs.SubwordMemory.Lookups
-import Airbender.Review.SubwordMemory.Artifact
+import Airbender.Review.Circuits.SubwordMemory.Artifact
 import Airbender.Proofs.SubwordMemory.ArtifactChecks
-import Airbender.Review.Properties
+import Airbender.Review.Helpers.Properties
 import Airbender.Proofs.Arithmetic.Word
 import Airbender.Proofs.Constraints
 import Mathlib.Tactic.FinCases

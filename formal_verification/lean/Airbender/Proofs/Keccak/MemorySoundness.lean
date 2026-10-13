@@ -1,4 +1,4 @@
-import Airbender.Review.Keccak.Memory
+import Airbender.Review.Circuits.Keccak.Memory
 import Airbender.Proofs.Keccak.Memory
 import Airbender.Proofs.Keccak.BoundaryInputs
 

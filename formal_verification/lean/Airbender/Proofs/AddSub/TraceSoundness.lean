@@ -1,4 +1,4 @@
-import Airbender.Review.AddSub.Model
+import Airbender.Review.Circuits.AddSub.Model
 import Airbender.Proofs.Trace.RowContext
 import Airbender.Proofs.Trace.Arithmetic
 

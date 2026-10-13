@@ -1,4 +1,4 @@
-import Airbender.Review.Blake2G.Artifact
+import Airbender.Review.Circuits.Blake2G.Artifact
 
 namespace Airbender.Blake2G
 

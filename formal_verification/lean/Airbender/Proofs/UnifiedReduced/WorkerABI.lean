@@ -1,4 +1,4 @@
-import Airbender.Review.Bigint.PointerABI
+import Airbender.Review.Circuits.Bigint.PointerABI
 import Airbender.Proofs.UnifiedReduced.MixedMemory
 import Airbender.Proofs.Delegation.NativeViews
 import Airbender.Proofs.Bigint.Addresses

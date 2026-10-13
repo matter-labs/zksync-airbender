@@ -16,7 +16,6 @@ import Airbender.Proofs.Trace.PooledOracleConsumption
 import Airbender.Proofs.Trace.PooledOracleDecoder
 import Airbender.Proofs.BabyBear
 import Airbender.Proofs.Trace.PooledComposition
-import Airbender.Review.Trace.Soundness
 
 namespace Airbender.Trace
 

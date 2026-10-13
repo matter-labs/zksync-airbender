@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.MixedExecution
+import Airbender.Review.Trace.UnifiedReduced.MixedExecution
 import Airbender.Proofs.UnifiedReduced.CustomHistory
 
 namespace Airbender.UnifiedReduced.Mixed.Proofs

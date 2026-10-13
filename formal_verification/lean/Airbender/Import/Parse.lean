@@ -1,9 +1,9 @@
 import Airbender.Import.Schema
-import Airbender.Review.MemoryPorts
-import Airbender.Review.Trace.Columns
-import Airbender.Review.Trace.MemoryPorts
-import Airbender.Review.Delegation.Columns
-import Airbender.Review.Trace.DecoderColumns
+import Airbender.Review.Helpers.IndirectPorts
+import Airbender.Review.Helpers.Columns
+import Airbender.Review.Helpers.MemoryPorts
+import Airbender.Review.Helpers.Delegation.Columns
+import Airbender.Review.Helpers.DecoderColumns
 
 namespace Airbender
 open Lean

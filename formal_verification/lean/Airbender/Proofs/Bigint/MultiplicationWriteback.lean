@@ -1,4 +1,4 @@
-import Airbender.Review.Bigint.Multiplication
+import Airbender.Review.Circuits.Bigint.Multiplication
 import Airbender.Proofs.Bigint.EqualityGates
 
 namespace Airbender.Bigint.Multiplication.Proofs

@@ -1,6 +1,6 @@
 import Airbender.Proofs.AddSub.RowClaims
 import Tests.TraceMemory
-import Airbender.Review.AddSub.Theorems
+import Airbender.Review.Circuits.AddSub.Theorems
 
 namespace Tests.TraceExecution
 open Airbender Trace Reference.RiscV.Sail

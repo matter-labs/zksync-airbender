@@ -1,4 +1,4 @@
-import Airbender.Review.JumpBranchSlt.Execution
+import Airbender.Review.Trace.Families.JumpBranchSlt.Execution
 import Airbender.Proofs.JumpBranchSlt.Execution
 import Airbender.Proofs.JumpBranchSlt.BranchExecution
 import Airbender.Proofs.JumpBranchSlt.ComparisonExecution

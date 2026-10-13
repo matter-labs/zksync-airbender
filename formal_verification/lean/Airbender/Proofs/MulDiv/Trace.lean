@@ -1,4 +1,4 @@
-import Airbender.Review.MulDiv.Trace
+import Airbender.Review.Helpers.Registries.MulDiv
 import Airbender.Proofs.MulDiv.Timestamp
 import Airbender.Proofs.MulDiv.Decoder
 import Airbender.Proofs.Trace.RowHistory

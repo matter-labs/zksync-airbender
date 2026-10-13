@@ -1,4 +1,4 @@
-import Airbender.Review.Delegation.SharedSpans
+import Airbender.Review.Trace.Delegation.SharedSpans
 import Airbender.Proofs.Blake2G.WorkVectorBinding
 import Airbender.Proofs.Blake2Round.CompressionBinding
 import Airbender.Proofs.Keccak.PermutationBinding

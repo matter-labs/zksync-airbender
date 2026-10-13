@@ -1,7 +1,7 @@
 import Airbender.Proofs.AddSub.ArtifactChecks
-import Airbender.Review.Properties
-import Airbender.Review.Field
-import Airbender.Review.AddSub.Modular
+import Airbender.Review.Helpers.Properties
+import Airbender.Review.Helpers.Field
+import Airbender.Review.Circuits.AddSub.Modular
 import Airbender.Proofs.BabyBear
 import Airbender.Proofs.Arithmetic.Word
 import Airbender.Proofs.Constraints

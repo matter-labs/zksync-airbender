@@ -1,4 +1,4 @@
-import Airbender.Review.Blake2G.Control
+import Airbender.Review.Circuits.Blake2G.Control
 import Airbender.Proofs.Blake2G
 import Mathlib.Tactic.IntervalCases
 

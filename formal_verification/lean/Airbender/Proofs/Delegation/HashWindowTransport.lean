@@ -1,4 +1,4 @@
-import Airbender.Review.Delegation.HashWindows
+import Airbender.Review.Trace.Delegation.HashWindows
 import Airbender.Proofs.Trace.InitialImage
 import Airbender.Proofs.Delegation.NativeSegments
 

@@ -1,4 +1,4 @@
-import Airbender.Review.JumpBranchSlt.Trace
+import Airbender.Review.Helpers.Registries.JumpBranchSlt
 import Airbender.Proofs.JumpBranchSlt.Timestamp
 import Airbender.Proofs.JumpBranchSlt.Decoder
 import Airbender.Proofs.Trace.RowHistory

@@ -5,7 +5,7 @@ import Airbender.Proofs.Trace.NativeSailHistory
 import Airbender.Proofs.Trace.Terminal
 import Airbender.Proofs.Trace.Retirement
 import Airbender.Proofs.Trace.WordMemory
-import Airbender.Review.WordMemory.Theorems
+import Airbender.Review.Circuits.WordMemory.Theorems
 
 namespace Tests.TraceStore
 open Airbender Arithmetic Trace

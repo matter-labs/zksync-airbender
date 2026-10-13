@@ -1,4 +1,4 @@
-import Airbender.Review.Keccak.ControlUpdate
+import Airbender.Review.Circuits.Keccak.ControlUpdate
 import Airbender.Proofs.Keccak.Controls
 import Airbender.Proofs.Arithmetic.OneHot
 

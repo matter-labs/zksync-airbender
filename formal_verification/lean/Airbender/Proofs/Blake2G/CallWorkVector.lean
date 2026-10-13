@@ -1,5 +1,5 @@
 import Airbender.Proofs.Blake2G.CallPhysical
-import Airbender.Review.Blake2G.WorkVector
+import Airbender.Review.Trace.Workers.Blake2G.WorkVector
 import Airbender.Proofs.Delegation.ReverseFold
 
 namespace Airbender.Blake2G.Proofs

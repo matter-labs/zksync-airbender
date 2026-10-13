@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.CallerCycles
+import Airbender.Review.Trace.UnifiedReduced.CallerCycles
 import Airbender.Proofs.UnifiedReduced.MixedFetch
 import Airbender.Proofs.UnifiedReduced.PreparedRoundWindows
 import Airbender.Proofs.Trace.Retirement

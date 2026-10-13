@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.JointHashWindows
+import Airbender.Review.Trace.UnifiedReduced.JointHashWindows
 import Airbender.Proofs.UnifiedReduced.WindowProjection
 import Airbender.Proofs.Delegation.SpanTarget
 import Airbender.Proofs.Blake2G.ControlPool

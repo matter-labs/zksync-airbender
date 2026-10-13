@@ -1,4 +1,4 @@
-import Airbender.Review.ShiftBinop.Model
+import Airbender.Review.Circuits.ShiftBinop.Model
 import Airbender.Proofs.Sail.PC
 import Airbender.Proofs.ByteTables
 

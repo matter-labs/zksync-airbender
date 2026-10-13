@@ -1,4 +1,4 @@
-import Airbender.Review.Delegation.Decoder
+import Airbender.Review.Helpers.Delegation.Decoder
 import Airbender.Proofs.Trace.Program
 import Airbender.Proofs.Sail.RiscV
 import Airbender.Proofs.AddSub.Selectors

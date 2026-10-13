@@ -1,4 +1,4 @@
-import Airbender.Review.Trace.Program
+import Airbender.Review.Helpers.Program
 import Airbender.Proofs.Trace.InitialImage
 import Airbender.Proofs.Trace.DecoderBits
 import Airbender.Proofs.AddSub.Selectors

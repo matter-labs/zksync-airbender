@@ -1,4 +1,4 @@
-import Airbender.Review.ShiftBinop.Model
+import Airbender.Review.Circuits.ShiftBinop.Model
 
 namespace Airbender.ShiftBinop
 open Airbender.Arithmetic Airbender.Reference.RiscV Airbender.Reference.Sail

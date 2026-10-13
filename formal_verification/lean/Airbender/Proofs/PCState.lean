@@ -1,4 +1,4 @@
-import Airbender.Review.PCState.Model
+import Airbender.Review.Helpers.PCState.Model
 import Mathlib.Tactic.NormNum
 
 namespace Airbender.PCState.Proofs

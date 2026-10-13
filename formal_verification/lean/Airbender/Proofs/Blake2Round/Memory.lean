@@ -1,6 +1,6 @@
 import Airbender.Proofs.Delegation.Values
 import Airbender.Proofs.Blake2Round.Row
-import Airbender.Review.Blake2Round.Memory
+import Airbender.Review.Circuits.Blake2Round.Memory
 
 namespace Airbender.Blake2Round.Proofs
 open Trace Arithmetic

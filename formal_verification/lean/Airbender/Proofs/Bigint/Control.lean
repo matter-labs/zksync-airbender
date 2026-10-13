@@ -1,5 +1,5 @@
 import Airbender.Proofs.Bigint.ArtifactChecks
-import Airbender.Review.Bigint.Control
+import Airbender.Review.Circuits.Bigint.Control
 import Airbender.Proofs.Constraints
 import Airbender.Proofs.Arithmetic.Lemmas
 

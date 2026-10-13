@@ -1,4 +1,4 @@
-import Airbender.Review.Blake2G.Artifact
+import Airbender.Review.Circuits.Blake2G.Artifact
 import Airbender.Proofs.Blake2G.ArtifactChecks
 import Airbender.Proofs.Delegation.ClockFacts
 

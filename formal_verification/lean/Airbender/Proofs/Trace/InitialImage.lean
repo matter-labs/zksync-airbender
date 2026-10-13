@@ -1,4 +1,4 @@
-import Airbender.Review.Trace.InitialImage
+import Airbender.Review.Helpers.InitialImage
 import Airbender.Proofs.Arithmetic.Word
 import Airbender.Proofs.Sail.PC
 import Airbender.Proofs.PCState

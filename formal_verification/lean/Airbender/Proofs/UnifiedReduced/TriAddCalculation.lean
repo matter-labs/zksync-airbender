@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.TriAdd
+import Airbender.Review.Circuits.UnifiedReduced.TriAdd
 
 namespace Airbender.UnifiedReduced.TriAdd.Calculation
 open Reference.RiscV Reference.Sail Arithmetic

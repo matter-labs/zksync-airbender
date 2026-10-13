@@ -1,4 +1,4 @@
-import Airbender.Review.Properties
+import Airbender.Review.Helpers.Properties
 import Clean.Utils.Bits
 import Mathlib.Tactic.FinCases
 import Mathlib.Tactic.IntervalCases

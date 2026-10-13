@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.Binary
+import Airbender.Review.Circuits.UnifiedReduced.Binary
 import Airbender.Proofs.UnifiedReduced.BinaryOperands
 import Airbender.Proofs.UnifiedReduced.BinaryResult
 import Airbender.Proofs.UnifiedReduced.RegisterReads

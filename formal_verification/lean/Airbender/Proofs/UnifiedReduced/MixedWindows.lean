@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.MixedWindows
+import Airbender.Review.Trace.UnifiedReduced.MixedWindows
 import Airbender.Proofs.UnifiedReduced.MixedMemory
 import Airbender.Proofs.UnifiedReduced.RequestWindows
 import Airbender.Proofs.Delegation.NativeSegments

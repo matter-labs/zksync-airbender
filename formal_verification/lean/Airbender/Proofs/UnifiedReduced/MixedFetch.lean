@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.MixedFetch
+import Airbender.Review.Helpers.UnifiedReduced.MixedFetch
 import Airbender.Proofs.UnifiedReduced.MixedMemory
 import Airbender.Proofs.Trace.CodeHistory
 

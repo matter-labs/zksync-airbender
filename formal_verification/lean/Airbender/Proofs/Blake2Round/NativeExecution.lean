@@ -1,6 +1,6 @@
-import Airbender.Review.Blake2Round.Execution
+import Airbender.Review.Circuits.Blake2Round.Execution
 import Airbender.Proofs.Blake2Round.Row
-import Airbender.Review.Delegation.Theorems
+import Airbender.Review.Trace.Delegation.Theorems
 
 namespace Airbender.Blake2Round.Native.Proofs
 open Trace

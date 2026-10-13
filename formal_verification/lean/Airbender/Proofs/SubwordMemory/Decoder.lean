@@ -1,4 +1,4 @@
-import Airbender.Review.SubwordMemory.Decoder
+import Airbender.Review.Circuits.SubwordMemory.Decoder
 import Airbender.Proofs.Trace.Program
 import Airbender.Proofs.SubwordMemory
 

@@ -1,4 +1,4 @@
-import Airbender.Review.Delegation.Operations
+import Airbender.Review.Helpers.Delegation.Operations
 import Airbender.Proofs.Bigint.Memory
 import Airbender.Proofs.Blake2G.Memory
 import Airbender.Proofs.Blake2Round.Memory

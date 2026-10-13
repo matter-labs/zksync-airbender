@@ -1,4 +1,4 @@
-import Airbender.Review.JumpBranchSlt.Artifact
+import Airbender.Review.Circuits.JumpBranchSlt.Artifact
 
 namespace Airbender.JumpBranchSlt
 

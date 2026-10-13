@@ -1,4 +1,4 @@
-import Airbender.Review.Trace.MemoryPorts
+import Airbender.Review.Helpers.MemoryPorts
 
 namespace Airbender.Trace.Proofs
 

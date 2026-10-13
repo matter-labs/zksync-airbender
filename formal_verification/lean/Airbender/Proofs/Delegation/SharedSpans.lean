@@ -1,4 +1,4 @@
-import Airbender.Review.Delegation.SharedSpans
+import Airbender.Review.Trace.Delegation.SharedSpans
 import Airbender.Proofs.Delegation.WorkerProjection
 import Airbender.Proofs.Delegation.SpanBinding
 

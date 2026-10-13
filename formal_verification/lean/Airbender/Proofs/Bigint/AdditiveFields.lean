@@ -1,4 +1,4 @@
-import Airbender.Review.Bigint.Additive
+import Airbender.Review.Circuits.Bigint.Additive
 import Airbender.Proofs.Bigint.Control
 
 namespace Airbender.Bigint.Additive.Proofs

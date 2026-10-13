@@ -1,4 +1,4 @@
-import Airbender.Review.ShiftBinop.Decoder
+import Airbender.Review.Circuits.ShiftBinop.Decoder
 import Airbender.Proofs.Trace.Program
 import Airbender.Proofs.ShiftBinop
 

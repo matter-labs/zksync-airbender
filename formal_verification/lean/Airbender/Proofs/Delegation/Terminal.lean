@@ -1,4 +1,4 @@
-import Airbender.Review.Delegation.Execution
+import Airbender.Review.Trace.Delegation.Execution
 import Airbender.Proofs.Trace.MemoryFrame
 import Airbender.Proofs.Trace.AccessExecution
 import Airbender.Proofs.Delegation.SailHistory

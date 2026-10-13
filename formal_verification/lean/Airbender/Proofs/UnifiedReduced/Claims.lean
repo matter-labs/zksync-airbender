@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.Theorems
+import Airbender.Review.Trace.UnifiedReduced.Theorems
 import Airbender.Proofs.UnifiedReduced.Delegation
 import Airbender.Proofs.UnifiedReduced.RequestTrace
 import Airbender.Proofs.UnifiedReduced.MixedMemory

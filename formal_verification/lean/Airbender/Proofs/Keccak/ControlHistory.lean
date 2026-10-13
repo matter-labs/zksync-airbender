@@ -1,5 +1,5 @@
 import Airbender.Proofs.Keccak.BoundaryInputs
-import Airbender.Review.Keccak.Call
+import Airbender.Review.Trace.Workers.Keccak.Call
 import Airbender.Proofs.Keccak.Schedule
 import Airbender.Proofs.Delegation.Memory
 import Airbender.Proofs.Delegation.CallPaths

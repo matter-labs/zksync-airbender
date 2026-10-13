@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.Control
+import Airbender.Review.Circuits.UnifiedReduced.Control
 import Airbender.Proofs.UnifiedReduced.Retirement
 
 namespace Airbender.UnifiedReduced.Proofs

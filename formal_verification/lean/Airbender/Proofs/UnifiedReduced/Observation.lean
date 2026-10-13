@@ -1,8 +1,8 @@
-import Airbender.Review.UnifiedReduced.Model
-import Airbender.Review.UnifiedReduced.Control
-import Airbender.Review.UnifiedReduced.Jump
-import Airbender.Review.UnifiedReduced.Shift
-import Airbender.Review.UnifiedReduced.WordMemory
+import Airbender.Review.Circuits.UnifiedReduced.Model
+import Airbender.Review.Circuits.UnifiedReduced.Control
+import Airbender.Review.Circuits.UnifiedReduced.Jump
+import Airbender.Review.Circuits.UnifiedReduced.Shift
+import Airbender.Review.Circuits.UnifiedReduced.WordMemory
 
 namespace Airbender.UnifiedReduced.Proofs
 open Arithmetic Reference.RiscV Reference.RiscV.Sail Trace

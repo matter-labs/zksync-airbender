@@ -1,4 +1,4 @@
-import Airbender.Review.ShiftBinop.Trace
+import Airbender.Review.Helpers.Registries.ShiftBinop
 import Airbender.Proofs.ShiftBinop.Timestamp
 import Airbender.Proofs.ShiftBinop.Decoder
 import Airbender.Proofs.Trace.RowHistory

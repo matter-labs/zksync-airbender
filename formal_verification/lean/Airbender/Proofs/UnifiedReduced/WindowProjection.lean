@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.WindowProjection
+import Airbender.Review.Trace.UnifiedReduced.WindowProjection
 import Airbender.Proofs.UnifiedReduced.MixedWindows
 import Airbender.Proofs.UnifiedReduced.WorkerProjection
 import Airbender.Proofs.Trace.HistoryRestriction

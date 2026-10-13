@@ -1,4 +1,4 @@
-import Airbender.Review.Blake2G.Model
+import Airbender.Review.Circuits.Blake2G.Model
 import Airbender.Proofs.Constraints
 import Mathlib.Tactic.FinCases
 

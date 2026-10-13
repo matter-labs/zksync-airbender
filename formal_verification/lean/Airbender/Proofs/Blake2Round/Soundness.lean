@@ -1,4 +1,4 @@
-import Airbender.Review.Blake2Round.Mixing
+import Airbender.Review.Circuits.Blake2Round.Mixing
 import Airbender.Proofs.Blake2Round.Diagonal
 import Airbender.Proofs.Blake2Round.Reference
 

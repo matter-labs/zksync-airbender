@@ -1,4 +1,4 @@
-import Airbender.Review.Blake2G.Memory
+import Airbender.Review.Circuits.Blake2G.Memory
 import Airbender.Proofs.Blake2G.Memory
 
 namespace Airbender.Blake2G.Memory.Proofs

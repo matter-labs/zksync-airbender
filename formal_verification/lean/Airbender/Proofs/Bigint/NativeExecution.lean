@@ -1,7 +1,7 @@
-import Airbender.Review.Bigint.Execution
+import Airbender.Review.Circuits.Bigint.Execution
 import Airbender.Proofs.Bigint.SetupSoundness
 import Airbender.Proofs.Bigint.Multiplication
-import Airbender.Review.Delegation.Theorems
+import Airbender.Review.Trace.Delegation.Theorems
 
 namespace Airbender.Bigint.Native.Proofs
 open Trace

@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.Jump
+import Airbender.Review.Circuits.UnifiedReduced.Jump
 import Airbender.Proofs.UnifiedReduced.JumpArithmetic
 import Airbender.Proofs.UnifiedReduced.RegisterReads
 import Airbender.Proofs.Sail.JumpRetirement

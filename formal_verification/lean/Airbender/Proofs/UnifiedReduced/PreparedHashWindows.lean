@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.PreparedHashWindows
+import Airbender.Review.Trace.UnifiedReduced.PreparedHashWindows
 import Airbender.Proofs.UnifiedReduced.ControlPreparation
 import Airbender.Proofs.Delegation.SpanTarget
 

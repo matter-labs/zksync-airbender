@@ -1,4 +1,4 @@
-import Airbender.Review.SubwordMemory.Trace
+import Airbender.Review.Helpers.Registries.SubwordMemory
 import Airbender.Proofs.SubwordMemory.Timestamp
 import Airbender.Proofs.SubwordMemory.Decoder
 import Airbender.Proofs.Trace.RowHistory
