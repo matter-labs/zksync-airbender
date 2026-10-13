@@ -1,6 +1,7 @@
 # Circuit formal verification plan
 
-Circuit-coverage expansion resumes through the hourly continuation. Current
+Circuit-coverage expansion is paused for manual review. Resume the pending
+integration work when the user asks to continue coverage. Current
 coverage, checked counterexamples and machine-check results live in
 [Verification status](VERIFICATION_STATUS.md).
 [Trust and review boundaries](TRUST_AND_REVIEW.md) records provenance and unchecked

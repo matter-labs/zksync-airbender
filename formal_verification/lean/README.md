@@ -44,9 +44,10 @@ execution with independent external reads/hints and proves the consumed count.
 | What inputs and assumptions does it use? | [Pooled public inputs](Airbender/Review/Trace/PooledExecution.lean): `PooledBootInputs`; [shared trace relations](Airbender/Review/Trace/Model.lean): `Accepted`; [decoder membership](Airbender/Review/Trace/PooledProgram.lean): `PooledDecoded`. |
 | How do external reads compose? | [Independent stream boundary and custom clause](Airbender/Review/Trace/NonDeterminism.lean); [pooled mixed execution](Airbender/Review/Trace/PooledNonDeterminism.lean) defines the whole-run conclusion. The primary mixed claim proves final PC/cells and exact consumption across all six families plus reads/hints. |
 | What do the shared definitions mean? | [Soundness](Airbender/Review/Properties.lean), [word encoding](Airbender/Review/Word.lean), [fields](Airbender/Review/Field.lean), [Sail interface](Airbender/Review/Sail.lean), and [shared trace history](Airbender/Review/Trace/SailHistory.lean). |
-| How are delegation effects connected? | [Pooled caller claims](Airbender/Review/Delegation/CallerTheorems.lean) and [unified caller claims](Airbender/Review/UnifiedReduced/Theorems.lean) derive reads, bounds, x0 and actual worker effects from one initialized history. `shared_span_soundness` connects complete caller-only hash references to that same shared terminal state; [unified span inputs](Airbender/Review/UnifiedReduced/SharedSpans.lean) retain only public initialization, mode/span-size ABI and modeled tables. Mixed-ISA span segmentation, caller PC retirement and zero-clock exclusion remain open. |
+| How are delegation effects connected? | [Pooled caller claims](Airbender/Review/Delegation/CallerTheorems.lean) and [unified caller claims](Airbender/Review/UnifiedReduced/Theorems.lean) derive reads, bounds, x0 and actual worker effects from one initialized history. `shared_span_soundness` connects complete caller-only hash references to that same shared terminal state. `Caller.caller_cycles_soundness` binds actual fetch, worker observations and PC retirement at the same cycle boundaries under its physical/code profile. Complete selected hash windows are checked; full custom-CSR ABI, broader span composition, whole execution with callers and zero-clock exclusion remain open. |
 | How are unified standard/custom rows connected? | [Combined registry and public inputs](Airbender/Review/UnifiedReduced/MixedExecution.lean), with `Mixed.execution_soundness` in [unified claims](Airbender/Review/UnifiedReduced/Theorems.lean): original public decoding, shared native boot/ROM history, exact instruction retirement and final PC/cells. Delegation callers remain outside this registry. |
 | What is covered elsewhere or still open? | [Circuit and task tables](VERIFICATION_STATUS.md), with links to each family's claims. |
+| Which restrictions have concrete witnesses? | [Checked scope boundaries](TRUST_AND_REVIEW.md#checked-scope-boundaries): inactive rows, terminal PC, discarded loads and the three delegation ABI gaps. |
 | What requires separate trust review? | [Trust boundaries](TRUST_AND_REVIEW.md): importer, Sail generation, modeled tables and logical argument enforcement. |
 
 Trace proofs derive operand bounds from public initialization, preserved writes
@@ -118,11 +119,16 @@ subprocess.run(["lake", "build", "Airbender", "airbender_import",
 PYTESTS
 lake env lean Airbender/Checks/Axioms.lean
 lake exe airbender_tests
+python3 scripts/check_review.py
 ```
 
 The audit lists theorem axiom dependencies. The checked claims use only standard
 Lean axioms; no `sorry` or project axioms are admitted. Importer tests are not
 proofs of faithful parsing. Subsequent work is in [the plan](FORMAL_VERIFICATION_PLAN.md).
+The [review check](scripts/check_review.py) uses Lean's compiled declaration locations to require an explicit
+axiom root for every source-declared public theorem in `Review/`. It also resolves
+guide declaration names and local file/heading links. Source-only Rust/Sail names
+are listed separately in the script; their fidelity remains a trust boundary.
 
 For the integrated trace proof and regressions:
 
