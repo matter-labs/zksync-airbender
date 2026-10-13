@@ -38,8 +38,8 @@ theorem boundary_readable {data : MemoryData p} {before : State} {cells : List C
   obtain ⟨_, _, value, read, _, _⟩ := boundary_cell_source inputs member
   exact ⟨value, read⟩
 
-theorem boundary_image {data : MemoryData p} {before : State} {cells : List Cell}
-    (inputs : Transfer.NativeInputs (transferData data) before cells) : BoundaryImage data.initial before cells := by
+theorem transfer_boundary_image {data : Transfer.Data p} {before : State} {cells : List Cell}
+    (inputs : Transfer.NativeInputs data before cells) : BoundaryImage data.initial before cells := by
   refine ⟨inputs.addresses, ?_⟩
   intro token member
   obtain ⟨cell, present, code, read⟩ := inputs.reads token member
@@ -47,6 +47,10 @@ theorem boundary_image {data : MemoryData p} {before : State} {cells : List Cell
   have bound := inputs.words token member
   apply Arithmetic.Word.eq_of_value bound (Arithmetic.Word.ofBitVec_bound _)
   rw [Arithmetic.Word.ofBitVec_value, Arithmetic.Word.toBitVec_toNat bound]
+
+theorem boundary_image {data : MemoryData p} {before : State} {cells : List Cell}
+    (inputs : Transfer.NativeInputs (transferData data) before cells) : BoundaryImage data.initial before cells :=
+  transfer_boundary_image inputs
 
 end Airbender.Delegation.Proofs
 
