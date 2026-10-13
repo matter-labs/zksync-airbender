@@ -1386,7 +1386,8 @@ fn verify_dim_reduce_layers() {
         commit_field_els::<Proth120, Proth120, Keccak256Transcript>(&mut seed, &lsb_flat);
         let two = draw_random_field_els::<Proth120, Proth120, Keccak256Transcript>(&mut seed, 2);
         let (r_last, next_batching) = (two[0], two[1]);
-        new_point.push(r_last);
+        // The input-pair selector is bit 0 in the natural LSB layout.
+        new_point.insert(0, r_last);
 
         // next-layer claims = LSB interpolated at r_last in SORTED input-address order
         // (matches the generator: `eval_buf` order; the boundary permutation applies only to g).
@@ -1609,19 +1610,14 @@ fn verify_dim_reduce_layers() {
             "circuit layer {config_idx} final-step check"
         );
 
-        // ---- absorb at-point evals (sorted order), draw next_batching ----
-        commit_field_els::<Proth120, Proth120, Keccak256Transcript>(&mut seed, &evals);
+        // Commit the at-point values and cache dependencies together before
+        // drawing the next batching challenge, matching the prover postlude.
+        let extra = &siv.extra_evaluations_from_caching_relations;
+        let mut transcript_evals = evals.clone();
+        transcript_evals.extend(extra.values().copied());
+        commit_field_els::<Proth120, Proth120, Keccak256Transcript>(&mut seed, &transcript_evals);
         let next_batching =
             draw_random_field_els::<Proth120, Proth120, Keccak256Transcript>(&mut seed, 1)[0];
-
-        // cached relations: absorb the extra evals (address-sorted), then next-layer claims =
-        // merge(at-point evals, extra evals) in address-sorted order (matches the prover, which
-        // absorbs extras AFTER drawing next_batching).
-        let extra = &siv.extra_evaluations_from_caching_relations;
-        if !extra.is_empty() {
-            let extra_vals: Vec<E> = extra.values().copied().collect();
-            commit_field_els::<Proth120, Proth120, Keccak256Transcript>(&mut seed, &extra_vals);
-        }
         let mut merged: std::collections::BTreeMap<GKRAddress, E> = Default::default();
         for (k, v) in siv.final_step_evaluations.iter() {
             merged.insert(*k, v[0]);
@@ -1807,19 +1803,19 @@ fn verify_dim_reduce_layers() {
                     .position(|a| a == addr)
                     .map(|i| claims[i])
             };
-            // range check: (Σ_{k<bits} 2^k·pt[n-1-k]) · Π_{k=bits..n} (1 - pt[n-1-k])
+            // Natural LSB order: (Σ_{k<bits} 2^k·pt[k]) · Π_{k=bits..n} (1 - pt[k])
             let range_check = |bits: usize| -> E {
                 let mut result = E::ZERO;
                 let mut prefactor = E::ONE;
                 for k in 0..bits {
-                    let mut t = pt[n - 1 - k];
+                    let mut t = pt[k];
                     t.mul_assign(&prefactor);
                     result.add_assign(&t);
                     dbl(&mut prefactor);
                 }
                 for k in bits..n {
                     let mut t = E::ONE;
-                    t.sub_assign(&pt[n - 1 - k]);
+                    t.sub_assign(&pt[k]);
                     result.mul_assign(&t);
                 }
                 result
@@ -1843,23 +1839,23 @@ fn verify_dim_reduce_layers() {
             let lo = claim_at(&GKRAddress::VirtualSetup(VSP::InitsAndTeardownsLow));
             let hi = claim_at(&GKRAddress::VirtualSetup(VSP::InitsAndTeardownsHigh));
             if lo.is_some() || hi.is_some() {
-                // low half = Σ_{k<take_count} 2^{word_bits+k}·pt[n-1-k]
+                // low half = Σ_{k<take_count} 2^{word_bits+k}·pt[k]
                 let mut low_eval = E::ZERO;
                 let mut prefactor = E::ONE;
                 for _ in 0..word_bits {
                     dbl(&mut prefactor);
                 }
                 for k in 0..take_count {
-                    let mut t = pt[n - 1 - k];
+                    let mut t = pt[k];
                     t.mul_assign(&prefactor);
                     low_eval.add_assign(&t);
                     dbl(&mut prefactor);
                 }
-                // high half = Σ_{k<n-take_count} 2^k·pt[n-1-take_count-k]
+                // high half = Σ_{k<n-take_count} 2^k·pt[take_count+k]
                 let mut high_eval = E::ZERO;
                 let mut prefactor = E::ONE;
                 for k in 0..(n - take_count) {
-                    let mut t = pt[n - 1 - take_count - k];
+                    let mut t = pt[take_count + k];
                     t.mul_assign(&prefactor);
                     high_eval.add_assign(&t);
                     dbl(&mut prefactor);
@@ -1924,7 +1920,7 @@ fn verify_dim_reduce_layers() {
             for chunk in input.chunks(1 << pl) {
                 let mut v: Vec<E> = chunk.to_vec();
                 v.resize(1 << pl, E::ZERO);
-                for r in extra.iter().rev() {
+                for r in extra {
                     let mut buf = Vec::with_capacity(v.len() / 2);
                     for pair in v.chunks(2) {
                         // canonical interpolation a + (b-a)*r
@@ -1943,9 +1939,9 @@ fn verify_dim_reduce_layers() {
         let merged_mw = merge(&mem_wit, &extra);
         let merged_setup = merge(&setup_claims, &extra);
 
-        // extended WHIR point = extra || base_layer_z (26 coords)
-        let mut whir_point = extra.clone();
-        whir_point.extend_from_slice(&base_layer_z);
+        // Packing coordinates select high index bits in the natural LSB layout.
+        let mut whir_point = base_layer_z.clone();
+        whir_point.extend_from_slice(&extra);
 
         // draw WHIR batching challenge (1 el, PoW-gated); validate nonce vs the proof
         let pow = pow_bits::batched_proximity_check_pow_bits(
@@ -1970,6 +1966,12 @@ fn verify_dim_reduce_layers() {
             batched.add_assign(&mul(&b, c));
             b.mul_assign(&whir_batching);
         }
+        assert_eq!(
+            Some(whir_point.as_slice()),
+            proof.whir_proof.original_evaluation_point.as_deref()
+        );
+        assert_eq!(Some(whir_batching), proof.whir_proof.batching_challenge);
+        assert_eq!(Some(batched), proof.whir_proof.batched_opening);
 
         println!(
             "[whir-handoff] pack_log2={pack_log2} extra={} mem_wit={}->{} setup={}->{} whir_point={} coords",
