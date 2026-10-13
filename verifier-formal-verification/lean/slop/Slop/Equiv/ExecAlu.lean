@@ -54,4 +54,30 @@ theorem exec_mext (σ : FState) (rs2 rs1 rd : BitVec 5) (o : RV.Op) (ho : o = .m
   simp [to_bits_truncate, get_slice_int, Sail.BitVec.extractLsb, BitVec.extractLsb, BitVec.toNatInt,
     mul_int, mulhu_nat, divu_nat, remu_nat]
 
+theorem upper_eq (u : BitVec 20) :
+    sign_extend (m := 32) ((u ++ (0 : BitVec 12)).extractLsb' 12 20 ++ 0x000#12) = u ++ (0 : BitVec 12) := by
+  apply BitVec.eq_of_getLsbD_eq
+  intro j hj
+  simp [sign_extend, Sail.BitVec.signExtend, BitVec.getLsbD_signExtend, BitVec.getLsbD_append,
+    BitVec.getLsbD_extractLsb']
+  rw [BitVec.getLsbD_append, BitVec.getLsbD_append]
+  by_cases h : j < 12
+  · simp [h]
+  · simp only [h, ↓reduceIte, BitVec.getLsbD_extractLsb']
+    rw [show 12 + (j - 12) = j by omega, BitVec.getLsbD_append]
+    simp [h, show j - 12 < 20 by omega]
+
+theorem exec_lui (σ : FState) (rd : BitVec 5) (u : BitVec 20) :
+    runF (Airbender.execute (Airbender.toSail (.lui rd (u ++ (0 : BitVec 12))))) σ =
+      .ok RETIRE_SUCCESS (xset σ rd (u ++ (0 : BitVec 12))) := by
+  simp only [Airbender.toSail, Airbender.execute, execute, execute_UTYPE, Slop.runF_bind, Slop.runF_pure,
+    upper_eq, wX_run]
+
+theorem exec_auipc (σ : FState) (rd : BitVec 5) (u : BitVec 20) :
+    runF (Airbender.execute (Airbender.toSail (.auipc rd (u ++ (0 : BitVec 12))))) σ =
+      .ok RETIRE_SUCCESS (xset σ rd (σ.regs .PC + (u ++ (0 : BitVec 12)))) := by
+  simp only [Airbender.toSail, Airbender.execute, execute, execute_UTYPE, Slop.runF_bind, Slop.runF_pure,
+    upper_eq, wX_run, get_arch_pc]
+  rw [Slop.runF_readReg]
+
 end Slop.Equiv
