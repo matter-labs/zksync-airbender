@@ -33,22 +33,20 @@ theorem cycle_source {Kind : Type} {projection : SailRV32.instruction → Option
   have bytes := cell_read_PC (.ram entry.pc) bytes entry.pc
   exact ⟨bytes, (decoded_misa_frame _ current.decoded).2 _ (by simp [retiredState, Std.ExtDHashMap.get?_insert]), current.fields⟩
 
-theorem current_fetch
+theorem current_fetch_of_history
     {data : RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
     {initial : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program initial ca oa cells)
-    (code : CodeProfile data program cells) :
-    ∃ events finalState, events.Perm (data.mixedSteps.map transferEvent) ∧
-      SailHistory cells events initial finalState ∧ CurrentFetch data program initial cells events := by
-  have effects := mixed_memory_effects accepted inputs
-  obtain ⟨events, finalState, permutation, order, history, _, _, _⟩ := effects.execution
+    (code : CodeProfile data program cells) {events : List MemoryAccess} {finalState : State}
+    (order : events.Pairwise (fun a b => b.1 ≤ a.1)) (history : SailHistory cells events initial finalState) :
+    CurrentFetch data program initial cells events := by
   have reachable (row : Trace.Row babyBearModulus UnifiedFamily) (member : row ∈ data.machine.rows) :
       ∃ before, SailHistory cells (events.filter fun event => decide (event.1 ≤ row.clock)) initial before := by
     have clocks := machine_clock_facts (by decide) (by decide) accepted.toRequestChecks inputs.publicProgram member
     obtain ⟨before, after, _, past, _, _⟩ := history_window order history
       (by omega : Delegation.Caller.startClock row ≤ Delegation.Caller.finishClock row)
     exact ⟨before, past⟩
-  refine ⟨events, finalState, permutation, history, ?_, ?_⟩
+  refine ⟨?_, ?_⟩
   · intro row member ordinary
     obtain ⟨entry, present, _, query⟩ := decoder_member (accepted.ordinaryDecoded row member ordinary)
     have source := run_program_sources inputs.ordinaryProgram entry present
@@ -79,5 +77,16 @@ theorem current_fetch
     refine ⟨reachable row (List.mem_of_mem_filter member), entry, present, query, pc, ?_⟩
     intro before past
     exact cycle_source past source code.ram (code.callers entry present) pc
+
+theorem current_fetch
+    {data : RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
+    {initial : State} {ca oa : List (BitVec 32)} {cells : List Cell}
+    (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program initial ca oa cells)
+    (code : CodeProfile data program cells) :
+    ∃ events finalState, events.Perm (data.mixedSteps.map transferEvent) ∧
+      SailHistory cells events initial finalState ∧ CurrentFetch data program initial cells events := by
+  have effects := mixed_memory_effects accepted inputs
+  obtain ⟨events, finalState, permutation, order, history, _, _, _⟩ := effects.execution
+  exact ⟨events, finalState, permutation, history, current_fetch_of_history accepted inputs code order history⟩
 
 end Airbender.UnifiedReduced.Caller.Proofs
