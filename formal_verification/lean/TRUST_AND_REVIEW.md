@@ -48,7 +48,8 @@ coverage from a local operation theorem.
 
 Clean supplies `Expression`, `FlatOperation`, `Environment`, static tables and
 `ConstraintsHoldFlat` directly. The JSON schema is parser data, not a second
-arithmetic semantics. Audit [Parse](Airbender/Import/Parse.lean),
+arithmetic semantics. Lean's `Json.parse` and typed `FromJson` instances decode
+the Rust artifact directly. Audit [Parse](Airbender/Import/Parse.lean),
 [Schema](Airbender/Import/Schema.lean),
 [Coefficients](Airbender/Import/Coefficients.lean) and
 [Embed](Airbender/Import/Embed.lean). Coefficient cast equivalence is proved, but
