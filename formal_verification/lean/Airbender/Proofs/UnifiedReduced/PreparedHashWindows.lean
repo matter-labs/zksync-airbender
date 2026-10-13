@@ -29,7 +29,7 @@ theorem prepared_hash_memory_inputs [Fact p.Prime]
   refine ⟨inputs.publicProgram, inputs.ordinaryProgram, inputs.initialization, inputs.distinct,
     inputs.aligned, inputs.setup, inputs.tables, ?_⟩
   intro row member round
-  exact False.elim (inputs.profile ((inputs.family row member).symm.trans round))
+  exact False.elim (inputs.roundsAbsent row member round)
 
 theorem prepared_hash_window [Fact p.Prime] (hp : 16777216 ≤ p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
@@ -53,7 +53,7 @@ theorem prepared_hash_window [Fact p.Prime] (hp : 16777216 ≤ p)
   have entry : (Cell.register span.controlRegister).read atStart = .ok span.controlStart atStart := by
     simpa only [hash_preparation_value] using control.1
   have protocol : Delegation.Caller.HashSpan.Protocol (data.windowProjection lower upper start finish) atStart span :=
-    ⟨inputs.tables, fun row member => inputs.family row (List.mem_of_mem_filter member), entry, inputs.calls⟩
+    ⟨inputs.tables, inputs.family, entry, inputs.calls⟩
   have result := Delegation.Caller.Proofs.hash_span_at_target hp clockInverse selected initialized protocol
     (fun row member => accepted.workerActive row (List.mem_of_mem_filter member))
     (fun cell member => inputs.aligned cell (List.mem_of_mem_filter member)) target finalBoundary.1.addresses

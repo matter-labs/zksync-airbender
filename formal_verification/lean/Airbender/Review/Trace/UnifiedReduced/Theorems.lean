@@ -200,9 +200,29 @@ theorem Caller.control_preparation_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
     Caller.PreparedBoundaryExecution data before cells cut register literal :=
   Caller.Proofs.control_preparation hp clockInverse rotationInverse accepted inputs scope nonzero aligned
 
+/-- Two prepared controls use the same actual states and intervening native
+    history. Decoding, matching and public preparation cuts derive both controls. -/
+theorem Caller.control_preparation_window_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+    {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
+    {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    {lower upper : Nat} {firstRegister lastRegister : BitVec 5}
+    {firstLiteral lastLiteral : Caller.ControlLiteral}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.MixedMemoryInputs data program before ca oa cells)
+    (firstScope : Caller.ControlPreparation data program lower firstRegister firstLiteral)
+    (lastScope : Caller.ControlPreparation data program upper lastRegister lastLiteral)
+    (firstNonzero : firstRegister ≠ 0) (lastNonzero : lastRegister ≠ 0)
+    (first : lower % 4 = 0) (last : upper % 4 = 0) (ordered : lower ≤ upper) :
+    Caller.PreparedControlWindow data before cells lower upper firstRegister firstLiteral lastRegister lastLiteral :=
+  Caller.Proofs.control_preparation_window hp clockInverse rotationInverse accepted inputs
+    firstScope lastScope firstNonzero lastNonzero first last ordered
+
 /-- Complete G and Keccak references reach the actual mixed-history cut states
     after original public literal preparation. Shared matching derives controls,
-    caller scheduling, worker boundaries and native reads. Public span ABI,
+    caller scheduling, worker boundaries and native reads. Other nonround workers
+    may precede or follow the homogeneous selected span. Public span ABI,
     program/domain and modeled tables remain explicit; no worker masks are supplied. -/
 theorem Caller.prepared_hash_window_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
