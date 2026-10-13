@@ -1,6 +1,6 @@
 import Airbender.Review.Circuits.UnifiedReduced.Decoder
 import Airbender.Review.Trace.Execution
-import Airbender.Review.Helpers.SailHistory
+import Airbender.Review.Helpers.Memory.SailHistory
 
 namespace Airbender.UnifiedReduced
 open Trace

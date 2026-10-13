@@ -1,8 +1,8 @@
-import Airbender.Review.Helpers.Boundary
+import Airbender.Review.Helpers.Context.Boundary
 import Airbender.Review.Circuits.UnifiedReduced.Decoder
 import Airbender.Review.Circuits.AddSub.Reference
 import Airbender.Review.Helpers.Properties
-import Airbender.Review.Helpers.RowContext
+import Airbender.Review.Helpers.Context.RowContext
 
 namespace Airbender.UnifiedReduced
 open Arithmetic Reference.RiscV Reference.RiscV.Sail Trace

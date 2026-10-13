@@ -1,5 +1,5 @@
 import Airbender.Review.Circuits.SubwordMemory.Artifact
-import Airbender.Review.Helpers.Program
+import Airbender.Review.Helpers.Decoder.Program
 
 namespace Airbender.SubwordMemory
 open Arithmetic

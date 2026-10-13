@@ -1,6 +1,6 @@
 import Airbender.Review.Helpers.UnifiedReduced.NativeROM
-import Airbender.Review.Helpers.Boundary
-import Airbender.Review.Helpers.Instruction
+import Airbender.Review.Helpers.Context.Boundary
+import Airbender.Review.Helpers.Decoder.Instruction
 
 namespace Airbender.UnifiedReduced
 open Trace Reference.RiscV.Sail

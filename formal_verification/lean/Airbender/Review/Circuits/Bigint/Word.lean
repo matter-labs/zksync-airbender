@@ -1,4 +1,4 @@
-import Airbender.Review.Helpers.Word
+import Airbender.Review.Helpers.Core.Word
 import Mathlib.Algebra.BigOperators.Ring.Finset
 
 namespace Airbender.Bigint

@@ -1,7 +1,7 @@
 import Airbender.Review.Circuits.Blake2G.Artifact
 import Airbender.Review.Circuits.Blake2G.Tables.Setup
 import Airbender.Review.Helpers.Properties
-import Airbender.Review.Helpers.Word
+import Airbender.Review.Helpers.Core.Word
 import Clean.Specs.BLAKE3
 
 namespace Airbender.Blake2G

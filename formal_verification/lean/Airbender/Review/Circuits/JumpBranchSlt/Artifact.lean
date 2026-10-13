@@ -1,5 +1,5 @@
 import Airbender.Import.Embed
-import Airbender.Review.Helpers.Sail
+import Airbender.Review.Helpers.Core.Sail
 
 namespace Airbender.JumpBranchSlt
 
