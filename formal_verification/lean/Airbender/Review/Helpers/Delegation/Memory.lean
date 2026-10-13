@@ -2,7 +2,7 @@ import Airbender.Review.Circuits.Bigint.Artifact
 import Airbender.Review.Circuits.Blake2G.Artifact
 import Airbender.Review.Circuits.Blake2Round.Artifact
 import Airbender.Review.Circuits.Keccak.Artifact
-import Airbender.Review.Helpers.InitialImage
+import Airbender.Review.Helpers.Memory.InitialImage
 
 namespace Airbender.Delegation
 open Trace

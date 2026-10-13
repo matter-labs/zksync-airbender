@@ -1,4 +1,4 @@
-import Airbender.Review.Helpers.Pooled
+import Airbender.Review.Helpers.Context.Registries.Pooled
 import Airbender.Proofs.JumpBranchSlt.Trace
 import Airbender.Proofs.MulDiv.Trace
 import Airbender.Proofs.ShiftBinop.Trace

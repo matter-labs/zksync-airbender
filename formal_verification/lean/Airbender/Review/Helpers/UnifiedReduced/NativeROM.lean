@@ -1,6 +1,6 @@
 import Airbender.Review.Circuits.UnifiedReduced.Decoder
 import Airbender.Review.Circuits.UnifiedReduced.Tables.Setup
-import Airbender.Review.Helpers.NativeMemory
+import Airbender.Review.Helpers.Memory.Native
 
 namespace Airbender.UnifiedReduced
 open Trace Reference.RiscV.Sail

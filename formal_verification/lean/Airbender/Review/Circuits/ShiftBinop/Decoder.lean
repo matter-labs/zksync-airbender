@@ -1,5 +1,5 @@
 import Airbender.Review.Circuits.ShiftBinop.Artifact
-import Airbender.Review.Helpers.Program
+import Airbender.Review.Helpers.Decoder.Program
 
 namespace Airbender.ShiftBinop
 open Arithmetic
