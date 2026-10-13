@@ -1,11 +1,13 @@
-use crate::definitions::gkr::RamAuxComparisonSet;
+use crate::definitions::gkr::{RamAuxComparisonSet, RelativeTimestampGroup};
 use crate::gkr_compiler::graph::{CopyNode, GKRGraph};
 
 use super::*;
 
 #[derive(Clone, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct GKRAuxLayoutData {
-    pub shuffle_ram_timestamp_comparison_aux_vars: Vec<RamAuxComparisonSet>,
+    pub shuffle_ram_timestamp_comparison_aux_vars: Vec<Option<RamAuxComparisonSet>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub relative_timestamp_groups: Vec<RelativeTimestampGroup>,
 }
 
 #[serde_with::serde_as]

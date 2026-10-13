@@ -288,10 +288,13 @@ pub(crate) unsafe fn gkr_evaluate_indirect_memory_accesses<
             let read_ts_split = split_timestamp(read_ts);
             let write_ts_split = split_timestamp(write_ts);
 
-            let comparison_set = compiled_circuit
+            let Some(comparison_set) = compiled_circuit
                 .aux_layout_data
                 .shuffle_ram_timestamp_comparison_aux_vars
-                .get_unchecked(access_idx);
+                .get_unchecked(access_idx)
+            else {
+                continue;
+            };
             let GKRAddress::BaseLayerWitness(borrow_place) = comparison_set.intermediate_borrow
             else {
                 unreachable!()
@@ -311,6 +314,58 @@ pub(crate) unsafe fn gkr_evaluate_indirect_memory_accesses<
             );
 
             proxy.write_boolean_value_into_columns::<false>(borrow_place, intermediate_borrow);
+        }
+    }
+
+    if COMPUTE_WITNESS {
+        let oracle = proxy.oracle;
+        let row = proxy.absolute_row_idx;
+        let read_ts_of_access = |access_idx: usize| {
+            let placeholder =
+                match compiled_circuit.memory_layout.ram_access_sets[access_idx].get_address() {
+                    RamAddress::ConstantRegister(reg_idx) => {
+                        Placeholder::DelegationRegisterReadTimestamp(reg_idx as usize)
+                    }
+                    RamAddress::IndirectRam(IndirectRamAccessAddress {
+                        base_register_index,
+                        indirect_access_idx_for_register,
+                        ..
+                    }) => Placeholder::DelegationIndirectReadTimestamp {
+                        register_index: base_register_index as usize,
+                        word_index: indirect_access_idx_for_register,
+                    },
+                    RamAddress::RegisterOnly(..) | RamAddress::RegisterOrRam(..) => {
+                        unreachable!()
+                    }
+                };
+            oracle.get_timestamp_witness_from_placeholder(placeholder, row)
+        };
+        let (_, invocation_ts_high) = split_timestamp(invocation_ts);
+        for group in compiled_circuit
+            .aux_layout_data
+            .relative_timestamp_groups
+            .iter()
+        {
+            let read_ts = read_ts_of_access(group.members[0]);
+            for &member in group.members[1..].iter() {
+                assert_eq!(
+                    read_ts_of_access(member),
+                    read_ts,
+                    "relative timestamp group members read different timestamps at row {} for access {}",
+                    row,
+                    member,
+                );
+            }
+            let (_, read_ts_high) = split_timestamp(read_ts);
+            let borrow = invocation_ts_high.wrapping_sub(read_ts_high);
+            assert!(
+                borrow <= 1,
+                "relative timestamp group read timestamp {} is not within one high limb of invocation timestamp {} at row {}",
+                read_ts,
+                invocation_ts,
+                row,
+            );
+            proxy.write_boolean_value_into_columns::<false>(group.borrow, borrow == 1);
         }
     }
 

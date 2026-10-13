@@ -31,6 +31,7 @@ pub(crate) use cs::definitions::gkr::RamWriteQuery as CSRamWriteQuery;
 pub(crate) use cs::definitions::gkr::RegisterOnlyAccessAddress as CSRegisterOnlyAccessAddress;
 pub(crate) use cs::definitions::gkr::RegisterOrRamAccessAddress as CSRegisterOrRamAccessAddress;
 pub(crate) use cs::definitions::gkr::RegisterOrRamAddressSpace as CSRegisterOrRamAddressSpace;
+pub(crate) use cs::definitions::gkr::RelativeTimestampGroup as CSRelativeTimestampGroup;
 pub(crate) use cs::definitions::{
     GKRAddress, BIGINT_BASE_ABI_REGISTER, BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
     BIGINT_X10_NUM_WRITES, BIGINT_X11_NUM_READS, BLAKE2S_BASE_ABI_REGISTER,

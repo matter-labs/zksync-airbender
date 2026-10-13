@@ -39,6 +39,7 @@ pub struct BasicAssembly<
     table_driver: TableDriver<F>,
     register_and_indirect_memory_accesses: Vec<RegisterAndIndirectAccesses>,
     register_and_indirect_memory_accesses_offset_variables_idxes: HashMap<Variable, usize>,
+    read_timestamp_group_distances: BTreeMap<u8, Expr<F>>,
     executor_machine_state: Option<OpcodeFamilyCircuitState<F>>,
     delegation_circuit_state: Option<DelegationCircuitState>,
 
@@ -70,6 +71,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
 
             register_and_indirect_memory_accesses: vec![],
             register_and_indirect_memory_accesses_offset_variables_idxes: HashMap::new(),
+            read_timestamp_group_distances: BTreeMap::new(),
             witness_graph: WitnessResolutionGraph::new(),
 
             executor_machine_state: None,
@@ -1059,6 +1061,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                     variable_dependent,
                     offset_constant: access_description.offset_constant,
                     assume_no_alignment_overflow: access_description.assume_no_alignment_overflow,
+                    read_timestamp_group: access_description.read_timestamp_group,
                 }
             } else {
                 let read_low = self.add_named_variable(&format!(
@@ -1105,6 +1108,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                     variable_dependent,
                     offset_constant: access_description.offset_constant,
                     assume_no_alignment_overflow: access_description.assume_no_alignment_overflow,
+                    read_timestamp_group: access_description.read_timestamp_group,
                 }
             };
 
@@ -1115,6 +1119,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
             register_index: request.register_index,
             indirects_alignment_log2: request.indirects_alignment_log2,
             register_access,
+            read_timestamp_group: request.read_timestamp_group,
             indirect_accesses,
         };
 
@@ -1125,6 +1130,17 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
             .sort_by_key(|a| a.register_index);
 
         access
+    }
+
+    fn set_read_timestamp_group_distance(&mut self, group: u8, distance: Expr<F>) {
+        assert!(self.delegation_circuit_state.is_some());
+        let distance = distance.canonicalize();
+        distance.validate_degree_at_most(1);
+        let existing = self.read_timestamp_group_distances.insert(group, distance);
+        assert!(
+            existing.is_none(),
+            "read timestamp group {group} has two distances"
+        );
     }
 
     #[track_caller]
@@ -1613,6 +1629,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
             table_driver,
             memory_queries,
             register_and_indirect_memory_accesses,
+            read_timestamp_group_distances,
             executor_machine_state,
             delegation_circuit_state,
             variable_names,
@@ -1633,6 +1650,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
             boolean_vars: boolean_variables,
             substitutions: placeholder_query,
             register_and_indirect_memory_accesses,
+            read_timestamp_group_distances,
             executor_machine_state,
             delegation_circuit_state,
             variable_names,

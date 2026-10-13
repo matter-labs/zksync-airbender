@@ -24,6 +24,9 @@ pub(crate) fn compile_timestamp_comparison_range_checks<F: PrimeField>(
             read_timestamp,
             local_timestamp_in_cycle,
         } = aux;
+        let Some(intermediate_borrow) = intermediate_borrow else {
+            continue;
+        };
 
         // read - write is with borrow. Note that we have write_timestamp_base + local timestamp offset as range checked,
         // and so to ensure correctness of the result we should check both that carry is boolean and that result is range checked.

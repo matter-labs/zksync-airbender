@@ -246,11 +246,14 @@ impl From<&GKRAuxLayoutData> for AuxLayoutData {
         assert!(len <= MAX_SHUFFLE_RAM_ACCESS_SETS_COUNT);
         let mut shuffle_ram_timestamp_comparison_aux_vars =
             [RamAuxComparisonSet::default(); MAX_SHUFFLE_RAM_ACCESS_SETS_COUNT];
+        assert!(value.relative_timestamp_groups.is_empty());
         for (&src, dst) in vars
             .iter()
             .zip(shuffle_ram_timestamp_comparison_aux_vars.iter_mut())
         {
-            *dst = src.into();
+            *dst = src
+                .expect("unrolled circuits compare every RAM access")
+                .into();
         }
         Self {
             shuffle_ram_timestamp_comparison_aux_vars,
