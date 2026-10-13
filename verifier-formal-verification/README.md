@@ -24,7 +24,8 @@ final theorem's statement and axioms).
 
 ## Other
 - `rust/` — Airbender-style no_std guest, build flags, `build.sh` (deterministic).
-- `sail/` — scripts and pins to regenerate the Sail RV32 Lean model. The generated model (`lean/sail-rv32/SailRV32/`, ~52 MB) is
+- `sail/` — scripts and pins to regenerate the Sail RV32 Lean model; `sail/fetch-lean-sail.sh` fetches the pinned lean-sail
+  library (no upstream licence, so never committed; `verify.sh` runs it). The generated model (`lean/sail-rv32/SailRV32/`, ~52 MB) is
   gitignored: never commit it or any other large/generated data (this is a public repo; see `LOG.txt`).
 - `lean/check.sh` — build Lean modules under the project limits (60 s, 4 GB).
 - `LOG.txt` — PLAN / TODO / DONE (pick up work from here). `docs/` — design notes.

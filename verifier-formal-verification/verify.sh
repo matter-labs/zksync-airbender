@@ -4,6 +4,9 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+echo "== 0. lean-sail (pinned, fetched on demand; not committed)"
+sail/fetch-lean-sail.sh
+
 echo "== 1. Rust build (deterministic) + Lean image"
 (cd rust && ./build.sh >/dev/null 2>&1)
 git diff --exit-code -- build/app.sha256 lean/image/Image.lean \

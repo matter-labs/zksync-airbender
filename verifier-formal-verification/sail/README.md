@@ -7,17 +7,19 @@
    `Sail 0.20.3 (sail2 @ 2ba3212...)` and that `z3` is on PATH. The bootstrap branch was not re-run end to end here
    (the installed compiler was built from the same commit with the same steps).
 2. shallow-fetches `riscv/sail-riscv` at the pinned commit and applies `patches/sail-riscv-*.patch`;
-3. shallow-fetches `rems-project/lean-sail` at the pinned commit and applies `patches/lean-sail-*.patch`;
+3. fetches lean-sail with `fetch-lean-sail.sh` (pinned commit + `patches/lean-sail-*.patch`);
 4. runs `sail --lean` with upstream's flags (taken from sail-riscv's `model/CMakeLists.txt`) and `config/airbender-base.json`;
 5. post-processes (two mechanical edits, see below), assembles the Lake package `lean/sail-rv32/`
-   (`lakefile.toml`, `lean-toolchain` = v4.34.1, `SailRV32/*.lean`, vendored `lean-sail/`, `airbender-base.json` (the config the model was generated with),
+   (`lakefile.toml`, `lean-toolchain` = v4.34.1, `SailRV32/*.lean`, `lean-sail/` (fetched, never committed), `airbender-base.json` (the config the model was generated with),
    `PROVENANCE.txt`, `SailRV32Smoke.lean`).
 
 Cold run: ~3.5 min, 1.3 GB RSS (with the Airbender config: 3:27). The output is byte-identical between runs (checked). `lake build` of the result:
 4.3-4.5 min wall, 4.8 GB peak RSS, 16 cores, 146-148 jobs, no errors.
 
-Why lean-sail is vendored (not a git `require`): the Lean 4.34 patch is ours, so a git require would need our own
-fork or a patch step on every `lake update`; vendoring keeps `lake build` offline and reproducible. It is ~110 KB.
+lean-sail is NOT committed: upstream has no licence, so this public repo must not carry a copy. `fetch-lean-sail.sh`
+(called by `verify.sh`, `lean/check.sh` and `regen.sh`) fetches the pinned commit into the gitignored
+`lean/sail-rv32/lean-sail/` and applies our patch; it is a no-op when that copy is already current (stamp file
+`.fetched` = commit + patch hash). Not a git `require`, because the Lean 4.34 patch is ours.
 
 ## Choices
 
