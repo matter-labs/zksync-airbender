@@ -321,4 +321,22 @@ theorem zero_worker_has_no_scheduled_caller :
     mixedAccepted.toRequestChecks mixedInputs.publicProgram
   exact (schedule.unissued native (by simp [mixedData, sharedData, sharedWorkers])).mpr (by decide +kernel)
 
+theorem zero_worker_retained_before_request_window :
+    Delegation.Caller.RequestWindowBinding mixedData.callers mixedData.workers 4 8 ∧
+    mixedData.workers.prefixRows 4 = [native] ∧ mixedData.workers.windowRows 4 8 = [] ∧
+    ∃ after : Reference.RiscV.Sail.State,
+      (Cell.register 12).read before = .ok 0 before ∧
+      (Cell.register 12).read after = .ok 1 after := by
+  obtain ⟨after, _, initial, terminal⟩ := mixed_unissued_control_update
+  refine ⟨Delegation.Caller.request_window_soundness
+    (by norm_num [timestampBase, babyBearModulus]) (by decide +kernel) (by decide +kernel)
+    mixedAccepted.toRequestChecks mixedInputs.publicProgram (by decide) (by decide) (by decide),
+    ?_, ?_, after, initial, terminal⟩
+  · change ([native].filter fun worker => decide (worker.writeTime ≤ 4)) = [native]
+    have time : native.writeTime = 2 := by decide +kernel
+    simp [time]
+  · change ([native].filter fun worker => decide (4 < worker.writeTime ∧ worker.writeTime ≤ 8)) = []
+    have time : native.writeTime = 2 := by decide +kernel
+    simp [time]
+
 end Tests.DelegationZeroInvocation

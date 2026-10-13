@@ -90,7 +90,12 @@ query binding and padding remain deferred provenance work.
 
 `Accepted` checks imported equations/lookups and logical native state/memory
 permutations. Decoder membership and caller/request matching are likewise logical
-conditions. Native columns retain full address/time/value limbs, including readonly
+conditions. [Caller request windows](Airbender/Review/Delegation/RequestHashWindows.lean)
+reuse these checks at aligned instruction cuts after clock two. Exact worker/caller
+multiplicity, slots and full CSR families are derived; zero-clock worker effects
+stay in the actual prefix. Hash-window claims retain explicit worker-only memory
+matching and protocol ABI; joint mixed retirement and control preparation remain
+open. Native columns retain full address/time/value limbs, including readonly
 clock refreshes. Bounds, latest-write reads and Clean online-consistent histories
 are derived from those relations and public initialization. Retiming introduces
 initialization writes and preserves addresses/values; it does not prove cryptographic

@@ -2,6 +2,8 @@ import Airbender.Proofs.UnifiedReduced.MixedComposition
 import Airbender.Proofs.UnifiedReduced.Composition
 import Airbender.Proofs.UnifiedReduced.MixedMemory
 import Airbender.Proofs.UnifiedReduced.SharedSpans
+import Airbender.Proofs.UnifiedReduced.RequestWindows
+import Airbender.Proofs.Delegation.RequestHashWindows
 
 namespace Airbender.UnifiedReduced
 
@@ -68,5 +70,35 @@ theorem Caller.shared_span_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
     (inputs : Caller.SharedSpanInputs data before addresses cells span) :
     Caller.SharedSpanEffects data before cells span :=
   Caller.Proofs.shared_span_effects hp clockInverse accepted inputs
+
+/-- Unified caller spans match the complete native worker rows between the
+    same instruction-boundary cuts. Counts and unique native slots are derived;
+    zero-clock surplus effects stay before the cut rather than being excluded. -/
+theorem Caller.request_window_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
+    (accepted : Caller.RequestChecks data) (inputs : Caller.RequestInputs data before addresses)
+    {lower upper : Nat} (first : lower % 4 = 0) (last : upper % 4 = 0) (pastZero : 2 ≤ lower) :
+    Delegation.Caller.RequestWindowBinding data.callers data.workers lower upper :=
+  Caller.Proofs.request_windows hp clockInverse accepted inputs first last pastZero
+
+/-- Unified caller requests and the complete hash reference bind the same native
+    window. Public worker initialization, mode/count ABI and worker-only matching
+    remain visible; caller control preparation and joint retirement are separate. -/
+theorem Caller.request_hash_window_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (wordInverse : 64 * (-31457280 : ZMod p) = 1)
+    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+    {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
+    {cells : List Trace.Cell} {span : Delegation.Caller.HashSpan} {lower upper : Nat}
+    (accepted : Caller.RequestChecks data) (workers : Delegation.MemoryAccepted data.workers)
+    (program : Caller.RequestInputs data before addresses)
+    (inputs : span.RequestWindowInputs data.workers before cells lower upper)
+    (aligned : ∀ cell ∈ cells, cell.Aligned)
+    (first : lower % 4 = 0) (last : upper % 4 = 0) (pastZero : 2 ≤ lower) :
+    span.RequestWindowResult data.callers data.workers before cells lower upper :=
+  Delegation.Caller.Proofs.bind_hash_window hp wordInverse byteInverse workers inputs aligned
+    (Caller.Proofs.request_windows (by norm_num [Trace.timestampBase]; omega) clockInverse
+      accepted program first last pastZero)
 
 end Airbender.UnifiedReduced
