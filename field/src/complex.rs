@@ -119,23 +119,23 @@ impl Mersenne31Complex {
     #[cfg(not(all(target_arch = "riscv32", feature = "modular_ops")))]
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub const fn mul_assign_impl(&'_ mut self, other: &Self) -> &'_ mut Self {
-        let mut v0 = self.c0;
-        v0.mul_assign_impl(&other.c0);
-        let mut v1 = self.c1;
-        v1.mul_assign_impl(&other.c1);
+        let mut ac = self.c0;
+        ac.mul_assign_impl(&other.c0);
 
-        self.c1.add_assign_impl(&self.c0);
+        let mut bd = self.c1;
+        bd.mul_assign_impl(&other.c1);
 
-        let mut t0 = other.c0;
-        t0.add_assign_impl(&other.c1);
-        self.c1.mul_assign_impl(&t0);
-        self.c1.sub_assign_impl(&v0);
-        self.c1.sub_assign_impl(&v1);
-        self.c0 = v0;
-        // Same - we can subtract instead
-        // Mersenne31Field::mul_by_non_residue_impl(&mut v1);
-        // self.c0.add_assign_impl(&v1);
-        self.c0.sub_assign_impl(&v1);
+        let mut ad = self.c0;
+        ad.mul_assign_impl(&other.c1);
+
+        let mut bc = self.c1;
+        bc.mul_assign_impl(&other.c0);
+
+        ac.sub_assign_impl(&bd);
+        ad.add_assign_impl(&bc);
+
+        self.c0 = ac;
+        self.c1 = ad;
 
         self
     }
