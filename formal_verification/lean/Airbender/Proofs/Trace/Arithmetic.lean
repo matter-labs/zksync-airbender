@@ -4,8 +4,8 @@ import Airbender.Proofs.Trace.PC
 import Airbender.Proofs.Trace.Retirement
 import Airbender.Proofs.AddSub
 import Airbender.Proofs.AddSub.DecodedInterface
-import Airbender.Review.Helpers.Boundary
-import Airbender.Review.Helpers.Instruction
+import Airbender.Review.Helpers.Context.Boundary
+import Airbender.Review.Helpers.Decoder.Instruction
 
 namespace Airbender.Trace.Proofs
 open Arithmetic Reference.RiscV Reference.RiscV.Sail Reference.Sail

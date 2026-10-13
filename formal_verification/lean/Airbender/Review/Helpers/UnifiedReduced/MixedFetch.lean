@@ -1,5 +1,5 @@
 import Airbender.Review.Helpers.UnifiedReduced.MixedMemory
-import Airbender.Review.Helpers.CycleFetch
+import Airbender.Review.Helpers.Decoder.CycleFetch
 
 namespace Airbender.UnifiedReduced.Caller
 open Trace

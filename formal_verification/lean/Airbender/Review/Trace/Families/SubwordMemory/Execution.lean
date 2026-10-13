@@ -1,4 +1,4 @@
-import Airbender.Review.Helpers.Registries.SubwordMemoryInputs
+import Airbender.Review.Helpers.Context.Registries.SubwordMemoryInputs
 import Airbender.Review.Trace.Execution
 
 namespace Airbender.SubwordMemory

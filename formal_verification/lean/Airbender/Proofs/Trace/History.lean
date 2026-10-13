@@ -1,4 +1,4 @@
-import Airbender.Review.Helpers.Model
+import Airbender.Review.Helpers.Context.Model
 import Airbender.Proofs.WordMemory.ArtifactChecks
 import Airbender.Proofs.Trace.Rows
 import Airbender.Proofs.Trace.ClockHistory

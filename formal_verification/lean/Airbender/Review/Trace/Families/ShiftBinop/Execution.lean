@@ -1,4 +1,4 @@
-import Airbender.Review.Helpers.Registries.ShiftBinopInputs
+import Airbender.Review.Helpers.Context.Registries.ShiftBinopInputs
 import Airbender.Review.Trace.Execution
 
 namespace Airbender.ShiftBinop

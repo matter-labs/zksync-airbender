@@ -1,5 +1,5 @@
-import Airbender.Review.Helpers.UnifiedReduced
-import Airbender.Review.Helpers.Program
+import Airbender.Review.Helpers.UnifiedReduced.Registry
+import Airbender.Review.Helpers.Decoder.Program
 import Airbender.Review.Circuits.JumpBranchSlt.Decoder
 import Airbender.Review.Circuits.ShiftBinop.Decoder
 

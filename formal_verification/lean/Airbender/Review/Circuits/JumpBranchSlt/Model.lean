@@ -1,9 +1,9 @@
 import Airbender.Review.Circuits.JumpBranchSlt.Artifact
-import Airbender.Review.Helpers.Sail
+import Airbender.Review.Helpers.Core.Sail
 import Airbender.Review.Helpers.Properties
-import Airbender.Review.Helpers.PooledProgram
-import Airbender.Review.Helpers.RowContext
-import Airbender.Review.Helpers.Interfaces
+import Airbender.Review.Helpers.Decoder.PooledProgram
+import Airbender.Review.Helpers.Context.RowContext
+import Airbender.Review.Helpers.Context.Interfaces
 
 namespace Airbender.JumpBranchSlt
 open Arithmetic Reference.RiscV.Sail Reference.Sail Trace
