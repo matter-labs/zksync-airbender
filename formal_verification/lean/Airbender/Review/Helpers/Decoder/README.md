@@ -6,6 +6,21 @@ current-state fetch and selects the reference clause or explicit project profile
 Decoder-table membership is a logical connection between the public program and
 witness rows, with preprocessing provenance reviewed separately.
 
+## Checked connections
+
+Successful public-program construction implies actual byte-read, original Sail
+decoder and metadata-projection evidence; see
+[`program_sources` and `run_program_sources`](../../../Proofs/Trace/Program.lean).
+[`decoded_misa_frame`](../../../Proofs/Sail/DecoderFrame.lean) proves successful
+decoding changes no state and replays in states with the same public ISA configuration.
+
+With logical decoder membership and preserved code/history, the instruction used
+by retirement is derived at the current PC; see
+[`row_execution_step`](../../../Proofs/Trace/Composition.lean) and
+[unified mixed retirement](../../Trace/UnifiedReduced/Theorems.lean).
+Actual source decoding is proved; correspondence with Rust preprocessing/setup
+is still a separate condition.
+
 Start with [Program](Program.lean): public bytes are read and passed to the
 original Sail decoder, then projected into native family/register/immediate metadata.
 The public entry record alone does not establish correct decoding.

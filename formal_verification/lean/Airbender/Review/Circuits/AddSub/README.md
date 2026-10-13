@@ -6,6 +6,15 @@ columns to a selected pre-state and public instruction; the local soundness clai
 compares those observables with the original Sail clause. Custom arithmetic,
 external-input forms and delegation callers have their own contracts.
 
+## Checked results
+
+The [local soundness claims](Theorems.lean) prove every represented accepted
+ADD/ADDI/SUB/LUI/AUIPC row has its original Sail destination/register and PC effects.
+Public initialization/tables and logical matching/decoding remain premises;
+reads, operand/immediate/PC bounds and preprocessing are derived.
+The [logical memory result](../../Helpers/Memory/README.md#logical-memory-result)
+supplies history consistency; inactive padding and full delegation ABI remain open.
+
 1. Read [Theorems](Theorems.lean) for the exact local claim.
 2. Read [Model](Model.lean) for satisfaction, named observable mappings and interface assumptions.
 3. Follow [the selected reference](Reference.lean) and [Artifact](Artifact.lean) for semantics and imported variable placement.

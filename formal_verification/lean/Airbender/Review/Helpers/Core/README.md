@@ -6,6 +6,15 @@ independent stream observations. These definitions give meaning to encoded input
 and outputs; they do not assert that an accepted circuit row implements the
 reference.
 
+## Definitions and checked representation facts
+
+These modules define representations and reference relations rather than native
+circuit soundness. The supporting [word lemmas](../../../Proofs/Arithmetic/Word.lean)
+prove that RV32 conversion produces bounded limbs and round-trips to the original
+bit vector, and that bounded words are determined by their numeric value.
+Those facts do not make arbitrary witness limbs bounded: the consuming circuit
+and history claims must establish their ranges.
+
 Read [Field](Field.lean) and [Word](Word.lean) for field operations and the
 two-limb RV32 representation. A represented word is not automatically bounded;
 check where the relevant claim proves its canonical range.
@@ -17,5 +26,5 @@ stream ordering and port predicates; decoder-specific CSR forms live in
 [Decoder](../Decoder/README.md).
 
 These modules contain no accepted native trace or whole-execution contract.
-Review [properties](../Properties.lean) independently. Pins and generation
+Review [`properties`](../Properties.lean) independently. Pins and generation
 fidelity remain recorded in the [trust document](../../../../TRUST_AND_REVIEW.md).

@@ -6,6 +6,14 @@ which logical queries are members and how returned values are interpreted. Their
 correspondence with the Rust setup generator and cryptographic lookup enforcement
 are separate obligations.
 
+## Checked connections
+
+The [lookup lemmas](../../../Proofs/Lookups.lean) extract modeled pair/range-sign/
+low-byte behavior from membership; [byte-table lemmas](../../../Proofs/ByteTables.lean)
+characterize tagged binary rows and their lookup results under stated field bounds.
+Consuming circuit proofs use these results to recover ranges and operation effects.
+The proofs concern these modeled rows; they do not prove Rust setup correspondence.
+
 [Range](Range.lean) defines limb-range rows; [Bytes](Bytes.lean) defines shared
 byte constructions; [Subword](Subword.lean) defines subword/ROM rows;
 [Lookups](Lookups.lean) supplies shared lookup encodings.

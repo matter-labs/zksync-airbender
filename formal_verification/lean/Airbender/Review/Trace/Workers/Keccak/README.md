@@ -5,6 +5,16 @@ binding Clean's original reference to actual initial/final lane reads. Call and
 window contracts retain seed timestamps and protocol scope, while shared execution
 connects the final state to native terminal tokens.
 
+## Checked results
+
+[`Native.operation_execution`](Theorems.lean) proves actual port/lane effects
+for all seven native modes under the modeled controller.
+[`Native.permutation_soundness` and `Native.permutation_boundary_soundness`](Theorems.lean)
+prove the original full permutation on actual boundary lanes, with shared terminal
+agreement. [`Native.window_soundness`](Theorems.lean) binds the first complete span
+at retained cut states; later workers may remain outside the window.
+Public protocol/domain/alignment/table conditions remain inputs.
+
 Read [Theorems](Theorems.lean), [Call](Call.lean) and
 [BoundaryCall](BoundaryCall.lean). [Permutation](Permutation.lean) binds
 the original complete reference to actual initial/final lane reads.

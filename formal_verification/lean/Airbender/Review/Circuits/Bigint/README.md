@@ -6,6 +6,16 @@ equality and carry results together with the sixteen pointer-derived address
 bindings. They interpret worker observations without claiming that every matched
 caller control is valid under the full project ABI.
 
+## Checked results
+
+[`Memory.addresses_soundness`](Theorems.lean) proves all sixteen native indirect
+addresses from initialized accepted history, without per-row pointer bounds.
+The [shared pointer ABI](PointerABI.lean) derives canonical, aligned, distinct RAM
+bases under its public tracked-domain conditions.
+[`Native.operation_execution`](../../Trace/Workers/Bigint/Theorems.lean) connects
+the seven selected arithmetic/equality/copy effects to actual port observations.
+The issued invalid-control and ROM-shadow fixtures remain admitted at their stated scope.
+
 Start with [Theorems](Theorems.lean) for native indirect-address soundness and
 [Memory](Memory.lean) for its model and public-history assumptions.
 [Addresses](Addresses.lean) and [PointerABI](PointerABI.lean) name the sixteen
@@ -13,7 +23,7 @@ indirect addresses and shared aligned/RAM pointer claim.
 
 [Control](Control.lean), [Additive](Additive.lean), [Equality](Equality.lean),
 [Multiplication](Multiplication.lean) and [Execution](Execution.lean) select
-the seven operation references. [Artifact](Artifact.lean) and [setup](Tables/Setup.lean)
+the seven operation references. [Artifact](Artifact.lean) and [`setup`](Tables/Setup.lean)
 bind imported equations and modeled lookup rows.
 
 Address correctness and native operation observations do not establish full

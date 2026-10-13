@@ -6,6 +6,14 @@ extension, merged store contents and PC effects, with old-cell and
 transferred-data mappings distinguished. Original Sail clauses supply the
 architectural behavior.
 
+## Checked results
+
+The [local soundness claims](Theorems.lean) prove aligned-cell address, selected
+load data or merged store word, sign/width behavior and PC effects against Sail.
+Public initialization/tables and ordinary-domain/configuration conditions remain;
+history derives reads, ranges and byte/halfword/word transport.
+The standalone RAM trace and pooled RAM/ROM claim have distinct scopes.
+
 1. Read [Theorems](Theorems.lean) for the exact local claim.
 2. Read [Model](Model.lean) for satisfaction, named observable mappings and interface assumptions.
 3. Follow [the selected reference](Model.lean) and [Artifact](Artifact.lean) for semantics and imported variable placement.

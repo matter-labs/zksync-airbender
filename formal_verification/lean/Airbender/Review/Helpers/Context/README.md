@@ -6,6 +6,19 @@ membership and logical state/memory permutations; boundary records bind
 initialization, program, tables and configuration. Selected-row context locates a
 pre-state in the same history without assuming the desired instruction result.
 
+## Checked connections
+
+Accepted state matching and the imported clock laws yield the native instruction
+order and its connected boundary path; see
+[`ordered_row_state_path`](../../../Proofs/Trace/RowHistory.lean).
+The memory permutation plus unique initialization and strict timestamps yields
+[complete memory histories and latest-write reads](../Memory/README.md#logical-memory-result).
+
+[`outgoing_bounds`](PCState/Theorems.lean) proves both outgoing PC limbs bounded
+under its logical interface and low-limb condition, including terminal boundaries.
+Binding that interface to standalone jump teardown remains open. None of these
+results assumes the desired row reads or an independently chosen execution order.
+
 [Model](Model.lean) defines imported row interpretation, native state/memory
 tokens and acceptance: actual constraints, active rows and logical permutations.
 [Columns](Columns.lean), [Timestamps](Timestamps.lean) and [PCState](PCState/Model.lean)

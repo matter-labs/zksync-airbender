@@ -5,6 +5,15 @@ initial/final RAM, using Clean's original G reference. Call and window contracts
 give the public protocol mode/count and native-boundary conditions. Shared history
 connects all calls and terminal tokens without supplied intermediate states.
 
+## Checked results
+
+[`Native.operation_execution`](Theorems.lean) connects each G row to actual
+port effects. [`Native.workvector_soundness`](Theorems.lean) additionally proves
+the complete reference fold on actual initial/final RAM and terminal tokens.
+[`Native.workvector_boundary_soundness` and `Native.window_soundness`](Theorems.lean)
+retain native seeds and derive boundary controls/intermediate states under the
+public mode/count, alignment/domain, modeled-table and matching conditions.
+
 Read [Theorems](Theorems.lean), then [Call](Call.lean) and
 [BoundaryCall](BoundaryCall.lean) for public initialization versus retained
 native-boundary timestamps. [WorkVector](WorkVector.lean) is the complete
