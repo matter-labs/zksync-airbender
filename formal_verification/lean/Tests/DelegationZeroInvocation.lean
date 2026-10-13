@@ -1,4 +1,5 @@
 import Airbender.Review.Delegation.CallerTheorems
+import Airbender.Review.UnifiedReduced.Theorems
 import Airbender.Proofs.Blake2G.Claims
 import Airbender.Proofs.Delegation.Requests
 import Mathlib.Tactic.IntervalCases
@@ -338,5 +339,71 @@ theorem zero_worker_retained_before_request_window :
   · change ([native].filter fun worker => decide (4 < worker.writeTime ∧ worker.writeTime ≤ 8)) = []
     have time : native.writeTime = 2 := by decide +kernel
     simp [time]
+
+private def unifiedData : UnifiedReduced.Caller.RequestTrace babyBearModulus where
+  machine := {
+    rows := []
+    rom := UnifiedReduced.Setup.table before
+    initial := sharedMachine.initial
+    terminal := sharedMachine.terminal
+    initialMemory := data.initial
+    terminalMemory := data.terminal }
+  workers := sharedWorkers
+  program := []
+
+private theorem unifiedAccepted : UnifiedReduced.Caller.MixedMemoryAccepted unifiedData [] := by
+  refine ⟨?_, ?_, accepted.matching⟩
+  constructor
+  · intro _ member; cases member
+  · intro _ member; cases member
+  · exact List.Perm.refl _
+  · intro _ member; cases member
+  · exact sharedAccepted.workerConstraints
+  · exact sharedAccepted.workerActive
+  · exact no_caller_virtual_matching
+  · intro _ member; cases member
+
+private theorem unifiedInputs : UnifiedReduced.Caller.MixedMemoryInputs unifiedData [] before [] [] cells := by
+  refine ⟨⟨rfl, sharedInputs.publicProgram.initialClock, sharedInputs.publicProgram.initialAligned⟩,
+    rfl, sharedInputs.initialization, sharedInputs.distinct, sharedInputs.aligned, rfl, rfl, ?_⟩
+  intro actual member family
+  have same : actual = native := List.mem_singleton.mp member
+  subst actual
+  cases family
+
+private theorem unifiedCode : UnifiedReduced.Caller.CodeProfile unifiedData [] cells := by
+  constructor
+  · intro address member
+    simp [cells] at member
+    rcases member with rfl | rfl | rfl | rfl | rfl | rfl
+    all_goals decide +kernel
+  · intro _ member; cases member
+  · intro _ member; cases member
+
+theorem unified_unissued_worker_caller_cycles :
+    UnifiedReduced.Caller.CallerCycleEffects unifiedData [] before cells :=
+  UnifiedReduced.Caller.caller_cycles_soundness unifiedAccepted unifiedInputs unifiedCode (by decide +kernel)
+
+theorem unified_unissued_control_update : ∃ (events : List MemoryAccess) (after : Reference.RiscV.Sail.State),
+    unifiedData.callers = [] ∧ events.Perm (unifiedData.mixedSteps.map transferEvent) ∧
+    Trace.SailHistory cells events before after ∧
+    (Cell.register 12).read before = .ok 0 before ∧ (Cell.register 12).read after = .ok 1 after := by
+  obtain ⟨events, after, permutation, _, history, _, _, terminal⟩ := unified_unissued_worker_caller_cycles.execution
+  let port := native.ports[8]
+  let sink := native.writeToken port
+  have member : sink ∈ unifiedData.machine.terminalMemory := by
+    change sink ∈ native.memorySteps.map Prod.snd
+    simp only [Delegation.Row.memorySteps, List.map_map, Function.comp_def]
+    apply List.mem_map.mpr
+    exact ⟨port, by simp [port, native, Delegation.Row.ports, Blake2G.importedConstraintsMemoryPorts], rfl⟩
+  obtain ⟨cell, _, address, read⟩ := terminal sink member
+  have code : sink.address = (Cell.register 12).addressCode := by decide +kernel
+  have same := Trace.Proofs.cell_address_injective (address.trans code)
+  subst cell
+  refine ⟨events, after, rfl, permutation, history, ?_, ?_⟩
+  · apply Reference.RiscV.Sail.read_register
+    simp [before]
+  · have value : sink.word.toBitVec = (1 : BitVec 32) := by decide +kernel
+    simpa only [value] using read
 
 end Tests.DelegationZeroInvocation

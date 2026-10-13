@@ -9,6 +9,7 @@ import Airbender.Proofs.UnifiedReduced.MixedWindowProjection
 import Airbender.Proofs.UnifiedReduced.ControlPreparation
 import Airbender.Proofs.UnifiedReduced.PreparedHashWindows
 import Airbender.Proofs.UnifiedReduced.PreparedRoundWindows
+import Airbender.Proofs.UnifiedReduced.CallerCycles
 import Airbender.Proofs.Delegation.RequestHashWindows
 
 namespace Airbender.UnifiedReduced
@@ -237,5 +238,30 @@ theorem Caller.prepared_round_window_soundness [Fact p.Prime] (hp : 16777216 ≤
     (first : lower % 4 = 0) (last : upper % 4 = 0) :
     Caller.JointHashWindowResult data before cells (.blakeRound flags) lower upper :=
   Caller.Proofs.prepared_round_window hp clockInverse accepted inputs first last
+
+/-- Actual caller fetch, issued-worker references and Sail PC retirement use
+    one shared history. The physical/code domain and existing worker ABI remain explicit. -/
+theorem Caller.caller_cycles_soundness
+    {data : Caller.RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
+    {initial : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.MixedMemoryInputs data program initial ca oa cells)
+    (code : Caller.CodeProfile data program cells)
+    (started : 0 < (Trace.timeOfPair data.machine.initial.timestamp).value) :
+    Caller.CallerCycleEffects data program initial cells :=
+  Caller.Proofs.caller_cycles accepted inputs code started
+
+/-- The prepared extended-round scope derives masks before constructing the
+    same actual caller cycles; no mask or intermediate state is supplied. -/
+theorem Caller.prepared_round_cycles_soundness
+    {data : Caller.RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
+    {initial : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    {flags : Fin 8} {lower : Nat}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.PreparedRoundInputs data initial ca oa cells program flags lower) (first : lower % 4 = 0)
+    (code : Caller.CodeProfile data program cells)
+    (started : 0 < (Trace.timeOfPair data.machine.initial.timestamp).value) :
+    Caller.CallerCycleEffects data program initial cells :=
+  Caller.Proofs.prepared_round_caller_cycles accepted inputs first code started
 
 end Airbender.UnifiedReduced

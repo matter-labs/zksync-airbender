@@ -2050,3 +2050,17 @@ import Clean.Specs.Keccak256
 #print axioms Tests.ControlPreparation.mismatched_round_preparation_flags_rejected
 #print axioms Tests.ControlPreparation.incomplete_prepared_round_span_rejected
 #print axioms Tests.ControlPreparation.prepared_round_two_bits_rejected
+#print axioms Airbender.UnifiedReduced.Caller.CallerCycle
+#print axioms Airbender.UnifiedReduced.Caller.CallerCycleEffects
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.current_fetch_of_history
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.caller_pc_retirement
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.caller_cycle_observations
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.caller_cycles
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.prepared_round_caller_cycles
+#print axioms Airbender.UnifiedReduced.Caller.caller_cycles_soundness
+#print axioms Airbender.UnifiedReduced.Caller.prepared_round_cycles_soundness
+#print axioms Tests.UnifiedDelegation.copy_then_ram_caller_cycles
+#print axioms Tests.UnifiedDelegation.issued_bigint_abi_gap_caller_cycles
+#print axioms Tests.DelegationZeroInvocation.unified_unissued_worker_caller_cycles
+#print axioms Tests.DelegationZeroInvocation.unified_unissued_control_update
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.caller_worker_family
