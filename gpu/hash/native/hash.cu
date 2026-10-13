@@ -452,24 +452,22 @@ EXTERN __global__ void ab_transcript_commit_initial_chunked_kernel(__grid_consta
     seed_out[i] = state[i];
 }
 
-// commit_with_seed: new_seed = Blake2s(old_seed || input).
+// commit_with_seed: new_seed = Blake2s compression chain over input, starting from
+// old_seed as the chaining value.
 // seed_io: STATE_SIZE u32 words, read then overwritten with the new seed.
-// input:   input_len u32 words to absorb after the seed.
+// input:   input_len u32 words to absorb.
 EXTERN __global__ void ab_transcript_commit_kernel(u32 *seed_io, const u32 *input, const unsigned input_len) {
   u32 state[STATE_SIZE];
-  initialize(state);
-  u32 t = 0;
-  u32 block[BLOCK_SIZE];
-
-  // Start the block with the seed.
 #pragma unroll
   for (unsigned i = 0; i < STATE_SIZE; i++)
-    block[i] = seed_io[i];
+    state[i] = seed_io[i];
+  u32 t = 0;
+  u32 block[BLOCK_SIZE];
 #pragma unroll
-  for (unsigned i = STATE_SIZE; i < BLOCK_SIZE; i++)
+  for (unsigned i = 0; i < BLOCK_SIZE; i++)
     block[i] = 0;
 
-  unsigned block_offset = STATE_SIZE;
+  unsigned block_offset = 0;
   unsigned remaining = input_len;
   const u32 *src = input;
 
@@ -496,6 +494,27 @@ EXTERN __global__ void ab_transcript_commit_kernel(u32 *seed_io, const u32 *inpu
     block[i] = 0;
   compress<true>(state, t, block, block_offset);
 
+#pragma unroll
+  for (unsigned i = 0; i < STATE_SIZE; i++)
+    seed_io[i] = state[i];
+}
+
+// verify_pow seed update: new_seed = Blake2s(seed || nonce_lo || nonce_hi) from the IV, the
+// digest `ab_blake2s_pow_kernel` grinds against. Mirrors the host `verify_pow`.
+EXTERN __global__ void ab_transcript_pow_update_kernel(u32 *seed_io, const u32 *nonce_words) {
+  u32 state[STATE_SIZE];
+  initialize(state);
+  u32 t = 0;
+  u32 block[BLOCK_SIZE];
+#pragma unroll
+  for (unsigned i = 0; i < STATE_SIZE; i++)
+    block[i] = seed_io[i];
+  block[STATE_SIZE] = nonce_words[0];
+  block[STATE_SIZE + 1] = nonce_words[1];
+#pragma unroll
+  for (unsigned i = STATE_SIZE + 2; i < BLOCK_SIZE; i++)
+    block[i] = 0;
+  compress<true>(state, t, block, STATE_SIZE + 2);
 #pragma unroll
   for (unsigned i = 0; i < STATE_SIZE; i++)
     seed_io[i] = state[i];

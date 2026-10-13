@@ -79,7 +79,7 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
         ) -> Result<(#quartic_struct, #quartic_struct), E::Error> {
             const WHIR_SC_DATA_WORDS: usize = 3 * EXT_DEGREE;
             const WHIR_SC_COMMIT_BUF: usize = {
-                let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + WHIR_SC_DATA_WORDS;
+                let total = WHIR_SC_DATA_WORDS;
                 (total + ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS - 1)
                     / ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS
                     * ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS

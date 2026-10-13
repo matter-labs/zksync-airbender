@@ -13,20 +13,20 @@ use verifier_common::prover::gkr::prover_config::example_configs::config_for_100
 use verifier_common::prover::merkle_trees::DefaultTreeConstructor;
 
 const EXPECTED: &[(&str, u64)] = &[
-    ("add_sub_lui_auipc_mop", 1045294),
-    ("jump_branch_slt", 1071649),
-    ("shift_binop", 1101308),
-    ("unsigned_mul_div", 1026077),
-    ("mem_word_only", 1030344),
-    ("mem_subword_only", 1049254),
-    ("inits_and_teardowns", 818673),
-    ("blake2_with_extended_control", 2829881),
-    ("bigint_with_extended_control", 1609211),
-    ("keccak_special5", 1593070),
-    ("blake2_g_function", 1099214),
-    ("keccak_column_parity", 1237383),
-    ("keccak_theta_rho", 1360781),
-    ("keccak_chi5", 1283292),
+    ("add_sub_lui_auipc_mop", 1046417),
+    ("jump_branch_slt", 1072229),
+    ("shift_binop", 1085008),
+    ("unsigned_mul_div", 1017898),
+    ("mem_word_only", 1031365),
+    ("mem_subword_only", 1048753),
+    ("inits_and_teardowns", 798497),
+    ("blake2_with_extended_control", 2792943),
+    ("bigint_with_extended_control", 1594464),
+    ("keccak_special5", 1556473),
+    ("blake2_g_function", 1072480),
+    ("keccak_column_parity", 1203769),
+    ("keccak_theta_rho", 1350221),
+    ("keccak_chi5", 1278978),
 ];
 
 fn repo_root() -> String {

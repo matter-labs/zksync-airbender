@@ -6,7 +6,8 @@ use field::{FieldExtension, PrimeField};
 
 // Our transcript for verifier efficiency is effectively stateless and has 3 functions:
 // - commit initial -> seed
-// - commit using some seed -> new seed
+// - commit using some seed -> new seed: the seed is the Blake2s chaining value and only
+//   the data is hashed as message blocks
 // - use seed -> (randomness, new_see)
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -29,14 +30,7 @@ impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
 
     pub fn commit_with_seed(seed: &mut Seed, input: &[u32]) {
         let mut hasher = blake2s_u32::DelegatedBlake2sState::new();
-        let mut offset = 0;
-        unsafe {
-            Self::commit_inner(&mut hasher, &seed.0, &mut offset);
-            Self::commit_inner(&mut hasher, input, &mut offset);
-            Self::flush(&mut hasher, offset);
-        }
-
-        *seed = Seed(hasher.read_state_for_output());
+        Self::commit_with_seed_using_hasher(&mut hasher, seed, input);
     }
 
     /// Transcript implementation can use the pre-allocated hasher, and will drive it by itself
@@ -62,19 +56,26 @@ impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
     ) {
         let mut offset = 0;
         unsafe {
-            hasher.reset();
-            Self::commit_inner(hasher, &seed.0, &mut offset);
-            Self::commit_inner(hasher, input, &mut offset);
+            hasher.reset_with_chaining_value(&seed.0);
+            if input.is_empty() {
+                crate::spec_memzero_u32(
+                    hasher.input_buffer.as_mut_ptr().cast::<u32>(),
+                    hasher.input_buffer.as_mut_ptr_range().end.cast::<u32>(),
+                );
+            } else {
+                Self::commit_inner(hasher, input, &mut offset);
+            }
             Self::flush(hasher, offset);
         }
 
         *seed = Seed(hasher.read_state_for_output());
     }
 
-    /// Commit from a pre-arranged aligned buffer where `[seed | data | zero-padding]` is
+    /// Commit from a pre-arranged aligned buffer where `[data | zero-padding]` is
     /// already laid out in 16-word aligned blocks. Avoids the memcopy that `commit_with_seed`
     /// performs. Unused words in the last block must be zeroed by the caller.
-    /// `total_words` is the number of meaningful words (seed + data, excluding padding).
+    /// `total_words` is the number of meaningful data words (excluding padding); an empty
+    /// commit hashes one zero block.
     #[inline(always)]
     pub fn commit_with_seed_using_hasher_and_aligned_buffer<const N: usize>(
         hasher: &mut blake2s_u32::DelegatedBlake2sState,
@@ -82,10 +83,9 @@ impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
         buf: &AlignedArray64<u32, N>,
         total_words: usize,
     ) {
-        hasher.reset();
-        let num_full_blocks = total_words / BLAKE2S_BLOCK_SIZE_U32_WORDS;
-        let last_block_words = total_words % BLAKE2S_BLOCK_SIZE_U32_WORDS;
-        let num_blocks = num_full_blocks + if last_block_words > 0 { 1 } else { 0 };
+        hasher.reset_with_chaining_value(&seed.0);
+        let num_blocks = total_words.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS).max(1);
+        let last_active = total_words - (num_blocks - 1) * BLAKE2S_BLOCK_SIZE_U32_WORDS;
         unsafe {
             for i in 0..num_blocks - 1 {
                 let block_ptr = (buf.as_ptr()).add(i * BLAKE2S_BLOCK_SIZE_U32_WORDS);
@@ -100,11 +100,6 @@ impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
             let last_ptr = (buf.as_ptr()).add((num_blocks - 1) * BLAKE2S_BLOCK_SIZE_U32_WORDS);
             let last_block =
                 &*(last_ptr as *const AlignedArray64<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>);
-            let last_active = if last_block_words > 0 {
-                last_block_words
-            } else {
-                BLAKE2S_BLOCK_SIZE_U32_WORDS
-            };
             hasher.run_round_function_with_input::<REDUCED_ROUNDS>(last_block, last_active, true);
         }
         *seed = Seed(hasher.read_state_for_output());
@@ -359,6 +354,16 @@ impl<const REDUCED_ROUNDS: bool> Blake2sBufferingTranscript<REDUCED_ROUNDS> {
         }
     }
 
+    /// Continues the transcript from `seed`, which becomes the Blake2s chaining value.
+    pub fn new_with_seed(seed: &Seed) -> Self {
+        let mut state = DelegatedBlake2sState::new();
+        state.reset_with_chaining_value(&seed.0);
+        Self {
+            state,
+            buffer_offset: 0,
+        }
+    }
+
     pub fn get_current_buffer_offset(&self) -> usize {
         self.buffer_offset
     }
@@ -552,8 +557,8 @@ impl<'a, const REDUCED_ROUNDS: bool> core::iter::Iterator
     }
 }
 
-/// layout `[seed | data | zero-padding]`
-/// Callers write data via `data_write(i, val)` — the seed offset is handled internally.
+/// layout `[data | zero-padding]`; the seed is the Blake2s chaining value
+/// Callers write data via `data_write(i, val)`.
 pub struct CommitBuf<const N: usize, const REDUCED_ROUNDS: bool = true> {
     inner: AlignedArray64<core::mem::MaybeUninit<u32>, N>,
 }
@@ -569,7 +574,7 @@ impl<const N: usize, const REDUCED_ROUNDS: bool> CommitBuf<N, REDUCED_ROUNDS> {
 
     #[inline(always)]
     pub fn data_write(&mut self, i: usize, val: u32) {
-        self.inner.write(BLAKE2S_DIGEST_SIZE_U32_WORDS + i, val);
+        self.inner.write(i, val);
     }
 
     #[inline(always)]
@@ -579,13 +584,14 @@ impl<const N: usize, const REDUCED_ROUNDS: bool> CommitBuf<N, REDUCED_ROUNDS> {
         seed: &mut Seed,
         data_words: usize,
     ) {
-        let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + data_words;
-        let padded = total.next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS);
+        let total = data_words;
+        let padded = total
+            .next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS)
+            .max(BLAKE2S_BLOCK_SIZE_U32_WORDS);
         debug_assert!(padded <= N);
         if padded > total {
             unsafe { self.inner.zero_range(total, padded) };
         }
-        self.inner.copy_from_slice(0, &seed.0);
         {
             Blake2sTranscript::<REDUCED_ROUNDS>::commit_with_seed_using_hasher_and_aligned_buffer(
                 hasher,
@@ -598,12 +604,11 @@ impl<const N: usize, const REDUCED_ROUNDS: bool> CommitBuf<N, REDUCED_ROUNDS> {
 
     /// # Safety
     ///
-    /// `count` values of `T` starting right after the seed must fit in the buffer, be aligned for
-    /// `T`, and be initialized with valid `T` bit patterns.
+    /// `count` values of `T` must fit in the buffer, be aligned for `T`, and be initialized
+    /// with valid `T` bit patterns.
     #[inline(always)]
     pub unsafe fn data_as<T>(&self, count: usize) -> &[T] {
-        self.inner
-            .transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, count)
+        self.inner.transmute_subslice(0, count)
     }
 
     /// # Safety
@@ -625,15 +630,14 @@ impl<const N: usize, const REDUCED_ROUNDS: bool> CommitBuf<N, REDUCED_ROUNDS> {
 // the `AsRef<[F]>`/`AsMut<[F]>` views of `E::Coeffs` instead of `[F; E::DEGREE]`.
 // ---------------------------------------------------------------------------
 
-/// Commit a slice of base-field elements: hashes `seed || raw_repr(els)`.
+/// Commit a slice of base-field elements: hashes `raw_repr(els)` chained from `seed`.
 /// Result is bit-identical to `commit_with_seed` over the flattened words.
 #[inline]
 pub fn commit_base_field_elements_impl<const REDUCED_ROUNDS: bool, F: PrimeField>(
     seed: &mut Seed,
     els: &[F],
 ) {
-    let mut buffering = Blake2sBufferingTranscript::<REDUCED_ROUNDS>::new();
-    buffering.absorb(&seed.0);
+    let mut buffering = Blake2sBufferingTranscript::<REDUCED_ROUNDS>::new_with_seed(seed);
     for el in els.iter() {
         buffering.absorb(&[el.as_u32_raw_repr_reduced()]);
     }
@@ -641,7 +645,7 @@ pub fn commit_base_field_elements_impl<const REDUCED_ROUNDS: bool, F: PrimeField
 }
 
 /// Commit a slice of extension-field elements by flattening each into its base
-/// coefficients (`raw_repr`) and hashing `seed || coeffs`.
+/// coefficients (`raw_repr`) and hashing `coeffs` chained from `seed`.
 #[inline]
 pub fn commit_extension_field_elements_impl<
     const REDUCED_ROUNDS: bool,
@@ -651,8 +655,7 @@ pub fn commit_extension_field_elements_impl<
     seed: &mut Seed,
     els: &[E],
 ) {
-    let mut buffering = Blake2sBufferingTranscript::<REDUCED_ROUNDS>::new();
-    buffering.absorb(&seed.0);
+    let mut buffering = Blake2sBufferingTranscript::<REDUCED_ROUNDS>::new_with_seed(seed);
     for el in els.iter() {
         let coeffs = (*el).into_coeffs();
         for c in coeffs.as_ref().iter() {
@@ -905,6 +908,75 @@ mod raw_draw_tests {
         let mut state = TranscriptState::<REDUCED_ROUNDS>::new(seed);
         state.advance();
         assert_eq!(state.seed, longer_seed);
+    }
+
+    fn chained_reference(seed: &Seed, data: &[u32]) -> Seed {
+        let mut hasher = DelegatedBlake2sState::new();
+        hasher.reset_with_chaining_value(&seed.0);
+        let blocks: alloc::vec::Vec<&[u32]> = if data.is_empty() {
+            alloc::vec![&[]]
+        } else {
+            data.chunks(BLAKE2S_BLOCK_SIZE_U32_WORDS).collect()
+        };
+        let num_blocks = blocks.len();
+        for (i, block) in blocks.into_iter().enumerate() {
+            let mut buffer = AlignedArray64::from_value(0u32);
+            for (dst, src) in buffer.iter_mut().zip(block) {
+                *dst = *src;
+            }
+            unsafe {
+                hasher.run_round_function_with_input::<true>(
+                    &buffer,
+                    block.len(),
+                    i + 1 == num_blocks,
+                );
+            }
+        }
+        Seed(hasher.read_state_for_output())
+    }
+
+    #[test]
+    fn chained_commit_paths_agree() {
+        type T = Blake2sTranscript<true>;
+        let seed = Seed([11, 22, 33, 44, 55, 66, 77, 88]);
+        for len in [0, 1, 4, 8, 12, 16, 17, 32, 40] {
+            let els: alloc::vec::Vec<BabyBearField> = (0..len as u32)
+                .map(|i| BabyBearField::from_nonreduced_u32(1000 + 7 * i))
+                .collect();
+            let data: alloc::vec::Vec<u32> =
+                els.iter().map(|el| el.as_u32_raw_repr_reduced()).collect();
+            let expected = chained_reference(&seed, &data);
+
+            let mut plain = seed;
+            T::commit_with_seed(&mut plain, &data);
+            assert_eq!(plain, expected, "commit_with_seed, len {len}");
+
+            let mut with_hasher = seed;
+            T::commit_with_seed_using_hasher(
+                &mut DelegatedBlake2sState::new(),
+                &mut with_hasher,
+                &data,
+            );
+            assert_eq!(
+                with_hasher, expected,
+                "commit_with_seed_using_hasher, len {len}"
+            );
+
+            let mut buffered = seed;
+            let mut buf = CommitBuf::<64, true>::new();
+            for (i, w) in data.iter().enumerate() {
+                buf.data_write(i, *w);
+            }
+            buf.commit(&mut DelegatedBlake2sState::new(), &mut buffered, len);
+            assert_eq!(buffered, expected, "CommitBuf, len {len}");
+
+            let mut field = seed;
+            commit_base_field_elements_impl::<true, BabyBearField>(&mut field, &els);
+            assert_eq!(
+                field, expected,
+                "commit_base_field_elements_impl, len {len}"
+            );
+        }
     }
 
     #[test]

@@ -47,37 +47,27 @@ DEVICE_FORCEINLINE e4 eq_poly(const e4 x, const e4 y) {
   return e4::add(e4::mul(x, y), t);
 }
 
-// Blake2s transcript commit of (seed || flatten(coeffs)) and folding-challenge
-// extraction. Matches the host `commit_field_els + draw_random_field_els`
-// pair: seed (8 words) || flatten(4 E4 coeffs = 16 words) = 24 words processed
-// as one non-final 16-word block followed by one final 8-word block, then the
-// challenge is the first 4 u32 words of the updated state interpreted as a
-// reduced E4. `seed_io` is overwritten with the post-commit state.
+// Blake2s transcript commit of flatten(coeffs) chained from the seed, and
+// folding-challenge extraction. Matches the host `commit_field_els +
+// draw_random_field_els` pair: the seed is the chaining value and the 4 E4
+// coeffs (16 words) are one final block, then the challenge is the first 4 u32
+// words of the updated state interpreted as a reduced E4. `seed_io` is
+// overwritten with the post-commit state.
 //
 // Layout: `coeffs` must be 4 contiguous E4 elements with the layout shared by
 // host `as_u32_raw_repr_reduced` flatten order — i.e. 4 u32 limbs per E4.
 DEVICE_FORCEINLINE e4 commit_quadratic_and_draw_challenge(u32 *seed_io, const e4 coeffs[4]) {
   u32 state[STATE_SIZE];
-  initialize(state);
+#pragma unroll
+  for (unsigned i = 0; i < STATE_SIZE; i++)
+    state[i] = seed_io[i];
   u32 t = 0;
   u32 block[BLOCK_SIZE];
-
-#pragma unroll
-  for (unsigned i = 0; i < STATE_SIZE; i++)
-    block[i] = seed_io[i];
   const u32 *coeff_words = reinterpret_cast<const u32 *>(&coeffs[0]);
 #pragma unroll
-  for (unsigned i = 0; i < STATE_SIZE; i++)
-    block[STATE_SIZE + i] = coeff_words[i];
-  compress<false>(state, t, block, BLOCK_SIZE);
-
-#pragma unroll
-  for (unsigned i = 0; i < STATE_SIZE; i++)
-    block[i] = coeff_words[STATE_SIZE + i];
-#pragma unroll
-  for (unsigned i = STATE_SIZE; i < BLOCK_SIZE; i++)
-    block[i] = 0;
-  compress<true>(state, t, block, STATE_SIZE);
+  for (unsigned i = 0; i < BLOCK_SIZE; i++)
+    block[i] = coeff_words[i];
+  compress<true>(state, t, block, BLOCK_SIZE);
 
 #pragma unroll
   for (unsigned i = 0; i < STATE_SIZE; i++)
@@ -183,29 +173,22 @@ DEVICE_FORCEINLINE void whir_fold_round_update_inline(const e4 *reduction_output
   for (unsigned i = 0; i < 3; i++)
     coeffs_out[i] = result[i];
 
-  // Blake2s commit: seed (8 words) || flatten(3 × E4 = 12 words) = 20 words.
-  // One non-final 16-word block, then one final 4-word block.
+  // Blake2s commit of flatten(3 × E4 = 12 words) chained from the seed: one
+  // final 12-word block.
   u32 state[STATE_SIZE];
-  initialize(state);
+#pragma unroll
+  for (unsigned i = 0; i < STATE_SIZE; i++)
+    state[i] = seed_io[i];
   u32 t = 0;
   u32 block[BLOCK_SIZE];
-
-#pragma unroll
-  for (unsigned i = 0; i < STATE_SIZE; i++)
-    block[i] = seed_io[i];
   const u32 *coeff_words = reinterpret_cast<const u32 *>(&result[0]);
 #pragma unroll
-  for (unsigned i = 0; i < STATE_SIZE; i++)
-    block[STATE_SIZE + i] = coeff_words[i];
-  compress<false>(state, t, block, BLOCK_SIZE);
-
+  for (unsigned i = 0; i < 12; i++)
+    block[i] = coeff_words[i];
 #pragma unroll
-  for (unsigned i = 0; i < 4; i++)
-    block[i] = coeff_words[STATE_SIZE + i];
-#pragma unroll
-  for (unsigned i = 4; i < BLOCK_SIZE; i++)
+  for (unsigned i = 12; i < BLOCK_SIZE; i++)
     block[i] = 0;
-  compress<true>(state, t, block, 4);
+  compress<true>(state, t, block, 12);
 
 #pragma unroll
   for (unsigned i = 0; i < STATE_SIZE; i++)
