@@ -2015,6 +2015,7 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Caller.ControlPreparation
 #print axioms Airbender.UnifiedReduced.Caller.PreparedControl
 #print axioms Airbender.UnifiedReduced.Caller.PreparedBoundaryExecution
+#print axioms Airbender.UnifiedReduced.Caller.PreparedControlWindow
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.literal_fields
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.literal_operands_result
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.preparation_row
@@ -2025,11 +2026,17 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.literal_row_output
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.preparation_at_boundary
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.control_preparation
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.prefix_window_partition
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.prefix_window_matching
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.control_preparation_window
 #print axioms Airbender.UnifiedReduced.Caller.control_preparation_soundness
+#print axioms Airbender.UnifiedReduced.Caller.control_preparation_window_soundness
 #print axioms Tests.ControlPreparation.literal_prepares_actual_control
 #print axioms Tests.ControlPreparation.initial_control_is_different
 #print axioms Tests.ControlPreparation.wrong_preparation_instruction_rejected
 #print axioms Tests.ControlPreparation.distinct_literals_prepare_successive_cuts
+#print axioms Tests.ControlPreparation.successive_controls_share_one_history
+#print axioms Tests.ControlPreparation.preparation_window_retains_all_prefix_steps
 #print axioms Tests.ControlPreparation.chained_preparation_uses_previous_write
 #print axioms Tests.ControlPreparation.chained_wrong_literal_rejected
 #print axioms Tests.ControlPreparation.chained_fabricated_read_rejected
