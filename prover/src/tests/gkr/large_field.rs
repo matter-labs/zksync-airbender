@@ -594,7 +594,7 @@ fn validate_packed_transcript_recipe() {
         );
     }
 
-    let lookup_pow_bits = pow_bits::lookup_challenges_pow_bits(
+    let lookup_pow_bits = pow_bits::lookup_challenges_pow_bits::<Proth120, Proth120>(
         SecurityLevel::Sec100.security_bits(),
         pow_bits::lookup_identity_degree(&unified_circuit),
     );
@@ -677,7 +677,7 @@ fn capture_gkr_dim_reduce_reference() {
         &transcript_input,
     );
     let pow = core::cmp::max(
-        pow_bits::lookup_challenges_pow_bits(
+        pow_bits::lookup_challenges_pow_bits::<Proth120, Proth120>(
             SecurityLevel::Sec100.security_bits(),
             pow_bits::lookup_identity_degree(&unified_circuit),
         ),
@@ -1178,7 +1178,7 @@ fn verify_dim_reduce_layers() {
     );
     let mut seed = <Keccak256Transcript as Transcript<Proth120, Proth120>>::commit_initial_u32(&ti);
     let pow = core::cmp::max(
-        pow_bits::lookup_challenges_pow_bits(
+        pow_bits::lookup_challenges_pow_bits::<Proth120, Proth120>(
             SecurityLevel::Sec100.security_bits(),
             pow_bits::lookup_identity_degree(&unified_circuit),
         ),
@@ -1948,9 +1948,9 @@ fn verify_dim_reduce_layers() {
         whir_point.extend_from_slice(&base_layer_z);
 
         // draw WHIR batching challenge (1 el, PoW-gated); validate nonce vs the proof
-        let pow = pow_bits::batched_proximity_check_pow_bits(
+        let pow = pow_bits::batched_proximity_check_pow_bits::<Proth120, Proth120>(
             SecurityLevel::Sec100.security_bits(),
-            unified_circuit.trace_len.trailing_zeros() as usize,
+            whir_point.len(),
             5, // base_lde_factor = 1<<5 (this proof's whir schedule)
             pow_bits::total_base_oracle_columns(&unified_circuit),
         );

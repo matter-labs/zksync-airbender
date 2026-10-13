@@ -1019,7 +1019,7 @@ fn prove_configured_with_gkr_merged_precommitted_impl<
 
     let mut seed = <TR as ::transcript::Transcript<F, E>>::commit_initial_u32(&transcript_input);
 
-    let lookup_challenges_pow_bits = pow_bits::lookup_challenges_pow_bits(
+    let lookup_challenges_pow_bits = pow_bits::lookup_challenges_pow_bits::<F, E>(
         prover_config.security_level.security_bits(),
         pow_bits::lookup_identity_degree(compiled_circuit),
     );
@@ -1215,7 +1215,7 @@ fn prove_configured_with_gkr_impl<
             // Now we need to draw prove-local challenges, and in our case it's just a challenge for lookups,
             // and challenge to batch all constraints. They are gated behind a proof-of-work; commit-before-draw
             // is satisfied by `commit_initial` above.
-            let lookup_challenges_pow_bits = pow_bits::lookup_challenges_pow_bits(
+            let lookup_challenges_pow_bits = pow_bits::lookup_challenges_pow_bits::<F, E>(
                 prover_config.security_level.security_bits(),
                 pow_bits::lookup_identity_degree(compiled_circuit),
             );
@@ -1289,7 +1289,7 @@ fn prove_configured_with_gkr_impl<
             let mut seed =
                 <TR as ::transcript::Transcript<F, E>>::commit_initial_u32(&transcript_input);
 
-            let lookup_challenges_pow_bits = pow_bits::lookup_challenges_pow_bits(
+            let lookup_challenges_pow_bits = pow_bits::lookup_challenges_pow_bits::<F, E>(
                 prover_config.security_level.security_bits(),
                 pow_bits::lookup_identity_degree(compiled_circuit),
             );
@@ -1406,7 +1406,7 @@ fn prove_configured_with_gkr_impl<
             let mut seed =
                 <TR as ::transcript::Transcript<F, E>>::commit_initial_u32(&transcript_input);
 
-            let lookup_challenges_pow_bits = pow_bits::lookup_challenges_pow_bits(
+            let lookup_challenges_pow_bits = pow_bits::lookup_challenges_pow_bits::<F, E>(
                 prover_config.security_level.security_bits(),
                 pow_bits::lookup_identity_degree(compiled_circuit),
             );
@@ -2012,17 +2012,6 @@ fn prove_configured_with_gkr_from_forward_eval<
         );
     }
 
-    // The WHIR batching challenge is gated behind a proof-of-work; the GKR sumcheck
-    // transcript above already committed everything that feeds this draw. The bit count
-    // scales with the number of batched base-oracle columns l, so it is
-    // computed per-circuit here (and identically baked by the verifier generator).
-    let batched_proximity_pow_bits = pow_bits::batched_proximity_check_pow_bits(
-        prover_config.security_level.security_bits(),
-        trace_len.trailing_zeros() as usize,
-        prover_config.whir_schedule.base_lde_factor.trailing_zeros() as usize,
-        pow_bits::total_base_oracle_columns(compiled_circuit),
-    );
-
     let mut trace_len_log2_for_whir = trace_len.trailing_zeros() as usize;
 
     // and for WHIR we may need to reshuffle/merge claims depending on the mode
@@ -2117,6 +2106,18 @@ fn prove_configured_with_gkr_from_forward_eval<
             (merged_claims, Vec::new(), setup_polys_claims)
         }
     };
+
+    // The WHIR batching challenge is gated behind a proof-of-work; the GKR sumcheck
+    // transcript above already committed everything that feeds this draw. The bit count
+    // scales with the number of batched base-oracle columns l and the size of the
+    // batched (packed, in the packed mode) polynomials, so it is computed per-circuit
+    // here (and identically baked by the verifier generator).
+    let batched_proximity_pow_bits = pow_bits::batched_proximity_check_pow_bits::<F, E>(
+        prover_config.security_level.security_bits(),
+        trace_len_log2_for_whir,
+        prover_config.whir_schedule.base_lde_factor.trailing_zeros() as usize,
+        pow_bits::total_base_oracle_columns(compiled_circuit),
+    );
 
     let (batched_proximity_check_pow_nonce, whir_batching_challenges): (u64, Vec<E>) =
         draw_random_field_els_with_pow::<F, E, TR>(
