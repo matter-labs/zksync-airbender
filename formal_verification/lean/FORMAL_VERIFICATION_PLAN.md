@@ -81,6 +81,11 @@ the first-span cut. Native state matching identifies the final ordinary row and
 its accepted write; the boundary retains that write's raw timestamp. The existing
 empty worker-prefix scope stays explicit. No desired read or preparation-row
 selector is supplied; whole instruction retirement remains separate.
+Prepared G and Keccak first spans now reach their complete references at those
+same mixed-history cut states. Shared matching derives caller regions, worker
+boundaries and actual controls; no worker masks or desired reads are supplied.
+Public preparation/first-span scope, call count and duration remain explicit.
+Extended BLAKE still needs its round masks derived before mixed transport.
 
 1. **Hash references on subspans.** Reuse complete caller-only G, extended BLAKE and
    Keccak references for segmented spans. Derive worker boundaries, ranges,
@@ -93,8 +98,9 @@ selector is supplied; whole instruction retirement remains separate.
    extended-BLAKE/Keccak span, retaining their existing public mode/count and prefix
    ABI. Mixed-history worker projections now derive caller regions as above.
    ADDI-from-x0/LUI preparation reaches actual first-span control boundaries.
-   Bind these prepared states to the complete references in mixed-history regions,
-   and extend the public preparation registry as composition requires.
+   Prepared G and Keccak references are checked within mixed-history regions.
+   Derive extended-BLAKE round masks before mixed transport, then bind its prepared
+   span. Extend the public preparation/chaining registry as composition requires.
    COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed
    retained for the second window. Extended BLAKE and Keccak completion controls
    do not restart their protocols; checked regressions forbid treating their

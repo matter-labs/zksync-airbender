@@ -1,0 +1,46 @@
+import Airbender.Review.UnifiedReduced.ControlPreparation
+import Airbender.Review.UnifiedReduced.JointHashWindows
+
+namespace Airbender.UnifiedReduced.Caller
+open Trace Reference.RiscV.Sail
+
+/-- Public instruction literals for the existing hash protocol entry controls. -/
+def hashPreparation : Delegation.Caller.HashSpan → ControlLiteral
+  | .blakeG reduced => .addi (if reduced then 128 else 0)
+  | .blakeRound flags => .lui (BitVec.ofNat 20 ((8 + flags.val) * 16))
+  | .keccak => .addi 0
+
+/-- Public preparation and complete first-span ABI in a mixed architecture.
+    G and Keccak need no supplied worker masks; extended BLAKE's mixed transport
+    still requires a separate derivation. No control read or worker boundary is an input. -/
+structure PreparedHashWindowInputs [Fact p.Prime] (data : RequestTrace p) (before : State)
+    (ca oa : List (BitVec 32)) (cells : List Cell) (program : List UnifiedReduced.ProgramEntry)
+    (span : Delegation.Caller.HashSpan) (lower upper : Nat) : Prop where
+  /-- Actual public CSR bytes and the initial native clock. -/
+  publicProgram : RequestInputs data before ca
+  /-- Original Sail decoding constructs the ordinary instruction registry. -/
+  ordinaryProgram : Mixed.programImage before oa = some program
+  /-- Successful public reads construct the joint architectural seed. -/
+  initialization : initialImage before cells = some data.machine.initialMemory
+  /-- Each physical cell is initialized once. -/
+  distinct : (cells.map Cell.addressCode).Nodup
+  /-- Tracked RAM words have the existing four-byte alignment. -/
+  aligned : ∀ cell ∈ cells, cell.Aligned
+  /-- The unified modeled setup uses the same public memory. -/
+  setup : data.machine.rom = Setup.table before
+  /-- Existing worker tables and the pinned modeled Keccak controller. -/
+  tables : data.workers.setup = Delegation.modeledSetup Keccak.Controller.rows
+  /-- One hash family owns the native worker pool. -/
+  family : ∀ row ∈ data.workers.rows, row.family = span.family
+  /-- This prepared mixed-span claim admits G and Keccak. -/
+  profile : span.family ≠ .blakeRound
+  /-- Public literal registry and the existing empty worker-prefix scope. -/
+  preparation : ControlPreparation data program lower span.controlRegister (hashPreparation span)
+  /-- The complete span has the existing public protocol call count. -/
+  calls : (data.workers.windowRows lower upper).length = span.callCount
+  /-- Public duration; state/request matching derives every selected caller. -/
+  duration : upper = lower + 4 * span.callCount
+  /-- The final cut lies inside the native machine path. -/
+  beforeTerminal : upper ≤ (timeOfPair data.machine.terminal.timestamp).value
+
+end Airbender.UnifiedReduced.Caller
