@@ -1164,10 +1164,10 @@ pub mod ext4 {
     }
 
     /// Worker-parallel `monomial coefficients -> hypercube evals` (the ADD
-    /// Mobius transform, strides 1 -> n/2, radix-4 fused vector adds) plus the
-    /// final bit-reversal — the second O(1) batched-poly transformation, all
+    /// Mobius transform, strides 1 -> n/2, radix-4 fused vector adds) — the
+    /// second O(1) batched-poly transformation, all
     /// threads on one array. Byte-identical to
-    /// `multivariate_coeffs_into_hypercube_evals` + bitrev.
+    /// `multivariate_coeffs_into_hypercube_evals` (natural LSB order).
     pub fn hypercube_evals_from_monomial_form(
         mut v: Vec<BabyBearExt4>,
         worker: &Worker,
@@ -1332,8 +1332,8 @@ mod tests {
                 ext4::monomial_form_from_main_domain(input.clone(), &tw_inv, &ext_inv, &worker);
             assert_eq!(got, expected, "ext4 inverse diverged at log_n={log_n}");
 
-            // monomial -> hypercube evals (+ bitrev): reference = per-variable
-            // ADD sweeps then bitrev
+            // monomial -> hypercube evals in natural LSB order:
+            // reference = per-variable ADD sweeps
             let mut expected = input.clone();
             {
                 // reference ADD transform (mirror of the prover's
@@ -1354,7 +1354,6 @@ mod tests {
                     }
                     stride *= 2;
                 }
-                crate::utils::bitreverse_enumeration_inplace(&mut expected);
             }
             let got = ext4::hypercube_evals_from_monomial_form(input.clone(), &worker);
             assert_eq!(got, expected, "ext4 hc-evals diverged at log_n={log_n}");
