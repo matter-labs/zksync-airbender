@@ -72,4 +72,18 @@ theorem translate_fetch (σ : FState) (hs : Airbender.Sys σ) (a : BitVec 32) :
 theorem satp_mode_machine (σ : FState) (hs : Airbender.Sys σ) : runF (satp_mode .Machine) σ = .ok .Bare σ :=
   oracle_run hs _ _ (by kernel_rfl)
 
+/-- Machine mode, no PMP entry enabled: physical memory protection allows everything (any address, width, access). -/
+theorem pmp_check_machine (σ : FState) (hs : Airbender.Sys σ) (p : physaddr) (w : Nat)
+    (acc : MemoryAccessType mem_payload) : runF (pmpCheck p w acc .Machine) σ = .ok none σ :=
+  oracle_run hs _ _ (by kernel_rfl)
+
+/-- No memory-mapped devices (CLINT, HTIF, signature region) anywhere: every access goes to plain memory. -/
+theorem mmio_writable_false (σ : FState) (hs : Airbender.Sys σ) (p : physaddr) (w : Nat) :
+    runF (within_mmio_writable p w) σ = .ok false σ :=
+  oracle_run hs _ _ (by kernel_rfl)
+
+theorem mmio_readable_false (σ : FState) (hs : Airbender.Sys σ) (p : physaddr) (w : Nat) :
+    runF (within_mmio_readable p w) σ = .ok false σ :=
+  oracle_run hs _ _ (by kernel_rfl)
+
 end Slop.Equiv

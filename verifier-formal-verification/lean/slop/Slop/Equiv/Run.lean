@@ -53,6 +53,16 @@ theorem run_memRead_bind {β γ : Type} (req : MemRequest)
     (h : runF (cont (.ok (readBytes σ.mem req.address.toNat req.size, 0#req.numTag)) >>= f) σ = r) :
     runF (FreeM.impure (.inl (.ok (.memRead req))) cont >>= f) σ = r := h
 
+theorem run_memWrite_bind {β γ : Type} (req : MemRequest) (v : BitVec (8 * req.size)) (tags : BitVec req.numTag)
+    (cont : InstructionEffect.ret (.memWrite req v tags) → SailM γ) (f : γ → SailM β) (σ : FState) {r}
+    (h : runF (cont (.ok ()) >>= f) { σ with mem := Human.writeBytes σ.mem req.address.toNat req.size v } = r) :
+    runF (FreeM.impure (.inl (.ok (.memWrite req v tags))) cont >>= f) σ = r := h
+
+theorem run_memWriteAnnounce_bind {β γ : Type} (req : MemRequest)
+    (cont : InstructionEffect.ret (.memWriteAnnounce req) → SailM γ) (f : γ → SailM β) (σ : FState) {r}
+    (h : runF (cont () >>= f) σ = r) :
+    runF (FreeM.impure (.inl (.ok (.memWriteAnnounce req))) cont >>= f) σ = r := h
+
 /-- `runOracle knownDemo (no memory) m = some v`, proven by the kernel, if the kernel computes it. -/
 initialize oracleMs : IO.Ref Nat ← IO.mkRef 0
 initialize oracleCalls : IO.Ref Nat ← IO.mkRef 0
@@ -261,6 +271,8 @@ partial def sailRunLoop (side : Option Syntax) (lemmas : Array Expr) (g0 : MVarI
       let m' ← whnfC m
       if m'.isAppOfArity ``Pure.pure 4 then
         g ← g.withContext (step1 g ``run_pure_bind #[none, none, m'.getArg! 3, f, σ, r]); continue
+      if m'.isAppOf ``FreeM.pure then
+        g ← g.withContext (step1 g ``run_pure_bind #[none, none, m'.appArg!, f, σ, r]); continue
       if m'.isAppOfArity ``Bind.bind 6 then
         g ← g.withContext (step1 g ``run_bind_assoc #[none, none, none, m'.getArg! 4, m'.getArg! 5, f, σ, r]); continue
       if m'.isAppOfArity ``ite 5 then
@@ -304,6 +316,23 @@ partial def sailRunLoop (side : Option Syntax) (lemmas : Array Expr) (g0 : MVarI
         if eff.isAppOf ``Sum.inl && eff.appArg!.isAppOf ``Except.ok && eff.appArg!.appArg!.isAppOf ``InstructionEffect.memRead then
           let req := eff.appArg!.appArg!.appArg!
           g ← g.withContext (step1 g ``run_memRead_bind #[none, none, req, m'.appArg!, f, σ, r]); continue
+        if eff.isAppOf ``Sum.inl && eff.appArg!.isAppOf ``Except.ok && eff.appArg!.appArg!.isAppOf ``InstructionEffect.memWriteAnnounce then
+          let req := eff.appArg!.appArg!.appArg!
+          g ← g.withContext (step1 g ``run_memWriteAnnounce_bind #[none, none, req, m'.appArg!, f, σ, r]); continue
+        if eff.isAppOf ``Sum.inl && eff.appArg!.isAppOf ``Except.ok && eff.appArg!.appArg!.isAppOf ``InstructionEffect.memWrite then
+          let w := eff.appArg!.appArg!
+          let k := w.getAppNumArgs
+          let (req, v, tags) := (w.getArg! (k - 3), w.getArg! (k - 2), w.getArg! (k - 1))
+          -- registers unchanged: still an Airbender state
+          let σ' ← g.withContext do
+            let addr ← mkAppM ``BitVec.toNat #[← mkAppM ``MemRequest.address #[req]]
+            let mem ← mkAppM ``Human.writeBytes #[← mkAppM ``Human.FState.mem #[σ], addr, ← mkAppM ``MemRequest.size #[req], v]
+            mkAppM ``Human.FState.mk #[← mkAppM ``Human.FState.regs #[σ], mem]
+          hs ← g.withContext do
+            let lhs ← mkAppM ``Human.FState.regs #[σ']
+            let rhs ← mkAppM ``Human.FState.regs #[σ]
+            mkAppM ``sys_of_regs #[hs, ← mkExpectedTypeHint (← mkEqRefl rhs) (← mkEq lhs rhs)]
+          g ← g.withContext (step1 g ``run_memWrite_bind #[none, none, req, v, tags, m'.appArg!, f, σ, r]); continue
       let mut usedLemma := false
       for lem in lemmas do
         if let some (v, σ', hm) ← g.withContext (applyLayer side hs lem m' σ) then

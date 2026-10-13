@@ -18,7 +18,7 @@ theorem vmem_read_addr_ram1 (σ : FState) (hs : Airbender.Sys σ) (a : BitVec 32
       .ok (.Ok (readBytes σ.mem a.toNat 1)) σ := by
   sail_run hs using mem_side with [satp_mode_machine, translate_load, mem_read_ram1] stepwise
   simp only [EStateM.Result.ok.injEq, Result.Ok.injEq, and_true]
-  eval_nat
+  eval_closed
   simp only [BitVec.setWidth_eq, update_full8]
 
 theorem vmem_read_addr_ram2 (σ : FState) (hs : Airbender.Sys σ) (a : BitVec 32) (ha : a.toNat % 2 = 0)
@@ -27,7 +27,7 @@ theorem vmem_read_addr_ram2 (σ : FState) (hs : Airbender.Sys σ) (a : BitVec 32
       .ok (.Ok (readBytes σ.mem a.toNat 2)) σ := by
   sail_run hs using mem_side with [satp_mode_machine, translate_load, mem_read_ram2] stepwise
   simp only [EStateM.Result.ok.injEq, Result.Ok.injEq, and_true]
-  eval_nat
+  eval_closed
   simp only [BitVec.setWidth_eq, update_full16]
 
 theorem vmem_read_addr_ram4 (σ : FState) (hs : Airbender.Sys σ) (a : BitVec 32) (ha : a.toNat % 4 = 0)
@@ -36,7 +36,7 @@ theorem vmem_read_addr_ram4 (σ : FState) (hs : Airbender.Sys σ) (a : BitVec 32
       .ok (.Ok (readBytes σ.mem a.toNat 4)) σ := by
   sail_run hs using mem_side with [satp_mode_machine, translate_load, mem_read_ram4] stepwise
   simp only [EStateM.Result.ok.injEq, Result.Ok.injEq, and_true]
-  eval_nat
+  eval_closed
   simp only [BitVec.setWidth_eq, update_full32]
 
 theorem vmem_read_addr_rom1 (σ : FState) (hs : Airbender.Sys σ) (a : BitVec 32) (ha : a.toNat % 1 = 0)
@@ -45,7 +45,7 @@ theorem vmem_read_addr_rom1 (σ : FState) (hs : Airbender.Sys σ) (a : BitVec 32
       .ok (.Ok (readBytes σ.mem a.toNat 1)) σ := by
   sail_run hs using mem_side with [satp_mode_machine, translate_load, mem_read_rom1] stepwise
   simp only [EStateM.Result.ok.injEq, Result.Ok.injEq, and_true]
-  eval_nat
+  eval_closed
   simp only [BitVec.setWidth_eq, update_full8]
 
 theorem vmem_read_addr_rom2 (σ : FState) (hs : Airbender.Sys σ) (a : BitVec 32) (ha : a.toNat % 2 = 0)
@@ -54,7 +54,7 @@ theorem vmem_read_addr_rom2 (σ : FState) (hs : Airbender.Sys σ) (a : BitVec 32
       .ok (.Ok (readBytes σ.mem a.toNat 2)) σ := by
   sail_run hs using mem_side with [satp_mode_machine, translate_load, mem_read_rom2] stepwise
   simp only [EStateM.Result.ok.injEq, Result.Ok.injEq, and_true]
-  eval_nat
+  eval_closed
   simp only [BitVec.setWidth_eq, update_full16]
 
 theorem vmem_read_addr_rom4 (σ : FState) (hs : Airbender.Sys σ) (a : BitVec 32) (ha : a.toNat % 4 = 0)
@@ -63,7 +63,7 @@ theorem vmem_read_addr_rom4 (σ : FState) (hs : Airbender.Sys σ) (a : BitVec 32
       .ok (.Ok (readBytes σ.mem a.toNat 4)) σ := by
   sail_run hs using mem_side with [satp_mode_machine, translate_load, mem_read_rom4] stepwise
   simp only [EStateM.Result.ok.injEq, Result.Ok.injEq, and_true]
-  eval_nat
+  eval_closed
   simp only [BitVec.setWidth_eq, update_full32]
 
 /-- Any aligned readable address (ROM or RAM: an aligned access never straddles the two). -/
