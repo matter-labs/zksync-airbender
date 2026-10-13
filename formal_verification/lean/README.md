@@ -45,7 +45,9 @@ Choose the reading path for the claim being reviewed:
 2. **Whole-trace execution:** start with [composed claims](Airbender/Review/Trace/Soundness.lean),
    [execution and terminal realization](Airbender/Review/Trace/Execution.lean), and
    [public pooled boundaries](Airbender/Review/Helpers/PooledBoundary.lean).
-   Standalone family execution lives in `Trace/Families/`; worker port transport
+   [ADD/SUB trace claims](Airbender/Review/Trace/Families/AddSub/Theorems.lean)
+   retain the original combined ADD/SUB and word-memory scope. Other standalone
+   family execution also lives in `Trace/Families/`; worker port transport
    and complete hash protocols live in `Trace/Workers/` and `Trace/Delegation/`.
    [Unified composition](Airbender/Review/Trace/UnifiedReduced/Theorems.lean)
    retains its existing caller/profile limitations.
