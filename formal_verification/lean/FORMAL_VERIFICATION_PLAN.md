@@ -86,7 +86,9 @@ a duration matching the selected worker count derive every caller selector in
 the region. Worker matching and retained boundary images are then projected only
 within that region; earlier ordinary effects stay in the actual joint prefix.
 Public ADDI-from-x0/LUI preparation registries now derive actual control reads at
-the first-span cut. Native state matching identifies the final ordinary row and
+each preparation cut. Uniform registries remain available; straight-path registries
+admit different literal/register writes interleaved with callers. Native PC/clock
+matching derives the final row's public instruction address. State matching identifies the final ordinary row and
 its accepted write; the boundary retains that write's raw timestamp. Only the final preparation cycle must be free of worker writes; earlier worker
 effects remain in the actual prefix. Extended-BLAKE retains its separate empty
 worker-prefix scope. No desired read or preparation-row
@@ -118,9 +120,11 @@ ABI and whole mixed execution remain separate.
    Caller-only joint windows now bind repeated G spans in one mode and the first
    extended-BLAKE/Keccak span, retaining their existing public mode/count and prefix
    ABI. Mixed-history worker projections now derive caller regions as above.
-   ADDI-from-x0/LUI preparation reaches actual first-span control boundaries.
+   ADDI-from-x0/LUI preparation reaches actual control boundaries, including
+   successive distinct literals in one public straight-path registry.
    Prepared G, Keccak and extended-BLAKE references are checked within the mixed
-   scopes above. Extend the public preparation/chaining registry as composition requires.
+   scopes above. Extend chaining beyond the literal/caller straight-path registry
+   and derive segmented protocol composition from the same history.
    COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed
    retained for the second window. Extended BLAKE and Keccak completion controls
    do not restart their protocols; checked regressions forbid treating their
