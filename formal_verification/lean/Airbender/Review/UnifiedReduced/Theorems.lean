@@ -6,6 +6,7 @@ import Airbender.Proofs.UnifiedReduced.RequestWindows
 import Airbender.Proofs.UnifiedReduced.MixedWindows
 import Airbender.Proofs.UnifiedReduced.JointHashWindows
 import Airbender.Proofs.UnifiedReduced.MixedWindowProjection
+import Airbender.Proofs.UnifiedReduced.ControlPreparation
 import Airbender.Proofs.Delegation.RequestHashWindows
 
 namespace Airbender.UnifiedReduced
@@ -177,5 +178,22 @@ theorem Caller.mixed_window_projection_soundness [Fact p.Prime] (hp : 8388608 �
     Caller.MixedProjectedWindowExecution data before cells lower upper :=
   Caller.Proofs.mixed_projected_window hp clockInverse rotationInverse accepted inputs
     first last positive ordered afterInitial beforeTerminal duration
+
+/-- Original public ADDI-from-x0/LUI decoding and accepted native writes prepare
+    the actual control at the first-span cut. Clock matching identifies the
+    preparation row; its timestamp survives. Public program and prefix scope
+    remain explicit, with no desired control read or row selector as an input. -/
+theorem Caller.control_preparation_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+    {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
+    {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    {cut : Nat} {register : BitVec 5} {literal : Caller.ControlLiteral}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.MixedMemoryInputs data program before ca oa cells)
+    (scope : Caller.ControlPreparation data program cut register literal)
+    (nonzero : register ≠ 0) (aligned : cut % 4 = 0) :
+    Caller.PreparedBoundaryExecution data before cells cut register literal :=
+  Caller.Proofs.control_preparation hp clockInverse rotationInverse accepted inputs scope nonzero aligned
 
 end Airbender.UnifiedReduced
