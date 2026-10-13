@@ -1507,12 +1507,31 @@
     },
     {
       "Bool": {
+        "Negate": {
+          "SubExpression": 1
+        }
+      }
+    },
+    {
+      "Bool": {
+        "And": {
+          "lhs": {
+            "SubExpression": 2
+          },
+          "rhs": {
+            "SubExpression": 4
+          }
+        }
+      }
+    },
+    {
+      "Bool": {
         "Or": {
           "lhs": {
             "SubExpression": 3
           },
           "rhs": {
-            "SubExpression": 2
+            "SubExpression": 5
           }
         }
       }
@@ -1522,7 +1541,7 @@
         "into_variable": 152,
         "source_subexpr": {
           "Bool": {
-            "SubExpression": 4
+            "SubExpression": 6
           }
         },
         "condition_subexpr_idx": null
