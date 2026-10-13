@@ -129,12 +129,30 @@ elab "eval_bv" : tactic => withMainContext do
     let v ← try unsafe evalExpr (BitVec w) (mkApp (mkConst ``BitVec) (mkNatLit w)) xc
       catch e => do trace[debug] "eval_bv: eval failed {x}: {e.toMessageData}"; continue
     let lit := mkApp2 (mkConst ``BitVec.ofNat) (mkNatLit w) (mkNatLit v.toNat)
-    let pf ← try withOptions (fun o => maxRecDepth.set o 1000000) (mkAuxTheorem (← mkEq x lit) (← mkEqRefl x))
+    -- the kernel checks the closed `xc` (its fast `Nat` arithmetic is off on terms with free variables)
+    let pf ← try mkExpectedTypeHint (← mkAuxTheoremNow (← mkEq xc lit) (← mkEqRefl xc)) (← mkEq x lit)
       catch e => do trace[debug] "eval_bv: kernel check failed {x}: {e.toMessageData}"; continue
     let r ← try g.rewrite (← g.getType) pf
       catch e => do trace[debug] "eval_bv: rewrite failed {x}: {e.toMessageData}"; continue
     g ← g.replaceTargetEq r.eNew r.eqProof
   replaceMainGoal [g]
+
+open Lean Meta Elab Tactic in
+/-- Replace every closed `Nat`/`Int` subterm of the goal (inside types too) by its value, e.g. a width
+`8 * (if c then 4 else 4)` by `32`: a definitional change, checked by the kernel on closed terms. -/
+elab "eval_nat" : tactic => withMainContext do
+  let g ← getMainGoal
+  let ty ← instantiateMVars (← g.getType)
+  let ty' ← Meta.transform ty (pre := fun e => do
+    if e.hasFVar || e.hasMVar || e.hasLooseBVars || e.isRawNatLit || e.nat?.isSome || e.int?.isSome then
+      return .continue
+    let t ← whnfR (← inferType e)
+    if t.isConstOf ``Nat then
+      if let some n ← (try some <$> (unsafe evalExpr Nat t e) catch _ => pure none) then return .done (toExpr n)
+    if t.isConstOf ``Int then
+      if let some n ← (try some <$> (unsafe evalExpr Int t e) catch _ => pure none) then return .done (toExpr n)
+    return .continue)
+  replaceMainGoal [← g.replaceTargetDefEq ty']
 
 /-- Side conditions on the memory path (alignment, page split), from the hypotheses in context. -/
 macro "mem_side" : tactic => `(tactic| first

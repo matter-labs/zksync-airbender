@@ -2,6 +2,7 @@ import Slop.Equiv.RunLemmas
 import Slop.Equiv.Walk
 import Slop.Equiv.Regs
 import Slop.Equiv.NormAttr
+import Slop.Sail.KernelRfl
 
 /-! `sail_run hs`: walk a goal `runF M σ = r` through Sail code on an Airbender state (`hs : Sys σ`).
 At each step it first tries to evaluate the whole rest in the kernel (`oracle_run`: fixed registers only);
@@ -59,7 +60,6 @@ initialize oracleCalls : IO.Ref Nat ← IO.mkRef 0
 def oracleValue (m : Expr) : MetaM (Option (Expr × Expr)) := do
   let t0 ← IO.monoMsNow
   let res ← oracleValueCore m
-  let dt := (← IO.monoMsNow) - t0
   oracleMs.modify (· + ((← IO.monoMsNow) - t0)); oracleCalls.modify (· + 1)
   return res
 where oracleValueCore (m : Expr) : MetaM (Option (Expr × Expr)) := do
@@ -68,7 +68,7 @@ where oracleValueCore (m : Expr) : MetaM (Option (Expr × Expr)) := do
   unless r.isAppOfArity ``Option.some 2 do return none
   let v := r.getArg! 1
   let ty ← mkEq q (← mkAppM ``Option.some #[v])
-  let pf ← try withOptions (fun o => maxRecDepth.set o 1000000) (mkAuxTheorem ty (← mkEqRefl q))
+  let pf ← try mkAuxTheoremNow ty (← mkEqRefl q)
     catch _ => return none
   return some (v, pf)
 
@@ -76,8 +76,9 @@ where oracleValueCore (m : Expr) : MetaM (Option (Expr × Expr)) := do
 def normExpr (e : Expr) : MetaM (Option (Expr × Expr)) := do
   let some ext ← getSimpExtension? `sail_norm | return none
   let thms ← ext.getTheorems
-  let ctx ← Simp.mkContext (simpTheorems := #[thms]) (congrTheorems := ← getSimpCongrTheorems)
-  let (r, _) ← simp e ctx
+  let ctx ← Simp.mkContext (config := { decide := true }) (simpTheorems := #[thms])
+    (congrTheorems := ← getSimpCongrTheorems)
+  let (r, _) ← simp e ctx (simprocs := #[← Simp.getSimprocs])
   if r.expr == e then return none
   return some (r.expr, ← r.getProof)
 
@@ -92,7 +93,7 @@ def closedBool (side : Option Syntax) (G : Expr) : MetaM (Option (Bool × Expr))
     -- compute the value (compiled code), then let the kernel check `G' = value`
     let some b ← (try some <$> (unsafe evalExpr Bool (mkConst ``Bool) G') catch _ => pure none) | return none
     let ty ← mkEq G' (toExpr b)
-    let pf ← try withOptions (fun o => maxRecDepth.set o 1000000) (mkAuxTheorem ty (← mkEqRefl G'))
+    let pf ← try mkAuxTheoremNow ty (← mkEqRefl G')
       catch _ => return none
     let pf ← match pn with | some p => mkEqTrans p pf | none => pure pf
     return some (b, pf)
@@ -222,7 +223,8 @@ def meStep (side : Option Syntax) (X0 : Expr) : MetaM (Option (Expr × Expr)) :=
 theorem run_congr_bind {α β : Type} {m m' : SailM α} (h : m = m') (f : α → SailM β) (σ : FState) {r}
     (h' : runF (m' >>= f) σ = r) : runF (m >>= f) σ = r := by subst h; exact h'
 
-partial def sailRunLoop (side : Option Syntax) (lemmas : Array Expr) (g0 : MVarId) (hs0 : Expr) (fuel : Nat) : MetaM (MVarId × Expr × String) := do
+partial def sailRunLoop (side : Option Syntax) (lemmas : Array Expr) (g0 : MVarId) (hs0 : Expr) (fuel : Nat)
+    (wholeRest : Bool := true) : MetaM (MVarId × Expr × String) := do
   let mut g := g0
   let mut hs := hs0
   -- whole-rest kernel attempts back off after failures (they fail until the symbolic part is passed)
@@ -236,7 +238,7 @@ partial def sailRunLoop (side : Option Syntax) (lemmas : Array Expr) (g0 : MVarI
       g ← g.withContext (step1 g ``run_pure_eq #[none, M.getArg! 3, σ, r])
       return (g, hs, "done (pure)")
     -- 1. the whole rest, by the kernel (never while the reset state is mentioned: it would be re-evaluated)
-    if wait == 0 && !M.containsConst (· == ``Airbender.stInit) then
+    if wholeRest && wait == 0 && !M.containsConst (· == ``Airbender.stInit) then
       if let some (v, pf) ← g.withContext (oracleValue M) then
         g ← g.withContext (step1 g ``oracle_run_eq #[none, σ, hs, M, v, r, pf])
         return (g, hs, "done (kernel)")
@@ -323,7 +325,8 @@ partial def sailRunLoop (side : Option Syntax) (lemmas : Array Expr) (g0 : MVarI
         if heads.contains (m'.getAppFn.constName?.getD `_) then
           if let some (m2, h) ← g.withContext (normAction m') then
             g ← g.withContext (step1 g ``run_congr_bind #[none, none, m', m2, h, f, σ, r]); continue
-      if !m'.containsConst (· == ``Airbender.stInit) then
+      -- stepwise: only closed actions go to the kernel (symbolic ones can take minutes there)
+      if !m'.containsConst (· == ``Airbender.stInit) && (wholeRest || !m'.hasFVar) then
        if let some (v, pf) ← g.withContext (oracleValue m') then
         let hm ← g.withContext (mkAppM ``oracle_run #[hs, m', v, pf])
         g ← g.withContext (step1 g ``run_bind_ok #[none, none, m', f, σ, v, r, hm]); continue
@@ -336,12 +339,13 @@ partial def sailRunLoop (side : Option Syntax) (lemmas : Array Expr) (g0 : MVarI
     return (g, hs, "stopped")
   return (g, hs, "out of fuel")
 
-def sailRun (hs : Syntax) (side : Option Syntax) (lemmas : Array Syntax := #[]) : TacticM Unit := withMainContext do
+def sailRun (hs : Syntax) (side : Option Syntax) (lemmas : Array Syntax := #[]) (wholeRest : Bool := true) :
+    TacticM Unit := withMainContext do
   let hs ← elabTerm hs none
   let lemmas ← lemmas.mapM fun l => elabTerm l none
   oracleMs.set 0; oracleCalls.set 0
   let t0 ← IO.monoMsNow
-  let (g, _, msg) ← sailRunLoop side lemmas (← getMainGoal) hs 2000
+  let (g, _, msg) ← sailRunLoop side lemmas (← getMainGoal) hs 2000 wholeRest
   logInfo m!"sail_run: {(← IO.monoMsNow) - t0} ms total, {← oracleCalls.get} kernel attempts taking {← oracleMs.get} ms"
   replaceMainGoal [g]
   logInfo m!"sail_run: {msg}"
@@ -350,6 +354,10 @@ syntax (name := sailRunUsing) "sail_run " term " using " tactic : tactic
 elab_rules : tactic
   | `(tactic| sail_run $hs using $tac) => sailRun hs (some tac)
 elab "sail_run " hs:term : tactic => sailRun hs none
+/-- Like `sail_run … with […]`, but never evaluates the whole rest in the kernel (only single closed actions). -/
+syntax (name := sailRunStepwise) "sail_run " term " using " tactic " with " "[" term,* "]" " stepwise" : tactic
+elab_rules : tactic
+  | `(tactic| sail_run $hs using $tac with [$ls,*] stepwise) => sailRun hs (some tac) ls.getElems false
 syntax (name := sailRunWith) "sail_run " term " using " tactic " with " "[" term,* "]" : tactic
 elab_rules : tactic
   | `(tactic| sail_run $hs using $tac with [$ls,*]) => sailRun hs (some tac) ls.getElems

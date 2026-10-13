@@ -7,6 +7,11 @@ it works on goals with free variables, as long as reduction never needs to inspe
 
 open Lean Meta Elab Tactic
 
+/-- `proof : ty` as an auxiliary theorem, kernel-checked now (not in the background), so a failure is an
+exception the caller can catch. -/
+def mkAuxTheoremNow (ty proof : Expr) : MetaM Expr :=
+  withOptions (fun o => Elab.async.set (maxRecDepth.set o 1000000) false) (mkAuxTheorem ty proof)
+
 elab "kernel_rfl" : tactic => withMainContext do
   let g ← getMainGoal
   let ty ← instantiateMVars (← g.getType)
