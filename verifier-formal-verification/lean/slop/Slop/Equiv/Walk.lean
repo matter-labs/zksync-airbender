@@ -103,7 +103,8 @@ def getFacts : MetaM (Array Fact) := do
 /-- A closed proposition, proven by the kernel. -/
 def kernelDecideImpl (p : Expr) : MetaM Expr := do
   let mv ← mkFreshExprSyntheticOpaqueMVar p
-  let gs ← Elab.Term.TermElabM.run' <| Tactic.run mv.mvarId! (evalTactic (← `(tactic| decide +kernel)))
+  let gs ← withOptions (fun o => maxRecDepth.set o 1000000) <|
+    Elab.Term.TermElabM.run' <| Tactic.run mv.mvarId! (evalTactic (← `(tactic| decide +kernel)))
   unless gs.isEmpty do throwError "kernelDecide: could not decide {p}"
   instantiateMVars mv
 
