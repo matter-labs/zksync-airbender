@@ -4,6 +4,7 @@ import Airbender.Proofs.UnifiedReduced.MixedMemory
 import Airbender.Proofs.UnifiedReduced.SharedSpans
 import Airbender.Proofs.UnifiedReduced.RequestWindows
 import Airbender.Proofs.UnifiedReduced.MixedWindows
+import Airbender.Proofs.UnifiedReduced.JointHashWindows
 import Airbender.Proofs.Delegation.RequestHashWindows
 
 namespace Airbender.UnifiedReduced
@@ -117,5 +118,31 @@ theorem Caller.mixed_window_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
     (pastZero : 2 ≤ lower) (ordered : lower ≤ upper) :
     Caller.MixedWindowExecution data before cells lower upper :=
   Caller.Proofs.mixed_window_execution hp clockInverse rotationInverse accepted inputs first last pastZero ordered
+
+/-- Caller-only hash windows reach their complete pinned reference at the
+    actual joint cut states. Shared matching derives worker boundaries, entry
+    controls and round masks. Public mode/count, prefix scope and modeled tables
+    remain explicit; ordinary control preparation and ISA retirement are separate. -/
+theorem Caller.joint_hash_window_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
+    {cells : List Trace.Cell} {span : Delegation.Caller.HashSpan} {lower upper : Nat}
+    (accepted : Caller.MixedMemoryAccepted data [])
+    (inputs : Caller.JointHashWindowInputs data before addresses cells span lower upper)
+    (first : lower % 4 = 0) (last : upper % 4 = 0) (positive : 2 ≤ lower) (ordered : lower ≤ upper) :
+    Caller.JointHashWindowResult data before cells span lower upper :=
+  Caller.Proofs.joint_hash_window hp clockInverse accepted inputs first last positive ordered
+
+/-- Projected worker memory retains the joint states and native timestamps.
+    The empty ordinary registry derives caller-only rows; no independent worker
+    matching or boundary values are supplied. -/
+theorem Caller.window_projection_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+    {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    (accepted : Caller.MixedMemoryAccepted data []) (inputs : Caller.MixedMemoryInputs data [] before ca oa cells)
+    {lower upper : Nat} (first : lower % 4 = 0) (last : upper % 4 = 0) (positive : 2 ≤ lower) (ordered : lower ≤ upper) :
+    Caller.ProjectedWindowExecution data before cells lower upper :=
+  Caller.Proofs.projected_window hp clockInverse rotationInverse accepted inputs first last positive ordered
 
 end Airbender.UnifiedReduced
