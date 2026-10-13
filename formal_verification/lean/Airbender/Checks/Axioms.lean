@@ -2014,3 +2014,14 @@ import Clean.Specs.Keccak256
 #print axioms Tests.ControlPreparation.literal_prepares_actual_control
 #print axioms Tests.ControlPreparation.initial_control_is_different
 #print axioms Tests.ControlPreparation.wrong_preparation_instruction_rejected
+#print axioms Airbender.UnifiedReduced.Caller.hashPreparation
+#print axioms Airbender.UnifiedReduced.Caller.PreparedHashWindowInputs
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.hash_preparation_value
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.hash_control_register_nonzero
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.prepared_hash_memory_inputs
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.prepared_hash_window
+#print axioms Airbender.UnifiedReduced.Caller.prepared_hash_window_soundness
+#print axioms Tests.ControlPreparation.keccak_control_is_reset
+#print axioms Tests.ControlPreparation.keccak_initial_control_is_different
+#print axioms Tests.ControlPreparation.incomplete_prepared_g_span_rejected
+#print axioms Tests.ControlPreparation.incomplete_prepared_keccak_span_rejected

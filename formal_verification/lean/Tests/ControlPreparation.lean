@@ -7,61 +7,65 @@ set_option warningAsError true
 set_option maxRecDepth 32768
 set_option maxHeartbeats 4000000
 
-private def literal (upper : Bool) : UnifiedReduced.Caller.ControlLiteral :=
-  if upper then .lui 128 else .addi 128
-private def bits (upper : Bool) : BitVec 32 := if upper then 0x00080637 else 0x08000613
-private def low (upper : Bool) : Nat := if upper then 0 else 128
-private def high (upper : Bool) : Nat := if upper then 8 else 0
-private def entry (upper : Bool) : UnifiedReduced.ProgramEntry :=
-  ⟨0, bits upper, (literal upper).instruction 12,
-    ⟨.machine, 0, 0, 12, ⟨low upper, high upper⟩, 1, 0⟩⟩
+private def register (mode : Fin 3) : BitVec 5 := if mode.val = 2 then 10 else 12
+private def literal (mode : Fin 3) : UnifiedReduced.Caller.ControlLiteral :=
+  if mode.val = 2 then UnifiedReduced.Caller.hashPreparation .keccak
+  else if mode.val = 1 then .lui 128 else UnifiedReduced.Caller.hashPreparation (.blakeG true)
+private def bits (mode : Fin 3) : BitVec 32 :=
+  if mode.val = 2 then 0x00000513 else if mode.val = 1 then 0x00080637 else 0x08000613
+private def low (mode : Fin 3) : Nat := if mode.val = 0 then 128 else 0
+private def high (mode : Fin 3) : Nat := if mode.val = 1 then 8 else 0
+private def entry (mode : Fin 3) : UnifiedReduced.ProgramEntry :=
+  ⟨0, bits mode, (literal mode).instruction (register mode),
+    ⟨.machine, 0, 0, register mode, ⟨low mode, high mode⟩, 1, 0⟩⟩
 private def initialState : State where
   regs := (Std.ExtDHashMap.emptyWithCapacity).insert .x12 (65537 : BitVec 32)
+    |>.insert .x10 (65537 : BitVec 32)
   mem := Std.ExtHashMap.emptyWithCapacity
   tags := ()
   cycleCount := 0
   sailOutput := #[]
-private def before (upper : Bool) : State := wordWriteState initialState 0 (bits upper)
-private def cells : List Cell := [.register 0, .register 12]
-private def assignment (upper : Bool) (column : Nat) : ZMod babyBearModulus :=
+private def before (mode : Fin 3) : State := wordWriteState initialState 0 (bits mode)
+private def cells (mode : Fin 3) : List Cell := [.register 0, .register (register mode)]
+private def assignment (mode : Fin 3) (column : Nat) : ZMod babyBearModulus :=
   if column = 2 || column = 30 || column = 40 then 4
   else if column = 32 then 8
-  else if column = 7 || column = 44 then 12
-  else if column = 8 || column = 50 then low upper
-  else if column = 9 || column = 51 then high upper
+  else if column = 7 || column = 44 then (register mode).toNat
+  else if column = 8 || column = 50 then low mode
+  else if column = 9 || column = 51 then high mode
   else if column = 4 || column = 11 || column = 48 || column = 49 ||
       column = 129 || column = 130 || column = 131 || column = 132 || column = 133 then 1
   else 0
-private def row (upper : Bool) : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, assignment upper⟩
-private def data (upper : Bool) : UnifiedReduced.Caller.RequestTrace babyBearModulus where
+private def row (mode : Fin 3) : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, assignment mode⟩
+private def data (mode : Fin 3) : UnifiedReduced.Caller.RequestTrace babyBearModulus where
   machine := {
-    rows := [row upper]
-    rom := UnifiedReduced.Setup.table (before upper)
-    initial := (row upper).start
-    terminal := (row upper).finish
+    rows := [row mode]
+    rom := UnifiedReduced.Setup.table (before mode)
+    initial := (row mode).start
+    terminal := (row mode).finish
     initialMemory := [⟨(Cell.register 0).addressCode, (0, 0), 0⟩,
-      ⟨(Cell.register 12).addressCode, (0, 0), Nat.pair 1 1⟩]
+      ⟨(Cell.register (register mode)).addressCode, (0, 0), Nat.pair 1 1⟩]
     terminalMemory := [⟨(Cell.register 0).addressCode, (5, 0), 0⟩,
-      ⟨(Cell.register 12).addressCode, (6, 0), Nat.pair (low upper) (high upper)⟩] }
+      ⟨(Cell.register (register mode)).addressCode, (6, 0), Nat.pair (low mode) (high mode)⟩] }
   workers := ⟨Delegation.modeledSetup Keccak.Controller.rows, [], [], []⟩
   program := []
 
-private theorem core (upper : Bool) : FlatOperation.ConstraintsHoldFlat
-    (Verification.environment (assignment upper))
-    (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table (before upper))) := by
+private theorem core (mode : Fin 3) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (assignment mode))
+    (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table (before mode))) := by
   simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
     Verification.environment, Expression.eval, assignment, Lookup.Contains, Table.toRaw, fromElements]
   repeat' apply And.intro
   all_goals solve
-    | (cases upper <;> decide +kernel)
-    | (apply Verification.range16_contains; cases upper <;> decide +kernel)
+    | (fin_cases mode <;> decide +kernel)
+    | (apply Verification.range16_contains; fin_cases mode <;> decide +kernel)
     | (refine ⟨(0 : Fin 2097537), ?_⟩
        change (#v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0] : Vector (ZMod babyBearModulus) 10) =
          (UnifiedReduced.Setup.fixedRow (0 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
        decide +kernel)
 
-private theorem timestamps (upper : Bool) : FlatOperation.ConstraintsHoldFlat
-    (Verification.environment (assignment upper)) UnifiedReduced.importedConstraintsTimestampLookups := by
+private theorem timestamps (mode : Fin 3) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (assignment mode)) UnifiedReduced.importedConstraintsTimestampLookups := by
   rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
   constructor
   · simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.constraints]
@@ -70,102 +74,137 @@ private theorem timestamps (upper : Bool) : FlatOperation.ConstraintsHoldFlat
     have short : i < 8 := by simpa only [UnifiedReduced.timestamp_count] using bound
     interval_cases i
     all_goals apply Trace.Proofs.range_contains
-    all_goals cases upper <;> decide +kernel
+    all_goals fin_cases mode <;> decide +kernel
 
-private theorem accepted (upper : Bool) : UnifiedReduced.Caller.MixedMemoryAccepted (data upper) [entry upper] := by
+private theorem accepted (mode : Fin 3) : UnifiedReduced.Caller.MixedMemoryAccepted (data mode) [entry mode] := by
   constructor
   · constructor
     · intro current member
-      have same : current = row upper := List.mem_singleton.mp member
+      have same : current = row mode := List.mem_singleton.mp member
       subst current
-      exact Verification.holds_append (core upper) (timestamps upper)
+      exact Verification.holds_append (core mode) (timestamps mode)
     · intro current member
-      have same : current = row upper := List.mem_singleton.mp member
+      have same : current = row mode := List.mem_singleton.mp member
       subst current
-      cases upper <;> decide +kernel
+      fin_cases mode <;> decide +kernel
     · exact List.Perm.swap _ _ []
     · intro current member
-      have empty : (data upper).callers = [] := by cases upper <;> decide +kernel
+      have empty : (data mode).callers = [] := by fin_cases mode <;> decide +kernel
       rw [empty] at member
       cases member
     · intro current member
       cases member
     · intro current member
       cases member
-    · have empty : (data upper).calls = [] := by cases upper <;> decide +kernel
+    · have empty : (data mode).calls = [] := by fin_cases mode <;> decide +kernel
       rw [empty]
       exact List.Perm.refl []
   · intro current member _
-    have same : current = row upper := List.mem_singleton.mp member
+    have same : current = row mode := List.mem_singleton.mp member
     subst current
-    change ∃ i : Fin 1, (row upper).decoderQuery = ([entry upper].get i).query
+    change ∃ i : Fin 1, (row mode).decoderQuery = ([entry mode].get i).query
     refine ⟨0, ?_⟩
-    cases upper <;> decide +kernel
-  · cases upper <;> decide +kernel
+    fin_cases mode <;> decide +kernel
+  · fin_cases mode <;> decide +kernel
 
-private theorem initialized (upper : Bool) : initialImage (before upper) cells = some (data upper).machine.initialMemory := by
-  have control : (Cell.register 12).read (before upper) = .ok 65537 (before upper) := by
-    apply rX_register_frame (before := initialState) (after := before upper) rfl 12
-    apply read_register
-    simp [initialState]
-  have zero : (Cell.register 0).read (before upper) = .ok 0 (before upper) := by
+private theorem initialized (mode : Fin 3) : initialImage (before mode) (cells mode) = some (data mode).machine.initialMemory := by
+  have control : (Cell.register (register mode)).read (before mode) = .ok 65537 (before mode) := by
+    apply rX_register_frame (before := initialState) (after := before mode) rfl (register mode)
+    fin_cases mode <;> apply read_register
+    all_goals simp [initialState, Std.ExtDHashMap.get?_insert]
+  have zero : (Cell.register 0).read (before mode) = .ok 0 (before mode) := by
     with_unfolding_all rfl
   simp only [initialImage, cells, List.mapM_cons, List.mapM_nil, zero, control, bind, pure]
-  cases upper <;> rfl
+  fin_cases mode <;> rfl
 
-private theorem program_image (upper : Bool) : UnifiedReduced.Mixed.programImage (before upper) [0] = some [entry upper] := by
-  have bytes : (Cell.ram 0).read (before upper) = .ok (bits upper) (before upper) := written_word_read initialState 0 _
-  have decoded : run (SailRV32.Functions.encdec_backwards (bits upper)) (before upper) =
-      .ok ((literal upper).instruction 12) (before upper) := by
-    cases upper <;> with_unfolding_all rfl
-  have fields : UnifiedReduced.Mixed.decoderFields ((literal upper).instruction 12) = some (entry upper).data := by
-    cases upper <;> with_unfolding_all rfl
+private theorem program_image (mode : Fin 3) : UnifiedReduced.Mixed.programImage (before mode) [0] = some [entry mode] := by
+  have bytes : (Cell.ram 0).read (before mode) = .ok (bits mode) (before mode) := written_word_read initialState 0 _
+  have decoded : run (SailRV32.Functions.encdec_backwards (bits mode)) (before mode) =
+      .ok ((literal mode).instruction (register mode)) (before mode) := by
+    fin_cases mode <;> with_unfolding_all rfl
+  have fields : UnifiedReduced.Mixed.decoderFields ((literal mode).instruction (register mode)) = some (entry mode).data := by
+    fin_cases mode <;> with_unfolding_all rfl
   simp only [UnifiedReduced.Mixed.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
     programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
   rfl
 
-private theorem inputs (upper : Bool) : UnifiedReduced.Caller.MixedMemoryInputs (data upper) [entry upper] (before upper) [] [0] cells := by
-  refine ⟨⟨rfl, ?_, ?_⟩, program_image upper, initialized upper, ?_, ?_, rfl, rfl, ?_⟩
-  · constructor <;> cases upper <;> decide +kernel
-  · cases upper <;> decide +kernel
-  · decide +kernel
+private theorem inputs (mode : Fin 3) : UnifiedReduced.Caller.MixedMemoryInputs (data mode) [entry mode] (before mode) [] [0] (cells mode) := by
+  refine ⟨⟨rfl, ?_, ?_⟩, program_image mode, initialized mode, ?_, ?_, rfl, rfl, ?_⟩
+  · constructor <;> fin_cases mode <;> decide +kernel
+  · fin_cases mode <;> decide +kernel
+  · fin_cases mode <;> decide +kernel
   · intro cell member
     simp [cells] at member
     rcases member with rfl | rfl <;> trivial
   · intro current member
     cases member
 
-private theorem preparation (upper : Bool) :
-    UnifiedReduced.Caller.ControlPreparation (data upper) [entry upper] 8 12 (literal upper) := by
+private theorem preparation (mode : Fin 3) :
+    UnifiedReduced.Caller.ControlPreparation (data mode) [entry mode] 8 (register mode) (literal mode) := by
   refine ⟨?_, ?_, ?_, ?_⟩
   · intro current member
-    have same : current = entry upper := List.mem_singleton.mp member
+    have same : current = entry mode := List.mem_singleton.mp member
     subst current
     rfl
-  · cases upper <;> decide +kernel
-  · cases upper <;> decide +kernel
-  · cases upper <;> decide +kernel
+  · fin_cases mode <;> decide +kernel
+  · fin_cases mode <;> decide +kernel
+  · fin_cases mode <;> decide +kernel
+
+private theorem prepared (mode : Fin 3) :
+    UnifiedReduced.Caller.PreparedBoundaryExecution (data mode) (before mode) (cells mode) 8 (register mode) (literal mode) :=
+  UnifiedReduced.Caller.control_preparation_soundness (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    (accepted mode) (inputs mode) (preparation mode) (by fin_cases mode <;> decide) (by decide)
 
 theorem literal_prepares_actual_control (upper : Bool) :
-    UnifiedReduced.Caller.PreparedBoundaryExecution (data upper) (before upper) cells 8 12 (literal upper) :=
-  UnifiedReduced.Caller.control_preparation_soundness (by decide +kernel) (by decide +kernel) (by decide +kernel)
-    (accepted upper) (inputs upper) (preparation upper) (by decide) (by decide)
+    UnifiedReduced.Caller.PreparedBoundaryExecution (data (if upper then 1 else 0)) (before (if upper then 1 else 0))
+      (cells (if upper then 1 else 0)) 8 12 (literal (if upper then 1 else 0)) := by
+  cases upper
+  · exact prepared 0
+  · exact prepared 1
+
+theorem keccak_control_is_reset :
+    UnifiedReduced.Caller.PreparedBoundaryExecution (data 2) (before 2) (cells 2) 8 10
+      (UnifiedReduced.Caller.hashPreparation .keccak) := prepared 2
 
 theorem initial_control_is_different (upper : Bool) :
-    (Cell.register 12).read (before upper) = .ok 65537 (before upper) ∧ (literal upper).value ≠ 65537 := by
+    (Cell.register 12).read (before (if upper then 1 else 0)) = .ok 65537 (before (if upper then 1 else 0)) ∧
+      (literal (if upper then 1 else 0)).value ≠ 65537 := by
   constructor
-  · apply rX_register_frame (before := initialState) (after := before upper) rfl 12
+  · apply rX_register_frame (before := initialState) (after := before (if upper then 1 else 0)) rfl 12
     apply read_register
-    simp [initialState]
+    simp [initialState, Std.ExtDHashMap.get?_insert]
   · cases upper <;> decide +kernel
 
+theorem keccak_initial_control_is_different :
+    (Cell.register 10).read (before 2) = .ok 65537 (before 2) ∧
+      (UnifiedReduced.Caller.hashPreparation .keccak).value ≠ 65537 := by
+  constructor
+  · apply rX_register_frame (before := initialState) (after := before 2) rfl 10
+    apply read_register
+    simp [initialState]
+  · decide +kernel
+
 theorem wrong_preparation_instruction_rejected :
-    ¬ UnifiedReduced.Caller.ControlPreparation (data false) [entry false] 8 12 (.addi 0) := by
+    ¬ UnifiedReduced.Caller.ControlPreparation (data 0) [entry 0] 8 12 (.addi 0) := by
   intro scope
-  have mismatch := scope.program (entry false) (List.mem_singleton_self _)
-  have impossible : (128 : BitVec 12) = 0 := by
-    simpa only [entry, literal, Bool.false_eq_true, if_false, UnifiedReduced.Caller.ControlLiteral.instruction,
-      SailRV32.instruction.ITYPE.injEq, Prod.mk.injEq, and_true, true_and] using mismatch
-  exact (by decide : (128 : BitVec 12) ≠ 0) impossible
+  have mismatch := scope.program (entry 0) (List.mem_singleton_self _)
+  simp [entry, literal, register, UnifiedReduced.Caller.hashPreparation,
+    UnifiedReduced.Caller.ControlLiteral.instruction] at mismatch
+
+theorem incomplete_prepared_g_span_rejected :
+    ¬ UnifiedReduced.Caller.PreparedHashWindowInputs (data 0) (before 0) [] [0] (cells 0) [entry 0]
+      (.blakeG true) 8 8 := by
+  intro inputs
+  have count := inputs.calls
+  change 0 = 56 at count
+  contradiction
+
+theorem incomplete_prepared_keccak_span_rejected :
+    ¬ UnifiedReduced.Caller.PreparedHashWindowInputs (data 2) (before 2) [] [0] (cells 2) [entry 2]
+      .keccak 8 8 := by
+  intro inputs
+  have count := inputs.calls
+  change 0 = 649 at count
+  contradiction
 
 end Tests.ControlPreparation

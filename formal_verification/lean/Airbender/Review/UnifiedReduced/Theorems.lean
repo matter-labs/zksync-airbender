@@ -7,6 +7,7 @@ import Airbender.Proofs.UnifiedReduced.MixedWindows
 import Airbender.Proofs.UnifiedReduced.JointHashWindows
 import Airbender.Proofs.UnifiedReduced.MixedWindowProjection
 import Airbender.Proofs.UnifiedReduced.ControlPreparation
+import Airbender.Proofs.UnifiedReduced.PreparedHashWindows
 import Airbender.Proofs.Delegation.RequestHashWindows
 
 namespace Airbender.UnifiedReduced
@@ -195,5 +196,20 @@ theorem Caller.control_preparation_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
     (nonzero : register ≠ 0) (aligned : cut % 4 = 0) :
     Caller.PreparedBoundaryExecution data before cells cut register literal :=
   Caller.Proofs.control_preparation hp clockInverse rotationInverse accepted inputs scope nonzero aligned
+
+/-- Complete G and Keccak references reach the actual mixed-history cut states
+    after original public literal preparation. Shared matching derives controls,
+    caller scheduling, worker boundaries and native reads. Public first-span ABI,
+    program/domain and modeled tables remain explicit; no worker masks are supplied. -/
+theorem Caller.prepared_hash_window_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State}
+    {ca oa : List (BitVec 32)} {cells : List Trace.Cell} {program : List UnifiedReduced.ProgramEntry}
+    {span : Delegation.Caller.HashSpan} {lower upper : Nat}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.PreparedHashWindowInputs data before ca oa cells program span lower upper)
+    (first : lower % 4 = 0) (last : upper % 4 = 0) :
+    Caller.JointHashWindowResult data before cells span lower upper :=
+  Caller.Proofs.prepared_hash_window hp clockInverse accepted inputs first last
 
 end Airbender.UnifiedReduced
