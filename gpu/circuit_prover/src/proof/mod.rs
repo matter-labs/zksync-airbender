@@ -14,13 +14,22 @@ use fft::GoodAllocator;
 use crate::proof::inputs::GpuGKRProofTransfer;
 use crate::upstream::{validate_sumcheck_schedule, ProverConfig, SumcheckScheduleClass};
 use gpu_core::primitives::callbacks::Callbacks;
+use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::context::UnsafeMutAccessor;
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::E4;
 use gpu_gkr::backward::GKRBackwardStageSnapshotSink;
+use gpu_gkr::base_layer_claims::BaseLayerExtrasLayout;
 use gpu_gkr::forward::{schedule_forward_pass, ForwardOutputSlabTarget};
+use gpu_gkr::proof_layout::ProofLayout;
+use gpu_gkr::replay::GkrReplayValues;
+use gpu_gkr::setup::GpuGKRSetupTransfer;
 use gpu_gkr::GkrPrograms;
-use gpu_prover_context::ProverContext;
+use gpu_prover_context::{CudaGraphMode, ProverContext};
+use gpu_trace::trace::decoder::DecoderTableTransfer;
+use gpu_trace::trace::holder::device_range;
+use gpu_trace::trace::memory_transfer::GpuGKRMemoryTransfer;
+use gpu_trace::trace::tracing_data::trace_replay_inputs;
 
 pub use orchestration::GpuGKRProofJob;
 use orchestration::{
@@ -187,139 +196,174 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
     let mut callbacks = Callbacks::new();
     let mut proof = Box::new(None);
     let proof_handle = UnsafeMutAccessor::new(proof.as_mut());
-    let mut ranges = Vec::new();
     let proof_range = Range::new("gkr.proof")?;
     proof_range.start(stream)?;
 
     context.reset_used_mem_peak();
 
-    let Stage1AndForwardPreparation {
-        mut stage1_output,
-        mut synthetic_setup_trace_holder,
-        proof_layout,
-        proof_slab,
-        mut forward_setup,
-        d_seed,
-    } = prepare_stage1_and_forward_setup::<A>(
-        gkr_programs,
-        prover_config,
-        final_trace_size_log_2,
-        whir_schedule,
-        BundleDeviceRefs {
-            setup: setup.as_ref(),
-            decoder: decoder.as_ref(),
-            inits_and_teardowns: inits_and_teardowns.as_ref(),
-            memory: &memory,
-            top_bits_device: top_bits.as_ref(),
-            external_challenges_device: &external_challenges.device,
-        },
-        tracing_data.as_ref(),
-        memory_policy.witness,
-        context,
-    )?;
-    // Their final device readers are enqueued; Transfer still owns the H2D sources.
-    drop(tracing_data);
-    drop(inits_and_teardowns);
-    drop(decoder);
+    assert!(
+        stage_snapshots.is_none() || context.cuda_graph_mode() == CudaGraphMode::Eager,
+        "graph replay does not support backward stage snapshots"
+    );
+    let mut replay_ranges = proof_replay_ranges(
+        setup.as_ref(),
+        decoder.as_ref(),
+        &memory,
+        top_bits.as_ref(),
+        &external_challenges,
+    );
+    let mut replay_values = trace_replay_inputs(
+        inits_and_teardowns.as_ref().map(|it| &it.data_device),
+        tracing_data.as_ref().map(|td| &td.data_device),
+        &mut replay_ranges,
+    );
+    replay_values.insert(GkrReplayValues {
+        external_challenges: external_challenges.value,
+        inits_and_teardowns_top_bits: top_bits_host.clone(),
+    });
 
-    let output_evaluations_slab =
-        unsafe { proof_layout.output_evaluations_device_mut(proof_slab.as_ptr() as *mut u8) }.map(
-            |(ptr, len)| {
-                assert_eq!(
-                    ptr,
-                    proof_slab.as_ptr() as *mut E4,
-                    "output_evaluations must be the proof slab prefix for direct forward writes",
-                );
-                ForwardOutputSlabTarget {
-                    backing: Arc::clone(&proof_slab),
-                    len,
-                }
+    let compute = || -> CudaResult<(TerminalMetadata, Arc<DeviceAllocation<E4>>)> {
+        let Stage1AndForwardPreparation {
+            mut stage1_output,
+            mut synthetic_setup_trace_holder,
+            proof_layout,
+            proof_slab,
+            mut forward_setup,
+            d_seed,
+        } = prepare_stage1_and_forward_setup::<A>(
+            gkr_programs,
+            prover_config,
+            final_trace_size_log_2,
+            whir_schedule,
+            BundleDeviceRefs {
+                setup: setup.as_ref(),
+                decoder: decoder.as_ref(),
+                inits_and_teardowns: inits_and_teardowns.as_ref(),
+                memory: &memory,
+                top_bits_device: top_bits.as_ref(),
+                external_challenges_device: &external_challenges.device,
             },
-        );
-    let forward_output = schedule_forward_pass(
-        setup.as_ref().map(|setup| &setup.trace_holder),
-        synthetic_setup_trace_holder.as_ref(),
-        &mut stage1_output,
-        &mut forward_setup,
-        &external_challenges.value,
-        &top_bits_host,
-        final_trace_size_log_2,
-        output_evaluations_slab,
-        gkr_programs,
-        memory_policy.gkr,
-        context,
-    )?;
-    let ForwardToBackwardHandoff {
-        post_forward_handoff_range,
-        transcript_handoff,
-        backward_state,
-        forward_setup_keepalive,
-        d_lookup_challenges_for_backward,
-        d_seed,
-        d_evaluation_point_and_batching,
-        top_layer_claim_layout,
-        initial_d_claims,
-    } = prepare_backward_handoff(
-        forward_output,
-        forward_setup,
-        d_seed,
-        final_trace_size_log_2,
-        context,
-    )?;
+            tracing_data.as_ref(),
+            memory_policy.witness,
+            context,
+        )?;
+        // Their final device readers are enqueued; Transfer still owns the H2D sources.
+        drop(tracing_data);
+        drop(inits_and_teardowns);
+        drop(decoder);
 
-    ranges.push(post_forward_handoff_range);
+        let output_evaluations_slab =
+            unsafe { proof_layout.output_evaluations_device_mut(proof_slab.as_ptr() as *mut u8) }
+                .map(|(ptr, len)| {
+                    assert_eq!(
+                ptr,
+                proof_slab.as_ptr() as *mut E4,
+                "output_evaluations must be the proof slab prefix for direct forward writes",
+            );
+                    ForwardOutputSlabTarget {
+                        backing: Arc::clone(&proof_slab),
+                        len,
+                    }
+                });
+        let forward_output = schedule_forward_pass(
+            setup.as_ref().map(|setup| &setup.trace_holder),
+            synthetic_setup_trace_holder.as_ref(),
+            &mut stage1_output,
+            &mut forward_setup,
+            &external_challenges.value,
+            &top_bits_host,
+            final_trace_size_log_2,
+            output_evaluations_slab,
+            gkr_programs,
+            memory_policy.gkr,
+            context,
+        )?;
+        let ForwardToBackwardHandoff {
+            post_forward_handoff_range,
+            transcript_handoff: _transcript_handoff,
+            backward_state,
+            forward_setup_keepalive: _forward_setup_keepalive,
+            d_lookup_challenges_for_backward,
+            d_seed,
+            d_evaluation_point_and_batching,
+            top_layer_claim_layout,
+            initial_d_claims,
+        } = prepare_backward_handoff(
+            forward_output,
+            forward_setup,
+            d_seed,
+            final_trace_size_log_2,
+            context,
+        )?;
 
-    let BackwardPhaseResult {
-        mut backward_scheduled,
-    } = schedule_backward_phase(
-        backward_state,
-        top_bits_host.clone(),
-        Arc::clone(gkr_programs),
-        dr_tail_plan,
-        external_challenges.device.as_ptr(),
-        d_seed,
-        d_evaluation_point_and_batching,
-        initial_d_claims,
-        top_layer_claim_layout,
-        d_lookup_challenges_for_backward,
-        &proof_slab,
-        &proof_layout,
-        stage_snapshots.as_deref_mut().map(UnsafeMutAccessor::new),
-        &mut callbacks,
-        context,
-    )?;
-    let batching_pow_bits =
-        crate::config::batched_proximity_check_pow_bits(prover_config, compiled_circuit);
-    let WhirPhaseResult {
-        mut base_layer_claims_scheduled,
-        base_layer_claims_shared_state,
-        whir_scheduled,
-    } = schedule_whir_phase(
-        compiled_circuit,
-        whir_schedule,
-        &mut setup,
-        &mut synthetic_setup_trace_holder,
-        &mut stage1_output,
-        &mut backward_scheduled,
-        &proof_slab,
-        &proof_layout,
-        batching_pow_bits,
-        memory_policy,
-        context,
-    )?;
+        drop(post_forward_handoff_range);
 
-    // `backward_scheduled` itself is the keepalive — the per-layer device
-    // handles were already taken by the orchestrator (or remain as `Some`
-    // for the proof-lifetime final-seed/claim-point buffers), and the
-    // callbacks/tracing/host-staging buffers all ride on this struct.
-    let mut backward_keepalive = backward_scheduled;
+        let BackwardPhaseResult {
+            mut backward_scheduled,
+        } = schedule_backward_phase(
+            backward_state,
+            top_bits_host.clone(),
+            Arc::clone(gkr_programs),
+            dr_tail_plan,
+            external_challenges.device.as_ptr(),
+            d_seed,
+            d_evaluation_point_and_batching,
+            initial_d_claims,
+            top_layer_claim_layout,
+            d_lookup_challenges_for_backward,
+            &proof_slab,
+            &proof_layout,
+            stage_snapshots.as_deref_mut().map(UnsafeMutAccessor::new),
+            &mut callbacks,
+            context,
+        )?;
+        let batching_pow_bits =
+            crate::config::batched_proximity_check_pow_bits(prover_config, compiled_circuit);
+        let WhirPhaseResult {
+            base_layer_claims_scheduled,
+            whir_scheduled: _whir_scheduled,
+        } = schedule_whir_phase(
+            compiled_circuit,
+            whir_schedule,
+            &mut setup,
+            &mut synthetic_setup_trace_holder,
+            &mut stage1_output,
+            &mut backward_scheduled,
+            &proof_slab,
+            &proof_layout,
+            batching_pow_bits,
+            memory_policy,
+            context,
+        )?;
+        let terminal = TerminalMetadata {
+            slab: proof_slab.as_ptr() as usize,
+            proof_layout,
+            extras: base_layer_claims_scheduled.extras_layout(),
+        };
+        Ok((terminal, proof_slab))
+    };
+
+    let key = format!(
+        "prove|{:?}|{prover_config:?}|{final_trace_size_log_2}|{memory_policy:?}",
+        gkr_programs.circuit_type()
+    );
+    // On replay only the cached terminal metadata comes back; the proof slab
+    // is held until the terminal D2H that reads it is enqueued.
+    let (terminal, proof_slab) = context.replay_phase(
+        &key,
+        &replay_ranges,
+        &replay_values,
+        || Ok(()),
+        compute,
+        |(terminal, _)| terminal.clone(),
+    )?;
 
     let proof_host_mirror = Some(schedule_terminal_proof_assembly(
-        &proof_slab,
-        &proof_layout,
+        terminal.slab as *const E4,
+        terminal.proof_layout,
         proof_handle,
         whir_schedule.clone(),
-        base_layer_claims_shared_state,
+        terminal.extras,
         external_challenges.value,
         // The ACTUAL per-circuit top bits (all-zero for trivial unified
         // chunks): they land in `GKRProof::inits_and_teardowns_top_bits`,
@@ -329,7 +373,6 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         &mut callbacks,
         context,
     )?);
-    drop(transcript_handoff);
 
     {
         let event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
@@ -340,18 +383,11 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
     }
 
     proof_range.end(stream)?;
-    ranges.push(proof_range);
-
-    // All device readers are enqueued on exec, so these reservations can be
-    // reused by subsequent stream work. Input reservations drop at function
-    // exit; the returned job retains host data and callback owners through finish().
-    drop(synthetic_setup_trace_holder);
-    backward_keepalive.release_device_buffers();
-    base_layer_claims_scheduled.release_device_buffers();
-    // Proof slab: last scheduled use is the terminal D2H on exec_stream.
     drop(proof_slab);
 
-    let is_finished_event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
+    let is_finished_event = CudaEvent::create_with_flags(
+        CudaEventCreateFlags::DISABLE_TIMING | CudaEventCreateFlags::BLOCKING_SYNC,
+    )?;
     is_finished_event.record(stream)?;
 
     let inputs_keepalive = inputs::GpuGKRProofTransferKeepalive {
@@ -363,16 +399,42 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         is_finished_event,
         callbacks,
         proof,
-        ranges,
+        range: proof_range,
         stage_snapshots,
         keepalive: GpuGKRProofJobKeepalive {
-            _stage1: stage1_output.into_keepalive(),
             _inputs: inputs_keepalive,
-            _forward_setup: forward_setup_keepalive,
-            _backward: backward_keepalive,
-            _base_layer_claims: base_layer_claims_scheduled,
-            _whir: whir_scheduled,
             _proof_host_mirror: proof_host_mirror,
         },
     })
+}
+
+/// What the terminal assembly reads, fixed per replay key.
+#[derive(Clone)]
+struct TerminalMetadata {
+    slab: usize,
+    proof_layout: ProofLayout,
+    extras: BaseLayerExtrasLayout,
+}
+
+/// Device ranges a proof graph reads besides the trace inputs.
+fn proof_replay_ranges(
+    setup: Option<&GpuGKRSetupTransfer<'_>>,
+    decoder: Option<&DecoderTableTransfer<'_>>,
+    memory: &GpuGKRMemoryTransfer<'_>,
+    top_bits: Option<&DeviceAllocation<u32>>,
+    external_challenges: &inputs::ExternalChallengesTransfer<'_>,
+) -> Vec<(usize, usize)> {
+    let mut ranges = Vec::new();
+    if let Some(setup) = setup {
+        ranges.extend(setup.trace_holder.device_ranges());
+    }
+    if let Some(decoder) = decoder {
+        ranges.push(device_range(&decoder.data_device));
+    }
+    ranges.push(device_range(memory.unified_device_cap()));
+    if let Some(top_bits) = top_bits {
+        ranges.push(device_range(top_bits));
+    }
+    ranges.push(device_range(&external_challenges.device));
+    ranges
 }

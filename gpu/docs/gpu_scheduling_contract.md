@@ -50,6 +50,9 @@ edge cases, and wiring behind each rule.
   Host blocking belongs in `GpuGKRProofJob::finish()`.
 - **Default to `exec_stream`** for copies. Use `h2d_stream` only when meaningful
   H2D overlap justifies the fork/join machinery.
+- **MUST** keep `prove()` phases and the commitment compute replayable as CUDA
+  graphs: no unpatched per-request kernel argument, no per-request topology.
+  See *Graph capture windows*.
 
 ## Streams
 
@@ -288,3 +291,67 @@ Callbacks must **not**:
 - Create or destroy any allocation backed by one of the context's memory pools
   (device or host). Pool operations are not safe to perform from callback
   context.
+
+## Graph capture windows
+
+`ProverContext::cuda_graph_mode` selects how the proof compute and the
+memory-commitment compute reach `exec_stream`:
+
+- **`Eager`** enqueues kernels directly.
+- **`Replay`** captures a window on its first request per key and allocation
+  direction, then replays the cached graph (`ProverContext::replay_phase`).
+  Replay windows today:
+  - the memory-commitment compute in `commit_memory_inner`;
+  - `prove()` phases stage1 through WHIR as one graph.
+
+`ProverContextConfig` defaults to `Replay`.
+
+Code inside a capture window must follow these rules, or replay produces a
+wrong proof without failing:
+
+1. **No per-request host value in a node.** A kernel argument or launch
+   geometry that depends on the request needs a kernel patch registered with
+   `replay::register_kernel_patch` right after the launch. The patch
+   recomputes the argument from `ReplayInputs` on every replay. Copy and memset
+   extents cannot be patched; they must be fixed per key. Large argument
+   structs stay kernel arguments, keeping their constant-bank placement, and
+   are patched rather than moved to device memory.
+2. **Fixed topology per key.** No host branch, loop bound or early return on a
+   per-request value. Empty inputs still launch, with a grid of at least one
+   block, and are guarded in the kernel.
+3. **No value-dependent compaction.** Never drop work items because a
+   per-request value is zero. The coefficient bank keeps every monomial that
+   carries a top-bits factor.
+4. **Allocations depend only on the key.** Buffers allocated before the window
+   that the graph reads are passed to `replay_phase` as input ranges; replay
+   asserts they did not move. Memory allocated inside the window must be free
+   at replay, except where it reuses those inputs. Do not create long-lived
+   arena allocations after the first capture.
+5. **Boundary-only operations.** These stay outside the window, issued eagerly
+   around the graph launch:
+   - host callbacks (`Callbacks::schedule` asserts this);
+   - D2H copies;
+   - H2D copies from host memory;
+   - waits on events recorded outside the window;
+   - completion events and timing events that are read.
+6. **Ranges.** A `Range` inside a window records only its NVTX range; its CUDA
+   events are skipped, so its `elapsed()` is not available.
+7. **No capture-illegal calls.** No stream or event synchronization or
+   completion queries, non-async memcpy/memset, legacy default stream, or
+   device/pinned allocation inside a window.
+8. **Module globals.** `__constant__` banks written inside a window are safe
+   only because every graph runs on `exec_stream` in order. Concurrent graph
+   launches need per-graph isolation first.
+
+The replay key must name everything that changes the captured topology:
+- the request kind;
+- the circuit type;
+- the `ProverConfig` and final trace size;
+- the memory policy;
+- the allocation direction.
+
+The replay tests in `gpu/circuit_prover/src/tests/proof_matrix.rs` compare
+every replayed proof and cap with eager: `run_replay_matches_eager_test` over
+all circuits, and `run_*_proof_replay_patches_request_values_test`,
+`run_*_trace_length_replay_test` and
+`run_commit_replay_patches_page_count_test` across different requests.

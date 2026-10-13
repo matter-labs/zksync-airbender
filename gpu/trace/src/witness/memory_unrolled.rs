@@ -4,15 +4,17 @@ use crate::witness::circuit_type::{
 use crate::witness::option::u32::Option;
 use crate::witness::ram_access::{RamAuxComparisonSet, RamQuery};
 use crate::witness::trace_unrolled::{
-    ExecutorFamilyDecoderData, InitsAndTeardownsTraceDevice, InitsAndTeardownsTraceRaw,
-    UnrolledMemoryOracle, UnrolledMemoryTraceDevice, UnrolledNonMemoryOracle,
-    UnrolledNonMemoryTraceDevice, UnrolledUnifiedOracle, UnrolledUnifiedTraceDevice,
+    register_trace_cycles_patch, ExecutorFamilyDecoderData, InitsAndTeardownsTraceDevice,
+    InitsAndTeardownsTraceRaw, UnrolledMemoryOracle, UnrolledMemoryTraceDevice,
+    UnrolledNonMemoryOracle, UnrolledNonMemoryTraceDevice, UnrolledUnifiedOracle,
+    UnrolledUnifiedTraceDevice,
 };
 use crate::witness::Address;
 use gpu_core::primitives::device_structures::{DeviceMatrixMutImpl, MutPtrAndStride};
 use gpu_core::primitives::field::BF;
 use gpu_core::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 use gpu_ops::simple::set_to_zero;
+use gpu_prover_context::replay::register_kernel_patch;
 
 use crate::upstream::{
     GKRAuxLayoutData, GKRMachineState, GKRMemoryLayout, NUM_TIMESTAMP_COLUMNS_FOR_RAM,
@@ -397,7 +399,8 @@ pub(crate) fn generate_memory_values_unrolled_memory(
     let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args = GenerateMemoryValuesUnrolledMemoryArguments::new(layout, oracle, memory, count);
-    GenerateMemoryValuesUnrolledMemoryFunction::default().launch(&config, &args)
+    GenerateMemoryValuesUnrolledMemoryFunction::default().launch(&config, &args)?;
+    register_trace_cycles_patch(stream, 1)
 }
 
 pub(crate) fn generate_memory_values_unrolled_non_memory(
@@ -423,7 +426,8 @@ pub(crate) fn generate_memory_values_unrolled_non_memory(
     let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args = GenerateMemoryValuesUnrolledNonMemoryArguments::new(layout, oracle, memory, count);
-    GenerateMemoryValuesUnrolledNonMemoryFunction::default().launch(&config, &args)
+    GenerateMemoryValuesUnrolledNonMemoryFunction::default().launch(&config, &args)?;
+    register_trace_cycles_patch(stream, 1)
 }
 
 pub(crate) fn generate_memory_values_unrolled_unified(
@@ -447,7 +451,8 @@ pub(crate) fn generate_memory_values_unrolled_unified(
     let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args = GenerateMemoryValuesUnrolledUnifiedArguments::new(layout, oracle, memory, count);
-    GenerateMemoryValuesUnrolledUnifiedFunction::default().launch(&config, &args)
+    GenerateMemoryValuesUnrolledUnifiedFunction::default().launch(&config, &args)?;
+    register_trace_cycles_patch(stream, 1)
 }
 
 pub fn generate_memory_and_witness_values_unrolled_memory(
@@ -487,7 +492,8 @@ pub fn generate_memory_and_witness_values_unrolled_memory(
         decoder_lookup_mapping,
         count,
     );
-    GenerateMemoryAndWitnessValuesUnrolledMemoryFunction::default().launch(&config, &args)
+    GenerateMemoryAndWitnessValuesUnrolledMemoryFunction::default().launch(&config, &args)?;
+    register_trace_cycles_patch(stream, 2)
 }
 
 pub fn generate_memory_and_witness_values_unrolled_non_memory(
@@ -528,7 +534,8 @@ pub fn generate_memory_and_witness_values_unrolled_non_memory(
         decoder_lookup_mapping,
         count,
     );
-    GenerateMemoryAndWitnessValuesUnrolledNonMemoryFunction::default().launch(&config, &args)
+    GenerateMemoryAndWitnessValuesUnrolledNonMemoryFunction::default().launch(&config, &args)?;
+    register_trace_cycles_patch(stream, 2)
 }
 
 pub fn generate_memory_and_witness_values_unrolled_inits_and_teardowns(
@@ -543,31 +550,50 @@ pub fn generate_memory_and_witness_values_unrolled_inits_and_teardowns(
     assert_eq!(memory.stride(), 1usize << trace_len_log2);
     assert!(page_size_log2 < trace_len_log2);
     set_to_zero(memory.slice_mut(), stream)?;
-    let num_pages = trace_device.page_indices.len();
-    if num_pages == 0 {
-        return Ok(());
-    }
-    let total_words = num_pages
-        .checked_shl(page_size_log2)
-        .expect("inits-and-teardowns total word count overflows usize");
-    assert!(total_words <= u32::MAX as usize);
     let pages_per_set_log2 = trace_len_log2 - page_size_log2;
     let layouts = (&layout.teardown_sets).into();
     let trace_raw: InitsAndTeardownsTraceRaw = trace_device.into();
     let memory = memory.as_mut_ptr_and_stride();
-    let (grid_dim, block_dim) =
-        get_grid_block_dims_for_threads_count(WARP_SIZE * 8, total_words as u32);
+    // Keep a page-kernel node even for zero-page chunks. Graph replay updates
+    // the by-value page count and grid; the kernel guard handles the empty case.
+    let launch = move |num_pages: u32| {
+        let total_words = (num_pages as usize)
+            .checked_shl(page_size_log2)
+            .filter(|&words| words <= u32::MAX as usize)
+            .expect("inits-and-teardowns total word count overflows u32");
+        let (grid_dim, block_dim) =
+            get_grid_block_dims_for_threads_count(WARP_SIZE * 8, (total_words as u32).max(1));
+        let args = GenerateMemoryAndWitnessValuesUnrolledInitsAndTeardownsArguments::new(
+            layouts,
+            InitsAndTeardownsTraceRaw {
+                num_pages,
+                ..trace_raw
+            },
+            memory,
+            page_size_log2,
+            pages_per_set_log2,
+        );
+        (grid_dim, block_dim, args)
+    };
+    let (grid_dim, block_dim, args) = launch(trace_raw.num_pages);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-    let args = GenerateMemoryAndWitnessValuesUnrolledInitsAndTeardownsArguments::new(
-        layouts,
-        trace_raw,
-        memory,
-        page_size_log2,
-        pages_per_set_log2,
-    );
     GenerateMemoryAndWitnessValuesUnrolledInitsAndTeardownsFunction::default()
-        .launch(&config, &args)
+        .launch(&config, &args)?;
+    register_kernel_patch(stream, move |exec, node, inputs| {
+        let (grid_dim, block_dim, args) = launch(inputs.get::<InitsAndTeardownsPages>().0);
+        exec.set_kernel_node(
+            node,
+            &GenerateMemoryAndWitnessValuesUnrolledInitsAndTeardownsFunction::default(),
+            grid_dim,
+            block_dim,
+            &args,
+        )
+    })
 }
+
+/// Page count of the request's inits-and-teardowns trace, read by replayed
+/// graphs to re-parametrize the page kernel.
+pub(crate) struct InitsAndTeardownsPages(pub u32);
 
 /// NOTE (unified two-launch composition): this launcher writes only the per-row
 /// machine_state + shuffle_ram columns and does NOT zero the matrix. The unified
@@ -612,5 +638,6 @@ pub fn generate_memory_and_witness_values_unrolled_unified(
         decoder_lookup_mapping,
         count,
     );
-    GenerateMemoryAndWitnessValuesUnrolledUnifiedFunction::default().launch(&config, &args)
+    GenerateMemoryAndWitnessValuesUnrolledUnifiedFunction::default().launch(&config, &args)?;
+    register_trace_cycles_patch(stream, 2)
 }

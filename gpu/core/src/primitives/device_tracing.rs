@@ -4,10 +4,13 @@ use era_cudart::event::{elapsed_time, CudaEvent};
 use era_cudart::result::CudaResult;
 use era_cudart::stream::CudaStream;
 
+use crate::primitives::graph::is_capturing;
 use crate::primitives::nvtx::{end_range, start_range, RangeId};
 
 const DOMAIN_NAME: &str = "ab";
 
+/// NVTX range plus a CUDA event pair for GPU timing. Inside a graph capture
+/// only the NVTX part is recorded, so `elapsed` fails for such a range.
 pub struct Range {
     name: String,
     start_event: CudaEvent,
@@ -28,7 +31,9 @@ impl Range {
     }
 
     pub fn start(&self, stream: &CudaStream) -> CudaResult<()> {
-        self.start_event.record(stream)?;
+        if !is_capturing() {
+            self.start_event.record(stream)?;
+        }
         let id = start_range(Some(DOMAIN_NAME), &self.name);
         assert!(
             self.id.replace(Some(id)).is_none(),
@@ -40,6 +45,9 @@ impl Range {
     pub fn end(&self, stream: &CudaStream) -> CudaResult<()> {
         let id = self.id.take().expect("NVTX range end called before start");
         end_range(id);
+        if is_capturing() {
+            return Ok(());
+        }
         self.end_event.record(stream)
     }
 

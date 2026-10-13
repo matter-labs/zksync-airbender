@@ -17,7 +17,9 @@ use super::desc::{
     MAPPING_ARENA_COUNT, PROGRAM_CAP, SD_AGGREGATE, SD_DECODER, SD_INITS_TOP_BITS, SD_SETUP,
     SD_SINGLE_COLUMN, SD_VIRTUAL, SOURCE_WINDOW_COUNT,
 };
-use crate::upstream::{ChallengeRef, GKRAddress, PrimeField, RangeWidth, ReadPlace};
+use crate::upstream::{
+    ChallengeRef, GKRAddress, InitsAndTeardownsTopBitsRef, PrimeField, RangeWidth, ReadPlace,
+};
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ResolvedColumn {
@@ -567,6 +569,30 @@ pub(crate) struct LoweredFwdVm {
     pub desc: FwdVmDesc,
     pub lookup_additive_slot: Option<usize>,
     pub decoder_fill_slot: Option<usize>,
+    /// Descriptor slots filled from per-request values.
+    pub request_slots: Vec<FwdVmRequestSlot>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum FwdVmRequestSlot {
+    ArgDerived {
+        slot: usize,
+        reference: ChallengeRef,
+    },
+    TopBits {
+        slot: usize,
+        reference: InitsAndTeardownsTopBitsRef,
+    },
+}
+
+pub(crate) fn top_bits_const(
+    top_bits: &[u32],
+    reference: InitsAndTeardownsTopBitsRef,
+) -> Option<BF> {
+    let raw = *top_bits.get(reference.set_index)?;
+    Some(BF::from_u32_with_reduction(
+        raw.checked_shl(reference.shift).unwrap_or(0),
+    ))
 }
 
 pub(crate) fn lower_desc(
@@ -700,6 +726,7 @@ pub(crate) fn lower_desc(
     desc.count = header.count;
     desc.layer_count = layers.len() as u32;
 
+    let mut request_slots = Vec::new();
     let mut n_consts = 0usize;
     let mut n_args = 0usize;
     let mut n_descs = 0usize;
@@ -722,6 +749,10 @@ pub(crate) fn lower_desc(
                 return Err(FwdVmLowerError::ArgDerivedE4Overflow { n: n_args + 1 });
             }
             desc.arg_derived_e4[n_args] = challenge(reference);
+            request_slots.push(FwdVmRequestSlot::ArgDerived {
+                slot: n_args,
+                reference: *reference,
+            });
             n_args += 1;
         }
 
@@ -807,15 +838,17 @@ pub(crate) fn lower_desc(
                     if n_consts == CONST_CAP {
                         return Err(FwdVmLowerError::ConstBankOverflow { n: n_consts + 1 });
                     }
-                    let raw = *header
-                        .inits_and_teardowns_top_bits
-                        .get(reference.set_index)
-                        .ok_or(FwdVmLowerError::SetIndexOverflow {
-                            desc: local_desc,
-                            set_index: reference.set_index,
-                        })?;
                     desc.consts[n_consts] =
-                        BF::from_u32_with_reduction(raw.checked_shl(reference.shift).unwrap_or(0));
+                        top_bits_const(header.inits_and_teardowns_top_bits, *reference).ok_or(
+                            FwdVmLowerError::SetIndexOverflow {
+                                desc: local_desc,
+                                set_index: reference.set_index,
+                            },
+                        )?;
+                    request_slots.push(FwdVmRequestSlot::TopBits {
+                        slot: n_consts,
+                        reference: *reference,
+                    });
                     let slot = n_consts as u16;
                     n_consts += 1;
                     pack_desc(SD_INITS_TOP_BITS, 0, slot, 0)
@@ -852,6 +885,7 @@ pub(crate) fn lower_desc(
         desc,
         lookup_additive_slot,
         decoder_fill_slot,
+        request_slots,
     })
 }
 

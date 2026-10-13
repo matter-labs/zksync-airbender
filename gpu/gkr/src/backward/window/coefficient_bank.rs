@@ -3,6 +3,7 @@
 //! Claim-batching powers are stored per monomial. Powers on challenge kinds
 //! whose resolver ignores powers are rejected as ambiguous.
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
@@ -14,12 +15,14 @@ use gpu_gkr_compiler::{
 };
 
 use super::common::BWD_COEFF_BANK_CAPACITY;
+use crate::replay::GkrReplayValues;
 use crate::upstream::{
     ChallengeKey, ChallengePower, ChallengeRef, Field, FieldExtension, PermutationSlot, PrimeField,
     NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES,
 };
 use gpu_core::primitives::field::{BF, E4};
 use gpu_core::primitives::utils::WARP_SIZE;
+use gpu_prover_context::replay::register_kernel_patch;
 
 // ── The challenge slab ───────────────────────────────────────────────────────
 
@@ -239,7 +242,9 @@ fn translate_recipe_inner(
     recipe_index: usize,
     runtime_top_bits: &[u32],
 ) -> Result<Vec<BankMonomial>, CoefficientBankError> {
-    let mut merged: BTreeMap<(u16, u8, u8, u8, u8), BF> = BTreeMap::new();
+    // A monomial with a top-bits factor stays even when its value is zero, so
+    // the bank shape does not depend on the request.
+    let mut merged: BTreeMap<MonomialKey, (BF, bool)> = BTreeMap::new();
 
     for (product_index, product) in recipe.terms.iter().enumerate() {
         let monomial = translate_product(product, recipe_index, product_index)?;
@@ -256,19 +261,21 @@ fn translate_recipe_inner(
             let shifted = top_bits.checked_shl(reference.shift).unwrap_or(0);
             scalar.mul_assign(&BF::from_u32_with_reduction(shifted));
         }
+        let has_top_bits = !product.inits_and_teardowns_top_bits.is_empty();
         merged
             .entry(monomial.key())
-            .and_modify(|value| {
+            .and_modify(|(value, keep)| {
                 value.add_assign(&scalar);
+                *keep |= has_top_bits;
             })
-            .or_insert(scalar);
+            .or_insert((scalar, has_top_bits));
     }
 
     let monomials = merged
         .into_iter()
-        .filter(|(_, scalar)| !scalar.is_zero())
+        .filter(|(_, (scalar, keep))| *keep || !scalar.is_zero())
         .map(
-            |((batch_power, challenge_idx_0, power_0, challenge_idx_1, power_1), coeff)| {
+            |((batch_power, challenge_idx_0, power_0, challenge_idx_1, power_1), (coeff, _))| {
                 BankMonomial {
                     coeff,
                     batch_power,
@@ -628,6 +635,24 @@ fn literal_monomial(value: E4) -> BankMonomial {
 pub(crate) struct CoefficientBankChunks {
     chunks: Vec<Box<CoefficientBankChunkDesc>>,
     num_coefficients: u32,
+    /// Rebuilds the chunks for other top bits; set when the recipes reference
+    /// top bits, so replays can patch the fills.
+    rebuild: Option<Arc<RebuildChunks>>,
+}
+
+type RebuildChunks = dyn Fn(&[u32]) -> CoefficientBankChunks;
+type MonomialKey = (u16, u8, u8, u8, u8);
+
+/// Whether any product of `recipes` carries a top-bits factor.
+pub(crate) fn recipes_use_top_bits<'a>(
+    mut recipes: impl Iterator<Item = &'a NormalizedCoefficientRecipe>,
+) -> bool {
+    recipes.any(|recipe| {
+        recipe
+            .terms
+            .iter()
+            .any(|product| !product.inits_and_teardowns_top_bits.is_empty())
+    })
 }
 
 impl CoefficientBankChunks {
@@ -681,9 +706,18 @@ impl CoefficientBankChunks {
         let built = Self {
             chunks,
             num_coefficients: blob.recipes.len() as u32,
+            rebuild: None,
         };
         built.assert_covers_bank();
         built
+    }
+
+    pub(crate) fn with_rebuild(
+        mut self,
+        rebuild: impl Fn(&[u32]) -> CoefficientBankChunks + 'static,
+    ) -> Self {
+        self.rebuild = Some(Arc::new(rebuild));
+        self
     }
 
     /// The coverage gate: chunks are non-empty, start at slot 0, are exactly
@@ -767,15 +801,11 @@ pub(crate) fn schedule_bwd_coeff_bank_fill(
     stream: &CudaStream,
 ) -> CudaResult<()> {
     chunks.assert_covers_bank();
-    for chunk in &chunks.chunks {
-        let count = chunk.bank_count;
-        // One complete warp per recipe, including the last partial block.
-        const WARPS_PER_BLOCK: u32 = 4;
-        let config = CudaLaunchConfig::basic(
-            count.div_ceil(WARPS_PER_BLOCK),
-            WARP_SIZE * WARPS_PER_BLOCK,
-            stream,
-        );
+    // One complete warp per recipe, including the last partial block.
+    const WARPS_PER_BLOCK: u32 = 4;
+    for (index, chunk) in chunks.chunks.iter().enumerate() {
+        let grid = chunk.bank_count.div_ceil(WARPS_PER_BLOCK);
+        let config = CudaLaunchConfig::basic(grid, WARP_SIZE * WARPS_PER_BLOCK, stream);
         let function = GkrBwdEvalCoefficientsFunction(ab_gkr_bwd_eval_coefficients_kernel);
         function.launch(
             &config,
@@ -785,6 +815,31 @@ pub(crate) fn schedule_bwd_coeff_bank_fill(
                 bank,
             ),
         )?;
+        let Some(rebuild) = chunks.rebuild.clone() else {
+            continue;
+        };
+        let shape = (chunks.chunks.len(), chunk.bank_count, chunk.monomial_count);
+        register_kernel_patch(stream, move |exec, node, inputs| {
+            let values = inputs.get::<GkrReplayValues>();
+            let rebuilt = rebuild(&values.inits_and_teardowns_top_bits);
+            let chunk = &rebuilt.chunks[index];
+            assert_eq!(
+                (rebuilt.chunks.len(), chunk.bank_count, chunk.monomial_count),
+                shape,
+                "coefficient bank shape changed between capture and replay"
+            );
+            exec.set_kernel_node(
+                node,
+                &GkrBwdEvalCoefficientsFunction(ab_gkr_bwd_eval_coefficients_kernel),
+                grid.into(),
+                (WARP_SIZE * WARPS_PER_BLOCK).into(),
+                &GkrBwdEvalCoefficientsArguments::new(
+                    CoefficientBankChunkDesc::clone(chunk),
+                    slab,
+                    bank,
+                ),
+            )
+        })?;
     }
     Ok(())
 }
@@ -1329,6 +1384,15 @@ mod corpus_capacity_tests {
                 let blob =
                     build_continuation_coefficient_bank(&layer.coefficients.coefficients, &[1; 64])
                         .unwrap_or_else(|error| panic!("{layout} L{}: {error:?}", layer.layer));
+                let zero_top_bits =
+                    build_continuation_coefficient_bank(&layer.coefficients.coefficients, &[0; 64])
+                        .unwrap();
+                assert_eq!(
+                    zero_top_bits.monomials.len(),
+                    blob.monomials.len(),
+                    "{layout} L{}",
+                    layer.layer
+                );
                 let chunks = CoefficientBankChunks::build(&blob);
                 chunks.assert_covers_bank();
                 assert_eq!(chunks.num_coefficients() as usize, blob.recipes.len());

@@ -3,6 +3,7 @@ pub mod context;
 pub mod device_structures;
 pub mod device_tracing;
 pub mod field;
+pub mod graph;
 pub mod nvtx;
 pub mod static_host;
 pub mod utils;

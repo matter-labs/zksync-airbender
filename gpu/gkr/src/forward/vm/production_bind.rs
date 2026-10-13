@@ -371,8 +371,8 @@ pub(in crate::forward) fn schedule_vm(
     )
     .unwrap_or_else(|error| panic!("forward VM constant staging failed: {error:?}"));
     match streaming_blocks {
-        Some(blocks) => super::launch_fwd_vm_streaming(&lowered.desc, blocks, context),
-        None => launch_fwd_vm(&lowered.desc, circuit_type, context),
+        Some(blocks) => super::launch_fwd_vm_streaming(lowered, blocks, context),
+        None => launch_fwd_vm(lowered, circuit_type, context),
     }
 }
 
