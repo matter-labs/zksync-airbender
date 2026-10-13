@@ -6,6 +6,26 @@ Bigint claims cover selected operation effects; the hash claims additionally cov
 complete protocol spans. Worker execution is distinct from retiring the caller's
 instruction or validating its full CSR ABI.
 
+## Checked results
+
+All four native worker families have selected reference effects on actual Sail
+port reads/writes in initialized shared memory; operand/address bounds are derived.
+The hash results additionally bind complete initial/final blocks or lanes and
+native terminal tokens, with schedules and intermediate values derived from matching.
+
+| Claim | Direct theorem entry |
+| --- | --- |
+| Seven selected bigint operation effects | [`operation_execution`](Bigint/Theorems.lean) |
+| Complete G work-vector fold | [`Native.workvector_soundness`](Blake2G/Theorems.lean) |
+| Complete extended-BLAKE compression | [`compression_soundness`](Blake2Round/Theorems.lean) |
+| Complete Keccak permutation | [`Native.permutation_soundness`](Keccak/Theorems.lean) |
+
+Native-boundary/window variants retain timestamps rather than restarting history.
+Public protocol modes/counts, modeled tables, domain/alignment and the existing
+worker ABI conditions remain visible. A standalone extended-round operation still
+takes its mask ABI; prepared unified scopes derive those masks.
+These claims do not prove full CSR validity or whole mixed caller retirement.
+
 These directories connect local worker behavior to actual Sail port observations
 and, for the hash families, complete protocol spans.
 

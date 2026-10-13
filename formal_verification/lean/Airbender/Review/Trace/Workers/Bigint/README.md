@@ -6,6 +6,14 @@ observations to the seven existing references and shared terminal matching. It
 does not establish full caller-control validity, which the issued invalid-control
 fixtures leave open.
 
+## Checked results
+
+[`operation_execution`](Theorems.lean) proves all seven selected operation
+effects on actual native Sail reads/writes and terminal cells in a shared pool,
+under public initialization/alignment, exact matching and the modeled bigint table.
+Operand/pointer bounds are derived; this still admits the flagged no-opcode case
+and does not prove the original caller's full control-mask ABI.
+
 Read [Theorems](Theorems.lean) for the seven selected operation references
 on actual native port observations. Follow
 [the local circuit guide](../../../Circuits/Bigint/README.md) for addresses,

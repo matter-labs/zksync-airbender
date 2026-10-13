@@ -5,6 +5,21 @@ representations, public decoding, native rows and ports, initialized state, and
 logical matching. They state how a witness is interpreted and which public
 conditions a claim uses. Whole-run execution conclusions belong in Trace.
 
+## Main checked connections
+
+The [memory result](Memory/README.md#logical-memory-result) derives chronological
+history and latest-write reads from initialized matching and clock constraints.
+[Decoder connections](Decoder/README.md#checked-connections) establish original
+public decoding and preserve it through state updates.
+[Context results](Context/README.md#checked-connections) recover native order and
+boundary ranges. [Delegation](Delegation/README.md#checked-connections) and
+[unified context](UnifiedReduced/README.md#checked-connections) extend the same
+history interpretation to workers and joint windows.
+
+These results justify the inputs used by circuit and execution claims. They do
+not turn the explicit logical permutations into cryptographic proofs or establish
+every remaining caller/padding obligation.
+
 [Properties](Properties.lean) is the entry point: soundness, completeness,
 the circuit model and its observable relation. It imports only Clean.
 

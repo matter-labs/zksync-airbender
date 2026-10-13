@@ -7,6 +7,23 @@ the resulting PC and tracked cells to native terminal tokens. The selected
 registry and profile determine which instructions and custom operations are
 admitted.
 
+## Checked results
+
+[`pooled_native_soundness`](Soundness.lean) proves that the six admitted ordinary
+families execute from the public Sail state and reach the native final PC and
+tracked cells, interpreting native ROM shadows through public bytes.
+Initialization/configuration, modeled tables, logical matching/decoding and the
+unresolved jump terminal-PC condition remain inputs; reads, ranges and order are derived.
+
+[`NonDeterminism.Pooled.native_soundness`](Soundness.lean) proves the same terminal
+agreement for the external-read/write-hint extension and the exact stream consumption.
+The stream and its port connection are explicit; authentication of the stream is not proved.
+
+[Unified ordinary/custom retirement](UnifiedReduced/README.md#checked-results)
+has a separate registry. [Worker spans](Workers/README.md#checked-results) and
+[caller composition](Delegation/README.md#checked-results) establish their stated
+effects, without closing whole mixed caller retirement or global inactive padding.
+
 Start with [Soundness](Soundness.lean) for the primary six-family standard claim
 and its external-stream extension. [Execution](Execution.lean) defines the generic
 step relation and `Realizes`: execution reaches the native final PC and tracked cells.

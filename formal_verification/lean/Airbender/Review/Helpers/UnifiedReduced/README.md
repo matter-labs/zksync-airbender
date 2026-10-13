@@ -6,6 +6,19 @@ states fetch/request matching and the input contracts for mixed memory,
 native-clock windows and control preparation. These are the inputs and
 interpretations used by execution claims, rather than whole-execution conclusions.
 
+## Checked connections
+
+[`Caller.mixed_memory_soundness`](../../Trace/UnifiedReduced/Theorems.lean)
+derives actual GPR/RAM transfers, ranges, addresses and worker reference effects
+from one joint machine/worker history. It does not require a separate worker
+permutation or supplied intermediate states.
+
+Accepted clock/state matching also derives instruction counts and caller regions
+between public cuts; actual cut states and retained worker boundaries follow.
+[Unified trace results](../../Trace/UnifiedReduced/README.md#checked-results)
+link the scheduling, projection, control-preparation and reference claims.
+Public cut/duration, program/domain and protocol conditions remain explicit.
+
 [Registry](Registry.lean) connects the machine row to its imported layout.
 [Program](Program.lean), [ExecutionInputs](ExecutionInputs.lean) and
 [CustomInputs](CustomInputs.lean) name the public decoder/initialization/profile inputs.
