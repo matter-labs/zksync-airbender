@@ -1,7 +1,7 @@
 # Circuit formal verification plan
 
-Circuit-coverage expansion is paused for manual review. Resume the pending
-integration work when the user asks to continue coverage. Current
+Finalization of the pending integration work is active, with an hourly follow-up.
+The user resumed implementation after manual review on 13 October 2026. Current
 coverage, checked counterexamples and machine-check results live in
 [Verification status](VERIFICATION_STATUS.md).
 [Directory review guide](Airbender/Review/README.md) separates per-circuit and whole-trace reading.
@@ -87,11 +87,12 @@ the region. Worker matching and retained boundary images are then projected only
 within that region; earlier ordinary effects stay in the actual joint prefix.
 Public ADDI-from-x0/LUI preparation registries now derive actual control reads at
 the first-span cut. Native state matching identifies the final ordinary row and
-its accepted write; the boundary retains that write's raw timestamp. The existing
-empty worker-prefix scope stays explicit. No desired read or preparation-row
+its accepted write; the boundary retains that write's raw timestamp. Only the final preparation cycle must be free of worker writes; earlier worker
+effects remain in the actual prefix. Extended-BLAKE retains its separate empty
+worker-prefix scope. No desired read or preparation-row
 selector is supplied; whole instruction retirement remains separate.
-Prepared G and Keccak first spans now reach their complete references at those
-same mixed-history cut states. Shared matching derives caller regions, worker
+Prepared G and Keccak spans now reach their complete references at those
+same mixed-history cut states even after earlier workers. Shared matching derives caller regions, worker
 boundaries and actual controls; no worker masks or desired reads are supplied.
 Public preparation/first-span scope, call count and duration remain explicit.
 Prepared extended-BLAKE spans now also reach complete compression at those cut

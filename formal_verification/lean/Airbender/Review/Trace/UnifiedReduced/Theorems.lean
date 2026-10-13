@@ -183,7 +183,7 @@ theorem Caller.mixed_window_projection_soundness [Fact p.Prime] (hp : 8388608 �
     first last positive ordered afterInitial beforeTerminal duration
 
 /-- Original public ADDI-from-x0/LUI decoding and accepted native writes prepare
-    the actual control at the first-span cut. Clock matching identifies the
+    the actual control at the prepared cut, retaining earlier worker effects. Clock matching identifies the
     preparation row; its timestamp survives. Public program and prefix scope
     remain explicit, with no desired control read or row selector as an input. -/
 theorem Caller.control_preparation_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
@@ -201,7 +201,7 @@ theorem Caller.control_preparation_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
 
 /-- Complete G and Keccak references reach the actual mixed-history cut states
     after original public literal preparation. Shared matching derives controls,
-    caller scheduling, worker boundaries and native reads. Public first-span ABI,
+    caller scheduling, worker boundaries and native reads. Public span ABI,
     program/domain and modeled tables remain explicit; no worker masks are supplied. -/
 theorem Caller.prepared_hash_window_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)

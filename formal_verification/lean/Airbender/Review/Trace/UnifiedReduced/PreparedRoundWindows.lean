@@ -24,8 +24,10 @@ structure PreparedRoundInputs [Fact p.Prime] (data : RequestTrace p) (before : S
   tables : data.workers.setup = Delegation.modeledSetup Keccak.Controller.rows
   /-- The worker pool uses the extended-round family. -/
   family : ∀ row ∈ data.workers.rows, row.family = .blakeRound
-  /-- Public LUI registry and the existing empty worker-prefix scope. -/
+  /-- Public LUI registry and the worker-free final preparation cycle. -/
   preparation : ControlPreparation data program lower 12 (hashPreparation (.blakeRound flags))
+  /-- This extended-round scope still starts before any worker in its pool. -/
+  prefixEmpty : data.workers.prefixRows lower = []
   /-- The existing controller has ten positions. -/
   roundsBound : data.workers.rows.length ≤ 10
   /-- Public suffix duration; matching derives an uninterrupted caller region. -/

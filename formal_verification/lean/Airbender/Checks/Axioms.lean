@@ -2073,6 +2073,9 @@ import Clean.Specs.Keccak256
 #print axioms Tests.UnifiedDelegation.issued_bigint_abi_gap_caller_cycles
 #print axioms Tests.DelegationZeroInvocation.unified_unissued_worker_caller_cycles
 #print axioms Tests.DelegationZeroInvocation.unified_unissued_control_update
+#print axioms Tests.DelegationZeroInvocation.control_preparation_after_unissued_worker
+#print axioms Tests.DelegationZeroInvocation.preparation_reads_unissued_control_update
+#print axioms Tests.DelegationZeroInvocation.fabricated_preparation_read_rejected
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.caller_worker_family
 
 #print axioms Airbender.JumpBranchSlt.trace_soundness

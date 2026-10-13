@@ -32,6 +32,8 @@ binds current-state fetch.
 [Windows](Windows.lean), [WindowProjection](WindowProjection.lean) and
 [WindowSchedule](WindowSchedule.lean) describe native-clock cuts and selected regions.
 [ControlPreparation](ControlPreparation.lean) names the public preparation registry.
+Only its final cycle is worker-free; earlier worker effects remain in the same
+history. The extended-round scope separately retains an empty worker prefix.
 Boundary timestamps are retained; scheduling, actual controls and intermediate
 states are derived rather than supplied.
 
