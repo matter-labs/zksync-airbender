@@ -694,6 +694,9 @@ fn advance_feeder_stages(
 /// Sees every proven feeder layer: the state after it and the verifier run
 /// that predicted it.
 trait FeederObserver {
+    /// Called before the layer's prediction run, where its timed work starts.
+    fn layer_started(&mut self, _layer: u8) {}
+
     fn feeder_layer(
         &mut self,
         layer: u8,
@@ -957,6 +960,7 @@ fn run_feeder_layers(
             FeederRole::Recurrent
         };
         let program = fsv.feeder_program(role);
+        observer.layer_started(layer as u8);
         // Include ND stream construction in predict and verification wall times.
         let layer_start = Instant::now();
         let report = verifier.predict(program, nd(&state.setups, &state.proof))?;
