@@ -174,7 +174,7 @@ fn test_cpu_gpu_agree_on_unified_merged_caps_challenges_and_proofs() {
 #[ignore]
 fn l1_feeder_merged_commitment_cpu_parity() {
     let config = ProofProfile::L1Feeder.prover_config(22, SECURITY);
-    let (_, cpu_commitment, _, gpu_commitment) = compare_commitments(
+    let (cpu, cpu_commitment, gpu, mut gpu_commitment) = compare_commitments(
         ExecutionKind::Unified22,
         MachineType::Reduced,
         BASIC_FIBONACCI_WORKLOAD,
@@ -198,9 +198,11 @@ fn l1_feeder_merged_commitment_cpu_parity() {
             }
         }
     }
-    // Rejection control: the comparison sees a change in the last cap node.
-    let mut changed = gpu_commitment.circuit_families_memory_caps.clone();
-    let last_node = changed
+    let challenges = cpu.external_challenges(&cpu_commitment);
+    assert_eq!(gpu.external_challenges(&gpu_commitment), challenges);
+    // Rejection control: the last cap node reaches the external challenges.
+    let last_node = gpu_commitment
+        .circuit_families_memory_caps
         .values_mut()
         .flat_map(|instances| instances.iter_mut())
         .flat_map(|caps| caps.iter_mut())
@@ -208,7 +210,7 @@ fn l1_feeder_merged_commitment_cpu_parity() {
         .last()
         .expect("the feeder commitment has a cap node");
     last_node[0] ^= 1;
-    assert_ne!(changed, cpu_commitment.circuit_families_memory_caps);
+    assert_ne!(gpu.external_challenges(&gpu_commitment), challenges);
 }
 
 #[test]
