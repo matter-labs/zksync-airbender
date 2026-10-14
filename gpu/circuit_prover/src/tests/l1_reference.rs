@@ -2,7 +2,7 @@
 //! `ReferenceBundle`, `l1_reference_dir`, `l1_bundle` and `assert_bundle_eq`.
 //!
 //! The set is produced by `prover_pipeline`'s `l1_reference::generate_l1_reference` into the
-//! tracked `prover_pipeline/fixtures/l1_reference` (`../../prover_pipeline/fixtures/l1_reference`
+//! tracked `prover_pipeline/fixtures/l1_reference_2p21` (`../../prover_pipeline/fixtures/l1_reference_2p21`
 //! from a `gpu/<crate>` manifest dir); `AB_PROTH120_REFERENCE_DIR` overrides the directory. A
 //! missing or malformed file is a failure, never a skip. Every file is read into a local typed
 //! projection with `serde_json::from_reader`: `Proth120` serializes its raw Montgomery `u128`,
@@ -14,9 +14,8 @@
 use prover::definitions::SecurityLevel;
 use prover::field::Proth120;
 use prover::gkr::prover::{CommitmentMode, GKRProof};
-use prover::gkr::prover_config::example_configs::{
-    EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS, EVM_PRODUCTION_PACK_LOG2,
-    EVM_PRODUCTION_TRACE_LEN_LOG2,
+use prover::gkr::prover_config::example_configs::l1_wrap_2p21::{
+    EXTERNAL_CHALLENGES_POW_BITS, PACK_LOG2, TRACE_LEN_LOG2,
 };
 use prover::gkr::prover_config::ProofProfile;
 use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
@@ -53,7 +52,7 @@ pub(crate) fn l1_reference_dir() -> PathBuf {
         .map(PathBuf::from)
         .unwrap_or_else(|| {
             Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../prover_pipeline/fixtures/l1_reference")
+                .join("../../prover_pipeline/fixtures/l1_reference_2p21")
         })
 }
 
@@ -70,8 +69,8 @@ pub(crate) fn l1_bundle() -> ReferenceBundle {
         matches!(
             bundle.commitment_mode,
             CommitmentMode::MergedAndPackedMemoryAndWitness {
-                pack_log2: EVM_PRODUCTION_PACK_LOG2,
-                external_challenges_pow_bits: EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS,
+                pack_log2: PACK_LOG2,
+                external_challenges_pow_bits: EXTERNAL_CHALLENGES_POW_BITS,
                 ..
             }
         ),
@@ -266,25 +265,25 @@ fn cpu_l1_reference_loads() {
             .keys()
             .copied()
             .collect::<Vec<_>>(),
-        (0..=22).collect::<Vec<_>>()
+        (0..=21).collect::<Vec<_>>()
     );
     assert_eq!(
         whir.whir_schedule,
         ProofProfile::L1Wrap
-            .prover_config(EVM_PRODUCTION_TRACE_LEN_LOG2, SecurityLevel::Sec100)
+            .prover_config(TRACE_LEN_LOG2, SecurityLevel::Sec100)
             .whir_schedule
     );
     assert_eq!(whir.pow_nonces.len(), 6);
     assert_eq!(whir.intermediate_whir_oracles.len(), 5);
     assert_eq!(whir.ood_samples.len(), 5);
-    assert_eq!(whir.sumcheck_polys.len(), 22);
+    assert_eq!(whir.sumcheck_polys.len(), 21);
     assert_eq!(whir.final_monomials.len(), 16);
     assert!(whir.batching_challenge.is_some());
     assert_eq!(
         whir.original_evaluation_point
             .as_ref()
             .map(|point| point.len()),
-        Some(26)
+        Some(25)
     );
     assert!(whir.batched_opening.is_some());
     assert!(proof.intermediate_transcript_seed.is_some());

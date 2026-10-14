@@ -34,7 +34,7 @@ fn capture_one_callback_and_returned_owners() {
         };
         assert_eq!(
             fixture.setup.trace_len,
-            CircuitType::L1Wrap.get_domain_size()
+            CircuitType::L1Wrap21.get_domain_size()
         );
         assert_eq!(fixture.tracing_data.len(), CYCLES as usize);
         final_timestamp

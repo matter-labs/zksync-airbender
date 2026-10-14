@@ -79,17 +79,17 @@ pub(super) const SYNTHETIC_DELEGATION_FAMILY: u32 = 1 << 7;
 
 pub(super) fn validate_metadata(reference: &Reference, circuit: &GKRCircuitArtifact<Proth120>) {
     let rows = circuit.trace_len;
-    assert_eq!(rows, 1 << 22, "Proth120 witness fixture production rows");
+    assert_eq!(rows, 1 << 21, "Proth120 witness fixture production rows");
     assert_eq!(
-        reference.digests.trace_len_log2, 22,
+        reference.digests.trace_len_log2, 21,
         "Proth120 witness digest trace length"
     );
     assert_eq!(
-        reference.edges.trace_len_log2, 22,
+        reference.edges.trace_len_log2, 21,
         "Proth120 witness edges trace length"
     );
     assert_eq!(
-        reference.coverage.trace_len_log2, 22,
+        reference.coverage.trace_len_log2, 21,
         "Proth120 witness coverage trace length"
     );
     assert_eq!(reference.edges.edge_rows, 64, "Proth120 witness edge count");

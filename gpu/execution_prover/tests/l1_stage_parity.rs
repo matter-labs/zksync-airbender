@@ -31,8 +31,8 @@ use gpu_whir::proth120::{
 use prover::definitions::{GKRExternalChallenges, SecurityLevel};
 use prover::field::{Field, Proth120};
 use prover::gkr::prover::GKRProof;
-use prover::gkr::prover_config::example_configs::{
-    EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS, EVM_PRODUCTION_PACK_LOG2,
+use prover::gkr::prover_config::example_configs::l1_wrap_2p21::{
+    EXTERNAL_CHALLENGES_POW_BITS, PACK_LOG2,
 };
 use prover::gkr::prover_config::pow_bits;
 use prover::gkr::whir::coset_commit::CosetByCosetBaseCommitment;
@@ -57,7 +57,7 @@ mod m6_stage;
 
 type L1Proof = GKRProof<Proth120, Proth120, Keccak256MerkleTreeWithCap>;
 
-const LOG_ROWS: u32 = 22;
+const LOG_ROWS: u32 = 21;
 const ARENA_BLOCKS: usize = 40 << 10;
 
 #[derive(Deserialize)]
@@ -140,7 +140,7 @@ fn l1_reference_dir() -> PathBuf {
         .map(PathBuf::from)
         .unwrap_or_else(|| {
             Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../prover_pipeline/fixtures/l1_reference")
+                .join("../../prover_pipeline/fixtures/l1_reference_2p21")
         })
 }
 
@@ -204,7 +204,7 @@ fn checkpoint(manifest: &ProofManifest, name: &str, target: &str) -> Checkpoint 
     check_file(manifest, name);
     let checkpoint: Checkpoint = read_typed(&l1_reference_dir().join(name));
     assert_eq!(
-        checkpoint.schema_version, 4,
+        checkpoint.schema_version, 5,
         "L1 stage parity checkpoint schema: {name}"
     );
     assert_eq!(
@@ -222,15 +222,18 @@ fn fsv_feeder(manifest: &ProofManifest) -> (Vec<u32>, Vec<u32>) {
     let dir = std::env::var_os("FSV_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/gkr_verifier"));
-    let program = FsvProgram::UnifiedRecursionLayerL1Feeder;
+    let program = FsvProgram::UnifiedRecursionLayerL1FeederWrap;
     let mode = BlakeMode::BlakeSpecialOpcodes;
     let stem = program.file_stem(mode);
     let entry = manifest
         .fsv
         .iter()
-        .find(|entry| entry.role == "feeder")
-        .expect("L1 stage parity manifest omits fsv role feeder");
-    assert_eq!(stem, entry.stem, "L1 stage parity fsv stem differs: feeder");
+        .find(|entry| entry.role == "feeder_wrap")
+        .expect("L1 stage parity manifest omits fsv role feeder_wrap");
+    assert_eq!(
+        stem, entry.stem,
+        "L1 stage parity fsv stem differs: feeder_wrap"
+    );
     for (extension, expected) in [
         ("bin", &entry.bin_keccak256),
         ("text", &entry.text_keccak256),
@@ -241,7 +244,7 @@ fn fsv_feeder(manifest: &ProofManifest) -> (Vec<u32>, Vec<u32>) {
         assert_eq!(
             keccak_hex(&data),
             *expected,
-            "L1 stage parity fsv identity differs: feeder.{extension}"
+            "L1 stage parity fsv identity differs: feeder_wrap.{extension}"
         );
     }
     load_fsv_program(&dir, program, mode)
@@ -320,7 +323,7 @@ fn localize_setup_cap(
     cfg: PackedCommitConfig,
     context: &ProverContext,
 ) {
-    let pack_log2 = EVM_PRODUCTION_PACK_LOG2 as u32;
+    let pack_log2 = PACK_LOG2 as u32;
     let columns: Vec<&[Proth120]> = fixture
         .setup
         .setup
@@ -336,7 +339,7 @@ fn localize_setup_cap(
         cfg.log_values_per_leaf as usize,
         1 << cfg.cap_log,
         LOG_ROWS as usize,
-        EVM_PRODUCTION_PACK_LOG2,
+        PACK_LOG2,
         fixture.worker,
     );
     let mut holder = TraceHolder::new_without_cosets(
@@ -381,7 +384,7 @@ fn run_stages(fixture: L1WrapFixture<'_>, expected: Expected) -> StageReport {
     );
     let mut differences = Vec::new();
     let config = ProofProfile::L1Wrap.prover_config(LOG_ROWS as usize, SecurityLevel::Sec100);
-    let pack_log2 = EVM_PRODUCTION_PACK_LOG2 as u32;
+    let pack_log2 = PACK_LOG2 as u32;
     let cfg = PackedCommitConfig::from_prover_config(
         &config,
         LOG_ROWS + pack_log2,
@@ -551,7 +554,7 @@ fn run_whir(fixture: L1WrapFixture<'_>, expected: WhirExpected) -> WhirReport {
         &config.whir_schedule,
         &mut differences,
     );
-    let pack_log2 = EVM_PRODUCTION_PACK_LOG2 as u32;
+    let pack_log2 = PACK_LOG2 as u32;
     let cfg = PackedCommitConfig::from_prover_config(
         &config,
         LOG_ROWS + pack_log2,
@@ -802,8 +805,8 @@ fn l1_wrap_m4_stages_match_reference() {
         matches!(
             bundle.commitment_mode,
             CommitmentMode::MergedAndPackedMemoryAndWitness {
-                pack_log2: EVM_PRODUCTION_PACK_LOG2,
-                external_challenges_pow_bits: EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS,
+                pack_log2: PACK_LOG2,
+                external_challenges_pow_bits: EXTERNAL_CHALLENGES_POW_BITS,
                 ..
             }
         ),
@@ -938,13 +941,13 @@ fn cpu_l1_wrap_m6_replay_matches_bundle() {
     let base_lde_log2 = config.whir_schedule.base_lde_factor.trailing_zeros() as usize;
     let batched = pow_bits::batched_proximity_check_pow_bits::<Proth120, Proth120>(
         config.security_level.security_bits(),
-        config.trace_len_log2 + EVM_PRODUCTION_PACK_LOG2,
+        config.trace_len_log2 + PACK_LOG2,
         base_lde_log2,
         base_columns,
     );
     assert_eq!(
         (config.trace_len_log2, base_lde_log2, base_columns, batched),
-        (22, 5, 114, 16),
+        (21, 6, 114, 16),
         "M6 replay batched proximity PoW inputs"
     );
     let replay = m6_replay::replay_gkr_challenges(

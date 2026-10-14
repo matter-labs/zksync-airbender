@@ -108,10 +108,6 @@ pub(crate) use prover::gkr::prover::stages::initial_commit::commit_separate_memo
 pub(crate) use prover::gkr::prover::utils::flatten_merkle_caps_iter_into;
 #[cfg(test)]
 pub(crate) use prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture;
-#[cfg(test)]
-pub(crate) use prover::gkr::prover_config::example_configs::{
-    EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS, EVM_PRODUCTION_PACK_LOG2,
-};
 
 pub use prover::gkr::prover::CommitmentMode;
 #[cfg(test)]

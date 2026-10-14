@@ -113,20 +113,20 @@ mod cpu_tests {
     #[should_panic(expected = "L1Wrap setup initialization must run before proving")]
     fn host_before_initialize_panics() {
         let circuit = serde_json::from_str(include_str!(
-            "../../../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json"
+            "../../../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120_2p21.json"
         ))
         .expect("committed Proth120 layout");
         let setup = L1WrapSetup {
             circuit,
             table_driver: cs::tables::TableDriver::new(),
-            decoder_table: vec![None; common_constants::REGULAR_ROM.word_size()],
+            decoder_table: vec![None; common_constants::rom::L1_WRAP_ROM.word_size()],
             setup: prover::gkr::prover::setup::GKRSetup {
                 hypercube_evals: Vec::new(),
             },
-            trace_len: 1 << 22,
-            rom: common_constants::REGULAR_ROM,
+            trace_len: 1 << 21,
+            rom: common_constants::rom::L1_WRAP_ROM,
         };
-        L1WrapPrecomputed::new(CircuitType::L1Wrap, setup, SecurityLevel::Sec100)
+        L1WrapPrecomputed::new(CircuitType::L1Wrap21, setup, SecurityLevel::Sec100)
             .unwrap()
             .host();
     }

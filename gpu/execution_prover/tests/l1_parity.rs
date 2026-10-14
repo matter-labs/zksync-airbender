@@ -13,10 +13,10 @@ use gpu_execution_prover::{ExecutionProver, ExecutionProverConfiguration, Memory
 use prover::definitions::SecurityLevel;
 use prover::field::Proth120;
 use prover::gkr::prover::GKRProof;
-use prover::gkr::prover_config::example_configs::{
-    EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS, EVM_PRODUCTION_PACK_LOG2,
-    L1_FEEDER_QUERIES_AND_POW,
+use prover::gkr::prover_config::example_configs::l1_wrap_2p21::{
+    EXTERNAL_CHALLENGES_POW_BITS, PACK_LOG2,
 };
+use prover::gkr::prover_config::example_configs::L1_FEEDER_QUERIES_AND_POW;
 use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
 use riscv_transpiler::vm::FlatResponsesSource;
 use serde::de::DeserializeOwned;
@@ -80,7 +80,7 @@ struct Checkpoint {
 }
 
 struct FsvPrograms {
-    feeder: (Vec<u32>, Vec<u32>),
+    wrap: (Vec<u32>, Vec<u32>),
 }
 
 fn l1_reference_dir() -> PathBuf {
@@ -88,7 +88,7 @@ fn l1_reference_dir() -> PathBuf {
         .map(PathBuf::from)
         .unwrap_or_else(|| {
             Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../prover_pipeline/fixtures/l1_reference")
+                .join("../../prover_pipeline/fixtures/l1_reference_2p21")
         })
 }
 
@@ -105,8 +105,8 @@ fn l1_bundle() -> ReferenceBundle {
         matches!(
             bundle.commitment_mode,
             CommitmentMode::MergedAndPackedMemoryAndWitness {
-                pack_log2: EVM_PRODUCTION_PACK_LOG2,
-                external_challenges_pow_bits: EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS,
+                pack_log2: PACK_LOG2,
+                external_challenges_pow_bits: EXTERNAL_CHALLENGES_POW_BITS,
                 ..
             }
         ),
@@ -317,7 +317,7 @@ fn checkpoint(manifest: &ProofManifest, name: &str, target: &str) -> Checkpoint 
     check_file(manifest, name);
     let checkpoint: Checkpoint = read_typed(&l1_reference_dir().join(name));
     assert_eq!(
-        checkpoint.schema_version, 4,
+        checkpoint.schema_version, 5,
         "L1 parity checkpoint schema: {name}"
     );
     assert_eq!(
@@ -371,7 +371,7 @@ fn fsv_programs(manifest: &ProofManifest) -> FsvPrograms {
         load_fsv_program(&dir, program, mode)
     };
     FsvPrograms {
-        feeder: load("feeder", FsvProgram::UnifiedRecursionLayerL1Feeder),
+        wrap: load("feeder_wrap", FsvProgram::UnifiedRecursionLayerL1FeederWrap),
     }
 }
 
@@ -482,7 +482,8 @@ fn write_bundle(name: &str, bundle: &ReferenceBundle) {
 #[test]
 #[ignore]
 fn l1_wrap_cpu_gpu_proof_diff() {
-    let configuration = ExecutionProverConfiguration::default();
+    let mut configuration = ExecutionProverConfiguration::default();
+    configuration.backend.memory_preset = MemoryPreset::GiB30;
     let manifest = proof_manifest(&configuration);
     let feeder = checkpoint(&manifest, "l1_feeder.json", "L1Feeder");
     check_file(&manifest, "l1_bundle.json");
@@ -490,10 +491,10 @@ fn l1_wrap_cpu_gpu_proof_diff() {
     let programs = fsv_programs(&manifest);
     let mut prover = ExecutionProver::with_configuration(configuration);
     let handle = prover.add_binary(
-        ExecutionKind::L1Wrap,
+        ExecutionKind::L1Wrap21,
         MachineType::Reduced,
-        programs.feeder.0,
-        programs.feeder.1,
+        programs.wrap.0,
+        programs.wrap.1,
         None,
         &[ProofProfile::L1Wrap],
     );
