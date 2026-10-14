@@ -46,6 +46,14 @@ fn load_bundle() -> UnifiedBaseLayerComponents {
     });
     let bundle: UnifiedBaseLayerComponents = serde_json::from_reader(std::io::BufReader::new(file))
         .expect("deserialize unified fixture bundle");
+    for delegation in &bundle.delegations {
+        assert!(
+            full_statement_verifier::definitions::DELEGATION_TYPES
+                .contains(&delegation.delegation_csr),
+            "fixture contains delegation CSR {:#x} unsupported by the FSV registry",
+            delegation.delegation_csr,
+        );
+    }
     // The prover harness mirrors the PoW-bits derivation (it cannot depend on verifier_common);
     // catch any drift here with a clear message instead of a transcript PoW panic.
     assert_eq!(
@@ -258,6 +266,8 @@ fn unified_base_layer_transpiler_accepts_valid_proof() {
     // The FSV binary reads the whole stream itself (setup-cap VK first, then the flattened proof
     // which already carries the external challenges) — no separate external-challenges prefix.
     let oracle_responses = build_stream(&proof, &setup_cap);
+    let expected_output = run_unified_base_layer(oracle_responses.clone())
+        .expect("fixture must verify natively before the transpiler run");
 
     let binary = load_binary_section(&fsv_binary_section_path("bin"));
     let text_section = load_binary_section(&fsv_binary_section_path("text"));
@@ -288,8 +298,11 @@ fn unified_base_layer_transpiler_accepts_valid_proof() {
         "FSV transpiler run did not finish (PC stuck or cycle bound reached)"
     );
 
-    let a0 = state.registers[10].value;
-    assert_eq!(a0, 1, "FSV transpiler: a0 = {a0} (expected 1 for success)");
+    let actual_output: [u32; 16] = std::array::from_fn(|i| state.registers[10 + i].value);
+    assert_eq!(
+        actual_output, expected_output,
+        "FSV transpiler must preserve the verified output and recursion hash"
+    );
 
     let exact_cycles =
         (state.timestamp - common_constants::INITIAL_TIMESTAMP) / common_constants::TIMESTAMP_STEP;
