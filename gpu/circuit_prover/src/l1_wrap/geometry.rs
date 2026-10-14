@@ -178,6 +178,8 @@ pub(crate) mod cpu_tests {
     use super::*;
     use crate::upstream::SecurityLevel;
     use common_constants::rom::{L1_WRAP_ROM, REGULAR_ROM};
+    use gpu_gkr::proth120::programs::GkrProgramsPr;
+    use gpu_gkr::proth120::proof_layout::ProofLayoutPr;
     use gpu_whir::proth120::{L1WhirShape, L1_WHIR_TILE_BYTES};
     use std::panic::{catch_unwind, AssertUnwindSafe};
 
@@ -298,6 +300,18 @@ pub(crate) mod cpu_tests {
         assert_eq!(shape.total_sumcheck_polys, 21);
         assert_eq!(shape.log_final, 4);
         assert_eq!(shape.cap_log, geometry.cap_log);
+        let circuit = std::sync::Arc::new(committed_layout(CircuitType::L1Wrap21));
+        assert_eq!(circuit.layers.len(), 5);
+        let programs = GkrProgramsPr::compile(CircuitType::L1Wrap21, circuit).unwrap();
+        let layout = ProofLayoutPr::new(&programs, &config, geometry.pack_log2 as usize);
+        assert_eq!(layout.backward_layers.len(), 22);
+        assert_eq!(
+            layout.memory_claims.len(),
+            geometry.packed_base_columns * 16
+        );
+        assert_eq!(layout.memory_claims.len(), 7 * 16);
+        assert_eq!(layout.setup_claims.len(), 16);
+        assert_eq!(layout.evaluation_point.len(), 25 * 16);
     }
 
     #[test]
