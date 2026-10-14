@@ -7,6 +7,9 @@ it, for `memcpy`-like code: general in the addresses and the length, reusable fo
 
 namespace RV
 
+theorem toNat_add_ofNat (a : Word) (c : Nat) (h : a.toNat + c < 2 ^ 32) : (a + BitVec.ofNat 32 c).toNat = a.toNat + c := by
+  rw [BitVec.toNat_add, BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega : c < 2 ^ 32)]; exact Nat.mod_eq_of_lt h
+
 /-- Memory `m` with `len` bytes copied from `s` to `d` (byte `a` of the copy: `a - d` bytes into it). -/
 def blockCopy (m : Word → BitVec 8) (d s : Word) (len : Nat) : Word → BitVec 8 :=
   fun a => if (a - d).toNat < len then m (s + (a - d)) else m a
