@@ -23,6 +23,8 @@ use clap::ValueEnum;
 use execution_prover::{BinaryHandle, ProofProfile};
 mod fsv_measure;
 use fsv_measure::FsvRunReport;
+#[cfg(test)]
+mod l1_feeder_reference;
 mod l1_wrap;
 mod unified_recursion;
 use execution_prover_model::circuit_type::{CircuitType, UnrolledCircuitType};
@@ -1597,6 +1599,75 @@ impl ProgramProver {
 
     pub fn continue_artifact(&mut self, artifact: ProofArtifact) -> Result<ProofArtifact, String> {
         self.continue_artifact_observed(artifact, &mut NoopObserver)
+    }
+
+    /// The feeder loop over a `RecursionUnified` (or mid-chain) artifact
+    /// WITHOUT the wrap-fit check, for the feeder-chain fixtures: the layers
+    /// are recorded through `observer`, the state after the last layer is
+    /// returned at stage `L1Feeder`.
+    fn feeder_layers_observed(
+        &mut self,
+        artifact: ProofArtifact,
+        observer: &mut dyn FeederObserver,
+    ) -> Result<(RecursionState, LoadedProgram), String> {
+        validate_continuation_request(&artifact, ProofTarget::L1Feeder)?;
+        let loaded = load_and_validate_program(&self.source, &artifact)?;
+        let blake = PipelineBlakeModes::continuing(&artifact, || self.fsv.modes())?;
+        if blake != self.fsv.modes() {
+            self.fsv = FsvPrograms::load(self.config.target, blake);
+            self.register_pipeline_binaries(Some(artifact.target))?;
+        }
+        let batch_id = artifact.batch_id;
+        let state = RecursionState {
+            stage: artifact.target,
+            l1: artifact.l1,
+            proof: artifact.proof,
+            setups: artifact.setups,
+            chain_end_params: artifact.chain_end_params,
+            input_is_base: false,
+            timings: artifact.timings_ms,
+            program_cycles: artifact.program_cycles,
+            feeder_layers: artifact.feeder_layers,
+        };
+        let mut state = run_feeder_layers(
+            self.backend.as_dyn(),
+            &self.fsv,
+            state,
+            batch_id,
+            observer,
+            &build_unified_stream,
+            &ProductionFeederVerifier,
+        )?;
+        state.stage = ProofTarget::L1Feeder;
+        Ok((state, loaded))
+    }
+
+    /// The wrap program's run over the last feeder proof of `state` and the
+    /// native output it must reproduce.
+    fn wrap_program_run(
+        &self,
+        state: &RecursionState,
+    ) -> Result<(FsvRunReport, [u32; 16]), String> {
+        let stream = build_unified_stream(&state.setups, &state.proof);
+        let native_output = ProductionFeederVerifier.native_verify(stream.clone())?;
+        let report = ProductionFeederVerifier.wrap_run(&self.fsv.feeder_wrap, stream)?;
+        Ok((report, native_output))
+    }
+
+    fn finalize_state(
+        &self,
+        loaded: &LoadedProgram,
+        state: RecursionState,
+        batch_id: u64,
+    ) -> ProofArtifact {
+        finalize_artifact(
+            &self.fsv,
+            state.stage,
+            self.config.backend,
+            batch_id,
+            loaded,
+            state,
+        )
     }
 
     fn continue_artifact_observed(
