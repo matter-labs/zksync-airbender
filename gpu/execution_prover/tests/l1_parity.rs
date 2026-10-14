@@ -3,16 +3,19 @@
 gpu_core::force_serial_libtest!();
 
 use execution_prover::{CommitmentMode, ExecutionKind, MachineType, ProofProfile};
+use execution_prover_model::circuit_type::UnrolledCircuitType;
 use full_statement_verifier::host_utils::{
-    build_unified_stream, compute_end_params, load_fsv_program, FsvRecursionChain,
+    build_unified_stream, compute_end_params, load_fsv_program, native_verify_unified_l1_feeder,
+    FsvRecursionChain,
 };
 use full_statement_verifier::program_proof::ProgramProof;
-use gpu_execution_prover::{ExecutionProver, ExecutionProverConfiguration};
+use gpu_execution_prover::{ExecutionProver, ExecutionProverConfiguration, MemoryPreset};
 use prover::definitions::SecurityLevel;
 use prover::field::Proth120;
 use prover::gkr::prover::GKRProof;
 use prover::gkr::prover_config::example_configs::{
     EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS, EVM_PRODUCTION_PACK_LOG2,
+    L1_FEEDER_QUERIES_AND_POW,
 };
 use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
 use riscv_transpiler::vm::FlatResponsesSource;
@@ -76,23 +79,7 @@ struct Checkpoint {
     chain_preimage: [u32; 16],
 }
 
-#[derive(Deserialize)]
-enum CheckpointStep {
-    Feeder { layer: u8 },
-}
-
-#[derive(Deserialize)]
-struct StepCheckpoint {
-    fixture_schema_version: u32,
-    step: CheckpointStep,
-    proof: ProgramProof,
-    setups: Setups,
-    chain_end_params: Vec<[u32; 8]>,
-    input_is_base: bool,
-}
-
 struct FsvPrograms {
-    feeder_first: (Vec<u32>, Vec<u32>),
     feeder: (Vec<u32>, Vec<u32>),
 }
 
@@ -355,22 +342,6 @@ fn checkpoint(manifest: &ProofManifest, name: &str, target: &str) -> Checkpoint 
     checkpoint
 }
 
-fn feeder_layer_0(manifest: &ProofManifest) -> StepCheckpoint {
-    let name = "feeder_layer_0.json";
-    check_file(manifest, name);
-    let checkpoint: StepCheckpoint = read_typed(&l1_reference_dir().join(name));
-    assert_eq!(
-        checkpoint.fixture_schema_version, 1,
-        "L1 parity feeder layer schema"
-    );
-    assert!(
-        matches!(checkpoint.step, CheckpointStep::Feeder { layer: 0 }) && !checkpoint.input_is_base,
-        "L1 parity feeder layer 0 checkpoint"
-    );
-    rebuild_chain(&checkpoint.chain_end_params);
-    checkpoint
-}
-
 fn fsv_programs(manifest: &ProofManifest) -> FsvPrograms {
     let dir = std::env::var_os("FSV_DIR")
         .map(PathBuf::from)
@@ -400,7 +371,6 @@ fn fsv_programs(manifest: &ProofManifest) -> FsvPrograms {
         load_fsv_program(&dir, program, mode)
     };
     FsvPrograms {
-        feeder_first: load("feeder_first", FsvProgram::UnifiedRecursionLayer),
         feeder: load("feeder", FsvProgram::UnifiedRecursionLayerL1Feeder),
     }
 }
@@ -414,40 +384,6 @@ fn rebuild_chain(end_params: &[[u32; 8]]) -> FsvRecursionChain {
         chain.extend(end);
     }
     chain
-}
-
-fn prove_feeder_layer(
-    prover: &mut ExecutionProver,
-    words: (Vec<u32>, Vec<u32>),
-    chain: &mut FsvRecursionChain,
-    proof: ProgramProof,
-    setups: Setups,
-    chain_end_params: &mut Vec<[u32; 8]>,
-) -> (ProgramProof, Setups) {
-    let handle = prover.add_binary(
-        ExecutionKind::Unified,
-        MachineType::Reduced,
-        words.0,
-        words.1,
-        None,
-        &[ProofProfile::L1Feeder],
-    );
-    let result = prover.commit_memory_and_prove(
-        0,
-        &handle,
-        FlatResponsesSource::new_with_reads(build_unified_stream(&setups, &proof)),
-        CommitmentMode::MergedMemoryAndWitness,
-        ProofProfile::L1Feeder,
-    );
-    let (mut stage_proof, stage_setups) = program_prover::assemble_program_proof(
-        &prover.program_artifacts(&handle, ProofProfile::L1Feeder),
-        result,
-    );
-    stage_proof.set_recursion_chain(chain);
-    let end = compute_end_params(&stage_setups, stage_proof.final_pc);
-    chain.extend(&end);
-    chain_end_params.push(end);
-    (stage_proof, stage_setups)
 }
 
 fn first_family_difference<T: Serialize>(
@@ -578,126 +514,294 @@ fn l1_wrap_cpu_gpu_proof_diff() {
     assert_bundle_eq(&bundle, &actual);
 }
 
-#[test]
-#[ignore]
-fn l1_feeder_first_cpu_gpu_proof_diff() {
-    let configuration = ExecutionProverConfiguration::default();
-    let manifest = proof_manifest(&configuration);
-    let input = checkpoint(&manifest, "recursion_unified.json", "RecursionUnified");
-    let expected = feeder_layer_0(&manifest);
-    let programs = fsv_programs(&manifest);
-    let mut end_params = input.chain_end_params;
-    let mut chain = rebuild_chain(&end_params);
-    let mut prover = ExecutionProver::with_configuration(configuration);
-    let (proof, setups) = prove_feeder_layer(
-        &mut prover,
-        programs.feeder_first,
-        &mut chain,
-        input.proof,
-        input.setups,
-        &mut end_params,
-    );
-    assert_feeder_eq(
-        &expected.proof,
-        &expected.setups,
-        &expected.chain_end_params,
-        &proof,
-        &setups,
-        &end_params,
-    );
+/// The fields of `prover_pipeline`'s 2^22 feeder reference manifest these tests read.
+#[derive(Deserialize)]
+struct FeederManifest {
+    fixture_schema_version: u32,
+    input: String,
+    fsv: Vec<FsvIdentity>,
+    feeder_queries_and_pow: Vec<(usize, u32)>,
+    files: Vec<(String, u64, String)>,
 }
 
-#[test]
-#[ignore]
-fn l1_feeder_second_cpu_gpu_proof_diff() {
-    let configuration = ExecutionProverConfiguration::default();
-    let manifest = proof_manifest(&configuration);
-    let input = feeder_layer_0(&manifest);
-    let expected = checkpoint(&manifest, "l1_feeder.json", "L1Feeder");
-    let programs = fsv_programs(&manifest);
-    let mut end_params = input.chain_end_params;
-    let mut chain = rebuild_chain(&end_params);
+/// The fields of the reference seed (`recursion_unified.json`, a `ProofArtifact`) these tests read.
+#[derive(Deserialize)]
+struct FeederSeed {
+    schema_version: u32,
+    target: String,
+    security_level: String,
+    batch_id: u64,
+    proof: ProgramProof,
+    setups: Setups,
+    chain_end_params: Vec<[u32; 8]>,
+    chain_hash: [u32; 8],
+}
+
+/// The fields of a reference `layer_{n}.json` (`LayerFixture`) these tests read.
+#[derive(Deserialize)]
+struct FeederLayer {
+    fixture_schema_version: u32,
+    layer: u8,
+    instances: usize,
+    native_output: [u32; 16],
+    chain_hash: [u32; 8],
+    proof: ProgramProof,
+    setups: Setups,
+    chain_end_params: Vec<[u32; 8]>,
+}
+
+struct FeederReference {
+    dir: PathBuf,
+    manifest: FeederManifest,
+    fsv_dir: PathBuf,
+}
+
+impl FeederReference {
+    fn load() -> Self {
+        let _ = env_logger::builder().is_test(true).try_init();
+        let root = std::env::var_os("AB_F3_REFERENCE_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| {
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../prover_pipeline/fixtures/l1_feeder_reference")
+            });
+        let input = std::env::var("AB_F3_INPUT").unwrap_or_else(|_| "basic_fibonacci".into());
+        let dir = root.join(&input);
+        let manifest: FeederManifest = read_typed(&dir.join("manifest.json"));
+        assert_eq!(
+            manifest.fixture_schema_version, 1,
+            "L1 feeder parity reference schema"
+        );
+        assert_eq!(manifest.input, input, "L1 feeder parity reference input");
+        assert_eq!(
+            manifest.feeder_queries_and_pow,
+            L1_FEEDER_QUERIES_AND_POW.to_vec(),
+            "L1 feeder parity reference was produced under another feeder config"
+        );
+        let fsv_dir = std::env::var_os("FSV_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| {
+                Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/gkr_verifier")
+            });
+        Self {
+            dir,
+            manifest,
+            fsv_dir,
+        }
+    }
+
+    fn read<T: DeserializeOwned>(&self, name: &str) -> T {
+        let (_, bytes, keccak256) = self
+            .manifest
+            .files
+            .iter()
+            .find(|(file, _, _)| file == name)
+            .unwrap_or_else(|| panic!("L1 feeder parity manifest omits {name}"));
+        let path = self.dir.join(name);
+        let data = fs::read(&path)
+            .unwrap_or_else(|error| panic!("L1 feeder parity read {}: {error}", path.display()));
+        assert_eq!(
+            data.len() as u64,
+            *bytes,
+            "L1 feeder parity reference size differs: {name}"
+        );
+        assert_eq!(
+            keccak_hex(&data),
+            *keccak256,
+            "L1 feeder parity reference identity differs: {name}"
+        );
+        serde_json::from_slice(&data)
+            .unwrap_or_else(|error| panic!("L1 feeder parity deserialize {name}: {error}"))
+    }
+
+    fn seed(&self) -> FeederSeed {
+        let seed: FeederSeed = self.read("recursion_unified.json");
+        assert_eq!(seed.schema_version, 5, "L1 feeder parity seed schema");
+        assert_eq!(
+            seed.target, "RecursionUnified",
+            "L1 feeder parity seed target"
+        );
+        assert_eq!(
+            seed.security_level, "Sec100",
+            "L1 feeder parity seed security"
+        );
+        assert_eq!(seed.batch_id, 0, "L1 feeder parity seed batch id");
+        assert_eq!(
+            rebuild_chain(&seed.chain_end_params).hash(),
+            seed.chain_hash,
+            "L1 feeder parity seed chain hash"
+        );
+        seed
+    }
+
+    fn layer(&self, layer: u8) -> FeederLayer {
+        let fixture: FeederLayer = self.read(&format!("layer_{layer}.json"));
+        assert_eq!(
+            fixture.fixture_schema_version, 1,
+            "L1 feeder parity layer schema"
+        );
+        assert_eq!(fixture.layer, layer, "L1 feeder parity layer index");
+        assert_eq!(
+            rebuild_chain(&fixture.chain_end_params).hash(),
+            fixture.chain_hash,
+            "L1 feeder parity layer {layer} chain hash"
+        );
+        fixture
+    }
+
+    fn program(&self, role: &str, program: FsvProgram) -> (Vec<u32>, Vec<u32>) {
+        let mode = BlakeMode::BlakeSpecialOpcodes;
+        let stem = program.file_stem(mode);
+        let entry = self
+            .manifest
+            .fsv
+            .iter()
+            .find(|entry| entry.role == role)
+            .unwrap_or_else(|| panic!("L1 feeder parity manifest omits fsv role {role}"));
+        assert_eq!(
+            stem, entry.stem,
+            "L1 feeder parity fsv stem differs: {role}"
+        );
+        for (extension, expected) in [
+            ("bin", &entry.bin_keccak256),
+            ("text", &entry.text_keccak256),
+        ] {
+            let path = self.fsv_dir.join(format!("{stem}.{extension}"));
+            let data = fs::read(&path).unwrap_or_else(|error| {
+                panic!("L1 feeder parity fsv read {}: {error}", path.display())
+            });
+            assert_eq!(
+                keccak_hex(&data),
+                *expected,
+                "L1 feeder parity fsv identity differs: {role}.{extension}"
+            );
+        }
+        load_fsv_program(&self.fsv_dir, program, mode)
+    }
+}
+
+/// One GPU feeder layer as `prover_pipeline` proves it: `Unified22` with
+/// `[L1Feeder]` in the merged commitment mode, batch 0, at the 30 GiB preset.
+fn prove_feeder_layer(
+    words: (Vec<u32>, Vec<u32>),
+    proof: &ProgramProof,
+    setups: &Setups,
+    chain_end_params: &[[u32; 8]],
+) -> (ProgramProof, Setups, Vec<[u32; 8]>) {
+    let mut configuration = ExecutionProverConfiguration::default();
+    configuration.backend.memory_preset = MemoryPreset::GiB30;
+    assert_eq!(configuration.security_level, SecurityLevel::Sec100);
     let mut prover = ExecutionProver::with_configuration(configuration);
-    let (proof, setups) = prove_feeder_layer(
-        &mut prover,
-        programs.feeder,
-        &mut chain,
-        input.proof,
-        input.setups,
-        &mut end_params,
+    let handle = prover.add_binary(
+        ExecutionKind::Unified22,
+        MachineType::Reduced,
+        words.0,
+        words.1,
+        None,
+        &[ProofProfile::L1Feeder],
     );
+    let result = prover.commit_memory_and_prove(
+        0,
+        &handle,
+        FlatResponsesSource::new_with_reads(build_unified_stream(setups, proof)),
+        CommitmentMode::MergedMemoryAndWitness,
+        ProofProfile::L1Feeder,
+    );
+    let (mut layer_proof, layer_setups) = program_prover::assemble_program_proof(
+        &prover.program_artifacts(&handle, ProofProfile::L1Feeder),
+        result,
+    );
+    let mut chain = rebuild_chain(chain_end_params);
+    layer_proof.set_recursion_chain(&chain);
+    let end = compute_end_params(&layer_setups, layer_proof.final_pc);
+    chain.extend(&end);
+    let mut end_params = chain_end_params.to_vec();
+    end_params.push(end);
+    (layer_proof, layer_setups, end_params)
+}
+
+fn assert_feeder_layer_eq(
+    expected: &FeederLayer,
+    proof: &ProgramProof,
+    setups: &Setups,
+    end_params: &[[u32; 8]],
+) {
     assert_feeder_eq(
         &expected.proof,
         &expected.setups,
         &expected.chain_end_params,
-        &proof,
-        &setups,
-        &end_params,
+        proof,
+        setups,
+        end_params,
+    );
+    let family = UnrolledCircuitType::Unified22.get_family_idx() as u32;
+    assert_eq!(
+        proof.riscv_proofs.keys().copied().collect::<Vec<_>>(),
+        [family],
+        "L1 feeder layer {} proof families",
+        expected.layer
     );
     assert_eq!(
-        chain.hash(),
+        proof.riscv_proofs[&family].len(),
+        expected.instances,
+        "L1 feeder layer {} instances",
+        expected.layer
+    );
+    assert_eq!(
+        rebuild_chain(end_params).hash(),
         expected.chain_hash,
-        "L1 feeder chain hash differs"
+        "L1 feeder layer {} chain hash",
+        expected.layer
     );
+    let native_output = native_verify_unified_l1_feeder(build_unified_stream(setups, proof))
+        .unwrap_or_else(|error| panic!("L1 feeder layer {}: {error}", expected.layer));
     assert_eq!(
-        chain.preimage(),
-        expected.chain_preimage,
-        "L1 feeder chain preimage differs"
+        native_output, expected.native_output,
+        "L1 feeder layer {} native output",
+        expected.layer
     );
 }
 
 #[test]
 #[ignore]
-fn l1_feeder_cpu_gpu_proof_diff() {
-    let configuration = ExecutionProverConfiguration::default();
-    let manifest = proof_manifest(&configuration);
-    let input = checkpoint(&manifest, "recursion_unified.json", "RecursionUnified");
-    let expected_first = feeder_layer_0(&manifest);
-    let expected_second = checkpoint(&manifest, "l1_feeder.json", "L1Feeder");
-    let programs = fsv_programs(&manifest);
-    let mut end_params = input.chain_end_params;
-    let mut chain = rebuild_chain(&end_params);
-    let mut prover = ExecutionProver::with_configuration(configuration);
-    let (first_proof, first_setups) = prove_feeder_layer(
-        &mut prover,
-        programs.feeder_first,
-        &mut chain,
-        input.proof,
-        input.setups,
-        &mut end_params,
+fn l1_feeder_f1_cpu_gpu_proof_diff() {
+    let reference = FeederReference::load();
+    let seed = reference.seed();
+    let expected = reference.layer(0);
+    let program = reference.program("feeder_first", FsvProgram::UnifiedRecursionLayer);
+    let (proof, setups, end_params) =
+        prove_feeder_layer(program, &seed.proof, &seed.setups, &seed.chain_end_params);
+    assert_feeder_layer_eq(&expected, &proof, &setups, &end_params);
+}
+
+#[test]
+#[ignore]
+fn l1_feeder_f2_cpu_gpu_proof_diff() {
+    let reference = FeederReference::load();
+    let input = reference.layer(0);
+    let expected = reference.layer(1);
+    let program = reference.program("feeder", FsvProgram::UnifiedRecursionLayerL1Feeder);
+    let (proof, setups, end_params) = prove_feeder_layer(
+        program,
+        &input.proof,
+        &input.setups,
+        &input.chain_end_params,
     );
-    assert_feeder_eq(
-        &expected_first.proof,
-        &expected_first.setups,
-        &expected_first.chain_end_params,
-        &first_proof,
-        &first_setups,
-        &end_params,
+    assert_feeder_layer_eq(&expected, &proof, &setups, &end_params);
+}
+
+#[test]
+#[ignore]
+fn l1_feeder_f3_cpu_gpu_proof_diff() {
+    let reference = FeederReference::load();
+    let input = reference.layer(1);
+    let expected = reference.layer(2);
+    let program = reference.program("feeder", FsvProgram::UnifiedRecursionLayerL1Feeder);
+    let (proof, setups, end_params) = prove_feeder_layer(
+        program,
+        &input.proof,
+        &input.setups,
+        &input.chain_end_params,
     );
-    let (proof, setups) = prove_feeder_layer(
-        &mut prover,
-        programs.feeder,
-        &mut chain,
-        first_proof,
-        first_setups,
-        &mut end_params,
-    );
-    assert_feeder_eq(
-        &expected_second.proof,
-        &expected_second.setups,
-        &expected_second.chain_end_params,
-        &proof,
-        &setups,
-        &end_params,
-    );
-    assert_eq!(
-        chain.hash(),
-        expected_second.chain_hash,
-        "L1 feeder chain hash differs"
-    );
-    assert_eq!(
-        chain.preimage(),
-        expected_second.chain_preimage,
-        "L1 feeder chain preimage differs"
-    );
+    assert_feeder_layer_eq(&expected, &proof, &setups, &end_params);
 }
