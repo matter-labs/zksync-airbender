@@ -193,6 +193,7 @@ impl GpuGKRStage1Output {
             geometry.log_tree_cap_size,
             columns_count,
             TreesCacheMode::CachePartial,
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
             context,
         )
     }
@@ -270,6 +271,7 @@ impl GpuGKRStage1Output {
                 None => memory_columns,
             },
             TreesCacheMode::CacheNone,
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
             context,
         )?;
         let mut witness_trace_holder = if merged_witness_offset.is_some() {
@@ -280,6 +282,7 @@ impl GpuGKRStage1Output {
                 geometry.log_tree_cap_size,
                 0,
                 TreesCacheMode::CacheNone,
+                gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
                 context,
             )?
         } else {

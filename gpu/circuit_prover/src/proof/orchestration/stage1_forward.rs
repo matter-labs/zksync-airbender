@@ -221,6 +221,7 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
             setup_geometry.log_tree_cap_size,
             0,
             TreesCacheMode::CachePartial,
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
             context,
         )?)
     } else {

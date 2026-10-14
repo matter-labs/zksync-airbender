@@ -78,6 +78,7 @@ fn commit_memory_inner<'a>(
         log_tree_cap_size,
         memory_columns_count,
         TreesCacheMode::CachePartial,
+        crate::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
         context,
     )?;
     let range = Range::new("commit_memory")?;

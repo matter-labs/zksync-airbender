@@ -94,6 +94,7 @@ fn upload_holder(
         cfg.cap_log,
         columns.len(),
         TreesCacheMode::CacheNone,
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
         context,
     )
     .unwrap();

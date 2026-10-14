@@ -87,6 +87,7 @@ impl L1WrapSetupHost {
             cfg.cap_log,
             columns_count,
             TreesCacheMode::CacheNone,
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
             context,
         )?;
         memory_copy_async(
@@ -139,6 +140,7 @@ impl<'a> PackedSetupSource<'a> {
             host.cfg.cap_log,
             host.columns_count,
             TreesCacheMode::CacheNone,
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
             context,
         )?;
         let oracle =
