@@ -1,5 +1,3 @@
-#![allow(incomplete_features)]
-#![feature(generic_const_exprs)]
 #![feature(allocator_api)]
 
 //! The unified reduced-machine circuit over Proth120: the L1 wrap circuit.
