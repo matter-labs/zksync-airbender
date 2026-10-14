@@ -1561,4 +1561,213 @@ theorem auipc_public_hash_span_past_terminal_rejected (keccak : Bool) :
   · change 2604 ≤ 8 at bound
     omega
 
+private def roundAUIPCEntry : UnifiedReduced.ProgramEntry :=
+  ⟨524288, 0x00000617, .UTYPE (0, .Regidx 12, .AUIPC), ⟨.machine, 0, 0, 12, ⟨0, 0⟩, 4, 0⟩⟩
+private def roundAUIPCBefore : State := wordWriteState initialState 524288 0x00000617
+private def roundAUIPCAssignment (column : Nat) : ZMod babyBearModulus :=
+  if column = 1 || column = 31 then 8
+  else if column = 8 || column = 9 || column = 11 then 0
+  else if column = 13 then 1
+  else assignment 1 column
+private def roundAUIPCRow : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, roundAUIPCAssignment⟩
+private def roundAUIPCData : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
+  { data 1 with machine := { (data 1).machine with
+      rows := [roundAUIPCRow]
+      rom := UnifiedReduced.Setup.table roundAUIPCBefore
+      initial := roundAUIPCRow.start
+      terminal := roundAUIPCRow.finish } }
+
+private theorem roundAUIPCCore : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment roundAUIPCAssignment)
+    (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table roundAUIPCBefore)) := by
+  simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
+    Verification.environment, Expression.eval, roundAUIPCAssignment, assignment,
+    register, low, high, Lookup.Contains, Table.toRaw, fromElements]
+  repeat' apply And.intro
+  all_goals solve
+    | decide +kernel
+    | (apply Verification.range16_contains; decide +kernel)
+    | (refine ⟨(0 : Fin 2097537), ?_⟩
+       change (#v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0] : Vector (ZMod babyBearModulus) 10) =
+         (UnifiedReduced.Setup.fixedRow (0 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
+       decide +kernel)
+
+private theorem roundAUIPCClocks : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment roundAUIPCAssignment) UnifiedReduced.importedConstraintsTimestampLookups := by
+  rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
+  constructor
+  · simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.constraints]
+  · rw [List.forall_mem_iff_forall_getElem]
+    intro i bound
+    have short : i < 8 := by simpa only [UnifiedReduced.timestamp_count] using bound
+    interval_cases i
+    all_goals apply Trace.Proofs.range_contains
+    all_goals decide +kernel
+
+private theorem roundAUIPCAccepted : UnifiedReduced.Caller.MixedMemoryAccepted roundAUIPCData [roundAUIPCEntry] := by
+  constructor
+  · constructor
+    · intro current member
+      have same := List.mem_singleton.mp member
+      subst current
+      exact Verification.holds_append roundAUIPCCore roundAUIPCClocks
+    · intro current member
+      have same := List.mem_singleton.mp member
+      subst current
+      decide +kernel
+    · exact List.Perm.swap _ _ []
+    · intro _ member
+      have empty : roundAUIPCData.callers = [] := by decide +kernel
+      rw [empty] at member
+      cases member
+    · intro _ member; cases member
+    · intro _ member; cases member
+    · have empty : roundAUIPCData.calls = [] := by decide +kernel
+      rw [empty]
+      exact List.Perm.refl []
+  · intro current member _
+    have same := List.mem_singleton.mp member
+    subst current
+    change ∃ i : Fin 1, roundAUIPCRow.decoderQuery = ([roundAUIPCEntry].get i).query
+    exact ⟨0, by decide +kernel⟩
+  · decide +kernel
+
+private theorem roundAUIPCProgram : UnifiedReduced.Mixed.programImage roundAUIPCBefore [524288] = some [roundAUIPCEntry] := by
+  have bytes : (Cell.ram 524288).read roundAUIPCBefore = .ok 0x00000617 roundAUIPCBefore := written_word_read _ _ _
+  have decoded : Reference.Sail.run (SailRV32.Functions.encdec_backwards 0x00000617) roundAUIPCBefore =
+      .ok roundAUIPCEntry.instruction roundAUIPCBefore := by with_unfolding_all rfl
+  have fields : UnifiedReduced.Mixed.decoderFields roundAUIPCEntry.instruction = some roundAUIPCEntry.data := by
+    with_unfolding_all rfl
+  simp only [UnifiedReduced.Mixed.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
+    programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+  rfl
+
+private theorem roundAUIPCImage : initialImage roundAUIPCBefore (cells 1) = some roundAUIPCData.machine.initialMemory := by
+  have control : (Cell.register 12).read roundAUIPCBefore = .ok 65537 roundAUIPCBefore := by
+    apply read_register
+    simp [roundAUIPCBefore, wordWriteState, initialState, Std.ExtDHashMap.get?_insert]
+  have zero : (Cell.register 0).read roundAUIPCBefore = .ok 0 roundAUIPCBefore := rfl
+  simp only [initialImage, cells, register, show (1 : Fin 3).val = 1 from rfl, show ¬(1 : Nat) = 2 by decide,
+    if_false, List.mapM_cons, List.mapM_nil, zero, control, bind, pure]
+  rfl
+
+private theorem roundAUIPCInputs : UnifiedReduced.Caller.MixedMemoryInputs roundAUIPCData [roundAUIPCEntry]
+    roundAUIPCBefore [] [524288] (cells 1) := by
+  refine ⟨⟨rfl, ?_, by decide +kernel⟩, roundAUIPCProgram, roundAUIPCImage,
+    (inputs 1).distinct, (inputs 1).aligned, rfl, rfl, ?_⟩
+  · change 4 < timestampBase ∧ 0 < timestampBase
+    norm_num [timestampBase]
+  · intro _ member; cases member
+
+private theorem roundAUIPCScope : UnifiedReduced.Caller.PCRelativePreparation roundAUIPCData [roundAUIPCEntry] 8 12 0 := by
+  refine ⟨⟨?_, ?_⟩, ?_, rfl, by decide +kernel, by decide +kernel⟩
+  · intro entry member
+    have same := List.mem_singleton.mp member
+    subst entry
+    exact .sequential (.arithmetic (.auipc _ _))
+  · intro entry member
+    have same := List.mem_singleton.mp member
+    subst entry
+    decide +kernel
+  · intro entry member _
+    have same := List.mem_singleton.mp member
+    subst entry
+    rfl
+
+theorem auipc_round_protocol_preparation :
+    UnifiedReduced.Caller.HashControlPreparation roundAUIPCData [roundAUIPCEntry] 8 (.blakeRound 0) := by
+  refine .pcRelative 0 roundAUIPCScope ?_
+  intro entry member _
+  have same := List.mem_singleton.mp member
+  subst entry
+  decide +kernel
+
+theorem auipc_round_actual_control :
+    (Cell.register 12).read roundAUIPCBefore = .ok 65537 roundAUIPCBefore ∧
+      UnifiedReduced.Caller.PreparedBoundaryExecution roundAUIPCData roundAUIPCBefore (cells 1) 8 12
+        (UnifiedReduced.Caller.hashPreparation (.blakeRound 0)) := by
+  refine ⟨?_, ?_⟩
+  · apply read_register
+    simp [roundAUIPCBefore, wordWriteState, initialState, Std.ExtDHashMap.get?_insert]
+  · exact UnifiedReduced.Caller.hash_control_preparation_soundness (by decide +kernel) (by decide +kernel)
+      (by decide +kernel) roundAUIPCAccepted roundAUIPCInputs auipc_round_protocol_preparation (by decide)
+
+private theorem roundAUIPCContext : UnifiedReduced.Caller.ProtocolContextInputs roundAUIPCData
+    roundAUIPCBefore [] [524288] (cells 1) [roundAUIPCEntry] :=
+  ⟨roundAUIPCInputs.publicProgram, roundAUIPCInputs.ordinaryProgram, roundAUIPCInputs.initialization,
+    roundAUIPCInputs.distinct, roundAUIPCInputs.aligned, roundAUIPCInputs.setup, roundAUIPCInputs.tables⟩
+
+private theorem roundAUIPCRegion : UnifiedReduced.Caller.WrappedProgramComputedRoundRegionInputs
+    roundAUIPCData [roundAUIPCEntry] ⟨0, 8, 8⟩ := by
+  refine ⟨⟨?_, ?_⟩, auipc_round_protocol_preparation, by decide, by decide, by decide +kernel⟩
+  · intro _ _ _ lower upper
+    dsimp only at lower upper
+    omega
+  · intro _ _ _ lower upper
+    dsimp only at lower upper
+    omega
+
+theorem auipc_round_public_empty_region :
+    UnifiedReduced.Caller.ComputedRoundRegionInputs roundAUIPCData [roundAUIPCEntry] ⟨0, 8, 8⟩ ∧
+      ∀ row ∈ roundAUIPCData.workers.windowRows 8 8,
+        ∃ round, Blake2Round.Memory.RoundMask row.assignment round :=
+  UnifiedReduced.Caller.wrapped_program_computed_round_region_soundness (by decide +kernel) (by decide +kernel)
+    roundAUIPCAccepted roundAUIPCContext roundAUIPCScope.registry roundAUIPCRegion
+
+theorem auipc_round_public_wrong_flags_rejected :
+    ¬ (∀ entry ∈ [roundAUIPCEntry],
+      entry.pc = UnifiedReduced.Caller.wrappedProgramAddress roundAUIPCData (8 - 4) →
+      entry.pc + ((0 : BitVec 20) ++ (0 : BitVec 12)) = (Delegation.Caller.HashSpan.blakeRound 1).controlStart) := by
+  intro placement
+  have wrong := placement roundAUIPCEntry (List.mem_singleton_self _) (by decide +kernel)
+  exact (by decide : (524288 : BitVec 32) ≠ 589824) wrong
+
+theorem auipc_round_public_bad_cuts_rejected :
+    (¬ UnifiedReduced.Caller.WrappedProgramComputedRoundRegionInputs roundAUIPCData [roundAUIPCEntry] ⟨0, 8, 52⟩) ∧
+    (¬ UnifiedReduced.Caller.WrappedProgramComputedRoundRegionInputs roundAUIPCData [roundAUIPCEntry] ⟨0, 12, 8⟩) ∧
+    (¬ UnifiedReduced.Caller.WrappedProgramComputedRoundRegionInputs roundAUIPCData [roundAUIPCEntry] ⟨0, 8, 10⟩) := by
+  refine ⟨fun scope => ?_, fun scope => ?_, fun scope => ?_⟩
+  · have extent := scope.extent.2
+    norm_num at extent
+  · have extent := scope.extent.1
+    norm_num at extent
+  · have aligned := scope.aligned.2
+    norm_num at aligned
+
+theorem auipc_round_global_memory :
+    UnifiedReduced.Caller.MixedMemoryInputs roundAUIPCData [roundAUIPCEntry] roundAUIPCBefore [] [524288] (cells 1) := by
+  have context : UnifiedReduced.Caller.ComputedPreparedProtocolInputs roundAUIPCData roundAUIPCBefore
+      [] [524288] (cells 1) [roundAUIPCEntry] [⟨0, 8, 8⟩] := by
+    refine ⟨roundAUIPCContext, ?_, ?_⟩
+    · intro region member
+      have same := List.mem_singleton.mp member
+      subst region
+      exact auipc_round_public_empty_region.1
+    · intro _ member; cases member
+  exact UnifiedReduced.Caller.computed_protocol_memory_soundness (by decide +kernel) (by decide +kernel)
+    roundAUIPCAccepted context
+
+theorem computed_round_region_two_bits_rejected [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {trace : UnifiedReduced.Caller.RequestTrace p} {initial : State} {ca oa : List (BitVec 32)} {domain : List Cell}
+    {program : List UnifiedReduced.ProgramEntry}
+    {region : UnifiedReduced.Caller.RoundRegion}
+    (accepted : UnifiedReduced.Caller.MixedMemoryAccepted trace program)
+    (context : UnifiedReduced.Caller.ProtocolContextInputs trace initial ca oa domain program)
+    (scope : UnifiedReduced.Caller.ComputedRoundRegionInputs trace program region)
+    {worker : Delegation.Row p} (member : worker ∈ trace.workers.windowRows region.lower region.upper)
+    {first last : Fin 10} (different : first ≠ last)
+    (firstBit : worker.assignment Blake2Round.Variables.roundBits[first] = 1)
+    (lastBit : worker.assignment Blake2Round.Variables.roundBits[last] = 1) : False := by
+  obtain ⟨round, mask⟩ := UnifiedReduced.Caller.computed_round_region_masks_soundness hp clockInverse accepted context scope worker member
+  haveI : Fact (1 < p) := ⟨(Fact.out : p.Prime).one_lt⟩
+  by_cases same : first = round
+  · have other : last ≠ round := by omega
+    have zero := mask last
+    rw [if_neg other, lastBit] at zero
+    exact one_ne_zero zero
+  · have zero := mask first
+    rw [if_neg same, firstBit] at zero
+    exact one_ne_zero zero
+
 end Tests.ControlPreparation

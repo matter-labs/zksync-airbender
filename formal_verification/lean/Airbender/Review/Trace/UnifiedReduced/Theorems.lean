@@ -10,6 +10,7 @@ import Airbender.Proofs.UnifiedReduced.ControlPreparation
 import Airbender.Proofs.UnifiedReduced.PCRelativePreparation
 import Airbender.Proofs.UnifiedReduced.PreparedHashWindows
 import Airbender.Proofs.UnifiedReduced.ComputedHashWindows
+import Airbender.Proofs.UnifiedReduced.ComputedRoundRegions
 import Airbender.Proofs.UnifiedReduced.PreparedRoundWindows
 import Airbender.Proofs.UnifiedReduced.CallerCycles
 import Airbender.Proofs.UnifiedReduced.UnissuedWorkers
@@ -762,5 +763,49 @@ theorem Caller.wrapped_program_computed_hash_sequence_soundness [Fact p.Prime] (
     (ordered : Caller.WindowsOrdered first.lower ((first :: rest).map Caller.HashWindow.interval)) :
     Caller.PreparedHashSequenceResult data before cells first rest :=
   Caller.Proofs.wrapped_program_computed_hash_sequence hp clockInverse accepted inputs scopes ordered
+
+/-- Literal or AUIPC preparation supplies the actual regional round-zero token.
+    Raw initialized matching derives every selected round mask. Earlier workers
+    remain in the prefix and global round coverage is not assumed. -/
+theorem Caller.computed_round_region_masks_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
+    {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    {region : Caller.RoundRegion}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.ProtocolContextInputs data before ca oa cells program)
+    (scope : Caller.ComputedRoundRegionInputs data program region) :
+    ∀ row ∈ data.workers.windowRows region.lower region.upper,
+      ∃ round, Blake2Round.Memory.RoundMask row.assignment round :=
+  Caller.Proofs.computed_round_region_masks hp clockInverse accepted inputs scope
+
+/-- Public modular code and a forty-tick extent derive controller shape; either
+    public preparation source and raw matching then derive its round masks. -/
+theorem Caller.wrapped_program_computed_round_region_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
+    {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    {region : Caller.RoundRegion}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.ProtocolContextInputs data before ca oa cells program)
+    (registry : Caller.WrappedSequentialProgram program)
+    (scope : Caller.WrappedProgramComputedRoundRegionInputs data program region) :
+    Caller.ComputedRoundRegionInputs data program region ∧
+      ∀ row ∈ data.workers.windowRows region.lower region.upper,
+        ∃ round, Blake2Round.Memory.RoundMask row.assignment round :=
+  Caller.Proofs.wrapped_program_computed_round_region_masks hp clockInverse accepted inputs registry scope
+
+/-- Global source-aware mask transport retains the existing explicit coverage
+    of every round worker by a prepared region, including its unissued boundary.
+    No mask or control read is supplied. Domain/setup/tables remain explicit. -/
+theorem Caller.computed_protocol_memory_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
+    {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    {regions : List Caller.RoundRegion}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.ComputedPreparedProtocolInputs data before ca oa cells program regions) :
+    Caller.MixedMemoryInputs data program before ca oa cells :=
+  Caller.Proofs.computed_protocol_memory_inputs hp clockInverse accepted inputs
 
 end Airbender.UnifiedReduced
