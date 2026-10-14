@@ -294,3 +294,30 @@ fn l1_wrap21_rejects_mismatched_profile() {
 fn l1_wrap_profile_requires_a_wrap_kind() {
     unified_prover(ExecutionKind::Unified, &[crate::ProofProfile::L1Wrap]);
 }
+
+/// The 2^21 wrap's ROM holds 2^17 words: a larger image, including one
+/// already padded to the regular 4 MiB ROM, is rejected at registration.
+#[test]
+fn wrap_image_over_512kib_is_rejected() {
+    for words in [(1 << 17) + 1, 1 << 20] {
+        let mut image = vec![0u32; words];
+        image[..2].copy_from_slice(&[0x0001_2083, 0xffdf_f06f]);
+        let panic = std::panic::catch_unwind(|| {
+            ExecutionProver::<TestBackend>::new().add_binary(
+                ExecutionKind::L1Wrap21,
+                MachineType::Reduced,
+                image.clone(),
+                image.clone(),
+                Some(32),
+                &[crate::ProofProfile::L1Wrap],
+            )
+        })
+        .err()
+        .unwrap_or_else(|| panic!("a {words}-word image was accepted"));
+        assert_eq!(
+            panic.downcast_ref::<&str>(),
+            Some(&"bytecode exceeds selected ROM"),
+            "{words} words"
+        );
+    }
+}

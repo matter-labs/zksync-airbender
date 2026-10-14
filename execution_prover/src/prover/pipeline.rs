@@ -349,6 +349,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             });
         }
         trace!("BATCH[{batch_id}] PROVER spawning REPLAY workers");
+        let rom = unified_circuit.rom();
         for worker_id in 0..replayers_count {
             let instruction_tape = binary_holder.instruction_tape.clone();
             let split_snapshot_receiver = split_snapshot_receiver.clone();
@@ -361,6 +362,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 ExecutionKind::Unrolled => run_replayer::<SplitTracingType, _, _>(
                     batch_id,
                     worker_id,
+                    rom,
                     instruction_tape,
                     split_snapshot_receiver,
                     free_trace_chunks_sender,
@@ -373,6 +375,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 | ExecutionKind::L1Wrap21 => run_replayer::<UnifiedTracingType, _, _>(
                     batch_id,
                     worker_id,
+                    rom,
                     instruction_tape,
                     unified_snapshot_receiver,
                     free_trace_chunks_sender,
