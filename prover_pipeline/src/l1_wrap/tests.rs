@@ -374,6 +374,16 @@ fn l1_bundle_rejects_truncated_whir_round() {
         ("WHIR setup oracle queries", |p| {
             p.whir_proof.setup_commitment.queries.pop();
         }),
+        ("WHIR setup oracle columns", |p| {
+            // a self-consistent two-column setup oracle
+            let setup = &mut p.whir_proof.setup_commitment;
+            setup.num_columns = 2;
+            setup.evals.push(Default::default());
+            for query in &mut setup.queries {
+                let leaf = query.leaf_values_concatenated.clone();
+                query.leaf_values_concatenated.extend(leaf);
+            }
+        }),
         ("WHIR round 4 leaf values", |p| {
             p.whir_proof.intermediate_whir_oracles[3].queries[0]
                 .leaf_values_concatenated
