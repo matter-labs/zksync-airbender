@@ -1303,4 +1303,200 @@ theorem auipc_fabricated_read_rejected :
   have absent : token ∉ forgedPCRelativeData.machine.initialMemory ++ forgedPCRelativeData.mixedSteps.map Prod.snd := by decide +kernel
   exact absent (accepted.memory.mem_iff.mpr (List.mem_append.mpr (Or.inr member)))
 
+private def hashAUIPCMode (keccak : Bool) : Fin 3 := if keccak then 2 else 0
+private def hashAUIPCSpan (keccak : Bool) : Delegation.Caller.HashSpan := if keccak then .keccak else .blakeG true
+private def hashAUIPCPC (keccak : Bool) : BitVec 32 := if keccak then 4096 else 128
+private def hashAUIPCImmediate (keccak : Bool) : BitVec 20 := if keccak then 0xfffff else 0
+private def hashAUIPCBits (keccak : Bool) : BitVec 32 := if keccak then 0xfffff517 else 0x00000617
+private def hashAUIPCEntry (keccak : Bool) : UnifiedReduced.ProgramEntry :=
+  ⟨hashAUIPCPC keccak, hashAUIPCBits keccak,
+    .UTYPE (hashAUIPCImmediate keccak, .Regidx (register (hashAUIPCMode keccak)), .AUIPC),
+    ⟨.machine, 0, 0, register (hashAUIPCMode keccak), Word.ofBitVec (hashAUIPCImmediate keccak ++ (0 : BitVec 12)), 4, 0⟩⟩
+private def hashAUIPCBefore (keccak : Bool) : State := wordWriteState initialState (hashAUIPCPC keccak).toNat (hashAUIPCBits keccak)
+private def hashAUIPCAssignment (keccak : Bool) (column : Nat) : ZMod babyBearModulus :=
+  if column = 0 then (hashAUIPCPC keccak).toNat
+  else if column = 30 then (hashAUIPCPC keccak).toNat + 4
+  else if column = 11 then 0
+  else if column = 13 then 1
+  else if column = 8 then if keccak then 61440 else 0
+  else if column = 9 then if keccak then 65535 else 0
+  else if column = 52 || column = 53 then if keccak then 1 else 0
+  else assignment (hashAUIPCMode keccak) column
+private def hashAUIPCRow (keccak : Bool) : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, hashAUIPCAssignment keccak⟩
+private def hashAUIPCData (keccak : Bool) : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
+  { data (hashAUIPCMode keccak) with machine := { (data (hashAUIPCMode keccak)).machine with
+      rows := [hashAUIPCRow keccak]
+      rom := UnifiedReduced.Setup.table (hashAUIPCBefore keccak)
+      initial := (hashAUIPCRow keccak).start
+      terminal := (hashAUIPCRow keccak).finish } }
+
+private theorem hashAUIPCCore (keccak : Bool) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (hashAUIPCAssignment keccak))
+    (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table (hashAUIPCBefore keccak))) := by
+  cases keccak <;> simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
+    Verification.environment, Expression.eval, hashAUIPCAssignment, hashAUIPCPC, hashAUIPCMode,
+    assignment, register, low, high, Lookup.Contains, Table.toRaw, fromElements]
+  all_goals repeat' apply And.intro
+  all_goals solve
+    | decide +kernel
+    | (apply Verification.range16_contains; decide +kernel)
+    | (refine ⟨(0 : Fin 2097537), ?_⟩
+       change (#v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0] : Vector (ZMod babyBearModulus) 10) =
+         (UnifiedReduced.Setup.fixedRow (0 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
+       decide +kernel)
+
+private theorem hashAUIPCClocks (keccak : Bool) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (hashAUIPCAssignment keccak)) UnifiedReduced.importedConstraintsTimestampLookups := by
+  rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
+  constructor
+  · simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.constraints]
+  · rw [List.forall_mem_iff_forall_getElem]
+    intro i bound
+    have short : i < 8 := by simpa only [UnifiedReduced.timestamp_count] using bound
+    interval_cases i
+    all_goals apply Trace.Proofs.range_contains
+    all_goals cases keccak <;> decide +kernel
+
+private theorem hashAUIPCAccepted (keccak : Bool) :
+    UnifiedReduced.Caller.MixedMemoryAccepted (hashAUIPCData keccak) [hashAUIPCEntry keccak] := by
+  constructor
+  · constructor
+    · intro current member
+      have same : current = hashAUIPCRow keccak := List.mem_singleton.mp member
+      subst current
+      exact Verification.holds_append (hashAUIPCCore keccak) (hashAUIPCClocks keccak)
+    · intro current member
+      have same : current = hashAUIPCRow keccak := List.mem_singleton.mp member
+      subst current
+      cases keccak <;> decide +kernel
+    · exact List.Perm.swap _ _ []
+    · intro _ member
+      have empty : (hashAUIPCData keccak).callers = [] := by cases keccak <;> decide +kernel
+      rw [empty] at member
+      cases member
+    · intro _ member; cases member
+    · intro _ member; cases member
+    · have empty : (hashAUIPCData keccak).calls = [] := by cases keccak <;> decide +kernel
+      rw [empty]
+      exact List.Perm.refl []
+  · intro current member _
+    have same : current = hashAUIPCRow keccak := List.mem_singleton.mp member
+    subst current
+    change ∃ i : Fin 1, (hashAUIPCRow keccak).decoderQuery = ([hashAUIPCEntry keccak].get i).query
+    exact ⟨0, by cases keccak <;> decide +kernel⟩
+  · cases keccak <;> decide +kernel
+
+private theorem hashAUIPCProgram (keccak : Bool) :
+    UnifiedReduced.Mixed.programImage (hashAUIPCBefore keccak) [hashAUIPCPC keccak] = some [hashAUIPCEntry keccak] := by
+  have bytes : (Cell.ram (hashAUIPCPC keccak)).read (hashAUIPCBefore keccak) = .ok (hashAUIPCBits keccak) (hashAUIPCBefore keccak) := by
+    cases keccak <;> exact written_word_read _ _ _
+  have decoded : Reference.Sail.run (SailRV32.Functions.encdec_backwards (hashAUIPCBits keccak)) (hashAUIPCBefore keccak) =
+      .ok (hashAUIPCEntry keccak).instruction (hashAUIPCBefore keccak) := by cases keccak <;> with_unfolding_all rfl
+  have fields : UnifiedReduced.Mixed.decoderFields (hashAUIPCEntry keccak).instruction = some (hashAUIPCEntry keccak).data := by
+    cases keccak <;> with_unfolding_all rfl
+  simp only [UnifiedReduced.Mixed.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
+    programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+  rfl
+
+private theorem hashAUIPCImage (keccak : Bool) : initialImage (hashAUIPCBefore keccak) (cells (hashAUIPCMode keccak)) =
+    some (hashAUIPCData keccak).machine.initialMemory := by
+  have control : (Cell.register (register (hashAUIPCMode keccak))).read (hashAUIPCBefore keccak) =
+      .ok 65537 (hashAUIPCBefore keccak) := by
+    cases keccak <;> apply read_register
+    all_goals simp [hashAUIPCBefore, wordWriteState, initialState, Std.ExtDHashMap.get?_insert]
+  have zero : (Cell.register 0).read (hashAUIPCBefore keccak) = .ok 0 (hashAUIPCBefore keccak) := rfl
+  simp only [initialImage, cells, List.mapM_cons, List.mapM_nil, zero, control, bind, Option.bind]
+  cases keccak <;> rfl
+
+private theorem hashAUIPCInputs (keccak : Bool) : UnifiedReduced.Caller.MixedMemoryInputs (hashAUIPCData keccak)
+    [hashAUIPCEntry keccak] (hashAUIPCBefore keccak) [] [hashAUIPCPC keccak] (cells (hashAUIPCMode keccak)) := by
+  refine ⟨⟨rfl, ?_, ?_⟩, hashAUIPCProgram keccak, hashAUIPCImage keccak, ?_, ?_, rfl, rfl, ?_⟩
+  · cases keccak <;> change 4 < timestampBase ∧ 0 < timestampBase <;> norm_num [timestampBase]
+  · cases keccak <;> decide +kernel
+  · cases keccak <;> decide +kernel
+  · intro cell member
+    simp [cells] at member
+    rcases member with rfl | rfl <;> simp [Cell.Aligned]
+  · intro _ member; cases member
+
+private theorem hashAUIPCScope (keccak : Bool) : UnifiedReduced.Caller.PCRelativePreparation (hashAUIPCData keccak)
+    [hashAUIPCEntry keccak] 8 (hashAUIPCSpan keccak).controlRegister (hashAUIPCImmediate keccak) := by
+  refine ⟨⟨?_, ?_⟩, ?_, rfl, ?_, ?_⟩
+  · intro entry member
+    have same := List.mem_singleton.mp member
+    subst entry
+    exact .sequential (.arithmetic (.auipc _ _))
+  · intro entry member
+    have same := List.mem_singleton.mp member
+    subst entry
+    cases keccak <;> decide +kernel
+  · intro entry member _
+    have same := List.mem_singleton.mp member
+    subst entry
+    cases keccak <;> rfl
+  · cases keccak <;> decide +kernel
+  · cases keccak <;> decide +kernel
+
+theorem auipc_hash_protocol_preparation (keccak : Bool) :
+    UnifiedReduced.Caller.HashControlPreparation (hashAUIPCData keccak) [hashAUIPCEntry keccak] 8 (hashAUIPCSpan keccak) := by
+  refine .pcRelative (hashAUIPCImmediate keccak) (hashAUIPCScope keccak) ?_
+  intro entry member _
+  have same := List.mem_singleton.mp member
+  subst entry
+  cases keccak <;> decide +kernel
+
+theorem auipc_hash_protocol_actual_control (keccak : Bool) :
+    UnifiedReduced.Caller.PreparedBoundaryExecution (hashAUIPCData keccak) (hashAUIPCBefore keccak)
+      (cells (hashAUIPCMode keccak)) 8 (hashAUIPCSpan keccak).controlRegister
+      (UnifiedReduced.Caller.hashPreparation (hashAUIPCSpan keccak)) :=
+  UnifiedReduced.Caller.hash_control_preparation_soundness (by decide +kernel) (by decide +kernel)
+    (by decide +kernel) (hashAUIPCAccepted keccak) (hashAUIPCInputs keccak) (auipc_hash_protocol_preparation keccak) (by decide)
+
+/-- Actual G/Keccak entry reads, canonical tokens and clock six follow from the
+    public AUIPC placements, including Keccak's wrapped PC-plus-immediate reset. -/
+theorem auipc_hash_protocol_actual_states (keccak : Bool) :
+    ∃ (tokens : List (MemoryToken babyBearModulus)) (events : List MemoryAccess) (atCut : State),
+      events.Perm (((hashAUIPCData keccak).prefixSteps 8).map transferEvent) ∧
+      SailHistory (cells (hashAUIPCMode keccak)) events (hashAUIPCBefore keccak) atCut ∧
+      (Cell.register (hashAUIPCSpan keccak).controlRegister).read (hashAUIPCBefore keccak) = .ok 65537 (hashAUIPCBefore keccak) ∧
+      (Cell.register (hashAUIPCSpan keccak).controlRegister).read atCut = .ok (hashAUIPCSpan keccak).controlStart atCut ∧
+      ∃ token ∈ tokens, token.address = (Cell.register (hashAUIPCSpan keccak).controlRegister).addressCode ∧
+        (timeOfPair token.time).value = 6 ∧ token.word = Word.ofBitVec (hashAUIPCSpan keccak).controlStart := by
+  have window := UnifiedReduced.Caller.Proofs.mixed_window_execution (lower := 8) (upper := 8)
+    (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    (hashAUIPCAccepted keccak) (hashAUIPCInputs keccak) (by decide) (by decide) (by decide) (by decide)
+  obtain ⟨tokens, _, events, _, atCut, _, permutation, _, history, _, matching, _, boundary, _⟩ := window.execution
+  obtain ⟨token, member, address, time, word⟩ := UnifiedReduced.Caller.Proofs.hash_control_preparation_token
+    (by decide +kernel) (by decide +kernel) (hashAUIPCInputs keccak).setup (hashAUIPCAccepted keccak)
+    (hashAUIPCInputs keccak).publicProgram (hashAUIPCInputs keccak).ordinaryProgram (hashAUIPCInputs keccak).initialization
+    (auipc_hash_protocol_preparation keccak) (by decide) matching
+  obtain ⟨cell, _, code, read⟩ := UnifiedReduced.Caller.Proofs.native_boundary_read boundary member
+  have same : cell = Cell.register (hashAUIPCSpan keccak).controlRegister := Trace.Proofs.cell_address_injective (code.trans address)
+  subst cell
+  have bits : token.word.toBitVec = (hashAUIPCSpan keccak).controlStart := by rw [word, Word.ofBitVec_roundtrip]
+  have initial : (Cell.register (hashAUIPCSpan keccak).controlRegister).read (hashAUIPCBefore keccak) = .ok 65537 (hashAUIPCBefore keccak) := by
+    cases keccak <;> apply read_register
+    all_goals simp [hashAUIPCBefore, wordWriteState, initialState, Std.ExtDHashMap.get?_insert]
+  exact ⟨tokens, events, atCut, permutation, history, initial, bits ▸ read, token, member, address, time, word⟩
+
+theorem auipc_hash_wrong_public_placement_rejected :
+    ¬ (∀ entry ∈ [hashAUIPCEntry false],
+      entry.pc = UnifiedReduced.Caller.wrappedProgramAddress (hashAUIPCData false) (8 - 4) →
+      entry.pc + (hashAUIPCImmediate false ++ (0 : BitVec 12)) =
+        (Delegation.Caller.HashSpan.blakeG false).controlStart) := by
+  intro placement
+  have wrong := placement (hashAUIPCEntry false) (List.mem_singleton_self _) (by decide +kernel)
+  exact (by decide : (128 : BitVec 32) ≠ 0) wrong
+
+theorem auipc_incomplete_computed_hash_span_rejected (keccak : Bool) :
+    ¬ UnifiedReduced.Caller.ComputedPreparedHashWindowInputs (hashAUIPCData keccak) (hashAUIPCBefore keccak)
+      [] [hashAUIPCPC keccak] (cells (hashAUIPCMode keccak)) [hashAUIPCEntry keccak] (hashAUIPCSpan keccak) 8 8 := by
+  intro inputs
+  have count := inputs.calls
+  cases keccak
+  · change 0 = 56 at count
+    contradiction
+  · change 0 = 649 at count
+    contradiction
+
 end Tests.ControlPreparation
