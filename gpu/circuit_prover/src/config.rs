@@ -114,7 +114,7 @@ mod tests {
                 level,
             )
             .unwrap();
-            assert_eq!(geometry(&feeder), (22, 32, 32, 2));
+            assert_eq!(geometry(&feeder), (22, 16, 16, 2));
             let wrap = prover_config(CircuitType::L1Wrap, ProofProfile::L1Wrap, level).unwrap();
             assert_eq!(geometry(&wrap), (22, 32, 8, 4));
             assert_eq!(wrap.security_level, level);

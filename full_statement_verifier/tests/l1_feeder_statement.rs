@@ -12,7 +12,7 @@ use verifier_common::prover::definitions::DEFAULT_CAP_SIZE;
 #[test]
 fn feeder_verifier_geometry() {
     assert_eq!(feeder::TRACE_LEN_LOG2, 22);
-    assert_eq!(feeder::CAP_SIZE, 32);
+    assert_eq!(feeder::CAP_SIZE, 16);
     assert_eq!(
         feeder::INIT_AND_TEARDOWN_SETS,
         standard::INIT_AND_TEARDOWN_SETS
