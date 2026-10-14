@@ -8,18 +8,18 @@ open Sail SailRV32 SailRV32.Functions Human
 namespace Slop.Equiv
 set_option maxHeartbeats 0
 
-theorem dec_sb (w : BitVec 32) (σ : FState) (hs : Airbender.Sys σ) (h0 : Bits w 0 7 35) (h1 : Bits w 12 3 0) :
-    runF (ext_decode w) σ = .ok (Airbender.toSail (.store 1 (w.extractLsb' 20 5) (w.extractLsb' 15 5) ((w.extractLsb' 25 7 ++ w.extractLsb' 7 5).signExtend 32))) σ := by
+theorem dec_sb (w : BitVec 32) (σ : SailState) (hs : Airbender.Configured σ) (h0 : Bits w 0 7 35) (h1 : Bits w 12 3 0) :
+    runSail (ext_decode w) σ = .ok (Airbender.toSail (.store 1 (w.extractLsb' 20 5) (w.extractLsb' 15 5) ((w.extractLsb' 25 7 ++ w.extractLsb' 7 5).signExtend 32))) σ := by
   walk_decoder hs
   close_row
 
-theorem dec_sh (w : BitVec 32) (σ : FState) (hs : Airbender.Sys σ) (h0 : Bits w 0 7 35) (h1 : Bits w 12 3 1) :
-    runF (ext_decode w) σ = .ok (Airbender.toSail (.store 2 (w.extractLsb' 20 5) (w.extractLsb' 15 5) ((w.extractLsb' 25 7 ++ w.extractLsb' 7 5).signExtend 32))) σ := by
+theorem dec_sh (w : BitVec 32) (σ : SailState) (hs : Airbender.Configured σ) (h0 : Bits w 0 7 35) (h1 : Bits w 12 3 1) :
+    runSail (ext_decode w) σ = .ok (Airbender.toSail (.store 2 (w.extractLsb' 20 5) (w.extractLsb' 15 5) ((w.extractLsb' 25 7 ++ w.extractLsb' 7 5).signExtend 32))) σ := by
   walk_decoder hs
   close_row
 
-theorem dec_sw (w : BitVec 32) (σ : FState) (hs : Airbender.Sys σ) (h0 : Bits w 0 7 35) (h1 : Bits w 12 3 2) :
-    runF (ext_decode w) σ = .ok (Airbender.toSail (.store 4 (w.extractLsb' 20 5) (w.extractLsb' 15 5) ((w.extractLsb' 25 7 ++ w.extractLsb' 7 5).signExtend 32))) σ := by
+theorem dec_sw (w : BitVec 32) (σ : SailState) (hs : Airbender.Configured σ) (h0 : Bits w 0 7 35) (h1 : Bits w 12 3 2) :
+    runSail (ext_decode w) σ = .ok (Airbender.toSail (.store 4 (w.extractLsb' 20 5) (w.extractLsb' 15 5) ((w.extractLsb' 25 7 ++ w.extractLsb' 7 5).signExtend 32))) σ := by
   walk_decoder hs
   close_row
 

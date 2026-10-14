@@ -10,7 +10,7 @@ namespace Slop.Equiv
 set_option maxHeartbeats 0
 
 /-- Runs of our spec are runs of the Airbender machine. -/
-theorem run_agree : ∀ (n : Nat) (s s' : RV.State) (σ : FState), Airbender.Agree s σ → RV.run n s = some s' →
+theorem run_agree : ∀ (n : Nat) (s s' : RV.State) (σ : SailState), Airbender.Agree s σ → RV.run n s = some s' →
     ∃ σ', Airbender.run n σ = some σ' ∧ Airbender.Agree s' σ'
   | 0, s, s', σ, h, hr => by
     simp only [RV.run, Option.some.injEq] at hr; subst hr; exact ⟨σ, rfl, h⟩
@@ -21,10 +21,10 @@ theorem run_agree : ∀ (n : Nat) (s s' : RV.State) (σ : FState), Airbender.Agr
     exact ⟨σ', by simp only [Airbender.run, hσ1, Option.bind_some, hσ'], h'⟩
 
 /-- Our view of an Airbender state. -/
-noncomputable def ofSail (σ : FState) : RV.State :=
-  { pc := σ.regs .PC, regFile := fun i => Airbender.reg σ i, mem := fun a => σ.mem a.toNat }
+noncomputable def ofSail (σ : SailState) : RV.State :=
+  { pc := σ.regs .PC, regFile := fun i => Airbender.getReg σ i, mem := fun a => σ.mem a.toNat }
 
-theorem agree_ofSail (σ : FState) (hs : Airbender.Sys σ) : Airbender.Agree (ofSail σ) σ := by
+theorem agree_ofSail (σ : SailState) (hs : Airbender.Configured σ) : Airbender.Agree (ofSail σ) σ := by
   refine ⟨hs, rfl, ?_, fun _ => rfl⟩
   intro i
   simp only [RV.State.getReg, ofSail]
@@ -46,7 +46,7 @@ theorem program_correct_airbender : Airbender.ProgramCorrect := by
     rw [e]; exact hin
   obtain ⟨n, s', hr, hpc', h10, h11a, h11b, hk⟩ := RV.program_correct (ofSail σ) x hpc himg' hin' hx
   obtain ⟨σ', hσ', hA'⟩ := run_agree n _ s' σ hA hr
-  have hreg : ∀ i, Airbender.reg σ' i = s'.getReg i := hA'.2.2.1
+  have hreg : ∀ i, Airbender.getReg σ' i = s'.getReg i := hA'.2.2.1
   refine ⟨n, σ', hσ', hA'.2.1.trans hpc', (hreg 10).trans h10, ?_, ?_, ?_⟩
   · rw [hreg]; exact h11a
   · rw [hreg]; exact h11b

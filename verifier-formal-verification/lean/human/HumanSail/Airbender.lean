@@ -45,10 +45,10 @@ def memoryMap : List PMA_Region :=
 
 /-- Sail's own initialisation and reset (all registers at their defaults, memory 0). -/
 noncomputable def initResult :=
-  runF (do sail_model_init (); init_model "") { regs := fun r => by cases r <;> exact default, mem := fun _ => 0 }
+  runSail (do sail_model_init (); init_model "") { regs := fun r => by cases r <;> exact default, mem := fun _ => 0 }
 
 /-- The state after reset, with Airbender's `misa` and memory map. -/
-noncomputable def stInit : FState :=
+noncomputable def resetState : SailState :=
   let s := match initResult with | .ok _ s => s | .error _ s => s
   (s.set .misa misa).set .pma_regions memoryMap
 
@@ -61,7 +61,7 @@ def Volatile : Register → Bool
 
 /-- A state of the Airbender machine: every other register (privilege, `misa`, `mstatus`, memory map, …)
 is as after reset. -/
-def Sys (s : FState) : Prop := ∀ r, Volatile r = false → s.regs r = stInit.regs r
+def Configured (s : SailState) : Prop := ∀ r, Volatile r = false → s.regs r = resetState.regs r
 
 /-! ## The Sail model as generated
 
@@ -127,7 +127,7 @@ noncomputable def execute (i : instruction) : SailM ExecutionResult :=
 /-- One step, the way Sail's own `run_hart_active` + `try_step` run a 32-bit instruction: fetch, decode,
 `nextPC := PC + 4`, execute, `PC := nextPC`. Anything else is not a step of Airbender (`none`): a fetch fault,
 a word outside the table, or any trap (misaligned or out-of-range access, write to ROM, …). -/
-noncomputable def step (s : FState) : Option FState :=
+noncomputable def step (s : SailState) : Option SailState :=
   let run : SailM Bool := do
     let .F_Base w ← fetch () | pure false
     let some i := decode w | pure false
@@ -137,7 +137,7 @@ noncomputable def step (s : FState) : Option FState :=
     else                                                          --   (no compressed instructions)
       tick_pc ()
       pure true
-  match runF run s with
+  match runSail run s with
   | .ok true s' => some s'
   | _ => none
 

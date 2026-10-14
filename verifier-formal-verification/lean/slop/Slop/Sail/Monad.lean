@@ -2,7 +2,7 @@ import Slop.Sail.Config
 import Slop.Sail.Contract
 import Human.Spec
 
-/-! Simp lemmas describing how `Human.runF` interprets the basic `SailM` operations. -/
+/-! Simp lemmas describing how `Human.runSail` interprets the basic `SailM` operations. -/
 
 open Sail Sail.ArchSem SailRV32 SailRV32.Functions Human
 
@@ -27,51 +27,51 @@ theorem liftM_bind_run {Eff : Type} [Effect Eff] {ε σ α β : Type}
     | ok r s' => exact ih r s'
     | error e s' => rfl
 
-@[simp] theorem runF_pure {α : Type} (a : α) (s : FState) :
-    runF (pure a : SailM α) s = .ok a s := by
-  unfold runF
+@[simp] theorem runF_pure {α : Type} (a : α) (s : SailState) :
+    runSail (pure a : SailM α) s = .ok a s := by
+  unfold runSail
   rfl
 
 /--  unfolded: the interpreter is the same lambda, here written out once. -/
-theorem runF_def {α : Type} (m : SailM α) (s : FState) :
-    runF m s = (FreeM.liftM (fun
+theorem runF_def {α : Type} (m : SailM α) (s : SailState) :
+    runSail m s = (FreeM.liftM (fun
         | .inl (.error err) => throw err
-        | .inl (.ok eff) => interpEff eff
+        | .inl (.ok eff) => applyEffect eff
         | .inr (n : Nat) => if h : 0 < n then pure (⟨0, h⟩ : Fin n) else throw Error.Unreachable) m : FM α).run s :=
   rfl
 
-theorem runF_bind_ok {α β : Type} (m : SailM α) (f : α → SailM β) (s s' : FState) (a : α)
-    (h : runF m s = .ok a s') : runF (m >>= f) s = runF (f a) s' := by
+theorem runF_bind_ok {α β : Type} (m : SailM α) (f : α → SailM β) (s s' : SailState) (a : α)
+    (h : runSail m s = .ok a s') : runSail (m >>= f) s = runSail (f a) s' := by
   simp only [runF_def] at h ⊢
   rw [show (m >>= f) = FreeM.bind m f from rfl, liftM_bind_run, h]
 
-theorem runF_bind_error {α β : Type} (m : SailM α) (f : α → SailM β) (s s' : FState)
-    (e : Sail.Error exception) (h : runF m s = .error e s') : runF (m >>= f) s = .error e s' := by
+theorem runF_bind_error {α β : Type} (m : SailM α) (f : α → SailM β) (s s' : SailState)
+    (e : Sail.Error exception) (h : runSail m s = .error e s') : runSail (m >>= f) s = .error e s' := by
   simp only [runF_def] at h ⊢
   rw [show (m >>= f) = FreeM.bind m f from rfl, liftM_bind_run, h]
 
-@[simp] theorem runF_bind {α β : Type} (m : SailM α) (f : α → SailM β) (s : FState) :
-    runF (m >>= f) s = match runF m s with
-      | .ok a s' => runF (f a) s'
+@[simp] theorem runF_bind {α β : Type} (m : SailM α) (f : α → SailM β) (s : SailState) :
+    runSail (m >>= f) s = match runSail m s with
+      | .ok a s' => runSail (f a) s'
       | .error e s' => .error e s' := by
-  cases h : runF m s with
+  cases h : runSail m s with
   | ok a s' => rw [runF_bind_ok m f s s' a h]
   | error e s' => rw [runF_bind_error m f s s' e h]
 
-@[simp] theorem runF_readReg (r : Register) (s : FState) :
-    runF (readReg r) s = .ok (s.regs r) s := by
-  unfold runF
+@[simp] theorem runF_readReg (r : Register) (s : SailState) :
+    runSail (readReg r) s = .ok (s.regs r) s := by
+  unfold runSail
   rfl
 
-@[simp] theorem runF_writeReg (r : Register) (v : RegisterType r) (s : FState) :
-    runF (writeReg r v) s =
+@[simp] theorem runF_writeReg (r : Register) (v : RegisterType r) (s : SailState) :
+    runSail (writeReg r v) s =
       .ok () (s.set r v) := by
-  unfold runF
+  unfold runSail
   rfl
 
-@[simp] theorem runF_throw {α : Type} (e : Sail.Error exception) (s : FState) :
-    runF (throw e : SailM α) s = .error e s := by
-  unfold runF
+@[simp] theorem runF_throw {α : Type} (e : Sail.Error exception) (s : SailState) :
+    runSail (throw e : SailM α) s = .error e s := by
+  unfold runSail
   rfl
 
 end Slop

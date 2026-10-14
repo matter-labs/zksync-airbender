@@ -8,7 +8,7 @@ open Sail SailRV32 SailRV32.Functions Human
 namespace Slop.Equiv
 set_option maxHeartbeats 0
 
-variable {s t : RV.State} {σ : FState}
+variable {s t : RV.State} {σ : SailState}
 
 /-- The loaded value, Sail's way = ours. -/
 theorem load_val (σm : Nat → BitVec 8) (sm : BitVec 32 → BitVec 8) (hm : ∀ b : BitVec 32, σm b.toNat = sm b)

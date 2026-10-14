@@ -4,10 +4,10 @@ import Slop.Equiv.Regs
 import Slop.Equiv.NormAttr
 import Slop.Sail.KernelRfl
 
-/-! `sail_run hs`: walk a goal `runF M σ = r` through Sail code on an Airbender state (`hs : Sys σ`).
+/-! `sail_run hs`: walk a goal `runSail M σ = r` through Sail code on an Airbender state (`hs : Configured σ`).
 At each step it first tries to evaluate the whole rest in the kernel (`oracle_run`: fixed registers only);
 otherwise it takes one step at the head: `pure`/bind/`if` with a closed condition, register reads and writes
-(the `Sys` proof is carried across writes to volatile registers), `currentlyEnabled`, `SailME.run`, or unfolding
+(the `Configured` proof is carried across writes to volatile registers), `currentlyEnabled`, `SailME.run`, or unfolding
 a definition. It stops at anything it cannot decide (typically a condition on a symbolic address), leaving that
 goal; prove that condition and call it again. -/
 
@@ -16,15 +16,15 @@ open Sail Sail.ArchSem SailRV32 SailRV32.Functions Human
 
 namespace Slop.Equiv
 
-theorem oracle_run_eq {α : Type} {σ : FState} (hs : Airbender.Sys σ) (m : SailM α) (a : α) {r}
-    (h : runOracle knownDemo (fun _ => none) m = some a) (hr : EStateM.Result.ok a σ = r) : runF m σ = r := by
+theorem oracle_run_eq {α : Type} {σ : SailState} (hs : Airbender.Configured σ) (m : SailM α) (a : α) {r}
+    (h : runOracle knownDemo (fun _ => none) m = some a) (hr : EStateM.Result.ok a σ = r) : runSail m σ = r := by
   rw [oracle_run hs m a h]; exact hr
 
-theorem run_pure_eq {α : Type} (a : α) (σ : FState) {r} (h : EStateM.Result.ok a σ = r) :
-    runF (pure a : SailM α) σ = r := by rw [Slop.runF_pure]; exact h
+theorem run_pure_eq {α : Type} (a : α) (σ : SailState) {r} (h : EStateM.Result.ok a σ = r) :
+    runSail (pure a : SailM α) σ = r := by rw [Slop.runF_pure]; exact h
 
-theorem run_congr {α : Type} {m m' : SailM α} (h : m = m') (σ : FState) {r} (h' : runF m' σ = r) :
-    runF m σ = r := by subst h; exact h'
+theorem run_congr {α : Type} {m m' : SailM α} (h : m = m') (σ : SailState) {r} (h' : runSail m' σ = r) :
+    runSail m σ = r := by subst h; exact h'
 
 theorem me_run_bind_ite_true {α β : Type} {G : Bool} {A B : SailME β α} (f : α → SailME β β) (hG : G = true) :
     PreSail.PreSailME.run ((if G = true then A else B) >>= f) = PreSail.PreSailME.run (A >>= f) := by subst hG; rfl
@@ -35,39 +35,39 @@ theorem me_run_ite_true' {β : Type} {G : Bool} {A B : SailME β β} (hG : G = t
 theorem me_run_ite_false' {β : Type} {G : Bool} {A B : SailME β β} (hG : G = false) :
     PreSail.PreSailME.run (if G = true then A else B) = PreSail.PreSailME.run B := by subst hG; rfl
 
-theorem run_bind_ok2 {α β : Type} (m : SailM α) (f : α → SailM β) (σ σ' : FState) (a : α) {r}
-    (hm : runF m σ = .ok a σ') (h : runF (f a) σ' = r) : runF (m >>= f) σ = r := by
+theorem run_bind_ok2 {α β : Type} (m : SailM α) (f : α → SailM β) (σ σ' : SailState) (a : α) {r}
+    (hm : runSail m σ = .ok a σ') (h : runSail (f a) σ' = r) : runSail (m >>= f) σ = r := by
   rw [Slop.runF_bind_ok m f σ σ' a hm]; exact h
 
-theorem sys_xset {σ : FState} (hs : Airbender.Sys σ) (i : BitVec 5) (v : BitVec 32) : Airbender.Sys (xset σ i v) := by
+theorem sys_xset {σ : SailState} (hs : Airbender.Configured σ) (i : BitVec 5) (v : BitVec 32) : Airbender.Configured (xset σ i v) := by
   intro r hr
   rw [xset_regs σ i v r (by refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_,
     ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> (intro h; subst h; simp [Airbender.Volatile] at hr))]
   exact hs r hr
 
-theorem sys_of_regs {σ σ' : FState} (hs : Airbender.Sys σ) (h : σ'.regs = σ.regs) : Airbender.Sys σ' := by
+theorem sys_of_regs {σ σ' : SailState} (hs : Airbender.Configured σ) (h : σ'.regs = σ.regs) : Airbender.Configured σ' := by
   intro r hr; rw [h]; exact hs r hr
 
 theorem run_memRead_bind {β γ : Type} (req : MemRequest)
-    (cont : InstructionEffect.ret (.memRead req) → SailM γ) (f : γ → SailM β) (σ : FState) {r}
-    (h : runF (cont (.ok (readBytes σ.mem req.address.toNat req.size, 0#req.numTag)) >>= f) σ = r) :
-    runF (FreeM.impure (.inl (.ok (.memRead req))) cont >>= f) σ = r := h
+    (cont : InstructionEffect.ret (.memRead req) → SailM γ) (f : γ → SailM β) (σ : SailState) {r}
+    (h : runSail (cont (.ok (readBytes σ.mem req.address.toNat req.size, 0#req.numTag)) >>= f) σ = r) :
+    runSail (FreeM.impure (.inl (.ok (.memRead req))) cont >>= f) σ = r := h
 
 /-- Reading a register that is as after reset, whose reset value `v` is known. -/
-theorem run_readReg_bind_sys {β : Type} {σ : FState} (hs : Airbender.Sys σ) (r : Register)
-    (hv : Airbender.Volatile r = false) (v : RegisterType r) (hr : Airbender.stInit.regs r = v)
-    (f : RegisterType r → SailM β) {res} (h : runF (f v) σ = res) : runF (readReg r >>= f) σ = res := by
+theorem run_readReg_bind_sys {β : Type} {σ : SailState} (hs : Airbender.Configured σ) (r : Register)
+    (hv : Airbender.Volatile r = false) (v : RegisterType r) (hr : Airbender.resetState.regs r = v)
+    (f : RegisterType r → SailM β) {res} (h : runSail (f v) σ = res) : runSail (readReg r >>= f) σ = res := by
   rw [Slop.runF_bind, Slop.runF_readReg, hs r hv, hr]; exact h
 
 theorem run_memWrite_bind {β γ : Type} (req : MemRequest) (v : BitVec (8 * req.size)) (tags : BitVec req.numTag)
-    (cont : InstructionEffect.ret (.memWrite req v tags) → SailM γ) (f : γ → SailM β) (σ : FState) {r}
-    (h : runF (cont (.ok ()) >>= f) { σ with mem := Human.writeBytes σ.mem req.address.toNat req.size v } = r) :
-    runF (FreeM.impure (.inl (.ok (.memWrite req v tags))) cont >>= f) σ = r := h
+    (cont : InstructionEffect.ret (.memWrite req v tags) → SailM γ) (f : γ → SailM β) (σ : SailState) {r}
+    (h : runSail (cont (.ok ()) >>= f) { σ with mem := Human.writeBytes σ.mem req.address.toNat req.size v } = r) :
+    runSail (FreeM.impure (.inl (.ok (.memWrite req v tags))) cont >>= f) σ = r := h
 
 theorem run_memWriteAnnounce_bind {β γ : Type} (req : MemRequest)
-    (cont : InstructionEffect.ret (.memWriteAnnounce req) → SailM γ) (f : γ → SailM β) (σ : FState) {r}
-    (h : runF (cont () >>= f) σ = r) :
-    runF (FreeM.impure (.inl (.ok (.memWriteAnnounce req))) cont >>= f) σ = r := h
+    (cont : InstructionEffect.ret (.memWriteAnnounce req) → SailM γ) (f : γ → SailM β) (σ : SailState) {r}
+    (h : runSail (cont () >>= f) σ = r) :
+    runSail (FreeM.impure (.inl (.ok (.memWriteAnnounce req))) cont >>= f) σ = r := h
 
 /-- `runOracle knownDemo (no memory) m = some v`, proven by the kernel, if the kernel computes it. -/
 initialize oracleMs : IO.Ref Nat ← IO.mkRef 0
@@ -135,7 +135,7 @@ def closedBool (side : Option Syntax) (G : Expr) : MetaM (Option (Bool × Expr))
   logInfo m!"sail_run: undecided condition{indentExpr G}"
   return none
 
-/-- Rewrite the program in the goal `runF M σ = r` by `h : M = M'`. -/
+/-- Rewrite the program in the goal `runSail M σ = r` by `h : M = M'`. -/
 def rewriteProg (g : MVarId) (M M' σ r h : Expr) : MetaM MVarId := g.withContext do
   step1 g ``run_congr #[none, M, M', h, σ, r]
 
@@ -163,14 +163,14 @@ def proveSide (side : Option Syntax) (p : Expr) : MetaM (Option Expr) := do
 /-- Normalize an action with the `sail_norm` simp set: `(m', proof m = m')`. -/
 def normAction (m : Expr) : MetaM (Option (Expr × Expr)) := normExpr m
 
-/-- Apply a proven layer lemma `∀ …, hyps → runF pat σ = .ok v σ'` to the action `m` at state `σ`:
-`(v, σ', proof of runF m σ = .ok v σ')`. Hypotheses: `Sys` by `hs`, others by the side tactic. -/
+/-- Apply a proven layer lemma `∀ …, hyps → runSail pat σ = .ok v σ'` to the action `m` at state `σ`:
+`(v, σ', proof of runSail m σ = .ok v σ')`. Hypotheses: `Configured` by `hs`, others by the side tactic. -/
 def applyLayer (side : Option Syntax) (hs : Expr) (lem : Expr) (m σ : Expr) :
     MetaM (Option (Expr × Expr × Expr)) := do
   let ty ← inferType lem
   let (args, _, concl) ← forallMetaTelescopeReducing ty
   let some (_, lhs, rhs) := concl.eq? | return none
-  unless lhs.isAppOfArity ``runF 3 do return none
+  unless lhs.isAppOfArity ``runSail 3 do return none
   -- cheap filter: same head function as the lemma's program
   unless (lhs.getArg! 1).getAppFn.constName? == m.getAppFn.constName? do return none
   unless ← withReducible (isDefEq (lhs.getArg! 1) m) do
@@ -182,7 +182,7 @@ def applyLayer (side : Option Syntax) (hs : Expr) (lem : Expr) (m σ : Expr) :
   for a in args do
     if (← instantiateMVars a).isMVar then
       let aty ← instantiateMVars (← inferType a)
-      if aty.isAppOf ``Airbender.Sys then
+      if aty.isAppOf ``Airbender.Configured then
         unless ← isDefEq a hs do return none
       else if (← isProp aty) then
         let some p ← proveSide side aty | return none
@@ -236,8 +236,8 @@ def meStep (side : Option Syntax) (X0 : Expr) : MetaM (Option (Expr × Expr)) :=
   logInfo m!"meStep: stuck at {X.getAppFn} ({X.getAppNumArgs} args){inner}"
   return none
 
-theorem run_congr_bind {α β : Type} {m m' : SailM α} (h : m = m') (f : α → SailM β) (σ : FState) {r}
-    (h' : runF (m' >>= f) σ = r) : runF (m >>= f) σ = r := by subst h; exact h'
+theorem run_congr_bind {α β : Type} {m m' : SailM α} (h : m = m') (f : α → SailM β) (σ : SailState) {r}
+    (h' : runSail (m' >>= f) σ = r) : runSail (m >>= f) σ = r := by subst h; exact h'
 
 partial def sailRunLoop (side : Option Syntax) (lemmas : Array Expr) (g0 : MVarId) (hs0 : Expr) (fuel : Nat)
     (wholeRest : Bool := true) : MetaM (MVarId × Expr × String) := do
@@ -249,12 +249,12 @@ partial def sailRunLoop (side : Option Syntax) (lemmas : Array Expr) (g0 : MVarI
   for _ in [0:fuel] do
     let (M, σ, r) ← g.withContext (splitGoal g)
     let M ← whnfC M
-    g ← g.replaceTargetDefEq (← g.withContext (mkEq (← mkAppM ``runF #[M, σ]) r))
+    g ← g.replaceTargetDefEq (← g.withContext (mkEq (← mkAppM ``runSail #[M, σ]) r))
     if M.isAppOfArity ``Pure.pure 4 then
       g ← g.withContext (step1 g ``run_pure_eq #[none, M.getArg! 3, σ, r])
       return (g, hs, "done (pure)")
     -- 1. the whole rest, by the kernel (never while the reset state is mentioned: it would be re-evaluated)
-    if wholeRest && wait == 0 && !M.containsConst (· == ``Airbender.stInit) then
+    if wholeRest && wait == 0 && !M.containsConst (· == ``Airbender.resetState) then
       if let some (v, pf) ← g.withContext (oracleValue M) then
         g ← g.withContext (step1 g ``oracle_run_eq #[none, σ, hs, M, v, r, pf])
         return (g, hs, "done (kernel)")
@@ -304,9 +304,9 @@ partial def sailRunLoop (side : Option Syntax) (lemmas : Array Expr) (g0 : MVarI
         let reg := m'.appArg!
         -- a register as after reset with a `sail_norm` value (e.g. the privilege is `Machine`): use the value
         let known ← g.withContext do
-          let r0 ← mkAppM ``Human.FState.regs #[mkConst ``Airbender.stInit, reg]
+          let r0 ← mkAppM ``Human.SailState.regs #[mkConst ``Airbender.resetState, reg]
           let some (v, hr) ← normExpr r0 | return none
-          if v.containsConst (· == ``Airbender.stInit) then return none
+          if v.containsConst (· == ``Airbender.resetState) then return none
           let hv ← try kernelDecide (← mkEq (← mkAppM ``Airbender.Volatile #[reg]) (toExpr false)) catch _ => return none
           return some (v, hv, hr)
         if let some (v, hv, hr) := known then
@@ -318,7 +318,7 @@ partial def sailRunLoop (side : Option Syntax) (lemmas : Array Expr) (g0 : MVarI
         hs ← g.withContext (mkAppM ``sys_set #[hs, reg, v, hv])
         g ← g.withContext (step1 g ``run_writeReg_bind #[none, reg, v, f, σ, r]); continue
       -- arguments mentioning the reset state: rewrite them first (e.g. its privilege is `Machine`)
-      if m'.containsConst (· == ``Airbender.stInit) then
+      if m'.containsConst (· == ``Airbender.resetState) then
         match ← g.withContext (normAction m') with
         | some (m2, h) =>
           g ← g.withContext (step1 g ``run_congr_bind #[none, none, m', m2, h, f, σ, r]); continue
@@ -342,11 +342,11 @@ partial def sailRunLoop (side : Option Syntax) (lemmas : Array Expr) (g0 : MVarI
           -- registers unchanged: still an Airbender state
           let σ' ← g.withContext do
             let addr ← mkAppM ``BitVec.toNat #[← mkAppM ``MemRequest.address #[req]]
-            let mem ← mkAppM ``Human.writeBytes #[← mkAppM ``Human.FState.mem #[σ], addr, ← mkAppM ``MemRequest.size #[req], v]
-            mkAppM ``Human.FState.mk #[← mkAppM ``Human.FState.regs #[σ], mem]
+            let mem ← mkAppM ``Human.writeBytes #[← mkAppM ``Human.SailState.mem #[σ], addr, ← mkAppM ``MemRequest.size #[req], v]
+            mkAppM ``Human.SailState.mk #[← mkAppM ``Human.SailState.regs #[σ], mem]
           hs ← g.withContext do
-            let lhs ← mkAppM ``Human.FState.regs #[σ']
-            let rhs ← mkAppM ``Human.FState.regs #[σ]
+            let lhs ← mkAppM ``Human.SailState.regs #[σ']
+            let rhs ← mkAppM ``Human.SailState.regs #[σ]
             mkAppM ``sys_of_regs #[hs, ← mkExpectedTypeHint (← mkEqRefl rhs) (← mkEq lhs rhs)]
           g ← g.withContext (step1 g ``run_memWrite_bind #[none, none, req, v, tags, m'.appArg!, f, σ, r]); continue
       let mut usedLemma := false
@@ -354,8 +354,8 @@ partial def sailRunLoop (side : Option Syntax) (lemmas : Array Expr) (g0 : MVarI
         if let some (v, σ', hm) ← g.withContext (applyLayer side hs lem m' σ) then
           if !(← g.withContext (isDefEq σ' σ)) then
             let regsEq ← g.withContext do
-              let lhs ← mkAppM ``Human.FState.regs #[σ']
-              let rhs ← mkAppM ``Human.FState.regs #[σ]
+              let lhs ← mkAppM ``Human.SailState.regs #[σ']
+              let rhs ← mkAppM ``Human.SailState.regs #[σ]
               mkExpectedTypeHint (← mkEqRefl rhs) (← mkEq lhs rhs)
             hs ← g.withContext (mkAppM ``sys_of_regs #[hs, regsEq])
           g ← g.withContext (step1 g ``run_bind_ok2 #[none, none, m', f, σ, σ', v, r, hm])
@@ -371,16 +371,16 @@ partial def sailRunLoop (side : Option Syntax) (lemmas : Array Expr) (g0 : MVarI
           if let some (m2, h) ← g.withContext (normAction m') then
             g ← g.withContext (step1 g ``run_congr_bind #[none, none, m', m2, h, f, σ, r]); continue
       -- stepwise: only closed actions go to the kernel (symbolic ones can take minutes there)
-      if !m'.containsConst (· == ``Airbender.stInit) && (wholeRest || !m'.hasFVar) then
+      if !m'.containsConst (· == ``Airbender.resetState) && (wholeRest || !m'.hasFVar) then
        if let some (v, pf) ← g.withContext (oracleValue m') then
         let hm ← g.withContext (mkAppM ``oracle_run #[hs, m', v, pf])
         g ← g.withContext (step1 g ``run_bind_ok #[none, none, m', f, σ, v, r, hm]); continue
       if let some m'' ← delta? m' (fun _ => true) then
         let M' := mkAppN M.getAppFn (M.getAppArgs.set! 4 m'')
-        g ← g.replaceTargetDefEq (← g.withContext (mkEq (← mkAppM ``runF #[M', σ]) r)); continue
+        g ← g.replaceTargetDefEq (← g.withContext (mkEq (← mkAppM ``runSail #[M', σ]) r)); continue
       return (g, hs, "stopped at an action")
     if let some M' ← delta? M (fun _ => true) then
-      g ← g.replaceTargetDefEq (← g.withContext (mkEq (← mkAppM ``runF #[M', σ]) r)); continue
+      g ← g.replaceTargetDefEq (← g.withContext (mkEq (← mkAppM ``runSail #[M', σ]) r)); continue
     return (g, hs, "stopped")
   return (g, hs, "out of fuel")
 

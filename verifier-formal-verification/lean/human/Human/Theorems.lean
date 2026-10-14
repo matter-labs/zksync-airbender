@@ -9,6 +9,7 @@ The proof is `RV.program_correct` in `slop/Slop/RV/Final.lean`; `verify.sh` chec
 `RV.ProgramCorrect` and uses only Lean's standard axioms. -/
 
 namespace RV
+open ABI
 
 /-- The flat binary `build/app.bin` (= `Image.bytes`) is in memory from address 0. -/
 def ImageLoaded (s : State) : Prop :=
@@ -19,11 +20,13 @@ def ImageLoaded (s : State) : Prop :=
 `u32 ≤ P`, Airbender's representation), and stays there: any number of further steps keeps the PC at
 `_halt` and every register unchanged (Airbender reads the outputs some steps later). -/
 def ProgramCorrect : Prop :=
-  ∀ (s : State) (x : Word), s.pc = 0 → ImageLoaded s → read s.mem (BitVec.ofNat 32 Image.INPUT) 4 = x →
-    x.toNat ≤ Spec.P →
-    ∃ n s', run n s = some s' ∧ s'.pc = BitVec.ofNat 32 Image.halt ∧
-      s'.getReg 10 = Spec.combine x ∧
-      (s'.getReg 11).toNat ≤ Spec.P ∧ ((s'.getReg 11).toNat : ZMod Spec.P) = Spec.poly (x.toNat : ZMod Spec.P) ∧
-      ∀ k, ∃ s'', run k s' = some s'' ∧ s''.pc = s'.pc ∧ ∀ i, s''.getReg i = s'.getReg i
+  ∀ (start : State) (x : Word), start.pc = 0 → ImageLoaded start →
+    read start.mem (BitVec.ofNat 32 Image.INPUT) 4 = x → x.toNat ≤ Spec.P →
+    ∃ numSteps final, run numSteps start = some final ∧ final.pc = BitVec.ofNat 32 Image.halt ∧
+      final.getReg a0 = Spec.combine x ∧
+      (final.getReg a1).toNat ≤ Spec.P ∧
+      ((final.getReg a1).toNat : ZMod Spec.P) = Spec.poly (x.toNat : ZMod Spec.P) ∧
+      ∀ moreSteps, ∃ later, run moreSteps final = some later ∧ later.pc = final.pc ∧
+        ∀ i, later.getReg i = final.getReg i
 
 end RV

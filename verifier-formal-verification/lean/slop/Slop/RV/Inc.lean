@@ -3,7 +3,7 @@ import Slop.RV.Code.inc
 
 namespace RV
 
-theorem inc_impl : Implements Code.inc 16 (fn₁ (· + 1)) := by
+theorem inc_impl : Implements Code.inc 16 (mapsA0 (· + 1)) := by
   intro s hcall
   rv_start Code.inc hcall
   rv_steps 9

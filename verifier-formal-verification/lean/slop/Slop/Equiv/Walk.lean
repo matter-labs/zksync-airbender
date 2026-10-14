@@ -7,7 +7,7 @@ import Slop.Equiv.Hints
 * a clause whose guard is false (decided from the known bits, `Slice.lean`) is skipped: by `run_ite_false`, the
   clause is `pure none >>= jp`, i.e. the rest of the chain;
 * `currentlyEnabled X` is answered once per extension by a closed kernel computation (`en_run`, valid on every
-  `Sys` state);
+  `Configured` state);
 * it stops at the first clause whose guard is true, leaving that clause's body as the goal.
 Each step looks only at the head of the goal and at one guard, so a walk costs the same per clause however long
 the decoder is. -/
@@ -17,48 +17,48 @@ open Sail SailRV32 SailRV32.Functions Human
 
 namespace Slop.Equiv
 
-theorem run_ite_false {α : Type} {G : Bool} {A B : SailM α} {σ : FState} {r} (hG : G = false)
-    (h : runF B σ = r) : runF (if G = true then A else B) σ = r := by
+theorem run_ite_false {α : Type} {G : Bool} {A B : SailM α} {σ : SailState} {r} (hG : G = false)
+    (h : runSail B σ = r) : runSail (if G = true then A else B) σ = r := by
   subst hG; exact h
-theorem run_ite_true {α : Type} {G : Bool} {A B : SailM α} {σ : FState} {r} (hG : G = true)
-    (h : runF A σ = r) : runF (if G = true then A else B) σ = r := by
+theorem run_ite_true {α : Type} {G : Bool} {A B : SailM α} {σ : SailState} {r} (hG : G = true)
+    (h : runSail A σ = r) : runSail (if G = true then A else B) σ = r := by
   subst hG; exact h
-theorem run_pure_bind {α β : Type} (a : α) (f : α → SailM β) (σ : FState) {r} (h : runF (f a) σ = r) :
-    runF (pure a >>= f) σ = r := by
+theorem run_pure_bind {α β : Type} (a : α) (f : α → SailM β) (σ : SailState) {r} (h : runSail (f a) σ = r) :
+    runSail (pure a >>= f) σ = r := by
   rw [runF_bind_ok _ f σ σ a (runF_pure a σ)]; exact h
-theorem run_bind_ok {α β : Type} (m : SailM α) (f : α → SailM β) (σ : FState) (a : α) {r}
-    (hm : runF m σ = .ok a σ) (h : runF (f a) σ = r) : runF (m >>= f) σ = r := by
+theorem run_bind_ok {α β : Type} (m : SailM α) (f : α → SailM β) (σ : SailState) (a : α) {r}
+    (hm : runSail m σ = .ok a σ) (h : runSail (f a) σ = r) : runSail (m >>= f) σ = r := by
   rw [runF_bind_ok m f σ σ a hm]; exact h
 
-theorem run_eq_pure_bind {α β : Type} (m : SailM α) (a : α) (f : α → SailM β) (σ : FState) {r}
-    (hm : m = pure a) (h : runF (f a) σ = r) : runF (m >>= f) σ = r := by
+theorem run_eq_pure_bind {α β : Type} (m : SailM α) (a : α) (f : α → SailM β) (σ : SailState) {r}
+    (hm : m = pure a) (h : runSail (f a) σ = r) : runSail (m >>= f) σ = r := by
   subst hm; exact run_pure_bind a f σ h
 
-theorem run_bind_assoc {α β γ : Type} (m : SailM α) (f : α → SailM β) (g : β → SailM γ) (σ : FState) {r}
-    (h : runF (m >>= fun x => f x >>= g) σ = r) : runF ((m >>= f) >>= g) σ = r := by
+theorem run_bind_assoc {α β γ : Type} (m : SailM α) (f : α → SailM β) (g : β → SailM γ) (σ : SailState) {r}
+    (h : runSail (m >>= fun x => f x >>= g) σ = r) : runSail ((m >>= f) >>= g) σ = r := by
   rw [← h]
   simp only [runF_bind]
-  cases runF m σ <;> rfl
-theorem run_bind_ite_false {α β : Type} {G : Bool} {A B : SailM α} (g : α → SailM β) {σ : FState} {r}
-    (hG : G = false) (h : runF (B >>= g) σ = r) : runF ((if G = true then A else B) >>= g) σ = r := by
+  cases runSail m σ <;> rfl
+theorem run_bind_ite_false {α β : Type} {G : Bool} {A B : SailM α} (g : α → SailM β) {σ : SailState} {r}
+    (hG : G = false) (h : runSail (B >>= g) σ = r) : runSail ((if G = true then A else B) >>= g) σ = r := by
   subst hG; exact h
-theorem run_bind_ite_true {α β : Type} {G : Bool} {A B : SailM α} (g : α → SailM β) {σ : FState} {r}
-    (hG : G = true) (h : runF (A >>= g) σ = r) : runF ((if G = true then A else B) >>= g) σ = r := by
+theorem run_bind_ite_true {α β : Type} {G : Bool} {A B : SailM α} (g : α → SailM β) {σ : SailState} {r}
+    (hG : G = true) (h : runSail (A >>= g) σ = r) : runSail ((if G = true then A else B) >>= g) σ = r := by
   subst hG; exact h
 
-theorem run_bind_pure_ex {α β : Type} (m : SailM α) (k : α → SailM β) (σ : FState) {r}
-    (hm : ∃ a, m = pure a) (h : ∀ a, runF (k a) σ = r) : runF (m >>= k) σ = r := by
+theorem run_bind_pure_ex {α β : Type} (m : SailM α) (k : α → SailM β) (σ : SailState) {r}
+    (hm : ∃ a, m = pure a) (h : ∀ a, runSail (k a) σ = r) : runSail (m >>= k) σ = r := by
   obtain ⟨a, rfl⟩ := hm; exact run_pure_bind a k σ (h a)
-theorem run_ite_undec {α β : Type} {G : Bool} (body : SailM (Option α)) (jp : Option α → SailM β) {σ : FState}
-    {r} (hb : G = true → runF body σ = .ok none σ) (h : runF (jp none) σ = r) :
-    runF (if G = true then body >>= jp else pure none >>= jp) σ = r := by
+theorem run_ite_undec {α β : Type} {G : Bool} (body : SailM (Option α)) (jp : Option α → SailM β) {σ : SailState}
+    {r} (hb : G = true → runSail body σ = .ok none σ) (h : runSail (jp none) σ = r) :
+    runSail (if G = true then body >>= jp else pure none >>= jp) σ = r := by
   cases hG : G
   · exact run_pure_bind none jp σ h
   · exact run_bind_ok body jp σ none (hb hG) h
 theorem and_left {x y : Bool} (h : (x && y) = true) : x = true := by simp_all
 theorem and_right {x y : Bool} (h : (x && y) = true) : y = true := by simp_all
 
-theorem known_sys {σ : FState} (hs : Airbender.Sys σ) : ∀ r v, knownDemo r = some v → σ.regs r = v := by
+theorem known_sys {σ : SailState} (hs : Airbender.Configured σ) : ∀ r v, knownDemo r = some v → σ.regs r = v := by
   intro r v h
   unfold knownDemo at h
   split at h
@@ -68,9 +68,9 @@ theorem known_sys {σ : FState} (hs : Airbender.Sys σ) : ∀ r v, knownDemo r =
     exact hs r (by simpa using hv)
 
 /-- `currentlyEnabled X` on any Airbender state, from one closed computation. -/
-theorem en_run {σ : FState} (hs : Airbender.Sys σ) (X : extension) (b : Bool)
+theorem en_run {σ : SailState} (hs : Airbender.Configured σ) (X : extension) (b : Bool)
     (h : runOracle knownDemo (fun _ => none) (currentlyEnabled X) = some b) :
-    runF (currentlyEnabled X) σ = .ok b σ :=
+    runSail (currentlyEnabled X) σ = .ok b σ :=
   runOracle_sound knownDemo (fun _ => none) σ h (known_sys hs) (fun _ _ h => by simp at h)
 
 theorem and_false_r {x y : Bool} (h : y = false) : (x && y) = false := by subst h; simp
@@ -270,11 +270,11 @@ partial def evalGuard (facts : Array Fact) (G : Expr) : MetaM (Option (Bool × E
 def mkFunUnit : MetaM Expr :=
   return .lam `_ (mkConst ``Nat) (mkApp (mkConst ``Option.none [0]) (mkApp (mkConst ``BitVec) (mkNatLit 8))) .default
 
-/-- Head of `runF M σ = r` goals. -/
+/-- Head of `runSail M σ = r` goals. -/
 def splitGoal (g : MVarId) : MetaM (Expr × Expr × Expr) := do
   let t ← whnfR (← g.getType)
   let some (_, lhs, r) := t.eq? | throwError "walk_decoder: goal is not an equation"
-  unless lhs.isAppOfArity ``runF 3 do throwError "walk_decoder: lhs is not `runF m σ`"
+  unless lhs.isAppOfArity ``runSail 3 do throwError "walk_decoder: lhs is not `runSail m σ`"
   return (lhs.getArg! 1, lhs.getArg! 2, r)
 
 /-- One proof step: `g := lemma args… ?next`; returns `?next`. -/
@@ -310,7 +310,7 @@ structure Ctx where
   hyps : Array Expr := #[]
 
 mutual
-/-- Walk the goal `runF M σ = r` as far as possible; returns the remaining goal and the clauses skipped. -/
+/-- Walk the goal `runSail M σ = r` as far as possible; returns the remaining goal and the clauses skipped. -/
 partial def walkLoop (ctx : Ctx) (g0 : MVarId) : MetaM (MVarId × Nat) := do
   let mut g := g0
   let mut skipped : Nat := 0
@@ -327,7 +327,7 @@ partial def walkLoop (ctx : Ctx) (g0 : MVarId) : MetaM (MVarId × Nat) := do
           pure (← whnfCore M3)
         else pure M''
       else pure M'
-    g ← g.replaceTargetDefEq (← g.withContext (mkEq (← mkAppM ``runF #[M, σ]) r))
+    g ← g.replaceTargetDefEq (← g.withContext (mkEq (← mkAppM ``runSail #[M, σ]) r))
     if M.isAppOfArity ``ite 5 then
       let some (_, G, _) := (M.getArg! 1).eq? | break
       match ← g.withContext (evalGuard ctx.facts G) with
@@ -422,7 +422,7 @@ partial def bodyNone (ctx : Ctx) (g : MVarId) (M σ r G : Expr) : MetaM (Option 
   let ε := (← inferType r).getArg! 0
   let rhs ← mkAppOptM ``EStateM.Result.ok #[ε, none, optTy, noneE, σ]
   let hbTy ← withLocalDeclD `hG (← mkEq G (toExpr true)) fun hG => do
-    mkForallFVars #[hG] (← mkEq (← mkAppM ``runF #[body, σ]) rhs)
+    mkForallFVars #[hG] (← mkEq (← mkAppM ``runSail #[body, σ]) rhs)
   let hbMv ← mkFreshExprSyntheticOpaqueMVar hbTy
   let (hG, g1) ← hbMv.mvarId!.intro1
   let ok ← g1.withContext do

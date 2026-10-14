@@ -24,10 +24,10 @@ theorem decode_not_rvc {w : BitVec 32} {i : RV.Instr} (h : RV.decode w = some i)
   simp [BitVec.extractLsb'_toNat, BitVec.extractLsb_toNat] at h3 ⊢
   omega
 
-theorem step_of_exec (σ : FState) (hs : Airbender.Sys σ) (ha : (σ.regs .PC).toNat % 4 = 0)
+theorem step_of_exec (σ : SailState) (hs : Airbender.Configured σ) (ha : (σ.regs .PC).toNat % 4 = 0)
     (h2 : (σ.regs .PC).toNat + 4 ≤ Airbender.RAM_START) (i : RV.Instr)
-    (hdec : RV.decode (readBytes σ.mem (σ.regs .PC).toNat 4) = some i) (σ2 : FState)
-    (hexec : runF (Airbender.execute (Airbender.toSail i)) (σ.set .nextPC (σ.regs .PC + 4)) = .ok RETIRE_SUCCESS σ2)
+    (hdec : RV.decode (readBytes σ.mem (σ.regs .PC).toNat 4) = some i) (σ2 : SailState)
+    (hexec : runSail (Airbender.execute (Airbender.toSail i)) (σ.set .nextPC (σ.regs .PC + 4)) = .ok RETIRE_SUCCESS σ2)
     (hal : (σ2.regs .nextPC).toNat % 4 = 0) :
     Airbender.step σ = some (σ2.set .PC (σ2.regs .nextPC)) := by
   have hf := fetch_rom σ hs ha h2 (decode_not_rvc hdec)

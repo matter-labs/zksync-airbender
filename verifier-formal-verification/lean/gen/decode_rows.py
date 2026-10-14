@@ -741,7 +741,7 @@ for g, a, b in GROUPS:
            "namespace Slop.Equiv", "set_option maxHeartbeats 0", ""]
     for nm, fs, ins in ROWS[a:b]:
         hyps = " ".join(f"(h{i} : Bits w {lo} {n} {k})" for i, (lo, n, k) in enumerate(fs))
-        out.append(f"theorem dec_{nm} (w : BitVec 32) (σ : FState) (hs : Airbender.Sys σ) {hyps} :\n"
-                   f"    runF (ext_decode w) σ = .ok (Airbender.toSail ({ins})) σ := by\n  walk_decoder hs\n  close_row\n")
+        out.append(f"theorem dec_{nm} (w : BitVec 32) (σ : SailState) (hs : Airbender.Configured σ) {hyps} :\n"
+                   f"    runSail (ext_decode w) σ = .ok (Airbender.toSail ({ins})) σ := by\n  walk_decoder hs\n  close_row\n")
     out.append("end Slop.Equiv\n")
     open(os.path.join(here, "..", "slop", "Slop", "Equiv", f"Dec{g}.lean"), "w").write("\n".join(out))

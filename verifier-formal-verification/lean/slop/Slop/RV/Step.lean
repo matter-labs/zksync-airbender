@@ -11,15 +11,15 @@ namespace RV
 @[simp] theorem r_zero (s : State) : s.getReg 0 = 0 := Eq.trans rfl rfl
 @[simp] theorem set_pc (s : State) rd v : (s.setReg rd v).pc = s.pc := Eq.trans rfl rfl
 @[simp] theorem set_mem (s : State) rd v : (s.setReg rd v).mem = s.mem := Eq.trans rfl rfl
-@[simp] theorem next_pc (s : State) : s.next.pc = s.pc + 4 := Eq.trans rfl rfl
-@[simp] theorem next_mem (s : State) : s.next.mem = s.mem := Eq.trans rfl rfl
-@[simp] theorem next_r (s : State) i : s.next.getReg i = s.getReg i := Eq.trans rfl rfl
+@[simp] theorem next_pc (s : State) : s.nextInstr.pc = s.pc + 4 := Eq.trans rfl rfl
+@[simp] theorem next_mem (s : State) : s.nextInstr.mem = s.mem := Eq.trans rfl rfl
+@[simp] theorem next_r (s : State) i : s.nextInstr.getReg i = s.getReg i := Eq.trans rfl rfl
 @[simp] theorem store_r (s : State) a v n i : (s.store a v n).getReg i = s.getReg i := Eq.trans rfl rfl
 @[simp] theorem store_pc (s : State) a v n : (s.store a v n).pc = s.pc := Eq.trans rfl rfl
 @[simp] theorem store_mem (s : State) a v n : (s.store a v n).mem = write s.mem a v n := Eq.trans rfl rfl
-@[simp] theorem jump_r (s : State) t i : (s.jump t).getReg i = s.getReg i := Eq.trans rfl rfl
-@[simp] theorem jump_pc (s : State) t : (s.jump t).pc = t := Eq.trans rfl rfl
-@[simp] theorem jump_mem (s : State) t : (s.jump t).mem = s.mem := Eq.trans rfl rfl
+@[simp] theorem jump_r (s : State) t i : (s.setPC t).getReg i = s.getReg i := Eq.trans rfl rfl
+@[simp] theorem jump_pc (s : State) t : (s.setPC t).pc = t := Eq.trans rfl rfl
+@[simp] theorem jump_mem (s : State) t : (s.setPC t).mem = s.mem := Eq.trans rfl rfl
 
 @[simp] theorem r_set (s : State) (rd : Reg) (v : Word) (i : Reg) :
     (s.setReg rd v).getReg i = if i = 0 then 0 else if i = rd then v else s.getReg i := by
@@ -57,8 +57,8 @@ simproc reduceRSet (State.getReg (State.setReg _ _ _) _) := fun e => do
   let pf := mkApp6 (mkConst ``r_set_miss) s rd v i hi0 hne
   return .done { expr := r, proof? := some (← mkExpectedTypeHint pf (← mkEq e r)) }
 
-theorem goto_ok (s : State) (t : Word) (h : t.toNat % 4 = 0) : s.goto t = some (s.jump t) := by
-  simp [State.goto, h]
+theorem goto_ok (s : State) (t : Word) (h : t.toNat % 4 = 0) : s.jumpTo t = some (s.setPC t) := by
+  simp [State.jumpTo, h]
 
 theorem run_succ (n : Nat) (s : State) : run (n + 1) s = (step s).bind (run n) := rfl
 
@@ -189,50 +189,50 @@ theorem calleeSaved_cases (i : Reg) (h : calleeSaved i) :
   unfold calleeSaved at h; bv_omega
 
 theorem codeAt_set (s : State) a code rd v (h : CodeAt s a code) : CodeAt (s.setReg rd v) a code := h
-theorem codeAt_next (s : State) a code (h : CodeAt s a code) : CodeAt s.next a code := h
-theorem codeAt_jump (s : State) a code t (h : CodeAt s a code) : CodeAt (s.jump t) a code := h
+theorem codeAt_next (s : State) a code (h : CodeAt s a code) : CodeAt s.nextInstr a code := h
+theorem codeAt_jump (s : State) a code t (h : CodeAt s a code) : CodeAt (s.setPC t) a code := h
 
 /-! `exec`, one lemma per instruction kind; side conditions are left to the discharger. -/
 
-theorem exec_lui (s : State) rd imm : exec s (.lui rd imm) = some (s.setReg rd imm).next := rfl
-theorem exec_auipc (s : State) rd imm : exec s (.auipc rd imm) = some (s.setReg rd (s.pc + imm)).next := rfl
+theorem exec_lui (s : State) rd imm : exec s (.lui rd imm) = some (s.setReg rd imm).nextInstr := rfl
+theorem exec_auipc (s : State) rd imm : exec s (.auipc rd imm) = some (s.setReg rd (s.pc + imm)).nextInstr := rfl
 theorem exec_opImm (s : State) op rd rs1 imm :
-    exec s (.opImm op rd rs1 imm) = some (s.setReg rd (alu op (s.getReg rs1) imm)).next := rfl
+    exec s (.opImm op rd rs1 imm) = some (s.setReg rd (alu op (s.getReg rs1) imm)).nextInstr := rfl
 theorem exec_op (s : State) op rd rs1 rs2 :
-    exec s (.op op rd rs1 rs2) = some (s.setReg rd (alu op (s.getReg rs1) (s.getReg rs2))).next := rfl
+    exec s (.op op rd rs1 rs2) = some (s.setReg rd (alu op (s.getReg rs1) (s.getReg rs2))).nextInstr := rfl
 theorem exec_jal (s : State) rd off (h : (s.pc + off).toNat % 4 = 0) :
-    exec s (.jal rd off) = some ((s.jump (s.pc + off)).setReg rd (s.pc + 4)) := by
-  simp only [exec, State.goto, h, ite_true, Option.map_some]
+    exec s (.jal rd off) = some ((s.setPC (s.pc + off)).setReg rd (s.pc + 4)) := by
+  simp only [exec, State.jumpTo, h, ite_true, Option.map_some]
 theorem exec_jalr (s : State) rd rs1 off (h : ((s.getReg rs1 + off) &&& ~~~1).toNat % 4 = 0) :
-    exec s (.jalr rd rs1 off) = some ((s.jump ((s.getReg rs1 + off) &&& ~~~1)).setReg rd (s.pc + 4)) := by
-  simp only [exec, State.goto, h, ite_true, Option.map_some]
+    exec s (.jalr rd rs1 off) = some ((s.setPC ((s.getReg rs1 + off) &&& ~~~1)).setReg rd (s.pc + 4)) := by
+  simp only [exec, State.jumpTo, h, ite_true, Option.map_some]
 /-- `jalr` with offset 0 (e.g. `ret`) to an aligned register value. -/
 theorem exec_jalr0 (s : State) rd rs1 (h : (s.getReg rs1).toNat % 4 = 0) :
-    exec s (.jalr rd rs1 0#32) = some ((s.jump (s.getReg rs1)).setReg rd (s.pc + 4)) := by
+    exec s (.jalr rd rs1 0#32) = some ((s.setPC (s.getReg rs1)).setReg rd (s.pc + 4)) := by
   have e : s.getReg rs1 &&& ~~~1 = s.getReg rs1 := by have := and_not_one_of_aligned _ h; simpa using this
-  simp only [exec, State.goto, BitVec.add_zero, e, h, ite_true, Option.map_some]
+  simp only [exec, State.jumpTo, BitVec.add_zero, e, h, ite_true, Option.map_some]
 
 theorem exec_branch_t (s : State) c rs1 rs2 off (h : c.holds (s.getReg rs1) (s.getReg rs2) = true)
-    (ha : (s.pc + off).toNat % 4 = 0) : exec s (.branch c rs1 rs2 off) = some (s.jump (s.pc + off)) := by
-  simp only [exec, h, ite_true, State.goto, ha]
+    (ha : (s.pc + off).toNat % 4 = 0) : exec s (.branch c rs1 rs2 off) = some (s.setPC (s.pc + off)) := by
+  simp only [exec, h, ite_true, State.jumpTo, ha]
 theorem exec_branch_f (s : State) c rs1 rs2 off (h : c.holds (s.getReg rs1) (s.getReg rs2) = false) :
-    exec s (.branch c rs1 rs2 off) = some s.next := by
+    exec s (.branch c rs1 rs2 off) = some s.nextInstr := by
   simp only [exec, h, Bool.false_eq_true, ite_false]
 
 theorem exec_load (s : State) n sg rd rs1 off (hrd : ¬ rd = 0) (ha : aligned (s.getReg rs1 + off) n)
     (hr : readable (s.getReg rs1 + off) n) :
     exec s (.load n sg rd rs1 off) = some (s.setReg rd
-      (if sg then ((read s.mem (s.getReg rs1 + off) n).setWidth (8 * n)).signExtend 32 else read s.mem (s.getReg rs1 + off) n)).next := by
+      (if sg then ((read s.mem (s.getReg rs1 + off) n).setWidth (8 * n)).signExtend 32 else read s.mem (s.getReg rs1 + off) n)).nextInstr := by
   simp only [exec, hrd, ↓reduceIte]; split
   · rfl
   · rename_i h; exact absurd ⟨ha, hr⟩ h
-theorem exec_load_x0 (s : State) n sg rs1 off : exec s (.load n sg 0 rs1 off) = some s.next := by
+theorem exec_load_x0 (s : State) n sg rs1 off : exec s (.load n sg 0 rs1 off) = some s.nextInstr := by
   simp only [exec, ↓reduceIte]
 /-- `lw` is a signed load (funct3 bit 2 = 0, as in Sail); for a full word that changes nothing. -/
 theorem sext_word (x : Word) : BitVec.signExtend 32 (BitVec.setWidth (8 * 4) x) = x := by
   simp [BitVec.signExtend_eq]
 theorem exec_store (s : State) n rs2 rs1 off (ha : aligned (s.getReg rs1 + off) n) (hw : writable (s.getReg rs1 + off) n) :
-    exec s (.store n rs2 rs1 off) = some (s.store (s.getReg rs1 + off) (s.getReg rs2) n).next := by
+    exec s (.store n rs2 rs1 off) = some (s.store (s.getReg rs1 + off) (s.getReg rs2) n).nextInstr := by
   simp only [exec]; split
   · rfl
   · rename_i h; exact absurd ⟨ha, hw⟩ h

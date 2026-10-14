@@ -8,48 +8,48 @@ open Sail SailRV32 SailRV32.Functions Human
 namespace Slop.Equiv
 set_option maxHeartbeats 0
 
-theorem dec_addi (w : BitVec 32) (σ : FState) (hs : Airbender.Sys σ) (h0 : Bits w 0 7 19) (h1 : Bits w 12 3 0) :
-    runF (ext_decode w) σ = .ok (Airbender.toSail (.opImm .add (w.extractLsb' 7 5) (w.extractLsb' 15 5) ((w.extractLsb' 20 12).signExtend 32))) σ := by
+theorem dec_addi (w : BitVec 32) (σ : SailState) (hs : Airbender.Configured σ) (h0 : Bits w 0 7 19) (h1 : Bits w 12 3 0) :
+    runSail (ext_decode w) σ = .ok (Airbender.toSail (.opImm .add (w.extractLsb' 7 5) (w.extractLsb' 15 5) ((w.extractLsb' 20 12).signExtend 32))) σ := by
   walk_decoder hs
   close_row
 
-theorem dec_slti (w : BitVec 32) (σ : FState) (hs : Airbender.Sys σ) (h0 : Bits w 0 7 19) (h1 : Bits w 12 3 2) :
-    runF (ext_decode w) σ = .ok (Airbender.toSail (.opImm .slt (w.extractLsb' 7 5) (w.extractLsb' 15 5) ((w.extractLsb' 20 12).signExtend 32))) σ := by
+theorem dec_slti (w : BitVec 32) (σ : SailState) (hs : Airbender.Configured σ) (h0 : Bits w 0 7 19) (h1 : Bits w 12 3 2) :
+    runSail (ext_decode w) σ = .ok (Airbender.toSail (.opImm .slt (w.extractLsb' 7 5) (w.extractLsb' 15 5) ((w.extractLsb' 20 12).signExtend 32))) σ := by
   walk_decoder hs
   close_row
 
-theorem dec_sltui (w : BitVec 32) (σ : FState) (hs : Airbender.Sys σ) (h0 : Bits w 0 7 19) (h1 : Bits w 12 3 3) :
-    runF (ext_decode w) σ = .ok (Airbender.toSail (.opImm .sltu (w.extractLsb' 7 5) (w.extractLsb' 15 5) ((w.extractLsb' 20 12).signExtend 32))) σ := by
+theorem dec_sltui (w : BitVec 32) (σ : SailState) (hs : Airbender.Configured σ) (h0 : Bits w 0 7 19) (h1 : Bits w 12 3 3) :
+    runSail (ext_decode w) σ = .ok (Airbender.toSail (.opImm .sltu (w.extractLsb' 7 5) (w.extractLsb' 15 5) ((w.extractLsb' 20 12).signExtend 32))) σ := by
   walk_decoder hs
   close_row
 
-theorem dec_xori (w : BitVec 32) (σ : FState) (hs : Airbender.Sys σ) (h0 : Bits w 0 7 19) (h1 : Bits w 12 3 4) :
-    runF (ext_decode w) σ = .ok (Airbender.toSail (.opImm .xor (w.extractLsb' 7 5) (w.extractLsb' 15 5) ((w.extractLsb' 20 12).signExtend 32))) σ := by
+theorem dec_xori (w : BitVec 32) (σ : SailState) (hs : Airbender.Configured σ) (h0 : Bits w 0 7 19) (h1 : Bits w 12 3 4) :
+    runSail (ext_decode w) σ = .ok (Airbender.toSail (.opImm .xor (w.extractLsb' 7 5) (w.extractLsb' 15 5) ((w.extractLsb' 20 12).signExtend 32))) σ := by
   walk_decoder hs
   close_row
 
-theorem dec_ori (w : BitVec 32) (σ : FState) (hs : Airbender.Sys σ) (h0 : Bits w 0 7 19) (h1 : Bits w 12 3 6) :
-    runF (ext_decode w) σ = .ok (Airbender.toSail (.opImm .or (w.extractLsb' 7 5) (w.extractLsb' 15 5) ((w.extractLsb' 20 12).signExtend 32))) σ := by
+theorem dec_ori (w : BitVec 32) (σ : SailState) (hs : Airbender.Configured σ) (h0 : Bits w 0 7 19) (h1 : Bits w 12 3 6) :
+    runSail (ext_decode w) σ = .ok (Airbender.toSail (.opImm .or (w.extractLsb' 7 5) (w.extractLsb' 15 5) ((w.extractLsb' 20 12).signExtend 32))) σ := by
   walk_decoder hs
   close_row
 
-theorem dec_andi (w : BitVec 32) (σ : FState) (hs : Airbender.Sys σ) (h0 : Bits w 0 7 19) (h1 : Bits w 12 3 7) :
-    runF (ext_decode w) σ = .ok (Airbender.toSail (.opImm .and (w.extractLsb' 7 5) (w.extractLsb' 15 5) ((w.extractLsb' 20 12).signExtend 32))) σ := by
+theorem dec_andi (w : BitVec 32) (σ : SailState) (hs : Airbender.Configured σ) (h0 : Bits w 0 7 19) (h1 : Bits w 12 3 7) :
+    runSail (ext_decode w) σ = .ok (Airbender.toSail (.opImm .and (w.extractLsb' 7 5) (w.extractLsb' 15 5) ((w.extractLsb' 20 12).signExtend 32))) σ := by
   walk_decoder hs
   close_row
 
-theorem dec_slli (w : BitVec 32) (σ : FState) (hs : Airbender.Sys σ) (h0 : Bits w 0 7 19) (h1 : Bits w 12 3 1) (h2 : Bits w 25 7 0) :
-    runF (ext_decode w) σ = .ok (Airbender.toSail (.opImm .sll (w.extractLsb' 7 5) (w.extractLsb' 15 5) ((w.extractLsb' 20 5).zeroExtend 32))) σ := by
+theorem dec_slli (w : BitVec 32) (σ : SailState) (hs : Airbender.Configured σ) (h0 : Bits w 0 7 19) (h1 : Bits w 12 3 1) (h2 : Bits w 25 7 0) :
+    runSail (ext_decode w) σ = .ok (Airbender.toSail (.opImm .sll (w.extractLsb' 7 5) (w.extractLsb' 15 5) ((w.extractLsb' 20 5).zeroExtend 32))) σ := by
   walk_decoder hs
   close_row
 
-theorem dec_srli (w : BitVec 32) (σ : FState) (hs : Airbender.Sys σ) (h0 : Bits w 0 7 19) (h1 : Bits w 12 3 5) (h2 : Bits w 25 7 0) :
-    runF (ext_decode w) σ = .ok (Airbender.toSail (.opImm .srl (w.extractLsb' 7 5) (w.extractLsb' 15 5) ((w.extractLsb' 20 5).zeroExtend 32))) σ := by
+theorem dec_srli (w : BitVec 32) (σ : SailState) (hs : Airbender.Configured σ) (h0 : Bits w 0 7 19) (h1 : Bits w 12 3 5) (h2 : Bits w 25 7 0) :
+    runSail (ext_decode w) σ = .ok (Airbender.toSail (.opImm .srl (w.extractLsb' 7 5) (w.extractLsb' 15 5) ((w.extractLsb' 20 5).zeroExtend 32))) σ := by
   walk_decoder hs
   close_row
 
-theorem dec_srai (w : BitVec 32) (σ : FState) (hs : Airbender.Sys σ) (h0 : Bits w 0 7 19) (h1 : Bits w 12 3 5) (h2 : Bits w 25 7 32) :
-    runF (ext_decode w) σ = .ok (Airbender.toSail (.opImm .sra (w.extractLsb' 7 5) (w.extractLsb' 15 5) ((w.extractLsb' 20 5).zeroExtend 32))) σ := by
+theorem dec_srai (w : BitVec 32) (σ : SailState) (hs : Airbender.Configured σ) (h0 : Bits w 0 7 19) (h1 : Bits w 12 3 5) (h2 : Bits w 25 7 32) :
+    runSail (ext_decode w) σ = .ok (Airbender.toSail (.opImm .sra (w.extractLsb' 7 5) (w.extractLsb' 15 5) ((w.extractLsb' 20 5).zeroExtend 32))) σ := by
   walk_decoder hs
   close_row
 

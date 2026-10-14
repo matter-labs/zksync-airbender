@@ -9,7 +9,7 @@ open SailRV32
 namespace Human
 
 /-- The flat image `build/app.bin` is in memory at address 0. -/
-def ImageLoaded (s : FState) : Prop := ∀ i (h : i < Image.bytes.size), s.mem i = Image.bytes[i]
+def ImageLoaded (s : SailState) : Prop := ∀ i (h : i < Image.bytes.size), s.mem i = Image.bytes[i]
 
 /-- Registers a callee must preserve: sp, s0..s11. -/
 def CalleeSaved : Register → Bool
@@ -19,11 +19,11 @@ def CalleeSaved : Register → Bool
 /-- Called at `entry` with a 16-aligned stack pointer `sp` in RAM with at least `frame` bytes free below it,
 and with `pre` holding, the code runs finitely many normally-retiring instructions and returns to `ra`,
 with `post` holding, callee-saved registers restored, and memory changed only in `[sp - frame, sp)`. -/
-def Implements (entry frame : Nat) (pre : FState → Prop) (post : FState → FState → Prop) : Prop :=
-  ∀ s, Sys s → ImageLoaded s → (s.regs .PC).toNat = entry → pre s →
+def Implements (entry frame : Nat) (pre : SailState → Prop) (post : SailState → SailState → Prop) : Prop :=
+  ∀ s, Configured s → ImageLoaded s → (s.regs .PC).toNat = entry → pre s →
     let sp := (s.regs .x2).toNat
     sp % 16 = 0 → RAM_START + frame ≤ sp → sp ≤ RAM_END →
-    ∃ n s', Runs n s s' ∧ Sys s' ∧ s'.regs .PC = s.regs .x1 ∧ post s s' ∧
+    ∃ n s', Runs n s s' ∧ Configured s' ∧ s'.regs .PC = s.regs .x1 ∧ post s s' ∧
       (∀ r, CalleeSaved r = true → s'.regs r = s.regs r) ∧
       (∀ a, (a < sp - frame ∨ sp ≤ a) → s'.mem a = s.mem a)
 

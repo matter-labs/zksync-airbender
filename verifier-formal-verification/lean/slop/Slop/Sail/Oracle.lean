@@ -4,7 +4,7 @@ import Human.Spec
 import Slop.Sail.Monad
 
 /-! Oracle interpreter: resolve a `SailM` computation whose register and memory inputs are known,
-without unfolding symbolically. Answers mirror `Human.interpEff`; any write, unknown read or error
+without unfolding symbolically. Answers mirror `Human.applyEffect`; any write, unknown read or error
 stops the oracle. Recursion is structural on a fuel counter (one unit per effect). -/
 
 open Sail Sail.ArchSem SailRV32 SailRV32.Functions Human
@@ -29,7 +29,7 @@ def oracleEff (known : (r : Register) → Option (RegisterType r)) (knownMem : N
   | .barrier _ | .cacheOp _ | .tlbOp _ | .translationStart _ | .translationEnd _ | .archException _
   | .returnException | .memWriteAnnounce _ | .printMessage _ | .clockCycle => some ()
 
-/-- Oracle run with `n` effects of fuel. Resolves choices to index 0 exactly as `runF` does. -/
+/-- Oracle run with `n` effects of fuel. Resolves choices to index 0 exactly as `runSail` does. -/
 def oracleGo {α : Type} (known : (r : Register) → Option (RegisterType r))
     (knownMem : Nat → Option (BitVec 8)) : Nat → SailM α → Option α
   | 0, _ => none
@@ -71,10 +71,10 @@ theorem knownBytes_sound (km : Nat → Option (BitVec 8)) (mem : Nat → BitVec 
     · simp at h
 
 theorem oracleEff_sound (known : (r : Register) → Option (RegisterType r))
-    (km : Nat → Option (BitVec 8)) (s : FState)
+    (km : Nat → Option (BitVec 8)) (s : SailState)
     (hk : ∀ r v, known r = some v → s.regs r = v) (hm : ∀ i b, km i = some b → s.mem i = b)
     (eff : InstructionEffect) (v : InstructionEffect.ret eff)
-    (h : oracleEff known km eff = some v) : interpEff eff s = .ok v s := by
+    (h : oracleEff known km eff = some v) : applyEffect eff s = .ok v s := by
   cases eff with
   | regRead reg acc =>
     simp only [oracleEff] at h
@@ -109,21 +109,21 @@ theorem liftM_impure_ok {ε σ α Eff : Type} [Effect Eff] (I : (e : Eff) → ES
 
 theorem runF_impure_ok {α : Type} (eff : InstructionEffect)
     (cont : InstructionEffect.ret eff → FreeM ((Except (Sail.Error exception) InstructionEffect) ⊕ FinChoice) α)
-    (s : FState) (v : InstructionEffect.ret eff) (h : interpEff eff s = .ok v s) :
-    runF (FreeM.impure (.inl (.ok eff)) cont) s = runF (cont v) s := by
+    (s : SailState) (v : InstructionEffect.ret eff) (h : applyEffect eff s = .ok v s) :
+    runSail (FreeM.impure (.inl (.ok eff)) cont) s = runSail (cont v) s := by
   rw [runF_def, runF_def]
   exact liftM_impure_ok _ (Sum.inl (Except.ok eff) : (Except (Sail.Error exception) InstructionEffect) ⊕ FinChoice) cont s v h
 
 theorem runF_choice_pos {α : Type} (k : FinChoice) (hk0 : @LT.lt Nat instLTNat 0 k)
-    (cont : Fin k → FreeM ((Except (Sail.Error exception) InstructionEffect) ⊕ FinChoice) α) (s : FState) :
-    runF (FreeM.impure (.inr k) cont) s = runF (cont (⟨0, hk0⟩ : Fin k)) s := by
+    (cont : Fin k → FreeM ((Except (Sail.Error exception) InstructionEffect) ⊕ FinChoice) α) (s : SailState) :
+    runSail (FreeM.impure (.inr k) cont) s = runSail (cont (⟨0, hk0⟩ : Fin k)) s := by
   rw [runF_def, runF_def]
   exact liftM_impure_ok _ (Sum.inr k : (Except (Sail.Error exception) InstructionEffect) ⊕ FinChoice) cont s ⟨0, hk0⟩ (by simp [hk0] <;> rfl)
 
 theorem oracleGo_sound {α : Type} (known : (r : Register) → Option (RegisterType r))
-    (km : Nat → Option (BitVec 8)) (s : FState)
+    (km : Nat → Option (BitVec 8)) (s : SailState)
     (hk : ∀ r v, known r = some v → s.regs r = v) (hm : ∀ i b, km i = some b → s.mem i = b) :
-    ∀ (n : Nat) (m : SailM α) (a : α), oracleGo known km n m = some a → runF m s = .ok a s := by
+    ∀ (n : Nat) (m : SailM α) (a : α), oracleGo known km n m = some a → runSail m s = .ok a s := by
   intro n
   induction n with
   | zero => intro m a h; simp [oracleGo] at h
@@ -153,16 +153,16 @@ theorem oracleGo_sound {α : Type} (known : (r : Register) → Option (RegisterT
         simp at h
 
 theorem runOracle_sound {α : Type} (known : (r : Register) → Option (RegisterType r))
-    (km : Nat → Option (BitVec 8)) (s : FState) {m : SailM α} {a : α}
+    (km : Nat → Option (BitVec 8)) (s : SailState) {m : SailM α} {a : α}
     (h : runOracle known km m = some a)
     (hk : ∀ r v, known r = some v → s.regs r = v) (hm : ∀ i b, km i = some b → s.mem i = b) :
-    runF m s = .ok a s :=
+    runSail m s = .ok a s :=
   oracleGo_sound known km s hk hm _ m a h
 
-/-! Demo: `addi a0, a0, 1` (word 0x00150513) with known non-volatile registers from `stInit`. -/
+/-! Demo: `addi a0, a0, 1` (word 0x00150513) with known non-volatile registers from `resetState`. -/
 
 noncomputable def knownDemo : (r : Register) → Option (RegisterType r) :=
-  fun r => if Volatile r then none else some (stInit.regs r)
+  fun r => if Volatile r then none else some (resetState.regs r)
 
 /-- Bool test for `ADDI rd=a0, rs1=a0, imm=1` (`instruction` has no `DecidableEq`). -/
 def isAddi : instruction → Bool
@@ -196,8 +196,8 @@ theorem demo :
     simp only [Option.map_some, Option.some.injEq] at hb
     rw [isAddi_eq hb]
 
-theorem demo_runF (s : FState) (hs : Sys s) :
-    runF (ext_decode 0x00150513#32) s = .ok (.ITYPE (1#12, .Regidx 10#5, .Regidx 10#5, .ADDI)) s := by
+theorem demo_runF (s : SailState) (hs : Configured s) :
+    runSail (ext_decode 0x00150513#32) s = .ok (.ITYPE (1#12, .Regidx 10#5, .Regidx 10#5, .ADDI)) s := by
   refine runOracle_sound knownDemo (fun _ => none) s demo ?_ ?_
   · intro r v h
     unfold knownDemo at h

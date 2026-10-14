@@ -47,7 +47,7 @@ macro "close_field" : tactic => `(tactic| (
          BitVec.getElem_signExtend, BitVec.getLsbD_setWidth, BitVec.getElem_setWidth, BitVec.getLsbD_append,
          BitVec.getElem_append]; done))))
 
-/-- After `walk_decoder`: the goal `runF (pure x) σ = .ok (toSail i) σ`, closed field by field. -/
+/-- After `walk_decoder`: the goal `runSail (pure x) σ = .ok (toSail i) σ`, closed field by field. -/
 macro "close_row" : tactic => `(tactic| (
   rw [Slop.runF_pure]
   subst_known

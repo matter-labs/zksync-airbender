@@ -3,7 +3,7 @@ import Slop.RV.Code.double
 
 namespace RV
 
-theorem double_impl : Implements Code.double 16 (fn₁ (2 * ·)) := by
+theorem double_impl : Implements Code.double 16 (mapsA0 (2 * ·)) := by
   intro s hcall
   rv_start Code.double hcall
   rv_steps 9

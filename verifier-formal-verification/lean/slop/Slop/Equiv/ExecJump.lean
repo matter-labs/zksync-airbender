@@ -22,9 +22,9 @@ theorem bltu_eq (a b : BitVec 32) : zopz0zI_u a b = a.ult b := by simp [zopz0zI_
 theorem bgeu_eq (a b : BitVec 32) : zopz0zKzJ_u a b = !a.ult b := by
   by_cases h : a.toNat < b.toNat <;> simp [zopz0zKzJ_u, BitVec.toNatInt, BitVec.ult, h] <;> omega
 
-theorem exec_branch (σ : FState) (hs : Airbender.Sys σ) (c : RV.Cond) (rs1 rs2 : BitVec 5) (x : BitVec 13)
+theorem exec_branch (σ : SailState) (hs : Airbender.Configured σ) (c : RV.Cond) (rs1 rs2 : BitVec 5) (x : BitVec 13)
     (hal : c.holds (xget σ rs1) (xget σ rs2) = true → (σ.regs .PC + x.signExtend 32).toNat % 4 = 0) :
-    runF (Airbender.execute (Airbender.toSail (.branch c rs1 rs2 (x.signExtend 32)))) σ =
+    runSail (Airbender.execute (Airbender.toSail (.branch c rs1 rs2 (x.signExtend 32)))) σ =
       if c.holds (xget σ rs1) (xget σ rs2) then .ok RETIRE_SUCCESS (σ.set .nextPC (σ.regs .PC + x.signExtend 32))
       else .ok RETIRE_SUCCESS σ := by
   have hx := sext_n x (by decide) (by decide)
@@ -36,9 +36,9 @@ theorem exec_branch (σ : FState) (hs : Airbender.Sys σ) (c : RV.Cond) (rs1 rs2
     | (rw [Slop.runF_bind, Slop.runF_readReg]; simp only [hx]; exact jump_to_run σ hs _ (hal hc))
     | (rw [Slop.runF_pure]; simp)
 
-theorem exec_jal (σ : FState) (hs : Airbender.Sys σ) (rd : BitVec 5) (x : BitVec 21)
+theorem exec_jal (σ : SailState) (hs : Airbender.Configured σ) (rd : BitVec 5) (x : BitVec 21)
     (hal : (σ.regs .PC + x.signExtend 32).toNat % 4 = 0) :
-    runF (Airbender.execute (Airbender.toSail (.jal rd (x.signExtend 32)))) σ =
+    runSail (Airbender.execute (Airbender.toSail (.jal rd (x.signExtend 32)))) σ =
       .ok RETIRE_SUCCESS (xset (σ.set .nextPC (σ.regs .PC + x.signExtend 32)) rd (σ.regs .nextPC)) := by
   have hx := sext_n x (by decide) (by decide)
   simp only [Airbender.toSail, Airbender.execute, execute, execute_JAL, Slop.runF_bind, get_next_pc, hx]
@@ -52,12 +52,12 @@ theorem clear_bit0 (t : BitVec 32) : BitVec.update t 0 0#1 = t &&& ~~~1 := by
   simp only [BitVec.update, Sail.BitVec.updateSubrange']
   interval_cases j <;> simp
 
-theorem exec_jalr (σ : FState) (hs : Airbender.Sys σ) (rd rs1 : BitVec 5) (x : BitVec 12)
+theorem exec_jalr (σ : SailState) (hs : Airbender.Configured σ) (rd rs1 : BitVec 5) (x : BitVec 12)
     (hal : ((xget σ rs1 + x.signExtend 32) &&& ~~~1).toNat % 4 = 0) :
-    runF (Airbender.execute (Airbender.toSail (.jalr rd rs1 (x.signExtend 32)))) σ =
+    runSail (Airbender.execute (Airbender.toSail (.jalr rd rs1 (x.signExtend 32)))) σ =
       .ok RETIRE_SUCCESS (xset (σ.set .nextPC ((xget σ rs1 + x.signExtend 32) &&& ~~~1)) rd (σ.regs .nextPC)) := by
   have hx := sext_n x (by decide) (by decide)
-  have hz : runF (currentlyEnabled .Ext_Zicfilp) σ = .ok false σ := en_run hs _ _ (by decide +kernel)
+  have hz : runSail (currentlyEnabled .Ext_Zicfilp) σ = .ok false σ := en_run hs _ _ (by decide +kernel)
   simp only [Airbender.toSail, Airbender.execute, execute, execute_JALR, Slop.runF_bind, update_elp_state, hz,
     get_next_pc, rX_run, hx, clear_bit0, Bool.false_eq_true, ↓reduceIte, Slop.runF_pure]
   rw [Slop.runF_readReg]; dsimp only

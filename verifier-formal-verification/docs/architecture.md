@@ -4,23 +4,23 @@
 - `sail/` pins + `sail/config/airbender-rv32im.json` (diff vs stock) + `sail/patches/` (3 trivial externs, lean-sail 4.34 compat).
 - `rust/` build flags + `rust/build.sh`; `verify.sh` checks `lean/image/Image.lean` == `build/app.bin`.
 - `lean/human/` (~150 lines total):
-  - `Machine.lean`: `FState` (total-function regs/mem) + `runF` (25-line interpreter of Sail's effect monad,
-    mirrors lean-sail's `interpretSailEffects`) + `stInit` (= `sail_model_init; init_model`) +
-    `step s := runF (try_step 0 false) s` (hart stays active) + `Sys s` (all non-volatile registers equal
-    `stInit`'s) + `Retired` (step succeeded and `minstret` += 1, i.e. no trap/illegal/fetch fault) + `Runs n`.
+  - `Machine.lean`: `SailState` (total-function regs/mem) + `runSail` (25-line interpreter of Sail's effect monad,
+    mirrors lean-sail's `interpretSailEffects`) + `resetState` (= `sail_model_init; init_model`) +
+    `step s := runSail (try_step 0 false) s` (hart stays active) + `Configured s` (all non-volatile registers equal
+    `resetState`'s) + `Retired` (step succeeded and `minstret` += 1, i.e. no trap/illegal/fetch fault) + `Runs n`.
   - `Contract.lean`: `CodeAt`, `ImageLoaded`, `CalleeSaved`, `Implements entry frame spec`
     (RISC-V C ABI: args a0.., returns to ra with a0 = spec args, callee-saved + sp preserved,
-    memory outside [sp-frame, sp) unchanged, `Sys` preserved, every step `Retired`).
-  - `Config.lean`: a few `decide +kernel` facts about `stInit` (misa = I+M, privilege M, PMA list, MIE = 0).
+    memory outside [sp-frame, sp) unchanged, `Configured` preserved, every step `Retired`).
+  - `Config.lean`: a few `decide +kernel` facts about `resetState` (misa = I+M, privilege M, PMA list, MIE = 0).
   - `Allowed.lean`: `isIM : instruction → Bool` whitelist + theorem: every aligned code word of the image
-    decodes (in `stInit`) to an `isIM` instruction. With RAM non-executable this covers every executed instruction.
+    decodes (in `resetState`) to an `isIM` instruction. With RAM non-executable this covers every executed instruction.
   - `Spec*.lean`: the math (e.g. `combine x = 3x+1`, `polyEval a x = ∑ aᵢ xⁱ` in `ZMod (2^31-1)`).
   - `Theorems.lean`: final statements; imports `Slop` only to name the proof terms. Nothing else in human/ imports slop.
 
 ## slop/ (kernel-checked, not read)
 1. Oracle interpreter `runOracle known knownMem : SailM α → Option α` (closed; unknown reads / writes → none) +
-   soundness lemma vs `runF`. Fetch/decode/interrupt-check of each *concrete* word are closed facts proved by
-   `decide +kernel`. Decode's dependence on misa etc. is discharged by `Sys`. Never unfold the 4 MB decoder symbolically.
+   soundness lemma vs `runSail`. Fetch/decode/interrupt-check of each *concrete* word are closed facts proved by
+   `decide +kernel`. Decode's dependence on misa etc. is discharged by `Configured`. Never unfold the 4 MB decoder symbolically.
 2. ~30 per-instruction-kind `execute` lemmas (symbolic rd/rs/imm/GPRs/mem) by unfold+simp; one shared
    `mem_access_ok` lemma for loads/stores (M-mode identity translation, PMA, empty PMP, alignment).
 3. One `try_step` skeleton lemma: fetch = w ∧ decode w = i ∧ execute i = ok s' → step s = some (tick s') ∧ Retired.
@@ -35,7 +35,7 @@
 - Modularity with `+relax`: theorems are re-instantiated per layout; reused across relinks are the kind lemmas,
   word lemmas and proof scripts. Option B later: `-relax` + modelled relocations.
 - Later: differential testing of Sail C emulator / Airbender `cli run` vs kernel evaluation; simulation proof
-  `runF` ≈ lean-sail's interpreter.
+  `runSail` ≈ lean-sail's interpreter.
 
 ## Update 2026-10-12 (v0.0.8, second architecture review): symbolic execution by the kernel
 - `kernel_rfl` (Eq.refl checked only by the kernel) evaluates the WHOLE official `try_step` with symbolic GPRs via the
@@ -50,17 +50,17 @@
   2. Tactic `sym_step`: Kernel.whnf the oracle run until stuck on a Bool `c` about symbolic data; prove `c = true/false`
      from hypotheses (`simp only [is_aligned_vaddr, range_subset, ...]; bv_omega`), rewrite the (small) residual, continue;
      finish with kernel_rfl. Branches on data (bne, div) via `by_cases` beforehand.
-  3. `step_of_sym`: package the StepAddi glue (Sys, frame via write log) so a function proof is one `sym_step` per
+  3. `step_of_sym`: package the StepAddi glue (Configured, frame via write log) so a function proof is one `sym_step` per
      static instruction. Loops: prove the body once with symbolic index, induct on the trip count.
 - Contract hypotheses in bv_omega-friendly form: `sp.toNat % 16 = 0`, `RAM_START + frame ≤ sp.toNat ≤ RAM_END`, `ra % 4 = 0`.
 
 ## Speed plan (2026-10-12): everything in seconds, small modular steps
 - User rule: minutes are a design bug; keep everything fast and small. Agent convention: a few seconds per file
   (~10 s soft target), hard kill 60 s / 4 GB.
-- Suspected costs in sym_step: every separate kernel call re-runs Sail's reset (`stInit`) and the fetch/decode
+- Suspected costs in sym_step: every separate kernel call re-runs Sail's reset (`resetState`) and the fetch/decode
   prefix (no cache across calls); `clean` walks huge residual terms in Meta.
 - Baby steps, each measured on its own:
-  1. Precompute the reset register values once as a definition (kernel-normalised), proved equal to `stInit.regs`
+  1. Precompute the reset register values once as a definition (kernel-normalised), proved equal to `resetState.regs`
      in ONE kernel check; use it in all oracle runs. Measure `try_step_addi_vals` before/after.
   2. Measure each sym_step phase separately on `ret` (whnf, findStuck, clean, decide, rewrite).
   3. Modular layering: (a) per distinct instruction WORD, a lemma `step` = simple effect (setReg / writeBytes),

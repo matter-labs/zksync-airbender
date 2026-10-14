@@ -7,7 +7,7 @@ import Slop.Sail.Oracle
 /-! Write-tracking oracle. A `Known` map records register values (including values written during the
 run), the known image bytes (`code`, answering instruction fetches only) and the total data memory
 (`data`, symbolic in proofs). Data reads and writes go through `readBytes` / `writeBytes` at the
-requested address, so no address equality is ever decided. Soundness: the interpreter `runF` ends in
+requested address, so no address equality is ever decided. Soundness: the interpreter `runSail` ends in
 a state `s'` that agrees with the final map (`s'.mem = K'.data`) and leaves unknown registers untouched. -/
 
 open Sail Sail.ArchSem SailRV32 SailRV32.Functions Human
@@ -28,25 +28,25 @@ def Known.set (K : Known) (r : Register) (v : RegisterType r) : Known :=
   { K with regs := fun r' => if h : r = r' then some (h ▸ v) else K.regs r', wr := r :: K.wr }
 
 /-- Every known fact holds in `s`. -/
-def Known.Agrees (K : Known) (s : FState) : Prop :=
+def Known.Agrees (K : Known) (s : SailState) : Prop :=
   (∀ r v, K.regs r = some v → s.regs r = v) ∧ (∀ i b, K.code i = some b → s.mem i = b) ∧ K.data = s.mem
 
-theorem Known.agrees_set (K : Known) (s : FState) (hK : K.Agrees s) (r : Register) (v : RegisterType r) :
+theorem Known.agrees_set (K : Known) (s : SailState) (hK : K.Agrees s) (r : Register) (v : RegisterType r) :
     (K.set r v).Agrees (s.set r v) := by
   refine ⟨fun r' w hw => ?_, fun i b hb => hK.2.1 i b hb, hK.2.2⟩
   · unfold Known.set at hw
-    unfold FState.set
+    unfold SailState.set
     by_cases h : r = r'
     · subst h
-      simpa [Known.set, FState.set] using hw
-    · simpa [Known.set, FState.set, h] using hK.1 r' w (by simpa [Known.set, h] using hw)
+      simpa [Known.set, SailState.set] using hw
+    · simpa [Known.set, SailState.set, h] using hK.1 r' w (by simpa [Known.set, h] using hw)
 
 /-- Bytes answering a read: an instruction fetch reads the code image, any other read the data map. -/
 def readAnswer (K : Known) (req : MemRequest) : Option (BitVec (8 * req.size)) :=
   if ak_is_ifetch req.accessKind then knownBytes K.code req.address.toNat req.size
   else some (readBytes K.data req.address.toNat req.size)
 
-theorem readAnswer_sound (K : Known) (s : FState) (hK : K.Agrees s) (req : MemRequest)
+theorem readAnswer_sound (K : Known) (s : SailState) (hK : K.Agrees s) (req : MemRequest)
     (w : BitVec (8 * req.size)) (h : readAnswer K req = some w) :
     w = readBytes s.mem req.address.toNat req.size := by
   unfold readAnswer at h
@@ -68,7 +68,7 @@ def oracleEff (K : Known) : (eff : InstructionEffect) → Option (InstructionEff
   | .barrier _ | .cacheOp _ | .tlbOp _ | .translationStart _ | .translationEnd _ | .archException _
   | .returnException | .memWriteAnnounce _ | .printMessage _ | .clockCycle => some ((), K)
 
-/-- Oracle run with `n` effects of fuel. Choices resolve to index 0, as in `runF`. -/
+/-- Oracle run with `n` effects of fuel. Choices resolve to index 0, as in `runSail`. -/
 def oracleGo {α : Type} : Nat → Known → SailM α → Option (α × Known)
   | 0, _, _ => none
   | _ + 1, K, .pure a => some (a, K)
@@ -96,14 +96,14 @@ theorem liftM_impure_gen {ε σ α Eff : Type} [Effect Eff] (I : (e : Eff) → E
 
 theorem runF_impure_gen {α : Type} (eff : InstructionEffect)
     (cont : InstructionEffect.ret eff → FreeM ((Except (Sail.Error exception) InstructionEffect) ⊕ FinChoice) α)
-    (s s' : FState) (v : InstructionEffect.ret eff) (h : interpEff eff s = .ok v s') :
-    runF (FreeM.impure (.inl (.ok eff)) cont) s = runF (cont v) s' := by
+    (s s' : SailState) (v : InstructionEffect.ret eff) (h : applyEffect eff s = .ok v s') :
+    runSail (FreeM.impure (.inl (.ok eff)) cont) s = runSail (cont v) s' := by
   rw [runF_def, runF_def]
   exact liftM_impure_gen _ (Sum.inl (Except.ok eff) : (Except (Sail.Error exception) InstructionEffect) ⊕ FinChoice) cont s s' v h
 
-theorem oracleEff_sound (K : Known) (s : FState) (hK : K.Agrees s) (eff : InstructionEffect)
+theorem oracleEff_sound (K : Known) (s : SailState) (hK : K.Agrees s) (eff : InstructionEffect)
     (v : InstructionEffect.ret eff) (K1 : Known) (h : oracleEff K eff = some (v, K1)) :
-    ∃ s1, interpEff eff s = .ok v s1 ∧ K1.Agrees s1 ∧
+    ∃ s1, applyEffect eff s = .ok v s1 ∧ K1.Agrees s1 ∧
       (∀ r, K1.regs r = none → s1.regs r = s.regs r) ∧
       (∀ r, (K.regs r).isSome → (K1.regs r).isSome) := by
   cases eff with
@@ -125,7 +125,7 @@ theorem oracleEff_sound (K : Known) (s : FState) (hK : K.Agrees s) (eff : Instru
       by_cases h : reg = r
       · subst h
         simp [Known.set] at hr
-      · simp [FState.set, h]
+      · simp [SailState.set, h]
     · intro r hr
       by_cases h : reg = r
       · subst h
@@ -158,9 +158,9 @@ theorem oracleEff_sound (K : Known) (s : FState) (hK : K.Agrees s) (eff : Instru
     obtain ⟨rfl, rfl⟩ := h
     exact ⟨s, rfl, hK, fun _ _ => rfl, fun _ h => h⟩
 
-theorem oracleGo_sound {α : Type} : ∀ (n : Nat) (K : Known) (s : FState) (m : SailM α) (a : α) (K' : Known),
+theorem oracleGo_sound {α : Type} : ∀ (n : Nat) (K : Known) (s : SailState) (m : SailM α) (a : α) (K' : Known),
     K.Agrees s → oracleGo n K m = some (a, K') →
-    ∃ s', runF m s = .ok a s' ∧ K'.Agrees s' ∧ s'.mem = K'.data ∧
+    ∃ s', runSail m s = .ok a s' ∧ K'.Agrees s' ∧ s'.mem = K'.data ∧
       (∀ r, K'.regs r = none → s'.regs r = s.regs r) ∧
       (∀ r, (K.regs r).isSome → (K'.regs r).isSome) := by
   intro n
@@ -205,9 +205,9 @@ theorem oracleGo_sound {α : Type} : ∀ (n : Nat) (K : Known) (s : FState) (m :
       · rw [dif_neg hk0] at h
         simp at h
 
-theorem runOracleW_sound {α : Type} (K : Known) (s : FState) (m : SailM α) (a : α) (K' : Known)
+theorem runOracleW_sound {α : Type} (K : Known) (s : SailState) (m : SailM α) (a : α) (K' : Known)
     (hK : K.Agrees s) (h : runOracleW K m = some (a, K')) :
-    ∃ s', runF m s = .ok a s' ∧ K'.Agrees s' ∧ s'.mem = K'.data ∧
+    ∃ s', runSail m s = .ok a s' ∧ K'.Agrees s' ∧ s'.mem = K'.data ∧
       (∀ r, K'.regs r = none → s'.regs r = s.regs r) ∧
       (∀ r, (K.regs r).isSome → (K'.regs r).isSome) :=
   oracleGo_sound oracleFuel K s m a K' hK h

@@ -8,9 +8,9 @@ open Sail SailRV32 SailRV32.Functions Human
 namespace Slop.Equiv
 set_option maxHeartbeats 0
 
-variable {s t : RV.State} {σ : FState}
+variable {s t : RV.State} {σ : SailState}
 
-theorem set1_PC (σ : FState) (v : BitVec 32) (h : σ.regs .PC = s.pc) : (σ.set .nextPC v).regs .PC = s.pc := by
+theorem set1_PC (σ : SailState) (v : BitVec 32) (h : σ.regs .PC = s.pc) : (σ.set .nextPC v).regs .PC = s.pc := by
   rw [set_regs_ne _ _ _ _ (by decide)]; exact h
 
 theorem kind_jal (h : Airbender.Agree s σ) (ha : (σ.regs .PC).toNat % 4 = 0)
@@ -18,7 +18,7 @@ theorem kind_jal (h : Airbender.Agree s σ) (ha : (σ.regs .PC).toNat % 4 = 0)
     (hdec : RV.decode (readBytes σ.mem (σ.regs .PC).toNat 4) = some (.jal rd (x.signExtend 32)))
     (ht : RV.exec s (.jal rd (x.signExtend 32)) = some t) :
     ∃ σ', Airbender.step σ = some σ' ∧ Airbender.Agree t σ' := by
-  simp only [RV.exec, RV.State.goto] at ht
+  simp only [RV.exec, RV.State.jumpTo] at ht
   split_ifs at ht with hT
   case neg => simp at ht
   simp only [Option.map_some, Option.some.injEq] at ht; subst ht
@@ -33,7 +33,7 @@ theorem kind_jalr (h : Airbender.Agree s σ) (ha : (σ.regs .PC).toNat % 4 = 0)
     (hdec : RV.decode (readBytes σ.mem (σ.regs .PC).toNat 4) = some (.jalr rd rs1 (x.signExtend 32)))
     (ht : RV.exec s (.jalr rd rs1 (x.signExtend 32)) = some t) :
     ∃ σ', Airbender.step σ = some σ' ∧ Airbender.Agree t σ' := by
-  simp only [RV.exec, RV.State.goto] at ht
+  simp only [RV.exec, RV.State.jumpTo] at ht
   split_ifs at ht with hT
   case neg => simp at ht
   simp only [Option.map_some, Option.some.injEq] at ht; subst ht
@@ -51,7 +51,7 @@ theorem kind_branch (h : Airbender.Agree s σ) (ha : (σ.regs .PC).toNat % 4 = 0
   have hp := set1_PC σ (σ.regs .PC + 4) h.2.1
   have h1 : xget (σ.set .nextPC (σ.regs .PC + 4)) rs1 = s.getReg rs1 := by rw [xget_set_nextPC, agree_xget h]
   have h2' : xget (σ.set .nextPC (σ.regs .PC + 4)) rs2 = s.getReg rs2 := by rw [xget_set_nextPC, agree_xget h]
-  simp only [RV.exec, RV.State.goto] at ht
+  simp only [RV.exec, RV.State.jumpTo] at ht
   by_cases hc : c.holds (s.getReg rs1) (s.getReg rs2) = true
   · simp only [hc, ↓reduceIte] at ht
     split_ifs at ht with hT

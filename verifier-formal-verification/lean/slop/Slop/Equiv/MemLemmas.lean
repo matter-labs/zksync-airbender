@@ -15,7 +15,7 @@ namespace Slop.Equiv
 @[sail_norm] theorem bits_of_virtaddr_mk (a : BitVec 32) : bits_of_virtaddr (.Virtaddr a) = a := rfl
 
 set_option maxRecDepth 1000000 in
-@[sail_norm] theorem stInit_cur_privilege : Airbender.stInit.regs .cur_privilege = .Machine := by kernel_rfl
+@[sail_norm] theorem stInit_cur_privilege : Airbender.resetState.regs .cur_privilege = .Machine := by kernel_rfl
 
 attribute [sail_norm] Int.toNat_zero ite_self Int.toNat_natCast bne_self_eq_false Bool.false_and Bool.and_false
   Bool.false_eq_true ite_false ite_true Bool.true_and Bool.and_true
@@ -47,7 +47,7 @@ theorem zero_extend_toNat (a : BitVec 32) {m : Nat} (h : 32 ≤ m) : (zero_exten
   have := a.isLt
   exact Nat.mod_eq_of_lt (lt_of_lt_of_le this (Nat.pow_le_pow_right (by decide) h))
 
-theorem pma_regions_eq {σ : FState} (hs : Airbender.Sys σ) : σ.regs .pma_regions = Airbender.memoryMap := by
+theorem pma_regions_eq {σ : SailState} (hs : Airbender.Configured σ) : σ.regs .pma_regions = Airbender.memoryMap := by
   rw [hs .pma_regions rfl]; rfl
 
 theorem match_ram (a : BitVec 32) (w : Nat) (hw0 : 0 < w) (hw : w ≤ 8) (h1 : Airbender.RAM_START ≤ a.toNat)
@@ -146,7 +146,7 @@ elab "eval_closed" : tactic => withMainContext do
   let ty ← instantiateMVars (← g.getType)
   let ty' ← Meta.transform ty (pre := fun e => do
     if e.hasFVar || e.hasMVar || e.hasLooseBVars || e.isRawNatLit || e.nat?.isSome || e.int?.isSome ||
-        e.isConstOf ``Bool.true || e.isConstOf ``Bool.false || e.containsConst (· == ``Airbender.stInit) then
+        e.isConstOf ``Bool.true || e.isConstOf ``Bool.false || e.containsConst (· == ``Airbender.resetState) then
       return .continue
     let t ← whnfR (← inferType e)
     if t.isConstOf ``Nat then

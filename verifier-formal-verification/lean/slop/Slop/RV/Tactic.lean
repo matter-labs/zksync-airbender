@@ -232,7 +232,7 @@ macro_rules
       fun t => `(Lean.Parser.Tactic.simpLemma| $t:term)
     `(tactic| (
       intro $S1:ident $hpc:ident $hpost:ident $hcs:ident $hmem:ident
-      try simp only [fn₁, reduceRSet, next_r, store_r, jump_r, BitVec.reduceEq, ite_true, ite_false,
+      try simp only [mapsA0, reduceRSet, next_r, store_r, jump_r, BitVec.reduceEq, ite_true, ite_false,
         BitVec.ofNat_eq_ofNat] at $hpc:ident $hpost:ident ⊢
       try simp only [BitVec.ofNat_eq_ofNat] at $hcs:ident
       try simp (disch := rv_disch with $xs',*) only [BitVec.ofNat_eq_ofNat, reduceRSet, next_r, store_r, jump_r,
@@ -242,10 +242,10 @@ macro_rules
 syntax "rv_regs" (" at " ident)? : tactic
 macro_rules
   | `(tactic| rv_regs) => `(tactic|
-    simp only [fn₁, reduceRSet, next_r, store_r, jump_r, set_pc, jump_pc, next_pc, store_pc, BitVec.reduceAdd,
+    simp only [mapsA0, reduceRSet, next_r, store_r, jump_r, set_pc, jump_pc, next_pc, store_pc, BitVec.reduceAdd,
       BitVec.add_assoc, BitVec.reduceEq, ite_true, ite_false, BitVec.ofNat_eq_ofNat])
   | `(tactic| rv_regs at $h:ident) => `(tactic|
-    simp only [fn₁, reduceRSet, next_r, store_r, jump_r, set_pc, jump_pc, next_pc, store_pc, BitVec.reduceAdd,
+    simp only [mapsA0, reduceRSet, next_r, store_r, jump_r, set_pc, jump_pc, next_pc, store_pc, BitVec.reduceAdd,
       BitVec.reduceEq, ite_true, ite_false, BitVec.ofNat_eq_ofNat] at $h:ident)
 
 /-- Callee-saved registers of the final state: one case per register (`with h₁, …`: through callees). -/

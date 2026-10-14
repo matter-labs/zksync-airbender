@@ -30,9 +30,9 @@ theorem update_full32 (y : BitVec 32) : BitVec.updateSubrange (zeros : BitVec 32
   simp only [Sail.BitVec.updateSubrange, Sail.BitVec.updateSubrange', zeros]
   interval_cases j <;> simp
 
-theorem mem_read_ram1 (σ : FState) (hs : Airbender.Sys σ) (a : BitVec 32) (ha : a.toNat % 1 = 0)
+theorem mem_read_ram1 (σ : SailState) (hs : Airbender.Configured σ) (a : BitVec 32) (ha : a.toNat % 1 = 0)
     (h1 : Airbender.RAM_START ≤ a.toNat) (h2 : a.toNat + 1 ≤ Airbender.RAM_END) :
-    runF (mem_read (.Load .Data) .PBMT_PMA .Machine (.Physaddr (zero_extend a)) 1 false false false) σ =
+    runSail (mem_read (.Load .Data) .PBMT_PMA .Machine (.Physaddr (zero_extend a)) 1 false false false) σ =
       .ok (.Ok (readBytes σ.mem a.toNat 1)) σ := by
   have hw : (1 = 1 ∨ 1 = 2 ∨ 1 = 4) := by decide
   sail_run hs using mem_side with [pmp_check_machine, mmio_readable_false, pma_ram_load] stepwise
@@ -41,9 +41,9 @@ theorem mem_read_ram1 (σ : FState) (hs : Airbender.Sys σ) (a : BitVec 32) (ha 
   simp only [EStateM.Result.ok.injEq, and_true, Result.Ok.injEq, phys_addr_toNat, roundtrip1, BitVec.setWidth_eq,
     update_full8]
 
-theorem mem_read_ram2 (σ : FState) (hs : Airbender.Sys σ) (a : BitVec 32) (ha : a.toNat % 2 = 0)
+theorem mem_read_ram2 (σ : SailState) (hs : Airbender.Configured σ) (a : BitVec 32) (ha : a.toNat % 2 = 0)
     (h1 : Airbender.RAM_START ≤ a.toNat) (h2 : a.toNat + 2 ≤ Airbender.RAM_END) :
-    runF (mem_read (.Load .Data) .PBMT_PMA .Machine (.Physaddr (zero_extend a)) 2 false false false) σ =
+    runSail (mem_read (.Load .Data) .PBMT_PMA .Machine (.Physaddr (zero_extend a)) 2 false false false) σ =
       .ok (.Ok (readBytes σ.mem a.toNat 2)) σ := by
   have hw : (2 = 1 ∨ 2 = 2 ∨ 2 = 4) := by decide
   sail_run hs using mem_side with [pmp_check_machine, mmio_readable_false, pma_ram_load] stepwise
@@ -52,9 +52,9 @@ theorem mem_read_ram2 (σ : FState) (hs : Airbender.Sys σ) (a : BitVec 32) (ha 
   simp only [EStateM.Result.ok.injEq, and_true, Result.Ok.injEq, phys_addr_toNat, roundtrip2, BitVec.setWidth_eq,
     update_full16]
 
-theorem mem_read_ram4 (σ : FState) (hs : Airbender.Sys σ) (a : BitVec 32) (ha : a.toNat % 4 = 0)
+theorem mem_read_ram4 (σ : SailState) (hs : Airbender.Configured σ) (a : BitVec 32) (ha : a.toNat % 4 = 0)
     (h1 : Airbender.RAM_START ≤ a.toNat) (h2 : a.toNat + 4 ≤ Airbender.RAM_END) :
-    runF (mem_read (.Load .Data) .PBMT_PMA .Machine (.Physaddr (zero_extend a)) 4 false false false) σ =
+    runSail (mem_read (.Load .Data) .PBMT_PMA .Machine (.Physaddr (zero_extend a)) 4 false false false) σ =
       .ok (.Ok (readBytes σ.mem a.toNat 4)) σ := by
   have hw : (4 = 1 ∨ 4 = 2 ∨ 4 = 4) := by decide
   sail_run hs using mem_side with [pmp_check_machine, mmio_readable_false, pma_ram_load] stepwise
@@ -63,9 +63,9 @@ theorem mem_read_ram4 (σ : FState) (hs : Airbender.Sys σ) (a : BitVec 32) (ha 
   simp only [EStateM.Result.ok.injEq, and_true, Result.Ok.injEq, phys_addr_toNat, roundtrip4, BitVec.setWidth_eq,
     update_full32]
 
-theorem mem_read_rom1 (σ : FState) (hs : Airbender.Sys σ) (a : BitVec 32) (ha : a.toNat % 1 = 0)
+theorem mem_read_rom1 (σ : SailState) (hs : Airbender.Configured σ) (a : BitVec 32) (ha : a.toNat % 1 = 0)
     (h2 : a.toNat + 1 ≤ Airbender.RAM_START) :
-    runF (mem_read (.Load .Data) .PBMT_PMA .Machine (.Physaddr (zero_extend a)) 1 false false false) σ =
+    runSail (mem_read (.Load .Data) .PBMT_PMA .Machine (.Physaddr (zero_extend a)) 1 false false false) σ =
       .ok (.Ok (readBytes σ.mem a.toNat 1)) σ := by
   have hw : (1 = 1 ∨ 1 = 2 ∨ 1 = 4) := by decide
   sail_run hs using mem_side with [pmp_check_machine, mmio_readable_false, pma_rom_load] stepwise
@@ -74,9 +74,9 @@ theorem mem_read_rom1 (σ : FState) (hs : Airbender.Sys σ) (a : BitVec 32) (ha 
   simp only [EStateM.Result.ok.injEq, and_true, Result.Ok.injEq, phys_addr_toNat, roundtrip1, BitVec.setWidth_eq,
     update_full8]
 
-theorem mem_read_rom2 (σ : FState) (hs : Airbender.Sys σ) (a : BitVec 32) (ha : a.toNat % 2 = 0)
+theorem mem_read_rom2 (σ : SailState) (hs : Airbender.Configured σ) (a : BitVec 32) (ha : a.toNat % 2 = 0)
     (h2 : a.toNat + 2 ≤ Airbender.RAM_START) :
-    runF (mem_read (.Load .Data) .PBMT_PMA .Machine (.Physaddr (zero_extend a)) 2 false false false) σ =
+    runSail (mem_read (.Load .Data) .PBMT_PMA .Machine (.Physaddr (zero_extend a)) 2 false false false) σ =
       .ok (.Ok (readBytes σ.mem a.toNat 2)) σ := by
   have hw : (2 = 1 ∨ 2 = 2 ∨ 2 = 4) := by decide
   sail_run hs using mem_side with [pmp_check_machine, mmio_readable_false, pma_rom_load] stepwise
@@ -85,9 +85,9 @@ theorem mem_read_rom2 (σ : FState) (hs : Airbender.Sys σ) (a : BitVec 32) (ha 
   simp only [EStateM.Result.ok.injEq, and_true, Result.Ok.injEq, phys_addr_toNat, roundtrip2, BitVec.setWidth_eq,
     update_full16]
 
-theorem mem_read_rom4 (σ : FState) (hs : Airbender.Sys σ) (a : BitVec 32) (ha : a.toNat % 4 = 0)
+theorem mem_read_rom4 (σ : SailState) (hs : Airbender.Configured σ) (a : BitVec 32) (ha : a.toNat % 4 = 0)
     (h2 : a.toNat + 4 ≤ Airbender.RAM_START) :
-    runF (mem_read (.Load .Data) .PBMT_PMA .Machine (.Physaddr (zero_extend a)) 4 false false false) σ =
+    runSail (mem_read (.Load .Data) .PBMT_PMA .Machine (.Physaddr (zero_extend a)) 4 false false false) σ =
       .ok (.Ok (readBytes σ.mem a.toNat 4)) σ := by
   have hw : (4 = 1 ∨ 4 = 2 ∨ 4 = 4) := by decide
   sail_run hs using mem_side with [pmp_check_machine, mmio_readable_false, pma_rom_load] stepwise

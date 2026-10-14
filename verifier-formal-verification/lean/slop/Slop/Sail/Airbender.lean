@@ -7,7 +7,7 @@ import HumanSail.Airbender
 open Sail SailRV32 SailRV32.Functions
 
 namespace Human
-export Airbender (misa region RAM_START RAM_END memoryMap initResult stInit Volatile Sys)
+export Airbender (misa region RAM_START RAM_END memoryMap initResult resetState Volatile Configured)
 
 /-- RV32IM instructions (Sail's decoder already rejects RV64-only forms such as `ld`). -/
 def Supported : instruction → Bool
@@ -22,18 +22,18 @@ def NopCSR : instruction → Bool
   | _ => false
 
 /-- The instruction at the PC, fetched and decoded by Sail. -/
-noncomputable def current (s : FState) : Option instruction :=
-  match runF (fetch ()) s with
-  | .ok (.F_Base w) _ => match runF (ext_decode w) s with | .ok i _ => some i | _ => none
+noncomputable def current (s : SailState) : Option instruction :=
+  match runSail (fetch ()) s with
+  | .ok (.F_Base w) _ => match runSail (ext_decode w) s with | .ok i _ => some i | _ => none
   | _ => none
 
 /-- One step: a supported instruction is executed by Sail's `try_step`; an Airbender CSR is skipped;
 anything else stops the machine (`none`). -/
-noncomputable def step (s : FState) : Option FState :=
+noncomputable def step (s : SailState) : Option SailState :=
   match current s with
   | some i =>
     if Supported i then
-      match runF (try_step 0 false) s with
+      match runSail (try_step 0 false) s with
       | .ok false s' => some s'
       | _ => none
     else if NopCSR i then
@@ -43,11 +43,11 @@ noncomputable def step (s : FState) : Option FState :=
   | none => none
 
 /-- `s` executes one instruction that retires normally (no trap, no fault, not stopped). -/
-def Retired (s s' : FState) : Prop :=
+def Retired (s s' : SailState) : Prop :=
   step s = some s' ∧ s'.regs .minstret = s.regs .minstret + 1
 
 /-- `n` consecutive retired instructions lead from `s` to `s'`. -/
-inductive Runs : Nat → FState → FState → Prop
+inductive Runs : Nat → SailState → SailState → Prop
   | zero : Runs 0 s s
   | succ : Retired s s₁ → Runs n s₁ s' → Runs (n+1) s s'
 

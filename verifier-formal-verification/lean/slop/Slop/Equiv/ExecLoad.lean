@@ -13,13 +13,13 @@ theorem regidx_beq_zreg (rd : BitVec 5) (h : rd ≠ 0) : (regidx.Regidx rd == zr
   show (rd == 0#5) = false
   simpa using h
 
-theorem exec_load_x0 (σ : FState) (rs1 : BitVec 5) (off : BitVec 32) (n : Nat) (sg : Bool) :
-    runF (Airbender.execute (Airbender.toSail (.load n sg 0 rs1 off))) σ = .ok RETIRE_SUCCESS σ := rfl
+theorem exec_load_x0 (σ : SailState) (rs1 : BitVec 5) (off : BitVec 32) (n : Nat) (sg : Bool) :
+    runSail (Airbender.execute (Airbender.toSail (.load n sg 0 rs1 off))) σ = .ok RETIRE_SUCCESS σ := rfl
 
-theorem exec_load (σ : FState) (hs : Airbender.Sys σ) (rd rs1 : BitVec 5) (x : BitVec 12) (n : Nat) (sg : Bool)
+theorem exec_load (σ : SailState) (hs : Airbender.Configured σ) (rd rs1 : BitVec 5) (x : BitVec 12) (n : Nat) (sg : Bool)
     (hn : n = 1 ∨ n = 2 ∨ n = 4) (hrd : rd ≠ 0) (ha : (xget σ rs1 + x.signExtend 32).toNat % n = 0)
     (hr : (xget σ rs1 + x.signExtend 32).toNat + n ≤ Airbender.RAM_END) :
-    runF (Airbender.execute (Airbender.toSail (.load n sg rd rs1 (x.signExtend 32)))) σ =
+    runSail (Airbender.execute (Airbender.toSail (.load n sg rd rs1 (x.signExtend 32)))) σ =
       .ok RETIRE_SUCCESS (xset σ rd (extend_value (!sg) (readBytes σ.mem (xget σ rs1 + x.signExtend 32).toNat n))) := by
   simp only [Airbender.toSail, Airbender.execute, regidx_beq_zreg rd hrd, Bool.false_eq_true, ite_false, execute,
     execute_LOAD, sext12]

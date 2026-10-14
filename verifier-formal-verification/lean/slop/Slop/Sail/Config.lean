@@ -11,15 +11,15 @@ namespace Human
 theorem init_ok : (match initResult with | .ok _ _ => true | .error _ _ => false) = true := by decide +kernel
 
 /-- Machine mode after reset. -/
-theorem stInit_machine : (stInit.regs .cur_privilege == Privilege.Machine) = true := by decide +kernel
+theorem stInit_machine : (resetState.regs .cur_privilege == Privilege.Machine) = true := by decide +kernel
 
 /-- The reset state with one instruction `w` at address 0 (= the PC) and `a0 = 0x400004`. -/
-noncomputable def test (w : BitVec 32) : FState :=
-  { stInit.set .x10 0x400004 with mem := fun a => if a < 4 then w.extractLsb' (8 * a) 8 else 0 }
+noncomputable def test (w : BitVec 32) : SailState :=
+  { resetState.set .x10 0x400004 with mem := fun a => if a < 4 then w.extractLsb' (8 * a) 8 else 0 }
 
 /-- what happens to the PC and the retired-instruction counter -/
 noncomputable def outcome (w : BitVec 32) : Option (BitVec 32 × BitVec 64) :=
-  (step (test w)).map fun s => (s.regs .PC, s.regs .minstret - stInit.regs .minstret)
+  (step (test w)).map fun s => (s.regs .PC, s.regs .minstret - resetState.regs .minstret)
 
 theorem add_runs   : outcome 0x00b50533 = some (4, 1) := by decide +kernel  -- add a0, a0, a1
 theorem mul_runs   : outcome 0x02b50533 = some (4, 1) := by decide +kernel  -- mul a0, a0, a1

@@ -7,7 +7,7 @@ open Sail SailRV32 SailRV32.Functions Human
 namespace Slop.Equiv
 set_option maxHeartbeats 0
 
-variable {s t : RV.State} {σ : FState}
+variable {s t : RV.State} {σ : SailState}
 
 theorem kind_lui (h : Airbender.Agree s σ) (ha : (σ.regs .PC).toNat % 4 = 0)
     (h2 : (σ.regs .PC).toNat + 4 ≤ Airbender.RAM_START) (rd : BitVec 5) (u : BitVec 20)
@@ -59,7 +59,7 @@ theorem kind_op (h : Airbender.Agree s σ) (ha : (σ.regs .PC).toNat % 4 = 0)
     (ht : RV.exec s (.op o rd rs1 rs2) = some t) :
     ∃ σ', Airbender.step σ = some σ' ∧ Airbender.Agree t σ' := by
   simp only [RV.exec, Option.some.injEq] at ht; subst ht
-  have e : runF (Airbender.execute (Airbender.toSail (.op o rd rs1 rs2))) (σ.set .nextPC (σ.regs .PC + 4)) =
+  have e : runSail (Airbender.execute (Airbender.toSail (.op o rd rs1 rs2))) (σ.set .nextPC (σ.regs .PC + 4)) =
       .ok RETIRE_SUCCESS (xset (σ.set .nextPC (σ.regs .PC + 4)) rd
         (RV.alu o (xget (σ.set .nextPC (σ.regs .PC + 4)) rs1) (xget (σ.set .nextPC (σ.regs .PC + 4)) rs2))) := by
     rcases ho with ho | ho

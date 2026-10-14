@@ -30,26 +30,29 @@ structure State where
 namespace State
 /-- The value an instruction sees in register `i`: x0 is always 0. -/
 def getReg (s : State) (i : Reg) : Word := if i = 0 then 0 else s.regFile i
-def setReg (s : State) (rd : Reg) (v : Word) : State :=
-  { s with regFile := fun i => if i = rd then v else s.regFile i }
-def next (s : State) : State := { s with pc := s.pc + 4 }
-def jump (s : State) (t : Word) : State := { s with pc := t }
-/-- Jump; the target must be 4-byte aligned (no compressed instructions). -/
-def goto (s : State) (t : Word) : Option State := if t.toNat % 4 = 0 then some (s.jump t) else none
+def setReg (s : State) (rd : Reg) (value : Word) : State :=
+  { s with regFile := fun i => if i = rd then value else s.regFile i }
+/-- Go on to the following instruction. -/
+def nextInstr (s : State) : State := { s with pc := s.pc + 4 }
+def setPC (s : State) (target : Word) : State := { s with pc := target }
+/-- Jump to `target`; no next state unless it is 4-byte aligned (no compressed instructions). -/
+def jumpTo (s : State) (target : Word) : Option State :=
+  if target.toNat % 4 = 0 then some (s.setPC target) else none
 end State
 
-/-- `n` bytes at `a`, little-endian. -/
-def read (m : Word → BitVec 8) (a : Word) : Nat → Word
+/-- The `numBytes` bytes at `addr`, little-endian (lowest address = lowest byte). -/
+def read (mem : Word → BitVec 8) (addr : Word) : (numBytes : Nat) → Word
   | 0     => 0
-  | n + 1 => (m a).zeroExtend 32 ||| (read m (a + 1) n <<< 8)
+  | n + 1 => (mem addr).zeroExtend 32 ||| (read mem (addr + 1) n <<< 8)
 
-/-- The low `n` bytes of `v` written at `a`, little-endian. -/
-def write (m : Word → BitVec 8) (a : Word) (v : Word) : Nat → (Word → BitVec 8)
-  | 0     => m
-  | n + 1 => write (fun b => if b = a then v.setWidth 8 else m b) (a + 1) (v >>> 8) n
+/-- Memory after writing the low `numBytes` bytes of `value` at `addr`, little-endian. -/
+def write (mem : Word → BitVec 8) (addr : Word) (value : Word) : (numBytes : Nat) → (Word → BitVec 8)
+  | 0     => mem
+  | n + 1 => write (fun b => if b = addr then value.setWidth 8 else mem b) (addr + 1) (value >>> 8) n
 
-/-- Store the low `n` bytes of `v` at `a`. -/
-def State.store (s : State) (a v : Word) (n : Nat) : State := { s with mem := write s.mem a v n }
+/-- Store the low `numBytes` bytes of `value` at `addr`. -/
+def State.store (s : State) (addr value : Word) (numBytes : Nat) : State :=
+  { s with mem := write s.mem addr value numBytes }
 
 inductive Op | add | sub | sll | slt | sltu | xor | srl | sra | or | and
              | mul | mulhu | divu | remu    -- Airbender: no signed MULH, MULHSU, DIV, REM
@@ -80,42 +83,44 @@ def Cond.holds : Cond → Word → Word → Bool
   | .ltu, a, b => a.ult b
   | .geu, a, b => !a.ult b
 
-/-- Immediates are stored already decoded (sign-extended / shifted). -/
+/-- Immediates and offsets are stored already decoded (sign-extended / shifted). -/
 inductive Instr
   | lui    (rd : Reg) (imm : Word)
   | auipc  (rd : Reg) (imm : Word)
-  | jal    (rd : Reg) (off : Word)
-  | jalr   (rd rs1 : Reg) (off : Word)
-  | branch (c : Cond) (rs1 rs2 : Reg) (off : Word)
-  | load   (n : Nat) (signed : Bool) (rd rs1 : Reg) (off : Word)
-  | store  (n : Nat) (rs2 rs1 : Reg) (off : Word)
+  | jal    (rd : Reg) (offset : Word)
+  | jalr   (rd rs1 : Reg) (offset : Word)
+  | branch (cond : Cond) (rs1 rs2 : Reg) (offset : Word)
+  | load   (numBytes : Nat) (signed : Bool) (rd rs1 : Reg) (offset : Word)
+  | store  (numBytes : Nat) (rs2 rs1 : Reg) (offset : Word)
   | opImm  (op : Op) (rd rs1 : Reg) (imm : Word)
   | op     (op : Op) (rd rs1 rs2 : Reg)
 
+/-- What one instruction does to the state (`none`: Airbender cannot run it). -/
 def exec (s : State) : Instr → Option State
-  | .lui rd imm         => some (s.setReg rd imm).next
-  | .auipc rd imm       => some (s.setReg rd (s.pc + imm)).next
-  | .jal rd off         => (s.goto (s.pc + off)).map (·.setReg rd (s.pc + 4))
-  | .jalr rd rs1 off    => (s.goto ((s.getReg rs1 + off) &&& ~~~1)).map (·.setReg rd (s.pc + 4))
-  | .branch c rs1 rs2 off =>
-      if c.holds (s.getReg rs1) (s.getReg rs2) then s.goto (s.pc + off) else some s.next
-  | .load n sg rd rs1 off =>
-      let a := s.getReg rs1 + off
-      let v := read s.mem a n
-      let v := if sg then (v.setWidth (8 * n)).signExtend 32 else v
-      if rd = 0 then some s.next                      -- Airbender: a load into x0 only advances the PC
-      else if aligned a n ∧ readable a n then some (s.setReg rd v).next else none
-  | .store n rs2 rs1 off =>
-      let a := s.getReg rs1 + off
-      if aligned a n ∧ writable a n then some (s.store a (s.getReg rs2) n).next else none
-  | .opImm op rd rs1 imm => some (s.setReg rd (alu op (s.getReg rs1) imm)).next
-  | .op op rd rs1 rs2    => some (s.setReg rd (alu op (s.getReg rs1) (s.getReg rs2))).next
+  | .lui rd imm            => some (s.setReg rd imm).nextInstr
+  | .auipc rd imm          => some (s.setReg rd (s.pc + imm)).nextInstr
+  | .jal rd offset         => (s.jumpTo (s.pc + offset)).map (·.setReg rd (s.pc + 4))
+  | .jalr rd rs1 offset    => (s.jumpTo ((s.getReg rs1 + offset) &&& ~~~1)).map (·.setReg rd (s.pc + 4))
+  | .branch cond rs1 rs2 offset =>
+      if cond.holds (s.getReg rs1) (s.getReg rs2) then s.jumpTo (s.pc + offset) else some s.nextInstr
+  | .load numBytes signed rd rs1 offset =>
+      let addr := s.getReg rs1 + offset
+      let bytes := read s.mem addr numBytes
+      let value := if signed then (bytes.setWidth (8 * numBytes)).signExtend 32 else bytes
+      if rd = 0 then some s.nextInstr                 -- Airbender: a load into x0 only advances the PC
+      else if aligned addr numBytes ∧ readable addr numBytes then some (s.setReg rd value).nextInstr else none
+  | .store numBytes rs2 rs1 offset =>
+      let addr := s.getReg rs1 + offset
+      if aligned addr numBytes ∧ writable addr numBytes then some (s.store addr (s.getReg rs2) numBytes).nextInstr
+      else none
+  | .opImm op rd rs1 imm   => some (s.setReg rd (alu op (s.getReg rs1) imm)).nextInstr
+  | .op op rd rs1 rs2      => some (s.setReg rd (alu op (s.getReg rs1) (s.getReg rs2))).nextInstr
 
 /-- Standard RV32IM encodings (unprivileged spec, ch. 2 and 13). -/
 def decode (w : Word) : Option Instr :=
-  let opc := (w.extractLsb' 0 7).toNat
-  let f3  := (w.extractLsb' 12 3).toNat
-  let f7  := (w.extractLsb' 25 7).toNat
+  let opcode := (w.extractLsb' 0 7).toNat
+  let funct3 := (w.extractLsb' 12 3).toNat
+  let funct7 := (w.extractLsb' 25 7).toNat
   let rd  : Reg := w.extractLsb' 7 5
   let rs1 : Reg := w.extractLsb' 15 5
   let rs2 : Reg := w.extractLsb' 20 5
@@ -127,7 +132,7 @@ def decode (w : Word) : Option Instr :=
   let immJ : Word := (w.extractLsb' 31 1 ++ w.extractLsb' 12 8 ++ w.extractLsb' 20 1 ++ w.extractLsb' 21 10
                       ++ (0 : BitVec 1)).signExtend 32
   let shamt : Word := rs2.zeroExtend 32
-  match opc, f3, f7 with
+  match opcode, funct3, funct7 with
   | 0x37, _, _    => some (.lui rd immU)
   | 0x17, _, _    => some (.auipc rd immU)
   | 0x6f, _, _    => some (.jal rd immJ)
@@ -176,8 +181,8 @@ def decode (w : Word) : Option Instr :=
 def step (s : State) : Option State :=
   if s.pc.toNat % 4 = 0 ∧ s.pc.toNat + 4 ≤ ROM_END then (decode (read s.mem s.pc 4)).bind (exec s) else none
 
-/-- `n` steps. -/
-def run : Nat → State → Option State
+/-- `numSteps` steps (`none` if any step has no next state). -/
+def run : (numSteps : Nat) → State → Option State
   | 0,     s => some s
   | n + 1, s => (step s).bind (run n)
 

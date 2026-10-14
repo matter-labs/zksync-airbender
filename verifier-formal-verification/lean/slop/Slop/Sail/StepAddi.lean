@@ -8,7 +8,7 @@ namespace Slop
 open Human Wr
 
 
-theorem agrees_set_self (K : Known) (s : FState) (hK : K.Agrees s) (r : Register) :
+theorem agrees_set_self (K : Known) (s : SailState) (hK : K.Agrees s) (r : Register) :
     (K.set r (s.regs r)).Agrees s := by
   refine ⟨fun r' w hw => ?_, fun i b hb => hK.2.1 i b hb, hK.2.2⟩
   unfold Known.set at hw
@@ -21,7 +21,7 @@ theorem agrees_set_self (K : Known) (s : FState) (hK : K.Agrees s) (r : Register
   · rw [dif_neg h] at hw
     exact hK.1 r' w hw
 
-theorem K0_agrees (s : FState) (hs : Sys s) (hpc : s.regs .PC = 0xd8#32)
+theorem K0_agrees (s : SailState) (hs : Configured s) (hpc : s.regs .PC = 0xd8#32)
     (hcode : ∀ i < 4, s.mem (0xd8 + i) = (0x00150513#32).extractLsb' (8 * i) 8) : (K0 s.mem).Agrees s := by
   refine ⟨fun r v hv => ?_, fun i b hb => ?_, rfl⟩
   · unfold K0 at hv
@@ -55,7 +55,7 @@ theorem K0_agrees (s : FState) (hs : Sys s) (hpc : s.regs .PC = 0xd8#32)
     · simp at hb
 
 set_option maxRecDepth 1000000 in
-theorem try_step_run (s : FState) :
+theorem try_step_run (s : SailState) :
     (Wr.oracleGo 100000 (Ks s) (try_step 0 false)).map
       (fun p => (p.1, p.2.regs .PC, p.2.regs .x10, p.2.regs .minstret))
     = some (false, some (0xdc#32), some (s.regs .x10 + 1), some (s.regs .minstret + 1)) := by
@@ -67,26 +67,26 @@ theorem fetch_run (mem : Nat → BitVec 8) :
   kernel_rfl
 
 set_option maxRecDepth 1000000 in
-theorem try_step_wr (s : FState) :
+theorem try_step_wr (s : SailState) :
     (Wr.oracleGo 100000 (Ks s) (try_step 0 false)).map (fun p => p.2.wr) =
     some [.written_event_index, .minstret, .PC, .x10, .nextPC, .minstret_increment, .mip, .minstret, .x10, .PC] := by
   kernel_rfl
 
 set_option maxRecDepth 1000000 in
-theorem try_step_sysvals (s : FState) :
+theorem try_step_sysvals (s : SailState) :
     (Wr.oracleGo 100000 (Ks s) (try_step 0 false)).map
       (fun p => (p.2.regs .written_event_index, p.2.regs .mip)) =
-    some (some (stInit.regs .written_event_index), some (stInit.regs .mip)) := by
+    some (some (resetState.regs .written_event_index), some (resetState.regs .mip)) := by
   kernel_rfl
 
 set_option maxRecDepth 1000000 in
 /-- The oracle run of the whole `try_step` leaves the data memory unchanged (`addi` stores nothing). -/
-theorem try_step_data (s : FState) :
+theorem try_step_data (s : SailState) :
     (Wr.oracleGo 100000 (Ks s) (try_step 0 false)).map (fun p => p.2.data) = some s.mem := by
   kernel_rfl
 
 /-- A register the oracle run did not write keeps its value. -/
-theorem frame_of_not_written {α : Type} (n : Nat) (K K' : Known) (m : SailM α) (a : α) (s s' : FState)
+theorem frame_of_not_written {α : Type} (n : Nat) (K K' : Known) (m : SailM α) (a : α) (s s' : SailState)
     (hK : K.Agrees s) (h : Wr.oracleGo n K m = some (a, K')) (hK' : K'.Agrees s')
     (hnone : ∀ r, K'.regs r = none → s'.regs r = s.regs r) (r : Register) (hr : r ∉ K'.wr) :
     s'.regs r = s.regs r := by
@@ -99,10 +99,10 @@ theorem frame_of_not_written {α : Type} (n : Nat) (K K' : Known) (m : SailM α)
     rw [heq] at hk
     exact (hK.1 r v hk).symm
 
-theorem step_addi (s : FState) (hs : Sys s) (hpc : s.regs .PC = 0xd8#32)
+theorem step_addi (s : SailState) (hs : Configured s) (hpc : s.regs .PC = 0xd8#32)
     (hcode : ∀ i < 4, s.mem (0xd8 + i) = (0x00150513#32).extractLsb' (8 * i) 8) :
     ∃ s', step s = some s' ∧ s'.regs .x10 = s.regs .x10 + 1 ∧ s'.regs .PC = 0xdc#32 ∧
-      s'.regs .minstret = s.regs .minstret + 1 ∧ s'.mem = s.mem ∧ Sys s' ∧
+      s'.regs .minstret = s.regs .minstret + 1 ∧ s'.mem = s.mem ∧ Configured s' ∧
       (∀ r, r ≠ .x10 → r ≠ .PC → r ≠ .nextPC → r ≠ .minstret → r ≠ .minstret_increment →
         Volatile r = true → s'.regs r = s.regs r) := by
   have hK0 := K0_agrees s hs hpc hcode

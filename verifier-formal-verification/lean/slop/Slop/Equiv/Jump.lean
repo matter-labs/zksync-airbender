@@ -30,14 +30,14 @@ theorem bit1_of_aligned (t : BitVec 32) (ht : t.toNat % 4 = 0) : bit_to_bool (Sa
     rw [← BitVec.getLsbD_eq_getElem]; simp only [BitVec.getLsbD, Nat.testBit_eq_decide_div_mod_eq]; simp; omega
   simp [Sail.BitVec.access, bit_to_bool, this]; rfl
 
-theorem jump_to_run (σ : FState) (hs : Airbender.Sys σ) (t : BitVec 32) (ht : t.toNat % 4 = 0) :
-    runF (jump_to t) σ = .ok RETIRE_SUCCESS (σ.set .nextPC t) := by
+theorem jump_to_run (σ : SailState) (hs : Airbender.Configured σ) (t : BitVec 32) (ht : t.toNat % 4 = 0) :
+    runSail (jump_to t) σ = .ok RETIRE_SUCCESS (σ.set .nextPC t) := by
   unfold jump_to SailME.run
   simp only [ext_control_check_pc, me_run_lift_bind, me_run_ite, bit0_of_aligned t ht, bit1_of_aligned t ht]
-  have hz : runF (currentlyEnabled .Ext_Zca) σ = .ok false σ := en_run hs _ _ (by decide +kernel)
+  have hz : runSail (currentlyEnabled .Ext_Zca) σ = .ok false σ := en_run hs _ _ (by decide +kernel)
   simp only [Bool.false_and, Bool.false_eq_true, ↓reduceIte, Slop.runF_bind, hz, set_next_pc, Slop.runF_writeReg,
     Slop.runF_pure, PreSail.assert, me_run_pure]
-  rw [show runF (FreeM.pure () : SailM Unit) σ = .ok () σ from rfl]
+  rw [show runSail (FreeM.pure () : SailM Unit) σ = .ok () σ from rfl]
   simp only [hz]
 
 end Slop.Equiv

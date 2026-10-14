@@ -9,9 +9,9 @@ namespace Slop.Equiv
 set_option maxHeartbeats 0
 set_option maxRecDepth 1000000
 
-theorem mem_read_fetch_rom4 (σ : FState) (hs : Airbender.Sys σ) (a : BitVec 32) (ha : a.toNat % 4 = 0)
+theorem mem_read_fetch_rom4 (σ : SailState) (hs : Airbender.Configured σ) (a : BitVec 32) (ha : a.toNat % 4 = 0)
     (h2 : a.toNat + 4 ≤ Airbender.RAM_START) :
-    runF (mem_read (.InstructionFetch ()) .PBMT_PMA .Machine (.Physaddr (zero_extend a)) 4 false false false) σ =
+    runSail (mem_read (.InstructionFetch ()) .PBMT_PMA .Machine (.Physaddr (zero_extend a)) 4 false false false) σ =
       .ok (.Ok (readBytes σ.mem a.toNat 4)) σ := by
   have hw : (4 = 1 ∨ 4 = 2 ∨ 4 = 4) := by decide
   sail_run hs using mem_side with [pmp_check_machine, mmio_readable_false, pma_rom_fetch] stepwise
@@ -27,10 +27,10 @@ theorem access_low (a : BitVec 32) (h : a.toNat % 4 = 0) : BitVec.access a 0 = 0
   simp [BitVec.access, BitVec.getLsbD_eq_getElem] at h0 h1 ⊢
   simp [h0, h1]
 
-theorem fetch_rom (σ : FState) (hs : Airbender.Sys σ) (ha : (σ.regs .PC).toNat % 4 = 0)
+theorem fetch_rom (σ : SailState) (hs : Airbender.Configured σ) (ha : (σ.regs .PC).toNat % 4 = 0)
     (h2 : (σ.regs .PC).toNat + 4 ≤ Airbender.RAM_START)
     (hrvc : isRVC (Sail.BitVec.extractLsb (readBytes σ.mem (σ.regs .PC).toNat 4) 15 0) = false) :
-    runF (fetch ()) σ = .ok (.F_Base (readBytes σ.mem (σ.regs .PC).toNat 4)) σ := by
+    runSail (fetch ()) σ = .ok (.F_Base (readBytes σ.mem (σ.regs .PC).toNat 4)) σ := by
   have ⟨hb0, hb1⟩ := access_low _ ha
   sail_run hs using mem_side with [translate_fetch, mem_read_fetch_rom4] stepwise
   eval_closed
