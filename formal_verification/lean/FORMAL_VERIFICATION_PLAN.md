@@ -306,8 +306,11 @@ ABI and whole mixed execution remain separate.
    canonical clock fourteen; malformed immediates/constants, middle operands and
    incomplete references are rejected. Existing AUIPC roots and the actual
    unissued G-prefix effect remain inhabited. Public register dataflow now admits
-   intervening ADDIs to other nonzero GPRs, including reads/readonly refreshes of
-   the tracked register. Original public decoding derives destination separation;
+   intervening ADD/SUB/ADDI/LUI/AUIPC writes to other nonzero GPRs, including
+   reads/readonly refreshes of the tracked register. Original arithmetic
+   instruction constructors derive the native GPR destination bank/index without
+   operand bounds or arithmetic results. Original public decoding derives
+   destination separation;
    raw initialized matching preserves its canonical word and actual timestamp
    while retaining every gap write. A final ADDI derives the fresh output before
    the existing complete selected-reference composition. No inert-gap, desired
@@ -316,9 +319,14 @@ ABI and whole mixed execution remain separate.
    x12 = 127/129 → gap x10 = 127/129 → x12 = 128, clock-eight refresh and
    clock-fourteen final output. A forged clock-ten source passes local native
    constraints/timestamp lookups but fails architectural matching. Constant and
-   incomplete-reference guards and the actual unissued G prefix remain. Continue
-   other gap instructions, worker-interleaved preparation, broader operand-dependent
-   operations, jumps/branches and whole caller retirement, retaining unsupported-
+   incomplete-reference guards and the actual unissued G prefix remain. Native
+   ADD/SUB gaps read x12 twice, write x10 = 254/0, retain clock-nine refreshes
+   and derive final x12 = 128 at clock fourteen. Wrong public destinations and
+   instruction forms are rejected. A stale clock-eight source passes local
+   constraints/timestamps but global token counts reject double consumption.
+   Continue non-arithmetic gap instructions, worker-interleaved preparation,
+   broader operand-dependent operations, jumps/branches and whole caller
+   retirement, retaining unsupported-
    control and unissued-exclusion boundaries.
    COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed
    retained for the second window. Extended BLAKE and Keccak completion controls

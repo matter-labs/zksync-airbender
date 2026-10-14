@@ -410,8 +410,10 @@ Sail retirement remain open.
 
 
 The [public register-dataflow entry](Airbender/Review/Helpers/UnifiedReduced/RegisterDataflow.lean)
-now allows intervening ADDIs to other nonzero GPRs. A gap may read the tracked
-register and refresh its timestamp. Public decoding derives the real destination;
+now allows intervening ADD/SUB/ADDI/LUI/AUIPC writes to other nonzero GPRs.
+The arithmetic destination comes from the original public instruction constructor;
+native decoder equations derive its GPR bank and index without an operand bound
+or arithmetic result. A gap may read the tracked register and refresh its timestamp. Public decoding derives the real destination;
 raw initialized matching and readonly-port preservation derive the tracked value,
 retaining the gap's actual write. Induction alternates these gaps with computed
 ADDIs before Sail transport or regional round-mask derivation. No desired read,
@@ -428,9 +430,14 @@ eight; final output retains clock fourteen. A forged source clock ten passes
 local native constraints/timestamp lookups but fails joint architectural matching.
 Wrong constants and incomplete references are rejected. The actual unissued
 G-prefix effect remains admitted. These are preparation/guard fixtures; complete
-references remain general accepted-witness theorems. Other gap instructions,
-worker-interleaved preparation, broader operands and full Sail retirement remain
-open.
+references remain general accepted-witness theorems. New reversed-row ADD/SUB
+fixtures read x12 twice, preserve its value 127/129, write x10 = 254/0 and retain
+the second readonly refresh at clock nine. The final signed ADDI derives x12 = 128
+at clock fourteen. Wrong public destinations and instruction forms are rejected.
+A final source that reuses clock eight still passes all local native constraints
+and timestamp queries, but global token counts reject its second consumption.
+Non-arithmetic gap instructions, worker-interleaved preparation, broader operands
+and full Sail retirement remain open.
 
 [Control preparation](Airbender/Review/Helpers/UnifiedReduced/ControlPreparation.lean)
 uses a public ordinary ADDI-from-x0/LUI registry and a worker-free final preparation

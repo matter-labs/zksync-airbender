@@ -159,7 +159,11 @@ separate.
 
 
 The [public dataflow scope](RegisterDataflow.lean), `PublicRegisterDataflow`, adds
-intervening ADDIs to other nonzero GPRs. A gap can read and refresh the tracked
+intervening ADD/SUB/ADDI/LUI/AUIPC writes to other nonzero GPRs.
+`ArithmeticFramePreparation` binds the destination using the original public
+instruction constructor. Native decoding derives its GPR bank/index without
+operand bounds or arithmetic results. The original ADDI scope remains a special
+case. A gap can read and refresh the tracked
 register; original public decoding derives its separate destination. Raw matching
 and readonly-port preservation derive the value, retaining the actual timestamp
 and all other writes. Induction combines these gaps with computed ADDIs before
@@ -174,9 +178,13 @@ fixtures derive x12 = 127/129, gap x10 = 127/129 from initial 65537 and final
 x12 = 128. The readonly refresh retains clock eight and final output clock
 fourteen; a fabricated clock ten passes local native constraints/timestamps but
 fails architectural matching. Wrong constants and incomplete references are
-rejected; the actual unissued G-prefix effect remains. Other gap instructions,
-worker-interleaved preparation, broader operands and full Sail retirement remain
-separate.
+rejected; the actual unissued G-prefix effect remains. New native ADD/SUB gaps
+read x12 twice, preserve 127/129, write x10 = 254/0 and retain the second refresh
+at clock nine before final x12 = 128 at clock fourteen. Wrong public destination
+and instruction forms are rejected. A stale clock-eight source satisfies local
+constraints/timestamp queries but fails global matching by double consumption.
+Non-arithmetic gap instructions, worker-
+interleaved preparation, broader operands and full Sail retirement remain separate.
 
 The [prepared control window](../../Trace/UnifiedReduced/ControlPreparation.lean)
 connects two prepared controls through the same actual intervening history, keeping
