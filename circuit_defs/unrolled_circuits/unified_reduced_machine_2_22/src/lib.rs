@@ -100,13 +100,15 @@ mod test {
         assert_ne!(layout_2_22, layout_2_23);
     }
 
+    /// Writes `generated/layout.json` only: the witness-eval fn is the 2^23
+    /// sibling's (`witness_eval_fn_matches_sibling`).
     #[test]
     fn generate() {
         skip_if_ci!();
 
-        circuit_common::generate_default_risc_v_with_mem_cycles_artifacts::<
-            UnifiedReducedMachineCircuit2_22,
-        >(true);
+        let compiled_circuit = get_circuit(true);
+        let mut dst = std::fs::File::create("generated/layout.json").unwrap();
+        serde_json::to_writer_pretty(&mut dst, &compiled_circuit).unwrap();
     }
 
     /// The SSA-derived witness-eval fn must equal the 2^23 sibling's, which
