@@ -33,6 +33,7 @@ pub struct Version {
     pub contracts_root: &'static str,
     pub data_root: &'static str,
     pub pow_cap: u32,
+    pub gkr_pow_cap: u32,
 }
 
 pub const L1_WRAP_2P22: Version = Version {
@@ -50,6 +51,7 @@ pub const L1_WRAP_2P22: Version = Version {
     contracts_root: "generated_contracts",
     data_root: "debug_data",
     pow_cap: 30,
+    gkr_pow_cap: 25,
 };
 
 // W3 Tasks 2/5/6 add L1_WRAP_2P21 here once its layout and proof exist:
@@ -93,9 +95,13 @@ impl Version {
             self.circuit(),
             serde_json::from_reader(std::fs::File::open(self.proof).expect("proof"))
                 .expect("deserialize proof"),
-            serde_json::from_reader(std::fs::File::open(self.aux).expect("commitment mode"))
-                .expect("deserialize commitment mode"),
+            self.commitment_mode(),
         )
+    }
+
+    pub fn commitment_mode(&self) -> CommitmentMode {
+        serde_json::from_reader(std::fs::File::open(self.aux).expect("commitment mode"))
+            .expect("deserialize commitment mode")
     }
 
     pub fn final_pc(&self) -> u32 {

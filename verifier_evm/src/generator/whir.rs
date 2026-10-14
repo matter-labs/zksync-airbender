@@ -51,6 +51,7 @@ impl WhirGenConfig {
         let queries = schedule.whir_queries_schedule.clone();
         let pow_bits = schedule.whir_pow_schedule.clone();
         let num_rounds = folds.len();
+        assert!(num_rounds > 0, "WHIR schedule must contain a round");
         assert_eq!(
             queries.len(),
             num_rounds,
@@ -82,6 +83,42 @@ impl WhirGenConfig {
             "WHIR folds sum {total_folds} exceeds message size log2 {message_log2}"
         );
         let rfin = message_log2 - total_folds;
+        assert!(
+            rfin > 0,
+            "WHIR final polynomial must contain at least two monomials"
+        );
+        assert!(
+            message_log2 <= 26,
+            "WHIR point scratch holds 26 coordinates"
+        );
+        assert!(
+            folds.iter().all(|fold| (1..=5).contains(fold)),
+            "WHIR folding scratch supports fold logs 1..=5"
+        );
+        assert_eq!(schedule.whir_steps_lde_factors.len(), num_rounds - 1);
+        let mut lde_bits = base_lde_bits;
+        for (fold, lde) in folds.iter().zip(&schedule.whir_steps_lde_factors) {
+            lde_bits += fold;
+            assert_eq!(
+                *lde,
+                1usize << lde_bits,
+                "EVM WHIR requires a constant codeword domain"
+            );
+        }
+        // Bounds from whir.sol's fixed memory map: POW_PTR..ACC_PREF_PTR,
+        // QIDX_BUF_PTR..DRAW_BUF_PTR, and DRAW_BUF_PTR..MONO_PTR.
+        assert!(
+            queries[..num_rounds - 1].iter().sum::<usize>() + num_rounds - 1 <= 100,
+            "WHIR accumulator scratch holds 100 power constraints"
+        );
+        for (q, fold) in queries.iter().zip(&folds) {
+            assert!(*q <= 50, "WHIR query scratch holds 50 indices");
+            let words = (q * (codeword_log2 - fold)).div_ceil(32);
+            assert!(
+                (words + 1).next_multiple_of(8) <= 52,
+                "WHIR query drawing scratch holds 52 words"
+            );
+        }
         let pack = 1usize << pack_log2;
         let merged_mw = num_memwit.div_ceil(pack);
         let setup_merged = num_setup.div_ceil(pack);

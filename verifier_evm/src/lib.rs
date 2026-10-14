@@ -18,3 +18,6 @@ pub mod seed;
 pub use flatten::{gkr_calldata, whir_calldata};
 pub use generator::{emit_circuit_yul, generate_verifiers, GeneratedContracts};
 pub use seed::{commit_seed_preimage, gkr_whir_handoff_seed};
+
+/// The EVM init and packing routines specialize the 16-value boundary.
+pub(crate) const EXPLICIT_OUTPUT_LOG2: usize = 4;

@@ -222,6 +222,24 @@ pub fn generate_verifiers(
         prover_config.trace_len_log2, d.rounds as usize,
         "prover config trace log must match the circuit"
     );
+    assert_eq!(
+        prover_config.sumcheck_explicit_output_size_log_2,
+        crate::EXPLICIT_OUTPUT_LOG2,
+        "EVM GKR init requires explicit output log 4"
+    );
+    assert_eq!(pack_log2, 4, "EVM packing requires pack log 4");
+    assert_eq!(
+        prover_config.whir_schedule.cap_size, 8,
+        "EVM cap offsets require cap size 8"
+    );
+    assert_eq!(
+        d.num_teardown_sets, 2,
+        "EVM cap offsets require two teardown sets"
+    );
+    assert!(
+        d.num_setup <= 16,
+        "EVM setup folding supports at most 16 columns"
+    );
     // WHIR config derived from the same source the prover used, plus the artifact's widths.
     let wc = WhirGenConfig::derive(
         &prover_config.whir_schedule,
@@ -236,7 +254,10 @@ pub fn generate_verifiers(
         "GKR/WHIR merged mem+wit width disagree ({} vs {})",
         wc.merged_mw, d.merged_mw
     );
-    assert!(pack_log2 > 0, "pack_log2 must be positive");
+    assert!(
+        wc.merged_mw <= 8,
+        "EVM packing scratch holds eight merged columns"
+    );
 
     let cap = wc.cap_size as u128;
     // registers + final_pc/ts + top_bits(num_teardown_sets * 4) + setup_cap + memory_cap
@@ -260,6 +281,22 @@ pub fn generate_verifiers(
         }
     }
     assert!(inlined, "gkr.sol template missing inline marker");
+    let dr_count = d.rounds as usize - crate::EXPLICIT_OUTPUT_LOG2;
+    for (marker, value, occurrences) in [
+        ("__GKR_DR_COUNT__", dr_count, 2),
+        ("__GKR_DR_FIRST__", crate::EXPLICIT_OUTPUT_LOG2, 2),
+        ("__GKR_DR_LAST_ROUNDS__", d.rounds as usize - 1, 1),
+        ("__GKR_DR_BOUNDARY__", dr_count - 1, 1),
+        ("__GKR_BASE_COORDS__", d.rounds as usize, 1),
+        ("__GKR_MESSAGE_COORDS__", wc.nz, 1),
+    ] {
+        assert_eq!(
+            gkr.matches(marker).count(),
+            occurrences,
+            "missing or repeated {marker}"
+        );
+        gkr = gkr.replace(marker, &value.to_string());
+    }
     for (name, value) in [
         ("__TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS", d.rounds),
         ("__TEMPLATE_WHIR_NUM_MEMWIT", d.num_memwit),
@@ -315,6 +352,22 @@ pub fn generate_verifiers(
         !whir.contains("__WHIR_SCHEDULE_SWITCH__"),
         "whir.sol template missing the schedule marker"
     );
+    // Keep the even-NZ legacy source byte-identical. An odd final coordinate
+    // occupies only the high half-word; caps follow immediately, without padding.
+    let low_lane = "mstore(add(Z_PTR, mul(add(mul(i, 2), 1), 32)), and(w, MASK))";
+    let (low_lane, caps_offset) = if wc.nz.is_multiple_of(2) {
+        (low_lane.to_string(), "add(64, mul(zwords, 32))")
+    } else {
+        (
+            format!("if lt(add(mul(i, 2), 1), nz) {{ {low_lane} }}"),
+            "add(64, mul(nz, 16))",
+        )
+    };
+    assert_eq!(whir.matches("__WHIR_LAST_Z_LANE__").count(), 1);
+    assert_eq!(whir.matches("__WHIR_CAPS_OFFSET__").count(), 1);
+    whir = whir
+        .replace("__WHIR_LAST_Z_LANE__", &low_lane)
+        .replace("__WHIR_CAPS_OFFSET__", caps_offset);
     for (name, value) in [
         ("CAP", cap),
         ("CAP_LOG2", wc.cap_log2 as u128),

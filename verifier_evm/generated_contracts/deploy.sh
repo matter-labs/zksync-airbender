@@ -13,7 +13,7 @@
 #
 #   1. Leave REGISTRY_ADDR all-zero and run ./deploy.sh <2p22|2p21> — it deploys ONLY the registry, prints
 #      the address the factory reports (ContractCreation event), and exits.
-#   2. Substitute that address into REGISTRY_ADDR below and run ./deploy.sh <2p22|2p21> again — it sees the
+#   2. Substitute that address into the version-specific REGISTRY_ADDR_2P22 or REGISTRY_ADDR_2P21 environment variable and run ./deploy.sh <2p22|2p21> again — it sees the
 #      registry code already on-chain, regenerates + builds + deploys the two verifiers,
 #      then permanently authorizes that pair. Use the same KEY for both runs.
 #
@@ -34,10 +34,10 @@ RPC=http://127.0.0.1:8545
 KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 # One salt for the whole suite. First 20 bytes zero + 21st byte zero = CreateX's unpermissioned,
 # non-redeploy-protected salt flavor (anyone can reproduce the addresses).
-SALT=0x00000000000000000000000000000000000000000000000000616972621b0001
+SALT=$DEPLOY_SALT
 # The registry's CREATE2 address. All-zero = bootstrap mode: deploy the registry, print its
 # address, and exit (substitute the printed address here before the second run).
-REGISTRY_ADDR=0x0000000000000000000000000000000000000000
+# Set REGISTRY_ADDR_2P22 or REGISTRY_ADDR_2P21 for this version; select_version loads it.
 # ------------------------------------------------------------------------------------------------
 
 CREATEX=0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed
@@ -89,7 +89,7 @@ if [ "$REGISTRY_ADDR" = "0x0000000000000000000000000000000000000000" ]; then
   REG_ADDR=$(created_address "$receipt")
   echo "   Registry : $REG_ADDR"
   echo ""
-  echo "substitute this address into REGISTRY_ADDR in $0 and run it again to"
+  echo "set REGISTRY_ADDR_2P22 or REGISTRY_ADDR_2P21 to this address and rerun $0 to"
   echo "regenerate + deploy the GKR and WHIR verifiers."
   exit 0
 fi
@@ -112,6 +112,14 @@ actual_initializer=$(cast call "$REGISTRY_ADDR" 'initializer()(address)' --rpc-u
 if [ "$(printf '%s' "$actual_initializer" | tr '[:upper:]' '[:lower:]')" != \
      "$(printf '%s' "$INITIALIZER" | tr '[:upper:]' '[:lower:]')" ]; then
   echo "ERROR: registry initializer does not match KEY" >&2
+  exit 1
+fi
+
+# A registry authorizes one immutable pair. Fail before creating either verifier
+# if this version was already initialized (or the wrong registry was selected).
+registered_gkr=$(cast call "$REGISTRY_ADDR" 'gkrVerifier()(address)' --rpc-url "$RPC")
+if [ "$registered_gkr" != "0x0000000000000000000000000000000000000000" ]; then
+  echo "ERROR: registry already has GKR verifier $registered_gkr" >&2
   exit 1
 fi
 

@@ -18,7 +18,7 @@ cd "$CONTRACTS_ROOT"
 # 1. generate the verifier sources + the calldata (production Rust functions; no fixtures)
 echo "== generating verifiers + calldata from the circuit artifact + proof =="
 ( cd "$SCRIPT_DIR/.." && cargo test -q -p verifier_evm --test generate_contracts -- --ignored >/dev/null )
-( cd "$SCRIPT_DIR/.." && cargo test -q -p verifier_evm --test flatten_calldata >/dev/null )
+( cd "$SCRIPT_DIR/.." && cargo test -q -p verifier_evm --test flatten_calldata -- --ignored >/dev/null )
 
 # 2. compile each verifier in its own project (different backends), + the registry
 echo "== compiling GKR (via_ir) / WHIR (via_ir) / Registry =="

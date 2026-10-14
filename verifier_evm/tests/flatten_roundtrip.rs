@@ -107,3 +107,25 @@ fn full_trace_dimension_reducing_layer_is_rejected() {
         .sumcheck_num_rounds = 22;
     verifier_evm::gkr_calldata(&circuit, &proof, &aux);
 }
+
+#[test]
+#[should_panic(expected = "dimension-reducing layer count must match the circuit")]
+fn missing_dimension_reducing_layer_is_rejected() {
+    let (circuit, mut proof, aux) = common::L1_WRAP_2P22.load();
+    proof
+        .sumcheck_intermediate_values
+        .remove(&circuit.layers.len());
+    verifier_evm::gkr_calldata(&circuit, &proof, &aux);
+}
+
+#[test]
+#[should_panic(expected = "dimension-reducing rounds must increase from the explicit output")]
+fn wrong_dimension_reducing_round_sequence_is_rejected() {
+    let (circuit, mut proof, aux) = common::L1_WRAP_2P22.load();
+    proof
+        .sumcheck_intermediate_values
+        .get_mut(&circuit.layers.len())
+        .unwrap()
+        .sumcheck_num_rounds -= 1;
+    verifier_evm::gkr_calldata(&circuit, &proof, &aux);
+}

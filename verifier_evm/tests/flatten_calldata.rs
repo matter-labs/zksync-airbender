@@ -6,6 +6,7 @@
 mod common;
 
 #[test]
+#[ignore = "writes versioned debug_data; run explicitly before read-only drift tests"]
 fn write_calldata_into_debug_data() {
     for version in common::selected_versions() {
         let (circuit, proof, aux) = version.load();

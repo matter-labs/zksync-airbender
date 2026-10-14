@@ -30,18 +30,44 @@ fn generate(version: &Version, registry_address: &str) -> verifier_evm::Generate
 
     let circuit = version.circuit();
     let config = version.prover_config();
+    let prover::gkr::prover::CommitmentMode::MergedAndPackedMemoryAndWitness {
+        pack_log2,
+        external_challenges_pow_bits,
+        ..
+    } = version.commitment_mode()
+    else {
+        panic!("{}: expected packed commitment mode", version.name);
+    };
+    assert_eq!(
+        version.pack_log2, pack_log2,
+        "descriptor packing must match proof aux"
+    );
+    assert_eq!(
+        version.external_pow_floor, external_challenges_pow_bits,
+        "descriptor external PoW floor must match proof aux"
+    );
     let lookup_pow_bits = pow_bits::lookup_challenges_pow_bits::<Proth120, Proth120>(
         config.security_level.security_bits(),
         pow_bits::lookup_identity_degree(&circuit),
     );
-    let external_pow_bits = lookup_pow_bits.max(version.external_pow_floor);
+    let external_pow_bits = lookup_pow_bits.max(external_challenges_pow_bits);
     let batched_proximity_pow_bits = pow_bits::batched_proximity_check_pow_bits::<Proth120, Proth120>(
         config.security_level.security_bits(),
-        config.trace_len_log2 + version.pack_log2,
+        config.trace_len_log2 + pack_log2,
         config.whir_schedule.base_lde_factor.trailing_zeros() as usize,
         pow_bits::total_base_oracle_columns(&circuit),
     );
-    assert!(external_pow_bits <= 25 && batched_proximity_pow_bits <= 25);
+    for (gate, bits) in [
+        ("external challenges", external_pow_bits),
+        ("WHIR batching", batched_proximity_pow_bits),
+    ] {
+        assert!(
+            bits <= version.gkr_pow_cap,
+            "{}: {gate} PoW {bits} exceeds GKR cap {}",
+            version.name,
+            version.gkr_pow_cap
+        );
+    }
     for bits in config
         .whir_schedule
         .whir_pow_schedule
@@ -152,12 +178,18 @@ fn checked_in_contracts_are_current() {
 
 #[test]
 fn generator_accepts_trace21_and_rejects_mismatched_config() {
-    // Synthetic geometry: real 2p21 artifacts receive their own descriptor
-    // once generated. This exercises both generator admission checks now.
+    use prover::definitions::SecurityLevel;
+    use prover::gkr::prover_config::example_configs::l1_wrap_2p21;
+
+    // The committed 2p21 layout and b' tuple are usable before a proof bundle
+    // exists. Keep production descriptors tied to complete artifact bundles.
     let version = &common::L1_WRAP_2P22;
-    let mut circuit = version.circuit();
-    circuit.trace_len = 1 << 21;
-    let mut config = version.prover_config();
+    let circuit = serde_json::from_str(include_str!(
+        "../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120_2p21.json"
+    ))
+    .unwrap();
+    let mut config = l1_wrap_2p21::packed_prover_config(SecurityLevel::Sec100);
+    config.same_size_sumcheck_schedule = prover::gkr::prover_config::naive_same_size_schedule();
     let generate = |config: &prover::gkr::prover_config::ProverConfig| {
         verifier_evm::generate_verifiers(
             &circuit,
@@ -169,11 +201,51 @@ fn generator_accepts_trace21_and_rejects_mismatched_config() {
             DEFAULT_REGISTRY_ADDRESS,
         )
     };
-    assert!(std::panic::catch_unwind(|| generate(&config)).is_err());
-    config.trace_len_log2 = 21;
+    assert!(std::panic::catch_unwind(|| generate(&version.prover_config())).is_err());
     let out = generate(&config);
     assert_eq!(
         solidity_constant(&out.gkr_sol, "__TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS"),
         21
     );
+    assert!(out.gkr_sol.contains("lt(k, 17)"));
+    assert!(out
+        .gkr_sol
+        .contains("gkr_dr_final(ptr, fs, batching, eq(k, 16)"));
+    assert!(!out.gkr_sol.contains("lt(k, 18)"));
+    assert_eq!(solidity_constant(&out.whir_sol, "__TEMPLATE_WHIR_NZ"), 25);
+    assert!(out
+        .whir_sol
+        .contains("let caps_off := add(64, mul(nz, 16))"));
+    assert!(out.whir_sol.contains("if lt(add(mul(i, 2), 1), nz)"));
+    assert!(out
+        .whir_sol
+        .contains("case 4 { fold := 3 q := 5 pow_bits := 17 qib := 28 vp := 8 cb := 20 }"));
+    let mut bad_schedule = config.clone();
+    bad_schedule.whir_schedule.whir_steps_lde_factors[0] *= 2;
+    assert!(std::panic::catch_unwind(|| generate(&bad_schedule)).is_err());
+    let mut bad_schedule = config.clone();
+    bad_schedule.whir_schedule.whir_queries_schedule[0] = 51;
+    assert!(std::panic::catch_unwind(|| generate(&bad_schedule)).is_err());
+    config.sumcheck_explicit_output_size_log_2 = 3;
+    assert!(std::panic::catch_unwind(|| generate(&config)).is_err());
+}
+
+#[test]
+fn descriptor_rejects_aux_drift_and_excess_gkr_pow() {
+    for version in [
+        Version {
+            pack_log2: 3,
+            ..common::L1_WRAP_2P22
+        },
+        Version {
+            external_pow_floor: 19,
+            ..common::L1_WRAP_2P22
+        },
+        Version {
+            gkr_pow_cap: 19,
+            ..common::L1_WRAP_2P22
+        },
+    ] {
+        assert!(std::panic::catch_unwind(|| generate(&version, DEFAULT_REGISTRY_ADDRESS)).is_err());
+    }
 }

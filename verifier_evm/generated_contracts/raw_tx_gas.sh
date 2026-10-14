@@ -2,8 +2,8 @@
 # Real per-transaction gas for the generated GKR + WHIR verifiers, measured with RAW anvil
 # transactions (proof bytes are tx calldata, paid via intrinsic/EIP-7623 — never memory-copied,
 # so no forge-harness over-count). Reads the compiled deployedBytecode from the sibling projects'
-# out/ and the calldata from ../debug_data. Prereq: forge build in gkr/ and whir/, forge build in
-# two_tx/ (or the two-tx test) for the registry artifact.
+# out/ and calldata from the selected version's data root. Prereq: build gkr/, whir/, and
+# two_tx/ for that version. Usage: raw_tx_gas.sh <2p22|2p21> <task-owned-port>.
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 . "$SCRIPT_DIR/version.sh"
@@ -17,6 +17,7 @@ port = int(sys.argv[1])
 if not 1 <= port <= 65535:
     raise SystemExit("anvil port must be in 1..65535")
 with socket.socket() as probe:
+    probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     probe.bind(("127.0.0.1", port))
 PYPORT
 cd "$CONTRACTS_ROOT"
@@ -33,7 +34,8 @@ echo "== deployed bytecode sizes =="
 printf "  GKR  verifier : %d bytes\n" $(( (${#gkr_code} - 2) / 2 ))
 printf "  WHIR verifier : %d bytes\n" $(( (${#whir_code} - 2) / 2 ))
 
-anvil --host 127.0.0.1 --hardfork prague --port "$PORT" --silent &
+CHAIN_ID=$((1000000000 + $$))
+anvil --host 127.0.0.1 --hardfork prague --chain-id "$CHAIN_ID" --port "$PORT" --silent &
 ANVIL=$!
 cleanup() {
   kill "$ANVIL" 2>/dev/null || true
@@ -45,7 +47,13 @@ trap 'exit 143' TERM
 attempt=0
 while :; do
   kill -0 "$ANVIL" 2>/dev/null || { echo "anvil exited before readiness" >&2; exit 1; }
-  if cast block-number --rpc-url "$RPC" >/dev/null 2>&1; then break; fi
+  if actual_chain=$(cast chain-id --rpc-url "$RPC" 2>/dev/null); then
+    [ "$actual_chain" = "$CHAIN_ID" ] || {
+      echo "RPC chain ID $actual_chain does not match owned anvil $CHAIN_ID" >&2; exit 1;
+    }
+    kill -0 "$ANVIL" 2>/dev/null || { echo "owned anvil exited" >&2; exit 1; }
+    break
+  fi
   attempt=$((attempt + 1))
   [ "$attempt" -lt 100 ] || { echo "anvil readiness timed out" >&2; exit 1; }
   sleep 0.1

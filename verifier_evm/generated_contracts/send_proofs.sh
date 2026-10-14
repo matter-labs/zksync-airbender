@@ -1,7 +1,7 @@
 #!/bin/sh
 # Send the two proof transactions (the GKR verification, then the WHIR verification) to
 # already-deployed verifier contracts. The proof bytes are the transactions' calldata, read from
-# ../debug_data (regenerate with `cargo test -p verifier_evm --test flatten_calldata` after a new
+# the versioned data root (regenerate with `cargo test -p verifier_evm --test flatten_calldata -- --ignored` after a new
 # proof). The verifier addresses come from OUTSIDE the script — arguments or environment — since
 # they are a property of the deployment (see ./deploy.sh), not of this repository.
 #
@@ -17,8 +17,8 @@ select_version "${1:?usage: send_proofs.sh <2p22|2p21> <gkr-address> <whir-addre
 shift
 
 # ---- configuration: edit for the target network ------------------------------------------------
-RPC=http://127.0.0.1:8545
-KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+RPC=${RPC:-http://127.0.0.1:8545}
+KEY=${KEY:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}
 # ------------------------------------------------------------------------------------------------
 
 GKR_ADDR=${1:-${GKR_ADDR:-}}
@@ -28,25 +28,12 @@ if [ -z "$GKR_ADDR" ] || [ -z "$WHIR_ADDR" ]; then
   exit 1
 fi
 
-gkr_cd="0x$(cat "$DATA_ROOT/gkr_full_calldata.hex")"
-whir_cd="0x$(cat "$DATA_ROOT/proth120_whir_calldata_from_proof.hex")"
-
-send_proof() {
-  name=$1; addr=$2; cd=$3
-  bytes=$(( (${#cd} - 2) / 2 ))
-  out=$(cast send "$addr" "$cd" --private-key $KEY --rpc-url $RPC --json)
-  used=$(printf '%s' "$out" | jq -r '.gasUsed')
-  status=$(printf '%s' "$out" | jq -r '.status')
-  tx=$(printf '%s' "$out" | jq -r '.transactionHash')
-  printf "  %-4s : gasUsed = %s  status = %s  calldata = %d bytes  tx = %s\n" \
-    "$name" "$used" "$status" "$bytes" "$tx"
-  if [ "$status" != "0x1" ] && [ "$status" != "1" ]; then
-    echo "ERROR: $name verification transaction reverted" >&2
-    exit 1
-  fi
-}
-
+# Foundry reads both payloads from disk and signs/broadcasts the transactions.
+# The WHIR hex string is larger than Linux's single-argument limit.
 echo "== sending proof transactions =="
-send_proof GKR  "$GKR_ADDR"  "$gkr_cd"
-send_proof WHIR "$WHIR_ADDR" "$whir_cd"
+GKR_ADDR="$GKR_ADDR" WHIR_ADDR="$WHIR_ADDR" PROOF_SENDER_KEY="$KEY" \
+GKR_CALLDATA_PATH="$DATA_ROOT/gkr_full_calldata.hex" \
+WHIR_CALLDATA_PATH="$DATA_ROOT/proth120_whir_calldata_from_proof.hex" \
+  forge script --root "$SCRIPT_DIR/sender" "$SCRIPT_DIR/sender/script/SendProofs.s.sol:SendProofs" \
+    --rpc-url "$RPC" --broadcast --slow
 echo "== both verification transactions succeeded =="

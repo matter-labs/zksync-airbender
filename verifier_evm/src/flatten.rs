@@ -46,11 +46,22 @@ fn dim_reduce_blob(circuit: &Circuit, proof: &Proof) -> Vec<u8> {
         .copied()
         .filter(|l| *l >= circuit.layers.len())
         .collect();
-    for &layer in dim_layers.iter().rev() {
+    let trace_log2 = circuit.trace_len.ilog2() as usize;
+    assert_eq!(
+        dim_layers.len(),
+        trace_log2 - crate::EXPLICIT_OUTPUT_LOG2,
+        "dimension-reducing layer count must match the circuit"
+    );
+    for (k, &layer) in dim_layers.iter().rev().enumerate() {
         let siv = &proof.sumcheck_intermediate_values[&layer];
         assert!(
             siv.sumcheck_num_rounds < circuit.trace_len.ilog2() as usize,
             "dimension-reducing layer must have fewer rounds than the circuit"
+        );
+        assert_eq!(
+            siv.sumcheck_num_rounds,
+            crate::EXPLICIT_OUTPUT_LOG2 + k,
+            "dimension-reducing rounds must increase from the explicit output"
         );
         for c in siv.internal_round_coefficients.iter() {
             for e in c.as_multilinear().iter() {
