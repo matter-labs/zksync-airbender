@@ -41,23 +41,43 @@ EXTERN __global__ void ab_keccak256_gather_partial_paths_kernel(const proth120 *
   const u32 group_mask = (1u << skip_bottom) - 1;
   const u32 output_lane = leaf & group_mask;
   const u32 depth = log_leaves + log_lde - cap_log;
-  digest state{};
-  if (lane <= group_mask)
-    state = hash_leaf(values, log_domain, log_v, static_cast<u32>(columns), (leaf & ~group_mask) + lane);
-  for (u32 layer = 0; layer < skip_bottom; layer++) {
-    digest sibling;
+  if (skip_bottom <= 5) {
+    digest state{};
+    if (lane <= group_mask)
+      state = hash_leaf(values, log_domain, log_v, static_cast<u32>(columns), (leaf & ~group_mask) + lane);
+    for (u32 layer = 0; layer < skip_bottom; layer++) {
+      digest sibling;
 #pragma unroll
-    for (u32 word = 0; word < 8; word++)
-      sibling.words[word] = __shfl_xor_sync(0xffffffffu, state.words[word], 1u << layer);
-    if (lane == output_lane)
-      paths[index * depth + layer] = sibling;
-    digest left, right;
+      for (u32 word = 0; word < 8; word++)
+        sibling.words[word] = __shfl_xor_sync(0xffffffffu, state.words[word], 1u << layer);
+      if (lane == output_lane)
+        paths[index * depth + layer] = sibling;
+      digest left, right;
 #pragma unroll
-    for (u32 word = 0; word < 8; word++) {
-      left.words[word] = (lane >> layer) & 1 ? sibling.words[word] : state.words[word];
-      right.words[word] = (lane >> layer) & 1 ? state.words[word] : sibling.words[word];
+      for (u32 word = 0; word < 8; word++) {
+        left.words[word] = (lane >> layer) & 1 ? sibling.words[word] : state.words[word];
+        right.words[word] = (lane >> layer) & 1 ? state.words[word] : sibling.words[word];
+      }
+      state = hash_node(left, right);
     }
-    state = hash_node(left, right);
+  } else {
+    extern __shared__ digest nodes[];
+    for (u32 slot = lane; slot <= group_mask; slot += blockDim.x)
+      nodes[slot] = hash_leaf(values, log_domain, log_v, static_cast<u32>(columns), (leaf & ~group_mask) + slot);
+    __syncthreads();
+    for (u32 layer = 0; layer < skip_bottom; layer++) {
+      const u32 sibling = (output_lane >> layer) ^ 1;
+      if (lane == sibling % blockDim.x)
+        paths[index * depth + layer] = nodes[sibling];
+      const u32 parent_count = (1u << skip_bottom) >> (layer + 1);
+      digest parents[2];
+      for (u32 parent = lane; parent < parent_count; parent += blockDim.x)
+        parents[parent / blockDim.x] = hash_node(nodes[2 * parent], nodes[2 * parent + 1]);
+      __syncthreads();
+      for (u32 parent = lane; parent < parent_count; parent += blockDim.x)
+        nodes[parent] = parents[parent / blockDim.x];
+      __syncthreads();
+    }
   }
   if (lane >= 8)
     return;
