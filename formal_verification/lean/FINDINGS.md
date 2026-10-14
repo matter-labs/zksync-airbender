@@ -20,8 +20,8 @@ are not interchangeable with a full verifier or cryptographic exploit.
 ## Implementation update: issued round coverage and wrapped preparation
 
 Update verified: 14 October 2026. Round coverage checkpoint: `9d9cf76b7`.
-The current sources also include the
-comparison-preparation update below.
+The current sources also include the comparison-preparation and modular
+coverage updates below.
 
 `ProgramCallerRegion` states public code addresses in native PC/clock coordinates:
 ordinary entries lie outside a selected interval and its CSR entries identify the
@@ -85,8 +85,8 @@ initialized history with reversed native rows. The reset consumes the comparison
 clock-six token and writes at clock ten. Wrong literals, fabricated reads and
 misaligned public code are rejected. These are preparation/transport claims;
 prefix and whole caller retirement remain separate. Selected caller/controller
-regions now also use modular addresses. Global public round-CSR coverage remains
-linear; its modular extension, jumps/branches and nonliteral preparation remain open.
+regions and global public round-CSR occurrence coverage now also use modular
+addresses. Jumps/branches and nonliteral preparation remain open.
 
 `WrappedProgramCallerRegion` now states ordinary-code exclusion and the full CSR
 family at modular addresses for every clock in a selected interval. These
@@ -97,8 +97,7 @@ premise. Modular local controller regions use public LUI preparation and at most
 forty ticks to derive family/count/duration and the ten-position bound. The new
 prepared sequence entry reuses all three complete references at the same actual
 states, with public cuts/preparation/reference duration and global round-worker
-coverage still explicit. Global public round-CSR coverage/mask derivation remains
-in the linear profile; no unissued-round mask/exclusion result is added.
+coverage still explicit. No unissued-round mask/exclusion result is added.
 The [wrap regression](Tests/UnifiedComparison.lean) admits the empty cut at PC zero
 and rejects selecting the ordinary ADDI there. The
 [COPY regression](Tests/UnifiedDelegation.lean) checks nonempty caller/worker binding,
@@ -106,10 +105,26 @@ wrong-family and ordinary-code rejection, while both bigint-control gaps remain
 accepted. The [unissued G-prefix regression](Tests/DelegationZeroInvocation.lean)
 now uses the modular-context conversion and retains its actual x12 = 0→1 effect.
 
+`WrappedProgramRoundCallerCoverage` now quantifies every aligned native clock
+between the supplied endpoints at which a public decoded round CSR equals the
+modular program address. Strict clock increments and accepted state matching
+derive each actual caller's clock interval without a row-order assumption.
+Modular address matching and full-width request matching then prove membership in
+a prepared region exactly for live round workers. Public LUI preparation and raw
+regional matching derive all issued round masks without assuming full worker
+coverage. Full coverage remains equivalent to absence of zero-clock round workers;
+this exposes the remaining binding rather than assuming nonzero invocations.
+Public code/configuration, native endpoints, modeled setup and logical matching
+remain explicit. A public code-policy fixture repeats a round CSR address after
+2^32 ticks and rejects covering only either occurrence; it makes no accepted-trace
+claim. The actual comparison wrap derives native clock bounds. Empty prepared
+cuts, rejection of simultaneous issued round bits, both bigint gaps and the actual
+unissued G-prefix effect remain covered by the regression suite.
+
 All 116 concrete test modules and 143 importer guards pass. The full
-2,060-root axiom audit has 64 axiom-free roots and only the three standard
-Lean axioms. Review checks pass for all 97 public theorem roots, 152 declaration
-names and 651 guide links/anchors, with no handwritten project diagnostics.
+2,074-root axiom audit has 64 axiom-free roots and only the three standard
+Lean axioms. Review checks pass for all 100 public theorem roots, 156 declaration
+names and 657 guide links/anchors, with no handwritten project diagnostics.
 
 ## Review priorities
 

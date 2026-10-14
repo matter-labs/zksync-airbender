@@ -426,4 +426,12 @@ theorem wrapped_preparation_fabricated_read_rejected :
     (badWrappedData.machine.initialMemory ++ badWrappedData.mixedSteps.map Prod.snd).Perm
       (badWrappedData.machine.terminalMemory ++ badWrappedData.mixedSteps.map Prod.fst)) accepted.memory
 
+/-- Unordered native rows still lie in the public clock interval across PC wrap. -/
+theorem wrapped_native_clock_interval_derived :
+    ∀ row ∈ wrappedData.machine.rows,
+      4 ≤ Delegation.Caller.startClock row ∧ Delegation.Caller.startClock row + 4 ≤ 12 :=
+  Trace.Proofs.state_clock_interval (by decide +kernel) (by decide +kernel)
+    wrappedAccepted.constraints wrappedAccepted.states wrappedInputs.publicProgram.initialClock
+    wrappedInputs.publicProgram.initialAligned
+
 end Tests.UnifiedComparison
