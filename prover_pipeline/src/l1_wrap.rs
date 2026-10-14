@@ -181,18 +181,14 @@ fn validate_l1_proof_layout(proof: &L1Proof, wrap: L1WrapVersion) -> Result<(), 
     let first_fold = schedule.whir_steps_schedule[0];
     let base_path_len =
         message_log2 + schedule.base_lde_factor.trailing_zeros() as usize - first_fold - cap_log2;
+    let setup_columns = circuit.generic_lookup_tables_width.div_ceil(1 << pack_log2);
     let merged_columns = (circuit.memory_layout.total_width + circuit.witness_layout.total_width)
         .div_ceil(1 << pack_log2);
     for (name, base, columns) in [
-        ("setup", &whir.setup_commitment, None),
-        (
-            "merged memory",
-            &whir.memory_commitment,
-            Some(merged_columns),
-        ),
-        ("witness", &whir.witness_commitment, Some(0)),
+        ("setup", &whir.setup_commitment, setup_columns),
+        ("merged memory", &whir.memory_commitment, merged_columns),
+        ("witness", &whir.witness_commitment, 0),
     ] {
-        let columns = columns.unwrap_or(base.num_columns);
         mismatch(
             &format!("WHIR {name} oracle columns"),
             base.num_columns,
@@ -225,9 +221,6 @@ fn validate_l1_proof_layout(proof: &L1Proof, wrap: L1WrapVersion) -> Result<(), 
                 base_path_len,
             )?;
         }
-    }
-    if whir.setup_commitment.num_columns == 0 {
-        return Err(format!("L1 bundle ({wrap:?}) has no WHIR setup oracle"));
     }
     let mut poly_log2 = message_log2 - first_fold;
     for (round, oracle) in whir.intermediate_whir_oracles.iter().enumerate() {
