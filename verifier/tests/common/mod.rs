@@ -379,19 +379,3 @@ pub fn assert_rejects_any(
         panic!("{}: should reject {}", name, label);
     }
 }
-
-pub fn load_binary_section(path: &str) -> Vec<u32> {
-    let bytes = std::fs::read(path).unwrap_or_else(|_| {
-        panic!(
-            "Missing {} — run `cd tools/gkr_verifier && ./dump_bin.sh` first",
-            path
-        )
-    });
-    assert!(bytes.len().is_multiple_of(4));
-    bytes
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-        .collect()
-}

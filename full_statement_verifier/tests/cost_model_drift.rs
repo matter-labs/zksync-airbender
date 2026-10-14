@@ -69,18 +69,13 @@ fn guest_cycles(circuit: &str) -> u64 {
         "{circuit}: stale proof fixture; regenerate the Sec100 proofs and per-circuit verifier binaries together"
     );
 
-    let bin_path = format!("{root}/tools/gkr_verifier/{circuit}_sec_100.bin");
-    let text_path = format!("{root}/tools/gkr_verifier/{circuit}_sec_100.text");
-    for path in [&bin_path, &text_path] {
-        assert!(
-            std::path::Path::new(path).exists(),
-            "open {path}: no such file"
-        );
-    }
-    let (bin, text) = full_statement_verifier::host_utils::load_program(
-        std::path::Path::new(&bin_path),
-        std::path::Path::new(&text_path),
+    let elf_path = format!("{root}/tools/gkr_verifier/{circuit}_sec_100.elf");
+    assert!(
+        std::path::Path::new(&elf_path).exists(),
+        "open {elf_path}: no such file"
     );
+    let (bin, text) =
+        full_statement_verifier::host_utils::load_program_elf(std::path::Path::new(&elf_path));
 
     let mut stream = Vec::new();
     proof.external_challenges.flatten_into_buffer(&mut stream);

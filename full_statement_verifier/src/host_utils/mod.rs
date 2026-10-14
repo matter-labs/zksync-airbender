@@ -94,11 +94,20 @@ pub fn native_verify_unified(stream: Vec<u32>, is_base: bool) -> [u32; 16] {
         .expect("verifier thread must not panic")
 }
 
+/// Load a guest from its raw `objcopy` dumps (flat ROM image + text section), both padded to
+/// the ROM size for proving.
 #[must_use]
 pub fn load_program(bin_path: &Path, text_path: &Path) -> (Vec<u32>, Vec<u32>) {
     let (_, binary_image) = setups::read_and_pad_binary(bin_path);
     let (_, text_section) = setups::read_and_pad_binary(text_path);
     (binary_image, text_section)
+}
+
+/// Load a guest from its linked ELF (legacy read mode: `.text` followed in ROM by the
+/// `.rodata`/`.data` init images). Same output shape and padding as [`load_program`].
+#[must_use]
+pub fn load_program_elf(elf_path: &Path) -> (Vec<u32>, Vec<u32>) {
+    riscv_transpiler::elf::load_legacy_program(elf_path)
 }
 
 #[must_use]

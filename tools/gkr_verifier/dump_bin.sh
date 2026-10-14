@@ -148,7 +148,8 @@ for circuit in $CIRCUITS; do
         cargo objcopy $COMMON_FLAGS $EXTRA_FLAGS --bin "$circuit" -- -O binary ${circuit}.bin
         # .comment holds the rustc/LLD build strings, which differ between the dist
         # toolchains of different hosts; drop it so the .elf is reproducible too.
-        cargo objcopy $COMMON_FLAGS $EXTRA_FLAGS --bin "$circuit" -- -R .text -R .comment ${circuit}.elf
+        # (.text stays: the ELF is the program the hosts load.)
+        cargo objcopy $COMMON_FLAGS $EXTRA_FLAGS --bin "$circuit" -- -R .comment ${circuit}.elf
         cargo objcopy $COMMON_FLAGS $EXTRA_FLAGS --bin "$circuit" -- -O binary --only-section=.text ${circuit}.text
     ) > "${log_dir}/${circuit}.log" 2>&1 &
     pids="${pids} $!"

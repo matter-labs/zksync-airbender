@@ -66,8 +66,8 @@ fn run_transpiler_on_with_output(
 ) -> u64 {
     println!("{}: oracle data length: {} u32 words", name, nds.len());
 
-    let binary = common::load_binary_section(&bin_path);
-    let text_section = common::load_binary_section(&text_path);
+    let (binary, text_section) =
+        riscv_transpiler::elf::load_legacy_program(std::path::Path::new(&elf_path));
 
     let mut oracle_responses = vec![];
     external_challenges.flatten_into_buffer(&mut oracle_responses);

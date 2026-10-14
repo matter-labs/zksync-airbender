@@ -699,10 +699,12 @@ pub(crate) mod test {
     #[test]
     #[serial_test::serial]
     fn test_pretty_show_assembly() {
-        // let (_, binary) = read_binary(&Path::new("examples/fibonacci/app.bin"));
-        let (_, text) = read_binary(Path::new(
-            "../tools/gkr_verifier/add_sub_lui_auipc_mop_sec_100.text",
-        ));
+        let text = crate::elf::read_elf_from_path(
+            Path::new("../tools/gkr_verifier/add_sub_lui_auipc_mop_sec_100.elf"),
+            crate::elf::ElfReadMode::Legacy,
+        )
+        .unwrap()
+        .text;
         for opcode in text.iter().take(16) {
             println!("0x{:08x}", opcode);
         }

@@ -18,6 +18,7 @@ serde = { workspace = true, default-features = false, features = ["derive", "all
 setups = { workspace = true, optional = true }
 flate2 = { version = "*", optional = true }
 serde_json = { version = "*", optional = true }
+riscv_transpiler = { workspace = true, optional = true }
 
 [dev-dependencies]
 serde_json = "*"
@@ -40,7 +41,7 @@ verifier_stats = ["verifier_common/verifier_stats"]
 # Host-side recursion-driver helpers (setup-map streams, native verification,
 # fsv binary loading). Implies `proof_utils` (std build + `ProgramProof`); the
 # native_verify_* wrappers additionally need `verifiers` + a security level.
-host_utils = ["proof_utils", "dep:setups", "dep:flate2", "dep:serde_json"]
+host_utils = ["proof_utils", "dep:setups", "dep:flate2", "dep:serde_json", "dep:riscv_transpiler"]
 default = ["verifiers", "proof_utils"]
 
 [lints]
