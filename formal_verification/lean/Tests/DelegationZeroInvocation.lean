@@ -964,4 +964,32 @@ theorem computed_hash_preparation_retains_unissued_effect :
   exact UnifiedReduced.Caller.hash_control_preparation_soundness (by decide +kernel) (by decide +kernel)
     (by decide +kernel) preparationAccepted preparationInputs computed_hash_source_retains_unissued_worker (by decide)
 
+/-- Deriving a public selected region leaves the state-changing unissued worker
+    in the prefix; the selected region itself has no workers. -/
+theorem computed_public_region_retains_unissued_worker :
+    preparationData.workers.prefixRows 8 = [native] ∧
+      UnifiedReduced.Caller.ProgramCallerWindow preparationData .blakeG 8 8 ∧
+      (preparationData.workers.windowRows 8 8).length = 0 := by
+  have registry : UnifiedReduced.Caller.WrappedSequentialProgram [preparationEntry] := by
+    constructor
+    · intro entry member
+      have same := List.mem_singleton.mp member
+      subst entry
+      exact .sequential (.arithmetic (.addi _ _ _))
+    · intro entry member
+      have same := List.mem_singleton.mp member
+      subst entry
+      decide +kernel
+  have region : UnifiedReduced.Caller.WrappedProgramCallerRegion preparationData [preparationEntry] .blakeG 8 8 := by
+    constructor
+    · intro _ _ _ lower upper; omega
+    · intro _ _ _ lower upper; omega
+  have schedule := UnifiedReduced.Caller.hash_prepared_public_window_schedule_soundness
+    (by decide +kernel) (by decide +kernel) preparationInputs.setup preparationAccepted
+    preparationInputs.publicProgram preparationInputs.ordinaryProgram registry
+    computed_hash_source_retains_unissued_worker region (by decide) (by decide) (by decide) (by decide +kernel)
+  refine ⟨control_preparation_after_unissued_worker.1, schedule, ?_⟩
+  rw [← schedule.workerCount]
+  simpa using schedule.machineCount
+
 end Tests.DelegationZeroInvocation

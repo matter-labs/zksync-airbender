@@ -322,8 +322,14 @@ actual reads and clock-six tokens; wrong placement and incomplete windows are
 rejected. These are preparation/guard fixtures, with complete-reference claims
 remaining arbitrary-witness theorems under the stated ABI. The literal source
 still admits the actual unissued G-prefix effect. All demonstrated ABI gaps stay
-exposed. Public caller-region derivation for the new source and extended-round
-mask transport are next; whole CSR retirement remains separate.
+exposed. The new public modular-region entry derives caller rows, exact native
+request slots, worker family and count before applying that same composition.
+It supports either source and arbitrary nonempty ordered lists, retaining public
+mode/code/duration and the global nonround boundary. Native AUIPC preparation
+witnesses derive empty-region counts; incomplete durations, cuts past the native
+terminal and regions containing ordinary preparation code are rejected. The
+literal public-region entry still retains the unissued G worker in its prefix.
+Extended-round source/mask transport is next; whole CSR retirement remains separate.
 
 [Control preparation](Airbender/Review/Helpers/UnifiedReduced/ControlPreparation.lean)
 uses a public ordinary ADDI-from-x0/LUI registry and a worker-free final preparation

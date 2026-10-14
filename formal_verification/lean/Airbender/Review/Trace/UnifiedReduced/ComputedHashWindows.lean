@@ -31,4 +31,23 @@ structure ComputedPreparedHashWindowInputs [Fact p.Prime] (data : RequestTrace p
   duration : upper = lower + 4 * span.callCount
   beforeTerminal : upper ≤ (timeOfPair data.machine.terminal.timestamp).value
 
+/-- Shared public context for source-aware modular caller regions. The global
+    nonround boundary still quantifies every worker, including unissued ones. -/
+structure WrappedProgramComputedHashInputs [Fact p.Prime] (data : RequestTrace p) (before : State)
+    (ca oa : List (BitVec 32)) (cells : List Cell) (program : List UnifiedReduced.ProgramEntry) : Prop
+    extends ProtocolContextInputs data before ca oa cells program where
+  registry : WrappedSequentialProgram program
+  roundsAbsent : ∀ row ∈ data.workers.rows, row.family ≠ .blakeRound
+
+/-- A complete selected G/Keccak reference specified by public modular code,
+    literal or AUIPC preparation and duration. No native row selection, selected
+    worker family/count, request slot or intermediate state is supplied. -/
+structure WrappedProgramComputedHashWindowInputs [Fact p.Prime] (data : RequestTrace p)
+    (program : List UnifiedReduced.ProgramEntry) (window : HashWindow) : Prop where
+  region : WrappedProgramCallerRegion data program window.span.family window.lower window.upper
+  profile : window.span.family ≠ .blakeRound
+  preparation : HashControlPreparation data program window.lower window.span
+  duration : window.upper = window.lower + 4 * window.span.callCount
+  beforeTerminal : window.upper ≤ (timeOfPair data.machine.terminal.timestamp).value
+
 end Airbender.UnifiedReduced.Caller

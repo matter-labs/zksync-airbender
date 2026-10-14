@@ -248,10 +248,14 @@ ABI and whole mixed execution remain separate.
    effects. Legacy literal signatures remain, using the same composition proof.
    Concrete G/Keccak preparation fixtures retain clock six and reject a wrong
    placement or incomplete 56/649-call window; the unissued G-prefix preparation
-   remains admitted. Public mode, selected family/count/duration, nonround scope,
-   domain/setup/tables and logical matching remain explicit. Next derive this
-   source's selected shape from public modular caller regions, then extend its
-   raw-token/mask transport to prepared extended-round regions. Continue general
+   remains admitted. The new modular public-region entry derives selected
+   caller rows, exact request slots, worker family and count for either source,
+   then reuses the same complete reference and ordered-list composition. Public
+   mode/code/duration, nonround scope, domain/setup/tables and logical matching
+   remain explicit. Native preparation fixtures derive empty-region counts;
+   incomplete durations, cuts past the terminal and regions containing ordinary
+   preparation code are rejected. Next extend source-aware raw-token/mask
+   transport to prepared extended-round regions. Continue general
    operand-dependent preparation, jumps/branches and whole caller retirement,
    retaining unsupported-control and unissued-exclusion boundaries.
    COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed
