@@ -249,7 +249,7 @@ fn schedule_phase_one<'a>(
             tracing_data_result: None,
             security_level,
             commitment_mode: CommitmentMode::SeparateMemoryAndWitness,
-            profile: if circuit_type == CircuitType::L1Wrap {
+            profile: if circuit_type == CircuitType::L1Wrap21 {
                 ProofProfile::L1Wrap
             } else {
                 ProofProfile::Standard
@@ -540,14 +540,14 @@ fn schedule_l1_wrap_phase_one<'a>(
     } = request;
     assert_eq!(
         circuit_type,
-        CircuitType::L1Wrap,
-        "the GPU backend proves only the 2^22 L1 wrap until W5"
+        CircuitType::L1Wrap21,
+        "the GPU backend proves only the 2^21 L1 wrap (CircuitType::L1Wrap21)"
     );
     crate::memory_policy::admit_l1_wrap(context.get_mem_size());
     let precomputed = Arc::clone(precomputations.l1_wrap());
     let state = RequestState {
         batch_id,
-        circuit_type: CircuitType::L1Wrap,
+        circuit_type,
         sequence_id: 0,
         precomputations,
         kind: RequestKind::L1WrapProof,
@@ -611,11 +611,11 @@ fn enqueue_phase_two<'a>(
             inputs,
             &dr_tail_plan,
             crate::memory_policy::policy(
-                CircuitType::L1Wrap,
+                state.circuit_type,
                 ProofProfile::L1Wrap,
                 context.get_mem_size(),
             ),
-            crate::memory_policy::partial_trees(CircuitType::L1Wrap, ProofProfile::L1Wrap),
+            crate::memory_policy::partial_trees(state.circuit_type, ProofProfile::L1Wrap),
             context,
         )?;
         state.device_peak_bytes = Some(context.get_used_mem_peak());

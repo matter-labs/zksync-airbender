@@ -54,7 +54,7 @@ pub fn policy(
         return l1_feeder::policy(arena_bytes);
     }
     match circuit {
-        CircuitType::L1Wrap => l1_wrap::policy(arena_bytes),
+        CircuitType::L1Wrap21 => l1_wrap::policy(arena_bytes),
         _ => generated::policy(circuit, select_arena_bytes(arena_bytes)),
     }
 }
@@ -64,7 +64,7 @@ pub fn partial_trees(circuit: CircuitType, profile: ProofProfile) -> PartialTree
         return l1_feeder::PARTIAL_TREES;
     }
     match circuit {
-        CircuitType::L1Wrap => l1_wrap::PARTIAL_TREES,
+        CircuitType::L1Wrap21 => l1_wrap::PARTIAL_TREES,
         _ => PartialTreePolicy::DEFAULT,
     }
 }
@@ -177,7 +177,7 @@ mod cpu_tests {
             .into_iter()
             .map(CircuitType::Delegation)
             .chain(unrolled.into_iter().map(CircuitType::Unrolled))
-            .chain([unified, CircuitType::L1Wrap])
+            .chain([unified, CircuitType::L1Wrap21])
         {
             let expected = format!("ProofProfile::L1Feeder requires CircuitType::Unrolled(UnrolledCircuitType::Unified22), got {circuit:?}");
             named_panic(

@@ -161,7 +161,7 @@ mod cpu_tests {
         );
         assert_eq!(
             super::super::policy(
-                CircuitType::L1Wrap,
+                CircuitType::L1Wrap21,
                 crate::upstream::ProofProfile::L1Wrap,
                 80 << 30
             ),
@@ -169,7 +169,7 @@ mod cpu_tests {
         );
         assert_eq!(
             super::super::policy(
-                CircuitType::L1Wrap,
+                CircuitType::L1Wrap21,
                 crate::upstream::ProofProfile::L1Wrap,
                 L1_WRAP_ARENA_MIN_BYTES
             ),
