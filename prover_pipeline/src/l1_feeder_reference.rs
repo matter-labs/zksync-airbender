@@ -33,7 +33,8 @@ struct Input {
 }
 
 fn inputs() -> Vec<Input> {
-    vec![
+    let selected = std::env::var("AB_F3_INPUTS").ok();
+    let all = vec![
         Input {
             name: "basic_fibonacci",
             program: "basic_fibonacci",
@@ -49,7 +50,14 @@ fn inputs() -> Vec<Input> {
             program: "dynamic_fibonacci",
             nd_words: vec![4321],
         },
-    ]
+    ];
+    match selected {
+        Some(names) => all
+            .into_iter()
+            .filter(|input| names.split(',').any(|name| name == input.name))
+            .collect(),
+        None => all,
+    }
 }
 
 fn source(input: &Input) -> ProgramSource {
