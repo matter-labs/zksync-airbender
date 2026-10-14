@@ -15,7 +15,7 @@ mixed execution with delegation callers remains a separate obligation.
 | Machine and worker reads/writes, bounds and references share one actual initialized history. | [`Caller.mixed_memory_soundness`](Theorems.lean) |
 | Exact caller regions, counts and slots follow from state/request matching and public cuts/duration. | [`Caller.window_schedule_soundness` and `Caller.request_window_soundness`](Theorems.lean) |
 | Actual joint cut states and projected worker boundaries retain native timestamps. | [`Caller.mixed_window_soundness` and `Caller.mixed_window_projection_soundness`](Theorems.lean) |
-| Uniform or successive public ADDI-from-x0/LUI preparation yields actual controls; native PC/clock matching derives the instruction at each cut. | [`Caller.control_preparation_soundness`](Theorems.lean) |
+| Public ADDI-from-x0/LUI preparation yields actual controls after literal or ordinary arithmetic prefixes; native PC/clock matching derives each preparation address. | [`Caller.control_preparation_soundness`](Theorems.lean) |
 | Two preparations share their actual cut states and the complete intervening machine/worker history; neither control is supplied. | [`Caller.control_preparation_window_soundness`](Theorems.lean) |
 | Two native windows and their gap execute continuously from one initialization with retained tokens and clocks. | [`Caller.mixed_window_chain_soundness`](Theorems.lean) |
 | An arbitrary ordered finite list of native windows and gaps shares that continuous execution. | [`Caller.mixed_window_sequence_soundness`](Theorems.lean) |
@@ -54,8 +54,9 @@ at those boundaries. Prepared G/Keccak spans admit earlier workers, including
 unissued effects; only the last preparation cycle is worker-free. The original
 first-span extended-BLAKE entry retains its empty prefix. Public preparation/count/duration and these restrictions
 remain explicit; cuts do not reset clocks or supply intermediate states.
-The public ordinary registry may contain different literal writes along a straight
-path with callers. Each preparation cut derives its own literal and register from
+The public ordinary registry may contain different literal writes or arbitrary
+ADD/SUB/ADDI/LUI/AUIPC operands along a straight path with callers. Each preparation
+cut derives its final literal and register from
 that public address. Prepared G/Keccak windows inherit this scope, allowing explicit
 mode changes or resets between spans; completion alone does not restart a protocol.
 G/Keccak require their own family only inside the selected span. Bigint, G and
@@ -71,6 +72,10 @@ are reset. Empty and nonempty gaps, fabricated gap states, and an unissued prefi
 effect are checked in [native chain regressions](../../../../Tests/ControlPreparation.lean)
 and [the zero-clock regression](../../../../Tests/DelegationZeroInvocation.lean).
 These are memory/reference claims; instruction retirement remains separate.
+The [arithmetic-prefix regression](../../../../Tests/ControlPreparation.lean)
+derives actual ADD→ADDI-reset states 65537→131074→0 in that same continuous history,
+despite reversed native rows. The preparation read uses the actual clock-six ADD
+token, and the reset retains clock ten. Fabricated reads fail joint matching.
 
 [`WindowSequence.Realizes`](MixedWindows.lean) extends this connection to an
 arbitrary finite list. Its initial cut follows the actual prefix; every segment

@@ -2160,3 +2160,16 @@ import Clean.Specs.Keccak256
 #print axioms Tests.ControlPreparation.round_region_wrong_flags_rejected
 #print axioms Tests.ControlPreparation.prepared_round_region_two_bits_rejected
 #print axioms Tests.DelegationZeroInvocation.prepared_regions_retain_unissued_prefix_effect
+
+#print axioms Airbender.UnifiedReduced.Caller.ArithmeticInstruction
+#print axioms Airbender.UnifiedReduced.Caller.ArithmeticProgram
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.literal_arithmetic_instruction
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.literal_arithmetic_program
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.arithmetic_fields_mask
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.arithmetic_program_pc_advance
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.arithmetic_program_pc_clock
+#print axioms Tests.ControlPreparation.nonliteral_add_before_preparation
+#print axioms Tests.ControlPreparation.arithmetic_preparation_uses_prior_aliased_add
+#print axioms Tests.ControlPreparation.arithmetic_preparation_has_actual_control
+#print axioms Tests.ControlPreparation.arithmetic_prefix_and_preparation_share_history
+#print axioms Tests.ControlPreparation.arithmetic_preparation_fabricated_read_rejected
