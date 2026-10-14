@@ -1,5 +1,5 @@
 import Airbender.Review.Trace.UnifiedReduced.PreparedRoundWindows
-import Airbender.Review.Helpers.UnifiedReduced.RegisterChains
+import Airbender.Review.Helpers.UnifiedReduced.RegisterDataflow
 
 namespace Airbender.UnifiedReduced.Caller
 open Trace Reference.RiscV.Sail
@@ -22,6 +22,12 @@ inductive HashControlPreparation [Fact p.Prime] (data : RequestTrace p)
       (preparation : PublicRegisterPreparation data program cut span.controlRegister value)
       (initialUnique : (data.machine.initialMemory.map MemoryToken.address).Nodup)
       (entry : value = span.controlStart)
+  | dataflowAddi (source : BitVec 5) (value : BitVec 32) (immediate : BitVec 12)
+      (prior : PublicRegisterDataflow data program (cut - 4) source value)
+      (scope : RegisterImmediatePreparation data program cut source span.controlRegister immediate)
+      (sourceNonzero : source ≠ 0)
+      (initialUnique : (data.machine.initialMemory.map MemoryToken.address).Nodup)
+      (entry : registerImmediateValue value immediate = span.controlStart)
 
 /-- A complete selected G/Keccak span with public register
     preparation. All existing domain, matching, table and protocol scope stays
