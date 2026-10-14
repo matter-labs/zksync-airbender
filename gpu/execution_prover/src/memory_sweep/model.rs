@@ -211,7 +211,7 @@ pub fn generate_policy(input: impl Read, output: impl Write) -> Result<(), Box<d
         )?;
         writeln!(
             output,
-            "CircuitType::Unrolled(UnrolledCircuitType::Unified22) => panic!(\"UnrolledCircuitType::Unified22 is not supported on the GPU backend until W4\"),"
+            "CircuitType::Unrolled(UnrolledCircuitType::Unified22) => panic!(\"Unified22 is L1Feeder-only; its policy is hand-authored in presets::l1_feeder\"),"
         )?;
         let mut groups = BTreeMap::<String, Vec<&str>>::new();
         for &circuit in &circuits {
@@ -366,9 +366,7 @@ pub fn circuit_stable_name(circuit: CircuitType) -> &'static str {
             UnrolledNonMemoryCircuitType::ShiftBinary,
         )) => "unrolled_non_memory_shift_binary",
         CircuitType::Unrolled(UnrolledCircuitType::Unified) => "unrolled_unified",
-        CircuitType::Unrolled(UnrolledCircuitType::Unified22) => {
-            panic!("UnrolledCircuitType::Unified22 is not supported on the GPU backend until W4")
-        }
+        CircuitType::Unrolled(UnrolledCircuitType::Unified22) => panic!("Unified22 is not enumerated by the all-circuit sweep; it is L1Feeder-only, its capacity cases run through the bounded harness (tests/l1_memory.rs) and its policy is presets::l1_feeder"),
     }
 }
 
@@ -415,9 +413,7 @@ fn circuit_pattern(circuit: CircuitType) -> &'static str {
         CircuitType::Unrolled(UnrolledCircuitType::Unified) => {
             "CircuitType::Unrolled(UnrolledCircuitType::Unified)"
         }
-        CircuitType::Unrolled(UnrolledCircuitType::Unified22) => {
-            panic!("UnrolledCircuitType::Unified22 is not supported on the GPU backend until W4")
-        }
+        CircuitType::Unrolled(UnrolledCircuitType::Unified22) => panic!("Unified22 is not enumerated by the all-circuit sweep; it is L1Feeder-only, its capacity cases run through the bounded harness (tests/l1_memory.rs) and its policy is presets::l1_feeder"),
     }
 }
 

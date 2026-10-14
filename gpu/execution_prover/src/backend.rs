@@ -106,8 +106,8 @@ impl ExecutionBackend for GpuBackend {
     }
 }
 
-/// The GPU backend does not prove the 2^22 L1 feeder until W4 nor the 2^21
-/// L1 wrap until W5: reject them before any host setup is built.
+/// The GPU backend does not prove the 2^21 L1 wrap until W5: reject it before
+/// any host setup is built.
 pub(crate) fn admit_binary_registration(
     execution_kind: ExecutionKind,
     profiles: &[ProofProfile],
@@ -117,40 +117,12 @@ pub(crate) fn admit_binary_registration(
             "the GPU backend does not support the 2^21 L1 wrap (ExecutionKind::L1Wrap21) until W5, got {profiles:?}"
         ));
     }
-    if execution_kind == ExecutionKind::Unified22 || profiles.contains(&ProofProfile::L1Feeder) {
-        return Err(format!(
-            "the GPU backend does not support the 2^22 L1 feeder (ExecutionKind::Unified22 / ProofProfile::L1Feeder) until W4, got {execution_kind:?} {profiles:?}"
-        ));
-    }
     Ok(())
 }
 
 #[cfg(test)]
 mod cpu_tests {
     use super::*;
-
-    #[test]
-    fn cpu_gpu_admission_rejects_the_l1_feeder_before_setups() {
-        use ProofProfile::{L1Feeder, L1Wrap, Standard};
-        for (kind, profiles) in [
-            (ExecutionKind::Unrolled, &[Standard][..]),
-            (ExecutionKind::Unified, &[Standard]),
-            (ExecutionKind::L1Wrap, &[L1Wrap]),
-        ] {
-            admit_binary_registration(kind, profiles).unwrap();
-        }
-        for (kind, profiles) in [
-            (ExecutionKind::Unified22, &[L1Feeder][..]),
-            (ExecutionKind::Unified22, &[Standard]),
-            (ExecutionKind::Unified, &[Standard, L1Feeder]),
-        ] {
-            let err = admit_binary_registration(kind, profiles).unwrap_err();
-            assert!(
-                err.starts_with("the GPU backend does not support the 2^22 L1 feeder"),
-                "{err}"
-            );
-        }
-    }
 
     #[test]
     fn cpu_l1_wrap21_is_rejected_before_setup() {
