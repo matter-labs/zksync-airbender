@@ -85,6 +85,11 @@ cuda_kernel!(
 );
 
 cuda_kernel!(
+    TranscriptSqueezeFreshE4,
+    ab_transcript_squeeze_fresh_e4_kernel(seed_io: *mut u32, output_e4: *mut E4, count: u32)
+);
+
+cuda_kernel!(
     ReduceRawWordsToE4,
     ab_reduce_raw_words_to_e4_kernel(raw: *const u32, output_e4: *mut E4, count: u32)
 );
@@ -182,6 +187,24 @@ pub fn transcript_squeeze_e4(
     let config = CudaLaunchConfig::basic(1u32, 1u32, stream);
     let args = TranscriptSqueezeE4Arguments::new(seed_ptr, output_ptr, count as u32);
     TranscriptSqueezeE4Function::default().launch(&config, &args)
+}
+
+/// Device-side `draw_fresh_random_field_els::<BF, E4>(seed, count)`: advances `seed` past the
+/// digest the preceding squeeze emitted, then draws like [`transcript_squeeze_e4`].
+pub fn transcript_squeeze_fresh_e4(
+    seed: &mut DeviceSlice<u32>,
+    output: &mut DeviceSlice<E4>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert_eq!(seed.len(), STATE_SIZE);
+    let count = output.len();
+    assert!(count > 0);
+    assert!(count as u64 * 4 + (STATE_SIZE as u64 - 1) <= u32::MAX as u64);
+    let seed_ptr = seed.as_mut_ptr();
+    let output_ptr = output.as_mut_ptr();
+    let config = CudaLaunchConfig::basic(1u32, 1u32, stream);
+    let args = TranscriptSqueezeFreshE4Arguments::new(seed_ptr, output_ptr, count as u32);
+    TranscriptSqueezeFreshE4Function::default().launch(&config, &args)
 }
 
 /// Device-side reduction of a flat run of raw squeeze u32 words into `count` E4

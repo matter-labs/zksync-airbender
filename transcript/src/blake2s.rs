@@ -245,6 +245,15 @@ impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
         }
     }
 
+    /// `seed = H(seed)`: moves past the digest the last draw emitted.
+    #[inline(always)]
+    pub fn advance_seed_using_hasher(
+        hasher: &mut blake2s_u32::DelegatedBlake2sState,
+        seed: &mut Seed,
+    ) {
+        unsafe { Self::draw_randomness_inner(hasher, seed) }
+    }
+
     #[unroll::unroll_for_loops]
     #[inline(always)]
     unsafe fn draw_randomness_inner(
@@ -481,6 +490,14 @@ impl<const REDUCED_ROUNDS: bool> TranscriptState<REDUCED_ROUNDS> {
     #[inline(always)]
     pub fn commit<const N: usize>(&mut self, buf: &mut CommitBuf<N>, data_words: usize) {
         buf.commit(&mut self.hasher, &mut self.seed, data_words);
+    }
+
+    #[inline(always)]
+    pub fn advance(&mut self) {
+        Blake2sTranscript::<REDUCED_ROUNDS>::advance_seed_using_hasher(
+            &mut self.hasher,
+            &mut self.seed,
+        );
     }
 
     #[inline(always)]
@@ -763,6 +780,15 @@ impl<const REDUCED_ROUNDS: bool> Transcript<BabyBearField, BabyBearExt4>
         );
     }
 
+    #[inline(always)]
+    fn draw_fresh_random_field_elements(seed: &mut Self::Seed, buffer: &mut [BabyBearExt4]) {
+        let mut hasher = DelegatedBlake2sState::new();
+        Self::advance_seed_using_hasher(&mut hasher, seed);
+        draw_random_field_elements_impl::<REDUCED_ROUNDS, BabyBearField, BabyBearExt4>(
+            seed, buffer,
+        );
+    }
+
     #[cfg(feature = "pow")]
     fn draw_random_field_elements_with_pow(
         seed: &Self::Seed,
@@ -800,7 +826,11 @@ impl<const REDUCED_ROUNDS: bool> Transcript<BabyBearField, BabyBearExt4>
 
 #[cfg(test)]
 mod raw_draw_tests {
+    extern crate alloc;
+
     use super::*;
+    use alloc::vec;
+    use field::Field;
 
     #[test]
     #[should_panic(expected = "randomness destination must not be empty")]
@@ -832,6 +862,57 @@ mod raw_draw_tests {
             &mut Seed([1; 8]),
             &mut [0; 9],
         );
+    }
+
+    fn reduce(words: &[u32]) -> BabyBearExt4 {
+        let mut coeffs = <BabyBearExt4 as FieldExtension<BabyBearField>>::into_coeffs(
+            BabyBearExt4::from_base(BabyBearField::ZERO),
+        );
+        for (c, w) in coeffs.iter_mut().zip(words) {
+            *c = BabyBearField::from_raw_repr_with_reduction(*w);
+        }
+        <BabyBearExt4 as FieldExtension<BabyBearField>>::from_coeffs(coeffs)
+    }
+
+    fn fresh_draw_after_raw_draw<const REDUCED_ROUNDS: bool>(raw_words: usize) {
+        type T<const R: bool> = Blake2sTranscript<R>;
+        let start = T::<REDUCED_ROUNDS>::commit_initial(&[1, 2, 3]);
+        let mut seed = start;
+        let mut raw = vec![0u32; raw_words];
+        T::<REDUCED_ROUNDS>::draw_randomness(&mut seed, &mut raw);
+
+        let mut plain_seed = seed;
+        let mut plain = [BabyBearExt4::ZERO];
+        <T<REDUCED_ROUNDS> as crate::Transcript<_, _>>::draw_random_field_elements(
+            &mut plain_seed,
+            &mut plain,
+        );
+        assert_eq!(plain[0], reduce(&raw[raw_words - 8..raw_words - 4]));
+
+        let mut fresh_seed = seed;
+        let mut fresh = [BabyBearExt4::ZERO];
+        <T<REDUCED_ROUNDS> as crate::Transcript<_, _>>::draw_fresh_random_field_elements(
+            &mut fresh_seed,
+            &mut fresh,
+        );
+        let mut longer_seed = start;
+        let mut longer = vec![0u32; raw_words + 8];
+        T::<REDUCED_ROUNDS>::draw_randomness(&mut longer_seed, &mut longer);
+        assert_eq!(longer[..raw_words], raw[..]);
+        assert_eq!(fresh[0], reduce(&longer[raw_words..raw_words + 4]));
+        assert_eq!(fresh_seed, longer_seed);
+
+        let mut state = TranscriptState::<REDUCED_ROUNDS>::new(seed);
+        state.advance();
+        assert_eq!(state.seed, longer_seed);
+    }
+
+    #[test]
+    fn fresh_field_draw_continues_past_the_last_emitted_digest() {
+        for raw_words in [8, 16, 24] {
+            fresh_draw_after_raw_draw::<true>(raw_words);
+            fresh_draw_after_raw_draw::<false>(raw_words);
+        }
     }
 }
 

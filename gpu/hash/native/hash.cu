@@ -530,7 +530,7 @@ EXTERN __global__ void ab_transcript_squeeze_kernel(u32 *seed_io, u32 *output, c
 // `count` must be positive. Each challenge consumes 4 consecutive raw squeeze u32 words; the
 // kernel advances the seed once per STATE_SIZE (= 8) raw words produced (i.e. every 2 E4s),
 // matching the CPU's `draw_randomness` chunking with `next_multiple_of(STATE_SIZE)` padding.
-EXTERN __global__ void ab_transcript_squeeze_e4_kernel(u32 *seed_io, e4 *output_e4, const unsigned count) {
+DEVICE_FORCEINLINE void transcript_squeeze_e4(u32 *seed_io, e4 *output_e4, const unsigned count) {
   if (count == 0)
     return;
   // Produce enough raw u32 words for `count` E4 challenges, padded to a multiple of STATE_SIZE.
@@ -556,6 +556,15 @@ EXTERN __global__ void ab_transcript_squeeze_e4_kernel(u32 *seed_io, e4 *output_
     for (unsigned slot = 0; slot < STATE_SIZE / 4 && emitted < count; slot++)
       output_e4[emitted++] = reduce_4_words_to_e4(&raw_chunk[slot * 4]);
   }
+}
+
+EXTERN __global__ void ab_transcript_squeeze_e4_kernel(u32 *seed_io, e4 *output_e4, const unsigned count) { transcript_squeeze_e4(seed_io, output_e4, count); }
+
+// Device-side `draw_fresh_random_field_els::<BF, E4>(seed, count)`: advances the seed past the
+// digest the preceding squeeze emitted, then squeezes like `ab_transcript_squeeze_e4_kernel`.
+EXTERN __global__ void ab_transcript_squeeze_fresh_e4_kernel(u32 *seed_io, e4 *output_e4, const unsigned count) {
+  advance_seed(seed_io);
+  transcript_squeeze_e4(seed_io, output_e4, count);
 }
 
 // Reduce a flat run of raw squeeze u32 words into `count` E4 challenges, matching

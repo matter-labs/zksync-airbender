@@ -100,6 +100,9 @@ impl Transcript<F, E> for TestTranscript {
     fn draw_random_field_elements(seed: &mut Seed, buffer: &mut [E]) {
         draw_random_field_elements_impl::<true, F, E>(seed, buffer);
     }
+    fn draw_fresh_random_field_elements(_seed: &mut Seed, _buffer: &mut [E]) {
+        todo!();
+    }
     fn draw_random_field_elements_with_pow(
         _seed: &Self::Seed,
         _pow_bits: u32,
