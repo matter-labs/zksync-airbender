@@ -138,10 +138,25 @@ worker-exclusion theorem or inertness claim. The accepted G fixture and its actu
 0→1 prefix effect remain admitted; tests bind its reads in the worker-only history
 and the history containing a later ADDI reset.
 
+Initialized architectural matching now also gives numeric and raw invocation
+clock uniqueness for every worker occurrence, including zero. The new
+`WorkerInvocationUniqueness` projects each family's actual fixed x10 port, whose
+native write offset is two, through the existing memory-key uniqueness proof.
+The public tracked domain remains distinct. No operation mask, valid bigint
+control, nonzero invocation or whole-pool hash coverage is assumed. The unissued
+sublist therefore has at most one occurrence, with identical duplicate rows
+counted separately. The [zero-clock regression](Tests/DelegationZeroInvocation.lean)
+shows that two copies still pass all native/request checks, while initialized
+architectural acceptance rejects them. The original single state-changing G
+worker attains the bound, both with and without the later ADDI reset. The
+[bigint/COPY regressions](Tests/UnifiedDelegation.lean) instantiate the full result
+for live COPY and for both invalid bigint controls. This is a bound on surplus,
+without a general exclusion or inertness result.
+
 All 116 concrete test modules and 143 importer guards pass. The full
-2,088-root axiom audit has 64 axiom-free roots and only the three standard
-Lean axioms. Review checks pass for all 102 public theorem roots, 160 declaration
-names and 664 guide links/anchors, with no handwritten project diagnostics.
+2,098-root axiom audit has 64 axiom-free roots and only the three standard
+Lean axioms. Review checks pass for all 103 public theorem roots, 162 declaration
+names and 667 guide links/anchors, with no handwritten project diagnostics.
 
 ## Review priorities
 
@@ -285,6 +300,15 @@ floors and logical memory matching, without supported-operation premises. It
 retains the actual G state change above, including when the later ADDI reset is
 present. For extended rounds, the actual public x12 high limb now characterizes
 exclusive masks exactly; this does not establish exclusion or inertness.
+
+**Derived multiplicity bound.** With a distinct initialized physical-cell domain,
+the shared x10 transfer now derives unique numeric and raw invocation clocks for
+all four families, including zero. The unissued sublist has at most one occurrence.
+`duplicate_unissued_request_checks` preserves native participation and virtual
+matching for two identical G rows; `duplicate_unissued_workers_rejected` proves
+that architectural acceptance rejects that pool. `unissued_worker_bound_is_sharp`
+retains the existing single G worker and its actual state change. This strengthens
+the multiplicity bound while keeping the demonstrated unissued-worker finding.
 
 **Closure needed.** Show that the actual full acceptance argument rejects unissued
 active workers, or gives them a justified inert meaning. Issued-worker uniqueness
