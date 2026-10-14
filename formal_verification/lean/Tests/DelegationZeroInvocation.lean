@@ -742,4 +742,22 @@ theorem prepared_regions_retain_unissued_prefix_effect :
   rw [bits] at actualRead
   exact ⟨sequence, history, actualRead⟩
 
+theorem unified_unissued_reads_public_initialization :
+    UnifiedReduced.Caller.InitialWorkerReads before cells native :=
+  UnifiedReduced.Caller.unissued_worker_reads_soundness (by decide +kernel) (by decide +kernel)
+    unifiedAccepted unifiedInputs.publicProgram unifiedInputs.initialization
+    (List.mem_singleton_self _) (by decide +kernel)
+
+theorem prepared_unissued_reads_public_initialization :
+    UnifiedReduced.Caller.InitialWorkerReads preparationBefore preparationCells native :=
+  UnifiedReduced.Caller.unissued_worker_reads_soundness (by decide +kernel) (by decide +kernel)
+    preparationAccepted preparationInputs.publicProgram preparationInputs.initialization
+    (List.mem_singleton_self _) (by decide +kernel)
+
+/-- The earlier G write and later ADDI reset both satisfy the derived write floor. -/
+theorem prepared_unissued_write_floor :
+    ∀ edge ∈ preparationData.mixedSteps, 2 ≤ (timeOfPair edge.2.time).value :=
+  UnifiedReduced.Caller.Proofs.mixed_write_floor (by decide +kernel) (by decide +kernel)
+    preparationAccepted preparationInputs.publicProgram preparationInputs.initialization
+
 end Tests.DelegationZeroInvocation

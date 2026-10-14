@@ -209,7 +209,12 @@ ABI and whole mixed execution remain separate.
    caller's clock interval and modular address, then exact membership for live
    round workers. Public preparation and raw matching derive issued masks; full
    coverage is equivalent to absence of zero-clock round workers. Repeated-address
-   guards reject covering only one occurrence; unissued round binding remains open.
+   guards reject covering only one occurrence. Unissued native reads now derive
+   the full public initialization tokens from memory order and native write
+   clocks, without a new clock-floor premise. For extended rounds, the actual
+   initial x12 high limb characterizes supported exclusive masks exactly. Zero
+   and multibit controls stay outside that ABI; this classifies the remaining
+   unissued-round boundary without proving worker exclusion or inertness.
    COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed
    retained for the second window. Extended BLAKE and Keccak completion controls
    do not restart their protocols; checked regressions forbid treating their

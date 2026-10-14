@@ -1088,4 +1088,27 @@ theorem sequential_profile_excludes_comparison (rs2 rs1 rd : BitVec 5) :
   cases supported with
   | arithmetic supported => cases supported
 
+/-- A publicly zero x12 seed leaves an unissued round worker outside every
+    exclusive-mask ABI. This neither constructs nor excludes an accepted worker. -/
+theorem unissued_round_zero_seed_has_no_mask [Fact p.Prime]
+    (hp : 2 * timestampBase + 4 < p) (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {trace : UnifiedReduced.Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
+    {initial : State} {ca : List (BitVec 32)} {domain : List Cell}
+    (accepted : UnifiedReduced.Caller.MixedMemoryAccepted trace program)
+    (publicProgram : UnifiedReduced.Caller.RequestInputs trace initial ca)
+    (image : initialImage initial domain = some trace.machine.initialMemory)
+    {worker : Delegation.Row p} (member : worker ∈ trace.workers.rows) (family : worker.family = .blakeRound)
+    (zero : (Delegation.Requests.fulfillment worker).time = (0, 0))
+    (seed : (Cell.register 12).read initial = .ok 0 initial) :
+    ¬ ∃ round, Blake2Round.Memory.RoundMask worker.assignment round := by
+  obtain ⟨actual, read, masks⟩ := UnifiedReduced.Caller.unissued_round_control_soundness hp clockInverse
+    accepted publicProgram image member family zero
+  have same : actual = 0 := (EStateM.Result.ok.inj (read.symm.trans seed)).1
+  subst actual
+  rintro ⟨round, mask⟩
+  obtain ⟨flags, encoded⟩ := (masks round).mp mask
+  change 0 = flags.val + 8 * 2 ^ round.val at encoded
+  have positive : 0 < 2 ^ round.val := pow_pos (by decide) _
+  omega
+
 end Tests.ControlPreparation
