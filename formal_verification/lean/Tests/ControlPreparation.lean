@@ -527,4 +527,46 @@ theorem fabricated_chain_gap_state_rejected :
   rintro ⟨chain, history, different⟩
   exact different (empty_chain_gap_keeps_same_state history)
 
+theorem native_sequence_reaches_successive_controls (gap : Bool) :
+    ∃ (sequence : UnifiedReduced.Caller.WindowSequence babyBearModulus)
+      (first middle last : UnifiedReduced.Caller.WindowSegment babyBearModulus),
+      sequence.Realizes chainedData chainedBefore (cells 0) 4 [(4, if gap then 4 else 8), (8, 8), (8, 12)] ∧
+      sequence.segments = [first, middle, last] ∧
+      (Cell.register 12).read last.atStart = .ok 128 last.atStart ∧
+      (Cell.register 12).read last.atFinish = .ok 0 last.atFinish := by
+  obtain ⟨sequence, history⟩ := UnifiedReduced.Caller.mixed_window_sequence_soundness
+    (cut := 4) (windows := [(4, if gap then 4 else 8), (8, 8), (8, 12)])
+    (by decide +kernel) (by decide +kernel) (by decide +kernel) chainedAccepted chainedInputs
+    (by decide) (by decide) (by cases gap <;> simp [UnifiedReduced.Caller.WindowsOrdered])
+  have segments := history.segments
+  rcases shape : sequence.segments with _ | ⟨first, _ | ⟨middle, _ | ⟨last, tail⟩⟩⟩
+  all_goals simp only [shape, UnifiedReduced.Caller.WindowSegmentsRealize] at segments
+  · exact False.elim segments.2.2.2.2.2.2.2.2.2
+  · exact False.elim segments.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2
+  · obtain ⟨_, _, _, prefixMatching, _, _, matching, startBoundary, finishBoundary, remaining⟩ :=
+      segments.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2
+    have empty : tail = [] := by
+      cases tail with
+      | nil => rfl
+      | cons _ _ => exact False.elim remaining
+    subst tail
+    have atStart := UnifiedReduced.Caller.Proofs.preparation_at_boundary (by decide +kernel) (by decide +kernel)
+      chainedAccepted chainedInputs (chainedScope false) (by decide) (by decide) prefixMatching startBoundary
+    have finalMatching := UnifiedReduced.Caller.Proofs.matching_at_next_cut (by decide +kernel) (by decide +kernel)
+      (lower := 8) (upper := 12) chainedAccepted.toRequestChecks chainedInputs.publicProgram
+      (by decide) (by decide) (by decide) (by decide) prefixMatching matching
+    have atFinish := UnifiedReduced.Caller.Proofs.preparation_at_boundary (by decide +kernel) (by decide +kernel)
+      chainedAccepted chainedInputs (chainedScope true) (by decide) (by decide) finalMatching finishBoundary
+    exact ⟨sequence, first, middle, last, history, shape, atStart.1, atFinish.1⟩
+
+theorem empty_native_sequence_retains_initialized_prefix :
+    UnifiedReduced.Caller.MixedWindowSequenceExecution chainedData chainedBefore (cells 0) 8 [] :=
+  UnifiedReduced.Caller.mixed_window_sequence_soundness (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    chainedAccepted chainedInputs (by decide) (by decide) trivial
+
+theorem overlapping_or_unaligned_sequences_rejected :
+    ¬ UnifiedReduced.Caller.WindowsOrdered 4 [(4, 12), (8, 12)] ∧
+    ¬ UnifiedReduced.Caller.WindowsOrdered 4 [(4, 6), (8, 12)] := by
+  simp [UnifiedReduced.Caller.WindowsOrdered]
+
 end Tests.ControlPreparation
