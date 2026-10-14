@@ -928,10 +928,18 @@ struct GpuChainObserver<'a> {
     compare: bool,
     instances: Vec<usize>,
     observer_ms: u64,
+    /// The start of the first layer's prediction run: the chain boundary.
+    first_layer_start: Option<Instant>,
 }
 
 #[cfg(feature = "gpu")]
 impl FeederObserver for GpuChainObserver<'_> {
+    fn layer_started(&mut self, layer: u8) {
+        if layer == 0 {
+            self.first_layer_start = Some(Instant::now());
+        }
+    }
+
     fn feeder_layer(
         &mut self,
         layer: u8,
@@ -961,6 +969,11 @@ impl FeederObserver for GpuChainObserver<'_> {
             }
             if rebuild_chain(&state.chain_end_params)?.hash() != fixture.chain_hash {
                 return Err(format!("GPU feeder layer {layer} chain hash differs"));
+            }
+            let native_output =
+                native_verify_unified_l1_feeder(build_unified_stream(&state.setups, &state.proof))?;
+            if native_output != fixture.native_output {
+                return Err(format!("GPU feeder layer {layer} native output differs"));
             }
         }
         self.instances.push(instances);
@@ -1026,11 +1039,11 @@ fn l1_feeder_gpu_chain_gate() {
             compare: deterministic,
             instances: vec![],
             observer_ms: 0,
+            first_layer_start: None,
         };
-        let start = Instant::now();
-        let (state, _) = prover
-            .feeder_layers_observed(seed.clone(), &mut observer)
-            .unwrap();
+        let seed = seed.clone();
+        let continuation_start = Instant::now();
+        let (state, _) = prover.feeder_layers_observed(seed, &mut observer).unwrap();
         let fit_start = Instant::now();
         check_feeder_fit(
             &prover.fsv,
@@ -1040,12 +1053,18 @@ fn l1_feeder_gpu_chain_gate() {
         )
         .unwrap();
         let wrap_fit_ms = elapsed_ms(fit_start);
-        let wall_ms = elapsed_ms(start);
+        let continuation_ms = elapsed_ms(continuation_start);
+        let chain_ms = elapsed_ms(
+            observer
+                .first_layer_start
+                .expect("the feeder loop starts its first layer"),
+        );
         log::info!(
-            "L1 feeder GPU chain ({pass}, deterministic_pow {deterministic}, compared to fixtures {}): instances {:?} (fixtures {expected_instances:?}), wrap-fit check {wrap_fit_ms} ms, chain wall {} ms excluding {} ms of fixture comparison",
+            "L1 feeder GPU chain ({pass}, deterministic_pow {deterministic}, compared to fixtures {}): instances {:?} (fixtures {expected_instances:?}), wrap-fit check {wrap_fit_ms} ms, chain wall from the first prediction {} ms, continuation wall {} ms, both excluding {} ms of fixture comparison",
             observer.compare,
             observer.instances,
-            wall_ms - observer.observer_ms,
+            chain_ms - observer.observer_ms,
+            continuation_ms - observer.observer_ms,
             observer.observer_ms
         );
         assert_eq!(
