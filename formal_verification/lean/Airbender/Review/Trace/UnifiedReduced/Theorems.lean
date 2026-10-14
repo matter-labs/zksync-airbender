@@ -10,6 +10,7 @@ import Airbender.Proofs.UnifiedReduced.ControlPreparation
 import Airbender.Proofs.UnifiedReduced.PreparedHashWindows
 import Airbender.Proofs.UnifiedReduced.PreparedRoundWindows
 import Airbender.Proofs.UnifiedReduced.CallerCycles
+import Airbender.Proofs.UnifiedReduced.UnissuedWorkers
 import Airbender.Proofs.Delegation.RequestHashWindows
 
 namespace Airbender.UnifiedReduced
@@ -580,5 +581,33 @@ theorem Caller.wrapped_program_round_global_coverage_boundary_soundness [Fact p.
       (Delegation.Requests.fulfillment worker).time = (0, 0) :=
   Caller.Proofs.round_worker_coverage_boundary
     (Caller.wrapped_program_round_coverage_soundness hp clockInverse setup accepted publicProgram ordinaryProgram registry scopes coverage)
+
+/-- Every zero-clock worker reads the full public initialization tokens.
+    Native clocks and architectural matching derive their origin and word bounds;
+    all unissued writes and their later prefix effects remain admitted. -/
+theorem Caller.unissued_worker_reads_soundness [Fact p.Prime]
+    (hp : 2 * Trace.timestampBase + 4 < p) (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
+    {before : Reference.RiscV.Sail.State} {ca : List (BitVec 32)} {cells : List Trace.Cell}
+    (accepted : Caller.MixedMemoryAccepted data program) (publicProgram : Caller.RequestInputs data before ca)
+    (image : Trace.initialImage before cells = some data.machine.initialMemory)
+    {worker : Delegation.Row p} (member : worker ∈ data.workers.rows)
+    (zero : (Delegation.Requests.fulfillment worker).time = (0, 0)) :
+    Caller.InitialWorkerReads before cells worker :=
+  Caller.Proofs.unissued_initial_reads hp clockInverse accepted publicProgram image member zero
+
+/-- The actual public x12 seed characterizes every supported exclusive mask of
+    an unissued extended-round worker. No supported-control, exclusive-mask or
+    nonzero-invocation premise supplies the missing global coverage boundary. -/
+theorem Caller.unissued_round_control_soundness [Fact p.Prime]
+    (hp : 2 * Trace.timestampBase + 4 < p) (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
+    {before : Reference.RiscV.Sail.State} {ca : List (BitVec 32)} {cells : List Trace.Cell}
+    (accepted : Caller.MixedMemoryAccepted data program) (publicProgram : Caller.RequestInputs data before ca)
+    (image : Trace.initialImage before cells = some data.machine.initialMemory)
+    {worker : Delegation.Row p} (member : worker ∈ data.workers.rows) (family : worker.family = .blakeRound)
+    (zero : (Delegation.Requests.fulfillment worker).time = (0, 0)) :
+    Caller.InitialRoundControl before worker :=
+  Caller.Proofs.unissued_round_initial_control hp clockInverse accepted publicProgram image member family zero
 
 end Airbender.UnifiedReduced

@@ -162,10 +162,19 @@ clock endpoints. Strict clock increments and matching derive actual caller bound
 so repeated addresses need no injectivity assumption. The modular coverage,
 issued-mask and global-boundary entry points in
 [unified trace review](../../Trace/UnifiedReduced/README.md) prove the corresponding
-results with modeled setup and the aligned comparison registry. Unissued round
-masks/exclusion remain open. A repeated-address public-policy regression rejects
+results with modeled setup and the aligned comparison registry. General supported
+masks and exclusion for unissued rounds remain open. A repeated-address public-policy regression rejects
 covering only one occurrence; empty prepared cuts and the actual unissued G worker
 remain admitted.
+
+The [unissued worker entry](../../Trace/UnifiedReduced/UnissuedWorkers.lean) now
+roots all zero-clock worker reads directly in public initialization. Native clocks
+and strict memory order derive the write floor; an extra initial-clock floor and
+supported-operation premises are absent. For an unissued extended-round worker,
+the actual public x12 seed characterizes each exclusive mask exactly. Unsupported
+zero/multibit encodings remain outside the ABI, and the actual G prefix update
+remains admitted. This classification does not establish worker exclusion or
+inertness and does not construct an accepted unissued-round witness.
 
 The native domain, public program, protocol counts and existing prefix scope
 remain explicit. These helpers do not claim whole mixed caller retirement.

@@ -15,6 +15,15 @@ the exclusive mask ABI. Complete compression and native-window claims bind actua
 initial/final blocks; the prepared unified scope additionally derives masks
 from accepted public LUI preparation and matching.
 
+The [native control proof](../../../Proofs/Blake2Round/ExclusiveMask.lean) also
+characterizes the mask boundary in both directions: an exclusive round mask is
+equivalent to a high control limb equal to flags below eight plus `8 * 2^round`.
+Only imported control assertions and Boolean bits are used; no XOR-table semantics
+or supported-mask premise is supplied. Zero and multibit encodings remain outside
+that ABI. The [unified unissued-worker entry](../../Trace/UnifiedReduced/UnissuedWorkers.lean)
+binds this classification to the actual public x12 seed, without proving worker
+exclusion or inertness.
+
 Start with [Artifact](Artifact.lean), [Row](Row.lean) and [Execution](Execution.lean)
 for the imported operation view. Follow [Preparation](Preparation.lean),
 [Mixing](Mixing.lean) and [Finalization](Finalization.lean) for the worker phases.

@@ -2314,3 +2314,18 @@ import Clean.Specs.Keccak256
 #print axioms Tests.DelegationZeroInvocation.wrapped_public_round_coverage_retains_unissued_g
 #print axioms Tests.ControlPreparation.wrapped_public_round_empty_cut_has_exact_coverage
 #print axioms Tests.ControlPreparation.wrapped_public_round_live_masks_reject_two_bits
+
+#print axioms Airbender.Blake2Round.Proofs.exclusive_mask_iff
+#print axioms Airbender.UnifiedReduced.Caller.InitialWorkerReads
+#print axioms Airbender.UnifiedReduced.Caller.InitialRoundControl
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.mixed_write_floor
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.unissued_initial_reads
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.unissued_round_initial_control
+#print axioms Airbender.UnifiedReduced.Caller.unissued_worker_reads_soundness
+#print axioms Airbender.UnifiedReduced.Caller.unissued_round_control_soundness
+#print axioms Tests.DelegationZeroInvocation.unified_unissued_reads_public_initialization
+#print axioms Tests.DelegationZeroInvocation.prepared_unissued_reads_public_initialization
+#print axioms Tests.DelegationZeroInvocation.prepared_unissued_write_floor
+#print axioms Tests.Blake2Round.zero_control_has_no_exclusive_mask
+#print axioms Tests.Blake2Round.multibit_control_has_no_exclusive_mask
+#print axioms Tests.ControlPreparation.unissued_round_zero_seed_has_no_mask
