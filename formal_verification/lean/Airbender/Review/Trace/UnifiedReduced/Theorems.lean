@@ -295,6 +295,37 @@ theorem Caller.prepared_hash_sequence_soundness [Fact p.Prime] (hp : 16777216 �
     Caller.PreparedHashSequenceResult data before cells first rest :=
   Caller.Proofs.prepared_hash_sequence hp clockInverse accepted firstInputs restInputs ordered
 
+/-- Public LUI preparation and raw joint matching derive exclusive masks within
+    one caller region. Its local ten-position bound remains explicit; earlier
+    workers, including other families, remain outside the selected region. -/
+theorem Caller.prepared_round_region_masks_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State}
+    {ca oa : List (BitVec 32)} {cells : List Trace.Cell} {program : List UnifiedReduced.ProgramEntry}
+    {regions : List Caller.RoundRegion} {region : Caller.RoundRegion}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.PreparedProtocolInputs data before ca oa cells program regions)
+    (scope : Caller.RoundRegionInputs data program region) :
+    ∀ row ∈ data.workers.windowRows region.lower region.upper,
+      ∃ round, Blake2Round.Memory.RoundMask row.assignment round :=
+  Caller.Proofs.prepared_round_region_masks hp clockInverse accepted inputs scope
+
+/-- Complete prepared G, extended-BLAKE and Keccak lists share one continuous
+    actual memory execution. Every extended-round worker must belong to an
+    explicit prepared controller region; raw matching derives its mask first.
+    Public preparation/protocol shape stays visible, with whole retirement separate. -/
+theorem Caller.prepared_protocol_sequence_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State}
+    {ca oa : List (BitVec 32)} {cells : List Trace.Cell} {program : List UnifiedReduced.ProgramEntry}
+    {regions : List Caller.RoundRegion} {first : Caller.HashWindow} {rest : List Caller.HashWindow}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.PreparedProtocolInputs data before ca oa cells program regions)
+    (scopes : ∀ window ∈ first :: rest, Caller.PreparedProtocolWindowInputs data program window)
+    (ordered : Caller.WindowsOrdered first.lower ((first :: rest).map Caller.HashWindow.interval)) :
+    Caller.PreparedHashSequenceResult data before cells first rest :=
+  Caller.Proofs.prepared_protocol_sequence hp clockInverse accepted inputs scopes ordered
+
 /-- Public LUI preparation and native matching derive all extended-BLAKE masks
     before Sail transport. The public suffix duration and ten-position ABI remain explicit. -/
 theorem Caller.prepared_round_masks_soundness [Fact p.Prime] (hp : 8388608 ≤ p)

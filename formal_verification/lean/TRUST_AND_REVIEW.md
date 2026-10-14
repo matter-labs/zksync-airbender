@@ -174,8 +174,17 @@ also bind complete compression at those actual cut states. Raw matching and the
 ordinary LUI token derive exclusive round masks before Sail value transport.
 Public suffix duration derives its caller selectors; the empty worker prefix and
 ten-position controller stay explicit. Later rounds may remain outside a selected
-seven-/ten-round window. Broader preparation/chaining and whole mixed retirement
-remain open.
+seven-/ten-round window. The broader
+[prepared protocol sequence](Airbender/Review/Trace/UnifiedReduced/PreparedRoundWindows.lean)
+derives exclusive masks from raw prefix/window matching within each public
+LUI-prepared controller region. Earlier workers remain in history; the ten-position
+bound applies to each region. Explicit coverage places every extended-round worker
+in such a region before mask-dependent Sail transport. All three complete references
+then compose at the same continuous sequence states. Global prefix emptiness,
+pool homogeneity and a global ten-row cap are absent from this entry; local family,
+count/duration, literal preparation, cut order and region coverage remain witness-
+shape boundaries. They are not a theorem that general acceptance runs valid
+protocols. Broader preparation/protocol binding and whole mixed retirement remain open.
 [Control preparation](Airbender/Review/Helpers/UnifiedReduced/ControlPreparation.lean)
 uses a public ordinary ADDI-from-x0/LUI registry and a worker-free final preparation
 cycle. The registry may be uniform or contain different literals/registers on a

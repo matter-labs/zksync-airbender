@@ -45,4 +45,68 @@ structure PreparedRoundWindowInputs [Fact p.Prime] (data : RequestTrace p) (befo
   /-- The selected final cut lies within the native path. -/
   beforeTerminal : upper ≤ (timeOfPair data.machine.terminal.timestamp).value
 
+/-- One prepared extended-BLAKE controller region; earlier workers remain outside it. -/
+structure RoundRegion where
+  flags : Fin 8
+  lower : Nat
+  upper : Nat
+
+/-- Local protocol shape used to derive round masks from raw joint matching.
+    No mask, control read, empty worker prefix or global ten-row cap is supplied. -/
+structure RoundRegionInputs [Fact p.Prime] (data : RequestTrace p)
+    (program : List UnifiedReduced.ProgramEntry) (region : RoundRegion) : Prop where
+  /-- Only workers inside this controller region use extended BLAKE. -/
+  family : ∀ row ∈ data.workers.windowRows region.lower region.upper, row.family = .blakeRound
+  /-- Actual public LUI prepares this controller's flags and first round. -/
+  preparation : ControlPreparation data program region.lower 12 (hashPreparation (.blakeRound region.flags))
+  /-- This controller region has at most ten positions. -/
+  roundsBound : (data.workers.windowRows region.lower region.upper).length ≤ 10
+  /-- Public duration; matching derives that every included machine row is a caller. -/
+  duration : region.upper = region.lower + 4 * (data.workers.windowRows region.lower region.upper).length
+  /-- Instruction-boundary cuts. -/
+  aligned : region.lower % 4 = 0 ∧ region.upper % 4 = 0
+  /-- The region remains inside the native path. -/
+  beforeTerminal : region.upper ≤ (timeOfPair data.machine.terminal.timestamp).value
+
+/-- Shared public memory/program inputs and prepared regions covering every round
+    worker. Masks follow from these regions; other worker families remain in history. -/
+structure PreparedProtocolInputs [Fact p.Prime] (data : RequestTrace p) (before : State)
+    (ca oa : List (BitVec 32)) (cells : List Cell) (program : List UnifiedReduced.ProgramEntry)
+    (regions : List RoundRegion) : Prop where
+  /-- Original public CSR decoding and the initial native clock. -/
+  publicProgram : RequestInputs data before ca
+  /-- Original Sail decoding constructs the ordinary instruction registry. -/
+  ordinaryProgram : Mixed.programImage before oa = some program
+  /-- Successful public cell reads construct the joint seed. -/
+  initialization : initialImage before cells = some data.machine.initialMemory
+  /-- One initialized token per physical cell. -/
+  distinct : (cells.map Cell.addressCode).Nodup
+  /-- Public tracked-RAM alignment. -/
+  aligned : ∀ cell ∈ cells, cell.Aligned
+  /-- Unified modeled setup uses the same public image. -/
+  setup : data.machine.rom = Setup.table before
+  /-- Existing modeled worker tables and Keccak controller. -/
+  tables : data.workers.setup = Delegation.modeledSetup Keccak.Controller.rows
+  /-- Each controller restart has its own public preparation and local shape. -/
+  scopes : ∀ region ∈ regions, RoundRegionInputs data program region
+  /-- Every actual extended-round worker belongs to an admitted prepared region.
+      This is an explicit protocol-shape boundary, not general acceptance coverage. -/
+  coverage : ∀ row ∈ data.workers.rows, row.family = .blakeRound →
+    ∃ region ∈ regions, row ∈ data.workers.windowRows region.lower region.upper
+
+/-- A complete selected G, extended-BLAKE or Keccak span. Global masks are derived
+    through `PreparedProtocolInputs`; each span retains its public protocol ABI. -/
+structure PreparedProtocolWindowInputs [Fact p.Prime] (data : RequestTrace p)
+    (program : List UnifiedReduced.ProgramEntry) (window : HashWindow) : Prop where
+  /-- The selected complete span has one worker family. -/
+  family : ∀ row ∈ data.workers.windowRows window.lower window.upper, row.family = window.span.family
+  /-- Public literal preparation; only its final cycle is worker-free. -/
+  preparation : ControlPreparation data program window.lower window.span.controlRegister (hashPreparation window.span)
+  /-- Existing complete-reference call count. -/
+  calls : (data.workers.windowRows window.lower window.upper).length = window.span.callCount
+  /-- Public duration; native matching derives its caller selectors. -/
+  duration : window.upper = window.lower + 4 * window.span.callCount
+  /-- The final cut lies inside the native path. -/
+  beforeTerminal : window.upper ≤ (timeOfPair data.machine.terminal.timestamp).value
+
 end Airbender.UnifiedReduced.Caller

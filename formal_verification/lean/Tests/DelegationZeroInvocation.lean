@@ -641,4 +641,43 @@ theorem sequence_retains_unissued_prefix_effect :
   rw [bits] at actualRead
   exact ⟨sequence, history, actualRead⟩
 
+private theorem prepared_protocol_inputs_keep_unissued :
+    UnifiedReduced.Caller.PreparedProtocolInputs preparationData preparationBefore [] [0]
+      preparationCells [preparationEntry] [] := by
+  have context := preparationInputs
+  refine ⟨context.publicProgram, context.ordinaryProgram, context.initialization, context.distinct,
+    context.aligned, context.setup, context.tables, ?_, ?_⟩
+  · intro region member
+    cases member
+  · intro row member same
+    have only : row = native := List.mem_singleton.mp member
+    subst row
+    cases same
+
+theorem prepared_regions_retain_unissued_prefix_effect :
+    ∃ sequence : UnifiedReduced.Caller.WindowSequence babyBearModulus,
+      sequence.Realizes preparationData preparationBefore preparationCells 4 [(4, 4), (4, 8)] ∧
+      (Cell.register 12).read sequence.atInitial = .ok 1 sequence.atInitial := by
+  have memory := UnifiedReduced.Caller.Proofs.prepared_protocol_memory_inputs (by decide +kernel) (by decide +kernel)
+    preparationAccepted prepared_protocol_inputs_keep_unissued
+  obtain ⟨sequence, history⟩ := UnifiedReduced.Caller.mixed_window_sequence_soundness
+    (cut := 4) (windows := [(4, 4), (4, 8)])
+    (by decide +kernel) (by decide +kernel) (by decide +kernel) preparationAccepted memory
+    (by decide) (by decide) (by simp [UnifiedReduced.Caller.WindowsOrdered])
+  let token : MemoryToken babyBearModulus := ⟨(Cell.register 12).addressCode, (2, 0), Nat.pair 1 0⟩
+  have produced : token ∈ preparationData.machine.initialMemory ++ (preparationData.prefixSteps 4).map Prod.snd := by decide +kernel
+  have notRead : token ∉ (preparationData.prefixSteps 4).map Prod.fst := by decide +kernel
+  have present : token ∈ sequence.initial := by
+    rcases List.mem_append.mp (history.prefixMatching.mem_iff.mp produced) with present | read
+    · exact present
+    · exact False.elim (notRead read)
+  obtain ⟨cell, _, address, actualRead⟩ := UnifiedReduced.Caller.Proofs.native_boundary_read history.boundary present
+  have same : cell = Cell.register 12 := Trace.Proofs.cell_address_injective address
+  subst cell
+  have bits : token.word.toBitVec = (1 : BitVec 32) := by
+    simp only [token, MemoryToken.word, Nat.unpair_pair]
+    rfl
+  rw [bits] at actualRead
+  exact ⟨sequence, history, actualRead⟩
+
 end Tests.DelegationZeroInvocation

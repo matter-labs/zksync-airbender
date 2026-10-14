@@ -36,7 +36,7 @@ It accepts either one uniform literal or different ADDI-from-x0/LUI literals alo
 a straight path with callers. Native PC/clock matching identifies the public
 instruction at each preparation cut, without a selected-row or control-read premise.
 Only its final cycle is worker-free; earlier worker effects remain in the same
-history. The extended-round scope separately retains an empty worker prefix.
+history. The original extended-round first-span scope retains an empty worker prefix.
 Boundary timestamps are retained; scheduling, actual controls and intermediate
 states are derived rather than supplied.
 The [prepared control window](../../Trace/UnifiedReduced/ControlPreparation.lean)
@@ -56,6 +56,14 @@ The same [sequence mapping](../../Trace/UnifiedReduced/MixedWindows.lean) now
 connects any ordered finite list of windows and gaps. A nonempty list of complete
 [prepared references](../../Trace/UnifiedReduced/PreparedHashWindows.lean) uses
 those exact segment states; each span retains its public preparation and protocol ABI.
+
+[Prepared controller regions](../../Trace/UnifiedReduced/PreparedRoundWindows.lean)
+now derive extended-BLAKE masks inside each public LUI-prepared caller window
+before Sail transport. Earlier workers remain in history; each region has its own
+ten-position cap. The broader protocol entry requires those regions to cover
+every extended-round worker, then binds complete G/extended-BLAKE/Keccak lists to
+the same continuous execution. Coverage and each span's preparation/count/duration
+remain explicit; no mask, control read or intermediate state is supplied.
 
 The native domain, public program, protocol counts and existing prefix scope
 remain explicit. These helpers do not claim whole mixed caller retirement.

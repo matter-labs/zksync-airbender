@@ -108,14 +108,22 @@ canonical tokens, raw clocks, request bindings and every complete reference are
 derived from that execution. Ordinary preparations and other nonround workers
 remain in gaps; unissued prefix effects are retained. Empty windows/gaps retain
 state and clocks. Public alignment/order, literal registry and each protocol's
-mode/count/duration remain explicit. Extended-round chaining and broader
-protocol-shape binding remain separate.
+mode/count/duration remain explicit. The regional entry below adds prepared
+extended-BLAKE restarts; unrestricted protocol-shape binding remains separate.
 Prepared extended-BLAKE spans now also reach complete compression at those cut
 states. Raw matching and the actual LUI token derive round masks before Sail
 transport, retaining the preparation timestamp. Public suffix duration derives an
 uninterrupted caller region; the empty worker prefix and ten-position controller
 remain explicit. Selected seven-/ten-round windows may leave later rounds outside
-the window within that controller. Broader preparation/chaining remains open.
+the window within that controller. A broader regional entry now derives masks from
+raw matching inside each public LUI-prepared caller window. Every region has its
+own ten-position bound; earlier workers and controller regions remain in history.
+Explicit region coverage accounts for every extended-round worker before Sail
+transport. Complete G/extended-BLAKE/Keccak lists then use one continuous actual
+execution, retaining each span's preparation, mode/count/duration and aligned cuts.
+No global empty worker prefix, homogeneous pool or ten-row pool cap is required
+by that entry. Coverage and protocol shape remain explicit; broader preparation
+and unrestricted protocol binding remain open.
 Caller cycles now connect original current-state fetch, the uniquely matched public
 worker family, all actual port reads/writes, existing operation references and
 Sail PC retirement at the same boundaries in one history. Prepared extended-round
@@ -139,8 +147,11 @@ ABI and whole mixed execution remain separate.
    scopes above. Preparation pairs now share one intervening native history, and
    prepared G/Keccak spans allow other nonround families outside the window.
    Arbitrary nonempty ordered prepared G/Keccak lists now compose with the actual
-   intervening history in the same nonround scope. Extend to extended-round chaining and protocol-shape binding,
-   then beyond the literal/caller straight-path preparation registry.
+   intervening history in the same nonround scope. Regional raw matching now
+   derives extended-BLAKE masks at each prepared restart; explicit coverage of all
+   extended-round workers connects complete lists of all three references to the
+   same execution. Continue protocol-shape binding and preparation beyond the
+   literal/caller straight-path registry, then whole caller retirement.
    COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed
    retained for the second window. Extended BLAKE and Keccak completion controls
    do not restart their protocols; checked regressions forbid treating their

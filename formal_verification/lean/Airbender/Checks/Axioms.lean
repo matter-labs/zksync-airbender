@@ -2144,3 +2144,19 @@ import Clean.Specs.Keccak256
 #print axioms Tests.ControlPreparation.empty_native_sequence_retains_initialized_prefix
 #print axioms Tests.ControlPreparation.overlapping_or_unaligned_sequences_rejected
 #print axioms Tests.DelegationZeroInvocation.sequence_retains_unissued_prefix_effect
+
+#print axioms Airbender.UnifiedReduced.Caller.RoundRegion
+#print axioms Airbender.UnifiedReduced.Caller.RoundRegionInputs
+#print axioms Airbender.UnifiedReduced.Caller.PreparedProtocolInputs
+#print axioms Airbender.UnifiedReduced.Caller.PreparedProtocolWindowInputs
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.prepared_round_region_masks
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.prepared_protocol_memory_inputs
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.prepared_protocol_reference_at_states
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.prepared_protocol_sequence_at_segments
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.prepared_protocol_sequence
+#print axioms Airbender.UnifiedReduced.Caller.prepared_round_region_masks_soundness
+#print axioms Airbender.UnifiedReduced.Caller.prepared_protocol_sequence_soundness
+#print axioms Tests.ControlPreparation.round_region_seed_retains_preparation_timestamp
+#print axioms Tests.ControlPreparation.round_region_wrong_flags_rejected
+#print axioms Tests.ControlPreparation.prepared_round_region_two_bits_rejected
+#print axioms Tests.DelegationZeroInvocation.prepared_regions_retain_unissued_prefix_effect
