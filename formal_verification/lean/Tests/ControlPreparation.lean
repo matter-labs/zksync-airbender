@@ -622,6 +622,18 @@ theorem program_round_context_derives_local_shape :
   exact UnifiedReduced.Caller.Proofs.program_prepared_protocol_inputs (by decide +kernel) (by decide +kernel)
     (accepted 1) context
 
+theorem public_round_empty_cut_has_exact_coverage :
+    UnifiedReduced.Caller.RoundWorkerCoverage (data 1) [⟨0, 8, 8⟩] := by
+  have context := inputs 1
+  apply UnifiedReduced.Caller.program_round_coverage_soundness (by decide +kernel) (by decide +kernel)
+    (accepted 1) context.publicProgram context.ordinaryProgram sequential_round_preparation
+  · intro region member
+    have same : region = ⟨0, 8, 8⟩ := List.mem_singleton.mp member
+    subst region
+    exact program_round_region_scope
+  · intro entry member
+    cases member
+
 theorem round_region_seed_retains_preparation_timestamp :
     ∃ start finish : List (MemoryToken babyBearModulus),
       ((data 1).machine.initialMemory ++ ((data 1).prefixSteps 8).map Prod.snd).Perm
@@ -720,6 +732,32 @@ theorem program_round_region_two_bits_rejected [Fact p.Prime] (hp : 8388608 ≤ 
     (by norm_num [timestampBase]; omega) clockInverse accepted context
   exact prepared_round_region_two_bits_rejected hp clockInverse accepted inputs
     (inputs.scopes region included) member different firstBit lastBit
+
+theorem public_round_live_masks_reject_two_bits [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {trace : UnifiedReduced.Caller.RequestTrace p} {initial : State} {ca oa : List (BitVec 32)} {domain : List Cell}
+    {program : List UnifiedReduced.ProgramEntry} {regions : List UnifiedReduced.Caller.RoundRegion}
+    (accepted : UnifiedReduced.Caller.MixedMemoryAccepted trace program)
+    (context : UnifiedReduced.Caller.ProtocolContextInputs trace initial ca oa domain program)
+    (registry : UnifiedReduced.Caller.SequentialProgram program)
+    (scopes : ∀ region ∈ regions, UnifiedReduced.Caller.ProgramRoundRegionInputs trace program region)
+    (coverage : UnifiedReduced.Caller.ProgramRoundCallerCoverage trace regions)
+    {worker : Delegation.Row p} (member : worker ∈ trace.workers.rows) (family : worker.family = .blakeRound)
+    (live : Delegation.Requests.Live (Delegation.Requests.fulfillment worker))
+    {first last : Fin 10} (different : first ≠ last)
+    (firstBit : worker.assignment Blake2Round.Variables.roundBits[first] = 1)
+    (lastBit : worker.assignment Blake2Round.Variables.roundBits[last] = 1) : False := by
+  obtain ⟨round, mask⟩ := UnifiedReduced.Caller.program_round_live_masks_soundness hp clockInverse
+    accepted context registry scopes coverage worker member family live
+  haveI : Fact (1 < p) := ⟨(Fact.out : p.Prime).one_lt⟩
+  by_cases same : first = round
+  · have other : last ≠ round := by omega
+    have zero := mask last
+    rw [if_neg other, lastBit] at zero
+    exact one_ne_zero zero
+  · have zero := mask first
+    rw [if_neg same, firstBit] at zero
+    exact one_ne_zero zero
 
 private def sequentialBefore (custom : Bool) : State := wordWriteState (wordWriteState initialState 0 (if custom then 0xc2c64673 else 0x00c60633)) 4 0x00000613
 private def sequentialEntry (custom : Bool) : UnifiedReduced.ProgramEntry :=

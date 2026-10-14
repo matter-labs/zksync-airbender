@@ -328,6 +328,23 @@ theorem caller_query_pc_word [Fact p.Prime] (hp : limbBase < p)
       (by rw [low, ZMod.val_natCast_of_lt (lt_trans bound.1 hp)]; rfl)
       (by rw [high, ZMod.val_natCast_of_lt (lt_trans bound.2 hp)]; rfl)
 
+theorem matched_caller_entry_family [Fact p.Prime] (hp : 2048 ≤ p)
+    {caller : Trace.Row p UnifiedFamily} {worker : Delegation.Row p} {entry : Delegation.Caller.ProgramEntry}
+    (query : caller.decoderQuery = Delegation.Caller.query entry)
+    (matched : Delegation.Requests.fulfillment worker = request caller.assignment) :
+    worker.family = entry.data.family := by
+  apply Delegation.Caller.Proofs.csr_injective
+  have csr := congrArg Delegation.Requests.Request.csr matched
+  have field := congrArg (fun fields : Vector (ZMod p) 9 => fields[3]) query
+  cases caller with
+  | mk kind w =>
+    cases kind
+    change w 6 = (Delegation.Requests.csr entry.data.family : ZMod p) at field
+    change Delegation.Requests.csr worker.family = (w 6).val at csr
+    have bound : Delegation.Requests.csr entry.data.family < p := by
+      cases entry.data.family <;> simp only [Delegation.Requests.csr] <;> omega
+    rwa [field, ZMod.val_natCast_of_lt bound] at csr
+
 theorem program_caller_window [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
@@ -379,18 +396,7 @@ theorem program_caller_window [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have schedule := pcClock caller nativeMember
   rw [pc, Word.ofBitVec_value] at schedule
   have family := region.callers entry (List.get_mem _ _) (by dsimp only [entry]; omega)
-  apply Delegation.Caller.Proofs.csr_injective
-  have csr := congrArg Delegation.Requests.Request.csr matched.2.1
-  have field := congrArg (fun fields : Vector (ZMod p) 9 => fields[3]) query
-  cases caller with
-  | mk kind w =>
-    cases kind
-    change w 6 = (Delegation.Requests.csr entry.data.family : ZMod p) at field
-    change Delegation.Requests.csr worker.family = (w 6).val at csr
-    have bound : Delegation.Requests.csr entry.data.family < p := by
-      cases entry.data.family <;> simp only [Delegation.Requests.csr] <;> omega
-    rw [field, ZMod.val_natCast_of_lt bound, family] at csr
-    exact csr
+  exact (matched_caller_entry_family (by omega) query matched.2.1).trans family
 
 theorem preparation_instruction [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1)

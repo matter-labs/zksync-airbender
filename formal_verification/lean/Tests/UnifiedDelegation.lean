@@ -1992,4 +1992,28 @@ theorem program_region_keeps_bigint_abi_gaps (highControl : Bool) :
     (abiAccepted highControl) (abiInputs highControl).publicProgram (abiInputs highControl).ordinaryProgram registry region
     (by decide) (by decide) (by decide) (by decide) (by change 4 ≤ 4; decide) (by change 8 ≤ 8; decide)
 
+private def roundCodeData : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
+  { mixedData 0 with program := [Tests.DelegationCaller.entry .blakeRound] }
+
+theorem public_round_csr_requires_a_covering_region :
+    UnifiedReduced.Caller.ProgramRoundCallerCoverage roundCodeData [⟨0, 4, 8⟩] ∧
+    ¬ UnifiedReduced.Caller.ProgramRoundCallerCoverage roundCodeData [] ∧
+    ¬ UnifiedReduced.Caller.ProgramRoundCallerCoverage roundCodeData [⟨0, 8, 8⟩] := by
+  refine ⟨?_, ?_, ?_⟩
+  · intro entry member _
+    have same : entry = Tests.DelegationCaller.entry .blakeRound := List.mem_singleton.mp member
+    subst entry
+    exact ⟨⟨0, 4, 8⟩, List.mem_singleton_self _, by decide +kernel⟩
+  · intro coverage
+    obtain ⟨region, member, _⟩ := coverage (Tests.DelegationCaller.entry .blakeRound)
+      (List.mem_singleton_self _) rfl
+    cases member
+  · intro coverage
+    obtain ⟨region, member, range⟩ := coverage (Tests.DelegationCaller.entry .blakeRound)
+      (List.mem_singleton_self _) rfl
+    have same : region = ⟨0, 8, 8⟩ := List.mem_singleton.mp member
+    subst region
+    dsimp only at range
+    omega
+
 end Tests.UnifiedDelegation
