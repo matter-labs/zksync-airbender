@@ -31,6 +31,7 @@ mixed execution with delegation callers remains a separate obligation.
 | Actual joint cut states and projected worker boundaries retain native timestamps. | [`Caller.mixed_window_soundness` and `Caller.mixed_window_projection_soundness`](Theorems.lean) |
 | Aligned public sequential/comparison decoding and native matching derive modular RV32 program addresses, including comparison PC wraparound. | [`Caller.wrapped_program_address_soundness`](Theorems.lean) |
 | Public ADDI-from-x0/LUI preparation yields actual controls after literal, sequential ordinary/custom or aligned comparison prefixes; native PC/clock matching derives each preparation address. | [`Caller.control_preparation_soundness`](Theorems.lean) |
+| AUIPC computes a control from its derived public PC and U-immediate, with an actual initialized cut state and canonical native token at cut minus two. | [`Caller.pc_relative_control_preparation_soundness`](Theorems.lean) |
 | Two preparations share their actual cut states and the complete intervening machine/worker history; neither control is supplied. | [`Caller.control_preparation_window_soundness`](Theorems.lean) |
 | Two native windows and their gap execute continuously from one initialization with retained tokens and clocks. | [`Caller.mixed_window_chain_soundness`](Theorems.lean) |
 | An arbitrary ordered finite list of native windows and gaps shares that continuous execution. | [`Caller.mixed_window_sequence_soundness`](Theorems.lean) |
@@ -113,6 +114,23 @@ wrong literal. Prepared entries using control preparation inherit this variant;
 selected caller/controller region shape and global round-CSR occurrence coverage
 now also use modular addresses. Jumps, branches and nonliteral preparation remain
 open, as does whole caller retirement.
+
+[`PCRelativePreparedBoundaryExecution`](PCRelativePreparation.lean) now exposes an
+actual AUIPC-prepared cut from the same initialized mixed history.
+[`PCRelativePreparedControl`](../../Helpers/UnifiedReduced/PCRelativePreparation.lean)
+retains its canonical output token and original write clock. Public modular
+sequential/comparison decoding and native state/clock matching derive the final
+instruction's address; native arithmetic equations derive its RV32 sum with the
+U-immediate, including overflow. No expected output or selected native row is
+supplied. Only the final cycle is worker-free; earlier effects remain in the
+prefix. The entry retains public setup/tables and extended-round masks through
+existing history realization. The [preparation fixtures](../../../../Tests/ControlPreparation.lean)
+check x12 = 65537→524292 at PC four and 65537→61444 for a sum wrapping 2^32 at
+PC 65540, both with clock-six tokens. The immediate alone gives a different
+value. Wrong immediates and fabricated native reads are rejected. This is
+preparation and memory transport; connecting this new preparation to complete
+hash-span entries, general operand-dependent preparation and jumps/branches
+remain open.
 
 [`WrappedProgramCallerRegion`](../../Helpers/UnifiedReduced/WindowSchedule.lean)
 states the public ordinary-exclusion/full-CSR-family policy at every clock in the
