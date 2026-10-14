@@ -84,6 +84,23 @@ structure ProgramRoundRegionInputs [Fact p.Prime] (data : RequestTrace p)
   /-- The last cut lies within the native path. -/
   beforeTerminal : region.upper ≤ (timeOfPair data.machine.terminal.timestamp).value
 
+/-- Public decoded extended-round CSR addresses lie in prepared controller regions.
+    This constrains code entries rather than actual machine or worker rows. -/
+def ProgramRoundCallerCoverage [Fact p.Prime] (data : RequestTrace p) (regions : List RoundRegion) : Prop :=
+  ∀ entry ∈ data.program, entry.data.family = .blakeRound →
+    ∃ region ∈ regions,
+      data.machine.initial.word.value + region.lower ≤
+        entry.pc.toNat + (timeOfPair data.machine.initial.timestamp).value ∧
+      entry.pc.toNat + (timeOfPair data.machine.initial.timestamp).value <
+        data.machine.initial.word.value + region.upper
+
+/-- Actual extended-round membership in the prepared regions is equivalent to
+    live invocation. Zero-clock workers are retained outside those regions. -/
+def RoundWorkerCoverage [Fact p.Prime] (data : RequestTrace p) (regions : List RoundRegion) : Prop :=
+  ∀ worker ∈ data.workers.rows, worker.family = .blakeRound →
+    ((∃ region ∈ regions, worker ∈ data.workers.windowRows region.lower region.upper) ↔
+      Delegation.Requests.Live (Delegation.Requests.fulfillment worker))
+
 /-- Public memory and program context shared by prepared protocol entries. -/
 structure ProtocolContextInputs [Fact p.Prime] (data : RequestTrace p) (before : State)
     (ca oa : List (BitVec 32)) (cells : List Cell) (program : List UnifiedReduced.ProgramEntry) : Prop where

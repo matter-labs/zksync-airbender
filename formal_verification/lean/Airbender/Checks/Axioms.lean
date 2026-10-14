@@ -2215,3 +2215,17 @@ import Clean.Specs.Keccak256
 #print axioms Tests.ControlPreparation.program_round_region_two_bits_rejected
 #print axioms Tests.UnifiedDelegation.program_round_region_wrong_family_rejected
 #print axioms Tests.DelegationZeroInvocation.program_regions_admit_unissued_worker
+
+#print axioms Airbender.UnifiedReduced.Caller.ProgramRoundCallerCoverage
+#print axioms Airbender.UnifiedReduced.Caller.RoundWorkerCoverage
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.matched_caller_entry_family
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.program_round_worker_coverage
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.round_worker_coverage_boundary
+#print axioms Airbender.UnifiedReduced.Caller.program_round_coverage_soundness
+#print axioms Airbender.UnifiedReduced.Caller.program_round_global_coverage_boundary_soundness
+#print axioms Tests.ControlPreparation.public_round_empty_cut_has_exact_coverage
+#print axioms Tests.UnifiedDelegation.public_round_csr_requires_a_covering_region
+#print axioms Tests.DelegationZeroInvocation.public_round_coverage_retains_unissued_g
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.program_round_live_masks
+#print axioms Airbender.UnifiedReduced.Caller.program_round_live_masks_soundness
+#print axioms Tests.ControlPreparation.public_round_live_masks_reject_two_bits

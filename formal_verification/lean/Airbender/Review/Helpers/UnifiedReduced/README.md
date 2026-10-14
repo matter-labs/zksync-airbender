@@ -108,6 +108,19 @@ zero-clock workers. Empty prepared regions retain clock-six LUI tokens, wrong
 flags/family and invalid cuts are rejected, and the unissued G-prefix fixture
 remains admitted by the stronger context.
 
+[`ProgramRoundCallerCoverage`](../../Trace/UnifiedReduced/PreparedRoundWindows.lean)
+places public decoded round CSRs in the prepared regions. Accepted native matching
+then derives every live round worker's membership and its converse through
+[`Caller.program_round_coverage_soundness`](../../Trace/UnifiedReduced/Theorems.lean).
+[`Caller.program_round_live_masks_soundness`](../../Trace/UnifiedReduced/Theorems.lean)
+then derives exclusive masks for all issued round workers from public LUI preparation
+and raw joint matching, using the public memory context without full worker coverage.
+[`Caller.program_round_global_coverage_boundary_soundness`](../../Trace/UnifiedReduced/Theorems.lean)
+proves that full coverage is equivalent to the absence of zero-clock extended-round
+workers within this public sequential/controller profile. Neither coverage theorem
+assumes worker coverage or nonzero invocation. Global mask transport still needs full
+coverage; unissued G workers remain admitted with their actual prefix effects.
+
 The native domain, public program, protocol counts and existing prefix scope
 remain explicit. These helpers do not claim whole mixed caller retirement.
 Follow [unified trace review](../../Trace/UnifiedReduced/README.md) for actual conclusions.

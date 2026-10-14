@@ -308,7 +308,7 @@ theorem Caller.prepared_round_region_masks_soundness [Fact p.Prime] (hp : 838860
     (scope : Caller.RoundRegionInputs data program region) :
     ∀ row ∈ data.workers.windowRows region.lower region.upper,
       ∃ round, Blake2Round.Memory.RoundMask row.assignment round :=
-  Caller.Proofs.prepared_round_region_masks hp clockInverse accepted inputs scope
+  Caller.Proofs.prepared_round_region_masks hp clockInverse accepted inputs.toProtocolContextInputs scope
 
 /-- Complete prepared G, extended-BLAKE and Keccak lists share one continuous
     actual memory execution. Every extended-round worker must belong to an
@@ -404,6 +404,55 @@ theorem Caller.program_round_region_soundness [Fact p.Prime]
     (scope : Caller.ProgramRoundRegionInputs data program region) :
     Caller.RoundRegionInputs data program region :=
   Caller.Proofs.program_round_region_inputs hp clockInverse accepted publicProgram ordinaryProgram registry scope
+
+/-- Public decoded round CSR coverage derives membership for every live round
+    worker. Membership is equivalent to live invocation; zero-clock surplus
+    workers remain outside these prepared regions, with all their effects retained. -/
+theorem Caller.program_round_coverage_soundness [Fact p.Prime]
+    (hp : 2 * Trace.timestampBase + 4 < p) (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State}
+    {ca oa : List (BitVec 32)} {program : List UnifiedReduced.ProgramEntry} {regions : List Caller.RoundRegion}
+    (accepted : Caller.MixedMemoryAccepted data program) (publicProgram : Caller.RequestInputs data before ca)
+    (ordinaryProgram : Mixed.programImage before oa = some program) (registry : Caller.SequentialProgram program)
+    (scopes : ∀ region ∈ regions, Caller.ProgramRoundRegionInputs data program region)
+    (coverage : Caller.ProgramRoundCallerCoverage data regions) : Caller.RoundWorkerCoverage data regions :=
+  Caller.Proofs.program_round_worker_coverage hp clockInverse accepted publicProgram ordinaryProgram registry scopes coverage
+
+/-- Public code coverage and LUI preparation derive exclusive masks for every
+    issued extended-round worker from raw matching. Global worker coverage and
+    mask behavior of zero-clock surplus round workers remain separate. -/
+theorem Caller.program_round_live_masks_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State}
+    {ca oa : List (BitVec 32)} {cells : List Trace.Cell} {program : List UnifiedReduced.ProgramEntry}
+    {regions : List Caller.RoundRegion}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.ProtocolContextInputs data before ca oa cells program)
+    (registry : Caller.SequentialProgram program)
+    (scopes : ∀ region ∈ regions, Caller.ProgramRoundRegionInputs data program region)
+    (coverage : Caller.ProgramRoundCallerCoverage data regions) :
+    ∀ worker ∈ data.workers.rows, worker.family = Delegation.Family.blakeRound →
+      Delegation.Requests.Live (Delegation.Requests.fulfillment worker) →
+      ∃ round, Blake2Round.Memory.RoundMask worker.assignment round :=
+  Caller.Proofs.program_round_live_masks hp clockInverse accepted inputs registry scopes coverage
+
+/-- With public round CSR coverage, full worker coverage holds exactly when
+    no zero-clock extended-round worker is present. This is a proved boundary,
+    not a nonzero-invocation assumption or a general exclusion of surplus workers. -/
+theorem Caller.program_round_global_coverage_boundary_soundness [Fact p.Prime]
+    (hp : 2 * Trace.timestampBase + 4 < p) (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State}
+    {ca oa : List (BitVec 32)} {program : List UnifiedReduced.ProgramEntry} {regions : List Caller.RoundRegion}
+    (accepted : Caller.MixedMemoryAccepted data program) (publicProgram : Caller.RequestInputs data before ca)
+    (ordinaryProgram : Mixed.programImage before oa = some program) (registry : Caller.SequentialProgram program)
+    (scopes : ∀ region ∈ regions, Caller.ProgramRoundRegionInputs data program region)
+    (coverage : Caller.ProgramRoundCallerCoverage data regions) :
+    (∀ worker ∈ data.workers.rows, worker.family = Delegation.Family.blakeRound →
+      ∃ region ∈ regions, worker ∈ data.workers.windowRows region.lower region.upper) ↔
+    ¬ ∃ worker ∈ data.workers.rows, worker.family = Delegation.Family.blakeRound ∧
+      (Delegation.Requests.fulfillment worker).time = (0, 0) :=
+  Caller.Proofs.round_worker_coverage_boundary
+    (Caller.program_round_coverage_soundness hp clockInverse accepted publicProgram ordinaryProgram registry scopes coverage)
 
 /-- Public caller regions derive selected span and controller families/counts
     before all three references compose in one continuous prepared history.

@@ -198,9 +198,18 @@ regions, ordered aligned cuts and at most forty ticks derive family, row count,
 the ten-position bound and exact duration. The existing raw matching/LUI proof
 then derives masks before transport. `ProtocolContextInputs` shares the unchanged
 public memory/program/table context with the legacy regional interface.
-Global extended-round coverage remains explicit; live caller uniqueness alone
-does not exclude surplus zero-clock workers. Empty prepared cuts retain the actual
-clock-six LUI token; wrong flags/family, oversized/reversed/unaligned cuts and two
+`ProgramRoundCallerCoverage` constrains public decoded round CSR addresses rather
+than selected rows. The public coverage theorem derives prepared-region membership
+for every live extended-round worker and proves its converse. Public LUI preparation
+and raw regional matching then derive all issued round masks without full worker
+coverage. The local raw-mask helper uses only `ProtocolContextInputs` and its
+selected region; global coverage is supplied separately for whole-pool transport.
+In this public sequential/controller profile, full worker coverage is equivalent to the absence
+of zero-clock extended-round workers. This is an exposed conclusion, without a
+new nonzero-invocation premise. Full coverage remains explicit before global mask
+transport; unissued G effects and the other accepted gaps remain retained.
+Empty prepared cuts retain the actual clock-six LUI token; wrong flags/family,
+oversized/reversed/unaligned cuts and two
 round bits are rejected. The stronger public context still admits the unissued
 G-prefix effect. General protocol validity, invalid-call ABI
 and whole caller retirement remain open. Both invalid bigint controls still satisfy
