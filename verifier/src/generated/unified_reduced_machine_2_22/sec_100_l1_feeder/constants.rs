@@ -15,13 +15,13 @@
 use super::common::EXT_DEGREE;
 use verifier_common::blake2s_u32::{BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS};
 use verifier_common::{DIM_REDUCE_EVAL_POINTS, STANDARD_EVAL_POINTS, SUMCHECK_POLY_COEFFS};
-pub const GKR_ROUNDS: usize = 23usize;
-pub const TRACE_LEN_LOG2: u32 = 23u32;
+pub const GKR_ROUNDS: usize = 22usize;
+pub const TRACE_LEN_LOG2: u32 = 22u32;
 pub const GKR_ADDRS: usize = 134usize;
 pub const GKR_EVALS: usize = 160usize;
 pub const INIT_AND_TEARDOWN_SETS: usize = 2usize;
 pub const EXTERNAL_CHALLENGES_FLATTENED_SIZE: usize = EXT_DEGREE * (6usize + 1);
-pub const CAP_SIZE: usize = 16usize;
+pub const CAP_SIZE: usize = 32usize;
 pub const NUM_MEMORY_COMMITS: usize = 1usize;
 pub const NUM_WITNESS_COMMITS: usize = 0usize;
 pub const NUM_SETUP_COMMITS: usize = 1usize;
@@ -70,19 +70,19 @@ pub const DRAW_BUF_CAPACITY: usize = {
         lookup_after_pow
     }
 };
-pub const WHIR_FOLD_STEPS: [usize; 5usize] = [1usize, 5usize, 5usize, 5usize, 4usize];
-pub const WHIR_QUERIES: [usize; 5usize] = [21usize, 17usize, 9usize, 5usize, 4usize];
-pub const WHIR_POW_BITS: [u32; 5usize] = [29u32, 26u32, 25u32, 26u32, 21u32];
-pub const LOOKUP_CHALLENGES_POW_BITS: u32 = 9u32;
+pub const WHIR_FOLD_STEPS: [usize; 5usize] = [1usize, 5usize, 5usize, 5usize, 3usize];
+pub const WHIR_QUERIES: [usize; 5usize] = [17usize, 14usize, 8usize, 5usize, 4usize];
+pub const WHIR_POW_BITS: [u32; 5usize] = [30u32, 29u32, 24u32, 21u32, 17u32];
+pub const LOOKUP_CHALLENGES_POW_BITS: u32 = 8u32;
 pub const BATCHED_PROXIMITY_POW_BITS: u32 = 11u32;
-pub const MAX_POW_ENTRIES: usize = 56usize;
+pub const MAX_POW_ENTRIES: usize = 48usize;
 pub const FINAL_MONOMIALS_LEN: usize = 8usize;
 pub const NUM_ORACLES: usize = 2usize;
 pub const ORACLE_NUM_COLS: [usize; 2usize] = [104usize, 10usize];
-pub const ORACLE_DEPTHS: [usize; 2usize] = [22usize, 22usize];
+pub const ORACLE_DEPTHS: [usize; 2usize] = [21usize, 21usize];
 pub const TOTAL_ORACLE_COLS: usize = 114usize;
-pub const WHIR_ORACLE_DEPTHS: [usize; 4usize] = [18usize, 18usize, 18usize, 19usize];
-pub const WHIR_CAP_WORDS: usize = 128usize;
+pub const WHIR_ORACLE_DEPTHS: [usize; 4usize] = [17usize, 17usize, 17usize, 19usize];
+pub const WHIR_CAP_WORDS: usize = 256usize;
 use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::field::baby_bear::ext4::BabyBearExt4;
 pub type ConcreteInitialTranscript = ::verifier_common::InitialGKRTranscript<
