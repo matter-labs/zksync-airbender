@@ -111,7 +111,7 @@ impl Stage {
 impl Stage {
     fn target(self) -> (CircuitType, ProofProfile, u32) {
         match self {
-            Stage::Wrap => (CircuitType::L1Wrap, ProofProfile::L1Wrap, 22),
+            Stage::Wrap => (CircuitType::L1Wrap21, ProofProfile::L1Wrap, 21),
             Stage::FeederCommit | Stage::FeederProof => (UNIFIED22, ProofProfile::L1Feeder, 22),
         }
     }
@@ -138,7 +138,7 @@ impl Stage {
         match self {
             Stage::Wrap => format!(
                 "{:?}",
-                presets::policy(CircuitType::L1Wrap, ProofProfile::L1Wrap, arena_bytes)
+                presets::policy(CircuitType::L1Wrap21, ProofProfile::L1Wrap, arena_bytes)
             ),
             Stage::FeederCommit => format!(
                 "{:?}",
@@ -176,7 +176,7 @@ impl Follower {
         match self {
             Follower::StandardIt => (INITS_AND_TEARDOWNS, ProofProfile::Standard),
             Follower::Feeder => (UNIFIED22, ProofProfile::L1Feeder),
-            Follower::Wrap => (CircuitType::L1Wrap, ProofProfile::L1Wrap),
+            Follower::Wrap => (CircuitType::L1Wrap21, ProofProfile::L1Wrap),
         }
     }
 }
@@ -558,7 +558,7 @@ fn measure<B: GoodAllocator>(
                 "setup_initialization",
                 context,
                 L1WrapPrecomputed::new(
-                    CircuitType::L1Wrap,
+                    CircuitType::L1Wrap21,
                     clone_setup(source.setup),
                     SECURITY_LEVEL,
                 ),
@@ -678,8 +678,8 @@ fn measure<B: GoodAllocator>(
                     source.commitment_mode,
                     target,
                     &dr_tail_plan,
-                    presets::policy(CircuitType::L1Wrap, ProofProfile::L1Wrap, row.arena_bytes),
-                    case.partial_trees(CircuitType::L1Wrap, ProofProfile::L1Wrap),
+                    presets::policy(CircuitType::L1Wrap21, ProofProfile::L1Wrap, row.arena_bytes),
+                    case.partial_trees(CircuitType::L1Wrap21, ProofProfile::L1Wrap),
                     context,
                 ),
             )?;
@@ -1220,7 +1220,7 @@ mod cpu_tests {
         );
         assert_eq!(
             Follower::Wrap.identity(),
-            (CircuitType::L1Wrap, ProofProfile::L1Wrap)
+            (CircuitType::L1Wrap21, ProofProfile::L1Wrap)
         );
         assert_eq!(
             Follower::Feeder.identity(),

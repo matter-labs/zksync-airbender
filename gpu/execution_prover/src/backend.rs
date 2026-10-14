@@ -106,15 +106,15 @@ impl ExecutionBackend for GpuBackend {
     }
 }
 
-/// The GPU backend does not prove the 2^21 L1 wrap until W5: reject it before
+/// The GPU backend does not prove the retired 2^22 L1 wrap: reject it before
 /// any host setup is built.
 pub(crate) fn admit_binary_registration(
     execution_kind: ExecutionKind,
     profiles: &[ProofProfile],
 ) -> Result<(), String> {
-    if execution_kind == ExecutionKind::L1Wrap21 {
+    if execution_kind == ExecutionKind::L1Wrap {
         return Err(format!(
-            "the GPU backend does not support the 2^21 L1 wrap (ExecutionKind::L1Wrap21) until W5, got {profiles:?}"
+            "the GPU backend does not prove the retired 2^22 L1 wrap (ExecutionKind::L1Wrap); use ExecutionKind::L1Wrap21, got {profiles:?}"
         ));
     }
     Ok(())
@@ -125,12 +125,14 @@ mod cpu_tests {
     use super::*;
 
     #[test]
-    fn cpu_l1_wrap21_is_rejected_before_setup() {
-        let err = admit_binary_registration(ExecutionKind::L1Wrap21, &[ProofProfile::L1Wrap])
-            .unwrap_err();
-        assert!(
-            err.starts_with("the GPU backend does not support the 2^21 L1 wrap"),
-            "{err}"
-        );
+    fn cpu_l1_wrap21_is_admitted() {
+        admit_binary_registration(ExecutionKind::L1Wrap21, &[ProofProfile::L1Wrap]).unwrap();
+        for profiles in [&[ProofProfile::L1Wrap][..], &[ProofProfile::Standard], &[]] {
+            let err = admit_binary_registration(ExecutionKind::L1Wrap, profiles).unwrap_err();
+            assert_eq!(
+                err,
+                format!("the GPU backend does not prove the retired 2^22 L1 wrap (ExecutionKind::L1Wrap); use ExecutionKind::L1Wrap21, got {profiles:?}")
+            );
+        }
     }
 }

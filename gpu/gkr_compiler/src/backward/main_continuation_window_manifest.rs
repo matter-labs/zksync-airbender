@@ -300,10 +300,9 @@ mod tests {
     #[test]
     fn pr_manifest_lists_every_mask() {
         let layout: GKRCircuitArtifact<Proth120> = serde_json::from_slice(
-            &std::fs::read(
-                repo_root()
-                    .join("cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json"),
-            )
+            &std::fs::read(repo_root().join(
+                "cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120_2p21.json",
+            ))
             .unwrap(),
         )
         .unwrap();
