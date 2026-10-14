@@ -1,6 +1,7 @@
 import Airbender.Review.Trace.UnifiedReduced.PreparedRoundWindows
 import Airbender.Proofs.UnifiedReduced.PreparedHashWindows
 import Airbender.Proofs.Blake2Round.ControlPool
+import Airbender.Proofs.UnifiedReduced.ComputedRoundRegions
 
 namespace Airbender.UnifiedReduced.Caller.Proofs
 open Trace Trace.Proofs Arithmetic Reference.RiscV.Sail
@@ -234,56 +235,8 @@ theorem prepared_round_region_masks [Fact p.Prime] (hp : 8388608 ≤ p)
     (scope : RoundRegionInputs data program region) :
     ∀ row ∈ data.workers.windowRows region.lower region.upper,
       ∃ round, Blake2Round.Memory.RoundMask row.assignment round := by
-  have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
-  have floor := scope.preparation.afterInitial
-  have duration := scope.duration
-  have positive : 2 ≤ region.lower := by omega
-  have requests := request_binding size clockInverse accepted.toRequestChecks inputs.publicProgram
-  have facts := mixed_memory_facts size clockInverse accepted inputs.publicProgram inputs.initialization requests
-  obtain ⟨start, earlier, suffix⟩ := Transfer.split_at facts (region.lower - 1)
-  obtain ⟨finish, window, _⟩ := Transfer.split_at suffix (region.upper - 1)
-  change Transfer.Facts ⟨start, finish,
-    Transfer.windowSteps (mixedData data) (region.lower - 1) (region.upper - 1)⟩ at window
-  rw [← mixed_window_steps size clockInverse accepted.toRequestChecks inputs.publicProgram
-    scope.aligned.1 scope.aligned.2 positive (by omega)] at window
-  have prefixMatching := earlier.matching
-  rw [mixed_prefix_steps data (by omega)] at prefixMatching
-  obtain ⟨token, member, address, _, word⟩ := preparation_token hp clockInverse accepted
-    inputs.publicProgram inputs.ordinaryProgram inputs.initialization scope.preparation (by decide)
-    scope.aligned.1 prefixMatching
-  have word : token.word = Blake2Round.controlAt region.flags 0 := by
-    rw [word, hash_preparation_value]
-    have bound := region.flags.isLt
-    simp [Delegation.Caller.HashSpan.controlStart, Word.ofBitVec, Blake2Round.controlAt, limbBase, BitVec.toNat_ofNat]
-    omega
-  have schedule := caller_window_schedule size clockInverse accepted.toRequestChecks inputs.publicProgram
-    scope.aligned.1 scope.aligned.2 positive (by omega) (by omega) scope.beforeTerminal duration
-  let keep := fun token : MemoryToken p => token.address != (Cell.register 0).addressCode
-  let projected := data.windowProjection region.lower region.upper start finish
-  have matching := window.matching.filter keep
-  have writes := caller_window_filtered_tokens schedule requests true
-  have reads := caller_window_filtered_tokens schedule requests false
-  change ((data.windowSteps region.lower region.upper).map Prod.snd).filter keep = _ at writes
-  change ((data.windowSteps region.lower region.upper).map Prod.fst).filter keep = _ at reads
-  simp only [List.filter_append, writes, reads] at matching
-  have selected : Delegation.MemoryAccepted projected := by
-    refine ⟨fun row member => accepted.workerConstraints row (List.mem_of_mem_filter member), matching⟩
-  have keys := boundary_keys MemoryToken.address earlier.matching earlier.addresses
-  have unique : (start.map MemoryToken.address).Nodup := keys.nodup_iff.mp (by
-    change (data.machine.initialMemory.map MemoryToken.address).Nodup
-    rw [image_addresses inputs.initialization]
-    exact inputs.distinct)
-  have pool : Blake2Round.Proofs.ControlMatchingInputs projected region.flags := by
-    refine ⟨⟨matching, Delegation.Proofs.preserved_addresses, ?_⟩,
-      unique.sublist (List.filter_sublist.map MemoryToken.address), inputs.tables, scope.family,
-      ⟨token, List.mem_filter.mpr ⟨member, ?_⟩, address, word⟩, scope.roundsBound⟩
-    · intro edge present
-      have member := List.mem_flatMap.mp present
-      obtain ⟨row, included, step⟩ := member
-      exact facts.order edge (List.mem_append.mpr (Or.inr (List.mem_flatMap.mpr
-        ⟨row, List.mem_of_mem_filter included, step⟩)))
-    · simp [address, Cell.addressCode]
-  exact Blake2Round.Proofs.matching_masks size selected pool
+  exact computed_round_region_masks hp clockInverse accepted inputs
+    (literal_computed_round_region_inputs scope)
 
 theorem prepared_protocol_memory_inputs [Fact p.Prime] (hp : 8388608 ≤ p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
@@ -291,13 +244,8 @@ theorem prepared_protocol_memory_inputs [Fact p.Prime] (hp : 8388608 ≤ p)
     {program : List UnifiedReduced.ProgramEntry} {regions : List RoundRegion}
     (accepted : MixedMemoryAccepted data program)
     (inputs : PreparedProtocolInputs data before ca oa cells program regions) :
-    MixedMemoryInputs data program before ca oa cells := by
-  refine ⟨inputs.publicProgram, inputs.ordinaryProgram, inputs.initialization, inputs.distinct,
-    inputs.aligned, inputs.setup, inputs.tables, ?_⟩
-  intro row member family
-  obtain ⟨region, included, inside⟩ := inputs.coverage row member family
-  exact prepared_round_region_masks hp clockInverse accepted inputs.toProtocolContextInputs
-    (inputs.scopes region included) row inside
+    MixedMemoryInputs data program before ca oa cells :=
+  computed_protocol_memory_inputs hp clockInverse accepted (literal_computed_protocol_inputs inputs)
 
 theorem prepared_protocol_reference_at_states [Fact p.Prime] (hp : 16777216 ≤ p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)

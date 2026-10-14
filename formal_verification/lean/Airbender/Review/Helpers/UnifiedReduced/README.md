@@ -100,8 +100,12 @@ Selected family/count/duration, nonround scope and logical matching stay explici
 The new public modular-region entry derives caller rows, exact request slots,
 worker family/count and complete window/list composition for either source.
 Public mode/code/duration, nonround scope and logical matching remain explicit.
-Extended-round source/mask transport, general operand-dependent preparation and
-jumps/branches remain separate. Concrete fixtures use PC four to produce 524292 and
+The separate [source-aware round regions](../../Trace/UnifiedReduced/ComputedRoundRegions.lean)
+derive actual round-zero seeds and exclusive regional masks; public modular
+controller extents derive local shape, while global memory keeps full round
+coverage explicit. Source-aware public round-CSR occurrence coverage/live masks,
+complete extended-round reference/list composition, broader operand-dependent
+preparation and jumps/branches remain separate. Concrete fixtures use PC four to produce 524292 and
 PC 65540 with immediate 0xfffff to wrap the sum to 61444; both retain clock six.
 
 The [prepared control window](../../Trace/UnifiedReduced/ControlPreparation.lean)
