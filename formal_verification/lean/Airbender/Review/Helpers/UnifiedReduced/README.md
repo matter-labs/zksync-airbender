@@ -97,8 +97,11 @@ now connects literal or publicly placed AUIPC preparation to complete selected
 G/Keccak references and ordered lists in one continuous history. Public code
 placement must compute the protocol entry constant; its actual read is derived.
 Selected family/count/duration, nonround scope and logical matching stay explicit.
-Extended-round source/mask transport, public caller-region derivation for the new
-source, general operand-dependent preparation and jumps/branches remain separate. Concrete fixtures use PC four to produce 524292 and
+The new public modular-region entry derives caller rows, exact request slots,
+worker family/count and complete window/list composition for either source.
+Public mode/code/duration, nonround scope and logical matching remain explicit.
+Extended-round source/mask transport, general operand-dependent preparation and
+jumps/branches remain separate. Concrete fixtures use PC four to produce 524292 and
 PC 65540 with immediate 0xfffff to wrap the sum to 61444; both retain clock six.
 
 The [prepared control window](../../Trace/UnifiedReduced/ControlPreparation.lean)
