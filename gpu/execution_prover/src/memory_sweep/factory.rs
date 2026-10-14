@@ -332,7 +332,9 @@ impl SyntheticInputFactory {
             }
             CircuitType::Unrolled(unrolled) => {
                 let machine_type = match unrolled {
-                    UnrolledCircuitType::Unified => MachineType::Reduced,
+                    UnrolledCircuitType::Unified | UnrolledCircuitType::Unified22 => {
+                        MachineType::Reduced
+                    }
                     _ => MachineType::FullUnsigned,
                 };
                 build_unrolled_circuit_precomputation(
@@ -395,7 +397,9 @@ fn carries_inits_and_teardowns(circuit: CircuitType) -> bool {
     matches!(
         circuit,
         CircuitType::Unrolled(
-            UnrolledCircuitType::InitsAndTeardowns | UnrolledCircuitType::Unified
+            UnrolledCircuitType::InitsAndTeardowns
+                | UnrolledCircuitType::Unified
+                | UnrolledCircuitType::Unified22
         )
     )
 }

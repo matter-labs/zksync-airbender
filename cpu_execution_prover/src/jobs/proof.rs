@@ -171,7 +171,7 @@ pub(super) fn build_witness<A: HostTraceAllocator>(
             );
             (witness, Vec::new())
         }
-        CircuitType::Unrolled(UnrolledCircuitType::Unified) => {
+        CircuitType::Unrolled(UnrolledCircuitType::Unified | UnrolledCircuitType::Unified22) => {
             let Some(TracingDataHost::Unrolled(UnrolledTracingDataHost::Unified(trace))) =
                 tracing_data
             else {

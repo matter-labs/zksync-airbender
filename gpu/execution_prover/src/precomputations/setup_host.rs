@@ -177,9 +177,9 @@ fn validate_profile_set(
         "ProofProfile::L1Wrap requires CircuitType::L1Wrap, got {circuit_type:?}"
     );
     assert!(
-        !profiles.contains(&ProofProfile::L1Feeder)
-            || circuit_type == CircuitType::Unrolled(UnrolledCircuitType::Unified),
-        "ProofProfile::L1Feeder requires CircuitType::Unrolled(UnrolledCircuitType::Unified), got {circuit_type:?}"
+        circuit_type != CircuitType::Unrolled(UnrolledCircuitType::Unified22)
+            && !profiles.contains(&ProofProfile::L1Feeder),
+        "the GPU backend does not support the 2^22 L1 feeder (UnrolledCircuitType::Unified22 / ProofProfile::L1Feeder) until W4, got {circuit_type:?} {profiles:?}"
     );
     profiles
 }
@@ -282,6 +282,7 @@ mod cpu_tests {
     use ProofProfile::{L1Feeder, L1Wrap, Standard};
 
     const UNIFIED: CircuitType = CircuitType::Unrolled(UnrolledCircuitType::Unified);
+    const UNIFIED22: CircuitType = CircuitType::Unrolled(UnrolledCircuitType::Unified22);
 
     fn panic_message(f: impl FnOnce()) -> String {
         let payload = catch_unwind(AssertUnwindSafe(f)).expect_err("expected a named panic");
@@ -308,12 +309,8 @@ mod cpu_tests {
         ));
         let delegation = CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression);
         assert_eq!(
-            validate_profile_set(UNIFIED, false, &[L1Feeder, Standard, L1Feeder]),
-            set(&[Standard, L1Feeder])
-        );
-        assert_eq!(
-            validate_profile_set(UNIFIED, false, &[L1Feeder]),
-            set(&[L1Feeder])
+            validate_profile_set(UNIFIED, false, &[Standard, Standard]),
+            set(&[Standard])
         );
         assert_eq!(
             validate_profile_set(UNIFIED, false, &[Standard]),
@@ -329,10 +326,13 @@ mod cpu_tests {
             validate_profile_set(CircuitType::L1Wrap, true, &[L1Wrap, L1Wrap]),
             set(&[L1Wrap])
         );
-        let feeder_message = |circuit: CircuitType| {
-            format!("ProofProfile::L1Feeder requires CircuitType::Unrolled(UnrolledCircuitType::Unified), got {circuit:?}")
+        let feeder_message = |circuit: CircuitType, profiles: &[ProofProfile]| {
+            format!(
+                "the GPU backend does not support the 2^22 L1 feeder (UnrolledCircuitType::Unified22 / ProofProfile::L1Feeder) until W4, got {circuit:?} {:?}",
+                set(profiles)
+            )
         };
-        let cases: [(CircuitType, bool, &[ProofProfile], String); 10] = [
+        let cases: [(CircuitType, bool, &[ProofProfile], String); 14] = [
             (
                 UNIFIED,
                 false,
@@ -387,10 +387,44 @@ mod cpu_tests {
                 inits_and_teardowns,
                 false,
                 &[L1Feeder],
-                feeder_message(inits_and_teardowns),
+                feeder_message(inits_and_teardowns, &[L1Feeder]),
             ),
-            (memory, false, &[Standard, L1Feeder], feeder_message(memory)),
-            (delegation, false, &[L1Feeder], feeder_message(delegation)),
+            (
+                memory,
+                false,
+                &[Standard, L1Feeder],
+                feeder_message(memory, &[Standard, L1Feeder]),
+            ),
+            (
+                delegation,
+                false,
+                &[L1Feeder],
+                feeder_message(delegation, &[L1Feeder]),
+            ),
+            (
+                UNIFIED,
+                false,
+                &[L1Feeder, Standard, L1Feeder],
+                feeder_message(UNIFIED, &[Standard, L1Feeder]),
+            ),
+            (
+                UNIFIED,
+                false,
+                &[L1Feeder],
+                feeder_message(UNIFIED, &[L1Feeder]),
+            ),
+            (
+                UNIFIED22,
+                false,
+                &[L1Feeder],
+                feeder_message(UNIFIED22, &[L1Feeder]),
+            ),
+            (
+                UNIFIED22,
+                false,
+                &[Standard],
+                feeder_message(UNIFIED22, &[Standard]),
+            ),
         ];
         for (circuit, is_l1_wrap_setup, profiles, expected) in cases {
             assert_eq!(
@@ -404,7 +438,12 @@ mod cpu_tests {
 
     #[test]
     fn cpu_m8_setup_cache_publication() {
-        let geometries = setup_geometries(UNIFIED, &[Standard, L1Feeder], SecurityLevel::Sec100);
+        let mut geometries = setup_geometries(UNIFIED, &[Standard], SecurityLevel::Sec100);
+        geometries.extend(setup_geometries(
+            UNIFIED22,
+            &[L1Feeder],
+            SecurityLevel::Sec100,
+        ));
         let feeder = geometries[&L1Feeder];
         assert_ne!(geometries[&Standard], feeder);
         let cache =

@@ -5,22 +5,34 @@
 //! prefixed with — neither of which `ProveResult` carries.
 
 use super::*;
-use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength};
+use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength, SecurityLevel};
 
 /// `setup_cap` is the exact digest sequence the backend committed and every
 /// proof of this family binds.
 pub struct RiscvFamilyArtifact {
     pub compiled_circuit: Arc<GKRCircuitArtifact<BF>>,
     pub setup_cap: MerkleTreeCapVarLength,
+    /// The profile config's `cap_size`: the setup cap is admitted against it,
+    /// not against its own length.
+    pub setup_cap_size: usize,
 }
 
 impl RiscvFamilyArtifact {
     fn from_precomputations(
         precomputations: &impl CircuitPrecomputation,
         profile: ProofProfile,
+        security_level: SecurityLevel,
     ) -> Self {
+        let compiled_circuit = Arc::clone(precomputations.compiled_circuit());
+        let setup_cap_size = profile
+            .prover_config(
+                compiled_circuit.trace_len.trailing_zeros() as usize,
+                security_level,
+            )
+            .cap_size;
         Self {
-            compiled_circuit: Arc::clone(precomputations.compiled_circuit()),
+            compiled_circuit,
+            setup_cap_size,
             setup_cap: precomputations
                 .setup_cap(profile)
                 .expect("RISC-V family setup must have columns"),
@@ -57,7 +69,11 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             .map(|(circuit_type, precomputations)| {
                 (
                     circuit_type.get_family_idx() as u32,
-                    RiscvFamilyArtifact::from_precomputations(precomputations, profile),
+                    RiscvFamilyArtifact::from_precomputations(
+                        precomputations,
+                        profile,
+                        self.configuration.security_level,
+                    ),
                 )
             })
             .collect();
@@ -77,7 +93,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 _ => {}
             }
         }
-        if holder.execution_kind == ExecutionKind::Unified {
+        if holder.execution_kind.is_unified() {
             inits_and_teardowns = None;
         }
         ProgramArtifacts {

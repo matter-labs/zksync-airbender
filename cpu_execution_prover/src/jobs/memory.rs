@@ -50,7 +50,7 @@ pub(super) fn run<A: HostTraceAllocator>(
     let twiddles = jobs.twiddles(precomputations.trace_len, worker);
     let flat_cap = match circuit_type {
         CircuitType::L1Wrap => panic!("L1Wrap requires its typed proof request"),
-        CircuitType::Unrolled(UnrolledCircuitType::Unified)
+        CircuitType::Unrolled(UnrolledCircuitType::Unified | UnrolledCircuitType::Unified22)
             if commitment_mode == CommitmentMode::MergedMemoryAndWitness =>
         {
             let (witness, _) = super::proof::build_witness(
@@ -152,7 +152,7 @@ pub(super) fn run<A: HostTraceAllocator>(
                 worker,
             )
         }
-        CircuitType::Unrolled(UnrolledCircuitType::Unified) => {
+        CircuitType::Unrolled(UnrolledCircuitType::Unified | UnrolledCircuitType::Unified22) => {
             let Some(TracingDataHost::Unrolled(UnrolledTracingDataHost::Unified(trace))) =
                 tracing_data.as_ref()
             else {

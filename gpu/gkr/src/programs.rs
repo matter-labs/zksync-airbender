@@ -172,6 +172,9 @@ fn forward_artifact(circuit_type: CircuitType) -> (&'static [u8], &'static str) 
             (INITS, "inits_and_teardowns")
         }
         CircuitType::Unrolled(UnrolledCircuitType::Unified) => (UNIFIED, "unified_reduced_machine"),
+        CircuitType::Unrolled(UnrolledCircuitType::Unified22) => {
+            panic!("UnrolledCircuitType::Unified22 is not supported on the GPU backend until W4")
+        }
         CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => {
             (BIGINT, "bigint_with_extended_control")
         }

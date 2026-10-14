@@ -154,6 +154,11 @@ const fn production_witness_strategy(circuit_type: CircuitType) -> WitnessGenera
                 UnrolledNonMemoryCircuitType::ShiftBinary => WitnessGenerationStrategy::Fused,
             },
             UnrolledCircuitType::Unified => WitnessGenerationStrategy::Fused,
+            UnrolledCircuitType::Unified22 => {
+                panic!(
+                    "UnrolledCircuitType::Unified22 is not supported on the GPU backend until W4"
+                )
+            }
         },
     }
 }
