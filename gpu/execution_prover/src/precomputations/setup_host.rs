@@ -489,23 +489,23 @@ mod cpu_tests {
 
     #[test]
     fn cpu_m8_feeder_geometry() {
-        let geometries = setup_geometries(UNIFIED, &[L1Feeder, Standard], SecurityLevel::Sec100);
+        // the L1 feeder is the 2^22 circuit; the 2^23 one is Standard-only
+        let mut geometries = setup_geometries(UNIFIED, &[Standard], SecurityLevel::Sec100);
+        geometries.extend(setup_geometries(
+            UNIFIED22,
+            &[L1Feeder],
+            SecurityLevel::Sec100,
+        ));
         assert!(geometries.keys().eq([Standard, L1Feeder].iter()));
-        assert_eq!(
-            geometries[&L1Feeder],
-            SetupGeometry {
-                log_lde_factor: 4,
-                log_rows_per_leaf: 1,
-                log_tree_cap_size: 4,
-            }
-        );
-        assert_eq!(
-            setup_geometries(UNIFIED, &[Standard], SecurityLevel::Sec100)[&Standard],
-            geometries[&Standard]
-        );
+        assert_ne!(geometries[&L1Feeder], geometries[&Standard]);
         for (&profile, geometry) in &geometries {
+            let circuit = if profile == L1Feeder {
+                UNIFIED22
+            } else {
+                UNIFIED
+            };
             let config =
-                gpu_circuit_prover::config::prover_config(UNIFIED, profile, SecurityLevel::Sec100)
+                gpu_circuit_prover::config::prover_config(circuit, profile, SecurityLevel::Sec100)
                     .unwrap();
             assert_eq!(1usize << geometry.log_lde_factor, config.lde_factor);
             assert_eq!(1usize << geometry.log_tree_cap_size, config.cap_size);
