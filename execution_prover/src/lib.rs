@@ -21,7 +21,7 @@ mod test_support;
 
 pub use ::prover::gkr::prover_config::ProofProfile;
 pub use caps::join_per_coset_caps;
-pub use config::{prover_config, ExecutionProverConfiguration};
+pub use config::{l1_wrap_packing, prover_config, ExecutionProverConfiguration};
 pub use execution_prover_model::MachineType;
 pub use prover::{
     BinaryHandle, CommitMemoryResult, ExecutionKind, ExecutionProver, L1Proof, L1WrapResult,

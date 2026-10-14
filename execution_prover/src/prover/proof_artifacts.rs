@@ -29,7 +29,9 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         } = memory_commitment;
         let execution_kind = self.binary_holders[&binary_key].execution_kind;
         let all_challenges_seed = match execution_kind {
-            ExecutionKind::L1Wrap => panic!("L1Wrap derives its own external challenges"),
+            ExecutionKind::L1Wrap | ExecutionKind::L1Wrap21 => {
+                panic!("L1Wrap derives its own external challenges")
+            }
             ExecutionKind::Unrolled => fs_transform_for_permutation_argument(
                 final_register_values,
                 *final_pc,

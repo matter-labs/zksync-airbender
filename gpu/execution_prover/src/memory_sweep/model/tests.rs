@@ -100,6 +100,7 @@ fn cpu_winner_is_fastest_fitting_with_stable_tie_break() {
 fn cpu_generated_l1_wrap_arm_matches_emitter() {
     const PRE_EDIT_BABYBEAR_ARM: &str = r#"CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) | CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression) | CircuitType::Delegation(DelegationCircuitType::Blake2GFunction) | CircuitType::Delegation(DelegationCircuitType::KeccakSpecial5) | CircuitType::Delegation(DelegationCircuitType::KeccakColumnParity) | CircuitType::Delegation(DelegationCircuitType::KeccakThetaRho) | CircuitType::Delegation(DelegationCircuitType::KeccakChi5) | CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) | CircuitType::Unrolled(UnrolledCircuitType::Memory(UnrolledMemoryCircuitType::LoadStoreSubwordOnly)) | CircuitType::Unrolled(UnrolledCircuitType::Memory(UnrolledMemoryCircuitType::LoadStoreWordOnly)) | CircuitType::Unrolled(UnrolledCircuitType::NonMemory(UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop)) | CircuitType::Unrolled(UnrolledCircuitType::NonMemory(UnrolledNonMemoryCircuitType::JumpBranchSlt)) | CircuitType::Unrolled(UnrolledCircuitType::NonMemory(UnrolledNonMemoryCircuitType::MulDivUnsigned)) | CircuitType::Unrolled(UnrolledCircuitType::NonMemory(UnrolledNonMemoryCircuitType::ShiftBinary)) | CircuitType::Unrolled(UnrolledCircuitType::Unified) => ProofMemoryPolicy { gkr: GkrMemoryPolicy::Materialize, setup: OpeningStrategy::AllCosets, memory: OpeningStrategy::AllCosets, witness: WitnessMemoryPolicy { commitment: WitnessCommitmentStrategy::AllCosets, post_commitment: WitnessPostCommitStorage::RawAndCosets, opening: WitnessOpeningStrategy::ReuseCosets } },"#;
     const L1_WRAP_ARM: &str = "CircuitType::L1Wrap => panic!(\"L1Wrap memory policy is hand-authored in presets::l1_wrap; the generated table does not cover it\"),";
+    const L1_WRAP21_ARM: &str = "CircuitType::L1Wrap21 => panic!(\"CircuitType::L1Wrap21 is not supported on the GPU backend until W5\"),";
     const UNIFIED22_ARM: &str = "CircuitType::Unrolled(UnrolledCircuitType::Unified22) => panic!(\"UnrolledCircuitType::Unified22 is not supported on the GPU backend until W4\"),";
     let rows: Vec<_> = [21, 29]
         .into_iter()
@@ -110,7 +111,10 @@ fn cpu_generated_l1_wrap_arm_matches_emitter() {
         .lines()
         .filter(|line| line.starts_with("CircuitType::L1Wrap"))
         .collect();
-    assert_eq!(l1_arms, [L1_WRAP_ARM; 2]);
+    assert_eq!(
+        l1_arms,
+        [L1_WRAP_ARM, L1_WRAP21_ARM, L1_WRAP_ARM, L1_WRAP21_ARM]
+    );
     let unified22_arms: Vec<_> = generated
         .lines()
         .filter(|line| line.starts_with("CircuitType::Unrolled(UnrolledCircuitType::Unified22)"))
