@@ -61,7 +61,7 @@ impl L1Bundle {
         }
     }
 
-    fn validate(&self) -> Result<(), String> {
+    pub(crate) fn validate(&self) -> Result<(), String> {
         let active = L1WrapVersion::of_kind(L1_WRAP_KIND);
         if self.wrap != active {
             return Err(format!(
@@ -89,8 +89,10 @@ impl L1Bundle {
 }
 
 /// The shape of an L1 wrap proof under its version's config: GKR layer round
-/// counts and the WHIR schedule, oracle, query, nonce and final-polynomial
-/// counts. Run before a bundle is flattened, exported or resumed.
+/// counts and round messages; the WHIR schedule, the packed base oracles
+/// (setup, merged memory and witness), the intermediate oracles, and the
+/// query, leaf, path, nonce and final-polynomial counts. Run before a bundle
+/// is flattened, exported or resumed.
 fn validate_l1_proof_layout(proof: &L1Proof, wrap: L1WrapVersion) -> Result<(), String> {
     let circuit_type = wrap.circuit_type();
     let trace_len_log2 = circuit_type.get_domain_size_log2() as usize;
@@ -107,7 +109,8 @@ fn validate_l1_proof_layout(proof: &L1Proof, wrap: L1WrapVersion) -> Result<(), 
         }
     };
 
-    let standard_layers = wrap.circuit_artifact().layers.len();
+    let circuit = wrap.circuit_artifact();
+    let standard_layers = circuit.layers.len();
     let dimension_reducing_layers = trace_len_log2 - config.sumcheck_explicit_output_size_log_2;
     mismatch(
         "GKR layers",
@@ -129,6 +132,21 @@ fn validate_l1_proof_layout(proof: &L1Proof, wrap: L1WrapVersion) -> Result<(), 
             values.sumcheck_num_rounds,
             expected,
         )?;
+        mismatch(
+            &format!("round messages in GKR layer {layer}"),
+            values.internal_round_coefficients.len(),
+            expected,
+        )?;
+        if !values.internal_round_coefficients.iter().all(|round| {
+            matches!(
+                round,
+                prover::gkr::prover::SumcheckRoundCoefficients::Multilinear(_)
+            )
+        }) {
+            return Err(format!(
+                "L1 bundle ({wrap:?}) GKR layer {layer} has a non-multilinear round message"
+            ));
+        }
     }
 
     let whir = &proof.whir_proof;
@@ -140,6 +158,8 @@ fn validate_l1_proof_layout(proof: &L1Proof, wrap: L1WrapVersion) -> Result<(), 
     }
     let rounds = schedule.whir_steps_schedule.len();
     let folds: usize = schedule.whir_steps_schedule.iter().sum();
+    let message_log2 = trace_len_log2 + pack_log2;
+    let cap_log2 = schedule.cap_size.trailing_zeros() as usize;
     mismatch("WHIR PoW nonces", whir.pow_nonces.len(), rounds)?;
     mismatch(
         "WHIR sumcheck polynomials",
@@ -156,25 +176,82 @@ fn validate_l1_proof_layout(proof: &L1Proof, wrap: L1WrapVersion) -> Result<(), 
         whir.intermediate_whir_oracles.len(),
         rounds - 1,
     )?;
-    for base in [
-        &whir.setup_commitment,
-        &whir.memory_commitment,
-        &whir.witness_commitment,
+    // packed mode: the setup and the merged memory+witness oracles, each
+    // packed by 2^pack_log2 columns; the separate witness oracle is empty
+    let first_fold = schedule.whir_steps_schedule[0];
+    let base_path_len =
+        message_log2 + schedule.base_lde_factor.trailing_zeros() as usize - first_fold - cap_log2;
+    let merged_columns = (circuit.memory_layout.total_width + circuit.witness_layout.total_width)
+        .div_ceil(1 << pack_log2);
+    for (name, base, columns) in [
+        ("setup", &whir.setup_commitment, None),
+        (
+            "merged memory",
+            &whir.memory_commitment,
+            Some(merged_columns),
+        ),
+        ("witness", &whir.witness_commitment, Some(0)),
     ] {
-        if base.num_columns != 0 {
+        let columns = columns.unwrap_or(base.num_columns);
+        mismatch(
+            &format!("WHIR {name} oracle columns"),
+            base.num_columns,
+            columns,
+        )?;
+        mismatch(
+            &format!("WHIR {name} oracle evaluations"),
+            base.evals.len(),
+            columns,
+        )?;
+        let queries = if columns == 0 {
+            0
+        } else {
+            schedule.whir_queries_schedule[0]
+        };
+        mismatch(
+            &format!("WHIR {name} oracle queries"),
+            base.queries.len(),
+            queries,
+        )?;
+        for query in &base.queries {
             mismatch(
-                "WHIR base-oracle queries",
-                base.queries.len(),
-                schedule.whir_queries_schedule[0],
+                &format!("WHIR {name} oracle leaf values"),
+                query.leaf_values_concatenated.len(),
+                columns << first_fold,
+            )?;
+            mismatch(
+                &format!("WHIR {name} oracle path nodes"),
+                query.path.len(),
+                base_path_len,
             )?;
         }
     }
+    if whir.setup_commitment.num_columns == 0 {
+        return Err(format!("L1 bundle ({wrap:?}) has no WHIR setup oracle"));
+    }
+    let mut poly_log2 = message_log2 - first_fold;
     for (round, oracle) in whir.intermediate_whir_oracles.iter().enumerate() {
+        let fold = schedule.whir_steps_schedule[round + 1];
+        let codeword_log2 =
+            poly_log2 + schedule.whir_steps_lde_factors[round].trailing_zeros() as usize;
         mismatch(
             &format!("WHIR round {} queries", round + 1),
             oracle.queries.len(),
             schedule.whir_queries_schedule[round + 1],
         )?;
+        for query in &oracle.queries {
+            mismatch(
+                &format!("WHIR round {} leaf values", round + 1),
+                query.leaf_values_concatenated.len(),
+                1 << fold,
+            )?;
+            mismatch(
+                &format!("WHIR round {} path nodes", round + 1),
+                query.path.len(),
+                codeword_log2 - fold - cap_log2,
+            )?;
+        }
+        poly_log2 -= fold;
     }
     Ok(())
 }
