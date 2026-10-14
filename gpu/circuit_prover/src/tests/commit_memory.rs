@@ -95,7 +95,10 @@ fn test_shift_binop_commit_memory_matches_cpu() {
 #[test]
 #[ignore]
 fn test_load_store_word_only_commit_memory_matches_cpu() {
-    let binary = read_test_words("examples/hashed_fibonacci/app.bin");
+    let (binary, _) = load_test_program(
+        "examples/hashed_fibonacci/app.bin",
+        "examples/hashed_fibonacci/app.text",
+    );
     let compiled_circuit = compile_mem_word_only_circuit_for_test(&binary);
     assert_memory_commit_memory_matches_cpu_for_test::<LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX>(
         "examples/hashed_fibonacci/app.bin",
@@ -109,7 +112,10 @@ fn test_load_store_word_only_commit_memory_matches_cpu() {
 #[test]
 #[ignore]
 fn test_load_store_subword_only_commit_memory_matches_cpu() {
-    let binary = read_test_words("riscv_transpiler/examples/keccak_f1600/app.bin");
+    let (binary, _) = load_test_program(
+        "riscv_transpiler/examples/keccak_f1600/app.bin",
+        "riscv_transpiler/examples/keccak_f1600/app.text",
+    );
     let compiled_circuit = compile_mem_subword_only_circuit_for_test(&binary);
     assert_memory_commit_memory_matches_cpu_for_test::<LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX>(
         "riscv_transpiler/examples/keccak_f1600/app.bin",
@@ -260,20 +266,7 @@ fn assert_non_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
     const HOST_POOL_SIZE_MB: usize = 1024;
     const DEVICE_ALLOCATOR_BLOCK_LOG_SIZE: u32 = 20;
 
-    let binary = std::fs::read(test_artifact_path(binary_path)).unwrap();
-    let binary: Vec<_> = binary
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|el| u32::from_le_bytes(*el))
-        .collect();
-    let text_section = std::fs::read(test_artifact_path(text_path)).unwrap();
-    let text_section: Vec<_> = text_section
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|el| u32::from_le_bytes(*el))
-        .collect();
+    let (binary, text_section) = load_test_program(binary_path, text_path);
     let instructions: Vec<Instruction> =
         preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text_section);
     let tape = SimpleTape::new(&instructions);
@@ -455,20 +448,7 @@ fn assert_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
     const HOST_POOL_SIZE_MB: usize = 1024;
     const DEVICE_ALLOCATOR_BLOCK_LOG_SIZE: u32 = 20;
 
-    let binary = std::fs::read(test_artifact_path(binary_path)).unwrap();
-    let binary: Vec<_> = binary
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|el| u32::from_le_bytes(*el))
-        .collect();
-    let text_section = std::fs::read(test_artifact_path(text_path)).unwrap();
-    let text_section: Vec<_> = text_section
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|el| u32::from_le_bytes(*el))
-        .collect();
+    let (binary, text_section) = load_test_program(binary_path, text_path);
     let instructions: Vec<Instruction> =
         preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text_section);
     let tape = SimpleTape::new(&instructions);

@@ -27,8 +27,7 @@ pub const BLAKE_G_FUNCTION_NUM_DELEGATION_CYCLES: usize = 1 << 22;
 
 /// Inputs that fully specify a program prove run.
 pub struct ProgramConfig {
-    pub binary_path: String,
-    pub text_section_path: String,
+    pub program: riscv_transpiler::elf::ProgramSource,
     pub non_determinism_reads: Vec<u32>,
     pub cycles_bound: usize,
     pub ram_bound_bytes: usize,
@@ -41,9 +40,10 @@ impl ProgramConfig {
     /// for the `blake_g_function` delegation in the unified prove pipeline.
     pub fn multi_family_smoke_blake_g_function() -> Self {
         Self {
-            binary_path: "../examples/multi_family_smoke/app_blake2_g_function.bin".to_string(),
-            text_section_path: "../examples/multi_family_smoke/app_blake2_g_function.text"
-                .to_string(),
+            program: riscv_transpiler::elf::ProgramSource::legacy_binaries(
+                "../examples/multi_family_smoke/app_blake2_g_function.bin",
+                "../examples/multi_family_smoke/app_blake2_g_function.text",
+            ),
             // First word = inner-loop count `n` (~50 RISC-V cycles per iteration).
             // n=50 → ~2.5K total cycles, in the same ballpark as keccak_f1600
             // (2774 cycles). Exercises F1+F2+F3+F4 over enough rows that the
@@ -59,10 +59,10 @@ impl ProgramConfig {
     /// produces non-empty witness for the `blake` (compression) delegation.
     pub fn multi_family_smoke_blake_compression() -> Self {
         Self {
-            binary_path: "../examples/multi_family_smoke/app_blake2_with_compression.bin"
-                .to_string(),
-            text_section_path: "../examples/multi_family_smoke/app_blake2_with_compression.text"
-                .to_string(),
+            program: riscv_transpiler::elf::ProgramSource::legacy_binaries(
+                "../examples/multi_family_smoke/app_blake2_with_compression.bin",
+                "../examples/multi_family_smoke/app_blake2_with_compression.text",
+            ),
             non_determinism_reads: vec![50, 0xDEAD_BEEF],
             cycles_bound: 1 << 20,
             ram_bound_bytes: RAM_BOUND_BYTES,
@@ -76,9 +76,10 @@ impl ProgramConfig {
     /// The unified reduced machine rejects these instructions.
     pub fn hashed_fibonacci_blake_g_function() -> Self {
         Self {
-            binary_path: "../examples/hashed_fibonacci/app_blake2_g_function.bin".to_string(),
-            text_section_path: "../examples/hashed_fibonacci/app_blake2_g_function.text"
-                .to_string(),
+            program: riscv_transpiler::elf::ProgramSource::legacy_binaries(
+                "../examples/hashed_fibonacci/app_blake2_g_function.bin",
+                "../examples/hashed_fibonacci/app_blake2_g_function.text",
+            ),
             non_determinism_reads: vec![15, 1],
             cycles_bound: 1 << 20,
             ram_bound_bytes: RAM_BOUND_BYTES,
@@ -89,9 +90,10 @@ impl ProgramConfig {
     /// Per-family use only (same M-extension caveat as the G-function variant).
     pub fn hashed_fibonacci_blake_compression() -> Self {
         Self {
-            binary_path: "../examples/hashed_fibonacci/app_blake2_with_compression.bin".to_string(),
-            text_section_path: "../examples/hashed_fibonacci/app_blake2_with_compression.text"
-                .to_string(),
+            program: riscv_transpiler::elf::ProgramSource::legacy_binaries(
+                "../examples/hashed_fibonacci/app_blake2_with_compression.bin",
+                "../examples/hashed_fibonacci/app_blake2_with_compression.text",
+            ),
             non_determinism_reads: vec![15, 1],
             cycles_bound: 1 << 20,
             ram_bound_bytes: RAM_BOUND_BYTES,
@@ -105,8 +107,10 @@ impl ProgramConfig {
     /// Default for per-family tests.
     pub fn keccak_f1600() -> Self {
         Self {
-            binary_path: "../riscv_transpiler/examples/keccak_f1600/app.bin".to_string(),
-            text_section_path: "../riscv_transpiler/examples/keccak_f1600/app.text".to_string(),
+            program: riscv_transpiler::elf::ProgramSource::legacy_binaries(
+                "../riscv_transpiler/examples/keccak_f1600/app.bin",
+                "../riscv_transpiler/examples/keccak_f1600/app.text",
+            ),
             non_determinism_reads: vec![15, 1],
             cycles_bound: 1 << 20,
             ram_bound_bytes: RAM_BOUND_BYTES,
@@ -117,8 +121,10 @@ impl ProgramConfig {
     /// delegations.
     pub fn keccak() -> Self {
         Self {
-            binary_path: "../examples/keccak/app.bin".to_string(),
-            text_section_path: "../examples/keccak/app.text".to_string(),
+            program: riscv_transpiler::elf::ProgramSource::legacy_binaries(
+                "../examples/keccak/app.bin",
+                "../examples/keccak/app.text",
+            ),
             non_determinism_reads: vec![],
             cycles_bound: 1 << 20,
             ram_bound_bytes: RAM_BOUND_BYTES,
@@ -130,8 +136,10 @@ impl ProgramConfig {
     /// family). Per-family use; drives `add_sub_mop_real_program_check_satisfied`.
     pub fn mop_smoke() -> Self {
         Self {
-            binary_path: "../examples/mop_smoke/app.bin".to_string(),
-            text_section_path: "../examples/mop_smoke/app.text".to_string(),
+            program: riscv_transpiler::elf::ProgramSource::legacy_binaries(
+                "../examples/mop_smoke/app.bin",
+                "../examples/mop_smoke/app.text",
+            ),
             non_determinism_reads: vec![15, 1],
             cycles_bound: 1 << 20,
             ram_bound_bytes: RAM_BOUND_BYTES,
@@ -195,24 +203,9 @@ where
     C: Counters + Copy + Default + std::fmt::Debug,
     D: riscv_transpiler::ir::DecodingOptions,
 {
-    println!("Using {} binary", config.binary_path);
+    println!("Using {} program", config.program);
 
-    let binary_bytes = std::fs::read(&config.binary_path).expect("program binary");
-    let text_bytes = std::fs::read(&config.text_section_path).expect("program text section");
-    assert!(binary_bytes.len().is_multiple_of(4));
-    assert!(text_bytes.len().is_multiple_of(4));
-    let binary: Vec<u32> = binary_bytes
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|el| u32::from_le_bytes(*el))
-        .collect();
-    let text_section: Vec<u32> = text_bytes
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|el| u32::from_le_bytes(*el))
-        .collect();
+    let (binary, text_section) = config.program.load_unpadded();
 
     let instructions: Vec<Instruction> = preprocess_bytecode::<D, true>(&text_section);
     let tape = SimpleTape::new(&instructions);

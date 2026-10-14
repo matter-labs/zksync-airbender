@@ -76,7 +76,7 @@ fn guest_cycles(circuit: &str) -> u64 {
         "open {elf_path}: no such file"
     );
     let (bin, text) =
-        full_statement_verifier::host_utils::load_program_elf(std::path::Path::new(&elf_path));
+        full_statement_verifier::host_utils::load_program(std::path::Path::new(&elf_path));
 
     let mut stream = Vec::new();
     proof.external_challenges.flatten_into_buffer(&mut stream);

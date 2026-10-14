@@ -16,7 +16,7 @@ fn run_transpiler(name: &str, level: SecurityLevel) {
         nds.len()
     );
 
-    let (_, _, elf_path) = common::binary_paths(name, level);
+    let elf_path = common::elf_path(name, level);
 
     let (binary, text_section) =
         riscv_transpiler::elf::load_legacy_program(std::path::Path::new(&elf_path));

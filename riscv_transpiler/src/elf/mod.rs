@@ -21,10 +21,15 @@
 //!   through [`ElfImage::init_sections`] and is meant to be materialized by code (see
 //!   [`ElfImage::init_data_materialization_code`]) instead of being read from ROM. No flattened
 //!   image is produced.
+//!
+//! Programs that are not built from this repository and are committed as pre-built `objcopy`
+//! dumps (`app.bin` + `app.text`) go through [`read_legacy_binaries`], which validates the pair
+//! and yields the same legacy-mode [`ElfImage`] (minus section and symbol details).
+//! [`ProgramSource`] names either form so callers load programs one way.
 
 use std::collections::BTreeMap;
 use std::fmt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use common_constants::{INITIAL_PC, ROM_BYTE_SIZE, ROM_WORD_SIZE};
 use object::elf;
@@ -550,18 +555,147 @@ pub fn read_elf_from_path(path: &Path, mode: ElfReadMode) -> Result<ElfImage, El
     read_elf(&bytes, mode)
 }
 
-/// The single conventional way to load a guest program for the VM and the prover (legacy read
-/// mode): returns `(flattened ROM image words, text section words)`, both [`ROM_WORD_SIZE`]
-/// words long, zero-padded. Replaces reading `app.bin` + `app.text` and padding them by hand.
-/// Panics with the parse/validation error on failure.
+/// Load a guest program from its ELF for the VM and the prover (legacy read mode): returns
+/// `(flattened ROM image words, text section words)`, both [`ROM_WORD_SIZE`] words long,
+/// zero-padded. Panics with the parse/validation error on failure. See [`ProgramSource`].
 pub fn load_legacy_program(path: &Path) -> (Vec<u32>, Vec<u32>) {
-    let image = read_elf_from_path(path, ElfReadMode::Legacy)
-        .unwrap_or_else(|err| panic!("failed to load {}: {err}", path.display()));
-    let flattened = image
-        .flattened_binary
-        .clone()
-        .expect("legacy mode always produces the flattened image");
-    (flattened, image.padded_text_words())
+    ProgramSource::elf(path).load()
+}
+
+/// Read a program committed as pre-built `objcopy` dumps: `bin_path` is the flat ROM image
+/// (`objcopy -O binary`), `text_path` the text section (`--only-section=.text`). The text must
+/// be a non-empty, word-aligned prefix of the image and the image must fit the ROM. The result
+/// is the legacy-mode [`ElfImage`] with the flattened image and `.text` filled in; section,
+/// init-data and symbol details are empty because the dumps do not carry them.
+pub fn read_legacy_binaries(bin_path: &Path, text_path: &Path) -> Result<ElfImage, ElfReadError> {
+    let bin = std::fs::read(bin_path).map_err(ElfReadError::Io)?;
+    let text = std::fs::read(text_path).map_err(ElfReadError::Io)?;
+    if !bin.len().is_multiple_of(4) || !text.len().is_multiple_of(4) {
+        return Err(ElfReadError::Layout(format!(
+            "dumps must be word-aligned ({} is {} bytes, {} is {} bytes)",
+            bin_path.display(),
+            bin.len(),
+            text_path.display(),
+            text.len()
+        )));
+    }
+    if text.is_empty() {
+        return Err(ElfReadError::Layout(format!(
+            "text section dump {} is empty",
+            text_path.display()
+        )));
+    }
+    if bin.len() > ROM_BYTE_SIZE {
+        return Err(ElfReadError::Layout(format!(
+            "flat image {} is {} bytes, beyond the {ROM_BYTE_SIZE:#x}-byte ROM",
+            bin_path.display(),
+            bin.len()
+        )));
+    }
+    if text.len() > bin.len() || bin[..text.len()] != text[..] {
+        return Err(ElfReadError::Layout(format!(
+            "text section {} is not a prefix of the flat image {}",
+            text_path.display(),
+            bin_path.display()
+        )));
+    }
+    let mut flattened = bytes_to_words(&bin);
+    flattened.resize(ROM_WORD_SIZE, 0u32);
+    Ok(ElfImage {
+        mode: ElfReadMode::Legacy,
+        entry_point: INITIAL_PC,
+        text_address: INITIAL_PC,
+        text: bytes_to_words(&text),
+        flattened_binary: Some(flattened),
+        flattened_binary_used_bytes: bin.len(),
+        init_sections: Vec::new(),
+        sections: Vec::new(),
+        symbols: BTreeMap::new(),
+    })
+}
+
+/// [`read_legacy_binaries`] followed by the conventional padding, like [`load_legacy_program`].
+pub fn load_legacy_binaries(bin_path: &Path, text_path: &Path) -> (Vec<u32>, Vec<u32>) {
+    ProgramSource::legacy_binaries(bin_path, text_path).load()
+}
+
+/// Where a guest program comes from. Every host-side consumer loads programs through this type
+/// so reading and padding happen in exactly one place.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum ProgramSource {
+    /// The linked ELF, read with [`read_elf`] in [`ElfReadMode::Legacy`].
+    Elf(PathBuf),
+    /// Pre-built `objcopy` dumps committed as-is (programs not built from this repository),
+    /// read with [`read_legacy_binaries`].
+    LegacyBinaries { bin: PathBuf, text: PathBuf },
+}
+
+impl ProgramSource {
+    pub fn elf(path: impl Into<PathBuf>) -> Self {
+        Self::Elf(path.into())
+    }
+
+    pub fn legacy_binaries(bin: impl Into<PathBuf>, text: impl Into<PathBuf>) -> Self {
+        Self::LegacyBinaries {
+            bin: bin.into(),
+            text: text.into(),
+        }
+    }
+
+    /// Dumps named by convention: `<stem>.bin` next to `<stem>.text`.
+    pub fn legacy_binaries_from_bin(bin: impl Into<PathBuf>) -> Self {
+        let bin: PathBuf = bin.into();
+        let text = match bin.to_str().and_then(|s| s.strip_suffix(".bin")) {
+            Some(stem) => PathBuf::from(format!("{stem}.text")),
+            None => bin.with_extension("text"),
+        };
+        Self::LegacyBinaries { bin, text }
+    }
+
+    pub fn read(&self) -> Result<ElfImage, ElfReadError> {
+        match self {
+            Self::Elf(path) => read_elf_from_path(path, ElfReadMode::Legacy),
+            Self::LegacyBinaries { bin, text } => read_legacy_binaries(bin, text),
+        }
+    }
+
+    /// `(flattened ROM image words, text section words)`, both zero-padded to [`ROM_WORD_SIZE`]
+    /// words: the conventional shape for prover setups and instruction tapes. Panics on failure.
+    pub fn load(&self) -> (Vec<u32>, Vec<u32>) {
+        let image = self.read_or_panic();
+        let flattened = image
+            .flattened_binary
+            .clone()
+            .expect("legacy mode always produces the flattened image");
+        (flattened, image.padded_text_words())
+    }
+
+    /// `(objcopy-equivalent ROM image words, text section words)` without any padding, the
+    /// shape the raw dumps have on disk. Panics on failure.
+    pub fn load_unpadded(&self) -> (Vec<u32>, Vec<u32>) {
+        let image = self.read_or_panic();
+        let flattened = image
+            .objcopy_binary_words()
+            .expect("legacy mode always produces the flattened image")
+            .to_vec();
+        (flattened, image.text)
+    }
+
+    fn read_or_panic(&self) -> ElfImage {
+        self.read()
+            .unwrap_or_else(|err| panic!("failed to load program {self}: {err}"))
+    }
+}
+
+impl fmt::Display for ProgramSource {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Elf(path) => write!(f, "{}", path.display()),
+            Self::LegacyBinaries { bin, text } => {
+                write!(f, "{} + {}", bin.display(), text.display())
+            }
+        }
+    }
 }
 
 const LINKER_SYMBOLS: [&str; 15] = [

@@ -26,8 +26,8 @@ use gpu_execution_prover::{
 };
 use program_prover::assemble_program_proof;
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
+use riscv_transpiler::elf::ProgramSource;
 use riscv_transpiler::vm::FlatResponsesSource;
-use setups::read_binary;
 
 /// Workspace root; this crate is at `gpu/execution_prover/`.
 #[cfg(all(not(no_cuda), feature = "verifiers"))]
@@ -51,13 +51,11 @@ fn init_test_logger() {
 #[cfg(all(not(no_cuda), feature = "verifiers"))]
 fn load_workload(name: &str) -> (Vec<u32>, Vec<u32>) {
     let artifact_root = artifact_root();
-    let (_, binary_image) = read_binary(
-        &artifact_root.join(format!("examples/{name}/app_blake2_with_compression.bin")),
-    );
-    let (_, text_section) = read_binary(
-        &artifact_root.join(format!("examples/{name}/app_blake2_with_compression.text")),
-    );
-    (binary_image, text_section)
+    ProgramSource::legacy_binaries(
+        artifact_root.join(format!("examples/{name}/app_blake2_with_compression.bin")),
+        artifact_root.join(format!("examples/{name}/app_blake2_with_compression.text")),
+    )
+    .load_unpadded()
 }
 
 #[cfg(all(not(no_cuda), feature = "verifiers"))]
@@ -76,8 +74,11 @@ fn load_zksync_os_workload() -> (Vec<u32>, Vec<u32>, Vec<u32>) {
                 .expect("invalid zkSync OS witness word")
         })
         .collect();
-    let (_, binary_image) = read_binary(&root.join("riscv_transpiler/examples/zksync_os/app.bin"));
-    let (_, text_section) = read_binary(&root.join("riscv_transpiler/examples/zksync_os/app.text"));
+    let (binary_image, text_section) = ProgramSource::legacy_binaries(
+        root.join("riscv_transpiler/examples/zksync_os/app.bin"),
+        root.join("riscv_transpiler/examples/zksync_os/app.text"),
+    )
+    .load_unpadded();
     (binary_image, text_section, witness)
 }
 
@@ -252,12 +253,11 @@ fn test_program_prover_unified_cpu_gpu_proof_diff() {
     init_test_logger();
     let (binary_image, text_section) = load_workload("multi_family_smoke");
     let artifact_root = artifact_root();
-    let (_, padded_binary_image) = setups::read_and_pad_binary(
-        &artifact_root.join("examples/multi_family_smoke/app_blake2_with_compression.bin"),
-    );
-    let (_, padded_text_section) = setups::read_and_pad_binary(
-        &artifact_root.join("examples/multi_family_smoke/app_blake2_with_compression.text"),
-    );
+    let (padded_binary_image, padded_text_section) = ProgramSource::legacy_binaries(
+        artifact_root.join("examples/multi_family_smoke/app_blake2_with_compression.bin"),
+        artifact_root.join("examples/multi_family_smoke/app_blake2_with_compression.text"),
+    )
+    .load();
     let worker = worker::Worker::new_with_num_threads(8);
     let configuration = ExecutionProverConfiguration {
         // `multi_family_smoke` feeds raw non-determinism words (e.g. `0xDEAD_BEEF`) into the
@@ -379,12 +379,11 @@ fn test_program_prover_cpu_gpu_proof_diff() {
 
     // CPU reference (params mirror prover_examples::recursion's base layer,
     // including the ROM-word padding its `load_program` applies).
-    let (_, padded_binary_image) = setups::read_and_pad_binary(
-        &artifact_root().join("examples/hashed_fibonacci/app_blake2_with_compression.bin"),
-    );
-    let (_, padded_text_section) = setups::read_and_pad_binary(
-        &artifact_root().join("examples/hashed_fibonacci/app_blake2_with_compression.text"),
-    );
+    let (padded_binary_image, padded_text_section) = ProgramSource::legacy_binaries(
+        artifact_root().join("examples/hashed_fibonacci/app_blake2_with_compression.bin"),
+        artifact_root().join("examples/hashed_fibonacci/app_blake2_with_compression.text"),
+    )
+    .load();
     let worker = worker::Worker::new_with_num_threads(8);
     let (cpu_proof, cpu_setups) = program_prover::unrolled::prove_unrolled_execution_with_replayer::<
         riscv_transpiler::cycle::IMStandardIsaConfigUnsignedMulDivOnly,
@@ -605,14 +604,11 @@ fn test_program_prover_recursion_layer_verify() {
     let chain = FsvRecursionChain::begin(&base_end_params);
 
     // Stage 2: prove the fsv base-layer verifier over the base proof's stream.
-    let (_, fsv_binary) = read_binary(
-        &artifact_root()
-            .join("tools/gkr_verifier/fsv_unrolled_base_layer_sec_100_blake2_with_compression.bin"),
-    );
-    let (_, fsv_text) =
-        read_binary(&artifact_root().join(
-            "tools/gkr_verifier/fsv_unrolled_base_layer_sec_100_blake2_with_compression.text",
-        ));
+    let (fsv_binary, fsv_text) = ProgramSource::elf(
+        artifact_root()
+            .join("tools/gkr_verifier/fsv_unrolled_base_layer_sec_100_blake2_with_compression.elf"),
+    )
+    .load_unpadded();
     let stream = build_unrolled_stream(&base_setups, &base_proof);
     let (mut recursion_proof, recursion_setups) = prove_on_gpu(
         &mut prover,

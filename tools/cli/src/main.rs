@@ -444,9 +444,10 @@ fn run_cli() {
 }
 
 fn program_source(bin: Option<String>, text: Option<String>, elf: Option<String>) -> ProgramSource {
-    match (bin, elf) {
-        (Some(bin), None) => ProgramSource::from_paths(bin, text),
-        (None, Some(elf)) => ProgramSource::from_elf(elf),
+    match (bin, text, elf) {
+        (Some(bin), Some(text), None) => ProgramSource::legacy_binaries(bin, text),
+        (Some(bin), None, None) => ProgramSource::legacy_binaries_from_bin(bin),
+        (None, None, Some(elf)) => ProgramSource::elf(elf),
         _ => unreachable!("clap enforces exactly one of --bin / --elf"),
     }
 }

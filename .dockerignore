@@ -16,9 +16,7 @@ target
 
 # Regenerated verifier artifacts — the reproducible build rebuilds these from
 # source inside the image, so they must not enter the context.
-tools/gkr_verifier/*.bin
 tools/gkr_verifier/*.elf
-tools/gkr_verifier/*.text
 
 # Non-source data not needed to compile the workspace (examples/ is not a
 # workspace member and is not in the fsv build's dependency tree).

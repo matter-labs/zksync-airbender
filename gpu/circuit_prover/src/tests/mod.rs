@@ -104,15 +104,14 @@ fn upload_slice_to_device_for_test<T: Copy>(
     device
 }
 
-fn read_test_words(relative_path: &str) -> Vec<u32> {
-    let bytes = std::fs::read(test_artifact_path(relative_path)).unwrap();
-    assert_eq!(bytes.len() % 4, 0);
-    bytes
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|el| u32::from_le_bytes(*el))
-        .collect()
+/// `(flat ROM image words, text section words)` of a committed `objcopy` dump pair under the
+/// artifact root, unpadded (the shape the files have on disk).
+fn load_test_program(binary_path: &str, text_path: &str) -> (Vec<u32>, Vec<u32>) {
+    riscv_transpiler::elf::ProgramSource::legacy_binaries(
+        test_artifact_path(binary_path),
+        test_artifact_path(text_path),
+    )
+    .load_unpadded()
 }
 
 fn deserialize_json_for_test<T: serde::de::DeserializeOwned>(relative_path: &str) -> T {

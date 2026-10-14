@@ -41,8 +41,8 @@ pub fn load_nds(
     circuit_by_name(name).load_nds_for(level)
 }
 
-pub fn binary_paths(name: &str, level: SecurityLevel) -> (String, String, String) {
-    circuit_by_name(name).binary_paths_for(level)
+pub fn elf_path(name: &str, level: SecurityLevel) -> String {
+    circuit_by_name(name).elf_path_for(level)
 }
 
 pub fn circuit_by_name(name: &str) -> &'static CircuitData {

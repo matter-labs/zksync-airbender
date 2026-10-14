@@ -277,7 +277,7 @@ impl<C: Counters> ReplayerVM<C> {
 #[cfg(test)]
 mod test {
     use crate::ir::FullUnsignedMachineDecoderConfig;
-    use crate::vm::test::read_binary;
+    use crate::vm::test::load_dumps;
 
     use crate::vm::*;
     use crate::witness::NonMemDestinationHolder;
@@ -286,7 +286,6 @@ mod test {
     use field::Mersenne31Field;
 
     use super::*;
-    use std::path::Path;
 
     // type CountersT = DelegationsCounters;
     type CountersT = DelegationsAndFamiliesCounters;
@@ -552,8 +551,8 @@ mod test {
     #[test]
     #[serial_test::serial]
     fn test_replay_keccak_f1600() {
-        let (_, binary) = read_binary(Path::new("../examples/keccak/app.bin"));
-        let (_, text) = read_binary(Path::new("../examples/keccak/app.text"));
+        let (binary, text) =
+            load_dumps("../examples/keccak/app.bin", "../examples/keccak/app.text");
         let instructions: Vec<Instruction> =
             preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text);
         let tape = SimpleTape::new(&instructions);

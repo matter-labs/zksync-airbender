@@ -147,8 +147,10 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
     let trace_len = 1usize << TRACE_LEN_LOG2;
     let worker = Worker::new_with_num_threads(8);
 
-    let binary = read_test_words("examples/hashed_fibonacci/app.bin");
-    let text_section = read_test_words("examples/hashed_fibonacci/app.text");
+    let (binary, text_section) = load_test_program(
+        "examples/hashed_fibonacci/app.bin",
+        "examples/hashed_fibonacci/app.text",
+    );
     let instructions: Vec<Instruction> =
         preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text_section);
     let tape = SimpleTape::new(&instructions);

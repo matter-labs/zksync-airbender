@@ -42,9 +42,7 @@ STEMS=(
 
 FILES=()
 for STEM in "${STEMS[@]}"; do
-    for EXT in bin elf text; do
-        FILES+=("${STEM}.${EXT}")
-    done
+    FILES+=("${STEM}.elf")
 done
 
 for FILE in "${FILES[@]}"; do

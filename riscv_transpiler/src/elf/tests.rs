@@ -29,39 +29,95 @@ fn artifact_dirs() -> Vec<PathBuf> {
     dirs
 }
 
-/// Every committed ELF next to its `objcopy -O binary` and `--only-section=.text` dumps.
-fn dump_triples() -> Vec<(PathBuf, PathBuf, PathBuf)> {
-    let mut triples = Vec::new();
+/// Every committed `.elf` under the artifact directories.
+fn elf_files() -> Vec<PathBuf> {
+    let mut files = Vec::new();
     for dir in artifact_dirs() {
         let Ok(entries) = std::fs::read_dir(&dir) else {
             continue;
         };
         for entry in entries {
-            let elf = entry.unwrap().path();
-            if elf.extension().and_then(|ext| ext.to_str()) != Some("elf") {
-                continue;
-            }
-            let bin = elf.with_extension("bin");
-            let text = elf.with_extension("text");
-            if bin.is_file() && text.is_file() {
-                triples.push((elf, bin, text));
+            let path = entry.unwrap().path();
+            if path.extension().and_then(|ext| ext.to_str()) == Some("elf") {
+                files.push(path);
             }
         }
     }
-    triples.sort();
-    triples
+    files.sort();
+    files
+}
+
+/// Every committed ELF next to its `objcopy -O binary` and `--only-section=.text` dumps
+/// (programs committed as pre-built dumps; their ELFs may lack `.text`).
+fn dump_triples() -> Vec<(PathBuf, PathBuf, PathBuf)> {
+    elf_files()
+        .into_iter()
+        .filter_map(|elf| {
+            let bin = elf.with_extension("bin");
+            let text = elf.with_extension("text");
+            (bin.is_file() && text.is_file()).then_some((elf, bin, text))
+        })
+        .collect()
 }
 
 fn is_stripped_text(err: &ElfReadError) -> bool {
     matches!(err, ElfReadError::Layout(msg) if msg.starts_with("no .text section"))
 }
 
+/// Committed ELFs that still carry `.text` (the `tools/gkr_verifier` set), parsed in `mode`.
+/// ELFs produced by the old `objcopy -R .text` recipe are skipped.
+fn full_elf_images(mode: ElfReadMode) -> Vec<(PathBuf, ElfImage)> {
+    let mut images = Vec::new();
+    for path in elf_files() {
+        let bytes = std::fs::read(&path).unwrap();
+        match read_elf(&bytes, mode) {
+            Ok(image) => images.push((path, image)),
+            Err(err) if is_stripped_text(&err) => println!(
+                "skipped (no .text, built with `objcopy -R .text`): {}",
+                path.display()
+            ),
+            Err(err) => panic!("{}: {err}", path.display()),
+        }
+    }
+    images
+}
+
+/// `llvm-objcopy` from the active toolchain's `llvm-tools` component, if installed.
+fn llvm_objcopy() -> Option<PathBuf> {
+    let sysroot = std::process::Command::new("rustc")
+        .args(["--print", "sysroot"])
+        .output()
+        .ok()
+        .filter(|out| out.status.success())?;
+    let sysroot = PathBuf::from(String::from_utf8(sysroot.stdout).ok()?.trim());
+    for target in std::fs::read_dir(sysroot.join("lib/rustlib")).ok()? {
+        let candidate = target.ok()?.path().join("bin/llvm-objcopy");
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+fn run_objcopy(objcopy: &Path, elf: &Path, out: &Path, extra: &[&str]) -> Vec<u8> {
+    let status = std::process::Command::new(objcopy)
+        .args(["-O", "binary"])
+        .args(extra)
+        .arg(elf)
+        .arg(out)
+        .status()
+        .expect("spawn llvm-objcopy");
+    assert!(status.success(), "llvm-objcopy failed on {}", elf.display());
+    std::fs::read(out).unwrap()
+}
+
 /// Legacy mode must reproduce, byte for byte, the flat ROM images (`objcopy -O binary`) and
-/// text section dumps (`objcopy -O binary --only-section=.text`) that are committed next to
-/// the ELF files and used by every test and tool today.
+/// text section dumps (`objcopy -O binary --only-section=.text`) committed next to ELF files.
 ///
-/// ELF files produced by the old `objcopy -R .text` recipe carry no text and are reported as
-/// skipped; regenerate them with the `dump_bin.sh` scripts to put them under test.
+/// Today every committed dump pair sits next to an ELF produced by the old `objcopy -R .text`
+/// recipe (no text), so those are reported as skipped; regenerating such an ELF with its
+/// `dump_bin.sh` puts it under this check. The ELF-only verifier set is covered by
+/// `legacy_mode_matches_llvm_objcopy` instead.
 #[test]
 fn legacy_mode_reproduces_committed_objcopy_dumps() {
     let mut checked = Vec::new();
@@ -133,9 +189,46 @@ fn legacy_mode_reproduces_committed_objcopy_dumps() {
     for path in checked.iter() {
         println!("matches committed dumps: {}", path.display());
     }
+}
+
+/// Legacy mode must produce exactly what `llvm-objcopy -O binary` (flat ROM image) and
+/// `llvm-objcopy -O binary --only-section=.text` (text section) emit for every committed ELF
+/// that carries its text. This replaces the committed dumps the verifier set used to ship.
+/// Runs only when the toolchain's `llvm-tools` component is installed.
+#[test]
+fn legacy_mode_matches_llvm_objcopy() {
+    let Some(objcopy) = llvm_objcopy() else {
+        println!("llvm-objcopy not found (rustup component add llvm-tools); skipping");
+        return;
+    };
+    let dir = std::env::temp_dir().join(format!("airbender_objcopy_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut checked = 0;
+    for (elf_path, image) in full_elf_images(ElfReadMode::Legacy) {
+        let bin = run_objcopy(&objcopy, &elf_path, &dir.join("app.bin"), &[]);
+        let text = run_objcopy(
+            &objcopy,
+            &elf_path,
+            &dir.join("app.text"),
+            &["--only-section=.text"],
+        );
+        assert!(
+            image.objcopy_binary().unwrap() == bin,
+            "{}: flat image differs from llvm-objcopy",
+            elf_path.display()
+        );
+        assert!(
+            image.text_bytes() == text,
+            "{}: .text differs from llvm-objcopy",
+            elf_path.display()
+        );
+        println!("matches llvm-objcopy: {}", elf_path.display());
+        checked += 1;
+    }
+    std::fs::remove_dir_all(&dir).unwrap();
     assert!(
-        !checked.is_empty(),
-        "no ELF with a .text section found next to committed dumps; regenerate with the dump_bin.sh scripts"
+        checked > 0,
+        "no ELF with a .text section found under the artifact directories"
     );
 }
 
@@ -145,13 +238,8 @@ fn legacy_mode_reproduces_committed_objcopy_dumps() {
 #[test]
 fn strict_mode_reports_virtual_init_data() {
     let mut checked = 0;
-    for (elf_path, bin_path, _) in dump_triples() {
+    for (elf_path, legacy) in full_elf_images(ElfReadMode::Legacy) {
         let bytes = std::fs::read(&elf_path).unwrap();
-        let legacy = match read_elf(&bytes, ElfReadMode::Legacy) {
-            Ok(image) => image,
-            Err(err) if is_stripped_text(&err) => continue,
-            Err(err) => panic!("{}: {err}", elf_path.display()),
-        };
         let strict = match read_elf(&bytes, ElfReadMode::Strict) {
             Ok(image) => image,
             Err(ElfReadError::Layout(msg)) => {
@@ -177,11 +265,10 @@ fn strict_mode_reports_virtual_init_data() {
             legacy.flattened_binary_used_bytes
         );
 
-        let flat = std::fs::read(&bin_path).unwrap();
+        let flat = legacy.objcopy_binary().unwrap();
         for section in strict.init_sections.iter() {
             if section.size() == 0 {
-                // Empty sections have no image in the ROM dump (their LMA may even lie past
-                // its end).
+                // Empty sections have no image in the ROM (their LMA may even lie past its end).
                 continue;
             }
             assert!(section.is_relocated());
@@ -190,7 +277,7 @@ fn strict_mode_reports_virtual_init_data() {
             assert_eq!(
                 &flat[lma..lma + section.data.len()],
                 &section.data[..],
-                "{}: {} init image differs from the ROM dump",
+                "{}: {} init image differs from the ROM image",
                 elf_path.display(),
                 section.name
             );
@@ -201,6 +288,10 @@ fn strict_mode_reports_virtual_init_data() {
         checked += 1;
     }
     println!("strict mode checked on {checked} ELF files");
+    assert!(
+        checked > 0,
+        "no ELF with a .text section found under the artifact directories"
+    );
 }
 
 /// Run `code` (RV32I words at address 0) on the VM for exactly `code.len()` cycles and check
@@ -342,10 +433,110 @@ fn rejects_non_elf_input() {
 /// instead of yielding an empty program.
 #[test]
 fn rejects_elf_without_text() {
-    for (elf_path, _, _) in dump_triples() {
+    for elf_path in elf_files() {
         let bytes = std::fs::read(&elf_path).unwrap();
         if let Err(err) = read_elf(&bytes, ElfReadMode::Legacy) {
             assert!(is_stripped_text(&err), "{}: {err}", elf_path.display());
         }
     }
+}
+
+/// `read_legacy_binaries` must accept every committed dump pair and agree with `read_elf` on
+/// the ELFs that still carry their `.text`.
+#[test]
+fn legacy_binaries_match_dumps_and_elf() {
+    let mut checked = 0;
+    for (elf_path, bin_path, text_path) in dump_triples() {
+        let dumps = read_legacy_binaries(&bin_path, &text_path)
+            .unwrap_or_else(|err| panic!("{}: {err}", bin_path.display()));
+        let expected_bin = std::fs::read(&bin_path).unwrap();
+        let expected_text = std::fs::read(&text_path).unwrap();
+        assert_eq!(dumps.mode, ElfReadMode::Legacy);
+        assert_eq!(dumps.objcopy_binary().unwrap(), expected_bin);
+        assert_eq!(dumps.text_bytes(), expected_text);
+        assert_eq!(
+            dumps.flattened_binary.as_ref().unwrap().len(),
+            ROM_WORD_SIZE
+        );
+        assert!(dumps.init_sections.is_empty() && dumps.sections.is_empty());
+        assert_eq!(
+            ProgramSource::legacy_binaries_from_bin(&bin_path),
+            ProgramSource::legacy_binaries(&bin_path, &text_path)
+        );
+        assert_eq!(
+            ProgramSource::legacy_binaries(&bin_path, &text_path).load(),
+            (
+                dumps.flattened_binary.clone().unwrap(),
+                dumps.padded_text_words()
+            )
+        );
+
+        let bytes = std::fs::read(&elf_path).unwrap();
+        let elf = match read_elf(&bytes, ElfReadMode::Legacy) {
+            Ok(image) => image,
+            Err(err) if is_stripped_text(&err) => continue,
+            Err(err) => panic!("{}: {err}", elf_path.display()),
+        };
+        assert_eq!(elf.text, dumps.text);
+        assert_eq!(elf.flattened_binary, dumps.flattened_binary);
+        assert_eq!(
+            elf.flattened_binary_used_bytes,
+            dumps.flattened_binary_used_bytes
+        );
+        assert_eq!(
+            ProgramSource::elf(&elf_path).load(),
+            ProgramSource::legacy_binaries(&bin_path, &text_path).load()
+        );
+        assert_eq!(
+            ProgramSource::elf(&elf_path).load_unpadded(),
+            ProgramSource::legacy_binaries(&bin_path, &text_path).load_unpadded()
+        );
+        checked += 1;
+    }
+    println!("legacy binaries cross-checked against {checked} full ELF files");
+}
+
+#[test]
+fn legacy_binaries_reject_text_that_is_not_a_prefix() {
+    let dir = std::env::temp_dir().join(format!("airbender_elf_test_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let bin = dir.join("app.bin");
+    let text = dir.join("app.text");
+    std::fs::write(
+        &bin,
+        [1u32, 2, 3, 4]
+            .iter()
+            .flat_map(|w| w.to_le_bytes())
+            .collect::<Vec<u8>>(),
+    )
+    .unwrap();
+    std::fs::write(
+        &text,
+        [1u32, 9]
+            .iter()
+            .flat_map(|w| w.to_le_bytes())
+            .collect::<Vec<u8>>(),
+    )
+    .unwrap();
+    assert!(matches!(
+        read_legacy_binaries(&bin, &text),
+        Err(ElfReadError::Layout(msg)) if msg.contains("not a prefix")
+    ));
+    std::fs::write(
+        &text,
+        [1u32, 2]
+            .iter()
+            .flat_map(|w| w.to_le_bytes())
+            .collect::<Vec<u8>>(),
+    )
+    .unwrap();
+    let image = read_legacy_binaries(&bin, &text).unwrap();
+    assert_eq!(image.text, vec![1, 2]);
+    assert_eq!(image.objcopy_binary_words().unwrap(), &[1, 2, 3, 4]);
+    std::fs::write(&text, []).unwrap();
+    assert!(matches!(
+        read_legacy_binaries(&bin, &text),
+        Err(ElfReadError::Layout(_))
+    ));
+    std::fs::remove_dir_all(&dir).unwrap();
 }

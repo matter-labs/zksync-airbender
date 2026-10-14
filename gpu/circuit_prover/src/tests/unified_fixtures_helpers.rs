@@ -856,8 +856,7 @@ fn prepare_unified_fixture(
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
     let worker = Worker::new_with_num_threads(8);
 
-    let binary = read_test_words(UNIFIED_BINARY_PATH);
-    let text_section = read_test_words(UNIFIED_TEXT_PATH);
+    let (binary, text_section) = load_test_program(UNIFIED_BINARY_PATH, UNIFIED_TEXT_PATH);
 
     let instructions: Vec<Instruction> =
         preprocess_bytecode::<ReducedMachineDecoderConfig, true>(&text_section);
