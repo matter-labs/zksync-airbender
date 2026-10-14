@@ -483,6 +483,7 @@ fn schedule_fixture_full(context: &gpu_prover_context::ProverContext) -> Schedul
         cfg.cap_log,
         memory.len() + witness.len(),
         TreesCacheMode::CacheNone,
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
         context,
     )
     .unwrap();

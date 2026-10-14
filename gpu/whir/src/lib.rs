@@ -158,6 +158,7 @@ impl GpuWhirExtensionOracle {
             log_tree_cap_size,
             EXT4_DEGREE * values_per_leaf,
             TreesCacheMode::CachePartial,
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
             context,
         )?;
         // Retained oracles release the relabel scratch after all its readers

@@ -63,6 +63,7 @@ impl L1WrapPrecomputed {
                     &config,
                     u32::try_from(log_packed)
                         .expect("L1WrapPrecomputed: packed domain log exceeds u32"),
+                    gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
                 );
                 let pack_log2 = u32::try_from(EVM_PRODUCTION_PACK_LOG2)
                     .expect("L1WrapPrecomputed: pack_log2 exceeds u32");

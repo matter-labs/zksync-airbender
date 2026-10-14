@@ -175,6 +175,7 @@ fn gpu_commit_and_query(
         shape.log_tree_cap_size(),
         columns_count,
         trees_cache_mode,
+        PARTIAL_TREE_REDUCTION_LAYERS,
         context,
     )
     .unwrap();

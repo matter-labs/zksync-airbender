@@ -257,6 +257,7 @@ pub(crate) fn forward_fixture_full(context: &ProverContext) -> ForwardFixturePr 
         cfg.cap_log,
         memory.len() + witness.len(),
         TreesCacheMode::CacheNone,
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
         context,
     )
     .unwrap();

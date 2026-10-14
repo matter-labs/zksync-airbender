@@ -86,7 +86,11 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         batching_pow_bits, 16,
         "L1Wrap requires batching_pow_bits 16"
     );
-    let cfg = PackedCommitConfig::from_prover_config(config, 26);
+    let cfg = PackedCommitConfig::from_prover_config(
+        config,
+        26,
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+    );
     let rows = circuit.trace_len;
     let memory_columns = circuit.memory_layout.total_width;
     let witness_columns = circuit.witness_layout.total_width;
@@ -186,6 +190,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         cfg.cap_log,
         memory_columns + witness_columns,
         TreesCacheMode::CacheNone,
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
         context,
     )?;
     let mut scratch = context.alloc::<PR>(
