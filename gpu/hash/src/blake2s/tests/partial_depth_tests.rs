@@ -16,6 +16,14 @@ use gpu_core::primitives::utils::LOG_WARP_SIZE;
 const SHAPES: [(u32, u32, usize, u32); 4] =
     [(11, 0, 2, 1), (12, 1, 1, 1), (12, 0, 4, 0), (13, 2, 2, 0)];
 const COLS_COUNTS: [usize; 3] = [1, 3, 17];
+const FEEDER_CASE: ((u32, u32, usize, u32), usize) = ((12, 1, 2, 1), 104);
+
+fn cases() -> impl Iterator<Item = ((u32, u32, usize, u32), usize)> {
+    SHAPES
+        .into_iter()
+        .flat_map(|shape| COLS_COUNTS.into_iter().map(move |cols| (shape, cols)))
+        .chain(std::iter::once(FEEDER_CASE))
+}
 
 struct Oracle {
     natural: Vec<BF>,
@@ -170,39 +178,39 @@ fn expected_path(tower: &[Vec<Digest>], leaf: usize, layers_count: u32) -> Vec<D
 #[test]
 fn partial_tree_depths_match_host_tree() {
     let stream = CudaStream::default();
-    for (log_rows_per_coset, log_rows_per_hash, cosets_count, log_coset_cap) in SHAPES {
-        for cols_count in COLS_COUNTS {
-            let oracle = Oracle::new(
-                log_rows_per_coset,
-                log_rows_per_hash,
+    for ((log_rows_per_coset, log_rows_per_hash, cosets_count, log_coset_cap), cols_count) in
+        cases()
+    {
+        let oracle = Oracle::new(
+            log_rows_per_coset,
+            log_rows_per_hash,
+            cosets_count,
+            cols_count,
+            &stream,
+        );
+        for reduction_layers in LOG_WARP_SIZE..=MAX_PARTIAL_TREE_REDUCTION_LAYERS {
+            let label = format!(
+                "n={log_rows_per_coset} b={log_rows_per_hash} cosets={cosets_count} \
+                     cap=2^{log_coset_cap} cols={cols_count} L={reduction_layers}"
+            );
+            let (tree, sentinel) = oracle.build_tree(
+                &oracle.physical,
+                oracle.values_len(),
                 cosets_count,
-                cols_count,
+                reduction_layers,
+                log_coset_cap,
                 &stream,
             );
-            for reduction_layers in LOG_WARP_SIZE..=MAX_PARTIAL_TREE_REDUCTION_LAYERS {
-                let label = format!(
-                    "n={log_rows_per_coset} b={log_rows_per_hash} cosets={cosets_count} \
-                     cap=2^{log_coset_cap} cols={cols_count} L={reduction_layers}"
-                );
-                let (tree, sentinel) = oracle.build_tree(
-                    &oracle.physical,
-                    oracle.values_len(),
-                    cosets_count,
-                    reduction_layers,
-                    log_coset_cap,
-                    &stream,
-                );
-                let host = download(&tree, &stream);
-                stream.synchronize().unwrap();
-                assert_tree_matches_host(
-                    &oracle,
-                    &host,
-                    reduction_layers,
-                    log_coset_cap,
-                    &sentinel,
-                    &label,
-                );
-            }
+            let host = download(&tree, &stream);
+            stream.synchronize().unwrap();
+            assert_tree_matches_host(
+                &oracle,
+                &host,
+                reduction_layers,
+                log_coset_cap,
+                &sentinel,
+                &label,
+            );
         }
     }
 }
@@ -210,138 +218,133 @@ fn partial_tree_depths_match_host_tree() {
 #[test]
 fn partial_path_gathers_match_host_paths_at_every_depth() {
     let stream = CudaStream::default();
-    for (log_rows_per_coset, log_rows_per_hash, cosets_count, log_coset_cap) in SHAPES {
-        for cols_count in COLS_COUNTS {
-            let oracle = Oracle::new(
-                log_rows_per_coset,
-                log_rows_per_hash,
+    for ((log_rows_per_coset, log_rows_per_hash, cosets_count, log_coset_cap), cols_count) in
+        cases()
+    {
+        let oracle = Oracle::new(
+            log_rows_per_coset,
+            log_rows_per_hash,
+            cosets_count,
+            cols_count,
+            &stream,
+        );
+        let log_lde_factor = cosets_count.trailing_zeros();
+        let layers_count = oracle.log_leaves_count - log_coset_cap;
+        let towers = (0..cosets_count)
+            .map(|c| oracle.tower(c))
+            .collect::<Vec<_>>();
+        for reduction_layers in LOG_WARP_SIZE..=MAX_PARTIAL_TREE_REDUCTION_LAYERS {
+            let label = format!(
+                "n={log_rows_per_coset} b={log_rows_per_hash} cosets={cosets_count} \
+                     cap=2^{log_coset_cap} cols={cols_count} L={reduction_layers}"
+            );
+            let queries =
+                subtree_boundary_queries(log_lde_factor, oracle.log_leaves_count, reduction_layers);
+            let queries_device = upload_u32(&queries, &stream);
+            let path_words = queries.len() * layers_count as usize * STATE_SIZE;
+            let (tree, _) = oracle.build_tree(
+                &oracle.physical,
+                oracle.values_len(),
                 cosets_count,
-                cols_count,
+                reduction_layers,
+                log_coset_cap,
                 &stream,
             );
-            let log_lde_factor = cosets_count.trailing_zeros();
-            let layers_count = oracle.log_leaves_count - log_coset_cap;
-            let towers = (0..cosets_count)
-                .map(|c| oracle.tower(c))
-                .collect::<Vec<_>>();
-            for reduction_layers in LOG_WARP_SIZE..=MAX_PARTIAL_TREE_REDUCTION_LAYERS {
-                let label = format!(
-                    "n={log_rows_per_coset} b={log_rows_per_hash} cosets={cosets_count} \
-                     cap=2^{log_coset_cap} cols={cols_count} L={reduction_layers}"
-                );
-                let queries = subtree_boundary_queries(
-                    log_lde_factor,
-                    oracle.log_leaves_count,
-                    reduction_layers,
-                );
-                let queries_device = upload_u32(&queries, &stream);
-                let path_words = queries.len() * layers_count as usize * STATE_SIZE;
-                let (tree, _) = oracle.build_tree(
-                    &oracle.physical,
-                    oracle.values_len(),
-                    cosets_count,
-                    reduction_layers,
-                    log_coset_cap,
-                    &stream,
-                );
 
-                let mut multi = upload_u32(&vec![0xa5a5a5a5; path_words], &stream);
-                gather_merkle_paths_partial_for_queries_physical(
-                    OraclePartialPathDesc {
-                        cosets_ptr: oracle.physical.as_ptr() as u64,
-                        partial_tree_ptr: tree.as_ptr() as u64,
-                        columns_count: cols_count as u32,
-                        _pad: 0,
-                        slab_dst_ptr: multi.as_mut_ptr() as u64,
-                    },
+            let mut multi = upload_u32(&vec![0xa5a5a5a5; path_words], &stream);
+            gather_merkle_paths_partial_for_queries_physical(
+                OraclePartialPathDesc {
+                    cosets_ptr: oracle.physical.as_ptr() as u64,
+                    partial_tree_ptr: tree.as_ptr() as u64,
+                    columns_count: cols_count as u32,
+                    _pad: 0,
+                    slab_dst_ptr: multi.as_mut_ptr() as u64,
+                },
+                log_lde_factor,
+                log_rows_per_hash,
+                oracle.log_leaves_count,
+                layers_count,
+                reduction_layers,
+                &queries_device,
+                &stream,
+            )
+            .unwrap();
+
+            let lde_mask = cosets_count as u32 - 1;
+            let expected_paths = queries
+                .iter()
+                .map(|&q| {
+                    let coset = (q & lde_mask) as usize;
+                    let leaf = (q >> log_lde_factor) as usize;
+                    expected_path(&towers[coset], leaf, layers_count).concat()
+                })
+                .collect::<Vec<_>>();
+            let multi_host = download(&multi, &stream);
+            stream.synchronize().unwrap();
+            assert_eq!(multi_host, expected_paths.concat(), "{label}: multi-coset");
+
+            let mut expected_single = vec![0x5a5a5a5au32; path_words];
+            let mut single = upload_u32(&expected_single, &stream);
+            let coset_values_len = oracle.coset_values_len();
+            let stride = oracle.tree_stride(reduction_layers);
+            let path_len = layers_count as usize * STATE_SIZE;
+            for coset in (0..cosets_count).rev() {
+                gather_merkle_paths_partial_for_queries_single_coset_physical(
+                    &oracle.physical[coset * coset_values_len..(coset + 1) * coset_values_len],
+                    &tree[coset * stride..(coset + 1) * stride],
+                    coset as u32,
                     log_lde_factor,
+                    log_rows_per_coset,
                     log_rows_per_hash,
-                    oracle.log_leaves_count,
                     layers_count,
                     reduction_layers,
                     &queries_device,
+                    &mut single,
                     &stream,
                 )
                 .unwrap();
-
-                let lde_mask = cosets_count as u32 - 1;
-                let expected_paths = queries
-                    .iter()
-                    .map(|&q| {
-                        let coset = (q & lde_mask) as usize;
-                        let leaf = (q >> log_lde_factor) as usize;
-                        expected_path(&towers[coset], leaf, layers_count).concat()
-                    })
-                    .collect::<Vec<_>>();
-                let multi_host = download(&multi, &stream);
-                stream.synchronize().unwrap();
-                assert_eq!(multi_host, expected_paths.concat(), "{label}: multi-coset");
-
-                let mut expected_single = vec![0x5a5a5a5au32; path_words];
-                let mut single = upload_u32(&expected_single, &stream);
-                let coset_values_len = oracle.coset_values_len();
-                let stride = oracle.tree_stride(reduction_layers);
-                let path_len = layers_count as usize * STATE_SIZE;
-                for coset in (0..cosets_count).rev() {
-                    gather_merkle_paths_partial_for_queries_single_coset_physical(
-                        &oracle.physical[coset * coset_values_len..(coset + 1) * coset_values_len],
-                        &tree[coset * stride..(coset + 1) * stride],
-                        coset as u32,
-                        log_lde_factor,
-                        log_rows_per_coset,
-                        log_rows_per_hash,
-                        layers_count,
-                        reduction_layers,
-                        &queries_device,
-                        &mut single,
-                        &stream,
-                    )
-                    .unwrap();
-                    for (idx, &q) in queries.iter().enumerate() {
-                        if (q & lde_mask) as usize == coset {
-                            expected_single[idx * path_len..(idx + 1) * path_len]
-                                .copy_from_slice(&expected_paths[idx]);
-                        }
+                for (idx, &q) in queries.iter().enumerate() {
+                    if (q & lde_mask) as usize == coset {
+                        expected_single[idx * path_len..(idx + 1) * path_len]
+                            .copy_from_slice(&expected_paths[idx]);
                     }
-                    let single_host = download(&single, &stream);
-                    stream.synchronize().unwrap();
-                    assert_eq!(
-                        single_host, expected_single,
-                        "{label}: single-coset after coset {coset}"
-                    );
                 }
-
-                let coset = cosets_count - 1;
-                let indexes =
-                    subtree_boundary_queries(0, oracle.log_leaves_count, reduction_layers);
-                let indexes_device = upload_u32(&indexes, &stream);
-                let mut rows_paths =
-                    DeviceAllocation::<Digest>::alloc(indexes.len() * layers_count as usize)
-                        .unwrap();
-                gather_merkle_paths_from_rows_physical(
-                    &indexes_device,
-                    false,
-                    &oracle.physical[coset * coset_values_len..(coset + 1) * coset_values_len],
-                    log_rows_per_hash,
-                    cols_count,
-                    &tree[coset * stride..(coset + 1) * stride],
-                    &mut rows_paths,
-                    layers_count,
-                    reduction_layers,
-                    &stream,
-                )
-                .unwrap();
-                let rows_host = download(&rows_paths, &stream);
+                let single_host = download(&single, &stream);
                 stream.synchronize().unwrap();
-                for (idx, &index) in indexes.iter().enumerate() {
-                    let expected = expected_path(&towers[coset], index as usize, layers_count);
-                    for (layer, digest) in expected.iter().enumerate() {
-                        assert_eq!(
-                            &rows_host[layer * indexes.len() + idx],
-                            digest,
-                            "{label}: rows index {idx} ({index}) layer {layer}"
-                        );
-                    }
+                assert_eq!(
+                    single_host, expected_single,
+                    "{label}: single-coset after coset {coset}"
+                );
+            }
+
+            let coset = cosets_count - 1;
+            let indexes = subtree_boundary_queries(0, oracle.log_leaves_count, reduction_layers);
+            let indexes_device = upload_u32(&indexes, &stream);
+            let mut rows_paths =
+                DeviceAllocation::<Digest>::alloc(indexes.len() * layers_count as usize).unwrap();
+            gather_merkle_paths_from_rows_physical(
+                &indexes_device,
+                false,
+                &oracle.physical[coset * coset_values_len..(coset + 1) * coset_values_len],
+                log_rows_per_hash,
+                cols_count,
+                &tree[coset * stride..(coset + 1) * stride],
+                &mut rows_paths,
+                layers_count,
+                reduction_layers,
+                &stream,
+            )
+            .unwrap();
+            let rows_host = download(&rows_paths, &stream);
+            stream.synchronize().unwrap();
+            for (idx, &index) in indexes.iter().enumerate() {
+                let expected = expected_path(&towers[coset], index as usize, layers_count);
+                for (layer, digest) in expected.iter().enumerate() {
+                    assert_eq!(
+                        &rows_host[layer * indexes.len() + idx],
+                        digest,
+                        "{label}: rows index {idx} ({index}) layer {layer}"
+                    );
                 }
             }
         }
