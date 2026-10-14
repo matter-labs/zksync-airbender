@@ -1,6 +1,6 @@
 === REPO RULE: NEVER COMMIT LARGE DATA (2026-10-13) ===
 This folder lives in the PUBLIC repo matter-labs/zksync-airbender (branch mb_formal_verification, off
-av_gkr_compiler, folder verifier-formal-verification/). Never commit generated models, build outputs, .lake/,
+av_gkr_compiler, folder verifier_formal_verification/). Never commit generated models, build outputs, .lake/,
 binaries beyond the tiny build/app.*, logs or caches. In particular the generated Sail model
 (lean/sail-rv32/SailRV32/, SailRV32.lean, ~52 MB) is gitignored: regenerate it with sail/regen.sh. Before each
 commit check `git diff --cached --stat` and that no staged file is over ~200 KB.

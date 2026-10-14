@@ -18,7 +18,7 @@ theorem kind_jal (h : Airbender.Agree s σ) (ha : (σ.regs .PC).toNat % 4 = 0)
     (hdec : RV.decode (readBytes σ.mem (σ.regs .PC).toNat 4) = some (.jal rd (x.signExtend 32)))
     (ht : RV.exec s (.jal rd (x.signExtend 32)) = some t) :
     ∃ σ', Airbender.step σ = some σ' ∧ Airbender.Agree t σ' := by
-  simp only [RV.exec, RV.State.jumpTo] at ht
+  simp only [RV.exec, RV.State.jumpAligned] at ht
   split_ifs at ht with hT
   case neg => simp at ht
   simp only [Option.map_some, Option.some.injEq] at ht; subst ht
@@ -33,7 +33,7 @@ theorem kind_jalr (h : Airbender.Agree s σ) (ha : (σ.regs .PC).toNat % 4 = 0)
     (hdec : RV.decode (readBytes σ.mem (σ.regs .PC).toNat 4) = some (.jalr rd rs1 (x.signExtend 32)))
     (ht : RV.exec s (.jalr rd rs1 (x.signExtend 32)) = some t) :
     ∃ σ', Airbender.step σ = some σ' ∧ Airbender.Agree t σ' := by
-  simp only [RV.exec, RV.State.jumpTo] at ht
+  simp only [RV.exec, RV.State.jumpAligned] at ht
   split_ifs at ht with hT
   case neg => simp at ht
   simp only [Option.map_some, Option.some.injEq] at ht; subst ht
@@ -51,7 +51,7 @@ theorem kind_branch (h : Airbender.Agree s σ) (ha : (σ.regs .PC).toNat % 4 = 0
   have hp := set1_PC σ (σ.regs .PC + 4) h.2.1
   have h1 : xget (σ.set .nextPC (σ.regs .PC + 4)) rs1 = s.getReg rs1 := by rw [xget_set_nextPC, agree_xget h]
   have h2' : xget (σ.set .nextPC (σ.regs .PC + 4)) rs2 = s.getReg rs2 := by rw [xget_set_nextPC, agree_xget h]
-  simp only [RV.exec, RV.State.jumpTo] at ht
+  simp only [RV.exec, RV.State.jumpAligned] at ht
   by_cases hc : c.holds (s.getReg rs1) (s.getReg rs2) = true
   · simp only [hc, ↓reduceIte] at ht
     split_ifs at ht with hT

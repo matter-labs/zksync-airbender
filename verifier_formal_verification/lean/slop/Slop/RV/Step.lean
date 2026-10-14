@@ -57,8 +57,8 @@ simproc reduceRSet (State.getReg (State.setReg _ _ _) _) := fun e => do
   let pf := mkApp6 (mkConst ``r_set_miss) s rd v i hi0 hne
   return .done { expr := r, proof? := some (← mkExpectedTypeHint pf (← mkEq e r)) }
 
-theorem goto_ok (s : State) (t : Word) (h : t.toNat % 4 = 0) : s.jumpTo t = some (s.setPC t) := by
-  simp [State.jumpTo, h]
+theorem goto_ok (s : State) (t : Word) (h : t.toNat % 4 = 0) : s.jumpAligned t = some (s.setPC t) := by
+  simp [State.jumpAligned, h]
 
 theorem run_succ (n : Nat) (s : State) : run (n + 1) s = (step s).bind (run n) := rfl
 
@@ -202,19 +202,19 @@ theorem exec_op (s : State) op rd rs1 rs2 :
     exec s (.op op rd rs1 rs2) = some (s.setReg rd (alu op (s.getReg rs1) (s.getReg rs2))).nextInstr := rfl
 theorem exec_jal (s : State) rd off (h : (s.pc + off).toNat % 4 = 0) :
     exec s (.jal rd off) = some ((s.setPC (s.pc + off)).setReg rd (s.pc + 4)) := by
-  simp only [exec, State.jumpTo, h, ite_true, Option.map_some]
+  simp only [exec, State.jumpAligned, h, ite_true, Option.map_some]
 theorem exec_jalr (s : State) rd rs1 off (h : ((s.getReg rs1 + off) &&& ~~~1).toNat % 4 = 0) :
     exec s (.jalr rd rs1 off) = some ((s.setPC ((s.getReg rs1 + off) &&& ~~~1)).setReg rd (s.pc + 4)) := by
-  simp only [exec, State.jumpTo, h, ite_true, Option.map_some]
+  simp only [exec, State.jumpAligned, h, ite_true, Option.map_some]
 /-- `jalr` with offset 0 (e.g. `ret`) to an aligned register value. -/
 theorem exec_jalr0 (s : State) rd rs1 (h : (s.getReg rs1).toNat % 4 = 0) :
     exec s (.jalr rd rs1 0#32) = some ((s.setPC (s.getReg rs1)).setReg rd (s.pc + 4)) := by
   have e : s.getReg rs1 &&& ~~~1 = s.getReg rs1 := by have := and_not_one_of_aligned _ h; simpa using this
-  simp only [exec, State.jumpTo, BitVec.add_zero, e, h, ite_true, Option.map_some]
+  simp only [exec, State.jumpAligned, BitVec.add_zero, e, h, ite_true, Option.map_some]
 
 theorem exec_branch_t (s : State) c rs1 rs2 off (h : c.holds (s.getReg rs1) (s.getReg rs2) = true)
     (ha : (s.pc + off).toNat % 4 = 0) : exec s (.branch c rs1 rs2 off) = some (s.setPC (s.pc + off)) := by
-  simp only [exec, h, ite_true, State.jumpTo, ha]
+  simp only [exec, h, ite_true, State.jumpAligned, ha]
 theorem exec_branch_f (s : State) c rs1 rs2 off (h : c.holds (s.getReg rs1) (s.getReg rs2) = false) :
     exec s (.branch c rs1 rs2 off) = some s.nextInstr := by
   simp only [exec, h, Bool.false_eq_true, ite_false]

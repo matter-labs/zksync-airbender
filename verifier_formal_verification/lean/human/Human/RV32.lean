@@ -36,7 +36,7 @@ def setReg (s : State) (rd : Reg) (value : Word) : State :=
 def nextInstr (s : State) : State := { s with pc := s.pc + 4 }
 def setPC (s : State) (target : Word) : State := { s with pc := target }
 /-- Jump to `target`; no next state unless it is 4-byte aligned (no compressed instructions). -/
-def jumpTo (s : State) (target : Word) : Option State :=
+def jumpAligned (s : State) (target : Word) : Option State :=
   if target.toNat % 4 = 0 then some (s.setPC target) else none
 end State
 
@@ -99,10 +99,10 @@ inductive Instr
 def exec (s : State) : Instr → Option State
   | .lui rd imm            => some (s.setReg rd imm).nextInstr
   | .auipc rd imm          => some (s.setReg rd (s.pc + imm)).nextInstr
-  | .jal rd offset         => (s.jumpTo (s.pc + offset)).map (·.setReg rd (s.pc + 4))
-  | .jalr rd rs1 offset    => (s.jumpTo ((s.getReg rs1 + offset) &&& ~~~1)).map (·.setReg rd (s.pc + 4))
+  | .jal rd offset         => (s.jumpAligned (s.pc + offset)).map (·.setReg rd (s.pc + 4))
+  | .jalr rd rs1 offset    => (s.jumpAligned ((s.getReg rs1 + offset) &&& ~~~1)).map (·.setReg rd (s.pc + 4))
   | .branch cond rs1 rs2 offset =>
-      if cond.holds (s.getReg rs1) (s.getReg rs2) then s.jumpTo (s.pc + offset) else some s.nextInstr
+      if cond.holds (s.getReg rs1) (s.getReg rs2) then s.jumpAligned (s.pc + offset) else some s.nextInstr
   | .load numBytes signed rd rs1 offset =>
       let addr := s.getReg rs1 + offset
       let bytes := read s.mem addr numBytes
