@@ -1,6 +1,6 @@
 //! Regenerates the on-chain verifier Solidity into `generated_contracts/` from the circuit
 //! artifact. The Foundry project scaffolding (foundry.toml + the two-tx test) is committed
-//! static; only the three verifier sources are (re)generated here.
+//! static; verifier sources and the wrong-final-PC control are (re)generated here.
 
 mod common;
 
@@ -26,8 +26,22 @@ const PRODUCTION_STUBS: [&str; 2] = [
 ];
 
 fn generate(version: &Version, registry_address: &str) -> verifier_evm::GeneratedContracts {
-    use prover::gkr::prover_config::pow_bits;
+    render(version, registry_address, None)
+}
 
+// Preserve the valid proof/transcript and change only the verifier's expected PC.
+fn generate_wrong_final_pc(
+    version: &Version,
+    registry_address: &str,
+) -> verifier_evm::GeneratedContracts {
+    render(version, registry_address, Some(version.final_pc() ^ 1))
+}
+
+fn render(
+    version: &Version,
+    registry_address: &str,
+    negative_test_exit_pc: Option<u32>,
+) -> verifier_evm::GeneratedContracts {
     version.require_bundle();
     let circuit = version.circuit();
     let config = version.prover_config();
@@ -54,16 +68,48 @@ fn generate(version: &Version, registry_address: &str) -> verifier_evm::Generate
         "{}: descriptor exit PC must match proof aux",
         version.name
     );
+    let (external_pow_bits, batched_proximity_pow_bits) =
+        derived_pow_bits(version, &circuit, &config);
+    let out = verifier_evm::generate_verifiers(
+        &circuit,
+        &config,
+        version.pack_log2,
+        external_pow_bits,
+        batched_proximity_pow_bits,
+        negative_test_exit_pc.unwrap_or(final_pc),
+        registry_address,
+    );
+    // Check the emitted verifier's gates, not just the arguments passed to it.
+    assert_eq!(
+        solidity_constant(&out.gkr_sol, "__TEMPLATE_EXTERNAL_POW_BITS"),
+        external_pow_bits
+    );
+    assert_eq!(
+        solidity_constant(&out.gkr_sol, "__TEMPLATE_WHIR_BATCH_POW_BITS"),
+        batched_proximity_pow_bits
+    );
+    out
+}
+
+// All PoW requirements depend on the layout/config, so validate pending versions
+// even before their proof/aux bundle is exported.
+fn derived_pow_bits(
+    version: &Version,
+    circuit: &common::Circuit,
+    config: &prover::gkr::prover_config::ProverConfig,
+) -> (u32, u32) {
+    use prover::gkr::prover_config::pow_bits;
+    let pack_log2 = version.pack_log2;
     let lookup_pow_bits = pow_bits::lookup_challenges_pow_bits::<Proth120, Proth120>(
         config.security_level.security_bits(),
-        pow_bits::lookup_identity_degree(&circuit),
+        pow_bits::lookup_identity_degree(circuit),
     );
-    let external_pow_bits = lookup_pow_bits.max(external_challenges_pow_bits);
+    let external_pow_bits = lookup_pow_bits.max(version.external_pow_floor);
     let batched_proximity_pow_bits = pow_bits::batched_proximity_check_pow_bits::<Proth120, Proth120>(
         config.security_level.security_bits(),
         config.trace_len_log2 + pack_log2,
         config.whir_schedule.base_lde_factor.trailing_zeros() as usize,
-        pow_bits::total_base_oracle_columns(&circuit),
+        pow_bits::total_base_oracle_columns(circuit),
     );
     for (gate, bits) in [
         ("external challenges", external_pow_bits),
@@ -90,25 +136,7 @@ fn generate(version: &Version, registry_address: &str) -> verifier_evm::Generate
             version.pow_cap
         );
     }
-    let out = verifier_evm::generate_verifiers(
-        &circuit,
-        &config,
-        version.pack_log2,
-        external_pow_bits,
-        batched_proximity_pow_bits,
-        final_pc,
-        registry_address,
-    );
-    // Check the emitted verifier's gates, not just the arguments passed to it.
-    assert_eq!(
-        solidity_constant(&out.gkr_sol, "__TEMPLATE_EXTERNAL_POW_BITS"),
-        external_pow_bits
-    );
-    assert_eq!(
-        solidity_constant(&out.gkr_sol, "__TEMPLATE_WHIR_BATCH_POW_BITS"),
-        batched_proximity_pow_bits
-    );
-    out
+    (external_pow_bits, batched_proximity_pow_bits)
 }
 
 fn solidity_constant(source: &str, name: &str) -> u32 {
@@ -148,6 +176,13 @@ fn generate_contracts_into_dir() {
         for (rel, content) in TEST_PAIR.iter().zip(sources(&out)) {
             write(&version, rel, content);
         }
+        if let Some(rel) = version.wrong_final_pc_contract {
+            write(
+                &version,
+                rel,
+                &generate_wrong_final_pc(&version, &registry_address).gkr_sol,
+            );
+        }
     }
 }
 
@@ -167,6 +202,17 @@ fn checked_in_contracts_are_current() {
     for version in common::available_versions("contract drift") {
         let test_pair = generate(version, DEFAULT_REGISTRY_ADDRESS);
         let stubs = generate(version, STUB_REGISTRY_ADDRESS);
+        if let Some(rel) = version.wrong_final_pc_contract {
+            let path = version.contract_path(rel);
+            let stored =
+                std::fs::read_to_string(&path).expect("missing wrong-final-PC control verifier");
+            assert_eq!(
+                stored,
+                generate_wrong_final_pc(version, DEFAULT_REGISTRY_ADDRESS).gkr_sol,
+                "{} is stale",
+                path.display()
+            );
+        }
         for (rel, content) in TEST_PAIR
             .iter()
             .zip(sources(&test_pair))
@@ -192,13 +238,15 @@ fn generator_accepts_trace21_and_rejects_mismatched_config() {
     let version = &common::L1_WRAP_2P21;
     let circuit = version.circuit();
     let mut config = version.prover_config();
+    let (external_pow_bits, batching_pow_bits) = derived_pow_bits(version, &circuit, &config);
+    assert_eq!((external_pow_bits, batching_pow_bits), (20, 16));
     let generate = |config: &prover::gkr::prover_config::ProverConfig| {
         verifier_evm::generate_verifiers(
             &circuit,
             config,
             version.pack_log2,
-            20,
-            16,
+            external_pow_bits,
+            batching_pow_bits,
             version.final_pc(),
             DEFAULT_REGISTRY_ADDRESS,
         )
@@ -288,4 +336,31 @@ fn generator_rejects_inconsistent_base_oracle_geometry() {
             "inconsistent base-oracle {field} accepted"
         );
     }
+}
+
+#[test]
+fn wrong_final_pc_control_changes_only_the_expected_constant() {
+    let version = &common::L1_WRAP_2P22;
+    let valid = generate(version, DEFAULT_REGISTRY_ADDRESS);
+    let wrong = generate_wrong_final_pc(version, DEFAULT_REGISTRY_ADDRESS);
+    assert_eq!(
+        solidity_constant(&wrong.gkr_sol, "__TEMPLATE_EXPECTED_FINAL_PC"),
+        version.final_pc() ^ 1
+    );
+    let differences: Vec<_> = valid
+        .gkr_sol
+        .lines()
+        .zip(wrong.gkr_sol.lines())
+        .filter(|(a, b)| a != b)
+        .collect();
+    assert_eq!(valid.gkr_sol.lines().count(), wrong.gkr_sol.lines().count());
+    assert_eq!(differences.len(), 1);
+    assert!(differences[0]
+        .0
+        .contains("constant __TEMPLATE_EXPECTED_FINAL_PC"));
+    assert!(differences[0]
+        .1
+        .contains("constant __TEMPLATE_EXPECTED_FINAL_PC"));
+    assert_eq!(valid.whir_sol, wrong.whir_sol);
+    assert_eq!(valid.registry_sol, wrong.registry_sol);
 }

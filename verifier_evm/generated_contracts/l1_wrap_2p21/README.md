@@ -11,6 +11,8 @@ Until the proof is exported, normal Rust tests print explicit `SKIP` messages
 for its contract and calldata drift checks. Explicit 2p21 generation fails if
 either input is missing. Unselected generation visits available versions and
 prints a skip for the pending proof. A present proof with missing aux fails.
+If generated verifier sources or any versioned calldata output already exist,
+a missing proof fails instead of skipping its drift checks.
 
 The GKR and WHIR sources, including their zero-registry production stubs, are
 generated from the real bundle. They are intentionally absent until then;
@@ -41,9 +43,13 @@ missing files fail setup. Every rejection test first verifies the unmodified
 2p21 pair. The serializer also writes `debug_data/l1_wrap_2p21/calldata_fields.json`
 with semantic field offsets, encodings and original bytes. Mutation tests
 validate those fields before flipping a byte in the opening, external PoW
-nonce or final PC. Changing the final PC also changes the transcript seed, so
-that test can reject before reaching the explicit PC comparison. The foreign
-proof control submits the unchanged 2p22 calldata to each 2p21 verifier.
+nonce or final PC. The byte-flipped PC is a transcript-binding control. A
+separate `test_rejects_wrong_final_pc` installs the generated
+`GkrVerifierWrongFinalPc.sol` variant, whose only difference is its expected-PC
+constant (`final_pc ^ 1`), and submits the unchanged valid calldata. This
+exercises the explicit PC comparison after valid transcript, PoW and sumcheck
+processing. The foreign-proof control submits the unchanged 2p22 calldata to
+each 2p21 verifier.
 
 The Rust drift test checks the metadata as well as the serialized calldata.
 Remove the descriptor's `allow_missing_proof` allowance when the proof bundle

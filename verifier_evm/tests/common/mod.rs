@@ -36,6 +36,7 @@ pub struct Version {
     pub gkr_pow_cap: u32,
     pub allow_missing_proof: bool,
     pub mutation_fields_file: Option<&'static str>,
+    pub wrong_final_pc_contract: Option<&'static str>,
 }
 
 pub const L1_WRAP_2P22: Version = Version {
@@ -55,6 +56,7 @@ pub const L1_WRAP_2P22: Version = Version {
     gkr_pow_cap: 25,
     allow_missing_proof: false,
     mutation_fields_file: None,
+    wrong_final_pc_contract: None,
 };
 
 pub const L1_WRAP_2P21: Version = Version {
@@ -73,6 +75,7 @@ pub const L1_WRAP_2P21: Version = Version {
     // Task 5 will export the real proof. Remove this allowance once it is committed.
     allow_missing_proof: true,
     mutation_fields_file: Some("calldata_fields.json"),
+    wrong_final_pc_contract: Some("gkr/src/GkrVerifierWrongFinalPc.sol"),
 };
 pub const VERSIONS: &[Version] = &[L1_WRAP_2P22, L1_WRAP_2P21];
 
@@ -126,6 +129,11 @@ impl Version {
                 .try_exists()
                 .expect("inspect proof path")
         {
+            assert!(
+                self.existing_generated_output().is_none(),
+                "{}: proof is missing but generated outputs already exist; restore the proof instead of skipping drift checks",
+                self.name
+            );
             // Direct stderr remains visible even when libtest captures successful tests.
             use std::io::Write;
             writeln!(std::io::stderr().lock(), "SKIP {check} [{}]: proof absent at {}; no artifact validation performed for this version", self.name, self.proof).unwrap();
@@ -133,6 +141,33 @@ impl Version {
         }
         self.require_bundle();
         true
+    }
+
+    fn existing_generated_output(&self) -> Option<PathBuf> {
+        // The scaffold's registry/configs exist before the proof; generated
+        // verifier sources and calldata must never outlive an absent proof.
+        let contracts = [
+            "gkr/src/GkrVerifier.sol",
+            "gkr/src/GkrVerifierProduction.sol",
+            "whir/src/WhirVerifier.sol",
+            "whir/src/WhirVerifierProduction.sol",
+        ];
+        for rel in contracts.into_iter().chain(self.wrong_final_pc_contract) {
+            let path = self.contract_path(rel);
+            if path.try_exists().expect("inspect generated contract path") {
+                return Some(path);
+            }
+        }
+        match std::fs::read_dir(self.data_root) {
+            Ok(mut entries) => entries
+                .next()
+                .map(|entry| entry.expect("inspect generated data entry").path()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => panic!(
+                "inspect generated data directory {}: {error}",
+                self.data_root
+            ),
+        }
     }
 
     /// gkr.sol consumes monomial rounds, transcript-identical to the windowed

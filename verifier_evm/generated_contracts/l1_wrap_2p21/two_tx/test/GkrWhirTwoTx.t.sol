@@ -109,6 +109,15 @@ contract GkrWhirTwoTxTest {
 
     function test_rejects_wrong_final_pc() public {
         _verifyPair();
+        // Only the expected-PC constant differs. The unchanged proof still passes
+        // transcript, PoW and sumcheck checks before the explicit PC comparison.
+        vm.etch(GKR, _deployed("../gkr/out/GkrVerifierWrongFinalPc.sol/GKRVerifier.json"));
+        (bool ok,) = GKR.call(gkrCalldata);
+        require(!ok, "wrong expected final PC accepted");
+    }
+
+    function test_rejects_flipped_final_pc_transcript() public {
+        _verifyPair();
         bytes memory bad = gkrCalldata;
         _flipField(bad, ".gkr.final_pc", 4, "u32_le");
         // This also changes the transcript seed; rejection may precede the explicit PC check.

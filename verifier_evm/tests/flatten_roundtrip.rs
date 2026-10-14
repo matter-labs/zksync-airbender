@@ -68,48 +68,51 @@ fn flatten_and_seed_match_reference() {
 #[test]
 fn serialized_mutation_fields_match_the_proof_and_aux() {
     use field::Field;
-    let version = common::L1_WRAP_2P22;
-    let (circuit, proof, aux) = version.load();
-    let cfg = version.prover_config();
-    let (gkr, fields) = verifier_evm::flatten::gkr_calldata_with_fields(&circuit, &proof, &aux);
-    let (whir, whir_fields) = verifier_evm::flatten::whir_calldata_with_fields(
-        &circuit,
-        &proof,
-        &aux,
-        &cfg.whir_schedule.whir_steps_schedule,
-        &cfg.whir_schedule.whir_queries_schedule,
-    );
-    let prover::gkr::prover::CommitmentMode::MergedAndPackedMemoryAndWitness { final_pc, .. } = aux
-    else {
-        unreachable!()
-    };
-    assert_eq!(fields.final_pc.value, final_pc.to_le_bytes());
-    assert_eq!(
-        fields.external_pow_nonce.value,
-        proof.lookup_challenges_pow_nonce.to_be_bytes()
-    );
-    assert_eq!(
-        fields.external_pow_nonce.offset,
-        verifier_evm::commit_seed_preimage(&circuit, &proof, &aux).len()
-    );
-    assert_eq!(
-        whir_fields.batched_opening.value,
-        proof
-            .whir_proof
-            .batched_opening
-            .unwrap()
-            .to_u128()
-            .to_be_bytes()
-    );
-    for (bytes, field) in [
-        (&gkr, fields.final_pc),
-        (&gkr, fields.external_pow_nonce),
-        (&whir, whir_fields.batched_opening),
-    ] {
-        assert_eq!(
-            &bytes[field.offset..field.offset + field.value.len()],
-            field.value
+    for version in common::available_versions("calldata mutation fields") {
+        let (circuit, proof, aux) = version.load();
+        let cfg = version.prover_config();
+        let (gkr, fields) = verifier_evm::flatten::gkr_calldata_with_fields(&circuit, &proof, &aux);
+        let (whir, whir_fields) = verifier_evm::flatten::whir_calldata_with_fields(
+            &circuit,
+            &proof,
+            &aux,
+            &cfg.whir_schedule.whir_steps_schedule,
+            &cfg.whir_schedule.whir_queries_schedule,
         );
+        let prover::gkr::prover::CommitmentMode::MergedAndPackedMemoryAndWitness {
+            final_pc, ..
+        } = aux
+        else {
+            unreachable!()
+        };
+        assert_eq!(fields.final_pc.value, final_pc.to_le_bytes());
+        assert_eq!(
+            fields.external_pow_nonce.value,
+            proof.lookup_challenges_pow_nonce.to_be_bytes()
+        );
+        assert_eq!(
+            fields.external_pow_nonce.offset,
+            verifier_evm::commit_seed_preimage(&circuit, &proof, &aux).len()
+        );
+        assert_eq!(
+            whir_fields.batched_opening.value,
+            proof
+                .whir_proof
+                .batched_opening
+                .unwrap()
+                .to_u128()
+                .to_be_bytes()
+        );
+        for (bytes, field) in [
+            (&gkr, fields.final_pc),
+            (&gkr, fields.external_pow_nonce),
+            (&whir, whir_fields.batched_opening),
+        ] {
+            assert_eq!(
+                &bytes[field.offset..field.offset + field.value.len()],
+                field.value
+            );
+        }
     }
 }
 
