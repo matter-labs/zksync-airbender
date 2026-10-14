@@ -18,6 +18,7 @@ use crate::structured_expr::Expr;
 use crate::tables::TableDriver;
 use crate::types::{Boolean, Register, LIMB_WIDTH};
 use crate::witness_placer::*;
+use common_constants::rom::{RomGeometry, L1_WRAP_ROM, REGULAR_ROM};
 use field::PrimeField;
 
 /// Unified reduced-machine flag layout:
@@ -225,7 +226,7 @@ pub fn unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr<
         F,
         ::field::baby_bear::base::BabyBearField,
         CS,
-    >(cs);
+    >(cs, REGULAR_ROM);
 }
 
 /// Top-level unified circuit body. Allocates a single shared set of memory accesses
@@ -238,6 +239,7 @@ pub fn unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr_core<
     CS: Circuit<F>,
 >(
     cs: &mut CS,
+    rom: RomGeometry,
 ) {
     // need_funct3 = true because Family 2 (jump/branch/slt) uses funct3 to distinguish
     // branch sub-variants and Family 3 (shift_binop) uses it to select binop subtype.
@@ -248,13 +250,14 @@ pub fn unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr_core<
     let bitmask: [_; UNIFIED_REDUCED_MACHINE_NUM_FLAGS] = bitmask.try_into().unwrap();
     let bitmask = bitmask.map(Boolean::Is);
 
-    apply_unified_reduced_machine_inner::<F, MopF, _>(cs, input, bitmask);
+    apply_unified_reduced_machine_inner::<F, MopF, _>(cs, input, bitmask, rom);
 }
 
 fn apply_unified_reduced_machine_inner<F: PrimeField, MopF: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,
     bitmask: [Boolean; UNIFIED_REDUCED_MACHINE_NUM_FLAGS],
+    rom: RomGeometry,
 ) {
     let unified_mask = UnifiedReducedMachineFamilyCircuitMask::from_full_mask(bitmask);
     let is_lw = unified_mask.is_lw();
@@ -411,6 +414,7 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, MopF: PrimeField, CS: Circ
         core::array::from_fn::<_, F4_SCRATCH_BOOLS, _>(|i| scratch_bools[i]),
         core::array::from_fn::<_, F4_SCRATCH_VARS, _>(|i| scratch_vars[i]),
         shared_intermediate_reg.0[0].get_variable(),
+        rom,
     );
 
     flush_unified_lookup_pool(cs, &[f2_lookups, f3_lookups, f4_lookups]);
@@ -631,14 +635,23 @@ fn apply_unified_family_dispatch_one_hot<F: PrimeField, CS: Circuit<F>>(
 /// at cs-side with dummy bytecode so `offset_for_decoder_table` accounts for
 /// its size; the prover supplies the real binary-derived content at prove time
 /// via the same `create_mem_word_only_special_tables` call.
-fn unified_register_all_tables<F: ::field::PrimeField, CS: Circuit<F>>(cs: &mut CS) {
+fn unified_register_all_tables<F: ::field::PrimeField, CS: Circuit<F>>(
+    cs: &mut CS,
+    rom: RomGeometry,
+) {
+    use crate::gkr_circuits::mem_word_only::create_mem_word_only_special_tables;
+
     unified_reduced_machine_table_addition_fn(cs);
-    for (table_type, table) in
-        crate::gkr_circuits::mem_word_only::create_mem_word_only_special_tables::<
-            F,
-            { common_constants::ROM_SECOND_WORD_BITS },
-        >(&[])
-    {
+    let tables = match rom {
+        REGULAR_ROM => {
+            create_mem_word_only_special_tables::<F, { REGULAR_ROM.second_word_bits() }>(&[])
+        }
+        L1_WRAP_ROM => {
+            create_mem_word_only_special_tables::<F, { L1_WRAP_ROM.second_word_bits() }>(&[])
+        }
+        other => panic!("unsupported ROM geometry {other:?}"),
+    };
+    for (table_type, table) in tables {
         cs.add_table_with_content(table_type, table);
     }
 }
@@ -659,6 +672,7 @@ pub fn build_unified_artifact<F: ::field::PrimeField>(
         use_caches,
         trace_len_log2,
         num_init_and_teardown_pairs,
+        REGULAR_ROM,
     )
 }
 
@@ -666,19 +680,22 @@ pub fn build_unified_artifact_core<F: ::field::PrimeField, MopF: ::field::PrimeF
     use_caches: bool,
     trace_len_log2: usize,
     num_init_and_teardown_pairs: usize,
+    rom: RomGeometry,
 ) -> crate::gkr_compiler::GKRCircuitArtifact<F> {
     use crate::cs::circuit_impl::BasicAssembly;
     use crate::gkr_compiler::GKRCompiler;
 
     let mut cs = BasicAssembly::<F>::new();
-    unified_register_all_tables(&mut cs);
-    unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr_core::<F, MopF, _>(&mut cs);
+    unified_register_all_tables(&mut cs, rom);
+    unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr_core::<F, MopF, _>(
+        &mut cs, rom,
+    );
     let (cs_output, _) = cs.finalize();
 
     let compiler = GKRCompiler::<F>::default();
     compiler.compile_family_circuit_with_inline_inits_and_teardowns(
         cs_output,
-        common_constants::ROM_WORD_SIZE,
+        rom.word_size(),
         /* num_inits_and_teardowns_pairs */ num_init_and_teardown_pairs,
         /* trace_len_log2 */ trace_len_log2,
         use_caches,
@@ -694,6 +711,8 @@ mod test {
     /// The L1 feeder layers' unified circuit (`unified_reduced_machine_2_22`).
     const L1_FEEDER_UNIFIED_CIRCUIT_TRACE_LEN_LOG2: usize = 22;
     const LARGE_FIELD_UNIFIED_CIRCUIT_TRACE_LEN_LOG2: usize = 22;
+    /// The 2^21 L1 wrap circuit over the 512 KiB wrap ROM.
+    const L1_WRAP_2P21_TRACE_LEN_LOG2: usize = 21;
 
     use super::*;
     use crate::definitions::OutputType;
@@ -706,7 +725,7 @@ mod test {
         use ::field::baby_bear::base::BabyBearField;
 
         let mut cs = BasicAssembly::<BabyBearField>::new();
-        unified_register_all_tables(&mut cs);
+        unified_register_all_tables(&mut cs, REGULAR_ROM);
         unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr(&mut cs);
         let (output, _) = cs.finalize();
 
@@ -871,7 +890,7 @@ mod test {
         use ::field::baby_bear::base::BabyBearField;
 
         let ssa_forms = dump_ssa_witness_eval_form::<BabyBearField>(
-            &|cs| unified_register_all_tables(cs),
+            &|cs| unified_register_all_tables(cs, REGULAR_ROM),
             &|cs| unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr(cs),
         );
         serialize_to_file(
@@ -899,13 +918,54 @@ mod test {
         use crate::gkr_compiler::dump_ssa_witness_eval_form;
         use ::field::proth120::Proth120;
 
-        let ssa_forms =
-            dump_ssa_witness_eval_form::<Proth120>(&|cs| unified_register_all_tables(cs), &|cs| {
-                unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr(cs)
-            });
+        let ssa_forms = dump_ssa_witness_eval_form::<Proth120>(
+            &|cs| unified_register_all_tables(cs, REGULAR_ROM),
+            &|cs| unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr(cs),
+        );
         serialize_to_file(
             &ssa_forms,
             "compiled_circuits/unified_reduced_machine_ssa_gkr_proth120.json",
+        );
+    }
+
+    #[test]
+    fn compile_unified_reduced_machine_into_gkr_large_field_2p21() {
+        skip_if_ci!();
+        use ::field::baby_bear::base::BabyBearField;
+        use ::field::proth120::Proth120;
+
+        let artifact = build_unified_artifact_core::<Proth120, BabyBearField>(
+            true,
+            L1_WRAP_2P21_TRACE_LEN_LOG2,
+            1,
+            L1_WRAP_ROM,
+        );
+        serialize_to_file(
+            &artifact,
+            "compiled_circuits/unified_reduced_machine_layout_gkr_proth120_2p21.json",
+        );
+    }
+
+    #[test]
+    fn compile_unified_reduced_machine_gkr_witness_graph_large_field_2p21() {
+        skip_if_ci!();
+        use crate::gkr_compiler::dump_ssa_witness_eval_form;
+        use ::field::baby_bear::base::BabyBearField;
+        use ::field::proth120::Proth120;
+
+        let ssa_forms = dump_ssa_witness_eval_form::<Proth120>(
+            &|cs| unified_register_all_tables(cs, L1_WRAP_ROM),
+            &|cs| {
+                unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr_core::<
+                    Proth120,
+                    BabyBearField,
+                    _,
+                >(cs, L1_WRAP_ROM)
+            },
+        );
+        serialize_to_file(
+            &ssa_forms,
+            "compiled_circuits/unified_reduced_machine_ssa_gkr_proth120_2p21.json",
         );
     }
 }

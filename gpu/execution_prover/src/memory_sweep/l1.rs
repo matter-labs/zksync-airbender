@@ -438,6 +438,7 @@ fn clone_setup(setup: &L1WrapSetup) -> L1WrapSetup {
             hypercube_evals: setup.setup.hypercube_evals.clone(),
         },
         trace_len: setup.trace_len,
+        rom: setup.rom,
     }
 }
 
