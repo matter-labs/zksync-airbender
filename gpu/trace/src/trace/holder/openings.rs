@@ -160,6 +160,7 @@ impl TraceHolder<BF> {
                 log_n,
                 self.log_rows_per_leaf,
                 layers,
+                PARTIAL_TREE_REDUCTION_LAYERS,
                 queries,
                 paths,
                 stream,

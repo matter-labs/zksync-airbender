@@ -141,6 +141,15 @@ template <typename ReadE4> DEVICE_FORCEINLINE void absorb_e4_stream(u32 state[ST
   }
 }
 
+DEVICE_FORCEINLINE digest hash_node(const digest &left, const digest &right) {
+  digest children[2] = {left, right};
+  digest state;
+  initialize(state.words);
+  u32 t = 0;
+  compress<true>(state.words, t, reinterpret_cast<const u32 *>(children), BLOCK_SIZE);
+  return state;
+}
+
 DEVICE_FORCEINLINE void reduce_merkle_subtrees_block(digest *values, unsigned active) {
 #pragma unroll
   for (unsigned layer = 0; layer < LOG_WARP_SIZE; layer++) {
@@ -199,6 +208,48 @@ DEVICE_FORCEINLINE void collect_merkle_path_warp(u32 state[STATE_SIZE], u32 *mer
   for (unsigned layer = LOG_WARP_SIZE; layer < layers_count; layer++) {
     const unsigned other_index = digest_index ^ 1;
     *merkle_paths_dst = *(tree_layer + other_index * STATE_SIZE);
+    digest_index >>= 1;
+    tree_layer += (1u << log_digests_count) * STATE_SIZE;
+    log_digests_count--;
+    merkle_paths_dst += layer_stride_words;
+  }
+}
+
+template <typename HashLeaf>
+DEVICE_FORCEINLINE void collect_merkle_path_block(digest *frontier, u32 *merkle_paths, const unsigned layer_stride_words, const unsigned query_index,
+                                                  const unsigned log_total_leaves_count, const unsigned reduction_layers, const unsigned layers_count,
+                                                  const u32 *tree_bottom, const bool physical_order, HashLeaf hash_leaf) {
+  const unsigned subtree_size = 1u << reduction_layers;
+  for (unsigned slot = threadIdx.x; slot < subtree_size; slot += blockDim.x) {
+    const digest state = hash_leaf(slot);
+    frontier[physical_order ? bitreverse_low_bits(slot, reduction_layers) : slot] = state;
+  }
+  __syncthreads();
+  const unsigned local_index = query_index & (subtree_size - 1);
+  for (unsigned layer = 0; layer < reduction_layers; layer++) {
+    if (threadIdx.x == 0)
+      ::airbender::primitives::memory::store_cs(reinterpret_cast<digest *>(merkle_paths + layer * layer_stride_words), frontier[(local_index >> layer) ^ 1]);
+    const unsigned parents_count = subtree_size >> (layer + 1);
+    for (unsigned first = 0; first < parents_count; first += blockDim.x) {
+      const unsigned parent = first + threadIdx.x;
+      const bool enabled = parent < parents_count;
+      digest node;
+      if (enabled)
+        node = hash_node(frontier[2 * parent], frontier[2 * parent + 1]);
+      __syncthreads();
+      if (enabled)
+        frontier[parent] = node;
+      __syncthreads();
+    }
+  }
+  if (threadIdx.x >= STATE_SIZE)
+    return;
+  unsigned digest_index = query_index >> reduction_layers;
+  unsigned log_digests_count = log_total_leaves_count - reduction_layers;
+  const u32 *tree_layer = tree_bottom + threadIdx.x;
+  u32 *merkle_paths_dst = merkle_paths + reduction_layers * layer_stride_words + threadIdx.x;
+  for (unsigned layer = reduction_layers; layer < layers_count; layer++) {
+    *merkle_paths_dst = *(tree_layer + (digest_index ^ 1) * STATE_SIZE);
     digest_index >>= 1;
     tree_layer += (1u << log_digests_count) * STATE_SIZE;
     log_digests_count--;

@@ -1176,6 +1176,7 @@ impl TraceHolder<BF> {
                     tree_bottom,
                     &mut d_merkle_paths,
                     layers_count,
+                    PARTIAL_TREE_REDUCTION_LAYERS,
                     stream,
                 )?;
             }
@@ -1434,6 +1435,8 @@ pub fn build_partial_trees_from_physical(
         log_rows_per_leaf,
         layers_count,
         cosets_in_tile,
+        PARTIAL_TREE_REDUCTION_LAYERS,
+        None,
         stream,
     )
 }
