@@ -21,7 +21,7 @@ pub const GKR_ADDRS: usize = 134usize;
 pub const GKR_EVALS: usize = 160usize;
 pub const INIT_AND_TEARDOWN_SETS: usize = 2usize;
 pub const EXTERNAL_CHALLENGES_FLATTENED_SIZE: usize = EXT_DEGREE * (6usize + 1);
-pub const CAP_SIZE: usize = 32usize;
+pub const CAP_SIZE: usize = 16usize;
 pub const NUM_MEMORY_COMMITS: usize = 1usize;
 pub const NUM_WITNESS_COMMITS: usize = 0usize;
 pub const NUM_SETUP_COMMITS: usize = 1usize;
@@ -71,18 +71,18 @@ pub const DRAW_BUF_CAPACITY: usize = {
     }
 };
 pub const WHIR_FOLD_STEPS: [usize; 5usize] = [1usize, 5usize, 5usize, 5usize, 3usize];
-pub const WHIR_QUERIES: [usize; 5usize] = [18usize, 15usize, 9usize, 6usize, 5usize];
-pub const WHIR_POW_BITS: [u32; 5usize] = [25u32, 25u32, 25u32, 25u32, 25u32];
+pub const WHIR_QUERIES: [usize; 5usize] = [23usize, 18usize, 9usize, 6usize, 5usize];
+pub const WHIR_POW_BITS: [u32; 5usize] = [24u32, 25u32, 25u32, 25u32, 17u32];
 pub const LOOKUP_CHALLENGES_POW_BITS: u32 = 8u32;
-pub const BATCHED_PROXIMITY_POW_BITS: u32 = 11u32;
-pub const MAX_POW_ENTRIES: usize = 52usize;
+pub const BATCHED_PROXIMITY_POW_BITS: u32 = 10u32;
+pub const MAX_POW_ENTRIES: usize = 60usize;
 pub const FINAL_MONOMIALS_LEN: usize = 8usize;
 pub const NUM_ORACLES: usize = 2usize;
 pub const ORACLE_NUM_COLS: [usize; 2usize] = [104usize, 10usize];
 pub const ORACLE_DEPTHS: [usize; 2usize] = [21usize, 21usize];
 pub const TOTAL_ORACLE_COLS: usize = 114usize;
 pub const WHIR_ORACLE_DEPTHS: [usize; 4usize] = [17usize, 17usize, 17usize, 19usize];
-pub const WHIR_CAP_WORDS: usize = 256usize;
+pub const WHIR_CAP_WORDS: usize = 128usize;
 use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::field::baby_bear::ext4::BabyBearExt4;
 pub type ConcreteInitialTranscript = ::verifier_common::InitialGKRTranscript<

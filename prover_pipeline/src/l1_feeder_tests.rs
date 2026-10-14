@@ -552,7 +552,7 @@ fn malformed_setup_caps_are_rejected_at_artifact_admission() {
     };
     for (target, feeder_layers, good, bad) in [
         (ProofTarget::RecursionUnified, 0, 16usize, 32usize),
-        (ProofTarget::L1Feeder, 1, 32, 16),
+        (ProofTarget::L1Feeder, 1, 16, 32),
     ] {
         let mut good_artifact = feeder_artifact(target, 4, feeder_layers);
         good_artifact.setups.insert(128, params(good));
@@ -966,7 +966,7 @@ fn feeder_loop_resumes_mid_chain_and_skips_proving_at_one_instance() {
     assert!(skipped.timings.l1_feeder_ms.is_empty());
 }
 
-/// The private feeder-checkpoint admission: feeder layer count, cap-32
+/// The private feeder-checkpoint admission: feeder layer count, the feeder cap,
 /// setups, the feeder proof shape and the trusted history.
 #[test]
 fn feeder_checkpoint_admission_checks_shape_caps_and_trusted_history() {
@@ -999,7 +999,7 @@ fn feeder_checkpoint_admission_checks_shape_caps_and_trusted_history() {
         stage: ProofTarget::L1Feeder,
         l1: None,
         proof: fake_feeder_proof(2, 2),
-        setups: caps(32),
+        setups: caps(16),
         chain_end_params: vec![[1; 8], [2; 8], [2; 8], [10; 8], [20; 8]],
         input_is_base: false,
         timings: ProofTimingsMs::default(),
@@ -1014,7 +1014,7 @@ fn feeder_checkpoint_admission_checks_shape_caps_and_trusted_history() {
     wrong_history.chain_end_params[3][0] ^= 1;
     assert!(admit(&wrong_history).unwrap_err().contains("trusted chain"));
     let mut wrong_caps = checkpoint();
-    wrong_caps.setups = caps(16);
+    wrong_caps.setups = caps(32);
     assert!(admit(&wrong_caps).unwrap_err().contains("leafs"));
     let mut no_layers = checkpoint();
     no_layers.feeder_layers = 0;

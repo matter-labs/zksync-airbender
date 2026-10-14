@@ -442,7 +442,7 @@ pub fn verify_unified_circuit_recursion_layer<
 
 /// The L1 feeder statement: a recursion layer over the 2^22 feeder circuit
 /// (`prover::gkr::prover_config::example_configs::l1_feeder_config_for_2_22`,
-/// cap 32, merged memory+witness commitment) that carries NO delegation
+/// cap 16, merged memory+witness commitment) that carries NO delegation
 /// proofs: every delegation count word must be 0. Every feeder layer and the
 /// L1 wrap execute this entry; the instance geometry (inits-and-teardowns
 /// window shift, cycles per instance) follows the generated verifier's
