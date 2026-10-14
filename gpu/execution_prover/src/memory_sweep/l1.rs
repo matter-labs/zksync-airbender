@@ -116,6 +116,24 @@ impl Stage {
         }
     }
 
+    /// The feeder's (LDE factor, cap size, per-round (queries, PoW)) from its config.
+    fn geometry(self) -> Option<(usize, usize, Vec<(usize, u32)>)> {
+        match self {
+            Stage::Wrap => None,
+            Stage::FeederCommit | Stage::FeederProof => {
+                let config = feeder_config();
+                let schedule = &config.whir_schedule;
+                let rounds = schedule
+                    .whir_queries_schedule
+                    .iter()
+                    .copied()
+                    .zip(schedule.whir_pow_schedule.iter().copied())
+                    .collect();
+                Some((config.lde_factor, config.cap_size, rounds))
+            }
+        }
+    }
+
     fn policy(self, arena_bytes: usize) -> String {
         match self {
             Stage::Wrap => format!(
@@ -238,7 +256,8 @@ impl CapacityCase {
             .parse()
             .unwrap_or_else(|_| panic!("M8_CAPACITY_ARENA_GIB is not an integer: {arena}"));
         assert!(
-            stage.family().candidates_gib().contains(&arena_gib),
+            stage.family().candidates_gib().contains(&arena_gib)
+                || (stage.family() == Family::Feeder && is_feeder_bracket_arena(arena_gib)),
             "M8_CAPACITY_ARENA_GIB {arena_gib} is not a {} candidate",
             stage.family().name()
         );
@@ -320,6 +339,12 @@ pub struct CapacityRow {
     pub output_fingerprint: Option<String>,
     #[serde(default)]
     pub partial_trees: Option<u32>,
+    #[serde(default)]
+    pub lde_factor: Option<usize>,
+    #[serde(default)]
+    pub tree_cap_size: Option<usize>,
+    #[serde(default)]
+    pub queries_and_pow: Option<Vec<(usize, u32)>>,
     pub vmhwm_kib: Option<u64>,
     pub fits: bool,
     pub failure_kind: Option<String>,
@@ -465,6 +490,7 @@ pub fn run_case<B: GoodAllocator>(
     let (follower_circuit, follower_profile) = case.follower.identity();
     let arena_bytes = case.arena_bytes();
     let policy = case.stage.policy(arena_bytes);
+    let geometry = case.stage.geometry();
     let mut row = CapacityRow {
         schema_version: SCHEMA_VERSION,
         case: case.key(),
@@ -487,6 +513,9 @@ pub fn run_case<B: GoodAllocator>(
         measured_peak_bytes: None,
         output_fingerprint: None,
         partial_trees: case.partial_trees,
+        lde_factor: geometry.as_ref().map(|geometry| geometry.0),
+        tree_cap_size: geometry.as_ref().map(|geometry| geometry.1),
+        queries_and_pow: geometry.map(|geometry| geometry.2),
         vmhwm_kib: None,
         fits: false,
         failure_kind: None,
@@ -935,7 +964,12 @@ pub fn validate_row(row: &CapacityRow, key: &str, revision: &str) -> Result<(), 
     {
         return invalid("identity differs from the case key");
     }
-    if row.trace_len_log2 != trace_len_log2 {
+    let geometry = stage.geometry();
+    if row.trace_len_log2 != trace_len_log2
+        || row.lde_factor != geometry.as_ref().map(|geometry| geometry.0)
+        || row.tree_cap_size != geometry.as_ref().map(|geometry| geometry.1)
+        || row.queries_and_pow != geometry.map(|geometry| geometry.2)
+    {
         return invalid("trace geometry differs from the production stage");
     }
     if row.policy != stage.policy(row.arena_bytes) {
@@ -994,6 +1028,71 @@ pub fn select_capacity(
     Err(format!("no sufficient {} candidate", family.name()))
 }
 
+/// Feeder arenas below the smallest candidate: floor-bracket diagnostics, never selected.
+pub fn is_feeder_bracket_arena(arena_gib: usize) -> bool {
+    (1..FEEDER_CANDIDATES_GIB[0]).contains(&arena_gib)
+}
+
+/// Every feeder case at `arena_gib` is present, valid and fits.
+pub fn qualify_feeder_capacity(
+    rows: &BTreeMap<String, CapacityRow>,
+    revision: &str,
+    arena_gib: usize,
+) -> Result<(), String> {
+    for key in candidate_case_keys(Family::Feeder, arena_gib) {
+        let row = rows
+            .get(&key)
+            .ok_or_else(|| format!("L1 capacity row {key} is missing"))?;
+        validate_row(row, &key, revision)?;
+        if !row.fits {
+            return Err(format!("L1 capacity row {key} does not fit"));
+        }
+    }
+    Ok(())
+}
+
+/// The feeder floor bracket over complete arenas: (lowest arena where every
+/// case fits, highest arena below it where a case runs out of memory).
+pub fn feeder_floor_bracket(
+    rows: &BTreeMap<String, CapacityRow>,
+    revision: &str,
+) -> Result<(usize, Option<usize>), String> {
+    let mut arenas = BTreeMap::<usize, bool>::new();
+    for (key, row) in rows {
+        validate_row(row, key, revision)?;
+        if row.stage.family() != Family::Feeder {
+            return Err(format!("L1 capacity row {key} belongs to another family"));
+        }
+        let fits = arenas.entry(row.arena_bytes >> 30).or_insert(true);
+        *fits &= row.fits;
+    }
+    for (&arena_gib, &fits) in &arenas {
+        let complete = candidate_case_keys(Family::Feeder, arena_gib)
+            .iter()
+            .all(|key| rows.contains_key(key));
+        if fits && !complete {
+            return Err(format!(
+                "feeder arena {arena_gib} GiB is incomplete without an allocation OOM"
+            ));
+        }
+    }
+    let lowest_passing = arenas
+        .iter()
+        .find(|(_, &fits)| fits)
+        .map(|(&arena_gib, _)| arena_gib)
+        .ok_or("no feeder arena fits every case")?;
+    if let Some((&arena_gib, _)) = arenas.range(lowest_passing..).find(|(_, &fits)| !fits) {
+        return Err(format!(
+            "feeder arena {arena_gib} GiB fails above the passing {lowest_passing} GiB"
+        ));
+    }
+    let highest_failing = arenas
+        .range(..lowest_passing)
+        .next_back()
+        .map(|(&arena_gib, _)| arena_gib);
+    Ok((lowest_passing, highest_failing))
+}
+
 pub fn read_row(path: &Path) -> CapacityRow {
     let bytes = std::fs::read(path)
         .unwrap_or_else(|error| panic!("L1 capacity row read {}: {error}", path.display()));
@@ -1046,6 +1145,9 @@ mod cpu_tests {
             measured_peak_bytes: Some(1),
             output_fingerprint: Some("f".into()),
             partial_trees: None,
+            lde_factor: stage.geometry().map(|geometry| geometry.0),
+            tree_cap_size: stage.geometry().map(|geometry| geometry.1),
+            queries_and_pow: stage.geometry().map(|geometry| geometry.2),
             vmhwm_kib: Some(1),
             fits: true,
             failure_kind: None,
@@ -1244,6 +1346,88 @@ mod cpu_tests {
     struct Selection {
         capacity_revision: String,
         families: BTreeMap<String, SelectionFamily>,
+    }
+
+    #[test]
+    fn cpu_w4_feeder_qualification_and_bracket() {
+        let complete = |arena_gib| -> BTreeMap<String, CapacityRow> {
+            candidate_case_keys(Family::Feeder, arena_gib)
+                .into_iter()
+                .map(|key| (key.clone(), passing_row(&key)))
+                .collect()
+        };
+        let mut rows = complete(30);
+        qualify_feeder_capacity(&rows, REVISION, 30).unwrap();
+        assert!(qualify_feeder_capacity(&rows, REVISION, 21)
+            .unwrap_err()
+            .contains("is missing"));
+        rows.extend(complete(21));
+        rows.extend(complete(17));
+        let failing_17 = candidate_case_keys(Family::Feeder, 17)[0].clone();
+        rows.insert(failing_17.clone(), oom(passing_row(&failing_17)));
+        let failing_16 = candidate_case_keys(Family::Feeder, 16)[3].clone();
+        rows.insert(failing_16.clone(), oom(passing_row(&failing_16)));
+        assert_eq!(feeder_floor_bracket(&rows, REVISION), Ok((21, Some(17))));
+
+        let key_30 = candidate_case_keys(Family::Feeder, 30)[5].clone();
+        let mut failing = rows.clone();
+        failing.insert(key_30.clone(), oom(passing_row(&key_30)));
+        assert!(qualify_feeder_capacity(&failing, REVISION, 30)
+            .unwrap_err()
+            .contains("does not fit"));
+        assert!(feeder_floor_bracket(&failing, REVISION)
+            .unwrap_err()
+            .contains("fails above"));
+        let mut incomplete = rows.clone();
+        incomplete.remove(&candidate_case_keys(Family::Feeder, 21)[2]);
+        assert!(feeder_floor_bracket(&incomplete, REVISION)
+            .unwrap_err()
+            .contains("incomplete"));
+        let mut stale = rows.clone();
+        stale.get_mut(&key_30).unwrap().lde_factor = Some(1);
+        assert!(qualify_feeder_capacity(&stale, REVISION, 30)
+            .unwrap_err()
+            .contains("trace geometry differs"));
+        assert!(is_feeder_bracket_arena(20));
+        assert!(!is_feeder_bracket_arena(0));
+        assert!(!is_feeder_bracket_arena(FEEDER_CANDIDATES_GIB[0]));
+    }
+
+    /// W4's feeder-only writeback: every case at the qualifying arena fits, the
+    /// candidate rows select the public floor, and bracket rows stay diagnostic.
+    #[test]
+    #[ignore]
+    fn cpu_w4_feeder_capacity_writeback() {
+        let dir = PathBuf::from(required_env("W4_CAPACITY_ROWS"));
+        let revision = required_env("W4_CAPACITY_REVISION");
+        let qualifying_gib: usize = required_env("W4_CAPACITY_QUALIFYING_GIB")
+            .parse()
+            .expect("W4_CAPACITY_QUALIFYING_GIB is an integer");
+        let rows: BTreeMap<String, CapacityRow> = std::fs::read_dir(&dir)
+            .unwrap_or_else(|error| panic!("capacity rows read {}: {error}", dir.display()))
+            .map(|entry| entry.expect("capacity rows entry").path())
+            .filter(|path| {
+                path.extension()
+                    .is_some_and(|extension| extension == "json")
+            })
+            .map(|path| {
+                let row = read_row(&path);
+                (row.case.clone(), row)
+            })
+            .collect();
+        qualify_feeder_capacity(&rows, &revision, qualifying_gib).unwrap();
+        let (bracket, candidates): (BTreeMap<_, _>, BTreeMap<_, _>) = rows
+            .clone()
+            .into_iter()
+            .partition(|(_, row)| is_feeder_bracket_arena(row.arena_bytes >> 30));
+        let selected = select_capacity(Family::Feeder, &candidates, &revision).unwrap();
+        let (lowest_passing, highest_failing) = feeder_floor_bracket(&rows, &revision).unwrap();
+        println!(
+            "L1 feeder capacity: {qualifying_gib} GiB qualified, {selected} GiB selected, floor bracket {lowest_passing} GiB passing / {highest_failing:?} GiB failing ({} bracket rows)",
+            bracket.len()
+        );
+        assert_eq!(presets::l1_feeder::L1_FEEDER_FLOOR_BYTES, selected << 30);
+        assert_eq!(presets::l1_feeder::L1_FEEDER_FLOOR_SOURCE, "measured");
     }
 
     #[test]
