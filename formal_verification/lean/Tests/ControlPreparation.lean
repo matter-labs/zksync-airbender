@@ -194,6 +194,7 @@ theorem wrong_preparation_instruction_rejected :
     | straight _ atCut => exact atCut (entry 0) (List.mem_singleton_self _) (by decide +kernel)
     | arithmetic _ atCut => exact atCut (entry 0) (List.mem_singleton_self _) (by decide +kernel)
     | sequential _ atCut => exact atCut (entry 0) (List.mem_singleton_self _) (by decide +kernel)
+    | wrappedSequential _ _ _ _ atCut => exact atCut (entry 0) (List.mem_singleton_self _) (by decide +kernel)
   simp [entry, literal, register, UnifiedReduced.Caller.hashPreparation,
     UnifiedReduced.Caller.ControlLiteral.instruction] at mismatch
 
@@ -264,6 +265,7 @@ theorem mismatched_round_preparation_flags_rejected :
     | straight _ atCut => exact atCut (entry 1) (List.mem_singleton_self _) (by decide +kernel)
     | arithmetic _ atCut => exact atCut (entry 1) (List.mem_singleton_self _) (by decide +kernel)
     | sequential _ atCut => exact atCut (entry 1) (List.mem_singleton_self _) (by decide +kernel)
+    | wrappedSequential _ _ _ _ atCut => exact atCut (entry 1) (List.mem_singleton_self _) (by decide +kernel)
   change SailRV32.instruction.UTYPE (128, .Regidx 12, .LUI) =
     SailRV32.instruction.UTYPE (144, .Regidx 12, .LUI) at instruction
   cases instruction
@@ -670,6 +672,7 @@ theorem round_region_wrong_flags_rejected :
     | straight _ atCut => exact atCut (entry 1) (List.mem_singleton_self _) (by decide +kernel)
     | arithmetic _ atCut => exact atCut (entry 1) (List.mem_singleton_self _) (by decide +kernel)
     | sequential _ atCut => exact atCut (entry 1) (List.mem_singleton_self _) (by decide +kernel)
+    | wrappedSequential _ _ _ _ atCut => exact atCut (entry 1) (List.mem_singleton_self _) (by decide +kernel)
   change SailRV32.instruction.UTYPE (128, .Regidx 12, .LUI) =
     SailRV32.instruction.UTYPE (144, .Regidx 12, .LUI) at instruction
   cases instruction

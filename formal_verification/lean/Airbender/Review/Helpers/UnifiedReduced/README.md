@@ -55,6 +55,15 @@ No operand, read, native selector or result is supplied.
 derive native selectors, PC increments and the instruction address from public
 decoding and accepted constraints/matching. Jumps, branches and comparisons are
 outside this linear PC/clock profile; comparisons use a wraparound PC path.
+[`WrappedSequentialProgram`](ControlPreparation.lean) separately adds the four
+original comparisons and public code alignment. Its preparation entry retains
+modeled setup and `4194304 ≤ p`. [`wrapped_program_pc_advance` and
+`wrapped_program_pc_clock`](../../../Proofs/UnifiedReduced/ControlPreparation.lean)
+derive modular RV32 successors and program addresses from accepted native
+constraints, public decoding and state/clock matching. Comparison cleanup/carry
+values are derived; neither wrap flags nor successors are supplied.
+Public caller-region coverage still uses the linear registry; jumps and branches
+remain outside both preparation profiles.
 The final preparation instruction must still be the specified public literal.
 Its address follows from matching, without a selected-row or control-read premise.
 Only its final cycle is worker-free; earlier worker effects remain in the same
@@ -79,6 +88,10 @@ checks the custom prefix with the same aliased fixture: actual x12 is
 65537→196611→0, with the same clocks and fabricated-read rejection. This is
 preparation and memory transport. It adds no successful full-prefix retirement
 claim and does not remove the discarded-LW profile boundary.
+The [wrapped comparison regression](../../../../Tests/UnifiedComparison.lean)
+places SLTIU at `0xfffffffc` and ADDI-from-x0 at zero, with reversed native rows.
+One continuous history derives actual x12 = 65537→1→0, retains clocks six/ten
+and rejects a fabricated reset read, wrong literal and misaligned public code.
 The [native window chain](../../Trace/UnifiedReduced/MixedWindows.lean) also executes
 two windows and their gap continuously from those retained boundaries. Complete
 [prepared G/Keccak chains](../../Trace/UnifiedReduced/PreparedHashWindows.lean) use

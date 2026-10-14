@@ -2,6 +2,7 @@ import Airbender.Review.Trace.UnifiedReduced.ControlPreparation
 import Airbender.Proofs.UnifiedReduced.MixedWindowProjection
 import Airbender.Proofs.UnifiedReduced.ZeroRegister
 import Airbender.Proofs.Arithmetic.Word
+import Airbender.Proofs.UnifiedReduced.JumpArithmetic
 
 namespace Airbender.UnifiedReduced.Caller.Proofs
 open Trace Trace.Proofs Arithmetic Reference.RiscV.Sail
@@ -232,6 +233,134 @@ theorem sequential_program_pc_advance [Fact p.Prime] (hp : 524288 < p)
     exact (UnifiedReduced.Proofs.pc_successor (by omega) core active flags
       ⟨(ZMod.natCast_zmod_val _).symm, (ZMod.natCast_zmod_val _).symm, rfl, rfl⟩ bounded).1
 
+theorem wrapped_fields_mask {instruction : SailRV32.instruction} {data : DecoderData UnifiedFamily}
+    (supported : WrappedSequentialInstruction instruction) (fields : Mixed.decoderFields instruction = some data) :
+    data.mask ∈ [1, 2, 4, 512, 32768, 65536, 131072, 262144] ∨ data.mask = 4096 := by
+  cases supported with
+  | sequential supported => exact Or.inl (sequential_fields_mask supported fields)
+  | _ =>
+    simp only [Mixed.decoderFields, UnifiedReduced.decoderFields, Trace.decoderFields,
+      JumpBranchSlt.decoderFields, ShiftBinop.decoderFields, customDecoderFields] at fields
+    try split_ifs at fields
+    all_goals simp_all [DecoderData.mapFamily, UnifiedReduced.jumpFields]
+    all_goals have mask := congrArg (fun record : DecoderData UnifiedFamily => record.mask) fields.2
+    all_goals dsimp at mask
+    all_goals simp [← mask]
+
+theorem wrapped_program_pc_advance [Fact p.Prime] (hp : 4194304 ≤ p)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before state : State}
+    {ca oa : List (BitVec 32)} (setup : data.machine.rom = Setup.table state)
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    (ordinaryProgram : Mixed.programImage before oa = some program) (registry : WrappedSequentialProgram program) :
+    ∀ row ∈ data.machine.rows, row.finish.word.toBitVec = row.start.word.toBitVec + 4 := by
+  intro row member
+  cases row with
+  | mk family w =>
+    cases family
+    have core := Verification.holds_of_sublist (accepted.constraints _ member)
+      (List.sublist_append_left (importedConstraints data.machine.rom) importedConstraintsTimestampLookups)
+    have active : w 4 = 1 := accepted.active _ member
+    have increment (bounded : (initialPC w).Bounded)
+        (outside : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0) :
+        (Word.mk (w 30).val (w 31).val).toBitVec = (initialPC w).toBitVec + 4 := by
+      have value : (Word.mk (w 30).val (w 31).val).value = (initialPC w).value + 4 :=
+        (UnifiedReduced.Proofs.pc_successor (by omega) core active outside
+        ⟨(ZMod.natCast_zmod_val _).symm, (ZMod.natCast_zmod_val _).symm, rfl, rfl⟩ bounded).1
+      change BitVec.ofNat 32 _ = BitVec.ofNat 32 _ + 4
+      rw [value, BitVec.ofNat_add]
+      rfl
+    by_cases caller : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∈ data.callers
+    · have decoded := accepted.decoded _ caller
+      change ∃ i : Fin data.program.length, decoderQuery w = Delegation.Caller.query (data.program.get i) at decoded
+      obtain ⟨i, query⟩ := decoded
+      have selectors := caller_selectors (by omega) core query
+      exact increment (caller_binding (by omega) core publicProgram.image (accepted.decoded _ caller)).pc.1
+        ⟨selectors 10, selectors 11, selectors 12, selectors 13⟩
+    · obtain ⟨entry, present, _, query⟩ := decoder_member (accepted.ordinaryDecoded _ member caller)
+      have masks := wrapped_fields_mask (registry.entries entry present)
+        (run_program_sources ordinaryProgram entry present).fields
+      have pc := native_query_pc_word (by dsimp [limbBase]; omega) query
+      change initialPC w = Word.ofBitVec entry.pc at pc
+      have bounded := pc.symm ▸ Word.ofBitVec_bound entry.pc
+      have maskBound : entry.data.mask < 524288 := by
+        simp only [List.mem_cons, List.not_mem_nil, or_false] at masks
+        omega
+      have selectors := UnifiedReduced.Proofs.decoder_selectors (by omega) core maskBound query
+      rcases masks with masks | mask
+      · apply increment bounded
+        simp only [List.mem_cons, List.not_mem_nil, or_false] at masks
+        rcases masks with equal | equal | equal | equal | equal | equal | equal | equal
+        all_goals simpa [equal, importedConstraintsDecoderColumns, Nat.testBit, Nat.shiftRight_eq_div_pow] using
+          And.intro (selectors 10) (And.intro (selectors 11) (And.intro (selectors 12) (selectors 13)))
+      · have flags : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 1 ∧ w 24 = 0 := by
+          simpa [mask, importedConstraintsDecoderColumns, Nat.testBit, Nat.shiftRight_eq_div_pow] using
+            And.intro (selectors 10) (And.intro (selectors 11) (And.intro (selectors 12) (selectors 13)))
+        have binary : w 26 = 0 ∧ w 27 = 0 := by
+          simpa [mask, importedConstraintsDecoderColumns, Nat.testBit, Nat.shiftRight_eq_div_pow] using
+            And.intro (selectors 15) (selectors 16)
+        have noROM : w 28 = 0 := by
+          simpa [mask, importedConstraintsDecoderColumns, Nat.testBit, Nat.shiftRight_eq_div_pow] using selectors 17
+        have gate := Verification.assertion_of_holds core ⟨42, by rw [constraint_count]; decide⟩
+        have rom : w 87 = 0 := by
+          simpa [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment, noROM] using gate
+        have aligned : (w 0).val % 4 = 0 := by
+          have code := registry.aligned entry present
+          have low := congrArg Word.lo pc
+          change (w 0).val = entry.pc.toNat % limbBase at low
+          rw [low]
+          dsimp [limbBase]
+          omega
+        rw [setup] at core
+        exact UnifiedReduced.Proofs.comparison_pc hp core flags binary rom bounded aligned
+
+theorem wrapped_program_pc_clock [Fact p.Prime] (hp : 4194304 ≤ p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before state : State}
+    {ca oa : List (BitVec 32)} (setup : data.machine.rom = Setup.table state)
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    (ordinaryProgram : Mixed.programImage before oa = some program) (registry : WrappedSequentialProgram program) :
+    ∀ row ∈ data.machine.rows, row.start.word.toBitVec = data.machine.initial.word.toBitVec +
+      BitVec.ofNat 32 (Delegation.Caller.startClock row - (timeOfPair data.machine.initial.timestamp).value) := by
+  have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
+  have advances := wrapped_program_pc_advance hp setup accepted publicProgram ordinaryProgram registry
+  have clocks := state_clock_inputs size inverse accepted.constraints accepted.states
+    publicProgram.initialClock publicProgram.initialAligned
+  have establish : ∀ n : Nat, ∀ row ∈ data.machine.rows, Delegation.Caller.startClock row = n →
+      (timeOfPair data.machine.initial.timestamp).value ≤ Delegation.Caller.startClock row ∧
+      row.start.word.toBitVec = data.machine.initial.word.toBitVec +
+        BitVec.ofNat 32 (Delegation.Caller.startClock row - (timeOfPair data.machine.initial.timestamp).value) := by
+    intro n
+    induction n using Nat.strong_induction_on with
+    | h n ih =>
+      intro row member time
+      have matched := accepted.states.mem_iff.mpr
+        (List.mem_cons_of_mem _ (List.mem_map.mpr ⟨row, member, rfl⟩))
+      rcases List.mem_cons.mp matched with initial | previous
+      · change row.start = data.machine.initial at initial
+        rw [← initial]
+        refine ⟨Nat.le_refl _, ?_⟩
+        have sameClock : (timeOfPair row.start.timestamp).value = Delegation.Caller.startClock row := rfl
+        rw [sameClock, Nat.sub_self]
+        simp
+      · obtain ⟨previous, present, same⟩ := List.mem_map.mp previous
+        have clock := ClockLaws.advance size inverse data.machine.rom previous
+          (accepted.constraints previous present) (clocks previous present).1
+        change (timeOfPair previous.finish.timestamp).value = Delegation.Caller.startClock previous + 4 at clock
+        have step : Delegation.Caller.startClock row = Delegation.Caller.startClock previous + 4 := by
+          rw [same] at clock
+          exact clock
+        have earlier := ih (Delegation.Caller.startClock previous) (by omega) previous present rfl
+        have delta : Delegation.Caller.startClock row - (timeOfPair data.machine.initial.timestamp).value =
+            (Delegation.Caller.startClock previous - (timeOfPair data.machine.initial.timestamp).value) + 4 := by omega
+        have pc := advances previous present
+        rw [same] at pc
+        refine ⟨by omega, ?_⟩
+        rw [pc, earlier.2, delta, BitVec.ofNat_add]
+        simp only [BitVec.add_assoc]
+        rfl
+  intro row member
+  exact (establish _ row member rfl).2
+
 theorem arithmetic_program_pc_advance [Fact p.Prime] (hp : 524288 < p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)}
@@ -446,6 +575,17 @@ theorem preparation_instruction [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     rw [value] at schedule
     have clock : Delegation.Caller.startClock row = cut - 4 := by omega
     rwa [clock] at schedule
+
+  | wrappedSequential minimum state setup entries atCut =>
+    apply atCut entry present
+    have schedule := wrapped_program_pc_clock minimum inverse setup accepted publicProgram ordinaryProgram entries row member
+    have pc := native_query_pc_word (by dsimp [limbBase]; norm_num [timestampBase] at hp; omega) query
+    have bits : row.start.word.toBitVec = entry.pc := by
+      change row.start.word = Word.ofBitVec entry.pc at pc
+      rw [pc]
+      simp [Word.toBitVec, Word.ofBitVec_value]
+    have clock : Delegation.Caller.startClock row = cut - 4 := by omega
+    rwa [bits, clock] at schedule
 
 theorem literal_row_output_of_program [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1)

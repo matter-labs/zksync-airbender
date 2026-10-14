@@ -393,6 +393,21 @@ theorem Caller.program_window_schedule_soundness [Fact p.Prime]
   Caller.Proofs.program_caller_window hp clockInverse accepted publicProgram ordinaryProgram registry region
     first last positive ordered afterInitial beforeTerminal
 
+/-- Public sequential/comparison decoding and native state matching derive RV32
+    program addresses from clocks, including comparison PC wraparound. Public
+    code alignment, modeled setup and comparison field compatibility stay explicit. -/
+theorem Caller.wrapped_program_address_soundness [Fact p.Prime] (hp : 4194304 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : Caller.RequestTrace p} {before state : Reference.RiscV.Sail.State}
+    {ca oa : List (BitVec 32)} {program : List UnifiedReduced.ProgramEntry}
+    (setup : data.machine.rom = Setup.table state) (accepted : Caller.MixedMemoryAccepted data program)
+    (publicProgram : Caller.RequestInputs data before ca)
+    (ordinaryProgram : Mixed.programImage before oa = some program)
+    (registry : Caller.WrappedSequentialProgram program) :
+    ∀ row ∈ data.machine.rows, row.start.word.toBitVec = data.machine.initial.word.toBitVec +
+      BitVec.ofNat 32 (Delegation.Caller.startClock row - (Trace.timeOfPair data.machine.initial.timestamp).value) :=
+  Caller.Proofs.wrapped_program_pc_clock hp clockInverse setup accepted publicProgram ordinaryProgram registry
+
 /-- Public code and an extent of at most forty ticks derive this prepared
     controller's worker family, ten-position bound and exact four-tick duration. -/
 theorem Caller.program_round_region_soundness [Fact p.Prime]
