@@ -28,10 +28,10 @@ impl ProofProfile {
             }
             Self::L1Feeder => {
                 assert_eq!(
-                    trace_len_log2, 23,
-                    "ProofProfile::L1Feeder requires the 2^23 unified circuit"
+                    trace_len_log2, 22,
+                    "ProofProfile::L1Feeder requires the 2^22 unified circuit"
                 );
-                example_configs::l1_feeder_config_for_2_23()
+                example_configs::l1_feeder_config_for_2_22()
             }
             Self::L1Wrap => {
                 assert_eq!(
@@ -661,8 +661,8 @@ mod test {
             assert_eq!(config.trace_len_log2, log);
             config.validate_for_whir_message_size(log);
         }
-        let feeder = example_configs::l1_feeder_config_for_2_23();
-        assert_eq!(feeder.trace_len_log2, 23);
+        let feeder = example_configs::l1_feeder_config_for_2_22();
+        assert_eq!(feeder.trace_len_log2, 22);
         feeder.validate_for_whir_message_size(feeder.trace_len_log2);
     }
 
@@ -673,9 +673,9 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "ProofProfile::L1Feeder requires the 2^23 unified circuit")]
+    #[should_panic(expected = "ProofProfile::L1Feeder requires the 2^22 unified circuit")]
     fn l1_feeder_profile_rejects_other_trace_lengths() {
-        ProofProfile::L1Feeder.prover_config(22, SecurityLevel::Sec100);
+        ProofProfile::L1Feeder.prover_config(23, SecurityLevel::Sec100);
     }
 
     #[test]

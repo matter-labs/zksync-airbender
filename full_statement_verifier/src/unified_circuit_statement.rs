@@ -442,7 +442,7 @@ pub fn verify_unified_circuit_recursion_layer<
 
 /// [`verify_unified_circuit_recursion_layer_sec_100`] against the high-LDE
 /// "L1 feeder" unified verifier (base LDE 16, round-0 queries 22 — see
-/// `prover::gkr::prover_config::example_configs::l1_feeder_config_for_2_23`).
+/// `prover::gkr::prover_config::example_configs::l1_feeder_config_for_2_22`).
 /// Verifies proofs of the FINAL BabyBear recursion layer(s), whose cheap
 /// verification is what the L1 (Proth120) 2^22 wrapper circuit executes.
 /// Same circuit, same delegation table, same 100-bit target — only the
