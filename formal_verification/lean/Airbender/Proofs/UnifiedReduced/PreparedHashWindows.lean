@@ -62,4 +62,69 @@ theorem prepared_hash_window [Fact p.Prime] (hp : 16777216 ≤ p)
     start, finish, earlierEvents, spanEvents, atStart, atFinish, firstPerm, spanPerm,
     firstHistory, spanHistory, startBoundary, finishBoundary, selected, initialized, result⟩
 
+theorem prepared_hash_reference_at_states [Fact p.Prime] (hp : 16777216 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {before atStart atFinish : State} {ca oa : List (BitVec 32)} {cells : List Cell}
+    {program : List UnifiedReduced.ProgramEntry} {span : Delegation.Caller.HashSpan} {lower upper : Nat}
+    {start finish : List (MemoryToken p)} {spanEvents : List MemoryAccess}
+    (accepted : MixedMemoryAccepted data program)
+    (inputs : PreparedHashWindowInputs data before ca oa cells program span lower upper)
+    (first : lower % 4 = 0) (last : upper % 4 = 0)
+    (prefixMatching : (data.machine.initialMemory ++ (data.prefixSteps lower).map Prod.snd).Perm
+      (start ++ (data.prefixSteps lower).map Prod.fst))
+    (matching : (start ++ (data.windowSteps lower upper).map Prod.snd).Perm
+      (finish ++ (data.windowSteps lower upper).map Prod.fst))
+    (startBoundary : NativeBoundary start atStart cells) (finishBoundary : NativeBoundary finish atFinish cells)
+    (spanPerm : spanEvents.Perm ((data.windowSteps lower upper).map transferEvent))
+    (spanHistory : SailHistory cells spanEvents atStart atFinish) :
+    span.Result (data.windowProjection lower upper start finish) atStart atFinish (Delegation.Caller.workerCells cells) := by
+  have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
+  have memory := prepared_hash_memory_inputs inputs
+  have floor := inputs.preparation.afterInitial
+  have duration := inputs.duration
+  have schedule := caller_window_schedule size clockInverse accepted.toRequestChecks inputs.publicProgram
+    first last (by omega) (by omega) (by omega) inputs.beforeTerminal (by simpa only [inputs.calls] using duration)
+  have requests := request_binding size clockInverse accepted.toRequestChecks inputs.publicProgram
+  obtain ⟨selected, initialized, terminal, target⟩ :=
+    mixed_worker_window_at_states accepted memory schedule requests matching startBoundary finishBoundary spanPerm spanHistory
+  have control := preparation_at_boundary (by omega) clockInverse accepted memory inputs.preparation
+    (hash_control_register_nonzero span) first prefixMatching startBoundary
+  have entry : (Cell.register span.controlRegister).read atStart = .ok span.controlStart atStart := by
+    simpa only [hash_preparation_value] using control.1
+  have protocol : Delegation.Caller.HashSpan.Protocol (data.windowProjection lower upper start finish) atStart span :=
+    ⟨inputs.tables, inputs.family, entry, inputs.calls⟩
+  exact Delegation.Caller.Proofs.hash_span_at_target hp clockInverse selected initialized protocol
+    (fun row member => accepted.workerActive row (List.mem_of_mem_filter member))
+    (fun cell member => inputs.aligned cell (List.mem_of_mem_filter member)) target terminal.1.addresses
+
+theorem prepared_hash_chain [Fact p.Prime] (hp : 16777216 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
+    {program : List UnifiedReduced.ProgramEntry} {firstSpan secondSpan : Delegation.Caller.HashSpan}
+    {a b c d : Nat}
+    (accepted : MixedMemoryAccepted data program)
+    (firstInputs : PreparedHashWindowInputs data before ca oa cells program firstSpan a b)
+    (secondInputs : PreparedHashWindowInputs data before ca oa cells program secondSpan c d)
+    (aa : a % 4 = 0) (ba : b % 4 = 0) (ca' : c % 4 = 0) (da : d % 4 = 0) (gap : b ≤ c) :
+    PreparedHashChainResult data before cells firstSpan secondSpan a b c d := by
+  have rotationInverse : 64 * (-31457280 : ZMod p) = 1 := by linear_combination clockInverse
+  have floor := firstInputs.preparation.afterInitial
+  have firstDuration := firstInputs.duration
+  have secondDuration := secondInputs.duration
+  obtain ⟨chain, history⟩ := mixed_window_chain (by omega) clockInverse rotationInverse accepted
+    (prepared_hash_memory_inputs firstInputs) aa ba ca' da (by omega) (by omega) gap (by omega)
+  have firstResult := prepared_hash_reference_at_states hp clockInverse accepted firstInputs aa ba
+    history.firstPrefixMatching history.firstMatching history.firstStartBoundary history.firstFinishBoundary
+    history.firstPerm history.firstHistory
+  have secondResult := prepared_hash_reference_at_states hp clockInverse accepted secondInputs ca' da
+    history.secondPrefixMatching history.secondMatching history.secondStartBoundary history.secondFinishBoundary
+    history.secondPerm history.secondHistory
+  have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
+  have firstRequests := request_windows size clockInverse accepted.toRequestChecks firstInputs.publicProgram aa ba (by omega)
+  have secondRequests := request_windows size clockInverse accepted.toRequestChecks secondInputs.publicProgram ca' da (by omega)
+  exact ⟨firstRequests, secondRequests,
+    (Delegation.Caller.Proofs.window_call_count firstRequests).trans firstInputs.calls,
+    (Delegation.Caller.Proofs.window_call_count secondRequests).trans secondInputs.calls,
+    chain, history, firstResult, secondResult⟩
+
 end Airbender.UnifiedReduced.Caller.Proofs

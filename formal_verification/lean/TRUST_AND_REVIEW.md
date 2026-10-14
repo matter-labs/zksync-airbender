@@ -156,6 +156,13 @@ workers outside that span stay in joint matching; extended-round workers require
 separate mask transport. No bigint opcode-validity condition is added. Earlier worker effects,
 including zero-clock effects, stay in the actual prefix. Worker boundaries, controls
 and caller regions are derived from shared matching, with no supplied worker masks.
+[Prepared hash chains](Airbender/Review/Trace/UnifiedReduced/PreparedHashWindows.lean)
+now bind two complete G/Keccak references to one continuous architectural-memory
+execution. The first span's actual finish initializes the gap and then the second
+span. Native tokens and clocks survive every cut; both preparation controls and
+reference results are derived. Public span counts/durations, cut order/alignment,
+literal registry and nonround worker scope remain explicit. This does not establish
+whole instruction retirement or that arbitrary acceptance has complete-span shape.
 [Prepared extended-BLAKE windows](Airbender/Review/Trace/UnifiedReduced/PreparedRoundWindows.lean)
 also bind complete compression at those actual cut states. Raw matching and the
 ordinary LUI token derive exclusive round masks before Sail value transport.

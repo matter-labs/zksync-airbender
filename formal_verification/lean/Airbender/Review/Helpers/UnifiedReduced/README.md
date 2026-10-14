@@ -48,6 +48,10 @@ and joint prefix/window matching.
 check actual x12 values 65537→128→0 with reversed row order, retained write clocks,
 one connected history across both preparation cuts, and rejection of a wrong
 literal or fabricated second read.
+The [native window chain](../../Trace/UnifiedReduced/MixedWindows.lean) also executes
+two windows and their gap continuously from those retained boundaries. Complete
+[prepared G/Keccak chains](../../Trace/UnifiedReduced/PreparedHashWindows.lean) use
+that same execution and derive both references without supplied intermediate states.
 
 The native domain, public program, protocol counts and existing prefix scope
 remain explicit. These helpers do not claim whole mixed caller retirement.

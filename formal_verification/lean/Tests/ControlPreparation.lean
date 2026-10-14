@@ -487,4 +487,44 @@ theorem chained_fabricated_read_rejected :
       chainedFabricatedData.mixedSteps.map Prod.snd := by decide +kernel
   exact absent (accepted.memory.mem_iff.mpr (List.mem_append_right _ consumed))
 
+theorem native_chain_reaches_both_controls (gap : Bool) :
+    ∃ chain : UnifiedReduced.Caller.WindowChain babyBearModulus,
+      chain.Realizes chainedData chainedBefore (cells 0) 4 (if gap then 4 else 8) 8 12 ∧
+      (Cell.register 12).read chain.atSecondStart = .ok 128 chain.atSecondStart ∧
+      (Cell.register 12).read chain.atSecondFinish = .ok 0 chain.atSecondFinish := by
+  obtain ⟨chain, history⟩ := UnifiedReduced.Caller.mixed_window_chain_soundness
+    (a := 4) (b := if gap then 4 else 8) (c := 8) (d := 12)
+    (by decide +kernel) (by decide +kernel) (by decide +kernel) chainedAccepted chainedInputs
+    (by decide) (by cases gap <;> decide) (by decide) (by decide) (by decide)
+    (by cases gap <;> decide) (by cases gap <;> decide) (by decide)
+  have atStart := UnifiedReduced.Caller.Proofs.preparation_at_boundary (by decide +kernel) (by decide +kernel)
+    chainedAccepted chainedInputs (chainedScope false) (by decide) (by decide)
+    history.secondPrefixMatching history.secondStartBoundary
+  have matching := UnifiedReduced.Caller.Proofs.matching_at_next_cut (by decide +kernel) (by decide +kernel)
+    (lower := 8) (upper := 12) chainedAccepted.toRequestChecks chainedInputs.publicProgram
+    (by decide) (by decide) (by decide) (by decide)
+    history.secondPrefixMatching history.secondMatching
+  have atFinish := UnifiedReduced.Caller.Proofs.preparation_at_boundary (by decide +kernel) (by decide +kernel)
+    chainedAccepted chainedInputs (chainedScope true) (by decide) (by decide) matching history.secondFinishBoundary
+  exact ⟨chain, history, atStart.1, atFinish.1⟩
+
+theorem empty_chain_gap_keeps_same_state {chain : UnifiedReduced.Caller.WindowChain babyBearModulus}
+    (history : chain.Realizes chainedData chainedBefore (cells 0) 4 8 8 12) :
+    chain.atFirstFinish = chain.atSecondStart := by
+  have empty : chainedData.windowSteps 8 8 = [] := rfl
+  have events : chain.gapEvents = [] := List.Perm.eq_nil (by simpa only [empty, List.map_nil] using history.gapPerm)
+  have actual := history.gapHistory
+  rw [events] at actual
+  have nilState {before after : State} (h : SailHistory (cells 0) [] before after) : before = after := by
+    cases h
+    rfl
+  exact nilState actual
+
+theorem fabricated_chain_gap_state_rejected :
+    ¬ ∃ chain : UnifiedReduced.Caller.WindowChain babyBearModulus,
+      chain.Realizes chainedData chainedBefore (cells 0) 4 8 8 12 ∧
+      chain.atFirstFinish ≠ chain.atSecondStart := by
+  rintro ⟨chain, history, different⟩
+  exact different (empty_chain_gap_keeps_same_state history)
+
 end Tests.ControlPreparation

@@ -577,4 +577,44 @@ theorem fabricated_preparation_read_rejected :
       fabricatedPreparationData.mixedSteps.map Prod.snd := by decide +kernel
   exact absent (accepted.memory.mem_iff.mpr (List.mem_append_right _ consumed))
 
+theorem chain_retains_unissued_prefix_effect :
+    ∃ chain : UnifiedReduced.Caller.WindowChain babyBearModulus,
+      chain.Realizes preparationData preparationBefore preparationCells 4 4 4 8 ∧
+      (Cell.register 12).read chain.atFirstStart = .ok 1 chain.atFirstStart ∧
+      (Cell.register 12).read chain.atSecondFinish = .ok 0 chain.atSecondFinish := by
+  obtain ⟨chain, history⟩ := UnifiedReduced.Caller.mixed_window_chain_soundness
+    (a := 4) (b := 4) (c := 4) (d := 8)
+    (by decide +kernel) (by decide +kernel) (by decide +kernel) preparationAccepted preparationInputs
+    (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) (by decide)
+  let token : MemoryToken babyBearModulus := ⟨(Cell.register 12).addressCode, (2, 0), Nat.pair 1 0⟩
+  have produced : token ∈ preparationData.machine.initialMemory ++ (preparationData.prefixSteps 4).map Prod.snd := by decide +kernel
+  have notRead : token ∉ (preparationData.prefixSteps 4).map Prod.fst := by decide +kernel
+  have present : token ∈ chain.firstStart := by
+    rcases List.mem_append.mp (history.firstPrefixMatching.mem_iff.mp produced) with present | read
+    · exact present
+    · exact False.elim (notRead read)
+  obtain ⟨cell, _, address, firstRead⟩ := UnifiedReduced.Caller.Proofs.native_boundary_read history.firstStartBoundary present
+  have same : cell = Cell.register 12 := Trace.Proofs.cell_address_injective address
+  subst cell
+  have matching := UnifiedReduced.Caller.Proofs.matching_at_next_cut (by decide +kernel) (by decide +kernel)
+    (lower := 4) (upper := 8) preparationAccepted.toRequestChecks preparationInputs.publicProgram
+    (by decide) (by decide) (by decide) (by decide)
+    history.secondPrefixMatching history.secondMatching
+  have scope : UnifiedReduced.Caller.ControlPreparation preparationData [preparationEntry] 8 12 (.addi 0) := by
+    refine ⟨.uniform ?_, ?_, by decide +kernel, by decide +kernel⟩
+    · intro entry member
+      have same : entry = preparationEntry := List.mem_singleton.mp member
+      subst entry
+      rfl
+    · have time : native.writeTime = 2 := by decide +kernel
+      change ([native].filter fun worker => decide (4 < worker.writeTime ∧ worker.writeTime ≤ 8)) = []
+      simp [time]
+  have lastRead := UnifiedReduced.Caller.Proofs.preparation_at_boundary (by decide +kernel) (by decide +kernel)
+    preparationAccepted preparationInputs scope (by decide) (by decide) matching history.secondFinishBoundary
+  have bits : token.word.toBitVec = (1 : BitVec 32) := by
+    simp only [token, MemoryToken.word, Nat.unpair_pair]
+    rfl
+  rw [bits] at firstRead
+  exact ⟨chain, history, firstRead, lastRead.1⟩
+
 end Tests.DelegationZeroInvocation
