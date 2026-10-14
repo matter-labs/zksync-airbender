@@ -156,11 +156,7 @@ const fn production_witness_strategy(circuit_type: CircuitType) -> WitnessGenera
                 UnrolledNonMemoryCircuitType::ShiftBinary => WitnessGenerationStrategy::Fused,
             },
             UnrolledCircuitType::Unified => WitnessGenerationStrategy::Fused,
-            UnrolledCircuitType::Unified22 => {
-                panic!(
-                    "UnrolledCircuitType::Unified22 is not supported on the GPU backend until W4"
-                )
-            }
+            UnrolledCircuitType::Unified22 => WitnessGenerationStrategy::Fused,
         },
     }
 }
@@ -321,6 +317,7 @@ impl GpuGKRStage1Output {
                 CircuitType::Unrolled(UnrolledCircuitType::Memory(_))
                     | CircuitType::Unrolled(UnrolledCircuitType::NonMemory(_))
                     | CircuitType::Unrolled(UnrolledCircuitType::Unified)
+                    | CircuitType::Unrolled(UnrolledCircuitType::Unified22)
             );
         let use_fused_delegation = strategy == WitnessGenerationStrategy::Fused
             && matches!(circuit_type, CircuitType::Delegation(_));
@@ -678,7 +675,9 @@ impl GpuGKRStage1Output {
                     tracing_ranges.push(witness_values_range);
                 }
                 (
-                    CircuitType::Unrolled(UnrolledCircuitType::Unified),
+                    CircuitType::Unrolled(
+                        unified @ (UnrolledCircuitType::Unified | UnrolledCircuitType::Unified22),
+                    ),
                     Some(TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Unified(trace))),
                 ) => {
                     let witness_values_range =
@@ -714,6 +713,7 @@ impl GpuGKRStage1Output {
                             trace_len,
                         );
                         generate_fused_values_unrolled_unified(
+                            unified,
                             compiled_circuit,
                             decoder_table,
                             trace,
@@ -729,6 +729,7 @@ impl GpuGKRStage1Output {
                         )?;
                     } else {
                         generate_memory_and_witness_values_unrolled_unified(
+                            unified,
                             &compiled_circuit.memory_layout,
                             &compiled_circuit.aux_layout_data,
                             decoder_table,
@@ -740,6 +741,7 @@ impl GpuGKRStage1Output {
                             context.get_exec_stream(),
                         )?;
                         generate_witness_values_unrolled_unified(
+                            unified,
                             trace,
                             &DeviceMatrix::new(generic_lookup_tables, trace_len),
                             &DeviceMatrix::new(memory_matrix.slice(), trace_len),

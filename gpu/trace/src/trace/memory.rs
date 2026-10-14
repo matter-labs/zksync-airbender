@@ -230,7 +230,9 @@ fn commit_memory_inner<'a>(
             )?;
         }
         (
-            CircuitType::Unrolled(UnrolledCircuitType::Unified),
+            CircuitType::Unrolled(
+                unified @ (UnrolledCircuitType::Unified | UnrolledCircuitType::Unified22),
+            ),
             Some(TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Unified(trace))),
         ) => {
             // Inline i/t paged sweep FIRST (page-based-reuse): it zeroes the
@@ -247,6 +249,7 @@ fn commit_memory_inner<'a>(
                 stream,
             )?;
             generate_memory_values_unrolled_unified(
+                unified,
                 &compiled_circuit.memory_layout,
                 decoder_table.expect("unified circuit requires a decoder table"),
                 trace,

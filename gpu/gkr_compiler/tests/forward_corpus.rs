@@ -9,7 +9,7 @@ use gkr_eval_ir::lower_dag;
 use gpu_gkr_compiler::{
     compile_forward, encode_forward_program, encode_forward_runtime_program,
     parse_forward_artifact, ElementModel, FieldTag, ForwardInstr, ForwardOperandField,
-    ForwardOperandLine, ForwardProgramBundle,
+    ForwardOperandLine, ForwardProgramBundle, ForwardSpecialStrategy,
 };
 use sha3::{Digest, Sha3_256};
 
@@ -146,6 +146,58 @@ fn every_retained_forward_artifact_validates_compiles_and_encodes() {
 
         assert_eq!(compiled.layers.len(), dag.layers.len(), "{stem}");
     }
+}
+
+#[test]
+fn unified_2_22_layout_reuses_the_unified_schedule() {
+    let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
+    let artifact_name = "unified_reduced_machine_schedule_b4_gkr.json";
+    let artifact_bytes = std::fs::read(directory.join(artifact_name)).unwrap();
+    let artifact = parse_forward_artifact(&artifact_bytes, artifact_name).unwrap();
+    let compile = |layout_name: &str| {
+        let layout: GKRCircuitArtifact<BabyBearField> =
+            serde_json::from_slice(&std::fs::read(directory.join(layout_name)).unwrap()).unwrap();
+        let dag = lower_dag(&layout).unwrap_or_else(|error| panic!("{layout_name}: {error}"));
+        compile_forward(&dag, &artifact).unwrap_or_else(|error| panic!("{layout_name}: {error:?}"))
+    };
+    let unified = compile("unified_reduced_machine_layout_gkr.json");
+    let unified22 = compile("unified_reduced_machine_2_22_layout_gkr.json");
+
+    assert_eq!(unified22.layers.len(), unified.layers.len());
+    let mut shifted = 0;
+    for (index, (layer, layer22)) in unified.layers.iter().zip(&unified22.layers).enumerate() {
+        assert_eq!(
+            encode_forward_runtime_program(&layer22.program).unwrap(),
+            encode_forward_runtime_program(&layer.program).unwrap(),
+            "layer {index}"
+        );
+        assert_eq!(
+            layer22.consts.values(),
+            layer.consts.values(),
+            "layer {index}"
+        );
+        assert_eq!(
+            layer22.specials.len(),
+            layer.specials.len(),
+            "layer {index}"
+        );
+        for (special, special22) in layer.specials.iter().zip(layer22.specials.iter()) {
+            match (special, special22) {
+                (
+                    ForwardSpecialStrategy::InitsAndTeardownsTopBits { reference },
+                    ForwardSpecialStrategy::InitsAndTeardownsTopBits {
+                        reference: reference22,
+                    },
+                ) => {
+                    assert_eq!(reference22.set_index, reference.set_index, "layer {index}");
+                    assert_eq!(reference22.shift + 1, reference.shift, "layer {index}");
+                    shifted += 1;
+                }
+                _ => assert_eq!(special22, special, "layer {index}"),
+            }
+        }
+    }
+    assert!(shifted > 0);
 }
 
 fn push_text(out: &mut Vec<u8>, text: &str) {

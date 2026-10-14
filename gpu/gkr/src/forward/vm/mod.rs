@@ -49,25 +49,21 @@ const fn production_fwd_vm_kernel(circuit_type: CircuitType) -> GkrFwdVmReleaseS
             DelegationCircuitType::KeccakSpecial5 => ab_gkr_fwd_vm_b8_kernel,
             DelegationCircuitType::KeccakThetaRho => ab_gkr_fwd_vm_b8_kernel,
         },
-        CircuitType::Unrolled(circuit_type) => {
-            match circuit_type {
-                UnrolledCircuitType::InitsAndTeardowns => ab_gkr_fwd_vm_kernel,
-                UnrolledCircuitType::Memory(circuit_type) => match circuit_type {
-                    UnrolledMemoryCircuitType::LoadStoreSubwordOnly => ab_gkr_fwd_vm_b8_kernel,
-                    UnrolledMemoryCircuitType::LoadStoreWordOnly => ab_gkr_fwd_vm_b8_kernel,
-                },
-                UnrolledCircuitType::NonMemory(circuit_type) => match circuit_type {
-                    UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop => ab_gkr_fwd_vm_b8_kernel,
-                    UnrolledNonMemoryCircuitType::JumpBranchSlt => ab_gkr_fwd_vm_b8_kernel,
-                    UnrolledNonMemoryCircuitType::MulDivUnsigned => ab_gkr_fwd_vm_b8_kernel,
-                    UnrolledNonMemoryCircuitType::ShiftBinary => ab_gkr_fwd_vm_b8_kernel,
-                },
-                UnrolledCircuitType::Unified => ab_gkr_fwd_vm_b8_kernel,
-                UnrolledCircuitType::Unified22 => {
-                    panic!("UnrolledCircuitType::Unified22 is not supported on the GPU backend until W4")
-                }
-            }
-        }
+        CircuitType::Unrolled(circuit_type) => match circuit_type {
+            UnrolledCircuitType::InitsAndTeardowns => ab_gkr_fwd_vm_kernel,
+            UnrolledCircuitType::Memory(circuit_type) => match circuit_type {
+                UnrolledMemoryCircuitType::LoadStoreSubwordOnly => ab_gkr_fwd_vm_b8_kernel,
+                UnrolledMemoryCircuitType::LoadStoreWordOnly => ab_gkr_fwd_vm_b8_kernel,
+            },
+            UnrolledCircuitType::NonMemory(circuit_type) => match circuit_type {
+                UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop => ab_gkr_fwd_vm_b8_kernel,
+                UnrolledNonMemoryCircuitType::JumpBranchSlt => ab_gkr_fwd_vm_b8_kernel,
+                UnrolledNonMemoryCircuitType::MulDivUnsigned => ab_gkr_fwd_vm_b8_kernel,
+                UnrolledNonMemoryCircuitType::ShiftBinary => ab_gkr_fwd_vm_b8_kernel,
+            },
+            UnrolledCircuitType::Unified => ab_gkr_fwd_vm_b8_kernel,
+            UnrolledCircuitType::Unified22 => ab_gkr_fwd_vm_b8_kernel,
+        },
     }
 }
 

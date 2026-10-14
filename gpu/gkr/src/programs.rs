@@ -171,9 +171,8 @@ fn forward_artifact(circuit_type: CircuitType) -> (&'static [u8], &'static str) 
         CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
             (INITS, "inits_and_teardowns")
         }
-        CircuitType::Unrolled(UnrolledCircuitType::Unified) => (UNIFIED, "unified_reduced_machine"),
-        CircuitType::Unrolled(UnrolledCircuitType::Unified22) => {
-            panic!("UnrolledCircuitType::Unified22 is not supported on the GPU backend until W4")
+        CircuitType::Unrolled(UnrolledCircuitType::Unified | UnrolledCircuitType::Unified22) => {
+            (UNIFIED, "unified_reduced_machine")
         }
         CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => {
             (BIGINT, "bigint_with_extended_control")
@@ -445,4 +444,56 @@ fn adapt_dr_window_rows(
             )
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    fn compile_embedded(layout: &str, circuit_type: CircuitType) -> GkrPrograms {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../cs/compiled_circuits")
+            .join(layout);
+        let artifact: GKRCircuitArtifact<BF> =
+            serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        GkrPrograms::compile(circuit_type, Arc::new(artifact))
+            .unwrap_or_else(|error| panic!("{layout}: {error}"))
+    }
+
+    #[test]
+    fn cpu_unified22_programs_compile() {
+        let unified = compile_embedded(
+            "unified_reduced_machine_layout_gkr.json",
+            CircuitType::Unrolled(UnrolledCircuitType::Unified),
+        );
+        let unified22 = compile_embedded(
+            "unified_reduced_machine_2_22_layout_gkr.json",
+            CircuitType::Unrolled(UnrolledCircuitType::Unified22),
+        );
+        assert_eq!(unified22.runtime_circuit().trace_len, 1 << 22);
+        crate::forward::recompute_plan::check_recompute_bindings(&unified22);
+        assert_eq!(unified22.forward.layers.len(), unified.forward.layers.len());
+        assert_eq!(
+            unified22.continuations.layers.len(),
+            unified.continuations.layers.len()
+        );
+        assert_eq!(
+            unified22.backward_layers.len(),
+            unified.backward_layers.len()
+        );
+        assert_eq!(unified22.window.len(), unified.window.len());
+        assert_eq!(
+            unified22.main_continuation_window.len(),
+            unified.main_continuation_window.len()
+        );
+        assert_eq!(unified22.main_tail.len(), unified.main_tail.len());
+        let final_trace_log = 4;
+        let initial_layer = unified22.runtime_circuit().layers.len();
+        let dr = unified22.compile_dr_window_programs(final_trace_log);
+        assert_eq!(
+            dr.layers.keys().copied().collect::<Vec<_>>(),
+            (initial_layer..initial_layer + 22 - final_trace_log as usize).collect::<Vec<_>>()
+        );
+    }
 }

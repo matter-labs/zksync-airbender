@@ -892,6 +892,29 @@ mod tests {
         );
     }
 
+    /// `Unified22` has no witness `.cuh` of its own: the GPU runs the unified
+    /// kernels on it, so its 2^22 layout must generate the committed unified file.
+    #[test]
+    fn unified22_layout_generates_the_committed_unified_cuh() {
+        let root = repo_root();
+        let circuit = CIRCUITS
+            .iter()
+            .find(|c| c.id == "unified_reduced_machine")
+            .expect("unified_reduced_machine entry");
+        let generated = generate_from_files_for_field::<BabyBearField>(
+            root.join("cs/compiled_circuits/unified_reduced_machine_2_22_layout_gkr.json"),
+            root.join(circuit.inputs.ssa_json),
+            false,
+        )
+        .unwrap();
+        let committed = std::fs::read_to_string(circuit.committed_path(&root)).unwrap();
+        assert!(
+            generated == committed,
+            "{}",
+            first_diff(&generated, &committed)
+        );
+    }
+
     #[test]
     fn cpu_babybear_wrapper_equivalence() {
         let root = repo_root();
