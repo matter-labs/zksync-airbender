@@ -18,6 +18,37 @@ theorem register_immediate_fields {source register : BitVec 5} {immediate : BitV
   simp [Mixed.decoderFields, UnifiedReduced.decoderFields, Trace.decoderFields,
     UnifiedReduced.arithmeticFields, Trace.arithmeticFields, DecoderData.mapFamily, nonzero]
 
+/-- Native decoding and public modular clocks identify the actual ADDI metadata. -/
+theorem register_immediate_preparation_entry [Fact p.Prime] (hp : 4194304 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {ca oa : List (BitVec 32)} {cut : Nat} {source register : BitVec 5} {immediate : BitVec 12}
+    (setup : data.machine.rom = Setup.table before)
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    (ordinaryProgram : Mixed.programImage before oa = some program)
+    (scope : RegisterImmediatePreparation data program cut source register immediate) (nonzero : register ≠ 0)
+    {w : Nat → ZMod p} (member : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∈ data.machine.rows)
+    (ordinary : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∉ data.callers)
+    (last : Delegation.Caller.startClock (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) + 4 = cut) :
+    ∃ entry ∈ program, decoderQuery w = entry.query ∧
+      entry.data = ⟨.machine, source, 0, register,
+        Word.ofBitVec (SailRV32.Functions.sign_extend (m := 32) immediate), 1, 0⟩ := by
+  obtain ⟨entry, present, _, query⟩ := decoder_member (accepted.ordinaryDecoded _ member ordinary)
+  have schedule := wrapped_program_pc_clock hp clockInverse setup accepted publicProgram ordinaryProgram scope.registry _ member
+  have pc := native_query_pc_word (by dsimp [limbBase]; omega) query
+  have bits : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily).start.word.toBitVec = entry.pc := by
+    change Word.mk (w 0).val (w 1).val = Word.ofBitVec entry.pc at pc
+    change (Word.mk (w 0).val (w 1).val).toBitVec = entry.pc
+    rw [pc, Word.ofBitVec_roundtrip]
+  have clock : Delegation.Caller.startClock (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) = cut - 4 := by omega
+  have address : entry.pc = wrappedProgramAddress data (cut - 4) := by simpa only [bits, clock, wrappedProgramAddress] using schedule
+  have fields := (run_program_sources ordinaryProgram entry present).fields
+  rw [scope.atCut entry present address, register_immediate_fields nonzero] at fields
+  have metadata : entry.data = ⟨.machine, source, 0, register,
+      Word.ofBitVec (SailRV32.Functions.sign_extend (m := 32) immediate), 1, 0⟩ := (Option.some.inj fields).symm
+  change decoderQuery w = entry.query at query
+  exact ⟨entry, present, query, metadata⟩
+
 theorem register_immediate_row_output [Fact p.Prime] (hp : 4194304 ≤ p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
@@ -37,20 +68,8 @@ theorem register_immediate_row_output [Fact p.Prime] (hp : 4194304 ≤ p)
         registerImmediateValue (readToken w importedConstraintsMemoryPorts[0]).word.toBitVec immediate := by
   have core := Verification.holds_of_sublist (accepted.constraints _ member)
     (List.sublist_append_left (importedConstraints data.machine.rom) importedConstraintsTimestampLookups)
-  obtain ⟨entry, present, _, query⟩ := decoder_member (accepted.ordinaryDecoded _ member ordinary)
-  have schedule := wrapped_program_pc_clock hp clockInverse setup accepted publicProgram ordinaryProgram scope.registry _ member
-  have pc := native_query_pc_word (by dsimp [limbBase]; omega) query
-  have bits : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily).start.word.toBitVec = entry.pc := by
-    change Word.mk (w 0).val (w 1).val = Word.ofBitVec entry.pc at pc
-    change (Word.mk (w 0).val (w 1).val).toBitVec = entry.pc
-    rw [pc, Word.ofBitVec_roundtrip]
-  have clock : Delegation.Caller.startClock (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) = cut - 4 := by omega
-  have address : entry.pc = wrappedProgramAddress data (cut - 4) := by simpa only [bits, clock, wrappedProgramAddress] using schedule
-  have fields := (run_program_sources ordinaryProgram entry present).fields
-  rw [scope.atCut entry present address, register_immediate_fields nonzero] at fields
-  have metadata : entry.data = ⟨.machine, source, 0, register,
-      Word.ofBitVec (SailRV32.Functions.sign_extend (m := 32) immediate), 1, 0⟩ := (Option.some.inj fields).symm
-  change decoderQuery w = entry.query at query
+  obtain ⟨entry, _, query, metadata⟩ := register_immediate_preparation_entry hp clockInverse setup accepted
+    publicProgram ordinaryProgram scope nonzero member ordinary last
   have flags := UnifiedReduced.Proofs.decoder_selectors (by omega) core (by rw [metadata]; change 1 < 524288; decide) query
   have selected : w 11 = 1 := by simpa [metadata, importedConstraintsDecoderColumns] using flags 0
   have sourceRAM : w 28 = 0 := by simpa [metadata, importedConstraintsDecoderColumns, Nat.testBit, Nat.shiftRight_eq_div_pow] using flags 17
@@ -93,6 +112,116 @@ theorem register_immediate_row_output [Fact p.Prime] (hp : 4194304 ≤ p)
   · change _ = (readToken w importedConstraintsMemoryPorts[0]).word.toBitVec + SailRV32.Functions.sign_extend (m := 32) immediate
     rw [readWord]
     simpa [write_word, importedConstraintsMemoryPorts, WordColumns.evaluate] using result
+
+/-- The first ADDI port consumes the preceding literal's retained token. Raw
+    matching, strict clocks and unique public seeds rule out a fabricated or stale
+    operand before any Sail transport or regional round-mask derivation. -/
+theorem literal_addi_source_word [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat}
+    {source register : BitVec 5} {literal : ControlLiteral} {immediate : BitVec 12}
+    (setup : data.machine.rom = Setup.table before)
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    (ordinaryProgram : Mixed.programImage before oa = some program)
+    (initialization : initialImage before cells = some data.machine.initialMemory)
+    (scope : LiteralAddiPreparation data program cut source register literal immediate)
+    (nonzero : register ≠ 0) (aligned : cut % 4 = 0)
+    {w : Nat → ZMod p} (member : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∈ data.machine.rows)
+    (ordinary : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∉ data.callers)
+    (last : Delegation.Caller.startClock (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) + 4 = cut) :
+    (readToken w importedConstraintsMemoryPorts[0]).word = Word.ofBitVec literal.value := by
+  have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
+  have floor := scope.seed.afterInitial
+  have cutFloor : 8 ≤ cut := by omega
+  have sourceAligned : (cut - 4) % 4 = 0 := by omega
+  have requests := request_binding size clockInverse accepted.toRequestChecks publicProgram
+  have facts := mixed_memory_facts size clockInverse accepted publicProgram initialization requests
+  obtain ⟨start, earlier, later⟩ := Transfer.split_at facts (cut - 5)
+  have prefixMatching := earlier.matching
+  have cutoff : cut - 5 = (cut - 4) - 1 := by omega
+  rw [cutoff, mixed_prefix_steps data (by omega)] at prefixMatching
+  obtain ⟨token, present, address, _, word⟩ := preparation_token hp clockInverse accepted publicProgram ordinaryProgram
+    initialization scope.seed scope.sourceNonzero sourceAligned prefixMatching
+  obtain ⟨entry, _, query, metadata⟩ := register_immediate_preparation_entry (by omega) clockInverse setup accepted
+    publicProgram ordinaryProgram scope.step nonzero member ordinary last
+  have indices := native_query_indices (by dsimp [limbBase]; omega) query
+  have sourceIndex : (w 5).val = source.toNat := by
+    simpa [metadata, importedConstraintsDecoderColumns] using indices.1
+  have sourceAddress : (readToken w importedConstraintsMemoryPorts[0]).address = (Cell.register source).addressCode := by
+    simp [readToken, MemoryAddress.code, importedConstraintsMemoryPorts, Cell.addressCode, sourceIndex]
+  have portMember : importedConstraintsMemoryPorts[0] ∈ machinePorts (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) := by
+    rw [machine_ports_ordinary member ordinary]
+    simp [Trace.Row.ports, CircuitLayout.ports, importedConstraintsMemoryPorts]
+  have edge := mixed_machine_member member portMember
+  have clocks := state_clock_inputs size clockInverse accepted.constraints accepted.states
+    publicProgram.initialClock publicProgram.initialAligned _ member
+  have writeTime := (write_time (by omega) (base := rawPair w importedConstraintsTraceColumns.initialTime)
+    clocks.1 clocks.2 (by decide : importedConstraintsMemoryPorts[0].clock.offset < 4)).2
+  have writeTime : (timeOfPair (writeToken importedConstraintsTraceColumns w importedConstraintsMemoryPorts[0]).time).value = cut - 4 := by
+    change (timeOfPair (writeToken importedConstraintsTraceColumns w importedConstraintsMemoryPorts[0]).time).value =
+      Delegation.Caller.startClock (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) + 0 at writeTime
+    omega
+  have inSuffix : (readToken w importedConstraintsMemoryPorts[0],
+      writeToken importedConstraintsTraceColumns w importedConstraintsMemoryPorts[0]) ∈ Transfer.afterSteps (mixedData data) (cut - 5) := by
+    apply List.mem_filter.mpr
+    exact ⟨edge, by simp only [writeTime]; simp; omega⟩
+  have readMember := later.matching.mem_iff.mpr (List.mem_append.mpr (Or.inr (List.mem_map.mpr ⟨_, inSuffix, rfl⟩)))
+  have inStart : readToken w importedConstraintsMemoryPorts[0] ∈ start := by
+    rcases List.mem_append.mp readMember with initial | written
+    · exact initial
+    · obtain ⟨previous, included, same⟩ := List.mem_map.mp written
+      have previousTime : cut - 5 < (timeOfPair previous.2.time).value := by
+        simpa only [Transfer.afterSteps, List.mem_filter, Bool.not_eq_true', decide_eq_false_iff_not, Nat.not_le] using
+          (List.mem_filter.mp included).2
+      have strict := facts.order _ edge
+      change (timeOfPair (readToken w importedConstraintsMemoryPorts[0]).time).value <
+        (timeOfPair (writeToken importedConstraintsTraceColumns w importedConstraintsMemoryPorts[0]).time).value at strict
+      change previous.2 = readToken w importedConstraintsMemoryPorts[0] at same
+      rw [← same, writeTime] at strict
+      omega
+  have keys := boundary_keys MemoryToken.address earlier.matching earlier.addresses
+  have unique : (start.map MemoryToken.address).Nodup := keys.nodup_iff.mp scope.initialUnique
+  have equal := List.inj_on_of_nodup_map unique inStart present (sourceAddress.trans address.symm)
+  exact congrArg MemoryToken.word equal |>.trans word
+
+/-- Public literal→ADDI dataflow determines a canonical output token. Neither
+    source values nor bounds nor intermediate architectural states are inputs. -/
+theorem literal_addi_preparation_token [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat}
+    {source register : BitVec 5} {literal : ControlLiteral} {immediate : BitVec 12}
+    {tokens : List (MemoryToken p)}
+    (setup : data.machine.rom = Setup.table before)
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    (ordinaryProgram : Mixed.programImage before oa = some program)
+    (initialization : initialImage before cells = some data.machine.initialMemory)
+    (scope : LiteralAddiPreparation data program cut source register literal immediate)
+    (nonzero : register ≠ 0) (aligned : cut % 4 = 0)
+    (matching : (data.machine.initialMemory ++ (data.prefixSteps cut).map Prod.snd).Perm
+      (tokens ++ (data.prefixSteps cut).map Prod.fst)) :
+    ∃ token ∈ tokens, token.address = (Cell.register register).addressCode ∧
+      (timeOfPair token.time).value = cut - 2 ∧
+      token.word = Word.ofBitVec (registerImmediateValue literal.value immediate) := by
+  have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
+  obtain ⟨w, member, last, ordinary, present, timestamp, bound⟩ := preparation_output_token hp clockInverse
+    accepted publicProgram initialization scope.step.prefixScope scope.step.afterInitial scope.step.beforeTerminal aligned matching
+  have sourceWord := literal_addi_source_word hp clockInverse setup accepted publicProgram ordinaryProgram
+    initialization scope nonzero aligned member ordinary last
+  have requests := request_binding size clockInverse accepted.toRequestChecks publicProgram
+  have facts := mixed_memory_facts size clockInverse accepted publicProgram initialization requests
+  have zero := Transfer.read_cell_values_of_rules facts (Cell.register 0).addressCode 0
+    (Delegation.Caller.Proofs.initial_zero initialization)
+    (mixed_zero_rules_of_program size clockInverse accepted publicProgram ordinaryProgram requests)
+  have output := register_immediate_row_output (by omega) clockInverse setup accepted publicProgram ordinaryProgram
+    scope.step nonzero zero member ordinary last (sourceWord.symm ▸ Word.ofBitVec_bound _)
+  rw [sourceWord, Word.ofBitVec_roundtrip] at output
+  refine ⟨_, present, output.2.1, timestamp, ?_⟩
+  apply Word.eq_of_value bound (Word.ofBitVec_bound _)
+  have equal := congrArg BitVec.toNat output.2.2
+  rw [Word.toBitVec_toNat bound] at equal
+  exact equal.trans (Word.ofBitVec_value _).symm
 
 theorem register_immediate_control_preparation [Fact p.Prime] (hp : 8388608 ≤ p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)

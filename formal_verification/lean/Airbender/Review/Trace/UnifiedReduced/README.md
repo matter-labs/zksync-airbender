@@ -32,17 +32,18 @@ mixed execution with delegation callers remains a separate obligation.
 | Aligned public sequential/comparison decoding and native matching derive modular RV32 program addresses, including comparison PC wraparound. | [`Caller.wrapped_program_address_soundness`](Theorems.lean) |
 | Public ADDI-from-x0/LUI preparation yields actual controls after literal, sequential ordinary/custom or aligned comparison prefixes; native PC/clock matching derives each preparation address. | [`Caller.control_preparation_soundness`](Theorems.lean) |
 | AUIPC computes a control from its derived public PC and U-immediate, with an actual initialized cut state and canonical native token at cut minus two. | [`Caller.pc_relative_control_preparation_soundness`](Theorems.lean) |
-| Literal or publicly placed AUIPC code derives the actual protocol entry read and retained native token. | [`Caller.hash_control_preparation_soundness`](Theorems.lean) |
+| Literal, publicly placed AUIPC or literal→ADDI code derives the actual protocol entry read and retained native token. | [`Caller.hash_control_preparation_soundness`](Theorems.lean) |
+| Two public literal/ADDI instructions bind a protocol constant, deriving operand tokens from initialized matching before round-mask transport. | [`Caller.literal_addi_hash_preparation_soundness`](Theorems.lean) |
 | Complete selected G/Keccak references admit either preparation source at their actual joint cut states. | [`Caller.computed_prepared_hash_window_soundness`](Theorems.lean) |
-| Nonempty ordered lists may mix literal and AUIPC preparations while retaining every intervening transfer in one history. | [`Caller.computed_prepared_hash_sequence_soundness`](Theorems.lean) |
+| Nonempty ordered lists may mix all three preparation forms while retaining every intervening transfer in one history. | [`Caller.computed_prepared_hash_sequence_soundness`](Theorems.lean) |
 | Either preparation source and public modular code derive caller rows, exact request slots, worker family and count. | [`Caller.hash_prepared_public_window_schedule_soundness`](Theorems.lean) |
 | Public modular regions derive complete G/Keccak span shape before source-aware reference composition. | [`Caller.wrapped_program_computed_hash_window_soundness`](Theorems.lean) |
-| Public modular regions derive every selected shape in an ordered list with literal or AUIPC preparation. | [`Caller.wrapped_program_computed_hash_sequence_soundness`](Theorems.lean) |
+| Public modular regions derive every selected shape in an ordered list with literal/AUIPC/literal→ADDI preparation. | [`Caller.wrapped_program_computed_hash_sequence_soundness`](Theorems.lean) |
 | Literal or AUIPC code prepares actual regional round-zero seeds; raw matching derives exclusive masks. | [`Caller.computed_round_region_masks_soundness`](Theorems.lean) |
 | Public modular controller code and at most forty ticks derive regional shape before source-aware mask transport. | [`Caller.wrapped_program_computed_round_region_soundness`](Theorems.lean) |
 | Source-aware regions derive global memory inputs under explicit full round-worker coverage. | [`Caller.computed_protocol_memory_soundness`](Theorems.lean) |
-| Public round-CSR occurrences derive live membership/masks for either source, with the zero-clock coverage boundary explicit. | [`Caller.wrapped_program_computed_round_coverage_soundness`](Theorems.lean) |
-| Complete G, extended-BLAKE and Keccak lists admit literal/AUIPC preparation in one initialized history. | [`Caller.computed_prepared_protocol_sequence_soundness`](Theorems.lean) |
+| Public round-CSR occurrences derive live membership/masks for any admitted source, with the zero-clock coverage boundary explicit. | [`Caller.wrapped_program_computed_round_coverage_soundness`](Theorems.lean) |
+| Complete G, extended-BLAKE and Keccak lists admit literal/AUIPC/literal→ADDI preparation in one initialized history. | [`Caller.computed_prepared_protocol_sequence_soundness`](Theorems.lean) |
 | Public modular caller/controller regions derive every shape before complete source-aware reference/list composition. | [`Caller.wrapped_program_computed_protocol_sequence_soundness`](Theorems.lean) |
 | Register-dependent ADDI derives its actual operand/cut states, RV32 result and retained output token, including aliases and earlier worker effects. | [`Caller.register_immediate_control_preparation_soundness`](Theorems.lean) |
 | Two preparations share their actual cut states and the complete intervening machine/worker history; neither control is supplied. | [`Caller.control_preparation_window_soundness`](Theorems.lean) |
@@ -153,7 +154,7 @@ read; native matching identifies its actual instruction and derives the canonica
 entry token at cut minus two. The same history derives the actual cut read.
 [`ComputedPreparedHashWindowInputs`](ComputedHashWindows.lean) connects that source
 to the existing complete G/Keccak reference and exact caller binding. Nonempty
-ordered lists may mix both forms; each gap and reference uses the same continuous
+ordered lists may mix all three forms; each gap and reference uses the same continuous
 native execution and derived boundary states. Mode/count/duration, selected family,
 public domain/setup/tables and logical matching remain explicit. The current
 complete entries retain the nonround worker scope. The separate
@@ -179,7 +180,7 @@ callers/workers; complete scopes reject incomplete durations, cuts past the
 native terminal and regions containing ordinary preparation code. The literal
 public-region fixture retains the unissued G worker in its actual prefix.
 
-[`ComputedRoundRegionInputs`](ComputedRoundRegions.lean) admits either source
+[`ComputedRoundRegionInputs`](ComputedRoundRegions.lean) admits any admitted source
 for an extended-round controller. The actual canonical round-zero token seeds
 the existing raw matching/control argument, which derives every selected mask.
 [`WrappedProgramComputedRoundRegionInputs`](ComputedRoundRegions.lean) derives
@@ -196,9 +197,9 @@ These concrete fixtures cover preparation/empty regions; nonempty masks are
 arbitrary accepted-witness theorems. The unissued G-prefix effect remains
 admitted in the source-aware global context. Public modular round-CSR occurrence
 coverage now derives precisely live regional membership and every issued mask
-for either source, including repeated RV32 addresses. Full coverage is equivalent
+for any admitted source, including repeated RV32 addresses. Full coverage is equivalent
 to absence of zero-clock round workers; it does not follow from CSR coverage alone.
-[`ComputedProtocolWindowInputs`](ComputedRoundRegions.lean) connects either source
+[`ComputedProtocolWindowInputs`](ComputedRoundRegions.lean) connects any admitted source
 to complete G, extended-BLAKE and Keccak reference lists in one history. Its
 selected family/count/duration remain explicit.
 [`WrappedProgramComputedPreparedProtocolInputs`](ComputedRoundRegions.lean) and
@@ -229,9 +230,28 @@ selector, intermediate state or result is an input. Native fixtures check actual
 65537→65665 and 65537→65536, clock six, a wrong immediate and a fabricated source.
 An unissued G-prefix fixture retains actual 0→1→1 states, distinguishing the
 operand from its public initial value. Literal/AUIPC contracts remain and share
-arithmetic/output-token helpers. This is memory preparation; complete Sail
-retirement and public dataflow binding to protocol entry constants remain open.
-The complete reference/list interface still uses literal/AUIPC sources.
+arithmetic/output-token helpers. This is memory preparation.
+
+The third `HashControlPreparation` source uses
+[`LiteralAddiPreparation`](../../Helpers/UnifiedReduced/RegisterPreparation.lean):
+a public literal writes a source register immediately before a public ADDI.
+Raw prefix/suffix matching, strict native clocks and the existing distinct public
+domain derive the first-read word from the literal token. This precedes Sail
+transport and regional round-mask derivation, so no mask or desired read is
+assumed to bind the protocol value. A public literal/immediate equation selects
+the protocol entry constant. The convenient
+[`Caller.literal_addi_hash_preparation_soundness`](Theorems.lean) derives seed
+uniqueness from the existing public cell domain. Both final cycles are worker-free;
+all earlier effects remain. The source reaches the same complete G, extended-BLAKE
+and Keccak windows/lists, including public modular shape and raw regional masks.
+Coverage/domain/setup/tables and logical matching remain explicit. Native
+reversed-row fixtures derive 65537→127→128 and 65537→129→128 with aliases,
+signed −1 and canonical clock ten; wrong immediates/constants, fabricated operands
+and incomplete references are rejected. An accepted unissued G prefix remains in
+one initialized history before literal zero and ADDI 128. The fixtures cover
+preparation and empty-region guards; full reference/list claims remain general
+accepted-witness theorems. Longer public dataflow chains, broader operations and
+full Sail retirement remain open.
 
 [`WrappedProgramCallerRegion`](../../Helpers/UnifiedReduced/WindowSchedule.lean)
 states the public ordinary-exclusion/full-CSR-family policy at every clock in the
