@@ -185,13 +185,13 @@ fn pr_packed_merge_transcript_matches_cpu() {
     let raw_columns =
         prover::gkr::prover_config::pow_bits::total_base_oracle_columns(&programs.runtime_circuit);
     assert_eq!(raw_columns, 114);
-    let cpu_bits = prover::gkr::prover_config::pow_bits::batched_proximity_check_pow_bits(
+    let cpu_bits = prover::gkr::prover_config::pow_bits::batched_proximity_check_pow_bits::<PR, PR>(
         config.security_level.security_bits(),
-        22,
+        22 + prover::gkr::prover_config::example_configs::EVM_PRODUCTION_PACK_LOG2,
         5,
         raw_columns,
     );
-    assert_eq!(cpu_bits, 11);
+    assert_eq!(cpu_bits, 16);
     for initial_seed in [[0u8; 32], [0xffu8; 32]] {
         for bits in [0, cpu_bits] {
             let mut host_seed = Keccak256Seed(initial_seed);
@@ -577,13 +577,15 @@ fn schedule_fixture_full(context: &gpu_prover_context::ProverContext) -> Schedul
     let dr_tail_plan =
         crate::proth120::backward::preflight_dr_tail_resources_pr(&programs, 4, context);
     let mut callbacks = gpu_core::primitives::callbacks::Callbacks::new();
-    let batching_pow_bits = prover::gkr::prover_config::pow_bits::batched_proximity_check_pow_bits(
-        config.security_level.security_bits(),
-        log_rows as usize,
-        config.whir_schedule.base_lde_factor.trailing_zeros() as usize,
-        prover::gkr::prover_config::pow_bits::total_base_oracle_columns(&artifact),
-    );
-    assert_eq!(batching_pow_bits, 11);
+    let batching_pow_bits =
+        prover::gkr::prover_config::pow_bits::batched_proximity_check_pow_bits::<PR, PR>(
+            config.security_level.security_bits(),
+            log_rows as usize
+                + prover::gkr::prover_config::example_configs::EVM_PRODUCTION_PACK_LOG2,
+            config.whir_schedule.base_lde_factor.trailing_zeros() as usize,
+            prover::gkr::prover_config::pow_bits::total_base_oracle_columns(&artifact),
+        );
+    assert_eq!(batching_pow_bits, 16);
     let output = crate::proth120::schedule_gkr(
         Arc::clone(&programs),
         &base,
@@ -823,16 +825,16 @@ fn pr_schedule_gkr_small_shape() {
         cpu_merge(&setup_claims, &extra),
     );
     assert_eq!(
-        prover::gkr::prover_config::pow_bits::batched_proximity_check_pow_bits(
+        prover::gkr::prover_config::pow_bits::batched_proximity_check_pow_bits::<PR, PR>(
             SecurityLevel::Sec100.security_bits(),
-            trace_log,
+            trace_log + prover::gkr::prover_config::example_configs::EVM_PRODUCTION_PACK_LOG2,
             5,
             prover::gkr::prover_config::pow_bits::total_base_oracle_columns(&artifact)
         ),
-        11
+        16
     );
     let (next_seed, nonce) =
-        <Keccak256Transcript as Transcript<PR, PR>>::search_pow(&seed, 11, &worker);
+        <Keccak256Transcript as Transcript<PR, PR>>::search_pow(&seed, 16, &worker);
     seed = next_seed;
     let batching_challenge = draw_random_field_els::<PR, PR, Keccak256Transcript>(&mut seed, 1)[0];
     let products: Vec<[PR; 2]> = [

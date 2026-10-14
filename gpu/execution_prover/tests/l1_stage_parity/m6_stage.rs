@@ -702,16 +702,16 @@ fn run_stages(
     else {
         panic!("M6 stage parity requires the packed commitment mode");
     };
-    let lookup_pow_bits = pow_bits::lookup_challenges_pow_bits(
+    let lookup_pow_bits = pow_bits::lookup_challenges_pow_bits::<PR, PR>(
         config.security_level.security_bits(),
         pow_bits::lookup_identity_degree(circuit),
     )
     .max(external_challenges_pow_bits);
     let base_lde_log2 = config.whir_schedule.base_lde_factor.trailing_zeros() as usize;
     let base_columns = pow_bits::total_base_oracle_columns(circuit);
-    let batched_pow_bits = pow_bits::batched_proximity_check_pow_bits(
+    let batched_pow_bits = pow_bits::batched_proximity_check_pow_bits::<PR, PR>(
         config.security_level.security_bits(),
-        LOG_ROWS as usize,
+        (LOG_ROWS + pack_log2) as usize,
         base_lde_log2,
         base_columns,
     );
@@ -722,7 +722,7 @@ fn run_stages(
             base_columns,
             batched_pow_bits
         ),
-        (20, 5, 114, 11),
+        (20, 5, 114, 16),
         "M6 stage parity PoW inputs"
     );
     let replay = replay_gkr_challenges(

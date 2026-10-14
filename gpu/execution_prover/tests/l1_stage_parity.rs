@@ -915,15 +915,15 @@ fn cpu_l1_wrap_m6_replay_matches_bundle() {
         })
         .count();
     let base_lde_log2 = config.whir_schedule.base_lde_factor.trailing_zeros() as usize;
-    let batched = pow_bits::batched_proximity_check_pow_bits(
+    let batched = pow_bits::batched_proximity_check_pow_bits::<Proth120, Proth120>(
         config.security_level.security_bits(),
-        config.trace_len_log2,
+        config.trace_len_log2 + EVM_PRODUCTION_PACK_LOG2,
         base_lde_log2,
         base_columns,
     );
     assert_eq!(
         (config.trace_len_log2, base_lde_log2, base_columns, batched),
-        (22, 5, 114, 11),
+        (22, 5, 114, 16),
         "M6 replay batched proximity PoW inputs"
     );
     let replay = m6_replay::replay_gkr_challenges(
