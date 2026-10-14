@@ -131,8 +131,8 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         inputs.setup_host.pack_log2, EVM_PRODUCTION_PACK_LOG2 as u32,
         "L1Wrap setup pack_log2 mismatch"
     );
-    assert_eq!(
-        inputs.setup_host.cfg, cfg,
+    assert!(
+        inputs.setup_host.cfg.same_protocol_geometry(&cfg),
         "L1Wrap setup commitment config mismatch"
     );
     let multiplicity_start = circuit
@@ -177,7 +177,11 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     let range = Range::new("l1_wrap.proof")?;
     range.start(stream)?;
     let mut callbacks = Callbacks::new();
-    let mut setup = PackedSetupSource::new(Arc::clone(&setup_host), context)?;
+    let mut setup = PackedSetupSource::new(
+        Arc::clone(&setup_host),
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+        context,
+    )?;
     let mut setup_transfer = Transfer::new()?;
     setup_transfer.record_allocated(context)?;
     setup.schedule_transfer(&mut setup_transfer, context)?;

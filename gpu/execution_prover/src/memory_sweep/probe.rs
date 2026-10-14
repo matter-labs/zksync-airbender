@@ -126,7 +126,13 @@ pub(super) fn schedule_proof_inputs<'a>(
         .baby_bear()
         .setup_host
         .get_initialized(circuit.profile)
-        .map(|host| GpuGKRSetupTransfer::new(host, context))
+        .map(|host| {
+            GpuGKRSetupTransfer::new(
+                host,
+                gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+                context,
+            )
+        })
         .transpose()?;
     let memory_host = GpuGKRMemoryTransferHost::from_per_coset_caps(
         circuit

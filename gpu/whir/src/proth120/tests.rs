@@ -1903,7 +1903,12 @@ fn pr_l1_whir_fold_matches_cpu_small() {
             memory_copy_async(raw.get_uninit_hypercube_evals_mut(), &flat, stream).unwrap();
             let mut base = PackedCosetRecomputeOracle::pack_from_columns(raw, 4, &ctx).unwrap();
             base.commit(&cfg, &ctx).unwrap();
-            let mut setup = PackedSetupSource::new(Arc::clone(&setup_host), &ctx).unwrap();
+            let mut setup = PackedSetupSource::new(
+                Arc::clone(&setup_host),
+                gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+                &ctx,
+            )
+            .unwrap();
             let transfer =
                 single_shot_h2d(|transfer| setup.schedule_transfer(transfer, &ctx), &ctx).unwrap();
             transfer.ensure_transferred(&ctx).unwrap();

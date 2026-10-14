@@ -762,7 +762,11 @@ fn merged_commit_inputs<'a>(
         .setup_host
         .get_initialized(prepared.profile)
         .expect("merged memory+witness commitment requires the initialized setup");
-    let setup = GpuGKRSetupTransfer::new(setup_host, context)?;
+    let setup = GpuGKRSetupTransfer::new(
+        setup_host,
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+        context,
+    )?;
     let (decoder, inits, trace) = input_transfers(context, prepared)?;
     GpuGKRMergedCommitTransfer::new(setup, decoder, inits, trace, context)
 }
