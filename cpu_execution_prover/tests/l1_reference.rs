@@ -1,7 +1,8 @@
-use cpu_execution_prover::test_support::{with_l1_wrap_fixture, L1WrapFixture};
+use cpu_execution_prover::test_support::{with_l1_wrap_fixture_for, L1WrapFixture};
 use cpu_execution_prover::CpuExecutionProverConfiguration;
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::GKRCircuitArtifact;
+use execution_prover::ExecutionKind;
 use field::Proth120;
 use full_statement_verifier::host_utils::{build_unified_stream, load_fsv_program};
 use full_statement_verifier::program_proof::ProgramProof;
@@ -18,7 +19,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
-use unified_reduced_machine_proth120::{LAYOUT_JSON, TRACE_LEN_LOG2};
+use unified_reduced_machine_proth120::l1_wrap_2p21::{LAYOUT_JSON, TRACE_LEN_LOG2};
 use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
 
 const REGENERATE: &str = "RUST_MIN_STACK=1073741824 cargo test -p cpu_execution_prover --release --test l1_reference generate_l1_witness_reference -- --exact --ignored --nocapture --test-threads=1";
@@ -32,7 +33,8 @@ fn fixture_dir() -> PathBuf {
     std::env::var_os("AB_PROTH120_REFERENCE_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../prover_pipeline/fixtures/l1_reference")
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../prover_pipeline/fixtures/l1_reference_2p21")
         })
 }
 
@@ -66,6 +68,7 @@ struct FeederCheckpoint {
 struct ReferenceBundle {
     proof: GKRProof<Proth120, Proth120, Keccak256MerkleTreeWithCap>,
     commitment_mode: CommitmentMode,
+    wrap: String,
 }
 
 #[derive(Deserialize)]
@@ -566,11 +569,11 @@ fn produce(sink: &Path) {
     let bundle_path = reference.join("l1_bundle.json");
     let checkpoint: FeederCheckpoint = read_typed(&feeder_path);
     assert!(
-        checkpoint.schema_version == 4
+        checkpoint.schema_version == 5
             && checkpoint.target == "L1Feeder"
             && checkpoint.security_level == "Sec100"
             && checkpoint.batch_id == 0,
-        "L1 witness reference requires the schema-4 Sec100 L1Feeder checkpoint at batch_id 0"
+        "L1 witness reference requires the schema-5 Sec100 L1Feeder checkpoint at batch_id 0"
     );
     assert!(
         checkpoint.proof.riscv_proofs.len() == 1
@@ -587,22 +590,28 @@ fn produce(sink: &Path) {
         "L1 witness reference requires one unified feeder proof and no delegation proofs"
     );
     let bundle: ReferenceBundle = read_typed(&bundle_path);
+    assert_eq!(
+        bundle.wrap, "2p21",
+        "L1 witness reference requires the 2^21 wrap bundle"
+    );
     let manifest: ProofManifest = read_typed(&reference.join("manifest.json"));
 
-    let program = FsvProgram::UnifiedRecursionLayerL1Feeder;
+    let program = FsvProgram::UnifiedRecursionLayerL1FeederWrap;
     let blake = BlakeMode::BlakeSpecialOpcodes;
     let stem = program.file_stem(blake);
     let dir = fsv_dir();
-    let feeder = manifest
+    let wrap_program = manifest
         .fsv
         .iter()
-        .find(|identity| identity.role == "feeder")
-        .expect("L1 witness reference proof manifest names the feeder fsv binary");
+        .find(|identity| identity.role == "feeder_wrap")
+        .expect("L1 witness reference proof manifest names the wrap fsv binary");
     assert!(
-        feeder.stem == stem
-            && feeder.bin_keccak256 == keccak_hex(&read_bytes(&dir.join(format!("{stem}.bin"))))
-            && feeder.text_keccak256 == keccak_hex(&read_bytes(&dir.join(format!("{stem}.text")))),
-        "L1 witness reference feeder fsv binary differs from the proof manifest"
+        wrap_program.stem == stem
+            && wrap_program.bin_keccak256
+                == keccak_hex(&read_bytes(&dir.join(format!("{stem}.bin"))))
+            && wrap_program.text_keccak256
+                == keccak_hex(&read_bytes(&dir.join(format!("{stem}.text")))),
+        "L1 witness reference wrap fsv binary differs from the proof manifest"
     );
     let (bin, text) = load_fsv_program(&dir, program, blake);
     let nd_words = build_unified_stream(&checkpoint.setups, &checkpoint.proof);
@@ -612,7 +621,8 @@ fn produce(sink: &Path) {
     let top_bits = bundle.proof.inits_and_teardowns_top_bits.clone();
     drop(bundle);
     let call = Instant::now();
-    let (outputs, t_capture, t_eval, t_hash, threads) = with_l1_wrap_fixture(
+    let (outputs, t_capture, t_eval, t_hash, threads) = with_l1_wrap_fixture_for(
+        ExecutionKind::L1Wrap21,
         CpuExecutionProverConfiguration::default(),
         bin,
         text,
