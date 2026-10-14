@@ -328,7 +328,7 @@ fn registration_matches_remaining_stages_and_reuses_batch_setups() {
             (
                 FsvProgram::UnifiedRecursionLayerL1FeederWrap,
                 BlakeMode::BlakeSpecialOpcodes,
-                ExecutionKind::L1Wrap,
+                L1_WRAP_KIND,
                 ProofProfile::L1Wrap,
             ),
         ] {
@@ -574,10 +574,9 @@ fn malformed_setup_caps_are_rejected_at_artifact_admission() {
 }
 
 #[test]
-fn l1_target_is_rejected_until_the_wrap_circuit_matches_the_wrap_program() {
-    let error = validate_l1_wrap_activation().unwrap_err();
-    assert!(error.starts_with("ProofTarget::L1 requires"), "{error}");
-    assert!(validate_continuation_targets(ProofTarget::L1Feeder, ProofTarget::L1).is_err());
+fn l1_target_is_accepted_once_the_wrap_circuit_matches_the_wrap_program() {
+    validate_l1_wrap_activation().unwrap();
+    validate_continuation_targets(ProofTarget::L1Feeder, ProofTarget::L1).unwrap();
     validate_continuation_targets(ProofTarget::RecursionUnified, ProofTarget::L1Feeder).unwrap();
 }
 

@@ -2,12 +2,55 @@ use super::*;
 use crate::l1_feeder_tests::{artifact, empty_gkr_proof, feeder_artifact};
 use prover::definitions::FinalRegisterValue;
 
+/// An empty proof with the GKR layer rounds and the WHIR counts of an
+/// `L1_WRAP_KIND` proof.
+fn wrap_proof_skeleton() -> L1Proof {
+    use prover::gkr::prover::SumcheckIntermediateProofValues;
+    use prover::gkr::whir::whir_proof::WhirIntermediateCommitmentAndQueries;
+
+    let circuit = L1_WRAP_KIND.unified_circuit().unwrap();
+    let log = circuit.get_domain_size_log2() as usize;
+    let config = ProofProfile::L1Wrap.prover_config(log, COMPILED_SECURITY_LEVEL.to_prover());
+    let (pack_log2, _) = l1_wrap_packing(circuit);
+    let schedule = config.whir_schedule.clone();
+    let folds: usize = schedule.whir_steps_schedule.iter().sum();
+    let mut proof: L1Proof = empty_gkr_proof();
+    let rounds = (0..5).map(|_| log).chain((4..log).rev());
+    for (layer, sumcheck_num_rounds) in rounds.enumerate() {
+        proof.sumcheck_intermediate_values.insert(
+            layer,
+            SumcheckIntermediateProofValues {
+                sumcheck_num_rounds,
+                internal_round_coefficients: vec![],
+                final_step_evaluations: Default::default(),
+                extra_evaluations_from_caching_relations: Default::default(),
+                _marker: core::marker::PhantomData,
+            },
+        );
+    }
+    let whir = &mut proof.whir_proof;
+    whir.pow_nonces = vec![0; schedule.whir_steps_schedule.len()];
+    whir.sumcheck_polys = vec![Default::default(); folds];
+    whir.final_monomials = vec![Default::default(); 1 << (log + pack_log2 - folds)];
+    whir.intermediate_whir_oracles = schedule.whir_queries_schedule[1..]
+        .iter()
+        .map(|&queries| WhirIntermediateCommitmentAndQueries {
+            commitment: Default::default(),
+            queries: vec![Default::default(); queries],
+        })
+        .collect();
+    whir.whir_schedule = schedule;
+    proof
+}
+
 fn result() -> L1WrapResult {
+    let (pack_log2, external_challenges_pow_bits) =
+        l1_wrap_packing(L1_WRAP_KIND.unified_circuit().unwrap());
     L1WrapResult {
-        proof: empty_gkr_proof(),
+        proof: wrap_proof_skeleton(),
         commitment_mode: CommitmentMode::MergedAndPackedMemoryAndWitness {
-            pack_log2: EVM_PRODUCTION_PACK_LOG2,
-            external_challenges_pow_bits: EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS,
+            pack_log2,
+            external_challenges_pow_bits,
             register_final_state: [FinalRegisterValue {
                 value: 0,
                 last_access_timestamp: 0,
@@ -138,13 +181,9 @@ fn wrap_rejects_an_invalid_feeder_proof_before_proving() {
         program_cycles: checkpoint.program_cycles,
         feeder_layers: checkpoint.feeder_layers,
     };
-    // the wrap stage is closed until W3's wrap circuit matches the wrap program
     let Err(error) = advance_l1_wrap(&mut NoProving, &fsv, state, 0) else {
-        panic!("the wrap stage ran before W3");
+        panic!("an invalid feeder checkpoint was wrapped");
     };
-    assert!(error.starts_with("ProofTarget::L1 requires"), "{error}");
-    // and an invalid feeder proof is rejected by its admission check
-    let error = validate_last_feeder_proof(&artifact(ProofTarget::L1Feeder, 5).proof).unwrap_err();
     assert!(error.contains("reduced-machine family"), "{error}");
 }
 
@@ -201,11 +240,7 @@ fn cpu_m8_l1_registration_plan() {
             ExecutionKind::Unified22,
             ProofProfile::L1Feeder,
         ),
-        (
-            &fsv.feeder_wrap,
-            ExecutionKind::L1Wrap,
-            ProofProfile::L1Wrap,
-        ),
+        (&fsv.feeder_wrap, L1_WRAP_KIND, ProofProfile::L1Wrap),
     ] {
         let key = handle_key(kind, MachineType::Reduced, &program.0, &program.1);
         let registration = &registrations[&key];
@@ -215,5 +250,77 @@ fn cpu_m8_l1_registration_plan() {
         assert_eq!(registration.text, program.1);
         assert_eq!(registration.cycles_bound, None);
         assert_eq!(registration.profiles, BTreeSet::from([profile]));
+    }
+}
+
+#[test]
+fn l1_activation_accepts_cpu_wrap21() {
+    assert_eq!(L1_WRAP_KIND, ExecutionKind::L1Wrap21);
+    validate_l1_wrap_activation().unwrap();
+    validate_l1_wrap_backend(ProverBackend::Cpu).unwrap();
+    validate_artifact_envelope(&wrapped_artifact()).unwrap();
+}
+
+#[test]
+fn l1_activation_rejects_gpu_before_registration() {
+    let err = validate_l1_wrap_backend(ProverBackend::Gpu).unwrap_err();
+    assert!(
+        err.contains("ExecutionKind::L1Wrap21") && err.contains("W5"),
+        "{err}"
+    );
+}
+
+#[test]
+fn l1_bundle_requires_wrap_version() {
+    let bundle = L1Bundle::from_result(result());
+    let mut json = serde_json::to_value(&bundle).unwrap();
+    assert_eq!(json["wrap"], "2p21");
+    json.as_object_mut().unwrap().remove("wrap");
+    let err = serde_json::from_value::<L1Bundle>(json).unwrap_err();
+    assert!(err.to_string().contains("missing field `wrap`"), "{err}");
+}
+
+#[test]
+fn l1_bundle_rejects_2p22_version() {
+    let mut bundle = L1Bundle::from_result(result());
+    bundle.wrap = L1WrapVersion::Wrap2p22;
+    let err = bundle.validate().unwrap_err();
+    assert!(err.contains("proven in the Wrap2p22 wrap"), "{err}");
+}
+
+#[test]
+fn l1_bundle_rejects_truncated_whir_round() {
+    let mutations: &[(&str, fn(&mut L1Proof))] = &[
+        ("WHIR intermediate oracles", |p| {
+            p.whir_proof.intermediate_whir_oracles.pop();
+        }),
+        ("WHIR round 3 queries", |p| {
+            p.whir_proof.intermediate_whir_oracles[2].queries.pop();
+        }),
+        ("WHIR final monomials", |p| {
+            p.whir_proof.final_monomials.pop();
+        }),
+        ("WHIR PoW nonces", |p| {
+            p.whir_proof.pow_nonces.pop();
+        }),
+        ("WHIR schedule", |p| {
+            p.whir_proof.whir_schedule.whir_pow_schedule[2] -= 1;
+        }),
+        ("sumcheck rounds in GKR layer 5", |p| {
+            p.sumcheck_intermediate_values
+                .get_mut(&5)
+                .unwrap()
+                .sumcheck_num_rounds -= 1;
+        }),
+        ("GKR layers", |p| {
+            p.sumcheck_intermediate_values.pop_last();
+        }),
+    ];
+    L1Bundle::from_result(result()).validate().unwrap();
+    for (expected, mutate) in mutations {
+        let mut bundle = L1Bundle::from_result(result());
+        mutate(&mut bundle.proof);
+        let err = bundle.validate().unwrap_err();
+        assert!(err.contains(expected), "{expected}: {err}");
     }
 }
