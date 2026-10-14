@@ -233,6 +233,24 @@ pub fn generate_verifiers(
         "EVM cap offsets require cap size 8"
     );
     assert_eq!(
+        prover_config.lde_factor, prover_config.whir_schedule.base_lde_factor,
+        "base oracle LDE factor must match the WHIR schedule"
+    );
+    assert_eq!(
+        prover_config.cap_size, prover_config.whir_schedule.cap_size,
+        "base oracle cap size must match the WHIR schedule"
+    );
+    let first_fold = prover_config
+        .whir_schedule
+        .whir_steps_schedule
+        .first()
+        .expect("WHIR schedule must contain a round");
+    assert_eq!(
+        prover_config.base_oracles_values_per_leaf,
+        1usize << first_fold,
+        "base oracle values per leaf must match the first WHIR fold"
+    );
+    assert_eq!(
         d.num_teardown_sets, 2,
         "EVM cap offsets require two teardown sets"
     );

@@ -266,3 +266,31 @@ fn descriptor_rejects_aux_exit_pc_drift() {
     };
     generate(&version, DEFAULT_REGISTRY_ADDRESS);
 }
+
+#[test]
+fn generator_rejects_inconsistent_base_oracle_geometry() {
+    let version = common::L1_WRAP_2P22;
+    let circuit = version.circuit();
+    for field in ["lde_factor", "cap_size", "values_per_leaf"] {
+        let mut config = version.prover_config();
+        match field {
+            "lde_factor" => config.lde_factor *= 2,
+            "cap_size" => config.cap_size *= 2,
+            "values_per_leaf" => config.base_oracles_values_per_leaf *= 2,
+            _ => unreachable!(),
+        }
+        assert!(
+            std::panic::catch_unwind(|| verifier_evm::generate_verifiers(
+                &circuit,
+                &config,
+                version.pack_log2,
+                20,
+                11,
+                version.final_pc(),
+                DEFAULT_REGISTRY_ADDRESS,
+            ))
+            .is_err(),
+            "inconsistent base-oracle {field} accepted"
+        );
+    }
+}
