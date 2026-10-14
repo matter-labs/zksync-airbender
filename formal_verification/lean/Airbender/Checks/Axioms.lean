@@ -2201,3 +2201,17 @@ import Clean.Specs.Keccak256
 #print axioms Tests.UnifiedDelegation.public_region_including_ordinary_rejected
 #print axioms Tests.UnifiedDelegation.program_empty_region_after_preparation
 #print axioms Tests.UnifiedDelegation.program_region_keeps_bigint_abi_gaps
+
+#print axioms Airbender.UnifiedReduced.Caller.ProgramRoundRegionInputs
+#print axioms Airbender.UnifiedReduced.Caller.ProtocolContextInputs
+#print axioms Airbender.UnifiedReduced.Caller.ProgramPreparedProtocolInputs
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.program_round_region_inputs
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.program_prepared_protocol_inputs
+#print axioms Airbender.UnifiedReduced.Caller.program_round_region_soundness
+#print axioms Tests.ControlPreparation.program_round_region_retains_empty_prepared_cut
+#print axioms Tests.ControlPreparation.program_round_context_derives_local_shape
+#print axioms Tests.ControlPreparation.program_round_wrong_flags_rejected
+#print axioms Tests.ControlPreparation.program_round_bad_cuts_rejected
+#print axioms Tests.ControlPreparation.program_round_region_two_bits_rejected
+#print axioms Tests.UnifiedDelegation.program_round_region_wrong_family_rejected
+#print axioms Tests.DelegationZeroInvocation.program_regions_admit_unissued_worker
