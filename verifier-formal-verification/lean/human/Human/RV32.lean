@@ -16,9 +16,11 @@ abbrev Reg  := BitVec 5
 def ROM_END : Nat := 0x400000
 def RAM_END : Nat := 0x40000000
 
-abbrev readable (a : Word) (n : Nat) : Prop := a.toNat + n ≤ RAM_END
-abbrev writable (a : Word) (n : Nat) : Prop := ROM_END ≤ a.toNat ∧ a.toNat + n ≤ RAM_END
-abbrev aligned (a : Word) (n : Nat) : Prop := a.toNat % n = 0
+/-- Accessing `numBytes` bytes starting at address `addr`: allowed to read (ROM or RAM), allowed to write (RAM only),
+aligned (the address is a multiple of the access size). -/
+abbrev readable (addr : Word) (numBytes : Nat) : Prop := addr.toNat + numBytes ≤ RAM_END
+abbrev writable (addr : Word) (numBytes : Nat) : Prop := ROM_END ≤ addr.toNat ∧ addr.toNat + numBytes ≤ RAM_END
+abbrev aligned  (addr : Word) (numBytes : Nat) : Prop := addr.toNat % numBytes = 0
 
 structure State where
   pc  : Word
