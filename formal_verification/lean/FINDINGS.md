@@ -84,14 +84,32 @@ resets at address zero and derives actual x12 = 65537→1→0 in one continuous
 initialized history with reversed native rows. The reset consumes the comparison's
 clock-six token and writes at clock ten. Wrong literals, fabricated reads and
 misaligned public code are rejected. These are preparation/transport claims;
-prefix and whole caller retirement remain separate. Public caller-region coverage
-still uses the linear profile. Modular region coverage, jumps/branches and
-nonliteral preparation remain open.
+prefix and whole caller retirement remain separate. Selected caller/controller
+regions now also use modular addresses. Global public round-CSR coverage remains
+linear; its modular extension, jumps/branches and nonliteral preparation remain open.
+
+`WrappedProgramCallerRegion` now states ordinary-code exclusion and the full CSR
+family at modular addresses for every clock in a selected interval. These
+policies use the supplied native initial PC/clock, as in the linear entry. Public
+decoding and native state/clock matching derive caller participation, worker
+family/count and unique native request slots without a no-wrap or PC-injectivity
+premise. Modular local controller regions use public LUI preparation and at most
+forty ticks to derive family/count/duration and the ten-position bound. The new
+prepared sequence entry reuses all three complete references at the same actual
+states, with public cuts/preparation/reference duration and global round-worker
+coverage still explicit. Global public round-CSR coverage/mask derivation remains
+in the linear profile; no unissued-round mask/exclusion result is added.
+The [wrap regression](Tests/UnifiedComparison.lean) admits the empty cut at PC zero
+and rejects selecting the ordinary ADDI there. The
+[COPY regression](Tests/UnifiedDelegation.lean) checks nonempty caller/worker binding,
+wrong-family and ordinary-code rejection, while both bigint-control gaps remain
+accepted. The [unissued G-prefix regression](Tests/DelegationZeroInvocation.lean)
+now uses the modular-context conversion and retains its actual x12 = 0→1 effect.
 
 All 116 concrete test modules and 143 importer guards pass. The full
-2,039-root axiom audit has 64 axiom-free roots and only the three standard
-Lean axioms. Review checks pass for all 94 public theorem roots, 146 declaration
-names and 642 guide links/anchors, with no handwritten project diagnostics.
+2,060-root axiom audit has 64 axiom-free roots and only the three standard
+Lean axioms. Review checks pass for all 97 public theorem roots, 152 declaration
+names and 651 guide links/anchors, with no handwritten project diagnostics.
 
 ## Review priorities
 
@@ -350,7 +368,8 @@ profile. A separate aligned comparison profile now derives modular RV32 addresse
 from the same accepted constraints/matching, with modeled setup and minimum
 modulus 4194304 explicit. It derives actual SLTIU→ADDI states 65537→1→0 through
 PC `0xfffffffc`→zero, retains clocks six/ten and rejects fabricated reads and
-wrong literals. Public caller-region coverage remains linear. Jumps, branches
+wrong literals. Selected caller/controller regions now support the modular
+registry too; global public round-CSR coverage remains linear. Jumps, branches
 and nonliteral final preparation remain open. These are preparation/memory effects,
 not full-prefix retirement. Public
 decoded forms and accepted PC constraints derive the preparation address; native selector bits or output values are not
@@ -407,6 +426,17 @@ residual global binding stays explicit for whole-pool transport. No new unissued
 extended-round counterexample is established. The public sequential/code/preparation/
 cut profile remains explicit. This does not establish every accepted execution has that
 shape, or validate bigint controls or unissued-worker behavior.
+
+The modular selected-region entry now derives the same window and local controller
+shape through aligned sequential/comparison code, modeled setup and minimum
+modulus 4194304. `WrappedProgramPreparedProtocolInputs` and
+`WrappedProgramProtocolWindowInputs` connect those derived scopes to the existing
+complete-reference sequence. Public policies quantify addresses at every clock
+in each interval, including repeated RV32 addresses; native schedules and worker
+counts are conclusions. Global round-worker coverage remains a witness-shape
+boundary, and the public global round-CSR coverage/mask result remains linear.
+The unissued-round question, branches/jumps, nonliteral final preparation and
+whole caller retirement remain open.
 
 **Closure needed.** Bind complete call protocols to actual caller preparation,
 chaining and segmentation in the unrestricted execution claim. Until then,

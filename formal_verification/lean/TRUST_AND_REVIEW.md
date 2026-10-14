@@ -214,6 +214,19 @@ round bits are rejected. The stronger public context still admits the unissued
 G-prefix effect. General protocol validity, invalid-call ABI
 and whole caller retirement remain open. Both invalid bigint controls still satisfy
 the program-derived request/schedule claim.
+
+The modular variant uses `WrappedProgramCallerRegion`: public ordinary exclusion
+and full CSR-family selection at every clock in the interval. The aligned
+sequential/comparison registry and modeled setup derive actual modular addresses;
+state/request matching derives caller participation, counts, family and unique
+slots. No PC injectivity or no-wrap premise is supplied. The modular controller
+and prepared sequence entries derive local shape before reusing the existing
+raw-mask and complete-reference proofs on one continuous history. Public
+cuts/preparation/reference duration and global extended-round worker coverage
+remain explicit. Global public round-CSR coverage and its issued-mask theorem
+remain linear; this adds no unissued-round mask/exclusion result. COPY and the
+wrap fixture check selected-region behavior, both bigint controls remain admitted,
+and the unissued G-prefix effect survives the new context conversion.
 [Control preparation](Airbender/Review/Helpers/UnifiedReduced/ControlPreparation.lean)
 uses a public ordinary ADDI-from-x0/LUI registry and a worker-free final preparation
 cycle. The registry may be uniform, contain different literals/registers, or admit
@@ -228,7 +241,8 @@ PC/clock addresses. No native successor or wrap flag is supplied. The
 `0xfffffffc` and ADDI at zero, actual x12 = 65537→1→0, retained write clocks
 six/ten, and rejection of a wrong literal, fabricated read or misaligned public
 code. Jumps/branches remain outside these preparation registries. Public
-caller-region coverage keeps its linear address profile. Preparation transports actual memory;
+selected caller/controller regions now also use modular addresses. Global public
+round-CSR coverage remains linear. Preparation transports actual memory;
 it does not assert successful retirement of every prefix instruction or remove
 the discarded-LW profile boundary. Actual decoding and accepted constraints derive
 PC increments. Only the final preparation must be the specified literal; its

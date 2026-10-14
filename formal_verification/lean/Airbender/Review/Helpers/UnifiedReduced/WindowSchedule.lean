@@ -27,6 +27,22 @@ structure ProgramCallerRegion [Fact p.Prime] (data : RequestTrace p)
       entry.pc.toNat + (timeOfPair data.machine.initial.timestamp).value < data.machine.initial.word.value + upper →
     entry.data.family = family
 
+/-- RV32 address at a public native clock, measured from the initialized PC/clock.
+    The subtraction is used only after the public initial clock in the claims. -/
+def wrappedProgramAddress [Fact p.Prime] (data : RequestTrace p) (clock : Nat) : BitVec 32 :=
+  data.machine.initial.word.toBitVec +
+    BitVec.ofNat 32 (clock - (timeOfPair data.machine.initial.timestamp).value)
+
+/-- Public code policy for a modular PC/clock region. All addresses in the clock
+    interval exclude ordinary entries and identify the selected full CSR family.
+    Repeated RV32 addresses require no injectivity or no-wrap premise. -/
+structure WrappedProgramCallerRegion [Fact p.Prime] (data : RequestTrace p)
+    (program : List UnifiedReduced.ProgramEntry) (family : Delegation.Family) (lower upper : Nat) : Prop where
+  ordinary : ∀ entry ∈ program, ∀ clock, lower ≤ clock → clock < upper →
+    entry.pc ≠ wrappedProgramAddress data clock
+  callers : ∀ entry ∈ data.program, ∀ clock, lower ≤ clock → clock < upper →
+    entry.pc = wrappedProgramAddress data clock → entry.data.family = family
+
 /-- Public program shape and native matching derive the caller/worker region. -/
 structure ProgramCallerWindow [Fact p.Prime] (data : RequestTrace p)
     (family : Delegation.Family) (lower upper : Nat) : Prop extends CallerWindowSchedule data lower upper where

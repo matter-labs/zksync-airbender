@@ -1949,6 +1949,59 @@ theorem program_derived_copy_count :
   have schedule := program_derived_copy_window
   exact ⟨schedule.workerCount.symm.trans (schedule.machineCount.trans (by decide)), schedule.family⟩
 
+private theorem mixedWrapped : UnifiedReduced.Caller.WrappedSequentialProgram mixedProgram := by
+  refine ⟨fun entry member => .sequential (mixedSequential entry member), ?_⟩
+  intro entry member
+  have same : entry = mixedProgram[0] := List.mem_singleton.mp member
+  subst entry
+  decide +kernel
+
+private theorem wrappedCopyRegion :
+    UnifiedReduced.Caller.WrappedProgramCallerRegion (mixedData 0) mixedProgram .bigint 4 8 := by
+  constructor
+  · intro entry member clock lower upper
+    have same : entry = mixedProgram[0] := List.mem_singleton.mp member
+    subst entry
+    interval_cases clock <;> decide +kernel
+  · intro entry member _ _ _ _
+    have same : entry = Tests.DelegationCaller.entry .bigint := List.mem_singleton.mp member
+    subst entry
+    rfl
+
+theorem wrapped_program_derived_copy_window :
+    UnifiedReduced.Caller.ProgramCallerWindow (mixedData 0) .bigint 4 8 :=
+  UnifiedReduced.Caller.wrapped_program_window_schedule_soundness (by decide +kernel) (by decide +kernel)
+    mixedInputs.setup mixedAccepted mixedInputs.publicProgram mixedInputs.ordinaryProgram mixedWrapped wrappedCopyRegion
+    (by decide) (by decide) (by decide) (by decide) (by decide) (by decide)
+
+theorem wrapped_public_region_wrong_family_rejected :
+    ¬ UnifiedReduced.Caller.WrappedProgramCallerRegion (mixedData 0) mixedProgram .keccak 4 8 := by
+  intro region
+  have family := region.callers (Tests.DelegationCaller.entry .bigint) (List.mem_singleton_self _)
+    4 (by decide) (by decide) (by decide +kernel)
+  cases family
+
+theorem wrapped_public_region_including_ordinary_rejected :
+    ¬ UnifiedReduced.Caller.WrappedProgramCallerRegion (mixedData 0) mixedProgram .bigint 8 12 := by
+  intro region
+  exact region.ordinary mixedProgram[0] (List.mem_singleton_self _) 8 (by decide) (by decide) (by decide +kernel)
+
+theorem wrapped_program_region_keeps_bigint_abi_gaps (highControl : Bool) :
+    UnifiedReduced.Caller.ProgramCallerWindow (abiData highControl) .bigint 4 8 := by
+  have registry : UnifiedReduced.Caller.WrappedSequentialProgram [] := by
+    constructor <;> intro entry member <;> cases member
+  have region : UnifiedReduced.Caller.WrappedProgramCallerRegion (abiData highControl) [] .bigint 4 8 := by
+    constructor
+    · intro entry member; cases member
+    · intro entry member _ _ _ _
+      have same : entry = Tests.DelegationCaller.entry .bigint := List.mem_singleton.mp member
+      subst entry
+      rfl
+  exact UnifiedReduced.Caller.wrapped_program_window_schedule_soundness (by decide +kernel) (by decide +kernel)
+    (abiInputs highControl).setup (abiAccepted highControl) (abiInputs highControl).publicProgram
+    (abiInputs highControl).ordinaryProgram registry region
+    (by decide) (by decide) (by decide) (by decide) (by change 4 ≤ 4; decide) (by change 8 ≤ 8; decide)
+
 theorem public_region_wrong_family_rejected :
     ¬ UnifiedReduced.Caller.ProgramCallerRegion (mixedData 0) mixedProgram .keccak 4 8 := by
   intro region

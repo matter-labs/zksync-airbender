@@ -15,7 +15,9 @@ mixed execution with delegation callers remains a separate obligation.
 | Machine and worker reads/writes, bounds and references share one actual initialized history. | [`Caller.mixed_memory_soundness`](Theorems.lean) |
 | Exact caller regions, counts and slots follow from state/request matching and public cuts/duration. | [`Caller.window_schedule_soundness` and `Caller.request_window_soundness`](Theorems.lean) |
 | Public sequential code identifies caller regions; native matching derives selected worker family, counts and slots. | [`Caller.program_window_schedule_soundness`](Theorems.lean) |
+| Modular public code regions derive the same selected family/count/request-slot binding through comparison wraparound. | [`Caller.wrapped_program_window_schedule_soundness`](Theorems.lean) |
 | Public CSR controller regions and at most forty ticks derive round-worker family/count/duration and the ten-position bound. | [`Caller.program_round_region_soundness`](Theorems.lean) |
+| Modular public controller regions derive local round-worker shape with the same forty-tick extent. | [`Caller.wrapped_program_round_region_soundness`](Theorems.lean) |
 | Coverage of public decoded round CSRs derives region membership exactly for live round workers. | [`Caller.program_round_coverage_soundness`](Theorems.lean) |
 | Public round CSR coverage and LUI preparation derive every issued round mask from raw matching, without full worker coverage. | [`Caller.program_round_live_masks_soundness`](Theorems.lean) |
 | Full controller coverage is equivalent to absence of zero-clock extended-round workers in the public sequential/controller profile. | [`Caller.program_round_global_coverage_boundary_soundness`](Theorems.lean) |
@@ -31,6 +33,7 @@ mixed execution with delegation callers remains a separate obligation.
 | Public LUI preparation and raw matching derive exclusive masks inside each selected extended-BLAKE caller region, retaining earlier workers. | [`Caller.prepared_round_region_masks_soundness`](Theorems.lean) |
 | Ordered complete G/extended-BLAKE/Keccak lists share one execution when prepared controller regions cover every extended-round worker. | [`Caller.prepared_protocol_sequence_soundness`](Theorems.lean) |
 | Public caller regions derive each selected span's worker family/count before all three references compose continuously. | [`Caller.program_prepared_protocol_sequence_soundness`](Theorems.lean) |
+| Modular selected span/controller regions derive shape before the same continuous complete-reference composition, retaining explicit global round coverage. | [`Caller.wrapped_program_prepared_protocol_sequence_soundness`](Theorems.lean) |
 | Original current-state caller fetch, selected worker observations and PC retirement meet at the same boundaries. | [`Caller.caller_cycles_soundness`](Theorems.lean) |
 
 Field/inverse, public boot/configuration/program/domain, modeled tables and logical
@@ -97,8 +100,20 @@ program addresses. The [comparison-wrap regression](../../../../Tests/UnifiedCom
 checks SLTIU at `0xfffffffc` followed by ADDI at zero, actual x12 = 65537→1→0
 in one history, retained clocks six/ten and rejection of a fabricated read or
 wrong literal. Prepared entries using control preparation inherit this variant;
-public caller-region coverage remains linear. Jumps, branches and nonliteral
+selected caller/controller region shape now also uses modular addresses. Global
+public round-CSR coverage remains linear. Jumps, branches and nonliteral
 preparation remain open, as does whole caller retirement.
+
+[`WrappedProgramCallerRegion`](../../Helpers/UnifiedReduced/WindowSchedule.lean)
+states the public ordinary-exclusion/full-CSR-family policy at every clock in the
+selected interval. Native matching derives counts and unique request slots without
+PC injectivity or no-wrap assumptions. The corresponding
+[`WrappedProgramPreparedProtocolInputs`](PreparedRoundWindows.lean) derives local
+controller shape before reusing the existing raw-mask and reference proofs.
+Public cuts, preparation, reference duration and global extended-round worker
+coverage remain explicit. The unissued-round mask/coverage boundary is unchanged;
+unissued G effects and both bigint-control gaps remain admitted. The original
+linear entries and their global issued-round coverage/mask results remain available.
 
 [`WindowSequence.Realizes`](MixedWindows.lean) extends this connection to an
 arbitrary finite list. Its initial cut follows the actual prefix; every segment

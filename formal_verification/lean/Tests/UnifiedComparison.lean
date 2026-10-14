@@ -335,6 +335,22 @@ theorem wrapped_native_addresses_derived :
   UnifiedReduced.Caller.wrapped_program_address_soundness (by decide +kernel) (by decide +kernel)
     rfl wrappedAccepted wrappedInputs.publicProgram wrappedInputs.ordinaryProgram wrappedRegistry
 
+theorem wrapped_program_empty_region_at_pc_zero :
+    UnifiedReduced.Caller.ProgramCallerWindow wrappedData .keccak 8 8 := by
+  have region : UnifiedReduced.Caller.WrappedProgramCallerRegion wrappedData wrappedProgram .keccak 8 8 := by
+    constructor
+    · intro entry member clock lower upper; omega
+    · intro entry member; cases member
+  exact UnifiedReduced.Caller.wrapped_program_window_schedule_soundness (by decide +kernel) (by decide +kernel)
+    rfl wrappedAccepted wrappedInputs.publicProgram wrappedInputs.ordinaryProgram wrappedRegistry region
+    (by decide) (by decide) (by decide) (by decide) (by decide +kernel) (by decide +kernel)
+
+theorem wrapped_program_region_excludes_reset_at_zero :
+    ¬ UnifiedReduced.Caller.WrappedProgramCallerRegion wrappedData wrappedProgram .keccak 8 12 := by
+  intro region
+  exact region.ordinary wrappedResetEntry (by simp [wrappedProgram]) 8
+    (by decide) (by decide) (by decide +kernel)
+
 theorem wrapped_preparation_uses_comparison_write :
     (readToken wrappedResetAssignment UnifiedReduced.importedConstraintsMemoryPorts[2]).time = (6, 0) ∧
     (readToken wrappedResetAssignment UnifiedReduced.importedConstraintsMemoryPorts[2]).word.toBitVec = 1 ∧

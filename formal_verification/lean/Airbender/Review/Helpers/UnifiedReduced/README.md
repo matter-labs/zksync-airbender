@@ -44,6 +44,18 @@ by ADDI checks this connection; the wrong family and an interval including the
 ordinary instruction are rejected. Both invalid bigint controls remain admitted
 by this request/schedule result.
 
+[`WrappedProgramCallerRegion`](WindowSchedule.lean) gives the corresponding
+public policy at modular RV32 addresses. At every clock inside the interval,
+ordinary entries are excluded and matching full CSR entries select the family.
+Addresses are relative to the supplied native initial PC/clock, as in the linear entry.
+Accepted decoding and state/clock matching derive actual participation, counts,
+unique requests and native slots through
+[`Caller.wrapped_program_window_schedule_soundness`](../../Trace/UnifiedReduced/Theorems.lean).
+This entry uses the aligned sequential/comparison registry, modeled setup and
+minimum modulus 4194304. It needs no PC injectivity or no-wrap premise. COPY
+checks nonempty family/count binding and rejection of wrong family/ordinary code;
+the SLTIU-wrap fixture rejects a selected ADDI at zero and admits the empty cut.
+
 [ControlPreparation](ControlPreparation.lean) names the public preparation registry.
 It accepts one uniform literal, different ADDI-from-x0/LUI literals, or ordinary
 arithmetic, LW/SW, bitwise/shifts, REV8 and supported TRIADD/XORROT forms along a
@@ -62,8 +74,9 @@ modeled setup and `4194304 ≤ p`. [`wrapped_program_pc_advance` and
 derive modular RV32 successors and program addresses from accepted native
 constraints, public decoding and state/clock matching. Comparison cleanup/carry
 values are derived; neither wrap flags nor successors are supplied.
-Public caller-region coverage still uses the linear registry; jumps and branches
-remain outside both preparation profiles.
+Selected caller/controller regions also support this modular registry. Global
+public round-CSR coverage remains linear; jumps and branches remain outside both
+preparation profiles.
 The final preparation instruction must still be the specified public literal.
 Its address follows from matching, without a selected-row or control-read premise.
 Only its final cycle is worker-free; earlier worker effects remain in the same
@@ -120,6 +133,17 @@ Global coverage stays explicit; live request matching does not rule out surplus
 zero-clock workers. Empty prepared regions retain clock-six LUI tokens, wrong
 flags/family and invalid cuts are rejected, and the unissued G-prefix fixture
 remains admitted by the stronger context.
+
+[`WrappedProgramRoundRegionInputs` and `WrappedProgramPreparedProtocolInputs`](../../Trace/UnifiedReduced/PreparedRoundWindows.lean)
+extend these local shape derivations to modular code regions. Public preparation
+and at most forty ticks derive each controller's family, ten-position bound and
+duration. [`Caller.wrapped_program_prepared_protocol_sequence_soundness`](../../Trace/UnifiedReduced/Theorems.lean)
+then reuses the existing raw-mask and complete-reference composition on the same
+continuous history. Selected spans retain public reference duration and cuts;
+global extended-round worker coverage remains explicit. This does not derive the
+global round-CSR coverage/mask result for a modular registry or exclude unissued
+round workers. Both bigint-control gaps and the actual unissued G-prefix effect
+remain accepted by the new inputs/conversion.
 
 [`ProgramRoundCallerCoverage`](../../Trace/UnifiedReduced/PreparedRoundWindows.lean)
 places public decoded round CSRs in the prepared regions. Accepted native matching
