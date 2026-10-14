@@ -658,11 +658,30 @@ private theorem program_protocol_inputs_keep_unissued :
     subst row
     cases same
 
+private theorem wrapped_program_inputs_keep_unissued :
+    UnifiedReduced.Caller.WrappedProgramPreparedProtocolInputs preparationData preparationBefore [] [0]
+      preparationCells [preparationEntry] [] := by
+  have old := program_protocol_inputs_keep_unissued
+  refine ⟨old.toProtocolContextInputs, ⟨fun entry member => .sequential (old.registry entry member), ?_⟩,
+    ?_, old.coverage⟩
+  · intro entry member
+    have same : entry = preparationEntry := List.mem_singleton.mp member
+    subst entry
+    decide +kernel
+  · intro region member; cases member
+
 private theorem prepared_protocol_inputs_keep_unissued :
     UnifiedReduced.Caller.PreparedProtocolInputs preparationData preparationBefore [] [0]
       preparationCells [preparationEntry] [] :=
-  UnifiedReduced.Caller.Proofs.program_prepared_protocol_inputs (by decide +kernel) (by decide +kernel)
-    preparationAccepted program_protocol_inputs_keep_unissued
+  UnifiedReduced.Caller.Proofs.wrapped_program_prepared_protocol_inputs (by decide +kernel) (by decide +kernel)
+    preparationAccepted wrapped_program_inputs_keep_unissued
+
+theorem wrapped_program_regions_admit_unissued_worker :
+    UnifiedReduced.Caller.WrappedProgramPreparedProtocolInputs preparationData preparationBefore [] [0]
+      preparationCells [preparationEntry] [] ∧
+    native ∈ preparationData.workers.rows ∧
+    ¬ Delegation.Requests.Live (Delegation.Requests.fulfillment native) :=
+  ⟨wrapped_program_inputs_keep_unissued, List.mem_singleton_self _, by decide +kernel⟩
 
 theorem program_regions_admit_unissued_worker :
     UnifiedReduced.Caller.ProgramPreparedProtocolInputs preparationData preparationBefore [] [0]
