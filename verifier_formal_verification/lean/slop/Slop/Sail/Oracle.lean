@@ -162,7 +162,7 @@ theorem runOracle_sound {α : Type} (known : (r : Register) → Option (Register
 /-! Demo: `addi a0, a0, 1` (word 0x00150513) with known non-volatile registers from `resetState`. -/
 
 noncomputable def knownDemo : (r : Register) → Option (RegisterType r) :=
-  fun r => if Volatile r then none else some (resetState.regs r)
+  fun r => if writtenByProgram r then none else some (resetState.regs r)
 
 /-- Bool test for `ADDI rd=a0, rs1=a0, imm=1` (`instruction` has no `DecidableEq`). -/
 def isAddi : instruction → Bool

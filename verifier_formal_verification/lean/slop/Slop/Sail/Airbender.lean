@@ -7,7 +7,7 @@ import HumanSail.Airbender
 open Sail SailRV32 SailRV32.Functions
 
 namespace Human
-export Airbender (misa region RAM_START RAM_END memoryMap initResult resetState Volatile Configured)
+export Airbender (misa region RAM_START RAM_END memoryMap sailResetRun resetState writtenByProgram Configured)
 
 /-- RV32IM instructions (Sail's decoder already rejects RV64-only forms such as `ld`). -/
 def Supported : instruction → Bool

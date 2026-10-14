@@ -19,8 +19,8 @@ theorem bits_of_toNat {w : BitVec 32} {lo n k : Nat} (h : (w.extractLsb' lo n).t
   have : (w.extractLsb' lo n).toNat = (w.toNat >>> lo) % 2 ^ n := BitVec.extractLsb'_toNat lo n w
   unfold Bits; omega
 
-/-- JALR outside `Lenient` has funct3 = 0. -/
-theorem jalr_f3 (w : BitVec 32) (hopc : (w.extractLsb' 0 7).toNat = 103) (hl : ¬ Airbender.Lenient w) :
+/-- JALR outside `ExtraEncoding` has funct3 = 0. -/
+theorem jalr_f3 (w : BitVec 32) (hopc : (w.extractLsb' 0 7).toNat = 103) (hl : ¬ Airbender.ExtraEncoding w) :
     (w.extractLsb' 12 3).toNat = 0 := by
   have hop : BitVec.extractLsb' 0 7 w = 0b1100111#7 := by apply BitVec.eq_of_toNat_eq; simpa using hopc
   by_contra hne
@@ -28,12 +28,12 @@ theorem jalr_f3 (w : BitVec 32) (hopc : (w.extractLsb' 0 7).toNat = 103) (hl : �
   left
   exact ⟨hop, fun h => hne (by rw [h]; rfl)⟩
 
-/-- SLT, SLTU, XOR, OR, AND outside `Lenient` (and not M, funct7 ≠ 1) have funct7 = 0. -/
+/-- SLT, SLTU, XOR, OR, AND outside `ExtraEncoding` (and not M, funct7 ≠ 1) have funct7 = 0. -/
 theorem op_f7 (w : BitVec 32) (k : Nat) (hopc : (w.extractLsb' 0 7).toNat = 51)
     (hf3 : (w.extractLsb' 12 3).toNat = k) (hk : k = 2 ∨ k = 3 ∨ k = 4 ∨ k = 6 ∨ k = 7)
-    (h1 : (w.extractLsb' 25 7).toNat = 1 → False) (hl : ¬ Airbender.Lenient w) :
+    (h1 : (w.extractLsb' 25 7).toNat = 1 → False) (hl : ¬ Airbender.ExtraEncoding w) :
     (w.extractLsb' 25 7).toNat = 0 := by
-  unfold Airbender.Lenient at hl
+  unfold Airbender.ExtraEncoding at hl
   simp only [List.mem_cons, List.not_mem_nil, or_false, not_or, not_and] at hl
   have hop : BitVec.extractLsb' 0 7 w = 0b0110011#7 := by apply BitVec.eq_of_toNat_eq; simpa using hopc
   have e : BitVec.extractLsb' 12 3 w = BitVec.ofNat 3 k := by

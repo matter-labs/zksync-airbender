@@ -104,7 +104,7 @@ theorem step_addi (s : SailState) (hs : Configured s) (hpc : s.regs .PC = 0xd8#3
     ∃ s', step s = some s' ∧ s'.regs .x10 = s.regs .x10 + 1 ∧ s'.regs .PC = 0xdc#32 ∧
       s'.regs .minstret = s.regs .minstret + 1 ∧ s'.mem = s.mem ∧ Configured s' ∧
       (∀ r, r ≠ .x10 → r ≠ .PC → r ≠ .nextPC → r ≠ .minstret → r ≠ .minstret_increment →
-        Volatile r = true → s'.regs r = s.regs r) := by
+        writtenByProgram r = true → s'.regs r = s.regs r) := by
   have hK0 := K0_agrees s hs hpc hcode
   have hKs : (Ks s).Agrees s := agrees_set_self _ s (agrees_set_self (K0 s.mem) s hK0 .x10) .minstret
   have hcur : current s = some (.ITYPE (1#12, .Regidx 10#5, .Regidx 10#5, .ADDI)) := by
@@ -147,13 +147,13 @@ theorem step_addi (s : SailState) (hs : Configured s) (hpc : s.regs .PC = 0xd8#3
       · subst hr2; exact hKs'.1 _ _ hsv2
       rw [hfr r (by
         simp only [List.mem_cons, List.not_mem_nil, or_false]
-        rintro (h|h|h|h|h|h|h|h|h|h) <;> subst h <;> simp_all [Volatile])]
+        rintro (h|h|h|h|h|h|h|h|h|h) <;> subst h <;> simp_all [writtenByProgram])]
       exact hs r hvol
     · intro r h1 h2 h3 h4 h5 _
       by_cases hr : r = .written_event_index
-      · subst hr; simp [Volatile] at *
+      · subst hr; simp [writtenByProgram] at *
       by_cases hr2 : r = .mip
-      · subst hr2; simp [Volatile] at *
+      · subst hr2; simp [writtenByProgram] at *
       exact hfr r (by
         simp only [List.mem_cons, List.not_mem_nil, or_false]
         rintro (h|h|h|h|h|h|h|h|h|h) <;> subst h <;> simp_all)

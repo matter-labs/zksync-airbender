@@ -23,7 +23,7 @@ theorem run_writeReg_bind {β : Type} (r : Register) (v : RegisterType r) (f : U
   rw [Slop.runF_bind, Slop.runF_writeReg]; exact h
 
 theorem sys_set {σ : SailState} (hs : Airbender.Configured σ) (r : Register) (v : RegisterType r)
-    (hr : Airbender.Volatile r = true) : Airbender.Configured (σ.set r v) := by
+    (hr : Airbender.writtenByProgram r = true) : Airbender.Configured (σ.set r v) := by
   intro r' hr'
   have hne : r ≠ r' := by intro h; subst h; simp_all
   simp only [SailState.set, hne, dite_false]

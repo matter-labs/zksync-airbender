@@ -9,10 +9,10 @@ namespace Slop.Equiv
 
 theorem exec_rtype (σ : SailState) (rs2 rs1 rd : BitVec 5) (o : RV.Op)
     (ho : o = .add ∨ o = .sub ∨ o = .sll ∨ o = .slt ∨ o = .sltu ∨ o = .xor ∨ o = .srl ∨ o = .sra ∨ o = .or ∨ o = .and) :
-    runSail (execute_RTYPE (.Regidx rs2) (.Regidx rs1) (.Regidx rd) (Airbender.sailRop o)) σ =
+    runSail (execute_RTYPE (.Regidx rs2) (.Regidx rs1) (.Regidx rd) (Airbender.sailAluOp o)) σ =
       .ok RETIRE_SUCCESS (xset σ rd (RV.alu o (xget σ rs1) (xget σ rs2))) := by
   rcases ho with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;>
-  simp only [execute_RTYPE, Airbender.sailRop, Slop.runF_bind, rX_run, wX_run, Slop.runF_pure, RV.alu,
+  simp only [execute_RTYPE, Airbender.sailAluOp, Slop.runF_bind, rX_run, wX_run, Slop.runF_pure, RV.alu,
     sll_eq, srl_eq, sra_eq, slt_eq, sltu_eq]
 
 theorem sext12 (x : BitVec 12) : sign_extend (m := 32) ((x.signExtend 32).extractLsb' 0 12) = x.signExtend 32 := by

@@ -42,7 +42,7 @@ theorem run_bind_ok2 {α β : Type} (m : SailM α) (f : α → SailM β) (σ σ'
 theorem sys_xset {σ : SailState} (hs : Airbender.Configured σ) (i : BitVec 5) (v : BitVec 32) : Airbender.Configured (xset σ i v) := by
   intro r hr
   rw [xset_regs σ i v r (by refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_,
-    ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> (intro h; subst h; simp [Airbender.Volatile] at hr))]
+    ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> (intro h; subst h; simp [Airbender.writtenByProgram] at hr))]
   exact hs r hr
 
 theorem sys_of_regs {σ σ' : SailState} (hs : Airbender.Configured σ) (h : σ'.regs = σ.regs) : Airbender.Configured σ' := by
@@ -55,7 +55,7 @@ theorem run_memRead_bind {β γ : Type} (req : MemRequest)
 
 /-- Reading a register that is as after reset, whose reset value `v` is known. -/
 theorem run_readReg_bind_sys {β : Type} {σ : SailState} (hs : Airbender.Configured σ) (r : Register)
-    (hv : Airbender.Volatile r = false) (v : RegisterType r) (hr : Airbender.resetState.regs r = v)
+    (hv : Airbender.writtenByProgram r = false) (v : RegisterType r) (hr : Airbender.resetState.regs r = v)
     (f : RegisterType r → SailM β) {res} (h : runSail (f v) σ = res) : runSail (readReg r >>= f) σ = res := by
   rw [Slop.runF_bind, Slop.runF_readReg, hs r hv, hr]; exact h
 
@@ -307,14 +307,14 @@ partial def sailRunLoop (side : Option Syntax) (lemmas : Array Expr) (g0 : MVarI
           let r0 ← mkAppM ``Human.SailState.regs #[mkConst ``Airbender.resetState, reg]
           let some (v, hr) ← normExpr r0 | return none
           if v.containsConst (· == ``Airbender.resetState) then return none
-          let hv ← try kernelDecide (← mkEq (← mkAppM ``Airbender.Volatile #[reg]) (toExpr false)) catch _ => return none
+          let hv ← try kernelDecide (← mkEq (← mkAppM ``Airbender.writtenByProgram #[reg]) (toExpr false)) catch _ => return none
           return some (v, hv, hr)
         if let some (v, hv, hr) := known then
           g ← g.withContext (step1 g ``run_readReg_bind_sys #[none, none, hs, reg, hv, v, hr, f, r]); continue
         g ← g.withContext (step1 g ``run_readReg_bind #[none, reg, f, σ, r]); continue
       if m'.isAppOf ``writeReg then
         let (reg, v) := (m'.getArg! (m'.getAppNumArgs - 2), m'.appArg!)
-        let hv ← g.withContext (kernelDecide (← mkEq (← mkAppM ``Airbender.Volatile #[reg]) (toExpr true)))
+        let hv ← g.withContext (kernelDecide (← mkEq (← mkAppM ``Airbender.writtenByProgram #[reg]) (toExpr true)))
         hs ← g.withContext (mkAppM ``sys_set #[hs, reg, v, hv])
         g ← g.withContext (step1 g ``run_writeReg_bind #[none, reg, v, f, σ, r]); continue
       -- arguments mentioning the reset state: rewrite them first (e.g. its privilege is `Machine`)

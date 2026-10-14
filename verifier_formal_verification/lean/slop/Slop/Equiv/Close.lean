@@ -52,7 +52,7 @@ macro "close_row" : tactic => `(tactic| (
   rw [Slop.runF_pure]
   subst_known
   bits_lsb
-  simp only [Airbender.toSail, Airbender.sailBop, Airbender.sailRop, EStateM.Result.ok.injEq,
+  simp only [Airbender.toSail, Airbender.sailBranchOp, Airbender.sailAluOp, EStateM.Result.ok.injEq,
     instruction.UTYPE.injEq, instruction.JAL.injEq, instruction.JALR.injEq, instruction.BTYPE.injEq,
     instruction.ITYPE.injEq, instruction.SHIFTIOP.injEq, instruction.RTYPE.injEq, instruction.LOAD.injEq,
     instruction.STORE.injEq, instruction.MUL.injEq, instruction.DIV.injEq, instruction.REM.injEq,

@@ -36,32 +36,33 @@ def region (base size : Nat) (readable writable executable : Bool) : PMA_Region 
     supports_pte_read := false, supports_pte_write := false,
     misaligned_atomicity_granule_size_exp := 0, vector_misaligned_atomicity_granule_size_exp := 0 }
 
-/-- Memory map (`rust/lds/memory.x`): ROM `[0, 4 MiB)` holds the program, RAM `[4 MiB, 1 GiB)`. Nothing else. -/
-def RAM_START : Nat := 0x400000
-def RAM_END   : Nat := 0x40000000
+/-- Memory map (`rust/lds/memory.x`): ROM `[0, 4 MiB)` holds the program, RAM `[4 MiB, 1 GiB)`. Nothing else.
+The same map as our spec's (`RV.ROM_END`, `RV.RAM_END` in `Human/RV32.lean`). -/
+def RAM_START : Nat := RV.ROM_END
+def RAM_END   : Nat := RV.RAM_END
 def memoryMap : List PMA_Region :=
   [ region 0         RAM_START               (readable := true) (writable := false) (executable := true),
     region RAM_START (RAM_END - RAM_START)   (readable := true) (writable := true)  (executable := false) ]
 
 /-- Sail's own initialisation and reset (all registers at their defaults, memory 0). -/
-noncomputable def initResult :=
+noncomputable def sailResetRun :=
   runSail (do sail_model_init (); init_model "") { regs := fun r => by cases r <;> exact default, mem := fun _ => 0 }
 
 /-- The state after reset, with Airbender's `misa` and memory map. -/
 noncomputable def resetState : SailState :=
-  let σ := match initResult with | .ok _ σ => σ | .error _ σ => σ
+  let σ := match sailResetRun with | .ok _ σ => σ | .error _ σ => σ
   (σ.set .misa misa).set .pma_regions memoryMap
 
-/-- Registers a program changes: x1..x31 and the PC (plus Sail's bookkeeping `nextPC` and counters). -/
-def Volatile : Register → Bool
+/-- The registers a program can change: x1..x31 and the PC (plus Sail's bookkeeping `nextPC` and counters). -/
+def writtenByProgram : Register → Bool
   | .x1 | .x2 | .x3 | .x4 | .x5 | .x6 | .x7 | .x8 | .x9 | .x10 | .x11 | .x12 | .x13 | .x14 | .x15
   | .x16 | .x17 | .x18 | .x19 | .x20 | .x21 | .x22 | .x23 | .x24 | .x25 | .x26 | .x27 | .x28
   | .x29 | .x30 | .x31 | .PC | .nextPC | .minstret | .minstret_increment => true
   | _ => false
 
-/-- A state of the Airbender machine: every other register (privilege, `misa`, `mstatus`, memory map, …)
-is as after reset. -/
-def Configured (σ : SailState) : Prop := ∀ r, Volatile r = false → σ.regs r = resetState.regs r
+/-- A state of the Airbender machine: every register a program never writes (privilege, `misa`, `mstatus`,
+memory map, …) is as after reset. -/
+def Configured (σ : SailState) : Prop := ∀ r, writtenByProgram r = false → σ.regs r = resetState.regs r
 
 /-! ## The Sail model as generated
 
@@ -77,10 +78,10 @@ theorem sail_extensions_off :
 
 /-! ## Airbender's instructions, named as in Sail -/
 
-def sailBop : RV.Cond → bop
+def sailBranchOp : RV.Cond → bop
   | .eq => .BEQ | .ne => .BNE | .lt => .BLT | .ge => .BGE | .ltu => .BLTU | .geu => .BGEU
 
-def sailRop : RV.Op → rop
+def sailAluOp : RV.Op → rop
   | .sub => .SUB | .sll => .SLL | .slt => .SLT | .sltu => .SLTU | .xor => .XOR | .srl => .SRL | .sra => .SRA
   | .or => .OR | .and => .AND | _ => .ADD   -- (M ops are mapped to MUL/DIV/REM below)
 
@@ -91,7 +92,7 @@ def toSail : RV.Instr → instruction
   | .auipc rd imm            => .UTYPE (imm.extractLsb' 12 20, .Regidx rd, .AUIPC)
   | .jal rd offset           => .JAL (offset.extractLsb' 0 21, .Regidx rd)
   | .jalr rd rs1 offset      => .JALR (offset.extractLsb' 0 12, .Regidx rs1, .Regidx rd)
-  | .branch cond rs1 rs2 offset => .BTYPE (offset.extractLsb' 0 13, .Regidx rs2, .Regidx rs1, sailBop cond)
+  | .branch cond rs1 rs2 offset => .BTYPE (offset.extractLsb' 0 13, .Regidx rs2, .Regidx rs1, sailBranchOp cond)
   | .load numBytes signed rd rs1 offset =>
       .LOAD (offset.extractLsb' 0 12, .Regidx rs1, .Regidx rd, !signed, numBytes)
   | .store numBytes rs2 rs1 offset => .STORE (offset.extractLsb' 0 12, .Regidx rs2, .Regidx rs1, numBytes)
@@ -109,13 +110,13 @@ def toSail : RV.Instr → instruction
   | .op .mulhu rd rs1 rs2    => .MUL (.Regidx rs2, .Regidx rs1, .Regidx rd, ⟨.High, .Unsigned, .Unsigned⟩)
   | .op .divu rd rs1 rs2     => .DIV (.Regidx rs2, .Regidx rs1, .Regidx rd, true)
   | .op .remu rd rs1 rs2     => .REM (.Regidx rs2, .Regidx rs1, .Regidx rd, true)
-  | .op op rd rs1 rs2        => .RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, sailRop op)
+  | .op op rd rs1 rs2        => .RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, sailAluOp op)
 
 /-! ## The machine -/
 
 /-- Airbender's decoder is our encoding table `RV.decode` (`Human/RV32.lean`, with its `-- Airbender:` rows).
 `HumanSail/Theorems.lean` states that Sail's own decoder gives the same instruction for every word of that table,
-except the extra encodings Airbender accepts (`Lenient`). -/
+except the extra encodings Airbender accepts (`ExtraEncoding`). -/
 def decode (word : BitVec 32) : Option instruction := (RV.decode word).map toSail
 
 /-- Execute one instruction: as Sail does, except loads into x0. -/

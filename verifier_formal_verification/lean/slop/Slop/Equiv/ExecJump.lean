@@ -29,7 +29,7 @@ theorem exec_branch (σ : SailState) (hs : Airbender.Configured σ) (c : RV.Cond
       else .ok RETIRE_SUCCESS σ := by
   have hx := sext_n x (by decide) (by decide)
   cases c
-  all_goals simp only [Airbender.toSail, Airbender.sailBop, Airbender.execute, execute, execute_BTYPE, Slop.runF_bind, rX_run,
+  all_goals simp only [Airbender.toSail, Airbender.sailBranchOp, Airbender.execute, execute, execute_BTYPE, Slop.runF_bind, rX_run,
     Slop.runF_pure, blt_eq, bge_eq, bltu_eq, bgeu_eq, RV.Cond.holds] at hal ⊢
   all_goals (split <;> rename_i hc <;> simp only [hc, ↓reduceIte])
   all_goals first

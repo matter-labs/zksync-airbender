@@ -8,7 +8,7 @@ open SailRV32
 namespace Human
 
 /-- Sail's initialisation (including its config validation) succeeds. -/
-theorem init_ok : (match initResult with | .ok _ _ => true | .error _ _ => false) = true := by decide +kernel
+theorem init_ok : (match sailResetRun with | .ok _ _ => true | .error _ _ => false) = true := by decide +kernel
 
 /-- Machine mode after reset. -/
 theorem stInit_machine : (resetState.regs .cur_privilege == Privilege.Machine) = true := by decide +kernel

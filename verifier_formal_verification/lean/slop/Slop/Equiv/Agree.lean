@@ -52,7 +52,7 @@ theorem step_agree {s t : RV.State} {σ : SailState} (h : Airbender.Agree s σ) 
 /-- `PC + 4` stays aligned (no wrap: the PC is in ROM). -/
 theorem pc4_aligned (pc : BitVec 32) (ha : pc.toNat % 4 = 0) (h2 : pc.toNat + 4 ≤ Airbender.RAM_START) :
     (pc + 4).toNat % 4 = 0 := by
-  have := word_add_toNat pc 4 (by simp only [Airbender.RAM_START] at h2; omega)
+  have := word_add_toNat pc 4 (by simp only [Airbender.RAM_START, RV.ROM_END] at h2; omega)
   rw [show (4 : BitVec 32) = BitVec.ofNat 32 4 from rfl, this]; omega
 
 /-- The usual outcome: write `v` to `rd`, go to the next instruction. -/

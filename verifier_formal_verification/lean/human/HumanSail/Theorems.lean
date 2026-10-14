@@ -5,7 +5,7 @@ import Human.Theorems
 
 Two facts make our own spec `RV.step` (`Human/RV32.lean`) trustworthy without reviewing it line by line:
 1. `decode_is_sail`: for every word in our encoding table, Sail's own decoder gives the same instruction, except
-   for the extra encodings Airbender accepts (`Lenient`).
+   for the extra encodings Airbender accepts (`ExtraEncoding`).
 2. `step_is_airbender`: our step does exactly what the Airbender machine (`HumanSail/Airbender.lean`: Sail's
    `execute` plus the listed changes) does, on everything a program can see.
 With 2, the final theorem holds on the Airbender machine itself: 3. `ProgramCorrect`.
@@ -28,14 +28,14 @@ def Agree (s : RV.State) (σ : SailState) : Prop :=
 
 /-- Encodings Airbender accepts beyond standard RV32IM (`-- Airbender:` rows of `RV.decode`): JALR with
 funct3 ≠ 0; SLT, SLTU, XOR, OR, AND with funct7 other than 0000000 (and 0000001, which is the M extension). -/
-def Lenient (word : RV.Word) : Prop :=
+def ExtraEncoding (word : RV.Word) : Prop :=
   let opcode := word.extractLsb' 0 7; let funct3 := word.extractLsb' 12 3; let funct7 := word.extractLsb' 25 7
   (opcode = 0b1100111 ∧ funct3 ≠ 0) ∨
   (opcode = 0b0110011 ∧ funct3 ∈ [2, 3, 4, 6, 7] ∧ funct7 ≠ 0 ∧ funct7 ≠ 1)
 
 /-- 1. Sail decodes every standard word of our table to the same instruction (on any Airbender state). -/
 def DecodeIsSail : Prop :=
-  ∀ word instr σ, RV.decode word = some instr → ¬ Lenient word → Configured σ →
+  ∀ word instr σ, RV.decode word = some instr → ¬ ExtraEncoding word → Configured σ →
     runSail (ext_decode word) σ = .ok (toSail instr) σ
 
 /-- 2. One step of our spec is one step of the Airbender machine. -/

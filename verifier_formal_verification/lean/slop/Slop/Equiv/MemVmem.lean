@@ -73,7 +73,7 @@ theorem vmem_read_addr1 (σ : SailState) (hs : Airbender.Configured σ) (a : Bit
       .ok (.Ok (readBytes σ.mem a.toNat 1)) σ := by
   by_cases h : Airbender.RAM_START ≤ a.toNat
   · exact vmem_read_addr_ram1 σ hs a ha h hr
-  · exact vmem_read_addr_rom1 σ hs a ha (by simp only [Airbender.RAM_START] at h ⊢; omega)
+  · exact vmem_read_addr_rom1 σ hs a ha (by simp only [Airbender.RAM_START, RV.ROM_END] at h ⊢; omega)
 
 theorem vmem_read1 (σ : SailState) (hs : Airbender.Configured σ) (r : BitVec 5) (off : BitVec 32)
     (ha : (xget σ r + off).toNat % 1 = 0) (hr : (xget σ r + off).toNat + 1 ≤ Airbender.RAM_END) :
@@ -89,7 +89,7 @@ theorem vmem_read_addr2 (σ : SailState) (hs : Airbender.Configured σ) (a : Bit
       .ok (.Ok (readBytes σ.mem a.toNat 2)) σ := by
   by_cases h : Airbender.RAM_START ≤ a.toNat
   · exact vmem_read_addr_ram2 σ hs a ha h hr
-  · exact vmem_read_addr_rom2 σ hs a ha (by simp only [Airbender.RAM_START] at h ⊢; omega)
+  · exact vmem_read_addr_rom2 σ hs a ha (by simp only [Airbender.RAM_START, RV.ROM_END] at h ⊢; omega)
 
 theorem vmem_read2 (σ : SailState) (hs : Airbender.Configured σ) (r : BitVec 5) (off : BitVec 32)
     (ha : (xget σ r + off).toNat % 2 = 0) (hr : (xget σ r + off).toNat + 2 ≤ Airbender.RAM_END) :
@@ -105,7 +105,7 @@ theorem vmem_read_addr4 (σ : SailState) (hs : Airbender.Configured σ) (a : Bit
       .ok (.Ok (readBytes σ.mem a.toNat 4)) σ := by
   by_cases h : Airbender.RAM_START ≤ a.toNat
   · exact vmem_read_addr_ram4 σ hs a ha h hr
-  · exact vmem_read_addr_rom4 σ hs a ha (by simp only [Airbender.RAM_START] at h ⊢; omega)
+  · exact vmem_read_addr_rom4 σ hs a ha (by simp only [Airbender.RAM_START, RV.ROM_END] at h ⊢; omega)
 
 theorem vmem_read4 (σ : SailState) (hs : Airbender.Configured σ) (r : BitVec 5) (off : BitVec 32)
     (ha : (xget σ r + off).toNat % 4 = 0) (hr : (xget σ r + off).toNat + 4 ≤ Airbender.RAM_END) :

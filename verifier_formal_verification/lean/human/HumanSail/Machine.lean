@@ -20,7 +20,7 @@ structure SailState where
 def SailState.set (σ : SailState) (r : Register) (value : RegisterType r) : SailState :=
   { σ with regs := fun r' => if h : r = r' then h ▸ value else σ.regs r' }
 
-abbrev FM := EStateM (Sail.Error exception) SailState
+abbrev SailStateM := EStateM (Sail.Error exception) SailState
 
 /-- The `numBytes` bytes at `addr`, little-endian. -/
 def readBytes (mem : Nat → BitVec 8) (addr : Nat) : (numBytes : Nat) → BitVec (8 * numBytes)
@@ -37,7 +37,7 @@ def writeBytes (mem : Nat → BitVec 8) (addr : Nat) : (numBytes : Nat) → BitV
 
 /-- How each Sail effect acts on the state. Effects with no meaning for a single in-order hart
 (barriers, cache/TLB ops, trace messages, ...) do nothing. -/
-noncomputable def applyEffect : (eff : InstructionEffect) → FM eff.ret
+noncomputable def applyEffect : (eff : InstructionEffect) → SailStateM eff.ret
   | .regRead reg _ => do pure ((← get).regs reg)
   | .regWrite reg _ v => modify (·.set reg v)
   | .barrier _ | .cacheOp _ | .tlbOp _ | .translationStart _ | .translationEnd _ | .archException _
@@ -53,6 +53,6 @@ noncomputable def runSail {α} (m : SailM α) (σ : SailState) : EStateM.Result 
   (FreeM.liftM (fun
     | .inl (.error err) => throw err
     | .inl (.ok eff) => applyEffect eff
-    | .inr (n : Nat) => if h : 0 < n then pure (⟨0, h⟩ : Fin n) else throw .Unreachable) m : FM α).run σ
+    | .inr (n : Nat) => if h : 0 < n then pure (⟨0, h⟩ : Fin n) else throw .Unreachable) m : SailStateM α).run σ
 
 end Human

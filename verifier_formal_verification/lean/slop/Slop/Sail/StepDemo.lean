@@ -40,7 +40,7 @@ open Human Wr
 
 /-- Known facts after reset plus `PC = 0xd8`; `minstret` and the GPRs are left symbolic. -/
 noncomputable def K0base (mem : Nat → BitVec 8) : Known :=
-  { regs := fun r => if Volatile r then none else some (resetState.regs r),
+  { regs := fun r => if writtenByProgram r then none else some (resetState.regs r),
     code := fun i => if 0xd8 ≤ i ∧ i < 0xdc then some ((0x00150513#32).extractLsb' (8*(i-0xd8)) 8) else none,
     data := mem }
 

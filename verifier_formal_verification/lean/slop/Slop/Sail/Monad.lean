@@ -37,7 +37,7 @@ theorem runF_def {α : Type} (m : SailM α) (s : SailState) :
     runSail m s = (FreeM.liftM (fun
         | .inl (.error err) => throw err
         | .inl (.ok eff) => applyEffect eff
-        | .inr (n : Nat) => if h : 0 < n then pure (⟨0, h⟩ : Fin n) else throw Error.Unreachable) m : FM α).run s :=
+        | .inr (n : Nat) => if h : 0 < n then pure (⟨0, h⟩ : Fin n) else throw Error.Unreachable) m : SailStateM α).run s :=
   rfl
 
 theorem runF_bind_ok {α β : Type} (m : SailM α) (f : α → SailM β) (s s' : SailState) (a : α)
