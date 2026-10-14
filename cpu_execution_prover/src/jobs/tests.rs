@@ -135,3 +135,16 @@ fn an_altered_prior_memory_cap_is_rejected() {
         caps
     });
 }
+
+#[test]
+fn unified22_uses_recompute() {
+    use prover::gkr::prover::RsCodewordSource;
+    assert_eq!(
+        crate::jobs::whir_storage(ProofProfile::L1Feeder).base_rs_source,
+        RsCodewordSource::Recompute
+    );
+    assert_ne!(
+        crate::jobs::whir_storage(ProofProfile::Standard).base_rs_source,
+        RsCodewordSource::Recompute
+    );
+}

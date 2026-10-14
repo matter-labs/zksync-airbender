@@ -4,7 +4,7 @@ use crate::upstream::{
     JumpBranchSltCircuit, KeccakChi5DelegationCircuit, KeccakColumnParityDelegationCircuit,
     KeccakSpecial5DelegationCircuit, KeccakThetaRhoDelegationCircuit, LoadStoreSubwordOnlyCircuit,
     LoadStoreWordOnlyCircuit, ShiftBinaryCircuit, UnifiedReducedMachineCircuit,
-    UnsignedMulDivCircuit,
+    UnifiedReducedMachineCircuit2_22, UnsignedMulDivCircuit,
 };
 use crate::MachineType;
 use circuit_common::{DelegationCircuit, RiscVCycleCircuit};
@@ -35,6 +35,8 @@ const ADD_SUB_DOMAIN_SIZE_LOG2: u32 =
     <AddSubLuiAuipcMopCircuit as RiscVCycleCircuit<BabyBearField, false>>::DOMAIN_SIZE_LOG2;
 const UNIFIED_REDUCED_MACHINE_DOMAIN_SIZE_LOG2: u32 =
     <UnifiedReducedMachineCircuit as RiscVCycleCircuit<BabyBearField, true>>::DOMAIN_SIZE_LOG2;
+const UNIFIED_REDUCED_MACHINE_2_22_DOMAIN_SIZE_LOG2: u32 =
+    <UnifiedReducedMachineCircuit2_22 as RiscVCycleCircuit<BabyBearField, true>>::DOMAIN_SIZE_LOG2;
 const JUMP_BRANCH_DOMAIN_SIZE_LOG2: u32 =
     <JumpBranchSltCircuit as RiscVCycleCircuit<BabyBearField, false>>::DOMAIN_SIZE_LOG2;
 const SHIFT_BINARY_DOMAIN_SIZE_LOG2: u32 =
@@ -48,6 +50,8 @@ const INITS_AND_TEARDOWNS_NUM_SETS: usize = inits_and_teardowns::NUM_INIT_AND_TE
 // One inline i&t "pair" allocates two sets (`allocate_inline_inits_and_teardowns_sets`).
 const UNIFIED_REDUCED_MACHINE_NUM_INIT_AND_TEARDOWN_SETS: usize =
     2 * <UnifiedReducedMachineCircuit as RiscVCycleCircuit<BabyBearField, true>>::NUM_INIT_AND_TEARDOWN_PAIRS;
+const UNIFIED_REDUCED_MACHINE_2_22_NUM_INIT_AND_TEARDOWN_SETS: usize =
+    2 * <UnifiedReducedMachineCircuit2_22 as RiscVCycleCircuit<BabyBearField, true>>::NUM_INIT_AND_TEARDOWN_PAIRS;
 const MUL_DIV_UNSIGNED_DOMAIN_SIZE_LOG2: u32 =
     <UnsignedMulDivCircuit as RiscVCycleCircuit<BabyBearField, false>>::DOMAIN_SIZE_LOG2;
 
@@ -199,7 +203,12 @@ pub enum UnrolledCircuitType {
     InitsAndTeardowns,
     Memory(UnrolledMemoryCircuitType),
     NonMemory(UnrolledNonMemoryCircuitType),
+    /// The 2^23 unified reduced-machine circuit of regular recursion.
     Unified,
+    /// The 2^22 unified reduced-machine circuit of the L1 feeder layers:
+    /// same family and definition as [`Self::Unified`], distinct geometry
+    /// (and so distinct setups, precomputations and proof shape).
+    Unified22,
 }
 
 impl UnrolledCircuitType {
@@ -215,6 +224,7 @@ impl UnrolledCircuitType {
             Self::Memory(circuit_type) => circuit_type.get_domain_size_log2(),
             Self::NonMemory(circuit_type) => circuit_type.get_domain_size_log2(),
             Self::Unified => UNIFIED_REDUCED_MACHINE_DOMAIN_SIZE_LOG2,
+            Self::Unified22 => UNIFIED_REDUCED_MACHINE_2_22_DOMAIN_SIZE_LOG2,
         }
     }
 
@@ -224,7 +234,7 @@ impl UnrolledCircuitType {
             Self::InitsAndTeardowns => INITS_AND_TEARDOWNS_FORMAL_CIRCUIT_FAMILY_IDX,
             Self::Memory(circuit_type) => circuit_type.get_family_idx(),
             Self::NonMemory(circuit_type) => circuit_type.get_family_idx(),
-            Self::Unified => REDUCED_MACHINE_CIRCUIT_FAMILY_IDX,
+            Self::Unified | Self::Unified22 => REDUCED_MACHINE_CIRCUIT_FAMILY_IDX,
         }
     }
 
@@ -236,6 +246,7 @@ impl UnrolledCircuitType {
             Self::InitsAndTeardowns => INITS_AND_TEARDOWNS_NUM_SETS,
             Self::Memory(_) | Self::NonMemory(_) => 0,
             Self::Unified => UNIFIED_REDUCED_MACHINE_NUM_INIT_AND_TEARDOWN_SETS,
+            Self::Unified22 => UNIFIED_REDUCED_MACHINE_2_22_NUM_INIT_AND_TEARDOWN_SETS,
         }
     }
 }

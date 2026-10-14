@@ -32,9 +32,7 @@ pub fn build_unified_stream(setups: &Setups, proof: &ProgramProof) -> Vec<u32> {
 }
 
 fn flattened_caps(setups: &Setups) -> impl Iterator<Item = &[u32]> {
-    setups
-        .values()
-        .map(|params| MerkleTreeCap::flatten_single(&params.setup_caps))
+    setups.values().map(|params| params.flattened_setup_caps())
 }
 
 #[cfg(feature = "verifiers")]

@@ -36,7 +36,7 @@ pub fn plan_unrolled_stream(
     let mut w = 0usize;
 
     for params in setups.values() {
-        w += MerkleTreeCap::flatten_single(&params.setup_caps).len();
+        w += params.flattened_setup_caps().len();
     }
     w += 32 * 3;
     w += 3;
