@@ -11,15 +11,18 @@ pub fn config_for_security_level_under_pessimistic_conjecture(
     }
 }
 
+/// The PoW ceiling of the L1 feeder configuration: no grind in the WHIR
+/// schedule (nor the lookup, batched-proximity or external-challenge PoWs of
+/// the feeder proofs) exceeds it; the security is filled with queries.
+pub const L1_FEEDER_MAX_POW_BITS: u32 = 25;
+
 /// The per-round (queries, PoW bits) of the L1 feeder configuration, rounds
-/// 0..5, in ONE place so a tuple is swapped as a unit: round 0 at rate
-/// 2^-5, then rounds 1-4 at rates 2^-6 / 2^-11 / 2^-16 / 2^-21. Round 0
-/// satisfies the first-round security margin
-/// `6 * pow + 5 * queries * rate_bits >= 600`; rounds 1-4 follow the feeder
-/// query rule at the minimal PoW of each query-count boundary (grinds
-/// capped at 2^30). Both are asserted by `l1_feeder_22_shape_and_security`.
+/// 0..5 at rates 2^-5 / 2^-6 / 2^-11 / 2^-16 / 2^-21, in ONE place so a
+/// tuple is swapped as a unit. Every round grinds at most
+/// [`L1_FEEDER_MAX_POW_BITS`] and satisfies `6 * pow + 5 * queries *
+/// rate_bits >= 600`; both are asserted by `l1_feeder_22_shape_and_security`.
 pub const L1_FEEDER_QUERIES_AND_POW: [(usize, u32); 5] =
-    [(17, 30), (14, 29), (8, 24), (5, 21), (4, 17)];
+    [(18, 25), (15, 25), (9, 25), (6, 25), (5, 25)];
 
 /// The "L1 feeder" configuration for the 2^22 unified circuit: the standard
 /// 2^22 entry of [`config_for_100_bits_under_pessimistic_conjecture`] with
@@ -30,11 +33,12 @@ pub const L1_FEEDER_QUERIES_AND_POW: [(usize, u32); 5] =
 /// intermediate ladder [64, 2048, 65536, 2097152] for the post-fold poly
 /// sizes [2^21, 2^16, 2^11, 2^6]; the schedule stops at the 2^3 polynomial
 /// (plain-text tail). Cap 32 is forced at LDE 32 (coset commit cap <= LDE,
-/// memory-cap split cap >= LDE). Under [`PessimisticConjectureMode`]
-/// accounting (`queries = ceil(1.2 * floor((100 - pow) / rate_bits))`) with
-/// per-round PoW pushed to the next query-count boundary (grinds capped at
-/// 2^30 on rounds 1-4), the query ladder is [17, 14, 8, 5, 4]; round 0 is
-/// [`L1_FEEDER_QUERIES_AND_POW`]. Purpose: make proofs of every
+/// memory-cap split cap >= LDE). The queries and PoW of every round are
+/// [`L1_FEEDER_QUERIES_AND_POW`]: no grind above [`L1_FEEDER_MAX_POW_BITS`],
+/// the rest of the security from queries, each round meeting
+/// `6 * pow + 5 * queries * rate_bits >= 600` and the
+/// [`PessimisticConjectureMode`] query count at its PoW. Purpose: make
+/// proofs of every
 /// feeder layer maximally cheap to VERIFY (fewer Merkle paths + leaf hashes
 /// in every round) so a layer verifying two 2^22 chunks fits one 2^22 chunk
 /// and the last layer's verification fits the L1 (Proth120) wrapper's 2^21
@@ -334,31 +338,23 @@ mod tests {
         assert!(lde_factors.next().is_none());
         assert_eq!(rate_bits_per_round, vec![5, 6, 11, 16, 21]);
 
-        // round 0: the first-round security margin of the standard configs
-        let rate_bits = rate_bits_per_round[0];
-        let pow = schedule.whir_pow_schedule[0];
-        let queries = schedule.whir_queries_schedule[0] as u32;
-        assert!(6 * pow + 5 * queries * rate_bits >= 600);
-        assert!(
-            queries
-                >= PessimisticConjectureMode
-                    .num_queries_for_rate_and_bits_of_security(100 - pow, rate_bits)
-        );
-        // rounds 1-4: the feeder query rule at the minimal PoW of each boundary
-        for round in 1..5 {
+        // every round: no grind above the ceiling, the first-round security
+        // margin of the standard configs, and at least the pessimistic
+        // conjecture's query count at its PoW
+        for round in 0..5 {
             let rate_bits = rate_bits_per_round[round];
             let pow = schedule.whir_pow_schedule[round];
             let queries = schedule.whir_queries_schedule[round] as u32;
-            assert!(pow <= 30);
-            assert_eq!(
-                queries,
-                PessimisticConjectureMode
-                    .num_queries_for_rate_and_bits_of_security(100 - pow, rate_bits)
+            assert!(pow <= L1_FEEDER_MAX_POW_BITS, "round {round}: PoW {pow}");
+            assert!(
+                6 * pow + 5 * queries * rate_bits >= 600,
+                "round {round}: 6 * {pow} + 5 * {queries} * {rate_bits} < 600"
             );
             assert!(
-                PessimisticConjectureMode
-                    .num_queries_for_rate_and_bits_of_security(100 - (pow - 1), rate_bits)
-                    > queries
+                queries
+                    >= PessimisticConjectureMode
+                        .num_queries_for_rate_and_bits_of_security(100 - pow, rate_bits),
+                "round {round}"
             );
         }
     }
