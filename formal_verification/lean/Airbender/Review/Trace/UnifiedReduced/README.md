@@ -35,6 +35,9 @@ mixed execution with delegation callers remains a separate obligation.
 | Literal or publicly placed AUIPC code derives the actual protocol entry read and retained native token. | [`Caller.hash_control_preparation_soundness`](Theorems.lean) |
 | Complete selected G/Keccak references admit either preparation source at their actual joint cut states. | [`Caller.computed_prepared_hash_window_soundness`](Theorems.lean) |
 | Nonempty ordered lists may mix literal and AUIPC preparations while retaining every intervening transfer in one history. | [`Caller.computed_prepared_hash_sequence_soundness`](Theorems.lean) |
+| Either preparation source and public modular code derive caller rows, exact request slots, worker family and count. | [`Caller.hash_prepared_public_window_schedule_soundness`](Theorems.lean) |
+| Public modular regions derive complete G/Keccak span shape before source-aware reference composition. | [`Caller.wrapped_program_computed_hash_window_soundness`](Theorems.lean) |
+| Public modular regions derive every selected shape in an ordered list with literal or AUIPC preparation. | [`Caller.wrapped_program_computed_hash_sequence_soundness`](Theorems.lean) |
 | Two preparations share their actual cut states and the complete intervening machine/worker history; neither control is supplied. | [`Caller.control_preparation_window_soundness`](Theorems.lean) |
 | Two native windows and their gap execute continuously from one initialization with retained tokens and clocks. | [`Caller.mixed_window_chain_soundness`](Theorems.lean) |
 | An arbitrary ordered finite list of native windows and gaps shares that continuous execution. | [`Caller.mixed_window_sequence_soundness`](Theorems.lean) |
@@ -146,8 +149,14 @@ to the existing complete G/Keccak reference and exact caller binding. Nonempty
 ordered lists may mix both forms; each gap and reference uses the same continuous
 native execution and derived boundary states. Mode/count/duration, selected family,
 public domain/setup/tables and logical matching remain explicit. The current
-complete entries retain the nonround worker scope; extended-round mask transport
-and public caller-region derivation for this new source remain separate.
+complete entries retain the nonround worker scope. The separate
+[`WrappedProgramComputedHashInputs`](ComputedHashWindows.lean) and
+[`WrappedProgramComputedHashWindowInputs`](ComputedHashWindows.lean) replace
+selected family/count premises with public modular code regions and duration.
+Native matching derives caller rows, exact request slots, worker family and
+count before invoking the same window/list composition. The global nonround
+boundary still quantifies every worker. Extended-round source/mask transport
+remains separate.
 Legacy literal entry points use the same composition proof and retain their
 signatures. [Concrete preparation fixtures](../../../../Tests/ControlPreparation.lean)
 check AUIPC at PC 128 for G's control 128 and a wrapped sum at PC 4096 for Keccak's
@@ -157,6 +166,10 @@ check preparation and incomplete-span guards; the complete reference/list claims
 are arbitrary-witness theorems under their stated span ABI. The existing unissued
 G-prefix preparation remains admitted through the literal source. Bigint-control,
 worker ROM-shadow, terminal-PC and discarded-load boundaries stay unchanged.
+The same native preparation witnesses derive empty selected regions with zero
+callers/workers; complete scopes reject incomplete durations, cuts past the
+native terminal and regions containing ordinary preparation code. The literal
+public-region fixture retains the unissued G worker in its actual prefix.
 
 [`WrappedProgramCallerRegion`](../../Helpers/UnifiedReduced/WindowSchedule.lean)
 states the public ordinary-exclusion/full-CSR-family policy at every clock in the

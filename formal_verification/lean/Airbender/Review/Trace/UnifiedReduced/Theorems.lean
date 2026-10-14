@@ -712,4 +712,55 @@ theorem Caller.computed_prepared_hash_sequence_soundness [Fact p.Prime] (hp : 16
     Caller.PreparedHashSequenceResult data before cells first rest :=
   Caller.Proofs.computed_hash_sequence hp clockInverse accepted firstInputs restInputs ordered
 
+/-- Literal or AUIPC preparation and public modular code derive the selected
+    caller/worker shape and exact native request slots, even for an empty region.
+    No complete reference duration or worker-count premise is needed here. -/
+theorem Caller.hash_prepared_public_window_schedule_soundness [Fact p.Prime] (hp : 4194304 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
+    {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)}
+    {span : Delegation.Caller.HashSpan} {lower upper : Nat}
+    (setup : data.machine.rom = Setup.table before)
+    (accepted : Caller.MixedMemoryAccepted data program) (publicProgram : Caller.RequestInputs data before ca)
+    (ordinaryProgram : Mixed.programImage before oa = some program) (registry : Caller.WrappedSequentialProgram program)
+    (source : Caller.HashControlPreparation data program lower span)
+    (region : Caller.WrappedProgramCallerRegion data program span.family lower upper)
+    (first : lower % 4 = 0) (last : upper % 4 = 0) (ordered : lower ≤ upper)
+    (beforeTerminal : upper ≤ (Trace.timeOfPair data.machine.terminal.timestamp).value) :
+    Caller.ProgramCallerWindow data span.family lower upper :=
+  Caller.Proofs.wrapped_program_hash_preparation_schedule hp clockInverse setup accepted publicProgram
+    ordinaryProgram registry source region first last ordered beforeTerminal
+
+/-- Complete selected G/Keccak references derive their caller/worker family,
+    count and slots from public modular regions, then use literal or AUIPC
+    preparation at the actual joint states. Public duration and nonround scope,
+    domain, setup/tables and logical matching remain explicit. -/
+theorem Caller.wrapped_program_computed_hash_window_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
+    {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    {window : Caller.HashWindow}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.WrappedProgramComputedHashInputs data before ca oa cells program)
+    (scope : Caller.WrappedProgramComputedHashWindowInputs data program window)
+    (first : window.lower % 4 = 0) (last : window.upper % 4 = 0) :
+    Caller.ProgramCallerWindow data window.span.family window.lower window.upper ∧
+      Caller.JointHashWindowResult data before cells window.span window.lower window.upper :=
+  Caller.Proofs.wrapped_program_computed_hash_window hp clockInverse accepted inputs scope first last
+
+/-- A nonempty ordered list may mix literal and AUIPC preparations. Public
+    modular regions derive all selected shapes; existing composition retains
+    every gap and reference in one continuously initialized history. -/
+theorem Caller.wrapped_program_computed_hash_sequence_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
+    {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    {first : Caller.HashWindow} {rest : List Caller.HashWindow}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.WrappedProgramComputedHashInputs data before ca oa cells program)
+    (scopes : ∀ window ∈ first :: rest, Caller.WrappedProgramComputedHashWindowInputs data program window)
+    (ordered : Caller.WindowsOrdered first.lower ((first :: rest).map Caller.HashWindow.interval)) :
+    Caller.PreparedHashSequenceResult data before cells first rest :=
+  Caller.Proofs.wrapped_program_computed_hash_sequence hp clockInverse accepted inputs scopes ordered
+
 end Airbender.UnifiedReduced

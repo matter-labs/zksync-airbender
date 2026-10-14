@@ -216,13 +216,20 @@ starting from 65537 and retaining clock-six tokens. Wrong placement and incomple
 complete reference/list claims are arbitrary-witness theorems under their stated
 ABI. The [unissued G-prefix preparation](Tests/DelegationZeroInvocation.lean) remains
 admitted through the literal source. No ABI finding is hidden or resolved by this
-change. Public caller-region derivation for the new source and extended-round
-mask transport are next, before broader preparation and whole caller retirement.
+change. The new public modular-region entry derives selected caller rows, exact
+request slots, worker family and count for either preparation source before
+reusing the same complete-reference and ordered-list composition. It retains
+public mode/code/duration, global nonround scope and all initialization/domain/
+table/matching boundaries. Native preparation witnesses derive empty-region
+counts without a count premise; incomplete durations, cuts past the native
+terminal and regions containing ordinary preparation code are rejected. The
+unissued G effect remains in the literal entry's prefix. Extended-round
+source/mask transport is next, before broader preparation and whole caller retirement.
 
 All 116 concrete test modules and 143 importer guards pass. The full
-2,163-root axiom audit has 64 axiom-free roots and only the three standard
-Lean axioms. Review checks pass for all 109 public theorem roots, 176 declaration
-names and 688 guide links/anchors, with no handwritten project diagnostics.
+2,177-root axiom audit has 64 axiom-free roots and only the three standard
+Lean axioms. Review checks pass for all 112 public theorem roots, 181 declaration
+names and 693 guide links/anchors, with no handwritten project diagnostics.
 
 ## Review priorities
 

@@ -269,4 +269,86 @@ theorem computed_hash_sequence [Fact p.Prime] (hp : 16777216 ≤ p)
   exact ⟨sequence, actual, computed_hash_sequence_at_segments hp clockInverse accepted allInputs ordered actual.segments⟩
 
 
+/-- Public preparation supplies the lower-clock bound. Native matching and the
+    modular code policy derive every selected caller, request slot and worker. -/
+theorem wrapped_program_hash_preparation_schedule [Fact p.Prime] (hp : 4194304 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)}
+    {program : List UnifiedReduced.ProgramEntry} {span : Delegation.Caller.HashSpan} {lower upper : Nat}
+    (setup : data.machine.rom = Setup.table before)
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    (ordinaryProgram : Mixed.programImage before oa = some program) (registry : WrappedSequentialProgram program)
+    (source : HashControlPreparation data program lower span)
+    (region : WrappedProgramCallerRegion data program span.family lower upper)
+    (first : lower % 4 = 0) (last : upper % 4 = 0) (ordered : lower ≤ upper)
+    (beforeTerminal : upper ≤ (timeOfPair data.machine.terminal.timestamp).value) :
+    ProgramCallerWindow data span.family lower upper := by
+  have floor := hash_control_preparation_after_initial source
+  exact wrapped_program_caller_window hp clockInverse setup accepted publicProgram ordinaryProgram registry region
+    first last (by omega) ordered (by omega) beforeTerminal
+
+theorem wrapped_program_computed_hash_inputs [Fact p.Prime] (hp : 4194304 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
+    {program : List UnifiedReduced.ProgramEntry} {window : HashWindow}
+    (accepted : MixedMemoryAccepted data program)
+    (inputs : WrappedProgramComputedHashInputs data before ca oa cells program)
+    (scope : WrappedProgramComputedHashWindowInputs data program window)
+    (first : window.lower % 4 = 0) (last : window.upper % 4 = 0) :
+    ComputedPreparedHashWindowInputs data before ca oa cells program window.span window.lower window.upper := by
+  have schedule := wrapped_program_hash_preparation_schedule hp clockInverse inputs.setup accepted
+    inputs.publicProgram inputs.ordinaryProgram inputs.registry scope.preparation scope.region first last
+    (by have := scope.duration; omega) scope.beforeTerminal
+  refine ⟨inputs.toProtocolContextInputs, schedule.family, inputs.roundsAbsent, scope.profile,
+    scope.preparation, ?_, scope.duration, scope.beforeTerminal⟩
+  rw [← schedule.workerCount, schedule.machineCount, scope.duration]
+  omega
+
+theorem wrapped_program_computed_hash_window [Fact p.Prime] (hp : 16777216 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
+    {program : List UnifiedReduced.ProgramEntry} {window : HashWindow}
+    (accepted : MixedMemoryAccepted data program)
+    (inputs : WrappedProgramComputedHashInputs data before ca oa cells program)
+    (scope : WrappedProgramComputedHashWindowInputs data program window)
+    (first : window.lower % 4 = 0) (last : window.upper % 4 = 0) :
+    ProgramCallerWindow data window.span.family window.lower window.upper ∧
+      JointHashWindowResult data before cells window.span window.lower window.upper := by
+  exact ⟨wrapped_program_hash_preparation_schedule (by omega) clockInverse inputs.setup accepted
+      inputs.publicProgram inputs.ordinaryProgram inputs.registry scope.preparation scope.region first last
+      (by have := scope.duration; omega) scope.beforeTerminal,
+    computed_hash_window hp clockInverse accepted
+      (wrapped_program_computed_hash_inputs (by omega) clockInverse accepted inputs scope first last) first last⟩
+
+/-- Code regions derive every window's shape before the existing source-aware
+    composition realizes all gaps and references in one initialized history. -/
+theorem wrapped_program_computed_hash_sequence [Fact p.Prime] (hp : 16777216 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
+    {program : List UnifiedReduced.ProgramEntry} {first : HashWindow} {rest : List HashWindow}
+    (accepted : MixedMemoryAccepted data program)
+    (inputs : WrappedProgramComputedHashInputs data before ca oa cells program)
+    (scopes : ∀ window ∈ first :: rest, WrappedProgramComputedHashWindowInputs data program window)
+    (ordered : WindowsOrdered first.lower ((first :: rest).map HashWindow.interval)) :
+    PreparedHashSequenceResult data before cells first rest := by
+  have aligned : ∀ {windows : List HashWindow} {cut : Nat},
+      WindowsOrdered cut (windows.map HashWindow.interval) →
+      ∀ window ∈ windows, window.lower % 4 = 0 ∧ window.upper % 4 = 0 := by
+    intro windows
+    induction windows with
+    | nil => intro cut _ window member; cases member
+    | cons head tail ih =>
+      intro cut order window member
+      obtain ⟨_, _, first, last, restOrder⟩ := order
+      rcases List.mem_cons.mp member with rfl | member
+      · exact ⟨first, last⟩
+      · exact ih restOrder window member
+  have windowInputs : ∀ window ∈ first :: rest,
+      ComputedPreparedHashWindowInputs data before ca oa cells program window.span window.lower window.upper := by
+    intro window member
+    exact wrapped_program_computed_hash_inputs (by omega) clockInverse accepted inputs (scopes window member)
+      (aligned ordered window member).1 (aligned ordered window member).2
+  exact computed_hash_sequence hp clockInverse accepted (windowInputs first (List.mem_cons_self ..))
+    (fun window member => windowInputs window (List.mem_cons_of_mem _ member)) ordered
+
 end Airbender.UnifiedReduced.Caller.Proofs

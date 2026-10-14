@@ -1499,4 +1499,66 @@ theorem auipc_incomplete_computed_hash_span_rejected (keccak : Bool) :
   · change 0 = 649 at count
     contradiction
 
+private theorem hashAUIPCPublicContext (keccak : Bool) :
+    UnifiedReduced.Caller.WrappedProgramComputedHashInputs (hashAUIPCData keccak) (hashAUIPCBefore keccak)
+      [] [hashAUIPCPC keccak] (cells (hashAUIPCMode keccak)) [hashAUIPCEntry keccak] := by
+  have context := hashAUIPCInputs keccak
+  refine ⟨⟨context.publicProgram, context.ordinaryProgram, context.initialization, context.distinct,
+    context.aligned, context.setup, context.tables⟩, (hashAUIPCScope keccak).registry, ?_⟩
+  intro _ member; cases member
+
+/-- Native preparation witnesses inhabit the new public context. Their empty
+    selected region derives zero callers and workers without a count premise. -/
+theorem auipc_public_preparation_empty_window (keccak : Bool) :
+    UnifiedReduced.Caller.ProgramCallerWindow (hashAUIPCData keccak) (hashAUIPCSpan keccak).family 8 8 ∧
+      ((hashAUIPCData keccak).windowMachineRows 8 8).length = 0 ∧
+      ((hashAUIPCData keccak).workers.windowRows 8 8).length = 0 := by
+  have context := hashAUIPCPublicContext keccak
+  have region : UnifiedReduced.Caller.WrappedProgramCallerRegion (hashAUIPCData keccak)
+      [hashAUIPCEntry keccak] (hashAUIPCSpan keccak).family 8 8 := by
+    constructor
+    · intro _ _ _ lower upper; omega
+    · intro _ _ _ lower upper; omega
+  have schedule := UnifiedReduced.Caller.hash_prepared_public_window_schedule_soundness
+    (by decide +kernel) (by decide +kernel) context.setup (hashAUIPCAccepted keccak)
+    context.publicProgram context.ordinaryProgram context.registry (auipc_hash_protocol_preparation keccak)
+    region (by decide) (by decide) (by decide) (by cases keccak <;> decide +kernel)
+  refine ⟨schedule, ?_, ?_⟩
+  · simpa using schedule.machineCount
+  · rw [← schedule.workerCount]
+    simpa using schedule.machineCount
+
+theorem auipc_public_region_including_preparation_rejected (keccak : Bool) :
+    ¬ UnifiedReduced.Caller.WrappedProgramCallerRegion (hashAUIPCData keccak)
+      [hashAUIPCEntry keccak] (hashAUIPCSpan keccak).family 4 8 := by
+  intro region
+  exact region.ordinary (hashAUIPCEntry keccak) (List.mem_singleton_self _) 4
+    (by decide) (by decide) (by cases keccak <;> decide +kernel)
+
+/-- Correct preparation and a valid empty region cannot replace the complete
+    reference duration, now that worker counts are derived from public code. -/
+theorem auipc_public_incomplete_hash_span_rejected (keccak : Bool) :
+    ¬ UnifiedReduced.Caller.WrappedProgramComputedHashWindowInputs (hashAUIPCData keccak)
+      [hashAUIPCEntry keccak] ⟨hashAUIPCSpan keccak, 8, 8⟩ := by
+  intro scope
+  have duration := scope.duration
+  cases keccak
+  · change 8 = 8 + 4 * 56 at duration
+    omega
+  · change 8 = 8 + 4 * 649 at duration
+    omega
+
+/-- Supplying the full public duration cannot extend these preparation-only
+    witnesses beyond their native terminal clock. -/
+theorem auipc_public_hash_span_past_terminal_rejected (keccak : Bool) :
+    ¬ UnifiedReduced.Caller.WrappedProgramComputedHashWindowInputs (hashAUIPCData keccak)
+      [hashAUIPCEntry keccak] ⟨hashAUIPCSpan keccak, 8, 8 + 4 * (hashAUIPCSpan keccak).callCount⟩ := by
+  intro scope
+  have bound := scope.beforeTerminal
+  cases keccak
+  · change 232 ≤ 8 at bound
+    omega
+  · change 2604 ≤ 8 at bound
+    omega
+
 end Tests.ControlPreparation
