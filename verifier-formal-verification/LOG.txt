@@ -45,8 +45,15 @@ NOT imported).
   verify.sh step 5 checks it when lean/sail-rv32/SailRV32 exists.
 - FOUND BY THE PROOF: our table had LW as unsigned (`load 4 false`); Sail (and funct3 bit 2 = 0) says signed.
   Same behaviour for a full word, but a different instruction: RV32.lean now `load 4 true`, + sext_word lemma.
-- NEXT: StepIsAirbender (execute side): per instruction kind, RV.exec vs Sail execute (toSail i) under Agree;
-  then transfer ProgramCorrect to the Airbender machine.
+- DONE (2026-10-14): StepIsAirbender proven (Slop/Equiv/StepIsAirbender.lean, standard axioms) and the final
+  theorem carried to the Airbender machine: Airbender.ProgramCorrect (HumanSail/Theorems.lean), proof
+  Slop.Equiv.program_correct_airbender (Final.lean). verify.sh step 5 checks all three.
+  Layers: execute per form (ExecAlu/ExecJump/ExecLoad/ExecStore), memory path one lemma per Sail layer
+  (MemLayers: PMA, PMP, no MMIO, translation; MemRead/MemVmem/MemWrite; Fetch), Step.lean (one step from its
+  execute), Bridge.lean (readBytes/writeBytes = RV.read/RV.write, no wrap), Agree.lean + Step{Alu,Jump,Mem}.lean
+  (per instruction kind), StepIsAirbender.lean (split over RV.decode). Every file < ~20 s.
+  Runner (Run.lean) lessons: never Kernel.whnf symbolic terms (minutes); kernel Nat acceleration is off for
+  terms with free variables, so kernel-check closed subterms only (eval_bv, eval_closed); `stepwise` mode.
 
 === HANDOFF (2026-10-13, end of day; resume from another machine) ===
 State: main @ this commit, pushed; ./verify.sh passes (exit 0). Proven on the exact binary build/app.bin
