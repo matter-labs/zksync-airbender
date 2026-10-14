@@ -849,7 +849,7 @@ theorem prepared_unissued_prefix_states :
       (Cell.register 12).read preparationBefore = .ok 0 preparationBefore ∧
       (Cell.register 12).read finish = .ok 1 finish ∧
       (Cell.register 12).read after = .ok 0 after := by
-  obtain ⟨events, after, permutation, _, history, _, unissued, terminal⟩ := prepared_all_worker_execution
+  obtain ⟨events, after, permutation, _, history, _, unissued, _, terminal⟩ := prepared_all_worker_execution
   obtain ⟨current, newer, finish, split, grouped, call, rest, ports⟩ :=
     unissued native (List.mem_singleton_self _) (by decide +kernel)
   let port := native.ports[8]
@@ -869,5 +869,79 @@ theorem prepared_unissued_prefix_states :
   have finalValue : sink.word.toBitVec = (0 : BitVec 32) := by decide +kernel
   exact ⟨events, current, newer, finish, after, permutation, history, split, grouped, call, rest,
     readValue ▸ read, writtenValue ▸ written, finalValue ▸ actual⟩
+
+/-- An empty machine path may have a zero public endpoint while the accepted
+    unissued worker still runs. This is not a native boot configuration. -/
+private def zeroInitialData : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
+  { unifiedData with machine := { unifiedData.machine with
+      initial := { unifiedData.machine.initial with timestamp := (0, 0) }
+      terminal := { unifiedData.machine.terminal with timestamp := (0, 0) } } }
+
+private theorem zeroInitialAccepted : UnifiedReduced.Caller.MixedMemoryAccepted zeroInitialData [] := by
+  refine ⟨?_, ?_, unifiedAccepted.memory⟩
+  constructor
+  · intro _ member; cases member
+  · intro _ member; cases member
+  · exact List.Perm.refl _
+  · intro _ member; cases member
+  · exact unifiedAccepted.workerConstraints
+  · exact unifiedAccepted.workerActive
+  · exact no_caller_virtual_matching
+  · intro _ member; cases member
+
+private theorem zeroInitialInputs : UnifiedReduced.Caller.MixedMemoryInputs zeroInitialData [] before [] [] cells := by
+  refine ⟨⟨rfl, by change 0 < timestampBase ∧ 0 < timestampBase; norm_num [timestampBase],
+    by decide +kernel⟩, unifiedInputs.ordinaryProgram,
+    unifiedInputs.initialization, unifiedInputs.distinct, unifiedInputs.aligned,
+    unifiedInputs.setup, unifiedInputs.tables, unifiedInputs.rounds⟩
+
+private theorem zeroInitialCode : UnifiedReduced.Caller.CodeProfile zeroInitialData [] cells :=
+  ⟨unifiedCode.ram, unifiedCode.ordinary, unifiedCode.callers⟩
+
+theorem zero_initial_clock_unissued_accepted :
+    UnifiedReduced.Caller.MixedMemoryAccepted zeroInitialData [] ∧
+    (timeOfPair zeroInitialData.machine.initial.timestamp).value = 0 :=
+  ⟨zeroInitialAccepted, by decide +kernel⟩
+
+theorem zero_initial_clock_caller_cycles :
+    UnifiedReduced.Caller.CallerCycleEffects zeroInitialData [] before cells :=
+  UnifiedReduced.Caller.native_caller_cycles_soundness zeroInitialAccepted zeroInitialInputs zeroInitialCode
+
+/-- Removing the supplied positive-clock premise keeps the actual state-changing
+    unissued prefix, even with a zero public machine endpoint. -/
+theorem zero_initial_clock_unissued_prefix :
+    ∃ (events current newer : List MemoryAccess) (finish after : Reference.RiscV.Sail.State),
+      events.Perm (zeroInitialData.mixedSteps.map transferEvent) ∧
+      Trace.SailHistory cells events before after ∧
+      events = newer ++ current ∧ current.Perm (native.memorySteps.map transferEvent) ∧
+      Trace.SailHistory cells current before finish ∧ Trace.SailHistory cells newer finish after ∧
+      (Cell.register 12).read before = .ok 0 before ∧ (Cell.register 12).read finish = .ok 1 finish := by
+  obtain ⟨events, after, permutation, _, history, _, unissued, _, _⟩ :=
+    UnifiedReduced.Caller.all_worker_execution_soundness zeroInitialAccepted zeroInitialInputs
+  obtain ⟨current, newer, finish, split, grouped, call, rest, ports⟩ :=
+    unissued native (List.mem_singleton_self _) (by decide +kernel)
+  let port := native.ports[8]
+  have nativePort : port ∈ native.ports := by
+    simp [port, native, Delegation.Row.ports, Blake2G.importedConstraintsMemoryPorts]
+  obtain ⟨cell, _, address, read, written⟩ := ports port nativePort
+  have code : port.address.code native.assignment = (Cell.register 12).addressCode := by decide +kernel
+  have same := Trace.Proofs.cell_address_injective (address.trans code)
+  subst cell
+  have readValue : (readToken native.assignment port).word.toBitVec = (0 : BitVec 32) := by decide +kernel
+  have writtenValue : (native.writeToken port).word.toBitVec = (1 : BitVec 32) := by decide +kernel
+  exact ⟨events, current, newer, finish, after, permutation, history, split, grouped, call, rest,
+    readValue ▸ read, writtenValue ▸ written⟩
+
+/-- The actual ADDI cycle and earlier unissued worker share one history without
+    supplying a positive initial-clock premise to cycle grouping. -/
+theorem prepared_native_cycle_states :
+    ∃ (events : List MemoryAccess) (after : Reference.RiscV.Sail.State),
+      events.Perm (preparationData.mixedSteps.map transferEvent) ∧
+      Trace.SailHistory preparationCells events preparationBefore after ∧
+      UnifiedReduced.Caller.UnissuedPrefixExecution preparationCells events preparationBefore after native ∧
+      UnifiedReduced.Caller.CycleExecution preparationData preparationCells events preparationBefore after preparationRow := by
+  obtain ⟨events, after, permutation, _, history, _, unissued, cycles, _⟩ := prepared_all_worker_execution
+  exact ⟨events, after, permutation, history, unissued native (List.mem_singleton_self _) (by decide +kernel),
+    cycles preparationRow (List.mem_singleton_self _)⟩
 
 end Tests.DelegationZeroInvocation

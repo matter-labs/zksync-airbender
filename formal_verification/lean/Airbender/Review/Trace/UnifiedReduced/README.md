@@ -41,7 +41,7 @@ mixed execution with delegation callers remains a separate obligation.
 | Ordered complete G/extended-BLAKE/Keccak lists share one execution when prepared controller regions cover every extended-round worker. | [`Caller.prepared_protocol_sequence_soundness`](Theorems.lean) |
 | Public caller regions derive each selected span's worker family/count before all three references compose continuously. | [`Caller.program_prepared_protocol_sequence_soundness`](Theorems.lean) |
 | Modular selected span/controller regions derive shape before the same continuous complete-reference composition, retaining explicit global round coverage. | [`Caller.wrapped_program_prepared_protocol_sequence_soundness`](Theorems.lean) |
-| Original current-state caller fetch, selected worker observations and PC retirement meet at the same boundaries. | [`Caller.caller_cycles_soundness`](Theorems.lean) |
+| Original current-state caller fetch, selected worker observations and PC retirement meet at the same boundaries; native memory order derives positive row clocks. | [`Caller.native_caller_cycles_soundness` and `Caller.caller_cycles_soundness`](Theorems.lean) |
 
 Field/inverse, public boot/configuration/program/domain, modeled tables and logical
 matching remain explicit. Window claims additionally retain cut alignment/location,
@@ -60,8 +60,11 @@ Ordinary/custom mixed retirement derives current-state fetch, reads, selectors
 and terminal PC/cells. Delegation callers are outside that instruction registry.
 
 [CallerCycles](CallerCycles.lean) binds full-family fetch, actual worker observations
-and Sail PC retirement at shared cycle boundaries. It is not a complete custom-CSR
-ABI theorem: the issued bigint invalid-control fixtures still satisfy those observations.
+and Sail PC retirement at shared cycle boundaries. The native entry derives
+positive caller clocks from strict memory order and four-alignment, without a
+separate positive initial-clock premise. The earlier clock-parameter entry remains
+available. The issued bigint invalid-control fixtures still satisfy these
+observations, so a full custom-CSR ABI remains separate.
 
 [MixedWindows](MixedWindows.lean) and [WindowProjection](WindowProjection.lean)
 expose actual cut states. [JointHashWindows](JointHashWindows.lean),
@@ -240,15 +243,21 @@ the possible zero-clock worker. Full invocation uniqueness isolates its native
 ports at transfer clock three. Strict memory order and alignment put machine rows
 at clock four or later; all other workers are later as well. Its actual pre-state
 is therefore the original public state, with no earlier transfers. The same
-history retains every later transfer and reaches the shared terminal cells. The
+history retains every later transfer and reaches the shared terminal cells.
+Every machine row also has derived cycle states in that same history, using its
+native positive clock rather than an extra positive initial-clock premise. The
 raw grouping and observation proof needs only public initialization, distinct
 aligned cells and accepted native matching, without operation masks or a positive
 invocation premise. The closed BabyBear entry reuses existing realization inputs,
 including modeled setup/tables and the explicit extended-round masks; it does not
 claim execution of unsupported round controls. The G→ADDI regression derives
 actual x12 = 0→1→0 at these call/prefix/final states, and live COPY plus both invalid
-bigint controls retain all-worker execution. Caller retirement, full control ABI
-and worker exclusion/inertness remain separate.
+bigint controls retain all-worker execution. A separate empty-machine fixture
+has public endpoint clock zero while its unissued G worker still changes x12
+from zero to one; this is a logical boundary fixture, with native boot still at
+clock four. The new caller entry admits it, both invalid bigint controls and the
+LW/SW caller fixtures. Caller retirement, full control ABI and worker
+exclusion/inertness remain separate.
 
 Keep surplus zero-clock prefix effects, worker ROM-shadow transport,
 broader preparation/protocol binding, full mixed caller retirement and inactive padding as separate

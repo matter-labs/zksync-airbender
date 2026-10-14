@@ -44,7 +44,9 @@ def UnissuedPrefixExecution (cells : List Cell) (events : List MemoryAccess)
 
 /-- All workers, including the possible unissued worker, have actual call states
     in one initialized architectural execution reaching the shared terminal cells.
-    This is transfer execution, separate from caller retirement or control ABI. -/
+    Every machine row also has its actual cycle states, without an extra positive
+    initial-clock premise. This is transfer execution, separate from retirement
+    or control ABI. -/
 def MixedWorkerExecution [Fact p.Prime] (data : RequestTrace p)
     (before : State) (cells : List Cell) : Prop :=
   ∃ (events : List MemoryAccess) (after : State),
@@ -54,6 +56,7 @@ def MixedWorkerExecution [Fact p.Prime] (data : RequestTrace p)
     (∀ worker ∈ data.workers.rows, Delegation.CallExecution cells events before after worker) ∧
     (∀ worker ∈ data.workers.rows, (Delegation.Requests.fulfillment worker).time = (0, 0) →
       UnissuedPrefixExecution cells events before after worker) ∧
+    (∀ row ∈ data.machine.rows, CycleExecution data cells events before after row) ∧
     ∀ token ∈ data.machine.terminalMemory, ∃ cell ∈ cells,
       cell.addressCode = token.address ∧ cell.read after = .ok token.word.toBitVec after
 
