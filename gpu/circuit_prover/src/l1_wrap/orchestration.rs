@@ -83,8 +83,8 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     );
     let batching_pow_bits = l1_wrap_batching_pow_bits(config, circuit);
     assert_eq!(
-        batching_pow_bits, 11,
-        "L1Wrap requires batching_pow_bits 11"
+        batching_pow_bits, 16,
+        "L1Wrap requires batching_pow_bits 16"
     );
     let cfg = PackedCommitConfig::from_prover_config(config, 26);
     let rows = circuit.trace_len;

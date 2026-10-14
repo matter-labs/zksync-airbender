@@ -64,9 +64,9 @@ pub fn l1_wrap_batching_pow_bits(
     config: &ProverConfig,
     circuit: &GKRCircuitArtifact<Proth120>,
 ) -> u32 {
-    pow_bits::batched_proximity_check_pow_bits(
+    pow_bits::batched_proximity_check_pow_bits::<Proth120, Proth120>(
         config.security_level.security_bits(),
-        circuit.trace_len.trailing_zeros() as usize,
+        circuit.trace_len.trailing_zeros() as usize + EVM_PRODUCTION_PACK_LOG2,
         config.whir_schedule.base_lde_factor.trailing_zeros() as usize,
         pow_bits::total_base_oracle_columns(circuit),
     )
