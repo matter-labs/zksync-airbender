@@ -1,7 +1,7 @@
 import Airbender.Review.Trace.UnifiedReduced.ComputedHashWindows
 import Airbender.Proofs.UnifiedReduced.HashPreparation
 import Airbender.Proofs.Delegation.SpanTarget
-import Airbender.Proofs.UnifiedReduced.RegisterPreparation
+import Airbender.Proofs.UnifiedReduced.RegisterChains
 
 namespace Airbender.UnifiedReduced.Caller.Proofs
 open Trace Trace.Proofs Arithmetic Reference.RiscV.Sail
@@ -26,6 +26,19 @@ theorem literal_addi_hash_preparation_source [Fact p.Prime]
     rw [image_addresses initialization]
     exact distinct⟩ value
 
+/-- Public initialization supplies the domain boundary for an arbitrarily long
+    finite register chain. Its final equation concerns the public expression. -/
+theorem register_chain_hash_preparation_source [Fact p.Prime]
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {cells : List Cell} {cut : Nat} {span : Delegation.Caller.HashSpan} {value : BitVec 32}
+    (initialization : initialImage before cells = some data.machine.initialMemory)
+    (distinct : (cells.map Cell.addressCode).Nodup)
+    (preparation : PublicRegisterPreparation data program cut span.controlRegister value)
+    (entry : value = span.controlStart) : HashControlPreparation data program cut span := by
+  exact .registerChain value preparation (by
+    rw [image_addresses initialization]
+    exact distinct) entry
+
 theorem hash_control_preparation_after_initial [Fact p.Prime]
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {cut : Nat}
     {span : Delegation.Caller.HashSpan} (source : HashControlPreparation data program cut span) :
@@ -34,6 +47,7 @@ theorem hash_control_preparation_after_initial [Fact p.Prime]
   | literal scope => exact scope.afterInitial
   | pcRelative _ scope _ => exact scope.afterInitial
   | literalAddi _ _ _ scope _ => exact scope.step.afterInitial
+  | registerChain _ preparation _ _ => exact public_register_preparation_after_initial preparation
 
 /-- The public placement condition is applied to the actual decoded instruction,
     whose membership and address are derived from native constraints and clocks. -/
@@ -83,6 +97,9 @@ theorem hash_control_preparation_token [Fact p.Prime] (hp : 8388608 ≤ p)
   | literalAddi source literal immediate scope value =>
     simpa only [value] using literal_addi_preparation_token hp inverse setup accepted publicProgram ordinaryProgram
       initialization scope (hash_control_register_nonzero span) aligned matching
+  | registerChain value preparation unique entry =>
+    simpa only [entry] using public_register_preparation_token hp inverse setup accepted publicProgram ordinaryProgram
+      initialization unique preparation (hash_control_register_nonzero span) aligned matching
 
 theorem hash_control_preparation_at_boundary [Fact p.Prime] (hp : 8388608 ≤ p)
     (inverse : (-3840 : ZMod p) * 524288 = 1)

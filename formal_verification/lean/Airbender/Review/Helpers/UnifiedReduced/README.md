@@ -105,7 +105,7 @@ derive actual round-zero seeds and exclusive regional masks; public modular
 controller extents derive local shape, while global memory keeps full round
 coverage explicit. Source-aware public round-CSR occurrence coverage now derives
 precisely live membership and masks, retaining the zero-clock coverage boundary.
-Complete G, extended-BLAKE and Keccak lists also admit all three sources; public
+Complete G, extended-BLAKE and Keccak lists also admit all public sources; public
 modular caller/controller regions derive shape before the existing continuous
 history composition. Full round coverage stays explicit. Broader operand-dependent
 preparation and jumps/branches remain separate. Concrete fixtures use PC four to produce 524292 and
@@ -136,8 +136,26 @@ final cycles are worker-free. Native reversed-row fixtures derive
 wrong constants/immediates, fabricated reads and incomplete references are
 rejected. An accepted unissued G prefix remains before literal zero and ADDI
 128. Full reference claims are general accepted-witness theorems; concrete
-fixtures cover preparation and empty-region guards. Longer public dataflow,
+fixtures cover preparation and empty-region guards. Nonconsecutive public dataflow,
 broader operations and complete Sail retirement remain separate.
+
+
+The [finite register-chain scope](RegisterChains.lean),
+`PublicRegisterPreparation`, extends literal/AUIPC roots with consecutive ADDIs
+across nonzero registers or aliases. Its indexed value follows the public instruction
+expression. Raw prefix/suffix matching, strict clocks and the existing distinct
+public domain derive each actual operand token by induction. This precedes Sail
+transport and round-mask derivation and reuses the two-step token proof. Only
+selected preparation cycles are worker-free; earlier effects remain. The
+[chain execution](../../Trace/UnifiedReduced/RegisterChains.lean) retains one
+initialized prefix, the actual cut read and canonical final token. The same
+source feeds all complete selected-reference windows/lists with their existing
+boundaries. Native three-instruction fixtures retain actual x12 = 127/129,
+x10 = 128 and final x12 = 128, clock fourteen, negative immediates and reversed
+rows; malformed operands/instructions/constants and incomplete references are
+rejected. AUIPC root fixtures and the actual unissued prefix remain inhabited.
+Nonconsecutive dataflow, broader operations and complete Sail retirement remain
+separate.
 
 The [prepared control window](../../Trace/UnifiedReduced/ControlPreparation.lean)
 connects two prepared controls through the same actual intervening history, keeping
