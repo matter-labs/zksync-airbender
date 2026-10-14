@@ -303,8 +303,27 @@ cycle stays worker-free; earlier issued and unissued effects remain. Modeled
 setup/tables, public initialization and existing extended-round ABI remain
 explicit. Fixtures check nonzero PCs and an overflowing sum, retain clock-six
 tokens, and reject a wrong immediate or fabricated read. This proves preparation
-and memory transport. General operand-dependent preparation, jumps/branches,
-prepared hash-span integration and whole caller retirement remain separate.
+and memory transport. Complete selected G/Keccak reference integration now uses
+the source interface below. General operand-dependent preparation, jumps/branches
+and whole caller retirement remain separate.
+
+The [computed hash-window inputs](Airbender/Review/Trace/UnifiedReduced/ComputedHashWindows.lean)
+admit literal or publicly placed AUIPC preparation for complete selected G/Keccak
+references and nonempty ordered lists. AUIPC's address-plus-U-immediate equation
+is a condition on decoded public code placement. It supplies no current-state
+control value: native constraints/matching identify the actual instruction, derive
+its canonical token at cut minus two and transport the actual cut read. The same
+existing reference and sequence algorithms retain every gap and intermediate
+state in one initialized history. Legacy literal entry points keep their contracts
+and use that shared proof. Selected family, mode/count/duration, nonround worker
+scope, public initialization/domain/setup/tables and logical matching remain
+explicit. The preparation fixtures check G's 128 and Keccak's wrapped zero reset,
+actual reads and clock-six tokens; wrong placement and incomplete windows are
+rejected. These are preparation/guard fixtures, with complete-reference claims
+remaining arbitrary-witness theorems under the stated ABI. The literal source
+still admits the actual unissued G-prefix effect. All demonstrated ABI gaps stay
+exposed. Public caller-region derivation for the new source and extended-round
+mask transport are next; whole CSR retirement remains separate.
 
 [Control preparation](Airbender/Review/Helpers/UnifiedReduced/ControlPreparation.lean)
 uses a public ordinary ADDI-from-x0/LUI registry and a worker-free final preparation

@@ -196,13 +196,33 @@ setup/tables and the existing extended-round ABI stay explicit. The
 65537→524292 at PC four and 65537→61444 at PC 65540 with a sum wrapping 2^32,
 retain clock-six tokens, distinguish the immediate alone and reject wrong
 immediates or fabricated native reads. This is control preparation and memory
-transport; prepared hash-span integration, general operand-dependent preparation,
-jumps/branches and whole caller retirement remain open. F01–F10 stay exposed.
+transport. Complete G/Keccak integration now uses the source interface below;
+general operand-dependent preparation, jumps/branches and whole caller retirement
+remain open. F01–F10 stay exposed.
+
+The [computed hash-window source](Airbender/Review/Trace/UnifiedReduced/ComputedHashWindows.lean)
+now admits literal or publicly placed AUIPC instructions before complete selected
+G/Keccak references and nonempty ordered lists. AUIPC placement is a condition on
+decoded code addresses and U-immediates; it supplies no actual control read.
+Native constraints/matching derive the selected instruction, canonical entry
+token at cut minus two and actual initialized cut value. Existing reference and
+sequence composition retains every gap and intermediate state in one history;
+legacy literal signatures now use that same proof. Mode/count/duration, selected
+family, nonround worker scope, public domain/setup/tables and logical matching
+remain explicit. [Preparation fixtures](Tests/ControlPreparation.lean) check actual
+G control 128 from AUIPC at PC 128 and Keccak's wrapped zero reset from PC 4096,
+starting from 65537 and retaining clock-six tokens. Wrong placement and incomplete
+56/649-call windows are rejected. These fixtures check preparation and guards;
+complete reference/list claims are arbitrary-witness theorems under their stated
+ABI. The [unissued G-prefix preparation](Tests/DelegationZeroInvocation.lean) remains
+admitted through the literal source. No ABI finding is hidden or resolved by this
+change. Public caller-region derivation for the new source and extended-round
+mask transport are next, before broader preparation and whole caller retirement.
 
 All 116 concrete test modules and 143 importer guards pass. The full
-2,139-root axiom audit has 64 axiom-free roots and only the three standard
-Lean axioms. Review checks pass for all 106 public theorem roots, 171 declaration
-names and 679 guide links/anchors, with no handwritten project diagnostics.
+2,163-root axiom audit has 64 axiom-free roots and only the three standard
+Lean axioms. Review checks pass for all 109 public theorem roots, 176 declaration
+names and 688 guide links/anchors, with no handwritten project diagnostics.
 
 ## Review priorities
 

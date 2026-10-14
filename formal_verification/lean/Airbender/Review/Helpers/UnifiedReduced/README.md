@@ -91,9 +91,14 @@ carry and overflow equations derive the canonical result; initialized matching
 retains its actual write token at cut minus two. Only the final cycle is
 worker-free, so earlier issued/unissued effects remain. No row selector, desired
 control value or operand read is an input. This preparation/memory entry retains
-modeled setup/tables and the existing extended-round ABI. Its integration into
-complete prepared hash-span entries, operand-dependent preparation and jumps or
-branches remain separate. Concrete fixtures use PC four to produce 524292 and
+modeled setup/tables and the existing extended-round ABI. The
+[computed hash-window source](../../Trace/UnifiedReduced/ComputedHashWindows.lean)
+now connects literal or publicly placed AUIPC preparation to complete selected
+G/Keccak references and ordered lists in one continuous history. Public code
+placement must compute the protocol entry constant; its actual read is derived.
+Selected family/count/duration, nonround scope and logical matching stay explicit.
+Extended-round source/mask transport, public caller-region derivation for the new
+source, general operand-dependent preparation and jumps/branches remain separate. Concrete fixtures use PC four to produce 524292 and
 PC 65540 with immediate 0xfffff to wrap the sum to 61444; both retain clock six.
 
 The [prepared control window](../../Trace/UnifiedReduced/ControlPreparation.lean)
