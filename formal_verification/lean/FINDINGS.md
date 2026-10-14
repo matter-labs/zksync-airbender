@@ -171,9 +171,21 @@ state-changing counterexample; this derives its actual call boundaries without
 excluding it or proving inertness. Whole caller retirement and full CSR ABI remain
 open.
 
+Native memory order and alignment now also derive every machine cycle in the
+same all-worker execution, without a supplied positive initial clock. The new
+[caller-cycle entry](Airbender/Review/Trace/UnifiedReduced/Theorems.lean) uses that
+bound to compose actual fetch, matched worker observations and PC retirement.
+Existing clock-parameter entries remain available. An empty-machine logical
+fixture with public endpoint clock zero still admits the unissued G prefix and
+its actual x12 = 0→1 effect; native boot remains clock four. The earlier G→ADDI
+regression also derives its actual ordinary cycle in the same history. Both
+invalid bigint controls and LW/SW caller fixtures satisfy the stronger entry.
+This removes a derived clock condition from inputs while retaining F02/F03 and
+the separate full-CSR/whole-retirement boundaries.
+
 All 116 concrete test modules and 143 importer guards pass. The full
-2,111-root axiom audit has 64 axiom-free roots and only the three standard
-Lean axioms. Review checks pass for all 104 public theorem roots, 165 declaration
+2,120-root axiom audit has 64 axiom-free roots and only the three standard
+Lean axioms. Review checks pass for all 105 public theorem roots, 166 declaration
 names and 671 guide links/anchors, with no handwritten project diagnostics.
 
 ## Review priorities

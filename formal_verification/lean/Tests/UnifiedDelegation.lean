@@ -2146,4 +2146,12 @@ theorem invalid_bigint_all_worker_execution (highControl : Bool) :
     UnifiedReduced.Caller.MixedWorkerExecution (abiData highControl) (abiBefore highControl) cells :=
   UnifiedReduced.Caller.all_worker_execution_soundness (abiAccepted highControl) (abiInputs highControl)
 
+theorem invalid_bigint_native_caller_cycles (highControl : Bool) :
+    UnifiedReduced.Caller.CallerCycleEffects (abiData highControl) [] (abiBefore highControl) cells :=
+  UnifiedReduced.Caller.native_caller_cycles_soundness (abiAccepted highControl) (abiInputs highControl) (abiCode highControl)
+
+theorem memory_native_caller_cycles (store : Bool) :
+    UnifiedReduced.Caller.CallerCycleEffects (memoryData store) [memoryEntry store] (memoryBefore store) cells :=
+  UnifiedReduced.Caller.native_caller_cycles_soundness (memoryAccepted store) (memoryInputs store) (memoryCode store)
+
 end Tests.UnifiedDelegation

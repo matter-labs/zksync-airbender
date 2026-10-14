@@ -227,7 +227,12 @@ ABI and whole mixed execution remain separate.
    same history reaches shared terminal cells and retains actual G→ADDI control
    states 0→1→0. Raw grouping requires no operation mask or positive invocation;
    closed realization retains the existing modeled tables and extended-round
-   masks. Continue broader preparation and whole caller retirement, retaining
+   masks. Native memory order now also derives every machine cycle and caller
+   clock, removing the extra positive initial-clock premise from the new caller
+   entry. Existing entries remain available. An empty machine path at public
+   clock zero still admits the state-changing unissued G worker; native boot
+   remains at four. Both invalid bigint controls and LW/SW caller cycles survive.
+   Continue broader preparation and whole caller retirement, retaining
    unsupported-control and unissued-exclusion boundaries.
    COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed
    retained for the second window. Extended BLAKE and Keccak completion controls

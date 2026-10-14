@@ -1,5 +1,6 @@
 import Airbender.Review.Trace.UnifiedReduced.CallerCycles
 import Airbender.Proofs.UnifiedReduced.MixedFetch
+import Airbender.Proofs.UnifiedReduced.UnissuedWorkers
 import Airbender.Proofs.UnifiedReduced.PreparedRoundWindows
 import Airbender.Proofs.Trace.Retirement
 
@@ -103,11 +104,11 @@ theorem caller_cycle_observations [Fact p.Prime] (hp : 2 * timestampBase + 4 < p
   have written := cell_read_PC cell (cell_read_nextPC cell written row.finish.word.toBitVec) row.finish.word.toBitVec
   exact ⟨cell, cellMember, address, read, written⟩
 
-theorem caller_cycles
+theorem native_caller_cycles
     {data : RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry} {initial : State}
     {ca oa : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program initial ca oa cells)
-    (code : CodeProfile data program cells) (started : 0 < (timeOfPair data.machine.initial.timestamp).value) :
+    (code : CodeProfile data program cells) :
     CallerCycleEffects data program initial cells := by
   have effects := mixed_memory_effects accepted inputs
   obtain ⟨events, finalState, permutation, order, history, _, _, terminal⟩ := effects.execution
@@ -115,8 +116,9 @@ theorem caller_cycles
   refine ⟨effects.requests, events, finalState, permutation, order, history, fetch, ?_, terminal⟩
   intro row member
   have nativeMember := List.mem_of_mem_filter member
-  have positive : 0 < Delegation.Caller.startClock row := lt_of_lt_of_le started
-    (machine_clock_floor (by decide) (by decide) accepted.toRequestChecks inputs.publicProgram nativeMember)
+  have floor := machine_native_clock_positive (by decide) (by decide) accepted
+    inputs.publicProgram inputs.initialization nativeMember
+  have positive : 0 < Delegation.Caller.startClock row := by omega
   have clocks := machine_clock_facts (by decide) (by decide) accepted.toRequestChecks inputs.publicProgram nativeMember
   obtain ⟨before, after, _, past, current, future⟩ := history_window order history
     (by omega : Delegation.Caller.startClock row ≤ Delegation.Caller.finishClock row)
@@ -129,6 +131,17 @@ theorem caller_cycles
     ⟨entry, present, query, pc, source before past, worker, workerMember, matched,
       caller_worker_family (by decide) query matched, effects.operations worker workerMember, observations⟩,
     caller_pc_retirement effects.requests member⟩
+
+
+/-- Compatibility entry retaining the earlier explicit clock premise. -/
+theorem caller_cycles
+    {data : RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry} {initial : State}
+    {ca oa : List (BitVec 32)} {cells : List Cell}
+    (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program initial ca oa cells)
+    (code : CodeProfile data program cells) (started : 0 < (timeOfPair data.machine.initial.timestamp).value) :
+    CallerCycleEffects data program initial cells := by
+  exact (fun _ : 0 < (timeOfPair data.machine.initial.timestamp).value =>
+    native_caller_cycles accepted inputs code) started
 
 theorem prepared_round_caller_cycles
     {data : RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry} {initial : State}
