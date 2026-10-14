@@ -485,3 +485,12 @@ fn partial_tree_depth_measurement() {
         measure_keccak(shape, &stream);
     }
 }
+
+#[test]
+#[ignore]
+fn partial_tree_depth_measurement_keccak() {
+    let stream = CudaStream::default();
+    for shape in &KECCAK_SHAPES {
+        measure_keccak(shape, &stream);
+    }
+}
