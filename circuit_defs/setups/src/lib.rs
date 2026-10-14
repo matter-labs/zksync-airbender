@@ -51,13 +51,33 @@ pub use self::circuits::*;
 pub use self::unrolled_circuits::*;
 
 pub fn pad_bytecode_bytes_for_proving(bytecode: &mut Vec<u8>) {
-    assert!(bytecode.len() <= common_constants::ROM_BYTE_SIZE);
-    bytecode.resize(common_constants::ROM_BYTE_SIZE, 0);
+    pad_bytecode_bytes_for_proving_with_rom(bytecode, common_constants::REGULAR_ROM);
 }
 
 pub fn pad_bytecode_for_proving(bytecode: &mut Vec<u32>) {
-    assert!(bytecode.len() <= common_constants::ROM_WORD_SIZE);
-    bytecode.resize(common_constants::ROM_WORD_SIZE, 0);
+    pad_bytecode_for_proving_with_rom(bytecode, common_constants::REGULAR_ROM);
+}
+
+pub fn pad_bytecode_bytes_for_proving_with_rom(
+    bytecode: &mut Vec<u8>,
+    rom: common_constants::RomGeometry,
+) {
+    assert!(
+        bytecode.len() <= rom.byte_size(),
+        "bytecode exceeds selected ROM"
+    );
+    bytecode.resize(rom.byte_size(), 0);
+}
+
+pub fn pad_bytecode_for_proving_with_rom(
+    bytecode: &mut Vec<u32>,
+    rom: common_constants::RomGeometry,
+) {
+    assert!(
+        bytecode.len() <= rom.word_size(),
+        "bytecode exceeds selected ROM"
+    );
+    bytecode.resize(rom.word_size(), 0);
 }
 
 pub fn is_default_machine_configuration<C: MachineConfig>() -> bool {
