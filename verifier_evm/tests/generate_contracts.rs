@@ -33,6 +33,7 @@ fn generate(version: &Version, registry_address: &str) -> verifier_evm::Generate
     let prover::gkr::prover::CommitmentMode::MergedAndPackedMemoryAndWitness {
         pack_log2,
         external_challenges_pow_bits,
+        final_pc,
         ..
     } = version.commitment_mode()
     else {
@@ -45,6 +46,12 @@ fn generate(version: &Version, registry_address: &str) -> verifier_evm::Generate
     assert_eq!(
         version.external_pow_floor, external_challenges_pow_bits,
         "descriptor external PoW floor must match proof aux"
+    );
+    assert_eq!(
+        version.final_pc(),
+        final_pc,
+        "{}: descriptor exit PC must match proof aux",
+        version.name
     );
     let lookup_pow_bits = pow_bits::lookup_challenges_pow_bits::<Proth120, Proth120>(
         config.security_level.security_bits(),
@@ -88,7 +95,7 @@ fn generate(version: &Version, registry_address: &str) -> verifier_evm::Generate
         version.pack_log2,
         external_pow_bits,
         batched_proximity_pow_bits,
-        version.final_pc(),
+        final_pc,
         registry_address,
     );
     // Check the emitted verifier's gates, not just the arguments passed to it.
@@ -248,4 +255,14 @@ fn descriptor_rejects_aux_drift_and_excess_gkr_pow() {
     ] {
         assert!(std::panic::catch_unwind(|| generate(&version, DEFAULT_REGISTRY_ADDRESS)).is_err());
     }
+}
+
+#[test]
+#[should_panic(expected = "descriptor exit PC must match proof aux")]
+fn descriptor_rejects_aux_exit_pc_drift() {
+    let version = Version {
+        exit_pc: common::ExitPcSource::Frozen(0),
+        ..common::L1_WRAP_2P22
+    };
+    generate(&version, DEFAULT_REGISTRY_ADDRESS);
 }

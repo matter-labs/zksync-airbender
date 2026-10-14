@@ -42,10 +42,9 @@ pub const L1_WRAP_2P22: Version = Version {
     config: l1_wrap_2p22::packed_prover_config,
     pack_log2: l1_wrap_2p22::PACK_LOG2,
     external_pow_floor: l1_wrap_2p22::EXTERNAL_CHALLENGES_POW_BITS,
-    // Preserve the checked-in contracts, independent of W2's rebuilt binary.
-    // The historical proof has PC 2303948: use the matched 3931e6eca bundle
-    // for gas comparisons until the frozen regression bundle is repaired.
-    exit_pc: ExitPcSource::Frozen(2171784),
+    // This frozen regression version follows its committed proof/aux rather
+    // than W2's rebuilt binary. The generator asserts the same PC in the aux.
+    exit_pc: ExitPcSource::Frozen(2303948),
     proof: "../prover/unified_circuit_proof_proth120.json",
     aux: "../prover/unified_circuit_proof_proth120_commitment_mod_aux_data.json",
     contracts_root: "generated_contracts",
