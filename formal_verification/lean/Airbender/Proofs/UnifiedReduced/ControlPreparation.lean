@@ -527,6 +527,63 @@ theorem program_caller_window [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have family := region.callers entry (List.get_mem _ _) (by dsimp only [entry]; omega)
   exact (matched_caller_entry_family (by omega) query matched.2.1).trans family
 
+theorem wrapped_program_caller_window [Fact p.Prime] (hp : 4194304 ≤ p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before state : State}
+    {ca oa : List (BitVec 32)} {family : Delegation.Family} {lower upper : Nat}
+    (setup : data.machine.rom = Setup.table state)
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    (ordinaryProgram : Mixed.programImage before oa = some program) (registry : WrappedSequentialProgram program)
+    (region : WrappedProgramCallerRegion data program family lower upper)
+    (first : lower % 4 = 0) (last : upper % 4 = 0) (positive : 2 ≤ lower) (ordered : lower ≤ upper)
+    (afterInitial : (timeOfPair data.machine.initial.timestamp).value ≤ lower)
+    (beforeTerminal : upper ≤ (timeOfPair data.machine.terminal.timestamp).value) :
+    ProgramCallerWindow data family lower upper := by
+  have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
+  have pcClock := wrapped_program_pc_clock hp inverse setup accepted publicProgram ordinaryProgram registry
+  have selected : ∀ row ∈ data.windowMachineRows lower upper, row ∈ data.callers := by
+    intro row member
+    obtain ⟨present, range⟩ := List.mem_filter.mp member
+    have range := of_decide_eq_true range
+    by_contra ordinary
+    obtain ⟨entry, included, _, query⟩ := decoder_member (accepted.ordinaryDecoded row present ordinary)
+    have pc := native_query_pc_word (by dsimp [limbBase]; omega) query
+    have bits : row.start.word.toBitVec = entry.pc := by
+      change row.start.word = Word.ofBitVec entry.pc at pc
+      rw [pc, Word.ofBitVec_roundtrip]
+    have address : entry.pc = wrappedProgramAddress data (Delegation.Caller.startClock row) := by
+      rw [← bits]
+      exact pcClock row present
+    exact region.ordinary entry included _ range.1 range.2 address
+  have rows : Delegation.Caller.windowCallers data.callers lower upper = data.windowMachineRows lower upper := by
+    rw [window_callers_filter]
+    apply List.filter_eq_self.mpr
+    intro row member
+    exact (List.mem_filter.mp (selected row member)).2
+  have requests := request_windows size inverse accepted.toRequestChecks publicProgram first last positive
+  have count := machine_window_count size inverse accepted.toRequestChecks publicProgram
+    first last ordered afterInitial beforeTerminal
+  have workerCount : (data.windowMachineRows lower upper).length = (data.workers.windowRows lower upper).length := by
+    rw [← rows]
+    exact Delegation.Caller.Proofs.window_call_count requests
+  refine ⟨⟨count, rows, workerCount⟩, requests, ?_⟩
+  intro worker member
+  obtain ⟨caller, matched, _⟩ := requests.workerMatches worker member
+  obtain ⟨callerMember, range⟩ := List.mem_filter.mp matched.1
+  have range := of_decide_eq_true range
+  have nativeMember := List.mem_of_mem_filter callerMember
+  have decoded := accepted.decoded caller callerMember
+  change ∃ i : Fin data.program.length, caller.decoderQuery = Delegation.Caller.query (data.program.get i) at decoded
+  obtain ⟨i, query⟩ := decoded
+  let entry := data.program.get i
+  have pc := caller_query_pc_word (by dsimp [limbBase]; omega) query
+  have address : entry.pc = wrappedProgramAddress data (Delegation.Caller.startClock caller) := by
+    have schedule := pcClock caller nativeMember
+    rw [pc, Word.ofBitVec_roundtrip] at schedule
+    exact schedule
+  have family := region.callers entry (List.get_mem _ _) _ range.1 range.2 address
+  exact (matched_caller_entry_family (by omega) query matched.2.1).trans family
+
 theorem preparation_instruction [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
