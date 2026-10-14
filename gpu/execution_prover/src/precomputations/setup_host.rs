@@ -180,10 +180,14 @@ fn validate_profile_set(
         !profiles.contains(&ProofProfile::L1Wrap),
         "ProofProfile::L1Wrap requires CircuitType::L1Wrap, got {circuit_type:?}"
     );
+    const UNIFIED22: CircuitType = CircuitType::Unrolled(UnrolledCircuitType::Unified22);
     assert!(
-        circuit_type != CircuitType::Unrolled(UnrolledCircuitType::Unified22)
-            && !profiles.contains(&ProofProfile::L1Feeder),
-        "the GPU backend does not support the 2^22 L1 feeder (UnrolledCircuitType::Unified22 / ProofProfile::L1Feeder) until W4, got {circuit_type:?} {profiles:?}"
+        !profiles.contains(&ProofProfile::L1Feeder) || circuit_type == UNIFIED22,
+        "ProofProfile::L1Feeder requires CircuitType::Unrolled(UnrolledCircuitType::Unified22), got {circuit_type:?}"
+    );
+    assert!(
+        circuit_type != UNIFIED22 || profiles.iter().eq([ProofProfile::L1Feeder].iter()),
+        "CircuitType::Unrolled(UnrolledCircuitType::Unified22) requires exactly ProofProfile::L1Feeder, got {profiles:?}"
     );
     profiles
 }
@@ -330,9 +334,16 @@ mod cpu_tests {
             validate_profile_set(CircuitType::L1Wrap, true, &[L1Wrap, L1Wrap]),
             set(&[L1Wrap])
         );
-        let feeder_message = |circuit: CircuitType, profiles: &[ProofProfile]| {
+        assert_eq!(
+            validate_profile_set(UNIFIED22, false, &[L1Feeder, L1Feeder]),
+            set(&[L1Feeder])
+        );
+        let feeder_message = |circuit: CircuitType| {
+            format!("ProofProfile::L1Feeder requires CircuitType::Unrolled(UnrolledCircuitType::Unified22), got {circuit:?}")
+        };
+        let unified22_message = |profiles: &[ProofProfile]| {
             format!(
-                "the GPU backend does not support the 2^22 L1 feeder (UnrolledCircuitType::Unified22 / ProofProfile::L1Feeder) until W4, got {circuit:?} {:?}",
+                "CircuitType::Unrolled(UnrolledCircuitType::Unified22) requires exactly ProofProfile::L1Feeder, got {:?}",
                 set(profiles)
             )
         };
@@ -398,43 +409,28 @@ mod cpu_tests {
                 inits_and_teardowns,
                 false,
                 &[L1Feeder],
-                feeder_message(inits_and_teardowns, &[L1Feeder]),
+                feeder_message(inits_and_teardowns),
             ),
-            (
-                memory,
-                false,
-                &[Standard, L1Feeder],
-                feeder_message(memory, &[Standard, L1Feeder]),
-            ),
-            (
-                delegation,
-                false,
-                &[L1Feeder],
-                feeder_message(delegation, &[L1Feeder]),
-            ),
+            (memory, false, &[Standard, L1Feeder], feeder_message(memory)),
+            (delegation, false, &[L1Feeder], feeder_message(delegation)),
             (
                 UNIFIED,
                 false,
                 &[L1Feeder, Standard, L1Feeder],
-                feeder_message(UNIFIED, &[Standard, L1Feeder]),
+                feeder_message(UNIFIED),
             ),
-            (
-                UNIFIED,
-                false,
-                &[L1Feeder],
-                feeder_message(UNIFIED, &[L1Feeder]),
-            ),
-            (
-                UNIFIED22,
-                false,
-                &[L1Feeder],
-                feeder_message(UNIFIED22, &[L1Feeder]),
-            ),
+            (UNIFIED, false, &[L1Feeder], feeder_message(UNIFIED)),
             (
                 UNIFIED22,
                 false,
                 &[Standard],
-                feeder_message(UNIFIED22, &[Standard]),
+                unified22_message(&[Standard]),
+            ),
+            (
+                UNIFIED22,
+                false,
+                &[Standard, L1Feeder],
+                unified22_message(&[Standard, L1Feeder]),
             ),
         ];
         for (circuit, is_l1_wrap_setup, profiles, expected) in cases {
