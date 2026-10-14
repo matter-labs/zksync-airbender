@@ -219,6 +219,20 @@ theorem Caller.control_preparation_window_soundness [Fact p.Prime] (hp : 8388608
   Caller.Proofs.control_preparation_window hp clockInverse rotationInverse accepted inputs
     firstScope lastScope firstNonzero lastNonzero first last ordered
 
+/-- Two native windows and their intervening gap form one actual memory execution
+    from public initialization. Every cut state and retained boundary is derived. -/
+theorem Caller.mixed_window_chain_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+    {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
+    {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    {a b c d : Nat} (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.MixedMemoryInputs data program before ca oa cells)
+    (aa : a % 4 = 0) (ba : b % 4 = 0) (ca' : c % 4 = 0) (da : d % 4 = 0)
+    (positive : 2 ≤ a) (ab : a ≤ b) (bc : b ≤ c) (cd : c ≤ d) :
+    Caller.MixedWindowChainExecution data before cells a b c d :=
+  Caller.Proofs.mixed_window_chain hp clockInverse rotationInverse accepted inputs aa ba ca' da positive ab bc cd
+
 /-- Complete G and Keccak references reach the actual mixed-history cut states
     after original public literal preparation. Shared matching derives controls,
     caller scheduling, worker boundaries and native reads. Other nonround workers
@@ -234,6 +248,21 @@ theorem Caller.prepared_hash_window_soundness [Fact p.Prime] (hp : 16777216 ≤ 
     (first : lower % 4 = 0) (last : upper % 4 = 0) :
     Caller.JointHashWindowResult data before cells span lower upper :=
   Caller.Proofs.prepared_hash_window hp clockInverse accepted inputs first last
+
+/-- Two complete prepared G/Keccak references compose through one continuous
+    history, including the intervening preparation and other worker effects.
+    Public mode/count/duration and nonround worker scope remain explicit. -/
+theorem Caller.prepared_hash_chain_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State}
+    {ca oa : List (BitVec 32)} {cells : List Trace.Cell} {program : List UnifiedReduced.ProgramEntry}
+    {firstSpan secondSpan : Delegation.Caller.HashSpan} {a b c d : Nat}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (firstInputs : Caller.PreparedHashWindowInputs data before ca oa cells program firstSpan a b)
+    (secondInputs : Caller.PreparedHashWindowInputs data before ca oa cells program secondSpan c d)
+    (aa : a % 4 = 0) (ba : b % 4 = 0) (ca' : c % 4 = 0) (da : d % 4 = 0) (gap : b ≤ c) :
+    Caller.PreparedHashChainResult data before cells firstSpan secondSpan a b c d :=
+  Caller.Proofs.prepared_hash_chain hp clockInverse accepted firstInputs secondInputs aa ba ca' da gap
 
 /-- Public LUI preparation and native matching derive all extended-BLAKE masks
     before Sail transport. The public suffix duration and ten-position ABI remain explicit. -/

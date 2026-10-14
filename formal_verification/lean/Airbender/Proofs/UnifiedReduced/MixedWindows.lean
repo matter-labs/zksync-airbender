@@ -161,4 +161,151 @@ theorem mixed_window_execution [Fact p.Prime] (hp : 8388608 ≤ p)
     start, finish, earlierEvents, spanEvents, atStart, atFinish, firstPerm, spanPerm, firstHistory, spanHistory,
     earlierFacts.matching, selectedFacts.matching, native_boundary startInputs, native_boundary finishInputs⟩
 
+theorem prefix_window_partition [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {before : State} {ca : List (BitVec 32)}
+    (accepted : RequestChecks data) (inputs : RequestInputs data before ca)
+    {lower upper : Nat} (first : lower % 4 = 0) (last : upper % 4 = 0)
+    (positive : 2 ≤ lower) (ordered : lower ≤ upper) :
+    (data.prefixSteps lower ++ data.windowSteps lower upper).Perm (data.prefixSteps upper) := by
+  rw [mixed_window_steps hp clockInverse accepted inputs first last positive ordered]
+  have partition := List.filter_append_perm
+    (fun edge : MemoryToken p × MemoryToken p => decide ((timeOfPair edge.2.time).value < lower))
+    (data.prefixSteps upper)
+  have earlier : (data.prefixSteps upper).filter (fun edge => decide
+      ((timeOfPair edge.2.time).value < lower)) = data.prefixSteps lower := by
+    rw [RequestTrace.prefixSteps, List.filter_filter]
+    apply List.filter_congr
+    intro edge _
+    apply Bool.eq_iff_iff.mpr
+    simp only [Bool.and_eq_true, decide_eq_true_eq]
+    omega
+  have window : (data.prefixSteps upper).filter (fun edge => !decide
+      ((timeOfPair edge.2.time).value < lower)) =
+      Transfer.windowSteps (mixedData data) (lower - 1) (upper - 1) := by
+    simp only [RequestTrace.prefixSteps, Transfer.windowSteps, Transfer.beforeSteps,
+      Transfer.afterSteps, mixedData, List.filter_filter]
+    apply List.filter_congr
+    intro edge _
+    apply Bool.eq_iff_iff.mpr
+    simp only [Bool.and_eq_true, Bool.not_eq_true', decide_eq_false_iff_not, decide_eq_true_eq]
+    omega
+  rwa [earlier, window] at partition
+
+theorem prefix_window_matching {initial start finish : List (MemoryToken p)}
+    {earlier current : List (MemoryToken p × MemoryToken p)}
+    (prefixMatching : (initial ++ earlier.map Prod.snd).Perm (start ++ earlier.map Prod.fst))
+    (window : (start ++ current.map Prod.snd).Perm (finish ++ current.map Prod.fst)) :
+    (initial ++ (earlier ++ current).map Prod.snd).Perm
+      (finish ++ (earlier ++ current).map Prod.fst) := by
+  apply List.perm_iff_count.mpr
+  intro token
+  have first := prefixMatching.count_eq token
+  have last := window.count_eq token
+  simp only [List.map_append, List.count_append] at first last ⊢
+  omega
+
+theorem native_suffix_split {raw : Transfer.Data p} {tokens : List (MemoryToken p)}
+    {before : State} {cells : List Cell} {lower upper : Nat} (ordered : lower ≤ upper)
+    (facts : Transfer.Facts ⟨tokens, raw.terminal, Transfer.afterSteps raw lower⟩)
+    (inputs : Transfer.NativeInputs ⟨tokens, raw.terminal, Transfer.afterSteps raw lower⟩ before cells)
+    (bounds : ∀ edge ∈ raw.steps, edge.2.word.Bounded)
+    (clocks : ∀ edge ∈ raw.steps, (timeOfPair edge.2.time).Bounded)
+    (aligned : ∀ cell ∈ cells, cell.Aligned)
+    (zero : ∀ edge ∈ raw.steps, edge.1.address = (Cell.register 0).addressCode → memoryWord edge.2.value = 0) :
+    ∃ (finish : List (MemoryToken p)) (events : List MemoryAccess) (after : State),
+      Transfer.Facts ⟨tokens, finish, Transfer.windowSteps raw lower upper⟩ ∧
+      Transfer.Facts ⟨finish, raw.terminal, Transfer.afterSteps raw upper⟩ ∧
+      events.Perm ((Transfer.windowSteps raw lower upper).map transferEvent) ∧
+      SailHistory cells events before after ∧
+      Transfer.NativeInputs ⟨finish, raw.terminal, Transfer.afterSteps raw upper⟩ after cells := by
+  have rules : Transfer.WriteRules ⟨tokens, raw.terminal, Transfer.afterSteps raw lower⟩ := by
+    intro edge member _
+    exact bounds edge (List.mem_of_mem_filter member)
+  obtain ⟨finish, events, after, earlier, later, permutation, _, actual, boundary⟩ :=
+    Transfer.split_native_sail_state facts inputs rules
+      (fun edge member => clocks edge (List.mem_of_mem_filter member)) aligned
+      (fun edge member => zero edge (List.mem_of_mem_filter member)) upper
+  have suffix : Transfer.afterSteps (⟨tokens, raw.terminal, Transfer.afterSteps raw lower⟩ : Transfer.Data p) upper =
+      Transfer.afterSteps raw upper := by
+    simp only [Transfer.afterSteps, List.filter_filter]
+    apply List.filter_congr
+    intro edge _
+    apply Bool.eq_iff_iff.mpr
+    simp only [Bool.and_eq_true, Bool.not_eq_true', decide_eq_false_iff_not]
+    omega
+  rw [suffix] at later boundary
+  exact ⟨finish, events, after, earlier, later, permutation, actual, boundary⟩
+
+theorem mixed_prefix_steps [Fact p.Prime] (data : RequestTrace p) {cut : Nat} (positive : 0 < cut) :
+    Transfer.beforeSteps (mixedData data) (cut - 1) = data.prefixSteps cut := by
+  apply List.filter_congr
+  intro edge _
+  apply Bool.eq_iff_iff.mpr
+  simp only [decide_eq_true_eq]
+  omega
+
+theorem matching_at_next_cut [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {before : State} {ca : List (BitVec 32)}
+    (accepted : RequestChecks data) (inputs : RequestInputs data before ca)
+    {lower upper : Nat} {start finish : List (MemoryToken p)}
+    (first : lower % 4 = 0) (last : upper % 4 = 0) (positive : 2 ≤ lower) (ordered : lower ≤ upper)
+    (prefixMatching : (data.machine.initialMemory ++ (data.prefixSteps lower).map Prod.snd).Perm
+      (start ++ (data.prefixSteps lower).map Prod.fst))
+    (windowMatching : (start ++ (data.windowSteps lower upper).map Prod.snd).Perm
+      (finish ++ (data.windowSteps lower upper).map Prod.fst)) :
+    (data.machine.initialMemory ++ (data.prefixSteps upper).map Prod.snd).Perm
+      (finish ++ (data.prefixSteps upper).map Prod.fst) := by
+  have partition := prefix_window_partition hp clockInverse accepted inputs first last positive ordered
+  have joined := prefix_window_matching prefixMatching windowMatching
+  exact ((partition.map Prod.snd).symm.append_left _).trans
+    (joined.trans ((partition.map Prod.fst).append_left _))
+
+theorem mixed_window_chain [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1) (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {ca oa : List (BitVec 32)} {cells : List Cell} {a b c d : Nat}
+    (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)
+    (aa : a % 4 = 0) (ba : b % 4 = 0) (ca' : c % 4 = 0) (da : d % 4 = 0)
+    (positive : 2 ≤ a) (ab : a ≤ b) (bc : b ≤ c) (cd : c ≤ d) :
+    MixedWindowChainExecution data before cells a b c d := by
+  have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
+  have requests := request_binding size clockInverse accepted.toRequestChecks inputs.publicProgram
+  have facts := mixed_memory_facts size clockInverse accepted inputs.publicProgram inputs.initialization requests
+  have initialized : Transfer.Inputs (mixedData data) before cells := ⟨inputs.initialization, inputs.distinct⟩
+  have rules := mixed_write_rules hp rotationInverse accepted inputs
+  have bounds : ∀ edge ∈ (mixedData data).steps, edge.2.word.Bounded := by
+    intro edge member
+    exact Transfer.produced_bounds facts initialized rules edge.2
+      (List.mem_append.mpr (Or.inr (List.mem_map.mpr ⟨edge, member, rfl⟩)))
+  have clocks := mixed_write_clocks size clockInverse accepted inputs.publicProgram requests
+  have zeroRules := mixed_zero_rules size clockInverse accepted inputs requests
+  have zeroReads := Transfer.read_cell_values_of_rules facts (Cell.register 0).addressCode 0
+    (Delegation.Caller.Proofs.initial_zero inputs.initialization) zeroRules
+  have zero : ∀ edge ∈ (mixedData data).steps, edge.1.address = (Cell.register 0).addressCode → memoryWord edge.2.value = 0 := by
+    intro edge member same
+    have value := zeroRules edge member same (fun previous present _ address => zeroReads previous present address)
+    rw [value]
+    rfl
+  obtain ⟨s1, ep, st1, prefixFacts, tail1, pp, _, hp1, n1⟩ :=
+    Transfer.split_native_sail_state facts initialized.toNativeInputs rules clocks inputs.aligned zero (a - 1)
+  obtain ⟨f1, e1, sf1, firstFacts, tail2, p1, h1, n2⟩ :=
+    native_suffix_split (by omega : a - 1 ≤ b - 1) tail1 n1 bounds clocks inputs.aligned zero
+  obtain ⟨s2, eg, st2, gapFacts, tail3, pg, hg, n3⟩ :=
+    native_suffix_split (by omega : b - 1 ≤ c - 1) tail2 n2 bounds clocks inputs.aligned zero
+  obtain ⟨f2, e2, sf2, secondFacts, _, p2, h2, n4⟩ :=
+    native_suffix_split (by omega : c - 1 ≤ d - 1) tail3 n3 bounds clocks inputs.aligned zero
+  rw [mixed_prefix_steps data (by omega)] at prefixFacts pp
+  rw [← mixed_window_steps size clockInverse accepted.toRequestChecks inputs.publicProgram aa ba positive ab] at firstFacts p1
+  rw [← mixed_window_steps size clockInverse accepted.toRequestChecks inputs.publicProgram ba ca' (by omega) bc] at gapFacts pg
+  rw [← mixed_window_steps size clockInverse accepted.toRequestChecks inputs.publicProgram ca' da (by omega) cd] at secondFacts p2
+  have prefixAtB := matching_at_next_cut size clockInverse accepted.toRequestChecks inputs.publicProgram
+    aa ba positive ab prefixFacts.matching firstFacts.matching
+  have prefixAtC := matching_at_next_cut size clockInverse accepted.toRequestChecks inputs.publicProgram
+    ba ca' (by omega) bc prefixAtB gapFacts.matching
+  let chain : WindowChain p := ⟨s1, f1, s2, f2, ep, e1, eg, e2, st1, sf1, st2, sf2⟩
+  exact ⟨chain, ⟨pp, p1, pg, p2, hp1, h1, hg, h2, prefixFacts.matching, firstFacts.matching,
+    prefixAtC, secondFacts.matching, native_boundary n1, native_boundary n2, native_boundary n3, native_boundary n4⟩⟩
+
 end Airbender.UnifiedReduced.Caller.Proofs

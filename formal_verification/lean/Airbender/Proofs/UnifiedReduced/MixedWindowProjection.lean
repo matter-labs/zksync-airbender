@@ -69,23 +69,21 @@ theorem caller_window_filtered_tokens [Fact p.Prime] {data : RequestTrace p} {be
   Delegation.Caller.Proofs.filtered_architectural_tokens _ _ (caller_window_addresses schedule requests)
     (Delegation.Caller.Proofs.worker_addresses (data := ⟨data.workers.setup, data.workers.windowRows lower upper, [], []⟩)) written
 
-theorem mixed_projected_window [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1) (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
-    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
-    {ca oa : List (BitVec 32)} {cells : List Cell}
+theorem mixed_worker_window_at_states [Fact p.Prime]
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before atStart atFinish : State}
+    {ca oa : List (BitVec 32)} {cells : List Cell} {lower upper : Nat}
+    {start finish : List (MemoryToken p)} {spanEvents : List MemoryAccess}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)
-    {lower upper : Nat} (first : lower % 4 = 0) (last : upper % 4 = 0) (positive : 2 ≤ lower) (ordered : lower ≤ upper)
-    (afterInitial : (timeOfPair data.machine.initial.timestamp).value ≤ lower)
-    (beforeTerminal : upper ≤ (timeOfPair data.machine.terminal.timestamp).value)
-    (duration : upper = lower + 4 * (data.workers.windowRows lower upper).length) :
-    MixedProjectedWindowExecution data before cells lower upper := by
-  have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
-  have schedule := caller_window_schedule size clockInverse accepted.toRequestChecks inputs.publicProgram
-    first last positive ordered afterInitial beforeTerminal duration
-  have requests := request_binding size clockInverse accepted.toRequestChecks inputs.publicProgram
-  have window := mixed_window_execution hp clockInverse rotationInverse accepted inputs first last positive ordered
-  obtain ⟨start, finish, earlierEvents, spanEvents, atStart, atFinish, firstPerm, spanPerm,
-    firstHistory, spanHistory, prefixMatching, matching, startBoundary, finishBoundary⟩ := window.execution
+    (schedule : CallerWindowSchedule data lower upper) (requests : RequestBinding data before)
+    (matching : (start ++ (data.windowSteps lower upper).map Prod.snd).Perm
+      (finish ++ (data.windowSteps lower upper).map Prod.fst))
+    (startBoundary : NativeBoundary start atStart cells) (finishBoundary : NativeBoundary finish atFinish cells)
+    (spanPerm : spanEvents.Perm ((data.windowSteps lower upper).map transferEvent))
+    (spanHistory : SailHistory cells spanEvents atStart atFinish) :
+    Delegation.MemoryAccepted (data.windowProjection lower upper start finish) ∧
+    Delegation.BoundaryMemoryInputs (data.windowProjection lower upper start finish) atStart (Delegation.Caller.workerCells cells) ∧
+    NativeBoundary (data.windowProjection lower upper start finish).terminal atFinish (Delegation.Caller.workerCells cells) ∧
+    Delegation.TraceMapping (data.windowProjection lower upper start finish) atStart atFinish (Delegation.Caller.workerCells cells) := by
   have selectedMatching := matching.filter fun token => token.address != (Cell.register 0).addressCode
   have writes := caller_window_filtered_tokens schedule requests true
   have reads := caller_window_filtered_tokens schedule requests false
@@ -122,9 +120,8 @@ theorem mixed_projected_window [Fact p.Prime] (hp : 8388608 ≤ p)
       simp
     rw [predicate, spanSteps] at actual
     exact actual
-  refine ⟨schedule, window.requests, start, finish, earlierEvents, spanEvents, atStart, atFinish,
-    firstPerm, spanPerm, firstHistory, spanHistory, prefixMatching, matching, startBoundary, finishBoundary,
-    ⟨?_, selectedMatching⟩, ⟨startProjected.1, inputs.distinct.sublist (List.filter_sublist.map Cell.addressCode),
+  refine ⟨⟨?_, selectedMatching⟩,
+    ⟨startProjected.1, inputs.distinct.sublist (List.filter_sublist.map Cell.addressCode),
       fun token member => (startProjected.2 token member).2,
       fun row member => (requests.clocks row (List.mem_of_mem_filter member)).2⟩,
     finishProjected, ⟨⟨workerEvents, workerPerm, history_worker_cells spanHistory⟩, ?_⟩⟩
@@ -132,5 +129,28 @@ theorem mixed_projected_window [Fact p.Prime] (hp : 8388608 ≤ p)
     exact accepted.workerConstraints row (List.mem_of_mem_filter member)
   · intro token member
     exact native_boundary_read finishProjected member
+
+theorem mixed_projected_window [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1) (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {ca oa : List (BitVec 32)} {cells : List Cell}
+    (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)
+    {lower upper : Nat} (first : lower % 4 = 0) (last : upper % 4 = 0) (positive : 2 ≤ lower) (ordered : lower ≤ upper)
+    (afterInitial : (timeOfPair data.machine.initial.timestamp).value ≤ lower)
+    (beforeTerminal : upper ≤ (timeOfPair data.machine.terminal.timestamp).value)
+    (duration : upper = lower + 4 * (data.workers.windowRows lower upper).length) :
+    MixedProjectedWindowExecution data before cells lower upper := by
+  have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
+  have schedule := caller_window_schedule size clockInverse accepted.toRequestChecks inputs.publicProgram
+    first last positive ordered afterInitial beforeTerminal duration
+  have requests := request_binding size clockInverse accepted.toRequestChecks inputs.publicProgram
+  have window := mixed_window_execution hp clockInverse rotationInverse accepted inputs first last positive ordered
+  obtain ⟨start, finish, earlierEvents, spanEvents, atStart, atFinish, firstPerm, spanPerm,
+    firstHistory, spanHistory, prefixMatching, matching, startBoundary, finishBoundary⟩ := window.execution
+  obtain ⟨selected, initialized, finalBoundary, target⟩ :=
+    mixed_worker_window_at_states accepted inputs schedule requests matching startBoundary finishBoundary spanPerm spanHistory
+  exact ⟨schedule, window.requests, start, finish, earlierEvents, spanEvents, atStart, atFinish,
+    firstPerm, spanPerm, firstHistory, spanHistory, prefixMatching, matching, startBoundary, finishBoundary,
+    selected, initialized, finalBoundary, target⟩
 
 end Airbender.UnifiedReduced.Caller.Proofs
