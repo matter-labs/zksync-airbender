@@ -2467,3 +2467,20 @@ import Clean.Specs.Keccak256
 #print axioms Tests.ControlPreparation.auipc_round_public_incomplete_protocol_reference_rejected
 #print axioms Tests.ControlPreparation.auipc_round_public_protocol_reference_past_terminal_rejected
 #print axioms Tests.DelegationZeroInvocation.computed_public_protocol_retains_unissued_g
+
+#print axioms Airbender.UnifiedReduced.Caller.registerImmediateValue
+#print axioms Airbender.UnifiedReduced.Caller.RegisterImmediatePreparation
+#print axioms Airbender.UnifiedReduced.Caller.RegisterImmediatePreparedControl
+#print axioms Airbender.UnifiedReduced.Caller.RegisterImmediatePreparedBoundaryExecution
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.register_immediate_fields
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.register_immediate_row_output
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.register_immediate_control_preparation
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.immediate_add_result
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.preparation_output_token
+#print axioms Airbender.UnifiedReduced.Caller.register_immediate_control_preparation_soundness
+#print axioms Tests.ControlPreparation.register_addi_preparation
+#print axioms Tests.ControlPreparation.register_addi_actual_states
+#print axioms Tests.ControlPreparation.register_addi_wrong_immediate_rejected
+#print axioms Tests.ControlPreparation.register_addi_fabricated_source_rejected
+#print axioms Tests.DelegationZeroInvocation.register_preparation_retains_unissued_effect
+#print axioms Tests.DelegationZeroInvocation.register_preparation_uses_actual_unissued_operand

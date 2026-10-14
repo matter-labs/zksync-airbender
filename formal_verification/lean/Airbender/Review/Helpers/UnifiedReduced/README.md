@@ -111,6 +111,18 @@ history composition. Full round coverage stays explicit. Broader operand-depende
 preparation and jumps/branches remain separate. Concrete fixtures use PC four to produce 524292 and
 PC 65540 with immediate 0xfffff to wrap the sum to 61444; both retain clock six.
 
+The separate [register-dependent ADDI scope](RegisterPreparation.lean) derives an
+actual operand state from initialized history and a public final instruction.
+Memory induction derives bounds and native arithmetic derives its signed-immediate
+RV32 sum. The [execution result](../../Trace/UnifiedReduced/RegisterPreparation.lean)
+retains the actual native cycle, matching and canonical output token at cut minus
+two, including aliases and earlier issued/unissued effects. No desired operand
+or result is supplied. Only the final cycle is worker-free; domain/setup/tables
+and the round-mask boundary remain explicit. Native fixtures retain clock six
+and actual 65537→65665, 65537→65536 and unissued-prefix 0→1→1 states, rejecting
+wrong immediates and fabricated source reads. Complete Sail retirement and public
+dataflow binding to protocol constants remain separate.
+
 The [prepared control window](../../Trace/UnifiedReduced/ControlPreparation.lean)
 connects two prepared controls through the same actual intervening history, keeping
 all ordinary and worker accesses. Both controls follow from the public registry
