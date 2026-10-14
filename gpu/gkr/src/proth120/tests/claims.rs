@@ -50,7 +50,7 @@ fn claim_map(
     let config = prover::gkr::prover_config::example_configs::evm_production_packed_prover_config(
         SecurityLevel::Sec100,
     );
-    let layout = ProofLayoutPr::new(programs, &config);
+    let layout = ProofLayoutPr::new(programs, &config, 4);
     let layer = layout
         .backward_layers
         .iter()
@@ -174,7 +174,7 @@ fn pr_packed_merge_transcript_matches_cpu() {
     let config = prover::gkr::prover_config::example_configs::evm_production_packed_prover_config(
         SecurityLevel::Sec100,
     );
-    let layout = Arc::new(ProofLayoutPr::new(&programs, &config));
+    let layout = Arc::new(ProofLayoutPr::new(&programs, &config, 4));
     let (addresses, values, map) = claim_map(&programs);
     let dense = cpu_dense(&map, 38, 66, 10);
     let point: Vec<_> = deterministic_columns(0, 22).into_iter().flatten().collect();
@@ -573,7 +573,7 @@ fn schedule_fixture_full(context: &gpu_prover_context::ProverContext) -> Schedul
     config.trace_len_log2 = log_rows as usize;
     let mut proof = crate::proth120::proof_layout::ProofSlabPr::new(
         Arc::new(crate::proth120::proof_layout::ProofLayoutPr::new(
-            &programs, &config,
+            &programs, &config, 4,
         )),
         context,
     )

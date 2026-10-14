@@ -39,9 +39,6 @@ pub(crate) use fft::domain_generator_for_size;
 #[allow(unused_imports)]
 pub(crate) use field::Proth120;
 pub(crate) use prover::gkr::prover::WhirSchedule;
-pub(crate) use prover::gkr::prover_config::example_configs::{
-    EVM_PRODUCTION_PACK_LOG2, EVM_PRODUCTION_TRACE_LEN_LOG2,
-};
 pub(crate) use prover::gkr::whir::queries::ExtensionFieldQuery;
 pub(crate) use prover::gkr::whir::{
     WhirBaseLayerCommitmentAndQueries, WhirCommitment, WhirIntermediateCommitmentAndQueries,

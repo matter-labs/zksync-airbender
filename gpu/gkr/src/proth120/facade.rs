@@ -49,10 +49,15 @@ pub fn schedule_gkr(
         config.sumcheck_explicit_output_size_log_2, 4,
         "Proth120 facade final trace log must be 4"
     );
-    assert_eq!(base.pack_log2(), 4, "Proth120 facade requires pack_log2=4");
+    let pack_log2 = proof.layout.pack_log2() as u32;
     assert_eq!(
-        setup.host.pack_log2, 4,
-        "Proth120 facade setup requires pack_log2=4"
+        base.pack_log2(),
+        pack_log2,
+        "Proth120 facade base packing differs from the admitted proof layout"
+    );
+    assert_eq!(
+        setup.host.pack_log2, pack_log2,
+        "Proth120 facade setup packing differs from the admitted proof layout"
     );
     assert_eq!(seed.len(), 32, "Proth120 facade seed length mismatch");
     assert_eq!(
@@ -119,7 +124,7 @@ pub fn schedule_gkr(
         &mut backward,
         base,
         setup,
-        4,
+        pack_log2,
         batching_pow_bits,
         proof,
         context,
