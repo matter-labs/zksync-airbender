@@ -714,6 +714,59 @@ impl FeederVerifier for ProductionFeederVerifier {
     }
 }
 
+/// The wrap program's run over `nd_words` without the wrap cycle limit: the
+/// measurement the fixtures and gates validate with `validate_wrap_report`.
+fn observe_wrap_program(
+    program: &ProgramWords,
+    nd_words: Vec<u32>,
+) -> Result<FsvRunReport, String> {
+    let (bin, text) = program;
+    fsv_measure::measure_fsv_run_with_counters_and_rom(
+        bin,
+        text,
+        nd_words,
+        u32::MAX as usize,
+        prover::common_constants::L1_WRAP_ROM,
+    )
+}
+
+/// Admission of a private feeder checkpoint before anything is proven:
+/// `1..=MAX_FEEDER_LAYERS` feeder layers, cap-32 setups, a feeder proof of
+/// any positive instance count under the 2^22 feeder circuit and schedule,
+/// and a history equal to the trusted chain of the program (`end_params`
+/// recomputes it). The proof's native verification and its binding to this
+/// history follow in `run_feeder_layers`.
+fn validate_feeder_checkpoint(
+    state: &RecursionState,
+    blake: PipelineBlakeModes,
+    end_params: &mut dyn FnMut(ChainProgram) -> Result<[u32; 8], String>,
+) -> Result<(), String> {
+    if !(1..=MAX_FEEDER_LAYERS).contains(&state.feeder_layers) || state.input_is_base {
+        return Err(format!(
+            "feeder checkpoint must hold 1..={MAX_FEEDER_LAYERS} feeder layers, got {}",
+            state.feeder_layers
+        ));
+    }
+    setups::validate_setups_cap_size(
+        &state.setups,
+        l1_wrap::expected_setup_cap_size(ProofTarget::L1Feeder),
+    )?;
+    validate_feeder_proof(&state.proof, None)?;
+    let expected = expected_chain_end_params(
+        ProofTarget::L1Feeder,
+        state.chain_end_params.len(),
+        state.feeder_layers,
+        blake.unrolled.tag(),
+        blake.bridge.tag(),
+        blake.final_layer.tag(),
+        end_params,
+    )?;
+    if expected != state.chain_end_params {
+        return Err("feeder checkpoint history does not match the trusted chain".into());
+    }
+    Ok(())
+}
+
 fn delegation_calls(counters: &riscv_transpiler::vm::DelegationsAndUnifiedCounters) -> usize {
     counters.blake_calls
         + counters.bigint_calls
@@ -1643,15 +1696,57 @@ impl ProgramProver {
     }
 
     /// The wrap program's run over the last feeder proof of `state` and the
-    /// native output it must reproduce.
-    fn wrap_program_run(
+    /// native output it must reproduce, measured WITHOUT the wrap cycle limit
+    /// so an over-budget run is observed (its rejection is
+    /// `validate_wrap_report`'s, recorded by the fixtures).
+    fn wrap_program_observation(
         &self,
         state: &RecursionState,
     ) -> Result<(FsvRunReport, [u32; 16]), String> {
         let stream = build_unified_stream(&state.setups, &state.proof);
         let native_output = ProductionFeederVerifier.native_verify(stream.clone())?;
-        let report = ProductionFeederVerifier.wrap_run(&self.fsv.feeder_wrap, stream)?;
+        let report = observe_wrap_program(&self.fsv.feeder_wrap, stream)?;
         Ok((report, native_output))
+    }
+
+    /// A prover for resuming a private feeder checkpoint (a feeder layer that
+    /// is not the last one): it registers both feeder programs.
+    fn for_feeder_checkpoint(
+        source: ProgramSource,
+        config: ProgramProverConfig,
+        blake: PipelineBlakeModes,
+    ) -> Result<Self, String> {
+        assert_eq!(config.target, ProofTarget::L1Feeder);
+        Self::with_registration(source, config, blake, Some(ProofTarget::RecursionUnified))
+    }
+
+    /// Continue the feeder loop from a private checkpoint `state` after it is
+    /// admitted against the trusted chain of the supplied program
+    /// ([`validate_feeder_checkpoint`]); the wrap fit is not checked.
+    fn resume_feeder_checkpoint(
+        &mut self,
+        state: RecursionState,
+        batch_id: u64,
+        observer: &mut dyn FeederObserver,
+    ) -> Result<RecursionState, String> {
+        let loaded = load_program(&self.source)?;
+        let worker = worker::Worker::new();
+        validate_feeder_checkpoint(
+            &state,
+            self.fsv.modes(),
+            &mut recomputed_end_params(&loaded, &worker),
+        )?;
+        let mut state = run_feeder_layers(
+            self.backend.as_dyn(),
+            &self.fsv,
+            state,
+            batch_id,
+            observer,
+            &build_unified_stream,
+            &ProductionFeederVerifier,
+        )?;
+        state.stage = ProofTarget::L1Feeder;
+        Ok(state)
     }
 
     fn finalize_state(

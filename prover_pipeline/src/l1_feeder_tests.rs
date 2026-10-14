@@ -965,3 +965,66 @@ fn feeder_loop_resumes_mid_chain_and_skips_proving_at_one_instance() {
     assert_eq!(skipped.chain_end_params, full.chain_end_params);
     assert!(skipped.timings.l1_feeder_ms.is_empty());
 }
+
+/// The private feeder-checkpoint admission: feeder layer count, cap-32
+/// setups, the feeder proof shape and the trusted history.
+#[test]
+fn feeder_checkpoint_admission_checks_shape_caps_and_trusted_history() {
+    use prover::merkle_trees::MerkleTreeCapVarLength;
+    let trusted = |program: ChainProgram| -> Result<[u32; 8], String> {
+        Ok(match program {
+            ChainProgram::User => [1; 8],
+            ChainProgram::Fsv(
+                FsvProgram::UnifiedRecursionLayer,
+                _,
+                SetupMachine::UnifiedL1Feeder,
+            ) => [10; 8],
+            ChainProgram::Fsv(FsvProgram::UnifiedRecursionLayerL1Feeder, _, _) => [20; 8],
+            ChainProgram::Fsv(..) => [2; 8],
+        })
+    };
+    let caps = |leaves: usize| {
+        BTreeMap::from([(
+            128,
+            setups::UnrolledCircuitSetupParams {
+                family_idx: 128,
+                capacity: 1 << 22,
+                setup_caps: MerkleTreeCapVarLength {
+                    cap: vec![[7; 8]; leaves],
+                },
+            },
+        )])
+    };
+    let checkpoint = || RecursionState {
+        stage: ProofTarget::L1Feeder,
+        l1: None,
+        proof: fake_feeder_proof(2, 2),
+        setups: caps(32),
+        chain_end_params: vec![[1; 8], [2; 8], [2; 8], [10; 8], [20; 8]],
+        input_is_base: false,
+        timings: ProofTimingsMs::default(),
+        program_cycles: 0,
+        feeder_layers: 2,
+    };
+    let admit = |state: &RecursionState| {
+        validate_feeder_checkpoint(state, compression_modes(), &mut |program| trusted(program))
+    };
+    admit(&checkpoint()).unwrap();
+    let mut wrong_history = checkpoint();
+    wrong_history.chain_end_params[3][0] ^= 1;
+    assert!(admit(&wrong_history).unwrap_err().contains("trusted chain"));
+    let mut wrong_caps = checkpoint();
+    wrong_caps.setups = caps(16);
+    assert!(admit(&wrong_caps).unwrap_err().contains("leafs"));
+    let mut no_layers = checkpoint();
+    no_layers.feeder_layers = 0;
+    assert!(admit(&no_layers).unwrap_err().contains("feeder layers"));
+    let mut wrong_count = checkpoint();
+    wrong_count.feeder_layers = 3;
+    assert!(admit(&wrong_count).is_err());
+    let mut no_proof = checkpoint();
+    no_proof.proof = empty_proof();
+    assert!(admit(&no_proof)
+        .unwrap_err()
+        .contains("reduced-machine family"));
+}

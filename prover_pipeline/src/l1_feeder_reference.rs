@@ -320,7 +320,7 @@ fn generate_input(sink: &Path, input: &Input) -> Result<Vec<String>, String> {
         layers: vec![],
     };
     let (state, _) = prover.feeder_layers_observed(seed, &mut recorder)?;
-    let (report, native_output) = prover.wrap_program_run(&state)?;
+    let (report, native_output) = prover.wrap_program_observation(&state)?;
     let rejection = validate_wrap_report(&report, &native_output).err();
     println!(
         "wrap program over the last feeder proof: {} cycles (limit {L1_WRAP_PROGRAM_CYCLE_LIMIT}), windows {:?}, min sp 0x{:08x}, rejection {rejection:?}",
@@ -588,31 +588,32 @@ fn resumed_feeder_chains_match_the_fresh_chain() {
         serde_json::to_vec(&from_seed).unwrap(),
         serde_json::to_vec(&fresh).unwrap()
     );
-    // from the first multi-instance layer
+    // from the first multi-instance layer, through the private checkpoint
+    // admission (no public artifact is constructed for it)
     let mid = manifest
         .layers
         .iter()
         .find(|layer| layer.instances > 1)
         .expect("a multi-instance layer to resume from");
     let fixture = load_layer(&dir, mid.layer as usize).unwrap();
-    let checkpoint = ProofArtifact {
-        target: ProofTarget::RecursionUnified,
+    let state = RecursionState {
+        stage: ProofTarget::L1Feeder,
+        l1: None,
+        proof: fixture.proof,
+        setups: fixture.setups,
+        chain_end_params: fixture.chain_end_params,
+        input_is_base: false,
+        timings: ProofTimingsMs::default(),
+        program_cycles: fixture.program_cycles,
         feeder_layers: fixture.feeder_layers,
-        chain_end_params: fixture.chain_end_params.clone(),
-        chain_hash: rebuild_chain(&fixture.chain_end_params).unwrap().hash(),
-        chain_preimage: rebuild_chain(&fixture.chain_end_params).unwrap().preimage(),
-        proof: fixture.proof.clone(),
-        setups: fixture.setups.clone(),
-        proof_counts: ProofCounts::from_proof(&fixture.proof),
-        cycles: fixture.proof.executed_cycles(),
-        ..fresh.clone()
     };
+    let blake = PipelineBlakeModes::continuing(&fresh, || unreachable!()).unwrap();
     let loaded = load_program(&source).unwrap();
     let mut prover =
-        ProgramProver::for_continuation(source.clone(), config(ProofTarget::L1Feeder), &checkpoint)
+        ProgramProver::for_feeder_checkpoint(source.clone(), config(ProofTarget::L1Feeder), blake)
             .unwrap();
-    let (state, _) = prover
-        .feeder_layers_observed(checkpoint, &mut NoopObserver)
+    let state = prover
+        .resume_feeder_checkpoint(state, seed_batch_id(), &mut NoopObserver)
         .unwrap();
     let mut resumed = prover.finalize_state(&loaded, state, seed_batch_id());
     resumed.timings_ms = ProofTimingsMs::default();
@@ -628,48 +629,58 @@ fn resumed_feeder_chains_match_the_fresh_chain() {
 }
 
 /// The merge-margin gate: the production regular-link feeder verifies a
-/// two-instance feeder proof inside one 2^22 chunk, and the fixture's next
-/// layer is one instance.
+/// two-instance feeder proof inside one 2^22 chunk, and that transition's
+/// actual successor proof is one instance. Every input's fixture set is
+/// validated first (current FSV identities and config, file digests, every
+/// layer natively verified and chained, the trusted final artifact); the
+/// gate then counts and natively verifies the input and successor proofs
+/// itself.
 #[test]
-#[ignore = "runs the production feeder verifier over the two-instance fixtures"]
+#[ignore = "validates the feeder fixtures and runs the production feeder verifier over the two-instance proofs"]
 fn production_feeder_merge_gate() {
     let program = feeder_program(FsvProgram::UnifiedRecursionLayerL1Feeder);
     let chunk = UnrolledCircuitType::Unified22.get_domain_size() as u64;
     let mut found = false;
     for input in inputs() {
         let dir = fixture_dir().join(input.name);
-        let manifest = load_manifest(&dir).unwrap();
-        for (layer, summary) in manifest.layers.iter().enumerate() {
-            if summary.instances != 2 {
+        let manifest = verify_input(&dir, &input).unwrap();
+        for layer in 0..manifest.layers.len() {
+            let fixture = load_layer(&dir, layer).unwrap();
+            if feeder_proof_instances(&fixture.proof, None).unwrap() != 2 {
                 continue;
             }
             found = true;
-            let fixture = load_layer(&dir, layer).unwrap();
-            let next = load_layer(&dir, layer + 1).unwrap();
+            let successor = load_layer(&dir, layer + 1).unwrap_or_else(|error| {
+                panic!(
+                    "{}: the two-instance layer {layer} has no successor: {error}",
+                    input.name
+                )
+            });
+            // the successor is this transition: its history extends this
+            // layer's by exactly one entry, and its proof is one instance
             assert_eq!(
-                next.instances,
-                1,
-                "{}: layer {} after the two-instance layer",
+                successor.chain_end_params[..successor.chain_end_params.len() - 1],
+                fixture.chain_end_params[..],
+                "{}: layer {} does not succeed layer {layer}",
                 input.name,
                 layer + 1
             );
+            feeder_proof_instances(&successor.proof, Some(1)).unwrap();
+            let successor_output = native_verify_unified_l1_feeder(stream_of(&successor)).unwrap();
+            ensure_recursion_chain_binds_program(
+                &successor_output,
+                &rebuild_chain(&successor.chain_end_params).unwrap().hash(),
+            )
+            .unwrap();
+            let native = native_verify_unified_l1_feeder(stream_of(&fixture)).unwrap();
             let report = ProductionFeederVerifier
                 .predict(&program, stream_of(&fixture))
                 .unwrap();
+            validate_prediction_report(&report, &native).unwrap();
             assert_eq!(
-                report.output, fixture.native_output,
-                "{}: native output",
-                input.name
-            );
-            assert_eq!(
-                report.nd_words_remaining, 0,
-                "{}: input exhausted",
-                input.name
-            );
-            assert_eq!(
-                delegation_calls(&report.counters),
-                0,
-                "{}: delegation calls",
+                predicted_feeder_instances(&report).unwrap(),
+                1,
+                "{}",
                 input.name
             );
             assert!(
@@ -679,12 +690,13 @@ fn production_feeder_merge_gate() {
                 report.cycles
             );
             println!(
-                "merge gate {}: layer {layer} two-instance proof verifies in {} cycles, margin {} ({:.2}%), windows {:?}, min sp 0x{:08x}",
+                "merge gate {}: layer {layer} two-instance proof verifies in {} cycles, margin {} ({:.2}%), windows {:?}, max address 0x{:08x}, min sp 0x{:08x}",
                 input.name,
                 report.cycles,
                 chunk - report.cycles,
                 (chunk - report.cycles) as f64 * 100.0 / chunk as f64,
                 report.touched_windows,
+                report.max_touched_address,
                 report.min_sp
             );
         }
@@ -696,25 +708,31 @@ fn production_feeder_merge_gate() {
 }
 
 /// The wrap gate: the canonical 512 KiB-link wrap program over every
-/// input's last feeder proof, within 2^21 cycles with every requirement.
+/// input's validated last feeder proof (counted and natively verified
+/// here), within 2^21 cycles with every requirement; margins recorded.
 #[test]
-#[ignore = "runs the canonical wrap program over the last feeder proofs"]
+#[ignore = "validates the feeder fixtures and runs the canonical wrap program over the last feeder proofs"]
 fn production_wrap_program_gate() {
     let program = feeder_program(FsvProgram::UnifiedRecursionLayerL1FeederWrap);
-    let mut min_margin = u64::MAX;
+    let mut min_margin = i64::MAX;
+    let mut failures = vec![];
     for input in inputs() {
         let dir = fixture_dir().join(input.name);
-        let manifest = load_manifest(&dir).unwrap();
+        let manifest = verify_input(&dir, &input).unwrap();
         let fixture = load_layer(&dir, manifest.layers.len() - 1).unwrap();
-        assert_eq!(fixture.instances, 1);
-        let report = ProductionFeederVerifier
-            .wrap_run(&program, stream_of(&fixture))
-            .unwrap();
-        validate_wrap_report(&report, &fixture.native_output).unwrap();
-        let margin = L1_WRAP_PROGRAM_CYCLE_LIMIT as u64 - report.cycles;
+        feeder_proof_instances(&fixture.proof, Some(1)).unwrap();
+        let native = native_verify_unified_l1_feeder(stream_of(&fixture)).unwrap();
+        ensure_recursion_chain_binds_program(
+            &native,
+            &rebuild_chain(&fixture.chain_end_params).unwrap().hash(),
+        )
+        .unwrap();
+        let report = observe_wrap_program(&program, stream_of(&fixture)).unwrap();
+        let margin = L1_WRAP_PROGRAM_CYCLE_LIMIT as i64 - report.cycles as i64;
         min_margin = min_margin.min(margin);
+        let verdict = validate_wrap_report(&report, &native);
         println!(
-            "wrap gate {}: {} cycles, margin {margin} ({:.2}%), windows {:?}, max address 0x{:08x}, min sp 0x{:08x}",
+            "wrap gate {}: {} cycles, margin {margin} ({:.2}%), windows {:?}, max address 0x{:08x}, min sp 0x{:08x}, verdict {verdict:?}",
             input.name,
             report.cycles,
             margin as f64 * 100.0 / L1_WRAP_PROGRAM_CYCLE_LIMIT as f64,
@@ -722,8 +740,12 @@ fn production_wrap_program_gate() {
             report.max_touched_address,
             report.min_sp
         );
+        if let Err(error) = verdict {
+            failures.push(format!("{}: {error}", input.name));
+        }
     }
     println!("wrap gate minimum margin over the inputs: {min_margin} cycles");
+    assert!(failures.is_empty(), "wrap gate failures: {failures:?}");
 }
 
 /// The delegation count words of a feeder stream: one per
