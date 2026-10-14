@@ -399,13 +399,46 @@ theorem program_protocol_window_inputs [Fact p.Prime] (hp : 2 * timestampBase + 
   rw [← schedule.workerCount, schedule.machineCount, scope.duration]
   omega
 
+theorem program_round_region_inputs [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)}
+    {program : List UnifiedReduced.ProgramEntry} {region : RoundRegion}
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    (ordinaryProgram : Mixed.programImage before oa = some program) (registry : SequentialProgram program)
+    (scope : ProgramRoundRegionInputs data program region) :
+    RoundRegionInputs data program region := by
+  have floor := scope.preparation.afterInitial
+  have schedule := program_caller_window hp clockInverse accepted publicProgram ordinaryProgram registry scope.code
+    scope.aligned.1 scope.aligned.2 (by omega) scope.extent.1 (by omega) scope.beforeTerminal
+  have count : (data.workers.windowRows region.lower region.upper).length = (region.upper - region.lower) / 4 :=
+    schedule.workerCount.symm.trans schedule.machineCount
+  refine ⟨schedule.family, scope.preparation, ?_, ?_, scope.aligned, scope.beforeTerminal⟩
+  · rw [count]
+    have extent := scope.extent
+    omega
+  · rw [count]
+    have aligned := scope.aligned
+    have extent := scope.extent
+    omega
+
+theorem program_prepared_protocol_inputs [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
+    {program : List UnifiedReduced.ProgramEntry} {regions : List RoundRegion}
+    (accepted : MixedMemoryAccepted data program)
+    (inputs : ProgramPreparedProtocolInputs data before ca oa cells program regions) :
+    PreparedProtocolInputs data before ca oa cells program regions := by
+  refine ⟨inputs.toProtocolContextInputs, ?_, inputs.coverage⟩
+  intro region member
+  exact program_round_region_inputs hp clockInverse accepted inputs.publicProgram inputs.ordinaryProgram
+    inputs.registry (inputs.scopes region member)
+
 theorem program_prepared_protocol_sequence [Fact p.Prime] (hp : 16777216 ≤ p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
     {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     {program : List UnifiedReduced.ProgramEntry} {regions : List RoundRegion} {first : HashWindow} {rest : List HashWindow}
     (accepted : MixedMemoryAccepted data program)
-    (inputs : PreparedProtocolInputs data before ca oa cells program regions)
-    (registry : SequentialProgram program)
+    (inputs : ProgramPreparedProtocolInputs data before ca oa cells program regions)
     (scopes : ∀ window ∈ first :: rest, ProgramProtocolWindowInputs data program window)
     (ordered : WindowsOrdered first.lower ((first :: rest).map HashWindow.interval)) :
     PreparedHashSequenceResult data before cells first rest := by
@@ -421,10 +454,12 @@ theorem program_prepared_protocol_sequence [Fact p.Prime] (hp : 16777216 ≤ p)
       rcases List.mem_cons.mp member with rfl | member
       · exact ⟨first, last⟩
       · exact ih restOrder window member
-  apply prepared_protocol_sequence hp clockInverse accepted inputs _ ordered
+  have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
+  have context := program_prepared_protocol_inputs size clockInverse accepted inputs
+  apply prepared_protocol_sequence hp clockInverse accepted context _ ordered
   intro window member
   exact program_protocol_window_inputs (by norm_num [timestampBase]; omega) clockInverse accepted
-    inputs.publicProgram inputs.ordinaryProgram registry (scopes window member)
+    inputs.publicProgram inputs.ordinaryProgram inputs.registry (scopes window member)
     (aligned ordered window member).1 (aligned ordered window member).2
 
 end Airbender.UnifiedReduced.Caller.Proofs

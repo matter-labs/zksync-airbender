@@ -1956,6 +1956,13 @@ theorem public_region_wrong_family_rejected :
     (by decide +kernel)
   cases family
 
+theorem program_round_region_wrong_family_rejected :
+    ¬ UnifiedReduced.Caller.ProgramRoundRegionInputs (mixedData 0) mixedProgram ⟨0, 4, 8⟩ := by
+  intro scope
+  have family := scope.code.callers (Tests.DelegationCaller.entry .bigint) (List.mem_singleton_self _)
+    (by decide +kernel)
+  cases family
+
 theorem public_region_including_ordinary_rejected :
     ¬ UnifiedReduced.Caller.ProgramCallerRegion (mixedData 0) mixedProgram .bigint 8 12 := by
   intro region
