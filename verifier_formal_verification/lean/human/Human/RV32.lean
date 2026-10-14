@@ -74,6 +74,28 @@ def alu : Op → Word → Word → Word
   | .divu,   a, b => if b = 0 then -1 else a / b   -- division by zero: all ones / the dividend
   | .remu,   a, b => if b = 0 then a else a % b    --   (as the ISA specifies; no trap)
 
+/-- Airbender: field operations as custom Zimop instructions `mop.rr.N rd, rs1, rs2` (N = 0 … 4), on the
+BabyBear prime `BabyBearP` (semantics as Airbender's VM, riscv_transpiler
+`vm/instructions/add_sub_family/mop.rs`). Register values are first reduced mod `BabyBearP`; results are
+`< BabyBearP` (except `triAdd`, a plain 32-bit sum). `fma` and `triAdd` also read `rd`. -/
+inductive FieldOp | add | sub | mul | fma | triAdd
+
+def BabyBearP : Nat := 0x78000001        -- BabyBear: 2^31 - 2^27 + 1
+
+/-- `2^-32 mod BabyBearP`: field values are kept in Montgomery form (`x` held as `x · 2^32 mod BabyBearP`). -/
+def RINV : Nat := 0x38400000
+theorem RINV_spec : RINV * 2 ^ 32 % BabyBearP = 1 := by decide
+
+/-- `mul` is the Montgomery product: if `a`, `b` hold `x · 2^32`, `y · 2^32` (mod `BabyBearP`), the result holds
+`x · y · 2^32`. -/
+def mopVal : FieldOp → (a b old : Word) → Word
+  | .add,    a, b, _   => BitVec.ofNat 32 ((a.toNat % BabyBearP + b.toNat % BabyBearP) % BabyBearP)
+  | .sub,    a, b, _   => BitVec.ofNat 32 ((a.toNat % BabyBearP + BabyBearP - b.toNat % BabyBearP) % BabyBearP)
+  | .mul,    a, b, _   => BitVec.ofNat 32 (a.toNat % BabyBearP * (b.toNat % BabyBearP) * RINV % BabyBearP)
+  | .fma,    a, b, old =>
+      BitVec.ofNat 32 ((a.toNat % BabyBearP * (b.toNat % BabyBearP) * RINV + old.toNat % BabyBearP) % BabyBearP)
+  | .triAdd, a, b, old => a + b + old
+
 /-- The branch conditions. -/
 inductive Cond | eq | ne | lt | ge | ltu | geu
 
@@ -96,6 +118,7 @@ inductive Instr
   | store  (numBytes : Nat) (rs2 rs1 : Reg) (offset : Word)
   | opImm  (op : Op) (rd rs1 : Reg) (imm : Word)
   | op     (op : Op) (rd rs1 rs2 : Reg)
+  | mop    (op : FieldOp) (rd rs1 rs2 : Reg)   -- Airbender: field operations (`mop.rr.N`)
 
 /-- What one instruction does to the state (`none`: Airbender cannot run it). -/
 def exec (s : State) : Instr → Option State
@@ -118,6 +141,8 @@ def exec (s : State) : Instr → Option State
       else none
   | .opImm op rd rs1 imm   => some (s.setReg rd (alu op (s.getReg rs1) imm)).nextInstr
   | .op op rd rs1 rs2      => some (s.setReg rd (alu op (s.getReg rs1) (s.getReg rs2))).nextInstr
+  | .mop op rd rs1 rs2     =>                       -- Airbender: `rd = x0` is not allowed (the circuit requires it)
+      if rd = 0 then none else some (s.setReg rd (mopVal op (s.getReg rs1) (s.getReg rs2) (s.getReg rd))).nextInstr
 
 /-- Standard RV32IM encodings (unprivileged spec, ch. 2 and 13). -/
 def decode (word : Word) : Option Instr :=
@@ -178,6 +203,11 @@ def decode (word : Word) : Option Instr :=
   | 0x33, 4, _    => some (.op .xor    rd rs1 rs2)
   | 0x33, 6, _    => some (.op .or     rd rs1 rs2)
   | 0x33, 7, _    => some (.op .and    rd rs1 rs2)
+  | 0x73, 4, 0x41 => some (.mop .add    rd rs1 rs2)      -- Airbender: mop.rr.0 … mop.rr.4 (Zimop encodings)
+  | 0x73, 4, 0x43 => some (.mop .sub    rd rs1 rs2)
+  | 0x73, 4, 0x45 => some (.mop .mul    rd rs1 rs2)
+  | 0x73, 4, 0x47 => some (.mop .fma    rd rs1 rs2)
+  | 0x73, 4, 0x61 => some (.mop .triAdd rd rs1 rs2)
   | _, _, _       => none
 
 /-- One step: fetch from ROM at an aligned PC, decode, execute. -/

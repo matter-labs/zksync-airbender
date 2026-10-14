@@ -256,6 +256,11 @@ theorem exec_store (s : State) n rs2 rs1 off (ha : aligned (s.getReg rs1 + off) 
   · rfl
   · rename_i h; exact absurd ⟨ha, hw⟩ h
 
+/-- A field operation (`mop.rr.N`) with `rd ≠ x0`; `mopVal` stays folded. -/
+theorem exec_mop (s : State) op rd rs1 rs2 (hrd : ¬ rd = 0) :
+    exec s (.mop op rd rs1 rs2) = some (s.setReg rd (mopVal op (s.getReg rs1) (s.getReg rs2) (s.getReg rd))).nextInstr := by
+  simp only [exec, hrd, ↓reduceIte]
+
 end RV
 
 namespace RV
@@ -266,5 +271,5 @@ attribute [rv_side] ROM_END RAM_END aligned writable readable and_not_one_of_ali
 attribute [rv_exec high] read_write_rom read_write_off read_write_off0l read_write_off0r
 attribute [rv_exec] step_ok Option.elim_some Option.bind_some read_write_disjoint read_write_same4
   exec_lui exec_auipc exec_opImm exec_op exec_jal exec_jalr0 exec_jalr exec_load exec_load_x0 sext_word exec_store alu
-  exec_branch_t exec_branch_f
+  exec_branch_t exec_branch_f exec_mop
 end RV

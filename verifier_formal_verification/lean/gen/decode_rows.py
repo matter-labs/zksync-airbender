@@ -729,10 +729,36 @@ ROWS = [
    ]
   ],
   ".op .and (w.extractLsb' 7 5) (w.extractLsb' 15 5) (w.extractLsb' 20 5)"
+ ],
+ [
+  "mop_add",
+  [[0, 7, 115], [12, 3, 4], [25, 7, 65]],
+  ".mop .add (w.extractLsb' 7 5) (w.extractLsb' 15 5) (w.extractLsb' 20 5)"
+ ],
+ [
+  "mop_sub",
+  [[0, 7, 115], [12, 3, 4], [25, 7, 67]],
+  ".mop .sub (w.extractLsb' 7 5) (w.extractLsb' 15 5) (w.extractLsb' 20 5)"
+ ],
+ [
+  "mop_mul",
+  [[0, 7, 115], [12, 3, 4], [25, 7, 69]],
+  ".mop .mul (w.extractLsb' 7 5) (w.extractLsb' 15 5) (w.extractLsb' 20 5)"
+ ],
+ [
+  "mop_fma",
+  [[0, 7, 115], [12, 3, 4], [25, 7, 71]],
+  ".mop .fma (w.extractLsb' 7 5) (w.extractLsb' 15 5) (w.extractLsb' 20 5)"
+ ],
+ [
+  "mop_triadd",
+  [[0, 7, 115], [12, 3, 4], [25, 7, 97]],
+  ".mop .triAdd (w.extractLsb' 7 5) (w.extractLsb' 15 5) (w.extractLsb' 20 5)"
  ]
 ]
 GROUPS = [("Upper", 0, 4), ("Branch", 4, 10), ("Load", 10, 15), ("Store", 15, 18), ("OpImm", 18, 27),
-          ("Op1", 27, 34), ("Op2", 34, len(ROWS))]
+          ("Op1", 27, 34), ("Op2", 34, len(ROWS) - 5),
+          ("Mop", len(ROWS) - 5, len(ROWS))]
 here = os.path.dirname(os.path.abspath(__file__))
 for g, a, b in GROUPS:
     out = ["import Slop.Equiv.Close", "",

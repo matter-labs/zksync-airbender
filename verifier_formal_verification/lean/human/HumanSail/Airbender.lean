@@ -76,6 +76,9 @@ theorem sail_extensions_off :
     hartSupports .Ext_C = false ∧ hartSupports .Ext_Zca = false := by  -- compressed instructions
   decide +kernel
 
+/-- Zimop stays on: Sail decodes Airbender's field operations `mop.rr.N` (and its `execute` is replaced below). -/
+theorem sail_zimop_on : hartSupports .Ext_Zimop = true := by decide +kernel
+
 /-! ## Airbender's instructions, named as in Sail -/
 
 def sailBranchOp : RV.Cond → bop
@@ -85,9 +88,16 @@ def sailAluOp : RV.Op → rop
   | .sub => .SUB | .sll => .SLL | .slt => .SLT | .sltu => .SLTU | .xor => .XOR | .srl => .SRL | .sra => .SRA
   | .or => .OR | .and => .AND | _ => .ADD   -- (M ops are mapped to MUL/DIV/REM below)
 
+/-- The `N` of `mop.rr.N` for each field operation (Sail decodes `N` from bits 30, 27, 26 of the word). -/
+def mopIndex : RV.FieldOp → BitVec 3
+  | .add => 0 | .sub => 1 | .mul => 2 | .fma => 3 | .triAdd => 4
+
+def mopOfIndex : BitVec 3 → Option RV.FieldOp
+  | 0 => some .add | 1 => some .sub | 2 => some .mul | 3 => some .fma | 4 => some .triAdd | _ => none
+
 /-- Our instructions (`Human/RV32.lean`) in Sail's vocabulary. Immediates: Sail keeps the encoded bits, we keep
 the decoded value, so `toSail` takes the encoded bits back out. -/
-def toSail : RV.Instr → instruction
+noncomputable def toSail : RV.Instr → instruction
   | .lui rd imm              => .UTYPE (imm.extractLsb' 12 20, .Regidx rd, .LUI)
   | .auipc rd imm            => .UTYPE (imm.extractLsb' 12 20, .Regidx rd, .AUIPC)
   | .jal rd offset           => .JAL (offset.extractLsb' 0 21, .Regidx rd)
@@ -111,19 +121,29 @@ def toSail : RV.Instr → instruction
   | .op .divu rd rs1 rs2     => .DIV (.Regidx rs2, .Regidx rs1, .Regidx rd, true)
   | .op .remu rd rs1 rs2     => .REM (.Regidx rs2, .Regidx rs1, .Regidx rd, true)
   | .op op rd rs1 rs2        => .RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, sailAluOp op)
+  | .mop op rd rs1 rs2       => .ZIMOP_MOP_RR (mopIndex op, .Regidx rs2, .Regidx rs1, .Regidx rd)
 
 /-! ## The machine -/
 
 /-- Airbender's decoder is our encoding table `RV.decode` (`Human/RV32.lean`, with its `-- Airbender:` rows).
 `HumanSail/Theorems.lean` states that Sail's own decoder gives the same instruction for every word of that table,
 except the extra encodings Airbender accepts (`ExtraEncoding`). -/
-def decode (word : BitVec 32) : Option instruction := (RV.decode word).map toSail
+noncomputable def decode (word : BitVec 32) : Option instruction := (RV.decode word).map toSail
 
-/-- Execute one instruction: as Sail does, except loads into x0. -/
+/-- Execute one instruction: as Sail does, except loads into x0 and the field operations. -/
 noncomputable def execute (instr : instruction) : SailM ExecutionResult :=
   match instr with
   | .LOAD (_, _, rd, _, _) => if rd == zreg then pure RETIRE_SUCCESS  -- Airbender: a load into x0 only
                               else SailRV32.Functions.execute instr   --   advances the PC (no memory access)
+  | .ZIMOP_MOP_RR (n, rs2, rs1, rd) =>                 -- Airbender: `mop.rr.0 … 4` are field operations
+      match mopOfIndex n with                          --   (`RV.mopVal`; Sail's Zimop writes 0), and need rd ≠ x0
+      | some op => if rd == zreg then pure (.Illegal_Instruction ()) else do
+          let a ← rX_bits rs1
+          let b ← rX_bits rs2
+          let old ← rX_bits rd
+          wX_bits rd (RV.mopVal op a b old)
+          pure RETIRE_SUCCESS
+      | none => SailRV32.Functions.execute instr
   | _ => SailRV32.Functions.execute instr
 
 /-- One step, the way Sail's own `run_hart_active` + `try_step` run a 32-bit instruction: fetch, decode,

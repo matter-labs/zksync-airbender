@@ -3,7 +3,7 @@ import Image
 /-! Prints the files slop/Slop/RV/Code/<block>.lean (split by lean/gen/words.sh): per code block (function) its
 words and one `decode` lemma per distinct word, so that a change in one function only touches its own file. -/
 open RV
-deriving instance Repr for Op, Cond, Instr
+deriving instance Repr for Op, Cond, FieldOp, Instr
 
 def wordAt (a : Nat) : Word :=
   let b := fun k => (Image.bytes[a + k]!).zeroExtend 32

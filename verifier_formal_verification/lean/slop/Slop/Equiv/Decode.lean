@@ -5,6 +5,7 @@ import Slop.Equiv.DecStore
 import Slop.Equiv.DecOpImm
 import Slop.Equiv.DecOp1
 import Slop.Equiv.DecOp2
+import Slop.Equiv.DecMop
 import HumanSail.Theorems
 
 /-! `Airbender.DecodeIsSail` (`HumanSail/Theorems.lean`): split our table `RV.decode` into its rows and use each
@@ -77,6 +78,11 @@ theorem decode_is_sail : Airbender.DecodeIsSail := by
   all_goals mk_bits
   all_goals first
     | exact dec_lui w σ hs (by assumption)
+    | exact dec_mop_add w σ hs (by assumption) (by assumption) (by assumption)
+    | exact dec_mop_sub w σ hs (by assumption) (by assumption) (by assumption)
+    | exact dec_mop_mul w σ hs (by assumption) (by assumption) (by assumption)
+    | exact dec_mop_fma w σ hs (by assumption) (by assumption) (by assumption)
+    | exact dec_mop_triadd w σ hs (by assumption) (by assumption) (by assumption)
     | exact dec_auipc w σ hs (by assumption)
     | exact dec_jal w σ hs (by assumption)
     | exact dec_jalr w σ hs (by assumption) (by assumption)

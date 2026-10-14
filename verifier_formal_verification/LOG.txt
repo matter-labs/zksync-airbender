@@ -7,6 +7,16 @@ commit check `git diff --cached --stat` and that no staged file is over ~200 KB.
 Moved here from an earlier prototype repo (as a snapshot; its history, which contains the large Sail model, was
 NOT imported).
 
+=== FIELD OPS IN THE ISA: mop.rr.N (2026-10-14) ===
+- RV32.lean: Instr.mop (FieldOp add/sub/mul/fma/triAdd) for Airbender's Zimop field opcodes mop.rr.0..4 on BabyBear
+  (p = 0x78000001); semantics from the VM (riscv_transpiler vm/instructions/add_sub_family/mop.rs): inputs any u32
+  reduced mod p, outputs < p, mul = Montgomery a*b*2^-32, fma rd := rs1*rs2*2^-32 + rd, triAdd = wrapping
+  rs1+rs2+rd; rd = x0 has no next state (the circuit requires rd != 0).
+- HumanSail/Airbender.lean: deviation from Sail (where Zimop mop.rr writes 0): ZIMOP_MOP_RR executes RV.mopVal.
+  Proven: decode = Sail for the 5 encodings (DecMop, generated), step = Airbender step (StepMop).
+- Caveats: Airbender's JIT defaults to Mersenne31 unless RISCV_MOP_FIELD is set; canonicity (< p) of circuit
+  outputs not yet checked against the circuits. The real gkr_verifier uses modular_ops + modular_fma.
+
 === REAL AIRBENDER BOOT (2026-10-14) ===
 - The guest now boots exactly like the real verifier binaries (tools/gkr_verifier): riscv_common with
   boot_sequence + ram_32mb_no_heap (its start.s, link.x, 32 MB memory.x, init() copying .rodata/.data from ROM to

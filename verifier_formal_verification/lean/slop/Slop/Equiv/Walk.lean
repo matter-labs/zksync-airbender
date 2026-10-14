@@ -159,6 +159,22 @@ def evalSlice (facts : Array Fact) (lhs c : Expr) (hi lo : Nat) (whole : Bool) :
         let hhi ← mkDecideProof (← mkAppM ``LE.le #[natLit (f.lo + f.n), natLit (hi + 1)])
         return some (false, ← mkAppOptM ``slice_beq_false
           #[lhs.getArg! 1, natLit hi, natLit lo, c, natLit f.lo, natLit f.n, natLit f.k, f.pf, hlo, hhi, hc])
+  -- a known field overlapping the slice only partly: its bits inside the slice already differ
+  for f in facts do
+    let ilo := max lo f.lo
+    let ihi := min (hi + 1) (f.lo + f.n)
+    if ilo < ihi && (ilo, ihi) != (f.lo, f.lo + f.n) then
+      let some g ← exactFact #[f] ilo (ihi - ilo) | continue
+      if (cn >>> (g.lo - lo)) % 2 ^ g.n ≠ g.k then
+        let hc ← mkDecideProof (mkNot (← mkEq (← mkAppM ``HMod.hMod #[← mkAppM ``HShiftRight.hShiftRight
+          #[← mkAppM ``BitVec.toNat #[c], natLit (g.lo - lo)], ← mkAppM ``HPow.hPow #[natLit 2, natLit g.n]])
+          (natLit g.k)))
+        if whole then
+          return some (false, ← mkAppM ``word_beq_false #[natLit g.lo, natLit g.n, natLit g.k, g.pf, hc])
+        let hlo ← mkDecideProof (← mkAppM ``LE.le #[natLit lo, natLit g.lo])
+        let hhi ← mkDecideProof (← mkAppM ``LE.le #[natLit (g.lo + g.n), natLit (hi + 1)])
+        return some (false, ← mkAppOptM ``slice_beq_false
+          #[lhs.getArg! 1, natLit hi, natLit lo, c, natLit g.lo, natLit g.n, natLit g.k, g.pf, hlo, hhi, hc])
   -- fully known and equal
   if !whole then
     for f in facts do

@@ -1,4 +1,5 @@
 import Slop.Equiv.StepMem
+import Slop.Equiv.StepMop
 
 /-! `Airbender.StepIsAirbender`: one step of our spec is one step of the Airbender machine. -/
 
@@ -34,5 +35,6 @@ theorem step_is_airbender : Airbender.StepIsAirbender := by
     | exact kind_itype h ha' h2 _ _ _ _ (by simp) hdec hex
     | exact kind_shift h ha' h2 _ _ _ _ (by simp) hdec hex
     | exact kind_op h ha' h2 _ _ _ _ (by simp) hdec hex
+    | exact kind_mop h ha' h2 _ _ _ _ hdec hex
 
 end Slop.Equiv
