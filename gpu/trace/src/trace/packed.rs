@@ -6,9 +6,10 @@ use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
 use gpu_core::primitives::field::PR;
 use gpu_hash::keccak256::{
-    append_top_paths, build_partial_coset_tree, build_top_tree,
-    gather_leaves_for_queries_single_coset, gather_merkle_paths_partial_for_queries_single_coset,
-    gather_tree_cap, retained_layer_offset, Digest,
+    append_top_paths, build_partial_coset_tree, build_partial_coset_tree_with_scratch,
+    build_top_tree, gather_leaves_for_queries_single_coset,
+    gather_merkle_paths_partial_for_queries_single_coset, gather_tree_cap,
+    partial_coset_tree_scratch_len, retained_layer_offset, Digest,
 };
 use gpu_ntt::proth120::{lde_coset, pack_hypercubes_to_monomials};
 use gpu_ops::powers::get_powers_by_val;
@@ -16,7 +17,9 @@ use gpu_prover_context::ProverContext;
 
 use crate::upstream::{domain_generator_for_size, ProverConfig};
 
-use super::holder::TraceHolder;
+use super::holder::{
+    assert_partial_tree_reduction_layers, TraceHolder, MAX_PARTIAL_TREE_REDUCTION_LAYERS,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PackedCommitConfig {
@@ -27,7 +30,12 @@ pub struct PackedCommitConfig {
 }
 
 impl PackedCommitConfig {
-    pub fn from_prover_config(config: &ProverConfig, log_packed: u32) -> Self {
+    pub fn from_prover_config(
+        config: &ProverConfig,
+        log_packed: u32,
+        requested_skip_bottom: u32,
+    ) -> Self {
+        assert_partial_tree_reduction_layers(requested_skip_bottom);
         assert!(
             config.lde_factor.is_power_of_two(),
             "PackedCommitConfig: lde_factor must be a power of two"
@@ -48,8 +56,14 @@ impl PackedCommitConfig {
             log_lde_factor: config.lde_factor.trailing_zeros(),
             log_values_per_leaf,
             cap_log: config.cap_size.trailing_zeros(),
-            skip_bottom: h.min(5),
+            skip_bottom: h.min(requested_skip_bottom),
         }
+    }
+
+    pub fn same_protocol_geometry(&self, other: &Self) -> bool {
+        self.log_lde_factor == other.log_lde_factor
+            && self.log_values_per_leaf == other.log_values_per_leaf
+            && self.cap_log == other.cap_log
     }
 }
 
@@ -107,8 +121,8 @@ fn assert_disjoint<A, B>(left: &DeviceSlice<A>, right: &DeviceSlice<B>, message:
 
 pub fn retained_len(log_leaves: u32, skip_bottom: u32) -> usize {
     assert!(
-        skip_bottom <= log_leaves && skip_bottom <= 5,
-        "PackedCosetRecomputeOracle: skip_bottom exceeds min(5, log_leaves)"
+        skip_bottom <= log_leaves && skip_bottom <= MAX_PARTIAL_TREE_REDUCTION_LAYERS,
+        "PackedCosetRecomputeOracle: skip_bottom exceeds min({MAX_PARTIAL_TREE_REDUCTION_LAYERS}, log_leaves)"
     );
     retained_layer_offset(log_leaves, skip_bottom, log_leaves)
         .checked_add(1)
@@ -399,6 +413,16 @@ impl PackedCosetRecomputeOracle<PR> {
         let h = self.log_packed() - cfg.log_values_per_leaf;
         let per_coset = retained_len(h, cfg.skip_bottom);
         let mut scratch = context.alloc(self.monomials().len(), AllocationPlacement::Top)?;
+        let tree_scratch_len = partial_coset_tree_scratch_len(
+            self.log_packed(),
+            cfg.log_values_per_leaf,
+            cfg.skip_bottom,
+        );
+        let mut tree_scratch: Option<DeviceAllocation<Digest>> = if tree_scratch_len == 0 {
+            None
+        } else {
+            Some(context.alloc(tree_scratch_len, AllocationPlacement::BestFit)?)
+        };
         let stream = context.get_exec_stream();
         for k in 0..data.offsets.len() {
             Self::recompute_into(
@@ -411,15 +435,28 @@ impl PackedCosetRecomputeOracle<PR> {
                 context,
             )?;
             let base = product(k, per_coset);
-            build_partial_coset_tree(
-                &scratch,
-                self.log_packed(),
-                cfg.log_values_per_leaf,
-                self.packed_columns as u32,
-                cfg.skip_bottom,
-                &mut data.retained[base..base + per_coset],
-                stream,
-            )?;
+            let retained = &mut data.retained[base..base + per_coset];
+            match tree_scratch.as_mut() {
+                None => build_partial_coset_tree(
+                    &scratch,
+                    self.log_packed(),
+                    cfg.log_values_per_leaf,
+                    self.packed_columns as u32,
+                    cfg.skip_bottom,
+                    retained,
+                    stream,
+                )?,
+                Some(tree_scratch) => build_partial_coset_tree_with_scratch(
+                    &scratch,
+                    self.log_packed(),
+                    cfg.log_values_per_leaf,
+                    self.packed_columns as u32,
+                    cfg.skip_bottom,
+                    retained,
+                    tree_scratch,
+                    stream,
+                )?,
+            }
             let physical = if cfg.log_lde_factor == 0 {
                 0
             } else {
@@ -440,6 +477,7 @@ impl PackedCosetRecomputeOracle<PR> {
             &mut state.cap,
             stream,
         )?;
+        drop(tree_scratch);
         drop(scratch);
         self.committed = Some(state);
         Ok(())

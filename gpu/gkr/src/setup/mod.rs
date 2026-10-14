@@ -51,6 +51,7 @@ impl<'a> GpuGKRSetupTransfer<'a> {
             host.log_tree_cap_size,
             host.columns_count,
             TreesCacheMode::CachePartial,
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
             context,
         )?;
         // Allocate the cap up front so `schedule_transfer` has a stable destination.
@@ -528,6 +529,7 @@ pub(super) fn precompute_partial_tree_cache(
         log_tree_cap_size,
         columns_count,
         TreesCacheMode::CachePartial,
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
         context,
     )?;
     memory_copy_async(

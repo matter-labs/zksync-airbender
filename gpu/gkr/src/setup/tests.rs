@@ -114,6 +114,7 @@ fn materialize_trace_holder_from_values(
         log_tree_cap_size,
         columns_count,
         TreesCacheMode::CachePartial,
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
         context,
     )
     .unwrap();
@@ -393,6 +394,7 @@ fn setup_transfer_reuses_single_raw_backing_and_lazy_queries_match_fresh_commit(
         log_tree_cap_size,
         setup.hypercube_evals.len(),
         TreesCacheMode::CachePartial,
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
         &context,
     )
     .unwrap();

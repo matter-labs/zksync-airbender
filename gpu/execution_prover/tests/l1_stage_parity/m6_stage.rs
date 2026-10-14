@@ -694,7 +694,11 @@ fn run_stages(
         "M6 stage parity explicit output log"
     );
     let pack_log2 = EVM_PRODUCTION_PACK_LOG2 as u32;
-    let cfg = PackedCommitConfig::from_prover_config(&config, LOG_ROWS + pack_log2);
+    let cfg = PackedCommitConfig::from_prover_config(
+        &config,
+        LOG_ROWS + pack_log2,
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+    );
     let CommitmentMode::MergedAndPackedMemoryAndWitness {
         external_challenges_pow_bits,
         ..
@@ -813,6 +817,7 @@ fn run_stages(
         cfg.cap_log,
         memory_width + witness_width,
         TreesCacheMode::CacheNone,
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
         &context,
     )
     .unwrap();

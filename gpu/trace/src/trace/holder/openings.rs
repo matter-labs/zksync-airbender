@@ -48,13 +48,19 @@ impl TraceHolder<BF> {
             Some(context.alloc(monomials.len(), AllocationPlacement::BestFit)?)
         };
         let mut previous_coset = None;
+        let reduction_layers = self.partial_tree_reduction_layers();
         let mut temporary_tree = if matches!(self.trees, TreesHolder::None) {
             Some(allocate_trees(
                 1,
-                log_n - PARTIAL_TREE_REDUCTION_LAYERS,
+                log_n - reduction_layers,
                 self.log_rows_per_leaf,
                 context,
             )?)
+        } else {
+            None
+        };
+        let mut boundary_scratch = if temporary_tree.is_some() {
+            self.allocate_partial_tree_scratch(context)?
         } else {
             None
         };
@@ -135,6 +141,8 @@ impl TraceHolder<BF> {
                     log_subtree_cap,
                     self.columns_count,
                     1,
+                    reduction_layers,
+                    boundary_scratch.as_deref_mut(),
                     stream,
                 )?;
                 &tree[..]
@@ -160,7 +168,7 @@ impl TraceHolder<BF> {
                 log_n,
                 self.log_rows_per_leaf,
                 layers,
-                PARTIAL_TREE_REDUCTION_LAYERS,
+                reduction_layers,
                 queries,
                 paths,
                 stream,
@@ -213,6 +221,12 @@ impl TraceHolder<BF> {
             Some(context.alloc(source.len(), AllocationPlacement::BestFit)?)
         };
         let tree_stride = self.per_coset_tree_len().unwrap();
+        let reduction_layers = self.partial_tree_reduction_layers();
+        let mut boundary_scratch = if all_cosets {
+            None
+        } else {
+            self.allocate_partial_tree_scratch(context)?
+        };
         let stream = context.get_exec_stream();
         let properties = context.get_device_properties();
         let first_coset = usize::from(log_f != 0);
@@ -254,7 +268,17 @@ impl TraceHolder<BF> {
                 };
                 let tree = &mut trees[index * tree_stride..(index + 1) * tree_stride];
                 build_partial_trees_from_physical(
-                    coset, tree, log_n, 0, log_rows, log_subcap, columns, 1, stream,
+                    coset,
+                    tree,
+                    log_n,
+                    0,
+                    log_rows,
+                    log_subcap,
+                    columns,
+                    1,
+                    reduction_layers,
+                    boundary_scratch.as_deref_mut(),
+                    stream,
                 )?;
             }
         }
@@ -332,6 +356,8 @@ impl TraceHolder<BF> {
         let log_subcap = self.log_tree_cap_size - log_f;
         let columns = self.columns_count;
         assert!(columns != 0);
+        let reduction_layers = self.partial_tree_reduction_layers();
+        let mut boundary_scratch = self.allocate_partial_tree_scratch(context)?;
         let stream = context.get_exec_stream();
         let properties = context.get_device_properties();
         let first_coset = usize::from(log_f != 0);
@@ -371,7 +397,17 @@ impl TraceHolder<BF> {
                 .get_uninit_tree_mut(index)
                 .expect("partial tree allocated");
             build_partial_trees_from_physical(
-                values, tree, log_n, 0, log_rows, log_subcap, columns, 1, stream,
+                values,
+                tree,
+                log_n,
+                0,
+                log_rows,
+                log_subcap,
+                columns,
+                1,
+                reduction_layers,
+                boundary_scratch.as_deref_mut(),
+                stream,
             )?;
             previous = index;
         }
