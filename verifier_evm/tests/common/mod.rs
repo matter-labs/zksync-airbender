@@ -5,7 +5,7 @@ use cs::gkr_compiler::GKRCircuitArtifact;
 use field::Proth120;
 use prover::definitions::SecurityLevel;
 use prover::gkr::prover::{CommitmentMode, GKRProof};
-use prover::gkr::prover_config::example_configs::l1_wrap_2p22;
+use prover::gkr::prover_config::example_configs::{l1_wrap_2p21, l1_wrap_2p22};
 use prover::gkr::prover_config::ProverConfig;
 use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
 use std::path::{Path, PathBuf};
@@ -34,6 +34,8 @@ pub struct Version {
     pub data_root: &'static str,
     pub pow_cap: u32,
     pub gkr_pow_cap: u32,
+    pub allow_missing_proof: bool,
+    pub mutation_fields_file: Option<&'static str>,
 }
 
 pub const L1_WRAP_2P22: Version = Version {
@@ -51,31 +53,88 @@ pub const L1_WRAP_2P22: Version = Version {
     data_root: "debug_data",
     pow_cap: 30,
     gkr_pow_cap: 25,
+    allow_missing_proof: false,
+    mutation_fields_file: None,
 };
 
-// W3 Tasks 2/5/6 add L1_WRAP_2P21 here once its layout and proof exist:
-// config = example_configs::l1_wrap_2p21::packed_prover_config;
-// layout/proof/aux use the `_2p21` suffix;
-// exit_pc = ExitPcSource::Binary("../tools/gkr_verifier/fsv_unified_recursion_layer_sec_100_l1_feeder_wrap_special_opcodes_extension.bin");
-// roots = generated_contracts/l1_wrap_2p21 and debug_data/l1_wrap_2p21.
-// Register it in VERSIONS so every drift/serialization gate covers it.
-pub const VERSIONS: &[Version] = &[L1_WRAP_2P22];
+pub const L1_WRAP_2P21: Version = Version {
+    name: "2p21",
+    layout: "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120_2p21.json",
+    config: l1_wrap_2p21::packed_prover_config,
+    pack_log2: l1_wrap_2p21::PACK_LOG2,
+    external_pow_floor: l1_wrap_2p21::EXTERNAL_CHALLENGES_POW_BITS,
+    exit_pc: ExitPcSource::Binary("../tools/gkr_verifier/fsv_unified_recursion_layer_sec_100_l1_feeder_wrap_special_opcodes_extension.bin"),
+    proof: "../prover/unified_circuit_proof_proth120_2p21.json",
+    aux: "../prover/unified_circuit_proof_proth120_2p21_commitment_mod_aux_data.json",
+    contracts_root: "generated_contracts/l1_wrap_2p21",
+    data_root: "debug_data/l1_wrap_2p21",
+    pow_cap: 30,
+    gkr_pow_cap: 25,
+    // Task 5 will export the real proof. Remove this allowance once it is committed.
+    allow_missing_proof: true,
+    mutation_fields_file: Some("calldata_fields.json"),
+};
+pub const VERSIONS: &[Version] = &[L1_WRAP_2P22, L1_WRAP_2P21];
+
+pub fn available_versions(check: &str) -> Vec<&'static Version> {
+    VERSIONS
+        .iter()
+        .filter(|version| version.available_for_read(check))
+        .collect()
+}
 
 /// Select only writes for a harness version; normal tests cover all descriptors.
 pub fn selected_versions() -> Vec<Version> {
     match std::env::var("AB_EVM_VERSION") {
-        Ok(name) => vec![*VERSIONS
-            .iter()
-            .find(|version| version.name == name)
-            .unwrap_or_else(|| {
-                panic!("verifier version {name} has no registered artifact bundle")
-            })],
-        Err(std::env::VarError::NotPresent) => VERSIONS.to_vec(),
+        Ok(name) => {
+            let version = VERSIONS
+                .iter()
+                .find(|version| version.name == name)
+                .unwrap_or_else(|| {
+                    panic!("verifier version {name} has no registered artifact bundle")
+                });
+            version.require_bundle();
+            vec![*version]
+        }
+        Err(std::env::VarError::NotPresent) => available_versions("artifact generation")
+            .into_iter()
+            .copied()
+            .collect(),
         Err(error) => panic!("invalid AB_EVM_VERSION: {error}"),
     }
 }
 
 impl Version {
+    pub fn require_bundle(&self) {
+        assert!(
+            Path::new(self.proof).is_file(),
+            "{}: proof is missing: {}; cannot generate or verify this bundle",
+            self.name,
+            self.proof
+        );
+        assert!(
+            Path::new(self.aux).is_file(),
+            "{}: proof aux is missing: {}",
+            self.name,
+            self.aux
+        );
+    }
+
+    pub fn available_for_read(&self, check: &str) -> bool {
+        if self.allow_missing_proof
+            && !Path::new(self.proof)
+                .try_exists()
+                .expect("inspect proof path")
+        {
+            // Direct stderr remains visible even when libtest captures successful tests.
+            use std::io::Write;
+            writeln!(std::io::stderr().lock(), "SKIP {check} [{}]: proof absent at {}; no artifact validation performed for this version", self.name, self.proof).unwrap();
+            return false;
+        }
+        self.require_bundle();
+        true
+    }
+
     /// gkr.sol consumes monomial rounds, transcript-identical to the windowed
     /// prover schedule. All other parameters come from the version's config.
     pub fn prover_config(&self) -> ProverConfig {
@@ -90,6 +149,7 @@ impl Version {
     }
 
     pub fn load(&self) -> (Circuit, Proof, CommitmentMode) {
+        self.require_bundle();
         (
             self.circuit(),
             serde_json::from_reader(std::fs::File::open(self.proof).expect("proof"))
@@ -124,4 +184,24 @@ impl Version {
     pub fn data_path(&self, name: &str) -> PathBuf {
         Path::new(self.data_root).join(name)
     }
+}
+
+pub fn calldata_field_metadata(
+    gkr: &verifier_evm::flatten::GkrCalldataFields,
+    whir: &verifier_evm::flatten::WhirCalldataFields,
+) -> serde_json::Value {
+    let field = |field: &verifier_evm::flatten::CalldataField, encoding: &str| {
+        serde_json::json!({
+            "offset": field.offset,
+            "bytes": format!("0x{}", hex::encode(&field.value)),
+            "encoding": encoding,
+        })
+    };
+    serde_json::json!({
+        "gkr": {
+            "final_pc": field(&gkr.final_pc, "u32_le"),
+            "external_pow_nonce": field(&gkr.external_pow_nonce, "u64_be"),
+        },
+        "whir": { "batched_opening": field(&whir.batched_opening, "proth120_be") },
+    })
 }

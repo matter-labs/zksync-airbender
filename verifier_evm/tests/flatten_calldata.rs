@@ -22,14 +22,23 @@ fn write_calldata_into_debug_data() {
             &cfg.whir_schedule.whir_steps_schedule,
             &cfg.whir_schedule.whir_queries_schedule,
         );
-        put(
-            "gkr_full_calldata.hex",
-            &verifier_evm::gkr_calldata(&circuit, &proof, &aux),
+        let (gkr, gkr_fields) =
+            verifier_evm::flatten::gkr_calldata_with_fields(&circuit, &proof, &aux);
+        let (whir, whir_fields) = verifier_evm::flatten::whir_calldata_with_fields(
+            &circuit, &proof, &aux, folds, queries,
         );
-        put(
-            "proth120_whir_calldata_from_proof.hex",
-            &verifier_evm::whir_calldata(&circuit, &proof, &aux, folds, queries),
-        );
+        put("gkr_full_calldata.hex", &gkr);
+        put("proth120_whir_calldata_from_proof.hex", &whir);
+        if let Some(name) = version.mutation_fields_file {
+            let metadata = common::calldata_field_metadata(&gkr_fields, &whir_fields);
+            let path = version.data_path(name);
+            std::fs::write(
+                &path,
+                format!("{}\n", serde_json::to_string_pretty(&metadata).unwrap()),
+            )
+            .unwrap();
+            eprintln!("wrote {}", path.display());
+        }
         put(
             "gkr_step1_preimage.hex",
             &verifier_evm::commit_seed_preimage(&circuit, &proof, &aux),

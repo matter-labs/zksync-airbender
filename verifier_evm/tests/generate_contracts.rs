@@ -4,7 +4,7 @@
 
 mod common;
 
-use common::{Version, VERSIONS};
+use common::Version;
 use field::Proth120;
 
 /// The registry address baked into both verifiers (they mark their committed
@@ -28,6 +28,7 @@ const PRODUCTION_STUBS: [&str; 2] = [
 fn generate(version: &Version, registry_address: &str) -> verifier_evm::GeneratedContracts {
     use prover::gkr::prover_config::pow_bits;
 
+    version.require_bundle();
     let circuit = version.circuit();
     let config = version.prover_config();
     let prover::gkr::prover::CommitmentMode::MergedAndPackedMemoryAndWitness {
@@ -163,7 +164,7 @@ fn regenerate_evm_verifier_stubs() {
 
 #[test]
 fn checked_in_contracts_are_current() {
-    for version in VERSIONS {
+    for version in common::available_versions("contract drift") {
         let test_pair = generate(version, DEFAULT_REGISTRY_ADDRESS);
         let stubs = generate(version, STUB_REGISTRY_ADDRESS);
         for (rel, content) in TEST_PAIR
@@ -185,18 +186,12 @@ fn checked_in_contracts_are_current() {
 
 #[test]
 fn generator_accepts_trace21_and_rejects_mismatched_config() {
-    use prover::definitions::SecurityLevel;
-    use prover::gkr::prover_config::example_configs::l1_wrap_2p21;
-
     // The committed 2p21 layout and b' tuple are usable before a proof bundle
-    // exists. Keep production descriptors tied to complete artifact bundles.
-    let version = &common::L1_WRAP_2P22;
-    let circuit = serde_json::from_str(include_str!(
-        "../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120_2p21.json"
-    ))
-    .unwrap();
-    let mut config = l1_wrap_2p21::packed_prover_config(SecurityLevel::Sec100);
-    config.same_size_sumcheck_schedule = prover::gkr::prover_config::naive_same_size_schedule();
+    // exists. Exercise its descriptor, including binary-derived exit PC, without
+    // exporting verifier artifacts until the matching proof is available.
+    let version = &common::L1_WRAP_2P21;
+    let circuit = version.circuit();
+    let mut config = version.prover_config();
     let generate = |config: &prover::gkr::prover_config::ProverConfig| {
         verifier_evm::generate_verifiers(
             &circuit,
@@ -208,7 +203,7 @@ fn generator_accepts_trace21_and_rejects_mismatched_config() {
             DEFAULT_REGISTRY_ADDRESS,
         )
     };
-    assert!(std::panic::catch_unwind(|| generate(&version.prover_config())).is_err());
+    assert!(std::panic::catch_unwind(|| generate(&common::L1_WRAP_2P22.prover_config())).is_err());
     let out = generate(&config);
     assert_eq!(
         solidity_constant(&out.gkr_sol, "__TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS"),
