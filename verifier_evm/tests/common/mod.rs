@@ -75,7 +75,7 @@ pub const L1_WRAP_2P21: Version = Version {
     // Task 5 will export the real proof. Remove this allowance once it is committed.
     allow_missing_proof: true,
     mutation_fields_file: Some("calldata_fields.json"),
-    wrong_final_pc_contract: Some("gkr/src/GkrVerifierWrongFinalPc.sol"),
+    wrong_final_pc_contract: Some("gkr_negative/src/GkrVerifierWrongFinalPc.sol"),
 };
 pub const VERSIONS: &[Version] = &[L1_WRAP_2P22, L1_WRAP_2P21];
 

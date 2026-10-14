@@ -23,6 +23,10 @@ echo "== generating verifiers + calldata from the circuit artifact + proof =="
 # 2. compile each verifier in its own project (different backends), + the registry
 echo "== compiling GKR (via_ir) / WHIR (via_ir) / Registry =="
 ( cd gkr    && forge build >/dev/null )
+# The wrong-PC verifier is a test control, built outside the deployment project.
+if [ "$AB_EVM_VERSION" = "2p21" ]; then
+  ( cd gkr_negative && forge build >/dev/null )
+fi
 ( cd whir   && forge build >/dev/null )
 ( cd two_tx && forge build >/dev/null )
 

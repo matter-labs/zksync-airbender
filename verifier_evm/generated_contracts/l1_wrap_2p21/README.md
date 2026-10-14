@@ -45,11 +45,13 @@ with semantic field offsets, encodings and original bytes. Mutation tests
 validate those fields before flipping a byte in the opening, external PoW
 nonce or final PC. The byte-flipped PC is a transcript-binding control. A
 separate `test_rejects_wrong_final_pc` installs the generated
-`GkrVerifierWrongFinalPc.sol` variant, whose only difference is its expected-PC
-constant (`final_pc ^ 1`), and submits the unchanged valid calldata. This
+`gkr_negative/src/GkrVerifierWrongFinalPc.sol` variant, whose only difference
+is its expected-PC constant (`final_pc ^ 1`), and submits the unchanged valid calldata. This
 exercises the explicit PC comparison after valid transcript, PoW and sumcheck
 processing. The foreign-proof control submits the unchanged 2p22 calldata to
-each 2p21 verifier.
+each 2p21 verifier. The negative variant has its own test-only Foundry project;
+`run_two_tx.sh` builds it separately. The deployment script does not build or
+read the negative project.
 
 The Rust drift test checks the metadata as well as the serialized calldata.
 Remove the descriptor's `allow_missing_proof` allowance when the proof bundle

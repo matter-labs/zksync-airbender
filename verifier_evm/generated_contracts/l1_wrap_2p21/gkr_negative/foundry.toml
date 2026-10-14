@@ -1,0 +1,12 @@
+# Test-only wrong-final-PC verifier. Never deploy this contract.
+# Generated alongside the valid verifier by:
+# AB_EVM_VERSION=2p21 cargo test -p verifier_evm --test generate_contracts -- --ignored
+# Match the production GKR compiler settings so only the expected PC differs.
+[profile.default]
+solc_version = "0.8.36"
+auto_detect_solc = false
+src = "src"
+out = "out"
+via_ir = true
+optimizer = true
+optimizer_runs = 1
