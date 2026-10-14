@@ -9,6 +9,8 @@ namespace RV
 -- State accessors. Proved by `Eq.trans rfl rfl`, not `rfl`, on purpose: simp then rewrites with explicit proofs
 -- instead of definitional steps, which otherwise made simp hang / the kernel recurse deeply on big symbolic states.
 @[simp] theorem r_zero (s : State) : s.getReg 0 = 0 := Eq.trans rfl rfl
+/-- `x0` in the literal form the step simp set uses. -/
+theorem r_zero5 (s : State) : s.getReg 0#5 = 0#32 := Eq.trans rfl rfl
 @[simp] theorem set_pc (s : State) rd v : (s.setReg rd v).pc = s.pc := Eq.trans rfl rfl
 @[simp] theorem set_mem (s : State) rd v : (s.setReg rd v).mem = s.mem := Eq.trans rfl rfl
 @[simp] theorem next_pc (s : State) : s.nextInstr.pc = s.pc + 4 := Eq.trans rfl rfl
@@ -240,7 +242,7 @@ theorem exec_store (s : State) n rs2 rs1 off (ha : aligned (s.getReg rs1 + off) 
 end RV
 
 namespace RV
-attribute [rv_state] next_pc set_pc store_pc jump_pc set_mem next_mem store_mem jump_mem next_r store_r jump_r
+attribute [rv_state] r_zero5 next_pc set_pc store_pc jump_pc set_mem next_mem store_mem jump_mem next_r store_r jump_r
   ite_true ite_false BitVec.ofNat_eq_ofNat BitVec.add_assoc BitVec.add_zero Bool.false_eq_true
 attribute [rv_side] ROM_END RAM_END aligned writable readable and_not_one_of_aligned Cond.holds bne_iff_ne
   bne_eq_false_iff_eq beq_iff_eq beq_eq_false_iff_ne ne_eq

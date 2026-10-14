@@ -136,6 +136,15 @@ elab "rv_clear_facts" : tactic => withMainContext do
       ids := ids.push d.fvarId
   liftMetaTactic fun g => do return [← g.tryClearMany ids]
 
+open Lean Elab Tactic Meta in
+/-- `rv_name T hT`: in a goal `∃ m s', run m X = some s' ∧ …`, names the current state: `hT : X = T`. -/
+elab "rv_name " T:ident hT:ident : tactic => withMainContext do
+  let tgt ← instantiateMVars (← getMainTarget)
+  let some X := tgt.find? fun e => e.isAppOfArity ``RV.run 2 && !(e.getArg! 1).hasLooseBVars
+    | throwError "rv_name: no `run _ X` in the goal"
+  let Xs ← Term.exprToSyntax (X.getArg! 1)
+  evalTactic (← `(tactic| generalize $hT:ident : $Xs = $T:ident))
+
 open Lean Elab Tactic in
 /-- `nat_cases i hi` with `hi : i < n` (literal `n`): one goal per value `i = 0, …, n-1` (substituted). -/
 elab "nat_cases " i:ident hi:ident : tactic => withMainContext do
