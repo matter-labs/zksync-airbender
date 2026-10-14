@@ -36,7 +36,8 @@ use crate::proth120::programs::GkrProgramsPr;
 use crate::upstream::GKRAddress;
 use crate::GpuGKRStorage;
 
-const FOLDING_STEPS: usize = 22;
+const FOLDING_STEPS: usize =
+    prover::gkr::prover_config::example_configs::l1_wrap_2p21::TRACE_LEN_LOG2;
 const WINDOW_ROUNDS: usize = 3;
 
 #[derive(Debug, PartialEq)]

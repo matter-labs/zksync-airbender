@@ -23,9 +23,8 @@ type L1Proof = GKRProof<Proth120, Proth120, Keccak256MerkleTreeWithCap>;
 type HostTranscript = Keccak256Transcript;
 
 const LOOKUP_CHALLENGES_POW_BITS: u32 = 8;
-const BASE_LOG_DOMAIN: u32 = 26;
+const BASE_LOG_DOMAIN: u32 = 25;
 const BASE_LOG_VALUES_PER_LEAF: u32 = 2;
-const INTERMEDIATE_LOG_VALUES_PER_LEAF: u32 = 4;
 
 #[derive(Deserialize)]
 struct Bundle {
@@ -38,7 +37,7 @@ fn l1_reference_dir() -> PathBuf {
         .map(PathBuf::from)
         .unwrap_or_else(|| {
             Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../prover_pipeline/fixtures/l1_reference")
+                .join("../../prover_pipeline/fixtures/l1_reference_2p21")
         })
 }
 
@@ -190,11 +189,11 @@ fn keccak256_l1_reference_replay() {
     assert_eq!(pack_log2, 4);
     let whir = &proof.whir_proof;
     let schedule = &whir.whir_schedule;
-    assert_eq!(schedule.base_lde_factor, 32);
+    assert_eq!(schedule.base_lde_factor, 64);
     assert_eq!(schedule.cap_size, 8);
-    assert_eq!(schedule.whir_steps_schedule, [2, 4, 4, 4, 4, 4]);
-    assert_eq!(schedule.whir_queries_schedule, [17, 12, 8, 6, 5, 4]);
-    assert_eq!(schedule.whir_pow_schedule, [30, 30, 27, 25, 21, 24]);
+    assert_eq!(schedule.whir_steps_schedule, [2, 4, 4, 4, 3, 4]);
+    assert_eq!(schedule.whir_queries_schedule, [14, 11, 8, 6, 5, 4]);
+    assert_eq!(schedule.whir_pow_schedule, [30, 27, 20, 20, 17, 24]);
     let mut nonces = Vec::new();
 
     let mut words = Vec::new();
@@ -210,7 +209,6 @@ fn keccak256_l1_reference_replay() {
     let mut replay = Replay::commit_initial(&words);
     let lookup_bits = LOOKUP_CHALLENGES_POW_BITS.max(external_challenges_pow_bits);
     assert_eq!(lookup_bits, 20);
-    assert_eq!(proof.lookup_challenges_pow_nonce, 827707);
     let seconds = replay.pow(lookup_bits, proof.lookup_challenges_pow_nonce, "lookup pow");
     nonces.push((lookup_bits, proof.lookup_challenges_pow_nonce, seconds));
     let challenges = replay.draw_fields(9, "external challenges");
@@ -273,17 +271,22 @@ fn keccak256_l1_reference_replay() {
                 .map(|q| q.index)
                 .collect();
             assert_eq!(setup, expected);
-            (BASE_LOG_DOMAIN - BASE_LOG_VALUES_PER_LEAF, 5, expected)
+            (
+                BASE_LOG_DOMAIN - BASE_LOG_VALUES_PER_LEAF,
+                schedule.base_lde_factor.trailing_zeros(),
+                expected,
+            )
         } else {
-            let oracle = round as u32 - 1;
             let expected = whir.intermediate_whir_oracles[round - 1]
                 .queries
                 .iter()
                 .map(|q| q.index)
                 .collect();
             (
-                24 - 4 * oracle - INTERMEDIATE_LOG_VALUES_PER_LEAF,
-                7 + 4 * oracle,
+                BASE_LOG_DOMAIN
+                    - schedule.whir_steps_schedule[..round].iter().sum::<usize>() as u32
+                    - schedule.whir_steps_schedule[round] as u32,
+                schedule.whir_steps_lde_factors[round - 1].trailing_zeros(),
                 expected,
             )
         };
@@ -303,7 +306,7 @@ fn keccak256_l1_reference_replay() {
         }
     }
     assert!(polys.next().is_none());
-    assert_eq!(checked_queries, 52);
+    assert_eq!(checked_queries, 48);
     assert_eq!(nonces.len(), 7);
     for (bits, nonce, seconds) in &nonces {
         println!(

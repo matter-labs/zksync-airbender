@@ -220,7 +220,8 @@ fn babybear_backward_programs_match_committed_hashes() {
 fn proth120_unified_backward_programs_compile() {
     let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
     let layout: GKRCircuitArtifact<Proth120> = serde_json::from_slice(
-        &std::fs::read(directory.join("unified_reduced_machine_layout_gkr_proth120.json")).unwrap(),
+        &std::fs::read(directory.join("unified_reduced_machine_layout_gkr_proth120_2p21.json"))
+            .unwrap(),
     )
     .unwrap();
     let dag = lower_dag(&layout).unwrap();
@@ -309,5 +310,5 @@ fn proth120_unified_backward_programs_compile() {
             })
             .collect();
     }
-    assert_eq!(dr_layers, 18);
+    assert_eq!(dr_layers, 17);
 }
