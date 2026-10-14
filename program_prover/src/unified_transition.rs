@@ -394,6 +394,7 @@ pub fn prove_unified_transition_with_replayer_timed<
                 REDUCED_MACHINE_CIRCUIT_FAMILY_IDX as u32,
                 trace_len as u32,
                 setup_commitment.get_cap(),
+                prover_config.cap_size,
             ),
         );
 
@@ -812,6 +813,7 @@ pub fn prove_unified_transition_with_replayer_precommitted_timed<
                 REDUCED_MACHINE_CIRCUIT_FAMILY_IDX as u32,
                 trace_len as u32,
                 setup_commitment.get_cap(),
+                prover_config.cap_size,
             ),
         );
 

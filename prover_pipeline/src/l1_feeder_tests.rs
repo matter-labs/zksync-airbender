@@ -74,20 +74,25 @@ fn feeder_registration_unions_profiles_for_the_same_binary() {
             Some(100),
             &FsvPrograms::load(ProofTarget::L1Feeder, blake),
         );
-        assert_eq!(
-            registrations.len(),
-            if mode == BlakeMode::Compression { 8 } else { 7 }
-        );
+        // The special-opcodes unified binary is registered twice when it is
+        // also the final layer: (Unified, Standard) and (Unified22, L1Feeder)
+        // are distinct handles with distinct precomputations.
+        assert_eq!(registrations.len(), 8);
         for (i, fsv) in L1_FEEDER_PROGRAMS.into_iter().enumerate() {
             let (bin, text) = load_fsv_program(fsv_dir(), fsv, BlakeMode::BlakeSpecialOpcodes);
-            let key = handle_key(ExecutionKind::Unified, MachineType::Reduced, &bin, &text);
+            let key = handle_key(ExecutionKind::Unified22, MachineType::Reduced, &bin, &text);
             let profiles = &registrations[&key].profiles;
-            let expected = if i == 0 && mode == BlakeMode::BlakeSpecialOpcodes {
-                BTreeSet::from([ProofProfile::Standard, ProofProfile::L1Feeder])
+            assert_eq!(profiles, &BTreeSet::from([ProofProfile::L1Feeder]));
+            let standard_key =
+                handle_key(ExecutionKind::Unified, MachineType::Reduced, &bin, &text);
+            if i == 0 && mode == BlakeMode::BlakeSpecialOpcodes {
+                assert_eq!(
+                    registrations[&standard_key].profiles,
+                    BTreeSet::from([ProofProfile::Standard])
+                );
             } else {
-                BTreeSet::from([ProofProfile::L1Feeder])
-            };
-            assert_eq!(profiles, &expected);
+                assert!(!registrations.contains_key(&standard_key));
+            }
         }
         let standard = pipeline_registrations(
             &program(),
@@ -222,13 +227,13 @@ fn registration_matches_remaining_stages_and_reuses_batch_setups() {
             (
                 FsvProgram::UnifiedRecursionLayer,
                 BlakeMode::BlakeSpecialOpcodes,
-                ExecutionKind::Unified,
+                ExecutionKind::Unified22,
                 ProofProfile::L1Feeder,
             ),
             (
                 FsvProgram::UnifiedRecursionLayerL1Feeder,
                 BlakeMode::BlakeSpecialOpcodes,
-                ExecutionKind::Unified,
+                ExecutionKind::Unified22,
                 ProofProfile::L1Feeder,
             ),
             (

@@ -45,7 +45,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                     .map(|(i, v)| (*i, v.clone()))
                     .collect_vec(),
             ),
-            ExecutionKind::Unified => {
+            ExecutionKind::Unified | ExecutionKind::Unified22 => {
                 // Inits and teardowns are inline in the unified circuit, so the
                 // dedicated i&t slot must be empty (mirrors the CPU reference in
                 // prover_examples::unified).
@@ -53,7 +53,12 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                     inits_and_teardowns_memory_caps.is_empty(),
                     "unified execution must not produce separate inits-and-teardowns memory caps"
                 );
-                let unified_family_idx = UnrolledCircuitType::Unified.get_family_idx();
+                let CircuitType::Unrolled(unified_circuit_type) =
+                    execution_kind.unified_circuit().unwrap()
+                else {
+                    unreachable!()
+                };
+                let unified_family_idx = unified_circuit_type.get_family_idx();
                 assert!(
                     circuit_families_memory_caps
                         .keys()
@@ -68,7 +73,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 // The seed must absorb the same per-instance windows the proofs
                 // bind.
                 let compiled_circuit = self.binary_holders[&binary_key].precomputations
-                    [&UnrolledCircuitType::Unified]
+                    [&unified_circuit_type]
                     .compiled_circuit()
                     .as_ref();
                 let num_teardown_sets = compiled_circuit.memory_layout.teardown_sets.len();
@@ -106,7 +111,8 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         let mut proof_caps: BTreeMap<(CircuitType, usize), Vec<MerkleTreeCapVarLength>> =
             BTreeMap::new();
         for (family_idx, per_seq) in circuit_families_memory_caps.iter() {
-            let circuit_type = unrolled_circuit_type_from_family_idx(*family_idx, machine_type);
+            let circuit_type =
+                unrolled_circuit_type_from_family_idx(*family_idx, machine_type, execution_kind);
             for (sequence_id, caps) in per_seq.iter().enumerate() {
                 proof_caps.insert(
                     (CircuitType::Unrolled(circuit_type), sequence_id),
@@ -346,6 +352,7 @@ fn fs_transform_unified(
 fn unrolled_circuit_type_from_family_idx(
     family_idx: u8,
     machine_type: MachineType,
+    execution_kind: ExecutionKind,
 ) -> UnrolledCircuitType {
     for ct in UnrolledMemoryCircuitType::get_circuit_types_for_machine_type(machine_type) {
         if ct.get_family_idx() == family_idx {
@@ -358,9 +365,15 @@ fn unrolled_circuit_type_from_family_idx(
         }
     }
     if family_idx == UnrolledCircuitType::Unified.get_family_idx() {
-        return UnrolledCircuitType::Unified;
+        // The 2^23 and 2^22 unified circuits share the family index; the
+        // execution kind selects the geometry.
+        if let Some(CircuitType::Unrolled(unified)) = execution_kind.unified_circuit() {
+            return unified;
+        }
     }
-    panic!("unknown unrolled family idx {family_idx} for machine type {machine_type:?}")
+    panic!(
+        "unknown unrolled family idx {family_idx} for machine type {machine_type:?} and {execution_kind:?}"
+    )
 }
 
 #[cfg(test)]
@@ -369,10 +382,26 @@ mod tests {
 
     #[test]
     fn cpu_reduced_machine_idx_maps_to_unified() {
-        let ct = unrolled_circuit_type_from_family_idx(
+        for (kind, expected) in [
+            (ExecutionKind::Unified, UnrolledCircuitType::Unified),
+            (ExecutionKind::Unified22, UnrolledCircuitType::Unified22),
+        ] {
+            let ct = unrolled_circuit_type_from_family_idx(
+                UnrolledCircuitType::Unified.get_family_idx(),
+                MachineType::Reduced,
+                kind,
+            );
+            assert_eq!(ct, expected);
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "unknown unrolled family idx")]
+    fn cpu_reduced_machine_idx_needs_a_unified_kind() {
+        unrolled_circuit_type_from_family_idx(
             UnrolledCircuitType::Unified.get_family_idx(),
             MachineType::Reduced,
+            ExecutionKind::Unrolled,
         );
-        assert_eq!(ct, UnrolledCircuitType::Unified);
     }
 }

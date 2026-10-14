@@ -738,10 +738,14 @@ fn pipeline_registrations(
         programs.extend([
             (
                 &fsv.feeder_first,
-                ExecutionKind::Unified,
+                ExecutionKind::Unified22,
                 ProofProfile::L1Feeder,
             ),
-            (&fsv.feeder, ExecutionKind::Unified, ProofProfile::L1Feeder),
+            (
+                &fsv.feeder,
+                ExecutionKind::Unified22,
+                ProofProfile::L1Feeder,
+            ),
         ]);
     }
     if start < ProofTarget::L1 && target == ProofTarget::L1 {
@@ -1161,7 +1165,7 @@ impl ProgramProver {
                                 (ExecutionKind::Unified, ProofProfile::Standard)
                             }
                             SetupMachine::UnifiedL1Feeder => {
-                                (ExecutionKind::Unified, ProofProfile::L1Feeder)
+                                (ExecutionKind::Unified22, ProofProfile::L1Feeder)
                             }
                             _ => (ExecutionKind::Unrolled, ProofProfile::Standard),
                         };

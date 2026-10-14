@@ -176,26 +176,35 @@ fn one_setup_proves_standard_and_l1_feeder() {
     let mut prover =
         CpuExecutionProver::with_configuration(CpuExecutionProverConfiguration::default());
     let (binary, text) = workload("basic_fibonacci", "app");
-    let handle = prover.add_binary(
+    let standard_handle = prover.add_binary(
         ExecutionKind::Unified,
+        MachineType::Reduced,
+        binary.clone(),
+        text.clone(),
+        None,
+        &[ProofProfile::Standard],
+    );
+    let feeder_handle = prover.add_binary(
+        ExecutionKind::Unified22,
         MachineType::Reduced,
         binary,
         text,
         None,
-        &[ProofProfile::Standard, ProofProfile::L1Feeder],
+        &[ProofProfile::L1Feeder],
     );
-    let prove_with = |commitment_mode, profile| {
+    let prove_with = |handle: &execution_prover::BinaryHandle, commitment_mode, profile| {
         let result = prover.commit_memory_and_prove(
             1,
-            &handle,
+            handle,
             QuasiUARTSource::new_with_reads(BASIC_FIBONACCI_INPUTS.to_vec()),
             commitment_mode,
             profile,
         );
-        program_prover::assemble_program_proof(&prover.program_artifacts(&handle, profile), result)
+        program_prover::assemble_program_proof(&prover.program_artifacts(handle, profile), result)
     };
 
     let (standard_proof, standard_setups) = prove_with(
+        &standard_handle,
         CommitmentMode::SeparateMemoryAndWitness,
         ProofProfile::Standard,
     );
@@ -205,6 +214,7 @@ fn one_setup_proves_standard_and_l1_feeder() {
     );
 
     let (feeder_proof, feeder_setups) = prove_with(
+        &feeder_handle,
         CommitmentMode::MergedMemoryAndWitness,
         ProofProfile::L1Feeder,
     );
