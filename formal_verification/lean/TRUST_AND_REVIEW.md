@@ -282,7 +282,15 @@ explicit modeled setup/tables and extended-round masks. This does not execute
 unsupported round controls or establish a full CSR ABI. The G-prefix regression
 now observes actual x12 = 0→1→0 at the initial, prefix-finish and final states in
 one history, and live COPY plus both invalid bigint controls instantiate the new
-result. Exclusion/inertness and whole caller retirement remain open.
+result. Every native machine row now also has actual cycle states in this
+same history: strict memory order and alignment derive its positive clock. The
+new caller-cycle entry reuses this native bound for current fetch, matched worker
+observations and PC retirement, without a separately supplied positive initial
+clock. The earlier entry remains available. An empty-machine logical fixture has
+public endpoint clock zero and an unissued G prefix that still changes x12 from
+zero to one; native boot remains at four. Both invalid bigint controls and LW/SW
+caller fixtures inhabit the new entry. Full CSR ABI, exclusion/inertness and whole
+caller retirement remain open.
 
 [Control preparation](Airbender/Review/Helpers/UnifiedReduced/ControlPreparation.lean)
 uses a public ordinary ADDI-from-x0/LUI registry and a worker-free final preparation

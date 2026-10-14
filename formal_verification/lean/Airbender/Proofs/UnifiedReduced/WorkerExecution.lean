@@ -141,6 +141,30 @@ theorem all_worker_execution [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     exact ⟨current, _, finish, by simpa only [List.append_nil] using split,
       grouped, call, newer, ports⟩
 
+
+/-- Native memory order supplies positive row clocks, so cycle grouping needs no
+    separately supplied positive initial clock. Unissued effects remain earlier. -/
+theorem native_cycle_execution [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before after : State}
+    {ca : List (BitVec 32)} {cells : List Cell}
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    (image : initialImage before cells = some data.machine.initialMemory)
+    {events : List MemoryAccess} (permutation : events.Perm (data.mixedSteps.map transferEvent))
+    (ordered : events.Pairwise (fun a b => b.1 ≤ a.1)) (history : SailHistory cells events before after) :
+    ∀ row ∈ data.machine.rows, CycleExecution data cells events before after row := by
+  have requests := request_binding hp inverse accepted.toRequestChecks publicProgram
+  intro row member
+  have floor := machine_native_clock_positive hp inverse accepted publicProgram image member
+  have clocks := machine_clock_facts hp inverse accepted.toRequestChecks publicProgram member
+  have bounds : Delegation.Caller.startClock row ≤ Delegation.Caller.finishClock row := by omega
+  obtain ⟨start, finish, split, past, current, future⟩ := history_window ordered history bounds
+  exact ⟨events.filter (fun event => decide (event.1 ≤ Delegation.Caller.startClock row)),
+    events.filter (fun event => decide (Delegation.Caller.startClock row < event.1 ∧ event.1 ≤ Delegation.Caller.finishClock row)),
+    events.filter (fun event => decide (Delegation.Caller.finishClock row < event.1)), start, finish,
+    split, cycle_window_permutation hp inverse accepted.toRequestChecks publicProgram requests permutation member (by omega),
+    past, current, future⟩
+
 /-- The existing initialized realization supplies the single history; grouping
     adds every worker's actual states and isolates its possible unissued prefix. -/
 theorem mixed_worker_execution_effects
@@ -154,6 +178,8 @@ theorem mixed_worker_execution_effects
     inputs.initialization inputs.distinct inputs.aligned permutation order history
   exact ⟨events, after, permutation, order, history,
     fun worker member => (workers worker member).1,
-    fun worker member => (workers worker member).2, terminal⟩
+    fun worker member => (workers worker member).2,
+    native_cycle_execution (by decide) (by decide) accepted inputs.publicProgram inputs.initialization
+      permutation order history, terminal⟩
 
 end Airbender.UnifiedReduced.Caller.Proofs

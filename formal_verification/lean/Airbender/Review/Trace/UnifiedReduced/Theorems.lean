@@ -365,6 +365,20 @@ theorem Caller.caller_cycles_soundness
     Caller.CallerCycleEffects data program initial cells :=
   Caller.Proofs.caller_cycles accepted inputs code started
 
+
+/-- Strict native memory order and alignment derive positive caller clocks.
+    Actual fetch, matched worker effects and PC retirement therefore share one
+    history without an extra positive initial-clock premise. Surplus zero-clock
+    workers remain in its prefix; full custom-CSR ABI stays separate. -/
+theorem Caller.native_caller_cycles_soundness
+    {data : Caller.RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
+    {initial : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.MixedMemoryInputs data program initial ca oa cells)
+    (code : Caller.CodeProfile data program cells) :
+    Caller.CallerCycleEffects data program initial cells :=
+  Caller.Proofs.native_caller_cycles accepted inputs code
+
 /-- The prepared extended-round scope derives masks before constructing the
     same actual caller cycles; no mask or intermediate state is supplied. -/
 theorem Caller.prepared_round_cycles_soundness
@@ -626,6 +640,7 @@ theorem Caller.worker_invocation_uniqueness_soundness [Fact p.Prime]
 /-- All native workers have actual pre/post-states in one initialized execution.
     A zero-clock worker is its first group and observes the original public seed;
     later machine/worker effects and shared terminal cells remain connected.
+    Every machine cycle is derived without an extra positive initial clock.
     Existing modeled-table and extended-round-mask inputs stay explicit. -/
 theorem Caller.all_worker_execution_soundness
     {data : Caller.RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
