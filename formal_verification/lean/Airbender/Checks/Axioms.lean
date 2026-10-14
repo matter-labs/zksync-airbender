@@ -2329,3 +2329,14 @@ import Clean.Specs.Keccak256
 #print axioms Tests.Blake2Round.zero_control_has_no_exclusive_mask
 #print axioms Tests.Blake2Round.multibit_control_has_no_exclusive_mask
 #print axioms Tests.ControlPreparation.unissued_round_zero_seed_has_no_mask
+
+#print axioms Airbender.UnifiedReduced.Caller.WorkerInvocationUniqueness
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.worker_invocation_uniqueness
+#print axioms Airbender.UnifiedReduced.Caller.worker_invocation_uniqueness_soundness
+#print axioms Tests.DelegationZeroInvocation.unified_worker_invocations_include_zero
+#print axioms Tests.DelegationZeroInvocation.prepared_worker_invocations_include_zero
+#print axioms Tests.DelegationZeroInvocation.unissued_worker_bound_is_sharp
+#print axioms Tests.DelegationZeroInvocation.duplicate_unissued_request_checks
+#print axioms Tests.DelegationZeroInvocation.duplicate_unissued_workers_rejected
+#print axioms Tests.UnifiedDelegation.copy_worker_invocation_uniqueness
+#print axioms Tests.UnifiedDelegation.invalid_bigint_worker_invocation_uniqueness

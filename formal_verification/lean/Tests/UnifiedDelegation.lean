@@ -2126,4 +2126,16 @@ theorem wrapped_round_csr_recurrence_requires_both_occurrences :
     dsimp only at range
     omega
 
+theorem copy_worker_invocation_uniqueness :
+    UnifiedReduced.Caller.WorkerInvocationUniqueness (mixedData 0) :=
+  UnifiedReduced.Caller.worker_invocation_uniqueness_soundness (by decide +kernel) (by decide +kernel)
+    mixedAccepted mixedInputs.publicProgram mixedInputs.initialization mixedInputs.distinct
+
+/-- Clock uniqueness does not impose bigint opcode or high-control validity. -/
+theorem invalid_bigint_worker_invocation_uniqueness (highControl : Bool) :
+    UnifiedReduced.Caller.WorkerInvocationUniqueness (abiData highControl) :=
+  UnifiedReduced.Caller.worker_invocation_uniqueness_soundness (by decide +kernel) (by decide +kernel)
+    (abiAccepted highControl) (abiInputs highControl).publicProgram (abiInputs highControl).initialization
+    (abiInputs highControl).distinct
+
 end Tests.UnifiedDelegation

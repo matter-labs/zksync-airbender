@@ -134,4 +134,89 @@ theorem unissued_round_initial_control [Fact p.Prime] (hp : 2 * timestampBase + 
     intro round
     simpa only [high] using (Blake2Round.Proofs.exclusive_mask_iff (by dsimp [timestampBase] at hp; omega) core round)
 
+private def pointerPort (worker : Delegation.Row p) : MemoryPort :=
+  match worker.family with
+  | .bigint => Bigint.importedConstraintsMemoryPorts[0]
+  | .blakeG => Blake2G.importedConstraintsMemoryPorts[0]
+  | .blakeRound => Blake2Round.importedConstraintsMemoryPorts[0]
+  | .keccak => Keccak.importedConstraintsMemoryPorts[0]
+
+private theorem pointer_port_member (worker : Delegation.Row p) : pointerPort worker ∈ worker.ports := by
+  cases worker with
+  | mk kind w =>
+    cases kind <;> simp only [pointerPort, Delegation.Row.ports]
+    all_goals exact Array.getElem_mem (by decide)
+
+private theorem pointer_port_address (worker : Delegation.Row p) :
+    (pointerPort worker).address = .constantRegister 10 := by
+  cases worker with
+  | mk kind w => cases kind <;> rfl
+
+private def pointerStep (worker : Delegation.Row p) : MemoryToken p × MemoryToken p :=
+  (readToken worker.assignment (pointerPort worker), worker.writeToken (pointerPort worker))
+
+private theorem pointer_step_member (worker : Delegation.Row p) : pointerStep worker ∈ worker.memorySteps :=
+  List.mem_map.mpr ⟨pointerPort worker, by simpa using pointer_port_member worker, rfl⟩
+
+private theorem pointer_steps_sublist (workers : List (Delegation.Row p)) :
+    (workers.map pointerStep).Sublist (workers.flatMap Delegation.Row.memorySteps) := by
+  induction workers with
+  | nil => exact List.Sublist.refl _
+  | cons worker rest ih =>
+    exact (List.singleton_sublist.mpr (pointer_step_member worker)).append ih
+
+/-- Every family transfers x10 at its invocation plus two. Initialized memory
+    uniqueness therefore distinguishes all worker clocks, including unissued
+    clocks, without assuming any operation mask or valid control. -/
+theorem worker_invocation_uniqueness [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {ca : List (BitVec 32)} {cells : List Cell}
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    (image : initialImage before cells = some data.machine.initialMemory)
+    (distinct : (cells.map Cell.addressCode).Nodup) : WorkerInvocationUniqueness data := by
+  have requests := request_binding hp inverse accepted.toRequestChecks publicProgram
+  have facts := mixed_memory_facts hp inverse accepted publicProgram image requests
+  have initialized : Transfer.Inputs (mixedData data) before cells := ⟨image, distinct⟩
+  have rawUnique := Transfer.raw_address_clocks_distinct facts initialized.toBoundaryInputs
+  have eventsSub : (data.mixedSteps.map transferEvent).Sublist (Transfer.rawEvents (mixedData data)) :=
+    List.sublist_append_right _ _
+  have keys := rawUnique.sublist (eventsSub.map fun event => (event.1, event.2.1))
+  have stepsSub : (data.workers.rows.map pointerStep).Sublist data.mixedSteps :=
+    (pointer_steps_sublist data.workers.rows).trans (List.sublist_append_right _ _)
+  have selected := keys.sublist ((stepsSub.map transferEvent).map fun event => (event.1, event.2.1))
+  have constant : ((data.workers.rows.map pointerStep).map transferEvent).map (fun event => (event.1, event.2.1)) =
+      (data.workers.rows.map workerClock).map (fun clock => (clock, (Cell.register 10).addressCode)) := by
+    simp only [List.map_map, Function.comp_def]
+    apply List.map_congr_left
+    intro worker member
+    have time := worker_event_clock (by omega) requests member
+      (List.mem_map.mpr ⟨pointerStep worker, pointer_step_member worker, rfl⟩)
+    apply Prod.ext
+    · exact time
+    · change (pointerPort worker).address.code worker.assignment = (Cell.register 10).addressCode
+      rw [pointer_port_address]
+      rfl
+  rw [constant] at selected
+  have workers := selected.of_map (fun clock => (clock, (Cell.register 10).addressCode))
+  have shifted : ((data.workers.rows.map fun worker =>
+      (timeOfPair (Delegation.Requests.fulfillment worker).time).value).map (fun clock => clock + 3)).Nodup := by
+    rw [List.map_map]
+    change (data.workers.rows.map workerClock).Nodup
+    exact workers
+  have clocks := shifted.of_map (fun clock => clock + 3)
+  have raw : (data.workers.rows.map fun worker => (Delegation.Requests.fulfillment worker).time).Nodup :=
+    List.Nodup.of_map (fun time => (timeOfPair time).value) (by
+      simpa only [List.map_map, Function.comp_def] using clocks)
+  let unissued := data.workers.rows.filter fun worker => decide ((Delegation.Requests.fulfillment worker).time = (0, 0))
+  have narrowed : (unissued.map fun worker => (Delegation.Requests.fulfillment worker).time).Nodup :=
+    raw.sublist (List.filter_sublist.map _)
+  have zeros : (unissued.map fun worker => (Delegation.Requests.fulfillment worker).time) =
+      List.replicate unissued.length (0, 0) := by
+    apply List.map_eq_replicate_iff.mpr
+    intro worker member
+    exact of_decide_eq_true (List.mem_filter.mp member).2
+  rw [zeros] at narrowed
+  exact ⟨clocks, raw, List.nodup_replicate.mp narrowed⟩
+
 end Airbender.UnifiedReduced.Caller.Proofs
