@@ -96,8 +96,9 @@ PC/clock addresses, including comparison wraparound; modeled setup and
 `4194304 ≤ p` remain explicit for this entry. An SLTIU at `0xfffffffc` followed by
 ADDI at zero derives actual x12 = 65537→1→0 in the same initialized history,
 retaining clocks six/ten and rejecting a fabricated read or wrong literal.
-Jumps and branches remain outside both profiles; public caller-region coverage
-still uses the linear profile. State matching identifies the final ordinary row and its
+Jumps and branches remain outside both profiles. Selected public caller/controller
+regions now also use modular addresses; global public round-CSR coverage remains
+linear. State matching identifies the final ordinary row and its
 accepted write, retaining its raw timestamp. Only the final preparation cycle
 must be worker-free; earlier effects remain in the actual prefix. The original
 extended-BLAKE first-span entry retains its separate empty prefix. No desired
@@ -194,9 +195,16 @@ ABI and whole mixed execution remain separate.
    boundary in this profile. Comparison preparation now also derives modular
    RV32 addresses through PC wraparound, with actual SLTIU→ADDI states
    65537→1→0 and retained clocks six/ten. Continue the unissued-round boundary
-   binding, modular public caller-region coverage, jumps/branches and nonliteral
+   binding, modular global round-CSR coverage, jumps/branches and nonliteral
    preparation, then whole caller retirement; prefix retirement
    remains separate.
+   Modular public caller regions now derive selected worker family/count/request
+   slots through the aligned comparison profile. Modular controller regions and
+   at most forty ticks derive local shape; complete prepared reference lists
+   reuse the existing raw-mask/continuous-history composition. Public preparation,
+   duration/cuts and global round-worker coverage remain explicit. Real comparison
+   wrap excludes the ordinary reset at zero, COPY checks nonempty caller binding,
+   and both bigint-control gaps plus the unissued G-prefix effect remain admitted.
    COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed
    retained for the second window. Extended BLAKE and Keccak completion controls
    do not restart their protocols; checked regressions forbid treating their

@@ -606,6 +606,23 @@ theorem program_round_region_retains_empty_prepared_cut :
     (accepted 1) (inputs 1).publicProgram (inputs 1).ordinaryProgram sequential_round_preparation
     program_round_region_scope
 
+theorem wrapped_program_round_region_retains_empty_prepared_cut :
+    UnifiedReduced.Caller.RoundRegionInputs (data 1) [entry 1] ⟨0, 8, 8⟩ := by
+  have registry : UnifiedReduced.Caller.WrappedSequentialProgram [entry 1] := by
+    refine ⟨fun current member => .sequential (sequential_round_preparation current member), ?_⟩
+    intro current member
+    have same : current = entry 1 := List.mem_singleton.mp member
+    subst current
+    decide +kernel
+  have scope : UnifiedReduced.Caller.WrappedProgramRoundRegionInputs (data 1) [entry 1] ⟨0, 8, 8⟩ := by
+    refine ⟨⟨?_, ?_⟩, preparation 1, by decide, by decide, by decide +kernel⟩
+    · intro current member clock lower upper
+      dsimp only at lower upper
+      omega
+    · intro current member; cases member
+  exact UnifiedReduced.Caller.wrapped_program_round_region_soundness (by decide +kernel) (by decide +kernel)
+    (inputs 1).setup (accepted 1) (inputs 1).publicProgram (inputs 1).ordinaryProgram registry scope
+
 private theorem round_region_scope :
     UnifiedReduced.Caller.RoundRegionInputs (data 1) [entry 1] ⟨0, 8, 8⟩ :=
   program_round_region_retains_empty_prepared_cut

@@ -84,6 +84,16 @@ structure ProgramRoundRegionInputs [Fact p.Prime] (data : RequestTrace p)
   /-- The last cut lies within the native path. -/
   beforeTerminal : region.upper ≤ (timeOfPair data.machine.terminal.timestamp).value
 
+/-- Modular public code and clock extent for one prepared round controller.
+    Complete round-worker coverage is still supplied separately. -/
+structure WrappedProgramRoundRegionInputs [Fact p.Prime] (data : RequestTrace p)
+    (program : List UnifiedReduced.ProgramEntry) (region : RoundRegion) : Prop where
+  code : WrappedProgramCallerRegion data program .blakeRound region.lower region.upper
+  preparation : ControlPreparation data program region.lower 12 (hashPreparation (.blakeRound region.flags))
+  extent : region.lower ≤ region.upper ∧ region.upper ≤ region.lower + 4 * 10
+  aligned : region.lower % 4 = 0 ∧ region.upper % 4 = 0
+  beforeTerminal : region.upper ≤ (timeOfPair data.machine.terminal.timestamp).value
+
 /-- Public decoded extended-round CSR addresses lie in prepared controller regions.
     This constrains code entries rather than actual machine or worker rows. -/
 def ProgramRoundCallerCoverage [Fact p.Prime] (data : RequestTrace p) (regions : List RoundRegion) : Prop :=
@@ -170,6 +180,25 @@ structure ProgramProtocolWindowInputs [Fact p.Prime] (data : RequestTrace p)
   /-- Public cuts cover the existing reference's number of four-tick calls. -/
   duration : window.upper = window.lower + 4 * window.span.callCount
   /-- The selected final cut stays in the native path. -/
+  beforeTerminal : window.upper ≤ (timeOfPair data.machine.terminal.timestamp).value
+
+/-- Public modular regions derive local controller shape. The global round-worker
+    coverage boundary is unchanged, including its zero-clock exception. -/
+structure WrappedProgramPreparedProtocolInputs [Fact p.Prime] (data : RequestTrace p) (before : State)
+    (ca oa : List (BitVec 32)) (cells : List Cell) (program : List UnifiedReduced.ProgramEntry)
+    (regions : List RoundRegion) : Prop extends ProtocolContextInputs data before ca oa cells program where
+  registry : WrappedSequentialProgram program
+  scopes : ∀ region ∈ regions, WrappedProgramRoundRegionInputs data program region
+  coverage : ∀ row ∈ data.workers.rows, row.family = .blakeRound →
+    ∃ region ∈ regions, row ∈ data.workers.windowRows region.lower region.upper
+
+/-- A complete selected span specified by public modular addresses, preparation
+    and reference duration, with no selected worker family or count premise. -/
+structure WrappedProgramProtocolWindowInputs [Fact p.Prime] (data : RequestTrace p)
+    (program : List UnifiedReduced.ProgramEntry) (window : HashWindow) : Prop where
+  region : WrappedProgramCallerRegion data program window.span.family window.lower window.upper
+  preparation : ControlPreparation data program window.lower window.span.controlRegister (hashPreparation window.span)
+  duration : window.upper = window.lower + 4 * window.span.callCount
   beforeTerminal : window.upper ≤ (timeOfPair data.machine.terminal.timestamp).value
 
 end Airbender.UnifiedReduced.Caller
