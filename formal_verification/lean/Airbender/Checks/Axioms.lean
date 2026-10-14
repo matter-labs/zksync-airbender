@@ -2364,3 +2364,23 @@ import Clean.Specs.Keccak256
 #print axioms Tests.DelegationZeroInvocation.prepared_native_cycle_states
 #print axioms Tests.UnifiedDelegation.invalid_bigint_native_caller_cycles
 #print axioms Tests.UnifiedDelegation.memory_native_caller_cycles
+
+#print axioms Airbender.UnifiedReduced.Caller.pcRelativeControl
+#print axioms Airbender.UnifiedReduced.Caller.PCRelativePreparation
+#print axioms Airbender.UnifiedReduced.Caller.PCRelativePreparedControl
+#print axioms Airbender.UnifiedReduced.Caller.PCRelativePreparedBoundaryExecution
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.preparation_cycle_row
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.prefix_write_before_cut
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.auipc_fields
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.auipc_result
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.pc_relative_preparation_entry
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.auipc_row_output
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.pc_relative_preparation_token
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.pc_relative_preparation_at_boundary
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.pc_relative_control_preparation
+#print axioms Airbender.UnifiedReduced.Caller.pc_relative_control_preparation_soundness
+#print axioms Tests.ControlPreparation.auipc_preparation_execution
+#print axioms Tests.ControlPreparation.auipc_preparation_uses_public_pc
+#print axioms Tests.ControlPreparation.auipc_prepared_states
+#print axioms Tests.ControlPreparation.auipc_wrong_immediate_rejected
+#print axioms Tests.ControlPreparation.auipc_fabricated_read_rejected

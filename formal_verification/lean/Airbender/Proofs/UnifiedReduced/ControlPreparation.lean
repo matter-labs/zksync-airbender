@@ -57,17 +57,19 @@ theorem literal_operands_result [Fact p.Prime] (hp : 196608 < p)
     (UnifiedReduced.Proofs.destination_bounds h) (Nat.le_trans carry (by decide)) (Nat.le_trans overflow (by decide))
     (by simpa only [Nat.cast_zero] using loEq) (by simpa only [Nat.cast_zero] using hiEq)
 
-theorem preparation_row [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem preparation_cycle_row [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1) {data : RequestTrace p} {before : State}
-    {addresses : List (BitVec 32)} {program : List UnifiedReduced.ProgramEntry} {cut : Nat}
-    {register : BitVec 5} {literal : ControlLiteral}
+    {addresses : List (BitVec 32)} {cut : Nat}
     (accepted : RequestChecks data) (inputs : RequestInputs data before addresses)
-    (scope : ControlPreparation data program cut register literal) (aligned : cut % 4 = 0) :
+    (prefixScope : data.workers.windowRows (cut - 4) cut = [])
+    (afterInitial : (timeOfPair data.machine.initial.timestamp).value + 4 ≤ cut)
+    (beforeTerminal : cut ≤ (timeOfPair data.machine.terminal.timestamp).value)
+    (aligned : cut % 4 = 0) :
     ∃ row ∈ data.machine.rows, Delegation.Caller.startClock row + 4 = cut ∧ row ∉ data.callers := by
-  have floor := scope.afterInitial
+  have floor := afterInitial
   have lowerAligned : (cut - 4) % 4 = 0 := by omega
   have count := machine_window_count hp inverse accepted inputs lowerAligned aligned (by omega)
-    (by omega : (timeOfPair data.machine.initial.timestamp).value ≤ cut - 4) scope.beforeTerminal
+    (by omega : (timeOfPair data.machine.initial.timestamp).value ≤ cut - 4) beforeTerminal
   have one : (data.windowMachineRows (cut - 4) cut).length = 1 := by rw [count]; omega
   have nonempty : data.windowMachineRows (cut - 4) cut ≠ [] := by intro empty; rw [empty] at one; simp at one
   obtain ⟨row, member⟩ := List.exists_mem_of_ne_nil _ nonempty
@@ -85,15 +87,23 @@ theorem preparation_row [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
       Delegation.Caller.startClock row + 1 := matched.2.2.invocation
   have prior : worker ∈ data.workers.windowRows (cut - 4) cut :=
     List.mem_filter.mpr ⟨matched.1, decide_eq_true (by omega)⟩
-  rw [scope.prefixScope] at prior
+  rw [prefixScope] at prior
   cases prior
 
-theorem prefix_write_before_preparation_cut [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem preparation_row [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1) {data : RequestTrace p} {before : State}
     {addresses : List (BitVec 32)} {program : List UnifiedReduced.ProgramEntry} {cut : Nat}
     {register : BitVec 5} {literal : ControlLiteral}
     (accepted : RequestChecks data) (inputs : RequestInputs data before addresses)
     (scope : ControlPreparation data program cut register literal) (aligned : cut % 4 = 0) :
+    ∃ row ∈ data.machine.rows, Delegation.Caller.startClock row + 4 = cut ∧ row ∉ data.callers :=
+  preparation_cycle_row hp inverse accepted inputs scope.prefixScope scope.afterInitial scope.beforeTerminal aligned
+
+theorem prefix_write_before_cut [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1) {data : RequestTrace p} {before : State}
+    {addresses : List (BitVec 32)} {cut : Nat}
+    (accepted : RequestChecks data) (inputs : RequestInputs data before addresses)
+    (prefixScope : data.workers.windowRows (cut - 4) cut = []) (aligned : cut % 4 = 0) :
     ∀ edge ∈ data.prefixSteps cut, (timeOfPair edge.2.time).value ≤ cut - 2 := by
   have clocks := state_clock_inputs hp inverse accepted.constraints accepted.states inputs.initialClock inputs.initialAligned
   intro edge member
@@ -118,11 +128,20 @@ theorem prefix_write_before_preparation_cut [Fact p.Prime] (hp : 2 * timestampBa
       by_contra later
       have prior : row ∈ data.workers.windowRows (cut - 4) cut :=
         List.mem_filter.mpr ⟨present, decide_eq_true (by omega)⟩
-      rw [scope.prefixScope] at prior
+      rw [prefixScope] at prior
       cases prior
     change (timeOfPair (row.writeToken port).time).value ≤ cut - 2
     rw [time]
     omega
+
+theorem prefix_write_before_preparation_cut [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1) {data : RequestTrace p} {before : State}
+    {addresses : List (BitVec 32)} {program : List UnifiedReduced.ProgramEntry} {cut : Nat}
+    {register : BitVec 5} {literal : ControlLiteral}
+    (accepted : RequestChecks data) (inputs : RequestInputs data before addresses)
+    (scope : ControlPreparation data program cut register literal) (aligned : cut % 4 = 0) :
+    ∀ edge ∈ data.prefixSteps cut, (timeOfPair edge.2.time).value ≤ cut - 2 :=
+  prefix_write_before_cut hp inverse accepted inputs scope.prefixScope aligned
 
 theorem literal_arithmetic_instruction (literal : ControlLiteral) (register : BitVec 5) :
     ArithmeticInstruction (literal.instruction register) := by

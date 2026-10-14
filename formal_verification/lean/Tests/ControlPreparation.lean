@@ -1111,4 +1111,196 @@ theorem unissued_round_zero_seed_has_no_mask [Fact p.Prime]
   have positive : 0 < 2 ^ round.val := pow_pos (by decide) _
   omega
 
+private def pcRelativePC (wrap : Bool) : BitVec 32 := if wrap then 0x10004 else 4
+private def pcRelativeImmediate (wrap : Bool) : BitVec 20 := if wrap then 0xfffff else 128
+private def pcRelativeBits (wrap : Bool) : BitVec 32 := if wrap then 0xfffff617 else 0x00080617
+private def pcRelativeValue (wrap : Bool) : BitVec 32 := if wrap then 61444 else 524292
+private def pcRelativeEntry (wrap : Bool) : UnifiedReduced.ProgramEntry :=
+  ⟨pcRelativePC wrap, pcRelativeBits wrap, .UTYPE (pcRelativeImmediate wrap, .Regidx 12, .AUIPC),
+    ⟨.machine, 0, 0, 12, Word.ofBitVec (pcRelativeImmediate wrap ++ (0 : BitVec 12)), 4, 0⟩⟩
+private def pcRelativeBefore (wrap : Bool) : State := wordWriteState initialState (pcRelativePC wrap).toNat (pcRelativeBits wrap)
+private def pcRelativeCells : List Cell := [.register 0, .register 12]
+private def pcRelativeAssignment (wrap : Bool) (column : Nat) : ZMod babyBearModulus :=
+  if column = 0 || column = 2 || column = 40 then 4
+  else if column = 1 || column = 31 || column = 52 then if wrap then 1 else 0
+  else if column = 30 || column = 32 then 8
+  else if column = 7 || column = 44 then 12
+  else if column = 8 then if wrap then 61440 else 0
+  else if column = 9 then if wrap then 65535 else 8
+  else if column = 50 then if wrap then 61444 else 4
+  else if column = 51 then if wrap then 0 else 8
+  else if column = 4 || column = 13 || column = 48 || column = 49 ||
+      column = 129 || column = 130 || column = 131 || column = 132 || column = 133 then 1
+  else 0
+private def pcRelativeRow (wrap : Bool) : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, pcRelativeAssignment wrap⟩
+private def pcRelativeData (wrap : Bool) : UnifiedReduced.Caller.RequestTrace babyBearModulus where
+  machine := {
+    rows := [pcRelativeRow wrap]
+    rom := UnifiedReduced.Setup.table (pcRelativeBefore wrap)
+    initial := (pcRelativeRow wrap).start
+    terminal := (pcRelativeRow wrap).finish
+    initialMemory := [⟨(Cell.register 0).addressCode, (0, 0), 0⟩,
+      ⟨(Cell.register 12).addressCode, (0, 0), Nat.pair 1 1⟩]
+    terminalMemory := [⟨(Cell.register 0).addressCode, (5, 0), 0⟩,
+      ⟨(Cell.register 12).addressCode, (6, 0), Nat.pair (Word.ofBitVec (pcRelativeValue wrap)).lo (Word.ofBitVec (pcRelativeValue wrap)).hi⟩] }
+  workers := ⟨Delegation.modeledSetup Keccak.Controller.rows, [], [], []⟩
+  program := []
+
+private theorem pcRelativeCore (wrap : Bool) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (pcRelativeAssignment wrap))
+    (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table (pcRelativeBefore wrap))) := by
+  cases wrap <;> simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
+    Verification.environment, Expression.eval, pcRelativeAssignment, Lookup.Contains, Table.toRaw, fromElements]
+  all_goals repeat' apply And.intro
+  all_goals solve
+    | decide +kernel
+    | (apply Verification.range16_contains; decide +kernel)
+    | (refine ⟨(0 : Fin 2097537), ?_⟩
+       change (#v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0] : Vector (ZMod babyBearModulus) 10) =
+         (UnifiedReduced.Setup.fixedRow (0 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
+       decide +kernel)
+
+private theorem pcRelativeClocks (wrap : Bool) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (pcRelativeAssignment wrap)) UnifiedReduced.importedConstraintsTimestampLookups := by
+  rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
+  constructor
+  · simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.constraints]
+  · rw [List.forall_mem_iff_forall_getElem]
+    intro i bound
+    have short : i < 8 := by simpa only [UnifiedReduced.timestamp_count] using bound
+    interval_cases i
+    all_goals apply Trace.Proofs.range_contains
+    all_goals cases wrap <;> decide +kernel
+
+private theorem pcRelativeAccepted (wrap : Bool) :
+    UnifiedReduced.Caller.MixedMemoryAccepted (pcRelativeData wrap) [pcRelativeEntry wrap] := by
+  constructor
+  · constructor
+    · intro current member
+      have same : current = pcRelativeRow wrap := List.mem_singleton.mp member
+      subst current
+      exact Verification.holds_append (pcRelativeCore wrap) (pcRelativeClocks wrap)
+    · intro current member
+      have same : current = pcRelativeRow wrap := List.mem_singleton.mp member
+      subst current
+      cases wrap <;> decide +kernel
+    · exact List.Perm.swap _ _ []
+    · intro _ member
+      have empty : (pcRelativeData wrap).callers = [] := by cases wrap <;> decide +kernel
+      rw [empty] at member
+      cases member
+    · intro _ member; cases member
+    · intro _ member; cases member
+    · have empty : (pcRelativeData wrap).calls = [] := by cases wrap <;> decide +kernel
+      rw [empty]
+      exact List.Perm.refl []
+  · intro current member _
+    have same : current = pcRelativeRow wrap := List.mem_singleton.mp member
+    subst current
+    change ∃ i : Fin 1, (pcRelativeRow wrap).decoderQuery = ([pcRelativeEntry wrap].get i).query
+    exact ⟨0, by cases wrap <;> decide +kernel⟩
+  · cases wrap <;> decide +kernel
+
+private theorem pcRelativeProgram (wrap : Bool) :
+    UnifiedReduced.Mixed.programImage (pcRelativeBefore wrap) [pcRelativePC wrap] = some [pcRelativeEntry wrap] := by
+  have bytes : (Cell.ram (pcRelativePC wrap)).read (pcRelativeBefore wrap) = .ok (pcRelativeBits wrap) (pcRelativeBefore wrap) := by
+    cases wrap <;> exact written_word_read _ _ _
+  have decoded : Reference.Sail.run (SailRV32.Functions.encdec_backwards (pcRelativeBits wrap)) (pcRelativeBefore wrap) =
+      .ok (pcRelativeEntry wrap).instruction (pcRelativeBefore wrap) := by cases wrap <;> with_unfolding_all rfl
+  have fields : UnifiedReduced.Mixed.decoderFields (pcRelativeEntry wrap).instruction = some (pcRelativeEntry wrap).data := by
+    cases wrap <;> with_unfolding_all rfl
+  simp only [UnifiedReduced.Mixed.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
+    programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+  rfl
+
+private theorem pcRelativeImage (wrap : Bool) :
+    initialImage (pcRelativeBefore wrap) pcRelativeCells = some (pcRelativeData wrap).machine.initialMemory := by
+  have zero : (Cell.register 0).read (pcRelativeBefore wrap) = .ok 0 (pcRelativeBefore wrap) := rfl
+  have control : (Cell.register 12).read (pcRelativeBefore wrap) = .ok 65537 (pcRelativeBefore wrap) := by
+    apply read_register
+    simp [pcRelativeBefore, wordWriteState, initialState, Std.ExtDHashMap.get?_insert]
+  simp only [initialImage, pcRelativeCells, List.mapM_cons, List.mapM_nil, zero, control, bind, Option.bind]
+  rfl
+
+private theorem pcRelativeInputs (wrap : Bool) :
+    UnifiedReduced.Caller.MixedMemoryInputs (pcRelativeData wrap) [pcRelativeEntry wrap]
+      (pcRelativeBefore wrap) [] [pcRelativePC wrap] pcRelativeCells := by
+  refine ⟨⟨rfl, ?_, ?_⟩, pcRelativeProgram wrap, pcRelativeImage wrap, by decide, ?_, rfl, rfl, ?_⟩
+  · cases wrap <;> change 4 < timestampBase ∧ 0 < timestampBase <;> norm_num [timestampBase]
+  · cases wrap <;> decide +kernel
+  · intro cell member
+    simp [pcRelativeCells] at member
+    rcases member with rfl | rfl <;> simp [Cell.Aligned]
+  · intro _ member; cases member
+
+private theorem pcRelativeScope (wrap : Bool) :
+    UnifiedReduced.Caller.PCRelativePreparation (pcRelativeData wrap) [pcRelativeEntry wrap] 8 12 (pcRelativeImmediate wrap) := by
+  refine ⟨⟨?_, ?_⟩, ?_, rfl, ?_, ?_⟩
+  · intro entry member
+    have same := List.mem_singleton.mp member
+    subst entry
+    exact .sequential (.arithmetic (.auipc _ _))
+  · intro entry member
+    have same := List.mem_singleton.mp member
+    subst entry
+    cases wrap <;> decide +kernel
+  · intro entry member _
+    have same := List.mem_singleton.mp member
+    subst entry
+    rfl
+  · cases wrap <;> decide +kernel
+  · cases wrap <;> decide +kernel
+
+theorem auipc_preparation_execution (wrap : Bool) :
+    UnifiedReduced.Caller.PCRelativePreparedBoundaryExecution (pcRelativeData wrap)
+      (pcRelativeBefore wrap) pcRelativeCells 8 12 (pcRelativeImmediate wrap) :=
+  UnifiedReduced.Caller.pc_relative_control_preparation_soundness (by decide +kernel) (by decide +kernel)
+    (by decide +kernel) (pcRelativeAccepted wrap) (pcRelativeInputs wrap) (pcRelativeScope wrap) (by decide) (by decide)
+
+/-- Nonzero public PCs contribute to the control; the AUIPC immediate alone is insufficient. -/
+theorem auipc_preparation_uses_public_pc (wrap : Bool) :
+    UnifiedReduced.Caller.pcRelativeControl (pcRelativeData wrap) 8 (pcRelativeImmediate wrap) ≠
+      pcRelativeImmediate wrap ++ (0 : BitVec 12) := by cases wrap <;> decide +kernel
+
+/-- Both an ordinary PC-relative value and a 32-bit wrapped sum reach the actual
+    cut state. The original native write timestamp six is retained. -/
+theorem auipc_prepared_states (wrap : Bool) :
+    ∃ (tokens : List (MemoryToken babyBearModulus)) (events : List MemoryAccess) (atCut : State),
+      events.Perm (((pcRelativeData wrap).prefixSteps 8).map transferEvent) ∧
+      SailHistory pcRelativeCells events (pcRelativeBefore wrap) atCut ∧
+      UnifiedReduced.Caller.NativeBoundary tokens atCut pcRelativeCells ∧
+      (Cell.register 12).read (pcRelativeBefore wrap) = .ok 65537 (pcRelativeBefore wrap) ∧
+      (Cell.register 12).read atCut = .ok (pcRelativeValue wrap) atCut ∧
+      ∃ token ∈ tokens, token.address = (Cell.register 12).addressCode ∧
+        (timeOfPair token.time).value = 6 ∧ token.word = Word.ofBitVec (pcRelativeValue wrap) := by
+  obtain ⟨tokens, events, atCut, permutation, history, boundary, read, token, member, address, time, word⟩ :=
+    auipc_preparation_execution wrap
+  have value : UnifiedReduced.Caller.pcRelativeControl (pcRelativeData wrap) 8 (pcRelativeImmediate wrap) = pcRelativeValue wrap := by
+    cases wrap <;> decide +kernel
+  have initial : (Cell.register 12).read (pcRelativeBefore wrap) = .ok 65537 (pcRelativeBefore wrap) := by
+    apply read_register
+    simp [pcRelativeBefore, wordWriteState, initialState, Std.ExtDHashMap.get?_insert]
+  exact ⟨tokens, events, atCut, permutation, history, boundary, initial, value ▸ read,
+    token, member, address, time, value ▸ word⟩
+
+theorem auipc_wrong_immediate_rejected :
+    ¬ UnifiedReduced.Caller.PCRelativePreparation (pcRelativeData false) [pcRelativeEntry false] 8 12 129 := by
+  intro scope
+  have instruction := scope.atCut (pcRelativeEntry false) (List.mem_singleton_self _) (by decide +kernel)
+  have immediate := congrArg Prod.fst (SailRV32.instruction.UTYPE.inj instruction)
+  change (128 : BitVec 20) = 129 at immediate
+  exact (by decide : (128 : BitVec 20) ≠ 129) immediate
+
+private def forgedPCRelativeData : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
+  { pcRelativeData false with machine := { (pcRelativeData false).machine with
+      rows := [⟨.machine, fun column => if column = 48 then 2 else pcRelativeAssignment false column⟩] } }
+
+theorem auipc_fabricated_read_rejected :
+    ¬ UnifiedReduced.Caller.MixedMemoryAccepted forgedPCRelativeData [pcRelativeEntry false] := by
+  intro accepted
+  let token : MemoryToken babyBearModulus := ⟨(Cell.register 12).addressCode, (0, 0), Nat.pair 2 1⟩
+  have member : token ∈ forgedPCRelativeData.mixedSteps.map Prod.fst := by decide +kernel
+  have absent : token ∉ forgedPCRelativeData.machine.initialMemory ++ forgedPCRelativeData.mixedSteps.map Prod.snd := by decide +kernel
+  exact absent (accepted.memory.mem_iff.mpr (List.mem_append.mpr (Or.inr member)))
+
 end Tests.ControlPreparation

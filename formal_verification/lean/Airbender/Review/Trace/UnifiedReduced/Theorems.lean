@@ -7,6 +7,7 @@ import Airbender.Proofs.UnifiedReduced.MixedWindows
 import Airbender.Proofs.UnifiedReduced.JointHashWindows
 import Airbender.Proofs.UnifiedReduced.MixedWindowProjection
 import Airbender.Proofs.UnifiedReduced.ControlPreparation
+import Airbender.Proofs.UnifiedReduced.PCRelativePreparation
 import Airbender.Proofs.UnifiedReduced.PreparedHashWindows
 import Airbender.Proofs.UnifiedReduced.PreparedRoundWindows
 import Airbender.Proofs.UnifiedReduced.CallerCycles
@@ -649,5 +650,21 @@ theorem Caller.all_worker_execution_soundness
     (inputs : Caller.MixedMemoryInputs data program before ca oa cells) :
     Caller.MixedWorkerExecution data before cells :=
   Caller.Proofs.mixed_worker_execution_effects accepted inputs
+
+/-- AUIPC computes the prepared control from its derived public PC and immediate.
+    Native constraints and matching derive its canonical cut token and timestamp;
+    the same initialized history supplies the actual cut state. Earlier worker
+    effects remain, with modeled tables and round ABI explicit. -/
+theorem Caller.pc_relative_control_preparation_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1) (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+    {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
+    {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    {cut : Nat} {register : BitVec 5} {immediate : BitVec 20}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.MixedMemoryInputs data program before ca oa cells)
+    (scope : Caller.PCRelativePreparation data program cut register immediate)
+    (nonzero : register ≠ 0) (aligned : cut % 4 = 0) :
+    Caller.PCRelativePreparedBoundaryExecution data before cells cut register immediate :=
+  Caller.Proofs.pc_relative_control_preparation hp clockInverse rotationInverse accepted inputs scope nonzero aligned
 
 end Airbender.UnifiedReduced
