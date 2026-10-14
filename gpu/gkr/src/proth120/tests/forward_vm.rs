@@ -347,7 +347,7 @@ pub(crate) fn forward_fixture_full(context: &ProverContext) -> ForwardFixturePr 
     config.trace_len_log2 = log_rows as usize;
     let proof = crate::proth120::proof_layout::ProofSlabPr::new(
         Arc::new(crate::proth120::proof_layout::ProofLayoutPr::new(
-            &programs, &config,
+            &programs, &config, 4,
         )),
         context,
     )

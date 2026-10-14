@@ -1,7 +1,7 @@
 mod resources;
 
 #[cfg(test)]
-pub(crate) use resources::DrTailLayerPlanPr;
+pub(crate) use resources::{cpu_validate_dr_tail_shapes_pr, DrTailLayerPlanPr};
 pub(crate) use resources::{dimension_reducing_slots_pr, DrTailPlanCursorPr};
 pub use resources::{preflight_dr_tail_resources_pr, DrTailProofPlanPr};
 

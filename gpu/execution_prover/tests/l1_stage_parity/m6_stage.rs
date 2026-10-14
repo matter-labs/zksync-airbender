@@ -1014,7 +1014,7 @@ fn run_stages(
             .unwrap_or_else(|error| panic!("M6 stage parity program compile: {error}")),
     );
     let dr_tail_plan = preflight_dr_tail_resources_pr(&programs, 4, &context);
-    let layout = Arc::new(ProofLayoutPr::new(&programs, &config));
+    let layout = Arc::new(ProofLayoutPr::new(&programs, &config, 4));
     let witness_layout = &circuit.witness_layout;
     assert_eq!(
         (

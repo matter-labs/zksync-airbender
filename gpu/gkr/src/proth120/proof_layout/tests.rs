@@ -115,7 +115,7 @@ fn cpu_proof_layout_pr_roundtrip() {
     let config = prover::gkr::prover_config::example_configs::evm_production_packed_prover_config(
         SecurityLevel::Sec100,
     );
-    let layout = ProofLayoutPr::new(&programs, &config);
+    let layout = ProofLayoutPr::new(&programs, &config, 4);
     let directory = std::env::var_os("AB_PROTH120_REFERENCE_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
@@ -229,8 +229,8 @@ fn cpu_proof_layout_pr_geometry() {
     let config = prover::gkr::prover_config::example_configs::evm_production_packed_prover_config(
         SecurityLevel::Sec100,
     );
-    let layout = ProofLayoutPr::new(&programs, &config);
-    layout.validate_geometry(22, 5);
+    let layout = ProofLayoutPr::new(&programs, &config, 4);
+    layout.validate_geometry(&programs.runtime_circuit, 4);
     let mut ranges = vec![
         layout.output_evaluations_range.clone(),
         layout.external_challenges.clone(),
