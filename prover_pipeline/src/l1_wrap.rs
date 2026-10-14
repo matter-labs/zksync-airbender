@@ -82,7 +82,17 @@ pub(super) fn validate_artifact_envelope(artifact: &ProofArtifact) -> Result<(),
 /// The last feeder proof an artifact may carry: one 2^22 instance of the
 /// reduced family under the feeder config, no delegation proofs.
 pub(super) fn validate_last_feeder_proof(proof: &ProgramProof) -> Result<(), String> {
-    feeder_proof_instances(proof, Some(1))?;
+    validate_feeder_proof(proof, Some(1))
+}
+
+/// A feeder proof of `expected` instances (any positive count when `None`):
+/// the reduced family only under the 2^22 feeder circuit and the feeder WHIR
+/// schedule, no delegation proofs.
+pub(super) fn validate_feeder_proof(
+    proof: &ProgramProof,
+    expected: Option<usize>,
+) -> Result<(), String> {
+    feeder_proof_instances(proof, expected)?;
     let family = UnrolledCircuitType::Unified22.get_family_idx() as u32;
     let compiled = proof
         .compiled_riscv_circuits
