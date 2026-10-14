@@ -32,6 +32,9 @@ mixed execution with delegation callers remains a separate obligation.
 | Aligned public sequential/comparison decoding and native matching derive modular RV32 program addresses, including comparison PC wraparound. | [`Caller.wrapped_program_address_soundness`](Theorems.lean) |
 | Public ADDI-from-x0/LUI preparation yields actual controls after literal, sequential ordinary/custom or aligned comparison prefixes; native PC/clock matching derives each preparation address. | [`Caller.control_preparation_soundness`](Theorems.lean) |
 | AUIPC computes a control from its derived public PC and U-immediate, with an actual initialized cut state and canonical native token at cut minus two. | [`Caller.pc_relative_control_preparation_soundness`](Theorems.lean) |
+| Literal or publicly placed AUIPC code derives the actual protocol entry read and retained native token. | [`Caller.hash_control_preparation_soundness`](Theorems.lean) |
+| Complete selected G/Keccak references admit either preparation source at their actual joint cut states. | [`Caller.computed_prepared_hash_window_soundness`](Theorems.lean) |
+| Nonempty ordered lists may mix literal and AUIPC preparations while retaining every intervening transfer in one history. | [`Caller.computed_prepared_hash_sequence_soundness`](Theorems.lean) |
 | Two preparations share their actual cut states and the complete intervening machine/worker history; neither control is supplied. | [`Caller.control_preparation_window_soundness`](Theorems.lean) |
 | Two native windows and their gap execute continuously from one initialization with retained tokens and clocks. | [`Caller.mixed_window_chain_soundness`](Theorems.lean) |
 | An arbitrary ordered finite list of native windows and gaps shares that continuous execution. | [`Caller.mixed_window_sequence_soundness`](Theorems.lean) |
@@ -128,9 +131,32 @@ existing history realization. The [preparation fixtures](../../../../Tests/Contr
 check x12 = 65537→524292 at PC four and 65537→61444 for a sum wrapping 2^32 at
 PC 65540, both with clock-six tokens. The immediate alone gives a different
 value. Wrong immediates and fabricated native reads are rejected. This is
-preparation and memory transport; connecting this new preparation to complete
-hash-span entries, general operand-dependent preparation and jumps/branches
-remain open.
+preparation and memory transport. Complete G/Keccak references now consume this
+preparation through the source interface below. General operand-dependent
+preparation and jumps/branches remain open.
+
+[`HashControlPreparation`](ComputedHashWindows.lean) combines the literal source
+and AUIPC source without changing either legacy contract. AUIPC's decoded public
+instruction address and U-immediate must compute the chosen protocol entry
+constant. This public code-placement policy supplies no current-state control
+read; native matching identifies its actual instruction and derives the canonical
+entry token at cut minus two. The same history derives the actual cut read.
+[`ComputedPreparedHashWindowInputs`](ComputedHashWindows.lean) connects that source
+to the existing complete G/Keccak reference and exact caller binding. Nonempty
+ordered lists may mix both forms; each gap and reference uses the same continuous
+native execution and derived boundary states. Mode/count/duration, selected family,
+public domain/setup/tables and logical matching remain explicit. The current
+complete entries retain the nonround worker scope; extended-round mask transport
+and public caller-region derivation for this new source remain separate.
+Legacy literal entry points use the same composition proof and retain their
+signatures. [Concrete preparation fixtures](../../../../Tests/ControlPreparation.lean)
+check AUIPC at PC 128 for G's control 128 and a wrapped sum at PC 4096 for Keccak's
+control zero, actual reads from 65537, canonical tokens and clock six. A wrong
+public placement and incomplete 56/649-call windows are rejected. These fixtures
+check preparation and incomplete-span guards; the complete reference/list claims
+are arbitrary-witness theorems under their stated span ABI. The existing unissued
+G-prefix preparation remains admitted through the literal source. Bigint-control,
+worker ROM-shadow, terminal-PC and discarded-load boundaries stay unchanged.
 
 [`WrappedProgramCallerRegion`](../../Helpers/UnifiedReduced/WindowSchedule.lean)
 states the public ordinary-exclusion/full-CSR-family policy at every clock in the

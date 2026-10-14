@@ -240,10 +240,20 @@ ABI and whole mixed execution remain separate.
    wrong immediate or fabricated read, and distinguish the result from the
    immediate alone. Only the final cycle is worker-free; no expected output,
    desired read or row selector is supplied. Public setup/tables and existing
-   round ABI remain explicit. Connect this result to prepared hash-span entries,
-   then continue general operand-dependent preparation, jumps/branches and whole
-   caller retirement, retaining unsupported-control and unissued-exclusion
-   boundaries.
+   round ABI remain explicit. Literal or publicly placed AUIPC preparation now
+   reaches the existing complete selected G/Keccak references and nonempty
+   ordered reference lists in one continuous history. A public decoded-code
+   placement policy computes the protocol entry constant; native matching and
+   the canonical token derive its actual cut read. Every gap retains its native
+   effects. Legacy literal signatures remain, using the same composition proof.
+   Concrete G/Keccak preparation fixtures retain clock six and reject a wrong
+   placement or incomplete 56/649-call window; the unissued G-prefix preparation
+   remains admitted. Public mode, selected family/count/duration, nonround scope,
+   domain/setup/tables and logical matching remain explicit. Next derive this
+   source's selected shape from public modular caller regions, then extend its
+   raw-token/mask transport to prepared extended-round regions. Continue general
+   operand-dependent preparation, jumps/branches and whole caller retirement,
+   retaining unsupported-control and unissued-exclusion boundaries.
    COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed
    retained for the second window. Extended BLAKE and Keccak completion controls
    do not restart their protocols; checked regressions forbid treating their
