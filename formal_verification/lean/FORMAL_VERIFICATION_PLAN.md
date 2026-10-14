@@ -102,14 +102,14 @@ Public preparation/first-span scope, call count and duration remain explicit.
 G/Keccak require homogeneity only inside the selected span; other bigint/G/Keccak
 workers may precede or follow it. Extended-round workers remain outside this
 mask-free scope rather than receiving an assumed mask.
-Two complete prepared G/Keccak spans now compose through one continuous native
-memory history. The first span's retained boundary initializes the actual gap,
-then the second span. All intermediate states, canonical tokens, raw clocks,
-request bindings and both complete references are derived from that execution.
-Ordinary preparations and other nonround workers remain in the gap; unissued
-prefix effects are retained. Public alignment/order, mode/count/duration and
-literal registry conditions remain explicit. Arbitrary span lists and
-extended-round chaining remain separate.
+Ordered finite lists of complete prepared G/Keccak spans share one continuous
+native memory history. Each actual finish initializes the gap and next span;
+canonical tokens, raw clocks, request bindings and every complete reference are
+derived from that execution. Ordinary preparations and other nonround workers
+remain in gaps; unissued prefix effects are retained. Empty windows/gaps retain
+state and clocks. Public alignment/order, literal registry and each protocol's
+mode/count/duration remain explicit. Extended-round chaining and broader
+protocol-shape binding remain separate.
 Prepared extended-BLAKE spans now also reach complete compression at those cut
 states. Raw matching and the actual LUI token derive round masks before Sail
 transport, retaining the preparation timestamp. Public suffix duration derives an
@@ -138,9 +138,9 @@ ABI and whole mixed execution remain separate.
    Prepared G, Keccak and extended-BLAKE references are checked within the mixed
    scopes above. Preparation pairs now share one intervening native history, and
    prepared G/Keccak spans allow other nonround families outside the window.
-   Two complete prepared G/Keccak references now compose with the actual intervening
-   history. Extend to arbitrary span lists and extended-round chaining, then
-   beyond the literal/caller straight-path preparation registry.
+   Arbitrary nonempty ordered prepared G/Keccak lists now compose with the actual
+   intervening history in the same nonround scope. Extend to extended-round chaining and protocol-shape binding,
+   then beyond the literal/caller straight-path preparation registry.
    COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed
    retained for the second window. Extended BLAKE and Keccak completion controls
    do not restart their protocols; checked regressions forbid treating their

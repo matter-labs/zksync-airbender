@@ -18,8 +18,10 @@ mixed execution with delegation callers remains a separate obligation.
 | Uniform or successive public ADDI-from-x0/LUI preparation yields actual controls; native PC/clock matching derives the instruction at each cut. | [`Caller.control_preparation_soundness`](Theorems.lean) |
 | Two preparations share their actual cut states and the complete intervening machine/worker history; neither control is supplied. | [`Caller.control_preparation_window_soundness`](Theorems.lean) |
 | Two native windows and their gap execute continuously from one initialization with retained tokens and clocks. | [`Caller.mixed_window_chain_soundness`](Theorems.lean) |
+| An arbitrary ordered finite list of native windows and gaps shares that continuous execution. | [`Caller.mixed_window_sequence_soundness`](Theorems.lean) |
 | Complete prepared G/Keccak and extended-BLAKE references reach the selected actual cut states; masks are derived. | [`Caller.prepared_hash_window_soundness` and `Caller.prepared_round_window_soundness`](Theorems.lean) |
 | Two complete prepared G/Keccak references use the same continuously executed states across the intervening preparation and other effects. | [`Caller.prepared_hash_chain_soundness`](Theorems.lean) |
+| A nonempty ordered list of complete prepared G/Keccak references binds every span to that same continuous execution. | [`Caller.prepared_hash_sequence_soundness`](Theorems.lean) |
 | Original current-state caller fetch, selected worker observations and PC retirement meet at the same boundaries. | [`Caller.caller_cycles_soundness`](Theorems.lean) |
 
 Field/inverse, public boot/configuration/program/domain, modeled tables and logical
@@ -68,6 +70,17 @@ effect are checked in [native chain regressions](../../../../Tests/ControlPrepar
 and [the zero-clock regression](../../../../Tests/DelegationZeroInvocation.lean).
 These are memory/reference claims; instruction retirement remains separate.
 
-Keep surplus zero-clock prefix effects, worker ROM-shadow transport, arbitrary
-span lists and extended-round chaining, full mixed caller retirement and inactive padding as separate
+[`WindowSequence.Realizes`](MixedWindows.lean) extends this connection to an
+arbitrary finite list. Its initial cut follows the actual prefix; every segment
+executes its gap from the preceding actual finish, then its complete window.
+[`WindowsOrdered`](MixedWindows.lean) makes cut order/alignment explicit and permits
+empty windows and gaps. [`PreparedHashSequenceResult`](PreparedHashWindows.lean)
+binds each complete G/Keccak reference, request permutation and caller count to
+the corresponding segment. Every span keeps its own public preparation,
+mode/count/duration and nonround worker scope; protocol shape is not inferred from
+general acceptance. Three-window regressions retain actual controls across empty
+and nonempty gaps, reject overlap/unaligned cuts, and preserve the unissued prefix.
+
+Keep surplus zero-clock prefix effects, worker ROM-shadow transport,
+extended-round chaining and broader preparation, full mixed caller retirement and inactive padding as separate
 outstanding obligations. [Status](../../../../VERIFICATION_STATUS.md) records the scope.

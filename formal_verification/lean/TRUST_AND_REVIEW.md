@@ -163,6 +163,12 @@ span. Native tokens and clocks survive every cut; both preparation controls and
 reference results are derived. Public span counts/durations, cut order/alignment,
 literal registry and nonround worker scope remain explicit. This does not establish
 whole instruction retirement or that arbitrary acceptance has complete-span shape.
+[Prepared hash sequences](Airbender/Review/Trace/UnifiedReduced/PreparedHashWindows.lean)
+extend this to an arbitrary nonempty ordered list in the same nonround scope.
+Each window and its gap starts from the preceding actual state; the mapping binds
+all complete references, request permutations and counts to those exact states.
+Public ordering/alignment and each span's preparation/mode/count/duration remain
+inputs. This does not derive unrestricted protocol shape from general acceptance.
 [Prepared extended-BLAKE windows](Airbender/Review/Trace/UnifiedReduced/PreparedRoundWindows.lean)
 also bind complete compression at those actual cut states. Raw matching and the
 ordinary LUI token derive exclusive round masks before Sail value transport.

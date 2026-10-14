@@ -61,4 +61,30 @@ structure PreparedHashChainResult [Fact p.Prime] (data : RequestTrace p) (before
     secondSpan.Result (data.windowProjection secondLower secondUpper chain.secondStart chain.secondFinish)
       chain.atSecondStart chain.atSecondFinish (Delegation.Caller.workerCells cells)
 
+/-- A selected complete hash protocol and its public instruction-boundary cuts. -/
+structure HashWindow where
+  span : Delegation.Caller.HashSpan
+  lower : Nat
+  upper : Nat
+
+/-- Native-memory interval used by the continuous sequence mapping. -/
+def HashWindow.interval (window : HashWindow) : Nat × Nat := (window.lower, window.upper)
+
+/-- Request binding, exact caller count and the complete reference at one actual
+    segment's states. It makes no whole custom-CSR retirement claim. -/
+def HashWindowResult [Fact p.Prime] (data : RequestTrace p) (cells : List Cell)
+    (window : HashWindow) (segment : WindowSegment p) : Prop :=
+  Delegation.Caller.RequestWindowBinding data.callers data.workers window.lower window.upper ∧
+  (Delegation.Caller.windowCallers data.callers window.lower window.upper).length = window.span.callCount ∧
+  window.span.Result (data.windowProjection window.lower window.upper segment.start segment.finish)
+    segment.atStart segment.atFinish (Delegation.Caller.workerCells cells)
+
+/-- A nonempty list of complete prepared references uses one initialized history.
+    Each intervening gap starts from the preceding segment's actual finish. -/
+def PreparedHashSequenceResult [Fact p.Prime] (data : RequestTrace p) (before : State)
+    (cells : List Cell) (first : HashWindow) (rest : List HashWindow) : Prop :=
+  ∃ sequence : WindowSequence p,
+    sequence.Realizes data before cells first.lower ((first :: rest).map HashWindow.interval) ∧
+    List.Forall₂ (HashWindowResult data cells) (first :: rest) sequence.segments
+
 end Airbender.UnifiedReduced.Caller

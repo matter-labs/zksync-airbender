@@ -2123,3 +2123,24 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Trace.sail_soundness
 #print axioms Airbender.Trace.airbender_soundness
 #print axioms Airbender.Trace.native_boot_soundness
+
+#print axioms Airbender.UnifiedReduced.Caller.WindowsOrdered
+#print axioms Airbender.UnifiedReduced.Caller.WindowSegment
+#print axioms Airbender.UnifiedReduced.Caller.WindowSegmentsRealize
+#print axioms Airbender.UnifiedReduced.Caller.WindowSequence
+#print axioms Airbender.UnifiedReduced.Caller.WindowSequence.Realizes
+#print axioms Airbender.UnifiedReduced.Caller.MixedWindowSequenceExecution
+#print axioms Airbender.UnifiedReduced.Caller.HashWindow
+#print axioms Airbender.UnifiedReduced.Caller.HashWindow.interval
+#print axioms Airbender.UnifiedReduced.Caller.HashWindowResult
+#print axioms Airbender.UnifiedReduced.Caller.PreparedHashSequenceResult
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.native_window_segments
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.mixed_window_sequence
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.prepared_hash_sequence_at_segments
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.prepared_hash_sequence
+#print axioms Airbender.UnifiedReduced.Caller.mixed_window_sequence_soundness
+#print axioms Airbender.UnifiedReduced.Caller.prepared_hash_sequence_soundness
+#print axioms Tests.ControlPreparation.native_sequence_reaches_successive_controls
+#print axioms Tests.ControlPreparation.empty_native_sequence_retains_initialized_prefix
+#print axioms Tests.ControlPreparation.overlapping_or_unaligned_sequences_rejected
+#print axioms Tests.DelegationZeroInvocation.sequence_retains_unissued_prefix_effect
