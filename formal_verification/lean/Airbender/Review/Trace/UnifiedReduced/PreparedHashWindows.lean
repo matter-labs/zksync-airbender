@@ -45,4 +45,20 @@ structure PreparedHashWindowInputs [Fact p.Prime] (data : RequestTrace p) (befor
   /-- The final cut lies inside the native machine path. -/
   beforeTerminal : upper ≤ (timeOfPair data.machine.terminal.timestamp).value
 
+/-- Two complete prepared references use the same continuous native history,
+    including all intervening preparation and other worker effects. -/
+structure PreparedHashChainResult [Fact p.Prime] (data : RequestTrace p) (before : State)
+    (cells : List Cell) (firstSpan secondSpan : Delegation.Caller.HashSpan)
+    (firstLower firstUpper secondLower secondUpper : Nat) : Prop where
+  firstRequests : Delegation.Caller.RequestWindowBinding data.callers data.workers firstLower firstUpper
+  secondRequests : Delegation.Caller.RequestWindowBinding data.callers data.workers secondLower secondUpper
+  firstCount : (Delegation.Caller.windowCallers data.callers firstLower firstUpper).length = firstSpan.callCount
+  secondCount : (Delegation.Caller.windowCallers data.callers secondLower secondUpper).length = secondSpan.callCount
+  execution : ∃ chain : WindowChain p,
+    chain.Realizes data before cells firstLower firstUpper secondLower secondUpper ∧
+    firstSpan.Result (data.windowProjection firstLower firstUpper chain.firstStart chain.firstFinish)
+      chain.atFirstStart chain.atFirstFinish (Delegation.Caller.workerCells cells) ∧
+    secondSpan.Result (data.windowProjection secondLower secondUpper chain.secondStart chain.secondFinish)
+      chain.atSecondStart chain.atSecondFinish (Delegation.Caller.workerCells cells)
+
 end Airbender.UnifiedReduced.Caller
