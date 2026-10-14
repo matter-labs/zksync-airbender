@@ -2,7 +2,8 @@ use prover::definitions::DEFAULT_CAP_SIZE;
 use prover::merkle_trees::MerkleTreeCapVarLength;
 use setups::{validate_setups_cap_size, Setups, UnrolledCircuitSetupParams};
 
-const L1_FEEDER_CAP_SIZE: usize = 32;
+/// A cap other than the default, exercising the variable-length setup cap.
+const NON_DEFAULT_CAP_SIZE: usize = 32;
 
 fn cap(num_leafs: usize) -> MerkleTreeCapVarLength {
     MerkleTreeCapVarLength {
@@ -14,7 +15,7 @@ fn cap(num_leafs: usize) -> MerkleTreeCapVarLength {
 
 #[test]
 fn standard_and_feeder_caps_roundtrip_through_json() {
-    for cap_size in [DEFAULT_CAP_SIZE, L1_FEEDER_CAP_SIZE] {
+    for cap_size in [DEFAULT_CAP_SIZE, NON_DEFAULT_CAP_SIZE] {
         let params =
             UnrolledCircuitSetupParams::from_setup_tree_cap(128, 1 << 22, cap(cap_size), cap_size);
         assert_eq!(params.setup_caps.cap.len(), cap_size);
@@ -42,10 +43,10 @@ fn wrong_cap_lengths_are_rejected() {
         (0, DEFAULT_CAP_SIZE),
         (15, DEFAULT_CAP_SIZE),
         (17, DEFAULT_CAP_SIZE),
-        (31, L1_FEEDER_CAP_SIZE),
-        (33, L1_FEEDER_CAP_SIZE),
-        (DEFAULT_CAP_SIZE, L1_FEEDER_CAP_SIZE),
-        (L1_FEEDER_CAP_SIZE, DEFAULT_CAP_SIZE),
+        (31, NON_DEFAULT_CAP_SIZE),
+        (33, NON_DEFAULT_CAP_SIZE),
+        (DEFAULT_CAP_SIZE, NON_DEFAULT_CAP_SIZE),
+        (NON_DEFAULT_CAP_SIZE, DEFAULT_CAP_SIZE),
     ] {
         let result = std::panic::catch_unwind(|| {
             UnrolledCircuitSetupParams::from_setup_tree_cap(128, 1 << 22, cap(num_leafs), expected)
@@ -81,16 +82,16 @@ fn mixed_cap_setups_are_rejected() {
         ),
     );
     validate_setups_cap_size(&setups, DEFAULT_CAP_SIZE).unwrap();
-    assert!(validate_setups_cap_size(&setups, L1_FEEDER_CAP_SIZE).is_err());
+    assert!(validate_setups_cap_size(&setups, NON_DEFAULT_CAP_SIZE).is_err());
     setups.insert(
         2,
         UnrolledCircuitSetupParams::from_setup_tree_cap(
             2,
             1 << 22,
-            cap(L1_FEEDER_CAP_SIZE),
-            L1_FEEDER_CAP_SIZE,
+            cap(NON_DEFAULT_CAP_SIZE),
+            NON_DEFAULT_CAP_SIZE,
         ),
     );
     assert!(validate_setups_cap_size(&setups, DEFAULT_CAP_SIZE).is_err());
-    assert!(validate_setups_cap_size(&setups, L1_FEEDER_CAP_SIZE).is_err());
+    assert!(validate_setups_cap_size(&setups, NON_DEFAULT_CAP_SIZE).is_err());
 }

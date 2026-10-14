@@ -731,7 +731,7 @@ fn observe_wrap_program(
 }
 
 /// Admission of a private feeder checkpoint before anything is proven:
-/// `1..=MAX_FEEDER_LAYERS` feeder layers, cap-32 setups, a feeder proof of
+/// `1..=MAX_FEEDER_LAYERS` feeder layers, setups at the feeder cap, a feeder proof of
 /// any positive instance count under the 2^22 feeder circuit and schedule,
 /// and a history equal to the trusted chain of the program (`end_params`
 /// recomputes it). The proof's native verification and its binding to this

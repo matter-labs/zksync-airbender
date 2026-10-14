@@ -63,7 +63,7 @@ pub fn native_verify_unrolled(stream: Vec<u32>, is_base: bool) -> [u32; 16] {
         .expect("verifier thread must not panic")
 }
 
-/// Native verification of an L1 feeder stream (the cap-32, zero-delegation
+/// Native verification of an L1 feeder stream (the zero-delegation
 /// feeder statement) at a checked boundary: a verifier error, a structural
 /// panic inside the statement (a nonzero delegation count, a truncated
 /// stream), or trailing words after the statement consumed its input are all
