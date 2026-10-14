@@ -21,6 +21,25 @@ fn feeder_verifier_geometry() {
     assert_eq!(DEFAULT_CAP_SIZE, 16);
 }
 
+/// The generated feeder verifier carries the configured query/PoW tuple,
+/// and no PoW of a feeder proof (WHIR rounds, lookup challenges, batched
+/// proximity, external challenges) exceeds the feeder PoW ceiling.
+#[test]
+fn feeder_pows_stay_under_the_ceiling() {
+    use verifier_common::prover::gkr::prover_config::example_configs::{
+        L1_FEEDER_MAX_POW_BITS, L1_FEEDER_QUERIES_AND_POW,
+    };
+    for (round, (queries, pow)) in L1_FEEDER_QUERIES_AND_POW.iter().enumerate() {
+        assert_eq!(feeder::WHIR_QUERIES[round], *queries);
+        assert_eq!(feeder::WHIR_POW_BITS[round], *pow);
+    }
+    let ceiling = L1_FEEDER_MAX_POW_BITS;
+    assert!(feeder::WHIR_POW_BITS.iter().all(|pow| *pow <= ceiling));
+    assert!(feeder::LOOKUP_CHALLENGES_POW_BITS <= ceiling);
+    assert!(feeder::BATCHED_PROXIMITY_POW_BITS <= ceiling);
+    assert!(verifier_common::MEMORY_DELEGATION_POW_BITS as u32 <= ceiling);
+}
+
 #[test]
 fn feeder_instance_geometry_keeps_the_standard_address_ceiling() {
     assert_eq!(
