@@ -8,7 +8,10 @@ use gpu_core::primitives::utils::{
     get_grid_block_dims_for_threads_count, LOG_WARP_SIZE, WARP_SIZE,
 };
 
-use super::{checked_u32, Digest, OracleGatherDesc, OraclePartialPathDesc, STATE_SIZE};
+use super::{
+    assert_reduction_layers, checked_u32, partial_path_block_config, Digest, OracleGatherDesc,
+    OraclePartialPathDesc, STATE_SIZE,
+};
 
 cuda_kernel!(
     GatherLeavesForQueriesSingleCosetPhysical,
@@ -114,9 +117,25 @@ cuda_kernel!(
     )
 );
 
+cuda_kernel!(
+    GatherMerklePathsPartialForQueriesSingleCosetPhysicalBlock,
+    ab_gather_merkle_paths_partial_for_queries_single_coset_physical_block_kernel(
+        desc: OraclePartialPathDesc,
+        resident_coset: u32,
+        log_lde_factor: u32,
+        log_rows_per_leaf: u32,
+        log_total_leaves_count: u32,
+        stride_per_coset_in_digests: u32,
+        layers_count: u32,
+        reduction_layers: u32,
+        query_indexes: *const u32,
+        indexes_count: u32,
+    )
+);
+
 /// Gather paths from one bitreversed coset and its partial tree. `partial_tree`
-/// is the per-coset pyramid above the warp-hashed bottom layers; `layers_count`
-/// ends at the per-coset cap. Unmatched query slots remain untouched.
+/// is the per-coset pyramid above the bottom `reduction_layers` layers;
+/// `layers_count` ends at the per-coset cap. Unmatched query slots remain untouched.
 pub fn gather_merkle_paths_partial_for_queries_single_coset_physical(
     values: &DeviceSlice<BF>,
     partial_tree: &DeviceSlice<Digest>,
@@ -125,10 +144,12 @@ pub fn gather_merkle_paths_partial_for_queries_single_coset_physical(
     log_domain_size: u32,
     log_rows_per_leaf: u32,
     layers_count: u32,
+    reduction_layers: u32,
     query_indexes: &DeviceSlice<u32>,
     slab_dst: &mut DeviceSlice<u32>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
+    assert_reduction_layers(reduction_layers);
     let cols = columns_count(
         values,
         resident_coset,
@@ -137,8 +158,8 @@ pub fn gather_merkle_paths_partial_for_queries_single_coset_physical(
         log_rows_per_leaf,
     );
     let log_leaves = log_domain_size - log_rows_per_leaf;
-    assert!(layers_count >= LOG_WARP_SIZE && layers_count <= log_leaves);
-    let tree_stride = 1u32 << (log_leaves + 1 - LOG_WARP_SIZE);
+    assert!(layers_count >= reduction_layers && layers_count <= log_leaves);
+    let tree_stride = 1u32 << (log_leaves + 1 - reduction_layers);
     assert_eq!(partial_tree.len(), tree_stride as usize);
     let indexes_count = checked_u32(query_indexes.len());
     checked_u32(slab_dst.len());
@@ -157,6 +178,23 @@ pub fn gather_merkle_paths_partial_for_queries_single_coset_physical(
         slab_dst_ptr: slab_dst.as_mut_ptr() as u64,
         ..Default::default()
     };
+    if reduction_layers != LOG_WARP_SIZE {
+        let config = partial_path_block_config((indexes_count, 1), reduction_layers, stream);
+        let args = GatherMerklePathsPartialForQueriesSingleCosetPhysicalBlockArguments::new(
+            desc,
+            resident_coset,
+            log_lde_factor,
+            log_rows_per_leaf,
+            log_leaves,
+            tree_stride,
+            layers_count,
+            reduction_layers,
+            query_indexes.as_ptr(),
+            indexes_count,
+        );
+        return GatherMerklePathsPartialForQueriesSingleCosetPhysicalBlockFunction::default()
+            .launch(&config, &args);
+    }
     let config = CudaLaunchConfig::basic((indexes_count, 1), WARP_SIZE, stream);
     let args = GatherMerklePathsPartialForQueriesSingleCosetPhysicalArguments::new(
         desc,

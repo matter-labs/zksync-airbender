@@ -1344,6 +1344,7 @@ fn retained_openings_match_full_with_one_coset_workspace() {
         log_rows,
         log_n - log_rows,
         layers,
+        PARTIAL_TREE_REDUCTION_LAYERS,
         &queries,
         stream,
     )
