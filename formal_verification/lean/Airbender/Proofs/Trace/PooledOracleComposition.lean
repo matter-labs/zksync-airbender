@@ -78,7 +78,7 @@ theorem trace_execution {p : Nat} [Fact p.Prime]
     (fun row member {before after events} native past current =>
       row_step hp inverse accepted inputs.clocks inputs.image inputs.wordSetup inputs.subwordSetup
         inputs.registers inputs.aligned inputs.ordinary inputs.configuration programImage decoded inputs.code
-        inputs.loads inputs.terminalPC inputs.configuration.isa
+        inputs.loads (VerifierBoundary.Proofs.trace_terminal_bound limbSize accepted inputs.verifierBoundary) inputs.configuration.isa
         ⟨inputs.configuration.privilege, inputs.landingPadDisabled⟩ ports member native past current)
     rows ordered indices trace.terminal (fun row present => permutation.mem_iff.mp present)
     (fun event present => eventPermutation.mem_iff.mp present) chain nativeHistory

@@ -255,7 +255,11 @@ private theorem sharedInputs (signed immediate : Bool) :
     simp only [pooledProgram, List.mem_singleton] at member
     subst actual
     cases signed <;> cases immediate <;> decide
-  · cases signed <;> cases immediate <;> constructor <;> decide
+  · refine ⟨VerifierBoundary.boot ⟨4, (8, 0)⟩, ?_⟩
+    apply VerifierBoundary.Proofs.binding_of_endpoints
+    · cases signed <;> cases immediate <;> rfl
+    · cases signed <;> cases immediate <;> rfl
+    · exact (pooledAccepted signed immediate).states
 
 theorem per_circuit_comparison_soundness (signed immediate : Bool) :
     ∃ input : JumpBranchSlt.Comparison.Input,
