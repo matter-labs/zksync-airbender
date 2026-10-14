@@ -15,6 +15,7 @@ mixed execution with delegation callers remains a separate obligation.
 | Machine and worker reads/writes, bounds and references share one actual initialized history. | [`Caller.mixed_memory_soundness`](Theorems.lean) |
 | Exact caller regions, counts and slots follow from state/request matching and public cuts/duration. | [`Caller.window_schedule_soundness` and `Caller.request_window_soundness`](Theorems.lean) |
 | Public sequential code identifies caller regions; native matching derives selected worker family, counts and slots. | [`Caller.program_window_schedule_soundness`](Theorems.lean) |
+| Public CSR controller regions and at most forty ticks derive round-worker family/count/duration and the ten-position bound. | [`Caller.program_round_region_soundness`](Theorems.lean) |
 | Actual joint cut states and projected worker boundaries retain native timestamps. | [`Caller.mixed_window_soundness` and `Caller.mixed_window_projection_soundness`](Theorems.lean) |
 | Public ADDI-from-x0/LUI preparation yields actual controls after literal or sequential ordinary/custom prefixes; native PC/clock matching derives each preparation address. | [`Caller.control_preparation_soundness`](Theorems.lean) |
 | Two preparations share their actual cut states and the complete intervening machine/worker history; neither control is supplied. | [`Caller.control_preparation_window_soundness`](Theorems.lean) |
@@ -120,9 +121,23 @@ The ordinary registry uses `SequentialProgram`; public PC/clock intervals exclud
 ordinary entries and identify the CSR family. Accepted matching derives the actual
 caller region and worker count from the public reference duration. The stronger
 sequence theorem reaches the same complete references and actual segment states.
-It retains public preparation/mode/duration, aligned ordered cuts and the shared
-extended-round controller-region coverage. Controller coverage and unrestricted
-protocol validity are not conclusions of this new entry. COPY→ADDI and both
+[`ProgramPreparedProtocolInputs`](PreparedRoundWindows.lean) now also derives the
+local extended-round controller shape. Its
+[`ProgramRoundRegionInputs`](PreparedRoundWindows.lean) supplies public CSR regions,
+LUI preparation and at most forty ticks between ordered aligned cuts. Matching
+derives local worker family/count, the ten-position bound and exact duration;
+the existing regional proof derives masks before transport and reference composition.
+[`ProtocolContextInputs`](PreparedRoundWindows.lean) shares public code/memory/table
+conditions with the legacy regional interface. Global extended-round coverage
+remains explicit, since live matching does not exclude surplus zero-clock workers.
+Empty regions retain actual clock-six preparation tokens; wrong flags/family,
+oversized/reversed/unaligned cuts and simultaneous round bits are rejected in
+[preparation regressions](../../../../Tests/ControlPreparation.lean) and
+[unified regressions](../../../../Tests/UnifiedDelegation.lean).
+The stronger context retains the actual unissued G-prefix effect in
+[zero-clock regressions](../../../../Tests/DelegationZeroInvocation.lean).
+Public preparation/mode/duration and aligned ordered cuts remain explicit;
+global controller coverage and unrestricted protocol validity remain open. COPY→ADDI and both
 invalid bigint control fixtures check the schedule connection; wrong CSR family
 and inclusion of ordinary code are rejected in
 [the unified regressions](../../../../Tests/UnifiedDelegation.lean).

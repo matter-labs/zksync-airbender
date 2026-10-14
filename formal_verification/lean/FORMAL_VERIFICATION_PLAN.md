@@ -134,7 +134,12 @@ exclude ordinary instructions and fix the full CSR family; accepted state/reques
 matching derives caller participation, unique slots and equal machine/worker counts.
 The public reference duration fixes each count without a selected-worker length
 premise. All three complete references reuse the same continuous sequence states.
-The shared extended-round controller shape/coverage remains explicit; this does
+Public extended-round controller regions now also derive their local worker family,
+ten-position bound and exact duration from original public CSR regions, aligned
+cuts and an extent of at most forty ticks. Raw matching and LUI preparation then
+derive masks through the existing regional proof, before continuous reference
+composition. Global coverage of every extended-round worker remains explicit;
+live caller matching does not exclude surplus zero-clock workers. This does
 not derive unrestricted protocol validity or close invalid-call findings. COPY→ADDI,
 empty regions and both bigint control gaps are checked; wrong family and inclusion
 of ordinary code are rejected.
@@ -169,8 +174,9 @@ ABI and whole mixed execution remain separate.
    actual controls and retained clocks through the same history. The aliased
    TRIADD→ADDI reset derives 65537→196611→0 and rejects a fabricated reset read.
    The public-program sequence entry now derives selected worker families/counts
-   from public CSR regions and native matching, retaining shared controller-region
-   coverage. Continue that controller-coverage binding, control-flow/wraparound
+   from public CSR regions and native matching. Public controller extents now also
+   derive local round-worker family/count/duration and the ten-position bound;
+   global controller coverage remains explicit. Continue that coverage binding, control-flow/wraparound
    and nonliteral preparation, then whole caller retirement; prefix retirement
    remains separate.
    COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed

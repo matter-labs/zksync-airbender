@@ -641,18 +641,35 @@ theorem sequence_retains_unissued_prefix_effect :
   rw [bits] at actualRead
   exact ⟨sequence, history, actualRead⟩
 
-private theorem prepared_protocol_inputs_keep_unissued :
-    UnifiedReduced.Caller.PreparedProtocolInputs preparationData preparationBefore [] [0]
+private theorem program_protocol_inputs_keep_unissued :
+    UnifiedReduced.Caller.ProgramPreparedProtocolInputs preparationData preparationBefore [] [0]
       preparationCells [preparationEntry] [] := by
   have context := preparationInputs
-  refine ⟨context.publicProgram, context.ordinaryProgram, context.initialization, context.distinct,
-    context.aligned, context.setup, context.tables, ?_, ?_⟩
+  refine ⟨⟨context.publicProgram, context.ordinaryProgram, context.initialization, context.distinct,
+    context.aligned, context.setup, context.tables⟩, ?_, ?_, ?_⟩
+  · intro entry member
+    have same : entry = preparationEntry := List.mem_singleton.mp member
+    subst entry
+    exact .arithmetic (.addi 0 0 12)
   · intro region member
     cases member
   · intro row member same
     have only : row = native := List.mem_singleton.mp member
     subst row
     cases same
+
+private theorem prepared_protocol_inputs_keep_unissued :
+    UnifiedReduced.Caller.PreparedProtocolInputs preparationData preparationBefore [] [0]
+      preparationCells [preparationEntry] [] :=
+  UnifiedReduced.Caller.Proofs.program_prepared_protocol_inputs (by decide +kernel) (by decide +kernel)
+    preparationAccepted program_protocol_inputs_keep_unissued
+
+theorem program_regions_admit_unissued_worker :
+    UnifiedReduced.Caller.ProgramPreparedProtocolInputs preparationData preparationBefore [] [0]
+      preparationCells [preparationEntry] [] ∧
+    native ∈ preparationData.workers.rows ∧
+    ¬ Delegation.Requests.Live (Delegation.Requests.fulfillment native) :=
+  ⟨program_protocol_inputs_keep_unissued, List.mem_singleton_self _, by decide +kernel⟩
 
 theorem prepared_regions_retain_unissued_prefix_effect :
     ∃ sequence : UnifiedReduced.Caller.WindowSequence babyBearModulus,
