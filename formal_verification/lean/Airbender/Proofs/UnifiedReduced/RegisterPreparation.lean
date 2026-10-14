@@ -113,26 +113,33 @@ theorem register_immediate_row_output [Fact p.Prime] (hp : 4194304 ≤ p)
     rw [readWord]
     simpa [write_word, importedConstraintsMemoryPorts, WordColumns.evaluate] using result
 
-/-- The first ADDI port consumes the preceding literal's retained token. Raw
-    matching, strict clocks and unique public seeds rule out a fabricated or stale
-    operand before any Sail transport or regional round-mask derivation. -/
-theorem literal_addi_source_word [Fact p.Prime] (hp : 8388608 ≤ p)
+/-- The actual first ADDI read consumes the retained source token at the
+    preceding instruction cut. This raw matching lemma is shared by finite
+    public dataflow proofs and does not require Sail states or round masks. -/
+theorem register_immediate_source_word [Fact p.Prime] (hp : 8388608 ≤ p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat}
-    {source register : BitVec 5} {literal : ControlLiteral} {immediate : BitVec 12}
+    {source register : BitVec 5} {value : BitVec 32} {immediate : BitVec 12}
     (setup : data.machine.rom = Setup.table before)
     (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
     (ordinaryProgram : Mixed.programImage before oa = some program)
     (initialization : initialImage before cells = some data.machine.initialMemory)
-    (scope : LiteralAddiPreparation data program cut source register literal immediate)
+    (scope : RegisterImmediatePreparation data program cut source register immediate)
+    (uniqueSeeds : (data.machine.initialMemory.map MemoryToken.address).Nodup)
+    (sourceFloor : (timeOfPair data.machine.initial.timestamp).value + 4 ≤ cut - 4)
+    (seedToken : ∀ start : List (MemoryToken p),
+      (data.machine.initialMemory ++ (data.prefixSteps (cut - 4)).map Prod.snd).Perm
+        (start ++ (data.prefixSteps (cut - 4)).map Prod.fst) →
+      ∃ token ∈ start, token.address = (Cell.register source).addressCode ∧
+        (timeOfPair token.time).value = (cut - 4) - 2 ∧ token.word = Word.ofBitVec value)
     (nonzero : register ≠ 0) (aligned : cut % 4 = 0)
     {w : Nat → ZMod p} (member : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∈ data.machine.rows)
     (ordinary : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∉ data.callers)
     (last : Delegation.Caller.startClock (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) + 4 = cut) :
-    (readToken w importedConstraintsMemoryPorts[0]).word = Word.ofBitVec literal.value := by
+    (readToken w importedConstraintsMemoryPorts[0]).word = Word.ofBitVec value := by
   have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
-  have floor := scope.seed.afterInitial
+  have floor := sourceFloor
   have cutFloor : 8 ≤ cut := by omega
   have sourceAligned : (cut - 4) % 4 = 0 := by omega
   have requests := request_binding size clockInverse accepted.toRequestChecks publicProgram
@@ -141,10 +148,9 @@ theorem literal_addi_source_word [Fact p.Prime] (hp : 8388608 ≤ p)
   have prefixMatching := earlier.matching
   have cutoff : cut - 5 = (cut - 4) - 1 := by omega
   rw [cutoff, mixed_prefix_steps data (by omega)] at prefixMatching
-  obtain ⟨token, present, address, _, word⟩ := preparation_token hp clockInverse accepted publicProgram ordinaryProgram
-    initialization scope.seed scope.sourceNonzero sourceAligned prefixMatching
+  obtain ⟨token, present, address, _, word⟩ := seedToken start prefixMatching
   obtain ⟨entry, _, query, metadata⟩ := register_immediate_preparation_entry (by omega) clockInverse setup accepted
-    publicProgram ordinaryProgram scope.step nonzero member ordinary last
+    publicProgram ordinaryProgram scope nonzero member ordinary last
   have indices := native_query_indices (by dsimp [limbBase]; omega) query
   have sourceIndex : (w 5).val = source.toNat := by
     simpa [metadata, importedConstraintsDecoderColumns] using indices.1
@@ -181,12 +187,78 @@ theorem literal_addi_source_word [Fact p.Prime] (hp : 8388608 ≤ p)
       rw [← same, writeTime] at strict
       omega
   have keys := boundary_keys MemoryToken.address earlier.matching earlier.addresses
-  have unique : (start.map MemoryToken.address).Nodup := keys.nodup_iff.mp scope.initialUnique
+  have unique : (start.map MemoryToken.address).Nodup := keys.nodup_iff.mp uniqueSeeds
   have equal := List.inj_on_of_nodup_map unique inStart present (sourceAddress.trans address.symm)
   exact congrArg MemoryToken.word equal |>.trans word
 
-/-- Public literal→ADDI dataflow determines a canonical output token. Neither
-    source values nor bounds nor intermediate architectural states are inputs. -/
+/-- A derived preceding source token and native ADDI arithmetic determine the
+    canonical output token. This internal lemma is shared by public chains. -/
+theorem register_immediate_preparation_token [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat}
+    {source register : BitVec 5} {value : BitVec 32} {immediate : BitVec 12}
+    {tokens : List (MemoryToken p)}
+    (setup : data.machine.rom = Setup.table before)
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    (ordinaryProgram : Mixed.programImage before oa = some program)
+    (initialization : initialImage before cells = some data.machine.initialMemory)
+    (scope : RegisterImmediatePreparation data program cut source register immediate)
+    (uniqueSeeds : (data.machine.initialMemory.map MemoryToken.address).Nodup)
+    (sourceFloor : (timeOfPair data.machine.initial.timestamp).value + 4 ≤ cut - 4)
+    (seedToken : ∀ start : List (MemoryToken p),
+      (data.machine.initialMemory ++ (data.prefixSteps (cut - 4)).map Prod.snd).Perm
+        (start ++ (data.prefixSteps (cut - 4)).map Prod.fst) →
+      ∃ token ∈ start, token.address = (Cell.register source).addressCode ∧
+        (timeOfPair token.time).value = (cut - 4) - 2 ∧ token.word = Word.ofBitVec value)
+    (nonzero : register ≠ 0) (aligned : cut % 4 = 0)
+    (matching : (data.machine.initialMemory ++ (data.prefixSteps cut).map Prod.snd).Perm
+      (tokens ++ (data.prefixSteps cut).map Prod.fst)) :
+    ∃ token ∈ tokens, token.address = (Cell.register register).addressCode ∧
+      (timeOfPair token.time).value = cut - 2 ∧
+      token.word = Word.ofBitVec (registerImmediateValue value immediate) := by
+  have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
+  obtain ⟨w, member, last, ordinary, present, timestamp, bound⟩ := preparation_output_token hp clockInverse
+    accepted publicProgram initialization scope.prefixScope scope.afterInitial scope.beforeTerminal aligned matching
+  have sourceWord := register_immediate_source_word hp clockInverse setup accepted publicProgram ordinaryProgram
+    initialization scope uniqueSeeds sourceFloor seedToken nonzero aligned member ordinary last
+  have requests := request_binding size clockInverse accepted.toRequestChecks publicProgram
+  have facts := mixed_memory_facts size clockInverse accepted publicProgram initialization requests
+  have zero := Transfer.read_cell_values_of_rules facts (Cell.register 0).addressCode 0
+    (Delegation.Caller.Proofs.initial_zero initialization)
+    (mixed_zero_rules_of_program size clockInverse accepted publicProgram ordinaryProgram requests)
+  have output := register_immediate_row_output (by omega) clockInverse setup accepted publicProgram ordinaryProgram
+    scope nonzero zero member ordinary last (sourceWord.symm ▸ Word.ofBitVec_bound _)
+  rw [sourceWord, Word.ofBitVec_roundtrip] at output
+  refine ⟨_, present, output.2.1, timestamp, ?_⟩
+  apply Word.eq_of_value bound (Word.ofBitVec_bound _)
+  have equal := congrArg BitVec.toNat output.2.2
+  rw [Word.toBitVec_toNat bound] at equal
+  exact equal.trans (Word.ofBitVec_value _).symm
+
+/-- Legacy literal→ADDI source interface, sharing the raw token proof. -/
+theorem literal_addi_source_word [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat}
+    {source register : BitVec 5} {literal : ControlLiteral} {immediate : BitVec 12}
+    (setup : data.machine.rom = Setup.table before)
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    (ordinaryProgram : Mixed.programImage before oa = some program)
+    (initialization : initialImage before cells = some data.machine.initialMemory)
+    (scope : LiteralAddiPreparation data program cut source register literal immediate)
+    (nonzero : register ≠ 0) (aligned : cut % 4 = 0)
+    {w : Nat → ZMod p} (member : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∈ data.machine.rows)
+    (ordinary : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∉ data.callers)
+    (last : Delegation.Caller.startClock (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) + 4 = cut) :
+    (readToken w importedConstraintsMemoryPorts[0]).word = Word.ofBitVec literal.value := by
+  exact register_immediate_source_word hp clockInverse setup accepted publicProgram ordinaryProgram initialization
+    scope.step scope.initialUnique scope.seed.afterInitial
+    (fun _ matching => preparation_token hp clockInverse accepted publicProgram ordinaryProgram initialization
+      scope.seed scope.sourceNonzero (by have floor := scope.seed.afterInitial; omega) matching)
+    nonzero aligned member ordinary last
+
+/-- Legacy literal→ADDI token interface, sharing the public-chain derivation. -/
 theorem literal_addi_preparation_token [Fact p.Prime] (hp : 8388608 ≤ p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
@@ -204,24 +276,11 @@ theorem literal_addi_preparation_token [Fact p.Prime] (hp : 8388608 ≤ p)
     ∃ token ∈ tokens, token.address = (Cell.register register).addressCode ∧
       (timeOfPair token.time).value = cut - 2 ∧
       token.word = Word.ofBitVec (registerImmediateValue literal.value immediate) := by
-  have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
-  obtain ⟨w, member, last, ordinary, present, timestamp, bound⟩ := preparation_output_token hp clockInverse
-    accepted publicProgram initialization scope.step.prefixScope scope.step.afterInitial scope.step.beforeTerminal aligned matching
-  have sourceWord := literal_addi_source_word hp clockInverse setup accepted publicProgram ordinaryProgram
-    initialization scope nonzero aligned member ordinary last
-  have requests := request_binding size clockInverse accepted.toRequestChecks publicProgram
-  have facts := mixed_memory_facts size clockInverse accepted publicProgram initialization requests
-  have zero := Transfer.read_cell_values_of_rules facts (Cell.register 0).addressCode 0
-    (Delegation.Caller.Proofs.initial_zero initialization)
-    (mixed_zero_rules_of_program size clockInverse accepted publicProgram ordinaryProgram requests)
-  have output := register_immediate_row_output (by omega) clockInverse setup accepted publicProgram ordinaryProgram
-    scope.step nonzero zero member ordinary last (sourceWord.symm ▸ Word.ofBitVec_bound _)
-  rw [sourceWord, Word.ofBitVec_roundtrip] at output
-  refine ⟨_, present, output.2.1, timestamp, ?_⟩
-  apply Word.eq_of_value bound (Word.ofBitVec_bound _)
-  have equal := congrArg BitVec.toNat output.2.2
-  rw [Word.toBitVec_toNat bound] at equal
-  exact equal.trans (Word.ofBitVec_value _).symm
+  exact register_immediate_preparation_token hp clockInverse setup accepted publicProgram ordinaryProgram initialization
+    scope.step scope.initialUnique scope.seed.afterInitial
+    (fun _ matching => preparation_token hp clockInverse accepted publicProgram ordinaryProgram initialization
+      scope.seed scope.sourceNonzero (by have floor := scope.seed.afterInitial; omega) matching)
+    nonzero aligned matching
 
 theorem register_immediate_control_preparation [Fact p.Prime] (hp : 8388608 ≤ p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)

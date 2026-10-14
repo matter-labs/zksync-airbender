@@ -384,8 +384,29 @@ domain/setup/table and logical-matching boundaries. Native fixtures derive
 immediates/public constants, fabricated operands and incomplete references are
 rejected. A native G-prefix fixture retains its actual unissued effect before
 literal zero and ADDI 128. Complete reference claims remain general accepted-
-witness theorems; the fixtures cover preparation/empty-region guards. Longer
-public dataflow chains, broader operations and complete Sail retirement remain open.
+witness theorems; the fixtures cover preparation/empty-region guards. Nonconsecutive
+dataflow, broader operations and complete Sail retirement remain open.
+
+
+The [finite public register-chain entry](Airbender/Review/Helpers/UnifiedReduced/RegisterChains.lean)
+extends literal/AUIPC roots with any finite sequence of consecutive ADDIs,
+including changes of nonzero register and aliases. Values are indexed by the public
+instruction expression. Induction derives each canonical operand token through
+raw initialized matching and strict clocks, then native arithmetic derives the
+next result. The same token helper serves the legacy two-instruction source;
+its signatures remain unchanged. This dependency precedes Sail transport and
+regional round-mask derivation. The new source feeds all existing complete
+selected-reference window/list interfaces with their existing domain/setup/table,
+coverage and logical-matching boundaries. Each selected preparation cycle is
+worker-free; all earlier effects remain. Native reversed-row three-instruction
+fixtures compute x12 = 127/129, then x10 = 128, then x12 = 128, retaining canonical
+clock fourteen. Actual prefix/cycle reads and matching retain the intermediate
+register values; wrong immediates/constants, fabricated middle reads and
+incomplete references are rejected. AUIPC fixtures inhabit the root case, and
+the native unissued G-prefix fixture remains admitted with its actual update.
+These are preparation/guard fixtures; complete references remain general
+accepted-witness theorems. Nonconsecutive dataflow, broader operations and full
+Sail retirement remain open.
 
 [Control preparation](Airbender/Review/Helpers/UnifiedReduced/ControlPreparation.lean)
 uses a public ordinary ADDI-from-x0/LUI registry and a worker-free final preparation
