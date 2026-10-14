@@ -7,8 +7,8 @@ Two facts make our own spec `RV.step` (`Human/RV32.lean`) trustworthy without re
    for the extra encodings Airbender accepts (`Lenient`).
 2. `step_is_airbender`: our step does exactly what the Airbender machine (`HumanSail/Airbender.lean`: Sail's
    `execute` plus the listed changes) does, on everything a program can see.
-Proofs: `Slop.Equiv.decode_is_sail` (`slop/Slop/Equiv/Decode.lean`, checked by `verify.sh` when the Sail model is
-generated); `StepIsAirbender`: TODO. -/
+Proofs (checked by `verify.sh` when the Sail model is generated): `Slop.Equiv.decode_is_sail`
+(`slop/Slop/Equiv/Decode.lean`) and `Slop.Equiv.step_is_airbender` (`slop/Slop/Equiv/StepIsAirbender.lean`). -/
 
 open Sail SailRV32 SailRV32.Functions Human
 

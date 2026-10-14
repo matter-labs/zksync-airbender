@@ -34,22 +34,30 @@ echo "$out" | grep -q "depends on axioms: \[propext, Classical.choice, Quot.soun
   || { echo "FAIL: unexpected axioms"; exit 1; }
 echo "== 5. Our spec vs Sail (needs the generated Sail model: sail/regen.sh)"
 if [[ -d lean/sail-rv32/SailRV32 ]]; then
-  out=$(cd lean && lake build HumanSail Slop.Sail.Config Slop.Equiv.Decode 2>&1 | grep -E "error|Build completed" ; lake env lean --stdin <<'LEAN'
+  out=$(cd lean && lake build HumanSail Slop.Sail.Config Slop.Equiv.Decode Slop.Equiv.StepIsAirbender 2>&1 \
+    | grep -E "error|Build completed" ; lake env lean --stdin <<'LEAN'
 import Slop.Equiv.Decode
+import Slop.Equiv.StepIsAirbender
 #check (Slop.Equiv.decode_is_sail : Airbender.DecodeIsSail)
 #print axioms Slop.Equiv.decode_is_sail
+#check (Slop.Equiv.step_is_airbender : Airbender.StepIsAirbender)
+#print axioms Slop.Equiv.step_is_airbender
 LEAN
 )
   echo "$out"
   echo "$out" | grep -q "^Slop.Equiv.decode_is_sail : Airbender.DecodeIsSail$" || { echo "FAIL: DecodeIsSail"; exit 1; }
   echo "$out" | grep -q "decode_is_sail' depends on axioms: \[propext, Classical.choice, Quot.sound\]$" \
     || { echo "FAIL: unexpected axioms (DecodeIsSail)"; exit 1; }
+  echo "$out" | grep -q "^Slop.Equiv.step_is_airbender : Airbender.StepIsAirbender$" \
+    || { echo "FAIL: StepIsAirbender"; exit 1; }
+  echo "$out" | grep -q "step_is_airbender' depends on axioms: \[propext, Classical.choice, Quot.sound\]$" \
+    || { echo "FAIL: unexpected axioms (StepIsAirbender)"; exit 1; }
 else
   echo "skipped: no generated Sail model (run sail/regen.sh)"
 fi
 
-echo "NOT YET PROVEN: Airbender.StepIsAirbender (our RV.step = Sail's execute + the listed changes), so the"
-echo "  final theorem still trusts lean/human/Human/RV32.lean's execution rules (see HumanSail/Theorems.lean)."
+echo "NOT YET PROVEN: ProgramCorrect transferred to the Airbender machine (StepIsAirbender is proven; the"
+echo "  final statement is still about RV.step, see HumanSail/Theorems.lean)."
 
 echo "== 6. Sanity (not a proof): run the image on the RV32 spec for a few inputs"
 (cd lean && lake build run_image >/dev/null && lake exe run_image)
