@@ -1033,6 +1033,17 @@ pub fn is_feeder_bracket_arena(arena_gib: usize) -> bool {
     (1..FEEDER_CANDIDATES_GIB[0]).contains(&arena_gib)
 }
 
+/// A feeder row measured with the production preset: valid and without a partial-tree override.
+fn validate_feeder_row(row: &CapacityRow, key: &str, revision: &str) -> Result<(), String> {
+    validate_row(row, key, revision)?;
+    if let Some(depth) = row.partial_trees {
+        return Err(format!(
+            "L1 capacity row {key}: partial-tree override {depth} is not the production preset"
+        ));
+    }
+    Ok(())
+}
+
 /// Every feeder case at `arena_gib` is present, valid and fits.
 pub fn qualify_feeder_capacity(
     rows: &BTreeMap<String, CapacityRow>,
@@ -1043,7 +1054,7 @@ pub fn qualify_feeder_capacity(
         let row = rows
             .get(&key)
             .ok_or_else(|| format!("L1 capacity row {key} is missing"))?;
-        validate_row(row, &key, revision)?;
+        validate_feeder_row(row, &key, revision)?;
         if !row.fits {
             return Err(format!("L1 capacity row {key} does not fit"));
         }
@@ -1059,7 +1070,7 @@ pub fn feeder_floor_bracket(
 ) -> Result<(usize, Option<usize>), String> {
     let mut arenas = BTreeMap::<usize, bool>::new();
     for (key, row) in rows {
-        validate_row(row, key, revision)?;
+        validate_feeder_row(row, key, revision)?;
         if row.stage.family() != Family::Feeder {
             return Err(format!("L1 capacity row {key} belongs to another family"));
         }
@@ -1388,6 +1399,14 @@ mod cpu_tests {
         assert!(qualify_feeder_capacity(&stale, REVISION, 30)
             .unwrap_err()
             .contains("trace geometry differs"));
+        let mut overridden = rows.clone();
+        overridden.get_mut(&key_30).unwrap().partial_trees = Some(5);
+        assert!(qualify_feeder_capacity(&overridden, REVISION, 30)
+            .unwrap_err()
+            .contains("partial-tree override"));
+        assert!(feeder_floor_bracket(&overridden, REVISION)
+            .unwrap_err()
+            .contains("partial-tree override"));
         assert!(is_feeder_bracket_arena(20));
         assert!(!is_feeder_bracket_arena(0));
         assert!(!is_feeder_bracket_arena(FEEDER_CANDIDATES_GIB[0]));
@@ -1403,18 +1422,26 @@ mod cpu_tests {
         let qualifying_gib: usize = required_env("W4_CAPACITY_QUALIFYING_GIB")
             .parse()
             .expect("W4_CAPACITY_QUALIFYING_GIB is an integer");
-        let rows: BTreeMap<String, CapacityRow> = std::fs::read_dir(&dir)
+        let mut rows = BTreeMap::<String, CapacityRow>::new();
+        let mut sources = BTreeMap::<String, PathBuf>::new();
+        for entry in std::fs::read_dir(&dir)
             .unwrap_or_else(|error| panic!("capacity rows read {}: {error}", dir.display()))
-            .map(|entry| entry.expect("capacity rows entry").path())
-            .filter(|path| {
-                path.extension()
-                    .is_some_and(|extension| extension == "json")
-            })
-            .map(|path| {
-                let row = read_row(&path);
-                (row.case.clone(), row)
-            })
-            .collect();
+        {
+            let path = entry.expect("capacity rows entry").path();
+            if path.extension().is_none_or(|extension| extension != "json") {
+                continue;
+            }
+            let row = read_row(&path);
+            if let Some(previous) = sources.insert(row.case.clone(), path.clone()) {
+                panic!(
+                    "capacity case {} is recorded twice: {} and {}",
+                    row.case,
+                    previous.display(),
+                    path.display()
+                );
+            }
+            rows.insert(row.case.clone(), row);
+        }
         qualify_feeder_capacity(&rows, &revision, qualifying_gib).unwrap();
         let (bracket, candidates): (BTreeMap<_, _>, BTreeMap<_, _>) = rows
             .clone()
