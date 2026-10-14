@@ -60,7 +60,6 @@ fn round_params(
 fn generate_single_oracle_query_body<MW: FieldWrapper>(
     leaf_ext_words_expr: TokenStream,
     hash_buf_size_const: TokenStream,
-    leaf_cap_expr: TokenStream,
     values_per_leaf_expr: TokenStream,
     fold_steps_expr: TokenStream,
     oracle_depth_expr: TokenStream,
@@ -75,7 +74,7 @@ fn generate_single_oracle_query_body<MW: FieldWrapper>(
         quote! {
             let base_root_inv = extended_generator_inv.pow(query_index as u32);
             let folded = fold_coset(
-                leaf.as_slice(), #fold_steps_expr,
+                leaf, #fold_steps_expr,
                 folding_challenges.as_slice(),
                 base_root_inv, high_powers_offsets.as_slice(),
                 fold_buf_a.as_mut_slice(), fold_buf_b.as_mut_slice(),
@@ -84,7 +83,7 @@ fn generate_single_oracle_query_body<MW: FieldWrapper>(
     } else {
         quote! {
             let folded = eval_multilinear_with_monomial_tensor(
-                leaf.as_slice(),
+                leaf,
                 monomial_weights.as_slice(),
             );
         }
@@ -94,8 +93,12 @@ fn generate_single_oracle_query_body<MW: FieldWrapper>(
         {
             let mut i = 0;
             while i < #leaf_ext_words_expr {
-                hash_buf.write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
-                i += 1;
+                let mut k = 0;
+                while k < EXT_DEGREE {
+                    hash_buf.write(i + k, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
+                    k += 1;
+                }
+                i += EXT_DEGREE;
             }
         }
         let block_end = (#leaf_ext_words_expr).next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS);
@@ -109,15 +112,8 @@ fn generate_single_oracle_query_body<MW: FieldWrapper>(
             return Err(E::whir_merkle_path_failed(q));
         }
 
-        let mut leaf: LazyVec<#quartic_struct, { #leaf_cap_expr }> =
-            LazyVec::new();
-        let mut j = 0;
-        while j < #values_per_leaf_expr {
-            leaf.push(ext_from_raw_word_slice(
-                &init_buf[j * EXT_DEGREE..(j + 1) * EXT_DEGREE],
-            ));
-            j += 1;
-        }
+        // The leaf words were read as reduced field elements: they are the leaf values as is.
+        let leaf: &[#quartic_struct] = unsafe { init_buf.transmute_subslice(0, #values_per_leaf_expr) };
 
         #fold_computation
     }
@@ -259,7 +255,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
             read_reduced_field_el, draw_single_field_el, draw_fresh_single_field_el,
             compute_tree_index,
             process_oracle_query,
-            fold_whir_accumulator, push_whir_pow_entry,
+            fold_whir_accumulator, push_whir_base_pow_entry, push_whir_pow_entry,
         };
         use ::verifier_common::errors::ErrorCreator;
         use ::verifier_common::structs::{CommitBuf, TranscriptState};
@@ -282,7 +278,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
             base_layer_claims: &[#quartic_struct],
             z_initial: &[#quartic_struct],
             accumulator: &mut ::verifier_common::whir::WhirAccumulator<
-                #quartic_struct, MAX_POW_ENTRIES,
+                #field_struct, #quartic_struct, MAX_POW_ENTRIES,
             >,
             nd_source: &mut I,
         ) -> Result<(#quartic_struct, [u32; WHIR_CAP_WORDS]), E::Error> {
@@ -382,9 +378,9 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
 
                     let mut query_point_base = extended_generator.pow(query_index as u32);
                     query_point_base.exp_power_of_2(WHIR_FOLD_STEPS[0]);
-                    push_whir_pow_entry(
+                    push_whir_base_pow_entry(
                         accumulator,
-                        <#quartic_struct>::from_base(query_point_base),
+                        query_point_base,
                         current_delinearization_challenge,
                     );
 
@@ -475,7 +471,6 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
     let query_body = generate_single_oracle_query_body::<MW>(
         quote! { leaf_ext_words },
         quote! { INTERNAL_HASH_BUF_SIZE },
-        quote! { MAX_INTERNAL_VALUES_PER_LEAF },
         quote! { values_per_leaf },
         quote! { fold_steps },
         quote! { oracle_depth },
@@ -513,13 +508,13 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
     let internal_common_imports = if cfg!(feature = "eval_leaves") {
         quote! {
             use super::common::{
-                compute_high_powers_offsets, ext_from_raw_word_slice,
+                compute_high_powers_offsets,
                 MAX_HIGH_POWERS, EXT_DEGREE,
             };
         }
     } else {
         quote! {
-            use super::common::{ext_from_raw_word_slice, EXT_DEGREE};
+            use super::common::EXT_DEGREE;
         }
     };
 
@@ -557,7 +552,7 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
             round_idx: usize,
             z_initial: &[#quartic_struct],
             accumulator: &mut ::verifier_common::whir::WhirAccumulator<
-                #quartic_struct, MAX_POW_ENTRIES,
+                #field_struct, #quartic_struct, MAX_POW_ENTRIES,
             >,
             nd_source: &mut I,
         ) -> Result<(#quartic_struct, [u32; WHIR_CAP_WORDS]), E::Error> {
@@ -652,9 +647,9 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
 
                     let mut query_point_base = extended_generator.pow(query_index as u32);
                     query_point_base.exp_power_of_2(fold_steps);
-                    push_whir_pow_entry(
+                    push_whir_base_pow_entry(
                         accumulator,
-                        <#quartic_struct>::from_base(query_point_base),
+                        query_point_base,
                         current_delinearization_challenge,
                     );
 
@@ -692,6 +687,8 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
     let mul_eval_prefactor = MW::mul_assign(quote! { eval }, quote! { entry.prefactor });
     let mul_eval_coefficient = MW::mul_assign(quote! { eval }, quote! { entry.coefficient });
     let add_expected_eval = MW::add_assign(quote! { expected }, quote! { eval });
+    let horner_fma_base_s =
+        MW::add_assign_product_with_base(quote! { t }, quote! { eval }, quote! { s });
 
     let num_rounds = whir_schedule.whir_steps_schedule.len();
     let final_round_idx = num_rounds - 1;
@@ -718,7 +715,6 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
     let query_body = generate_single_oracle_query_body::<MW>(
         quote! { FINAL_LEAF_EXT_WORDS },
         quote! { FINAL_HASH_BUF_SIZE },
-        quote! { FINAL_VALUES_PER_LEAF },
         quote! { FINAL_VALUES_PER_LEAF },
         quote! { FINAL_FOLD_STEPS },
         quote! { oracle_depth },
@@ -772,7 +768,7 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
             prev_oracle_cap: &[u32; WHIR_CAP_WORDS],
             z_initial: &[#quartic_struct],
             accumulator: &mut ::verifier_common::whir::WhirAccumulator<
-                #quartic_struct, MAX_POW_ENTRIES,
+                #field_struct, #quartic_struct, MAX_POW_ENTRIES,
             >,
             nd_source: &mut I,
         ) -> Result<(), E::Error> {
@@ -795,7 +791,10 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
                     accumulator.z_initial_idx + FINAL_MONOMIALS_LEN.trailing_zeros() as usize,
                     z_initial.len(),
                 );
-                debug_assert_eq!(accumulator.pow_entries.len(), MAX_POW_ENTRIES);
+                debug_assert_eq!(
+                    accumulator.pow_entries.len() + accumulator.base_pow_entries.len(),
+                    MAX_POW_ENTRIES,
+                );
 
                 const FINAL_MONOMIALS_DATA_WORDS: usize = FINAL_MONOMIALS_LEN * EXT_DEGREE;
                 const FINAL_MONOMIALS_COMMIT_BUF: usize = {
@@ -916,6 +915,27 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
                             #horner_mul_s;
                             let coeff = *monomials.get_unchecked(j);
                             #horner_add;
+                        }
+                        #mul_eval_prefactor;
+                        #mul_eval_coefficient;
+                        #add_expected_eval;
+                        ei += 1;
+                    }
+                }
+
+                {
+                    let n = accumulator.base_pow_entries.len();
+                    let mut ei = 0;
+                    while ei < n {
+                        let entry = accumulator.base_pow_entries.get_unchecked(ei);
+                        let s = entry.current_scalar;
+                        let mut eval = *monomials.get_unchecked(FINAL_MONOMIALS_LEN - 1);
+                        let mut j = FINAL_MONOMIALS_LEN - 1;
+                        while j > 0 {
+                            j -= 1;
+                            let mut t = *monomials.get_unchecked(j);
+                            #horner_fma_base_s;
+                            eval = t;
                         }
                         #mul_eval_prefactor;
                         #mul_eval_coefficient;
