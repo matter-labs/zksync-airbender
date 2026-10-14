@@ -44,6 +44,7 @@ mixed execution with delegation callers remains a separate obligation.
 | Public round-CSR occurrences derive live membership/masks for either source, with the zero-clock coverage boundary explicit. | [`Caller.wrapped_program_computed_round_coverage_soundness`](Theorems.lean) |
 | Complete G, extended-BLAKE and Keccak lists admit literal/AUIPC preparation in one initialized history. | [`Caller.computed_prepared_protocol_sequence_soundness`](Theorems.lean) |
 | Public modular caller/controller regions derive every shape before complete source-aware reference/list composition. | [`Caller.wrapped_program_computed_protocol_sequence_soundness`](Theorems.lean) |
+| Register-dependent ADDI derives its actual operand/cut states, RV32 result and retained output token, including aliases and earlier worker effects. | [`Caller.register_immediate_control_preparation_soundness`](Theorems.lean) |
 | Two preparations share their actual cut states and the complete intervening machine/worker history; neither control is supplied. | [`Caller.control_preparation_window_soundness`](Theorems.lean) |
 | Two native windows and their gap execute continuously from one initialization with retained tokens and clocks. | [`Caller.mixed_window_chain_soundness`](Theorems.lean) |
 | An arbitrary ordered finite list of native windows and gaps shares that continuous execution. | [`Caller.mixed_window_sequence_soundness`](Theorems.lean) |
@@ -211,6 +212,26 @@ public context and reject incomplete counts/durations and cuts past the terminal
 the complete reference/list claims remain general accepted-witness theorems.
 Broader operand-dependent preparation, jumps/branches and whole caller retirement
 remain separate.
+
+The separate [`RegisterImmediatePreparation`](../../Helpers/UnifiedReduced/RegisterPreparation.lean)
+identifies a final ADDI with any source register and a nonzero destination through
+public modular code. Initialized history derives the actual source state and
+operand bounds; imported arithmetic derives
+[`registerImmediateValue`](../../Helpers/UnifiedReduced/RegisterPreparation.lean)
+using Sail's original sign extension. The
+[`RegisterImmediatePreparedBoundaryExecution`](RegisterPreparation.lean) retains
+that initialized prefix, the actual native cycle, exact prefix matching and its
+canonical output token at cut minus two. The
+[`RegisterImmediatePreparedControl`](../../Helpers/UnifiedReduced/RegisterPreparation.lean)
+connects the actual source read to the actual cut read, including aliases. Only
+the final cycle is worker-free; earlier effects remain. No desired read, bound,
+selector, intermediate state or result is an input. Native fixtures check actual
+65537→65665 and 65537→65536, clock six, a wrong immediate and a fabricated source.
+An unissued G-prefix fixture retains actual 0→1→1 states, distinguishing the
+operand from its public initial value. Literal/AUIPC contracts remain and share
+arithmetic/output-token helpers. This is memory preparation; complete Sail
+retirement and public dataflow binding to protocol entry constants remain open.
+The complete reference/list interface still uses literal/AUIPC sources.
 
 [`WrappedProgramCallerRegion`](../../Helpers/UnifiedReduced/WindowSchedule.lean)
 states the public ordinary-exclusion/full-CSR-family policy at every clock in the

@@ -8,6 +8,7 @@ import Airbender.Proofs.UnifiedReduced.JointHashWindows
 import Airbender.Proofs.UnifiedReduced.MixedWindowProjection
 import Airbender.Proofs.UnifiedReduced.ControlPreparation
 import Airbender.Proofs.UnifiedReduced.PCRelativePreparation
+import Airbender.Proofs.UnifiedReduced.RegisterPreparation
 import Airbender.Proofs.UnifiedReduced.PreparedHashWindows
 import Airbender.Proofs.UnifiedReduced.ComputedHashWindows
 import Airbender.Proofs.UnifiedReduced.ComputedRoundRegions
@@ -865,5 +866,23 @@ theorem Caller.wrapped_program_computed_protocol_sequence_soundness [Fact p.Prim
     (ordered : Caller.WindowsOrdered first.lower ((first :: rest).map Caller.HashWindow.interval)) :
     Caller.PreparedHashSequenceResult data before cells first rest :=
   Caller.Proofs.wrapped_program_computed_protocol_sequence hp clockInverse accepted inputs scopes ordered
+
+/-- Public register-dependent ADDI preparation derives its operand from the
+    actual initialized cycle state, its RV32 result and canonical output token
+    at cut minus two. Earlier issued/unissued effects and aliases are retained.
+    No source read, operand bound, selector or desired result is supplied.
+    Protocol-constant binding and complete Sail retirement remain separate. -/
+theorem Caller.register_immediate_control_preparation_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+    {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
+    {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    {cut : Nat} {source register : BitVec 5} {immediate : BitVec 12}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.MixedMemoryInputs data program before ca oa cells)
+    (scope : Caller.RegisterImmediatePreparation data program cut source register immediate)
+    (nonzero : register ≠ 0) (aligned : cut % 4 = 0) :
+    Caller.RegisterImmediatePreparedBoundaryExecution data before cells cut source register immediate :=
+  Caller.Proofs.register_immediate_control_preparation hp clockInverse rotationInverse accepted inputs scope nonzero aligned
 
 end Airbender.UnifiedReduced
