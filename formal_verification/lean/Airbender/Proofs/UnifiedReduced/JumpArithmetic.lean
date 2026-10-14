@@ -69,6 +69,49 @@ theorem jump_link [Fact p.Prime] (hp : 196608 < p)
     have hi : w 51 = 0 := by simpa [masked] using zeroHigh
     simp [one, lo, hi, Word.toBitVec, Word.value]
 
+theorem comparison_pc [Fact p.Prime] (hp : 4194304 ≤ p)
+    {before : Reference.RiscV.Sail.State} {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.table before)))
+    (selected : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 1 ∧ w 24 = 0)
+    (binary : w 26 = 0 ∧ w 27 = 0) (rom : w 87 = 0)
+    (initial : (Word.mk (w 0).val (w 1).val).Bounded)
+    (aligned : (w 0).val % 4 = 0) :
+    (Word.mk (w 30).val (w 31).val).toBitVec = (Word.mk (w 0).val (w 1).val).toBitVec + 4 := by
+  have rawBound := (control_intermediate_bounds h).2
+  have cleanup := (control_lookup_values hp h (by simp [selected]) binary rom).2.2.2.2.2.2
+  have carry := boolean_val (local_flags h 22)
+  have wrap := boolean_val (local_flags h 23)
+  change (w 54).val ≤ 1 at carry
+  change (w 55).val ≤ 1 at wrap
+  have branch := Verification.assertion_of_holds h ⟨15, by rw [constraint_count]; decide⟩
+  have low := Verification.assertion_of_holds h ⟨16, by rw [constraint_count]; decide⟩
+  have high := Verification.assertion_of_holds h ⟨17, by rw [constraint_count]; decide⟩
+  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
+    Verification.environment, selected.1, selected.2.1, selected.2.2.1, selected.2.2.2] at branch low high
+  have lowEq : ((w 0).val : ZMod p) + 4 = (w 81).val + 65536 * (w 54).val := by
+    simp only [ZMod.natCast_zmod_val]
+    rw [branch] at low
+    linear_combination low
+  have highEq : ((w 54).val : ZMod p) + (w 1).val = (w 31).val + 65536 * (w 55).val := by
+    simp only [ZMod.natCast_zmod_val]
+    rw [branch] at high
+    linear_combination high
+  have lowNat : (w 0).val + 4 = (w 81).val + 65536 * (w 54).val :=
+    bounded_nat_eq (F := ZMod p) (p := p)
+      (by have bound := initial.1; dsimp [limbBase] at bound; omega)
+      (by dsimp [limbBase] at rawBound; omega) (by exact_mod_cast lowEq)
+  have rawAligned : (w 81).val % 4 = 0 := by omega
+  have finalLo : (w 30).val = (w 81).val := by
+    rw [cleanup, rawAligned, Nat.sub_zero, ZMod.val_natCast_of_lt (by dsimp [limbBase] at rawBound; omega)]
+  have result := Word.add_of_limbs (by omega : 196608 < p)
+    (left := Word.mk (w 0).val (w 1).val) (right := ⟨0, 0⟩) (immediate := ⟨4, 0⟩)
+    (output := Word.mk (w 30).val (w 31).val) initial
+    (by constructor <;> decide) (by constructor <;> decide)
+    ⟨finalLo ▸ rawBound, (pc_bounds h).2⟩
+    (Nat.le_trans carry (by decide)) (Nat.le_trans wrap (by decide))
+    (by simpa [finalLo] using lowEq) (by simpa using highEq)
+  simpa [Word.toBitVec, Word.value, limbBase] using result
+
 theorem jump_pc {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
     {before : Reference.RiscV.Sail.State} {w : Nat → ZMod p} {base offset final : Word} (indirect : Bool)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.table before)))

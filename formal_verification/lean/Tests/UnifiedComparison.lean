@@ -1,5 +1,7 @@
 import Airbender.Proofs.UnifiedReduced.Claims
 import Airbender.Proofs.BabyBear
+import Airbender.Review.Trace.UnifiedReduced.Theorems
+import Airbender.Proofs.Sail.WordMemoryState
 
 namespace Tests.UnifiedComparison
 open Airbender Arithmetic Trace Reference.RiscV Reference.RiscV.Sail Reference.Sail
@@ -148,5 +150,264 @@ theorem sail_comparisons (immediate : Bool) : JumpBranchSlt.Comparison.spec (inp
       all_goals rfl
     · exact ⟨[], [], before immediate, List.Perm.refl _, by simp, WriteHistory.nil _, rfl⟩
     · exact ⟨entry immediate, by simp, by cases immediate <;> decide, by cases immediate <;> rfl⟩
+
+private def wrappedInitial : State :=
+  { (before true) with regs := ((before true).regs.insert .x12 (65537 : BitVec 32)).insert .PC (0xfffffffc : BitVec 32) }
+private def wrappedBefore : State :=
+  wordWriteState (wordWriteState wrappedInitial 0xfffffffc 0xfff03613) 0 0x00000613
+private def wrappedCompareAssignment (column : Nat) : ZMod babyBearModulus :=
+  if column = 0 then 65532 else if column = 1 then 65535
+  else if column = 7 || column = 44 then 12
+  else if column = 30 || column = 81 || column = 120 || column = 122 then 0
+  else if column = 48 || column = 49 || column = 54 || column = 55 then 1
+  else assignment true column
+private def wrappedResetAssignment (column : Nat) : ZMod babyBearModulus :=
+  if column = 2 || column = 40 then 8
+  else if column = 30 then 4 else if column = 32 then 12
+  else if column = 34 then 5 else if column = 46 then 6
+  else if column = 7 || column = 44 then 12
+  else if column = 4 || column = 11 || column = 48 || column = 129 || column = 130 ||
+      column = 131 || column = 132 || column = 133 then 1
+  else 0
+private def wrappedCompareRow : Row babyBearModulus UnifiedFamily := ⟨.machine, wrappedCompareAssignment⟩
+private def wrappedResetRow : Row babyBearModulus UnifiedFamily := ⟨.machine, wrappedResetAssignment⟩
+private def wrappedCompareEntry : UnifiedReduced.ProgramEntry :=
+  ⟨0xfffffffc, 0xfff03613, .ITYPE (4095, .Regidx 0, .Regidx 12, .SLTIU),
+    ⟨.machine, 0, 0, 12, ⟨65535, 65535⟩, 4096, 3⟩⟩
+private def wrappedResetEntry : UnifiedReduced.ProgramEntry :=
+  ⟨0, 0x00000613, (UnifiedReduced.Caller.ControlLiteral.addi 0).instruction 12,
+    ⟨.machine, 0, 0, 12, ⟨0, 0⟩, 1, 0⟩⟩
+private def wrappedProgram : List UnifiedReduced.ProgramEntry := [wrappedCompareEntry, wrappedResetEntry]
+private def wrappedCells : List Cell := [.register 0, .register 12]
+private def wrappedData : UnifiedReduced.Caller.RequestTrace babyBearModulus where
+  machine := {
+    rows := [wrappedResetRow, wrappedCompareRow]
+    rom := UnifiedReduced.Setup.table wrappedBefore
+    initial := wrappedCompareRow.start
+    terminal := wrappedResetRow.finish
+    initialMemory := [⟨(Cell.register 0).addressCode, (0, 0), 0⟩,
+      ⟨(Cell.register 12).addressCode, (0, 0), Nat.pair 1 1⟩]
+    terminalMemory := [⟨(Cell.register 0).addressCode, (9, 0), 0⟩,
+      ⟨(Cell.register 12).addressCode, (10, 0), 0⟩] }
+  workers := ⟨Delegation.modeledSetup Keccak.Controller.rows, [], [], []⟩
+  program := []
+
+private theorem wrappedCore (reset : Bool) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (if reset then wrappedResetAssignment else wrappedCompareAssignment))
+    (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table wrappedBefore)) := by
+  cases reset
+  all_goals simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
+    Verification.environment, Expression.eval, wrappedCompareAssignment, wrappedResetAssignment, assignment,
+    Lookup.Contains, Table.toRaw, fromElements]
+  all_goals repeat' apply And.intro
+  all_goals solve
+    | decide +kernel
+    | (apply Verification.range16_contains; decide +kernel)
+    | (refine ⟨(0 : Fin 2097537), ?_⟩
+       change (#v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0] : Vector (ZMod babyBearModulus) 10) =
+         (UnifiedReduced.Setup.fixedRow (0 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
+       decide +kernel)
+    | (refine ⟨⟨524545, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
+    | (refine ⟨⟨524546, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
+    | (refine ⟨⟨655617, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
+    | (refine ⟨⟨721152, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
+    | (refine ⟨⟨786742, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow,
+        UnifiedReduced.Setup.conditionalKey, Verification.conditionalValue])
+    | (refine ⟨⟨721153, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
+
+private theorem wrappedTimestamps (reset : Bool) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (if reset then wrappedResetAssignment else wrappedCompareAssignment))
+    UnifiedReduced.importedConstraintsTimestampLookups := by
+  rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
+  constructor
+  · simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.constraints]
+  · rw [List.forall_mem_iff_forall_getElem]
+    intro i bound
+    have short : i < 8 := by simpa only [UnifiedReduced.timestamp_count] using bound
+    interval_cases i
+    all_goals apply Trace.Proofs.range_contains
+    all_goals cases reset <;> decide +kernel
+
+private theorem wrappedAccepted : UnifiedReduced.Caller.MixedMemoryAccepted wrappedData wrappedProgram := by
+  constructor
+  · constructor
+    · intro current member
+      have rows : current = wrappedResetRow ∨ current = wrappedCompareRow := by simpa [wrappedData] using member
+      rcases rows with rfl | rfl
+      · exact Verification.holds_append (wrappedCore true) (wrappedTimestamps true)
+      · exact Verification.holds_append (wrappedCore false) (wrappedTimestamps false)
+    · intro current member
+      have rows : current = wrappedResetRow ∨ current = wrappedCompareRow := by simpa [wrappedData] using member
+      rcases rows with rfl | rfl <;> decide +kernel
+    · change [wrappedCompareRow.start, wrappedResetRow.finish, wrappedCompareRow.finish].Perm
+        [wrappedResetRow.finish, wrappedResetRow.start, wrappedCompareRow.start]
+      have same : wrappedCompareRow.finish = wrappedResetRow.start := rfl
+      rw [same]
+      exact (List.Perm.swap _ _ _).trans (List.Perm.cons _ (List.Perm.swap _ _ []))
+    · intro current member
+      have empty : wrappedData.callers = [] := by decide +kernel
+      rw [empty] at member
+      cases member
+    · intro current member; cases member
+    · intro current member; cases member
+    · have empty : wrappedData.calls = [] := by decide +kernel
+      rw [empty]
+      exact List.Perm.refl []
+  · intro current member _
+    have rows : current = wrappedResetRow ∨ current = wrappedCompareRow := by simpa [wrappedData] using member
+    rcases rows with rfl | rfl
+    · change ∃ i : Fin 2, wrappedResetRow.decoderQuery = (wrappedProgram.get i).query
+      exact ⟨1, by decide +kernel⟩
+    · change ∃ i : Fin 2, wrappedCompareRow.decoderQuery = (wrappedProgram.get i).query
+      exact ⟨0, by decide +kernel⟩
+  · decide +kernel
+
+private theorem wrappedImage : UnifiedReduced.Mixed.programImage wrappedBefore [0xfffffffc, 0] = some wrappedProgram := by
+  have first : (Cell.ram 0xfffffffc).read wrappedBefore = .ok 0xfff03613 wrappedBefore :=
+    written_word_disjoint 0 0x00000613 (by decide) (written_word_read wrappedInitial 0xfffffffc 0xfff03613)
+  have second : (Cell.ram 0).read wrappedBefore = .ok 0x00000613 wrappedBefore :=
+    written_word_read (wordWriteState wrappedInitial 0xfffffffc 0xfff03613) 0 0x00000613
+  have decodeFirst : run (SailRV32.Functions.encdec_backwards 0xfff03613) wrappedBefore =
+      .ok wrappedCompareEntry.instruction wrappedBefore := by with_unfolding_all rfl
+  have decodeSecond : run (SailRV32.Functions.encdec_backwards 0x00000613) wrappedBefore =
+      .ok wrappedResetEntry.instruction wrappedBefore := by with_unfolding_all rfl
+  have fieldsFirst : UnifiedReduced.Mixed.decoderFields wrappedCompareEntry.instruction = some wrappedCompareEntry.data := by
+    with_unfolding_all rfl
+  have fieldsSecond : UnifiedReduced.Mixed.decoderFields wrappedResetEntry.instruction = some wrappedResetEntry.data := by
+    with_unfolding_all rfl
+  simp only [UnifiedReduced.Mixed.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
+    programEntryRunWith, first, second, decodeFirst, decodeSecond, fieldsFirst, fieldsSecond, bind, Option.bind, pure]
+  rfl
+
+private theorem wrappedInputs : UnifiedReduced.Caller.MixedMemoryInputs
+    wrappedData wrappedProgram wrappedBefore [] [0xfffffffc, 0] wrappedCells := by
+  refine ⟨⟨rfl, ?_, by decide +kernel⟩, wrappedImage, ?_, by decide +kernel, ?_, rfl, rfl, ?_⟩
+  · constructor <;> decide +kernel
+  · have zero : (Cell.register 0).read wrappedBefore = .ok 0 wrappedBefore := by with_unfolding_all rfl
+    have control : (Cell.register 12).read wrappedBefore = .ok 65537 wrappedBefore := by
+      apply rX_register_frame (before := wrappedInitial) (after := wrappedBefore) rfl 12
+      apply read_register
+      simp [wrappedInitial, Std.ExtDHashMap.get?_insert]
+    change initialImage wrappedBefore [.register 0, .register 12] = some wrappedData.machine.initialMemory
+    simp only [initialImage, zero, control, List.mapM_cons, List.mapM_nil, bind, pure]
+    rfl
+  · intro cell member
+    have choices : cell = .register 0 ∨ cell = .register 12 := by simpa [wrappedCells] using member
+    rcases choices with rfl | rfl <;> trivial
+  · intro current member; cases member
+
+private theorem wrappedRegistry : UnifiedReduced.Caller.WrappedSequentialProgram wrappedProgram := by
+  constructor
+  · intro entry member
+    have entries : entry = wrappedCompareEntry ∨ entry = wrappedResetEntry := by simpa [wrappedProgram] using member
+    rcases entries with rfl | rfl
+    · exact .sltiu 4095 0 12
+    · exact .sequential (.arithmetic (.addi 0 0 12))
+  · intro entry member
+    have entries : entry = wrappedCompareEntry ∨ entry = wrappedResetEntry := by simpa [wrappedProgram] using member
+    rcases entries with rfl | rfl <;> decide +kernel
+
+private theorem wrappedPreparation : UnifiedReduced.Caller.ControlPreparation wrappedData wrappedProgram 12 12 (.addi 0) := by
+  refine ⟨?_, by decide +kernel, by decide +kernel, by decide +kernel⟩
+  apply UnifiedReduced.Caller.PreparationProgram.wrappedSequential (by decide +kernel) wrappedBefore rfl wrappedRegistry
+  intro entry member atCut
+  have entries : entry = wrappedCompareEntry ∨ entry = wrappedResetEntry := by simpa [wrappedProgram] using member
+  rcases entries with rfl | rfl
+  · have impossible : ¬ (wrappedCompareEntry.pc = wrappedData.machine.initial.word.toBitVec +
+        BitVec.ofNat 32 (12 - 4 - (timeOfPair wrappedData.machine.initial.timestamp).value)) := by decide +kernel
+    exact False.elim (impossible atCut)
+  · rfl
+
+theorem comparison_wrap_and_reset_accepted :
+    UnifiedReduced.Caller.MixedMemoryAccepted wrappedData wrappedProgram ∧
+    UnifiedReduced.Caller.MixedMemoryInputs wrappedData wrappedProgram wrappedBefore [] [0xfffffffc, 0] wrappedCells ∧
+    wrappedCompareRow.start.word.toBitVec = 0xfffffffc ∧ wrappedCompareRow.finish.word.toBitVec = 0 :=
+  ⟨wrappedAccepted, wrappedInputs, by decide +kernel, by decide +kernel⟩
+
+theorem wrapped_preparation_derives_reset_control :
+    UnifiedReduced.Caller.PreparedBoundaryExecution wrappedData wrappedBefore wrappedCells 12 12 (.addi 0) :=
+  UnifiedReduced.Caller.control_preparation_soundness (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    wrappedAccepted wrappedInputs wrappedPreparation (by decide) (by decide)
+
+theorem wrapped_native_addresses_derived :
+    ∀ row ∈ wrappedData.machine.rows, row.start.word.toBitVec = wrappedData.machine.initial.word.toBitVec +
+      BitVec.ofNat 32 (Delegation.Caller.startClock row - (timeOfPair wrappedData.machine.initial.timestamp).value) :=
+  UnifiedReduced.Caller.wrapped_program_address_soundness (by decide +kernel) (by decide +kernel)
+    rfl wrappedAccepted wrappedInputs.publicProgram wrappedInputs.ordinaryProgram wrappedRegistry
+
+theorem wrapped_preparation_uses_comparison_write :
+    (readToken wrappedResetAssignment UnifiedReduced.importedConstraintsMemoryPorts[2]).time = (6, 0) ∧
+    (readToken wrappedResetAssignment UnifiedReduced.importedConstraintsMemoryPorts[2]).word.toBitVec = 1 ∧
+    (writeToken UnifiedReduced.importedConstraintsTraceColumns wrappedResetAssignment
+      UnifiedReduced.importedConstraintsMemoryPorts[2]).time = (10, 0) := by decide +kernel
+
+theorem wrapped_prefix_and_preparation_share_history :
+    ∃ chain : UnifiedReduced.Caller.WindowChain babyBearModulus,
+      chain.Realizes wrappedData wrappedBefore wrappedCells 4 8 8 12 ∧
+      (Cell.register 12).read chain.atFirstFinish = .ok 1 chain.atFirstFinish ∧
+      (Cell.register 12).read chain.atSecondFinish = .ok 0 chain.atSecondFinish := by
+  obtain ⟨chain, history⟩ := UnifiedReduced.Caller.mixed_window_chain_soundness
+    (a := 4) (b := 8) (c := 8) (d := 12)
+    (by decide +kernel) (by decide +kernel) (by decide +kernel) wrappedAccepted wrappedInputs
+    (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) (by decide)
+  have firstMatching := UnifiedReduced.Caller.Proofs.matching_at_next_cut (by decide +kernel) (by decide +kernel)
+    (lower := 4) (upper := 8) wrappedAccepted.toRequestChecks wrappedInputs.publicProgram
+    (by decide) (by decide) (by decide) (by decide) history.firstPrefixMatching history.firstMatching
+  let token : MemoryToken babyBearModulus := ⟨(Cell.register 12).addressCode, (6, 0), Nat.pair 1 0⟩
+  have produced : token ∈ wrappedData.machine.initialMemory ++ (wrappedData.prefixSteps 8).map Prod.snd := by decide +kernel
+  have notRead : token ∉ (wrappedData.prefixSteps 8).map Prod.fst := by decide +kernel
+  have present : token ∈ chain.firstFinish := by
+    rcases List.mem_append.mp (firstMatching.mem_iff.mp produced) with present | read
+    · exact present
+    · exact False.elim (notRead read)
+  obtain ⟨cell, _, address, firstRead⟩ := UnifiedReduced.Caller.Proofs.native_boundary_read history.firstFinishBoundary present
+  have same : cell = Cell.register 12 := Trace.Proofs.cell_address_injective address
+  subst cell
+  have finalMatching := UnifiedReduced.Caller.Proofs.matching_at_next_cut (by decide +kernel) (by decide +kernel)
+    (lower := 8) (upper := 12) wrappedAccepted.toRequestChecks wrappedInputs.publicProgram
+    (by decide) (by decide) (by decide) (by decide) history.secondPrefixMatching history.secondMatching
+  have lastRead := UnifiedReduced.Caller.Proofs.preparation_at_boundary (by decide +kernel) (by decide +kernel)
+    wrappedAccepted wrappedInputs wrappedPreparation (by decide) (by decide) finalMatching history.secondFinishBoundary
+  have bits : token.word.toBitVec = (1 : BitVec 32) := by
+    simp only [token, MemoryToken.word, Nat.unpair_pair]
+    rfl
+  rw [bits] at firstRead
+  exact ⟨chain, history, firstRead, lastRead.1⟩
+
+theorem wrapped_profile_excludes_jump (imm : BitVec 21) (rd : BitVec 5) :
+    ¬ UnifiedReduced.Caller.WrappedSequentialInstruction (.JAL (imm, .Regidx rd)) := by
+  intro supported
+  cases supported with
+  | sequential supported =>
+    cases supported with
+    | arithmetic supported => cases supported
+
+theorem wrapped_profile_rejects_misaligned_code :
+    ¬ UnifiedReduced.Caller.WrappedSequentialProgram [{ wrappedCompareEntry with pc := 0xfffffffd }] := by
+  intro registry
+  have alignment := registry.aligned { wrappedCompareEntry with pc := 0xfffffffd } (by simp)
+  exact (by decide +kernel : ¬ (0xfffffffd : BitVec 32).toNat % 4 = 0) alignment
+
+theorem wrapped_preparation_wrong_literal_rejected :
+    ¬ UnifiedReduced.Caller.ControlPreparation wrappedData wrappedProgram 12 12 (.addi 128) := by
+  intro scope
+  have instruction := UnifiedReduced.Caller.Proofs.preparation_instruction (by decide +kernel) (by decide +kernel)
+    wrappedAccepted wrappedInputs.publicProgram wrappedInputs.ordinaryProgram scope
+    (row := wrappedResetRow) (by simp [wrappedData]) (by decide +kernel)
+    (entry := wrappedResetEntry) (by simp [wrappedProgram]) (by decide +kernel)
+  change SailRV32.instruction.ITYPE (0, .Regidx 0, .Regidx 12, .ADDI) =
+    SailRV32.instruction.ITYPE (128, .Regidx 0, .Regidx 12, .ADDI) at instruction
+  cases instruction
+
+private def badWrappedData : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
+  { wrappedData with machine := { wrappedData.machine with
+    rows := [⟨.machine, fun column => if column = 48 then 2 else wrappedResetAssignment column⟩, wrappedCompareRow] } }
+
+theorem wrapped_preparation_fabricated_read_rejected :
+    ¬ UnifiedReduced.Caller.MixedMemoryAccepted badWrappedData wrappedProgram := by
+  intro accepted
+  exact (by decide +kernel : ¬
+    (badWrappedData.machine.initialMemory ++ badWrappedData.mixedSteps.map Prod.snd).Perm
+      (badWrappedData.machine.terminalMemory ++ badWrappedData.mixedSteps.map Prod.fst)) accepted.memory
 
 end Tests.UnifiedComparison

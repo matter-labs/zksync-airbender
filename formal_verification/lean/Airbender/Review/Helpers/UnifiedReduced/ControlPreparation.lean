@@ -62,7 +62,22 @@ inductive SequentialInstruction : SailRV32.instruction → Prop where
 def SequentialProgram (program : List UnifiedReduced.ProgramEntry) : Prop :=
   ∀ entry ∈ program, SequentialInstruction entry.instruction
 
-/-- Uniform literals or a public sequential registry. Native PC/clock matching locates the final public literal instruction. -/
+/-- Sequential forms plus the four original comparisons, using RV32 PC addition. -/
+inductive WrappedSequentialInstruction : SailRV32.instruction → Prop where
+  | sequential {instruction} (supported : SequentialInstruction instruction) : WrappedSequentialInstruction instruction
+  | slt (rs2 rs1 rd : BitVec 5) : WrappedSequentialInstruction (.RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, .SLT))
+  | sltu (rs2 rs1 rd : BitVec 5) : WrappedSequentialInstruction (.RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, .SLTU))
+  | slti (imm : BitVec 12) (rs1 rd : BitVec 5) : WrappedSequentialInstruction (.ITYPE (imm, .Regidx rs1, .Regidx rd, .SLTI))
+  | sltiu (imm : BitVec 12) (rs1 rd : BitVec 5) : WrappedSequentialInstruction (.ITYPE (imm, .Regidx rs1, .Regidx rd, .SLTIU))
+
+/-- Public instruction forms and code alignment for the wraparound PC profile. -/
+structure WrappedSequentialProgram (program : List UnifiedReduced.ProgramEntry) : Prop where
+  /-- Original decoded instructions; supported payload checks remain in public decoding. -/
+  entries : ∀ entry ∈ program, WrappedSequentialInstruction entry.instruction
+  /-- Alignment keeps comparison PC cleanup equal to the RV32 successor. -/
+  aligned : ∀ entry ∈ program, entry.pc.toNat % 4 = 0
+
+/-- Public registries identify the literal through native PC/clock matching. -/
 inductive PreparationProgram [Fact p.Prime] (data : RequestTrace p)
     (program : List UnifiedReduced.ProgramEntry) (cut : Nat)
     (register : BitVec 5) (literal : ControlLiteral) : Prop where
@@ -82,6 +97,13 @@ inductive PreparationProgram [Fact p.Prime] (data : RequestTrace p)
       (atCut : ∀ entry ∈ program,
         entry.pc.toNat + (timeOfPair data.machine.initial.timestamp).value =
           data.machine.initial.word.value + (cut - 4) →
+        entry.instruction = literal.instruction register)
+
+  | wrappedSequential (minimum : 4194304 ≤ p) (state : State)
+      (setup : data.machine.rom = Setup.table state) (entries : WrappedSequentialProgram program)
+      (atCut : ∀ entry ∈ program,
+        entry.pc = data.machine.initial.word.toBitVec +
+          BitVec.ofNat 32 (cut - 4 - (timeOfPair data.machine.initial.timestamp).value) →
         entry.instruction = literal.instruction register)
 
 /-- Public preparation registry and its final cycle. Native matching identifies

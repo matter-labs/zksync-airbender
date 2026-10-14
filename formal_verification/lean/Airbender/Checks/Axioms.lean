@@ -2186,6 +2186,23 @@ import Clean.Specs.Keccak256
 #print axioms Tests.ControlPreparation.sequential_profile_excludes_jump
 #print axioms Tests.ControlPreparation.sequential_profile_excludes_comparison
 
+#print axioms Airbender.UnifiedReduced.Caller.WrappedSequentialInstruction
+#print axioms Airbender.UnifiedReduced.Caller.WrappedSequentialProgram
+#print axioms Airbender.UnifiedReduced.Proofs.comparison_pc
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.wrapped_fields_mask
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.wrapped_program_pc_advance
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.wrapped_program_pc_clock
+#print axioms Airbender.UnifiedReduced.Caller.wrapped_program_address_soundness
+#print axioms Tests.UnifiedComparison.comparison_wrap_and_reset_accepted
+#print axioms Tests.UnifiedComparison.wrapped_native_addresses_derived
+#print axioms Tests.UnifiedComparison.wrapped_preparation_derives_reset_control
+#print axioms Tests.UnifiedComparison.wrapped_preparation_uses_comparison_write
+#print axioms Tests.UnifiedComparison.wrapped_prefix_and_preparation_share_history
+#print axioms Tests.UnifiedComparison.wrapped_profile_excludes_jump
+#print axioms Tests.UnifiedComparison.wrapped_profile_rejects_misaligned_code
+#print axioms Tests.UnifiedComparison.wrapped_preparation_wrong_literal_rejected
+#print axioms Tests.UnifiedComparison.wrapped_preparation_fabricated_read_rejected
+
 #print axioms Airbender.UnifiedReduced.Caller.ProgramCallerRegion
 #print axioms Airbender.UnifiedReduced.Caller.ProgramCallerWindow
 #print axioms Airbender.UnifiedReduced.Caller.ProgramProtocolWindowInputs
