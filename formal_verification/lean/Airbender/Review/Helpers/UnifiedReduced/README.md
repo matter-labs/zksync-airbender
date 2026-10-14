@@ -83,6 +83,19 @@ Only its final cycle is worker-free; earlier worker effects remain in the same
 history. The original extended-round first-span scope retains an empty worker prefix.
 Boundary timestamps are retained; scheduling, actual controls and intermediate
 states are derived rather than supplied.
+[`PCRelativePreparation`](PCRelativePreparation.lean) separately identifies a final
+original AUIPC through that same modular sequential/comparison registry. Its
+[`pcRelativeControl`](PCRelativePreparation.lean) computes the RV32 sum of the
+derived public instruction address and the decoded U-immediate. Native selector,
+carry and overflow equations derive the canonical result; initialized matching
+retains its actual write token at cut minus two. Only the final cycle is
+worker-free, so earlier issued/unissued effects remain. No row selector, desired
+control value or operand read is an input. This preparation/memory entry retains
+modeled setup/tables and the existing extended-round ABI. Its integration into
+complete prepared hash-span entries, operand-dependent preparation and jumps or
+branches remain separate. Concrete fixtures use PC four to produce 524292 and
+PC 65540 with immediate 0xfffff to wrap the sum to 61444; both retain clock six.
+
 The [prepared control window](../../Trace/UnifiedReduced/ControlPreparation.lean)
 connects two prepared controls through the same actual intervening history, keeping
 all ordinary and worker accesses. Both controls follow from the public registry

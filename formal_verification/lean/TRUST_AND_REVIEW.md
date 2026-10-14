@@ -292,6 +292,20 @@ zero to one; native boot remains at four. Both invalid bigint controls and LW/SW
 caller fixtures inhabit the new entry. Full CSR ABI, exclusion/inertness and whole
 caller retirement remain open.
 
+The [PC-relative preparation entry](Airbender/Review/Trace/UnifiedReduced/PCRelativePreparation.lean)
+computes a control with original public AUIPC decoding. Modular public
+sequential/comparison code and native PC/clock matching derive its actual address;
+accepted arithmetic equations derive the RV32 sum of that PC and the U-immediate.
+The canonical native token survives prefix matching at cut minus two, and the
+same initialized history supplies its actual Sail cut read. There is no expected
+output, desired operand or selected native row premise. The final preparation
+cycle stays worker-free; earlier issued and unissued effects remain. Modeled
+setup/tables, public initialization and existing extended-round ABI remain
+explicit. Fixtures check nonzero PCs and an overflowing sum, retain clock-six
+tokens, and reject a wrong immediate or fabricated read. This proves preparation
+and memory transport. General operand-dependent preparation, jumps/branches,
+prepared hash-span integration and whole caller retirement remain separate.
+
 [Control preparation](Airbender/Review/Helpers/UnifiedReduced/ControlPreparation.lean)
 uses a public ordinary ADDI-from-x0/LUI registry and a worker-free final preparation
 cycle. The registry may be uniform, contain different literals/registers, or admit
