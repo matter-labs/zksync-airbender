@@ -58,6 +58,7 @@ LEAN
     || { echo "FAIL: Airbender.ProgramCorrect"; exit 1; }
   echo "$out" | grep -q "program_correct_airbender' depends on axioms: \[propext, Classical.choice, Quot.sound\]$" \
     || { echo "FAIL: unexpected axioms (Airbender.ProgramCorrect)"; exit 1; }
+  sail_ok=1
 else
   echo "skipped: no generated Sail model (run sail/regen.sh)"
 fi
@@ -66,3 +67,6 @@ fi
 echo "== 6. Sanity (not a proof): run the image on the RV32 spec for a few inputs"
 (cd lean && lake build run_image >/dev/null && lake exe run_image)
 echo "OK: the image at build/app.bin satisfies RV.ProgramCorrect (lean/human/Human/Theorems.lean)"
+if [[ -n "${sail_ok:-}" ]]; then
+  echo "OK: and Airbender.ProgramCorrect on the Sail-based Airbender machine (lean/human/HumanSail/Theorems.lean)"
+fi
