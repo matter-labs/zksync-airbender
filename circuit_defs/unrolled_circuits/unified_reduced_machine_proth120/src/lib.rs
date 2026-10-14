@@ -24,6 +24,9 @@ use std::alloc::Global;
 pub const TRACE_LEN_LOG2: usize =
     prover::gkr::prover_config::example_configs::EVM_PRODUCTION_TRACE_LEN_LOG2;
 pub const NUM_INIT_AND_TEARDOWN_SETS: usize = 2;
+/// The ROM geometry this wrap circuit executes (the regular 4 MiB ROM until
+/// the 2^21 wrap circuit with the 512 KiB ROM replaces it).
+pub const ROM: common_constants::RomGeometry = common_constants::REGULAR_ROM;
 
 pub const LAYOUT_JSON: &str = include_str!(
     "../../../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json"

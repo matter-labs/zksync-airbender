@@ -7,8 +7,8 @@ use verifier_common::fsv_binaries::BlakeMode;
 
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct UnifiedProofShape {
-    riscv: BTreeMap<u32, usize>,
-    delegations: BTreeMap<u32, usize>,
+    pub(super) riscv: BTreeMap<u32, usize>,
+    pub(super) delegations: BTreeMap<u32, usize>,
 }
 
 impl UnifiedProofShape {
@@ -29,8 +29,19 @@ impl UnifiedProofShape {
 
     /// Match execution_prover's trace producer: both unified cycles and
     /// delegation calls use the full circuit domain, with no reserved row.
-    pub(super) fn from_counters(counters: &DelegationsAndUnifiedCounters) -> Self {
-        let unified = UnrolledCircuitType::Unified;
+    /// `unified` selects the unified circuit geometry the cycles are chunked
+    /// into (2^23 for regular recursion, 2^22 for the feeder layers).
+    pub(super) fn from_counters(
+        unified: UnrolledCircuitType,
+        counters: &DelegationsAndUnifiedCounters,
+    ) -> Self {
+        assert!(
+            matches!(
+                unified,
+                UnrolledCircuitType::Unified | UnrolledCircuitType::Unified22
+            ),
+            "{unified:?} is not a unified circuit"
+        );
         let riscv = [(
             unified.get_family_idx() as u32,
             counters.cycles.div_ceil(unified.get_domain_size()),
@@ -128,7 +139,16 @@ mod tests {
 
     #[test]
     fn unified_predictions_round_up_at_full_domain_boundaries() {
-        let circuit = UnrolledCircuitType::Unified;
+        for circuit in [UnrolledCircuitType::Unified, UnrolledCircuitType::Unified22] {
+            unified_predictions_round_up_at_full_domain_boundaries_for(circuit);
+        }
+        assert_eq!(
+            UnrolledCircuitType::Unified22.get_domain_size() * 2,
+            UnrolledCircuitType::Unified.get_domain_size()
+        );
+    }
+
+    fn unified_predictions_round_up_at_full_domain_boundaries_for(circuit: UnrolledCircuitType) {
         let capacity = circuit.get_domain_size();
         for (cycles, chunks) in [
             (0, 0),
@@ -136,11 +156,16 @@ mod tests {
             (capacity - 1, 1),
             (capacity, 1),
             (capacity + 1, 2),
+            (2 * capacity, 2),
+            (2 * capacity + 1, 3),
         ] {
-            let predicted = UnifiedProofShape::from_counters(&DelegationsAndUnifiedCounters {
-                cycles,
-                ..Default::default()
-            });
+            let predicted = UnifiedProofShape::from_counters(
+                circuit,
+                &DelegationsAndUnifiedCounters {
+                    cycles,
+                    ..Default::default()
+                },
+            );
             assert_eq!(
                 predicted
                     .riscv
@@ -176,7 +201,8 @@ mod tests {
                     | DelegationCircuitType::KeccakThetaRho
                     | DelegationCircuitType::KeccakChi5 => continue,
                 }
-                let predicted = UnifiedProofShape::from_counters(&counters);
+                let predicted =
+                    UnifiedProofShape::from_counters(UnrolledCircuitType::Unified, &counters);
                 let expected = if chunks == 0 {
                     shape(&[], &[])
                 } else {

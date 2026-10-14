@@ -22,8 +22,10 @@
 use clap::ValueEnum;
 use execution_prover::{BinaryHandle, ProofProfile};
 mod fsv_measure;
+use fsv_measure::FsvRunReport;
 mod l1_wrap;
 mod unified_recursion;
+use execution_prover_model::circuit_type::{CircuitType, UnrolledCircuitType};
 use full_statement_verifier::host_utils::{
     bridge_blake_mode, build_unified_stream, build_unrolled_stream, compute_end_params,
     final_blake_mode, load_fsv_program, native_verify_unified, native_verify_unified_l1_feeder,
@@ -31,7 +33,10 @@ use full_statement_verifier::host_utils::{
 };
 use full_statement_verifier::program_proof::ProgramProof;
 pub use l1_wrap::L1Bundle;
-use l1_wrap::{advance_l1_wrap, validate_artifact_envelope, validate_feeder_proof_shape};
+use l1_wrap::{
+    advance_l1_wrap, validate_artifact_envelope, validate_l1_wrap_activation,
+    validate_last_feeder_proof,
+};
 use riscv_transpiler::vm::FlatResponsesSource;
 use serde::{Deserialize, Serialize};
 use setups::Setups;
@@ -191,11 +196,13 @@ impl ProofCounts {
     }
 }
 
-/// Proof artifact, schema v4. `proof` + `setups` describe the BabyBear
+/// Proof artifact, schema v5. `proof` + `setups` describe the BabyBear
 /// proof; an optional `l1` bundle carries the Proth proof; `chain_end_params` is the ordered list of layer
 /// `end_params` from base onward, from which the recursion chain state after
 /// this artifact's layer (`chain_hash` / `chain_preimage`) is reconstructed
-/// for staged continuation.
+/// for staged continuation. Schema v4 artifacts (no `feeder_layers`) are
+/// accepted for the pre-feeder targets only, after trusted native
+/// re-validation; their continuation emits v5.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ProofArtifact {
     pub schema_version: u32,
@@ -211,8 +218,17 @@ pub struct ProofArtifact {
     pub program_text_keccak: [u8; 32],
     pub timings_ms: ProofTimingsMs,
     pub proof_counts: ProofCounts,
-    /// Layer end-params history: `[base, unrolled_1, .., bridge, final]`.
+    /// Layer end-params history: `[base, unrolled_1, .., bridge, final,
+    /// feeder_1, .., feeder_k]`, one entry per proven layer.
     pub chain_end_params: Vec<[u32; 8]>,
+    /// Number of L1 feeder layers in `chain_end_params` (0 before the feeder
+    /// stage, `1..=MAX_FEEDER_LAYERS` after it). Validated routing metadata:
+    /// consecutive feeder layers prove the same binary on the same machine,
+    /// so their end params are equal and the VM-authenticated chain hash
+    /// (which deduplicates equal consecutive entries) cannot attest this
+    /// count; verification rejects an isolated length mismatch only.
+    #[serde(default)]
+    pub feeder_layers: u32,
     /// Recursion-chain state AFTER this artifact's layer.
     pub chain_hash: [u32; 8],
     pub chain_preimage: [u32; 16],
@@ -232,7 +248,15 @@ pub struct ProofArtifact {
     pub setups: Setups,
 }
 
-pub const ARTIFACT_SCHEMA_VERSION: u32 = 4;
+pub const ARTIFACT_SCHEMA_VERSION: u32 = 5;
+/// The last schema the pre-feeder targets are still imported from.
+pub const LEGACY_ARTIFACT_SCHEMA_VERSION: u32 = 4;
+/// The feeder chain must reach one instance within this many layers.
+pub const MAX_FEEDER_LAYERS: u32 = 8;
+/// The cycle budget of the intended 2^21 L1 wrap program (W3 asserts its
+/// wrap circuit domain equals it); independent of the active
+/// `CircuitType::L1Wrap` domain.
+pub const L1_WRAP_PROGRAM_CYCLE_LIMIT: usize = 1 << 21;
 
 fn default_blake_tag() -> String {
     BlakeMode::Compression.tag().to_string()
@@ -506,6 +530,9 @@ struct RecursionState {
     input_is_base: bool,
     timings: ProofTimingsMs,
     program_cycles: u64,
+    /// Feeder layers already proven (the last `feeder_layers` entries of
+    /// `chain_end_params`); `proof` is the last of them when nonzero.
+    feeder_layers: u32,
 }
 
 fn rebuild_chain(chain_end_params: &[[u32; 8]]) -> Result<FsvRecursionChain, String> {
@@ -529,9 +556,38 @@ fn fsv_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../tools/gkr_verifier")
 }
 
+/// The two roles of the feeder chain: F1 verifies the final standard unified
+/// proof, every later layer verifies the previous feeder proof.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FeederRole {
+    First,
+    Recurrent,
+}
+
+/// What a feeder layer proves and how: one proving shape for both roles.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct FeederStageSpec {
+    program: FsvProgram,
+    kind: ExecutionKind,
+    profile: ProofProfile,
+    setup_machine: SetupMachine,
+}
+
+const fn feeder_stage(role: FeederRole) -> FeederStageSpec {
+    FeederStageSpec {
+        program: match role {
+            FeederRole::First => FsvProgram::UnifiedRecursionLayer,
+            FeederRole::Recurrent => FsvProgram::UnifiedRecursionLayerL1Feeder,
+        },
+        kind: ExecutionKind::Unified22,
+        profile: ProofProfile::L1Feeder,
+        setup_machine: SetupMachine::UnifiedL1Feeder,
+    }
+}
+
 const L1_FEEDER_PROGRAMS: [FsvProgram; 2] = [
-    FsvProgram::UnifiedRecursionLayer,
-    FsvProgram::UnifiedRecursionLayerL1Feeder,
+    feeder_stage(FeederRole::First).program,
+    feeder_stage(FeederRole::Recurrent).program,
 ];
 
 fn advance_stages<S>(
@@ -568,8 +624,10 @@ fn advance_to_target(
     })
 }
 
-/// F1 proves the special-opcodes unified verifier at the L1 feeder profile; one F2 round
-/// proves the feeder verifier over F1, whose run must then fit the L1 wrap.
+/// The feeder chain: F1 proves the special-opcodes unified verifier over the
+/// final standard proof, every later layer proves the feeder verifier over
+/// the previous feeder proof, until one instance remains; the last proof must
+/// then fit the L1 wrap program.
 fn advance_feeder_stages(
     backend: &mut dyn ProveBackend,
     fsv: &FsvPrograms,
@@ -584,8 +642,9 @@ fn advance_feeder_stages(
         batch_id,
         observer,
         &build_unified_stream,
+        &ProductionFeederVerifier,
     )?;
-    check_feeder_fit(fsv, state)
+    check_feeder_fit(fsv, state, &build_unified_stream, &ProductionFeederVerifier)
 }
 
 trait FeederObserver {
@@ -600,6 +659,127 @@ impl FeederObserver for NoopObserver {
     }
 }
 
+/// The feeder chain's verifier runs: the native verification of the chain's
+/// input, the prediction run of a feeder program over its input stream, the
+/// native verification of a feeder proof, and the wrap-program run over the
+/// last feeder proof.
+trait FeederVerifier {
+    fn native_verify_standard(&self, nd_words: Vec<u32>) -> Result<[u32; 16], String>;
+    fn predict(&self, program: &ProgramWords, nd_words: Vec<u32>) -> Result<FsvRunReport, String>;
+    fn native_verify(&self, nd_words: Vec<u32>) -> Result<[u32; 16], String>;
+    fn wrap_run(&self, program: &ProgramWords, nd_words: Vec<u32>) -> Result<FsvRunReport, String>;
+}
+
+struct ProductionFeederVerifier;
+
+impl FeederVerifier for ProductionFeederVerifier {
+    fn native_verify_standard(&self, nd_words: Vec<u32>) -> Result<[u32; 16], String> {
+        std::panic::catch_unwind(|| native_verify_unified(nd_words, false))
+            .map_err(|_| "final unified proof failed native verification".to_string())
+    }
+
+    fn predict(&self, program: &ProgramWords, nd_words: Vec<u32>) -> Result<FsvRunReport, String> {
+        let (bin, text) = program;
+        fsv_measure::measure_fsv_run_with_counters_and_rom(
+            bin,
+            text,
+            nd_words,
+            u32::MAX as usize,
+            prover::common_constants::REGULAR_ROM,
+        )
+    }
+
+    fn native_verify(&self, nd_words: Vec<u32>) -> Result<[u32; 16], String> {
+        native_verify_unified_l1_feeder(nd_words)
+    }
+
+    fn wrap_run(&self, program: &ProgramWords, nd_words: Vec<u32>) -> Result<FsvRunReport, String> {
+        let (bin, text) = program;
+        fsv_measure::measure_fsv_run_with_counters_and_rom(
+            bin,
+            text,
+            nd_words,
+            L1_WRAP_PROGRAM_CYCLE_LIMIT,
+            prover::common_constants::L1_WRAP_ROM,
+        )
+    }
+}
+
+fn delegation_calls(counters: &riscv_transpiler::vm::DelegationsAndUnifiedCounters) -> usize {
+    counters.blake_calls
+        + counters.bigint_calls
+        + counters.keccak_calls
+        + counters.keccak_f1600_calls
+        + counters.blake_g_function_calls
+}
+
+/// The number of 2^22 feeder instances a verifier run of `report.cycles`
+/// cycles needs; a feeder program never delegates.
+fn predicted_feeder_instances(report: &FsvRunReport) -> Result<usize, String> {
+    if delegation_calls(&report.counters) != 0 {
+        return Err(format!(
+            "feeder verifier run issued delegation calls ({:?})",
+            report.counters
+        ));
+    }
+    let shape = UnifiedProofShape::from_counters(UnrolledCircuitType::Unified22, &report.counters);
+    if !shape.delegations.is_empty() {
+        return Err(format!(
+            "feeder verifier run predicts delegation proofs: {shape}"
+        ));
+    }
+    let instances = shape
+        .riscv
+        .get(&(UnrolledCircuitType::Unified22.get_family_idx() as u32))
+        .copied()
+        .unwrap_or(0);
+    if instances == 0 {
+        return Err("feeder verifier run predicts no unified instance".into());
+    }
+    Ok(instances)
+}
+
+/// Instances of a feeder proof: the reduced family only, no delegation
+/// proofs under any key, one inits-and-teardowns instance, and exactly
+/// `expected` instances when given.
+fn feeder_proof_instances(proof: &ProgramProof, expected: Option<usize>) -> Result<usize, String> {
+    let family = UnrolledCircuitType::Unified22.get_family_idx() as u32;
+    let instances = match proof.riscv_proofs.keys().collect::<Vec<_>>().as_slice() {
+        [key] if **key == family => proof.riscv_proofs[&family].len(),
+        keys => {
+            return Err(format!(
+                "feeder proof must carry the reduced-machine family {family} only, got {keys:?}"
+            ))
+        }
+    };
+    if instances == 0 {
+        return Err("feeder proof carries no unified instance".into());
+    }
+    if let Some((kind, _)) = proof
+        .delegation_proofs
+        .iter()
+        .find(|(_, proofs)| !proofs.is_empty())
+    {
+        return Err(format!(
+            "feeder proof carries delegation proofs of type {kind}"
+        ));
+    }
+    if proof.num_it_circuits != Some(1) {
+        return Err(format!(
+            "feeder proof must carry exactly one inits-and-teardowns instance, got {:?}",
+            proof.num_it_circuits
+        ));
+    }
+    if let Some(expected) = expected {
+        if instances != expected {
+            return Err(format!(
+                "feeder proof carries {instances} instance(s), predicted {expected}"
+            ));
+        }
+    }
+    Ok(instances)
+}
+
 fn run_feeder_layers(
     backend: &mut dyn ProveBackend,
     fsv: &FsvPrograms,
@@ -607,13 +787,58 @@ fn run_feeder_layers(
     batch_id: u64,
     observer: &mut dyn FeederObserver,
     nd: &dyn Fn(&Setups, &ProgramProof) -> Vec<u32>,
+    verifier: &dyn FeederVerifier,
 ) -> Result<RecursionState, String> {
     let mut chain = rebuild_chain(&state.chain_end_params)?;
-    for (layer, program) in [&fsv.feeder_first, &fsv.feeder].into_iter().enumerate() {
-        state = advance_feeder_stage(backend, program, &mut chain, state, batch_id, nd)?;
-        observer.feeder_layer(layer as u8, &state)?;
+    let mut layer = state.feeder_layers;
+    let mut previous_instances = if layer == 0 {
+        verifier.native_verify_standard(nd(&state.setups, &state.proof))?;
+        None
+    } else {
+        Some(feeder_proof_instances(&state.proof, None)?)
+    };
+    if previous_instances == Some(1) {
+        return Ok(state);
     }
-    Ok(state)
+    loop {
+        if layer >= MAX_FEEDER_LAYERS {
+            return Err(format!(
+                "L1 feeder chain did not reach one instance within {MAX_FEEDER_LAYERS} layers"
+            ));
+        }
+        let role = if layer == 0 {
+            FeederRole::First
+        } else {
+            FeederRole::Recurrent
+        };
+        let program = fsv.feeder_program(role);
+        let report = verifier.predict(program, nd(&state.setups, &state.proof))?;
+        let predicted = predicted_feeder_instances(&report)?;
+        if let Some(previous) = previous_instances {
+            if predicted >= previous {
+                return Err(format!(
+                    "L1 feeder chain is not converging: layer {layer} would verify {previous} instance(s) into {predicted}"
+                ));
+            }
+        }
+        let chunk = UnrolledCircuitType::Unified22.get_domain_size() as u64;
+        log::info!(
+            "L1 feeder layer {layer} ({role:?}): verifier runs {} cycles, predicts {predicted} instance(s) ({} cycles below the next chunk boundary)",
+            report.cycles,
+            predicted as u64 * chunk - report.cycles
+        );
+        state = advance_feeder_stage(backend, program, &mut chain, state, batch_id, nd)?;
+        let instances = feeder_proof_instances(&state.proof, Some(predicted))?;
+        let output = verifier.native_verify(nd(&state.setups, &state.proof))?;
+        ensure_recursion_chain_binds_program(&output, &chain.hash())?;
+        layer += 1;
+        state.feeder_layers = layer;
+        observer.feeder_layer((layer - 1) as u8, &state)?;
+        previous_instances = Some(instances);
+        if instances == 1 {
+            return Ok(state);
+        }
+    }
 }
 
 fn advance_feeder_stage(
@@ -625,15 +850,16 @@ fn advance_feeder_stage(
     nd: &dyn Fn(&Setups, &ProgramProof) -> Vec<u32>,
 ) -> Result<RecursionState, String> {
     let (bin, text) = fsv_program;
+    let spec = feeder_stage(FeederRole::Recurrent);
     let start = Instant::now();
     let (mut proof, setups) = backend.prove(ProveRequest {
         batch_id,
         bin,
         text,
-        kind: ExecutionKind::Unified22,
+        kind: spec.kind,
         machine: MachineType::Reduced,
         nd_words: nd(&state.setups, &state.proof),
-        profile: ProofProfile::L1Feeder,
+        profile: spec.profile,
     })?;
     state.timings.l1_feeder_ms.push(elapsed_ms(start));
     proof.set_recursion_chain(chain);
@@ -645,20 +871,70 @@ fn advance_feeder_stage(
     Ok(state)
 }
 
+/// The wrap program's run over the last feeder proof must reach its success
+/// exit within [`L1_WRAP_PROGRAM_CYCLE_LIMIT`] with the native output,
+/// exhausted input, no delegation calls, at most two touched 8 MiB windows
+/// and the stack inside its reservation.
+fn validate_wrap_report(report: &FsvRunReport, native_output: &[u32; 16]) -> Result<(), String> {
+    use prover::common_constants::L1_WRAP_ROM;
+    if report.cycles > L1_WRAP_PROGRAM_CYCLE_LIMIT as u64 {
+        return Err(format!(
+            "wrap program runs {} cycles, over the {L1_WRAP_PROGRAM_CYCLE_LIMIT} budget",
+            report.cycles
+        ));
+    }
+    if report.output != *native_output {
+        return Err("wrap program output differs from the native verifier output".into());
+    }
+    if report.nd_words_remaining != 0 {
+        return Err(format!(
+            "wrap program left {} input words unread",
+            report.nd_words_remaining
+        ));
+    }
+    if delegation_calls(&report.counters) != 0 {
+        return Err(format!(
+            "wrap program issued delegation calls ({:?})",
+            report.counters
+        ));
+    }
+    if report.touched_windows.len() > 2 {
+        return Err(format!(
+            "wrap program touched {} 8 MiB windows {:?}",
+            report.touched_windows.len(),
+            report.touched_windows
+        ));
+    }
+    if report.min_sp < L1_WRAP_ROM.byte_size() as u32 {
+        return Err(format!(
+            "wrap program stack reached 0x{:08x}, below its reservation",
+            report.min_sp
+        ));
+    }
+    Ok(())
+}
+
 fn check_feeder_fit(
     fsv: &FsvPrograms,
     mut state: RecursionState,
+    nd: &dyn Fn(&Setups, &ProgramProof) -> Vec<u32>,
+    verifier: &dyn FeederVerifier,
 ) -> Result<RecursionState, String> {
-    validate_feeder_proof_shape(&state.proof)?;
-    let (feeder_bin, feeder_text) = &fsv.feeder;
-    let cycles = measure_fsv_run(
-        feeder_bin,
-        feeder_text,
-        build_unified_stream(&state.setups, &state.proof),
-        L1_WRAP_CYCLES_BOUND,
-    )
-    .map_err(|e| format!("feeder verifier does not fit the L1 wrap: {e}"))?;
-    log::info!("feeder proof verifier runs {cycles} cycles");
+    feeder_proof_instances(&state.proof, Some(1))?;
+    let stream = nd(&state.setups, &state.proof);
+    let native_output = verifier.native_verify(stream.clone())?;
+    let report = verifier
+        .wrap_run(&fsv.feeder_wrap, stream)
+        .map_err(|e| format!("feeder proof verifier does not fit the L1 wrap: {e}"))?;
+    validate_wrap_report(&report, &native_output)
+        .map_err(|e| format!("feeder proof verifier does not fit the L1 wrap: {e}"))?;
+    log::info!(
+        "L1 wrap program runs {} cycles over the last feeder proof ({} cycles below {L1_WRAP_PROGRAM_CYCLE_LIMIT}; windows {:?}, min sp 0x{:08x})",
+        report.cycles,
+        L1_WRAP_PROGRAM_CYCLE_LIMIT as u64 - report.cycles,
+        report.touched_windows,
+        report.min_sp
+    );
     state.stage = ProofTarget::L1Feeder;
     state.input_is_base = false;
     Ok(state)
@@ -736,21 +1012,17 @@ fn pipeline_registrations(
         ]);
     }
     if start < ProofTarget::L1Feeder && target >= ProofTarget::L1Feeder {
-        programs.extend([
-            (
-                &fsv.feeder_first,
-                ExecutionKind::Unified22,
-                ProofProfile::L1Feeder,
-            ),
-            (
-                &fsv.feeder,
-                ExecutionKind::Unified22,
-                ProofProfile::L1Feeder,
-            ),
-        ]);
+        for role in [FeederRole::First, FeederRole::Recurrent] {
+            let spec = feeder_stage(role);
+            programs.push((fsv.feeder_program(role), spec.kind, spec.profile));
+        }
     }
     if start < ProofTarget::L1 && target == ProofTarget::L1 {
-        programs.push((&fsv.feeder, ExecutionKind::L1Wrap, ProofProfile::L1Wrap));
+        programs.push((
+            &fsv.feeder_wrap,
+            ExecutionKind::L1Wrap,
+            ProofProfile::L1Wrap,
+        ));
     }
     for (program, kind, profile) in programs {
         add(kind, MachineType::Reduced, program, None, profile);
@@ -922,7 +1194,8 @@ fn advance_standard_stages(
             u32::MAX as usize,
         )
         .map_err(|error| format!("unified recursion prediction after round {rounds}: {error}"))?;
-        let predicted_shape = UnifiedProofShape::from_counters(&counters);
+        let predicted_shape =
+            UnifiedProofShape::from_counters(UnrolledCircuitType::Unified, &counters);
         log::info!(
             "unified recursion round {rounds}: {current_shape}; next round predicts {predicted_shape} ({cycles} verifier cycles)"
         );
@@ -975,8 +1248,11 @@ struct FsvPrograms {
     unified: ProgramWords,
     /// F1: the special-opcodes unified verifier proved at the L1 feeder profile.
     feeder_first: ProgramWords,
-    /// F2: the L1 feeder verifier.
+    /// Every later feeder layer: the L1 feeder verifier (regular 4 MiB ROM link).
     feeder: ProgramWords,
+    /// The same feeder statement linked for the L1 wrap ROM: the program the
+    /// wrap executes over the last feeder proof.
+    feeder_wrap: ProgramWords,
 }
 
 impl FsvPrograms {
@@ -1009,12 +1285,17 @@ impl FsvPrograms {
             unified: load(unified, FsvProgram::UnifiedRecursionLayer, final_blake),
             feeder_first: load(
                 feeder,
-                L1_FEEDER_PROGRAMS[0],
+                feeder_stage(FeederRole::First).program,
                 BlakeMode::BlakeSpecialOpcodes,
             ),
             feeder: load(
                 feeder,
-                L1_FEEDER_PROGRAMS[1],
+                feeder_stage(FeederRole::Recurrent).program,
+                BlakeMode::BlakeSpecialOpcodes,
+            ),
+            feeder_wrap: load(
+                feeder,
+                FsvProgram::UnifiedRecursionLayerL1FeederWrap,
                 BlakeMode::BlakeSpecialOpcodes,
             ),
             unrolled_blake,
@@ -1028,6 +1309,13 @@ impl FsvPrograms {
             unrolled: self.unrolled_blake,
             bridge: self.bridge_blake,
             final_layer: self.final_blake,
+        }
+    }
+
+    fn feeder_program(&self, role: FeederRole) -> &ProgramWords {
+        match role {
+            FeederRole::First => &self.feeder_first,
+            FeederRole::Recurrent => &self.feeder,
         }
     }
 
@@ -1097,6 +1385,9 @@ impl ProgramProver {
                 }
             }
         };
+        if config.target == ProofTarget::L1 {
+            validate_l1_wrap_activation()?;
+        }
         let mut prover = Self {
             source,
             fsv: FsvPrograms::load(config.target, blake),
@@ -1147,6 +1438,7 @@ impl ProgramProver {
         let expected = expected_chain_end_params(
             artifact.target,
             artifact.chain_end_params.len(),
+            artifact.feeder_layers,
             fsv.unrolled_blake.tag(),
             fsv.bridge_blake.tag(),
             fsv.final_blake.tag(),
@@ -1166,7 +1458,8 @@ impl ProgramProver {
                                 (ExecutionKind::Unified, ProofProfile::Standard)
                             }
                             SetupMachine::UnifiedL1Feeder => {
-                                (ExecutionKind::Unified22, ProofProfile::L1Feeder)
+                                let spec = feeder_stage(FeederRole::Recurrent);
+                                (spec.kind, spec.profile)
                             }
                             _ => (ExecutionKind::Unrolled, ProofProfile::Standard),
                         };
@@ -1228,6 +1521,7 @@ impl ProgramProver {
                 l1_wrap_ms: None,
             },
             program_cycles,
+            feeder_layers: 0,
         };
 
         let state = advance_to_target(
@@ -1259,6 +1553,9 @@ impl ProgramProver {
         observer: &mut dyn FeederObserver,
     ) -> Result<ProofArtifact, String> {
         validate_continuation_request(&artifact, self.config.target)?;
+        if artifact.schema_version == LEGACY_ARTIFACT_SCHEMA_VERSION {
+            verify_artifact(&artifact, &self.source)?;
+        }
         let loaded = load_and_validate_program(&self.source, &artifact)?;
         let blake = PipelineBlakeModes::continuing(&artifact, || self.fsv.modes())?;
         if blake != self.fsv.modes() {
@@ -1280,6 +1577,7 @@ impl ProgramProver {
             input_is_base,
             timings: artifact.timings_ms,
             program_cycles: artifact.program_cycles,
+            feeder_layers: artifact.feeder_layers,
         };
 
         let state = advance_to_target(
@@ -1339,6 +1637,7 @@ fn finalize_artifact(
         timings_ms: state.timings,
         proof_counts: ProofCounts::from_proof(&state.proof),
         chain_end_params: state.chain_end_params,
+        feeder_layers: state.feeder_layers,
         chain_hash: chain.hash(),
         chain_preimage: chain.preimage(),
         // The pipeline resolves the blake modes from the environment (see
@@ -1369,6 +1668,7 @@ pub fn unified_verification_chain_hashes(source: &ProgramSource) -> Result<[[u32
         let expected = expected_chain_end_params(
             ProofTarget::RecursionUnified,
             i + 3,
+            0,
             unrolled_blake.tag(),
             bridge_blake.tag(),
             final_blake.tag(),
@@ -1397,6 +1697,7 @@ pub fn verify_artifact(
     let expected = expected_chain_end_params(
         artifact.target,
         artifact.chain_end_params.len(),
+        artifact.feeder_layers,
         &artifact.blake_unrolled,
         &artifact.blake_bridge,
         &artifact.blake_final,
@@ -1620,7 +1921,25 @@ fn parse_blake_tag(tag: &str, program: FsvProgram) -> Result<BlakeMode, String> 
     Ok(mode)
 }
 
-fn claimed_unrolled_layers(target: ProofTarget, n: usize) -> Result<usize, String> {
+/// The unrolled recursion layers an artifact's history claims: `n` minus the
+/// fixed tail (base; bridge and final for unified targets) minus the claimed
+/// feeder layers (`1..=MAX_FEEDER_LAYERS` for the feeder targets, 0 before).
+fn claimed_unrolled_layers(
+    target: ProofTarget,
+    n: usize,
+    feeder_layers: u32,
+) -> Result<usize, String> {
+    let feeder_targets = target >= ProofTarget::L1Feeder;
+    if feeder_targets && !(1..=MAX_FEEDER_LAYERS).contains(&feeder_layers) {
+        return Err(format!(
+            "{target:?} artifact must claim between 1 and {MAX_FEEDER_LAYERS} feeder layers, got {feeder_layers}"
+        ));
+    }
+    if !feeder_targets && feeder_layers != 0 {
+        return Err(format!(
+            "{target:?} artifact must claim no feeder layers, got {feeder_layers}"
+        ));
+    }
     let tail = match target {
         ProofTarget::Base => {
             if n != 1 {
@@ -1630,14 +1949,18 @@ fn claimed_unrolled_layers(target: ProofTarget, n: usize) -> Result<usize, Strin
         }
         ProofTarget::RecursionUnrolled => 1,
         ProofTarget::RecursionUnified => 3,
-        ProofTarget::L1Feeder | ProofTarget::L1 => 5,
+        ProofTarget::L1Feeder | ProofTarget::L1 => 3 + feeder_layers as usize,
     };
     n.checked_sub(tail)
         .ok_or_else(|| format!("{target:?} artifact must claim at least {tail} layers, got {n}"))
 }
 
 fn chain_unrolled_layers(artifact: &ProofArtifact) -> Result<usize, String> {
-    claimed_unrolled_layers(artifact.target, artifact.chain_end_params.len())
+    claimed_unrolled_layers(
+        artifact.target,
+        artifact.chain_end_params.len(),
+        artifact.feeder_layers,
+    )
 }
 
 enum ChainProgram {
@@ -1671,12 +1994,13 @@ fn recomputed_end_params<'a>(
 fn expected_chain_end_params(
     target: ProofTarget,
     n: usize,
+    feeder_layers: u32,
     blake_unrolled: &str,
     blake_bridge: &str,
     blake_final: &str,
     end_params: &mut dyn FnMut(ChainProgram) -> Result<[u32; 8], String>,
 ) -> Result<Vec<[u32; 8]>, String> {
-    let unrolled_layers = claimed_unrolled_layers(target, n)?;
+    let unrolled_layers = claimed_unrolled_layers(target, n, feeder_layers)?;
 
     let mut expected = Vec::with_capacity(n);
     expected.push(end_params(ChainProgram::User)?);
@@ -1727,11 +2051,18 @@ fn expected_chain_end_params(
     ))?);
 
     if target >= ProofTarget::L1Feeder {
-        for program in L1_FEEDER_PROGRAMS {
+        // F1 once, then the recurrent feeder for every later layer: equal
+        // consecutive entries, which the chain hash deduplicates.
+        for layer in 0..feeder_layers {
+            let spec = feeder_stage(if layer == 0 {
+                FeederRole::First
+            } else {
+                FeederRole::Recurrent
+            });
             expected.push(end_params(ChainProgram::Fsv(
-                program,
+                spec.program,
                 BlakeMode::BlakeSpecialOpcodes,
-                SetupMachine::UnifiedL1Feeder,
+                spec.setup_machine,
             ))?);
         }
     }
@@ -1781,6 +2112,9 @@ fn validate_continuation_request(
 }
 
 fn validate_continuation_targets(current: ProofTarget, target: ProofTarget) -> Result<(), String> {
+    if target == ProofTarget::L1 {
+        validate_l1_wrap_activation()?;
+    }
     if current < target {
         return Ok(());
     }

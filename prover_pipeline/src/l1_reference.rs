@@ -18,10 +18,17 @@ enum CheckpointStep {
     Feeder { layer: u8 },
 }
 
+const CHECKPOINT_SCHEMA_VERSION: u32 = 2;
+
+/// A feeder-layer checkpoint: the state after feeder layer `layer`
+/// (zero-based), so `feeder_layers = layer + 1`. Resuming it continues the
+/// feeder loop at layer `layer + 1` (or only validates the wrap fit when the
+/// checkpoint proof already has one instance).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct StepCheckpoint {
     fixture_schema_version: u32,
     step: CheckpointStep,
+    feeder_layers: u32,
     proof: ProgramProof,
     setups: Setups,
     chain_end_params: Vec<[u32; 8]>,
@@ -32,8 +39,9 @@ struct StepCheckpoint {
 impl StepCheckpoint {
     fn from_state(layer: u8, state: &RecursionState) -> Self {
         Self {
-            fixture_schema_version: 1,
+            fixture_schema_version: CHECKPOINT_SCHEMA_VERSION,
             step: CheckpointStep::Feeder { layer },
+            feeder_layers: state.feeder_layers,
             proof: state.proof.clone(),
             setups: state.setups.clone(),
             chain_end_params: state.chain_end_params.clone(),
@@ -43,11 +51,14 @@ impl StepCheckpoint {
     }
 
     fn into_state(self) -> Result<RecursionState, String> {
-        if self.fixture_schema_version != 1
-            || !matches!(self.step, CheckpointStep::Feeder { layer: 0 })
+        let CheckpointStep::Feeder { layer } = self.step;
+        if self.fixture_schema_version != CHECKPOINT_SCHEMA_VERSION
+            || self.feeder_layers != u32::from(layer) + 1
+            || !(1..=MAX_FEEDER_LAYERS).contains(&self.feeder_layers)
             || self.input_is_base
+            || self.chain_end_params.len() < 3 + self.feeder_layers as usize
         {
-            return Err("invalid feeder_layer_0 checkpoint".into());
+            return Err("invalid feeder checkpoint".into());
         }
         rebuild_chain(&self.chain_end_params)?;
         Ok(RecursionState {
@@ -59,6 +70,7 @@ impl StepCheckpoint {
             input_is_base: self.input_is_base,
             timings: ProofTimingsMs::default(),
             program_cycles: self.program_cycles,
+            feeder_layers: self.feeder_layers,
         })
     }
 }
@@ -180,6 +192,11 @@ fn fsv_identities(blake: PipelineBlakeModes) -> Result<Vec<FsvIdentity>, String>
         (
             "feeder",
             FsvProgram::UnifiedRecursionLayerL1Feeder,
+            BlakeMode::BlakeSpecialOpcodes,
+        ),
+        (
+            "feeder_wrap",
+            FsvProgram::UnifiedRecursionLayerL1FeederWrap,
             BlakeMode::BlakeSpecialOpcodes,
         ),
     ]
@@ -473,27 +490,33 @@ fn generate_into(sink: &Path, from: GenerateFrom<'_>) -> Result<Inventory, Strin
                 let mut backend = PipelineBackend::<cpu_execution_prover::CpuBackend>::new(
                     &config(ProofTarget::L1Feeder),
                 );
-                let (bin, text) = &fsv.feeder;
+                let spec = feeder_stage(FeederRole::Recurrent);
+                let (bin, text) = fsv.feeder_program(FeederRole::Recurrent);
                 backend.register(
-                    ExecutionKind::Unified22,
+                    spec.kind,
                     MachineType::Reduced,
                     bin,
                     text,
                     None,
-                    &[ProofProfile::L1Feeder],
+                    &[spec.profile],
                 );
-                let mut chain = rebuild_chain(&state.chain_end_params)?;
-                state = advance_feeder_stage(
+                state = run_feeder_layers(
                     &mut backend,
-                    &fsv.feeder,
-                    &mut chain,
+                    &fsv,
                     state,
                     0,
+                    &mut NoopObserver,
                     &build_unified_stream,
+                    &ProductionFeederVerifier,
                 )?;
-                state = check_feeder_fit(&fsv, state)?;
+                state = check_feeder_fit(
+                    &fsv,
+                    state,
+                    &build_unified_stream,
+                    &ProductionFeederVerifier,
+                )?;
             }
-            log_stage("feeder_second", start);
+            log_stage("feeder_resume", start);
             let mut artifact = finalize_artifact(
                 &fsv,
                 ProofTarget::L1Feeder,
@@ -690,16 +713,81 @@ fn empty_proof(final_pc: u32) -> ProgramProof {
 }
 
 fn test_state() -> RecursionState {
+    let mut proof = empty_proof(0);
+    let chain = rebuild_chain(&[[1; 8], [2; 8], [3; 8]]).unwrap();
+    proof.set_recursion_chain(&chain);
     RecursionState {
         stage: ProofTarget::RecursionUnified,
         l1: None,
-        proof: empty_proof(0),
+        proof,
         setups: BTreeMap::new(),
-        chain_end_params: vec![[1; 8]],
+        chain_end_params: vec![[1; 8], [2; 8], [3; 8]],
         input_is_base: false,
         timings: ProofTimingsMs::default(),
         program_cycles: 123,
+        feeder_layers: 0,
     }
+}
+
+/// The first fake feeder layer (program word 1) verifies into two
+/// instances, the second (program word 2) into one: the loop runs F1 then
+/// one recurrent layer. Proofs are verified against the chain their own
+/// preimage records, extended by their end params ([`fake_nd`]).
+struct FakeVerifier;
+
+impl FeederVerifier for FakeVerifier {
+    fn native_verify_standard(&self, _: Vec<u32>) -> Result<[u32; 16], String> {
+        Ok([0; 16])
+    }
+
+    fn predict(&self, program: &ProgramWords, _: Vec<u32>) -> Result<FsvRunReport, String> {
+        Ok(fake_report(fake_instances(program.0[0])))
+    }
+
+    fn native_verify(&self, nd_words: Vec<u32>) -> Result<[u32; 16], String> {
+        let mut output = [0u32; 16];
+        output[8..].copy_from_slice(&nd_words[..8]);
+        Ok(output)
+    }
+
+    fn wrap_run(&self, _: &ProgramWords, _: Vec<u32>) -> Result<FsvRunReport, String> {
+        panic!("feeder seam tests must not run the wrap program");
+    }
+}
+
+fn fake_instances(program_word: u32) -> u64 {
+    match program_word {
+        1 => 2,
+        2 => 1,
+        other => panic!("unknown fake feeder program {other}"),
+    }
+}
+
+fn fake_report(instances: u64) -> FsvRunReport {
+    FsvRunReport {
+        cycles: instances * UnrolledCircuitType::Unified22.get_domain_size() as u64 - 1,
+        output: [0; 16],
+        nd_words_remaining: 0,
+        counters: riscv_transpiler::vm::DelegationsAndUnifiedCounters {
+            cycles: (instances * UnrolledCircuitType::Unified22.get_domain_size() as u64 - 1)
+                as usize,
+            ..Default::default()
+        },
+        touched_windows: vec![0, 1],
+        max_touched_address: 0,
+        min_sp: 0x87f000,
+        success_pc: 0,
+        final_pc: 0,
+    }
+}
+
+/// The stream of a fake proof: the hash of the chain it extends (the fake
+/// verifier returns it as the proven chain).
+fn fake_nd(setups: &Setups, proof: &ProgramProof) -> Vec<u32> {
+    let preimage = proof.recursion_chain_preimage.expect("fake proof chain");
+    let mut chain = FsvRecursionChain::resume(preimage);
+    chain.extend(&compute_end_params(setups, proof.final_pc));
+    chain.hash().to_vec()
 }
 
 fn test_fsv() -> FsvPrograms {
@@ -713,6 +801,7 @@ fn test_fsv() -> FsvPrograms {
     );
     fsv.feeder_first = (vec![1], vec![1]);
     fsv.feeder = (vec![2], vec![2]);
+    fsv.feeder_wrap = (vec![3], vec![3]);
     fsv
 }
 
@@ -736,8 +825,12 @@ impl ProveBackend for FakeBackend {
         assert_eq!(request.kind, ExecutionKind::Unified22);
         assert_eq!(request.machine, MachineType::Reduced);
         assert_eq!(request.profile, ProofProfile::L1Feeder);
-        assert!(request.nd_words.is_empty());
-        Ok((empty_proof(request.bin[0]), BTreeMap::new()))
+        assert_eq!(request.nd_words.len(), 8);
+        let program = request.bin[0];
+        Ok((
+            crate::l1_feeder_tests::fake_feeder_proof(program, fake_instances(program) as usize),
+            BTreeMap::new(),
+        ))
     }
 
     fn prove_l1_wrap(&mut self, _: L1WrapRequest<'_>) -> Result<L1WrapResult, String> {
@@ -779,6 +872,7 @@ fn normalized_state(state: RecursionState) -> Vec<u8> {
         state.input_is_base,
         ProofTimingsMs::default(),
         state.program_cycles,
+        state.feeder_layers,
     ))
     .unwrap()
 }
@@ -792,7 +886,8 @@ fn feeder_observer_sees_first_then_second() {
         test_state(),
         0,
         &mut observer,
-        &|_, _| vec![],
+        &fake_nd,
+        &FakeVerifier,
     )
     .unwrap();
     assert_eq!(observer.checkpoints.len(), 2);
@@ -800,9 +895,10 @@ fn feeder_observer_sees_first_then_second() {
         assert!(
             matches!(checkpoint.step, CheckpointStep::Feeder { layer: actual } if actual == layer as u8)
         );
-        assert_eq!(checkpoint.chain_end_params.len(), layer + 2);
+        assert_eq!(checkpoint.feeder_layers, layer as u32 + 1);
+        assert_eq!(checkpoint.chain_end_params.len(), layer + 4);
         assert_eq!(checkpoint.proof.final_pc, layer as u32 + 1);
-        let prior = rebuild_chain(&checkpoint.chain_end_params[..layer + 1]).unwrap();
+        let prior = rebuild_chain(&checkpoint.chain_end_params[..layer + 3]).unwrap();
         assert_eq!(checkpoint.proof.recursion_chain_hash, Some(prior.hash()));
         assert_eq!(
             checkpoint.proof.recursion_chain_preimage,
@@ -819,7 +915,8 @@ fn noop_observer_matches_unobserved_result() {
         test_state(),
         0,
         &mut RecordingObserver::default(),
-        &|_, _| vec![],
+        &fake_nd,
+        &FakeVerifier,
     )
     .unwrap();
     let noop = run_feeder_layers(
@@ -828,7 +925,8 @@ fn noop_observer_matches_unobserved_result() {
         test_state(),
         0,
         &mut NoopObserver,
-        &|_, _| vec![],
+        &fake_nd,
+        &FakeVerifier,
     )
     .unwrap();
     let mut unobserved = test_state();
@@ -840,10 +938,11 @@ fn noop_observer_matches_unobserved_result() {
             &mut chain,
             unobserved,
             0,
-            &|_, _| vec![],
+            &fake_nd,
         )
         .unwrap();
     }
+    unobserved.feeder_layers = 2;
     let noop = normalized_state(noop);
     assert_eq!(normalized_state(observed), noop);
     assert_eq!(normalized_state(unobserved), noop);
@@ -863,7 +962,8 @@ fn observer_error_propagates() {
         test_state(),
         0,
         &mut Reject,
-        &|_, _| vec![],
+        &fake_nd,
+        &FakeVerifier,
     );
     assert_eq!(result.err().as_deref(), Some("feeder observer rejection"));
 }
@@ -877,21 +977,22 @@ fn second_layer_helper_matches_loop() {
         test_state(),
         0,
         &mut observer,
-        &|_, _| vec![],
+        &fake_nd,
+        &FakeVerifier,
     )
     .unwrap();
     let state = observer.checkpoints.remove(0).into_state().unwrap();
-    let mut chain = rebuild_chain(&state.chain_end_params).unwrap();
-    let actual = advance_feeder_stage(
+    let resumed = run_feeder_layers(
         &mut FakeBackend,
-        &test_fsv().feeder,
-        &mut chain,
+        &test_fsv(),
         state,
         0,
-        &|_, _| vec![],
+        &mut NoopObserver,
+        &fake_nd,
+        &FakeVerifier,
     )
     .unwrap();
-    assert_eq!(normalized_state(expected), normalized_state(actual));
+    assert_eq!(normalized_state(expected), normalized_state(resumed));
 }
 
 #[test]
