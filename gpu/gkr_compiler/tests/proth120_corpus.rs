@@ -11,7 +11,8 @@ use gpu_gkr_compiler::{
 fn proth120_unified_forward_native_caps() {
     let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
     let layout: GKRCircuitArtifact<Proth120> = serde_json::from_slice(
-        &std::fs::read(directory.join("unified_reduced_machine_layout_gkr_proth120.json")).unwrap(),
+        &std::fs::read(directory.join("unified_reduced_machine_layout_gkr_proth120_2p21.json"))
+            .unwrap(),
     )
     .unwrap();
     let dag = gkr_eval_ir::lower_dag(&layout).unwrap();
@@ -36,7 +37,7 @@ fn proth120_unified_forward_native_caps() {
                 serde_json::to_string(&report).unwrap()
             );
             assert_eq!(report.layers, 5);
-            assert_eq!(report.stride_bytes, (1 << 22) * 16);
+            assert_eq!(report.stride_bytes, (1 << 21) * 16);
             assert_eq!(report.canonical_dynamic_columns, 89);
             assert_eq!(report.aliases, 31);
             for pair in report.backings.windows(2) {

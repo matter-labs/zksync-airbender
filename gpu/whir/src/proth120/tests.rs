@@ -10,7 +10,6 @@ use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode};
 use prover::definitions::SecurityLevel;
 use prover::gkr::prover::gkr_backend::{accumulate_base_columns_into_scalar, BatchedBaseColumn};
 use prover::gkr::prover::WhirSchedule;
-use prover::gkr::prover_config::example_configs::evm_production_packed_prover_config;
 use prover::gkr::prover_config::ProofProfile;
 use prover::gkr::sumcheck::eq_poly::fill_eq_table_lsb_first_uninit;
 use prover::gkr::whir::{
@@ -123,8 +122,10 @@ pub(super) fn small_schedule() -> WhirSchedule {
 
 #[test]
 fn cpu_shape_l1_values() {
-    let schedule = evm_production_packed_prover_config(SecurityLevel::Sec100).whir_schedule;
-    let shape = L1WhirShape::from_schedule(&schedule, 26, 5, 2, L1_WHIR_TILE_BYTES);
+    let schedule = ProofProfile::L1Wrap
+        .prover_config(21, SecurityLevel::Sec100)
+        .whir_schedule;
+    let shape = L1WhirShape::from_schedule(&schedule, 25, 6, 2, L1_WHIR_TILE_BYTES);
     assert_eq!(
         (
             shape.log_message,
@@ -134,21 +135,21 @@ fn cpu_shape_l1_values() {
             shape.total_sumcheck_polys,
             shape.log_final
         ),
-        (26, 5, 3, 48, 22, 4)
+        (25, 6, 3, 44, 21, 4)
     );
     let round_rows = [
-        (2, 17, 30, 24, 29),
-        (4, 12, 30, 20, 27),
-        (4, 8, 27, 16, 27),
-        (4, 6, 25, 12, 27),
-        (4, 5, 21, 8, 27),
+        (2, 14, 30, 23, 29),
+        (4, 11, 27, 19, 27),
+        (4, 8, 20, 15, 27),
+        (4, 6, 20, 11, 27),
+        (3, 5, 17, 8, 28),
         (4, 4, 24, 4, 27),
     ];
     let oracle_rows = [
-        (24, 7, 31, 4, 20, 5, 3, 2, 65535, 24),
-        (20, 11, 31, 4, 16, 5, 3, 6, 4095, 24),
-        (16, 15, 31, 4, 12, 5, 3, 10, 255, 24),
-        (12, 19, 31, 4, 8, 5, 3, 14, 15, 24),
+        (23, 8, 31, 4, 19, 5, 3, 3, 32767, 24),
+        (19, 12, 31, 4, 15, 5, 3, 7, 2047, 24),
+        (15, 16, 31, 4, 11, 5, 3, 11, 127, 24),
+        (11, 20, 31, 3, 8, 5, 3, 15, 15, 25),
         (8, 23, 31, 4, 4, 4, 3, 18, 1, 24),
     ];
     for (r, round) in shape.rounds.iter().enumerate() {
@@ -749,8 +750,10 @@ fn pr_commit_intermediate_n8_production() {
     let ctx = context(4096, Some(31));
     let stream = ctx.get_exec_stream();
     let worker = Worker::new();
-    let schedule = evm_production_packed_prover_config(SecurityLevel::Sec100).whir_schedule;
-    let shape = L1WhirShape::from_schedule(&schedule, 26, 5, 2, L1_WHIR_TILE_BYTES).rounds[4]
+    let schedule = ProofProfile::L1Wrap
+        .prover_config(21, SecurityLevel::Sec100)
+        .whir_schedule;
+    let shape = L1WhirShape::from_schedule(&schedule, 25, 6, 2, L1_WHIR_TILE_BYTES).rounds[4]
         .oracle
         .unwrap();
     assert_eq!(
@@ -1394,7 +1397,7 @@ fn l1_reference_dir() -> PathBuf {
         .map(PathBuf::from)
         .unwrap_or_else(|| {
             Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../prover_pipeline/fixtures/l1_reference")
+                .join("../../prover_pipeline/fixtures/l1_reference_2p21")
         })
 }
 
@@ -1442,7 +1445,7 @@ fn pr_transcript_phases_match_reference() {
     let bundle = l1_bundle();
     let proof = &bundle.proof;
     let whir = &proof.whir_proof;
-    let shape = L1WhirShape::from_schedule(&whir.whir_schedule, 26, 5, 2, L1_WHIR_TILE_BYTES);
+    let shape = L1WhirShape::from_schedule(&whir.whir_schedule, 25, 6, 2, L1_WHIR_TILE_BYTES);
     let ctx = context(256, None);
     let stream = ctx.get_exec_stream();
     let initial = proof
