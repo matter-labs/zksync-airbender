@@ -17,13 +17,20 @@ use prover::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
 
 pub use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX as FAMILY_IDX;
 
+/// The unified circuit at trace length `2^TRACE_LEN_LOG2`. The default is the
+/// 2^23 circuit of regular recursion; the `unified_reduced_machine_2_22`
+/// crate exposes the 2^22 instance of the L1 feeder layers. The compiled
+/// artifact is trace-dependent (lookup capacity, inits-and-teardowns window
+/// bytes); the circuit definition, tables and witness-eval SSA are not.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct UnifiedReducedMachineCircuit;
+pub struct UnifiedReducedMachineCircuit<const TRACE_LEN_LOG2: u32 = 23>;
 
-impl<F: PrimeField> circuit_common::RiscVCycleCircuit<F, true> for UnifiedReducedMachineCircuit {
+impl<F: PrimeField, const TRACE_LEN_LOG2: u32> circuit_common::RiscVCycleCircuit<F, true>
+    for UnifiedReducedMachineCircuit<TRACE_LEN_LOG2>
+{
     const CIRCUIT_FAMILY: u8 =
         common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
-    const DOMAIN_SIZE_LOG2: u32 = 23;
+    const DOMAIN_SIZE_LOG2: u32 = TRACE_LEN_LOG2;
     const NUM_INIT_AND_TEARDOWN_PAIRS: usize = 1;
 
     fn circuit_fn<CS: cs::cs::circuit_trait::Circuit<F>>(cs: &mut CS, _bytecode: &[u32]) {
