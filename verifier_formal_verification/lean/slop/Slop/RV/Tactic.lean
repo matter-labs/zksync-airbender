@@ -107,6 +107,53 @@ elab "rv_code_facts " h:ident code:ident : tactic => do
       Nat.reduceMul, BitVec.ofNat_eq_ofNat, BitVec.add_zero, BitVec.reduceAdd] at $c:ident))
 
 open Lean Elab Tactic in
+/-- `rv_code_facts_range h Code.f lo hi`: fetch facts `cᵢ` only for instructions `lo ≤ i < hi` of a (long) function
+(each word read off the list once, at elaboration time; checked by `rfl`). -/
+elab "rv_code_facts_range " h:ident code:ident lo:num hi:num : tactic => do
+  let some cname := (← resolveGlobalConst code).head? | throwError "rv_code_facts_range: unknown {code}"
+  let words ← unsafe Meta.evalExpr (List (BitVec 32)) (← Meta.inferType (mkConst cname)) (mkConst cname)
+  let start ← withMainContext do
+    let mut k := 0
+    while (← getLCtx).findFromUserName? (Name.mkSimple s!"c{k}") |>.isSome do k := k + 1
+    pure k
+  for i in [lo.getNat:hi.getNat] do
+    let c := mkIdent (Name.mkSimple s!"c{start + i - lo.getNat}")
+    let w := Syntax.mkNumLit (toString (words[i]!).toNat)
+    let iS := Syntax.mkNumLit (toString i)
+    evalTactic (← `(tactic| set_option maxRecDepth 100000 in
+      have $c : read _ (_ + BitVec.ofNat 32 (4 * $iS)) 4 = BitVec.ofNat 32 $w :=
+        ($h $iS (by decide)).trans (by rfl)))
+    evalTactic (← `(tactic| simp only [Nat.mul_zero, Nat.reduceMul, BitVec.ofNat_eq_ofNat, BitVec.add_zero,
+      BitVec.reduceAdd] at $c:ident))
+
+open Lean Elab Tactic in
+/-- Clears the fetch facts `cᵢ` (e.g. after moving on to a new state whose code facts are derived afresh). -/
+elab "rv_clear_facts" : tactic => withMainContext do
+  let mut ids := #[]
+  for d in ← getLCtx do
+    let s := d.userName.toString
+    if !d.isImplementationDetail && s.startsWith "c" && s.length > 1 && (s.drop 1).all Char.isDigit then
+      ids := ids.push d.fvarId
+  liftMetaTactic fun g => do return [← g.tryClearMany ids]
+
+open Lean Elab Tactic in
+/-- `nat_cases i hi` with `hi : i < n` (literal `n`): one goal per value `i = 0, …, n-1` (substituted). -/
+elab "nat_cases " i:ident hi:ident : tactic => withMainContext do
+  let some d := (← getLCtx).findFromUserName? hi.getId | throwError "nat_cases: no {hi}"
+  let ty ← instantiateMVars d.type
+  let_expr LT.lt _ _ _ nE := ty | throwError "nat_cases: not `i < n`"
+  let some n ← (Meta.evalNat nE).run | throwError "nat_cases: bound not a literal"
+  if n == 0 then evalTactic (← `(tactic| omega)); return
+  let mut disj ← `($i = $(Syntax.mkNumLit (toString (n - 1))))
+  for k in (List.range (n - 1)).reverse do
+    disj ← `($i = $(Syntax.mkNumLit (toString k)) ∨ $disj)
+  let h := mkIdent `hcase
+  evalTactic (← `(tactic| have $h : $disj := by omega))
+  for _ in [0:n - 1] do
+    evalTactic (← `(tactic| all_goals try obtain $h | $h := ($h : _ ∨ _)))
+  evalTactic (← `(tactic| all_goals subst $h:ident))
+
+open Lean Elab Tactic in
 elab "rv_start " code:ident hcall:ident : tactic => do
   let hcode := mkIdent `hcode
   let (hpc, hrom, hra, hsp, hlo, hhi) := (mkIdent `hpc, mkIdent `hrom, mkIdent `hra, mkIdent `hsp, mkIdent `hlo,

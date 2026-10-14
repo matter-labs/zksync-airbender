@@ -14,12 +14,15 @@ def imageWords : List Word := (List.range (Image.bytes.size / 4)).map fun i => w
 def codeOf (a size : Nat) : List Word := (List.range (size / 4)).map fun i => wordAt (a + 4 * i)
 
 def functions : List (String × Nat × Nat) :=
-  [("boot", 0, Image.add_mod),  -- _start, _abs_start, _start_rust, _halt, main: everything before the functions
+  [("boot", 0, Image.add_mod),  -- _start, _abs_start, _start_rust, main: everything before the functions
    ("inc", Image.inc, Image.inc_size), ("double", Image.double, Image.double_size),
    ("combine", Image.combine, Image.combine_size),
    ("add_mod", Image.add_mod, Image.add_mod_size), ("mul_mod", Image.mul_mod, Image.mul_mod_size),
    ("poly_eval", Image.poly_eval, Image.poly_eval_size),
-   ("COEFFS", Image.COEFFS, Image.COEFFS_size)]  -- constant table (data, not code)
+   ("finish_success", Image.finish_success, Image.finish_success_size),
+   ("finish_success_extended", Image.finish_success_extended, Image.finish_success_extended_size),
+   ("init", Image.init, Image.init_size), ("memcpy", Image.memcpy, Image.memcpy_size),
+   ("COEFFS", Image.sirodata, Image.COEFFS_size)]  -- constant table (data, not code): its ROM copy
 
 def hex8 (w : Word) : String :=
   let s := String.ofList (Nat.toDigits 16 w.toNat)

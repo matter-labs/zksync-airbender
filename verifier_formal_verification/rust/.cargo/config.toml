@@ -1,9 +1,10 @@
-# Same flags as zksync-airbender/examples/*/.cargo/config.toml (stable toolchain instead of nightly).
+# Same flags as zksync-airbender/examples/*/.cargo/config.toml (stable toolchain instead of nightly);
+# memory.x / link.x come from riscv_common (feature ram_32mb_no_heap, as tools/gkr_verifier).
 [build]
 target = "riscv32i-unknown-none-elf"
 rustflags = [
   "-C", "target-feature=+m,-unaligned-scalar-mem,+relax",
-  "-C", "link-arg=-Tlds/memory.x",
-  "-C", "link-arg=-Tlds/link.x",
+  "-C", "link-arg=-Tmemory.x",
+  "-C", "link-arg=-Tlink.x",
   "-C", "force-frame-pointers",
 ]

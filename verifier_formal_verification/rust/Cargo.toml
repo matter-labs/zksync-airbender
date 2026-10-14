@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+# The real Airbender boot: start.s, link.x/memory.x (32 MB RAM), init() (copies .rodata/.data to RAM), memcpy,
+# zksync_os_finish_success. As tools/gkr_verifier.
+riscv_common = { path = "../../riscv_common", features = ["boot_sequence", "ram_32mb_no_heap"] }
 
 [profile.release]
 opt-level = 3

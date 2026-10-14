@@ -19,21 +19,32 @@ LEAN=../lean/image/Image.lean; mkdir -p "$(dirname $LEAN)"
   echo "    verify.sh checks \`lake exe dump_image\` == build/app.bin byte for byte. -/"
   echo "namespace Image"
   echo ""
+  echo "set_option maxRecDepth 100000 in"
   echo "/-- The flat image, loaded at address 0 (Airbender ROM). -/"
   echo "def bytes : Array (BitVec 8) := #["
   od -An -v -tx1 $OUT/app.bin | sed 's/^ *//; s/ *$//; /^$/d; s/  */ /g; s/\([0-9a-f][0-9a-f]\)/0x\1,/g; s/^/  /'
   echo "]"
   echo ""
-  echo "/-! Function symbols from llvm-nm (names are informational; theorems are about addresses). -/"
-  awk 'NF == 4 && $2 != "00000000" && ($3 == "T" || $3 == "t") {
-         n = $4; if (n ~ /4main$/) n = "main";
-         printf "def %s : Nat := 0x%s\ndef %s_size : Nat := 0x%s\n", n, $1, n, $2 }
-       $NF == "_halt" { printf "def halt : Nat := 0x%s  -- `j .`: the program has finished\n", $1 }
-       NF == 4 && $2 != "00000000" && ($3 == "B" || $3 == "b" || $3 == "D" || $3 == "d") {
-         printf "def %s : Nat := 0x%s  -- data (RAM), size 0x%s\n", $4, $1, $2 }
+  echo "/-! Symbols from llvm-nm, under fixed names (Rust's mangled names change from build to build). -/"
+  awk 'function name(n) {
+         if (n ~ /3app4main$/) return "main"
+         if (n ~ /boot_sequence4init$/) return "init"
+         if (n ~ /33zksync_os_finish_success_extended$/) return "finish_success_extended"
+         if (n ~ /24zksync_os_finish_success$/) return "finish_success"
+         if (n ~ /^_R/) return ""
+         return n }
+       NF == 4 && $2 != "00000000" && ($3 == "T" || $3 == "t") && name($4) != "" {
+         printf "def %s : Nat := 0x%s\ndef %s_size : Nat := 0x%s\n", name($4), $1, name($4), $2 }
+       NF == 4 && $2 != "00000000" && ($3 == "B" || $3 == "b") {
+         printf "def %s : Nat := 0x%s  -- .bss (RAM, zero at start), size 0x%s\n", $4, $1, $2 }
        NF == 4 && $2 != "00000000" && ($3 == "R" || $3 == "r") {
          n = $4; if (n ~ /^_R/) sub(/.*[0-9]/, "", n);
-         printf "def %s : Nat := 0x%s  -- constant data (ROM)\ndef %s_size : Nat := 0x%s\n", n, $1, n, $2 }' $OUT/app.sym
+         printf "def %s : Nat := 0x%s  -- .rodata (in RAM after init), size 0x%s\ndef %s_size : Nat := 0x%s\n", n, $1, $2, n, $2 }
+       NF == 4 && $4 ~ /^_(sirodata|srodata|erodata|sidata|sdata|edata|sbss|ebss|sstack|estack)$/ {
+         printf "def %s : Nat := 0x%s  -- linker symbol\n", substr($4, 2), $1 }' $OUT/app.sym
+  # the program has finished: the self-jump (`jal zero, .`) that ends zksync_os_finish_success_extended
+  awk '$2 == "jal" && $3 == "zero," && $4 == "0x" substr($1, 1, length($1) - 1) {
+         printf "def halt : Nat := 0x%s  -- `jal zero, .`: the program has finished\n", substr($1, 1, length($1) - 1) }' $OUT/app.dis
   echo ""
   echo "end Image"
 } > $LEAN

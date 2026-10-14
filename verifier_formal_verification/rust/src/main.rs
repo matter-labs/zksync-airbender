@@ -2,10 +2,8 @@
 #![no_std]
 #![no_main]
 
-core::arch::global_asm!(include_str!("start.S"));
-
 /// PoC input convention (Airbender reads input via CSR 0x7c0; we start without CSRs):
-/// the input word is placed at the start of the .bss region (first RAM page after the stack).
+/// the input word is the only word of .bss, which is otherwise zero (Airbender zero-initialises RAM).
 #[unsafe(no_mangle)]
 static mut INPUT: u32 = 0;
 
@@ -65,7 +63,7 @@ pub extern "C" fn poly_eval(coeffs: *const u32, n: u32, x: u32) -> u32 {
 
 const N: usize = 100;
 
-/// Fixed coefficients (in ROM): c_i = 31 i^2 + 7.
+/// Fixed coefficients (.rodata: in ROM, copied to RAM by `init`): c_i = 31 i^2 + 7.
 static COEFFS: [u32; N] = {
     let mut c = [0u32; N];
     let mut i = 0;
@@ -76,11 +74,6 @@ static COEFFS: [u32; N] = {
     c
 };
 
-/// Like riscv_common::zksync_os_finish_success: results in x10, x11, then spin forever at `_halt` (start.S).
-fn finish(r0: u32, r1: u32) -> ! {
-    unsafe { core::arch::asm!("j _halt", in("x10") r0, in("x11") r1, options(noreturn)) }
-}
-
 #[unsafe(link_section = ".init.rust")]
 #[unsafe(export_name = "_start_rust")]
 unsafe extern "C" fn start_rust() -> ! {
@@ -89,14 +82,9 @@ unsafe extern "C" fn start_rust() -> ! {
 
 #[inline(never)]
 fn main() -> ! {
+    riscv_common::boot_sequence::init();
     let x = unsafe { core::ptr::read_volatile(&raw const INPUT) };
     let c = combine(x);
     let p = poly_eval(COEFFS.as_ptr(), N as u32, x);
-    finish(c, p)
-}
-
-/// Like riscv_common's rust_abort: `unimp` (= csrrw x0, cycle, x0), which Airbender treats as failure.
-#[panic_handler]
-fn panic(_: &core::panic::PanicInfo) -> ! {
-    unsafe { core::arch::asm!("unimp", options(noreturn)) }
+    riscv_common::zksync_os_finish_success(&[c, p, 0, 0, 0, 0, 0, 0])
 }
