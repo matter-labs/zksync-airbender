@@ -504,6 +504,7 @@ pub(super) fn standalone_columns(
                 .aux_layout_data
                 .shuffle_ram_timestamp_comparison_aux_vars
                 .iter()
+                .flatten()
                 .map(|set| set.intermediate_borrow),
         )
     {
