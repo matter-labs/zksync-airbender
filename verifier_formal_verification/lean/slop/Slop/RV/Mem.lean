@@ -49,6 +49,20 @@ theorem write_outside (m : Word → BitVec 8) (a v b : Word) (n : Nat)
   intro i hi
   bv_omega
 
+/-- A word read at `b + c₂` through a word write at `b + c₁` (same base, constant offsets at least 4 apart modulo
+2^32): the side condition is closed, so `decide` checks it. -/
+theorem read_write_off (m : Word → BitVec 8) (b c1 c2 v : Word) (h : 4 ≤ (c2 - c1).toNat ∧ 4 ≤ (c1 - c2).toNat) :
+    read (write m (b + c1) v 4) (b + c2) 4 = read m (b + c2) 4 := by
+  apply read_congr; intro j hj; apply write_other; intro i hi; bv_omega
+
+theorem read_write_off0l (m : Word → BitVec 8) (b c2 v : Word) (h : 4 ≤ c2.toNat ∧ 4 ≤ (0 - c2).toNat) :
+    read (write m b v 4) (b + c2) 4 = read m (b + c2) 4 := by
+  have := read_write_off m b 0 c2 v (by simpa using h); simpa using this
+
+theorem read_write_off0r (m : Word → BitVec 8) (b c1 v : Word) (h : 4 ≤ (0 - c1).toNat ∧ 4 ≤ c1.toNat) :
+    read (write m (b + c1) v 4) b 4 = read m b 4 := by
+  have := read_write_off m b c1 0 v (by simpa using h); simpa using this
+
 /-- `jalr` clears bit 0 of the target; on a 4-aligned target that changes nothing. -/
 theorem and_not_one_of_aligned (x : Word) (h : x.toNat % 4 = 0) : x &&& ~~~1#32 = x := by
   ext i hi

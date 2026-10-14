@@ -12,7 +12,7 @@ final theorem's statement and axioms).
 - `Human/Call.lean` — what "this code implements a function" means (RISC-V calling convention).
 - `Human/Spec.lean` — what the Rust functions should compute (`combine x = 3x + 1`, ...).
 - `Human/Theorems.lean` — the final statement `ProgramCorrect`: from reset, with the image loaded and input `x`,
-  the program reaches `_halt` with `a0 = combine x` and stays there.
+  the program reaches its final self-jump with `a0 = combine x` and stays there.
 - `HumanSail/Airbender.lean` — the Airbender machine as the official Sail RISC-V model plus a short list of
   changes, each marked `-- Airbender:` (needs the generated Sail model, `sail/regen.sh`).
 - `HumanSail/Theorems.lean` — our spec = Sail: `DecodeIsSail`, `StepIsAirbender`, and `ProgramCorrect` on the

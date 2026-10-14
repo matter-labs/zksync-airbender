@@ -93,6 +93,10 @@ theorem codeAt_blockCopy {S S' : State} {A : Word} {code : List Word} {d s : Wor
   rw [hm, read_blockCopy_outside _ _ _ _ _ _ (by simp only [ROM_END] at *; bv_omega) (by simp only [ROM_END] at *; bv_omega) hd2]
   exact hc i hi
 
+/-- `CodeAt` only depends on the memory. -/
+theorem codeAt_mem_eq {S S' : State} {A : Word} {code : List Word} (hm : S'.mem = S.mem) (hc : CodeAt S A code) :
+    CodeAt S' A code := fun i hi => by rw [hm]; exact hc i hi
+
 /-- Code in ROM survives anything that leaves ROM bytes unchanged. -/
 theorem codeAt_of_rom {S S' : State} {A : Word} {code : List Word} (hc : CodeAt S A code)
     (hA : A.toNat + 4 * code.length ≤ ROM_END) (hm : ∀ b : Word, b.toNat < ROM_END → S'.mem b = S.mem b) :
@@ -111,5 +115,33 @@ theorem write_rom (m : Word → BitVec 8) (a v : Word) (n : Nat) (ha : writable 
     write m a v n b = m b :=
   write_outside _ _ _ _ _ (by simp only [writable, ROM_END, RAM_END] at *; omega)
     (by simp only [writable, ROM_END, RAM_END] at *; omega)
+
+/-- Reads of two memories at two addresses agree if their bytes do. -/
+theorem read_congr2 (m m' : Word → BitVec 8) (a a' : Word) (k : Nat)
+    (h : ∀ j < k, m' (a' + BitVec.ofNat 32 j) = m (a + BitVec.ofNat 32 j)) : read m' a' k = read m a k := by
+  induction k generalizing a a' with
+  | zero => rfl
+  | succ k ih =>
+    simp only [read]
+    have h0 := h 0 (by omega)
+    simp only [BitVec.add_zero] at h0
+    rw [h0, ih]
+    intro j hj
+    have := h (j + 1) (by omega)
+    rwa [show a' + 1 + BitVec.ofNat 32 j = a' + BitVec.ofNat 32 (j + 1) by bv_omega,
+      show a + 1 + BitVec.ofNat 32 j = a + BitVec.ofNat 32 (j + 1) by bv_omega]
+
+/-- A table copied by a block copy: found at the destination. -/
+theorem codeAt_blockCopy_dst {S S' : State} {s0 d : Word} {C : List Word} {n : Nat} (hc : CodeAt S s0 C)
+    (hm : ∀ a : Word, (a - d).toNat < n → S'.mem a = blockCopy S.mem d s0 n a) (hn : 4 * C.length ≤ n)
+    (hd : d.toNat + n ≤ 2 ^ 32) : CodeAt S' d C := by
+  intro i hi
+  rw [← hc i hi]
+  apply read_congr2
+  intro j hj
+  rw [hm _ (by bv_omega)]
+  simp only [blockCopy]
+  rw [if_pos (by bv_omega)]
+  congr 1; bv_omega
 
 end RV

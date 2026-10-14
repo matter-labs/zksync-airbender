@@ -49,16 +49,19 @@ noncomputable def run : (numSteps : Nat) → SailState → Option SailState
 
 /-- 3. The final theorem on the Airbender machine itself: `RV.ProgramCorrect` (`Human/Theorems.lean`), with Sail's
 state in place of ours. Started from any Airbender state (`Configured`: privilege, CSRs, memory map as after reset) at
-address 0, with the image loaded and a field element `x` at `INPUT`, Airbender reaches `_halt` with
-`a0 = combine x`, `a1 = poly x` and stays there. Follows from 1 and 2 and `RV.program_correct`. -/
+address 0, with the image loaded, RAM zero except a field element `x` at `INPUT`, Airbender reaches `halt` with
+`a0 = combine x`, `a1 = poly x`, `x12 … x25` zero, and stays there. Follows from 1 and 2 and `RV.program_correct`. -/
 def ProgramCorrect : Prop :=
   ∀ (start : SailState) (x : RV.Word), Configured start → start.regs .PC = 0 →
-    (∀ i (h : i < Image.bytes.size), start.mem i = Image.bytes[i]) → readBytes start.mem Image.INPUT 4 = x →
-    x.toNat ≤ Spec.P →
+    (∀ i (h : i < Image.bytes.size), start.mem i = Image.bytes[i]) →
+    (∀ addr : Nat, RV.ROM_END ≤ addr → addr < RV.RAM_END → (addr < Image.INPUT ∨ Image.INPUT + 4 ≤ addr) →
+      start.mem addr = 0) →
+    readBytes start.mem Image.INPUT 4 = x → x.toNat ≤ Spec.P →
     ∃ numSteps final, run numSteps start = some final ∧ final.regs .PC = BitVec.ofNat 32 Image.halt ∧
       getReg final a0 = Spec.combine x ∧
       (getReg final a1).toNat ≤ Spec.P ∧
       ((getReg final a1).toNat : ZMod Spec.P) = Spec.poly (x.toNat : ZMod Spec.P) ∧
+      (∀ i : RV.Reg, 12 ≤ i.toNat → i.toNat ≤ 25 → getReg final i = 0) ∧
       ∀ moreSteps, ∃ later, run moreSteps final = some later ∧ later.regs .PC = final.regs .PC ∧
         ∀ i, getReg later i = getReg final i
 

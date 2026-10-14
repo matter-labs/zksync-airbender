@@ -33,7 +33,7 @@ theorem agree_ofSail (σ : SailState) (hs : Airbender.Configured σ) : Airbender
   · rfl
 
 theorem program_correct_airbender : Airbender.ProgramCorrect := by
-  intro σ x hs hpc himg hin hx
+  intro σ x hs hpc himg hram hin hx
   have hA := agree_ofSail σ hs
   have himg' : RV.ImageLoaded (ofSail σ) := by
     intro i hi
@@ -44,12 +44,14 @@ theorem program_correct_airbender : Airbender.ProgramCorrect := by
     rw [read_eq4 σ.mem (ofSail σ).mem (fun _ => rfl) _ (by decide), BitVec.setWidth_eq]
     have e : (BitVec.ofNat 32 Image.INPUT).toNat = Image.INPUT := by decide
     rw [e]; exact hin
-  obtain ⟨n, s', hr, hpc', h10, h11a, h11b, hk⟩ := RV.program_correct (ofSail σ) x hpc himg' hin' hx
+  have hram' : RV.RamZeroExceptInput (ofSail σ) := fun addr h1 h2 h3 => hram addr.toNat h1 h2 h3
+  obtain ⟨n, s', hr, hpc', h10, h11a, h11b, hz, hk⟩ := RV.program_correct (ofSail σ) x hpc himg' hram' hin' hx
   obtain ⟨σ', hσ', hA'⟩ := run_agree n _ s' σ hA hr
   have hreg : ∀ i, Airbender.getReg σ' i = s'.getReg i := hA'.2.2.1
-  refine ⟨n, σ', hσ', hA'.2.1.trans hpc', (hreg 10).trans h10, ?_, ?_, ?_⟩
+  refine ⟨n, σ', hσ', hA'.2.1.trans hpc', (hreg 10).trans h10, ?_, ?_, ?_, ?_⟩
   · rw [hreg]; exact h11a
   · rw [hreg]; exact h11b
+  · intro i h1 h2; rw [hreg]; exact hz i h1 h2
   · intro k
     obtain ⟨s'', hr'', hpc'', hreg''⟩ := hk k
     obtain ⟨σ'', hσ'', hA''⟩ := run_agree k s' s'' σ' hA' hr''

@@ -263,7 +263,7 @@ attribute [rv_state] r_zero5 next_pc set_pc store_pc jump_pc set_mem next_mem st
   ite_true ite_false BitVec.ofNat_eq_ofNat BitVec.add_assoc BitVec.add_zero Bool.false_eq_true
 attribute [rv_side] ROM_END RAM_END aligned writable readable and_not_one_of_aligned Cond.holds bne_iff_ne
   bne_eq_false_iff_eq beq_iff_eq beq_eq_false_iff_ne ne_eq
-attribute [rv_exec high] read_write_rom
+attribute [rv_exec high] read_write_rom read_write_off read_write_off0l read_write_off0r
 attribute [rv_exec] step_ok Option.elim_some Option.bind_some read_write_disjoint read_write_same4
   exec_lui exec_auipc exec_opImm exec_op exec_jal exec_jalr0 exec_jalr exec_load exec_load_x0 sext_word exec_store alu
   exec_branch_t exec_branch_f

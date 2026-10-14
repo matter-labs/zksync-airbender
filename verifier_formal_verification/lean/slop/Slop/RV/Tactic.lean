@@ -253,12 +253,12 @@ macro_rules
     `(tactic| (
       repeat first
         | with_reducible apply codeAt_set | with_reducible apply codeAt_next | with_reducible apply codeAt_jump
-        | (with_reducible apply codeAt_store _ _ _ _ _ _ _ (by first | rv_decide_closed | ((try simp only [List.length_cons, List.length_nil, $code:ident]); rv_disch)) (by rv_disch))
         | (refine codeAt_store_disj _ _ _ _ _ _ ?_ (by ((try simp only [List.length_cons, List.length_nil, $code:ident]); rv_disch with $xs',*)) (by ((try simp only [List.length_cons, List.length_nil, $code:ident]); rv_disch with $xs',*)) (by rv_disch with $xs',*))
+        | (with_reducible apply codeAt_store _ _ _ _ _ _ _ (by first | rv_decide_closed | ((try simp only [List.length_cons, List.length_nil, $code:ident]); rv_disch)) (by rv_disch))
         | (refine codeAt_of_frame ?_ ‹_› ?_
            repeat first
-             | (with_reducible apply codeMem_write _ _ _ _ (by first | rv_decide_closed | ((try simp only [List.length_cons, List.length_nil, $code:ident]); rv_disch)) (by rv_disch))
              | (refine codeMem_write_disj _ _ _ ?_ (by ((try simp only [List.length_cons, List.length_nil, $code:ident]); rv_disch with $xs',*)) (by ((try simp only [List.length_cons, List.length_nil, $code:ident]); rv_disch with $xs',*)) (by rv_disch with $xs',*))
+             | (with_reducible apply codeMem_write _ _ _ _ (by first | rv_decide_closed | ((try simp only [List.length_cons, List.length_nil, $code:ident]); rv_disch)) (by rv_disch))
            try apply codeMem_of_codeAt)
       all_goals first
         | ((try simp only [set_pc, next_pc, jump_pc, store_pc, BitVec.add_assoc, BitVec.reduceAdd,
@@ -281,6 +281,23 @@ macro_rules
       refine ⟨?_, (by rv_disch with $xs',*), (by rv_disch with $xs',*), (by rv_disch with $xs',*),
         (by rv_disch with $xs',*), (by rv_disch with $xs',*), (by rv_disch with $xs',*)⟩
       rv_codeAt $hc $code with $xs',*))
+
+/-- `rv_call_ok` when only registers and the PC changed since `hc : CodeAt S …` (no stores): `CodeAt` by memory
+equality, never by searching through frames. -/
+syntax "rv_call_ok_mem " ident ident (" with " term,*)? : tactic
+macro_rules
+  | `(tactic| rv_call_ok_mem $hc:ident $code:ident $[with $xs,*]?) => do
+    let xs' : Array Lean.Term := xs.map (·.getElems) |>.getD #[]
+    let xs : Array (Lean.TSyntax `Lean.Parser.Tactic.simpLemma) ← (xs.map (·.getElems) |>.getD #[]).mapM
+      fun t => `(Lean.Parser.Tactic.simpLemma| $t:term)
+    let cme := Lean.mkIdent `RV.codeAt_mem_eq
+    `(tactic| (
+      simp (disch := rv_disch with $xs',*) only [Call, $code:ident, List.length_cons, List.length_nil, BitVec.ofNat_eq_ofNat,
+        reduceRSet, next_r, store_r, jump_r, set_pc, next_pc, jump_pc, store_pc, BitVec.reduceEq, ite_true, ite_false,
+        $xs,*]
+      refine ⟨?_, (by rv_disch with $xs',*), (by rv_disch with $xs',*), (by rv_disch with $xs',*),
+        (by rv_disch with $xs',*), (by rv_disch with $xs',*), (by rv_disch with $xs',*)⟩
+      exact $cme (by simp only [rv_state]) $hc))
 
 /-- After `apply run_call f_impl` and `rv_call_ok`: name what the callee guarantees, in normal form. -/
 syntax "rv_returned " ident ident ident ident ident (" with " term,*)? : tactic

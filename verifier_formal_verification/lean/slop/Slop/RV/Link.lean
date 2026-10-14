@@ -60,4 +60,41 @@ theorem codeAt_of_bytes {s : State} (himg : ImageLoaded s) (a : Nat) (code : Lis
     simp only [show (4 * i + j) / 4 = i by omega, show (4 * i + j) % 4 = j by omega]
   rw [read_congr _ (write s.mem _ code[i] 4) _ 4 (fun j hj => by simpa using key j hj), read_write_same4]
 
+/-- The little-endian bytes of a list of words, word by word (linear to evaluate). -/
+def bytesOfW : List Word → List (BitVec 8)
+  | [] => []
+  | w :: ws => w.setWidth 8 :: (w >>> 8).setWidth 8 :: (w >>> 16).setWidth 8 :: (w >>> 24).setWidth 8 :: bytesOfW ws
+
+theorem bytesOfW_length (code : List Word) : (bytesOfW code).length = 4 * code.length := by
+  induction code with
+  | nil => rfl
+  | cons w ws ih => simp only [bytesOfW, List.length_cons, ih]; omega
+
+theorem bytesOfW_eq (code : List Word) : bytesOfW code = bytesOf code := by
+  apply List.ext_getElem
+  · simp [bytesOfW_length, bytesOf]
+  · intro k h1 h2
+    simp only [bytesOf, List.getElem_ofFn]
+    induction code generalizing k with
+    | nil => simp [bytesOfW] at h1
+    | cons w ws ih =>
+      simp only [bytesOfW]
+      rcases (by omega : k = 0 ∨ k = 1 ∨ k = 2 ∨ k = 3 ∨ 4 ≤ k) with h | h | h | h | h
+      · subst h; simp <;> rfl
+      · subst h; simp <;> rfl
+      · subst h; simp <;> rfl
+      · subst h; simp <;> rfl
+      · obtain ⟨j, rfl⟩ : ∃ j, k = j + 4 := ⟨k - 4, by omega⟩
+        simp only [List.getElem_cons_succ]
+        rw [ih j (by simp only [bytesOfW_length, List.length_cons] at h1 ⊢; omega)
+          (by simp only [bytesOf, List.length_ofFn, List.length_cons] at h2 ⊢; omega)]
+        simp only [show (j + 4) / 4 = j / 4 + 1 by omega, show (j + 4) % 4 = j % 4 by omega, List.getElem_cons_succ]
+
+/-- `codeAt_of_bytes` with the linear byte list (what the kernel evaluates). -/
+theorem codeAt_of_bytesW {s : State} (himg : ImageLoaded s) (a : Nat) (code : List Word)
+    (hb : a + 4 * code.length ≤ Image.bytes.size) (hs : Image.bytes.size < 2 ^ 32)
+    (h : (Image.bytes.toList.drop a).take (4 * code.length) = bytesOfW code) :
+    CodeAt s (BitVec.ofNat 32 a) code :=
+  codeAt_of_bytes himg a code hb hs (by rw [h, bytesOfW_eq])
+
 end RV

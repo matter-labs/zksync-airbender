@@ -7,6 +7,18 @@ commit check `git diff --cached --stat` and that no staged file is over ~200 KB.
 Moved here from an earlier prototype repo (as a snapshot; its history, which contains the large Sail model, was
 NOT imported).
 
+=== REAL AIRBENDER BOOT (2026-10-14) ===
+- The guest now boots exactly like the real verifier binaries (tools/gkr_verifier): riscv_common with
+  boot_sequence + ram_32mb_no_heap (its start.s, link.x, 32 MB memory.x, init() copying .rodata/.data from ROM to
+  RAM with riscv_common's memcpy, zksync_os_finish_success -> _extended -> final self-jump). Stable Rust 1.99.0,
+  same flags as examples/*. .bss relies on Airbender's zero RAM (now a hypothesis of ProgramCorrect); input still a
+  .bss word (INPUT) until CSR 0x7c0 exists. Outputs: x10..x25 (riscv_common's 16-word convention).
+- Proven generally: memcpy's aligned path for any length (Copy/CopyRun: blockCopy model, load/store pair runs;
+  MemcpyIter/Loop/Blocks/Tail/Memcpy), init (Init), finish (Finish/FinishExt, concrete addresses), poly_eval with
+  its table anywhere outside its frame (now in RAM). Link check linear (bytesOfW).
+- Findings: the real gkr_verifier builds without +m and with +zimop / modular_ops (field ops via MOP opcodes);
+  MAX_CYCLES = 2^36 is a verifier-side check over the chunk list (full_statement_verifier/src/lib.rs:55), not ISA.
+
 === MOVE TO AIRBENDER (2026-10-13) ===
 - ProgramCorrect (human/Human/Theorems.lean) strengthened: after _halt, any number of further steps keeps the PC
   and every register unchanged (Airbender reads the outputs some steps later). Re-proven: slop/Slop/RV/Halt.lean
