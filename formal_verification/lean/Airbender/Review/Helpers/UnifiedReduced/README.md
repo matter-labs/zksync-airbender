@@ -103,8 +103,11 @@ Public mode/code/duration, nonround scope and logical matching remain explicit.
 The separate [source-aware round regions](../../Trace/UnifiedReduced/ComputedRoundRegions.lean)
 derive actual round-zero seeds and exclusive regional masks; public modular
 controller extents derive local shape, while global memory keeps full round
-coverage explicit. Source-aware public round-CSR occurrence coverage/live masks,
-complete extended-round reference/list composition, broader operand-dependent
+coverage explicit. Source-aware public round-CSR occurrence coverage now derives
+precisely live membership and masks, retaining the zero-clock coverage boundary.
+Complete G, extended-BLAKE and Keccak lists also admit either source; public
+modular caller/controller regions derive shape before the existing continuous
+history composition. Full round coverage stays explicit. Broader operand-dependent
 preparation and jumps/branches remain separate. Concrete fixtures use PC four to produce 524292 and
 PC 65540 with immediate 0xfffff to wrap the sum to 61444; both retain clock six.
 

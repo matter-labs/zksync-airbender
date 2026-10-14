@@ -264,8 +264,19 @@ ABI and whole mixed execution remain separate.
    and its canonical clock-six token, inhabits the empty regional/global context,
    and rejects wrong public flags and invalid cuts; two simultaneous round bits
    remain impossible under the regional ABI. The unissued G-prefix effect stays
-   admitted. Next connect the source to public round-CSR occurrence coverage,
-   live masks and complete extended-round reference/list composition. Continue general
+   admitted. Source-aware public modular round-CSR occurrence coverage now
+   derives precisely live regional membership and issued masks; full coverage
+   remains equivalent to absence of zero-clock round workers, rather than a
+   consequence of public CSR coverage alone. Complete selected G, extended-BLAKE
+   and Keccak reference lists may now mix literal/AUIPC preparation in one
+   continuous initialized history. Public modular caller/controller regions
+   derive all selected shapes before the existing composition proof, preserving
+   gaps and actual cut states. Full round-worker coverage stays explicit in the
+   complete entry. Legacy coverage/reference/list signatures remain and reuse
+   the same proofs. Concrete preparation/empty-region fixtures inhabit the new
+   public context and reject incomplete reference counts/durations and cuts past
+   the native terminal; full reference/list claims remain general accepted-witness
+   theorems. Continue general
    operand-dependent preparation, jumps/branches and whole caller retirement,
    retaining unsupported-control and unissued-exclusion boundaries.
    COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed

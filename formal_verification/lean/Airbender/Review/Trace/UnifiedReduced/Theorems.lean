@@ -808,4 +808,62 @@ theorem Caller.computed_protocol_memory_soundness [Fact p.Prime] (hp : 8388608 �
     Caller.MixedMemoryInputs data program before ca oa cells :=
   Caller.Proofs.computed_protocol_memory_inputs hp clockInverse accepted inputs
 
+/-- Public modular round-CSR occurrences derive precisely live regional
+    membership and every issued mask with either preparation source. Full
+    coverage is equivalent to absence of zero-clock round workers; it is not
+    assumed, and the unissued boundary remains explicit. -/
+theorem Caller.wrapped_program_computed_round_coverage_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
+    {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    {regions : List Caller.RoundRegion}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.ProtocolContextInputs data before ca oa cells program)
+    (registry : Caller.WrappedSequentialProgram program)
+    (scopes : ∀ region ∈ regions, Caller.WrappedProgramComputedRoundRegionInputs data program region)
+    (coverage : Caller.WrappedProgramRoundCallerCoverage data regions) :
+    Caller.RoundWorkerCoverage data regions ∧
+      (∀ worker ∈ data.workers.rows, worker.family = .blakeRound →
+        Delegation.Requests.Live (Delegation.Requests.fulfillment worker) →
+        ∃ round, Blake2Round.Memory.RoundMask worker.assignment round) ∧
+      ((∀ worker ∈ data.workers.rows, worker.family = .blakeRound →
+          ∃ region ∈ regions, worker ∈ data.workers.windowRows region.lower region.upper) ↔
+        ¬ ∃ worker ∈ data.workers.rows, worker.family = .blakeRound ∧
+          (Delegation.Requests.fulfillment worker).time = (0, 0)) := by
+  have covered := Caller.Proofs.wrapped_program_computed_round_worker_coverage (by omega) clockInverse
+    inputs.setup accepted inputs.publicProgram inputs.ordinaryProgram registry scopes coverage
+  exact ⟨covered, Caller.Proofs.wrapped_program_computed_round_live_masks hp clockInverse accepted inputs registry scopes coverage,
+    Caller.Proofs.round_worker_coverage_boundary covered⟩
+
+/-- Complete G, extended-BLAKE and Keccak references may mix literal and AUIPC
+    preparation. Every gap and boundary state comes from one initialized history.
+    Raw regional matching derives masks; full round-worker coverage stays explicit. -/
+theorem Caller.computed_prepared_protocol_sequence_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
+    {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    {regions : List Caller.RoundRegion} {first : Caller.HashWindow} {rest : List Caller.HashWindow}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.ComputedPreparedProtocolInputs data before ca oa cells program regions)
+    (scopes : ∀ window ∈ first :: rest, Caller.ComputedProtocolWindowInputs data program window)
+    (ordered : Caller.WindowsOrdered first.lower ((first :: rest).map Caller.HashWindow.interval)) :
+    Caller.PreparedHashSequenceResult data before cells first rest :=
+  Caller.Proofs.computed_protocol_sequence hp clockInverse accepted inputs scopes ordered
+
+/-- Public modular caller/controller regions derive shape for every selected
+    reference and controller. Either preparation source reaches complete G,
+    extended-BLAKE and Keccak references in one continuously initialized history.
+    Domain/setup/tables and full round-worker coverage remain explicit. -/
+theorem Caller.wrapped_program_computed_protocol_sequence_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
+    {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    {regions : List Caller.RoundRegion} {first : Caller.HashWindow} {rest : List Caller.HashWindow}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.WrappedProgramComputedPreparedProtocolInputs data before ca oa cells program regions)
+    (scopes : ∀ window ∈ first :: rest, Caller.WrappedProgramComputedProtocolWindowInputs data program window)
+    (ordered : Caller.WindowsOrdered first.lower ((first :: rest).map Caller.HashWindow.interval)) :
+    Caller.PreparedHashSequenceResult data before cells first rest :=
+  Caller.Proofs.wrapped_program_computed_protocol_sequence hp clockInverse accepted inputs scopes ordered
+
 end Airbender.UnifiedReduced
