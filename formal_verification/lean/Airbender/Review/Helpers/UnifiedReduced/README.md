@@ -33,11 +33,17 @@ binds current-state fetch.
 [WindowSchedule](WindowSchedule.lean) describe native-clock cuts and selected regions.
 [ControlPreparation](ControlPreparation.lean) names the public preparation registry.
 It accepts one uniform literal, different ADDI-from-x0/LUI literals, or ordinary
-ADD/SUB/ADDI/LUI/AUIPC instructions along a straight path with callers.
-[`ArithmeticProgram`](ControlPreparation.lean) restricts public instruction forms,
-without assuming operands, reads or results. The final preparation instruction
-must still be the specified public literal. Native PC/clock matching identifies the public
-instruction at each preparation cut, without a selected-row or control-read premise.
+arithmetic, LW/SW, bitwise/shifts, REV8 and supported TRIADD/XORROT forms along a
+straight path with callers. [`SequentialProgram`](ControlPreparation.lean) states
+these original public instruction forms; `ArithmeticProgram` remains available.
+No operand, read, native selector or result is supplied.
+[`sequential_fields_mask`, `sequential_program_pc_advance` and
+`sequential_program_pc_clock`](../../../Proofs/UnifiedReduced/ControlPreparation.lean)
+derive native selectors, PC increments and the instruction address from public
+decoding and accepted constraints/matching. Jumps, branches and comparisons are
+outside this linear PC/clock profile; comparisons use a wraparound PC path.
+The final preparation instruction must still be the specified public literal.
+Its address follows from matching, without a selected-row or control-read premise.
 Only its final cycle is worker-free; earlier worker effects remain in the same
 history. The original extended-round first-span scope retains an empty worker prefix.
 Boundary timestamps are retained; scheduling, actual controls and intermediate
@@ -55,6 +61,11 @@ The [arithmetic preparation regression](../../../../Tests/ControlPreparation.lea
 uses an aliased ADD before ADDI-from-x0, with reversed native rows. One continuous
 history derives actual x12 values 65537→131074→0, retaining write clocks six/ten;
 a fabricated preparation read is rejected by joint matching.
+[`triadd_prefix_and_preparation_share_history`](../../../../Tests/ControlPreparation.lean)
+checks the custom prefix with the same aliased fixture: actual x12 is
+65537→196611→0, with the same clocks and fabricated-read rejection. This is
+preparation and memory transport. It adds no successful full-prefix retirement
+claim and does not remove the discarded-LW profile boundary.
 The [native window chain](../../Trace/UnifiedReduced/MixedWindows.lean) also executes
 two windows and their gap continuously from those retained boundaries. Complete
 [prepared G/Keccak chains](../../Trace/UnifiedReduced/PreparedHashWindows.lean) use
