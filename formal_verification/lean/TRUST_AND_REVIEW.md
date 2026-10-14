@@ -219,8 +219,16 @@ uses a public ordinary ADDI-from-x0/LUI registry and a worker-free final prepara
 cycle. The registry may be uniform, contain different literals/registers, or admit
 arithmetic, LW/SW, bitwise/shifts, REV8 and supported TRIADD/XORROT along a straight
 path with callers. The sequential profile is stated on original public instruction
-forms, not assumed native selector bits. Jumps, branches and wraparound comparisons
-remain outside that linear PC/clock profile. Preparation transports actual memory;
+forms, not assumed native selector bits. The separate aligned
+[`WrappedSequentialProgram`](Airbender/Review/Helpers/UnifiedReduced/ControlPreparation.lean)
+adds original SLT/SLTU/SLTI/SLTIU. Modeled setup and `4194304 ≤ p` remain explicit;
+accepted constraints derive comparison cleanup/carry values and modular RV32
+PC/clock addresses. No native successor or wrap flag is supplied. The
+[wrapped comparison regression](Tests/UnifiedComparison.lean) checks SLTIU at
+`0xfffffffc` and ADDI at zero, actual x12 = 65537→1→0, retained write clocks
+six/ten, and rejection of a wrong literal, fabricated read or misaligned public
+code. Jumps/branches remain outside these preparation registries. Public
+caller-region coverage keeps its linear address profile. Preparation transports actual memory;
 it does not assert successful retirement of every prefix instruction or remove
 the discarded-LW profile boundary. Actual decoding and accepted constraints derive
 PC increments. Only the final preparation must be the specified literal; its
