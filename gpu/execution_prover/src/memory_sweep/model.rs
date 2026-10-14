@@ -207,6 +207,10 @@ pub fn generate_policy(input: impl Read, output: impl Write) -> Result<(), Box<d
         )?;
         writeln!(
             output,
+            "CircuitType::L1Wrap21 => panic!(\"CircuitType::L1Wrap21 is not supported on the GPU backend until W5\"),"
+        )?;
+        writeln!(
+            output,
             "CircuitType::Unrolled(UnrolledCircuitType::Unified22) => panic!(\"UnrolledCircuitType::Unified22 is not supported on the GPU backend until W4\"),"
         )?;
         let mut groups = BTreeMap::<String, Vec<&str>>::new();

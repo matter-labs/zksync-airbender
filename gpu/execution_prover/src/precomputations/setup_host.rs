@@ -152,6 +152,10 @@ fn validate_profile_set(
     is_l1_wrap_setup: bool,
     profiles: &[ProofProfile],
 ) -> BTreeSet<ProofProfile> {
+    assert!(
+        circuit_type != CircuitType::L1Wrap21,
+        "the GPU backend does not support the 2^21 L1 wrap (CircuitType::L1Wrap21) until W5"
+    );
     let profiles: BTreeSet<ProofProfile> = profiles.iter().copied().collect();
     assert!(
         !profiles.is_empty(),
@@ -332,12 +336,19 @@ mod cpu_tests {
                 set(profiles)
             )
         };
-        let cases: [(CircuitType, bool, &[ProofProfile], String); 14] = [
+        let cases: [(CircuitType, bool, &[ProofProfile], String); 15] = [
             (
                 UNIFIED,
                 false,
                 &[],
                 "prepare needs at least one ProofProfile".to_string(),
+            ),
+            (
+                CircuitType::L1Wrap21,
+                true,
+                &[L1Wrap],
+                "the GPU backend does not support the 2^21 L1 wrap (CircuitType::L1Wrap21) until W5"
+                    .to_string(),
             ),
             (
                 CircuitType::L1Wrap,

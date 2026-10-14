@@ -141,7 +141,7 @@ pub(crate) fn run_simulator<
             // The i&t-carrying instances are the TRAILING ones, so the markers
             // take the leading sequence_ids.
             let it_circuits = partitioning.instances_count();
-            if unified_circuit == CircuitType::L1Wrap {
+            if unified_circuit.is_l1_wrap() {
                 assert_l1_wrap_geometry(total_circuits, it_circuits);
             }
             assert!(
