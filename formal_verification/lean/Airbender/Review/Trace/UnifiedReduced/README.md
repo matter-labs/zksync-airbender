@@ -21,6 +21,9 @@ mixed execution with delegation callers remains a separate obligation.
 | Coverage of public decoded round CSRs derives region membership exactly for live round workers. | [`Caller.program_round_coverage_soundness`](Theorems.lean) |
 | Public round CSR coverage and LUI preparation derive every issued round mask from raw matching, without full worker coverage. | [`Caller.program_round_live_masks_soundness`](Theorems.lean) |
 | Full controller coverage is equivalent to absence of zero-clock extended-round workers in the public sequential/controller profile. | [`Caller.program_round_global_coverage_boundary_soundness`](Theorems.lean) |
+| Modular public round-CSR occurrence coverage derives membership exactly for live round workers, including repeated addresses. | [`Caller.wrapped_program_round_coverage_soundness`](Theorems.lean) |
+| Modular occurrence coverage and public preparation derive every issued round mask without full worker coverage. | [`Caller.wrapped_program_round_live_masks_soundness`](Theorems.lean) |
+| The modular profile exposes the same equivalence between full coverage and absence of zero-clock round workers. | [`Caller.wrapped_program_round_global_coverage_boundary_soundness`](Theorems.lean) |
 | Actual joint cut states and projected worker boundaries retain native timestamps. | [`Caller.mixed_window_soundness` and `Caller.mixed_window_projection_soundness`](Theorems.lean) |
 | Aligned public sequential/comparison decoding and native matching derive modular RV32 program addresses, including comparison PC wraparound. | [`Caller.wrapped_program_address_soundness`](Theorems.lean) |
 | Public ADDI-from-x0/LUI preparation yields actual controls after literal, sequential ordinary/custom or aligned comparison prefixes; native PC/clock matching derives each preparation address. | [`Caller.control_preparation_soundness`](Theorems.lean) |
@@ -100,9 +103,9 @@ program addresses. The [comparison-wrap regression](../../../../Tests/UnifiedCom
 checks SLTIU at `0xfffffffc` followed by ADDI at zero, actual x12 = 65537→1→0
 in one history, retained clocks six/ten and rejection of a fabricated read or
 wrong literal. Prepared entries using control preparation inherit this variant;
-selected caller/controller region shape now also uses modular addresses. Global
-public round-CSR coverage remains linear. Jumps, branches and nonliteral
-preparation remain open, as does whole caller retirement.
+selected caller/controller region shape and global round-CSR occurrence coverage
+now also use modular addresses. Jumps, branches and nonliteral preparation remain
+open, as does whole caller retirement.
 
 [`WrappedProgramCallerRegion`](../../Helpers/UnifiedReduced/WindowSchedule.lean)
 states the public ordinary-exclusion/full-CSR-family policy at every clock in the
@@ -188,6 +191,18 @@ public sequential/controller profile; their general exclusion or mask behavior
 still needs a binding before global transport. Public-code regressions require a
 nonempty covering interval for a decoded round CSR and preserve empty LUI-prepared
 cuts. The actual unissued G worker and its prefix update remain admitted.
+
+[`WrappedProgramRoundCallerCoverage`](PreparedRoundWindows.lean) extends coverage
+to the aligned sequential/comparison registry. It covers every aligned clock
+between the supplied native endpoints at which a public round CSR equals the
+modular program address. Accepted constraints and state matching derive each
+caller's clock interval; modular PC matching locates the actual occurrence and
+request matching identifies its worker. This avoids a PC-injectivity or no-wrap
+premise. The modular coverage, issued-mask and full-coverage boundary theorems
+above retain the same unissued-round limitation. Regressions reject covering only
+one of two occurrences 2^32 ticks apart in a public code-policy fixture (without
+an accepted-trace claim), admit an empty prepared cut, reject two issued round
+bits without whole-pool coverage, and retain the actual zero-clock G worker.
 
 Keep surplus zero-clock prefix effects, worker ROM-shadow transport,
 broader preparation/protocol binding, full mixed caller retirement and inactive padding as separate

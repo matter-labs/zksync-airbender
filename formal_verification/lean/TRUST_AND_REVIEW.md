@@ -223,10 +223,20 @@ slots. No PC injectivity or no-wrap premise is supplied. The modular controller
 and prepared sequence entries derive local shape before reusing the existing
 raw-mask and complete-reference proofs on one continuous history. Public
 cuts/preparation/reference duration and global extended-round worker coverage
-remain explicit. Global public round-CSR coverage and its issued-mask theorem
-remain linear; this adds no unissued-round mask/exclusion result. COPY and the
-wrap fixture check selected-region behavior, both bigint controls remain admitted,
-and the unissued G-prefix effect survives the new context conversion.
+remain explicit. `WrappedProgramRoundCallerCoverage` now covers every aligned
+occurrence of each decoded round CSR between the supplied initial and terminal
+native clocks. Strict native four-tick increments and state matching derive the
+actual clock interval without assuming native row order. Modular address matching
+then locates the actual caller occurrence, including repeated addresses, and
+full-width request matching derives round-worker membership exactly for live
+invocations. The modular issued-mask theorem reuses public LUI preparation and raw
+regional matching, without full worker coverage. Full coverage is equivalent to
+absence of zero-clock extended-round workers; unissued-round masks/exclusion still
+need a separate binding. Public CSR bytes, native endpoints, modeled setup and
+logical matching remain explicit. A public code-policy fixture with a 2^32-tick
+recurrence rejects covering only either occurrence; it makes no accepted-trace
+claim. COPY and the real comparison-wrap fixture retain their native behavior,
+both bigint controls remain admitted, and the unissued G-prefix effect survives.
 [Control preparation](Airbender/Review/Helpers/UnifiedReduced/ControlPreparation.lean)
 uses a public ordinary ADDI-from-x0/LUI registry and a worker-free final preparation
 cycle. The registry may be uniform, contain different literals/registers, or admit

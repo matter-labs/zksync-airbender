@@ -2299,3 +2299,18 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.program_round_live_masks
 #print axioms Airbender.UnifiedReduced.Caller.program_round_live_masks_soundness
 #print axioms Tests.ControlPreparation.public_round_live_masks_reject_two_bits
+
+#print axioms Airbender.Trace.Proofs.clock_interval
+#print axioms Airbender.Trace.Proofs.state_clock_interval
+#print axioms Airbender.UnifiedReduced.Caller.WrappedProgramRoundCallerCoverage
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.wrapped_program_round_worker_coverage
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.wrapped_program_round_live_masks
+#print axioms Airbender.UnifiedReduced.Caller.wrapped_program_round_coverage_soundness
+#print axioms Airbender.UnifiedReduced.Caller.wrapped_program_round_live_masks_soundness
+#print axioms Airbender.UnifiedReduced.Caller.wrapped_program_round_global_coverage_boundary_soundness
+#print axioms Tests.UnifiedComparison.wrapped_native_clock_interval_derived
+#print axioms Tests.UnifiedDelegation.wrapped_public_round_csr_requires_a_covering_occurrence
+#print axioms Tests.UnifiedDelegation.wrapped_round_csr_recurrence_requires_both_occurrences
+#print axioms Tests.DelegationZeroInvocation.wrapped_public_round_coverage_retains_unissued_g
+#print axioms Tests.ControlPreparation.wrapped_public_round_empty_cut_has_exact_coverage
+#print axioms Tests.ControlPreparation.wrapped_public_round_live_masks_reject_two_bits

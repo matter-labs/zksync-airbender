@@ -74,9 +74,9 @@ modeled setup and `4194304 ≤ p`. [`wrapped_program_pc_advance` and
 derive modular RV32 successors and program addresses from accepted native
 constraints, public decoding and state/clock matching. Comparison cleanup/carry
 values are derived; neither wrap flags nor successors are supplied.
-Selected caller/controller regions also support this modular registry. Global
-public round-CSR coverage remains linear; jumps and branches remain outside both
-preparation profiles.
+Selected caller/controller regions and global public round-CSR occurrence
+coverage also support this modular registry; jumps and branches remain outside
+both preparation profiles.
 The final preparation instruction must still be the specified public literal.
 Its address follows from matching, without a selected-row or control-read premise.
 Only its final cycle is worker-free; earlier worker effects remain in the same
@@ -140,10 +140,8 @@ and at most forty ticks derive each controller's family, ten-position bound and
 duration. [`Caller.wrapped_program_prepared_protocol_sequence_soundness`](../../Trace/UnifiedReduced/Theorems.lean)
 then reuses the existing raw-mask and complete-reference composition on the same
 continuous history. Selected spans retain public reference duration and cuts;
-global extended-round worker coverage remains explicit. This does not derive the
-global round-CSR coverage/mask result for a modular registry or exclude unissued
-round workers. Both bigint-control gaps and the actual unissued G-prefix effect
-remain accepted by the new inputs/conversion.
+global extended-round worker coverage remains explicit. Both bigint-control gaps
+and the actual unissued G-prefix effect remain accepted by the new inputs/conversion.
 
 [`ProgramRoundCallerCoverage`](../../Trace/UnifiedReduced/PreparedRoundWindows.lean)
 places public decoded round CSRs in the prepared regions. Accepted native matching
@@ -157,6 +155,17 @@ proves that full coverage is equivalent to the absence of zero-clock extended-ro
 workers within this public sequential/controller profile. Neither coverage theorem
 assumes worker coverage or nonzero invocation. Global mask transport still needs full
 coverage; unissued G workers remain admitted with their actual prefix effects.
+
+[`WrappedProgramRoundCallerCoverage`](../../Trace/UnifiedReduced/PreparedRoundWindows.lean)
+requires coverage at every aligned modular occurrence between supplied native
+clock endpoints. Strict clock increments and matching derive actual caller bounds,
+so repeated addresses need no injectivity assumption. The modular coverage,
+issued-mask and global-boundary entry points in
+[unified trace review](../../Trace/UnifiedReduced/README.md) prove the corresponding
+results with modeled setup and the aligned comparison registry. Unissued round
+masks/exclusion remain open. A repeated-address public-policy regression rejects
+covering only one occurrence; empty prepared cuts and the actual unissued G worker
+remain admitted.
 
 The native domain, public program, protocol counts and existing prefix scope
 remain explicit. These helpers do not claim whole mixed caller retirement.
