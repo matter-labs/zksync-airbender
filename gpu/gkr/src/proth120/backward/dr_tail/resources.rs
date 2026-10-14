@@ -24,9 +24,6 @@ use crate::upstream::{DimensionReducingInputOutput, GKRAddress, OutputType};
 use crate::DrWindowLayerProgram;
 
 pub(crate) const PR_DR_FINAL_TRACE_LOG_2: u32 = 4;
-const PR_DR_LAYER_COUNT: usize = 18;
-const PR_DR_MIN_FOLDING_STEPS: usize = 4;
-const PR_DR_MAX_FOLDING_STEPS: usize = 21;
 
 pub(crate) fn dimension_reducing_slots_pr(
     layer: &BTreeMap<OutputType, DimensionReducingInputOutput>,
@@ -97,16 +94,23 @@ fn dr_tail_layer_inputs_pr(programs: &GkrProgramsPr) -> Vec<DrTailLayerInputPr> 
     .collect()
 }
 
-fn validate_dr_tail_shapes_pr(inputs: &[DrTailLayerInputPr]) {
+fn validate_dr_tail_shapes_pr(inputs: &[DrTailLayerInputPr], trace_log: usize) {
+    let min_folding_steps = PR_DR_FINAL_TRACE_LOG_2 as usize;
+    let layer_count = trace_log
+        .checked_sub(min_folding_steps)
+        .expect("Proth120 DR trace log is below the final trace log");
+    let max_folding_steps = trace_log
+        .checked_sub(1)
+        .expect("Proth120 DR trace log must be positive");
     assert_eq!(
         inputs.len(),
-        PR_DR_LAYER_COUNT,
-        "Proth120 DR tail expects {PR_DR_LAYER_COUNT} dimension-reducing layers"
+        layer_count,
+        "Proth120 DR tail expects {layer_count} dimension-reducing layers for trace log {trace_log}"
     );
     for input in inputs {
         assert!(
-            (PR_DR_MIN_FOLDING_STEPS..=PR_DR_MAX_FOLDING_STEPS).contains(&input.folding_steps),
-            "Proth120 DR layer {} folds {} variables, outside {PR_DR_MIN_FOLDING_STEPS}..={PR_DR_MAX_FOLDING_STEPS}",
+            (min_folding_steps..=max_folding_steps).contains(&input.folding_steps),
+            "Proth120 DR layer {} folds {} variables, outside {min_folding_steps}..={max_folding_steps}",
             input.layer_idx,
             input.folding_steps
         );
@@ -124,6 +128,19 @@ fn validate_dr_tail_shapes_pr(inputs: &[DrTailLayerInputPr]) {
             input.layer_idx
         );
     }
+}
+
+#[cfg(test)]
+pub(crate) fn cpu_validate_dr_tail_shapes_pr(programs: &GkrProgramsPr) -> Vec<usize> {
+    let inputs = dr_tail_layer_inputs_pr(programs);
+    validate_dr_tail_shapes_pr(
+        &inputs,
+        programs.runtime_circuit.trace_len.trailing_zeros() as usize,
+    );
+    inputs
+        .into_iter()
+        .map(|input| input.folding_steps)
+        .collect()
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -162,7 +179,10 @@ fn plan_dr_tail_layers_pr(
     device_cap_bytes: usize,
 ) -> Vec<DrTailLayerPlanPr> {
     let inputs = dr_tail_layer_inputs_pr(programs);
-    validate_dr_tail_shapes_pr(&inputs);
+    validate_dr_tail_shapes_pr(
+        &inputs,
+        programs.runtime_circuit.trace_len.trailing_zeros() as usize,
+    );
     inputs
         .into_iter()
         .map(|input| {
@@ -332,7 +352,10 @@ pub fn preflight_dr_tail_resources_pr(
         final_trace_size_log_2, PR_DR_FINAL_TRACE_LOG_2,
         "Proth120 DR tail supports final trace log 4 only"
     );
-    validate_dr_tail_shapes_pr(&dr_tail_layer_inputs_pr(programs));
+    validate_dr_tail_shapes_pr(
+        &dr_tail_layer_inputs_pr(programs),
+        programs.runtime_circuit.trace_len.trailing_zeros() as usize,
+    );
     let device_id = context.get_device_id();
     let current = era_cudart::device::get_device()
         .expect("Proth120 DR-tail admission must observe the scheduling device");

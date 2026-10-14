@@ -271,7 +271,11 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         context,
     )?;
     drop(top_bits);
-    let layout = Arc::new(ProofLayoutPr::new(programs, config));
+    let layout = Arc::new(ProofLayoutPr::new(
+        programs,
+        config,
+        geometry.pack_log2 as usize,
+    ));
     let mut slab = ProofSlabPr::new(Arc::clone(&layout), context)?;
     #[allow(clippy::arc_with_non_send_sync)]
     let witness = Proth120GkrWitnessInputs::new(

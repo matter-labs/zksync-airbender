@@ -10,7 +10,7 @@ use gpu_prover_context::ProverContext;
 
 use crate::forward::ForwardOutputSlabTarget;
 use crate::proth120::programs::GkrProgramsPr;
-use crate::upstream::{GKRAddress, OutputType, ProverConfig, PR};
+use crate::upstream::{GKRAddress, GKRCircuitArtifact, OutputType, ProverConfig, PR};
 
 mod accessors;
 mod build_inputs;
@@ -64,6 +64,7 @@ pub struct ProofLayoutPr {
     pub batching_challenge: Range<usize>,
     pub batched_proximity_check_pow_nonce: Range<usize>,
     pub intermediate_transcript_seed: Range<usize>,
+    pack_log2: usize,
     bytes_len: usize,
 }
 
@@ -89,7 +90,11 @@ fn fields(cursor: &mut usize, count: usize) -> Range<usize> {
 }
 
 impl ProofLayoutPr {
-    pub fn new(programs: &GkrProgramsPr, config: &ProverConfig) -> Self {
+    pub fn new(programs: &GkrProgramsPr, config: &ProverConfig, pack_log2: usize) -> Self {
+        assert!(
+            (1..=4).contains(&pack_log2),
+            "Proth120 proof pack_log2 must be in 1..=4, got {pack_log2}"
+        );
         let circuit = &programs.runtime_circuit;
         let log = circuit.trace_len.trailing_zeros() as usize;
         assert_eq!(
@@ -144,9 +149,10 @@ impl ProofLayoutPr {
         let external_challenges = fields(&mut cursor, 9);
         let lookup_challenges_pow_nonce = section(&mut cursor, 8);
         let grand_product_accumulator_computed = fields(&mut cursor, 1);
-        let memory_claim_count =
-            (circuit.memory_layout.total_width + circuit.witness_layout.total_width).div_ceil(16);
-        let setup_claim_count = circuit.generic_lookup_tables_width.div_ceil(16);
+        let memory_claim_count = (circuit.memory_layout.total_width
+            + circuit.witness_layout.total_width)
+            .div_ceil(1 << pack_log2);
+        let setup_claim_count = circuit.generic_lookup_tables_width.div_ceil(1 << pack_log2);
         let claims = fields(
             &mut cursor,
             memory_claim_count
@@ -165,7 +171,7 @@ impl ProofLayoutPr {
         let setup_claims = split..claims.end;
         let evaluation_point = fields(
             &mut cursor,
-            log.checked_add(4)
+            log.checked_add(pack_log2)
                 .expect("Proth120 proof point count overflow"),
         );
         let batching_challenge = fields(&mut cursor, 1);
@@ -188,10 +194,15 @@ impl ProofLayoutPr {
             batching_challenge,
             batched_proximity_check_pow_nonce,
             intermediate_transcript_seed,
+            pack_log2,
             bytes_len,
         };
-        result.validate_geometry(log, circuit.layers.len());
+        result.validate_geometry(circuit, config.sumcheck_explicit_output_size_log_2);
         result
+    }
+
+    pub fn pack_log2(&self) -> usize {
+        self.pack_log2
     }
 
     pub fn bytes_len(&self) -> usize {
@@ -222,7 +233,12 @@ impl ProofLayoutPr {
         }
     }
 
-    pub(crate) fn validate_geometry(&self, trace_log: usize, main_layers: usize) {
+    pub(crate) fn validate_geometry(
+        &self,
+        circuit: &GKRCircuitArtifact<PR>,
+        final_trace_log: usize,
+    ) {
+        let trace_log = circuit.trace_len.trailing_zeros() as usize;
         let mut ranges = vec![self.output_evaluations_range.clone()];
         for layer in &self.backward_layers {
             ranges.extend([
@@ -264,7 +280,10 @@ impl ProofLayoutPr {
         );
         assert_eq!(
             self.backward_layers.len(),
-            trace_log - 4 + main_layers,
+            trace_log
+                .checked_sub(final_trace_log)
+                .and_then(|layers| layers.checked_add(circuit.layers.len()))
+                .expect("Proth120 proof layer count overflow"),
             "Proth120 proof layer count mismatch"
         );
         assert!(
@@ -275,16 +294,25 @@ impl ProofLayoutPr {
             "Proth120 proof layer indices mismatch"
         );
         assert_eq!(
+            self.memory_claims.len(),
+            (circuit.memory_layout.total_width + circuit.witness_layout.total_width)
+                .div_ceil(1 << self.pack_log2)
+                * 16,
+            "Proth120 proof memory claims geometry mismatch"
+        );
+        assert_eq!(
+            self.setup_claims.len(),
+            circuit
+                .generic_lookup_tables_width
+                .div_ceil(1 << self.pack_log2)
+                * 16,
+            "Proth120 proof setup claims geometry mismatch"
+        );
+        assert_eq!(
             self.evaluation_point.len(),
-            (trace_log + 4) * 16,
+            (trace_log + self.pack_log2) * 16,
             "Proth120 proof point geometry mismatch"
         );
-        if trace_log == 22 && main_layers == 5 {
-            assert_eq!(self.backward_layers.len(), 23);
-            assert_eq!(self.memory_claims.len(), 7 * 16);
-            assert_eq!(self.setup_claims.len(), 16);
-            assert_eq!(self.evaluation_point.len(), 26 * 16);
-        }
     }
 }
 
