@@ -64,7 +64,7 @@ when reviewing or strengthening a theorem.
 | Boundary | Checked fixture and consequence |
 | --- | --- |
 | Inactive padding | [Inactive ADD/SUB row](Tests/InactiveRow.lean): execute zero admits PC 0→4 and result 123 under the retained local constraints. Padding neutrality needs global state/write obligations; the selected trace model includes active rows. |
-| Jump termination | [Noncanonical JAL endpoint](Tests/JumpSailHistory.lean): imported constraints, decoding and native matching admit a field-aliased terminal PC that disagrees with Sail. The public terminal-PC bound remains required; teardown binding is open. |
+| Jump termination | [Noncanonical JAL endpoint](Tests/JumpSailHistory.lean): imported constraints, decoding and native matching admit a field-aliased terminal PC that disagrees with Sail. The [canonical verifier-boundary contract](Airbender/Review/Helpers/Context/VerifierBoundary/README.md) now replaces the direct range premise at public jump/pooled entries. Accepted state matching and typed u32 contribution closure derive full raw terminal equality and bounds. F01 is resolved under that external logical binding; the malformed witness remains valid locally and is excluded by the new contract. Cryptographic enforcement, PC-space projection and Rust/artifact correspondence remain external. |
 | Discarded LW | [Sparse-memory load](Tests/DiscardedLoad.lean): an accepted native NOP can fail original Sail's LW-to-x0 access. The unchanged-Sail claim retains `NoDiscardedLoads`; the named Airbender profile uses the pinned PC-only NOP rule. |
 | Unissued workers | [Zero-clock G worker](Tests/DelegationZeroInvocation.lean): an active worker matches no caller and changes actual x12 from 0 to 1. Issued-worker uniqueness does not exclude this prefix effect. |
 | Bigint controls | [Issued unified calls](Tests/UnifiedDelegation.lean): x12 = 0 admits no opcode; x12 = 65537 admits ADD with a nonzero high limb. Current caller-cycle observations hold, while the pinned reference rejects these control words. Full custom-CSR ABI remains open. |
@@ -289,7 +289,22 @@ different responses. Native clocks derive positions, and the execution claim
 concludes the exact consumed count. Hints consume no word and make no application
 I/O claim. Native ROM views must preserve this input connection.
 
-The selected claims retain normal-path/configuration, field and terminal boundaries.
+The [verifier boundary](Airbender/Review/Helpers/Context/VerifierBoundary/README.md)
+records the inspected unrolled and unified total-statement paths at revision
+`0dc0a631349462700825f326516d36200be30edc`, with exact source blobs. Both read the
+final PC as u32, split it into low/high limbs and incorporate its PC-space
+contribution into global permutation products. `Binding` is the explicit logical
+tuple-closure contract; sampled product equality alone is not multiset equality.
+The encoding proof preserves the full PC, and cancellation against accepted native
+state matching proves equality of both raw terminal PC columns and timestamps.
+Boot claims specialize the inspected initial PC/clock 0/4. Other typed initial
+endpoints describe conditional canonical trace/segment scopes. Public jump/branch/
+comparison, standalone jump and pooled claims now derive their terminal bound from
+this contract; local calculations remain conditional. The unified artifact keeps
+its separate local-range proof. No Rust refinement or cryptographic enforcement
+is proved, and the uninspected historical source revision is not attributed.
+
+The selected claims retain normal-path/configuration, field and external boundaries.
 Checked surplus-worker, bigint-control and ROM-shadow counterexamples must stay
 visible at their actual logical scope; no whole-system exploit, circuit fix or
 assumed ABI validity follows. Use [Verification status](VERIFICATION_STATUS.md)

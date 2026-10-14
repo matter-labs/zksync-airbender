@@ -374,7 +374,8 @@ private theorem inputs : PooledBootInputs trace before cells program NonDetermin
     initialBoundary := rfl
     physicalImage := ⟨seed, image, rfl⟩
     subwordSetup := rfl
-    terminalPC := by constructor <;> decide }
+    verifierBoundary := ⟨⟨12, (16, 0)⟩,
+      VerifierBoundary.Proofs.binding_of_endpoints rfl rfl accepted.states⟩ }
   · refine ⟨0, ?_, rfl⟩
     simp [before, Std.ExtDHashMap.get?_insert]
   · intro entry member

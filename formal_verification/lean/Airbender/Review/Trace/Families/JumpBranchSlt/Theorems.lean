@@ -14,7 +14,7 @@ namespace Airbender.JumpBranchSlt
 
 /-- Accepted native rows execute their publicly fetched Sail instructions in
     timestamp order and reach the actual terminal PC and register/cell values.
-    Public initialization, canonical termination and logical matching/membership
+    Public initialization, verifier-boundary closure and logical matching/membership
     are the explicit boundaries in `ExecutionBoundary`, `Accepted` and `Decoded`. -/
 theorem trace_soundness {p : Nat} [Fact p.Prime]
     [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]

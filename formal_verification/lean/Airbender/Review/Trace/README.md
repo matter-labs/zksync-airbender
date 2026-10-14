@@ -13,7 +13,9 @@ admitted.
 families execute from the public Sail state and reach the native final PC and
 tracked cells, interpreting native ROM shadows through public bytes.
 Initialization/configuration, modeled tables, logical matching/decoding and the
-unresolved jump terminal-PC condition remain inputs; reads, ranges and order are derived.
+canonical verifier-boundary closure remain inputs; reads, ranges, order and raw
+terminal-PC bounds are derived. The closure's cryptographic enforcement and
+Rust/artifact correspondence remain external.
 
 [`NonDeterminism.Pooled.native_soundness`](Soundness.lean) proves the same terminal
 agreement for the external-read/write-hint extension and the exact stream consumption.
@@ -52,7 +54,7 @@ Check the exact registry and profile of the chosen theorem. Standard clauses use
 original Sail; custom clauses use pinned project references. Unchanged Sail's
 discarded-load restriction differs from the named Airbender PC-only-NOP profile.
 
-Keep terminal-PC normalization, active-row scope, public domains and caller ABI
+Keep the verifier-boundary contract, active-row scope, public domains and caller ABI
 conditions visible. Caller cycles and complete selected spans do not by themselves
 prove whole mixed execution with callers. Consult
 [current coverage](../../../VERIFICATION_STATUS.md) and

@@ -3,6 +3,7 @@ import Airbender.Review.Helpers.Context.Boundary
 import Airbender.Review.Helpers.Decoder.Instruction
 import Airbender.Review.Helpers.Tables.Subword
 import Airbender.Review.Helpers.Memory.Native
+import Airbender.Review.Helpers.Context.VerifierBoundary.Model
 
 namespace Airbender.Trace
 open Reference.RiscV.Sail
@@ -31,7 +32,7 @@ structure PooledPublicInputs (initial : State) (cells : List Cell)
 /-- Six-family execution from a physical initial image. `NativeInputs` binds
     public cells, code and clocks; `PooledPublicInputs` states configuration and
     program restrictions. These fields add modeled-table binding and the still
-    external jump terminal-PC normalization condition.
+    external canonical verifier-boundary closure over raw PC-state tuples.
 
     Shared history proves individual operand/address ranges and actual reads.
     Use `PooledBootInputs` when native ROM tokens start at zero instead of bytes.
@@ -45,8 +46,10 @@ structure PooledInputs {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
   wordSetup : trace.rom.wordMemory = ROM.table cells trace.initialMemory
   /-- Subword ROM lookup contents use the starting Sail byte image. -/
   subwordSetup : trace.rom.subwordMemory = Verification.subwordTable (ROM.words initial)
-  /-- Require a canonical final PC; intermediate PCs are bound through decoding/matching. -/
-  terminalPC : trace.terminal.word.Bounded
+  /-- The typed statement closes the native PC-space permutation. Terminal
+      bounds follow by canceling accepted state matching against this closure. -/
+  verifierBoundary : VerifierBoundary.Closure trace.initial
+    (trace.rows.map Row.start) (trace.rows.map Row.finish)
 
 /-- Inputs to the primary standard and mixed execution claims. `initial` supplies
     public Sail state and program bytes; `cells` lists tracked registers/RAM.
@@ -55,7 +58,8 @@ structure PooledInputs {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
 
     Review the inherited configuration/program restrictions and these starting
     image bindings. Per-row bounds, reads and execution results are proved
-    internally. `terminalPC` remains external until jump teardown is connected.
+    internally. The verifier closure uses the inspected initial PC/clock 0/4;
+    its cryptographic enforcement and Rust/artifact correspondence stay external.
     `projection` selects standard or extended decoder metadata; both use actual Sail decoding. -/
 structure PooledBootInputs {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : State) (cells : List Cell) (program : List PooledProgramEntry)
@@ -78,7 +82,9 @@ structure PooledBootInputs {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     trace.rom.wordMemory = ROM.table cells image
   /-- Bind subword ROM lookups to public bytes, independently of zero shadow tokens. -/
   subwordSetup : trace.rom.subwordMemory = Verification.subwordTable (ROM.words initial)
-  /-- The unresolved jump/teardown endpoint condition: both final PC limbs are 16-bit. -/
-  terminalPC : trace.terminal.word.Bounded
+  /-- Typed total-verifier closure with initial PC zero and timestamp four.
+      No raw terminal-PC range is supplied. -/
+  verifierBoundary : VerifierBoundary.BootClosure trace.initial
+    (trace.rows.map Row.start) (trace.rows.map Row.finish)
 
 end Airbender.Trace

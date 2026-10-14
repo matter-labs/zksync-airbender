@@ -16,7 +16,10 @@ The memory permutation plus unique initialization and strict timestamps yields
 
 [`outgoing_bounds`](PCState/Theorems.lean) proves both outgoing PC limbs bounded
 under its logical interface and low-limb condition, including terminal boundaries.
-Binding that interface to standalone jump teardown remains open. None of these
+[Verifier boundary](VerifierBoundary/README.md) now binds canonical typed statement
+contributions to the actual imported PC-state lists. Accepted matching and
+permutation cancellation derive the raw terminal bound; cryptographic enforcement
+and Rust/artifact correspondence remain external. None of these
 results assumes the desired row reads or an independently chosen execution order.
 
 [Model](Model.lean) defines imported row interpretation, native state/memory

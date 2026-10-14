@@ -240,7 +240,12 @@ private theorem sharedInputs (tag : Fin 6) (wrap : Bool) :
     simp only [pooledProgram, List.mem_singleton] at member
     subst actual
     fin_cases tag <;> cases wrap <;> decide
-  · fin_cases tag <;> cases wrap <;> constructor <;> decide
+  · refine ⟨⟨⟨(Branch.initial wrap).toBitVec, (4, 0)⟩,
+      ⟨(Branch.final tag wrap).toBitVec, (8, 0)⟩⟩, ?_⟩
+    apply VerifierBoundary.Proofs.binding_of_endpoints (terminal := (pooled tag wrap).terminal)
+    · fin_cases tag <;> cases wrap <;> rfl
+    · fin_cases tag <;> cases wrap <;> rfl
+    · exact (pooledAccepted tag wrap).states
 
 theorem per_circuit_branch_soundness (tag : Fin 6) (wrap : Bool) :
     ∃ input : JumpBranchSlt.Branch.Input,

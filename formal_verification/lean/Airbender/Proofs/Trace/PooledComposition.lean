@@ -3,6 +3,7 @@ import Airbender.Proofs.Trace.PooledCode
 import Airbender.Proofs.Trace.PooledMemory
 import Airbender.Proofs.Trace.PooledSubword
 import Airbender.Review.Trace.PooledExecution
+import Airbender.Proofs.VerifierBoundary
 
 namespace Airbender.Trace.Proofs
 open Arithmetic Reference.RiscV.Sail Reference.Sail
@@ -101,7 +102,7 @@ theorem pooled_trace_execution {p : Nat} [Fact p.Prime]
     (fun row member {before after events} native past current =>
       pooled_row_step hp inverse accepted inputs.clocks inputs.image inputs.wordSetup inputs.subwordSetup
         inputs.registers inputs.aligned inputs.ordinary inputs.configuration programImage decoded inputs.code
-        inputs.loads inputs.terminalPC inputs.configuration.isa
+        inputs.loads (VerifierBoundary.Proofs.trace_terminal_bound limbSize accepted inputs.verifierBoundary) inputs.configuration.isa
         ⟨inputs.configuration.privilege, inputs.landingPadDisabled⟩ member native past current)
     rows trace.terminal (fun row present => permutation.mem_iff.mp present)
     (fun event present => eventPermutation.mem_iff.mp present) chain nativeHistory

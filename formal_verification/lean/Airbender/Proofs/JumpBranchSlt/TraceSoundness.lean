@@ -2,6 +2,7 @@ import Airbender.Review.Circuits.JumpBranchSlt.Branch
 import Airbender.Review.Circuits.JumpBranchSlt.Jump
 import Airbender.Proofs.Trace.RowContext
 import Airbender.Proofs.Trace.PooledExecution
+import Airbender.Proofs.VerifierBoundary
 
 namespace Airbender.JumpBranchSlt.Proofs
 open Arithmetic Reference.RiscV.Sail Reference.Sail Trace Trace.Proofs
@@ -59,7 +60,7 @@ theorem pooled_comparison_soundness {p : Nat} [Fact p.Prime]
   change input.before = retiredState rawBefore (Word.mk (w 0).val (w 1).val).toBitVec at atState
   obtain ⟨leftBound, rightBound, aligned, finalHi⟩ := pooled_control_bounds hp inverse accepted
     assumptions.initialization.clocks assumptions.initialization.image assumptions.wordTable
-    assumptions.subwordTable programImage decoded assumptions.codeAligned assumptions.terminalPC member
+    assumptions.subwordTable programImage decoded assumptions.codeAligned (VerifierBoundary.Proofs.trace_terminal_bound (by dsimp [limbBase]; omega) accepted assumptions.verifierBoundary) member
   obtain ⟨entry, present, family, query, encoding⟩ := mapping.instruction
   change decoderQuery w = entry.query at query
   obtain ⟨original, source, originalInstruction, query⟩ := original_source
@@ -121,7 +122,7 @@ theorem pooled_branch_soundness {p : Nat} [Fact p.Prime]
   change input.before = retiredState rawBefore (Word.mk (w 0).val (w 1).val).toBitVec at atState
   obtain ⟨leftBound, rightBound, aligned, finalHi⟩ := pooled_control_bounds hp inverse accepted
     assumptions.initialization.clocks assumptions.initialization.image assumptions.wordTable
-    assumptions.subwordTable programImage decoded assumptions.codeAligned assumptions.terminalPC member
+    assumptions.subwordTable programImage decoded assumptions.codeAligned (VerifierBoundary.Proofs.trace_terminal_bound (by dsimp [limbBase]; omega) accepted assumptions.verifierBoundary) member
   obtain ⟨entry, present, family, query, encoding⟩ := mapping.instruction
   change decoderQuery w = entry.query at query
   obtain ⟨original, source, originalInstruction, query⟩ := original_source
@@ -169,7 +170,7 @@ theorem pooled_jump_soundness {p : Nat} [Fact p.Prime]
   change input.before = retiredState rawBefore (Word.mk (w 0).val (w 1).val).toBitVec at atState
   obtain ⟨leftBound, _, aligned, finalHi⟩ := pooled_control_bounds hp inverse accepted
     assumptions.initialization.clocks assumptions.initialization.image assumptions.wordTable
-    assumptions.subwordTable programImage decoded assumptions.codeAligned assumptions.terminalPC member
+    assumptions.subwordTable programImage decoded assumptions.codeAligned (VerifierBoundary.Proofs.trace_terminal_bound (by dsimp [limbBase]; omega) accepted assumptions.verifierBoundary) member
   obtain ⟨entry, present, family, query, encoding⟩ := mapping.instruction
   change decoderQuery w = entry.query at query
   obtain ⟨original, source, originalInstruction, query⟩ := original_source

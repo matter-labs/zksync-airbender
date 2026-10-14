@@ -63,6 +63,11 @@ import Airbender.Proofs.UnifiedReduced.ArithmeticExecution
 import Airbender.Proofs.UnifiedReduced.BinaryExecution
 import Tests.UnifiedBranch
 import Tests.UnifiedComparison
+import Airbender.Review.Helpers.Context.VerifierBoundary.Theorems
+import Tests.JumpSailHistory
+import Tests.JalrTrace
+import Tests.BranchTrace
+import Tests.ComparisonTrace
 import Tests.UnifiedJump
 import Tests.UnifiedROMBoot
 import Tests.UnifiedControl
@@ -526,6 +531,33 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.PCState.Proofs.encoded_bounds
 #print axioms Airbender.PCState.Proofs.decoder_high_bound
 #print axioms Airbender.PCState.outgoing_bounds
+
+#print axioms Airbender.VerifierBoundary.Endpoint
+#print axioms Airbender.VerifierBoundary.Endpoint.encode
+#print axioms Airbender.VerifierBoundary.Statement
+#print axioms Airbender.VerifierBoundary.boot
+#print axioms Airbender.VerifierBoundary.Binding
+#print axioms Airbender.VerifierBoundary.Closure
+#print axioms Airbender.VerifierBoundary.BootClosure
+#print axioms Airbender.VerifierBoundary.Proofs.encoded_word
+#print axioms Airbender.VerifierBoundary.Proofs.encoding_soundness
+#print axioms Airbender.VerifierBoundary.Proofs.terminal_state
+#print axioms Airbender.VerifierBoundary.Proofs.binding_of_endpoints
+#print axioms Airbender.VerifierBoundary.Proofs.boot_closure
+#print axioms Airbender.VerifierBoundary.Proofs.terminal_bound
+#print axioms Airbender.VerifierBoundary.Proofs.trace_terminal_bound
+#print axioms Airbender.VerifierBoundary.encoding_soundness
+#print axioms Airbender.VerifierBoundary.terminal_state_soundness
+#print axioms Airbender.VerifierBoundary.terminal_bound_soundness
+#print axioms Tests.JumpSailHistory.noncanonical_verifier_boundary_rejected
+#print axioms Tests.JalrTrace.canonical_verifier_boundary
+#print axioms Tests.JumpSailHistory.noncanonical_native_accepted
+#print axioms Tests.JumpSailHistory.noncanonical_terminal_mismatch
+#print axioms Tests.JumpSailHistory.noncanonical_register_bounds
+#print axioms Tests.JalrTrace.actual_jalr_trace
+#print axioms Tests.JalrTrace.per_circuit_jalr_soundness
+#print axioms Tests.BranchTrace.per_circuit_branch_soundness
+#print axioms Tests.ComparisonTrace.per_circuit_comparison_soundness
 #print axioms Airbender.JumpBranchSlt.Proofs.final_pc_low_bound
 #print axioms Airbender.JumpBranchSlt.final_pc_bounds
 #print axioms Tests.Comparison.unboundedFinalPCNotComposable
