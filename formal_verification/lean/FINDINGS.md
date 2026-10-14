@@ -69,8 +69,9 @@ test uses public code/preparation and a live target without whole-pool coverage
 or a supplied mask. The stronger context still admits the unissued G worker;
 the existing continuous-prefix test now uses its derived context and retains the
 actual x12 = 0→1 effect. COPY→ADDI and both accepted bigint controls remain checked.
-Surplus workers, bigint invalid controls, worker ROM, terminal-PC and discarded-load
-findings remain open, with all accepted counterexamples preserved. This audit is tracked with
+Surplus workers, bigint invalid controls, worker ROM and discarded-load findings
+remain open. F01 is resolved conditionally under the canonical verifier-boundary
+binding described below; all original accepted counterexamples are preserved. This audit is tracked with
 the verification sources and updated as the reviewed boundaries change.
 
 The separate aligned `WrappedSequentialProgram` now admits the four original
@@ -88,15 +89,15 @@ still uses the linear profile. Modular region coverage, jumps/branches and
 nonliteral preparation remain open.
 
 All 116 concrete test modules and 143 importer guards pass. The full
-2,013-root axiom audit has 61 axiom-free roots and only the three standard
-Lean axioms. Review checks pass for all 91 public theorem roots, 130 declaration
-names and 620 guide links/anchors, with no handwritten project diagnostics.
+2,039-root axiom audit has 64 axiom-free roots and only the three standard
+Lean axioms. Review checks pass for all 94 public theorem roots, 146 declaration
+names and 642 guide links/anchors, with no handwritten project diagnostics.
 
 ## Review priorities
 
 | ID | Finding | Evidence/status | Condition or weaker claim that limits coverage |
 | --- | --- | --- | --- |
-| F01 | Jump terminal PC can be noncanonical | Accepted counterexample; user reports this led to a circuit bug | `terminalPC` / `terminalCanonical`; abstract canonical terminal boundary |
+| F01 | Jump terminal PC can be noncanonical locally | Resolved in the logical model under explicit total-verifier boundary binding; original counterexample retained | Canonical u32 contribution closure, cryptographic enforcement and Rust/artifact correspondence remain external |
 | F02 | Issued bigint controls violate the reference ABI | Accepted counterexamples for x12 = 0 and 65537 | Selected-operation effects and caller-cycle observations do not validate the full CSR |
 | F03 | An active worker can run without a caller | Accepted zero-clock worker with an actual state change | Matching covers live requests; some prepared spans require an empty worker prefix |
 | F04 | Worker ROM shadows can disagree with public bytes | Accepted COPY/request counterexample | Physical seed images and tracked-RAM profiles exclude the problematic general native case |
@@ -107,11 +108,16 @@ names and 620 guide links/anchors, with no handwritten project diagnostics.
 | F09 | Decoder/setup models need an implementation binding | Unresolved provenance/structural correspondence | Modeled table equality and logical decoder membership |
 | F10 | Caller-cycle effects are weaker than full custom instruction execution | Missing composition/semantic connection | Current fetch, selected worker effects and PC retirement do not execute the full CSR reference |
 
-F01–F04 deserve the first developer review. F05 and F06 establish why current
+Review F01's external correspondence and F02–F04 first. F05 and F06 establish why current
 participation/profile restrictions matter. F07–F10 identify assumptions or narrower
 conclusions that must not silently become claims of unrestricted acceptance.
 
-## F01 — Jump terminal-PC bounds exclude a malformed accepted endpoint
+## F01 — Terminal PC resolved under the explicit total-verifier boundary
+
+**Status.** Resolved in the logical model under the explicit total-verifier boundary
+binding. The local circuit counterexample remains valid, but is excluded by the
+verifier's canonical u32-to-two-limb terminal contribution. Cryptographic
+enforcement and Rust/artifact correspondence remain external.
 
 **Evidence.** [JumpSailHistory](Tests/JumpSailHistory.lean)
 proves `noncanonical_native_accepted` and `noncanonical_terminal_mismatch`.
@@ -122,31 +128,48 @@ the interpreted terminal word disagrees with Sail's sign-extended JAL target.
 Register-word bounds still hold: this is specifically an endpoint failure.
 
 **Where the bad case is excluded.**
-[JumpBranchSlt.TraceInputs](Airbender/Review/Circuits/JumpBranchSlt/Model.lean)
-assumes `terminalPC : trace.terminal.word.Bounded`.
+[JumpBranchSlt.TraceInputs](Airbender/Review/Circuits/JumpBranchSlt/Model.lean),
 [Standalone jump inputs](Airbender/Review/Helpers/Context/Registries/JumpBranchSltInputs.lean)
-assume `terminalCanonical`; both
+and both
 [pooled physical/native-boot inputs](Airbender/Review/Helpers/Context/PooledBoundary.lean)
-also assume `terminalPC`. This is a condition on the accepted witness's output,
-not merely a choice of public initial state.
+now consume `verifierBoundary` closure in place of their former direct
+`terminalPC` / `terminalCanonical` range fields. The
+[public contract](Airbender/Review/Helpers/Context/VerifierBoundary/Model.lean)
+keeps typed statement PCs/timestamps and the logical permutation over the actual
+imported row starts/ends explicit. Boot inputs fix initial PC/clock to 0/4;
+general canonical initial endpoints describe conditional trace/segment scopes.
 
-**Why the shared helper does not close it.**
-[PCState.Interface](Airbender/Review/Helpers/Context/PCState/Model.lean)
-balances decoded starts against a terminal boundary constructed from a `BitVec 32`.
-[outgoing_bounds](Airbender/Review/Helpers/Context/PCState/Theorems.lean)
-is valid under that interface and the outgoing low-limb bound. Binding the actual
-raw endpoint to this already canonical boundary remains necessary. Using the helper
-without that binding would relocate the assumption rather than discharge it.
+**Checked connection.** The encoding reuses `PCState.boundary` and preserves the
+full 32-bit PC in bounded low/high field limbs. Comparing accepted state matching
+against the canonical closure and canceling their identical start-list proves
+equality of the entire original terminal tuple with the typed contribution.
+[`terminal_state_soundness` and `terminal_bound_soundness`](Airbender/Review/Helpers/Context/VerifierBoundary/Theorems.lean)
+derive the raw endpoint and its bounds, without truncating/repacking a malformed
+pair or supplying its range. Existing intermediate-PC range proofs consume this
+derived bound. Purely local calculation lemmas remain conditional.
+
+The [original witness](Tests/JumpSailHistory.lean) still satisfies its original
+acceptance relation; `noncanonical_verifier_boundary_rejected` proves that no new
+canonical closure can admit it. The [valid JALR fixture](Tests/JalrTrace.lean)
+proves `canonical_verifier_boundary` and instantiates the public standalone and
+per-circuit soundness claims. Existing branch/comparison and pooled fixtures also
+inhabit their replacement contracts.
+
+**Inspected implementation and remaining trust.** The source revision actually
+inspected is `0dc0a631349462700825f326516d36200be30edc`. The
+[source inventory](Airbender/Review/Helpers/Context/VerifierBoundary/README.md#inspected-source-and-external-obligations)
+records the unrolled and unified total-statement paths, u32 mask/shift encoder,
+separate PC-space coefficients/tuples and initial 0/4 constants, with exact blobs.
+The supplied historical revision was not retrievable and is not claimed as
+inspected. Logical PC-space matching and its Rust/artifact correspondence remain
+external; sampled product equality is not deterministic multiset equality.
 
 **Scope distinction.** The separate unified artifact's
 [execution_soundness](Airbender/Review/Trace/UnifiedReduced/Theorems.lean)
 does not assume terminal-PC normalization. Do not generalize the standalone/pooled
-jump counterexample to that theorem. The user reports a circuit bug resulting from
-this finding; the regression itself does not check the full teardown/verifier path.
-
-**Closure needed.** Identify the actual teardown/global constraint that bounds both
-raw endpoint limbs, and prove its connection to these trace endpoints. Replacing
-the endpoint with a canonical public word is not that proof.
+jump counterexample to that theorem. The earlier user-reported circuit bug is
+historical context; this investigation establishes conditional logical exclusion,
+not a circuit fix, a proved Rust correspondence or an unconditional verifier proof.
 
 ## F02 — Valid bigint operation observations do not establish valid calls
 
@@ -437,7 +460,7 @@ demonstrated bugs:
 
 | Boundary | Exact premise or missing connection | Review consequence |
 | --- | --- | --- |
-| Initialization/teardown | [NativeInputs](Airbender/Review/Helpers/Context/Boundary.lean), [InitialProfile](Airbender/Review/Helpers/Memory/Initialization.lean), boot seed/PC and distinct tracked cells are public inputs. The [retained init/teardown artifact](../../cs/compiled_circuits/inits_and_teardowns_layout_no_caches_gkr.json) has zero degree-1/2 constraints, generic lookups and 16/19-bit range-query expressions. | Public-image soundness does not prove the native initialization/teardown circuit establishes that image or the F01 endpoint condition. Richer retained proof input is needed. |
+| Initialization/teardown | [NativeInputs](Airbender/Review/Helpers/Context/Boundary.lean), [InitialProfile](Airbender/Review/Helpers/Memory/Initialization.lean), boot seed/PC and distinct tracked cells are public inputs. The [retained init/teardown artifact](../../cs/compiled_circuits/inits_and_teardowns_layout_no_caches_gkr.json) has zero degree-1/2 constraints, generic lookups and 16/19-bit range-query expressions. | Public-image soundness does not prove the native initialization/teardown circuit establishes that image; richer retained proof input remains needed for that circuit. F01 is now resolved conditionally through canonical verifier-boundary closure, independently of this missing local circuit proof. |
 | Memory/fetch configuration | [FlatMemoryConfiguration and OrdinaryWordAddress](Airbender/Review/Helpers/Memory/Platform.lean) select Machine mode, the direct memory path, PMP disabled, permissive PMA and no modeled special-memory windows; code bounds/alignment and landing-pad restrictions are explicit in execution inputs. | These are supported public-profile conditions. Full faults, interrupts, MMIO, other privilege/protection configurations and the full fetch driver are not covered. |
 | Independent external input | [ExternalStream.Ports](Airbender/Review/Helpers/Core/ExternalStream.lean) binds responses to an independently supplied stream. | Exact consumption and execution do not authenticate an oracle or establish a particular externally intended stream. |
 | Logical matching | [Accepted](Airbender/Review/Helpers/Context/Model.lean), worker matching and request matching are exact permutations of full tokens. | This is the intended premise for the noncryptographic memory-history result. Product/compression equality must not be silently substituted for it; actual global participation and token construction still need their implementation binding. |
@@ -482,7 +505,9 @@ with no handwritten Airbender/Tests diagnostics. This reused the current checked
 sources; it did not add new proofs. The snapshot's full audit/review checkpoint
 also passed before this documentation-only pass.
 
-Review F01–F04 against the actual endpoint, request and worker acceptance argument
-first. Then review F07/F08's witness-shape restrictions and F09's concrete setup
-binding. Closing a finding should supply that connection or explicitly revise
-the claimed scope; adding the missing property as an assumption is not closure.
+Review F01's explicit canonical boundary contract and the remaining Rust/artifact
+and cryptographic correspondence. For unresolved F02–F04, review the actual request
+and worker acceptance argument first; then review F07/F08's witness-shape
+restrictions and F09's concrete setup binding. Closing a remaining finding should
+supply that connection or explicitly revise the claimed scope; adding the missing
+property as an assumption is not closure.

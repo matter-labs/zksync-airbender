@@ -278,7 +278,9 @@ theorem execution_boundary {p : Nat} [Fact p.Prime] (hp : 4 < p)
              clocks := data_clocks before (ROMView.native_clocks hp inputs.seed inputs.initialBoundary) }
            wordSetup := physical.symm ▸ setup
            subwordSetup := inputs.subwordSetup
-           terminalPC := inputs.terminalPC }
+           verifierBoundary := by
+             have closure := VerifierBoundary.Proofs.boot_closure inputs.verifierBoundary
+             simpa only [data, List.map_map, Function.comp_def, row_start, row_finish] using closure }
   change initialState before (4, 0) = some trace.initial
   rw [initialState, inputs.profile.pc, inputs.initialBoundary]
 

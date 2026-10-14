@@ -1,6 +1,7 @@
 import Airbender.Review.Helpers.Context.Registries.JumpBranchSlt
 import Airbender.Review.Helpers.Context.Boundary
 import Airbender.Review.Helpers.Decoder.Instruction
+import Airbender.Review.Helpers.Context.VerifierBoundary.Model
 
 namespace Airbender.JumpBranchSlt
 open Trace Reference.RiscV.Sail
@@ -16,7 +17,9 @@ structure ExecutionBoundary {p : Nat} [Fact p.Prime] (trace : NativeTrace p)
   image : initialImage initial cells = some trace.initialMemory
   initialPC : ∃ timestamp, initialState initial timestamp = some trace.initial
   initialAligned : trace.initial.word.lo % 4 = 0
-  terminalCanonical : trace.terminal.word.Bounded
+  /-- Canonical typed statement closure over both raw PC/timestamp columns. -/
+  verifierBoundary : VerifierBoundary.Closure trace.initial
+    (trace.rows.map Row.start) (trace.rows.map Row.finish)
   programImage : ∃ addresses, JumpBranchSlt.programImage initial addresses = some program
   clocks : ClockBoundary trace
   misa : ∃ value, initial.regs.get? .misa = some value

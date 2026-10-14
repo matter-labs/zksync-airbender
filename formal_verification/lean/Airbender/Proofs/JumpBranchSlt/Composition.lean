@@ -4,6 +4,7 @@ import Airbender.Proofs.JumpBranchSlt.BranchExecution
 import Airbender.Proofs.JumpBranchSlt.ComparisonExecution
 import Airbender.Proofs.Trace.CompositionCore
 import Airbender.Proofs.Trace.Terminal
+import Airbender.Proofs.VerifierBoundary
 
 namespace Airbender.JumpBranchSlt.Proofs
 open Arithmetic Trace Reference.RiscV.Sail Reference.Sail
@@ -122,7 +123,7 @@ theorem row_rebased_step {p : Nat} [Fact p.Prime]
       simpa [Trace.Proofs.read_word, importedConstraintsMemoryPorts] using left
     have rightBound : (Word.mk (w 26).val (w 27).val).Bounded := by
       simpa [Trace.Proofs.read_word, importedConstraintsMemoryPorts] using right
-    have finalHi := (trace_pc_bounds limbSize accepted decoded inputs.terminalCanonical _ member).2.2
+    have finalHi := (trace_pc_bounds limbSize accepted decoded (VerifierBoundary.Proofs.trace_terminal_bound limbSize accepted inputs.verifierBoundary) _ member).2.2
     have aligned := ((trace_pc_alignment hp accepted inputs.initialAligned).1 _ member).1
     exact local_instruction_execution hp h (accepted.active _ member) trace.memoryEpoch source query
       leftBound rightBound aligned finalHi history past inputs.misa inputs.indirect

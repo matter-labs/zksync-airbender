@@ -5,6 +5,7 @@ import Airbender.Proofs.JumpBranchSlt.Values
 import Airbender.Proofs.Trace.Terminal
 import Airbender.Proofs.Sail.WordMemoryState
 import Airbender.Proofs.Sail.PC
+import Airbender.Review.Helpers.Context.VerifierBoundary.Theorems
 
 namespace Tests.JumpSailHistory
 open Airbender Arithmetic Trace Reference.RiscV.Sail Reference.Sail
@@ -329,5 +330,14 @@ theorem noncanonical_register_bounds (rom : Table (ZMod babyBearModulus) (fields
   obtain ⟨accepted, decoded, clocks, image, _, program⟩ := noncanonical_native_accepted rom
   exact (JumpBranchSlt.Proofs.native_value_bounds (by decide) (by decide)
     accepted clocks image program decoded).1
+
+/-- F01 remains accepted by its original relation, but no canonical typed
+    verifier statement can close the same raw PC-state permutation. -/
+theorem noncanonical_verifier_boundary_rejected (rom : Table (ZMod babyBearModulus) (fields 9)) :
+    ¬ VerifierBoundary.Closure (noncanonicalTrace rom).initial
+      ((noncanonicalTrace rom).rows.map Row.start) ((noncanonicalTrace rom).rows.map Row.finish) := by
+  intro closure
+  exact (noncanonical_terminal_mismatch rom).1
+    (VerifierBoundary.terminal_bound_soundness (by decide) (noncanonical_native_accepted rom).1 closure)
 
 end Tests.JumpSailHistory

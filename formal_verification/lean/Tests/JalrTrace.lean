@@ -2,6 +2,7 @@ import Tests.JumpSailHistory
 import Airbender.Proofs.JumpBranchSlt.Claims
 import Airbender.Proofs.JumpBranchSlt.Execution
 import Airbender.Proofs.JumpBranchSlt.Composition
+import Airbender.Review.Trace.Families.JumpBranchSlt.Theorems
 
 namespace Tests.JalrTrace
 open Airbender Arithmetic Trace Reference.RiscV.Sail Reference.Sail
@@ -175,6 +176,13 @@ theorem actual_jalr_retirement (rom : Table (ZMod babyBearModulus) (fields 9)) :
   rw [initialState, Proofs.retired_state_pc before 0]
   rfl
 
+/-- A valid aliased JALR trace inhabits the inspected total-verifier boundary
+    scope: initial PC/clock 0/4, terminal PC/clock 0/8, with both raw limbs preserved. -/
+theorem canonical_verifier_boundary (rom : Table (ZMod babyBearModulus) (fields 9)) :
+    VerifierBoundary.Binding (trace rom).initial ((trace rom).rows.map Row.start)
+      ((trace rom).rows.map Row.finish) (VerifierBoundary.boot ⟨0, (8, 0)⟩) :=
+  VerifierBoundary.Proofs.binding_of_endpoints rfl rfl (accepted rom).states
+
 /-- The whole-trace theorem starts at the unmodified public Sail state,
     derives the actual aliased JALR clause, and reaches the native terminal PC. -/
 theorem actual_jalr_trace [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
@@ -193,7 +201,7 @@ theorem actual_jalr_trace [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception
     image := image
     initialPC := ⟨(4, 0), initialPC⟩
     initialAligned := by change 0 % 4 = 0; decide
-    terminalCanonical := by change (⟨0, 0⟩ : Word).Bounded; constructor <;> decide
+    verifierBoundary := ⟨VerifierBoundary.boot ⟨0, (8, 0)⟩, canonical_verifier_boundary rom⟩
     programImage := ⟨[0], program_image⟩
     clocks := boundary rom
     misa := by refine ⟨0, ?_⟩; simp [before, wordWriteState, Std.ExtDHashMap.get?_insert]
@@ -202,7 +210,7 @@ theorem actual_jalr_trace [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception
       · simp [before, wordWriteState, Std.ExtDHashMap.get?_insert]
       · simp [before, wordWriteState]
   }
-  obtain ⟨after, execution, pc, _⟩ := JumpBranchSlt.Proofs.native_trace_execution
+  obtain ⟨after, execution, pc, _⟩ := JumpBranchSlt.trace_soundness
     (by decide) (by decide) inputs (accepted rom) (decoded rom)
   exact ⟨after, execution, pc⟩
 
@@ -269,7 +277,8 @@ private theorem sharedInputs  :
     simp only [pooledProgram, List.mem_singleton] at member
     subst actual
     decide
-  · constructor <;> decide
+  · refine ⟨VerifierBoundary.boot ⟨0, (8, 0)⟩, ?_⟩
+    exact VerifierBoundary.Proofs.binding_of_endpoints rfl rfl pooledAccepted.states
 
 theorem per_circuit_jalr_soundness  :
     ∃ input : JumpBranchSlt.Jump.Input,
