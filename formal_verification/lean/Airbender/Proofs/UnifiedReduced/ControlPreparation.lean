@@ -123,11 +123,36 @@ theorem prefix_write_before_preparation_cut [Fact p.Prime] (hp : 2 * timestampBa
     rw [time]
     omega
 
-theorem literal_program_pc_advance [Fact p.Prime] (hp : 524288 < p)
+theorem literal_arithmetic_instruction (literal : ControlLiteral) (register : BitVec 5) :
+    ArithmeticInstruction (literal.instruction register) := by
+  cases literal with
+  | addi immediate => exact .addi immediate 0 register
+  | lui immediate => exact .lui immediate register
+
+theorem literal_arithmetic_program {program : List UnifiedReduced.ProgramEntry}
+    (registry : LiteralProgram program) : ArithmeticProgram program := by
+  intro entry member
+  obtain ⟨register, literal, _, encoding⟩ := registry entry member
+  rw [encoding]
+  exact literal_arithmetic_instruction literal register
+
+theorem arithmetic_fields_mask {instruction : SailRV32.instruction} {data : DecoderData UnifiedFamily}
+    (supported : ArithmeticInstruction instruction) (fields : Mixed.decoderFields instruction = some data) :
+    data.mask = 1 ∨ data.mask = 2 ∨ data.mask = 4 := by
+  cases supported
+  all_goals simp only [Mixed.decoderFields, UnifiedReduced.decoderFields, Trace.decoderFields,
+    Trace.arithmeticFields] at fields
+  all_goals split_ifs at fields
+  all_goals simp_all [UnifiedReduced.arithmeticFields, DecoderData.mapFamily]
+  all_goals have mask := congrArg (fun record : DecoderData UnifiedFamily => record.mask) fields
+  all_goals dsimp at mask
+  all_goals omega
+
+theorem arithmetic_program_pc_advance [Fact p.Prime] (hp : 524288 < p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)}
     (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
-    (ordinaryProgram : Mixed.programImage before oa = some program) (registry : LiteralProgram program) :
+    (ordinaryProgram : Mixed.programImage before oa = some program) (registry : ArithmeticProgram program) :
     ∀ row ∈ data.machine.rows, row.finish.word.value = row.start.word.value + 4 := by
   intro row member
   cases row with
@@ -145,13 +170,11 @@ theorem literal_program_pc_advance [Fact p.Prime] (hp : 524288 < p)
         have selectors := caller_selectors hp core query
         exact ⟨selectors 10, selectors 11, selectors 12, selectors 13⟩
       · obtain ⟨entry, present, _, query⟩ := decoder_member (accepted.ordinaryDecoded _ member caller)
-        obtain ⟨register, literal, nonzero, encoding⟩ := registry entry present
-        have fields := (run_program_sources ordinaryProgram entry present).fields
-        rw [encoding, literal_fields nonzero] at fields
-        have metadata := (Option.some.inj fields).symm
-        have selectors := UnifiedReduced.Proofs.decoder_selectors hp core
-          (by rw [metadata]; change 1 < 524288; decide) query
-        simpa [metadata, importedConstraintsDecoderColumns, Nat.testBit, Nat.shiftRight_eq_div_pow] using
+        have masks := arithmetic_fields_mask (registry entry present) (run_program_sources ordinaryProgram entry present).fields
+        have maskBound : entry.data.mask < 524288 := by rcases masks with equal | equal | equal <;> omega
+        have selectors := UnifiedReduced.Proofs.decoder_selectors hp core maskBound query
+        rcases masks with equal | equal | equal
+        all_goals simpa [equal, importedConstraintsDecoderColumns, Nat.testBit, Nat.shiftRight_eq_div_pow] using
           And.intro (selectors 10) (And.intro (selectors 11) (And.intro (selectors 12) (selectors 13)))
     have bounded : (initialPC w).Bounded := by
       by_cases caller : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∈ data.callers
@@ -163,16 +186,24 @@ theorem literal_program_pc_advance [Fact p.Prime] (hp : 524288 < p)
     exact (UnifiedReduced.Proofs.pc_successor (by omega) core active flags
       ⟨(ZMod.natCast_zmod_val _).symm, (ZMod.natCast_zmod_val _).symm, rfl, rfl⟩ bounded).1
 
-theorem literal_program_pc_clock [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem literal_program_pc_advance [Fact p.Prime] (hp : 524288 < p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)}
     (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
     (ordinaryProgram : Mixed.programImage before oa = some program) (registry : LiteralProgram program) :
+    ∀ row ∈ data.machine.rows, row.finish.word.value = row.start.word.value + 4 :=
+  arithmetic_program_pc_advance hp accepted publicProgram ordinaryProgram (literal_arithmetic_program registry)
+
+theorem arithmetic_program_pc_clock [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {ca oa : List (BitVec 32)}
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    (ordinaryProgram : Mixed.programImage before oa = some program) (registry : ArithmeticProgram program) :
     ∀ row ∈ data.machine.rows,
       row.start.word.value + (timeOfPair data.machine.initial.timestamp).value =
         data.machine.initial.word.value + Delegation.Caller.startClock row := by
-  have advances := literal_program_pc_advance (by norm_num [timestampBase] at hp; omega)
+  have advances := arithmetic_program_pc_advance (by norm_num [timestampBase] at hp; omega)
     accepted publicProgram ordinaryProgram registry
   have clocks := state_clock_inputs hp inverse accepted.constraints accepted.states
     publicProgram.initialClock publicProgram.initialAligned
@@ -204,6 +235,17 @@ theorem literal_program_pc_clock [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   intro row member
   exact establish _ row member rfl
 
+theorem literal_program_pc_clock [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {ca oa : List (BitVec 32)}
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    (ordinaryProgram : Mixed.programImage before oa = some program) (registry : LiteralProgram program) :
+    ∀ row ∈ data.machine.rows,
+      row.start.word.value + (timeOfPair data.machine.initial.timestamp).value =
+        data.machine.initial.word.value + Delegation.Caller.startClock row :=
+  arithmetic_program_pc_clock hp inverse accepted publicProgram ordinaryProgram (literal_arithmetic_program registry)
+
 theorem preparation_instruction [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
@@ -220,6 +262,18 @@ theorem preparation_instruction [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   | straight entries atCut =>
     apply atCut entry present
     have schedule := literal_program_pc_clock hp inverse accepted publicProgram ordinaryProgram entries row member
+    have pc := native_query_pc_word (by dsimp [limbBase]; norm_num [timestampBase] at hp; omega) query
+    have value : row.start.word.value = entry.pc.toNat := by
+      change (Word.mk (row.assignment row.columns.initialPC[0]).val
+        (row.assignment row.columns.initialPC[1]).val).value = entry.pc.toNat
+      rw [pc, Word.ofBitVec_value]
+    rw [value] at schedule
+    have clock : Delegation.Caller.startClock row = cut - 4 := by omega
+    rwa [clock] at schedule
+
+  | arithmetic entries atCut =>
+    apply atCut entry present
+    have schedule := arithmetic_program_pc_clock hp inverse accepted publicProgram ordinaryProgram entries row member
     have pc := native_query_pc_word (by dsimp [limbBase]; norm_num [timestampBase] at hp; omega) query
     have value : row.start.word.value = entry.pc.toNat := by
       change (Word.mk (row.assignment row.columns.initialPC[0]).val

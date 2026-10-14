@@ -23,8 +23,21 @@ def LiteralProgram (program : List UnifiedReduced.ProgramEntry) : Prop :=
   ∀ entry ∈ program, ∃ (register : BitVec 5) (literal : ControlLiteral),
     register ≠ (0 : BitVec 5) ∧ entry.instruction = literal.instruction register
 
-/-- Uniform preparation or different literals along a straight instruction path.
-    Native PC/clock matching derives the final row's public instruction address. -/
+/-- Original arithmetic forms that advance PC by four. Operands and results are
+    unrestricted; actual decoding and accepted constraints supply their effects. -/
+inductive ArithmeticInstruction : SailRV32.instruction → Prop where
+  | add (rs2 rs1 rd : BitVec 5) : ArithmeticInstruction (.RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, .ADD))
+  | sub (rs2 rs1 rd : BitVec 5) : ArithmeticInstruction (.RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, .SUB))
+  | addi (imm : BitVec 12) (rs1 rd : BitVec 5) : ArithmeticInstruction (.ITYPE (imm, .Regidx rs1, .Regidx rd, .ADDI))
+  | lui (imm : BitVec 20) (rd : BitVec 5) : ArithmeticInstruction (.UTYPE (imm, .Regidx rd, .LUI))
+  | auipc (imm : BitVec 20) (rd : BitVec 5) : ArithmeticInstruction (.UTYPE (imm, .Regidx rd, .AUIPC))
+
+/-- Public ADD/SUB/ADDI/LUI/AUIPC registry, including nonliteral writes and x0. -/
+def ArithmeticProgram (program : List UnifiedReduced.ProgramEntry) : Prop :=
+  ∀ entry ∈ program, ArithmeticInstruction entry.instruction
+
+/-- Uniform literals, different literals, or ordinary arithmetic on a straight
+    path. Native PC/clock matching locates the final public literal instruction. -/
 inductive PreparationProgram [Fact p.Prime] (data : RequestTrace p)
     (program : List UnifiedReduced.ProgramEntry) (cut : Nat)
     (register : BitVec 5) (literal : ControlLiteral) : Prop where
@@ -34,12 +47,17 @@ inductive PreparationProgram [Fact p.Prime] (data : RequestTrace p)
         entry.pc.toNat + (timeOfPair data.machine.initial.timestamp).value =
           data.machine.initial.word.value + (cut - 4) →
         entry.instruction = literal.instruction register)
+  | arithmetic (entries : ArithmeticProgram program)
+      (atCut : ∀ entry ∈ program,
+        entry.pc.toNat + (timeOfPair data.machine.initial.timestamp).value =
+          data.machine.initial.word.value + (cut - 4) →
+        entry.instruction = literal.instruction register)
 
 /-- Public preparation registry and its final cycle. Native matching identifies
     the final preparation row; no row selector, control read or write is supplied. -/
 structure ControlPreparation [Fact p.Prime] (data : RequestTrace p)
     (program : List UnifiedReduced.ProgramEntry) (cut : Nat) (register : BitVec 5) (literal : ControlLiteral) : Prop where
-  /-- Public literal instructions bind the preparation at this clock cut. -/
+  /-- The public program profile binds the literal at the derived preparation address. -/
   program : PreparationProgram data program cut register literal
   /-- Workers may precede preparation, but none writes in its final cycle. -/
   prefixScope : data.workers.windowRows (cut - 4) cut = []
