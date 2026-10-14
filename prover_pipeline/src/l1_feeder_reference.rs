@@ -33,7 +33,10 @@ struct Input {
 }
 
 fn inputs() -> Vec<Input> {
-    let selected = std::env::var("AB_F3_INPUTS").ok();
+    select_inputs(std::env::var("AB_F3_INPUTS").ok().as_deref())
+}
+
+fn select_inputs(selected: Option<&str>) -> Vec<Input> {
     let all = vec![
         Input {
             name: "basic_fibonacci",
@@ -51,12 +54,35 @@ fn inputs() -> Vec<Input> {
             nd_words: vec![4321],
         },
     ];
-    match selected {
-        Some(names) => all
-            .into_iter()
-            .filter(|input| names.split(',').any(|name| name == input.name))
-            .collect(),
-        None => all,
+    let Some(selected) = selected else {
+        return all;
+    };
+    let names: Vec<&str> = selected.split(',').collect();
+    for name in &names {
+        assert!(
+            all.iter().any(|input| input.name == *name),
+            "AB_F3_INPUTS names an unknown feeder reference input {name:?}"
+        );
+    }
+    all.into_iter()
+        .filter(|input| names.contains(&input.name))
+        .collect()
+}
+
+#[test]
+fn input_selection_rejects_unknown_names() {
+    assert_eq!(select_inputs(None).len(), 3);
+    let picked = select_inputs(Some("dynamic_fibonacci_4321,basic_fibonacci"));
+    let picked: Vec<&str> = picked.iter().map(|input| input.name).collect();
+    assert_eq!(picked, ["basic_fibonacci", "dynamic_fibonacci_4321"]);
+    for selected in [
+        "",
+        "does_not_exist",
+        "basic_fibonacci,typo",
+        "basic_fibonacci,",
+    ] {
+        let rejected = std::panic::catch_unwind(|| select_inputs(Some(selected)));
+        assert!(rejected.is_err(), "{selected:?} must be rejected");
     }
 }
 
@@ -722,9 +748,15 @@ fn production_feeder_merge_gate() {
 #[ignore = "validates the feeder fixtures and runs the canonical wrap program over the last feeder proofs"]
 fn production_wrap_program_gate() {
     let program = feeder_program(FsvProgram::UnifiedRecursionLayerL1FeederWrap);
+    let inputs = inputs();
+    assert!(
+        inputs.len() >= 3,
+        "the wrap gate needs at least 3 feeder proofs, AB_F3_INPUTS selects {}",
+        inputs.len()
+    );
     let mut min_margin = i64::MAX;
     let mut failures = vec![];
-    for input in inputs() {
+    for input in inputs {
         let dir = fixture_dir().join(input.name);
         let manifest = verify_input(&dir, &input).unwrap();
         let fixture = load_layer(&dir, manifest.layers.len() - 1).unwrap();
