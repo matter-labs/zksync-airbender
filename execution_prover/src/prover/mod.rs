@@ -18,7 +18,7 @@ mod setup_init;
 pub use artifacts::{ProgramArtifacts, RiscvFamilyArtifact};
 pub use config::ExecutionKind;
 pub use l1_wrap::{L1Proof, L1WrapResult};
-pub use result::{CommitMemoryResult, ProveResult};
+pub use result::{CommitAndProveTimings, CommitMemoryResult, ProveResult};
 
 /// Opaque handle to a binary registered with the `ExecutionProver`. Returned by
 /// [`ExecutionProver::add_binary`]; required to identify the binary in
