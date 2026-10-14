@@ -17,8 +17,8 @@ structure SailState where
   mem  : Nat → BitVec 8
 
 /-- Set register `r` to `value`. -/
-def SailState.set (s : SailState) (r : Register) (value : RegisterType r) : SailState :=
-  { s with regs := fun r' => if h : r = r' then h ▸ value else s.regs r' }
+def SailState.set (σ : SailState) (r : Register) (value : RegisterType r) : SailState :=
+  { σ with regs := fun r' => if h : r = r' then h ▸ value else σ.regs r' }
 
 abbrev FM := EStateM (Sail.Error exception) SailState
 
@@ -49,10 +49,10 @@ noncomputable def applyEffect : (eff : InstructionEffect) → FM eff.ret
       pure (.ok ())
 
 /-- Run a Sail computation. Nondeterministic choices are resolved to the first option. -/
-noncomputable def runSail {α} (m : SailM α) (s : SailState) : EStateM.Result (Sail.Error exception) SailState α :=
+noncomputable def runSail {α} (m : SailM α) (σ : SailState) : EStateM.Result (Sail.Error exception) SailState α :=
   (FreeM.liftM (fun
     | .inl (.error err) => throw err
     | .inl (.ok eff) => applyEffect eff
-    | .inr (n : Nat) => if h : 0 < n then pure (⟨0, h⟩ : Fin n) else throw .Unreachable) m : FM α).run s
+    | .inr (n : Nat) => if h : 0 < n then pure (⟨0, h⟩ : Fin n) else throw .Unreachable) m : FM α).run σ
 
 end Human

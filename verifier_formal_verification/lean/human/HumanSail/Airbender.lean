@@ -10,8 +10,8 @@ marked `-- Airbender:`, following Airbender's ISA table (zksync-airbender `spec/
 "Supported instruction set"). Airbender's instruction formats are our own table `RV.decode`; their effect is
 Sail's `execute`.
 
-Our own fast spec `RV.step` (`Human/RV32.lean`), which the program proofs run on, is proven to follow this
-machine in `HumanSail/Theorems.lean`. -/
+Our own fast spec `RV.step` (`Human/RV32.lean`), which the program proofs run on, follows this machine:
+stated in `HumanSail/Theorems.lean`, proven in `slop/Slop/Equiv/`. -/
 
 open Sail SailRV32 SailRV32.Functions Human
 
@@ -49,8 +49,8 @@ noncomputable def initResult :=
 
 /-- The state after reset, with Airbender's `misa` and memory map. -/
 noncomputable def resetState : SailState :=
-  let s := match initResult with | .ok _ s => s | .error _ s => s
-  (s.set .misa misa).set .pma_regions memoryMap
+  let σ := match initResult with | .ok _ σ => σ | .error _ σ => σ
+  (σ.set .misa misa).set .pma_regions memoryMap
 
 /-- Registers a program changes: x1..x31 and the PC (plus Sail's bookkeeping `nextPC` and counters). -/
 def Volatile : Register → Bool
@@ -61,7 +61,7 @@ def Volatile : Register → Bool
 
 /-- A state of the Airbender machine: every other register (privilege, `misa`, `mstatus`, memory map, …)
 is as after reset. -/
-def Configured (s : SailState) : Prop := ∀ r, Volatile r = false → s.regs r = resetState.regs r
+def Configured (σ : SailState) : Prop := ∀ r, Volatile r = false → σ.regs r = resetState.regs r
 
 /-! ## The Sail model as generated
 
@@ -89,11 +89,12 @@ the decoded value, so `toSail` takes the encoded bits back out. -/
 def toSail : RV.Instr → instruction
   | .lui rd imm              => .UTYPE (imm.extractLsb' 12 20, .Regidx rd, .LUI)
   | .auipc rd imm            => .UTYPE (imm.extractLsb' 12 20, .Regidx rd, .AUIPC)
-  | .jal rd off              => .JAL (off.extractLsb' 0 21, .Regidx rd)
-  | .jalr rd rs1 off         => .JALR (off.extractLsb' 0 12, .Regidx rs1, .Regidx rd)
-  | .branch c rs1 rs2 off    => .BTYPE (off.extractLsb' 0 13, .Regidx rs2, .Regidx rs1, sailBop c)
-  | .load n sg rd rs1 off    => .LOAD (off.extractLsb' 0 12, .Regidx rs1, .Regidx rd, !sg, n)
-  | .store n rs2 rs1 off     => .STORE (off.extractLsb' 0 12, .Regidx rs2, .Regidx rs1, n)
+  | .jal rd offset           => .JAL (offset.extractLsb' 0 21, .Regidx rd)
+  | .jalr rd rs1 offset      => .JALR (offset.extractLsb' 0 12, .Regidx rs1, .Regidx rd)
+  | .branch cond rs1 rs2 offset => .BTYPE (offset.extractLsb' 0 13, .Regidx rs2, .Regidx rs1, sailBop cond)
+  | .load numBytes signed rd rs1 offset =>
+      .LOAD (offset.extractLsb' 0 12, .Regidx rs1, .Regidx rd, !signed, numBytes)
+  | .store numBytes rs2 rs1 offset => .STORE (offset.extractLsb' 0 12, .Regidx rs2, .Regidx rs1, numBytes)
   | .opImm .add rd rs1 imm   => .ITYPE (imm.extractLsb' 0 12, .Regidx rs1, .Regidx rd, .ADDI)
   | .opImm .slt rd rs1 imm   => .ITYPE (imm.extractLsb' 0 12, .Regidx rs1, .Regidx rd, .SLTI)
   | .opImm .sltu rd rs1 imm  => .ITYPE (imm.extractLsb' 0 12, .Regidx rs1, .Regidx rd, .SLTIU)
@@ -115,30 +116,30 @@ def toSail : RV.Instr → instruction
 /-- Airbender's decoder is our encoding table `RV.decode` (`Human/RV32.lean`, with its `-- Airbender:` rows).
 `HumanSail/Theorems.lean` states that Sail's own decoder gives the same instruction for every word of that table,
 except the extra encodings Airbender accepts (`Lenient`). -/
-def decode (w : BitVec 32) : Option instruction := (RV.decode w).map toSail
+def decode (word : BitVec 32) : Option instruction := (RV.decode word).map toSail
 
 /-- Execute one instruction: as Sail does, except loads into x0. -/
-noncomputable def execute (i : instruction) : SailM ExecutionResult :=
-  match i with
+noncomputable def execute (instr : instruction) : SailM ExecutionResult :=
+  match instr with
   | .LOAD (_, _, rd, _, _) => if rd == zreg then pure RETIRE_SUCCESS  -- Airbender: a load into x0 only
-                              else SailRV32.Functions.execute i       --   advances the PC (no memory access)
-  | _ => SailRV32.Functions.execute i
+                              else SailRV32.Functions.execute instr   --   advances the PC (no memory access)
+  | _ => SailRV32.Functions.execute instr
 
 /-- One step, the way Sail's own `run_hart_active` + `try_step` run a 32-bit instruction: fetch, decode,
 `nextPC := PC + 4`, execute, `PC := nextPC`. Anything else is not a step of Airbender (`none`): a fetch fault,
 a word outside the table, or any trap (misaligned or out-of-range access, write to ROM, …). -/
-noncomputable def step (s : SailState) : Option SailState :=
-  let run : SailM Bool := do
-    let .F_Base w ← fetch () | pure false
-    let some i := decode w | pure false
+noncomputable def step (σ : SailState) : Option SailState :=
+  let oneStep : SailM Bool := do
+    let .F_Base word ← fetch () | pure false
+    let some instr := decode word | pure false
     writeReg Register.nextPC ((← readReg Register.PC) + 4)
-    let .Retire_Success () ← execute i | pure false
+    let .Retire_Success () ← execute instr | pure false
     if (← readReg Register.nextPC).toNat % 4 ≠ 0 then pure false  -- Airbender: jump targets 4-byte aligned
     else                                                          --   (no compressed instructions)
       tick_pc ()
       pure true
-  match runSail run s with
-  | .ok true s' => some s'
+  match runSail oneStep σ with
+  | .ok true σ' => some σ'
   | _ => none
 
 end Airbender

@@ -28,8 +28,8 @@ def Agree (s : RV.State) (σ : SailState) : Prop :=
 
 /-- Encodings Airbender accepts beyond standard RV32IM (`-- Airbender:` rows of `RV.decode`): JALR with
 funct3 ≠ 0; SLT, SLTU, XOR, OR, AND with funct7 other than 0000000 (and 0000001, which is the M extension). -/
-def Lenient (w : RV.Word) : Prop :=
-  let opcode := w.extractLsb' 0 7; let funct3 := w.extractLsb' 12 3; let funct7 := w.extractLsb' 25 7
+def Lenient (word : RV.Word) : Prop :=
+  let opcode := word.extractLsb' 0 7; let funct3 := word.extractLsb' 12 3; let funct7 := word.extractLsb' 25 7
   (opcode = 0b1100111 ∧ funct3 ≠ 0) ∨
   (opcode = 0b0110011 ∧ funct3 ∈ [2, 3, 4, 6, 7] ∧ funct7 ≠ 0 ∧ funct7 ≠ 1)
 

@@ -54,6 +54,7 @@ def write (mem : Word → BitVec 8) (addr : Word) (value : Word) : (numBytes : N
 def State.store (s : State) (addr value : Word) (numBytes : Nat) : State :=
   { s with mem := write s.mem addr value numBytes }
 
+/-- The ALU operations (of OP and OP-IMM instructions). -/
 inductive Op | add | sub | sll | slt | sltu | xor | srl | sra | or | and
              | mul | mulhu | divu | remu    -- Airbender: no signed MULH, MULHSU, DIV, REM
 
@@ -70,9 +71,10 @@ def alu : Op → Word → Word → Word
   | .and,    a, b => a &&& b
   | .mul,    a, b => a * b
   | .mulhu,  a, b => (a.zeroExtend 64 * b.zeroExtend 64).extractLsb' 32 32
-  | .divu,   a, b => if b = 0 then -1 else a / b
-  | .remu,   a, b => if b = 0 then a else a % b
+  | .divu,   a, b => if b = 0 then -1 else a / b   -- division by zero: all ones / the dividend
+  | .remu,   a, b => if b = 0 then a else a % b    --   (as the ISA specifies; no trap)
 
+/-- The branch conditions. -/
 inductive Cond | eq | ne | lt | ge | ltu | geu
 
 def Cond.holds : Cond → Word → Word → Bool
@@ -100,7 +102,8 @@ def exec (s : State) : Instr → Option State
   | .lui rd imm            => some (s.setReg rd imm).nextInstr
   | .auipc rd imm          => some (s.setReg rd (s.pc + imm)).nextInstr
   | .jal rd offset         => (s.jumpAligned (s.pc + offset)).map (·.setReg rd (s.pc + 4))
-  | .jalr rd rs1 offset    => (s.jumpAligned ((s.getReg rs1 + offset) &&& ~~~1)).map (·.setReg rd (s.pc + 4))
+  | .jalr rd rs1 offset    =>                       -- `&&& ~~~1`: JALR clears bit 0 of the target
+      (s.jumpAligned ((s.getReg rs1 + offset) &&& ~~~1)).map (·.setReg rd (s.pc + 4))
   | .branch cond rs1 rs2 offset =>
       if cond.holds (s.getReg rs1) (s.getReg rs2) then s.jumpAligned (s.pc + offset) else some s.nextInstr
   | .load numBytes signed rd rs1 offset =>
@@ -117,19 +120,19 @@ def exec (s : State) : Instr → Option State
   | .op op rd rs1 rs2      => some (s.setReg rd (alu op (s.getReg rs1) (s.getReg rs2))).nextInstr
 
 /-- Standard RV32IM encodings (unprivileged spec, ch. 2 and 13). -/
-def decode (w : Word) : Option Instr :=
-  let opcode := (w.extractLsb' 0 7).toNat
-  let funct3 := (w.extractLsb' 12 3).toNat
-  let funct7 := (w.extractLsb' 25 7).toNat
-  let rd  : Reg := w.extractLsb' 7 5
-  let rs1 : Reg := w.extractLsb' 15 5
-  let rs2 : Reg := w.extractLsb' 20 5
-  let immI : Word := (w.extractLsb' 20 12).signExtend 32
-  let immS : Word := (w.extractLsb' 25 7 ++ w.extractLsb' 7 5).signExtend 32
-  let immB : Word := (w.extractLsb' 31 1 ++ w.extractLsb' 7 1 ++ w.extractLsb' 25 6 ++ w.extractLsb' 8 4
+def decode (word : Word) : Option Instr :=
+  let opcode := (word.extractLsb' 0 7).toNat
+  let funct3 := (word.extractLsb' 12 3).toNat
+  let funct7 := (word.extractLsb' 25 7).toNat
+  let rd  : Reg := word.extractLsb' 7 5
+  let rs1 : Reg := word.extractLsb' 15 5
+  let rs2 : Reg := word.extractLsb' 20 5
+  let immI : Word := (word.extractLsb' 20 12).signExtend 32
+  let immS : Word := (word.extractLsb' 25 7 ++ word.extractLsb' 7 5).signExtend 32
+  let immB : Word := (word.extractLsb' 31 1 ++ word.extractLsb' 7 1 ++ word.extractLsb' 25 6 ++ word.extractLsb' 8 4
                       ++ (0 : BitVec 1)).signExtend 32
-  let immU : Word := w.extractLsb' 12 20 ++ (0 : BitVec 12)
-  let immJ : Word := (w.extractLsb' 31 1 ++ w.extractLsb' 12 8 ++ w.extractLsb' 20 1 ++ w.extractLsb' 21 10
+  let immU : Word := word.extractLsb' 12 20 ++ (0 : BitVec 12)
+  let immJ : Word := (word.extractLsb' 31 1 ++ word.extractLsb' 12 8 ++ word.extractLsb' 20 1 ++ word.extractLsb' 21 10
                       ++ (0 : BitVec 1)).signExtend 32
   let shamt : Word := rs2.zeroExtend 32
   match opcode, funct3, funct7 with
