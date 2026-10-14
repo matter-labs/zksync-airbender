@@ -495,9 +495,23 @@ verifier._
 _Describe how the chunk relation becomes a layered algebraic circuit and which
 polynomials or columns are committed._
 
-- **MLE Polynomials**
+- **MLE Polynomials** represent a table of $2^N$ field values by indexing its entries with Boolean vectors $\hat y \in \{0,1\}^N$. In the context of traditional SNARK and STARK proof systems, such tables are instead interpolated as univariate polynomials over a domain of $2^N$ distinct field points, and constraint satisfaction is expressed through divisibility by the domain’s vanishing polynomial. Here, we instead interpolate over the Boolean Hypercube to support the commitment-efficient GKR protocol and its Sumcheck-based reductions. Requiring degree at most 1 in each variable makes this polynomial unique: it is the table’s Multilinear Extension $\widetilde f$, which agrees with its values on the Boolean Hypercube, although its total degree can be as high as $N$. It is reconstructed by weighting the table values with multilinear Lagrange basis polynomials, called EQ polynomials, and summing the results:
 
-- **MLE EQ Polynomials**
+  $$
+  \hat f(\hat x)
+  = \sum_{\hat y \in \{0,1\}^N} f(\hat y)\operatorname{\hat eq}(\hat x, \hat y).
+  $$
+
+  This extends the table to arbitrary field coordinates, allowing the Verifier to check evaluations at challenged random points (see Schwartz-Zippel Lemma in Soundness Section 6). Most GKR or Sumcheck prover constructions exploit the low individual degree of MLE polynomials to keep protocol messages small and limit soundness errors, as well as exploiting the decomposable structure of $\hat eq(\cdot)$ polynomials.
+
+- **MLE EQ Polynomials** form the Lagrange basis for interpolation over the Boolean Hypercube. They select individual table entries on $\hat x,\hat y \in \{0,1\}^N$ as $\operatorname{eq}_{\hat y}(\hat x) = \begin{cases} 1 & \hat x = \hat y\\ 0 & \textit{else} \end{cases}$ with multilinear extension:
+
+  $$
+  \operatorname{\hat eq}(\hat x, \hat y)
+  = \prod_{i=1}^{N}\bigl((1-X_i)(1-Y_i)+X_iY_i\bigr).
+  $$
+
+  Outside the Boolean Hypercube, EQ provides interpolation weights rather than a Boolean equality test. EQ is multilinear in either vector when the other is fixed, and factors into independent terms for each coordinate pair. This factorization supports the EQ-Split Sumcheck optimisations described below, benefiting both Prover and Verifier.
 
 - **Small Prime-Field MLE GKR** is Airbender v3's proof system of choice, as described in previous literature such as _"Delegating Computation: Interactive Proofs for Muggles"_ (https://www.microsoft.com/en-us/research/publication/delegating-computation-interactive-proofs-muggles/) and _"HyperPlonk: Plonk with Linear-Time Prover and High-Degree Custom Gates"_ (https://eprint.iacr.org/2022/1355) and _"A Note on the GKR Protocol"_ (https://people.cs.georgetown.edu/jthaler/GKRNote.pdf). Whereas previous Airbender versions were based only on AIR constraints, the GKR Prover splits its circuit into layers of inputs/outputs that feed into one another, leading to base layer "input" polynomials and final layer "output" polynomials. Basic AIR-like constraints which contain only a quadratic relation and no outputs are mapped to "Zerocheck" outputs (see the Hyperplonk paper), or constant zero values. Seeing as the PCS (Polynomial Commitment Scheme) is the most expensive step of a Prime-Field STARK prover, the main advantage of this approach is that GKR only requires PCS openings for the polynomials describing the base layer inputs, allowing us to push any derivate values into intermediate layer variables which significantly reduces pressure on the Commitment phase. GKR works by reduction in reverse: each output polynomial is derived via quadratic expressions from one or more input MLE polynomials present at the previous layer. The reductions are akin to many polynomial interpolations, as described in more detail later in the MLE Sumchecks section. Seeing as each GKR layer needs to prove multiple output polynomials, each layer bastches MLE Sumchecks for this purpose. The final output of each GKR layer is the proven circuit chunk's output: a pair of local memory argument ReadSet and WriteSet values, as well as three pairs of rational-split numerator-denominator values for the three LogUp arguments present in each circuit. The LogUp pairs are checked locally, while the global memory argument values are appended to the global memory argumment ReadSet and WriteSet accumulators. Each proven chunk contains a set of input polynomials as defined by its respective circuit family, with each polynomial representing an individual variable in that circuit. The GKR layers are then split into two parts: the "accumulation" layers and the "main circuit" layers. The main circuit layers take many 2^N sized base layer inputs polynomials for that circuti chunk and reduce them to a constant number of 2^N sized circuit outputs (the same as the total chunk outputs); the accumulation layers then take this same amount of outputs and compress them by accumulating them pairwise in the polynomials so that they become 2^const sized, where 2^const is a small constant number of values that can be read directly by the Verifier. The Verifier is then tasked with completing the compression of the constant sized polynomials into single pair values, which completes the GKR proving phase.
   - gkr layers equations \$$...
@@ -507,7 +521,11 @@ polynomials or columns are committed._
 
 - **Sumcheck Variable Order**
 
-- **EQ polynomial optimisation**
+- **Split-EQ polynomial optimisation**
+  - recollect to aforementioned speedups and previously described sumcheck/gkr basic layer-definition
+  - > This factorization underlies Gruen’s Sumcheck optimisation and the split-EQ optimisation of Dao and Thaler, which reduce prover computation and equality-table storage.
+  - commonly known as Gruen’s optimisation from _"Some Improvements for the PIOP for ZeroCheck"_ (https://eprint.iacr.org/2024/108)
+  - also Dao–Thaler’s split-EQ optimisation from _"More Optimizations to Sum-Check Proving"_ (https://eprint.iacr.org/2024/1210)
 
 - **Reduced Coefficient + Coeff interpolation optimisations**
 
