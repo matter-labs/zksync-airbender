@@ -118,11 +118,14 @@ pub fn compress_fixed_point_to_l1(
 
     // Stage-1 verifier: the STANDARD special-opcodes unified fsv (verifies
     // separate-commitment proofs). Stages 2/3: the MERGED-mode feeder fsv.
-    let (std_bin, std_text) = load_fsv_program(
+    let (mut std_bin, mut std_text) = load_fsv_program(
         fsv_dir,
         FsvProgram::UnifiedRecursionLayer,
         BlakeMode::BlakeSpecialOpcodes,
     );
+    // This direct setup/prover path consumes a full regular-ROM image.
+    setups::pad_bytecode_for_proving(&mut std_bin);
+    setups::pad_bytecode_for_proving(&mut std_text);
     let (feeder_bin, feeder_text) = load_program(
         &fsv_dir.join(format!("{FEEDER_FSV_STEM}.bin")),
         &fsv_dir.join(format!("{FEEDER_FSV_STEM}.text")),

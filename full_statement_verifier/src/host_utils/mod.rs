@@ -139,11 +139,8 @@ pub fn load_fsv_program(
             false
         }
     };
-    if exists {
-        load_program(
-            &dir.join(format!("{stem}.bin")),
-            &dir.join(format!("{stem}.text")),
-        )
+    let selected_stem = if exists {
+        stem
     } else {
         println!(
             "Verifier binary `{}` doesn't exist at path {}, using fallback naming mode",
@@ -155,12 +152,21 @@ pub fn load_fsv_program(
             "missing variant binary {} — run `cd tools/gkr_verifier && ./dump_recursive_verifiers.sh`",
             dir.join(format!("{stem}.bin")).display()
         );
-        let base = program.base_name();
-        load_program(
-            &dir.join(format!("{base}.bin")),
-            &dir.join(format!("{base}.text")),
-        )
-    }
+        program.base_name().to_string()
+    };
+    // Keep the canonical program unpadded. Its execution consumer selects ROM
+    // geometry; padding here would turn a wrap image into a 4 MiB image.
+    let (_, bin) = setups::read_binary(&dir.join(format!("{selected_stem}.bin")));
+    let (_, text) = setups::read_binary(&dir.join(format!("{selected_stem}.text")));
+    assert!(
+        bin.len() <= program.rom().word_size(),
+        "FSV image exceeds selected ROM"
+    );
+    assert!(
+        text.len() <= program.rom().word_size(),
+        "FSV text exceeds selected ROM"
+    );
+    (bin, text)
 }
 
 fn blake_mode_from_env(vars: &[&str], program: FsvProgram, default: BlakeMode) -> BlakeMode {
