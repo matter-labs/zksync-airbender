@@ -36,6 +36,8 @@ mixed execution with delegation callers remains a separate obligation.
 | Two public literal/ADDI instructions bind a protocol constant, deriving operand tokens from initialized matching before round-mask transport. | [`Caller.literal_addi_hash_preparation_soundness`](Theorems.lean) |
 | Finite public literal/AUIPC→ADDI chains derive actual operands, values and canonical tokens across registers and aliases. | [`Caller.register_chain_control_preparation_soundness`](Theorems.lean) |
 | Public register-chain expressions bind protocol entry constants through the same complete selected-reference interfaces. | [`Caller.register_chain_hash_preparation_soundness`](Theorems.lean) |
+| Public dataflow retains tracked values and real timestamps across intervening ADDIs to other GPRs, including readonly refreshes. | [`Caller.register_dataflow_control_preparation_soundness`](Theorems.lean) |
+| A final ADDI binds that nonconsecutive dataflow to protocol constants and canonical entry tokens for the existing selected-reference interfaces. | [`Caller.register_dataflow_hash_preparation_soundness`](Theorems.lean) |
 | Complete selected G/Keccak references admit either preparation source at their actual joint cut states. | [`Caller.computed_prepared_hash_window_soundness`](Theorems.lean) |
 | Nonempty ordered lists may mix all admitted preparation forms while retaining every intervening transfer in one history. | [`Caller.computed_prepared_hash_sequence_soundness`](Theorems.lean) |
 | Either preparation source and public modular code derive caller rows, exact request slots, worker family and count. | [`Caller.hash_prepared_public_window_schedule_soundness`](Theorems.lean) |
@@ -252,7 +254,7 @@ signed −1 and canonical clock ten; wrong immediates/constants, fabricated oper
 and incomplete references are rejected. An accepted unissued G prefix remains in
 one initialized history before literal zero and ADDI 128. The fixtures cover
 preparation and empty-region guards; full reference/list claims remain general
-accepted-witness theorems. Nonconsecutive dataflow, broader operations and
+accepted-witness theorems. Other gap instructions, broader operations and
 full Sail retirement remain open.
 
 
@@ -276,8 +278,31 @@ x12 = 127/129 → x10 = 128 → x12 = 128 and canonical clock fourteen; wrong
 instructions/constants, fabricated middle reads and incomplete references are
 rejected. Existing AUIPC fixtures inhabit the root and the actual unissued
 G-prefix effect remains. Concrete fixtures cover preparation/guards; complete
-references are general accepted-witness theorems. Nonconsecutive dataflow,
+references are general accepted-witness theorems. Other gap instructions,
 broader operations and full Sail retirement remain open.
+
+
+[`PublicRegisterDataflow`](../../Helpers/UnifiedReduced/RegisterDataflow.lean)
+now permits intervening public ADDIs to other nonzero GPRs. A gap may read and
+refresh the tracked register; public decoding derives its real destination and
+raw initialized matching proves value preservation through readonly ports. The
+other register's actual write stays in the same native history. Induction
+alternates these gaps with computed ADDIs before Sail or regional masks. No
+inert-gap, desired operand/state, bound or selector is an input. The
+[`RegisterDataflowBoundaryExecution`](RegisterDataflow.lean) preserves the actual
+native timestamp through exact prefix matching; after a gap it need not equal
+cut minus two. A final public
+ADDI derives the fresh canonical token required by all existing complete selected-
+reference windows/lists, keeping their domain/setup/table, coverage and logical-
+matching boundaries explicit. Only selected cycles are worker-free; all earlier
+effects remain. Reversed-row native fixtures prepare x12 = 127/129, copy it to
+x10 from initial 65537 in the gap, then derive x12 = 128 with signed +1/−1.
+The gap refresh retains clock eight; final output retains clock fourteen. A
+forged source clock ten passes local native constraints/timestamp lookups but
+fails joint matching. Constant/incomplete-reference guards and the actual
+unissued G prefix remain. Concrete fixtures cover preparation/guards; complete
+references are general accepted-witness theorems. Other gap instructions, worker-
+interleaved preparation, broader operands and full Sail retirement remain open.
 
 [`WrappedProgramCallerRegion`](../../Helpers/UnifiedReduced/WindowSchedule.lean)
 states the public ordinary-exclusion/full-CSR-family policy at every clock in the

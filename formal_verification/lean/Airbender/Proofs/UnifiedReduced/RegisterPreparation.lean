@@ -49,6 +49,36 @@ theorem register_immediate_preparation_entry [Fact p.Prime] (hp : 4194304 ≤ p)
   change decoderQuery w = entry.query at query
   exact ⟨entry, present, query, metadata⟩
 
+/-- Public ADDI decoding identifies the actual destination port independently
+    of operand values, bounds and arithmetic results. -/
+theorem register_immediate_row_destination [Fact p.Prime] (hp : 4194304 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {ca oa : List (BitVec 32)} {cut : Nat} {source register : BitVec 5} {immediate : BitVec 12}
+    (setup : data.machine.rom = Setup.table before)
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    (ordinaryProgram : Mixed.programImage before oa = some program)
+    (scope : RegisterImmediatePreparation data program cut source register immediate) (nonzero : register ≠ 0)
+    {w : Nat → ZMod p} (member : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∈ data.machine.rows)
+    (ordinary : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∉ data.callers)
+    (last : Delegation.Caller.startClock (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) + 4 = cut) :
+    (writeToken importedConstraintsTraceColumns w importedConstraintsMemoryPorts[2]).address = (Cell.register register).addressCode := by
+  have core := Verification.holds_of_sublist (accepted.constraints _ member)
+    (List.sublist_append_left (importedConstraints data.machine.rom) importedConstraintsTimestampLookups)
+  obtain ⟨entry, _, query, metadata⟩ := register_immediate_preparation_entry hp clockInverse setup accepted
+    publicProgram ordinaryProgram scope nonzero member ordinary last
+  have flags := UnifiedReduced.Proofs.decoder_selectors (by omega) core (by rw [metadata]; change 1 < 524288; decide) query
+  have destinationRAM : w 29 = 0 := by simpa [metadata, importedConstraintsDecoderColumns, Nat.testBit, Nat.shiftRight_eq_div_pow] using flags 18
+  have indices := native_query_indices (by dsimp [limbBase]; omega) query
+  have index : (w 7).val = register.toNat := by simpa [metadata, importedConstraintsDecoderColumns] using indices.2.2
+  have lower := Verification.assertion_of_holds core ⟨31, by rw [UnifiedReduced.constraint_count]; decide⟩
+  have upper := Verification.assertion_of_holds core ⟨32, by rw [UnifiedReduced.constraint_count]; decide⟩
+  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment, destinationRAM] at lower upper
+  have location : w 44 = w 7 := by linear_combination lower
+  have high : w 45 = 0 := by linear_combination upper
+  simp [writeToken, MemoryAddress.code, importedConstraintsMemoryPorts, Cell.addressCode, pairCode,
+    destinationRAM, location, high, index]
+
 theorem register_immediate_row_output [Fact p.Prime] (hp : 4194304 ≤ p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
@@ -116,7 +146,7 @@ theorem register_immediate_row_output [Fact p.Prime] (hp : 4194304 ≤ p)
 /-- The actual first ADDI read consumes the retained source token at the
     preceding instruction cut. This raw matching lemma is shared by finite
     public dataflow proofs and does not require Sail states or round masks. -/
-theorem register_immediate_source_word [Fact p.Prime] (hp : 8388608 ≤ p)
+theorem register_immediate_source_word_of_value [Fact p.Prime] (hp : 8388608 ≤ p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat}
@@ -132,7 +162,7 @@ theorem register_immediate_source_word [Fact p.Prime] (hp : 8388608 ≤ p)
       (data.machine.initialMemory ++ (data.prefixSteps (cut - 4)).map Prod.snd).Perm
         (start ++ (data.prefixSteps (cut - 4)).map Prod.fst) →
       ∃ token ∈ start, token.address = (Cell.register source).addressCode ∧
-        (timeOfPair token.time).value = (cut - 4) - 2 ∧ token.word = Word.ofBitVec value)
+        token.word = Word.ofBitVec value)
     (nonzero : register ≠ 0) (aligned : cut % 4 = 0)
     {w : Nat → ZMod p} (member : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∈ data.machine.rows)
     (ordinary : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∉ data.callers)
@@ -148,7 +178,7 @@ theorem register_immediate_source_word [Fact p.Prime] (hp : 8388608 ≤ p)
   have prefixMatching := earlier.matching
   have cutoff : cut - 5 = (cut - 4) - 1 := by omega
   rw [cutoff, mixed_prefix_steps data (by omega)] at prefixMatching
-  obtain ⟨token, present, address, _, word⟩ := seedToken start prefixMatching
+  obtain ⟨token, present, address, word⟩ := seedToken start prefixMatching
   obtain ⟨entry, _, query, metadata⟩ := register_immediate_preparation_entry (by omega) clockInverse setup accepted
     publicProgram ordinaryProgram scope nonzero member ordinary last
   have indices := native_query_indices (by dsimp [limbBase]; omega) query
@@ -191,8 +221,76 @@ theorem register_immediate_source_word [Fact p.Prime] (hp : 8388608 ≤ p)
   have equal := List.inj_on_of_nodup_map unique inStart present (sourceAddress.trans address.symm)
   exact congrArg MemoryToken.word equal |>.trans word
 
-/-- A derived preceding source token and native ADDI arithmetic determine the
-    canonical output token. This internal lemma is shared by public chains. -/
+theorem register_immediate_preparation_token_of_value [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat}
+    {source register : BitVec 5} {value : BitVec 32} {immediate : BitVec 12}
+    {tokens : List (MemoryToken p)}
+    (setup : data.machine.rom = Setup.table before)
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    (ordinaryProgram : Mixed.programImage before oa = some program)
+    (initialization : initialImage before cells = some data.machine.initialMemory)
+    (scope : RegisterImmediatePreparation data program cut source register immediate)
+    (uniqueSeeds : (data.machine.initialMemory.map MemoryToken.address).Nodup)
+    (sourceFloor : (timeOfPair data.machine.initial.timestamp).value + 4 ≤ cut - 4)
+    (seedToken : ∀ start : List (MemoryToken p),
+      (data.machine.initialMemory ++ (data.prefixSteps (cut - 4)).map Prod.snd).Perm
+        (start ++ (data.prefixSteps (cut - 4)).map Prod.fst) →
+      ∃ token ∈ start, token.address = (Cell.register source).addressCode ∧
+        token.word = Word.ofBitVec value)
+    (nonzero : register ≠ 0) (aligned : cut % 4 = 0)
+    (matching : (data.machine.initialMemory ++ (data.prefixSteps cut).map Prod.snd).Perm
+      (tokens ++ (data.prefixSteps cut).map Prod.fst)) :
+    ∃ token ∈ tokens, token.address = (Cell.register register).addressCode ∧
+      (timeOfPair token.time).value = cut - 2 ∧
+      token.word = Word.ofBitVec (registerImmediateValue value immediate) := by
+  have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
+  obtain ⟨w, member, last, ordinary, present, timestamp, bound⟩ := preparation_output_token hp clockInverse
+    accepted publicProgram initialization scope.prefixScope scope.afterInitial scope.beforeTerminal aligned matching
+  have sourceWord := register_immediate_source_word_of_value hp clockInverse setup accepted publicProgram ordinaryProgram
+    initialization scope uniqueSeeds sourceFloor seedToken nonzero aligned member ordinary last
+  have requests := request_binding size clockInverse accepted.toRequestChecks publicProgram
+  have facts := mixed_memory_facts size clockInverse accepted publicProgram initialization requests
+  have zero := Transfer.read_cell_values_of_rules facts (Cell.register 0).addressCode 0
+    (Delegation.Caller.Proofs.initial_zero initialization)
+    (mixed_zero_rules_of_program size clockInverse accepted publicProgram ordinaryProgram requests)
+  have output := register_immediate_row_output (by omega) clockInverse setup accepted publicProgram ordinaryProgram
+    scope nonzero zero member ordinary last (sourceWord.symm ▸ Word.ofBitVec_bound _)
+  rw [sourceWord, Word.ofBitVec_roundtrip] at output
+  refine ⟨_, present, output.2.1, timestamp, ?_⟩
+  apply Word.eq_of_value bound (Word.ofBitVec_bound _)
+  have equal := congrArg BitVec.toNat output.2.2
+  rw [Word.toBitVec_toNat bound] at equal
+  exact equal.trans (Word.ofBitVec_value _).symm
+
+theorem register_immediate_source_word [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat}
+    {source register : BitVec 5} {value : BitVec 32} {immediate : BitVec 12}
+    (setup : data.machine.rom = Setup.table before)
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    (ordinaryProgram : Mixed.programImage before oa = some program)
+    (initialization : initialImage before cells = some data.machine.initialMemory)
+    (scope : RegisterImmediatePreparation data program cut source register immediate)
+    (uniqueSeeds : (data.machine.initialMemory.map MemoryToken.address).Nodup)
+    (sourceFloor : (timeOfPair data.machine.initial.timestamp).value + 4 ≤ cut - 4)
+    (seedToken : ∀ start : List (MemoryToken p),
+      (data.machine.initialMemory ++ (data.prefixSteps (cut - 4)).map Prod.snd).Perm
+        (start ++ (data.prefixSteps (cut - 4)).map Prod.fst) →
+      ∃ token ∈ start, token.address = (Cell.register source).addressCode ∧
+        (timeOfPair token.time).value = (cut - 4) - 2 ∧ token.word = Word.ofBitVec value)
+    (nonzero : register ≠ 0) (aligned : cut % 4 = 0)
+    {w : Nat → ZMod p} (member : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∈ data.machine.rows)
+    (ordinary : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∉ data.callers)
+    (last : Delegation.Caller.startClock (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) + 4 = cut) :
+    (readToken w importedConstraintsMemoryPorts[0]).word = Word.ofBitVec value := by
+  exact register_immediate_source_word_of_value hp clockInverse setup accepted publicProgram ordinaryProgram initialization
+    scope uniqueSeeds sourceFloor (fun start matching => by
+      obtain ⟨token, present, address, _, word⟩ := seedToken start matching
+      exact ⟨token, present, address, word⟩) nonzero aligned member ordinary last
+
 theorem register_immediate_preparation_token [Fact p.Prime] (hp : 8388608 ≤ p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
@@ -217,24 +315,10 @@ theorem register_immediate_preparation_token [Fact p.Prime] (hp : 8388608 ≤ p)
     ∃ token ∈ tokens, token.address = (Cell.register register).addressCode ∧
       (timeOfPair token.time).value = cut - 2 ∧
       token.word = Word.ofBitVec (registerImmediateValue value immediate) := by
-  have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
-  obtain ⟨w, member, last, ordinary, present, timestamp, bound⟩ := preparation_output_token hp clockInverse
-    accepted publicProgram initialization scope.prefixScope scope.afterInitial scope.beforeTerminal aligned matching
-  have sourceWord := register_immediate_source_word hp clockInverse setup accepted publicProgram ordinaryProgram
-    initialization scope uniqueSeeds sourceFloor seedToken nonzero aligned member ordinary last
-  have requests := request_binding size clockInverse accepted.toRequestChecks publicProgram
-  have facts := mixed_memory_facts size clockInverse accepted publicProgram initialization requests
-  have zero := Transfer.read_cell_values_of_rules facts (Cell.register 0).addressCode 0
-    (Delegation.Caller.Proofs.initial_zero initialization)
-    (mixed_zero_rules_of_program size clockInverse accepted publicProgram ordinaryProgram requests)
-  have output := register_immediate_row_output (by omega) clockInverse setup accepted publicProgram ordinaryProgram
-    scope nonzero zero member ordinary last (sourceWord.symm ▸ Word.ofBitVec_bound _)
-  rw [sourceWord, Word.ofBitVec_roundtrip] at output
-  refine ⟨_, present, output.2.1, timestamp, ?_⟩
-  apply Word.eq_of_value bound (Word.ofBitVec_bound _)
-  have equal := congrArg BitVec.toNat output.2.2
-  rw [Word.toBitVec_toNat bound] at equal
-  exact equal.trans (Word.ofBitVec_value _).symm
+  exact register_immediate_preparation_token_of_value hp clockInverse setup accepted publicProgram ordinaryProgram initialization
+    scope uniqueSeeds sourceFloor (fun start prefixMatching => by
+      obtain ⟨token, present, address, _, word⟩ := seedToken start prefixMatching
+      exact ⟨token, present, address, word⟩) nonzero aligned matching
 
 /-- Legacy literal→ADDI source interface, sharing the raw token proof. -/
 theorem literal_addi_source_word [Fact p.Prime] (hp : 8388608 ≤ p)

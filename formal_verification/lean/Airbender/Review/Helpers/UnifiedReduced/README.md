@@ -136,7 +136,7 @@ final cycles are worker-free. Native reversed-row fixtures derive
 wrong constants/immediates, fabricated reads and incomplete references are
 rejected. An accepted unissued G prefix remains before literal zero and ADDI
 128. Full reference claims are general accepted-witness theorems; concrete
-fixtures cover preparation and empty-region guards. Nonconsecutive public dataflow,
+fixtures cover preparation and empty-region guards. Other gap instructions,
 broader operations and complete Sail retirement remain separate.
 
 
@@ -154,7 +154,28 @@ boundaries. Native three-instruction fixtures retain actual x12 = 127/129,
 x10 = 128 and final x12 = 128, clock fourteen, negative immediates and reversed
 rows; malformed operands/instructions/constants and incomplete references are
 rejected. AUIPC root fixtures and the actual unissued prefix remain inhabited.
-Nonconsecutive dataflow, broader operations and complete Sail retirement remain
+Other gap instructions, broader operations and complete Sail retirement remain
+separate.
+
+
+The [public dataflow scope](RegisterDataflow.lean), `PublicRegisterDataflow`, adds
+intervening ADDIs to other nonzero GPRs. A gap can read and refresh the tracked
+register; original public decoding derives its separate destination. Raw matching
+and readonly-port preservation derive the value, retaining the actual timestamp
+and all other writes. Induction combines these gaps with computed ADDIs before
+Sail transport or regional masks. No inert-gap or desired read/state/bound/selector
+is supplied. The [dataflow execution](../../Trace/UnifiedReduced/RegisterDataflow.lean)
+retains exact prefix matching and actual boundary tokens; after a gap they need
+not be at cut minus two.
+A final public ADDI derives that fresh canonical output for the existing complete
+selected-reference windows/lists with their unchanged explicit boundaries. Only
+selected cycles are worker-free; earlier effects remain. Native reversed-row
+fixtures derive x12 = 127/129, gap x10 = 127/129 from initial 65537 and final
+x12 = 128. The readonly refresh retains clock eight and final output clock
+fourteen; a fabricated clock ten passes local native constraints/timestamps but
+fails architectural matching. Wrong constants and incomplete references are
+rejected; the actual unissued G-prefix effect remains. Other gap instructions,
+worker-interleaved preparation, broader operands and full Sail retirement remain
 separate.
 
 The [prepared control window](../../Trace/UnifiedReduced/ControlPreparation.lean)

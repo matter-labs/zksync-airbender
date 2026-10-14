@@ -405,8 +405,32 @@ register values; wrong immediates/constants, fabricated middle reads and
 incomplete references are rejected. AUIPC fixtures inhabit the root case, and
 the native unissued G-prefix fixture remains admitted with its actual update.
 These are preparation/guard fixtures; complete references remain general
-accepted-witness theorems. Nonconsecutive dataflow, broader operations and full
+accepted-witness theorems. Other gap instructions, broader operations and full
 Sail retirement remain open.
+
+
+The [public register-dataflow entry](Airbender/Review/Helpers/UnifiedReduced/RegisterDataflow.lean)
+now allows intervening ADDIs to other nonzero GPRs. A gap may read the tracked
+register and refresh its timestamp. Public decoding derives the real destination;
+raw initialized matching and readonly-port preservation derive the tracked value,
+retaining the gap's actual write. Induction alternates these gaps with computed
+ADDIs before Sail transport or regional round-mask derivation. No desired read,
+operand bound, selector, inert-gap or intermediate-state premise is supplied.
+Exact prefix matching binds the boundary tokens to their native transfers.
+A tracked token after a gap keeps its actual native clock; it need not be the
+last destination token at cut minus two. A final public ADDI derives the fresh
+canonical output required by the existing complete selected-reference interfaces,
+with their domain/setup/table, coverage and logical-matching boundaries unchanged.
+Each selected cycle is worker-free; earlier effects remain. Native reversed-row
+fixtures prepare x12 = 127/129, copy it to x10 in the gap, then derive x12 = 128
+with signed +1/−1. The gap changes x10 from 65537 and refreshes x12 at clock
+eight; final output retains clock fourteen. A forged source clock ten passes
+local native constraints/timestamp lookups but fails joint architectural matching.
+Wrong constants and incomplete references are rejected. The actual unissued
+G-prefix effect remains admitted. These are preparation/guard fixtures; complete
+references remain general accepted-witness theorems. Other gap instructions,
+worker-interleaved preparation, broader operands and full Sail retirement remain
+open.
 
 [Control preparation](Airbender/Review/Helpers/UnifiedReduced/ControlPreparation.lean)
 uses a public ordinary ADDI-from-x0/LUI registry and a worker-free final preparation
