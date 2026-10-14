@@ -185,6 +185,17 @@ pool homogeneity and a global ten-row cap are absent from this entry; local fami
 count/duration, literal preparation, cut order and region coverage remain witness-
 shape boundaries. They are not a theorem that general acceptance runs valid
 protocols. Broader preparation/protocol binding and whole mixed retirement remain open.
+The [public-program sequence entry](Airbender/Review/Trace/UnifiedReduced/Theorems.lean)
+now derives selected worker families and complete call counts instead of assuming
+them. `ProgramCallerRegion` excludes ordinary entries from a public PC/clock
+interval and fixes its full CSR family. With a sequential ordinary registry,
+accepted state matching locates every instruction and request matching derives
+its worker, family, native slot and count. The public reference duration determines
+the count independently of the worker list. `ProgramProtocolWindowInputs` keeps
+preparation and cuts explicit; shared extended-round regions still require their
+existing shape and global coverage. General protocol validity, invalid-call ABI
+and whole caller retirement remain open. Both invalid bigint controls still satisfy
+the program-derived request/schedule claim.
 [Control preparation](Airbender/Review/Helpers/UnifiedReduced/ControlPreparation.lean)
 uses a public ordinary ADDI-from-x0/LUI registry and a worker-free final preparation
 cycle. The registry may be uniform, contain different literals/registers, or admit

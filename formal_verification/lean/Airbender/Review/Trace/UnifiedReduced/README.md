@@ -14,6 +14,7 @@ mixed execution with delegation callers remains a separate obligation.
 | Standard instructions plus TRIADD/XORROT retire together; delegation callers are outside the registry. | [`Mixed.execution_soundness`](Theorems.lean) |
 | Machine and worker reads/writes, bounds and references share one actual initialized history. | [`Caller.mixed_memory_soundness`](Theorems.lean) |
 | Exact caller regions, counts and slots follow from state/request matching and public cuts/duration. | [`Caller.window_schedule_soundness` and `Caller.request_window_soundness`](Theorems.lean) |
+| Public sequential code identifies caller regions; native matching derives selected worker family, counts and slots. | [`Caller.program_window_schedule_soundness`](Theorems.lean) |
 | Actual joint cut states and projected worker boundaries retain native timestamps. | [`Caller.mixed_window_soundness` and `Caller.mixed_window_projection_soundness`](Theorems.lean) |
 | Public ADDI-from-x0/LUI preparation yields actual controls after literal or sequential ordinary/custom prefixes; native PC/clock matching derives each preparation address. | [`Caller.control_preparation_soundness`](Theorems.lean) |
 | Two preparations share their actual cut states and the complete intervening machine/worker history; neither control is supplied. | [`Caller.control_preparation_window_soundness`](Theorems.lean) |
@@ -24,6 +25,7 @@ mixed execution with delegation callers remains a separate obligation.
 | A nonempty ordered list of complete prepared G/Keccak references binds every span to that same continuous execution. | [`Caller.prepared_hash_sequence_soundness`](Theorems.lean) |
 | Public LUI preparation and raw matching derive exclusive masks inside each selected extended-BLAKE caller region, retaining earlier workers. | [`Caller.prepared_round_region_masks_soundness`](Theorems.lean) |
 | Ordered complete G/extended-BLAKE/Keccak lists share one execution when prepared controller regions cover every extended-round worker. | [`Caller.prepared_protocol_sequence_soundness`](Theorems.lean) |
+| Public caller regions derive each selected span's worker family/count before all three references compose continuously. | [`Caller.program_prepared_protocol_sequence_soundness`](Theorems.lean) |
 | Original current-state caller fetch, selected worker observations and PC retirement meet at the same boundaries. | [`Caller.caller_cycles_soundness`](Theorems.lean) |
 
 Field/inverse, public boot/configuration/program/domain, modeled tables and logical
@@ -110,6 +112,20 @@ complete span's preparation, family, count and duration. The sequence theorem bi
 all three complete references to their actual segment states without resetting
 clocks. Completion alone is still not a controller restart. The regional seed,
 wrong-flag/two-bit and retained-unissued-effect regressions are linked above.
+
+[`ProgramProtocolWindowInputs`](PreparedRoundWindows.lean) replaces those selected
+worker family/count premises with a public
+[`ProgramCallerRegion`](../../Helpers/UnifiedReduced/WindowSchedule.lean).
+The ordinary registry uses `SequentialProgram`; public PC/clock intervals exclude
+ordinary entries and identify the CSR family. Accepted matching derives the actual
+caller region and worker count from the public reference duration. The stronger
+sequence theorem reaches the same complete references and actual segment states.
+It retains public preparation/mode/duration, aligned ordered cuts and the shared
+extended-round controller-region coverage. Controller coverage and unrestricted
+protocol validity are not conclusions of this new entry. COPY→ADDI and both
+invalid bigint control fixtures check the schedule connection; wrong CSR family
+and inclusion of ordinary code are rejected in
+[the unified regressions](../../../../Tests/UnifiedDelegation.lean).
 
 Keep surplus zero-clock prefix effects, worker ROM-shadow transport,
 broader preparation/protocol binding, full mixed caller retirement and inactive padding as separate

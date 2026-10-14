@@ -311,6 +311,87 @@ theorem literal_program_pc_clock [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
         data.machine.initial.word.value + Delegation.Caller.startClock row :=
   arithmetic_program_pc_clock hp inverse accepted publicProgram ordinaryProgram (literal_arithmetic_program registry)
 
+theorem caller_query_pc_word [Fact p.Prime] (hp : limbBase < p)
+    {row : Trace.Row p UnifiedFamily} {entry : Delegation.Caller.ProgramEntry}
+    (query : row.decoderQuery = Delegation.Caller.query entry) :
+    row.start.word = Word.ofBitVec entry.pc := by
+  cases row with
+  | mk family w =>
+    cases family
+    have low := congrArg (fun fields : Vector (ZMod p) 9 => fields[0]) query
+    have high := congrArg (fun fields : Vector (ZMod p) 9 => fields[1]) query
+    change w 0 = ((Word.ofBitVec entry.pc).lo : ZMod p) at low
+    change w 1 = ((Word.ofBitVec entry.pc).hi : ZMod p) at high
+    have bound := Word.ofBitVec_bound entry.pc
+    change Word.mk (w 0).val (w 1).val = Word.ofBitVec entry.pc
+    exact congrArg₂ Word.mk
+      (by rw [low, ZMod.val_natCast_of_lt (lt_trans bound.1 hp)]; rfl)
+      (by rw [high, ZMod.val_natCast_of_lt (lt_trans bound.2 hp)]; rfl)
+
+theorem program_caller_window [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {ca oa : List (BitVec 32)} {family : Delegation.Family} {lower upper : Nat}
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    (ordinaryProgram : Mixed.programImage before oa = some program) (registry : SequentialProgram program)
+    (region : ProgramCallerRegion data program family lower upper)
+    (first : lower % 4 = 0) (last : upper % 4 = 0) (positive : 2 ≤ lower) (ordered : lower ≤ upper)
+    (afterInitial : (timeOfPair data.machine.initial.timestamp).value ≤ lower)
+    (beforeTerminal : upper ≤ (timeOfPair data.machine.terminal.timestamp).value) :
+    ProgramCallerWindow data family lower upper := by
+  have size : 524288 < p := by norm_num [timestampBase] at hp; omega
+  have pcClock := sequential_program_pc_clock hp inverse accepted publicProgram ordinaryProgram registry
+  have selected : ∀ row ∈ data.windowMachineRows lower upper, row ∈ data.callers := by
+    intro row member
+    obtain ⟨present, range⟩ := List.mem_filter.mp member
+    have range := of_decide_eq_true range
+    by_contra ordinary
+    obtain ⟨entry, included, _, query⟩ := decoder_member (accepted.ordinaryDecoded row present ordinary)
+    have pc := native_query_pc_word (by dsimp [limbBase]; omega) query
+    have value : row.start.word.value = entry.pc.toNat := by
+      change (Word.mk (row.assignment row.columns.initialPC[0]).val
+        (row.assignment row.columns.initialPC[1]).val).value = entry.pc.toNat
+      rw [pc, Word.ofBitVec_value]
+    have schedule := pcClock row present
+    rw [value] at schedule
+    exact region.ordinary entry included (by omega)
+  have rows : Delegation.Caller.windowCallers data.callers lower upper = data.windowMachineRows lower upper := by
+    rw [window_callers_filter]
+    apply List.filter_eq_self.mpr
+    intro row member
+    exact (List.mem_filter.mp (selected row member)).2
+  have requests := request_windows hp inverse accepted.toRequestChecks publicProgram first last positive
+  have count := machine_window_count hp inverse accepted.toRequestChecks publicProgram first last ordered afterInitial beforeTerminal
+  have workerCount : (data.windowMachineRows lower upper).length = (data.workers.windowRows lower upper).length := by
+    rw [← rows]
+    exact Delegation.Caller.Proofs.window_call_count requests
+  refine ⟨⟨count, rows, workerCount⟩, requests, ?_⟩
+  intro worker member
+  obtain ⟨caller, matched, _⟩ := requests.workerMatches worker member
+  obtain ⟨callerMember, range⟩ := List.mem_filter.mp matched.1
+  have range := of_decide_eq_true range
+  have nativeMember := List.mem_of_mem_filter callerMember
+  have decoded := accepted.decoded caller callerMember
+  change ∃ i : Fin data.program.length, caller.decoderQuery = Delegation.Caller.query (data.program.get i) at decoded
+  obtain ⟨i, query⟩ := decoded
+  let entry := data.program.get i
+  have pc := caller_query_pc_word (by dsimp [limbBase]; omega) query
+  have schedule := pcClock caller nativeMember
+  rw [pc, Word.ofBitVec_value] at schedule
+  have family := region.callers entry (List.get_mem _ _) (by dsimp only [entry]; omega)
+  apply Delegation.Caller.Proofs.csr_injective
+  have csr := congrArg Delegation.Requests.Request.csr matched.2.1
+  have field := congrArg (fun fields : Vector (ZMod p) 9 => fields[3]) query
+  cases caller with
+  | mk kind w =>
+    cases kind
+    change w 6 = (Delegation.Requests.csr entry.data.family : ZMod p) at field
+    change Delegation.Requests.csr worker.family = (w 6).val at csr
+    have bound : Delegation.Requests.csr entry.data.family < p := by
+      cases entry.data.family <;> simp only [Delegation.Requests.csr] <;> omega
+    rw [field, ZMod.val_natCast_of_lt bound, family] at csr
+    exact csr
+
 theorem preparation_instruction [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}

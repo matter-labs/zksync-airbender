@@ -128,6 +128,16 @@ execution, retaining each span's preparation, mode/count/duration and aligned cu
 No global empty worker prefix, homogeneous pool or ten-row pool cap is required
 by that entry. Coverage and protocol shape remain explicit; broader preparation
 and unrestricted protocol binding remain open.
+Public caller regions now derive selected worker family and complete call count
+for prepared sequences. A sequential ordinary registry and public PC/clock intervals
+exclude ordinary instructions and fix the full CSR family; accepted state/request
+matching derives caller participation, unique slots and equal machine/worker counts.
+The public reference duration fixes each count without a selected-worker length
+premise. All three complete references reuse the same continuous sequence states.
+The shared extended-round controller shape/coverage remains explicit; this does
+not derive unrestricted protocol validity or close invalid-call findings. COPY→ADDI,
+empty regions and both bigint control gaps are checked; wrong family and inclusion
+of ordinary code are rejected.
 Caller cycles now connect original current-state fetch, the uniquely matched public
 worker family, all actual port reads/writes, existing operation references and
 Sail PC retirement at the same boundaries in one history. Prepared extended-round
@@ -158,8 +168,11 @@ ABI and whole mixed execution remain separate.
    and supported TRIADD/XORROT before its final literal, deriving native PC-increment selectors,
    actual controls and retained clocks through the same history. The aliased
    TRIADD→ADDI reset derives 65537→196611→0 and rejects a fabricated reset read.
-   Continue protocol-shape binding, control-flow/wraparound and nonliteral
-   preparation, then whole caller retirement; prefix retirement remains separate.
+   The public-program sequence entry now derives selected worker families/counts
+   from public CSR regions and native matching, retaining shared controller-region
+   coverage. Continue that controller-coverage binding, control-flow/wraparound
+   and nonliteral preparation, then whole caller retirement; prefix retirement
+   remains separate.
    COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed
    retained for the second window. Extended BLAKE and Keccak completion controls
    do not restart their protocols; checked regressions forbid treating their

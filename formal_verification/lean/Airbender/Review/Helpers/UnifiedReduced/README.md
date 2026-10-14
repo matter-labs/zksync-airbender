@@ -31,6 +31,19 @@ binds current-state fetch.
 
 [Windows](Windows.lean), [WindowProjection](WindowProjection.lean) and
 [WindowSchedule](WindowSchedule.lean) describe native-clock cuts and selected regions.
+[`ProgramCallerRegion`](WindowSchedule.lean) describes public code in a PC/clock
+interval: ordinary entries lie outside it and CSR entries select its full family.
+With a sequential ordinary registry, accepted state/request matching derives
+[`ProgramCallerWindow`](WindowSchedule.lean): every selected machine row is a
+caller, both row counts equal `(upper - lower) / 4`, and every selected worker has
+that public family and a unique native slot. No selected-worker family, count or
+duration proportional to its row list is supplied. See
+[`Caller.program_window_schedule_soundness`](../../Trace/UnifiedReduced/Theorems.lean).
+Alignment, cut location and the public code profile remain explicit. COPY followed
+by ADDI checks this connection; the wrong family and an interval including the
+ordinary instruction are rejected. Both invalid bigint controls remain admitted
+by this request/schedule result.
+
 [ControlPreparation](ControlPreparation.lean) names the public preparation registry.
 It accepts one uniform literal, different ADDI-from-x0/LUI literals, or ordinary
 arithmetic, LW/SW, bitwise/shifts, REV8 and supported TRIADD/XORROT forms along a
