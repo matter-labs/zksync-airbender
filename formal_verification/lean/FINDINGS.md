@@ -223,13 +223,29 @@ public mode/code/duration, global nonround scope and all initialization/domain/
 table/matching boundaries. Native preparation witnesses derive empty-region
 counts without a count premise; incomplete durations, cuts past the native
 terminal and regions containing ordinary preparation code are rejected. The
-unissued G effect remains in the literal entry's prefix. Extended-round
-source/mask transport is next, before broader preparation and whole caller retirement.
+unissued G effect remains in the literal entry's prefix.
+
+The [source-aware round regions](Airbender/Review/Trace/UnifiedReduced/ComputedRoundRegions.lean)
+now transport the actual round-zero seed from either preparation source into
+raw initialized matching and derive exclusive regional masks. Public modular
+controller code and aligned cuts covering at most forty ticks derive selected
+family/count/duration and the ten-position bound. Global memory transport retains
+explicit full round-worker coverage; the local proof supplies no empty prefix,
+global ten-row cap, control read or mask. Legacy LUI regional-mask/global-memory
+entries keep their contracts and share that proof. The native AUIPC preparation
+at PC 524288 derives x12 = 65537→524288, its canonical clock-six token and an
+empty regional/global context. Wrong public flags, invalid cuts and simultaneous
+round bits are rejected under the regional ABI. The concrete fixtures cover
+preparation/empty regions; nonempty masks remain arbitrary accepted-witness
+theorems. The [unissued G-prefix effect](Tests/DelegationZeroInvocation.lean)
+stays admitted under the source-aware global context. Source-aware public
+round-CSR occurrence coverage/live masks and complete extended-round reference/list
+composition remain next, before broader preparation and whole caller retirement.
 
 All 116 concrete test modules and 143 importer guards pass. The full
-2,177-root axiom audit has 64 axiom-free roots and only the three standard
-Lean axioms. Review checks pass for all 112 public theorem roots, 181 declaration
-names and 693 guide links/anchors, with no handwritten project diagnostics.
+2,197-root axiom audit has 64 axiom-free roots and only the three standard
+Lean axioms. Review checks pass for all 115 public theorem roots, 187 declaration
+names and 702 guide links/anchors, with no handwritten project diagnostics.
 
 ## Review priorities
 

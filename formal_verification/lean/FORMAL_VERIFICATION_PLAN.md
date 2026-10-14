@@ -254,8 +254,18 @@ ABI and whole mixed execution remain separate.
    mode/code/duration, nonround scope, domain/setup/tables and logical matching
    remain explicit. Native preparation fixtures derive empty-region counts;
    incomplete durations, cuts past the terminal and regions containing ordinary
-   preparation code are rejected. Next extend source-aware raw-token/mask
-   transport to prepared extended-round regions. Continue general
+   preparation code are rejected. Source-aware extended-round regions now also
+   derive their actual round-zero seed and exclusive masks from raw initialized
+   matching, for literal or AUIPC preparation. Public modular controller code
+   and at most forty ticks derive family/count/duration and the ten-position
+   bound. Global memory transport retains explicit full round-worker coverage.
+   The legacy LUI mask/global-memory entries retain their signatures and share
+   this proof. A native AUIPC fixture at PC 524288 derives x12 = 65537→524288
+   and its canonical clock-six token, inhabits the empty regional/global context,
+   and rejects wrong public flags and invalid cuts; two simultaneous round bits
+   remain impossible under the regional ABI. The unissued G-prefix effect stays
+   admitted. Next connect the source to public round-CSR occurrence coverage,
+   live masks and complete extended-round reference/list composition. Continue general
    operand-dependent preparation, jumps/branches and whole caller retirement,
    retaining unsupported-control and unissued-exclusion boundaries.
    COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed
