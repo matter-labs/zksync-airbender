@@ -1,6 +1,6 @@
 use super::super::*;
 
-use gpu_hash::blake2s::{transcript_commit, transcript_squeeze_e4};
+use gpu_hash::blake2s::{transcript_commit, transcript_squeeze_e4, transcript_squeeze_fresh_e4};
 use gpu_ops::powers::get_powers_by_ref;
 use gpu_ops::squaring::squaring_sequence_e4;
 
@@ -170,7 +170,7 @@ pub(super) fn schedule_delinearization_running_powers_phase(
     assert_eq!(anchor_out.len(), log_n);
     // Draw the delinearization base challenge on device.
     let mut delin_base: DeviceAllocation<E4> = context.alloc(1, AllocationPlacement::BestFit)?;
-    transcript_squeeze_e4(device_seed, &mut delin_base, stream)?;
+    transcript_squeeze_fresh_e4(device_seed, &mut delin_base, stream)?;
     // Materialize [base^1, base^2, ..., base^(num_queries + 1)] on device.
     let count = num_queries + 1;
     let mut delinearization_device: DeviceAllocation<E4> =

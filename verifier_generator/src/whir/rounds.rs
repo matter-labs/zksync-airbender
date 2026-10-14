@@ -256,7 +256,8 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
         use super::common::{
             verify_whir_sumcheck_step, materialize_gamma_powers,
             #fold_fn_imports
-            read_reduced_field_el, draw_single_field_el, compute_tree_index,
+            read_reduced_field_el, draw_single_field_el, draw_fresh_single_field_el,
+            compute_tree_index,
             process_oracle_query,
             fold_whir_accumulator, push_whir_pow_entry,
         };
@@ -350,7 +351,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
                     INITIAL_DRAW_WORDS,
                 );
 
-                let delinearization_challenge = draw_single_field_el(ts);
+                let delinearization_challenge = draw_fresh_single_field_el(ts);
 
                 push_whir_pow_entry(accumulator, ood_point, delinearization_challenge);
 
@@ -620,7 +621,7 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
                         ts, num_queries, query_index_bits, draw_words,
                     );
 
-                let delinearization_challenge = draw_single_field_el(ts);
+                let delinearization_challenge = draw_fresh_single_field_el(ts);
 
                 push_whir_pow_entry(accumulator, ood_point, delinearization_challenge);
 

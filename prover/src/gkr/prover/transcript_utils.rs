@@ -40,6 +40,21 @@ where
     all_challenges
 }
 
+/// Same as [`draw_random_field_els`], but drawn past the digest the preceding raw
+/// draw emitted (see `Transcript::draw_fresh_random_field_elements`).
+#[track_caller]
+pub fn draw_fresh_random_field_els<F, E, TR>(seed: &mut TR::Seed, num_challenges: usize) -> Vec<E>
+where
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    TR: Transcript<F, E>,
+{
+    let mut all_challenges = vec![E::ZERO; num_challenges];
+    TR::draw_fresh_random_field_elements(seed, &mut all_challenges);
+
+    all_challenges
+}
+
 /// Same as [`draw_random_field_els`], but the challenges are gated behind a
 /// proof-of-work. The prover grinds `pow_bits` of PoW into the seed (exactly the
 /// work the verifier replays via `read_and_verify_pow`) and returns the winning

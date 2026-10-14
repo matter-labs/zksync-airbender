@@ -11,7 +11,9 @@ pub(crate) use blake2s_u32::Blake2sState;
 #[cfg(test)]
 pub(crate) use field::Field;
 #[cfg(test)]
-pub(crate) use prover::gkr::prover::transcript_utils::draw_random_field_els;
+pub(crate) use prover::gkr::prover::transcript_utils::{
+    draw_fresh_random_field_els, draw_random_field_els,
+};
 #[cfg(test)]
 pub(crate) use transcript::Seed;
 

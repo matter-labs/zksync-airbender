@@ -17,14 +17,20 @@ use crate::upstream::{
 };
 use crate::A;
 use common_constants::delegation_types::keccak_f1600::{
-    keccak_f1600_bump_control, keccak_f1600_slots, KECCAK_CHI5_NUM_VARIABLE_OFFSETS,
-    KECCAK_CHI5_PRECOMPILE, KECCAK_CHI5_X11_NUM_WRITES, KECCAK_COLUMN_PARITY_NUM_VARIABLE_OFFSETS,
+    keccak_chi5_lane_read_distance, keccak_f1600_bump_control, keccak_f1600_decode_control,
+    keccak_f1600_slots, KECCAK_CHI5_NUM_VARIABLE_OFFSETS, KECCAK_CHI5_PRECOMPILE,
+    KECCAK_CHI5_X11_NUM_WRITES, KECCAK_COLUMN_PARITY_NUM_VARIABLE_OFFSETS,
     KECCAK_COLUMN_PARITY_PRECOMPILE, KECCAK_COLUMN_PARITY_X11_NUM_WRITES,
-    KECCAK_THETA_RHO_NUM_VARIABLE_OFFSETS, KECCAK_THETA_RHO_PRECOMPILE,
-    KECCAK_THETA_RHO_X11_NUM_WRITES, NUM_KECCAK_F1600_INDIRECT_READS,
+    KECCAK_F1600_INITIAL_CONTROL_VALUE, KECCAK_F1600_REGISTER_READ_DISTANCE,
+    KECCAK_THETA_RHO_LANE_READ_DISTANCE, KECCAK_THETA_RHO_NUM_VARIABLE_OFFSETS,
+    KECCAK_THETA_RHO_PARITY_READ_DISTANCES, KECCAK_THETA_RHO_PRECOMPILE,
+    KECCAK_THETA_RHO_X11_NUM_WRITES, NUM_KECCAK_F1600_CALLS, NUM_KECCAK_F1600_INDIRECT_READS,
     NUM_KECCAK_F1600_REGISTER_ACCESSES,
 };
-use common_constants::{TimestampData, TimestampScalar, INITIAL_TIMESTAMP};
+use common_constants::{
+    TimestampData, TimestampScalar, DELEGATION_EXECUTION_OFFSET, DELEGATION_INVOCATION_OFFSET,
+    INITIAL_TIMESTAMP, TIMESTAMP_STEP,
+};
 use era_cudart::memory::{CudaHostAllocFlags, HostAllocation};
 use era_cudart::result::CudaResult;
 use execution_prover_model::MachineType;
@@ -71,14 +77,77 @@ fn keccak_sizing_row<const WORDS: usize, const LANES: usize>(
     WORDS,
     LANES,
 > {
-    let mut witness = riscv_transpiler::witness::DelegationWitness::empty();
-    witness.write_timestamp = INITIAL_TIMESTAMP;
+    let call = std::iter::successors(Some(KECCAK_F1600_INITIAL_CONTROL_VALUE), |&control| {
+        Some(keccak_f1600_bump_control(control))
+    })
+    .take(NUM_KECCAK_F1600_CALLS)
+    .position(|control| control == mode)
+    .expect("sizing mode is a canonical Keccak-f1600 call");
+    let mut witness = invoked_at(
+        riscv_transpiler::witness::DelegationWitness::empty(),
+        INITIAL_TIMESTAMP + TIMESTAMP_STEP * call as TimestampScalar,
+    );
     witness.reg_accesses[0].read_value = mode;
     witness.reg_accesses[0].write_value = keccak_f1600_bump_control(mode);
     witness.reg_accesses[1].read_value = 0x8000_0000;
     witness.reg_accesses[1].write_value = 0x8000_0000;
     let slots = keccak_f1600_slots(mode);
     witness.variables_offsets = core::array::from_fn(|i| slots[i] as u16);
+    let (precompile, iteration, _) = keccak_f1600_decode_control(mode);
+    let lane_read_distances: Option<[usize; LANES]> = match precompile {
+        KECCAK_THETA_RHO_PRECOMPILE => Some(core::array::from_fn(|slot| {
+            if slot < 5 {
+                KECCAK_THETA_RHO_LANE_READ_DISTANCE
+            } else {
+                KECCAK_THETA_RHO_PARITY_READ_DISTANCES[slot - 5][iteration]
+            }
+        })),
+        KECCAK_CHI5_PRECOMPILE => Some(core::array::from_fn(|slot| {
+            keccak_chi5_lane_read_distance(iteration, slot)
+        })),
+        _ => None,
+    };
+    if let Some(lane_read_distances) = lane_read_distances {
+        let written = witness.write_timestamp + DELEGATION_EXECUTION_OFFSET;
+        let read_timestamp = |distance: usize| {
+            TimestampData::from_scalar(written - TIMESTAMP_STEP * distance as TimestampScalar)
+        };
+        for access in &mut witness.reg_accesses {
+            access.timestamp = read_timestamp(KECCAK_F1600_REGISTER_READ_DISTANCE);
+        }
+        for (words, distance) in witness
+            .indirect_writes
+            .chunks_exact_mut(2)
+            .zip(lane_read_distances)
+        {
+            for word in words {
+                word.timestamp = read_timestamp(distance);
+            }
+        }
+    }
+    witness
+}
+
+fn invoked_at<
+    const REG_ACCESSES: usize,
+    const INDIRECT_READS: usize,
+    const INDIRECT_WRITES: usize,
+    const VARIABLE_OFFSETS: usize,
+>(
+    mut witness: riscv_transpiler::witness::DelegationWitness<
+        REG_ACCESSES,
+        INDIRECT_READS,
+        INDIRECT_WRITES,
+        VARIABLE_OFFSETS,
+    >,
+    cycle: TimestampScalar,
+) -> riscv_transpiler::witness::DelegationWitness<
+    REG_ACCESSES,
+    INDIRECT_READS,
+    INDIRECT_WRITES,
+    VARIABLE_OFFSETS,
+> {
+    witness.write_timestamp = cycle | DELEGATION_INVOCATION_OFFSET;
     witness
 }
 
@@ -98,22 +167,28 @@ fn build_tracing_data(circuit: CircuitType, rows: usize) -> CudaResult<Option<Tr
         CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => delegation(
             DelegationCircuitType::BigIntWithControl,
             rows,
-            BigintDelegationWitness::empty(),
+            invoked_at(BigintDelegationWitness::empty(), INITIAL_TIMESTAMP),
         ),
         CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression) => delegation(
             DelegationCircuitType::Blake2WithCompression,
             rows,
-            Blake2sRoundFunctionDelegationWitness::empty(),
+            invoked_at(
+                Blake2sRoundFunctionDelegationWitness::empty(),
+                INITIAL_TIMESTAMP,
+            ),
         ),
         CircuitType::Delegation(DelegationCircuitType::Blake2GFunction) => delegation(
             DelegationCircuitType::Blake2GFunction,
             rows,
-            Blake2sGFunctionDelegationWitness::empty(),
+            invoked_at(
+                Blake2sGFunctionDelegationWitness::empty(),
+                INITIAL_TIMESTAMP,
+            ),
         ),
         CircuitType::Delegation(DelegationCircuitType::KeccakSpecial5) => delegation(
             DelegationCircuitType::KeccakSpecial5,
             rows,
-            KeccakSpecial5DelegationWitness::empty(),
+            invoked_at(KeccakSpecial5DelegationWitness::empty(), INITIAL_TIMESTAMP),
         ),
         CircuitType::Delegation(DelegationCircuitType::KeccakColumnParity) => delegation(
             DelegationCircuitType::KeccakColumnParity,

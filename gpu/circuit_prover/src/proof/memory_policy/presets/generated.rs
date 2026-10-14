@@ -25,7 +25,8 @@ pub(crate) const fn policy(circuit: CircuitType, arena_bytes: usize) -> ProofMem
                     opening: WitnessOpeningStrategy::ReuseCosets,
                 },
             },
-            CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => ProofMemoryPolicy {
+            CircuitType::Delegation(DelegationCircuitType::KeccakThetaRho)
+            | CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => ProofMemoryPolicy {
                 gkr: GkrMemoryPolicy::Materialize,
                 setup: OpeningStrategy::AllCosets,
                 memory: OpeningStrategy::AllCosets,
@@ -129,25 +130,13 @@ pub(crate) const fn policy(circuit: CircuitType, arena_bytes: usize) -> ProofMem
                     opening: WitnessOpeningStrategy::ReuseCosets,
                 },
             },
-            CircuitType::Delegation(DelegationCircuitType::KeccakThetaRho) => ProofMemoryPolicy {
-                gkr: GkrMemoryPolicy::Recompute {
-                    value_layers: 1,
-                    cache_layers: 3,
-                },
-                setup: OpeningStrategy::AllCosets,
-                memory: OpeningStrategy::AllCosets,
-                witness: WitnessMemoryPolicy {
-                    commitment: WitnessCommitmentStrategy::AllCosets,
-                    post_commitment: WitnessPostCommitStorage::RawEvaluations,
-                    opening: WitnessOpeningStrategy::Recompute(OpeningStrategy::AllCosets),
-                },
-            },
         },
         32212254720 => match circuit {
             CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression)
             | CircuitType::Delegation(DelegationCircuitType::Blake2GFunction)
             | CircuitType::Delegation(DelegationCircuitType::KeccakSpecial5)
             | CircuitType::Delegation(DelegationCircuitType::KeccakColumnParity)
+            | CircuitType::Delegation(DelegationCircuitType::KeccakThetaRho)
             | CircuitType::Delegation(DelegationCircuitType::KeccakChi5)
             | CircuitType::Unrolled(UnrolledCircuitType::Memory(
                 UnrolledMemoryCircuitType::LoadStoreSubwordOnly,
@@ -185,19 +174,6 @@ pub(crate) const fn policy(circuit: CircuitType, arena_bytes: usize) -> ProofMem
                     commitment: WitnessCommitmentStrategy::AllCosets,
                     post_commitment: WitnessPostCommitStorage::RawEvaluations,
                     opening: WitnessOpeningStrategy::Recompute(OpeningStrategy::AllCosets),
-                },
-            },
-            CircuitType::Delegation(DelegationCircuitType::KeccakThetaRho) => ProofMemoryPolicy {
-                gkr: GkrMemoryPolicy::Recompute {
-                    value_layers: 0,
-                    cache_layers: 1,
-                },
-                setup: OpeningStrategy::AllCosets,
-                memory: OpeningStrategy::AllCosets,
-                witness: WitnessMemoryPolicy {
-                    commitment: WitnessCommitmentStrategy::AllCosets,
-                    post_commitment: WitnessPostCommitStorage::RawAndCosets,
-                    opening: WitnessOpeningStrategy::ReuseCosets,
                 },
             },
             CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => {

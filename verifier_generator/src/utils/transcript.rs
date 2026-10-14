@@ -66,6 +66,16 @@ pub fn generate_transcript_helpers<MW: FieldWrapper>() -> TokenStream {
             ext_from_raw_words::<#field_struct, #quartic_struct, EXT_DEGREE>(raw)
         }
 
+        /// Variant of [`draw_single_field_el`] that first moves past the digest the preceding
+        /// raw draw emitted. Matches the prover's `draw_fresh_random_field_els`.
+        #[inline(always)]
+        pub fn draw_fresh_single_field_el(
+            ts: &mut TranscriptState,
+        ) -> #quartic_struct {
+            ts.advance();
+            draw_single_field_el(ts)
+        }
+
         /// Variant of [`draw_field_els_into`] used immediately after a `read_and_verify_pow`:
         /// the first drawn word was consumed by the PoW, so we draw one extra word and skip it.
         /// The drawn word count matches the prover's `draw_random_field_els_with_pow` exactly.

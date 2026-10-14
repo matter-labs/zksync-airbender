@@ -69,7 +69,8 @@ use crate::gkr::prover::backend::TwiddleSetOps;
 use crate::gkr::prover::gkr_backend::BatchedBaseColumn;
 use crate::gkr::prover::stages::commitment_utils::ColumnMajorCosetBoundTracePart;
 use crate::gkr::prover::transcript_utils::{
-    add_whir_commitment_to_transcript, commit_field_els, draw_query_bits, draw_random_field_els,
+    add_whir_commitment_to_transcript, commit_field_els, draw_fresh_random_field_els,
+    draw_query_bits, draw_random_field_els,
 };
 use crate::gkr::prover::WhirSchedule;
 use crate::gkr::sumcheck::access_and_fold::GKRStorage;
@@ -1574,7 +1575,7 @@ pub fn whir_fold<
 
         // and delinearization challenge
         let delinearization_challenges: Vec<E> =
-            draw_random_field_els::<F, E, TR>(&mut transcript_seed, 1);
+            draw_fresh_random_field_els::<F, E, TR>(&mut transcript_seed, 1);
         let delinearization_challenge = delinearization_challenges[0];
         delinearization_challenges_per_round.push(delinearization_challenge);
 
@@ -1957,7 +1958,7 @@ pub fn whir_fold<
 
         // and delinearization challenge
         let delinearization_challenges: Vec<E> =
-            draw_random_field_els::<F, E, TR>(&mut transcript_seed, 1);
+            draw_fresh_random_field_els::<F, E, TR>(&mut transcript_seed, 1);
         let delinearization_challenge = delinearization_challenges[0];
         delinearization_challenges_per_round.push(delinearization_challenge);
 

@@ -13,9 +13,10 @@
     clippy::large_const_arrays
 )]
 use super::common::{
-    compute_tree_index, draw_single_field_el, eval_multilinear_with_monomial_tensor,
-    fold_whir_accumulator, materialize_gamma_powers, precompute_monomial_tensor,
-    process_oracle_query, push_whir_pow_entry, read_reduced_field_el, verify_whir_sumcheck_step,
+    compute_tree_index, draw_fresh_single_field_el, draw_single_field_el,
+    eval_multilinear_with_monomial_tensor, fold_whir_accumulator, materialize_gamma_powers,
+    precompute_monomial_tensor, process_oracle_query, push_whir_pow_entry, read_reduced_field_el,
+    verify_whir_sumcheck_step,
 };
 use super::constants::*;
 use core::mem::MaybeUninit;
@@ -106,7 +107,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
             INITIAL_QUERY_INDEX_BITS,
             INITIAL_DRAW_WORDS,
         );
-        let delinearization_challenge = draw_single_field_el(ts);
+        let delinearization_challenge = draw_fresh_single_field_el(ts);
         push_whir_pow_entry(accumulator, ood_point, delinearization_challenge);
         let mut claim_correction = ood_value;
         field_ops::mul_assign(&mut claim_correction, &delinearization_challenge);
@@ -272,7 +273,7 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: Err
             query_index_bits,
             draw_words,
         );
-        let delinearization_challenge = draw_single_field_el(ts);
+        let delinearization_challenge = draw_fresh_single_field_el(ts);
         push_whir_pow_entry(accumulator, ood_point, delinearization_challenge);
         let mut claim_correction = ood_value;
         field_ops::mul_assign(&mut claim_correction, &delinearization_challenge);
