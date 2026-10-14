@@ -1,5 +1,7 @@
 # Airbender proof system
 
+![System claim and its premises](diagrams/00-system-claim_style-digitakt-pixel-console.svg)
+
 > State what the complete system proves, show how that claim decomposes across
 > chunks, explain one chunk, then descend into GKR/WHIR, recursion, and
 > soundness.
@@ -249,6 +251,8 @@ argument values are combined into one accepted program-proof statement._
 
 ## 3. Cross-chunk consistency
 
+![Induction over machine execution](diagrams/03-execution-induction_style-digitakt-pixel-console.svg)
+
 ### State as read and write events
 
 _Describe the alternative view of machine execution as read-side and write-side
@@ -367,9 +371,28 @@ decoder or setup data is constructed and authenticated._
 _State the local relation for instruction, precompile, and initialization/teardown
 chunks, including active rows, padding, and the argument contributions they produce._
 
-- <mark>A <strong>Chunk Relation</strong> requires every row to satisfy its circuit's local constraints and lookup relations. For active instruction rows these describe the selected machine operation; for precompile rows, the delegated computation; and for initialization/teardown rows, the prescribed memory boundaries. The chunk also proves that its argument outputs are computed from those same rows.</mark>
+- A **Chunk Relation** describes what must hold for a fixed circuit family, trace capacity and setup. Each "active" instruction row establishes the selected operation on its claimed input values and produces the corresponding memory accesses. The global memory argument of Section 3 establishes those inputs’ consistency with the execution. The chunk must also satisfy its local lookup obligations and compute its argument contributions from those same rows.
 
-- <mark>The <strong>Chunk Interface</strong> consists of a circuit family and fixed trace capacity, its setup tables, the Prover's witness and commitments, and the external memory challenges. The witness includes auxiliary values such as carries and lookup multiplicities. Lookup challenges are derived within the chunk proof. The resulting proof authenticates the local argument outputs; setup identity and global memory closure are checked by the full-statement Verifier.</mark>
+<u>then come the various chunk components (ins -> outs)</u>
+
+- **Chunk Inputs**
+  - fixed setup
+  - witness trace values (and auxiliary?)
+  - fixed constraint expressions
+  - global memory assumptions from section 3 such as global dependency (incl trace position != execution time)
+
+- **Chunk Operation**
+  - execute/padding
+  - decoder binds pc
+  - semantic definition of row expansion timeline: decoding → claimed operands → arithmetic equations and ranges → register and PC events
+  - > How the row constructs its accesses: addresses, values, timestamps, read-only versus updated values, alignment and register aliasing. Explain what is enforced locally and what Section 3 supplies.
+
+- **Chunk Link**
+  - how chunks break down the program
+  - how chunks experience initialisation and breakdown, especially in context of unified chunks
+
+- **Chunk Outputs**
+  - finally, what leaves the chunk and feeds into Section 5 for GKR/WHIR
 
 ### Instruction fetch and decoder lookup
 
@@ -382,6 +405,8 @@ exactly one local operation relation._
   |---|---|---|---|---|---|---|---|---|
   | input pc[15:0] | input pc[31:16] | first register index | second register index | destination register index | immediate[15:0] | immediate[31:16] | family-specific | opcode-family bitmask |
 
+  - expand this greatly and move it above, as it is foundational for the chunks
+
 ### Active-cycle transition
 
 _Describe how a row reads the current PC, timestamp, registers, and memory; applies
@@ -392,6 +417,7 @@ the selected instruction; and produces the next state._
 - <mark><strong>Padding Witnesses</strong> must still satisfy the circuit equations, fixed-table queries, and range checks that are not gated by execute. The decoder lookup has coefficient execute, so inactive rows need not decode a program instruction. Their memory factors are 1 + execute × (encoded_tuple − 1), hence equal 1 on both sides when execute = 0. Padding therefore adds no execution events without making the rest of the witness unconstrained.</mark>
 
 - <mark>An <strong>ADD Row</strong> with nonzero destination authenticates its PC and register indices through the decoder lookup, and claims the operand values x and y through ordered register accesses. For result z, the limb equations are x_lo + y_lo = z_lo + 2^16 × c0 and x_hi + y_hi + c0 = z_hi + 2^16 × c1, with boolean carries and 16-bit result limbs. The row contributes the PC update, value-preserving source accesses, and destination update to the memory argument. Local constraints establish z = (x + y) mod 2^32; global closure establishes the claimed input values, including when register indices coincide.</mark>
+  - overkill and needs to be deleted
 
 ### Local register and memory accesses
 
@@ -411,6 +437,8 @@ _Describe decoder membership, fixed semantic tables, limb range checks, timestam
 range checks, and how their local claims are closed._
 
 - **LogUp** is our preferred lookup argument, instantiated according to **Improving logarithmic derivative lookups using GKR**(https://eprint.iacr.org/2023/1284). We encode three separate Lookup arguments, which we keep separate at a minor extra cost for the Verifier and as a precautionary step to avoid overflowing the Field size limit for the number of proven lookups (which is otherwise inferior to the total number of cycles that an Airbender machine can prove). Our three arguments are: range checks for 16-bit word limbs, range checks for 19-bit timestamp limbs, and generic 10-column lookups; the generic lookups are further distinguished by a `table_id` field, which is nearly always a constant in our circuits.
+  - > For each lookup, say what is queried and why membership is needed. Connect bounded limbs, Boolean carries and field equations to their intended integer meaning. Explain chunk-wide lookup completion.
+  - foundational to chunk semantics. can specially differentiate on what the different arguments are for, in the context of chunk timeline
 
   | 16-bit range-check |
   |---|
@@ -438,8 +466,10 @@ _Summarize the circuit families and only the nonstandard instruction behavior or
 family-specific invariants that must be known at this level._
 
 - **Quadratic Constraints and Expressions** are the bread and butter of our circuits: every single instruction is mapped to a set of quadratic constraints which are either proven equal to zero (STARK AIR-style), or quadratic expressions which end up as outputs for each circuit row: memory or lookup tuples which must be validated by the Verifier at the end of the chunk's proof.
+  - expand this greatly and move near the decoder lookup because it is foundational to chunk description
 
 - **Variables** are the unit of witness data input as encoed by circuits. Each variable corresponds to either a *base layer* input variable, ie a raw source of witness data for the Prover to prove, or as a derivate variable that is linked by quadratic constraints and expressions to other variables (sequentially leading back to base layer inputs).
+- expand this greatly and move near the decoder lookup before constraints because it is foundational to chunk description
 
 ### Precompile fulfillment circuits
 
@@ -457,6 +487,8 @@ _List the claims and values handed from one verified chunk to the full-statement
 verifier._
 
 ## 5. Proving one chunk and recursion
+
+![Induction through GKR layers and recursive verification](diagrams/05-proof-and-recursion-induction_style-digitakt-pixel-console.svg)
 
 ### Arithmetization and committed polynomials
 
@@ -602,6 +634,7 @@ _Then comes the Verifier PCS Schedule Section_
 - **LDE-Ratio (STIR) Soundness Gain**
 
 - **PCS-Query Soundness Gain**
+  - try ethproofs Soundness calculator
 
 - **List-decoding (Johnson to Conjecture) Soundness Loss**
   - recent conjectures
