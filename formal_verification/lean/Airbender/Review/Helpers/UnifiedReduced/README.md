@@ -32,8 +32,11 @@ binds current-state fetch.
 [Windows](Windows.lean), [WindowProjection](WindowProjection.lean) and
 [WindowSchedule](WindowSchedule.lean) describe native-clock cuts and selected regions.
 [ControlPreparation](ControlPreparation.lean) names the public preparation registry.
-It accepts either one uniform literal or different ADDI-from-x0/LUI literals along
-a straight path with callers. Native PC/clock matching identifies the public
+It accepts one uniform literal, different ADDI-from-x0/LUI literals, or ordinary
+ADD/SUB/ADDI/LUI/AUIPC instructions along a straight path with callers.
+[`ArithmeticProgram`](ControlPreparation.lean) restricts public instruction forms,
+without assuming operands, reads or results. The final preparation instruction
+must still be the specified public literal. Native PC/clock matching identifies the public
 instruction at each preparation cut, without a selected-row or control-read premise.
 Only its final cycle is worker-free; earlier worker effects remain in the same
 history. The original extended-round first-span scope retains an empty worker prefix.
@@ -48,6 +51,10 @@ and joint prefix/window matching.
 check actual x12 values 65537→128→0 with reversed row order, retained write clocks,
 one connected history across both preparation cuts, and rejection of a wrong
 literal or fabricated second read.
+The [arithmetic preparation regression](../../../../Tests/ControlPreparation.lean)
+uses an aliased ADD before ADDI-from-x0, with reversed native rows. One continuous
+history derives actual x12 values 65537→131074→0, retaining write clocks six/ten;
+a fabricated preparation read is rejected by joint matching.
 The [native window chain](../../Trace/UnifiedReduced/MixedWindows.lean) also executes
 two windows and their gap continuously from those retained boundaries. Complete
 [prepared G/Keccak chains](../../Trace/UnifiedReduced/PreparedHashWindows.lean) use
