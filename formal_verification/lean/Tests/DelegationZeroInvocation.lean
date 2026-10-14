@@ -944,4 +944,24 @@ theorem prepared_native_cycle_states :
   exact ⟨events, after, permutation, history, unissued native (List.mem_singleton_self _) (by decide +kernel),
     cycles preparationRow (List.mem_singleton_self _)⟩
 
+theorem computed_hash_source_retains_unissued_worker :
+    UnifiedReduced.Caller.HashControlPreparation preparationData [preparationEntry] 8 (.blakeG false) := by
+  apply UnifiedReduced.Caller.HashControlPreparation.literal
+  refine ⟨.uniform ?_, ?_, by decide +kernel, by decide +kernel⟩
+  · intro entry member
+    have same : entry = preparationEntry := List.mem_singleton.mp member
+    subst entry
+    rfl
+  · have time : native.writeTime = 2 := by decide +kernel
+    change ([native].filter fun worker => decide (4 < worker.writeTime ∧ worker.writeTime ≤ 8)) = []
+    simp [time]
+
+theorem computed_hash_preparation_retains_unissued_effect :
+    preparationData.workers.prefixRows 8 = [native] ∧
+      UnifiedReduced.Caller.PreparedBoundaryExecution preparationData preparationBefore preparationCells 8 12
+        (UnifiedReduced.Caller.hashPreparation (.blakeG false)) := by
+  refine ⟨control_preparation_after_unissued_worker.1, ?_⟩
+  exact UnifiedReduced.Caller.hash_control_preparation_soundness (by decide +kernel) (by decide +kernel)
+    (by decide +kernel) preparationAccepted preparationInputs computed_hash_source_retains_unissued_worker (by decide)
+
 end Tests.DelegationZeroInvocation
