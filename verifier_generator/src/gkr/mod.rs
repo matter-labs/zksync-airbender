@@ -90,15 +90,14 @@ pub fn generate_gkr_common<MW: FieldWrapper>() -> TokenStream {
     let add_p1_c3 = MW::add_assign(quote! { p1 }, quote! { coeffs[3] });
     let add_sum_p1 = MW::add_assign(quote! { sum }, quote! { p1 });
     let mul_sum_eq = MW::mul_assign(quote! { sum }, quote! { eq_prefactor });
-    let mul_res_rk = MW::mul_assign(quote! { result }, quote! { r_k });
-    let add_res_c2 = MW::add_assign(quote! { result }, quote! { coeffs[2] });
-    let add_res_c1 = MW::add_assign(quote! { result }, quote! { coeffs[1] });
-    let add_res_c0 = MW::add_assign(quote! { result }, quote! { coeffs[0] });
-    let sub_omr_rk = MW::sub_assign(quote! { one_minus_r }, quote! { r_k });
-    let sub_omp_p = MW::sub_assign(quote! { one_minus_p }, quote! { p });
-    let mul_t_omp = MW::mul_assign(quote! { t }, quote! { one_minus_p });
-    let mul_rp_p = MW::mul_assign(quote! { rp }, quote! { p });
-    let add_t_rp = MW::add_assign(quote! { t }, quote! { rp });
+    let horner_c2 = MW::add_assign_product(quote! { h2 }, quote! { coeffs[3] }, quote! { r_k });
+    let horner_c1 = MW::add_assign_product(quote! { h1 }, quote! { h2 }, quote! { r_k });
+    let horner_c0 = MW::add_assign_product(quote! { h0 }, quote! { h1 }, quote! { r_k });
+    let mul_t_p = MW::mul_assign(quote! { t }, quote! { p });
+    let double_t = MW::double(quote! { t });
+    let sub_t_rk = MW::sub_assign(quote! { t }, quote! { r_k });
+    let sub_t_p = MW::sub_assign(quote! { t }, quote! { p });
+    let add_t_one = MW::add_assign_base(quote! { t }, MW::field_one());
 
     // final step check operations
     let mul_rhs_eq = MW::mul_assign(quote! { rhs }, quote! { final_eq_prefactor });
@@ -123,8 +122,6 @@ pub fn generate_gkr_common<MW: FieldWrapper>() -> TokenStream {
             let coeff_data_words = SUMCHECK_POLY_COEFFS * EXT_DEGREE;
 
             let mut commit_buf = CommitBuf::<COMMIT_BUF>::new();
-            let mut draw_buf = LazyVec::<u32, BLAKE2S_DIGEST_SIZE_U32_WORDS>::new();
-            unsafe { draw_buf.set_len(BLAKE2S_DIGEST_SIZE_U32_WORDS); }
 
             for round in 0..NUM_ROUNDS {
                 {
@@ -135,54 +132,52 @@ pub fn generate_gkr_common<MW: FieldWrapper>() -> TokenStream {
                     }
                 }
 
-                // Copy coefficients out before committing (commit borrows &mut self).
-                let coeffs: [#quartic_struct; 4] = unsafe {
-                    *commit_buf.data_as::<[#quartic_struct; 4]>(1).as_ptr()
-                };
+                {
+                    let coeffs: [#quartic_struct; 4] = unsafe {
+                        *commit_buf.data_as::<[#quartic_struct; 4]>(1).as_ptr()
+                    };
+                    let p0 = coeffs[0];
+                    let mut p1 = coeffs[0];
+                    #add_p1_c1;
+                    #add_p1_c2;
+                    #add_p1_c3;
 
-                let p0 = coeffs[0];
-                let mut p1 = coeffs[0];
-                #add_p1_c1;
-                #add_p1_c2;
-                #add_p1_c3;
+                    let mut sum = p0;
+                    #add_sum_p1;
+                    #mul_sum_eq;
 
-                let mut sum = p0;
-                #add_sum_p1;
-                #mul_sum_eq;
-
-                if sum != claim {
-                    return Err(E::gkr_sumcheck_round_failed(layer_idx, round));
+                    if sum != claim {
+                        return Err(E::gkr_sumcheck_round_failed(layer_idx, round));
+                    }
                 }
 
                 ts.commit(&mut commit_buf, coeff_data_words);
 
-                ts.draw_raw(draw_buf.as_mut_slice());
+                let coeffs: [#quartic_struct; 4] = unsafe {
+                    *commit_buf.data_as::<[#quartic_struct; 4]>(1).as_ptr()
+                };
                 let r_k = {
-                    let raw = unsafe { (draw_buf.as_slice().as_ptr() as *const [u32; EXT_DEGREE]).as_ref_unchecked() };
+                    let raw = unsafe { (ts.draw_digest().as_ptr() as *const [u32; EXT_DEGREE]).as_ref_unchecked() };
                     ext_from_raw_words::<#field_struct, #quartic_struct, EXT_DEGREE>(raw)
                 };
 
                 {
-                    let mut result = coeffs[3];
-                    #mul_res_rk;
-                    #add_res_c2;
-                    #mul_res_rk;
-                    #add_res_c1;
-                    #mul_res_rk;
-                    #add_res_c0;
-                    claim = result;
+                    let mut h2 = coeffs[2];
+                    #horner_c2;
+                    let mut h1 = coeffs[1];
+                    #horner_c1;
+                    let mut h0 = coeffs[0];
+                    #horner_c0;
+                    claim = h0;
                 }
                 {
                     let p = unsafe { *challenges.get_unchecked(round) };
-                    let mut one_minus_r = #quartic_one;
-                    #sub_omr_rk;
-                    let mut one_minus_p = #quartic_one;
-                    #sub_omp_p;
-                    let mut t = one_minus_r;
-                    #mul_t_omp;
-                    let mut rp = r_k;
-                    #mul_rp_p;
-                    #add_t_rp;
+                    let mut t = r_k;
+                    #mul_t_p;
+                    #double_t;
+                    #sub_t_rk;
+                    #sub_t_p;
+                    #add_t_one;
                     eq_prefactor = t;
                 }
 
@@ -237,13 +232,10 @@ pub fn generate_gkr_common<MW: FieldWrapper>() -> TokenStream {
     let eval_helpers = standard_layer::generate_eval_helpers::<MW>();
 
     let quartic_zero = MW::quartic_zero();
-    let cc_mul_batch = MW::mul_assign(quote! { current_batch }, quote! { batch_base });
-    let cc_mul_t = MW::mul_assign(quote! { t }, quote! { claim });
-    let cc_add_combined = MW::add_assign(quote! { combined }, quote! { t });
-    let cc_mul_t0 = MW::mul_assign(quote! { t0 }, quote! { c0 });
-    let cc_mul_t1 = MW::mul_assign(quote! { t1 }, quote! { c1 });
-    let cc_add_t0 = MW::add_assign(quote! { combined }, quote! { t0 });
-    let cc_add_t1 = MW::add_assign(quote! { combined }, quote! { t1 });
+    let cc_mul_combined = MW::mul_assign(quote! { combined }, quote! { batch_base });
+    let cc_step = standard_layer::horner_steps::<MW>(quote! { combined }, &[quote! { claim }]);
+    let cc_step_pair =
+        standard_layer::horner_steps::<MW>(quote! { combined }, &[quote! { c0 }, quote! { c1 }]);
 
     let compute_claim = quote! {
         #[inline(always)]
@@ -254,31 +246,20 @@ pub fn generate_gkr_common<MW: FieldWrapper>() -> TokenStream {
             batch_base: #quartic_struct,
         ) -> #quartic_struct {
             let mut combined = #quartic_zero;
-            let mut current_batch = #quartic_one;
-            let mut i = 0;
-            while i < N {
+            let mut i = N;
+            while i > 0 {
+                i -= 1;
                 let (n, o0, o1) = unsafe { *descs.get_unchecked(i) };
                 if n == 0 {
-                    #cc_mul_batch;
+                    #cc_mul_combined;
                 } else if n == 1 {
                     let claim = *output_claims.get_unchecked(o0);
-                    let mut t = current_batch;
-                    #cc_mul_t;
-                    #cc_add_combined;
-                    #cc_mul_batch;
+                    #cc_step
                 } else {
                     let c0 = *output_claims.get_unchecked(o0);
-                    let mut t0 = current_batch;
-                    #cc_mul_t0;
-                    #cc_add_t0;
-                    #cc_mul_batch;
                     let c1 = *output_claims.get_unchecked(o1);
-                    let mut t1 = current_batch;
-                    #cc_mul_t1;
-                    #cc_add_t1;
-                    #cc_mul_batch;
+                    #cc_step_pair
                 }
-                i += 1;
             }
             combined
         }

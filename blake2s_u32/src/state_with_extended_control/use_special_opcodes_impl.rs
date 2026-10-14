@@ -622,8 +622,76 @@ core::arch::global_asm!(
     tri_add = const MOP_TRI_ADD,
 );
 
+#[inline(always)]
+unsafe fn compress_block_reduced_rounds(
+    chaining_value: &mut [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS],
+    block: *const u32,
+    t: u32,
+    last_round: bool,
+) {
+    #[cfg(feature = "verifier_stats")]
+    common_constants::stats::GKR_VERIFY_STATS.with_borrow_mut(|s| s.blake2s_hashes += 1);
+
+    core::arch::asm!(
+        "call blake2s_u32_reduced_rounds_block",
+        in("a0") block,
+        in("a1") chaining_value.as_mut_ptr(),
+        in("a2") t,
+        in("a3") 0xffffffff * last_round as u32,
+        out("s2") _,
+        out("s3") _,
+        out("s4") _,
+        out("s5") _,
+        out("s6") _,
+        out("s7") _,
+        out("s8") _,
+        out("s9") _,
+        out("s10") _,
+        out("s11") _,
+        clobber_abi("C"),
+    );
+}
+
 impl Blake2RoundFunctionEvaluator {
     pub const SUPPORT_SPEC_SINGLE_ROUND: bool = false;
+
+    pub const SUPPORT_EXTERNAL_CHAINING_VALUE: bool = true;
+
+    /// Same as `run_round_function_with_input`, but the chaining value is `chaining_value`
+    /// instead of `self.state`, which is left untouched. `self.t` counts as usual.
+    ///
+    /// # Safety
+    ///
+    /// Same as `run_round_function_with_input`.
+    #[inline(always)]
+    pub unsafe fn run_round_function_with_input_and_chaining_value<const REDUCED_ROUNDS: bool>(
+        &mut self,
+        chaining_value: &mut [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS],
+        input_buffer: &AlignedArray64<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>,
+        input_size_words: usize,
+        last_round: bool,
+    ) {
+        self.t += (input_size_words * core::mem::size_of::<u32>()) as u32;
+        if REDUCED_ROUNDS {
+            compress_block_reduced_rounds(
+                chaining_value,
+                input_buffer.as_ptr(),
+                self.t,
+                last_round,
+            );
+        } else {
+            let extended_state = spec_round_function_full_rounds(
+                chaining_value,
+                self.t,
+                0xffffffff * last_round as u32,
+                input_buffer,
+            );
+            for i in 0..8 {
+                chaining_value[i] ^= extended_state[i];
+                chaining_value[i] ^= extended_state[i + 8];
+            }
+        }
+    }
 
     /// # Safety
     ///
@@ -696,7 +764,12 @@ impl Blake2RoundFunctionEvaluator {
     ) {
         if REDUCED_ROUNDS {
             self.t += input_size_bytes as u32;
-            self.compress_block_reduced_rounds(input_buffer.as_ptr(), last_round);
+            compress_block_reduced_rounds(
+                &mut self.state,
+                input_buffer.as_ptr(),
+                self.t,
+                last_round,
+            );
         } else {
             self.run_round_function_with_input_and_byte_len_full_rounds(
                 input_buffer,
@@ -704,31 +777,6 @@ impl Blake2RoundFunctionEvaluator {
                 last_round,
             );
         }
-    }
-
-    #[inline(always)]
-    unsafe fn compress_block_reduced_rounds(&mut self, block: *const u32, last_round: bool) {
-        #[cfg(feature = "verifier_stats")]
-        common_constants::stats::GKR_VERIFY_STATS.with_borrow_mut(|s| s.blake2s_hashes += 1);
-
-        core::arch::asm!(
-            "call blake2s_u32_reduced_rounds_block",
-            in("a0") block,
-            in("a1") self.state.as_mut_ptr(),
-            in("a2") self.t,
-            in("a3") 0xffffffff * last_round as u32,
-            out("s2") _,
-            out("s3") _,
-            out("s4") _,
-            out("s5") _,
-            out("s6") _,
-            out("s7") _,
-            out("s8") _,
-            out("s9") _,
-            out("s10") _,
-            out("s11") _,
-            clobber_abi("C"),
-        );
     }
 
     #[inline]
@@ -785,7 +833,7 @@ impl Blake2RoundFunctionEvaluator {
         if REDUCED_ROUNDS {
             self.t += input_size_bytes as u32;
             let block = self.input_buffer.as_ptr();
-            self.compress_block_reduced_rounds(block, last_round);
+            compress_block_reduced_rounds(&mut self.state, block, self.t, last_round);
         } else {
             self.run_round_function_with_byte_len_full_rounds(input_size_bytes, last_round);
         }

@@ -9,83 +9,16 @@ use super::GKROutputGroupInfo;
 pub fn generate_dim_reducing_compute_claim<MW: FieldWrapper>(
     output_groups: &[GKROutputGroupInfo],
 ) -> TokenStream {
-    let quartic_one = MW::quartic_one();
-
-    let mut body = quote! {
-        let mut current_batch = #quartic_one;
-    };
-
-    let mul_batch = MW::mul_assign(quote! { current_batch }, quote! { batch_base });
-    let mut out_idx = 0usize;
-    let mut first_contributing = true;
-
-    for group in output_groups {
-        match group.output_type {
-            OutputType::PermutationProduct | OutputType::InitsAndTeardownsProduct => {
-                for _ in 0..group.num_addresses {
-                    let idx = out_idx;
-                    out_idx += 1;
-                    let mul_t = MW::mul_assign(quote! { t }, quote! { claim });
-                    if first_contributing {
-                        first_contributing = false;
-                        body.extend(quote! {
-                            let combined = {
-                                let bc = current_batch;
-                                #mul_batch;
-                                let claim = *output_claims.get_unchecked(#idx);
-                                let mut t = bc;
-                                #mul_t;
-                                t
-                            };
-                            let mut combined = combined;
-                        });
-                    } else {
-                        let add_combined = MW::add_assign(quote! { combined }, quote! { t });
-                        body.extend(quote! {
-                            {
-                                let bc = current_batch;
-                                #mul_batch;
-                                let claim = *output_claims.get_unchecked(#idx);
-                                let mut t = bc;
-                                #mul_t;
-                                #add_combined;
-                            }
-                        });
-                    }
-                }
-            }
-            OutputType::Lookup16Bits | OutputType::LookupTimestamps | OutputType::GenericLookup => {
-                assert!(
-                    !first_contributing,
-                    "lookup group cannot be first contributing gate"
-                );
-                let idx0 = out_idx;
-                let idx1 = out_idx + 1;
-                out_idx += 2;
-                let mul_t = MW::mul_assign(quote! { t }, quote! { claim });
-                let add_combined = MW::add_assign(quote! { combined }, quote! { t });
-                body.extend(quote! {
-                    {
-                        let bc0 = current_batch;
-                        #mul_batch;
-                        let bc1 = current_batch;
-                        #mul_batch;
-                        for (bc, idx) in [(bc0, #idx0), (bc1, #idx1)] {
-                            let claim = *output_claims.get_unchecked(idx);
-                            let mut t = bc;
-                            #mul_t;
-                            #add_combined;
-                        }
-                    }
-                });
-            }
-        }
-    }
-
-    body.extend(quote! { combined });
+    // Output claims are batched in output order: claim `k` carries `batch_base^k`.
+    let total_output_polys: usize = output_groups.iter().map(|g| g.num_addresses).sum();
+    assert!(total_output_polys > 0);
+    let last = total_output_polys - 1;
+    let claims: Vec<TokenStream> = (0..last)
+        .map(|idx| quote! { *output_claims.get_unchecked(#idx) })
+        .collect();
+    let steps = super::standard_layer::horner_steps::<MW>(quote! { combined }, &claims);
 
     let quartic_struct = MW::quartic_struct();
-    let total_output_polys: usize = output_groups.iter().map(|g| g.num_addresses).sum();
     quote! {
         #[inline(always)]
         #[allow(unused_unsafe)]
@@ -93,7 +26,9 @@ pub fn generate_dim_reducing_compute_claim<MW: FieldWrapper>(
             output_claims: &[#quartic_struct; #total_output_polys],
             batch_base: #quartic_struct,
         ) -> #quartic_struct {
-            #body
+            let mut combined = *output_claims.get_unchecked(#last);
+            #steps
+            combined
         }
     }
 }
@@ -102,43 +37,33 @@ pub fn generate_dim_reducing_final_step_accumulator<MW: FieldWrapper>(
     output_groups: &[GKROutputGroupInfo],
 ) -> TokenStream {
     let quartic_zero = MW::quartic_zero();
-    let quartic_one = MW::quartic_one();
     let quartic_struct = MW::quartic_struct();
-    let mul_batch = MW::mul_assign(quote! { current_batch }, quote! { batch_base });
 
     // New last-round form: the last output coordinate is already fixed by the univariate
     // sumcheck round, so `evals` is the `[E;2]` line in the remaining pairwise/LSB coordinate.
     // The kernels are evaluated ONCE over that single LSB pair, producing a single batched
     // value `G(point)` (was two values `[G(0), G(1)]` over the last output coordinate).
-    let mut body = quote! {
-        let mut acc = #quartic_zero;
-        let mut current_batch = #quartic_one;
-        let mut _idx = 0usize;
-    };
+    let mut blocks = Vec::new();
+    let mut idx = 0usize;
 
     for group in output_groups {
         match group.output_type {
             OutputType::PermutationProduct | OutputType::InitsAndTeardownsProduct => {
                 for _ in 0..group.num_addresses {
                     let mul_v01 = MW::mul_assign(quote! { v01 }, quote! { e1 });
-                    let mul_c0 = MW::mul_assign(quote! { c0 }, quote! { v01 });
-                    let add_a0 = MW::add_assign(quote! { acc }, quote! { c0 });
-                    body.extend(quote! {
-                        {
-                            let si = unsafe { *indices.get_unchecked(_idx) };
-                            _idx += 1;
-                            let bc = current_batch;
-                            #mul_batch;
+                    let outs = vec![quote! { v01 }];
+                    blocks.push((
+                        outs,
+                        quote! {
+                            let si = unsafe { *indices.get_unchecked(#idx) };
                             let es = unsafe { evals.get_unchecked(si) };
                             let e0 = unsafe { *es.get_unchecked(0) };
                             let e1 = unsafe { *es.get_unchecked(1) };
                             let mut v01 = e0;
                             #mul_v01;
-                            let mut c0 = bc;
-                            #mul_c0;
-                            #add_a0;
-                        }
-                    });
+                        },
+                    ));
+                    idx += 1;
                 }
             }
             OutputType::Lookup16Bits | OutputType::LookupTimestamps | OutputType::GenericLookup => {
@@ -149,12 +74,15 @@ pub fn generate_dim_reducing_final_step_accumulator<MW: FieldWrapper>(
                 let mul_cb = mul_assign_fn(quote! { cb_tmp }, quote! { v1a });
                 let add_num = add_assign_fn(quote! { num }, quote! { cb_tmp });
                 let mul_den = mul_assign_fn(quote! { den }, quote! { v1b });
-                let mul_c0 = mul_assign_fn(quote! { c0_tmp }, quote! { num });
-                let mul_c1 = mul_assign_fn(quote! { c1_tmp }, quote! { den });
-                let add_a0 = add_assign_fn(quote! { acc }, quote! { c0_tmp });
-                let add_a1 = add_assign_fn(quote! { acc }, quote! { c1_tmp });
-                let lookup_body = quote! {
-                    {
+                let outs = vec![quote! { num }, quote! { den }];
+                let idx1 = idx + 1;
+                blocks.push((
+                    outs,
+                    quote! {
+                        let si0 = unsafe { *indices.get_unchecked(#idx) };
+                        let si1 = unsafe { *indices.get_unchecked(#idx1) };
+                        let v0 = unsafe { evals.get_unchecked(si0) };
+                        let v1 = unsafe { evals.get_unchecked(si1) };
                         let v0a = unsafe { *v0.get_unchecked(0) };
                         let v0b = unsafe { *v0.get_unchecked(1) };
                         let v1a = unsafe { *v1.get_unchecked(0) };
@@ -168,33 +96,29 @@ pub fn generate_dim_reducing_final_step_accumulator<MW: FieldWrapper>(
                         // den = v1a * v1b
                         let mut den = v1a;
                         #mul_den;
-                        let mut c0_tmp = bc0;
-                        #mul_c0;
-                        let mut c1_tmp = bc1;
-                        #mul_c1;
-                        #add_a0;
-                        #add_a1;
-                    }
-                };
-
-                body.extend(quote! {
-                    {
-                        let si0 = unsafe { *indices.get_unchecked(_idx) };
-                        let si1 = unsafe { *indices.get_unchecked(_idx + 1) };
-                        _idx += 2;
-                        let bc0 = current_batch;
-                        #mul_batch;
-                        let bc1 = current_batch;
-                        #mul_batch;
-                        let v0 = unsafe { evals.get_unchecked(si0) };
-                        let v1 = unsafe { evals.get_unchecked(si1) };
-                        #lookup_body
-                    }
-                });
+                    },
+                ));
+                idx += 2;
             }
         }
     }
 
+    let mut body = quote! {
+        let mut acc = #quartic_zero;
+    };
+    for (i, (outs, prefix)) in blocks.into_iter().rev().enumerate() {
+        let steps = if i == 0 {
+            super::standard_layer::horner_steps_from_zero::<MW>(quote! { acc }, &outs)
+        } else {
+            super::standard_layer::horner_steps::<MW>(quote! { acc }, &outs)
+        };
+        body.extend(quote! {
+            {
+                #prefix
+                #steps
+            }
+        });
+    }
     body.extend(quote! { acc });
 
     quote! {
