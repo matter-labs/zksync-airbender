@@ -9,7 +9,9 @@ use execution_prover::{
     BinaryHandle, CommitMemoryResult, CommitmentMode, ExecutionKind, ExecutionProver, MachineType,
     ProofProfile,
 };
-use gpu_execution_prover::{ExecutionProverConfiguration as GpuConfiguration, GpuBackend};
+use gpu_execution_prover::{
+    ExecutionProverConfiguration as GpuConfiguration, GpuBackend, MemoryPreset,
+};
 use prover::definitions::SecurityLevel;
 use riscv_transpiler::jit::JitRunnerRam;
 use riscv_transpiler::vm::FlatResponsesSource;
@@ -92,8 +94,8 @@ fn cpu_prover() -> ExecutionProver<CpuBackend> {
     ExecutionProver::with_configuration(configuration)
 }
 
-fn gpu_prover() -> ExecutionProver<GpuBackend> {
-    let configuration = GpuConfiguration {
+fn gpu_prover(memory_preset: MemoryPreset) -> ExecutionProver<GpuBackend> {
+    let mut configuration = GpuConfiguration {
         ram_config: RAM,
         security_level: SECURITY,
         // `multi_family_smoke` feeds raw non-determinism words (e.g. `0xDEAD_BEEF`) into the
@@ -101,7 +103,16 @@ fn gpu_prover() -> ExecutionProver<GpuBackend> {
         assume_canonical_mop_inputs: false,
         ..Default::default()
     };
+    configuration.backend.memory_preset = memory_preset;
     ExecutionProver::with_configuration(configuration)
+}
+
+/// The W4 feeder gates run at the 30 GiB preset; the other cases keep Auto.
+fn gpu_preset(profile: ProofProfile) -> MemoryPreset {
+    match profile {
+        ProofProfile::L1Feeder => MemoryPreset::GiB30,
+        ProofProfile::Standard | ProofProfile::L1Wrap => MemoryPreset::Auto,
+    }
 }
 
 #[test]
@@ -162,11 +173,9 @@ fn test_cpu_gpu_agree_on_unified_merged_caps_challenges_and_proofs() {
 #[test]
 #[ignore]
 fn l1_feeder_merged_commitment_cpu_parity() {
-    let config = ProofProfile::L1Feeder.prover_config(23, SECURITY);
-    assert_eq!(config.lde_factor, 16);
-    assert_eq!(config.base_oracles_values_per_leaf, 2);
+    let config = ProofProfile::L1Feeder.prover_config(22, SECURITY);
     let (_, cpu_commitment, _, gpu_commitment) = compare_commitments(
-        ExecutionKind::Unified,
+        ExecutionKind::Unified22,
         MachineType::Reduced,
         BASIC_FIBONACCI_WORKLOAD,
         CommitmentMode::MergedMemoryAndWitness,
@@ -189,36 +198,60 @@ fn l1_feeder_merged_commitment_cpu_parity() {
             }
         }
     }
+    // Rejection control: the comparison sees a change in the last cap node.
+    let mut changed = gpu_commitment.circuit_families_memory_caps.clone();
+    let last_node = changed
+        .values_mut()
+        .flat_map(|instances| instances.iter_mut())
+        .flat_map(|caps| caps.iter_mut())
+        .flat_map(|cap| cap.cap.iter_mut())
+        .last()
+        .expect("the feeder commitment has a cap node");
+    last_node[0] ^= 1;
+    assert_ne!(changed, cpu_commitment.circuit_families_memory_caps);
 }
 
 #[test]
 #[ignore]
 fn mixed_profile_setup_caps() {
     let _ = env_logger::builder().is_test(true).try_init();
-    let profiles = [ProofProfile::Standard, ProofProfile::L1Feeder];
+    // One binary under two handles, as the pipeline registers the final layer
+    // (Unified, Standard) and the first feeder layer (Unified22, L1Feeder).
+    let registrations = [
+        (ExecutionKind::Unified, ProofProfile::Standard),
+        (ExecutionKind::Unified22, ProofProfile::L1Feeder),
+    ];
     let mut cpu = cpu_prover();
-    let mut gpu = gpu_prover();
+    let mut gpu = gpu_prover(MemoryPreset::GiB30);
     let (bin, text) = load(BASIC_FIBONACCI_WORKLOAD);
-    let cpu_handle = cpu.add_binary(
-        ExecutionKind::Unified,
-        MachineType::Reduced,
-        bin.clone(),
-        text.clone(),
-        Some(CYCLES_BOUND),
-        &profiles,
-    );
-    let gpu_handle = gpu.add_binary(
-        ExecutionKind::Unified,
-        MachineType::Reduced,
-        bin,
-        text,
-        Some(CYCLES_BOUND),
-        &profiles,
-    );
-    for lookup_order in [profiles, [ProofProfile::L1Feeder, ProofProfile::Standard]] {
-        for profile in lookup_order {
-            let cpu_artifacts = cpu.program_artifacts(&cpu_handle, profile);
-            let gpu_artifacts = gpu.program_artifacts(&gpu_handle, profile);
+    let handles: Vec<_> = registrations
+        .iter()
+        .map(|&(kind, profile)| {
+            let cpu_handle = cpu.add_binary(
+                kind,
+                MachineType::Reduced,
+                bin.clone(),
+                text.clone(),
+                Some(CYCLES_BOUND),
+                &[profile],
+            );
+            let gpu_handle = gpu.add_binary(
+                kind,
+                MachineType::Reduced,
+                bin.clone(),
+                text.clone(),
+                Some(CYCLES_BOUND),
+                &[profile],
+            );
+            (profile, cpu_handle, gpu_handle)
+        })
+        .collect();
+    for lookup_order in [[0, 1], [1, 0]] {
+        for index in lookup_order {
+            let (profile, cpu_handle, gpu_handle) = &handles[index];
+            let profile = *profile;
+            let cpu_artifacts = cpu.program_artifacts(cpu_handle, profile);
+            let gpu_artifacts = gpu.program_artifacts(gpu_handle, profile);
             assert!(!cpu_artifacts.riscv_families.is_empty());
             assert_eq!(
                 cpu_artifacts.riscv_families.keys().collect::<Vec<_>>(),
@@ -259,7 +292,7 @@ fn compare_commitments(
         profile,
     );
     let (gpu, gpu_handle, gpu_commitment) = commit(
-        gpu_prover(),
+        gpu_prover(gpu_preset(profile)),
         kind,
         machine,
         workload,
