@@ -630,7 +630,7 @@ fn advance_feeder_stage(
         batch_id,
         bin,
         text,
-        kind: ExecutionKind::Unified,
+        kind: ExecutionKind::Unified22,
         machine: MachineType::Reduced,
         nd_words: nd(&state.setups, &state.proof),
         profile: ProofProfile::L1Feeder,
