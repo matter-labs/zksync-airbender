@@ -295,9 +295,19 @@ ABI and whole mixed execution remain separate.
    immediates/constants, fabricated source reads and incomplete references are
    rejected. An accepted unissued G prefix remains in the same initialized
    history before literal zero and ADDI 128. This proves memory preparation and
-   selected references, not full Sail retirement. Continue longer public
-   dataflow chains, broader operand-dependent preparation, jumps/branches and
-   whole caller retirement, retaining unsupported-control and unissued-exclusion boundaries.
+   selected references, not full Sail retirement. Finite public register chains
+   now extend literal/AUIPC roots with arbitrarily many consecutive ADDIs, across
+   registers and aliases. Induction derives every canonical operand token before
+   Sail/round-mask transport, sharing the legacy two-step token helper. The
+   existing complete selected-reference windows/lists admit the recursive source
+   under the same domain/setup/table, coverage and matching boundaries. Only
+   selected preparation cycles are worker-free. Reversed-row native fixtures
+   derive x12 = 127/129 → x10 = 128 → x12 = 128, actual intermediate reads and
+   canonical clock fourteen; malformed immediates/constants, middle operands and
+   incomplete references are rejected. Existing AUIPC roots and the actual
+   unissued G-prefix effect remain inhabited. Continue nonconsecutive dataflow,
+   broader operand-dependent operations, jumps/branches and whole caller
+   retirement, retaining unsupported-control and unissued-exclusion boundaries.
    COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed
    retained for the second window. Extended BLAKE and Keccak completion controls
    do not restart their protocols; checked regressions forbid treating their

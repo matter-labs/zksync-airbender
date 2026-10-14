@@ -9,6 +9,7 @@ import Airbender.Proofs.UnifiedReduced.MixedWindowProjection
 import Airbender.Proofs.UnifiedReduced.ControlPreparation
 import Airbender.Proofs.UnifiedReduced.PCRelativePreparation
 import Airbender.Proofs.UnifiedReduced.RegisterPreparation
+import Airbender.Proofs.UnifiedReduced.RegisterChains
 import Airbender.Proofs.UnifiedReduced.PreparedHashWindows
 import Airbender.Proofs.UnifiedReduced.ComputedHashWindows
 import Airbender.Proofs.UnifiedReduced.ComputedRoundRegions
@@ -670,7 +671,7 @@ theorem Caller.pc_relative_control_preparation_soundness [Fact p.Prime] (hp : 83
     Caller.PCRelativePreparedBoundaryExecution data before cells cut register immediate :=
   Caller.Proofs.pc_relative_control_preparation hp clockInverse rotationInverse accepted inputs scope nonzero aligned
 
-/-- Literal, publicly placed AUIPC or literal→ADDI instructions prepare the actual protocol
+/-- Public register preparation instructions derive the actual protocol
     entry control and retain its native timestamp in the initialized history.
     Placement/dataflow conditions concern decoded code, with no supplied control read. -/
 theorem Caller.hash_control_preparation_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
@@ -684,7 +685,7 @@ theorem Caller.hash_control_preparation_soundness [Fact p.Prime] (hp : 8388608 �
     Caller.PreparedBoundaryExecution data before cells cut span.controlRegister (Caller.hashPreparation span) :=
   Caller.Proofs.hash_control_preparation hp clockInverse rotationInverse accepted inputs source aligned
 
-/-- Public literal/AUIPC/literal→ADDI preparation reaches a complete selected G or
+/-- Public register preparation reaches a complete selected G or
     Keccak reference at the actual joint cut states. Counts/duration, family,
     domain, modeled tables and logical matching stay explicit. -/
 theorem Caller.computed_prepared_hash_window_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
@@ -734,7 +735,7 @@ theorem Caller.hash_prepared_public_window_schedule_soundness [Fact p.Prime] (hp
     ordinaryProgram registry source region first last ordered beforeTerminal
 
 /-- Complete selected G/Keccak references derive their caller/worker family,
-    count and slots from public modular regions, then use public literal/AUIPC/literal→ADDI
+    count and slots from public modular regions, then use public register
     preparation at the actual joint states. Public duration and nonround scope,
     domain, setup/tables and logical matching remain explicit. -/
 theorem Caller.wrapped_program_computed_hash_window_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
@@ -907,5 +908,39 @@ theorem Caller.register_immediate_control_preparation_soundness [Fact p.Prime] (
     (nonzero : register ≠ 0) (aligned : cut % 4 = 0) :
     Caller.RegisterImmediatePreparedBoundaryExecution data before cells cut source register immediate :=
   Caller.Proofs.register_immediate_control_preparation hp clockInverse rotationInverse accepted inputs scope nonzero aligned
+
+/-- Finite public literal/AUIPC→ADDI chains derive each native source read and
+    result through initialized matching, including changes of register and
+    aliases. No intermediate state, expected operand or bound is supplied.
+    Only selected preparation cycles are worker-free; earlier effects remain. -/
+theorem Caller.register_chain_control_preparation_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+    {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
+    {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    {cut : Nat} {register : BitVec 5} {value : BitVec 32}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.MixedMemoryInputs data program before ca oa cells)
+    (preparation : Caller.PublicRegisterPreparation data program cut register value)
+    (nonzero : register ≠ 0) (aligned : cut % 4 = 0) :
+    Caller.RegisterChainPreparedBoundaryExecution data before cells cut register value :=
+  Caller.Proofs.public_register_control_preparation hp clockInverse rotationInverse accepted inputs preparation nonzero aligned
+
+/-- The same public chain binds a protocol entry constant, feeding every
+    existing selected-reference window/list interface before regional masks and
+    Sail transport. The public cell domain supplies seed uniqueness. -/
+theorem Caller.register_chain_hash_preparation_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+    {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
+    {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    {cut : Nat} {span : Delegation.Caller.HashSpan} {value : BitVec 32}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.MixedMemoryInputs data program before ca oa cells)
+    (preparation : Caller.PublicRegisterPreparation data program cut span.controlRegister value)
+    (entry : value = span.controlStart) (aligned : cut % 4 = 0) :
+    Caller.PreparedBoundaryExecution data before cells cut span.controlRegister (Caller.hashPreparation span) :=
+  Caller.Proofs.hash_control_preparation hp clockInverse rotationInverse accepted inputs
+    (Caller.Proofs.register_chain_hash_preparation_source inputs.initialization inputs.distinct preparation entry) aligned
 
 end Airbender.UnifiedReduced

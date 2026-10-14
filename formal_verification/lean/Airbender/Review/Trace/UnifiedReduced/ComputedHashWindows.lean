@@ -1,5 +1,5 @@
 import Airbender.Review.Trace.UnifiedReduced.PreparedRoundWindows
-import Airbender.Review.Helpers.UnifiedReduced.RegisterPreparation
+import Airbender.Review.Helpers.UnifiedReduced.RegisterChains
 
 namespace Airbender.UnifiedReduced.Caller
 open Trace Reference.RiscV.Sail
@@ -7,7 +7,7 @@ open Trace Reference.RiscV.Sail
 /-- Public instructions that prepare a protocol entry. AUIPC placement is a
     condition on decoded code addresses and immediates, not an assumed state
     value. Literal→ADDI binds a register-dependent result through public dataflow.
-    Native matching identifies both actual preparation instructions. -/
+    Native matching identifies every selected preparation instruction. -/
 inductive HashControlPreparation [Fact p.Prime] (data : RequestTrace p)
     (program : List UnifiedReduced.ProgramEntry) (cut : Nat) (span : Delegation.Caller.HashSpan) : Prop where
   | literal (scope : ControlPreparation data program cut span.controlRegister (hashPreparation span))
@@ -18,8 +18,12 @@ inductive HashControlPreparation [Fact p.Prime] (data : RequestTrace p)
   | literalAddi (source : BitVec 5) (literal : ControlLiteral) (immediate : BitVec 12)
       (scope : LiteralAddiPreparation data program cut source span.controlRegister literal immediate)
       (value : registerImmediateValue literal.value immediate = span.controlStart)
+  | registerChain (value : BitVec 32)
+      (preparation : PublicRegisterPreparation data program cut span.controlRegister value)
+      (initialUnique : (data.machine.initialMemory.map MemoryToken.address).Nodup)
+      (entry : value = span.controlStart)
 
-/-- A complete selected G/Keccak span with literal, PC-relative or literal→ADDI public
+/-- A complete selected G/Keccak span with public register
     preparation. All existing domain, matching, table and protocol scope stays
     explicit. Earlier workers remain in the initialized history. -/
 structure ComputedPreparedHashWindowInputs [Fact p.Prime] (data : RequestTrace p) (before : State)

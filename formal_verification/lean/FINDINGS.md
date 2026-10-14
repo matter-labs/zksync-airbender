@@ -281,13 +281,35 @@ aliases, signed −1 and canonical clock ten; wrong immediates/constants,
 fabricated source reads and incomplete references are rejected. A native unissued
 G prefix remains in the same initialized history before literal zero and ADDI
 128. These are preparation/empty-region fixtures, not concrete complete reference
-windows. Longer public dataflow chains, broader operations and full Sail
+windows. Nonconsecutive dataflow, broader operations and full Sail
 retirement remain open. All ABI findings remain exposed.
 
+
+The [finite public register-chain entry](Airbender/Review/Helpers/UnifiedReduced/RegisterChains.lean)
+extends literal/AUIPC roots with any finite sequence of consecutive ADDIs,
+including changes of nonzero register and aliases. Values are indexed by the public
+instruction expression. Induction derives each canonical operand token through
+raw initialized matching and strict clocks, then native arithmetic derives the
+next result. The same token helper serves the legacy two-instruction source;
+its signatures remain unchanged. This dependency precedes Sail transport and
+regional round-mask derivation. The new source feeds all existing complete
+selected-reference window/list interfaces with their existing domain/setup/table,
+coverage and logical-matching boundaries. Each selected preparation cycle is
+worker-free; all earlier effects remain. Native reversed-row three-instruction
+fixtures compute x12 = 127/129, then x10 = 128, then x12 = 128, retaining canonical
+clock fourteen. Actual prefix/cycle reads and matching retain the intermediate
+register values; wrong immediates/constants, fabricated middle reads and
+incomplete references are rejected. AUIPC fixtures inhabit the root case, and
+the native unissued G-prefix fixture remains admitted with its actual update.
+All demonstrated ABI findings remain exposed.
+These are preparation/guard fixtures; complete references remain general
+accepted-witness theorems. Nonconsecutive dataflow, broader operations and full
+Sail retirement remain open.
+
 All 116 concrete test modules and 143 importer guards pass. The full
-2,252-root axiom audit has 64 axiom-free roots and only the three standard
-Lean axioms. Review checks pass for all 120 public theorem roots, 200 declaration
-names and 722 guide links/anchors, with no handwritten project diagnostics.
+2,274-root axiom audit has 64 axiom-free roots and only the three standard
+Lean axioms. Review checks pass for all 122 public theorem roots, 204 declaration
+names and 730 guide links/anchors, with no handwritten project diagnostics.
 
 ## Review priorities
 
