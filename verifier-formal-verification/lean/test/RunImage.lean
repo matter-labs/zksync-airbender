@@ -10,7 +10,7 @@ def mem0 (input : Word) : Word → BitVec 8 := fun a =>
   if h : a.toNat < Image.bytes.size then Image.bytes[a.toNat]
   else if a.toNat / 4 = Image.INPUT / 4 then (input >>> (8 * (a.toNat % 4))).setWidth 8 else 0
 
-def s0 (input : Word) : State := { pc := 0, x := fun _ => 0, mem := mem0 input }
+def s0 (input : Word) : State := { pc := 0, regFile := fun _ => 0, mem := mem0 input }
 
 def P : Nat := 2 ^ 31 - 1
 
@@ -24,7 +24,7 @@ def main : IO UInt32 := do
     match run 6000 (s0 (BitVec.ofNat 32 x)) with
     | none => IO.println s!"x = {x}: stuck"; ok := false
     | some s =>
-      let got := ((s.r 10).toNat, (s.r 11).toNat % P)
+      let got := ((s.getReg 10).toNat, (s.getReg 11).toNat % P)
       let good := s.pc.toNat == Image.halt && got == expected x
       IO.println s!"x = {x}: pc = {s.pc.toNat}, (a0, a1 mod P) = {got}, expected {expected x} {if good then "OK" else "MISMATCH"}"
       ok := ok && good

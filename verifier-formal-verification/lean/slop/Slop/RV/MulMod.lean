@@ -7,8 +7,8 @@ namespace RV
 
 /-- `a0 ≤ P`, `a1 ≤ P` ⇒ result `≤ P` and `≡ a0 * a1 (mod P)`. -/
 def mulModPost : State → State → Prop := fun s s' =>
-  (s.r 10).toNat ≤ P → (s.r 11).toNat ≤ P →
-    (s'.r 10).toNat ≤ P ∧ (s'.r 10).toNat % P = ((s.r 10).toNat * (s.r 11).toNat) % P
+  (s.getReg 10).toNat ≤ P → (s.getReg 11).toNat ≤ P →
+    (s'.getReg 10).toNat ≤ P ∧ (s'.getReg 10).toNat % P = ((s.getReg 10).toNat * (s.getReg 11).toNat) % P
 
 theorem mul_split (a b : Word) (ha : a.toNat ≤ P) (hb : b.toNat ≤ P) :
     ((b * a) <<< 1 >>> 1).toNat ≤ P ∧
@@ -73,7 +73,7 @@ theorem mul_mod_impl (A : Word) (hlow : 0xc4 ≤ A.toNat) :
   simp only [BitVec.ofNat_eq_ofNat] at ha hb ⊢
   simp only [addModPost] at hpost1
   rv_regs at hpost1
-  obtain ⟨hl, hh, he⟩ := mul_split (s.r 10#5) (s.r 11#5) ha hb
+  obtain ⟨hl, hh, he⟩ := mul_split (s.getReg 10#5) (s.getReg 11#5) ha hb
   obtain ⟨h1, h2⟩ := hpost1 hl hh
   exact ⟨h1, h2.trans he⟩
 

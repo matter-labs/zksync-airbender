@@ -32,7 +32,7 @@ theorem xset_nextPC (σ : FState) (i : BitVec 5) (v : BitVec 32) : (xset σ i v)
 theorem xset_PC (σ : FState) (i : BitVec 5) (v : BitVec 32) : (xset σ i v).regs .PC = σ.regs .PC :=
   xset_regs σ i v .PC (by simp)
 
-theorem agree_xget {s : RV.State} {σ : FState} (h : Airbender.Agree s σ) (i : BitVec 5) : xget σ i = s.r i := by
+theorem agree_xget {s : RV.State} {σ : FState} (h : Airbender.Agree s σ) (i : BitVec 5) : xget σ i = s.getReg i := by
   rw [← reg_eq]; exact h.2.2.1 i
 
 /-- One Airbender step, given what `execute` does, agrees with our step if the results agree. -/
@@ -41,7 +41,7 @@ theorem step_agree {s t : RV.State} {σ : FState} (h : Airbender.Agree s σ) (ha
     (hdec : RV.decode (readBytes σ.mem (σ.regs .PC).toNat 4) = some i) (σ2 : FState)
     (hexec : runF (Airbender.execute (Airbender.toSail i)) (σ.set .nextPC (σ.regs .PC + 4)) = .ok RETIRE_SUCCESS σ2)
     (hs2 : Airbender.Sys σ2) (hpc : σ2.regs .nextPC = t.pc) (hal : t.pc.toNat % 4 = 0)
-    (hr : ∀ j, xget σ2 j = t.r j) (hm : ∀ a : RV.Word, σ2.mem a.toNat = t.mem a) :
+    (hr : ∀ j, xget σ2 j = t.getReg j) (hm : ∀ a : RV.Word, σ2.mem a.toNat = t.mem a) :
     ∃ σ', Airbender.step σ = some σ' ∧ Airbender.Agree t σ' := by
   refine ⟨_, step_of_exec σ h.1 ha h2 i hdec σ2 hexec (hpc ▸ hal), ?_, ?_, ?_, ?_⟩
   · exact sys_set hs2 .PC _ rfl
@@ -61,7 +61,7 @@ theorem step_write {s : RV.State} {σ : FState} (h : Airbender.Agree s σ) (ha :
     (hdec : RV.decode (readBytes σ.mem (σ.regs .PC).toNat 4) = some i) (rd : BitVec 5) (v : BitVec 32)
     (hexec : runF (Airbender.execute (Airbender.toSail i)) (σ.set .nextPC (σ.regs .PC + 4)) =
       .ok RETIRE_SUCCESS (xset (σ.set .nextPC (σ.regs .PC + 4)) rd v)) :
-    ∃ σ', Airbender.step σ = some σ' ∧ Airbender.Agree (s.set rd v).next σ' := by
+    ∃ σ', Airbender.step σ = some σ' ∧ Airbender.Agree (s.setReg rd v).next σ' := by
   have hpcs : σ.regs .PC = s.pc := h.2.1
   refine step_agree h ha h2 i hdec _ hexec (sys_xset (sys_set h.1 .nextPC _ rfl) rd v) ?_ ?_ ?_ ?_
   · rw [xset_nextPC, set_regs_self, hpcs]; rfl
@@ -69,7 +69,7 @@ theorem step_write {s : RV.State} {σ : FState} (h : Airbender.Agree s σ) (ha :
     rw [← hpcs]; exact pc4_aligned _ ha h2
   · intro j
     rw [xget_xset, xget_set_nextPC, agree_xget h]
-    simp only [RV.State.r, RV.State.set, RV.State.next]
+    simp only [RV.State.getReg, RV.State.setReg, RV.State.next]
     split_ifs <;> simp_all
   · intro a; rw [xset_mem]; exact h.2.2.2 a
 
@@ -95,13 +95,13 @@ theorem step_jump {s : RV.State} {σ : FState} (h : Airbender.Agree s σ) (ha : 
     (hT : T.toNat % 4 = 0)
     (hexec : runF (Airbender.execute (Airbender.toSail i)) (σ.set .nextPC (σ.regs .PC + 4)) =
       .ok RETIRE_SUCCESS (xset ((σ.set .nextPC (σ.regs .PC + 4)).set .nextPC T) rd L)) :
-    ∃ σ', Airbender.step σ = some σ' ∧ Airbender.Agree ((s.jump T).set rd L) σ' := by
+    ∃ σ', Airbender.step σ = some σ' ∧ Airbender.Agree ((s.jump T).setReg rd L) σ' := by
   refine step_agree h ha h2 i hdec _ hexec
     (sys_xset (sys_set (sys_set h.1 .nextPC _ rfl) .nextPC _ rfl) rd L) ?_ hT ?_ ?_
   · rw [xset_nextPC, set_regs_self]; rfl
   · intro j
     rw [xget_xset, xget_set_nextPC, xget_set_nextPC, agree_xget h]
-    simp only [RV.State.r, RV.State.set, RV.State.jump]
+    simp only [RV.State.getReg, RV.State.setReg, RV.State.jump]
     split_ifs <;> simp_all
   · intro a; rw [xset_mem]; exact h.2.2.2 a
 

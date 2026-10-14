@@ -23,13 +23,15 @@ abbrev writable (addr : Word) (numBytes : Nat) : Prop := ROM_END ≤ addr.toNat 
 abbrev aligned  (addr : Word) (numBytes : Nat) : Prop := addr.toNat % numBytes = 0
 
 structure State where
-  pc  : Word
-  x   : Reg → Word          -- reads of x0 go through `r` and give 0
-  mem : Word → BitVec 8     -- byte-addressed, little-endian
+  pc      : Word
+  regFile : Reg → Word      -- stored values; read registers with `getReg` (x0 always reads as 0)
+  mem     : Word → BitVec 8 -- byte-addressed, little-endian
 
 namespace State
-def r    (s : State) (i : Reg) : Word := if i = 0 then 0 else s.x i
-def set  (s : State) (rd : Reg) (v : Word) : State := { s with x := fun i => if i = rd then v else s.x i }
+/-- The value an instruction sees in register `i`: x0 is always 0. -/
+def getReg (s : State) (i : Reg) : Word := if i = 0 then 0 else s.regFile i
+def setReg (s : State) (rd : Reg) (v : Word) : State :=
+  { s with regFile := fun i => if i = rd then v else s.regFile i }
 def next (s : State) : State := { s with pc := s.pc + 4 }
 def jump (s : State) (t : Word) : State := { s with pc := t }
 /-- Jump; the target must be 4-byte aligned (no compressed instructions). -/
@@ -91,23 +93,23 @@ inductive Instr
   | op     (op : Op) (rd rs1 rs2 : Reg)
 
 def exec (s : State) : Instr → Option State
-  | .lui rd imm         => some (s.set rd imm).next
-  | .auipc rd imm       => some (s.set rd (s.pc + imm)).next
-  | .jal rd off         => (s.goto (s.pc + off)).map (·.set rd (s.pc + 4))
-  | .jalr rd rs1 off    => (s.goto ((s.r rs1 + off) &&& ~~~1)).map (·.set rd (s.pc + 4))
+  | .lui rd imm         => some (s.setReg rd imm).next
+  | .auipc rd imm       => some (s.setReg rd (s.pc + imm)).next
+  | .jal rd off         => (s.goto (s.pc + off)).map (·.setReg rd (s.pc + 4))
+  | .jalr rd rs1 off    => (s.goto ((s.getReg rs1 + off) &&& ~~~1)).map (·.setReg rd (s.pc + 4))
   | .branch c rs1 rs2 off =>
-      if c.holds (s.r rs1) (s.r rs2) then s.goto (s.pc + off) else some s.next
+      if c.holds (s.getReg rs1) (s.getReg rs2) then s.goto (s.pc + off) else some s.next
   | .load n sg rd rs1 off =>
-      let a := s.r rs1 + off
+      let a := s.getReg rs1 + off
       let v := read s.mem a n
       let v := if sg then (v.setWidth (8 * n)).signExtend 32 else v
       if rd = 0 then some s.next                      -- Airbender: a load into x0 only advances the PC
-      else if aligned a n ∧ readable a n then some (s.set rd v).next else none
+      else if aligned a n ∧ readable a n then some (s.setReg rd v).next else none
   | .store n rs2 rs1 off =>
-      let a := s.r rs1 + off
-      if aligned a n ∧ writable a n then some (s.store a (s.r rs2) n).next else none
-  | .opImm op rd rs1 imm => some (s.set rd (alu op (s.r rs1) imm)).next
-  | .op op rd rs1 rs2    => some (s.set rd (alu op (s.r rs1) (s.r rs2))).next
+      let a := s.getReg rs1 + off
+      if aligned a n ∧ writable a n then some (s.store a (s.getReg rs2) n).next else none
+  | .opImm op rd rs1 imm => some (s.setReg rd (alu op (s.getReg rs1) imm)).next
+  | .op op rd rs1 rs2    => some (s.setReg rd (alu op (s.getReg rs1) (s.getReg rs2))).next
 
 /-- Standard RV32IM encodings (unprivileged spec, ch. 2 and 13). -/
 def decode (w : Word) : Option Instr :=

@@ -16,8 +16,8 @@ theorem program_run (s : State) (x : Word) (hpc : s.pc = 0)
     (hpoly : CodeAt s 0x188 Code.poly_eval) (hmul : CodeAt s 0x14c Code.mul_mod)
     (hadd : CodeAt s 0x88 Code.add_mod) (hcoef : CodeAt s 0x204 Code.COEFFS)
     (hin : read s.mem 0x4400000 4 = x) (hx : x.toNat ≤ P) :
-    ∃ n s', run n s = some s' ∧ s'.pc = 0x38 ∧ s'.r 10 = 3 * x + 1 ∧
-      (s'.r 11).toNat ≤ P ∧ (s'.r 11).toNat % P = polyW Code.COEFFS x.toNat % P ∧
+    ∃ n s', run n s = some s' ∧ s'.pc = 0x38 ∧ s'.getReg 10 = 3 * x + 1 ∧
+      (s'.getReg 11).toNat ≤ P ∧ (s'.getReg 11).toNat % P = polyW Code.COEFFS x.toNat % P ∧
       CodeAt s' 0 Code.boot := by
   simp only [BitVec.ofNat_eq_ofNat] at hpc hboot hcomb hinc hdbl hpoly hmul hadd hcoef hin ⊢
   rv_code_facts hboot Code.boot

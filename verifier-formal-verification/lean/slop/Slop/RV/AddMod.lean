@@ -10,8 +10,8 @@ abbrev P : Nat := 2 ^ 31 - 1
 
 /-- `a0 ≤ P`, `a1 ≤ P` ⇒ result `≤ P` and `≡ a0 + a1 (mod P)`. -/
 def addModPost : State → State → Prop := fun s s' =>
-  (s.r 10).toNat ≤ P → (s.r 11).toNat ≤ P →
-    (s'.r 10).toNat ≤ P ∧ (s'.r 10).toNat % P = ((s.r 10).toNat + (s.r 11).toNat) % P
+  (s.getReg 10).toNat ≤ P → (s.getReg 11).toNat ≤ P →
+    (s'.getReg 10).toNat ≤ P ∧ (s'.getReg 10).toNat % P = ((s.getReg 10).toNat + (s.getReg 11).toNat) % P
 
 theorem add_mod_arith (a b : Word) (ha : a.toNat ≤ P) (hb : b.toNat ≤ P) :
     let sum := b + a

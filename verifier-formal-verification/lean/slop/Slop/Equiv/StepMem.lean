@@ -34,15 +34,15 @@ theorem kind_load (h : Airbender.Agree s σ) (ha : (σ.regs .PC).toNat % 4 = 0)
     rw [if_pos rfl, Option.some.injEq] at ht; subst ht
     exact step_next h ha h2 _ hdec (exec_load_x0 _ rs1 _ n sg)
   · rw [if_neg hz] at ht
-    by_cases hc : RV.aligned (s.r rs1 + x.signExtend 32) n ∧ RV.readable (s.r rs1 + x.signExtend 32) n
+    by_cases hc : RV.aligned (s.getReg rs1 + x.signExtend 32) n ∧ RV.readable (s.getReg rs1 + x.signExtend 32) n
     case neg => rw [if_neg hc] at ht; cases ht
     rw [if_pos hc, Option.some.injEq] at ht; subst ht
     obtain ⟨hal, hrd⟩ := hc
-    have hx : xget (σ.set .nextPC (σ.regs .PC + 4)) rs1 = s.r rs1 := by rw [xget_set_nextPC, agree_xget h]
+    have hx : xget (σ.set .nextPC (σ.regs .PC + 4)) rs1 = s.getReg rs1 := by rw [xget_set_nextPC, agree_xget h]
     have e := exec_load (σ.set .nextPC (σ.regs .PC + 4)) (sys_set h.1 .nextPC _ rfl) rd rs1 x n sg hn hz
       (by rw [hx]; exact hal) (by rw [hx]; exact hrd)
     rw [hx] at e
-    have hv : extend_value (!sg) (readBytes (σ.set .nextPC (σ.regs .PC + 4)).mem (s.r rs1 + x.signExtend 32).toNat n)
+    have hv : extend_value (!sg) (readBytes (σ.set .nextPC (σ.regs .PC + 4)).mem (s.getReg rs1 + x.signExtend 32).toNat n)
         = _ := load_val σ.mem s.mem h.2.2.2 _ n hn (by have := ram_end_lt; simp only [RV.readable] at hrd; omega) sg
     rw [hv] at e
     exact step_write h ha h2 _ hdec rd _ e
@@ -54,12 +54,12 @@ theorem kind_store (h : Airbender.Agree s σ) (ha : (σ.regs .PC).toNat % 4 = 0)
     (ht : RV.exec s (.store n rs2 rs1 (x.signExtend 32)) = some t) :
     ∃ σ', Airbender.step σ = some σ' ∧ Airbender.Agree t σ' := by
   simp only [RV.exec] at ht
-  by_cases hc : RV.aligned (s.r rs1 + x.signExtend 32) n ∧ RV.writable (s.r rs1 + x.signExtend 32) n
+  by_cases hc : RV.aligned (s.getReg rs1 + x.signExtend 32) n ∧ RV.writable (s.getReg rs1 + x.signExtend 32) n
   case neg => rw [if_neg hc] at ht; cases ht
   rw [if_pos hc, Option.some.injEq] at ht; subst ht
   obtain ⟨hal, hw1, hw2⟩ := hc
-  have hx : xget (σ.set .nextPC (σ.regs .PC + 4)) rs1 = s.r rs1 := by rw [xget_set_nextPC, agree_xget h]
-  have hx2 : xget (σ.set .nextPC (σ.regs .PC + 4)) rs2 = s.r rs2 := by rw [xget_set_nextPC, agree_xget h]
+  have hx : xget (σ.set .nextPC (σ.regs .PC + 4)) rs1 = s.getReg rs1 := by rw [xget_set_nextPC, agree_xget h]
+  have hx2 : xget (σ.set .nextPC (σ.regs .PC + 4)) rs2 = s.getReg rs2 := by rw [xget_set_nextPC, agree_xget h]
   have e := exec_store (σ.set .nextPC (σ.regs .PC + 4)) (sys_set h.1 .nextPC _ rfl) rs2 rs1 x n hn
     (by rw [hx]; exact hal) (by rw [hx]; exact hw1) (by rw [hx]; exact hw2)
   rw [hx, hx2] at e
@@ -70,10 +70,10 @@ theorem kind_store (h : Airbender.Agree s σ) (ha : (σ.regs .PC).toNat % 4 = 0)
   · show (s.pc + 4).toNat % 4 = 0
     rw [← hpcs]; exact pc4_aligned _ ha h2
   · intro j
-    change xget (σ.set .nextPC (σ.regs .PC + 4)) j = s.r j
+    change xget (σ.set .nextPC (σ.regs .PC + 4)) j = s.getReg j
     rw [xget_set_nextPC, agree_xget h]
   · intro a
-    show writeBytes σ.mem _ n _ a.toNat = RV.write s.mem _ (s.r rs2) n a
+    show writeBytes σ.mem _ n _ a.toNat = RV.write s.mem _ (s.getReg rs2) n a
     have := ram_end_lt
     simp only [RV.RAM_END] at hw2 this
     rcases hn with rfl | rfl | rfl

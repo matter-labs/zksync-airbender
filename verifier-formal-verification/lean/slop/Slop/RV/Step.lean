@@ -8,37 +8,37 @@ namespace RV
 
 -- State accessors. Proved by `Eq.trans rfl rfl`, not `rfl`, on purpose: simp then rewrites with explicit proofs
 -- instead of definitional steps, which otherwise made simp hang / the kernel recurse deeply on big symbolic states.
-@[simp] theorem r_zero (s : State) : s.r 0 = 0 := Eq.trans rfl rfl
-@[simp] theorem set_pc (s : State) rd v : (s.set rd v).pc = s.pc := Eq.trans rfl rfl
-@[simp] theorem set_mem (s : State) rd v : (s.set rd v).mem = s.mem := Eq.trans rfl rfl
+@[simp] theorem r_zero (s : State) : s.getReg 0 = 0 := Eq.trans rfl rfl
+@[simp] theorem set_pc (s : State) rd v : (s.setReg rd v).pc = s.pc := Eq.trans rfl rfl
+@[simp] theorem set_mem (s : State) rd v : (s.setReg rd v).mem = s.mem := Eq.trans rfl rfl
 @[simp] theorem next_pc (s : State) : s.next.pc = s.pc + 4 := Eq.trans rfl rfl
 @[simp] theorem next_mem (s : State) : s.next.mem = s.mem := Eq.trans rfl rfl
-@[simp] theorem next_r (s : State) i : s.next.r i = s.r i := Eq.trans rfl rfl
-@[simp] theorem store_r (s : State) a v n i : (s.store a v n).r i = s.r i := Eq.trans rfl rfl
+@[simp] theorem next_r (s : State) i : s.next.getReg i = s.getReg i := Eq.trans rfl rfl
+@[simp] theorem store_r (s : State) a v n i : (s.store a v n).getReg i = s.getReg i := Eq.trans rfl rfl
 @[simp] theorem store_pc (s : State) a v n : (s.store a v n).pc = s.pc := Eq.trans rfl rfl
 @[simp] theorem store_mem (s : State) a v n : (s.store a v n).mem = write s.mem a v n := Eq.trans rfl rfl
-@[simp] theorem jump_r (s : State) t i : (s.jump t).r i = s.r i := Eq.trans rfl rfl
+@[simp] theorem jump_r (s : State) t i : (s.jump t).getReg i = s.getReg i := Eq.trans rfl rfl
 @[simp] theorem jump_pc (s : State) t : (s.jump t).pc = t := Eq.trans rfl rfl
 @[simp] theorem jump_mem (s : State) t : (s.jump t).mem = s.mem := Eq.trans rfl rfl
 
 @[simp] theorem r_set (s : State) (rd : Reg) (v : Word) (i : Reg) :
-    (s.set rd v).r i = if i = 0 then 0 else if i = rd then v else s.r i := by
-  simp only [State.r, State.set]
+    (s.setReg rd v).getReg i = if i = 0 then 0 else if i = rd then v else s.getReg i := by
+  simp only [State.getReg, State.setReg]
   split <;> simp_all
 
-theorem r_set_x0 (s : State) (rd : Reg) (v : Word) (i : Reg) (h : i = 0) : (s.set rd v).r i = 0 := by
+theorem r_set_x0 (s : State) (rd : Reg) (v : Word) (i : Reg) (h : i = 0) : (s.setReg rd v).getReg i = 0 := by
   subst h; rfl
-theorem r_set_hit (s : State) (rd : Reg) (v : Word) (h : ¬ rd = 0) : (s.set rd v).r rd = v := by
-  simp only [State.r, State.set, ite_true, h, ite_false]
+theorem r_set_hit (s : State) (rd : Reg) (v : Word) (h : ¬ rd = 0) : (s.setReg rd v).getReg rd = v := by
+  simp only [State.getReg, State.setReg, ite_true, h, ite_false]
 theorem r_set_miss (s : State) (rd : Reg) (v : Word) (i : Reg) (h1 : ¬ i = 0) (h2 : ¬ i = rd) :
-    (s.set rd v).r i = s.r i := by
-  simp only [State.r, State.set, h1, h2, ite_false]
+    (s.setReg rd v).getReg i = s.getReg i := by
+  simp only [State.getReg, State.setReg, h1, h2, ite_false]
 
 open Lean Meta Simp in
-/-- `(s.set rd v).r i` for literal register numbers: `v`, `s.r i` or `0` directly (no `if`). -/
-simproc reduceRSet (State.r (State.set _ _ _) _) := fun e => do
-  let_expr State.r st i := e | return .continue
-  let_expr State.set s rd v := st | return .continue
+/-- `(s.setReg rd v).getReg i` for literal register numbers: `v`, `s.getReg i` or `0` directly (no `if`). -/
+simproc reduceRSet (State.getReg (State.setReg _ _ _) _) := fun e => do
+  let_expr State.getReg st i := e | return .continue
+  let_expr State.setReg s rd v := st | return .continue
   let some ⟨_, iv⟩ ← getBitVecValue? i | return .continue
   let some ⟨_, rdv⟩ ← getBitVecValue? rd | return .continue
   let zero ← mkAppOptM ``OfNat.ofNat #[mkConst ``Reg, mkRawNatLit 0, none]
@@ -53,7 +53,7 @@ simproc reduceRSet (State.r (State.set _ _ _) _) := fun e => do
     let pf ← mkExpectedTypeHint pf (← mkEq e v)
     return .done { expr := v, proof? := some pf }
   let hne ← mkDecideProof (mkNot (← mkEq i rd))
-  let r := mkApp2 (mkConst ``State.r) s i
+  let r := mkApp2 (mkConst ``State.getReg) s i
   let pf := mkApp6 (mkConst ``r_set_miss) s rd v i hi0 hne
   return .done { expr := r, proof? := some (← mkExpectedTypeHint pf (← mkEq e r)) }
 
@@ -105,8 +105,8 @@ theorem run_done (S : State) (P : State → Prop) (h : P S) : ∃ m s', run m S 
 /-- A call to a function proven by `Implements`: continue from any state it may return in. -/
 theorem run_call {code : List Word} {frame : Nat} {post : State → State → Prop} (hI : Implements code frame post)
     (S : State) (P : State → Prop) (hc : Call S code frame)
-    (h : ∀ S1, S1.pc = S.r 1 → post S S1 → (∀ i, calleeSaved i → S1.r i = S.r i) →
-      (∀ a : Word, a.toNat + frame < (S.r 2).toNat ∨ (S.r 2).toNat ≤ a.toNat → S1.mem a = S.mem a) →
+    (h : ∀ S1, S1.pc = S.getReg 1 → post S S1 → (∀ i, calleeSaved i → S1.getReg i = S.getReg i) →
+      (∀ a : Word, a.toNat + frame < (S.getReg 2).toNat ∨ (S.getReg 2).toNat ≤ a.toNat → S1.mem a = S.mem a) →
       ∃ m s', run m S1 = some s' ∧ P s') : ∃ m s', run m S = some s' ∧ P s' := by
   obtain ⟨n, S1, h1, h2, h3, h4, h5⟩ := hI S hc
   exact run_of_run S S1 n P h1 (h S1 h2 h3 h4 h5)
@@ -116,8 +116,8 @@ theorem run_callAt {entry : Word} {code : List Word} {callees : List (Word × Li
     {post : State → State → Prop} (hI : ImplementsAt entry code callees frame post)
     (S : State) (P : State → Prop) (hpc : S.pc = entry) (hcal : ∀ c ∈ callees, CodeAt S c.1 c.2)
     (hc : Call S code frame)
-    (h : ∀ S1, S1.pc = S.r 1 → post S S1 → (∀ i, calleeSaved i → S1.r i = S.r i) →
-      (∀ a : Word, a.toNat + frame < (S.r 2).toNat ∨ (S.r 2).toNat ≤ a.toNat → S1.mem a = S.mem a) →
+    (h : ∀ S1, S1.pc = S.getReg 1 → post S S1 → (∀ i, calleeSaved i → S1.getReg i = S.getReg i) →
+      (∀ a : Word, a.toNat + frame < (S.getReg 2).toNat ∨ (S.getReg 2).toNat ≤ a.toNat → S1.mem a = S.mem a) →
       ∃ m s', run m S1 = some s' ∧ P s') : ∃ m s', run m S = some s' ∧ P s' := by
   obtain ⟨n, S1, h1, h2, h3, h4, h5⟩ := hI S hpc hcal hc
   exact run_of_run S S1 n P h1 (h S1 h2 h3 h4 h5)
@@ -135,8 +135,8 @@ theorem run_callAtPre {entry : Word} {code : List Word} {callees : List (Word ×
     {pre : State → Prop} {post : State → State → Prop} (hI : ImplementsAtPre entry code callees frame pre post)
     (S : State) (P : State → Prop) (hpc : S.pc = entry) (hcal : ∀ c ∈ callees, CodeAt S c.1 c.2)
     (hc : Call S code frame) (hpre : pre S)
-    (h : ∀ S1, S1.pc = S.r 1 → post S S1 → (∀ i, calleeSaved i → S1.r i = S.r i) →
-      (∀ a : Word, a.toNat + frame < (S.r 2).toNat ∨ (S.r 2).toNat ≤ a.toNat → S1.mem a = S.mem a) →
+    (h : ∀ S1, S1.pc = S.getReg 1 → post S S1 → (∀ i, calleeSaved i → S1.getReg i = S.getReg i) →
+      (∀ a : Word, a.toNat + frame < (S.getReg 2).toNat ∨ (S.getReg 2).toNat ≤ a.toNat → S1.mem a = S.mem a) →
       ∃ m s', run m S1 = some s' ∧ P s') : ∃ m s', run m S = some s' ∧ P s' := by
   obtain ⟨n, S1, h1, h2, h3, h4, h5⟩ := hI S hpc hcal hc hpre
   exact run_of_run S S1 n P h1 (h S1 h2 h3 h4 h5)
@@ -188,41 +188,41 @@ theorem calleeSaved_cases (i : Reg) (h : calleeSaved i) :
     i = 27#5 := by
   unfold calleeSaved at h; bv_omega
 
-theorem codeAt_set (s : State) a code rd v (h : CodeAt s a code) : CodeAt (s.set rd v) a code := h
+theorem codeAt_set (s : State) a code rd v (h : CodeAt s a code) : CodeAt (s.setReg rd v) a code := h
 theorem codeAt_next (s : State) a code (h : CodeAt s a code) : CodeAt s.next a code := h
 theorem codeAt_jump (s : State) a code t (h : CodeAt s a code) : CodeAt (s.jump t) a code := h
 
 /-! `exec`, one lemma per instruction kind; side conditions are left to the discharger. -/
 
-theorem exec_lui (s : State) rd imm : exec s (.lui rd imm) = some (s.set rd imm).next := rfl
-theorem exec_auipc (s : State) rd imm : exec s (.auipc rd imm) = some (s.set rd (s.pc + imm)).next := rfl
+theorem exec_lui (s : State) rd imm : exec s (.lui rd imm) = some (s.setReg rd imm).next := rfl
+theorem exec_auipc (s : State) rd imm : exec s (.auipc rd imm) = some (s.setReg rd (s.pc + imm)).next := rfl
 theorem exec_opImm (s : State) op rd rs1 imm :
-    exec s (.opImm op rd rs1 imm) = some (s.set rd (alu op (s.r rs1) imm)).next := rfl
+    exec s (.opImm op rd rs1 imm) = some (s.setReg rd (alu op (s.getReg rs1) imm)).next := rfl
 theorem exec_op (s : State) op rd rs1 rs2 :
-    exec s (.op op rd rs1 rs2) = some (s.set rd (alu op (s.r rs1) (s.r rs2))).next := rfl
+    exec s (.op op rd rs1 rs2) = some (s.setReg rd (alu op (s.getReg rs1) (s.getReg rs2))).next := rfl
 theorem exec_jal (s : State) rd off (h : (s.pc + off).toNat % 4 = 0) :
-    exec s (.jal rd off) = some ((s.jump (s.pc + off)).set rd (s.pc + 4)) := by
+    exec s (.jal rd off) = some ((s.jump (s.pc + off)).setReg rd (s.pc + 4)) := by
   simp only [exec, State.goto, h, ite_true, Option.map_some]
-theorem exec_jalr (s : State) rd rs1 off (h : ((s.r rs1 + off) &&& ~~~1).toNat % 4 = 0) :
-    exec s (.jalr rd rs1 off) = some ((s.jump ((s.r rs1 + off) &&& ~~~1)).set rd (s.pc + 4)) := by
+theorem exec_jalr (s : State) rd rs1 off (h : ((s.getReg rs1 + off) &&& ~~~1).toNat % 4 = 0) :
+    exec s (.jalr rd rs1 off) = some ((s.jump ((s.getReg rs1 + off) &&& ~~~1)).setReg rd (s.pc + 4)) := by
   simp only [exec, State.goto, h, ite_true, Option.map_some]
 /-- `jalr` with offset 0 (e.g. `ret`) to an aligned register value. -/
-theorem exec_jalr0 (s : State) rd rs1 (h : (s.r rs1).toNat % 4 = 0) :
-    exec s (.jalr rd rs1 0#32) = some ((s.jump (s.r rs1)).set rd (s.pc + 4)) := by
-  have e : s.r rs1 &&& ~~~1 = s.r rs1 := by have := and_not_one_of_aligned _ h; simpa using this
+theorem exec_jalr0 (s : State) rd rs1 (h : (s.getReg rs1).toNat % 4 = 0) :
+    exec s (.jalr rd rs1 0#32) = some ((s.jump (s.getReg rs1)).setReg rd (s.pc + 4)) := by
+  have e : s.getReg rs1 &&& ~~~1 = s.getReg rs1 := by have := and_not_one_of_aligned _ h; simpa using this
   simp only [exec, State.goto, BitVec.add_zero, e, h, ite_true, Option.map_some]
 
-theorem exec_branch_t (s : State) c rs1 rs2 off (h : c.holds (s.r rs1) (s.r rs2) = true)
+theorem exec_branch_t (s : State) c rs1 rs2 off (h : c.holds (s.getReg rs1) (s.getReg rs2) = true)
     (ha : (s.pc + off).toNat % 4 = 0) : exec s (.branch c rs1 rs2 off) = some (s.jump (s.pc + off)) := by
   simp only [exec, h, ite_true, State.goto, ha]
-theorem exec_branch_f (s : State) c rs1 rs2 off (h : c.holds (s.r rs1) (s.r rs2) = false) :
+theorem exec_branch_f (s : State) c rs1 rs2 off (h : c.holds (s.getReg rs1) (s.getReg rs2) = false) :
     exec s (.branch c rs1 rs2 off) = some s.next := by
   simp only [exec, h, Bool.false_eq_true, ite_false]
 
-theorem exec_load (s : State) n sg rd rs1 off (hrd : ¬ rd = 0) (ha : aligned (s.r rs1 + off) n)
-    (hr : readable (s.r rs1 + off) n) :
-    exec s (.load n sg rd rs1 off) = some (s.set rd
-      (if sg then ((read s.mem (s.r rs1 + off) n).setWidth (8 * n)).signExtend 32 else read s.mem (s.r rs1 + off) n)).next := by
+theorem exec_load (s : State) n sg rd rs1 off (hrd : ¬ rd = 0) (ha : aligned (s.getReg rs1 + off) n)
+    (hr : readable (s.getReg rs1 + off) n) :
+    exec s (.load n sg rd rs1 off) = some (s.setReg rd
+      (if sg then ((read s.mem (s.getReg rs1 + off) n).setWidth (8 * n)).signExtend 32 else read s.mem (s.getReg rs1 + off) n)).next := by
   simp only [exec, hrd, ↓reduceIte]; split
   · rfl
   · rename_i h; exact absurd ⟨ha, hr⟩ h
@@ -231,8 +231,8 @@ theorem exec_load_x0 (s : State) n sg rs1 off : exec s (.load n sg 0 rs1 off) = 
 /-- `lw` is a signed load (funct3 bit 2 = 0, as in Sail); for a full word that changes nothing. -/
 theorem sext_word (x : Word) : BitVec.signExtend 32 (BitVec.setWidth (8 * 4) x) = x := by
   simp [BitVec.signExtend_eq]
-theorem exec_store (s : State) n rs2 rs1 off (ha : aligned (s.r rs1 + off) n) (hw : writable (s.r rs1 + off) n) :
-    exec s (.store n rs2 rs1 off) = some (s.store (s.r rs1 + off) (s.r rs2) n).next := by
+theorem exec_store (s : State) n rs2 rs1 off (ha : aligned (s.getReg rs1 + off) n) (hw : writable (s.getReg rs1 + off) n) :
+    exec s (.store n rs2 rs1 off) = some (s.store (s.getReg rs1 + off) (s.getReg rs2) n).next := by
   simp only [exec]; split
   · rfl
   · rename_i h; exact absurd ⟨ha, hw⟩ h

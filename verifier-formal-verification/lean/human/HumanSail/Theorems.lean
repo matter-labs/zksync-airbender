@@ -23,7 +23,7 @@ noncomputable def reg (σ : FState) (i : RV.Reg) : BitVec 32 :=
 
 /-- Our state `s` and Sail's state `σ` agree on everything a program can see: PC, registers, memory. -/
 def Agree (s : RV.State) (σ : FState) : Prop :=
-  Sys σ ∧ σ.regs .PC = s.pc ∧ (∀ i, reg σ i = s.r i) ∧ (∀ a : RV.Word, σ.mem a.toNat = s.mem a)
+  Sys σ ∧ σ.regs .PC = s.pc ∧ (∀ i, reg σ i = s.getReg i) ∧ (∀ a : RV.Word, σ.mem a.toNat = s.mem a)
 
 /-- Encodings Airbender accepts beyond standard RV32IM (`-- Airbender:` rows of `RV.decode`): JALR with
 funct3 ≠ 0; SLT, SLTU, XOR, OR, AND with funct7 other than 0000000 (and 0000001, which is the M extension). -/

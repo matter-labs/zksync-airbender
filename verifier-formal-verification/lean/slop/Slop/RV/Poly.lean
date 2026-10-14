@@ -20,8 +20,8 @@ theorem poly_eval_nonempty (A : Word) (hA : 256 ≤ A.toNat) (C : List Word) (hn
   rv_start Code.poly_eval hcall
   have hA4 : A.toNat % 4 = 0 := hpc
   rv_steps 15 with hentry, ha1
-  refine exists_run_mono (poly_loop A (s.r 10#5) C hA (by omega) hT hT4 hC C.length _ (s.r 2#5) (s.r 1#5)
-    (s.r 8#5) (s.r 9#5) (s.r 18#5) (s.r 19#5) (s.r 12#5) _ hn (Nat.le_refl _) ?_ ?_ ?_ ?_ ?_ rfl ?_ ?_ hx
+  refine exists_run_mono (poly_loop A (s.getReg 10#5) C hA (by omega) hT hT4 hC C.length _ (s.getReg 2#5) (s.getReg 1#5)
+    (s.getReg 8#5) (s.getReg 9#5) (s.getReg 18#5) (s.getReg 19#5) (s.getReg 12#5) _ hn (Nat.le_refl _) ?_ ?_ ?_ ?_ ?_ rfl ?_ ?_ hx
     ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ hsp (by omega) hhi hra hA4) ?_
   · rv_regs; rw [hentry]
   · rv_regs

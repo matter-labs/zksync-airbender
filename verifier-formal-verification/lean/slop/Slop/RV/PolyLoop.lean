@@ -30,8 +30,8 @@ theorem poly_loop (A T : Word) (C : List Word) (hA : 256 ≤ A.toNat) (hAr : A.t
     (hT : T.toNat + 4 * C.length ≤ 4194304) (hT4 : T.toNat % 4 = 0) (hC : ∀ i (h : i < C.length), C[i].toNat ≤ P) (k : Nat) :
     ∀ (S : State) (sp0 ra0 v8 v9 v18 v19 x acc : Word),
     1 ≤ k → k ≤ C.length →
-    S.pc = A + 60#32 → S.r 2#5 = sp0 + 4294967264#32 → S.r 9#5 = x → S.r 18#5 = BitVec.ofNat 32 k →
-    S.r 19#5 = T + BitVec.ofNat 32 (4 * (k - 1)) → S.r 10#5 = acc →
+    S.pc = A + 60#32 → S.getReg 2#5 = sp0 + 4294967264#32 → S.getReg 9#5 = x → S.getReg 18#5 = BitVec.ofNat 32 k →
+    S.getReg 19#5 = T + BitVec.ofNat 32 (4 * (k - 1)) → S.getReg 10#5 = acc →
     acc.toNat ≤ P → acc.toNat % P = polyW (C.drop k) x.toNat % P → x.toNat ≤ P →
     read S.mem (sp0 + 4294967292#32) 4 = ra0 → read S.mem (sp0 + 4294967288#32) 4 = v8 →
     read S.mem (sp0 + 4294967284#32) 4 = v9 → read S.mem (sp0 + 4294967280#32) 4 = v18 →
@@ -40,10 +40,10 @@ theorem poly_loop (A T : Word) (C : List Word) (hA : 256 ≤ A.toNat) (hAr : A.t
     CodeAt S (A + 4294967040#32) Code.add_mod → CodeAt S T C →
     sp0.toNat % 16 = 0 → 4194304 + 48 ≤ sp0.toNat → sp0.toNat ≤ 1073741824 → ra0.toNat % 4 = 0 →
     A.toNat % 4 = 0 →
-    ∃ n s', run n S = some s' ∧ s'.pc = ra0 ∧ (s'.r 10#5).toNat ≤ P ∧
-      (s'.r 10#5).toNat % P = polyW C x.toNat % P ∧
-      s'.r 2#5 = sp0 ∧ s'.r 8#5 = v8 ∧ s'.r 9#5 = v9 ∧ s'.r 18#5 = v18 ∧ s'.r 19#5 = v19 ∧
-      (∀ i : Reg, 20 ≤ i.toNat → i.toNat ≤ 27 → s'.r i = S.r i) ∧
+    ∃ n s', run n S = some s' ∧ s'.pc = ra0 ∧ (s'.getReg 10#5).toNat ≤ P ∧
+      (s'.getReg 10#5).toNat % P = polyW C x.toNat % P ∧
+      s'.getReg 2#5 = sp0 ∧ s'.getReg 8#5 = v8 ∧ s'.getReg 9#5 = v9 ∧ s'.getReg 18#5 = v18 ∧ s'.getReg 19#5 = v19 ∧
+      (∀ i : Reg, 20 ≤ i.toNat → i.toNat ≤ 27 → s'.getReg i = S.getReg i) ∧
       (∀ a : Word, a.toNat + 48 < sp0.toNat ∨ sp0.toNat ≤ a.toNat → s'.mem a = S.mem a) := by
   induction k with
   | zero => intros; omega

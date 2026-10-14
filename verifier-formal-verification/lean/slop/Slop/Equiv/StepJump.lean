@@ -37,7 +37,7 @@ theorem kind_jalr (h : Airbender.Agree s σ) (ha : (σ.regs .PC).toNat % 4 = 0)
   split_ifs at ht with hT
   case neg => simp at ht
   simp only [Option.map_some, Option.some.injEq] at ht; subst ht
-  have hx : xget (σ.set .nextPC (σ.regs .PC + 4)) rs1 = s.r rs1 := by rw [xget_set_nextPC, agree_xget h]
+  have hx : xget (σ.set .nextPC (σ.regs .PC + 4)) rs1 = s.getReg rs1 := by rw [xget_set_nextPC, agree_xget h]
   have hn : (σ.set .nextPC (σ.regs .PC + 4)).regs .nextPC = s.pc + 4 := by rw [set_regs_self, h.2.1]
   have e := exec_jalr (σ.set .nextPC (σ.regs .PC + 4)) (sys_set h.1 .nextPC _ rfl) rd rs1 x (by rw [hx]; exact hT)
   rw [hx, hn] at e
@@ -49,10 +49,10 @@ theorem kind_branch (h : Airbender.Agree s σ) (ha : (σ.regs .PC).toNat % 4 = 0
     (ht : RV.exec s (.branch c rs1 rs2 (x.signExtend 32)) = some t) :
     ∃ σ', Airbender.step σ = some σ' ∧ Airbender.Agree t σ' := by
   have hp := set1_PC σ (σ.regs .PC + 4) h.2.1
-  have h1 : xget (σ.set .nextPC (σ.regs .PC + 4)) rs1 = s.r rs1 := by rw [xget_set_nextPC, agree_xget h]
-  have h2' : xget (σ.set .nextPC (σ.regs .PC + 4)) rs2 = s.r rs2 := by rw [xget_set_nextPC, agree_xget h]
+  have h1 : xget (σ.set .nextPC (σ.regs .PC + 4)) rs1 = s.getReg rs1 := by rw [xget_set_nextPC, agree_xget h]
+  have h2' : xget (σ.set .nextPC (σ.regs .PC + 4)) rs2 = s.getReg rs2 := by rw [xget_set_nextPC, agree_xget h]
   simp only [RV.exec, RV.State.goto] at ht
-  by_cases hc : c.holds (s.r rs1) (s.r rs2) = true
+  by_cases hc : c.holds (s.getReg rs1) (s.getReg rs2) = true
   · simp only [hc, ↓reduceIte] at ht
     split_ifs at ht with hT
     simp only [Option.some.injEq] at ht; subst ht

@@ -22,8 +22,8 @@ def ProgramCorrect : Prop :=
   ∀ (s : State) (x : Word), s.pc = 0 → ImageLoaded s → read s.mem (BitVec.ofNat 32 Image.INPUT) 4 = x →
     x.toNat ≤ Spec.P →
     ∃ n s', run n s = some s' ∧ s'.pc = BitVec.ofNat 32 Image.halt ∧
-      s'.r 10 = Spec.combine x ∧
-      (s'.r 11).toNat ≤ Spec.P ∧ ((s'.r 11).toNat : ZMod Spec.P) = Spec.poly (x.toNat : ZMod Spec.P) ∧
-      ∀ k, ∃ s'', run k s' = some s'' ∧ s''.pc = s'.pc ∧ ∀ i, s''.r i = s'.r i
+      s'.getReg 10 = Spec.combine x ∧
+      (s'.getReg 11).toNat ≤ Spec.P ∧ ((s'.getReg 11).toNat : ZMod Spec.P) = Spec.poly (x.toNat : ZMod Spec.P) ∧
+      ∀ k, ∃ s'', run k s' = some s'' ∧ s''.pc = s'.pc ∧ ∀ i, s''.getReg i = s'.getReg i
 
 end RV

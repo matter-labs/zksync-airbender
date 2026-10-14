@@ -22,12 +22,12 @@ theorem run_agree : ∀ (n : Nat) (s s' : RV.State) (σ : FState), Airbender.Agr
 
 /-- Our view of an Airbender state. -/
 noncomputable def ofSail (σ : FState) : RV.State :=
-  { pc := σ.regs .PC, x := fun i => Airbender.reg σ i, mem := fun a => σ.mem a.toNat }
+  { pc := σ.regs .PC, regFile := fun i => Airbender.reg σ i, mem := fun a => σ.mem a.toNat }
 
 theorem agree_ofSail (σ : FState) (hs : Airbender.Sys σ) : Airbender.Agree (ofSail σ) σ := by
   refine ⟨hs, rfl, ?_, fun _ => rfl⟩
   intro i
-  simp only [RV.State.r, ofSail]
+  simp only [RV.State.getReg, ofSail]
   split_ifs with h
   · subst h; rw [reg_eq, xget_zero]
   · rfl
@@ -46,7 +46,7 @@ theorem program_correct_airbender : Airbender.ProgramCorrect := by
     rw [e]; exact hin
   obtain ⟨n, s', hr, hpc', h10, h11a, h11b, hk⟩ := RV.program_correct (ofSail σ) x hpc himg' hin' hx
   obtain ⟨σ', hσ', hA'⟩ := run_agree n _ s' σ hA hr
-  have hreg : ∀ i, Airbender.reg σ' i = s'.r i := hA'.2.2.1
+  have hreg : ∀ i, Airbender.reg σ' i = s'.getReg i := hA'.2.2.1
   refine ⟨n, σ', hσ', hA'.2.1.trans hpc', (hreg 10).trans h10, ?_, ?_, ?_⟩
   · rw [hreg]; exact h11a
   · rw [hreg]; exact h11b
