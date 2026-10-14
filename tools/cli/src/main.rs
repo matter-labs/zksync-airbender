@@ -4,9 +4,9 @@
 use base64::Engine;
 use clap::{Parser, Subcommand, ValueEnum};
 use prover_pipeline::{
-    default_backend_for_build, deserialize_from_file, serialize_to_file, u32_from_hex_string,
-    ProgramProver, ProgramProverConfig, ProgramSource, ProofArtifact, ProofTarget, ProverBackend,
-    RamSize,
+    default_backend_for_build, deserialize_from_file, load_program_words, serialize_to_file,
+    u32_from_hex_string, ProgramProver, ProgramProverConfig, ProgramSource, ProofArtifact,
+    ProofTarget, ProverBackend, RamSize,
 };
 use reqwest::blocking::Client;
 use riscv_transpiler::ir::simple_instruction_set::preprocess_bytecode;
@@ -16,7 +16,6 @@ use riscv_transpiler::ir::{
 use riscv_transpiler::vm::{DelegationsCounters, RamWithRomRegion, SimpleTape, State, VM};
 use serde::Serialize;
 use serde_json::Value;
-use setups::read_binary;
 use std::path::Path;
 use std::{fs, iter};
 
@@ -78,10 +77,15 @@ enum RunMachine {
 enum Commands {
     /// Generate proof artifact for a single input.
     Prove {
-        #[arg(short, long)]
-        bin: String,
-        #[arg(long)]
+        /// Flat ROM image (`objcopy -O binary`); pair with `--text`, or use `--elf` instead.
+        #[arg(short, long, required_unless_present = "elf", conflicts_with = "elf")]
+        bin: Option<String>,
+        /// Text section dump; derived from `--bin` when omitted.
+        #[arg(long, conflicts_with = "elf")]
         text: Option<String>,
+        /// The linked ELF file, replacing `--bin`/`--text`.
+        #[arg(long)]
+        elf: Option<String>,
         #[clap(flatten)]
         input: InputConfig,
         #[arg(long, default_value = "output")]
@@ -100,10 +104,15 @@ enum Commands {
     },
     /// Generate proof artifacts for many input files.
     ProveBatch {
-        #[arg(short, long)]
-        bin: String,
-        #[arg(long)]
+        /// Flat ROM image (`objcopy -O binary`); pair with `--text`, or use `--elf` instead.
+        #[arg(short, long, required_unless_present = "elf", conflicts_with = "elf")]
+        bin: Option<String>,
+        /// Text section dump; derived from `--bin` when omitted.
+        #[arg(long, conflicts_with = "elf")]
         text: Option<String>,
+        /// The linked ELF file, replacing `--bin`/`--text`.
+        #[arg(long)]
+        elf: Option<String>,
         #[arg(long)]
         input_file: Vec<String>,
         #[arg(long, value_enum, default_value = "hex")]
@@ -124,10 +133,15 @@ enum Commands {
     ContinueProof {
         #[arg(short, long)]
         proof: String,
-        #[arg(short, long)]
-        bin: String,
-        #[arg(long)]
+        /// Flat ROM image (`objcopy -O binary`); pair with `--text`, or use `--elf` instead.
+        #[arg(short, long, required_unless_present = "elf", conflicts_with = "elf")]
+        bin: Option<String>,
+        /// Text section dump; derived from `--bin` when omitted.
+        #[arg(long, conflicts_with = "elf")]
         text: Option<String>,
+        /// The linked ELF file, replacing `--bin`/`--text`.
+        #[arg(long)]
+        elf: Option<String>,
         #[arg(long, default_value = "output")]
         output_dir: String,
         #[arg(long, default_value = "proof.json")]
@@ -143,17 +157,27 @@ enum Commands {
     Verify {
         #[arg(short, long)]
         proof: String,
-        #[arg(short, long)]
-        bin: String,
-        #[arg(long)]
+        /// Flat ROM image (`objcopy -O binary`); pair with `--text`, or use `--elf` instead.
+        #[arg(short, long, required_unless_present = "elf", conflicts_with = "elf")]
+        bin: Option<String>,
+        /// Text section dump; derived from `--bin` when omitted.
+        #[arg(long, conflicts_with = "elf")]
         text: Option<String>,
+        /// The linked ELF file, replacing `--bin`/`--text`.
+        #[arg(long)]
+        elf: Option<String>,
     },
     /// Run binary via the transpiler VM.
     Run {
-        #[arg(short, long)]
-        bin: String,
-        #[arg(long)]
+        /// Flat ROM image (`objcopy -O binary`); pair with `--text`, or use `--elf` instead.
+        #[arg(short, long, required_unless_present = "elf", conflicts_with = "elf")]
+        bin: Option<String>,
+        /// Text section dump; derived from `--bin` when omitted.
+        #[arg(long, conflicts_with = "elf")]
         text: Option<String>,
+        /// The linked ELF file, replacing `--bin`/`--text`.
+        #[arg(long)]
+        elf: Option<String>,
         #[clap(flatten)]
         input: InputConfig,
         #[arg(long)]
@@ -284,6 +308,7 @@ fn run_cli() {
         Commands::Prove {
             bin,
             text,
+            elf,
             input,
             output_dir,
             output_file,
@@ -296,7 +321,7 @@ fn run_cli() {
                 .expect("Failed to fetch input")
                 .unwrap_or_default();
 
-            let source = ProgramSource::from_paths(bin, text);
+            let source = program_source(bin, text, elf);
             let prover_config = make_prover_config(target, backend, settings);
 
             let mut prover = ProgramProver::new(source, prover_config)
@@ -310,6 +335,7 @@ fn run_cli() {
         Commands::ProveBatch {
             bin,
             text,
+            elf,
             input_file,
             input_type,
             output_dir,
@@ -318,7 +344,7 @@ fn run_cli() {
             batch_id_base,
             settings,
         } => {
-            let source = ProgramSource::from_paths(bin, text);
+            let source = program_source(bin, text, elf);
             let prover_config = make_prover_config(target, backend, settings);
 
             let mut prover = ProgramProver::new(source, prover_config)
@@ -362,6 +388,7 @@ fn run_cli() {
             proof,
             bin,
             text,
+            elf,
             output_dir,
             output_file,
             target,
@@ -369,7 +396,7 @@ fn run_cli() {
             settings,
         } => {
             let input_artifact: ProofArtifact = deserialize_from_file(&proof);
-            let source = ProgramSource::from_paths(bin, text);
+            let source = program_source(bin, text, elf);
             let prover_config = make_prover_config(target, backend, settings);
 
             let mut prover = ProgramProver::new(source, prover_config)
@@ -380,9 +407,14 @@ fn run_cli() {
 
             write_artifact(&artifact, &output_dir, &output_file);
         }
-        Commands::Verify { proof, bin, text } => {
+        Commands::Verify {
+            proof,
+            bin,
+            text,
+            elf,
+        } => {
             let artifact: ProofArtifact = deserialize_from_file(&proof);
-            let source = ProgramSource::from_paths(bin, text);
+            let source = program_source(bin, text, elf);
             let output = prover_pipeline::verify_artifact(&artifact, &source)
                 .unwrap_or_else(|e| panic!("Verification failed: {}", e));
             println!("PROOF IS VALID. output={:?}", output);
@@ -390,6 +422,7 @@ fn run_cli() {
         Commands::Run {
             bin,
             text,
+            elf,
             input,
             cycles,
             expected_results,
@@ -398,7 +431,7 @@ fn run_cli() {
             let input_words = fetch_input_data(&input)
                 .expect("Failed to fetch input")
                 .unwrap_or_default();
-            let source = ProgramSource::from_paths(bin, text);
+            let source = program_source(bin, text, elf);
             run_binary(
                 &source,
                 cycles.unwrap_or(DEFAULT_CYCLES),
@@ -410,6 +443,14 @@ fn run_cli() {
     }
 }
 
+fn program_source(bin: Option<String>, text: Option<String>, elf: Option<String>) -> ProgramSource {
+    match (bin, elf) {
+        (Some(bin), None) => ProgramSource::from_paths(bin, text),
+        (None, Some(elf)) => ProgramSource::from_elf(elf),
+        _ => unreachable!("clap enforces exactly one of --bin / --elf"),
+    }
+}
+
 fn run_binary(
     source: &ProgramSource,
     cycles: usize,
@@ -417,8 +458,8 @@ fn run_binary(
     expected_results: Option<Vec<u32>>,
     machine: RunMachine,
 ) {
-    let (_, binary_image) = read_binary(Path::new(&source.bin_path));
-    let (_, text_section) = read_binary(Path::new(&source.text_path));
+    let (binary_image, text_section) =
+        load_program_words(source).unwrap_or_else(|e| panic!("Failed to load program: {}", e));
 
     let (registers, finished) = match machine {
         RunMachine::FullUnsigned => run_binary_with_decoder::<FullUnsignedMachineDecoderConfig>(

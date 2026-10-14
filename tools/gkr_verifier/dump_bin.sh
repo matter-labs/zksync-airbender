@@ -124,7 +124,7 @@ for circuit in $CIRCUITS; do
         fi
         rm -f ${circuit}.bin ${circuit}.elf ${circuit}.text
         cargo objcopy $COMMON_FLAGS $EXTRA_FLAGS --bin "$circuit" -- -O binary ${circuit}.bin
-        cargo objcopy $COMMON_FLAGS $EXTRA_FLAGS --bin "$circuit" -- -R .text ${circuit}.elf
+        cargo objcopy $COMMON_FLAGS $EXTRA_FLAGS --bin "$circuit" -- ${circuit}.elf
         cargo objcopy $COMMON_FLAGS $EXTRA_FLAGS --bin "$circuit" -- -O binary --only-section=.text ${circuit}.text
     ) > "${log_dir}/${circuit}.log" 2>&1 &
     pids="${pids} $!"

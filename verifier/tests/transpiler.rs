@@ -16,10 +16,10 @@ fn run_transpiler(name: &str, level: SecurityLevel) {
         nds.len()
     );
 
-    let (bin_path, text_path, elf_path) = common::binary_paths(name, level);
+    let (_, _, elf_path) = common::binary_paths(name, level);
 
-    let binary = common::load_binary_section(&bin_path);
-    let text_section = common::load_binary_section(&text_path);
+    let (binary, text_section) =
+        riscv_transpiler::elf::load_legacy_program(std::path::Path::new(&elf_path));
 
     let mut oracle_responses = vec![];
     external_challenges.flatten_into_buffer(&mut oracle_responses);
