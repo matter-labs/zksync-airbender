@@ -919,7 +919,8 @@ fn run_feeder_layers(
         if let Some(previous) = previous_instances {
             if predicted >= previous {
                 return Err(format!(
-                    "L1 feeder chain is not converging: layer {layer} would verify {previous} instance(s) into {predicted}"
+                    "L1 feeder chain is not converging: layer {layer} would verify {previous} instance(s) into {predicted} ({} verifier cycles)",
+                    report.cycles
                 ));
             }
         }
