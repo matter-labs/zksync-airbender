@@ -8,6 +8,7 @@ use execution_prover_model::MachineType;
 use itertools::Itertools;
 use log::{debug, trace};
 #[cfg(target_arch = "x86_64")]
+use riscv_transpiler::common_constants::rom::RomGeometry;
 use riscv_transpiler::common_constants::ROM_WORD_SIZE;
 #[cfg(target_arch = "x86_64")]
 use riscv_transpiler::ir::simple_instruction_set::{preprocess_bytecode, Instruction};
@@ -107,6 +108,8 @@ pub(crate) struct SimulationRunner<
     pub is_aborted: bool,
     pub ram_config: JitRunnerRam,
     pub assume_canonical_mop_inputs: bool,
+    /// The ROM of the circuit the run is proven in; the binary image must fit it.
+    pub rom: RomGeometry,
 }
 
 impl<
@@ -139,6 +142,7 @@ impl<
         );
         let tracing_data_producers = Some(tracing_data_producers);
         Self {
+            rom: unified_circuit.rom(),
             batch_id,
             machine_type,
             non_determinism_source,
@@ -240,7 +244,11 @@ impl<
             }
         };
         let binary_image_len = binary_image.len();
-        assert!(binary_image_len <= ROM_WORD_SIZE);
+        assert!(
+            binary_image_len <= self.rom.word_size(),
+            "the binary image ({binary_image_len} words) exceeds the circuit's {:?}",
+            self.rom
+        );
         // NOTE: on reuse the holder is already clean outside the ROM region: every RAM word
         // the JIT writes is timestamped, and `pack_pages` zeroes both the
         // value and the timestamp of every timestamped word (the abort path resets the whole
