@@ -234,20 +234,56 @@ mod tests {
         PessimisticConjectureMode, ProximityTestingMode,
     };
 
+    fn assert_every_round_preserves_security_margin(config: &ProverConfig) {
+        let schedule = &config.whir_schedule;
+        let security_bits = config.security_level.security_bits() as u32;
+        assert_eq!(
+            schedule.whir_queries_schedule.len(),
+            schedule.whir_pow_schedule.len()
+        );
+        assert_eq!(
+            schedule.whir_queries_schedule.len(),
+            schedule.whir_steps_lde_factors.len() + 1
+        );
+        let rates = std::iter::once(schedule.base_lde_factor)
+            .chain(schedule.whir_steps_lde_factors.iter().copied())
+            .map(|lde_factor| lde_factor.trailing_zeros());
+        for (round, ((&queries, &pow), rate_bits)) in schedule
+            .whir_queries_schedule
+            .iter()
+            .zip(&schedule.whir_pow_schedule)
+            .zip(rates)
+            .enumerate()
+        {
+            let queries = queries as u32;
+            assert!(
+                6 * pow + 5 * queries * rate_bits >= 6 * security_bits,
+                "round {round}: {queries} queries at rate 2^-{rate_bits} with {pow} PoW bits"
+            );
+            assert!(
+                queries
+                    >= PessimisticConjectureMode
+                        .num_queries_for_rate_and_bits_of_security(security_bits - pow, rate_bits)
+            );
+        }
+    }
+
     #[test]
-    fn standard_first_round_preserves_security_margin() {
+    fn standard_and_evm_rounds_preserve_security_margin() {
         for trace_log2 in 20..=24 {
             let config = config_for_100_bits_under_pessimistic_conjecture(trace_log2);
-            let rate_bits = config.whir_schedule.base_lde_factor.trailing_zeros();
-            let pow = config.whir_schedule.whir_pow_schedule[0];
-            let queries = config.whir_schedule.whir_queries_schedule[0] as u32;
-            assert_eq!((pow, queries), (26, 89));
+            let schedule = &config.whir_schedule;
             assert_eq!(
-                queries,
-                PessimisticConjectureMode
-                    .num_queries_for_rate_and_bits_of_security(100 - pow, rate_bits)
+                (
+                    schedule.whir_pow_schedule[0],
+                    schedule.whir_queries_schedule[0]
+                ),
+                (26, 89)
             );
-            assert!(6 * pow + 5 * queries * rate_bits >= 600);
+            assert_every_round_preserves_security_margin(&config);
         }
+        assert_every_round_preserves_security_margin(&evm_production_packed_prover_config(
+            SecurityLevel::Sec100,
+        ));
     }
 }
