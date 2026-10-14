@@ -14,7 +14,7 @@ use std::time::Instant;
 #[test]
 fn cpu_fixture_contract() {
     let reference = fixture::manifest_and_identities();
-    let circuit = unified_reduced_machine_proth120::circuit_artifact();
+    let circuit = unified_reduced_machine_proth120::l1_wrap_2p21::circuit_artifact();
     coverage::validate_metadata(&reference, &circuit);
     let (bin, text, nd_words) = fixture::wrap_inputs(&reference);
     assert!(
@@ -128,7 +128,7 @@ fn assert_report(
 fn l1_wrap_witness_cpu_parity() {
     let start = Instant::now();
     let reference = fixture::manifest_and_identities();
-    let circuit = unified_reduced_machine_proth120::circuit_artifact();
+    let circuit = unified_reduced_machine_proth120::l1_wrap_2p21::circuit_artifact();
     coverage::validate_metadata(&reference, &circuit);
     drop(circuit);
     let (bin, text, nd_words) = fixture::wrap_inputs(&reference);
@@ -464,7 +464,7 @@ fn random_word(state: &mut u64) -> u32 {
 fn relation_circuit(
     relation: LinearRelation<Proth120>,
 ) -> cs::gkr_compiler::GKRCircuitArtifact<Proth120> {
-    let mut circuit = unified_reduced_machine_proth120::circuit_artifact();
+    let mut circuit = unified_reduced_machine_proth120::l1_wrap_2p21::circuit_artifact();
     circuit.range_check_16_lookup_expressions = vec![SingleColumnLookupRelation {
         input: relation,
         lookup_set_index: 0,
@@ -538,22 +538,22 @@ fn cpu_relations_abi_pins() {
 
 #[test]
 fn cpu_counter_bounds() {
-    let circuit = unified_reduced_machine_proth120::circuit_artifact();
+    let circuit = unified_reduced_machine_proth120::l1_wrap_2p21::circuit_artifact();
     for (name, columns, expected) in [
         (
             "generic",
             circuit.generic_lookups.len() + usize::from(circuit.has_decoder_lookup),
-            25_165_824,
+            12_582_912,
         ),
         (
             "RC16",
             circuit.range_check_16_lookup_expressions.len(),
-            62_914_560,
+            31_457_280,
         ),
         (
             "timestamp",
             circuit.timestamp_range_check_lookup_expressions.len(),
-            33_554_432,
+            16_777_216,
         ),
     ] {
         let product = circuit
@@ -578,7 +578,7 @@ fn cpu_counter_bounds() {
 #[cfg(not(no_cuda))]
 fn runtime_contract() {
     let context = runtime_context();
-    let mut circuit = unified_reduced_machine_proth120::circuit_artifact();
+    let mut circuit = unified_reduced_machine_proth120::l1_wrap_2p21::circuit_artifact();
     circuit.range_check_16_lookup_expressions.clear();
     circuit.timestamp_range_check_lookup_expressions.clear();
     let empty = prepare_lookup_relations(&circuit, &context).unwrap();
@@ -989,7 +989,7 @@ fn assert_trap(result: CudaResult<()>, name: &str) {
 #[cfg(not(no_cuda))]
 fn runtime_bounded_key_traps() {
     let context = runtime_context();
-    let mut circuit = unified_reduced_machine_proth120::circuit_artifact();
+    let mut circuit = unified_reduced_machine_proth120::l1_wrap_2p21::circuit_artifact();
     circuit.range_check_16_lookup_expressions.clear();
     circuit.timestamp_range_check_lookup_expressions.clear();
     let owner = prepare_lookup_relations(&circuit, &context).unwrap();
@@ -1140,12 +1140,12 @@ fn synthetic_rows_cpu_parity() {
     let start = Instant::now();
     let reference = fixture::manifest_and_identities();
     let (bin, text, _) = fixture::wrap_inputs(&reference);
-    let setup = unified_reduced_machine_proth120::l1_wrap_setup(&bin, &text);
+    let setup = unified_reduced_machine_proth120::l1_wrap_2p21::l1_wrap_setup(&bin, &text);
     coverage::validate_selectors(&reference, &setup.circuit);
     drop(reference);
     let circuit = &setup.circuit;
     let rows = circuit.trace_len;
-    assert_eq!(rows, 1 << 22, "Proth120 synthetic production rows");
+    assert_eq!(rows, 1 << 21, "Proth120 synthetic production rows");
     let (tracing, decoder, inits) = coverage::synthetic_rows();
     let expanded = cpu_execution_prover::test_support::expand_inits_and_teardowns(
         &inits,
@@ -1160,7 +1160,7 @@ fn synthetic_rows_cpu_parity() {
     let cpu_start = Instant::now();
     let cpu = evaluate_gkr_witness_for_executor_family::<Proth120, _, _, _>(
         circuit,
-        unified_reduced_machine_proth120::witness_eval_fn,
+        unified_reduced_machine_proth120::l1_wrap_2p21::witness_eval_fn,
         rows,
         &oracle,
         &setup.table_driver,
