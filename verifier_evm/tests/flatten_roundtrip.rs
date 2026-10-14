@@ -67,7 +67,6 @@ fn flatten_and_seed_match_reference() {
 
 #[test]
 fn serialized_mutation_fields_match_the_proof_and_aux() {
-    use field::Field;
     for version in common::available_versions("calldata mutation fields") {
         let (circuit, proof, aux) = version.load();
         let cfg = version.prover_config();

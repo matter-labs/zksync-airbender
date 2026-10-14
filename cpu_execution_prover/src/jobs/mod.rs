@@ -16,7 +16,6 @@ use execution_prover::messages::{
     SetupInitializationRequest, SetupInitializationResult, WorkRequest, WorkResult,
 };
 use execution_prover_model::allocator::HostTraceAllocator;
-use execution_prover_model::circuit_type::CircuitType;
 use execution_prover_model::trace::{ChunkedTraceHolder, InitsAndTeardownsTraceHost};
 use inits_and_teardowns::TeardownColumns;
 use std::borrow::Cow;
