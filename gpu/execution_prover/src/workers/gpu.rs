@@ -415,7 +415,11 @@ fn schedule_phase_one<'a>(
                     .setup_host
                     .get_initialized(state.profile)
                 {
-                    Some(GpuGKRSetupTransfer::new(setup_host, context)?)
+                    Some(GpuGKRSetupTransfer::new(
+                        setup_host,
+                        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+                        context,
+                    )?)
                 } else {
                     None
                 };
@@ -484,7 +488,11 @@ fn schedule_phase_one<'a>(
                     .get_initialized(state.profile)
                     .expect("merged memory+witness commitment requires the initialized setup");
                 let mut bundle = GpuGKRMergedCommitTransfer::<'_, A>::new(
-                    GpuGKRSetupTransfer::new(setup_host, context)?,
+                    GpuGKRSetupTransfer::new(
+                        setup_host,
+                        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+                        context,
+                    )?,
                     decoder_transfer,
                     inits_and_teardowns_transfer,
                     tracing_data_transfer,

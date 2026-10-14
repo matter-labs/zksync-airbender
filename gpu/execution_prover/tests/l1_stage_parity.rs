@@ -454,7 +454,12 @@ fn run_stages(fixture: L1WrapFixture<'_>, expected: Expected) -> StageReport {
     log::info!("L1 stage parity: trace upload {:?}", start.elapsed());
 
     let host = Arc::new(host);
-    let mut source = PackedSetupSource::new(Arc::clone(&host), &context).unwrap();
+    let mut source = PackedSetupSource::new(
+        Arc::clone(&host),
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+        &context,
+    )
+    .unwrap();
     let start = Instant::now();
     let transfer = single_shot_h2d(
         |transfer| source.schedule_transfer(transfer, &context),
@@ -606,7 +611,12 @@ fn run_whir(fixture: L1WrapFixture<'_>, expected: WhirExpected) -> WhirReport {
     drop(witness);
 
     let host = Arc::new(host);
-    let mut source = PackedSetupSource::new(Arc::clone(&host), &context).unwrap();
+    let mut source = PackedSetupSource::new(
+        Arc::clone(&host),
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+        &context,
+    )
+    .unwrap();
     let transfer = single_shot_h2d(
         |transfer| source.schedule_transfer(transfer, &context),
         &context,

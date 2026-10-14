@@ -127,7 +127,12 @@ pub(crate) fn forward_fixture_full(context: &ProverContext) -> ForwardFixturePr 
     };
     let setup_host =
         Arc::new(crate::setup::L1WrapSetupHost::precompute(&setup, 4, cfg, context).unwrap());
-    let mut d_setup = crate::setup::PackedSetupSource::new(setup_host, context).unwrap();
+    let mut d_setup = crate::setup::PackedSetupSource::new(
+        setup_host,
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+        context,
+    )
+    .unwrap();
     let transfer = gpu_prover_context::transfer::single_shot_h2d(
         |transfer| d_setup.schedule_transfer(transfer, context),
         context,
