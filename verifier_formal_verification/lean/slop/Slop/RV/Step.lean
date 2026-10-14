@@ -177,12 +177,29 @@ theorem codeMem_write {m : Word → BitVec 8} {a : Word} {code : List Word} (b v
   · exact hc i hi
   all_goals simp only [writable, ROM_END, RAM_END] at *; bv_omega
 
-/-- Code below a callee's stack frame is not affected by the call. -/
+/-- Code (or a table) outside a callee's stack frame is not affected by the call. -/
 theorem codeAt_of_frame {S1 : State} {m : Word → BitVec 8} {sp : Word} {F : Nat} {a : Word} {code : List Word}
     (hc : CodeMem m a code) (hmem : ∀ b : Word, b.toNat + F < sp.toNat ∨ sp.toNat ≤ b.toNat → S1.mem b = m b)
-    (h : a.toNat + 4 * code.length + F ≤ sp.toNat) : CodeAt S1 a code := by
+    (h : (a.toNat + 4 * code.length + F ≤ sp.toNat ∨ sp.toNat ≤ a.toNat) ∧ a.toNat + 4 * code.length ≤ 2 ^ 32) :
+    CodeAt S1 a code := by
   intro i hi
   rw [read_of_frame hmem _ _ (by bv_omega)]
+  exact hc i hi
+
+/-- Code (or a table) is not affected by a store that does not overlap it. -/
+theorem codeAt_store_disj (s : State) (a : Word) (code : List Word) (b v : Word) (n : Nat) (hc : CodeAt s a code)
+    (h : b.toNat + n ≤ a.toNat ∨ a.toNat + 4 * code.length ≤ b.toNat) (ha : a.toNat + 4 * code.length ≤ 2 ^ 32)
+    (hb : b.toNat + n ≤ 2 ^ 32) : CodeAt (s.store b v n) a code := by
+  intro i hi
+  simp only [store_mem]
+  rw [read_write_disjoint _ _ _ _ _ _ (by bv_omega) hb (by bv_omega)]
+  exact hc i hi
+
+theorem codeMem_write_disj {m : Word → BitVec 8} {a : Word} {code : List Word} (b v : Word) (n : Nat)
+    (hc : CodeMem m a code) (h : b.toNat + n ≤ a.toNat ∨ a.toNat + 4 * code.length ≤ b.toNat)
+    (ha : a.toNat + 4 * code.length ≤ 2 ^ 32) (hb : b.toNat + n ≤ 2 ^ 32) : CodeMem (write m b v n) a code := by
+  intro i hi
+  rw [read_write_disjoint _ _ _ _ _ _ (by bv_omega) hb (by bv_omega)]
   exact hc i hi
 
 theorem calleeSaved_cases (i : Reg) (h : calleeSaved i) :

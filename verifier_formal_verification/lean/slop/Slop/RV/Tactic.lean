@@ -254,8 +254,11 @@ macro_rules
       repeat first
         | with_reducible apply codeAt_set | with_reducible apply codeAt_next | with_reducible apply codeAt_jump
         | (with_reducible apply codeAt_store _ _ _ _ _ _ _ (by first | rv_decide_closed | ((try simp only [List.length_cons, List.length_nil, $code:ident]); rv_disch)) (by rv_disch))
+        | (refine codeAt_store_disj _ _ _ _ _ _ ?_ (by ((try simp only [List.length_cons, List.length_nil, $code:ident]); rv_disch with $xs',*)) (by ((try simp only [List.length_cons, List.length_nil, $code:ident]); rv_disch with $xs',*)) (by rv_disch with $xs',*))
         | (refine codeAt_of_frame ?_ ‹_› ?_
-           repeat (with_reducible apply codeMem_write _ _ _ _ (by first | rv_decide_closed | ((try simp only [List.length_cons, List.length_nil, $code:ident]); rv_disch)) (by rv_disch))
+           repeat first
+             | (with_reducible apply codeMem_write _ _ _ _ (by first | rv_decide_closed | ((try simp only [List.length_cons, List.length_nil, $code:ident]); rv_disch)) (by rv_disch))
+             | (refine codeMem_write_disj _ _ _ ?_ (by ((try simp only [List.length_cons, List.length_nil, $code:ident]); rv_disch with $xs',*)) (by ((try simp only [List.length_cons, List.length_nil, $code:ident]); rv_disch with $xs',*)) (by rv_disch with $xs',*))
            try apply codeMem_of_codeAt)
       all_goals first
         | ((try simp only [set_pc, next_pc, jump_pc, store_pc, BitVec.add_assoc, BitVec.reduceAdd,

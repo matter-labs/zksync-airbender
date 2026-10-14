@@ -13,16 +13,16 @@ theorem poly_eval_nonempty (A : Word) (hA : 256 ≤ A.toNat) (C : List Word) (hn
   have hmul : CodeAt s (A + 4294967236#32) Code.mul_mod := hcallees (A + 4294967236#32, Code.mul_mod) (by simp)
   have hadd : CodeAt s (A + 4294967040#32) Code.add_mod := hcallees (A + 4294967040#32, Code.add_mod) (by simp)
   clear hcallees
-  obtain ⟨hcoef, ha1, hT, hT4, hx⟩ := hpre
-  simp only [BitVec.ofNat_eq_ofNat] at hcoef ha1 hT hT4 hx
+  obtain ⟨hcoef, ha1, hT, hTr, hT4, hx⟩ := hpre
+  simp only [BitVec.ofNat_eq_ofNat] at hcoef ha1 hT hTr hT4 hx
   have hcode : CodeAt s A Code.poly_eval := hentry ▸ hcall.1
   rw [Call, hentry] at hcall
   rv_start Code.poly_eval hcall
   have hA4 : A.toNat % 4 = 0 := hpc
   rv_steps 15 with hentry, ha1
-  refine exists_run_mono (poly_loop A (s.getReg 10#5) C hA (by omega) hT hT4 hC C.length _ (s.getReg 2#5) (s.getReg 1#5)
+  refine exists_run_mono (poly_loop A (s.getReg 10#5) C hA (by omega) hTr hT4 hC C.length _ (s.getReg 2#5) (s.getReg 1#5)
     (s.getReg 8#5) (s.getReg 9#5) (s.getReg 18#5) (s.getReg 19#5) (s.getReg 12#5) _ hn (Nat.le_refl _) ?_ ?_ ?_ ?_ ?_ rfl ?_ ?_ hx
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ hsp (by omega) hhi hra hA4) ?_
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ hsp (by omega) hhi hra hA4 hT) ?_
   · rv_regs; rw [hentry]
   · rv_regs
   · rv_regs

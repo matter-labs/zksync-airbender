@@ -93,4 +93,23 @@ theorem codeAt_blockCopy {S S' : State} {A : Word} {code : List Word} {d s : Wor
   rw [hm, read_blockCopy_outside _ _ _ _ _ _ (by simp only [ROM_END] at *; bv_omega) (by simp only [ROM_END] at *; bv_omega) hd2]
   exact hc i hi
 
+/-- Code in ROM survives anything that leaves ROM bytes unchanged. -/
+theorem codeAt_of_rom {S S' : State} {A : Word} {code : List Word} (hc : CodeAt S A code)
+    (hA : A.toNat + 4 * code.length ≤ ROM_END) (hm : ∀ b : Word, b.toNat < ROM_END → S'.mem b = S.mem b) :
+    CodeAt S' A code := by
+  intro i hi
+  rw [read_congr S'.mem S.mem _ 4 (fun j hj => hm _ (by simp only [ROM_END] at *; bv_omega))]
+  exact hc i hi
+
+/-- A block copy into RAM leaves ROM bytes unchanged. -/
+theorem blockCopy_rom (m : Word → BitVec 8) (d s : Word) (len : Nat) (hd : ROM_END ≤ d.toNat)
+    (hd2 : d.toNat + len ≤ 2 ^ 32) (b : Word) (hb : b.toNat < ROM_END) : blockCopy m d s len b = m b :=
+  blockCopy_outside _ _ _ _ _ (by simp only [ROM_END] at *; bv_omega)
+
+/-- A store into RAM leaves ROM bytes unchanged. -/
+theorem write_rom (m : Word → BitVec 8) (a v : Word) (n : Nat) (ha : writable a n) (b : Word) (hb : b.toNat < ROM_END) :
+    write m a v n b = m b :=
+  write_outside _ _ _ _ _ (by simp only [writable, ROM_END, RAM_END] at *; omega)
+    (by simp only [writable, ROM_END, RAM_END] at *; omega)
+
 end RV

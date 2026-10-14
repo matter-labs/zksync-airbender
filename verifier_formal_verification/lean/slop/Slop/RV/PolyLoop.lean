@@ -25,9 +25,9 @@ theorem reg_20_27 (i : Reg) (h1 : 20 ≤ i.toNat) (h2 : i.toNat ≤ 27) :
 
 set_option maxHeartbeats 1000000 in
 /-- The Horner loop of `poly_eval` placed at any address `A` (callees at their relative offsets), over any table
-`C` of field elements at any ROM address `T`; `k` coefficients remain. -/
+`C` of field elements at any readable address `T` outside the loop's stack frame; `k` coefficients remain. -/
 theorem poly_loop (A T : Word) (C : List Word) (hA : 256 ≤ A.toNat) (hAr : A.toNat + 124 ≤ 4194304)
-    (hT : T.toNat + 4 * C.length ≤ 4194304) (hT4 : T.toNat % 4 = 0) (hC : ∀ i (h : i < C.length), C[i].toNat ≤ P) (k : Nat) :
+    (hT : T.toNat + 4 * C.length ≤ 1073741824) (hT4 : T.toNat % 4 = 0) (hC : ∀ i (h : i < C.length), C[i].toNat ≤ P) (k : Nat) :
     ∀ (S : State) (sp0 ra0 v8 v9 v18 v19 x acc : Word),
     1 ≤ k → k ≤ C.length →
     S.pc = A + 60#32 → S.getReg 2#5 = sp0 + 4294967264#32 → S.getReg 9#5 = x → S.getReg 18#5 = BitVec.ofNat 32 k →
@@ -39,7 +39,7 @@ theorem poly_loop (A T : Word) (C : List Word) (hA : 256 ≤ A.toNat) (hAr : A.t
     CodeAt S A Code.poly_eval → CodeAt S (A + 4294967236#32) Code.mul_mod →
     CodeAt S (A + 4294967040#32) Code.add_mod → CodeAt S T C →
     sp0.toNat % 16 = 0 → 4194304 + 48 ≤ sp0.toNat → sp0.toNat ≤ 1073741824 → ra0.toNat % 4 = 0 →
-    A.toNat % 4 = 0 →
+    A.toNat % 4 = 0 → (T.toNat + 4 * C.length + 48 ≤ sp0.toNat ∨ sp0.toNat ≤ T.toNat) →
     ∃ n s', run n S = some s' ∧ s'.pc = ra0 ∧ (s'.getReg 10#5).toNat ≤ P ∧
       (s'.getReg 10#5).toNat % P = polyW C x.toNat % P ∧
       s'.getReg 2#5 = sp0 ∧ s'.getReg 8#5 = v8 ∧ s'.getReg 9#5 = v9 ∧ s'.getReg 18#5 = v18 ∧ s'.getReg 19#5 = v19 ∧
@@ -49,7 +49,7 @@ theorem poly_loop (A T : Word) (C : List Word) (hA : 256 ≤ A.toNat) (hAr : A.t
   | zero => intros; omega
   | succ j ih =>
     intro S sp0 ra0 v8 v9 v18 v19 x acc hk1 hk hpc h2 h9 h18 h19 h10 hacc1 hacc2 hx hm1 hm2 hm3 hm4 hm5
-      hcode hmul hadd hcoef hsp hlo hhi hra hA4
+      hcode hmul hadd hcoef hsp hlo hhi hra hA4 hTs
     rv_code_facts hcode Code.poly_eval
     rv_steps 3 with hpc, h2, h9, h18, h19, h10
     apply run_callAt (mul_mod_impl (A + 4294967236#32) (by bv_omega))
@@ -95,7 +95,7 @@ theorem poly_loop (A T : Word) (C : List Word) (hA : 256 ≤ A.toNat) (hAr : A.t
       obtain ⟨h1a, h1b⟩ := hpost1 (h10 ▸ hacc1) hx
       obtain ⟨h2a, h2b⟩ := hpost2 h1a (hC j (by omega))
       refine exists_run_mono (ih _ sp0 ra0 v8 v9 v18 v19 x _ hj (by omega) ?_ ?_ ?_ ?_ ?_ rfl ?_ ?_ hx ?_ ?_ ?_ ?_ ?_
-        ?_ ?_ ?_ ?_ hsp hlo hhi hra hA4) ?_
+        ?_ ?_ ?_ ?_ hsp hlo hhi hra hA4 hTs) ?_
       · rv_regs
       · simp (disch := rv_callee_saved) only [reduceRSet, next_r, jump_r, hcs2, hcs1, BitVec.reduceEq, ite_false, ite_true, h2]
       · simp (disch := rv_callee_saved) only [reduceRSet, next_r, jump_r, hcs2, hcs1, BitVec.reduceEq, ite_false, ite_true, h9]

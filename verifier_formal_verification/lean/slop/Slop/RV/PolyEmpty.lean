@@ -8,7 +8,9 @@ namespace RV
 /-- Precondition of `poly_eval`: `a0` points to the table `C` (word-aligned, in ROM), `a1 = C.length`,
 `a2 = x ≤ P`. -/
 def polyPre (C : List Word) : State → Prop := fun s =>
-  CodeAt s (s.getReg 10) C ∧ s.getReg 11 = BitVec.ofNat 32 C.length ∧ (s.getReg 10).toNat + 4 * C.length ≤ 4194304 ∧
+  CodeAt s (s.getReg 10) C ∧ s.getReg 11 = BitVec.ofNat 32 C.length ∧
+    ((s.getReg 10).toNat + 4 * C.length + 48 ≤ (s.getReg 2).toNat ∨ (s.getReg 2).toNat ≤ (s.getReg 10).toNat) ∧
+    (s.getReg 10).toNat + 4 * C.length ≤ 1073741824 ∧
     (s.getReg 10).toNat % 4 = 0 ∧ (s.getReg 12).toNat ≤ P
 
 def polyPost (C : List Word) : State → State → Prop := fun s s' =>
@@ -28,8 +30,8 @@ theorem poly_eval_empty (A : Word) (hA : 256 ≤ A.toNat) (C : List Word) (hn : 
   have hmul : CodeAt s (A + 4294967236#32) Code.mul_mod := hcallees (A + 4294967236#32, Code.mul_mod) (by simp)
   have hadd : CodeAt s (A + 4294967040#32) Code.add_mod := hcallees (A + 4294967040#32, Code.add_mod) (by simp)
   clear hcallees
-  obtain ⟨hcoef, ha1, hT, hT4, hx⟩ := hpre
-  simp only [BitVec.ofNat_eq_ofNat] at hcoef ha1 hT hT4 hx
+  obtain ⟨hcoef, ha1, hT, hTr, hT4, hx⟩ := hpre
+  simp only [BitVec.ofNat_eq_ofNat] at hcoef ha1 hT hTr hT4 hx
   have hcode : CodeAt s A Code.poly_eval := hentry ▸ hcall.1
   rw [Call, hentry] at hcall
   rv_start Code.poly_eval hcall
