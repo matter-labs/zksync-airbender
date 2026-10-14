@@ -34,8 +34,8 @@ use full_statement_verifier::host_utils::{
 use full_statement_verifier::program_proof::ProgramProof;
 pub use l1_wrap::L1Bundle;
 use l1_wrap::{
-    advance_l1_wrap, validate_artifact_envelope, validate_l1_wrap_activation,
-    validate_last_feeder_proof,
+    advance_l1_wrap, validate_artifact_envelope, validate_feeder_proof,
+    validate_l1_wrap_activation, validate_last_feeder_proof,
 };
 use riscv_transpiler::vm::FlatResponsesSource;
 use serde::{Deserialize, Serialize};
@@ -647,14 +647,21 @@ fn advance_feeder_stages(
     check_feeder_fit(fsv, state, &build_unified_stream, &ProductionFeederVerifier)
 }
 
+/// Sees every proven feeder layer: the state after it and the verifier run
+/// that predicted it.
 trait FeederObserver {
-    fn feeder_layer(&mut self, layer: u8, state: &RecursionState) -> Result<(), String>;
+    fn feeder_layer(
+        &mut self,
+        layer: u8,
+        state: &RecursionState,
+        report: &FsvRunReport,
+    ) -> Result<(), String>;
 }
 
 struct NoopObserver;
 
 impl FeederObserver for NoopObserver {
-    fn feeder_layer(&mut self, _: u8, _: &RecursionState) -> Result<(), String> {
+    fn feeder_layer(&mut self, _: u8, _: &RecursionState, _: &FsvRunReport) -> Result<(), String> {
         Ok(())
     }
 }
@@ -711,6 +718,32 @@ fn delegation_calls(counters: &riscv_transpiler::vm::DelegationsAndUnifiedCounte
         + counters.keccak_calls
         + counters.keccak_f1600_calls
         + counters.blake_g_function_calls
+}
+
+/// A feeder program's prediction run must be a complete, correct
+/// verification of its input: the success exit (the measurement enforces
+/// it), every input word consumed, the input's native output reproduced,
+/// and no delegation calls.
+fn validate_prediction_report(
+    report: &FsvRunReport,
+    input_output: &[u32; 16],
+) -> Result<(), String> {
+    if report.nd_words_remaining != 0 {
+        return Err(format!(
+            "feeder verifier run left {} input words unread",
+            report.nd_words_remaining
+        ));
+    }
+    if report.output != *input_output {
+        return Err("feeder verifier run output differs from the input's native output".into());
+    }
+    if delegation_calls(&report.counters) != 0 {
+        return Err(format!(
+            "feeder verifier run issued delegation calls ({:?})",
+            report.counters
+        ));
+    }
+    Ok(())
 }
 
 /// The number of 2^22 feeder instances a verifier run of `report.cycles`
@@ -791,10 +824,23 @@ fn run_feeder_layers(
 ) -> Result<RecursionState, String> {
     let mut chain = rebuild_chain(&state.chain_end_params)?;
     let mut layer = state.feeder_layers;
+    // the native output of the current input, which every prediction run
+    // must reproduce
+    let mut input_output;
     let mut previous_instances = if layer == 0 {
-        verifier.native_verify_standard(nd(&state.setups, &state.proof))?;
+        input_output = verifier.native_verify_standard(nd(&state.setups, &state.proof))?;
         None
     } else {
+        // A resumed feeder state is admitted like a produced layer: shape,
+        // caps, native verification and the binding to its rebuilt history.
+        validate_feeder_proof(&state.proof, None)?;
+        setups::validate_setups_cap_size(
+            &state.setups,
+            l1_wrap::expected_setup_cap_size(ProofTarget::L1Feeder),
+        )?;
+        let output = verifier.native_verify(nd(&state.setups, &state.proof))?;
+        ensure_recursion_chain_binds_program(&output, &chain.hash())?;
+        input_output = output;
         Some(feeder_proof_instances(&state.proof, None)?)
     };
     if previous_instances == Some(1) {
@@ -813,6 +859,7 @@ fn run_feeder_layers(
         };
         let program = fsv.feeder_program(role);
         let report = verifier.predict(program, nd(&state.setups, &state.proof))?;
+        validate_prediction_report(&report, &input_output)?;
         let predicted = predicted_feeder_instances(&report)?;
         if let Some(previous) = previous_instances {
             if predicted >= previous {
@@ -831,9 +878,10 @@ fn run_feeder_layers(
         let instances = feeder_proof_instances(&state.proof, Some(predicted))?;
         let output = verifier.native_verify(nd(&state.setups, &state.proof))?;
         ensure_recursion_chain_binds_program(&output, &chain.hash())?;
+        input_output = output;
         layer += 1;
         state.feeder_layers = layer;
-        observer.feeder_layer((layer - 1) as u8, &state)?;
+        observer.feeder_layer((layer - 1) as u8, &state, &report)?;
         previous_instances = Some(instances);
         if instances == 1 {
             return Ok(state);
@@ -923,6 +971,10 @@ fn check_feeder_fit(
     feeder_proof_instances(&state.proof, Some(1))?;
     let stream = nd(&state.setups, &state.proof);
     let native_output = verifier.native_verify(stream.clone())?;
+    ensure_recursion_chain_binds_program(
+        &native_output,
+        &rebuild_chain(&state.chain_end_params)?.hash(),
+    )?;
     let report = verifier
         .wrap_run(&fsv.feeder_wrap, stream)
         .map_err(|e| format!("feeder proof verifier does not fit the L1 wrap: {e}"))?;
