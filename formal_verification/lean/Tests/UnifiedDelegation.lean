@@ -2138,4 +2138,12 @@ theorem invalid_bigint_worker_invocation_uniqueness (highControl : Bool) :
     (abiAccepted highControl) (abiInputs highControl).publicProgram (abiInputs highControl).initialization
     (abiInputs highControl).distinct
 
+theorem copy_all_worker_execution :
+    UnifiedReduced.Caller.MixedWorkerExecution (mixedData 0) mixedBefore cells :=
+  UnifiedReduced.Caller.all_worker_execution_soundness mixedAccepted mixedInputs
+
+theorem invalid_bigint_all_worker_execution (highControl : Bool) :
+    UnifiedReduced.Caller.MixedWorkerExecution (abiData highControl) (abiBefore highControl) cells :=
+  UnifiedReduced.Caller.all_worker_execution_soundness (abiAccepted highControl) (abiInputs highControl)
+
 end Tests.UnifiedDelegation

@@ -27,4 +27,34 @@ structure WorkerInvocationUniqueness [Fact p.Prime] (data : RequestTrace p) : Pr
   unissued : (data.workers.rows.filter fun worker =>
     decide ((Delegation.Requests.fulfillment worker).time = (0, 0))).length ≤ 1
 
+/-- A zero-clock worker is the actual first transfer group. Its native reads
+    observe the public initial state and its writes reach the actual prefix end;
+    all later transfers remain in the same history. No caller is invented. -/
+def UnissuedPrefixExecution (cells : List Cell) (events : List MemoryAccess)
+    (before after : State) (worker : Delegation.Row p) : Prop :=
+  ∃ current newer finish,
+    events = newer ++ current ∧
+    current.Perm (worker.memorySteps.map transferEvent) ∧
+    SailHistory cells current before finish ∧
+    SailHistory cells newer finish after ∧
+    ∀ port ∈ worker.ports, ∃ cell ∈ cells,
+      cell.addressCode = port.address.code worker.assignment ∧
+      cell.read before = .ok (readToken worker.assignment port).word.toBitVec before ∧
+      cell.read finish = .ok (worker.writeToken port).word.toBitVec finish
+
+/-- All workers, including the possible unissued worker, have actual call states
+    in one initialized architectural execution reaching the shared terminal cells.
+    This is transfer execution, separate from caller retirement or control ABI. -/
+def MixedWorkerExecution [Fact p.Prime] (data : RequestTrace p)
+    (before : State) (cells : List Cell) : Prop :=
+  ∃ (events : List MemoryAccess) (after : State),
+    events.Perm (data.mixedSteps.map transferEvent) ∧
+    events.Pairwise (fun a b => b.1 ≤ a.1) ∧
+    SailHistory cells events before after ∧
+    (∀ worker ∈ data.workers.rows, Delegation.CallExecution cells events before after worker) ∧
+    (∀ worker ∈ data.workers.rows, (Delegation.Requests.fulfillment worker).time = (0, 0) →
+      UnissuedPrefixExecution cells events before after worker) ∧
+    ∀ token ∈ data.machine.terminalMemory, ∃ cell ∈ cells,
+      cell.addressCode = token.address ∧ cell.read after = .ok token.word.toBitVec after
+
 end Airbender.UnifiedReduced.Caller
