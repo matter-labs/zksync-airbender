@@ -54,6 +54,8 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             ),
             ExecutionKind::Unrolled | ExecutionKind::L1Wrap => {}
         }
+        self.backend
+            .admit_binary(execution_kind, machine_type, &profiles);
         let key = self.next_binary_id;
         self.next_binary_id += 1;
         info!("PROVER inserting binary with key {key:?}");

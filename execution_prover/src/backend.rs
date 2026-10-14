@@ -2,9 +2,10 @@ use crate::config::{BackendConfiguration, ExecutionProverConfiguration};
 use crate::messages::WorkBatch;
 use crate::setup::CanonicalCircuitSetup;
 use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength, SecurityLevel, BF};
-use crate::ProofProfile;
+use crate::{ExecutionKind, ProofProfile};
 use execution_prover_model::allocator::HostTraceAllocator;
 use execution_prover_model::circuit_type::CircuitType;
+use execution_prover_model::MachineType;
 use riscv_transpiler::jit::{JitRunnerRam, MemoryHolder, TraceChunk};
 use std::ops::DerefMut;
 use std::sync::Arc;
@@ -40,6 +41,18 @@ pub trait ExecutionBackend: Send + Sync + Sized + 'static {
     /// Blocks beyond the per-job allowance, such as GPU per-device reserves.
     fn extra_trace_blocks(&self) -> usize {
         0
+    }
+
+    /// Admission of a binary registration BEFORE its setups are built: a
+    /// backend that cannot prove `(execution_kind, profiles)` panics here, so
+    /// the rejection precedes the trace-sized setup allocation. `prepare` keeps
+    /// validating the prepared circuit as defense.
+    fn admit_binary(
+        &self,
+        _execution_kind: ExecutionKind,
+        _machine_type: MachineType,
+        _profiles: &[ProofProfile],
+    ) {
     }
 
     /// Must assert that compiled circuit geometry agrees with `circuit`.
