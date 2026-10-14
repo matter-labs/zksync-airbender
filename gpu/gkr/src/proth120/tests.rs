@@ -629,11 +629,11 @@ fn cpu_lookup_pow_bits_for_l1_layout() {
     let layout = l1_layout();
     assert_eq!(lookup_identity_degree(&layout), 1_253_707_530);
     assert_eq!(
-        lookup_challenges_pow_bits(100, lookup_identity_degree(&layout)),
-        8
+        lookup_challenges_pow_bits::<PR, PR>(100, lookup_identity_degree(&layout)),
+        9
     );
     assert_eq!(lookup_pow_bits(&layout, SecurityLevel::Sec100, 20), 20);
-    assert_eq!(lookup_pow_bits(&layout, SecurityLevel::Sec100, 0), 8);
+    assert_eq!(lookup_pow_bits(&layout, SecurityLevel::Sec100, 0), 9);
 }
 
 #[test]
