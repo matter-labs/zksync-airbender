@@ -5,6 +5,9 @@
 [Verification status](VERIFICATION_STATUS.md) lists every circuit, checked coverage
 and open tasks. It is updated after each completed task.
 
+The [findings audit](FINDINGS.md) records accepted counterexamples and unresolved
+bindings, with links to their assumptions and evidence.
+
 The proof path is:
 
 ```text
