@@ -41,6 +41,9 @@ mixed execution with delegation callers remains a separate obligation.
 | Literal or AUIPC code prepares actual regional round-zero seeds; raw matching derives exclusive masks. | [`Caller.computed_round_region_masks_soundness`](Theorems.lean) |
 | Public modular controller code and at most forty ticks derive regional shape before source-aware mask transport. | [`Caller.wrapped_program_computed_round_region_soundness`](Theorems.lean) |
 | Source-aware regions derive global memory inputs under explicit full round-worker coverage. | [`Caller.computed_protocol_memory_soundness`](Theorems.lean) |
+| Public round-CSR occurrences derive live membership/masks for either source, with the zero-clock coverage boundary explicit. | [`Caller.wrapped_program_computed_round_coverage_soundness`](Theorems.lean) |
+| Complete G, extended-BLAKE and Keccak lists admit literal/AUIPC preparation in one initialized history. | [`Caller.computed_prepared_protocol_sequence_soundness`](Theorems.lean) |
+| Public modular caller/controller regions derive every shape before complete source-aware reference/list composition. | [`Caller.wrapped_program_computed_protocol_sequence_soundness`](Theorems.lean) |
 | Two preparations share their actual cut states and the complete intervening machine/worker history; neither control is supplied. | [`Caller.control_preparation_window_soundness`](Theorems.lean) |
 | Two native windows and their gap execute continuously from one initialization with retained tokens and clocks. | [`Caller.mixed_window_chain_soundness`](Theorems.lean) |
 | An arbitrary ordered finite list of native windows and gaps shares that continuous execution. | [`Caller.mixed_window_sequence_soundness`](Theorems.lean) |
@@ -160,7 +163,7 @@ Native matching derives caller rows, exact request slots, worker family and
 count before invoking the same window/list composition. The global nonround
 boundary still quantifies every worker. Source-aware extended-round masks now
 use the separate regional entry below; complete extended-round reference/list
-integration remains separate.
+integration uses the all-family source-aware entry described there.
 Legacy literal entry points use the same composition proof and retain their
 signatures. [Concrete preparation fixtures](../../../../Tests/ControlPreparation.lean)
 check AUIPC at PC 128 for G's control 128 and a wrapped sum at PC 4096 for Keccak's
@@ -190,9 +193,24 @@ clock-six token. The empty regional/global context is inhabited; wrong public
 flags, invalid cuts and simultaneous round bits are rejected under the ABI.
 These concrete fixtures cover preparation/empty regions; nonempty masks are
 arbitrary accepted-witness theorems. The unissued G-prefix effect remains
-admitted in the source-aware global context. Public round-CSR occurrence
-coverage/live-mask integration for this source and complete extended-round
-reference/list composition remain next.
+admitted in the source-aware global context. Public modular round-CSR occurrence
+coverage now derives precisely live regional membership and every issued mask
+for either source, including repeated RV32 addresses. Full coverage is equivalent
+to absence of zero-clock round workers; it does not follow from CSR coverage alone.
+[`ComputedProtocolWindowInputs`](ComputedRoundRegions.lean) connects either source
+to complete G, extended-BLAKE and Keccak reference lists in one history. Its
+selected family/count/duration remain explicit.
+[`WrappedProgramComputedPreparedProtocolInputs`](ComputedRoundRegions.lean) and
+[`WrappedProgramComputedProtocolWindowInputs`](ComputedRoundRegions.lean) replace
+selected shape premises with public modular caller/controller code and cuts.
+All gaps and actual intermediate states are derived through the existing shared
+composition. Full round-worker coverage, domain/setup/tables and logical matching
+remain explicit. Legacy coverage/reference/list entries retain their signatures
+and share these proofs. Native preparation/empty-region fixtures inhabit the
+public context and reject incomplete counts/durations and cuts past the terminal;
+the complete reference/list claims remain general accepted-witness theorems.
+Broader operand-dependent preparation, jumps/branches and whole caller retirement
+remain separate.
 
 [`WrappedProgramCallerRegion`](../../Helpers/UnifiedReduced/WindowSchedule.lean)
 states the public ordinary-exclusion/full-CSR-family policy at every clock in the

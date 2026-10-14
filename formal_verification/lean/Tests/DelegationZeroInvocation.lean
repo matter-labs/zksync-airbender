@@ -1003,4 +1003,22 @@ theorem computed_protocol_retains_unissued_g :
     UnifiedReduced.Caller.computed_protocol_memory_soundness (by decide +kernel) (by decide +kernel)
       preparationAccepted context⟩
 
+theorem computed_public_protocol_retains_unissued_g :
+    UnifiedReduced.Caller.WrappedProgramComputedPreparedProtocolInputs preparationData preparationBefore [] [0]
+      preparationCells [preparationEntry] [] ∧
+    UnifiedReduced.Caller.RoundWorkerCoverage preparationData [] ∧
+    native ∈ preparationData.workers.rows ∧
+    ¬ Delegation.Requests.Live (Delegation.Requests.fulfillment native) := by
+  have old := wrapped_program_inputs_keep_unissued
+  have context : UnifiedReduced.Caller.WrappedProgramComputedPreparedProtocolInputs preparationData preparationBefore
+      [] [0] preparationCells [preparationEntry] [] := by
+    refine ⟨old.toProtocolContextInputs, old.registry, ?_, old.coverage⟩
+    intro _ member; cases member
+  have code : UnifiedReduced.Caller.WrappedProgramRoundCallerCoverage preparationData [] := by
+    intro _ member; cases member
+  have covered := (UnifiedReduced.Caller.wrapped_program_computed_round_coverage_soundness
+    (by decide +kernel) (by decide +kernel) preparationAccepted context.toProtocolContextInputs context.registry
+    context.scopes code).1
+  exact ⟨context, covered, List.mem_singleton_self _, by decide +kernel⟩
+
 end Tests.DelegationZeroInvocation

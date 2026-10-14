@@ -1770,4 +1770,45 @@ theorem computed_round_region_two_bits_rejected [Fact p.Prime] (hp : 8388608 ≤
     rw [if_neg same, firstBit] at zero
     exact one_ne_zero zero
 
+theorem auipc_round_public_protocol_context :
+    UnifiedReduced.Caller.WrappedProgramComputedPreparedProtocolInputs roundAUIPCData roundAUIPCBefore
+      [] [524288] (cells 1) [roundAUIPCEntry] [⟨0, 8, 8⟩] := by
+  refine ⟨roundAUIPCContext, roundAUIPCScope.registry, ?_, ?_⟩
+  · intro region member
+    have same := List.mem_singleton.mp member
+    subst region
+    exact roundAUIPCRegion
+  · intro _ member; cases member
+
+theorem auipc_round_public_occurrence_coverage :
+    UnifiedReduced.Caller.RoundWorkerCoverage roundAUIPCData [⟨0, 8, 8⟩] := by
+  have code : UnifiedReduced.Caller.WrappedProgramRoundCallerCoverage roundAUIPCData [⟨0, 8, 8⟩] := by
+    intro _ member; cases member
+  exact (UnifiedReduced.Caller.wrapped_program_computed_round_coverage_soundness
+    (by decide +kernel) (by decide +kernel) roundAUIPCAccepted roundAUIPCContext roundAUIPCScope.registry
+    auipc_round_public_protocol_context.scopes code).1
+
+theorem auipc_round_incomplete_protocol_reference_rejected :
+    ¬ UnifiedReduced.Caller.ComputedProtocolWindowInputs roundAUIPCData [roundAUIPCEntry] ⟨.blakeRound 0, 8, 8⟩ := by
+  intro scope
+  have count := scope.calls
+  change 0 = 10 at count
+  contradiction
+
+theorem auipc_round_public_incomplete_protocol_reference_rejected :
+    ¬ UnifiedReduced.Caller.WrappedProgramComputedProtocolWindowInputs roundAUIPCData [roundAUIPCEntry]
+      ⟨.blakeRound 0, 8, 8⟩ := by
+  intro scope
+  have duration := scope.duration
+  change 8 = 8 + 4 * 10 at duration
+  omega
+
+theorem auipc_round_public_protocol_reference_past_terminal_rejected :
+    ¬ UnifiedReduced.Caller.WrappedProgramComputedProtocolWindowInputs roundAUIPCData [roundAUIPCEntry]
+      ⟨.blakeRound 0, 8, 48⟩ := by
+  intro scope
+  have bound := scope.beforeTerminal
+  change 48 ≤ 8 at bound
+  omega
+
 end Tests.ControlPreparation

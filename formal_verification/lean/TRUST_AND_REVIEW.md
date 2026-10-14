@@ -342,9 +342,20 @@ it inhabits an empty controller region and its global context. Wrong public flag
 invalid cuts and two simultaneous round bits are rejected under the stated ABI.
 These are preparation/empty-region fixtures; nonempty region masks are general
 accepted-witness theorems. The unissued G-prefix remains admitted in the new
-global context. Source-aware public round-CSR occurrence coverage/live masks and
-complete extended-round reference/list composition remain next, before broader
-preparation and whole CSR retirement.
+global context. Source-aware public modular round-CSR occurrence coverage now
+derives precisely live regional membership and all issued masks. Every aligned
+occurrence is covered, retaining repeated RV32 addresses. Full round coverage is
+equivalent to absence of zero-clock round workers; it does not follow from public
+CSR coverage alone. The new complete entry admits G, extended-BLAKE and Keccak
+reference lists with literal/AUIPC preparation in one continuously initialized
+history. Public modular caller/controller regions derive shape, and the existing
+composition retains every gap and actual cut state. Full round-worker coverage
+stays explicit. Legacy coverage/reference/list signatures remain and share these
+proofs. The native preparation/empty-region fixtures inhabit the new public
+context and reject incomplete reference counts/durations and cuts past the native
+terminal. Complete references/lists remain general accepted-witness theorems;
+these fixtures do not construct complete native reference windows. Broader
+operand-dependent preparation, jumps/branches and whole CSR retirement remain open.
 
 [Control preparation](Airbender/Review/Helpers/UnifiedReduced/ControlPreparation.lean)
 uses a public ordinary ADDI-from-x0/LUI registry and a worker-free final preparation
