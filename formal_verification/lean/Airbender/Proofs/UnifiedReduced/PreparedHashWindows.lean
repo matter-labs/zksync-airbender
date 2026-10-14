@@ -127,4 +127,59 @@ theorem prepared_hash_chain [Fact p.Prime] (hp : 16777216 ≤ p)
     (Delegation.Caller.Proofs.window_call_count secondRequests).trans secondInputs.calls,
     chain, history, firstResult, secondResult⟩
 
+theorem prepared_hash_sequence_at_segments [Fact p.Prime] (hp : 16777216 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
+    {program : List UnifiedReduced.ProgramEntry} {windows : List HashWindow}
+    (accepted : MixedMemoryAccepted data program)
+    (inputs : ∀ window ∈ windows, PreparedHashWindowInputs data before ca oa cells program
+      window.span window.lower window.upper)
+    {cut : Nat} {tokens : List (MemoryToken p)} {state : State} {segments : List (WindowSegment p)}
+    (ordered : WindowsOrdered cut (windows.map HashWindow.interval))
+    (actual : WindowSegmentsRealize data cells cut tokens state (windows.map HashWindow.interval) segments) :
+    List.Forall₂ (HashWindowResult data cells) windows segments := by
+  induction windows generalizing cut tokens state segments with
+  | nil =>
+    cases segments with
+    | nil => exact .nil
+    | cons _ _ => exact False.elim actual
+  | cons window rest ih =>
+    cases segments with
+    | nil => exact False.elim actual
+    | cons segment segments =>
+      obtain ⟨_, _, first, last, restOrder⟩ := ordered
+      obtain ⟨_, _, _, prefixMatching, spanPerm, spanHistory, matching, startBoundary, finishBoundary, tail⟩ := actual
+      have selectedInputs := inputs window (List.mem_cons_self ..)
+      have result := prepared_hash_reference_at_states hp clockInverse accepted selectedInputs first last
+        prefixMatching matching startBoundary finishBoundary spanPerm spanHistory
+      have floor := selectedInputs.preparation.afterInitial
+      have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
+      have requests := request_windows size clockInverse accepted.toRequestChecks selectedInputs.publicProgram
+        first last (by omega)
+      exact .cons ⟨requests, (Delegation.Caller.Proofs.window_call_count requests).trans selectedInputs.calls, result⟩
+        (ih (fun next member => inputs next (List.mem_cons_of_mem _ member)) restOrder tail)
+
+theorem prepared_hash_sequence [Fact p.Prime] (hp : 16777216 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
+    {program : List UnifiedReduced.ProgramEntry} {first : HashWindow} {rest : List HashWindow}
+    (accepted : MixedMemoryAccepted data program)
+    (firstInputs : PreparedHashWindowInputs data before ca oa cells program first.span first.lower first.upper)
+    (restInputs : ∀ window ∈ rest, PreparedHashWindowInputs data before ca oa cells program
+      window.span window.lower window.upper)
+    (ordered : WindowsOrdered first.lower ((first :: rest).map HashWindow.interval)) :
+    PreparedHashSequenceResult data before cells first rest := by
+  have rotationInverse : 64 * (-31457280 : ZMod p) = 1 := by linear_combination clockInverse
+  have aligned : first.lower % 4 = 0 := ordered.2.2.1
+  have floor := firstInputs.preparation.afterInitial
+  obtain ⟨sequence, actual⟩ := mixed_window_sequence (by omega) clockInverse rotationInverse accepted
+    (prepared_hash_memory_inputs firstInputs) aligned (by omega) ordered
+  have allInputs : ∀ window ∈ first :: rest, PreparedHashWindowInputs data before ca oa cells program
+      window.span window.lower window.upper := by
+    intro window member
+    rcases List.mem_cons.mp member with rfl | member
+    · exact firstInputs
+    · exact restInputs window member
+  exact ⟨sequence, actual, prepared_hash_sequence_at_segments hp clockInverse accepted allInputs ordered actual.segments⟩
+
 end Airbender.UnifiedReduced.Caller.Proofs

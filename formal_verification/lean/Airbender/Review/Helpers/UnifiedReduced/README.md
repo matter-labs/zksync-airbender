@@ -52,6 +52,10 @@ The [native window chain](../../Trace/UnifiedReduced/MixedWindows.lean) also exe
 two windows and their gap continuously from those retained boundaries. Complete
 [prepared G/Keccak chains](../../Trace/UnifiedReduced/PreparedHashWindows.lean) use
 that same execution and derive both references without supplied intermediate states.
+The same [sequence mapping](../../Trace/UnifiedReduced/MixedWindows.lean) now
+connects any ordered finite list of windows and gaps. A nonempty list of complete
+[prepared references](../../Trace/UnifiedReduced/PreparedHashWindows.lean) uses
+those exact segment states; each span retains its public preparation and protocol ABI.
 
 The native domain, public program, protocol counts and existing prefix scope
 remain explicit. These helpers do not claim whole mixed caller retirement.

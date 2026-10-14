@@ -308,4 +308,73 @@ theorem mixed_window_chain [Fact p.Prime] (hp : 8388608 ≤ p)
   exact ⟨chain, ⟨pp, p1, pg, p2, hp1, h1, hg, h2, prefixFacts.matching, firstFacts.matching,
     prefixAtC, secondFacts.matching, native_boundary n1, native_boundary n2, native_boundary n3, native_boundary n4⟩⟩
 
+theorem native_window_segments [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {before : State} {ca : List (BitVec 32)} {cells : List Cell}
+    (accepted : RequestChecks data) (publicInputs : RequestInputs data before ca)
+    (bounds : ∀ edge ∈ (mixedData data).steps, edge.2.word.Bounded)
+    (clocks : ∀ edge ∈ (mixedData data).steps, (timeOfPair edge.2.time).Bounded)
+    (aligned : ∀ cell ∈ cells, cell.Aligned)
+    (zero : ∀ edge ∈ (mixedData data).steps, edge.1.address = (Cell.register 0).addressCode → memoryWord edge.2.value = 0)
+    {cut : Nat} {tokens : List (MemoryToken p)} {state : State} {windows : List (Nat × Nat)}
+    (facts : Transfer.Facts ⟨tokens, (mixedData data).terminal, Transfer.afterSteps (mixedData data) (cut - 1)⟩)
+    (inputs : Transfer.NativeInputs ⟨tokens, (mixedData data).terminal,
+      Transfer.afterSteps (mixedData data) (cut - 1)⟩ state cells)
+    (prefixMatching : (data.machine.initialMemory ++ (data.prefixSteps cut).map Prod.snd).Perm
+      (tokens ++ (data.prefixSteps cut).map Prod.fst))
+    (first : cut % 4 = 0) (positive : 2 ≤ cut) (ordered : WindowsOrdered cut windows) :
+    ∃ segments, WindowSegmentsRealize data cells cut tokens state windows segments := by
+  induction windows generalizing cut tokens state with
+  | nil => exact ⟨[], trivial⟩
+  | cons interval rest ih =>
+    obtain ⟨lower, upper⟩ := interval
+    obtain ⟨gapOrder, spanOrder, lowerAligned, upperAligned, restOrder⟩ := ordered
+    obtain ⟨start, gapEvents, atStart, gapFacts, suffix, gapPerm, gapHistory, startInputs⟩ :=
+      native_suffix_split (by omega : cut - 1 ≤ lower - 1) facts inputs bounds clocks aligned zero
+    obtain ⟨finish, spanEvents, atFinish, spanFacts, remaining, spanPerm, spanHistory, finishInputs⟩ :=
+      native_suffix_split (by omega : lower - 1 ≤ upper - 1) suffix startInputs bounds clocks aligned zero
+    rw [← mixed_window_steps hp clockInverse accepted publicInputs first lowerAligned positive gapOrder] at gapFacts gapPerm
+    rw [← mixed_window_steps hp clockInverse accepted publicInputs lowerAligned upperAligned (by omega) spanOrder]
+      at spanFacts spanPerm
+    have atLower := matching_at_next_cut hp clockInverse accepted publicInputs first lowerAligned positive gapOrder
+      prefixMatching gapFacts.matching
+    have atUpper := matching_at_next_cut hp clockInverse accepted publicInputs lowerAligned upperAligned (by omega) spanOrder
+      atLower spanFacts.matching
+    obtain ⟨segments, actual⟩ := ih remaining finishInputs atUpper upperAligned (by omega) restOrder
+    let segment : WindowSegment p := ⟨start, finish, gapEvents, spanEvents, atStart, atFinish⟩
+    exact ⟨segment :: segments, gapPerm, gapHistory, gapFacts.matching, atLower, spanPerm, spanHistory,
+      spanFacts.matching, native_boundary startInputs, native_boundary finishInputs, actual⟩
+
+theorem mixed_window_sequence [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1) (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat} {windows : List (Nat × Nat)}
+    (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)
+    (first : cut % 4 = 0) (positive : 2 ≤ cut) (ordered : WindowsOrdered cut windows) :
+    MixedWindowSequenceExecution data before cells cut windows := by
+  have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
+  have requests := request_binding size clockInverse accepted.toRequestChecks inputs.publicProgram
+  have facts := mixed_memory_facts size clockInverse accepted inputs.publicProgram inputs.initialization requests
+  have initialized : Transfer.Inputs (mixedData data) before cells := ⟨inputs.initialization, inputs.distinct⟩
+  have rules := mixed_write_rules hp rotationInverse accepted inputs
+  have bounds : ∀ edge ∈ (mixedData data).steps, edge.2.word.Bounded := by
+    intro edge member
+    exact Transfer.produced_bounds facts initialized rules edge.2
+      (List.mem_append.mpr (Or.inr (List.mem_map.mpr ⟨edge, member, rfl⟩)))
+  have clocks := mixed_write_clocks size clockInverse accepted inputs.publicProgram requests
+  have zeroRules := mixed_zero_rules size clockInverse accepted inputs requests
+  have zeroReads := Transfer.read_cell_values_of_rules facts (Cell.register 0).addressCode 0
+    (Delegation.Caller.Proofs.initial_zero inputs.initialization) zeroRules
+  have zero : ∀ edge ∈ (mixedData data).steps, edge.1.address = (Cell.register 0).addressCode → memoryWord edge.2.value = 0 := by
+    intro edge member same
+    have value := zeroRules edge member same (fun previous present _ address => zeroReads previous present address)
+    rw [value]
+    rfl
+  obtain ⟨tokens, events, state, prefixFacts, suffix, permutation, _, actual, boundary⟩ :=
+    Transfer.split_native_sail_state facts initialized.toNativeInputs rules clocks inputs.aligned zero (cut - 1)
+  rw [mixed_prefix_steps data (by omega)] at prefixFacts permutation
+  obtain ⟨segments, realized⟩ := native_window_segments size clockInverse accepted.toRequestChecks inputs.publicProgram
+    bounds clocks inputs.aligned zero suffix boundary prefixFacts.matching first positive ordered
+  exact ⟨⟨tokens, events, state, segments⟩, permutation, actual, prefixFacts.matching, native_boundary boundary, realized⟩
+
 end Airbender.UnifiedReduced.Caller.Proofs
