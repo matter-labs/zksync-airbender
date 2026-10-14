@@ -670,9 +670,9 @@ theorem Caller.pc_relative_control_preparation_soundness [Fact p.Prime] (hp : 83
     Caller.PCRelativePreparedBoundaryExecution data before cells cut register immediate :=
   Caller.Proofs.pc_relative_control_preparation hp clockInverse rotationInverse accepted inputs scope nonzero aligned
 
-/-- Literal or publicly placed AUIPC instructions prepare the actual protocol
+/-- Literal, publicly placed AUIPC or literal→ADDI instructions prepare the actual protocol
     entry control and retain its native timestamp in the initialized history.
-    The AUIPC condition concerns decoded code, with no supplied control read. -/
+    Placement/dataflow conditions concern decoded code, with no supplied control read. -/
 theorem Caller.hash_control_preparation_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1) (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
     {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
@@ -684,7 +684,7 @@ theorem Caller.hash_control_preparation_soundness [Fact p.Prime] (hp : 8388608 �
     Caller.PreparedBoundaryExecution data before cells cut span.controlRegister (Caller.hashPreparation span) :=
   Caller.Proofs.hash_control_preparation hp clockInverse rotationInverse accepted inputs source aligned
 
-/-- Literal or PC-relative public preparation reaches a complete selected G or
+/-- Public literal/AUIPC/literal→ADDI preparation reaches a complete selected G or
     Keccak reference at the actual joint cut states. Counts/duration, family,
     domain, modeled tables and logical matching stay explicit. -/
 theorem Caller.computed_prepared_hash_window_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
@@ -698,7 +698,7 @@ theorem Caller.computed_prepared_hash_window_soundness [Fact p.Prime] (hp : 1677
     Caller.JointHashWindowResult data before cells span lower upper :=
   Caller.Proofs.computed_hash_window hp clockInverse accepted inputs first last
 
-/-- A nonempty ordered list may mix literal and AUIPC preparations. Every gap
+/-- A nonempty ordered list may mix all public preparation forms. Every gap
     and complete G/Keccak reference shares one continuously initialized history;
     intermediate states and protocol entry reads are derived. -/
 theorem Caller.computed_prepared_hash_sequence_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
@@ -734,7 +734,7 @@ theorem Caller.hash_prepared_public_window_schedule_soundness [Fact p.Prime] (hp
     ordinaryProgram registry source region first last ordered beforeTerminal
 
 /-- Complete selected G/Keccak references derive their caller/worker family,
-    count and slots from public modular regions, then use literal or AUIPC
+    count and slots from public modular regions, then use public literal/AUIPC/literal→ADDI
     preparation at the actual joint states. Public duration and nonround scope,
     domain, setup/tables and logical matching remain explicit. -/
 theorem Caller.wrapped_program_computed_hash_window_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
@@ -750,7 +750,7 @@ theorem Caller.wrapped_program_computed_hash_window_soundness [Fact p.Prime] (hp
       Caller.JointHashWindowResult data before cells window.span window.lower window.upper :=
   Caller.Proofs.wrapped_program_computed_hash_window hp clockInverse accepted inputs scope first last
 
-/-- A nonempty ordered list may mix literal and AUIPC preparations. Public
+/-- A nonempty ordered list may mix all public preparation forms. Public
     modular regions derive all selected shapes; existing composition retains
     every gap and reference in one continuously initialized history. -/
 theorem Caller.wrapped_program_computed_hash_sequence_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
@@ -836,8 +836,8 @@ theorem Caller.wrapped_program_computed_round_coverage_soundness [Fact p.Prime] 
   exact ⟨covered, Caller.Proofs.wrapped_program_computed_round_live_masks hp clockInverse accepted inputs registry scopes coverage,
     Caller.Proofs.round_worker_coverage_boundary covered⟩
 
-/-- Complete G, extended-BLAKE and Keccak references may mix literal and AUIPC
-    preparation. Every gap and boundary state comes from one initialized history.
+/-- Complete G, extended-BLAKE and Keccak references may mix all public
+    preparation forms. Every gap and boundary state comes from one initialized history.
     Raw regional matching derives masks; full round-worker coverage stays explicit. -/
 theorem Caller.computed_prepared_protocol_sequence_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
@@ -852,7 +852,7 @@ theorem Caller.computed_prepared_protocol_sequence_soundness [Fact p.Prime] (hp 
   Caller.Proofs.computed_protocol_sequence hp clockInverse accepted inputs scopes ordered
 
 /-- Public modular caller/controller regions derive shape for every selected
-    reference and controller. Either preparation source reaches complete G,
+    reference and controller. Each preparation source reaches complete G,
     extended-BLAKE and Keccak references in one continuously initialized history.
     Domain/setup/tables and full round-worker coverage remain explicit. -/
 theorem Caller.wrapped_program_computed_protocol_sequence_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
@@ -867,11 +867,34 @@ theorem Caller.wrapped_program_computed_protocol_sequence_soundness [Fact p.Prim
     Caller.PreparedHashSequenceResult data before cells first rest :=
   Caller.Proofs.wrapped_program_computed_protocol_sequence hp clockInverse accepted inputs scopes ordered
 
+/-- Two consecutive public literal/ADDI instructions bind a protocol constant.
+    Initialized matching derives the actual operand and result; both final
+    cycles are worker-free, with all earlier transfers retained. The existing
+    public cell domain supplies uniqueness, and only public constants occur in
+    the value equation. Full Sail retirement remains separate. -/
+theorem Caller.literal_addi_hash_preparation_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+    {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
+    {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    {cut : Nat} {span : Delegation.Caller.HashSpan} {source : BitVec 5}
+    {literal : Caller.ControlLiteral} {immediate : BitVec 12}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.MixedMemoryInputs data program before ca oa cells)
+    (seed : Caller.ControlPreparation data program (cut - 4) source literal)
+    (step : Caller.RegisterImmediatePreparation data program cut source span.controlRegister immediate)
+    (nonzero : source ≠ 0)
+    (value : Caller.registerImmediateValue literal.value immediate = span.controlStart)
+    (aligned : cut % 4 = 0) :
+    Caller.PreparedBoundaryExecution data before cells cut span.controlRegister (Caller.hashPreparation span) :=
+  Caller.Proofs.hash_control_preparation hp clockInverse rotationInverse accepted inputs
+    (Caller.Proofs.literal_addi_hash_preparation_source inputs.initialization inputs.distinct seed step nonzero value) aligned
+
 /-- Public register-dependent ADDI preparation derives its operand from the
     actual initialized cycle state, its RV32 result and canonical output token
     at cut minus two. Earlier issued/unissued effects and aliases are retained.
     No source read, operand bound, selector or desired result is supplied.
-    Protocol-constant binding and complete Sail retirement remain separate. -/
+    Unrestricted public dataflow and complete Sail retirement remain separate. -/
 theorem Caller.register_immediate_control_preparation_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
     (rotationInverse : 64 * (-31457280 : ZMod p) = 1)

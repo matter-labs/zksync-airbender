@@ -369,10 +369,23 @@ Public domain/setup/tables and the existing round-mask boundary stay explicit.
 Native fixtures check 65537→65665 and 65537→65536, retain clock six and reject a
 wrong immediate/fabricated source. The unissued G-prefix fixture derives actual
 states 0→1→1 despite public initial x12 zero. Legacy literal/AUIPC signatures
-remain and share arithmetic/output-token helpers. This proves memory preparation;
-complete Sail retirement and binding a register-dependent result to a protocol
-constant through public dataflow remain separate. The complete source-aware
-reference/list interface still uses its existing literal/AUIPC sources.
+remain and share arithmetic/output-token helpers. The
+[consecutive literal→ADDI source](Airbender/Review/Helpers/UnifiedReduced/RegisterPreparation.lean)
+now binds a protocol entry constant through public instructions. Strict native
+clocks and initialized prefix/suffix matching identify the actual first operand
+with the preceding literal's canonical token; the existing distinct public domain
+supplies uniqueness. This raw proof precedes Sail transport and round-mask
+derivation, preserving the dependency order. No actual read or bound is an input.
+Both final preparation cycles are worker-free; earlier effects remain. The third
+source feeds the existing complete G/extended-BLAKE/Keccak windows and lists,
+including public modular shape and raw regional masks, with the same coverage,
+domain/setup/table and logical-matching boundaries. Native fixtures derive
+65537→127→128 and 65537→129→128 with aliases, signed −1 and clock ten. Wrong
+immediates/public constants, fabricated operands and incomplete references are
+rejected. A native G-prefix fixture retains its actual unissued effect before
+literal zero and ADDI 128. Complete reference claims remain general accepted-
+witness theorems; the fixtures cover preparation/empty-region guards. Longer
+public dataflow chains, broader operations and complete Sail retirement remain open.
 
 [Control preparation](Airbender/Review/Helpers/UnifiedReduced/ControlPreparation.lean)
 uses a public ordinary ADDI-from-x0/LUI registry and a worker-free final preparation

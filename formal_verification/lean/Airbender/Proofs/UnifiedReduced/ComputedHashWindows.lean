@@ -1,13 +1,30 @@
 import Airbender.Review.Trace.UnifiedReduced.ComputedHashWindows
 import Airbender.Proofs.UnifiedReduced.HashPreparation
 import Airbender.Proofs.Delegation.SpanTarget
-import Airbender.Proofs.UnifiedReduced.PCRelativePreparation
+import Airbender.Proofs.UnifiedReduced.RegisterPreparation
 
 namespace Airbender.UnifiedReduced.Caller.Proofs
 open Trace Trace.Proofs Arithmetic Reference.RiscV.Sail
 set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2400000
+
+/-- The existing public cell domain derives seed uniqueness for literal→ADDI;
+    the only value equation is between public instruction constants. -/
+theorem literal_addi_hash_preparation_source [Fact p.Prime]
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {cells : List Cell} {cut : Nat} {span : Delegation.Caller.HashSpan}
+    {source : BitVec 5} {literal : ControlLiteral} {immediate : BitVec 12}
+    (initialization : initialImage before cells = some data.machine.initialMemory)
+    (distinct : (cells.map Cell.addressCode).Nodup)
+    (seed : ControlPreparation data program (cut - 4) source literal)
+    (step : RegisterImmediatePreparation data program cut source span.controlRegister immediate)
+    (nonzero : source ≠ 0)
+    (value : registerImmediateValue literal.value immediate = span.controlStart) :
+    HashControlPreparation data program cut span := by
+  exact .literalAddi source literal immediate ⟨seed, step, nonzero, by
+    rw [image_addresses initialization]
+    exact distinct⟩ value
 
 theorem hash_control_preparation_after_initial [Fact p.Prime]
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {cut : Nat}
@@ -16,6 +33,7 @@ theorem hash_control_preparation_after_initial [Fact p.Prime]
   cases source with
   | literal scope => exact scope.afterInitial
   | pcRelative _ scope _ => exact scope.afterInitial
+  | literalAddi _ _ _ scope _ => exact scope.step.afterInitial
 
 /-- The public placement condition is applied to the actual decoded instruction,
     whose membership and address are derived from native constraints and clocks. -/
@@ -38,7 +56,7 @@ theorem pc_relative_hash_control [Fact p.Prime] (hp : 8388608 ≤ p)
     scope member last present query).1
   simpa only [pcRelativeControl, address] using placement entry present address
 
-/-- Either public preparation form produces the canonical native entry token.
+/-- Each public preparation form produces the canonical native entry token.
     Its actual write timestamp is retained before any hash-reference transport. -/
 theorem hash_control_preparation_token [Fact p.Prime] (hp : 8388608 ≤ p)
     (inverse : (-3840 : ZMod p) * 524288 = 1)
@@ -61,6 +79,9 @@ theorem hash_control_preparation_token [Fact p.Prime] (hp : 8388608 ≤ p)
   | pcRelative immediate scope placement =>
     have value := pc_relative_hash_control hp inverse setup accepted publicProgram ordinaryProgram scope placement aligned
     simpa only [value] using pc_relative_preparation_token hp inverse setup accepted publicProgram ordinaryProgram
+      initialization scope (hash_control_register_nonzero span) aligned matching
+  | literalAddi source literal immediate scope value =>
+    simpa only [value] using literal_addi_preparation_token hp inverse setup accepted publicProgram ordinaryProgram
       initialization scope (hash_control_register_nonzero span) aligned matching
 
 theorem hash_control_preparation_at_boundary [Fact p.Prime] (hp : 8388608 ≤ p)

@@ -93,19 +93,19 @@ worker-free, so earlier issued/unissued effects remain. No row selector, desired
 control value or operand read is an input. This preparation/memory entry retains
 modeled setup/tables and the existing extended-round ABI. The
 [computed hash-window source](../../Trace/UnifiedReduced/ComputedHashWindows.lean)
-now connects literal or publicly placed AUIPC preparation to complete selected
+now connects literal, publicly placed AUIPC or literal→ADDI preparation to complete selected
 G/Keccak references and ordered lists in one continuous history. Public code
 placement must compute the protocol entry constant; its actual read is derived.
 Selected family/count/duration, nonround scope and logical matching stay explicit.
 The new public modular-region entry derives caller rows, exact request slots,
-worker family/count and complete window/list composition for either source.
+worker family/count and complete window/list composition for each source.
 Public mode/code/duration, nonround scope and logical matching remain explicit.
 The separate [source-aware round regions](../../Trace/UnifiedReduced/ComputedRoundRegions.lean)
 derive actual round-zero seeds and exclusive regional masks; public modular
 controller extents derive local shape, while global memory keeps full round
 coverage explicit. Source-aware public round-CSR occurrence coverage now derives
 precisely live membership and masks, retaining the zero-clock coverage boundary.
-Complete G, extended-BLAKE and Keccak lists also admit either source; public
+Complete G, extended-BLAKE and Keccak lists also admit all three sources; public
 modular caller/controller regions derive shape before the existing continuous
 history composition. Full round coverage stays explicit. Broader operand-dependent
 preparation and jumps/branches remain separate. Concrete fixtures use PC four to produce 524292 and
@@ -120,8 +120,24 @@ two, including aliases and earlier issued/unissued effects. No desired operand
 or result is supplied. Only the final cycle is worker-free; domain/setup/tables
 and the round-mask boundary remain explicit. Native fixtures retain clock six
 and actual 65537→65665, 65537→65536 and unissued-prefix 0→1→1 states, rejecting
-wrong immediates and fabricated source reads. Complete Sail retirement and public
-dataflow binding to protocol constants remain separate.
+wrong immediates and fabricated source reads.
+
+The same file's `LiteralAddiPreparation` identifies two consecutive public
+instructions: a literal writes the source, then ADDI consumes it. Initialized
+prefix/suffix matching, strict clocks and the existing distinct public domain
+derive the actual first-read token, before Sail transport or regional round-mask
+derivation. A public equation on the literal/immediate binds the result to a
+protocol entry constant. This third
+[hash preparation source](../../Trace/UnifiedReduced/ComputedHashWindows.lean)
+feeds the existing complete G/extended-BLAKE/Keccak windows and lists, retaining
+all coverage/domain/setup/table and logical-matching boundaries. Only the two
+final cycles are worker-free. Native reversed-row fixtures derive
+65537→127→128 and 65537→129→128 with aliases, signed −1 and canonical clock ten;
+wrong constants/immediates, fabricated reads and incomplete references are
+rejected. An accepted unissued G prefix remains before literal zero and ADDI
+128. Full reference claims are general accepted-witness theorems; concrete
+fixtures cover preparation and empty-region guards. Longer public dataflow,
+broader operations and complete Sail retirement remain separate.
 
 The [prepared control window](../../Trace/UnifiedReduced/ControlPreparation.lean)
 connects two prepared controls through the same actual intervening history, keeping

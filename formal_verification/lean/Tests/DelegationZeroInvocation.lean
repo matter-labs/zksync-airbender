@@ -1195,4 +1195,211 @@ theorem register_preparation_uses_actual_unissued_operand :
   exact ⟨tokens, events, atSource, atCut, permutation, past, native, matching, initial, actual, written,
     token, present, address, time, word⟩
 
+private def dataflowAssignment (column : Nat) : ZMod babyBearModulus :=
+  if column = 0 then 4
+  else if column = 2 || column = 30 || column = 46 then 8
+  else if column = 32 then 12
+  else if column = 5 then 12
+  else if column = 34 then 6
+  else if column = 40 then 5
+  else if column = 48 then 0
+  else if column = 8 || column = 50 then 128
+  else preparationAssignment column
+private def dataflowRow : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, dataflowAssignment⟩
+private def dataflowBefore : Reference.RiscV.Sail.State :=
+  Reference.RiscV.Sail.wordWriteState preparationBefore 4 0x08060613
+private def dataflowEntry : UnifiedReduced.ProgramEntry :=
+  ⟨4, 0x08060613, .ITYPE (128, .Regidx 12, .Regidx 12, .ADDI),
+    ⟨.machine, 12, 0, 12, ⟨128, 0⟩, 1, 0⟩⟩
+private def dataflowData : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
+  { preparationData with machine := { preparationData.machine with
+      rows := [dataflowRow, preparationRow]
+      rom := UnifiedReduced.Setup.table dataflowBefore
+      terminal := dataflowRow.finish
+      terminalMemory := ⟨(Cell.register 0).addressCode, (9, 0), 0⟩ ::
+        ⟨(Cell.register 12).addressCode, (10, 0), Nat.pair 128 0⟩ ::
+        data.terminal.filter (fun token => token.address != (Cell.register 12).addressCode) } }
+
+private theorem dataflowCore (second : Bool) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (if second then dataflowAssignment else preparationAssignment))
+    (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table dataflowBefore)) := by
+  cases second
+  all_goals simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
+    Verification.environment, Expression.eval, dataflowAssignment, preparationAssignment, Lookup.Contains, Table.toRaw, fromElements]
+  all_goals repeat' apply And.intro
+  all_goals solve
+    | decide +kernel
+    | (apply Verification.range16_contains; decide +kernel)
+    | (refine ⟨(0 : Fin 2097537), ?_⟩
+       change (#v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0] : Vector (ZMod babyBearModulus) 10) =
+         (UnifiedReduced.Setup.fixedRow (0 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
+       decide +kernel)
+
+private theorem dataflowClocks : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment dataflowAssignment) UnifiedReduced.importedConstraintsTimestampLookups := by
+  rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
+  constructor
+  · simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.constraints]
+  · rw [List.forall_mem_iff_forall_getElem]
+    intro i bound
+    have short : i < 8 := by simpa only [UnifiedReduced.timestamp_count] using bound
+    interval_cases i
+    all_goals apply Trace.Proofs.range_contains
+    all_goals decide +kernel
+
+private theorem dataflowAccepted :
+    UnifiedReduced.Caller.MixedMemoryAccepted dataflowData [preparationEntry, dataflowEntry] := by
+  constructor
+  · constructor
+    · intro current member
+      have rows : current = dataflowRow ∨ current = preparationRow := by simpa [dataflowData] using member
+      rcases rows with rfl | rfl
+      · exact Verification.holds_append (dataflowCore true) dataflowClocks
+      · exact Verification.holds_append (dataflowCore false) preparationClocks
+    · intro current member
+      have rows : current = dataflowRow ∨ current = preparationRow := by simpa [dataflowData] using member
+      rcases rows with rfl | rfl <;> decide +kernel
+    · change [preparationRow.start, dataflowRow.finish, preparationRow.finish].Perm
+        [dataflowRow.finish, dataflowRow.start, preparationRow.start]
+      have same : preparationRow.finish = dataflowRow.start := rfl
+      rw [same]
+      exact (List.Perm.swap _ _ _).trans (List.Perm.cons _ (List.Perm.swap _ _ []))
+    · intro current member
+      have empty : dataflowData.callers = [] := by decide +kernel
+      rw [empty] at member
+      cases member
+    · exact sharedAccepted.workerConstraints
+    · exact sharedAccepted.workerActive
+    · have empty : dataflowData.calls = [] := by decide +kernel
+      rw [empty]
+      exact no_caller_virtual_matching
+  · intro current member _
+    have rows : current = dataflowRow ∨ current = preparationRow := by simpa [dataflowData] using member
+    rcases rows with rfl | rfl
+    · change ∃ i : Fin 2, dataflowRow.decoderQuery = ([preparationEntry, dataflowEntry].get i).query
+      exact ⟨1, by decide +kernel⟩
+    · change ∃ i : Fin 2, preparationRow.decoderQuery = ([preparationEntry, dataflowEntry].get i).query
+      exact ⟨0, by decide +kernel⟩
+  · decide +kernel
+
+private theorem dataflowProgram :
+    UnifiedReduced.Mixed.programImage dataflowBefore [0, 4] = some [preparationEntry, dataflowEntry] := by
+  have first : (Cell.ram 0).read dataflowBefore = .ok 0x00000613 dataflowBefore :=
+    Reference.RiscV.Sail.written_word_disjoint 4 0x08060613 (by decide)
+      (Reference.RiscV.Sail.written_word_read before 0 _)
+  have second : (Cell.ram 4).read dataflowBefore = .ok 0x08060613 dataflowBefore :=
+    Reference.RiscV.Sail.written_word_read preparationBefore 4 _
+  have decodeFirst : Reference.Sail.run (SailRV32.Functions.encdec_backwards 0x00000613) dataflowBefore =
+      .ok preparationEntry.instruction dataflowBefore := by with_unfolding_all rfl
+  have decodeSecond : Reference.Sail.run (SailRV32.Functions.encdec_backwards 0x08060613) dataflowBefore =
+      .ok dataflowEntry.instruction dataflowBefore := by with_unfolding_all rfl
+  have fieldsFirst : UnifiedReduced.Mixed.decoderFields preparationEntry.instruction = some preparationEntry.data := by
+    with_unfolding_all rfl
+  have fieldsSecond : UnifiedReduced.Mixed.decoderFields dataflowEntry.instruction = some dataflowEntry.data := by
+    with_unfolding_all rfl
+  simp only [UnifiedReduced.Mixed.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
+    programEntryRunWith, first, second, decodeFirst, decodeSecond, fieldsFirst, fieldsSecond, bind, Option.bind, pure]
+  rfl
+
+private theorem dataflowImage :
+    initialImage dataflowBefore preparationCells = some dataflowData.machine.initialMemory := by
+  have x10 : Cell.read (.register 10) dataflowBefore = .ok 4194304 dataflowBefore := by
+    apply Reference.RiscV.Sail.read_register
+    simp [dataflowBefore, preparationBefore, Reference.RiscV.Sail.wordWriteState, before, Std.ExtDHashMap.get?_insert]
+  have x11 : Cell.read (.register 11) dataflowBefore = .ok 4194368 dataflowBefore := by
+    apply Reference.RiscV.Sail.read_register
+    simp [dataflowBefore, preparationBefore, Reference.RiscV.Sail.wordWriteState, before, Std.ExtDHashMap.get?_insert]
+  have x12 : Cell.read (.register 12) dataflowBefore = .ok 0 dataflowBefore := by
+    apply Reference.RiscV.Sail.read_register
+    simp [dataflowBefore, preparationBefore, Reference.RiscV.Sail.wordWriteState, before]
+  have zero : Cell.read (.register 0) dataflowBefore = .ok 0 dataflowBefore := rfl
+  simp only [initialImage, preparationCells, cells, List.mapM_cons, List.mapM_nil, zero, x10, x11, x12]
+  simp [Cell.read, _root_.Sail.ArchSem.readBytes, _root_.Sail.ArchSem.readByte,
+    EStateM.run, get, getThe, MonadStateOf.get, bind, pure,
+    EStateM.bind, EStateM.get, EStateM.pure, dataflowBefore, Reference.RiscV.Sail.wordWriteState,
+    preparationBefore, before, Std.ExtHashMap.getElem_insert, Cell.initialToken, dataflowData, data, native,
+    Delegation.Row.memorySteps, Delegation.Row.ports, Blake2G.importedConstraintsMemoryPorts,
+    readToken, MemoryAddress.code, Verification.IndirectPort.rawAddress, MemoryPort.readCode,
+    WordColumns.code, WordColumns.evaluate, rawPair, row, Arithmetic.Word.ofBitVec, Arithmetic.limbBase]
+  all_goals decide +kernel
+
+private theorem dataflowInputs :
+    UnifiedReduced.Caller.MixedMemoryInputs dataflowData [preparationEntry, dataflowEntry] dataflowBefore [] [0, 4] preparationCells := by
+  refine ⟨⟨rfl, ?_, by decide⟩, dataflowProgram, dataflowImage, by decide, ?_, rfl, rfl, ?_⟩
+  · change 4 < timestampBase ∧ 0 < timestampBase
+    norm_num [timestampBase]
+  · intro cell member
+    simp [preparationCells, cells] at member
+    rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+    all_goals simp [Cell.Aligned]
+  · intro current member family
+    have same : current = native := List.mem_singleton.mp member
+    subst current
+    cases family
+
+private theorem dataflowRegistry : UnifiedReduced.Caller.WrappedSequentialProgram [preparationEntry, dataflowEntry] := by
+  constructor
+  · intro current member
+    have entries : current = preparationEntry ∨ current = dataflowEntry := by simpa using member
+    rcases entries with rfl | rfl
+    all_goals exact .sequential (.arithmetic (.addi _ _ _))
+  · intro current member
+    have entries : current = preparationEntry ∨ current = dataflowEntry := by simpa using member
+    rcases entries with rfl | rfl <;> decide
+
+private theorem dataflowScope : UnifiedReduced.Caller.LiteralAddiPreparation
+    dataflowData [preparationEntry, dataflowEntry] 12 12 12 (.addi 0) 128 := by
+  refine ⟨⟨.wrappedSequential (by decide) dataflowBefore rfl dataflowRegistry ?_, by decide +kernel,
+    by decide +kernel, by decide +kernel⟩,
+    ⟨dataflowRegistry, ?_, by decide +kernel, by decide +kernel, by decide +kernel⟩,
+    by decide, ?_⟩
+  · intro current member address
+    have entries : current = preparationEntry ∨ current = dataflowEntry := by simpa using member
+    rcases entries with rfl | rfl
+    · rfl
+    · change (4 : BitVec 32) = 0 at address
+      contradiction
+  · intro current member address
+    have entries : current = preparationEntry ∨ current = dataflowEntry := by simpa using member
+    rcases entries with rfl | rfl
+    · change (0 : BitVec 32) = 4 at address
+      contradiction
+    · rfl
+  · rw [Trace.Proofs.image_addresses dataflowInputs.initialization]
+    exact dataflowInputs.distinct
+
+theorem literal_addi_protocol_retains_unissued_g :
+    UnifiedReduced.Caller.PreparedBoundaryExecution dataflowData dataflowBefore preparationCells 12 12
+      (UnifiedReduced.Caller.hashPreparation (.blakeG true)) ∧
+    native ∈ dataflowData.workers.rows ∧
+    ¬ Delegation.Requests.Live (Delegation.Requests.fulfillment native) := by
+  refine ⟨?_, List.mem_singleton_self _, by decide +kernel⟩
+  exact UnifiedReduced.Caller.literal_addi_hash_preparation_soundness (span := .blakeG true) (by decide +kernel) (by decide +kernel)
+    (by decide +kernel) dataflowAccepted dataflowInputs dataflowScope.seed dataflowScope.step
+    (by decide) (by decide +kernel) (by decide)
+
+theorem literal_addi_retains_actual_unissued_prefix :
+    ∃ sequence : UnifiedReduced.Caller.WindowSequence babyBearModulus,
+      sequence.Realizes dataflowData dataflowBefore preparationCells 4 [(4, 8), (8, 12)] ∧
+      (Cell.register 12).read sequence.atInitial = .ok 1 sequence.atInitial := by
+  obtain ⟨sequence, history⟩ := UnifiedReduced.Caller.mixed_window_sequence_soundness
+    (cut := 4) (windows := [(4, 8), (8, 12)])
+    (by decide +kernel) (by decide +kernel) (by decide +kernel) dataflowAccepted dataflowInputs
+    (by decide) (by decide) (by simp [UnifiedReduced.Caller.WindowsOrdered])
+  let token : MemoryToken babyBearModulus := ⟨(Cell.register 12).addressCode, (2, 0), Nat.pair 1 0⟩
+  have produced : token ∈ dataflowData.machine.initialMemory ++ (dataflowData.prefixSteps 4).map Prod.snd := by decide +kernel
+  have notRead : token ∉ (dataflowData.prefixSteps 4).map Prod.fst := by decide +kernel
+  have present : token ∈ sequence.initial := by
+    rcases List.mem_append.mp (history.prefixMatching.mem_iff.mp produced) with present | read
+    · exact present
+    · exact False.elim (notRead read)
+  obtain ⟨cell, _, address, actualRead⟩ := UnifiedReduced.Caller.Proofs.native_boundary_read history.boundary present
+  have same : cell = Cell.register 12 := Trace.Proofs.cell_address_injective address
+  subst cell
+  have bits : token.word.toBitVec = (1 : BitVec 32) := by
+    simp only [token, MemoryToken.word, Nat.unpair_pair]
+    rfl
+  rw [bits] at actualRead
+  exact ⟨sequence, history, actualRead⟩
+
 end Tests.DelegationZeroInvocation

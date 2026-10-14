@@ -268,14 +268,26 @@ derive 65537→65665 and 65537→65536, retain clock six and reject a wrong imme
 or fabricated source. The [unissued G-prefix fixture](Tests/DelegationZeroInvocation.lean)
 derives actual states 0→1→1, preserving the operand update before ADDI. Legacy
 literal/AUIPC signatures remain and share arithmetic/output-token helpers. This
-is memory preparation; complete Sail retirement and public dataflow binding to
-protocol entry constants remain separate. The complete hash-reference source
-interface retains its existing literal/AUIPC forms. All ABI findings remain exposed.
+is memory preparation. The third hash-reference source now binds consecutive
+public literal→ADDI dataflow to protocol entry constants. Raw prefix/suffix
+matching, strict clocks and the existing distinct public domain identify the
+actual operand with the preceding literal token before Sail transport or any
+regional mask derivation. The public equation mentions instruction constants
+only. Both final cycles are worker-free; earlier transfers remain. The existing
+complete G/extended-BLAKE/Keccak windows and lists admit this source without
+changing their domain/setup/table, coverage or logical-matching boundaries.
+Native reversed-row fixtures derive 65537→127→128 and 65537→129→128, including
+aliases, signed −1 and canonical clock ten; wrong immediates/constants,
+fabricated source reads and incomplete references are rejected. A native unissued
+G prefix remains in the same initialized history before literal zero and ADDI
+128. These are preparation/empty-region fixtures, not concrete complete reference
+windows. Longer public dataflow chains, broader operations and full Sail
+retirement remain open. All ABI findings remain exposed.
 
 All 116 concrete test modules and 143 importer guards pass. The full
-2,235-root axiom audit has 64 axiom-free roots and only the three standard
-Lean axioms. Review checks pass for all 119 public theorem roots, 198 declaration
-names and 717 guide links/anchors, with no handwritten project diagnostics.
+2,252-root axiom audit has 64 axiom-free roots and only the three standard
+Lean axioms. Review checks pass for all 120 public theorem roots, 200 declaration
+names and 722 guide links/anchors, with no handwritten project diagnostics.
 
 ## Review priorities
 

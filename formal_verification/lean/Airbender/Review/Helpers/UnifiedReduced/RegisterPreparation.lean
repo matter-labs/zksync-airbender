@@ -19,6 +19,18 @@ structure RegisterImmediatePreparation [Fact p.Prime] (data : RequestTrace p)
   afterInitial : (timeOfPair data.machine.initial.timestamp).value + 4 ≤ cut
   beforeTerminal : cut ≤ (timeOfPair data.machine.terminal.timestamp).value
 
+/-- Two consecutive public instructions: a literal writes the source register,
+    then ADDI consumes it. Both final cycles are worker-free; all earlier
+    transfers remain. Distinct initialization is the existing public-domain
+    boundary, exposed here so raw token preparation needs no round-mask premise. -/
+structure LiteralAddiPreparation [Fact p.Prime] (data : RequestTrace p)
+    (program : List UnifiedReduced.ProgramEntry) (cut : Nat)
+    (source register : BitVec 5) (literal : ControlLiteral) (immediate : BitVec 12) : Prop where
+  seed : ControlPreparation data program (cut - 4) source literal
+  step : RegisterImmediatePreparation data program cut source register immediate
+  sourceNonzero : source ≠ 0
+  initialUnique : (data.machine.initialMemory.map MemoryToken.address).Nodup
+
 /-- Both reads come from the same actual preparation cycle, including aliases.
     The canonical output token retains its native timestamp. No operand or
     prepared value is supplied as an input. -/

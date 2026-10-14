@@ -1,12 +1,13 @@
 import Airbender.Review.Trace.UnifiedReduced.PreparedRoundWindows
-import Airbender.Review.Helpers.UnifiedReduced.PCRelativePreparation
+import Airbender.Review.Helpers.UnifiedReduced.RegisterPreparation
 
 namespace Airbender.UnifiedReduced.Caller
 open Trace Reference.RiscV.Sail
 
 /-- Public instructions that prepare a protocol entry. AUIPC placement is a
     condition on decoded code addresses and immediates, not an assumed state
-    value. Native matching identifies the actual final preparation instruction. -/
+    value. Literal→ADDI binds a register-dependent result through public dataflow.
+    Native matching identifies both actual preparation instructions. -/
 inductive HashControlPreparation [Fact p.Prime] (data : RequestTrace p)
     (program : List UnifiedReduced.ProgramEntry) (cut : Nat) (span : Delegation.Caller.HashSpan) : Prop where
   | literal (scope : ControlPreparation data program cut span.controlRegister (hashPreparation span))
@@ -14,8 +15,11 @@ inductive HashControlPreparation [Fact p.Prime] (data : RequestTrace p)
       (scope : PCRelativePreparation data program cut span.controlRegister immediate)
       (placement : ∀ entry ∈ program, entry.pc = wrappedProgramAddress data (cut - 4) →
         entry.pc + (immediate ++ (0 : BitVec 12)) = span.controlStart)
+  | literalAddi (source : BitVec 5) (literal : ControlLiteral) (immediate : BitVec 12)
+      (scope : LiteralAddiPreparation data program cut source span.controlRegister literal immediate)
+      (value : registerImmediateValue literal.value immediate = span.controlStart)
 
-/-- A complete selected G/Keccak span with literal or PC-relative public
+/-- A complete selected G/Keccak span with literal, PC-relative or literal→ADDI public
     preparation. All existing domain, matching, table and protocol scope stays
     explicit. Earlier workers remain in the initialized history. -/
 structure ComputedPreparedHashWindowInputs [Fact p.Prime] (data : RequestTrace p) (before : State)
@@ -40,7 +44,7 @@ structure WrappedProgramComputedHashInputs [Fact p.Prime] (data : RequestTrace p
   roundsAbsent : ∀ row ∈ data.workers.rows, row.family ≠ .blakeRound
 
 /-- A complete selected G/Keccak reference specified by public modular code,
-    literal or AUIPC preparation and duration. No native row selection, selected
+    public preparation and duration. No native row selection, selected
     worker family/count, request slot or intermediate state is supplied. -/
 structure WrappedProgramComputedHashWindowInputs [Fact p.Prime] (data : RequestTrace p)
     (program : List UnifiedReduced.ProgramEntry) (window : HashWindow) : Prop where

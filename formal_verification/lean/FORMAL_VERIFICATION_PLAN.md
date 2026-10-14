@@ -285,11 +285,19 @@ ABI and whole mixed execution remain separate.
    wrong immediate/fabricated source and retain clock six. An unissued G prefix
    derives actual control states 0→1→1, so the operand is not replaced by its
    public initial value. Legacy literal/AUIPC contracts remain and reuse shared
-   arithmetic/output-token helpers. This is memory preparation; complete Sail
-   retirement and public dataflow binding to protocol entry constants remain
-   separate. Continue that binding, broader operand-dependent preparation,
-   jumps/branches and whole caller retirement,
-   retaining unsupported-control and unissued-exclusion boundaries.
+   arithmetic/output-token helpers. Consecutive public literal→ADDI dataflow now
+   binds protocol entry constants as a third source in the existing complete
+   G/extended-BLAKE/Keccak window/list composition. Raw prefix/suffix matching and
+   the existing distinct public domain derive the actual source token before
+   Sail transport or round-mask derivation. Only those two final cycles are
+   worker-free. Native reversed-row fixtures derive 65537→127→128 and
+   65537→129→128, with signed −1, aliases and canonical output clock ten; wrong
+   immediates/constants, fabricated source reads and incomplete references are
+   rejected. An accepted unissued G prefix remains in the same initialized
+   history before literal zero and ADDI 128. This proves memory preparation and
+   selected references, not full Sail retirement. Continue longer public
+   dataflow chains, broader operand-dependent preparation, jumps/branches and
+   whole caller retirement, retaining unsupported-control and unissued-exclusion boundaries.
    COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed
    retained for the second window. Extended BLAKE and Keccak completion controls
    do not restart their protocols; checked regressions forbid treating their
