@@ -137,49 +137,16 @@ theorem pc_relative_preparation_token [Fact p.Prime] (hp : 8388608 ≤ p)
       (tokens ++ (data.prefixSteps cut).map Prod.fst)) :
     ∃ token ∈ tokens, token.address = (Cell.register register).addressCode ∧
       (timeOfPair token.time).value = cut - 2 ∧ token.word = Word.ofBitVec (pcRelativeControl data cut immediate) := by
-  have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
-  have requests := request_binding size clockInverse accepted.toRequestChecks publicProgram
-  have facts := mixed_memory_facts size clockInverse accepted publicProgram initialization requests
-  obtain ⟨row, member, last, ordinary⟩ := preparation_cycle_row size clockInverse accepted.toRequestChecks publicProgram
-    scope.prefixScope scope.afterInitial scope.beforeTerminal aligned
-  cases row with
-  | mk family w =>
-    cases family
-    let token := writeToken importedConstraintsTraceColumns w importedConstraintsMemoryPorts[2]
-    have output := auipc_row_output (by omega) clockInverse setup accepted publicProgram ordinaryProgram scope nonzero member ordinary last
-    have included : importedConstraintsMemoryPorts[2] ∈ machinePorts (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) := by
-      rw [machine_ports_ordinary member ordinary]
-      simp [Trace.Row.ports, CircuitLayout.ports, importedConstraintsMemoryPorts]
-    have edge := mixed_machine_member member included
-    have clocks := state_clock_inputs size clockInverse accepted.constraints accepted.states
-      publicProgram.initialClock publicProgram.initialAligned _ member
-    have time := (write_time (by omega) (base := rawPair w importedConstraintsTraceColumns.initialTime)
-      clocks.1 clocks.2 (by decide : importedConstraintsMemoryPorts[2].clock.offset < 4)).2
-    have timestamp : (timeOfPair token.time).value = cut - 2 := by
-      change (timeOfPair token.time).value = Delegation.Caller.startClock (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) + 2 at time
-      omega
-    have inPrefix : (readToken w importedConstraintsMemoryPorts[2], token) ∈ data.prefixSteps cut :=
-      List.mem_filter.mpr ⟨edge, decide_eq_true (by have floor := scope.afterInitial; change (timeOfPair token.time).value < cut; omega)⟩
-    have present : token ∈ tokens := by
-      have produced := matching.mem_iff.mp (List.mem_append.mpr (Or.inr (List.mem_map.mpr ⟨_, inPrefix, rfl⟩)))
-      rcases List.mem_append.mp produced with present | consumed
-      · exact present
-      · obtain ⟨access, accessMember, same⟩ := List.mem_map.mp consumed
-        have earlier := facts.order access (List.mem_of_mem_filter accessMember)
-        have bound := prefix_write_before_cut size clockInverse accepted.toRequestChecks publicProgram scope.prefixScope aligned access accessMember
-        rw [same, timestamp] at earlier
-        omega
-    have core := Verification.holds_of_sublist (accepted.constraints _ member)
-      (List.sublist_append_left (importedConstraints data.machine.rom) importedConstraintsTimestampLookups)
-    have bounded : token.word.Bounded := by
-      simpa [token, writeToken, MemoryToken.word, importedConstraintsMemoryPorts, WordColumns.code, MemoryPort.writeCode, pairCode, Word.Bounded]
-        using UnifiedReduced.Proofs.destination_bounds core
-    have word : token.word = Word.ofBitVec (pcRelativeControl data cut immediate) := by
-      apply Word.eq_of_value bounded (Word.ofBitVec_bound _)
-      have equal := congrArg BitVec.toNat output.2
-      rw [Word.toBitVec_toNat bounded] at equal
-      exact equal.trans (Word.ofBitVec_value _).symm
-    exact ⟨token, present, output.1, timestamp, word⟩
+  obtain ⟨w, member, last, ordinary, present, timestamp, bounded⟩ := preparation_output_token hp clockInverse
+    accepted publicProgram initialization scope.prefixScope scope.afterInitial scope.beforeTerminal aligned matching
+  let token := writeToken importedConstraintsTraceColumns w importedConstraintsMemoryPorts[2]
+  have output := auipc_row_output (by omega) clockInverse setup accepted publicProgram ordinaryProgram scope nonzero member ordinary last
+  have word : token.word = Word.ofBitVec (pcRelativeControl data cut immediate) := by
+    apply Word.eq_of_value bounded (Word.ofBitVec_bound _)
+    have equal := congrArg BitVec.toNat output.2
+    rw [Word.toBitVec_toNat bounded] at equal
+    exact equal.trans (Word.ofBitVec_value _).symm
+  exact ⟨token, present, output.1, timestamp, word⟩
 
 theorem pc_relative_preparation_at_boundary [Fact p.Prime] (hp : 8388608 ≤ p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)

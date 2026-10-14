@@ -1811,4 +1811,184 @@ theorem auipc_round_public_protocol_reference_past_terminal_rejected :
   change 48 ≤ 8 at bound
   omega
 
+private def registerImmediate (negative : Bool) : BitVec 12 := if negative then 0xfff else 128
+private def registerBits (negative : Bool) : BitVec 32 := if negative then 0xfff60613 else 0x08060613
+private def registerValue (negative : Bool) : BitVec 32 := if negative then 65536 else 65665
+private def registerEntry (negative : Bool) : UnifiedReduced.ProgramEntry :=
+  ⟨0, registerBits negative, .ITYPE (registerImmediate negative, .Regidx 12, .Regidx 12, .ADDI),
+    ⟨.machine, 12, 0, 12, Word.ofBitVec (SailRV32.Functions.sign_extend (m := 32) (registerImmediate negative)), 1, 0⟩⟩
+private def registerBefore (negative : Bool) : State := wordWriteState initialState 0 (registerBits negative)
+private def registerAssignment (negative : Bool) (column : Nat) : ZMod babyBearModulus :=
+  if column = 5 then 12
+  else if column = 36 || column = 37 || column = 51 then 1
+  else if column = 46 then 4
+  else if column = 40 then 0
+  else if column = 8 then if negative then 65535 else 128
+  else if column = 9 then if negative then 65535 else 0
+  else if column = 50 then if negative then 0 else 129
+  else if column = 52 || column = 53 then if negative then 1 else 0
+  else assignment 0 column
+private def registerRow (negative : Bool) : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, registerAssignment negative⟩
+private def registerData (negative : Bool) : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
+  { data 0 with machine := { (data 0).machine with
+      rows := [registerRow negative]
+      rom := UnifiedReduced.Setup.table (registerBefore negative)
+      initial := (registerRow negative).start
+      terminal := (registerRow negative).finish
+      terminalMemory := [⟨(Cell.register 0).addressCode, (5, 0), 0⟩,
+        ⟨(Cell.register 12).addressCode, (6, 0), Nat.pair (if negative then 0 else 129) 1⟩] } }
+
+private theorem registerCore (negative : Bool) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (registerAssignment negative))
+    (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table (registerBefore negative))) := by
+  cases negative <;> simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
+    Verification.environment, Expression.eval, registerAssignment, assignment, register,
+    Lookup.Contains, Table.toRaw, fromElements]
+  all_goals repeat' apply And.intro
+  all_goals solve
+    | decide +kernel
+    | (apply Verification.range16_contains; decide +kernel)
+    | (refine ⟨(0 : Fin 2097537), ?_⟩
+       change (#v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0] : Vector (ZMod babyBearModulus) 10) =
+         (UnifiedReduced.Setup.fixedRow (0 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
+       decide +kernel)
+
+private theorem registerClocks (negative : Bool) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (registerAssignment negative)) UnifiedReduced.importedConstraintsTimestampLookups := by
+  rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
+  constructor
+  · simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.constraints]
+  · rw [List.forall_mem_iff_forall_getElem]
+    intro i bound
+    have short : i < 8 := by simpa only [UnifiedReduced.timestamp_count] using bound
+    interval_cases i
+    all_goals apply Trace.Proofs.range_contains
+    all_goals cases negative <;> decide +kernel
+
+private theorem registerAccepted (negative : Bool) : UnifiedReduced.Caller.MixedMemoryAccepted (registerData negative) [registerEntry negative] := by
+  constructor
+  · constructor
+    · intro current member
+      have same := List.mem_singleton.mp member
+      subst current
+      exact Verification.holds_append (registerCore negative) (registerClocks negative)
+    · intro current member
+      have same := List.mem_singleton.mp member
+      subst current
+      cases negative <;> decide +kernel
+    · exact List.Perm.swap _ _ []
+    · intro _ member
+      have empty : (registerData negative).callers = [] := by cases negative <;> decide +kernel
+      rw [empty] at member
+      cases member
+    · intro _ member; cases member
+    · intro _ member; cases member
+    · have empty : (registerData negative).calls = [] := by cases negative <;> decide +kernel
+      rw [empty]
+      exact List.Perm.refl []
+  · intro current member _
+    have same := List.mem_singleton.mp member
+    subst current
+    change ∃ i : Fin 1, (registerRow negative).decoderQuery = ([registerEntry negative].get i).query
+    exact ⟨0, by cases negative <;> decide +kernel⟩
+  · cases negative <;> decide +kernel
+
+private theorem registerProgram (negative : Bool) : UnifiedReduced.Mixed.programImage (registerBefore negative) [0] = some [registerEntry negative] := by
+  have bytes : (Cell.ram 0).read (registerBefore negative) = .ok (registerBits negative) (registerBefore negative) := written_word_read _ _ _
+  have decoded : Reference.Sail.run (SailRV32.Functions.encdec_backwards (registerBits negative)) (registerBefore negative) =
+      .ok (registerEntry negative).instruction (registerBefore negative) := by cases negative <;> with_unfolding_all rfl
+  have fields : UnifiedReduced.Mixed.decoderFields (registerEntry negative).instruction = some (registerEntry negative).data := by
+    cases negative <;> with_unfolding_all rfl
+  simp only [UnifiedReduced.Mixed.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
+    programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+  rfl
+
+private theorem registerImage (negative : Bool) : initialImage (registerBefore negative) (cells 0) = some (registerData negative).machine.initialMemory := by
+  have control : (Cell.register 12).read (registerBefore negative) = .ok 65537 (registerBefore negative) := by
+    apply read_register
+    simp [registerBefore, wordWriteState, initialState, Std.ExtDHashMap.get?_insert]
+  have zero : (Cell.register 0).read (registerBefore negative) = .ok 0 (registerBefore negative) := rfl
+  change initialImage (registerBefore negative) [.register 0, .register 12] = _
+  simp only [initialImage, List.mapM_cons, List.mapM_nil, zero, control, bind, pure]
+  rfl
+
+private theorem registerInputs (negative : Bool) : UnifiedReduced.Caller.MixedMemoryInputs (registerData negative)
+    [registerEntry negative] (registerBefore negative) [] [0] (cells 0) := by
+  refine ⟨⟨rfl, ?_, by cases negative <;> decide +kernel⟩, registerProgram negative, registerImage negative,
+    (inputs 0).distinct, (inputs 0).aligned, rfl, rfl, ?_⟩
+  · change 4 < timestampBase ∧ 0 < timestampBase
+    norm_num [timestampBase]
+  · intro _ member; cases member
+
+private theorem registerScope (negative : Bool) : UnifiedReduced.Caller.RegisterImmediatePreparation (registerData negative)
+    [registerEntry negative] 8 12 12 (registerImmediate negative) := by
+  refine ⟨⟨?_, ?_⟩, ?_, rfl, by cases negative <;> decide +kernel, by cases negative <;> decide +kernel⟩
+  · intro entry member
+    have same := List.mem_singleton.mp member
+    subst entry
+    exact .sequential (.arithmetic (.addi _ _ _))
+  · intro entry member
+    have same := List.mem_singleton.mp member
+    subst entry
+    change (0 : Nat) % 4 = 0
+    decide
+  · intro entry member _
+    have same := List.mem_singleton.mp member
+    subst entry
+    rfl
+
+theorem register_addi_preparation (negative : Bool) :
+    UnifiedReduced.Caller.RegisterImmediatePreparedBoundaryExecution (registerData negative) (registerBefore negative)
+      (cells 0) 8 12 12 (registerImmediate negative) :=
+  UnifiedReduced.Caller.register_immediate_control_preparation_soundness (by decide +kernel) (by decide +kernel)
+    (by decide +kernel) (registerAccepted negative) (registerInputs negative) (registerScope negative) (by decide) (by decide)
+
+theorem register_addi_actual_states (negative : Bool) :
+    ∃ (tokens : List (MemoryToken babyBearModulus)) (events : List MemoryAccess) (atSource atCut : State),
+      events.Perm (((registerData negative).prefixSteps 4).map transferEvent) ∧
+      SailHistory (cells 0) events (registerBefore negative) atSource ∧
+      SailHistory (cells 0) (rowEvents 1 (registerRow negative)).reverse atSource atCut ∧
+      ((registerData negative).machine.initialMemory ++ ((registerData negative).prefixSteps 8).map Prod.snd).Perm
+        (tokens ++ ((registerData negative).prefixSteps 8).map Prod.fst) ∧
+      (Cell.register 12).read atSource = .ok 65537 atSource ∧
+      (Cell.register 12).read atCut = .ok (registerValue negative) atCut ∧
+      ∃ token ∈ tokens, token.address = (Cell.register 12).addressCode ∧
+        (timeOfPair token.time).value = 6 ∧ token.word = Word.ofBitVec (registerValue negative) := by
+  obtain ⟨row, member, _, tokens, events, atSource, atCut, permutation, past, native, matching, value, read, written, token, present, address, time, word⟩ :=
+    register_addi_preparation negative
+  have same := List.mem_singleton.mp member
+  subst row
+  have actual := Trace.Proofs.native_history_read (columns := UnifiedReduced.importedConstraintsTraceColumns)
+    (ports := UnifiedReduced.importedConstraintsMemoryPorts) (w := registerAssignment negative)
+    (port := UnifiedReduced.importedConstraintsMemoryPorts[0]) (cell := Cell.register 12) 1 rfl rfl rfl native
+    (by simp [UnifiedReduced.importedConstraintsMemoryPorts]) (by cases negative <;> decide +kernel)
+  have operand : memoryWord (UnifiedReduced.importedConstraintsMemoryPorts[0].readCode (registerAssignment negative)) = 65537 := by
+    cases negative <;> decide +kernel
+  rw [operand] at actual
+  have equal : value = 65537 := (EStateM.Result.ok.inj (read.symm.trans actual)).1
+  subst value
+  have result : UnifiedReduced.Caller.registerImmediateValue 65537 (registerImmediate negative) = registerValue negative := by
+    cases negative <;> decide +kernel
+  exact ⟨tokens, events, atSource, atCut, permutation, past, native, matching, actual, result ▸ written,
+    token, present, address, time, result ▸ word⟩
+
+theorem register_addi_wrong_immediate_rejected :
+    ¬ UnifiedReduced.Caller.RegisterImmediatePreparation (registerData false) [registerEntry false] 8 12 12 129 := by
+  intro scope
+  have instruction := scope.atCut (registerEntry false) (List.mem_singleton_self _) (by decide +kernel)
+  have immediate := congrArg Prod.fst (SailRV32.instruction.ITYPE.inj instruction)
+  exact (by decide : (128 : BitVec 12) ≠ 129) immediate
+
+private def forgedRegisterData : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
+  { registerData false with machine := { (registerData false).machine with
+      rows := [⟨.machine, fun column => if column = 36 then 2 else registerAssignment false column⟩] } }
+
+theorem register_addi_fabricated_source_rejected :
+    ¬ UnifiedReduced.Caller.MixedMemoryAccepted forgedRegisterData [registerEntry false] := by
+  intro accepted
+  let token : MemoryToken babyBearModulus := ⟨(Cell.register 12).addressCode, (0, 0), Nat.pair 2 1⟩
+  have member : token ∈ forgedRegisterData.mixedSteps.map Prod.fst := by decide +kernel
+  have absent : token ∉ forgedRegisterData.machine.initialMemory ++ forgedRegisterData.mixedSteps.map Prod.snd := by decide +kernel
+  exact absent (accepted.memory.mem_iff.mpr (List.mem_append.mpr (Or.inr member)))
+
 end Tests.ControlPreparation

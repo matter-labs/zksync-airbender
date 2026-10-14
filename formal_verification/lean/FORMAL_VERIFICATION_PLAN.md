@@ -276,8 +276,19 @@ ABI and whole mixed execution remain separate.
    the same proofs. Concrete preparation/empty-region fixtures inhabit the new
    public context and reject incomplete reference counts/durations and cuts past
    the native terminal; full reference/list claims remain general accepted-witness
-   theorems. Continue general
-   operand-dependent preparation, jumps/branches and whole caller retirement,
+   theorems. Register-dependent ADDI preparation now derives its actual operand
+   state from the same initialized prefix, then its RV32 result and canonical
+   output token at cut minus two. Public modular code identifies the final row;
+   memory induction derives operand bounds and actual native reads. Aliased
+   source/destination and negative immediates are supported. Only the final cycle
+   is worker-free. Native fixtures derive 65537→65665 and 65537→65536, reject a
+   wrong immediate/fabricated source and retain clock six. An unissued G prefix
+   derives actual control states 0→1→1, so the operand is not replaced by its
+   public initial value. Legacy literal/AUIPC contracts remain and reuse shared
+   arithmetic/output-token helpers. This is memory preparation; complete Sail
+   retirement and public dataflow binding to protocol entry constants remain
+   separate. Continue that binding, broader operand-dependent preparation,
+   jumps/branches and whole caller retirement,
    retaining unsupported-control and unissued-exclusion boundaries.
    COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed
    retained for the second window. Extended BLAKE and Keccak completion controls

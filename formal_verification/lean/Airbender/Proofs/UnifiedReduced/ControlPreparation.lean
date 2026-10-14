@@ -3,6 +3,7 @@ import Airbender.Proofs.UnifiedReduced.MixedWindowProjection
 import Airbender.Proofs.UnifiedReduced.ZeroRegister
 import Airbender.Proofs.Arithmetic.Word
 import Airbender.Proofs.UnifiedReduced.JumpArithmetic
+import Airbender.Proofs.UnifiedReduced.ImmediateArithmetic
 
 namespace Airbender.UnifiedReduced.Caller.Proofs
 open Trace Trace.Proofs Arithmetic Reference.RiscV.Sail
@@ -25,37 +26,10 @@ theorem literal_operands_result [Fact p.Prime] (hp : 196608 < p)
     (operands : w 36 = 0 ∧ w 37 = 0 ∧ w 42 = 0 ∧ w 43 = 0)
     (immediate : (Word.mk (w 8).val (w 9).val).Bounded) :
     (Word.mk (w 50).val (w 51).val).toBitVec = (Word.mk (w 8).val (w 9).val).toBitVec := by
-  have other := UnifiedReduced.Proofs.dispatch_exclusive (by omega) h active 0 selected
-  have flags : w 12 = 0 ∧ w 13 = 0 ∧ w 14 = 0 ∧ w 15 = 0 ∧ w 16 = 0 ∧ w 17 = 0 ∧ w 20 = 0 := by
-    repeat' apply And.intro
-    all_goals first
-      | exact other 1 (by decide) | exact other 2 (by decide)
-      | exact other 3 (by decide) | exact other 4 (by decide)
-      | exact other 5 (by decide) | exact other 6 (by decide)
-      | exact other 9 (by decide)
-  have low := Verification.assertion_of_holds h ⟨4, by rw [UnifiedReduced.constraint_count]; decide⟩
-  have high := Verification.assertion_of_holds h ⟨5, by rw [UnifiedReduced.constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
-    selected, flags.1, flags.2.1, flags.2.2.1, flags.2.2.2.1, flags.2.2.2.2.1,
-    flags.2.2.2.2.2.1, flags.2.2.2.2.2.2, operands.1, operands.2.1, operands.2.2.1, operands.2.2.2] at low high
-  have carry := boolean_val (UnifiedReduced.Proofs.local_flags h 21)
-  have overflow := boolean_val (UnifiedReduced.Proofs.local_flags h 20)
-  change (w 53).val ≤ 1 at carry
-  change (w 52).val ≤ 1 at overflow
-  have loEq : (0 : ZMod p) + 0 + (w 8).val = (w 50).val + 65536 * (w 53).val := by
-    simp only [ZMod.natCast_zmod_val]
-    apply sub_eq_zero.mp
-    linear_combination low
-  have hiEq : ((w 53).val : ZMod p) + 0 + 0 + (w 9).val = (w 51).val + 65536 * (w 52).val := by
-    simp only [ZMod.natCast_zmod_val]
-    apply sub_eq_zero.mp
-    linear_combination high
-  have zeroBound : (Word.mk 0 0).Bounded := ⟨by decide, by decide⟩
-  simpa [Word.toBitVec, Word.value] using Word.add_of_limbs
-    (left := ⟨0, 0⟩) (right := ⟨0, 0⟩) (immediate := ⟨(w 8).val, (w 9).val⟩)
-    (output := ⟨(w 50).val, (w 51).val⟩) hp zeroBound zeroBound immediate
-    (UnifiedReduced.Proofs.destination_bounds h) (Nat.le_trans carry (by decide)) (Nat.le_trans overflow (by decide))
-    (by simpa only [Nat.cast_zero] using loEq) (by simpa only [Nat.cast_zero] using hiEq)
+  have leftBound : (Word.mk (w 36).val (w 37).val).Bounded := by
+    simp [operands.1, operands.2.1, Word.Bounded, limbBase]
+  simpa [operands.1, operands.2.1, Word.toBitVec, Word.value] using
+    immediate_add_result hp h active selected ⟨operands.2.2.1, operands.2.2.2⟩ leftBound immediate
 
 theorem preparation_cycle_row [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1) {data : RequestTrace p} {before : State}
@@ -745,6 +719,62 @@ theorem literal_row_output [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (writeToken importedConstraintsTraceColumns w importedConstraintsMemoryPorts[2]).address = (Cell.register register).addressCode ∧
       (writeToken importedConstraintsTraceColumns w importedConstraintsMemoryPorts[2]).word.toBitVec = literal.value :=
   literal_row_output_of_program hp inverse accepted inputs.publicProgram inputs.ordinaryProgram scope nonzero zeroReads member ordinary last
+
+theorem preparation_output_token [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {ca : List (BitVec 32)} {cells : List Cell} {cut : Nat} {tokens : List (MemoryToken p)}
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    (initialization : initialImage before cells = some data.machine.initialMemory)
+    (prefixScope : data.workers.windowRows (cut - 4) cut = [])
+    (afterInitial : (timeOfPair data.machine.initial.timestamp).value + 4 ≤ cut)
+    (beforeTerminal : cut ≤ (timeOfPair data.machine.terminal.timestamp).value) (aligned : cut % 4 = 0)
+    (matching : (data.machine.initialMemory ++ (data.prefixSteps cut).map Prod.snd).Perm
+      (tokens ++ (data.prefixSteps cut).map Prod.fst)) :
+    ∃ w : Nat → ZMod p,
+      (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∈ data.machine.rows ∧
+      Delegation.Caller.startClock (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) + 4 = cut ∧
+      (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∉ data.callers ∧
+      writeToken importedConstraintsTraceColumns w importedConstraintsMemoryPorts[2] ∈ tokens ∧
+      (timeOfPair (writeToken importedConstraintsTraceColumns w importedConstraintsMemoryPorts[2]).time).value = cut - 2 ∧
+      (writeToken importedConstraintsTraceColumns w importedConstraintsMemoryPorts[2]).word.Bounded := by
+  have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
+  have requests := request_binding size clockInverse accepted.toRequestChecks publicProgram
+  have facts := mixed_memory_facts size clockInverse accepted publicProgram initialization requests
+  obtain ⟨row, member, last, ordinary⟩ := preparation_cycle_row size clockInverse accepted.toRequestChecks publicProgram
+    prefixScope afterInitial beforeTerminal aligned
+  cases row with
+  | mk family w =>
+    cases family
+    let token := writeToken importedConstraintsTraceColumns w importedConstraintsMemoryPorts[2]
+    have included : importedConstraintsMemoryPorts[2] ∈ machinePorts (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) := by
+      rw [machine_ports_ordinary member ordinary]
+      simp [Trace.Row.ports, CircuitLayout.ports, importedConstraintsMemoryPorts]
+    have edge := mixed_machine_member member included
+    have clocks := state_clock_inputs size clockInverse accepted.constraints accepted.states
+      publicProgram.initialClock publicProgram.initialAligned _ member
+    have time := (write_time (by omega) (base := rawPair w importedConstraintsTraceColumns.initialTime)
+      clocks.1 clocks.2 (by decide : importedConstraintsMemoryPorts[2].clock.offset < 4)).2
+    have timestamp : (timeOfPair token.time).value = cut - 2 := by
+      change (timeOfPair token.time).value = Delegation.Caller.startClock (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) + 2 at time
+      omega
+    have inPrefix : (readToken w importedConstraintsMemoryPorts[2], token) ∈ data.prefixSteps cut :=
+      List.mem_filter.mpr ⟨edge, decide_eq_true (by change (timeOfPair token.time).value < cut; omega)⟩
+    have present : token ∈ tokens := by
+      have produced := matching.mem_iff.mp (List.mem_append.mpr (Or.inr (List.mem_map.mpr ⟨_, inPrefix, rfl⟩)))
+      rcases List.mem_append.mp produced with present | consumed
+      · exact present
+      · obtain ⟨access, accessMember, same⟩ := List.mem_map.mp consumed
+        have earlier := facts.order access (List.mem_of_mem_filter accessMember)
+        have bound := prefix_write_before_cut size clockInverse accepted.toRequestChecks publicProgram prefixScope aligned access accessMember
+        rw [same, timestamp] at earlier
+        omega
+    have core := Verification.holds_of_sublist (accepted.constraints _ member)
+      (List.sublist_append_left (importedConstraints data.machine.rom) importedConstraintsTimestampLookups)
+    have bounded : token.word.Bounded := by
+      simpa [token, writeToken, MemoryToken.word, importedConstraintsMemoryPorts, WordColumns.code, MemoryPort.writeCode, pairCode, Word.Bounded]
+        using UnifiedReduced.Proofs.destination_bounds core
+    exact ⟨w, member, last, ordinary, present, timestamp, bounded⟩
 
 theorem preparation_token [Fact p.Prime] (hp : 8388608 ≤ p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
