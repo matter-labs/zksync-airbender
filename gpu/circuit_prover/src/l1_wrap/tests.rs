@@ -75,7 +75,7 @@ fn cpu_m8_l1_preflight() {
             + EVM_PRODUCTION_PACK_LOG2
             + config.lde_factor.trailing_zeros() as usize
     );
-    assert_eq!(l1_wrap_batching_pow_bits(&config, &circuit), 11);
+    assert_eq!(l1_wrap_batching_pow_bits(&config, &circuit), 16);
     validate_l1_wrap_preconditions(
         &config,
         &production_mode(),
