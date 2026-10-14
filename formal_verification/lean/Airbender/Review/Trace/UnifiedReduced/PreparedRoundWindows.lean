@@ -1,4 +1,5 @@
 import Airbender.Review.Trace.UnifiedReduced.PreparedHashWindows
+import Airbender.Review.Helpers.UnifiedReduced.WindowSchedule
 
 namespace Airbender.UnifiedReduced.Caller
 open Trace Reference.RiscV.Sail
@@ -107,6 +108,19 @@ structure PreparedProtocolWindowInputs [Fact p.Prime] (data : RequestTrace p)
   /-- Public duration; native matching derives its caller selectors. -/
   duration : window.upper = window.lower + 4 * window.span.callCount
   /-- The final cut lies inside the native path. -/
+  beforeTerminal : window.upper ≤ (timeOfPair data.machine.terminal.timestamp).value
+
+/-- Public code selects the complete span's callers. Native matching derives
+    worker family and count; controller coverage remains in the shared inputs. -/
+structure ProgramProtocolWindowInputs [Fact p.Prime] (data : RequestTrace p)
+    (program : List UnifiedReduced.ProgramEntry) (window : HashWindow) : Prop where
+  /-- Public addresses exclude ordinary code and identify full CSR families. -/
+  region : ProgramCallerRegion data program window.span.family window.lower window.upper
+  /-- The specified public literal prepares the actual control. -/
+  preparation : ControlPreparation data program window.lower window.span.controlRegister (hashPreparation window.span)
+  /-- Public cuts cover the existing reference's number of four-tick calls. -/
+  duration : window.upper = window.lower + 4 * window.span.callCount
+  /-- The selected final cut stays in the native path. -/
   beforeTerminal : window.upper ≤ (timeOfPair data.machine.terminal.timestamp).value
 
 end Airbender.UnifiedReduced.Caller
