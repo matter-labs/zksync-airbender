@@ -49,7 +49,7 @@ pub fn lookup_pow_bits(
     security: SecurityLevel,
     external_challenges_pow_bits: u32,
 ) -> u32 {
-    lookup_challenges_pow_bits(security.security_bits(), lookup_identity_degree(circuit))
+    lookup_challenges_pow_bits::<PR, PR>(security.security_bits(), lookup_identity_degree(circuit))
         .max(external_challenges_pow_bits)
 }
 
