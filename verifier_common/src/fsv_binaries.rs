@@ -143,6 +143,10 @@ mod tests {
                 FsvProgram::UnifiedRecursionLayerL1Feeder,
                 &[BlakeMode::BlakeSpecialOpcodes][..],
             ),
+            (
+                FsvProgram::UnifiedRecursionLayerL1FeederWrap,
+                &[BlakeMode::BlakeSpecialOpcodes][..],
+            ),
         ] {
             for mode in modes {
                 for ext in ["bin", "text"] {
