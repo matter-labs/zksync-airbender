@@ -2354,3 +2354,13 @@ import Clean.Specs.Keccak256
 #print axioms Tests.DelegationZeroInvocation.prepared_unissued_prefix_states
 #print axioms Tests.UnifiedDelegation.copy_all_worker_execution
 #print axioms Tests.UnifiedDelegation.invalid_bigint_all_worker_execution
+
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.native_cycle_execution
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.native_caller_cycles
+#print axioms Airbender.UnifiedReduced.Caller.native_caller_cycles_soundness
+#print axioms Tests.DelegationZeroInvocation.zero_initial_clock_unissued_accepted
+#print axioms Tests.DelegationZeroInvocation.zero_initial_clock_caller_cycles
+#print axioms Tests.DelegationZeroInvocation.zero_initial_clock_unissued_prefix
+#print axioms Tests.DelegationZeroInvocation.prepared_native_cycle_states
+#print axioms Tests.UnifiedDelegation.invalid_bigint_native_caller_cycles
+#print axioms Tests.UnifiedDelegation.memory_native_caller_cycles
