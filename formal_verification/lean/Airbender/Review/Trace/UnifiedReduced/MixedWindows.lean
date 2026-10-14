@@ -67,4 +67,63 @@ def MixedWindowChainExecution [Fact p.Prime] (data : RequestTrace p) (before : S
     (cells : List Cell) (firstLower firstUpper secondLower secondUpper : Nat) : Prop :=
   ∃ chain : WindowChain p, chain.Realizes data before cells firstLower firstUpper secondLower secondUpper
 
+/-- Public ordered, aligned window intervals; gaps and empty intervals are allowed. -/
+def WindowsOrdered (cut : Nat) : List (Nat × Nat) → Prop
+  | [] => True
+  | (lower, upper) :: rest => cut ≤ lower ∧ lower ≤ upper ∧ lower % 4 = 0 ∧ upper % 4 = 0 ∧
+      WindowsOrdered upper rest
+
+/-- One window's actual states, native boundaries and preceding gap events. -/
+structure WindowSegment (p : Nat) where
+  start : List (MemoryToken p)
+  finish : List (MemoryToken p)
+  gapEvents : List MemoryAccess
+  spanEvents : List MemoryAccess
+  atStart : State
+  atFinish : State
+
+/-- Each gap starts at the previous window's actual finish. All ports, boundary
+    values and raw timestamps remain in the same architectural memory execution. -/
+def WindowSegmentsRealize [Fact p.Prime] (data : RequestTrace p) (cells : List Cell) :
+    Nat → List (MemoryToken p) → State → List (Nat × Nat) → List (WindowSegment p) → Prop
+  | _, _, _, [], [] => True
+  | cut, tokens, state, (lower, upper) :: rest, segment :: segments =>
+      segment.gapEvents.Perm ((data.windowSteps cut lower).map transferEvent) ∧
+      SailHistory cells segment.gapEvents state segment.atStart ∧
+      (tokens ++ (data.windowSteps cut lower).map Prod.snd).Perm
+        (segment.start ++ (data.windowSteps cut lower).map Prod.fst) ∧
+      (data.machine.initialMemory ++ (data.prefixSteps lower).map Prod.snd).Perm
+        (segment.start ++ (data.prefixSteps lower).map Prod.fst) ∧
+      segment.spanEvents.Perm ((data.windowSteps lower upper).map transferEvent) ∧
+      SailHistory cells segment.spanEvents segment.atStart segment.atFinish ∧
+      (segment.start ++ (data.windowSteps lower upper).map Prod.snd).Perm
+        (segment.finish ++ (data.windowSteps lower upper).map Prod.fst) ∧
+      NativeBoundary segment.start segment.atStart cells ∧
+      NativeBoundary segment.finish segment.atFinish cells ∧
+      WindowSegmentsRealize data cells upper segment.finish segment.atFinish rest segments
+  | _, _, _, _, _ => False
+
+/-- A retained initial cut followed by a list of continuous native windows. -/
+structure WindowSequence (p : Nat) where
+  initial : List (MemoryToken p)
+  prefixEvents : List MemoryAccess
+  atInitial : State
+  segments : List (WindowSegment p)
+
+/-- Public initialization supplies the prefix; every subsequent state is linked
+    by actual memory execution. Instruction retirement remains separate. -/
+structure WindowSequence.Realizes [Fact p.Prime] (sequence : WindowSequence p) (data : RequestTrace p)
+    (before : State) (cells : List Cell) (cut : Nat) (windows : List (Nat × Nat)) : Prop where
+  prefixPerm : sequence.prefixEvents.Perm ((data.prefixSteps cut).map transferEvent)
+  prefixHistory : SailHistory cells sequence.prefixEvents before sequence.atInitial
+  prefixMatching : (data.machine.initialMemory ++ (data.prefixSteps cut).map Prod.snd).Perm
+    (sequence.initial ++ (data.prefixSteps cut).map Prod.fst)
+  boundary : NativeBoundary sequence.initial sequence.atInitial cells
+  segments : WindowSegmentsRealize data cells cut sequence.initial sequence.atInitial windows sequence.segments
+
+/-- An arbitrary finite window sequence with no supplied intermediate state. -/
+def MixedWindowSequenceExecution [Fact p.Prime] (data : RequestTrace p) (before : State)
+    (cells : List Cell) (cut : Nat) (windows : List (Nat × Nat)) : Prop :=
+  ∃ sequence : WindowSequence p, sequence.Realizes data before cells cut windows
+
 end Airbender.UnifiedReduced.Caller
