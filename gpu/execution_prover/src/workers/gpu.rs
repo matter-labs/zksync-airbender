@@ -162,8 +162,9 @@ fn gpu_worker(
     )?;
     crate::memory_policy::select_arena_bytes(context.get_mem_size());
     info!(
-        "GPU_WORKER[{device_id}] initialized the GPU memory allocator with {:.3} GB of usable memory",
-        context.get_mem_size() as f64 / 1024.0 / 1024.0 / 1024.0
+        "GPU_WORKER[{device_id}] initialized the GPU memory allocator with {:.3} GB ({} B) of usable memory",
+        context.get_mem_size() as f64 / 1024.0 / 1024.0 / 1024.0,
+        context.get_mem_size()
     );
     is_initialized
         .send(())
