@@ -1,4 +1,4 @@
-use crate::proof::memory_policy::{WitnessMemoryPolicy, WitnessOpeningStrategy};
+use crate::proof::memory_policy::{PartialTreePolicy, WitnessMemoryPolicy, WitnessOpeningStrategy};
 use std::sync::Arc;
 
 use era_cudart::memory::memory_copy_async;
@@ -77,6 +77,7 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
     bundle: BundleDeviceRefs<'_, 'a, A>,
     tracing_data_transfer: Option<&TracingDataTransfer<'a, A>>,
     witness_policy: WitnessMemoryPolicy,
+    partial_trees: PartialTreePolicy,
     context: &ProverContext,
 ) -> CudaResult<Stage1AndForwardPreparation> {
     let circuit_type = gkr_programs.circuit_type();
@@ -204,6 +205,7 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
         Some(&mut witness_cap_dst),
         witness_policy.commitment,
         witness_policy.post_commitment,
+        partial_trees,
         context,
     )?;
     match witness_policy.opening {
@@ -221,7 +223,7 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
             setup_geometry.log_tree_cap_size,
             0,
             TreesCacheMode::CachePartial,
-            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+            partial_trees.setup,
             context,
         )?)
     } else {

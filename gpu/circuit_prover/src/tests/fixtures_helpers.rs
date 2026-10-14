@@ -334,6 +334,7 @@ pub(super) fn finish_proof_fixture(
             decoder_transfer.as_ref().map(|t| &t.data_device[..]),
             &tracing_data_transfer.data_device,
             &prover_config,
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
             &context,
         )
         .unwrap();
@@ -751,6 +752,7 @@ pub(super) fn finish_proof_fixture_memory(
             decoder_transfer.as_ref().map(|t| &t.data_device[..]),
             &tracing_data_transfer.data_device,
             &prover_config,
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
             &context,
         )
         .unwrap();
