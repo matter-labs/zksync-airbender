@@ -36,8 +36,7 @@ use full_statement_verifier::host_utils::{
 use full_statement_verifier::program_proof::ProgramProof;
 pub use l1_wrap::L1Bundle;
 use l1_wrap::{
-    advance_l1_wrap, validate_artifact_envelope, validate_feeder_proof,
-    validate_l1_wrap_activation, validate_last_feeder_proof,
+    advance_l1_wrap, validate_artifact_envelope, validate_feeder_proof, validate_l1_wrap_activation,
 };
 use riscv_transpiler::vm::FlatResponsesSource;
 use serde::{Deserialize, Serialize};
@@ -587,6 +586,7 @@ const fn feeder_stage(role: FeederRole) -> FeederStageSpec {
     }
 }
 
+#[cfg(test)]
 const L1_FEEDER_PROGRAMS: [FsvProgram; 2] = [
     feeder_stage(FeederRole::First).program,
     feeder_stage(FeederRole::Recurrent).program,
@@ -716,6 +716,7 @@ impl FeederVerifier for ProductionFeederVerifier {
 
 /// The wrap program's run over `nd_words` without the wrap cycle limit: the
 /// measurement the fixtures and gates validate with `validate_wrap_report`.
+#[cfg(test)]
 fn observe_wrap_program(
     program: &ProgramWords,
     nd_words: Vec<u32>,
@@ -736,6 +737,7 @@ fn observe_wrap_program(
 /// and a history equal to the trusted chain of the program (`end_params`
 /// recomputes it). The proof's native verification and its binding to this
 /// history follow in `run_feeder_layers`.
+#[cfg(test)]
 fn validate_feeder_checkpoint(
     state: &RecursionState,
     blake: PipelineBlakeModes,
@@ -1655,6 +1657,7 @@ impl ProgramProver {
         self.continue_artifact_observed(artifact, &mut NoopObserver)
     }
 
+    #[cfg(test)]
     /// The feeder loop over a `RecursionUnified` (or mid-chain) artifact
     /// WITHOUT the wrap-fit check, for the feeder-chain fixtures: the layers
     /// are recorded through `observer`, the state after the last layer is
@@ -1696,6 +1699,7 @@ impl ProgramProver {
         Ok((state, loaded))
     }
 
+    #[cfg(test)]
     /// The wrap program's run over the last feeder proof of `state` and the
     /// native output it must reproduce, measured WITHOUT the wrap cycle limit
     /// so an over-budget run is observed (its rejection is
@@ -1710,6 +1714,7 @@ impl ProgramProver {
         Ok((report, native_output))
     }
 
+    #[cfg(test)]
     /// A prover for resuming a private feeder checkpoint (a feeder layer that
     /// is not the last one): it registers both feeder programs.
     fn for_feeder_checkpoint(
@@ -1721,6 +1726,7 @@ impl ProgramProver {
         Self::with_registration(source, config, blake, Some(ProofTarget::RecursionUnified))
     }
 
+    #[cfg(test)]
     /// Continue the feeder loop from a private checkpoint `state` after it is
     /// admitted against the trusted chain of the supplied program
     /// ([`validate_feeder_checkpoint`]); the wrap fit is not checked.
@@ -1750,6 +1756,7 @@ impl ProgramProver {
         Ok(state)
     }
 
+    #[cfg(test)]
     fn finalize_state(
         &self,
         loaded: &LoadedProgram,
@@ -1981,8 +1988,10 @@ fn find_binary_exit_point(binary: &[u32]) -> Result<u32, String> {
         .map_err(|_| "binary has no unique exit sequence".to_string())
 }
 
+#[allow(dead_code)]
 const L1_WRAP_CYCLES_BOUND: usize = 1 << 22;
 
+#[allow(dead_code)]
 /// Run `bin`/`text` on the reduced machine over `nd_words` and return its exact
 /// cycle count, but only if it halts at the binary's success exit within
 /// `cycles_bound` (an fsv program only reaches that exit if its proof verifies).
