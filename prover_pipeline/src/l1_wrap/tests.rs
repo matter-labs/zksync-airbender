@@ -1,44 +1,6 @@
 use super::*;
-use crate::l1_feeder_tests::artifact;
-use prover::definitions::{FinalRegisterValue, GKRExternalChallenges};
-use prover::gkr::whir::{WhirBaseLayerCommitmentAndQueries, WhirPolyCommitProof};
-
-fn empty_gkr_proof<
-    F: prover::field::PrimeField,
-    E: prover::field::FieldExtension<F> + prover::field::Field,
-    T: prover::merkle_trees::ColumnMajorMerkleTreeConstructor<F>,
->() -> prover::gkr::prover::GKRProof<F, E, T> {
-    let empty_commitment = || WhirBaseLayerCommitmentAndQueries {
-        commitment: Default::default(),
-        num_columns: 0,
-        evals: vec![],
-        queries: vec![],
-    };
-    prover::gkr::prover::GKRProof {
-        external_challenges: GKRExternalChallenges::default(),
-        final_explicit_evaluations: Default::default(),
-        sumcheck_intermediate_values: Default::default(),
-        whir_proof: WhirPolyCommitProof {
-            setup_commitment: empty_commitment(),
-            memory_commitment: empty_commitment(),
-            witness_commitment: empty_commitment(),
-            intermediate_whir_oracles: vec![],
-            ood_samples: vec![],
-            sumcheck_polys: vec![],
-            pow_nonces: vec![],
-            final_monomials: vec![],
-            whir_schedule: Default::default(),
-            batching_challenge: None,
-            original_evaluation_point: None,
-            batched_opening: None,
-        },
-        grand_product_accumulator_computed: Default::default(),
-        inits_and_teardowns_top_bits: vec![],
-        lookup_challenges_pow_nonce: 0,
-        batched_proximity_check_pow_nonce: 0,
-        intermediate_transcript_seed: None,
-    }
-}
+use crate::l1_feeder_tests::{artifact, empty_gkr_proof, feeder_artifact};
+use prover::definitions::FinalRegisterValue;
 
 fn result() -> L1WrapResult {
     L1WrapResult {
@@ -57,7 +19,7 @@ fn result() -> L1WrapResult {
 }
 
 fn wrapped_artifact() -> ProofArtifact {
-    let mut checkpoint = artifact(ProofTarget::L1Feeder, 5);
+    let mut checkpoint = feeder_artifact(ProofTarget::L1Feeder, 5, 2);
     checkpoint.target = ProofTarget::L1;
     checkpoint.l1 = Some(L1Bundle::from_result(result()));
     checkpoint
@@ -113,7 +75,7 @@ fn malformed_l1_envelopes_fail_verify_and_continuation_before_loading_programs()
             }
         }),
         ("non-L1", |a| a.target = ProofTarget::L1Feeder),
-        ("one RISC-V proof", |_| {}),
+        ("compiled unified circuit", |_| {}),
     ];
     for (expected, mutate) in mutations {
         let mut checkpoint = wrapped_artifact();
@@ -172,11 +134,16 @@ fn wrap_rejects_an_invalid_feeder_proof_before_proving() {
         input_is_base: false,
         timings: checkpoint.timings_ms,
         program_cycles: checkpoint.program_cycles,
+        feeder_layers: checkpoint.feeder_layers,
     };
+    // the wrap stage is closed until W3's wrap circuit matches the wrap program
     let Err(error) = advance_l1_wrap(&mut NoProving, &fsv, state, 0) else {
-        panic!("an invalid feeder proof was wrapped");
+        panic!("the wrap stage ran before W3");
     };
-    assert!(error.contains("one RISC-V proof"), "{error}");
+    assert!(error.starts_with("ProofTarget::L1 requires"), "{error}");
+    // and an invalid feeder proof is rejected by its admission check
+    let error = validate_last_feeder_proof(&artifact(ProofTarget::L1Feeder, 5).proof).unwrap_err();
+    assert!(error.contains("reduced-machine family"), "{error}");
 }
 
 #[test]
@@ -211,6 +178,7 @@ fn cpu_m8_l1_registration_plan() {
         unified: (vec![], vec![]),
         feeder_first: (vec![0x13, 1], vec![1]),
         feeder: (vec![0x13, 2], vec![2]),
+        feeder_wrap: (vec![0x13, 3], vec![3]),
     };
     let registrations = pipeline_registrations(
         &loaded,
@@ -231,7 +199,11 @@ fn cpu_m8_l1_registration_plan() {
             ExecutionKind::Unified22,
             ProofProfile::L1Feeder,
         ),
-        (&fsv.feeder, ExecutionKind::L1Wrap, ProofProfile::L1Wrap),
+        (
+            &fsv.feeder_wrap,
+            ExecutionKind::L1Wrap,
+            ProofProfile::L1Wrap,
+        ),
     ] {
         let key = handle_key(kind, MachineType::Reduced, &program.0, &program.1);
         let registration = &registrations[&key];
