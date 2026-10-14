@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity =0.8.36;
 
-contract GKRVerifier {
+contract GkrWhirVerifier {
     // ── Generic (used throughout) ───────────────────────────────────────────
     // HEAP ORDER: challenges, point, gas, seed, init/circuit data (overlapping seed+32)
     // MEMORY_CHALLS_PTR (7)
@@ -66,8 +66,12 @@ contract GKRVerifier {
     // verifier hashes — [seed:32][batching:16][opening:16][z_initial:nz*16]
     // [witness_cap:CAP*32][setup_cap:CAP*32] — keccaks it, and marks it. WHIR
     // recomputes the same bytes32 in its own tx; the registry events must match.
-    address constant __TEMPLATE_REGISTRY_ADDRESS          = 0x00000000000000000000000000000000caFe0001;
-    uint256 constant MARK_GKR_SELECTOR = 0xef4f148a; // mark_gkr_verified(bytes32,bytes32,bytes32)
+    // Verified(public_input, setup_commitment): emitted once the whole GKR+WHIR verification
+    // passed. topic0 = keccak256("Verified(bytes32,bytes32)") (substituted by the generator).
+    uint256 constant __TEMPLATE_VERIFIED_TOPIC = 0x5c83c73bb0b96f8bc4b95aabcb7980de29ee8ec40cf1aa83c5bd999b44077557;
+    event Verified(bytes32 public_input, bytes32 setup_commitment);
+    // The WHIR half's constants (whir.sol's, `W_`-prefixed + memory-relocated) go here:
+    // __WHIR_CONSTANTS__
     uint256 constant __TEMPLATE_WHIR_Z_COORDS     = 26;         // 22 base + 4 packing extra coords
     uint256 constant __TEMPLATE_WHIR_CAP          = 8;          // CAP (witness+setup base-oracle caps)
     uint256 constant __TEMPLATE_WHIR_BATCH_POW_BITS = 11;       // batched_proximity_check_pow_bits (Sec100)
@@ -543,25 +547,9 @@ contract GKRVerifier {
             next_alpha := alpha
         }
 
-        // Assemble the committed-state preimage and mark_gkr_verified(bytes32) on the
-        // registry (own frame — keeps the fallback stack under the EVM limit). Layout
-        // mirrors whir.sol: [seed:32][batching:16][opening:16][z:__TEMPLATE_WHIR_Z_COORDS*16]
-        // [witCap:CAP*32][setupCap:CAP*32]. NOTE: the packed claims-merge + WHIR batching
-        // (validated in the Rust mirror) must run first to populate the batching/opening/z
-        // regions (GKR_CIRCUIT_ALPHA2_PTR / claim / POINT_PTR).
-        // Assert the remaining proof stream is fully consumed (all-zero tail). In its own
-        // frame so the loop counter doesn't add to the tight fallback root stack, which
-        // otherwise runs exactly 1 slot too deep on `ptr` (see HEURISTICS.md).
-        function assert_proof_empty(ptr) {
-            // The GKR stream ends exactly 8 bytes before the end of calldata: the trailing 8
-            // bytes are the WHIR-batching PoW nonce (consumed in emit_gkr_mark via
-            // calldataload(calldatasize()-8)). Require the cursor to land there precisely.
-            if iszero(eq(ptr, sub(calldatasize(), 8))) { revert(0, 0) }
-        }
-
         // Copy `count` little-endian u32s from calldata[cdpos] to memory[wpos] as big-endian.
-        // The GKR preimage stores the merkle caps as LE u32; the committed state (and whir.sol)
-        // want BE u32 digests, so each 4-byte word is byte-reversed.
+        // The GKR preimage stores the merkle caps as LE u32; the WHIR half wants BE u32
+        // digests, so each 4-byte word is byte-reversed.
         function write_cap_be(wpos, cdpos, count) {
             for { let j := 0 } lt(j, count) { j := add(j, 1) } {
                 let le := shr(224, calldataload(add(cdpos, mul(4, j))))
@@ -602,12 +590,16 @@ contract GKRVerifier {
         }
 
         // GKR→WHIR handoff: draw the 4 packing coords, merge the base-layer claims (mem++wit
-        // 104→7, setup 10→1), draw the WHIR batching challenge (PoW nonce=0), form the batched
-        // opening, and mark_gkr_verified(keccak(preimage)) with preimage
-        //   [seed:32][batching:16][opening:16][z = base_z(22) ++ extra(4) : 26·16][caps:2·CAP·32]
+        // 104→7, setup 10→1), draw the WHIR batching challenge (PoW), form the batched
+        // opening, and write the WHIR half's start state straight into its memory regions:
+        //   seed, batching, opening, z = base_z(22) ++ extra(4), the two base-oracle caps
         // (the pack index occupies the HIGH bits of the packed enumeration, so under LSB
-        // binding the packing coords EXTEND the claim point at the top).
-        function emit_gkr_mark(claim_v) {
+        // binding the packing coords EXTEND the claim point at the top). Own frame — keeps the
+        // fallback stack under the EVM limit. The packed claims-merge + WHIR batching (validated
+        // in the Rust mirror) populate the batching/opening/z inputs (GKR_CIRCUIT_ALPHA2_PTR /
+        // claim / POINT_PTR). `ptr` is the GKR stream cursor after the circuit layers: it points
+        // at the 8-byte WHIR-batching PoW nonce; the WHIR proof stream follows it.
+        function emit_gkr_mark(claim_v, ptr) {
             let sp := SEED_PTR()
             let ex := GKR_ABS_PTR()            // 4 packing coords
             let mg := add(GKR_ABS_PTR(), 128)  // 8 merged claims (7 mem_wit ++ 1 setup)
@@ -633,8 +625,8 @@ contract GKRVerifier {
             }
             mstore(add(mg, mul(32, __TEMPLATE_WHIR_MERGED_MW)), whir_fold16(add(cdbase, mul(16, __TEMPLATE_WHIR_NUM_MEMWIT)), __TEMPLATE_WHIR_NUM_SETUP, e0, e1, e2, e3))
             // draw WHIR batching (PoW fold: digest=keccak(seed||nonce_be8), top __TEMPLATE_WHIR_BATCH_POW_BITS
-            // must be zero; nonce is the 8-byte BE tail of the calldata). Then draw.
-            let wnonce := shr(192, calldataload(sub(calldatasize(), 8)))
+            // must be zero; nonce is the 8-byte BE word at the GKR stream cursor). Then draw.
+            let wnonce := shr(192, calldataload(ptr))
             mstore(sp, seed)
             mstore(add(sp, 32), shl(192, wnonce))
             seed := keccak256(sp, 40)
@@ -651,47 +643,39 @@ contract GKRVerifier {
                 opening := addmod(opening, mulmod(mload(add(mg, mul(32, i))), bexp, mload(P_PTR)), mload(P_PTR))
                 bexp := mulmod(bexp, batching, mload(P_PTR))
             }
-            // preimage
-            let base := GKR_INIT_SCRATCH_PTR()
-            mstore(base, seed)
-            mstore(add(base, 32), shl(128, and(batching, MASK)))
-            mstore(add(base, 48), shl(128, and(opening, MASK)))
-            let plen := 64
+            // Hand the WHIR start state over in memory (the W_* regions are the WHIR half's,
+            // injected by the generator). Layout mirrors what the WHIR half consumes.
+            mstore(W_SEED_PTR, seed)
+            mstore(W_HANDOFF_BATCHING_PTR, batching)
+            mstore(W_REG_CLAIM, opening)
+            // z = base_z(__TEMPLATE_WHIR_BASE_Z_COORDS) ++ packing coords, one 128-bit value per slot
             for { let i := 0 } lt(i, __TEMPLATE_WHIR_BASE_Z_COORDS) { i := add(i, 1) } {
-                mstore(add(base, plen), shl(128, and(mload(add(POINT_PTR(), mul(i, 32))), MASK)))
-                plen := add(plen, 16)
+                mstore(add(W_Z_PTR, mul(i, 32)), and(mload(add(POINT_PTR(), mul(i, 32))), MASK))
             }
             for { let i := 0 } lt(i, __TEMPLATE_WHIR_PACK_LOG2) { i := add(i, 1) } {
-                mstore(add(base, plen), shl(128, and(mload(add(ex, mul(32, i))), MASK)))
-                plen := add(plen, 16)
+                mstore(add(W_Z_PTR, mul(add(__TEMPLATE_WHIR_BASE_Z_COORDS, i), 32)), and(mload(add(ex, mul(32, i))), MASK))
             }
-            // caps: committed state wants [memory_cap][setup_cap] as BE u32. The GKR preimage
-            // (in calldata) holds them as LE u32 after registers(384) + final_pc(12) +
+            // caps: the WHIR half wants [memory_cap][setup_cap] as BE u32 digests. The GKR
+            // preimage (in calldata) holds them as LE u32 after registers(384) + final_pc(12) +
             // top_bits(num_teardown_sets*4 = 8): setup_cap @ byte 404, memory_cap @ byte 660.
-            // Re-encode to BE and reorder (memory first). count = __TEMPLATE_WHIR_CAP*8 u32s per cap.
-            write_cap_be(add(base, plen), 660, mul(__TEMPLATE_WHIR_CAP, 8))                                 // memory
-            write_cap_be(add(add(base, plen), mul(mul(__TEMPLATE_WHIR_CAP, 8), 4)), 404, mul(__TEMPLATE_WHIR_CAP, 8))  // setup
-            plen := add(plen, mul(mul(2, __TEMPLATE_WHIR_CAP), 32))
-            let commitment := keccak256(base, plen)
+            // Re-encode to BE (write_cap_be). count = __TEMPLATE_WHIR_CAP*8 u32s per cap.
+            write_cap_be(W_BCAP0_PTR, 660, mul(__TEMPLATE_WHIR_CAP, 8))  // memory
+            write_cap_be(W_BCAP1_PTR, 404, mul(__TEMPLATE_WHIR_CAP, 8))  // setup
             // public_input = registers x10..x17 (a0..a7); setup_commitment = x18..x25 (s2..s9).
             // Each register's u32 value is stored LE at preimage byte reg*12; concatenate the
-            // 8 4-byte LE values into a 32-byte word (reuse `base` scratch, now that the
-            // commitment is hashed).
+            // 8 4-byte LE values into a 32-byte word (kept for the Verified event).
+            let base := GKR_INIT_SCRATCH_PTR()
             for { let i := 0 } lt(i, 8) { i := add(i, 1) } {
                 calldatacopy(add(base, mul(i, 4)), mul(add(10, i), 12), 4)
             }
-            let pubval := mload(base)
+            mstore(W_PUB_PTR, mload(base))
             for { let i := 0 } lt(i, 8) { i := add(i, 1) } {
                 calldatacopy(add(base, mul(i, 4)), mul(add(18, i), 12), 4)
             }
-            let setupval := mload(base)
-            // mark_gkr_verified(commitment, public_input, setup_commitment)
-            mstore(0, shl(224, MARK_GKR_SELECTOR))
-            mstore(4, commitment)
-            mstore(36, pubval)
-            mstore(68, setupval)
-            pop(call(gas(), __TEMPLATE_REGISTRY_ADDRESS, 0, 0, 100, 0, 0))
+            mstore(W_SETUP_PTR, mload(base))
         }
+
+        // __WHIR_INLINE__
 
         // SPILL OVERWRITE PREVENTION
         if gt(mload(0x40), MINIMUM_FREE_HEAP_PTR) {
@@ -728,24 +712,28 @@ contract GKRVerifier {
         // evaluations must be zero (same as the CPU verifier's lookup-identity check).
         check_lookup_identities(output_evals_ptr)
 
-        // DONE: Proof empty now (own frame — see assert_proof_empty)
-        assert_proof_empty(ptr)
-
         // TODO: don't forget the recursion chain check
         // TODO: very, VERY, carefully review end-to-end fiat-shamir
 
-        // ── GKR→WHIR handoff commitment ────────────────────────────────────────
-        // Assemble the committed-state preimage the WHIR verifier will hash, keccak it,
-        // and mark_gkr_verified(bytes32). In its own function frame to keep the tight
-        // fallback stack under the EVM limit (see HEURISTICS.md).
-        emit_gkr_mark(claim)
+        // ── GKR→WHIR handoff in memory, then the WHIR proximity check ─────────────────
+        // emit_gkr_mark draws the packing coords + WHIR batching, merges the base-layer claims
+        // and writes the WHIR start state into the W_* regions; whir_verify then consumes the
+        // WHIR proof stream that follows the 8-byte WHIR-batching PoW nonce at `ptr`, and
+        // requires its cursor to land exactly at calldatasize() — so the whole merged stream
+        // (GKR ‖ nonce ‖ WHIR) is checked for exact consumption.
+        emit_gkr_mark(claim, ptr)
+        whir_verify(add(ptr, 8))
 
-        // anti-DCE
-        mstore(0, claim)
-        mstore(32, mload(GKR_INIT_GAS_PTR()))
-        mstore(64, mload(GKR_MAIN_GAS_PTR()))
-        mstore(96, ptr)
-        return(0, 128)
+        // SPILL OVERWRITE PREVENTION (re-checked after the WHIR half)
+        if gt(mload(0x40), MINIMUM_FREE_HEAP_PTR) {
+            revert(0, 0)
+        }
+
+        // Verified(public_input, setup_commitment)
+        mstore(W_LEAF_PTR, mload(W_PUB_PTR))
+        mstore(add(W_LEAF_PTR, 32), mload(W_SETUP_PTR))
+        log1(W_LEAF_PTR, 64, __TEMPLATE_VERIFIED_TOPIC)
+        return(W_LEAF_PTR, 64)
     } }
 }
 
@@ -754,7 +742,7 @@ contract GKRVerifier {
 // exactly as a standalone GKRVerifier deployment would, so the measured gas
 // reflects production. GKRVerifier itself stays free of test-only code, so
 // `forge build --sizes` (and any prod build) sees only the verifier bytecode.
-contract GKRVerifierTest is GKRVerifier {
+contract GKRVerifierTest is GkrWhirVerifier {
     event log_named_uint(string key, uint256 val);
     event log_named_decimal_uint(string key, uint256 val, uint256 decimals);
     event log_named_string(string key, string val);

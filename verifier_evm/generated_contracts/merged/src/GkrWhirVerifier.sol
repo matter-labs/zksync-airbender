@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity =0.8.36;
 
-contract GKRVerifier {
+contract GkrWhirVerifier {
     // ── Generic (used throughout) ───────────────────────────────────────────
     // HEAP ORDER: challenges, point, gas, seed, init/circuit data (overlapping seed+32)
     // MEMORY_CHALLS_PTR (7)
@@ -48,7 +48,7 @@ contract GKRVerifier {
     // 520 for this proof (unified_reduced_machine, 2^22, pack_log2=4). See gkr_transcript_reference.md.
     uint256 constant __TEMPLATE_GKR_INIT_PREIMAGE_BYTES = 916; // registers(384) + final_pc(12) + top_bits(8) + setup_cap(256) + memory_cap(256)
     uint256 constant __TEMPLATE_EXTERNAL_POW_BITS       = 20;  // external-challenge PoW difficulty (max(lookup, 20))
-    uint256 constant __TEMPLATE_EXPECTED_FINAL_PC       = 2171784; // program's terminal PC — binds the verified statement to this program
+    uint256 constant __TEMPLATE_EXPECTED_FINAL_PC       = 2303948; // program's terminal PC — binds the verified statement to this program
 
     // ── GKR init (fold the 8 init polys into the first sumcheck claim) ────────
     uint256 constant GKR_INIT_BYTES          = 2560; // 10 output polys * 16 elems * 16 bytes (Proth120)
@@ -66,8 +66,78 @@ contract GKRVerifier {
     // verifier hashes — [seed:32][batching:16][opening:16][z_initial:nz*16]
     // [witness_cap:CAP*32][setup_cap:CAP*32] — keccaks it, and marks it. WHIR
     // recomputes the same bytes32 in its own tx; the registry events must match.
-    address constant __TEMPLATE_REGISTRY_ADDRESS          = 0x0000000000000000000000000000000000000000;
-    uint256 constant MARK_GKR_SELECTOR = 0xef4f148a; // mark_gkr_verified(bytes32,bytes32,bytes32)
+    // Verified(public_input, setup_commitment): emitted once the whole GKR+WHIR verification
+    // passed. topic0 = keccak256("Verified(bytes32,bytes32)") (substituted by the generator).
+    uint256 constant __TEMPLATE_VERIFIED_TOPIC = 0x5c83c73bb0b96f8bc4b95aabcb7980de29ee8ec40cf1aa83c5bd999b44077557;
+    event Verified(bytes32 public_input, bytes32 setup_commitment);
+    // The WHIR half's constants (whir.sol's, `W_`-prefixed + memory-relocated) go here:
+    uint256 constant W_HALF = 0x3800000000000000000000000000001;  // 2^-1 = (P+1)/2
+    // RS-codeword evaluation-domain generator and its inverse — a primitive 2^codeword_log2-th
+    // root of unity. Generated (`Proth120::TWO_ADICITY_GENERATORS[codeword_log2]`); the values
+    // below are placeholders substituted for the target's codeword size.
+    uint256 constant W___TEMPLATE_WHIR_GEN     = 3425356216587033636351364223179792077;
+    uint256 constant W___TEMPLATE_WHIR_GEN_INV = 3409408011976041282043764725012079139;
+
+    uint256 constant W___TEMPLATE_WHIR_NUM_ROUNDS = 6;
+    uint256 constant W___TEMPLATE_WHIR_NZ          = 26;  // WHIR eval-point coords = trace_log2 + pack_log2
+    uint256 constant W___TEMPLATE_WHIR_GCOUNT      = 9;   // gamma-batched base columns + 1
+    uint256 constant W___TEMPLATE_WHIR_RFIN        = 4;   // final-poly log2 = message_log2 - sum(folds)
+    uint256 constant W___TEMPLATE_WHIR_NBCAPS      = 2;   // base-oracle merkle caps (witness, setup)
+    uint256 constant W___TEMPLATE_WHIR_SETUP_MERGED = 1;  // merged setup base columns
+    // Must match the prover's `eval_leaves` cargo feature. 0 (default): intermediate
+    // oracles commit multilinear-COEFFICIENT leaves -> fold with the plain monomial
+    // tensor (fold_multilinear). 1 (eval_leaves): they commit raw EVALUATIONS -> fold
+    // with the coset base-root (fold_coset), like the round-0 base oracle.
+    uint256 constant W_EVAL_LEAVES = 0;
+    // cap size knob: keep W_CAP == 2^W_CAP_LOG2 in sync (Yul needs literal constants).
+    uint256 constant W_CAP_LOG2 = 3;
+    uint256 constant W_CAP      = 8;
+
+    // ── hand-placed memory ────────────────────────────────────────────────────
+    // (In the merged contract every address below is relocated by the generator above the
+    // GKR heap; the values here are the fragment's own layout.)
+    uint256 constant W_SEED_PTR     = 32896;
+    uint256 constant W_Z_PTR        = 34816;
+    // z holds up to nz elements at W_Z_PTR..W_Z_PTR+nz*32. Production nz=26 fills
+    // 2048..2880, so ACC_PREF must live OUTSIDE that span (it previously sat at
+    // 2816 == z[24] and got clobbered). Park it in the free gap between the POW
+    // region (W_POW_PTR..W_POW_PTR+numpow*96; <=~7968 for 53 constraints) and GAMMA.
+    uint256 constant W_ACC_PREF_PTR = 45312;
+    uint256 constant W_POW_PTR      = 35648;
+    uint256 constant W_GAMMA_PTR    = 45376;
+    uint256 constant W_FOLD_CH_PTR  = 49024;
+    uint256 constant W_HPO_PTR      = 49216;
+    uint256 constant W_FBUF_PTR     = 49760;
+    uint256 constant W_LEAF_PTR     = 50816;  // leaf hashing + preimage hashing scratch
+    uint256 constant W_REG_CD       = 55168;
+    uint256 constant W_REG_CLAIM    = 55200;
+    uint256 constant W_REG_NUMPOW   = 55232;
+    uint256 constant W_REG_ZIOFF    = 55264;
+    uint256 constant W_REG_CC       = 55328;
+    uint256 constant W_REG_CURDELIN = 55360;
+    // cap regions (each holds up to W_CAP*32 bytes)
+    uint256 constant W_BCAP0_PTR    = 56064;  // witness base-oracle cap
+    uint256 constant W_BCAP1_PTR    = 57088;  // setup base-oracle cap
+    uint256 constant W_QCAP_PTR     = 59136;  // current query cap (rounds >= 1)
+    uint256 constant W_NCAP_PTR     = 60160;  // just-read intermediate cap
+    // Per-round query drawing (matches prover `draw_query_bits`/`BitSource`):
+    //   QIDX_BUF holds the drawn query indices (<= 50 * 32 bytes);
+    //   DRAW_BUF holds the little-endian u32 words squeezed from the seed.
+    uint256 constant W_QIDX_BUF_PTR = 61184;  // drawn query indices
+    uint256 constant W_DRAW_BUF_PTR = 62784;  // squeezed LE u32 words (one per slot)
+    // GKR→WHIR handoff scratch, written by the GKR half's emit_gkr_mark: the WHIR batching
+    // challenge, and the program's public_input / setup_commitment for the Verified event.
+    uint256 constant W_HANDOFF_BATCHING_PTR = 55392;
+    uint256 constant W_PUB_PTR   = 55424;
+    uint256 constant W_SETUP_PTR = 55456;
+    // do_final scratch, GENERATOR-DERIVED from the prover config: the plain-
+    // text tail is 2^RFIN monomials, so the monomial region's size — and the
+    // offset of every region after it — depends on the schedule. The regions
+    // live past the end of the static map.
+    uint256 constant W___TEMPLATE_WHIR_MONO_PTR  = 64448;  // first free offset past the static map
+    uint256 constant W___TEMPLATE_WHIR_FEVAL_PTR = 64960;  // = W_MONO_PTR + 2^RFIN * 32
+    uint256 constant W_MONO_PTR  = W___TEMPLATE_WHIR_MONO_PTR; // final monomials (2^RFIN * 32 bytes)
+    uint256 constant W_FEVAL_PTR = W___TEMPLATE_WHIR_FEVAL_PTR; // tail absorb + halving-fold scratch (32 + 2^RFIN * 32)
     uint256 constant __TEMPLATE_WHIR_Z_COORDS     = 26;         // 22 base + 4 packing extra coords
     uint256 constant __TEMPLATE_WHIR_CAP          = 8;          // CAP (witness+setup base-oracle caps)
     uint256 constant __TEMPLATE_WHIR_BATCH_POW_BITS = 16;       // batched_proximity_check_pow_bits (Sec100)
@@ -1986,25 +2056,9 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             next_alpha := alpha
         }
 
-        // Assemble the committed-state preimage and mark_gkr_verified(bytes32) on the
-        // registry (own frame — keeps the fallback stack under the EVM limit). Layout
-        // mirrors whir.sol: [seed:32][batching:16][opening:16][z:__TEMPLATE_WHIR_Z_COORDS*16]
-        // [witCap:CAP*32][setupCap:CAP*32]. NOTE: the packed claims-merge + WHIR batching
-        // (validated in the Rust mirror) must run first to populate the batching/opening/z
-        // regions (GKR_CIRCUIT_ALPHA2_PTR / claim / POINT_PTR).
-        // Assert the remaining proof stream is fully consumed (all-zero tail). In its own
-        // frame so the loop counter doesn't add to the tight fallback root stack, which
-        // otherwise runs exactly 1 slot too deep on `ptr` (see HEURISTICS.md).
-        function assert_proof_empty(ptr) {
-            // The GKR stream ends exactly 8 bytes before the end of calldata: the trailing 8
-            // bytes are the WHIR-batching PoW nonce (consumed in emit_gkr_mark via
-            // calldataload(calldatasize()-8)). Require the cursor to land there precisely.
-            if iszero(eq(ptr, sub(calldatasize(), 8))) { revert(0, 0) }
-        }
-
         // Copy `count` little-endian u32s from calldata[cdpos] to memory[wpos] as big-endian.
-        // The GKR preimage stores the merkle caps as LE u32; the committed state (and whir.sol)
-        // want BE u32 digests, so each 4-byte word is byte-reversed.
+        // The GKR preimage stores the merkle caps as LE u32; the WHIR half wants BE u32
+        // digests, so each 4-byte word is byte-reversed.
         function write_cap_be(wpos, cdpos, count) {
             for { let j := 0 } lt(j, count) { j := add(j, 1) } {
                 let le := shr(224, calldataload(add(cdpos, mul(4, j))))
@@ -2045,12 +2099,16 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
         }
 
         // GKR→WHIR handoff: draw the 4 packing coords, merge the base-layer claims (mem++wit
-        // 104→7, setup 10→1), draw the WHIR batching challenge (PoW nonce=0), form the batched
-        // opening, and mark_gkr_verified(keccak(preimage)) with preimage
-        //   [seed:32][batching:16][opening:16][z = base_z(22) ++ extra(4) : 26·16][caps:2·CAP·32]
+        // 104→7, setup 10→1), draw the WHIR batching challenge (PoW), form the batched
+        // opening, and write the WHIR half's start state straight into its memory regions:
+        //   seed, batching, opening, z = base_z(22) ++ extra(4), the two base-oracle caps
         // (the pack index occupies the HIGH bits of the packed enumeration, so under LSB
-        // binding the packing coords EXTEND the claim point at the top).
-        function emit_gkr_mark(claim_v) {
+        // binding the packing coords EXTEND the claim point at the top). Own frame — keeps the
+        // fallback stack under the EVM limit. The packed claims-merge + WHIR batching (validated
+        // in the Rust mirror) populate the batching/opening/z inputs (GKR_CIRCUIT_ALPHA2_PTR /
+        // claim / POINT_PTR). `ptr` is the GKR stream cursor after the circuit layers: it points
+        // at the 8-byte WHIR-batching PoW nonce; the WHIR proof stream follows it.
+        function emit_gkr_mark(claim_v, ptr) {
             let sp := SEED_PTR()
             let ex := GKR_ABS_PTR()            // 4 packing coords
             let mg := add(GKR_ABS_PTR(), 128)  // 8 merged claims (7 mem_wit ++ 1 setup)
@@ -2076,8 +2134,8 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             }
             mstore(add(mg, mul(32, __TEMPLATE_WHIR_MERGED_MW)), whir_fold16(add(cdbase, mul(16, __TEMPLATE_WHIR_NUM_MEMWIT)), __TEMPLATE_WHIR_NUM_SETUP, e0, e1, e2, e3))
             // draw WHIR batching (PoW fold: digest=keccak(seed||nonce_be8), top __TEMPLATE_WHIR_BATCH_POW_BITS
-            // must be zero; nonce is the 8-byte BE tail of the calldata). Then draw.
-            let wnonce := shr(192, calldataload(sub(calldatasize(), 8)))
+            // must be zero; nonce is the 8-byte BE word at the GKR stream cursor). Then draw.
+            let wnonce := shr(192, calldataload(ptr))
             mstore(sp, seed)
             mstore(add(sp, 32), shl(192, wnonce))
             seed := keccak256(sp, 40)
@@ -2094,47 +2152,521 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
                 opening := addmod(opening, mulmod(mload(add(mg, mul(32, i))), bexp, mload(P_PTR)), mload(P_PTR))
                 bexp := mulmod(bexp, batching, mload(P_PTR))
             }
-            // preimage
-            let base := GKR_INIT_SCRATCH_PTR()
-            mstore(base, seed)
-            mstore(add(base, 32), shl(128, and(batching, MASK)))
-            mstore(add(base, 48), shl(128, and(opening, MASK)))
-            let plen := 64
+            // Hand the WHIR start state over in memory (the W_* regions are the WHIR half's,
+            // injected by the generator). Layout mirrors what the WHIR half consumes.
+            mstore(W_SEED_PTR, seed)
+            mstore(W_HANDOFF_BATCHING_PTR, batching)
+            mstore(W_REG_CLAIM, opening)
+            // z = base_z(__TEMPLATE_WHIR_BASE_Z_COORDS) ++ packing coords, one 128-bit value per slot
             for { let i := 0 } lt(i, __TEMPLATE_WHIR_BASE_Z_COORDS) { i := add(i, 1) } {
-                mstore(add(base, plen), shl(128, and(mload(add(POINT_PTR(), mul(i, 32))), MASK)))
-                plen := add(plen, 16)
+                mstore(add(W_Z_PTR, mul(i, 32)), and(mload(add(POINT_PTR(), mul(i, 32))), MASK))
             }
             for { let i := 0 } lt(i, __TEMPLATE_WHIR_PACK_LOG2) { i := add(i, 1) } {
-                mstore(add(base, plen), shl(128, and(mload(add(ex, mul(32, i))), MASK)))
-                plen := add(plen, 16)
+                mstore(add(W_Z_PTR, mul(add(__TEMPLATE_WHIR_BASE_Z_COORDS, i), 32)), and(mload(add(ex, mul(32, i))), MASK))
             }
-            // caps: committed state wants [memory_cap][setup_cap] as BE u32. The GKR preimage
-            // (in calldata) holds them as LE u32 after registers(384) + final_pc(12) +
+            // caps: the WHIR half wants [memory_cap][setup_cap] as BE u32 digests. The GKR
+            // preimage (in calldata) holds them as LE u32 after registers(384) + final_pc(12) +
             // top_bits(num_teardown_sets*4 = 8): setup_cap @ byte 404, memory_cap @ byte 660.
-            // Re-encode to BE and reorder (memory first). count = __TEMPLATE_WHIR_CAP*8 u32s per cap.
-            write_cap_be(add(base, plen), 660, mul(__TEMPLATE_WHIR_CAP, 8))                                 // memory
-            write_cap_be(add(add(base, plen), mul(mul(__TEMPLATE_WHIR_CAP, 8), 4)), 404, mul(__TEMPLATE_WHIR_CAP, 8))  // setup
-            plen := add(plen, mul(mul(2, __TEMPLATE_WHIR_CAP), 32))
-            let commitment := keccak256(base, plen)
+            // Re-encode to BE (write_cap_be). count = __TEMPLATE_WHIR_CAP*8 u32s per cap.
+            write_cap_be(W_BCAP0_PTR, 660, mul(__TEMPLATE_WHIR_CAP, 8))  // memory
+            write_cap_be(W_BCAP1_PTR, 404, mul(__TEMPLATE_WHIR_CAP, 8))  // setup
             // public_input = registers x10..x17 (a0..a7); setup_commitment = x18..x25 (s2..s9).
             // Each register's u32 value is stored LE at preimage byte reg*12; concatenate the
-            // 8 4-byte LE values into a 32-byte word (reuse `base` scratch, now that the
-            // commitment is hashed).
+            // 8 4-byte LE values into a 32-byte word (kept for the Verified event).
+            let base := GKR_INIT_SCRATCH_PTR()
             for { let i := 0 } lt(i, 8) { i := add(i, 1) } {
                 calldatacopy(add(base, mul(i, 4)), mul(add(10, i), 12), 4)
             }
-            let pubval := mload(base)
+            mstore(W_PUB_PTR, mload(base))
             for { let i := 0 } lt(i, 8) { i := add(i, 1) } {
                 calldatacopy(add(base, mul(i, 4)), mul(add(18, i), 12), 4)
             }
-            let setupval := mload(base)
-            // mark_gkr_verified(commitment, public_input, setup_commitment)
-            mstore(0, shl(224, MARK_GKR_SELECTOR))
-            mstore(4, commitment)
-            mstore(36, pubval)
-            mstore(68, setupval)
-            pop(call(gas(), __TEMPLATE_REGISTRY_ADDRESS, 0, 0, 100, 0, 0))
+            mstore(W_SETUP_PTR, mload(base))
         }
+
+        // Every checked WHIR relation flows through here: revert unless equal.
+        function sink2(a, b) { if iszero(eq(a, b)) { revert(0, 0) } }
+        function draw1() -> r {
+            let s := keccak256(W_SEED_PTR, 32)
+            mstore(W_SEED_PTR, s)
+            // top 128 bits reduced mod P (matches prover `from_u128_with_reduction`).
+            // Reduction is required: unreduced values break `sub(P, x)` for x > P.
+            r := mod(shr(128, s), P)
+        }
+        function powmod(base, e) -> res {
+            res := 1
+            base := mod(base, P)
+            for {} e { e := shr(1, e) } {
+                if and(e, 1) { res := mulmod(res, base, P) }
+                base := mulmod(base, base, P)
+            }
+        }
+        function exp_pow2(x, k) -> res {
+            res := x
+            for { let i := 0 } lt(i, k) { i := add(i, 1) } { res := mulmod(res, res, P) }
+        }
+        function verify_pow(cp, pow_bits) -> next_cd {
+            let nonce := shr(192, calldataload(cp))
+            mstore(add(W_SEED_PTR, 32), shl(192, nonce))
+            let h := keccak256(W_SEED_PTR, 40)
+            mstore(W_SEED_PTR, h)
+            sink2(shr(sub(256, pow_bits), h), 0)
+            next_cd := add(cp, 8)
+        }
+        // Draw `num_q` query indices exactly as the prover's `draw_query_bits`:
+        // squeeze `padded` little-endian u32 words from the seed (8 words per
+        // keccak block, re-hashing the seed before each block), DROP the first
+        // word, then read `qib` bits per index LSB-first from the remaining
+        // stream (BitSource + assemble_query_index). Indices land in QIDX_BUF.
+        function draw_queries(num_q, qib) {
+            let num_bits := mul(num_q, qib)
+            // num_required_words = next_multiple_of(num_bits, 32) / 32
+            let nrw := shr(5, and(add(num_bits, 31), not(31)))
+            // padded = next_multiple_of(nrw + 1, 8)
+            let padded := and(add(add(nrw, 1), 7), not(7))
+            let wi := 0
+            for {} lt(wi, padded) {} {
+                let d := keccak256(W_SEED_PTR, 32)
+                mstore(W_SEED_PTR, d)
+                for { let j := 0 } and(lt(j, 8), lt(wi, padded)) { j := add(j, 1) } {
+                    let b := mul(j, 4)
+                    // little-endian u32 from digest bytes [b, b+4)
+                    let w := or(
+                        or(byte(b, d), shl(8, byte(add(b, 1), d))),
+                        or(shl(16, byte(add(b, 2), d)), shl(24, byte(add(b, 3), d))))
+                    mstore(add(W_DRAW_BUF_PTR, mul(wi, 32)), w)
+                    wi := add(wi, 1)
+                }
+            }
+            // skip the first squeezed word => start at global bit 32
+            for { let qq := 0 } lt(qq, num_q) { qq := add(qq, 1) } {
+                let base_bit := add(32, mul(qq, qib))
+                let idx := 0
+                for { let k := 0 } lt(k, qib) { k := add(k, 1) } {
+                    let gb := add(base_bit, k)
+                    let word := mload(add(W_DRAW_BUF_PTR, mul(shr(5, gb), 32)))
+                    idx := or(idx, shl(k, and(shr(and(gb, 31), word), 1)))
+                }
+                mstore(add(W_QIDX_BUF_PTR, mul(qq, 32)), idx)
+            }
+        }
+        function fold_accumulator(alpha, n, zi_off) {
+            let one_minus_alpha := addmod(1, sub(P, alpha), P)
+            let alpha_coeff := addmod(addmod(alpha, alpha, P), sub(P, 1), P)
+            let zi := mload(add(W_Z_PTR, zi_off))
+            let eqv := addmod(one_minus_alpha, mulmod(alpha_coeff, zi, P), P)
+            mstore(W_ACC_PREF_PTR, mulmod(mload(W_ACC_PREF_PTR), eqv, P))
+            for { let i := 0 } lt(i, n) { i := add(i, 1) } {
+                let b := add(W_POW_PTR, mul(i, 96))
+                let s := mload(b)
+                eqv := addmod(one_minus_alpha, mulmod(alpha_coeff, s, P), P)
+                mstore(add(b, 32), mulmod(mload(add(b, 32)), eqv, P))
+                mstore(b, mulmod(s, s, P))
+            }
+        }
+        // high_powers_offsets: bit-reversed powers of the order-2^fold generator's
+        // inverse (matches prover `initial_high_powers_offsets`). set_generator =
+        // domain_generator_for_size(2^fold) = W___TEMPLATE_WHIR_GEN^(2^(codeword_log2 - fold)), and
+        // qib = codeword_log2 - fold, so set_gen_inv = W___TEMPLATE_WHIR_GEN_INV^(2^qib) = exp_pow2(W___TEMPLATE_WHIR_GEN_INV, qib).
+        // hp[i] = set_gen_inv^i, then the length-2^(fold-1) array is bit-reversed.
+        function compute_hpo(fold, qib) {
+            let logc := sub(fold, 1)         // log2(count)
+            // forge-lint: disable-next-line(incorrect-shift) — `shl(n, 1)` is `1 << n` (2^n), args are correct
+            let count := shl(logc, 1)
+            let sgi := exp_pow2(W___TEMPLATE_WHIR_GEN_INV, qib) // order-2^fold generator inverse
+            let pw := 1
+            for { let i := 0 } lt(i, count) { i := add(i, 1) } {
+                // bit-reverse i over logc bits -> store hp[i] = sgi^i at position bitrev(i)
+                let ri := 0
+                for { let k := 0 } lt(k, logc) { k := add(k, 1) } {
+                    ri := or(ri, shl(sub(sub(logc, 1), k), and(shr(k, i), 1)))
+                }
+                mstore(add(W_HPO_PTR, mul(ri, 32)), pw)
+                pw := mulmod(pw, sgi, P)
+            }
+        }
+        function fold_coset(fold, base_root_inv) -> folded {
+            // forge-lint: disable-next-line(incorrect-shift) — `shl(n, 1)` is `1 << n` (2^n), args are correct
+            let n := shl(fold, 1)
+            let root_inv := base_root_inv
+            for { let round := 0 } lt(round, fold) { round := add(round, 1) } {
+                let half := shr(1, n)
+                let ch := mload(add(W_FOLD_CH_PTR, mul(round, 32)))
+                for { let i := 0 } lt(i, half) { i := add(i, 1) } {
+                    let a := mload(add(W_FBUF_PTR, mul(mul(i, 2), 32)))
+                    let b := mload(add(W_FBUF_PTR, mul(add(mul(i, 2), 1), 32)))
+                    let t := mulmod(addmod(a, sub(P, b), P), ch, P)
+                    let root := mulmod(root_inv, mload(add(W_HPO_PTR, mul(i, 32))), P)
+                    t := mulmod(t, root, P)
+                    t := addmod(addmod(t, a, P), b, P)
+                    t := mulmod(t, W_HALF, P)
+                    mstore(add(W_FBUF_PTR, mul(i, 32)), t)
+                }
+                root_inv := mulmod(root_inv, root_inv, P)
+                n := half
+            }
+            folded := mload(W_FBUF_PTR)
+        }
+        // Plain multilinear fold (monomial tensor eval) with the fold challenges,
+        // WITHOUT the coset base-root. Used for INTERMEDIATE/FINAL oracle leaves,
+        // whose stored values fold as f = e0 + e1*ch per step (the prover's default
+        // `eval_multilinear_with_monomial_tensor` path, no `evals_to_multilinear_coeffs`).
+        function fold_multilinear(fold) -> folded {
+            // forge-lint: disable-next-line(incorrect-shift) — `shl(n, 1)` is `1 << n` (2^n), args are correct
+            let n := shl(fold, 1)
+            for { let round := 0 } lt(round, fold) { round := add(round, 1) } {
+                let half := shr(1, n)
+                let ch := mload(add(W_FOLD_CH_PTR, mul(round, 32)))
+                for { let i := 0 } lt(i, half) { i := add(i, 1) } {
+                    let a := mload(add(W_FBUF_PTR, mul(mul(i, 2), 32)))
+                    let b := mload(add(W_FBUF_PTR, mul(add(mul(i, 2), 1), 32)))
+                    mstore(add(W_FBUF_PTR, mul(i, 32)), addmod(a, mulmod(b, ch, P), P))
+                }
+                n := half
+            }
+            folded := mload(W_FBUF_PTR)
+        }
+        // Merkle path of `depth` levels (already cap-reduced), then match a cap
+        // entry. depth = query_index_bits - W_CAP_LOG2.
+        //
+        // The prover splits the query index the same way and lays out tree leaves
+        // as [ bitreverse(coset_index) | internal_index ]:
+        //   coset_index    = the low `coset_bits` bits of `qidx`
+        //   internal_index = the remaining high bits
+        // so the internal-index bits occupy the low (leaf-side) positions of the
+        // physical tree index and the bit-reversed coset bits occupy the high
+        // (cap-side) positions. We therefore walk the path over internal-index
+        // bits first (LSB-first), then over coset-index bits in bit-reversed order
+        // (MSB-first). The first `depth` bits form the Merkle path; the remaining
+        // top bits index the cap. Each level orders current/sibling by its bit:
+        // keccak(current || sibling) for a left child, keccak(sibling || current)
+        // for a right child.
+        function merkle_path(leaf_hash, depth, cap_ptr, cp, qidx, coset_bits) -> next_cd {
+            let qib := add(depth, W_CAP_LOG2)
+            let internal_bits := sub(qib, coset_bits)
+            let internal_index := shr(coset_bits, qidx)
+            // forge-lint: disable-next-line(incorrect-shift) — `shl(n, 1)` is `1 << n` (2^n), args are correct
+            let coset_index := and(qidx, sub(shl(coset_bits, 1), 1))
+
+            let h := leaf_hash
+            let cap_index := 0
+            for { let pos := 0 } lt(pos, qib) { pos := add(pos, 1) } {
+                // Bit of the physical tree index at position `pos` (LSB == leaf side).
+                let bit
+                switch lt(pos, internal_bits)
+                case 1 {
+                    bit := and(shr(pos, internal_index), 1)
+                }
+                default {
+                    // Bit-reversed coset bit: path position `internal_bits + j`
+                    // reads coset bit `coset_bits - 1 - j`.
+                    let j := sub(pos, internal_bits)
+                    bit := and(shr(sub(sub(coset_bits, 1), j), coset_index), 1)
+                }
+
+                switch lt(pos, depth)
+                case 1 {
+                    let sibling := calldataload(cp)
+                    cp := add(cp, 32)
+                    switch bit
+                    case 0 {
+                        // current node is the left child
+                        mstore(0, h)
+                        mstore(32, sibling)
+                    }
+                    default {
+                        // current node is the right child
+                        mstore(0, sibling)
+                        mstore(32, h)
+                    }
+                    h := keccak256(0, 64)
+                }
+                default {
+                    // Bits above the path form the cap index.
+                    cap_index := or(cap_index, shl(sub(pos, depth), bit))
+                }
+            }
+            sink2(h, mload(add(cap_ptr, mul(cap_index, 32)))) // match h against cap[cap_index]
+            next_cd := cp
+        }
+        function batch_oracle(cp, cols, goff, vp, depth, cap_ptr, qidx, cb) -> next_cd {
+            let wpc := shr(1, vp)
+            let li := 0
+            for { let c := 0 } lt(c, cols) { c := add(c, 1) } {
+                let gamma := mload(add(W_GAMMA_PTR, mul(add(goff, c), 32)))
+                for { let wj := 0 } lt(wj, wpc) { wj := add(wj, 1) } {
+                    let w := calldataload(cp)
+                    cp := add(cp, 32)
+                    mstore(add(W_LEAF_PTR, mul(li, 32)), w)
+                    li := add(li, 1)
+                    let s0 := add(W_FBUF_PTR, mul(mul(wj, 2), 32))
+                    let s1 := add(W_FBUF_PTR, mul(add(mul(wj, 2), 1), 32))
+                    mstore(s0, addmod(mload(s0), mulmod(gamma, shr(128, w), P), P))
+                    mstore(s1, addmod(mload(s1), mulmod(gamma, and(w, MASK), P), P))
+                }
+            }
+            next_cd := merkle_path(keccak256(W_LEAF_PTR, mul(li, 32)), depth, cap_ptr, cp, qidx, cb)
+        }
+        function read_leaf(cp, vp, depth, cap_ptr, qidx, cb) -> next_cd {
+            let words := shr(1, vp)
+            for { let i := 0 } lt(i, words) { i := add(i, 1) } {
+                let w := calldataload(cp)
+                mstore(add(W_LEAF_PTR, mul(i, 32)), w)
+                mstore(add(W_FBUF_PTR, mul(mul(i, 2), 32)), shr(128, w))
+                mstore(add(W_FBUF_PTR, mul(add(mul(i, 2), 1), 32)), and(w, MASK))
+                cp := add(cp, 32)
+            }
+            next_cd := merkle_path(keccak256(W_LEAF_PTR, mul(words, 32)), depth, cap_ptr, cp, qidx, cb)
+        }
+        // Reinterpret a 32-byte digest (8 big-endian u32 words) as the same 8
+        // words each in little-endian byte order, keeping word positions. This
+        // matches the prover's `commit_u32` cap absorption (LE u32 word bytes)
+        // while the raw BE digest is still used for Merkle-root comparison.
+        function bswap_digest(d) -> s {
+            for { let i := 0 } lt(i, 8) { i := add(i, 1) } {
+                let sh := sub(224, mul(i, 32))
+                let w := and(shr(sh, d), 0xffffffff)
+                let sw := or(
+                    or(shl(24, and(w, 0xff)), shl(8, and(w, 0xff00))),
+                    or(and(shr(8, w), 0xff00), and(shr(24, w), 0xff)))
+                s := or(s, shl(sh, sw))
+            }
+        }
+        function push_pow(current_scalar, coefficient) {
+            let n := mload(W_REG_NUMPOW)
+            let b := add(W_POW_PTR, mul(n, 96))
+            mstore(b, current_scalar)
+            mstore(add(b, 32), 1)
+            mstore(add(b, 64), coefficient)
+            mstore(W_REG_NUMPOW, add(n, 1))
+        }
+        function copy_cap(dst, src) {
+            for { let i := 0 } lt(i, W_CAP) { i := add(i, 1) } {
+                mstore(add(dst, mul(i, 32)), mload(add(src, mul(i, 32))))
+            }
+        }
+
+        function do_query(r, fold, qib, vp, idx_mask, delin, cb, qq) {
+            let cp := mload(W_REG_CD)
+            let cur := mulmod(mload(W_REG_CURDELIN), delin, P)
+            mstore(W_REG_CURDELIN, cur)
+            let qidx := and(mload(add(W_QIDX_BUF_PTR, mul(qq, 32))), idx_mask)
+            let base_root_inv := powmod(W___TEMPLATE_WHIR_GEN_INV, qidx)
+            let depth := sub(qib, W_CAP_LOG2)
+
+            switch r
+            case 0 {
+                // Round 0 queries the base oracles: 7 witness columns (BCAP0) then
+                // 1 setup column (BCAP1), gamma-batched into the folding buffer.
+                // (7 = merged memory+witness packed columns; setup at gamma-power 7.)
+                for { let j := 0 } lt(j, vp) { j := add(j, 1) } { mstore(add(W_FBUF_PTR, mul(j, 32)), 0) }
+                cp := batch_oracle(cp, __TEMPLATE_WHIR_MERGED_MW, 0, vp, depth, W_BCAP0_PTR, qidx, cb)
+                cp := batch_oracle(cp, W___TEMPLATE_WHIR_SETUP_MERGED, __TEMPLATE_WHIR_MERGED_MW, vp, depth, W_BCAP1_PTR, qidx, cb)
+            }
+            default {
+                cp := read_leaf(cp, vp, depth, W_QCAP_PTR, qidx, cb)
+            }
+            mstore(W_REG_CD, cp)
+            // round 0 queries a base oracle (coset fold); later rounds query
+            // intermediate oracles (plain multilinear fold, no base-root).
+            let folded
+            // round 0 (base oracle) always folds evals with the coset base-root;
+            // intermediate rounds fold coeff leaves (fold_multilinear) unless the
+            // prover used eval_leaves, in which case they too are raw evals.
+            switch or(iszero(r), W_EVAL_LEAVES)
+            case 1 { folded := fold_coset(fold, base_root_inv) }
+            default { folded := fold_multilinear(fold) }
+            push_pow(exp_pow2(powmod(W___TEMPLATE_WHIR_GEN, qidx), fold), cur)
+            mstore(W_REG_CC, addmod(mload(W_REG_CC), mulmod(folded, cur, P), P))
+        }
+
+        function do_internal(r, fold, q, pow_bits, qib, vp, idx_mask, cb) {
+            let cp := mload(W_REG_CD)
+            // read + absorb the next oracle's W_CAP (W_CAP*32 bytes)
+            // keep BE digests for Merkle roots; absorb LE-word copies (commit_u32)
+            for { let i := 0 } lt(i, W_CAP) { i := add(i, 1) } {
+                let d := calldataload(add(cp, mul(i, 32)))
+                mstore(add(W_NCAP_PTR, mul(i, 32)), d)
+                mstore(add(W_SEED_PTR, add(32, mul(i, 32))), bswap_digest(d))
+            }
+            mstore(W_SEED_PTR, keccak256(W_SEED_PTR, add(32, mul(W_CAP, 32))))
+            cp := add(cp, mul(W_CAP, 32))
+            let ood_point := draw1()
+            let ood_value := shr(128, calldataload(cp))
+            // reject a non-canonical (>= P) ood_value: it is absorbed as raw bytes below,
+            // so the transcript must bind to the reduced value
+            if iszero(lt(ood_value, P)) { revert(0, 0) }
+            calldatacopy(add(W_SEED_PTR, 32), cp, 16)
+            mstore(W_SEED_PTR, keccak256(W_SEED_PTR, 48))
+            cp := add(cp, 16)
+            cp := verify_pow(cp, pow_bits)
+            // prover order: PoW -> draw query bits -> draw delinearization
+            draw_queries(q, qib)
+            let delin := draw1()
+            mstore(W_REG_CD, cp)
+            push_pow(ood_point, delin)
+            mstore(W_REG_CC, mulmod(ood_value, delin, P))
+            mstore(W_REG_CURDELIN, delin)
+            compute_hpo(fold, qib)
+            for { let qq := 0 } lt(qq, q) { qq := add(qq, 1) } {
+                do_query(r, fold, qib, vp, idx_mask, delin, cb, qq)
+            }
+            mstore(W_REG_CLAIM, addmod(mload(W_REG_CLAIM), mload(W_REG_CC), P))
+            copy_cap(W_QCAP_PTR, W_NCAP_PTR) // this round's intermediate cap is next round's query cap
+        }
+
+        function do_final(fold, q, pow_bits, qib, vp, idx_mask, zi_off, rfin, cb) {
+            // forge-lint: disable-next-line(incorrect-shift) — `shl(n, 1)` is `1 << n` (2^n), args are correct
+            let nmono := shl(rfin, 1)
+            let cp := mload(W_REG_CD)
+            // absorb via the large FEVAL scratch: 32 + nmono*16 bytes would
+            // overrun the SEED region (into z / pow) for the 2^8 tail
+            mstore(W_FEVAL_PTR, mload(W_SEED_PTR))
+            calldatacopy(add(W_FEVAL_PTR, 32), cp, mul(nmono, 16))
+            mstore(W_SEED_PTR, keccak256(W_FEVAL_PTR, add(32, mul(nmono, 16))))
+            for { let wj := 0 } lt(wj, shr(1, nmono)) { wj := add(wj, 1) } {
+                let w := calldataload(add(cp, mul(wj, 32)))
+                let hi := shr(128, w)
+                let lo := and(w, MASK)
+                // reject non-canonical (>= P) monomials: they were absorbed as raw bytes above,
+                // so the transcript must bind to the reduced value
+                if iszero(lt(hi, P)) { revert(0, 0) }
+                if iszero(lt(lo, P)) { revert(0, 0) }
+                mstore(add(W_MONO_PTR, mul(mul(wj, 2), 32)), hi)
+                mstore(add(W_MONO_PTR, mul(add(mul(wj, 2), 1), 32)), lo)
+            }
+            cp := add(cp, mul(nmono, 16))
+            cp := verify_pow(cp, pow_bits)
+            draw_queries(q, qib)
+            compute_hpo(fold, qib)
+            let depth := sub(qib, W_CAP_LOG2)
+
+            for { let qq := 0 } lt(qq, q) { qq := add(qq, 1) } {
+                let qidx := and(mload(add(W_QIDX_BUF_PTR, mul(qq, 32))), idx_mask)
+                let base_root := powmod(W___TEMPLATE_WHIR_GEN, qidx)
+                cp := read_leaf(cp, vp, depth, W_QCAP_PTR, qidx, cb)
+                // final round queries an intermediate oracle: coeff leaves fold with
+                // the plain monomial tensor, unless eval_leaves (raw evals -> fold_coset).
+                let folded
+                switch W_EVAL_LEAVES
+                case 1 { folded := fold_coset(fold, powmod(W___TEMPLATE_WHIR_GEN_INV, qidx)) }
+                default { folded := fold_multilinear(fold) }
+                let qp := exp_pow2(base_root, fold)
+                let ev := mload(add(W_MONO_PTR, mul(sub(nmono, 1), 32)))
+                for { let j := sub(nmono, 1) } gt(j, 0) { j := sub(j, 1) } {
+                    ev := addmod(mulmod(ev, qp, P), mload(add(W_MONO_PTR, mul(sub(j, 1), 32))), P)
+                }
+                sink2(ev, folded)
+            }
+            mstore(W_REG_CD, cp)
+
+            for { let i := 0 } lt(i, nmono) { i := add(i, 1) } {
+                mstore(add(W_FEVAL_PTR, mul(i, 32)), mload(add(W_MONO_PTR, mul(i, 32))))
+            }
+            let active := nmono
+            for { let level := 0 } lt(level, rfin) { level := add(level, 1) } {
+                let half := shr(1, active)
+                let zj := mload(add(W_Z_PTR, add(zi_off, mul(level, 32))))
+                for { let i := 0 } lt(i, half) { i := add(i, 1) } {
+                    let c0 := mload(add(W_FEVAL_PTR, mul(mul(i, 2), 32)))
+                    let c1 := mload(add(W_FEVAL_PTR, mul(add(mul(i, 2), 1), 32)))
+                    mstore(add(W_FEVAL_PTR, mul(i, 32)), addmod(c0, mulmod(c1, zj, P), P))
+                }
+                active := half
+            }
+            let expected := mulmod(mload(W_ACC_PREF_PTR), mload(W_FEVAL_PTR), P)
+            let n := mload(W_REG_NUMPOW)
+            for { let e := 0 } lt(e, n) { e := add(e, 1) } {
+                let b := add(W_POW_PTR, mul(e, 96))
+                let s := mload(b)
+                let ev := mload(add(W_MONO_PTR, mul(sub(nmono, 1), 32)))
+                for { let j := sub(nmono, 1) } gt(j, 0) { j := sub(j, 1) } {
+                    ev := addmod(mulmod(ev, s, P), mload(add(W_MONO_PTR, mul(sub(j, 1), 32))), P)
+                }
+                ev := mulmod(ev, mload(add(b, 32)), P)
+                ev := mulmod(ev, mload(add(b, 64)), P)
+                expected := addmod(expected, ev, P)
+            }
+            sink2(expected, mload(W_REG_CLAIM))
+        }
+
+        // =================================================================== MAIN
+        // The WHIR half's entry point, called by the merged verifier after the GKR half has
+        // written the start state (seed / batching / opening / z / base caps) into the regions
+        // above. `cd_start` = calldata offset of the WHIR proof stream (right after the GKR
+        // stream's trailing 8-byte WHIR-batching PoW nonce).
+        function whir_verify(cd_start) {
+        // Base geometry (all generated): nz = z-coords, gcount = gamma-batched base columns + 1,
+        // rfin = final-poly log2.
+        let nz := W___TEMPLATE_WHIR_NZ
+        let gcount := W___TEMPLATE_WHIR_GCOUNT
+        let rfin := W___TEMPLATE_WHIR_RFIN
+        let batching := mload(W_HANDOFF_BATCHING_PTR)
+
+        // gamma powers
+        mstore(W_GAMMA_PTR, 1)
+        {
+            let g := 1
+            for { let i := 1 } lt(i, gcount) { i := add(i, 1) } {
+                g := mulmod(g, batching, P)
+                mstore(add(W_GAMMA_PTR, mul(i, 32)), g)
+            }
+        }
+
+        mstore(W_ACC_PREF_PTR, 1)
+        mstore(W_REG_NUMPOW, 0)
+        mstore(W_REG_ZIOFF, 0)
+        mstore(W_REG_CD, cd_start) // the WHIR proof stream starts right after the GKR stream
+
+        for { let r := 0 } lt(r, W___TEMPLATE_WHIR_NUM_ROUNDS) { r := add(r, 1) } {
+            // `cb` = coset bits = log2(LDE factor) for this round's oracle tree.
+            let fold, q, pow_bits, qib, vp, cb
+            switch r
+            case 0 { fold := 2 q := 17 pow_bits := 30 qib := 29 vp := 4 cb := 5 }
+            case 1 { fold := 4 q := 12 pow_bits := 30 qib := 27 vp := 16 cb := 7 }
+            case 2 { fold := 4 q := 8 pow_bits := 27 qib := 27 vp := 16 cb := 11 }
+            case 3 { fold := 4 q := 6 pow_bits := 25 qib := 27 vp := 16 cb := 15 }
+            case 4 { fold := 4 q := 5 pow_bits := 21 qib := 27 vp := 16 cb := 19 }
+            default { fold := 4 q := 4 pow_bits := 24 qib := 27 vp := 16 cb := 23 }
+            // forge-lint: disable-next-line(incorrect-shift) — `shl(n, 1)` is `1 << n` (2^n), args are correct
+            let idx_mask := sub(shl(qib, 1), 1)
+
+            for { let s := 0 } lt(s, fold) { s := add(s, 1) } {
+                let cp := mload(W_REG_CD)
+                let w0 := calldataload(cp)
+                let c0 := shr(128, w0)
+                let c1 := and(w0, MASK)
+                let c2 := shr(128, calldataload(add(cp, 32)))
+                // reject non-canonical (>= P) coeffs: they are absorbed as raw bytes below,
+                // so the transcript must bind to the reduced value
+                if iszero(lt(c0, P)) { revert(0, 0) }
+                if iszero(lt(c1, P)) { revert(0, 0) }
+                if iszero(lt(c2, P)) { revert(0, 0) }
+                calldatacopy(add(W_SEED_PTR, 32), cp, 48)
+                mstore(W_SEED_PTR, keccak256(W_SEED_PTR, 80))
+                let alpha := draw1()
+                mstore(W_REG_CD, add(cp, 48))
+                let p1 := addmod(c0, addmod(c1, c2, P), P)
+                sink2(addmod(c0, p1, P), mload(W_REG_CLAIM))
+                mstore(W_REG_CLAIM,
+                    addmod(mulmod(addmod(mulmod(c2, alpha, P), c1, P), alpha, P), c0, P))
+                mstore(add(W_FOLD_CH_PTR, mul(s, 32)), alpha)
+                let zi_off := mload(W_REG_ZIOFF)
+                fold_accumulator(alpha, mload(W_REG_NUMPOW), zi_off)
+                mstore(W_REG_ZIOFF, add(zi_off, 32))
+            }
+
+            switch lt(r, sub(W___TEMPLATE_WHIR_NUM_ROUNDS, 1))
+            case 1 { do_internal(r, fold, q, pow_bits, qib, vp, idx_mask, cb) }
+            default { do_final(fold, q, pow_bits, qib, vp, idx_mask, mload(W_REG_ZIOFF), rfin, cb) }
+        }
+
+        // Hardening: the proof stream must be fully consumed — the cursor (W_REG_CD) must land
+        // EXACTLY at the end of calldata, with no trailing/unused bytes. The WHIR stream is the
+        // tail of the merged calldata; its last item is the final round's query openings.
+        if iszero(eq(mload(W_REG_CD), calldatasize())) { revert(0, 0) }
+        }
+
 
         // SPILL OVERWRITE PREVENTION
         if gt(mload(0x40), MINIMUM_FREE_HEAP_PTR) {
@@ -2171,23 +2703,27 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
         // evaluations must be zero (same as the CPU verifier's lookup-identity check).
         check_lookup_identities(output_evals_ptr)
 
-        // DONE: Proof empty now (own frame — see assert_proof_empty)
-        assert_proof_empty(ptr)
-
         // TODO: don't forget the recursion chain check
         // TODO: very, VERY, carefully review end-to-end fiat-shamir
 
-        // ── GKR→WHIR handoff commitment ────────────────────────────────────────
-        // Assemble the committed-state preimage the WHIR verifier will hash, keccak it,
-        // and mark_gkr_verified(bytes32). In its own function frame to keep the tight
-        // fallback stack under the EVM limit (see HEURISTICS.md).
-        emit_gkr_mark(claim)
+        // ── GKR→WHIR handoff in memory, then the WHIR proximity check ─────────────────
+        // emit_gkr_mark draws the packing coords + WHIR batching, merges the base-layer claims
+        // and writes the WHIR start state into the W_* regions; whir_verify then consumes the
+        // WHIR proof stream that follows the 8-byte WHIR-batching PoW nonce at `ptr`, and
+        // requires its cursor to land exactly at calldatasize() — so the whole merged stream
+        // (GKR ‖ nonce ‖ WHIR) is checked for exact consumption.
+        emit_gkr_mark(claim, ptr)
+        whir_verify(add(ptr, 8))
 
-        // anti-DCE
-        mstore(0, claim)
-        mstore(32, mload(GKR_INIT_GAS_PTR()))
-        mstore(64, mload(GKR_MAIN_GAS_PTR()))
-        mstore(96, ptr)
-        return(0, 128)
+        // SPILL OVERWRITE PREVENTION (re-checked after the WHIR half)
+        if gt(mload(0x40), MINIMUM_FREE_HEAP_PTR) {
+            revert(0, 0)
+        }
+
+        // Verified(public_input, setup_commitment)
+        mstore(W_LEAF_PTR, mload(W_PUB_PTR))
+        mstore(add(W_LEAF_PTR, 32), mload(W_SETUP_PTR))
+        log1(W_LEAF_PTR, 64, __TEMPLATE_VERIFIED_TOPIC)
+        return(W_LEAF_PTR, 64)
     } }
 }

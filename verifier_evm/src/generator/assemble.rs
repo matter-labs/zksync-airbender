@@ -7,10 +7,10 @@
 //!
 //! The WHIR *proving-config* (fold/query/PoW schedule, base rate, merkle cap) is not encoded in
 //! the circuit artifact; it is supplied by the caller as the same `ProverConfig` the prover used,
-//! and (with `pack_log2`) drives both verifiers so they stay consistent — see [`WhirGenConfig`].
+//! and (with `pack_log2`) drives both halves of the merged verifier so they stay consistent — see [`WhirGenConfig`].
 
 use super::whir::WhirGenConfig;
-use super::{emit_circuit_yul, GeneratedContracts};
+use super::emit_circuit_yul;
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::Proth120;
@@ -18,7 +18,6 @@ use prover::gkr::prover_config::ProverConfig;
 
 const GKR_TEMPLATE: &str = include_str!("../templates/gkr.sol");
 const WHIR_TEMPLATE: &str = include_str!("../templates/whir.sol");
-const REGISTRY_TEMPLATE: &str = include_str!("../templates/GkrWhirRegistry.sol");
 
 /// Marker in `gkr.sol` where the generated `circuit.yul` is spliced.
 const INLINE_MARKER: &str = "// __INLINE_CIRCUIT_YUL__";
@@ -71,25 +70,6 @@ fn boundary_si_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
         .enumerate()
         .map(|(i, off)| format!("                mstore(add(SI, {}), {off})\n", i * 32))
         .collect()
-}
-
-/// EIP-55 checksummed form of a `0x`-prefixed 20-byte hex address — solc
-/// accepts only checksummed (or all-lowercase-rejected) `address` literals.
-fn checksum_address(addr: &str) -> String {
-    use sha3::{Digest, Keccak256};
-    let lower = addr[2..].to_lowercase();
-    let hash = Keccak256::digest(lower.as_bytes());
-    let mut out = String::with_capacity(42);
-    out.push_str("0x");
-    for (i, c) in lower.chars().enumerate() {
-        let nibble = (hash[i / 2] >> (4 * (1 - i % 2))) & 0xf;
-        if c.is_ascii_alphabetic() && nibble >= 8 {
-            out.push(c.to_ascii_uppercase());
-        } else {
-            out.push(c);
-        }
-    }
-    out
 }
 
 /// First free memory offset past whir.sol's static region map (the drawn-
@@ -183,36 +163,23 @@ impl Derived {
     }
 }
 
-/// Generate the GKR + WHIR + Registry Solidity for `circuit`.
+/// Generate the merged `GkrWhirVerifier` Solidity source for `circuit`: GKR and WHIR verified
+/// in ONE transaction, the GKR→WHIR handoff state passed in memory.
 ///
 /// The circuit *layout* comes from the artifact; the WHIR *proving config* (fold/query/PoW
 /// schedule, base rate, merkle cap) comes from `prover_config`, and the base-layer packing factor
-/// from `pack_log2` (the GKR `CommitmentMode`). Deriving both verifiers from the same config is
+/// from `pack_log2` (the GKR `CommitmentMode`). Deriving both halves from the same config is
 /// what guarantees GKR↔WHIR consistency. `external_pow_bits` / `whir_batch_pow_bits` are the two
 /// per-circuit PoW difficulties (not part of the WHIR schedule), and `final_pc` the program's
 /// terminal PC.
-pub fn generate_verifiers(
+pub fn generate_verifier(
     circuit: &GKRCircuitArtifact<Proth120>,
     prover_config: &ProverConfig,
     pack_log2: usize,
     external_pow_bits: u32,
     whir_batch_pow_bits: u32,
     final_pc: u32,
-    registry_address: &str,
-) -> GeneratedContracts {
-    // The registry address is baked into BOTH verifiers (they `call` it to mark
-    // their committed state), so deployments must generate with the REAL
-    // registry address — deploy the registry first, then regenerate + deploy
-    // the verifiers. `0x…` 20-byte hex literal.
-    assert!(
-        registry_address.starts_with("0x")
-            && registry_address.len() == 42
-            && registry_address[2..].chars().all(|c| c.is_ascii_hexdigit()),
-        "registry_address must be a 0x-prefixed 20-byte hex literal, got `{registry_address}`"
-    );
-    // The templates declare an `address constant`, and solc only accepts
-    // EIP-55 checksummed address literals — normalize whatever case came in.
-    let registry_literal = checksum_address(registry_address);
+) -> String {
     let d = Derived::from(circuit);
     // WHIR config derived from the same source the prover used, plus the artifact's widths.
     let wc = WhirGenConfig::derive(
@@ -272,7 +239,6 @@ pub fn generate_verifiers(
     ] {
         gkr = set_const(&gkr, name, value);
     }
-    let gkr = set_const(&gkr, "__TEMPLATE_REGISTRY_ADDRESS", &registry_literal);
 
     // Boundary-layer LSB reorder for gkr_dr_final: the dim-reduce LSB lines are stored in
     // GKRAddress-offset order, but the g-accumulator wants OutputType-group (iteration) order so
@@ -331,12 +297,203 @@ pub fn generate_verifiers(
     ] {
         whir = set_const(&whir, name, value);
     }
-    let whir = set_const(&whir, "__TEMPLATE_REGISTRY_ADDRESS", &registry_literal);
-    let whir = strip_from_contract(&whir, "WhirRealProofTest");
 
-    GeneratedContracts {
-        gkr_sol: gkr,
-        whir_sol: whir,
-        registry_sol: REGISTRY_TEMPLATE.to_string(),
+    // 3. Splice the WHIR half into the GKR contract: one Solidity source, one transaction.
+    let gkr = set_const(&gkr, "__TEMPLATE_VERIFIED_TOPIC", verified_event_topic());
+    build_merged(&gkr, &whir)
+}
+
+// ── Splicing the WHIR half into the GKR contract ────────────────────────────────────────────
+//
+// whir.sol is a template FRAGMENT: its Yul (the helper functions + `whir_verify(cd_start)`) is
+// inlined into the GKR template's single `assembly ("memory-safe")` block, where the GKR half's
+// `emit_gkr_mark` writes the GKR→WHIR handoff state straight into the WHIR memory regions and
+// the fallback tail calls `whir_verify`. What the splice has to respect:
+//  * one Yul block → no name clashes: every WHIR Solidity constant is prefixed `W_` (the GKR
+//    template has a `SEED_PTR()` *function*, whir.sol a `SEED_PTR` *constant*); `P`, `MASK` and
+//    `__TEMPLATE_WHIR_MERGED_MW` are shared (identical values) and come from the GKR side. The
+//    Yul function names were checked disjoint (whir: batch_oracle, do_*, draw*, fold_*, ...).
+//  * memory-safe assembly: via_ir spills into [0x80, MINIMUM_FREE_HEAP_PTR) and the GKR heap
+//    occupies [MINIMUM_FREE_HEAP_PTR, ~25 KB) (GKR_QTABLE_PTR = SEED+420·32 ≈ 22.1 KB plus the
+//    ~3 KB table), so every WHIR memory region is relocated by MERGED_WHIR_MEM_BASE, above both;
+//    the WHIR half never touches 0x40/0x60, and the end-of-fallback spill guard is re-checked
+//    after it.
+const MERGED_WHIR_MEM_BASE: u128 = 32768;
+
+/// whir.sol constants that are memory addresses (relocated by MERGED_WHIR_MEM_BASE).
+const WHIR_MEM_CONSTS: &[&str] = &[
+    "SEED_PTR",
+    "Z_PTR",
+    "ACC_PREF_PTR",
+    "POW_PTR",
+    "GAMMA_PTR",
+    "FOLD_CH_PTR",
+    "HPO_PTR",
+    "FBUF_PTR",
+    "LEAF_PTR",
+    "REG_CD",
+    "REG_CLAIM",
+    "REG_NUMPOW",
+    "REG_ZIOFF",
+    "REG_CC",
+    "REG_CURDELIN",
+    "BCAP0_PTR",
+    "BCAP1_PTR",
+    "QCAP_PTR",
+    "NCAP_PTR",
+    "QIDX_BUF_PTR",
+    "DRAW_BUF_PTR",
+    "HANDOFF_BATCHING_PTR",
+    "PUB_PTR",
+    "SETUP_PTR",
+    "__TEMPLATE_WHIR_MONO_PTR",
+    "__TEMPLATE_WHIR_FEVAL_PTR",
+];
+/// whir.sol constants the GKR template already declares with the same value — not re-declared.
+const WHIR_SHARED_CONSTS: &[&str] = &["__TEMPLATE_WHIR_MERGED_MW"];
+/// `W_*` names the GKR template references (handoff + Verified event) — must come from whir.sol.
+const GKR_REQUIRED_WHIR_CONSTS: &[&str] = &[
+    "W_SEED_PTR",
+    "W_HANDOFF_BATCHING_PTR",
+    "W_REG_CLAIM",
+    "W_Z_PTR",
+    "W_BCAP0_PTR",
+    "W_BCAP1_PTR",
+    "W_PUB_PTR",
+    "W_SETUP_PTR",
+    "W_LEAF_PTR",
+];
+
+fn is_ident_char(c: u8) -> bool {
+    c.is_ascii_alphanumeric() || c == b'_'
+}
+
+/// Replace whole-identifier occurrences of `from` with `to`.
+fn rename_ident(text: &str, from: &str, to: &str) -> String {
+    let b = text.as_bytes();
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+    while i < text.len() {
+        if text[i..].starts_with(from) {
+            let after = i + from.len();
+            let before_ok = i == 0 || !is_ident_char(b[i - 1]);
+            let after_ok = after >= text.len() || !is_ident_char(b[after]);
+            if before_ok && after_ok {
+                out.push_str(to);
+                i = after;
+                continue;
+            }
+        }
+        let ch = text[i..].chars().next().unwrap();
+        out.push(ch);
+        i += ch.len_utf8();
     }
+    out
+}
+
+fn line_idx(lines: &[&str], needle: &str, what: &str) -> usize {
+    lines
+        .iter()
+        .position(|l| l.contains(needle))
+        .unwrap_or_else(|| panic!("whir.sol template: missing {what} anchor (`{needle}`)"))
+}
+
+/// keccak256("Verified(bytes32,bytes32)") as a 0x-prefixed hex literal (the event's topic0).
+fn verified_event_topic() -> String {
+    use sha3::Digest;
+    let d = sha3::Keccak256::digest(b"Verified(bytes32,bytes32)");
+    let mut s = String::from("0x");
+    for byte in d.iter() {
+        s.push_str(&format!("{byte:02x}"));
+    }
+    s
+}
+
+/// Splice the (substituted) whir.sol fragment into the (substituted) GKR source.
+fn build_merged(gkr: &str, whir: &str) -> String {
+    let lines: Vec<&str> = whir.lines().collect();
+
+    // 1. WHIR constants: the block `HALF` .. `FEVAL_PTR` (P / MASK precede HALF; shared with GKR).
+    let cs = line_idx(&lines, "uint256 constant HALF", "constants start");
+    let ce = line_idx(&lines, "uint256 constant FEVAL_PTR", "constants end");
+    let mut consts = String::new();
+    let mut names: Vec<String> = Vec::new();
+    for &line in &lines[cs..=ce] {
+        let t = line.trim_start();
+        let name = t.strip_prefix("uint256 constant ").map(|rest| {
+            rest.split(|c: char| c.is_whitespace() || c == '=')
+                .next()
+                .unwrap()
+                .to_string()
+        });
+        let Some(name) = name else {
+            consts.push_str(line);
+            consts.push('\n');
+            continue;
+        };
+        if WHIR_SHARED_CONSTS.contains(&name.as_str()) {
+            continue;
+        }
+        if WHIR_MEM_CONSTS.contains(&name.as_str()) {
+            let eq = line.find('=').unwrap();
+            let semi = eq + line[eq..].find(';').unwrap();
+            let lit = line[eq + 1..semi].trim();
+            let v: u128 = lit
+                .parse()
+                .unwrap_or_else(|_| panic!("whir const {name} is not a decimal literal: `{lit}`"));
+            consts.push_str(&format!(
+                "{}= {}{}\n",
+                &line[..eq],
+                v + MERGED_WHIR_MEM_BASE,
+                &line[semi..]
+            ));
+        } else {
+            consts.push_str(line);
+            consts.push('\n');
+        }
+        names.push(name);
+    }
+    for n in WHIR_MEM_CONSTS {
+        assert!(
+            names.iter().any(|x| x == n),
+            "whir.sol template: memory constant {n} not found in the constants block"
+        );
+    }
+
+    // 2. the Yul: everything between the assembly open and the end marker (helper functions +
+    //    `whir_verify(cd_start)`, both already in the shape the merged contract needs).
+    let asm_open = line_idx(&lines, "        assembly {", "assembly block");
+    let yul_end = line_idx(&lines, "// __WHIR_YUL_END__", "Yul end marker");
+    assert!(asm_open < yul_end, "whir.sol template: Yul end marker precedes the assembly block");
+    let mut whir_yul = lines[asm_open + 1..yul_end].join("\n");
+    whir_yul.push('\n');
+
+    // 3. prefix every WHIR constant so nothing collides with the GKR template's names
+    for n in &names {
+        let to = format!("W_{n}");
+        consts = rename_ident(&consts, n, &to);
+        whir_yul = rename_ident(&whir_yul, n, &to);
+    }
+
+    // 4. splice into the GKR source
+    let out = gkr.replace("    // __WHIR_CONSTANTS__", consts.trim_end_matches('\n'));
+    let out = out.replace("        // __WHIR_INLINE__", &whir_yul);
+    for leftover in [
+        "__WHIR_CONSTANTS__",
+        "__WHIR_INLINE__",
+        "__WHIR_YUL_END__",
+        "COMMIT_PTR",
+        "MARK_WHIR_SELECTOR",
+        "MARK_GKR_SELECTOR",
+        "__TEMPLATE_REGISTRY_ADDRESS",
+    ] {
+        assert!(!out.contains(leftover), "merged source still contains `{leftover}`");
+    }
+    for req in GKR_REQUIRED_WHIR_CONSTS {
+        assert!(
+            out.contains(&format!("constant {req} ")),
+            "the GKR template references {req} but whir.sol did not provide it"
+        );
+    }
+    out
 }

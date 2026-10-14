@@ -68,7 +68,7 @@ fn flatten_and_seed_match_reference() {
     );
 
     let cfg = common::production_prover_config();
-    let whir = verifier_evm::whir_calldata(
+    let merged = verifier_evm::merged_calldata(
         &circuit,
         &proof,
         &aux,
@@ -76,8 +76,13 @@ fn flatten_and_seed_match_reference() {
         &cfg.whir_schedule.whir_queries_schedule,
     );
     assert_eq!(
-        hex::encode(&whir),
-        read_fixture("proth120_whir_calldata_from_proof.hex"),
-        "whir_calldata diverged"
+        hex::encode(&merged),
+        read_fixture("merged_calldata.hex"),
+        "merged_calldata diverged"
+    );
+    // the single transaction's calldata is the GKR stream followed by the WHIR proof stream
+    assert!(
+        merged.starts_with(&gkr),
+        "merged calldata must begin with the GKR stream"
     );
 }
