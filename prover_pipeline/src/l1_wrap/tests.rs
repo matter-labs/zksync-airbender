@@ -223,10 +223,14 @@ fn cpu_m8_l1_registration_plan() {
     for (program, kind, profile) in [
         (
             &fsv.feeder_first,
-            ExecutionKind::Unified,
+            ExecutionKind::Unified22,
             ProofProfile::L1Feeder,
         ),
-        (&fsv.feeder, ExecutionKind::Unified, ProofProfile::L1Feeder),
+        (
+            &fsv.feeder,
+            ExecutionKind::Unified22,
+            ProofProfile::L1Feeder,
+        ),
         (&fsv.feeder, ExecutionKind::L1Wrap, ProofProfile::L1Wrap),
     ] {
         let key = handle_key(kind, MachineType::Reduced, &program.0, &program.1);

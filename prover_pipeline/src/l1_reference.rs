@@ -475,7 +475,7 @@ fn generate_into(sink: &Path, from: GenerateFrom<'_>) -> Result<Inventory, Strin
                 );
                 let (bin, text) = &fsv.feeder;
                 backend.register(
-                    ExecutionKind::Unified,
+                    ExecutionKind::Unified22,
                     MachineType::Reduced,
                     bin,
                     text,
@@ -733,7 +733,7 @@ impl ProveBackend for FakeBackend {
 
     fn prove(&mut self, request: ProveRequest<'_>) -> Result<(ProgramProof, Setups), String> {
         assert_eq!(request.batch_id, 0);
-        assert_eq!(request.kind, ExecutionKind::Unified);
+        assert_eq!(request.kind, ExecutionKind::Unified22);
         assert_eq!(request.machine, MachineType::Reduced);
         assert_eq!(request.profile, ProofProfile::L1Feeder);
         assert!(request.nd_words.is_empty());
