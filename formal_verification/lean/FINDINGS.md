@@ -153,10 +153,28 @@ worker attains the bound, both with and without the later ADDI reset. The
 for live COPY and for both invalid bigint controls. This is a bound on surplus,
 without a general exclusion or inertness result.
 
+The [all-worker execution entry](Airbender/Review/Trace/UnifiedReduced/Theorems.lean)
+now groups the possible unissued worker as the actual first transfer group at
+clock three. Strict native memory order and alignment derive machine clocks at
+least four. Full invocation uniqueness isolates its ports, and the native write
+floor excludes earlier transfers. Consequently its complete call reads the
+original public state and produces the actual prefix end; every later transfer
+continues from that state to the shared terminal cells. The raw proof adds no
+operation mask, valid bigint control or positive-invocation assumption. The closed
+BabyBear result retains the existing modeled tables and extended-round masks for
+history realization, without claiming unsupported-control execution. The
+[zero-clock regression](Tests/DelegationZeroInvocation.lean) now checks actual
+x12 = 0→1→0 at the initial, unissued-call finish and final states in one history,
+and isolates exactly the native G ports at clock three. Live COPY and both invalid
+bigint controls also instantiate all-worker execution. F03 remains an accepted
+state-changing counterexample; this derives its actual call boundaries without
+excluding it or proving inertness. Whole caller retirement and full CSR ABI remain
+open.
+
 All 116 concrete test modules and 143 importer guards pass. The full
-2,098-root axiom audit has 64 axiom-free roots and only the three standard
-Lean axioms. Review checks pass for all 103 public theorem roots, 162 declaration
-names and 667 guide links/anchors, with no handwritten project diagnostics.
+2,111-root axiom audit has 64 axiom-free roots and only the three standard
+Lean axioms. Review checks pass for all 104 public theorem roots, 165 declaration
+names and 671 guide links/anchors, with no handwritten project diagnostics.
 
 ## Review priorities
 
@@ -164,7 +182,7 @@ names and 667 guide links/anchors, with no handwritten project diagnostics.
 | --- | --- | --- | --- |
 | F01 | Jump terminal PC can be noncanonical locally | Resolved in the logical model under explicit total-verifier boundary binding; original counterexample retained | Canonical u32 contribution closure, cryptographic enforcement and Rust/artifact correspondence remain external |
 | F02 | Issued bigint controls violate the reference ABI | Accepted counterexamples for x12 = 0 and 65537 | Selected-operation effects and caller-cycle observations do not validate the full CSR |
-| F03 | An active worker can run without a caller | Accepted zero-clock worker with an actual state change | Matching covers live requests; some prepared spans require an empty worker prefix |
+| F03 | An active worker can run without a caller | Accepted zero-clock worker with an actual state change | Distinct initialized matching bounds it to one and derives its actual first-group states; exclusion remains open |
 | F04 | Worker ROM shadows can disagree with public bytes | Accepted COPY/request counterexample | Physical seed images and tracked-RAM profiles exclude the problematic general native case |
 | F05 | Execute-zero does not imply inert padding | Accepted local row counterexample | `Accepted.active` and `RequestChecks.workerActive` select participating rows |
 | F06 | Discarded LW differs from original Sail | Accepted native NOP with no original Sail execution | `NoDiscardedLoads`, or the named Airbender NOP profile |

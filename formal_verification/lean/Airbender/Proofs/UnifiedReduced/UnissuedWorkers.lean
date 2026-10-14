@@ -17,6 +17,30 @@ private theorem first_machine_port (row : Trace.Row p UnifiedFamily) :
   · cases row with
     | mk kind w => cases kind; simp [Trace.Row.ports, CircuitLayout.ports, importedConstraintsMemoryPorts]
 
+/-- The mandatory offset-zero access has a strictly earlier read. Native
+    four-alignment therefore places every machine row at clock four or later,
+    even when no positive public initial-clock premise is supplied. -/
+theorem machine_native_clock_positive [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {ca : List (BitVec 32)} {cells : List Cell}
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    (image : initialImage before cells = some data.machine.initialMemory)
+    {row : Trace.Row p UnifiedFamily} (member : row ∈ data.machine.rows) :
+    4 ≤ Delegation.Caller.startClock row := by
+  have requests := request_binding hp inverse accepted.toRequestChecks publicProgram
+  have facts := mixed_memory_facts hp inverse accepted publicProgram image requests
+  have first := first_machine_port row
+  have positive := facts.order _ (mixed_machine_member member first)
+  have time := mixed_machine_time_of_program hp inverse accepted publicProgram member
+    (machine_port_native row first)
+  have alignment := (machine_clock_facts hp inverse accepted.toRequestChecks publicProgram member).1
+  have base : (timeOfPair (writeToken row.columns row.assignment importedConstraintsMemoryPorts[0]).time).value =
+      Delegation.Caller.startClock row := by
+    simpa [MemoryPort.event, importedConstraintsMemoryPorts, Delegation.Caller.startClock, Trace.Row.clock] using time
+  rw [base] at positive
+  omega
+
 /-- Every produced architectural token is at clock two or later. The mandatory
     first machine access and native alignment derive positive machine clocks. -/
 theorem mixed_write_floor [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)

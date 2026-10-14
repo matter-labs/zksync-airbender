@@ -2340,3 +2340,17 @@ import Clean.Specs.Keccak256
 #print axioms Tests.DelegationZeroInvocation.duplicate_unissued_workers_rejected
 #print axioms Tests.UnifiedDelegation.copy_worker_invocation_uniqueness
 #print axioms Tests.UnifiedDelegation.invalid_bigint_worker_invocation_uniqueness
+
+#print axioms Airbender.UnifiedReduced.Caller.UnissuedPrefixExecution
+#print axioms Airbender.UnifiedReduced.Caller.MixedWorkerExecution
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.machine_native_clock_positive
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.all_worker_clock_group
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.all_worker_execution
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.mixed_worker_execution_effects
+#print axioms Airbender.UnifiedReduced.Caller.all_worker_execution_soundness
+#print axioms Tests.DelegationZeroInvocation.unified_all_worker_execution
+#print axioms Tests.DelegationZeroInvocation.prepared_all_worker_execution
+#print axioms Tests.DelegationZeroInvocation.prepared_unissued_clock_group
+#print axioms Tests.DelegationZeroInvocation.prepared_unissued_prefix_states
+#print axioms Tests.UnifiedDelegation.copy_all_worker_execution
+#print axioms Tests.UnifiedDelegation.invalid_bigint_all_worker_execution
