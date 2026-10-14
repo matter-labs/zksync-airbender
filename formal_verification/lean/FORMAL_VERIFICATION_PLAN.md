@@ -232,8 +232,18 @@ ABI and whole mixed execution remain separate.
    entry. Existing entries remain available. An empty machine path at public
    clock zero still admits the state-changing unissued G worker; native boot
    remains at four. Both invalid bigint controls and LW/SW caller cycles survive.
-   Continue broader preparation and whole caller retirement, retaining
-   unsupported-control and unissued-exclusion boundaries.
+   AUIPC now supplies a PC-relative preparation entry: the modular public
+   registry and native matching derive its actual instruction address, then
+   native arithmetic derives the RV32 sum with its U-immediate. Its canonical
+   output token retains cut minus two and reaches the actual initialized cut
+   state. Nonzero-PC and overflowing-sum fixtures retain clock six, reject a
+   wrong immediate or fabricated read, and distinguish the result from the
+   immediate alone. Only the final cycle is worker-free; no expected output,
+   desired read or row selector is supplied. Public setup/tables and existing
+   round ABI remain explicit. Connect this result to prepared hash-span entries,
+   then continue general operand-dependent preparation, jumps/branches and whole
+   caller retirement, retaining unsupported-control and unissued-exclusion
+   boundaries.
    COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed
    retained for the second window. Extended BLAKE and Keccak completion controls
    do not restart their protocols; checked regressions forbid treating their

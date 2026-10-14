@@ -183,10 +183,26 @@ invalid bigint controls and LW/SW caller fixtures satisfy the stronger entry.
 This removes a derived clock condition from inputs while retaining F02/F03 and
 the separate full-CSR/whole-retirement boundaries.
 
+The [PC-relative preparation entry](Airbender/Review/Trace/UnifiedReduced/PCRelativePreparation.lean)
+now derives an AUIPC-prepared control from public code and its native PC. The
+modular sequential/comparison registry and state/clock matching derive the actual
+final instruction address, and accepted arithmetic equations derive its RV32 sum
+with the decoded U-immediate. Exact prefix matching retains the canonical output
+token at cut minus two; initialized history supplies its actual Sail cut read.
+No expected output, desired operand or selected native row is supplied. Only the
+final cycle is worker-free, retaining earlier issued/unissued effects. Public
+setup/tables and the existing extended-round ABI stay explicit. The
+[preparation fixtures](Tests/ControlPreparation.lean) check actual x12 values
+65537→524292 at PC four and 65537→61444 at PC 65540 with a sum wrapping 2^32,
+retain clock-six tokens, distinguish the immediate alone and reject wrong
+immediates or fabricated native reads. This is control preparation and memory
+transport; prepared hash-span integration, general operand-dependent preparation,
+jumps/branches and whole caller retirement remain open. F01–F10 stay exposed.
+
 All 116 concrete test modules and 143 importer guards pass. The full
-2,120-root axiom audit has 64 axiom-free roots and only the three standard
-Lean axioms. Review checks pass for all 105 public theorem roots, 166 declaration
-names and 671 guide links/anchors, with no handwritten project diagnostics.
+2,139-root axiom audit has 64 axiom-free roots and only the three standard
+Lean axioms. Review checks pass for all 106 public theorem roots, 171 declaration
+names and 679 guide links/anchors, with no handwritten project diagnostics.
 
 ## Review priorities
 
