@@ -1,4 +1,45 @@
 use super::*;
+use prover::definitions::GKRExternalChallenges;
+use prover::gkr::whir::{WhirBaseLayerCommitmentAndQueries, WhirPolyCommitProof};
+use std::cell::RefCell;
+use std::rc::Rc;
+
+pub(super) fn empty_gkr_proof<
+    F: prover::field::PrimeField,
+    E: prover::field::FieldExtension<F> + prover::field::Field,
+    T: prover::merkle_trees::ColumnMajorMerkleTreeConstructor<F>,
+>() -> prover::gkr::prover::GKRProof<F, E, T> {
+    let empty_commitment = || WhirBaseLayerCommitmentAndQueries {
+        commitment: Default::default(),
+        num_columns: 0,
+        evals: vec![],
+        queries: vec![],
+    };
+    prover::gkr::prover::GKRProof {
+        external_challenges: GKRExternalChallenges::default(),
+        final_explicit_evaluations: Default::default(),
+        sumcheck_intermediate_values: Default::default(),
+        whir_proof: WhirPolyCommitProof {
+            setup_commitment: empty_commitment(),
+            memory_commitment: empty_commitment(),
+            witness_commitment: empty_commitment(),
+            intermediate_whir_oracles: vec![],
+            ood_samples: vec![],
+            sumcheck_polys: vec![],
+            pow_nonces: vec![],
+            final_monomials: vec![],
+            whir_schedule: Default::default(),
+            batching_challenge: None,
+            original_evaluation_point: None,
+            batched_opening: None,
+        },
+        grand_product_accumulator_computed: Default::default(),
+        inits_and_teardowns_top_bits: vec![],
+        lookup_challenges_pow_nonce: 0,
+        batched_proximity_check_pow_nonce: 0,
+        intermediate_transcript_seed: None,
+    }
+}
 
 fn compression_modes() -> PipelineBlakeModes {
     PipelineBlakeModes {
@@ -41,6 +82,23 @@ fn modes_only(blake: PipelineBlakeModes) -> FsvPrograms {
 }
 
 pub(super) fn artifact(target: ProofTarget, n: usize) -> ProofArtifact {
+    feeder_artifact(target, n, 0)
+}
+
+/// A fake single-instance feeder proof: the reduced family with `instances`
+/// instances, one inits-and-teardowns instance, no delegation proofs.
+pub(super) fn fake_feeder_proof(final_pc: u32, instances: usize) -> ProgramProof {
+    let mut proof = empty_proof();
+    proof.final_pc = final_pc;
+    proof.riscv_proofs.insert(
+        UnrolledCircuitType::Unified22.get_family_idx() as u32,
+        (0..instances).map(|_| empty_gkr_proof()).collect(),
+    );
+    proof.num_it_circuits = Some(1);
+    proof
+}
+
+pub(super) fn feeder_artifact(target: ProofTarget, n: usize, feeder_layers: u32) -> ProofArtifact {
     finalize_artifact(
         &modes_only(compression_modes()),
         target,
@@ -50,12 +108,17 @@ pub(super) fn artifact(target: ProofTarget, n: usize) -> ProofArtifact {
         RecursionState {
             stage: target,
             l1: None,
-            proof: empty_proof(),
+            proof: if feeder_layers > 0 {
+                fake_feeder_proof(0, 1)
+            } else {
+                empty_proof()
+            },
             setups: BTreeMap::new(),
             chain_end_params: (1..=n).map(|i| [i as u32; 8]).collect(),
             input_is_base: target == ProofTarget::Base,
             timings: ProofTimingsMs::default(),
             program_cycles: 0,
+            feeder_layers,
         },
     )
 }
@@ -237,7 +300,7 @@ fn registration_matches_remaining_stages_and_reuses_batch_setups() {
                 ProofProfile::L1Feeder,
             ),
             (
-                FsvProgram::UnifiedRecursionLayerL1Feeder,
+                FsvProgram::UnifiedRecursionLayerL1FeederWrap,
                 BlakeMode::BlakeSpecialOpcodes,
                 ExecutionKind::L1Wrap,
                 ProofProfile::L1Wrap,
@@ -351,6 +414,7 @@ fn continuation_keeps_historical_modes_when_current_modes_differ() {
             input_is_base: false,
             timings: ProofTimingsMs::default(),
             program_cycles: 0,
+            feeder_layers: 1,
         },
     );
     assert_eq!(result.blake_final, checkpoint.blake_final);
@@ -359,10 +423,417 @@ fn continuation_keeps_historical_modes_when_current_modes_differ() {
 }
 
 #[test]
-fn feeder_artifacts_claim_f1_and_f2_after_the_final_layer() {
+fn feeder_artifacts_claim_their_feeder_layers_after_the_final_layer() {
+    for feeder_layers in 1..=MAX_FEEDER_LAYERS {
+        let n = 3 + feeder_layers as usize + 1;
+        assert_eq!(
+            chain_unrolled_layers(&feeder_artifact(ProofTarget::L1Feeder, n, feeder_layers))
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            chain_unrolled_layers(&feeder_artifact(ProofTarget::L1, n - 1, feeder_layers)).unwrap(),
+            0
+        );
+        // an isolated length mismatch: one layer fewer than claimed
+        assert!(chain_unrolled_layers(&feeder_artifact(
+            ProofTarget::L1Feeder,
+            n - 2,
+            feeder_layers
+        ))
+        .is_err());
+    }
+    for feeder_layers in [0, MAX_FEEDER_LAYERS + 1] {
+        assert!(
+            chain_unrolled_layers(&feeder_artifact(ProofTarget::L1Feeder, 12, feeder_layers))
+                .is_err()
+        );
+    }
+    assert!(chain_unrolled_layers(&feeder_artifact(ProofTarget::RecursionUnified, 4, 1)).is_err());
+    assert!(chain_unrolled_layers(&artifact(ProofTarget::L1, 3)).is_err());
+}
+
+#[test]
+fn expected_chain_repeats_the_recurrent_feeder_per_claimed_layer() {
+    for feeder_layers in 1..=3u32 {
+        let mut programs = Vec::new();
+        let expected = expected_chain_end_params(
+            ProofTarget::L1Feeder,
+            3 + feeder_layers as usize,
+            feeder_layers,
+            BlakeMode::Compression.tag(),
+            BlakeMode::Compression.tag(),
+            BlakeMode::Compression.tag(),
+            &mut |program| {
+                let entry = match &program {
+                    ChainProgram::User => [0u32; 8],
+                    ChainProgram::Fsv(
+                        FsvProgram::UnifiedRecursionLayer,
+                        _,
+                        SetupMachine::UnifiedL1Feeder,
+                    ) => [10; 8],
+                    ChainProgram::Fsv(
+                        FsvProgram::UnifiedRecursionLayerL1Feeder,
+                        _,
+                        SetupMachine::UnifiedL1Feeder,
+                    ) => [20; 8],
+                    ChainProgram::Fsv(..) => [1; 8],
+                };
+                programs.push(entry);
+                Ok(entry)
+            },
+        )
+        .unwrap();
+        assert_eq!(expected.len(), 3 + feeder_layers as usize);
+        assert_eq!(expected[3], [10; 8]);
+        assert!(expected[4..].iter().all(|entry| *entry == [20; 8]));
+        // equal consecutive feeder entries collapse in the chain hash
+        let full = rebuild_chain(&expected).unwrap();
+        let collapsed = rebuild_chain(&expected[..5.min(expected.len())]).unwrap();
+        assert_eq!(full.hash(), collapsed.hash());
+    }
+}
+
+#[test]
+fn stale_schema_feeder_artifacts_are_rejected_and_pre_feeder_ones_accepted() {
+    let mut legacy = artifact(ProofTarget::RecursionUnified, 3);
+    legacy.schema_version = LEGACY_ARTIFACT_SCHEMA_VERSION;
+    validate_artifact_envelope(&legacy).unwrap();
+    let mut stale = feeder_artifact(ProofTarget::L1Feeder, 4, 1);
+    stale.schema_version = LEGACY_ARTIFACT_SCHEMA_VERSION;
+    assert!(validate_artifact_envelope(&stale)
+        .unwrap_err()
+        .starts_with("stale L1Feeder proof artifact"));
+    let mut unknown = artifact(ProofTarget::RecursionUnified, 3);
+    unknown.schema_version = ARTIFACT_SCHEMA_VERSION + 1;
+    assert!(validate_artifact_envelope(&unknown).is_err());
     assert_eq!(
-        chain_unrolled_layers(&artifact(ProofTarget::L1Feeder, 6)).unwrap(),
-        1
+        artifact(ProofTarget::Base, 1).schema_version,
+        ARTIFACT_SCHEMA_VERSION
     );
-    assert!(chain_unrolled_layers(&artifact(ProofTarget::L1, 4)).is_err());
+}
+
+#[test]
+fn malformed_setup_caps_are_rejected_at_artifact_admission() {
+    use prover::merkle_trees::MerkleTreeCapVarLength;
+    let cap = |leaves: usize| MerkleTreeCapVarLength {
+        cap: vec![[7; 8]; leaves],
+    };
+    let params = |leaves: usize| setups::UnrolledCircuitSetupParams {
+        family_idx: 128,
+        capacity: 1 << 22,
+        setup_caps: cap(leaves),
+    };
+    for (target, feeder_layers, good, bad) in [
+        (ProofTarget::RecursionUnified, 0, 16usize, 32usize),
+        (ProofTarget::L1Feeder, 1, 32, 16),
+    ] {
+        let mut good_artifact = feeder_artifact(target, 4, feeder_layers);
+        good_artifact.setups.insert(128, params(good));
+        let good_result = validate_artifact_envelope(&good_artifact);
+        if target == ProofTarget::L1Feeder {
+            // the fake proof has no compiled circuit: admission fails past the caps
+            assert!(good_result
+                .unwrap_err()
+                .contains("compiled unified circuit"));
+        } else {
+            good_result.unwrap();
+        }
+        for leaves in [bad, 0, good - 1, good + 1] {
+            let mut artifact = feeder_artifact(target, 4, feeder_layers);
+            artifact.setups.insert(128, params(leaves));
+            assert!(validate_artifact_envelope(&artifact)
+                .unwrap_err()
+                .contains("leafs"));
+        }
+        let mut mixed = feeder_artifact(target, 4, feeder_layers);
+        mixed.setups.insert(1, params(good));
+        mixed.setups.insert(128, params(bad));
+        assert!(validate_artifact_envelope(&mixed)
+            .unwrap_err()
+            .contains("leafs"));
+    }
+}
+
+#[test]
+fn l1_target_is_rejected_until_the_wrap_circuit_matches_the_wrap_program() {
+    let error = validate_l1_wrap_activation().unwrap_err();
+    assert!(error.starts_with("ProofTarget::L1 requires"), "{error}");
+    assert!(validate_continuation_targets(ProofTarget::L1Feeder, ProofTarget::L1).is_err());
+    validate_continuation_targets(ProofTarget::RecursionUnified, ProofTarget::L1Feeder).unwrap();
+}
+
+/// A feeder-loop harness: the backend proves one fake feeder proof per
+/// request with the scripted instance count; the verifier predicts the next
+/// scripted count and verifies every proof against the chain the backend
+/// extended.
+struct ScriptedChain {
+    /// Instance counts per layer, in order.
+    instances: Vec<usize>,
+    proven: Rc<RefCell<usize>>,
+    chain_end_params: Rc<RefCell<Vec<[u32; 8]>>>,
+}
+
+impl ScriptedChain {
+    /// `instances` is indexed by absolute layer; a resumed `state` starts at
+    /// its `feeder_layers`.
+    fn new(state: &RecursionState, instances: &[usize]) -> Self {
+        Self {
+            instances: instances.to_vec(),
+            proven: Rc::new(RefCell::new(state.feeder_layers as usize)),
+            chain_end_params: Rc::new(RefCell::new(state.chain_end_params.clone())),
+        }
+    }
+
+    /// The verifier side of the same scripted chain.
+    fn share(&self) -> Self {
+        Self {
+            instances: self.instances.clone(),
+            proven: Rc::clone(&self.proven),
+            chain_end_params: Rc::clone(&self.chain_end_params),
+        }
+    }
+
+    fn state() -> RecursionState {
+        RecursionState {
+            stage: ProofTarget::RecursionUnified,
+            l1: None,
+            proof: empty_proof(),
+            setups: BTreeMap::new(),
+            chain_end_params: vec![[1; 8], [2; 8], [3; 8]],
+            input_is_base: false,
+            timings: ProofTimingsMs::default(),
+            program_cycles: 0,
+            feeder_layers: 0,
+        }
+    }
+
+    fn report(instances: usize) -> FsvRunReport {
+        let cycles = (instances as u64 * UnrolledCircuitType::Unified22.get_domain_size() as u64)
+            .saturating_sub(7);
+        FsvRunReport {
+            cycles,
+            output: [0; 16],
+            nd_words_remaining: 0,
+            counters: riscv_transpiler::vm::DelegationsAndUnifiedCounters {
+                cycles: cycles as usize,
+                ..Default::default()
+            },
+            touched_windows: vec![0, 1],
+            max_touched_address: 0,
+            min_sp: 0x87f000,
+            success_pc: 0,
+            final_pc: 0,
+        }
+    }
+}
+
+impl ProveBackend for ScriptedChain {
+    fn register(
+        &mut self,
+        _: ExecutionKind,
+        _: MachineType,
+        _: &[u32],
+        _: &[u32],
+        _: Option<u32>,
+        _: &[ProofProfile],
+    ) {
+        panic!("feeder loop tests must not register");
+    }
+
+    fn prove(&mut self, request: ProveRequest<'_>) -> Result<(ProgramProof, Setups), String> {
+        let spec = feeder_stage(FeederRole::Recurrent);
+        assert_eq!(request.kind, spec.kind);
+        assert_eq!(request.profile, spec.profile);
+        assert_eq!(request.machine, MachineType::Reduced);
+        let layer = *self.proven.borrow();
+        *self.proven.borrow_mut() += 1;
+        let instances = self.instances[layer];
+        // F1 and the recurrent layers are distinct programs; every recurrent
+        // layer proves the same binary, so its end params repeat.
+        let final_pc = if layer == 0 { 1 } else { 2 };
+        let proof = fake_feeder_proof(final_pc, instances);
+        self.chain_end_params
+            .borrow_mut()
+            .push(compute_end_params(&BTreeMap::new(), proof.final_pc));
+        Ok((proof, BTreeMap::new()))
+    }
+
+    fn prove_l1_wrap(&mut self, _: L1WrapRequest<'_>) -> Result<L1WrapResult, String> {
+        panic!("feeder loop tests must not wrap");
+    }
+
+    fn setups(
+        &mut self,
+        _: ExecutionKind,
+        _: MachineType,
+        _: &[u32],
+        _: &[u32],
+        _: ProofProfile,
+    ) -> Option<Setups> {
+        panic!("feeder loop tests must not read setups");
+    }
+}
+
+impl FeederVerifier for ScriptedChain {
+    fn native_verify_standard(&self, _: Vec<u32>) -> Result<[u32; 16], String> {
+        Ok([0; 16])
+    }
+
+    fn predict(&self, _: &ProgramWords, _: Vec<u32>) -> Result<FsvRunReport, String> {
+        let layer = *self.proven.borrow();
+        Ok(Self::report(*self.instances.get(layer).unwrap_or(&1)))
+    }
+
+    fn native_verify(&self, _: Vec<u32>) -> Result<[u32; 16], String> {
+        let mut output = [0; 16];
+        output[8..].copy_from_slice(&rebuild_chain(&self.chain_end_params.borrow())?.hash());
+        Ok(output)
+    }
+
+    fn wrap_run(&self, _: &ProgramWords, _: Vec<u32>) -> Result<FsvRunReport, String> {
+        let mut report = Self::report(1);
+        report.cycles = L1_WRAP_PROGRAM_CYCLE_LIMIT as u64 - 7;
+        report.counters.cycles = report.cycles as usize;
+        report.output = self.native_verify(vec![])?;
+        Ok(report)
+    }
+}
+
+struct Layers(Vec<(u8, u32, usize)>);
+
+impl FeederObserver for Layers {
+    fn feeder_layer(&mut self, layer: u8, state: &RecursionState) -> Result<(), String> {
+        self.0.push((
+            layer,
+            state.feeder_layers,
+            feeder_proof_instances(&state.proof, None).unwrap(),
+        ));
+        Ok(())
+    }
+}
+
+fn run_scripted(
+    script: &[usize],
+    state: RecursionState,
+) -> (Result<RecursionState, String>, Vec<(u8, u32, usize)>) {
+    let fsv = modes_only(compression_modes());
+    let mut backend = ScriptedChain::new(&state, script);
+    let harness = backend.share();
+    let mut layers = Layers(vec![]);
+    let result = run_feeder_layers(
+        &mut backend,
+        &fsv,
+        state,
+        0,
+        &mut layers,
+        &|_, _| vec![],
+        &harness,
+    );
+    (result, layers.0)
+}
+
+#[test]
+fn feeder_loop_converges_and_records_one_history_entry_per_layer() {
+    for script in [&[4usize, 2, 1][..], &[5, 3, 2, 1], &[1]] {
+        let (state, layers) = run_scripted(script, ScriptedChain::state());
+        let state = state.unwrap();
+        assert_eq!(state.feeder_layers as usize, script.len());
+        assert_eq!(state.chain_end_params.len(), 3 + script.len());
+        assert_eq!(state.timings.l1_feeder_ms.len(), script.len());
+        assert_eq!(
+            layers,
+            script
+                .iter()
+                .enumerate()
+                .map(|(i, &n)| (i as u8, i as u32 + 1, n))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(feeder_proof_instances(&state.proof, Some(1)).unwrap(), 1);
+        // repeated equal feeder end params collapse in the chain hash
+        if script.len() > 2 {
+            let dedup = rebuild_chain(&state.chain_end_params[..5]).unwrap();
+            let full = rebuild_chain(&state.chain_end_params).unwrap();
+            assert_eq!(dedup.hash(), full.hash());
+        }
+        // the wrap fit over the last feeder proof
+        let fsv = modes_only(compression_modes());
+        let harness = ScriptedChain::new(&state, script);
+        let fitted = check_feeder_fit(&fsv, state, &|_, _| vec![], &harness).unwrap();
+        assert_eq!(fitted.stage, ProofTarget::L1Feeder);
+    }
+}
+
+#[test]
+fn feeder_loop_rejects_non_decreasing_and_zero_predictions() {
+    for (script, needle) in [
+        (&[4usize, 4][..], "not converging"),
+        (&[4, 5], "not converging"),
+        (&[3, 0], "predicts no unified instance"),
+    ] {
+        let (result, _) = run_scripted(script, ScriptedChain::state());
+        assert!(result.err().unwrap().contains(needle), "{script:?}");
+    }
+}
+
+#[test]
+fn feeder_loop_stops_at_the_layer_cap() {
+    let script: Vec<usize> = (0..MAX_FEEDER_LAYERS as usize + 2)
+        .rev()
+        .map(|n| n + 2)
+        .collect();
+    let (result, layers) = run_scripted(&script, ScriptedChain::state());
+    assert!(result.err().unwrap().contains("did not reach one instance"));
+    assert_eq!(layers.len(), MAX_FEEDER_LAYERS as usize);
+}
+
+#[test]
+fn feeder_loop_rejects_a_proof_shape_that_misses_its_prediction() {
+    let state = ScriptedChain::state();
+    let fsv = modes_only(compression_modes());
+    // the verifier predicts 2 instances, the backend proves 3
+    let harness = ScriptedChain::new(&state, &[2, 1]);
+    let mut backend = ScriptedChain::new(&state, &[3, 1]);
+    let result = run_feeder_layers(
+        &mut backend,
+        &fsv,
+        state,
+        0,
+        &mut NoopObserver,
+        &|_, _| vec![],
+        &harness,
+    );
+    assert!(result
+        .err()
+        .unwrap()
+        .contains("carries 3 instance(s), predicted 2"));
+}
+
+#[test]
+fn feeder_loop_resumes_mid_chain_and_skips_proving_at_one_instance() {
+    let script = [4usize, 2, 1];
+    let (full, _) = run_scripted(&script, ScriptedChain::state());
+    let full = full.unwrap();
+    // resume after layer 0 (4 instances): layers 1 and 2 remain
+    let mut after_first = ScriptedChain::state();
+    after_first.feeder_layers = 1;
+    after_first.proof = fake_feeder_proof(1, 4);
+    after_first.chain_end_params = full.chain_end_params[..4].to_vec();
+    let (resumed, layers) = run_scripted(&script, after_first);
+    let resumed = resumed.unwrap();
+    assert_eq!(layers, vec![(1, 2, 2), (2, 3, 1)]);
+    assert_eq!(resumed.feeder_layers, full.feeder_layers);
+    assert_eq!(resumed.chain_end_params, full.chain_end_params);
+    assert_eq!(resumed.proof.final_pc, full.proof.final_pc);
+    // resume at a single-instance feeder: nothing to prove
+    let mut done = ScriptedChain::state();
+    done.feeder_layers = 3;
+    done.proof = fake_feeder_proof(2, 1);
+    done.chain_end_params = full.chain_end_params.clone();
+    let (skipped, layers) = run_scripted(&[], done);
+    let skipped = skipped.unwrap();
+    assert!(layers.is_empty());
+    assert_eq!(skipped.feeder_layers, 3);
+    assert_eq!(skipped.chain_end_params, full.chain_end_params);
+    assert!(skipped.timings.l1_feeder_ms.is_empty());
 }
