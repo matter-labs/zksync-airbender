@@ -75,7 +75,9 @@ fn malformed_l1_envelopes_fail_verify_and_continuation_before_loading_programs()
             }
         }),
         ("non-L1", |a| a.target = ProofTarget::L1Feeder),
-        ("compiled unified circuit", |_| {}),
+        ("reduced-machine family", |a| {
+            a.proof = crate::l1_feeder_tests::empty_proof()
+        }),
     ];
     for (expected, mutate) in mutations {
         let mut checkpoint = wrapped_artifact();

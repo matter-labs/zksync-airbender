@@ -301,7 +301,12 @@ struct FixtureObserver<'a> {
 }
 
 impl FeederObserver for FixtureObserver<'_> {
-    fn feeder_layer(&mut self, layer: u8, state: &RecursionState) -> Result<(), String> {
+    fn feeder_layer(
+        &mut self,
+        layer: u8,
+        state: &RecursionState,
+        _: &FsvRunReport,
+    ) -> Result<(), String> {
         if layer as usize != self.layers.len() {
             return Err("L1 reference feeder observer layer order".into());
         }
@@ -736,12 +741,14 @@ fn test_state() -> RecursionState {
 struct FakeVerifier;
 
 impl FeederVerifier for FakeVerifier {
-    fn native_verify_standard(&self, _: Vec<u32>) -> Result<[u32; 16], String> {
-        Ok([0; 16])
+    fn native_verify_standard(&self, nd_words: Vec<u32>) -> Result<[u32; 16], String> {
+        self.native_verify(nd_words)
     }
 
-    fn predict(&self, program: &ProgramWords, _: Vec<u32>) -> Result<FsvRunReport, String> {
-        Ok(fake_report(fake_instances(program.0[0])))
+    fn predict(&self, program: &ProgramWords, nd_words: Vec<u32>) -> Result<FsvRunReport, String> {
+        let mut report = fake_report(fake_instances(program.0[0]));
+        report.output = self.native_verify(nd_words)?;
+        Ok(report)
     }
 
     fn native_verify(&self, nd_words: Vec<u32>) -> Result<[u32; 16], String> {
@@ -855,7 +862,12 @@ struct RecordingObserver {
 }
 
 impl FeederObserver for RecordingObserver {
-    fn feeder_layer(&mut self, layer: u8, state: &RecursionState) -> Result<(), String> {
+    fn feeder_layer(
+        &mut self,
+        layer: u8,
+        state: &RecursionState,
+        _: &FsvRunReport,
+    ) -> Result<(), String> {
         self.checkpoints
             .push(StepCheckpoint::from_state(layer, state));
         Ok(())
@@ -952,7 +964,12 @@ fn noop_observer_matches_unobserved_result() {
 fn observer_error_propagates() {
     struct Reject;
     impl FeederObserver for Reject {
-        fn feeder_layer(&mut self, _: u8, _: &RecursionState) -> Result<(), String> {
+        fn feeder_layer(
+            &mut self,
+            _: u8,
+            _: &RecursionState,
+            _: &FsvRunReport,
+        ) -> Result<(), String> {
             Err("feeder observer rejection".into())
         }
     }

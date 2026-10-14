@@ -58,7 +58,7 @@ fn program() -> LoadedProgram {
     }
 }
 
-fn empty_proof() -> ProgramProof {
+pub(super) fn empty_proof() -> ProgramProof {
     ProgramProof {
         riscv_proofs: BTreeMap::new(),
         compiled_riscv_circuits: BTreeMap::new(),
@@ -88,14 +88,40 @@ pub(super) fn artifact(target: ProofTarget, n: usize) -> ProofArtifact {
 /// A fake single-instance feeder proof: the reduced family with `instances`
 /// instances, one inits-and-teardowns instance, no delegation proofs.
 pub(super) fn fake_feeder_proof(final_pc: u32, instances: usize) -> ProgramProof {
+    let family = UnrolledCircuitType::Unified22.get_family_idx() as u32;
+    let schedule = ProofProfile::L1Feeder
+        .prover_config(
+            UnrolledCircuitType::Unified22.get_domain_size_log2() as usize,
+            COMPILED_SECURITY_LEVEL.to_prover(),
+        )
+        .whir_schedule;
     let mut proof = empty_proof();
     proof.final_pc = final_pc;
     proof.riscv_proofs.insert(
-        UnrolledCircuitType::Unified22.get_family_idx() as u32,
-        (0..instances).map(|_| empty_gkr_proof()).collect(),
+        family,
+        (0..instances)
+            .map(|_| {
+                let mut instance = empty_gkr_proof();
+                instance.whir_proof.whir_schedule = schedule.clone();
+                instance
+            })
+            .collect(),
     );
+    proof
+        .compiled_riscv_circuits
+        .insert(family, unified_reduced_machine_2_22_layout());
     proof.num_it_circuits = Some(1);
     proof
+}
+
+/// The committed 2^22 unified layout, the compiled circuit a feeder proof
+/// carries.
+pub(super) fn unified_reduced_machine_2_22_layout(
+) -> prover::cs::gkr_compiler::GKRCircuitArtifact<prover::field::baby_bear::base::BabyBearField> {
+    serde_json::from_str(include_str!(
+        "../../circuit_defs/unrolled_circuits/unified_reduced_machine_2_22/generated/layout.json"
+    ))
+    .unwrap()
 }
 
 pub(super) fn feeder_artifact(target: ProofTarget, n: usize, feeder_layers: u32) -> ProofArtifact {
@@ -530,15 +556,7 @@ fn malformed_setup_caps_are_rejected_at_artifact_admission() {
     ] {
         let mut good_artifact = feeder_artifact(target, 4, feeder_layers);
         good_artifact.setups.insert(128, params(good));
-        let good_result = validate_artifact_envelope(&good_artifact);
-        if target == ProofTarget::L1Feeder {
-            // the fake proof has no compiled circuit: admission fails past the caps
-            assert!(good_result
-                .unwrap_err()
-                .contains("compiled unified circuit"));
-        } else {
-            good_result.unwrap();
-        }
+        validate_artifact_envelope(&good_artifact).unwrap();
         for leaves in [bad, 0, good - 1, good + 1] {
             let mut artifact = feeder_artifact(target, 4, feeder_layers);
             artifact.setups.insert(128, params(leaves));
@@ -682,7 +700,13 @@ impl FeederVerifier for ScriptedChain {
 
     fn predict(&self, _: &ProgramWords, _: Vec<u32>) -> Result<FsvRunReport, String> {
         let layer = *self.proven.borrow();
-        Ok(Self::report(*self.instances.get(layer).unwrap_or(&1)))
+        let mut report = Self::report(*self.instances.get(layer).unwrap_or(&1));
+        // the run reproduces the input's native output: the standard output
+        // for F1, the previous feeder layer's output afterwards
+        if layer > 0 {
+            report.output = self.native_verify(vec![])?;
+        }
+        Ok(report)
     }
 
     fn native_verify(&self, _: Vec<u32>) -> Result<[u32; 16], String> {
@@ -703,7 +727,12 @@ impl FeederVerifier for ScriptedChain {
 struct Layers(Vec<(u8, u32, usize)>);
 
 impl FeederObserver for Layers {
-    fn feeder_layer(&mut self, layer: u8, state: &RecursionState) -> Result<(), String> {
+    fn feeder_layer(
+        &mut self,
+        layer: u8,
+        state: &RecursionState,
+        _: &FsvRunReport,
+    ) -> Result<(), String> {
         self.0.push((
             layer,
             state.feeder_layers,
@@ -773,6 +802,105 @@ fn feeder_loop_rejects_non_decreasing_and_zero_predictions() {
     ] {
         let (result, _) = run_scripted(script, ScriptedChain::state());
         assert!(result.err().unwrap().contains(needle), "{script:?}");
+    }
+}
+
+/// A resumed single-instance feeder whose claimed history differs from the
+/// chain its proof authenticates is rejected on entry (no layer proven), and
+/// the wrap fit binds its native output to the history as well.
+#[test]
+fn feeder_resume_rejects_a_history_its_proof_does_not_authenticate() {
+    // a proven single-instance chain whose claimed history is then altered
+    let tampered = || {
+        let (state, _) = run_scripted(&[1], ScriptedChain::state());
+        let mut state = state.unwrap();
+        let backend = ScriptedChain::new(&state, &[1]);
+        state.chain_end_params[0][0] ^= 1;
+        (state, backend)
+    };
+    let fsv = modes_only(compression_modes());
+    let (state, mut backend) = tampered();
+    let verifier = backend.share();
+    let error = run_feeder_layers(
+        &mut backend,
+        &fsv,
+        state,
+        0,
+        &mut NoopObserver,
+        &|_, _| vec![],
+        &verifier,
+    )
+    .err()
+    .unwrap();
+    assert!(error.contains("recursion chain"), "{error}");
+    assert_eq!(
+        *backend.proven.borrow(),
+        1,
+        "resume must not prove another layer"
+    );
+    let (state, backend) = tampered();
+    let verifier = backend.share();
+    let error = check_feeder_fit(&fsv, state, &|_, _| vec![], &verifier)
+        .err()
+        .unwrap();
+    assert!(error.contains("recursion chain"), "{error}");
+}
+
+/// A prediction run that leaves input unread or reproduces another output
+/// is rejected before any proof is produced.
+#[test]
+fn feeder_loop_rejects_incomplete_or_mismatching_prediction_runs_before_proving() {
+    struct Broken {
+        inner: ScriptedChain,
+        unread: usize,
+        flip_output: bool,
+    }
+    impl FeederVerifier for Broken {
+        fn native_verify_standard(&self, nd: Vec<u32>) -> Result<[u32; 16], String> {
+            self.inner.native_verify_standard(nd)
+        }
+        fn predict(&self, program: &ProgramWords, nd: Vec<u32>) -> Result<FsvRunReport, String> {
+            let mut report = self.inner.predict(program, nd)?;
+            report.nd_words_remaining = self.unread;
+            if self.flip_output {
+                report.output[0] ^= 1;
+            }
+            Ok(report)
+        }
+        fn native_verify(&self, nd: Vec<u32>) -> Result<[u32; 16], String> {
+            self.inner.native_verify(nd)
+        }
+        fn wrap_run(&self, program: &ProgramWords, nd: Vec<u32>) -> Result<FsvRunReport, String> {
+            self.inner.wrap_run(program, nd)
+        }
+    }
+    for (unread, flip_output, needle) in [
+        (3usize, false, "left 3 input words unread"),
+        (0, true, "differs from the input's native output"),
+    ] {
+        let state = ScriptedChain::state();
+        let fsv = modes_only(compression_modes());
+        let mut backend = ScriptedChain::new(&state, &[4, 2, 1]);
+        let verifier = Broken {
+            inner: backend.share(),
+            unread,
+            flip_output,
+        };
+        let result = run_feeder_layers(
+            &mut backend,
+            &fsv,
+            state,
+            0,
+            &mut NoopObserver,
+            &|_, _| vec![],
+            &verifier,
+        );
+        assert!(result.err().unwrap().contains(needle), "{needle}");
+        assert_eq!(
+            *backend.proven.borrow(),
+            0,
+            "no layer may be proven: {needle}"
+        );
     }
 }
 
