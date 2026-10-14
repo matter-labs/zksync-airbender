@@ -251,29 +251,20 @@ fn recursive_whir_retained_shapes_match_live_cpu() {
     }
 }
 
-// The four intermediate oracles of the 2^22 L1 feeder (folds [1, 5, 5, 5, 3]) at
-// production geometry: the full cap and sampled leaves and paths.
-
+// The intermediate oracles of the 2^22 L1 feeder at the geometry its config
+// produces: the full cap and sampled leaves and paths.
 #[test]
 #[cfg(not(no_cuda))]
-fn l1_feeder_oracle_1_matches_live_cpu() {
-    assert_recursive_commitment_leaves_match_live_cpu(21, 1 << 6, 32, 32, Leaves::Sampled);
-}
-
-#[test]
-#[cfg(not(no_cuda))]
-fn l1_feeder_oracle_2_matches_live_cpu() {
-    assert_recursive_commitment_leaves_match_live_cpu(16, 1 << 11, 32, 32, Leaves::Sampled);
-}
-
-#[test]
-#[cfg(not(no_cuda))]
-fn l1_feeder_oracle_3_matches_live_cpu() {
-    assert_recursive_commitment_leaves_match_live_cpu(11, 1 << 16, 32, 32, Leaves::Sampled);
-}
-
-#[test]
-#[cfg(not(no_cuda))]
-fn l1_feeder_oracle_4_matches_live_cpu() {
-    assert_recursive_commitment_leaves_match_live_cpu(6, 1 << 21, 8, 32, Leaves::Sampled);
+fn l1_feeder_oracles_match_live_cpu() {
+    let shapes = crate::test_utils::l1_feeder_oracle_shapes();
+    assert!(!shapes.is_empty());
+    for (log_n, log_v, lde_factor, cap_size) in shapes {
+        assert_recursive_commitment_leaves_match_live_cpu(
+            log_n,
+            lde_factor,
+            1 << log_v,
+            cap_size,
+            Leaves::Sampled,
+        );
+    }
 }

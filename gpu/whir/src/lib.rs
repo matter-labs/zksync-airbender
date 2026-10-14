@@ -534,24 +534,19 @@ fn decode_leaf_values(leafs: &[BF], values_per_leaf: usize) -> Vec<E4> {
 #[cfg(test)]
 mod cpu_tests {
     use super::admit_oracle_shape;
-    use prover::definitions::SecurityLevel;
-    use prover::gkr::prover_config::ProofProfile;
+    use crate::test_utils::l1_feeder_oracle_shapes;
 
     #[test]
     fn cpu_l1_feeder_whir_oracle_shapes_are_admitted() {
-        let config = ProofProfile::L1Feeder.prover_config(22, SecurityLevel::Sec100);
-        let schedule = &config.whir_schedule;
-        let steps = &schedule.whir_steps_schedule;
-        assert_eq!(steps.len(), schedule.whir_steps_lde_factors.len() + 1);
-        let log_cap = schedule.cap_size.trailing_zeros();
-        let mut log_n = config.trace_len_log2 as u32;
-        let mut admitted = 0;
-        for (round, &lde_factor) in schedule.whir_steps_lde_factors.iter().enumerate() {
-            log_n -= steps[round] as u32;
-            let log_v = steps[round + 1] as u32;
-            admit_oracle_shape(log_n, log_v, lde_factor.trailing_zeros(), log_cap);
-            admitted += 1;
+        let shapes = l1_feeder_oracle_shapes();
+        assert!(!shapes.is_empty());
+        for (log_n, log_v, lde_factor, cap_size) in shapes {
+            admit_oracle_shape(
+                log_n,
+                log_v,
+                lde_factor.trailing_zeros(),
+                cap_size.trailing_zeros(),
+            );
         }
-        assert!(admitted > 0);
     }
 }
