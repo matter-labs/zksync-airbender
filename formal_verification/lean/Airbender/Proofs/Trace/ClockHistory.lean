@@ -47,6 +47,48 @@ theorem incoming_alignment {initial terminal : Timestamp} {steps : List (Timesta
   intro step member
   exact align step.1.value step.1 (List.mem_map.mpr ⟨step, member, rfl⟩) rfl
 
+/-- Every matched clock edge lies between the public endpoints. Strict native
+    increments exclude disconnected chains; no list order is assumed. -/
+theorem clock_interval {initial terminal : Timestamp} {steps : List (Timestamp × Timestamp)}
+    (balanced : (initial :: steps.map Prod.snd).Perm (terminal :: steps.map Prod.fst))
+    (advances : ∀ step ∈ steps, step.2.value = step.1.value + 4) :
+    ∀ step ∈ steps, initial.value ≤ step.1.value ∧ step.2.value ≤ terminal.value := by
+  have floor : ∀ n : Nat, ∀ time ∈ steps.map Prod.fst,
+      time.value = n → initial.value ≤ time.value := by
+    intro n
+    induction n using Nat.strong_induction_on with
+    | h n ih =>
+      intro time member value
+      have matched := balanced.mem_iff.mpr (List.mem_cons_of_mem terminal member)
+      rcases List.mem_cons.mp matched with same | outgoing
+      · exact same ▸ Nat.le_refl _
+      · obtain ⟨previous, member, same⟩ := List.mem_map.mp outgoing
+        have increment := advances previous member
+        rw [same] at increment
+        have earlier := ih previous.1.value (by omega) previous.1
+          (List.mem_map.mpr ⟨previous, member, rfl⟩) rfl
+        omega
+  let total := ((steps.map Prod.snd).map Timestamp.value).sum
+  have ceiling : ∀ n : Nat, ∀ time ∈ steps.map Prod.snd,
+      total - time.value = n → time.value ≤ terminal.value := by
+    intro n
+    induction n using Nat.strong_induction_on with
+    | h n ih =>
+      intro time member value
+      have matched := balanced.mem_iff.mp (List.mem_cons_of_mem initial member)
+      rcases List.mem_cons.mp matched with same | incoming
+      · exact same ▸ Nat.le_refl _
+      · obtain ⟨next, member, same⟩ := List.mem_map.mp incoming
+        have increment := advances next member
+        rw [same] at increment
+        have nextMember : next.2 ∈ steps.map Prod.snd := List.mem_map.mpr ⟨next, member, rfl⟩
+        have bound : next.2.value ≤ total := List.le_sum_of_mem (List.mem_map.mpr ⟨next.2, nextMember, rfl⟩)
+        have later := ih (total - next.2.value) (by omega) next.2 nextMember rfl
+        omega
+  intro step member
+  exact ⟨floor _ _ (List.mem_map.mpr ⟨step, member, rfl⟩) rfl,
+    ceiling _ _ (List.mem_map.mpr ⟨step, member, rfl⟩) rfl⟩
+
 theorem low_alignment {time : Timestamp} (aligned : time.value % 4 = 0) : time.lo % 4 = 0 := by
   simpa [Timestamp.value, timestampBase, Nat.add_mod, Nat.mul_mod] using aligned
 

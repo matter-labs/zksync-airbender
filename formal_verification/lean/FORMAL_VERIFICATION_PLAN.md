@@ -195,9 +195,8 @@ ABI and whole mixed execution remain separate.
    boundary in this profile. Comparison preparation now also derives modular
    RV32 addresses through PC wraparound, with actual SLTIU→ADDI states
    65537→1→0 and retained clocks six/ten. Continue the unissued-round boundary
-   binding, modular global round-CSR coverage, jumps/branches and nonliteral
-   preparation, then whole caller retirement; prefix retirement
-   remains separate.
+   binding, jumps/branches and nonliteral preparation, then whole caller
+   retirement; prefix retirement remains separate.
    Modular public caller regions now derive selected worker family/count/request
    slots through the aligned comparison profile. Modular controller regions and
    at most forty ticks derive local shape; complete prepared reference lists
@@ -205,6 +204,12 @@ ABI and whole mixed execution remain separate.
    duration/cuts and global round-worker coverage remain explicit. Real comparison
    wrap excludes the ordinary reset at zero, COPY checks nonempty caller binding,
    and both bigint-control gaps plus the unissued G-prefix effect remain admitted.
+   Modular global round-CSR coverage now quantifies every aligned occurrence
+   between the supplied native clocks. Constraints and matching derive each
+   caller's clock interval and modular address, then exact membership for live
+   round workers. Public preparation and raw matching derive issued masks; full
+   coverage is equivalent to absence of zero-clock round workers. Repeated-address
+   guards reject covering only one occurrence; unissued round binding remains open.
    COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed
    retained for the second window. Extended BLAKE and Keccak completion controls
    do not restart their protocols; checked regressions forbid treating their

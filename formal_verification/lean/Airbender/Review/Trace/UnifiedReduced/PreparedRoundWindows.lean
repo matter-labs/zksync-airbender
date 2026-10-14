@@ -104,6 +104,16 @@ def ProgramRoundCallerCoverage [Fact p.Prime] (data : RequestTrace p) (regions :
       entry.pc.toNat + (timeOfPair data.machine.initial.timestamp).value <
         data.machine.initial.word.value + region.upper
 
+/-- Every occurrence of a public round CSR along the modular native schedule
+    lies in a prepared region. Quantifying aligned clocks between the supplied
+    endpoints covers repeated RV32 addresses without selecting actual rows. -/
+def WrappedProgramRoundCallerCoverage [Fact p.Prime] (data : RequestTrace p) (regions : List RoundRegion) : Prop :=
+  ∀ entry ∈ data.program, entry.data.family = .blakeRound →
+    ∀ clock, (timeOfPair data.machine.initial.timestamp).value ≤ clock →
+      clock + 4 ≤ (timeOfPair data.machine.terminal.timestamp).value → clock % 4 = 0 →
+      entry.pc = wrappedProgramAddress data clock →
+      ∃ region ∈ regions, region.lower ≤ clock ∧ clock < region.upper
+
 /-- Actual extended-round membership in the prepared regions is equivalent to
     live invocation. Zero-clock workers are retained outside those regions. -/
 def RoundWorkerCoverage [Fact p.Prime] (data : RequestTrace p) (regions : List RoundRegion) : Prop :=
