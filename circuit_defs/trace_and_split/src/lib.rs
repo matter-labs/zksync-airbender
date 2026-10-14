@@ -361,6 +361,65 @@ pub fn commit_merged_tree_and_witness_for_unified_circuits<
     prover::gkr::witness_gen::family_circuits::GKRFullWitnessTrace<BabyBearField, Global, Global>,
     prover::gkr::whir::ColumnMajorBaseOracleForLDE<BabyBearField, T>,
 ) {
+    commit_merged_tree_and_witness_with_storage::<EF, T, A, BE>(
+        backend,
+        unified_setup,
+        witness_chunk,
+        inits_and_teardowns,
+        twiddles,
+        prover_config,
+        worker,
+        false,
+    )
+}
+
+/// Commit the merged cap one coset at a time, without retaining the full LDE.
+/// Produces the same cap as [`commit_merged_tree_for_unified_circuits`].
+pub fn commit_merged_tree_for_unified_circuits_recompute<
+    EF: FieldExtension<BabyBearField> + Field,
+    T: ColumnMajorMerkleTreeConstructor<BabyBearField>,
+    A: GoodAllocator + 'static,
+    BE: Backend<BabyBearField, EF>,
+>(
+    backend: &BE,
+    unified_setup: &setups::CircuitSetup<A>,
+    witness_chunk: &[riscv_transpiler::witness::data_structs::UnifiedOpcodeTracingDataWithTimestamp],
+    inits_and_teardowns: Vec<([Vec<BabyBearField>; 2], [Vec<BabyBearField>; 2])>,
+    twiddles: &BE::TwiddleSet,
+    prover_config: &ProverConfig,
+    worker: &Worker,
+) -> MerkleTreeCapVarLength {
+    let (_witness, oracle) = commit_merged_tree_and_witness_with_storage::<EF, T, A, BE>(
+        backend,
+        unified_setup,
+        witness_chunk,
+        inits_and_teardowns,
+        twiddles,
+        prover_config,
+        worker,
+        true,
+    );
+    oracle.get_cap()
+}
+
+fn commit_merged_tree_and_witness_with_storage<
+    EF: FieldExtension<BabyBearField> + Field,
+    T: ColumnMajorMerkleTreeConstructor<BabyBearField>,
+    A: GoodAllocator + 'static,
+    BE: Backend<BabyBearField, EF>,
+>(
+    backend: &BE,
+    unified_setup: &setups::CircuitSetup<A>,
+    witness_chunk: &[riscv_transpiler::witness::data_structs::UnifiedOpcodeTracingDataWithTimestamp],
+    inits_and_teardowns: Vec<([Vec<BabyBearField>; 2], [Vec<BabyBearField>; 2])>,
+    twiddles: &BE::TwiddleSet,
+    prover_config: &ProverConfig,
+    worker: &Worker,
+    recompute: bool,
+) -> (
+    prover::gkr::witness_gen::family_circuits::GKRFullWitnessTrace<BabyBearField, Global, Global>,
+    prover::gkr::whir::ColumnMajorBaseOracleForLDE<BabyBearField, T>,
+) {
     use prover::gkr::prover::stages::initial_commit::commit_merged_memory_and_witness_subtrees;
     use prover::gkr::witness_gen::family_circuits::evaluate_gkr_witness_for_executor_family;
     use prover::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
@@ -406,14 +465,21 @@ pub fn commit_merged_tree_and_witness_for_unified_circuits<
         now.elapsed()
     );
 
-    let merged = commit_merged_memory_and_witness_subtrees::<BabyBearField, EF, T, _>(
-        backend,
-        &witness_trace,
-        twiddles,
-        prover_config,
-        &prover::allocation_pool::GenericAllocationPool::proxy(),
-        worker,
-    );
+    let merged = if recompute {
+        prover::gkr::prover::stages::initial_commit::commit_merged_memory_and_witness_recompute::<
+            BabyBearField,
+            T,
+        >(&witness_trace, twiddles.plain(), prover_config, worker)
+    } else {
+        commit_merged_memory_and_witness_subtrees::<BabyBearField, EF, T, _>(
+            backend,
+            &witness_trace,
+            twiddles,
+            prover_config,
+            &prover::allocation_pool::GenericAllocationPool::proxy(),
+            worker,
+        )
+    };
 
     println!("Unified merged commitment took {:?}", now.elapsed());
 

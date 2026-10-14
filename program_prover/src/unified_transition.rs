@@ -20,6 +20,7 @@
 //!    caller-chosen: RS/tree RECOMPUTATION on memory-constrained machines
 //!    (the feeder LDE factors make materialized codewords large), fully
 //!    in-memory on large boxes where recompute dominates the proving time.
+//!    The base policy also applies to the merged-cap prepass before Fiat-Shamir.
 //!
 //! Proofs made here verify ONLY with the matching merged-mode generated
 //! verifier (`.../unified_reduced_machine/sec_100_l1_feeder`).
@@ -39,7 +40,7 @@ use prover::field::*;
 use prover::gkr::prover::GKRExternalChallenges;
 use prover::gkr::prover::{
     prove_configured_with_gkr_with_storage_and_backend, Backend, GKRBackend, OperationMode,
-    WhirOracleStorage,
+    RsCodewordSource, WhirOracleStorage,
 };
 use prover::gkr::witness_gen::family_circuits::evaluate_gkr_witness_for_executor_family;
 use prover::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
@@ -56,6 +57,7 @@ use std::alloc::Global;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use trace_and_split::commit_merged_tree_for_unified_circuits;
+use trace_and_split::commit_merged_tree_for_unified_circuits_recompute;
 use trace_and_split::fs_transform_unified_for_permutation_argument;
 
 /// Wall-clock breakdown of one [`prove_unified_transition_with_replayer_timed`]
@@ -309,12 +311,25 @@ pub fn prove_unified_transition_with_replayer_timed<
             } else {
                 zero_inits_and_teardowns(num_teardown_sets)
             };
-            let cap = commit_merged_tree_for_unified_circuits::<
-                BabyBearExt4,
-                DefaultTreeConstructor,
-                Global,
-                _,
-            >(
+            let commit = match whir_oracle_storage.base_rs_source {
+                RsCodewordSource::InMemory => {
+                    commit_merged_tree_for_unified_circuits::<
+                        BabyBearExt4,
+                        DefaultTreeConstructor,
+                        Global,
+                        B,
+                    >
+                }
+                RsCodewordSource::Recompute => {
+                    commit_merged_tree_for_unified_circuits_recompute::<
+                        BabyBearExt4,
+                        DefaultTreeConstructor,
+                        Global,
+                        B,
+                    >
+                }
+            };
+            let cap = commit(
                 backend,
                 &unified_setup,
                 unified_buffer,
