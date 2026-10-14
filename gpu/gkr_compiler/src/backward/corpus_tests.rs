@@ -75,7 +75,8 @@ impl CoeffResolver<Proth120> for Proth120Resolver {
 fn proth120_interpreter_parity() {
     let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
     let artifact: GKRCircuitArtifact<Proth120> = serde_json::from_slice(
-        &std::fs::read(directory.join("unified_reduced_machine_layout_gkr_proth120.json")).unwrap(),
+        &std::fs::read(directory.join("unified_reduced_machine_layout_gkr_proth120_2p21.json"))
+            .unwrap(),
     )
     .unwrap();
     let dag = lower_dag(&artifact).unwrap();
@@ -128,7 +129,8 @@ fn continuation_corpus_matches_the_cpu_codec_oracle() {
 fn proth120_backward_term_classes() {
     let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
     let artifact: GKRCircuitArtifact<Proth120> = serde_json::from_slice(
-        &std::fs::read(directory.join("unified_reduced_machine_layout_gkr_proth120.json")).unwrap(),
+        &std::fs::read(directory.join("unified_reduced_machine_layout_gkr_proth120_2p21.json"))
+            .unwrap(),
     )
     .unwrap();
     let dag = lower_dag(&artifact).unwrap();

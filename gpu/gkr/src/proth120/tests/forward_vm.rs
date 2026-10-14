@@ -38,7 +38,10 @@ pub(crate) fn small_programs() -> (
     Arc<crate::proth120::programs::GkrProgramsPr>,
 ) {
     let artifact = Arc::new(
-        cs::gkr_circuits::unified_reduced_machine::build_unified_artifact::<PR>(true, 22, 1),
+        cs::gkr_circuits::unified_reduced_machine::build_unified_artifact_core::<
+            PR,
+            field::baby_bear::base::BabyBearField,
+        >(true, 21, 1, prover::common_constants::rom::L1_WRAP_ROM),
     );
     let minimum_log = (artifact
         .total_tables_size
@@ -47,7 +50,7 @@ pub(crate) fn small_programs() -> (
         .max(19)
         .max(12);
     assert_eq!(
-        minimum_log, 22,
+        minimum_log, 21,
         "Proth120 small forward shape minimum changed"
     );
     assert_eq!(artifact.trace_len, 1 << minimum_log);
@@ -120,8 +123,10 @@ pub(crate) fn forward_fixture_full(context: &ProverContext) -> ForwardFixturePr 
     };
     let setup = {
         let binary = vec![0u32; artifact.total_tables_size - artifact.offset_for_decoder_table];
-        let driver =
-            prover::gkr::witness_gen::family_circuits::build_unified_table_driver::<PR>(&binary);
+        let driver = prover::gkr::witness_gen::family_circuits::build_unified_table_driver_with_rom::<
+            PR,
+            { prover::common_constants::rom::L1_WRAP_ROM.second_word_bits() },
+        >(&binary);
         let decoder = vec![None; artifact.total_tables_size - artifact.offset_for_decoder_table];
         prover::gkr::prover::setup::GKRSetup::<PR>::construct(&driver, &decoder, rows, &artifact)
     };
@@ -340,10 +345,8 @@ pub(crate) fn forward_fixture_full(context: &ProverContext) -> ForwardFixturePr 
         &d_decoder,
         DeviceMatrix::new(&raw[(38 + 63) * rows..(38 + 66) * rows], rows),
     );
-    let mut config =
-        prover::gkr::prover_config::example_configs::evm_production_packed_prover_config(
-            crate::upstream::SecurityLevel::Sec100,
-        );
+    let mut config = prover::gkr::prover_config::ProofProfile::L1Wrap
+        .prover_config(21, crate::upstream::SecurityLevel::Sec100);
     config.trace_len_log2 = log_rows as usize;
     let proof = crate::proth120::proof_layout::ProofSlabPr::new(
         Arc::new(crate::proth120::proof_layout::ProofLayoutPr::new(

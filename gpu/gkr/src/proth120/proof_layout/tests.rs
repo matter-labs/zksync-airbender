@@ -11,11 +11,11 @@ use crate::upstream::{SecurityLevel, PR};
 
 pub(crate) fn programs() -> crate::proth120::programs::GkrProgramsPr {
     let artifact = serde_json::from_slice(include_bytes!(
-        "../../../../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json"
+        "../../../../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120_2p21.json"
     ))
     .unwrap();
     crate::proth120::programs::GkrProgramsPr::compile(
-        gpu_trace::witness::circuit_type::CircuitType::L1Wrap,
+        gpu_trace::witness::circuit_type::CircuitType::L1Wrap21,
         std::sync::Arc::new(artifact),
     )
     .unwrap()
@@ -112,15 +112,14 @@ pub(crate) fn assert_m6_fields_equal(actual: &M6ProofFields, expected: &M6ProofF
 #[test]
 fn cpu_proof_layout_pr_roundtrip() {
     let programs = programs();
-    let config = prover::gkr::prover_config::example_configs::evm_production_packed_prover_config(
-        SecurityLevel::Sec100,
-    );
+    let config =
+        prover::gkr::prover_config::ProofProfile::L1Wrap.prover_config(21, SecurityLevel::Sec100);
     let layout = ProofLayoutPr::new(&programs, &config, 4);
     let directory = std::env::var_os("AB_PROTH120_REFERENCE_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
             PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("../../prover_pipeline/fixtures/l1_reference")
+                .join("../../prover_pipeline/fixtures/l1_reference_2p21")
         });
     let path = directory.join("l1_bundle.json");
     let bundle: ReferenceBundle = serde_json::from_reader(std::io::BufReader::new(
@@ -204,7 +203,7 @@ fn cpu_proof_layout_pr_roundtrip() {
     };
     assert_eq!(expected.merged_claims.0.len(), 7);
     assert_eq!(expected.merged_claims.1.len(), 1);
-    assert_eq!(expected.evaluation_point.len(), 26);
+    assert_eq!(expected.evaluation_point.len(), 25);
     let mut slab = HostSlab::new(layout.bytes_len());
     layout.write_m6_fields(slab.bytes_mut(), &expected, [challenges[7], challenges[8]]);
     assert_eq!(
@@ -217,7 +216,7 @@ fn cpu_proof_layout_pr_roundtrip() {
     );
     assert_m6_fields_equal(&layout.parse_m6_fields(slab.bytes()), &expected);
     println!(
-        "M6_TYPED_ROUNDTRIP layers={} fields={} raw_column_claims=114 merged_claims=8 point=26",
+        "M6_TYPED_ROUNDTRIP layers={} fields={} raw_column_claims=114 merged_claims=8 point=25",
         expected.sumcheck_intermediate_values.len(),
         layout.bytes_len() / 16
     );
@@ -226,9 +225,8 @@ fn cpu_proof_layout_pr_roundtrip() {
 #[test]
 fn cpu_proof_layout_pr_geometry() {
     let programs = programs();
-    let config = prover::gkr::prover_config::example_configs::evm_production_packed_prover_config(
-        SecurityLevel::Sec100,
-    );
+    let config =
+        prover::gkr::prover_config::ProofProfile::L1Wrap.prover_config(21, SecurityLevel::Sec100);
     let layout = ProofLayoutPr::new(&programs, &config, 4);
     layout.validate_geometry(&programs.runtime_circuit, 4);
     let mut ranges = vec![
@@ -255,9 +253,9 @@ fn cpu_proof_layout_pr_geometry() {
         assert_eq!(
             layer.sumcheck_num_rounds,
             if layer.layer_idx < 5 {
-                22
+                21
             } else {
-                26 - layer.layer_idx
+                25 - layer.layer_idx
             }
         );
     }
@@ -274,12 +272,12 @@ fn cpu_proof_layout_pr_geometry() {
             .iter()
             .map(|layer| layer.layer_idx)
             .collect::<BTreeSet<_>>(),
-        (0..23).collect()
+        (0..22).collect()
     );
     assert_eq!(layout.memory_claims.len(), 7 * 16);
     assert_eq!(layout.memory_claims.end, layout.setup_claims.start);
     assert_eq!(layout.setup_claims.len(), 16);
-    assert_eq!(layout.evaluation_point.len(), 26 * 16);
+    assert_eq!(layout.evaluation_point.len(), 25 * 16);
     assert_eq!(layout.batching_challenge.len(), 16);
     assert_eq!(layout.external_challenges.len(), 9 * 16);
     assert_eq!(layout.intermediate_transcript_seed.end, layout.bytes_len());
@@ -311,7 +309,7 @@ fn cpu_proof_layout_pr_geometry() {
         15
     );
     println!(
-        "M6_PROOF_GEOMETRY layers=23 point=26 merged=7+1 sections={} bytes={} whir_sections=0",
+        "M6_PROOF_GEOMETRY layers=22 point=25 merged=7+1 sections={} bytes={} whir_sections=0",
         ranges.len(),
         layout.bytes_len()
     );

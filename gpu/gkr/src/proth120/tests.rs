@@ -618,7 +618,7 @@ fn l1_setup_host_round_trip_small() {
 fn l1_layout() -> GKRCircuitArtifact<Proth120> {
     let path = concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json"
+        "/../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120_2p21.json"
     );
     serde_json::from_reader(std::io::BufReader::new(std::fs::File::open(path).unwrap())).unwrap()
 }
@@ -646,13 +646,13 @@ fn deterministic_words(count: usize, salt: u32) -> Vec<u32> {
 #[test]
 fn cpu_lookup_pow_bits_for_l1_layout() {
     let layout = l1_layout();
-    assert_eq!(lookup_identity_degree(&layout), 1_253_707_530);
+    assert_eq!(lookup_identity_degree(&layout), 627_183_370);
     assert_eq!(
         lookup_challenges_pow_bits::<PR, PR>(100, lookup_identity_degree(&layout)),
-        9
+        8
     );
     assert_eq!(lookup_pow_bits(&layout, SecurityLevel::Sec100, 20), 20);
-    assert_eq!(lookup_pow_bits(&layout, SecurityLevel::Sec100, 0), 9);
+    assert_eq!(lookup_pow_bits(&layout, SecurityLevel::Sec100, 0), 8);
 }
 
 #[test]
