@@ -2173,3 +2173,15 @@ import Clean.Specs.Keccak256
 #print axioms Tests.ControlPreparation.arithmetic_preparation_has_actual_control
 #print axioms Tests.ControlPreparation.arithmetic_prefix_and_preparation_share_history
 #print axioms Tests.ControlPreparation.arithmetic_preparation_fabricated_read_rejected
+
+#print axioms Airbender.UnifiedReduced.Caller.SequentialInstruction
+#print axioms Airbender.UnifiedReduced.Caller.SequentialProgram
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.arithmetic_sequential_program
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.sequential_fields_mask
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.sequential_program_pc_advance
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.sequential_program_pc_clock
+#print axioms Tests.ControlPreparation.triadd_before_preparation
+#print axioms Tests.ControlPreparation.triadd_prefix_and_preparation_share_history
+#print axioms Tests.ControlPreparation.triadd_preparation_fabricated_read_rejected
+#print axioms Tests.ControlPreparation.sequential_profile_excludes_jump
+#print axioms Tests.ControlPreparation.sequential_profile_excludes_comparison

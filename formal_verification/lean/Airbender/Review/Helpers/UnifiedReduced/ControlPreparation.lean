@@ -36,8 +36,33 @@ inductive ArithmeticInstruction : SailRV32.instruction → Prop where
 def ArithmeticProgram (program : List UnifiedReduced.ProgramEntry) : Prop :=
   ∀ entry ∈ program, ArithmeticInstruction entry.instruction
 
-/-- Uniform literals, different literals, or ordinary arithmetic on a straight
-    path. Native PC/clock matching locates the final public literal instruction. -/
+/-- Public instruction forms using the native PC-increment path. Successful
+    public decoding still checks destinations, shift payloads and MOP numbers. -/
+inductive SequentialInstruction : SailRV32.instruction → Prop where
+  | arithmetic {instruction} (supported : ArithmeticInstruction instruction) : SequentialInstruction instruction
+  | lw (imm : BitVec 12) (rs1 rd : BitVec 5) : SequentialInstruction (.LOAD (imm, .Regidx rs1, .Regidx rd, false, 4))
+  | sw (imm : BitVec 12) (rs2 rs1 : BitVec 5) : SequentialInstruction (.STORE (imm, .Regidx rs2, .Regidx rs1, 4))
+  | xor (rs2 rs1 rd : BitVec 5) : SequentialInstruction (.RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, .XOR))
+  | or (rs2 rs1 rd : BitVec 5) : SequentialInstruction (.RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, .OR))
+  | and (rs2 rs1 rd : BitVec 5) : SequentialInstruction (.RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, .AND))
+  | sll (rs2 rs1 rd : BitVec 5) : SequentialInstruction (.RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, .SLL))
+  | srl (rs2 rs1 rd : BitVec 5) : SequentialInstruction (.RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, .SRL))
+  | sra (rs2 rs1 rd : BitVec 5) : SequentialInstruction (.RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, .SRA))
+  | xori (imm : BitVec 12) (rs1 rd : BitVec 5) : SequentialInstruction (.ITYPE (imm, .Regidx rs1, .Regidx rd, .XORI))
+  | ori (imm : BitVec 12) (rs1 rd : BitVec 5) : SequentialInstruction (.ITYPE (imm, .Regidx rs1, .Regidx rd, .ORI))
+  | andi (imm : BitVec 12) (rs1 rd : BitVec 5) : SequentialInstruction (.ITYPE (imm, .Regidx rs1, .Regidx rd, .ANDI))
+  | slli (amount : BitVec 6) (rs1 rd : BitVec 5) : SequentialInstruction (.SHIFTIOP (amount, .Regidx rs1, .Regidx rd, .SLLI))
+  | srli (amount : BitVec 6) (rs1 rd : BitVec 5) : SequentialInstruction (.SHIFTIOP (amount, .Regidx rs1, .Regidx rd, .SRLI))
+  | srai (amount : BitVec 6) (rs1 rd : BitVec 5) : SequentialInstruction (.SHIFTIOP (amount, .Regidx rs1, .Regidx rd, .SRAI))
+  | rev8 (rs1 rd : BitVec 5) : SequentialInstruction (.REV8 (.Regidx rs1, .Regidx rd))
+  | triadd (rs2 rs1 rd : BitVec 5) : SequentialInstruction (.ZIMOP_MOP_RR (4, .Regidx rs2, .Regidx rs1, .Regidx rd))
+  | xorrot (mop rs1 rd : BitVec 5) : SequentialInstruction (.ZIMOP_MOP_R (mop, .Regidx rs1, .Regidx rd))
+
+/-- Straight-path arithmetic, LW/SW, bitwise/shifts, REV8 and project MOPs. -/
+def SequentialProgram (program : List UnifiedReduced.ProgramEntry) : Prop :=
+  ∀ entry ∈ program, SequentialInstruction entry.instruction
+
+/-- Uniform literals or a public sequential registry. Native PC/clock matching locates the final public literal instruction. -/
 inductive PreparationProgram [Fact p.Prime] (data : RequestTrace p)
     (program : List UnifiedReduced.ProgramEntry) (cut : Nat)
     (register : BitVec 5) (literal : ControlLiteral) : Prop where
@@ -48,6 +73,12 @@ inductive PreparationProgram [Fact p.Prime] (data : RequestTrace p)
           data.machine.initial.word.value + (cut - 4) →
         entry.instruction = literal.instruction register)
   | arithmetic (entries : ArithmeticProgram program)
+      (atCut : ∀ entry ∈ program,
+        entry.pc.toNat + (timeOfPair data.machine.initial.timestamp).value =
+          data.machine.initial.word.value + (cut - 4) →
+        entry.instruction = literal.instruction register)
+
+  | sequential (entries : SequentialProgram program)
       (atCut : ∀ entry ∈ program,
         entry.pc.toNat + (timeOfPair data.machine.initial.timestamp).value =
           data.machine.initial.word.value + (cut - 4) →
