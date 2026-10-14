@@ -225,4 +225,162 @@ theorem prepared_round_window [Fact p.Prime] (hp : 16777216 ≤ p)
     start, finish, earlierEvents, spanEvents, atStart, atFinish, firstPerm, spanPerm,
     firstHistory, spanHistory, startBoundary, finishBoundary, selected, initialized, result⟩
 
+theorem prepared_round_region_masks [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
+    {program : List UnifiedReduced.ProgramEntry} {regions : List RoundRegion} {region : RoundRegion}
+    (accepted : MixedMemoryAccepted data program)
+    (inputs : PreparedProtocolInputs data before ca oa cells program regions)
+    (scope : RoundRegionInputs data program region) :
+    ∀ row ∈ data.workers.windowRows region.lower region.upper,
+      ∃ round, Blake2Round.Memory.RoundMask row.assignment round := by
+  have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
+  have floor := scope.preparation.afterInitial
+  have duration := scope.duration
+  have positive : 2 ≤ region.lower := by omega
+  have requests := request_binding size clockInverse accepted.toRequestChecks inputs.publicProgram
+  have facts := mixed_memory_facts size clockInverse accepted inputs.publicProgram inputs.initialization requests
+  obtain ⟨start, earlier, suffix⟩ := Transfer.split_at facts (region.lower - 1)
+  obtain ⟨finish, window, _⟩ := Transfer.split_at suffix (region.upper - 1)
+  change Transfer.Facts ⟨start, finish,
+    Transfer.windowSteps (mixedData data) (region.lower - 1) (region.upper - 1)⟩ at window
+  rw [← mixed_window_steps size clockInverse accepted.toRequestChecks inputs.publicProgram
+    scope.aligned.1 scope.aligned.2 positive (by omega)] at window
+  have prefixMatching := earlier.matching
+  rw [mixed_prefix_steps data (by omega)] at prefixMatching
+  obtain ⟨token, member, address, _, word⟩ := preparation_token hp clockInverse accepted
+    inputs.publicProgram inputs.ordinaryProgram inputs.initialization scope.preparation (by decide)
+    scope.aligned.1 prefixMatching
+  have word : token.word = Blake2Round.controlAt region.flags 0 := by
+    rw [word, hash_preparation_value]
+    have bound := region.flags.isLt
+    simp [Delegation.Caller.HashSpan.controlStart, Word.ofBitVec, Blake2Round.controlAt, limbBase, BitVec.toNat_ofNat]
+    omega
+  have schedule := caller_window_schedule size clockInverse accepted.toRequestChecks inputs.publicProgram
+    scope.aligned.1 scope.aligned.2 positive (by omega) (by omega) scope.beforeTerminal duration
+  let keep := fun token : MemoryToken p => token.address != (Cell.register 0).addressCode
+  let projected := data.windowProjection region.lower region.upper start finish
+  have matching := window.matching.filter keep
+  have writes := caller_window_filtered_tokens schedule requests true
+  have reads := caller_window_filtered_tokens schedule requests false
+  change ((data.windowSteps region.lower region.upper).map Prod.snd).filter keep = _ at writes
+  change ((data.windowSteps region.lower region.upper).map Prod.fst).filter keep = _ at reads
+  simp only [List.filter_append, writes, reads] at matching
+  have selected : Delegation.MemoryAccepted projected := by
+    refine ⟨fun row member => accepted.workerConstraints row (List.mem_of_mem_filter member), matching⟩
+  have keys := boundary_keys MemoryToken.address earlier.matching earlier.addresses
+  have unique : (start.map MemoryToken.address).Nodup := keys.nodup_iff.mp (by
+    change (data.machine.initialMemory.map MemoryToken.address).Nodup
+    rw [image_addresses inputs.initialization]
+    exact inputs.distinct)
+  have pool : Blake2Round.Proofs.ControlMatchingInputs projected region.flags := by
+    refine ⟨⟨matching, Delegation.Proofs.preserved_addresses, ?_⟩,
+      unique.sublist (List.filter_sublist.map MemoryToken.address), inputs.tables, scope.family,
+      ⟨token, List.mem_filter.mpr ⟨member, ?_⟩, address, word⟩, scope.roundsBound⟩
+    · intro edge present
+      have member := List.mem_flatMap.mp present
+      obtain ⟨row, included, step⟩ := member
+      exact facts.order edge (List.mem_append.mpr (Or.inr (List.mem_flatMap.mpr
+        ⟨row, List.mem_of_mem_filter included, step⟩)))
+    · simp [address, Cell.addressCode]
+  exact Blake2Round.Proofs.matching_masks size selected pool
+
+theorem prepared_protocol_memory_inputs [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
+    {program : List UnifiedReduced.ProgramEntry} {regions : List RoundRegion}
+    (accepted : MixedMemoryAccepted data program)
+    (inputs : PreparedProtocolInputs data before ca oa cells program regions) :
+    MixedMemoryInputs data program before ca oa cells := by
+  refine ⟨inputs.publicProgram, inputs.ordinaryProgram, inputs.initialization, inputs.distinct,
+    inputs.aligned, inputs.setup, inputs.tables, ?_⟩
+  intro row member family
+  obtain ⟨region, included, inside⟩ := inputs.coverage row member family
+  exact prepared_round_region_masks hp clockInverse accepted inputs (inputs.scopes region included) row inside
+
+theorem prepared_protocol_reference_at_states [Fact p.Prime] (hp : 16777216 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {before atStart atFinish : State} {ca oa : List (BitVec 32)} {cells : List Cell}
+    {program : List UnifiedReduced.ProgramEntry} {regions : List RoundRegion} {window : HashWindow}
+    {start finish : List (MemoryToken p)} {spanEvents : List MemoryAccess}
+    (accepted : MixedMemoryAccepted data program)
+    (inputs : PreparedProtocolInputs data before ca oa cells program regions)
+    (scope : PreparedProtocolWindowInputs data program window)
+    (first : window.lower % 4 = 0) (last : window.upper % 4 = 0)
+    (prefixMatching : (data.machine.initialMemory ++ (data.prefixSteps window.lower).map Prod.snd).Perm
+      (start ++ (data.prefixSteps window.lower).map Prod.fst))
+    (matching : (start ++ (data.windowSteps window.lower window.upper).map Prod.snd).Perm
+      (finish ++ (data.windowSteps window.lower window.upper).map Prod.fst))
+    (startBoundary : NativeBoundary start atStart cells) (finishBoundary : NativeBoundary finish atFinish cells)
+    (spanPerm : spanEvents.Perm ((data.windowSteps window.lower window.upper).map transferEvent))
+    (spanHistory : SailHistory cells spanEvents atStart atFinish) :
+    window.span.Result (data.windowProjection window.lower window.upper start finish) atStart atFinish
+      (Delegation.Caller.workerCells cells) := by
+  have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
+  have memory := prepared_protocol_memory_inputs (by omega) clockInverse accepted inputs
+  have floor := scope.preparation.afterInitial
+  have duration := scope.duration
+  have schedule := caller_window_schedule size clockInverse accepted.toRequestChecks inputs.publicProgram
+    first last (by omega) (by omega) (by omega) scope.beforeTerminal (by simpa only [scope.calls] using duration)
+  have requests := request_binding size clockInverse accepted.toRequestChecks inputs.publicProgram
+  obtain ⟨selected, initialized, terminal, target⟩ :=
+    mixed_worker_window_at_states accepted memory schedule requests matching startBoundary finishBoundary spanPerm spanHistory
+  have control := preparation_at_boundary (by omega) clockInverse accepted memory scope.preparation
+    (hash_control_register_nonzero window.span) first prefixMatching startBoundary
+  have entry : (Cell.register window.span.controlRegister).read atStart = .ok window.span.controlStart atStart := by
+    simpa only [hash_preparation_value] using control.1
+  have protocol : Delegation.Caller.HashSpan.Protocol (data.windowProjection window.lower window.upper start finish)
+      atStart window.span := ⟨inputs.tables, scope.family, entry, scope.calls⟩
+  exact Delegation.Caller.Proofs.hash_span_at_target hp clockInverse selected initialized protocol
+    (fun row member => accepted.workerActive row (List.mem_of_mem_filter member))
+    (fun cell member => inputs.aligned cell (List.mem_of_mem_filter member)) target terminal.1.addresses
+
+theorem prepared_protocol_sequence_at_segments [Fact p.Prime] (hp : 16777216 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
+    {program : List UnifiedReduced.ProgramEntry} {regions : List RoundRegion} {windows : List HashWindow}
+    (accepted : MixedMemoryAccepted data program)
+    (inputs : PreparedProtocolInputs data before ca oa cells program regions)
+    (scopes : ∀ window ∈ windows, PreparedProtocolWindowInputs data program window)
+    {cut : Nat} {tokens : List (MemoryToken p)} {state : State} {segments : List (WindowSegment p)}
+    (ordered : WindowsOrdered cut (windows.map HashWindow.interval))
+    (actual : WindowSegmentsRealize data cells cut tokens state (windows.map HashWindow.interval) segments) :
+    List.Forall₂ (HashWindowResult data cells) windows segments := by
+  induction windows generalizing cut tokens state segments with
+  | nil =>
+    cases segments with
+    | nil => exact .nil
+    | cons _ _ => exact False.elim actual
+  | cons window rest ih =>
+    cases segments with
+    | nil => exact False.elim actual
+    | cons segment segments =>
+      obtain ⟨_, _, first, last, restOrder⟩ := ordered
+      obtain ⟨_, _, _, prefixMatching, spanPerm, spanHistory, matching, startBoundary, finishBoundary, tail⟩ := actual
+      have scope := scopes window (List.mem_cons_self ..)
+      have result := prepared_protocol_reference_at_states hp clockInverse accepted inputs scope first last
+        prefixMatching matching startBoundary finishBoundary spanPerm spanHistory
+      have floor := scope.preparation.afterInitial
+      have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
+      have requests := request_windows size clockInverse accepted.toRequestChecks inputs.publicProgram first last (by omega)
+      exact .cons ⟨requests, (Delegation.Caller.Proofs.window_call_count requests).trans scope.calls, result⟩
+        (ih (fun next member => scopes next (List.mem_cons_of_mem _ member)) restOrder tail)
+
+theorem prepared_protocol_sequence [Fact p.Prime] (hp : 16777216 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
+    {program : List UnifiedReduced.ProgramEntry} {regions : List RoundRegion} {first : HashWindow} {rest : List HashWindow}
+    (accepted : MixedMemoryAccepted data program)
+    (inputs : PreparedProtocolInputs data before ca oa cells program regions)
+    (scopes : ∀ window ∈ first :: rest, PreparedProtocolWindowInputs data program window)
+    (ordered : WindowsOrdered first.lower ((first :: rest).map HashWindow.interval)) :
+    PreparedHashSequenceResult data before cells first rest := by
+  have rotationInverse : 64 * (-31457280 : ZMod p) = 1 := by linear_combination clockInverse
+  have aligned : first.lower % 4 = 0 := ordered.2.2.1
+  have floor := (scopes first (List.mem_cons_self ..)).preparation.afterInitial
+  have memory := prepared_protocol_memory_inputs (by omega) clockInverse accepted inputs
+  obtain ⟨sequence, actual⟩ := mixed_window_sequence (by omega) clockInverse rotationInverse accepted memory
+    aligned (by omega) ordered
+  exact ⟨sequence, actual, prepared_protocol_sequence_at_segments hp clockInverse accepted inputs scopes ordered actual.segments⟩
+
 end Airbender.UnifiedReduced.Caller.Proofs

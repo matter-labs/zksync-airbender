@@ -22,6 +22,8 @@ mixed execution with delegation callers remains a separate obligation.
 | Complete prepared G/Keccak and extended-BLAKE references reach the selected actual cut states; masks are derived. | [`Caller.prepared_hash_window_soundness` and `Caller.prepared_round_window_soundness`](Theorems.lean) |
 | Two complete prepared G/Keccak references use the same continuously executed states across the intervening preparation and other effects. | [`Caller.prepared_hash_chain_soundness`](Theorems.lean) |
 | A nonempty ordered list of complete prepared G/Keccak references binds every span to that same continuous execution. | [`Caller.prepared_hash_sequence_soundness`](Theorems.lean) |
+| Public LUI preparation and raw matching derive exclusive masks inside each selected extended-BLAKE caller region, retaining earlier workers. | [`Caller.prepared_round_region_masks_soundness`](Theorems.lean) |
+| Ordered complete G/extended-BLAKE/Keccak lists share one execution when prepared controller regions cover every extended-round worker. | [`Caller.prepared_protocol_sequence_soundness`](Theorems.lean) |
 | Original current-state caller fetch, selected worker observations and PC retirement meet at the same boundaries. | [`Caller.caller_cycles_soundness`](Theorems.lean) |
 
 Field/inverse, public boot/configuration/program/domain, modeled tables and logical
@@ -49,8 +51,8 @@ expose actual cut states. [JointHashWindows](JointHashWindows.lean),
 [PreparedHashWindows](PreparedHashWindows.lean) and
 [PreparedRoundWindows](PreparedRoundWindows.lean) bind complete selected references
 at those boundaries. Prepared G/Keccak spans admit earlier workers, including
-unissued effects; only the last preparation cycle is worker-free. Extended BLAKE
-retains its empty prefix. Public preparation/count/duration and these restrictions
+unissued effects; only the last preparation cycle is worker-free. The original
+first-span extended-BLAKE entry retains its empty prefix. Public preparation/count/duration and these restrictions
 remain explicit; cuts do not reset clocks or supply intermediate states.
 The public ordinary registry may contain different literal writes along a straight
 path with callers. Each preparation cut derives its own literal and register from
@@ -81,6 +83,22 @@ mode/count/duration and nonround worker scope; protocol shape is not inferred fr
 general acceptance. Three-window regressions retain actual controls across empty
 and nonempty gaps, reject overlap/unaligned cuts, and preserve the unissued prefix.
 
+The broader [prepared protocol inputs](PreparedRoundWindows.lean) allow extended
+BLAKE alongside G, Keccak and bigint in the same history.
+[`RoundRegionInputs`](PreparedRoundWindows.lean) binds each LUI restart to a
+homogeneous caller region with at most ten positions. Raw prefix/window matching
+derives its masks before any mask-dependent Sail transport; its control token
+keeps the actual preparation timestamp. Earlier workers and earlier controller
+regions stay in the prefix. [`PreparedProtocolInputs`](PreparedRoundWindows.lean)
+requires these regions to cover every extended-round worker. This explicit
+coverage replaces the global empty-prefix/family/ten-row restrictions in this
+entry point; it does not derive unrestricted protocol validity from acceptance.
+[`PreparedProtocolWindowInputs`](PreparedRoundWindows.lean) retains each selected
+complete span's preparation, family, count and duration. The sequence theorem binds
+all three complete references to their actual segment states without resetting
+clocks. Completion alone is still not a controller restart. The regional seed,
+wrong-flag/two-bit and retained-unissued-effect regressions are linked above.
+
 Keep surplus zero-clock prefix effects, worker ROM-shadow transport,
-extended-round chaining and broader preparation, full mixed caller retirement and inactive padding as separate
+broader preparation/protocol binding, full mixed caller retirement and inactive padding as separate
 outstanding obligations. [Status](../../../../VERIFICATION_STATUS.md) records the scope.
