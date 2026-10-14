@@ -34,11 +34,13 @@ use gpu_whir::proth120::{
     L1_WHIR_TILE_BYTES,
 };
 
-use super::{l1_wrap_batching_pow_bits, validate_l1_wrap_preconditions, L1Proof, L1WrapInputs};
+use super::{
+    l1_wrap_batching_pow_bits, validate_l1_wrap_preconditions, L1Proof, L1WrapGeometry,
+    L1WrapInputs,
+};
 use crate::proof::memory_policy::{PartialTreePolicy, ProofMemoryPolicy};
 use crate::upstream::{
-    CommitmentMode, GKRCircuitArtifact, L1WrapResult, ProverConfig, EVM_PRODUCTION_PACK_LOG2,
-    TIMESTAMP_COLUMNS_NUM_BITS,
+    CommitmentMode, GKRCircuitArtifact, L1WrapResult, ProverConfig, TIMESTAMP_COLUMNS_NUM_BITS,
 };
 
 pub struct GpuL1WrapProofJob<'a> {
@@ -66,6 +68,7 @@ pub(crate) struct GpuL1WrapProofJobKeepalive<'a> {
 pub fn prove<'a, A: GoodAllocator + 'a>(
     programs: &Arc<GkrProgramsPr>,
     circuit: &Arc<GKRCircuitArtifact<PR>>,
+    geometry: &L1WrapGeometry,
     config: &ProverConfig,
     commitment_mode: CommitmentMode,
     inputs: L1WrapInputs<'a, A>,
@@ -78,60 +81,45 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     inputs.transfer.ensure_transferred(context)?;
     context.reset_used_mem_peak();
     validate_l1_wrap_preconditions(
+        geometry,
         config,
         &commitment_mode,
         policy,
         context.proth120_ntt_device_context().log_max_domain(),
     );
-    let batching_pow_bits = l1_wrap_batching_pow_bits(config, circuit);
+    geometry.assert_artifact(circuit);
+    let circuit_type = geometry.circuit_type;
+    let batching_pow_bits = geometry.batching_pow_bits;
     assert_eq!(
-        batching_pow_bits, 16,
-        "L1Wrap requires batching_pow_bits 16"
+        l1_wrap_batching_pow_bits(config, circuit, geometry.pack_log2),
+        batching_pow_bits,
+        "{circuit_type:?} batching PoW bits disagree with the geometry"
     );
-    let cfg = PackedCommitConfig::from_prover_config(config, 26, partial_trees.memory);
-    let rows = circuit.trace_len;
-    let memory_columns = circuit.memory_layout.total_width;
-    let witness_columns = circuit.witness_layout.total_width;
-    assert_eq!(rows, 1 << 22, "L1Wrap requires 2^22 trace rows");
-    assert_eq!(memory_columns, 38, "L1Wrap requires 38 memory columns");
-    assert_eq!(witness_columns, 66, "L1Wrap requires 66 witness columns");
-    assert_eq!(
-        memory_columns + witness_columns,
-        104,
-        "L1Wrap requires 104 base columns"
-    );
-    assert_eq!(
-        circuit.scratch_space_size, 41,
-        "L1Wrap requires 41 scratch columns"
-    );
-    assert_eq!(
-        circuit.generic_lookup_tables_width, 10,
-        "L1Wrap requires 10 setup columns"
-    );
-    assert!(
-        circuit.has_decoder_lookup,
-        "L1Wrap requires a decoder lookup"
-    );
+    let cfg =
+        PackedCommitConfig::from_prover_config(config, geometry.log_message, partial_trees.memory);
+    let rows = geometry.rows;
+    let memory_columns = geometry.memory_columns;
+    let witness_columns = geometry.witness_columns;
     assert_eq!(
         inputs.top_bits_host.len(),
-        2,
-        "L1Wrap requires two top bits"
+        geometry.num_it_sets,
+        "{circuit_type:?} inits-and-teardowns top bits count mismatch"
     );
     assert_eq!(
-        inputs.setup_host.log_rows, 22,
-        "L1Wrap setup trace log mismatch"
+        inputs.setup_host.log_rows, geometry.trace_log,
+        "{circuit_type:?} setup trace log mismatch"
     );
     assert_eq!(
-        inputs.setup_host.columns_count, 10,
-        "L1Wrap setup columns mismatch"
+        inputs.setup_host.columns_count, geometry.setup_columns,
+        "{circuit_type:?} setup columns mismatch"
     );
     assert_eq!(
-        inputs.setup_host.pack_log2, EVM_PRODUCTION_PACK_LOG2 as u32,
-        "L1Wrap setup pack_log2 mismatch"
+        inputs.setup_host.pack_log2, geometry.pack_log2,
+        "{circuit_type:?} setup pack_log2 mismatch"
     );
     assert!(
         inputs.setup_host.cfg.same_protocol_geometry(&cfg),
-        "L1Wrap setup commitment config mismatch"
+        "{circuit_type:?} setup commitment config mismatch"
     );
     let multiplicity_start = circuit
         .witness_layout
@@ -141,26 +129,6 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         .witness_layout
         .multiplicities_columns_for_generic_lookup
         .end;
-    assert!(
-        circuit
-            .witness_layout
-            .multiplicities_columns_for_range_check_16
-            .end
-            == circuit
-                .witness_layout
-                .multiplicities_columns_for_timestamp_range_check
-                .start
-            && circuit
-                .witness_layout
-                .multiplicities_columns_for_timestamp_range_check
-                .end
-                == circuit
-                    .witness_layout
-                    .multiplicities_columns_for_generic_lookup
-                    .start
-            && multiplicity_end - multiplicity_start == 3,
-        "L1Wrap requires three contiguous multiplicity columns"
-    );
     let L1WrapInputs {
         transfer,
         decoder,
@@ -182,7 +150,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     setup_transfer.record_transferred(context)?;
     setup_transfer.ensure_transferred(context)?;
     let mut raw = TraceHolder::<PR>::new_without_cosets(
-        22,
+        geometry.trace_log,
         cfg.log_lde_factor,
         cfg.log_values_per_leaf,
         cfg.cap_log,
@@ -225,7 +193,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         };
         generate_inits_and_teardowns(
             &circuit.memory_layout,
-            22,
+            geometry.trace_log,
             PAGE_SIZE_LOG2,
             &inits_and_teardowns.data_device,
             &mut buffers.memory,
@@ -288,11 +256,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     drop(tracing_data);
     drop(inits_and_teardowns);
     drop(decoder);
-    let mut base = PackedCosetRecomputeOracle::pack_from_columns(
-        raw,
-        EVM_PRODUCTION_PACK_LOG2 as u32,
-        context,
-    )?;
+    let mut base = PackedCosetRecomputeOracle::pack_from_columns(raw, geometry.pack_log2, context)?;
     base.commit(&cfg, context)?;
     let mut seed = context.alloc::<u8>(32, AllocationPlacement::BestFit)?;
     memory_set_async(&mut seed, 0, stream)?;
@@ -345,7 +309,13 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     drop(range16);
     drop(timestamp);
     let handoff = gkr.whir_handoff();
-    let shape = L1WhirShape::from_schedule(&config.whir_schedule, 26, 5, 2, L1_WHIR_TILE_BYTES);
+    let shape = L1WhirShape::from_schedule(
+        &config.whir_schedule,
+        geometry.log_message,
+        geometry.log_base_lde,
+        geometry.log_base_values_per_leaf,
+        L1_WHIR_TILE_BYTES,
+    );
     let whir = schedule_l1_whir_fold(
         &mut base,
         &mut setup,

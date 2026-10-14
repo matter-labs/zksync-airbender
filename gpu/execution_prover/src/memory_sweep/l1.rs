@@ -557,7 +557,11 @@ fn measure<B: GoodAllocator>(
             let precomputed = Arc::new(step(
                 "setup_initialization",
                 context,
-                L1WrapPrecomputed::new(clone_setup(source.setup), SECURITY_LEVEL),
+                L1WrapPrecomputed::new(
+                    CircuitType::L1Wrap,
+                    clone_setup(source.setup),
+                    SECURITY_LEVEL,
+                ),
             )?);
             step(
                 "setup_initialization",
@@ -637,6 +641,7 @@ fn measure<B: GoodAllocator>(
                 "target_inputs",
                 context,
                 L1WrapInputs::new(
+                    &precomputed.geometry,
                     precomputed.decoder_host.clone(),
                     source.inits_and_teardowns.clone(),
                     source.tracing_data.clone(),
@@ -668,6 +673,7 @@ fn measure<B: GoodAllocator>(
                 gpu_circuit_prover::l1_wrap::prove(
                     &precomputed.programs,
                     &precomputed.circuit,
+                    &precomputed.geometry,
                     &precomputed.config,
                     source.commitment_mode,
                     target,
@@ -905,6 +911,7 @@ fn schedule_follower<'a, B: GoodAllocator + 'a>(
                 "follower_inputs",
                 context,
                 L1WrapInputs::new(
+                    &precomputed.geometry,
                     precomputed.decoder_host.clone(),
                     source.inits_and_teardowns.clone(),
                     source.tracing_data.clone(),

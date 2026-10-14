@@ -19,6 +19,7 @@ use gpu_trace::witness::trace_unrolled::{
     UnrolledUnifiedTraceHost, PAGE_SIZE_LOG2,
 };
 
+use super::L1WrapGeometry;
 use crate::proof::memory_policy::presets::l1_wrap::align_up;
 use crate::upstream::TimestampScalar;
 
@@ -45,18 +46,20 @@ const fn bytes(count: usize, element_bytes: usize) -> usize {
 
 impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
     pub fn new(
+        geometry: &L1WrapGeometry,
         decoder_host: Option<Arc<StaticPinnedBox<ExecutorFamilyDecoderData>>>,
         inits_and_teardowns: InitsAndTeardownsTraceHost<A>,
         tracing_data: UnrolledUnifiedTraceHost<A>,
         setup_host: Arc<L1WrapSetupHost>,
         context: &ProverContext,
     ) -> CudaResult<Self> {
-        let num_sets = CircuitType::L1Wrap.get_num_inits_and_teardowns_sets();
-        let trace_len = CircuitType::L1Wrap.get_domain_size();
+        let circuit_type = geometry.circuit_type;
+        let num_sets = geometry.num_it_sets;
+        let trace_len = geometry.rows;
         let top_bits_host = inits_and_teardowns.top_bits.clone();
         assert!(
             top_bits_host.len() == num_sets,
-            "L1Wrap requires {num_sets} inits-and-teardowns top bits, got {}",
+            "{circuit_type:?} requires {num_sets} inits-and-teardowns top bits, got {}",
             top_bits_host.len()
         );
         let decoder = decoder_host
@@ -99,8 +102,14 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
         self.transfer.record_transferred(context)
     }
 
-    pub const fn phase_one_capacity_bytes(trace_len: usize, decoder_entries: usize) -> usize {
-        let num_sets = CircuitType::L1Wrap.get_num_inits_and_teardowns_sets();
+    pub const fn phase_one_capacity_bytes(circuit_type: CircuitType) -> usize {
+        assert!(
+            circuit_type.is_l1_wrap(),
+            "L1Wrap phase-one capacity requires an L1 wrap circuit type"
+        );
+        let num_sets = circuit_type.get_num_inits_and_teardowns_sets();
+        let trace_len = circuit_type.get_domain_size();
+        let decoder_entries = circuit_type.rom().word_size();
         let capacity = num_sets
             .checked_mul(trace_len)
             .expect("L1Wrap phase-one capacity overflow");

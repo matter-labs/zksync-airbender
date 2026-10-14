@@ -566,6 +566,7 @@ fn schedule_l1_wrap_phase_one<'a>(
     let dr_tail_plan =
         preflight_dr_tail_resources_pr(&precomputed.programs, FINAL_TRACE_SIZE_LOG_2, context);
     let mut inputs = L1WrapInputs::new(
+        &precomputed.geometry,
         precomputed.decoder_host.clone(),
         inits_and_teardowns,
         tracing_data,
@@ -604,6 +605,7 @@ fn enqueue_phase_two<'a>(
         let job = gpu_circuit_prover::l1_wrap::prove::<A>(
             &precomputed.programs,
             &precomputed.circuit,
+            &precomputed.geometry,
             &precomputed.config,
             state.commitment_mode,
             inputs,
