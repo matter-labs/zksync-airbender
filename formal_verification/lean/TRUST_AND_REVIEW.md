@@ -329,7 +329,22 @@ mode/code/duration and the global nonround boundary. Native AUIPC preparation
 witnesses derive empty-region counts; incomplete durations, cuts past the native
 terminal and regions containing ordinary preparation code are rejected. The
 literal public-region entry still retains the unissued G worker in its prefix.
-Extended-round source/mask transport is next; whole CSR retirement remains separate.
+The [source-aware round regions](Airbender/Review/Trace/UnifiedReduced/ComputedRoundRegions.lean)
+now derive actual round-zero tokens from either preparation source and exclusive
+regional masks from raw initialized matching. Public modular controller code,
+aligned cuts and at most forty ticks derive local family/count/duration and the
+ten-position bound. No control read, mask, empty prefix or global ten-row cap is
+supplied. Global memory transport keeps full round-worker coverage explicit;
+local regions do not exclude unissued workers elsewhere. Legacy LUI regional-mask
+and global-memory entries keep their signatures and share this proof. A native
+AUIPC fixture at PC 524288 derives x12 = 65537→524288 and the clock-six token;
+it inhabits an empty controller region and its global context. Wrong public flags,
+invalid cuts and two simultaneous round bits are rejected under the stated ABI.
+These are preparation/empty-region fixtures; nonempty region masks are general
+accepted-witness theorems. The unissued G-prefix remains admitted in the new
+global context. Source-aware public round-CSR occurrence coverage/live masks and
+complete extended-round reference/list composition remain next, before broader
+preparation and whole CSR retirement.
 
 [Control preparation](Airbender/Review/Helpers/UnifiedReduced/ControlPreparation.lean)
 uses a public ordinary ADDI-from-x0/LUI registry and a worker-free final preparation

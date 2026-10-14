@@ -992,4 +992,15 @@ theorem computed_public_region_retains_unissued_worker :
   rw [← schedule.workerCount]
   simpa using schedule.machineCount
 
+theorem computed_protocol_retains_unissued_g :
+    UnifiedReduced.Caller.ComputedPreparedProtocolInputs preparationData preparationBefore [] [0]
+      preparationCells [preparationEntry] [] ∧
+    native ∈ preparationData.workers.rows ∧
+    ¬ Delegation.Requests.Live (Delegation.Requests.fulfillment native) ∧
+    UnifiedReduced.Caller.MixedMemoryInputs preparationData [preparationEntry] preparationBefore [] [0] preparationCells := by
+  have context := UnifiedReduced.Caller.Proofs.literal_computed_protocol_inputs prepared_protocol_inputs_keep_unissued
+  exact ⟨context, List.mem_singleton_self _, by decide +kernel,
+    UnifiedReduced.Caller.computed_protocol_memory_soundness (by decide +kernel) (by decide +kernel)
+      preparationAccepted context⟩
+
 end Tests.DelegationZeroInvocation
