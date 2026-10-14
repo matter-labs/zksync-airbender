@@ -192,6 +192,7 @@ theorem wrong_preparation_instruction_rejected :
     cases scope.program with
     | uniform entries => exact entries (entry 0) (List.mem_singleton_self _)
     | straight _ atCut => exact atCut (entry 0) (List.mem_singleton_self _) (by decide +kernel)
+    | arithmetic _ atCut => exact atCut (entry 0) (List.mem_singleton_self _) (by decide +kernel)
   simp [entry, literal, register, UnifiedReduced.Caller.hashPreparation,
     UnifiedReduced.Caller.ControlLiteral.instruction] at mismatch
 
@@ -260,6 +261,7 @@ theorem mismatched_round_preparation_flags_rejected :
     cases context.preparation.program with
     | uniform entries => exact entries (entry 1) (List.mem_singleton_self _)
     | straight _ atCut => exact atCut (entry 1) (List.mem_singleton_self _) (by decide +kernel)
+    | arithmetic _ atCut => exact atCut (entry 1) (List.mem_singleton_self _) (by decide +kernel)
   change SailRV32.instruction.UTYPE (128, .Regidx 12, .LUI) =
     SailRV32.instruction.UTYPE (144, .Regidx 12, .LUI) at instruction
   cases instruction
@@ -619,6 +621,7 @@ theorem round_region_wrong_flags_rejected :
     cases scope.preparation.program with
     | uniform entries => exact entries (entry 1) (List.mem_singleton_self _)
     | straight _ atCut => exact atCut (entry 1) (List.mem_singleton_self _) (by decide +kernel)
+    | arithmetic _ atCut => exact atCut (entry 1) (List.mem_singleton_self _) (by decide +kernel)
   change SailRV32.instruction.UTYPE (128, .Regidx 12, .LUI) =
     SailRV32.instruction.UTYPE (144, .Regidx 12, .LUI) at instruction
   cases instruction
@@ -645,5 +648,205 @@ theorem prepared_round_region_two_bits_rejected [Fact p.Prime] (hp : 8388608 ≤
   · have zero := mask first
     rw [if_neg same, firstBit] at zero
     exact one_ne_zero zero
+
+private def arithmeticBefore : State := wordWriteState (wordWriteState initialState 0 0x00c60633) 4 0x00000613
+private def arithmeticEntry : UnifiedReduced.ProgramEntry :=
+  ⟨0, 0x00c60633, .RTYPE (.Regidx 12, .Regidx 12, .Regidx 12, .ADD),
+    ⟨.machine, 12, 12, 12, ⟨0, 0⟩, 1, 0⟩⟩
+private def arithmeticProgram : List UnifiedReduced.ProgramEntry := [arithmeticEntry, chainedEntry]
+private def arithmeticAssignment (second : Bool) (column : Nat) : ZMod babyBearModulus :=
+  if second then
+    if column = 34 then 0 else if column = 48 || column = 49 then 2 else chainedAssignment column
+  else
+    if column = 5 || column = 6 || column = 7 || column = 38 || column = 44 then 12
+    else if column = 50 || column = 51 then 2
+    else if column = 46 then 5
+    else if column = 80 then 65537 * 65537 * 943718400
+    else if column = 36 || column = 37 || column = 42 || column = 43 || column = 48 || column = 49 then 1
+    else if column = 8 then 0 else assignment 0 column
+private def arithmeticRow (second : Bool) : Trace.Row babyBearModulus UnifiedFamily :=
+  ⟨.machine, arithmeticAssignment second⟩
+private def arithmeticData : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
+  { chainedData with machine := { chainedData.machine with
+    rows := [arithmeticRow true, arithmeticRow false]
+    rom := UnifiedReduced.Setup.table arithmeticBefore } }
+
+private theorem arithmeticCore (second : Bool) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (arithmeticAssignment second))
+    (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table arithmeticBefore)) := by
+  cases second
+  all_goals simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
+    Verification.environment, Expression.eval, assignment, chainedAssignment, arithmeticAssignment,
+    Lookup.Contains, Table.toRaw, fromElements]
+  all_goals repeat' apply And.intro
+  all_goals solve
+    | decide +kernel
+    | (apply Verification.range16_contains; decide +kernel)
+    | (refine ⟨(0 : Fin 2097537), ?_⟩
+       change (#v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0] : Vector (ZMod babyBearModulus) 10) =
+         (UnifiedReduced.Setup.fixedRow (0 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
+       decide +kernel)
+
+private theorem arithmeticTimestamps (second : Bool) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (arithmeticAssignment second)) UnifiedReduced.importedConstraintsTimestampLookups := by
+  rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
+  constructor
+  · simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.constraints]
+  · rw [List.forall_mem_iff_forall_getElem]
+    intro i bound
+    have short : i < 8 := by simpa only [UnifiedReduced.timestamp_count] using bound
+    interval_cases i
+    all_goals apply Trace.Proofs.range_contains
+    all_goals cases second <;> decide +kernel
+
+private theorem arithmeticAccepted : UnifiedReduced.Caller.MixedMemoryAccepted arithmeticData arithmeticProgram := by
+  constructor
+  · constructor
+    · intro current member
+      have rows : current = arithmeticRow true ∨ current = arithmeticRow false := by simpa [arithmeticData] using member
+      rcases rows with rfl | rfl
+      · exact Verification.holds_append (arithmeticCore true) (arithmeticTimestamps true)
+      · exact Verification.holds_append (arithmeticCore false) (arithmeticTimestamps false)
+    · intro current member
+      have rows : current = arithmeticRow true ∨ current = arithmeticRow false := by simpa [arithmeticData] using member
+      rcases rows with rfl | rfl <;> decide +kernel
+    · change [((arithmeticRow false).start), (arithmeticRow true).finish, (arithmeticRow false).finish].Perm
+        [(arithmeticRow true).finish, (arithmeticRow true).start, (arithmeticRow false).start]
+      have same : (arithmeticRow false).finish = (arithmeticRow true).start := rfl
+      rw [same]
+      exact (List.Perm.swap _ _ _).trans (List.Perm.cons _ (List.Perm.swap _ _ []))
+    · intro current member
+      have empty : arithmeticData.callers = [] := by decide +kernel
+      rw [empty] at member
+      cases member
+    · intro current member
+      cases member
+    · intro current member
+      cases member
+    · have empty : arithmeticData.calls = [] := by decide +kernel
+      rw [empty]
+      exact List.Perm.refl []
+  · intro current member _
+    have rows : current = arithmeticRow true ∨ current = arithmeticRow false := by simpa [arithmeticData] using member
+    rcases rows with rfl | rfl
+    · change ∃ i : Fin 2, (arithmeticRow true).decoderQuery = (arithmeticProgram.get i).query
+      exact ⟨1, by decide +kernel⟩
+    · change ∃ i : Fin 2, (arithmeticRow false).decoderQuery = (arithmeticProgram.get i).query
+      exact ⟨0, by decide +kernel⟩
+  · decide +kernel
+
+private theorem arithmeticImage : UnifiedReduced.Mixed.programImage arithmeticBefore [0, 4] = some arithmeticProgram := by
+  have first : (Cell.ram 0).read arithmeticBefore = .ok 0x00c60633 arithmeticBefore :=
+    written_word_disjoint 4 0x00000613 (by decide) (written_word_read initialState 0 0x00c60633)
+  have second : (Cell.ram 4).read arithmeticBefore = .ok 0x00000613 arithmeticBefore :=
+    written_word_read (wordWriteState initialState 0 0x00c60633) 4 0x00000613
+  have decodeFirst : run (SailRV32.Functions.encdec_backwards 0x00c60633) arithmeticBefore =
+      .ok arithmeticEntry.instruction arithmeticBefore := by with_unfolding_all rfl
+  have decodeSecond : run (SailRV32.Functions.encdec_backwards 0x00000613) arithmeticBefore =
+      .ok chainedEntry.instruction arithmeticBefore := by with_unfolding_all rfl
+  have fieldsFirst : UnifiedReduced.Mixed.decoderFields arithmeticEntry.instruction = some arithmeticEntry.data := by
+    with_unfolding_all rfl
+  have fieldsSecond : UnifiedReduced.Mixed.decoderFields chainedEntry.instruction = some chainedEntry.data := by
+    with_unfolding_all rfl
+  simp only [UnifiedReduced.Mixed.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
+    programEntryRunWith, first, second, decodeFirst, decodeSecond, fieldsFirst, fieldsSecond, bind, Option.bind, pure]
+  rfl
+
+private theorem arithmeticInputs :
+    UnifiedReduced.Caller.MixedMemoryInputs arithmeticData arithmeticProgram arithmeticBefore [] [0, 4] (cells 0) := by
+  refine ⟨⟨rfl, ?_, by decide +kernel⟩, arithmeticImage, ?_, by decide +kernel, ?_, rfl, rfl, ?_⟩
+  · change 4 < timestampBase ∧ 0 < timestampBase
+    norm_num [timestampBase]
+  · have zero : (Cell.register 0).read arithmeticBefore = .ok 0 arithmeticBefore := by with_unfolding_all rfl
+    have control : (Cell.register 12).read arithmeticBefore = .ok 65537 arithmeticBefore := by
+      apply rX_register_frame (before := initialState) (after := arithmeticBefore) rfl 12
+      apply read_register
+      simp [initialState, Std.ExtDHashMap.get?_insert]
+    change initialImage arithmeticBefore [.register 0, .register 12] = some arithmeticData.machine.initialMemory
+    simp only [initialImage, zero, control, List.mapM_cons, List.mapM_nil, bind, pure]
+    rfl
+  · intro cell member
+    have choices : cell = .register 0 ∨ cell = .register 12 := by simpa [cells, register] using member
+    rcases choices with rfl | rfl <;> trivial
+  · intro current member
+    cases member
+
+private theorem arithmeticScope : UnifiedReduced.Caller.ControlPreparation arithmeticData arithmeticProgram 12 12 (.addi 0) := by
+  refine ⟨.arithmetic ?_ ?_, rfl, by decide +kernel, by decide +kernel⟩
+  · intro current member
+    have entries : current = arithmeticEntry ∨ current = chainedEntry := by simpa [arithmeticProgram] using member
+    rcases entries with rfl | rfl
+    · exact .add 12 12 12
+    · exact .addi 0 0 12
+  · intro current member address
+    have entries : current = arithmeticEntry ∨ current = chainedEntry := by simpa [arithmeticProgram] using member
+    rcases entries with rfl | rfl
+    · change 4 = 8 at address
+      omega
+    · rfl
+
+theorem nonliteral_add_before_preparation :
+    UnifiedReduced.Caller.PreparedBoundaryExecution arithmeticData arithmeticBefore (cells 0) 12 12 (.addi 0) :=
+  UnifiedReduced.Caller.control_preparation_soundness (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    arithmeticAccepted arithmeticInputs arithmeticScope (by decide) (by decide)
+
+theorem arithmetic_preparation_uses_prior_aliased_add :
+    (readToken (arithmeticAssignment true) UnifiedReduced.importedConstraintsMemoryPorts[2]).time = (6, 0) ∧
+    (readToken (arithmeticAssignment true) UnifiedReduced.importedConstraintsMemoryPorts[2]).word.toBitVec = 131074 := by
+  decide +kernel
+
+theorem arithmetic_preparation_has_actual_control :
+    ∃ (tokens : List (MemoryToken babyBearModulus)) (events : List MemoryAccess) (state : State), events.Perm ((arithmeticData.prefixSteps 12).map transferEvent) ∧
+      SailHistory (cells 0) events arithmeticBefore state ∧ UnifiedReduced.Caller.NativeBoundary tokens state (cells 0) ∧
+      (Cell.register 12).read state = .ok 0 state ∧
+      ∃ token ∈ tokens, token.address = (Cell.register 12).addressCode ∧
+        (timeOfPair token.time).value = 10 ∧ token.word.toBitVec = 0 :=
+  nonliteral_add_before_preparation
+
+private def arithmeticFabricatedData : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
+  { arithmeticData with machine := { arithmeticData.machine with rows :=
+    [⟨.machine, fun column => if column = 48 then 0 else arithmeticAssignment true column⟩, arithmeticRow false] } }
+
+theorem arithmetic_prefix_and_preparation_share_history :
+    ∃ chain : UnifiedReduced.Caller.WindowChain babyBearModulus,
+      chain.Realizes arithmeticData arithmeticBefore (cells 0) 4 8 8 12 ∧
+      (Cell.register 12).read chain.atFirstFinish = .ok 131074 chain.atFirstFinish ∧
+      (Cell.register 12).read chain.atSecondFinish = .ok 0 chain.atSecondFinish := by
+  obtain ⟨chain, history⟩ := UnifiedReduced.Caller.mixed_window_chain_soundness
+    (a := 4) (b := 8) (c := 8) (d := 12)
+    (by decide +kernel) (by decide +kernel) (by decide +kernel) arithmeticAccepted arithmeticInputs
+    (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) (by decide)
+  have firstMatching := UnifiedReduced.Caller.Proofs.matching_at_next_cut (by decide +kernel) (by decide +kernel)
+    (lower := 4) (upper := 8) arithmeticAccepted.toRequestChecks arithmeticInputs.publicProgram
+    (by decide) (by decide) (by decide) (by decide) history.firstPrefixMatching history.firstMatching
+  let token : MemoryToken babyBearModulus := ⟨(Cell.register 12).addressCode, (6, 0), Nat.pair 2 2⟩
+  have produced : token ∈ arithmeticData.machine.initialMemory ++ (arithmeticData.prefixSteps 8).map Prod.snd := by decide +kernel
+  have notRead : token ∉ (arithmeticData.prefixSteps 8).map Prod.fst := by decide +kernel
+  have present : token ∈ chain.firstFinish := by
+    rcases List.mem_append.mp (firstMatching.mem_iff.mp produced) with present | read
+    · exact present
+    · exact False.elim (notRead read)
+  obtain ⟨cell, _, address, firstRead⟩ := UnifiedReduced.Caller.Proofs.native_boundary_read history.firstFinishBoundary present
+  have same : cell = Cell.register 12 := Trace.Proofs.cell_address_injective address
+  subst cell
+  have finalMatching := UnifiedReduced.Caller.Proofs.matching_at_next_cut (by decide +kernel) (by decide +kernel)
+    (lower := 8) (upper := 12) arithmeticAccepted.toRequestChecks arithmeticInputs.publicProgram
+    (by decide) (by decide) (by decide) (by decide) history.secondPrefixMatching history.secondMatching
+  have lastRead := UnifiedReduced.Caller.Proofs.preparation_at_boundary (by decide +kernel) (by decide +kernel)
+    arithmeticAccepted arithmeticInputs arithmeticScope (by decide) (by decide) finalMatching history.secondFinishBoundary
+  have bits : token.word.toBitVec = (131074 : BitVec 32) := by
+    simp only [token, MemoryToken.word, Nat.unpair_pair]
+    rfl
+  rw [bits] at firstRead
+  exact ⟨chain, history, firstRead, lastRead.1⟩
+
+theorem arithmetic_preparation_fabricated_read_rejected :
+    ¬ UnifiedReduced.Caller.MixedMemoryAccepted arithmeticFabricatedData arithmeticProgram := by
+  intro accepted
+  let token := readToken (fun column => if column = 48 then 0 else arithmeticAssignment true column)
+    UnifiedReduced.importedConstraintsMemoryPorts[2]
+  have consumed : token ∈ arithmeticFabricatedData.mixedSteps.map Prod.fst := by decide +kernel
+  have absent : token ∉ arithmeticFabricatedData.machine.initialMemory ++ arithmeticFabricatedData.mixedSteps.map Prod.snd := by decide +kernel
+  exact absent (accepted.memory.mem_iff.mpr (List.mem_append_right _ consumed))
 
 end Tests.ControlPreparation

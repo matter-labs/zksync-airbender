@@ -87,7 +87,10 @@ the region. Worker matching and retained boundary images are then projected only
 within that region; earlier ordinary effects stay in the actual joint prefix.
 Public ADDI-from-x0/LUI preparation registries now derive actual control reads at
 each preparation cut. Uniform registries remain available; straight-path registries
-admit different literal/register writes interleaved with callers. Native PC/clock
+admit different literal/register writes interleaved with callers. An arithmetic
+registry additionally admits ADD/SUB/ADDI/LUI/AUIPC with unrestricted operands and
+results. Actual public decoding derives native PC-increment selectors; PC/clock
+matching still identifies the final specified literal at each cut. Native PC/clock
 matching derives the final row's public instruction address. State matching identifies the final ordinary row and
 its accepted write; the boundary retains that write's raw timestamp. Only the final preparation cycle must be free of worker writes; earlier worker
 effects remain in the actual prefix. Extended-BLAKE retains its separate empty
@@ -150,8 +153,10 @@ ABI and whole mixed execution remain separate.
    intervening history in the same nonround scope. Regional raw matching now
    derives extended-BLAKE masks at each prepared restart; explicit coverage of all
    extended-round workers connects complete lists of all three references to the
-   same execution. Continue protocol-shape binding and preparation beyond the
-   literal/caller straight-path registry, then whole caller retirement.
+   same execution. Preparation now admits ordinary arithmetic before its final
+   literal, deriving actual controls and retained clocks through the same history.
+   Continue protocol-shape binding, other ordinary/custom prefixes and branching/
+   nonliteral preparation, then whole caller retirement.
    COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed
    retained for the second window. Extended BLAKE and Keccak completion controls
    do not restart their protocols; checked regressions forbid treating their
