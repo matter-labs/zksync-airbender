@@ -242,6 +242,7 @@ impl CircuitPrecomputations {
         let (compiled_circuit, cpu_setup, decoder_table) = match setup {
             CanonicalCircuitSetup::L1Wrap(setup) => {
                 return Ok(Self::L1Wrap(Arc::new(L1WrapPrecomputed::new(
+                    circuit_type,
                     setup,
                     security_level,
                 )?)));

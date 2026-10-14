@@ -1,9 +1,13 @@
+use super::geometry::cpu_tests::wrap_geometry;
 use super::inputs::ALLOCATOR_BLOCK_BYTES;
 use super::*;
 use crate::proof::memory_policy::presets::l1_feeder;
 use crate::proof::memory_policy::presets::INPUTS_RESERVE_BYTES;
 use crate::upstream::OutputType;
-use crate::upstream::{FinalRegisterValue, SecurityLevel, ROM_WORD_SIZE};
+use crate::upstream::{
+    FinalRegisterValue, GKRCircuitArtifact, SecurityLevel,
+    EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS, EVM_PRODUCTION_PACK_LOG2,
+};
 use cs::definitions::GKRAddress;
 use gpu_gkr::proth120::proof_layout::M6ProofFields;
 use gpu_prover_context::ProverContextConfig;
@@ -48,10 +52,7 @@ fn cpu_m8_l1_inputs_fit_reserve() {
         ALLOCATOR_BLOCK_BYTES,
         1 << ProverContextConfig::default().allocator_block_log_size
     );
-    let bytes = L1WrapInputs::<'static, Global>::phase_one_capacity_bytes(
-        CircuitType::L1Wrap.get_domain_size(),
-        ROM_WORD_SIZE,
-    );
+    let bytes = L1WrapInputs::<'static, Global>::phase_one_capacity_bytes(CircuitType::L1Wrap);
     let mib = 1 << 20;
     assert_eq!(bytes, (224 + 1 + 32 + 64 + 20 + 1) * mib);
     assert!(bytes <= INPUTS_RESERVE_BYTES);
@@ -63,20 +64,19 @@ fn cpu_m8_l1_preflight() {
         "../../../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json"
     ))
     .expect("committed Proth120 layout");
-    let config = crate::config::prover_config(
-        CircuitType::L1Wrap,
-        ProofProfile::L1Wrap,
-        SecurityLevel::Sec100,
-    )
-    .unwrap();
+    let (geometry, config) = wrap_geometry(CircuitType::L1Wrap);
     assert_eq!(
         L1_WRAP_NTT_LOG_MAX_DOMAIN as usize,
         config.trace_len_log2
             + EVM_PRODUCTION_PACK_LOG2
             + config.lde_factor.trailing_zeros() as usize
     );
-    assert_eq!(l1_wrap_batching_pow_bits(&config, &circuit), 16);
+    assert_eq!(
+        l1_wrap_batching_pow_bits(&config, &circuit, geometry.pack_log2),
+        16
+    );
     validate_l1_wrap_preconditions(
+        &geometry,
         &config,
         &production_mode(),
         L1_WRAP_POLICY,
@@ -152,7 +152,13 @@ fn cpu_m8_l1_preflight() {
     ];
     for (config, mode, policy, log_max_domain, expected) in cases {
         assert_eq!(
-            panic_message(|| validate_l1_wrap_preconditions(config, &mode, policy, log_max_domain)),
+            panic_message(|| validate_l1_wrap_preconditions(
+                &geometry,
+                config,
+                &mode,
+                policy,
+                log_max_domain
+            )),
             expected
         );
     }
