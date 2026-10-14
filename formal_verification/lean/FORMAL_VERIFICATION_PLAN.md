@@ -138,9 +138,15 @@ Public extended-round controller regions now also derive their local worker fami
 ten-position bound and exact duration from original public CSR regions, aligned
 cuts and an extent of at most forty ticks. Raw matching and LUI preparation then
 derive masks through the existing regional proof, before continuous reference
-composition. Global coverage of every extended-round worker remains explicit;
-live caller matching does not exclude surplus zero-clock workers. This does
-not derive unrestricted protocol validity or close invalid-call findings. COPY→ADDI,
+composition. Coverage of public decoded round CSR addresses now derives region
+membership for every live extended-round worker. Raw regional matching and public
+LUI preparation then derive masks for all those issued workers without supplying
+global worker coverage or masks. Conversely, region membership implies live
+invocation. Within this public sequential/controller profile, full worker
+coverage is equivalent to the absence of zero-clock extended-round workers; this
+is a proved boundary, not an added invocation premise. Global coverage remains
+explicit for mask transport, with unissued workers retained in actual history.
+This does not derive unrestricted protocol validity or close invalid-call findings. COPY→ADDI,
 empty regions and both bigint control gaps are checked; wrong family and inclusion
 of ordinary code are rejected.
 Caller cycles now connect original current-state fetch, the uniquely matched public
@@ -176,7 +182,10 @@ ABI and whole mixed execution remain separate.
    The public-program sequence entry now derives selected worker families/counts
    from public CSR regions and native matching. Public controller extents now also
    derive local round-worker family/count/duration and the ten-position bound;
-   global controller coverage remains explicit. Continue that coverage binding, control-flow/wraparound
+   public decoded round CSR coverage now derives all issued round-worker coverage,
+   and derives their masks from raw matching/public preparation. It exposes
+   zero-clock extended-round workers as the remaining global-coverage
+   boundary in this profile. Continue that boundary binding, control-flow/wraparound
    and nonliteral preparation, then whole caller retirement; prefix retirement
    remains separate.
    COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed

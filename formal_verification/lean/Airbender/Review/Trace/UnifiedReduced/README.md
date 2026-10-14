@@ -16,6 +16,9 @@ mixed execution with delegation callers remains a separate obligation.
 | Exact caller regions, counts and slots follow from state/request matching and public cuts/duration. | [`Caller.window_schedule_soundness` and `Caller.request_window_soundness`](Theorems.lean) |
 | Public sequential code identifies caller regions; native matching derives selected worker family, counts and slots. | [`Caller.program_window_schedule_soundness`](Theorems.lean) |
 | Public CSR controller regions and at most forty ticks derive round-worker family/count/duration and the ten-position bound. | [`Caller.program_round_region_soundness`](Theorems.lean) |
+| Coverage of public decoded round CSRs derives region membership exactly for live round workers. | [`Caller.program_round_coverage_soundness`](Theorems.lean) |
+| Public round CSR coverage and LUI preparation derive every issued round mask from raw matching, without full worker coverage. | [`Caller.program_round_live_masks_soundness`](Theorems.lean) |
+| Full controller coverage is equivalent to absence of zero-clock extended-round workers in the public sequential/controller profile. | [`Caller.program_round_global_coverage_boundary_soundness`](Theorems.lean) |
 | Actual joint cut states and projected worker boundaries retain native timestamps. | [`Caller.mixed_window_soundness` and `Caller.mixed_window_projection_soundness`](Theorems.lean) |
 | Public ADDI-from-x0/LUI preparation yields actual controls after literal or sequential ordinary/custom prefixes; native PC/clock matching derives each preparation address. | [`Caller.control_preparation_soundness`](Theorems.lean) |
 | Two preparations share their actual cut states and the complete intervening machine/worker history; neither control is supplied. | [`Caller.control_preparation_window_soundness`](Theorems.lean) |
@@ -141,6 +144,25 @@ global controller coverage and unrestricted protocol validity remain open. COPYâ
 invalid bigint control fixtures check the schedule connection; wrong CSR family
 and inclusion of ordinary code are rejected in
 [the unified regressions](../../../../Tests/UnifiedDelegation.lean).
+
+[`ProgramRoundCallerCoverage`](PreparedRoundWindows.lean) places each public decoded
+extended-round CSR in a prepared region. Native PC/clock matching locates its actual
+caller, and full CSR/request matching identifies the actual worker in that region.
+[`RoundWorkerCoverage`](PreparedRoundWindows.lean) states the checked equivalence:
+an extended-round worker belongs to a region exactly when its invocation is live.
+Public LUI preparation and raw regional matching then derive exclusive masks for
+every issued round worker. This local proof uses `ProtocolContextInputs`, with
+full worker coverage reserved for global mask-dependent transport. The
+[two-bit regression](../../../../Tests/ControlPreparation.lean) rejects two selected
+round bits from these public inputs and a live target, without assumed masks or
+whole-pool coverage.
+The coverage equivalence assumes neither whole-pool worker coverage nor nonzero
+invocations. Full coverage
+is consequently equivalent to absence of zero-clock extended-round workers in this
+public sequential/controller profile; their general exclusion or mask behavior
+still needs a binding before global transport. Public-code regressions require a
+nonempty covering interval for a decoded round CSR and preserve empty LUI-prepared
+cuts. The actual unissued G worker and its prefix update remain admitted.
 
 Keep surplus zero-clock prefix effects, worker ROM-shadow transport,
 broader preparation/protocol binding, full mixed caller retirement and inactive padding as separate
