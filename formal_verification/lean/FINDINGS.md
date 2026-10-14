@@ -255,10 +255,27 @@ Broader operand-dependent preparation, jumps/branches and whole caller retiremen
 remain open. No demonstrated terminal-PC, bigint, zero-clock, ROM-shadow or
 discarded-load finding is hidden by these entries.
 
+The separate [register-dependent ADDI entry](Airbender/Review/Trace/UnifiedReduced/RegisterPreparation.lean)
+now derives its actual final row from public modular code and native clocks, its
+source state from the initialized prefix and its operand bounds from memory
+induction. Native arithmetic derives the RV32 sum using Sail's signed immediate
+extension. The actual cycle supplies its cut read and canonical output token at
+cut minus two, including source/destination aliases. No operand read, bound,
+selector, intermediate state or desired value is supplied. Only the final cycle
+is worker-free; earlier issued/unissued effects and the public domain/setup/table/
+round-mask boundaries remain. [Native fixtures](Tests/ControlPreparation.lean)
+derive 65537→65665 and 65537→65536, retain clock six and reject a wrong immediate
+or fabricated source. The [unissued G-prefix fixture](Tests/DelegationZeroInvocation.lean)
+derives actual states 0→1→1, preserving the operand update before ADDI. Legacy
+literal/AUIPC signatures remain and share arithmetic/output-token helpers. This
+is memory preparation; complete Sail retirement and public dataflow binding to
+protocol entry constants remain separate. The complete hash-reference source
+interface retains its existing literal/AUIPC forms. All ABI findings remain exposed.
+
 All 116 concrete test modules and 143 importer guards pass. The full
-2,219-root axiom audit has 64 axiom-free roots and only the three standard
-Lean axioms. Review checks pass for all 118 public theorem roots, 193 declaration
-names and 708 guide links/anchors, with no handwritten project diagnostics.
+2,235-root axiom audit has 64 axiom-free roots and only the three standard
+Lean axioms. Review checks pass for all 119 public theorem roots, 198 declaration
+names and 717 guide links/anchors, with no handwritten project diagnostics.
 
 ## Review priorities
 

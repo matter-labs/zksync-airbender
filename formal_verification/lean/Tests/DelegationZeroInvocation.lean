@@ -1021,4 +1021,178 @@ theorem computed_public_protocol_retains_unissued_g :
     context.scopes code).1
   exact ⟨context, covered, List.mem_singleton_self _, by decide +kernel⟩
 
+private def operandAssignment (column : Nat) : ZMod babyBearModulus :=
+  if column = 5 then 12
+  else if column = 34 then 2
+  else if column = 36 ∨ column = 50 then 1
+  else if column = 46 then 4
+  else if column = 40 then 0
+  else preparationAssignment column
+private def operandRow : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, operandAssignment⟩
+private def operandBefore : Reference.RiscV.Sail.State := Reference.RiscV.Sail.wordWriteState before 0 0x00060613
+private def operandEntry : UnifiedReduced.ProgramEntry :=
+  ⟨0, 0x00060613, .ITYPE (0, .Regidx 12, .Regidx 12, .ADDI),
+    ⟨.machine, 12, 0, 12, ⟨0, 0⟩, 1, 0⟩⟩
+private def operandData : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
+  { preparationData with machine := { preparationData.machine with
+      rows := [operandRow]
+      rom := UnifiedReduced.Setup.table operandBefore
+      initial := operandRow.start
+      terminal := operandRow.finish
+      terminalMemory := ⟨(Cell.register 0).addressCode, (5, 0), 0⟩ ::
+        ⟨(Cell.register 12).addressCode, (6, 0), Nat.pair 1 0⟩ ::
+        data.terminal.filter (fun token => token.address != (Cell.register 12).addressCode) } }
+
+private theorem operandCore : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment operandAssignment)
+    (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table operandBefore)) := by
+  simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
+    Verification.environment, Expression.eval, operandAssignment, preparationAssignment, Lookup.Contains, Table.toRaw, fromElements]
+  repeat' apply And.intro
+  all_goals solve
+    | decide +kernel
+    | (apply Verification.range16_contains; decide +kernel)
+    | (refine ⟨(0 : Fin 2097537), ?_⟩
+       change (#v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0] : Vector (ZMod babyBearModulus) 10) =
+         (UnifiedReduced.Setup.fixedRow (0 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
+       decide +kernel)
+
+private theorem operandClocks : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment operandAssignment) UnifiedReduced.importedConstraintsTimestampLookups := by
+  rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
+  constructor
+  · simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.constraints]
+  · rw [List.forall_mem_iff_forall_getElem]
+    intro i bound
+    have short : i < 8 := by simpa only [UnifiedReduced.timestamp_count] using bound
+    interval_cases i
+    all_goals apply Trace.Proofs.range_contains
+    all_goals decide +kernel
+
+private theorem operandAccepted :
+    UnifiedReduced.Caller.MixedMemoryAccepted operandData [operandEntry] := by
+  constructor
+  · constructor
+    · intro current member
+      have same : current = operandRow := List.mem_singleton.mp member
+      subst current
+      exact Verification.holds_append operandCore operandClocks
+    · intro current member
+      have same : current = operandRow := List.mem_singleton.mp member
+      subst current
+      rfl
+    · exact List.Perm.swap _ _ []
+    · intro current member
+      have empty : operandData.callers = [] := by decide +kernel
+      rw [empty] at member
+      cases member
+    · exact sharedAccepted.workerConstraints
+    · exact sharedAccepted.workerActive
+    · exact no_caller_virtual_matching
+  · intro current member _
+    have same : current = operandRow := List.mem_singleton.mp member
+    subst current
+    change ∃ i : Fin 1, operandRow.decoderQuery = ([operandEntry].get i).query
+    exact ⟨0, by decide +kernel⟩
+  · decide +kernel
+
+private theorem operandProgram :
+    UnifiedReduced.Mixed.programImage operandBefore [0] = some [operandEntry] := by
+  have bytes : (Cell.ram 0).read operandBefore = .ok 0x00060613 operandBefore :=
+    Reference.RiscV.Sail.written_word_read before 0 _
+  have decoded : Reference.Sail.run (SailRV32.Functions.encdec_backwards 0x00060613) operandBefore =
+      .ok operandEntry.instruction operandBefore := by with_unfolding_all rfl
+  have fields : UnifiedReduced.Mixed.decoderFields operandEntry.instruction = some operandEntry.data := by
+    with_unfolding_all rfl
+  simp only [UnifiedReduced.Mixed.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
+    programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+  rfl
+
+private theorem operandImage :
+    initialImage operandBefore preparationCells = some operandData.machine.initialMemory := by
+  have x10 : Cell.read (.register 10) operandBefore = .ok 4194304 operandBefore := by
+    apply Reference.RiscV.Sail.read_register
+    simp [operandBefore, Reference.RiscV.Sail.wordWriteState, before, Std.ExtDHashMap.get?_insert]
+  have x11 : Cell.read (.register 11) operandBefore = .ok 4194368 operandBefore := by
+    apply Reference.RiscV.Sail.read_register
+    simp [operandBefore, Reference.RiscV.Sail.wordWriteState, before, Std.ExtDHashMap.get?_insert]
+  have x12 : Cell.read (.register 12) operandBefore = .ok 0 operandBefore := by
+    apply Reference.RiscV.Sail.read_register
+    simp [operandBefore, Reference.RiscV.Sail.wordWriteState, before]
+  have zero : Cell.read (.register 0) operandBefore = .ok 0 operandBefore := rfl
+  simp only [initialImage, preparationCells, cells, List.mapM_cons, List.mapM_nil, zero, x10, x11, x12]
+  simp [Cell.read, _root_.Sail.ArchSem.readBytes, _root_.Sail.ArchSem.readByte,
+    EStateM.run, get, getThe, MonadStateOf.get, bind, pure,
+    EStateM.bind, EStateM.get, EStateM.pure, operandBefore, Reference.RiscV.Sail.wordWriteState,
+    before, Std.ExtHashMap.getElem_insert, Cell.initialToken, operandData, data, native,
+    Delegation.Row.memorySteps, Delegation.Row.ports, Blake2G.importedConstraintsMemoryPorts,
+    readToken, MemoryAddress.code, Verification.IndirectPort.rawAddress, MemoryPort.readCode,
+    WordColumns.code, WordColumns.evaluate, rawPair, row, Arithmetic.Word.ofBitVec, Arithmetic.limbBase]
+  all_goals decide +kernel
+
+private theorem operandInputs :
+    UnifiedReduced.Caller.MixedMemoryInputs operandData [operandEntry] operandBefore [] [0] preparationCells := by
+  refine ⟨⟨rfl, ?_, by decide⟩, operandProgram, operandImage, by decide, ?_, rfl, rfl, ?_⟩
+  · change 4 < timestampBase ∧ 0 < timestampBase
+    norm_num [timestampBase]
+  · intro cell member
+    simp [preparationCells, cells] at member
+    rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+    all_goals simp [Cell.Aligned]
+  · intro current member family
+    have same : current = native := List.mem_singleton.mp member
+    subst current
+    cases family
+
+private theorem operandScope : UnifiedReduced.Caller.RegisterImmediatePreparation operandData [operandEntry] 8 12 12 0 := by
+  refine ⟨⟨?_, ?_⟩, ?_, by decide +kernel, by decide +kernel, by decide +kernel⟩
+  · intro entry member
+    have same := List.mem_singleton.mp member
+    subst entry
+    exact .sequential (.arithmetic (.addi _ _ _))
+  · intro entry member
+    have same := List.mem_singleton.mp member
+    subst entry
+    decide +kernel
+  · intro entry member _
+    have same := List.mem_singleton.mp member
+    subst entry
+    rfl
+
+theorem register_preparation_retains_unissued_effect :
+    UnifiedReduced.Caller.RegisterImmediatePreparedBoundaryExecution operandData operandBefore preparationCells 8 12 12 0 :=
+  UnifiedReduced.Caller.register_immediate_control_preparation_soundness (by decide +kernel) (by decide +kernel)
+    (by decide +kernel) operandAccepted operandInputs operandScope (by decide) (by decide)
+
+theorem register_preparation_uses_actual_unissued_operand :
+    ∃ (tokens : List (MemoryToken babyBearModulus)) (events : List MemoryAccess)
+      (atSource atCut : Reference.RiscV.Sail.State),
+      events.Perm ((operandData.prefixSteps 4).map transferEvent) ∧
+      Trace.SailHistory preparationCells events operandBefore atSource ∧
+      Trace.SailHistory preparationCells (Trace.rowEvents 1 operandRow).reverse atSource atCut ∧
+      (operandData.machine.initialMemory ++ (operandData.prefixSteps 8).map Prod.snd).Perm
+        (tokens ++ (operandData.prefixSteps 8).map Prod.fst) ∧
+      (Cell.register 12).read operandBefore = .ok 0 operandBefore ∧
+      (Cell.register 12).read atSource = .ok 1 atSource ∧
+      (Cell.register 12).read atCut = .ok 1 atCut ∧
+      ∃ token ∈ tokens, token.address = (Cell.register 12).addressCode ∧
+        (timeOfPair token.time).value = 6 ∧ token.word = Arithmetic.Word.ofBitVec 1 := by
+  obtain ⟨row, member, _, tokens, events, atSource, atCut, permutation, past, native, matching, value, read, written, token, present, address, time, word⟩ :=
+    register_preparation_retains_unissued_effect
+  have same := List.mem_singleton.mp member
+  subst row
+  have actual := Trace.Proofs.native_history_read (columns := UnifiedReduced.importedConstraintsTraceColumns)
+    (ports := UnifiedReduced.importedConstraintsMemoryPorts) (w := operandAssignment)
+    (port := UnifiedReduced.importedConstraintsMemoryPorts[0]) (cell := Cell.register 12) 1 rfl rfl rfl native
+    (by simp [UnifiedReduced.importedConstraintsMemoryPorts]) (by decide +kernel)
+  have operand : memoryWord (UnifiedReduced.importedConstraintsMemoryPorts[0].readCode operandAssignment) = 1 := by decide +kernel
+  rw [operand] at actual
+  have equal : value = 1 := (EStateM.Result.ok.inj (read.symm.trans actual)).1
+  subst value
+  have initial : (Cell.register 12).read operandBefore = .ok 0 operandBefore := by
+    apply Reference.RiscV.Sail.read_register
+    simp [operandBefore, Reference.RiscV.Sail.wordWriteState, before]
+  exact ⟨tokens, events, atSource, atCut, permutation, past, native, matching, initial, actual, written,
+    token, present, address, time, word⟩
+
 end Tests.DelegationZeroInvocation

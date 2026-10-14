@@ -357,6 +357,23 @@ terminal. Complete references/lists remain general accepted-witness theorems;
 these fixtures do not construct complete native reference windows. Broader
 operand-dependent preparation, jumps/branches and whole CSR retirement remain open.
 
+The separate [register-dependent ADDI entry](Airbender/Review/Trace/UnifiedReduced/RegisterPreparation.lean)
+derives the actual final row from public modular code and native clocks. One
+initialized prefix supplies its actual source state; memory induction supplies
+operand bounds, and imported arithmetic derives the RV32 sum with Sail's original
+signed immediate extension. The same native cycle supplies the actual cut read
+and canonical output token at cut minus two, including source/destination aliases.
+No operand read, bound, selector, intermediate state or prepared value is supplied.
+Only the final cycle is worker-free; earlier issued/unissued effects remain.
+Public domain/setup/tables and the existing round-mask boundary stay explicit.
+Native fixtures check 65537→65665 and 65537→65536, retain clock six and reject a
+wrong immediate/fabricated source. The unissued G-prefix fixture derives actual
+states 0→1→1 despite public initial x12 zero. Legacy literal/AUIPC signatures
+remain and share arithmetic/output-token helpers. This proves memory preparation;
+complete Sail retirement and binding a register-dependent result to a protocol
+constant through public dataflow remain separate. The complete source-aware
+reference/list interface still uses its existing literal/AUIPC sources.
+
 [Control preparation](Airbender/Review/Helpers/UnifiedReduced/ControlPreparation.lean)
 uses a public ordinary ADDI-from-x0/LUI registry and a worker-free final preparation
 cycle. The registry may be uniform, contain different literals/registers, or admit
