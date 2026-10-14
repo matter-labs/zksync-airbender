@@ -41,6 +41,19 @@ pub struct CircuitData {
 }
 
 impl CircuitData {
+    /// A circuit outside the `gkr_circuits!` catalogue (its production
+    /// crate and `cs/compiled_circuits/<name>_layout*_gkr.json` artifacts
+    /// exist, but no standard per-level verifier is generated for it).
+    pub fn new(name: &'static str, production_path: &'static str) -> Self {
+        Self {
+            name,
+            production_path,
+            security_levels: [SecurityLevel::Sec100],
+            prover_configs_cache: [OnceLock::new()],
+            nds_cache: [OnceLock::new()],
+        }
+    }
+
     pub fn prover_config_for(&self, level: SecurityLevel) -> &ProverConfig {
         let idx = level as usize;
         self.prover_configs_cache[idx].get_or_init(|| prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(self.compiled_circuit().trace_len.trailing_zeros() as usize, level))
