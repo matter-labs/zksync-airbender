@@ -414,6 +414,7 @@ mod cpu_tests {
     fn cpu_m8_l1_request_shape() {
         let request = WorkRequest::<Global, ()>::L1WrapProof(L1WrapProofRequest {
             batch_id: 7,
+            circuit_type: CircuitType::L1Wrap,
             precomputations: (),
             inits_and_teardowns: InitsAndTeardownsTraceHost {
                 page_indices: empty(),

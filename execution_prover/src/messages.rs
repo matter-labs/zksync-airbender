@@ -110,6 +110,7 @@ pub struct ProofResult<A: GoodAllocator> {
 
 pub struct L1WrapProofRequest<A: GoodAllocator, P> {
     pub batch_id: u64,
+    pub circuit_type: CircuitType,
     pub precomputations: P,
     pub inits_and_teardowns: InitsAndTeardownsTraceHost<A>,
     pub tracing_data: UnrolledUnifiedTraceHost<A>,
@@ -118,6 +119,7 @@ pub struct L1WrapProofRequest<A: GoodAllocator, P> {
 
 pub struct L1WrapProofResult<A: GoodAllocator> {
     pub batch_id: u64,
+    pub circuit_type: CircuitType,
     pub inits_and_teardowns: InitsAndTeardownsTraceHost<A>,
     pub tracing_data: UnrolledUnifiedTraceHost<A>,
     pub result: crate::L1WrapResult,
@@ -142,7 +144,7 @@ impl<A: GoodAllocator, P> WorkRequest<A, P> {
 
     pub fn circuit_type(&self) -> CircuitType {
         match self {
-            WorkRequest::L1WrapProof(_) => CircuitType::L1Wrap,
+            WorkRequest::L1WrapProof(request) => request.circuit_type,
             WorkRequest::MemoryCommitment(request) => request.circuit_type,
             WorkRequest::Proof(request) => request.circuit_type,
             WorkRequest::SetupInitialization(request) => request.circuit_type,
@@ -173,7 +175,7 @@ pub enum WorkResult<A: GoodAllocator> {
 impl<A: GoodAllocator> WorkResult<A> {
     pub fn circuit_type(&self) -> CircuitType {
         match self {
-            WorkResult::L1WrapProof(_) => CircuitType::L1Wrap,
+            WorkResult::L1WrapProof(result) => result.circuit_type,
             WorkResult::MemoryCommitment(result) => result.circuit_type,
             WorkResult::Proof(result) => result.circuit_type,
             WorkResult::SetupInitialization(result) => result.circuit_type,

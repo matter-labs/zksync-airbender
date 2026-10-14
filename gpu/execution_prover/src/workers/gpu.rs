@@ -531,11 +531,17 @@ fn schedule_l1_wrap_phase_one<'a>(
 ) -> CudaResult<PhaseOne<'a>> {
     let L1WrapProofRequest {
         batch_id,
+        circuit_type,
         precomputations,
         inits_and_teardowns,
         tracing_data,
         commitment_mode,
     } = request;
+    assert_eq!(
+        circuit_type,
+        CircuitType::L1Wrap,
+        "the GPU backend proves only the 2^22 L1 wrap until W5"
+    );
     crate::memory_policy::admit_l1_wrap(context.get_mem_size());
     let precomputed = Arc::clone(precomputations.l1_wrap());
     let state = RequestState {
@@ -757,6 +763,7 @@ fn finish_phase_three<'a>(device_id: i32, p2: PhaseTwo<'a>) -> CudaResult<GpuWor
             };
             Ok(GpuWorkResult::L1WrapProof(L1WrapProofResult {
                 batch_id,
+                circuit_type,
                 inits_and_teardowns,
                 tracing_data,
                 result,

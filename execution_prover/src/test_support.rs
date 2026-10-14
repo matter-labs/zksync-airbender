@@ -137,12 +137,13 @@ impl ExecutionBackend for TestBackend {
                         WorkRequest::L1WrapProof(request) => {
                             PROFILES.lock().unwrap().push((
                                 request.batch_id,
-                                CircuitType::L1Wrap,
+                                request.circuit_type,
                                 true,
                                 ProofProfile::L1Wrap,
                             ));
                             WorkResult::L1WrapProof(crate::messages::L1WrapProofResult {
                                 batch_id: request.batch_id,
+                                circuit_type: request.circuit_type,
                                 inits_and_teardowns: request.inits_and_teardowns,
                                 tracing_data: request.tracing_data,
                                 result: crate::L1WrapResult {

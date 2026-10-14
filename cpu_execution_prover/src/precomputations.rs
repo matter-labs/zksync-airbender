@@ -3,11 +3,10 @@ use crate::upstream::{
     DefaultTreeConstructor, GKRCircuitArtifact, Keccak256MerkleTreeWithCap, L1WrapSetup,
     MerkleTreeCapVarLength, Proth120, ProverConfig, SecurityLevel, SetupCommitment, TableDriver,
     TwiddleSetOps, Twiddles, UnrolledCircuitWitnessEvalFn, WhirOracleStorage, BF,
-    EVM_PRODUCTION_PACK_LOG2,
 };
 use execution_prover::backend::CircuitPrecomputation;
 use execution_prover::setup::CanonicalCircuitSetup;
-use execution_prover::{prover_config, ProofProfile};
+use execution_prover::{l1_wrap_packing, prover_config, ProofProfile};
 use execution_prover_model::circuit_type::CircuitType;
 use std::alloc::Global;
 use std::collections::BTreeMap;
@@ -24,6 +23,7 @@ enum CpuPrecomputed {
 }
 
 pub(crate) struct L1WrapPrecomputed {
+    pub(crate) circuit_type: CircuitType,
     pub(crate) setup: L1WrapSetup,
     committed: OnceLock<L1WrapCommittedSetup>,
 }
@@ -37,9 +37,11 @@ pub(crate) struct L1WrapCommittedSetup {
 
 impl L1WrapPrecomputed {
     pub(crate) fn initialize_setup(&self, security_level: SecurityLevel, worker: &Worker) {
-        let config = prover_config(CircuitType::L1Wrap, ProofProfile::L1Wrap, security_level);
-        self.committed
-            .get_or_init(|| L1WrapCommittedSetup::new(&self.setup.setup, config, worker));
+        let config = prover_config(self.circuit_type, ProofProfile::L1Wrap, security_level);
+        let (pack_log2, _) = l1_wrap_packing(self.circuit_type);
+        self.committed.get_or_init(|| {
+            L1WrapCommittedSetup::new(&self.setup.setup, config, pack_log2, worker)
+        });
     }
 
     pub(crate) fn committed(&self) -> &L1WrapCommittedSetup {
@@ -50,8 +52,12 @@ impl L1WrapPrecomputed {
 }
 
 impl L1WrapCommittedSetup {
-    fn new(setup: &CpuGKRSetup<Proth120>, config: ProverConfig, worker: &Worker) -> Self {
-        let pack_log2 = EVM_PRODUCTION_PACK_LOG2;
+    fn new(
+        setup: &CpuGKRSetup<Proth120>,
+        config: ProverConfig,
+        pack_log2: usize,
+        worker: &Worker,
+    ) -> Self {
         let twiddles = Twiddles::new(1 << (config.trace_len_log2 + pack_log2), worker);
         let inputs: Vec<&[Proth120]> = setup
             .hypercube_evals
@@ -112,8 +118,20 @@ impl CpuCircuitPrecomputations {
     ) -> Self {
         let precomputed = match setup {
             CanonicalCircuitSetup::L1Wrap(setup) => {
+                assert!(
+                    circuit_type.is_l1_wrap(),
+                    "an L1 wrap setup needs an L1 wrap circuit, got {circuit_type:?}"
+                );
+                assert!(
+                    setup.trace_len == circuit_type.get_domain_size()
+                        && setup.rom == circuit_type.rom(),
+                    "L1 wrap setup (trace {}, {:?}) disagrees with {circuit_type:?}",
+                    setup.trace_len,
+                    setup.rom
+                );
                 return Self(Arc::new(CpuPrecomputed::L1Wrap(Box::new(
                     L1WrapPrecomputed {
+                        circuit_type,
                         setup,
                         committed: OnceLock::new(),
                     },
@@ -216,5 +234,55 @@ impl CircuitPrecomputation for CpuCircuitPrecomputations {
         }
         let commitment = self.setup_commitment(profile);
         Some(commitment.get_cap())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use common_constants::rom::{RomGeometry, L1_WRAP_ROM, REGULAR_ROM};
+
+    fn setup(trace_len: usize, rom: RomGeometry) -> CanonicalCircuitSetup {
+        CanonicalCircuitSetup::L1Wrap(L1WrapSetup {
+            circuit: unified_reduced_machine_proth120::l1_wrap_2p21::circuit_artifact(),
+            table_driver: TableDriver::new(),
+            decoder_table: Vec::new(),
+            setup: CpuGKRSetup {
+                hypercube_evals: Vec::new(),
+            },
+            trace_len,
+            rom,
+        })
+    }
+
+    #[test]
+    fn l1_wrap21_precomputation_rejects_a_mismatched_setup() {
+        for (circuit_type, trace_len, rom) in [
+            (CircuitType::L1Wrap21, 1 << 22, REGULAR_ROM),
+            (CircuitType::L1Wrap21, 1 << 21, REGULAR_ROM),
+            (CircuitType::L1Wrap, 1 << 22, L1_WRAP_ROM),
+            (CircuitType::L1Wrap, 1 << 21, L1_WRAP_ROM),
+        ] {
+            let Err(panic) = std::panic::catch_unwind(|| {
+                CpuCircuitPrecomputations::from_canonical(
+                    circuit_type,
+                    setup(trace_len, rom),
+                    &[ProofProfile::L1Wrap],
+                )
+            }) else {
+                panic!("{circuit_type:?} accepted trace {trace_len} with {rom:?}")
+            };
+            let message = panic.downcast_ref::<String>().unwrap();
+            assert!(
+                message.starts_with("L1 wrap setup (trace"),
+                "{circuit_type:?}: {message}"
+            );
+        }
+        let accepted = CpuCircuitPrecomputations::from_canonical(
+            CircuitType::L1Wrap21,
+            setup(1 << 21, L1_WRAP_ROM),
+            &[ProofProfile::L1Wrap],
+        );
+        assert_eq!(accepted.l1_wrap().circuit_type, CircuitType::L1Wrap21);
     }
 }

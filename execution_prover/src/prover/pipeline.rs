@@ -31,10 +31,10 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         }
         assert!(proving ^ external_challenges.is_none());
         let binary_holder = &self.binary_holders[&binary_key];
-        assert_ne!(
-            binary_holder.execution_kind,
-            ExecutionKind::L1Wrap,
-            "ExecutionKind::L1Wrap requires prove_l1_wrap"
+        assert!(
+            !binary_holder.execution_kind.is_l1_wrap(),
+            "ExecutionKind::{:?} requires prove_l1_wrap",
+            binary_holder.execution_kind
         );
         assert!(
             binary_holder.profiles.contains(&profile),
@@ -137,7 +137,9 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 .insert(sequence_id, data);
         }
         match execution_kind {
-            ExecutionKind::L1Wrap => panic!("ExecutionKind::L1Wrap requires prove_l1_wrap"),
+            ExecutionKind::L1Wrap | ExecutionKind::L1Wrap21 => {
+                panic!("ExecutionKind::{execution_kind:?} requires prove_l1_wrap")
+            }
             ExecutionKind::Unrolled => {
                 let non_memory =
                     UnrolledNonMemoryCircuitType::get_circuit_types_for_machine_type(machine_type)
@@ -264,8 +266,8 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             let free_allocators_receiver = self.free_allocators_receiver.clone();
             let binary_image = binary_holder.binary_image.clone();
             let text_section = binary_holder.text_section.clone();
-            let cycles_bound = if binary_holder.execution_kind == ExecutionKind::L1Wrap {
-                let limit = CircuitType::L1Wrap.get_domain_size() as u32 + 1;
+            let cycles_bound = if binary_holder.execution_kind.is_l1_wrap() {
+                let limit = unified_circuit.get_domain_size() as u32 + 1;
                 Some(binary_holder.cycles_bound.unwrap_or(limit).min(limit))
             } else {
                 binary_holder.cycles_bound
@@ -312,28 +314,29 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                         ram_config,
                         assume_canonical_mop_inputs,
                     ),
-                    ExecutionKind::Unified | ExecutionKind::Unified22 | ExecutionKind::L1Wrap => {
-                        run_simulator::<_, UnifiedTracingType, _, _, _>(
-                            batch_id,
-                            machine_type,
-                            unified_circuit,
-                            binary_image,
-                            text_section,
-                            cycles_bound,
-                            jit_cache,
-                            &mut memory_holder,
-                            non_determinism_source,
-                            free_trace_chunks_sender,
-                            free_trace_chunks_receiver,
-                            unified_snapshot_sender,
-                            work_results_sender,
-                            free_allocators_receiver,
-                            abort,
-                            &worker,
-                            ram_config,
-                            assume_canonical_mop_inputs,
-                        )
-                    }
+                    ExecutionKind::Unified
+                    | ExecutionKind::Unified22
+                    | ExecutionKind::L1Wrap
+                    | ExecutionKind::L1Wrap21 => run_simulator::<_, UnifiedTracingType, _, _, _>(
+                        batch_id,
+                        machine_type,
+                        unified_circuit,
+                        binary_image,
+                        text_section,
+                        cycles_bound,
+                        jit_cache,
+                        &mut memory_holder,
+                        non_determinism_source,
+                        free_trace_chunks_sender,
+                        free_trace_chunks_receiver,
+                        unified_snapshot_sender,
+                        work_results_sender,
+                        free_allocators_receiver,
+                        abort,
+                        &worker,
+                        ram_config,
+                        assume_canonical_mop_inputs,
+                    ),
                 };
                 memory_holders_sender
                     .send(memory_holder)
@@ -364,17 +367,18 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                     work_results_sender,
                     abort,
                 ),
-                ExecutionKind::Unified | ExecutionKind::Unified22 | ExecutionKind::L1Wrap => {
-                    run_replayer::<UnifiedTracingType, _, _>(
-                        batch_id,
-                        worker_id,
-                        instruction_tape,
-                        unified_snapshot_receiver,
-                        free_trace_chunks_sender,
-                        work_results_sender,
-                        abort,
-                    )
-                }
+                ExecutionKind::Unified
+                | ExecutionKind::Unified22
+                | ExecutionKind::L1Wrap
+                | ExecutionKind::L1Wrap21 => run_replayer::<UnifiedTracingType, _, _>(
+                    batch_id,
+                    worker_id,
+                    instruction_tape,
+                    unified_snapshot_receiver,
+                    free_trace_chunks_sender,
+                    work_results_sender,
+                    abort,
+                ),
             });
         }
         drop(free_trace_chunks_sender);

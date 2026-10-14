@@ -37,6 +37,7 @@ type Callback = Box<dyn for<'a> FnOnce(L1WrapFixture<'a>) -> Box<dyn Any + Send>
 type CaptureOutcome = Result<Box<dyn Any + Send>, Box<dyn Any + Send>>;
 
 pub struct L1WrapFixture<'a> {
+    pub circuit_type: CircuitType,
     pub setup: &'a L1WrapSetup,
     pub tracing_data: &'a UnrolledUnifiedTraceHost<CpuTraceAllocator>,
     pub inits_and_teardowns: &'a InitsAndTeardownsTraceHost<CpuTraceAllocator>,
@@ -47,6 +48,7 @@ pub struct L1WrapFixture<'a> {
 impl L1WrapFixture<'_> {
     pub fn evaluate_witness(&self) -> GKRFullWitnessTrace<Proth120, Global, Global> {
         crate::jobs::evaluate_witness(
+            self.circuit_type,
             self.setup,
             self.inits_and_teardowns,
             self.tracing_data,
@@ -67,6 +69,30 @@ where
     F: for<'a> FnOnce(L1WrapFixture<'a>) -> R + Send + 'static,
     R: Send + 'static,
 {
+    with_l1_wrap_fixture_for(
+        ExecutionKind::L1Wrap,
+        configuration,
+        binary,
+        text,
+        nd_words,
+        cycles_bound,
+        callback,
+    )
+}
+
+pub fn with_l1_wrap_fixture_for<R, F>(
+    execution_kind: ExecutionKind,
+    configuration: CpuExecutionProverConfiguration,
+    binary: Vec<u32>,
+    text: Vec<u32>,
+    nd_words: Vec<u32>,
+    cycles_bound: Option<u32>,
+    callback: F,
+) -> R
+where
+    F: for<'a> FnOnce(L1WrapFixture<'a>) -> R + Send + 'static,
+    R: Send + 'static,
+{
     let mut prover = ExecutionProver::<CaptureBackend>::with_configuration(configuration);
     let (sender, receiver) = unbounded();
     prover.backend().install(
@@ -76,7 +102,7 @@ where
         sender,
     );
     let handle = prover.add_binary(
-        ExecutionKind::L1Wrap,
+        execution_kind,
         MachineType::Reduced,
         binary,
         text,
@@ -225,6 +251,7 @@ fn capture(
         panic!("capture backend received an L1WrapProof without an installed callback")
     };
     let fixture = L1WrapFixture {
+        circuit_type: request.circuit_type,
         setup: &request.precomputations.l1_wrap().setup,
         tracing_data: &request.tracing_data,
         inits_and_teardowns: &request.inits_and_teardowns,
@@ -239,6 +266,7 @@ fn capture(
         .expect("capture outcome receiver dropped before the L1Wrap callback finished");
     L1WrapProofResult {
         batch_id: request.batch_id,
+        circuit_type: request.circuit_type,
         inits_and_teardowns: request.inits_and_teardowns,
         tracing_data: request.tracing_data,
         result: L1WrapResult {
