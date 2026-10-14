@@ -671,6 +671,19 @@ theorem program_regions_admit_unissued_worker :
     ¬ Delegation.Requests.Live (Delegation.Requests.fulfillment native) :=
   ⟨program_protocol_inputs_keep_unissued, List.mem_singleton_self _, by decide +kernel⟩
 
+theorem public_round_coverage_retains_unissued_g :
+    UnifiedReduced.Caller.ProgramRoundCallerCoverage preparationData [] ∧
+    UnifiedReduced.Caller.RoundWorkerCoverage preparationData [] ∧
+    native ∈ preparationData.workers.rows ∧
+    ¬ Delegation.Requests.Live (Delegation.Requests.fulfillment native) := by
+  have code : UnifiedReduced.Caller.ProgramRoundCallerCoverage preparationData [] := by
+    intro entry member
+    cases member
+  have inputs := program_protocol_inputs_keep_unissued
+  have covered := UnifiedReduced.Caller.program_round_coverage_soundness (by decide +kernel) (by decide +kernel)
+    preparationAccepted inputs.publicProgram inputs.ordinaryProgram inputs.registry inputs.scopes code
+  exact ⟨code, covered, List.mem_singleton_self _, by decide +kernel⟩
+
 theorem prepared_regions_retain_unissued_prefix_effect :
     ∃ sequence : UnifiedReduced.Caller.WindowSequence babyBearModulus,
       sequence.Realizes preparationData preparationBefore preparationCells 4 [(4, 4), (4, 8)] ∧
