@@ -32,7 +32,7 @@ pub const WRAP_CANDIDATES_GIB: [usize; 4] = [32, 40, 48, 64];
 pub const FEEDER_CANDIDATES_GIB: [usize; 5] = [21, 30, 40, 48, 64];
 const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
 const SECURITY_LEVEL: SecurityLevel = SecurityLevel::Sec100;
-const UNIFIED: CircuitType = CircuitType::Unrolled(UnrolledCircuitType::Unified);
+const UNIFIED22: CircuitType = CircuitType::Unrolled(UnrolledCircuitType::Unified22);
 const INITS_AND_TEARDOWNS: CircuitType =
     CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns);
 
@@ -112,7 +112,7 @@ impl Stage {
     fn target(self) -> (CircuitType, ProofProfile, u32) {
         match self {
             Stage::Wrap => (CircuitType::L1Wrap, ProofProfile::L1Wrap, 22),
-            Stage::FeederCommit | Stage::FeederProof => (UNIFIED, ProofProfile::L1Feeder, 23),
+            Stage::FeederCommit | Stage::FeederProof => (UNIFIED22, ProofProfile::L1Feeder, 22),
         }
     }
 
@@ -124,11 +124,11 @@ impl Stage {
             ),
             Stage::FeederCommit => format!(
                 "{:?}",
-                presets::merged_commit_strategy(UNIFIED, ProofProfile::L1Feeder)
+                presets::merged_commit_strategy(UNIFIED22, ProofProfile::L1Feeder)
             ),
             Stage::FeederProof => format!(
                 "{:?}",
-                presets::policy(UNIFIED, ProofProfile::L1Feeder, arena_bytes)
+                presets::policy(UNIFIED22, ProofProfile::L1Feeder, arena_bytes)
             ),
         }
     }
@@ -157,7 +157,7 @@ impl Follower {
     fn identity(self) -> (CircuitType, ProofProfile) {
         match self {
             Follower::StandardIt => (INITS_AND_TEARDOWNS, ProofProfile::Standard),
-            Follower::Feeder => (UNIFIED, ProofProfile::L1Feeder),
+            Follower::Feeder => (UNIFIED22, ProofProfile::L1Feeder),
             Follower::Wrap => (CircuitType::L1Wrap, ProofProfile::L1Wrap),
         }
     }
@@ -442,7 +442,7 @@ fn clone_setup(setup: &L1WrapSetup) -> L1WrapSetup {
 }
 
 fn feeder_config() -> ProverConfig {
-    prover_config(UNIFIED, ProofProfile::L1Feeder, SECURITY_LEVEL).unwrap()
+    prover_config(UNIFIED22, ProofProfile::L1Feeder, SECURITY_LEVEL).unwrap()
 }
 
 type FollowerInputs<'a, B> = (
@@ -546,7 +546,7 @@ fn measure<B: GoodAllocator>(
             factory
                 .as_ref()
                 .expect("feeder inputs require the synthetic factory")
-                .prepare_profile(UNIFIED, ProofProfile::L1Feeder),
+                .prepare_profile(UNIFIED22, ProofProfile::L1Feeder),
         )?;
         step(
             "setup_initialization",
@@ -665,7 +665,7 @@ fn measure<B: GoodAllocator>(
                 context,
                 merged_commit_inputs(
                     prepared,
-                    case.partial_trees(UNIFIED, ProofProfile::L1Feeder).setup,
+                    case.partial_trees(UNIFIED22, ProofProfile::L1Feeder).setup,
                     context,
                 ),
             )?;
@@ -696,8 +696,8 @@ fn measure<B: GoodAllocator>(
                     &prepared.precomputations.baby_bear().gkr_programs,
                     &config,
                     target,
-                    presets::merged_commit_strategy(UNIFIED, ProofProfile::L1Feeder),
-                    case.partial_trees(UNIFIED, ProofProfile::L1Feeder),
+                    presets::merged_commit_strategy(UNIFIED22, ProofProfile::L1Feeder),
+                    case.partial_trees(UNIFIED22, ProofProfile::L1Feeder),
                     context,
                 ),
             )?;
@@ -719,7 +719,7 @@ fn measure<B: GoodAllocator>(
                     context,
                     merged_commit_inputs(
                         prepared,
-                        case.partial_trees(UNIFIED, ProofProfile::L1Feeder).setup,
+                        case.partial_trees(UNIFIED22, ProofProfile::L1Feeder).setup,
                         context,
                     ),
                 )?;
@@ -733,8 +733,8 @@ fn measure<B: GoodAllocator>(
                         &prepared.precomputations.baby_bear().gkr_programs,
                         &config,
                         inputs,
-                        presets::merged_commit_strategy(UNIFIED, ProofProfile::L1Feeder),
-                        case.partial_trees(UNIFIED, ProofProfile::L1Feeder),
+                        presets::merged_commit_strategy(UNIFIED22, ProofProfile::L1Feeder),
+                        case.partial_trees(UNIFIED22, ProofProfile::L1Feeder),
                         context,
                     ),
                 )?;
@@ -756,7 +756,7 @@ fn measure<B: GoodAllocator>(
                     0,
                     context,
                     prepared,
-                    case.partial_trees(UNIFIED, ProofProfile::L1Feeder).setup,
+                    case.partial_trees(UNIFIED22, ProofProfile::L1Feeder).setup,
                 ),
             )?;
             step(
@@ -787,8 +787,8 @@ fn measure<B: GoodAllocator>(
                     FINAL_TRACE_SIZE_LOG_2,
                     target,
                     &plan,
-                    presets::policy(UNIFIED, ProofProfile::L1Feeder, row.arena_bytes),
-                    case.partial_trees(UNIFIED, ProofProfile::L1Feeder),
+                    presets::policy(UNIFIED22, ProofProfile::L1Feeder, row.arena_bytes),
+                    case.partial_trees(UNIFIED22, ProofProfile::L1Feeder),
                     context,
                 ),
             )?;
@@ -1103,7 +1103,7 @@ mod cpu_tests {
         );
         assert_eq!(
             Follower::Feeder.identity(),
-            (UNIFIED, ProofProfile::L1Feeder)
+            (UNIFIED22, ProofProfile::L1Feeder)
         );
         assert_eq!(
             Follower::StandardIt.identity(),
