@@ -336,10 +336,7 @@ pub fn commit_merged_tree_for_unified_circuits<
 
 /// [`commit_merged_tree_for_unified_circuits`] that also RETURNS the evaluated
 /// witness trace and the committed in-memory merged oracle instead of
-/// discarding them: the caller can feed both straight into
-/// `prove_configured_with_gkr_merged_with_precommitted_oracle`, so the witness
-/// evaluation and the merged commitment happen exactly once per chunk. The
-/// commitment cap is `.get_cap()` of the returned oracle.
+/// discarding them. The commitment cap is `.get_cap()` of the returned oracle.
 pub fn commit_merged_tree_and_witness_for_unified_circuits<
     EF: FieldExtension<BabyBearField> + Field,
     T: ColumnMajorMerkleTreeConstructor<BabyBearField>,
