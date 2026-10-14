@@ -201,6 +201,25 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         commitment_mode: CommitmentMode,
         profile: ProofProfile,
     ) -> ProveResult {
+        self.commit_memory_and_prove_with_timings(
+            batch_id,
+            handle,
+            non_determinism_source,
+            commitment_mode,
+            profile,
+        )
+        .0
+    }
+
+    /// The cached commit-and-prove path with host wall times for each pass.
+    pub fn commit_memory_and_prove_with_timings(
+        &self,
+        batch_id: u64,
+        handle: &BinaryHandle,
+        non_determinism_source: impl NonDeterminismCSRSource + Send + 'static,
+        commitment_mode: CommitmentMode,
+        profile: ProofProfile,
+    ) -> (ProveResult, CommitAndProveTimings) {
         let binary_key = handle.0;
         let nd_wrapper = NonDeterminismWrapper::new(non_determinism_source);
         let non_determinism_source = Arc::new(Mutex::new(Some(nd_wrapper)));
@@ -214,6 +233,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             commitment_mode,
             profile,
         );
+        let commit_pass = timer.elapsed();
         let non_determinism_values = Arc::into_inner(non_determinism_source)
             .expect("non_determinism_source Arc still has other strong refs after commit_memory")
             .into_inner()
@@ -221,11 +241,14 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             .expect("commit_memory consumed the non_determinism_source")
             .into_replay_source();
         let non_determinism_source = Arc::new(Mutex::new(Some(non_determinism_values)));
+        let challenge_timer = Instant::now();
         let (pow_challenge, external_challenges, proof_caps) =
             self.derive_proof_artifacts(binary_key, &memory_commitment);
+        let external_challenges_time = challenge_timer.elapsed();
         let final_register_values = memory_commitment.final_register_values;
         let final_pc = memory_commitment.final_pc;
         let final_timestamp = memory_commitment.final_timestamp;
+        let proof_timer = Instant::now();
         let prove_result = self.prove_inner(
             &mut cache,
             batch_id,
@@ -237,14 +260,24 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             memory_commitment.commitment_mode,
             memory_commitment.profile,
         );
+        let proof_pass = proof_timer.elapsed();
         assert_eq!(prove_result.register_final_values, final_register_values);
         assert_eq!(prove_result.final_pc, final_pc);
         assert_eq!(prove_result.final_timestamp, final_timestamp);
-        let elapsed = timer.elapsed().as_secs_f64();
+        let total = timer.elapsed();
+        let elapsed = total.as_secs_f64();
         info!(
             "BATCH[{batch_id}] PROVER committed to memory and produced proofs for binary with key {binary_key:?} in {elapsed:.3}s"
         );
-        prove_result
+        (
+            prove_result,
+            CommitAndProveTimings {
+                commit_pass,
+                external_challenges: external_challenges_time,
+                proof_pass,
+                total,
+            },
+        )
     }
 }
 

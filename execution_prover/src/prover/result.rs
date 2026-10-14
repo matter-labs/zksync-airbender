@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::time::Duration;
 
 use common_constants::TimestampScalar;
 
@@ -32,6 +33,18 @@ pub struct CommitMemoryResult {
     /// associated with this commitment. Defaults to a placeholder for the inner
     /// path; the public entry point always overwrites it.
     pub(super) binary_handle: BinaryHandle,
+}
+
+/// Host wall times for one cached commit-and-prove invocation. Pass times include
+/// simulation/replay and waiting for backend work; they are not GPU kernel times.
+#[derive(Clone, Copy, Debug)]
+pub struct CommitAndProveTimings {
+    pub commit_pass: Duration,
+    pub external_challenges: Duration,
+    pub proof_pass: Duration,
+    /// Includes pass transitions and consistency checks, but excludes setup and
+    /// the caller's proof assembly and native verification.
+    pub total: Duration,
 }
 
 pub struct ProveResult {

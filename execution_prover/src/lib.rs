@@ -24,8 +24,8 @@ pub use caps::join_per_coset_caps;
 pub use config::{l1_wrap_packing, prover_config, ExecutionProverConfiguration};
 pub use execution_prover_model::MachineType;
 pub use prover::{
-    BinaryHandle, CommitMemoryResult, ExecutionKind, ExecutionProver, L1Proof, L1WrapResult,
-    ProgramArtifacts, ProveResult, RiscvFamilyArtifact,
+    BinaryHandle, CommitAndProveTimings, CommitMemoryResult, ExecutionKind, ExecutionProver,
+    L1Proof, L1WrapResult, ProgramArtifacts, ProveResult, RiscvFamilyArtifact,
 };
 pub use upstream::CommitmentMode;
 pub use workers::spawn_abort_on_panic;

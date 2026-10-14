@@ -63,6 +63,31 @@ struct BackendSettings {
     /// Replay threads; the backend's default when absent.
     #[arg(long)]
     replay_threads: Option<usize>,
+    /// GPU device arena size; auto selects according to available device memory.
+    #[cfg(feature = "gpu")]
+    #[arg(long, value_enum, default_value = "auto")]
+    gpu_memory_preset: GpuMemoryPreset,
+}
+
+#[cfg(feature = "gpu")]
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum GpuMemoryPreset {
+    Auto,
+    #[value(name = "30gib")]
+    GiB30,
+    #[value(name = "21gib")]
+    GiB21,
+}
+
+#[cfg(feature = "gpu")]
+impl From<GpuMemoryPreset> for prover_pipeline::MemoryPreset {
+    fn from(preset: GpuMemoryPreset) -> Self {
+        match preset {
+            GpuMemoryPreset::Auto => Self::Auto,
+            GpuMemoryPreset::GiB30 => Self::GiB30,
+            GpuMemoryPreset::GiB21 => Self::GiB21,
+        }
+    }
 }
 
 #[derive(Clone, Debug, ValueEnum)]
@@ -244,6 +269,8 @@ fn make_prover_config(
         ram_size: settings.ram_size,
         worker_threads: settings.worker_threads,
         replay_threads: settings.replay_threads,
+        #[cfg(feature = "gpu")]
+        gpu_memory_preset: settings.gpu_memory_preset.into(),
     }
 }
 
