@@ -24,8 +24,8 @@ use gpu_core::primitives::static_host::alloc_static_pinned_box_from_slice;
 use gpu_prover_context::transfer::Transfer;
 use gpu_prover_context::{ProverContext, ProverContextConfig};
 use prover::gkr::prover::{CommitmentMode, GKRProof};
-use prover::gkr::prover_config::example_configs::{
-    EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS, EVM_PRODUCTION_PACK_LOG2,
+use prover::gkr::prover_config::example_configs::l1_wrap_2p21::{
+    EXTERNAL_CHALLENGES_POW_BITS, PACK_LOG2,
 };
 use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
 use serde::de::DeserializeOwned;
@@ -38,7 +38,7 @@ use std::io::{BufReader, Read};
 use std::mem::size_of;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use unified_reduced_machine_proth120::LAYOUT_JSON;
+use unified_reduced_machine_proth120::l1_wrap_2p21::LAYOUT_JSON;
 use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
 
 #[derive(Deserialize)]
@@ -110,7 +110,7 @@ fn reference_dir() -> PathBuf {
         .map(PathBuf::from)
         .unwrap_or_else(|| {
             Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../prover_pipeline/fixtures/l1_reference")
+                .join("../../prover_pipeline/fixtures/l1_reference_2p21")
         })
 }
 
@@ -251,12 +251,12 @@ pub(super) fn manifest_and_identities() -> Reference {
     );
 
     let fsv_directory = fsv_dir();
-    let program = FsvProgram::UnifiedRecursionLayerL1Feeder;
+    let program = FsvProgram::UnifiedRecursionLayerL1FeederWrap;
     let stem = program.file_stem(BlakeMode::BlakeSpecialOpcodes);
     let feeders: Vec<_> = manifest
         .fsv
         .iter()
-        .filter(|identity| identity.role == "feeder")
+        .filter(|identity| identity.role == "feeder_wrap")
         .collect();
     assert_eq!(
         feeders.len(),
@@ -278,7 +278,7 @@ pub(super) fn manifest_and_identities() -> Reference {
 
     let checkpoint: Checkpoint = read_typed(&directory.join("l1_feeder.json"));
     assert_eq!(
-        checkpoint.schema_version, 4,
+        checkpoint.schema_version, 5,
         "Proth120 witness checkpoint schema"
     );
     assert_eq!(
@@ -309,8 +309,8 @@ pub(super) fn manifest_and_identities() -> Reference {
         matches!(
             bundle.commitment_mode,
             CommitmentMode::MergedAndPackedMemoryAndWitness {
-                pack_log2: EVM_PRODUCTION_PACK_LOG2,
-                external_challenges_pow_bits: EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS,
+                pack_log2: PACK_LOG2,
+                external_challenges_pow_bits: EXTERNAL_CHALLENGES_POW_BITS,
                 ..
             }
         ),
@@ -329,7 +329,7 @@ pub(super) fn manifest_and_identities() -> Reference {
 pub(super) fn wrap_inputs(reference: &Reference) -> (Vec<u32>, Vec<u32>, Vec<u32>) {
     let (bin, text) = load_fsv_program(
         &reference.fsv_directory,
-        FsvProgram::UnifiedRecursionLayerL1Feeder,
+        FsvProgram::UnifiedRecursionLayerL1FeederWrap,
         BlakeMode::BlakeSpecialOpcodes,
     );
     let nd_words = build_unified_stream(&reference.checkpoint.setups, &reference.checkpoint.proof);

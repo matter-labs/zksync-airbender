@@ -70,7 +70,7 @@ where
     R: Send + 'static,
 {
     with_l1_wrap_fixture_for(
-        ExecutionKind::L1Wrap,
+        ExecutionKind::L1Wrap21,
         configuration,
         binary,
         text,
