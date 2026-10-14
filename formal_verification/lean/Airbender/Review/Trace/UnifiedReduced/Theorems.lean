@@ -376,4 +376,37 @@ theorem Caller.prepared_round_cycles_soundness
     Caller.CallerCycleEffects data program initial cells :=
   Caller.Proofs.prepared_round_caller_cycles accepted inputs first code started
 
+/-- Public sequential code identifies a caller region; native matching derives
+    its worker family, exact counts and slots without a supplied worker duration. -/
+theorem Caller.program_window_schedule_soundness [Fact p.Prime]
+    (hp : 2 * Trace.timestampBase + 4 < p) (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
+    {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)}
+    {family : Delegation.Family} {lower upper : Nat}
+    (accepted : Caller.MixedMemoryAccepted data program) (publicProgram : Caller.RequestInputs data before ca)
+    (ordinaryProgram : Mixed.programImage before oa = some program) (registry : Caller.SequentialProgram program)
+    (region : Caller.ProgramCallerRegion data program family lower upper)
+    (first : lower % 4 = 0) (last : upper % 4 = 0) (positive : 2 ≤ lower) (ordered : lower ≤ upper)
+    (afterInitial : (Trace.timeOfPair data.machine.initial.timestamp).value ≤ lower)
+    (beforeTerminal : upper ≤ (Trace.timeOfPair data.machine.terminal.timestamp).value) :
+    Caller.ProgramCallerWindow data family lower upper :=
+  Caller.Proofs.program_caller_window hp clockInverse accepted publicProgram ordinaryProgram registry region
+    first last positive ordered afterInitial beforeTerminal
+
+/-- Public caller regions derive selected worker families and complete call counts
+    for all three references in one continuous prepared history. Shared controller
+    coverage, public duration/preparation and logical matching remain explicit. -/
+theorem Caller.program_prepared_protocol_sequence_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State}
+    {ca oa : List (BitVec 32)} {cells : List Trace.Cell} {program : List UnifiedReduced.ProgramEntry}
+    {regions : List Caller.RoundRegion} {first : Caller.HashWindow} {rest : List Caller.HashWindow}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.PreparedProtocolInputs data before ca oa cells program regions)
+    (registry : Caller.SequentialProgram program)
+    (scopes : ∀ window ∈ first :: rest, Caller.ProgramProtocolWindowInputs data program window)
+    (ordered : Caller.WindowsOrdered first.lower ((first :: rest).map Caller.HashWindow.interval)) :
+    Caller.PreparedHashSequenceResult data before cells first rest :=
+  Caller.Proofs.program_prepared_protocol_sequence hp clockInverse accepted inputs registry scopes ordered
+
 end Airbender.UnifiedReduced

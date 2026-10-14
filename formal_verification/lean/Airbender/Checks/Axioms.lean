@@ -2185,3 +2185,19 @@ import Clean.Specs.Keccak256
 #print axioms Tests.ControlPreparation.triadd_preparation_fabricated_read_rejected
 #print axioms Tests.ControlPreparation.sequential_profile_excludes_jump
 #print axioms Tests.ControlPreparation.sequential_profile_excludes_comparison
+
+#print axioms Airbender.UnifiedReduced.Caller.ProgramCallerRegion
+#print axioms Airbender.UnifiedReduced.Caller.ProgramCallerWindow
+#print axioms Airbender.UnifiedReduced.Caller.ProgramProtocolWindowInputs
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.caller_query_pc_word
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.program_caller_window
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.program_protocol_window_inputs
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.program_prepared_protocol_sequence
+#print axioms Airbender.UnifiedReduced.Caller.program_window_schedule_soundness
+#print axioms Airbender.UnifiedReduced.Caller.program_prepared_protocol_sequence_soundness
+#print axioms Tests.UnifiedDelegation.program_derived_copy_window
+#print axioms Tests.UnifiedDelegation.program_derived_copy_count
+#print axioms Tests.UnifiedDelegation.public_region_wrong_family_rejected
+#print axioms Tests.UnifiedDelegation.public_region_including_ordinary_rejected
+#print axioms Tests.UnifiedDelegation.program_empty_region_after_preparation
+#print axioms Tests.UnifiedDelegation.program_region_keeps_bigint_abi_gaps

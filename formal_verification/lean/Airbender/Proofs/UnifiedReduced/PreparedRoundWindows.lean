@@ -383,4 +383,48 @@ theorem prepared_protocol_sequence [Fact p.Prime] (hp : 16777216 ≤ p)
     aligned (by omega) ordered
   exact ⟨sequence, actual, prepared_protocol_sequence_at_segments hp clockInverse accepted inputs scopes ordered actual.segments⟩
 
+theorem program_protocol_window_inputs [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)}
+    {program : List UnifiedReduced.ProgramEntry} {window : HashWindow}
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    (ordinaryProgram : Mixed.programImage before oa = some program) (registry : SequentialProgram program)
+    (scope : ProgramProtocolWindowInputs data program window)
+    (first : window.lower % 4 = 0) (last : window.upper % 4 = 0) :
+    PreparedProtocolWindowInputs data program window := by
+  have floor := scope.preparation.afterInitial
+  have schedule := program_caller_window hp clockInverse accepted publicProgram ordinaryProgram registry scope.region
+    first last (by omega) (by have := scope.duration; omega) (by omega) scope.beforeTerminal
+  refine ⟨schedule.family, scope.preparation, ?_, scope.duration, scope.beforeTerminal⟩
+  rw [← schedule.workerCount, schedule.machineCount, scope.duration]
+  omega
+
+theorem program_prepared_protocol_sequence [Fact p.Prime] (hp : 16777216 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
+    {program : List UnifiedReduced.ProgramEntry} {regions : List RoundRegion} {first : HashWindow} {rest : List HashWindow}
+    (accepted : MixedMemoryAccepted data program)
+    (inputs : PreparedProtocolInputs data before ca oa cells program regions)
+    (registry : SequentialProgram program)
+    (scopes : ∀ window ∈ first :: rest, ProgramProtocolWindowInputs data program window)
+    (ordered : WindowsOrdered first.lower ((first :: rest).map HashWindow.interval)) :
+    PreparedHashSequenceResult data before cells first rest := by
+  have aligned : ∀ {windows : List HashWindow} {cut : Nat},
+      WindowsOrdered cut (windows.map HashWindow.interval) →
+      ∀ window ∈ windows, window.lower % 4 = 0 ∧ window.upper % 4 = 0 := by
+    intro windows
+    induction windows with
+    | nil => intro cut _ window member; cases member
+    | cons head tail ih =>
+      intro cut order window member
+      obtain ⟨_, _, first, last, restOrder⟩ := order
+      rcases List.mem_cons.mp member with rfl | member
+      · exact ⟨first, last⟩
+      · exact ih restOrder window member
+  apply prepared_protocol_sequence hp clockInverse accepted inputs _ ordered
+  intro window member
+  exact program_protocol_window_inputs (by norm_num [timestampBase]; omega) clockInverse accepted
+    inputs.publicProgram inputs.ordinaryProgram registry (scopes window member)
+    (aligned ordered window member).1 (aligned ordered window member).2
+
 end Airbender.UnifiedReduced.Caller.Proofs
