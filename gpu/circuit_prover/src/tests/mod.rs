@@ -346,6 +346,7 @@ impl BasicUnrolledFixture {
             transfers,
             &dr_tail_plan,
             self.memory_policy(),
+            crate::proof::memory_policy::PartialTreePolicy::DEFAULT,
             &self.context,
         )
     }
@@ -392,6 +393,7 @@ impl BasicUnrolledFixture {
             transfers,
             &dr_tail_plan,
             policy,
+            crate::proof::memory_policy::PartialTreePolicy::DEFAULT,
             &self.context,
         )?;
         let mem_after_prove = self.context.get_used_mem_current();

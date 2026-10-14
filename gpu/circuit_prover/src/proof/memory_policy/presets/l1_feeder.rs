@@ -1,6 +1,7 @@
 use super::super::{
-    GkrMemoryPolicy, OpeningStrategy, ProofMemoryPolicy, WitnessCommitmentStrategy,
-    WitnessMemoryPolicy, WitnessOpeningStrategy, WitnessPostCommitStorage,
+    GkrMemoryPolicy, OpeningStrategy, PartialTreePolicy, ProofMemoryPolicy,
+    WitnessCommitmentStrategy, WitnessMemoryPolicy, WitnessOpeningStrategy,
+    WitnessPostCommitStorage,
 };
 
 /// Smallest sufficient arena of the bounded capacity matrix (`gpu/execution_prover/tests/l1_memory.rs`: 21/30/40/48/64 GiB candidates, commitment and proof stages, both directions, three opposite followers) on the RTX PRO 6000 Blackwell (sm_120).
@@ -17,6 +18,8 @@ pub const POLICY: ProofMemoryPolicy = ProofMemoryPolicy {
         opening: WitnessOpeningStrategy::Recompute(OpeningStrategy::PerCoset),
     },
 };
+
+pub const PARTIAL_TREES: PartialTreePolicy = PartialTreePolicy::DEFAULT;
 
 pub fn policy(_arena_bytes: usize) -> ProofMemoryPolicy {
     POLICY

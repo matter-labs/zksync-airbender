@@ -13,7 +13,8 @@ use gpu_core::primitives::field::BF;
 use gpu_ops::simple::set_to_zero;
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::holder::{
-    TraceHolder, TreesCacheMode, WitnessCommitmentStrategy, WitnessPostCommitStorage,
+    PartialTreePolicy, TraceHolder, TreesCacheMode, WitnessCommitmentStrategy,
+    WitnessPostCommitStorage,
 };
 use gpu_trace::trace::tracing_data::{
     DelegationTracingDataDevice, TracingDataDevice, UnrolledTracingDataDevice,
@@ -182,6 +183,7 @@ impl GpuGKRStage1Output {
     fn allocate_trace_holder(
         columns_count: usize,
         geometry: GpuGKRTraceGeometry,
+        partial_tree_reduction_layers: u32,
         context: &ProverContext,
     ) -> CudaResult<TraceHolder<BF>> {
         // Allocate cosets at commitment, after the persistent stage1 buffers,
@@ -193,7 +195,7 @@ impl GpuGKRStage1Output {
             geometry.log_tree_cap_size,
             columns_count,
             TreesCacheMode::CachePartial,
-            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+            partial_tree_reduction_layers,
             context,
         )
     }
@@ -210,6 +212,7 @@ impl GpuGKRStage1Output {
         witness_cap_dst: Option<&mut DeviceSlice<u32>>,
         commitment: WitnessCommitmentStrategy,
         post_commitment: WitnessPostCommitStorage,
+        partial_trees: PartialTreePolicy,
         context: &ProverContext,
     ) -> CudaResult<Self> {
         let strategy = production_witness_strategy(circuit_type);
@@ -227,6 +230,7 @@ impl GpuGKRStage1Output {
             strategy,
             commitment,
             post_commitment,
+            partial_trees,
         )
     }
 
@@ -244,6 +248,7 @@ impl GpuGKRStage1Output {
         strategy: WitnessGenerationStrategy,
         commitment: WitnessCommitmentStrategy,
         post_commitment: WitnessPostCommitStorage,
+        partial_trees: PartialTreePolicy,
     ) -> CudaResult<Self> {
         let trace_len = compiled_circuit.trace_len;
         assert_eq!(trace_len, 1usize << geometry.log_domain_size);
@@ -271,7 +276,7 @@ impl GpuGKRStage1Output {
                 None => memory_columns,
             },
             TreesCacheMode::CacheNone,
-            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+            partial_trees.memory,
             context,
         )?;
         let mut witness_trace_holder = if merged_witness_offset.is_some() {
@@ -282,11 +287,11 @@ impl GpuGKRStage1Output {
                 geometry.log_tree_cap_size,
                 0,
                 TreesCacheMode::CacheNone,
-                gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+                partial_trees.witness,
                 context,
             )?
         } else {
-            Self::allocate_trace_holder(witness_columns, geometry, context)?
+            Self::allocate_trace_holder(witness_columns, geometry, partial_trees.witness, context)?
         };
         let mut scratch_space_trace = if compiled_circuit.scratch_space_size > 0 {
             Some(context.alloc(
@@ -877,5 +882,6 @@ pub fn generate_with_witness_strategy(
         strategy,
         WitnessCommitmentStrategy::AllCosets,
         WitnessPostCommitStorage::RawAndCosets,
+        PartialTreePolicy::DEFAULT,
     )
 }

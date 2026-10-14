@@ -35,7 +35,7 @@ use gpu_whir::proth120::{
 };
 
 use super::{l1_wrap_batching_pow_bits, validate_l1_wrap_preconditions, L1Proof, L1WrapInputs};
-use crate::proof::memory_policy::ProofMemoryPolicy;
+use crate::proof::memory_policy::{PartialTreePolicy, ProofMemoryPolicy};
 use crate::upstream::{
     CommitmentMode, GKRCircuitArtifact, L1WrapResult, ProverConfig, EVM_PRODUCTION_PACK_LOG2,
     TIMESTAMP_COLUMNS_NUM_BITS,
@@ -71,8 +71,10 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     inputs: L1WrapInputs<'a, A>,
     dr_tail_plan: &DrTailProofPlanPr,
     policy: ProofMemoryPolicy,
+    partial_trees: PartialTreePolicy,
     context: &ProverContext,
 ) -> CudaResult<GpuL1WrapProofJob<'a>> {
+    partial_trees.assert_valid();
     inputs.transfer.ensure_transferred(context)?;
     context.reset_used_mem_peak();
     validate_l1_wrap_preconditions(
@@ -86,11 +88,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         batching_pow_bits, 16,
         "L1Wrap requires batching_pow_bits 16"
     );
-    let cfg = PackedCommitConfig::from_prover_config(
-        config,
-        26,
-        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
-    );
+    let cfg = PackedCommitConfig::from_prover_config(config, 26, partial_trees.memory);
     let rows = circuit.trace_len;
     let memory_columns = circuit.memory_layout.total_width;
     let witness_columns = circuit.witness_layout.total_width;
@@ -177,11 +175,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     let range = Range::new("l1_wrap.proof")?;
     range.start(stream)?;
     let mut callbacks = Callbacks::new();
-    let mut setup = PackedSetupSource::new(
-        Arc::clone(&setup_host),
-        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
-        context,
-    )?;
+    let mut setup = PackedSetupSource::new(Arc::clone(&setup_host), partial_trees.setup, context)?;
     let mut setup_transfer = Transfer::new()?;
     setup_transfer.record_allocated(context)?;
     setup.schedule_transfer(&mut setup_transfer, context)?;

@@ -417,7 +417,7 @@ fn schedule_phase_one<'a>(
                 {
                     Some(GpuGKRSetupTransfer::new(
                         setup_host,
-                        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+                        crate::memory_policy::partial_trees(circuit_type, state.profile).setup,
                         context,
                     )?)
                 } else {
@@ -490,7 +490,7 @@ fn schedule_phase_one<'a>(
                 let mut bundle = GpuGKRMergedCommitTransfer::<'_, A>::new(
                     GpuGKRSetupTransfer::new(
                         setup_host,
-                        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+                        crate::memory_policy::partial_trees(circuit_type, state.profile).setup,
                         context,
                     )?,
                     decoder_transfer,
@@ -606,6 +606,7 @@ fn enqueue_phase_two<'a>(
                 ProofProfile::L1Wrap,
                 context.get_mem_size(),
             ),
+            crate::memory_policy::partial_trees(CircuitType::L1Wrap, ProofProfile::L1Wrap),
             context,
         )?;
         state.device_peak_bytes = Some(context.get_used_mem_peak());
@@ -647,6 +648,7 @@ fn enqueue_phase_two<'a>(
                 bundle,
                 &dr_tail_plan,
                 crate::memory_policy::policy(circuit_type, state.profile, context.get_mem_size()),
+                crate::memory_policy::partial_trees(circuit_type, state.profile),
                 context,
             )?;
             state.device_peak_bytes = Some(context.get_used_mem_peak());
@@ -662,6 +664,7 @@ fn enqueue_phase_two<'a>(
                 &compiled_circuit_arc,
                 bundle,
                 &prover_config,
+                crate::memory_policy::partial_trees(circuit_type, state.profile).memory,
                 context,
             )?;
             state.device_peak_bytes = Some(context.get_used_mem_peak());
@@ -677,6 +680,7 @@ fn enqueue_phase_two<'a>(
                 &prover_config,
                 bundle,
                 crate::memory_policy::merged_commit_strategy(circuit_type, state.profile),
+                crate::memory_policy::partial_trees(circuit_type, state.profile),
                 context,
             )?;
             state.device_peak_bytes = Some(context.get_used_mem_peak());

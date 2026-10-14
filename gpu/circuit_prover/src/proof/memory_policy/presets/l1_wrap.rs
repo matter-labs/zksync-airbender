@@ -1,6 +1,7 @@
 use super::super::{
-    GkrMemoryPolicy, OpeningStrategy, ProofMemoryPolicy, WitnessCommitmentStrategy,
-    WitnessMemoryPolicy, WitnessOpeningStrategy, WitnessPostCommitStorage,
+    GkrMemoryPolicy, OpeningStrategy, PartialTreePolicy, ProofMemoryPolicy,
+    WitnessCommitmentStrategy, WitnessMemoryPolicy, WitnessOpeningStrategy,
+    WitnessPostCommitStorage,
 };
 
 pub const MEASURED_M4_PEAK_BYTES: usize = 25_937_575_936;
@@ -34,6 +35,8 @@ pub const L1_WRAP_POLICY: ProofMemoryPolicy = ProofMemoryPolicy {
         opening: WitnessOpeningStrategy::PackedCosetRecompute,
     },
 };
+
+pub const PARTIAL_TREES: PartialTreePolicy = PartialTreePolicy::DEFAULT;
 
 pub fn policy(arena_bytes: usize) -> ProofMemoryPolicy {
     assert!(
