@@ -24,6 +24,8 @@ mixed execution with delegation callers remains a separate obligation.
 | Modular public round-CSR occurrence coverage derives membership exactly for live round workers, including repeated addresses. | [`Caller.wrapped_program_round_coverage_soundness`](Theorems.lean) |
 | Modular occurrence coverage and public preparation derive every issued round mask without full worker coverage. | [`Caller.wrapped_program_round_live_masks_soundness`](Theorems.lean) |
 | The modular profile exposes the same equivalence between full coverage and absence of zero-clock round workers. | [`Caller.wrapped_program_round_global_coverage_boundary_soundness`](Theorems.lean) |
+| Zero-clock workers read the original public initialization tokens, with actual values and raw clocks. | [`Caller.unissued_worker_reads_soundness`](Theorems.lean) |
+| The actual public x12 seed characterizes every exclusive mask of an unissued extended-round worker. | [`Caller.unissued_round_control_soundness`](Theorems.lean) |
 | Actual joint cut states and projected worker boundaries retain native timestamps. | [`Caller.mixed_window_soundness` and `Caller.mixed_window_projection_soundness`](Theorems.lean) |
 | Aligned public sequential/comparison decoding and native matching derive modular RV32 program addresses, including comparison PC wraparound. | [`Caller.wrapped_program_address_soundness`](Theorems.lean) |
 | Public ADDI-from-x0/LUI preparation yields actual controls after literal, sequential ordinary/custom or aligned comparison prefixes; native PC/clock matching derives each preparation address. | [`Caller.control_preparation_soundness`](Theorems.lean) |
@@ -114,7 +116,8 @@ PC injectivity or no-wrap assumptions. The corresponding
 [`WrappedProgramPreparedProtocolInputs`](PreparedRoundWindows.lean) derives local
 controller shape before reusing the existing raw-mask and reference proofs.
 Public cuts, preparation, reference duration and global extended-round worker
-coverage remain explicit. The unissued-round mask/coverage boundary is unchanged;
+coverage remain explicit. The need to justify supported masks or exclude unissued
+round workers remains;
 unissued G effects and both bigint-control gaps remain admitted. The original
 linear entries and their global issued-round coverage/mask results remain available.
 
@@ -203,6 +206,19 @@ above retain the same unissued-round limitation. Regressions reject covering onl
 one of two occurrences 2^32 ticks apart in a public code-policy fixture (without
 an accepted-trace claim), admit an empty prepared cut, reject two issued round
 bits without whole-pool coverage, and retain the actual zero-clock G worker.
+
+[`InitialWorkerReads` and `InitialRoundControl`](UnissuedWorkers.lean) bind the
+remaining zero-clock boundary to actual public initialization. Strict memory order
+and native alignment force positive machine clocks; worker writes start at two.
+Every unissued read precedes clock two, so matching roots its full raw token in
+the public seed. The derived value is canonical and keeps its zero timestamp.
+This needs no operation mask or extra initial-clock floor. The actual initial
+x12 high limb equals flags below eight plus `8 * 2^round` exactly when the native
+bits form that exclusive round mask. Zero and multibit controls remain outside
+the ABI. The zero-seed no-mask regression is conditional; it makes no accepted
+unissued-round existence or exclusion claim. The actual G fixture still reads
+zero, writes one and affects the prefix before a later ADDI reset. These native
+read proofs do not execute an unsupported hash reference or make a worker inert.
 
 Keep surplus zero-clock prefix effects, worker ROM-shadow transport,
 broader preparation/protocol binding, full mixed caller retirement and inactive padding as separate

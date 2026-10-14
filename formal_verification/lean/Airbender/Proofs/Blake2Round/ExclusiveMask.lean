@@ -104,4 +104,43 @@ theorem control_flags [Fact p.Prime] (hp : 8192 ≤ p)
   have low : (w 139).val + 2 * (w 140).val + 4 * (w 141).val = flags.val := by omega
   omega
 
+/-- Imported control assertions characterize the exclusive-mask boundary exactly.
+    The high control limb may encode no round or several rounds; neither case is
+    silently restricted to the supported ABI. -/
+theorem exclusive_mask_iff [Fact p.Prime] (hp : 8192 ≤ p)
+    {setup : Table (ZMod p) (fields 4)} {w : Nat → ZMod p}
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (round : Fin 10) :
+    Memory.RoundMask w round ↔
+      ∃ flags : Fin 8, (w Variables.controlReadHi).val = flags.val + 8 * 2 ^ round.val := by
+  constructor
+  · intro mask
+    have b0 := boolean_val (Control.Proofs.control_bits holds 0)
+    have b1 := boolean_val (Control.Proofs.control_bits holds 1)
+    have b2 := boolean_val (Control.Proofs.control_bits holds 2)
+    change (w 139).val ≤ 1 at b0
+    change (w 140).val ≤ 1 at b1
+    change (w 141).val ≤ 1 at b2
+    let flags := (w 139).val + 2 * (w 140).val + 4 * (w 141).val
+    have bound : flags < 8 := by dsimp [flags]; omega
+    refine ⟨⟨flags, bound⟩, ?_⟩
+    haveI : Fact (1 < p) := ⟨(Fact.out : p.Prime).one_lt⟩
+    have bit (i : Fin 10) : (w Variables.roundBits[i]).val = if i = round then 1 else 0 := by
+      have values := congrArg (fun z : ZMod p => z.val) (mask i)
+      by_cases same : i = round
+      · simpa only [if_pos same, ZMod.val_one] using values
+      · simpa only [if_neg same, ZMod.val_zero] using values
+    have r0 := bit 0; have r1 := bit 1; have r2 := bit 2; have r3 := bit 3; have r4 := bit 4
+    have r5 := bit 5; have r6 := bit 6; have r7 := bit 7; have r8 := bit 8; have r9 := bit 9
+    have encoding := control_encoding hp holds
+    dsimp [packedBits] at encoding
+    change (w Variables.controlReadHi).val = flags + 8 * 2 ^ round.val
+    fin_cases round
+    all_goals norm_num [Variables.roundBits, Variables.controlReadHi, Fin.ext_iff] at r0 r1 r2 r3 r4 r5 r6 r7 r8 r9 ⊢
+    all_goals simp only [r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, Variables.controlReadHi, ZMod.val_zero] at encoding
+    all_goals dsimp [flags]
+    all_goals omega
+  · rintro ⟨flags, read⟩
+    exact exclusive_mask hp holds flags round read
+
 end Airbender.Blake2Round.Proofs
