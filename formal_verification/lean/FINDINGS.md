@@ -17,9 +17,11 @@ An **unresolved binding** identifies a condition not yet connected to general
 acceptance. A **profile difference** is intentional semantic scope. These labels
 are not interchangeable with a full verifier or cryptographic exploit.
 
-## Implementation update: issued round coverage and masks
+## Implementation update: issued round coverage and wrapped preparation
 
-Verified commit: `9d9cf76b7`.
+Update verified: 14 October 2026. Round coverage checkpoint: `9d9cf76b7`.
+The current sources also include the
+comparison-preparation update below.
 
 `ProgramCallerRegion` states public code addresses in native PC/clock coordinates:
 ordinary entries lie outside a selected interval and its CSR entries identify the
@@ -68,14 +70,27 @@ or a supplied mask. The stronger context still admits the unissued G worker;
 the existing continuous-prefix test now uses its derived context and retains the
 actual x12 = 0→1 effect. COPY→ADDI and both accepted bigint controls remain checked.
 Surplus workers, bigint invalid controls, worker ROM, terminal-PC and discarded-load
-findings remain open, with all accepted counterexamples preserved. Control-flow/
-wraparound and nonliteral preparation remain separate. This audit is tracked with
+findings remain open, with all accepted counterexamples preserved. This audit is tracked with
 the verification sources and updated as the reviewed boundaries change.
 
+The separate aligned `WrappedSequentialProgram` now admits the four original
+comparisons before the final public ADDI-from-x0/LUI literal. Accepted constraints
+derive native comparison cleanup/carry values; native state/clock matching derives
+modular RV32 program addresses, including comparison wraparound. Modeled setup
+and `4194304 ≤ p` remain explicit. The
+[SLTIU→ADDI regression](Tests/UnifiedComparison.lean) starts at `0xfffffffc`,
+resets at address zero and derives actual x12 = 65537→1→0 in one continuous
+initialized history with reversed native rows. The reset consumes the comparison's
+clock-six token and writes at clock ten. Wrong literals, fabricated reads and
+misaligned public code are rejected. These are preparation/transport claims;
+prefix and whole caller retirement remain separate. Public caller-region coverage
+still uses the linear profile. Modular region coverage, jumps/branches and
+nonliteral preparation remain open.
+
 All 116 concrete test modules and 143 importer guards pass. The full
-1,997-root axiom audit has 58 axiom-free roots and only the three standard
-Lean axioms. Review checks pass for all 90 public theorem roots, 126 declaration
-names and 613 guide links/anchors, with no handwritten project diagnostics.
+2,013-root axiom audit has 61 axiom-free roots and only the three standard
+Lean axioms. Review checks pass for all 91 public theorem roots, 130 declaration
+names and 620 guide links/anchors, with no handwritten project diagnostics.
 
 ## Review priorities
 
@@ -308,7 +323,13 @@ the final specified literal. The sequential extension also admits LW/SW, bitwise
 shifts, REV8 and supported TRIADD/XORROT. Its accepted aliased TRIADD→ADDI reset
 derives 65537→196611→0 with the same retained clocks and rejects a fabricated read.
 Jumps, branches and wraparound comparisons remain outside the linear PC/clock
-profile. These are preparation/memory effects, not full-prefix retirement. Public
+profile. A separate aligned comparison profile now derives modular RV32 addresses
+from the same accepted constraints/matching, with modeled setup and minimum
+modulus 4194304 explicit. It derives actual SLTIU→ADDI states 65537→1→0 through
+PC `0xfffffffc`→zero, retains clocks six/ten and rejects fabricated reads and
+wrong literals. Public caller-region coverage remains linear. Jumps, branches
+and nonliteral final preparation remain open. These are preparation/memory effects,
+not full-prefix retirement. Public
 decoded forms and accepted PC constraints derive the preparation address; native selector bits or output values are not
 supplied. The accepted aliased ADD→ADDI reset derives actual 65537→131074→0
 through one continuous history with clocks six/ten and rejects a fabricated read. Two preparation

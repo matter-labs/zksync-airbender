@@ -20,7 +20,8 @@ mixed execution with delegation callers remains a separate obligation.
 | Public round CSR coverage and LUI preparation derive every issued round mask from raw matching, without full worker coverage. | [`Caller.program_round_live_masks_soundness`](Theorems.lean) |
 | Full controller coverage is equivalent to absence of zero-clock extended-round workers in the public sequential/controller profile. | [`Caller.program_round_global_coverage_boundary_soundness`](Theorems.lean) |
 | Actual joint cut states and projected worker boundaries retain native timestamps. | [`Caller.mixed_window_soundness` and `Caller.mixed_window_projection_soundness`](Theorems.lean) |
-| Public ADDI-from-x0/LUI preparation yields actual controls after literal or sequential ordinary/custom prefixes; native PC/clock matching derives each preparation address. | [`Caller.control_preparation_soundness`](Theorems.lean) |
+| Aligned public sequential/comparison decoding and native matching derive modular RV32 program addresses, including comparison PC wraparound. | [`Caller.wrapped_program_address_soundness`](Theorems.lean) |
+| Public ADDI-from-x0/LUI preparation yields actual controls after literal, sequential ordinary/custom or aligned comparison prefixes; native PC/clock matching derives each preparation address. | [`Caller.control_preparation_soundness`](Theorems.lean) |
 | Two preparations share their actual cut states and the complete intervening machine/worker history; neither control is supplied. | [`Caller.control_preparation_window_soundness`](Theorems.lean) |
 | Two native windows and their gap execute continuously from one initialization with retained tokens and clocks. | [`Caller.mixed_window_chain_soundness`](Theorems.lean) |
 | An arbitrary ordered finite list of native windows and gaps shares that continuous execution. | [`Caller.mixed_window_sequence_soundness`](Theorems.lean) |
@@ -89,6 +90,15 @@ PC-increment selectors; jumps, branches and wraparound comparisons remain outsid
 this profile. The same fixture checks TRIADD→ADDI with actual states
 65537→196611→0 and rejection of a fabricated reset read. Prefix retirement and
 discarded-load semantics remain separate from preparation/memory transport.
+The separate [`WrappedSequentialProgram`](../../Helpers/UnifiedReduced/ControlPreparation.lean)
+adds the four original comparisons and public code alignment, with modeled setup
+and `4194304 ≤ p` explicit. Native constraints and matching derive modular RV32
+program addresses. The [comparison-wrap regression](../../../../Tests/UnifiedComparison.lean)
+checks SLTIU at `0xfffffffc` followed by ADDI at zero, actual x12 = 65537→1→0
+in one history, retained clocks six/ten and rejection of a fabricated read or
+wrong literal. Prepared entries using control preparation inherit this variant;
+public caller-region coverage remains linear. Jumps, branches and nonliteral
+preparation remain open, as does whole caller retirement.
 
 [`WindowSequence.Realizes`](MixedWindows.lean) extends this connection to an
 arbitrary finite list. Its initial cut follows the actual prefix; every segment

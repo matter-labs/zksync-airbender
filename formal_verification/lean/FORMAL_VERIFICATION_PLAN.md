@@ -90,8 +90,14 @@ each cut. Uniform, different-literal and arithmetic registries remain available;
 a sequential registry also admits LW/SW, bitwise/shifts, REV8 and supported
 TRIADD/XORROT interleaved with callers. Actual public decoding derives native
 PC-increment selectors; native PC/clock matching identifies the final specified
-literal's address. Jumps, branches and wraparound comparisons remain outside
-this linear profile. State matching identifies the final ordinary row and its
+literal's address. A separate aligned public registry adds the four original
+comparisons. Accepted constraints and state matching derive modular RV32
+PC/clock addresses, including comparison wraparound; modeled setup and
+`4194304 ≤ p` remain explicit for this entry. An SLTIU at `0xfffffffc` followed by
+ADDI at zero derives actual x12 = 65537→1→0 in the same initialized history,
+retaining clocks six/ten and rejecting a fabricated read or wrong literal.
+Jumps and branches remain outside both profiles; public caller-region coverage
+still uses the linear profile. State matching identifies the final ordinary row and its
 accepted write, retaining its raw timestamp. Only the final preparation cycle
 must be worker-free; earlier effects remain in the actual prefix. The original
 extended-BLAKE first-span entry retains its separate empty prefix. No desired
@@ -185,8 +191,11 @@ ABI and whole mixed execution remain separate.
    public decoded round CSR coverage now derives all issued round-worker coverage,
    and derives their masks from raw matching/public preparation. It exposes
    zero-clock extended-round workers as the remaining global-coverage
-   boundary in this profile. Continue that boundary binding, control-flow/wraparound
-   and nonliteral preparation, then whole caller retirement; prefix retirement
+   boundary in this profile. Comparison preparation now also derives modular
+   RV32 addresses through PC wraparound, with actual SLTIU→ADDI states
+   65537→1→0 and retained clocks six/ten. Continue the unissued-round boundary
+   binding, modular public caller-region coverage, jumps/branches and nonliteral
+   preparation, then whole caller retirement; prefix retirement
    remains separate.
    COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed
    retained for the second window. Extended BLAKE and Keccak completion controls
