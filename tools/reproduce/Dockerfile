@@ -54,6 +54,9 @@ WORKDIR zksync-airbender/tools/gkr_verifier
 # (set inside dump_bin.sh) unlocks the unstable build options on stable.
 RUN ./dump_recursive_verifiers.sh
 
+# Separate Cargo invocation prevents wrap ROM feature unification with regular guests.
+RUN ../gkr_verifier_l1_wrap/dump_bin.sh --blake special_opcodes_extension --variant caches
+
 # The cost-model drift guard consumes the standalone circuit verifiers too.
 RUN ./dump_bin.sh --sec 100 \
     add_sub_lui_auipc_mop_sec_100 jump_branch_slt_sec_100 shift_binop_sec_100 \
