@@ -410,14 +410,14 @@ fn verify_input(dir: &Path, input: &Input) -> Result<Manifest, String> {
     }
     if manifest.feeder_queries_and_pow != L1_FEEDER_QUERIES_AND_POW.to_vec() {
         return Err(format!(
-            "feeder reference {} was produced under another feeder config: {:?}",
+            "feeder reference {} was produced under another feeder config: {:?}; regenerate: {REGENERATE}",
             input.name, manifest.feeder_queries_and_pow
         ));
     }
     if serde_json::to_vec(&manifest.fsv).unwrap() != serde_json::to_vec(&fsv_identities()?).unwrap()
     {
         return Err(format!(
-            "feeder reference {} fsv identity mismatch",
+            "feeder reference {} fsv identity mismatch; regenerate: {REGENERATE}",
             input.name
         ));
     }
