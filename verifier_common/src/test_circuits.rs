@@ -106,17 +106,13 @@ impl CircuitData {
         }
     }
 
-    pub fn binary_paths_for(&self, level: SecurityLevel) -> (String, String, String) {
-        let base = format!(
-            "{}/tools/gkr_verifier/{}_{}",
+    /// The verifier program's ELF (built by `tools/gkr_verifier/dump_bin.sh`).
+    pub fn elf_path_for(&self, level: SecurityLevel) -> String {
+        format!(
+            "{}/tools/gkr_verifier/{}_{}.elf",
             REPO_ROOT,
             self.name,
             level.dir_suffix()
-        );
-        (
-            format!("{}.bin", base),
-            format!("{}.text", base),
-            format!("{}.elf", base),
         )
     }
 
@@ -375,13 +371,9 @@ pub mod blake_variants {
         }
 
         /// The RISC-V verifier binaries `tools/gkr_verifier/<name>.{bin,text,elf}`.
-        pub fn binary_paths(&self) -> (String, String, String) {
-            let base = format!("{}/tools/gkr_verifier/{}", REPO_ROOT, self.name());
-            (
-                format!("{}.bin", base),
-                format!("{}.text", base),
-                format!("{}.elf", base),
-            )
+        /// The variant's verifier program (built by `tools/gkr_verifier/dump_bin.sh`).
+        pub fn elf_path(&self) -> String {
+            format!("{}/tools/gkr_verifier/{}.elf", REPO_ROOT, self.name())
         }
 
         pub fn proof(&self) -> GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> {

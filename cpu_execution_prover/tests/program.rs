@@ -14,9 +14,10 @@ use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 fn workload(directory: &str, stem: &str) -> (Vec<u32>, Vec<u32>) {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
     let base = root.join("examples").join(directory);
-    let (_, binary) = setups::read_and_pad_binary(&base.join(format!("{stem}.bin")));
-    let (_, text) = setups::read_and_pad_binary(&base.join(format!("{stem}.text")));
-    (binary, text)
+    riscv_transpiler::elf::load_legacy_binaries(
+        &base.join(format!("{stem}.bin")),
+        &base.join(format!("{stem}.text")),
+    )
 }
 
 fn prove(

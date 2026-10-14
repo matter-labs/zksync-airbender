@@ -67,8 +67,10 @@ use worker::Worker;
 #[allow(dead_code)]
 fn basic_fibonacci_config() -> ProgramConfig {
     ProgramConfig {
-        binary_path: "../examples/basic_fibonacci/app.bin".to_string(),
-        text_section_path: "../examples/basic_fibonacci/app.text".to_string(),
+        program: riscv_transpiler::elf::ProgramSource::legacy_binaries(
+            "../examples/basic_fibonacci/app.bin",
+            "../examples/basic_fibonacci/app.text",
+        ),
         // no non-determinism oracle reads
         non_determinism_reads: vec![],
         cycles_bound: 1 << 20,
@@ -81,8 +83,10 @@ fn basic_fibonacci_config() -> ProgramConfig {
 #[cfg(test)]
 pub(super) fn circuit_tester_config() -> ProgramConfig {
     ProgramConfig {
-        binary_path: "../examples/circuit_tester/app.bin".to_string(),
-        text_section_path: "../examples/circuit_tester/app.text".to_string(),
+        program: riscv_transpiler::elf::ProgramSource::legacy_binaries(
+            "../examples/circuit_tester/app.bin",
+            "../examples/circuit_tester/app.text",
+        ),
         // no non-determinism oracle reads
         non_determinism_reads: vec![],
         cycles_bound: 1 << 20,

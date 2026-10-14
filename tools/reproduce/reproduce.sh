@@ -10,7 +10,7 @@
 #   - dump_bin.sh remaps the checkout root, sysroot and cargo registry in DWARF and drops
 #     the toolchain's `.comment` strings from the .elf files.
 # The same commit built on x86-64 Linux, x86-64 macOS and arm64 macOS gives byte-identical
-# .bin / .text / .elf files; compare with `git status` / `git diff --stat` afterwards.
+# .elf files; compare with `git status` / `git diff --stat` afterwards.
 set -eu
 cd "$(dirname "$0")/../gkr_verifier"
 
@@ -28,6 +28,6 @@ cd "$(dirname "$0")/../gkr_verifier"
     blake2_with_extended_control_sec_100_pack4
 
 echo "==> checksums"
-for f in fsv_*_sec_100_*.bin fsv_*_sec_100_*.elf fsv_*_sec_100_*.text *_sec_100.bin *_sec_100.elf *_sec_100.text *_sec_100_pack4.bin *_sec_100_pack4.elf *_sec_100_pack4.text; do
+for f in fsv_*_sec_100_*.elf *_sec_100.elf *_sec_100_pack4.elf; do
     [ -f "$f" ] && shasum -a 256 "$f"
 done | sort -k2 -u

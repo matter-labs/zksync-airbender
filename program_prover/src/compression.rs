@@ -123,10 +123,7 @@ pub fn compress_fixed_point_to_l1(
         FsvProgram::UnifiedRecursionLayer,
         BlakeMode::BlakeSpecialOpcodes,
     );
-    let (feeder_bin, feeder_text) = load_program(
-        &fsv_dir.join(format!("{FEEDER_FSV_STEM}.bin")),
-        &fsv_dir.join(format!("{FEEDER_FSV_STEM}.text")),
-    );
+    let (feeder_bin, feeder_text) = load_program(&fsv_dir.join(format!("{FEEDER_FSV_STEM}.elf")));
 
     let feeder_config = prover::gkr::prover_config::example_configs::l1_feeder_config_for_2_23();
     println!(
@@ -236,14 +233,9 @@ pub fn compress_fixed_point_to_l1(
     );
     let stream = build_unified_stream(&setups, &proof);
     let program = ProgramConfig {
-        binary_path: fsv_dir
-            .join(format!("{FEEDER_FSV_STEM}.bin"))
-            .to_string_lossy()
-            .into_owned(),
-        text_section_path: fsv_dir
-            .join(format!("{FEEDER_FSV_STEM}.text"))
-            .to_string_lossy()
-            .into_owned(),
+        program: riscv_transpiler::elf::ProgramSource::elf(
+            fsv_dir.join(format!("{FEEDER_FSV_STEM}.elf")),
+        ),
         non_determinism_reads: stream,
         cycles_bound: L1_CYCLES_BOUND,
         ram_bound_bytes: RAM_BOUND,

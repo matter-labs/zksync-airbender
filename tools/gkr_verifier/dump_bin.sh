@@ -132,7 +132,7 @@ if [ -n "$PROFILED_BIN_FLAGS" ]; then
     CARGO_TARGET_DIR="$PROFILED_TARGET_DIR" cargo build $COMMON_FLAGS $PROFILED_FLAGS $PROFILED_BIN_FLAGS
 fi
 
-# Extract .bin / .elf / .text in parallel
+# Extract the ELFs in parallel (the host reads .text and the flat ROM image from them)
 echo "==> Extracting binaries"
 log_dir=$(mktemp -d)
 pids=""
@@ -144,13 +144,10 @@ for circuit in $CIRCUITS; do
             EXTRA_FLAGS="$PROFILED_FLAGS"
             export CARGO_TARGET_DIR="$PROFILED_TARGET_DIR"
         fi
-        rm -f ${circuit}.bin ${circuit}.elf ${circuit}.text
-        cargo objcopy $COMMON_FLAGS $EXTRA_FLAGS --bin "$circuit" -- -O binary ${circuit}.bin
+        rm -f ${circuit}.elf
         # .comment holds the rustc/LLD build strings, which differ between the dist
         # toolchains of different hosts; drop it so the .elf is reproducible too.
-        # (.text stays: the ELF is the program the hosts load.)
         cargo objcopy $COMMON_FLAGS $EXTRA_FLAGS --bin "$circuit" -- -R .comment ${circuit}.elf
-        cargo objcopy $COMMON_FLAGS $EXTRA_FLAGS --bin "$circuit" -- -O binary --only-section=.text ${circuit}.text
     ) > "${log_dir}/${circuit}.log" 2>&1 &
     pids="${pids} $!"
 done
@@ -163,7 +160,7 @@ done
 if [ "$rc" -ne 0 ]; then
     echo "ERROR: binary extraction failed." >&2
     for circuit in $CIRCUITS; do
-        if [ ! -s "${circuit}.bin" ] || [ ! -s "${circuit}.elf" ] || [ ! -s "${circuit}.text" ]; then
+        if [ ! -s "${circuit}.elf" ]; then
             echo "  --- ${circuit} ---" >&2
             tail -n 10 "${log_dir}/${circuit}.log" >&2
         fi

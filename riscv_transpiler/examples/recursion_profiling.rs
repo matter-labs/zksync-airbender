@@ -429,8 +429,9 @@ fn main() {
         "usage: {} <hist|jit> <program-base> <nd-file> [default|flat] [repeats]",
         args[0]
     );
-    let binary = read_words(&format!("{}.bin", args[2]));
-    let text = read_words(&format!("{}.text", args[2]));
+    let (binary, text) =
+        riscv_transpiler::elf::ProgramSource::legacy_binaries_from_bin(format!("{}.bin", args[2]))
+            .load_unpadded();
     let responses = read_words(&args[3]);
 
     match args[1].as_str() {

@@ -142,7 +142,7 @@ mod tests {
         let worker = Worker::new_with_num_threads(12);
 
         // === Stage 1: base layer — prove zksync_os app + witness (IM ISA). ===
-        let (zksync_bin, zksync_text) = load_program(
+        let (zksync_bin, zksync_text) = riscv_transpiler::elf::load_legacy_binaries(
             Path::new("../../riscv_transpiler/examples/zksync_os/app.bin"),
             Path::new("../../riscv_transpiler/examples/zksync_os/app.text"),
         );
@@ -770,14 +770,9 @@ mod tests {
             FsvProgram::UnifiedRecursionLayer,
             BlakeMode::BlakeSpecialOpcodes,
         );
-        let (feeder_bin, feeder_text) = load_program(
-            Path::new(&format!(
-                "{FSV_DIR}/fsv_unified_recursion_layer_sec_100_l1_feeder_special_opcodes_extension.bin"
-            )),
-            Path::new(&format!(
-                "{FSV_DIR}/fsv_unified_recursion_layer_sec_100_l1_feeder_special_opcodes_extension.text"
-            )),
-        );
+        let (feeder_bin, feeder_text) = load_program(Path::new(&format!(
+            "{FSV_DIR}/fsv_unified_recursion_layer_sec_100_l1_feeder_special_opcodes_extension.elf"
+        )));
 
         let feeder_config =
             prover::gkr::prover_config::example_configs::l1_feeder_config_for_2_23();
@@ -975,7 +970,7 @@ mod tests {
         use riscv_transpiler::ir::simple_instruction_set::*;
         use riscv_transpiler::ir::FullUnsignedMachineDecoderConfig;
 
-        let (_zksync_bin, zksync_text) = load_program(
+        let (_zksync_bin, zksync_text) = riscv_transpiler::elf::load_legacy_binaries(
             Path::new("../../riscv_transpiler/examples/zksync_os/app.bin"),
             Path::new("../../riscv_transpiler/examples/zksync_os/app.text"),
         );

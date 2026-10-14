@@ -33,23 +33,7 @@ pub(super) fn extract_non_memory_family<const FAMILY_IDX: u8>(
 
     let cycles_bound = 1 << 20;
 
-    let binary = std::fs::read(test_artifact_path(binary_path)).unwrap();
-    assert_eq!(binary.len() % 4, 0);
-    let binary: Vec<_> = binary
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|el| u32::from_le_bytes(*el))
-        .collect();
-
-    let text_section = std::fs::read(test_artifact_path(text_path)).unwrap();
-    assert_eq!(text_section.len() % 4, 0);
-    let text_section: Vec<_> = text_section
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|el| u32::from_le_bytes(*el))
-        .collect();
+    let (binary, text_section) = load_test_program(binary_path, text_path);
 
     let instructions: Vec<Instruction> =
         preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text_section);
@@ -440,23 +424,7 @@ pub(super) fn extract_memory_family<const FAMILY_IDX: u8>(
 
     let cycles_bound = 1 << 20;
 
-    let binary = std::fs::read(test_artifact_path(binary_path)).unwrap();
-    assert_eq!(binary.len() % 4, 0);
-    let binary: Vec<_> = binary
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|el| u32::from_le_bytes(*el))
-        .collect();
-
-    let text_section = std::fs::read(test_artifact_path(text_path)).unwrap();
-    assert_eq!(text_section.len() % 4, 0);
-    let text_section: Vec<_> = text_section
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|el| u32::from_le_bytes(*el))
-        .collect();
+    let (binary, text_section) = load_test_program(binary_path, text_path);
 
     let instructions: Vec<Instruction> =
         preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text_section);

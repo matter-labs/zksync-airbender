@@ -121,40 +121,10 @@ impl Default for ProgramProverConfig {
     }
 }
 
-/// Where the guest program comes from.
-#[derive(Clone, Debug)]
-pub enum ProgramSource {
-    /// Raw `objcopy -O binary` flat ROM image plus the `--only-section=.text` dump.
-    Dumps { bin_path: String, text_path: String },
-    /// The linked ELF file, read with `riscv_transpiler::elf::read_elf` in legacy mode. The
-    /// program hashes recorded in the artifact are computed over the same bytes the dumps
-    /// hold, so an artifact produced from the dumps verifies against the ELF and vice versa.
-    Elf { elf_path: String },
-}
-
-impl ProgramSource {
-    pub fn from_paths(bin_path: String, text_path: Option<String>) -> Self {
-        let text_path = text_path.unwrap_or_else(|| derive_text_path(&bin_path));
-        Self::Dumps {
-            bin_path,
-            text_path,
-        }
-    }
-
-    pub fn from_elf(elf_path: String) -> Self {
-        Self::Elf { elf_path }
-    }
-
-    fn describe(&self) -> String {
-        match self {
-            Self::Dumps {
-                bin_path,
-                text_path,
-            } => format!("{bin_path} + {text_path}"),
-            Self::Elf { elf_path } => elf_path.clone(),
-        }
-    }
-}
+/// Where the guest program comes from: the linked ELF, or the `objcopy` dumps of a program
+/// committed as-is. The program hashes recorded in the artifact are computed over the same
+/// bytes in both cases, so an artifact made from one form verifies against the other.
+pub use riscv_transpiler::elf::ProgramSource;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct ProofTimingsMs {
@@ -1305,45 +1275,21 @@ struct LoadedProgram {
 }
 
 fn load_program(source: &ProgramSource) -> Result<LoadedProgram, String> {
-    match source {
-        ProgramSource::Dumps {
-            bin_path,
-            text_path,
-        } => {
-            let bin = Path::new(bin_path);
-            let text = Path::new(text_path);
-            if !bin.exists() {
-                return Err(format!("binary not found: {bin_path}"));
-            }
-            if !text.exists() {
-                return Err(format!("text section not found: {text_path}"));
-            }
-            let (bin_bytes, bin_u32) = setups::read_binary(bin);
-            let (text_bytes, text_u32) = setups::read_binary(text);
-            Ok(LoadedProgram {
-                bin_bytes,
-                text_bytes,
-                bin_u32,
-                text_u32,
-            })
-        }
-        ProgramSource::Elf { elf_path } => {
-            use riscv_transpiler::elf::{read_elf_from_path, ElfReadMode};
-            let image = read_elf_from_path(Path::new(elf_path), ElfReadMode::Legacy)
-                .map_err(|err| format!("failed to load ELF {elf_path}: {err}"))?;
-            // The objcopy-equivalent prefix, so program hashes match the `.bin` dumps.
-            let bin_u32 = image
-                .objcopy_binary_words()
-                .expect("legacy mode produces the flattened image")
-                .to_vec();
-            Ok(LoadedProgram {
-                bin_bytes: image.objcopy_binary().unwrap(),
-                text_bytes: image.text_bytes(),
-                bin_u32,
-                text_u32: image.text,
-            })
-        }
-    }
+    let image = source
+        .read()
+        .map_err(|err| format!("failed to load program {source}: {err}"))?;
+    // The objcopy-equivalent prefix (no ROM padding), so program hashes are the same whether the
+    // program came from its ELF or from the `.bin`/`.text` dumps.
+    let bin_u32 = image
+        .objcopy_binary_words()
+        .expect("legacy mode produces the flattened image")
+        .to_vec();
+    Ok(LoadedProgram {
+        bin_bytes: image.objcopy_binary().unwrap(),
+        text_bytes: image.text_bytes(),
+        bin_u32,
+        text_u32: image.text,
+    })
 }
 
 /// Flat ROM image and text section words of a program, unpadded.
@@ -1372,14 +1318,12 @@ fn load_and_validate_program(
     let loaded = load_program(source)?;
     if keccak256(&loaded.bin_bytes) != artifact.program_bin_keccak {
         return Err(format!(
-            "proof artifact program_bin_keccak does not match the flat image of {}",
-            source.describe()
+            "proof artifact program_bin_keccak does not match the flat image of {source}"
         ));
     }
     if keccak256(&loaded.text_bytes) != artifact.program_text_keccak {
         return Err(format!(
-            "proof artifact program_text_keccak does not match the text section of {}",
-            source.describe()
+            "proof artifact program_text_keccak does not match the text section of {source}"
         ));
     }
     Ok(loaded)
@@ -1421,23 +1365,6 @@ pub fn default_backend_for_build() -> ProverBackend {
     }
 }
 
-fn derive_text_path(bin_path: &str) -> String {
-    let bin = Path::new(bin_path);
-    if let Some(stem_path) = strip_bin_suffix(bin) {
-        return format!("{}.text", stem_path.to_string_lossy());
-    }
-
-    let mut text_path = bin.to_path_buf();
-    text_path.set_extension("text");
-    text_path.to_string_lossy().to_string()
-}
-
-fn strip_bin_suffix(path: &Path) -> Option<PathBuf> {
-    let path_str = path.to_string_lossy();
-    let stripped = path_str.strip_suffix(".bin")?;
-    Some(PathBuf::from(stripped))
-}
-
 fn elapsed_ms(start: Instant) -> u64 {
     start.elapsed().as_millis() as u64
 }
@@ -1458,9 +1385,8 @@ mod recursion_binding_tests {
     fn cpu_unified_verification_chain_binds_program() {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/hashed_fibonacci");
         let [first, second] = ["app_plain.bin", "app_blake2_with_compression.bin"].map(|name| {
-            unified_verification_chain_hashes(&ProgramSource::from_paths(
-                dir.join(name).to_string_lossy().into_owned(),
-                None,
+            unified_verification_chain_hashes(&ProgramSource::legacy_binaries_from_bin(
+                dir.join(name),
             ))
             .unwrap()
         });
@@ -1568,7 +1494,7 @@ mod recursion_binding_tests {
         if !path.exists() {
             return; // repo layout changed; the synthetic test still covers the scan
         }
-        let (_, bin) = setups::read_binary(&path);
+        let (bin, _) = ProgramSource::legacy_binaries_from_bin(&path).load_unpadded();
         find_binary_exit_point(&bin).expect("shipped binary must contain one exit sequence");
     }
 }
@@ -1577,20 +1503,31 @@ mod recursion_binding_tests {
 mod program_source_tests {
     use super::*;
 
-    /// A program loaded from its ELF must be indistinguishable from one loaded from the
-    /// `objcopy` dumps: same words for the backends and same bytes for the artifact hashes.
+    /// Both program forms feed the same bytes to the backends and to the artifact hashes: the
+    /// dumps verbatim, the ELF through its objcopy-equivalent image and text section.
     #[test]
-    fn elf_source_matches_objcopy_dumps() {
-        let stem = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../tools/gkr_verifier/add_sub_lui_auipc_mop_sec_100");
-        let stem = stem.to_string_lossy();
-        let dumps = load_program(&ProgramSource::from_paths(format!("{stem}.bin"), None)).unwrap();
-        let elf = load_program(&ProgramSource::from_elf(format!("{stem}.elf"))).unwrap();
-        assert_eq!(dumps.bin_bytes, elf.bin_bytes);
-        assert_eq!(dumps.text_bytes, elf.text_bytes);
-        assert_eq!(dumps.bin_u32, elf.bin_u32);
-        assert_eq!(dumps.text_u32, elf.text_u32);
-        assert_eq!(keccak256(&dumps.bin_bytes), keccak256(&elf.bin_bytes));
-        assert_eq!(keccak256(&dumps.text_bytes), keccak256(&elf.text_bytes));
+    fn program_sources_load_consistently() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+
+        let bin = root.join("examples/hashed_fibonacci/app_blake2_with_compression.bin");
+        let dumps = load_program(&ProgramSource::legacy_binaries_from_bin(&bin)).unwrap();
+        assert_eq!(dumps.bin_bytes, std::fs::read(&bin).unwrap());
+        assert_eq!(
+            dumps.text_bytes,
+            std::fs::read(bin.with_extension("text")).unwrap()
+        );
+        assert_eq!(dumps.bin_u32.len() * 4, dumps.bin_bytes.len());
+        assert_eq!(dumps.text_u32.len() * 4, dumps.text_bytes.len());
+
+        let elf = root.join("tools/gkr_verifier/add_sub_lui_auipc_mop_sec_100.elf");
+        let loaded = load_program(&ProgramSource::elf(&elf)).unwrap();
+        let (bin_u32, text_u32) = ProgramSource::elf(&elf).load_unpadded();
+        assert_eq!(loaded.bin_u32, bin_u32);
+        assert_eq!(loaded.text_u32, text_u32);
+        assert!(!text_u32.is_empty());
+        assert!(loaded.bin_u32.starts_with(&loaded.text_u32));
+        assert_eq!(loaded.bin_u32.len() * 4, loaded.bin_bytes.len());
+        assert_eq!(loaded.text_u32.len() * 4, loaded.text_bytes.len());
+        assert_ne!(keccak256(&loaded.bin_bytes), keccak256(&loaded.text_bytes));
     }
 }

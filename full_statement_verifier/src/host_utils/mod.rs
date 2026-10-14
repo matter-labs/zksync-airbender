@@ -94,19 +94,11 @@ pub fn native_verify_unified(stream: Vec<u32>, is_base: bool) -> [u32; 16] {
         .expect("verifier thread must not panic")
 }
 
-/// Load a guest from its raw `objcopy` dumps (flat ROM image + text section), both padded to
-/// the ROM size for proving.
-#[must_use]
-pub fn load_program(bin_path: &Path, text_path: &Path) -> (Vec<u32>, Vec<u32>) {
-    let (_, binary_image) = setups::read_and_pad_binary(bin_path);
-    let (_, text_section) = setups::read_and_pad_binary(text_path);
-    (binary_image, text_section)
-}
-
 /// Load a guest from its linked ELF (legacy read mode: `.text` followed in ROM by the
-/// `.rodata`/`.data` init images). Same output shape and padding as [`load_program`].
+/// `.rodata`/`.data` init images): `(flat ROM image, text section)`, both padded to the ROM
+/// size for proving.
 #[must_use]
-pub fn load_program_elf(elf_path: &Path) -> (Vec<u32>, Vec<u32>) {
+pub fn load_program(elf_path: &Path) -> (Vec<u32>, Vec<u32>) {
     riscv_transpiler::elf::load_legacy_program(elf_path)
 }
 
@@ -119,39 +111,33 @@ pub fn load_fsv_program(
     let dir = dir.as_ref();
     let stem = program.file_stem(blake);
     println!("Trying to load `{}` verifier", stem);
-    let bin_path = dir.join(format!("{stem}.bin"));
-    let exists = match bin_path.try_exists() {
+    let elf_path = dir.join(format!("{stem}.elf"));
+    let exists = match elf_path.try_exists() {
         Ok(res) => res,
         Err(err) => {
             if let Some(err) = err.get_ref() {
-                println!("Failed to probe path `{}`: {}", bin_path.display(), err);
+                println!("Failed to probe path `{}`: {}", elf_path.display(), err);
             } else {
-                println!("Failed to probe path `{}`", bin_path.display());
+                println!("Failed to probe path `{}`", elf_path.display());
             }
             false
         }
     };
     if exists {
-        load_program(
-            &dir.join(format!("{stem}.bin")),
-            &dir.join(format!("{stem}.text")),
-        )
+        load_program(&elf_path)
     } else {
         println!(
             "Verifier binary `{}` doesn't exist at path {}, using fallback naming mode",
             stem,
-            bin_path.display(),
+            elf_path.display(),
         );
         assert!(
             blake == BlakeMode::Compression,
             "missing variant binary {} — run `cd tools/gkr_verifier && ./dump_recursive_verifiers.sh`",
-            dir.join(format!("{stem}.bin")).display()
+            elf_path.display()
         );
         let base = program.base_name();
-        load_program(
-            &dir.join(format!("{base}.bin")),
-            &dir.join(format!("{base}.text")),
-        )
+        load_program(&dir.join(format!("{base}.elf")))
     }
 }
 

@@ -543,18 +543,10 @@ pub(crate) mod test {
     use super::*;
     use std::path::Path;
 
-    pub(crate) fn read_binary(path: &Path) -> (Vec<u8>, Vec<u32>) {
-        use std::io::Read;
-        let mut file = std::fs::File::open(path).expect("must open provided file");
-        let mut buffer = vec![];
-        file.read_to_end(&mut buffer).expect("must read the file");
-        assert_eq!(buffer.len() % core::mem::size_of::<u32>(), 0);
-        let mut binary = Vec::with_capacity(buffer.len() / core::mem::size_of::<u32>());
-        for el in buffer.as_chunks::<4>().0 {
-            binary.push(u32::from_le_bytes(*el));
-        }
-
-        (buffer, binary)
+    /// `(flat ROM image words, text section words)` of a committed `objcopy` dump pair,
+    /// unpadded (the shape the files have on disk).
+    pub(crate) fn load_dumps(bin: &str, text: &str) -> (Vec<u32>, Vec<u32>) {
+        crate::elf::ProgramSource::legacy_binaries(bin, text).load_unpadded()
     }
 
     #[test]
@@ -651,8 +643,8 @@ pub(crate) mod test {
     #[test]
     #[serial_test::serial]
     fn test_simple_fibonacci() {
-        let (_, binary) = read_binary(Path::new("examples/fibonacci/app.bin"));
-        let (_, text) = read_binary(Path::new("examples/fibonacci/app.text"));
+        let (binary, text) =
+            load_dumps("examples/fibonacci/app.bin", "examples/fibonacci/app.text");
         let instructions: Vec<Instruction> =
             preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text);
         let tape = SimpleTape::new(&instructions);
@@ -713,8 +705,8 @@ pub(crate) mod test {
     #[test]
     #[serial_test::serial]
     fn test_keccak_f1600() {
-        let (_, binary) = read_binary(Path::new("../examples/keccak/app.bin"));
-        let (_, text) = read_binary(Path::new("../examples/keccak/app.text"));
+        let (binary, text) =
+            load_dumps("../examples/keccak/app.bin", "../examples/keccak/app.text");
         let instructions: Vec<Instruction> =
             preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text);
         let tape = SimpleTape::new(&instructions);
@@ -775,10 +767,10 @@ pub(crate) mod test {
         use crate::abstractions::non_determinism::QuasiUARTSource;
         use crate::ir::*;
 
-        let (_, binary) = read_binary(Path::new("examples/zksync_os/app.bin"));
-        let (_, text) = read_binary(Path::new("examples/zksync_os/app.text"));
+        let (binary, text) =
+            load_dumps("examples/zksync_os/app.bin", "examples/zksync_os/app.text");
 
-        let (witness, _) = read_binary(Path::new("examples/zksync_os/23620012_witness"));
+        let witness = std::fs::read("examples/zksync_os/23620012_witness").unwrap();
         let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
         let witness: Vec<_> = witness
             .as_chunks::<4>()
@@ -838,8 +830,10 @@ pub(crate) mod test {
         use crate::abstractions::non_determinism::QuasiUARTSource;
         use crate::ir::*;
 
-        let (_, binary) = read_binary(Path::new("../examples/experiments/app.bin"));
-        let (_, text) = read_binary(Path::new("../examples/experiments/app.text"));
+        let (binary, text) = load_dumps(
+            "../examples/experiments/app.bin",
+            "../examples/experiments/app.text",
+        );
 
         let mut source = QuasiUARTSource::new_with_reads(vec![]);
 
@@ -893,8 +887,10 @@ pub(crate) mod test {
         use crate::abstractions::non_determinism::QuasiUARTSource;
         use crate::ir::*;
 
-        let (_, binary) = read_binary(Path::new("../examples/experiments/app.bin"));
-        let (_, text) = read_binary(Path::new("../examples/experiments/app.text"));
+        let (binary, text) = load_dumps(
+            "../examples/experiments/app.bin",
+            "../examples/experiments/app.text",
+        );
 
         let mut source = QuasiUARTSource::new_with_reads(vec![]);
 

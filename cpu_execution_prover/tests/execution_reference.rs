@@ -17,13 +17,10 @@ const RAM_BOUND: usize = 1 << 30;
 /// Calls a delegation, so the comparison covers a delegation proof.
 fn delegating_fixture() -> (Vec<u32>, Vec<u32>) {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
-    let (_, binary) = setups::read_and_pad_binary(
+    riscv_transpiler::elf::load_legacy_binaries(
         &root.join("examples/hashed_fibonacci/app_blake2_with_compression.bin"),
-    );
-    let (_, text) = setups::read_and_pad_binary(
         &root.join("examples/hashed_fibonacci/app_blake2_with_compression.text"),
-    );
-    (binary, text)
+    )
 }
 
 type Proof = prover::gkr::prover::GKRProof<

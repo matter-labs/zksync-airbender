@@ -10,9 +10,9 @@ use execution_prover::{
 };
 use gpu_execution_prover::{ExecutionProverConfiguration as GpuConfiguration, GpuBackend};
 use prover::definitions::SecurityLevel;
+use riscv_transpiler::elf::ProgramSource;
 use riscv_transpiler::jit::JitRunnerRam;
 use riscv_transpiler::vm::FlatResponsesSource;
-use setups::read_binary;
 
 // Both backends must use identical execution and proof parameters.
 const RAM: JitRunnerRam = JitRunnerRam::Medium;
@@ -47,9 +47,11 @@ fn workspace_root() -> std::path::PathBuf {
 
 fn load(workload: &Workload) -> (Vec<u32>, Vec<u32>) {
     let root = workspace_root().join("examples").join(workload.directory);
-    let (_, bin) = read_binary(&root.join(format!("{}.bin", workload.stem)));
-    let (_, text) = read_binary(&root.join(format!("{}.text", workload.stem)));
-    (bin, text)
+    ProgramSource::legacy_binaries(
+        root.join(format!("{}.bin", workload.stem)),
+        root.join(format!("{}.text", workload.stem)),
+    )
+    .load_unpadded()
 }
 
 fn commit<B>(

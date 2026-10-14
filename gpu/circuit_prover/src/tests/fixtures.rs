@@ -23,8 +23,7 @@ pub(super) fn build_delegation_replay_fixture_for_workload<OPT: DecodingOptions>
     text_path: &str,
     non_determinism_reads: &[u32],
 ) -> DelegationReplayFixture {
-    let binary = read_test_words(binary_path);
-    let text_section = read_test_words(text_path);
+    let (binary, text_section) = load_test_program(binary_path, text_path);
     let instructions: Vec<Instruction> = preprocess_bytecode::<OPT, true>(&text_section);
     let tape = SimpleTape::new(&instructions);
     let mut ram = RamWithRomRegion::<{ ROM_SECOND_WORD_BITS }>::from_rom_content(&binary, 1 << 30);

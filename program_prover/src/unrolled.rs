@@ -1944,10 +1944,10 @@ pub(crate) mod test {
         skip_if_ci!();
 
         let use_caches = true;
-        let (_, binary_image) =
-            setups::read_and_pad_binary(Path::new("../../examples/basic_fibonacci/app.bin"));
-        let (_, text_section) =
-            setups::read_and_pad_binary(Path::new("../../examples/basic_fibonacci/app.text"));
+        let (binary_image, text_section) = riscv_transpiler::elf::load_legacy_binaries(
+            Path::new("../../examples/basic_fibonacci/app.bin"),
+            Path::new("../../examples/basic_fibonacci/app.text"),
+        );
 
         // setups::pad_bytecode_for_proving(&mut binary);
 

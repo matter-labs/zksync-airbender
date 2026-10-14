@@ -9,13 +9,11 @@ use riscv_transpiler::vm::*;
 
 fn run_transpiler(name: &str, level: SecurityLevel) {
     let (nds, external_challenges) = common::load_nds(name, level);
-    let (bin_path, text_path, elf_path) = common::binary_paths(name, level);
+    let elf_path = common::elf_path(name, level);
     run_transpiler_on(
         &format!("{}_{}", name, level.dir_suffix()),
         nds,
         external_challenges,
-        bin_path,
-        text_path,
         elf_path,
     );
 }
@@ -29,29 +27,17 @@ fn run_transpiler_on(
         BabyBearField,
         field::baby_bear::ext4::BabyBearExt4,
     >,
-    bin_path: String,
-    text_path: String,
     elf_path: String,
 ) -> u64 {
     let output_path = std::env::current_dir()
         .unwrap()
         .join(format!("gkr_flamegraph_{}.svg", name));
-    run_transpiler_on_with_output(
-        name,
-        nds,
-        external_challenges,
-        bin_path,
-        text_path,
-        elf_path,
-        output_path,
-    )
+    run_transpiler_on_with_output(name, nds, external_challenges, elf_path, output_path)
 }
 
-/// Run the RISC-V verifier binary at `bin_path`/`text_path` (symbols from
-/// `elf_path`) on the flattened proof `nds`, asserting success and printing the
-/// exact cycle count + writing a flamegraph to `output_path`. Returns the
-/// cycle count.
-#[allow(clippy::too_many_arguments)]
+/// Run the RISC-V verifier program `elf_path` (its ROM image and symbols) on
+/// the flattened proof `nds`, asserting success and printing the exact cycle
+/// count + writing a flamegraph to `output_path`. Returns the cycle count.
 fn run_transpiler_on_with_output(
     name: &str,
     nds: Vec<u32>,
@@ -59,8 +45,6 @@ fn run_transpiler_on_with_output(
         BabyBearField,
         field::baby_bear::ext4::BabyBearExt4,
     >,
-    bin_path: String,
-    text_path: String,
     elf_path: String,
     output_path: std::path::PathBuf,
 ) -> u64 {
@@ -191,14 +175,10 @@ verifier_common::gkr_circuits!(generate_transpiler_tests);
 fn blake2_with_extended_control_sec_100_pack4() {
     use verifier_common::test_circuits::packed_fixture;
     let (nds, external_challenges) = packed_fixture::load_nds();
-    let (bin_path, text_path, elf_path) =
-        common::binary_paths(packed_fixture::CIRCUIT_NAME, SecurityLevel::Sec100);
-    let packed = |path: String| -> String {
-        let suffix = format!("_{}", packed_fixture::DIR_SUFFIX);
-        let replaced = path.replace("_sec_100", &suffix);
-        assert_ne!(replaced, path, "unexpected binary path layout: {path}");
-        replaced
-    };
+    let elf_path = common::elf_path(packed_fixture::CIRCUIT_NAME, SecurityLevel::Sec100);
+    let suffix = format!("_{}", packed_fixture::DIR_SUFFIX);
+    let packed = elf_path.replace("_sec_100", &suffix);
+    assert_ne!(packed, elf_path, "unexpected binary path layout: {elf_path}");
     run_transpiler_on(
         &format!(
             "{}_{}",
@@ -207,16 +187,14 @@ fn blake2_with_extended_control_sec_100_pack4() {
         ),
         nds,
         external_challenges,
-        packed(bin_path),
-        packed(text_path),
-        packed(elf_path),
+        packed,
     );
 }
 
 /// The blake base-round comparison sweep: every
 /// `verifier_common::test_circuits::blake_variants::BlakeVariant` (physical
 /// packing 2^0..=2^4, two or one value(s) per column per base leaf) on its own
-/// RISC-V verifier binary `tools/gkr_verifier/blake2_with_extended_control_sec_100{infix}.*`
+/// RISC-V verifier program `tools/gkr_verifier/blake2_with_extended_control_sec_100{infix}.elf`
 /// (build them with `dump_bin.sh blake2_with_extended_control_sec_100...`).
 /// Every verifier must accept its fixture; the cycle counts land in
 /// `flamegraphs/blake_variants/cycles.txt` next to one flamegraph per variant.
@@ -247,13 +225,11 @@ fn blake2_with_extended_control_sec_100_variants() {
         }
         let name = variant.name();
         let (nds, external_challenges) = variant.load_nds();
-        let (bin_path, text_path, elf_path) = variant.binary_paths();
+        let elf_path = variant.elf_path();
         let cycles = run_transpiler_on_with_output(
             &name,
             nds,
             external_challenges,
-            bin_path,
-            text_path,
             elf_path,
             out_dir.join(format!("gkr_flamegraph_{}.svg", name)),
         );

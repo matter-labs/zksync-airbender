@@ -1032,10 +1032,10 @@ pub(crate) mod test {
         skip_if_ci!();
 
         let use_caches = true;
-        let (_, binary_image) =
-            setups::read_and_pad_binary(Path::new("../../examples/basic_fibonacci/app.bin"));
-        let (_, text_section) =
-            setups::read_and_pad_binary(Path::new("../../examples/basic_fibonacci/app.text"));
+        let (binary_image, text_section) = riscv_transpiler::elf::load_legacy_binaries(
+            Path::new("../../examples/basic_fibonacci/app.bin"),
+            Path::new("../../examples/basic_fibonacci/app.text"),
+        );
 
         let worker = worker::Worker::new_with_num_threads(8);
         let non_determinism_source = QuasiUARTSource::new_with_reads(vec![15, 1]);
