@@ -1,5 +1,5 @@
 use super::factory::{PreparedCircuit, SyntheticInputFactory};
-use super::probe::{drain, input_transfers, schedule_proof_inputs};
+use super::probe::{drain, input_transfers, preset_setup_reduction_layers, schedule_proof_inputs};
 use crate::precomputations::l1_wrap::L1WrapPrecomputed;
 use crate::upstream::{
     CommitmentMode, CpuGKRSetup, L1WrapSetup, MerkleTreeCapVarLength, ProofProfile, ProverConfig,
@@ -608,6 +608,7 @@ fn measure<B: GoodAllocator>(
                     target,
                     &dr_tail_plan,
                     presets::policy(CircuitType::L1Wrap, ProofProfile::L1Wrap, row.arena_bytes),
+                    presets::partial_trees(CircuitType::L1Wrap, ProofProfile::L1Wrap),
                     context,
                 ),
             )?;
@@ -657,6 +658,7 @@ fn measure<B: GoodAllocator>(
                     &config,
                     target,
                     presets::merged_commit_strategy(UNIFIED, ProofProfile::L1Feeder),
+                    presets::partial_trees(UNIFIED, ProofProfile::L1Feeder),
                     context,
                 ),
             )?;
@@ -689,6 +691,7 @@ fn measure<B: GoodAllocator>(
                         &config,
                         inputs,
                         presets::merged_commit_strategy(UNIFIED, ProofProfile::L1Feeder),
+                        presets::partial_trees(UNIFIED, ProofProfile::L1Feeder),
                         context,
                     ),
                 )?;
@@ -706,7 +709,12 @@ fn measure<B: GoodAllocator>(
             let (target, plan) = step(
                 "target_inputs",
                 context,
-                schedule_proof_inputs(0, context, prepared),
+                schedule_proof_inputs(
+                    0,
+                    context,
+                    prepared,
+                    preset_setup_reduction_layers(prepared),
+                ),
             )?;
             step(
                 "target_inputs",
@@ -737,6 +745,7 @@ fn measure<B: GoodAllocator>(
                     target,
                     &plan,
                     presets::policy(UNIFIED, ProofProfile::L1Feeder, row.arena_bytes),
+                    presets::partial_trees(UNIFIED, ProofProfile::L1Feeder),
                     context,
                 ),
             )?;
@@ -762,11 +771,8 @@ fn merged_commit_inputs<'a>(
         .setup_host
         .get_initialized(prepared.profile)
         .expect("merged memory+witness commitment requires the initialized setup");
-    let setup = GpuGKRSetupTransfer::new(
-        setup_host,
-        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
-        context,
-    )?;
+    let setup =
+        GpuGKRSetupTransfer::new(setup_host, preset_setup_reduction_layers(prepared), context)?;
     let (decoder, inits, trace) = input_transfers(context, prepared)?;
     GpuGKRMergedCommitTransfer::new(setup, decoder, inits, trace, context)
 }
@@ -790,7 +796,12 @@ fn schedule_follower<'a, B: GoodAllocator + 'a>(
             let (inputs, _) = step(
                 "follower_inputs",
                 context,
-                schedule_proof_inputs(0, context, prepared),
+                schedule_proof_inputs(
+                    0,
+                    context,
+                    prepared,
+                    preset_setup_reduction_layers(prepared),
+                ),
             )?;
             (Some(inputs), None)
         }
@@ -802,7 +813,12 @@ fn schedule_follower<'a, B: GoodAllocator + 'a>(
             let (inputs, _) = step(
                 "follower_inputs",
                 context,
-                schedule_proof_inputs(0, context, prepared),
+                schedule_proof_inputs(
+                    0,
+                    context,
+                    prepared,
+                    preset_setup_reduction_layers(prepared),
+                ),
             )?;
             (Some(inputs), None)
         }

@@ -52,6 +52,37 @@ pub fn assert_partial_tree_reduction_layers(requested: u32) {
     );
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PartialTreePolicy {
+    pub setup: u32,
+    pub memory: u32,
+    pub witness: u32,
+}
+
+impl PartialTreePolicy {
+    pub const DEFAULT: Self = Self::uniform(PARTIAL_TREE_REDUCTION_LAYERS);
+
+    pub const fn uniform(reduction_layers: u32) -> Self {
+        Self {
+            setup: reduction_layers,
+            memory: reduction_layers,
+            witness: reduction_layers,
+        }
+    }
+
+    pub fn assert_valid(self) {
+        assert_partial_tree_reduction_layers(self.setup);
+        assert_partial_tree_reduction_layers(self.memory);
+        assert_partial_tree_reduction_layers(self.witness);
+    }
+}
+
+impl Default for PartialTreePolicy {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
 #[doc(hidden)]
 pub fn resolve_partial_tree_reduction_layers(
     requested: u32,

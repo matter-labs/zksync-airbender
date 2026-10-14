@@ -57,6 +57,7 @@ fn commit_memory_inner<'a>(
     inits_and_teardowns: Option<&crate::witness::trace_unrolled::InitsAndTeardownsTraceDevice>,
     tracing_data: Option<&TracingDataDevice>,
     prover_config: &ProverConfig,
+    partial_tree_reduction_layers: u32,
     callbacks: Callbacks<'a>,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
@@ -78,7 +79,7 @@ fn commit_memory_inner<'a>(
         log_tree_cap_size,
         memory_columns_count,
         TreesCacheMode::CachePartial,
-        crate::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+        partial_tree_reduction_layers,
         context,
     )?;
     let range = Range::new("commit_memory")?;
@@ -354,6 +355,7 @@ pub fn commit_memory<'a>(
     decoder_table: Option<&DeviceSlice<ExecutorFamilyDecoderData>>,
     tracing_data: &TracingDataDevice,
     prover_config: &ProverConfig,
+    partial_tree_reduction_layers: u32,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
     commit_memory_inner(
@@ -363,6 +365,7 @@ pub fn commit_memory<'a>(
         None,
         Some(tracing_data),
         prover_config,
+        partial_tree_reduction_layers,
         Callbacks::new(),
         context,
     )
@@ -373,6 +376,7 @@ pub fn commit_memory_from_transfers<'a, A: GoodAllocator + 'a>(
     compiled_circuit: &GKRCircuitArtifact<BF>,
     inputs: super::memory_transfer::GpuGKRCommitMemoryTransfer<'a, A>,
     prover_config: &ProverConfig,
+    partial_tree_reduction_layers: u32,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
     // One exec-stream wait covers every H2D bundled by `inputs` (decoder,
@@ -393,6 +397,7 @@ pub fn commit_memory_from_transfers<'a, A: GoodAllocator + 'a>(
         inits_and_teardowns.as_ref().map(|t| &t.data_device),
         tracing_data.as_ref().map(|t| &t.data_device),
         prover_config,
+        partial_tree_reduction_layers,
         transfer.into_callbacks(),
         context,
     )

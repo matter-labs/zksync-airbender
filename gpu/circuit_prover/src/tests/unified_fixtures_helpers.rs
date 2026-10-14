@@ -786,6 +786,7 @@ where
             None,
             &tracing_data_transfer.data_device,
             &prover_config,
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
             &context,
         )
         .unwrap();
@@ -1095,6 +1096,7 @@ fn prepare_unified_fixture(
             &compiled_circuit,
             bundle,
             &prover_config,
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
             &context,
         )
         .unwrap();

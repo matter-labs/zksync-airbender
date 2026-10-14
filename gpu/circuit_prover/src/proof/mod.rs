@@ -2,7 +2,7 @@ pub mod inputs;
 pub mod memory_policy;
 pub mod merged_commitment;
 
-use memory_policy::ProofMemoryPolicy;
+use memory_policy::{PartialTreePolicy, ProofMemoryPolicy};
 mod orchestration;
 
 use std::sync::Arc;
@@ -94,6 +94,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     inputs: GpuGKRProofTransfer<'a, A>,
     dr_tail_plan: &gpu_gkr::DrTailProofPlan,
     memory_policy: ProofMemoryPolicy,
+    partial_trees: PartialTreePolicy,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a>> {
     prove_inner(
@@ -104,6 +105,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         inputs,
         dr_tail_plan,
         memory_policy,
+        partial_trees,
         None,
         context,
     )
@@ -130,6 +132,7 @@ pub(crate) fn prove_stagewise<'a, A: GoodAllocator + 'a>(
         inputs,
         &dr_tail_plan,
         ProofMemoryPolicy::default(),
+        PartialTreePolicy::DEFAULT,
         Some(Box::default()),
         context,
     )
@@ -143,6 +146,7 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
     inputs: GpuGKRProofTransfer<'a, A>,
     dr_tail_plan: &gpu_gkr::DrTailProofPlan,
     memory_policy: ProofMemoryPolicy,
+    partial_trees: PartialTreePolicy,
     mut stage_snapshots: Option<Box<GKRBackwardStageSnapshotSink>>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a>> {
@@ -150,6 +154,7 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         memory_policy.witness.is_valid(),
         "invalid witness memory policy"
     );
+    partial_trees.assert_valid();
     dr_tail_plan.validate_before_enqueue(gkr_programs, final_trace_size_log_2, context);
     let compiled_circuit = gkr_programs.compiled_circuit().as_ref();
     validate_windowed_schedule(gkr_programs, prover_config);
@@ -223,6 +228,7 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         },
         tracing_data.as_ref(),
         memory_policy.witness,
+        partial_trees,
         context,
     )?;
     // Their final device readers are enqueued; Transfer still owns the H2D sources.
