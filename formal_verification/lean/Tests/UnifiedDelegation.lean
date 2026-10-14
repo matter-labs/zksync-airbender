@@ -2069,4 +2069,61 @@ theorem public_round_csr_requires_a_covering_region :
     dsimp only at range
     omega
 
+theorem wrapped_public_round_csr_requires_a_covering_occurrence :
+    UnifiedReduced.Caller.WrappedProgramRoundCallerCoverage roundCodeData [⟨0, 4, 8⟩] ∧
+    ¬ UnifiedReduced.Caller.WrappedProgramRoundCallerCoverage roundCodeData [] ∧
+    ¬ UnifiedReduced.Caller.WrappedProgramRoundCallerCoverage roundCodeData [⟨0, 8, 8⟩] := by
+  refine ⟨?_, ?_, ?_⟩
+  · intro entry member _ clock lower upper _ address
+    have same : entry = Tests.DelegationCaller.entry .blakeRound := List.mem_singleton.mp member
+    subst entry
+    obtain ⟨clockLower, clockUpper⟩ : 4 ≤ clock ∧ clock ≤ 8 := by
+      change 4 ≤ clock at lower
+      change clock + 4 ≤ 12 at upper
+      omega
+    interval_cases clock
+    all_goals first
+      | exact ⟨⟨0, 4, 8⟩, List.mem_singleton_self _, by decide⟩
+      | exact absurd address (by decide +kernel)
+  · intro coverage
+    obtain ⟨region, member, _⟩ := coverage (Tests.DelegationCaller.entry .blakeRound)
+      (List.mem_singleton_self _) rfl 4 (by decide +kernel) (by decide +kernel) (by decide) (by decide +kernel)
+    cases member
+  · intro coverage
+    obtain ⟨region, member, range⟩ := coverage (Tests.DelegationCaller.entry .blakeRound)
+      (List.mem_singleton_self _) rfl 4 (by decide +kernel) (by decide +kernel) (by decide) (by decide +kernel)
+    have same : region = ⟨0, 8, 8⟩ := List.mem_singleton.mp member
+    subst region
+    dsimp only at range
+    omega
+
+/-- A public code-policy fixture, without an accepted-trace claim: a round CSR
+    address repeats after 2^32 ticks inside the supplied native clock domain. -/
+private def repeatedRoundCodeData : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
+  { roundCodeData with machine := { roundCodeData.machine with terminal :=
+    { roundCodeData.machine.terminal with timestamp := (12, 8192) } } }
+
+theorem wrapped_round_csr_recurrence_requires_both_occurrences :
+    UnifiedReduced.Caller.wrappedProgramAddress repeatedRoundCodeData 4 =
+      UnifiedReduced.Caller.wrappedProgramAddress repeatedRoundCodeData 4294967300 ∧
+    ¬ UnifiedReduced.Caller.WrappedProgramRoundCallerCoverage repeatedRoundCodeData [⟨0, 4, 8⟩] ∧
+    ¬ UnifiedReduced.Caller.WrappedProgramRoundCallerCoverage repeatedRoundCodeData [⟨0, 4294967300, 4294967304⟩] := by
+  refine ⟨by decide +kernel, ?_, ?_⟩
+  · intro coverage
+    obtain ⟨region, member, range⟩ := coverage (Tests.DelegationCaller.entry .blakeRound)
+      (List.mem_singleton_self _) rfl 4294967300
+      (by decide +kernel) (by decide +kernel) (by decide) (by decide +kernel)
+    have same : region = ⟨0, 4, 8⟩ := List.mem_singleton.mp member
+    subst region
+    dsimp only at range
+    omega
+  · intro coverage
+    obtain ⟨region, member, range⟩ := coverage (Tests.DelegationCaller.entry .blakeRound)
+      (List.mem_singleton_self _) rfl 4
+      (by decide +kernel) (by decide +kernel) (by decide) (by decide +kernel)
+    have same : region = ⟨0, 4294967300, 4294967304⟩ := List.mem_singleton.mp member
+    subst region
+    dsimp only at range
+    omega
+
 end Tests.UnifiedDelegation

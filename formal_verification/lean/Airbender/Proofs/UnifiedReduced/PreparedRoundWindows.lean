@@ -586,6 +586,86 @@ theorem wrapped_program_round_region_inputs [Fact p.Prime] (hp : 4194304 ≤ p)
     have extent := scope.extent
     omega
 
+theorem wrapped_program_round_worker_coverage [Fact p.Prime] (hp : 4194304 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)}
+    {program : List UnifiedReduced.ProgramEntry} {regions : List RoundRegion}
+    (setup : data.machine.rom = Setup.table before)
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    (ordinaryProgram : Mixed.programImage before oa = some program) (registry : WrappedSequentialProgram program)
+    (scopes : ∀ region ∈ regions, WrappedProgramRoundRegionInputs data program region)
+    (coverage : WrappedProgramRoundCallerCoverage data regions) : RoundWorkerCoverage data regions := by
+  have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
+  have binding := request_binding size clockInverse accepted.toRequestChecks publicProgram
+  have pcClock := wrapped_program_pc_clock hp clockInverse setup accepted publicProgram ordinaryProgram registry
+  have clocks := state_clock_inputs size clockInverse accepted.constraints accepted.states
+    publicProgram.initialClock publicProgram.initialAligned
+  have intervals := state_clock_interval size clockInverse accepted.constraints accepted.states
+    publicProgram.initialClock publicProgram.initialAligned
+  intro worker member family
+  constructor
+  · rintro ⟨region, included, inside⟩ zero
+    have scope := scopes region included
+    have floor := scope.preparation.afterInitial
+    have requests := request_windows size clockInverse accepted.toRequestChecks publicProgram
+      scope.aligned.1 scope.aligned.2 (by omega)
+    exact (requests.unissued worker member zero).2 inside
+  · intro live
+    have fulfilled : Delegation.Requests.fulfillment worker ∈
+        data.fulfillments.filter (fun call => decide (Delegation.Requests.Live call)) :=
+      List.mem_filter.mpr ⟨List.mem_map.mpr ⟨worker, member, rfl⟩, decide_eq_true live⟩
+    obtain ⟨caller, callerMember, same⟩ := List.mem_map.mp (binding.fulfilled.mem_iff.mpr fulfilled)
+    have decoded := accepted.decoded caller callerMember
+    change ∃ i : Fin data.program.length, caller.decoderQuery = Delegation.Caller.query (data.program.get i) at decoded
+    obtain ⟨i, query⟩ := decoded
+    let entry := data.program.get i
+    have entryFamily : entry.data.family = .blakeRound :=
+      (matched_caller_entry_family (by omega) query same.symm).symm.trans family
+    have machineMember := List.mem_of_mem_filter callerMember
+    have pc := caller_query_pc_word (by dsimp [limbBase]; omega) query
+    have clock := pcClock caller machineMember
+    rw [pc, Word.ofBitVec_roundtrip] at clock
+    have bounds := intervals caller machineMember
+    have alignment : Delegation.Caller.startClock caller % 4 = 0 := by
+      simpa [Delegation.Caller.startClock, Trace.Row.clock, Timestamp.value, timestampBase, Nat.add_mod, Nat.mul_mod]
+        using (clocks caller machineMember).2
+    obtain ⟨region, included, range⟩ := coverage entry (List.get_mem _ _) entryFamily
+      (Delegation.Caller.startClock caller) bounds.1 bounds.2 alignment clock
+    have inside : caller ∈ Delegation.Caller.windowCallers data.callers region.lower region.upper := by
+      apply List.mem_filter.mpr
+      exact ⟨callerMember, decide_eq_true range⟩
+    have scope := scopes region included
+    have floor := scope.preparation.afterInitial
+    have requests := request_windows size clockInverse accepted.toRequestChecks publicProgram
+      scope.aligned.1 scope.aligned.2 (by omega)
+    obtain ⟨selected, selectedMatch, _⟩ := requests.callerMatches caller inside
+    obtain ⟨chosen, _, unique⟩ := Delegation.Requests.Proofs.unique_fulfillment binding.fulfilled binding.invocations.1
+      (List.mem_map.mpr ⟨caller, callerMember, rfl⟩)
+    have equal : worker = selected :=
+      (unique worker ⟨member, same.symm⟩).trans
+        (unique selected ⟨List.mem_of_mem_filter selectedMatch.1, selectedMatch.2.1⟩).symm
+    exact ⟨region, included, equal.symm ▸ selectedMatch.1⟩
+
+theorem wrapped_program_round_live_masks [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
+    {program : List UnifiedReduced.ProgramEntry} {regions : List RoundRegion}
+    (accepted : MixedMemoryAccepted data program)
+    (inputs : ProtocolContextInputs data before ca oa cells program) (registry : WrappedSequentialProgram program)
+    (scopes : ∀ region ∈ regions, WrappedProgramRoundRegionInputs data program region)
+    (coverage : WrappedProgramRoundCallerCoverage data regions) :
+    ∀ worker ∈ data.workers.rows, worker.family = .blakeRound →
+      Delegation.Requests.Live (Delegation.Requests.fulfillment worker) →
+      ∃ round, Blake2Round.Memory.RoundMask worker.assignment round := by
+  have minimum : 4194304 ≤ p := by omega
+  have covered := wrapped_program_round_worker_coverage minimum clockInverse inputs.setup accepted
+    inputs.publicProgram inputs.ordinaryProgram registry scopes coverage
+  intro worker member family live
+  obtain ⟨region, included, inside⟩ := (covered worker member family).mpr live
+  have scope := wrapped_program_round_region_inputs minimum clockInverse inputs.setup accepted
+    inputs.publicProgram inputs.ordinaryProgram registry (scopes region included)
+  exact prepared_round_region_masks hp clockInverse accepted inputs scope worker inside
+
 theorem wrapped_program_prepared_protocol_inputs [Fact p.Prime] (hp : 4194304 ≤ p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
     {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
