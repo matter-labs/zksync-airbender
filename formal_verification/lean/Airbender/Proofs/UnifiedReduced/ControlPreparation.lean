@@ -403,50 +403,6 @@ theorem control_preparation [Fact p.Prime] (hp : 8388608 ≤ p)
   exact ⟨start, earlier, atStart, earlierPerm, earlierHistory, boundary,
     preparation_at_boundary hp clockInverse accepted inputs scope nonzero aligned matching boundary⟩
 
-theorem prefix_window_partition [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    {data : RequestTrace p} {before : State} {ca : List (BitVec 32)}
-    (accepted : RequestChecks data) (inputs : RequestInputs data before ca)
-    {lower upper : Nat} (first : lower % 4 = 0) (last : upper % 4 = 0)
-    (positive : 2 ≤ lower) (ordered : lower ≤ upper) :
-    (data.prefixSteps lower ++ data.windowSteps lower upper).Perm (data.prefixSteps upper) := by
-  rw [mixed_window_steps hp clockInverse accepted inputs first last positive ordered]
-  have partition := List.filter_append_perm
-    (fun edge : MemoryToken p × MemoryToken p => decide ((timeOfPair edge.2.time).value < lower))
-    (data.prefixSteps upper)
-  have earlier : (data.prefixSteps upper).filter (fun edge => decide
-      ((timeOfPair edge.2.time).value < lower)) = data.prefixSteps lower := by
-    rw [RequestTrace.prefixSteps, List.filter_filter]
-    apply List.filter_congr
-    intro edge _
-    apply Bool.eq_iff_iff.mpr
-    simp only [Bool.and_eq_true, decide_eq_true_eq]
-    omega
-  have window : (data.prefixSteps upper).filter (fun edge => !decide
-      ((timeOfPair edge.2.time).value < lower)) =
-      Transfer.windowSteps (mixedData data) (lower - 1) (upper - 1) := by
-    simp only [RequestTrace.prefixSteps, Transfer.windowSteps, Transfer.beforeSteps,
-      Transfer.afterSteps, mixedData, List.filter_filter]
-    apply List.filter_congr
-    intro edge _
-    apply Bool.eq_iff_iff.mpr
-    simp only [Bool.and_eq_true, Bool.not_eq_true', decide_eq_false_iff_not, decide_eq_true_eq]
-    omega
-  rwa [earlier, window] at partition
-
-theorem prefix_window_matching {initial start finish : List (MemoryToken p)}
-    {earlier current : List (MemoryToken p × MemoryToken p)}
-    (prefixMatching : (initial ++ earlier.map Prod.snd).Perm (start ++ earlier.map Prod.fst))
-    (window : (start ++ current.map Prod.snd).Perm (finish ++ current.map Prod.fst)) :
-    (initial ++ (earlier ++ current).map Prod.snd).Perm
-      (finish ++ (earlier ++ current).map Prod.fst) := by
-  apply List.perm_iff_count.mpr
-  intro token
-  have first := prefixMatching.count_eq token
-  have last := window.count_eq token
-  simp only [List.map_append, List.count_append] at first last ⊢
-  omega
-
 theorem control_preparation_window [Fact p.Prime] (hp : 8388608 ≤ p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1) (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
