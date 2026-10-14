@@ -253,6 +253,21 @@ conditional classification, without an accepted unissued-round witness or an
 exclusion/inertness claim. The actual unissued G worker still reads zero, writes
 one and affects the prefix before the later reset.
 
+`WorkerInvocationUniqueness` now extends the earlier live-only scheduling fact
+to every native worker occurrence. All four imported layouts transfer fixed GPR
+x10 at invocation plus two. Projecting those actual ports from the existing
+initialized-memory key-uniqueness theorem distinguishes both numeric and raw
+invocation clocks across the whole worker pool. The public tracked domain must
+have distinct physical cells; no round mask, opcode validity, operation effect,
+nonzero invocation or global hash coverage is supplied. Consequently the actual
+zero-clock sublist has length at most one. This counts list occurrences and also
+rejects two identical rows. Native constraints, participation and virtual request
+matching alone still admit two copies of the zero-clock G worker; architectural
+matching against the distinct public seed rejects that pool. The existing single
+G worker attains the bound and retains its state change, and both invalid bigint
+controls retain full invocation uniqueness. This bounds surplus without proving
+its exclusion, inertness or a supported mask.
+
 [Control preparation](Airbender/Review/Helpers/UnifiedReduced/ControlPreparation.lean)
 uses a public ordinary ADDI-from-x0/LUI registry and a worker-free final preparation
 cycle. The registry may be uniform, contain different literals/registers, or admit

@@ -175,6 +175,14 @@ the actual public x12 seed characterizes each exclusive mask exactly. Unsupporte
 zero/multibit encodings remain outside the ABI, and the actual G prefix update
 remains admitted. This classification does not establish worker exclusion or
 inertness and does not construct an accepted unissued-round witness.
+The [full worker-clock entry](../../Trace/UnifiedReduced/Theorems.lean) also uses
+the actual fixed x10 transfer shared by all four layouts to derive numeric and
+raw invocation-clock uniqueness from initialized architectural matching. A
+distinct physical-cell domain bounds the unissued sublist to at most one
+occurrence. Two identical unissued G rows retain native/request checks but fail
+architectural acceptance; the existing single G worker attains the bound, with
+its actual effect retained. Both invalid bigint controls remain admitted. No
+supported-mask or nonzero-invocation premise supplies this uniqueness.
 
 The native domain, public program, protocol counts and existing prefix scope
 remain explicit. These helpers do not claim whole mixed caller retirement.

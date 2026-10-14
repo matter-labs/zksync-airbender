@@ -760,4 +760,62 @@ theorem prepared_unissued_write_floor :
   UnifiedReduced.Caller.Proofs.mixed_write_floor (by decide +kernel) (by decide +kernel)
     preparationAccepted preparationInputs.publicProgram preparationInputs.initialization
 
+theorem unified_worker_invocations_include_zero :
+    UnifiedReduced.Caller.WorkerInvocationUniqueness unifiedData :=
+  UnifiedReduced.Caller.worker_invocation_uniqueness_soundness (by decide +kernel) (by decide +kernel)
+    unifiedAccepted unifiedInputs.publicProgram unifiedInputs.initialization unifiedInputs.distinct
+
+theorem prepared_worker_invocations_include_zero :
+    UnifiedReduced.Caller.WorkerInvocationUniqueness preparationData :=
+  UnifiedReduced.Caller.worker_invocation_uniqueness_soundness (by decide +kernel) (by decide +kernel)
+    preparationAccepted preparationInputs.publicProgram preparationInputs.initialization preparationInputs.distinct
+
+/-- The derived bound is attained by the existing state-changing G worker. -/
+theorem unissued_worker_bound_is_sharp :
+    UnifiedReduced.Caller.WorkerInvocationUniqueness preparationData ∧
+    (preparationData.workers.rows.filter fun worker =>
+      decide ((Delegation.Requests.fulfillment worker).time = (0, 0))).length = 1 :=
+  ⟨prepared_worker_invocations_include_zero, by decide +kernel⟩
+
+private def duplicateUnissuedData : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
+  { unifiedData with workers := { unifiedData.workers with rows := [native, native] } }
+
+/-- Native rows, participation and virtual requests alone still admit two copies
+    of the zero-clock G worker. Architectural matching supplies the missing limit. -/
+theorem duplicate_unissued_request_checks : UnifiedReduced.Caller.RequestChecks duplicateUnissuedData := by
+  constructor
+  · intro row member; cases member
+  · intro row member; cases member
+  · exact List.Perm.refl _
+  · intro row member; cases member
+  · intro row member
+    have same : row = native := by
+      change row ∈ [native, native] at member
+      simpa only [List.mem_cons, List.not_mem_nil, or_false, or_self] using member
+    subst row
+    exact unifiedAccepted.workerConstraints native (List.mem_singleton_self _)
+  · intro row member
+    have same : row = native := by
+      change row ∈ [native, native] at member
+      simpa only [List.mem_cons, List.not_mem_nil, or_false, or_self] using member
+    subst row
+    exact unifiedAccepted.workerActive native (List.mem_singleton_self _)
+  · change [Delegation.Requests.Request.empty (Delegation.Requests.fulfillment native),
+      Delegation.Requests.Request.empty (Delegation.Requests.fulfillment native)].Perm
+      [Delegation.Requests.Request.issued (Delegation.Requests.fulfillment native),
+        Delegation.Requests.Request.issued (Delegation.Requests.fulfillment native)]
+    have zero : (Delegation.Requests.fulfillment native).time = (0, 0) := by decide +kernel
+    simp only [Delegation.Requests.Request.issued, Delegation.Requests.Request.empty, zero]
+    exact List.Perm.refl _
+
+theorem duplicate_unissued_workers_rejected :
+    ¬ UnifiedReduced.Caller.MixedMemoryAccepted duplicateUnissuedData [] := by
+  intro accepted
+  have inputs : UnifiedReduced.Caller.RequestInputs duplicateUnissuedData before [] :=
+    ⟨unifiedInputs.publicProgram.image, unifiedInputs.publicProgram.initialClock, unifiedInputs.publicProgram.initialAligned⟩
+  have unique := UnifiedReduced.Caller.worker_invocation_uniqueness_soundness (by decide +kernel) (by decide +kernel)
+    accepted inputs unifiedInputs.initialization unifiedInputs.distinct
+  exact (by decide +kernel : ¬ (duplicateUnissuedData.workers.rows.filter fun worker =>
+    decide ((Delegation.Requests.fulfillment worker).time = (0, 0))).length ≤ 1) unique.unissued
+
 end Tests.DelegationZeroInvocation

@@ -610,4 +610,16 @@ theorem Caller.unissued_round_control_soundness [Fact p.Prime]
     Caller.InitialRoundControl before worker :=
   Caller.Proofs.unissued_round_initial_control hp clockInverse accepted publicProgram image member family zero
 
+/-- The shared x10 access and initialized architectural matching distinguish
+    invocation clocks across all four families, including zero. The unissued
+    sublist has at most one occurrence; its effects remain in the actual history. -/
+theorem Caller.worker_invocation_uniqueness_soundness [Fact p.Prime]
+    (hp : 2 * Trace.timestampBase + 4 < p) (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
+    {before : Reference.RiscV.Sail.State} {ca : List (BitVec 32)} {cells : List Trace.Cell}
+    (accepted : Caller.MixedMemoryAccepted data program) (publicProgram : Caller.RequestInputs data before ca)
+    (image : Trace.initialImage before cells = some data.machine.initialMemory)
+    (distinct : (cells.map Trace.Cell.addressCode).Nodup) : Caller.WorkerInvocationUniqueness data :=
+  Caller.Proofs.worker_invocation_uniqueness hp clockInverse accepted publicProgram image distinct
+
 end Airbender.UnifiedReduced

@@ -215,6 +215,14 @@ ABI and whole mixed execution remain separate.
    initial x12 high limb characterizes supported exclusive masks exactly. Zero
    and multibit controls stay outside that ABI; this classifies the remaining
    unissued-round boundary without proving worker exclusion or inertness.
+   The shared native x10 access now projects initialized-memory key uniqueness
+   to numeric and raw invocation clocks across all four worker families,
+   including zero. The unissued sublist has at most one occurrence. Two identical
+   unissued G rows still pass native/request checks but fail architectural
+   acceptance with a distinct seed; the single state-changing G worker remains
+   admitted, and both bigint-control gaps retain the new result. Use this full
+   clock uniqueness for unissued prefix grouping before continuing broader
+   preparation and whole caller retirement.
    COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed
    retained for the second window. Extended BLAKE and Keccak completion controls
    do not restart their protocols; checked regressions forbid treating their

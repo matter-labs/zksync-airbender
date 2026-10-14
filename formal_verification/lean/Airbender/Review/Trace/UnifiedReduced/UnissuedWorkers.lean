@@ -18,4 +18,13 @@ def InitialRoundControl (before : State) (worker : Delegation.Row p) : Prop :=
     ∀ round : Fin 10, Blake2Round.Memory.RoundMask worker.assignment round ↔
       ∃ flags : Fin 8, (Word.ofBitVec value).hi = flags.val + 8 * 2 ^ round.val
 
+/-- Architectural initialization and matching distinguish all worker invocation
+    clocks, including zero. A single unissued worker can still have real effects. -/
+structure WorkerInvocationUniqueness [Fact p.Prime] (data : RequestTrace p) : Prop where
+  clocks : (data.workers.rows.map fun worker =>
+    (timeOfPair (Delegation.Requests.fulfillment worker).time).value).Nodup
+  raw : (data.workers.rows.map fun worker => (Delegation.Requests.fulfillment worker).time).Nodup
+  unissued : (data.workers.rows.filter fun worker =>
+    decide ((Delegation.Requests.fulfillment worker).time = (0, 0))).length ≤ 1
+
 end Airbender.UnifiedReduced.Caller

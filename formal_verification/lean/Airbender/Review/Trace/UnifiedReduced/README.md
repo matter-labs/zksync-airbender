@@ -26,6 +26,7 @@ mixed execution with delegation callers remains a separate obligation.
 | The modular profile exposes the same equivalence between full coverage and absence of zero-clock round workers. | [`Caller.wrapped_program_round_global_coverage_boundary_soundness`](Theorems.lean) |
 | Zero-clock workers read the original public initialization tokens, with actual values and raw clocks. | [`Caller.unissued_worker_reads_soundness`](Theorems.lean) |
 | The actual public x12 seed characterizes every exclusive mask of an unissued extended-round worker. | [`Caller.unissued_round_control_soundness`](Theorems.lean) |
+| Initialized architectural matching distinguishes all numeric/raw worker invocation clocks, including zero, and bounds the unissued sublist to one occurrence. | [`Caller.worker_invocation_uniqueness_soundness`](Theorems.lean) |
 | Actual joint cut states and projected worker boundaries retain native timestamps. | [`Caller.mixed_window_soundness` and `Caller.mixed_window_projection_soundness`](Theorems.lean) |
 | Aligned public sequential/comparison decoding and native matching derive modular RV32 program addresses, including comparison PC wraparound. | [`Caller.wrapped_program_address_soundness`](Theorems.lean) |
 | Public ADDI-from-x0/LUI preparation yields actual controls after literal, sequential ordinary/custom or aligned comparison prefixes; native PC/clock matching derives each preparation address. | [`Caller.control_preparation_soundness`](Theorems.lean) |
@@ -219,6 +220,18 @@ the ABI. The zero-seed no-mask regression is conditional; it makes no accepted
 unissued-round existence or exclusion claim. The actual G fixture still reads
 zero, writes one and affects the prefix before a later ADDI reset. These native
 read proofs do not execute an unsupported hash reference or make a worker inert.
+
+[`WorkerInvocationUniqueness`](UnissuedWorkers.lean) now projects the shared native
+x10 access from the existing initialized-memory key-uniqueness theorem. Every
+family writes this fixed register at invocation plus two, so all numeric and raw
+invocation clocks are distinct, including zero. The unissued sublist has at most
+one occurrence. The public physical-cell domain remains distinct; supported
+operation masks and opcode validity are not assumptions. Two identical zero-clock
+G rows still satisfy native/request checks, but architectural acceptance rejects
+the duplicate pool. The existing single G worker attains the bound and keeps its
+actual prefix effect. Live COPY and both invalid bigint controls instantiate this
+stronger result. General worker exclusion, inertness and unsupported-round mask
+behavior remain separate from this multiplicity bound.
 
 Keep surplus zero-clock prefix effects, worker ROM-shadow transport,
 broader preparation/protocol binding, full mixed caller retirement and inactive padding as separate
