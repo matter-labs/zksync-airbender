@@ -19,7 +19,11 @@ pub const POLICY: ProofMemoryPolicy = ProofMemoryPolicy {
     },
 };
 
-pub const PARTIAL_TREES: PartialTreePolicy = PartialTreePolicy::DEFAULT;
+pub const PARTIAL_TREES: PartialTreePolicy = PartialTreePolicy {
+    setup: 10,
+    memory: 10,
+    ..PartialTreePolicy::DEFAULT
+};
 
 pub fn policy(_arena_bytes: usize) -> ProofMemoryPolicy {
     POLICY
