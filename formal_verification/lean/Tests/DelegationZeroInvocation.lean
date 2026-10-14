@@ -818,4 +818,56 @@ theorem duplicate_unissued_workers_rejected :
   exact (by decide +kernel : ¬ (duplicateUnissuedData.workers.rows.filter fun worker =>
     decide ((Delegation.Requests.fulfillment worker).time = (0, 0))).length ≤ 1) unique.unissued
 
+theorem unified_all_worker_execution :
+    UnifiedReduced.Caller.MixedWorkerExecution unifiedData before cells :=
+  UnifiedReduced.Caller.all_worker_execution_soundness unifiedAccepted unifiedInputs
+
+theorem prepared_all_worker_execution :
+    UnifiedReduced.Caller.MixedWorkerExecution preparationData preparationBefore preparationCells :=
+  UnifiedReduced.Caller.all_worker_execution_soundness preparationAccepted preparationInputs
+
+/-- The clock-three group is exactly the unissued G worker, even with the later
+    ordinary reset present. No issued-worker or positive invocation premise is used. -/
+theorem prepared_unissued_clock_group {events : List MemoryAccess}
+    (permutation : events.Perm (preparationData.mixedSteps.map transferEvent)) :
+    (events.filter fun event => decide (event.1 = 3)).Perm (native.memorySteps.map transferEvent) := by
+  have grouped := UnifiedReduced.Caller.Proofs.all_worker_clock_group (by decide +kernel) (by decide +kernel)
+    preparationAccepted preparationInputs.publicProgram preparationInputs.initialization preparationInputs.distinct
+    permutation (worker := native) (List.mem_singleton_self _)
+  have clock : UnifiedReduced.Caller.Proofs.workerClock native = 3 := by decide +kernel
+  simpa only [clock] using grouped
+
+/-- One actual history now exposes the complete unissued call's states, x12
+    zero to one, followed by the actual ordinary reset back to zero. -/
+theorem prepared_unissued_prefix_states :
+    ∃ (events current newer : List MemoryAccess) (finish after : Reference.RiscV.Sail.State),
+      events.Perm (preparationData.mixedSteps.map transferEvent) ∧
+      Trace.SailHistory preparationCells events preparationBefore after ∧
+      events = newer ++ current ∧ current.Perm (native.memorySteps.map transferEvent) ∧
+      Trace.SailHistory preparationCells current preparationBefore finish ∧
+      Trace.SailHistory preparationCells newer finish after ∧
+      (Cell.register 12).read preparationBefore = .ok 0 preparationBefore ∧
+      (Cell.register 12).read finish = .ok 1 finish ∧
+      (Cell.register 12).read after = .ok 0 after := by
+  obtain ⟨events, after, permutation, _, history, _, unissued, terminal⟩ := prepared_all_worker_execution
+  obtain ⟨current, newer, finish, split, grouped, call, rest, ports⟩ :=
+    unissued native (List.mem_singleton_self _) (by decide +kernel)
+  let port := native.ports[8]
+  have nativePort : port ∈ native.ports := by
+    simp [port, native, Delegation.Row.ports, Blake2G.importedConstraintsMemoryPorts]
+  obtain ⟨cell, _, address, read, written⟩ := ports port nativePort
+  have code : port.address.code native.assignment = (Cell.register 12).addressCode := by decide +kernel
+  have same := Trace.Proofs.cell_address_injective (address.trans code)
+  subst cell
+  have readValue : (readToken native.assignment port).word.toBitVec = (0 : BitVec 32) := by decide +kernel
+  have writtenValue : (native.writeToken port).word.toBitVec = (1 : BitVec 32) := by decide +kernel
+  let sink : MemoryToken babyBearModulus := ⟨(Cell.register 12).addressCode, (6, 0), 0⟩
+  have member : sink ∈ preparationData.machine.terminalMemory := by decide +kernel
+  obtain ⟨last, _, code, actual⟩ := terminal sink member
+  have same : last = Cell.register 12 := Trace.Proofs.cell_address_injective code
+  subst last
+  have finalValue : sink.word.toBitVec = (0 : BitVec 32) := by decide +kernel
+  exact ⟨events, current, newer, finish, after, permutation, history, split, grouped, call, rest,
+    readValue ▸ read, writtenValue ▸ written, finalValue ▸ actual⟩
+
 end Tests.DelegationZeroInvocation

@@ -268,6 +268,22 @@ G worker attains the bound and retains its state change, and both invalid bigint
 controls retain full invocation uniqueness. This bounds surplus without proving
 its exclusion, inertness or a supported mask.
 
+The [all-worker execution entry](Airbender/Review/Trace/UnifiedReduced/Theorems.lean)
+uses that full uniqueness to derive actual pre/post-states for every worker in
+one architectural history, including the unissued case. Native machine clocks
+are at least four; the unissued worker's exact transfer group is clock three.
+The native write floor excludes any earlier transfer, so its actual pre-state is
+the public initial state. Its post-state then initializes every later transfer
+and the same execution reaches shared terminal cells. Raw grouping and per-port
+observations assume only public initialization, distinct aligned cells and native
+matching, without operation masks, valid bigint controls or positive invocations.
+The closed BabyBear result reuses existing history realization and retains its
+explicit modeled setup/tables and extended-round masks. This does not execute
+unsupported round controls or establish a full CSR ABI. The G-prefix regression
+now observes actual x12 = 0→1→0 at the initial, prefix-finish and final states in
+one history, and live COPY plus both invalid bigint controls instantiate the new
+result. Exclusion/inertness and whole caller retirement remain open.
+
 [Control preparation](Airbender/Review/Helpers/UnifiedReduced/ControlPreparation.lean)
 uses a public ordinary ADDI-from-x0/LUI registry and a worker-free final preparation
 cycle. The registry may be uniform, contain different literals/registers, or admit

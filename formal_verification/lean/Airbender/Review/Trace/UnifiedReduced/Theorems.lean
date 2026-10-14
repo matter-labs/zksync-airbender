@@ -11,6 +11,7 @@ import Airbender.Proofs.UnifiedReduced.PreparedHashWindows
 import Airbender.Proofs.UnifiedReduced.PreparedRoundWindows
 import Airbender.Proofs.UnifiedReduced.CallerCycles
 import Airbender.Proofs.UnifiedReduced.UnissuedWorkers
+import Airbender.Proofs.UnifiedReduced.WorkerExecution
 import Airbender.Proofs.Delegation.RequestHashWindows
 
 namespace Airbender.UnifiedReduced
@@ -621,5 +622,17 @@ theorem Caller.worker_invocation_uniqueness_soundness [Fact p.Prime]
     (image : Trace.initialImage before cells = some data.machine.initialMemory)
     (distinct : (cells.map Trace.Cell.addressCode).Nodup) : Caller.WorkerInvocationUniqueness data :=
   Caller.Proofs.worker_invocation_uniqueness hp clockInverse accepted publicProgram image distinct
+
+/-- All native workers have actual pre/post-states in one initialized execution.
+    A zero-clock worker is its first group and observes the original public seed;
+    later machine/worker effects and shared terminal cells remain connected.
+    Existing modeled-table and extended-round-mask inputs stay explicit. -/
+theorem Caller.all_worker_execution_soundness
+    {data : Caller.RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
+    {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.MixedMemoryInputs data program before ca oa cells) :
+    Caller.MixedWorkerExecution data before cells :=
+  Caller.Proofs.mixed_worker_execution_effects accepted inputs
 
 end Airbender.UnifiedReduced

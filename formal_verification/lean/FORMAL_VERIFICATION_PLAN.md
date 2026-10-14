@@ -220,9 +220,15 @@ ABI and whole mixed execution remain separate.
    including zero. The unissued sublist has at most one occurrence. Two identical
    unissued G rows still pass native/request checks but fail architectural
    acceptance with a distinct seed; the single state-changing G worker remains
-   admitted, and both bigint-control gaps retain the new result. Use this full
-   clock uniqueness for unissued prefix grouping before continuing broader
-   preparation and whole caller retirement.
+   admitted, and both bigint-control gaps retain the new result. Full clock
+   uniqueness now groups every worker at its actual call states. A zero-clock
+   worker occupies transfer clock three directly from the public initial state;
+   derived machine clocks start at four and no earlier transfer exists. The
+   same history reaches shared terminal cells and retains actual G→ADDI control
+   states 0→1→0. Raw grouping requires no operation mask or positive invocation;
+   closed realization retains the existing modeled tables and extended-round
+   masks. Continue broader preparation and whole caller retirement, retaining
+   unsupported-control and unissued-exclusion boundaries.
    COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed
    retained for the second window. Extended BLAKE and Keccak completion controls
    do not restart their protocols; checked regressions forbid treating their

@@ -27,6 +27,7 @@ mixed execution with delegation callers remains a separate obligation.
 | Zero-clock workers read the original public initialization tokens, with actual values and raw clocks. | [`Caller.unissued_worker_reads_soundness`](Theorems.lean) |
 | The actual public x12 seed characterizes every exclusive mask of an unissued extended-round worker. | [`Caller.unissued_round_control_soundness`](Theorems.lean) |
 | Initialized architectural matching distinguishes all numeric/raw worker invocation clocks, including zero, and bounds the unissued sublist to one occurrence. | [`Caller.worker_invocation_uniqueness_soundness`](Theorems.lean) |
+| Every worker has actual pre/post-states in one initialized execution; a zero-clock worker forms the first transfer group directly from public initialization. | [`Caller.all_worker_execution_soundness`](Theorems.lean) |
 | Actual joint cut states and projected worker boundaries retain native timestamps. | [`Caller.mixed_window_soundness` and `Caller.mixed_window_projection_soundness`](Theorems.lean) |
 | Aligned public sequential/comparison decoding and native matching derive modular RV32 program addresses, including comparison PC wraparound. | [`Caller.wrapped_program_address_soundness`](Theorems.lean) |
 | Public ADDI-from-x0/LUI preparation yields actual controls after literal, sequential ordinary/custom or aligned comparison prefixes; native PC/clock matching derives each preparation address. | [`Caller.control_preparation_soundness`](Theorems.lean) |
@@ -232,6 +233,22 @@ the duplicate pool. The existing single G worker attains the bound and keeps its
 actual prefix effect. Live COPY and both invalid bigint controls instantiate this
 stronger result. General worker exclusion, inertness and unsupported-round mask
 behavior remain separate from this multiplicity bound.
+
+[`MixedWorkerExecution` and `UnissuedPrefixExecution`](UnissuedWorkers.lean) now
+derive all workers' actual call states within one architectural history, including
+the possible zero-clock worker. Full invocation uniqueness isolates its native
+ports at transfer clock three. Strict memory order and alignment put machine rows
+at clock four or later; all other workers are later as well. Its actual pre-state
+is therefore the original public state, with no earlier transfers. The same
+history retains every later transfer and reaches the shared terminal cells. The
+raw grouping and observation proof needs only public initialization, distinct
+aligned cells and accepted native matching, without operation masks or a positive
+invocation premise. The closed BabyBear entry reuses existing realization inputs,
+including modeled setup/tables and the explicit extended-round masks; it does not
+claim execution of unsupported round controls. The G→ADDI regression derives
+actual x12 = 0→1→0 at these call/prefix/final states, and live COPY plus both invalid
+bigint controls retain all-worker execution. Caller retirement, full control ABI
+and worker exclusion/inertness remain separate.
 
 Keep surplus zero-clock prefix effects, worker ROM-shadow transport,
 broader preparation/protocol binding, full mixed caller retirement and inactive padding as separate
