@@ -5,7 +5,7 @@
 //!
 //! Three stages, each proving a full-statement-verifier (fsv) RISC-V program
 //! from `tools/gkr_verifier` in `MergedMemoryAndWitness` mode under the
-//! high-LDE "L1 feeder" schedule (`l1_feeder_config_for_2_23`), following
+//! high-LDE "L1 feeder" schedule (`l1_feeder_config_for_2_22`), following
 //! `prover_examples`' `test_l1_feeder_high_lde_research`:
 //!
 //! 1. The STANDARD special-opcodes unified fsv
@@ -128,7 +128,7 @@ pub fn compress_fixed_point_to_l1(
         &fsv_dir.join(format!("{FEEDER_FSV_STEM}.text")),
     );
 
-    let feeder_config = prover::gkr::prover_config::example_configs::l1_feeder_config_for_2_23();
+    let feeder_config = prover::gkr::prover_config::example_configs::l1_feeder_config_for_2_22();
     println!(
         "[l1-compression] feeder config: base lde {}, whir steps {:?}, queries {:?}, pow {:?}; \
          feeder oracle storage: {feeder_storage:?}",

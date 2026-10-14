@@ -249,7 +249,7 @@ fn unified_reduced_machine_l1_feeder() {
         .iter()
         .find(|c| c.name == "unified_reduced_machine")
         .unwrap();
-    let prover_config = prover::gkr::prover_config::example_configs::l1_feeder_config_for_2_23();
+    let prover_config = prover::gkr::prover_config::example_configs::l1_feeder_config_for_2_22();
     assert_eq!(
         circuit.compiled_circuit().trace_len.trailing_zeros(),
         23,
