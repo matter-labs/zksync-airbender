@@ -3,8 +3,7 @@
 //!
 //! Ignored by default because they use production circuit dimensions.
 
-#![feature(allocator_api, generic_const_exprs)]
-#![allow(incomplete_features)]
+#![feature(allocator_api)]
 
 use cpu_execution_prover::{CpuExecutionProver, CpuExecutionProverConfiguration};
 use execution_prover::{CommitmentMode, ExecutionKind, MachineType};
