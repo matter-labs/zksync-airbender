@@ -188,15 +188,18 @@ protocols. Broader preparation/protocol binding and whole mixed retirement remai
 [Control preparation](Airbender/Review/Helpers/UnifiedReduced/ControlPreparation.lean)
 uses a public ordinary ADDI-from-x0/LUI registry and a worker-free final preparation
 cycle. The registry may be uniform, contain different literals/registers, or admit
-ADD/SUB/ADDI/LUI/AUIPC with arbitrary operands along a straight path with callers.
-The arithmetic profile is stated on original public instruction forms, not assumed
-native selector bits. Actual decoding and accepted constraints derive each PC
-increment. Only the final preparation must be the specified literal. Accepted native PC/clock increments and exact state
-matching identify the final row's instruction address, rather than assuming a
-selected row or desired output. Earlier workers remain connected; the original extended-round first-span scope
-retains its empty worker prefix while regional composition uses controller coverage. Accepted decoding, clock matching and writes derive the
-actual control read and its retained timestamp. The selected registry and cut
-bounds remain public; no desired control value at an intermediate state is assumed.
+arithmetic, LW/SW, bitwise/shifts, REV8 and supported TRIADD/XORROT along a straight
+path with callers. The sequential profile is stated on original public instruction
+forms, not assumed native selector bits. Jumps, branches and wraparound comparisons
+remain outside that linear PC/clock profile. Preparation transports actual memory;
+it does not assert successful retirement of every prefix instruction or remove
+the discarded-LW profile boundary. Actual decoding and accepted constraints derive
+PC increments. Only the final preparation must be the specified literal; its
+address follows from native PC/clock increments and state matching. Earlier
+workers remain connected. The original extended-round first-span scope retains
+its empty prefix while regional composition uses controller coverage. Accepted
+decoding, clock matching and writes derive the actual control and retained timestamp.
+The selected registry and cut bounds remain public; no desired control value at an intermediate state is assumed.
 The [prepared control window](Airbender/Review/Trace/UnifiedReduced/ControlPreparation.lean)
 connects two prepared controls through the same actual intervening machine/worker
 history. Prefix/window matching composes the second boundary; neither state nor

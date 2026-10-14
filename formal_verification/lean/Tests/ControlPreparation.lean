@@ -193,6 +193,7 @@ theorem wrong_preparation_instruction_rejected :
     | uniform entries => exact entries (entry 0) (List.mem_singleton_self _)
     | straight _ atCut => exact atCut (entry 0) (List.mem_singleton_self _) (by decide +kernel)
     | arithmetic _ atCut => exact atCut (entry 0) (List.mem_singleton_self _) (by decide +kernel)
+    | sequential _ atCut => exact atCut (entry 0) (List.mem_singleton_self _) (by decide +kernel)
   simp [entry, literal, register, UnifiedReduced.Caller.hashPreparation,
     UnifiedReduced.Caller.ControlLiteral.instruction] at mismatch
 
@@ -262,6 +263,7 @@ theorem mismatched_round_preparation_flags_rejected :
     | uniform entries => exact entries (entry 1) (List.mem_singleton_self _)
     | straight _ atCut => exact atCut (entry 1) (List.mem_singleton_self _) (by decide +kernel)
     | arithmetic _ atCut => exact atCut (entry 1) (List.mem_singleton_self _) (by decide +kernel)
+    | sequential _ atCut => exact atCut (entry 1) (List.mem_singleton_self _) (by decide +kernel)
   change SailRV32.instruction.UTYPE (128, .Regidx 12, .LUI) =
     SailRV32.instruction.UTYPE (144, .Regidx 12, .LUI) at instruction
   cases instruction
@@ -622,6 +624,7 @@ theorem round_region_wrong_flags_rejected :
     | uniform entries => exact entries (entry 1) (List.mem_singleton_self _)
     | straight _ atCut => exact atCut (entry 1) (List.mem_singleton_self _) (by decide +kernel)
     | arithmetic _ atCut => exact atCut (entry 1) (List.mem_singleton_self _) (by decide +kernel)
+    | sequential _ atCut => exact atCut (entry 1) (List.mem_singleton_self _) (by decide +kernel)
   change SailRV32.instruction.UTYPE (128, .Regidx 12, .LUI) =
     SailRV32.instruction.UTYPE (144, .Regidx 12, .LUI) at instruction
   cases instruction
@@ -649,34 +652,35 @@ theorem prepared_round_region_two_bits_rejected [Fact p.Prime] (hp : 8388608 ≤
     rw [if_neg same, firstBit] at zero
     exact one_ne_zero zero
 
-private def arithmeticBefore : State := wordWriteState (wordWriteState initialState 0 0x00c60633) 4 0x00000613
-private def arithmeticEntry : UnifiedReduced.ProgramEntry :=
-  ⟨0, 0x00c60633, .RTYPE (.Regidx 12, .Regidx 12, .Regidx 12, .ADD),
-    ⟨.machine, 12, 12, 12, ⟨0, 0⟩, 1, 0⟩⟩
-private def arithmeticProgram : List UnifiedReduced.ProgramEntry := [arithmeticEntry, chainedEntry]
-private def arithmeticAssignment (second : Bool) (column : Nat) : ZMod babyBearModulus :=
+private def sequentialBefore (custom : Bool) : State := wordWriteState (wordWriteState initialState 0 (if custom then 0xc2c64673 else 0x00c60633)) 4 0x00000613
+private def sequentialEntry (custom : Bool) : UnifiedReduced.ProgramEntry :=
+  ⟨0, (if custom then 0xc2c64673 else 0x00c60633), (if custom then .ZIMOP_MOP_RR (4, .Regidx 12, .Regidx 12, .Regidx 12) else .RTYPE (.Regidx 12, .Regidx 12, .Regidx 12, .ADD)),
+    ⟨.machine, 12, 12, 12, ⟨0, 0⟩, (if custom then 512 else 1), 0⟩⟩
+private def sequentialProgram (custom : Bool) : List UnifiedReduced.ProgramEntry := [(sequentialEntry custom), chainedEntry]
+private def sequentialAssignment (custom : Bool) (second : Bool) (column : Nat) : ZMod babyBearModulus :=
   if second then
-    if column = 34 then 0 else if column = 48 || column = 49 then 2 else chainedAssignment column
+    if column = 34 then 0 else if column = 48 || column = 49 then (if custom then 3 else 2) else chainedAssignment column
   else
-    if column = 5 || column = 6 || column = 7 || column = 38 || column = 44 then 12
-    else if column = 50 || column = 51 then 2
+    if custom && column = 11 then 0 else if custom && column = 20 then 1
+    else if column = 5 || column = 6 || column = 7 || column = 38 || column = 44 then 12
+    else if column = 50 || column = 51 then (if custom then 3 else 2)
     else if column = 46 then 5
     else if column = 80 then 65537 * 65537 * 943718400
     else if column = 36 || column = 37 || column = 42 || column = 43 || column = 48 || column = 49 then 1
     else if column = 8 then 0 else assignment 0 column
-private def arithmeticRow (second : Bool) : Trace.Row babyBearModulus UnifiedFamily :=
-  ⟨.machine, arithmeticAssignment second⟩
-private def arithmeticData : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
+private def sequentialRow (custom : Bool) (second : Bool) : Trace.Row babyBearModulus UnifiedFamily :=
+  ⟨.machine, sequentialAssignment custom second⟩
+private def sequentialData (custom : Bool) : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
   { chainedData with machine := { chainedData.machine with
-    rows := [arithmeticRow true, arithmeticRow false]
-    rom := UnifiedReduced.Setup.table arithmeticBefore } }
+    rows := [sequentialRow custom true, sequentialRow custom false]
+    rom := UnifiedReduced.Setup.table (sequentialBefore custom) } }
 
-private theorem arithmeticCore (second : Bool) : FlatOperation.ConstraintsHoldFlat
-    (Verification.environment (arithmeticAssignment second))
-    (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table arithmeticBefore)) := by
-  cases second
+private theorem sequentialCore (custom : Bool) (second : Bool) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (sequentialAssignment custom second))
+    (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table (sequentialBefore custom))) := by
+  cases custom <;> cases second
   all_goals simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-    Verification.environment, Expression.eval, assignment, chainedAssignment, arithmeticAssignment,
+    Verification.environment, Expression.eval, assignment, chainedAssignment, sequentialAssignment,
     Lookup.Contains, Table.toRaw, fromElements]
   all_goals repeat' apply And.intro
   all_goals solve
@@ -687,8 +691,8 @@ private theorem arithmeticCore (second : Bool) : FlatOperation.ConstraintsHoldFl
          (UnifiedReduced.Setup.fixedRow (0 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
        decide +kernel)
 
-private theorem arithmeticTimestamps (second : Bool) : FlatOperation.ConstraintsHoldFlat
-    (Verification.environment (arithmeticAssignment second)) UnifiedReduced.importedConstraintsTimestampLookups := by
+private theorem sequentialTimestamps (custom : Bool) (second : Bool) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (sequentialAssignment custom second)) UnifiedReduced.importedConstraintsTimestampLookups := by
   rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
   constructor
   · simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.constraints]
@@ -697,72 +701,75 @@ private theorem arithmeticTimestamps (second : Bool) : FlatOperation.Constraints
     have short : i < 8 := by simpa only [UnifiedReduced.timestamp_count] using bound
     interval_cases i
     all_goals apply Trace.Proofs.range_contains
-    all_goals cases second <;> decide +kernel
+    all_goals cases custom <;> cases second <;> decide +kernel
 
-private theorem arithmeticAccepted : UnifiedReduced.Caller.MixedMemoryAccepted arithmeticData arithmeticProgram := by
+private theorem sequentialAccepted (custom : Bool) : UnifiedReduced.Caller.MixedMemoryAccepted (sequentialData custom) (sequentialProgram custom) := by
   constructor
   · constructor
     · intro current member
-      have rows : current = arithmeticRow true ∨ current = arithmeticRow false := by simpa [arithmeticData] using member
+      have rows : current = sequentialRow custom true ∨ current = sequentialRow custom false := by simpa [sequentialData] using member
       rcases rows with rfl | rfl
-      · exact Verification.holds_append (arithmeticCore true) (arithmeticTimestamps true)
-      · exact Verification.holds_append (arithmeticCore false) (arithmeticTimestamps false)
+      · exact Verification.holds_append (sequentialCore custom true) (sequentialTimestamps custom true)
+      · exact Verification.holds_append (sequentialCore custom false) (sequentialTimestamps custom false)
     · intro current member
-      have rows : current = arithmeticRow true ∨ current = arithmeticRow false := by simpa [arithmeticData] using member
-      rcases rows with rfl | rfl <;> decide +kernel
-    · change [((arithmeticRow false).start), (arithmeticRow true).finish, (arithmeticRow false).finish].Perm
-        [(arithmeticRow true).finish, (arithmeticRow true).start, (arithmeticRow false).start]
-      have same : (arithmeticRow false).finish = (arithmeticRow true).start := rfl
+      have rows : current = sequentialRow custom true ∨ current = sequentialRow custom false := by simpa [sequentialData] using member
+      rcases rows with rfl | rfl <;> cases custom <;> decide +kernel
+    · have initial : (sequentialData custom).machine.initial = (sequentialRow custom false).start := by cases custom <;> rfl
+      have terminal : (sequentialData custom).machine.terminal = (sequentialRow custom true).finish := by cases custom <;> rfl
+      rw [initial, terminal]
+      change [((sequentialRow custom false).start), (sequentialRow custom true).finish, (sequentialRow custom false).finish].Perm
+        [(sequentialRow custom true).finish, (sequentialRow custom true).start, (sequentialRow custom false).start]
+      have same : (sequentialRow custom false).finish = (sequentialRow custom true).start := by cases custom <;> rfl
       rw [same]
       exact (List.Perm.swap _ _ _).trans (List.Perm.cons _ (List.Perm.swap _ _ []))
     · intro current member
-      have empty : arithmeticData.callers = [] := by decide +kernel
+      have empty : (sequentialData custom).callers = [] := by cases custom <;> decide +kernel
       rw [empty] at member
       cases member
     · intro current member
       cases member
     · intro current member
       cases member
-    · have empty : arithmeticData.calls = [] := by decide +kernel
+    · have empty : (sequentialData custom).calls = [] := by cases custom <;> decide +kernel
       rw [empty]
       exact List.Perm.refl []
   · intro current member _
-    have rows : current = arithmeticRow true ∨ current = arithmeticRow false := by simpa [arithmeticData] using member
+    have rows : current = sequentialRow custom true ∨ current = sequentialRow custom false := by simpa [sequentialData] using member
     rcases rows with rfl | rfl
-    · change ∃ i : Fin 2, (arithmeticRow true).decoderQuery = (arithmeticProgram.get i).query
-      exact ⟨1, by decide +kernel⟩
-    · change ∃ i : Fin 2, (arithmeticRow false).decoderQuery = (arithmeticProgram.get i).query
-      exact ⟨0, by decide +kernel⟩
-  · decide +kernel
+    · change ∃ i : Fin 2, (sequentialRow custom true).decoderQuery = ((sequentialProgram custom).get i).query
+      exact ⟨1, by cases custom <;> decide +kernel⟩
+    · change ∃ i : Fin 2, (sequentialRow custom false).decoderQuery = ((sequentialProgram custom).get i).query
+      exact ⟨0, by cases custom <;> decide +kernel⟩
+  · cases custom <;> decide +kernel
 
-private theorem arithmeticImage : UnifiedReduced.Mixed.programImage arithmeticBefore [0, 4] = some arithmeticProgram := by
-  have first : (Cell.ram 0).read arithmeticBefore = .ok 0x00c60633 arithmeticBefore :=
-    written_word_disjoint 4 0x00000613 (by decide) (written_word_read initialState 0 0x00c60633)
-  have second : (Cell.ram 4).read arithmeticBefore = .ok 0x00000613 arithmeticBefore :=
-    written_word_read (wordWriteState initialState 0 0x00c60633) 4 0x00000613
-  have decodeFirst : run (SailRV32.Functions.encdec_backwards 0x00c60633) arithmeticBefore =
-      .ok arithmeticEntry.instruction arithmeticBefore := by with_unfolding_all rfl
-  have decodeSecond : run (SailRV32.Functions.encdec_backwards 0x00000613) arithmeticBefore =
-      .ok chainedEntry.instruction arithmeticBefore := by with_unfolding_all rfl
-  have fieldsFirst : UnifiedReduced.Mixed.decoderFields arithmeticEntry.instruction = some arithmeticEntry.data := by
-    with_unfolding_all rfl
+private theorem sequentialImage (custom : Bool) : UnifiedReduced.Mixed.programImage (sequentialBefore custom) [0, 4] = some (sequentialProgram custom) := by
+  have first : (Cell.ram 0).read (sequentialBefore custom) = .ok (if custom then 0xc2c64673 else 0x00c60633) (sequentialBefore custom) :=
+    written_word_disjoint 4 0x00000613 (by decide) (written_word_read initialState 0 (if custom then 0xc2c64673 else 0x00c60633))
+  have second : (Cell.ram 4).read (sequentialBefore custom) = .ok 0x00000613 (sequentialBefore custom) :=
+    written_word_read (wordWriteState initialState 0 (if custom then 0xc2c64673 else 0x00c60633)) 4 0x00000613
+  have decodeFirst : run (SailRV32.Functions.encdec_backwards (if custom then 0xc2c64673 else 0x00c60633)) (sequentialBefore custom) =
+      .ok (sequentialEntry custom).instruction (sequentialBefore custom) := by cases custom <;> with_unfolding_all rfl
+  have decodeSecond : run (SailRV32.Functions.encdec_backwards 0x00000613) (sequentialBefore custom) =
+      .ok chainedEntry.instruction (sequentialBefore custom) := by cases custom <;> with_unfolding_all rfl
+  have fieldsFirst : UnifiedReduced.Mixed.decoderFields (sequentialEntry custom).instruction = some (sequentialEntry custom).data := by
+    cases custom <;> with_unfolding_all rfl
   have fieldsSecond : UnifiedReduced.Mixed.decoderFields chainedEntry.instruction = some chainedEntry.data := by
-    with_unfolding_all rfl
+    cases custom <;> with_unfolding_all rfl
   simp only [UnifiedReduced.Mixed.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
     programEntryRunWith, first, second, decodeFirst, decodeSecond, fieldsFirst, fieldsSecond, bind, Option.bind, pure]
   rfl
 
-private theorem arithmeticInputs :
-    UnifiedReduced.Caller.MixedMemoryInputs arithmeticData arithmeticProgram arithmeticBefore [] [0, 4] (cells 0) := by
-  refine ⟨⟨rfl, ?_, by decide +kernel⟩, arithmeticImage, ?_, by decide +kernel, ?_, rfl, rfl, ?_⟩
+private theorem sequentialInputs (custom : Bool) :
+    UnifiedReduced.Caller.MixedMemoryInputs (sequentialData custom) (sequentialProgram custom) (sequentialBefore custom) [] [0, 4] (cells 0) := by
+  refine ⟨⟨rfl, ?_, by cases custom <;> decide +kernel⟩, sequentialImage custom, ?_, by cases custom <;> decide +kernel, ?_, rfl, rfl, ?_⟩
   · change 4 < timestampBase ∧ 0 < timestampBase
     norm_num [timestampBase]
-  · have zero : (Cell.register 0).read arithmeticBefore = .ok 0 arithmeticBefore := by with_unfolding_all rfl
-    have control : (Cell.register 12).read arithmeticBefore = .ok 65537 arithmeticBefore := by
-      apply rX_register_frame (before := initialState) (after := arithmeticBefore) rfl 12
+  · have zero : (Cell.register 0).read (sequentialBefore custom) = .ok 0 (sequentialBefore custom) := by cases custom <;> with_unfolding_all rfl
+    have control : (Cell.register 12).read (sequentialBefore custom) = .ok 65537 (sequentialBefore custom) := by
+      apply rX_register_frame (before := initialState) (after := sequentialBefore custom) rfl 12
       apply read_register
       simp [initialState, Std.ExtDHashMap.get?_insert]
-    change initialImage arithmeticBefore [.register 0, .register 12] = some arithmeticData.machine.initialMemory
+    change initialImage (sequentialBefore custom) [.register 0, .register 12] = some (sequentialData custom).machine.initialMemory
     simp only [initialImage, zero, control, List.mapM_cons, List.mapM_nil, bind, pure]
     rfl
   · intro cell member
@@ -771,57 +778,59 @@ private theorem arithmeticInputs :
   · intro current member
     cases member
 
-private theorem arithmeticScope : UnifiedReduced.Caller.ControlPreparation arithmeticData arithmeticProgram 12 12 (.addi 0) := by
-  refine ⟨.arithmetic ?_ ?_, rfl, by decide +kernel, by decide +kernel⟩
+private theorem sequentialScope (custom : Bool) : UnifiedReduced.Caller.ControlPreparation (sequentialData custom) (sequentialProgram custom) 12 12 (.addi 0) := by
+  refine ⟨.sequential ?_ ?_, rfl, by cases custom <;> decide +kernel, by cases custom <;> decide +kernel⟩
   · intro current member
-    have entries : current = arithmeticEntry ∨ current = chainedEntry := by simpa [arithmeticProgram] using member
+    have entries : current = (sequentialEntry custom) ∨ current = chainedEntry := by simpa [sequentialProgram] using member
     rcases entries with rfl | rfl
-    · exact .add 12 12 12
-    · exact .addi 0 0 12
+    · cases custom
+      · exact .arithmetic (.add 12 12 12)
+      · exact .triadd 12 12 12
+    · exact .arithmetic (.addi 0 0 12)
   · intro current member address
-    have entries : current = arithmeticEntry ∨ current = chainedEntry := by simpa [arithmeticProgram] using member
+    have entries : current = (sequentialEntry custom) ∨ current = chainedEntry := by simpa [sequentialProgram] using member
     rcases entries with rfl | rfl
     · change 4 = 8 at address
       omega
     · rfl
 
-theorem nonliteral_add_before_preparation :
-    UnifiedReduced.Caller.PreparedBoundaryExecution arithmeticData arithmeticBefore (cells 0) 12 12 (.addi 0) :=
+private theorem sequential_prefix_before_preparation (custom : Bool) :
+    UnifiedReduced.Caller.PreparedBoundaryExecution (sequentialData custom) (sequentialBefore custom) (cells 0) 12 12 (.addi 0) :=
   UnifiedReduced.Caller.control_preparation_soundness (by decide +kernel) (by decide +kernel) (by decide +kernel)
-    arithmeticAccepted arithmeticInputs arithmeticScope (by decide) (by decide)
+    (sequentialAccepted custom) (sequentialInputs custom) (sequentialScope custom) (by decide) (by decide)
 
-theorem arithmetic_preparation_uses_prior_aliased_add :
-    (readToken (arithmeticAssignment true) UnifiedReduced.importedConstraintsMemoryPorts[2]).time = (6, 0) ∧
-    (readToken (arithmeticAssignment true) UnifiedReduced.importedConstraintsMemoryPorts[2]).word.toBitVec = 131074 := by
-  decide +kernel
+private theorem sequential_preparation_uses_prior_aliased_add (custom : Bool) :
+    (readToken (sequentialAssignment custom true) UnifiedReduced.importedConstraintsMemoryPorts[2]).time = (6, 0) ∧
+    (readToken (sequentialAssignment custom true) UnifiedReduced.importedConstraintsMemoryPorts[2]).word.toBitVec = (if custom then 196611 else 131074) := by
+  cases custom <;> decide +kernel
 
-theorem arithmetic_preparation_has_actual_control :
-    ∃ (tokens : List (MemoryToken babyBearModulus)) (events : List MemoryAccess) (state : State), events.Perm ((arithmeticData.prefixSteps 12).map transferEvent) ∧
-      SailHistory (cells 0) events arithmeticBefore state ∧ UnifiedReduced.Caller.NativeBoundary tokens state (cells 0) ∧
+private theorem sequential_preparation_has_actual_control (custom : Bool) :
+    ∃ (tokens : List (MemoryToken babyBearModulus)) (events : List MemoryAccess) (state : State), events.Perm (((sequentialData custom).prefixSteps 12).map transferEvent) ∧
+      SailHistory (cells 0) events (sequentialBefore custom) state ∧ UnifiedReduced.Caller.NativeBoundary tokens state (cells 0) ∧
       (Cell.register 12).read state = .ok 0 state ∧
       ∃ token ∈ tokens, token.address = (Cell.register 12).addressCode ∧
         (timeOfPair token.time).value = 10 ∧ token.word.toBitVec = 0 :=
-  nonliteral_add_before_preparation
+  sequential_prefix_before_preparation custom
 
-private def arithmeticFabricatedData : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
-  { arithmeticData with machine := { arithmeticData.machine with rows :=
-    [⟨.machine, fun column => if column = 48 then 0 else arithmeticAssignment true column⟩, arithmeticRow false] } }
+private def sequentialFabricatedData (custom : Bool) : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
+  { (sequentialData custom) with machine := { (sequentialData custom).machine with rows :=
+    [⟨.machine, fun column => if column = 48 then 0 else sequentialAssignment custom true column⟩, sequentialRow custom false] } }
 
-theorem arithmetic_prefix_and_preparation_share_history :
+private theorem sequential_prefix_and_preparation_share_history (custom : Bool) :
     ∃ chain : UnifiedReduced.Caller.WindowChain babyBearModulus,
-      chain.Realizes arithmeticData arithmeticBefore (cells 0) 4 8 8 12 ∧
-      (Cell.register 12).read chain.atFirstFinish = .ok 131074 chain.atFirstFinish ∧
+      chain.Realizes (sequentialData custom) (sequentialBefore custom) (cells 0) 4 8 8 12 ∧
+      (Cell.register 12).read chain.atFirstFinish = .ok (if custom then 196611 else 131074) chain.atFirstFinish ∧
       (Cell.register 12).read chain.atSecondFinish = .ok 0 chain.atSecondFinish := by
   obtain ⟨chain, history⟩ := UnifiedReduced.Caller.mixed_window_chain_soundness
     (a := 4) (b := 8) (c := 8) (d := 12)
-    (by decide +kernel) (by decide +kernel) (by decide +kernel) arithmeticAccepted arithmeticInputs
+    (by decide +kernel) (by decide +kernel) (by decide +kernel) (sequentialAccepted custom) (sequentialInputs custom)
     (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) (by decide)
   have firstMatching := UnifiedReduced.Caller.Proofs.matching_at_next_cut (by decide +kernel) (by decide +kernel)
-    (lower := 4) (upper := 8) arithmeticAccepted.toRequestChecks arithmeticInputs.publicProgram
+    (lower := 4) (upper := 8) (sequentialAccepted custom).toRequestChecks (sequentialInputs custom).publicProgram
     (by decide) (by decide) (by decide) (by decide) history.firstPrefixMatching history.firstMatching
-  let token : MemoryToken babyBearModulus := ⟨(Cell.register 12).addressCode, (6, 0), Nat.pair 2 2⟩
-  have produced : token ∈ arithmeticData.machine.initialMemory ++ (arithmeticData.prefixSteps 8).map Prod.snd := by decide +kernel
-  have notRead : token ∉ (arithmeticData.prefixSteps 8).map Prod.fst := by decide +kernel
+  let token : MemoryToken babyBearModulus := ⟨(Cell.register 12).addressCode, (6, 0), Nat.pair (if custom then 3 else 2) (if custom then 3 else 2)⟩
+  have produced : token ∈ (sequentialData custom).machine.initialMemory ++ ((sequentialData custom).prefixSteps 8).map Prod.snd := by cases custom <;> decide +kernel
+  have notRead : token ∉ ((sequentialData custom).prefixSteps 8).map Prod.fst := by cases custom <;> decide +kernel
   have present : token ∈ chain.firstFinish := by
     rcases List.mem_append.mp (firstMatching.mem_iff.mp produced) with present | read
     · exact present
@@ -830,23 +839,78 @@ theorem arithmetic_prefix_and_preparation_share_history :
   have same : cell = Cell.register 12 := Trace.Proofs.cell_address_injective address
   subst cell
   have finalMatching := UnifiedReduced.Caller.Proofs.matching_at_next_cut (by decide +kernel) (by decide +kernel)
-    (lower := 8) (upper := 12) arithmeticAccepted.toRequestChecks arithmeticInputs.publicProgram
+    (lower := 8) (upper := 12) (sequentialAccepted custom).toRequestChecks (sequentialInputs custom).publicProgram
     (by decide) (by decide) (by decide) (by decide) history.secondPrefixMatching history.secondMatching
   have lastRead := UnifiedReduced.Caller.Proofs.preparation_at_boundary (by decide +kernel) (by decide +kernel)
-    arithmeticAccepted arithmeticInputs arithmeticScope (by decide) (by decide) finalMatching history.secondFinishBoundary
-  have bits : token.word.toBitVec = (131074 : BitVec 32) := by
+    (sequentialAccepted custom) (sequentialInputs custom) (sequentialScope custom) (by decide) (by decide) finalMatching history.secondFinishBoundary
+  have bits : token.word.toBitVec = ((if custom then 196611 else 131074) : BitVec 32) := by
     simp only [token, MemoryToken.word, Nat.unpair_pair]
-    rfl
+    cases custom <;> rfl
   rw [bits] at firstRead
   exact ⟨chain, history, firstRead, lastRead.1⟩
 
-theorem arithmetic_preparation_fabricated_read_rejected :
-    ¬ UnifiedReduced.Caller.MixedMemoryAccepted arithmeticFabricatedData arithmeticProgram := by
+private theorem sequential_preparation_fabricated_read_rejected (custom : Bool) :
+    ¬ UnifiedReduced.Caller.MixedMemoryAccepted (sequentialFabricatedData custom) (sequentialProgram custom) := by
   intro accepted
-  let token := readToken (fun column => if column = 48 then 0 else arithmeticAssignment true column)
+  let token := readToken (fun column => if column = 48 then 0 else sequentialAssignment custom true column)
     UnifiedReduced.importedConstraintsMemoryPorts[2]
-  have consumed : token ∈ arithmeticFabricatedData.mixedSteps.map Prod.fst := by decide +kernel
-  have absent : token ∉ arithmeticFabricatedData.machine.initialMemory ++ arithmeticFabricatedData.mixedSteps.map Prod.snd := by decide +kernel
+  have consumed : token ∈ (sequentialFabricatedData custom).mixedSteps.map Prod.fst := by cases custom <;> decide +kernel
+  have absent : token ∉ (sequentialFabricatedData custom).machine.initialMemory ++ (sequentialFabricatedData custom).mixedSteps.map Prod.snd := by cases custom <;> decide +kernel
   exact absent (accepted.memory.mem_iff.mpr (List.mem_append_right _ consumed))
+
+theorem nonliteral_add_before_preparation :
+    UnifiedReduced.Caller.PreparedBoundaryExecution (sequentialData false) (sequentialBefore false) (cells 0) 12 12 (.addi 0) :=
+  sequential_prefix_before_preparation false
+
+theorem arithmetic_preparation_uses_prior_aliased_add :
+    (readToken ((sequentialAssignment false) true) UnifiedReduced.importedConstraintsMemoryPorts[2]).time = (6, 0) ∧
+    (readToken ((sequentialAssignment false) true) UnifiedReduced.importedConstraintsMemoryPorts[2]).word.toBitVec = 131074 :=
+  sequential_preparation_uses_prior_aliased_add false
+
+theorem arithmetic_preparation_has_actual_control :
+    ∃ (tokens : List (MemoryToken babyBearModulus)) (events : List MemoryAccess) (state : State), events.Perm (((sequentialData false).prefixSteps 12).map transferEvent) ∧
+      SailHistory (cells 0) events (sequentialBefore false) state ∧ UnifiedReduced.Caller.NativeBoundary tokens state (cells 0) ∧
+      (Cell.register 12).read state = .ok 0 state ∧
+      ∃ token ∈ tokens, token.address = (Cell.register 12).addressCode ∧
+        (timeOfPair token.time).value = 10 ∧ token.word.toBitVec = 0 :=
+  sequential_preparation_has_actual_control false
+
+theorem arithmetic_prefix_and_preparation_share_history :
+    ∃ chain : UnifiedReduced.Caller.WindowChain babyBearModulus,
+      chain.Realizes (sequentialData false) (sequentialBefore false) (cells 0) 4 8 8 12 ∧
+      (Cell.register 12).read chain.atFirstFinish = .ok 131074 chain.atFirstFinish ∧
+      (Cell.register 12).read chain.atSecondFinish = .ok 0 chain.atSecondFinish :=
+  sequential_prefix_and_preparation_share_history false
+
+theorem arithmetic_preparation_fabricated_read_rejected :
+    ¬ UnifiedReduced.Caller.MixedMemoryAccepted (sequentialFabricatedData false) (sequentialProgram false) :=
+  sequential_preparation_fabricated_read_rejected false
+
+theorem triadd_before_preparation :
+    UnifiedReduced.Caller.PreparedBoundaryExecution (sequentialData true) (sequentialBefore true) (cells 0) 12 12 (.addi 0) :=
+  sequential_prefix_before_preparation true
+
+theorem triadd_prefix_and_preparation_share_history :
+    ∃ chain : UnifiedReduced.Caller.WindowChain babyBearModulus,
+      chain.Realizes (sequentialData true) (sequentialBefore true) (cells 0) 4 8 8 12 ∧
+      (Cell.register 12).read chain.atFirstFinish = .ok 196611 chain.atFirstFinish ∧
+      (Cell.register 12).read chain.atSecondFinish = .ok 0 chain.atSecondFinish :=
+  sequential_prefix_and_preparation_share_history true
+
+theorem triadd_preparation_fabricated_read_rejected :
+    ¬ UnifiedReduced.Caller.MixedMemoryAccepted (sequentialFabricatedData true) (sequentialProgram true) :=
+  sequential_preparation_fabricated_read_rejected true
+
+theorem sequential_profile_excludes_jump (imm : BitVec 21) (rd : BitVec 5) :
+    ¬ UnifiedReduced.Caller.SequentialInstruction (.JAL (imm, .Regidx rd)) := by
+  intro supported
+  cases supported with
+  | arithmetic supported => cases supported
+
+theorem sequential_profile_excludes_comparison (rs2 rs1 rd : BitVec 5) :
+    ¬ UnifiedReduced.Caller.SequentialInstruction (.RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, .SLT)) := by
+  intro supported
+  cases supported with
+  | arithmetic supported => cases supported
 
 end Tests.ControlPreparation

@@ -15,7 +15,7 @@ mixed execution with delegation callers remains a separate obligation.
 | Machine and worker reads/writes, bounds and references share one actual initialized history. | [`Caller.mixed_memory_soundness`](Theorems.lean) |
 | Exact caller regions, counts and slots follow from state/request matching and public cuts/duration. | [`Caller.window_schedule_soundness` and `Caller.request_window_soundness`](Theorems.lean) |
 | Actual joint cut states and projected worker boundaries retain native timestamps. | [`Caller.mixed_window_soundness` and `Caller.mixed_window_projection_soundness`](Theorems.lean) |
-| Public ADDI-from-x0/LUI preparation yields actual controls after literal or ordinary arithmetic prefixes; native PC/clock matching derives each preparation address. | [`Caller.control_preparation_soundness`](Theorems.lean) |
+| Public ADDI-from-x0/LUI preparation yields actual controls after literal or sequential ordinary/custom prefixes; native PC/clock matching derives each preparation address. | [`Caller.control_preparation_soundness`](Theorems.lean) |
 | Two preparations share their actual cut states and the complete intervening machine/worker history; neither control is supplied. | [`Caller.control_preparation_window_soundness`](Theorems.lean) |
 | Two native windows and their gap execute continuously from one initialization with retained tokens and clocks. | [`Caller.mixed_window_chain_soundness`](Theorems.lean) |
 | An arbitrary ordered finite list of native windows and gaps shares that continuous execution. | [`Caller.mixed_window_sequence_soundness`](Theorems.lean) |
@@ -76,6 +76,13 @@ The [arithmetic-prefix regression](../../../../Tests/ControlPreparation.lean)
 derives actual ADD→ADDI-reset states 65537→131074→0 in that same continuous history,
 despite reversed native rows. The preparation read uses the actual clock-six ADD
 token, and the reset retains clock ten. Fabricated reads fail joint matching.
+The [`SequentialProgram`](../../Helpers/UnifiedReduced/ControlPreparation.lean)
+profile also admits LW/SW, bitwise/shifts, REV8 and supported TRIADD/XORROT before
+the final literal. Original public decoding and native constraints derive the
+PC-increment selectors; jumps, branches and wraparound comparisons remain outside
+this profile. The same fixture checks TRIADD→ADDI with actual states
+65537→196611→0 and rejection of a fabricated reset read. Prefix retirement and
+discarded-load semantics remain separate from preparation/memory transport.
 
 [`WindowSequence.Realizes`](MixedWindows.lean) extends this connection to an
 arbitrary finite list. Its initial cut follows the actual prefix; every segment
