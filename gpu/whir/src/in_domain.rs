@@ -670,7 +670,7 @@ mod tests {
             .collect()
     }
 
-    /// All ten fused (recomputed) shapes, including M = 2 (R > M) and M = 256
+    /// All eleven fused (recomputed) shapes, including M = 2 (R > M) and M = 256
     /// (chain length 32): kernel leaves equal an independent host Horner and
     /// the fused query path's leaves, bit for bit.
     #[test]
@@ -681,11 +681,13 @@ mod tests {
             (13u32, 14u32, 5u32),
             (12, 14, 5),
             (11, 15, 5),
+            (11, 16, 5),
             (10, 15, 5),
             (9, 15, 4),
             (8, 19, 4),
             (7, 19, 4),
             (6, 19, 5),
+            (6, 21, 3),
             (5, 19, 4),
             (4, 19, 3),
         ] {
