@@ -35,19 +35,23 @@ fn output_evals_blob(proof: &Proof) -> Vec<u8> {
     blob
 }
 
-/// Dimension-reducing proof data (layers with `num_rounds < 22`, processed
+/// Dimension-reducing proof data (layers after the circuit's standard layers, processed
 /// output->base): per layer, the folding-round coefficients then the 10 final-step
 /// LSB lines, all elements big-endian 16-byte.
-fn dim_reduce_blob(proof: &Proof) -> Vec<u8> {
+fn dim_reduce_blob(circuit: &Circuit, proof: &Proof) -> Vec<u8> {
     let mut blob = Vec::new();
     let dim_layers: Vec<usize> = proof
         .sumcheck_intermediate_values
         .keys()
         .copied()
-        .filter(|l| proof.sumcheck_intermediate_values[l].sumcheck_num_rounds < 22)
+        .filter(|l| *l >= circuit.layers.len())
         .collect();
     for &layer in dim_layers.iter().rev() {
         let siv = &proof.sumcheck_intermediate_values[&layer];
+        assert!(
+            siv.sumcheck_num_rounds < circuit.trace_len.ilog2() as usize,
+            "dimension-reducing layer must have fewer rounds than the circuit"
+        );
         for c in siv.internal_round_coefficients.iter() {
             for e in c.as_multilinear().iter() {
                 blob.extend_from_slice(&be16(*e));
@@ -62,7 +66,7 @@ fn dim_reduce_blob(proof: &Proof) -> Vec<u8> {
 }
 
 /// Standard circuit-layer proof data (config_idx `num_standard_layers-1 .. 0`): per
-/// layer, the 22 folding-round coefficients then the at-point evals in group-offset
+/// layer, the trace-log folding-round coefficients then the at-point evals in group-offset
 /// order. Cached / virtual-setup inputs are computed on the verifier heap and are
 /// NOT part of the calldata.
 fn circuit_blob(circuit: &Circuit, proof: &Proof) -> Vec<u8> {
@@ -72,7 +76,15 @@ fn circuit_blob(circuit: &Circuit, proof: &Proof) -> Vec<u8> {
     let num_mem = circuit.memory_layout.total_width;
     let num_wit = circuit.witness_layout.total_width;
     for config_idx in (0..num_standard_layers).rev() {
-        let siv = &proof.sumcheck_intermediate_values[&config_idx];
+        let siv = proof
+            .sumcheck_intermediate_values
+            .get(&config_idx)
+            .expect("proof is missing a standard circuit layer");
+        assert_eq!(
+            siv.sumcheck_num_rounds,
+            circuit.trace_len.ilog2() as usize,
+            "standard layer rounds must match the circuit"
+        );
         for c in siv.internal_round_coefficients.iter() {
             for e in c.as_multilinear().iter() {
                 blob.extend_from_slice(&be16(*e));
@@ -119,7 +131,7 @@ pub fn gkr_calldata(circuit: &Circuit, proof: &Proof, aux: &CommitmentMode) -> V
     cd.extend_from_slice(&crate::seed::commit_seed_preimage(circuit, proof, aux));
     cd.extend_from_slice(&proof.lookup_challenges_pow_nonce.to_be_bytes());
     cd.extend_from_slice(&output_evals_blob(proof));
-    cd.extend_from_slice(&dim_reduce_blob(proof));
+    cd.extend_from_slice(&dim_reduce_blob(circuit, proof));
     cd.extend_from_slice(&circuit_blob(circuit, proof));
     cd.extend_from_slice(&proof.batched_proximity_check_pow_nonce.to_be_bytes());
     cd

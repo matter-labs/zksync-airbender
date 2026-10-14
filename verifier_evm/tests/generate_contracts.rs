@@ -4,21 +4,8 @@
 
 mod common;
 
-use common::production_prover_config;
-use cs::gkr_compiler::GKRCircuitArtifact;
+use common::{Version, VERSIONS};
 use field::Proth120;
-use prover::gkr::prover_config::example_configs::{
-    EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS, EVM_PRODUCTION_PACK_LOG2,
-    EVM_PRODUCTION_TRACE_LEN_LOG2,
-};
-use std::path::Path;
-use trace_and_split::setups::program_setups::find_binary_exit_point;
-
-// Deployment parameters are properties of the *program + circuit*, never of a proof: the
-// verifier binds the statement to the L1 feeder verifier's terminal PC (derived from the checked-in
-// binary) and its PoW difficulties follow the production prover config.
-const FEEDER_BINARY: &str = "../tools/gkr_verifier/fsv_unified_recursion_layer_sec_100_l1_feeder_special_opcodes_extension.bin";
-const LAYOUT: &str = "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json";
 
 /// The registry address baked into both verifiers (they mark their committed
 /// state to it). Default = the fixed address the local anvil harness etches
@@ -38,86 +25,155 @@ const PRODUCTION_STUBS: [&str; 2] = [
     "whir/src/WhirVerifierProduction.sol",
 ];
 
-fn generate(registry_address: &str) -> verifier_evm::GeneratedContracts {
+fn generate(version: &Version, registry_address: &str) -> verifier_evm::GeneratedContracts {
     use prover::gkr::prover_config::pow_bits;
 
-    let circuit: GKRCircuitArtifact<Proth120> =
-        serde_json::from_str(&std::fs::read_to_string(LAYOUT).unwrap()).unwrap();
-    let bytes = std::fs::read(FEEDER_BINARY)
-        .unwrap_or_else(|_| panic!("missing {FEEDER_BINARY}, run the reproducible build first"));
-    assert!(
-        bytes.len().is_multiple_of(4),
-        "binary section not word-aligned"
+    let circuit = version.circuit();
+    let config = version.prover_config();
+    let lookup_pow_bits = pow_bits::lookup_challenges_pow_bits::<Proth120, Proth120>(
+        config.security_level.security_bits(),
+        pow_bits::lookup_identity_degree(&circuit),
     );
-    let binary: Vec<u32> = bytes
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-        .collect();
-    let prover_config = production_prover_config();
+    let external_pow_bits = lookup_pow_bits.max(version.external_pow_floor);
     let batched_proximity_pow_bits = pow_bits::batched_proximity_check_pow_bits::<Proth120, Proth120>(
-        prover_config.security_level.security_bits(),
-        EVM_PRODUCTION_TRACE_LEN_LOG2 + EVM_PRODUCTION_PACK_LOG2,
-        prover_config.whir_schedule.base_lde_factor.trailing_zeros() as usize,
+        config.security_level.security_bits(),
+        config.trace_len_log2 + version.pack_log2,
+        config.whir_schedule.base_lde_factor.trailing_zeros() as usize,
         pow_bits::total_base_oracle_columns(&circuit),
     );
-    verifier_evm::generate_verifiers(
+    assert!(external_pow_bits <= 25 && batched_proximity_pow_bits <= 25);
+    for bits in config
+        .whir_schedule
+        .whir_pow_schedule
+        .iter()
+        .copied()
+        .chain([external_pow_bits, batched_proximity_pow_bits])
+    {
+        assert!(
+            bits <= version.pow_cap,
+            "{}: PoW {bits} exceeds {}",
+            version.name,
+            version.pow_cap
+        );
+    }
+    let out = verifier_evm::generate_verifiers(
         &circuit,
-        &prover_config,
-        EVM_PRODUCTION_PACK_LOG2,
-        EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS,
+        &config,
+        version.pack_log2,
+        external_pow_bits,
         batched_proximity_pow_bits,
-        find_binary_exit_point(&binary),
+        version.final_pc(),
         registry_address,
-    )
+    );
+    // Check the emitted verifier's gates, not just the arguments passed to it.
+    assert_eq!(
+        solidity_constant(&out.gkr_sol, "__TEMPLATE_EXTERNAL_POW_BITS"),
+        external_pow_bits
+    );
+    assert_eq!(
+        solidity_constant(&out.gkr_sol, "__TEMPLATE_WHIR_BATCH_POW_BITS"),
+        batched_proximity_pow_bits
+    );
+    out
+}
+
+fn solidity_constant(source: &str, name: &str) -> u32 {
+    let line = source
+        .lines()
+        .find(|line| line.contains(&format!("constant {name} ")))
+        .unwrap();
+    line.split_once('=')
+        .unwrap()
+        .1
+        .split_once(';')
+        .unwrap()
+        .0
+        .trim()
+        .parse()
+        .unwrap()
 }
 
 fn sources(out: &verifier_evm::GeneratedContracts) -> [&str; 3] {
     [&out.gkr_sol, &out.whir_sol, &out.registry_sol]
 }
 
-fn write(rel: &str, content: &str) {
-    let p = Path::new("generated_contracts").join(rel);
+fn write(version: &Version, rel: &str, content: &str) {
+    let p = version.contract_path(rel);
     std::fs::create_dir_all(p.parent().unwrap()).unwrap();
     std::fs::write(&p, content).unwrap();
     eprintln!("wrote {} ({} bytes)", p.display(), content.len());
 }
 
 #[test]
-#[ignore = "writes generated_contracts; build.sh runs it"]
+#[ignore = "writes versioned generated_contracts"]
 fn generate_contracts_into_dir() {
     let registry_address =
         std::env::var("REGISTRY_ADDRESS").unwrap_or_else(|_| DEFAULT_REGISTRY_ADDRESS.to_string());
-    let out = generate(&registry_address);
-    for (rel, content) in TEST_PAIR.iter().zip(sources(&out)) {
-        write(rel, content);
+    for version in common::selected_versions() {
+        let out = generate(&version, &registry_address);
+        for (rel, content) in TEST_PAIR.iter().zip(sources(&out)) {
+            write(&version, rel, content);
+        }
     }
 }
 
 #[test]
-#[ignore = "writes generated_contracts; build.sh runs it"]
+#[ignore = "writes versioned generated_contracts"]
 fn regenerate_evm_verifier_stubs() {
-    let out = generate(STUB_REGISTRY_ADDRESS);
-    for (rel, content) in PRODUCTION_STUBS.iter().zip(sources(&out)) {
-        write(rel, content);
+    for version in common::selected_versions() {
+        let out = generate(&version, STUB_REGISTRY_ADDRESS);
+        for (rel, content) in PRODUCTION_STUBS.iter().zip(sources(&out)) {
+            write(&version, rel, content);
+        }
     }
 }
 
 #[test]
 fn checked_in_contracts_are_current() {
-    let test_pair = generate(DEFAULT_REGISTRY_ADDRESS);
-    let stubs = generate(STUB_REGISTRY_ADDRESS);
-    for (rel, content) in TEST_PAIR
-        .iter()
-        .zip(sources(&test_pair))
-        .chain(PRODUCTION_STUBS.iter().zip(sources(&stubs)))
-    {
-        let checked_in = std::fs::read_to_string(Path::new("generated_contracts").join(rel))
-            .unwrap_or_else(|_| panic!("missing generated_contracts/{rel}"));
-        assert!(
-            checked_in == content,
-            "generated_contracts/{rel} is stale: rerun `cargo test -p verifier_evm --test generate_contracts -- --ignored`"
-        );
+    for version in VERSIONS {
+        let test_pair = generate(version, DEFAULT_REGISTRY_ADDRESS);
+        let stubs = generate(version, STUB_REGISTRY_ADDRESS);
+        for (rel, content) in TEST_PAIR
+            .iter()
+            .zip(sources(&test_pair))
+            .chain(PRODUCTION_STUBS.iter().zip(sources(&stubs)))
+        {
+            let path = version.contract_path(rel);
+            let checked_in = std::fs::read_to_string(&path)
+                .unwrap_or_else(|_| panic!("missing {}", path.display()));
+            assert!(
+                checked_in == content,
+                "{} is stale: rerun `cargo test -p verifier_evm --test generate_contracts -- --ignored`",
+                path.display()
+            );
+        }
     }
+}
+
+#[test]
+fn generator_accepts_trace21_and_rejects_mismatched_config() {
+    // Synthetic geometry: real 2p21 artifacts receive their own descriptor
+    // once generated. This exercises both generator admission checks now.
+    let version = &common::L1_WRAP_2P22;
+    let mut circuit = version.circuit();
+    circuit.trace_len = 1 << 21;
+    let mut config = version.prover_config();
+    let generate = |config: &prover::gkr::prover_config::ProverConfig| {
+        verifier_evm::generate_verifiers(
+            &circuit,
+            config,
+            version.pack_log2,
+            20,
+            16,
+            version.final_pc(),
+            DEFAULT_REGISTRY_ADDRESS,
+        )
+    };
+    assert!(std::panic::catch_unwind(|| generate(&config)).is_err());
+    config.trace_len_log2 = 21;
+    let out = generate(&config);
+    assert_eq!(
+        solidity_constant(&out.gkr_sol, "__TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS"),
+        21
+    );
 }

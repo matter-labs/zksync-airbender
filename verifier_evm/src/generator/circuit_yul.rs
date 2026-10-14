@@ -646,12 +646,12 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
     yul_main_output().lock().unwrap().clear();
     let circuit_rounds = {
         assert!(circuit.trace_len.is_power_of_two() && circuit.trace_len > 0);
-        assert_eq!(
-            circuit.trace_len,
-            1 << 22,
-            "we currently expect gkr_compress to go up to 2^22"
+        let rounds = circuit.trace_len.trailing_zeros();
+        assert!(
+            matches!(rounds, 21 | 22),
+            "GKR verifier supports trace logs 21 and 22"
         );
-        circuit.trace_len.trailing_zeros()
+        rounds
     };
     let layer0_group_widths = (
         circuit.memory_layout.total_width,
@@ -2052,11 +2052,6 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                         )
                     });
                     let [lhs_addr_high, rhs_addr_high] = {
-                        assert_eq!(
-                            circuit.trace_len,
-                            1 << 22,
-                            "currently we expect gkr_compress to go up to 2^22"
-                        );
                         assert_eq!(
                             circuit.memory_layout.inits_and_teardowns_word_bits.unwrap(),
                             2,

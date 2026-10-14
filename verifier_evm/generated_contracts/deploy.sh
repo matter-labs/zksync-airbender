@@ -11,9 +11,9 @@
 # SAME salt (set below), so every address is a pure function of (factory, salt, initCode). The
 # script never computes CREATE2 addresses. Two-step flow:
 #
-#   1. Leave REGISTRY_ADDR all-zero and run ./deploy.sh — it deploys ONLY the registry, prints
+#   1. Leave REGISTRY_ADDR all-zero and run ./deploy.sh <2p22|2p21> — it deploys ONLY the registry, prints
 #      the address the factory reports (ContractCreation event), and exits.
-#   2. Substitute that address into REGISTRY_ADDR below and run ./deploy.sh again — it sees the
+#   2. Substitute that address into REGISTRY_ADDR below and run ./deploy.sh <2p22|2p21> again — it sees the
 #      registry code already on-chain, regenerates + builds + deploys the two verifiers,
 #      then permanently authorizes that pair. Use the same KEY for both runs.
 #
@@ -23,8 +23,11 @@
 # partial run still consumes the salt for the contracts it did deploy.
 #
 # Feed the (pre-computed) GKR + WHIR addresses to ./send_proofs.sh afterwards.
-set -e
-cd "$(dirname "$0")"
+set -eu
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+. "$SCRIPT_DIR/version.sh"
+select_version "${1:?usage: deploy.sh <2p22|2p21>}"
+cd "$CONTRACTS_ROOT"
 
 # ---- configuration: edit for the target network ------------------------------------------------
 RPC=http://127.0.0.1:8545
@@ -114,7 +117,7 @@ fi
 
 # Regenerate the verifier sources with the registry address, rebuild.
 echo "== regenerating GKR/WHIR sources with REGISTRY_ADDRESS=$REGISTRY_ADDR =="
-( cd .. && REGISTRY_ADDRESS=$REGISTRY_ADDR cargo test -q -p verifier_evm --test generate_contracts >/dev/null )
+( cd "$SCRIPT_DIR/.." && REGISTRY_ADDRESS=$REGISTRY_ADDR cargo test -q -p verifier_evm --test generate_contracts generate_contracts_into_dir -- --exact --ignored >/dev/null )
 ( cd gkr  && forge build >/dev/null )
 ( cd whir && forge build >/dev/null )
 
@@ -132,4 +135,4 @@ cast send "$REGISTRY_ADDR" 'initialize_verifiers(address,address)' "$GKR_ADDR" "
 
 echo "== done =="
 echo "send the proof transactions with the authorized verifier addresses:"
-echo "   ./send_proofs.sh $GKR_ADDR $WHIR_ADDR"
+echo "   $SCRIPT_DIR/send_proofs.sh $AB_EVM_VERSION $GKR_ADDR $WHIR_ADDR"

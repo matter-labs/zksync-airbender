@@ -214,6 +214,14 @@ pub fn generate_verifiers(
     // EIP-55 checksummed address literals — normalize whatever case came in.
     let registry_literal = checksum_address(registry_address);
     let d = Derived::from(circuit);
+    assert!(
+        matches!(d.rounds, 21 | 22),
+        "GKR verifier supports trace logs 21 and 22"
+    );
+    assert_eq!(
+        prover_config.trace_len_log2, d.rounds as usize,
+        "prover config trace log must match the circuit"
+    );
     // WHIR config derived from the same source the prover used, plus the artifact's widths.
     let wc = WhirGenConfig::derive(
         &prover_config.whir_schedule,
