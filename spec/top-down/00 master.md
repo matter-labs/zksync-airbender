@@ -44,7 +44,9 @@ machine-visible state._
   |---|---|---|---|---|---|---|
   | 2 (PC) | 0 | 0 | timestamp[18:0] | timestamp[37:19] | pc[15:0] | pc[31:16] |
 
-- The **RAM** is logically represented by 2^30 bytes of word-addressed word-sized slots, initialised by the memory argument at time 0 to zero values.
+  - possibly move to memory section so that it's contextualised
+
+- The **RAM** is logically represented by 2^32 bytes of word-addressed word-sized slots, initialised by the memory argument at time 0 to zero values.
 
   | addr_space | addr_lo | addr_hi | ts_lo | ts_hi | val_lo | val_hi |
   |---|---|---|---|---|---|---|
@@ -252,20 +254,18 @@ argument values are combined into one accepted program-proof statement._
 _Describe the alternative view of machine execution as read-side and write-side
 multisets of state-transition events._
 
-- A global **Offline Memory Checking** permutation argument is used to guarantee consistency of our ROM, RAM, PC state, Register states, NonDeterminism I/O, and precompile Delegation subarguments. The argument is taken from the seminary Two Shuffles Make A RAM paper (https://eprint.iacr.org/2023/1115) and is implemented via standard Grand Product permutation fingerprinting: accesses are split between Read Set (RS) and Write Set (WS) sets that must complement one another, and each read/write access is defined by a fixed-width tuple. Access tuples contain sufficient information to uniquely identify both the subargument and entry index or address, and contain a 38-bit timestamp and 32-bit value to record the data. The argument works in-circuit by multiplicatively accumulating the RS and WS values after each access, including special initialisation and finalisation setup accesses, and returning the final pair to the Verifier. The Verifier then enforces its own final state by appending access tuples to the pair, and then checks them for equality. For any write tuple appended to the global memory argument, range checks on individual tuple elements are enforced; range checks on the read tuple counterparts are omitted, and their correctness hinges directly on the permutation argument.
-  -  all accesses have write_ts > read_ts, except for the csrrw access in a delegation precompile row which cannot have it (as the ts is inverted)
 
-- **ROM / RAM / Register Subarguments** work as regular accesses, wherein each read tuple fulfills the permutation by using the same value and timestamp registered by the last write to that index, and each write tuple records a new timestamp and value, using the current cycle's current timestamp. The permutation therefore stays open at the first read and the last write, as they require matching asymmetric accesses which will be fulfilled by the initialisation and finalisation phases detailed below. 
-  - no ROM, add RAM >= threshold
-  - > Shadow-ROM range. The RAM address space includes a shadow range corresponding to the architectural ROM region. This range is initialized and participates in the global memory argument through dummy or shadow accesses, rather than ordinary program-visible RAM operations. Its values do not represent the program’s ROM contents; those are authenticated separately through setup-table lookups.
+- **Memory Fingerprinting**
+
+- A global **Offline Memory Checking** permutation argument is used to guarantee consistency of our RAM, PC state, Register states, NonDeterminism I/O, and precompile Delegation subarguments. The argument is taken from the seminary Two Shuffles Make A RAM paper (https://eprint.iacr.org/2023/1115) and is implemented via standard Grand Product permutation fingerprinting: accesses are split between Read Set (RS) and Write Set (WS) sets that must complement one another, and each read/write access is defined by a fixed-width tuple. Access tuples contain sufficient information to uniquely identify both the subargument and entry index or address, and contain a 38-bit timestamp and 32-bit value to record the data. The argument works in-circuit by multiplicatively accumulating the RS and WS values after each access, including special initialisation and finalisation setup accesses, and returning the final pair to the Verifier. The Verifier then enforces its own final state by appending access tuples to the pair, and then checks them for equality. For any write tuple appended to the global memory argument, range checks on individual tuple elements are enforced; range checks on the read tuple counterparts are omitted, and their correctness hinges directly on the permutation argument. All non-delegation memory accesses have the write timestamp enforced as strictly greater than the read timestamp, whereas delegation accesses simply act as non-updateable unique bookkeeping slots via the official cycle timestamp and do not require it.
+
+- **RAM / Register Subarguments** work as regular accesses, wherein each read tuple fulfills the permutation by using the same value and timestamp registered by the last write to that index, and each write tuple records a new timestamp and value, using the current cycle's current timestamp. The permutation therefore stays open at the first read and the last write, as they require matching asymmetric accesses which will be fulfilled by the initialisation and finalisation phases detailed below. There is no officially accessible ROM subargument present in the global memory, and instead we simply require all memory accesses to have addresses beyond the ROM-size threshold. This decision leaves space in the argument for a "Shadow" ROM range, which is initialised and implicitly participates in the global memory argument through dummy or shadowed accesses, rather than ordinary program-visible RAM operations. The Shadow-ROM's contents do not represent the program's official ROM contents, which are authenticated and accessed separately by the LOAD/STORE instructions through setup-table lookups.
 
 - **Init and Teardown Phases** are the names given to the initialisation and finalisation constraints of the argument, as encoded within the circuit constraints. As each regular (ROM/RAM/Register) memory access comes with an asymmetric pair of read and write tuples which advance the access slot's timestamp, a correct permutation will end up requiring an initial state (first write) and a final state (last read) to close the gap. These first writes and final reads are enforced by special symmetrical constraints which initialise the entire ROM/RAM memory regions and finalise them with prover-provided values and timestamps. PC and Register subarguments are directly initialised and finalised by the Verifier, which also uses part of those values for identification of the proven program. Finalisation and consistency of the PC State subargument (including final timestamp), as detailed below, will guarantee correctness for the entire memory. The precompile Delegation subargument does not require any initialisation or finalisation, as its accesses are always symmetrical and automatically result in a closed permutation.
 
-- The **PC Subargument** works via single-slot global memory accesses which during every cycle update the same slot to a new value and timestamp. The value of the program counter is constrained by the execution circuits, which, in combination with the monotonically increasing timestamp and the permutation-based nature of the global memory argument, forbids cycle duplicates or skips and ensures consistency of machine execution over time. The timestamp is always increased by increments of four, to enforce proper time sequence within cycles themselves and allow for up to four concurrent accesses to the same memory slot in a single cycle: duplicate accesses could break the permutation argument and invalidate the global memory argument. In practice, a normal RISCV32 cycle might access the same slot up to three times (eg rs1, rs2, and rd), and fulfillment of delegation would fill in the fourth access slot. Finally, the Verifier enforces the initialisation and finalisation of machine execution by appending to the memory argument: the first cycle is set to timestamp 4, and the last cycle is set to whatever timestamp and program counter is provided by the Prover. A favourable property of this design is that it decouples ordering of cycles from witness trace entries, allowing the Prover to prove execution consistency by opening just a single row at a time instead of two.
-  - forbidden overflow/wraparound for ts is fundamental!
+- The **PC Subargument** works via single-slot global memory accesses which during every cycle update the same slot to a new value and timestamp. The value of the program counter is constrained by the execution circuits, which, in combination with the monotonically increasing timestamp and the permutation-based nature of the global memory argument, forbids cycle duplicates or skips and ensures consistency of machine execution over time. The timestamp is always increased by increments of four, to enforce proper time sequence within cycles themselves and allow for up to four concurrent accesses to the same memory slot in a single cycle: duplicate accesses could break the permutation argument and invalidate the global memory argument. Timestamp increments are also forbidden from overflowing, ensuring that there can be no cyclical execution within our machine, which would break the PC Subargument's sequential consistency from start to end. In practice, a normal RISCV32 cycle might access the same slot up to three times (eg rs1, rs2, and rd), and fulfillment of delegation would fill in the fourth access slot. Finally, the Verifier enforces the initialisation and finalisation of machine execution by appending to the memory argument: the first cycle is set to timestamp 4, and the last cycle is set to whatever timestamp and program counter is provided by the Prover. A favourable property of this design is that it decouples ordering of cycles from witness trace entries, allowing the Prover to prove execution consistency by opening just a single row at a time instead of two. 
 
-- The **Delegation Subargument** leverages a fixed register address range that cannot appear in any normal RISCV cycle register access. When executing a CSRRW "delegation call" cycle, a global argument write tuple to a constant register with id greater or equal to 32 is appended, containing value 0 and assigned to the current cycle timestamp. A matching row in the delegation precompile chunks will then append a symmetric read tuple to the global memory argument, with all values fixed except for the timestamp. The correctness of the timestamp is then implicitly enforced, thanks to the permutation of the global memory argument.
-  - one sided = dummy tuple 
+- The **Delegation Subargument** leverages a fixed register address range that cannot appear in any normal RISCV cycle register access. When executing a CSRRW "delegation call" cycle, a global argument write tuple to a constant register with id greater or equal to 32 is appended, containing value 0 and assigned to the current cycle timestamp. A matching row in the delegation precompile chunks will then append a symmetric read tuple to the global memory argument, with all values fixed except for the timestamp. The correctness of the timestamp is then implicitly enforced, thanks to the permutation of the global memory argument. For performance purposes and to share constraints with other instructions, the CSRRW write accesses (and matching Precompile read accesses) are accompanied by a read access (and matching Precompile write) to that same address which is however a dummy tuple: it contains an empty (zero-value) read at the impossible timestamp of 0 (recall that execution begins at timestamp 4); such tuples do nothing to affect the uniqueness of the delegation calls, so long as Precompile delegation fulfillments (reads) are enforced to never have the zero timestamp.
 
 - The **NonDeterminism Subargument** is used by the machine to retrieve unconstrained or "non-deterministic" data from the Prover, to simulate I/O. This data must then be validated directly by the host OS, when validation is required. NonDeterministic write cycles function as a no-op for the machine, not as actual global memory writes, and are a performance trick used to generate hints for Prover's witness generation in preparation of a NonDeterministic read. NonDeterministic read cycles function as global memory argument accesses to specified registers, with the read tuple matching the correct previous value of that register and the write value being entirely unconstrained other than a 32-bit range check.
 
@@ -569,6 +569,64 @@ on which the claim depends._
 
 _Identify the standard or clean baseline for GKR/Sumcheck, WHIR, lookups, memory
 consistency, batching, and recursion._
+
+<u>DO NOT FORGET TO ADD PAPER REFERENCES FOR EVERY FORMULA</u>
+
+- **Schwartz-Zippel Soundness Lemma**
+
+- **Security-Bits Soundness Gain**
+  - 100 bits
+  - connected to Fiat-Shamir of course otherwise 100 bits make no sense
+
+- **(Extension) Field Soundness Gain**
+  - downstream from 31-bits
+  - also L1 base 128ish-bits
+
+- **Fiat-Shamir (Non-Determinism) Soundness Loss**
+
+- **Sumcheck Soundness Loss**
+
+- **Batched Sumcheck Soundness Loss**
+
+- **GKR Soundness Loss**
+  - layers, constraints
+
+- **LogUp Soundness Loss**
+
+- **Memory Soundness Loss**
+
+- **Merkle-Tree Soundness Loss**
+
+_Then comes the Verifier PCS Schedule Section_
+
+- **LDE-Ratio (STIR) Soundness Gain**
+
+- **PCS-Query Soundness Gain**
+
+- **List-decoding (Johnson to Conjecture) Soundness Loss**
+  - recent conjectures
+  - small-prime-field issues
+  - 20% safety margin
+
+- **PCS-OOD Soundness Gain+Loss**
+
+- **WHIR (OOD, etc) Soundness Loss**
+
+- **Batched (DEEP) WHIR Soundness Loss**
+
+- **Grinding (PoW) Soundness Gain**
+
+- **PCS-Fold Soundness Loss**
+  - already covered by LDE-Ratio?
+
+- **Recursion Soundness Loss**
+  - ???
+
+- **Lean References**
+  - if possible, connect to existing public Lean definitiosn
+
+- **Soundness Extractability**
+  - if possible, W3 goal
 
 ### Airbender production deviations
 
