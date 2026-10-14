@@ -25,45 +25,47 @@ use crate::upstream::{
 fn keccak256_partial_scratch_validation() {
     let stream = CudaStream::default();
     let values = upload(&vec![Proth120::new(1); 1 << 12], &stream);
-    let mut retained = sentinel_buffer(16, &stream);
-    let mut scratch = sentinel_buffer(8, &stream);
-    for skip_bottom in [9, 10] {
+    let mut retained = sentinel_buffer(128, &stream);
+    let mut scratch = sentinel_buffer(64, &stream);
+    for skip_bottom in 6..=10 {
         let retained_len = 2 * (1 << (11 - skip_bottom)) - 1;
+        if skip_bottom > 8 {
+            assert_named_panic(
+                "keccak256::build_partial_coset_tree: skip_bottom <= 8",
+                || {
+                    build_partial_coset_tree(
+                        &values,
+                        12,
+                        1,
+                        1,
+                        skip_bottom,
+                        &mut retained[..retained_len],
+                        &stream,
+                    )
+                    .unwrap();
+                },
+            );
+            assert_named_panic(
+                "keccak256::build_partial_coset_trees_multi_coset: skip_bottom <= 8",
+                || {
+                    build_partial_coset_trees_multi_coset(
+                        &values,
+                        12,
+                        1,
+                        1,
+                        skip_bottom,
+                        1,
+                        values.len(),
+                        retained_len,
+                        &mut retained[..retained_len],
+                        &stream,
+                    )
+                    .unwrap();
+                },
+            );
+        }
         assert_named_panic(
-            "keccak256::build_partial_coset_tree: skip_bottom <= 8",
-            || {
-                build_partial_coset_tree(
-                    &values,
-                    12,
-                    1,
-                    1,
-                    skip_bottom,
-                    &mut retained[..retained_len],
-                    &stream,
-                )
-                .unwrap();
-            },
-        );
-        assert_named_panic(
-            "keccak256::build_partial_coset_trees_multi_coset: skip_bottom <= 8",
-            || {
-                build_partial_coset_trees_multi_coset(
-                    &values,
-                    12,
-                    1,
-                    1,
-                    skip_bottom,
-                    1,
-                    values.len(),
-                    retained_len,
-                    &mut retained[..retained_len],
-                    &stream,
-                )
-                .unwrap();
-            },
-        );
-        assert_named_panic(
-            "keccak256::build_partial_coset_tree_with_scratch: scratch.len() >= leaves >> 8",
+            "keccak256::build_partial_coset_tree_with_scratch: scratch.len() >= leaves >> 5",
             || {
                 build_partial_coset_tree_with_scratch(
                     &values,
@@ -72,15 +74,15 @@ fn keccak256_partial_scratch_validation() {
                     1,
                     skip_bottom,
                     &mut retained[..retained_len],
-                    &mut scratch[..7],
+                    &mut scratch[..63],
                     &stream,
                 )
                 .unwrap();
             },
         );
-        assert_named_panic("keccak256::build_partial_coset_trees_multi_coset_with_scratch: scratch.len() >= leaves >> 8", || {
+        assert_named_panic("keccak256::build_partial_coset_trees_multi_coset_with_scratch: scratch.len() >= leaves >> 5", || {
             build_partial_coset_trees_multi_coset_with_scratch(&values, 12, 1, 1, skip_bottom, 1, values.len(), retained_len,
-                &mut retained[..retained_len], &mut scratch[..7], &stream).unwrap();
+                &mut retained[..retained_len], &mut scratch[..63], &stream).unwrap();
         });
         let overlap_values =
             unsafe { DeviceSlice::from_raw_parts_mut(values.as_ptr() as *mut Digest, 8) };
@@ -182,7 +184,11 @@ fn gpu_partial_tree(
             stream,
         )
         .unwrap();
-    } else {
+    }
+    if skip_bottom > 5 {
+        let direct = (skip_bottom <= 8).then(|| download(&d_retained, SENTINEL, stream));
+        let poison = vec![SENTINEL; retained_len];
+        memory_copy_async(&mut d_retained[..retained_len], &poison, stream).unwrap();
         let scratch_len = partial_coset_tree_scratch_len(log_domain, log_v, skip_bottom);
         let mut scratch = sentinel_buffer(scratch_len + 2, stream);
         build_partial_coset_tree_with_scratch(
@@ -196,6 +202,9 @@ fn gpu_partial_tree(
             stream,
         )
         .unwrap();
+        if let Some(direct) = direct {
+            assert_eq!(download(&d_retained, SENTINEL, stream), direct);
+        }
         let scratch = download(&scratch, SENTINEL, stream);
         assert_eq!([scratch[0], scratch[scratch_len + 1]], [SENTINEL; 2]);
     }
@@ -401,7 +410,7 @@ fn keccak256_multi_coset_tile_parity() {
                 &stream,
             )
             .unwrap();
-            if skip_bottom <= 8 {
+            if skip_bottom <= 5 {
                 build_partial_coset_trees_multi_coset(
                     &d_values,
                     log_domain,
@@ -572,7 +581,7 @@ fn cpu_keccak256_shape_validation() {
     for skip_bottom in 0..=10 {
         assert_eq!(
             partial_coset_tree_scratch_len(14, 2, skip_bottom),
-            if skip_bottom <= 8 { 0 } else { 16 },
+            if skip_bottom <= 5 { 0 } else { 128 },
         );
     }
     assert_named_panic(

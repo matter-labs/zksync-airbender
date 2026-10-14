@@ -4,6 +4,7 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 use gpu_core::primitives::field::PR;
+use gpu_core::primitives::utils::LOG_WARP_SIZE;
 
 use super::hash::{leaf_shape, leaf_tile, LeafShape, LeafTile};
 use super::{
@@ -80,10 +81,10 @@ pub fn partial_coset_tree_scratch_len(
         1,
         skip_bottom,
     );
-    if skip_bottom <= DIRECT_SKIP_BOTTOM {
+    if skip_bottom <= LOG_WARP_SIZE {
         0
     } else {
-        shape.leaves.leaves >> DIRECT_SKIP_BOTTOM
+        shape.leaves.leaves >> LOG_WARP_SIZE
     }
 }
 
@@ -393,7 +394,7 @@ fn build_partial_coset_trees_impl(
         assert_no_overlap(name, values, scratch);
         assert_no_overlap(name, retained, scratch);
     }
-    if skip_bottom <= DIRECT_SKIP_BOTTOM {
+    if skip_bottom <= LOG_WARP_SIZE || (scratch.is_none() && skip_bottom <= DIRECT_SKIP_BOTTOM) {
         let args = PartialRootsArguments::new(
             values.as_ptr(),
             log_domain,
@@ -410,21 +411,21 @@ fn build_partial_coset_trees_impl(
         PartialRootsFunction::default().launch(&config, &args)?;
     } else {
         let scratch = scratch.expect("deep partial tree builder requires explicit scratch");
-        let scratch_len = shape.leaves.leaves >> DIRECT_SKIP_BOTTOM;
+        let scratch_len = shape.leaves.leaves >> LOG_WARP_SIZE;
         assert!(
             scratch.len() >= scratch_len,
-            "keccak256::{name}: scratch.len() >= leaves >> 8"
+            "keccak256::{name}: scratch.len() >= leaves >> 5"
         );
         let roots = shape.leaves.leaves >> skip_bottom;
         let roots_grid = grid_dim(name, shape.leaves.leaves, PARTIAL_ROOTS_THREADS);
-        let reduce_grid = grid_dim(name, roots, BLOCK_THREADS);
+        let reduce_grid = grid_dim(name, scratch_len, BLOCK_THREADS);
         for coset in 0..cosets_in_tile as usize {
             let args = PartialRootsArguments::new(
                 unsafe { values.as_ptr().add(coset * values_stride) },
                 log_domain,
                 log_values_per_leaf,
                 columns,
-                DIRECT_SKIP_BOTTOM,
+                LOG_WARP_SIZE,
                 1,
                 tile.leaves.values_stride,
                 checked_u64(name, scratch_len),
@@ -437,7 +438,7 @@ fn build_partial_coset_trees_impl(
             let args = ReduceRootsArguments::new(
                 scratch.as_ptr(),
                 checked_u64(name, roots),
-                skip_bottom - DIRECT_SKIP_BOTTOM,
+                skip_bottom - LOG_WARP_SIZE,
                 unsafe { retained.as_mut_ptr().add(coset * retained_stride) },
             );
             ReduceRootsFunction::default().launch(
