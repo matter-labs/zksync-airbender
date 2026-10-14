@@ -1,4 +1,5 @@
 import Airbender.Proofs.Blake2Round.Claims
+import Airbender.Proofs.Blake2Round.ExclusiveMask
 import Airbender.Proofs.Blake2Round.Diagonal
 
 namespace Tests.Blake2Round
@@ -235,5 +236,30 @@ theorem wrongPermutationRejected (setup : Table (ZMod babyBearModulus) (fields 4
   norm_num [input, output, step, Blake2Round.Preparation.words,
     Blake2Round.Variables.preparedMessage, Blake2Round.Variables.scheduledMessage,
     Blake2G.Control.messageSchedule, firstWord, wrong, babyBearModulus, ZMod.val_ofNat] at low
+
+/-- The control classification retains the unsupported zero encoding; this is
+    a conditional mask consequence, not an accepted native worker witness. -/
+theorem zero_control_has_no_exclusive_mask [Fact p.Prime] (hp : 8192 ≤ p)
+    {setup : Table (ZMod p) (fields 4)} {w : Nat → ZMod p}
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (Blake2Round.importedConstraints setup))
+    (zero : (w Blake2Round.Variables.controlReadHi).val = 0) :
+    ¬ ∃ round, Blake2Round.Memory.RoundMask w round := by
+  rintro ⟨round, mask⟩
+  obtain ⟨flags, encoded⟩ := (Blake2Round.Proofs.exclusive_mask_iff hp holds round).mp mask
+  rw [zero] at encoded
+  have positive : 0 < 2 ^ round.val := pow_pos (by decide) _
+  omega
+
+/-- Bits zero and one together are not the exclusive-mask ABI. -/
+theorem multibit_control_has_no_exclusive_mask [Fact p.Prime] (hp : 8192 ≤ p)
+    {setup : Table (ZMod p) (fields 4)} {w : Nat → ZMod p}
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (Blake2Round.importedConstraints setup))
+    (multiple : (w Blake2Round.Variables.controlReadHi).val = 24) :
+    ¬ ∃ round, Blake2Round.Memory.RoundMask w round := by
+  rintro ⟨round, mask⟩
+  obtain ⟨flags, encoded⟩ := (Blake2Round.Proofs.exclusive_mask_iff hp holds round).mp mask
+  rw [multiple] at encoded
+  have bound := flags.isLt
+  fin_cases round <;> norm_num at encoded <;> omega
 
 end Tests.Blake2Round

@@ -97,7 +97,8 @@ premise. Modular local controller regions use public LUI preparation and at most
 forty ticks to derive family/count/duration and the ten-position bound. The new
 prepared sequence entry reuses all three complete references at the same actual
 states, with public cuts/preparation/reference duration and global round-worker
-coverage still explicit. No unissued-round mask/exclusion result is added.
+coverage still explicit. General supported-mask coverage and unissued-round
+exclusion remain unproved.
 The [wrap regression](Tests/UnifiedComparison.lean) admits the empty cut at PC zero
 and rejects selecting the ordinary ADDI there. The
 [COPY regression](Tests/UnifiedDelegation.lean) checks nonempty caller/worker binding,
@@ -121,10 +122,26 @@ claim. The actual comparison wrap derives native clock bounds. Empty prepared
 cuts, rejection of simultaneous issued round bits, both bigint gaps and the actual
 unissued G-prefix effect remain covered by the regression suite.
 
+The new [unissued worker entry](Airbender/Review/Trace/UnifiedReduced/UnissuedWorkers.lean)
+derives every unissued read as a full public initialization token. Native worker
+writes start at clock two; the mandatory first machine port, strict native memory
+order and alignment derive machine clocks at least four. Architectural matching
+then excludes every produced token as the source of an unissued read. Values,
+canonical limbs and raw zero timestamps come from public initialization, without
+operation masks or an added initial-clock floor. For an unissued extended-round
+worker, the actual initial x12 high limb characterizes the exclusive-mask ABI
+exactly: it equals `flags + 8 * 2^round`, for flags below eight. Both directions
+follow from native control assertions and Boolean bits. A publicly zero x12 seed
+implies no exclusive mask; multibit encodings likewise fail that ABI. These are
+conditional mask consequences, without an accepted unissued-round witness,
+worker-exclusion theorem or inertness claim. The accepted G fixture and its actual
+0→1 prefix effect remain admitted; tests bind its reads in the worker-only history
+and the history containing a later ADDI reset.
+
 All 116 concrete test modules and 143 importer guards pass. The full
-2,074-root axiom audit has 64 axiom-free roots and only the three standard
-Lean axioms. Review checks pass for all 100 public theorem roots, 156 declaration
-names and 657 guide links/anchors, with no handwritten project diagnostics.
+2,088-root axiom audit has 64 axiom-free roots and only the three standard
+Lean axioms. Review checks pass for all 102 public theorem roots, 160 declaration
+names and 664 guide links/anchors, with no handwritten project diagnostics.
 
 ## Review priorities
 
@@ -260,6 +277,15 @@ unissued G-prefix effects. Neither condition is a general fulfillment-exclusion 
 request window retains its `unissued` classification and prefix placement too;
 no nonzero-invocation premise is introduced.
 
+**Derived initialization binding.** The
+[unissued worker entry](Airbender/Review/Trace/UnifiedReduced/Theorems.lean)
+now roots all reads of every zero-clock worker directly in the public initial
+image, including raw timestamps and canonical words. This uses native write-clock
+floors and logical memory matching, without supported-operation premises. It
+retains the actual G state change above, including when the later ADDI reset is
+present. For extended rounds, the actual public x12 high limb now characterizes
+exclusive masks exactly; this does not establish exclusion or inertness.
+
 **Closure needed.** Show that the actual full acceptance argument rejects unissued
 active workers, or gives them a justified inert meaning. Issued-worker uniqueness
 alone is insufficient. Do not close the finding by assuming nonzero invocation.
@@ -347,7 +373,12 @@ covered by a prepared controller region. Public decoded round CSR coverage now
 derives region membership and masks for every issued round worker without
 whole-pool coverage. Raw regional mask derivation uses the public memory context
 and the derived local scope. Unissued extended-round mask behavior remains outside
-this issued result.
+this issued result. A separate initialization binding now derives each unissued
+worker read and proves that its actual initial x12 high limb equals
+`flags + 8 * 2^round` exactly when its native bits form that exclusive mask.
+Zero and multibit controls remain unsupported by that ABI. A publicly zero seed
+implies no exclusive mask, without asserting an accepted unissued-round witness
+or excluding such a worker.
 [Blake2RoundCall](Tests/Blake2RoundCall.lean)
 checks rejection of a wrong round bit and changed flags under the corresponding
 control word. Request checks separately provide participating worker activity.
@@ -384,7 +415,7 @@ from the same accepted constraints/matching, with modeled setup and minimum
 modulus 4194304 explicit. It derives actual SLTIU→ADDI states 65537→1→0 through
 PC `0xfffffffc`→zero, retains clocks six/ten and rejects fabricated reads and
 wrong literals. Selected caller/controller regions now support the modular
-registry too; global public round-CSR coverage remains linear. Jumps, branches
+registry and global public round-CSR occurrence coverage too. Jumps, branches
 and nonliteral final preparation remain open. These are preparation/memory effects,
 not full-prefix retirement. Public
 decoded forms and accepted PC constraints derive the preparation address; native selector bits or output values are not

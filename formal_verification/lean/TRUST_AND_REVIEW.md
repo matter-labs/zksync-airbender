@@ -237,6 +237,22 @@ logical matching remain explicit. A public code-policy fixture with a 2^32-tick
 recurrence rejects covering only either occurrence; it makes no accepted-trace
 claim. COPY and the real comparison-wrap fixture retain their native behavior,
 both bigint controls remain admitted, and the unissued G-prefix effect survives.
+[Unissued worker binding](Airbender/Review/Trace/UnifiedReduced/UnissuedWorkers.lean)
+now derives the original public seed token for every read of a zero-clock worker,
+including its actual value, canonical word and raw zero timestamp. Every worker
+write is at least clock two. The mandatory first machine port, strict memory
+order and native clock alignment derive machine clocks at least four, so no
+machine write can feed an unissued read before clock two. Logical memory matching
+therefore roots those reads directly in initialization. No operation mask, desired
+read or additional initial-clock floor is supplied. The actual public x12 high
+limb then characterizes every exclusive extended-round mask exactly as
+`flags + 8 * 2^round`, with flags below eight. The control assertions prove both
+directions for the existing field bound, independently of XOR-table contents.
+A zero public x12 seed implies no exclusive mask for such a worker; this is a
+conditional classification, without an accepted unissued-round witness or an
+exclusion/inertness claim. The actual unissued G worker still reads zero, writes
+one and affects the prefix before the later reset.
+
 [Control preparation](Airbender/Review/Helpers/UnifiedReduced/ControlPreparation.lean)
 uses a public ordinary ADDI-from-x0/LUI registry and a worker-free final preparation
 cycle. The registry may be uniform, contain different literals/registers, or admit
@@ -252,7 +268,8 @@ PC/clock addresses. No native successor or wrap flag is supplied. The
 six/ten, and rejection of a wrong literal, fabricated read or misaligned public
 code. Jumps/branches remain outside these preparation registries. Public
 selected caller/controller regions now also use modular addresses. Global public
-round-CSR coverage remains linear. Preparation transports actual memory;
+round-CSR occurrence coverage and issued masks also support this modular registry.
+Preparation transports actual memory;
 it does not assert successful retirement of every prefix instruction or remove
 the discarded-LW profile boundary. Actual decoding and accepted constraints derive
 PC increments. Only the final preparation must be the specified literal; its
