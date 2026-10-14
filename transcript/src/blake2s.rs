@@ -83,9 +83,35 @@ impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
         buf: &AlignedArray64<u32, N>,
         total_words: usize,
     ) {
-        hasher.reset_with_chaining_value(&seed.0);
         let num_blocks = total_words.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS).max(1);
         let last_active = total_words - (num_blocks - 1) * BLAKE2S_BLOCK_SIZE_U32_WORDS;
+        if blake2s_u32::DelegatedBlake2sState::SUPPORT_EXTERNAL_CHAINING_VALUE {
+            hasher.t = 0;
+            unsafe {
+                for i in 0..num_blocks - 1 {
+                    let block_ptr = (buf.as_ptr()).add(i * BLAKE2S_BLOCK_SIZE_U32_WORDS);
+                    let block =
+                        &*(block_ptr as *const AlignedArray64<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>);
+                    hasher.run_round_function_with_input_and_chaining_value::<REDUCED_ROUNDS>(
+                        &mut seed.0,
+                        block,
+                        BLAKE2S_BLOCK_SIZE_U32_WORDS,
+                        false,
+                    );
+                }
+                let last_ptr = (buf.as_ptr()).add((num_blocks - 1) * BLAKE2S_BLOCK_SIZE_U32_WORDS);
+                let last_block =
+                    &*(last_ptr as *const AlignedArray64<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>);
+                hasher.run_round_function_with_input_and_chaining_value::<REDUCED_ROUNDS>(
+                    &mut seed.0,
+                    last_block,
+                    last_active,
+                    true,
+                );
+            }
+            return;
+        }
+        hasher.reset_with_chaining_value(&seed.0);
         unsafe {
             for i in 0..num_blocks - 1 {
                 let block_ptr = (buf.as_ptr()).add(i * BLAKE2S_BLOCK_SIZE_U32_WORDS);
@@ -503,6 +529,12 @@ impl<const REDUCED_ROUNDS: bool> TranscriptState<REDUCED_ROUNDS> {
             &mut self.hasher,
             &mut self.seed,
         );
+    }
+
+    /// The words `draw_raw` writes into an 8-word destination; the transcript does not advance.
+    #[inline(always)]
+    pub fn draw_digest(&self) -> &[u32; BLAKE2S_DIGEST_SIZE_U32_WORDS] {
+        &self.seed.0
     }
 
     #[inline(always)]

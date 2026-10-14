@@ -1,6 +1,6 @@
 use proc_macro2::TokenStream;
 use prover::field::PrimeField;
-use quote::quote;
+use quote::{quote, ToTokens};
 
 use crate::field_wrapper::FieldWrapper;
 use prover::cs::definitions::gkr::RamWordRepresentation;
@@ -312,22 +312,45 @@ fn emit_vector_lookup_eval<MW: FieldWrapper, F: PrimeField>(
     }
 }
 
-fn emit_single_output_gate<MW: FieldWrapper>(
-    body: &mut TokenStream,
-    mul_batch: &TokenStream,
-    val_computation: TokenStream,
-) {
-    let mul_contrib = MW::mul_assign(quote! { contrib }, quote! { val });
-    let add_acc = MW::add_assign(quote! { acc[j] }, quote! { contrib });
+/// Horner steps `acc = acc * batch_base + out` over `outs`, given in increasing power order.
+pub(crate) fn horner_steps<MW: FieldWrapper>(
+    acc: TokenStream,
+    outs: &[TokenStream],
+) -> TokenStream {
+    let mut steps = TokenStream::new();
+    for out in outs.iter().rev() {
+        let fma = MW::add_assign_product(quote! { h }, acc.clone(), quote! { batch_base });
+        steps.extend(quote! {
+            {
+                let mut h = #out;
+                #fma;
+                #acc = h;
+            }
+        });
+    }
+    steps
+}
+
+/// `horner_steps` for an `acc` that is still zero: the highest-power output initializes it.
+pub(crate) fn horner_steps_from_zero<MW: FieldWrapper>(
+    acc: TokenStream,
+    outs: &[TokenStream],
+) -> TokenStream {
+    let (last, rest) = outs.split_last().unwrap();
+    let steps = horner_steps::<MW>(acc.clone(), rest);
+    quote! {
+        #acc = #last;
+        #steps
+    }
+}
+
+fn emit_single_output_gate<MW: FieldWrapper>(body: &mut TokenStream, val_computation: TokenStream) {
+    let step = horner_steps::<MW>(quote! { acc[j] }, &[quote! { val }]);
     body.extend(quote! {
         {
-            let bc = current_batch;
-            #mul_batch;
             for j in 0..1 {
                 #val_computation
-                let mut contrib = bc;
-                #mul_contrib;
-                #add_acc;
+                #step
             }
         }
     });
@@ -374,49 +397,86 @@ fn emit_setup_horner_eval<MW: FieldWrapper>(
     }
 }
 
+/// `dst += coeff * evals[idx][j]` for a base-field `coeff`, or `let mut dst = coeff * evals[idx][j]`
+/// for the first term; a coefficient of 1 or -1 needs no multiplication.
+fn emit_base_coeff_term<MW: FieldWrapper, F: PrimeField>(
+    dst: &syn::Ident,
+    first: bool,
+    coeff: F,
+    idx: usize,
+) -> TokenStream {
+    let c = coeff.as_u32_reduced();
+    let e = quote! { evals.get_unchecked(#idx)[j] };
+    let dst_ts = quote! { #dst };
+    if c == 1 {
+        if first {
+            quote! { let mut #dst = #e; }
+        } else {
+            let add = MW::add_assign(dst_ts, e);
+            quote! { #add; }
+        }
+    } else if c == F::CHARACTERISTICS_U32 - 1 {
+        if first {
+            let neg = MW::negate(dst_ts);
+            quote! { let mut #dst = #e; #neg; }
+        } else {
+            let sub = MW::sub_assign(dst_ts, e);
+            quote! { #sub; }
+        }
+    } else {
+        let c = MW::field_from_reduced_raw_repr(MW::coeff_to_internal_repr(c).to_token_stream());
+        if first {
+            let mul = MW::mul_assign_by_base(dst_ts, c);
+            quote! { let mut #dst = #e; #mul; }
+        } else {
+            let fma = MW::add_assign_product_with_base(dst_ts, e, c);
+            quote! { #fma; }
+        }
+    }
+}
+
 fn emit_max_quadratic_eval<MW: FieldWrapper, F: PrimeField>(
     input: &prover::cs::gkr_compiler::CompiledMaxQuadraticGKRRelation<F>,
     var_name: &str,
     input_sorted_addrs: &[GKRAddress],
 ) -> TokenStream {
     let var = syn::Ident::new(var_name, proc_macro2::Span::call_site());
-    let prefix = var_name.to_uppercase();
-    let qo_name = syn::Ident::new(&format!("{}_QO", prefix), proc_macro2::Span::call_site());
-    let qi_name = syn::Ident::new(&format!("{}_QI", prefix), proc_macro2::Span::call_site());
-    let ln_name = syn::Ident::new(&format!("{}_LN", prefix), proc_macro2::Span::call_site());
+    let inner = syn::Ident::new("inner", proc_macro2::Span::call_site());
+    let constant = MW::coeff_to_internal_repr(input.constant.as_u32_reduced());
+    let constant =
+        MW::quartic_from_base(MW::field_from_reduced_raw_repr(constant.to_token_stream()));
 
-    let constant = MW::coeff_to_internal_repr(input.constant.as_u32_reduced()) as usize;
-
-    let mut quad_outer_idx = Vec::new();
-    let mut quad_outer_count = Vec::new();
-    let mut quad_inner_idx = Vec::new();
-    let mut quad_inner_coeff = Vec::new();
-
+    let mut body = quote! { let mut #var = #constant; };
     for (addr_a, inner_terms) in input.quadratic_terms.iter() {
-        quad_outer_idx.push(addr_to_idx(addr_a, input_sorted_addrs));
-        quad_outer_count.push(inner_terms.len());
-        for &(coeff, ref addr_b) in inner_terms.iter() {
-            quad_inner_idx.push(addr_to_idx(addr_b, input_sorted_addrs));
-            quad_inner_coeff.push(MW::coeff_to_internal_repr(coeff.as_u32_reduced()) as usize);
+        assert!(!inner_terms.is_empty());
+        let a_idx = addr_to_idx(addr_a, input_sorted_addrs);
+        let mut inner_body = TokenStream::new();
+        for (k, &(coeff, ref addr_b)) in inner_terms.iter().enumerate() {
+            let b_idx = addr_to_idx(addr_b, input_sorted_addrs);
+            inner_body.extend(emit_base_coeff_term::<MW, F>(&inner, k == 0, coeff, b_idx));
         }
+        let fma = MW::add_assign_product(
+            quote! { #var },
+            quote! { inner },
+            quote! { evals.get_unchecked(#a_idx)[j] },
+        );
+        body.extend(quote! {
+            {
+                #inner_body
+                #fma;
+            }
+        });
     }
-
-    let mut lin_idx = Vec::new();
-    let mut lin_coeff = Vec::new();
     for &(coeff, ref addr) in input.linear_terms.iter() {
-        lin_idx.push(addr_to_idx(addr, input_sorted_addrs));
-        lin_coeff.push(MW::coeff_to_internal_repr(coeff.as_u32_reduced()) as usize);
+        let idx = addr_to_idx(addr, input_sorted_addrs);
+        body.extend(emit_base_coeff_term::<MW, F>(&var, false, coeff, idx));
     }
-
-    let nqo = quad_outer_idx.len();
-    let nqi = quad_inner_idx.len();
-    let nl = lin_idx.len();
 
     quote! {
-        const #qo_name: [(usize, usize); #nqo] = [ #( (#quad_outer_idx, #quad_outer_count), )* ];
-        const #qi_name: [(usize, usize); #nqi] = [ #( (#quad_inner_idx, #quad_inner_coeff), )* ];
-        const #ln_name: [(usize, usize); #nl] = [ #( (#lin_idx, #lin_coeff), )* ];
-        let #var = super::common::eval_max_quadratic(evals, &#qo_name, &#qi_name, &#ln_name, #constant, j);
+        let #var = {
+            #body
+            #var
+        };
     }
 }
 
@@ -712,6 +772,9 @@ pub fn generate_layer_compute_claim<MW: FieldWrapper, F: PrimeField>(
         }
     }
 
+    while descs.last().is_some_and(|d| d.0 == 0) {
+        descs.pop();
+    }
     let num_descs = descs.len();
     let num_output_addrs = output_sorted_addrs.len();
     let desc_n: Vec<_> = descs.iter().map(|(n, _, _)| *n).collect();
@@ -843,15 +906,8 @@ fn generate_simple_gate_loop<MW: FieldWrapper>(
     descs: &[(SimpleGateType, [usize; 4])],
 ) -> TokenStream {
     let field_one = MW::field_one();
-    let mul_batch = MW::mul_assign(quote! { current_batch }, quote! { batch_base });
-
-    let mul_contrib = MW::mul_assign(quote! { contrib }, quote! { val });
-    let add_acc = MW::add_assign(quote! { acc[j] }, quote! { contrib });
-
-    let mul_c0 = MW::mul_assign(quote! { c0 }, quote! { out0 });
-    let mul_c1 = MW::mul_assign(quote! { c1 }, quote! { out1 });
-    let add_c0 = MW::add_assign(quote! { acc[j] }, quote! { c0 });
-    let add_c1 = MW::add_assign(quote! { acc[j] }, quote! { c1 });
+    let step = horner_steps::<MW>(quote! { acc[j] }, &[quote! { val }]);
+    let step_pair = horner_steps::<MW>(quote! { acc[j] }, &[quote! { out0 }, quote! { out1 }]);
 
     let mul_ab = MW::mul_assign(quote! { val }, quote! { vb });
     let sub_one = MW::sub_assign_base(quote! { val }, field_one.clone());
@@ -896,63 +952,44 @@ fn generate_simple_gate_loop<MW: FieldWrapper>(
             const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); #num_descs] = [
                 #( (#desc_gt, [#desc_i0, #desc_i1, #desc_i2, #desc_i3]), )*
             ];
-            let mut _sg = 0;
-            while _sg < #num_descs {
+            let mut _sg = #num_descs;
+            while _sg > 0 {
+                _sg -= 1;
                 let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
                 match gt {
                     SimpleGateType::Copy => {
-                        let bc = current_batch;
-                        #mul_batch;
                         for j in 0..1 {
                             let val = evals.get_unchecked(idx[0])[j];
-                            let mut contrib = bc;
-                            #mul_contrib;
-                            #add_acc;
+                            #step
                         }
                     }
                     SimpleGateType::Product => {
-                        let bc = current_batch;
-                        #mul_batch;
                         for j in 0..1 {
                             let mut val = evals.get_unchecked(idx[0])[j];
                             let vb = evals.get_unchecked(idx[1])[j];
                             #mul_ab;
-                            let mut contrib = bc;
-                            #mul_contrib;
-                            #add_acc;
+                            #step
                         }
                     }
                     SimpleGateType::MaskToIdentity => {
-                        let bc = current_batch;
-                        #mul_batch;
                         for j in 0..1 {
                             let mut val = evals.get_unchecked(idx[0])[j];
                             let mask_val = evals.get_unchecked(idx[1])[j];
                             #sub_one;
                             #mul_mask;
                             #add_one;
-                            let mut contrib = bc;
-                            #mul_contrib;
-                            #add_acc;
+                            #step
                         }
                     }
                     SimpleGateType::UnbalancedProduct => {
-                        let bc = current_batch;
-                        #mul_batch;
                         for j in 0..1 {
                             let mut val = evals.get_unchecked(idx[0])[j];
                             let vi = evals.get_unchecked(idx[1])[j];
                             #mul_si;
-                            let mut contrib = bc;
-                            #mul_contrib;
-                            #add_acc;
+                            #step
                         }
                     }
                     SimpleGateType::LookupInitialPair => {
-                        let bc0 = current_batch;
-                        #mul_batch;
-                        let bc1 = current_batch;
-                        #mul_batch;
                         for j in 0..1 {
                             let mut bg = evals.get_unchecked(idx[0])[j];
                             let mut dg = evals.get_unchecked(idx[1])[j];
@@ -964,15 +1001,10 @@ fn generate_simple_gate_loop<MW: FieldWrapper>(
                             #mul_den;
                             let out0 = num;
                             let out1 = den;
-                            let mut c0 = bc0; #mul_c0; #add_c0;
-                            let mut c1 = bc1; #mul_c1; #add_c1;
+                            #step_pair
                         }
                     }
                     SimpleGateType::LookupWithSetup => {
-                        let bc0 = current_batch;
-                        #mul_batch;
-                        let bc1 = current_batch;
-                        #mul_batch;
                         for j in 0..1 {
                             let mut bg = evals.get_unchecked(idx[0])[j];
                             let mut dg = evals.get_unchecked(idx[2])[j];
@@ -986,15 +1018,10 @@ fn generate_simple_gate_loop<MW: FieldWrapper>(
                             #mul_den;
                             let out0 = num;
                             let out1 = den;
-                            let mut c0 = bc0; #mul_c0; #add_c0;
-                            let mut c1 = bc1; #mul_c1; #add_c1;
+                            #step_pair
                         }
                     }
                     SimpleGateType::LookupUnbalanced => {
-                        let bc0 = current_batch;
-                        #mul_batch;
-                        let bc1 = current_batch;
-                        #mul_batch;
                         for j in 0..1 {
                             let a_val = evals.get_unchecked(idx[0])[j];
                             let b_val = evals.get_unchecked(idx[1])[j];
@@ -1007,15 +1034,10 @@ fn generate_simple_gate_loop<MW: FieldWrapper>(
                             #mul_br;
                             let out0 = num;
                             let out1 = den;
-                            let mut c0 = bc0; #mul_c0; #add_c0;
-                            let mut c1 = bc1; #mul_c1; #add_c1;
+                            #step_pair
                         }
                     }
                     SimpleGateType::LookupAggregatePair => {
-                        let bc0 = current_batch;
-                        #mul_batch;
-                        let bc1 = current_batch;
-                        #mul_batch;
                         for j in 0..1 {
                             let a_val = evals.get_unchecked(idx[0])[j];
                             let b_val = evals.get_unchecked(idx[1])[j];
@@ -1030,15 +1052,10 @@ fn generate_simple_gate_loop<MW: FieldWrapper>(
                             #mul_bd_agg;
                             let out0 = num;
                             let out1 = den;
-                            let mut c0 = bc0; #mul_c0; #add_c0;
-                            let mut c1 = bc1; #mul_c1; #add_c1;
+                            #step_pair
                         }
                     }
                     SimpleGateType::LookupInitialWithCachedDenominators => {
-                        let bc0 = current_batch;
-                        #mul_batch;
-                        let bc1 = current_batch;
-                        #mul_batch;
                         for j in 0..1 {
                             let a_val = evals.get_unchecked(idx[0])[j];
                             let mut b_cd = evals.get_unchecked(idx[1])[j];
@@ -1055,12 +1072,10 @@ fn generate_simple_gate_loop<MW: FieldWrapper>(
                             #mul_bd_cd;
                             let out0 = ad_cd;
                             let out1 = den;
-                            let mut c0 = bc0; #mul_c0; #add_c0;
-                            let mut c1 = bc1; #mul_c1; #add_c1;
+                            #step_pair
                         }
                     }
                 }
-                _sg += 1;
             }
         }
     }
@@ -1119,7 +1134,6 @@ fn emit_single_output_value<MW: FieldWrapper, F: PrimeField>(
 
 fn emit_dual_output_for_relation<MW: FieldWrapper, F: PrimeField>(
     body: &mut TokenStream,
-    mul_batch: &TokenStream,
     gate: &prover::cs::gkr_compiler::GateArtifacts<F>,
     input_sorted_addrs: &[GKRAddress],
 ) -> bool {
@@ -1129,7 +1143,6 @@ fn emit_dual_output_for_relation<MW: FieldWrapper, F: PrimeField>(
         |body: &mut TokenStream, comp_a: TokenStream, comp_b: TokenStream| {
             generate_two_output_body::<MW>(
                 body,
-                mul_batch,
                 quote! { #comp_a #comp_b },
                 |_, mw_add| {
                     let add_ga = mw_add(quote! { a_val }, quote! { lookup_additive_challenge });
@@ -1170,7 +1183,6 @@ fn emit_dual_output_for_relation<MW: FieldWrapper, F: PrimeField>(
                 MW::add_assign(quote! { d_val }, quote! { lookup_additive_challenge });
             generate_two_output_body::<MW>(
                 body,
-                mul_batch,
                 quote! {
                     let a_val = evals.get_unchecked(#a_idx)[j];
                     let c_val = evals.get_unchecked(#c_idx)[j];
@@ -1204,7 +1216,6 @@ fn emit_dual_output_for_relation<MW: FieldWrapper, F: PrimeField>(
                 MW::add_assign(quote! { c_val }, quote! { lookup_additive_challenge });
             generate_two_output_body::<MW>(
                 body,
-                mul_batch,
                 quote! {
                     let a_val = evals.get_unchecked(#a_idx)[j];
                     let b_val = evals.get_unchecked(#b_idx)[j];
@@ -1232,7 +1243,6 @@ fn emit_dual_output_for_relation<MW: FieldWrapper, F: PrimeField>(
                 MW::add_assign(quote! { d_val }, quote! { lookup_additive_challenge });
             generate_two_output_body::<MW>(
                 body,
-                mul_batch,
                 quote! {
                     #comp_a #add_gamma_a;
                     let c_val = evals.get_unchecked(#c_idx)[j];
@@ -1260,7 +1270,6 @@ fn emit_dual_output_for_relation<MW: FieldWrapper, F: PrimeField>(
 
 fn emit_inits_teardowns<MW: FieldWrapper, F: PrimeField>(
     body: &mut TokenStream,
-    mul_batch: &TokenStream,
     gate: &prover::cs::gkr_compiler::GateArtifacts<F>,
     input_sorted_addrs: &[GKRAddress],
 ) {
@@ -1384,7 +1393,7 @@ fn emit_inits_teardowns<MW: FieldWrapper, F: PrimeField>(
 
     let mul_lr = MW::mul_assign(quote! { lhs }, quote! { rhs });
     val_comp.extend(quote! { #mul_lr; let val = lhs; });
-    emit_single_output_gate::<MW>(body, mul_batch, val_comp);
+    emit_single_output_gate::<MW>(body, val_comp);
 }
 
 pub fn generate_layer_final_step_accumulator<MW: FieldWrapper, F: PrimeField>(
@@ -1394,14 +1403,8 @@ pub fn generate_layer_final_step_accumulator<MW: FieldWrapper, F: PrimeField>(
 ) -> TokenStream {
     let fn_name = quote::format_ident!("layer_{}_final_step_accumulator", layer_idx);
     let quartic_zero = MW::quartic_zero();
-    let quartic_one = MW::quartic_one();
     let quartic_struct = MW::quartic_struct();
-    let mul_batch = MW::mul_assign(quote! { current_batch }, quote! { batch_base });
-
-    let mut body = quote! {
-        let mut acc = [#quartic_zero; 2];
-        let mut current_batch = #quartic_one;
-    };
+    let mut blocks: Vec<TokenStream> = Vec::new();
 
     let mut simple_group: Vec<(SimpleGateType, [usize; 4])> = Vec::new();
 
@@ -1411,9 +1414,10 @@ pub fn generate_layer_final_step_accumulator<MW: FieldWrapper, F: PrimeField>(
         .chain(layer.gates_with_external_connections.iter())
         .collect();
 
-    let flush_simple = |body: &mut TokenStream, group: &mut Vec<(SimpleGateType, [usize; 4])>| {
+    let flush_simple = |blocks: &mut Vec<TokenStream>,
+                        group: &mut Vec<(SimpleGateType, [usize; 4])>| {
         if !group.is_empty() {
-            body.extend(generate_simple_gate_loop::<MW>(group));
+            blocks.push(generate_simple_gate_loop::<MW>(group));
             group.clear();
         }
     };
@@ -1448,10 +1452,12 @@ pub fn generate_layer_final_step_accumulator<MW: FieldWrapper, F: PrimeField>(
             | R::MaterializedVectorLookupInput { .. }
             | R::InitialGrandProductWithoutCaches { .. }
             | R::MaterializeGrandProductTermExpression { .. } => {
-                flush_simple(&mut body, &mut simple_group);
+                flush_simple(&mut blocks, &mut simple_group);
                 let val = emit_single_output_value::<MW, _>(gate, input_sorted_addrs)
                     .expect("matched single-output gate must produce value");
-                emit_single_output_gate::<MW>(&mut body, &mul_batch, val);
+                let mut block = TokenStream::new();
+                emit_single_output_gate::<MW>(&mut block, val);
+                blocks.push(block);
             }
 
             // Dual-output lookup gates — need numerator/denominator expressions
@@ -1460,19 +1466,18 @@ pub fn generate_layer_final_step_accumulator<MW: FieldWrapper, F: PrimeField>(
             | R::LookupWithDensAndSetupExpressions { .. }
             | R::LookupUnbalancedPairWithVectorInputs { .. }
             | R::LookupFromVectorInputWithSetup { .. } => {
-                flush_simple(&mut body, &mut simple_group);
-                emit_dual_output_for_relation::<MW, _>(
-                    &mut body,
-                    &mul_batch,
-                    gate,
-                    input_sorted_addrs,
-                );
+                flush_simple(&mut blocks, &mut simple_group);
+                let mut block = TokenStream::new();
+                emit_dual_output_for_relation::<MW, _>(&mut block, gate, input_sorted_addrs);
+                blocks.push(block);
             }
 
             // Init/teardown — unique structure
             R::InitsOrTeardownsInitialPair { .. } => {
-                flush_simple(&mut body, &mut simple_group);
-                emit_inits_teardowns::<MW, _>(&mut body, &mul_batch, gate, input_sorted_addrs);
+                flush_simple(&mut blocks, &mut simple_group);
+                let mut block = TokenStream::new();
+                emit_inits_teardowns::<MW, _>(&mut block, gate, input_sorted_addrs);
+                blocks.push(block);
             }
 
             _ => {
@@ -1484,10 +1489,14 @@ pub fn generate_layer_final_step_accumulator<MW: FieldWrapper, F: PrimeField>(
         }
     }
 
-    if !simple_group.is_empty() {
-        body.extend(generate_simple_gate_loop::<MW>(&simple_group));
-    }
+    flush_simple(&mut blocks, &mut simple_group);
 
+    let mut body = quote! {
+        let mut acc = [#quartic_zero; 2];
+    };
+    for block in blocks.into_iter().rev() {
+        body.extend(block);
+    }
     body.extend(quote! { acc });
 
     quote! {
@@ -1510,7 +1519,6 @@ pub fn generate_layer_final_step_accumulator<MW: FieldWrapper, F: PrimeField>(
 
 fn generate_two_output_body<MW: FieldWrapper>(
     body: &mut TokenStream,
-    mul_batch: &TokenStream,
     setup_vars: TokenStream,
     gen_num: impl FnOnce(
         fn(TokenStream, TokenStream) -> TokenStream,
@@ -1523,26 +1531,14 @@ fn generate_two_output_body<MW: FieldWrapper>(
 ) {
     let num_expr = gen_num(MW::mul_assign, MW::add_assign);
     let den_expr = gen_den(MW::mul_assign, MW::add_assign);
-    let mul_c0 = MW::mul_assign(quote! { c0 }, quote! { out0 });
-    let mul_c1 = MW::mul_assign(quote! { c1 }, quote! { out1 });
-    let add_c0 = MW::add_assign(quote! { acc[j] }, quote! { c0 });
-    let add_c1 = MW::add_assign(quote! { acc[j] }, quote! { c1 });
+    let step_pair = horner_steps::<MW>(quote! { acc[j] }, &[quote! { out0 }, quote! { out1 }]);
     body.extend(quote! {
         {
-            let bc0 = current_batch;
-            #mul_batch;
-            let bc1 = current_batch;
-            #mul_batch;
             for j in 0..1 {
                 #setup_vars
                 let out0 = { #num_expr };
                 let out1 = { #den_expr };
-                let mut c0 = bc0;
-                #mul_c0;
-                let mut c1 = bc1;
-                #mul_c1;
-                #add_c0;
-                #add_c1;
+                #step_pair
             }
         }
     });

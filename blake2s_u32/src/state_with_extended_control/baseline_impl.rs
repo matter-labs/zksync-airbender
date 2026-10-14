@@ -3,6 +3,23 @@ use super::*;
 impl Blake2RoundFunctionEvaluator {
     pub const SUPPORT_SPEC_SINGLE_ROUND: bool = false;
 
+    pub const SUPPORT_EXTERNAL_CHAINING_VALUE: bool = false;
+
+    /// # Safety
+    ///
+    /// Not supported by this implementation (`SUPPORT_EXTERNAL_CHAINING_VALUE` is `false`): it
+    /// panics.
+    #[inline(always)]
+    pub unsafe fn run_round_function_with_input_and_chaining_value<const REDUCED_ROUNDS: bool>(
+        &mut self,
+        _chaining_value: &mut [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS],
+        _input_buffer: &AlignedArray64<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>,
+        _input_size_words: usize,
+        _last_round: bool,
+    ) {
+        unreachable!("unsupported")
+    }
+
     /// # Safety
     ///
     /// Not supported by this implementation (`SUPPORT_SPEC_SINGLE_ROUND` is `false`): it panics.
