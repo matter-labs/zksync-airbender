@@ -69,11 +69,24 @@ structure RoundRegionInputs [Fact p.Prime] (data : RequestTrace p)
   /-- The region remains inside the native path. -/
   beforeTerminal : region.upper ≤ (timeOfPair data.machine.terminal.timestamp).value
 
-/-- Shared public memory/program inputs and prepared regions covering every round
-    worker. Masks follow from these regions; other worker families remain in history. -/
-structure PreparedProtocolInputs [Fact p.Prime] (data : RequestTrace p) (before : State)
-    (ca oa : List (BitVec 32)) (cells : List Cell) (program : List UnifiedReduced.ProgramEntry)
-    (regions : List RoundRegion) : Prop where
+/-- Public code and clock extent for one LUI-prepared extended-BLAKE controller.
+    Accepted matching derives selected worker family, count and duration. -/
+structure ProgramRoundRegionInputs [Fact p.Prime] (data : RequestTrace p)
+    (program : List UnifiedReduced.ProgramEntry) (region : RoundRegion) : Prop where
+  /-- Public ordinary entries are outside this region; its CSRs select extended BLAKE. -/
+  code : ProgramCallerRegion data program .blakeRound region.lower region.upper
+  /-- The specified public LUI prepares the first round and flags. -/
+  preparation : ControlPreparation data program region.lower 12 (hashPreparation (.blakeRound region.flags))
+  /-- Ordered public cuts cover at most ten four-tick positions. -/
+  extent : region.lower ≤ region.upper ∧ region.upper ≤ region.lower + 4 * 10
+  /-- Both cuts are instruction boundaries. -/
+  aligned : region.lower % 4 = 0 ∧ region.upper % 4 = 0
+  /-- The last cut lies within the native path. -/
+  beforeTerminal : region.upper ≤ (timeOfPair data.machine.terminal.timestamp).value
+
+/-- Public memory and program context shared by prepared protocol entries. -/
+structure ProtocolContextInputs [Fact p.Prime] (data : RequestTrace p) (before : State)
+    (ca oa : List (BitVec 32)) (cells : List Cell) (program : List UnifiedReduced.ProgramEntry) : Prop where
   /-- Original public CSR decoding and the initial native clock. -/
   publicProgram : RequestInputs data before ca
   /-- Original Sail decoding constructs the ordinary instruction registry. -/
@@ -88,10 +101,29 @@ structure PreparedProtocolInputs [Fact p.Prime] (data : RequestTrace p) (before 
   setup : data.machine.rom = Setup.table before
   /-- Existing modeled worker tables and Keccak controller. -/
   tables : data.workers.setup = Delegation.modeledSetup Keccak.Controller.rows
+
+/-- Prepared regions cover every round worker; masks follow from their local shape. -/
+structure PreparedProtocolInputs [Fact p.Prime] (data : RequestTrace p) (before : State)
+    (ca oa : List (BitVec 32)) (cells : List Cell) (program : List UnifiedReduced.ProgramEntry)
+    (regions : List RoundRegion) : Prop extends ProtocolContextInputs data before ca oa cells program where
   /-- Each controller restart has its own public preparation and local shape. -/
   scopes : ∀ region ∈ regions, RoundRegionInputs data program region
   /-- Every actual extended-round worker belongs to an admitted prepared region.
       This is an explicit protocol-shape boundary, not general acceptance coverage. -/
+  coverage : ∀ row ∈ data.workers.rows, row.family = .blakeRound →
+    ∃ region ∈ regions, row ∈ data.workers.windowRows region.lower region.upper
+
+/-- Public controller regions derive local shape before mask transport.
+    Global extended-round coverage remains an explicit logical boundary. -/
+structure ProgramPreparedProtocolInputs [Fact p.Prime] (data : RequestTrace p) (before : State)
+    (ca oa : List (BitVec 32)) (cells : List Cell) (program : List UnifiedReduced.ProgramEntry)
+    (regions : List RoundRegion) : Prop extends ProtocolContextInputs data before ca oa cells program where
+  /-- Public ordinary forms support the linear PC/clock derivation. -/
+  registry : SequentialProgram program
+  /-- Each LUI-prepared controller has public code and at most forty clock ticks. -/
+  scopes : ∀ region ∈ regions, ProgramRoundRegionInputs data program region
+  /-- Every actual extended-round worker belongs to a public prepared region.
+      Live caller matching alone does not exclude surplus zero-clock workers. -/
   coverage : ∀ row ∈ data.workers.rows, row.family = .blakeRound →
     ∃ region ∈ regions, row ∈ data.workers.windowRows region.lower region.upper
 

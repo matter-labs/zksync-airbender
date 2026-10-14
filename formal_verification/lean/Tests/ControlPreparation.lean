@@ -576,18 +576,51 @@ theorem overlapping_or_unaligned_sequences_rejected :
 private theorem protocol_inputs :
     UnifiedReduced.Caller.PreparedProtocolInputs (data 1) (before 1) [] [0] (cells 1) [entry 1] [] := by
   have context := inputs 1
-  refine ⟨context.publicProgram, context.ordinaryProgram, context.initialization, context.distinct,
-    context.aligned, context.setup, context.tables, ?_, ?_⟩
+  refine ⟨⟨context.publicProgram, context.ordinaryProgram, context.initialization, context.distinct,
+    context.aligned, context.setup, context.tables⟩, ?_, ?_⟩
   · intro region member
     cases member
   · intro row member
     cases member
 
+private theorem program_round_region_scope :
+    UnifiedReduced.Caller.ProgramRoundRegionInputs (data 1) [entry 1] ⟨0, 8, 8⟩ := by
+  refine ⟨⟨?_, ?_⟩, preparation 1, by decide, by decide, by decide +kernel⟩
+  · intro current _ range
+    dsimp only at range
+    omega
+  · intro current member
+    cases member
+
+private theorem sequential_round_preparation : UnifiedReduced.Caller.SequentialProgram [entry 1] := by
+  intro current member
+  have same : current = entry 1 := List.mem_singleton.mp member
+  subst current
+  exact .arithmetic (.lui 128 12)
+
+theorem program_round_region_retains_empty_prepared_cut :
+    UnifiedReduced.Caller.RoundRegionInputs (data 1) [entry 1] ⟨0, 8, 8⟩ :=
+  UnifiedReduced.Caller.program_round_region_soundness (by decide +kernel) (by decide +kernel)
+    (accepted 1) (inputs 1).publicProgram (inputs 1).ordinaryProgram sequential_round_preparation
+    program_round_region_scope
+
 private theorem round_region_scope :
-    UnifiedReduced.Caller.RoundRegionInputs (data 1) [entry 1] ⟨0, 8, 8⟩ := by
-  refine ⟨?_, preparation 1, by decide +kernel, by decide +kernel, by decide, by decide +kernel⟩
-  intro row member
-  cases member
+    UnifiedReduced.Caller.RoundRegionInputs (data 1) [entry 1] ⟨0, 8, 8⟩ :=
+  program_round_region_retains_empty_prepared_cut
+
+theorem program_round_context_derives_local_shape :
+    UnifiedReduced.Caller.PreparedProtocolInputs (data 1) (before 1) [] [0] (cells 1) [entry 1] [⟨0, 8, 8⟩] := by
+  have context : UnifiedReduced.Caller.ProgramPreparedProtocolInputs
+      (data 1) (before 1) [] [0] (cells 1) [entry 1] [⟨0, 8, 8⟩] := by
+    refine ⟨protocol_inputs.toProtocolContextInputs, sequential_round_preparation, ?_, ?_⟩
+    · intro region member
+      have same : region = ⟨0, 8, 8⟩ := List.mem_singleton.mp member
+      subst region
+      exact program_round_region_scope
+    · intro row member
+      cases member
+  exact UnifiedReduced.Caller.Proofs.program_prepared_protocol_inputs (by decide +kernel) (by decide +kernel)
+    (accepted 1) context
 
 theorem round_region_seed_retains_preparation_timestamp :
     ∃ start finish : List (MemoryToken babyBearModulus),
@@ -629,6 +662,25 @@ theorem round_region_wrong_flags_rejected :
     SailRV32.instruction.UTYPE (144, .Regidx 12, .LUI) at instruction
   cases instruction
 
+theorem program_round_wrong_flags_rejected :
+    ¬ UnifiedReduced.Caller.ProgramRoundRegionInputs (data 1) [entry 1] ⟨1, 8, 8⟩ := by
+  intro scope
+  exact round_region_wrong_flags_rejected
+    (UnifiedReduced.Caller.program_round_region_soundness (by decide +kernel) (by decide +kernel)
+      (accepted 1) (inputs 1).publicProgram (inputs 1).ordinaryProgram sequential_round_preparation scope)
+
+theorem program_round_bad_cuts_rejected :
+    (¬ UnifiedReduced.Caller.ProgramRoundRegionInputs (data 1) [entry 1] ⟨0, 8, 52⟩) ∧
+    (¬ UnifiedReduced.Caller.ProgramRoundRegionInputs (data 1) [entry 1] ⟨0, 12, 8⟩) ∧
+    (¬ UnifiedReduced.Caller.ProgramRoundRegionInputs (data 1) [entry 1] ⟨0, 8, 10⟩) := by
+  refine ⟨fun scope => ?_, fun scope => ?_, fun scope => ?_⟩
+  · have extent := scope.extent.2
+    norm_num at extent
+  · have extent := scope.extent.1
+    norm_num at extent
+  · have aligned := scope.aligned.2
+    norm_num at aligned
+
 theorem prepared_round_region_two_bits_rejected [Fact p.Prime] (hp : 8388608 ≤ p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : UnifiedReduced.Caller.RequestTrace p} {initial : State} {ca oa : List (BitVec 32)} {domain : List Cell}
@@ -651,6 +703,23 @@ theorem prepared_round_region_two_bits_rejected [Fact p.Prime] (hp : 8388608 ≤
   · have zero := mask first
     rw [if_neg same, firstBit] at zero
     exact one_ne_zero zero
+
+theorem program_round_region_two_bits_rejected [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {trace : UnifiedReduced.Caller.RequestTrace p} {initial : State} {ca oa : List (BitVec 32)} {domain : List Cell}
+    {program : List UnifiedReduced.ProgramEntry} {regions : List UnifiedReduced.Caller.RoundRegion}
+    {region : UnifiedReduced.Caller.RoundRegion}
+    (accepted : UnifiedReduced.Caller.MixedMemoryAccepted trace program)
+    (context : UnifiedReduced.Caller.ProgramPreparedProtocolInputs trace initial ca oa domain program regions)
+    (included : region ∈ regions)
+    {worker : Delegation.Row p} (member : worker ∈ trace.workers.windowRows region.lower region.upper)
+    {first last : Fin 10} (different : first ≠ last)
+    (firstBit : worker.assignment Blake2Round.Variables.roundBits[first] = 1)
+    (lastBit : worker.assignment Blake2Round.Variables.roundBits[last] = 1) : False := by
+  have inputs := UnifiedReduced.Caller.Proofs.program_prepared_protocol_inputs
+    (by norm_num [timestampBase]; omega) clockInverse accepted context
+  exact prepared_round_region_two_bits_rejected hp clockInverse accepted inputs
+    (inputs.scopes region included) member different firstBit lastBit
 
 private def sequentialBefore (custom : Bool) : State := wordWriteState (wordWriteState initialState 0 (if custom then 0xc2c64673 else 0x00c60633)) 4 0x00000613
 private def sequentialEntry (custom : Bool) : UnifiedReduced.ProgramEntry :=

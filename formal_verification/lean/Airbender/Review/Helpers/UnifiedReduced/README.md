@@ -96,6 +96,18 @@ every extended-round worker, then binds complete G/extended-BLAKE/Keccak lists t
 the same continuous execution. Coverage and each span's preparation/count/duration
 remain explicit; no mask, control read or intermediate state is supplied.
 
+[`ProgramRoundRegionInputs`](../../Trace/UnifiedReduced/PreparedRoundWindows.lean)
+replaces local round-worker shape with public CSR regions, aligned ordered cuts
+and an extent of at most forty ticks. Accepted matching derives the selected
+family/count, ten-position bound and exact duration through
+[`Caller.program_round_region_soundness`](../../Trace/UnifiedReduced/Theorems.lean).
+[`ProgramPreparedProtocolInputs`](../../Trace/UnifiedReduced/PreparedRoundWindows.lean)
+uses these derived regions for mask transport and continuous reference composition.
+Global coverage stays explicit; live request matching does not rule out surplus
+zero-clock workers. Empty prepared regions retain clock-six LUI tokens, wrong
+flags/family and invalid cuts are rejected, and the unissued G-prefix fixture
+remains admitted by the stronger context.
+
 The native domain, public program, protocol counts and existing prefix scope
 remain explicit. These helpers do not claim whole mixed caller retirement.
 Follow [unified trace review](../../Trace/UnifiedReduced/README.md) for actual conclusions.

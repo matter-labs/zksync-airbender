@@ -393,20 +393,31 @@ theorem Caller.program_window_schedule_soundness [Fact p.Prime]
   Caller.Proofs.program_caller_window hp clockInverse accepted publicProgram ordinaryProgram registry region
     first last positive ordered afterInitial beforeTerminal
 
-/-- Public caller regions derive selected worker families and complete call counts
-    for all three references in one continuous prepared history. Shared controller
-    coverage, public duration/preparation and logical matching remain explicit. -/
+/-- Public code and an extent of at most forty ticks derive this prepared
+    controller's worker family, ten-position bound and exact four-tick duration. -/
+theorem Caller.program_round_region_soundness [Fact p.Prime]
+    (hp : 2 * Trace.timestampBase + 4 < p) (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State}
+    {ca oa : List (BitVec 32)} {program : List UnifiedReduced.ProgramEntry} {region : Caller.RoundRegion}
+    (accepted : Caller.MixedMemoryAccepted data program) (publicProgram : Caller.RequestInputs data before ca)
+    (ordinaryProgram : Mixed.programImage before oa = some program) (registry : Caller.SequentialProgram program)
+    (scope : Caller.ProgramRoundRegionInputs data program region) :
+    Caller.RoundRegionInputs data program region :=
+  Caller.Proofs.program_round_region_inputs hp clockInverse accepted publicProgram ordinaryProgram registry scope
+
+/-- Public caller regions derive selected span and controller families/counts
+    before all three references compose in one continuous prepared history.
+    Global controller coverage, public preparation/extents and matching stay explicit. -/
 theorem Caller.program_prepared_protocol_sequence_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
     {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State}
     {ca oa : List (BitVec 32)} {cells : List Trace.Cell} {program : List UnifiedReduced.ProgramEntry}
     {regions : List Caller.RoundRegion} {first : Caller.HashWindow} {rest : List Caller.HashWindow}
     (accepted : Caller.MixedMemoryAccepted data program)
-    (inputs : Caller.PreparedProtocolInputs data before ca oa cells program regions)
-    (registry : Caller.SequentialProgram program)
+    (inputs : Caller.ProgramPreparedProtocolInputs data before ca oa cells program regions)
     (scopes : ∀ window ∈ first :: rest, Caller.ProgramProtocolWindowInputs data program window)
     (ordered : Caller.WindowsOrdered first.lower ((first :: rest).map Caller.HashWindow.interval)) :
     Caller.PreparedHashSequenceResult data before cells first rest :=
-  Caller.Proofs.program_prepared_protocol_sequence hp clockInverse accepted inputs registry scopes ordered
+  Caller.Proofs.program_prepared_protocol_sequence hp clockInverse accepted inputs scopes ordered
 
 end Airbender.UnifiedReduced

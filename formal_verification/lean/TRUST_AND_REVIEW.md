@@ -192,8 +192,17 @@ interval and fixes its full CSR family. With a sequential ordinary registry,
 accepted state matching locates every instruction and request matching derives
 its worker, family, native slot and count. The public reference duration determines
 the count independently of the worker list. `ProgramProtocolWindowInputs` keeps
-preparation and cuts explicit; shared extended-round regions still require their
-existing shape and global coverage. General protocol validity, invalid-call ABI
+preparation and cuts explicit. `ProgramPreparedProtocolInputs` also replaces the
+local extended-round worker shape with `ProgramRoundRegionInputs`: public CSR
+regions, ordered aligned cuts and at most forty ticks derive family, row count,
+the ten-position bound and exact duration. The existing raw matching/LUI proof
+then derives masks before transport. `ProtocolContextInputs` shares the unchanged
+public memory/program/table context with the legacy regional interface.
+Global extended-round coverage remains explicit; live caller uniqueness alone
+does not exclude surplus zero-clock workers. Empty prepared cuts retain the actual
+clock-six LUI token; wrong flags/family, oversized/reversed/unaligned cuts and two
+round bits are rejected. The stronger public context still admits the unissued
+G-prefix effect. General protocol validity, invalid-call ABI
 and whole caller retirement remain open. Both invalid bigint controls still satisfy
 the program-derived request/schedule claim.
 [Control preparation](Airbender/Review/Helpers/UnifiedReduced/ControlPreparation.lean)
