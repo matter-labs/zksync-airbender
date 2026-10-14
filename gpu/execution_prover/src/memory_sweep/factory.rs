@@ -232,7 +232,7 @@ fn build_tracing_data(circuit: CircuitType, rows: usize) -> CudaResult<Option<Tr
                 },
             )?)),
         )),
-        CircuitType::Unrolled(UnrolledCircuitType::Unified) => Ok(Some(TracingDataHost::Unrolled(
+        CircuitType::Unrolled(UnrolledCircuitType::Unified | UnrolledCircuitType::Unified22) => Ok(Some(TracingDataHost::Unrolled(
             UnrolledTracingDataHost::Unified(pinned_filled_trace(
                 rows,
                 UnifiedOpcodeTracingDataWithTimestamp::NonMem(
