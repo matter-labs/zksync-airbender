@@ -7,9 +7,9 @@ use sha3::{Digest as _, Keccak256};
 use worker::Worker;
 
 use super::super::{
-    append_top_paths, build_partial_coset_tree, build_top_tree,
+    append_top_paths, build_partial_coset_tree_with_scratch, build_top_tree,
     gather_leaves_for_queries_single_coset, gather_merkle_paths_partial_for_queries_single_coset,
-    gather_tree_cap, Digest,
+    gather_tree_cap, partial_coset_tree_scratch_len, Digest,
 };
 use super::{
     bitreverse_index, cpu_tree, download, random_columns, test_worker, upload, TestRng, SENTINEL,
@@ -74,17 +74,20 @@ fn gather_openings(
     let mut d_paths = upload(&vec![SENTINEL; path_count + 2], &stream);
     let mut d_indexes = upload(&vec![0xaaaa_aaaa; queries.len() + 2], &stream);
     let mut d_roots = upload(&vec![SENTINEL; cosets.len() + 2], &stream);
+    let scratch_len = partial_coset_tree_scratch_len(log_domain, log_v, skip_bottom);
+    let mut d_scratch = upload(&vec![SENTINEL; scratch_len + 2], &stream);
     let mut processed = vec![false; cosets.len()];
     for resident in (0..cosets.len()).rev() {
         let d_values = upload(&cosets[resident], &stream);
         let mut d_retained = upload(&vec![SENTINEL; retained_count + 2], &stream);
-        build_partial_coset_tree(
+        build_partial_coset_tree_with_scratch(
             &d_values,
             log_domain,
             log_v,
             columns as u32,
             skip_bottom,
             &mut d_retained[1..retained_count + 1],
+            &mut d_scratch[1..scratch_len + 1],
             &stream,
         )
         .unwrap();
@@ -191,6 +194,8 @@ fn gather_openings(
     let roots = download(&d_roots, SENTINEL, &stream);
     let nodes = download(&d_nodes, SENTINEL, &stream);
     let cap = download(&d_cap, SENTINEL, &stream);
+    let scratch = download(&d_scratch, SENTINEL, &stream);
+    assert_eq!([scratch[0], scratch[scratch_len + 1]], [SENTINEL; 2]);
     assert_eq!([values[0], values[value_count + 1]], [value_sentinel; 2]);
     assert_eq!([paths[0], paths[path_count + 1]], [SENTINEL; 2]);
     assert_eq!([indexes[0], indexes[queries.len() + 1]], [0xaaaa_aaaa; 2]);
@@ -329,6 +334,71 @@ fn keccak256_query_gather_parity() {
                         "{label} corrupt sibling"
                     );
                 }
+            }
+        }
+    }
+}
+
+#[test]
+fn keccak256_deep_query_gather_parity() {
+    let mut rng = TestRng::new(0x6465_6570);
+    for (log_leaves, log_v, columns, log_lde, cap_log) in
+        [(10, 0, 1, 0, 0), (11, 1, 3, 2, 0), (10, 4, 7, 2, 2)]
+    {
+        let log_domain = log_leaves + log_v;
+        let leaves = 1usize << log_leaves;
+        let cosets: Vec<_> = (0..1usize << log_lde)
+            .map(|_| random_columns(&mut rng, columns, 1 << log_domain))
+            .collect();
+        let tree = cpu_tree(&cosets, columns, log_v, 1 << cap_log);
+        for skip_bottom in 5..=10 {
+            let mut queries = boundary_queries(leaves, cosets.len(), skip_bottom);
+            for coset in 0..cosets.len() {
+                for edge in (1usize << skip_bottom..leaves).step_by(1 << skip_bottom) {
+                    for leaf in [edge - 1, edge, edge + 1] {
+                        queries.push(((leaf << log_lde) + coset) as u32);
+                    }
+                }
+                for leaf in [17, 31, 32, 63, 64, 255, 256, 257, 511, 512, 513, 767, 768] {
+                    queries.push(((leaf << log_lde) + coset) as u32);
+                }
+            }
+            let gpu = gather_openings(
+                &cosets,
+                log_domain,
+                log_v,
+                cap_log,
+                skip_bottom,
+                &queries,
+                true,
+            );
+            let label = format!("log_leaves={log_leaves} log_v={log_v} columns={columns} log_lde={log_lde} cap_log={cap_log} skip={skip_bottom}");
+            assert_eq!(gpu.cap, tree.get_cap().cap, "{label}");
+            for (i, &query) in queries.iter().enumerate() {
+                let coset = query as usize & (cosets.len() - 1);
+                let leaf = query as usize >> log_lde;
+                let index = bitreverse_index(coset, log_lde) * leaves + leaf;
+                let (_, path) = tree.get_proof(index);
+                let values = &gpu.values[i * (columns << log_v)..(i + 1) * (columns << log_v)];
+                assert_eq!(
+                    values,
+                    expected_values(&cosets[coset], leaf, columns, log_v),
+                    "{label} q={query}"
+                );
+                assert_eq!(gpu.indexes[i] as usize, index, "{label} q={query}");
+                assert_eq!(gpu.paths[i], path, "{label} q={query}");
+                assert!(
+                    included(values, columns, log_v, &gpu.paths[i], index, &gpu.cap),
+                    "{label} q={query}"
+                );
+            }
+            if log_lde == 0 {
+                let empty =
+                    gather_openings(&cosets, log_domain, log_v, cap_log, skip_bottom, &[], true);
+                assert!(empty.values.is_empty());
+                assert!(empty.paths.is_empty());
+                assert!(empty.indexes.is_empty());
+                assert_eq!(empty.cap, tree.get_cap().cap, "{label} empty");
             }
         }
     }
@@ -586,7 +656,6 @@ fn keccak256_gather_invalid_shape_rejected() {
     for (log_v, cap_log, skip, condition) in [
         (2, 3, 1, "cap_log <= log_lde"),
         (4, 1, 5, "skip_bottom <= log_domain - log_values_per_leaf"),
-        (2, 1, 6, "skip_bottom <= 5"),
     ] {
         named_panic(paths_name, condition, || {
             gather_merkle_paths_partial_for_queries_single_coset(
@@ -786,22 +855,25 @@ fn keccak256_gather_invalid_shape_rejected() {
         &stream,
     )
     .unwrap();
-    named_panic(paths_name, "skip_bottom <= 5", || {
-        gather_merkle_paths_partial_for_queries_single_coset(
-            &d_values,
-            0,
-            2,
-            8,
-            2,
-            1,
-            6,
-            &d_retained,
-            empty_queries,
-            &mut d_paths[..0],
-            &stream,
-        )
-        .unwrap();
-    });
+    let d_deep_values = upload(&vec![Proth120::new(0); 1 << 12], &stream);
+    for queries in [empty_queries, &d_queries[..]] {
+        named_panic(paths_name, "skip_bottom <= 10", || {
+            gather_merkle_paths_partial_for_queries_single_coset(
+                &d_deep_values,
+                0,
+                2,
+                12,
+                1,
+                1,
+                11,
+                &d_retained,
+                queries,
+                &mut d_paths[..0],
+                &stream,
+            )
+            .unwrap();
+        });
+    }
     named_panic(append_name, "nodes.len() ==", || {
         append_top_paths(
             &d_roots,
