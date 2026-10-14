@@ -208,7 +208,8 @@ private theorem inputs [MemoryPlatform SailRV32.exception] : PooledBootInputs tr
     initialBoundary := rfl
     physicalImage := ⟨physical, image, rfl⟩
     subwordSetup := rfl
-    terminalPC := ⟨by decide, by decide⟩ }
+    verifierBoundary := ⟨⟨4, (8, 0)⟩,
+      VerifierBoundary.Proofs.binding_of_endpoints rfl rfl native_accepted.states⟩ }
 
 /-- The primary native claim is inhabited by a nonzero public ROM-byte load.
     Initialization, actual decoding and setup binding are all proved here. -/

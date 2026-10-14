@@ -4,6 +4,7 @@ import Airbender.Review.Helpers.Properties
 import Airbender.Review.Helpers.Decoder.PooledProgram
 import Airbender.Review.Helpers.Context.RowContext
 import Airbender.Review.Helpers.Context.Interfaces
+import Airbender.Review.Helpers.Context.VerifierBoundary.Model
 
 namespace Airbender.JumpBranchSlt
 open Arithmetic Reference.RiscV.Sail Reference.Sail Trace
@@ -11,14 +12,16 @@ open Arithmetic Reference.RiscV.Sail Reference.Sail Trace
 /-- Public conditions shared by comparisons, branches and jumps. `initial`
     supplies Sail state and program bytes; `cells` lists tracked registers/RAM;
     `program` is built by actual Sail decoding. Shared history derives per-row
-    bounds and reads. Terminal-PC normalization remains an external condition
-    until teardown supplies a checked range proof. -/
+    bounds and reads. Canonical terminal PC follows from the explicit external
+    verifier-boundary closure and accepted state matching. -/
 structure TraceInputs {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : State) (cells : List Cell) (program : List PooledProgramEntry) : Prop extends PooledHistoryInputs trace initial cells program where
   /-- Public instruction PCs are four-byte aligned; decoder membership transfers this to rows. -/
   codeAligned : ∀ entry ∈ program, entry.pc.toNat % 4 = 0
-  /-- Both terminal-PC limbs are canonical 16-bit values; intermediate PCs are derived. -/
-  terminalPC : trace.terminal.word.Bounded
+  /-- Typed canonical boundary contributions close the raw imported PC-state
+      permutation; cryptographic and Rust/artifact correspondence stay external. -/
+  verifierBoundary : VerifierBoundary.Closure trace.initial
+    (trace.rows.map Row.start) (trace.rows.map Row.finish)
 
 end Airbender.JumpBranchSlt
 
@@ -109,7 +112,8 @@ def circuitModel {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
   satisfies := fun w => Accepted trace ∧ PooledDecoded trace program ∧ (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily) ∈ trace.rows
   represents := TraceMapping trace initial cells program
 
-/-- Shared public initialization/tables, aligned code and canonical terminal PC.
+/-- Shared public initialization/tables, aligned code and explicit canonical
+    verifier-boundary closure, from which terminal bounds are derived.
     Operand bounds, reads and decoder contracts are proved internally. -/
 abbrev InterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : Sail.State) (cells : List Cell) (program : List PooledProgramEntry) : Prop :=

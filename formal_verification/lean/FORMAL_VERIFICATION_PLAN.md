@@ -209,8 +209,11 @@ ABI and whole mixed execution remain separate.
 3. **Native worker ROM and invalid-call binding.** Connect zero native ROM shadows
    to independent public bytes for worker operations. Resolve caller/control scope
    against available circuit inputs, retaining checked ABI gaps until justified.
-4. **Remaining global boundaries.** Jump terminal-PC normalization needs richer
-   teardown proof input. Inactive padding needs global state/write obligations.
+4. **Remaining global boundaries.** F01 is resolved in the logical model under
+   explicit canonical total-verifier boundary closure: accepted state matching
+   and permutation cancellation derive the raw terminal PC bound. Cryptographic
+   enforcement and Rust/artifact correspondence remain external; the original
+   local counterexample remains valid. Inactive padding needs global state/write obligations.
    Full fetch faults, interrupts and exceptional execution require a separate
    scope and reference path.
 

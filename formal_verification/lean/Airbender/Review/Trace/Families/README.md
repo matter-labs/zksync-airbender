@@ -17,7 +17,9 @@ For [AddSub](AddSub/Theorems.lean), unchanged Sail retains the discarded-load
 restriction; the Airbender profile and native-boot claims state their distinct
 semantics and ROM view. [Subword memory](SubwordMemory/Theorems.lean) is RAM-only
 here; [pooled execution](../Soundness.lean) separately includes public-ROM transport.
-Jump termination retains its explicit canonical endpoint condition.
+Jump termination derives its raw endpoint bound from accepted matching and the
+explicit [canonical verifier closure](../../Helpers/Context/VerifierBoundary/README.md).
+Cryptographic enforcement and Rust/artifact correspondence remain external.
 
 Each directory separates its step/trace definitions from its public trace theorem.
 
