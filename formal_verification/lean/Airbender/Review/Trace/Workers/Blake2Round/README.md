@@ -13,7 +13,7 @@ standalone exclusive-mask ABI still explicit. [`compression_soundness`](Theorems
 and [`compression_boundary_soundness`](Theorems.lean) prove the complete reference
 output on actual RAM, linked to every terminal token; [`window_soundness`](Theorems.lean)
 does so at selected first-span cut states within the ten-position controller.
-Reads, ranges and intermediate states are derived. Broader restart/chaining and
+Reads, ranges and intermediate states are derived. Unrestricted restart/chaining and
 full mixed caller retirement remain separate.
 
 Read [Theorems](Theorems.lean), [Call](Call.lean) and
@@ -27,5 +27,11 @@ states and terminal agreement. Later rounds may remain outside a selected window
 
 [Local phases](../../../Circuits/Blake2Round/README.md) do not alone establish compression.
 Completion controls do not automatically restart the protocol.
-[Prepared unified spans](../../UnifiedReduced/README.md) retain their public
-preparation, duration and empty worker-prefix restrictions.
+[First prepared unified spans](../../UnifiedReduced/PreparedRoundWindows.lean)
+retain their public preparation, duration and empty worker-prefix restrictions.
+The broader [`Caller.prepared_protocol_sequence_soundness`](../../UnifiedReduced/Theorems.lean)
+supports explicit LUI restarts between compression spans in one continuous mixed
+history. Raw matching derives masks within each controller region; earlier workers
+remain in the prefix. Every extended-round worker must belong to one such region,
+and each region retains its local ten-position cap. Complete span counts, durations,
+mode/flags and literal preparation remain explicit; completion alone never restarts.

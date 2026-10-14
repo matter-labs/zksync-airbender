@@ -569,4 +569,81 @@ theorem overlapping_or_unaligned_sequences_rejected :
     ¬ UnifiedReduced.Caller.WindowsOrdered 4 [(4, 6), (8, 12)] := by
   simp [UnifiedReduced.Caller.WindowsOrdered]
 
+private theorem protocol_inputs :
+    UnifiedReduced.Caller.PreparedProtocolInputs (data 1) (before 1) [] [0] (cells 1) [entry 1] [] := by
+  have context := inputs 1
+  refine ⟨context.publicProgram, context.ordinaryProgram, context.initialization, context.distinct,
+    context.aligned, context.setup, context.tables, ?_, ?_⟩
+  · intro region member
+    cases member
+  · intro row member
+    cases member
+
+private theorem round_region_scope :
+    UnifiedReduced.Caller.RoundRegionInputs (data 1) [entry 1] ⟨0, 8, 8⟩ := by
+  refine ⟨?_, preparation 1, by decide +kernel, by decide +kernel, by decide, by decide +kernel⟩
+  intro row member
+  cases member
+
+theorem round_region_seed_retains_preparation_timestamp :
+    ∃ start finish : List (MemoryToken babyBearModulus),
+      ((data 1).machine.initialMemory ++ ((data 1).prefixSteps 8).map Prod.snd).Perm
+        (start ++ ((data 1).prefixSteps 8).map Prod.fst) ∧
+      (start ++ ((data 1).windowSteps 8 8).map Prod.snd).Perm
+        (finish ++ ((data 1).windowSteps 8 8).map Prod.fst) ∧
+      ∃ token ∈ start, token.address = (Cell.register 12).addressCode ∧
+        (timeOfPair token.time).value = 6 ∧ token.word = ⟨0, 8⟩ := by
+  have requests := UnifiedReduced.Caller.Proofs.request_binding (by decide +kernel) (by decide +kernel)
+    (accepted 1).toRequestChecks protocol_inputs.publicProgram
+  have facts := UnifiedReduced.Caller.Proofs.mixed_memory_facts (by decide +kernel) (by decide +kernel)
+    (accepted 1) protocol_inputs.publicProgram protocol_inputs.initialization requests
+  obtain ⟨start, prefixFacts, suffix⟩ := Proofs.Transfer.split_at facts 7
+  obtain ⟨finish, window, _⟩ := Proofs.Transfer.split_at suffix 7
+  have prefixMatching := prefixFacts.matching
+  rw [UnifiedReduced.Caller.Proofs.mixed_prefix_steps (data 1) (cut := 8) (by decide)] at prefixMatching
+  change Proofs.Transfer.Facts ⟨start, finish,
+    Proofs.Transfer.windowSteps (UnifiedReduced.Caller.Proofs.mixedData (data 1)) 7 7⟩ at window
+  rw [← UnifiedReduced.Caller.Proofs.mixed_window_steps (by decide +kernel) (by decide +kernel)
+    (lower := 8) (upper := 8) (accepted 1).toRequestChecks protocol_inputs.publicProgram
+    (by decide) (by decide) (by decide) (by decide)] at window
+  exact ⟨start, finish, prefixMatching, window.matching,
+    UnifiedReduced.Caller.Proofs.preparation_token (by decide +kernel) (by decide +kernel) (accepted 1)
+      protocol_inputs.publicProgram protocol_inputs.ordinaryProgram protocol_inputs.initialization
+      round_region_scope.preparation (by decide) (by decide) prefixMatching⟩
+
+theorem round_region_wrong_flags_rejected :
+    ¬ UnifiedReduced.Caller.RoundRegionInputs (data 1) [entry 1] ⟨1, 8, 8⟩ := by
+  intro scope
+  have instruction : (entry 1).instruction =
+      (UnifiedReduced.Caller.hashPreparation (.blakeRound 1)).instruction 12 := by
+    cases scope.preparation.program with
+    | uniform entries => exact entries (entry 1) (List.mem_singleton_self _)
+    | straight _ atCut => exact atCut (entry 1) (List.mem_singleton_self _) (by decide +kernel)
+  change SailRV32.instruction.UTYPE (128, .Regidx 12, .LUI) =
+    SailRV32.instruction.UTYPE (144, .Regidx 12, .LUI) at instruction
+  cases instruction
+
+theorem prepared_round_region_two_bits_rejected [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {trace : UnifiedReduced.Caller.RequestTrace p} {initial : State} {ca oa : List (BitVec 32)} {domain : List Cell}
+    {program : List UnifiedReduced.ProgramEntry} {regions : List UnifiedReduced.Caller.RoundRegion}
+    {region : UnifiedReduced.Caller.RoundRegion}
+    (accepted : UnifiedReduced.Caller.MixedMemoryAccepted trace program)
+    (context : UnifiedReduced.Caller.PreparedProtocolInputs trace initial ca oa domain program regions)
+    (scope : UnifiedReduced.Caller.RoundRegionInputs trace program region)
+    {worker : Delegation.Row p} (member : worker ∈ trace.workers.windowRows region.lower region.upper)
+    {first last : Fin 10} (different : first ≠ last)
+    (firstBit : worker.assignment Blake2Round.Variables.roundBits[first] = 1)
+    (lastBit : worker.assignment Blake2Round.Variables.roundBits[last] = 1) : False := by
+  obtain ⟨round, mask⟩ := UnifiedReduced.Caller.prepared_round_region_masks_soundness hp clockInverse accepted context scope worker member
+  haveI : Fact (1 < p) := ⟨(Fact.out : p.Prime).one_lt⟩
+  by_cases same : first = round
+  · have other : last ≠ round := by omega
+    have zero := mask last
+    rw [if_neg other, lastBit] at zero
+    exact one_ne_zero zero
+  · have zero := mask first
+    rw [if_neg same, firstBit] at zero
+    exact one_ne_zero zero
+
 end Tests.ControlPreparation
