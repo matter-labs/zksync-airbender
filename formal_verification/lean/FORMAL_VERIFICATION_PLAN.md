@@ -305,9 +305,21 @@ ABI and whole mixed execution remain separate.
    derive x12 = 127/129 → x10 = 128 → x12 = 128, actual intermediate reads and
    canonical clock fourteen; malformed immediates/constants, middle operands and
    incomplete references are rejected. Existing AUIPC roots and the actual
-   unissued G-prefix effect remain inhabited. Continue nonconsecutive dataflow,
-   broader operand-dependent operations, jumps/branches and whole caller
-   retirement, retaining unsupported-control and unissued-exclusion boundaries.
+   unissued G-prefix effect remain inhabited. Public register dataflow now admits
+   intervening ADDIs to other nonzero GPRs, including reads/readonly refreshes of
+   the tracked register. Original public decoding derives destination separation;
+   raw initialized matching preserves its canonical word and actual timestamp
+   while retaining every gap write. A final ADDI derives the fresh output before
+   the existing complete selected-reference composition. No inert-gap, desired
+   operand/state, bound or selector is supplied. Selected preparation cycles stay
+   worker-free; earlier effects remain. Native reversed-row fixtures derive
+   x12 = 127/129 → gap x10 = 127/129 → x12 = 128, clock-eight refresh and
+   clock-fourteen final output. A forged clock-ten source passes local native
+   constraints/timestamp lookups but fails architectural matching. Constant and
+   incomplete-reference guards and the actual unissued G prefix remain. Continue
+   other gap instructions, worker-interleaved preparation, broader operand-dependent
+   operations, jumps/branches and whole caller retirement, retaining unsupported-
+   control and unissued-exclusion boundaries.
    COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed
    retained for the second window. Extended BLAKE and Keccak completion controls
    do not restart their protocols; checked regressions forbid treating their

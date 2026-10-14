@@ -1,7 +1,7 @@
 import Airbender.Review.Trace.UnifiedReduced.ComputedHashWindows
 import Airbender.Proofs.UnifiedReduced.HashPreparation
 import Airbender.Proofs.Delegation.SpanTarget
-import Airbender.Proofs.UnifiedReduced.RegisterChains
+import Airbender.Proofs.UnifiedReduced.RegisterDataflow
 
 namespace Airbender.UnifiedReduced.Caller.Proofs
 open Trace Trace.Proofs Arithmetic Reference.RiscV.Sail
@@ -39,6 +39,24 @@ theorem register_chain_hash_preparation_source [Fact p.Prime]
     rw [image_addresses initialization]
     exact distinct) entry
 
+/-- A final public ADDI consumes derived dataflow across unrelated writes.
+    The existing public domain supplies uniqueness; the entry equation concerns
+    only the public instruction expression. -/
+theorem register_dataflow_hash_preparation_source [Fact p.Prime]
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {cells : List Cell} {cut : Nat} {span : Delegation.Caller.HashSpan}
+    {source : BitVec 5} {value : BitVec 32} {immediate : BitVec 12}
+    (initialization : initialImage before cells = some data.machine.initialMemory)
+    (distinct : (cells.map Cell.addressCode).Nodup)
+    (prior : PublicRegisterDataflow data program (cut - 4) source value)
+    (scope : RegisterImmediatePreparation data program cut source span.controlRegister immediate)
+    (nonzero : source ≠ 0)
+    (entry : registerImmediateValue value immediate = span.controlStart) :
+    HashControlPreparation data program cut span := by
+  exact .dataflowAddi source value immediate prior scope nonzero (by
+    rw [image_addresses initialization]
+    exact distinct) entry
+
 theorem hash_control_preparation_after_initial [Fact p.Prime]
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {cut : Nat}
     {span : Delegation.Caller.HashSpan} (source : HashControlPreparation data program cut span) :
@@ -48,6 +66,7 @@ theorem hash_control_preparation_after_initial [Fact p.Prime]
   | pcRelative _ scope _ => exact scope.afterInitial
   | literalAddi _ _ _ scope _ => exact scope.step.afterInitial
   | registerChain _ preparation _ _ => exact public_register_preparation_after_initial preparation
+  | dataflowAddi _ _ _ _ scope _ _ _ => exact scope.afterInitial
 
 /-- The public placement condition is applied to the actual decoded instruction,
     whose membership and address are derived from native constraints and clocks. -/
@@ -100,6 +119,12 @@ theorem hash_control_preparation_token [Fact p.Prime] (hp : 8388608 ≤ p)
   | registerChain value preparation unique entry =>
     simpa only [entry] using public_register_preparation_token hp inverse setup accepted publicProgram ordinaryProgram
       initialization unique preparation (hash_control_register_nonzero span) aligned matching
+  | dataflowAddi source value immediate prior scope nonzero unique entry =>
+    simpa only [entry] using register_immediate_preparation_token_of_value hp inverse setup accepted publicProgram ordinaryProgram
+      initialization scope unique (public_register_dataflow_after_initial prior)
+      (fun _ prefixMatching => public_register_dataflow_token hp inverse setup accepted publicProgram ordinaryProgram
+        initialization unique prior nonzero (by have floor := public_register_dataflow_after_initial prior; omega) prefixMatching)
+      (hash_control_register_nonzero span) aligned matching
 
 theorem hash_control_preparation_at_boundary [Fact p.Prime] (hp : 8388608 ≤ p)
     (inverse : (-3840 : ZMod p) * 524288 = 1)

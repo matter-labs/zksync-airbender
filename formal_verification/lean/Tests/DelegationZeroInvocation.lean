@@ -1419,4 +1419,21 @@ theorem register_chain_retains_actual_unissued_prefix :
       (Cell.register 12).read sequence.atInitial = .ok 1 sequence.atInitial :=
   literal_addi_retains_actual_unissued_prefix
 
+theorem register_dataflow_protocol_retains_unissued_g :
+    UnifiedReduced.Caller.PreparedBoundaryExecution dataflowData dataflowBefore preparationCells 12 12
+      (UnifiedReduced.Caller.hashPreparation (.blakeG true)) ∧
+    native ∈ dataflowData.workers.rows ∧ ¬ Delegation.Requests.Live (Delegation.Requests.fulfillment native) := by
+  refine ⟨?_, List.mem_singleton_self _, by decide +kernel⟩
+  have prior := UnifiedReduced.Caller.PublicRegisterDataflow.prepared
+    (UnifiedReduced.Caller.PublicRegisterPreparation.literal dataflowScope.seed)
+  exact UnifiedReduced.Caller.register_dataflow_hash_preparation_soundness (span := .blakeG true)
+    (by decide +kernel) (by decide +kernel) (by decide +kernel) dataflowAccepted dataflowInputs prior dataflowScope.step
+    (by decide) (by decide +kernel) (by decide)
+
+theorem register_dataflow_retains_actual_unissued_prefix :
+    ∃ sequence : UnifiedReduced.Caller.WindowSequence babyBearModulus,
+      sequence.Realizes dataflowData dataflowBefore preparationCells 4 [(4, 8), (8, 12)] ∧
+      (Cell.register 12).read sequence.atInitial = .ok 1 sequence.atInitial :=
+  literal_addi_retains_actual_unissued_prefix
+
 end Tests.DelegationZeroInvocation
