@@ -10,6 +10,7 @@ import Airbender.Proofs.UnifiedReduced.ControlPreparation
 import Airbender.Proofs.UnifiedReduced.PCRelativePreparation
 import Airbender.Proofs.UnifiedReduced.RegisterPreparation
 import Airbender.Proofs.UnifiedReduced.RegisterChains
+import Airbender.Proofs.UnifiedReduced.RegisterDataflow
 import Airbender.Proofs.UnifiedReduced.PreparedHashWindows
 import Airbender.Proofs.UnifiedReduced.ComputedHashWindows
 import Airbender.Proofs.UnifiedReduced.ComputedRoundRegions
@@ -942,5 +943,40 @@ theorem Caller.register_chain_hash_preparation_soundness [Fact p.Prime] (hp : 83
     Caller.PreparedBoundaryExecution data before cells cut span.controlRegister (Caller.hashPreparation span) :=
   Caller.Proofs.hash_control_preparation hp clockInverse rotationInverse accepted inputs
     (Caller.Proofs.register_chain_hash_preparation_source inputs.initialization inputs.distinct preparation entry) aligned
+
+/-- Public ADDIs to other GPRs may intervene between dataflow writes, including
+    readonly refreshes of the tracked register. Initialized matching derives its
+    value and actual token timestamp, retaining every gap write and prior effect. -/
+theorem Caller.register_dataflow_control_preparation_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+    {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
+    {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    {cut : Nat} {register : BitVec 5} {value : BitVec 32}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.MixedMemoryInputs data program before ca oa cells)
+    (preparation : Caller.PublicRegisterDataflow data program cut register value)
+    (nonzero : register ≠ 0) (aligned : cut % 4 = 0) :
+    Caller.RegisterDataflowBoundaryExecution data before cells cut register value :=
+  Caller.Proofs.public_register_dataflow_control_preparation hp clockInverse rotationInverse accepted inputs preparation nonzero aligned
+
+/-- A final public ADDI binds the derived dataflow value to a protocol constant
+    and restores the canonical cut-minus-two output timestamp. The same source
+    feeds all existing selected-reference windows/lists before regional masks. -/
+theorem Caller.register_dataflow_hash_preparation_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+    {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
+    {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    {cut : Nat} {span : Delegation.Caller.HashSpan} {source : BitVec 5} {value : BitVec 32} {immediate : BitVec 12}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.MixedMemoryInputs data program before ca oa cells)
+    (prior : Caller.PublicRegisterDataflow data program (cut - 4) source value)
+    (scope : Caller.RegisterImmediatePreparation data program cut source span.controlRegister immediate)
+    (nonzero : source ≠ 0)
+    (entry : Caller.registerImmediateValue value immediate = span.controlStart) (aligned : cut % 4 = 0) :
+    Caller.PreparedBoundaryExecution data before cells cut span.controlRegister (Caller.hashPreparation span) :=
+  Caller.Proofs.hash_control_preparation hp clockInverse rotationInverse accepted inputs
+    (Caller.Proofs.register_dataflow_hash_preparation_source inputs.initialization inputs.distinct prior scope nonzero entry) aligned
 
 end Airbender.UnifiedReduced
