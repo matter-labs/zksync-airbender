@@ -28,6 +28,17 @@ EXTERN __global__ void ab_keccak256_partial_roots_kernel(const proth120 *values,
     retained[(subtree >> log_leaves) * retained_stride + ((subtree & leaf_mask) >> skip_bottom)] = nodes[threadIdx.x];
 }
 
+EXTERN __global__ void ab_keccak256_reduce_roots_kernel(const digest *src, const u64 count, const u32 reduction_layers, digest *dst) {
+  const u64 gid = static_cast<u64>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (gid >= count)
+    return;
+  const digest *children = src + (gid << reduction_layers);
+  digest root = hash_node(children[0], children[1]);
+  if (reduction_layers == 2)
+    root = hash_node(root, hash_node(children[2], children[3]));
+  dst[gid] = root;
+}
+
 EXTERN __global__ void ab_keccak256_nodes_kernel(const digest *src, const u64 count, const u32 cosets_in_tile, const u64 src_stride, const u64 dst_stride,
                                                  digest *dst) {
   const u64 gid = static_cast<u64>(blockIdx.x) * blockDim.x + threadIdx.x;

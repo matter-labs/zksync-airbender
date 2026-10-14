@@ -183,7 +183,16 @@ pub fn gather_merkle_paths_partial_for_queries_single_coset(
     assert_no_overlap(NAME, retained, paths);
     assert_no_overlap(NAME, queries, paths);
     let count = checked_u64(NAME, queries.len());
-    let grid = grid_dim(NAME, checked_product(NAME, queries.len(), 32), 32);
+    let threads = if skip_bottom <= 5 {
+        32
+    } else {
+        (1u32 << skip_bottom).min(256)
+    };
+    let grid = grid_dim(
+        NAME,
+        checked_product(NAME, queries.len(), threads as usize),
+        threads,
+    );
     if count == 0 {
         return Ok(());
     }
@@ -201,7 +210,11 @@ pub fn gather_merkle_paths_partial_for_queries_single_coset(
         count,
         paths.as_mut_ptr(),
     );
-    GatherPartialPathsFunction::default().launch(&CudaLaunchConfig::basic(grid, 32, stream), &args)
+    let mut config = CudaLaunchConfig::basic(grid, threads, stream);
+    if skip_bottom > 5 {
+        config.dynamic_smem_bytes = checked_bytes::<Digest>(NAME, 1usize << skip_bottom);
+    }
+    GatherPartialPathsFunction::default().launch(&config, &args)
 }
 
 pub fn append_top_paths(
