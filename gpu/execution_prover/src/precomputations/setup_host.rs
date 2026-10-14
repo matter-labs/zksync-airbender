@@ -153,8 +153,8 @@ fn validate_profile_set(
     profiles: &[ProofProfile],
 ) -> BTreeSet<ProofProfile> {
     assert!(
-        circuit_type != CircuitType::L1Wrap21,
-        "the GPU backend does not support the 2^21 L1 wrap (CircuitType::L1Wrap21) until W5"
+        circuit_type != CircuitType::L1Wrap,
+        "the GPU backend does not prove the retired 2^22 L1 wrap (CircuitType::L1Wrap); use CircuitType::L1Wrap21"
     );
     let profiles: BTreeSet<ProofProfile> = profiles.iter().copied().collect();
     assert!(
@@ -162,23 +162,23 @@ fn validate_profile_set(
         "prepare needs at least one ProofProfile"
     );
     assert!(
-        !is_l1_wrap_setup || circuit_type == CircuitType::L1Wrap,
-        "CanonicalCircuitSetup::L1Wrap requires CircuitType::L1Wrap, got {circuit_type:?}"
+        !is_l1_wrap_setup || circuit_type == CircuitType::L1Wrap21,
+        "CanonicalCircuitSetup::L1Wrap requires CircuitType::L1Wrap21, got {circuit_type:?}"
     );
-    if circuit_type == CircuitType::L1Wrap {
+    if circuit_type == CircuitType::L1Wrap21 {
         assert!(
             is_l1_wrap_setup,
-            "CircuitType::L1Wrap requires CanonicalCircuitSetup::L1Wrap"
+            "CircuitType::L1Wrap21 requires CanonicalCircuitSetup::L1Wrap"
         );
         assert!(
             profiles.iter().eq([ProofProfile::L1Wrap].iter()),
-            "CircuitType::L1Wrap requires exactly ProofProfile::L1Wrap, got {profiles:?}"
+            "CircuitType::L1Wrap21 requires exactly ProofProfile::L1Wrap, got {profiles:?}"
         );
         return profiles;
     }
     assert!(
         !profiles.contains(&ProofProfile::L1Wrap),
-        "ProofProfile::L1Wrap requires CircuitType::L1Wrap, got {circuit_type:?}"
+        "ProofProfile::L1Wrap requires CircuitType::L1Wrap21, got {circuit_type:?}"
     );
     const UNIFIED22: CircuitType = CircuitType::Unrolled(UnrolledCircuitType::Unified22);
     assert!(
@@ -332,7 +332,7 @@ mod cpu_tests {
             );
         }
         assert_eq!(
-            validate_profile_set(CircuitType::L1Wrap, true, &[L1Wrap, L1Wrap]),
+            validate_profile_set(CircuitType::L1Wrap21, true, &[L1Wrap, L1Wrap]),
             set(&[L1Wrap])
         );
         assert_eq!(
@@ -348,55 +348,52 @@ mod cpu_tests {
                 set(profiles)
             )
         };
-        let cases: [(CircuitType, bool, &[ProofProfile], String); 15] = [
+        let retired = "the GPU backend does not prove the retired 2^22 L1 wrap (CircuitType::L1Wrap); use CircuitType::L1Wrap21";
+        let cases: [(CircuitType, bool, &[ProofProfile], String); 17] = [
             (
                 UNIFIED,
                 false,
                 &[],
                 "prepare needs at least one ProofProfile".to_string(),
+            ),
+            (CircuitType::L1Wrap, true, &[L1Wrap], retired.to_string()),
+            (CircuitType::L1Wrap, false, &[Standard], retired.to_string()),
+            (CircuitType::L1Wrap, true, &[], retired.to_string()),
+            (
+                CircuitType::L1Wrap21,
+                true,
+                &[],
+                "prepare needs at least one ProofProfile".to_string(),
+            ),
+            (
+                UNIFIED,
+                true,
+                &[Standard],
+                format!(
+                    "CanonicalCircuitSetup::L1Wrap requires CircuitType::L1Wrap21, got {UNIFIED:?}"
+                ),
+            ),
+            (
+                CircuitType::L1Wrap21,
+                false,
+                &[L1Wrap],
+                "CircuitType::L1Wrap21 requires CanonicalCircuitSetup::L1Wrap".to_string(),
             ),
             (
                 CircuitType::L1Wrap21,
                 true,
-                &[L1Wrap],
-                "the GPU backend does not support the 2^21 L1 wrap (CircuitType::L1Wrap21) until W5"
-                    .to_string(),
-            ),
-            (
-                CircuitType::L1Wrap,
-                true,
-                &[],
-                "prepare needs at least one ProofProfile".to_string(),
-            ),
-            (
-                UNIFIED,
-                true,
                 &[Standard],
                 format!(
-                    "CanonicalCircuitSetup::L1Wrap requires CircuitType::L1Wrap, got {UNIFIED:?}"
-                ),
-            ),
-            (
-                CircuitType::L1Wrap,
-                false,
-                &[L1Wrap],
-                "CircuitType::L1Wrap requires CanonicalCircuitSetup::L1Wrap".to_string(),
-            ),
-            (
-                CircuitType::L1Wrap,
-                true,
-                &[Standard],
-                format!(
-                    "CircuitType::L1Wrap requires exactly ProofProfile::L1Wrap, got {:?}",
+                    "CircuitType::L1Wrap21 requires exactly ProofProfile::L1Wrap, got {:?}",
                     set(&[Standard])
                 ),
             ),
             (
-                CircuitType::L1Wrap,
+                CircuitType::L1Wrap21,
                 true,
                 &[L1Wrap, L1Feeder],
                 format!(
-                    "CircuitType::L1Wrap requires exactly ProofProfile::L1Wrap, got {:?}",
+                    "CircuitType::L1Wrap21 requires exactly ProofProfile::L1Wrap, got {:?}",
                     set(&[L1Feeder, L1Wrap])
                 ),
             ),
@@ -404,7 +401,7 @@ mod cpu_tests {
                 UNIFIED,
                 false,
                 &[Standard, L1Wrap],
-                format!("ProofProfile::L1Wrap requires CircuitType::L1Wrap, got {UNIFIED:?}"),
+                format!("ProofProfile::L1Wrap requires CircuitType::L1Wrap21, got {UNIFIED:?}"),
             ),
             (
                 inits_and_teardowns,

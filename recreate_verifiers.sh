@@ -67,7 +67,7 @@ done
 
 cargo run --release -p gpu_gkr_compiler --features search --bin gkr-forward-artifact -- \
     --if-stale --field proth120 --circuit unified_reduced_machine \
-    --layout cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json \
+    --layout cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120_2p21.json \
     --output cs/compiled_circuits/unified_reduced_machine_schedule_b4_gkr_proth120.json \
     --seed 42 --cache-buckets 4 --population 64 --evaluations 1024
 

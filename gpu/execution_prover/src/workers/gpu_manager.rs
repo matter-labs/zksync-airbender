@@ -414,7 +414,7 @@ mod cpu_tests {
     fn cpu_m8_l1_request_shape() {
         let request = WorkRequest::<Global, ()>::L1WrapProof(L1WrapProofRequest {
             batch_id: 7,
-            circuit_type: CircuitType::L1Wrap,
+            circuit_type: CircuitType::L1Wrap21,
             precomputations: (),
             inits_and_teardowns: InitsAndTeardownsTraceHost {
                 page_indices: empty(),
@@ -426,7 +426,7 @@ mod cpu_tests {
             commitment_mode: CommitmentMode::MergedMemoryAndWitness,
         });
         assert_eq!(request.batch_id(), 7);
-        assert_eq!(request.circuit_type(), CircuitType::L1Wrap);
+        assert_eq!(request.circuit_type(), CircuitType::L1Wrap21);
         assert_eq!(request.sequence_id(), 0);
     }
 }
