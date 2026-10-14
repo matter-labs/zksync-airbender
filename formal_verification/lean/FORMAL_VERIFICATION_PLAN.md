@@ -85,19 +85,20 @@ state matching and four-tick advancement. Public cuts inside the machine path an
 a duration matching the selected worker count derive every caller selector in
 the region. Worker matching and retained boundary images are then projected only
 within that region; earlier ordinary effects stay in the actual joint prefix.
-Public ADDI-from-x0/LUI preparation registries now derive actual control reads at
-each preparation cut. Uniform registries remain available; straight-path registries
-admit different literal/register writes interleaved with callers. An arithmetic
-registry additionally admits ADD/SUB/ADDI/LUI/AUIPC with unrestricted operands and
-results. Actual public decoding derives native PC-increment selectors; PC/clock
-matching still identifies the final specified literal at each cut. Native PC/clock
-matching derives the final row's public instruction address. State matching identifies the final ordinary row and
-its accepted write; the boundary retains that write's raw timestamp. Only the final preparation cycle must be free of worker writes; earlier worker
-effects remain in the actual prefix. Extended-BLAKE retains its separate empty
-worker-prefix scope. No desired read or preparation-row
-selector is supplied. Two preparation cuts now share the same actual states and
-complete intervening machine/worker history; joint matching composes their prefix
-boundaries and derives both retained controls. Whole instruction retirement remains separate.
+Public ADDI-from-x0/LUI preparation registries derive actual control reads at
+each cut. Uniform, different-literal and arithmetic registries remain available;
+a sequential registry also admits LW/SW, bitwise/shifts, REV8 and supported
+TRIADD/XORROT interleaved with callers. Actual public decoding derives native
+PC-increment selectors; native PC/clock matching identifies the final specified
+literal's address. Jumps, branches and wraparound comparisons remain outside
+this linear profile. State matching identifies the final ordinary row and its
+accepted write, retaining its raw timestamp. Only the final preparation cycle
+must be worker-free; earlier effects remain in the actual prefix. The original
+extended-BLAKE first-span entry retains its separate empty prefix. No desired
+read or row selector is supplied. Two preparation cuts share actual states and
+the complete intervening history, with both controls derived. The aliased
+TRIADD→ADDI reset derives x12 = 65537→196611→0, retaining clocks six/ten and
+rejecting a fabricated read. Whole instruction retirement remains separate.
 Prepared G and Keccak spans now reach their complete references at those
 same mixed-history cut states even after earlier workers. Shared matching derives caller regions, worker
 boundaries and actual controls; no worker masks or desired reads are supplied.
@@ -153,10 +154,12 @@ ABI and whole mixed execution remain separate.
    intervening history in the same nonround scope. Regional raw matching now
    derives extended-BLAKE masks at each prepared restart; explicit coverage of all
    extended-round workers connects complete lists of all three references to the
-   same execution. Preparation now admits ordinary arithmetic before its final
-   literal, deriving actual controls and retained clocks through the same history.
-   Continue protocol-shape binding, other ordinary/custom prefixes and branching/
-   nonliteral preparation, then whole caller retirement.
+   same execution. Preparation now admits arithmetic, LW/SW, bitwise/shifts, REV8
+   and supported TRIADD/XORROT before its final literal, deriving native PC-increment selectors,
+   actual controls and retained clocks through the same history. The aliased
+   TRIADD→ADDI reset derives 65537→196611→0 and rejects a fabricated reset read.
+   Continue protocol-shape binding, control-flow/wraparound and nonliteral
+   preparation, then whole caller retirement; prefix retirement remains separate.
    COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed
    retained for the second window. Extended BLAKE and Keccak completion controls
    do not restart their protocols; checked regressions forbid treating their
