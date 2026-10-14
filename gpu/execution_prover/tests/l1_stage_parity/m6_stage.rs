@@ -755,7 +755,12 @@ fn run_stages(
     let setup_cap = host.cap().cap;
 
     let phase = Phase::begin("p1.setup_and_input_upload", &context);
-    let mut source = PackedSetupSource::new(Arc::clone(&host), &context).unwrap();
+    let mut source = PackedSetupSource::new(
+        Arc::clone(&host),
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+        &context,
+    )
+    .unwrap();
     let setup_transfer = single_shot_h2d(
         |transfer| source.schedule_transfer(transfer, &context),
         &context,

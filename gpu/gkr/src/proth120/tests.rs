@@ -154,6 +154,7 @@ fn packed_commit_matches_cpu_small() {
         (6, 2, 10, 4, 3, 4),
         (6, 2, 1, 4, 3, 0),
     ]);
+    shapes.extend((6..=10).map(|depth| (12, 4, 20, 2, 3, depth)));
     for (log_rows, pack_log2, columns_count, log_v, cap_log, skip_bottom) in shapes {
         let cfg = PackedCommitConfig {
             log_lde_factor: 5,
@@ -314,6 +315,13 @@ fn root_matches(hashed_leaf: &[PR], path: &[[u32; 8]], index: usize, cap: &[[u32
 #[test]
 #[cfg(not(no_cuda))]
 fn packed_open_queries_match_cpu_small() {
+    for skip_bottom in 5..=10 {
+        check_packed_open_queries(skip_bottom);
+    }
+}
+
+#[cfg(not(no_cuda))]
+fn check_packed_open_queries(skip_bottom: u32) {
     let context = make_context();
     let worker = Worker::new_with_num_threads(4);
     let (log_rows, pack_log2) = (12, 4);
@@ -321,7 +329,7 @@ fn packed_open_queries_match_cpu_small() {
         log_lde_factor: 5,
         log_values_per_leaf: 2,
         cap_log: 3,
-        skip_bottom: 5,
+        skip_bottom,
     };
     let columns = deterministic_columns(log_rows, 20);
     let twiddles = Twiddles::<PR, Global>::new(1 << (log_rows + pack_log2), &worker);
@@ -504,7 +512,12 @@ fn l1_setup_host_round_trip_small() {
                 "cached root {physical}"
             );
         }
-        let mut source = PackedSetupSource::new(Arc::clone(&host), &context).unwrap();
+        let mut source = PackedSetupSource::new(
+            Arc::clone(&host),
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+            &context,
+        )
+        .unwrap();
         let transfer = single_shot_h2d(
             |transfer| source.schedule_transfer(transfer, &context),
             &context,
