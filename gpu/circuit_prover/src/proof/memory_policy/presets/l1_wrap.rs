@@ -4,13 +4,11 @@ use super::super::{
     WitnessPostCommitStorage,
 };
 
-pub const MEASURED_M4_PEAK_BYTES: usize = 25_937_575_936;
+/// Tracker peak of the 2^21 wrap's merged pack + commit at the preset's
+/// depth-10 trees (`tests/l1_stage_parity.rs` `l1_wrap_m4_stages_match_reference`)
+/// on the RTX PRO 6000 Blackwell (sm_120).
+pub const MEASURED_M4_PEAK_BYTES: usize = 11_987_320_832;
 pub const OVERLAP_BYTES: usize = 1_736_441_856;
-
-const ANALYTIC_COMMIT_PEAK_BYTES: usize = (104 + 10) * (1 << 21) * 16
-    + (7 + 1 + 7) * (1 << 25) * 16
-    + 2 * align_up(64 * ((1 << 14) - 1) * 32, 1 << 20)
-    + 2 * 16 * (1 << 20);
 
 pub const fn align_up(bytes: usize, unit: usize) -> usize {
     assert!(unit > 0, "L1Wrap arena alignment unit must be positive");
@@ -22,12 +20,11 @@ pub const fn align_up(bytes: usize, unit: usize) -> usize {
         .expect("L1Wrap arena alignment overflow")
 }
 
-/// Analytic 2^21 bootstrap guard; capacity qualification supplies the measured floor.
 pub const L1_WRAP_ARENA_MIN_BYTES: usize =
-    align_up(ANALYTIC_COMMIT_PEAK_BYTES + OVERLAP_BYTES, 1 << 30);
+    align_up(MEASURED_M4_PEAK_BYTES + OVERLAP_BYTES, 1 << 30);
 
-/// Smallest sufficient arena of the bounded capacity matrix (`gpu/execution_prover/tests/l1_memory.rs`: 32/40/48/64 GiB candidates, both directions, three opposite followers) on the RTX PRO 6000 Blackwell (sm_120).
-pub const L1_WRAP_WHOLE_PROOF_FLOOR_BYTES: usize = 32 << 30;
+/// Smallest sufficient arena of the bounded capacity matrix (`gpu/execution_prover/tests/l1_memory.rs`: 21/30 GiB candidates, both directions, three opposite followers, proof equal to the 2^21 reference) on the RTX PRO 6000 Blackwell (sm_120).
+pub const L1_WRAP_WHOLE_PROOF_FLOOR_BYTES: usize = 21 << 30;
 pub const L1_WRAP_FLOOR_SOURCE: &str = "measured";
 const _: () = assert!(L1_WRAP_WHOLE_PROOF_FLOOR_BYTES >= L1_WRAP_ARENA_MIN_BYTES);
 
@@ -63,6 +60,13 @@ mod cpu_tests {
     use gpu_core::primitives::field::PR;
     use gpu_trace::witness::circuit_type::CircuitType;
     use riscv_transpiler::witness::UnifiedOpcodeTracingDataWithTimestamp;
+
+    /// The analytic commit-phase components at 2^21, 64 cosets and depth-10
+    /// retained trees, without the per-commit tree scratch.
+    const ANALYTIC_COMMIT_PEAK_BYTES: usize = (104 + 10) * (1 << 21) * 16
+        + (7 + 1 + 7) * (1 << 25) * 16
+        + 2 * align_up(64 * ((1 << 14) - 1) * 32, 1 << 20)
+        + 2 * 16 * (1 << 20);
 
     #[test]
     fn cpu_l1_wrap_preset_components() {
@@ -142,11 +146,22 @@ mod cpu_tests {
                 + mapping_columns * ROWS * std::mem::size_of::<u32>()
                 + ROWS * std::mem::size_of::<UnifiedOpcodeTracingDataWithTimestamp>()
         );
+        let tree_scratch_bytes = gpu_hash::keccak256::partial_coset_tree_scratch_len(
+            PACKED_ROWS.trailing_zeros(),
+            config.base_oracles_values_per_leaf.trailing_zeros(),
+            PARTIAL_TREES.memory,
+        ) * 32;
+        assert_eq!(tree_scratch_bytes, 8 * BLOCK_BYTES);
+        assert_eq!(
+            MEASURED_M4_PEAK_BYTES,
+            ANALYTIC_COMMIT_PEAK_BYTES + tree_scratch_bytes
+        );
         assert_eq!(
             L1_WRAP_ARENA_MIN_BYTES,
-            align_up(ANALYTIC_COMMIT_PEAK_BYTES + OVERLAP_BYTES, 1 << 30)
+            align_up(MEASURED_M4_PEAK_BYTES + OVERLAP_BYTES, 1 << 30)
         );
         assert_eq!(L1_WRAP_ARENA_MIN_BYTES, 13 << 30);
+        assert_eq!(L1_WRAP_WHOLE_PROOF_FLOOR_BYTES, 21 << 30);
         for arena in [21 << 30, 30 << 30] {
             assert_eq!(policy(arena), L1_WRAP_POLICY);
         }
