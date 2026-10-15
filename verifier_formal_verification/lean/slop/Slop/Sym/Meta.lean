@@ -31,6 +31,15 @@ deriving instance ToExpr for RV.Sym.Tree
 /-- Some state, for facts that hold in every context. -/
 def State0 : State := ⟨0, fun _ => 0, fun _ => 0⟩
 
+theorem symRun_append_eq {a b : List Instr} {σ σ1 σ2 : SState} (h1 : symRun a σ = some σ1)
+    (h2 : symRun b σ1 = some σ2) : symRun (a ++ b) σ = some σ2 := by
+  induction a generalizing σ with
+  | nil => simp only [symRun, Option.some.injEq] at h1; subst h1; exact h2
+  | cons i is ih =>
+    simp only [symRun] at h1 ⊢
+    obtain ⟨τ, h, hτ⟩ := Option.bind_eq_some_iff.mp h1
+    simp only [List.cons_append, symRun, h, Option.bind_some]; exact ih hτ
+
 theorem wf_of_run (instrs : List Instr) (σ : SState) (h : symRun instrs initState = some σ) : σ.pool.WF :=
   (symRun_mono (ctxOf State0) instrs State0 initState σ (rel_init State0) condsOK_init h).2.1.1
 
@@ -47,26 +56,85 @@ theorem load_val (instrs : List Instr) (σ : SState) (hrun : symRun instrs initS
 private def addDef (n : Name) (type val : Expr) : CoreM Unit := do
   addAndCompile <| .defnDecl (mkDefinitionValEx n [] type val (.regular 0) .safe [])
 
-/-- Runs the executor on `words` (decoded) and adds `X.instrs`, `X.σ`, `X.dec`, `X.run`, `X.wf`. -/
+/-- Chunk size of the kernel runs: each chunk starts from a literal state, so the kernel's cost stays linear in the
+block length (one run over a long block re-walks the lazily built state: quadratic). -/
+def chunkLen : Nat := 64
+
+/-- Runs the executor on `words` (decoded) and adds `X.instrs`, `X.σ`, `X.dec`, `X.run`, `X.wf`; the run is checked
+chunk by chunk (`X.c<k>`, `X.s<k>`, `X.run<k>`). -/
 def symDefs (x : TSyntax `ident) (words : Term) : CommandElabM Unit := do
   let n := x.getId
   let ws ← liftTermElabM do
-    let ty := mkApp (mkConst ``List [0]) (mkApp (mkConst ``Option [0]) (mkConst ``RV.Instr))
+    let ty := mkApp (Lean.mkConst ``List [0]) (mkApp (Lean.mkConst ``Option [0]) (Lean.mkConst ``RV.Instr))
     unsafe evalTerm (List (Option Instr)) ty (← `(($words).map RV.decode))
   let instrs := ws.filterMap id
   unless instrs.length == ws.length do throwError "sym: a word does not decode"
-  let some σ := symRun instrs initState | throwError "sym: the symbolic run fails"
   let full := (← getCurrNamespace) ++ n
+  let listI := mkApp (Lean.mkConst ``List [0]) (Lean.mkConst ``RV.Instr)
+  let stT := Lean.mkConst ``RV.Sym.SState
+  -- chunks and the states between them
+  let chunks := (List.range ((instrs.length + chunkLen - 1) / chunkLen)).map fun k =>
+    (instrs.drop (k * chunkLen)).take chunkLen
+  let mut σ := initState
+  let mut k := 0
+  let mut prev : Expr := Lean.mkConst ``RV.Sym.initState
+  let mut runs : Array Expr := #[]
+  for c in chunks do
+    k := k + 1
+    let some σ' := symRun c σ | throwError "sym: the symbolic run fails (chunk {k})"
+    let cn := full ++ Name.mkSimple s!"c{k}"; let sn := full ++ Name.mkSimple s!"s{k}"
+    let rn := full ++ Name.mkSimple s!"run{k}"
+    -- the new state as a delta over the previous one (new nodes, writes, conditions in front of the old lists), so
+    -- that the kernel's check `Eq.refl` meets the old state's lists by name and stops there
+    let dn := σ'.pool.nodes.length - σ.pool.nodes.length
+    let dw := σ'.writes.length - σ.writes.length
+    let dc := σ'.conds.length - σ.conds.length
+    let delta := σ'.pool.nodes.drop dn == σ.pool.nodes && σ'.writes.drop dw == σ.writes && σ'.conds.drop dc == σ.conds
+    let stE ← liftTermElabM do
+      if !delta || k == 1 then pure (toExpr σ') else
+      let app := fun (_ : Expr) (l : Expr) (r : Expr) => mkAppM ``HAppend.hAppend #[l, r]
+      let pv := mkApp (Lean.mkConst ``RV.Sym.SState.pool) prev
+      let nodes ← app (Lean.mkConst ``RV.Sym.Node) (toExpr (σ'.pool.nodes.take dn))
+        (mkApp (Lean.mkConst ``RV.Sym.Pool.nodes) pv)
+      let keys ← app (Lean.mkConst ``Nat) (toExpr (σ'.pool.keys.take dn)) (mkApp (Lean.mkConst ``RV.Sym.Pool.keys) pv)
+      let writes ← app (Lean.mkConst ``RV.Sym.SWrite) (toExpr (σ'.writes.take dw))
+        (mkApp (Lean.mkConst ``RV.Sym.SState.writes) prev)
+      let conds ← app (Lean.mkConst ``RV.Sym.SCond) (toExpr (σ'.conds.take dc))
+        (mkApp (Lean.mkConst ``RV.Sym.SState.conds) prev)
+      pure (mkApp4 (Lean.mkConst ``RV.Sym.SState.mk)
+        (mkApp3 (Lean.mkConst ``RV.Sym.Pool.mk) nodes keys (toExpr σ'.pool.len)) (toExpr σ'.regs) writes conds)
+    liftCoreM do
+      addDef cn listI (toExpr c)
+      addDef sn stT stE
+    let ty := ← liftTermElabM do
+      mkEq (mkApp2 (Lean.mkConst ``RV.Sym.symRun) (Lean.mkConst cn) prev) (← mkAppM ``Option.some #[Lean.mkConst sn])
+    let pf ← liftTermElabM do mkEqRefl (← mkAppM ``Option.some #[Lean.mkConst sn])
+    liftCoreM do addDecl (.thmDecl { name := rn, levelParams := [], type := ty, value := pf })
+    runs := runs.push (Lean.mkConst rn)
+    prev := Lean.mkConst sn
+    σ := σ'
+  -- the whole block: `X.instrs = c1 ++ (c2 ++ …)`, `X.σ = s<n>`, and its run by `symRun_append_eq`
+  let cs := (List.range k).map fun j => Lean.mkConst (full ++ Name.mkSimple s!"c{j + 1}")
+  let instrsE ← liftTermElabM do
+    match cs.reverse with
+    | [] => pure (toExpr ([] : List Instr))
+    | l :: rest => rest.foldlM (fun acc c => mkAppM ``HAppend.hAppend #[c, acc]) l
   liftCoreM do
-    addDef (full ++ `instrs) (mkApp (mkConst ``List [0]) (mkConst ``RV.Instr)) (toExpr instrs)
-    addDef (full ++ `σ) (mkConst ``RV.Sym.SState) (toExpr σ)
+    addDef (full ++ `instrs) listI instrsE
+    addDef (full ++ `σ) stT prev
+  let runPf ← liftTermElabM do
+    match runs.toList.reverse with
+    | [] => mkAppM ``rfl #[← mkAppM ``Option.some #[Lean.mkConst ``RV.Sym.initState]]
+    | r :: rest => rest.foldlM (fun acc h => mkAppM ``RV.Sym.symRun_append_eq #[h, acc]) r
+  let runTy ← liftTermElabM do
+    mkEq (mkApp2 (Lean.mkConst ``RV.Sym.symRun) (Lean.mkConst (full ++ `instrs)) (Lean.mkConst ``RV.Sym.initState))
+      (← mkAppM ``Option.some #[Lean.mkConst (full ++ `σ)])
+  liftCoreM do addDecl (.thmDecl { name := full ++ `run, levelParams := [], type := runTy, value := runPf })
   let iI := mkIdent (n ++ `instrs); let iσ := mkIdent (n ++ `σ)
   elabCommand (← `(theorem $(mkIdent (n ++ `dec)) : (($words).map RV.decode) = ($iI).map some := by
     decide +kernel))
-  elabCommand (← `(theorem $(mkIdent (n ++ `run)) : RV.Sym.symRun $iI RV.Sym.initState = some $iσ := by
-    decide +kernel))
   elabCommand (← `(theorem $(mkIdent (n ++ `wf)) : ($iσ).pool.WF := RV.Sym.wf_of_run _ _ $(mkIdent (n ++ `run))))
-  logInfo m!"{n}: {instrs.length} instructions, {σ.pool.len} nodes, {σ.writes.length} writes, {σ.conds.length} conditions"
+  logInfo m!"{n}: {instrs.length} instructions in {k} chunks, {σ.pool.len} nodes, {σ.writes.length} writes, {σ.conds.length} conditions"
 
 /-- A leaf function: `code` is a straight-line body and `ret`. -/
 elab "sym_block " x:ident " := " code:term : command => do

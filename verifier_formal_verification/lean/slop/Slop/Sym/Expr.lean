@@ -83,15 +83,20 @@ structure Pool where
 
 def Pool.val (c : Ctx) (p : Pool) (i : Nat) : Word := getR (valsR c p.nodes) i
 
-/-- Depth (from the newest) of the first occurrence of `k`. -/
-def findKey (k : Nat) : List Nat → Option Nat
-  | [] => none
-  | k' :: ks => if k' = k then some 0 else (findKey k ks).map (· + 1)
+/-- Depth (from the newest) of the first occurrence of `k` among the newest `fuel` keys. -/
+def findKey (k : Nat) : (fuel : Nat) → List Nat → Option Nat
+  | 0, _ => none
+  | _, [] => none
+  | f + 1, k' :: ks => if k' == k then some 0 else (findKey k f ks).map (· + 1)
+
+/-- Hash-consing looks for an equal node among the newest `window` ones only: a full scan makes a block's kernel run
+quadratic in its length; equal nodes further back are just not shared. -/
+def window : Nat := 128
 
 /-- The id of `n`: an existing equal node, or a new one (`none` if a child is not in the pool). -/
 def Pool.node (p : Pool) (n : Node) : Option (Pool × Nat) :=
   if n.childLt p.len then
-    match findKey n.key p.keys with
+    match findKey n.key window p.keys with
     | some d => some (p, p.len - 1 - d)
     | none => some (⟨n :: p.nodes, n.key :: p.keys, p.len + 1⟩, p.len)
   else none
@@ -124,15 +129,19 @@ theorem Node.eval_congr (c : Ctx) (n : Node) (k : Nat) (h : n.childLt k = true) 
   · rw [hg _ h.1.1, hg _ h.1.2, hg _ h.2]
   · rw [hg _ h]
 
-theorem findKey_spec (k : Nat) (ks : List Nat) (d : Nat) (h : findKey k ks = some d) : d < ks.length ∧ ks[d]? = some k := by
-  induction ks generalizing d with
-  | nil => simp [findKey] at h
+theorem findKey_spec (k : Nat) (f : Nat) (ks : List Nat) (d : Nat) (h : findKey k f ks = some d) :
+    d < ks.length ∧ ks[d]? = some k := by
+  induction ks generalizing d f with
+  | nil => cases f <;> simp [findKey] at h
   | cons k' ks ih =>
-    simp only [findKey] at h
-    split at h
-    · cases h; simp_all
-    · obtain ⟨d', h1, rfl⟩ := Option.map_eq_some_iff.mp h
-      have := ih d' h1; simp [this.2]; omega
+    cases f with
+    | zero => simp [findKey] at h
+    | succ f =>
+      simp only [findKey] at h
+      split at h
+      · cases h; simp_all
+      · obtain ⟨d', h1, rfl⟩ := Option.map_eq_some_iff.mp h
+        have := ih f d' h1; simp [this.2]; omega
 
 theorem wf_get (ns : List Node) (hw : WFNodes ns) (d : Nat) (hd : d < ns.length) :
     (ns[d]).childLt (ns.length - 1 - d) = true := by
@@ -185,7 +194,7 @@ theorem Pool.node_spec (c : Ctx) (p p' : Pool) (n : Node) (i : Nat) (hw : p.WF) 
     split at h
     · rename_i d hd
       cases h
-      obtain ⟨hdl, hkd⟩ := findKey_spec _ _ _ hd
+      obtain ⟨hdl, hkd⟩ := findKey_spec _ _ _ _ hd
       rw [hk, List.length_map] at hdl
       rw [hk, List.getElem?_map, List.getElem?_eq_getElem hdl] at hkd
       have hn : p.nodes[d] = n := Node.key_inj (by simpa using hkd)
