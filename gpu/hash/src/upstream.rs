@@ -26,3 +26,27 @@ pub(crate) use prover::definitions::USE_REDUCED_BLAKE2_ROUNDS;
 #[cfg(test)]
 pub(crate) type Blake2sTranscript =
     prover::transcript::Blake2sTranscript<{ USE_REDUCED_BLAKE2_ROUNDS }>;
+
+#[cfg(test)]
+pub(crate) use fft::Twiddles;
+#[cfg(test)]
+pub(crate) use field::proth120::Proth120;
+#[cfg(test)]
+pub(crate) use prover::cs::utils::split_timestamp;
+#[cfg(test)]
+pub(crate) use prover::gkr::prover::{CommitmentMode, GKRProof};
+#[cfg(test)]
+pub(crate) use prover::gkr::whir::coset_commit::{
+    CosetByCosetBaseCommitment, CosetByCosetExtCommitment,
+};
+#[cfg(test)]
+pub(crate) use prover::merkle_trees::{
+    keccak256_for_everything_tree::{keccak_leaf_encoding_words, Keccak256MerkleTreeWithCap},
+    ColumnMajorMerkleTreeConstructor, MerkleTreeCapVarLength, PathQueryable, PlainCosetLeaves,
+};
+#[cfg(test)]
+pub(crate) use prover::query_utils::{assemble_query_index, BitSource};
+#[cfg(test)]
+pub(crate) use transcript::Transcript;
+#[cfg(test)]
+pub(crate) use transcript::{Keccak256Seed, Keccak256Transcript};

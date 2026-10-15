@@ -11,6 +11,10 @@
 mod upstream;
 
 pub mod blake2s;
+pub mod keccak256;
+
+#[cfg(feature = "bench")]
+pub mod bench;
 
 #[cfg(test)]
 gpu_core::force_serial_libtest!();
