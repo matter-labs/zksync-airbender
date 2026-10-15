@@ -74,8 +74,9 @@ bug fixes are authorized separately from the deferred formal-refinement work.
 Conditional [native mixed-ROM composition](Airbender/Review/Trace/UnifiedReduced/NativeMixedROM.lean)
 is checked: public boot inputs and the explicit F04 RAM-port contract give one
 physical ordinary/caller/worker memory history and terminal public cells.
-Full custom-call retirement still needs the reference connection described below;
-the retained initialization/teardown artifact still lacks local proof input.
+[Full mixed custom-call retirement](Airbender/Review/Trace/UnifiedReduced/FullExecution.lean)
+is also checked under the explicit F02/F03 and existing public protocol profiles.
+The retained initialization/teardown artifact still lacks local proof input.
 Independent shared-history composition is checked. Completed transport, cuts,
 selected hash-reference composition and control preparation are recorded in
 [Verification status](VERIFICATION_STATUS.md) and the review guides; do not restart
@@ -97,10 +98,10 @@ in one initialized history. Public mode, cuts, duration and code coverage remain
 explicit inputs; acceptance alone does not force every execution into a complete
 hash protocol. Zero-clock hash workers remain explicit residuals with their actual
 prefix effects. See [the coverage result](Airbender/Review/Trace/UnifiedReduced/Segmentation.lean).
-The remaining whole-execution/invalid-call boundaries are tasks 2–4 below, not
-additional preparation variants.
+Conditional whole-execution composition is closed below; remaining enforcement
+boundaries do not create additional preparation variants.
 
-2. **Whole mixed caller retirement — external ABI blocker.**
+2. **Whole mixed caller retirement — conditional integration checked.**
    [Shared cycle composition](Airbender/Review/Trace/UnifiedReduced/MixedCycles.lean)
    now places original ordinary/custom retirement, caller observations, every
    worker and the complete raw PC/clock path in one initialized history. The
@@ -115,8 +116,13 @@ additional preparation variants.
    operands, full state/frame and original PC advance. The existing complete
    G, extended-round and Keccak spans now supply full-state reference micro-call sequences
    with derived ABI.
-   Hash caller PC retirement and whole mixed sequencing under the occurrence
-   ledger remain.
+   [Full mixed execution](Airbender/Review/Trace/UnifiedReduced/FullExecution.lean)
+   now connects each actual fetched caller and original PC retirement into one
+   `Realizes` chain with ordinary/TRIADD/XORROT steps. It starts at the original
+   public initial state and reaches native terminal PC/cells. The existing
+   prepared-protocol profile derives full hash ABI and masks; F03's occurrence
+   ledger derives total participation. Public initial PC is explicit, with no
+   initial nextPC requirement. No read, result or desired-execution premise was added.
    General acceptance still needs actual control/participation enforcement.
    Another preparation variant cannot close it.
 3. **Native worker ROM — conditional composition checked, enforcement open.**
@@ -124,9 +130,9 @@ additional preparation variants.
    transfers and shared logical matching now compose. The F04 RAM-port contract
    remains explicit; arbitrary native acceptance still admits the ROM-shadow COPY
    discrepancy. Its implementation finding is not closed. Control/participation
-   contracts likewise allow further conditional proof work on full custom calls;
-   that integration must establish the actual reference transition, not just
-   repeat current worker observations or selected arithmetic effects.
+   Full custom-call integration now establishes actual complete reference
+   transitions under the named control/participation contracts. Their use does
+   not resolve implementation enforcement findings.
 4. **Remaining global boundaries.** F01 terminal-PC normalization is resolved in
    the logical model under explicit canonical total-verifier boundary closure.
    Cryptographic enforcement and Rust/artifact correspondence remain deferred.

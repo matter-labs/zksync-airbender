@@ -12,12 +12,12 @@ set_option maxHeartbeats 800000
 theorem step_in_span [Fact p.Prime] (hp : 8388608 ≤ p)
     (inverse : 64 * (-31457280 : ZMod p) = 1)
     {data : Delegation.MemoryData p} {initial before after : State} {domain : List Cell}
-    {events : List MemoryAccess} {flags : Fin 8}
+    {events : List MemoryAccess} {historyCells : List Cell} {flags : Fin 8}
     (accepted : Delegation.MemoryAccepted data)
     (inputs : Blake2Round.Proofs.BoundaryCallInputs data initial domain flags)
     (ram : ∀ address, Cell.ram address ∈ domain → ROM.limit ≤ address.toNat)
     {row : Delegation.Row p} (member : row ∈ data.rows)
-    (history : SailHistory domain events before after)
+    (history : SailHistory historyCells events before after)
     (permutation : events.Perm (row.memorySteps.map transferEvent))
     (observed : ∀ port ∈ row.ports, ∃ cell : Cell,
       cell.addressCode = port.address.code row.assignment ∧

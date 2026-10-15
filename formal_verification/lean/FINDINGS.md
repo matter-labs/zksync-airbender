@@ -58,8 +58,11 @@ inspected implementation mechanisms, with Rust/argument refinement still externa
 their conditional logical results remain checked. F06 is an explicit project/Sail
 profile difference. F07/F08's complete-protocol profiles are scope conditions, with
 the zero-clock exception retained under F03. F09's general extraction/fidelity
-obligation is distinct from its concrete AIH-336 bug. F10 depends on the unresolved
-F02–F04 semantic connections and is not closed by the temporary contracts.
+obligation is distinct from its concrete AIH-336 bug. F10's conditional integration
+is now checked in [full mixed execution](Airbender/Review/Trace/UnifiedReduced/FullExecution.lean);
+unrestricted acceptance still depends on unresolved F02–F04 enforcement. Historical
+progress snapshots below retain their original narrower claims; the F10 section
+records the completed connection.
 
 **Assessment of the Linear comments.** All five comments across these five issues
 were read; AIH-113 has none, and no comment pages remained.
@@ -572,7 +575,7 @@ retain the existing regression roots with no handwritten project diagnostics.
 | F07 | Standalone worker claims retain control/participation conditions | Unresolved general binding; discharged in specified stronger scopes | `rounds`, `RoundMask`, `keccakActive` |
 | F08 | Complete hash claims retain protocol shape and first-span restrictions | Public-program binding derives selected span/controller shape and all issued round coverage/masks; full coverage exposes the zero-clock extended-round boundary | Mode/duration/preparation, public code profile, controller extents/full coverage and legacy prefix conditions |
 | F09 | Decoder/setup models need an implementation binding | Unresolved provenance/structural correspondence | Modeled table equality and logical decoder membership |
-| F10 | Caller-cycle effects are weaker than full custom instruction execution | Shared composition checked; complete bigint retirement connected under F02; hash/mixed sequencing pending | One history and raw PC path do not turn accepted invalid calls into full CSR reference execution |
+| F10 | Caller-cycle effects are weaker than full custom instruction execution | Complete mixed CSR reference execution now checked under explicit F02/F03 and the public protocol/RAM profiles | General acceptance still admits invalid commands and unissued effects; the conditional theorem does not fix F02/F03/F04 |
 
 Review F01's external correspondence and F02–F04 first. F05 and F06 establish why current
 participation/profile restrictions matter. F07–F10 identify assumptions or narrower
@@ -1016,13 +1019,30 @@ continues to exclude delegation callers from its successful-instruction registry
 **Conditional integration.** [Bigint caller retirement](Airbender/Review/Trace/UnifiedReduced/BigintCalls.lean)
 now establishes the complete successful reference state transition and PC advance
 under the temporary F02 command contract. Hash-call reference transitions and
-whole mixed sequencing under the temporary occurrence ledger remain pending.
+whole mixed sequencing are now connected in
+[full_execution_soundness](Airbender/Review/Trace/UnifiedReduced/FullExecution.lean)
+under the temporary occurrence ledger. Every ordinary/TRIADD/XORROT and complete
+bigint/G/extended-round/Keccak caller step fetches its actual public instruction,
+executes in the same full Sail states and retires to the next native PC. The
+chain starts at the original public state and reaches actual terminal cells/PC;
+it is a `Realizes` result, rather than the older observational certificate.
+Public initial PC, readonly code/configuration, tracked-RAM domain, modeled tables,
+logical matching and the existing complete prepared-protocol profile remain
+explicit. Per-row reads, ABI controls, lane bounds, pointer conditions and
+intermediate states are derived. The occurrence ledger derives total coverage
+and excludes zero-clock prefixes; no positive-invocation premise is added.
 The [G](Airbender/Review/Trace/Workers/Blake2G/ReferenceCalls.lean) and
 [extended-round](Airbender/Review/Trace/Workers/Blake2Round/ReferenceCalls.lean) and
 [Keccak](Airbender/Review/Trace/Workers/Keccak/ReferenceCalls.lean)
 worker reference sequences now fix every full Sail micro-call state/frame under the existing complete-span
-profiles; they add no per-row control/pointer/result assumption and do not yet
-claim mixed caller PC retirement.
+profiles; they add no per-row control/pointer/result assumption. These bridges
+now also supply mixed caller PC retirement. The COPY→LW/SW regression starts
+with public PC zero and nextPC 123 and realizes the complete mixed trace.
+
+**Scope closure.** F10's conditional proof integration is complete. F02/F03/F04
+remain implementation findings; their temporary contracts are neither fixes nor
+unrestricted acceptance claims. Initialization/teardown is a separate artifact
+boundary, to be discussed after this integration.
 
 **External closure needed.** Bind accepted caller validity and participation to
 the complete pinned reference, including invalid calls, or make an explicit
