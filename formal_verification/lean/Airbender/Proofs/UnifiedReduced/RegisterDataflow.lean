@@ -169,6 +169,7 @@ theorem public_register_dataflow_after_initial [Fact p.Prime]
   | registerFrame _ scope _ _ => exact scope.afterInitial
   | loadFrame _ scope _ => exact scope.afterInitial
   | storeFrame _ scope => exact scope.afterInitial
+  | callerFrame _ scope _ _ => exact scope.afterInitial
 
 /-- Decoded public GPR writes to another GPR only refresh any access to the tracked cell.
     The actual row and every selected edge follow from native clocks and public
@@ -571,6 +572,87 @@ theorem store_frame_token [Fact p.Prime] (hp : 8388608 ≤ p)
   exact frame_value_token hp clockInverse accepted publicProgram initialization uniqueSeeds sourceFloor seedToken aligned
     (store_frame_refreshes hp clockInverse setup accepted publicProgram ordinaryProgram scope aligned) matching
 
+private def registerFramePort (port : MemoryPort) : Bool :=
+  port.writeValue.isNone || match port.address with
+    | .constantRegister index => index == 10 || index == 12
+    | .indirect _ => true
+    | _ => false
+
+theorem worker_register_refreshes (row : Delegation.Row p) {port : MemoryPort}
+    (member : port ∈ row.ports) {register : BitVec 5}
+    (notPointer : register ≠ 10) (notControl : register ≠ 12)
+    (same : (readToken row.assignment port).address = (Cell.register register).addressCode) :
+    (row.writeToken port).value = (readToken row.assignment port).value := by
+  have checked : row.ports.toList.all registerFramePort = true := by
+    cases row with
+    | mk family w => cases family <;> dsimp only [Delegation.Row.ports] <;> decide +kernel
+  have valid := List.all_eq_true.mp checked port (by simpa using member)
+  by_cases readonly : port.writeValue = none
+  · simp only [Delegation.Row.writeToken, readToken, MemoryPort.writeCode, readonly,
+      Option.getD_none, MemoryPort.readCode]
+  have written : port.writeValue.isNone = false := by cases h : port.writeValue <;> simp_all
+  simp only [registerFramePort, written, Bool.false_or] at valid
+  cases address : port.address with
+  | constantRegister index =>
+    have indexSame : index = register.toNat := by
+      simpa only [readToken, address, MemoryAddress.code, Cell.addressCode, Nat.pair_eq_pair,
+        true_and, and_true] using same
+    have options : index = 10 ∨ index = 12 := by simpa [address] using valid
+    rcases options with eq | eq
+    · have equal : register.toNat = 10 := indexSame.symm.trans eq
+      exact False.elim (notPointer (BitVec.eq_of_toNat_eq equal))
+    · have equal : register.toNat = 12 := indexSame.symm.trans eq
+      exact False.elim (notControl (BitVec.eq_of_toNat_eq equal))
+  | register _ => simp [address] at valid
+  | mixed _ _ _ => simp [address] at valid
+  | indirect _ => simp [readToken, address, MemoryAddress.code, Cell.addressCode, Nat.pair_eq_pair] at same
+
+theorem caller_frame_refreshes [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {ca oa : List (BitVec 32)} {cut : Nat} {register : BitVec 5}
+    (setup : data.machine.rom = Setup.table before)
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    (ordinaryProgram : Mixed.programImage before oa = some program)
+    (scope : CallerFramePreparation data program cut)
+    (nonzero : register ≠ 0) (notPointer : register ≠ 10) (notControl : register ≠ 12)
+    (aligned : cut % 4 = 0) :
+    ∀ edge ∈ data.windowSteps (cut - 4) cut, edge.1.address = (Cell.register register).addressCode →
+      edge.2.value = edge.1.value := by
+  have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
+  have requests := request_binding size clockInverse accepted.toRequestChecks publicProgram
+  intro edge selected same
+  rcases List.mem_append.mp selected with machine | worker
+  · obtain ⟨row, selected, edgeMember⟩ := List.mem_flatMap.mp machine
+    obtain ⟨member, range⟩ := List.mem_filter.mp selected
+    have range := of_decide_eq_true range
+    have clocks := machine_clock_facts size clockInverse accepted.toRequestChecks publicProgram member
+    have last : Delegation.Caller.startClock row + 4 = cut := by omega
+    have caller : row ∈ data.callers := by
+      by_contra ordinary
+      cases row with
+      | mk family w =>
+        cases family
+        obtain ⟨entry, present, _, address⟩ := ordinary_frame_entry (by omega) clockInverse setup accepted
+          publicProgram ordinaryProgram scope.registry member ordinary last
+        exact scope.ordinary entry present address
+    obtain ⟨port, included, rfl⟩ := List.mem_map.mp edgeMember
+    rw [machine_ports_caller caller] at included
+    have ports : port = importedConstraintsMemoryPorts[0] ∨ port = importedConstraintsMemoryPorts[2] := by
+      simpa [architecturalPorts] using included
+    have binding := (requests.callers row caller).registers
+    have notZero : (Cell.register 0).addressCode ≠ (Cell.register register).addressCode := by
+      intro equal
+      exact nonzero (Cell.register.inj (cell_address_injective equal).symm)
+    rcases ports with rfl | rfl
+    · exact False.elim (notZero (binding.1.symm.trans same))
+    · have address : (readToken row.assignment importedConstraintsMemoryPorts[2]).address =
+          (Cell.register 0).addressCode := binding.2.1
+      exact False.elim (notZero (address.symm.trans same))
+  · obtain ⟨row, _, step⟩ := List.mem_flatMap.mp worker
+    obtain ⟨port, included, rfl⟩ := List.mem_map.mp step
+    exact worker_register_refreshes row (by simpa using included) notPointer notControl same
+
 theorem public_register_dataflow_token [Fact p.Prime] (hp : 8388608 ≤ p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
@@ -623,6 +705,13 @@ theorem public_register_dataflow_token [Fact p.Prime] (hp : 8388608 ≤ p)
     have floor := public_register_dataflow_after_initial prior
     exact store_frame_token hp clockInverse setup accepted publicProgram ordinaryProgram initialization uniqueSeeds scope
       floor (fun _ prefixMatching => ih nonzero (by omega) prefixMatching) aligned matching
+  | callerFrame prior scope notPointer notControl ih =>
+    intro tokens nonzero aligned matching
+    have floor := public_register_dataflow_after_initial prior
+    exact frame_value_token hp clockInverse accepted publicProgram initialization uniqueSeeds floor
+      (fun _ prefixMatching => ih nonzero (by omega) prefixMatching) aligned
+      (caller_frame_refreshes hp clockInverse setup accepted publicProgram ordinaryProgram scope nonzero notPointer notControl aligned)
+      matching
 
 theorem public_register_dataflow_control_preparation [Fact p.Prime] (hp : 8388608 ≤ p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)

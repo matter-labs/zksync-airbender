@@ -323,7 +323,8 @@ A tracked token after a gap keeps its actual native clock; it need not be the
 last destination token at cut minus two. A final public ADDI derives the fresh
 canonical output required by the existing complete selected-reference interfaces,
 with their domain/setup/table, coverage and logical-matching boundaries unchanged.
-Each selected cycle is worker-free; earlier effects remain. Native reversed-row
+Each selected ordinary cycle is worker-free; caller gaps retain their workers.
+Native reversed-row
 fixtures prepare x12 = 127/129, copy it to x10 in the gap, then derive x12 = 128
 with signed +1/−1. The gap changes x10 from 65537 and refreshes x12 at clock
 eight; final output retains clock fourteen. A forged source clock ten passes
@@ -367,13 +368,33 @@ pass local native constraints/timestamps but fail initialized matching. Wrong
 public load destinations and store sources are rejected. These are native memory
 preparation claims; the original Sail discarded-load mismatch and native ROM-shadow
 boundary remain explicit. No original memory-clause retirement is added.
-Worker-interleaved preparation, broader operands and whole caller retirement remain
+
+Caller gaps now preserve tracked GPRs outside x10/x12. Public modular code
+excludes ordinary entries at the selected address; accepted decoding and PC/clock
+matching derive the caller. The original imported port descriptors derive the
+write footprint of all four worker layouts: bigint/BLAKE can write x12, Keccak
+can write x10, and other fixed-register accesses only refresh values. RAM writes
+remain in the same initialized history. No worker-free gap, selected worker,
+valid control, nonzero invocation, desired read or inert effect is an input.
+The raw token induction feeds the existing final ADDI and complete selected-reference
+interfaces, retaining their domain/setup/table, coverage and matching boundaries.
+A [reversed-row literal→COPY→ADDI fixture](Tests/UnifiedDelegation.lean) derives x13 = 0→127→127 while COPY
+changes actual x12 = 128→0; final ADDI restores x12 = 128 at clock fourteen.
+The tracked x13 token retains clock six, and the actual x11 pointer refresh retains
+clock eleven. A fabricated clock-eleven x13 source satisfies local constraints and
+timestamps but fails initialized matching. Both issued invalid bigint controls
+also retain the x11 refresh law; ordinary-code gaps and incomplete reference
+windows are rejected. Zero-clock prefix effects, ROM-shadow transport and discarded
+loads keep their existing scope. This proves memory preparation, not full custom
+CSR retirement. Worker writes to the tracked x10/x12 and broader operands remain
+open; they are not assumed to preserve values.
+Tracked x10/x12 worker writes, broader operands and whole caller retirement remain
 open.
 
 All 116 concrete test modules and 143 importer guards pass. The full
-2,390-root axiom audit has 69 axiom-free roots and only the three standard
-Lean axioms. Review checks pass for all 124 public theorem roots, 215 declaration
-names and 738 guide links/anchors, with no handwritten project diagnostics.
+2,404-root axiom audit has 69 axiom-free roots and only the three standard
+Lean axioms. Review checks pass for all 124 public theorem roots, 216 declaration
+names and 742 guide links/anchors, with no handwritten project diagnostics.
 
 ## Review priorities
 

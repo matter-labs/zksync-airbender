@@ -2,6 +2,7 @@ import Airbender.Review.Trace.UnifiedReduced.Theorems
 import Tests.DelegationCaller
 import Tests.BigintMemory
 import Tests.DelegationOperationEffects
+import Airbender.Proofs.UnifiedReduced.RegisterDataflow
 import Airbender.Proofs.UnifiedReduced.Claims
 import Airbender.Review.Circuits.UnifiedReduced.Tables.Setup
 
@@ -2153,5 +2154,383 @@ theorem invalid_bigint_native_caller_cycles (highControl : Bool) :
 theorem memory_native_caller_cycles (store : Bool) :
     UnifiedReduced.Caller.CallerCycleEffects (memoryData store) [memoryEntry store] (memoryBefore store) cells :=
   UnifiedReduced.Caller.native_caller_cycles_soundness (memoryAccepted store) (memoryInputs store) (memoryCode store)
+
+private def frameSeedEntry : UnifiedReduced.ProgramEntry :=
+  ⟨0, 0x07f00693, .ITYPE (127, .Regidx 0, .Regidx 13, .ADDI), ⟨.machine, 0, 0, 13, ⟨127, 0⟩, 1, 0⟩⟩
+private def frameLastEntry : UnifiedReduced.ProgramEntry :=
+  ⟨8, 0x00168613, .ITYPE (1, .Regidx 13, .Regidx 12, .ADDI), ⟨.machine, 13, 0, 12, ⟨1, 0⟩, 1, 0⟩⟩
+private def frameCallerEntry : Delegation.Caller.ProgramEntry :=
+  { Tests.DelegationCaller.entry .bigint with pc := 4 }
+private def frameProgram : List UnifiedReduced.ProgramEntry := [frameSeedEntry, frameLastEntry]
+private def frameBase : State :=
+  { Tests.BigintMemory.before with regs := Tests.BigintMemory.before.regs.insert .x13 (0 : BitVec 32) }
+private def frameBefore : State :=
+  wordWriteState (wordWriteState (wordWriteState frameBase 0 frameSeedEntry.bits) 4 frameCallerEntry.bits) 8 frameLastEntry.bits
+private def frameAssignment (stage : Fin 3) (column : Nat) : ZMod babyBearModulus :=
+  if stage = 1 then
+    if column = 0 then 4
+    else if column = 2 || column = 30 || column = 46 then 8
+    else if column = 32 then 12
+    else if column = 34 then 5
+    else assignment .bigint column
+  else if stage = 0 then
+    if column = 2 || column = 30 || column = 40 then 4
+    else if column = 32 then 8
+    else if column = 7 || column = 44 then 13
+    else if column = 8 || column = 50 then 127
+    else if column = 4 || column = 11 || column = 129 || column = 130 || column = 131 || column = 132 || column = 133 then 1
+    else 0
+  else
+    if column = 0 then 8
+    else if column = 2 || column = 30 then 12
+    else if column = 32 then 16
+    else if column = 5 then 13
+    else if column = 7 || column = 44 then 12
+    else if column = 34 then 6
+    else if column = 40 then 10
+    else if column = 46 then 11
+    else if column = 36 then 127
+    else if column = 50 then 128
+    else if column = 4 || column = 8 || column = 11 || column = 129 || column = 130 || column = 131 || column = 132 || column = 133 then 1
+    else 0
+private def frameRow (stage : Fin 3) : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, frameAssignment stage⟩
+private def frameWorkerAssignment (column : Nat) : ZMod babyBearModulus :=
+  if column = 1 then 9 else Tests.BigintMemory.row column
+private def frameWorker : Delegation.Row babyBearModulus := ⟨.bigint, frameWorkerAssignment⟩
+private def frameCells : List Cell := .register 13 :: cells
+private def frameData : UnifiedReduced.Caller.RequestTrace babyBearModulus where
+  machine := {
+    rows := [frameRow 2, frameRow 1, frameRow 0]
+    rom := UnifiedReduced.Setup.table frameBefore
+    initial := (frameRow 0).start
+    terminal := (frameRow 2).finish
+    initialMemory := (Cell.register 13).initialToken 0 :: base.machine.initialMemory
+    terminalMemory := ⟨(Cell.register 13).addressCode, (12, 0), Nat.pair 127 0⟩ ::
+      ⟨(Cell.register 0).addressCode, (13, 0), 0⟩ ::
+      (frameWorker.memorySteps.map Prod.snd).map fun token =>
+        if token.address = (Cell.register 12).addressCode then ⟨token.address, (14, 0), Nat.pair 128 0⟩ else token }
+  workers := { base.workers with rows := [frameWorker] }
+  program := [frameCallerEntry]
+
+private theorem frameCore (stage : Fin 3) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (frameAssignment stage)) (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table frameBefore)) := by
+  fin_cases stage
+  all_goals simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
+    Verification.environment, Expression.eval, frameAssignment, assignment, assignmentWith,
+    Lookup.Contains, Table.toRaw, fromElements]
+  all_goals repeat' apply And.intro
+  all_goals solve
+    | decide +kernel
+    | (apply Verification.range16_contains; decide +kernel)
+    | (refine ⟨(0 : Fin 2097537), ?_⟩
+       change (#v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0] : Vector (ZMod babyBearModulus) 10) =
+         (UnifiedReduced.Setup.fixedRow (0 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
+       decide +kernel)
+private theorem frameClocks (stage : Fin 3) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (frameAssignment stage)) UnifiedReduced.importedConstraintsTimestampLookups := by
+  rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
+  constructor
+  · simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.constraints]
+  · rw [List.forall_mem_iff_forall_getElem]
+    intro i bound
+    have short : i < 8 := by simpa only [UnifiedReduced.timestamp_count] using bound
+    interval_cases i
+    all_goals apply Trace.Proofs.range_contains
+    all_goals fin_cases stage <;> decide +kernel
+private theorem frameWorkerCore : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment frameWorkerAssignment) (Bigint.importedConstraints Bigint.setupTable) := by
+  simpa [Bigint.importedConstraints, FlatOperation.ConstraintsHoldFlat, Verification.environment,
+    Expression.eval, Lookup.Contains, Table.toRaw, fromElements, Verification.range16, frameWorkerAssignment, Tests.BigintMemory.row]
+    using Tests.BigintMemory.core
+private theorem frameWorkerClocks : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment frameWorkerAssignment) Bigint.importedConstraintsTimestampLookups := by
+  simp [Bigint.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
+  repeat' apply And.intro
+  all_goals apply Trace.Proofs.range_contains
+  all_goals simp [Expression.eval, Verification.environment, frameWorkerAssignment, Tests.BigintMemory.row]
+  all_goals decide +kernel
+private theorem frameAccepted : UnifiedReduced.Caller.MixedMemoryAccepted frameData frameProgram := by
+  constructor
+  · constructor
+    · intro row member
+      have rows : row = frameRow 2 ∨ row = frameRow 1 ∨ row = frameRow 0 := by simpa [frameData] using member
+      rcases rows with rfl | rfl | rfl
+      · exact Verification.holds_append (frameCore 2) (frameClocks 2)
+      · exact Verification.holds_append (frameCore 1) (frameClocks 1)
+      · exact Verification.holds_append (frameCore 0) (frameClocks 0)
+    · intro row member
+      have rows : row = frameRow 2 ∨ row = frameRow 1 ∨ row = frameRow 0 := by simpa [frameData] using member
+      rcases rows with rfl | rfl | rfl <;> decide +kernel
+    · change [(frameRow 0).start, (frameRow 2).finish, (frameRow 1).finish, (frameRow 0).finish].Perm
+        [(frameRow 2).finish, (frameRow 2).start, (frameRow 1).start, (frameRow 0).start]
+      have first : (frameRow 0).finish = (frameRow 1).start := rfl
+      have second : (frameRow 1).finish = (frameRow 2).start := rfl
+      rw [first, second]
+      exact (List.Perm.swap _ _ _).trans ((List.Perm.cons _ (List.Perm.swap _ _ _)).trans
+        (List.Perm.cons _ (List.Perm.cons _ (List.Perm.swap _ _ []))))
+    · intro row member
+      change row ∈ [frameRow 1] at member
+      have same := List.mem_singleton.mp member
+      subst row
+      exact ⟨(0 : Fin 1), by decide +kernel⟩
+    · intro row member
+      have same : row = frameWorker := List.mem_singleton.mp member
+      subst row
+      exact Verification.holds_append frameWorkerCore frameWorkerClocks
+    · intro row member
+      have same : row = frameWorker := List.mem_singleton.mp member
+      subst row
+      rfl
+    · have equal : frameData.calls = frameData.fulfillments := by decide +kernel
+      rw [← equal]
+      exact List.perm_append_comm
+  · intro row member noncaller
+    have rows : row = frameRow 2 ∨ row = frameRow 1 ∨ row = frameRow 0 := by simpa [frameData] using member
+    rcases rows with rfl | rfl | rfl
+    · exact ⟨(1 : Fin 2), by decide +kernel⟩
+    · exact False.elim (noncaller (by change frameRow 1 ∈ [frameRow 1]; exact List.mem_singleton_self _))
+    · exact ⟨(0 : Fin 2), by decide +kernel⟩
+  · decide +kernel
+
+private theorem frameInitialization : initialImage frameBefore frameCells = some frameData.machine.initialMemory := by
+  have x0 : (Cell.register 0).read frameBefore = .ok 0 frameBefore := rfl
+  have x10 : (Cell.register 10).read frameBefore = .ok 4194304 frameBefore := by
+    apply read_register
+    simp [frameBefore, frameBase, wordWriteState, Tests.BigintMemory.before, Std.ExtDHashMap.get?_insert]
+  have x11 : (Cell.register 11).read frameBefore = .ok 4194336 frameBefore := by
+    apply read_register
+    simp [frameBefore, frameBase, wordWriteState, Tests.BigintMemory.before, Std.ExtDHashMap.get?_insert]
+  have x12 : (Cell.register 12).read frameBefore = .ok 128 frameBefore := by
+    apply read_register
+    simp [frameBefore, frameBase, wordWriteState, Tests.BigintMemory.before, Std.ExtDHashMap.get?_insert]
+  have x13 : (Cell.register 13).read frameBefore = .ok 0 frameBefore := by
+    apply read_register
+    simp [frameBefore, frameBase, wordWriteState]
+  norm_num [frameCells, cells, Tests.DelegationOperationEffects.sharedCells, Tests.BigintMemory.cells,
+    List.range_succ, initialImage, List.mapM_cons, List.mapM_nil, x0, x10, x11, x12, x13]
+  simp [Cell.read, _root_.Sail.ArchSem.readBytes, _root_.Sail.ArchSem.readByte,
+    EStateM.run, get, getThe, MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get,
+    EStateM.pure, frameBefore, frameBase, wordWriteState, Tests.BigintMemory.before, List.range_succ,
+    Std.ExtHashMap.getElem_insert, Cell.initialToken, frameData, base, Tests.DelegationOperationEffects.sharedData,
+    frameWorker, Delegation.Row.memorySteps, Delegation.Row.ports, Bigint.importedConstraintsMemoryPorts,
+    readToken, MemoryAddress.code, Verification.IndirectPort.rawAddress, MemoryPort.readCode,
+    WordColumns.code, WordColumns.evaluate, rawPair, frameWorkerAssignment, Tests.BigintMemory.row,
+    Word.ofBitVec, limbBase]
+  decide +kernel
+private theorem frameImage : UnifiedReduced.Mixed.programImage frameBefore [0, 8] = some frameProgram := by
+  have first : (Cell.ram 0).read frameBefore = .ok frameSeedEntry.bits frameBefore :=
+    written_word_disjoint 8 _ (by decide) (written_word_disjoint 4 _ (by decide) (written_word_read _ 0 _))
+  have last : (Cell.ram 8).read frameBefore = .ok frameLastEntry.bits frameBefore := written_word_read _ 8 _
+  have df : run (SailRV32.Functions.encdec_backwards frameSeedEntry.bits) frameBefore =
+      .ok frameSeedEntry.instruction frameBefore := by with_unfolding_all rfl
+  have dl : run (SailRV32.Functions.encdec_backwards frameLastEntry.bits) frameBefore =
+      .ok frameLastEntry.instruction frameBefore := by with_unfolding_all rfl
+  have mf : UnifiedReduced.Mixed.decoderFields frameSeedEntry.instruction = some frameSeedEntry.data := rfl
+  have ml : UnifiedReduced.Mixed.decoderFields frameLastEntry.instruction = some frameLastEntry.data := rfl
+  simp only [UnifiedReduced.Mixed.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
+    programEntryRunWith, first, last, df, dl, mf, ml, bind, Option.bind, pure]
+  rfl
+private theorem frameInputs : UnifiedReduced.Caller.MixedMemoryInputs frameData frameProgram frameBefore [4] [0, 8] frameCells := by
+  refine ⟨?_, frameImage, frameInitialization, by decide +kernel, ?_, rfl, rfl, ?_⟩
+  · constructor
+    · have bytes : (Cell.ram 4).read frameBefore = .ok frameCallerEntry.bits frameBefore :=
+        written_word_disjoint 8 _ (by decide) (written_word_read _ 4 _)
+      have decoded : run (SailRV32.Functions.encdec_backwards frameCallerEntry.bits) frameBefore =
+          .ok frameCallerEntry.instruction frameBefore := Tests.DelegationCaller.original_decoder .bigint frameBefore
+      have fields : Delegation.Caller.decoderFields frameCallerEntry.instruction = some frameCallerEntry.data :=
+        Tests.DelegationCaller.metadata .bigint
+      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageRunWith,
+        List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+      rfl
+    · change 4 < timestampBase ∧ 0 < timestampBase
+      norm_num [timestampBase]
+    · decide +kernel
+  · intro cell member
+    rcases List.mem_cons.mp member with rfl | member
+    · trivial
+    · exact Tests.DelegationOperationEffects.sharedInputs.aligned cell member
+  · intro worker member family
+    have same : worker = frameWorker := List.mem_singleton.mp member
+    subst worker
+    cases family
+private theorem frameRegistry : UnifiedReduced.Caller.WrappedSequentialProgram frameProgram := by
+  constructor
+  · intro entry member
+    rcases List.mem_cons.mp member with rfl | member
+    · exact .sequential (.arithmetic (.addi _ _ _))
+    · have same := List.mem_singleton.mp member
+      subst entry
+      exact .sequential (.arithmetic (.addi _ _ _))
+  · intro entry member
+    rcases List.mem_cons.mp member with rfl | member
+    · decide
+    · have same := List.mem_singleton.mp member
+      subst entry
+      decide
+private theorem frameSeedScope : UnifiedReduced.Caller.ControlPreparation frameData frameProgram 8 13 (.addi 127) := by
+  refine ⟨.wrappedSequential (by decide) frameBefore rfl frameRegistry ?_, by decide +kernel, by decide +kernel, by decide +kernel⟩
+  intro entry member address
+  rcases List.mem_cons.mp member with rfl | member
+  · rfl
+  · have same := List.mem_singleton.mp member
+    subst entry
+    change (8 : BitVec 32) = 0 at address
+    contradiction
+private theorem frameCallerScope : UnifiedReduced.Caller.CallerFramePreparation frameData frameProgram 12 := by
+  refine ⟨frameRegistry, ?_, by decide +kernel, by decide +kernel⟩
+  intro entry member
+  rcases List.mem_cons.mp member with rfl | member
+  · decide +kernel
+  · have same := List.mem_singleton.mp member
+    subst entry
+    decide +kernel
+private theorem frameLastScope : UnifiedReduced.Caller.RegisterImmediatePreparation frameData frameProgram 16 13 12 1 := by
+  refine ⟨frameRegistry, ?_, by decide +kernel, by decide +kernel, by decide +kernel⟩
+  intro entry member address
+  rcases List.mem_cons.mp member with rfl | member
+  · change (0 : BitVec 32) = 8 at address
+    contradiction
+  · have same := List.mem_singleton.mp member
+    subst entry
+    rfl
+private theorem framePrior : UnifiedReduced.Caller.PublicRegisterDataflow frameData frameProgram 12 13 127 :=
+  .callerFrame (.prepared (.literal frameSeedScope)) frameCallerScope (by decide) (by decide)
+private theorem framePreparation : UnifiedReduced.Caller.PublicRegisterDataflow frameData frameProgram 16 12 128 := by
+  have step := UnifiedReduced.Caller.PublicRegisterDataflow.addi (cut := 16) framePrior frameLastScope (by decide)
+  have value : UnifiedReduced.Caller.registerImmediateValue (127 : BitVec 32) 1 = 128 := by decide +kernel
+  exact value ▸ step
+
+theorem caller_gap_preparation : UnifiedReduced.Caller.RegisterDataflowBoundaryExecution frameData frameBefore frameCells 12 13 127 :=
+  UnifiedReduced.Caller.Proofs.public_register_dataflow_control_preparation (by decide +kernel) (by decide +kernel)
+    (by decide +kernel) frameAccepted frameInputs framePrior (by decide) (by decide)
+theorem caller_gap_final_preparation : UnifiedReduced.Caller.RegisterDataflowBoundaryExecution frameData frameBefore frameCells 16 12 128 :=
+  UnifiedReduced.Caller.Proofs.public_register_dataflow_control_preparation (by decide +kernel) (by decide +kernel)
+    (by decide +kernel) frameAccepted frameInputs framePreparation (by decide) (by decide)
+
+theorem invalid_bigint_caller_gap_refreshes (highControl : Bool) :
+    ∀ edge ∈ (abiData highControl).windowSteps 4 8,
+      edge.1.address = (Cell.register 11).addressCode → edge.2.value = edge.1.value := by
+  apply UnifiedReduced.Caller.Proofs.caller_frame_refreshes (by decide +kernel) (by decide +kernel)
+    (abiInputs highControl).setup (abiAccepted highControl) (abiInputs highControl).publicProgram
+    (abiInputs highControl).ordinaryProgram (register := 11) (cut := 8)
+  · constructor
+    · constructor
+      · intro _ member
+        cases member
+      · intro _ member
+        cases member
+    · intro _ member
+      cases member
+    · change (8 : Nat) ≤ 8
+      decide
+    · change (8 : Nat) ≤ 8
+      decide
+  all_goals decide
+
+theorem caller_gap_protocol_source : UnifiedReduced.Caller.HashControlPreparation frameData frameProgram 16 (.blakeG true) :=
+  UnifiedReduced.Caller.Proofs.register_dataflow_hash_preparation_source frameInputs.initialization
+    frameInputs.distinct framePrior frameLastScope (by decide) (by decide +kernel)
+
+theorem caller_gap_protocol_preparation : UnifiedReduced.Caller.PreparedBoundaryExecution frameData frameBefore frameCells 16 12
+    (UnifiedReduced.Caller.hashPreparation (.blakeG true)) :=
+  UnifiedReduced.Caller.register_dataflow_hash_preparation_soundness (span := .blakeG true)
+    (by decide +kernel) (by decide +kernel) (by decide +kernel) frameAccepted frameInputs framePrior frameLastScope
+    (by decide) (by decide +kernel) (by decide)
+
+theorem caller_gap_actual_worker_effects :
+    ∃ (tokens : List (MemoryToken babyBearModulus)) (events : List MemoryAccess) (atGap : State),
+      events.Perm ((frameData.prefixSteps 12).map transferEvent) ∧
+      SailHistory frameCells events frameBefore atGap ∧
+      (Cell.register 13).read atGap = .ok 127 atGap ∧
+      (Cell.register 11).read atGap = .ok 4194336 atGap ∧
+      (Cell.register 12).read atGap = .ok 0 atGap ∧
+      (∃ token ∈ tokens, token.address = (Cell.register 13).addressCode ∧
+        (timeOfPair token.time).value = 6 ∧ token.word = Word.ofBitVec 127) ∧
+      ∃ token ∈ tokens, token.address = (Cell.register 11).addressCode ∧
+        (timeOfPair token.time).value = 11 ∧ token.word = Word.ofBitVec 4194336 := by
+  obtain ⟨tokens, _, events, _, atGap, _, permutation, _, history, _, matching, _, boundary, _⟩ :=
+    (UnifiedReduced.Caller.Proofs.mixed_window_execution (lower := 12) (upper := 12)
+      (by decide +kernel) (by decide +kernel) (by decide +kernel) frameAccepted frameInputs
+      (by decide) (by decide) (by decide) (by decide)).execution
+  let tracked : MemoryToken babyBearModulus := ⟨(Cell.register 13).addressCode, (6, 0), Nat.pair 127 0⟩
+  let pointer : MemoryToken babyBearModulus := ⟨(Cell.register 11).addressCode, (11, 0), Nat.pair 32 64⟩
+  let control : MemoryToken babyBearModulus := ⟨(Cell.register 12).addressCode, (11, 0), 0⟩
+  have actual (token : MemoryToken babyBearModulus)
+      (produced : token ∈ frameData.machine.initialMemory ++ (frameData.prefixSteps 12).map Prod.snd)
+      (notRead : token ∉ (frameData.prefixSteps 12).map Prod.fst) : token ∈ tokens := by
+    rcases List.mem_append.mp (matching.mem_iff.mp produced) with present | read
+    · exact present
+    · exact False.elim (notRead read)
+  have trackedPresent : tracked ∈ tokens := actual tracked (by decide +kernel) (by decide +kernel)
+  have pointerPresent : pointer ∈ tokens := actual pointer (by decide +kernel) (by decide +kernel)
+  have controlPresent : control ∈ tokens := actual control (by decide +kernel) (by decide +kernel)
+  obtain ⟨cell, _, code, read⟩ := UnifiedReduced.Caller.Proofs.native_boundary_read boundary trackedPresent
+  have same : cell = Cell.register 13 := Trace.Proofs.cell_address_injective code
+  subst cell
+  obtain ⟨cell, _, code, pointerRead⟩ := UnifiedReduced.Caller.Proofs.native_boundary_read boundary pointerPresent
+  have same : cell = Cell.register 11 := Trace.Proofs.cell_address_injective code
+  subst cell
+  obtain ⟨cell, _, code, controlRead⟩ := UnifiedReduced.Caller.Proofs.native_boundary_read boundary controlPresent
+  have same : cell = Cell.register 12 := Trace.Proofs.cell_address_injective code
+  subst cell
+  have trackedWord : tracked.word = Word.ofBitVec 127 := by decide +kernel
+  have pointerWord : pointer.word = Word.ofBitVec 4194336 := by decide +kernel
+  have controlWord : control.word = Word.ofBitVec 0 := by decide +kernel
+  rw [trackedWord, Word.ofBitVec_roundtrip] at read
+  rw [pointerWord, Word.ofBitVec_roundtrip] at pointerRead
+  rw [controlWord, Word.ofBitVec_roundtrip] at controlRead
+  exact ⟨tokens, events, atGap, permutation, history, read, pointerRead, controlRead,
+    ⟨tracked, trackedPresent, rfl, by decide, trackedWord⟩,
+    pointer, pointerPresent, rfl, by decide, pointerWord⟩
+
+theorem caller_gap_changes_control :
+    ∃ edge ∈ frameData.windowSteps 8 12, edge.1.address = (Cell.register 12).addressCode ∧
+      edge.1.word = Word.ofBitVec 128 ∧ edge.2.word = Word.ofBitVec 0 := by
+  exact ⟨(frameWorker.memorySteps[18]), by decide +kernel, by decide +kernel, by decide +kernel, by decide +kernel⟩
+
+private def frameForgedAssignment (column : Nat) : ZMod babyBearModulus :=
+  if column = 34 then 11 else frameAssignment 2 column
+private def frameForgedData : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
+  { frameData with machine := { frameData.machine with rows := [⟨.machine, frameForgedAssignment⟩, frameRow 1, frameRow 0] } }
+theorem caller_gap_fabricated_source_rejected : ¬ UnifiedReduced.Caller.MixedMemoryAccepted frameForgedData frameProgram := by
+  intro accepted
+  let token : MemoryToken babyBearModulus := ⟨(Cell.register 13).addressCode, (11, 0), Nat.pair 127 0⟩
+  have member : token ∈ frameForgedData.mixedSteps.map Prod.fst := by decide +kernel
+  have absent : token ∉ frameForgedData.machine.initialMemory ++ frameForgedData.mixedSteps.map Prod.snd := by decide +kernel
+  exact absent (accepted.memory.mem_iff.mpr (List.mem_append.mpr (Or.inr member)))
+theorem caller_gap_fabricated_source_native : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment frameForgedAssignment)
+    (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table frameBefore) ++ UnifiedReduced.importedConstraintsTimestampLookups) := by
+  apply Verification.holds_append
+  · simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat, Verification.environment,
+      Expression.eval, frameForgedAssignment, frameAssignment, Lookup.Contains, Table.toRaw, fromElements]
+    repeat' apply And.intro
+    all_goals solve
+      | decide +kernel
+      | (apply Verification.range16_contains; decide +kernel)
+      | (refine ⟨(0 : Fin 2097537), ?_⟩
+         change (#v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0] : Vector (ZMod babyBearModulus) 10) =
+           (UnifiedReduced.Setup.fixedRow (0 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
+         decide +kernel)
+  · rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
+    constructor
+    · simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.constraints]
+    · rw [List.forall_mem_iff_forall_getElem]
+      intro i bound
+      have short : i < 8 := by simpa only [UnifiedReduced.timestamp_count] using bound
+      interval_cases i
+      all_goals apply Trace.Proofs.range_contains
+      all_goals decide +kernel
+
+theorem ordinary_preparation_is_not_caller_gap : ¬ UnifiedReduced.Caller.CallerFramePreparation frameData frameProgram 8 := by
+  intro scope
+  exact scope.ordinary frameSeedEntry (by simp [frameProgram]) rfl
+
+theorem caller_gap_incomplete_reference_rejected :
+    ¬ UnifiedReduced.Caller.ComputedProtocolWindowInputs frameData frameProgram ⟨.blakeG true, 16, 16⟩ := by
+  intro scope
+  have count := scope.calls
+  change 0 = 56 at count
+  contradiction
 
 end Tests.UnifiedDelegation
