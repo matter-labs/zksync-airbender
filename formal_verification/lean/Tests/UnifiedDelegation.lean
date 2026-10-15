@@ -3194,4 +3194,44 @@ theorem bigint_return_normalized_forged_read_native (one : Bool) : FlatOperation
       all_goals apply Trace.Proofs.range_contains
       all_goals cases one <;> decide +kernel
 
+theorem bigint_gaps_admit_empty_hash_segmentation (kind : Fin 4) :
+    UnifiedReduced.Caller.IssuedHashSegmentation (normalizeData kind) [] := by
+  have context : UnifiedReduced.Caller.ProtocolContextInputs (normalizeData kind) (normalizeBefore kind) [0] [4, 8] cells normalizeProgram :=
+    ⟨(normalizeInputs kind).publicProgram, (normalizeInputs kind).ordinaryProgram, (normalizeInputs kind).initialization,
+      (normalizeInputs kind).distinct, (normalizeInputs kind).aligned, (normalizeInputs kind).setup, (normalizeInputs kind).tables⟩
+  apply UnifiedReduced.Caller.hash_segmentation_soundness (cut := 4) (by decide +kernel) (by decide +kernel)
+    (normalizeAccepted kind) context normalizeRegistry
+  · intro _ member; cases member
+  · trivial
+  · intro entry member family
+    have same := List.mem_singleton.mp member
+    subst entry
+    exact False.elim (family rfl)
+
+/-- Public code-policy fixtures; no accepted-trace claim is made for this
+    artificially repeated public terminal clock. Every occurrence must be covered. -/
+theorem hash_segmentation_repeated_occurrence_rejected :
+    ¬ UnifiedReduced.Caller.ProgramHashCallerCoverage repeatedRoundCodeData [⟨.blakeRound 0, 4, 8⟩] := by
+  intro coverage
+  obtain ⟨window, member, lower, upper, _⟩ := coverage (Tests.DelegationCaller.entry .blakeRound)
+    (List.mem_singleton_self _) (by decide) 4294967300
+    (by decide +kernel) (by decide +kernel) (by decide) (by decide +kernel)
+  have same := List.mem_singleton.mp member
+  subst window
+  change 4294967300 < 8 at upper
+  omega
+
+theorem hash_segmentation_wrong_family_rejected :
+    ¬ UnifiedReduced.Caller.ProgramHashCallerCoverage roundCodeData [⟨.keccak, 4, 8⟩] := by
+  intro coverage
+  obtain ⟨window, member, _, _, family⟩ := coverage (Tests.DelegationCaller.entry .blakeRound)
+    (List.mem_singleton_self _) (by decide) 4 (by decide) (by decide) (by decide) (by decide +kernel)
+  have same := List.mem_singleton.mp member
+  subst window
+  cases family
+
+theorem hash_segmentation_overlap_rejected :
+    ¬ UnifiedReduced.Caller.WindowsOrdered 4 [(4, 228), (8, 232)] := by
+  simp [UnifiedReduced.Caller.WindowsOrdered]
+
 end Tests.UnifiedDelegation
