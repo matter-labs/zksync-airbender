@@ -641,7 +641,11 @@ zero seeds come from `inits_or_teardowns_as_flattened_relation` in
 preserve the relevant constraints, queries, ports, clocks, outputs and matching.
 [Unified NativeROM.lean](Airbender/Review/Helpers/UnifiedReduced/NativeROM.lean) exposes its
 projection explicitly. Rust fidelity and cryptographic enforcement remain external;
-worker ROM transport retains the gap recorded in the status table.
+the [native mixed-ROM result](Airbender/Review/Trace/UnifiedReduced/NativeMixedROM.lean)
+now composes public boot initialization, native ordinary ROM interpretation and
+RAM-worker transfers in one physical history with terminal agreement. F04's
+RAM-port contract stays explicit; its implementation enforcement and full
+custom-CSR retirement remain separate. The accepted ROM-shadow case is retained.
 
 The unchanged-Sail theorem retains `NoDiscardedLoads`: an accepted native NOP
 can fail an actual Sail load under sparse memory, as

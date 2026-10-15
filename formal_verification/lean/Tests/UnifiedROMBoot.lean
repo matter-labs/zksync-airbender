@@ -1,5 +1,6 @@
 import Tests.TraceExecution
 import Airbender.Proofs.UnifiedReduced.Claims
+import Airbender.Review.Trace.UnifiedReduced.NativeMixedROM
 
 namespace Tests.UnifiedROMBoot
 open Airbender Arithmetic Trace Reference.RiscV.Sail Reference.Sail
@@ -210,5 +211,50 @@ private theorem execution_inputs : UnifiedReduced.ExecutionInputs trace before c
 theorem sail_complete_trace [MemoryPlatform SailRV32.exception] :
     Realizes (UnifiedReduced.Step [entry]) trace before cells (Trace.ROMView.token before) :=
   UnifiedReduced.execution_soundness (by decide) (by decide) (by decide) execution_inputs accepted decoded
+
+private def mixedNative : UnifiedReduced.Caller.RequestTrace babyBearModulus where
+  machine := trace
+  workers :=
+    { rows := []
+      setup := Delegation.modeledSetup Keccak.Controller.rows
+      initial := []
+      terminal := [] }
+  program := []
+
+private theorem mixedNativeAccepted : UnifiedReduced.Caller.MixedMemoryAccepted mixedNative [entry] := by
+  constructor
+  · constructor
+    · exact accepted.constraints
+    · exact accepted.active
+    · exact accepted.states
+    · intro row member
+      have empty : mixedNative.callers = [] := by decide +kernel
+      rw [empty] at member
+      contradiction
+    · intro row member; cases member
+    · intro row member; cases member
+    · exact List.Perm.refl _
+  · intro row member _
+    exact decoded row member
+  · simpa [mixedNative, UnifiedReduced.Caller.RequestTrace.mixedSteps,
+      UnifiedReduced.Caller.machinePorts, UnifiedReduced.Caller.Selected,
+      trace, nativeRow, assignment, UnifiedReduced.importedConstraintsDecoderColumns,
+      Delegation.MemoryData.steps, Row.reads, Row.writes, Function.comp_def] using accepted.memory
+
+private theorem mixedBoot : UnifiedReduced.Caller.NativeROM.Inputs mixedNative [entry] before cells := by
+  constructor
+  · refine ⟨public_inputs.distinct, public_inputs.aligned, profile, ⟨physical, image⟩,
+      rfl, rfl, ⟨[0], ?_⟩, rfl⟩
+    simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, bind, Option.bind, pure]
+    with_unfolding_all rfl
+  · exact ⟨[], rfl⟩
+  · rfl
+  · intro row member; cases member
+
+theorem mixed_native_rom_execution :
+    UnifiedReduced.Caller.MixedMemoryEffects
+      (UnifiedReduced.Caller.NativeROM.view before mixedNative) before cells :=
+  UnifiedReduced.Caller.NativeROM.memory_soundness mixedNativeAccepted mixedBoot
+    (by intro row member; cases member)
 
 end Tests.UnifiedROMBoot

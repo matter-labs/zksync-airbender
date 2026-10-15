@@ -1,3 +1,4 @@
+import Airbender.Review.Trace.UnifiedReduced.NativeMixedROM
 import Airbender.Review.Trace.ExternalBoundaries
 import Tests.ExternalBoundaries
 import Airbender.Review.Trace.UnifiedReduced.ModularExecution
@@ -2997,3 +2998,27 @@ import Clean.Specs.Keccak256
 #print axioms Tests.BigintAbi.high_control_requires_temporary_assumption
 #print axioms Tests.BigintAbi.valid_control_inhabits_temporary_contract
 #print axioms Tests.DelegationROMBoundary.rom_shadow_requires_temporary_assumption
+
+-- Conditional global native-ROM/worker composition.
+#print axioms Airbender.UnifiedReduced.Caller.NativeROM.view
+#print axioms Airbender.UnifiedReduced.Caller.NativeROM.Inputs
+#print axioms Airbender.UnifiedReduced.Caller.NativeROM.Proofs.selected
+#print axioms Airbender.UnifiedReduced.Caller.NativeROM.Proofs.request
+#print axioms Airbender.UnifiedReduced.Caller.NativeROM.Proofs.caller_query
+#print axioms Airbender.UnifiedReduced.Caller.NativeROM.Proofs.callers
+#print axioms Airbender.UnifiedReduced.Caller.NativeROM.Proofs.calls
+#print axioms Airbender.UnifiedReduced.Caller.NativeROM.Proofs.caller_row
+#print axioms Airbender.UnifiedReduced.Caller.NativeROM.Proofs.zip_maps
+#print axioms Airbender.UnifiedReduced.Caller.NativeROM.Proofs.machine_steps
+#print axioms Airbender.UnifiedReduced.Caller.NativeROM.Proofs.steps
+#print axioms Airbender.UnifiedReduced.Caller.NativeROM.Proofs.accepted
+#print axioms Airbender.UnifiedReduced.Caller.NativeROM.Proofs.inputs
+#print axioms Airbender.UnifiedReduced.Caller.NativeROM.Proofs.memory_soundness
+#print axioms Airbender.UnifiedReduced.Caller.NativeROM.Proofs.ram_binding_of_inputs
+#print axioms Airbender.UnifiedReduced.Caller.NativeROM.acceptance_soundness
+#print axioms Airbender.UnifiedReduced.Caller.NativeROM.initialization_soundness
+#print axioms Airbender.UnifiedReduced.Caller.NativeROM.memory_soundness
+#print axioms Airbender.UnifiedReduced.Caller.NativeROM.ram_binding_soundness
+#print axioms Tests.UnifiedROMBoot.mixed_native_rom_execution
+#print axioms Tests.UnifiedDelegation.mixed_worker_rom_transport
+#print axioms Tests.UnifiedDelegation.rom_interpretation_keeps_worker_requests
