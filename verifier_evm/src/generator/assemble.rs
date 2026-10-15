@@ -304,6 +304,17 @@ pub fn generate_f1_verifiers(
         "__TEMPLATE_F1_DIGEST_BYTES",
         params.digest_bytes,
     );
+    let digest_load = if params.digest_bytes == 32 {
+        "d := calldataload(cp)".to_string()
+    } else {
+        format!(
+            "d := and(calldataload(cp), 0x{}{})",
+            "ff".repeat(params.digest_bytes),
+            "00".repeat(32 - params.digest_bytes)
+        )
+    };
+    assert_eq!(whir_sol.matches("// __F1_DIGEST_LOAD__").count(), 1);
+    let whir_sol = whir_sol.replace("// __F1_DIGEST_LOAD__", &digest_load);
     let (gkr_sol, whir_sol) = if flags.contains(&INSTRUMENTED) {
         (instrument(&gkr_sol), instrument(&whir_sol))
     } else {

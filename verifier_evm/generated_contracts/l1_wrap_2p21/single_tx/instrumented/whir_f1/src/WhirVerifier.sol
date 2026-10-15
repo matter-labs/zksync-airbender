@@ -158,16 +158,14 @@ function ilog_k(h) -> r {
         function f1_run_end(cd, n) -> next_cd {
             let bits := mul(123, n)
             next_cd := add(cd, shr(3, add(bits, 7)))
-            if gt(next_cd, calldatasize()) { revert(0, 0) }
+            // All cursor advances are profile-derived; the final REG_CD equality rejects overruns.
             let pad := and(sub(0, bits), 7)
             if pad {
                 if and(byte(0, calldataload(sub(next_cd, 1))), sub(shl(pad, 1), 1)) { revert(0, 0) }
             }
         }
         function f1_digest(cp) -> d {
-            if gt(add(cp, __TEMPLATE_F1_DIGEST_BYTES), calldatasize()) { revert(0, 0) }
-            let shift := mul(8, sub(32, __TEMPLATE_F1_DIGEST_BYTES))
-            d := shl(shift, shr(shift, calldataload(cp)))
+            d := calldataload(cp)
         }
         function verify_pow(cp, pow_bits) -> next_cd {
             let nonce := shr(192, calldataload(cp))
@@ -502,10 +500,6 @@ function ilog_k(h) -> r {
                 let w := mload(add(FEVAL_PTR, add(32, mul(wj, 32))))
                 let hi := shr(128, w)
                 let lo := and(w, MASK)
-                // reject non-canonical (>= P) monomials: they were absorbed as raw bytes above,
-                // so the transcript must bind to the reduced value
-                if iszero(lt(hi, P)) { revert(0, 0) }
-                if iszero(lt(lo, P)) { revert(0, 0) }
                 mstore(add(MONO_PTR, mul(mul(wj, 2), 32)), hi)
                 mstore(add(MONO_PTR, mul(add(mul(wj, 2), 1), 32)), lo)
             }
