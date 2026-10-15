@@ -198,9 +198,21 @@ write x10 = 0/65795, retain clock-nine refreshes and derive final x12 = 128.
 TRIADD reads actual old x10 = 65537. Stale sources, wrong public destinations/
 forms, unsupported MOPs and discarded selected destinations are checked at the
 existing local/matching/registry boundaries. Pinned custom clauses remain
-unchanged; no full custom retirement or Zimop fallback is asserted. Memory gaps,
-worker-interleaved preparation, broader operands and full Sail retirement remain
-separate.
+unchanged; no full custom retirement or Zimop fallback is asserted.
+`LoadFramePreparation` and `StoreFramePreparation` derive the native GPR/RAM
+footprint from original public decoding, without addresses, loaded values or store
+results as inputs. LW includes discarded destinations as native NOPs; SW derives
+RAM/GPR bank separation. Raw initialized matching preserves the tracked value
+while retaining every real load/store/refresh. Native RAM fixtures derive
+x10 = 4194304→42 and RAM = 42→129, exact clocks six/nine/ten and final x12 = 128
+at clock fourteen. A discarded misaligned LW-to-x0 is admitted with only x0 gap
+accesses and a program failing NoDiscardedLoads; the tracked literal and RAM
+retain clocks six/zero. Fabricated source clocks and RAM reads satisfy local
+constraints/timestamps but fail global matching. Wrong public load destinations
+and store sources are rejected. Original discarded-load and native ROM-shadow
+boundaries stay explicit; no original memory-clause retirement is added.
+Worker-interleaved preparation, broader operands and whole caller retirement
+remain separate.
 
 The [prepared control window](../../Trace/UnifiedReduced/ControlPreparation.lean)
 connects two prepared controls through the same actual intervening history, keeping

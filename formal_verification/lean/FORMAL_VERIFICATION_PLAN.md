@@ -337,8 +337,18 @@ ABI and whole mixed execution remain separate.
    globally rejected; wrong public destinations/forms, unsupported MOPs and
    discarded selected destinations are rejected at the registry boundary.
    Pinned custom clauses remain unchanged; this does not assert full custom
-   retirement or substitute upstream Zimop fallback. Continue memory gaps,
-   worker-interleaved preparation,
+   retirement or substitute upstream Zimop fallback. LW/SW gaps now derive the
+   native GPR/RAM footprint, including the discarded-LW NOP, without supplied
+   effective addresses, loaded values, store results or inert gaps. Initialized
+   RAM fixtures derive x10 = 4194304→42 for LW and RAM = 42→129 for SW, retaining
+   actual register/RAM refreshes and write clocks six/nine/ten. A discarded
+   misaligned LW-to-x0 touches only x0; its program fails NoDiscardedLoads while
+   retaining the tracked literal at clock six and RAM at clock zero. Final signed
+   ADDIs derive x12 = 128 at clock fourteen. Fabricated fresh clocks and RAM reads
+   pass local constraints/timestamps but fail initialized matching; wrong public
+   load destinations and store sources are rejected. Original discarded-load and
+   ROM-shadow boundaries remain; no original memory-clause retirement is added.
+   Continue worker-interleaved preparation,
    broader operand-dependent operations, jumps/branches and whole caller
    retirement, retaining the boundaries for unsupported controls and unissued
    workers.
