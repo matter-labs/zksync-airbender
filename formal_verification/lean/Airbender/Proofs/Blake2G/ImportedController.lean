@@ -29,9 +29,10 @@ theorem controller_setup_row (key : Fin 512) :
   rw [controller_native_row]
   congr 1
   unfold setupRow controllerIndex
-  dsimp only
+  dsimp only [xor8DataRegion, xor3DataRegion, xor4DataRegion, xor7DataRegion,
+    xor9DataRegion, controllerDataRegion]
   have size := key.isLt
   split_ifs <;> try { change 344384 + key.val < _ at *; omega }
-  simp only [controllerDataRegion, Nat.add_sub_cancel_left]
+  simp only [Nat.add_sub_cancel_left]
 
 end Airbender.Blake2G.Control.Proofs

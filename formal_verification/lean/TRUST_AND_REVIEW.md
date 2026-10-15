@@ -164,7 +164,12 @@ retain their previous scope. [Keccak controller outputs](Airbender/Review/Circui
 also import the native region; [kernel proofs](Airbender/Proofs/Keccak/ImportedController.lean)
 check all 4,096 keys, six outputs and discriminator against the unchanged
 reference and concrete setup. Its generalized controllers and invalid/inactive
-rows retain their scope. Other worker/controller/byte/ROM
+rows retain their scope. [G XOR rows](Airbender/Review/Circuits/Blake2G/Tables/XorData.lean)
+and [round XOR rows](Airbender/Review/Circuits/Blake2Round/Tables/XorData.lean) also
+come from their own native artifacts. [G proofs](Airbender/Proofs/Blake2G/ImportedXor.lean)
+and [round proofs](Airbender/Proofs/Blake2Round/ImportedXor.lean) check all 344,384
+fixed rows per circuit, including padding/tags and native field casts; existing
+lookup consumers use those data with the original generic field scopes. Other worker/byte/ROM
 table definitions are still being migrated. Source parsing/emission, general Rust
 refinement and cryptographic query/table authentication remain separate boundaries.
 

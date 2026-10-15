@@ -3229,3 +3229,23 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Bigint.Proofs.setup_row_characterization
 #print axioms Airbender.Bigint.Proofs.setup_row_native_cast
 #print axioms Airbender.Bigint.Proofs.setup_lookup_native_iff
+
+#print axioms Airbender.Setup.Proofs.checkBlocks_sound
+#print axioms Airbender.Setup.Proofs.checkBlocks_cons_iff
+#print axioms Airbender.Setup.Proofs.checkBlocks_nil
+#print axioms Airbender.Blake2G.Proofs.imported_xor_output_checks
+#print axioms Airbender.Blake2G.Proofs.xor_region_reference
+#print axioms Airbender.Blake2G.Proofs.setup_row_characterization
+#print axioms Airbender.Blake2G.Proofs.xor_region_native_cast
+#print axioms Airbender.Blake2Round.Proofs.xor_region_projection
+#print axioms Airbender.Blake2Round.Proofs.setup_row_characterization
+#print axioms Airbender.Blake2Round.Proofs.xor_region_native_cast
+
+#print axioms Airbender.Setup.Proofs.checkBlocks_append_iff
+#print axioms Airbender.Setup.Proofs.raw_toList_append
+#print axioms Airbender.Setup.Proofs.raw_size_append
+#print axioms Airbender.Setup.Proofs.raw_get_append
+#print axioms Airbender.Blake2G.Proofs.XorCertificate.output8
+#print axioms Airbender.Blake2G.Proofs.XorCertificate.output3
+#print axioms Airbender.Blake2G.Proofs.XorCertificate.output4
+#print axioms Airbender.Blake2G.Proofs.XorCertificate.output7
