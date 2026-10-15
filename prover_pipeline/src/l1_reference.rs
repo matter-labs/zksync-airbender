@@ -1023,8 +1023,13 @@ fn cpu_recursion_unified_matches_feeder_seed() {
         })
         .join("basic_fibonacci");
     let name = "recursion_unified.json";
-    let seed_manifest: FeederSeedManifest =
-        read_typed(&seed_dir.join("manifest.json")).expect("feeder seed manifest");
+    let seed_manifest: FeederSeedManifest = read_typed(&seed_dir.join("manifest.json"))
+        .unwrap_or_else(|error| {
+            panic!(
+                "feeder seed manifest: {error}; the feeder reference is not committed, generate it: {}",
+                super::l1_feeder_reference::REGENERATE
+            )
+        });
     let (_, bytes, keccak256) = seed_manifest
         .files
         .iter()

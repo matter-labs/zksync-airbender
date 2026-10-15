@@ -15,7 +15,7 @@ use std::fs::{self, File};
 use std::io::{BufReader, BufWriter, Write};
 
 const FIXTURE_SCHEMA_VERSION: u32 = 1;
-const REGENERATE: &str = "RUST_MIN_STACK=1073741824 cargo test -p prover_pipeline --release --lib l1_feeder_reference::generate_feeder_reference -- --exact --ignored --nocapture --test-threads=1";
+pub(super) const REGENERATE: &str = "RUST_MIN_STACK=1073741824 cargo test -p prover_pipeline --release --lib l1_feeder_reference::generate_feeder_reference -- --exact --ignored --nocapture --test-threads=1";
 
 fn fixture_dir() -> PathBuf {
     std::env::var_os("AB_F3_REFERENCE_DIR")
