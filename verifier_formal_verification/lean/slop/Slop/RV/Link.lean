@@ -8,9 +8,6 @@ set_option linter.unusedSimpArgs false
 
 namespace RV
 
-/-- Memory holding exactly the image bytes (0 elsewhere). -/
-def imageMem (a : Word) : BitVec 8 := if h : a.toNat < Image.bytes.size then Image.bytes[a.toNat] else 0
-
 /-- The little-endian bytes of a list of words. -/
 def bytesOf (code : List Word) : List (BitVec 8) :=
   List.ofFn fun k : Fin (4 * code.length) =>
@@ -35,9 +32,9 @@ theorem write4_at (m : Word → BitVec 8) (b v : Word) (j : Nat) (hj : j < 4) :
   · rw [show b + BitVec.ofNat 32 3 = b + 1 + 1 + 1 by bv_omega]
     simp
 
-theorem codeAt_of_bytes {s : State} (himg : ImageLoaded s) (a : Nat) (code : List Word)
-    (hb : a + 4 * code.length ≤ Image.bytes.size) (hs : Image.bytes.size < 2 ^ 32)
-    (h : (Image.bytes.toList.drop a).take (4 * code.length) = bytesOf code) :
+theorem codeAt_of_bytes {bytes : Array (BitVec 8)} {s : State} (himg : ImageLoaded bytes s) (a : Nat)
+    (code : List Word) (hb : a + 4 * code.length ≤ bytes.size) (hs : bytes.size < 2 ^ 32)
+    (h : (bytes.toList.drop a).take (4 * code.length) = bytesOf code) :
     CodeAt s (BitVec.ofNat 32 a) code := by
   intro i hi
   have key : ∀ j < 4, s.mem (BitVec.ofNat 32 a + BitVec.ofNat 32 (4 * i) + BitVec.ofNat 32 j) =
@@ -47,7 +44,7 @@ theorem codeAt_of_bytes {s : State} (himg : ImageLoaded s) (a : Nat) (code : Lis
     rw [write4_at _ _ _ j hj]
     have hidx : (BitVec.ofNat 32 a + BitVec.ofNat 32 (4 * i) + BitVec.ofNat 32 j).toNat = a + (4 * i + j) := by
       bv_omega
-    have hlt : a + (4 * i + j) < Image.bytes.size := by omega
+    have hlt : a + (4 * i + j) < bytes.size := by omega
     have e := himg (a + (4 * i + j)) hlt
     rw [show BitVec.ofNat 32 (a + (4 * i + j)) = BitVec.ofNat 32 a + BitVec.ofNat 32 (4 * i) + BitVec.ofNat 32 j
       by bv_omega] at e
@@ -91,9 +88,9 @@ theorem bytesOfW_eq (code : List Word) : bytesOfW code = bytesOf code := by
         simp only [show (j + 4) / 4 = j / 4 + 1 by omega, show (j + 4) % 4 = j % 4 by omega, List.getElem_cons_succ]
 
 /-- `codeAt_of_bytes` with the linear byte list (what the kernel evaluates). -/
-theorem codeAt_of_bytesW {s : State} (himg : ImageLoaded s) (a : Nat) (code : List Word)
-    (hb : a + 4 * code.length ≤ Image.bytes.size) (hs : Image.bytes.size < 2 ^ 32)
-    (h : (Image.bytes.toList.drop a).take (4 * code.length) = bytesOfW code) :
+theorem codeAt_of_bytesW {bytes : Array (BitVec 8)} {s : State} (himg : ImageLoaded bytes s) (a : Nat)
+    (code : List Word) (hb : a + 4 * code.length ≤ bytes.size) (hs : bytes.size < 2 ^ 32)
+    (h : (bytes.toList.drop a).take (4 * code.length) = bytesOfW code) :
     CodeAt s (BitVec.ofNat 32 a) code :=
   codeAt_of_bytes himg a code hb hs (by rw [h, bytesOfW_eq])
 
