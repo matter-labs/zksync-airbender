@@ -24,6 +24,7 @@ and the [fixed scope](FORMAL_VERIFICATION_PLAN.md).
 | --- | --- |
 | [Pooled execution](Airbender/Review/Trace/Soundness.lean) | Initialized history derives reads, bounds and decoding; six-family Sail execution realizes terminal PC/cells. |
 | [Mixed cycles](Airbender/Review/Trace/UnifiedReduced/MixedCycles.lean) | Ordinary/custom retirement, [complete bigint calls under F02](Airbender/Review/Trace/UnifiedReduced/BigintCalls.lean), caller observations and every worker share one initialized history and raw PC/clock path. |
+| [Full mixed execution](Airbender/Review/Trace/UnifiedReduced/FullExecution.lean) | Ordinary/TRIADD/XORROT and complete bigint/G/extended-round/Keccak CSR calls reach native terminal PC/cells under the existing public protocol profile and explicit F02/F03 contracts. |
 | [Hash spans](Airbender/Review/Trace/UnifiedReduced/Segmentation.lean) | Existing preparation and selected references compose; issued hash workers partition into complete spans under the public protocol profile. |
 | [Canonical terminal PC](Airbender/Review/Helpers/Context/VerifierBoundary/README.md) | Checked under the external canonical verifier boundary. |
 | [Inactive padding](Airbender/Review/Helpers/Context/PaddingBoundary/README.md) | Architectural erasure and existing execution derived under the external contribution-mask boundary. |
@@ -36,7 +37,6 @@ fixed or independently shown to be enforced. See the [case register](FINDINGS.md
 
 | Claim | Blocker |
 | --- | --- |
-| Full custom-CSR execution of mixed callers | Finish hash caller retirement and whole mixed sequencing under explicit participation; bigint callers and all hash worker reference sequences are connected. Accepted controls 0/65537 and unissued zero-clock effects remain implementation findings. |
 | Initialization/teardown local soundness | Retained artifacts have no equations/range queries; needs richer proof input. |
 
 AIH-334's EVM window check is fixed and tested. AIH-336/315 and the other reviewed
@@ -49,8 +49,8 @@ Separately scoped work: [deferred milestones](FORMAL_VERIFICATION_PLAN.md#deferr
 
 - Library, both executables and all 120 concrete test modules pass.
 - Importer regressions pass.
-- Axiom audit: 2,887 roots, 89 axiom-free; only `propext`, `Classical.choice` and `Quot.sound`.
-- All 157 public Review theorem roots are audited; review/reference checks pass.
+- Axiom audit: 2,907 roots, 89 axiom-free; only `propext`, `Classical.choice` and `Quot.sound`.
+- All 158 public Review theorem roots are audited; review/reference checks pass.
 - No handwritten project diagnostics, `sorry` or project axioms.
 
 [Reproduce the checks](README.md#reproduce).

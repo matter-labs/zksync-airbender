@@ -593,10 +593,18 @@ data and the unchanged-Sail discarded-load restriction. Reads, bounds, decoding
 and schedules remain derived. The statement explicitly does not conclude a
 successful full custom-CSR reference sequence. Both invalid bigint controls
 instantiate the shared certificate; the zero-clock G retains its prefix effect.
-No positive initial-clock premise or valid-control assumption is added. Full-call and
-worker ROM bindings require external inputs or a scope decision; padding is now
-conditionally erased through the user-authorized external contribution boundary;
-these are the stopping boundary for the hourly continuation.
+No positive initial-clock premise or valid-control assumption is added to that
+older certificate. The stronger
+[full mixed execution theorem](Airbender/Review/Trace/UnifiedReduced/FullExecution.lean)
+now proves a genuine complete reference chain under the explicitly temporary
+F02 bigint-command and F03 occurrence-ledger contracts. The existing public
+prepared-protocol profile derives full hash ABI and schedules; initialized history
+derives every operand, pointer and exact full-state write/frame. Original Sail
+PC retirement links ordinary and caller steps from the actual public initial
+state to terminal PC/cells. Public initial PC, configuration, modeled tables,
+logical matching, readonly code and tracked-RAM domain stay explicit; nextPC is
+not assumed prepared. This closes conditional integration, while F02/F03/F04
+enforcement remains open. Padding has its separate authorized contribution boundary.
 Native columns retain full address/time/value limbs, including readonly
 clock refreshes. Bounds, latest-write reads and Clean online-consistent histories
 are derived from those relations and public initialization. Retiming introduces
@@ -621,8 +629,9 @@ still changes actual x12 from zero to one. An issued G worker is covered at its
 actual clock-five invocation, while its one-call interval cannot satisfy the
 56-call reference scope. Missing windows, wrong families, repeated-address omissions
 and overlap are rejected. All four COPY/carry/invalid-bigint preparation fixtures
-remain admitted outside the hash partition. Whole custom-CSR retirement and
-unrestricted invalid-call/ROM behavior remain separate.
+remain admitted outside the hash partition. Whole custom-CSR retirement is now
+checked under the named temporary contracts above; unrestricted invalid-call/ROM
+behavior remains separate.
 
 ## Public state, profiles and external inputs
 
