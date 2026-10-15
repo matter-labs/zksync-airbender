@@ -3,12 +3,15 @@
 
 gpu_core::force_serial_libtest!();
 
-use cpu_execution_prover::test_support::with_l1_wrap_fixture;
+use cpu_execution_prover::test_support::with_l1_wrap_fixture_for;
 use cpu_execution_prover::CpuExecutionProverConfiguration;
+use execution_prover::ExecutionKind;
 use full_statement_verifier::host_utils::{build_unified_stream, load_fsv_program};
 use full_statement_verifier::program_proof::ProgramProof;
-use gpu_execution_prover::memory_sweep::l1::{run_case, CapacityCase, Stage, WrapSource};
-use prover::gkr::prover_config::example_configs::L1_FEEDER_QUERIES_AND_POW;
+use gpu_execution_prover::memory_sweep::l1::{
+    run_case, CapacityCase, Stage, WrapReference, WrapSource, WRAP_QUALIFYING_GIB,
+};
+use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use setups::Setups;
 use sha3::{Digest, Keccak256};
@@ -18,6 +21,13 @@ use std::path::{Path, PathBuf};
 use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
 
 #[derive(Deserialize)]
+struct FileIdentity {
+    name: String,
+    bytes: u64,
+    keccak256: String,
+}
+
+#[derive(Deserialize)]
 struct FsvIdentity {
     role: String,
     stem: String,
@@ -25,13 +35,12 @@ struct FsvIdentity {
     text_keccak256: String,
 }
 
-/// The fields of `prover_pipeline`'s feeder reference manifest this test reads.
+/// The fields of the 2p21 wrap reference manifest this test reads.
 #[derive(Deserialize)]
-struct FeederManifest {
-    fixture_schema_version: u32,
+struct ProofManifest {
+    format_version: u32,
     fsv: Vec<FsvIdentity>,
-    feeder_queries_and_pow: Vec<(usize, u32)>,
-    files: Vec<(String, u64, String)>,
+    files: Vec<FileIdentity>,
 }
 
 /// The fields of the reference `l1_feeder.json` (`prover_pipeline::ProofArtifact`) this test reads.
@@ -43,14 +52,13 @@ struct FeederArtifact {
     setups: Setups,
 }
 
-fn feeder_reference_dir() -> PathBuf {
-    let root = std::env::var_os("AB_F3_REFERENCE_DIR")
+fn reference_dir() -> PathBuf {
+    std::env::var_os("AB_PROTH120_REFERENCE_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
             Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../prover_pipeline/fixtures/l1_feeder_reference")
-        });
-    root.join(std::env::var("AB_F3_INPUT").unwrap_or_else(|_| "basic_fibonacci".into()))
+                .join("../../prover_pipeline/fixtures/l1_reference_2p21")
+        })
 }
 
 fn keccak_hex(bytes: &[u8]) -> String {
@@ -60,46 +68,45 @@ fn keccak_hex(bytes: &[u8]) -> String {
         .collect()
 }
 
-fn feeder_manifest() -> FeederManifest {
-    let path = feeder_reference_dir().join("manifest.json");
+fn proof_manifest() -> ProofManifest {
+    let path = reference_dir().join("manifest.json");
     let file = File::open(&path)
         .unwrap_or_else(|error| panic!("L1 capacity manifest open {}: {error}", path.display()));
-    let manifest: FeederManifest = serde_json::from_reader(BufReader::new(file))
+    let manifest: ProofManifest = serde_json::from_reader(BufReader::new(file))
         .unwrap_or_else(|error| panic!("L1 capacity manifest {}: {error}", path.display()));
     assert_eq!(
-        manifest.fixture_schema_version, 1,
-        "L1 capacity feeder reference schema"
-    );
-    assert_eq!(
-        manifest.feeder_queries_and_pow,
-        L1_FEEDER_QUERIES_AND_POW.to_vec(),
-        "L1 capacity feeder reference was produced under another feeder config"
+        manifest.format_version, 1,
+        "L1 capacity wrap reference manifest format"
     );
     manifest
 }
 
-fn feeder_artifact(manifest: &FeederManifest) -> FeederArtifact {
-    let name = "l1_feeder.json";
-    let (_, bytes, keccak256) = manifest
+fn read_checked<T: DeserializeOwned>(manifest: &ProofManifest, name: &str) -> T {
+    let entry = manifest
         .files
         .iter()
-        .find(|(file, _, _)| file == name)
+        .find(|file| file.name == name)
         .unwrap_or_else(|| panic!("L1 capacity manifest omits {name}"));
-    let path = feeder_reference_dir().join(name);
+    let path = reference_dir().join(name);
     let data = fs::read(&path)
         .unwrap_or_else(|error| panic!("L1 capacity read {}: {error}", path.display()));
     assert_eq!(
         data.len() as u64,
-        *bytes,
+        entry.bytes,
         "L1 capacity reference size differs: {name}"
     );
     assert_eq!(
         keccak_hex(&data),
-        *keccak256,
+        entry.keccak256,
         "L1 capacity reference identity differs: {name}"
     );
-    let artifact: FeederArtifact = serde_json::from_slice(&data)
-        .unwrap_or_else(|error| panic!("L1 capacity artifact {name}: {error}"));
+    serde_json::from_slice(&data)
+        .unwrap_or_else(|error| panic!("L1 capacity artifact {name}: {error}"))
+}
+
+fn feeder_artifact(manifest: &ProofManifest) -> FeederArtifact {
+    let name = "l1_feeder.json";
+    let artifact: FeederArtifact = read_checked(manifest, name);
     assert_eq!(
         artifact.schema_version, 5,
         "L1 capacity artifact schema: {name}"
@@ -111,7 +118,7 @@ fn feeder_artifact(manifest: &FeederManifest) -> FeederArtifact {
     artifact
 }
 
-fn fsv_feeder_wrap(manifest: &FeederManifest) -> (Vec<u32>, Vec<u32>) {
+fn fsv_feeder_wrap(manifest: &ProofManifest) -> (Vec<u32>, Vec<u32>) {
     let dir = std::env::var_os("FSV_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/gkr_verifier"));
@@ -151,12 +158,15 @@ fn run(stage: Stage) {
         .try_init();
     let case = CapacityCase::from_env(stage);
     let row = if case.needs_wrap_source() {
-        let manifest = feeder_manifest();
+        let manifest = proof_manifest();
         let feeder = feeder_artifact(&manifest);
+        let reference: WrapReference = read_checked(&manifest, "l1_bundle.json");
+        assert_eq!(reference.wrap, "2p21", "L1 capacity bundle wrap version");
         let (bin, text) = fsv_feeder_wrap(&manifest);
         let nd_words = build_unified_stream(&feeder.setups, &feeder.proof);
         drop(feeder);
-        with_l1_wrap_fixture(
+        with_l1_wrap_fixture_for(
+            ExecutionKind::L1Wrap21,
             CpuExecutionProverConfiguration::default(),
             bin,
             text,
@@ -170,6 +180,7 @@ fn run(stage: Stage) {
                         tracing_data: fixture.tracing_data,
                         inits_and_teardowns: fixture.inits_and_teardowns,
                         commitment_mode: fixture.commitment_mode,
+                        reference: &reference,
                     }),
                 )
             },
@@ -178,12 +189,48 @@ fn run(stage: Stage) {
         run_case::<std::alloc::Global>(&case, None)
     };
     log::info!(
-        "L1 capacity case {}: fits {}, measured peak {:?} B, failed phase {:?}",
+        "L1 capacity case {}: fits {}, proof_equals_reference {:?}, measured peak {:?} B, failed phase {:?}",
         row.case,
         row.fits,
+        row.proof_equals_reference,
         row.measured_peak_bytes,
         row.failed_phase
     );
+    // run_case writes the evidence row before any correctness or qualification assertion.
+    if row.stage == Stage::Wrap {
+        if row.fits || row.output_fingerprint.is_some() || row.proof_equals_reference.is_some() {
+            assert_eq!(
+                row.proof_equals_reference,
+                Some(true),
+                "L1 capacity completed wrap proof differs from the reference: {}",
+                row.case
+            );
+        }
+        if row.arena_bytes == WRAP_QUALIFYING_GIB << 30 {
+            assert!(
+                row.fits,
+                "L1 capacity wrap does not fit the qualifying arena: {}",
+                row.case
+            );
+        }
+    }
+}
+
+#[test]
+fn cpu_w5_wrap_capacity_reference_is_current() {
+    let manifest = proof_manifest();
+    let _feeder = feeder_artifact(&manifest);
+    let reference: WrapReference = read_checked(&manifest, "l1_bundle.json");
+    assert_eq!(reference.wrap, "2p21");
+    // The typed round trip reproduces the bundle's own serialization of both fields.
+    let bundle = fs::read(reference_dir().join("l1_bundle.json")).unwrap();
+    for field in [&reference.proof_json, &reference.commitment_mode_json] {
+        assert!(bundle
+            .windows(field.len())
+            .any(|window| window == &field[..]));
+    }
+    let (bin, text) = fsv_feeder_wrap(&manifest);
+    assert!(!bin.is_empty() && !text.is_empty());
 }
 
 #[test]
