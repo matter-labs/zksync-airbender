@@ -2677,3 +2677,20 @@ import Clean.Specs.Keccak256
 #print axioms Tests.UnifiedDelegation.bigint_return_two_rejected
 #print axioms Tests.UnifiedDelegation.bigint_return_carry_actual
 #print axioms Tests.UnifiedDelegation.bigint_return_invalid_actual
+
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.bigint_return_preparation_entry
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.bigint_return_row_one
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.bigint_return_preparation_token
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.first_port_prefix_token
+#print axioms Airbender.UnifiedReduced.Caller.BigintReturnPreparation
+#print axioms Airbender.UnifiedReduced.Caller.PublicRegisterDataflow.bigintReturn
+#print axioms Tests.UnifiedDelegation.bigint_return_normalized_boundary
+#print axioms Tests.UnifiedDelegation.bigint_return_normalized_control
+#print axioms Tests.UnifiedDelegation.bigint_return_normalized_protocol_source
+#print axioms Tests.UnifiedDelegation.bigint_return_normalized_protocol_preparation
+#print axioms Tests.UnifiedDelegation.bigint_return_normalized_actual
+#print axioms Tests.UnifiedDelegation.bigint_return_normalizer_xori_rejected
+#print axioms Tests.UnifiedDelegation.bigint_return_xori_one_does_not_normalize
+#print axioms Tests.UnifiedDelegation.bigint_return_normalized_incomplete_reference
+#print axioms Tests.UnifiedDelegation.bigint_return_normalized_forged_read_rejected
+#print axioms Tests.UnifiedDelegation.bigint_return_normalized_forged_read_native

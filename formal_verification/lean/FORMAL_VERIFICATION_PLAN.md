@@ -364,9 +364,18 @@ ABI and whole mixed execution remain separate.
    reads a 256-bit all-ones public RAM source and returns 192→1 at clock seven;
    COPY and both invalid controls 0/65537 retain zero returns. Return two, wrong
    family, ordinary code and cuts beyond the terminal are rejected. This does not
-   validate incoming controls or execute the full CSR reference. Continue exact
-   operand-dependent x10/x12 worker dataflow, broader operations, jumps/branches and
-   whole caller retirement, retaining unsupported-control and unissued-worker cases.
+   validate incoming controls or execute the full CSR reference. Public ORI x12,1
+   now consumes the derived zero/one return and supplies normalized one to public
+   register dataflow. The byte inverse follows from the existing clock inverse;
+   native lookups derive both operands and the result before Sail/round transport.
+   Reversed-row COPY/carry-COPY→ORI→ADDI traces and both invalid controls derive
+   actual return→1→128 with clocks seven/ten/fourteen. A fabricated clock-six
+   read passes local native constraints/timestamps and fails initialized matching;
+   XORI and incomplete selected-reference windows are rejected. Existing selected
+   hash preparation consumes this dataflow with unchanged complete protocol scopes.
+   Continue general operand-dependent x10/x12 worker results, broader operations,
+   jumps/branches and whole caller retirement, retaining unsupported-control and
+   unissued-worker cases.
    COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed
    retained for the second window. Extended BLAKE and Keccak completion controls
    do not restart their protocols; checked regressions forbid treating their
