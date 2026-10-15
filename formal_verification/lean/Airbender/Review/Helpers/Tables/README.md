@@ -1,7 +1,8 @@
 # Shared modeled tables
 
 Shared 13-/16-/19-bit range rows now come from [native setup JSON](../../../../artifacts/setup/README.md),
-with kernel-checked membership bounds. The other table definitions are still
+with kernel-checked membership bounds. [Bigint fixed rows](../../Circuits/Bigint/Tables/Setup.lean)
+also import native data with their carry/low-byte semantics checked. Other table definitions are still
 being migrated from their reviewed models. The definitions state
 which logical queries are members and how returned values are interpreted. Their
 correspondence with the Rust setup generator and cryptographic lookup enforcement
@@ -13,7 +14,7 @@ The [lookup lemmas](../../../Proofs/Lookups.lean) extract modeled pair/range-sig
 low-byte behavior from membership; [byte-table lemmas](../../../Proofs/ByteTables.lean)
 characterize tagged binary rows and their lookup results under stated field bounds.
 Consuming circuit proofs use these results to recover ranges and operation effects.
-Range proofs concern the actual imported rows; byte/subword proofs still concern
+Range and bigint proofs concern the actual imported rows; byte/subword proofs still concern
 their modeled rows. General Rust refinement and cryptographic enforcement remain separate.
 
 [Range](Range.lean) defines limb-range rows; [Bytes](Bytes.lean) defines shared

@@ -34,7 +34,7 @@ private def maximum : Vector Nat 16 := Vector.replicate 16 65535
 private def one : Vector Nat 16 := Vector.ofFn fun i => if i.val = 0 then 1 else 0
 
 -- A concrete all-zero ADD row checks the full imported relation against
--- the modeled production setup; no source-range premise is supplied.
+-- the imported production setup; no source-range premise is supplied.
 private def zeroAddRow : Nat → ZMod babyBearModulus
   | 0 | 55 | 59 | 212 | 214 | 215 => 1
   | _ => 0
@@ -49,12 +49,12 @@ theorem zeroAddSatisfies :
   all_goals solve
     | decide
     | (apply Verification.range16_contains; decide)
-    | (refine ⟨⟨0, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.setupRow])
-    | (refine ⟨⟨262144, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.setupRow])
-    | (refine ⟨⟨1310720, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.setupRow])
-    | (refine ⟨⟨1312768, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.setupRow])
-    | (refine ⟨⟨1316864, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.setupRow])
-    | (refine ⟨⟨1325056, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.setupRow])
+    | (refine ⟨⟨0, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.Proofs.setup_row_characterization])
+    | (refine ⟨⟨262144, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.Proofs.setup_row_characterization])
+    | (refine ⟨⟨1310720, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.Proofs.setup_row_characterization])
+    | (refine ⟨⟨1312768, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.Proofs.setup_row_characterization])
+    | (refine ⟨⟨1316864, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.Proofs.setup_row_characterization])
+    | (refine ⟨⟨1325056, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.Proofs.setup_row_characterization])
 
 /-- A full native witness is observed through the same mapping and shared
     soundness property used by the public theorem. -/
@@ -131,12 +131,12 @@ theorem equalSatisfies :
   all_goals solve
     | decide
     | (apply Verification.range16_contains; decide)
-    | (refine ⟨⟨0, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.setupRow])
-    | (refine ⟨⟨262144, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.setupRow])
-    | (refine ⟨⟨1310720, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.setupRow])
-    | (refine ⟨⟨1312768, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.setupRow])
-    | (refine ⟨⟨1316864, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.setupRow])
-    | (refine ⟨⟨1325056, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.setupRow])
+    | (refine ⟨⟨0, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.Proofs.setup_row_characterization])
+    | (refine ⟨⟨262144, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.Proofs.setup_row_characterization])
+    | (refine ⟨⟨1310720, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.Proofs.setup_row_characterization])
+    | (refine ⟨⟨1312768, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.Proofs.setup_row_characterization])
+    | (refine ⟨⟨1316864, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.Proofs.setup_row_characterization])
+    | (refine ⟨⟨1325056, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.Proofs.setup_row_characterization])
 
 theorem equalSoundness : spec ⟨zero, zero⟩ ⟨zero, ⟨1, 0⟩⟩ := by
   apply modeled_babyBear_soundness _ _ equalRow

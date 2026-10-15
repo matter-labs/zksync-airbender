@@ -3219,3 +3219,7 @@ import Clean.Specs.Keccak256
 #print axioms Tests.SetupImport.range16_padding
 #print axioms Tests.SetupImport.timestamp_last
 #print axioms Tests.SetupImport.program_words
+
+#print axioms Airbender.Bigint.Proofs.setup_row_characterization
+#print axioms Airbender.Bigint.Proofs.setup_row_native_cast
+#print axioms Airbender.Bigint.Proofs.setup_lookup_native_iff

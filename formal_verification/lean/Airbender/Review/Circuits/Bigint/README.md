@@ -24,7 +24,11 @@ indirect addresses and shared aligned/RAM pointer claim.
 [Control](Control.lean), [Additive](Additive.lean), [Equality](Equality.lean),
 [Multiplication](Multiplication.lean) and [Execution](Execution.lean) select
 the seven operation references. [Artifact](Artifact.lean) and [`setup`](Tables/Setup.lean)
-bind imported equations and modeled lookup rows.
+bind imported equations and actual native setup rows. The six fixed-table
+regions come from [setup JSON](../../../../artifacts/setup/README.md); their exact
+carry-range and low-byte meanings are proved in
+[ImportedSetup](../../../Proofs/Bigint/ImportedSetup.lean), then used by the existing
+lookup and multiplication proofs. No row-equivalence premise is added.
 
 Address correctness and native operation observations do not establish full
 caller-control validity. Issued public controls 0 and 65537 remain checked
