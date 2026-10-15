@@ -326,12 +326,16 @@ def rvAbstractValues (bound : Nat := 25) : TacticM Unit := withMainContext do
     next := next + 1
     evalTactic (← `(tactic| generalize $h:ident : $es = $v:ident at $locs*))
 
-open Lean Elab Tactic Meta in
 /-- `rv_cut`: in a goal `∃ m s', run m X = some s' ∧ …`, replaces the (grown) state term `X` by a fresh state with
 facts `cut_pc`, `cut_mem`, `cut_r1 … cut_r31` giving its PC, memory and registers in normal form (in terms of the
 start state). Later `rv_steps` use them, so the cost of a step no longer grows with the number of steps taken.
-Facts of an earlier cut are consumed and cleared. -/
-elab "rv_cut" : tactic => withMainContext do
+Facts of an earlier cut are consumed and cleared. `rv_cut with h₁, …`: also normalize with `hᵢ` (e.g. a returned
+call's `∀ i, calleeSaved i → S₁.getReg i = …`, discharged by `rv_callee_saved`). -/
+syntax "rv_cut" (" with " term,*)? : tactic
+
+open Lean Elab Tactic Meta in
+elab_rules : tactic | `(tactic| rv_cut $[with $xs,*]?) => withMainContext do
+  let extra : Array Term := xs.map (·.getElems) |>.getD #[]
   let g ← getMainGoal
   let tgt ← instantiateMVars (← g.getType)
   let some runX := tgt.find? fun e => e.isAppOfArity ``RV.run 2 && !(e.getArg! 1).hasLooseBVars
@@ -360,9 +364,11 @@ elab "rv_cut" : tactic => withMainContext do
   let (_, g2) ← g1.introN names.size tmp.toList
   replaceMainGoal [g2]
   let oldL ← old.mapM fun n => `(Lean.Parser.Tactic.simpLemma| $(mkIdent n):ident)
+  let extraL ← extra.mapM fun t => `(Lean.Parser.Tactic.simpLemma| $t:term)
+  let allL := oldL ++ extraL
   let locs := tmp.map mkIdent
-  evalTactic (← `(tactic| simp (config := { implicitDefEqProofs := false }) only [rv_state, reduceRSet,
-    BitVec.reduceAdd, $oldL,*] at $locs*))
+  evalTactic (← `(tactic| try simp (config := { implicitDefEqProofs := false }) (disch := rv_callee_saved) only [
+    rv_state, reduceRSet, BitVec.reduceAdd, $allL,*] at $locs*))
   withMainContext do
     let g ← getMainGoal
     let mut g := g

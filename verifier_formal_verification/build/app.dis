@@ -36,7 +36,7 @@ Disassembly of section .text:
       54:      	sw	s5, 0x34(sp)
       58:      	sw	s6, 0x30(sp)
       5c:      	addi	s0, sp, 0x50
-      60:      	jal	ra, 0x9f8 <_RNvNtCsgEj7ED84xCy_12riscv_common13boot_sequence4init>
+      60:      	jal	ra, 0x95c <_RNvNtCsgEj7ED84xCy_12riscv_common13boot_sequence4init>
       64:      	lui	a0, 0x1401
       68:      	addi	a0, a0, 0x0
       6c:      	lw	s3, 0x10(a0)
@@ -45,13 +45,13 @@ Disassembly of section .text:
       78:      	lw	s6, 0x4(a0)
       7c:      	lw	s1, 0x0(a0)
       80:      	addi	a0, s1, 0x0
-      84:      	jal	ra, 0x7c4 <u32_combine>
+      84:      	jal	ra, 0x728 <u32_combine>
       88:      	addi	s2, a0, 0x0
       8c:      	lui	a0, 0x1400
       90:      	addi	a0, a0, 0x0
       94:      	addi	a1, zero, 0x64
       98:      	addi	a2, s1, 0x0
-      9c:      	jal	ra, 0x748 <m31_poly_eval>
+      9c:      	jal	ra, 0x6ac <m31_poly_eval>
       a0:      	addi	s1, a0, 0x0
       a4:      	sw	s6, 0x10(sp)
       a8:      	sw	s5, 0x14(sp)
@@ -59,7 +59,7 @@ Disassembly of section .text:
       b0:      	sw	s3, 0x1c(sp)
       b4:      	addi	a0, sp, 0x0
       b8:      	addi	a1, sp, 0x10
-      bc:      	jal	ra, 0x5a4 <ext4_poly>
+      bc:      	jal	ra, 0x508 <ext4_poly>
       c0:      	lw	a0, 0x0(sp)
       c4:      	lw	a1, 0x4(sp)
       c8:      	lw	a2, 0x8(sp)
@@ -73,7 +73,7 @@ Disassembly of section .text:
       e8:      	sw	zero, 0x28(sp)
       ec:      	sw	zero, 0x2c(sp)
       f0:      	addi	a0, sp, 0x10
-      f4:      	jal	ra, 0x8fc <_RNvCsgEj7ED84xCy_12riscv_common24zksync_os_finish_success>
+      f4:      	jal	ra, 0x860 <_RNvCsgEj7ED84xCy_12riscv_common24zksync_os_finish_success>
 
 000000f8 <bb_add>:
       f8:      	addi	sp, sp, -0x10
@@ -93,2322 +93,2277 @@ Disassembly of section .text:
      130:      	addi	sp, sp, 0x10
      134:      	jalr	zero, 0x0(ra)
 
-00000138 <bb_mul>:
+00000138 <bb_fma>:
      138:      	addi	sp, sp, -0x10
      13c:      	sw	ra, 0xc(sp)
      140:      	sw	s0, 0x8(sp)
      144:      	addi	s0, sp, 0x10
-     148:      	mul	a2, a1, a0
-     14c:      	lui	a3, 0x78000
-     150:      	addi	a4, a3, -0x1
-     154:      	mul	a4, a2, a4
+     148:      	lui	a3, 0x78000
+     14c:      	mul	a4, a1, a0
+     150:      	addi	a5, a3, -0x1
+     154:      	mul	a5, a4, a5
      158:      	mulhu	a0, a1, a0
      15c:      	addi	a1, a3, 0x1
-     160:      	mulhu	a1, a4, a1
-     164:      	sltu	a2, zero, a2
-     168:      	add	a0, a0, a2
+     160:      	mulhu	a1, a5, a1
+     164:      	sltu	a4, zero, a4
+     168:      	add	a0, a0, a4
      16c:      	add	a0, a1, a0
      170:      	sltu	a1, a3, a0
-     174:      	lui	a2, 0x88000
+     174:      	lui	a4, 0x88000
      178:      	sub	a1, zero, a1
-     17c:      	addi	a2, a2, -0x1
-     180:      	and	a1, a1, a2
-     184:      	add	a0, a0, a1
-     188:      	lw	ra, 0xc(sp)
-     18c:      	lw	s0, 0x8(sp)
-     190:      	addi	sp, sp, 0x10
-     194:      	jalr	zero, 0x0(ra)
+     17c:      	addi	a4, a4, -0x1
+     180:      	and	a1, a1, a4
+     184:      	add	a0, a0, a2
+     188:      	add	a0, a0, a1
+     18c:      	sltu	a1, a3, a0
+     190:      	sub	a1, zero, a1
+     194:      	and	a1, a1, a4
+     198:      	add	a0, a0, a1
+     19c:      	lw	ra, 0xc(sp)
+     1a0:      	lw	s0, 0x8(sp)
+     1a4:      	addi	sp, sp, 0x10
+     1a8:      	jalr	zero, 0x0(ra)
 
-00000198 <bb_sub>:
-     198:      	addi	sp, sp, -0x10
-     19c:      	sw	ra, 0xc(sp)
-     1a0:      	sw	s0, 0x8(sp)
-     1a4:      	addi	s0, sp, 0x10
-     1a8:      	sltu	a2, a0, a1
-     1ac:      	lui	a3, 0x78000
-     1b0:      	sub	a2, zero, a2
-     1b4:      	addi	a3, a3, 0x1
-     1b8:      	sub	a0, a0, a1
-     1bc:      	and	a2, a2, a3
-     1c0:      	add	a0, a0, a2
-     1c4:      	lw	ra, 0xc(sp)
-     1c8:      	lw	s0, 0x8(sp)
-     1cc:      	addi	sp, sp, 0x10
-     1d0:      	jalr	zero, 0x0(ra)
+000001ac <bb_mul>:
+     1ac:      	addi	sp, sp, -0x10
+     1b0:      	sw	ra, 0xc(sp)
+     1b4:      	sw	s0, 0x8(sp)
+     1b8:      	addi	s0, sp, 0x10
+     1bc:      	mul	a2, a1, a0
+     1c0:      	lui	a3, 0x78000
+     1c4:      	addi	a4, a3, -0x1
+     1c8:      	mul	a4, a2, a4
+     1cc:      	mulhu	a0, a1, a0
+     1d0:      	addi	a1, a3, 0x1
+     1d4:      	mulhu	a1, a4, a1
+     1d8:      	sltu	a2, zero, a2
+     1dc:      	add	a0, a0, a2
+     1e0:      	add	a0, a1, a0
+     1e4:      	sltu	a1, a3, a0
+     1e8:      	lui	a2, 0x88000
+     1ec:      	sub	a1, zero, a1
+     1f0:      	addi	a2, a2, -0x1
+     1f4:      	and	a1, a1, a2
+     1f8:      	add	a0, a0, a1
+     1fc:      	lw	ra, 0xc(sp)
+     200:      	lw	s0, 0x8(sp)
+     204:      	addi	sp, sp, 0x10
+     208:      	jalr	zero, 0x0(ra)
 
-000001d4 <ext2_mul_assign>:
-     1d4:      	addi	sp, sp, -0x30
-     1d8:      	sw	ra, 0x2c(sp)
-     1dc:      	sw	s0, 0x28(sp)
-     1e0:      	sw	s1, 0x24(sp)
-     1e4:      	sw	s2, 0x20(sp)
-     1e8:      	sw	s3, 0x1c(sp)
-     1ec:      	sw	s4, 0x18(sp)
-     1f0:      	sw	s5, 0x14(sp)
-     1f4:      	sw	s6, 0x10(sp)
-     1f8:      	sw	s7, 0xc(sp)
-     1fc:      	addi	s0, sp, 0x30
-     200:      	addi	s2, a1, 0x0
-     204:      	addi	s1, a0, 0x0
-     208:      	lw	s3, 0x0(a0)
-     20c:      	lw	s4, 0x0(a1)
-     210:      	addi	a0, s3, 0x0
-     214:      	addi	a1, s4, 0x0
-     218:      	jal	ra, 0x138 <bb_mul>
-     21c:      	lw	s5, 0x4(s1)
-     220:      	lw	s2, 0x4(s2)
-     224:      	addi	s6, a0, 0x0
-     228:      	addi	a0, s5, 0x0
-     22c:      	addi	a1, s2, 0x0
-     230:      	jal	ra, 0x138 <bb_mul>
-     234:      	addi	s7, a0, 0x0
-     238:      	addi	a0, s5, 0x0
-     23c:      	addi	a1, s3, 0x0
-     240:      	jal	ra, 0xf8 <bb_add>
-     244:      	addi	s3, a0, 0x0
-     248:      	addi	a0, s4, 0x0
-     24c:      	addi	a1, s2, 0x0
-     250:      	jal	ra, 0xf8 <bb_add>
-     254:      	addi	a1, a0, 0x0
-     258:      	addi	a0, s3, 0x0
-     25c:      	jal	ra, 0x138 <bb_mul>
-     260:      	addi	a1, s6, 0x0
-     264:      	jal	ra, 0x198 <bb_sub>
-     268:      	addi	a1, s7, 0x0
-     26c:      	jal	ra, 0x198 <bb_sub>
-     270:      	sw	a0, 0x4(s1)
-     274:      	lui	a1, 0x38000
-     278:      	addi	a1, a1, -0x17
-     27c:      	addi	a0, s7, 0x0
-     280:      	jal	ra, 0x138 <bb_mul>
-     284:      	addi	a1, a0, 0x0
-     288:      	addi	a0, s6, 0x0
-     28c:      	jal	ra, 0xf8 <bb_add>
-     290:      	sw	a0, 0x0(s1)
+0000020c <ext4_horner>:
+     20c:      	addi	sp, sp, -0x30
+     210:      	sw	ra, 0x2c(sp)
+     214:      	sw	s0, 0x28(sp)
+     218:      	sw	s1, 0x24(sp)
+     21c:      	sw	s2, 0x20(sp)
+     220:      	sw	s3, 0x1c(sp)
+     224:      	sw	s4, 0x18(sp)
+     228:      	addi	s0, sp, 0x30
+     22c:      	addi	s1, a0, 0x0
+     230:      	sw	zero, 0x8(sp)
+     234:      	sw	zero, 0xc(sp)
+     238:      	sw	zero, 0x10(sp)
+     23c:      	sw	zero, 0x14(sp)
+     240:      	beq	a2, zero, 0x274 <ext4_horner+0x68>
+     244:      	addi	s2, a3, 0x0
+     248:      	addi	s3, a2, 0x0
+     24c:      	slli	a0, a2, 0x4
+     250:      	add	a0, a0, a1
+     254:      	addi	s4, a0, -0x10
+     258:      	addi	s3, s3, -0x1
+     25c:      	addi	a0, sp, 0x8
+     260:      	addi	a1, s2, 0x0
+     264:      	addi	a2, s4, 0x0
+     268:      	jal	ra, 0x2b4 <ext4_mul_add>
+     26c:      	addi	s4, s4, -0x10
+     270:      	bne	s3, zero, 0x258 <ext4_horner+0x4c>
+     274:      	lw	a0, 0x8(sp)
+     278:      	lw	a1, 0xc(sp)
+     27c:      	lw	a2, 0x10(sp)
+     280:      	lw	a3, 0x14(sp)
+     284:      	sw	a0, 0x0(s1)
+     288:      	sw	a1, 0x4(s1)
+     28c:      	sw	a2, 0x8(s1)
+     290:      	sw	a3, 0xc(s1)
      294:      	lw	ra, 0x2c(sp)
      298:      	lw	s0, 0x28(sp)
      29c:      	lw	s1, 0x24(sp)
      2a0:      	lw	s2, 0x20(sp)
      2a4:      	lw	s3, 0x1c(sp)
      2a8:      	lw	s4, 0x18(sp)
-     2ac:      	lw	s5, 0x14(sp)
-     2b0:      	lw	s6, 0x10(sp)
-     2b4:      	lw	s7, 0xc(sp)
-     2b8:      	addi	sp, sp, 0x30
-     2bc:      	jalr	zero, 0x0(ra)
+     2ac:      	addi	sp, sp, 0x30
+     2b0:      	jalr	zero, 0x0(ra)
 
-000002c0 <ext4_add_assign>:
-     2c0:      	addi	sp, sp, -0x10
-     2c4:      	sw	ra, 0xc(sp)
-     2c8:      	sw	s0, 0x8(sp)
-     2cc:      	sw	s1, 0x4(sp)
-     2d0:      	sw	s2, 0x0(sp)
-     2d4:      	addi	s0, sp, 0x10
-     2d8:      	addi	s1, a1, 0x0
-     2dc:      	addi	s2, a0, 0x0
-     2e0:      	lw	a0, 0x0(a0)
-     2e4:      	lw	a1, 0x0(a1)
-     2e8:      	jal	ra, 0xf8 <bb_add>
-     2ec:      	lw	a2, 0x4(s2)
-     2f0:      	lw	a1, 0x4(s1)
-     2f4:      	sw	a0, 0x0(s2)
-     2f8:      	addi	a0, a2, 0x0
-     2fc:      	jal	ra, 0xf8 <bb_add>
-     300:      	lw	a2, 0x8(s2)
-     304:      	lw	a1, 0x8(s1)
-     308:      	sw	a0, 0x4(s2)
-     30c:      	addi	a0, a2, 0x0
-     310:      	jal	ra, 0xf8 <bb_add>
-     314:      	lw	a2, 0xc(s2)
-     318:      	lw	a1, 0xc(s1)
-     31c:      	sw	a0, 0x8(s2)
-     320:      	addi	a0, a2, 0x0
-     324:      	jal	ra, 0xf8 <bb_add>
-     328:      	sw	a0, 0xc(s2)
-     32c:      	lw	ra, 0xc(sp)
-     330:      	lw	s0, 0x8(sp)
-     334:      	lw	s1, 0x4(sp)
-     338:      	lw	s2, 0x0(sp)
-     33c:      	addi	sp, sp, 0x10
-     340:      	jalr	zero, 0x0(ra)
-
-00000344 <ext4_horner>:
-     344:      	addi	sp, sp, -0x30
-     348:      	sw	ra, 0x2c(sp)
-     34c:      	sw	s0, 0x28(sp)
-     350:      	sw	s1, 0x24(sp)
-     354:      	sw	s2, 0x20(sp)
-     358:      	sw	s3, 0x1c(sp)
-     35c:      	sw	s4, 0x18(sp)
-     360:      	addi	s0, sp, 0x30
-     364:      	addi	s1, a0, 0x0
-     368:      	sw	zero, 0x8(sp)
-     36c:      	sw	zero, 0xc(sp)
-     370:      	sw	zero, 0x10(sp)
-     374:      	sw	zero, 0x14(sp)
-     378:      	beq	a2, zero, 0x3ac <ext4_horner+0x68>
-     37c:      	addi	s2, a3, 0x0
-     380:      	addi	s3, a2, 0x0
-     384:      	slli	a0, a2, 0x4
-     388:      	add	a0, a0, a1
-     38c:      	addi	s4, a0, -0x10
-     390:      	addi	s3, s3, -0x1
-     394:      	addi	a0, sp, 0x8
-     398:      	addi	a1, s2, 0x0
-     39c:      	addi	a2, s4, 0x0
-     3a0:      	jal	ra, 0x3ec <ext4_mul_add>
-     3a4:      	addi	s4, s4, -0x10
-     3a8:      	bne	s3, zero, 0x390 <ext4_horner+0x4c>
-     3ac:      	lw	a0, 0x8(sp)
-     3b0:      	lw	a1, 0xc(sp)
-     3b4:      	lw	a2, 0x10(sp)
-     3b8:      	lw	a3, 0x14(sp)
-     3bc:      	sw	a0, 0x0(s1)
-     3c0:      	sw	a1, 0x4(s1)
-     3c4:      	sw	a2, 0x8(s1)
-     3c8:      	sw	a3, 0xc(s1)
-     3cc:      	lw	ra, 0x2c(sp)
-     3d0:      	lw	s0, 0x28(sp)
-     3d4:      	lw	s1, 0x24(sp)
-     3d8:      	lw	s2, 0x20(sp)
-     3dc:      	lw	s3, 0x1c(sp)
-     3e0:      	lw	s4, 0x18(sp)
-     3e4:      	addi	sp, sp, 0x30
-     3e8:      	jalr	zero, 0x0(ra)
-
-000003ec <ext4_mul_add>:
-     3ec:      	addi	sp, sp, -0x10
-     3f0:      	sw	ra, 0xc(sp)
-     3f4:      	sw	s0, 0x8(sp)
-     3f8:      	sw	s1, 0x4(sp)
-     3fc:      	sw	s2, 0x0(sp)
-     400:      	addi	s0, sp, 0x10
-     404:      	addi	s1, a2, 0x0
-     408:      	addi	s2, a0, 0x0
-     40c:      	jal	ra, 0x430 <ext4_mul_assign>
-     410:      	addi	a0, s2, 0x0
-     414:      	addi	a1, s1, 0x0
-     418:      	lw	ra, 0xc(sp)
-     41c:      	lw	s0, 0x8(sp)
-     420:      	lw	s1, 0x4(sp)
-     424:      	lw	s2, 0x0(sp)
-     428:      	addi	sp, sp, 0x10
-     42c:      	jal	zero, 0x2c0 <ext4_add_assign>
-
-00000430 <ext4_mul_assign>:
-     430:      	addi	sp, sp, -0x40
-     434:      	sw	ra, 0x3c(sp)
-     438:      	sw	s0, 0x38(sp)
-     43c:      	sw	s1, 0x34(sp)
-     440:      	sw	s2, 0x30(sp)
-     444:      	sw	s3, 0x2c(sp)
-     448:      	sw	s4, 0x28(sp)
-     44c:      	sw	s5, 0x24(sp)
-     450:      	sw	s6, 0x20(sp)
-     454:      	sw	s7, 0x1c(sp)
-     458:      	addi	s0, sp, 0x40
-     45c:      	addi	s2, a1, 0x0
-     460:      	addi	s1, a0, 0x0
-     464:      	lw	s3, 0x0(a0)
-     468:      	lw	s4, 0x4(a0)
-     46c:      	sw	s3, 0x4(sp)
-     470:      	sw	s4, 0x8(sp)
-     474:      	addi	a0, sp, 0x4
-     478:      	jal	ra, 0x1d4 <ext2_mul_assign>
-     47c:      	lw	s5, 0x8(s1)
-     480:      	lw	s6, 0xc(s1)
-     484:      	addi	s7, s1, 0x8
-     488:      	sw	s5, 0xc(sp)
-     48c:      	sw	s6, 0x10(sp)
-     490:      	addi	a1, s2, 0x8
-     494:      	addi	a0, sp, 0xc
-     498:      	jal	ra, 0x1d4 <ext2_mul_assign>
-     49c:      	addi	a0, s5, 0x0
-     4a0:      	addi	a1, s3, 0x0
+000002b4 <ext4_mul_add>:
+     2b4:      	addi	sp, sp, -0x50
+     2b8:      	sw	ra, 0x4c(sp)
+     2bc:      	sw	s0, 0x48(sp)
+     2c0:      	sw	s1, 0x44(sp)
+     2c4:      	sw	s2, 0x40(sp)
+     2c8:      	sw	s3, 0x3c(sp)
+     2cc:      	sw	s4, 0x38(sp)
+     2d0:      	sw	s5, 0x34(sp)
+     2d4:      	sw	s6, 0x30(sp)
+     2d8:      	sw	s7, 0x2c(sp)
+     2dc:      	sw	s8, 0x28(sp)
+     2e0:      	sw	s9, 0x24(sp)
+     2e4:      	sw	s10, 0x20(sp)
+     2e8:      	sw	s11, 0x1c(sp)
+     2ec:      	addi	s0, sp, 0x50
+     2f0:      	addi	s4, a1, 0x0
+     2f4:      	addi	s1, a0, 0x0
+     2f8:      	lw	s3, 0x0(a0)
+     2fc:      	lw	s2, 0x4(a0)
+     300:      	lw	s5, 0x8(a0)
+     304:      	lw	s9, 0xc(a0)
+     308:      	lw	s7, 0x0(a1)
+     30c:      	sw	a2, 0x18(sp)
+     310:      	addi	a0, s3, 0x0
+     314:      	addi	a1, s7, 0x0
+     318:      	jal	ra, 0x1ac <bb_mul>
+     31c:      	addi	s10, a0, 0x0
+     320:      	addi	a0, s2, 0x0
+     324:      	sw	s2, 0x10(sp)
+     328:      	addi	a1, s7, 0x0
+     32c:      	jal	ra, 0x1ac <bb_mul>
+     330:      	addi	s11, a0, 0x0
+     334:      	addi	a0, s5, 0x0
+     338:      	addi	a1, s7, 0x0
+     33c:      	jal	ra, 0x1ac <bb_mul>
+     340:      	sw	a0, 0x8(sp)
+     344:      	addi	a0, s9, 0x0
+     348:      	addi	a1, s7, 0x0
+     34c:      	jal	ra, 0x1ac <bb_mul>
+     350:      	addi	s6, a0, 0x0
+     354:      	lui	s8, 0x38000
+     358:      	addi	s8, s8, -0x17
+     35c:      	addi	a0, s2, 0x0
+     360:      	addi	a1, s8, 0x0
+     364:      	jal	ra, 0x1ac <bb_mul>
+     368:      	addi	s2, a0, 0x0
+     36c:      	sw	a0, 0x14(sp)
+     370:      	addi	a0, s9, 0x0
+     374:      	addi	a1, s8, 0x0
+     378:      	jal	ra, 0x1ac <bb_mul>
+     37c:      	lw	s7, 0x4(s4)
+     380:      	addi	s9, a0, 0x0
+     384:      	addi	a0, s2, 0x0
+     388:      	addi	a1, s7, 0x0
+     38c:      	addi	a2, s10, 0x0
+     390:      	jal	ra, 0x138 <bb_fma>
+     394:      	addi	s10, a0, 0x0
+     398:      	addi	a0, s3, 0x0
+     39c:      	sw	s3, 0xc(sp)
+     3a0:      	addi	a1, s7, 0x0
+     3a4:      	addi	a2, s11, 0x0
+     3a8:      	jal	ra, 0x138 <bb_fma>
+     3ac:      	addi	s11, a0, 0x0
+     3b0:      	addi	a0, s9, 0x0
+     3b4:      	addi	a1, s7, 0x0
+     3b8:      	lw	a2, 0x8(sp)
+     3bc:      	jal	ra, 0x138 <bb_fma>
+     3c0:      	addi	s2, a0, 0x0
+     3c4:      	addi	a0, s5, 0x0
+     3c8:      	addi	a1, s7, 0x0
+     3cc:      	addi	a2, s6, 0x0
+     3d0:      	jal	ra, 0x138 <bb_fma>
+     3d4:      	lw	s7, 0x8(s4)
+     3d8:      	addi	s6, a0, 0x0
+     3dc:      	addi	a0, s9, 0x0
+     3e0:      	addi	a1, s7, 0x0
+     3e4:      	addi	a2, s10, 0x0
+     3e8:      	jal	ra, 0x138 <bb_fma>
+     3ec:      	addi	s10, a0, 0x0
+     3f0:      	addi	a0, s5, 0x0
+     3f4:      	addi	a1, s7, 0x0
+     3f8:      	addi	a2, s11, 0x0
+     3fc:      	jal	ra, 0x138 <bb_fma>
+     400:      	addi	s11, a0, 0x0
+     404:      	addi	a0, s3, 0x0
+     408:      	addi	a1, s7, 0x0
+     40c:      	addi	a2, s2, 0x0
+     410:      	jal	ra, 0x138 <bb_fma>
+     414:      	addi	s2, a0, 0x0
+     418:      	lw	a0, 0x10(sp)
+     41c:      	addi	a1, s7, 0x0
+     420:      	addi	a2, s6, 0x0
+     424:      	jal	ra, 0x138 <bb_fma>
+     428:      	lw	s3, 0xc(s4)
+     42c:      	addi	s4, a0, 0x0
+     430:      	addi	a0, s5, 0x0
+     434:      	addi	a1, s8, 0x0
+     438:      	jal	ra, 0x1ac <bb_mul>
+     43c:      	addi	a1, s3, 0x0
+     440:      	addi	a2, s10, 0x0
+     444:      	jal	ra, 0x138 <bb_fma>
+     448:      	addi	s5, a0, 0x0
+     44c:      	addi	a0, s9, 0x0
+     450:      	addi	a1, s3, 0x0
+     454:      	addi	a2, s11, 0x0
+     458:      	jal	ra, 0x138 <bb_fma>
+     45c:      	addi	s6, a0, 0x0
+     460:      	lw	a0, 0x14(sp)
+     464:      	addi	a1, s3, 0x0
+     468:      	addi	a2, s2, 0x0
+     46c:      	jal	ra, 0x138 <bb_fma>
+     470:      	addi	s2, a0, 0x0
+     474:      	lw	a0, 0xc(sp)
+     478:      	addi	a1, s3, 0x0
+     47c:      	addi	a2, s4, 0x0
+     480:      	jal	ra, 0x138 <bb_fma>
+     484:      	lw	s4, 0x18(sp)
+     488:      	lw	a1, 0x0(s4)
+     48c:      	addi	s3, a0, 0x0
+     490:      	addi	a0, s5, 0x0
+     494:      	jal	ra, 0xf8 <bb_add>
+     498:      	lw	a1, 0x4(s4)
+     49c:      	sw	a0, 0x0(s1)
+     4a0:      	addi	a0, s6, 0x0
      4a4:      	jal	ra, 0xf8 <bb_add>
-     4a8:      	sw	a0, 0x8(s1)
-     4ac:      	addi	a0, s6, 0x0
-     4b0:      	addi	a1, s4, 0x0
+     4a8:      	lw	a1, 0x8(s4)
+     4ac:      	sw	a0, 0x4(s1)
+     4b0:      	addi	a0, s2, 0x0
      4b4:      	jal	ra, 0xf8 <bb_add>
-     4b8:      	lw	a2, 0x0(s2)
-     4bc:      	lw	s3, 0x4(s2)
-     4c0:      	lw	a1, 0x8(s2)
-     4c4:      	lw	s2, 0xc(s2)
+     4b8:      	lw	a1, 0xc(s4)
+     4bc:      	sw	a0, 0x8(s1)
+     4c0:      	addi	a0, s3, 0x0
+     4c4:      	jal	ra, 0xf8 <bb_add>
      4c8:      	sw	a0, 0xc(s1)
-     4cc:      	addi	a0, a2, 0x0
-     4d0:      	jal	ra, 0xf8 <bb_add>
-     4d4:      	sw	a0, 0x14(sp)
-     4d8:      	addi	a0, s3, 0x0
-     4dc:      	addi	a1, s2, 0x0
-     4e0:      	jal	ra, 0xf8 <bb_add>
-     4e4:      	sw	a0, 0x18(sp)
-     4e8:      	addi	a1, sp, 0x14
-     4ec:      	addi	a0, s7, 0x0
-     4f0:      	jal	ra, 0x1d4 <ext2_mul_assign>
-     4f4:      	lw	s2, 0x4(sp)
-     4f8:      	lw	s3, 0x8(sp)
-     4fc:      	lw	a0, 0x8(s1)
-     500:      	addi	a1, s2, 0x0
-     504:      	jal	ra, 0x198 <bb_sub>
-     508:      	lw	a1, 0xc(s1)
-     50c:      	addi	s4, a0, 0x0
-     510:      	addi	a0, a1, 0x0
-     514:      	addi	a1, s3, 0x0
-     518:      	jal	ra, 0x198 <bb_sub>
-     51c:      	lw	s5, 0xc(sp)
-     520:      	lw	s6, 0x10(sp)
-     524:      	addi	s7, a0, 0x0
-     528:      	addi	a0, s4, 0x0
-     52c:      	addi	a1, s5, 0x0
-     530:      	jal	ra, 0x198 <bb_sub>
-     534:      	sw	a0, 0x8(s1)
-     538:      	addi	a0, s7, 0x0
-     53c:      	addi	a1, s6, 0x0
-     540:      	jal	ra, 0x198 <bb_sub>
-     544:      	sw	a0, 0xc(s1)
-     548:      	lui	a1, 0x38000
-     54c:      	addi	a1, a1, -0x17
-     550:      	addi	a0, s6, 0x0
-     554:      	jal	ra, 0x138 <bb_mul>
-     558:      	addi	a1, a0, 0x0
-     55c:      	addi	a0, s2, 0x0
-     560:      	jal	ra, 0xf8 <bb_add>
-     564:      	sw	a0, 0x0(s1)
-     568:      	addi	a0, s3, 0x0
-     56c:      	addi	a1, s5, 0x0
-     570:      	jal	ra, 0xf8 <bb_add>
-     574:      	sw	a0, 0x4(s1)
-     578:      	lw	ra, 0x3c(sp)
-     57c:      	lw	s0, 0x38(sp)
-     580:      	lw	s1, 0x34(sp)
-     584:      	lw	s2, 0x30(sp)
-     588:      	lw	s3, 0x2c(sp)
-     58c:      	lw	s4, 0x28(sp)
-     590:      	lw	s5, 0x24(sp)
-     594:      	lw	s6, 0x20(sp)
-     598:      	lw	s7, 0x1c(sp)
-     59c:      	addi	sp, sp, 0x40
-     5a0:      	jalr	zero, 0x0(ra)
+     4cc:      	lw	ra, 0x4c(sp)
+     4d0:      	lw	s0, 0x48(sp)
+     4d4:      	lw	s1, 0x44(sp)
+     4d8:      	lw	s2, 0x40(sp)
+     4dc:      	lw	s3, 0x3c(sp)
+     4e0:      	lw	s4, 0x38(sp)
+     4e4:      	lw	s5, 0x34(sp)
+     4e8:      	lw	s6, 0x30(sp)
+     4ec:      	lw	s7, 0x2c(sp)
+     4f0:      	lw	s8, 0x28(sp)
+     4f4:      	lw	s9, 0x24(sp)
+     4f8:      	lw	s10, 0x20(sp)
+     4fc:      	lw	s11, 0x1c(sp)
+     500:      	addi	sp, sp, 0x50
+     504:      	jalr	zero, 0x0(ra)
 
-000005a4 <ext4_poly>:
-     5a4:      	addi	sp, sp, -0x40
-     5a8:      	sw	ra, 0x3c(sp)
-     5ac:      	sw	s0, 0x38(sp)
-     5b0:      	sw	s1, 0x34(sp)
-     5b4:      	sw	s2, 0x30(sp)
-     5b8:      	sw	s3, 0x2c(sp)
-     5bc:      	sw	s4, 0x28(sp)
-     5c0:      	sw	s5, 0x24(sp)
-     5c4:      	addi	s0, sp, 0x40
-     5c8:      	addi	s2, a1, 0x0
-     5cc:      	lw	a1, 0x0(a1)
-     5d0:      	addi	s1, a0, 0x0
-     5d4:      	lui	s3, 0x45dde
-     5d8:      	addi	s3, s3, -0x21d
-     5dc:      	addi	a0, a1, 0x0
-     5e0:      	addi	a1, s3, 0x0
-     5e4:      	jal	ra, 0x138 <bb_mul>
-     5e8:      	lw	a1, 0x4(s2)
-     5ec:      	addi	s4, a0, 0x0
-     5f0:      	addi	a0, a1, 0x0
-     5f4:      	addi	a1, s3, 0x0
-     5f8:      	jal	ra, 0x138 <bb_mul>
-     5fc:      	lw	a1, 0x8(s2)
-     600:      	addi	s5, a0, 0x0
-     604:      	addi	a0, a1, 0x0
-     608:      	addi	a1, s3, 0x0
-     60c:      	jal	ra, 0x138 <bb_mul>
-     610:      	lw	a1, 0xc(s2)
-     614:      	addi	s2, a0, 0x0
-     618:      	addi	a0, a1, 0x0
-     61c:      	addi	a1, s3, 0x0
-     620:      	jal	ra, 0x138 <bb_mul>
-     624:      	sw	s4, 0x4(sp)
-     628:      	sw	s5, 0x8(sp)
-     62c:      	sw	s2, 0xc(sp)
-     630:      	sw	a0, 0x10(sp)
-     634:      	sw	s4, 0x14(sp)
-     638:      	sw	s5, 0x18(sp)
-     63c:      	sw	s2, 0x1c(sp)
-     640:      	sw	a0, 0x20(sp)
-     644:      	lui	a1, 0x1400
-     648:      	addi	a1, a1, 0x190
-     64c:      	addi	a0, sp, 0x14
-     650:      	addi	a2, zero, 0x20
-     654:      	addi	a3, sp, 0x4
-     658:      	jal	ra, 0x344 <ext4_horner>
-     65c:      	lw	a0, 0x14(sp)
-     660:      	addi	a1, zero, 0x1
-     664:      	jal	ra, 0x138 <bb_mul>
-     668:      	lw	a2, 0x18(sp)
-     66c:      	addi	s2, a0, 0x0
-     670:      	addi	a1, zero, 0x1
-     674:      	addi	a0, a2, 0x0
-     678:      	jal	ra, 0x138 <bb_mul>
-     67c:      	lw	a2, 0x1c(sp)
-     680:      	addi	s3, a0, 0x0
-     684:      	addi	a1, zero, 0x1
-     688:      	addi	a0, a2, 0x0
-     68c:      	jal	ra, 0x138 <bb_mul>
-     690:      	lw	a2, 0x20(sp)
-     694:      	addi	s4, a0, 0x0
-     698:      	addi	a1, zero, 0x1
-     69c:      	addi	a0, a2, 0x0
-     6a0:      	jal	ra, 0x138 <bb_mul>
-     6a4:      	sw	s2, 0x0(s1)
-     6a8:      	sw	s3, 0x4(s1)
-     6ac:      	sw	s4, 0x8(s1)
-     6b0:      	sw	a0, 0xc(s1)
-     6b4:      	lw	ra, 0x3c(sp)
-     6b8:      	lw	s0, 0x38(sp)
-     6bc:      	lw	s1, 0x34(sp)
-     6c0:      	lw	s2, 0x30(sp)
-     6c4:      	lw	s3, 0x2c(sp)
-     6c8:      	lw	s4, 0x28(sp)
-     6cc:      	lw	s5, 0x24(sp)
-     6d0:      	addi	sp, sp, 0x40
-     6d4:      	jalr	zero, 0x0(ra)
+00000508 <ext4_poly>:
+     508:      	addi	sp, sp, -0x40
+     50c:      	sw	ra, 0x3c(sp)
+     510:      	sw	s0, 0x38(sp)
+     514:      	sw	s1, 0x34(sp)
+     518:      	sw	s2, 0x30(sp)
+     51c:      	sw	s3, 0x2c(sp)
+     520:      	sw	s4, 0x28(sp)
+     524:      	sw	s5, 0x24(sp)
+     528:      	addi	s0, sp, 0x40
+     52c:      	addi	s2, a1, 0x0
+     530:      	lw	a1, 0x0(a1)
+     534:      	addi	s1, a0, 0x0
+     538:      	lui	s3, 0x45dde
+     53c:      	addi	s3, s3, -0x21d
+     540:      	addi	a0, a1, 0x0
+     544:      	addi	a1, s3, 0x0
+     548:      	jal	ra, 0x1ac <bb_mul>
+     54c:      	lw	a1, 0x4(s2)
+     550:      	addi	s4, a0, 0x0
+     554:      	addi	a0, a1, 0x0
+     558:      	addi	a1, s3, 0x0
+     55c:      	jal	ra, 0x1ac <bb_mul>
+     560:      	lw	a1, 0x8(s2)
+     564:      	addi	s5, a0, 0x0
+     568:      	addi	a0, a1, 0x0
+     56c:      	addi	a1, s3, 0x0
+     570:      	jal	ra, 0x1ac <bb_mul>
+     574:      	lw	a1, 0xc(s2)
+     578:      	addi	s2, a0, 0x0
+     57c:      	addi	a0, a1, 0x0
+     580:      	addi	a1, s3, 0x0
+     584:      	jal	ra, 0x1ac <bb_mul>
+     588:      	sw	s4, 0x4(sp)
+     58c:      	sw	s5, 0x8(sp)
+     590:      	sw	s2, 0xc(sp)
+     594:      	sw	a0, 0x10(sp)
+     598:      	sw	s4, 0x14(sp)
+     59c:      	sw	s5, 0x18(sp)
+     5a0:      	sw	s2, 0x1c(sp)
+     5a4:      	sw	a0, 0x20(sp)
+     5a8:      	lui	a1, 0x1400
+     5ac:      	addi	a1, a1, 0x190
+     5b0:      	addi	a0, sp, 0x14
+     5b4:      	addi	a2, zero, 0x20
+     5b8:      	addi	a3, sp, 0x4
+     5bc:      	jal	ra, 0x20c <ext4_horner>
+     5c0:      	lw	a0, 0x14(sp)
+     5c4:      	addi	a1, zero, 0x1
+     5c8:      	jal	ra, 0x1ac <bb_mul>
+     5cc:      	lw	a2, 0x18(sp)
+     5d0:      	addi	s2, a0, 0x0
+     5d4:      	addi	a1, zero, 0x1
+     5d8:      	addi	a0, a2, 0x0
+     5dc:      	jal	ra, 0x1ac <bb_mul>
+     5e0:      	lw	a2, 0x1c(sp)
+     5e4:      	addi	s3, a0, 0x0
+     5e8:      	addi	a1, zero, 0x1
+     5ec:      	addi	a0, a2, 0x0
+     5f0:      	jal	ra, 0x1ac <bb_mul>
+     5f4:      	lw	a2, 0x20(sp)
+     5f8:      	addi	s4, a0, 0x0
+     5fc:      	addi	a1, zero, 0x1
+     600:      	addi	a0, a2, 0x0
+     604:      	jal	ra, 0x1ac <bb_mul>
+     608:      	sw	s2, 0x0(s1)
+     60c:      	sw	s3, 0x4(s1)
+     610:      	sw	s4, 0x8(s1)
+     614:      	sw	a0, 0xc(s1)
+     618:      	lw	ra, 0x3c(sp)
+     61c:      	lw	s0, 0x38(sp)
+     620:      	lw	s1, 0x34(sp)
+     624:      	lw	s2, 0x30(sp)
+     628:      	lw	s3, 0x2c(sp)
+     62c:      	lw	s4, 0x28(sp)
+     630:      	lw	s5, 0x24(sp)
+     634:      	addi	sp, sp, 0x40
+     638:      	jalr	zero, 0x0(ra)
 
-000006d8 <m31_add>:
-     6d8:      	addi	sp, sp, -0x10
-     6dc:      	sw	ra, 0xc(sp)
-     6e0:      	sw	s0, 0x8(sp)
-     6e4:      	addi	s0, sp, 0x10
-     6e8:      	add	a0, a1, a0
-     6ec:      	slli	a1, a0, 0x1
-     6f0:      	srli	a1, a1, 0x1
-     6f4:      	srli	a0, a0, 0x1f
-     6f8:      	add	a0, a1, a0
-     6fc:      	lw	ra, 0xc(sp)
-     700:      	lw	s0, 0x8(sp)
-     704:      	addi	sp, sp, 0x10
-     708:      	jalr	zero, 0x0(ra)
+0000063c <m31_add>:
+     63c:      	addi	sp, sp, -0x10
+     640:      	sw	ra, 0xc(sp)
+     644:      	sw	s0, 0x8(sp)
+     648:      	addi	s0, sp, 0x10
+     64c:      	add	a0, a1, a0
+     650:      	slli	a1, a0, 0x1
+     654:      	srli	a1, a1, 0x1
+     658:      	srli	a0, a0, 0x1f
+     65c:      	add	a0, a1, a0
+     660:      	lw	ra, 0xc(sp)
+     664:      	lw	s0, 0x8(sp)
+     668:      	addi	sp, sp, 0x10
+     66c:      	jalr	zero, 0x0(ra)
 
-0000070c <m31_mul>:
-     70c:      	addi	sp, sp, -0x10
-     710:      	sw	ra, 0xc(sp)
-     714:      	sw	s0, 0x8(sp)
-     718:      	addi	s0, sp, 0x10
-     71c:      	mul	a2, a1, a0
-     720:      	mulhu	a0, a1, a0
-     724:      	slli	a1, a2, 0x1
-     728:      	slli	a3, a0, 0x1
-     72c:      	srli	a2, a2, 0x1f
-     730:      	srli	a0, a1, 0x1
-     734:      	or	a1, a2, a3
-     738:      	lw	ra, 0xc(sp)
-     73c:      	lw	s0, 0x8(sp)
-     740:      	addi	sp, sp, 0x10
-     744:      	jal	zero, 0x6d8 <m31_add>
+00000670 <m31_mul>:
+     670:      	addi	sp, sp, -0x10
+     674:      	sw	ra, 0xc(sp)
+     678:      	sw	s0, 0x8(sp)
+     67c:      	addi	s0, sp, 0x10
+     680:      	mul	a2, a1, a0
+     684:      	mulhu	a0, a1, a0
+     688:      	slli	a1, a2, 0x1
+     68c:      	slli	a3, a0, 0x1
+     690:      	srli	a2, a2, 0x1f
+     694:      	srli	a0, a1, 0x1
+     698:      	or	a1, a2, a3
+     69c:      	lw	ra, 0xc(sp)
+     6a0:      	lw	s0, 0x8(sp)
+     6a4:      	addi	sp, sp, 0x10
+     6a8:      	jal	zero, 0x63c <m31_add>
 
-00000748 <m31_poly_eval>:
-     748:      	addi	sp, sp, -0x20
-     74c:      	sw	ra, 0x1c(sp)
-     750:      	sw	s0, 0x18(sp)
-     754:      	sw	s1, 0x14(sp)
-     758:      	sw	s2, 0x10(sp)
-     75c:      	sw	s3, 0xc(sp)
-     760:      	addi	s0, sp, 0x20
-     764:      	addi	s2, a1, 0x0
-     768:      	beq	a1, zero, 0x7a4 <m31_poly_eval+0x5c>
-     76c:      	addi	s1, a2, 0x0
-     770:      	addi	a1, a0, 0x0
-     774:      	addi	a0, zero, 0x0
-     778:      	slli	a2, s2, 0x2
-     77c:      	add	a1, a2, a1
-     780:      	addi	s3, a1, -0x4
-     784:      	addi	s2, s2, -0x1
-     788:      	addi	a1, s1, 0x0
-     78c:      	jal	ra, 0x70c <m31_mul>
-     790:      	lw	a1, 0x0(s3)
-     794:      	jal	ra, 0x6d8 <m31_add>
-     798:      	addi	s3, s3, -0x4
-     79c:      	bne	s2, zero, 0x784 <m31_poly_eval+0x3c>
-     7a0:      	jal	zero, 0x7a8 <m31_poly_eval+0x60>
-     7a4:      	addi	a0, zero, 0x0
-     7a8:      	lw	ra, 0x1c(sp)
-     7ac:      	lw	s0, 0x18(sp)
-     7b0:      	lw	s1, 0x14(sp)
-     7b4:      	lw	s2, 0x10(sp)
-     7b8:      	lw	s3, 0xc(sp)
-     7bc:      	addi	sp, sp, 0x20
-     7c0:      	jalr	zero, 0x0(ra)
+000006ac <m31_poly_eval>:
+     6ac:      	addi	sp, sp, -0x20
+     6b0:      	sw	ra, 0x1c(sp)
+     6b4:      	sw	s0, 0x18(sp)
+     6b8:      	sw	s1, 0x14(sp)
+     6bc:      	sw	s2, 0x10(sp)
+     6c0:      	sw	s3, 0xc(sp)
+     6c4:      	addi	s0, sp, 0x20
+     6c8:      	addi	s2, a1, 0x0
+     6cc:      	beq	a1, zero, 0x708 <m31_poly_eval+0x5c>
+     6d0:      	addi	s1, a2, 0x0
+     6d4:      	addi	a1, a0, 0x0
+     6d8:      	addi	a0, zero, 0x0
+     6dc:      	slli	a2, s2, 0x2
+     6e0:      	add	a1, a2, a1
+     6e4:      	addi	s3, a1, -0x4
+     6e8:      	addi	s2, s2, -0x1
+     6ec:      	addi	a1, s1, 0x0
+     6f0:      	jal	ra, 0x670 <m31_mul>
+     6f4:      	lw	a1, 0x0(s3)
+     6f8:      	jal	ra, 0x63c <m31_add>
+     6fc:      	addi	s3, s3, -0x4
+     700:      	bne	s2, zero, 0x6e8 <m31_poly_eval+0x3c>
+     704:      	jal	zero, 0x70c <m31_poly_eval+0x60>
+     708:      	addi	a0, zero, 0x0
+     70c:      	lw	ra, 0x1c(sp)
+     710:      	lw	s0, 0x18(sp)
+     714:      	lw	s1, 0x14(sp)
+     718:      	lw	s2, 0x10(sp)
+     71c:      	lw	s3, 0xc(sp)
+     720:      	addi	sp, sp, 0x20
+     724:      	jalr	zero, 0x0(ra)
 
-000007c4 <u32_combine>:
-     7c4:      	addi	sp, sp, -0x10
-     7c8:      	sw	ra, 0xc(sp)
-     7cc:      	sw	s0, 0x8(sp)
-     7d0:      	sw	s1, 0x4(sp)
-     7d4:      	sw	s2, 0x0(sp)
-     7d8:      	addi	s0, sp, 0x10
-     7dc:      	addi	s1, a0, 0x0
-     7e0:      	jal	ra, 0x830 <u32_inc>
-     7e4:      	addi	s2, a0, 0x0
-     7e8:      	addi	a0, s1, 0x0
-     7ec:      	jal	ra, 0x80c <u32_double>
-     7f0:      	add	a0, a0, s2
-     7f4:      	lw	ra, 0xc(sp)
-     7f8:      	lw	s0, 0x8(sp)
-     7fc:      	lw	s1, 0x4(sp)
-     800:      	lw	s2, 0x0(sp)
-     804:      	addi	sp, sp, 0x10
-     808:      	jalr	zero, 0x0(ra)
+00000728 <u32_combine>:
+     728:      	addi	sp, sp, -0x10
+     72c:      	sw	ra, 0xc(sp)
+     730:      	sw	s0, 0x8(sp)
+     734:      	sw	s1, 0x4(sp)
+     738:      	sw	s2, 0x0(sp)
+     73c:      	addi	s0, sp, 0x10
+     740:      	addi	s1, a0, 0x0
+     744:      	jal	ra, 0x794 <u32_inc>
+     748:      	addi	s2, a0, 0x0
+     74c:      	addi	a0, s1, 0x0
+     750:      	jal	ra, 0x770 <u32_double>
+     754:      	add	a0, a0, s2
+     758:      	lw	ra, 0xc(sp)
+     75c:      	lw	s0, 0x8(sp)
+     760:      	lw	s1, 0x4(sp)
+     764:      	lw	s2, 0x0(sp)
+     768:      	addi	sp, sp, 0x10
+     76c:      	jalr	zero, 0x0(ra)
 
-0000080c <u32_double>:
-     80c:      	addi	sp, sp, -0x10
-     810:      	sw	ra, 0xc(sp)
-     814:      	sw	s0, 0x8(sp)
-     818:      	addi	s0, sp, 0x10
-     81c:      	slli	a0, a0, 0x1
-     820:      	lw	ra, 0xc(sp)
-     824:      	lw	s0, 0x8(sp)
-     828:      	addi	sp, sp, 0x10
-     82c:      	jalr	zero, 0x0(ra)
+00000770 <u32_double>:
+     770:      	addi	sp, sp, -0x10
+     774:      	sw	ra, 0xc(sp)
+     778:      	sw	s0, 0x8(sp)
+     77c:      	addi	s0, sp, 0x10
+     780:      	slli	a0, a0, 0x1
+     784:      	lw	ra, 0xc(sp)
+     788:      	lw	s0, 0x8(sp)
+     78c:      	addi	sp, sp, 0x10
+     790:      	jalr	zero, 0x0(ra)
 
-00000830 <u32_inc>:
-     830:      	addi	sp, sp, -0x10
-     834:      	sw	ra, 0xc(sp)
-     838:      	sw	s0, 0x8(sp)
-     83c:      	addi	s0, sp, 0x10
-     840:      	addi	a0, a0, 0x1
-     844:      	lw	ra, 0xc(sp)
-     848:      	lw	s0, 0x8(sp)
-     84c:      	addi	sp, sp, 0x10
-     850:      	jalr	zero, 0x0(ra)
+00000794 <u32_inc>:
+     794:      	addi	sp, sp, -0x10
+     798:      	sw	ra, 0xc(sp)
+     79c:      	sw	s0, 0x8(sp)
+     7a0:      	addi	s0, sp, 0x10
+     7a4:      	addi	a0, a0, 0x1
+     7a8:      	lw	ra, 0xc(sp)
+     7ac:      	lw	s0, 0x8(sp)
+     7b0:      	addi	sp, sp, 0x10
+     7b4:      	jalr	zero, 0x0(ra)
 
-00000854 <_RNvNtCs7HmihQyiq2s_4core9panicking19assert_failed_inner>:
-     854:      	addi	sp, sp, -0x10
-     858:      	sw	ra, 0xc(sp)
-     85c:      	sw	s0, 0x8(sp)
-     860:      	addi	s0, sp, 0x10
-     864:      	auipc	ra, 0x0
-     868:      	jalr	ra, 0x8(ra) <_RNvNtCs7HmihQyiq2s_4core9panicking9panic_fmt>
+000007b8 <_RNvNtCs7HmihQyiq2s_4core9panicking19assert_failed_inner>:
+     7b8:      	addi	sp, sp, -0x10
+     7bc:      	sw	ra, 0xc(sp)
+     7c0:      	sw	s0, 0x8(sp)
+     7c4:      	addi	s0, sp, 0x10
+     7c8:      	auipc	ra, 0x0
+     7cc:      	jalr	ra, 0x8(ra) <_RNvNtCs7HmihQyiq2s_4core9panicking9panic_fmt>
 
-0000086c <_RNvNtCs7HmihQyiq2s_4core9panicking9panic_fmt>:
-     86c:      	addi	sp, sp, -0x10
-     870:      	sw	ra, 0xc(sp)
-     874:      	sw	s0, 0x8(sp)
-     878:      	addi	s0, sp, 0x10
-     87c:      	auipc	ra, 0x0
-     880:      	jalr	ra, 0x40(ra) <_RNvCsdtSMxSA38aw_7___rustc17rust_begin_unwind>
+000007d0 <_RNvNtCs7HmihQyiq2s_4core9panicking9panic_fmt>:
+     7d0:      	addi	sp, sp, -0x10
+     7d4:      	sw	ra, 0xc(sp)
+     7d8:      	sw	s0, 0x8(sp)
+     7dc:      	addi	s0, sp, 0x10
+     7e0:      	auipc	ra, 0x0
+     7e4:      	jalr	ra, 0x40(ra) <_RNvCsdtSMxSA38aw_7___rustc17rust_begin_unwind>
 
-00000884 <_RINvNtCs7HmihQyiq2s_4core9panicking13assert_failedjjEB4_>:
-     884:      	addi	sp, sp, -0x10
-     888:      	sw	ra, 0xc(sp)
-     88c:      	sw	s0, 0x8(sp)
-     890:      	addi	s0, sp, 0x10
-     894:      	addi	a0, sp, 0x0
-     898:      	addi	a1, sp, 0x4
-     89c:      	auipc	ra, 0x0
-     8a0:      	jalr	ra, -0x48(ra) <_RNvNtCs7HmihQyiq2s_4core9panicking19assert_failed_inner>
+000007e8 <_RINvNtCs7HmihQyiq2s_4core9panicking13assert_failedjjEB4_>:
+     7e8:      	addi	sp, sp, -0x10
+     7ec:      	sw	ra, 0xc(sp)
+     7f0:      	sw	s0, 0x8(sp)
+     7f4:      	addi	s0, sp, 0x10
+     7f8:      	addi	a0, sp, 0x0
+     7fc:      	addi	a1, sp, 0x4
+     800:      	auipc	ra, 0x0
+     804:      	jalr	ra, -0x48(ra) <_RNvNtCs7HmihQyiq2s_4core9panicking19assert_failed_inner>
 
-000008a4 <_RNvNtCs7HmihQyiq2s_4core9panicking5panic>:
-     8a4:      	addi	sp, sp, -0x10
-     8a8:      	sw	ra, 0xc(sp)
-     8ac:      	sw	s0, 0x8(sp)
-     8b0:      	addi	s0, sp, 0x10
-     8b4:      	auipc	ra, 0x0
-     8b8:      	jalr	ra, -0x48(ra) <_RNvNtCs7HmihQyiq2s_4core9panicking9panic_fmt>
+00000808 <_RNvNtCs7HmihQyiq2s_4core9panicking5panic>:
+     808:      	addi	sp, sp, -0x10
+     80c:      	sw	ra, 0xc(sp)
+     810:      	sw	s0, 0x8(sp)
+     814:      	addi	s0, sp, 0x10
+     818:      	auipc	ra, 0x0
+     81c:      	jalr	ra, -0x48(ra) <_RNvNtCs7HmihQyiq2s_4core9panicking9panic_fmt>
 
-000008bc <_RNvCsdtSMxSA38aw_7___rustc17rust_begin_unwind>:
-     8bc:      	addi	sp, sp, -0x10
-     8c0:      	sw	ra, 0xc(sp)
-     8c4:      	sw	s0, 0x8(sp)
-     8c8:      	addi	s0, sp, 0x10
-     8cc:      	jal	ra, 0x8d0 <rust_abort>
+00000820 <_RNvCsdtSMxSA38aw_7___rustc17rust_begin_unwind>:
+     820:      	addi	sp, sp, -0x10
+     824:      	sw	ra, 0xc(sp)
+     828:      	sw	s0, 0x8(sp)
+     82c:      	addi	s0, sp, 0x10
+     830:      	jal	ra, 0x834 <rust_abort>
 
-000008d0 <rust_abort>:
-     8d0:      	addi	sp, sp, -0x10
-     8d4:      	sw	ra, 0xc(sp)
-     8d8:      	sw	s0, 0x8(sp)
-     8dc:      	addi	s0, sp, 0x10
-     8e0:      	jal	ra, 0x8e4 <_RNvCsgEj7ED84xCy_12riscv_common22zksync_os_finish_error>
+00000834 <rust_abort>:
+     834:      	addi	sp, sp, -0x10
+     838:      	sw	ra, 0xc(sp)
+     83c:      	sw	s0, 0x8(sp)
+     840:      	addi	s0, sp, 0x10
+     844:      	jal	ra, 0x848 <_RNvCsgEj7ED84xCy_12riscv_common22zksync_os_finish_error>
 
-000008e4 <_RNvCsgEj7ED84xCy_12riscv_common22zksync_os_finish_error>:
-     8e4:      	addi	sp, sp, -0x10
-     8e8:      	sw	ra, 0xc(sp)
-     8ec:      	sw	s0, 0x8(sp)
-     8f0:      	addi	s0, sp, 0x10
-     8f4:      	unimp
-     8f8:      	unimp
+00000848 <_RNvCsgEj7ED84xCy_12riscv_common22zksync_os_finish_error>:
+     848:      	addi	sp, sp, -0x10
+     84c:      	sw	ra, 0xc(sp)
+     850:      	sw	s0, 0x8(sp)
+     854:      	addi	s0, sp, 0x10
+     858:      	unimp
+     85c:      	unimp
 
-000008fc <_RNvCsgEj7ED84xCy_12riscv_common24zksync_os_finish_success>:
-     8fc:      	addi	sp, sp, -0x50
-     900:      	sw	ra, 0x4c(sp)
-     904:      	sw	s0, 0x48(sp)
-     908:      	addi	s0, sp, 0x50
-     90c:      	lw	a1, 0x0(a0)
-     910:      	lw	a2, 0x4(a0)
-     914:      	lw	a3, 0x8(a0)
-     918:      	lw	a4, 0xc(a0)
-     91c:      	sw	zero, 0x38(sp)
-     920:      	sw	zero, 0x3c(sp)
-     924:      	sw	zero, 0x40(sp)
-     928:      	sw	zero, 0x44(sp)
-     92c:      	sw	a1, 0x8(sp)
-     930:      	sw	a2, 0xc(sp)
-     934:      	sw	a3, 0x10(sp)
-     938:      	sw	a4, 0x14(sp)
-     93c:      	lw	a1, 0x10(a0)
-     940:      	lw	a2, 0x14(a0)
-     944:      	lw	a3, 0x18(a0)
-     948:      	lw	a0, 0x1c(a0)
-     94c:      	sw	zero, 0x28(sp)
-     950:      	sw	zero, 0x2c(sp)
-     954:      	sw	zero, 0x30(sp)
-     958:      	sw	zero, 0x34(sp)
-     95c:      	sw	a1, 0x18(sp)
-     960:      	sw	a2, 0x1c(sp)
-     964:      	sw	a3, 0x20(sp)
-     968:      	sw	a0, 0x24(sp)
-     96c:      	addi	a0, sp, 0x8
-     970:      	jal	ra, 0x974 <_RNvCsgEj7ED84xCy_12riscv_common33zksync_os_finish_success_extended>
+00000860 <_RNvCsgEj7ED84xCy_12riscv_common24zksync_os_finish_success>:
+     860:      	addi	sp, sp, -0x50
+     864:      	sw	ra, 0x4c(sp)
+     868:      	sw	s0, 0x48(sp)
+     86c:      	addi	s0, sp, 0x50
+     870:      	lw	a1, 0x0(a0)
+     874:      	lw	a2, 0x4(a0)
+     878:      	lw	a3, 0x8(a0)
+     87c:      	lw	a4, 0xc(a0)
+     880:      	sw	zero, 0x38(sp)
+     884:      	sw	zero, 0x3c(sp)
+     888:      	sw	zero, 0x40(sp)
+     88c:      	sw	zero, 0x44(sp)
+     890:      	sw	a1, 0x8(sp)
+     894:      	sw	a2, 0xc(sp)
+     898:      	sw	a3, 0x10(sp)
+     89c:      	sw	a4, 0x14(sp)
+     8a0:      	lw	a1, 0x10(a0)
+     8a4:      	lw	a2, 0x14(a0)
+     8a8:      	lw	a3, 0x18(a0)
+     8ac:      	lw	a0, 0x1c(a0)
+     8b0:      	sw	zero, 0x28(sp)
+     8b4:      	sw	zero, 0x2c(sp)
+     8b8:      	sw	zero, 0x30(sp)
+     8bc:      	sw	zero, 0x34(sp)
+     8c0:      	sw	a1, 0x18(sp)
+     8c4:      	sw	a2, 0x1c(sp)
+     8c8:      	sw	a3, 0x20(sp)
+     8cc:      	sw	a0, 0x24(sp)
+     8d0:      	addi	a0, sp, 0x8
+     8d4:      	jal	ra, 0x8d8 <_RNvCsgEj7ED84xCy_12riscv_common33zksync_os_finish_success_extended>
 
-00000974 <_RNvCsgEj7ED84xCy_12riscv_common33zksync_os_finish_success_extended>:
-     974:      	addi	sp, sp, -0x30
-     978:      	sw	ra, 0x2c(sp)
-     97c:      	sw	s0, 0x28(sp)
-     980:      	sw	s2, 0x24(sp)
-     984:      	sw	s3, 0x20(sp)
-     988:      	sw	s4, 0x1c(sp)
-     98c:      	sw	s5, 0x18(sp)
-     990:      	sw	s6, 0x14(sp)
-     994:      	sw	s7, 0x10(sp)
-     998:      	sw	s8, 0xc(sp)
-     99c:      	sw	s9, 0x8(sp)
-     9a0:      	sw	s10, 0x4(sp)
-     9a4:      	addi	s0, sp, 0x30
-     9a8:      	addi	a1, sp, 0x0
-     9ac:      	sw	a0, 0x0(sp)
-     9b0:      	lw	s10, 0x0(sp)
-     9b4:      	lw	a0, 0x0(s10)
-     9b8:      	lw	a1, 0x4(s10)
-     9bc:      	lw	a2, 0x8(s10)
-     9c0:      	lw	a3, 0xc(s10)
-     9c4:      	lw	a4, 0x10(s10)
-     9c8:      	lw	a5, 0x14(s10)
-     9cc:      	lw	a6, 0x18(s10)
-     9d0:      	lw	a7, 0x1c(s10)
-     9d4:      	lw	s2, 0x20(s10)
-     9d8:      	lw	s3, 0x24(s10)
-     9dc:      	lw	s4, 0x28(s10)
-     9e0:      	lw	s5, 0x2c(s10)
-     9e4:      	lw	s6, 0x30(s10)
-     9e8:      	lw	s7, 0x34(s10)
-     9ec:      	lw	s8, 0x38(s10)
-     9f0:      	lw	s9, 0x3c(s10)
-     9f4:      	jal	zero, 0x9f4 <_RNvCsgEj7ED84xCy_12riscv_common33zksync_os_finish_success_extended+0x80>
+000008d8 <_RNvCsgEj7ED84xCy_12riscv_common33zksync_os_finish_success_extended>:
+     8d8:      	addi	sp, sp, -0x30
+     8dc:      	sw	ra, 0x2c(sp)
+     8e0:      	sw	s0, 0x28(sp)
+     8e4:      	sw	s2, 0x24(sp)
+     8e8:      	sw	s3, 0x20(sp)
+     8ec:      	sw	s4, 0x1c(sp)
+     8f0:      	sw	s5, 0x18(sp)
+     8f4:      	sw	s6, 0x14(sp)
+     8f8:      	sw	s7, 0x10(sp)
+     8fc:      	sw	s8, 0xc(sp)
+     900:      	sw	s9, 0x8(sp)
+     904:      	sw	s10, 0x4(sp)
+     908:      	addi	s0, sp, 0x30
+     90c:      	addi	a1, sp, 0x0
+     910:      	sw	a0, 0x0(sp)
+     914:      	lw	s10, 0x0(sp)
+     918:      	lw	a0, 0x0(s10)
+     91c:      	lw	a1, 0x4(s10)
+     920:      	lw	a2, 0x8(s10)
+     924:      	lw	a3, 0xc(s10)
+     928:      	lw	a4, 0x10(s10)
+     92c:      	lw	a5, 0x14(s10)
+     930:      	lw	a6, 0x18(s10)
+     934:      	lw	a7, 0x1c(s10)
+     938:      	lw	s2, 0x20(s10)
+     93c:      	lw	s3, 0x24(s10)
+     940:      	lw	s4, 0x28(s10)
+     944:      	lw	s5, 0x2c(s10)
+     948:      	lw	s6, 0x30(s10)
+     94c:      	lw	s7, 0x34(s10)
+     950:      	lw	s8, 0x38(s10)
+     954:      	lw	s9, 0x3c(s10)
+     958:      	jal	zero, 0x958 <_RNvCsgEj7ED84xCy_12riscv_common33zksync_os_finish_success_extended+0x80>
 
-000009f8 <_RNvNtCsgEj7ED84xCy_12riscv_common13boot_sequence4init>:
-     9f8:      	addi	sp, sp, -0x10
-     9fc:      	sw	ra, 0xc(sp)
-     a00:      	sw	s0, 0x8(sp)
-     a04:      	addi	s0, sp, 0x10
-     a08:      	lui	a0, 0x400
-     a0c:      	lui	a1, 0x400
-     a10:      	addi	a1, a1, 0x0
-     a14:      	addi	a2, a0, 0x1
-     a18:      	bgeu	a1, a2, 0xa74 <_RNvNtCsgEj7ED84xCy_12riscv_common13boot_sequence4init+0x7c>
-     a1c:      	lui	a1, 0x400
-     a20:      	addi	a1, a1, 0x0
-     a24:      	bne	a1, a0, 0xa78 <_RNvNtCsgEj7ED84xCy_12riscv_common13boot_sequence4init+0x80>
-     a28:      	lui	a0, 0x1400
-     a2c:      	addi	a0, a0, 0x0
-     a30:      	lui	a2, 0x1400
-     a34:      	addi	a2, a2, 0x390
-     a38:      	sub	a2, a2, a0
-     a3c:      	lui	a1, 0x2
-     a40:      	addi	a1, a1, 0x4b0
-     a44:      	jal	ra, 0xa80 <memcpy>
-     a48:      	lui	a0, 0x1401
-     a4c:      	addi	a0, a0, 0x0
-     a50:      	lui	a2, 0x1401
-     a54:      	addi	a2, a2, 0x0
-     a58:      	sub	a2, a2, a0
-     a5c:      	lui	a1, 0x4
-     a60:      	addi	a1, a1, 0x0
-     a64:      	lw	ra, 0xc(sp)
-     a68:      	lw	s0, 0x8(sp)
-     a6c:      	addi	sp, sp, 0x10
-     a70:      	jal	zero, 0xa80 <memcpy>
-     a74:      	jal	ra, 0x8a4 <_RNvNtCs7HmihQyiq2s_4core9panicking5panic>
-     a78:      	addi	a0, sp, 0x4
-     a7c:      	jal	ra, 0x884 <_RINvNtCs7HmihQyiq2s_4core9panicking13assert_failedjjEB4_>
+0000095c <_RNvNtCsgEj7ED84xCy_12riscv_common13boot_sequence4init>:
+     95c:      	addi	sp, sp, -0x10
+     960:      	sw	ra, 0xc(sp)
+     964:      	sw	s0, 0x8(sp)
+     968:      	addi	s0, sp, 0x10
+     96c:      	lui	a0, 0x400
+     970:      	lui	a1, 0x400
+     974:      	addi	a1, a1, 0x0
+     978:      	addi	a2, a0, 0x1
+     97c:      	bgeu	a1, a2, 0x9d8 <_RNvNtCsgEj7ED84xCy_12riscv_common13boot_sequence4init+0x7c>
+     980:      	lui	a1, 0x400
+     984:      	addi	a1, a1, 0x0
+     988:      	bne	a1, a0, 0x9dc <_RNvNtCsgEj7ED84xCy_12riscv_common13boot_sequence4init+0x80>
+     98c:      	lui	a0, 0x1400
+     990:      	addi	a0, a0, 0x0
+     994:      	lui	a2, 0x1400
+     998:      	addi	a2, a2, 0x390
+     99c:      	sub	a2, a2, a0
+     9a0:      	lui	a1, 0x2
+     9a4:      	addi	a1, a1, 0x414
+     9a8:      	jal	ra, 0x9e4 <memcpy>
+     9ac:      	lui	a0, 0x1401
+     9b0:      	addi	a0, a0, 0x0
+     9b4:      	lui	a2, 0x1401
+     9b8:      	addi	a2, a2, 0x0
+     9bc:      	sub	a2, a2, a0
+     9c0:      	lui	a1, 0x4
+     9c4:      	addi	a1, a1, 0x0
+     9c8:      	lw	ra, 0xc(sp)
+     9cc:      	lw	s0, 0x8(sp)
+     9d0:      	addi	sp, sp, 0x10
+     9d4:      	jal	zero, 0x9e4 <memcpy>
+     9d8:      	jal	ra, 0x808 <_RNvNtCs7HmihQyiq2s_4core9panicking5panic>
+     9dc:      	addi	a0, sp, 0x4
+     9e0:      	jal	ra, 0x7e8 <_RINvNtCs7HmihQyiq2s_4core9panicking13assert_failedjjEB4_>
 
-00000a80 <memcpy>:
-     a80:      	addi	sp, sp, -0x10
-     a84:      	sw	ra, 0xc(sp)
-     a88:      	sw	s0, 0x8(sp)
-     a8c:      	addi	s0, sp, 0x10
-     a90:      	or	a3, a1, a0
-     a94:      	andi	a3, a3, 0x3
-     a98:      	beq	a3, zero, 0xac8 <memcpy+0x48>
-     a9c:      	xor	a3, a1, a0
-     aa0:      	andi	a3, a3, 0x3
-     aa4:      	beq	a3, zero, 0xb6c <memcpy+0xec>
-     aa8:      	addi	a3, zero, 0x20
-     aac:      	bgeu	a2, a3, 0xbb4 <memcpy+0x134>
-     ab0:      	addi	a3, zero, 0x10
-     ab4:      	bgeu	a2, a3, 0xc14 <memcpy+0x194>
-     ab8:      	addi	a3, a0, 0x0
-     abc:      	andi	a4, a2, 0x8
-     ac0:      	bne	a4, zero, 0xca4 <memcpy+0x224>
-     ac4:      	jal	zero, 0xcec <memcpy+0x26c>
-     ac8:      	addi	a3, zero, 0x40
-     acc:      	bltu	a2, a3, 0xbf4 <memcpy+0x174>
-     ad0:      	addi	a4, zero, 0x3f
-     ad4:      	addi	a3, a0, 0x0
-     ad8:      	lw	a5, 0x0(a1)
-     adc:      	sw	a5, 0x0(a3)
-     ae0:      	lw	a5, 0x4(a1)
-     ae4:      	sw	a5, 0x4(a3)
-     ae8:      	lw	a5, 0x8(a1)
-     aec:      	sw	a5, 0x8(a3)
-     af0:      	lw	a5, 0xc(a1)
-     af4:      	sw	a5, 0xc(a3)
-     af8:      	lw	a5, 0x10(a1)
-     afc:      	sw	a5, 0x10(a3)
-     b00:      	lw	a5, 0x14(a1)
-     b04:      	sw	a5, 0x14(a3)
-     b08:      	lw	a5, 0x18(a1)
-     b0c:      	sw	a5, 0x18(a3)
-     b10:      	lw	a5, 0x1c(a1)
-     b14:      	sw	a5, 0x1c(a3)
-     b18:      	lw	a5, 0x20(a1)
-     b1c:      	sw	a5, 0x20(a3)
-     b20:      	lw	a5, 0x24(a1)
-     b24:      	sw	a5, 0x24(a3)
-     b28:      	lw	a5, 0x28(a1)
-     b2c:      	sw	a5, 0x28(a3)
-     b30:      	lw	a5, 0x2c(a1)
-     b34:      	sw	a5, 0x2c(a3)
-     b38:      	lw	a5, 0x30(a1)
-     b3c:      	sw	a5, 0x30(a3)
-     b40:      	lw	a5, 0x34(a1)
-     b44:      	sw	a5, 0x34(a3)
-     b48:      	lw	a5, 0x38(a1)
-     b4c:      	sw	a5, 0x38(a3)
-     b50:      	lw	a5, 0x3c(a1)
-     b54:      	addi	a2, a2, -0x40
-     b58:      	sw	a5, 0x3c(a3)
-     b5c:      	addi	a1, a1, 0x40
-     b60:      	addi	a3, a3, 0x40
-     b64:      	bltu	a4, a2, 0xad8 <memcpy+0x58>
-     b68:      	jal	zero, 0x1210 <memcpy+0x790>
-     b6c:      	addi	a3, zero, 0x4
-     b70:      	bgeu	a2, a3, 0xbfc <memcpy+0x17c>
-     b74:      	andi	a3, a2, 0x2
-     b78:      	beq	a3, zero, 0xb8c <memcpy+0x10c>
-     b7c:      	lbu	a4, 0x0(a1)
-     b80:      	sb	a4, 0x0(a0)
-     b84:      	lbu	a4, 0x1(a1)
-     b88:      	sb	a4, 0x1(a0)
-     b8c:      	andi	a2, a2, 0x1
-     b90:      	beq	a2, zero, 0x1240 <memcpy+0x7c0>
-     b94:      	add	a1, a1, a3
-     b98:      	lbu	a1, 0x0(a1)
-     b9c:      	add	a3, a0, a3
-     ba0:      	sb	a1, 0x0(a3)
-     ba4:      	lw	ra, 0xc(sp)
-     ba8:      	lw	s0, 0x8(sp)
-     bac:      	addi	sp, sp, 0x10
-     bb0:      	jalr	zero, 0x0(ra)
-     bb4:      	andi	a3, a1, 0x3
-     bb8:      	beq	a3, zero, 0xd48 <memcpy+0x2c8>
-     bbc:      	sub	a3, zero, a0
-     bc0:      	andi	a3, a3, 0x3
-     bc4:      	addi	a4, zero, 0x1
-     bc8:      	blt	a4, a3, 0xf48 <memcpy+0x4c8>
-     bcc:      	beq	a3, zero, 0xf60 <memcpy+0x4e0>
-     bd0:      	lbu	a4, 0x0(a1)
-     bd4:      	sb	a4, 0x0(a0)
-     bd8:      	add	a5, a1, a3
-     bdc:      	andi	a4, a5, 0x3
-     be0:      	addi	a6, zero, 0x1
-     be4:      	sub	a2, a2, a3
-     be8:      	add	a1, a0, a3
-     bec:      	bne	a4, a6, 0xf78 <memcpy+0x4f8>
-     bf0:      	jal	zero, 0x1528 <memcpy+0xaa8>
-     bf4:      	addi	a3, a0, 0x0
-     bf8:      	jal	zero, 0x1210 <memcpy+0x790>
-     bfc:      	andi	a3, a1, 0x1
-     c00:      	bne	a3, zero, 0x1144 <memcpy+0x6c4>
-     c04:      	addi	a3, a0, 0x0
-     c08:      	andi	a4, a1, 0x2
-     c0c:      	bne	a4, zero, 0x1160 <memcpy+0x6e0>
-     c10:      	jal	zero, 0x1174 <memcpy+0x6f4>
-     c14:      	lbu	a3, 0x0(a1)
-     c18:      	sb	a3, 0x0(a0)
-     c1c:      	lbu	a3, 0x1(a1)
-     c20:      	sb	a3, 0x1(a0)
-     c24:      	lbu	a3, 0x2(a1)
-     c28:      	sb	a3, 0x2(a0)
-     c2c:      	lbu	a3, 0x3(a1)
-     c30:      	sb	a3, 0x3(a0)
-     c34:      	lbu	a3, 0x4(a1)
-     c38:      	sb	a3, 0x4(a0)
-     c3c:      	lbu	a3, 0x5(a1)
-     c40:      	sb	a3, 0x5(a0)
-     c44:      	lbu	a3, 0x6(a1)
-     c48:      	sb	a3, 0x6(a0)
-     c4c:      	lbu	a3, 0x7(a1)
-     c50:      	sb	a3, 0x7(a0)
-     c54:      	lbu	a3, 0x8(a1)
-     c58:      	sb	a3, 0x8(a0)
-     c5c:      	lbu	a3, 0x9(a1)
-     c60:      	sb	a3, 0x9(a0)
-     c64:      	lbu	a3, 0xa(a1)
-     c68:      	sb	a3, 0xa(a0)
-     c6c:      	lbu	a3, 0xb(a1)
-     c70:      	sb	a3, 0xb(a0)
-     c74:      	lbu	a3, 0xc(a1)
-     c78:      	sb	a3, 0xc(a0)
-     c7c:      	lbu	a3, 0xd(a1)
-     c80:      	sb	a3, 0xd(a0)
-     c84:      	lbu	a3, 0xe(a1)
-     c88:      	sb	a3, 0xe(a0)
-     c8c:      	lbu	a3, 0xf(a1)
-     c90:      	sb	a3, 0xf(a0)
-     c94:      	addi	a3, a0, 0x10
-     c98:      	addi	a1, a1, 0x10
-     c9c:      	andi	a4, a2, 0x8
-     ca0:      	beq	a4, zero, 0xcec <memcpy+0x26c>
-     ca4:      	lbu	a4, 0x0(a1)
-     ca8:      	sb	a4, 0x0(a3)
-     cac:      	lbu	a4, 0x1(a1)
-     cb0:      	sb	a4, 0x1(a3)
-     cb4:      	lbu	a4, 0x2(a1)
-     cb8:      	sb	a4, 0x2(a3)
-     cbc:      	lbu	a4, 0x3(a1)
-     cc0:      	sb	a4, 0x3(a3)
-     cc4:      	lbu	a4, 0x4(a1)
-     cc8:      	sb	a4, 0x4(a3)
-     ccc:      	lbu	a4, 0x5(a1)
-     cd0:      	sb	a4, 0x5(a3)
-     cd4:      	lbu	a4, 0x6(a1)
-     cd8:      	sb	a4, 0x6(a3)
-     cdc:      	lbu	a4, 0x7(a1)
-     ce0:      	addi	a1, a1, 0x8
-     ce4:      	sb	a4, 0x7(a3)
-     ce8:      	addi	a3, a3, 0x8
-     cec:      	andi	a4, a2, 0x4
-     cf0:      	bne	a4, zero, 0xd00 <memcpy+0x280>
-     cf4:      	andi	a4, a2, 0x2
-     cf8:      	bne	a4, zero, 0xd30 <memcpy+0x2b0>
-     cfc:      	jal	zero, 0x1238 <memcpy+0x7b8>
-     d00:      	lbu	a4, 0x0(a1)
-     d04:      	sb	a4, 0x0(a3)
-     d08:      	lbu	a4, 0x1(a1)
-     d0c:      	sb	a4, 0x1(a3)
-     d10:      	lbu	a4, 0x2(a1)
-     d14:      	sb	a4, 0x2(a3)
-     d18:      	lbu	a4, 0x3(a1)
-     d1c:      	addi	a1, a1, 0x4
-     d20:      	sb	a4, 0x3(a3)
-     d24:      	addi	a3, a3, 0x4
-     d28:      	andi	a4, a2, 0x2
-     d2c:      	beq	a4, zero, 0x1238 <memcpy+0x7b8>
-     d30:      	lbu	a4, 0x0(a1)
-     d34:      	sb	a4, 0x0(a3)
-     d38:      	lbu	a4, 0x1(a1)
-     d3c:      	addi	a1, a1, 0x2
-     d40:      	sb	a4, 0x1(a3)
-     d44:      	jal	zero, 0x1314 <memcpy+0x894>
-     d48:      	lw	a5, 0x0(a1)
-     d4c:      	addi	a1, a1, 0x4
-     d50:      	addi	a2, a2, -0x4
-     d54:      	andi	a3, a0, 0x3
-     d58:      	addi	a6, zero, 0x1
-     d5c:      	sb	a5, 0x0(a0)
-     d60:      	srli	a4, a5, 0x8
-     d64:      	beq	a3, a6, 0x1700 <memcpy+0xc80>
-     d68:      	addi	a6, zero, 0x2
-     d6c:      	bne	a3, a6, 0x18c8 <memcpy+0xe48>
-     d70:      	sb	a4, 0x1(a0)
-     d74:      	addi	a6, zero, 0x40
-     d78:      	addi	a3, a0, 0x2
-     d7c:      	srli	a4, a5, 0x10
-     d80:      	bltu	a2, a6, 0xed8 <memcpy+0x458>
-     d84:      	addi	a5, zero, 0x3f
-     d88:      	lw	a6, 0x0(a1)
-     d8c:      	slli	a7, a6, 0x10
-     d90:      	or	a4, a7, a4
-     d94:      	sw	a4, 0x0(a3)
-     d98:      	lw	a4, 0x4(a1)
-     d9c:      	srli	a6, a6, 0x10
-     da0:      	slli	a7, a4, 0x10
-     da4:      	or	a6, a7, a6
-     da8:      	sw	a6, 0x4(a3)
-     dac:      	lw	a6, 0x8(a1)
-     db0:      	srli	a4, a4, 0x10
-     db4:      	slli	a7, a6, 0x10
-     db8:      	or	a4, a7, a4
-     dbc:      	sw	a4, 0x8(a3)
-     dc0:      	lw	a4, 0xc(a1)
-     dc4:      	srli	a6, a6, 0x10
-     dc8:      	slli	a7, a4, 0x10
-     dcc:      	or	a6, a7, a6
-     dd0:      	sw	a6, 0xc(a3)
-     dd4:      	lw	a6, 0x10(a1)
-     dd8:      	srli	a4, a4, 0x10
-     ddc:      	slli	a7, a6, 0x10
-     de0:      	or	a4, a7, a4
-     de4:      	sw	a4, 0x10(a3)
-     de8:      	lw	a4, 0x14(a1)
-     dec:      	srli	a6, a6, 0x10
-     df0:      	slli	a7, a4, 0x10
-     df4:      	or	a6, a7, a6
-     df8:      	sw	a6, 0x14(a3)
-     dfc:      	lw	a6, 0x18(a1)
-     e00:      	srli	a4, a4, 0x10
-     e04:      	slli	a7, a6, 0x10
-     e08:      	or	a4, a7, a4
-     e0c:      	sw	a4, 0x18(a3)
-     e10:      	lw	a4, 0x1c(a1)
-     e14:      	srli	a6, a6, 0x10
-     e18:      	slli	a7, a4, 0x10
-     e1c:      	or	a6, a7, a6
-     e20:      	sw	a6, 0x1c(a3)
-     e24:      	lw	a6, 0x20(a1)
-     e28:      	srli	a4, a4, 0x10
-     e2c:      	slli	a7, a6, 0x10
-     e30:      	or	a4, a7, a4
-     e34:      	sw	a4, 0x20(a3)
-     e38:      	lw	a4, 0x24(a1)
-     e3c:      	srli	a6, a6, 0x10
-     e40:      	slli	a7, a4, 0x10
-     e44:      	or	a6, a7, a6
-     e48:      	sw	a6, 0x24(a3)
-     e4c:      	lw	a6, 0x28(a1)
-     e50:      	srli	a4, a4, 0x10
-     e54:      	slli	a7, a6, 0x10
-     e58:      	or	a4, a7, a4
-     e5c:      	sw	a4, 0x28(a3)
-     e60:      	lw	a4, 0x2c(a1)
-     e64:      	srli	a6, a6, 0x10
-     e68:      	slli	a7, a4, 0x10
-     e6c:      	or	a6, a7, a6
-     e70:      	sw	a6, 0x2c(a3)
-     e74:      	lw	a6, 0x30(a1)
-     e78:      	srli	a4, a4, 0x10
-     e7c:      	slli	a7, a6, 0x10
-     e80:      	or	a4, a7, a4
-     e84:      	sw	a4, 0x30(a3)
-     e88:      	lw	a4, 0x34(a1)
-     e8c:      	srli	a6, a6, 0x10
-     e90:      	slli	a7, a4, 0x10
-     e94:      	or	a6, a7, a6
-     e98:      	sw	a6, 0x34(a3)
-     e9c:      	lw	a6, 0x38(a1)
-     ea0:      	srli	a4, a4, 0x10
-     ea4:      	slli	a7, a6, 0x10
-     ea8:      	or	a4, a7, a4
-     eac:      	sw	a4, 0x38(a3)
-     eb0:      	lw	a4, 0x3c(a1)
-     eb4:      	srli	a6, a6, 0x10
-     eb8:      	slli	a7, a4, 0x10
-     ebc:      	addi	a2, a2, -0x40
-     ec0:      	or	a6, a7, a6
-     ec4:      	addi	a1, a1, 0x40
-     ec8:      	sw	a6, 0x3c(a3)
-     ecc:      	addi	a3, a3, 0x40
-     ed0:      	srli	a4, a4, 0x10
-     ed4:      	bltu	a5, a2, 0xd88 <memcpy+0x308>
-     ed8:      	addi	a5, zero, 0x20
-     edc:      	bltu	a2, a5, 0xee4 <memcpy+0x464>
-     ee0:      	jal	zero, 0x1f94 <memcpy+0x1514>
-     ee4:      	andi	a5, a2, 0x10
-     ee8:      	beq	a5, zero, 0xef0 <memcpy+0x470>
-     eec:      	jal	zero, 0x2048 <memcpy+0x15c8>
-     ef0:      	andi	a5, a2, 0x8
-     ef4:      	beq	a5, zero, 0xefc <memcpy+0x47c>
-     ef8:      	jal	zero, 0x20ac <memcpy+0x162c>
-     efc:      	andi	a5, a2, 0x4
-     f00:      	beq	a5, zero, 0xf08 <memcpy+0x488>
-     f04:      	jal	zero, 0x20e8 <memcpy+0x1668>
-     f08:      	andi	a5, a2, 0x3
-     f0c:      	addi	a6, zero, 0x1
-     f10:      	bltu	a6, a5, 0xf18 <memcpy+0x498>
-     f14:      	jal	zero, 0x2114 <memcpy+0x1694>
-     f18:      	lh	a2, 0x0(a1)
-     f1c:      	slli	a2, a2, 0x10
-     f20:      	or	a2, a2, a4
-     f24:      	addi	a4, zero, 0x2
-     f28:      	sw	a2, 0x0(a3)
-     f2c:      	beq	a5, a4, 0x1240 <memcpy+0x7c0>
-     f30:      	lbu	a1, 0x2(a1)
-     f34:      	sb	a1, 0x4(a3)
-     f38:      	lw	ra, 0xc(sp)
-     f3c:      	lw	s0, 0x8(sp)
-     f40:      	addi	sp, sp, 0x10
-     f44:      	jalr	zero, 0x0(ra)
-     f48:      	addi	a4, zero, 0x2
-     f4c:      	bne	a3, a4, 0x14f8 <memcpy+0xa78>
-     f50:      	lbu	a4, 0x0(a1)
-     f54:      	sb	a4, 0x0(a0)
-     f58:      	lbu	a4, 0x1(a1)
-     f5c:      	sb	a4, 0x1(a0)
-     f60:      	add	a5, a1, a3
-     f64:      	andi	a4, a5, 0x3
-     f68:      	addi	a6, zero, 0x1
-     f6c:      	sub	a2, a2, a3
-     f70:      	add	a1, a0, a3
-     f74:      	beq	a4, a6, 0x1528 <memcpy+0xaa8>
-     f78:      	addi	a3, zero, 0x2
-     f7c:      	bne	a4, a3, 0x1338 <memcpy+0x8b8>
-     f80:      	lhu	a4, 0x0(a5)
-     f84:      	addi	a3, a2, -0x2
-     f88:      	addi	a6, zero, 0x40
-     f8c:      	addi	a2, a5, 0x2
-     f90:      	bltu	a3, a6, 0x10e8 <memcpy+0x668>
-     f94:      	addi	a5, zero, 0x3f
-     f98:      	lw	a6, 0x0(a2)
-     f9c:      	slli	a7, a6, 0x10
-     fa0:      	or	a4, a7, a4
-     fa4:      	sw	a4, 0x0(a1)
-     fa8:      	lw	a4, 0x4(a2)
-     fac:      	srli	a6, a6, 0x10
-     fb0:      	slli	a7, a4, 0x10
-     fb4:      	or	a6, a7, a6
-     fb8:      	sw	a6, 0x4(a1)
-     fbc:      	lw	a6, 0x8(a2)
-     fc0:      	srli	a4, a4, 0x10
-     fc4:      	slli	a7, a6, 0x10
-     fc8:      	or	a4, a7, a4
-     fcc:      	sw	a4, 0x8(a1)
-     fd0:      	lw	a4, 0xc(a2)
-     fd4:      	srli	a6, a6, 0x10
-     fd8:      	slli	a7, a4, 0x10
-     fdc:      	or	a6, a7, a6
-     fe0:      	sw	a6, 0xc(a1)
-     fe4:      	lw	a6, 0x10(a2)
-     fe8:      	srli	a4, a4, 0x10
-     fec:      	slli	a7, a6, 0x10
-     ff0:      	or	a4, a7, a4
-     ff4:      	sw	a4, 0x10(a1)
-     ff8:      	lw	a4, 0x14(a2)
-     ffc:      	srli	a6, a6, 0x10
-    1000:      	slli	a7, a4, 0x10
-    1004:      	or	a6, a7, a6
-    1008:      	sw	a6, 0x14(a1)
-    100c:      	lw	a6, 0x18(a2)
-    1010:      	srli	a4, a4, 0x10
-    1014:      	slli	a7, a6, 0x10
-    1018:      	or	a4, a7, a4
-    101c:      	sw	a4, 0x18(a1)
-    1020:      	lw	a4, 0x1c(a2)
-    1024:      	srli	a6, a6, 0x10
-    1028:      	slli	a7, a4, 0x10
-    102c:      	or	a6, a7, a6
-    1030:      	sw	a6, 0x1c(a1)
-    1034:      	lw	a6, 0x20(a2)
+000009e4 <memcpy>:
+     9e4:      	addi	sp, sp, -0x10
+     9e8:      	sw	ra, 0xc(sp)
+     9ec:      	sw	s0, 0x8(sp)
+     9f0:      	addi	s0, sp, 0x10
+     9f4:      	or	a3, a1, a0
+     9f8:      	andi	a3, a3, 0x3
+     9fc:      	beq	a3, zero, 0xa2c <memcpy+0x48>
+     a00:      	xor	a3, a1, a0
+     a04:      	andi	a3, a3, 0x3
+     a08:      	beq	a3, zero, 0xad0 <memcpy+0xec>
+     a0c:      	addi	a3, zero, 0x20
+     a10:      	bgeu	a2, a3, 0xb18 <memcpy+0x134>
+     a14:      	addi	a3, zero, 0x10
+     a18:      	bgeu	a2, a3, 0xb78 <memcpy+0x194>
+     a1c:      	addi	a3, a0, 0x0
+     a20:      	andi	a4, a2, 0x8
+     a24:      	bne	a4, zero, 0xc08 <memcpy+0x224>
+     a28:      	jal	zero, 0xc50 <memcpy+0x26c>
+     a2c:      	addi	a3, zero, 0x40
+     a30:      	bltu	a2, a3, 0xb58 <memcpy+0x174>
+     a34:      	addi	a4, zero, 0x3f
+     a38:      	addi	a3, a0, 0x0
+     a3c:      	lw	a5, 0x0(a1)
+     a40:      	sw	a5, 0x0(a3)
+     a44:      	lw	a5, 0x4(a1)
+     a48:      	sw	a5, 0x4(a3)
+     a4c:      	lw	a5, 0x8(a1)
+     a50:      	sw	a5, 0x8(a3)
+     a54:      	lw	a5, 0xc(a1)
+     a58:      	sw	a5, 0xc(a3)
+     a5c:      	lw	a5, 0x10(a1)
+     a60:      	sw	a5, 0x10(a3)
+     a64:      	lw	a5, 0x14(a1)
+     a68:      	sw	a5, 0x14(a3)
+     a6c:      	lw	a5, 0x18(a1)
+     a70:      	sw	a5, 0x18(a3)
+     a74:      	lw	a5, 0x1c(a1)
+     a78:      	sw	a5, 0x1c(a3)
+     a7c:      	lw	a5, 0x20(a1)
+     a80:      	sw	a5, 0x20(a3)
+     a84:      	lw	a5, 0x24(a1)
+     a88:      	sw	a5, 0x24(a3)
+     a8c:      	lw	a5, 0x28(a1)
+     a90:      	sw	a5, 0x28(a3)
+     a94:      	lw	a5, 0x2c(a1)
+     a98:      	sw	a5, 0x2c(a3)
+     a9c:      	lw	a5, 0x30(a1)
+     aa0:      	sw	a5, 0x30(a3)
+     aa4:      	lw	a5, 0x34(a1)
+     aa8:      	sw	a5, 0x34(a3)
+     aac:      	lw	a5, 0x38(a1)
+     ab0:      	sw	a5, 0x38(a3)
+     ab4:      	lw	a5, 0x3c(a1)
+     ab8:      	addi	a2, a2, -0x40
+     abc:      	sw	a5, 0x3c(a3)
+     ac0:      	addi	a1, a1, 0x40
+     ac4:      	addi	a3, a3, 0x40
+     ac8:      	bltu	a4, a2, 0xa3c <memcpy+0x58>
+     acc:      	jal	zero, 0x1174 <memcpy+0x790>
+     ad0:      	addi	a3, zero, 0x4
+     ad4:      	bgeu	a2, a3, 0xb60 <memcpy+0x17c>
+     ad8:      	andi	a3, a2, 0x2
+     adc:      	beq	a3, zero, 0xaf0 <memcpy+0x10c>
+     ae0:      	lbu	a4, 0x0(a1)
+     ae4:      	sb	a4, 0x0(a0)
+     ae8:      	lbu	a4, 0x1(a1)
+     aec:      	sb	a4, 0x1(a0)
+     af0:      	andi	a2, a2, 0x1
+     af4:      	beq	a2, zero, 0x11a4 <memcpy+0x7c0>
+     af8:      	add	a1, a1, a3
+     afc:      	lbu	a1, 0x0(a1)
+     b00:      	add	a3, a0, a3
+     b04:      	sb	a1, 0x0(a3)
+     b08:      	lw	ra, 0xc(sp)
+     b0c:      	lw	s0, 0x8(sp)
+     b10:      	addi	sp, sp, 0x10
+     b14:      	jalr	zero, 0x0(ra)
+     b18:      	andi	a3, a1, 0x3
+     b1c:      	beq	a3, zero, 0xcac <memcpy+0x2c8>
+     b20:      	sub	a3, zero, a0
+     b24:      	andi	a3, a3, 0x3
+     b28:      	addi	a4, zero, 0x1
+     b2c:      	blt	a4, a3, 0xeac <memcpy+0x4c8>
+     b30:      	beq	a3, zero, 0xec4 <memcpy+0x4e0>
+     b34:      	lbu	a4, 0x0(a1)
+     b38:      	sb	a4, 0x0(a0)
+     b3c:      	add	a5, a1, a3
+     b40:      	andi	a4, a5, 0x3
+     b44:      	addi	a6, zero, 0x1
+     b48:      	sub	a2, a2, a3
+     b4c:      	add	a1, a0, a3
+     b50:      	bne	a4, a6, 0xedc <memcpy+0x4f8>
+     b54:      	jal	zero, 0x148c <memcpy+0xaa8>
+     b58:      	addi	a3, a0, 0x0
+     b5c:      	jal	zero, 0x1174 <memcpy+0x790>
+     b60:      	andi	a3, a1, 0x1
+     b64:      	bne	a3, zero, 0x10a8 <memcpy+0x6c4>
+     b68:      	addi	a3, a0, 0x0
+     b6c:      	andi	a4, a1, 0x2
+     b70:      	bne	a4, zero, 0x10c4 <memcpy+0x6e0>
+     b74:      	jal	zero, 0x10d8 <memcpy+0x6f4>
+     b78:      	lbu	a3, 0x0(a1)
+     b7c:      	sb	a3, 0x0(a0)
+     b80:      	lbu	a3, 0x1(a1)
+     b84:      	sb	a3, 0x1(a0)
+     b88:      	lbu	a3, 0x2(a1)
+     b8c:      	sb	a3, 0x2(a0)
+     b90:      	lbu	a3, 0x3(a1)
+     b94:      	sb	a3, 0x3(a0)
+     b98:      	lbu	a3, 0x4(a1)
+     b9c:      	sb	a3, 0x4(a0)
+     ba0:      	lbu	a3, 0x5(a1)
+     ba4:      	sb	a3, 0x5(a0)
+     ba8:      	lbu	a3, 0x6(a1)
+     bac:      	sb	a3, 0x6(a0)
+     bb0:      	lbu	a3, 0x7(a1)
+     bb4:      	sb	a3, 0x7(a0)
+     bb8:      	lbu	a3, 0x8(a1)
+     bbc:      	sb	a3, 0x8(a0)
+     bc0:      	lbu	a3, 0x9(a1)
+     bc4:      	sb	a3, 0x9(a0)
+     bc8:      	lbu	a3, 0xa(a1)
+     bcc:      	sb	a3, 0xa(a0)
+     bd0:      	lbu	a3, 0xb(a1)
+     bd4:      	sb	a3, 0xb(a0)
+     bd8:      	lbu	a3, 0xc(a1)
+     bdc:      	sb	a3, 0xc(a0)
+     be0:      	lbu	a3, 0xd(a1)
+     be4:      	sb	a3, 0xd(a0)
+     be8:      	lbu	a3, 0xe(a1)
+     bec:      	sb	a3, 0xe(a0)
+     bf0:      	lbu	a3, 0xf(a1)
+     bf4:      	sb	a3, 0xf(a0)
+     bf8:      	addi	a3, a0, 0x10
+     bfc:      	addi	a1, a1, 0x10
+     c00:      	andi	a4, a2, 0x8
+     c04:      	beq	a4, zero, 0xc50 <memcpy+0x26c>
+     c08:      	lbu	a4, 0x0(a1)
+     c0c:      	sb	a4, 0x0(a3)
+     c10:      	lbu	a4, 0x1(a1)
+     c14:      	sb	a4, 0x1(a3)
+     c18:      	lbu	a4, 0x2(a1)
+     c1c:      	sb	a4, 0x2(a3)
+     c20:      	lbu	a4, 0x3(a1)
+     c24:      	sb	a4, 0x3(a3)
+     c28:      	lbu	a4, 0x4(a1)
+     c2c:      	sb	a4, 0x4(a3)
+     c30:      	lbu	a4, 0x5(a1)
+     c34:      	sb	a4, 0x5(a3)
+     c38:      	lbu	a4, 0x6(a1)
+     c3c:      	sb	a4, 0x6(a3)
+     c40:      	lbu	a4, 0x7(a1)
+     c44:      	addi	a1, a1, 0x8
+     c48:      	sb	a4, 0x7(a3)
+     c4c:      	addi	a3, a3, 0x8
+     c50:      	andi	a4, a2, 0x4
+     c54:      	bne	a4, zero, 0xc64 <memcpy+0x280>
+     c58:      	andi	a4, a2, 0x2
+     c5c:      	bne	a4, zero, 0xc94 <memcpy+0x2b0>
+     c60:      	jal	zero, 0x119c <memcpy+0x7b8>
+     c64:      	lbu	a4, 0x0(a1)
+     c68:      	sb	a4, 0x0(a3)
+     c6c:      	lbu	a4, 0x1(a1)
+     c70:      	sb	a4, 0x1(a3)
+     c74:      	lbu	a4, 0x2(a1)
+     c78:      	sb	a4, 0x2(a3)
+     c7c:      	lbu	a4, 0x3(a1)
+     c80:      	addi	a1, a1, 0x4
+     c84:      	sb	a4, 0x3(a3)
+     c88:      	addi	a3, a3, 0x4
+     c8c:      	andi	a4, a2, 0x2
+     c90:      	beq	a4, zero, 0x119c <memcpy+0x7b8>
+     c94:      	lbu	a4, 0x0(a1)
+     c98:      	sb	a4, 0x0(a3)
+     c9c:      	lbu	a4, 0x1(a1)
+     ca0:      	addi	a1, a1, 0x2
+     ca4:      	sb	a4, 0x1(a3)
+     ca8:      	jal	zero, 0x1278 <memcpy+0x894>
+     cac:      	lw	a5, 0x0(a1)
+     cb0:      	addi	a1, a1, 0x4
+     cb4:      	addi	a2, a2, -0x4
+     cb8:      	andi	a3, a0, 0x3
+     cbc:      	addi	a6, zero, 0x1
+     cc0:      	sb	a5, 0x0(a0)
+     cc4:      	srli	a4, a5, 0x8
+     cc8:      	beq	a3, a6, 0x1664 <memcpy+0xc80>
+     ccc:      	addi	a6, zero, 0x2
+     cd0:      	bne	a3, a6, 0x182c <memcpy+0xe48>
+     cd4:      	sb	a4, 0x1(a0)
+     cd8:      	addi	a6, zero, 0x40
+     cdc:      	addi	a3, a0, 0x2
+     ce0:      	srli	a4, a5, 0x10
+     ce4:      	bltu	a2, a6, 0xe3c <memcpy+0x458>
+     ce8:      	addi	a5, zero, 0x3f
+     cec:      	lw	a6, 0x0(a1)
+     cf0:      	slli	a7, a6, 0x10
+     cf4:      	or	a4, a7, a4
+     cf8:      	sw	a4, 0x0(a3)
+     cfc:      	lw	a4, 0x4(a1)
+     d00:      	srli	a6, a6, 0x10
+     d04:      	slli	a7, a4, 0x10
+     d08:      	or	a6, a7, a6
+     d0c:      	sw	a6, 0x4(a3)
+     d10:      	lw	a6, 0x8(a1)
+     d14:      	srli	a4, a4, 0x10
+     d18:      	slli	a7, a6, 0x10
+     d1c:      	or	a4, a7, a4
+     d20:      	sw	a4, 0x8(a3)
+     d24:      	lw	a4, 0xc(a1)
+     d28:      	srli	a6, a6, 0x10
+     d2c:      	slli	a7, a4, 0x10
+     d30:      	or	a6, a7, a6
+     d34:      	sw	a6, 0xc(a3)
+     d38:      	lw	a6, 0x10(a1)
+     d3c:      	srli	a4, a4, 0x10
+     d40:      	slli	a7, a6, 0x10
+     d44:      	or	a4, a7, a4
+     d48:      	sw	a4, 0x10(a3)
+     d4c:      	lw	a4, 0x14(a1)
+     d50:      	srli	a6, a6, 0x10
+     d54:      	slli	a7, a4, 0x10
+     d58:      	or	a6, a7, a6
+     d5c:      	sw	a6, 0x14(a3)
+     d60:      	lw	a6, 0x18(a1)
+     d64:      	srli	a4, a4, 0x10
+     d68:      	slli	a7, a6, 0x10
+     d6c:      	or	a4, a7, a4
+     d70:      	sw	a4, 0x18(a3)
+     d74:      	lw	a4, 0x1c(a1)
+     d78:      	srli	a6, a6, 0x10
+     d7c:      	slli	a7, a4, 0x10
+     d80:      	or	a6, a7, a6
+     d84:      	sw	a6, 0x1c(a3)
+     d88:      	lw	a6, 0x20(a1)
+     d8c:      	srli	a4, a4, 0x10
+     d90:      	slli	a7, a6, 0x10
+     d94:      	or	a4, a7, a4
+     d98:      	sw	a4, 0x20(a3)
+     d9c:      	lw	a4, 0x24(a1)
+     da0:      	srli	a6, a6, 0x10
+     da4:      	slli	a7, a4, 0x10
+     da8:      	or	a6, a7, a6
+     dac:      	sw	a6, 0x24(a3)
+     db0:      	lw	a6, 0x28(a1)
+     db4:      	srli	a4, a4, 0x10
+     db8:      	slli	a7, a6, 0x10
+     dbc:      	or	a4, a7, a4
+     dc0:      	sw	a4, 0x28(a3)
+     dc4:      	lw	a4, 0x2c(a1)
+     dc8:      	srli	a6, a6, 0x10
+     dcc:      	slli	a7, a4, 0x10
+     dd0:      	or	a6, a7, a6
+     dd4:      	sw	a6, 0x2c(a3)
+     dd8:      	lw	a6, 0x30(a1)
+     ddc:      	srli	a4, a4, 0x10
+     de0:      	slli	a7, a6, 0x10
+     de4:      	or	a4, a7, a4
+     de8:      	sw	a4, 0x30(a3)
+     dec:      	lw	a4, 0x34(a1)
+     df0:      	srli	a6, a6, 0x10
+     df4:      	slli	a7, a4, 0x10
+     df8:      	or	a6, a7, a6
+     dfc:      	sw	a6, 0x34(a3)
+     e00:      	lw	a6, 0x38(a1)
+     e04:      	srli	a4, a4, 0x10
+     e08:      	slli	a7, a6, 0x10
+     e0c:      	or	a4, a7, a4
+     e10:      	sw	a4, 0x38(a3)
+     e14:      	lw	a4, 0x3c(a1)
+     e18:      	srli	a6, a6, 0x10
+     e1c:      	slli	a7, a4, 0x10
+     e20:      	addi	a2, a2, -0x40
+     e24:      	or	a6, a7, a6
+     e28:      	addi	a1, a1, 0x40
+     e2c:      	sw	a6, 0x3c(a3)
+     e30:      	addi	a3, a3, 0x40
+     e34:      	srli	a4, a4, 0x10
+     e38:      	bltu	a5, a2, 0xcec <memcpy+0x308>
+     e3c:      	addi	a5, zero, 0x20
+     e40:      	bltu	a2, a5, 0xe48 <memcpy+0x464>
+     e44:      	jal	zero, 0x1ef8 <memcpy+0x1514>
+     e48:      	andi	a5, a2, 0x10
+     e4c:      	beq	a5, zero, 0xe54 <memcpy+0x470>
+     e50:      	jal	zero, 0x1fac <memcpy+0x15c8>
+     e54:      	andi	a5, a2, 0x8
+     e58:      	beq	a5, zero, 0xe60 <memcpy+0x47c>
+     e5c:      	jal	zero, 0x2010 <memcpy+0x162c>
+     e60:      	andi	a5, a2, 0x4
+     e64:      	beq	a5, zero, 0xe6c <memcpy+0x488>
+     e68:      	jal	zero, 0x204c <memcpy+0x1668>
+     e6c:      	andi	a5, a2, 0x3
+     e70:      	addi	a6, zero, 0x1
+     e74:      	bltu	a6, a5, 0xe7c <memcpy+0x498>
+     e78:      	jal	zero, 0x2078 <memcpy+0x1694>
+     e7c:      	lh	a2, 0x0(a1)
+     e80:      	slli	a2, a2, 0x10
+     e84:      	or	a2, a2, a4
+     e88:      	addi	a4, zero, 0x2
+     e8c:      	sw	a2, 0x0(a3)
+     e90:      	beq	a5, a4, 0x11a4 <memcpy+0x7c0>
+     e94:      	lbu	a1, 0x2(a1)
+     e98:      	sb	a1, 0x4(a3)
+     e9c:      	lw	ra, 0xc(sp)
+     ea0:      	lw	s0, 0x8(sp)
+     ea4:      	addi	sp, sp, 0x10
+     ea8:      	jalr	zero, 0x0(ra)
+     eac:      	addi	a4, zero, 0x2
+     eb0:      	bne	a3, a4, 0x145c <memcpy+0xa78>
+     eb4:      	lbu	a4, 0x0(a1)
+     eb8:      	sb	a4, 0x0(a0)
+     ebc:      	lbu	a4, 0x1(a1)
+     ec0:      	sb	a4, 0x1(a0)
+     ec4:      	add	a5, a1, a3
+     ec8:      	andi	a4, a5, 0x3
+     ecc:      	addi	a6, zero, 0x1
+     ed0:      	sub	a2, a2, a3
+     ed4:      	add	a1, a0, a3
+     ed8:      	beq	a4, a6, 0x148c <memcpy+0xaa8>
+     edc:      	addi	a3, zero, 0x2
+     ee0:      	bne	a4, a3, 0x129c <memcpy+0x8b8>
+     ee4:      	lhu	a4, 0x0(a5)
+     ee8:      	addi	a3, a2, -0x2
+     eec:      	addi	a6, zero, 0x40
+     ef0:      	addi	a2, a5, 0x2
+     ef4:      	bltu	a3, a6, 0x104c <memcpy+0x668>
+     ef8:      	addi	a5, zero, 0x3f
+     efc:      	lw	a6, 0x0(a2)
+     f00:      	slli	a7, a6, 0x10
+     f04:      	or	a4, a7, a4
+     f08:      	sw	a4, 0x0(a1)
+     f0c:      	lw	a4, 0x4(a2)
+     f10:      	srli	a6, a6, 0x10
+     f14:      	slli	a7, a4, 0x10
+     f18:      	or	a6, a7, a6
+     f1c:      	sw	a6, 0x4(a1)
+     f20:      	lw	a6, 0x8(a2)
+     f24:      	srli	a4, a4, 0x10
+     f28:      	slli	a7, a6, 0x10
+     f2c:      	or	a4, a7, a4
+     f30:      	sw	a4, 0x8(a1)
+     f34:      	lw	a4, 0xc(a2)
+     f38:      	srli	a6, a6, 0x10
+     f3c:      	slli	a7, a4, 0x10
+     f40:      	or	a6, a7, a6
+     f44:      	sw	a6, 0xc(a1)
+     f48:      	lw	a6, 0x10(a2)
+     f4c:      	srli	a4, a4, 0x10
+     f50:      	slli	a7, a6, 0x10
+     f54:      	or	a4, a7, a4
+     f58:      	sw	a4, 0x10(a1)
+     f5c:      	lw	a4, 0x14(a2)
+     f60:      	srli	a6, a6, 0x10
+     f64:      	slli	a7, a4, 0x10
+     f68:      	or	a6, a7, a6
+     f6c:      	sw	a6, 0x14(a1)
+     f70:      	lw	a6, 0x18(a2)
+     f74:      	srli	a4, a4, 0x10
+     f78:      	slli	a7, a6, 0x10
+     f7c:      	or	a4, a7, a4
+     f80:      	sw	a4, 0x18(a1)
+     f84:      	lw	a4, 0x1c(a2)
+     f88:      	srli	a6, a6, 0x10
+     f8c:      	slli	a7, a4, 0x10
+     f90:      	or	a6, a7, a6
+     f94:      	sw	a6, 0x1c(a1)
+     f98:      	lw	a6, 0x20(a2)
+     f9c:      	srli	a4, a4, 0x10
+     fa0:      	slli	a7, a6, 0x10
+     fa4:      	or	a4, a7, a4
+     fa8:      	sw	a4, 0x20(a1)
+     fac:      	lw	a4, 0x24(a2)
+     fb0:      	srli	a6, a6, 0x10
+     fb4:      	slli	a7, a4, 0x10
+     fb8:      	or	a6, a7, a6
+     fbc:      	sw	a6, 0x24(a1)
+     fc0:      	lw	a6, 0x28(a2)
+     fc4:      	srli	a4, a4, 0x10
+     fc8:      	slli	a7, a6, 0x10
+     fcc:      	or	a4, a7, a4
+     fd0:      	sw	a4, 0x28(a1)
+     fd4:      	lw	a4, 0x2c(a2)
+     fd8:      	srli	a6, a6, 0x10
+     fdc:      	slli	a7, a4, 0x10
+     fe0:      	or	a6, a7, a6
+     fe4:      	sw	a6, 0x2c(a1)
+     fe8:      	lw	a6, 0x30(a2)
+     fec:      	srli	a4, a4, 0x10
+     ff0:      	slli	a7, a6, 0x10
+     ff4:      	or	a4, a7, a4
+     ff8:      	sw	a4, 0x30(a1)
+     ffc:      	lw	a4, 0x34(a2)
+    1000:      	srli	a6, a6, 0x10
+    1004:      	slli	a7, a4, 0x10
+    1008:      	or	a6, a7, a6
+    100c:      	sw	a6, 0x34(a1)
+    1010:      	lw	a6, 0x38(a2)
+    1014:      	srli	a4, a4, 0x10
+    1018:      	slli	a7, a6, 0x10
+    101c:      	or	a4, a7, a4
+    1020:      	sw	a4, 0x38(a1)
+    1024:      	lw	a4, 0x3c(a2)
+    1028:      	srli	a6, a6, 0x10
+    102c:      	slli	a7, a4, 0x10
+    1030:      	addi	a3, a3, -0x40
+    1034:      	or	a6, a7, a6
     1038:      	srli	a4, a4, 0x10
-    103c:      	slli	a7, a6, 0x10
-    1040:      	or	a4, a7, a4
-    1044:      	sw	a4, 0x20(a1)
-    1048:      	lw	a4, 0x24(a2)
-    104c:      	srli	a6, a6, 0x10
-    1050:      	slli	a7, a4, 0x10
-    1054:      	or	a6, a7, a6
-    1058:      	sw	a6, 0x24(a1)
-    105c:      	lw	a6, 0x28(a2)
-    1060:      	srli	a4, a4, 0x10
-    1064:      	slli	a7, a6, 0x10
-    1068:      	or	a4, a7, a4
-    106c:      	sw	a4, 0x28(a1)
-    1070:      	lw	a4, 0x2c(a2)
-    1074:      	srli	a6, a6, 0x10
-    1078:      	slli	a7, a4, 0x10
-    107c:      	or	a6, a7, a6
-    1080:      	sw	a6, 0x2c(a1)
-    1084:      	lw	a6, 0x30(a2)
-    1088:      	srli	a4, a4, 0x10
-    108c:      	slli	a7, a6, 0x10
-    1090:      	or	a4, a7, a4
-    1094:      	sw	a4, 0x30(a1)
-    1098:      	lw	a4, 0x34(a2)
-    109c:      	srli	a6, a6, 0x10
-    10a0:      	slli	a7, a4, 0x10
-    10a4:      	or	a6, a7, a6
-    10a8:      	sw	a6, 0x34(a1)
-    10ac:      	lw	a6, 0x38(a2)
-    10b0:      	srli	a4, a4, 0x10
-    10b4:      	slli	a7, a6, 0x10
-    10b8:      	or	a4, a7, a4
-    10bc:      	sw	a4, 0x38(a1)
-    10c0:      	lw	a4, 0x3c(a2)
-    10c4:      	srli	a6, a6, 0x10
-    10c8:      	slli	a7, a4, 0x10
-    10cc:      	addi	a3, a3, -0x40
-    10d0:      	or	a6, a7, a6
-    10d4:      	srli	a4, a4, 0x10
-    10d8:      	sw	a6, 0x3c(a1)
-    10dc:      	addi	a2, a2, 0x40
-    10e0:      	addi	a1, a1, 0x40
-    10e4:      	bltu	a5, a3, 0xf98 <memcpy+0x518>
-    10e8:      	addi	a5, zero, 0x20
-    10ec:      	bgeu	a3, a5, 0x1a8c <memcpy+0x100c>
-    10f0:      	andi	a5, a3, 0x10
-    10f4:      	bne	a5, zero, 0x1b3c <memcpy+0x10bc>
-    10f8:      	andi	a5, a3, 0x8
-    10fc:      	bne	a5, zero, 0x1b9c <memcpy+0x111c>
-    1100:      	andi	a5, a3, 0x4
-    1104:      	bne	a5, zero, 0x1bd4 <memcpy+0x1154>
-    1108:      	andi	a5, a3, 0x3
-    110c:      	addi	a6, zero, 0x1
-    1110:      	bgeu	a6, a5, 0x1bfc <memcpy+0x117c>
-    1114:      	lh	a3, 0x0(a2)
-    1118:      	slli	a3, a3, 0x10
-    111c:      	or	a3, a3, a4
-    1120:      	addi	a4, zero, 0x2
-    1124:      	sw	a3, 0x0(a1)
-    1128:      	beq	a5, a4, 0x1240 <memcpy+0x7c0>
-    112c:      	lbu	a2, 0x2(a2)
-    1130:      	sb	a2, 0x4(a1)
-    1134:      	lw	ra, 0xc(sp)
-    1138:      	lw	s0, 0x8(sp)
-    113c:      	addi	sp, sp, 0x10
-    1140:      	jalr	zero, 0x0(ra)
-    1144:      	lbu	a3, 0x0(a1)
-    1148:      	addi	a1, a1, 0x1
-    114c:      	sb	a3, 0x0(a0)
-    1150:      	addi	a3, a0, 0x1
-    1154:      	addi	a2, a2, -0x1
-    1158:      	andi	a4, a1, 0x2
-    115c:      	beq	a4, zero, 0x1174 <memcpy+0x6f4>
-    1160:      	lh	a4, 0x0(a1)
-    1164:      	addi	a1, a1, 0x2
-    1168:      	sh	a4, 0x0(a3)
-    116c:      	addi	a3, a3, 0x2
-    1170:      	addi	a2, a2, -0x2
-    1174:      	addi	a4, zero, 0x40
-    1178:      	bltu	a2, a4, 0x1210 <memcpy+0x790>
-    117c:      	addi	a4, zero, 0x3f
-    1180:      	lw	a5, 0x0(a1)
-    1184:      	sw	a5, 0x0(a3)
-    1188:      	lw	a5, 0x4(a1)
-    118c:      	sw	a5, 0x4(a3)
-    1190:      	lw	a5, 0x8(a1)
-    1194:      	sw	a5, 0x8(a3)
-    1198:      	lw	a5, 0xc(a1)
-    119c:      	sw	a5, 0xc(a3)
-    11a0:      	lw	a5, 0x10(a1)
-    11a4:      	sw	a5, 0x10(a3)
-    11a8:      	lw	a5, 0x14(a1)
-    11ac:      	sw	a5, 0x14(a3)
-    11b0:      	lw	a5, 0x18(a1)
-    11b4:      	sw	a5, 0x18(a3)
-    11b8:      	lw	a5, 0x1c(a1)
-    11bc:      	sw	a5, 0x1c(a3)
-    11c0:      	lw	a5, 0x20(a1)
-    11c4:      	sw	a5, 0x20(a3)
-    11c8:      	lw	a5, 0x24(a1)
-    11cc:      	sw	a5, 0x24(a3)
-    11d0:      	lw	a5, 0x28(a1)
-    11d4:      	sw	a5, 0x28(a3)
-    11d8:      	lw	a5, 0x2c(a1)
-    11dc:      	sw	a5, 0x2c(a3)
-    11e0:      	lw	a5, 0x30(a1)
-    11e4:      	sw	a5, 0x30(a3)
-    11e8:      	lw	a5, 0x34(a1)
-    11ec:      	sw	a5, 0x34(a3)
-    11f0:      	lw	a5, 0x38(a1)
-    11f4:      	sw	a5, 0x38(a3)
-    11f8:      	lw	a5, 0x3c(a1)
-    11fc:      	addi	a2, a2, -0x40
-    1200:      	sw	a5, 0x3c(a3)
-    1204:      	addi	a1, a1, 0x40
-    1208:      	addi	a3, a3, 0x40
-    120c:      	bltu	a4, a2, 0x1180 <memcpy+0x700>
-    1210:      	addi	a4, zero, 0x20
-    1214:      	bgeu	a2, a4, 0x1250 <memcpy+0x7d0>
-    1218:      	andi	a4, a2, 0x10
-    121c:      	bne	a4, zero, 0x12a0 <memcpy+0x820>
-    1220:      	andi	a4, a2, 0x8
-    1224:      	bne	a4, zero, 0x12d0 <memcpy+0x850>
-    1228:      	andi	a4, a2, 0x4
-    122c:      	bne	a4, zero, 0x12f0 <memcpy+0x870>
-    1230:      	andi	a4, a2, 0x2
-    1234:      	bne	a4, zero, 0x1308 <memcpy+0x888>
-    1238:      	andi	a2, a2, 0x1
-    123c:      	bne	a2, zero, 0x1320 <memcpy+0x8a0>
-    1240:      	lw	ra, 0xc(sp)
-    1244:      	lw	s0, 0x8(sp)
-    1248:      	addi	sp, sp, 0x10
-    124c:      	jalr	zero, 0x0(ra)
-    1250:      	lw	a4, 0x0(a1)
-    1254:      	sw	a4, 0x0(a3)
-    1258:      	lw	a4, 0x4(a1)
-    125c:      	sw	a4, 0x4(a3)
-    1260:      	lw	a4, 0x8(a1)
-    1264:      	sw	a4, 0x8(a3)
-    1268:      	lw	a4, 0xc(a1)
-    126c:      	sw	a4, 0xc(a3)
-    1270:      	lw	a4, 0x10(a1)
-    1274:      	sw	a4, 0x10(a3)
-    1278:      	lw	a4, 0x14(a1)
-    127c:      	sw	a4, 0x14(a3)
-    1280:      	lw	a4, 0x18(a1)
-    1284:      	sw	a4, 0x18(a3)
-    1288:      	lw	a4, 0x1c(a1)
-    128c:      	addi	a1, a1, 0x20
-    1290:      	sw	a4, 0x1c(a3)
-    1294:      	addi	a3, a3, 0x20
-    1298:      	andi	a4, a2, 0x10
-    129c:      	beq	a4, zero, 0x1220 <memcpy+0x7a0>
-    12a0:      	lw	a4, 0x0(a1)
-    12a4:      	sw	a4, 0x0(a3)
-    12a8:      	lw	a4, 0x4(a1)
-    12ac:      	sw	a4, 0x4(a3)
-    12b0:      	lw	a4, 0x8(a1)
-    12b4:      	sw	a4, 0x8(a3)
-    12b8:      	lw	a4, 0xc(a1)
-    12bc:      	addi	a1, a1, 0x10
-    12c0:      	sw	a4, 0xc(a3)
-    12c4:      	addi	a3, a3, 0x10
-    12c8:      	andi	a4, a2, 0x8
-    12cc:      	beq	a4, zero, 0x1228 <memcpy+0x7a8>
-    12d0:      	lw	a4, 0x0(a1)
-    12d4:      	sw	a4, 0x0(a3)
-    12d8:      	lw	a4, 0x4(a1)
-    12dc:      	addi	a1, a1, 0x8
-    12e0:      	sw	a4, 0x4(a3)
-    12e4:      	addi	a3, a3, 0x8
-    12e8:      	andi	a4, a2, 0x4
-    12ec:      	beq	a4, zero, 0x1230 <memcpy+0x7b0>
-    12f0:      	lw	a4, 0x0(a1)
-    12f4:      	addi	a1, a1, 0x4
-    12f8:      	sw	a4, 0x0(a3)
-    12fc:      	addi	a3, a3, 0x4
-    1300:      	andi	a4, a2, 0x2
-    1304:      	beq	a4, zero, 0x1238 <memcpy+0x7b8>
-    1308:      	lh	a4, 0x0(a1)
-    130c:      	addi	a1, a1, 0x2
-    1310:      	sh	a4, 0x0(a3)
-    1314:      	addi	a3, a3, 0x2
-    1318:      	andi	a2, a2, 0x1
-    131c:      	beq	a2, zero, 0x1240 <memcpy+0x7c0>
-    1320:      	lbu	a1, 0x0(a1)
-    1324:      	sb	a1, 0x0(a3)
-    1328:      	lw	ra, 0xc(sp)
-    132c:      	lw	s0, 0x8(sp)
-    1330:      	addi	sp, sp, 0x10
-    1334:      	jalr	zero, 0x0(ra)
-    1338:      	lbu	a4, 0x0(a5)
-    133c:      	addi	a3, a2, -0x1
-    1340:      	addi	a6, zero, 0x40
-    1344:      	addi	a2, a5, 0x1
-    1348:      	bltu	a3, a6, 0x14a0 <memcpy+0xa20>
-    134c:      	addi	a5, zero, 0x3f
-    1350:      	lw	a6, 0x0(a2)
-    1354:      	slli	a7, a6, 0x8
-    1358:      	or	a4, a7, a4
-    135c:      	sw	a4, 0x0(a1)
-    1360:      	lw	a4, 0x4(a2)
-    1364:      	srli	a6, a6, 0x18
-    1368:      	slli	a7, a4, 0x8
-    136c:      	or	a6, a7, a6
-    1370:      	sw	a6, 0x4(a1)
-    1374:      	lw	a6, 0x8(a2)
-    1378:      	srli	a4, a4, 0x18
-    137c:      	slli	a7, a6, 0x8
-    1380:      	or	a4, a7, a4
-    1384:      	sw	a4, 0x8(a1)
-    1388:      	lw	a4, 0xc(a2)
-    138c:      	srli	a6, a6, 0x18
-    1390:      	slli	a7, a4, 0x8
-    1394:      	or	a6, a7, a6
-    1398:      	sw	a6, 0xc(a1)
-    139c:      	lw	a6, 0x10(a2)
-    13a0:      	srli	a4, a4, 0x18
-    13a4:      	slli	a7, a6, 0x8
-    13a8:      	or	a4, a7, a4
-    13ac:      	sw	a4, 0x10(a1)
-    13b0:      	lw	a4, 0x14(a2)
-    13b4:      	srli	a6, a6, 0x18
-    13b8:      	slli	a7, a4, 0x8
-    13bc:      	or	a6, a7, a6
-    13c0:      	sw	a6, 0x14(a1)
-    13c4:      	lw	a6, 0x18(a2)
-    13c8:      	srli	a4, a4, 0x18
-    13cc:      	slli	a7, a6, 0x8
-    13d0:      	or	a4, a7, a4
-    13d4:      	sw	a4, 0x18(a1)
-    13d8:      	lw	a4, 0x1c(a2)
-    13dc:      	srli	a6, a6, 0x18
-    13e0:      	slli	a7, a4, 0x8
-    13e4:      	or	a6, a7, a6
-    13e8:      	sw	a6, 0x1c(a1)
-    13ec:      	lw	a6, 0x20(a2)
+    103c:      	sw	a6, 0x3c(a1)
+    1040:      	addi	a2, a2, 0x40
+    1044:      	addi	a1, a1, 0x40
+    1048:      	bltu	a5, a3, 0xefc <memcpy+0x518>
+    104c:      	addi	a5, zero, 0x20
+    1050:      	bgeu	a3, a5, 0x19f0 <memcpy+0x100c>
+    1054:      	andi	a5, a3, 0x10
+    1058:      	bne	a5, zero, 0x1aa0 <memcpy+0x10bc>
+    105c:      	andi	a5, a3, 0x8
+    1060:      	bne	a5, zero, 0x1b00 <memcpy+0x111c>
+    1064:      	andi	a5, a3, 0x4
+    1068:      	bne	a5, zero, 0x1b38 <memcpy+0x1154>
+    106c:      	andi	a5, a3, 0x3
+    1070:      	addi	a6, zero, 0x1
+    1074:      	bgeu	a6, a5, 0x1b60 <memcpy+0x117c>
+    1078:      	lh	a3, 0x0(a2)
+    107c:      	slli	a3, a3, 0x10
+    1080:      	or	a3, a3, a4
+    1084:      	addi	a4, zero, 0x2
+    1088:      	sw	a3, 0x0(a1)
+    108c:      	beq	a5, a4, 0x11a4 <memcpy+0x7c0>
+    1090:      	lbu	a2, 0x2(a2)
+    1094:      	sb	a2, 0x4(a1)
+    1098:      	lw	ra, 0xc(sp)
+    109c:      	lw	s0, 0x8(sp)
+    10a0:      	addi	sp, sp, 0x10
+    10a4:      	jalr	zero, 0x0(ra)
+    10a8:      	lbu	a3, 0x0(a1)
+    10ac:      	addi	a1, a1, 0x1
+    10b0:      	sb	a3, 0x0(a0)
+    10b4:      	addi	a3, a0, 0x1
+    10b8:      	addi	a2, a2, -0x1
+    10bc:      	andi	a4, a1, 0x2
+    10c0:      	beq	a4, zero, 0x10d8 <memcpy+0x6f4>
+    10c4:      	lh	a4, 0x0(a1)
+    10c8:      	addi	a1, a1, 0x2
+    10cc:      	sh	a4, 0x0(a3)
+    10d0:      	addi	a3, a3, 0x2
+    10d4:      	addi	a2, a2, -0x2
+    10d8:      	addi	a4, zero, 0x40
+    10dc:      	bltu	a2, a4, 0x1174 <memcpy+0x790>
+    10e0:      	addi	a4, zero, 0x3f
+    10e4:      	lw	a5, 0x0(a1)
+    10e8:      	sw	a5, 0x0(a3)
+    10ec:      	lw	a5, 0x4(a1)
+    10f0:      	sw	a5, 0x4(a3)
+    10f4:      	lw	a5, 0x8(a1)
+    10f8:      	sw	a5, 0x8(a3)
+    10fc:      	lw	a5, 0xc(a1)
+    1100:      	sw	a5, 0xc(a3)
+    1104:      	lw	a5, 0x10(a1)
+    1108:      	sw	a5, 0x10(a3)
+    110c:      	lw	a5, 0x14(a1)
+    1110:      	sw	a5, 0x14(a3)
+    1114:      	lw	a5, 0x18(a1)
+    1118:      	sw	a5, 0x18(a3)
+    111c:      	lw	a5, 0x1c(a1)
+    1120:      	sw	a5, 0x1c(a3)
+    1124:      	lw	a5, 0x20(a1)
+    1128:      	sw	a5, 0x20(a3)
+    112c:      	lw	a5, 0x24(a1)
+    1130:      	sw	a5, 0x24(a3)
+    1134:      	lw	a5, 0x28(a1)
+    1138:      	sw	a5, 0x28(a3)
+    113c:      	lw	a5, 0x2c(a1)
+    1140:      	sw	a5, 0x2c(a3)
+    1144:      	lw	a5, 0x30(a1)
+    1148:      	sw	a5, 0x30(a3)
+    114c:      	lw	a5, 0x34(a1)
+    1150:      	sw	a5, 0x34(a3)
+    1154:      	lw	a5, 0x38(a1)
+    1158:      	sw	a5, 0x38(a3)
+    115c:      	lw	a5, 0x3c(a1)
+    1160:      	addi	a2, a2, -0x40
+    1164:      	sw	a5, 0x3c(a3)
+    1168:      	addi	a1, a1, 0x40
+    116c:      	addi	a3, a3, 0x40
+    1170:      	bltu	a4, a2, 0x10e4 <memcpy+0x700>
+    1174:      	addi	a4, zero, 0x20
+    1178:      	bgeu	a2, a4, 0x11b4 <memcpy+0x7d0>
+    117c:      	andi	a4, a2, 0x10
+    1180:      	bne	a4, zero, 0x1204 <memcpy+0x820>
+    1184:      	andi	a4, a2, 0x8
+    1188:      	bne	a4, zero, 0x1234 <memcpy+0x850>
+    118c:      	andi	a4, a2, 0x4
+    1190:      	bne	a4, zero, 0x1254 <memcpy+0x870>
+    1194:      	andi	a4, a2, 0x2
+    1198:      	bne	a4, zero, 0x126c <memcpy+0x888>
+    119c:      	andi	a2, a2, 0x1
+    11a0:      	bne	a2, zero, 0x1284 <memcpy+0x8a0>
+    11a4:      	lw	ra, 0xc(sp)
+    11a8:      	lw	s0, 0x8(sp)
+    11ac:      	addi	sp, sp, 0x10
+    11b0:      	jalr	zero, 0x0(ra)
+    11b4:      	lw	a4, 0x0(a1)
+    11b8:      	sw	a4, 0x0(a3)
+    11bc:      	lw	a4, 0x4(a1)
+    11c0:      	sw	a4, 0x4(a3)
+    11c4:      	lw	a4, 0x8(a1)
+    11c8:      	sw	a4, 0x8(a3)
+    11cc:      	lw	a4, 0xc(a1)
+    11d0:      	sw	a4, 0xc(a3)
+    11d4:      	lw	a4, 0x10(a1)
+    11d8:      	sw	a4, 0x10(a3)
+    11dc:      	lw	a4, 0x14(a1)
+    11e0:      	sw	a4, 0x14(a3)
+    11e4:      	lw	a4, 0x18(a1)
+    11e8:      	sw	a4, 0x18(a3)
+    11ec:      	lw	a4, 0x1c(a1)
+    11f0:      	addi	a1, a1, 0x20
+    11f4:      	sw	a4, 0x1c(a3)
+    11f8:      	addi	a3, a3, 0x20
+    11fc:      	andi	a4, a2, 0x10
+    1200:      	beq	a4, zero, 0x1184 <memcpy+0x7a0>
+    1204:      	lw	a4, 0x0(a1)
+    1208:      	sw	a4, 0x0(a3)
+    120c:      	lw	a4, 0x4(a1)
+    1210:      	sw	a4, 0x4(a3)
+    1214:      	lw	a4, 0x8(a1)
+    1218:      	sw	a4, 0x8(a3)
+    121c:      	lw	a4, 0xc(a1)
+    1220:      	addi	a1, a1, 0x10
+    1224:      	sw	a4, 0xc(a3)
+    1228:      	addi	a3, a3, 0x10
+    122c:      	andi	a4, a2, 0x8
+    1230:      	beq	a4, zero, 0x118c <memcpy+0x7a8>
+    1234:      	lw	a4, 0x0(a1)
+    1238:      	sw	a4, 0x0(a3)
+    123c:      	lw	a4, 0x4(a1)
+    1240:      	addi	a1, a1, 0x8
+    1244:      	sw	a4, 0x4(a3)
+    1248:      	addi	a3, a3, 0x8
+    124c:      	andi	a4, a2, 0x4
+    1250:      	beq	a4, zero, 0x1194 <memcpy+0x7b0>
+    1254:      	lw	a4, 0x0(a1)
+    1258:      	addi	a1, a1, 0x4
+    125c:      	sw	a4, 0x0(a3)
+    1260:      	addi	a3, a3, 0x4
+    1264:      	andi	a4, a2, 0x2
+    1268:      	beq	a4, zero, 0x119c <memcpy+0x7b8>
+    126c:      	lh	a4, 0x0(a1)
+    1270:      	addi	a1, a1, 0x2
+    1274:      	sh	a4, 0x0(a3)
+    1278:      	addi	a3, a3, 0x2
+    127c:      	andi	a2, a2, 0x1
+    1280:      	beq	a2, zero, 0x11a4 <memcpy+0x7c0>
+    1284:      	lbu	a1, 0x0(a1)
+    1288:      	sb	a1, 0x0(a3)
+    128c:      	lw	ra, 0xc(sp)
+    1290:      	lw	s0, 0x8(sp)
+    1294:      	addi	sp, sp, 0x10
+    1298:      	jalr	zero, 0x0(ra)
+    129c:      	lbu	a4, 0x0(a5)
+    12a0:      	addi	a3, a2, -0x1
+    12a4:      	addi	a6, zero, 0x40
+    12a8:      	addi	a2, a5, 0x1
+    12ac:      	bltu	a3, a6, 0x1404 <memcpy+0xa20>
+    12b0:      	addi	a5, zero, 0x3f
+    12b4:      	lw	a6, 0x0(a2)
+    12b8:      	slli	a7, a6, 0x8
+    12bc:      	or	a4, a7, a4
+    12c0:      	sw	a4, 0x0(a1)
+    12c4:      	lw	a4, 0x4(a2)
+    12c8:      	srli	a6, a6, 0x18
+    12cc:      	slli	a7, a4, 0x8
+    12d0:      	or	a6, a7, a6
+    12d4:      	sw	a6, 0x4(a1)
+    12d8:      	lw	a6, 0x8(a2)
+    12dc:      	srli	a4, a4, 0x18
+    12e0:      	slli	a7, a6, 0x8
+    12e4:      	or	a4, a7, a4
+    12e8:      	sw	a4, 0x8(a1)
+    12ec:      	lw	a4, 0xc(a2)
+    12f0:      	srli	a6, a6, 0x18
+    12f4:      	slli	a7, a4, 0x8
+    12f8:      	or	a6, a7, a6
+    12fc:      	sw	a6, 0xc(a1)
+    1300:      	lw	a6, 0x10(a2)
+    1304:      	srli	a4, a4, 0x18
+    1308:      	slli	a7, a6, 0x8
+    130c:      	or	a4, a7, a4
+    1310:      	sw	a4, 0x10(a1)
+    1314:      	lw	a4, 0x14(a2)
+    1318:      	srli	a6, a6, 0x18
+    131c:      	slli	a7, a4, 0x8
+    1320:      	or	a6, a7, a6
+    1324:      	sw	a6, 0x14(a1)
+    1328:      	lw	a6, 0x18(a2)
+    132c:      	srli	a4, a4, 0x18
+    1330:      	slli	a7, a6, 0x8
+    1334:      	or	a4, a7, a4
+    1338:      	sw	a4, 0x18(a1)
+    133c:      	lw	a4, 0x1c(a2)
+    1340:      	srli	a6, a6, 0x18
+    1344:      	slli	a7, a4, 0x8
+    1348:      	or	a6, a7, a6
+    134c:      	sw	a6, 0x1c(a1)
+    1350:      	lw	a6, 0x20(a2)
+    1354:      	srli	a4, a4, 0x18
+    1358:      	slli	a7, a6, 0x8
+    135c:      	or	a4, a7, a4
+    1360:      	sw	a4, 0x20(a1)
+    1364:      	lw	a4, 0x24(a2)
+    1368:      	srli	a6, a6, 0x18
+    136c:      	slli	a7, a4, 0x8
+    1370:      	or	a6, a7, a6
+    1374:      	sw	a6, 0x24(a1)
+    1378:      	lw	a6, 0x28(a2)
+    137c:      	srli	a4, a4, 0x18
+    1380:      	slli	a7, a6, 0x8
+    1384:      	or	a4, a7, a4
+    1388:      	sw	a4, 0x28(a1)
+    138c:      	lw	a4, 0x2c(a2)
+    1390:      	srli	a6, a6, 0x18
+    1394:      	slli	a7, a4, 0x8
+    1398:      	or	a6, a7, a6
+    139c:      	sw	a6, 0x2c(a1)
+    13a0:      	lw	a6, 0x30(a2)
+    13a4:      	srli	a4, a4, 0x18
+    13a8:      	slli	a7, a6, 0x8
+    13ac:      	or	a4, a7, a4
+    13b0:      	sw	a4, 0x30(a1)
+    13b4:      	lw	a4, 0x34(a2)
+    13b8:      	srli	a6, a6, 0x18
+    13bc:      	slli	a7, a4, 0x8
+    13c0:      	or	a6, a7, a6
+    13c4:      	sw	a6, 0x34(a1)
+    13c8:      	lw	a6, 0x38(a2)
+    13cc:      	srli	a4, a4, 0x18
+    13d0:      	slli	a7, a6, 0x8
+    13d4:      	or	a4, a7, a4
+    13d8:      	sw	a4, 0x38(a1)
+    13dc:      	lw	a4, 0x3c(a2)
+    13e0:      	srli	a6, a6, 0x18
+    13e4:      	slli	a7, a4, 0x8
+    13e8:      	addi	a3, a3, -0x40
+    13ec:      	or	a6, a7, a6
     13f0:      	srli	a4, a4, 0x18
-    13f4:      	slli	a7, a6, 0x8
-    13f8:      	or	a4, a7, a4
-    13fc:      	sw	a4, 0x20(a1)
-    1400:      	lw	a4, 0x24(a2)
-    1404:      	srli	a6, a6, 0x18
-    1408:      	slli	a7, a4, 0x8
-    140c:      	or	a6, a7, a6
-    1410:      	sw	a6, 0x24(a1)
-    1414:      	lw	a6, 0x28(a2)
-    1418:      	srli	a4, a4, 0x18
-    141c:      	slli	a7, a6, 0x8
-    1420:      	or	a4, a7, a4
-    1424:      	sw	a4, 0x28(a1)
-    1428:      	lw	a4, 0x2c(a2)
-    142c:      	srli	a6, a6, 0x18
-    1430:      	slli	a7, a4, 0x8
-    1434:      	or	a6, a7, a6
-    1438:      	sw	a6, 0x2c(a1)
-    143c:      	lw	a6, 0x30(a2)
-    1440:      	srli	a4, a4, 0x18
-    1444:      	slli	a7, a6, 0x8
-    1448:      	or	a4, a7, a4
-    144c:      	sw	a4, 0x30(a1)
-    1450:      	lw	a4, 0x34(a2)
-    1454:      	srli	a6, a6, 0x18
-    1458:      	slli	a7, a4, 0x8
-    145c:      	or	a6, a7, a6
-    1460:      	sw	a6, 0x34(a1)
-    1464:      	lw	a6, 0x38(a2)
-    1468:      	srli	a4, a4, 0x18
-    146c:      	slli	a7, a6, 0x8
-    1470:      	or	a4, a7, a4
-    1474:      	sw	a4, 0x38(a1)
-    1478:      	lw	a4, 0x3c(a2)
-    147c:      	srli	a6, a6, 0x18
-    1480:      	slli	a7, a4, 0x8
-    1484:      	addi	a3, a3, -0x40
-    1488:      	or	a6, a7, a6
-    148c:      	srli	a4, a4, 0x18
-    1490:      	sw	a6, 0x3c(a1)
-    1494:      	addi	a2, a2, 0x40
-    1498:      	addi	a1, a1, 0x40
-    149c:      	bltu	a5, a3, 0x1350 <memcpy+0x8d0>
-    14a0:      	addi	a5, zero, 0x20
-    14a4:      	bgeu	a3, a5, 0x1dc0 <memcpy+0x1340>
-    14a8:      	andi	a5, a3, 0x10
-    14ac:      	bne	a5, zero, 0x1e70 <memcpy+0x13f0>
-    14b0:      	andi	a5, a3, 0x8
-    14b4:      	bne	a5, zero, 0x1ed0 <memcpy+0x1450>
-    14b8:      	andi	a5, a3, 0x4
-    14bc:      	bne	a5, zero, 0x1f08 <memcpy+0x1488>
-    14c0:      	andi	a5, a3, 0x3
-    14c4:      	addi	a6, zero, 0x3
-    14c8:      	bne	a5, a6, 0x1f30 <memcpy+0x14b0>
-    14cc:      	lhu	a3, 0x0(a2)
-    14d0:      	lbu	a2, 0x2(a2)
-    14d4:      	slli	a3, a3, 0x8
-    14d8:      	slli	a2, a2, 0x18
-    14dc:      	or	a3, a3, a4
-    14e0:      	or	a2, a3, a2
-    14e4:      	sw	a2, 0x0(a1)
-    14e8:      	lw	ra, 0xc(sp)
-    14ec:      	lw	s0, 0x8(sp)
-    14f0:      	addi	sp, sp, 0x10
-    14f4:      	jalr	zero, 0x0(ra)
-    14f8:      	lbu	a4, 0x0(a1)
-    14fc:      	sb	a4, 0x0(a0)
-    1500:      	lbu	a4, 0x1(a1)
-    1504:      	sb	a4, 0x1(a0)
-    1508:      	lbu	a4, 0x2(a1)
-    150c:      	sb	a4, 0x2(a0)
-    1510:      	add	a5, a1, a3
-    1514:      	andi	a4, a5, 0x3
-    1518:      	addi	a6, zero, 0x1
-    151c:      	sub	a2, a2, a3
-    1520:      	add	a1, a0, a3
-    1524:      	bne	a4, a6, 0xf78 <memcpy+0x4f8>
-    1528:      	lhu	a3, 0x1(a5)
-    152c:      	lbu	a4, 0x0(a5)
-    1530:      	slli	a6, a3, 0x8
-    1534:      	addi	a3, a2, -0x3
-    1538:      	addi	a7, zero, 0x40
-    153c:      	or	a4, a6, a4
-    1540:      	addi	a2, a5, 0x3
-    1544:      	bltu	a3, a7, 0x169c <memcpy+0xc1c>
-    1548:      	addi	a5, zero, 0x3f
-    154c:      	lw	a6, 0x0(a2)
-    1550:      	slli	a7, a6, 0x18
-    1554:      	add	a4, a7, a4
-    1558:      	sw	a4, 0x0(a1)
-    155c:      	lw	a4, 0x4(a2)
-    1560:      	srli	a6, a6, 0x8
-    1564:      	slli	a7, a4, 0x18
-    1568:      	or	a6, a7, a6
-    156c:      	sw	a6, 0x4(a1)
-    1570:      	lw	a6, 0x8(a2)
-    1574:      	srli	a4, a4, 0x8
-    1578:      	slli	a7, a6, 0x18
-    157c:      	or	a4, a7, a4
-    1580:      	sw	a4, 0x8(a1)
-    1584:      	lw	a4, 0xc(a2)
-    1588:      	srli	a6, a6, 0x8
-    158c:      	slli	a7, a4, 0x18
-    1590:      	or	a6, a7, a6
-    1594:      	sw	a6, 0xc(a1)
-    1598:      	lw	a6, 0x10(a2)
-    159c:      	srli	a4, a4, 0x8
-    15a0:      	slli	a7, a6, 0x18
-    15a4:      	or	a4, a7, a4
-    15a8:      	sw	a4, 0x10(a1)
-    15ac:      	lw	a4, 0x14(a2)
-    15b0:      	srli	a6, a6, 0x8
-    15b4:      	slli	a7, a4, 0x18
-    15b8:      	or	a6, a7, a6
-    15bc:      	sw	a6, 0x14(a1)
-    15c0:      	lw	a6, 0x18(a2)
-    15c4:      	srli	a4, a4, 0x8
-    15c8:      	slli	a7, a6, 0x18
-    15cc:      	or	a4, a7, a4
-    15d0:      	sw	a4, 0x18(a1)
-    15d4:      	lw	a4, 0x1c(a2)
-    15d8:      	srli	a6, a6, 0x8
-    15dc:      	slli	a7, a4, 0x18
-    15e0:      	or	a6, a7, a6
-    15e4:      	sw	a6, 0x1c(a1)
-    15e8:      	lw	a6, 0x20(a2)
+    13f4:      	sw	a6, 0x3c(a1)
+    13f8:      	addi	a2, a2, 0x40
+    13fc:      	addi	a1, a1, 0x40
+    1400:      	bltu	a5, a3, 0x12b4 <memcpy+0x8d0>
+    1404:      	addi	a5, zero, 0x20
+    1408:      	bgeu	a3, a5, 0x1d24 <memcpy+0x1340>
+    140c:      	andi	a5, a3, 0x10
+    1410:      	bne	a5, zero, 0x1dd4 <memcpy+0x13f0>
+    1414:      	andi	a5, a3, 0x8
+    1418:      	bne	a5, zero, 0x1e34 <memcpy+0x1450>
+    141c:      	andi	a5, a3, 0x4
+    1420:      	bne	a5, zero, 0x1e6c <memcpy+0x1488>
+    1424:      	andi	a5, a3, 0x3
+    1428:      	addi	a6, zero, 0x3
+    142c:      	bne	a5, a6, 0x1e94 <memcpy+0x14b0>
+    1430:      	lhu	a3, 0x0(a2)
+    1434:      	lbu	a2, 0x2(a2)
+    1438:      	slli	a3, a3, 0x8
+    143c:      	slli	a2, a2, 0x18
+    1440:      	or	a3, a3, a4
+    1444:      	or	a2, a3, a2
+    1448:      	sw	a2, 0x0(a1)
+    144c:      	lw	ra, 0xc(sp)
+    1450:      	lw	s0, 0x8(sp)
+    1454:      	addi	sp, sp, 0x10
+    1458:      	jalr	zero, 0x0(ra)
+    145c:      	lbu	a4, 0x0(a1)
+    1460:      	sb	a4, 0x0(a0)
+    1464:      	lbu	a4, 0x1(a1)
+    1468:      	sb	a4, 0x1(a0)
+    146c:      	lbu	a4, 0x2(a1)
+    1470:      	sb	a4, 0x2(a0)
+    1474:      	add	a5, a1, a3
+    1478:      	andi	a4, a5, 0x3
+    147c:      	addi	a6, zero, 0x1
+    1480:      	sub	a2, a2, a3
+    1484:      	add	a1, a0, a3
+    1488:      	bne	a4, a6, 0xedc <memcpy+0x4f8>
+    148c:      	lhu	a3, 0x1(a5)
+    1490:      	lbu	a4, 0x0(a5)
+    1494:      	slli	a6, a3, 0x8
+    1498:      	addi	a3, a2, -0x3
+    149c:      	addi	a7, zero, 0x40
+    14a0:      	or	a4, a6, a4
+    14a4:      	addi	a2, a5, 0x3
+    14a8:      	bltu	a3, a7, 0x1600 <memcpy+0xc1c>
+    14ac:      	addi	a5, zero, 0x3f
+    14b0:      	lw	a6, 0x0(a2)
+    14b4:      	slli	a7, a6, 0x18
+    14b8:      	add	a4, a7, a4
+    14bc:      	sw	a4, 0x0(a1)
+    14c0:      	lw	a4, 0x4(a2)
+    14c4:      	srli	a6, a6, 0x8
+    14c8:      	slli	a7, a4, 0x18
+    14cc:      	or	a6, a7, a6
+    14d0:      	sw	a6, 0x4(a1)
+    14d4:      	lw	a6, 0x8(a2)
+    14d8:      	srli	a4, a4, 0x8
+    14dc:      	slli	a7, a6, 0x18
+    14e0:      	or	a4, a7, a4
+    14e4:      	sw	a4, 0x8(a1)
+    14e8:      	lw	a4, 0xc(a2)
+    14ec:      	srli	a6, a6, 0x8
+    14f0:      	slli	a7, a4, 0x18
+    14f4:      	or	a6, a7, a6
+    14f8:      	sw	a6, 0xc(a1)
+    14fc:      	lw	a6, 0x10(a2)
+    1500:      	srli	a4, a4, 0x8
+    1504:      	slli	a7, a6, 0x18
+    1508:      	or	a4, a7, a4
+    150c:      	sw	a4, 0x10(a1)
+    1510:      	lw	a4, 0x14(a2)
+    1514:      	srli	a6, a6, 0x8
+    1518:      	slli	a7, a4, 0x18
+    151c:      	or	a6, a7, a6
+    1520:      	sw	a6, 0x14(a1)
+    1524:      	lw	a6, 0x18(a2)
+    1528:      	srli	a4, a4, 0x8
+    152c:      	slli	a7, a6, 0x18
+    1530:      	or	a4, a7, a4
+    1534:      	sw	a4, 0x18(a1)
+    1538:      	lw	a4, 0x1c(a2)
+    153c:      	srli	a6, a6, 0x8
+    1540:      	slli	a7, a4, 0x18
+    1544:      	or	a6, a7, a6
+    1548:      	sw	a6, 0x1c(a1)
+    154c:      	lw	a6, 0x20(a2)
+    1550:      	srli	a4, a4, 0x8
+    1554:      	slli	a7, a6, 0x18
+    1558:      	or	a4, a7, a4
+    155c:      	sw	a4, 0x20(a1)
+    1560:      	lw	a4, 0x24(a2)
+    1564:      	srli	a6, a6, 0x8
+    1568:      	slli	a7, a4, 0x18
+    156c:      	or	a6, a7, a6
+    1570:      	sw	a6, 0x24(a1)
+    1574:      	lw	a6, 0x28(a2)
+    1578:      	srli	a4, a4, 0x8
+    157c:      	slli	a7, a6, 0x18
+    1580:      	or	a4, a7, a4
+    1584:      	sw	a4, 0x28(a1)
+    1588:      	lw	a4, 0x2c(a2)
+    158c:      	srli	a6, a6, 0x8
+    1590:      	slli	a7, a4, 0x18
+    1594:      	or	a6, a7, a6
+    1598:      	sw	a6, 0x2c(a1)
+    159c:      	lw	a6, 0x30(a2)
+    15a0:      	srli	a4, a4, 0x8
+    15a4:      	slli	a7, a6, 0x18
+    15a8:      	or	a4, a7, a4
+    15ac:      	sw	a4, 0x30(a1)
+    15b0:      	lw	a4, 0x34(a2)
+    15b4:      	srli	a6, a6, 0x8
+    15b8:      	slli	a7, a4, 0x18
+    15bc:      	or	a6, a7, a6
+    15c0:      	sw	a6, 0x34(a1)
+    15c4:      	lw	a6, 0x38(a2)
+    15c8:      	srli	a4, a4, 0x8
+    15cc:      	slli	a7, a6, 0x18
+    15d0:      	or	a4, a7, a4
+    15d4:      	sw	a4, 0x38(a1)
+    15d8:      	lw	a4, 0x3c(a2)
+    15dc:      	srli	a6, a6, 0x8
+    15e0:      	slli	a7, a4, 0x18
+    15e4:      	addi	a3, a3, -0x40
+    15e8:      	or	a6, a7, a6
     15ec:      	srli	a4, a4, 0x8
-    15f0:      	slli	a7, a6, 0x18
-    15f4:      	or	a4, a7, a4
-    15f8:      	sw	a4, 0x20(a1)
-    15fc:      	lw	a4, 0x24(a2)
-    1600:      	srli	a6, a6, 0x8
-    1604:      	slli	a7, a4, 0x18
-    1608:      	or	a6, a7, a6
-    160c:      	sw	a6, 0x24(a1)
-    1610:      	lw	a6, 0x28(a2)
-    1614:      	srli	a4, a4, 0x8
-    1618:      	slli	a7, a6, 0x18
-    161c:      	or	a4, a7, a4
-    1620:      	sw	a4, 0x28(a1)
-    1624:      	lw	a4, 0x2c(a2)
-    1628:      	srli	a6, a6, 0x8
-    162c:      	slli	a7, a4, 0x18
-    1630:      	or	a6, a7, a6
-    1634:      	sw	a6, 0x2c(a1)
-    1638:      	lw	a6, 0x30(a2)
-    163c:      	srli	a4, a4, 0x8
-    1640:      	slli	a7, a6, 0x18
-    1644:      	or	a4, a7, a4
-    1648:      	sw	a4, 0x30(a1)
-    164c:      	lw	a4, 0x34(a2)
-    1650:      	srli	a6, a6, 0x8
-    1654:      	slli	a7, a4, 0x18
-    1658:      	or	a6, a7, a6
-    165c:      	sw	a6, 0x34(a1)
-    1660:      	lw	a6, 0x38(a2)
-    1664:      	srli	a4, a4, 0x8
-    1668:      	slli	a7, a6, 0x18
-    166c:      	or	a4, a7, a4
-    1670:      	sw	a4, 0x38(a1)
-    1674:      	lw	a4, 0x3c(a2)
-    1678:      	srli	a6, a6, 0x8
-    167c:      	slli	a7, a4, 0x18
-    1680:      	addi	a3, a3, -0x40
-    1684:      	or	a6, a7, a6
-    1688:      	srli	a4, a4, 0x8
-    168c:      	sw	a6, 0x3c(a1)
-    1690:      	addi	a2, a2, 0x40
-    1694:      	addi	a1, a1, 0x40
-    1698:      	bltu	a5, a3, 0x154c <memcpy+0xacc>
-    169c:      	addi	a5, zero, 0x20
-    16a0:      	bgeu	a3, a5, 0x1c2c <memcpy+0x11ac>
-    16a4:      	andi	a5, a3, 0x10
-    16a8:      	bne	a5, zero, 0x1cdc <memcpy+0x125c>
-    16ac:      	andi	a5, a3, 0x8
-    16b0:      	bne	a5, zero, 0x1d3c <memcpy+0x12bc>
-    16b4:      	andi	a5, a3, 0x4
-    16b8:      	bne	a5, zero, 0x1d74 <memcpy+0x12f4>
-    16bc:      	andi	a3, a3, 0x3
-    16c0:      	beq	a3, zero, 0x1d98 <memcpy+0x1318>
-    16c4:      	lbu	a5, 0x0(a2)
-    16c8:      	slli	a5, a5, 0x18
-    16cc:      	addi	a3, a3, -0x1
-    16d0:      	or	a4, a5, a4
-    16d4:      	andi	a5, a3, 0x2
-    16d8:      	sw	a4, 0x0(a1)
-    16dc:      	bne	a5, zero, 0x1f74 <memcpy+0x14f4>
-    16e0:      	andi	a3, a3, 0x1
-    16e4:      	beq	a3, zero, 0x1240 <memcpy+0x7c0>
-    16e8:      	lbu	a2, 0x1(a2)
-    16ec:      	sb	a2, 0x4(a1)
-    16f0:      	lw	ra, 0xc(sp)
-    16f4:      	lw	s0, 0x8(sp)
-    16f8:      	addi	sp, sp, 0x10
-    16fc:      	jalr	zero, 0x0(ra)
-    1700:      	srli	a3, a5, 0x10
-    1704:      	addi	a6, zero, 0x40
-    1708:      	sb	a4, 0x1(a0)
-    170c:      	sb	a3, 0x2(a0)
-    1710:      	addi	a3, a0, 0x3
-    1714:      	srli	a4, a5, 0x18
-    1718:      	bltu	a2, a6, 0x1870 <memcpy+0xdf0>
-    171c:      	addi	a5, zero, 0x3f
-    1720:      	lw	a6, 0x0(a1)
-    1724:      	slli	a7, a6, 0x8
-    1728:      	or	a4, a7, a4
-    172c:      	sw	a4, 0x0(a3)
-    1730:      	lw	a4, 0x4(a1)
-    1734:      	srli	a6, a6, 0x18
-    1738:      	slli	a7, a4, 0x8
-    173c:      	or	a6, a7, a6
-    1740:      	sw	a6, 0x4(a3)
-    1744:      	lw	a6, 0x8(a1)
-    1748:      	srli	a4, a4, 0x18
-    174c:      	slli	a7, a6, 0x8
-    1750:      	or	a4, a7, a4
-    1754:      	sw	a4, 0x8(a3)
-    1758:      	lw	a4, 0xc(a1)
-    175c:      	srli	a6, a6, 0x18
-    1760:      	slli	a7, a4, 0x8
-    1764:      	or	a6, a7, a6
-    1768:      	sw	a6, 0xc(a3)
-    176c:      	lw	a6, 0x10(a1)
-    1770:      	srli	a4, a4, 0x18
-    1774:      	slli	a7, a6, 0x8
-    1778:      	or	a4, a7, a4
-    177c:      	sw	a4, 0x10(a3)
-    1780:      	lw	a4, 0x14(a1)
-    1784:      	srli	a6, a6, 0x18
-    1788:      	slli	a7, a4, 0x8
-    178c:      	or	a6, a7, a6
-    1790:      	sw	a6, 0x14(a3)
-    1794:      	lw	a6, 0x18(a1)
-    1798:      	srli	a4, a4, 0x18
-    179c:      	slli	a7, a6, 0x8
-    17a0:      	or	a4, a7, a4
-    17a4:      	sw	a4, 0x18(a3)
-    17a8:      	lw	a4, 0x1c(a1)
-    17ac:      	srli	a6, a6, 0x18
-    17b0:      	slli	a7, a4, 0x8
-    17b4:      	or	a6, a7, a6
-    17b8:      	sw	a6, 0x1c(a3)
-    17bc:      	lw	a6, 0x20(a1)
-    17c0:      	srli	a4, a4, 0x18
-    17c4:      	slli	a7, a6, 0x8
-    17c8:      	or	a4, a7, a4
-    17cc:      	sw	a4, 0x20(a3)
-    17d0:      	lw	a4, 0x24(a1)
-    17d4:      	srli	a6, a6, 0x18
-    17d8:      	slli	a7, a4, 0x8
-    17dc:      	or	a6, a7, a6
-    17e0:      	sw	a6, 0x24(a3)
-    17e4:      	lw	a6, 0x28(a1)
-    17e8:      	srli	a4, a4, 0x18
-    17ec:      	slli	a7, a6, 0x8
-    17f0:      	or	a4, a7, a4
-    17f4:      	sw	a4, 0x28(a3)
-    17f8:      	lw	a4, 0x2c(a1)
-    17fc:      	srli	a6, a6, 0x18
-    1800:      	slli	a7, a4, 0x8
-    1804:      	or	a6, a7, a6
-    1808:      	sw	a6, 0x2c(a3)
-    180c:      	lw	a6, 0x30(a1)
-    1810:      	srli	a4, a4, 0x18
-    1814:      	slli	a7, a6, 0x8
-    1818:      	or	a4, a7, a4
-    181c:      	sw	a4, 0x30(a3)
-    1820:      	lw	a4, 0x34(a1)
-    1824:      	srli	a6, a6, 0x18
-    1828:      	slli	a7, a4, 0x8
-    182c:      	or	a6, a7, a6
-    1830:      	sw	a6, 0x34(a3)
-    1834:      	lw	a6, 0x38(a1)
-    1838:      	srli	a4, a4, 0x18
-    183c:      	slli	a7, a6, 0x8
-    1840:      	or	a4, a7, a4
-    1844:      	sw	a4, 0x38(a3)
-    1848:      	lw	a4, 0x3c(a1)
-    184c:      	srli	a6, a6, 0x18
-    1850:      	slli	a7, a4, 0x8
-    1854:      	addi	a2, a2, -0x40
+    15f0:      	sw	a6, 0x3c(a1)
+    15f4:      	addi	a2, a2, 0x40
+    15f8:      	addi	a1, a1, 0x40
+    15fc:      	bltu	a5, a3, 0x14b0 <memcpy+0xacc>
+    1600:      	addi	a5, zero, 0x20
+    1604:      	bgeu	a3, a5, 0x1b90 <memcpy+0x11ac>
+    1608:      	andi	a5, a3, 0x10
+    160c:      	bne	a5, zero, 0x1c40 <memcpy+0x125c>
+    1610:      	andi	a5, a3, 0x8
+    1614:      	bne	a5, zero, 0x1ca0 <memcpy+0x12bc>
+    1618:      	andi	a5, a3, 0x4
+    161c:      	bne	a5, zero, 0x1cd8 <memcpy+0x12f4>
+    1620:      	andi	a3, a3, 0x3
+    1624:      	beq	a3, zero, 0x1cfc <memcpy+0x1318>
+    1628:      	lbu	a5, 0x0(a2)
+    162c:      	slli	a5, a5, 0x18
+    1630:      	addi	a3, a3, -0x1
+    1634:      	or	a4, a5, a4
+    1638:      	andi	a5, a3, 0x2
+    163c:      	sw	a4, 0x0(a1)
+    1640:      	bne	a5, zero, 0x1ed8 <memcpy+0x14f4>
+    1644:      	andi	a3, a3, 0x1
+    1648:      	beq	a3, zero, 0x11a4 <memcpy+0x7c0>
+    164c:      	lbu	a2, 0x1(a2)
+    1650:      	sb	a2, 0x4(a1)
+    1654:      	lw	ra, 0xc(sp)
+    1658:      	lw	s0, 0x8(sp)
+    165c:      	addi	sp, sp, 0x10
+    1660:      	jalr	zero, 0x0(ra)
+    1664:      	srli	a3, a5, 0x10
+    1668:      	addi	a6, zero, 0x40
+    166c:      	sb	a4, 0x1(a0)
+    1670:      	sb	a3, 0x2(a0)
+    1674:      	addi	a3, a0, 0x3
+    1678:      	srli	a4, a5, 0x18
+    167c:      	bltu	a2, a6, 0x17d4 <memcpy+0xdf0>
+    1680:      	addi	a5, zero, 0x3f
+    1684:      	lw	a6, 0x0(a1)
+    1688:      	slli	a7, a6, 0x8
+    168c:      	or	a4, a7, a4
+    1690:      	sw	a4, 0x0(a3)
+    1694:      	lw	a4, 0x4(a1)
+    1698:      	srli	a6, a6, 0x18
+    169c:      	slli	a7, a4, 0x8
+    16a0:      	or	a6, a7, a6
+    16a4:      	sw	a6, 0x4(a3)
+    16a8:      	lw	a6, 0x8(a1)
+    16ac:      	srli	a4, a4, 0x18
+    16b0:      	slli	a7, a6, 0x8
+    16b4:      	or	a4, a7, a4
+    16b8:      	sw	a4, 0x8(a3)
+    16bc:      	lw	a4, 0xc(a1)
+    16c0:      	srli	a6, a6, 0x18
+    16c4:      	slli	a7, a4, 0x8
+    16c8:      	or	a6, a7, a6
+    16cc:      	sw	a6, 0xc(a3)
+    16d0:      	lw	a6, 0x10(a1)
+    16d4:      	srli	a4, a4, 0x18
+    16d8:      	slli	a7, a6, 0x8
+    16dc:      	or	a4, a7, a4
+    16e0:      	sw	a4, 0x10(a3)
+    16e4:      	lw	a4, 0x14(a1)
+    16e8:      	srli	a6, a6, 0x18
+    16ec:      	slli	a7, a4, 0x8
+    16f0:      	or	a6, a7, a6
+    16f4:      	sw	a6, 0x14(a3)
+    16f8:      	lw	a6, 0x18(a1)
+    16fc:      	srli	a4, a4, 0x18
+    1700:      	slli	a7, a6, 0x8
+    1704:      	or	a4, a7, a4
+    1708:      	sw	a4, 0x18(a3)
+    170c:      	lw	a4, 0x1c(a1)
+    1710:      	srli	a6, a6, 0x18
+    1714:      	slli	a7, a4, 0x8
+    1718:      	or	a6, a7, a6
+    171c:      	sw	a6, 0x1c(a3)
+    1720:      	lw	a6, 0x20(a1)
+    1724:      	srli	a4, a4, 0x18
+    1728:      	slli	a7, a6, 0x8
+    172c:      	or	a4, a7, a4
+    1730:      	sw	a4, 0x20(a3)
+    1734:      	lw	a4, 0x24(a1)
+    1738:      	srli	a6, a6, 0x18
+    173c:      	slli	a7, a4, 0x8
+    1740:      	or	a6, a7, a6
+    1744:      	sw	a6, 0x24(a3)
+    1748:      	lw	a6, 0x28(a1)
+    174c:      	srli	a4, a4, 0x18
+    1750:      	slli	a7, a6, 0x8
+    1754:      	or	a4, a7, a4
+    1758:      	sw	a4, 0x28(a3)
+    175c:      	lw	a4, 0x2c(a1)
+    1760:      	srli	a6, a6, 0x18
+    1764:      	slli	a7, a4, 0x8
+    1768:      	or	a6, a7, a6
+    176c:      	sw	a6, 0x2c(a3)
+    1770:      	lw	a6, 0x30(a1)
+    1774:      	srli	a4, a4, 0x18
+    1778:      	slli	a7, a6, 0x8
+    177c:      	or	a4, a7, a4
+    1780:      	sw	a4, 0x30(a3)
+    1784:      	lw	a4, 0x34(a1)
+    1788:      	srli	a6, a6, 0x18
+    178c:      	slli	a7, a4, 0x8
+    1790:      	or	a6, a7, a6
+    1794:      	sw	a6, 0x34(a3)
+    1798:      	lw	a6, 0x38(a1)
+    179c:      	srli	a4, a4, 0x18
+    17a0:      	slli	a7, a6, 0x8
+    17a4:      	or	a4, a7, a4
+    17a8:      	sw	a4, 0x38(a3)
+    17ac:      	lw	a4, 0x3c(a1)
+    17b0:      	srli	a6, a6, 0x18
+    17b4:      	slli	a7, a4, 0x8
+    17b8:      	addi	a2, a2, -0x40
+    17bc:      	or	a6, a7, a6
+    17c0:      	addi	a1, a1, 0x40
+    17c4:      	sw	a6, 0x3c(a3)
+    17c8:      	addi	a3, a3, 0x40
+    17cc:      	srli	a4, a4, 0x18
+    17d0:      	bltu	a5, a2, 0x1684 <memcpy+0xca0>
+    17d4:      	addi	a5, zero, 0x20
+    17d8:      	bgeu	a2, a5, 0x20a8 <memcpy+0x16c4>
+    17dc:      	andi	a5, a2, 0x10
+    17e0:      	bne	a5, zero, 0x2158 <memcpy+0x1774>
+    17e4:      	andi	a5, a2, 0x8
+    17e8:      	bne	a5, zero, 0x21b8 <memcpy+0x17d4>
+    17ec:      	andi	a5, a2, 0x4
+    17f0:      	bne	a5, zero, 0x21f0 <memcpy+0x180c>
+    17f4:      	andi	a5, a2, 0x3
+    17f8:      	addi	a6, zero, 0x3
+    17fc:      	bne	a5, a6, 0x2218 <memcpy+0x1834>
+    1800:      	lhu	a2, 0x0(a1)
+    1804:      	lbu	a1, 0x2(a1)
+    1808:      	slli	a2, a2, 0x8
+    180c:      	slli	a1, a1, 0x18
+    1810:      	or	a2, a2, a4
+    1814:      	or	a1, a2, a1
+    1818:      	sw	a1, 0x0(a3)
+    181c:      	lw	ra, 0xc(sp)
+    1820:      	lw	s0, 0x8(sp)
+    1824:      	addi	sp, sp, 0x10
+    1828:      	jalr	zero, 0x0(ra)
+    182c:      	addi	a5, zero, 0x40
+    1830:      	addi	a3, a0, 0x1
+    1834:      	bltu	a2, a5, 0x198c <memcpy+0xfa8>
+    1838:      	addi	a5, zero, 0x3f
+    183c:      	lw	a6, 0x0(a1)
+    1840:      	slli	a7, a6, 0x18
+    1844:      	or	a4, a7, a4
+    1848:      	sw	a4, 0x0(a3)
+    184c:      	lw	a4, 0x4(a1)
+    1850:      	srli	a6, a6, 0x8
+    1854:      	slli	a7, a4, 0x18
     1858:      	or	a6, a7, a6
-    185c:      	addi	a1, a1, 0x40
-    1860:      	sw	a6, 0x3c(a3)
-    1864:      	addi	a3, a3, 0x40
-    1868:      	srli	a4, a4, 0x18
-    186c:      	bltu	a5, a2, 0x1720 <memcpy+0xca0>
-    1870:      	addi	a5, zero, 0x20
-    1874:      	bgeu	a2, a5, 0x2144 <memcpy+0x16c4>
-    1878:      	andi	a5, a2, 0x10
-    187c:      	bne	a5, zero, 0x21f4 <memcpy+0x1774>
-    1880:      	andi	a5, a2, 0x8
-    1884:      	bne	a5, zero, 0x2254 <memcpy+0x17d4>
-    1888:      	andi	a5, a2, 0x4
-    188c:      	bne	a5, zero, 0x228c <memcpy+0x180c>
-    1890:      	andi	a5, a2, 0x3
-    1894:      	addi	a6, zero, 0x3
-    1898:      	bne	a5, a6, 0x22b4 <memcpy+0x1834>
-    189c:      	lhu	a2, 0x0(a1)
-    18a0:      	lbu	a1, 0x2(a1)
-    18a4:      	slli	a2, a2, 0x8
-    18a8:      	slli	a1, a1, 0x18
-    18ac:      	or	a2, a2, a4
-    18b0:      	or	a1, a2, a1
-    18b4:      	sw	a1, 0x0(a3)
-    18b8:      	lw	ra, 0xc(sp)
-    18bc:      	lw	s0, 0x8(sp)
-    18c0:      	addi	sp, sp, 0x10
-    18c4:      	jalr	zero, 0x0(ra)
-    18c8:      	addi	a5, zero, 0x40
-    18cc:      	addi	a3, a0, 0x1
-    18d0:      	bltu	a2, a5, 0x1a28 <memcpy+0xfa8>
-    18d4:      	addi	a5, zero, 0x3f
-    18d8:      	lw	a6, 0x0(a1)
-    18dc:      	slli	a7, a6, 0x18
-    18e0:      	or	a4, a7, a4
-    18e4:      	sw	a4, 0x0(a3)
-    18e8:      	lw	a4, 0x4(a1)
-    18ec:      	srli	a6, a6, 0x8
-    18f0:      	slli	a7, a4, 0x18
-    18f4:      	or	a6, a7, a6
-    18f8:      	sw	a6, 0x4(a3)
-    18fc:      	lw	a6, 0x8(a1)
-    1900:      	srli	a4, a4, 0x8
-    1904:      	slli	a7, a6, 0x18
-    1908:      	or	a4, a7, a4
-    190c:      	sw	a4, 0x8(a3)
-    1910:      	lw	a4, 0xc(a1)
-    1914:      	srli	a6, a6, 0x8
-    1918:      	slli	a7, a4, 0x18
-    191c:      	or	a6, a7, a6
-    1920:      	sw	a6, 0xc(a3)
-    1924:      	lw	a6, 0x10(a1)
-    1928:      	srli	a4, a4, 0x8
-    192c:      	slli	a7, a6, 0x18
-    1930:      	or	a4, a7, a4
-    1934:      	sw	a4, 0x10(a3)
-    1938:      	lw	a4, 0x14(a1)
-    193c:      	srli	a6, a6, 0x8
-    1940:      	slli	a7, a4, 0x18
-    1944:      	or	a6, a7, a6
-    1948:      	sw	a6, 0x14(a3)
-    194c:      	lw	a6, 0x18(a1)
-    1950:      	srli	a4, a4, 0x8
-    1954:      	slli	a7, a6, 0x18
-    1958:      	or	a4, a7, a4
-    195c:      	sw	a4, 0x18(a3)
-    1960:      	lw	a4, 0x1c(a1)
-    1964:      	srli	a6, a6, 0x8
-    1968:      	slli	a7, a4, 0x18
-    196c:      	or	a6, a7, a6
-    1970:      	sw	a6, 0x1c(a3)
-    1974:      	lw	a6, 0x20(a1)
-    1978:      	srli	a4, a4, 0x8
-    197c:      	slli	a7, a6, 0x18
-    1980:      	or	a4, a7, a4
-    1984:      	sw	a4, 0x20(a3)
-    1988:      	lw	a4, 0x24(a1)
-    198c:      	srli	a6, a6, 0x8
-    1990:      	slli	a7, a4, 0x18
-    1994:      	or	a6, a7, a6
-    1998:      	sw	a6, 0x24(a3)
-    199c:      	lw	a6, 0x28(a1)
-    19a0:      	srli	a4, a4, 0x8
-    19a4:      	slli	a7, a6, 0x18
-    19a8:      	or	a4, a7, a4
-    19ac:      	sw	a4, 0x28(a3)
-    19b0:      	lw	a4, 0x2c(a1)
-    19b4:      	srli	a6, a6, 0x8
-    19b8:      	slli	a7, a4, 0x18
-    19bc:      	or	a6, a7, a6
-    19c0:      	sw	a6, 0x2c(a3)
-    19c4:      	lw	a6, 0x30(a1)
-    19c8:      	srli	a4, a4, 0x8
-    19cc:      	slli	a7, a6, 0x18
-    19d0:      	or	a4, a7, a4
-    19d4:      	sw	a4, 0x30(a3)
-    19d8:      	lw	a4, 0x34(a1)
-    19dc:      	srli	a6, a6, 0x8
-    19e0:      	slli	a7, a4, 0x18
-    19e4:      	or	a6, a7, a6
-    19e8:      	sw	a6, 0x34(a3)
-    19ec:      	lw	a6, 0x38(a1)
-    19f0:      	srli	a4, a4, 0x8
-    19f4:      	slli	a7, a6, 0x18
-    19f8:      	or	a4, a7, a4
-    19fc:      	sw	a4, 0x38(a3)
-    1a00:      	lw	a4, 0x3c(a1)
-    1a04:      	srli	a6, a6, 0x8
-    1a08:      	slli	a7, a4, 0x18
-    1a0c:      	addi	a2, a2, -0x40
-    1a10:      	or	a6, a7, a6
-    1a14:      	addi	a1, a1, 0x40
-    1a18:      	sw	a6, 0x3c(a3)
-    1a1c:      	addi	a3, a3, 0x40
-    1a20:      	srli	a4, a4, 0x8
-    1a24:      	bltu	a5, a2, 0x18d8 <memcpy+0xe58>
-    1a28:      	addi	a5, zero, 0x20
-    1a2c:      	bgeu	a2, a5, 0x22fc <memcpy+0x187c>
-    1a30:      	andi	a5, a2, 0x10
-    1a34:      	bne	a5, zero, 0x23ac <memcpy+0x192c>
-    1a38:      	andi	a5, a2, 0x8
-    1a3c:      	bne	a5, zero, 0x240c <memcpy+0x198c>
-    1a40:      	andi	a5, a2, 0x4
-    1a44:      	bne	a5, zero, 0x2444 <memcpy+0x19c4>
-    1a48:      	andi	a2, a2, 0x3
-    1a4c:      	beq	a2, zero, 0x2468 <memcpy+0x19e8>
-    1a50:      	lbu	a5, 0x0(a1)
-    1a54:      	slli	a5, a5, 0x18
-    1a58:      	addi	a2, a2, -0x1
-    1a5c:      	or	a4, a5, a4
-    1a60:      	andi	a5, a2, 0x2
-    1a64:      	sw	a4, 0x0(a3)
-    1a68:      	bne	a5, zero, 0x2490 <memcpy+0x1a10>
-    1a6c:      	andi	a2, a2, 0x1
-    1a70:      	beq	a2, zero, 0x1240 <memcpy+0x7c0>
-    1a74:      	lbu	a1, 0x1(a1)
-    1a78:      	sb	a1, 0x4(a3)
-    1a7c:      	lw	ra, 0xc(sp)
-    1a80:      	lw	s0, 0x8(sp)
-    1a84:      	addi	sp, sp, 0x10
-    1a88:      	jalr	zero, 0x0(ra)
-    1a8c:      	lw	a5, 0x0(a2)
-    1a90:      	slli	a6, a5, 0x10
-    1a94:      	or	a4, a6, a4
-    1a98:      	sw	a4, 0x0(a1)
-    1a9c:      	lw	a4, 0x4(a2)
-    1aa0:      	srli	a5, a5, 0x10
-    1aa4:      	slli	a6, a4, 0x10
-    1aa8:      	or	a5, a6, a5
-    1aac:      	sw	a5, 0x4(a1)
-    1ab0:      	lw	a5, 0x8(a2)
-    1ab4:      	srli	a4, a4, 0x10
-    1ab8:      	slli	a6, a5, 0x10
-    1abc:      	or	a4, a6, a4
-    1ac0:      	sw	a4, 0x8(a1)
-    1ac4:      	lw	a4, 0xc(a2)
-    1ac8:      	srli	a5, a5, 0x10
-    1acc:      	slli	a6, a4, 0x10
-    1ad0:      	or	a5, a6, a5
-    1ad4:      	sw	a5, 0xc(a1)
-    1ad8:      	lw	a5, 0x10(a2)
-    1adc:      	srli	a4, a4, 0x10
-    1ae0:      	slli	a6, a5, 0x10
-    1ae4:      	or	a4, a6, a4
-    1ae8:      	sw	a4, 0x10(a1)
-    1aec:      	lw	a4, 0x14(a2)
-    1af0:      	srli	a5, a5, 0x10
-    1af4:      	slli	a6, a4, 0x10
-    1af8:      	or	a5, a6, a5
-    1afc:      	sw	a5, 0x14(a1)
-    1b00:      	lw	a5, 0x18(a2)
-    1b04:      	srli	a4, a4, 0x10
-    1b08:      	slli	a6, a5, 0x10
-    1b0c:      	or	a4, a6, a4
-    1b10:      	sw	a4, 0x18(a1)
-    1b14:      	lw	a4, 0x1c(a2)
-    1b18:      	srli	a5, a5, 0x10
-    1b1c:      	slli	a6, a4, 0x10
-    1b20:      	or	a5, a6, a5
-    1b24:      	srli	a4, a4, 0x10
-    1b28:      	sw	a5, 0x1c(a1)
-    1b2c:      	addi	a2, a2, 0x20
-    1b30:      	addi	a1, a1, 0x20
-    1b34:      	andi	a5, a3, 0x10
-    1b38:      	beq	a5, zero, 0x10f8 <memcpy+0x678>
-    1b3c:      	lw	a5, 0x0(a2)
+    185c:      	sw	a6, 0x4(a3)
+    1860:      	lw	a6, 0x8(a1)
+    1864:      	srli	a4, a4, 0x8
+    1868:      	slli	a7, a6, 0x18
+    186c:      	or	a4, a7, a4
+    1870:      	sw	a4, 0x8(a3)
+    1874:      	lw	a4, 0xc(a1)
+    1878:      	srli	a6, a6, 0x8
+    187c:      	slli	a7, a4, 0x18
+    1880:      	or	a6, a7, a6
+    1884:      	sw	a6, 0xc(a3)
+    1888:      	lw	a6, 0x10(a1)
+    188c:      	srli	a4, a4, 0x8
+    1890:      	slli	a7, a6, 0x18
+    1894:      	or	a4, a7, a4
+    1898:      	sw	a4, 0x10(a3)
+    189c:      	lw	a4, 0x14(a1)
+    18a0:      	srli	a6, a6, 0x8
+    18a4:      	slli	a7, a4, 0x18
+    18a8:      	or	a6, a7, a6
+    18ac:      	sw	a6, 0x14(a3)
+    18b0:      	lw	a6, 0x18(a1)
+    18b4:      	srli	a4, a4, 0x8
+    18b8:      	slli	a7, a6, 0x18
+    18bc:      	or	a4, a7, a4
+    18c0:      	sw	a4, 0x18(a3)
+    18c4:      	lw	a4, 0x1c(a1)
+    18c8:      	srli	a6, a6, 0x8
+    18cc:      	slli	a7, a4, 0x18
+    18d0:      	or	a6, a7, a6
+    18d4:      	sw	a6, 0x1c(a3)
+    18d8:      	lw	a6, 0x20(a1)
+    18dc:      	srli	a4, a4, 0x8
+    18e0:      	slli	a7, a6, 0x18
+    18e4:      	or	a4, a7, a4
+    18e8:      	sw	a4, 0x20(a3)
+    18ec:      	lw	a4, 0x24(a1)
+    18f0:      	srli	a6, a6, 0x8
+    18f4:      	slli	a7, a4, 0x18
+    18f8:      	or	a6, a7, a6
+    18fc:      	sw	a6, 0x24(a3)
+    1900:      	lw	a6, 0x28(a1)
+    1904:      	srli	a4, a4, 0x8
+    1908:      	slli	a7, a6, 0x18
+    190c:      	or	a4, a7, a4
+    1910:      	sw	a4, 0x28(a3)
+    1914:      	lw	a4, 0x2c(a1)
+    1918:      	srli	a6, a6, 0x8
+    191c:      	slli	a7, a4, 0x18
+    1920:      	or	a6, a7, a6
+    1924:      	sw	a6, 0x2c(a3)
+    1928:      	lw	a6, 0x30(a1)
+    192c:      	srli	a4, a4, 0x8
+    1930:      	slli	a7, a6, 0x18
+    1934:      	or	a4, a7, a4
+    1938:      	sw	a4, 0x30(a3)
+    193c:      	lw	a4, 0x34(a1)
+    1940:      	srli	a6, a6, 0x8
+    1944:      	slli	a7, a4, 0x18
+    1948:      	or	a6, a7, a6
+    194c:      	sw	a6, 0x34(a3)
+    1950:      	lw	a6, 0x38(a1)
+    1954:      	srli	a4, a4, 0x8
+    1958:      	slli	a7, a6, 0x18
+    195c:      	or	a4, a7, a4
+    1960:      	sw	a4, 0x38(a3)
+    1964:      	lw	a4, 0x3c(a1)
+    1968:      	srli	a6, a6, 0x8
+    196c:      	slli	a7, a4, 0x18
+    1970:      	addi	a2, a2, -0x40
+    1974:      	or	a6, a7, a6
+    1978:      	addi	a1, a1, 0x40
+    197c:      	sw	a6, 0x3c(a3)
+    1980:      	addi	a3, a3, 0x40
+    1984:      	srli	a4, a4, 0x8
+    1988:      	bltu	a5, a2, 0x183c <memcpy+0xe58>
+    198c:      	addi	a5, zero, 0x20
+    1990:      	bgeu	a2, a5, 0x2260 <memcpy+0x187c>
+    1994:      	andi	a5, a2, 0x10
+    1998:      	bne	a5, zero, 0x2310 <memcpy+0x192c>
+    199c:      	andi	a5, a2, 0x8
+    19a0:      	bne	a5, zero, 0x2370 <memcpy+0x198c>
+    19a4:      	andi	a5, a2, 0x4
+    19a8:      	bne	a5, zero, 0x23a8 <memcpy+0x19c4>
+    19ac:      	andi	a2, a2, 0x3
+    19b0:      	beq	a2, zero, 0x23cc <memcpy+0x19e8>
+    19b4:      	lbu	a5, 0x0(a1)
+    19b8:      	slli	a5, a5, 0x18
+    19bc:      	addi	a2, a2, -0x1
+    19c0:      	or	a4, a5, a4
+    19c4:      	andi	a5, a2, 0x2
+    19c8:      	sw	a4, 0x0(a3)
+    19cc:      	bne	a5, zero, 0x23f4 <memcpy+0x1a10>
+    19d0:      	andi	a2, a2, 0x1
+    19d4:      	beq	a2, zero, 0x11a4 <memcpy+0x7c0>
+    19d8:      	lbu	a1, 0x1(a1)
+    19dc:      	sb	a1, 0x4(a3)
+    19e0:      	lw	ra, 0xc(sp)
+    19e4:      	lw	s0, 0x8(sp)
+    19e8:      	addi	sp, sp, 0x10
+    19ec:      	jalr	zero, 0x0(ra)
+    19f0:      	lw	a5, 0x0(a2)
+    19f4:      	slli	a6, a5, 0x10
+    19f8:      	or	a4, a6, a4
+    19fc:      	sw	a4, 0x0(a1)
+    1a00:      	lw	a4, 0x4(a2)
+    1a04:      	srli	a5, a5, 0x10
+    1a08:      	slli	a6, a4, 0x10
+    1a0c:      	or	a5, a6, a5
+    1a10:      	sw	a5, 0x4(a1)
+    1a14:      	lw	a5, 0x8(a2)
+    1a18:      	srli	a4, a4, 0x10
+    1a1c:      	slli	a6, a5, 0x10
+    1a20:      	or	a4, a6, a4
+    1a24:      	sw	a4, 0x8(a1)
+    1a28:      	lw	a4, 0xc(a2)
+    1a2c:      	srli	a5, a5, 0x10
+    1a30:      	slli	a6, a4, 0x10
+    1a34:      	or	a5, a6, a5
+    1a38:      	sw	a5, 0xc(a1)
+    1a3c:      	lw	a5, 0x10(a2)
+    1a40:      	srli	a4, a4, 0x10
+    1a44:      	slli	a6, a5, 0x10
+    1a48:      	or	a4, a6, a4
+    1a4c:      	sw	a4, 0x10(a1)
+    1a50:      	lw	a4, 0x14(a2)
+    1a54:      	srli	a5, a5, 0x10
+    1a58:      	slli	a6, a4, 0x10
+    1a5c:      	or	a5, a6, a5
+    1a60:      	sw	a5, 0x14(a1)
+    1a64:      	lw	a5, 0x18(a2)
+    1a68:      	srli	a4, a4, 0x10
+    1a6c:      	slli	a6, a5, 0x10
+    1a70:      	or	a4, a6, a4
+    1a74:      	sw	a4, 0x18(a1)
+    1a78:      	lw	a4, 0x1c(a2)
+    1a7c:      	srli	a5, a5, 0x10
+    1a80:      	slli	a6, a4, 0x10
+    1a84:      	or	a5, a6, a5
+    1a88:      	srli	a4, a4, 0x10
+    1a8c:      	sw	a5, 0x1c(a1)
+    1a90:      	addi	a2, a2, 0x20
+    1a94:      	addi	a1, a1, 0x20
+    1a98:      	andi	a5, a3, 0x10
+    1a9c:      	beq	a5, zero, 0x105c <memcpy+0x678>
+    1aa0:      	lw	a5, 0x0(a2)
+    1aa4:      	slli	a6, a5, 0x10
+    1aa8:      	or	a4, a6, a4
+    1aac:      	sw	a4, 0x0(a1)
+    1ab0:      	lw	a4, 0x4(a2)
+    1ab4:      	srli	a5, a5, 0x10
+    1ab8:      	slli	a6, a4, 0x10
+    1abc:      	or	a5, a6, a5
+    1ac0:      	sw	a5, 0x4(a1)
+    1ac4:      	lw	a5, 0x8(a2)
+    1ac8:      	srli	a4, a4, 0x10
+    1acc:      	slli	a6, a5, 0x10
+    1ad0:      	or	a4, a6, a4
+    1ad4:      	sw	a4, 0x8(a1)
+    1ad8:      	lw	a4, 0xc(a2)
+    1adc:      	srli	a5, a5, 0x10
+    1ae0:      	slli	a6, a4, 0x10
+    1ae4:      	or	a5, a6, a5
+    1ae8:      	srli	a4, a4, 0x10
+    1aec:      	sw	a5, 0xc(a1)
+    1af0:      	addi	a2, a2, 0x10
+    1af4:      	addi	a1, a1, 0x10
+    1af8:      	andi	a5, a3, 0x8
+    1afc:      	beq	a5, zero, 0x1064 <memcpy+0x680>
+    1b00:      	lw	a5, 0x0(a2)
+    1b04:      	slli	a6, a5, 0x10
+    1b08:      	or	a4, a6, a4
+    1b0c:      	sw	a4, 0x0(a1)
+    1b10:      	lw	a4, 0x4(a2)
+    1b14:      	srli	a5, a5, 0x10
+    1b18:      	slli	a6, a4, 0x10
+    1b1c:      	or	a5, a6, a5
+    1b20:      	srli	a4, a4, 0x10
+    1b24:      	sw	a5, 0x4(a1)
+    1b28:      	addi	a2, a2, 0x8
+    1b2c:      	addi	a1, a1, 0x8
+    1b30:      	andi	a5, a3, 0x4
+    1b34:      	beq	a5, zero, 0x106c <memcpy+0x688>
+    1b38:      	lw	a5, 0x0(a2)
+    1b3c:      	addi	a2, a2, 0x4
     1b40:      	slli	a6, a5, 0x10
-    1b44:      	or	a4, a6, a4
-    1b48:      	sw	a4, 0x0(a1)
-    1b4c:      	lw	a4, 0x4(a2)
-    1b50:      	srli	a5, a5, 0x10
-    1b54:      	slli	a6, a4, 0x10
-    1b58:      	or	a5, a6, a5
-    1b5c:      	sw	a5, 0x4(a1)
-    1b60:      	lw	a5, 0x8(a2)
-    1b64:      	srli	a4, a4, 0x10
-    1b68:      	slli	a6, a5, 0x10
-    1b6c:      	or	a4, a6, a4
-    1b70:      	sw	a4, 0x8(a1)
-    1b74:      	lw	a4, 0xc(a2)
-    1b78:      	srli	a5, a5, 0x10
-    1b7c:      	slli	a6, a4, 0x10
-    1b80:      	or	a5, a6, a5
-    1b84:      	srli	a4, a4, 0x10
-    1b88:      	sw	a5, 0xc(a1)
-    1b8c:      	addi	a2, a2, 0x10
-    1b90:      	addi	a1, a1, 0x10
-    1b94:      	andi	a5, a3, 0x8
-    1b98:      	beq	a5, zero, 0x1100 <memcpy+0x680>
-    1b9c:      	lw	a5, 0x0(a2)
-    1ba0:      	slli	a6, a5, 0x10
-    1ba4:      	or	a4, a6, a4
-    1ba8:      	sw	a4, 0x0(a1)
-    1bac:      	lw	a4, 0x4(a2)
-    1bb0:      	srli	a5, a5, 0x10
-    1bb4:      	slli	a6, a4, 0x10
-    1bb8:      	or	a5, a6, a5
-    1bbc:      	srli	a4, a4, 0x10
-    1bc0:      	sw	a5, 0x4(a1)
-    1bc4:      	addi	a2, a2, 0x8
-    1bc8:      	addi	a1, a1, 0x8
-    1bcc:      	andi	a5, a3, 0x4
-    1bd0:      	beq	a5, zero, 0x1108 <memcpy+0x688>
-    1bd4:      	lw	a5, 0x0(a2)
-    1bd8:      	addi	a2, a2, 0x4
-    1bdc:      	slli	a6, a5, 0x10
-    1be0:      	or	a6, a6, a4
-    1be4:      	srli	a4, a5, 0x10
-    1be8:      	sw	a6, 0x0(a1)
-    1bec:      	addi	a1, a1, 0x4
-    1bf0:      	andi	a5, a3, 0x3
-    1bf4:      	addi	a6, zero, 0x1
-    1bf8:      	bltu	a6, a5, 0x1114 <memcpy+0x694>
-    1bfc:      	lbu	a4, -0x2(a2)
-    1c00:      	sb	a4, 0x0(a1)
-    1c04:      	lbu	a4, -0x1(a2)
-    1c08:      	andi	a3, a3, 0x1
-    1c0c:      	sb	a4, 0x1(a1)
-    1c10:      	beq	a3, zero, 0x1240 <memcpy+0x7c0>
-    1c14:      	lbu	a2, 0x0(a2)
-    1c18:      	sb	a2, 0x2(a1)
-    1c1c:      	lw	ra, 0xc(sp)
-    1c20:      	lw	s0, 0x8(sp)
-    1c24:      	addi	sp, sp, 0x10
-    1c28:      	jalr	zero, 0x0(ra)
-    1c2c:      	lw	a5, 0x0(a2)
-    1c30:      	slli	a6, a5, 0x18
-    1c34:      	or	a4, a6, a4
-    1c38:      	sw	a4, 0x0(a1)
-    1c3c:      	lw	a4, 0x4(a2)
-    1c40:      	srli	a5, a5, 0x8
-    1c44:      	slli	a6, a4, 0x18
-    1c48:      	or	a5, a6, a5
-    1c4c:      	sw	a5, 0x4(a1)
-    1c50:      	lw	a5, 0x8(a2)
-    1c54:      	srli	a4, a4, 0x8
-    1c58:      	slli	a6, a5, 0x18
-    1c5c:      	or	a4, a6, a4
-    1c60:      	sw	a4, 0x8(a1)
-    1c64:      	lw	a4, 0xc(a2)
-    1c68:      	srli	a5, a5, 0x8
-    1c6c:      	slli	a6, a4, 0x18
-    1c70:      	or	a5, a6, a5
-    1c74:      	sw	a5, 0xc(a1)
-    1c78:      	lw	a5, 0x10(a2)
-    1c7c:      	srli	a4, a4, 0x8
-    1c80:      	slli	a6, a5, 0x18
-    1c84:      	or	a4, a6, a4
-    1c88:      	sw	a4, 0x10(a1)
-    1c8c:      	lw	a4, 0x14(a2)
-    1c90:      	srli	a5, a5, 0x8
-    1c94:      	slli	a6, a4, 0x18
-    1c98:      	or	a5, a6, a5
-    1c9c:      	sw	a5, 0x14(a1)
-    1ca0:      	lw	a5, 0x18(a2)
-    1ca4:      	srli	a4, a4, 0x8
-    1ca8:      	slli	a6, a5, 0x18
-    1cac:      	or	a4, a6, a4
-    1cb0:      	sw	a4, 0x18(a1)
-    1cb4:      	lw	a4, 0x1c(a2)
-    1cb8:      	srli	a5, a5, 0x8
-    1cbc:      	slli	a6, a4, 0x18
-    1cc0:      	or	a5, a6, a5
-    1cc4:      	srli	a4, a4, 0x8
-    1cc8:      	sw	a5, 0x1c(a1)
-    1ccc:      	addi	a2, a2, 0x20
-    1cd0:      	addi	a1, a1, 0x20
-    1cd4:      	andi	a5, a3, 0x10
-    1cd8:      	beq	a5, zero, 0x16ac <memcpy+0xc2c>
-    1cdc:      	lw	a5, 0x0(a2)
+    1b44:      	or	a6, a6, a4
+    1b48:      	srli	a4, a5, 0x10
+    1b4c:      	sw	a6, 0x0(a1)
+    1b50:      	addi	a1, a1, 0x4
+    1b54:      	andi	a5, a3, 0x3
+    1b58:      	addi	a6, zero, 0x1
+    1b5c:      	bltu	a6, a5, 0x1078 <memcpy+0x694>
+    1b60:      	lbu	a4, -0x2(a2)
+    1b64:      	sb	a4, 0x0(a1)
+    1b68:      	lbu	a4, -0x1(a2)
+    1b6c:      	andi	a3, a3, 0x1
+    1b70:      	sb	a4, 0x1(a1)
+    1b74:      	beq	a3, zero, 0x11a4 <memcpy+0x7c0>
+    1b78:      	lbu	a2, 0x0(a2)
+    1b7c:      	sb	a2, 0x2(a1)
+    1b80:      	lw	ra, 0xc(sp)
+    1b84:      	lw	s0, 0x8(sp)
+    1b88:      	addi	sp, sp, 0x10
+    1b8c:      	jalr	zero, 0x0(ra)
+    1b90:      	lw	a5, 0x0(a2)
+    1b94:      	slli	a6, a5, 0x18
+    1b98:      	or	a4, a6, a4
+    1b9c:      	sw	a4, 0x0(a1)
+    1ba0:      	lw	a4, 0x4(a2)
+    1ba4:      	srli	a5, a5, 0x8
+    1ba8:      	slli	a6, a4, 0x18
+    1bac:      	or	a5, a6, a5
+    1bb0:      	sw	a5, 0x4(a1)
+    1bb4:      	lw	a5, 0x8(a2)
+    1bb8:      	srli	a4, a4, 0x8
+    1bbc:      	slli	a6, a5, 0x18
+    1bc0:      	or	a4, a6, a4
+    1bc4:      	sw	a4, 0x8(a1)
+    1bc8:      	lw	a4, 0xc(a2)
+    1bcc:      	srli	a5, a5, 0x8
+    1bd0:      	slli	a6, a4, 0x18
+    1bd4:      	or	a5, a6, a5
+    1bd8:      	sw	a5, 0xc(a1)
+    1bdc:      	lw	a5, 0x10(a2)
+    1be0:      	srli	a4, a4, 0x8
+    1be4:      	slli	a6, a5, 0x18
+    1be8:      	or	a4, a6, a4
+    1bec:      	sw	a4, 0x10(a1)
+    1bf0:      	lw	a4, 0x14(a2)
+    1bf4:      	srli	a5, a5, 0x8
+    1bf8:      	slli	a6, a4, 0x18
+    1bfc:      	or	a5, a6, a5
+    1c00:      	sw	a5, 0x14(a1)
+    1c04:      	lw	a5, 0x18(a2)
+    1c08:      	srli	a4, a4, 0x8
+    1c0c:      	slli	a6, a5, 0x18
+    1c10:      	or	a4, a6, a4
+    1c14:      	sw	a4, 0x18(a1)
+    1c18:      	lw	a4, 0x1c(a2)
+    1c1c:      	srli	a5, a5, 0x8
+    1c20:      	slli	a6, a4, 0x18
+    1c24:      	or	a5, a6, a5
+    1c28:      	srli	a4, a4, 0x8
+    1c2c:      	sw	a5, 0x1c(a1)
+    1c30:      	addi	a2, a2, 0x20
+    1c34:      	addi	a1, a1, 0x20
+    1c38:      	andi	a5, a3, 0x10
+    1c3c:      	beq	a5, zero, 0x1610 <memcpy+0xc2c>
+    1c40:      	lw	a5, 0x0(a2)
+    1c44:      	slli	a6, a5, 0x18
+    1c48:      	or	a4, a6, a4
+    1c4c:      	sw	a4, 0x0(a1)
+    1c50:      	lw	a4, 0x4(a2)
+    1c54:      	srli	a5, a5, 0x8
+    1c58:      	slli	a6, a4, 0x18
+    1c5c:      	or	a5, a6, a5
+    1c60:      	sw	a5, 0x4(a1)
+    1c64:      	lw	a5, 0x8(a2)
+    1c68:      	srli	a4, a4, 0x8
+    1c6c:      	slli	a6, a5, 0x18
+    1c70:      	or	a4, a6, a4
+    1c74:      	sw	a4, 0x8(a1)
+    1c78:      	lw	a4, 0xc(a2)
+    1c7c:      	srli	a5, a5, 0x8
+    1c80:      	slli	a6, a4, 0x18
+    1c84:      	or	a5, a6, a5
+    1c88:      	srli	a4, a4, 0x8
+    1c8c:      	sw	a5, 0xc(a1)
+    1c90:      	addi	a2, a2, 0x10
+    1c94:      	addi	a1, a1, 0x10
+    1c98:      	andi	a5, a3, 0x8
+    1c9c:      	beq	a5, zero, 0x1618 <memcpy+0xc34>
+    1ca0:      	lw	a5, 0x0(a2)
+    1ca4:      	slli	a6, a5, 0x18
+    1ca8:      	or	a4, a6, a4
+    1cac:      	sw	a4, 0x0(a1)
+    1cb0:      	lw	a4, 0x4(a2)
+    1cb4:      	srli	a5, a5, 0x8
+    1cb8:      	slli	a6, a4, 0x18
+    1cbc:      	or	a5, a6, a5
+    1cc0:      	srli	a4, a4, 0x8
+    1cc4:      	sw	a5, 0x4(a1)
+    1cc8:      	addi	a2, a2, 0x8
+    1ccc:      	addi	a1, a1, 0x8
+    1cd0:      	andi	a5, a3, 0x4
+    1cd4:      	beq	a5, zero, 0x1620 <memcpy+0xc3c>
+    1cd8:      	lw	a5, 0x0(a2)
+    1cdc:      	addi	a2, a2, 0x4
     1ce0:      	slli	a6, a5, 0x18
-    1ce4:      	or	a4, a6, a4
-    1ce8:      	sw	a4, 0x0(a1)
-    1cec:      	lw	a4, 0x4(a2)
-    1cf0:      	srli	a5, a5, 0x8
-    1cf4:      	slli	a6, a4, 0x18
-    1cf8:      	or	a5, a6, a5
-    1cfc:      	sw	a5, 0x4(a1)
-    1d00:      	lw	a5, 0x8(a2)
-    1d04:      	srli	a4, a4, 0x8
-    1d08:      	slli	a6, a5, 0x18
-    1d0c:      	or	a4, a6, a4
-    1d10:      	sw	a4, 0x8(a1)
-    1d14:      	lw	a4, 0xc(a2)
-    1d18:      	srli	a5, a5, 0x8
-    1d1c:      	slli	a6, a4, 0x18
-    1d20:      	or	a5, a6, a5
-    1d24:      	srli	a4, a4, 0x8
-    1d28:      	sw	a5, 0xc(a1)
-    1d2c:      	addi	a2, a2, 0x10
-    1d30:      	addi	a1, a1, 0x10
-    1d34:      	andi	a5, a3, 0x8
-    1d38:      	beq	a5, zero, 0x16b4 <memcpy+0xc34>
-    1d3c:      	lw	a5, 0x0(a2)
-    1d40:      	slli	a6, a5, 0x18
-    1d44:      	or	a4, a6, a4
-    1d48:      	sw	a4, 0x0(a1)
-    1d4c:      	lw	a4, 0x4(a2)
-    1d50:      	srli	a5, a5, 0x8
-    1d54:      	slli	a6, a4, 0x18
-    1d58:      	or	a5, a6, a5
-    1d5c:      	srli	a4, a4, 0x8
-    1d60:      	sw	a5, 0x4(a1)
-    1d64:      	addi	a2, a2, 0x8
-    1d68:      	addi	a1, a1, 0x8
-    1d6c:      	andi	a5, a3, 0x4
-    1d70:      	beq	a5, zero, 0x16bc <memcpy+0xc3c>
-    1d74:      	lw	a5, 0x0(a2)
-    1d78:      	addi	a2, a2, 0x4
-    1d7c:      	slli	a6, a5, 0x18
-    1d80:      	or	a6, a6, a4
-    1d84:      	srli	a4, a5, 0x8
-    1d88:      	sw	a6, 0x0(a1)
-    1d8c:      	addi	a1, a1, 0x4
-    1d90:      	andi	a3, a3, 0x3
-    1d94:      	bne	a3, zero, 0x16c4 <memcpy+0xc44>
-    1d98:      	lbu	a3, -0x3(a2)
-    1d9c:      	sb	a3, 0x0(a1)
-    1da0:      	lbu	a3, -0x2(a2)
-    1da4:      	sb	a3, 0x1(a1)
-    1da8:      	lbu	a2, -0x1(a2)
-    1dac:      	sb	a2, 0x2(a1)
-    1db0:      	lw	ra, 0xc(sp)
-    1db4:      	lw	s0, 0x8(sp)
-    1db8:      	addi	sp, sp, 0x10
-    1dbc:      	jalr	zero, 0x0(ra)
-    1dc0:      	lw	a5, 0x0(a2)
-    1dc4:      	slli	a6, a5, 0x8
-    1dc8:      	or	a4, a6, a4
-    1dcc:      	sw	a4, 0x0(a1)
-    1dd0:      	lw	a4, 0x4(a2)
-    1dd4:      	srli	a5, a5, 0x18
-    1dd8:      	slli	a6, a4, 0x8
-    1ddc:      	or	a5, a6, a5
-    1de0:      	sw	a5, 0x4(a1)
-    1de4:      	lw	a5, 0x8(a2)
-    1de8:      	srli	a4, a4, 0x18
-    1dec:      	slli	a6, a5, 0x8
-    1df0:      	or	a4, a6, a4
-    1df4:      	sw	a4, 0x8(a1)
-    1df8:      	lw	a4, 0xc(a2)
-    1dfc:      	srli	a5, a5, 0x18
-    1e00:      	slli	a6, a4, 0x8
-    1e04:      	or	a5, a6, a5
-    1e08:      	sw	a5, 0xc(a1)
-    1e0c:      	lw	a5, 0x10(a2)
-    1e10:      	srli	a4, a4, 0x18
-    1e14:      	slli	a6, a5, 0x8
-    1e18:      	or	a4, a6, a4
-    1e1c:      	sw	a4, 0x10(a1)
-    1e20:      	lw	a4, 0x14(a2)
-    1e24:      	srli	a5, a5, 0x18
-    1e28:      	slli	a6, a4, 0x8
-    1e2c:      	or	a5, a6, a5
-    1e30:      	sw	a5, 0x14(a1)
-    1e34:      	lw	a5, 0x18(a2)
-    1e38:      	srli	a4, a4, 0x18
-    1e3c:      	slli	a6, a5, 0x8
-    1e40:      	or	a4, a6, a4
-    1e44:      	sw	a4, 0x18(a1)
-    1e48:      	lw	a4, 0x1c(a2)
-    1e4c:      	srli	a5, a5, 0x18
-    1e50:      	slli	a6, a4, 0x8
-    1e54:      	or	a5, a6, a5
-    1e58:      	srli	a4, a4, 0x18
-    1e5c:      	sw	a5, 0x1c(a1)
-    1e60:      	addi	a2, a2, 0x20
-    1e64:      	addi	a1, a1, 0x20
-    1e68:      	andi	a5, a3, 0x10
-    1e6c:      	beq	a5, zero, 0x14b0 <memcpy+0xa30>
-    1e70:      	lw	a5, 0x0(a2)
+    1ce4:      	or	a6, a6, a4
+    1ce8:      	srli	a4, a5, 0x8
+    1cec:      	sw	a6, 0x0(a1)
+    1cf0:      	addi	a1, a1, 0x4
+    1cf4:      	andi	a3, a3, 0x3
+    1cf8:      	bne	a3, zero, 0x1628 <memcpy+0xc44>
+    1cfc:      	lbu	a3, -0x3(a2)
+    1d00:      	sb	a3, 0x0(a1)
+    1d04:      	lbu	a3, -0x2(a2)
+    1d08:      	sb	a3, 0x1(a1)
+    1d0c:      	lbu	a2, -0x1(a2)
+    1d10:      	sb	a2, 0x2(a1)
+    1d14:      	lw	ra, 0xc(sp)
+    1d18:      	lw	s0, 0x8(sp)
+    1d1c:      	addi	sp, sp, 0x10
+    1d20:      	jalr	zero, 0x0(ra)
+    1d24:      	lw	a5, 0x0(a2)
+    1d28:      	slli	a6, a5, 0x8
+    1d2c:      	or	a4, a6, a4
+    1d30:      	sw	a4, 0x0(a1)
+    1d34:      	lw	a4, 0x4(a2)
+    1d38:      	srli	a5, a5, 0x18
+    1d3c:      	slli	a6, a4, 0x8
+    1d40:      	or	a5, a6, a5
+    1d44:      	sw	a5, 0x4(a1)
+    1d48:      	lw	a5, 0x8(a2)
+    1d4c:      	srli	a4, a4, 0x18
+    1d50:      	slli	a6, a5, 0x8
+    1d54:      	or	a4, a6, a4
+    1d58:      	sw	a4, 0x8(a1)
+    1d5c:      	lw	a4, 0xc(a2)
+    1d60:      	srli	a5, a5, 0x18
+    1d64:      	slli	a6, a4, 0x8
+    1d68:      	or	a5, a6, a5
+    1d6c:      	sw	a5, 0xc(a1)
+    1d70:      	lw	a5, 0x10(a2)
+    1d74:      	srli	a4, a4, 0x18
+    1d78:      	slli	a6, a5, 0x8
+    1d7c:      	or	a4, a6, a4
+    1d80:      	sw	a4, 0x10(a1)
+    1d84:      	lw	a4, 0x14(a2)
+    1d88:      	srli	a5, a5, 0x18
+    1d8c:      	slli	a6, a4, 0x8
+    1d90:      	or	a5, a6, a5
+    1d94:      	sw	a5, 0x14(a1)
+    1d98:      	lw	a5, 0x18(a2)
+    1d9c:      	srli	a4, a4, 0x18
+    1da0:      	slli	a6, a5, 0x8
+    1da4:      	or	a4, a6, a4
+    1da8:      	sw	a4, 0x18(a1)
+    1dac:      	lw	a4, 0x1c(a2)
+    1db0:      	srli	a5, a5, 0x18
+    1db4:      	slli	a6, a4, 0x8
+    1db8:      	or	a5, a6, a5
+    1dbc:      	srli	a4, a4, 0x18
+    1dc0:      	sw	a5, 0x1c(a1)
+    1dc4:      	addi	a2, a2, 0x20
+    1dc8:      	addi	a1, a1, 0x20
+    1dcc:      	andi	a5, a3, 0x10
+    1dd0:      	beq	a5, zero, 0x1414 <memcpy+0xa30>
+    1dd4:      	lw	a5, 0x0(a2)
+    1dd8:      	slli	a6, a5, 0x8
+    1ddc:      	or	a4, a6, a4
+    1de0:      	sw	a4, 0x0(a1)
+    1de4:      	lw	a4, 0x4(a2)
+    1de8:      	srli	a5, a5, 0x18
+    1dec:      	slli	a6, a4, 0x8
+    1df0:      	or	a5, a6, a5
+    1df4:      	sw	a5, 0x4(a1)
+    1df8:      	lw	a5, 0x8(a2)
+    1dfc:      	srli	a4, a4, 0x18
+    1e00:      	slli	a6, a5, 0x8
+    1e04:      	or	a4, a6, a4
+    1e08:      	sw	a4, 0x8(a1)
+    1e0c:      	lw	a4, 0xc(a2)
+    1e10:      	srli	a5, a5, 0x18
+    1e14:      	slli	a6, a4, 0x8
+    1e18:      	or	a5, a6, a5
+    1e1c:      	srli	a4, a4, 0x18
+    1e20:      	sw	a5, 0xc(a1)
+    1e24:      	addi	a2, a2, 0x10
+    1e28:      	addi	a1, a1, 0x10
+    1e2c:      	andi	a5, a3, 0x8
+    1e30:      	beq	a5, zero, 0x141c <memcpy+0xa38>
+    1e34:      	lw	a5, 0x0(a2)
+    1e38:      	slli	a6, a5, 0x8
+    1e3c:      	or	a4, a6, a4
+    1e40:      	sw	a4, 0x0(a1)
+    1e44:      	lw	a4, 0x4(a2)
+    1e48:      	srli	a5, a5, 0x18
+    1e4c:      	slli	a6, a4, 0x8
+    1e50:      	or	a5, a6, a5
+    1e54:      	srli	a4, a4, 0x18
+    1e58:      	sw	a5, 0x4(a1)
+    1e5c:      	addi	a2, a2, 0x8
+    1e60:      	addi	a1, a1, 0x8
+    1e64:      	andi	a5, a3, 0x4
+    1e68:      	beq	a5, zero, 0x1424 <memcpy+0xa40>
+    1e6c:      	lw	a5, 0x0(a2)
+    1e70:      	addi	a2, a2, 0x4
     1e74:      	slli	a6, a5, 0x8
-    1e78:      	or	a4, a6, a4
-    1e7c:      	sw	a4, 0x0(a1)
-    1e80:      	lw	a4, 0x4(a2)
-    1e84:      	srli	a5, a5, 0x18
-    1e88:      	slli	a6, a4, 0x8
-    1e8c:      	or	a5, a6, a5
-    1e90:      	sw	a5, 0x4(a1)
-    1e94:      	lw	a5, 0x8(a2)
-    1e98:      	srli	a4, a4, 0x18
-    1e9c:      	slli	a6, a5, 0x8
-    1ea0:      	or	a4, a6, a4
-    1ea4:      	sw	a4, 0x8(a1)
-    1ea8:      	lw	a4, 0xc(a2)
-    1eac:      	srli	a5, a5, 0x18
-    1eb0:      	slli	a6, a4, 0x8
-    1eb4:      	or	a5, a6, a5
-    1eb8:      	srli	a4, a4, 0x18
-    1ebc:      	sw	a5, 0xc(a1)
-    1ec0:      	addi	a2, a2, 0x10
-    1ec4:      	addi	a1, a1, 0x10
-    1ec8:      	andi	a5, a3, 0x8
-    1ecc:      	beq	a5, zero, 0x14b8 <memcpy+0xa38>
-    1ed0:      	lw	a5, 0x0(a2)
-    1ed4:      	slli	a6, a5, 0x8
-    1ed8:      	or	a4, a6, a4
-    1edc:      	sw	a4, 0x0(a1)
-    1ee0:      	lw	a4, 0x4(a2)
-    1ee4:      	srli	a5, a5, 0x18
-    1ee8:      	slli	a6, a4, 0x8
-    1eec:      	or	a5, a6, a5
-    1ef0:      	srli	a4, a4, 0x18
-    1ef4:      	sw	a5, 0x4(a1)
-    1ef8:      	addi	a2, a2, 0x8
-    1efc:      	addi	a1, a1, 0x8
-    1f00:      	andi	a5, a3, 0x4
-    1f04:      	beq	a5, zero, 0x14c0 <memcpy+0xa40>
-    1f08:      	lw	a5, 0x0(a2)
-    1f0c:      	addi	a2, a2, 0x4
-    1f10:      	slli	a6, a5, 0x8
-    1f14:      	or	a6, a6, a4
-    1f18:      	srli	a4, a5, 0x18
-    1f1c:      	sw	a6, 0x0(a1)
-    1f20:      	addi	a1, a1, 0x4
-    1f24:      	andi	a5, a3, 0x3
-    1f28:      	addi	a6, zero, 0x3
-    1f2c:      	beq	a5, a6, 0x14cc <memcpy+0xa4c>
-    1f30:      	addi	a4, a3, 0x1
-    1f34:      	andi	a4, a4, 0x2
-    1f38:      	beq	a4, zero, 0x1f4c <memcpy+0x14cc>
-    1f3c:      	lbu	a5, -0x1(a2)
-    1f40:      	sb	a5, 0x0(a1)
-    1f44:      	lbu	a5, 0x0(a2)
-    1f48:      	sb	a5, 0x1(a1)
-    1f4c:      	andi	a3, a3, 0x1
-    1f50:      	bne	a3, zero, 0x1240 <memcpy+0x7c0>
-    1f54:      	add	a2, a2, a4
-    1f58:      	lbu	a2, -0x1(a2)
-    1f5c:      	add	a1, a1, a4
-    1f60:      	sb	a2, 0x0(a1)
-    1f64:      	lw	ra, 0xc(sp)
-    1f68:      	lw	s0, 0x8(sp)
-    1f6c:      	addi	sp, sp, 0x10
-    1f70:      	jalr	zero, 0x0(ra)
-    1f74:      	lbu	a3, 0x1(a2)
-    1f78:      	sb	a3, 0x4(a1)
-    1f7c:      	lbu	a2, 0x2(a2)
-    1f80:      	sb	a2, 0x5(a1)
-    1f84:      	lw	ra, 0xc(sp)
-    1f88:      	lw	s0, 0x8(sp)
-    1f8c:      	addi	sp, sp, 0x10
-    1f90:      	jalr	zero, 0x0(ra)
-    1f94:      	lw	a5, 0x0(a1)
-    1f98:      	slli	a6, a5, 0x10
-    1f9c:      	or	a4, a6, a4
-    1fa0:      	sw	a4, 0x0(a3)
-    1fa4:      	lw	a4, 0x4(a1)
-    1fa8:      	srli	a5, a5, 0x10
-    1fac:      	slli	a6, a4, 0x10
-    1fb0:      	or	a5, a6, a5
-    1fb4:      	sw	a5, 0x4(a3)
-    1fb8:      	lw	a5, 0x8(a1)
-    1fbc:      	srli	a4, a4, 0x10
-    1fc0:      	slli	a6, a5, 0x10
-    1fc4:      	or	a4, a6, a4
-    1fc8:      	sw	a4, 0x8(a3)
-    1fcc:      	lw	a4, 0xc(a1)
-    1fd0:      	srli	a5, a5, 0x10
-    1fd4:      	slli	a6, a4, 0x10
-    1fd8:      	or	a5, a6, a5
-    1fdc:      	sw	a5, 0xc(a3)
-    1fe0:      	lw	a5, 0x10(a1)
-    1fe4:      	srli	a4, a4, 0x10
-    1fe8:      	slli	a6, a5, 0x10
-    1fec:      	or	a4, a6, a4
-    1ff0:      	sw	a4, 0x10(a3)
-    1ff4:      	lw	a4, 0x14(a1)
-    1ff8:      	srli	a5, a5, 0x10
-    1ffc:      	slli	a6, a4, 0x10
-    2000:      	or	a5, a6, a5
-    2004:      	sw	a5, 0x14(a3)
-    2008:      	lw	a5, 0x18(a1)
-    200c:      	srli	a4, a4, 0x10
-    2010:      	slli	a6, a5, 0x10
-    2014:      	or	a4, a6, a4
-    2018:      	sw	a4, 0x18(a3)
-    201c:      	lw	a4, 0x1c(a1)
-    2020:      	srli	a5, a5, 0x10
-    2024:      	slli	a6, a4, 0x10
-    2028:      	or	a5, a6, a5
-    202c:      	srli	a4, a4, 0x10
-    2030:      	sw	a5, 0x1c(a3)
-    2034:      	addi	a1, a1, 0x20
-    2038:      	addi	a3, a3, 0x20
-    203c:      	andi	a5, a2, 0x10
-    2040:      	bne	a5, zero, 0x2048 <memcpy+0x15c8>
-    2044:      	jal	zero, 0xef0 <memcpy+0x470>
-    2048:      	lw	a5, 0x0(a1)
-    204c:      	slli	a6, a5, 0x10
-    2050:      	or	a4, a6, a4
-    2054:      	sw	a4, 0x0(a3)
-    2058:      	lw	a4, 0x4(a1)
-    205c:      	srli	a5, a5, 0x10
-    2060:      	slli	a6, a4, 0x10
-    2064:      	or	a5, a6, a5
-    2068:      	sw	a5, 0x4(a3)
-    206c:      	lw	a5, 0x8(a1)
-    2070:      	srli	a4, a4, 0x10
-    2074:      	slli	a6, a5, 0x10
-    2078:      	or	a4, a6, a4
-    207c:      	sw	a4, 0x8(a3)
-    2080:      	lw	a4, 0xc(a1)
-    2084:      	srli	a5, a5, 0x10
-    2088:      	slli	a6, a4, 0x10
-    208c:      	or	a5, a6, a5
-    2090:      	srli	a4, a4, 0x10
-    2094:      	sw	a5, 0xc(a3)
-    2098:      	addi	a1, a1, 0x10
-    209c:      	addi	a3, a3, 0x10
-    20a0:      	andi	a5, a2, 0x8
-    20a4:      	bne	a5, zero, 0x20ac <memcpy+0x162c>
-    20a8:      	jal	zero, 0xefc <memcpy+0x47c>
-    20ac:      	lw	a5, 0x0(a1)
-    20b0:      	slli	a6, a5, 0x10
-    20b4:      	or	a4, a6, a4
-    20b8:      	sw	a4, 0x0(a3)
-    20bc:      	lw	a4, 0x4(a1)
-    20c0:      	srli	a5, a5, 0x10
-    20c4:      	slli	a6, a4, 0x10
-    20c8:      	or	a5, a6, a5
-    20cc:      	srli	a4, a4, 0x10
-    20d0:      	sw	a5, 0x4(a3)
-    20d4:      	addi	a1, a1, 0x8
-    20d8:      	addi	a3, a3, 0x8
-    20dc:      	andi	a5, a2, 0x4
-    20e0:      	bne	a5, zero, 0x20e8 <memcpy+0x1668>
-    20e4:      	jal	zero, 0xf08 <memcpy+0x488>
-    20e8:      	lw	a5, 0x0(a1)
-    20ec:      	addi	a1, a1, 0x4
-    20f0:      	slli	a6, a5, 0x10
-    20f4:      	or	a6, a6, a4
-    20f8:      	srli	a4, a5, 0x10
-    20fc:      	sw	a6, 0x0(a3)
-    2100:      	addi	a3, a3, 0x4
-    2104:      	andi	a5, a2, 0x3
-    2108:      	addi	a6, zero, 0x1
-    210c:      	bgeu	a6, a5, 0x2114 <memcpy+0x1694>
-    2110:      	jal	zero, 0xf18 <memcpy+0x498>
-    2114:      	lbu	a4, -0x2(a1)
-    2118:      	sb	a4, 0x0(a3)
-    211c:      	lbu	a4, -0x1(a1)
-    2120:      	andi	a2, a2, 0x1
-    2124:      	sb	a4, 0x1(a3)
-    2128:      	beq	a2, zero, 0x1240 <memcpy+0x7c0>
-    212c:      	lbu	a1, 0x0(a1)
-    2130:      	sb	a1, 0x2(a3)
-    2134:      	lw	ra, 0xc(sp)
-    2138:      	lw	s0, 0x8(sp)
-    213c:      	addi	sp, sp, 0x10
-    2140:      	jalr	zero, 0x0(ra)
-    2144:      	lw	a5, 0x0(a1)
-    2148:      	slli	a6, a5, 0x8
-    214c:      	or	a4, a6, a4
-    2150:      	sw	a4, 0x0(a3)
-    2154:      	lw	a4, 0x4(a1)
-    2158:      	srli	a5, a5, 0x18
-    215c:      	slli	a6, a4, 0x8
-    2160:      	or	a5, a6, a5
-    2164:      	sw	a5, 0x4(a3)
-    2168:      	lw	a5, 0x8(a1)
-    216c:      	srli	a4, a4, 0x18
-    2170:      	slli	a6, a5, 0x8
-    2174:      	or	a4, a6, a4
-    2178:      	sw	a4, 0x8(a3)
-    217c:      	lw	a4, 0xc(a1)
-    2180:      	srli	a5, a5, 0x18
-    2184:      	slli	a6, a4, 0x8
-    2188:      	or	a5, a6, a5
-    218c:      	sw	a5, 0xc(a3)
-    2190:      	lw	a5, 0x10(a1)
-    2194:      	srli	a4, a4, 0x18
-    2198:      	slli	a6, a5, 0x8
-    219c:      	or	a4, a6, a4
-    21a0:      	sw	a4, 0x10(a3)
-    21a4:      	lw	a4, 0x14(a1)
-    21a8:      	srli	a5, a5, 0x18
-    21ac:      	slli	a6, a4, 0x8
-    21b0:      	or	a5, a6, a5
-    21b4:      	sw	a5, 0x14(a3)
-    21b8:      	lw	a5, 0x18(a1)
-    21bc:      	srli	a4, a4, 0x18
-    21c0:      	slli	a6, a5, 0x8
-    21c4:      	or	a4, a6, a4
-    21c8:      	sw	a4, 0x18(a3)
-    21cc:      	lw	a4, 0x1c(a1)
-    21d0:      	srli	a5, a5, 0x18
-    21d4:      	slli	a6, a4, 0x8
-    21d8:      	or	a5, a6, a5
-    21dc:      	srli	a4, a4, 0x18
-    21e0:      	sw	a5, 0x1c(a3)
-    21e4:      	addi	a1, a1, 0x20
-    21e8:      	addi	a3, a3, 0x20
-    21ec:      	andi	a5, a2, 0x10
-    21f0:      	beq	a5, zero, 0x1880 <memcpy+0xe00>
-    21f4:      	lw	a5, 0x0(a1)
+    1e78:      	or	a6, a6, a4
+    1e7c:      	srli	a4, a5, 0x18
+    1e80:      	sw	a6, 0x0(a1)
+    1e84:      	addi	a1, a1, 0x4
+    1e88:      	andi	a5, a3, 0x3
+    1e8c:      	addi	a6, zero, 0x3
+    1e90:      	beq	a5, a6, 0x1430 <memcpy+0xa4c>
+    1e94:      	addi	a4, a3, 0x1
+    1e98:      	andi	a4, a4, 0x2
+    1e9c:      	beq	a4, zero, 0x1eb0 <memcpy+0x14cc>
+    1ea0:      	lbu	a5, -0x1(a2)
+    1ea4:      	sb	a5, 0x0(a1)
+    1ea8:      	lbu	a5, 0x0(a2)
+    1eac:      	sb	a5, 0x1(a1)
+    1eb0:      	andi	a3, a3, 0x1
+    1eb4:      	bne	a3, zero, 0x11a4 <memcpy+0x7c0>
+    1eb8:      	add	a2, a2, a4
+    1ebc:      	lbu	a2, -0x1(a2)
+    1ec0:      	add	a1, a1, a4
+    1ec4:      	sb	a2, 0x0(a1)
+    1ec8:      	lw	ra, 0xc(sp)
+    1ecc:      	lw	s0, 0x8(sp)
+    1ed0:      	addi	sp, sp, 0x10
+    1ed4:      	jalr	zero, 0x0(ra)
+    1ed8:      	lbu	a3, 0x1(a2)
+    1edc:      	sb	a3, 0x4(a1)
+    1ee0:      	lbu	a2, 0x2(a2)
+    1ee4:      	sb	a2, 0x5(a1)
+    1ee8:      	lw	ra, 0xc(sp)
+    1eec:      	lw	s0, 0x8(sp)
+    1ef0:      	addi	sp, sp, 0x10
+    1ef4:      	jalr	zero, 0x0(ra)
+    1ef8:      	lw	a5, 0x0(a1)
+    1efc:      	slli	a6, a5, 0x10
+    1f00:      	or	a4, a6, a4
+    1f04:      	sw	a4, 0x0(a3)
+    1f08:      	lw	a4, 0x4(a1)
+    1f0c:      	srli	a5, a5, 0x10
+    1f10:      	slli	a6, a4, 0x10
+    1f14:      	or	a5, a6, a5
+    1f18:      	sw	a5, 0x4(a3)
+    1f1c:      	lw	a5, 0x8(a1)
+    1f20:      	srli	a4, a4, 0x10
+    1f24:      	slli	a6, a5, 0x10
+    1f28:      	or	a4, a6, a4
+    1f2c:      	sw	a4, 0x8(a3)
+    1f30:      	lw	a4, 0xc(a1)
+    1f34:      	srli	a5, a5, 0x10
+    1f38:      	slli	a6, a4, 0x10
+    1f3c:      	or	a5, a6, a5
+    1f40:      	sw	a5, 0xc(a3)
+    1f44:      	lw	a5, 0x10(a1)
+    1f48:      	srli	a4, a4, 0x10
+    1f4c:      	slli	a6, a5, 0x10
+    1f50:      	or	a4, a6, a4
+    1f54:      	sw	a4, 0x10(a3)
+    1f58:      	lw	a4, 0x14(a1)
+    1f5c:      	srli	a5, a5, 0x10
+    1f60:      	slli	a6, a4, 0x10
+    1f64:      	or	a5, a6, a5
+    1f68:      	sw	a5, 0x14(a3)
+    1f6c:      	lw	a5, 0x18(a1)
+    1f70:      	srli	a4, a4, 0x10
+    1f74:      	slli	a6, a5, 0x10
+    1f78:      	or	a4, a6, a4
+    1f7c:      	sw	a4, 0x18(a3)
+    1f80:      	lw	a4, 0x1c(a1)
+    1f84:      	srli	a5, a5, 0x10
+    1f88:      	slli	a6, a4, 0x10
+    1f8c:      	or	a5, a6, a5
+    1f90:      	srli	a4, a4, 0x10
+    1f94:      	sw	a5, 0x1c(a3)
+    1f98:      	addi	a1, a1, 0x20
+    1f9c:      	addi	a3, a3, 0x20
+    1fa0:      	andi	a5, a2, 0x10
+    1fa4:      	bne	a5, zero, 0x1fac <memcpy+0x15c8>
+    1fa8:      	jal	zero, 0xe54 <memcpy+0x470>
+    1fac:      	lw	a5, 0x0(a1)
+    1fb0:      	slli	a6, a5, 0x10
+    1fb4:      	or	a4, a6, a4
+    1fb8:      	sw	a4, 0x0(a3)
+    1fbc:      	lw	a4, 0x4(a1)
+    1fc0:      	srli	a5, a5, 0x10
+    1fc4:      	slli	a6, a4, 0x10
+    1fc8:      	or	a5, a6, a5
+    1fcc:      	sw	a5, 0x4(a3)
+    1fd0:      	lw	a5, 0x8(a1)
+    1fd4:      	srli	a4, a4, 0x10
+    1fd8:      	slli	a6, a5, 0x10
+    1fdc:      	or	a4, a6, a4
+    1fe0:      	sw	a4, 0x8(a3)
+    1fe4:      	lw	a4, 0xc(a1)
+    1fe8:      	srli	a5, a5, 0x10
+    1fec:      	slli	a6, a4, 0x10
+    1ff0:      	or	a5, a6, a5
+    1ff4:      	srli	a4, a4, 0x10
+    1ff8:      	sw	a5, 0xc(a3)
+    1ffc:      	addi	a1, a1, 0x10
+    2000:      	addi	a3, a3, 0x10
+    2004:      	andi	a5, a2, 0x8
+    2008:      	bne	a5, zero, 0x2010 <memcpy+0x162c>
+    200c:      	jal	zero, 0xe60 <memcpy+0x47c>
+    2010:      	lw	a5, 0x0(a1)
+    2014:      	slli	a6, a5, 0x10
+    2018:      	or	a4, a6, a4
+    201c:      	sw	a4, 0x0(a3)
+    2020:      	lw	a4, 0x4(a1)
+    2024:      	srli	a5, a5, 0x10
+    2028:      	slli	a6, a4, 0x10
+    202c:      	or	a5, a6, a5
+    2030:      	srli	a4, a4, 0x10
+    2034:      	sw	a5, 0x4(a3)
+    2038:      	addi	a1, a1, 0x8
+    203c:      	addi	a3, a3, 0x8
+    2040:      	andi	a5, a2, 0x4
+    2044:      	bne	a5, zero, 0x204c <memcpy+0x1668>
+    2048:      	jal	zero, 0xe6c <memcpy+0x488>
+    204c:      	lw	a5, 0x0(a1)
+    2050:      	addi	a1, a1, 0x4
+    2054:      	slli	a6, a5, 0x10
+    2058:      	or	a6, a6, a4
+    205c:      	srli	a4, a5, 0x10
+    2060:      	sw	a6, 0x0(a3)
+    2064:      	addi	a3, a3, 0x4
+    2068:      	andi	a5, a2, 0x3
+    206c:      	addi	a6, zero, 0x1
+    2070:      	bgeu	a6, a5, 0x2078 <memcpy+0x1694>
+    2074:      	jal	zero, 0xe7c <memcpy+0x498>
+    2078:      	lbu	a4, -0x2(a1)
+    207c:      	sb	a4, 0x0(a3)
+    2080:      	lbu	a4, -0x1(a1)
+    2084:      	andi	a2, a2, 0x1
+    2088:      	sb	a4, 0x1(a3)
+    208c:      	beq	a2, zero, 0x11a4 <memcpy+0x7c0>
+    2090:      	lbu	a1, 0x0(a1)
+    2094:      	sb	a1, 0x2(a3)
+    2098:      	lw	ra, 0xc(sp)
+    209c:      	lw	s0, 0x8(sp)
+    20a0:      	addi	sp, sp, 0x10
+    20a4:      	jalr	zero, 0x0(ra)
+    20a8:      	lw	a5, 0x0(a1)
+    20ac:      	slli	a6, a5, 0x8
+    20b0:      	or	a4, a6, a4
+    20b4:      	sw	a4, 0x0(a3)
+    20b8:      	lw	a4, 0x4(a1)
+    20bc:      	srli	a5, a5, 0x18
+    20c0:      	slli	a6, a4, 0x8
+    20c4:      	or	a5, a6, a5
+    20c8:      	sw	a5, 0x4(a3)
+    20cc:      	lw	a5, 0x8(a1)
+    20d0:      	srli	a4, a4, 0x18
+    20d4:      	slli	a6, a5, 0x8
+    20d8:      	or	a4, a6, a4
+    20dc:      	sw	a4, 0x8(a3)
+    20e0:      	lw	a4, 0xc(a1)
+    20e4:      	srli	a5, a5, 0x18
+    20e8:      	slli	a6, a4, 0x8
+    20ec:      	or	a5, a6, a5
+    20f0:      	sw	a5, 0xc(a3)
+    20f4:      	lw	a5, 0x10(a1)
+    20f8:      	srli	a4, a4, 0x18
+    20fc:      	slli	a6, a5, 0x8
+    2100:      	or	a4, a6, a4
+    2104:      	sw	a4, 0x10(a3)
+    2108:      	lw	a4, 0x14(a1)
+    210c:      	srli	a5, a5, 0x18
+    2110:      	slli	a6, a4, 0x8
+    2114:      	or	a5, a6, a5
+    2118:      	sw	a5, 0x14(a3)
+    211c:      	lw	a5, 0x18(a1)
+    2120:      	srli	a4, a4, 0x18
+    2124:      	slli	a6, a5, 0x8
+    2128:      	or	a4, a6, a4
+    212c:      	sw	a4, 0x18(a3)
+    2130:      	lw	a4, 0x1c(a1)
+    2134:      	srli	a5, a5, 0x18
+    2138:      	slli	a6, a4, 0x8
+    213c:      	or	a5, a6, a5
+    2140:      	srli	a4, a4, 0x18
+    2144:      	sw	a5, 0x1c(a3)
+    2148:      	addi	a1, a1, 0x20
+    214c:      	addi	a3, a3, 0x20
+    2150:      	andi	a5, a2, 0x10
+    2154:      	beq	a5, zero, 0x17e4 <memcpy+0xe00>
+    2158:      	lw	a5, 0x0(a1)
+    215c:      	slli	a6, a5, 0x8
+    2160:      	or	a4, a6, a4
+    2164:      	sw	a4, 0x0(a3)
+    2168:      	lw	a4, 0x4(a1)
+    216c:      	srli	a5, a5, 0x18
+    2170:      	slli	a6, a4, 0x8
+    2174:      	or	a5, a6, a5
+    2178:      	sw	a5, 0x4(a3)
+    217c:      	lw	a5, 0x8(a1)
+    2180:      	srli	a4, a4, 0x18
+    2184:      	slli	a6, a5, 0x8
+    2188:      	or	a4, a6, a4
+    218c:      	sw	a4, 0x8(a3)
+    2190:      	lw	a4, 0xc(a1)
+    2194:      	srli	a5, a5, 0x18
+    2198:      	slli	a6, a4, 0x8
+    219c:      	or	a5, a6, a5
+    21a0:      	srli	a4, a4, 0x18
+    21a4:      	sw	a5, 0xc(a3)
+    21a8:      	addi	a1, a1, 0x10
+    21ac:      	addi	a3, a3, 0x10
+    21b0:      	andi	a5, a2, 0x8
+    21b4:      	beq	a5, zero, 0x17ec <memcpy+0xe08>
+    21b8:      	lw	a5, 0x0(a1)
+    21bc:      	slli	a6, a5, 0x8
+    21c0:      	or	a4, a6, a4
+    21c4:      	sw	a4, 0x0(a3)
+    21c8:      	lw	a4, 0x4(a1)
+    21cc:      	srli	a5, a5, 0x18
+    21d0:      	slli	a6, a4, 0x8
+    21d4:      	or	a5, a6, a5
+    21d8:      	srli	a4, a4, 0x18
+    21dc:      	sw	a5, 0x4(a3)
+    21e0:      	addi	a1, a1, 0x8
+    21e4:      	addi	a3, a3, 0x8
+    21e8:      	andi	a5, a2, 0x4
+    21ec:      	beq	a5, zero, 0x17f4 <memcpy+0xe10>
+    21f0:      	lw	a5, 0x0(a1)
+    21f4:      	addi	a1, a1, 0x4
     21f8:      	slli	a6, a5, 0x8
-    21fc:      	or	a4, a6, a4
-    2200:      	sw	a4, 0x0(a3)
-    2204:      	lw	a4, 0x4(a1)
-    2208:      	srli	a5, a5, 0x18
-    220c:      	slli	a6, a4, 0x8
-    2210:      	or	a5, a6, a5
-    2214:      	sw	a5, 0x4(a3)
-    2218:      	lw	a5, 0x8(a1)
-    221c:      	srli	a4, a4, 0x18
-    2220:      	slli	a6, a5, 0x8
-    2224:      	or	a4, a6, a4
-    2228:      	sw	a4, 0x8(a3)
-    222c:      	lw	a4, 0xc(a1)
-    2230:      	srli	a5, a5, 0x18
-    2234:      	slli	a6, a4, 0x8
-    2238:      	or	a5, a6, a5
-    223c:      	srli	a4, a4, 0x18
-    2240:      	sw	a5, 0xc(a3)
-    2244:      	addi	a1, a1, 0x10
-    2248:      	addi	a3, a3, 0x10
-    224c:      	andi	a5, a2, 0x8
-    2250:      	beq	a5, zero, 0x1888 <memcpy+0xe08>
-    2254:      	lw	a5, 0x0(a1)
-    2258:      	slli	a6, a5, 0x8
-    225c:      	or	a4, a6, a4
-    2260:      	sw	a4, 0x0(a3)
-    2264:      	lw	a4, 0x4(a1)
-    2268:      	srli	a5, a5, 0x18
-    226c:      	slli	a6, a4, 0x8
-    2270:      	or	a5, a6, a5
-    2274:      	srli	a4, a4, 0x18
-    2278:      	sw	a5, 0x4(a3)
-    227c:      	addi	a1, a1, 0x8
-    2280:      	addi	a3, a3, 0x8
-    2284:      	andi	a5, a2, 0x4
-    2288:      	beq	a5, zero, 0x1890 <memcpy+0xe10>
-    228c:      	lw	a5, 0x0(a1)
-    2290:      	addi	a1, a1, 0x4
-    2294:      	slli	a6, a5, 0x8
-    2298:      	or	a6, a6, a4
-    229c:      	srli	a4, a5, 0x18
-    22a0:      	sw	a6, 0x0(a3)
-    22a4:      	addi	a3, a3, 0x4
-    22a8:      	andi	a5, a2, 0x3
-    22ac:      	addi	a6, zero, 0x3
-    22b0:      	beq	a5, a6, 0x189c <memcpy+0xe1c>
-    22b4:      	addi	a4, a2, 0x1
-    22b8:      	andi	a4, a4, 0x2
-    22bc:      	beq	a4, zero, 0x22d0 <memcpy+0x1850>
-    22c0:      	lbu	a5, -0x1(a1)
-    22c4:      	sb	a5, 0x0(a3)
-    22c8:      	lbu	a5, 0x0(a1)
-    22cc:      	sb	a5, 0x1(a3)
-    22d0:      	andi	a2, a2, 0x1
-    22d4:      	beq	a2, zero, 0x22dc <memcpy+0x185c>
-    22d8:      	jal	zero, 0x1240 <memcpy+0x7c0>
-    22dc:      	add	a1, a1, a4
-    22e0:      	lbu	a1, -0x1(a1)
-    22e4:      	add	a3, a3, a4
-    22e8:      	sb	a1, 0x0(a3)
-    22ec:      	lw	ra, 0xc(sp)
-    22f0:      	lw	s0, 0x8(sp)
-    22f4:      	addi	sp, sp, 0x10
-    22f8:      	jalr	zero, 0x0(ra)
-    22fc:      	lw	a5, 0x0(a1)
-    2300:      	slli	a6, a5, 0x18
-    2304:      	or	a4, a6, a4
-    2308:      	sw	a4, 0x0(a3)
-    230c:      	lw	a4, 0x4(a1)
-    2310:      	srli	a5, a5, 0x8
-    2314:      	slli	a6, a4, 0x18
-    2318:      	or	a5, a6, a5
-    231c:      	sw	a5, 0x4(a3)
-    2320:      	lw	a5, 0x8(a1)
-    2324:      	srli	a4, a4, 0x8
-    2328:      	slli	a6, a5, 0x18
-    232c:      	or	a4, a6, a4
-    2330:      	sw	a4, 0x8(a3)
-    2334:      	lw	a4, 0xc(a1)
-    2338:      	srli	a5, a5, 0x8
-    233c:      	slli	a6, a4, 0x18
-    2340:      	or	a5, a6, a5
-    2344:      	sw	a5, 0xc(a3)
-    2348:      	lw	a5, 0x10(a1)
-    234c:      	srli	a4, a4, 0x8
-    2350:      	slli	a6, a5, 0x18
-    2354:      	or	a4, a6, a4
-    2358:      	sw	a4, 0x10(a3)
-    235c:      	lw	a4, 0x14(a1)
-    2360:      	srli	a5, a5, 0x8
-    2364:      	slli	a6, a4, 0x18
-    2368:      	or	a5, a6, a5
-    236c:      	sw	a5, 0x14(a3)
-    2370:      	lw	a5, 0x18(a1)
-    2374:      	srli	a4, a4, 0x8
-    2378:      	slli	a6, a5, 0x18
-    237c:      	or	a4, a6, a4
-    2380:      	sw	a4, 0x18(a3)
-    2384:      	lw	a4, 0x1c(a1)
-    2388:      	srli	a5, a5, 0x8
-    238c:      	slli	a6, a4, 0x18
-    2390:      	or	a5, a6, a5
-    2394:      	srli	a4, a4, 0x8
-    2398:      	sw	a5, 0x1c(a3)
-    239c:      	addi	a1, a1, 0x20
-    23a0:      	addi	a3, a3, 0x20
-    23a4:      	andi	a5, a2, 0x10
-    23a8:      	beq	a5, zero, 0x1a38 <memcpy+0xfb8>
-    23ac:      	lw	a5, 0x0(a1)
+    21fc:      	or	a6, a6, a4
+    2200:      	srli	a4, a5, 0x18
+    2204:      	sw	a6, 0x0(a3)
+    2208:      	addi	a3, a3, 0x4
+    220c:      	andi	a5, a2, 0x3
+    2210:      	addi	a6, zero, 0x3
+    2214:      	beq	a5, a6, 0x1800 <memcpy+0xe1c>
+    2218:      	addi	a4, a2, 0x1
+    221c:      	andi	a4, a4, 0x2
+    2220:      	beq	a4, zero, 0x2234 <memcpy+0x1850>
+    2224:      	lbu	a5, -0x1(a1)
+    2228:      	sb	a5, 0x0(a3)
+    222c:      	lbu	a5, 0x0(a1)
+    2230:      	sb	a5, 0x1(a3)
+    2234:      	andi	a2, a2, 0x1
+    2238:      	beq	a2, zero, 0x2240 <memcpy+0x185c>
+    223c:      	jal	zero, 0x11a4 <memcpy+0x7c0>
+    2240:      	add	a1, a1, a4
+    2244:      	lbu	a1, -0x1(a1)
+    2248:      	add	a3, a3, a4
+    224c:      	sb	a1, 0x0(a3)
+    2250:      	lw	ra, 0xc(sp)
+    2254:      	lw	s0, 0x8(sp)
+    2258:      	addi	sp, sp, 0x10
+    225c:      	jalr	zero, 0x0(ra)
+    2260:      	lw	a5, 0x0(a1)
+    2264:      	slli	a6, a5, 0x18
+    2268:      	or	a4, a6, a4
+    226c:      	sw	a4, 0x0(a3)
+    2270:      	lw	a4, 0x4(a1)
+    2274:      	srli	a5, a5, 0x8
+    2278:      	slli	a6, a4, 0x18
+    227c:      	or	a5, a6, a5
+    2280:      	sw	a5, 0x4(a3)
+    2284:      	lw	a5, 0x8(a1)
+    2288:      	srli	a4, a4, 0x8
+    228c:      	slli	a6, a5, 0x18
+    2290:      	or	a4, a6, a4
+    2294:      	sw	a4, 0x8(a3)
+    2298:      	lw	a4, 0xc(a1)
+    229c:      	srli	a5, a5, 0x8
+    22a0:      	slli	a6, a4, 0x18
+    22a4:      	or	a5, a6, a5
+    22a8:      	sw	a5, 0xc(a3)
+    22ac:      	lw	a5, 0x10(a1)
+    22b0:      	srli	a4, a4, 0x8
+    22b4:      	slli	a6, a5, 0x18
+    22b8:      	or	a4, a6, a4
+    22bc:      	sw	a4, 0x10(a3)
+    22c0:      	lw	a4, 0x14(a1)
+    22c4:      	srli	a5, a5, 0x8
+    22c8:      	slli	a6, a4, 0x18
+    22cc:      	or	a5, a6, a5
+    22d0:      	sw	a5, 0x14(a3)
+    22d4:      	lw	a5, 0x18(a1)
+    22d8:      	srli	a4, a4, 0x8
+    22dc:      	slli	a6, a5, 0x18
+    22e0:      	or	a4, a6, a4
+    22e4:      	sw	a4, 0x18(a3)
+    22e8:      	lw	a4, 0x1c(a1)
+    22ec:      	srli	a5, a5, 0x8
+    22f0:      	slli	a6, a4, 0x18
+    22f4:      	or	a5, a6, a5
+    22f8:      	srli	a4, a4, 0x8
+    22fc:      	sw	a5, 0x1c(a3)
+    2300:      	addi	a1, a1, 0x20
+    2304:      	addi	a3, a3, 0x20
+    2308:      	andi	a5, a2, 0x10
+    230c:      	beq	a5, zero, 0x199c <memcpy+0xfb8>
+    2310:      	lw	a5, 0x0(a1)
+    2314:      	slli	a6, a5, 0x18
+    2318:      	or	a4, a6, a4
+    231c:      	sw	a4, 0x0(a3)
+    2320:      	lw	a4, 0x4(a1)
+    2324:      	srli	a5, a5, 0x8
+    2328:      	slli	a6, a4, 0x18
+    232c:      	or	a5, a6, a5
+    2330:      	sw	a5, 0x4(a3)
+    2334:      	lw	a5, 0x8(a1)
+    2338:      	srli	a4, a4, 0x8
+    233c:      	slli	a6, a5, 0x18
+    2340:      	or	a4, a6, a4
+    2344:      	sw	a4, 0x8(a3)
+    2348:      	lw	a4, 0xc(a1)
+    234c:      	srli	a5, a5, 0x8
+    2350:      	slli	a6, a4, 0x18
+    2354:      	or	a5, a6, a5
+    2358:      	srli	a4, a4, 0x8
+    235c:      	sw	a5, 0xc(a3)
+    2360:      	addi	a1, a1, 0x10
+    2364:      	addi	a3, a3, 0x10
+    2368:      	andi	a5, a2, 0x8
+    236c:      	beq	a5, zero, 0x19a4 <memcpy+0xfc0>
+    2370:      	lw	a5, 0x0(a1)
+    2374:      	slli	a6, a5, 0x18
+    2378:      	or	a4, a6, a4
+    237c:      	sw	a4, 0x0(a3)
+    2380:      	lw	a4, 0x4(a1)
+    2384:      	srli	a5, a5, 0x8
+    2388:      	slli	a6, a4, 0x18
+    238c:      	or	a5, a6, a5
+    2390:      	srli	a4, a4, 0x8
+    2394:      	sw	a5, 0x4(a3)
+    2398:      	addi	a1, a1, 0x8
+    239c:      	addi	a3, a3, 0x8
+    23a0:      	andi	a5, a2, 0x4
+    23a4:      	beq	a5, zero, 0x19ac <memcpy+0xfc8>
+    23a8:      	lw	a5, 0x0(a1)
+    23ac:      	addi	a1, a1, 0x4
     23b0:      	slli	a6, a5, 0x18
-    23b4:      	or	a4, a6, a4
-    23b8:      	sw	a4, 0x0(a3)
-    23bc:      	lw	a4, 0x4(a1)
-    23c0:      	srli	a5, a5, 0x8
-    23c4:      	slli	a6, a4, 0x18
-    23c8:      	or	a5, a6, a5
-    23cc:      	sw	a5, 0x4(a3)
-    23d0:      	lw	a5, 0x8(a1)
-    23d4:      	srli	a4, a4, 0x8
-    23d8:      	slli	a6, a5, 0x18
-    23dc:      	or	a4, a6, a4
-    23e0:      	sw	a4, 0x8(a3)
-    23e4:      	lw	a4, 0xc(a1)
-    23e8:      	srli	a5, a5, 0x8
-    23ec:      	slli	a6, a4, 0x18
-    23f0:      	or	a5, a6, a5
-    23f4:      	srli	a4, a4, 0x8
-    23f8:      	sw	a5, 0xc(a3)
-    23fc:      	addi	a1, a1, 0x10
-    2400:      	addi	a3, a3, 0x10
-    2404:      	andi	a5, a2, 0x8
-    2408:      	beq	a5, zero, 0x1a40 <memcpy+0xfc0>
-    240c:      	lw	a5, 0x0(a1)
-    2410:      	slli	a6, a5, 0x18
-    2414:      	or	a4, a6, a4
-    2418:      	sw	a4, 0x0(a3)
-    241c:      	lw	a4, 0x4(a1)
-    2420:      	srli	a5, a5, 0x8
-    2424:      	slli	a6, a4, 0x18
-    2428:      	or	a5, a6, a5
-    242c:      	srli	a4, a4, 0x8
-    2430:      	sw	a5, 0x4(a3)
-    2434:      	addi	a1, a1, 0x8
-    2438:      	addi	a3, a3, 0x8
-    243c:      	andi	a5, a2, 0x4
-    2440:      	beq	a5, zero, 0x1a48 <memcpy+0xfc8>
-    2444:      	lw	a5, 0x0(a1)
-    2448:      	addi	a1, a1, 0x4
-    244c:      	slli	a6, a5, 0x18
-    2450:      	or	a6, a6, a4
-    2454:      	srli	a4, a5, 0x8
-    2458:      	sw	a6, 0x0(a3)
-    245c:      	addi	a3, a3, 0x4
-    2460:      	andi	a2, a2, 0x3
-    2464:      	bne	a2, zero, 0x1a50 <memcpy+0xfd0>
-    2468:      	lbu	a2, -0x3(a1)
-    246c:      	sb	a2, 0x0(a3)
-    2470:      	lbu	a2, -0x2(a1)
-    2474:      	sb	a2, 0x1(a3)
-    2478:      	lbu	a1, -0x1(a1)
-    247c:      	sb	a1, 0x2(a3)
-    2480:      	lw	ra, 0xc(sp)
-    2484:      	lw	s0, 0x8(sp)
-    2488:      	addi	sp, sp, 0x10
-    248c:      	jalr	zero, 0x0(ra)
-    2490:      	lbu	a2, 0x1(a1)
-    2494:      	sb	a2, 0x4(a3)
-    2498:      	lbu	a1, 0x2(a1)
-    249c:      	sb	a1, 0x5(a3)
-    24a0:      	lw	ra, 0xc(sp)
-    24a4:      	lw	s0, 0x8(sp)
-    24a8:      	addi	sp, sp, 0x10
-    24ac:      	jalr	zero, 0x0(ra)
+    23b4:      	or	a6, a6, a4
+    23b8:      	srli	a4, a5, 0x8
+    23bc:      	sw	a6, 0x0(a3)
+    23c0:      	addi	a3, a3, 0x4
+    23c4:      	andi	a2, a2, 0x3
+    23c8:      	bne	a2, zero, 0x19b4 <memcpy+0xfd0>
+    23cc:      	lbu	a2, -0x3(a1)
+    23d0:      	sb	a2, 0x0(a3)
+    23d4:      	lbu	a2, -0x2(a1)
+    23d8:      	sb	a2, 0x1(a3)
+    23dc:      	lbu	a1, -0x1(a1)
+    23e0:      	sb	a1, 0x2(a3)
+    23e4:      	lw	ra, 0xc(sp)
+    23e8:      	lw	s0, 0x8(sp)
+    23ec:      	addi	sp, sp, 0x10
+    23f0:      	jalr	zero, 0x0(ra)
+    23f4:      	lbu	a2, 0x1(a1)
+    23f8:      	sb	a2, 0x4(a3)
+    23fc:      	lbu	a1, 0x2(a1)
+    2400:      	sb	a1, 0x5(a3)
+    2404:      	lw	ra, 0xc(sp)
+    2408:      	lw	s0, 0x8(sp)
+    240c:      	addi	sp, sp, 0x10
+    2410:      	jalr	zero, 0x0(ra)

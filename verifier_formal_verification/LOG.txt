@@ -7,6 +7,26 @@ commit check `git diff --cached --stat` and that no staged file is over ~200 KB.
 Moved here from an earlier prototype repo (as a snapshot; its history, which contains the large Sail model, was
 NOT imported).
 
+=== POC 2: BABYBEAR EXT4, TWO VARIANTS (2026-10-15) ===
+- Guest (rust/src/bb.rs mirrors field/src/baby_bear): Montgomery BabyBear, Ext4 = F[w]/(w^4-11) in the field crate's
+  limb order, Ext4 mul = mul_assign_flat_impl_fma; ext4_mul_add, ext4_horner (32 Ext4 coefficients COEFFS4 in
+  .rodata), ext4_poly (new / Horner / to_u32). Two builds: feature `mop` (field opcodes, modular_ops + modular_fma,
+  build/app_mop.bin) and plain Rust (basic.rs add_mod/mul_mod, fma_mod = add_mod(c, mul_mod(a, b)) as
+  riscv32.rs without modular_fma, as leaf functions bb_add/bb_mul/bb_fma; build/app.bin). +zimop in both builds
+  (no codegen effect without asm). Old M31 functions renamed m31_*/u32_* so they keep the same bytes in both images.
+- Spec: human/Human/SpecExt4.lean (Mathlib AdjoinRoot), ProgramCorrectOf with input x, y (Ext4, 4 limbs) and outputs
+  a0..a5; HumanSail mirror; Slop/Equiv/Final transfers any image's theorem to Sail+Airbender.
+- PROVEN (std axioms): RV.ProgramCorrectMop and Airbender.ProgramCorrectMop (field-opcode image end to end):
+  MulAddMop, Horner (generic in the mul-add implementation), Ext4PolyMop, Start, MainA/MainB (one proof script
+  for both images, macros), InitMop, FinalMop.
+- Plain image: bb_add, bb_mul (Montgomery reduction via mul/mulhu, BBMont.mont_reduce), bb_fma proven; MainA/MainB
+  proven for it too; ext4_mul_add (24 leaf calls) and ext4_poly (8 calls + Horner) NOT YET: too slow with the current
+  stepper (~3 s per call segment, prologues ~10 s). RV.ProgramCorrect is stated, unproven; verify.sh says so.
+- PERF DEBT (do before Blake2s): files over budget (MulAddMop 26 s, Ext4PolyMop 34 s, MainA/B ~10-16 s); omega is
+  ~30% of a step, kernel checking and simp traversal the rest. Plan: block-level executor for straight-line code
+  (decode once, one lemma per block, no per-step pc side conditions), cheaper call segments. Tools added: rv_omega
+  proof cache, rv_cut (state snapshot with normalized register facts, `with hcs` after calls), calleeSaved fast-fail.
+
 === FIELD OPS IN THE ISA: mop.rr.N (2026-10-14) ===
 - RV32.lean: Instr.mop (FieldOp add/sub/mul/fma/triAdd) for Airbender's Zimop field opcodes mop.rr.0..4 on BabyBear
   (p = 0x78000001); semantics from the VM (riscv_transpiler vm/instructions/add_sub_family/mop.rs): inputs any u32

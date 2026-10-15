@@ -26,7 +26,7 @@ theorem is_aligned_vaddr_iff (a : BitVec 32) (n : Nat) :
     is_aligned_vaddr (.Virtaddr a) n = decide (a.toNat % n = 0) := by
   simp only [is_aligned_vaddr, BitVec.toNatInt]
   rw [Int.ofNat_eq_natCast, Int.tmod_eq_emod_of_nonneg (Int.natCast_nonneg _)]
-  by_cases h : a.toNat % n = 0 <;> simp [h] <;> omega
+  rw [← Int.natCast_mod]; by_cases h : a.toNat % n = 0 <;> simp [h] <;> exact_mod_cast fun hd => h (Nat.mod_eq_zero_of_dvd hd)
 
 theorem is_aligned_paddr_iff (a : BitVec 32) (n : Nat) :
     is_aligned_paddr (.Physaddr (zero_extend (m := 34) a)) n = decide (a.toNat % n = 0) := by
@@ -34,13 +34,13 @@ theorem is_aligned_paddr_iff (a : BitVec 32) (n : Nat) :
   rw [Int.ofNat_eq_natCast, Int.tmod_eq_emod_of_nonneg (Int.natCast_nonneg _)]
   have : (BitVec.zeroExtend 34 a).toNat = a.toNat := by simp; omega
   rw [this]
-  by_cases h : a.toNat % n = 0 <;> simp [h] <;> omega
+  rw [← Int.natCast_mod]; by_cases h : a.toNat % n = 0 <;> simp [h] <;> exact_mod_cast fun hd => h (Nat.mod_eq_zero_of_dvd hd)
 
 theorem is_aligned_paddr_iff' (x : physaddrbits) (n : Nat) :
     is_aligned_paddr (.Physaddr x) n = decide (x.toNat % n = 0) := by
   simp only [is_aligned_paddr, BitVec.toNatInt]
   rw [Int.ofNat_eq_natCast, Int.tmod_eq_emod_of_nonneg (Int.natCast_nonneg _)]
-  by_cases h : x.toNat % n = 0 <;> simp [h] <;> omega
+  rw [← Int.natCast_mod]; by_cases h : x.toNat % n = 0 <;> simp [h] <;> exact_mod_cast fun hd => h (Nat.mod_eq_zero_of_dvd hd)
 
 theorem zero_extend_toNat (a : BitVec 32) {m : Nat} (h : 32 ≤ m) : (zero_extend (m := m) a).toNat = a.toNat := by
   simp only [zero_extend, Sail.BitVec.zeroExtend, BitVec.toNat_setWidth]

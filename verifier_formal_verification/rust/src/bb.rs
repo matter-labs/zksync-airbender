@@ -1,8 +1,9 @@
 //! BabyBear (p = 2^31 - 2^27 + 1, Montgomery form) and its extensions Ext2 = F[v]/(v^2 - 11),
 //! Ext4 = Ext2[w]/(w^2 - v), as in zksync-airbender `field/src/baby_bear` (riscv32 code paths).
-//! Feature `mop`: base ops are Airbender's field opcodes `mop.rr.N` (`ops/riscv32.rs`, `modular_ops` +
-//! `modular_fma`), Ext4 mul is `mul_assign_flat_impl_fma`. Default: plain Rust (`ops/basic.rs`), Ext2 Karatsuba,
-//! Ext4 tower Karatsuba (`mul_assign_tower_impl`). The plain variant does not trust the field opcodes.
+//! Ext4 mul is `mul_assign_flat_impl_fma` in both variants. Feature `mop`: the base ops are Airbender's field
+//! opcodes `mop.rr.N` (`ops/riscv32.rs`, `modular_ops` + `modular_fma`). Default: the same ops in plain Rust
+//! (`ops/basic.rs`'s `add_mod` / `mul_mod`, and `fma_mod = add_mod(c, mul_mod(a, b))` as `ops/riscv32.rs` without
+//! `modular_fma`), as separate functions; this variant does not trust the field opcodes.
 
 pub const ORDER: u32 = 0x78000001;
 const MONT_K: u32 = 0x77ffffff;
@@ -31,9 +32,9 @@ const NON_RES: u32 = new_ct(11);
 mod ops {
     use super::ORDER;
 
-    #[unsafe(no_mangle)]
-    #[inline(never)]
-    pub extern "C" fn bb_add(a: u32, b: u32) -> u32 {
+    /// `ops/basic.rs` `add_mod`.
+    #[inline(always)]
+    fn add_mod(a: u32, b: u32) -> u32 {
         let mut sum = a.wrapping_add(b);
         if sum >= ORDER {
             sum -= ORDER;
@@ -43,12 +44,8 @@ mod ops {
 
     #[unsafe(no_mangle)]
     #[inline(never)]
-    pub extern "C" fn bb_sub(a: u32, b: u32) -> u32 {
-        let (mut diff, uf) = a.overflowing_sub(b);
-        if uf {
-            diff = diff.wrapping_add(ORDER);
-        }
-        diff
+    pub extern "C" fn bb_add(a: u32, b: u32) -> u32 {
+        add_mod(a, b)
     }
 
     #[unsafe(no_mangle)]
@@ -57,9 +54,16 @@ mod ops {
         super::mul_mod_ct(a, b)
     }
 
+    /// `c + a b 2^-32` (`fma_mod` without `modular_fma`).
+    #[unsafe(no_mangle)]
+    #[inline(never)]
+    pub extern "C" fn bb_fma(a: u32, b: u32, c: u32) -> u32 {
+        add_mod(c, super::mul_mod_ct(a, b))
+    }
+
     pub use bb_add as add;
+    pub use bb_fma as fma;
     pub use bb_mul as mul;
-    pub use bb_sub as sub;
 }
 
 #[cfg(feature = "mop")]
@@ -129,58 +133,6 @@ pub struct Ext4 {
     pub c1: Ext2,
 }
 
-#[cfg(not(feature = "mop"))]
-mod ext {
-    use super::ops::{add, mul, sub};
-    use super::{Ext2, Ext4, NON_RES};
-
-    /// `BabyBearExt2::mul_assign_impl` without `modular_ops`: Karatsuba.
-    #[unsafe(no_mangle)]
-    #[inline(never)]
-    pub extern "C" fn ext2_mul_assign(a: &mut Ext2, b: &Ext2) {
-        let v0 = mul(a.c0, b.c0);
-        let v1 = mul(a.c1, b.c1);
-        a.c1 = add(a.c1, a.c0);
-        let t0 = add(b.c0, b.c1);
-        a.c1 = mul(a.c1, t0);
-        a.c1 = sub(a.c1, v0);
-        a.c1 = sub(a.c1, v1);
-        a.c0 = add(v0, mul(v1, NON_RES));
-    }
-
-    fn ext2_add_assign(a: &mut Ext2, b: &Ext2) {
-        a.c0 = add(a.c0, b.c0);
-        a.c1 = add(a.c1, b.c1);
-    }
-
-    fn ext2_sub_assign(a: &mut Ext2, b: &Ext2) {
-        a.c0 = sub(a.c0, b.c0);
-        a.c1 = sub(a.c1, b.c1);
-    }
-
-    /// `BabyBearExt4::mul_assign_tower_impl`: Karatsuba over Ext2, non-residue `v`.
-    #[unsafe(no_mangle)]
-    #[inline(never)]
-    pub extern "C" fn ext4_mul_assign(a: &mut Ext4, b: &Ext4) {
-        let mut v0 = a.c0;
-        ext2_mul_assign(&mut v0, &b.c0);
-        let mut v1 = a.c1;
-        ext2_mul_assign(&mut v1, &b.c1);
-        let t = a.c0;
-        ext2_add_assign(&mut a.c1, &t);
-        let mut t0 = b.c0;
-        ext2_add_assign(&mut t0, &b.c1);
-        ext2_mul_assign(&mut a.c1, &t0);
-        ext2_sub_assign(&mut a.c1, &v0);
-        ext2_sub_assign(&mut a.c1, &v1);
-        a.c0 = v0;
-        // v1 * v = (11 v1.c1, v1.c0)
-        let nr = Ext2 { c0: mul(v1.c1, NON_RES), c1: v1.c0 };
-        ext2_add_assign(&mut a.c0, &nr);
-    }
-}
-
-#[cfg(feature = "mop")]
 mod ext {
     use super::ops::{fma, mul};
     use super::{Ext2, Ext4, NON_RES};
@@ -219,12 +171,9 @@ mod ext {
 
 pub use ext::ext4_mul_assign;
 
-/// `BabyBearExt4::add_assign`. Separate functions in the plain variant only (smaller proofs); with `mop` everything
-/// is inlined into `ext4_mul_add`, as in the real verifier.
-#[cfg_attr(not(feature = "mop"), unsafe(no_mangle))]
-#[cfg_attr(not(feature = "mop"), inline(never))]
-#[cfg_attr(feature = "mop", inline(always))]
-pub extern "C" fn ext4_add_assign(a: &mut Ext4, b: &Ext4) {
+/// `BabyBearExt4::add_assign`.
+#[inline(always)]
+pub fn ext4_add_assign(a: &mut Ext4, b: &Ext4) {
     a.c0.c0 = add(a.c0.c0, b.c0.c0);
     a.c0.c1 = add(a.c0.c1, b.c0.c1);
     a.c1.c0 = add(a.c1.c0, b.c1.c0);

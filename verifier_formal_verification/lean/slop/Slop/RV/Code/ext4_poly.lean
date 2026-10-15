@@ -6,7 +6,7 @@ import Slop.RV.Attr
 namespace RV
 
 def Code.ext4_poly : List Word :=
-  [0xfc010113#32, 0x02112e23#32, 0x02812c23#32, 0x02912a23#32, 0x03212823#32, 0x03312623#32, 0x03412423#32, 0x03512223#32, 0x04010413#32, 0x00058913#32, 0x0005a583#32, 0x00050493#32, 0x45dde9b7#32, 0xde398993#32, 0x00058513#32, 0x00098593#32, 0xb55ff0ef#32, 0x00492583#32, 0x00050a13#32, 0x00058513#32, 0x00098593#32, 0xb41ff0ef#32, 0x00892583#32, 0x00050a93#32, 0x00058513#32, 0x00098593#32, 0xb2dff0ef#32, 0x00c92583#32, 0x00050913#32, 0x00058513#32, 0x00098593#32, 0xb19ff0ef#32, 0x01412223#32, 0x01512423#32, 0x01212623#32, 0x00a12823#32, 0x01412a23#32, 0x01512c23#32, 0x01212e23#32, 0x02a12023#32, 0x014005b7#32, 0x19058593#32, 0x01410513#32, 0x02000613#32, 0x00410693#32, 0xcedff0ef#32, 0x01412503#32, 0x00100593#32, 0xad5ff0ef#32, 0x01812603#32, 0x00050913#32, 0x00100593#32, 0x00060513#32, 0xac1ff0ef#32, 0x01c12603#32, 0x00050993#32, 0x00100593#32, 0x00060513#32, 0xaadff0ef#32, 0x02012603#32, 0x00050a13#32, 0x00100593#32, 0x00060513#32, 0xa99ff0ef#32, 0x0124a023#32, 0x0134a223#32, 0x0144a423#32, 0x00a4a623#32, 0x03c12083#32, 0x03812403#32, 0x03412483#32, 0x03012903#32, 0x02c12983#32, 0x02812a03#32, 0x02412a83#32, 0x04010113#32, 0x00008067#32]
+  [0xfc010113#32, 0x02112e23#32, 0x02812c23#32, 0x02912a23#32, 0x03212823#32, 0x03312623#32, 0x03412423#32, 0x03512223#32, 0x04010413#32, 0x00058913#32, 0x0005a583#32, 0x00050493#32, 0x45dde9b7#32, 0xde398993#32, 0x00058513#32, 0x00098593#32, 0xc65ff0ef#32, 0x00492583#32, 0x00050a13#32, 0x00058513#32, 0x00098593#32, 0xc51ff0ef#32, 0x00892583#32, 0x00050a93#32, 0x00058513#32, 0x00098593#32, 0xc3dff0ef#32, 0x00c92583#32, 0x00050913#32, 0x00058513#32, 0x00098593#32, 0xc29ff0ef#32, 0x01412223#32, 0x01512423#32, 0x01212623#32, 0x00a12823#32, 0x01412a23#32, 0x01512c23#32, 0x01212e23#32, 0x02a12023#32, 0x014005b7#32, 0x19058593#32, 0x01410513#32, 0x02000613#32, 0x00410693#32, 0xc51ff0ef#32, 0x01412503#32, 0x00100593#32, 0xbe5ff0ef#32, 0x01812603#32, 0x00050913#32, 0x00100593#32, 0x00060513#32, 0xbd1ff0ef#32, 0x01c12603#32, 0x00050993#32, 0x00100593#32, 0x00060513#32, 0xbbdff0ef#32, 0x02012603#32, 0x00050a13#32, 0x00100593#32, 0x00060513#32, 0xba9ff0ef#32, 0x0124a023#32, 0x0134a223#32, 0x0144a423#32, 0x00a4a623#32, 0x03c12083#32, 0x03812403#32, 0x03412483#32, 0x03012903#32, 0x02c12983#32, 0x02812a03#32, 0x02412a83#32, 0x04010113#32, 0x00008067#32]
 
 @[rv_word] theorem decode_ext4_poly_fc010113 : decode 0xfc010113#32 = some (RV.Instr.opImm (RV.Op.add) 0x02#5 0x02#5 0xffffffc0#32) := rfl
 @[rv_word] theorem decode_ext4_poly_02112e23 : decode 0x02112e23#32 = some (RV.Instr.store 4 0x01#5 0x02#5 0x0000003c#32) := rfl
@@ -24,16 +24,16 @@ def Code.ext4_poly : List Word :=
 @[rv_word] theorem decode_ext4_poly_de398993 : decode 0xde398993#32 = some (RV.Instr.opImm (RV.Op.add) 0x13#5 0x13#5 0xfffffde3#32) := rfl
 @[rv_word] theorem decode_ext4_poly_00058513 : decode 0x00058513#32 = some (RV.Instr.opImm (RV.Op.add) 0x0a#5 0x0b#5 0x00000000#32) := rfl
 @[rv_word] theorem decode_ext4_poly_00098593 : decode 0x00098593#32 = some (RV.Instr.opImm (RV.Op.add) 0x0b#5 0x13#5 0x00000000#32) := rfl
-@[rv_word] theorem decode_ext4_poly_b55ff0ef : decode 0xb55ff0ef#32 = some (RV.Instr.jal 0x01#5 0xfffffb54#32) := rfl
+@[rv_word] theorem decode_ext4_poly_c65ff0ef : decode 0xc65ff0ef#32 = some (RV.Instr.jal 0x01#5 0xfffffc64#32) := rfl
 @[rv_word] theorem decode_ext4_poly_00492583 : decode 0x00492583#32 = some (RV.Instr.load 4 true 0x0b#5 0x12#5 0x00000004#32) := rfl
 @[rv_word] theorem decode_ext4_poly_00050a13 : decode 0x00050a13#32 = some (RV.Instr.opImm (RV.Op.add) 0x14#5 0x0a#5 0x00000000#32) := rfl
-@[rv_word] theorem decode_ext4_poly_b41ff0ef : decode 0xb41ff0ef#32 = some (RV.Instr.jal 0x01#5 0xfffffb40#32) := rfl
+@[rv_word] theorem decode_ext4_poly_c51ff0ef : decode 0xc51ff0ef#32 = some (RV.Instr.jal 0x01#5 0xfffffc50#32) := rfl
 @[rv_word] theorem decode_ext4_poly_00892583 : decode 0x00892583#32 = some (RV.Instr.load 4 true 0x0b#5 0x12#5 0x00000008#32) := rfl
 @[rv_word] theorem decode_ext4_poly_00050a93 : decode 0x00050a93#32 = some (RV.Instr.opImm (RV.Op.add) 0x15#5 0x0a#5 0x00000000#32) := rfl
-@[rv_word] theorem decode_ext4_poly_b2dff0ef : decode 0xb2dff0ef#32 = some (RV.Instr.jal 0x01#5 0xfffffb2c#32) := rfl
+@[rv_word] theorem decode_ext4_poly_c3dff0ef : decode 0xc3dff0ef#32 = some (RV.Instr.jal 0x01#5 0xfffffc3c#32) := rfl
 @[rv_word] theorem decode_ext4_poly_00c92583 : decode 0x00c92583#32 = some (RV.Instr.load 4 true 0x0b#5 0x12#5 0x0000000c#32) := rfl
 @[rv_word] theorem decode_ext4_poly_00050913 : decode 0x00050913#32 = some (RV.Instr.opImm (RV.Op.add) 0x12#5 0x0a#5 0x00000000#32) := rfl
-@[rv_word] theorem decode_ext4_poly_b19ff0ef : decode 0xb19ff0ef#32 = some (RV.Instr.jal 0x01#5 0xfffffb18#32) := rfl
+@[rv_word] theorem decode_ext4_poly_c29ff0ef : decode 0xc29ff0ef#32 = some (RV.Instr.jal 0x01#5 0xfffffc28#32) := rfl
 @[rv_word] theorem decode_ext4_poly_01412223 : decode 0x01412223#32 = some (RV.Instr.store 4 0x14#5 0x02#5 0x00000004#32) := rfl
 @[rv_word] theorem decode_ext4_poly_01512423 : decode 0x01512423#32 = some (RV.Instr.store 4 0x15#5 0x02#5 0x00000008#32) := rfl
 @[rv_word] theorem decode_ext4_poly_01212623 : decode 0x01212623#32 = some (RV.Instr.store 4 0x12#5 0x02#5 0x0000000c#32) := rfl
@@ -47,18 +47,17 @@ def Code.ext4_poly : List Word :=
 @[rv_word] theorem decode_ext4_poly_01410513 : decode 0x01410513#32 = some (RV.Instr.opImm (RV.Op.add) 0x0a#5 0x02#5 0x00000014#32) := rfl
 @[rv_word] theorem decode_ext4_poly_02000613 : decode 0x02000613#32 = some (RV.Instr.opImm (RV.Op.add) 0x0c#5 0x00#5 0x00000020#32) := rfl
 @[rv_word] theorem decode_ext4_poly_00410693 : decode 0x00410693#32 = some (RV.Instr.opImm (RV.Op.add) 0x0d#5 0x02#5 0x00000004#32) := rfl
-@[rv_word] theorem decode_ext4_poly_cedff0ef : decode 0xcedff0ef#32 = some (RV.Instr.jal 0x01#5 0xfffffcec#32) := rfl
 @[rv_word] theorem decode_ext4_poly_01412503 : decode 0x01412503#32 = some (RV.Instr.load 4 true 0x0a#5 0x02#5 0x00000014#32) := rfl
 @[rv_word] theorem decode_ext4_poly_00100593 : decode 0x00100593#32 = some (RV.Instr.opImm (RV.Op.add) 0x0b#5 0x00#5 0x00000001#32) := rfl
-@[rv_word] theorem decode_ext4_poly_ad5ff0ef : decode 0xad5ff0ef#32 = some (RV.Instr.jal 0x01#5 0xfffffad4#32) := rfl
+@[rv_word] theorem decode_ext4_poly_be5ff0ef : decode 0xbe5ff0ef#32 = some (RV.Instr.jal 0x01#5 0xfffffbe4#32) := rfl
 @[rv_word] theorem decode_ext4_poly_01812603 : decode 0x01812603#32 = some (RV.Instr.load 4 true 0x0c#5 0x02#5 0x00000018#32) := rfl
 @[rv_word] theorem decode_ext4_poly_00060513 : decode 0x00060513#32 = some (RV.Instr.opImm (RV.Op.add) 0x0a#5 0x0c#5 0x00000000#32) := rfl
-@[rv_word] theorem decode_ext4_poly_ac1ff0ef : decode 0xac1ff0ef#32 = some (RV.Instr.jal 0x01#5 0xfffffac0#32) := rfl
+@[rv_word] theorem decode_ext4_poly_bd1ff0ef : decode 0xbd1ff0ef#32 = some (RV.Instr.jal 0x01#5 0xfffffbd0#32) := rfl
 @[rv_word] theorem decode_ext4_poly_01c12603 : decode 0x01c12603#32 = some (RV.Instr.load 4 true 0x0c#5 0x02#5 0x0000001c#32) := rfl
 @[rv_word] theorem decode_ext4_poly_00050993 : decode 0x00050993#32 = some (RV.Instr.opImm (RV.Op.add) 0x13#5 0x0a#5 0x00000000#32) := rfl
-@[rv_word] theorem decode_ext4_poly_aadff0ef : decode 0xaadff0ef#32 = some (RV.Instr.jal 0x01#5 0xfffffaac#32) := rfl
+@[rv_word] theorem decode_ext4_poly_bbdff0ef : decode 0xbbdff0ef#32 = some (RV.Instr.jal 0x01#5 0xfffffbbc#32) := rfl
 @[rv_word] theorem decode_ext4_poly_02012603 : decode 0x02012603#32 = some (RV.Instr.load 4 true 0x0c#5 0x02#5 0x00000020#32) := rfl
-@[rv_word] theorem decode_ext4_poly_a99ff0ef : decode 0xa99ff0ef#32 = some (RV.Instr.jal 0x01#5 0xfffffa98#32) := rfl
+@[rv_word] theorem decode_ext4_poly_ba9ff0ef : decode 0xba9ff0ef#32 = some (RV.Instr.jal 0x01#5 0xfffffba8#32) := rfl
 @[rv_word] theorem decode_ext4_poly_0124a023 : decode 0x0124a023#32 = some (RV.Instr.store 4 0x12#5 0x09#5 0x00000000#32) := rfl
 @[rv_word] theorem decode_ext4_poly_0134a223 : decode 0x0134a223#32 = some (RV.Instr.store 4 0x13#5 0x09#5 0x00000004#32) := rfl
 @[rv_word] theorem decode_ext4_poly_0144a423 : decode 0x0144a423#32 = some (RV.Instr.store 4 0x14#5 0x09#5 0x00000008#32) := rfl

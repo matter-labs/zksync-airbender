@@ -1,5 +1,5 @@
 import Slop.Equiv.StepIsAirbender
-import Slop.RV.Final
+import Slop.RV.FinalMop
 import HumanSail.Theorems
 
 /-! `Airbender.ProgramCorrect`: the final theorem, carried from our spec to the Airbender machine. -/
@@ -32,25 +32,35 @@ theorem agree_ofSail (σ : SailState) (hs : Airbender.Configured σ) : Airbender
   · subst h; rw [reg_eq, xget_zero]
   · rfl
 
-theorem program_correct_airbender : Airbender.ProgramCorrect := by
-  intro σ x hs hpc himg hram hin hx
+theorem read_ofSail (σ : SailState) (a : Nat) (ha : a + 4 ≤ RV.ROM_END ∨ a + 4 ≤ RV.RAM_END) :
+    RV.read (ofSail σ).mem (BitVec.ofNat 32 a) 4 = readBytes σ.mem a 4 := by
+  have e : (BitVec.ofNat 32 a).toNat = a := by
+    simp only [BitVec.toNat_ofNat]; apply Nat.mod_eq_of_lt; simp only [RV.ROM_END, RV.RAM_END] at *; omega
+  rw [read_eq4 σ.mem (ofSail σ).mem (fun _ => rfl) _ (by rw [e]; simp only [RV.ROM_END, RV.RAM_END] at *; omega),
+    BitVec.setWidth_eq, e]
+
+/-- The final theorem on our spec gives it on the Airbender machine, for any image. -/
+theorem program_correct_of (bytes : Array (BitVec 8)) (INPUT halt : Nat) (hb : bytes.size < 2 ^ 32)
+    (hin : INPUT + 20 ≤ RV.RAM_END) (h : RV.ProgramCorrectOf bytes INPUT halt) :
+    Airbender.ProgramCorrectOf bytes INPUT halt := by
+  intro σ x y0 y1 y2 y3 hs hpc himg hram hx hxP hy0 hy1 hy2 hy3 hy0p hy1p hy2p hy3p
   have hA := agree_ofSail σ hs
-  have himg' : RV.ImageLoaded Image.bytes (ofSail σ) := by
+  have himg' : RV.ImageLoaded bytes (ofSail σ) := by
     intro i hi
-    have hb : Image.bytes.size < 2 ^ 32 := by decide +kernel
     show σ.mem (BitVec.ofNat 32 i).toNat = _
     rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)]; exact himg i hi
-  have hin' : RV.read (ofSail σ).mem (BitVec.ofNat 32 Image.INPUT) 4 = x := by
-    rw [read_eq4 σ.mem (ofSail σ).mem (fun _ => rfl) _ (by decide), BitVec.setWidth_eq]
-    have e : (BitVec.ofNat 32 Image.INPUT).toNat = Image.INPUT := by decide
-    rw [e]; exact hin
-  have hram' : RV.RamZeroExceptInput Image.INPUT (ofSail σ) := fun addr h1 h2 h3 => hram addr.toNat h1 h2 h3
-  obtain ⟨n, s', hr, hpc', h10, h11a, h11b, hz, hk⟩ := RV.program_correct (ofSail σ) x hpc himg' hram' hin' hx
+  have hram' : RV.RamZeroExceptInput INPUT 20 (ofSail σ) := fun addr h1 h2 h3 => hram addr.toNat h1 h2 h3
+  obtain ⟨n, s', hr, hpc', h10, h11a, h11b, hlt, hlimbs, hz, hk⟩ := h (ofSail σ) x y0 y1 y2 y3 hpc himg' hram'
+    ((read_ofSail σ _ (by omega)).trans hx) hxP ((read_ofSail σ _ (by omega)).trans hy0)
+    ((read_ofSail σ _ (by omega)).trans hy1) ((read_ofSail σ _ (by omega)).trans hy2)
+    ((read_ofSail σ _ (by omega)).trans hy3) hy0p hy1p hy2p hy3p
   obtain ⟨σ', hσ', hA'⟩ := run_agree n _ s' σ hA hr
   have hreg : ∀ i, Airbender.getReg σ' i = s'.getReg i := hA'.2.2.1
-  refine ⟨n, σ', hσ', hA'.2.1.trans hpc', (hreg 10).trans h10, ?_, ?_, ?_, ?_⟩
+  refine ⟨n, σ', hσ', hA'.2.1.trans hpc', (hreg 10).trans h10, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · rw [hreg]; exact h11a
   · rw [hreg]; exact h11b
+  · intro i h1 h2; rw [hreg]; exact hlt i h1 h2
+  · simp only [hreg]; exact hlimbs
   · intro i h1 h2; rw [hreg]; exact hz i h1 h2
   · intro k
     obtain ⟨s'', hr'', hpc'', hreg''⟩ := hk k
@@ -58,5 +68,9 @@ theorem program_correct_airbender : Airbender.ProgramCorrect := by
     refine ⟨σ'', hσ'', ?_, ?_⟩
     · rw [hA''.2.1, hA'.2.1, hpc'']
     · intro i; rw [hA''.2.2.1, hreg, hreg'']
+
+/-- `Airbender.ProgramCorrectMop`: the field-opcode image on the Airbender machine. -/
+theorem program_correct_airbender_mop : Airbender.ProgramCorrectMop :=
+  program_correct_of _ _ _ (by decide +kernel) (by decide) RV.program_correct_mop
 
 end Slop.Equiv

@@ -124,12 +124,12 @@ macro "main_a_proof" code:ident initThm:ident initA:term:max combA:term:max poly
 /-- From `main`'s entry: `init`, the inputs, `combine` and `poly_eval`; up to `main + 0x6c`. -/
 theorem main_a (S : State) (x y0 y1 y2 y3 : Word) (hpc : S.pc = 0x38#32) (h2 : S.getReg 2#5 = 0x13ffff0#32)
     (hra : (S.getReg 1#5).toNat % 4 = 0)
-    (hmain : CodeAt S 0x38#32 Code.main) (hinit : CodeAt S 0x9f8#32 Code.init)
-    (hmc : CodeAt S 0xa80#32 Code.memcpy) (hcomb : CodeAt S 0x7c4#32 Code.combine)
-    (hinc : CodeAt S 0x830#32 Code.inc) (hdbl : CodeAt S 0x80c#32 Code.double)
-    (hpoly : CodeAt S 0x748#32 Code.poly_eval) (hmul : CodeAt S 0x70c#32 Code.mul_mod)
-    (hadd : CodeAt S 0x6d8#32 Code.add_mod) (hcoef : CodeAt S 0x24b0#32 Code.COEFFS)
-    (hcoef4 : CodeAt S (0x24b0#32 + BitVec.ofNat 32 0x190) Code.COEFFS4)
+    (hmain : CodeAt S 0x38#32 Code.main) (hinit : CodeAt S 0x95c#32 Code.init)
+    (hmc : CodeAt S 0x9e4#32 Code.memcpy) (hcomb : CodeAt S 0x728#32 Code.combine)
+    (hinc : CodeAt S 0x794#32 Code.inc) (hdbl : CodeAt S 0x770#32 Code.double)
+    (hpoly : CodeAt S 0x6ac#32 Code.poly_eval) (hmul : CodeAt S 0x670#32 Code.mul_mod)
+    (hadd : CodeAt S 0x63c#32 Code.add_mod) (hcoef : CodeAt S 0x2414#32 Code.COEFFS)
+    (hcoef4 : CodeAt S (0x2414#32 + BitVec.ofNat 32 0x190) Code.COEFFS4)
     (hx : read S.mem 0x1401000#32 4 = x) (hy0 : read S.mem 0x1401004#32 4 = y0)
     (hy1 : read S.mem 0x1401008#32 4 = y1) (hy2 : read S.mem 0x140100c#32 4 = y2)
     (hy3 : read S.mem 0x1401010#32 4 = y3) (hxP : x.toNat ≤ P) :
@@ -138,6 +138,6 @@ theorem main_a (S : State) (x y0 y1 y2 y3 : Word) (hpc : S.pc = 0x38#32) (h2 : S
       T.getReg 19#5 = y3 ∧ T.getReg 20#5 = y2 ∧ T.getReg 21#5 = y1 ∧ T.getReg 22#5 = y0 ∧
       CodeMem T.mem (0x1400000#32 + BitVec.ofNat 32 0x190) Code.COEFFS4 ∧
       (∀ b : Word, b.toNat < ROM_END → T.mem b = S.mem b) := by
-  main_a_proof Code.main init_run (0x9f8#32) (0x7c4#32) (0x748#32) (0x24b0#32)
+  main_a_proof Code.main init_run (0x95c#32) (0x728#32) (0x6ac#32) (0x2414#32)
 
 end RV

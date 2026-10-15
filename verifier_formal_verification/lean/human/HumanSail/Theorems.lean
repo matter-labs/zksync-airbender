@@ -47,25 +47,35 @@ noncomputable def run : (numSteps : Nat) → SailState → Option SailState
   | 0,     σ => some σ
   | n + 1, σ => (step σ).bind (run n)
 
-/-- 3. The final theorem on the Airbender machine itself: `RV.ProgramCorrect` (`Human/Theorems.lean`), with Sail's
+/-- 3. The final theorem on the Airbender machine itself: `RV.ProgramCorrectOf` (`Human/Theorems.lean`), with Sail's
 state in place of ours. Started from any Airbender state (`Configured`: privilege, CSRs, memory map as after reset) at
-address 0, with the image loaded, RAM zero except a field element `x` at `INPUT`, Airbender reaches `halt` with
-`a0 = combine x`, `a1 = poly x`, `x12 … x25` zero, and stays there. Follows from 1 and 2 and `RV.program_correct`. -/
+address 0, with the image loaded, RAM zero except the input (`x`, then the 4 limbs of `y`) at `INPUT`, Airbender
+reaches `halt` with `a0 = combine x`, `a1 = poly x`, `a2 … a5` the limbs of `poly4 y`, `x16 … x25` zero, and stays
+there. Follows from 1 and 2 and the final theorem on our spec. -/
 def ProgramCorrectOf (bytes : Array (BitVec 8)) (INPUT halt : Nat) : Prop :=
-  ∀ (start : SailState) (x : RV.Word), Configured start → start.regs .PC = 0 →
+  ∀ (start : SailState) (x y0 y1 y2 y3 : RV.Word), Configured start → start.regs .PC = 0 →
     (∀ i (h : i < bytes.size), start.mem i = bytes[i]) →
-    (∀ addr : Nat, RV.ROM_END ≤ addr → addr < RV.RAM_END → (addr < INPUT ∨ INPUT + 4 ≤ addr) →
+    (∀ addr : Nat, RV.ROM_END ≤ addr → addr < RV.RAM_END → (addr < INPUT ∨ INPUT + 20 ≤ addr) →
       start.mem addr = 0) →
     readBytes start.mem INPUT 4 = x → x.toNat ≤ Spec.P →
+    readBytes start.mem (INPUT + 4) 4 = y0 → readBytes start.mem (INPUT + 8) 4 = y1 →
+    readBytes start.mem (INPUT + 12) 4 = y2 → readBytes start.mem (INPUT + 16) 4 = y3 →
+    y0.toNat < RV.BabyBearP → y1.toNat < RV.BabyBearP → y2.toNat < RV.BabyBearP → y3.toNat < RV.BabyBearP →
     ∃ numSteps final, run numSteps start = some final ∧ final.regs .PC = BitVec.ofNat 32 halt ∧
       getReg final a0 = Spec.combine x ∧
       (getReg final a1).toNat ≤ Spec.P ∧
       ((getReg final a1).toNat : ZMod Spec.P) = Spec.poly (x.toNat : ZMod Spec.P) ∧
-      (∀ i : RV.Reg, 12 ≤ i.toNat → i.toNat ≤ 25 → getReg final i = 0) ∧
+      (∀ i : RV.Reg, 12 ≤ i.toNat → i.toNat ≤ 15 → (getReg final i).toNat < RV.BabyBearP) ∧
+      Spec.ofLimbs (RV.bb (getReg final 12)) (RV.bb (getReg final 13)) (RV.bb (getReg final 14))
+          (RV.bb (getReg final 15)) = Spec.poly4 (Spec.ofLimbs (RV.bb y0) (RV.bb y1) (RV.bb y2) (RV.bb y3)) ∧
+      (∀ i : RV.Reg, 16 ≤ i.toNat → i.toNat ≤ 25 → getReg final i = 0) ∧
       ∀ moreSteps, ∃ later, run moreSteps final = some later ∧ later.regs .PC = final.regs .PC ∧
         ∀ i, getReg later i = getReg final i
 
-/-- 3. for the image built by `rust/build.sh`. -/
+/-- 3. for the plain-Rust image (`build/app.bin`). -/
 def ProgramCorrect : Prop := ProgramCorrectOf Image.bytes Image.INPUT Image.halt
+
+/-- 3. for the field-opcode image (`build/app_mop.bin`). -/
+def ProgramCorrectMop : Prop := ProgramCorrectOf ImageMop.bytes ImageMop.INPUT ImageMop.halt
 
 end Airbender

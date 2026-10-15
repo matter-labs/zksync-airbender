@@ -61,4 +61,36 @@ theorem mulhu_toNat (x y : Word) :
     Nat.mod_eq_of_lt (by omega : x.toNat * y.toNat < 2 ^ 64)]
   exact Nat.mod_eq_of_lt (Nat.div_lt_of_lt_mul hxy)
 
+/-! The base ops on Montgomery values. -/
+
+theorem mont_of_eq (r : Word) (n : Nat) (h : r.toNat = n % BabyBearP) : mont r = (n : F) * RINV := by
+  simp only [mont, h, natCast_mod_p]
+
+theorem bb_add_mont (a b r : Word) (h : r.toNat = (a.toNat + b.toNat) % BabyBearP) : mont r = mont a + mont b := by
+  rw [mont_of_eq r _ h]; simp only [mont]; push_cast; ring
+
+theorem bb_mul_mont (a b r : Word) (h : r.toNat = a.toNat * b.toNat * RINV % BabyBearP) :
+    mont r = mont a * mont b := by
+  rw [mont_of_eq r _ h]; simp only [mont]; push_cast; ring
+
+theorem lt_of_eq_mod (r : Word) (n : Nat) (h : r.toNat = n % BabyBearP) : r.toNat < BabyBearP := by
+  rw [h]; exact mod_p_lt n
+
+end RV
+
+namespace RV
+open Spec
+
+/-- `mul(y, R²)` in plain Rust (`new`): holds `y`. -/
+theorem mont_new_plain (y r : Word) (h : r.toNat = y.toNat * 1172168163 * RINV % BabyBearP) :
+    mont r = (y.toNat : F) := by
+  rw [mont_of_eq r _ h]; push_cast
+  have : (1172168163 : F) * (RINV : F) * (RINV : F) = 1 := by decide
+  linear_combination (y.toNat : F) * this
+
+/-- `mul(x, 1)` in plain Rust (`to_u32`): the canonical value. -/
+theorem val_to_u32_plain (x r : Word) (h : r.toNat = x.toNat * 1 * RINV % BabyBearP) :
+    (r.toNat : F) = mont x := by
+  rw [h, natCast_mod_p]; simp [mont]
+
 end RV
