@@ -7,9 +7,15 @@
 //!   (and a few caller-supplied) constants.
 
 mod circuit_yul;
+mod f1;
+mod instrument;
+mod preprocess;
+mod single_tx;
 mod whir;
 
 pub use circuit_yul::emit_circuit_yul;
+pub use instrument::instrument;
+pub use single_tx::{single_tx_gkr, single_tx_whir};
 pub use whir::WhirGenConfig;
 
 // ── Transcript-preimage layout (bytes) ──────────────────────────────────────────────────────
@@ -38,4 +44,4 @@ pub struct GeneratedContracts {
 
 // `generate_verifiers` is implemented in `assemble.rs`.
 mod assemble;
-pub use assemble::generate_verifiers;
+pub use assemble::{generate_f1_verifiers, generate_verifiers, F1, INSTRUMENTED};

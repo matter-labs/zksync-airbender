@@ -9,8 +9,10 @@
 //! the circuit artifact; it is supplied by the caller as the same `ProverConfig` the prover used,
 //! and (with `pack_log2`) drives both verifiers so they stay consistent — see [`WhirGenConfig`].
 
+use super::preprocess::preprocess;
 use super::whir::WhirGenConfig;
-use super::{emit_circuit_yul, GeneratedContracts};
+use super::{emit_circuit_yul, f1, instrument, single_tx_gkr, single_tx_whir, GeneratedContracts};
+use crate::encoding::FormatParams;
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::Proth120;
@@ -200,6 +202,142 @@ pub fn generate_verifiers(
     final_pc: u32,
     registry_address: &str,
 ) -> GeneratedContracts {
+    render(
+        circuit,
+        prover_config,
+        pack_log2,
+        external_pow_bits,
+        whir_batch_pow_bits,
+        final_pc,
+        registry_address,
+        &[],
+    )
+}
+
+/// Template flags of an F1 render.
+pub const F1: &str = "F1";
+/// Template flag of the instrumented render (absorb/challenge log returned with the result).
+pub const INSTRUMENTED: &str = "INSTRUMENTED";
+
+/// Bytes the layer-0 quadratic-gate table occupies past `GKR_QTABLE_PTR()`.
+fn qtable_bytes(circuit_yul: &str) -> usize {
+    const RECORD: &str = "add(GKR_QTABLE_PTR(), ";
+    circuit_yul
+        .match_indices(RECORD)
+        .filter_map(|(at, _)| {
+            let digits: String = circuit_yul[at + RECORD.len()..]
+                .chars()
+                .take_while(char::is_ascii_digit)
+                .collect();
+            digits.parse::<usize>().ok()
+        })
+        .max()
+        .map_or(0, |last| (last + 32).next_multiple_of(32))
+}
+
+/// The single-tx F1 GKR + WHIR verifiers (spec §2): every proof byte is read by the F1
+/// decoders, the final PC and `setup_cap` are deployment constants. `flags` may add
+/// [`INSTRUMENTED`].
+#[allow(clippy::too_many_arguments)]
+pub fn generate_f1_verifiers(
+    circuit: &GKRCircuitArtifact<Proth120>,
+    prover_config: &ProverConfig,
+    params: &FormatParams,
+    external_pow_bits: u32,
+    whir_batch_pow_bits: u32,
+    final_pc: u32,
+    setup_cap: &[[u32; 8]],
+    flags: &[&str],
+) -> GeneratedContracts {
+    assert_eq!(
+        params,
+        &FormatParams::from_config(prover_config, params.pack_log2, params.digest_bytes),
+        "F1 profile differs from the prover config"
+    );
+    let flags: Vec<&str> = std::iter::once(F1).chain(flags.iter().copied()).collect();
+    let out = render(
+        circuit,
+        prover_config,
+        params.pack_log2,
+        external_pow_bits,
+        whir_batch_pow_bits,
+        final_pc,
+        "0x0000000000000000000000000000000000000000",
+        &flags,
+    );
+    let decoder = f1::gkr_decoder(
+        circuit,
+        params,
+        final_pc,
+        setup_cap,
+        circuit.memory_layout.teardown_sets.len(),
+    );
+    // the single-tx register copies read the preimage at absolute offsets
+    let mut gkr = single_tx_gkr(&out.gkr_sol);
+    for reg in [10, 18] {
+        let at = format!("), mul(add({reg}, i), 12), 4)");
+        assert_eq!(
+            gkr.matches(&at).count(),
+            1,
+            "single-tx register copy x{reg}"
+        );
+        gkr = gkr.replace(
+            &at,
+            &format!("), add({}, mul(add({reg}, i), 12)), 4)", f1::V0_PTR),
+        );
+    }
+    let gkr = f1::calldata_to_v0_memory(&gkr, decoder.v0_bytes);
+    assert_eq!(gkr.matches("__F1_QTABLE_BYTES__").count(), 1);
+    let gkr = gkr.replace(
+        "__F1_QTABLE_BYTES__",
+        &qtable_bytes(&emit_circuit_yul(circuit)).to_string(),
+    );
+    let marker = "        // __F1_DECODER__\n";
+    assert_eq!(
+        gkr.matches(marker).count(),
+        1,
+        "gkr.sol misses the F1 decoder marker"
+    );
+    let gkr_sol = gkr.replace(marker, &decoder.yul);
+    let whir_sol = set_const(
+        &single_tx_whir(&out.whir_sol),
+        "__TEMPLATE_F1_DIGEST_BYTES",
+        params.digest_bytes,
+    );
+    let digest_load = if params.digest_bytes == 32 {
+        "d := calldataload(cp)".to_string()
+    } else {
+        format!(
+            "d := and(calldataload(cp), 0x{}{})",
+            "ff".repeat(params.digest_bytes),
+            "00".repeat(32 - params.digest_bytes)
+        )
+    };
+    assert_eq!(whir_sol.matches("// __F1_DIGEST_LOAD__").count(), 1);
+    let whir_sol = whir_sol.replace("// __F1_DIGEST_LOAD__", &digest_load);
+    let (gkr_sol, whir_sol) = if flags.contains(&INSTRUMENTED) {
+        (instrument(&gkr_sol), instrument(&whir_sol))
+    } else {
+        (gkr_sol, whir_sol)
+    };
+    GeneratedContracts {
+        gkr_sol,
+        whir_sol,
+        registry_sol: out.registry_sol,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render(
+    circuit: &GKRCircuitArtifact<Proth120>,
+    prover_config: &ProverConfig,
+    pack_log2: usize,
+    external_pow_bits: u32,
+    whir_batch_pow_bits: u32,
+    final_pc: u32,
+    registry_address: &str,
+    flags: &[&str],
+) -> GeneratedContracts {
     // The registry address is baked into BOTH verifiers (they `call` it to mark
     // their committed state), so deployments must generate with the REAL
     // registry address — deploy the registry first, then regenerate + deploy
@@ -299,6 +437,7 @@ pub fn generate_verifiers(
         }
     }
     assert!(inlined, "gkr.sol template missing inline marker");
+    let mut gkr = preprocess(&gkr, flags);
     let dr_count = d.rounds as usize - crate::EXPLICIT_OUTPUT_LOG2;
     for (marker, value, occurrences) in [
         ("__GKR_DR_COUNT__", dr_count, 2),
@@ -362,10 +501,23 @@ pub fn generate_verifiers(
     //    substitute every config-derived constant (schedule count, cap, RS-codeword domain
     //    generators, base-column geometry). Nothing WHIR-specific is hand-supplied anymore.
     let whir_schedule_yul = wc.schedule_switch_yul();
-    let mut whir = WHIR_TEMPLATE.replace(
+    let mut whir = preprocess(WHIR_TEMPLATE, flags).replace(
         "            // __WHIR_SCHEDULE_SWITCH__",
         whir_schedule_yul.trim_end_matches('\n'),
     );
+    if flags.contains(&F1) {
+        assert_eq!(whir.matches("        // __F1_FINAL_HORNER__").count(), 1);
+        assert_eq!(whir.matches("__F1_HORNER_NAME__").count(), 2);
+        whir = whir
+            .replace(
+                "        // __F1_FINAL_HORNER__",
+                wc.final_horner_yul().trim_end_matches('\n'),
+            )
+            .replace(
+                "__F1_HORNER_NAME__",
+                &format!("horner_{}", 1usize << wc.rfin),
+            );
+    }
     assert!(
         !whir.contains("__WHIR_SCHEDULE_SWITCH__"),
         "whir.sol template missing the schedule marker"

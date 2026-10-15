@@ -24,6 +24,23 @@ const PRODUCTION_STUBS: [&str; 2] = [
     "gkr/src/GkrVerifierProduction.sol",
     "whir/src/WhirVerifierProduction.sol",
 ];
+/// Single-tx variants of the test pair for the `single_tx/harness` proxy; the
+/// wrong-final-PC control's variant lives under the same prefix.
+const SINGLE_TX: [&str; 2] = [
+    "single_tx/gkr/src/GkrVerifier.sol",
+    "single_tx/whir/src/WhirVerifier.sol",
+];
+const SINGLE_TX_PREFIX: &str = "single_tx/";
+/// F1 single-tx verifiers (format F1, `verifier_evm::encoding`); the wrong-final-PC control's
+/// variant lives under the same prefix.
+const F1_PAIR: [&str; 2] = [
+    "single_tx/f1/gkr/src/GkrVerifier.sol",
+    "single_tx/f1/whir/src/WhirVerifier.sol",
+];
+const F1_PREFIX: &str = "single_tx/f1/";
+const INSTRUMENTED_PREFIX: &str = "single_tx/instrumented/";
+const F1_WRONG_SETUP_CAP: &str =
+    "single_tx/f1/gkr_wrong_setup_cap/src/GkrVerifierWrongSetupCap.sol";
 
 fn generate(version: &Version, registry_address: &str) -> verifier_evm::GeneratedContracts {
     render(version, registry_address, None)
@@ -155,8 +172,101 @@ fn solidity_constant(source: &str, name: &str) -> u32 {
         .unwrap()
 }
 
+fn generate_f1(
+    version: &Version,
+    final_pc: u32,
+    flags: &[&str],
+) -> verifier_evm::GeneratedContracts {
+    let (_, proof, _) = version.load();
+    generate_f1_with_setup_cap(
+        version,
+        final_pc,
+        &proof.whir_proof.setup_commitment.commitment.cap.cap,
+        flags,
+    )
+}
+
+fn generate_f1_with_setup_cap(
+    version: &Version,
+    final_pc: u32,
+    setup_cap: &[[u32; 8]],
+    flags: &[&str],
+) -> verifier_evm::GeneratedContracts {
+    let circuit = version.circuit();
+    let config = version.prover_config();
+    let (external_pow_bits, batched_proximity_pow_bits) =
+        derived_pow_bits(version, &circuit, &config);
+    verifier_evm::generate_f1_verifiers(
+        &circuit,
+        &config,
+        &version.f1_params(),
+        external_pow_bits,
+        batched_proximity_pow_bits,
+        final_pc,
+        setup_cap,
+        flags,
+    )
+}
+
+/// `(relative path, source)` of every F1 render of `version`.
+fn f1_sources(version: &Version) -> Vec<(String, String)> {
+    let f1 = generate_f1(version, version.final_pc(), &[]);
+    let mut out: Vec<(String, String)> = F1_PAIR
+        .iter()
+        .map(|rel| rel.to_string())
+        .zip([f1.gkr_sol, f1.whir_sol])
+        .collect();
+    if let Some(rel) = version.wrong_final_pc_contract {
+        out.push((
+            format!("{F1_PREFIX}{rel}"),
+            generate_f1(version, version.final_pc() ^ 1, &[]).gkr_sol,
+        ));
+    }
+    // E8 control: the same verifier pinned to another setup cap (one bit of the first digest).
+    let (_, proof, _) = version.load();
+    let mut setup_cap = proof.whir_proof.setup_commitment.commitment.cap.cap.clone();
+    setup_cap[0][0] ^= 1;
+    out.push((
+        F1_WRONG_SETUP_CAP.to_string(),
+        generate_f1_with_setup_cap(version, version.final_pc(), &setup_cap, &[]).gkr_sol,
+    ));
+    out
+}
+
+/// The oracle renders: v0 and F1 single-tx verifiers that log every keccak256 result.
+fn instrumented_sources(version: &Version) -> Vec<(String, String)> {
+    let v0 = generate(version, DEFAULT_REGISTRY_ADDRESS);
+    let f1 = generate_f1(
+        version,
+        version.final_pc(),
+        &[verifier_evm::generator::INSTRUMENTED],
+    );
+    [
+        (
+            "gkr_v0/src/GkrVerifier.sol",
+            verifier_evm::instrument(&verifier_evm::single_tx_gkr(&v0.gkr_sol)),
+        ),
+        (
+            "whir_v0/src/WhirVerifier.sol",
+            verifier_evm::instrument(&verifier_evm::single_tx_whir(&v0.whir_sol)),
+        ),
+        ("gkr_f1/src/GkrVerifier.sol", f1.gkr_sol),
+        ("whir_f1/src/WhirVerifier.sol", f1.whir_sol),
+    ]
+    .into_iter()
+    .map(|(rel, src)| (format!("{INSTRUMENTED_PREFIX}{rel}"), src))
+    .collect()
+}
+
 fn sources(out: &verifier_evm::GeneratedContracts) -> [&str; 3] {
     [&out.gkr_sol, &out.whir_sol, &out.registry_sol]
+}
+
+fn single_tx_sources(out: &verifier_evm::GeneratedContracts) -> [String; 2] {
+    [
+        verifier_evm::single_tx_gkr(&out.gkr_sol),
+        verifier_evm::single_tx_whir(&out.whir_sol),
+    ]
 }
 
 fn write(version: &Version, rel: &str, content: &str) {
@@ -176,11 +286,22 @@ fn generate_contracts_into_dir() {
         for (rel, content) in TEST_PAIR.iter().zip(sources(&out)) {
             write(&version, rel, content);
         }
+        for (rel, content) in SINGLE_TX.iter().zip(single_tx_sources(&out)) {
+            write(&version, rel, &content);
+        }
+        for (rel, content) in f1_sources(&version)
+            .into_iter()
+            .chain(instrumented_sources(&version))
+        {
+            write(&version, &rel, &content);
+        }
         if let Some(rel) = version.wrong_final_pc_contract {
+            let wrong = generate_wrong_final_pc(&version, &registry_address).gkr_sol;
+            write(&version, rel, &wrong);
             write(
                 &version,
-                rel,
-                &generate_wrong_final_pc(&version, &registry_address).gkr_sol,
+                &format!("{SINGLE_TX_PREFIX}{rel}"),
+                &verifier_evm::single_tx_gkr(&wrong),
             );
         }
     }
@@ -203,20 +324,39 @@ fn checked_in_contracts_are_current() {
         let test_pair = generate(version, DEFAULT_REGISTRY_ADDRESS);
         let stubs = generate(version, STUB_REGISTRY_ADDRESS);
         if let Some(rel) = version.wrong_final_pc_contract {
-            let path = version.contract_path(rel);
-            let stored =
-                std::fs::read_to_string(&path).expect("missing wrong-final-PC control verifier");
-            assert_eq!(
-                stored,
-                generate_wrong_final_pc(version, DEFAULT_REGISTRY_ADDRESS).gkr_sol,
-                "{} is stale",
+            let wrong = generate_wrong_final_pc(version, DEFAULT_REGISTRY_ADDRESS).gkr_sol;
+            for (rel, expected) in [
+                (rel.to_string(), wrong.clone()),
+                (
+                    format!("{SINGLE_TX_PREFIX}{rel}"),
+                    verifier_evm::single_tx_gkr(&wrong),
+                ),
+            ] {
+                let path = version.contract_path(&rel);
+                let stored = std::fs::read_to_string(&path)
+                    .expect("missing wrong-final-PC control verifier");
+                assert_eq!(stored, expected, "{} is stale", path.display());
+            }
+        }
+        for (rel, content) in f1_sources(version)
+            .into_iter()
+            .chain(instrumented_sources(version))
+        {
+            let path = version.contract_path(&rel);
+            let checked_in = std::fs::read_to_string(&path)
+                .unwrap_or_else(|_| panic!("missing {}", path.display()));
+            assert!(
+                checked_in == content,
+                "{} is stale: rerun `cargo test -p verifier_evm --test generate_contracts -- --ignored`",
                 path.display()
             );
         }
+        let single_tx = single_tx_sources(&test_pair);
         for (rel, content) in TEST_PAIR
             .iter()
             .zip(sources(&test_pair))
             .chain(PRODUCTION_STUBS.iter().zip(sources(&stubs)))
+            .chain(SINGLE_TX.iter().zip(single_tx.iter().map(String::as_str)))
         {
             let path = version.contract_path(rel);
             let checked_in = std::fs::read_to_string(&path)
@@ -372,5 +512,143 @@ fn wrong_final_pc_control_changes_only_the_expected_constant() {
             .contains("constant __TEMPLATE_EXPECTED_FINAL_PC"));
         assert_eq!(valid.whir_sol, wrong.whir_sol);
         assert_eq!(valid.registry_sol, wrong.registry_sol);
+    }
+}
+
+#[test]
+fn single_tx_variants_change_only_the_handoff() {
+    for version in common::available_versions("single-tx variants") {
+        let two_tx = generate(version, DEFAULT_REGISTRY_ADDRESS);
+        let [gkr, whir] = single_tx_sources(&two_tx);
+        for (name, before, after, removed, added) in [
+            ("GKR", &two_tx.gkr_sol, &gkr, 16, 11),
+            ("WHIR", &two_tx.whir_sol, &whir, 14, 9),
+        ] {
+            let before: Vec<_> = before.lines().collect();
+            let after: Vec<_> = after.lines().collect();
+            let prefix = before
+                .iter()
+                .zip(&after)
+                .take_while(|(a, b)| a == b)
+                .count();
+            let suffix = before[prefix..]
+                .iter()
+                .rev()
+                .zip(after[prefix..].iter().rev())
+                .take_while(|(a, b)| a == b)
+                .count();
+            assert_eq!(
+                (
+                    before.len() - prefix - suffix,
+                    after.len() - prefix - suffix
+                ),
+                (removed, added),
+                "{name}: single-tx edit spans unexpected lines"
+            );
+        }
+        assert!(!gkr.contains("MARK_GKR_SELECTOR))"));
+        assert!(gkr.contains("return(base, add(plen, 96))"));
+        assert!(!whir.contains("MARK_WHIR_SELECTOR))"));
+        assert!(whir.contains("return(0, 128)"));
+    }
+}
+
+#[test]
+fn f1_renders_read_calldata_only_in_the_decoders() {
+    for version in common::available_versions("F1 calldata readers") {
+        for (rel, source) in f1_sources(version) {
+            // opcode uses, not identifiers such as `gate_calldataload`
+            let readers = |src: &str| {
+                ["calldataload(", "calldatacopy(", "calldatasize()"]
+                    .iter()
+                    .flat_map(|op| src.match_indices(op))
+                    .filter(|(at, _)| {
+                        !src[..*at]
+                            .chars()
+                            .next_back()
+                            .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
+                    })
+                    .count()
+            };
+            if rel.contains("/gkr") {
+                let start = source.find("// ── F1 decoder").expect("F1 decoder block");
+                let end = start + source[start..].find("function f1_decode()").unwrap();
+                let decode_end = end + source[end..].find("\n        }\n").unwrap();
+                assert_eq!(
+                    readers(&source[..start]) + readers(&source[decode_end..]),
+                    0,
+                    "{rel}: calldata read outside the F1 decoder"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn instrumented_renders_differ_only_by_the_log() {
+    for version in common::available_versions("instrumented renders") {
+        let production = generate_f1(version, version.final_pc(), &[]);
+        let instrumented = generate_f1(
+            version,
+            version.final_pc(),
+            &[verifier_evm::generator::INSTRUMENTED],
+        );
+        for (prod, inst) in [
+            (&production.gkr_sol, &instrumented.gkr_sol),
+            (&production.whir_sol, &instrumented.whir_sol),
+        ] {
+            assert!(
+                !prod.contains("ilog_"),
+                "production F1 render carries the log"
+            );
+            assert_eq!(&verifier_evm::instrument(prod), inst);
+        }
+    }
+}
+
+#[test]
+fn f1_generator_rejects_a_profile_off_the_prover_config() {
+    for version in common::available_versions("F1 profile vs config") {
+        let (circuit, proof, _) = version.load();
+        let config = version.prover_config();
+        let setup_cap = &proof.whir_proof.setup_commitment.commitment.cap.cap;
+        let generate = |params: &verifier_evm::encoding::FormatParams| {
+            verifier_evm::generate_f1_verifiers(
+                &circuit,
+                &config,
+                params,
+                20,
+                16,
+                version.final_pc(),
+                setup_cap,
+                &[],
+            )
+        };
+        let mut params = version.f1_params();
+        params.queries[0] -= 1;
+        common::assert_panics_with("F1 profile differs from the prover config", || {
+            generate(&params)
+        });
+        let mut params = version.f1_params();
+        params.folds.swap(3, 4);
+        common::assert_panics_with("F1 profile differs from the prover config", || {
+            generate(&params)
+        });
+        let mut params = version.f1_params();
+        params.pack_log2 = 3;
+        assert!(std::panic::catch_unwind(|| generate(&params)).is_err());
+        let params = version.f1_params();
+        common::assert_panics_with("setup cap size", || {
+            verifier_evm::generate_f1_verifiers(
+                &circuit,
+                &config,
+                &params,
+                20,
+                16,
+                version.final_pc(),
+                &setup_cap[1..],
+                &[],
+            )
+        });
     }
 }

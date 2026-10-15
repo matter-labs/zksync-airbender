@@ -11,12 +11,16 @@
 //! `include_str!`. Intermediate/debug artifacts live under `debug_data/` and are produced by
 //! tests, never by these functions.
 
+pub mod encoding;
 pub mod flatten;
 pub mod generator;
 pub mod seed;
 
 pub use flatten::{gkr_calldata, whir_calldata};
-pub use generator::{emit_circuit_yul, generate_verifiers, GeneratedContracts};
+pub use generator::{
+    emit_circuit_yul, generate_f1_verifiers, generate_verifiers, instrument, single_tx_gkr,
+    single_tx_whir, GeneratedContracts,
+};
 pub use seed::{commit_seed_preimage, gkr_whir_handoff_seed};
 
 /// The EVM init and packing routines specialize the 16-value boundary.

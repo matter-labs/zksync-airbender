@@ -37,6 +37,8 @@ pub struct Version {
     pub allow_missing_proof: bool,
     pub mutation_fields_file: Option<&'static str>,
     pub wrong_final_pc_contract: Option<&'static str>,
+    /// Merkle digest bytes on the F1 wire (the commitment profile of the proof).
+    pub digest_bytes: usize,
 }
 
 pub const L1_WRAP_2P21: Version = Version {
@@ -56,6 +58,7 @@ pub const L1_WRAP_2P21: Version = Version {
     allow_missing_proof: true,
     mutation_fields_file: Some("calldata_fields.json"),
     wrong_final_pc_contract: Some("gkr_negative/src/GkrVerifierWrongFinalPc.sol"),
+    digest_bytes: 32,
 };
 pub const VERSIONS: &[Version] = &[L1_WRAP_2P21];
 
@@ -131,9 +134,29 @@ impl Version {
             "gkr/src/GkrVerifierProduction.sol",
             "whir/src/WhirVerifier.sol",
             "whir/src/WhirVerifierProduction.sol",
+            "single_tx/gkr/src/GkrVerifier.sol",
+            "single_tx/whir/src/WhirVerifier.sol",
+            "single_tx/f1/gkr/src/GkrVerifier.sol",
+            "single_tx/f1/whir/src/WhirVerifier.sol",
+            "single_tx/f1/gkr_wrong_setup_cap/src/GkrVerifierWrongSetupCap.sol",
+            "single_tx/instrumented/gkr_v0/src/GkrVerifier.sol",
+            "single_tx/instrumented/whir_v0/src/WhirVerifier.sol",
+            "single_tx/instrumented/gkr_f1/src/GkrVerifier.sol",
+            "single_tx/instrumented/whir_f1/src/WhirVerifier.sol",
         ];
-        for rel in contracts.into_iter().chain(self.wrong_final_pc_contract) {
-            let path = self.contract_path(rel);
+        let wrong_final_pc = self.wrong_final_pc_contract.into_iter().flat_map(|rel| {
+            [
+                rel.to_string(),
+                format!("single_tx/{rel}"),
+                format!("single_tx/f1/{rel}"),
+            ]
+        });
+        for rel in contracts
+            .into_iter()
+            .map(str::to_string)
+            .chain(wrong_final_pc)
+        {
+            let path = self.contract_path(&rel);
             if path.try_exists().expect("inspect generated contract path") {
                 return Some(path);
             }
@@ -235,4 +258,40 @@ pub fn assert_panics_with<T>(expected: &str, action: impl FnOnce() -> T + std::p
         message.contains(expected),
         "expected {expected:?}, got {message:?}"
     );
+}
+
+pub const F1_CALLDATA: &str = "single_tx_f1.hex";
+pub const F1_FIELDS: &str = "single_tx_f1_fields.json";
+
+impl Version {
+    pub fn f1_params(&self) -> verifier_evm::encoding::FormatParams {
+        verifier_evm::encoding::FormatParams::from_config(
+            &self.prover_config(),
+            self.pack_log2,
+            self.digest_bytes,
+        )
+    }
+}
+
+/// The F1 field map as committed JSON: `{gkr_bytes, fields: {name: {offset, length}}}`.
+pub fn f1_field_metadata(f1: &verifier_evm::encoding::SingleTxCalldata) -> serde_json::Value {
+    let fields: serde_json::Map<String, serde_json::Value> = f1
+        .fields
+        .iter()
+        .map(|(name, (offset, length))| {
+            (
+                name.clone(),
+                serde_json::json!({ "offset": offset, "length": length }),
+            )
+        })
+        .collect();
+    let whir_rounds = (0..)
+        .take_while(|r| f1.fields.contains_key(&format!("whir_{r}_sumcheck")))
+        .count();
+    serde_json::json!({
+        "gkr_bytes": f1.gkr_bytes,
+        "bytes": f1.bytes.len(),
+        "whir_rounds": whir_rounds,
+        "fields": fields,
+    })
 }

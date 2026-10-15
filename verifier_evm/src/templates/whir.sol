@@ -67,6 +67,9 @@ contract WhirVerifier {
     uint256 constant COMMIT_PTR = 96; // recomputed committed state, marked at the end
     // GkrWhirRegistry address (test etches the deployed registry here).
     address constant __TEMPLATE_REGISTRY_ADDRESS   = 0x00000000000000000000000000000000caFe0001;
+    // #if F1
+    uint256 constant __TEMPLATE_F1_DIGEST_BYTES = 32; // Merkle digest bytes on the F1 wire
+    // #endif
     uint256 constant MARK_WHIR_SELECTOR = 0xbb716068; // mark_whir_verified(bytes32)
 
     // ── hand-placed memory ────────────────────────────────────────────────────
@@ -131,6 +134,32 @@ contract WhirVerifier {
             res := x
             for { let i := 0 } lt(i, k) { i := add(i, 1) } { res := mulmod(res, res, P) }
         }
+// #if F1
+        function f1_fe(cd, i) -> v {
+            let bit := mul(123, i)
+            v := and(shr(sub(133, and(bit, 7)), calldataload(add(cd, shr(3, bit)))), 0x7ffffffffffffffffffffffffffffff)
+            if iszero(lt(v, P)) { revert(0, 0) }
+        }
+        function f1_word(cd, bit) -> w {
+            let x := shr(sub(10, and(bit, 7)), calldataload(add(cd, shr(3, bit))))
+            let a := and(shr(123, x), 0x7ffffffffffffffffffffffffffffff)
+            let b := and(x, 0x7ffffffffffffffffffffffffffffff)
+            if or(iszero(lt(a, P)), iszero(lt(b, P))) { revert(0, 0) }
+            w := or(shl(128, a), b)
+        }
+        function f1_run_end(cd, n) -> next_cd {
+            let bits := mul(123, n)
+            next_cd := add(cd, shr(3, add(bits, 7)))
+            // All cursor advances are profile-derived; the final REG_CD equality rejects overruns.
+            let pad := and(sub(0, bits), 7)
+            if pad {
+                if and(byte(0, calldataload(sub(next_cd, 1))), sub(shl(pad, 1), 1)) { revert(0, 0) }
+            }
+        }
+        function f1_digest(cp) -> d {
+            // __F1_DIGEST_LOAD__
+        }
+// #endif
         function verify_pow(cp, pow_bits) -> next_cd {
             let nonce := shr(192, calldataload(cp))
             mstore(add(SEED_PTR, 32), shl(192, nonce))
@@ -292,8 +321,13 @@ contract WhirVerifier {
 
                 switch lt(pos, depth)
                 case 1 {
+// #if F1
+                    let sibling := f1_digest(cp)
+                    cp := add(cp, __TEMPLATE_F1_DIGEST_BYTES)
+// #else
                     let sibling := calldataload(cp)
                     cp := add(cp, 32)
+// #endif
                     switch bit
                     case 0 {
                         // current node is the left child
@@ -318,11 +352,19 @@ contract WhirVerifier {
         function batch_oracle(cp, cols, goff, vp, depth, cap_ptr, qidx, cb) -> next_cd {
             let wpc := shr(1, vp)
             let li := 0
+// #if F1
+            let bit := 0
+// #endif
             for { let c := 0 } lt(c, cols) { c := add(c, 1) } {
                 let gamma := mload(add(GAMMA_PTR, mul(add(goff, c), 32)))
                 for { let wj := 0 } lt(wj, wpc) { wj := add(wj, 1) } {
+// #if F1
+                    let w := f1_word(cp, bit)
+                    bit := add(bit, 246)
+// #else
                     let w := calldataload(cp)
                     cp := add(cp, 32)
+// #endif
                     mstore(add(LEAF_PTR, mul(li, 32)), w)
                     li := add(li, 1)
                     let s0 := add(FBUF_PTR, mul(mul(wj, 2), 32))
@@ -331,17 +373,33 @@ contract WhirVerifier {
                     mstore(s1, addmod(mload(s1), mulmod(gamma, and(w, MASK), P), P))
                 }
             }
+// #if F1
+            cp := f1_run_end(cp, mul(cols, vp))
+// #endif
             next_cd := merkle_path(keccak256(LEAF_PTR, mul(li, 32)), depth, cap_ptr, cp, qidx, cb)
         }
         function read_leaf(cp, vp, depth, cap_ptr, qidx, cb) -> next_cd {
             let words := shr(1, vp)
+// #if F1
+            let bit := 0
+// #endif
             for { let i := 0 } lt(i, words) { i := add(i, 1) } {
+// #if F1
+                let w := f1_word(cp, bit)
+                bit := add(bit, 246)
+// #else
                 let w := calldataload(cp)
+// #endif
                 mstore(add(LEAF_PTR, mul(i, 32)), w)
                 mstore(add(FBUF_PTR, mul(mul(i, 2), 32)), shr(128, w))
                 mstore(add(FBUF_PTR, mul(add(mul(i, 2), 1), 32)), and(w, MASK))
+// #if !F1
                 cp := add(cp, 32)
+// #endif
             }
+// #if F1
+            cp := f1_run_end(cp, vp)
+// #endif
             next_cd := merkle_path(keccak256(LEAF_PTR, mul(words, 32)), depth, cap_ptr, cp, qidx, cb)
         }
         // Reinterpret a 32-byte digest (8 big-endian u32 words) as the same 8
@@ -411,12 +469,20 @@ contract WhirVerifier {
             // read + absorb the next oracle's CAP (CAP*32 bytes)
             // keep BE digests for Merkle roots; absorb LE-word copies (commit_u32)
             for { let i := 0 } lt(i, CAP) { i := add(i, 1) } {
+// #if F1
+                let d := f1_digest(add(cp, mul(i, __TEMPLATE_F1_DIGEST_BYTES)))
+// #else
                 let d := calldataload(add(cp, mul(i, 32)))
+// #endif
                 mstore(add(NCAP_PTR, mul(i, 32)), d)
                 mstore(add(SEED_PTR, add(32, mul(i, 32))), bswap_digest(d))
             }
             mstore(SEED_PTR, keccak256(SEED_PTR, add(32, mul(CAP, 32))))
+// #if F1
+            cp := add(cp, mul(CAP, __TEMPLATE_F1_DIGEST_BYTES))
+// #else
             cp := add(cp, mul(CAP, 32))
+// #endif
             let ood_point := draw1()
             let ood_value := shr(128, calldataload(cp))
             // reject a non-canonical (>= P) ood_value: it is absorbed as raw bytes below,
@@ -441,6 +507,9 @@ contract WhirVerifier {
             copy_cap(QCAP_PTR, NCAP_PTR) // this round's intermediate cap is next round's query cap
         }
 
+// #if F1
+        // __F1_FINAL_HORNER__
+// #endif
         function do_final(fold, q, pow_bits, qib, vp, idx_mask, zi_off, rfin, cb) {
             // forge-lint: disable-next-line(incorrect-shift) — `shl(n, 1)` is `1 << n` (2^n), args are correct
             let nmono := shl(rfin, 1)
@@ -448,20 +517,40 @@ contract WhirVerifier {
             // absorb via the large FEVAL scratch: 32 + nmono*16 bytes would
             // overrun the SEED region (into z / pow) for the 2^8 tail
             mstore(FEVAL_PTR, mload(SEED_PTR))
+// #if F1
+            {
+            let bit := 0
+            for { let wj := 0 } lt(wj, shr(1, nmono)) { wj := add(wj, 1) } {
+                mstore(add(FEVAL_PTR, add(32, mul(wj, 32))), f1_word(cp, bit))
+                bit := add(bit, 246)
+            }
+            }
+// #else
             calldatacopy(add(FEVAL_PTR, 32), cp, mul(nmono, 16))
+// #endif
             mstore(SEED_PTR, keccak256(FEVAL_PTR, add(32, mul(nmono, 16))))
             for { let wj := 0 } lt(wj, shr(1, nmono)) { wj := add(wj, 1) } {
+// #if F1
+                let w := mload(add(FEVAL_PTR, add(32, mul(wj, 32))))
+// #else
                 let w := calldataload(add(cp, mul(wj, 32)))
+// #endif
                 let hi := shr(128, w)
                 let lo := and(w, MASK)
+// #if !F1
                 // reject non-canonical (>= P) monomials: they were absorbed as raw bytes above,
                 // so the transcript must bind to the reduced value
                 if iszero(lt(hi, P)) { revert(0, 0) }
                 if iszero(lt(lo, P)) { revert(0, 0) }
+// #endif
                 mstore(add(MONO_PTR, mul(mul(wj, 2), 32)), hi)
                 mstore(add(MONO_PTR, mul(add(mul(wj, 2), 1), 32)), lo)
             }
+// #if F1
+            cp := f1_run_end(cp, nmono)
+// #else
             cp := add(cp, mul(nmono, 16))
+// #endif
             cp := verify_pow(cp, pow_bits)
             draw_queries(q, qib)
             compute_hpo(fold, qib)
@@ -478,11 +567,15 @@ contract WhirVerifier {
                 case 1 { folded := fold_coset(fold, powmod(__TEMPLATE_WHIR_GEN_INV, qidx)) }
                 default { folded := fold_multilinear(fold) }
                 let qp := exp_pow2(base_root, fold)
+// #if F1
+                sink2(__F1_HORNER_NAME__(qp), folded)
+// #else
                 let ev := mload(add(MONO_PTR, mul(sub(nmono, 1), 32)))
                 for { let j := sub(nmono, 1) } gt(j, 0) { j := sub(j, 1) } {
                     ev := addmod(mulmod(ev, qp, P), mload(add(MONO_PTR, mul(sub(j, 1), 32))), P)
                 }
                 sink2(ev, folded)
+// #endif
             }
             mstore(REG_CD, cp)
 
@@ -504,6 +597,10 @@ contract WhirVerifier {
             let n := mload(REG_NUMPOW)
             for { let e := 0 } lt(e, n) { e := add(e, 1) } {
                 let b := add(POW_PTR, mul(e, 96))
+// #if F1
+                let weight := mulmod(mload(add(b, 32)), mload(add(b, 64)), P)
+                let ev := mulmod(__F1_HORNER_NAME__(mload(b)), weight, P)
+// #else
                 let s := mload(b)
                 let ev := mload(add(MONO_PTR, mul(sub(nmono, 1), 32)))
                 for { let j := sub(nmono, 1) } gt(j, 0) { j := sub(j, 1) } {
@@ -511,6 +608,7 @@ contract WhirVerifier {
                 }
                 ev := mulmod(ev, mload(add(b, 32)), P)
                 ev := mulmod(ev, mload(add(b, 64)), P)
+// #endif
                 expected := addmod(expected, ev, P)
             }
             sink2(expected, mload(REG_CLAIM))
@@ -572,7 +670,22 @@ contract WhirVerifier {
             // forge-lint: disable-next-line(incorrect-shift) — `shl(n, 1)` is `1 << n` (2^n), args are correct
             let idx_mask := sub(shl(qib, 1), 1)
 
+// #if F1
+            {
+            let scbase := mload(REG_CD)
+            mstore(REG_CD, f1_run_end(scbase, mul(2, fold)))
+            let bit := 0
+// #endif
             for { let s := 0 } lt(s, fold) { s := add(s, 1) } {
+// #if F1
+                let pair := f1_word(scbase, bit)
+                bit := add(bit, 246)
+                let c0 := shr(128, pair)
+                let c2 := and(pair, MASK)
+                let c1 := addmod(mload(REG_CLAIM), sub(P, addmod(addmod(c0, c0, P), c2, P)), P)
+                mstore(add(SEED_PTR, 32), or(shl(128, c0), c1))
+                mstore(add(SEED_PTR, 64), shl(128, c2))
+// #else
                 let cp := mload(REG_CD)
                 let w0 := calldataload(cp)
                 let c0 := shr(128, w0)
@@ -584,9 +697,12 @@ contract WhirVerifier {
                 if iszero(lt(c1, P)) { revert(0, 0) }
                 if iszero(lt(c2, P)) { revert(0, 0) }
                 calldatacopy(add(SEED_PTR, 32), cp, 48)
+// #endif
                 mstore(SEED_PTR, keccak256(SEED_PTR, 80))
                 let alpha := draw1()
+// #if !F1
                 mstore(REG_CD, add(cp, 48))
+// #endif
                 let p1 := addmod(c0, addmod(c1, c2, P), P)
                 sink2(addmod(c0, p1, P), mload(REG_CLAIM))
                 mstore(REG_CLAIM,
@@ -596,6 +712,9 @@ contract WhirVerifier {
                 fold_accumulator(alpha, mload(REG_NUMPOW), zi_off)
                 mstore(REG_ZIOFF, add(zi_off, 32))
             }
+// #if F1
+            }
+// #endif
 
             switch lt(r, sub(__TEMPLATE_WHIR_NUM_ROUNDS, 1))
             case 1 { do_internal(r, fold, q, pow_bits, qib, vp, idx_mask, cb) }
