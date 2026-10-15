@@ -710,7 +710,6 @@ mod test {
     const UNIFIED_CIRCUIT_TRACE_LEN_LOG2: usize = 23;
     /// The L1 feeder layers' unified circuit (`unified_reduced_machine_2_22`).
     const L1_FEEDER_UNIFIED_CIRCUIT_TRACE_LEN_LOG2: usize = 22;
-    const LARGE_FIELD_UNIFIED_CIRCUIT_TRACE_LEN_LOG2: usize = 22;
     /// The 2^21 L1 wrap circuit over the 512 KiB wrap ROM.
     const L1_WRAP_2P21_TRACE_LEN_LOG2: usize = 21;
 
@@ -896,35 +895,6 @@ mod test {
         serialize_to_file(
             &ssa_forms,
             "compiled_circuits/unified_reduced_machine_ssa_gkr.json",
-        );
-    }
-
-    #[test]
-    fn compile_unified_reduced_machine_into_gkr_large_field() {
-        skip_if_ci!();
-        use ::field::proth120::Proth120;
-
-        let artifact =
-            build_unified_artifact::<Proth120>(true, LARGE_FIELD_UNIFIED_CIRCUIT_TRACE_LEN_LOG2, 1);
-        serialize_to_file(
-            &artifact,
-            "compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
-        );
-    }
-
-    #[test]
-    fn compile_unified_reduced_machine_gkr_witness_graph_large_field() {
-        skip_if_ci!();
-        use crate::gkr_compiler::dump_ssa_witness_eval_form;
-        use ::field::proth120::Proth120;
-
-        let ssa_forms = dump_ssa_witness_eval_form::<Proth120>(
-            &|cs| unified_register_all_tables(cs, REGULAR_ROM),
-            &|cs| unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr(cs),
-        );
-        serialize_to_file(
-            &ssa_forms,
-            "compiled_circuits/unified_reduced_machine_ssa_gkr_proth120.json",
         );
     }
 
