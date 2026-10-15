@@ -89,11 +89,14 @@ theorem initPool_val (S : State) (i : Nat) (hi : i < 32) :
 
 theorem rel_init (S : State) : Rel (ctxOf S) initState S := by
   refine ⟨initPool_wf, rfl, fun r => ?_, fun w hw => by simp [initState] at hw, ?_⟩
-  · have hr : initState.reg r = ⟨r.toNat, r.toNat, 0⟩ := by
+  · have hr : initState.reg r = ⟨r.toNat, r.toNat, 0, if r.toNat = 0 then some 0 else none⟩ := by
       simp only [initState, SState.reg, List.getD_eq_getElem?_getD, List.getElem?_map, List.getElem?_range r.isLt]; rfl
     rw [hr]
-    refine ⟨⟨r.isLt, r.isLt, by simp⟩, ?_⟩
-    simp only [initState]; rw [initPool_val S _ r.isLt]; simp
+    refine ⟨⟨r.isLt, r.isLt, by simp, fun w hw => ?_⟩, ?_⟩
+    · split at hw
+      · rename_i h0; cases hw; simp only [initState, h0]; rfl
+      · cases hw
+    · simp only [initState]; rw [initPool_val S _ r.isLt]; simp
   · rfl
 
 theorem condsOK_init : CondsOK initState := fun x hx => by simp [initState] at hx

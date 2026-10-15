@@ -22,7 +22,7 @@ def memOf (p : Pool) : List SWrite → (Word → BitVec 8)
 
 /-- A register value is a valid id whose address form is right. -/
 def SReg.OK (p : Pool) (x : SReg) : Prop :=
-  x.val < p.len ∧ x.base < p.len ∧ p.val c x.val = p.val c x.base + x.off
+  x.val < p.len ∧ x.base < p.len ∧ p.val c x.val = p.val c x.base + x.off ∧ ∀ w, x.cst = some w → p.val c x.val = w
 
 /-- The concrete state `S` is what the symbolic state `σ` denotes. -/
 def Rel (σ : SState) (S : State) : Prop :=
@@ -49,7 +49,8 @@ theorem Ext.trans {p q r : Pool} (h1 : Ext c p q) (h2 : Ext c q r) : Ext c p r :
   ⟨h2.1, le_trans h1.2.1 h2.2.1, fun j hj => (h2.2.2 j (lt_of_lt_of_le hj h1.2.1)).trans (h1.2.2 j hj)⟩
 
 theorem SReg.OK.ext {p p' : Pool} {x : SReg} (he : Ext c p p') (h : x.OK c p) : x.OK c p' :=
-  ⟨lt_of_lt_of_le h.1 he.2.1, lt_of_lt_of_le h.2.1 he.2.1, by rw [he.2.2 _ h.1, he.2.2 _ h.2.1]; exact h.2.2⟩
+  ⟨lt_of_lt_of_le h.1 he.2.1, lt_of_lt_of_le h.2.1 he.2.1, by rw [he.2.2 _ h.1, he.2.2 _ h.2.1]; exact h.2.2.1,
+    fun w hw => by rw [he.2.2 _ h.1]; exact h.2.2.2 w hw⟩
 
 theorem memOf_ext {p p' : Pool} (he : Ext c p p') (ws : List SWrite)
     (hw : ∀ w ∈ ws, w.base < p.len ∧ w.src.OK c p) : memOf c p' ws = memOf c p ws := by
@@ -230,6 +231,18 @@ theorem step_reg {σ σ1 : SState} {S : State} (hrel : Rel c σ S) (hcok : Conds
 
 theorem eval_const (g : Nat → Word) (w : Word) : (Node.const w).eval c g = w := rfl
 
+/-- A step that sets `rd` to a folded constant. -/
+theorem step_cst {σ σ1 : SState} {S : State} (hrel : Rel c σ S) (hcok : CondsOK σ) (w : Word) (x : SReg)
+    (h : σ.cst w = some (σ1, x)) (rd : Reg) :
+    CondsOK (σ1.setReg rd x) ∧ Ext c σ.pool (σ1.setReg rd x).pool ∧
+      (∀ y ∈ σ.conds, y ∈ (σ1.setReg rd x).conds) ∧ Rel c (σ1.setReg rd x) (S.setReg rd w).nextInstr := by
+  simp only [SState.cst, bind, Option.bind, pure] at h
+  split at h
+  · cases h
+  · rename_i a ha; obtain ⟨σ2, v⟩ := a; cases h
+    obtain ⟨-, hv, hval, -⟩ := SState.add_spec c σ σ2 _ v hrel.1 ha
+    exact step_reg c hrel hcok _ v ha rd _ rfl ⟨hv, hv, by simp, fun w' hw' => by cases hw'; rw [hval]; rfl⟩
+
 /-- After adding a node, everything still holds. -/
 theorem add_rel {σ σ1 : SState} {S : State} (hrel : Rel c σ S) (hcok : CondsOK σ) (n : Node) (v : Nat)
     (hadd : σ.add n = some (σ1, v)) :
@@ -252,6 +265,29 @@ theorem holds_ext {p p' : Pool} (he : Ext c p p') (σ σ' : SState) (hp : σ.poo
   · rw [he.2.2 _ hx]
   · rw [he.2.2 _ hx.1, he.2.2 _ hx.2]
 
+@[simp] theorem SState.setReg_pool (σ : SState) (rd : Reg) (x : SReg) : (σ.setReg rd x).pool = σ.pool := by
+  unfold SState.setReg; split <;> rfl
+
+@[simp] theorem SState.setReg_conds (σ : SState) (rd : Reg) (x : SReg) : (σ.setReg rd x).conds = σ.conds := by
+  unfold SState.setReg; split <;> rfl
+
+/-- `rd ← a op w` by two new nodes (the constant, the operation). -/
+theorem step_two {σ σ1 σ2 : SState} {S : State} (hrel : Rel c σ S) (hcok : CondsOK σ) (w : Word) (o : Op) (a : Nat)
+    (ha : a < σ.pool.len) (ci v : Nat) (h1 : σ.add (.const w) = some (σ1, ci))
+    (h2 : σ1.add (.op o a ci) = some (σ2, v)) (rd : Reg) (x : SReg) (hx : x.val = v)
+    (hxok : v < σ2.pool.len → (∀ j < σ.pool.len, σ2.pool.val c j = σ.pool.val c j) →
+      σ2.pool.val c v = alu o (σ.pool.val c a) w → σ.pool.len ≤ σ2.pool.len → x.OK c σ2.pool) :
+    CondsOK (σ2.setReg rd x) ∧ Ext c σ.pool (σ2.setReg rd x).pool ∧ (∀ y ∈ σ.conds, y ∈ (σ2.setReg rd x).conds) ∧
+      Rel c (σ2.setReg rd x) (S.setReg rd (alu o (σ.pool.val c a) w)).nextInstr := by
+  obtain ⟨r1, k1, e1, c1, -, vc, -⟩ := add_rel c hrel hcok _ _ h1
+  obtain ⟨-, -, e2, -, hv, vv, -⟩ := add_rel c r1 k1 _ _ h2
+  have hev : (Node.op o a ci).eval c (σ1.pool.val c) = alu o (σ.pool.val c a) w := by
+    simp only [Node.eval]; rw [e1.2.2 _ ha, vc, eval_const]
+  have e12 := e1.trans c e2
+  obtain ⟨g1, g2, g3, g4⟩ := step_reg c r1 k1 _ v h2 rd x hx (hxok hv e12.2.2 (vv.trans hev) e12.2.1)
+  rw [hev] at g4
+  exact ⟨g1, e1.trans c g2, fun y hy => g3 y (c1 ▸ hy), g4⟩
+
 theorem symStep_sound (σ σ' : SState) (S : State) (i : Instr) (hrel : Rel c σ S) (hcok : CondsOK σ)
     (hstep : symStep σ i = some σ') :
     CondsOK σ' ∧ Ext c σ.pool σ'.pool ∧ (∀ x ∈ σ.conds, x ∈ σ'.conds) ∧
@@ -263,42 +299,71 @@ theorem symStep_sound (σ σ' : SState) (S : State) (i : Instr) (hrel : Rel c σ
     split at hstep
     · cases hstep
     · rename_i a ha; obtain ⟨σ1, v⟩ := a; cases hstep
-      obtain ⟨hv, -⟩ := (SState.add_spec c σ σ1 _ v hrel.1 ha).2
-      obtain ⟨h1, h2, h3, h4⟩ := step_reg c hrel hcok _ v ha rd ⟨v, v, 0⟩ rfl ⟨hv, hv, by simp⟩
-      exact ⟨h1, h2, h3, (S.setReg rd imm).nextInstr, rfl, by simpa [eval_const] using h4, fun _ => ⟨rfl, fun _ _ => rfl⟩⟩
+      obtain ⟨h1, h2, h3, h4⟩ := step_cst c hrel hcok _ _ ha rd
+      exact ⟨h1, h2, h3, (S.setReg rd imm).nextInstr, rfl, h4, fun _ => ⟨rfl, fun _ _ => rfl⟩⟩
   | opImm o rd rs1 imm =>
     simp only [symStep, bind, Option.bind, pure] at hstep
     split at hstep
-    · cases hstep
-    · rename_i a ha; obtain ⟨σ1, ci⟩ := a
-      simp only at hstep
+    · rename_i a0 ha0
       split at hstep
       · cases hstep
-      · rename_i b hb; obtain ⟨σ2, v⟩ := b; cases hstep
-        obtain ⟨r1, k1, e1, c1, -, vc, g1⟩ := add_rel c hrel hcok _ _ ha
-        obtain ⟨r2, k2, e2, c2, hv, vv, g2⟩ := add_rel c r1 k1 _ _ hb
-        have hrok : (σ.reg rs1).OK c σ2.pool := (hrel.2.2.1 rs1).1.ext c (e1.trans c e2)
-        have hval : σ2.pool.val c v = alu o (S.getReg rs1) imm := by
-          rw [vv]; simp only [Node.eval]
-          rw [e1.2.2 _ (hrel.2.2.1 rs1).1.1, ← (hrel.2.2.1 rs1).2, vc, eval_const]
-        have hxok : (addrForm o v (σ.reg rs1) imm).OK c σ2.pool := by
-          cases o <;> simp only [addrForm] <;> first | exact ⟨hv, hv, by simp⟩ | skip
-          refine ⟨hv, hrok.2.1, ?_⟩
-          rw [hval, (hrel.2.2.1 rs1).2]; simp only [alu]
-          rw [← e1.2.2 _ (hrel.2.2.1 rs1).1.1, ← e2.2.2 _ (lt_of_lt_of_le (hrel.2.2.1 rs1).1.1 e1.2.1),
-            hrok.2.2, BitVec.add_assoc]
-        obtain ⟨h1, h2, h3, h4⟩ := step_reg c r1 k1 _ v hb rd _ (by cases o <;> rfl) hxok
-        refine ⟨h1, e1.trans c h2, fun y hy => h3 y (c1 ▸ hy), (S.setReg rd (alu o (S.getReg rs1) imm)).nextInstr,
-          rfl, ?_, fun _ => ⟨rfl, fun _ _ => rfl⟩⟩
-        convert h4 using 2
-        rw [← vv, hval]
+      · rename_i a ha; obtain ⟨σ1, x⟩ := a; cases hstep
+        obtain ⟨h1, h2, h3, h4⟩ := step_cst c hrel hcok _ _ ha rd
+        refine ⟨h1, h2, h3, (S.setReg rd (alu o (S.getReg rs1) imm)).nextInstr, rfl, ?_, fun _ => ⟨rfl, fun _ _ => rfl⟩⟩
+        rw [(hrel.2.2.1 rs1).2, (hrel.2.2.1 rs1).1.2.2.2 a0 ha0]; exact h4
+    have hr := hrel.2.2.1 rs1
+    split at hstep
+    · split at hstep
+      · rename_i hk; cases hstep
+        have hok : (⟨(σ.reg rs1).base, (σ.reg rs1).base, 0, none⟩ : SReg).OK c σ.pool :=
+          ⟨hr.1.2.1, hr.1.2.1, by simp, by simp⟩
+        refine ⟨fun y hy => by rw [SState.setReg_pool]; exact hcok y (by simpa using hy),
+          by rw [SState.setReg_pool]; exact Ext.refl c _ hrel.1, fun y hy => by simpa using hy,
+          (S.setReg rd (alu .add (S.getReg rs1) imm)).nextInstr, rfl, ?_, fun _ => ⟨rfl, fun _ _ => rfl⟩⟩
+        have hv : alu .add (S.getReg rs1) imm = σ.pool.val c (σ.reg rs1).base := by
+          rw [hr.2, hr.1.2.2.1]; simp only [alu]; rw [BitVec.add_assoc, hk]; simp
+        rw [hv]; exact hrel.setReg c rd _ hok
+      · split at hstep
+        · cases hstep
+        · rename_i a1 h1; obtain ⟨σ1, ci⟩ := a1; simp only at hstep
+          split at hstep
+          · cases hstep
+          · rename_i a2 h2; obtain ⟨σ2, v⟩ := a2; cases hstep
+            obtain ⟨g1, g2, g3, g4⟩ := step_two c hrel hcok _ .add _ hr.1.2.1 ci v h1 h2 rd
+              ⟨v, (σ.reg rs1).base, (σ.reg rs1).off + imm, none⟩ rfl
+              (fun hv hext hval hle => ⟨hv, lt_of_lt_of_le hr.1.2.1 hle, by rw [hval, hext _ hr.1.2.1]; rfl, by simp⟩)
+            refine ⟨g1, g2, g3, (S.setReg rd (alu .add (S.getReg rs1) imm)).nextInstr, rfl, ?_,
+              fun _ => ⟨rfl, fun _ _ => rfl⟩⟩
+            have hv : alu .add (S.getReg rs1) imm = alu .add (σ.pool.val c (σ.reg rs1).base) ((σ.reg rs1).off + imm) := by
+              rw [hr.2, hr.1.2.2.1]; simp only [alu]; rw [BitVec.add_assoc]
+            rw [hv]; exact g4
+    · split at hstep
+      · cases hstep
+      · rename_i a1 h1; obtain ⟨σ1, ci⟩ := a1; simp only at hstep
+        split at hstep
+        · cases hstep
+        · rename_i a2 h2; obtain ⟨σ2, v⟩ := a2; cases hstep
+          obtain ⟨g1, g2, g3, g4⟩ := step_two c hrel hcok _ _ _ hr.1.1 ci v h1 h2 rd ⟨v, v, 0, none⟩ rfl
+            (fun hv _ _ _ => ⟨hv, hv, by simp, by simp⟩)
+          refine ⟨g1, g2, g3, (S.setReg rd (alu _ (S.getReg rs1) imm)).nextInstr, rfl, ?_, fun _ => ⟨rfl, fun _ _ => rfl⟩⟩
+          rw [hr.2]; exact g4
   | op o rd rs1 rs2 =>
     simp only [symStep, bind, Option.bind, pure] at hstep
+    split at hstep
+    · rename_i a0 b0 ha0 hb0
+      split at hstep
+      · cases hstep
+      · rename_i a ha; obtain ⟨σ1, x⟩ := a; cases hstep
+        obtain ⟨h1, h2, h3, h4⟩ := step_cst c hrel hcok _ _ ha rd
+        refine ⟨h1, h2, h3, (S.setReg rd (alu o (S.getReg rs1) (S.getReg rs2))).nextInstr, rfl, ?_,
+          fun _ => ⟨rfl, fun _ _ => rfl⟩⟩
+        rw [(hrel.2.2.1 rs1).2, (hrel.2.2.1 rs2).2, (hrel.2.2.1 rs1).1.2.2.2 a0 ha0, (hrel.2.2.1 rs2).1.2.2.2 b0 hb0]
+        exact h4
     split at hstep
     · cases hstep
     · rename_i a ha; obtain ⟨σ1, v⟩ := a; cases hstep
       obtain ⟨-, -, -, -, hv, vv, -⟩ := add_rel c hrel hcok _ _ ha
-      obtain ⟨h1, h2, h3, h4⟩ := step_reg c hrel hcok _ v ha rd ⟨v, v, 0⟩ rfl ⟨hv, hv, by simp⟩
+      obtain ⟨h1, h2, h3, h4⟩ := step_reg c hrel hcok _ v ha rd ⟨v, v, 0, none⟩ rfl ⟨hv, hv, by simp, by simp⟩
       refine ⟨h1, h2, h3, (S.setReg rd (alu o (S.getReg rs1) (S.getReg rs2))).nextInstr, rfl, ?_,
         fun _ => ⟨rfl, fun _ _ => rfl⟩⟩
       rw [opNode_eval, ← (hrel.2.2.1 rs1).2, ← (hrel.2.2.1 rs2).2] at h4; exact h4
@@ -311,18 +376,20 @@ theorem symStep_sound (σ σ' : SState) (S : State) (i : Instr) (hrel : Rel c σ
       · cases hstep
       · rename_i a ha; obtain ⟨σ1, v⟩ := a; cases hstep
         obtain ⟨-, -, -, -, hv, vv, -⟩ := add_rel c hrel hcok _ _ ha
-        obtain ⟨h1, h2, h3, h4⟩ := step_reg c hrel hcok _ v ha rd ⟨v, v, 0⟩ rfl ⟨hv, hv, by simp⟩
+        obtain ⟨h1, h2, h3, h4⟩ := step_reg c hrel hcok _ v ha rd ⟨v, v, 0, none⟩ rfl ⟨hv, hv, by simp, by simp⟩
         refine ⟨h1, h2, h3, (S.setReg rd (mopVal o (S.getReg rs1) (S.getReg rs2) (S.getReg rd))).nextInstr, rfl, ?_,
           fun _ => ⟨by simp only [exec, hrd, ite_false], fun _ _ => rfl⟩⟩
         simp only [Node.eval] at h4
-        rw [← (hrel.2.2.1 rs1).2, ← (hrel.2.2.1 rs2).2, ← (hrel.2.2.1 rd).2] at h4; exact h4
+        rw [← (hrel.2.2.1 rs1).2, ← (hrel.2.2.1 rs2).2] at h4
+        convert h4 using 3
+        cases o <;> simp [mopUsesRd, mopVal, ← (hrel.2.2.1 rd).2]
   | store n rs2 rs1 off =>
     simp only [symStep, pure] at hstep
     cases hstep
     obtain ⟨hw, hl, hr, hws, hm⟩ := hrel
     have hrok := (hr rs1).1
     have haddr : S.getReg rs1 + off = σ.pool.val c (σ.reg rs1).base + ((σ.reg rs1).off + off) := by
-      rw [(hr rs1).2, hrok.2.2, BitVec.add_assoc]
+      rw [(hr rs1).2, hrok.2.2.1, BitVec.add_assoc]
     refine ⟨fun x hx j hj => ?_, Ext.refl c _ hw, fun x hx => by simp [hx],
       (S.store (S.getReg rs1 + off) (S.getReg rs2) n).nextInstr, by simp [State.nextInstr, State.store], ?_, fun hh => ?_⟩
     · simp only [List.mem_cons] at hx
@@ -353,7 +420,7 @@ theorem symStep_sound (σ σ' : SState) (S : State) (i : Instr) (hrel : Rel c σ
     · rename_i hrd
       have hrok := (hrel.2.2.1 rs1).1
       have haddr : S.getReg rs1 + off = σ.pool.val c (σ.reg rs1).base + ((σ.reg rs1).off + off) := by
-        rw [(hrel.2.2.1 rs1).2, hrok.2.2, BitVec.add_assoc]
+        rw [(hrel.2.2.1 rs1).2, hrok.2.2.1, BitVec.add_assoc]
       split at hstep
       · cases hstep
       · rename_i res hres
@@ -395,10 +462,10 @@ theorem symStep_sound (σ σ' : SState) (S : State) (i : Instr) (hrel : Rel c σ
           · cases hstep
           · rename_i a ha; obtain ⟨σ2, v⟩ := a; cases hstep
             obtain ⟨r2, k2, e2, c2, hv, vv, g2'⟩ := add_rel c hrel hcok _ _ ha
-            have hp : (σ2.setReg rd ⟨v, v, 0⟩).pool = σ2.pool := by simp only [SState.setReg]; split <;> rfl
+            have hp : (σ2.setReg rd ⟨v, v, 0, none⟩).pool = σ2.pool := by simp only [SState.setReg]; split <;> rfl
             refine ⟨fun y hy j hj => by rw [hp]; exact lt_of_lt_of_le (newok y hy j hj) e2.2.1,
               by rw [hp]; exact e2, hold, (S.setReg rd (σ2.pool.val c v)).nextInstr, rfl,
-              r2.setReg c rd ⟨v, v, 0⟩ ⟨hv, hv, by simp⟩, fun hh => ?_⟩
+              r2.setReg c rd ⟨v, v, 0, none⟩ ⟨hv, hv, by simp, by simp⟩, fun hh => ?_⟩
             have hh' : ∀ y ∈ cs', y.Holds c σ := fun y hy =>
               (holds_ext c e2 σ _ rfl hp y (newok y hy)).mp (hh y hy)
             have hread := g3 hh'
