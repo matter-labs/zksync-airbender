@@ -2529,10 +2529,13 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
             let modulus := mload(P_PTR) // hoisted: DUP per use instead of re-mload every round
             // #if F1
             // E1 (see sumcheck_rounds): (b, c) in, c0..c3 rebuilt and absorbed, claim = K, eq_scale = 1
+            let bit := mload(ptr)
             for {{ let i := 0 }} lt(i, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS) {{ i := add(i, 1) }} {{
-                let w0 := calldataload(ptr)
-                let b := shr(128, w0)
-                let c := and(w0, MASK)
+                let x := shr(sub(10, and(bit, 7)), f1_cd(shr(3, bit)))
+                bit := add(bit, 246)
+                let b := and(shr(123, x), 0x7ffffffffffffffffffffffffffffff)
+                let c := and(x, 0x7ffffffffffffffffffffffffffffff)
+                if iszero(and(lt(b, modulus), lt(c, modulus))) {{ revert(0, 0) }}
                 let z := mload(add(POINT_PTR(), mul(i, 32)))
                 let a := addmod(claim, sub(modulus, mulmod(z, add(b, c), modulus)), modulus)
                 let t := addmod(1, sub(modulus, z), modulus)
@@ -2643,7 +2646,11 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
         // at absolute calldata `byteoff`). These are the RAM-set base chunk indices absorbed into
         // Fiat-Shamir, so a mismatching value breaks the transcript — safe to read from calldata.
         function gkr_inits_teardowns_topbits(byteoff) -> v {{
+            // #if F1
+            let w := calldataload(add(F1_V0_PTR(), byteoff))
+            // #else
             let w := calldataload(byteoff)
+            // #endif
             v := add(add(byte(0, w), shl(8, byte(1, w))), add(shl(16, byte(2, w)), shl(24, byte(3, w))))
         }}
 

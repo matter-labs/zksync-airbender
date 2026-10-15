@@ -166,7 +166,11 @@ contract GKRVerifier {
 
         // Read one little-endian u32 from the transcript preimage (absolute calldata byteoff).
         function preimage_u32(byteoff) -> v {
+            // #if F1
+            let w := calldataload(add(F1_V0_PTR(), byteoff))
+            // #else
             let w := calldataload(byteoff)
+            // #endif
             v := add(add(byte(0, w), shl(8, byte(1, w))), add(shl(16, byte(2, w)), shl(24, byte(3, w))))
         }
 
@@ -416,11 +420,15 @@ contract GKRVerifier {
             // E1: the round slot holds (b, c) of u = a + bX + cX² with p = e_z·u,
             // e_z(X) = (1 − z) + (2z − 1)X. claim tracks K = u_prev(r_prev); a = K − z(b + c) makes
             // p(0) + p(1) = K, c0..c3 are rebuilt and absorbed as v0, and the returned eq_scale = 1
-            // turns the layer's end check into g == K.
+            // turns the layer's end check into g == K. The (b, c) pairs are read from the F1 calldata
+            // run whose bit offset f1_decode left in the first round slot.
+            let bit := mload(ptr)
             for { let i := 0 } lt(i, total_rounds) { i := add(i, 1) } {
-                let w0 := calldataload(ptr)
-                let b := shr(128, w0)
-                let c := and(w0, MASK)
+                let x := shr(sub(10, and(bit, 7)), f1_cd(shr(3, bit)))
+                bit := add(bit, 246)
+                let b := and(shr(123, x), 0x7ffffffffffffffffffffffffffffff)
+                let c := and(x, 0x7ffffffffffffffffffffffffffffff)
+                if iszero(and(lt(b, modulus), lt(c, modulus))) { revert(0, 0) }
                 let z := mload(add(POINT_PTR(), mul(i, 32)))
                 let a := addmod(claim, sub(modulus, mulmod(z, add(b, c), modulus)), modulus)
                 let t := addmod(1, sub(modulus, z), modulus)
@@ -593,7 +601,11 @@ contract GKRVerifier {
         // want BE u32 digests, so each 4-byte word is byte-reversed.
         function write_cap_be(wpos, cdpos, count) {
             for { let j := 0 } lt(j, count) { j := add(j, 1) } {
+                // #if F1
+                let le := shr(224, calldataload(add(F1_V0_PTR(), add(cdpos, mul(4, j)))))
+                // #else
                 let le := shr(224, calldataload(add(cdpos, mul(4, j))))
+                // #endif
                 let be := or(or(shl(24, and(le, 0xff)), shl(16, and(shr(8, le), 0xff))),
                              or(shl(8, and(shr(16, le), 0xff)), shr(24, le)))
                 mstore(add(wpos, mul(4, j)), shl(224, be))
@@ -737,9 +749,12 @@ contract GKRVerifier {
             mstore(GKR_INIT_GAS_PTR(), gas())
             mstore(SEED_PTR(), 0) // SEED Transcript, FINE as long as we don't draw without absorb!
             // #if F1
+            // the stream cursor is a memory address inside the v0 image
             f1_decode()
-            // #endif
+            ptr := transcript_init(F1_V0_PTR())
+            // #else
             ptr := transcript_init(0)
+            // #endif
             output_evals_ptr := ptr // base of the 10 GKR output columns (for the lookup-identity check)
             ptr, claim,
             alpha := gkr_init(ptr)

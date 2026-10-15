@@ -272,7 +272,21 @@ pub fn generate_f1_verifiers(
         setup_cap,
         circuit.memory_layout.teardown_sets.len(),
     );
-    let gkr = f1::calldata_to_v0_memory(&single_tx_gkr(&out.gkr_sol), decoder.v0_bytes);
+    // the single-tx register copies read the preimage at absolute offsets
+    let mut gkr = single_tx_gkr(&out.gkr_sol);
+    for reg in [10, 18] {
+        let at = format!("), mul(add({reg}, i), 12), 4)");
+        assert_eq!(
+            gkr.matches(&at).count(),
+            1,
+            "single-tx register copy x{reg}"
+        );
+        gkr = gkr.replace(
+            &at,
+            &format!("), add({}, mul(add({reg}, i), 12)), 4)", f1::V0_PTR),
+        );
+    }
+    let gkr = f1::calldata_to_v0_memory(&gkr, decoder.v0_bytes);
     assert_eq!(gkr.matches("__F1_QTABLE_BYTES__").count(), 1);
     let gkr = gkr.replace(
         "__F1_QTABLE_BYTES__",

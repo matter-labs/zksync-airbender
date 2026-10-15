@@ -1,6 +1,6 @@
-//! F1 GKR verifier pieces: the generated calldata decoder (the only calldata reader of the
-//! F1 GKR verifier), which writes the v0 GKR calldata image into memory, and the rewrite of
-//! every other calldata access into a read of that image.
+//! F1 GKR verifier pieces: the generated calldata decoder, which writes the v0 GKR calldata
+//! image into memory (the E1 round pairs stay in calldata, read by the round functions through
+//! `f1_cd`), and the rewrite of every other calldata access into a read of that image.
 
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::Proth120;
@@ -21,8 +21,10 @@ pub(crate) struct GkrDecoder {
     pub v0_bytes: usize,
 }
 
-/// `calldataload(x)` → `mload(add(V0, x))`, `calldatacopy(d, x, n)` → `mcopy(d, add(V0, x), n)`,
-/// `calldatasize()` → the v0 length. Panics on any other calldata opcode.
+/// `calldataload(x)` → `mload(x)`, `calldatacopy(d, x, n)` → `mcopy(d, x, n)`, `calldatasize()` →
+/// the end of the v0 image: the F1 verifier's stream cursor starts at [`V0_PTR`], and the few
+/// absolute-offset readers add [`V0_PTR`] themselves (template `#if F1` branches). Panics on any
+/// other calldata opcode.
 pub(crate) fn calldata_to_v0_memory(src: &str, v0_bytes: usize) -> String {
     fn close(src: &str, open: usize) -> usize {
         let mut depth = 0usize;
@@ -65,7 +67,7 @@ pub(crate) fn calldata_to_v0_memory(src: &str, v0_bytes: usize) -> String {
             out.push_str("calldata");
             rest = &tail["calldata".len()..];
         } else if let Some(after) = tail.strip_prefix("calldatasize()") {
-            out.push_str(&v0_bytes.to_string());
+            out.push_str(&format!("add({V0_PTR}, {v0_bytes})"));
             rest = after;
         } else if let Some(op) = ["calldataload", "calldatacopy"]
             .into_iter()
@@ -75,7 +77,7 @@ pub(crate) fn calldata_to_v0_memory(src: &str, v0_bytes: usize) -> String {
             let end = close(tail, open);
             let args = calldata_to_v0_memory(&tail[open + 1..end], v0_bytes);
             if op == "calldataload" {
-                out.push_str(&format!("mload(add({V0_PTR}, {}))", args.trim()));
+                out.push_str(&format!("mload({})", args.trim()));
             } else {
                 let commas = top_level_commas(&args);
                 assert_eq!(commas.len(), 2, "calldatacopy takes three arguments");
@@ -85,7 +87,7 @@ pub(crate) fn calldata_to_v0_memory(src: &str, v0_bytes: usize) -> String {
                     &args[commas[1] + 1..],
                 );
                 out.push_str(&format!(
-                    "mcopy({}, add({V0_PTR}, {}), {})",
+                    "mcopy({}, {}, {})",
                     dst.trim(),
                     off.trim(),
                     len.trim()
@@ -117,9 +119,11 @@ fn le_words_literal(d: &[u32; 8]) -> String {
     )
 }
 
-/// The decoder for `circuit` under `params`: `f1_decode()` reads the whole F1 GKR section,
-/// checks every run (`v < P`, zero padding) and the section length, and writes the v0 GKR
-/// calldata image at [`V0_PTR`].
+/// The decoder for `circuit` under `params`: `f1_decode()` checks the section length and every
+/// run's zero padding and writes the v0 GKR calldata image at [`V0_PTR`]: the preimage, the
+/// nonces and every run's lanes; an E1 run leaves only its bit offset in its first round slot.
+/// Lanes are range-checked where they are read: the image lanes by the v0 code, the E1 pairs by
+/// the round functions.
 pub(crate) fn gkr_decoder(
     circuit: &GKRCircuitArtifact<Proth120>,
     params: &FormatParams,
@@ -177,15 +181,15 @@ pub(crate) fn gkr_decoder(
         "            let cd := {preimage_f1}
             let v0 := {preimage_v0}
             calldatacopy(add({V0_PTR}, v0), cd, 8) // external PoW nonce
-            cd, v0 := f1_seq(add(cd, 8), add(v0, 8), {outputs}, 32)
+            cd, v0 := f1_seq(add(cd, 8), add(v0, 8), {outputs})
             for {{ let k := {e} }} lt(k, {t}) {{ k := add(k, 1) }} {{
-                cd, v0 := f1_seq(cd, v0, mul(2, k), 64)
-                cd, v0 := f1_seq(cd, v0, {lines}, 32)
+                cd, v0 := f1_rounds(cd, v0, k)
+                cd, v0 := f1_seq(cd, v0, {lines})
             }}
             // circuit layers, top first; at-point eval counts 16 bits each
             for {{ let l := 0 }} lt(l, {layers}) {{ l := add(l, 1) }} {{
-                cd, v0 := f1_seq(cd, v0, {rounds2}, 64)
-                cd, v0 := f1_seq(cd, v0, and(shr(mul(16, l), 0x{widths_word}), 0xffff), 32)
+                cd, v0 := f1_rounds(cd, v0, {t})
+                cd, v0 := f1_seq(cd, v0, and(shr(mul(16, l), 0x{widths_word}), 0xffff))
             }}
             calldatacopy(add({V0_PTR}, v0), cd, 8) // WHIR batching PoW nonce
             if iszero(and(eq(add(cd, 8), {f1}), eq(add(v0, 8), {v0}))) {{ revert(0, 0) }}
@@ -193,7 +197,6 @@ pub(crate) fn gkr_decoder(
         outputs = GKR_OUTPUTS << e,
         lines = 2 * GKR_OUTPUTS,
         layers = widths.len(),
-        rounds2 = 2 * t,
     );
 
     let setup_cap_stores: String = setup_cap
@@ -221,34 +224,46 @@ pub(crate) fn gkr_decoder(
         "
         // ── F1 decoder: the only calldata reader. Writes the v0 GKR calldata image at
         // F1_V0_PTR(); the verifier below reads that image at v0 offsets.
-        // FE-run(n) at cd: element j = bits [123j, 123j + 123) MSB-first, canonical (< P), the
-        // pad bits of the last byte zero. Elements 2i, 2i + 1 go to the two lanes of the word at
-        // dst + i·pair_stride; both lie in the word loaded at byte bit >> 3 (bit & 7 ≤ 7, 7 + 246 ≤ 256).
-        function f1_run(cd, n, dst, pair_stride) {{
-            let Pm := mload(P_PTR)
+        // FE-run(n) at cd: element j = bits [123j, 123j + 123) MSB-first, the pad bits of the last
+        // byte zero. Elements 2i, 2i + 1 lie in the word loaded at byte bit >> 3 (bit & 7 ≤ 7,
+        // 7 + 246 ≤ 256) and go to the two BE16 lanes at dst + 32i. No range check here: the
+        // verifier checks every lane of these runs < P where it reads it (output evaluations, LSB
+        // lines, at-point evaluations).
+        function f1_run(cd, n, dst) {{
             let bit := 0
             for {{ let end := mul(246, shr(1, n)) }} lt(bit, end) {{ bit := add(bit, 246) }} {{
                 let x := shr(sub(10, and(bit, 7)), calldataload(add(cd, shr(3, bit))))
-                let a := and(shr(123, x), 0x7ffffffffffffffffffffffffffffff)
-                let b := and(x, 0x7ffffffffffffffffffffffffffffff)
-                if iszero(and(lt(a, Pm), lt(b, Pm))) {{ revert(0, 0) }}
-                mstore(dst, or(shl(128, a), b))
-                dst := add(dst, pair_stride)
+                mstore(dst, or(shl(128, and(shr(123, x), 0x7ffffffffffffffffffffffffffffff)), and(x, 0x7ffffffffffffffffffffffffffffff)))
+                dst := add(dst, 32)
             }}
             if and(n, 1) {{
-                let a := and(shr(sub(133, and(bit, 7)), calldataload(add(cd, shr(3, bit)))), 0x7ffffffffffffffffffffffffffffff)
-                if iszero(lt(a, Pm)) {{ revert(0, 0) }}
-                mstore(dst, shl(128, a))
+                mstore(dst, shl(128, and(shr(sub(133, and(bit, 7)), calldataload(add(cd, shr(3, bit)))), 0x7ffffffffffffffffffffffffffffff)))
                 bit := add(bit, 123)
             }}
-            let pad := and(sub(0, bit), 7)
-            if and(byte(0, calldataload(add(cd, shr(3, sub(add(bit, pad), 1))))), sub(shl(pad, 1), 1)) {{ revert(0, 0) }}
+            f1_pad(cd, bit)
+        }}
+        // The pad bits after `bits` run bits at cd must be zero.
+        function f1_pad(cd, bits) {{
+            let pad := and(sub(0, bits), 7)
+            if and(byte(0, calldataload(add(cd, shr(3, sub(add(bits, pad), 1))))), sub(shl(pad, 1), 1)) {{ revert(0, 0) }}
         }}
         // f1_run over the run at (cd, v0): the next F1 and v0 offsets.
-        function f1_seq(cd, v0, n, pair_stride) -> next_cd, next_v0 {{
-            f1_run(cd, n, add({V0_PTR}, v0), pair_stride)
+        function f1_seq(cd, v0, n) -> next_cd, next_v0 {{
+            f1_run(cd, n, add({V0_PTR}, v0))
             next_cd := add(cd, shr(3, add(mul(123, n), 7)))
-            next_v0 := add(v0, add(mul(shr(1, n), pair_stride), shl(4, and(n, 1))))
+            next_v0 := add(v0, shl(4, n))
+        }}
+        // E1 run of k (b, c) pairs: the round functions read the pairs from calldata (f1_cd) and
+        // range-check them; the image slot of round 0 holds the run's bit offset.
+        function f1_rounds(cd, v0, k) -> next_cd, next_v0 {{
+            mstore(add({V0_PTR}, v0), shl(3, cd))
+            let bits := mul(246, k)
+            f1_pad(cd, bits)
+            next_cd := add(cd, shr(3, add(bits, 7)))
+            next_v0 := add(v0, shl(6, k))
+        }}
+        function f1_cd(off) -> w {{
+            w := calldataload(off)
         }}
         // A 19-bit limb as the 4 little-endian bytes of its u32, left-aligned.
         function f1_le19(x) -> w {{

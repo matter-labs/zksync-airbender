@@ -97,7 +97,8 @@ omitted value is recomputed, so the verifiers absorb the v0 bytes unchanged.
 - `single_tx/f1/{gkr,whir}` are the F1 verifiers; `single_tx/f1/gkr_negative`
   (another final PC) and `single_tx/f1/gkr_wrong_setup_cap` (another pinned
   setup cap) are test-only controls. The F1 GKR verifier decodes its calldata
-  once into a memory image of the v0 GKR calldata and reads that image.
+  once into a memory image of the v0 GKR calldata and reads that image; the
+  round functions read their `(b, c)` pairs from calldata directly.
 - `single_tx/instrumented/{gkr_v0,whir_v0,gkr_f1,whir_f1}` log every keccak256
   result; `F1Oracle.t.sol` requires equal logs, GKR results, WHIR claim and
   commitment for v0 and F1 on the same proof. `F1SingleTx.t.sol` runs the F1
