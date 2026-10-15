@@ -11,10 +11,10 @@ structure Geometry where
   positive : 0 < words
   extent : slots * (4 * words) ≤ 2 ^ 32
 
-/-- Temporary assumption for the open AIH-334 finding: the inspected EVM path
-    does not establish this distinctness. This is not an implementation fix.
-    External statement validation selects distinct windows. Strict ordering or
-    a checked production constant may establish this field; sparse windows and
+/-- Explicit logical interface for AIH-334 window validation. The EVM source
+    check is implemented and tested; its formal correspondence to this record
+    remains external. External statement validation selects distinct windows.
+    Strict ordering or a checked production constant may establish this field; sparse windows and
     reversed distinct windows have the same memory-uniqueness meaning. -/
 structure Selection (geometry : Geometry) where
   indices : List (Fin geometry.slots)

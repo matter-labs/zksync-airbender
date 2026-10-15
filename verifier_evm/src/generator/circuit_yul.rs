@@ -2761,6 +2761,17 @@ pub fn emit_circuit_yul_with_stats(
             next_acc := pointcheck_update(acc, alpha, gate)
         }}
     ");
+    yul_println!(
+        "{}",
+        super::initialization::validation_yul(
+            circuit.trace_len,
+            circuit
+                .memory_layout
+                .inits_and_teardowns_word_bits
+                .expect("initialization word bits"),
+            circuit.memory_layout.teardown_sets.len(),
+        )
+    );
     let _ = DEBUG_ENABLE_DUMMY_CHECKS;
     let out = std::mem::take(&mut *yul_main_output().lock().unwrap());
     assert!(

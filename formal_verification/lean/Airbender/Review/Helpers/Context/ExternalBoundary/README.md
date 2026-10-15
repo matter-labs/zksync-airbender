@@ -1,14 +1,15 @@
 # Temporary contracts for open findings
 
-These contracts support conditional proofs while keeping their underlying
-[findings](../../../../../FINDINGS.md#linear-and-open-pr-review--15-october-2026)
-open. They are not proved consequences of current native/verifier acceptance,
+These contracts support conditional proofs. Their individual
+[finding statuses](../../../../../FINDINGS.md#linear-and-open-pr-review--15-october-2026)
+distinguish open defects from validated source fixes with unproved formal bindings.
+They are not proved consequences of current native/verifier acceptance,
 implemented fixes, or a certificate for the full custom CSR. Existing acceptance
 definitions and counterexamples retain their original scope.
 
 | Contract | Conditional consequence | Finding and missing enforcement |
 | --- | --- | --- |
-| [Initialization](Initialization.lean) | Typed window geometry and distinct selected indices give distinct aligned physical cells, including all GPRs. | AIH-334: the EVM path lacks distinctness validation. Geometry comes from the target layout; no copied fixed ceiling, contiguous-window requirement or assumed public memory values. |
+| [Initialization](Initialization.lean) | Typed window geometry and distinct selected indices give distinct aligned physical cells, including all GPRs. | AIH-334's EVM validation is implemented and tested; formal correspondence remains external. Geometry comes from the target layout; no copied fixed ceiling, contiguous-window requirement or assumed public memory values. |
 | [Decoder](Decoder.lean) | Committed real rows plus unreachable filler and exact active query binding imply the existing logical public decoder membership. | AIH-336 / F09: current zero filler is queryable. This contract describes a corrected setup, including agreement of all cached/uncached consumers; none is derived from the current generator. |
 | [Requests](Requests.lean) | A full occurrence ledger plus the existing request binding gives every worker a caller at its native slot, and excludes the zero-clock surplus. | AIH-339 / F03: native cancelling tokens do not supply this ledger. No clock-positivity premise or worker result is added. |
 | [Bigint control](BigintABI.lean) | Full x12 binding to one opcode plus carry derives all native control bits and selects the corresponding branch of the existing arithmetic proof. | F02: native acceptance admits controls 0/65537. This is temporary control validation, not pointer validity, whole-call execution or a fix. Carry uses bit six; COPY uses bit seven. |
