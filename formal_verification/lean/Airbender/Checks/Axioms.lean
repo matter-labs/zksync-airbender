@@ -2719,3 +2719,23 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Caller.issuedHashWorkers
 #print axioms Airbender.UnifiedReduced.Caller.IssuedHashSegmentation
 #print axioms Airbender.UnifiedReduced.Caller.SegmentedHashSequenceResult
+
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.native_caller_cycles_at
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.ordinary_cycle_context_at
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.mixed_arithmetic_cycle_at
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.mixed_binary_cycle_at
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.mixed_comparison_cycle_at
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.mixed_branch_cycle_at
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.mixed_jump_cycle_at
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.mixed_custom_cycle_at
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.mixed_ram_cycle_at
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.ordinary_cycle_at
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.mixed_cycle_effects_at
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.mixed_cycle_effects
+#print axioms Airbender.UnifiedReduced.Caller.mixed_cycle_soundness
+#print axioms Tests.DelegationZeroInvocation.unissued_hash_mixed_cycles
+#print axioms Tests.UnifiedDelegation.copy_then_ram_mixed_cycles
+#print axioms Tests.UnifiedDelegation.invalid_bigint_mixed_cycles
+#print axioms Airbender.UnifiedReduced.Caller.RetirementProfile
+#print axioms Airbender.UnifiedReduced.Caller.OrdinaryCycle
+#print axioms Airbender.UnifiedReduced.Caller.MixedCycleEffects

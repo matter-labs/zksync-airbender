@@ -28,19 +28,20 @@ theorem comparison_ordinary [Fact p.Prime] (hp : 524288 < p)
   rw [metadata.1]
   decide
 
-theorem mixed_comparison_cycle
+theorem mixed_comparison_cycle_at
     {data : RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
     {initial : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program initial ca oa cells)
-    (started : 0 < (timeOfPair data.machine.initial.timestamp).value)
+    (effects : MixedMemoryEffects data initial cells)
+    {events : List MemoryAccess} {finalState : State}
+    (permutation : events.Perm (data.mixedSteps.map transferEvent))
+    (order : events.Pairwise (fun a b => b.1 ≤ a.1))
+    (history : SailHistory cells events initial finalState)
     {w : Nat → ZMod babyBearModulus} {input : Control.Comparison.Input}
     (member : (⟨.machine, w⟩ : Trace.Row babyBearModulus UnifiedFamily) ∈ data.machine.rows)
     (words : Control.Comparison.WordMapping input ⟨Control.destination w, Control.finalPC w⟩ w)
     (instruction : ∃ entry ∈ program, decoderQuery w = entry.query ∧
       entry.instruction = Control.Comparison.instruction input ∧ entry.pc.toNat % 4 = 0) :
-    ∃ events finalState,
-      events.Perm (data.mixedSteps.map transferEvent) ∧
-      SailHistory cells events initial finalState ∧
       RetiresCycle cells events initial finalState (⟨.machine, w⟩ : Trace.Row babyBearModulus UnifiedFamily)
         (JumpBranchSlt.Comparison.execution input) := by
   obtain ⟨entry, present, query, encoding, aligned⟩ := instruction
@@ -49,8 +50,8 @@ theorem mixed_comparison_cycle
   have core := Verification.holds_of_sublist (accepted.constraints _ member)
     (List.sublist_append_left (importedConstraints data.machine.rom) importedConstraintsTimestampLookups)
   have ordinary := comparison_ordinary (by decide) core fields query encoding
-  obtain ⟨events, finalState, before, after, permutation, history, past, current, future, native, ranges⟩ :=
-    ordinary_cycle_context accepted inputs started member ordinary
+  obtain ⟨before, after, past, current, future, native, ranges⟩ :=
+    ordinary_cycle_context_at accepted inputs effects permutation order history member ordinary
   have bounds : (readToken w importedConstraintsMemoryPorts[0]).word.Bounded ∧
       (readToken w importedConstraintsMemoryPorts[1]).word.Bounded := by
     constructor
@@ -70,9 +71,30 @@ theorem mixed_comparison_cycle
     inputs.setup normalized bounds.1 bounds.2 actualWords fields query actualEncoding aligned pcRead
   have retired := UnifiedReduced.Proofs.comparison_register_retirement (by decide) core fields query
     (input := actualInput) actualEncoding 1 native spec
-  refine ⟨events, finalState, permutation, history, before, after, past, current, future, ?_⟩
+  refine ⟨before, after, past, current, future, ?_⟩
   simpa [JumpBranchSlt.Comparison.execution, JumpBranchSlt.Comparison.instruction, Reference.RiscV.Sail.registerClause, Option.get_some, actualInput, Trace.Row.start, Trace.Row.finish, Trace.Row.columns,
     CircuitLayout.columns, PCState.State.word, rawPair, importedConstraintsTraceColumns,
     Control.initialPC, Control.finalPC] using retired
+
+theorem mixed_comparison_cycle
+    {data : RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
+    {initial : State} {ca oa : List (BitVec 32)} {cells : List Cell}
+    (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program initial ca oa cells)
+    (started : 0 < (timeOfPair data.machine.initial.timestamp).value)
+    {w : Nat → ZMod babyBearModulus} {input : Control.Comparison.Input}
+    (member : (⟨.machine, w⟩ : Trace.Row babyBearModulus UnifiedFamily) ∈ data.machine.rows)
+    (words : Control.Comparison.WordMapping input ⟨Control.destination w, Control.finalPC w⟩ w)
+    (instruction : ∃ entry ∈ program, decoderQuery w = entry.query ∧
+      entry.instruction = Control.Comparison.instruction input ∧ entry.pc.toNat % 4 = 0) :
+    ∃ events finalState,
+      events.Perm (data.mixedSteps.map transferEvent) ∧
+      SailHistory cells events initial finalState ∧
+      RetiresCycle cells events initial finalState (⟨.machine, w⟩ : Trace.Row babyBearModulus UnifiedFamily)
+        (JumpBranchSlt.Comparison.execution input) := by
+  have effects := mixed_memory_effects accepted inputs
+  obtain ⟨events, finalState, permutation, order, history, _, _, _⟩ := effects.execution
+  have retired := mixed_comparison_cycle_at accepted inputs effects permutation order history member words instruction
+  exact (fun _ : 0 < (timeOfPair data.machine.initial.timestamp).value =>
+    ⟨events, finalState, permutation, history, retired⟩) started
 
 end Airbender.UnifiedReduced.Caller.Proofs

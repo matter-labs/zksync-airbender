@@ -1637,4 +1637,13 @@ theorem issued_hash_partial_protocol_rejected :
 theorem issued_hash_worker_executes : UnifiedReduced.Caller.MixedMemoryEffects issuedData issuedBefore issuedCells :=
   UnifiedReduced.Caller.mixed_memory_soundness issuedAccepted issuedInputs
 
+theorem unissued_hash_mixed_cycles [Sail.ArchSem.MemoryPlatform SailRV32.exception] :
+    UnifiedReduced.Caller.MixedCycleEffects unifiedData [] before cells := by
+  have effects := UnifiedReduced.Caller.Proofs.mixed_memory_effects unifiedAccepted unifiedInputs
+  obtain ⟨events, finalState, permutation, order, history, _, _, terminal⟩ := effects.execution
+  apply UnifiedReduced.Caller.Proofs.mixed_cycle_effects_at unifiedAccepted unifiedInputs
+    effects permutation order history unifiedCode _ terminal
+  intro row member
+  cases member
+
 end Tests.DelegationZeroInvocation
