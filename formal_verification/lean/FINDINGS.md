@@ -429,9 +429,9 @@ protocol scopes remain explicit. General operand-dependent x10/x12 results,
 broader operations and whole caller retirement remain open.
 
 All 116 concrete test modules and 143 importer guards pass. The full
-2,435-root axiom audit has 69 axiom-free roots and only the three standard
-Lean axioms. Review checks pass for all 125 public theorem roots, 221 declaration
-names and 753 guide links/anchors, with no handwritten project diagnostics.
+2,459-root axiom audit has 69 axiom-free roots and only the three standard
+Lean axioms. Review checks pass for all 127 public theorem roots, 225 declaration
+names and 747 guide links/anchors, with no handwritten project diagnostics.
 
 ## Review priorities
 
@@ -780,12 +780,34 @@ complete-reference sequence. Public policies quantify addresses at every clock
 in each interval, including repeated RV32 addresses; native schedules and worker
 counts are conclusions. Global round-worker coverage remains a witness-shape
 boundary, and the public global round-CSR coverage/mask result remains linear.
-The unissued-round question, branches/jumps, nonliteral final preparation and
-whole caller retirement remain open.
+The unissued-round question and whole caller retirement remain explicit boundaries.
+Source-aware final preparation is checked; branch/jump preparation extensions are
+outside the frozen registry.
 
-**Closure needed.** Bind complete call protocols to actual caller preparation,
-chaining and segmentation in the unrestricted execution claim. Until then,
-preserve these restrictions beside any use of a complete hash theorem.
+[Issued hash segmentation](Airbender/Review/Trace/UnifiedReduced/Segmentation.lean)
+closes coverage for the existing unified public prepared-protocol profile.
+`ProgramHashCallerCoverage` quantifies every occurrence of public hash CSR code,
+including repeated RV32 addresses; bigint callers may remain in gaps.
+`IssuedHashSegmentation` derives unique window assignment, exact worker/request
+multiset partitions and the sum of complete-reference call counts through
+`Caller.hash_segmentation_soundness`. No selected worker coverage or desired state
+is supplied. `Caller.segmented_hash_sequence_soundness`
+combines this partition with the existing complete G, extended-BLAKE and Keccak
+references at the same continuous-history states. Mode, public cuts/duration,
+code coverage, modeled tables, logical matching and the existing global round-mask
+scope remain explicit. This does not infer protocol shape from general acceptance.
+Uncovered hash workers are exactly zero-clock residuals; the native unissued G
+still changes actual x12 from zero to one. An issued G worker is covered at its
+actual clock-five invocation, while its one-call interval cannot satisfy the
+56-call reference scope. Missing windows, wrong families, repeated-address omissions
+and overlap are rejected. All four COPY/carry/invalid-bigint preparation fixtures
+remain admitted outside the hash partition. Whole custom-CSR retirement and
+unrestricted invalid-call/ROM behavior remain separate.
+
+**Remaining boundary.** Public code coverage and complete protocol shape remain
+explicit. They are not consequences of general acceptance: zero-clock workers
+and the invalid-call cases remain exposed. Whole custom-CSR retirement is F10;
+optional preparation variants are outside the frozen finalization scope.
 
 ## F09 — Modeled tables and decoder membership can hide implementation mismatches
 

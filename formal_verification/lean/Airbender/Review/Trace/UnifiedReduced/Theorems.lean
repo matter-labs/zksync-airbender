@@ -18,6 +18,7 @@ import Airbender.Proofs.UnifiedReduced.PreparedRoundWindows
 import Airbender.Proofs.UnifiedReduced.CallerCycles
 import Airbender.Proofs.UnifiedReduced.UnissuedWorkers
 import Airbender.Proofs.UnifiedReduced.WorkerExecution
+import Airbender.Proofs.UnifiedReduced.Segmentation
 import Airbender.Proofs.Delegation.RequestHashWindows
 
 namespace Airbender.UnifiedReduced
@@ -992,5 +993,36 @@ theorem Caller.bigint_control_boundary_soundness [Fact p.Prime] (hp : 8388608 �
     (scope : Caller.CallerControlPreparation data program .bigint cut) (aligned : cut % 4 = 0) :
     Caller.BigintControlBoundaryExecution data before cells cut :=
   Caller.Proofs.bigint_control_boundary_execution hp clockInverse rotationInverse accepted inputs scope aligned
+
+
+/-- Public CSR occurrence coverage and ordered complete-protocol windows derive
+    an exact partition of all issued hash requests. Zero-clock workers stay as
+    explicit residuals; bigint callers and ordinary instructions may lie in gaps. -/
+theorem Caller.hash_segmentation_soundness [Fact p.Prime] (hp : 4194304 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)}
+    {cells : List Trace.Cell} {program : List UnifiedReduced.ProgramEntry} {windows : List Caller.HashWindow} {cut : Nat}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.ProtocolContextInputs data before ca oa cells program) (registry : Caller.WrappedSequentialProgram program)
+    (scopes : ∀ window ∈ windows, Caller.WrappedProgramComputedProtocolWindowInputs data program window)
+    (ordered : Caller.WindowsOrdered cut (windows.map Caller.HashWindow.interval))
+    (coverage : Caller.ProgramHashCallerCoverage data windows) : Caller.IssuedHashSegmentation data windows :=
+  Caller.Proofs.program_hash_segmentation hp clockInverse accepted inputs registry scopes ordered coverage
+
+/-- Every issued hash request belongs to exactly one complete selected reference
+    in the same initialized history. Public code/protocol scope, modeled tables
+    and the existing global extended-round mask boundary remain explicit. -/
+theorem Caller.segmented_hash_sequence_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State}
+    {ca oa : List (BitVec 32)} {cells : List Trace.Cell} {program : List UnifiedReduced.ProgramEntry}
+    {regions : List Caller.RoundRegion} {first : Caller.HashWindow} {rest : List Caller.HashWindow}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.WrappedProgramComputedPreparedProtocolInputs data before ca oa cells program regions)
+    (scopes : ∀ window ∈ first :: rest, Caller.WrappedProgramComputedProtocolWindowInputs data program window)
+    (ordered : Caller.WindowsOrdered first.lower ((first :: rest).map Caller.HashWindow.interval))
+    (coverage : Caller.ProgramHashCallerCoverage data (first :: rest)) :
+    Caller.SegmentedHashSequenceResult data before cells first rest :=
+  Caller.Proofs.segmented_hash_sequence hp clockInverse accepted inputs scopes ordered coverage
 
 end Airbender.UnifiedReduced

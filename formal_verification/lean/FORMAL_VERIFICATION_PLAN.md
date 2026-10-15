@@ -51,7 +51,7 @@ dependencies, pins or generated artifacts as part of readability cleanup.
 
 ## Pending integration work
 
-The remaining scope is the four closure tasks below. Completed transport, cuts,
+Three closure tasks remain below. Completed transport, cuts,
 selected hash-reference composition and control preparation are recorded in
 [Verification status](VERIFICATION_STATUS.md) and the review guides; do not restart
 or repeat them here. Measure progress by closing these tasks or identifying their
@@ -65,16 +65,16 @@ that dependency before implementation. In particular, existing ADD/SUB instructi
 soundness is complete within its published model; dataflow through another context
 does not reopen that arithmetic proof.
 
-1. **Hash references on subspans.** Close segmentation and composition using the
-   existing complete G, extended-BLAKE and Keccak references, prepared windows and
-   ordered-list interfaces. Derive the required window boundaries, caller/worker
-   membership, counts, schedules and intermediate states from accepted matching,
-   public program/code and the existing protocol ABI. A supplied list of selected
-   windows is already supported; distinguish that result from proving that a
-   segmentation covers the intended execution. Keep mode, duration, domain,
-   modeled tables and logical matching explicit. Additional preparation forms
-   are not an independent completion criterion. Extended-BLAKE and Keccak terminal
-   controls do not automatically restart their protocols.
+Hash-span segmentation (closure 1) is checked within the existing unified public
+prepared-protocol profile: public CSR occurrence coverage derives a disjoint,
+exact partition of every issued hash worker/request across complete references
+in one initialized history. Public mode, cuts, duration and code coverage remain
+explicit inputs; acceptance alone does not force every execution into a complete
+hash protocol. Zero-clock hash workers remain explicit residuals with their actual
+prefix effects. See [the coverage result](Airbender/Review/Trace/UnifiedReduced/Segmentation.lean).
+The remaining whole-execution/invalid-call boundaries are tasks 2–4 below, not
+additional preparation variants.
+
 2. **Whole mixed caller retirement.** Compose the existing ordinary/custom row
    retirement and caller/worker boundaries over one initialized execution, with
    terminal PC and cells. Derive reads, operands and scheduling inside the proof.

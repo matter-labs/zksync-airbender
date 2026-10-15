@@ -573,6 +573,26 @@ initialization writes and preserves addresses/values; it does not prove cryptogr
 permutation or lookup enforcement. Prover/verifier refinement and protocol soundness
 are separate obligations.
 
+[Issued hash segmentation](Airbender/Review/Trace/UnifiedReduced/Segmentation.lean)
+closes coverage for the existing unified public prepared-protocol profile.
+`ProgramHashCallerCoverage` quantifies every occurrence of public hash CSR code,
+including repeated RV32 addresses; bigint callers may remain in gaps.
+`IssuedHashSegmentation` derives unique window assignment, exact worker/request
+multiset partitions and the sum of complete-reference call counts through
+`Caller.hash_segmentation_soundness`. No selected worker coverage or desired state
+is supplied. `Caller.segmented_hash_sequence_soundness`
+combines this partition with the existing complete G, extended-BLAKE and Keccak
+references at the same continuous-history states. Mode, public cuts/duration,
+code coverage, modeled tables, logical matching and the existing global round-mask
+scope remain explicit. This does not infer protocol shape from general acceptance.
+Uncovered hash workers are exactly zero-clock residuals; the native unissued G
+still changes actual x12 from zero to one. An issued G worker is covered at its
+actual clock-five invocation, while its one-call interval cannot satisfy the
+56-call reference scope. Missing windows, wrong families, repeated-address omissions
+and overlap are rejected. All four COPY/carry/invalid-bigint preparation fixtures
+remain admitted outside the hash partition. Whole custom-CSR retirement and
+unrestricted invalid-call/ROM behavior remain separate.
+
 ## Public state, profiles and external inputs
 
 [InitialImage.lean](Airbender/Review/Helpers/Memory/InitialImage.lean) reads actual Sail GPRs
