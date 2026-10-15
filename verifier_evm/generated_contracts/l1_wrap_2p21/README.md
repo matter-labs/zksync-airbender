@@ -57,3 +57,27 @@ Remove the descriptor's `allow_missing_proof` allowance when the proof bundle
 is committed, making its absence a failure thereafter. All versioned deployment
 and sending commands share the scripts one directory above this scaffold.
 These projects use only local imports and require no remappings.
+
+## Single-transaction proxy
+
+`single_tx/` measures the proof as one transaction: tx calldata = GKR proof ‖
+WHIR proof stream (the WHIR calldata without its committed-state preimage).
+`single_tx/{gkr,gkr_negative,whir}/src/*.sol` are generated with the test pair
+by the same `generate_contracts` test (`single_tx_gkr` / `single_tx_whir`): the
+GKR verifier returns `[preimage][commitment][public_input][setup_commitment]`
+instead of marking the registry, the WHIR verifier returns the recomputed
+commitment as a fourth word. `single_tx/harness` holds the `L1VerifierSingleTx`
+proxy (private immutables, no ABI surface) and its forge tests; it accepts iff
+both calls succeed and the two commitments are equal. With Foundry on `PATH`,
+from the repository root:
+
+```sh
+verifier_evm/generated_contracts/run_single_tx.sh 2p21 --no-gas
+verifier_evm/generated_contracts/run_single_tx.sh 2p21 <task-owned-anvil-port> <out.json>
+```
+
+The gas run sends the two-tx pair and the proxy transaction as raw anvil
+(Prague) transactions, checks every receipt against
+`21000 + max(exec + 4·tokens, 10·tokens)`, and records execution, frames and the
+computed Glamsterdam (`15000 + max(4·tokens + exec, 64·bytes)`) and Hegota
+(`96·bytes`) prices with the Glamsterdam floor room.

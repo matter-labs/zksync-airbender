@@ -24,6 +24,13 @@ const PRODUCTION_STUBS: [&str; 2] = [
     "gkr/src/GkrVerifierProduction.sol",
     "whir/src/WhirVerifierProduction.sol",
 ];
+/// Single-tx variants of the test pair for the `single_tx/harness` proxy; the
+/// wrong-final-PC control's variant lives under the same prefix.
+const SINGLE_TX: [&str; 2] = [
+    "single_tx/gkr/src/GkrVerifier.sol",
+    "single_tx/whir/src/WhirVerifier.sol",
+];
+const SINGLE_TX_PREFIX: &str = "single_tx/";
 
 fn generate(version: &Version, registry_address: &str) -> verifier_evm::GeneratedContracts {
     render(version, registry_address, None)
@@ -159,6 +166,13 @@ fn sources(out: &verifier_evm::GeneratedContracts) -> [&str; 3] {
     [&out.gkr_sol, &out.whir_sol, &out.registry_sol]
 }
 
+fn single_tx_sources(out: &verifier_evm::GeneratedContracts) -> [String; 2] {
+    [
+        verifier_evm::single_tx_gkr(&out.gkr_sol),
+        verifier_evm::single_tx_whir(&out.whir_sol),
+    ]
+}
+
 fn write(version: &Version, rel: &str, content: &str) {
     let p = version.contract_path(rel);
     std::fs::create_dir_all(p.parent().unwrap()).unwrap();
@@ -176,11 +190,16 @@ fn generate_contracts_into_dir() {
         for (rel, content) in TEST_PAIR.iter().zip(sources(&out)) {
             write(&version, rel, content);
         }
+        for (rel, content) in SINGLE_TX.iter().zip(single_tx_sources(&out)) {
+            write(&version, rel, &content);
+        }
         if let Some(rel) = version.wrong_final_pc_contract {
+            let wrong = generate_wrong_final_pc(&version, &registry_address).gkr_sol;
+            write(&version, rel, &wrong);
             write(
                 &version,
-                rel,
-                &generate_wrong_final_pc(&version, &registry_address).gkr_sol,
+                &format!("{SINGLE_TX_PREFIX}{rel}"),
+                &verifier_evm::single_tx_gkr(&wrong),
             );
         }
     }
@@ -203,20 +222,26 @@ fn checked_in_contracts_are_current() {
         let test_pair = generate(version, DEFAULT_REGISTRY_ADDRESS);
         let stubs = generate(version, STUB_REGISTRY_ADDRESS);
         if let Some(rel) = version.wrong_final_pc_contract {
-            let path = version.contract_path(rel);
-            let stored =
-                std::fs::read_to_string(&path).expect("missing wrong-final-PC control verifier");
-            assert_eq!(
-                stored,
-                generate_wrong_final_pc(version, DEFAULT_REGISTRY_ADDRESS).gkr_sol,
-                "{} is stale",
-                path.display()
-            );
+            let wrong = generate_wrong_final_pc(version, DEFAULT_REGISTRY_ADDRESS).gkr_sol;
+            for (rel, expected) in [
+                (rel.to_string(), wrong.clone()),
+                (
+                    format!("{SINGLE_TX_PREFIX}{rel}"),
+                    verifier_evm::single_tx_gkr(&wrong),
+                ),
+            ] {
+                let path = version.contract_path(&rel);
+                let stored = std::fs::read_to_string(&path)
+                    .expect("missing wrong-final-PC control verifier");
+                assert_eq!(stored, expected, "{} is stale", path.display());
+            }
         }
+        let single_tx = single_tx_sources(&test_pair);
         for (rel, content) in TEST_PAIR
             .iter()
             .zip(sources(&test_pair))
             .chain(PRODUCTION_STUBS.iter().zip(sources(&stubs)))
+            .chain(SINGLE_TX.iter().zip(single_tx.iter().map(String::as_str)))
         {
             let path = version.contract_path(rel);
             let checked_in = std::fs::read_to_string(&path)
@@ -372,5 +397,43 @@ fn wrong_final_pc_control_changes_only_the_expected_constant() {
             .contains("constant __TEMPLATE_EXPECTED_FINAL_PC"));
         assert_eq!(valid.whir_sol, wrong.whir_sol);
         assert_eq!(valid.registry_sol, wrong.registry_sol);
+    }
+}
+
+#[test]
+fn single_tx_variants_change_only_the_handoff() {
+    for version in common::available_versions("single-tx variants") {
+        let two_tx = generate(version, DEFAULT_REGISTRY_ADDRESS);
+        let [gkr, whir] = single_tx_sources(&two_tx);
+        for (name, before, after, removed, added) in [
+            ("GKR", &two_tx.gkr_sol, &gkr, 16, 11),
+            ("WHIR", &two_tx.whir_sol, &whir, 14, 9),
+        ] {
+            let before: Vec<_> = before.lines().collect();
+            let after: Vec<_> = after.lines().collect();
+            let prefix = before
+                .iter()
+                .zip(&after)
+                .take_while(|(a, b)| a == b)
+                .count();
+            let suffix = before[prefix..]
+                .iter()
+                .rev()
+                .zip(after[prefix..].iter().rev())
+                .take_while(|(a, b)| a == b)
+                .count();
+            assert_eq!(
+                (
+                    before.len() - prefix - suffix,
+                    after.len() - prefix - suffix
+                ),
+                (removed, added),
+                "{name}: single-tx edit spans unexpected lines"
+            );
+        }
+        assert!(!gkr.contains("MARK_GKR_SELECTOR))"));
+        assert!(gkr.contains("return(base, add(plen, 96))"));
+        assert!(!whir.contains("MARK_WHIR_SELECTOR))"));
+        assert!(whir.contains("return(0, 128)"));
     }
 }

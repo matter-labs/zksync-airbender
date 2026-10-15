@@ -7,9 +7,11 @@
 //!   (and a few caller-supplied) constants.
 
 mod circuit_yul;
+mod single_tx;
 mod whir;
 
 pub use circuit_yul::emit_circuit_yul;
+pub use single_tx::{single_tx_gkr, single_tx_whir};
 pub use whir::WhirGenConfig;
 
 // ── Transcript-preimage layout (bytes) ──────────────────────────────────────────────────────

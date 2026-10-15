@@ -131,9 +131,19 @@ impl Version {
             "gkr/src/GkrVerifierProduction.sol",
             "whir/src/WhirVerifier.sol",
             "whir/src/WhirVerifierProduction.sol",
+            "single_tx/gkr/src/GkrVerifier.sol",
+            "single_tx/whir/src/WhirVerifier.sol",
         ];
-        for rel in contracts.into_iter().chain(self.wrong_final_pc_contract) {
-            let path = self.contract_path(rel);
+        let wrong_final_pc = self
+            .wrong_final_pc_contract
+            .into_iter()
+            .flat_map(|rel| [rel.to_string(), format!("single_tx/{rel}")]);
+        for rel in contracts
+            .into_iter()
+            .map(str::to_string)
+            .chain(wrong_final_pc)
+        {
+            let path = self.contract_path(&rel);
             if path.try_exists().expect("inspect generated contract path") {
                 return Some(path);
             }
