@@ -1,4 +1,4 @@
-use super::ProofMemoryPolicy;
+use super::{PartialTreePolicy, ProofMemoryPolicy};
 use crate::proof::merged_commitment::MergedCommitStrategy;
 use crate::upstream::ProofProfile;
 use gpu_trace::witness::circuit_type::{CircuitType, UnrolledCircuitType};
@@ -46,6 +46,16 @@ pub fn policy(
     match circuit {
         CircuitType::L1Wrap => l1_wrap::policy(arena_bytes),
         _ => generated::policy(circuit, select_arena_bytes(arena_bytes)),
+    }
+}
+
+pub fn partial_trees(circuit: CircuitType, profile: ProofProfile) -> PartialTreePolicy {
+    match (circuit, profile) {
+        (CircuitType::Unrolled(UnrolledCircuitType::Unified), ProofProfile::L1Feeder) => {
+            l1_feeder::PARTIAL_TREES
+        }
+        (CircuitType::L1Wrap, _) => l1_wrap::PARTIAL_TREES,
+        _ => PartialTreePolicy::DEFAULT,
     }
 }
 

@@ -4,13 +4,15 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 use gpu_core::primitives::field::PR;
+use gpu_core::primitives::utils::LOG_WARP_SIZE;
 
 use super::hash::{leaf_shape, leaf_tile, LeafShape, LeafTile};
 use super::{
     assert_no_overlap, checked_product, checked_u64, grid_dim, tile_extent, Digest, BLOCK_THREADS,
 };
 
-const MAX_SKIP_BOTTOM: u32 = 5;
+const MAX_SKIP_BOTTOM: u32 = 10;
+const DIRECT_SKIP_BOTTOM: u32 = 8;
 const PARTIAL_ROOTS_THREADS: u32 = 256;
 
 pub fn retained_layer_offset(log_leaves: u32, skip_bottom: u32, layer: u32) -> usize {
@@ -58,12 +60,31 @@ pub(super) fn partial_tree_shape(
     );
     assert!(
         skip_bottom <= MAX_SKIP_BOTTOM,
-        "keccak256::{name}: skip_bottom <= 5"
+        "keccak256::{name}: skip_bottom <= 10"
     );
     let retained_per_coset = 2 * (leaves.leaves >> skip_bottom) - 1;
     PartialTreeShape {
         leaves,
         retained_per_coset,
+    }
+}
+
+pub fn partial_coset_tree_scratch_len(
+    log_domain: u32,
+    log_values_per_leaf: u32,
+    skip_bottom: u32,
+) -> usize {
+    let shape = partial_tree_shape(
+        "partial_coset_tree_scratch_len",
+        log_domain,
+        log_values_per_leaf,
+        1,
+        skip_bottom,
+    );
+    if skip_bottom <= LOG_WARP_SIZE {
+        0
+    } else {
+        shape.leaves.leaves >> LOG_WARP_SIZE
     }
 }
 
@@ -141,6 +162,16 @@ cuda_kernel!(
 );
 
 cuda_kernel!(
+    ReduceRoots,
+    ab_keccak256_reduce_roots_kernel(
+        src: *const Digest,
+        count: u64,
+        reduction_layers: u32,
+        dst: *mut Digest,
+    )
+);
+
+cuda_kernel!(
     Nodes,
     ab_keccak256_nodes_kernel(
         src: *const Digest,
@@ -194,18 +225,70 @@ pub fn build_partial_coset_tree(
     stream: &CudaStream,
 ) -> CudaResult<()> {
     const NAME: &str = "build_partial_coset_tree";
-    let shape = partial_tree_shape(NAME, log_domain, log_values_per_leaf, columns, skip_bottom);
+    assert!(
+        skip_bottom <= DIRECT_SKIP_BOTTOM,
+        "keccak256::{NAME}: skip_bottom <= 8; use build_partial_coset_tree_with_scratch"
+    );
+    build_partial_coset_tree_impl(
+        NAME,
+        values,
+        log_domain,
+        log_values_per_leaf,
+        columns,
+        skip_bottom,
+        retained,
+        None,
+        stream,
+    )
+}
+
+pub fn build_partial_coset_tree_with_scratch(
+    values: &DeviceSlice<PR>,
+    log_domain: u32,
+    log_values_per_leaf: u32,
+    columns: u32,
+    skip_bottom: u32,
+    retained: &mut DeviceSlice<Digest>,
+    scratch: &mut DeviceSlice<Digest>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    build_partial_coset_tree_impl(
+        "build_partial_coset_tree_with_scratch",
+        values,
+        log_domain,
+        log_values_per_leaf,
+        columns,
+        skip_bottom,
+        retained,
+        Some(scratch),
+        stream,
+    )
+}
+
+fn build_partial_coset_tree_impl(
+    name: &str,
+    values: &DeviceSlice<PR>,
+    log_domain: u32,
+    log_values_per_leaf: u32,
+    columns: u32,
+    skip_bottom: u32,
+    retained: &mut DeviceSlice<Digest>,
+    scratch: Option<&mut DeviceSlice<Digest>>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let shape = partial_tree_shape(name, log_domain, log_values_per_leaf, columns, skip_bottom);
     assert_eq!(
         values.len(),
         shape.leaves.coset_values,
-        "keccak256::build_partial_coset_tree: values.len() == columns << log_domain"
+        "keccak256::{name}: values.len() == columns << log_domain"
     );
     assert_eq!(
         retained.len(),
         shape.retained_per_coset,
-        "keccak256::build_partial_coset_tree: retained.len() == 2 * (leaves >> skip_bottom) - 1"
+        "keccak256::{name}: retained.len() == 2 * (leaves >> skip_bottom) - 1"
     );
-    build_partial_coset_trees_multi_coset(
+    build_partial_coset_trees_impl(
+        name,
         values,
         log_domain,
         log_values_per_leaf,
@@ -215,6 +298,7 @@ pub fn build_partial_coset_tree(
         values.len(),
         retained.len(),
         retained,
+        scratch,
         stream,
     )
 }
@@ -232,9 +316,72 @@ pub fn build_partial_coset_trees_multi_coset(
     stream: &CudaStream,
 ) -> CudaResult<()> {
     const NAME: &str = "build_partial_coset_trees_multi_coset";
-    let shape = partial_tree_shape(NAME, log_domain, log_values_per_leaf, columns, skip_bottom);
-    let tile = partial_tree_tile(
+    assert!(
+        skip_bottom <= DIRECT_SKIP_BOTTOM,
+        "keccak256::{NAME}: skip_bottom <= 8; use build_partial_coset_trees_multi_coset_with_scratch"
+    );
+    build_partial_coset_trees_impl(
         NAME,
+        values,
+        log_domain,
+        log_values_per_leaf,
+        columns,
+        skip_bottom,
+        cosets_in_tile,
+        values_stride,
+        retained_stride,
+        retained,
+        None,
+        stream,
+    )
+}
+
+pub fn build_partial_coset_trees_multi_coset_with_scratch(
+    values: &DeviceSlice<PR>,
+    log_domain: u32,
+    log_values_per_leaf: u32,
+    columns: u32,
+    skip_bottom: u32,
+    cosets_in_tile: u32,
+    values_stride: usize,
+    retained_stride: usize,
+    retained: &mut DeviceSlice<Digest>,
+    scratch: &mut DeviceSlice<Digest>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    build_partial_coset_trees_impl(
+        "build_partial_coset_trees_multi_coset_with_scratch",
+        values,
+        log_domain,
+        log_values_per_leaf,
+        columns,
+        skip_bottom,
+        cosets_in_tile,
+        values_stride,
+        retained_stride,
+        retained,
+        Some(scratch),
+        stream,
+    )
+}
+
+fn build_partial_coset_trees_impl(
+    name: &str,
+    values: &DeviceSlice<PR>,
+    log_domain: u32,
+    log_values_per_leaf: u32,
+    columns: u32,
+    skip_bottom: u32,
+    cosets_in_tile: u32,
+    values_stride: usize,
+    retained_stride: usize,
+    retained: &mut DeviceSlice<Digest>,
+    scratch: Option<&mut DeviceSlice<Digest>>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let shape = partial_tree_shape(name, log_domain, log_values_per_leaf, columns, skip_bottom);
+    let tile = partial_tree_tile(
+        name,
         &shape,
         values.len(),
         cosets_in_tile,
@@ -242,28 +389,71 @@ pub fn build_partial_coset_trees_multi_coset(
         retained_stride,
         retained.len(),
     );
-    assert_no_overlap(NAME, values, retained);
-    let args = PartialRootsArguments::new(
-        values.as_ptr(),
-        log_domain,
-        log_values_per_leaf,
-        columns,
-        skip_bottom,
-        cosets_in_tile,
-        tile.leaves.values_stride,
-        tile.retained_stride,
-        retained.as_mut_ptr(),
-    );
-    let grid = grid_dim(NAME, tile.leaves.threads, PARTIAL_ROOTS_THREADS);
-    let config = CudaLaunchConfig::basic(grid, PARTIAL_ROOTS_THREADS, stream);
-    PartialRootsFunction::default().launch(&config, &args)?;
+    assert_no_overlap(name, values, retained);
+    if let Some(scratch) = scratch.as_deref() {
+        assert_no_overlap(name, values, scratch);
+        assert_no_overlap(name, retained, scratch);
+    }
+    if skip_bottom <= LOG_WARP_SIZE || (scratch.is_none() && skip_bottom <= DIRECT_SKIP_BOTTOM) {
+        let args = PartialRootsArguments::new(
+            values.as_ptr(),
+            log_domain,
+            log_values_per_leaf,
+            columns,
+            skip_bottom,
+            cosets_in_tile,
+            tile.leaves.values_stride,
+            tile.retained_stride,
+            retained.as_mut_ptr(),
+        );
+        let grid = grid_dim(name, tile.leaves.threads, PARTIAL_ROOTS_THREADS);
+        let config = CudaLaunchConfig::basic(grid, PARTIAL_ROOTS_THREADS, stream);
+        PartialRootsFunction::default().launch(&config, &args)?;
+    } else {
+        let scratch = scratch.expect("deep partial tree builder requires explicit scratch");
+        let scratch_len = shape.leaves.leaves >> LOG_WARP_SIZE;
+        assert!(
+            scratch.len() >= scratch_len,
+            "keccak256::{name}: scratch.len() >= leaves >> 5"
+        );
+        let roots = shape.leaves.leaves >> skip_bottom;
+        let roots_grid = grid_dim(name, shape.leaves.leaves, PARTIAL_ROOTS_THREADS);
+        let reduce_grid = grid_dim(name, scratch_len, BLOCK_THREADS);
+        for coset in 0..cosets_in_tile as usize {
+            let args = PartialRootsArguments::new(
+                unsafe { values.as_ptr().add(coset * values_stride) },
+                log_domain,
+                log_values_per_leaf,
+                columns,
+                LOG_WARP_SIZE,
+                1,
+                tile.leaves.values_stride,
+                checked_u64(name, scratch_len),
+                scratch.as_mut_ptr(),
+            );
+            PartialRootsFunction::default().launch(
+                &CudaLaunchConfig::basic(roots_grid, PARTIAL_ROOTS_THREADS, stream),
+                &args,
+            )?;
+            let args = ReduceRootsArguments::new(
+                scratch.as_ptr(),
+                checked_u64(name, roots),
+                skip_bottom - LOG_WARP_SIZE,
+                unsafe { retained.as_mut_ptr().add(coset * retained_stride) },
+            );
+            ReduceRootsFunction::default().launch(
+                &CudaLaunchConfig::basic(reduce_grid, BLOCK_THREADS, stream),
+                &args,
+            )?;
+        }
+    }
     let log_leaves = shape.leaves.log_leaves;
     let base = retained.as_mut_ptr();
     for layer in skip_bottom..log_leaves {
         let src = retained_layer_offset(log_leaves, skip_bottom, layer);
         let dst = retained_layer_offset(log_leaves, skip_bottom, layer + 1);
         launch_nodes(
-            NAME,
+            name,
             unsafe { base.add(src) },
             shape.leaves.leaves >> (layer + 1),
             cosets_in_tile,

@@ -346,6 +346,7 @@ fn localize_setup_cap(
         cfg.cap_log,
         columns.len(),
         TreesCacheMode::CacheNone,
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
         context,
     )
     .unwrap();
@@ -381,7 +382,11 @@ fn run_stages(fixture: L1WrapFixture<'_>, expected: Expected) -> StageReport {
     let mut differences = Vec::new();
     let config = ProofProfile::L1Wrap.prover_config(LOG_ROWS as usize, SecurityLevel::Sec100);
     let pack_log2 = EVM_PRODUCTION_PACK_LOG2 as u32;
-    let cfg = PackedCommitConfig::from_prover_config(&config, LOG_ROWS + pack_log2);
+    let cfg = PackedCommitConfig::from_prover_config(
+        &config,
+        LOG_ROWS + pack_log2,
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+    );
     let context = ProverContext::new(&ProverContextConfig {
         device_allocation_blocks_count: Some(ARENA_BLOCKS),
         proth120_ntt_log_max_domain: Some(31),
@@ -422,6 +427,7 @@ fn run_stages(fixture: L1WrapFixture<'_>, expected: Expected) -> StageReport {
         cfg.cap_log,
         columns_count,
         TreesCacheMode::CacheNone,
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
         &context,
     )
     .unwrap();
@@ -448,7 +454,12 @@ fn run_stages(fixture: L1WrapFixture<'_>, expected: Expected) -> StageReport {
     log::info!("L1 stage parity: trace upload {:?}", start.elapsed());
 
     let host = Arc::new(host);
-    let mut source = PackedSetupSource::new(Arc::clone(&host), &context).unwrap();
+    let mut source = PackedSetupSource::new(
+        Arc::clone(&host),
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+        &context,
+    )
+    .unwrap();
     let start = Instant::now();
     let transfer = single_shot_h2d(
         |transfer| source.schedule_transfer(transfer, &context),
@@ -541,7 +552,11 @@ fn run_whir(fixture: L1WrapFixture<'_>, expected: WhirExpected) -> WhirReport {
         &mut differences,
     );
     let pack_log2 = EVM_PRODUCTION_PACK_LOG2 as u32;
-    let cfg = PackedCommitConfig::from_prover_config(&config, LOG_ROWS + pack_log2);
+    let cfg = PackedCommitConfig::from_prover_config(
+        &config,
+        LOG_ROWS + pack_log2,
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+    );
     let context = ProverContext::new(&ProverContextConfig {
         device_allocation_blocks_count: Some(ARENA_BLOCKS),
         proth120_ntt_log_max_domain: Some(31),
@@ -571,6 +586,7 @@ fn run_whir(fixture: L1WrapFixture<'_>, expected: WhirExpected) -> WhirReport {
         cfg.cap_log,
         columns_count,
         TreesCacheMode::CacheNone,
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
         &context,
     )
     .unwrap();
@@ -595,7 +611,12 @@ fn run_whir(fixture: L1WrapFixture<'_>, expected: WhirExpected) -> WhirReport {
     drop(witness);
 
     let host = Arc::new(host);
-    let mut source = PackedSetupSource::new(Arc::clone(&host), &context).unwrap();
+    let mut source = PackedSetupSource::new(
+        Arc::clone(&host),
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+        &context,
+    )
+    .unwrap();
     let transfer = single_shot_h2d(
         |transfer| source.schedule_transfer(transfer, &context),
         &context,

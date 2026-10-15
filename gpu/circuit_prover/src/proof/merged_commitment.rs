@@ -12,7 +12,9 @@ use gpu_gkr::GkrPrograms;
 use gpu_prover_context::transfer::Transfer;
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::decoder::DecoderTableTransfer;
-use gpu_trace::trace::holder::{WitnessCommitmentStrategy, WitnessPostCommitStorage};
+use gpu_trace::trace::holder::{
+    PartialTreePolicy, WitnessCommitmentStrategy, WitnessPostCommitStorage,
+};
 use gpu_trace::trace::memory::{
     schedule_memory_commitment_job, schedule_memory_commitment_job_in_place,
     schedule_memory_commitment_job_with_monomials, MemoryCommitmentJob,
@@ -73,8 +75,10 @@ pub fn commit_merged_from_transfers<'a, A: GoodAllocator + 'a>(
     prover_config: &ProverConfig,
     inputs: GpuGKRMergedCommitTransfer<'a, A>,
     strategy: MergedCommitStrategy,
+    partial_trees: PartialTreePolicy,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
+    partial_trees.assert_valid();
     assert_eq!(
         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
         prover_config.whir_schedule.whir_steps_schedule[0]
@@ -125,6 +129,7 @@ pub fn commit_merged_from_transfers<'a, A: GoodAllocator + 'a>(
         None,
         commitment,
         storage,
+        partial_trees,
         context,
     )?;
     let mut callbacks = transfer.into_callbacks();

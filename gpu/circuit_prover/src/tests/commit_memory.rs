@@ -216,6 +216,7 @@ fn run_unified_commit_memory_matches_cpu_test() {
             &base.compiled_circuit,
             bundle,
             &base.prover_config,
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
             context,
         )
         .unwrap()
@@ -427,6 +428,7 @@ fn assert_non_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
         },
         &gpu_trace,
         &prover_config,
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
         &context,
     )
     .unwrap();
@@ -626,6 +628,7 @@ fn assert_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
         },
         &gpu_trace,
         &prover_config,
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
         &context,
     )
     .unwrap();
@@ -709,6 +712,7 @@ pub(super) fn assert_delegation_commit_memory_matches_cpu<W, O, F>(
         None,
         &gpu_trace,
         &prover_config,
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
         &context,
     )
     .unwrap();

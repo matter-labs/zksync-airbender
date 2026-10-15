@@ -28,6 +28,24 @@ EXTERN __global__ void ab_keccak256_partial_roots_kernel(const proth120 *values,
     retained[(subtree >> log_leaves) * retained_stride + ((subtree & leaf_mask) >> skip_bottom)] = nodes[threadIdx.x];
 }
 
+EXTERN __global__ void ab_keccak256_reduce_roots_kernel(const digest *src, const u64 count, const u32 reduction_layers, digest *dst) {
+  const u64 gid = static_cast<u64>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const u64 input_count = count << reduction_layers;
+  digest root{};
+  if (gid < input_count)
+    root = src[gid];
+  for (u32 layer = 0; layer < reduction_layers; layer++) {
+    digest sibling;
+#pragma unroll
+    for (u32 word = 0; word < 8; word++)
+      sibling.words[word] = __shfl_xor_sync(0xffffffffu, root.words[word], 1u << layer);
+    if (gid < input_count && (threadIdx.x & ((1u << (layer + 1)) - 1)) == 0)
+      root = hash_node(root, sibling);
+  }
+  if (gid < input_count && (threadIdx.x & ((1u << reduction_layers) - 1)) == 0)
+    dst[gid >> reduction_layers] = root;
+}
+
 EXTERN __global__ void ab_keccak256_nodes_kernel(const digest *src, const u64 count, const u32 cosets_in_tile, const u64 src_stride, const u64 dst_stride,
                                                  digest *dst) {
   const u64 gid = static_cast<u64>(blockIdx.x) * blockDim.x + threadIdx.x;

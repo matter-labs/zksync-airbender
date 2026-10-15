@@ -88,6 +88,7 @@ pub struct GpuGKRSetupHost {
     pub log_lde_factor: u32,
     pub log_rows_per_leaf: u32,
     pub log_tree_cap_size: u32,
+    pub(crate) partial_tree_reduction_layers: u32,
 }
 
 impl GpuGKRSetupHost {
@@ -110,6 +111,14 @@ impl GpuGKRSetupHost {
             "trace len must be a power of two"
         );
         let log_domain_size = trace_len.trailing_zeros();
+        let partial_tree_reduction_layers =
+            gpu_trace::trace::holder::resolve_partial_tree_reduction_layers(
+                gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+                log_domain_size,
+                log_lde_factor,
+                log_rows_per_leaf,
+                log_tree_cap_size,
+            );
         for column in setup.hypercube_evals.iter() {
             assert_eq!(column.len(), trace_len, "all setup columns must match");
         }
@@ -135,6 +144,7 @@ impl GpuGKRSetupHost {
             log_lde_factor,
             log_rows_per_leaf,
             log_tree_cap_size,
+            partial_tree_reduction_layers,
         })
     }
 

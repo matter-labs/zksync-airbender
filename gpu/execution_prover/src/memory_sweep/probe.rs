@@ -96,6 +96,7 @@ pub(super) fn commit_memory(
                 .compiled_circuit(),
             inputs,
             &config,
+            crate::memory_policy::partial_trees(circuit.circuit, circuit.profile).memory,
             context,
         )?;
         job.finish().map(|(caps, _)| caps)
@@ -104,10 +105,15 @@ pub(super) fn commit_memory(
     result
 }
 
+pub(super) fn preset_setup_reduction_layers(circuit: &PreparedCircuit) -> u32 {
+    crate::memory_policy::partial_trees(circuit.circuit, circuit.profile).setup
+}
+
 pub(super) fn schedule_proof_inputs<'a>(
     device_id: i32,
     context: &ProverContext,
     circuit: &PreparedCircuit,
+    setup_reduction_layers: u32,
 ) -> CudaResult<(GpuGKRProofTransfer<'a, A>, DrTailProofPlan)> {
     let config = prover_config(circuit.circuit, circuit.profile, circuit.security_level).unwrap();
     let programs = &circuit.precomputations.baby_bear().gkr_programs;
@@ -126,7 +132,7 @@ pub(super) fn schedule_proof_inputs<'a>(
         .baby_bear()
         .setup_host
         .get_initialized(circuit.profile)
-        .map(|host| GpuGKRSetupTransfer::new(host, context))
+        .map(|host| GpuGKRSetupTransfer::new(host, setup_reduction_layers, context))
         .transpose()?;
     let memory_host = GpuGKRMemoryTransferHost::from_per_coset_caps(
         circuit
@@ -174,7 +180,12 @@ pub(super) fn input_footprint(
     circuit: &PreparedCircuit,
 ) -> CudaResult<usize> {
     let before = context.get_used_mem_current();
-    let inputs = schedule_proof_inputs(device_id, context, circuit);
+    let inputs = schedule_proof_inputs(
+        device_id,
+        context,
+        circuit,
+        preset_setup_reduction_layers(circuit),
+    );
     drain(context)?;
     let inputs = inputs?;
     let bytes = context.get_used_mem_current() - before;
@@ -209,7 +220,12 @@ pub(super) fn run_case(
     // On pool OOM, queued operations must finish before freed arena ranges can
     // be reused. The runner retains PreparedCircuit host inputs throughout.
     context.set_allocation_mode(AllocationMode::Inputs(direction));
-    let (inputs, plan) = match schedule_proof_inputs(device_id, context, target) {
+    let (inputs, plan) = match schedule_proof_inputs(
+        device_id,
+        context,
+        target,
+        preset_setup_reduction_layers(target),
+    ) {
         Ok(inputs) => inputs,
         Err(error) => {
             drain(context)?;
@@ -220,7 +236,12 @@ pub(super) fn run_case(
     // sources. Follower H2D still overlaps the proof.
     context.get_h2d_stream().synchronize()?;
     context.set_allocation_mode(AllocationMode::Inputs(follower_direction));
-    let follower = schedule_proof_inputs(device_id, context, follower);
+    let follower = schedule_proof_inputs(
+        device_id,
+        context,
+        follower,
+        preset_setup_reduction_layers(follower),
+    );
     context.set_allocation_mode(AllocationMode::Proof(direction));
     let result = match &follower {
         Ok(_) => {
@@ -238,6 +259,7 @@ pub(super) fn run_case(
                 inputs,
                 &plan,
                 policy,
+                crate::memory_policy::partial_trees(target.circuit, ProofProfile::Standard),
                 context,
             )
             .and_then(|job| job.finish())

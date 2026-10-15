@@ -1,5 +1,5 @@
 use super::factory::{PreparedCircuit, SyntheticInputFactory};
-use super::probe::{drain, input_transfers, schedule_proof_inputs};
+use super::probe::{drain, input_transfers, preset_setup_reduction_layers, schedule_proof_inputs};
 use crate::precomputations::l1_wrap::L1WrapPrecomputed;
 use crate::upstream::{
     CommitmentMode, CpuGKRSetup, L1WrapSetup, MerkleTreeCapVarLength, ProofProfile, ProverConfig,
@@ -11,7 +11,7 @@ use era_cudart_sys::CudaError;
 use fft::GoodAllocator;
 use gpu_circuit_prover::config::prover_config;
 use gpu_circuit_prover::l1_wrap::{L1WrapInputs, L1_WRAP_NTT_LOG_MAX_DOMAIN};
-use gpu_circuit_prover::proof::memory_policy::presets;
+use gpu_circuit_prover::proof::memory_policy::{presets, PartialTreePolicy};
 use gpu_circuit_prover::proof::merged_commitment::{
     commit_merged_from_transfers, GpuGKRMergedCommitTransfer,
 };
@@ -224,6 +224,7 @@ pub struct CapacityCase {
     pub follower: Follower,
     pub direction: Direction,
     pub row_path: PathBuf,
+    pub partial_trees: Option<u32>,
 }
 
 fn required_env(name: &str) -> String {
@@ -257,13 +258,29 @@ impl CapacityCase {
             "M8_CAPACITY_ROW already exists: {}",
             row_path.display()
         );
+        let partial_trees = std::env::var("M8_CAPACITY_PARTIAL_TREES")
+            .ok()
+            .map(|depth| {
+                let depth: u32 = depth.parse().unwrap_or_else(|_| {
+                    panic!("M8_CAPACITY_PARTIAL_TREES is not an integer: {depth}")
+                });
+                gpu_trace::trace::holder::assert_partial_tree_reduction_layers(depth);
+                depth
+            });
         Self {
             stage,
             arena_gib,
             follower,
             direction,
             row_path,
+            partial_trees,
         }
+    }
+
+    pub fn partial_trees(&self, circuit: CircuitType, profile: ProofProfile) -> PartialTreePolicy {
+        self.partial_trees
+            .map(PartialTreePolicy::uniform)
+            .unwrap_or_else(|| presets::partial_trees(circuit, profile))
     }
 
     pub fn key(&self) -> String {
@@ -301,6 +318,8 @@ pub struct CapacityRow {
     pub prerequisite_peak_bytes: Option<usize>,
     pub measured_peak_bytes: Option<usize>,
     pub output_fingerprint: Option<String>,
+    #[serde(default)]
+    pub partial_trees: Option<u32>,
     pub vmhwm_kib: Option<u64>,
     pub fits: bool,
     pub failure_kind: Option<String>,
@@ -312,6 +331,21 @@ pub struct WrapSource<'s, B: GoodAllocator> {
     pub tracing_data: &'s UnrolledUnifiedTraceHost<B>,
     pub inits_and_teardowns: &'s InitsAndTeardownsTraceHost<B>,
     pub commitment_mode: CommitmentMode,
+}
+
+fn output_digest(bytes: Vec<u8>) -> String {
+    if let Ok(path) = std::env::var("M8_CAPACITY_OUTPUT_BYTES") {
+        let path = PathBuf::from(path);
+        assert!(
+            !path.exists(),
+            "M8_CAPACITY_OUTPUT_BYTES already exists: {}",
+            path.display()
+        );
+        std::fs::write(&path, &bytes).unwrap_or_else(|error| {
+            panic!("M8_CAPACITY_OUTPUT_BYTES write {}: {error}", path.display())
+        });
+    }
+    digest(&bytes)
 }
 
 fn revision() -> String {
@@ -451,6 +485,7 @@ pub fn run_case<B: GoodAllocator>(
         prerequisite_peak_bytes: None,
         measured_peak_bytes: None,
         output_fingerprint: None,
+        partial_trees: case.partial_trees,
         vmhwm_kib: None,
         fits: false,
         failure_kind: None,
@@ -608,13 +643,14 @@ fn measure<B: GoodAllocator>(
                     target,
                     &dr_tail_plan,
                     presets::policy(CircuitType::L1Wrap, ProofProfile::L1Wrap, row.arena_bytes),
+                    case.partial_trees(CircuitType::L1Wrap, ProofProfile::L1Wrap),
                     context,
                 ),
             )?;
             row.measured_peak_bytes = Some(context.get_used_mem_peak());
             let result = step("target_finish", context, job.finish())?;
-            row.output_fingerprint = Some(digest(
-                &serde_json::to_vec(&result.proof).expect("L1 wrap proof serializes"),
+            row.output_fingerprint = Some(output_digest(
+                serde_json::to_vec(&result.proof).expect("L1 wrap proof serializes"),
             ));
             step("target_finish", context, drain(context))?;
             drop(follower);
@@ -627,7 +663,11 @@ fn measure<B: GoodAllocator>(
             let mut target = step(
                 "target_inputs",
                 context,
-                merged_commit_inputs(prepared, context),
+                merged_commit_inputs(
+                    prepared,
+                    case.partial_trees(UNIFIED, ProofProfile::L1Feeder).setup,
+                    context,
+                ),
             )?;
             step("target_inputs", context, target.schedule(context))?;
             step(
@@ -657,13 +697,14 @@ fn measure<B: GoodAllocator>(
                     &config,
                     target,
                     presets::merged_commit_strategy(UNIFIED, ProofProfile::L1Feeder),
+                    case.partial_trees(UNIFIED, ProofProfile::L1Feeder),
                     context,
                 ),
             )?;
             row.measured_peak_bytes = Some(context.get_used_mem_peak());
             let (caps, _) = step("target_finish", context, job.finish())?;
-            row.output_fingerprint = Some(digest(
-                &serde_json::to_vec(&caps).expect("L1 feeder caps serialize"),
+            row.output_fingerprint = Some(output_digest(
+                serde_json::to_vec(&caps).expect("L1 feeder caps serialize"),
             ));
             step("target_finish", context, drain(context))?;
             drop(follower);
@@ -676,7 +717,11 @@ fn measure<B: GoodAllocator>(
                 let mut inputs = step(
                     "prerequisite_commit",
                     context,
-                    merged_commit_inputs(prepared, context),
+                    merged_commit_inputs(
+                        prepared,
+                        case.partial_trees(UNIFIED, ProofProfile::L1Feeder).setup,
+                        context,
+                    ),
                 )?;
                 step("prerequisite_commit", context, inputs.schedule(context))?;
                 context.set_allocation_mode(AllocationMode::Proof(target_direction));
@@ -689,6 +734,7 @@ fn measure<B: GoodAllocator>(
                         &config,
                         inputs,
                         presets::merged_commit_strategy(UNIFIED, ProofProfile::L1Feeder),
+                        case.partial_trees(UNIFIED, ProofProfile::L1Feeder),
                         context,
                     ),
                 )?;
@@ -706,7 +752,12 @@ fn measure<B: GoodAllocator>(
             let (target, plan) = step(
                 "target_inputs",
                 context,
-                schedule_proof_inputs(0, context, prepared),
+                schedule_proof_inputs(
+                    0,
+                    context,
+                    prepared,
+                    case.partial_trees(UNIFIED, ProofProfile::L1Feeder).setup,
+                ),
             )?;
             step(
                 "target_inputs",
@@ -737,13 +788,14 @@ fn measure<B: GoodAllocator>(
                     target,
                     &plan,
                     presets::policy(UNIFIED, ProofProfile::L1Feeder, row.arena_bytes),
+                    case.partial_trees(UNIFIED, ProofProfile::L1Feeder),
                     context,
                 ),
             )?;
             row.measured_peak_bytes = Some(context.get_used_mem_peak());
             let (proof, _) = step("target_finish", context, job.finish())?;
-            row.output_fingerprint = Some(digest(
-                &serde_json::to_vec(&proof).expect("L1 feeder proof serializes"),
+            row.output_fingerprint = Some(output_digest(
+                serde_json::to_vec(&proof).expect("L1 feeder proof serializes"),
             ));
             step("target_finish", context, drain(context))?;
             drop(follower);
@@ -754,6 +806,7 @@ fn measure<B: GoodAllocator>(
 
 fn merged_commit_inputs<'a>(
     prepared: &PreparedCircuit,
+    setup_reduction_layers: u32,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRMergedCommitTransfer<'a, A>> {
     let setup_host = prepared
@@ -762,7 +815,7 @@ fn merged_commit_inputs<'a>(
         .setup_host
         .get_initialized(prepared.profile)
         .expect("merged memory+witness commitment requires the initialized setup");
-    let setup = GpuGKRSetupTransfer::new(setup_host, context)?;
+    let setup = GpuGKRSetupTransfer::new(setup_host, setup_reduction_layers, context)?;
     let (decoder, inits, trace) = input_transfers(context, prepared)?;
     GpuGKRMergedCommitTransfer::new(setup, decoder, inits, trace, context)
 }
@@ -786,7 +839,12 @@ fn schedule_follower<'a, B: GoodAllocator + 'a>(
             let (inputs, _) = step(
                 "follower_inputs",
                 context,
-                schedule_proof_inputs(0, context, prepared),
+                schedule_proof_inputs(
+                    0,
+                    context,
+                    prepared,
+                    preset_setup_reduction_layers(prepared),
+                ),
             )?;
             (Some(inputs), None)
         }
@@ -798,7 +856,12 @@ fn schedule_follower<'a, B: GoodAllocator + 'a>(
             let (inputs, _) = step(
                 "follower_inputs",
                 context,
-                schedule_proof_inputs(0, context, prepared),
+                schedule_proof_inputs(
+                    0,
+                    context,
+                    prepared,
+                    preset_setup_reduction_layers(prepared),
+                ),
             )?;
             (Some(inputs), None)
         }
@@ -981,6 +1044,7 @@ mod cpu_tests {
             prerequisite_peak_bytes: Some(1),
             measured_peak_bytes: Some(1),
             output_fingerprint: Some("f".into()),
+            partial_trees: None,
             vmhwm_kib: Some(1),
             fits: true,
             failure_kind: None,

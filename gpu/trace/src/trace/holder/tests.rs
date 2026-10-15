@@ -70,8 +70,17 @@ fn cpu_all_cosets(coeffs: &[BF], log_lde_factor: u32, worker: &Worker) -> Vec<Ve
 #[should_panic(expected = "raw hypercube backing must be exclusively owned")]
 fn raw_hypercube_handoff_requires_exclusive_ownership() {
     let context = make_test_context(64, 16);
-    let mut holder =
-        TraceHolder::<BF>::new(18, 1, 0, 3, 1, TreesCacheMode::CacheNone, &context).unwrap();
+    let mut holder = TraceHolder::<BF>::new(
+        18,
+        1,
+        0,
+        3,
+        1,
+        TreesCacheMode::CacheNone,
+        PARTIAL_TREE_REDUCTION_LAYERS,
+        &context,
+    )
+    .unwrap();
     let _alias = holder.raw_hypercube_backing();
     holder.take_raw_hypercube_backing();
 }
@@ -80,9 +89,17 @@ fn raw_hypercube_handoff_requires_exclusive_ownership() {
 fn empty_oracle_needs_no_raw_source_or_transform_scratch() {
     let context = make_test_context(64, 16);
     let baseline = context.get_used_mem_current();
-    let mut holder =
-        TraceHolder::<BF>::new_without_cosets(24, 1, 0, 3, 0, TreesCacheMode::CacheNone, &context)
-            .unwrap();
+    let mut holder = TraceHolder::<BF>::new_without_cosets(
+        24,
+        1,
+        0,
+        3,
+        0,
+        TreesCacheMode::CacheNone,
+        PARTIAL_TREE_REDUCTION_LAYERS,
+        &context,
+    )
+    .unwrap();
     drop(holder.take_raw_hypercube_backing());
     // A nonempty log-24 source would require more than this arena's capacity
     // for transform scratch; an empty oracle must not launch those transforms.
@@ -96,9 +113,17 @@ fn empty_oracle_needs_no_raw_source_or_transform_scratch() {
 fn deferred_full_opening_reuses_raw_allocation() {
     let context = make_test_context(64, 16);
     let baseline = context.get_used_mem_current();
-    let mut holder =
-        TraceHolder::<BF>::new_without_cosets(20, 2, 2, 5, 2, TreesCacheMode::CacheNone, &context)
-            .unwrap();
+    let mut holder = TraceHolder::<BF>::new_without_cosets(
+        20,
+        2,
+        2,
+        5,
+        2,
+        TreesCacheMode::CacheNone,
+        PARTIAL_TREE_REDUCTION_LAYERS,
+        &context,
+    )
+    .unwrap();
     let raw_ptr = holder.get_hypercube_evals().as_ptr();
     let before = context.get_used_mem_current();
     holder.defer_materialization_until_queries(OpeningStrategy::AllCosets);
@@ -284,6 +309,7 @@ fn assert_trace_holder_materialization_and_caps_match_cpu(log_rows_per_leaf: u32
         log_lde_factor + 1,
         columns_count,
         TreesCacheMode::CacheFull,
+        PARTIAL_TREE_REDUCTION_LAYERS,
         &context,
     )
     .unwrap();
@@ -357,6 +383,7 @@ fn trace_holder_lazy_coset_materialization_matches_cpu() {
         log_lde_factor + 1,
         columns_count,
         TreesCacheMode::CachePartial,
+        PARTIAL_TREE_REDUCTION_LAYERS,
         &context,
     )
     .unwrap();
@@ -428,6 +455,7 @@ fn trace_holder_cosets_view_is_contiguous_in_coset_major_order() {
         log_lde_factor + 1,
         columns_count,
         TreesCacheMode::CacheNone,
+        PARTIAL_TREE_REDUCTION_LAYERS,
         &context,
     )
     .unwrap();
@@ -477,6 +505,7 @@ fn trace_holder_consolidated_cosets_matches_per_coset_views() {
         log_lde_factor + 1,
         columns_count,
         TreesCacheMode::CacheNone,
+        PARTIAL_TREE_REDUCTION_LAYERS,
         &context,
     )
     .unwrap();
@@ -533,6 +562,7 @@ fn trace_holder_full_tree_view_is_contiguous_in_coset_major_order() {
         log_tree_cap_size,
         columns_count,
         TreesCacheMode::CacheFull,
+        PARTIAL_TREE_REDUCTION_LAYERS,
         &context,
     )
     .unwrap();
@@ -582,6 +612,7 @@ fn trace_holder_partial_tree_view_is_contiguous_in_coset_major_order() {
         log_tree_cap_size,
         columns_count,
         TreesCacheMode::CachePartial,
+        PARTIAL_TREE_REDUCTION_LAYERS,
         &context,
     )
     .unwrap();
@@ -629,6 +660,7 @@ fn trace_holder_consolidated_tree_matches_per_coset_views() {
         log_tree_cap_size,
         columns_count,
         TreesCacheMode::CacheFull,
+        PARTIAL_TREE_REDUCTION_LAYERS,
         &context,
     )
     .unwrap();
@@ -682,6 +714,7 @@ fn trace_holder_get_evaluations_returns_coset_zero_subrange() {
         log_lde_factor + 1,
         columns_count,
         TreesCacheMode::CacheNone,
+        PARTIAL_TREE_REDUCTION_LAYERS,
         &context,
     )
     .unwrap();
@@ -729,6 +762,7 @@ fn trace_holder_consolidated_partial_tree_matches_per_coset_views() {
         log_tree_cap_size,
         columns_count,
         TreesCacheMode::CachePartial,
+        PARTIAL_TREE_REDUCTION_LAYERS,
         &context,
     )
     .unwrap();
@@ -797,6 +831,7 @@ fn trace_holder_queries_match_across_tree_cache_modes() {
         log_tree_cap_size,
         columns_count,
         TreesCacheMode::CacheFull,
+        PARTIAL_TREE_REDUCTION_LAYERS,
         &context,
     )
     .unwrap();
@@ -811,6 +846,7 @@ fn trace_holder_queries_match_across_tree_cache_modes() {
         log_tree_cap_size,
         columns_count,
         TreesCacheMode::CachePartial,
+        PARTIAL_TREE_REDUCTION_LAYERS,
         &context,
     )
     .unwrap();
@@ -825,6 +861,7 @@ fn trace_holder_queries_match_across_tree_cache_modes() {
         log_tree_cap_size,
         columns_count,
         TreesCacheMode::CacheNone,
+        PARTIAL_TREE_REDUCTION_LAYERS,
         &context,
     )
     .unwrap();
@@ -1235,6 +1272,8 @@ fn partial_tree_from_physical_leaves_matches_natural_path() {
                     log_tree_cap_size,
                     columns_count,
                     cosets_in_tile,
+                    PARTIAL_TREE_REDUCTION_LAYERS,
+                    None,
                     &stream,
                 )
                 .unwrap();
@@ -1272,7 +1311,7 @@ fn retained_openings_match_full_with_one_coset_workspace() {
         gather_leaves_for_queries_physical, gather_merkle_paths_partial_for_queries_physical,
         OracleGatherDesc, OraclePartialPathDesc,
     };
-    let context = make_test_context(128, 16);
+    let context = make_test_context(256, 16);
     let stream = context.get_exec_stream();
     let log_n = 20;
     let log_f = 2;
@@ -1289,6 +1328,7 @@ fn retained_openings_match_full_with_one_coset_workspace() {
         log_cap,
         cols,
         TreesCacheMode::CachePartial,
+        PARTIAL_TREE_REDUCTION_LAYERS,
         &context,
     )
     .unwrap();
@@ -1344,6 +1384,7 @@ fn retained_openings_match_full_with_one_coset_workspace() {
         log_rows,
         log_n - log_rows,
         layers,
+        PARTIAL_TREE_REDUCTION_LAYERS,
         &queries,
         stream,
     )
@@ -1353,164 +1394,422 @@ fn retained_openings_match_full_with_one_coset_workspace() {
     memory_copy_async(&mut expected_leaves_host, &expected_leaves, stream).unwrap();
     memory_copy_async(&mut expected_paths_host, &expected_paths, stream).unwrap();
     stream.synchronize().unwrap();
-    for opening in [OpeningStrategy::PerCoset, OpeningStrategy::InPlace] {
-        for (mode, commitment) in [
-            (TreesCacheMode::CacheNone, None),
-            (TreesCacheMode::CachePartial, None),
-            (
-                TreesCacheMode::CachePartial,
-                Some((
-                    WitnessCommitmentStrategy::PerCoset,
-                    WitnessPostCommitStorage::RawAndMonomials,
-                )),
-            ),
-            (
-                TreesCacheMode::CachePartial,
-                Some((
-                    WitnessCommitmentStrategy::InPlace,
-                    WitnessPostCommitStorage::RawEvaluations,
-                )),
-            ),
-            (
-                TreesCacheMode::CachePartial,
-                Some((
-                    WitnessCommitmentStrategy::PerCoset,
-                    WitnessPostCommitStorage::RawEvaluations,
-                )),
-            ),
-            (
-                TreesCacheMode::CachePartial,
-                Some((
-                    WitnessCommitmentStrategy::AllCosets,
-                    WitnessPostCommitStorage::RawAndMonomials,
-                )),
-            ),
-        ] {
-            let retain_witness_monomials = matches!(
-                commitment,
-                Some((_, WitnessPostCommitStorage::RawAndMonomials))
-            );
-            let constructor =
-                if matches!(commitment, Some((WitnessCommitmentStrategy::AllCosets, _))) {
-                    TraceHolder::<BF>::new
-                } else {
-                    TraceHolder::<BF>::new_without_cosets
-                };
-            let mut holder =
-                constructor(log_n, log_f, log_rows, log_cap, cols, mode, &context).unwrap();
-            memory_copy_async(holder.get_uninit_hypercube_evals_mut(), &source, stream).unwrap();
-            if let Some((commitment, storage)) = commitment {
-                let raw_pointer = holder.get_hypercube_evals().as_ptr();
-                context.reset_used_mem_peak();
-                let before_commit = context.get_used_mem_peak();
-                match commitment {
-                    WitnessCommitmentStrategy::AllCosets | WitnessCommitmentStrategy::PerCoset => {
-                        holder.commit_with_monomials(None, &context).unwrap()
-                    }
-                    WitnessCommitmentStrategy::InPlace => {
-                        holder.commit_in_place(None, &context).unwrap()
-                    }
-                }
-                assert_eq!(
-                    holder.are_cosets_materialized(),
-                    commitment == WitnessCommitmentStrategy::AllCosets
+    let mut full_cap = vec![Digest::default(); 1 << log_cap];
+    memory_copy_async(
+        &mut full_cap,
+        full.unified_device_cap.as_ref().unwrap(),
+        stream,
+    )
+    .unwrap();
+    stream.synchronize().unwrap();
+    for reduction_layers in PARTIAL_TREE_REDUCTION_LAYERS..=MAX_PARTIAL_TREE_REDUCTION_LAYERS {
+        let mut reference = TraceHolder::<BF>::new_without_cosets(
+            log_n,
+            log_f,
+            log_rows,
+            log_cap,
+            cols,
+            TreesCacheMode::CachePartial,
+            reduction_layers,
+            &context,
+        )
+        .unwrap();
+        memory_copy_async(reference.get_uninit_hypercube_evals_mut(), &source, stream).unwrap();
+        reference.ensure_cosets_materialized(&context).unwrap();
+        reference.commit_all(&context).unwrap();
+        assert_eq!(reference.partial_tree_reduction_layers(), reduction_layers);
+        let reference_path_desc = OraclePartialPathDesc {
+            cosets_ptr: reference.get_consolidated_cosets().as_ptr() as u64,
+            partial_tree_ptr: reference.get_consolidated_tree().unwrap().as_ptr() as u64,
+            columns_count: cols as u32,
+            slab_dst_ptr: actual_paths.as_mut_ptr() as u64,
+            ..Default::default()
+        };
+        gather_merkle_paths_partial_for_queries_physical(
+            reference_path_desc,
+            log_f,
+            log_rows,
+            log_n - log_rows,
+            layers,
+            reduction_layers,
+            &queries,
+            stream,
+        )
+        .unwrap();
+        let mut reference_paths_host = vec![0u32; actual_paths.len()];
+        let mut reference_cap = vec![Digest::default(); 1 << log_cap];
+        memory_copy_async(&mut reference_paths_host, &actual_paths, stream).unwrap();
+        memory_copy_async(
+            &mut reference_cap,
+            reference.unified_device_cap.as_ref().unwrap(),
+            stream,
+        )
+        .unwrap();
+        stream.synchronize().unwrap();
+        assert_eq!(
+            reference_cap, full_cap,
+            "L={reduction_layers}: all-cosets cap"
+        );
+        assert_eq!(
+            reference_paths_host, expected_paths_host,
+            "L={reduction_layers}: all-cosets paths"
+        );
+        reference.release_cosets();
+        for opening in [OpeningStrategy::PerCoset, OpeningStrategy::InPlace] {
+            for (mode, commitment) in [
+                (TreesCacheMode::CacheNone, None),
+                (TreesCacheMode::CachePartial, None),
+                (
+                    TreesCacheMode::CachePartial,
+                    Some((
+                        WitnessCommitmentStrategy::PerCoset,
+                        WitnessPostCommitStorage::RawAndMonomials,
+                    )),
+                ),
+                (
+                    TreesCacheMode::CachePartial,
+                    Some((
+                        WitnessCommitmentStrategy::InPlace,
+                        WitnessPostCommitStorage::RawEvaluations,
+                    )),
+                ),
+                (
+                    TreesCacheMode::CachePartial,
+                    Some((
+                        WitnessCommitmentStrategy::PerCoset,
+                        WitnessPostCommitStorage::RawEvaluations,
+                    )),
+                ),
+                (
+                    TreesCacheMode::CachePartial,
+                    Some((
+                        WitnessCommitmentStrategy::AllCosets,
+                        WitnessPostCommitStorage::RawAndMonomials,
+                    )),
+                ),
+            ] {
+                let retain_witness_monomials = matches!(
+                    commitment,
+                    Some((_, WitnessPostCommitStorage::RawAndMonomials))
                 );
-                holder.retain_after_commitment(storage);
-                if commitment == WitnessCommitmentStrategy::InPlace {
-                    assert_eq!(holder.get_hypercube_evals().as_ptr(), raw_pointer);
-                    // Only the returned cap may allocate; no polynomial workspace.
-                    assert!(
-                        context.get_used_mem_peak()
-                            <= before_commit + (1 << TEST_DEVICE_ALLOCATOR_BLOCK_LOG_SIZE)
-                    );
-                }
-                assert!(holder.raw_hypercube_evals.is_some());
-                assert_eq!(holder.opening_monomials.is_some(), retain_witness_monomials);
-                assert!(matches!(holder.cosets, CosetsHolder::None(_)));
-                let mut raw_host = vec![BF::ZERO; source.len()];
-                let mut expected_cap = vec![Digest::default(); 1 << log_cap];
-                let mut actual_cap = vec![Digest::default(); 1 << log_cap];
-                memory_copy_async(&mut raw_host, holder.get_hypercube_evals(), stream).unwrap();
-                memory_copy_async(
-                    &mut expected_cap,
-                    full.unified_device_cap.as_ref().unwrap(),
-                    stream,
-                )
-                .unwrap();
-                memory_copy_async(
-                    &mut actual_cap,
-                    holder.unified_device_cap.as_ref().unwrap(),
-                    stream,
-                )
-                .unwrap();
-                stream.synchronize().unwrap();
-                assert_eq!(
-                    raw_host.iter().zip(&source).position(|(a, b)| a != b),
-                    None,
-                    "commitment must preserve raw evaluations for sumchecks"
-                );
-                assert_eq!(actual_cap, expected_cap, "streamed witness commitment cap");
-            } else if let TreesHolder::Partial(tree) = &mut holder.trees {
-                // Test-only stand-in for setup's pre-prove partial-tree transfer.
-                memory_copy_async(tree, full.get_consolidated_tree().unwrap(), stream).unwrap();
-            }
-            let leaf_sentinel = vec![BF::from_u32_unchecked(42); actual_leaves.len()];
-            let path_sentinel = vec![0xdeadbeefu32; actual_paths.len()];
-            memory_copy_async(&mut actual_leaves, &leaf_sentinel, stream).unwrap();
-            memory_copy_async(&mut actual_paths, &path_sentinel, stream).unwrap();
-            let raw_bytes = holder.raw_hypercube_backing().allocated_bytes();
-            holder.defer_materialization_until_queries(opening);
-            holder.finish_raw_batching(&context).unwrap();
-            assert!(holder.raw_hypercube_evals.is_none());
-            assert_eq!(holder.opening_monomials.is_some(), retain_witness_monomials);
-            let before = context.get_used_mem_current();
-            context.reset_used_mem_peak();
-            // Peak counts the entire reserved small-allocation pool, whereas
-            // current usage counts its live suballocations. Compare peak to its
-            // own reset baseline so that unused pool capacity is not extra scratch.
-            let physical_baseline = context.get_used_mem_peak();
-            holder
-                .gather_openings_recomputed(
-                    &queries,
-                    &mut actual_leaves,
-                    &mut actual_paths,
+                let constructor =
+                    if matches!(commitment, Some((WitnessCommitmentStrategy::AllCosets, _))) {
+                        TraceHolder::<BF>::new
+                    } else {
+                        TraceHolder::<BF>::new_without_cosets
+                    };
+                let mut holder = constructor(
+                    log_n,
+                    log_f,
+                    log_rows,
+                    log_cap,
+                    cols,
+                    mode,
+                    reduction_layers,
                     &context,
                 )
                 .unwrap();
-            assert_eq!(context.get_used_mem_current(), before - raw_bytes);
-            // The raw backing becomes M; only one W plus an optional single-tree
-            // allocation may be added. This context rounds to one-MiB blocks.
-            let tree_bytes = usize::from(matches!(mode, TreesCacheMode::CacheNone))
-                << TEST_DEVICE_ALLOCATOR_BLOCK_LOG_SIZE;
-            let peak = context.get_used_mem_peak();
-            let workspace_bytes = if opening == OpeningStrategy::InPlace {
-                0
-            } else {
-                raw_bytes
-            };
-            assert!(peak <= physical_baseline + workspace_bytes + tree_bytes,
+                memory_copy_async(holder.get_uninit_hypercube_evals_mut(), &source, stream)
+                    .unwrap();
+                if let Some((commitment, storage)) = commitment {
+                    let raw_pointer = holder.get_hypercube_evals().as_ptr();
+                    context.reset_used_mem_peak();
+                    let before_commit = context.get_used_mem_peak();
+                    match commitment {
+                        WitnessCommitmentStrategy::AllCosets
+                        | WitnessCommitmentStrategy::PerCoset => {
+                            holder.commit_with_monomials(None, &context).unwrap()
+                        }
+                        WitnessCommitmentStrategy::InPlace => {
+                            holder.commit_in_place(None, &context).unwrap()
+                        }
+                    }
+                    assert_eq!(
+                        holder.are_cosets_materialized(),
+                        commitment == WitnessCommitmentStrategy::AllCosets
+                    );
+                    holder.retain_after_commitment(storage);
+                    if commitment == WitnessCommitmentStrategy::InPlace {
+                        assert_eq!(holder.get_hypercube_evals().as_ptr(), raw_pointer);
+                        // Only the returned cap may allocate; no polynomial workspace.
+                        assert!(
+                            context.get_used_mem_peak()
+                                <= before_commit + (1 << TEST_DEVICE_ALLOCATOR_BLOCK_LOG_SIZE)
+                        );
+                    }
+                    assert!(holder.raw_hypercube_evals.is_some());
+                    assert_eq!(holder.opening_monomials.is_some(), retain_witness_monomials);
+                    assert!(matches!(holder.cosets, CosetsHolder::None(_)));
+                    let mut raw_host = vec![BF::ZERO; source.len()];
+                    let mut expected_cap = vec![Digest::default(); 1 << log_cap];
+                    let mut actual_cap = vec![Digest::default(); 1 << log_cap];
+                    memory_copy_async(&mut raw_host, holder.get_hypercube_evals(), stream).unwrap();
+                    memory_copy_async(
+                        &mut expected_cap,
+                        full.unified_device_cap.as_ref().unwrap(),
+                        stream,
+                    )
+                    .unwrap();
+                    memory_copy_async(
+                        &mut actual_cap,
+                        holder.unified_device_cap.as_ref().unwrap(),
+                        stream,
+                    )
+                    .unwrap();
+                    stream.synchronize().unwrap();
+                    assert_eq!(
+                        raw_host.iter().zip(&source).position(|(a, b)| a != b),
+                        None,
+                        "commitment must preserve raw evaluations for sumchecks"
+                    );
+                    assert_eq!(
+                        actual_cap, expected_cap,
+                        "L={reduction_layers}: streamed witness commitment cap"
+                    );
+                } else if let TreesHolder::Partial(tree) = &mut holder.trees {
+                    // Test-only stand-in for setup's pre-prove partial-tree transfer.
+                    memory_copy_async(tree, reference.get_consolidated_tree().unwrap(), stream)
+                        .unwrap();
+                }
+                let leaf_sentinel = vec![BF::from_u32_unchecked(42); actual_leaves.len()];
+                let path_sentinel = vec![0xdeadbeefu32; actual_paths.len()];
+                memory_copy_async(&mut actual_leaves, &leaf_sentinel, stream).unwrap();
+                memory_copy_async(&mut actual_paths, &path_sentinel, stream).unwrap();
+                let raw_bytes = holder.raw_hypercube_backing().allocated_bytes();
+                holder.defer_materialization_until_queries(opening);
+                holder.finish_raw_batching(&context).unwrap();
+                assert!(holder.raw_hypercube_evals.is_none());
+                assert_eq!(holder.opening_monomials.is_some(), retain_witness_monomials);
+                let before = context.get_used_mem_current();
+                context.reset_used_mem_peak();
+                // Peak counts the entire reserved small-allocation pool, whereas
+                // current usage counts its live suballocations. Compare peak to its
+                // own reset baseline so that unused pool capacity is not extra scratch.
+                let physical_baseline = context.get_used_mem_peak();
+                holder
+                    .gather_openings_recomputed(
+                        &queries,
+                        &mut actual_leaves,
+                        &mut actual_paths,
+                        &context,
+                    )
+                    .unwrap();
+                assert_eq!(context.get_used_mem_current(), before - raw_bytes);
+                // The raw backing becomes M; only one W plus an optional single tree
+                // and its boundary scratch may be added. This context rounds to
+                // one-MiB blocks.
+                let tree_bytes = (usize::from(matches!(mode, TreesCacheMode::CacheNone))
+                    * (1 + usize::from(reduction_layers != PARTIAL_TREE_REDUCTION_LAYERS)))
+                    << TEST_DEVICE_ALLOCATOR_BLOCK_LOG_SIZE;
+                let peak = context.get_used_mem_peak();
+                let workspace_bytes = if opening == OpeningStrategy::InPlace {
+                    0
+                } else {
+                    raw_bytes
+                };
+                assert!(peak <= physical_baseline + workspace_bytes + tree_bytes,
             "peak={peak} physical_baseline={physical_baseline} one_coset={raw_bytes} tree_bound={tree_bytes}");
-            let mut actual_leaves_host = vec![BF::ZERO; actual_leaves.len()];
-            let mut actual_paths_host = vec![0u32; actual_paths.len()];
-            memory_copy_async(&mut actual_leaves_host, &actual_leaves, stream).unwrap();
-            memory_copy_async(&mut actual_paths_host, &actual_paths, stream).unwrap();
-            stream.synchronize().unwrap();
-            assert_eq!(
-                actual_leaves_host
-                    .iter()
-                    .zip(&expected_leaves_host)
-                    .position(|(a, b)| a != b),
-                None,
-                "first mismatching leaf value"
-            );
-            assert_eq!(
-                actual_paths_host
-                    .iter()
-                    .zip(&expected_paths_host)
-                    .position(|(a, b)| a != b),
-                None,
-                "first mismatching path word"
-            );
+                let mut actual_leaves_host = vec![BF::ZERO; actual_leaves.len()];
+                let mut actual_paths_host = vec![0u32; actual_paths.len()];
+                memory_copy_async(&mut actual_leaves_host, &actual_leaves, stream).unwrap();
+                memory_copy_async(&mut actual_paths_host, &actual_paths, stream).unwrap();
+                stream.synchronize().unwrap();
+                assert_eq!(
+                    actual_leaves_host
+                        .iter()
+                        .zip(&expected_leaves_host)
+                        .position(|(a, b)| a != b),
+                    None,
+                    "L={reduction_layers}: first mismatching leaf value"
+                );
+                assert_eq!(
+                    actual_paths_host
+                        .iter()
+                        .zip(&expected_paths_host)
+                        .position(|(a, b)| a != b),
+                    None,
+                    "L={reduction_layers}: first mismatching path word"
+                );
+            }
         }
     }
+}
+
+#[test]
+fn deep_partial_trees_install_lazily_and_open_like_depth_five() {
+    use gpu_hash::blake2s::{
+        gather_merkle_paths_partial_for_queries_physical, OraclePartialPathDesc,
+    };
+    let context = make_test_context(256, 16);
+    let stream = context.get_exec_stream();
+    let (log_n, log_f, log_rows, log_cap, cols) = (20, 2, 1, 4, 2);
+    let source: Vec<_> = (0..cols << log_n)
+        .map(|i| BF::from_u32_unchecked(((i * 31) ^ (i >> 7)) as u32))
+        .collect();
+    let leaves = 1u32 << (log_n - log_rows);
+    let query_host: Vec<u32> = (0..1u32 << log_f)
+        .flat_map(|c| [0, 1, 1023, 1024, leaves - 1].map(|leaf| (leaf << log_f) | c))
+        .collect();
+    let mut queries = context
+        .alloc(query_host.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    memory_copy_async(&mut queries, &query_host, stream).unwrap();
+    let leaf_host = [0, 1, 1023, 1024, 4095, 4096, leaves - 1];
+    let mut leaf_indexes = context
+        .alloc(leaf_host.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    memory_copy_async(&mut leaf_indexes, &leaf_host, stream).unwrap();
+    let layers = log_n - log_rows - (log_cap - log_f);
+    let open = |holder: &mut TraceHolder<BF>, reduction_layers: u32| {
+        let mut paths = context
+            .alloc::<u32>(
+                query_host.len() * layers as usize * 8,
+                AllocationPlacement::BestFit,
+            )
+            .unwrap();
+        let desc = OraclePartialPathDesc {
+            cosets_ptr: holder.get_consolidated_cosets().as_ptr() as u64,
+            partial_tree_ptr: holder.get_consolidated_tree().unwrap().as_ptr() as u64,
+            columns_count: cols as u32,
+            slab_dst_ptr: paths.as_mut_ptr() as u64,
+            ..Default::default()
+        };
+        gather_merkle_paths_partial_for_queries_physical(
+            desc,
+            log_f,
+            log_rows,
+            log_n - log_rows,
+            layers,
+            reduction_layers,
+            &queries,
+            stream,
+        )
+        .unwrap();
+        let coset_paths = holder
+            .get_query_merkle_paths(1, &leaf_indexes, &context)
+            .unwrap();
+        let mut host = vec![0u32; paths.len()];
+        memory_copy_async(&mut host, &paths, stream).unwrap();
+        stream.synchronize().unwrap();
+        (host, unsafe { coset_paths.get_accessor().get().to_vec() })
+    };
+    let mut baseline = TraceHolder::<BF>::new_without_cosets(
+        log_n,
+        log_f,
+        log_rows,
+        log_cap,
+        cols,
+        TreesCacheMode::CacheNone,
+        PARTIAL_TREE_REDUCTION_LAYERS,
+        &context,
+    )
+    .unwrap();
+    memory_copy_async(baseline.get_uninit_hypercube_evals_mut(), &source, stream).unwrap();
+    baseline.prepare_full_opening(&context).unwrap();
+    let expected = open(&mut baseline, PARTIAL_TREE_REDUCTION_LAYERS);
+    let mut expected_cap = vec![Digest::default(); 1 << log_cap];
+    let mut monomial_baseline = TraceHolder::<BF>::new_without_cosets(
+        log_n,
+        log_f,
+        log_rows,
+        log_cap,
+        cols,
+        TreesCacheMode::CacheNone,
+        PARTIAL_TREE_REDUCTION_LAYERS,
+        &context,
+    )
+    .unwrap();
+    memory_copy_async(
+        monomial_baseline.get_uninit_hypercube_evals_mut(),
+        &source,
+        stream,
+    )
+    .unwrap();
+    monomial_baseline.install_partial_trees(&context).unwrap();
+    monomial_baseline
+        .commit_with_monomials(None, &context)
+        .unwrap();
+    memory_copy_async(
+        &mut expected_cap,
+        monomial_baseline.unified_device_cap(),
+        stream,
+    )
+    .unwrap();
+    for reduction_layers in PARTIAL_TREE_REDUCTION_LAYERS + 1..=MAX_PARTIAL_TREE_REDUCTION_LAYERS {
+        let mut lazy = TraceHolder::<BF>::new_without_cosets(
+            log_n,
+            log_f,
+            log_rows,
+            log_cap,
+            cols,
+            TreesCacheMode::CacheNone,
+            reduction_layers,
+            &context,
+        )
+        .unwrap();
+        memory_copy_async(lazy.get_uninit_hypercube_evals_mut(), &source, stream).unwrap();
+        lazy.prepare_full_opening(&context).unwrap();
+        assert_eq!(lazy.partial_tree_reduction_layers(), reduction_layers);
+        assert_eq!(
+            lazy.get_consolidated_tree().unwrap().len(),
+            (1usize << log_f) << (log_n - log_rows + 1 - reduction_layers)
+        );
+        let actual = open(&mut lazy, reduction_layers);
+        let first_multi = actual.0.iter().zip(&expected.0).position(|(a, b)| a != b);
+        let first_rows = actual.1.iter().zip(&expected.1).position(|(a, b)| a != b);
+        assert_eq!(
+            (first_multi, first_rows),
+            (None, None),
+            "L={reduction_layers}: lazy (multi word, rows digest)"
+        );
+
+        let mut installed = TraceHolder::<BF>::new_without_cosets(
+            log_n,
+            log_f,
+            log_rows,
+            log_cap,
+            cols,
+            TreesCacheMode::CacheNone,
+            reduction_layers,
+            &context,
+        )
+        .unwrap();
+        memory_copy_async(installed.get_uninit_hypercube_evals_mut(), &source, stream).unwrap();
+        installed.install_partial_trees(&context).unwrap();
+        installed.commit_with_monomials(None, &context).unwrap();
+        let mut cap = vec![Digest::default(); 1 << log_cap];
+        memory_copy_async(&mut cap, installed.unified_device_cap(), stream).unwrap();
+        stream.synchronize().unwrap();
+        assert_eq!(cap, expected_cap, "L={reduction_layers}: installed cap");
+    }
+    let clamped = TraceHolder::<BF>::new_without_cosets(
+        12,
+        log_f,
+        log_rows,
+        log_cap,
+        cols,
+        TreesCacheMode::CacheNone,
+        MAX_PARTIAL_TREE_REDUCTION_LAYERS,
+        &context,
+    )
+    .unwrap();
+    assert_eq!(
+        clamped.partial_tree_reduction_layers(),
+        12 - log_rows - (log_cap - log_f)
+    );
+}
+
+#[test]
+fn cpu_partial_tree_reduction_layers_resolution() {
+    assert_eq!(resolve_partial_tree_reduction_layers(10, 23, 4, 1, 4), 10);
+    assert_eq!(resolve_partial_tree_reduction_layers(10, 14, 2, 1, 4), 10);
+    assert_eq!(resolve_partial_tree_reduction_layers(10, 9, 1, 1, 2), 7);
+    assert_eq!(resolve_partial_tree_reduction_layers(6, 6, 0, 0, 1), 5);
+    for requested in [4, 11] {
+        let panic = std::panic::catch_unwind(|| assert_partial_tree_reduction_layers(requested));
+        assert!(panic.is_err(), "requested {requested} must be rejected");
+    }
+    assert!(
+        std::panic::catch_unwind(|| resolve_partial_tree_reduction_layers(5, 6, 0, 0, 2)).is_err()
+    );
 }

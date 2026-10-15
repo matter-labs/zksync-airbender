@@ -371,6 +371,7 @@ fn pr_accumulate_base_matches_cpu() {
             3,
             memory_cols,
             TreesCacheMode::CacheNone,
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
             &ctx,
         )
         .unwrap();
@@ -381,6 +382,7 @@ fn pr_accumulate_base_matches_cpu() {
             3,
             setup_cols,
             TreesCacheMode::CacheNone,
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
             &ctx,
         )
         .unwrap();
@@ -1887,13 +1889,26 @@ fn pr_l1_whir_fold_matches_cpu_small() {
         assert_eq!(shape.total_sumcheck_polys, 10);
         let mut prepared = Vec::new();
         for (point, beta, seed, claims, _) in &cpu_jobs {
-            let mut raw =
-                TraceHolder::new_without_cosets(10, 5, 2, 3, 104, TreesCacheMode::CacheNone, &ctx)
-                    .unwrap();
+            let mut raw = TraceHolder::new_without_cosets(
+                10,
+                5,
+                2,
+                3,
+                104,
+                TreesCacheMode::CacheNone,
+                gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+                &ctx,
+            )
+            .unwrap();
             memory_copy_async(raw.get_uninit_hypercube_evals_mut(), &flat, stream).unwrap();
             let mut base = PackedCosetRecomputeOracle::pack_from_columns(raw, 4, &ctx).unwrap();
             base.commit(&cfg, &ctx).unwrap();
-            let mut setup = PackedSetupSource::new(Arc::clone(&setup_host), &ctx).unwrap();
+            let mut setup = PackedSetupSource::new(
+                Arc::clone(&setup_host),
+                gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+                &ctx,
+            )
+            .unwrap();
             let transfer =
                 single_shot_h2d(|transfer| setup.schedule_transfer(transfer, &ctx), &ctx).unwrap();
             transfer.ensure_transferred(&ctx).unwrap();

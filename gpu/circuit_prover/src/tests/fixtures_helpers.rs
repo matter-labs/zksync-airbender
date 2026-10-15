@@ -293,8 +293,12 @@ pub(super) fn finish_proof_fixture(
     eprintln!("fixture: tracing host ready");
 
     let compute_memory_tree_caps_for_fixture = || {
-        let mut setup_transfer =
-            GpuGKRSetupTransfer::new(Arc::clone(&gpu_setup_host), &context).unwrap();
+        let mut setup_transfer = GpuGKRSetupTransfer::new(
+            Arc::clone(&gpu_setup_host),
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+            &context,
+        )
+        .unwrap();
         let mut decoder_transfer = if compiled_circuit.has_decoder_lookup {
             Some(DecoderTableTransfer::new(Arc::clone(&decoder_table_host), &context).unwrap())
         } else {
@@ -330,6 +334,7 @@ pub(super) fn finish_proof_fixture(
             decoder_transfer.as_ref().map(|t| &t.data_device[..]),
             &tracing_data_transfer.data_device,
             &prover_config,
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
             &context,
         )
         .unwrap();
@@ -709,8 +714,12 @@ pub(super) fn finish_proof_fixture_memory(
     eprintln!("fixture(memory): tracing host ready");
 
     let compute_memory_tree_caps_for_fixture = || {
-        let mut setup_transfer =
-            GpuGKRSetupTransfer::new(Arc::clone(&gpu_setup_host), &context).unwrap();
+        let mut setup_transfer = GpuGKRSetupTransfer::new(
+            Arc::clone(&gpu_setup_host),
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+            &context,
+        )
+        .unwrap();
         let mut decoder_transfer = if compiled_circuit.has_decoder_lookup {
             Some(DecoderTableTransfer::new(Arc::clone(&decoder_table_host), &context).unwrap())
         } else {
@@ -743,6 +752,7 @@ pub(super) fn finish_proof_fixture_memory(
             decoder_transfer.as_ref().map(|t| &t.data_device[..]),
             &tracing_data_transfer.data_device,
             &prover_config,
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
             &context,
         )
         .unwrap();

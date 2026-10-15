@@ -57,6 +57,7 @@ fn run_mixed_circuit_multi_schedule_test() {
                 transfers,
                 &plan,
                 ProofMemoryPolicy::default(),
+                crate::proof::memory_policy::PartialTreePolicy::DEFAULT,
                 context,
             )
             .unwrap(),

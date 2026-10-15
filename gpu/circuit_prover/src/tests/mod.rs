@@ -250,7 +250,13 @@ impl BasicUnrolledFixture {
         let setup_transfer = self
             .gpu_setup_host
             .as_ref()
-            .map(|host| GpuGKRSetupTransfer::new(Arc::clone(host), context))
+            .map(|host| {
+                GpuGKRSetupTransfer::new(
+                    Arc::clone(host),
+                    gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+                    context,
+                )
+            })
             .transpose()?;
         let decoder_transfer = if self.compiled_circuit.has_decoder_lookup {
             Some(DecoderTableTransfer::new(
@@ -340,6 +346,7 @@ impl BasicUnrolledFixture {
             transfers,
             &dr_tail_plan,
             self.memory_policy(),
+            crate::proof::memory_policy::PartialTreePolicy::DEFAULT,
             &self.context,
         )
     }
@@ -386,6 +393,7 @@ impl BasicUnrolledFixture {
             transfers,
             &dr_tail_plan,
             policy,
+            crate::proof::memory_policy::PartialTreePolicy::DEFAULT,
             &self.context,
         )?;
         let mem_after_prove = self.context.get_used_mem_current();
