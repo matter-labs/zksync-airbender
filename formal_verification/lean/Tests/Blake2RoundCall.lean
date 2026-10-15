@@ -1,3 +1,5 @@
+import Airbender.Proofs.Blake2Round.Call
+import Airbender.Review.Trace.Workers.Blake2Round.ReferenceCalls
 import Airbender.Proofs.Blake2Round.Claims
 
 namespace Tests.Blake2RoundCall
@@ -42,5 +44,18 @@ theorem changed_request_flags_rejected [Fact p.Prime] (hp : 8192 ≤ p)
   · exact wrong reduced
   · exact wrong right
   · exact wrong compression
+
+theorem completed_controller_cannot_restart (flags : Fin 8)
+    {before after : Reference.RiscV.Sail.State}
+    (read : (Trace.Cell.register 12).read before =
+      .ok (Blake2Round.controlAt flags 10).toBitVec before) :
+    ¬ Blake2Round.Call.Executes before after := by
+  intro execution
+  obtain ⟨control, actual, minimum⟩ := Blake2Round.Call.Proofs.successful_controller execution
+  have same := (EStateM.Result.ok.inj (actual.symm.trans read)).1
+  rw [same] at minimum
+  have completed : (Blake2Round.controlAt flags 10).toBitVec.toNat < 8 * 65536 := by
+    fin_cases flags <;> decide
+  omega
 
 end Tests.Blake2RoundCall
