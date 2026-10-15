@@ -644,9 +644,9 @@ contract WhirRealProofTest is WhirVerifier {
     uint256 constant PLEN = 992;
 
     function test() external {
-        // WHIR calldata serialized from the REAL proof unified_circuit_proof_proth120.json
+        // WHIR calldata serialized from the REAL proof unified_circuit_proof_proth120_2p21.json
         // (7 merged mem+wit cols + 1 setup col); preimage seed = the GKR verifier's handoff seed.
-        string memory h = vm.readFile("whir/testdata/proth120_whir_calldata_from_proof.hex");
+        string memory h = vm.readFile("../../../debug_data/l1_wrap_2p21/proth120_whir_calldata_from_proof.hex");
         bytes memory data = vm.parseBytes(string.concat("0x", h));
         emit log_named_uint("calldata_bytes", data.length);
         // measure the verifier CALL gas (execution) precisely, like a tx receipt's gasUsed

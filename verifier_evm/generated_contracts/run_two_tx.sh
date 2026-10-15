@@ -6,13 +6,13 @@
 # compiler options, deployed bytecode sizes, and REAL per-tx gas (raw anvil txs, no harness
 # memcopy over-count).
 #
-#   ./run_two_tx.sh 2p22 18545    # full run on a task-owned port
+#   ./run_two_tx.sh 2p21 18545    # full run on a task-owned port
 #   ./run_two_tx.sh 2p21 --no-gas # skip the anvil raw-tx gas step
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 . "$SCRIPT_DIR/version.sh"
-select_version "${1:?usage: run_two_tx.sh <2p22|2p21> <anvil-port|--no-gas>}"
-GAS_ARG=${2:?usage: run_two_tx.sh <2p22|2p21> <anvil-port|--no-gas>}
+select_version "${1:?usage: run_two_tx.sh <2p21> <anvil-port|--no-gas>}"
+GAS_ARG=${2:?usage: run_two_tx.sh <2p21> <anvil-port|--no-gas>}
 cd "$CONTRACTS_ROOT"
 
 # 1. generate the verifier sources + the calldata (production Rust functions; no fixtures)

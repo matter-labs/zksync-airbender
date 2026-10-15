@@ -1,7 +1,7 @@
 # Two-transaction cross-check. Compiles only the generated GkrWhirRegistry + the test; the GKR
 # and WHIR verifiers are read as already-compiled deployedBytecode from the sibling projects'
 # out/ (build them first: `forge build` in ../gkr, ../gkr_negative and ../whir). Calldata is read from
-# ../../../debug_data/l1_wrap_2p21 (plus the 2p22 rejection fixture). Run: `forge test`.
+# ../../../debug_data/l1_wrap_2p21. Run: `forge test`.
 [profile.default]
 solc_version = "0.8.36"
 auto_detect_solc = false
@@ -14,5 +14,5 @@ fs_permissions = [
     { access = "read", path = "../gkr" },
     { access = "read", path = "../gkr_negative" },
     { access = "read", path = "../whir" },
-    { access = "read", path = "../../../debug_data" },
+    { access = "read", path = "../../../debug_data/l1_wrap_2p21" },
 ]

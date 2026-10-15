@@ -125,11 +125,4 @@ contract GkrWhirTwoTxTest {
         require(!ok, "changed final PC accepted");
     }
 
-    function test_rejects_2p22_proof() public {
-        _verifyPair();
-        (bool gkrOk,) = GKR.call(_calldata("../../../debug_data/gkr_full_calldata.hex"));
-        require(!gkrOk, "2p22 GKR proof accepted by 2p21 verifier");
-        (bool whirOk,) = WHIR.call(_calldata("../../../debug_data/proth120_whir_calldata_from_proof.hex"));
-        require(!whirOk, "2p22 WHIR proof accepted by 2p21 verifier");
-    }
 }

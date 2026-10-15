@@ -3,12 +3,12 @@
 # transactions (proof bytes are tx calldata, paid via intrinsic/EIP-7623 — never memory-copied,
 # so no forge-harness over-count). Reads the compiled deployedBytecode from the sibling projects'
 # out/ and calldata from the selected version's data root. Prereq: build gkr/, whir/, and
-# two_tx/ for that version. Usage: raw_tx_gas.sh <2p22|2p21> <task-owned-port>.
+# two_tx/ for that version. Usage: raw_tx_gas.sh <2p21> <task-owned-port>.
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 . "$SCRIPT_DIR/version.sh"
-select_version "${1:?usage: raw_tx_gas.sh <2p22|2p21> <anvil-port>}"
-PORT=${2:?usage: raw_tx_gas.sh <2p22|2p21> <anvil-port>}
+select_version "${1:?usage: raw_tx_gas.sh <2p21> <anvil-port>}"
+PORT=${2:?usage: raw_tx_gas.sh <2p21> <anvil-port>}
 case "$PORT" in *[!0-9]*|'') echo "invalid anvil port: $PORT" >&2; exit 2 ;; esac
 # Fail before touching RPC state if any service already owns this port.
 python3 - "$PORT" <<'PYPORT'

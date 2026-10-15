@@ -11,9 +11,9 @@
 # SAME salt (set below), so every address is a pure function of (factory, salt, initCode). The
 # script never computes CREATE2 addresses. Two-step flow:
 #
-#   1. Leave REGISTRY_ADDR all-zero and run ./deploy.sh <2p22|2p21> — it deploys ONLY the registry, prints
+#   1. Leave REGISTRY_ADDR all-zero and run ./deploy.sh <2p21> — it deploys ONLY the registry, prints
 #      the address the factory reports (ContractCreation event), and exits.
-#   2. Substitute that address into the version-specific REGISTRY_ADDR_2P22 or REGISTRY_ADDR_2P21 environment variable and run ./deploy.sh <2p22|2p21> again — it sees the
+#   2. Substitute that address into the version-specific REGISTRY_ADDR_2P21 environment variable and run ./deploy.sh <2p21> again — it sees the
 #      registry code already on-chain, regenerates + builds + deploys the two verifiers,
 #      then permanently authorizes that pair. Use the same KEY for both runs.
 #
@@ -26,7 +26,7 @@
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 . "$SCRIPT_DIR/version.sh"
-select_version "${1:?usage: deploy.sh <2p22|2p21>}"
+select_version "${1:?usage: deploy.sh <2p21>}"
 cd "$CONTRACTS_ROOT"
 
 # ---- configuration: edit for the target network ------------------------------------------------
@@ -37,7 +37,7 @@ KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 SALT=$DEPLOY_SALT
 # The registry's CREATE2 address. All-zero = bootstrap mode: deploy the registry, print its
 # address, and exit (substitute the printed address here before the second run).
-# Set REGISTRY_ADDR_2P22 or REGISTRY_ADDR_2P21 for this version; select_version loads it.
+# Set REGISTRY_ADDR_2P21 for this version; select_version loads it.
 # ------------------------------------------------------------------------------------------------
 
 CREATEX=0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed
@@ -89,7 +89,7 @@ if [ "$REGISTRY_ADDR" = "0x0000000000000000000000000000000000000000" ]; then
   REG_ADDR=$(created_address "$receipt")
   echo "   Registry : $REG_ADDR"
   echo ""
-  echo "set REGISTRY_ADDR_2P22 or REGISTRY_ADDR_2P21 to this address and rerun $0 to"
+  echo "set REGISTRY_ADDR_2P21 to this address and rerun $0 to"
   echo "regenerate + deploy the GKR and WHIR verifiers."
   exit 0
 fi

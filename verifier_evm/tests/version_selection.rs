@@ -8,6 +8,10 @@ const MISSING: &str = concat!(
 #[test]
 fn pending_bundle_skips_reads_but_rejects_writes() {
     assert!(!std::path::Path::new(MISSING).exists());
+    assert_eq!(
+        common::VERSIONS.iter().map(|v| v.name).collect::<Vec<_>>(),
+        ["2p21"]
+    );
     let version = common::Version {
         proof: MISSING,
         contracts_root: MISSING,
@@ -28,15 +32,16 @@ fn pending_bundle_skips_reads_but_rejects_writes() {
 
 #[test]
 fn generated_outputs_forbid_missing_proof_skip() {
-    for (contracts_root, data_root) in [
-        (common::L1_WRAP_2P22.contracts_root, MISSING),
-        (MISSING, common::L1_WRAP_2P22.data_root),
+    for (contracts_root, data_root, wrong_final_pc_contract) in [
+        (".", MISSING, Some("src/templates/gkr.sol")),
+        (MISSING, "src", None),
     ] {
-        // Reuse existing outputs read-only; no temporary or fake 2p21 artifacts.
+        // Immutable source files exercise the output-presence checks without a proof bundle.
         let version = common::Version {
             proof: MISSING,
             contracts_root,
             data_root,
+            wrong_final_pc_contract,
             ..common::L1_WRAP_2P21
         };
         assert!(
@@ -50,9 +55,10 @@ fn generated_outputs_forbid_missing_proof_skip() {
 #[test]
 fn present_proof_with_missing_aux_is_an_error() {
     let version = common::Version {
+        proof: "Cargo.toml", // This test checks file presence, not proof deserialization.
         aux: MISSING,
         allow_missing_proof: true,
-        ..common::L1_WRAP_2P22
+        ..common::L1_WRAP_2P21
     };
     assert!(
         std::panic::catch_unwind(|| version.available_for_read("partial-bundle regression"))

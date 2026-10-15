@@ -48,8 +48,7 @@ separate `test_rejects_wrong_final_pc` installs the generated
 `gkr_negative/src/GkrVerifierWrongFinalPc.sol` variant, whose only difference
 is its expected-PC constant (`final_pc ^ 1`), and submits the unchanged valid calldata. This
 exercises the explicit PC comparison after valid transcript, PoW and sumcheck
-processing. The foreign-proof control submits the unchanged 2p22 calldata to
-each 2p21 verifier. The negative variant has its own test-only Foundry project;
+processing. The negative variant has its own test-only Foundry project;
 `run_two_tx.sh` builds it separately. The deployment script does not build or
 read the negative project.
 
