@@ -861,7 +861,10 @@ fn opening_queries(shape: &OracleShape, count: usize) -> Vec<u32> {
 fn host_keccak(bytes: &[u8]) -> [u32; 8] {
     use sha3::{Digest, Keccak256};
     let bytes = Keccak256::digest(bytes);
-    std::array::from_fn(|i| u32::from_be_bytes(bytes[4 * i..4 * i + 4].try_into().unwrap()))
+    let mut digest =
+        std::array::from_fn(|i| u32::from_be_bytes(bytes[4 * i..4 * i + 4].try_into().unwrap()));
+    prover::merkle_trees::keccak256_hash_leafs::truncate_keccak_merkle_digest(&mut digest);
+    digest
 }
 
 fn reconstruct_cap(values: &[PR], path: &[[u32; 8]], index: u32) -> (usize, [u32; 8]) {

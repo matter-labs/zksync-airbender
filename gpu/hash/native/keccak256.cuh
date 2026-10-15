@@ -243,6 +243,17 @@ DEVICE_FORCEINLINE digest digest_from_state(const u64 state[25]) {
   return result;
 }
 
+constexpr unsigned MERKLE_DIGEST_BYTES = 25;
+
+DEVICE_FORCEINLINE digest truncate_merkle_digest(digest value) {
+#pragma unroll
+  for (unsigned word = 0; word < 8; word++) {
+    const unsigned kept = MERKLE_DIGEST_BYTES <= 4 * word ? 0 : MERKLE_DIGEST_BYTES - 4 * word < 4 ? MERKLE_DIGEST_BYTES - 4 * word : 4;
+    value.words[word] &= kept == 0 ? 0u : ~0u << (32 - 8 * kept);
+  }
+  return value;
+}
+
 DEVICE_FORCEINLINE digest hash_node(const digest &left, const digest &right) {
   sponge hash;
 #pragma unroll
@@ -253,7 +264,7 @@ DEVICE_FORCEINLINE digest hash_node(const digest &left, const digest &right) {
   hash.state[8] = 1;
   hash.state[16] = 0x8000000000000000ULL;
   keccak_f1600(hash.state);
-  return digest_from_state(hash.state);
+  return truncate_merkle_digest(digest_from_state(hash.state));
 }
 
 DEVICE_FORCEINLINE digest hash_leaf(const proth120 *values, const u32 log_domain, const u32 log_v, const u32 columns, const u32 leaf) {
@@ -287,7 +298,7 @@ DEVICE_FORCEINLINE digest hash_leaf(const proth120 *values, const u32 log_domain
       state[16] ^= 0x8000000000000000ULL;
     keccak_f1600(state);
   }
-  return digest_from_state(state);
+  return truncate_merkle_digest(digest_from_state(state));
 }
 
 template <typename LaneAt> DEVICE_FORCEINLINE void absorb_lanes(u64 state[25], const u64 bytes, LaneAt lane_at) {
