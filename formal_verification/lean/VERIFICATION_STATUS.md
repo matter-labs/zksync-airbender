@@ -28,25 +28,29 @@ and the [fixed scope](FORMAL_VERIFICATION_PLAN.md).
 | [Canonical terminal PC](Airbender/Review/Helpers/Context/VerifierBoundary/README.md) | Checked under the external canonical verifier boundary. |
 | [Inactive padding](Airbender/Review/Helpers/Context/PaddingBoundary/README.md) | Architectural erasure and existing execution derived under the external contribution-mask boundary. |
 
-## Open claims
+## Remaining work
 
-These require external inputs or a scope decision.
+Temporary assumptions narrow proofs; implementation findings remain open until
+fixed or independently shown to be enforced. See the [case register](FINDINGS.md#linear-and-open-pr-review--15-october-2026).
 
 | Claim | Blocker |
 | --- | --- |
-| Full custom-CSR execution of mixed callers | Accepted bigint controls 0/65537 violate the pinned ABI; active zero-clock workers can have effects without callers. Needs justified call-validity/participation binding. |
-| Native worker ROM composition | Native zero ROM shadows lack a binding to public bytes or the RAM-only custom ABI. |
+| Full custom-CSR execution of mixed callers | Accepted bigint controls 0/65537 and unissued zero-clock effects remain findings; conditional control/participation contracts are not fixes. |
+| Native worker ROM composition | The zero-shadow/public-byte discrepancy remains a finding; a conditional RAM-only contract is not general enforcement. |
 | Initialization/teardown local soundness | Retained artifacts have no equations/range queries; needs richer proof input. |
+
+Reviewed implementation bugs, including AIH-334/336/315 and relevant open-PR
+fixes, remain in the case register; no implementation issue is closed here.
 
 Evidence and detailed boundaries: [findings](FINDINGS.md).
 Separately scoped work: [deferred milestones](FORMAL_VERIFICATION_PLAN.md#deferred-milestones).
 
 ## Validation
 
-- Library, both executables and all 119 concrete test modules pass.
+- Library, both executables and all 120 concrete test modules pass.
 - Importer regressions pass.
-- Axiom audit: 2,661 roots, 77 axiom-free; only `propext`, `Classical.choice` and `Quot.sound`.
-- All 144 public Review theorem roots are audited; review/reference checks pass.
+- Axiom audit: 2,720 roots, 83 axiom-free; only `propext`, `Classical.choice` and `Quot.sound`.
+- All 149 public Review theorem roots are audited; review/reference checks pass.
 - No handwritten project diagnostics, `sorry` or project axioms.
 
 [Reproduce the checks](README.md#reproduce).

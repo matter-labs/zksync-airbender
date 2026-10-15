@@ -1,3 +1,5 @@
+import Airbender.Review.Trace.ExternalBoundaries
+import Tests.ExternalBoundaries
 import Airbender.Review.Trace.UnifiedReduced.ModularExecution
 import Airbender.Review.Trace.Modular.ExternalTheorems
 import Tests.UnifiedModularExecution
@@ -2934,3 +2936,64 @@ import Clean.Specs.Keccak256
 #print axioms Tests.UnifiedModularExecution.forged_fma_locally_valid
 #print axioms Tests.UnifiedModularExecution.forged_fma_rejected
 #print axioms Tests.UnifiedModularExecution.wrong_selector_rejected
+
+-- Temporary contracts retain open implementation findings.
+#print axioms Airbender.ExternalBoundary.BigintABI.Proofs.input_word
+#print axioms Airbender.ExternalBoundary.BigintABI.Command
+#print axioms Airbender.ExternalBoundary.BigintABI.Command.bit
+#print axioms Airbender.ExternalBoundary.BigintABI.Command.bits
+#print axioms Airbender.ExternalBoundary.BigintABI.Command.word
+#print axioms Airbender.ExternalBoundary.BigintABI.input
+#print axioms Airbender.ExternalBoundary.BigintABI.Binding
+#print axioms Airbender.ExternalBoundary.Decoder.Rows
+#print axioms Airbender.ExternalBoundary.Decoder.Binding
+#print axioms Airbender.ExternalBoundary.Initialization.Geometry
+#print axioms Airbender.ExternalBoundary.Initialization.Selection
+#print axioms Airbender.ExternalBoundary.Initialization.Position
+#print axioms Airbender.ExternalBoundary.Initialization.address
+#print axioms Airbender.ExternalBoundary.Initialization.cell
+#print axioms Airbender.ExternalBoundary.Initialization.registers
+#print axioms Airbender.ExternalBoundary.Initialization.cells
+#print axioms Airbender.ExternalBoundary.Requests.Binding
+#print axioms Airbender.ExternalBoundary.Requests.Covered
+#print axioms Airbender.ExternalBoundary.WorkerRAM.Location
+#print axioms Airbender.ExternalBoundary.WorkerRAM.Location.cell
+#print axioms Airbender.ExternalBoundary.WorkerRAM.Binding
+#print axioms Airbender.ExternalBoundary.BigintABI.Proofs.command_count
+#print axioms Airbender.ExternalBoundary.BigintABI.Proofs.command_nonzero
+#print axioms Airbender.ExternalBoundary.BigintABI.Proofs.mask_injective
+#print axioms Airbender.ExternalBoundary.BigintABI.Proofs.native_bits
+#print axioms Airbender.ExternalBoundary.BigintABI.Proofs.selected
+#print axioms Airbender.ExternalBoundary.Decoder.Proofs.typed_limb_ne_filler
+#print axioms Airbender.ExternalBoundary.Decoder.Proofs.decoded
+#print axioms Airbender.ExternalBoundary.Initialization.Proofs.address_bound
+#print axioms Airbender.ExternalBoundary.Initialization.Proofs.address_injective
+#print axioms Airbender.ExternalBoundary.Initialization.Proofs.cell_injective
+#print axioms Airbender.ExternalBoundary.Initialization.Proofs.registers_distinct
+#print axioms Airbender.ExternalBoundary.Initialization.Proofs.cells_distinct
+#print axioms Airbender.ExternalBoundary.Initialization.Proofs.addresses_distinct
+#print axioms Airbender.ExternalBoundary.Initialization.Proofs.aligned
+#print axioms Airbender.ExternalBoundary.Initialization.Proofs.all_registers
+#print axioms Airbender.ExternalBoundary.Requests.Proofs.covered
+#print axioms Airbender.ExternalBoundary.Requests.Proofs.no_zero
+#print axioms Airbender.ExternalBoundary.WorkerRAM.Proofs.location_not_shadow
+#print axioms Airbender.ExternalBoundary.WorkerRAM.Proofs.port_not_shadow
+#print axioms Airbender.ExternalBoundary.WorkerRAM.Proofs.transfers_unchanged
+#print axioms Airbender.ExternalBoundary.WorkerRAM.Proofs.pool_transfers_unchanged
+#print axioms Airbender.ExternalBoundary.initialization_soundness
+#print axioms Airbender.ExternalBoundary.decoder_soundness
+#print axioms Airbender.ExternalBoundary.participation_soundness
+#print axioms Airbender.ExternalBoundary.bigint_control_soundness
+#print axioms Airbender.ExternalBoundary.worker_ram_soundness
+#print axioms Tests.ExternalBoundaries.sparse_window_domain
+#print axioms Tests.ExternalBoundaries.duplicate_windows_excluded
+#print axioms Tests.ExternalBoundaries.last_word_preserved
+#print axioms Tests.ExternalBoundaries.out_of_range_window_excluded
+#print axioms Tests.ExternalBoundaries.zero_filler_is_not_unqueryable
+#print axioms Tests.ExternalBoundaries.worker_ledger_counts_occurrences
+#print axioms Tests.ExternalBoundaries.native_matching_does_not_supply_ledger
+#print axioms Tests.ExternalBoundaries.carry_and_copy_positions
+#print axioms Tests.BigintAbi.no_opcode_requires_temporary_assumption
+#print axioms Tests.BigintAbi.high_control_requires_temporary_assumption
+#print axioms Tests.BigintAbi.valid_control_inhabits_temporary_contract
+#print axioms Tests.DelegationROMBoundary.rom_shadow_requires_temporary_assumption

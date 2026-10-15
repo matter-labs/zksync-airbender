@@ -1,4 +1,5 @@
 import Airbender.Proofs.Bigint.Claims
+import Airbender.Proofs.ExternalBoundary.BigintABI
 
 namespace Tests.BigintAbi
 open Airbender
@@ -45,5 +46,29 @@ theorem validOpcodeHighAccepted :
       (Bigint.importedConstraints setup) ∧
     (row true 1 55).val = 1 ∧ (row true 1 56).val = 1 :=
   ⟨abiRowsSatisfy true 1, by decide, by decide⟩
+
+theorem no_opcode_requires_temporary_assumption :
+    ¬ ∃ command, ExternalBoundary.BigintABI.Binding (row false 0) command := by
+  rintro ⟨command, binding⟩
+  have equal := congrArg Arithmetic.Word.lo binding
+  have positive := ExternalBoundary.BigintABI.Proofs.command_nonzero command
+  have zero : (ExternalBoundary.BigintABI.input (row false 0)).lo = 0 := by decide
+  omega
+
+theorem high_control_requires_temporary_assumption :
+    ¬ ∃ command, ExternalBoundary.BigintABI.Binding (row true 1) command := by
+  rintro ⟨command, binding⟩
+  have equal := congrArg Arithmetic.Word.hi binding
+  have high : (ExternalBoundary.BigintABI.input (row true 1)).hi = 1 := by
+    rw [ExternalBoundary.BigintABI.Proofs.input_word]
+    decide
+  have zero : command.word.hi = 0 := rfl
+  omega
+
+theorem valid_control_inhabits_temporary_contract :
+    ExternalBoundary.BigintABI.Binding (row true 0) ⟨0, false⟩ := by
+  unfold ExternalBoundary.BigintABI.Binding
+  rw [ExternalBoundary.BigintABI.Proofs.input_word]
+  decide
 
 end Tests.BigintAbi
