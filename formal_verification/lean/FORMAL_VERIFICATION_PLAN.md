@@ -110,8 +110,12 @@ additional preparation variants.
    `Caller.mixed_cycle_soundness` deliberately concludes an observational
    certificate, not successful full custom-CSR execution. Accepted bigint
    controls 0 and 65537 still violate the pinned ABI; unissued workers still have
-   real prefix effects. Full custom retirement needs an actual binding or an
-   explicit reference/scope decision. Another preparation variant cannot close it.
+   real prefix effects. [Complete bigint retirement](Airbender/Review/Trace/UnifiedReduced/BigintCalls.lean)
+   is now connected under the explicit temporary F02 contract, including actual
+   operands, full state/frame and original PC advance. Hash-call reference
+   transitions and whole mixed sequencing under the occurrence ledger remain.
+   General acceptance still needs actual control/participation enforcement.
+   Another preparation variant cannot close it.
 3. **Native worker ROM — conditional composition checked, enforcement open.**
    Public boot initialization, ordinary ROM interpretation, unchanged RAM-worker
    transfers and shared logical matching now compose. The F04 RAM-port contract
