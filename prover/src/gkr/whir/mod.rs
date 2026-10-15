@@ -4290,26 +4290,26 @@ mod test {
             let b: Vec<E> = (0..size).map(|_| random_e(&mut rng)).collect();
             let half = size / 2;
 
-            // f(0) = dot(a[0..half], b[0..half])
+            // LSB binding pairs adjacent entries: f(0) uses even indexes.
             let expected_f0 = (0..half).fold(E::ZERO, |mut acc, i| {
-                let mut t = a[i];
-                t.mul_assign(&b[i]);
+                let mut t = a[2 * i];
+                t.mul_assign(&b[2 * i]);
                 acc.add_assign(&t);
                 acc
             });
-            // f(1) = dot(a[half..], b[half..])
+            // f(1) uses odd indexes.
             let expected_f1 = (0..half).fold(E::ZERO, |mut acc, i| {
-                let mut t = a[i + half];
-                t.mul_assign(&b[i + half]);
+                let mut t = a[2 * i + 1];
+                t.mul_assign(&b[2 * i + 1]);
                 acc.add_assign(&t);
                 acc
             });
-            // f(1/2) = 1/4 * sum_i (a[i]+a[i+half]) * (b[i]+b[i+half])
+            // f(1/2) = 1/4 * sum_i (a[2i]+a[2i+1]) * (b[2i]+b[2i+1])
             let mut expected_fh = (0..half).fold(E::ZERO, |mut acc, i| {
-                let mut ta = a[i];
-                ta.add_assign(&a[i + half]);
-                let mut tb = b[i];
-                tb.add_assign(&b[i + half]);
+                let mut ta = a[2 * i];
+                ta.add_assign(&a[2 * i + 1]);
+                let mut tb = b[2 * i];
+                tb.add_assign(&b[2 * i + 1]);
                 ta.mul_assign(&tb);
                 acc.add_assign(&ta);
                 acc
