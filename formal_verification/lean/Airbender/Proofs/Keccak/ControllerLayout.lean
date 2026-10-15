@@ -1,4 +1,4 @@
-import Airbender.Review.Circuits.Keccak.Tables.Controller
+import Airbender.Proofs.Keccak.ImportedController
 import Airbender.Proofs.Keccak.Controller
 
 namespace Airbender.Keccak.Controller.Proofs
@@ -45,7 +45,8 @@ theorem physical_pi (round : Nat) (column lane : Fin 5) :
   fin_cases column <;> fin_cases lane <;> rfl
 
 theorem rows_bound (key : Fin 4096) (lane : Fin 6) : (rows key)[lane] < 31 := by
-  dsimp only [rows]
+  rw [rows_reference]
+  dsimp only [referenceRows]
   by_cases valid : key.val / 8 % 8 < 5
   · rw [if_pos valid]
     by_cases iota : key.val % 8 = 0 ∧ key.val / 64 % 32 ≤ 24 ∧ 2048 ≤ key.val

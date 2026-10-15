@@ -1,6 +1,7 @@
 import Airbender.Import.SetupEmbed
 import Airbender.Review.Circuits.Bigint.Tables.Setup
 import Airbender.Review.Circuits.Blake2G.Tables.ControllerData
+import Airbender.Review.Circuits.Keccak.Tables.ControllerData
 
 namespace Tests.SetupImport
 open Airbender Lean
@@ -72,6 +73,22 @@ def run : IO Unit := do
         controllerSetup.columns[index]?.bind (fun original =>
           original.get? (controllerRegion.offset + row)))
     "every BLAKE2 G controller key, output, padding and tag equals the parsed data"
+  let keccakSource ← IO.FS.readFile "artifacts/setup/keccak.json"
+  let .ok keccakSetup := Setup.parse keccakSource
+    | throw (IO.userError "Keccak setup artifact failed import")
+  let some keccakRegion := keccakSetup.tables.find? (fun region => region.id == 37)
+    | throw (IO.userError "Keccak controller region absent")
+  check (keccakSource == Keccak.controllerDataSourceBytes &&
+    keccakRegion == Keccak.controllerDataRegion &&
+    Keccak.controllerData.length == keccakRegion.length &&
+    Keccak.controllerData.offset == 0 &&
+    Keccak.controllerData.columns.size == keccakSetup.columns.size)
+    "Keccak controller preserves source bytes and native region metadata"
+  check ((Array.range keccakRegion.length).all fun row =>
+    Keccak.controllerData.columns.toArray.zipIdx.all fun (column, index) =>
+      column.get? row == keccakSetup.columns[index]?.bind (fun original =>
+        original.get? (keccakRegion.offset + row)))
+    "every Keccak controller key, output and tag equals the parsed data"
   check (artifact.trace_len == imported.data.length && artifact.columns.size == 9 &&
     artifact.tables.size == 2 && artifact.circuit.structured_statements.size == 30)
     "complete setup and its native circuit decoded together"

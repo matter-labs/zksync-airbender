@@ -66,3 +66,13 @@ Existing control, address and worker consumers now use those imported outputs;
 the generalized arbitrary-controller interface is preserved. Runtime regressions
 compare every emitted controller value with the JSON. G's XOR regions and other
 remaining table definitions still require migration.
+
+Keccak's controller imports native table ID 37 and all eight physical columns.
+`Proofs/Keccak/ImportedController.lean` checks all 4,096 keys, six outputs and tag
+against the reference and concrete setup, covering every inactive and invalid
+fallback row. Two six-bit coordinates cover the full key domain for the kernel
+calculation. Existing physical-slot, address and worker consumers use imported
+outputs; generalized arbitrary controllers and all existing fixtures retain their
+scope. Runtime regressions compare all 32,768 emitted field values, native
+metadata and source bytes against the JSON. Keccak's byte/rotation regions
+remain modeled pending migration.

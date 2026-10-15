@@ -1,3 +1,4 @@
+import Airbender.Review.Circuits.Keccak.Tables.ControllerData
 import Airbender.Review.Circuits.Keccak.Artifact
 import Airbender.Review.Helpers.Properties
 import Clean.Specs.Keccak256
@@ -6,7 +7,8 @@ namespace Airbender.Keccak
 
 /- Symbolic reconstruction of cs/src/tables/keccak_precompile_related.rs and
    binops.rs. Rust-to-model setup correspondence remains unproved. Local claims parameterize control-index rows; native operation execution uses
-   the concrete modeled rows in `Controller.lean`. Full scheduling is separate. -/
+   imported native controller outputs. The byte/rotation regions are still modeled;
+   full scheduling is separate. -/
 
 def adjustedConstant (round : Nat) : Nat :=
   if h : 0 < round ∧ round ≤ 24 then
@@ -46,7 +48,7 @@ def setupTable {p : Nat} [Fact p.Prime] (control : Fin 4096 → Vector Nat 6) :
   row i := (setupRow control i).map (fun (n : Nat) => (n : ZMod p))
   index x := match x[7].val with
     | 4 => 1 + 256 * x[0].val + x[1].val
-    | 37 => 65537 + x[0].val
+    | 37 => controllerDataRegion.offset + x[0].val
     | 38 => 69633 + x[0].val + 256 * x[1].val
     | 39 => 135169 + x[0].val + 256 * x[1].val
     | 40 => 200705 + x[0].val

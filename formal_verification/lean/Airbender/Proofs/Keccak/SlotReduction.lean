@@ -655,7 +655,7 @@ private def slotCache : Vector (Vector Nat 6) 649 := #v[
 #v[20, 23, 24, 25, 26, 27],
 #v[0, 5, 10, 15, 20, 25]]
 private theorem slot_cache_correct : ∀ call : Fin 649, slotIndices call = slotCache[call] := by
-  simp only [slotIndices, Controller.rows, physical_cached]
+  simp only [slotIndices, Controller.Proofs.rows_reference, Controller.referenceRows, physical_cached]
   decide +kernel
 private theorem cached_slot_bound (call : Fin 649) (lane : Fin 6) : slotCache[call][lane] < 31 := by
   rw [← slot_cache_correct call]

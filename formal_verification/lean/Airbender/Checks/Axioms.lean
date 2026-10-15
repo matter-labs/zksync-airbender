@@ -1093,6 +1093,9 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Binary.soundness
 #print axioms Tests.UnifiedBinary.native_soundness
 
+#print axioms Airbender.Keccak.Controller.Proofs.rows_reference
+#print axioms Airbender.Keccak.Controller.Proofs.controller_native_row
+#print axioms Airbender.Keccak.Controller.Proofs.controller_setup_row
 #print axioms Airbender.Keccak.Controller.Proofs.physical_bound
 #print axioms Airbender.Keccak.Controller.Proofs.physical_injective
 #print axioms Airbender.Keccak.Controller.Proofs.physical_pi
