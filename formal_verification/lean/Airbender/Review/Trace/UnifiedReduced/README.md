@@ -294,15 +294,35 @@ native timestamp through exact prefix matching; after a gap it need not equal
 cut minus two. A final public
 ADDI derives the fresh canonical token required by all existing complete selected-
 reference windows/lists, keeping their domain/setup/table, coverage and logical-
-matching boundaries explicit. Only selected cycles are worker-free; all earlier
-effects remain. Reversed-row native fixtures prepare x12 = 127/129, copy it to
+matching boundaries explicit. Selected ordinary cycles are worker-free; caller
+gaps retain all worker effects in the same history. Reversed-row native fixtures prepare x12 = 127/129, copy it to
 x10 from initial 65537 in the gap, then derive x12 = 128 with signed +1/−1.
 The gap refresh retains clock eight; final output retains clock fourteen. A
 forged source clock ten passes local native constraints/timestamp lookups but
 fails joint matching. Constant/incomplete-reference guards and the actual
 unissued G prefix remain. Concrete fixtures cover preparation/guards; complete
-references are general accepted-witness theorems. Other gap instructions, worker-
-interleaved preparation, broader operands and full Sail retirement remain open.
+references are general accepted-witness theorems.
+
+Caller gaps now preserve tracked GPRs outside x10/x12. Public modular code
+excludes ordinary entries at the selected address; accepted decoding and PC/clock
+matching derive the caller. The original imported port descriptors derive the
+write footprint of all four worker layouts: bigint/BLAKE can write x12, Keccak
+can write x10, and other fixed-register accesses only refresh values. RAM writes
+remain in the same initialized history. No worker-free gap, selected worker,
+valid control, nonzero invocation, desired read or inert effect is an input.
+The raw token induction feeds the existing final ADDI and complete selected-reference
+interfaces, retaining their domain/setup/table, coverage and matching boundaries.
+A [reversed-row literal→COPY→ADDI fixture](../../../../Tests/UnifiedDelegation.lean) derives x13 = 0→127→127 while COPY
+changes actual x12 = 128→0; final ADDI restores x12 = 128 at clock fourteen.
+The tracked x13 token retains clock six, and the actual x11 pointer refresh retains
+clock eleven. A fabricated clock-eleven x13 source satisfies local constraints and
+timestamps but fails initialized matching. Both issued invalid bigint controls
+also retain the x11 refresh law; ordinary-code gaps and incomplete reference
+windows are rejected. Zero-clock prefix effects, ROM-shadow transport and discarded
+loads keep their existing scope. This proves memory preparation, not full custom
+CSR retirement. Worker writes to the tracked x10/x12 and broader operands remain
+open; they are not assumed to preserve values.
+
 
 [`WrappedProgramCallerRegion`](../../Helpers/UnifiedReduced/WindowSchedule.lean)
 states the public ordinary-exclusion/full-CSR-family policy at every clock in the

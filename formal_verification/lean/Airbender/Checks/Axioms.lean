@@ -2646,3 +2646,18 @@ import Clean.Specs.Keccak256
 #print axioms Tests.ControlPreparation.public_memory_gap_fabricated_fresh_source_native
 #print axioms Tests.ControlPreparation.public_memory_gap_fabricated_ram_read_rejected
 #print axioms Tests.ControlPreparation.public_memory_gap_fabricated_ram_read_native
+
+#print axioms Airbender.UnifiedReduced.Caller.CallerFramePreparation
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.worker_register_refreshes
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.caller_frame_refreshes
+#print axioms Tests.UnifiedDelegation.caller_gap_preparation
+#print axioms Tests.UnifiedDelegation.caller_gap_final_preparation
+#print axioms Tests.UnifiedDelegation.invalid_bigint_caller_gap_refreshes
+#print axioms Tests.UnifiedDelegation.caller_gap_protocol_source
+#print axioms Tests.UnifiedDelegation.caller_gap_protocol_preparation
+#print axioms Tests.UnifiedDelegation.caller_gap_actual_worker_effects
+#print axioms Tests.UnifiedDelegation.caller_gap_changes_control
+#print axioms Tests.UnifiedDelegation.caller_gap_fabricated_source_rejected
+#print axioms Tests.UnifiedDelegation.caller_gap_fabricated_source_native
+#print axioms Tests.UnifiedDelegation.ordinary_preparation_is_not_caller_gap
+#print axioms Tests.UnifiedDelegation.caller_gap_incomplete_reference_rejected

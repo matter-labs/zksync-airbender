@@ -316,8 +316,8 @@ ABI and whole mixed execution remain separate.
    raw initialized matching preserves its canonical word and actual timestamp
    while retaining every gap write. A final ADDI derives the fresh output before
    the existing complete selected-reference composition. No inert-gap, desired
-   operand/state, bound or selector is supplied. Selected preparation cycles stay
-   worker-free; earlier effects remain. Native reversed-row fixtures derive
+   operand/state, bound or selector is supplied. Selected ordinary preparation cycles stay
+   worker-free; caller gaps retain their workers. Native reversed-row fixtures derive
    x12 = 127/129 → gap x10 = 127/129 → x12 = 128, clock-eight refresh and
    clock-fourteen final output. A forged clock-ten source passes local native
    constraints/timestamp lookups but fails architectural matching. Constant and
@@ -348,10 +348,18 @@ ABI and whole mixed execution remain separate.
    pass local constraints/timestamps but fail initialized matching; wrong public
    load destinations and store sources are rejected. Original discarded-load and
    ROM-shadow boundaries remain; no original memory-clause retirement is added.
-   Continue worker-interleaved preparation,
-   broader operand-dependent operations, jumps/branches and whole caller
-   retirement, retaining the boundaries for unsupported controls and unissued
-   workers.
+   Caller gaps now derive preservation for tracked GPRs outside x10/x12 from
+   public modular ordinary-code exclusion and all four original native port
+   layouts. No empty worker window, selected worker, valid control or positive
+   invocation is supplied. Reversed-row literal→COPY→ADDI derives x13 = 0→127→127,
+   actual COPY x12 = 128→0 and final x12 = 128 at clock fourteen; x13 retains clock
+   six and the readonly x11 pointer clock eleven. A fabricated clock-eleven x13
+   source passes local constraints/timestamps but fails initialized matching.
+   Both invalid bigint controls retain the x11 refresh law. The existing complete
+   selected-reference composition consumes the new dataflow, with unchanged
+   domain/setup/table, coverage and matching boundaries. Continue tracked x10/x12
+   worker writes, broader operand-dependent operations, jumps/branches and whole
+   caller retirement, retaining unsupported-control and unissued-worker cases.
    COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed
    retained for the second window. Extended BLAKE and Keccak completion controls
    do not restart their protocols; checked regressions forbid treating their
