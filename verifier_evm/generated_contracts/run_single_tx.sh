@@ -13,7 +13,10 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 select_version "${1:?usage: run_single_tx.sh <2p21> <anvil-port|--no-gas> [out.json]}"
 GAS_ARG=${2:?usage: run_single_tx.sh <2p21> <anvil-port|--no-gas> [out.json]}
 cd "$CONTRACTS_ROOT"
-for p in gkr gkr_negative whir two_tx single_tx/gkr single_tx/gkr_negative single_tx/whir single_tx/harness; do
+for p in gkr gkr_negative whir two_tx single_tx/gkr single_tx/gkr_negative single_tx/whir \
+  single_tx/f1/gkr single_tx/f1/gkr_negative single_tx/f1/gkr_wrong_setup_cap single_tx/f1/whir single_tx/instrumented/gkr_v0 \
+  single_tx/instrumented/gkr_f1 single_tx/instrumented/whir_v0 single_tx/instrumented/whir_f1 \
+  single_tx/harness; do
   ( cd "$p" && forge build >/dev/null )
 done
 ( cd single_tx/harness && forge test -vv )

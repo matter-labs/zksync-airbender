@@ -2527,6 +2527,25 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
             // NB: need to inline __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS unfortunately
             eq_scale := 1
             let modulus := mload(P_PTR) // hoisted: DUP per use instead of re-mload every round
+            // #if F1
+            // E1 (see sumcheck_rounds): (b, c) in, c0..c3 rebuilt and absorbed, claim = K, eq_scale = 1
+            for {{ let i := 0 }} lt(i, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS) {{ i := add(i, 1) }} {{
+                let w0 := calldataload(ptr)
+                let b := shr(128, w0)
+                let c := and(w0, MASK)
+                let z := mload(add(POINT_PTR(), mul(i, 32)))
+                let a := addmod(claim, sub(modulus, mulmod(z, add(b, c), modulus)), modulus)
+                let t := addmod(1, sub(modulus, z), modulus)
+                let s := addmod(add(z, z), sub(modulus, 1), modulus)
+                let r := transcript_4to1_dual(
+                    or(shl(128, mulmod(t, a, modulus)), addmod(mulmod(t, b, modulus), mulmod(s, a, modulus), modulus)),
+                    or(shl(128, addmod(mulmod(t, c, modulus), mulmod(s, b, modulus), modulus)), mulmod(s, c, modulus)),
+                    modulus)
+                claim := addmod(a, mulmod(r, addmod(b, mulmod(r, c, modulus), modulus), modulus), modulus)
+                mstore(add(POINT_PTR(), mul(i, 32)), r)
+                ptr := add(ptr, 64)
+            }}
+            // #else
             for {{ let i := 0 }} lt(i, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS) {{ i := add(i, 1) }} {{
                 let w0 := calldataload(ptr)
                 let w1 := calldataload(add(ptr, 32))
@@ -2545,6 +2564,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                 mstore(add(POINT_PTR(), mul(i, 32)), r)
                 ptr := add(ptr, 64)
             }}
+            // #endif
             next_ptr := ptr
             next_claim := claim
         }}

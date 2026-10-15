@@ -136,11 +136,21 @@ impl Version {
             "whir/src/WhirVerifierProduction.sol",
             "single_tx/gkr/src/GkrVerifier.sol",
             "single_tx/whir/src/WhirVerifier.sol",
+            "single_tx/f1/gkr/src/GkrVerifier.sol",
+            "single_tx/f1/whir/src/WhirVerifier.sol",
+            "single_tx/f1/gkr_wrong_setup_cap/src/GkrVerifierWrongSetupCap.sol",
+            "single_tx/instrumented/gkr_v0/src/GkrVerifier.sol",
+            "single_tx/instrumented/whir_v0/src/WhirVerifier.sol",
+            "single_tx/instrumented/gkr_f1/src/GkrVerifier.sol",
+            "single_tx/instrumented/whir_f1/src/WhirVerifier.sol",
         ];
-        let wrong_final_pc = self
-            .wrong_final_pc_contract
-            .into_iter()
-            .flat_map(|rel| [rel.to_string(), format!("single_tx/{rel}")]);
+        let wrong_final_pc = self.wrong_final_pc_contract.into_iter().flat_map(|rel| {
+            [
+                rel.to_string(),
+                format!("single_tx/{rel}"),
+                format!("single_tx/f1/{rel}"),
+            ]
+        });
         for rel in contracts
             .into_iter()
             .map(str::to_string)
@@ -275,5 +285,13 @@ pub fn f1_field_metadata(f1: &verifier_evm::encoding::SingleTxCalldata) -> serde
             )
         })
         .collect();
-    serde_json::json!({ "gkr_bytes": f1.gkr_bytes, "bytes": f1.bytes.len(), "fields": fields })
+    let whir_rounds = (0..)
+        .take_while(|r| f1.fields.contains_key(&format!("whir_{r}_sumcheck")))
+        .count();
+    serde_json::json!({
+        "gkr_bytes": f1.gkr_bytes,
+        "bytes": f1.bytes.len(),
+        "whir_rounds": whir_rounds,
+        "fields": fields,
+    })
 }

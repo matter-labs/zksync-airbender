@@ -18,7 +18,8 @@ pub mod seed;
 
 pub use flatten::{gkr_calldata, whir_calldata};
 pub use generator::{
-    emit_circuit_yul, generate_verifiers, single_tx_gkr, single_tx_whir, GeneratedContracts,
+    emit_circuit_yul, generate_f1_verifiers, generate_verifiers, instrument, single_tx_gkr,
+    single_tx_whir, GeneratedContracts,
 };
 pub use seed::{commit_seed_preimage, gkr_whir_handoff_seed};
 

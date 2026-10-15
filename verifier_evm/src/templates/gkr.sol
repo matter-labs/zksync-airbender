@@ -150,6 +150,12 @@ contract GKRVerifier {
         ptr := add(SEED_PTR(), mul(32, 288)) }
         function GKR_QTABLE_PTR() -> ptr {
         ptr := add(SEED_PTR(), mul(32, 420)) }
+        // #if F1
+        // F1: the v0 GKR calldata image, written once by f1_decode above the highest heap region.
+        function F1_V0_PTR() -> ptr {
+        ptr := add(GKR_QTABLE_PTR(), __F1_QTABLE_BYTES__) }
+        // __F1_DECODER__
+        // #endif
 
         // Permutation-identity products: read_poly, write_poly, teardown_poly, init_poly
         // (∏ of each relevant GKR output poly's 16 elements). Filled in gkr_init, consumed by
@@ -406,6 +412,28 @@ contract GKRVerifier {
         function sumcheck_rounds(ptr, claim, total_rounds) -> next_ptr, next_claim, eq_scale {
             let modulus := mload(P_PTR)
             eq_scale := 1
+            // #if F1
+            // E1: the round slot holds (b, c) of u = a + bX + cX² with p = e_z·u,
+            // e_z(X) = (1 − z) + (2z − 1)X. claim tracks K = u_prev(r_prev); a = K − z(b + c) makes
+            // p(0) + p(1) = K, c0..c3 are rebuilt and absorbed as v0, and the returned eq_scale = 1
+            // turns the layer's end check into g == K.
+            for { let i := 0 } lt(i, total_rounds) { i := add(i, 1) } {
+                let w0 := calldataload(ptr)
+                let b := shr(128, w0)
+                let c := and(w0, MASK)
+                let z := mload(add(POINT_PTR(), mul(i, 32)))
+                let a := addmod(claim, sub(modulus, mulmod(z, add(b, c), modulus)), modulus)
+                let t := addmod(1, sub(modulus, z), modulus)
+                let s := addmod(add(z, z), sub(modulus, 1), modulus)
+                let r := transcript_4to1_dual(
+                    or(shl(128, mulmod(t, a, modulus)), addmod(mulmod(t, b, modulus), mulmod(s, a, modulus), modulus)),
+                    or(shl(128, addmod(mulmod(t, c, modulus), mulmod(s, b, modulus), modulus)), mulmod(s, c, modulus)),
+                    modulus)
+                claim := addmod(a, mulmod(r, addmod(b, mulmod(r, c, modulus), modulus), modulus), modulus)
+                mstore(add(POINT_PTR(), mul(i, 32)), r)
+                ptr := add(ptr, 64)
+            }
+            // #else
             for { let i := 0 } lt(i, total_rounds) { i := add(i, 1) } {
                 let w0 := calldataload(ptr)
                 let w1 := calldataload(add(ptr, 32))
@@ -425,6 +453,7 @@ contract GKRVerifier {
                 mstore(add(POINT_PTR(), mul(i, 32)), r)
                 ptr := add(ptr, 64)
             }
+            // #endif
             next_ptr := ptr
             next_claim := claim
         }
@@ -707,6 +736,9 @@ contract GKRVerifier {
             let alpha
             mstore(GKR_INIT_GAS_PTR(), gas())
             mstore(SEED_PTR(), 0) // SEED Transcript, FINE as long as we don't draw without absorb!
+            // #if F1
+            f1_decode()
+            // #endif
             ptr := transcript_init(0)
             output_evals_ptr := ptr // base of the 10 GKR output columns (for the lookup-identity check)
             ptr, claim,
