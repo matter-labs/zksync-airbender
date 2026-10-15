@@ -161,11 +161,21 @@ contract GKRVerifier {
         // 7 + 246 ≤ 256) and go to the two BE16 lanes at dst + 32i. No range check here: the
         // verifier checks every lane of these runs < P where it reads it (output evaluations, LSB
         // lines, at-point evaluations).
+        function f1_lanes(x) -> w {
+            w := or(shl(128, and(shr(123, x), 0x7ffffffffffffffffffffffffffffff)), and(x, 0x7ffffffffffffffffffffffffffffff))
+        }
         function f1_run(cd, n, dst) {
+            // four pairs = 984 bits = 123 bytes: pair k at byte (246k) >> 3, shifted by 10 − (246k & 7)
+            for { let end := add(cd, mul(123, shr(3, n))) } lt(cd, end) { cd := add(cd, 123) } {
+                mstore(dst, f1_lanes(shr(10, calldataload(cd))))
+                mstore(add(dst, 32), f1_lanes(shr(4, calldataload(add(cd, 30)))))
+                mstore(add(dst, 64), f1_lanes(shr(6, calldataload(add(cd, 61)))))
+                mstore(add(dst, 96), f1_lanes(shr(8, calldataload(add(cd, 92)))))
+                dst := add(dst, 128)
+            }
             let bit := 0
-            for { let end := mul(246, shr(1, n)) } lt(bit, end) { bit := add(bit, 246) } {
-                let x := shr(sub(10, and(bit, 7)), calldataload(add(cd, shr(3, bit))))
-                mstore(dst, or(shl(128, and(shr(123, x), 0x7ffffffffffffffffffffffffffffff)), and(x, 0x7ffffffffffffffffffffffffffffff)))
+            for { let end := mul(246, and(shr(1, n), 3)) } lt(bit, end) { bit := add(bit, 246) } {
+                mstore(dst, f1_lanes(shr(sub(10, and(bit, 7)), calldataload(add(cd, shr(3, bit))))))
                 dst := add(dst, 32)
             }
             if and(n, 1) {
