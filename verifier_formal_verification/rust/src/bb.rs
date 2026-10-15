@@ -1,9 +1,10 @@
 //! BabyBear (p = 2^31 - 2^27 + 1, Montgomery form) and its extensions Ext2 = F[v]/(v^2 - 11),
 //! Ext4 = Ext2[w]/(w^2 - v), as in zksync-airbender `field/src/baby_bear` (riscv32 code paths).
-//! Ext4 mul is `mul_assign_flat_impl_fma` in both variants. Feature `mop`: the base ops are Airbender's field
-//! opcodes `mop.rr.N` (`ops/riscv32.rs`, `modular_ops` + `modular_fma`). Default: the same ops in plain Rust
-//! (`ops/basic.rs`'s `add_mod` / `mul_mod`, and `fma_mod = add_mod(c, mul_mod(a, b))` as `ops/riscv32.rs` without
-//! `modular_fma`), as separate functions; this variant does not trust the field opcodes.
+//! Feature `mop`: the base ops are Airbender's field opcodes `mop.rr.N` (`ops/riscv32.rs`, `modular_ops` +
+//! `modular_fma`) and Ext4 mul is `mul_assign_flat_impl_fma`. Default: the most efficient plain-Rust path of the crate
+//! (it has none for riscv32 without `modular_ops`, so the host one): `ops/basic.rs` `add_mod` / `sub_mod` /
+//! `mul_mod`, Ext2 Karatsuba (`mul_assign_impl`), Ext4 tower Karatsuba (`mul_assign_tower_impl`); this variant does
+//! not trust the field opcodes. Everything `#[inline(always)]`, as the crate does.
 
 pub const ORDER: u32 = 0x78000001;
 const MONT_K: u32 = 0x77ffffff;
@@ -34,7 +35,7 @@ mod ops {
 
     /// `ops/basic.rs` `add_mod`.
     #[inline(always)]
-    fn add_mod(a: u32, b: u32) -> u32 {
+    pub fn add(a: u32, b: u32) -> u32 {
         let mut sum = a.wrapping_add(b);
         if sum >= ORDER {
             sum -= ORDER;
@@ -42,28 +43,21 @@ mod ops {
         sum
     }
 
-    #[unsafe(no_mangle)]
-    #[inline(never)]
-    pub extern "C" fn bb_add(a: u32, b: u32) -> u32 {
-        add_mod(a, b)
+    /// `ops/basic.rs` `sub_mod`.
+    #[inline(always)]
+    pub fn sub(a: u32, b: u32) -> u32 {
+        let (mut diff, uf) = a.overflowing_sub(b);
+        if uf {
+            diff = diff.wrapping_add(ORDER);
+        }
+        diff
     }
 
-    #[unsafe(no_mangle)]
-    #[inline(never)]
-    pub extern "C" fn bb_mul(a: u32, b: u32) -> u32 {
+    /// `ops/basic.rs` `mul_mod`.
+    #[inline(always)]
+    pub fn mul(a: u32, b: u32) -> u32 {
         super::mul_mod_ct(a, b)
     }
-
-    /// `c + a b 2^-32` (`fma_mod` without `modular_fma`).
-    #[unsafe(no_mangle)]
-    #[inline(never)]
-    pub extern "C" fn bb_fma(a: u32, b: u32, c: u32) -> u32 {
-        add_mod(c, super::mul_mod_ct(a, b))
-    }
-
-    pub use bb_add as add;
-    pub use bb_fma as fma;
-    pub use bb_mul as mul;
 }
 
 #[cfg(feature = "mop")]
@@ -133,6 +127,60 @@ pub struct Ext4 {
     pub c1: Ext2,
 }
 
+#[cfg(not(feature = "mop"))]
+mod ext {
+    use super::ops::{add, mul, sub};
+    use super::{Ext2, Ext4, NON_RES};
+
+    /// `BabyBearExt2::mul_assign_impl` without `modular_ops`: Karatsuba.
+    #[inline(always)]
+    fn ext2_mul_assign(a: &mut Ext2, b: &Ext2) {
+        let v0 = mul(a.c0, b.c0);
+        let mut v1 = mul(a.c1, b.c1);
+        a.c1 = add(a.c1, a.c0);
+        let t0 = add(b.c0, b.c1);
+        a.c1 = mul(a.c1, t0);
+        a.c1 = sub(a.c1, v0);
+        a.c1 = sub(a.c1, v1);
+        a.c0 = v0;
+        v1 = mul(v1, NON_RES);
+        a.c0 = add(a.c0, v1);
+    }
+
+    #[inline(always)]
+    fn ext2_add_assign(a: &mut Ext2, b: &Ext2) {
+        a.c0 = add(a.c0, b.c0);
+        a.c1 = add(a.c1, b.c1);
+    }
+
+    #[inline(always)]
+    fn ext2_sub_assign(a: &mut Ext2, b: &Ext2) {
+        a.c0 = sub(a.c0, b.c0);
+        a.c1 = sub(a.c1, b.c1);
+    }
+
+    /// `BabyBearExt4::mul_assign_tower_impl`: Karatsuba over Ext2, non-residue `v`.
+    #[inline(always)]
+    pub fn ext4_mul_assign(a: &mut Ext4, b: &Ext4) {
+        let mut v0 = a.c0;
+        ext2_mul_assign(&mut v0, &b.c0);
+        let mut v1 = a.c1;
+        ext2_mul_assign(&mut v1, &b.c1);
+        let t = a.c0;
+        ext2_add_assign(&mut a.c1, &t);
+        let mut t0 = b.c0;
+        ext2_add_assign(&mut t0, &b.c1);
+        ext2_mul_assign(&mut a.c1, &t0);
+        ext2_sub_assign(&mut a.c1, &v0);
+        ext2_sub_assign(&mut a.c1, &v1);
+        a.c0 = v0;
+        // `<BabyBearExt2 as BaseField<2>>::mul_by_non_residue`: (a + b v) v = 11 b + a v
+        let nr = Ext2 { c0: mul(v1.c1, NON_RES), c1: v1.c0 };
+        ext2_add_assign(&mut a.c0, &nr);
+    }
+}
+
+#[cfg(feature = "mop")]
 mod ext {
     use super::ops::{fma, mul};
     use super::{Ext2, Ext4, NON_RES};
