@@ -64,10 +64,11 @@ pub struct PrProbeOutput {
     pub is_zero: u32,
     pub extract: u32,
     pub operator_mismatch: u32,
+    pub reduce_lazy: PR,
 }
 
 const _: () = {
-    assert!(size_of::<PrProbeOutput>() == 320);
+    assert!(size_of::<PrProbeOutput>() == 336);
     assert!(align_of::<PrProbeOutput>() == 16);
     assert!(offset_of!(PrProbeOutput, add) == 0);
     assert!(offset_of!(PrProbeOutput, sub) == 16);
@@ -92,6 +93,7 @@ const _: () = {
     assert!(offset_of!(PrProbeOutput, is_zero) == 308);
     assert!(offset_of!(PrProbeOutput, extract) == 312);
     assert!(offset_of!(PrProbeOutput, operator_mismatch) == 316);
+    assert!(offset_of!(PrProbeOutput, reduce_lazy) == 320);
 };
 
 #[doc(hidden)]

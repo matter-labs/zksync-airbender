@@ -276,11 +276,7 @@ fn reuse_weighted_genome(ctx: &LayerCtx) -> Genome {
             gkr_eval_ir::ExprId(value),
             ctx.cross_layer_fields,
         );
-        if f == crate::forward::isa::OperandField::Ext {
-            4.0
-        } else {
-            1.0
-        }
+        f.lanes(ctx.model) as f64
     };
     let density = |value: u32| demand_count[&value] as f64 / width(value);
     let max_density = ctx

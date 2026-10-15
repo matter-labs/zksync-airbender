@@ -6,7 +6,7 @@ use gkr_eval_ir::{DagCircuit, FieldKind, ReadPlace};
 
 use crate::analysis::build_cross_layer_field_map;
 use crate::forward::artifact::{ForwardLayerArtifact, ForwardSearchArtifact};
-use crate::forward::BF_LANES_PER_E4_BUCKET;
+use crate::forward::ElementModel;
 use crate::search::SearchConfig;
 
 use super::engine::search_layer;
@@ -19,7 +19,8 @@ pub(crate) fn produce_circuit_schedule(
     seed: u64,
     incumbent: Option<&ForwardSearchArtifact>,
 ) -> ForwardSearchArtifact {
-    let budget_lanes = budget_buckets * BF_LANES_PER_E4_BUCKET;
+    let model = ElementModel::for_dag(dag);
+    let budget_lanes = budget_buckets * model.bf_lanes_per_bucket as usize;
     let cross: HashMap<ReadPlace, FieldKind> = build_cross_layer_field_map(dag);
     let mut layers: Vec<ForwardLayerArtifact> = Vec::with_capacity(dag.layers.len());
 
@@ -41,6 +42,7 @@ pub(crate) fn produce_circuit_schedule(
     ForwardSearchArtifact {
         circuit: String::new(),
         budget_buckets,
+        field: model.field,
         layers,
     }
 }

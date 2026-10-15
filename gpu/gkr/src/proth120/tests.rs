@@ -1,3 +1,8 @@
+mod backward_window;
+mod claims;
+mod cpu_abi;
+mod forward_vm;
+mod tails;
 use cs::definitions::split_timestamp;
 use cs::gkr_compiler::GKRCircuitArtifact;
 use era_cudart::memory::memory_copy_async;
@@ -751,6 +756,7 @@ fn packed_challenges_match_cpu_transcript_small() {
     }
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
     if let Some(message) = payload.downcast_ref::<String>() {
         message.clone()

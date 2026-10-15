@@ -15,7 +15,12 @@ fn compile_lowering(dag: &DagCircuit, tails: bool) -> Result<Vec<LoweredLayer>, 
         .iter()
         .enumerate()
         .map(|(layer, canonical)| {
-            let program = crate::backward::r0::compile_layer(layer, canonical, &fields)?;
+            let program = crate::backward::r0::compile_layer(
+                layer,
+                canonical,
+                &fields,
+                crate::ElementModel::BABYBEAR,
+            )?;
             let (window, scalar_seed) = lower_r0_window_program(&program, tails)
                 .map_err(|error| R0CompileError::Window { layer, error })?;
             Ok(LoweredLayer {
@@ -30,7 +35,7 @@ fn compile_lowering(dag: &DagCircuit, tails: bool) -> Result<Vec<LoweredLayer>, 
 fn c_init_recipe(coefficients: &CoeffLayer) -> Option<NormalizedCoefficientRecipe> {
     coefficients.c_init.map(|id| match id {
         CoefficientRecipeId::ONE => NormalizedCoefficientRecipe::one(),
-        CoefficientRecipeId::NEG_ONE => NormalizedCoefficientRecipe::neg_one(),
+        CoefficientRecipeId::NEG_ONE => NormalizedCoefficientRecipe::neg_one(coefficients.model),
         _ => coefficients.coefficients[id.bank_index().unwrap()].clone(),
     })
 }
@@ -70,7 +75,7 @@ fn challenge(r: gkr_eval_ir::ChallengeRef) -> Ext {
 fn recipe(r: &NormalizedCoefficientRecipe) -> Ext {
     let mut sum = Ext::ZERO;
     for term in &r.terms {
-        let mut v = lift(term.scalar);
+        let mut v = lift(u32::try_from(term.scalar).unwrap());
         for c in &term.challenges {
             v.mul_assign(&challenge(c.0));
         }
@@ -102,7 +107,7 @@ fn expression(d: &gkr_eval_ir::DagLayer, row: usize, x: Ext) -> Ext {
                 SourceKind::VirtualSetup { kind } => {
                     leaf(&OriginLeaf::VirtualSetup { kind: *kind }, row, x)
                 }
-                SourceKind::Constant { value } => lift(*value),
+                SourceKind::Constant { value } => lift(u32::try_from(*value).unwrap()),
                 SourceKind::Challenge { reference } => challenge(*reference),
                 SourceKind::InitsAndTeardownsTopBits { reference: r } => {
                     lift(((r.set_index as u32 + 1) >> (r.shift % 8)) & 1)

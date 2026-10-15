@@ -11,7 +11,8 @@
 
 namespace airbender::primitives::field {
 
-// Kernel-local temporaries may use [0, 2p); every published field buffer is canonical Montgomery.
+// Kernel-local temporaries may use [0, 2p); every published field buffer is canonical Montgomery. The one exception is a bounded local sum of up to
+// 32 canonical terms held as a raw [0, 32p) residue, which reduce_lazy maps to canonical x mod p without multiplying by R^2.
 struct __align__(16) proth120 {
   u32 limbs[4];
 
@@ -102,6 +103,7 @@ struct __align__(16) proth120 {
   }
 
   static DEVICE_FORCEINLINE proth120 from_u128_with_reduction(const u32 natural_le[4]);
+  static DEVICE_FORCEINLINE proth120 reduce_lazy(proth120 x);
   static DEVICE_FORCEINLINE void to_canonical_be_bytes(proth120 v, u8 out[16]);
 
   static DEVICE_FORCEINLINE bool eq(proth120 x, proth120 y) {
@@ -560,6 +562,18 @@ DEVICE_FORCEINLINE proth120 proth120::from_u128_with_reduction(const u32 natural
   }
   constexpr proth120 r2 = {{MONT_R2[0], MONT_R2[1], MONT_R2[2], MONT_R2[3]}};
   return proth120_detail::mul_pick_reduction_size<1>(x, r2);
+}
+
+DEVICE_FORCEINLINE proth120 proth120::reduce_lazy(proth120 x) {
+  constexpr proth120 p = proth120_detail::MODULUS<1>();
+#pragma unroll
+  for (int k = 5; k >= 0; k--) {
+    const proth120 m = {{p.limbs[0] << k, 0, 0, p.limbs[3] << k}};
+    proth120 d{};
+    if (!proth120_detail::sub_limbs<true>(x, m, d))
+      x = d;
+  }
+  return x;
 }
 
 DEVICE_FORCEINLINE void proth120::to_canonical_be_bytes(proth120 v, u8 out[16]) {

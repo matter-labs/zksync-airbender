@@ -7,7 +7,7 @@ use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
-use gpu_core::primitives::field::{BF, E4};
+use gpu_core::primitives::field::E4;
 use gpu_gkr_compiler::{MainTailProgram, KERNEL_ARGUMENT_CEILING_BYTES};
 use gpu_prover_context::ProverContext;
 
@@ -117,7 +117,7 @@ pub(crate) fn serialize_main_tail_program_blob(
         blob[offset..offset + size_of::<u16>()].copy_from_slice(&word.to_le_bytes());
     }
     for (index, &canonical) in program.immediates.iter().enumerate() {
-        let raw = BF::from_u32_with_reduction(canonical).as_u32_raw_repr_reduced();
+        let raw = crate::backward::babybear_from_canonical(canonical).as_u32_raw_repr_reduced();
         let offset = MAIN_TAIL_IMMEDIATE_OFFSET + index * size_of::<u32>();
         blob[offset..offset + size_of::<u32>()].copy_from_slice(&raw.to_le_bytes());
     }
