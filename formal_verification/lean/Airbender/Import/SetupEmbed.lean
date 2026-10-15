@@ -143,6 +143,50 @@ private def emitData (name : TSyntax `ident) (length offset : Nat)
   let sourceName := mkIdent (name.getId.appendAfter "SourceBytes")
   elabCommand (← `(def $sourceName : String := $(quote source)))
 
+/-- Restrict encoded data, retaining full blocks and slicing boundary blocks.
+    This is independent of table contents; imports check every selected value. -/
+private def sliceBlock (block : Block) (start count : Nat) : Block :=
+  if start = 0 ∧ count = block.length then block else
+  match block with
+  | .affine _ _ step => .affine count ((block.get? start).getD 0) step
+  | .dense values => .dense (values.extract start (start + count))
+  | .periodic _ stride values =>
+    if start % values.size = 0 ∧ count % values.size = 0 then
+      .periodic (count / values.size) stride
+        ((Array.range values.size).map fun i => (block.get? (start + i)).getD 0)
+    else .dense ((Array.range count).map fun i => (block.get? (start + i)).getD 0)
+private def sliceColumn (column : Column) (start count : Nat) : Column := Id.run do
+  let mut position := 0
+  let mut blocks := #[]
+  for block in column.blocks do
+    let first := max start position
+    let last := min (start + count) (position + block.length)
+    if first < last then blocks := blocks.push (sliceBlock block (first - position) (last - first))
+    position := position + block.length
+  return ⟨blocks⟩
+
+/-- A compact view of one native region, including every physical padding/tag
+    column. Preserve its native position separately and check every re-encoded
+    value against the parsed complete setup before emitting any data. -/
+elab "import_setup_region " name:ident " from " path:str " native_table_id " id:num : command => do
+  let (artifact, source) ← readArtifact path.getString
+  let some region := artifact.tables.find? (fun region => region.id == id.getNat)
+    | throwError "setup table ID {id.getNat} is absent"
+  let columns ← artifact.columns.mapM fun column => do
+    let sliced := sliceColumn column region.offset region.length
+    match sliced.validate region.length babyBearModulus with
+    | .error error => throwError "setup region slice failed: {error}"
+    | .ok () => pure ()
+    unless (Array.range region.length).all (fun i =>
+        sliced.get? i == column.get? (region.offset + i)) do
+      throwError "setup region slice changed a parsed value"
+    pure sliced
+  emitData name region.length 0 columns source
+  let regionName := mkIdent (name.getId.appendAfter "Region")
+  elabCommand (← `(def $regionName : Airbender.Setup.Region :=
+    Airbender.Setup.Region.mk $(quote region.id) $(quote region.offset) $(quote region.length)
+      $(quote region.width) $(quote region.key_columns)))
+
 /-- Select one exported virtual range column, preserving its full padding. -/
 elab "import_setup_range " name:ident " from " path:str " virtual_range_bits " bits:num : command => do
   let (artifact, source) ← readArtifact path.getString

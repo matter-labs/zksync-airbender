@@ -2,7 +2,7 @@ import Airbender.Review.Circuits.Blake2G.Model
 
 namespace Airbender.Blake2G.Control
 
-/- Symbolic controller-table reconstruction, not extracted setup data. Sources:
+/- Controller reference, checked against the imported native table. Sources:
    cs/src/tables/blake_g_function_precompile_related.rs;
    blake2s_u32/src/lib.rs::SIGMAS;
    riscv_transpiler/src/vm/delegations/blake2_g_function.rs::MIXING_FUNCTION_ACCESS_IDXES.

@@ -7,6 +7,6 @@ def Output.row (output : Output) : Vector Nat 7 :=
     output.stateOffsets[2], output.stateOffsets[3], output.messageOffsets[0], output.messageOffsets[1]]
 
 def controllerRows (key : Fin 512) : Vector Nat 7 :=
-  (step ⟨⟨key.val % 256, Nat.mod_lt _ (by decide)⟩, decide (256 ≤ key.val)⟩).row
+  Vector.ofFn fun j => ((controllerData.columns[j.val + 1]).get? key.val).getD 0
 
 end Airbender.Blake2G.Control

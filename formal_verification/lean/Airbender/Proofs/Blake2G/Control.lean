@@ -1,3 +1,4 @@
+import Airbender.Proofs.Blake2G.ImportedController
 import Airbender.Review.Circuits.Blake2G.Control
 import Airbender.Proofs.Blake2G
 import Mathlib.Tactic.IntervalCases
@@ -5,21 +6,21 @@ import Mathlib.Tactic.IntervalCases
 namespace Airbender.Blake2G.Control.Proofs
 
 set_option maxRecDepth 8192 in
-/-- All 512 modeled rows have canonical eight-bit outputs; lane bounds are
+/-- All 512 imported rows have canonical eight-bit outputs; lane bounds are
     checked separately below. This finite calculation is kernel checked. -/
 theorem controller_bounded : ∀ key : Fin 512, ∀ j : Fin 7, (controllerRows key)[j] < 256 := by
-  decide
+  decide +kernel
 
 set_option maxRecDepth 8192 in
 theorem controller_lanes : ∀ key : Fin 512, ∀ j : Fin 6, (controllerRows key)[j.val + 1] < 16 := by
-  decide
+  decide +kernel
 
 set_option maxRecDepth 8192 in
 private theorem active_rows_distinct : ∀ register : Fin 256,
     (step ⟨register, true⟩).stateOffsets.toList.Pairwise (· ≠ ·) := by
   decide
 
-/-- Every active modeled controller row selects four different state words. -/
+/-- Every active reference controller row selects four different state words. -/
 theorem active_state_distinct (input : Input) (active : input.active = true) :
     (step input).stateOffsets.toList.Pairwise (· ≠ ·) := by
   rcases input with ⟨register, flag⟩
@@ -28,6 +29,7 @@ theorem active_state_distinct (input : Input) (active : input.active = true) :
   · exact active_rows_distinct register
 
 theorem controller_input (input : Input) : controllerRows input.key = (step input).row := by
+  rw [controller_rows_reference]
   have original : (⟨⟨input.key.val % 256, Nat.mod_lt _ (by decide)⟩,
       decide (256 ≤ input.key.val)⟩ : Input) = input := by
     cases input with

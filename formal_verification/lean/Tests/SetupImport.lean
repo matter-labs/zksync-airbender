@@ -1,5 +1,6 @@
 import Airbender.Import.SetupEmbed
 import Airbender.Review.Circuits.Bigint.Tables.Setup
+import Airbender.Review.Circuits.Blake2G.Tables.ControllerData
 
 namespace Tests.SetupImport
 open Airbender Lean
@@ -54,6 +55,23 @@ def run : IO Unit := do
   check (Bigint.importedSetup.length == extent && extent == 1390592 &&
     Bigint.importedSetup.offset == 0 && Bigint.importedSetup.columns.size == 3)
     "bigint consumers select the exact native generic-table extent"
+  let controllerSource ← IO.FS.readFile "artifacts/setup/blake-g.json"
+  let .ok controllerSetup := Setup.parse controllerSource
+    | throw (IO.userError "BLAKE2 G setup artifact failed import")
+  let some controllerRegion := controllerSetup.tables.find? (fun region => region.id == 28)
+    | throw (IO.userError "BLAKE2 G controller region absent")
+  check (controllerSource == Blake2G.controllerDataSourceBytes &&
+    controllerRegion == Blake2G.controllerDataRegion &&
+    Blake2G.controllerData.length == controllerRegion.length &&
+    Blake2G.controllerData.offset == 0 &&
+    Blake2G.controllerData.columns.size == controllerSetup.columns.size)
+    "BLAKE2 G controller preserves source bytes and native region metadata"
+  check ((Array.range controllerRegion.length).all fun row =>
+    Blake2G.controllerData.columns.toArray.zipIdx.all fun (column, index) =>
+      column.get? row ==
+        controllerSetup.columns[index]?.bind (fun original =>
+          original.get? (controllerRegion.offset + row)))
+    "every BLAKE2 G controller key, output, padding and tag equals the parsed data"
   check (artifact.trace_len == imported.data.length && artifact.columns.size == 9 &&
     artifact.tables.size == 2 && artifact.circuit.structured_statements.size == 30)
     "complete setup and its native circuit decoded together"
