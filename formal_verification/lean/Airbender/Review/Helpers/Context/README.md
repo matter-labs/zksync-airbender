@@ -42,5 +42,7 @@ proof conclusions. Follow [Memory](../Memory/README.md) and
 [Decoder](../Decoder/README.md) for those interpretations.
 
 Review every public field, including configuration and terminal-PC conditions.
-Acceptance includes active rows; global inactive padding neutrality remains open.
+The [external contribution-mask boundary](PaddingBoundary/README.md) now derives
+active-row acceptance from whole-layout masked closure. Its exact tuple matching
+and Rust/GKR binding remain explicit external assumptions.
 These definitions do not depend on a whole-execution contract.

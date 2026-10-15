@@ -1,3 +1,4 @@
+import Airbender.Review.Trace.Padding
 import Airbender.Review.Trace.UnifiedReduced.Theorems
 import Tests.DelegationCaller
 import Tests.BigintMemory
@@ -3272,5 +3273,11 @@ theorem invalid_bigint_mixed_cycles [Sail.ArchSem.MemoryPlatform SailRV32.except
   have same := List.mem_singleton.mp member
   subst row
   exact False.elim (noncaller (by cases highControl <;> exact List.mem_singleton_self _))
+
+theorem invalid_bigint_padding_boundary (highControl : Bool) :
+    UnifiedReduced.Caller.Padding.AcceptedLayout (abiData highControl) [] ∧
+    UnifiedReduced.Caller.Padding.active (abiData highControl) = abiData highControl :=
+  ⟨UnifiedReduced.Caller.Padding.Proofs.layout_of_accepted (abiAccepted highControl),
+    UnifiedReduced.Caller.Padding.Proofs.active_of_accepted (abiAccepted highControl)⟩
 
 end Tests.UnifiedDelegation

@@ -429,9 +429,9 @@ protocol scopes remain explicit. General operand-dependent x10/x12 results,
 broader operations and whole caller retirement remain open.
 
 All 116 concrete test modules and 143 importer guards pass. The full
-2,478-root axiom audit has 69 axiom-free roots and only the three standard
-Lean axioms. Review checks pass for all 128 public theorem roots, 226 declaration
-names and 754 guide links/anchors, with no handwritten project diagnostics.
+2,548-root axiom audit has 73 axiom-free roots and only the three standard
+Lean axioms. Review checks pass for all 136 public theorem roots, 232 declaration
+names and 776 guide links/anchors, with no handwritten project diagnostics.
 
 ## Review priorities
 
@@ -441,7 +441,7 @@ names and 754 guide links/anchors, with no handwritten project diagnostics.
 | F02 | Issued bigint controls violate the reference ABI | Accepted counterexamples for x12 = 0 and 65537 | Selected-operation effects and caller-cycle observations do not validate the full CSR |
 | F03 | An active worker can run without a caller | Accepted zero-clock worker with an actual state change | Distinct initialized matching bounds it to one and derives its actual first-group states; exclusion remains open |
 | F04 | Worker ROM shadows can disagree with public bytes | Accepted COPY/request counterexample | Physical seed images and tracked-RAM profiles exclude the problematic general native case |
-| F05 | Execute-zero does not imply inert padding | Accepted local row counterexample | `Accepted.active` and `RequestChecks.workerActive` select participating rows |
+| F05 | Raw inactive rows need not stutter | Conditionally resolved by the external contribution-mask boundary; no demonstrated implementation bug | Exact whole-layout masked closure derives active acceptance/execution; Rust/GKR/cryptographic enforcement remains external |
 | F06 | Discarded LW differs from original Sail | Accepted native NOP with no original Sail execution | `NoDiscardedLoads`, or the named Airbender NOP profile |
 | F07 | Standalone worker claims retain control/participation conditions | Unresolved general binding; discharged in specified stronger scopes | `rounds`, `RoundMask`, `keccakActive` |
 | F08 | Complete hash claims retain protocol shape and first-span restrictions | Public-program binding derives selected span/controller shape and all issued round coverage/masks; full coverage exposes the zero-clock extended-round boundary | Mode/duration/preparation, public code profile, controller extents/full coverage and legacy prefix conditions |
@@ -614,23 +614,40 @@ the actual invalid-call behavior, then prove public-byte transport for the admit
 scope. Ordinary machine ROM transport cannot simply be reused with worker values
 left untouched. The physical-image/RAM-profile claims remain valid.
 
-## F05 — Participating-row models leave global padding obligations open
+## F05 — Padding erasure resolved under an explicit contribution-mask boundary
 
-**Evidence.** [InactiveRow](Tests/InactiveRow.lean)
-checks all retained local ADD/SUB constraints for execute = 0, initial PC = 0,
-final PC = 4 and destination low limb = 123. Execute-zero alone proves neither
-PC stuttering nor an inert observable result.
+**Local evidence retained.** [InactiveRow](Tests/InactiveRow.lean) checks execute
+zero, initial PC zero, final PC four and destination low limb 123 under the retained
+local ADD/SUB constraints. This disproves raw stuttering; it does not demonstrate
+an implementation bug. The Rust compiler already masks global contributions.
 
-**Where the case is excluded.**
-[Accepted.active](Airbender/Review/Helpers/Context/Model.lean)
-requires every included machine row to execute. Pooled and unified request checks
-also require included workers to be active. These are participation predicates
-for the modeled lists; the audit found no whole-layout theorem that derives the
-irrelevance of every excluded row's state, write or lookup contribution.
+**Checked logical connection.** The user authorized the
+[external contribution-mask boundary](Airbender/Review/Helpers/Context/PaddingBoundary/README.md)
+on 15 October 2026, analogous to the verifier-PC boundary. Boolean native execute
+flags interpret an inactive row's aggregate as identity and retain an active row's
+full tuples. Exact masked PC, architectural memory and virtual CSR permutations
+keep the whole raw layout and unmasked public endpoints. Erasing identity factors
+derives the existing active-trace acceptance contracts and
+[whole execution entries](Airbender/Review/Trace/Padding.lean). All raw imported
+constraints and retained auxiliary/range/timestamp queries remain checked; active
+decoder membership retains its original logical table scope.
 
-**Closure needed.** Bind list participation to the actual global argument and
-prove all omitted padding contributions neutral. The fixture is local: it does
-not establish that an inactive row can alter a fully accepted machine trace.
+**Regression.** [PaddingBoundary](Tests/PaddingBoundary.lean) supplies complete
+native clock lookups for the PC 0→4/result-123 inactive case. Two such occurrences
+are inserted into the actual initialized [dependent ADD trace](Tests/TraceExecution.lean),
+which reaches the same Sail terminal PC/cells. A padding-only forged terminal
+transition and a non-Boolean selector are rejected. Active zero-valued tuples stay
+present. A colliding scalar encoding does not imply tuple matching. The existing
+zero-clock G worker survives projection and both invalid bigint controls inhabit
+the new boundary; padding selection is independent of invocation/control validity.
+
+**External trust retained.** The contract is a named theorem premise, not a project
+axiom or a proof of Rust verification. It assumes exact symbolic tuple closure
+and the binding of compiled masks to actual native execute columns. Product
+equality at sampled challenges is insufficient by itself. Address-space
+projection, import/compiled correspondence and GKR/cryptographic soundness remain
+external. F05 is conditionally resolved at this logical boundary; no inactive
+row's desired output or architectural inertness was assumed.
 
 ## F06 — The discarded-LW restriction protects a real semantic difference
 
@@ -855,8 +872,8 @@ continues to exclude delegation callers from its successful-instruction registry
 **External closure needed.** Bind accepted caller validity and participation to
 the complete pinned reference, including invalid calls, or make an explicit
 reference/scope decision. Current constraints and matching cannot imply the
-missing properties in the face of F02/F03. Worker ROM binding (F04) and inactive
-padding (F05) need their stated additional inputs. Independent composition work
+missing properties in the face of F02/F03. Worker ROM binding (F04) needs its stated additional inputs. Inactive
+padding (F05) now has the separately authorized conditional logical closure. Independent composition work
 is checked; the hourly task stops here rather than adding optional preparation
 or instruction variants. All generated/import/cryptographic and exceptional-path
 milestones remain separately deferred.
@@ -905,7 +922,7 @@ category must never be described simply as public context.
 
 ## Validation and next review
 
-The current milestone passed the library, both executables and all 116 concrete
+The current milestone passed the library, both executables and all 117 concrete
 Lean test modules, all 143 importer guards, the full axiom audit and the
 review/reference checker. The new shared-cycle fixtures cover COPY→LW/SW,
 both invalid bigint controls and the unissued G prefix. Existing terminal-PC,
