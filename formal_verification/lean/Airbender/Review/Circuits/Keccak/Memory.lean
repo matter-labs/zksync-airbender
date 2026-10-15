@@ -5,7 +5,7 @@ namespace Airbender.Keccak.Memory
 
 /-- Public initialization for an active Keccak pool. `publicState` reads the
     initial Sail registers/RAM and lists native timestamp-offset room. The setup is
-    the current modeled table; controller rows remain a supplied interface.
+    generalized over controller rows; native claims use imported controller data.
     `active` identifies real calls: inactive padding writes are not constrained
     to preserve words by this local artifact. No word range or read is assumed. -/
 structure Inputs [Fact p.Prime] (data : Delegation.MemoryData p)

@@ -160,7 +160,11 @@ existing circuit consumers use those rows. [G controller outputs](Airbender/Revi
 now project the imported native region: [kernel proofs](Airbender/Proofs/Blake2G/ImportedController.lean)
 check all 512 rows against the reference and concrete setup, including keys and
 discriminator. Generalized controller parameters and inactive/invalid controls
-retain their previous scope. Other worker/controller/byte/ROM
+retain their previous scope. [Keccak controller outputs](Airbender/Review/Circuits/Keccak/Tables/Controller.lean)
+also import the native region; [kernel proofs](Airbender/Proofs/Keccak/ImportedController.lean)
+check all 4,096 keys, six outputs and discriminator against the unchanged
+reference and concrete setup. Its generalized controllers and invalid/inactive
+rows retain their scope. Other worker/controller/byte/ROM
 table definitions are still being migrated. Source parsing/emission, general Rust
 refinement and cryptographic query/table authentication remain separate boundaries.
 
