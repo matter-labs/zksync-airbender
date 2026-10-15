@@ -59,3 +59,9 @@ conditions visible. Caller cycles and complete selected spans do not by themselv
 prove whole mixed execution with callers. Consult
 [current coverage](../../../VERIFICATION_STATUS.md) and
 [checked boundaries](../../../TRUST_AND_REVIEW.md#checked-scope-boundaries).
+
+[Padding soundness](Padding.lean) derives the existing restricted, six-family and
+unified execution claims from the [external contribution-mask boundary](../Helpers/Context/PaddingBoundary/README.md).
+Inactive native PC/write columns need not stutter; exact masked tuple closure
+selects the architectural rows. Mixed callers retain their observation scope and
+execute-one zero-clock worker effects.
