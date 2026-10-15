@@ -5,7 +5,7 @@ import Slop.Sym.Func
 * `sym_block X := code` runs the symbolic executor on `code` minus its final `ret` and adds
   `X.instrs`, `X.σ` (the final symbolic state, as a literal), `X.dec`, `X.ret`, `X.run : symRun X.instrs initState =
   some X.σ` (one kernel evaluation) and `X.wf`. Later facts about `X.σ` are decided on the literal.
-* `sym_unfold [cuts] depth d` replaces each `Pool.val c X.σ.pool e` in the goal (closed `e`) by the term it denotes
+* `sym_unfold [cuts] using l depth d` replaces each `Pool.val c X.σ.pool e` in the goal (closed `e`, not a cut) by the term it denotes
   (`toTree_eval`), stopping at the ids `cuts`. -/
 
 namespace RV.Sym
@@ -33,6 +33,16 @@ def State0 : State := ⟨0, fun _ => 0, fun _ => 0⟩
 
 theorem wf_of_run (instrs : List Instr) (σ : SState) (h : symRun instrs initState = some σ) : σ.pool.WF :=
   (symRun_mono (ctxOf State0) instrs State0 initState σ (rel_init State0) condsOK_init h).2.1.1
+
+/-- A loaded word, read back: node `i` loads 4 bytes at register `b` (initial value) plus `k`. -/
+theorem load_val (instrs : List Instr) (σ : SState) (hrun : symRun instrs initState = some σ) (S : State)
+    (i b : Nat) (k : Word) (sg : Bool) (hb : b < 32) (hi : i < σ.pool.len) (h : nodeAt σ.pool i = .load 4 sg b k) :
+    σ.pool.val (ctxOf S) i = read S.mem (S.getReg (BitVec.ofNat 5 b) + k) 4 := by
+  obtain ⟨-, he, -⟩ := symRun_mono (ctxOf S) instrs S initState σ (rel_init S) condsOK_init hrun
+  rw [(nodeAt_spec (ctxOf S) _ he.1 i hi).2, h]
+  simp only [Node.eval]
+  rw [val_var S σ.pool he b hb]
+  cases sg <;> simp [ctxOf, sext_word]
 
 private def addDef (n : Name) (type val : Expr) : CoreM Unit := do
   addAndCompile <| .defnDecl (mkDefinitionValEx n [] type val (.regular 0) .safe [])
@@ -72,11 +82,14 @@ partial def collectVals (e : Expr) (acc : Array Expr) : Array Expr :=
     | .mdata _ b | .proj _ _ b => collectVals b acc
     | _ => acc
 
-elab "sym_unfold" cuts:(" [" num,* "]")? d:(" depth " num)? : tactic => Tactic.withMainContext do
-  let cut : List Nat := match cuts with
-    | some c => (c.raw[1].getSepArgs.toList.filterMap fun s => s.isNatLit?)
-    | none => []
-  let depth := match d with | some d => d.raw[1].isNatLit?.getD 64 | none => 64
+syntax "sym_unfold" (" [" num,* "]")? (" using " term)? (" depth " num)? : tactic
+
+elab_rules : tactic
+  | `(tactic| sym_unfold $[[$cs,*]]? $[using $t]? $[depth $d]?) => Tactic.withMainContext do
+  let mut cut : List Nat := (cs.map fun cs => cs.getElems.toList.map (·.getNat)).getD []
+  if let some t := t then
+    cut := cut ++ (← unsafe Term.evalTerm (List Nat) (mkApp (mkConst ``List [0]) (mkConst ``Nat)) t)
+  let dep := (d.map (·.getNat)).getD 64
   let g ← Tactic.getMainGoal
   let tgt ← instantiateMVars (← g.getType)
   let mut seen : Array Expr := #[]
@@ -92,12 +105,13 @@ elab "sym_unfold" cuts:(" [" num,* "]")? d:(" depth " num)? : tactic => Tactic.w
       | throwError "sym_unfold: expected `X.σ.pool`, got {p}"
     let wf := Lean.mkConst (σn.getPrefix ++ `wf)
     let i ← unsafe evalExpr Nat (mkConst ``Nat) e
+    if cut.contains i then continue
     let pv ← unsafe evalExpr Pool (mkConst ``RV.Sym.Pool) p
     let cut' := cut.filter (· != i)
-    let T := toTree pv cut' depth i
+    let T := toTree pv cut' dep i
     let cutE := toExpr cut'
     let hi ← mkDecideProof (← mkAppM ``LT.lt #[mkNatLit i, ← mkAppM ``RV.Sym.Pool.len #[p]])
-    let pf ← mkAppM ``RV.Sym.toTree_eval #[c, p, wf, cutE, mkNatLit depth, mkNatLit i, hi]
+    let pf ← mkAppM ``RV.Sym.toTree_eval #[c, p, wf, cutE, mkNatLit dep, mkNatLit i, hi]
     let pf ← mkEqSymm pf
     let ty ← mkEq t (← mkAppM ``RV.Sym.Tree.eval #[c, ← mkAppM ``RV.Sym.Pool.val #[c, p], toExpr T])
     eqs := eqs.push (← mkExpectedTypeHint pf ty)
