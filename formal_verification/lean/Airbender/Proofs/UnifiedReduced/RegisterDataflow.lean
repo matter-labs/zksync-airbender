@@ -35,6 +35,33 @@ theorem binary_register_write_fields {instruction : SailRV32.instruction} {desti
     | (subst fields; simp [Nat.testBit, Nat.shiftRight_eq_div_pow])
     | (rcases decoded with ⟨_, rfl⟩; simp [Nat.testBit, Nat.shiftRight_eq_div_pow])
 
+/-- Original comparison metadata binds the destination independently of its
+    predicate, sign bits, operand ranges and PC-cleanup result. -/
+theorem comparison_register_write_fields {instruction : SailRV32.instruction} {destination : BitVec 5}
+    {fields : DecoderData UnifiedFamily} (form : ComparisonRegisterWrite instruction destination)
+    (nonzero : destination ≠ 0) (decoded : Mixed.decoderFields instruction = some fields) :
+    fields.rd = destination ∧ fields.mask < 524288 ∧ fields.mask.testBit 18 = false := by
+  change destination ≠ 0#5 at nonzero
+  cases form <;>
+    simp [Mixed.decoderFields, UnifiedReduced.decoderFields, Trace.decoderFields,
+      JumpBranchSlt.decoderFields, jumpFields, DecoderData.mapFamily, nonzero] at decoded
+  all_goals subst fields
+  all_goals simp [Nat.testBit, Nat.shiftRight_eq_div_pow]
+
+/-- The admitted custom projections derive the same native GPR destination.
+    Pinned custom execution clauses and their semantic boundaries stay separate. -/
+theorem custom_register_write_fields {instruction : SailRV32.instruction} {destination : BitVec 5}
+    {fields : DecoderData UnifiedFamily} (form : CustomRegisterWrite instruction destination)
+    (nonzero : destination ≠ 0) (decoded : Mixed.decoderFields instruction = some fields) :
+    fields.rd = destination ∧ fields.mask < 524288 ∧ fields.mask.testBit 18 = false := by
+  change destination ≠ 0#5 at nonzero
+  cases form <;>
+    simp [Mixed.decoderFields, UnifiedReduced.decoderFields, Trace.decoderFields,
+      JumpBranchSlt.decoderFields, ShiftBinop.decoderFields, customDecoderFields,
+      customRotationTag, nonzero] at decoded
+  all_goals subst fields
+  all_goals simp [Nat.testBit, Nat.shiftRight_eq_div_pow]
+
 theorem public_register_write_fields {instruction : SailRV32.instruction} {destination : BitVec 5}
     {fields : DecoderData UnifiedFamily} (form : PublicRegisterWrite instruction destination)
     (nonzero : destination ≠ 0) (decoded : Mixed.decoderFields instruction = some fields) :
@@ -47,6 +74,8 @@ theorem public_register_write_fields {instruction : SailRV32.instruction} {desti
     subst actual
     exact ⟨destination, bound, bank⟩
   | binary form => exact binary_register_write_fields form nonzero decoded
+  | comparison form => exact comparison_register_write_fields form nonzero decoded
+  | custom form => exact custom_register_write_fields form nonzero decoded
 
 theorem public_frame_preparation_entry [Fact p.Prime] (hp : 4194304 ≤ p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
