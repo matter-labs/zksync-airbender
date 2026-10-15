@@ -410,10 +410,11 @@ Sail retirement remain open.
 
 
 The [public register-dataflow entry](Airbender/Review/Helpers/UnifiedReduced/RegisterDataflow.lean)
-now allows intervening ADD/SUB/ADDI/LUI/AUIPC writes to other nonzero GPRs.
-The arithmetic destination comes from the original public instruction constructor;
-native decoder equations derive its GPR bank and index without an operand bound
-or arithmetic result. A gap may read the tracked register and refresh its timestamp. Public decoding derives the real destination;
+now allows intervening arithmetic, bitwise, shift and REV8 writes to other
+nonzero GPRs. Original public instruction constructors bind the destination;
+successful public decoding retains supported RV32 shift-payload checks. Native
+decoder equations derive its GPR bank and index without an operand bound or
+instruction result. A gap may read the tracked register and refresh its timestamp. Public decoding derives the real destination;
 raw initialized matching and readonly-port preservation derive the tracked value,
 retaining the gap's actual write. Induction alternates these gaps with computed
 ADDIs before Sail transport or regional round-mask derivation. No desired read,
@@ -436,7 +437,12 @@ the second readonly refresh at clock nine. The final signed ADDI derives x12 = 1
 at clock fourteen. Wrong public destinations and instruction forms are rejected.
 A final source that reuses clock eight still passes all local native constraints
 and timestamp queries, but global token counts reject its second consumption.
-Non-arithmetic gap instructions, worker-interleaved preparation, broader operands
+Native XOR/AND gaps now also read x12 twice, preserve 127/129, write x10 = 0/129
+and retain the second readonly refresh at clock nine. The final signed ADDI
+derives x12 = 128 at clock fourteen. Stale clock-eight sources remain locally
+valid and globally rejected; wrong public destinations/forms, illegal shifts
+and discarded binary destinations are rejected at their stated boundaries.
+Memory/comparison/custom gaps, worker-interleaved preparation, broader operands
 and full Sail retirement remain open.
 
 [Control preparation](Airbender/Review/Helpers/UnifiedReduced/ControlPreparation.lean)

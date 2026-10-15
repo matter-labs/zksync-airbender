@@ -306,10 +306,11 @@ ABI and whole mixed execution remain separate.
    canonical clock fourteen; malformed immediates/constants, middle operands and
    incomplete references are rejected. Existing AUIPC roots and the actual
    unissued G-prefix effect remain inhabited. Public register dataflow now admits
-   intervening ADD/SUB/ADDI/LUI/AUIPC writes to other nonzero GPRs, including
-   reads/readonly refreshes of the tracked register. Original arithmetic
-   instruction constructors derive the native GPR destination bank/index without
-   operand bounds or arithmetic results. Original public decoding derives
+   intervening arithmetic, bitwise, shift and REV8 writes to other nonzero
+   GPRs, including reads/readonly refreshes of the tracked register. Original
+   public instruction constructors and successful decoding derive the native GPR
+   destination bank/index, retaining supported shift-payload checks without
+   operand bounds or instruction results. Original public decoding derives
    destination separation;
    raw initialized matching preserves its canonical word and actual timestamp
    while retaining every gap write. A final ADDI derives the fresh output before
@@ -324,7 +325,10 @@ ABI and whole mixed execution remain separate.
    and derive final x12 = 128 at clock fourteen. Wrong public destinations and
    instruction forms are rejected. A stale clock-eight source passes local
    constraints/timestamps but global token counts reject double consumption.
-   Continue non-arithmetic gap instructions, worker-interleaved preparation,
+   Native XOR/AND gaps also retain two aliased reads, x12 = 127/129, x10 = 0/129,
+   clock-nine refreshes and final x12 = 128 at clock fourteen. Wrong public
+   destinations/forms, illegal shifts and discarded binary destinations are
+   rejected. Continue memory/comparison/custom gaps, worker-interleaved preparation,
    broader operand-dependent operations, jumps/branches and whole caller
    retirement, retaining unsupported-
    control and unissued-exclusion boundaries.
