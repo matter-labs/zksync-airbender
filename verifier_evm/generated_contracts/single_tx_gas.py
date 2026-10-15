@@ -2,9 +2,11 @@
 """Raw-transaction gas for the two-tx pair and the single-tx proxy on a task-owned anvil (Prague).
 
 Usage: single_tx_gas.py <2p21> <task-owned-port> <out.json> [data-root]
-  The version's contracts root (l1_wrap_2p21/) must have built gkr/, whir/, two_tx/ and
-  single_tx/{gkr,whir,harness}/ (forge build in each first). data-root defaults to the version's
-  debug_data and must hold gkr_full_calldata.hex and proth120_whir_calldata_from_proof.hex.
+  The version's contracts root (l1_wrap_2p21/) must have built gkr/, whir/, two_tx/,
+  single_tx/{gkr,whir,harness}/ and single_tx/f1/{gkr,whir}/ (forge build in each first). data-root
+  defaults to the version's debug_data and must hold gkr_full_calldata.hex,
+  proth120_whir_calldata_from_proof.hex, single_tx_f1.hex and single_tx_f1_fields.json.
+  Transactions: the two-tx pair, the v0 single-tx proxy and the F1 single-tx proxy.
 
 Proof bytes are tx calldata (intrinsic / EIP-7623). Per tx: receipt gasUsed, calldata bytes /
 zero bytes / tokens, execution gas from the struct-log trace (first.gas - (last.gas - last.gasCost)),
@@ -33,6 +35,8 @@ WHIR2 = "0x0000000000000000000000000000000011170001"
 REG = "0x00000000000000000000000000000000CafE0001"
 GKR1 = "0x00000000000000000000000000000000611b0002"
 WHIR1 = "0x0000000000000000000000000000000011170002"
+GKR_F1 = "0x00000000000000000000000000000000611b0012"
+WHIR_F1 = "0x0000000000000000000000000000000011170012"
 
 
 def rpc(url, method, params):
@@ -117,16 +121,22 @@ def main():
         _, gkr2_code = artifact(root / "gkr/out/GkrVerifier.sol/GKRVerifier.json")
         _, whir2_code = artifact(root / "whir/out/WhirVerifier.sol/WhirVerifier.json")
         _, gkr1_code = artifact(root / "single_tx/gkr/out/GkrVerifier.sol/GKRVerifier.json")
+        _, gkr_f1_code = artifact(root / "single_tx/f1/gkr/out/GkrVerifier.sol/GKRVerifier.json")
+        _, whir_f1_code = artifact(root / "single_tx/f1/whir/out/WhirVerifier.sol/WhirVerifier.json")
         _, whir1_code = artifact(root / "single_tx/whir/out/WhirVerifier.sol/WhirVerifier.json")
         reg_init, _ = artifact(root / "two_tx/out/GkrWhirRegistry.sol/GkrWhirRegistry.json")
         wrap_init, _ = artifact(
             root / "single_tx/harness/out/L1VerifierSingleTx.sol/L1VerifierSingleTx.json")
-        for a, c in [(GKR2, gkr2_code), (WHIR2, whir2_code), (GKR1, gkr1_code), (WHIR1, whir1_code)]:
+        for a, c in [(GKR2, gkr2_code), (WHIR2, whir2_code), (GKR1, gkr1_code), (WHIR1, whir1_code),
+                     (GKR_F1, gkr_f1_code), (WHIR_F1, whir_f1_code)]:
             set_code(a, c)
         reg_impl = deploy(reg_init, word(sender))
         set_code(REG, rpc(url, "eth_getCode", [reg_impl, "latest"]))
         send(REG, bytes.fromhex(selector("initialize_verifiers(address,address)") + word(GKR2) + word(WHIR2)))
         wrapper = deploy(wrap_init, word(GKR1) + word(WHIR1) + word(len(gkr)))
+        f1 = bytes.fromhex((data_root / "single_tx_f1.hex").read_text().strip())
+        f1_gkr_bytes = json.loads((data_root / "single_tx_f1_fields.json").read_text())["gkr_bytes"]
+        wrapper_f1 = deploy(wrap_init, word(GKR_F1) + word(WHIR_F1) + word(f1_gkr_bytes))
 
         ret = bytes.fromhex(rpc(url, "eth_call", [{"to": GKR1, "data": "0x" + gkr.hex(),
                                                     "gas": hex(GAS_LIMIT)}, "latest"])[2:])
@@ -174,6 +184,7 @@ def main():
             "two_tx_gkr": measure("two_tx_gkr", GKR2, gkr),
             "two_tx_whir": measure("two_tx_whir", WHIR2, whir),
             "single_tx": measure("single_tx", wrapper, single),
+            "single_tx_f1": measure("single_tx_f1", wrapper_f1, f1),
         }
         s, g2, w2 = results["single_tx"], results["two_tx_gkr"], results["two_tx_whir"]
         gf, wf = s["frames"]
@@ -193,16 +204,26 @@ def main():
             "two_tx_execution_sum": g2["execution_gas"] + w2["execution_gas"],
             "removed_handoff_execution": g2["execution_gas"] + w2["execution_gas"]
             - gf["gasUsed"] - wf["gasUsed"],
+            "f1_bytes": results["single_tx_f1"]["calldata_bytes"],
+            "f1_zero_bytes": results["single_tx_f1"]["zero_bytes"],
+            "f1_tokens": results["single_tx_f1"]["tokens"],
+            "f1_execution": results["single_tx_f1"]["execution_gas"],
+            "f1_gkr_frame": results["single_tx_f1"]["frames"][0]["gasUsed"],
+            "f1_whir_frame": results["single_tx_f1"]["frames"][1]["gasUsed"],
+            "f1_prague_gas": results["single_tx_f1"]["gasUsed"],
+            "f1_glamsterdam_gas": results["single_tx_f1"]["glamsterdam_gas"],
+            "f1_glamsterdam_floor_room": results["single_tx_f1"]["glamsterdam_floor_room"],
+            "f1_hegota_gas": results["single_tx_f1"]["hegota_gas"],
         }
         out.write_text(json.dumps(results, indent=2) + "\n")
-        for k in ("two_tx_gkr", "two_tx_whir", "single_tx"):
+        for k in ("two_tx_gkr", "two_tx_whir", "single_tx", "single_tx_f1"):
             r = results[k]
             print(f"{k:12s} gasUsed {r['gasUsed']:>9,}  bytes {r['calldata_bytes']:>7,}  zero "
                   f"{r['zero_bytes']:>4}  tokens {r['tokens']:>7,}  exec {r['execution_gas']:>9,}  "
                   f"floor-headroom {r['execution_headroom_below_floor']:>8,}  {r['binding']}  "
                   f"model==receipt {r['model_matches_receipt']}")
         print(json.dumps(results["summary"], indent=2))
-        mismatched = [k for k in ("two_tx_gkr", "two_tx_whir", "single_tx")
+        mismatched = [k for k in ("two_tx_gkr", "two_tx_whir", "single_tx", "single_tx_f1")
                       if not results[k]["model_matches_receipt"]]
         if mismatched:
             raise SystemExit(f"receipt gas differs from the model for {mismatched}")
