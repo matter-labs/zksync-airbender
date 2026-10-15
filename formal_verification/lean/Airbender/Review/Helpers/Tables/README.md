@@ -1,7 +1,8 @@
 # Shared modeled tables
 
-This directory models shared lookup rows for limb ranges, bytes, subword memory
-and common query encodings, using Clean's table semantics. The definitions state
+Shared 13-/16-/19-bit range rows now come from [native setup JSON](../../../../artifacts/setup/README.md),
+with kernel-checked membership bounds. The other table definitions are still
+being migrated from their reviewed models. The definitions state
 which logical queries are members and how returned values are interpreted. Their
 correspondence with the Rust setup generator and cryptographic lookup enforcement
 are separate obligations.
@@ -12,7 +13,8 @@ The [lookup lemmas](../../../Proofs/Lookups.lean) extract modeled pair/range-sig
 low-byte behavior from membership; [byte-table lemmas](../../../Proofs/ByteTables.lean)
 characterize tagged binary rows and their lookup results under stated field bounds.
 Consuming circuit proofs use these results to recover ranges and operation effects.
-The proofs concern these modeled rows; they do not prove Rust setup correspondence.
+Range proofs concern the actual imported rows; byte/subword proofs still concern
+their modeled rows. General Rust refinement and cryptographic enforcement remain separate.
 
 [Range](Range.lean) defines limb-range rows; [Bytes](Bytes.lean) defines shared
 byte constructions; [Subword](Subword.lean) defines subword/ROM rows;
@@ -22,7 +24,7 @@ Review the row contents, query layout, field interpretation and disabled-query
 behavior used by the consuming claim. Circuit-specific controllers and setup
 belong in that circuit's Tables directory.
 
-Clean supplies the lookup semantics. These are human-reviewed models of Rust setup,
-not an extracted fixed-table artifact or proved generator correspondence.
+Clean supplies the lookup semantics. The imported ranges and remaining table models
+have distinct provenance; the native table migration is in progress.
 Membership and cryptographic enforcement are separate boundaries.
 See [trust and provenance](../../../../TRUST_AND_REVIEW.md#modeled-tables-and-logical-arguments).

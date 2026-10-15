@@ -151,6 +151,9 @@ def check_layers():
 
 
 def main():
+    from check_setup_artifacts import check as check_setup_artifacts
+    artifacts, sources, circuits = check_setup_artifacts()
+    print(f"PASS {artifacts} setup artifacts, {sources} native source hashes, {circuits} retained circuit identities")
     modules = [".".join(path.relative_to(ROOT).with_suffix("").parts)
                for path in sorted((ROOT / "Airbender/Review").rglob("*.lean"))]
     # Build first so the compiler inventory describes the current source tree.

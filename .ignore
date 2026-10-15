@@ -22,6 +22,7 @@ tools/generator/output/
 
 # --- Proof, witness, and layout artifacts ---
 prover/test_proofs/
+formal_verification/lean/artifacts/setup/*.json
 *_gkr_proof.json
 *_layout_gkr.json
 *_layout_no_caches_gkr.json

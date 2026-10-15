@@ -68,6 +68,7 @@ import Tests.ShiftBinop
 import Tests.Binop
 import Tests.Shifts
 import Tests.TraceImport
+import Tests.SetupImport
 
 open Airbender Lean
 
@@ -104,6 +105,7 @@ def main : IO UInt32 := do
       "range query with ambiguous logical placement rejected"
     check (source == AddSub.importedConstraintsSourceBytes) "embedded source equals current artifact bytes"
     Tests.TraceImport.run
+    Tests.SetupImport.run
     let wordSource ← IO.FS.readFile "../../cs/compiled_circuits/mem_word_only_layout_no_caches_gkr.json"
     let .ok word := parseCircuit wordSource | throw (IO.userError "word-memory artifact failed import")
     let .ok wordQueries := word.wordMemoryQueries | throw (IO.userError "word-memory ROM query failed import")

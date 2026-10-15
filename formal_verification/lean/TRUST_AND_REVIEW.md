@@ -147,13 +147,15 @@ reference and explicit reviewed clauses rather than standard CSR execution.
 
 ## Modeled tables and logical arguments
 
-[RangeChecks.lean](Airbender/Review/Helpers/Tables/Range.lean) enumerates 16-bit limbs using
-Clean's `StaticTable`; membership characterization is kernel checked. Its rows
-reconstruct [Rust range setup](../../prover/src/gkr/virtual_polys/range_check.rs),
-selected with 16 bits in [the prover](../../prover/src/gkr/prover/mod.rs).
-The 19-bit timestamp table and worker controller/XOR/operation tables have the
-same unproved setup-generator correspondence. Exact extracted rows, table identity,
-query binding and padding remain deferred provenance work.
+[Shared range definitions](Airbender/Review/Helpers/Tables/Range.lean) now import
+actual native setup JSON: the complete virtual 16-/19-bit columns, including zero
+padding, and bigint's table-ID-26 region for the 13-bit range. Their exact bounds
+are proved from the imported data in [ImportedRanges](Airbender/Proofs/Tables/ImportedRanges.lean),
+with the existing generic field scope and public helpers preserved. The
+[export/import workflow](artifacts/setup/README.md) includes the selected program,
+native IDs/offsets and actual circuit object. Other worker/controller/byte/ROM
+table definitions are still being migrated. Source parsing/emission, general Rust
+refinement and cryptographic query/table authentication remain separate boundaries.
 
 `Accepted` checks imported equations/lookups and logical native state/memory
 permutations. Decoder membership and caller/request matching are likewise logical

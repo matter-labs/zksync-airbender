@@ -16,20 +16,35 @@ pub fn build_delegation_setup(
     delegation_type: DelegationCircuitType,
     worker: &Worker,
 ) -> CanonicalCircuitSetup {
+    build_delegation_setup_with_cache_mode(delegation_type, true, worker)
+}
+
+/// Select the circuit representation when exporting materialized setup.
+pub fn build_delegation_setup_with_cache_mode(
+    delegation_type: DelegationCircuitType,
+    use_caches: bool,
+    worker: &Worker,
+) -> CanonicalCircuitSetup {
     let setup = match delegation_type {
         DelegationCircuitType::BigIntWithControl => {
-            get_bigint_with_control_circuit_setup(true, worker)
+            get_bigint_with_control_circuit_setup(use_caches, worker)
         }
         DelegationCircuitType::Blake2WithCompression => {
-            get_blake2_with_compression_circuit_setup(true, worker)
+            get_blake2_with_compression_circuit_setup(use_caches, worker)
         }
-        DelegationCircuitType::Blake2GFunction => get_blake2_g_function_circuit_setup(true, worker),
-        DelegationCircuitType::KeccakSpecial5 => get_keccak_special5_circuit_setup(true, worker),
+        DelegationCircuitType::Blake2GFunction => {
+            get_blake2_g_function_circuit_setup(use_caches, worker)
+        }
+        DelegationCircuitType::KeccakSpecial5 => {
+            get_keccak_special5_circuit_setup(use_caches, worker)
+        }
         DelegationCircuitType::KeccakColumnParity => {
-            get_keccak_column_parity_circuit_setup(true, worker)
+            get_keccak_column_parity_circuit_setup(use_caches, worker)
         }
-        DelegationCircuitType::KeccakThetaRho => get_keccak_theta_rho_circuit_setup(true, worker),
-        DelegationCircuitType::KeccakChi5 => get_keccak_chi5_circuit_setup(true, worker),
+        DelegationCircuitType::KeccakThetaRho => {
+            get_keccak_theta_rho_circuit_setup(use_caches, worker)
+        }
+        DelegationCircuitType::KeccakChi5 => get_keccak_chi5_circuit_setup(use_caches, worker),
     };
     CanonicalCircuitSetup::Delegation(setup)
 }

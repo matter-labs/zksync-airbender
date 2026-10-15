@@ -60,6 +60,13 @@ dependencies, pins or generated artifacts as part of readability cleanup.
 
 ## Pending integration work
 
+The user authorized complete selected-program setup JSON export/import on
+15 October 2026, including ROM and decoder rows. This table-content extraction
+is now active: shared 13-/16-/19-bit definitions import actual native rows and
+derive their existing membership bounds. Continue replacing the other table
+models and connect the program-dependent consumers without new semantic
+assumptions. See the [artifact workflow](artifacts/setup/README.md).
+
 The [finding register](FINDINGS.md#linear-and-open-pr-review--15-october-2026)
 separates implementation bugs, temporary proof assumptions, intended external
 interfaces and supported profiles. The user authorized temporary assumptions on
@@ -160,18 +167,16 @@ cryptographic refinement and exceptional execution remain outside this task.
 
 These require separately scoped work:
 
-1. Extract fixed lookup rows and identities from the actual Rust setup generator,
-   import them into Clean, and account for query binding, provenance and padding.
-   Export/import fidelity and lookup-argument soundness remain separate.
-2. Prove compiled no-cache constraints imply the richer constraints. Equivalence
+1. Prove compiled no-cache constraints imply the richer constraints. Equivalence
    additionally needs witness extension; cached layouts and verifier helper
    expressions require their own correspondence.
-3. Discharge Rust decoder/preprocessing and setup-generator correspondence.
-4. Prove cryptographic lookup and memory argument soundness and connect them to
+2. Discharge formal Rust decoder/preprocessing and setup-generator correspondence,
+   separately from the authorized artifact export/import above.
+3. Prove cryptographic lookup and memory argument soundness and connect them to
    execution claims. Keep verifier implementation refinement and protocol
    soundness as explicit downstream interfaces.
-5. Prove completeness for each declared circuit relation.
-6. Import and verify the actual large-field artifact and its own coefficients;
+4. Prove completeness for each declared circuit relation.
+5. Import and verify the actual large-field artifact and its own coefficients;
    generic prime-field proofs alone do not establish a Proth120 import.
 
 ## Verification and completion

@@ -22,11 +22,9 @@ def Timestamp.Bounded (t : Timestamp) : Prop := t.lo < timestampBase ∧ t.hi < 
 def decodeTimestamp {p : Nat} (w : Nat → ZMod p) (columns : Vector Nat 2) : Timestamp :=
   ⟨(w columns[0]).val, (w columns[1]).val⟩
 
-/-- Rust's `TIMESTAMP_COLUMNS_NUM_BITS` in `common_constants/src/timestamps.rs`;
-    `VirtualSetupPoly::RangeCheckTimestamp` uses the virtual range setup. As with
-    the other range tables, correspondence to that Rust setup remains unproved. -/
+/-- Actual exported `VirtualSetupPoly::RangeCheckTimestamp`, including padding. -/
 def timestampTable {p : Nat} [Fact p.Prime] : Table (ZMod p) field :=
-  Verification.rangeTable "Airbender.Timestamp19" timestampBase
+  Verification.importedTimestamp19.scalarTable "Airbender.Timestamp19"
 
 def timestampLookup {p : Nat} [Fact p.Prime] (entry : Expression (ZMod p)) : Lookup (ZMod p) :=
   ⟨timestampTable.toRaw, #v[entry]⟩
