@@ -6,9 +6,9 @@ use super::super::{
     transcript_commit_fields, transcript_commit_initial_u32, transcript_commit_u32,
     transcript_draw_fields, transcript_draw_u32, Digest, Seed,
 };
-use super::{download, upload, TestRng, EDGE_VALUES};
+use super::{cpu_tree, download, random_columns, upload, TestRng, EDGE_VALUES};
 use crate::upstream::{
-    Keccak256Seed, Keccak256Transcript, MerkleTreeCapVarLength, Proth120, Transcript,
+    Keccak256Seed, Keccak256Transcript, MerkleTreeCapVarLength, PathQueryable, Proth120, Transcript,
 };
 
 type HostTranscript = Keccak256Transcript;
@@ -146,6 +146,31 @@ fn keccak256_transcript_absorb_parity() {
     }
     let raw_digest: Seed = Keccak256::digest(&raw).into();
     assert_ne!(gpu, raw_digest, "cap words must be absorbed little-endian");
+
+    let cosets: Vec<Vec<Proth120>> = (0..8)
+        .map(|_| random_columns(&mut rng, 2, 1 << 6))
+        .collect();
+    let tree_cap = cpu_tree(&cosets, 2, 2, 8).get_cap();
+    assert!(tree_cap
+        .cap
+        .iter()
+        .all(|digest| digest[6] & 0x00ff_ffff == 0 && digest[7] == 0));
+    let seed = random_seed(&mut rng);
+    let device_cap = upload(&tree_cap.cap, &stream);
+    let mut device = DeviceSeed::new(&seed, &stream);
+    transcript_commit_u32(
+        device.slice(),
+        unsafe { device_cap.transmute::<u32>() },
+        &stream,
+    )
+    .unwrap();
+    let mut words = Vec::new();
+    tree_cap.add_into_buffer(&mut words);
+    assert_eq!(
+        device.read(&stream),
+        host_commit_u32(&seed, &words),
+        "truncated tree cap"
+    );
 }
 
 #[test]

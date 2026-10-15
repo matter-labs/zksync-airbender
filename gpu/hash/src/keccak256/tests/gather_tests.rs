@@ -15,8 +15,8 @@ use super::{
     bitreverse_index, cpu_tree, download, random_columns, test_worker, upload, TestRng, SENTINEL,
 };
 use crate::upstream::{
-    keccak_leaf_encoding_words, CosetByCosetBaseCommitment, CosetByCosetExtCommitment,
-    Keccak256MerkleTreeWithCap, PathQueryable, Proth120, Twiddles,
+    keccak_leaf_encoding_words, truncate_keccak_merkle_digest, CosetByCosetBaseCommitment,
+    CosetByCosetExtCommitment, Keccak256MerkleTreeWithCap, PathQueryable, Proth120, Twiddles,
 };
 
 struct Openings {
@@ -232,9 +232,11 @@ fn expected_values(coset: &[Proth120], leaf: usize, columns: usize, log_v: u32) 
 fn hash_words(words: impl IntoIterator<Item = u32>) -> Digest {
     let bytes: Vec<u8> = words.into_iter().flat_map(u32::to_be_bytes).collect();
     let bytes = Keccak256::digest(bytes);
-    std::array::from_fn(|word| {
+    let mut digest = std::array::from_fn(|word| {
         u32::from_be_bytes(bytes[4 * word..4 * word + 4].try_into().unwrap())
-    })
+    });
+    truncate_keccak_merkle_digest(&mut digest);
+    digest
 }
 
 fn included(
