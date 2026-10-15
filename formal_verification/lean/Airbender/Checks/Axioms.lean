@@ -1,3 +1,4 @@
+import Airbender.Review.Trace.UnifiedReduced.BigintCalls
 import Airbender.Review.Trace.UnifiedReduced.NativeMixedROM
 import Airbender.Review.Trace.ExternalBoundaries
 import Tests.ExternalBoundaries
@@ -3022,3 +3023,41 @@ import Clean.Specs.Keccak256
 #print axioms Tests.UnifiedROMBoot.mixed_native_rom_execution
 #print axioms Tests.UnifiedDelegation.mixed_worker_rom_transport
 #print axioms Tests.UnifiedDelegation.rom_interpretation_keeps_worker_requests
+
+-- Full successful bigint calls and original PC retirement under the temporary F02 contract.
+#print axioms Airbender.Trace.CellWrites
+#print axioms Airbender.Trace.AtomicWrites
+#print axioms Airbender.Trace.Proofs.history_cell_writes
+#print axioms Airbender.Trace.Proofs.atomic_writes_of_history
+#print axioms Airbender.Trace.Proofs.cell_writes_frame
+#print axioms Airbender.Trace.Proofs.atomic_writes_frame
+#print axioms Airbender.Bigint.Call.Operation
+#print axioms Airbender.Bigint.Call.word
+#print axioms Airbender.Bigint.Call.Reads
+#print axioms Airbender.Bigint.Call.cells
+#print axioms Airbender.Bigint.Call.results
+#print axioms Airbender.Bigint.Call.operands
+#print axioms Airbender.Bigint.Call.writes
+#print axioms Airbender.Bigint.Call.Executes
+#print axioms Airbender.Bigint.Call.Retires
+#print axioms Airbender.Bigint.Call.Proofs.operation
+#print axioms Airbender.Bigint.Call.Proofs.incoming_carry
+#print axioms Airbender.Bigint.Call.Proofs.executes_of_footprint
+#print axioms Airbender.Bigint.Call.Proofs.command_control_range
+#print axioms Airbender.Bigint.Call.Proofs.executes_control_range
+#print axioms Airbender.Bigint.Call.Proofs.indirectIndex
+#print axioms Airbender.Bigint.Call.Proofs.expected_address
+#print axioms Airbender.Bigint.Call.Proofs.cell_indirect
+#print axioms Airbender.Bigint.Call.Proofs.indirect_shape
+#print axioms Airbender.Bigint.Call.Proofs.cells_projection
+#print axioms Airbender.Bigint.Call.Proofs.results_projection
+#print axioms Airbender.Bigint.Call.Proofs.operands_projection
+#print axioms Airbender.Bigint.Call.Proofs.write_projection
+#print axioms Airbender.Bigint.Call.Proofs.executes
+#print axioms Airbender.UnifiedReduced.Caller.BigintCommands
+#print axioms Airbender.UnifiedReduced.Caller.BigintCallCycle
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.bigint_of_csr
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.bigint_call_cycle_at
+#print axioms Airbender.UnifiedReduced.Caller.bigint_call_soundness
+#print axioms Tests.UnifiedDelegation.copy_then_ram_full_reference
+#print axioms Tests.UnifiedDelegation.invalid_bigint_full_reference_rejected
