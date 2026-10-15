@@ -18,6 +18,9 @@ pub(crate) use cs::definitions::gkr::{GKRMachineState, GKRMemoryLayout};
 pub(crate) type LinearRelation = cs::definitions::gkr::LinearRelation<BabyBearField>;
 pub(crate) type SingleColumnLookupRelation =
     cs::definitions::gkr::SingleColumnLookupRelation<BabyBearField>;
+pub(crate) type PRLinearRelation = cs::definitions::gkr::LinearRelation<Proth120>;
+pub(crate) type PRSingleColumnLookupRelation =
+    cs::definitions::gkr::SingleColumnLookupRelation<Proth120>;
 // Aliased to avoid collision with crate-local types of the same name.
 pub(crate) use cs::definitions::gkr::DecoderPlacementDescription as CSDecoderPlacementDescription;
 pub(crate) use cs::definitions::gkr::IndirectRamAccessAddress as CSIndirectRamAccessAddress;
@@ -66,6 +69,7 @@ pub(crate) use field::baby_bear::base::BabyBearField;
 #[cfg(test)]
 pub(crate) use field::Field;
 pub(crate) use field::PrimeField;
+pub(crate) use field::Proth120;
 
 // -----------------------------------------------------------------------
 // `prover` — CPU prover types the GPU prover mirrors / interoperates with

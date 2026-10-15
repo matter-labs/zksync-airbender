@@ -62,16 +62,19 @@ because the witness CUDA it guards moved here.
 - **Archive / `links` key**: `gpu_trace_native` (`build.rs` is a one-line
   `gpu_native_build::CudaArchive::new("gpu_trace_native", "GPU_TRACE").build()`
   call — no `export_include`, no `deterministic_pow`).
-- **Kernel count**: 52 — 24 literal (`memory_delegation.cu` 14,
+- **Kernel count**: 58 — 24 BabyBear literal (`memory_delegation.cu` 14,
   `memory_unrolled.cu` 7, `multiplicities.cu` 3) plus 28 token-pasted witness
-  and fused stage-1 kernels (two per circuit under `witness/circuits/`). The
-  three macro declarations make a source-level `__global__` grep report 27.
+  and fused stage-1 kernels (two per circuit under `witness/circuits/`).
+  Proth120 adds five production kernels (two token-pasted, three literal)
+  and one literal test-support probe. The three BabyBear macro declarations
+  make a source-level `__global__` grep report 27 before these additions.
   No `__device__ __constant__` symbols in this archive
   (all 8 cluster-wide ones live in `gpu_gkr`).
 - **Namespace**: `airbender::trace::witness::*` (sub-namespaces per concern:
   `memory`, `memory::delegation`, `memory::unrolled`, `multiplicities`,
   `trace`, `trace::delegation`, `trace::unrolled`, `option`, `placeholder`,
-  `tables`, `ram_access`, `generation`, `circuits::NAME`).
+  `tables`, `ram_access`, `generation`, `circuits::NAME`,
+  `proth120::{generation,memory::unrolled,multiplicities,circuits::NAME}`).
   This is the C++-namespace-list line item in [`../AGENTS.md`](../AGENTS.md):
   `circuit_prover` no longer owns any `airbender::witness::*` kernels.
   **Note**: `gpu_hash`'s kernels stay `airbender::hash`, unaffected by this
@@ -82,6 +85,10 @@ because the witness CUDA it guards moved here.
   `circuit_defs/**/generated/witness_generation_fn.cuh`. It does not
   `export_include` — nothing includes `gpu_trace`'s native headers
   cross-crate — and it carries no PoW kernel (that stays in `gpu_hash`).
+- **Proth120 witness runtime**: `native/witness/proth120/` owns its field
+  wrappers, constrained writers, pointer-based relations, fused generation,
+  I&T, multiplicities and probe. `tables.cuh` shares the table ordinal/index
+  mirror through a defaulted field parameter; BabyBear remains the default.
 
 ## Widening convention
 
