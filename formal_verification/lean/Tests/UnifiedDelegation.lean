@@ -7,6 +7,8 @@ import Airbender.Proofs.UnifiedReduced.RegisterDataflow
 import Airbender.Proofs.UnifiedReduced.Claims
 import Airbender.Review.Circuits.UnifiedReduced.Tables.Setup
 
+import Airbender.Review.Trace.UnifiedReduced.NativeMixedROM
+
 namespace Tests.UnifiedDelegation
 open Airbender Trace Arithmetic Reference.RiscV.Sail Reference.Sail
 set_option warningAsError true
@@ -3279,5 +3281,21 @@ theorem invalid_bigint_padding_boundary (highControl : Bool) :
     UnifiedReduced.Caller.Padding.active (abiData highControl) = abiData highControl :=
   ⟨UnifiedReduced.Caller.Padding.Proofs.layout_of_accepted (abiAccepted highControl),
     UnifiedReduced.Caller.Padding.Proofs.active_of_accepted (abiAccepted highControl)⟩
+
+theorem mixed_worker_rom_transport (store : Bool) :
+    ExternalBoundary.WorkerRAM.Binding (memoryData store).workers.rows ∧
+    UnifiedReduced.Caller.MixedMemoryAccepted
+      (UnifiedReduced.Caller.NativeROM.view (memoryBefore store) (memoryData store)) [memoryEntry store] := by
+  have ram := UnifiedReduced.Caller.NativeROM.ram_binding_soundness
+    (memoryAccepted store) (memoryInputs store) (memoryCode store).ram
+  exact ⟨ram, UnifiedReduced.Caller.NativeROM.acceptance_soundness (by decide)
+    (memoryBefore store) (memoryAccepted store) ram⟩
+
+theorem rom_interpretation_keeps_worker_requests (store : Bool) :
+    (UnifiedReduced.Caller.NativeROM.view (memoryBefore store) (memoryData store)).calls =
+      (memoryData store).calls ∧
+    (UnifiedReduced.Caller.NativeROM.view (memoryBefore store) (memoryData store)).workers =
+      (memoryData store).workers :=
+  ⟨UnifiedReduced.Caller.NativeROM.Proofs.calls _ _, rfl⟩
 
 end Tests.UnifiedDelegation
