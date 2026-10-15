@@ -6,6 +6,7 @@ use gpu_core::primitives::device_structures::{
     DeviceMatrixChunkImpl, DeviceMatrixChunkMutImpl, PtrAndStride,
 };
 use gpu_core::primitives::field::PR;
+use gpu_core::primitives::nvtx::scoped_range;
 
 use super::hypercube::hypercube_evals_to_monomials_in_place;
 use super::{validate_disjoint, validate_matrix};
@@ -60,6 +61,7 @@ pub fn pack_hypercubes_to_monomials(
         PACK_BLOCK_THREADS,
         stream,
     );
+    let gather = scoped_range(Some("ab"), "pack.gather");
     for group in 0..outputs.cols() {
         let first = group << pack_log2;
         let cols_in_group = (inputs.cols() - first).min(group_width);
@@ -91,5 +93,7 @@ pub fn pack_hypercubes_to_monomials(
             ),
         )?;
     }
+    drop(gather);
+    let _r = scoped_range(Some("ab"), "pack.mobius");
     hypercube_evals_to_monomials_in_place(outputs, stream)
 }

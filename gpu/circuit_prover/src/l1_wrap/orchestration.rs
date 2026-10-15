@@ -64,6 +64,18 @@ pub(crate) struct GpuL1WrapProofJobKeepalive<'a> {
     _proof_host_mirror: HostAllocation<[u8]>,
 }
 
+fn phase(name: &str, context: &ProverContext) -> CudaResult<Range> {
+    let range = Range::new(name)?;
+    range.start(context.get_exec_stream())?;
+    Ok(range)
+}
+
+fn end_phase(range: Range, phases: &mut Vec<Range>, context: &ProverContext) -> CudaResult<()> {
+    range.end(context.get_exec_stream())?;
+    phases.push(range);
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn prove<'a, A: GoodAllocator + 'a>(
     programs: &Arc<GkrProgramsPr>,
@@ -143,12 +155,16 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     let range = Range::new("l1_wrap.proof")?;
     range.start(stream)?;
     let mut callbacks = Callbacks::new();
+    let mut phases: Vec<Range> = Vec::new();
+    let p = phase("l1_wrap.setup_transfer", context)?;
     let mut setup = PackedSetupSource::new(Arc::clone(&setup_host), partial_trees.setup, context)?;
     let mut setup_transfer = Transfer::new()?;
     setup_transfer.record_allocated(context)?;
     setup.schedule_transfer(&mut setup_transfer, context)?;
     setup_transfer.record_transferred(context)?;
     setup_transfer.ensure_transferred(context)?;
+    end_phase(p, &mut phases, context)?;
+    let p = phase("l1_wrap.witness", context)?;
     let mut raw = TraceHolder::<PR>::new_without_cosets(
         geometry.trace_log,
         cfg.log_lde_factor,
@@ -253,11 +269,17 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
             )?;
         }
     }
+    end_phase(p, &mut phases, context)?;
     drop(tracing_data);
     drop(inits_and_teardowns);
     drop(decoder);
+    let p = phase("l1_wrap.pack", context)?;
     let mut base = PackedCosetRecomputeOracle::pack_from_columns(raw, geometry.pack_log2, context)?;
+    end_phase(p, &mut phases, context)?;
+    let p = phase("l1_wrap.commit", context)?;
     base.commit(&cfg, context)?;
+    end_phase(p, &mut phases, context)?;
+    let p = phase("l1_wrap.challenges", context)?;
     let mut seed = context.alloc::<u8>(32, AllocationPlacement::BestFit)?;
     memory_set_async(&mut seed, 0, stream)?;
     let challenge_config = PackedChallengeConfig::new(circuit, config, &commitment_mode, true);
@@ -271,6 +293,8 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         context,
     )?;
     drop(top_bits);
+    end_phase(p, &mut phases, context)?;
+    let p = phase("l1_wrap.gkr", context)?;
     let layout = Arc::new(ProofLayoutPr::new(
         programs,
         config,
@@ -312,6 +336,8 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     drop(generic);
     drop(range16);
     drop(timestamp);
+    end_phase(p, &mut phases, context)?;
+    let p = phase("l1_wrap.whir", context)?;
     let handoff = gkr.whir_handoff();
     let shape = L1WhirShape::from_schedule(
         &config.whir_schedule,
@@ -333,6 +359,8 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         &shape,
         context,
     )?;
+    end_phase(p, &mut phases, context)?;
+    let p = phase("l1_wrap.readback", context)?;
     let mut mirror = unsafe { context.alloc_host_uninit_slice::<u8>(layout.bytes_len()) };
     let slab_bytes = unsafe {
         DeviceSlice::from_raw_parts(slab.backing.as_ptr().cast::<u8>(), layout.bytes_len())
@@ -349,6 +377,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         stream,
     )?;
     drop(slab);
+    end_phase(p, &mut phases, context)?;
     let h2d_join = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
     h2d_join.record(stream)?;
     context
@@ -364,7 +393,10 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         whir: Some(whir),
         top_bits_host,
         commitment_mode,
-        ranges: vec![range],
+        ranges: {
+            phases.push(range);
+            phases
+        },
         keepalive: GpuL1WrapProofJobKeepalive {
             _setup_host: setup_host,
             _input_callbacks: transfer.into_callbacks(),
@@ -398,13 +430,9 @@ impl GpuL1WrapProofJob<'_> {
             .expect("L1Wrap WHIR job missing")
             .into_proof_after_completion();
         let result = assemble_l1_proof(fields, whir, top_bits_host, commitment_mode);
-        log::debug!(
-            "l1_wrap.proof: {} ms",
-            ranges
-                .last()
-                .expect("L1Wrap proof range missing")
-                .elapsed()?
-        );
+        for range in &ranges {
+            log::debug!("{}: {} ms", range.name(), range.elapsed()?);
+        }
         drop(callbacks);
         drop(keepalive);
         Ok(result)

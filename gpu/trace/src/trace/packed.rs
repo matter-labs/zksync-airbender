@@ -5,6 +5,7 @@ use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
 use gpu_core::primitives::field::PR;
+use gpu_core::primitives::nvtx::scoped_range;
 use gpu_hash::keccak256::{
     append_top_paths, build_partial_coset_tree, build_partial_coset_tree_with_scratch,
     build_top_tree, gather_leaves_for_queries_single_coset,
@@ -425,15 +426,19 @@ impl PackedCosetRecomputeOracle<PR> {
         };
         let stream = context.get_exec_stream();
         for k in 0..data.offsets.len() {
-            Self::recompute_into(
-                self.monomials(),
-                &data.offsets,
-                self.log_packed(),
-                self.packed_columns,
-                k as u32,
-                &mut scratch,
-                context,
-            )?;
+            {
+                let _r = scoped_range(Some("ab"), "packed.commit.prefix");
+                Self::recompute_into(
+                    self.monomials(),
+                    &data.offsets,
+                    self.log_packed(),
+                    self.packed_columns,
+                    k as u32,
+                    &mut scratch,
+                    context,
+                )?;
+            }
+            let _r = scoped_range(Some("ab"), "packed.commit.suffix");
             let base = product(k, per_coset);
             let retained = &mut data.retained[base..base + per_coset];
             match tree_scratch.as_mut() {
@@ -469,6 +474,7 @@ impl PackedCosetRecomputeOracle<PR> {
                 stream,
             )?;
         }
+        let _r = scoped_range(Some("ab"), "packed.commit.top");
         build_top_tree(&data.roots, cfg.cap_log, &mut data.top_nodes, stream)?;
         gather_tree_cap(
             &data.roots,
@@ -477,6 +483,7 @@ impl PackedCosetRecomputeOracle<PR> {
             &mut state.cap,
             stream,
         )?;
+        drop(_r);
         drop(tree_scratch);
         drop(scratch);
         self.committed = Some(state);
@@ -531,6 +538,7 @@ impl PackedCosetRecomputeOracle<PR> {
         let mut scratch = context.alloc(self.monomials().len(), AllocationPlacement::Top)?;
         let stream = context.get_exec_stream();
         for k in 0..data.offsets.len() {
+            let _r = scoped_range(Some("ab"), "packed.open.slot");
             self.recompute_coset(k as u32, &mut scratch, context)?;
             gather_leaves_for_queries_single_coset(
                 &scratch,
@@ -557,6 +565,7 @@ impl PackedCosetRecomputeOracle<PR> {
                 stream,
             )?;
         }
+        let _r = scoped_range(Some("ab"), "packed.open.top");
         append_top_paths(
             &data.roots,
             &data.top_nodes,
@@ -568,6 +577,7 @@ impl PackedCosetRecomputeOracle<PR> {
             tree_indexes,
             stream,
         )?;
+        drop(_r);
         drop(scratch);
         Ok(())
     }
