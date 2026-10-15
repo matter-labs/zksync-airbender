@@ -507,6 +507,9 @@ contract WhirVerifier {
             copy_cap(QCAP_PTR, NCAP_PTR) // this round's intermediate cap is next round's query cap
         }
 
+// #if F1
+        // __F1_FINAL_HORNER__
+// #endif
         function do_final(fold, q, pow_bits, qib, vp, idx_mask, zi_off, rfin, cb) {
             // forge-lint: disable-next-line(incorrect-shift) — `shl(n, 1)` is `1 << n` (2^n), args are correct
             let nmono := shl(rfin, 1)
@@ -564,11 +567,15 @@ contract WhirVerifier {
                 case 1 { folded := fold_coset(fold, powmod(__TEMPLATE_WHIR_GEN_INV, qidx)) }
                 default { folded := fold_multilinear(fold) }
                 let qp := exp_pow2(base_root, fold)
+// #if F1
+                sink2(__F1_HORNER_NAME__(qp), folded)
+// #else
                 let ev := mload(add(MONO_PTR, mul(sub(nmono, 1), 32)))
                 for { let j := sub(nmono, 1) } gt(j, 0) { j := sub(j, 1) } {
                     ev := addmod(mulmod(ev, qp, P), mload(add(MONO_PTR, mul(sub(j, 1), 32))), P)
                 }
                 sink2(ev, folded)
+// #endif
             }
             mstore(REG_CD, cp)
 
@@ -590,6 +597,10 @@ contract WhirVerifier {
             let n := mload(REG_NUMPOW)
             for { let e := 0 } lt(e, n) { e := add(e, 1) } {
                 let b := add(POW_PTR, mul(e, 96))
+// #if F1
+                let weight := mulmod(mload(add(b, 32)), mload(add(b, 64)), P)
+                let ev := mulmod(__F1_HORNER_NAME__(mload(b)), weight, P)
+// #else
                 let s := mload(b)
                 let ev := mload(add(MONO_PTR, mul(sub(nmono, 1), 32)))
                 for { let j := sub(nmono, 1) } gt(j, 0) { j := sub(j, 1) } {
@@ -597,6 +608,7 @@ contract WhirVerifier {
                 }
                 ev := mulmod(ev, mload(add(b, 32)), P)
                 ev := mulmod(ev, mload(add(b, 64)), P)
+// #endif
                 expected := addmod(expected, ev, P)
             }
             sink2(expected, mload(REG_CLAIM))

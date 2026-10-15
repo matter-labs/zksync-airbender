@@ -505,6 +505,19 @@ fn render(
         "            // __WHIR_SCHEDULE_SWITCH__",
         whir_schedule_yul.trim_end_matches('\n'),
     );
+    if flags.contains(&F1) {
+        assert_eq!(whir.matches("        // __F1_FINAL_HORNER__").count(), 1);
+        assert_eq!(whir.matches("__F1_HORNER_NAME__").count(), 2);
+        whir = whir
+            .replace(
+                "        // __F1_FINAL_HORNER__",
+                wc.final_horner_yul().trim_end_matches('\n'),
+            )
+            .replace(
+                "__F1_HORNER_NAME__",
+                &format!("horner_{}", 1usize << wc.rfin),
+            );
+    }
     assert!(
         !whir.contains("__WHIR_SCHEDULE_SWITCH__"),
         "whir.sol template missing the schedule marker"
