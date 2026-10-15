@@ -60,24 +60,49 @@ EXTERN __global__ void ab_keccak256_transcript_draw_fields_kernel(u8 *seed_io, p
   store_seed(seed, seed_io);
 }
 
-EXTERN __global__ void ab_keccak256_pow_kernel(const u8 *seed, const u32 bits, const u64 max_nonce, u64 *result) {
-  u64 nonce = static_cast<u64>(blockIdx.x) * blockDim.x + threadIdx.x;
-  const u64 stride = static_cast<u64>(gridDim.x) * blockDim.x;
+constexpr u64 POW_STOP = u64{1} << 63;
+
+EXTERN __global__ void ab_keccak256_pow_kernel(const u8 *seed, const u32 bits, const u64 max_nonce, const u32 chunk_steps, u64 *counter, u64 *result) {
+  const u32 lane = threadIdx.x & 31;
   u8 current_seed[32];
   load_seed(seed, current_seed);
+  auto *counter_ptr = reinterpret_cast<unsigned long long *>(counter);
   auto *result_ptr = reinterpret_cast<unsigned long long *>(result);
-  cuda::atomic_ref<unsigned long long, cuda::thread_scope_device> found(*result_ptr);
-  while (nonce < max_nonce) {
-    u8 value[32];
-    pow_digest(current_seed, nonce, value);
-    if (top_bits_are_zero(value, bits))
-      atomicMin(result_ptr, static_cast<unsigned long long>(nonce));
-    if (found.load(cuda::memory_order_relaxed) <= nonce)
-      break;
-    u64 next;
-    if (!advance(nonce, stride, max_nonce, next))
-      break;
-    nonce = next;
+  const u64 chunk = static_cast<u64>(chunk_steps) * 32;
+  while (true) {
+    u64 index = 0;
+    if (lane == 0)
+      index = atomicAdd(counter_ptr, 1ull);
+    index = __shfl_sync(0xffffffffu, index, 0);
+    const u64 start = index * chunk;
+    if (index >= POW_STOP || __umul64hi(index, chunk) != 0 || start >= max_nonce)
+      return;
+    const u64 remaining = max_nonce - start;
+    bool hit = false;
+    bool stopped = false;
+#pragma unroll 1
+    for (u32 step = 0; step < chunk_steps; step++) {
+      const u64 offset = step * 32 + lane;
+      if (offset < remaining) {
+        const u64 nonce = start + offset;
+        u8 value[32];
+        pow_digest(current_seed, nonce, value);
+        if (top_bits_are_zero(value, bits)) {
+          atomicMin(result_ptr, static_cast<unsigned long long>(nonce));
+          hit = true;
+        }
+      }
+      if (!stopped && __any_sync(0xffffffffu, hit)) {
+        if (lane == 0)
+          atomicMax(counter_ptr, static_cast<unsigned long long>(POW_STOP));
+        stopped = true;
+#ifndef AB_DETERMINISTIC_POW
+        return;
+#endif
+      }
+    }
+    if (stopped)
+      return;
   }
 }
 
