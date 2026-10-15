@@ -18,6 +18,7 @@ pub(crate) use field::baby_bear::ext4::BabyBearExt4 as E4;
 // `prover` — shared proof, setup and transcript types.
 pub(crate) use prover::definitions::USE_REDUCED_BLAKE2_ROUNDS;
 pub(crate) use prover::definitions::{FinalRegisterValue, GKRExternalChallenges, SecurityLevel};
+pub use prover::gkr::prover::CommitmentMode;
 pub(crate) use prover::gkr::prover::GKRProof;
 pub(crate) use prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture;
 pub(crate) use prover::gkr::prover_config::ProverConfig;

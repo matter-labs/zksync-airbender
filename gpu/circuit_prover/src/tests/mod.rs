@@ -201,6 +201,7 @@ pub(crate) struct BasicUnrolledFixture {
     pub(crate) compiled_circuit: GKRCircuitArtifact<BF>,
     pub(crate) external_challenges: GKRExternalChallenges<BF, E4>,
     pub(crate) prover_config: ProverConfig,
+    pub(crate) commitment_mode: CommitmentMode,
     pub(crate) final_trace_size_log_2: u32,
     /// GPU setup (preprocessed) trace host. `None` for the standalone
     /// inits-and-teardowns circuit, which has a zero-width setup layout
@@ -333,6 +334,7 @@ impl BasicUnrolledFixture {
         prove::<Global>(
             &self.gkr_programs,
             &self.prover_config,
+            self.commitment_mode,
             self.final_trace_size_log_2,
             transfers,
             &dr_tail_plan,
@@ -374,6 +376,7 @@ impl BasicUnrolledFixture {
         let mut proof_job = crate::proof::prove::<Global>(
             &self.gkr_programs,
             &self.prover_config,
+            self.commitment_mode,
             self.final_trace_size_log_2,
             transfers,
             &dr_tail_plan,
