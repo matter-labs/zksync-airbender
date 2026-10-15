@@ -159,9 +159,11 @@ separate.
 
 
 The [public dataflow scope](RegisterDataflow.lean), `PublicRegisterDataflow`, adds
-intervening ADD/SUB/ADDI/LUI/AUIPC writes to other nonzero GPRs.
-`ArithmeticFramePreparation` binds the destination using the original public
-instruction constructor. Native decoding derives its GPR bank/index without
+intervening arithmetic, bitwise, shift and REV8 writes to other nonzero GPRs.
+`RegisterFramePreparation` and `BinaryRegisterWrite` bind the destination using
+the original public instruction constructor and successful decoding, including
+supported RV32 shift-payload checks. `ArithmeticFramePreparation` retains its
+original contract as a special case. Native decoding derives its GPR bank/index without
 operand bounds or arithmetic results. The original ADDI scope remains a special
 case. A gap can read and refresh the tracked
 register; original public decoding derives its separate destination. Raw matching
@@ -183,8 +185,12 @@ read x12 twice, preserve 127/129, write x10 = 254/0 and retain the second refres
 at clock nine before final x12 = 128 at clock fourteen. Wrong public destination
 and instruction forms are rejected. A stale clock-eight source satisfies local
 constraints/timestamp queries but fails global matching by double consumption.
-Non-arithmetic gap instructions, worker-
-interleaved preparation, broader operands and full Sail retirement remain separate.
+Native XOR/AND gaps also check two aliased reads, x12 = 127/129, real x10 = 0/129
+writes, clock-nine refreshes and final x12 = 128 at clock fourteen. Stale sources
+remain locally valid and globally rejected; wrong public destinations/forms,
+illegal shifts and discarded binary destinations are rejected. Memory/comparison/
+custom gaps, worker-interleaved preparation, broader operands and full Sail
+retirement remain separate.
 
 The [prepared control window](../../Trace/UnifiedReduced/ControlPreparation.lean)
 connects two prepared controls through the same actual intervening history, keeping

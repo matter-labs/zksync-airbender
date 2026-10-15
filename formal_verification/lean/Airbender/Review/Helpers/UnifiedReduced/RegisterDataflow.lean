@@ -12,6 +12,40 @@ inductive ArithmeticRegisterWrite : SailRV32.instruction → BitVec 5 → Prop w
   | lui (imm : BitVec 20) (rd : BitVec 5) : ArithmeticRegisterWrite (.UTYPE (imm, .Regidx rd, .LUI)) rd
   | auipc (imm : BitVec 20) (rd : BitVec 5) : ArithmeticRegisterWrite (.UTYPE (imm, .Regidx rd, .AUIPC)) rd
 
+/-- Public bitwise/shift forms and their syntactic destination. Actual public
+    decoding still rejects discarded destinations and illegal RV32 shift payloads. -/
+inductive BinaryRegisterWrite : SailRV32.instruction → BitVec 5 → Prop where
+  | xor (rs2 rs1 rd : BitVec 5) : BinaryRegisterWrite (.RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, .XOR)) rd
+  | or (rs2 rs1 rd : BitVec 5) : BinaryRegisterWrite (.RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, .OR)) rd
+  | and (rs2 rs1 rd : BitVec 5) : BinaryRegisterWrite (.RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, .AND)) rd
+  | sll (rs2 rs1 rd : BitVec 5) : BinaryRegisterWrite (.RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, .SLL)) rd
+  | srl (rs2 rs1 rd : BitVec 5) : BinaryRegisterWrite (.RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, .SRL)) rd
+  | sra (rs2 rs1 rd : BitVec 5) : BinaryRegisterWrite (.RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, .SRA)) rd
+  | xori (imm : BitVec 12) (rs1 rd : BitVec 5) : BinaryRegisterWrite (.ITYPE (imm, .Regidx rs1, .Regidx rd, .XORI)) rd
+  | ori (imm : BitVec 12) (rs1 rd : BitVec 5) : BinaryRegisterWrite (.ITYPE (imm, .Regidx rs1, .Regidx rd, .ORI)) rd
+  | andi (imm : BitVec 12) (rs1 rd : BitVec 5) : BinaryRegisterWrite (.ITYPE (imm, .Regidx rs1, .Regidx rd, .ANDI)) rd
+  | slli (amount : BitVec 6) (rs1 rd : BitVec 5) : BinaryRegisterWrite (.SHIFTIOP (amount, .Regidx rs1, .Regidx rd, .SLLI)) rd
+  | srli (amount : BitVec 6) (rs1 rd : BitVec 5) : BinaryRegisterWrite (.SHIFTIOP (amount, .Regidx rs1, .Regidx rd, .SRLI)) rd
+  | srai (amount : BitVec 6) (rs1 rd : BitVec 5) : BinaryRegisterWrite (.SHIFTIOP (amount, .Regidx rs1, .Regidx rd, .SRAI)) rd
+  | rev8 (rs1 rd : BitVec 5) : BinaryRegisterWrite (.REV8 (.Regidx rs1, .Regidx rd)) rd
+
+/-- Supported public GPR-writing forms. Their results are unrestricted here. -/
+inductive PublicRegisterWrite : SailRV32.instruction → BitVec 5 → Prop where
+  | arithmetic {instruction destination} (form : ArithmeticRegisterWrite instruction destination) :
+      PublicRegisterWrite instruction destination
+  | binary {instruction destination} (form : BinaryRegisterWrite instruction destination) :
+      PublicRegisterWrite instruction destination
+
+/-- One worker-free public GPR write, with no supplied operands or native flags. -/
+structure RegisterFramePreparation [Fact p.Prime] (data : RequestTrace p)
+    (program : List UnifiedReduced.ProgramEntry) (cut : Nat) (destination : BitVec 5) : Prop where
+  registry : WrappedSequentialProgram program
+  atCut : ∀ entry ∈ program, entry.pc = wrappedProgramAddress data (cut - 4) →
+    PublicRegisterWrite entry.instruction destination
+  prefixScope : data.workers.windowRows (cut - 4) cut = []
+  afterInitial : (timeOfPair data.machine.initial.timestamp).value + 4 ≤ cut
+  beforeTerminal : cut ≤ (timeOfPair data.machine.terminal.timestamp).value
+
 /-- A public arithmetic gap. Its actual reads, values and timestamps remain
     unrestricted. Only this selected cycle is worker-free. -/
 structure ArithmeticFramePreparation [Fact p.Prime] (data : RequestTrace p)
@@ -23,6 +57,15 @@ structure ArithmeticFramePreparation [Fact p.Prime] (data : RequestTrace p)
   afterInitial : (timeOfPair data.machine.initial.timestamp).value + 4 ≤ cut
   beforeTerminal : cut ≤ (timeOfPair data.machine.terminal.timestamp).value
 
+/-- Arithmetic scopes retain their original public contract. -/
+def ArithmeticFramePreparation.registerFrame [Fact p.Prime]
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
+    {cut : Nat} {destination : BitVec 5}
+    (scope : ArithmeticFramePreparation data program cut destination) :
+    RegisterFramePreparation data program cut destination :=
+  ⟨scope.registry, fun entry present address => .arithmetic (scope.atCut entry present address),
+    scope.prefixScope, scope.afterInitial, scope.beforeTerminal⟩
+
 /-- Retain the original ADDI entry as a special case of arithmetic gaps. -/
 def RegisterImmediatePreparation.arithmeticFrame [Fact p.Prime]
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
@@ -32,7 +75,7 @@ def RegisterImmediatePreparation.arithmeticFrame [Fact p.Prime]
   ⟨scope.registry, by intro entry present address; rw [scope.atCut entry present address]; exact .addi _ _ _,
     scope.prefixScope, scope.afterInitial, scope.beforeTerminal⟩
 
-/-- Public register dataflow with intervening arithmetic writes to other nonzero GPRs.
+/-- Public register dataflow with intervening arithmetic, bitwise and shift writes to other nonzero GPRs.
     Such a gap may read and refresh the tracked register; its value is preserved.
     Actual operands, tokens, selectors and intermediate states are conclusions.
     Each selected cycle is worker-free; all earlier effects remain. -/
@@ -54,6 +97,12 @@ inductive PublicRegisterDataflow [Fact p.Prime] (data : RequestTrace p)
   | arithmeticFrame {cut register value destination}
       (prior : PublicRegisterDataflow data program (cut - 4) register value)
       (scope : ArithmeticFramePreparation data program cut destination)
+      (destinationNonzero : destination ≠ 0) (preserves : destination ≠ register) :
+      PublicRegisterDataflow data program cut register value
+
+  | registerFrame {cut register value destination}
+      (prior : PublicRegisterDataflow data program (cut - 4) register value)
+      (scope : RegisterFramePreparation data program cut destination)
       (destinationNonzero : destination ≠ 0) (preserves : destination ≠ register) :
       PublicRegisterDataflow data program cut register value
 
