@@ -1,4 +1,6 @@
 use crate::definitions::*;
+use crate::gkr::whir::proximity_testing_modes::{PessimisticConjectureMode, ProximityTestingMode};
+use std::sync::LazyLock;
 
 use super::*;
 
@@ -16,14 +18,52 @@ pub fn config_for_security_level_under_pessimistic_conjecture(
 /// the feeder proofs) exceeds it; the security is filled with queries.
 pub const L1_FEEDER_MAX_POW_BITS: u32 = 25;
 
-/// The per-round (queries, PoW bits) of the L1 feeder configuration, rounds
-/// 0..5 at rates 2^-4 / 2^-5 / 2^-10 / 2^-15 / 2^-20, in ONE place so a tuple is
-/// swapped as a unit. Every round's PoW is the smallest that satisfies
-/// `6 * pow + 5 * queries * rate_bits >= 600` with its queries, and none
-/// exceeds [`L1_FEEDER_MAX_POW_BITS`]; both are asserted by
-/// `l1_feeder_22_shape_and_security`.
-pub const L1_FEEDER_QUERIES_AND_POW: [(usize, u32); 5] =
-    [(23, 24), (18, 25), (9, 25), (6, 25), (5, 17)];
+/// The per-round queries for `pow_bits`: each round gets the pessimistic
+/// conjecture's query count for the security its PoW leaves, at the rate of
+/// its oracle (`base_lde_factor`, then `whir_steps_lde_factors`).
+fn queries_and_pow_under_pessimistic_conjecture<const ROUNDS: usize>(
+    level: SecurityLevel,
+    base_lde_factor: usize,
+    whir_steps_lde_factors: &[usize],
+    pow_bits: [u32; ROUNDS],
+) -> [(usize, u32); ROUNDS] {
+    assert_eq!(whir_steps_lde_factors.len() + 1, ROUNDS);
+    let security_bits = level.security_bits() as u32;
+    let lde_factors =
+        core::iter::once(base_lde_factor).chain(whir_steps_lde_factors.iter().copied());
+    let mut rounds = [(0, 0); ROUNDS];
+    for ((round, pow), lde_factor) in rounds.iter_mut().zip(pow_bits).zip(lde_factors) {
+        let queries = PessimisticConjectureMode.num_queries_for_rate_and_bits_of_security(
+            security_bits - pow,
+            lde_factor.trailing_zeros(),
+        );
+        *round = (queries as usize, pow);
+    }
+    rounds
+}
+
+const L1_FEEDER_BASE_LDE_FACTOR: usize = 16;
+const L1_FEEDER_WHIR_STEPS_LDE_FACTORS: [usize; 4] = [32, 1024, 32768, 1048576];
+
+/// The per-round PoW bits of the L1 feeder configuration, rounds 0..5 at
+/// rates 2^-4 / 2^-5 / 2^-10 / 2^-15 / 2^-20. Every round's PoW is the
+/// smallest that satisfies `6 * pow + 5 * queries * rate_bits >= 600` with
+/// its queries, and none exceeds [`L1_FEEDER_MAX_POW_BITS`]; both are
+/// asserted by `l1_feeder_22_shape_and_security`.
+pub const L1_FEEDER_POW_BITS: [u32; 5] = [24, 25, 25, 25, 17];
+
+/// The per-round (queries, PoW bits) of the L1 feeder configuration, in ONE
+/// place so a tuple is swapped as a unit: the queries are derived from
+/// [`L1_FEEDER_POW_BITS`] and the round rates; pinned by
+/// `l1_feeder_22_rounds_are_pinned`.
+pub static L1_FEEDER_QUERIES_AND_POW: LazyLock<[(usize, u32); 5]> = LazyLock::new(|| {
+    queries_and_pow_under_pessimistic_conjecture(
+        SecurityLevel::Sec100,
+        L1_FEEDER_BASE_LDE_FACTOR,
+        &L1_FEEDER_WHIR_STEPS_LDE_FACTORS,
+        L1_FEEDER_POW_BITS,
+    )
+});
 
 /// The "L1 feeder" configuration for the 2^22 unified circuit: base LDE 16
 /// (2^22 x 16 = 2^26) and every intermediate oracle domain at 2^26 too
@@ -38,7 +78,6 @@ pub const L1_FEEDER_QUERIES_AND_POW: [(usize, u32); 5] =
 /// RECOMPUTATION storage policy.
 pub fn l1_feeder_config_for_2_22() -> ProverConfig {
     const L1_FEEDER_TRACE_LEN_LOG2: usize = 22;
-    const L1_FEEDER_BASE_LDE_FACTOR: usize = 16;
     const L1_FEEDER_CAP_SIZE: usize = 16;
     let whir_queries_schedule = L1_FEEDER_QUERIES_AND_POW
         .iter()
@@ -67,7 +106,7 @@ pub fn l1_feeder_config_for_2_22() -> ProverConfig {
             whir_steps_schedule: vec![1, 5, 5, 5, 3],
             whir_queries_schedule,
             // every oracle domain = 2^26
-            whir_steps_lde_factors: vec![32, 1024, 32768, 1048576],
+            whir_steps_lde_factors: L1_FEEDER_WHIR_STEPS_LDE_FACTORS.to_vec(),
             whir_pow_schedule,
         },
     }
@@ -351,5 +390,30 @@ mod tests {
                 "round {round}"
             );
         }
+    }
+
+    /// (rate bits, queries, PoW bits) of every WHIR round.
+    fn rounds(config: &ProverConfig) -> Vec<(u32, usize, u32)> {
+        let schedule = &config.whir_schedule;
+        std::iter::once(schedule.base_lde_factor)
+            .chain(schedule.whir_steps_lde_factors.iter().copied())
+            .zip(&schedule.whir_queries_schedule)
+            .zip(&schedule.whir_pow_schedule)
+            .map(|((lde_factor, &queries), &pow)| (lde_factor.trailing_zeros(), queries, pow))
+            .collect()
+    }
+
+    #[test]
+    fn l1_feeder_22_rounds_are_pinned() {
+        assert_eq!(
+            rounds(&l1_feeder_config_for_2_22()),
+            [
+                (4, 23, 24),
+                (5, 18, 25),
+                (10, 9, 25),
+                (15, 6, 25),
+                (20, 5, 17)
+            ]
+        );
     }
 }
