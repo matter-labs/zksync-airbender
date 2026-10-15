@@ -1180,9 +1180,21 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
     let output_groups: Vec<GKROutputGroupInfo> = compiled_circuit
         .global_output_map
         .iter()
-        .map(|(ot, addrs)| GKROutputGroupInfo {
-            output_type: *ot,
-            num_addresses: addrs.len(),
+        .map(|(ot, addrs)| {
+            if matches!(
+                ot,
+                OutputType::Lookup16Bits | OutputType::LookupTimestamps | OutputType::GenericLookup
+            ) {
+                assert_eq!(
+                    addrs.len(),
+                    2,
+                    "lookup output group {ot:?} must be a numerator/denominator pair"
+                );
+            }
+            GKROutputGroupInfo {
+                output_type: *ot,
+                num_addresses: addrs.len(),
+            }
         })
         .collect();
 
