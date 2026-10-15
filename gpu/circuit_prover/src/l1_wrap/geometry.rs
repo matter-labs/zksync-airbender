@@ -185,9 +185,6 @@ pub(crate) mod cpu_tests {
 
     pub(crate) fn committed_layout(circuit_type: CircuitType) -> GKRCircuitArtifact<Proth120> {
         let json = match circuit_type {
-            CircuitType::L1Wrap => include_str!(
-                "../../../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json"
-            ),
             CircuitType::L1Wrap21 => include_str!(
                 "../../../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120_2p21.json"
             ),
@@ -330,22 +327,19 @@ pub(crate) mod cpu_tests {
             },
             "L1WrapGeometry requires an L1 wrap circuit type, got Unrolled(Unified)",
         );
-        let wrap22_circuit = committed_layout(CircuitType::L1Wrap);
+        let mut long_circuit = circuit.clone();
+        long_circuit.trace_len = 1 << 22;
         assert_panics(
             || {
-                L1WrapGeometry::new(wrap21, &config, &wrap22_circuit, &setup);
+                L1WrapGeometry::new(wrap21, &config, &long_circuit, &setup);
             },
             "L1Wrap21 requires a 2^21-row artifact",
         );
-        let wrap22_config = crate::config::prover_config(
-            CircuitType::L1Wrap,
-            ProofProfile::L1Wrap,
-            SecurityLevel::Sec100,
-        )
-        .unwrap();
+        let mut long_config = config.clone();
+        long_config.trace_len_log2 = 22;
         assert_panics(
             || {
-                L1WrapGeometry::new(wrap21, &wrap22_config, &circuit, &setup);
+                L1WrapGeometry::new(wrap21, &long_config, &circuit, &setup);
             },
             "L1Wrap21 requires a 2^21 prover config",
         );

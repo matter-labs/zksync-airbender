@@ -131,7 +131,7 @@ pub enum WitnessGenerationStrategy {
 
 const fn production_witness_strategy(circuit_type: CircuitType) -> WitnessGenerationStrategy {
     match circuit_type {
-        CircuitType::L1Wrap | CircuitType::L1Wrap21 => {
+        CircuitType::L1Wrap21 => {
             panic!("BabyBear stage 1 is not defined for L1Wrap")
         }
         CircuitType::Delegation(circuit_type) => match circuit_type {

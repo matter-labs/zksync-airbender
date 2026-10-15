@@ -41,9 +41,10 @@ impl GkrProgramsPr {
         circuit_type: CircuitType,
         artifact: Arc<GKRCircuitArtifact<PR>>,
     ) -> Result<Self, String> {
-        assert!(
-            circuit_type.is_l1_wrap(),
-            "Proth120 GKR supports L1 wrap circuits only"
+        assert_eq!(
+            circuit_type,
+            CircuitType::L1Wrap21,
+            "Proth120 GKR supports CircuitType::L1Wrap21 only"
         );
         Self::compile_with_schedule(artifact, SCHEDULE)
     }

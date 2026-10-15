@@ -203,10 +203,6 @@ pub fn generate_policy(input: impl Read, output: impl Write) -> Result<(), Box<d
         writeln!(output, "{arena} => match circuit {{")?;
         writeln!(
             output,
-            "CircuitType::L1Wrap => panic!(\"L1Wrap memory policy is hand-authored in presets::l1_wrap; the generated table does not cover it\"),"
-        )?;
-        writeln!(
-            output,
             "CircuitType::L1Wrap21 => panic!(\"L1Wrap memory policy is hand-authored in presets::l1_wrap; the generated table does not cover it\"),"
         )?;
         writeln!(
@@ -323,7 +319,7 @@ fn policy_expression(policy: MemoryPolicy) -> String {
 
 pub fn circuit_stable_name(circuit: CircuitType) -> &'static str {
     match circuit {
-        CircuitType::L1Wrap | CircuitType::L1Wrap21 => panic!("L1Wrap is not enumerated by the all-circuit sweep; its capacity cases run through the bounded harness (tests/l1_memory.rs) and its policy is presets::l1_wrap"),
+        CircuitType::L1Wrap21 => panic!("L1Wrap is not enumerated by the all-circuit sweep; its capacity cases run through the bounded harness (tests/l1_memory.rs) and its policy is presets::l1_wrap"),
         CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => {
             "delegation_big_int_with_control"
         }
@@ -371,7 +367,7 @@ pub fn circuit_stable_name(circuit: CircuitType) -> &'static str {
 
 fn circuit_pattern(circuit: CircuitType) -> &'static str {
     match circuit {
-        CircuitType::L1Wrap | CircuitType::L1Wrap21 => panic!("L1Wrap is not enumerated by the all-circuit sweep; its capacity cases run through the bounded harness (tests/l1_memory.rs) and its policy is presets::l1_wrap"),
+        CircuitType::L1Wrap21 => panic!("L1Wrap is not enumerated by the all-circuit sweep; its capacity cases run through the bounded harness (tests/l1_memory.rs) and its policy is presets::l1_wrap"),
         CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => {
             "CircuitType::Delegation(DelegationCircuitType::BigIntWithControl)"
         }

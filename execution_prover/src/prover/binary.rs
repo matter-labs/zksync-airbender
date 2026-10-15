@@ -20,7 +20,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         if execution_kind.is_l1_wrap() || profiles.contains(&ProofProfile::L1Wrap) {
             assert!(
                 execution_kind.is_l1_wrap(),
-                "ProofProfile::L1Wrap requires ExecutionKind::L1Wrap or ExecutionKind::L1Wrap21"
+                "ProofProfile::L1Wrap requires ExecutionKind::L1Wrap21"
             );
             assert_eq!(
                 profiles,
@@ -51,7 +51,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 [ProofProfile::L1Feeder],
                 "ExecutionKind::Unified22 requires exactly ProofProfile::L1Feeder"
             ),
-            ExecutionKind::Unrolled | ExecutionKind::L1Wrap | ExecutionKind::L1Wrap21 => {}
+            ExecutionKind::Unrolled | ExecutionKind::L1Wrap21 => {}
         }
         self.backend
             .admit_binary(execution_kind, machine_type, &profiles);
@@ -96,7 +96,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 };
                 vec![circuit_type]
             }
-            ExecutionKind::L1Wrap | ExecutionKind::L1Wrap21 => vec![],
+            ExecutionKind::L1Wrap21 => vec![],
         };
         let rom = execution_kind.rom();
         let mut padded_binary_image = binary_image.clone();
@@ -129,16 +129,11 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             .is_l1_wrap()
             .then(|| execution_kind.unified_circuit().unwrap());
         let l1_wrap_precomputations = l1_wrap_circuit.map(|circuit_type| {
-            use unified_reduced_machine_proth120::{l1_wrap_2p21, l1_wrap_2p22};
-            let setup = match circuit_type {
-                CircuitType::L1Wrap => {
-                    l1_wrap_2p22::l1_wrap_setup(&padded_binary_image, &padded_text_section)
-                }
-                CircuitType::L1Wrap21 => {
-                    l1_wrap_2p21::l1_wrap_setup(&padded_binary_image, &padded_text_section)
-                }
-                _ => unreachable!(),
-            };
+            assert_eq!(circuit_type, CircuitType::L1Wrap21);
+            let setup = unified_reduced_machine_proth120::l1_wrap_2p21::l1_wrap_setup(
+                &padded_binary_image,
+                &padded_text_section,
+            );
             assert_eq!(setup.trace_len, circuit_type.get_domain_size());
             assert_eq!(setup.rom, circuit_type.rom());
             assert_eq!(
