@@ -27,7 +27,9 @@ NOT imported).
   efficient path, everything inlined: basic.rs add/sub/mul, Ext2 Karatsuba, Ext4 tower Karatsuba), next to the mop
   image. MulAddMop re-proven on the executor (26 s -> 4 s). Plain files: MulAdd/Block 11 s (the kernel run of 376
   instructions), Raw 4.5 s, Nodes1/2 6-7 s, Values 4 s, Impl 3.4 s; Ext4Poly/* 3-6 s each; FinalPlain 13 s.
-- Remaining perf debt: Ext4PolyMop 34 s, MainA/B ~10-16 s, FinalMop/FinalPlain ~13 s: move them to the executor.
+- Ext4PolyMop moved to the executor too (34 s -> 6 s, same A / call / B structure). Every proof file is now under
+  30 s (parallel build, 8 jobs): PolyLoop 24, Horner 21, FinishExt 20, Finish 17, HornerEpi 13, FinalPlain 12, rest
+  ≤ 11; all RV proofs from scratch in 80 s wall. Candidates for the executor if needed: Horner*, Finish*, PolyLoop.
 
 === POC 2: BABYBEAR EXT4, TWO VARIANTS (2026-10-15) ===
 - Guest (rust/src/bb.rs mirrors field/src/baby_bear): Montgomery BabyBear, Ext4 = F[w]/(w^4-11) in the field crate's
