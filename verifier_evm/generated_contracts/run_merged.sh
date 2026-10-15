@@ -8,9 +8,10 @@
 #   ./run_merged.sh          # full run
 #   ./run_merged.sh --no-gas # skip the anvil raw-tx gas step
 #
-# The verifier binds the statement to the terminal PC of the checked-in L1 feeder binary; the
-# proof must have been produced against that same binary (otherwise the GKR half reverts on the
-# final-PC check).
+# The verifier binds the statement to the terminal PC of the checked-in L1 feeder binary and to
+# the pinned inits/teardowns top bits; the proof must have been produced against that same binary
+# (otherwise the GKR half reverts on the final-PC / top-bits checks). The Foundry test deploys a
+# TestRegistry and checks the (publicInput, auxInput, setupCommitment) mark it records.
 set -e
 cd "$(dirname "$0")"
 
@@ -26,9 +27,9 @@ echo "== compiling GkrWhirVerifier (via_ir, runs=1) =="
 
 # 3. single-transaction verification
 echo "== single-transaction verification: pure execution gas (no isolation) =="
-( cd merged && forge test --no-isolate -vv | grep -E "calldata_bytes|verifier_call_gas|public_input|setup_commitment|PASS|FAIL" )
+( cd merged && forge test --no-isolate -vv | grep -E "calldata_bytes|verifier_call_gas|public_input|aux_input|setup_commitment|PASS|FAIL" )
 echo "== single-transaction verification: tx-level gas (isolation: intrinsic + EIP-7623) =="
-( cd merged && forge test --isolate -vv | grep -E "verifier_call_gas|PASS|FAIL" )
+( cd merged && forge test --isolate -vv --match-test test_merged_single_tx | grep -E "verifier_call_gas|PASS|FAIL" )
 
 # 4. compiler options actually used
 echo "== compiler options =="
@@ -42,4 +43,4 @@ printf "  solc %s  viaIR=%s  %s  evm=%s\n" "$ver" "$ir" "$opt" "$evm"
 # 5. bytecode size + real tx gas (raw anvil transaction)
 [ "$1" = "--no-gas" ] && exit 0
 echo "== deployed bytecode size + real tx gas (Prague / EIP-7623) =="
-./raw_tx_gas.sh | grep -E "verifier|gasUsed"
+./raw_tx_gas.sh | grep -E "verifier|gasUsed|registry"

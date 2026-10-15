@@ -54,6 +54,12 @@ fn write_calldata_into_debug_data() {
         "merged_calldata.hex",
         &verifier_evm::merged_calldata(&circuit, &proof, &aux, folds, queries),
     );
+    // the (publicInput, auxInput, setupCommitment) tuple the verifier reports to its registry
+    // (and returns) for this proof — the Foundry test checks the registry against it
+    put(
+        "verified_mark.hex",
+        &verifier_evm::verified_mark(&proof, &aux).to_bytes(),
+    );
     // debug intermediates
     put(
         "gkr_full_calldata.hex",

@@ -36,16 +36,17 @@ fn output_evals_blob(proof: &Proof) -> Vec<u8> {
     blob
 }
 
-/// Dimension-reducing proof data (layers with `num_rounds < 22`, processed
-/// output->base): per layer, the folding-round coefficients then the 10 final-step
-/// LSB lines, all elements big-endian 16-byte.
-fn dim_reduce_blob(proof: &Proof) -> Vec<u8> {
+/// Dimension-reducing proof data (layers with fewer sumcheck rounds than the trace's
+/// variable count, processed output->base): per layer, the folding-round coefficients then
+/// the final-step LSB lines (one per GKR output), all elements big-endian 16-byte.
+fn dim_reduce_blob(circuit: &Circuit, proof: &Proof) -> Vec<u8> {
     let mut blob = Vec::new();
+    let trace_rounds = circuit.trace_len.trailing_zeros() as usize;
     let dim_layers: Vec<usize> = proof
         .sumcheck_intermediate_values
         .keys()
         .copied()
-        .filter(|l| proof.sumcheck_intermediate_values[l].sumcheck_num_rounds < 22)
+        .filter(|l| proof.sumcheck_intermediate_values[l].sumcheck_num_rounds < trace_rounds)
         .collect();
     for &layer in dim_layers.iter().rev() {
         let siv = &proof.sumcheck_intermediate_values[&layer];
@@ -63,7 +64,7 @@ fn dim_reduce_blob(proof: &Proof) -> Vec<u8> {
 }
 
 /// Standard circuit-layer proof data (config_idx `num_standard_layers-1 .. 0`): per
-/// layer, the 22 folding-round coefficients then the at-point evals in group-offset
+/// layer, the trace_log2 folding-round coefficients then the at-point evals in group-offset
 /// order. Cached / virtual-setup inputs are computed on the verifier heap and are
 /// NOT part of the calldata.
 fn circuit_blob(circuit: &Circuit, proof: &Proof) -> Vec<u8> {
@@ -120,7 +121,7 @@ pub fn gkr_calldata(circuit: &Circuit, proof: &Proof, aux: &CommitmentMode) -> V
     cd.extend_from_slice(&crate::seed::commit_seed_preimage(circuit, proof, aux));
     cd.extend_from_slice(&proof.lookup_challenges_pow_nonce.to_be_bytes());
     cd.extend_from_slice(&output_evals_blob(proof));
-    cd.extend_from_slice(&dim_reduce_blob(proof));
+    cd.extend_from_slice(&dim_reduce_blob(circuit, proof));
     cd.extend_from_slice(&circuit_blob(circuit, proof));
     cd.extend_from_slice(&proof.batched_proximity_check_pow_nonce.to_be_bytes());
     cd

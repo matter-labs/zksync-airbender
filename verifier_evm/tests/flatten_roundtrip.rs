@@ -85,4 +85,20 @@ fn flatten_and_seed_match_reference() {
         merged.starts_with(&gkr),
         "merged calldata must begin with the GKR stream"
     );
+
+    // The registry mark: public/aux inputs are the final registers x10..x17 / x18..x25 (LE u32
+    // each) — i.e. the preimage bytes at reg*12 — and the setup commitment hashes the setup cap.
+    let mark = verifier_evm::verified_mark(&proof, &aux);
+    let regs = |first: usize| -> Vec<u8> {
+        (first..first + 8)
+            .flat_map(|r| preimage[r * 12..r * 12 + 4].to_vec())
+            .collect()
+    };
+    assert_eq!(mark.public_input.to_vec(), regs(10), "public_input != x10..x17");
+    assert_eq!(mark.aux_input.to_vec(), regs(18), "aux_input != x18..x25");
+    assert_eq!(
+        hex::encode(mark.to_bytes()),
+        read_fixture("verified_mark.hex"),
+        "verified_mark diverged"
+    );
 }

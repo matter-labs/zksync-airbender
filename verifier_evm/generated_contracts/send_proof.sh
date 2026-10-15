@@ -4,8 +4,9 @@
 # (regenerate with `cargo test -p verifier_evm --test flatten_calldata` after a new proof). The
 # verifier address comes from OUTSIDE the script — argument or environment — since it is a
 # property of the deployment (see ./deploy.sh), not of this repository. A successful transaction
-# (status 1) means the whole GKR+WHIR verification passed; the verifier emits
-# `Verified(public_input, setup_commitment)`.
+# (status 1) means the whole GKR+WHIR verification passed and the verifier reported
+# `(publicInput, auxInput, setupCommitment)` to its registry (`markVerified`); the same tuple is
+# the call's return data.
 #
 #   ./send_proof.sh <verifier-address>
 #   VERIFIER_ADDR=0x… ./send_proof.sh

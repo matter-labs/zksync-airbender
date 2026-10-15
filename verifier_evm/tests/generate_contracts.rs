@@ -23,6 +23,10 @@ use trace_and_split::setups::program_setups::find_binary_exit_point;
 // The verifier binds the statement to the terminal PC of the checked-in L1 feeder verifier binary
 // (`feeder_exit_pc`); the external-challenges PoW difficulty is a verifier soundness knob.
 const EXTERNAL_POW_BITS: u32 = 20;
+// The inits/teardowns RAM-set base chunk indices the program is proven with (one per teardown
+// set of the circuit, each pinned in the verifier as a uint8 constant): the unified circuit's
+// sets are enumerated 0, 1.
+const INITS_TEARDOWNS_TOP_BITS: &[u32] = &[0, 1];
 // `fsv_unified_recursion_layer_sec_100_l1_feeder` (special-opcodes blake variant) — the merged-mode
 // L1-feeder full-statement verifier whose execution the L1 proof attests (it verifies the final
 // BabyBear recursion artifact).
@@ -73,6 +77,7 @@ fn generate_contract_into_dir() {
         EXTERNAL_POW_BITS,
         whir_batch_pow_bits(&circuit, &prover_config),
         feeder_exit_pc(),
+        INITS_TEARDOWNS_TOP_BITS,
     );
 
     let p = Path::new("generated_contracts/merged/src/GkrWhirVerifier.sol");
