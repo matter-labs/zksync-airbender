@@ -234,6 +234,7 @@ pub mod l1_wrap_2p21 {
 
     pub const TRACE_LEN_LOG2: usize = 21;
     pub const PACK_LOG2: usize = 4;
+    pub const EXPLICIT_OUTPUT_LOG2: usize = 2;
     pub const EXTERNAL_CHALLENGES_POW_BITS: u32 = 20;
     /// No WHIR round grinds above it.
     pub const MAX_POW_BITS: u32 = 30;
@@ -272,7 +273,7 @@ pub mod l1_wrap_2p21 {
             lde_factor: BASE_LDE_FACTOR,
             cap_size: CAP_SIZE,
             base_oracles_values_per_leaf: 1 << 2,
-            sumcheck_explicit_output_size_log_2: 4,
+            sumcheck_explicit_output_size_log_2: EXPLICIT_OUTPUT_LOG2,
             security_level: level,
             whir_schedule: WhirSchedule {
                 base_lde_factor: BASE_LDE_FACTOR,
@@ -361,7 +362,7 @@ mod tests {
         assert_eq!(config.lde_factor, 64);
         assert_eq!(config.cap_size, 8);
         assert_eq!(config.base_oracles_values_per_leaf, 4);
-        assert_eq!(config.sumcheck_explicit_output_size_log_2, 4);
+        assert_eq!(config.sumcheck_explicit_output_size_log_2, 2);
         config.validate_for_whir_message_size(message_log2);
         assert!(EXTERNAL_CHALLENGES_POW_BITS <= 25);
 

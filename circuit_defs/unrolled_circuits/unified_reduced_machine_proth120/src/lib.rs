@@ -30,6 +30,8 @@ pub mod l1_wrap_2p21 {
 
     pub const TRACE_LEN_LOG2: usize =
         prover::gkr::prover_config::example_configs::l1_wrap_2p21::TRACE_LEN_LOG2;
+    pub const EXPLICIT_OUTPUT_LOG2: usize =
+        prover::gkr::prover_config::example_configs::l1_wrap_2p21::EXPLICIT_OUTPUT_LOG2;
     pub const ROM: RomGeometry = L1_WRAP_ROM;
 
     pub const LAYOUT_JSON: &str = include_str!(

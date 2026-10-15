@@ -8,6 +8,7 @@ use gpu_prover_context::ProverContext;
 
 use crate::backward::ClaimBufferLayout;
 use crate::forward::{GpuGKRForwardOutput, GpuGKRTranscriptHandoff};
+use crate::proth120::backward::dr_tail::PR_DR_FINAL_TRACE_LOG_2;
 use crate::proth120::backward::scheduled_execution::{note_device, ResourceEventPr};
 use crate::upstream::{DimensionReducingInputOutput, OutputType, PR};
 use crate::GpuGKRStorage;
@@ -69,8 +70,8 @@ pub fn prepare_backward_handoff_pr(
     context: &ProverContext,
 ) -> CudaResult<ForwardToBackwardHandoffPr> {
     assert_eq!(
-        final_trace_size_log_2, 4,
-        "Proth120 handoff final trace log must be 4"
+        final_trace_size_log_2, PR_DR_FINAL_TRACE_LOG_2,
+        "Proth120 handoff final trace log must be {PR_DR_FINAL_TRACE_LOG_2}"
     );
     assert_eq!(
         seed.len(),

@@ -78,11 +78,11 @@ mod tests {
 
     #[test]
     fn cpu_pr_dr_tail_capacity_covers_proth120_widths() {
-        for width in 4..=21 {
+        for width in 2..=21 {
             for sources in [1, 4, 10] {
                 let plan = select_capacity_pr(request(width, sources));
                 let expected_entry = match width {
-                    4..=8 => 0,
+                    2..=8 => 0,
                     9..=11 => 3,
                     12..=14 => 6,
                     15..=17 => 9,

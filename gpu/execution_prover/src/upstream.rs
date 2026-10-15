@@ -21,6 +21,7 @@ pub use execution_prover::ProofProfile;
 pub use prover::definitions::{GKRExternalChallenges, SecurityLevel};
 pub use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
 pub use prover::gkr::prover::GKRProof;
+pub use prover::gkr::prover_config::example_configs::l1_wrap_2p21::EXPLICIT_OUTPUT_LOG2 as L1_WRAP_EXPLICIT_OUTPUT_LOG2;
 pub use prover::gkr::prover_config::ProverConfig;
 pub use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
 

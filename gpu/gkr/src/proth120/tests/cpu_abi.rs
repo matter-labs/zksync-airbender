@@ -22,8 +22,14 @@ fn cpu_pr_complete_launch_argument_abi() {
     let config =
         prover::gkr::prover_config::ProofProfile::L1Wrap.prover_config(21, SecurityLevel::Sec100);
     let layout = ProofLayoutPr::new(&programs, &config, 4);
-    layout.validate_geometry(&programs.runtime_circuit, 4);
-    assert_eq!(layout.output_evaluations_range.len(), 160 * 16);
+    layout.validate_geometry(
+        &programs.runtime_circuit,
+        crate::proth120::backward::dr_tail::PR_DR_FINAL_TRACE_LOG_2 as usize,
+    );
+    assert_eq!(
+        layout.output_evaluations_range.len(),
+        (10 << crate::proth120::backward::dr_tail::PR_DR_FINAL_TRACE_LOG_2) * 16
+    );
     let layer_zero = layout.backward_layers.last().unwrap();
     assert_eq!(layer_zero.final_step_eval_addresses.len(), 119);
     assert_eq!(layer_zero.extra_evaluations_addresses.len(), 15);

@@ -7,6 +7,7 @@ use gpu_core::primitives::context::{DeviceAllocation, UnsafeMutAccessor};
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::packed::PackedCosetRecomputeOracle;
 
+use super::backward::dr_tail::PR_DR_FINAL_TRACE_LOG_2;
 use super::backward::scheduled_execution::{
     note_device, note_resource, resource_ledger_active, ResourceCountsPr, ResourceEventPr,
     ResourceIdPr, ResourceLedgerScopePr,
@@ -46,8 +47,8 @@ pub fn schedule_gkr(
         "Proth120 facade trace log mismatch"
     );
     assert_eq!(
-        config.sumcheck_explicit_output_size_log_2, 4,
-        "Proth120 facade final trace log must be 4"
+        config.sumcheck_explicit_output_size_log_2, PR_DR_FINAL_TRACE_LOG_2 as usize,
+        "Proth120 facade final trace log must be {PR_DR_FINAL_TRACE_LOG_2}"
     );
     let pack_log2 = proof.layout.pack_log2() as u32;
     assert_eq!(
@@ -74,7 +75,7 @@ pub fn schedule_gkr(
         "m6.proof_slab",
         &proof.backing,
     );
-    dr_tail_plan.validate_before_enqueue(&programs, 4, context);
+    dr_tail_plan.validate_before_enqueue(&programs, PR_DR_FINAL_TRACE_LOG_2, context);
     let stream = context.get_exec_stream();
     memory_copy_async(
         proof.external_challenges_device_mut(),
@@ -89,7 +90,7 @@ pub fn schedule_gkr(
         &witness,
         &banks,
         inits_and_teardowns_top_bits,
-        4,
+        PR_DR_FINAL_TRACE_LOG_2,
         proof.output_evaluations_target(),
         &programs,
         context,
@@ -108,7 +109,7 @@ pub fn schedule_gkr(
     drop(witness);
     banks.note_resources(context, "facade", ResourceEventPr::Released);
     drop(banks);
-    let handoff = prepare_backward_handoff_pr(forward, seed, 4, context)?;
+    let handoff = prepare_backward_handoff_pr(forward, seed, PR_DR_FINAL_TRACE_LOG_2, context)?;
     let mut backward = schedule_backward_pr(
         handoff,
         inits_and_teardowns_top_bits.to_vec(),

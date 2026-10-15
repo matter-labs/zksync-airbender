@@ -301,7 +301,7 @@ pub(crate) mod cpu_tests {
         assert_eq!(circuit.layers.len(), 5);
         let programs = GkrProgramsPr::compile(CircuitType::L1Wrap21, circuit).unwrap();
         let layout = ProofLayoutPr::new(&programs, &config, geometry.pack_log2 as usize);
-        assert_eq!(layout.backward_layers.len(), 22);
+        assert_eq!(layout.backward_layers.len(), 24);
         assert_eq!(
             layout.memory_claims.len(),
             geometry.packed_base_columns * 16

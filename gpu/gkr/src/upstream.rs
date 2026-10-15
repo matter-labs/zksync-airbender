@@ -46,6 +46,7 @@ pub(crate) use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
 pub(crate) use prover::gkr::prover::{
     CommitmentMode, SumcheckIntermediateProofValues, SumcheckRoundCoefficients, WhirSchedule,
 };
+pub(crate) use prover::gkr::prover_config::example_configs::l1_wrap_2p21::EXPLICIT_OUTPUT_LOG2 as L1_WRAP_EXPLICIT_OUTPUT_LOG2;
 pub(crate) use prover::gkr::prover_config::pow_bits::{
     lookup_challenges_pow_bits, lookup_identity_degree,
 };

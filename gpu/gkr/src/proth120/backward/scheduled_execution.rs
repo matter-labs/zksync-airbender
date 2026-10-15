@@ -497,7 +497,11 @@ pub fn schedule_backward_pr(
         ResourceEventPr::Observed,
         &backward_state.storage,
     );
-    dr_tail_plan.validate_before_enqueue(&programs, 4, context);
+    dr_tail_plan.validate_before_enqueue(
+        &programs,
+        super::dr_tail::PR_DR_FINAL_TRACE_LOG_2,
+        context,
+    );
     let stream = context.get_exec_stream();
     let mut tracing_ranges = std::mem::take(&mut backward_state.forward_tracing_ranges);
     tracing_ranges.push(post_forward_handoff_range);
