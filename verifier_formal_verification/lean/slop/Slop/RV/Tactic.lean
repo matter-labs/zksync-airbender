@@ -38,6 +38,8 @@ elab "rv_omega" : tactic => withMainContext do
   let dbg := (← IO.getEnv "RV_DEBUG").isSome
   let g ← getMainGoal
   let key ← instantiateMVars (← g.getType)
+  -- `calleeSaved r` is decided by `rv_callee_saved`; omega would only fail slowly
+  if key.isAppOfArity ``calleeSaved 1 then throwError "rv_omega: calleeSaved goal"
   if !key.hasMVar then
     if let some pf := (← rvOmegaCache.get)[key]? then
       let lctx ← getLCtx
@@ -86,6 +88,12 @@ elab "rv_decide_closed" : tactic => do
     let dt := (← IO.monoMsNow) - t0
     if (← IO.getEnv "RV_DEBUG").isSome && dt > 20 then IO.eprintln s!"[rv_decide_closed {dt} ms] {← Meta.ppExpr t}"
 
+open Lean Elab Tactic in
+/-- Fails on a `calleeSaved r` goal (decided by `rv_callee_saved` alone: never worth an `omega` call). -/
+elab "rv_not_callee_goal" : tactic => do
+  let t ← instantiateMVars (← getMainTarget)
+  if t.isAppOfArity ``calleeSaved 1 then throwError "rv_not_callee_goal"
+
 /-- Side conditions: `calleeSaved` of a concrete register, or arithmetic (`bv_omega`) after reading registers
 of the current state (`with h₁, …`: also through an earlier callee's guarantees). -/
 syntax "rv_disch" (" with " term,*)? : tactic
@@ -97,7 +105,8 @@ macro_rules
       | rv_assumption
       | rv_decide_closed
       | rv_callee_saved
-      | ((try simp (disch := first | rv_decide_closed | rv_callee_saved
+      | (rv_not_callee_goal
+         (try simp (disch := first | rv_decide_closed | rv_callee_saved
                                    | (rv_clear_irrelevant; rv_omega) | fail "") only [
             rv_state, reduceRSet, rv_side, BitVec.reduceAdd, BitVec.reduceEq, $xs,*])
          first | rv_decide_closed | (rv_clear_irrelevant; rv_omega))
