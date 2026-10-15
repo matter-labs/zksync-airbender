@@ -83,6 +83,11 @@ name = "l1_memory"
 path = "tests/l1_memory.rs"
 required-features = ["memory_sweep"]
 
+[[test]]
+name = "l1_parity"
+path = "tests/l1_parity.rs"
+required-features = ["verifiers"]
+
 [[bin]]
 name = "gpu_memory_sweep"
 path = "src/bin/gpu_memory_sweep.rs"
