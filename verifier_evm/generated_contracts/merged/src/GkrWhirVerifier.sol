@@ -272,6 +272,9 @@ contract GkrWhirVerifier {
         }
 
         function transcript_init(ptr) -> next_ptr {
+            // Fiat-Shamir binds the selected indices but does not make their
+            // address windows disjoint. Validate the artifact-derived geometry.
+            gkr_validate_inits_teardowns_windows(ptr)
             // Proth120 packed-mode transcript (MergedAndPackedMemoryAndWitness), validated
             // keccak-for-keccak in step1_test/GkrStep1.sol against the real proof.
             //   seed = keccak256(preimage)                       // commit_initial_u32 (916 B: regs+PC+topbits+caps)
@@ -2008,6 +2011,26 @@ function gkr_memrel_compress_high(ts_low, ts_high, val_low, val_high) -> compres
     compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 128)), val_low, mload(P_PTR)))
     compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 160)), val_high, mload(P_PTR)))
 }
+function gkr_validate_inits_teardowns_windows(preimage_ptr) {
+    if lt(calldatasize(), add(preimage_ptr, 404)) { revert(0, 0) }
+    for { let i := 0 } lt(i, 2) { i := add(i, 1) } {
+        let offset := add(preimage_ptr, 396)
+        let index := gkr_inits_teardowns_topbits(add(offset, mul(i, 4)))
+        if iszero(lt(index, 256)) { revert(0, 0) }
+        for { let j := 0 } lt(j, i) { j := add(j, 1) } {
+            if eq(index, gkr_inits_teardowns_topbits(add(offset, mul(j, 4)))) { revert(0, 0) }
+        }
+    }
+}
+
+// Reads one inits/teardowns `top_bits` u32 from the transcript preimage (little-endian,
+// at absolute calldata `byteoff`). These are the RAM-set base chunk indices absorbed into
+// Fiat-Shamir, so a mismatching value breaks the transcript — safe to read from calldata.
+function gkr_inits_teardowns_topbits(byteoff) -> v {
+    let w := calldataload(byteoff)
+    v := add(add(byte(0, w), shl(8, byte(1, w))), add(shl(16, byte(2, w)), shl(24, byte(3, w))))
+}
+
 // Plain VARIABLE order (LSB binding): index bit k pairs with point coordinate k.
 // compose_vars sums 2^k * point[skip + k] for k in 0..len (Horner from the top
 // coordinate down); zero_vars forces the HIGHEST `len` coordinates to zero —

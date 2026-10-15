@@ -39,8 +39,8 @@ fixed or independently shown to be enforced. See the [case register](FINDINGS.md
 | Native worker ROM composition | The zero-shadow/public-byte discrepancy remains a finding; a conditional RAM-only contract is not general enforcement. |
 | Initialization/teardown local soundness | Retained artifacts have no equations/range queries; needs richer proof input. |
 
-Reviewed implementation bugs, including AIH-334/336/315 and relevant open-PR
-fixes, remain in the case register; no implementation issue is closed here.
+AIH-334's EVM window check is fixed and tested. AIH-336/315 and the other reviewed
+implementation findings remain open in the case register.
 
 Evidence and detailed boundaries: [findings](FINDINGS.md).
 Separately scoped work: [deferred milestones](FORMAL_VERIFICATION_PLAN.md#deferred-milestones).
