@@ -5,6 +5,8 @@ import Airbender.Proofs.Blake2G.Claims
 import Airbender.Proofs.Delegation.Requests
 import Airbender.Proofs.Sail.WordMemoryState
 import Mathlib.Tactic.IntervalCases
+import Tests.DelegationCaller
+import Airbender.Proofs.Trace.ImageFrame
 
 namespace Tests.DelegationZeroInvocation
 open Airbender Trace
@@ -1435,5 +1437,204 @@ theorem register_dataflow_retains_actual_unissued_prefix :
       sequence.Realizes dataflowData dataflowBefore preparationCells 4 [(4, 8), (8, 12)] ∧
       (Cell.register 12).read sequence.atInitial = .ok 1 sequence.atInitial :=
   literal_addi_retains_actual_unissued_prefix
+
+open Arithmetic Reference.RiscV.Sail Reference.Sail
+
+private theorem segmentationContext : UnifiedReduced.Caller.ProtocolContextInputs unifiedData before [] [] cells [] :=
+  ⟨unifiedInputs.publicProgram, unifiedInputs.ordinaryProgram, unifiedInputs.initialization,
+    unifiedInputs.distinct, unifiedInputs.aligned, unifiedInputs.setup, unifiedInputs.tables⟩
+private theorem segmentationRegistry : UnifiedReduced.Caller.WrappedSequentialProgram [] := by
+  constructor <;> intro _ member <;> cases member
+
+theorem unified_unissued_hash_partition : UnifiedReduced.Caller.IssuedHashSegmentation unifiedData [] := by
+  apply UnifiedReduced.Caller.hash_segmentation_soundness (cut := 4) (by decide +kernel) (by decide +kernel)
+    unifiedAccepted segmentationContext segmentationRegistry
+  · intro _ member; cases member
+  · trivial
+  · intro _ member; cases member
+
+theorem unified_hash_partition_retains_unissued_effect :
+    unifiedData.workers.rows = [native] ∧ UnifiedReduced.Caller.issuedHashWorkers unifiedData = [] ∧
+    ∃ (events : List MemoryAccess) (after : Reference.RiscV.Sail.State),
+      events.Perm (unifiedData.mixedSteps.map transferEvent) ∧
+      SailHistory cells events before after ∧
+      (Cell.register 12).read before = .ok 0 before ∧ (Cell.register 12).read after = .ok 1 after := by
+  obtain ⟨events, after, _, permutation, history, initial, terminal⟩ := unified_unissued_control_update
+  exact ⟨rfl, by decide +kernel, events, after, permutation, history, initial, terminal⟩
+
+theorem unified_hash_partition_is_not_all_workers :
+    ¬ ([] : List (Delegation.Row babyBearModulus)).Perm unifiedData.workers.rows := by
+  intro permutation
+  have length := permutation.length_eq
+  change 0 = 1 at length
+  contradiction
+
+private def issuedAssignment (column : Nat) : ZMod babyBearModulus := if column = 1 then 5 else row column
+private def issuedWorker : Delegation.Row babyBearModulus := ⟨.blakeG, issuedAssignment⟩
+private def issuedCallerAssignment (column : Nat) : ZMod babyBearModulus :=
+  if column = 2 || column = 30 || column = 46 then 4
+  else if column = 32 then 8
+  else if column = 4 || column = 18 || column = 129 || column = 130 || column = 131 || column = 132 || column = 133 then 1
+  else if column = 6 || column = 38 then Delegation.Requests.csr .blakeG else 0
+private def issuedCaller : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, issuedCallerAssignment⟩
+private def issuedBefore : Reference.RiscV.Sail.State :=
+  wordWriteState before 0 (Tests.DelegationCaller.entry .blakeG).bits
+private def issuedCells : List Cell := .register 0 :: cells
+private def issuedData : UnifiedReduced.Caller.RequestTrace babyBearModulus where
+  machine := {
+    rows := [issuedCaller]
+    rom := UnifiedReduced.Setup.table issuedBefore
+    initial := issuedCaller.start
+    terminal := issuedCaller.finish
+    initialMemory := (Cell.register 0).initialToken 0 :: issuedWorker.memorySteps.map Prod.fst
+    terminalMemory := UnifiedReduced.Caller.destinationToken issuedCallerAssignment :: issuedWorker.memorySteps.map Prod.snd }
+  workers := { sharedWorkers with rows := [issuedWorker], initial := [], terminal := [] }
+  program := [Tests.DelegationCaller.entry .blakeG]
+private theorem issuedCore : FlatOperation.ConstraintsHoldFlat (Verification.environment issuedAssignment)
+    (Blake2G.importedConstraints table) := by
+  simpa [Blake2G.importedConstraints, FlatOperation.ConstraintsHoldFlat, Verification.environment,
+    Expression.eval, Lookup.Contains, Table.toRaw, fromElements, Verification.range16, issuedAssignment, row] using core
+private theorem issuedClocks : FlatOperation.ConstraintsHoldFlat (Verification.environment issuedAssignment)
+    Blake2G.importedConstraintsTimestampLookups := by
+  rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
+  constructor
+  · simp [Blake2G.importedConstraintsTimestampLookups, FlatOperation.constraints]
+  · rw [List.forall_mem_iff_forall_getElem]
+    intro i hi
+    have bound : i < 20 := by simpa only [Blake2G.timestamp_count] using hi
+    interval_cases i
+    all_goals apply Trace.Proofs.range_contains
+    all_goals decide +kernel
+private theorem issuedCallerCore : FlatOperation.ConstraintsHoldFlat (Verification.environment issuedCallerAssignment)
+    (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table issuedBefore)) := by
+  simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
+    Verification.environment, Expression.eval, issuedCallerAssignment, Lookup.Contains, Table.toRaw, fromElements]
+  repeat' apply And.intro
+  all_goals solve
+    | decide +kernel
+    | (apply Verification.range16_contains; decide +kernel)
+    | (refine ⟨(0 : Fin 2097537), ?_⟩
+       change (#v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0] : Vector (ZMod babyBearModulus) 10) =
+         (UnifiedReduced.Setup.fixedRow (0 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
+       decide +kernel)
+private theorem issuedCallerClocks : FlatOperation.ConstraintsHoldFlat (Verification.environment issuedCallerAssignment)
+    UnifiedReduced.importedConstraintsTimestampLookups := by
+  rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
+  constructor
+  · simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.constraints]
+  · rw [List.forall_mem_iff_forall_getElem]
+    intro i hi
+    have bound : i < 8 := by simpa only [UnifiedReduced.timestamp_count] using hi
+    interval_cases i
+    all_goals apply Trace.Proofs.range_contains
+    all_goals decide +kernel
+private theorem issuedAccepted : UnifiedReduced.Caller.MixedMemoryAccepted issuedData [] := by
+  constructor
+  · constructor
+    · intro actual member
+      have same := List.mem_singleton.mp member
+      subst actual
+      exact Verification.holds_append issuedCallerCore issuedCallerClocks
+    · intro actual member
+      have same := List.mem_singleton.mp member
+      subst actual
+      rfl
+    · exact List.Perm.swap _ _ []
+    · intro actual member
+      have same : actual = issuedCaller := List.mem_singleton.mp member
+      subst actual
+      exact ⟨(0 : Fin 1), by decide +kernel⟩
+    · intro actual member
+      have same := List.mem_singleton.mp member
+      subst actual
+      exact Verification.holds_append issuedCore issuedClocks
+    · intro actual member
+      have same := List.mem_singleton.mp member
+      subst actual
+      rfl
+    · have same : issuedData.calls = issuedData.fulfillments := by decide +kernel
+      rw [← same]
+      exact List.perm_append_comm
+  · intro actual member ordinary
+    have same := List.mem_singleton.mp member
+    subst actual
+    exact False.elim (ordinary (List.mem_singleton_self _))
+  · decide +kernel
+private theorem issuedInitialization : initialImage issuedBefore issuedCells = some issuedData.machine.initialMemory := by
+  have seeds : initialImage before issuedCells = some issuedData.machine.initialMemory := by
+    have same : issuedWorker.memorySteps.map Prod.fst = native.memorySteps.map Prod.fst := by decide +kernel
+    change initialImage before (.register 0 :: cells) = some ((Cell.register 0).initialToken 0 :: issuedWorker.memorySteps.map Prod.fst)
+    rw [same]
+    have x0 : (Cell.register 0).read before = .ok 0 before := rfl
+    have initial := initialized
+    dsimp only [initialImage] at initial
+    simp only [initialImage, List.mapM_cons, x0]
+    rw [initial]
+    rfl
+  apply Trace.Proofs.image_frame seeds
+  intro cell member value read
+  cases cell with
+  | register index => exact rX_register_frame (by dsimp only [issuedBefore, wordWriteState]) index read
+  | ram address =>
+    have lower : 4 ≤ address.toNat := by
+      simp [issuedCells, cells] at member
+      rcases member with rfl | rfl | rfl | rfl | rfl | rfl
+      all_goals decide
+    exact written_word_disjoint 0 _ (Or.inr lower) read
+private theorem issuedInputs : UnifiedReduced.Caller.MixedMemoryInputs issuedData [] issuedBefore [0] [] issuedCells := by
+  refine ⟨?_, rfl, issuedInitialization, by decide +kernel, ?_, rfl, rfl, ?_⟩
+  · constructor
+    · have bytes : (Cell.ram 0).read issuedBefore =
+          .ok (Tests.DelegationCaller.entry .blakeG).bits issuedBefore := written_word_read _ 0 _
+      have decoded : run
+          (SailRV32.Functions.encdec_backwards (Tests.DelegationCaller.entry .blakeG).bits) issuedBefore =
+          .ok (Tests.DelegationCaller.entry .blakeG).instruction issuedBefore := Tests.DelegationCaller.original_decoder .blakeG issuedBefore
+      have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .blakeG).instruction =
+          some (Tests.DelegationCaller.entry .blakeG).data := Tests.DelegationCaller.metadata .blakeG
+      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageRunWith,
+        List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+      rfl
+    · change 4 < timestampBase ∧ 0 < timestampBase
+      norm_num [timestampBase]
+    · decide +kernel
+  · intro cell member
+    simp [issuedCells, cells] at member
+    rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+    all_goals simp [Cell.Aligned]
+  · intro actual member family
+    have same := List.mem_singleton.mp member
+    subst actual
+    cases family
+private def issuedWindow : UnifiedReduced.Caller.HashWindow := ⟨.blakeG true, 4, 8⟩
+private theorem issuedCoverage : UnifiedReduced.Caller.ProgramHashCallerCoverage issuedData [issuedWindow] := by
+  intro entry member _ clock lower upper aligned address
+  have same := List.mem_singleton.mp member
+  subst entry
+  have selected : clock = 4 := by change 4 ≤ clock at lower; change clock + 4 ≤ 8 at upper; omega
+  subst clock
+  exact ⟨issuedWindow, List.mem_singleton_self _, by decide, by decide, rfl⟩
+
+theorem issued_hash_worker_covered :
+    ∃ window ∈ [issuedWindow], issuedWorker ∈ issuedData.workers.windowRows window.lower window.upper := by
+  have covered := UnifiedReduced.Caller.Proofs.program_hash_worker_coverage (by decide +kernel) (by decide +kernel)
+    issuedInputs.setup issuedAccepted issuedInputs.publicProgram issuedInputs.ordinaryProgram segmentationRegistry
+    (windows := [issuedWindow]) (by intro window member; have same := List.mem_singleton.mp member; subst window; decide) issuedCoverage
+  exact (covered issuedWorker (List.mem_singleton_self _) (by decide)).mpr (by decide +kernel)
+
+theorem issued_hash_missing_window_rejected : ¬ UnifiedReduced.Caller.ProgramHashCallerCoverage issuedData [] := by
+  intro coverage
+  obtain ⟨window, member, _⟩ := coverage (Tests.DelegationCaller.entry .blakeG) (List.mem_singleton_self _)
+    (by decide) 4 (by decide) (by decide) (by decide) rfl
+  cases member
+
+theorem issued_hash_partial_protocol_rejected :
+    ¬ UnifiedReduced.Caller.WrappedProgramComputedProtocolWindowInputs issuedData [] issuedWindow := by
+  intro scope
+  have duration := scope.duration
+  change 8 = 4 + 4 * 56 at duration
+  contradiction
+
+theorem issued_hash_worker_executes : UnifiedReduced.Caller.MixedMemoryEffects issuedData issuedBefore issuedCells :=
+  UnifiedReduced.Caller.mixed_memory_soundness issuedAccepted issuedInputs
 
 end Tests.DelegationZeroInvocation
