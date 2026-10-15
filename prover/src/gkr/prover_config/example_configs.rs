@@ -288,16 +288,33 @@ pub mod l1_wrap_2p21 {
     /// No WHIR round grinds above it.
     pub const MAX_POW_BITS: u32 = 30;
 
-    /// The per-round (queries, PoW bits), rounds 0..6 at rates 2^-6 / 2^-8 /
-    /// 2^-12 / 2^-16 / 2^-20 / 2^-23. Every round satisfies
+    const BASE_LDE_FACTOR: usize = 1 << 6;
+    const WHIR_STEPS_LDE_FACTORS: [usize; 5] = [1 << 8, 1 << 12, 1 << 16, 1 << 20, 1 << 23];
+
+    /// The per-round PoW bits, rounds 0..6 at rates 2^-6 / 2^-8 / 2^-12 /
+    /// 2^-16 / 2^-20 / 2^-23. Every round satisfies
     /// `6 * pow + 5 * queries * rate_bits >= 600` at the least PoW that
     /// does; asserted by `l1_wrap_2p21_shape_and_security`.
-    pub const QUERIES_AND_POW: [(usize, u32); 6] =
-        [(14, 30), (11, 27), (8, 20), (6, 20), (5, 17), (4, 24)];
+    pub const POW_BITS: [u32; 6] = [30, 27, 20, 20, 17, 24];
+
+    /// The per-round (queries, PoW bits): the queries are derived from
+    /// [`POW_BITS`] and the round rates; pinned by
+    /// `l1_wrap_2p21_rounds_are_pinned`.
+    pub static QUERIES_AND_POW: LazyLock<[(usize, u32); 6]> =
+        LazyLock::new(|| queries_and_pow(SecurityLevel::Sec100));
+
+    fn queries_and_pow(level: SecurityLevel) -> [(usize, u32); 6] {
+        queries_and_pow_under_pessimistic_conjecture(
+            level,
+            BASE_LDE_FACTOR,
+            &WHIR_STEPS_LDE_FACTORS,
+            POW_BITS,
+        )
+    }
 
     pub fn packed_prover_config(level: SecurityLevel) -> ProverConfig {
-        const BASE_LDE_FACTOR: usize = 1 << 6;
         const CAP_SIZE: usize = 8;
+        let queries_and_pow = queries_and_pow(level);
         ProverConfig {
             trace_len_log2: TRACE_LEN_LOG2,
             same_size_sumcheck_schedule: windowed_same_size_schedule(TRACE_LEN_LOG2),
@@ -311,9 +328,9 @@ pub mod l1_wrap_2p21 {
                 base_lde_factor: BASE_LDE_FACTOR,
                 cap_size: CAP_SIZE,
                 whir_steps_schedule: vec![2, 4, 4, 4, 3, 4],
-                whir_queries_schedule: QUERIES_AND_POW.iter().map(|(q, _)| *q).collect(),
-                whir_steps_lde_factors: vec![1 << 8, 1 << 12, 1 << 16, 1 << 20, 1 << 23],
-                whir_pow_schedule: QUERIES_AND_POW.iter().map(|(_, p)| *p).collect(),
+                whir_queries_schedule: queries_and_pow.iter().map(|(q, _)| *q).collect(),
+                whir_steps_lde_factors: WHIR_STEPS_LDE_FACTORS.to_vec(),
+                whir_pow_schedule: queries_and_pow.iter().map(|(_, p)| *p).collect(),
             },
         }
     }
@@ -572,6 +589,21 @@ mod tests {
                 (10, 9, 25),
                 (15, 6, 25),
                 (20, 5, 17)
+            ]
+        );
+    }
+
+    #[test]
+    fn l1_wrap_2p21_rounds_are_pinned() {
+        assert_eq!(
+            rounds(&l1_wrap_2p21::packed_prover_config(SecurityLevel::Sec100)),
+            [
+                (6, 14, 30),
+                (8, 11, 27),
+                (12, 8, 20),
+                (16, 6, 20),
+                (20, 5, 17),
+                (23, 4, 24)
             ]
         );
     }
