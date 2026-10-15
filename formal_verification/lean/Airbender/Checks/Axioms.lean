@@ -1,3 +1,4 @@
+import Airbender.Review.Trace.UnifiedReduced.FullExecution
 import Airbender.Review.Trace.Workers.Keccak.ReferenceCalls
 import Airbender.Review.Trace.Workers.Blake2Round.ReferenceCalls
 import Airbender.Review.Trace.Workers.Blake2G.ReferenceCalls
@@ -3179,3 +3180,25 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Keccak.Call.Proofs.span_reference
 #print axioms Airbender.Keccak.Call.execution_soundness
 #print axioms Tests.KeccakSchedule.noncanonical_controller_rejected
+
+-- Complete custom-call retirement and whole mixed reference execution.
+#print axioms Airbender.UnifiedReduced.Caller.FullCall
+#print axioms Airbender.UnifiedReduced.Caller.FullRetirement
+#print axioms Airbender.UnifiedReduced.Caller.FullCallerCycle
+#print axioms Airbender.UnifiedReduced.Caller.FullStep
+#print axioms Airbender.Trace.Proofs.sail_history_deterministic
+#print axioms Airbender.Trace.Proofs.history_prefix_of_window
+#print axioms Airbender.Trace.Proofs.CutState
+#print axioms Airbender.Trace.Proofs.compose_rebased_cuts
+#print axioms Airbender.Trace.Proofs.compose_cuts
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.hash_span_call
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.computed_window_call
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.full_worker_call
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.full_caller_cycle_at
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.caller_pc_retirement_raw
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.full_cycle_transition
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.mixed_event_interval
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.full_execution_at
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.full_execution
+#print axioms Airbender.UnifiedReduced.Caller.full_execution_soundness
+#print axioms Tests.UnifiedDelegation.copy_then_ram_full_execution

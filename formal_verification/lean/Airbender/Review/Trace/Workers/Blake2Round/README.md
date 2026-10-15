@@ -42,4 +42,6 @@ actual full Sail states, with exact writes/frame and shared terminal mapping.
 The existing public mode/count and initialized history derive the whole x12
 word, exclusive round, all three mode flags and pointer ABI. The completed
 ten-round controller is rejected by the successful-call reference. Modeled-table
-fidelity, the RAM domain and mixed caller/PC/participation composition remain explicit.
+fidelity and the RAM domain remain explicit. [Full mixed execution](../../UnifiedReduced/FullExecution.lean)
+now connects caller fetch/PC retirement under the temporary occurrence ledger;
+its implementation enforcement remains open under F03.

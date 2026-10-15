@@ -30,7 +30,10 @@ four operations alongside standard instructions, TRIADD and XORROT.
 [Unified ordinary/custom retirement](UnifiedReduced/README.md#checked-results)
 has a separate registry. [Worker spans](Workers/README.md#checked-results) and
 [caller composition](Delegation/README.md#checked-results) establish their stated
-effects; whole mixed caller retirement remains separate.
+effects. [Full mixed caller execution](UnifiedReduced/FullExecution.lean) now
+connects complete bigint/G/extended-round/Keccak calls and ordinary retirement
+to terminal PC/cells under the existing public protocol profile and temporary
+F02/F03 contracts.
 
 Start with [Soundness](Soundness.lean) for the primary six-family standard claim
 and its external-stream extension. [Execution](Execution.lean) defines the generic
@@ -62,7 +65,8 @@ discarded-load restriction differs from the named Airbender PC-only-NOP profile.
 
 Keep the verifier-boundary contract, active-row scope, public domains and caller ABI
 conditions visible. Caller cycles and complete selected spans do not by themselves
-prove whole mixed execution with callers. Consult
+prove whole mixed execution with callers; the stronger full-execution theorem
+adds the explicit command and occurrence-ledger boundaries. Consult
 [current coverage](../../../VERIFICATION_STATUS.md) and
 [checked boundaries](../../../TRUST_AND_REVIEW.md#checked-scope-boundaries).
 

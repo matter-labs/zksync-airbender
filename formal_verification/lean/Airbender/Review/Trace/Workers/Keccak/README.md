@@ -20,7 +20,9 @@ independent [complete micro-call reference](../../../Circuits/Keccak/Call.lean)
 in the actual full Sail states, with exact writes and frame. The existing
 649-call schedule derives supported full controls; initialized history supplies
 canonical lane reads and the aligned RAM pointer. It adds no per-row ABI or
-expected-output premise. Mixed caller fetch/PC retirement remains separate.
+expected-output premise. [Full mixed execution](../../UnifiedReduced/FullExecution.lean)
+connects caller fetch/PC retirement under the temporary occurrence ledger;
+F03 participation enforcement remains an implementation finding.
 
 Read [Theorems](Theorems.lean), [Call](Call.lean) and
 [BoundaryCall](BoundaryCall.lean). [Permutation](Permutation.lean) binds
