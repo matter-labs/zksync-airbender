@@ -401,19 +401,3 @@ fn l1_bundle_rejects_truncated_whir_round() {
         assert!(err.contains(expected), "{expected}: {err}");
     }
 }
-
-/// The layout check against real data: the committed 2^22 EVM proof.
-#[test]
-fn committed_2p22_evm_proof_has_the_2p22_layout() {
-    let proof: L1Proof = serde_json::from_slice(
-        &std::fs::read(
-            Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../prover/unified_circuit_proof_proth120.json"),
-        )
-        .unwrap(),
-    )
-    .unwrap();
-    validate_l1_proof_layout(&proof, L1WrapVersion::Wrap2p22).unwrap();
-    let err = validate_l1_proof_layout(&proof, L1WrapVersion::Wrap2p21).unwrap_err();
-    assert!(err.contains("GKR layers"), "{err}");
-}

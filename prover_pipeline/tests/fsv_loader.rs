@@ -36,7 +36,7 @@ fn regular_fsv_padding_preserves_proof_bytes() {
     use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 
     let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("fixtures/l1_reference/recursion_unified.json");
+        .join("fixtures/l1_reference_2p21/recursion_unified.json");
     let fixture: prover_pipeline::ProofArtifact =
         serde_json::from_reader(std::fs::File::open(fixture_path).unwrap()).unwrap();
     let stream = build_unified_stream(&fixture.setups, &fixture.proof);

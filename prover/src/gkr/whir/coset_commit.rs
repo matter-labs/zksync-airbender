@@ -1011,14 +1011,13 @@ mod test {
     #[test]
     fn packed_recompute_setup_matches_materialized() {
         use crate::gkr::prover::setup::GKRSetup;
-        use crate::gkr::prover_config::example_configs::{
-            evm_production_packed_prover_config, EVM_PRODUCTION_PACK_LOG2,
+        use crate::gkr::prover_config::example_configs::l1_wrap_2p21::{
+            packed_prover_config, PACK_LOG2,
         };
         use std::sync::Arc;
 
         let worker = Worker::new_with_num_threads(2);
-        let mut config =
-            evm_production_packed_prover_config(crate::definitions::SecurityLevel::Sec100);
+        let mut config = packed_prover_config(crate::definitions::SecurityLevel::Sec100);
         config.trace_len_log2 = 6;
         let trace_len = 1 << config.trace_len_log2;
         let setup = GKRSetup {
@@ -1033,14 +1032,14 @@ mod test {
                 })
                 .collect(),
         };
-        let twiddles = Twiddles::new(trace_len << EVM_PRODUCTION_PACK_LOG2, &worker);
+        let twiddles = Twiddles::new(trace_len << PACK_LOG2, &worker);
         let direct = setup.commit_packed::<Tree>(
             &twiddles,
             config.lde_factor,
             config.whir_schedule.whir_steps_schedule[0],
             config.cap_size,
             config.trace_len_log2,
-            EVM_PRODUCTION_PACK_LOG2,
+            PACK_LOG2,
             &worker,
         );
         let inputs: Vec<&[Proth120]> = setup
@@ -1056,13 +1055,12 @@ mod test {
                 config.base_oracles_values_per_leaf.trailing_zeros() as usize,
                 config.cap_size,
                 config.trace_len_log2,
-                EVM_PRODUCTION_PACK_LOG2,
+                PACK_LOG2,
                 &worker,
             ),
         );
         assert_eq!(direct.get_cap(), recompute.get_cap());
-        let leaves_per_coset =
-            (trace_len << EVM_PRODUCTION_PACK_LOG2) / config.base_oracles_values_per_leaf;
+        let leaves_per_coset = (trace_len << PACK_LOG2) / config.base_oracles_values_per_leaf;
         let indices: Vec<_> = (0..config.lde_factor)
             .flat_map(|coset| [coset, (leaves_per_coset - 1) * config.lde_factor + coset])
             .collect();

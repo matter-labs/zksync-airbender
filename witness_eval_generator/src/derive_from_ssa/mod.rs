@@ -543,25 +543,25 @@ mod test {
         skip_if_ci!();
         use ::field::proth120::Proth120;
 
-        for suffix in ["proth120", "proth120_2p21"] {
-            let prefix = "unified_reduced_machine";
-            let compiled_circuit: GKRCircuitArtifact<Proth120> = deserialize_from_file(&format!(
-                "../cs/compiled_circuits/{}_layout_gkr_{}.json",
-                prefix, suffix
-            ));
-            let compiled_graph: Vec<Vec<RawExpression<Proth120>>> = deserialize_from_file(
-                &format!("../cs/compiled_circuits/{}_ssa_gkr_{}.json", prefix, suffix),
-            );
-            let full_stream =
-                derive_from_gkr_ssa(&compiled_graph, &compiled_circuit, false, "Proth120");
+        let suffix = "proth120_2p21";
+        let prefix = "unified_reduced_machine";
+        let compiled_circuit: GKRCircuitArtifact<Proth120> = deserialize_from_file(&format!(
+            "../cs/compiled_circuits/{}_layout_gkr_{}.json",
+            prefix, suffix
+        ));
+        let compiled_graph: Vec<Vec<RawExpression<Proth120>>> = deserialize_from_file(&format!(
+            "../cs/compiled_circuits/{}_ssa_gkr_{}.json",
+            prefix, suffix
+        ));
+        let full_stream =
+            derive_from_gkr_ssa(&compiled_graph, &compiled_circuit, false, "Proth120");
 
-            write_and_fmt(
-                &format!(
-                    "../prover/compiled_circuits/{}_generated_gkr_{}.rs",
-                    prefix, suffix
-                ),
-                &full_stream,
-            );
-        }
+        write_and_fmt(
+            &format!(
+                "../prover/compiled_circuits/{}_generated_gkr_{}.rs",
+                prefix, suffix
+            ),
+            &full_stream,
+        );
     }
 }
