@@ -301,12 +301,11 @@ fn l1_activation_accepts_cpu_wrap21() {
 }
 
 #[test]
-fn l1_activation_rejects_gpu_before_registration() {
-    let err = validate_l1_wrap_backend(ProverBackend::Gpu).unwrap_err();
-    assert!(
-        err.contains("ExecutionKind::L1Wrap21") && err.contains("W5"),
-        "{err}"
-    );
+#[cfg(feature = "gpu")]
+fn l1_activation_accepts_gpu_wrap21() {
+    assert_eq!(L1_WRAP_KIND, ExecutionKind::L1Wrap21);
+    validate_l1_wrap_activation().unwrap();
+    validate_l1_wrap_backend(ProverBackend::Gpu).unwrap();
 }
 
 #[test]
