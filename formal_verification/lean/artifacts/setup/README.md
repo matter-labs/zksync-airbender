@@ -56,3 +56,13 @@ field scope. Native field casts are checked against the imported signed row view
 no assumed table equivalence is used. Parser regressions compare all emitted
 bigint template values with the JSON data. This does not validate bigint control
 words or worker participation/ROM enforcement.
+
+BLAKE2 G's controller imports native table ID 28 with all nine physical columns.
+The importer slices the parsed region into compact data, checking every selected
+value against the complete columns and preserving the native region metadata.
+`Proofs/Blake2G/ImportedController.lean` checks all 512 rows against the controller
+reference and the concrete circuit setup, including keys, seven outputs and tag.
+Existing control, address and worker consumers now use those imported outputs;
+the generalized arbitrary-controller interface is preserved. Runtime regressions
+compare every emitted controller value with the JSON. G's XOR regions and other
+remaining table definitions still require migration.

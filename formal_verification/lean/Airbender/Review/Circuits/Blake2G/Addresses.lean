@@ -11,7 +11,7 @@ structure Input where
 abbrev Output := Vector (BitVec 32) 6
 
 /-- State ports first, then message ports, in actual JSON order. Indices from
-    the modeled controller select words within each 16-word ABI block. -/
+    the controller reference select words within each 16-word ABI block. -/
 def expected (input : Input) : Output :=
   let row := Control.step input.controller
   #v[input.statePointer.toBitVec + BitVec.ofNat 32 (4 * row.stateOffsets[0]),

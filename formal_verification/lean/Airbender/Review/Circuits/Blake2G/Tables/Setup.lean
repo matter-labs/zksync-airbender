@@ -1,3 +1,4 @@
+import Airbender.Review.Circuits.Blake2G.Tables.ControllerData
 import Airbender.Review.Helpers.Tables.Range
 import Mathlib.Data.Nat.Bitwise
 
@@ -5,8 +6,9 @@ namespace Airbender.Blake2G
 
 /- XOR rows model cs/src/tables/binops.rs::create_xor_table, with the five
    widths/regions checked by the importer. Rust setup correspondence is deferred.
-   The seven control outputs are supplied separately; no control semantics is
-   asserted by the mixing proof. -/
+   The generalized table accepts arbitrary control outputs. Its concrete native
+   controller uses imported data; no control semantics is asserted by the mixing
+   proof. -/
 
 def xorRow (width tag index : Nat) : Vector Nat 9 :=
   let a := index / 2 ^ width
@@ -36,7 +38,7 @@ def setupTable {p : Nat} [Fact p.Prime] (control : Fin 512 → Vector Nat 7) :
     | 18 => 65600 + x[0].val * 16 + x[1].val
     | 19 => 65856 + x[0].val * 128 + x[1].val
     | 20 => 82240 + x[0].val * 512 + x[1].val
-    | 28 => 344384 + x[0].val
+    | 28 => controllerDataRegion.offset + x[0].val
     | _ => 0
   Spec x := ∃ i : Fin 344896, x = (setupRow control i).map (fun (n : Nat) => (n : ZMod p))
   contains_iff _ := Iff.rfl

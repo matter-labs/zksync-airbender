@@ -156,7 +156,11 @@ with the existing generic field scope and public helpers preserved. The
 native IDs/offsets and actual circuit object. [Bigint fixed rows](Airbender/Review/Circuits/Bigint/Tables/Setup.lean)
 now also import the six native regions; [structural proofs](Airbender/Proofs/Bigint/ImportedSetup.lean)
 recover their exact carry/low-byte meanings and native field membership, and the
-existing circuit consumers use those rows. Other worker/controller/byte/ROM
+existing circuit consumers use those rows. [G controller outputs](Airbender/Review/Circuits/Blake2G/Tables/Controller.lean)
+now project the imported native region: [kernel proofs](Airbender/Proofs/Blake2G/ImportedController.lean)
+check all 512 rows against the reference and concrete setup, including keys and
+discriminator. Generalized controller parameters and inactive/invalid controls
+retain their previous scope. Other worker/controller/byte/ROM
 table definitions are still being migrated. Source parsing/emission, general Rust
 refinement and cryptographic query/table authentication remain separate boundaries.
 

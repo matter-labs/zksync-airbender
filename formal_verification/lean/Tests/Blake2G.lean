@@ -79,7 +79,7 @@ private def wrongControlQuery : Lookup (ZMod babyBearModulus) where
     .const 13, .const 0, .const 28]
 
 private theorem lastFullNextZero : (Blake2G.Control.controllerRows (335 : Fin 512))[(0 : Fin 7)] = 0 := by
-  decide
+  decide +kernel
 
 theorem wrongControlWriteRejected : ¬ wrongControlQuery.Contains
     (Verification.environment (fun _ => 0)) := by

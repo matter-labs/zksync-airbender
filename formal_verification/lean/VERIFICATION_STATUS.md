@@ -38,7 +38,7 @@ fixed or independently shown to be enforced. See the [case register](FINDINGS.md
 | Claim | Blocker |
 | --- | --- |
 | Initialization/teardown local soundness | Retained artifacts have no equations/range queries; needs richer proof input. |
-| Native setup table import | Shared ranges and bigint fixed tables are imported and checked; other table definitions and program-dependent consumers are being migrated. |
+| Native setup table import | Shared ranges, bigint fixed tables and the G controller are imported and checked; other table definitions and program-dependent consumers are being migrated. |
 
 AIH-334's EVM check is fixed and tested. AIH-336's tail/cache correction passes CPU
 regressions; accelerated runtime/proof replay and other findings remain in the case register.
