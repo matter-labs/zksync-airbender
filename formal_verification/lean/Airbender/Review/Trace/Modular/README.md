@@ -3,6 +3,9 @@
 [Theorems](Theorems.lean) proves complete six-family execution including
 ADDMOD/SUBMOD/MULMOD/FMAMOD, with terminal PC and tracked-cell agreement.
 Native boot/ROM and the existing external padding boundary are supported.
+[ExternalTheorems](ExternalTheorems.lean) combines the same operations with
+external reads and write hints, consuming exactly the independent stream
+responses selected by native read ports. Authentication stays external.
 
 [Public decoding](../../Helpers/Decoder/ModularProgram.lean) reads actual bytes
 through pinned Sail decoding, then maps MOP.RR.0–3 to the original ADD/SUB
@@ -19,4 +22,10 @@ artifact/cryptographic correspondence retain their published boundaries.
 
 [Regressions](../../../../Tests/ModularTrace.lean) check a complete dependent
 eleven-instruction execution, all four discarded forms and rejection of forged
-old-destination reads, wrong selectors and unsupported MOPs.
+old-destination reads, wrong selectors and unsupported MOPs. The combined
+fixture checks dependent reads→modular arithmetic→hint→ADD execution and rejects
+short or reordered streams.
+
+[Unified execution](../UnifiedReduced/ModularExecution.lean) connects these four
+operations to the unified artifact alongside standard instructions, TRIADD and
+XORROT, with the same public boot and external padding contracts.
