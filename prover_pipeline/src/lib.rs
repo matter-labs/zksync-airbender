@@ -20,7 +20,7 @@
 //!     proof converges to one unified + one delegation proof
 
 use clap::ValueEnum;
-use execution_prover::{BinaryHandle, ProofProfile};
+use execution_prover::{BinaryHandle, CommitAndProveTimings, ProofProfile};
 mod fsv_measure;
 use fsv_measure::FsvRunReport;
 #[cfg(test)]
@@ -49,6 +49,9 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 use unified_recursion::{unified_recursion_step, UnifiedProofShape};
 use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
+
+#[cfg(feature = "gpu")]
+pub use gpu_execution_prover::MemoryPreset;
 
 /// Serde-friendly mirror of `prover::definitions::SecurityLevel` (which does
 /// not derive serde) for the persisted artifact.
@@ -124,6 +127,9 @@ pub struct ProgramProverConfig {
     pub worker_threads: Option<usize>,
     /// `None` keeps the backend's default.
     pub replay_threads: Option<usize>,
+    /// GPU device arena preset; Auto selects according to available device memory.
+    #[cfg(feature = "gpu")]
+    pub gpu_memory_preset: MemoryPreset,
 }
 
 impl Default for ProgramProverConfig {
@@ -135,6 +141,8 @@ impl Default for ProgramProverConfig {
             ram_size: RamSize::default(),
             worker_threads: None,
             replay_threads: None,
+            #[cfg(feature = "gpu")]
+            gpu_memory_preset: MemoryPreset::Auto,
         }
     }
 }
@@ -286,6 +294,20 @@ pub trait ProveBackend {
 
     fn prove(&mut self, request: ProveRequest<'_>) -> Result<(ProgramProof, Setups), String>;
 
+    /// Prove with pass timings when the backend provides them. Custom backends
+    /// can keep implementing `prove` alone; unavailable timings are not zeroes.
+    fn prove_with_timings(
+        &mut self,
+        request: ProveRequest<'_>,
+    ) -> Result<TimedProofResult, String> {
+        let (proof, setups) = self.prove(request)?;
+        Ok(TimedProofResult {
+            proof,
+            setups,
+            timings: None,
+        })
+    }
+
     fn prove_l1_wrap(&mut self, request: L1WrapRequest<'_>) -> Result<L1WrapResult, String>;
 
     /// `Setups` of a binary registered for `profile`, from its precomputations; `None`
@@ -316,6 +338,12 @@ pub struct ProveRequest<'a> {
     pub machine: MachineType,
     pub nd_words: Vec<u32>,
     pub profile: ProofProfile,
+}
+
+pub struct TimedProofResult {
+    pub proof: ProgramProof,
+    pub setups: Setups,
+    pub timings: Option<CommitAndProveTimings>,
 }
 
 type HandleKey = (u8, u8, [u8; 32]);
@@ -364,9 +392,10 @@ struct PipelineBackend<B: execution_prover::backend::ExecutionBackend> {
 }
 
 impl<B: execution_prover::backend::ExecutionBackend> PipelineBackend<B> {
-    fn new(config: &ProgramProverConfig) -> Self {
-        let defaults =
-            execution_prover::ExecutionProverConfiguration::<B::Configuration>::default();
+    fn new(
+        config: &ProgramProverConfig,
+        defaults: execution_prover::ExecutionProverConfiguration<B::Configuration>,
+    ) -> Self {
         let configuration = execution_prover::ExecutionProverConfiguration {
             max_thread_pool_threads: config.worker_threads,
             replay_worker_threads_count: config
@@ -411,6 +440,14 @@ impl<B: execution_prover::backend::ExecutionBackend> ProveBackend for PipelineBa
     }
 
     fn prove(&mut self, request: ProveRequest<'_>) -> Result<(ProgramProof, Setups), String> {
+        let result = self.prove_with_timings(request)?;
+        Ok((result.proof, result.setups))
+    }
+
+    fn prove_with_timings(
+        &mut self,
+        request: ProveRequest<'_>,
+    ) -> Result<TimedProofResult, String> {
         let ProveRequest {
             batch_id,
             bin,
@@ -421,7 +458,7 @@ impl<B: execution_prover::backend::ExecutionBackend> ProveBackend for PipelineBa
             profile,
         } = request;
         let handle = self.handles[&handle_key(kind, machine, bin, text)].handle;
-        let result = self.prover.commit_memory_and_prove(
+        let (result, timings) = self.prover.commit_memory_and_prove_with_timings(
             batch_id,
             &handle,
             FlatResponsesSource::new_with_reads(nd_words),
@@ -437,7 +474,12 @@ impl<B: execution_prover::backend::ExecutionBackend> ProveBackend for PipelineBa
             profile,
         );
         let artifacts = self.prover.program_artifacts(&handle, profile);
-        Ok(program_prover::assemble_program_proof(&artifacts, result))
+        let (proof, setups) = program_prover::assemble_program_proof(&artifacts, result);
+        Ok(TimedProofResult {
+            proof,
+            setups,
+            timings: Some(timings),
+        })
     }
 
     fn prove_l1_wrap(&mut self, request: L1WrapRequest<'_>) -> Result<L1WrapResult, String> {
@@ -652,6 +694,9 @@ fn advance_feeder_stages(
 /// Sees every proven feeder layer: the state after it and the verifier run
 /// that predicted it.
 trait FeederObserver {
+    /// Called before the layer's prediction run, where its timed work starts.
+    fn layer_started(&mut self, _layer: u8) {}
+
     fn feeder_layer(
         &mut self,
         layer: u8,
@@ -915,7 +960,11 @@ fn run_feeder_layers(
             FeederRole::Recurrent
         };
         let program = fsv.feeder_program(role);
+        observer.layer_started(layer as u8);
+        // Include ND stream construction in predict and verification wall times.
+        let layer_start = Instant::now();
         let report = verifier.predict(program, nd(&state.setups, &state.proof))?;
+        let predict_ms = elapsed_ms(layer_start);
         validate_prediction_report(&report, &input_output)?;
         let predicted = predicted_feeder_instances(&report)?;
         if let Some(previous) = previous_instances {
@@ -932,10 +981,29 @@ fn run_feeder_layers(
             report.cycles,
             predicted as u64 * chunk - report.cycles
         );
-        state = advance_feeder_stage(backend, program, &mut chain, state, batch_id, nd)?;
+        let (next_state, pass_timings) =
+            advance_feeder_stage(backend, program, &mut chain, state, batch_id, nd)?;
+        state = next_state;
         let instances = feeder_proof_instances(&state.proof, Some(predicted))?;
+        let verify_start = Instant::now();
         let output = verifier.native_verify(nd(&state.setups, &state.proof))?;
         ensure_recursion_chain_binds_program(&output, &chain.hash())?;
+        let native_verify_ms = elapsed_ms(verify_start);
+        // Stop before the observer: fixture comparison is validation overhead.
+        let layer_wall_ms = elapsed_ms(layer_start);
+        let pass_ms = |select: fn(CommitAndProveTimings) -> std::time::Duration| {
+            pass_timings.map_or_else(
+                || "unavailable".to_string(),
+                |timings| select(timings).as_millis().to_string(),
+            )
+        };
+        log::info!(
+            "L1 feeder layer {layer} ({role:?}) timings: instances={instances} predict_ms={predict_ms} commit_pass_ms={} external_challenges_ms={} proof_pass_ms={} commit_and_prove_ms={} native_verify_ms={native_verify_ms} layer_wall_ms={layer_wall_ms}",
+            pass_ms(|t| t.commit_pass),
+            pass_ms(|t| t.external_challenges),
+            pass_ms(|t| t.proof_pass),
+            pass_ms(|t| t.total),
+        );
         input_output = output;
         layer += 1;
         state.feeder_layers = layer;
@@ -954,11 +1022,15 @@ fn advance_feeder_stage(
     mut state: RecursionState,
     batch_id: u64,
     nd: &dyn Fn(&Setups, &ProgramProof) -> Vec<u32>,
-) -> Result<RecursionState, String> {
+) -> Result<(RecursionState, Option<CommitAndProveTimings>), String> {
     let (bin, text) = fsv_program;
     let spec = feeder_stage(FeederRole::Recurrent);
     let start = Instant::now();
-    let (mut proof, setups) = backend.prove(ProveRequest {
+    let TimedProofResult {
+        mut proof,
+        setups,
+        timings,
+    } = backend.prove_with_timings(ProveRequest {
         batch_id,
         bin,
         text,
@@ -974,7 +1046,7 @@ fn advance_feeder_stage(
     state.chain_end_params.push(end_params);
     state.proof = proof;
     state.setups = setups;
-    Ok(state)
+    Ok((state, timings))
 }
 
 /// The wrap program's run over the last feeder proof must reach its success
@@ -1479,14 +1551,20 @@ impl ProgramProver {
             validate_l1_wrap_activation()?;
         }
         let backend = match config.backend {
-            ProverBackend::Cpu => BackendImpl::Cpu(PipelineBackend::new(&config)),
+            ProverBackend::Cpu => {
+                BackendImpl::Cpu(PipelineBackend::new(&config, Default::default()))
+            }
             ProverBackend::Gpu => {
                 #[cfg(feature = "gpu")]
                 {
                     if config.target == ProofTarget::L1 {
                         l1_wrap::validate_l1_wrap_backend(config.backend)?;
                     }
-                    BackendImpl::Gpu(PipelineBackend::new(&config))
+                    let mut defaults = execution_prover::ExecutionProverConfiguration::<
+                        gpu_execution_prover::GpuBackendConfiguration,
+                    >::default();
+                    defaults.backend.memory_preset = config.gpu_memory_preset;
+                    BackendImpl::Gpu(PipelineBackend::new(&config, defaults))
                 }
                 #[cfg(not(feature = "gpu"))]
                 {

@@ -919,3 +919,157 @@ fn feeder_negative_controls() {
         );
     }
 }
+
+/// Checks each GPU feeder layer against the CPU fixture of the same layer
+/// (with deterministic PoW only) and records the time it spends doing so.
+#[cfg(feature = "gpu")]
+struct GpuChainObserver<'a> {
+    dir: &'a Path,
+    compare: bool,
+    instances: Vec<usize>,
+    observer_ms: u64,
+    /// The start of the first layer's prediction run: the chain boundary.
+    first_layer_start: Option<Instant>,
+}
+
+#[cfg(feature = "gpu")]
+impl FeederObserver for GpuChainObserver<'_> {
+    fn layer_started(&mut self, layer: u8) {
+        if layer == 0 {
+            self.first_layer_start = Some(Instant::now());
+        }
+    }
+
+    fn feeder_layer(
+        &mut self,
+        layer: u8,
+        state: &RecursionState,
+        _: &FsvRunReport,
+    ) -> Result<(), String> {
+        let start = Instant::now();
+        let instances = feeder_proof_instances(&state.proof, None)?;
+        if self.compare {
+            let fixture = load_layer(self.dir, layer as usize)?;
+            if fixture.layer != layer || fixture.instances != instances {
+                return Err(format!(
+                    "GPU feeder layer {layer}: {instances} instance(s), the CPU fixture has {}",
+                    fixture.instances
+                ));
+            }
+            let actual =
+                serde_json::to_vec(&(&state.proof, &state.setups, &state.chain_end_params))
+                    .unwrap();
+            let expected =
+                serde_json::to_vec(&(&fixture.proof, &fixture.setups, &fixture.chain_end_params))
+                    .unwrap();
+            if actual != expected {
+                return Err(format!(
+                    "GPU feeder layer {layer} differs from the CPU fixture (proof, setups or chain end params)"
+                ));
+            }
+            if rebuild_chain(&state.chain_end_params)?.hash() != fixture.chain_hash {
+                return Err(format!("GPU feeder layer {layer} chain hash differs"));
+            }
+            let native_output =
+                native_verify_unified_l1_feeder(build_unified_stream(&state.setups, &state.proof))?;
+            if native_output != fixture.native_output {
+                return Err(format!("GPU feeder layer {layer} native output differs"));
+            }
+        }
+        self.instances.push(instances);
+        self.observer_ms += elapsed_ms(start);
+        Ok(())
+    }
+}
+
+/// W4's e2e gate: the real feeder loop on the GPU at the 30 GiB preset from a
+/// fixture seed, then the wrap-fit check. A cold and a warm pass run in one
+/// process; with deterministic PoW every layer must equal the CPU fixtures.
+#[cfg(feature = "gpu")]
+#[test]
+#[ignore = "proves a 2^22 feeder chain on the GPU from the fixture seed"]
+fn l1_feeder_gpu_chain_gate() {
+    let _ = env_logger::builder()
+        .is_test(true)
+        .format_timestamp_millis()
+        .try_init();
+    let name = std::env::var("AB_F3_INPUT").unwrap_or_else(|_| "basic_fibonacci".into());
+    let input = inputs()
+        .into_iter()
+        .find(|input| input.name == name)
+        .unwrap_or_else(|| panic!("unknown feeder reference input {name}"));
+    let dir = fixture_dir().join(input.name);
+    let manifest = load_manifest(&dir).unwrap();
+    assert_eq!(manifest.input, input.name);
+    assert_eq!(
+        manifest.feeder_queries_and_pow,
+        L1_FEEDER_QUERIES_AND_POW.to_vec(),
+        "the feeder reference was produced under another feeder config"
+    );
+    assert_eq!(
+        serde_json::to_vec(&manifest.fsv).unwrap(),
+        serde_json::to_vec(&fsv_identities().unwrap()).unwrap(),
+        "the feeder reference fsv identities differ from this tree"
+    );
+    for (name, bytes, digest) in &manifest.files {
+        let actual = read_bytes(&dir.join(name)).unwrap();
+        assert!(
+            actual.len() as u64 == *bytes && hex_digest(&actual) == *digest,
+            "feeder reference file {name} differs from its manifest"
+        );
+    }
+    let expected_instances: Vec<usize> = manifest
+        .layers
+        .iter()
+        .map(|layer| layer.instances)
+        .collect();
+    let deterministic = cfg!(feature = "deterministic_pow");
+    let seed: ProofArtifact = read_typed(&seed_path(&dir)).unwrap();
+    let config = ProgramProverConfig {
+        target: ProofTarget::L1Feeder,
+        backend: ProverBackend::Gpu,
+        cycles_bound: None,
+        gpu_memory_preset: MemoryPreset::GiB30,
+        ..ProgramProverConfig::default()
+    };
+    let mut prover = ProgramProver::for_continuation(source(&input), config, &seed).unwrap();
+    for pass in ["cold", "warm"] {
+        let mut observer = GpuChainObserver {
+            dir: &dir,
+            compare: deterministic,
+            instances: vec![],
+            observer_ms: 0,
+            first_layer_start: None,
+        };
+        let seed = seed.clone();
+        let continuation_start = Instant::now();
+        let (state, _) = prover.feeder_layers_observed(seed, &mut observer).unwrap();
+        let fit_start = Instant::now();
+        check_feeder_fit(
+            &prover.fsv,
+            state,
+            &build_unified_stream,
+            &ProductionFeederVerifier,
+        )
+        .unwrap();
+        let wrap_fit_ms = elapsed_ms(fit_start);
+        let continuation_ms = elapsed_ms(continuation_start);
+        let chain_ms = elapsed_ms(
+            observer
+                .first_layer_start
+                .expect("the feeder loop starts its first layer"),
+        );
+        log::info!(
+            "L1 feeder GPU chain ({pass}, deterministic_pow {deterministic}, compared to fixtures {}): instances {:?} (fixtures {expected_instances:?}), wrap-fit check {wrap_fit_ms} ms, chain wall from the first prediction {} ms, continuation wall {} ms, both excluding {} ms of fixture comparison",
+            observer.compare,
+            observer.instances,
+            chain_ms - observer.observer_ms,
+            continuation_ms - observer.observer_ms,
+            observer.observer_ms
+        );
+        assert_eq!(
+            observer.instances, expected_instances,
+            "the GPU feeder chain differs from the fixture chain"
+        );
+    }
+}

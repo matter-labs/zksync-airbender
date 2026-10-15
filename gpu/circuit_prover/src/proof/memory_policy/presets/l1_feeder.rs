@@ -4,7 +4,7 @@ use super::super::{
     WitnessPostCommitStorage,
 };
 
-/// Smallest sufficient arena of the bounded capacity matrix (`gpu/execution_prover/tests/l1_memory.rs`: 21/30/40/48/64 GiB candidates, commitment and proof stages, both directions, three opposite followers) on the RTX PRO 6000 Blackwell (sm_120).
+/// Smallest sufficient arena of the bounded capacity matrix (`gpu/execution_prover/tests/l1_memory.rs`: 21/30/40/48/64 GiB candidates, commitment and proof stages, both directions, three opposite followers) for the 2^22 `Unified22` feeder (LDE 16, cap 16) on the RTX PRO 6000 Blackwell (sm_120); measured worst peak 10,827,595,776 B (proof stage beside a Standard follower).
 pub const L1_FEEDER_FLOOR_BYTES: usize = 21 << 30;
 pub const L1_FEEDER_FLOOR_SOURCE: &str = "measured";
 

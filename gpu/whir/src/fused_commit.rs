@@ -175,7 +175,7 @@ enum Family {
 }
 
 /// Fused small-oracle shapes used by the Sec100 recursive schedules.
-const VALIDATED_SHAPES: [(u32, u32, Family); 10] = [
+const VALIDATED_SHAPES: [(u32, u32, Family); 11] = [
     (13, 5, Family::Block),
     (12, 5, Family::Block),
     (11, 5, Family::Block),
@@ -184,6 +184,7 @@ const VALIDATED_SHAPES: [(u32, u32, Family); 10] = [
     (8, 4, Family::Subwarp),
     (7, 4, Family::Subwarp),
     (6, 5, Family::Subwarp),
+    (6, 3, Family::Subwarp),
     (5, 4, Family::Subwarp),
     (4, 3, Family::Subwarp),
 ];
@@ -412,6 +413,7 @@ mod cpu_tests {
         assert!(supported(9, 4));
         assert!(supported(7, 4));
         assert!(supported(6, 5));
+        assert!(supported(6, 3));
         assert!(supported(5, 4));
         assert!(!supported(5, 3));
         assert!(!supported(6, 1));

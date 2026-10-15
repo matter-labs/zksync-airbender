@@ -498,6 +498,7 @@ fn generate_into(sink: &Path, from: GenerateFrom<'_>) -> Result<Inventory, Strin
             {
                 let mut backend = PipelineBackend::<cpu_execution_prover::CpuBackend>::new(
                     &config(ProofTarget::L1Feeder),
+                    Default::default(),
                 );
                 let spec = feeder_stage(FeederRole::Recurrent);
                 let (bin, text) = fsv.feeder_program(FeederRole::Recurrent);
@@ -1012,7 +1013,8 @@ fn noop_observer_matches_unobserved_result() {
             0,
             &fake_nd,
         )
-        .unwrap();
+        .unwrap()
+        .0;
     }
     unobserved.feeder_layers = 2;
     let noop = normalized_state(noop);
