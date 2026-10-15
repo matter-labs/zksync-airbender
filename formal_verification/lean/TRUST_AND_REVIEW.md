@@ -410,8 +410,8 @@ Sail retirement remain open.
 
 
 The [public register-dataflow entry](Airbender/Review/Helpers/UnifiedReduced/RegisterDataflow.lean)
-now allows intervening arithmetic, bitwise, shift and REV8 writes to other
-nonzero GPRs. Original public instruction constructors bind the destination;
+now allows intervening arithmetic, bitwise/shift/REV8, comparison and admitted
+TRIADD/XORROT writes to other nonzero GPRs. Original public instruction constructors bind the destination;
 successful public decoding retains supported RV32 shift-payload checks. Native
 decoder equations derive its GPR bank and index without an operand bound or
 instruction result. A gap may read the tracked register and refresh its timestamp. Public decoding derives the real destination;
@@ -442,8 +442,17 @@ and retain the second readonly refresh at clock nine. The final signed ADDI
 derives x12 = 128 at clock fourteen. Stale clock-eight sources remain locally
 valid and globally rejected; wrong public destinations/forms, illegal shifts
 and discarded binary destinations are rejected at their stated boundaries.
-Memory/comparison/custom gaps, worker-interleaved preparation, broader operands
-and full Sail retirement remain open.
+All four original comparisons, TRIADD and the four pinned XORROT forms now
+derive the same GPR destination footprint without operand values, predicate bits
+or instruction results. Native SLTU/TRIADD gaps retain two aliased x12 reads,
+preserve 127/129, write x10 = 0/65795 and retain the clock-nine refresh before
+final x12 = 128 at clock fourteen. TRIADD consumes the actual old x10 = 65537.
+Stale sources remain locally valid and globally rejected; wrong destinations/
+forms, unsupported MOPs and discarded selected destinations are rejected at
+the public-registry boundary. Pinned custom clauses are unchanged; this memory
+preparation claim does not assert full custom retirement or a Zimop fallback.
+Memory gaps, worker-interleaved preparation, broader operands and full Sail
+retirement remain open.
 
 [Control preparation](Airbender/Review/Helpers/UnifiedReduced/ControlPreparation.lean)
 uses a public ordinary ADDI-from-x0/LUI registry and a worker-free final preparation

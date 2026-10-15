@@ -159,7 +159,8 @@ separate.
 
 
 The [public dataflow scope](RegisterDataflow.lean), `PublicRegisterDataflow`, adds
-intervening arithmetic, bitwise, shift and REV8 writes to other nonzero GPRs.
+intervening arithmetic, bitwise/shift/REV8, comparison and admitted TRIADD/XORROT
+writes to other nonzero GPRs.
 `RegisterFramePreparation` and `BinaryRegisterWrite` bind the destination using
 the original public instruction constructor and successful decoding, including
 supported RV32 shift-payload checks. `ArithmeticFramePreparation` retains its
@@ -188,9 +189,18 @@ constraints/timestamp queries but fails global matching by double consumption.
 Native XOR/AND gaps also check two aliased reads, x12 = 127/129, real x10 = 0/129
 writes, clock-nine refreshes and final x12 = 128 at clock fourteen. Stale sources
 remain locally valid and globally rejected; wrong public destinations/forms,
-illegal shifts and discarded binary destinations are rejected. Memory/comparison/
-custom gaps, worker-interleaved preparation, broader operands and full Sail
-retirement remain separate.
+illegal shifts and discarded binary destinations are rejected.
+`ComparisonRegisterWrite` covers all four original comparisons;
+`CustomRegisterWrite` covers TRIADD and the four pinned XORROT forms. Their native
+GPR footprint follows from the original public constructor and decoding, without
+operands, predicate bits or results. Native SLTU/TRIADD gaps preserve x12 = 127/129,
+write x10 = 0/65795, retain clock-nine refreshes and derive final x12 = 128.
+TRIADD reads actual old x10 = 65537. Stale sources, wrong public destinations/
+forms, unsupported MOPs and discarded selected destinations are checked at the
+existing local/matching/registry boundaries. Pinned custom clauses remain
+unchanged; no full custom retirement or Zimop fallback is asserted. Memory gaps,
+worker-interleaved preparation, broader operands and full Sail retirement remain
+separate.
 
 The [prepared control window](../../Trace/UnifiedReduced/ControlPreparation.lean)
 connects two prepared controls through the same actual intervening history, keeping
