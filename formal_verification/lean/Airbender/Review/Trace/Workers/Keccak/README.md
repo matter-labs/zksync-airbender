@@ -8,7 +8,7 @@ connects the final state to native terminal tokens.
 ## Checked results
 
 [`Native.operation_execution`](Theorems.lean) proves actual port/lane effects
-for all seven native modes under the modeled controller.
+for all seven native modes under the imported native controller.
 [`Native.permutation_soundness` and `Native.permutation_boundary_soundness`](Theorems.lean)
 prove the original full permutation on actual boundary lanes, with shared terminal
 agreement. [`Native.window_soundness`](Theorems.lean) binds the first complete span

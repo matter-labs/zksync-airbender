@@ -34,7 +34,7 @@ theorem Native.permutation_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
         Delegation.TraceMapping data initial after cells ∧ output = Specs.Keccak256.keccakPermutation input :=
   Proofs.permutation_binding hp inverse accepted inputs tables aligned
 
-/-- Keccak's modeled controller selects physical lane addresses and controls
+/-- Keccak's imported native controller selects physical lane addresses and controls
     actual initialized Sail transfers in a mixed delegation pool. All seven lane modes
     use the existing Clean references on native observations. No pointer/read/range/result
     premise is supplied. Caller request binding is handled by separate claims. -/
