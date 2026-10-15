@@ -34,14 +34,15 @@ to retain a demonstrated source defect or accepted-relation discrepancy.
 
 ### Linear and open-PR review — 15 October 2026
 
-The five exported Linear issues and **all live comments** were read. Source was
-checked against this working tree at `3f4c7d67d`; PR patches are proposals at their
+The five exported Linear issues and **all live comments** were read. Initial source
+assessment used `3f4c7d67d`; the AIH-334 fix below builds on `73c632e89`.
+PR patches are proposals at their
 inspected heads, not assumed fixes. This is the disposition of the reviewed cases,
 not a claim that every open PR or every backend has been audited.
 
 | Case | Classification and evidence | What remains open |
 | --- | --- | --- |
-| [AIH-334](https://linear.app/matterlabs/issue/AIH-334) — duplicate initialization windows | **Acknowledged implementation bug.** The comment says “Valid in general.” The [EVM generator](../../verifier_evm/src/generator/circuit_yul.rs) reads prover-selected top indices and uses them without distinctness validation. The [Rust unified statement](../../full_statement_verifier/src/unified_circuit_statement.rs) separately checks range and increasing order. | Fix EVM validation for its own geometry. The temporary [distinct-selection contract](Airbender/Review/Helpers/Context/ExternalBoundary/Initialization.lean) is not enforced there. For the reported 2^22-word/four-byte geometry, valid sparse windows 254/255 must remain valid; copying a different verifier's ceiling 64 would be incorrect. Reversed distinct windows alone are not the reported defect. |
+| [AIH-334](https://linear.app/matterlabs/issue/AIH-334) — duplicate initialization windows | **Fixed in the current EVM generator and both tracked GKR sources; validation below.** The Linear comment correctly accepts the original defect as “Valid in general.” [Generated validation](../../verifier_evm/src/generator/initialization.rs) now rejects duplicate/out-of-range windows before transcript processing. The [Rust unified statement](../../full_statement_verifier/src/unified_circuit_statement.rs) separately checks range and increasing order. | The [distinct-selection contract](Airbender/Review/Helpers/Context/ExternalBoundary/Initialization.lean) remains explicit: its formal correspondence to EVM execution is unproved. Valid sparse windows 254/255 and reversed distinct pairs are retained for the 2^22-word/four-byte geometry. Existing deployments are not changed by this source fix. |
 | [AIH-336](https://linear.app/matterlabs/issue/AIH-336) — queryable decoder filler | **Acknowledged setup-validation bug; concrete part of F09.** The comment accepts zero padding reachable by a PC lookup as a valid point. [Setup construction](../../prover/src/gkr/prover/setup.rs) starts with zero-filled columns, while the [family compiler](../../cs/src/gkr_compiler/family_circuit.rs) can omit a decoder table ID. | An unqueryable filler and agreement of committed, cached, scalar and vectorized consumers are needed. The temporary [decoder contract](Airbender/Review/Helpers/Context/ExternalBoundary/Decoder.lean) describes a corrected setup; it does not describe an implemented fix. No full invalid-proof acceptance is claimed. |
 | [AIH-339](https://linear.app/matterlabs/issue/AIH-339) — zero-clock workers | **Accepted relation gap, F03; implementation enforcement remains unresolved.** The comments explain caller-to-worker accounting and unique issued clocks. They do not establish the converse that every active worker has a caller, and do not rule out the checked zero-clock state change. | Fix or independently validate full worker-to-caller enforcement. The temporary [occurrence ledger](Airbender/Review/Helpers/Context/ExternalBoundary/Requests.lean) supplies that missing condition; the native cancelling-token permutation does not imply it. |
 | [AIH-113](https://linear.app/matterlabs/issue/AIH-113) — dropped scaled pointer range check | **Historical compiler bug with repair present in the inspected source.** [Delegation compilation](../../cs/src/gkr_compiler/delegation_circuit.rs) now passes the retained range vector into [memory lowering](../../cs/src/gkr_compiler/delegation_mem_accesses.rs), which pushes the scaled check into it. No live comments. | Do not assume every generated/cached artifact includes that repair. Compiled/artifact correspondence remains an external fidelity obligation; no new pointer-alignment assumption or newly discovered current-source bug is asserted. |
@@ -94,6 +95,54 @@ contains historical review examples, which are leads rather than evidence of a
 current defect or repair. The PDF in [#301](https://github.com/matter-labs/zksync-airbender/pull/301)
 and the full merge in [private #17](https://github.com/matter-labs/zksync-airbender-private/pull/17)
 were not audited. No Linear state or PR was changed.
+
+### AIH-334 implementation fix and validation
+
+The [emitter](../../verifier_evm/src/generator/initialization.rs) derives window
+size from the artifact's trace length and word bits, and set count from its
+teardown layout. A 2^22-row/four-byte-word window occupies 2^24 bytes, so the
+exclusive top-index bound in the u32 byte-address space is **256**, not 64.
+The [live template](../../verifier_evm/src/templates/gkr.sol) invokes validation
+before transcript copying or hashing. It checks that all index bytes exist,
+decodes each complete little-endian u32, checks range and rejects every duplicate
+pair. It does not truncate indices, assume contiguity or require ordering.
+
+Both tracked [GKR source](../../verifier_evm/generated_contracts/gkr/src/GkrVerifier.sol)
+and [production GKR source](../../verifier_evm/generated_contracts/gkr/src/GkrVerifierProduction.sol)
+carry the same emitted guard and invocation; a regression compares their decoder,
+validation and transcript-init functions to fresh generation. Other generated
+circuits, contracts and proof/cache artifacts are unchanged.
+
+The [Rust/EVM regression](../../verifier_evm/tests/initialization_windows.rs)
+compiles the fresh verifier and both committed GKR sources with Solidity 0.8.36.
+It executes the actual generated guard in the
+[EVM suite](../../verifier_evm/tests/contracts/InitializationWindows.t.sol): valid
+sparse/reversed windows, duplicates, both out-of-range positions, high-byte/LE
+decoding, truncated input, adjacent-byte independence and two 256-run fuzz tests.
+The existing valid GKR proof is also replayed through the fresh and committed
+non-production verifiers. The production target is compiled and its guard checked;
+the fixture has a different terminal PC, so no production-proof replay is claimed.
+Scoped Rust tests, the existing calldata/seed regression and full FV checks pass.
+
+This fixes the source-level AIH-334 validation defect for the current single-proof
+EVM target. It does not prove EVM/Rust/Lean refinement, cryptographic soundness or
+correctness of other verifier paths, and does not upgrade deployed contracts.
+The Lean selection premise stays visible for that unproved formal connection;
+the other implementation findings remain open. The Linear assessment above is
+unchanged: explicit validation implements the required property without pinning
+production indices to constants.
+
+Reproduce the scoped EVM regression with Foundry and Solidity 0.8.36 installed:
+
+```sh
+cargo check --locked -p verifier_evm --lib
+SOLC_PATH=/path/to/solc-0.8.36 cargo test --locked -p verifier_evm --lib --test initialization_windows --test flatten_roundtrip -- --include-ignored
+```
+
+On this host the pinned Rust compiler crashed while emitting debug information
+for an existing dependency. The successful test run used environment-only
+`CARGO_PROFILE_DEV_DEBUG=0`, `CARGO_PROFILE_TEST_DEBUG=0` and `CARGO_INCREMENTAL=0`;
+no compiler pin, dependency or repository build configuration changed.
 
 ## Implementation update: issued round coverage and wrapped preparation
 
@@ -1001,13 +1050,14 @@ category must never be described simply as public context.
 
 ## Validation and next review
 
-The temporary-contract milestone checks distinct window domains, decoder filler
+The temporary-contract proofs check distinct window domains, decoder filler
 exclusion, full occurrence coverage, native command selection and RAM-port token
 transport. Regressions retain sparse/reversed distinct windows, reject duplicates
 and truncation, exhibit zero-clock native matching without a full ledger, and
 exclude the existing invalid-control and ROM-shadow witnesses only from the new
 temporary contracts. The original accepted witnesses remain checked. These are
-conditional mathematical results; no implementation finding was fixed or closed.
+conditional mathematical results, which alone fix no implementation finding.
+AIH-334's separately validated source fix is recorded above.
 
 The current milestone checks the library, both executables, all concrete Lean
 test modules, importer regressions, the full axiom audit and review/reference

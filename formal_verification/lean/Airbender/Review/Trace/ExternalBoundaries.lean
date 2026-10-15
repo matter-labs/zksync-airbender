@@ -7,8 +7,8 @@ import Airbender.Proofs.ExternalBoundary.WorkerRAM
 namespace Airbender.ExternalBoundary
 open Trace
 
-/-- Conditional domain uniqueness under temporary AIH-334 window validation.
-    The inspected EVM implementation does not establish `Selection.unique`. -/
+/-- Conditional domain uniqueness under the AIH-334 window-validation interface.
+    The source check is tested; correspondence to `Selection.unique` is external. -/
 theorem initialization_soundness (selection : Initialization.Selection geometry) :
     ((Initialization.cells selection).map Cell.addressCode).Nodup ∧
     (∀ cell ∈ Initialization.cells selection, cell.Aligned) ∧
