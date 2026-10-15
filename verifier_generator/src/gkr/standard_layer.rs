@@ -1543,3 +1543,256 @@ fn generate_two_output_body<MW: FieldWrapper>(
         }
     });
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::field_wrapper::DefaultBabyBearField;
+    use prover::cs::gkr_compiler::CompiledMaxQuadraticGKRRelation;
+    use prover::field::baby_bear::base::BabyBearField;
+    use prover::field::baby_bear::ext4::BabyBearExt4;
+    use prover::field::{Field, FieldExtension};
+    use std::collections::HashMap;
+
+    type Env = HashMap<String, BabyBearExt4>;
+
+    fn value(expr: &syn::Expr, env: &mut Env, evals: &[BabyBearExt4]) -> BabyBearExt4 {
+        match expr {
+            syn::Expr::Reference(r) => value(&r.expr, env, evals),
+            syn::Expr::Path(p) => env[&p.path.get_ident().unwrap().to_string()],
+            syn::Expr::Block(b) => run(&b.block.stmts, env, evals).unwrap(),
+            // `evals.get_unchecked(idx)[j]`
+            syn::Expr::Index(index) => {
+                let syn::Expr::MethodCall(call) = &*index.expr else {
+                    panic!("unexpected index `{}`", expr.to_token_stream());
+                };
+                let syn::Expr::Lit(syn::ExprLit {
+                    lit: syn::Lit::Int(idx),
+                    ..
+                }) = &call.args[0]
+                else {
+                    panic!("unexpected index `{}`", expr.to_token_stream());
+                };
+                evals[idx.base10_parse::<usize>().unwrap()]
+            }
+            // `BabyBearExt4::from_base(..)` and `BabyBearField::from_reduced_raw_repr(..)`
+            syn::Expr::Call(call) => {
+                let syn::Expr::Path(func) = &*call.func else {
+                    panic!("unexpected call `{}`", expr.to_token_stream());
+                };
+                match func
+                    .path
+                    .segments
+                    .last()
+                    .unwrap()
+                    .ident
+                    .to_string()
+                    .as_str()
+                {
+                    "from_base" => value(&call.args[0], env, evals),
+                    "from_reduced_raw_repr" => {
+                        let syn::Expr::Lit(syn::ExprLit {
+                            lit: syn::Lit::Int(raw),
+                            ..
+                        }) = &call.args[0]
+                        else {
+                            panic!("unexpected raw repr `{}`", expr.to_token_stream());
+                        };
+                        BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(
+                            raw.base10_parse::<u32>().unwrap(),
+                        ))
+                    }
+                    other => panic!("unexpected function `{other}`"),
+                }
+            }
+            _ => panic!("unexpected operand `{}`", expr.to_token_stream()),
+        }
+    }
+
+    fn name(expr: &syn::Expr) -> String {
+        match expr {
+            syn::Expr::Reference(r) => name(&r.expr),
+            syn::Expr::Path(p) => p.path.get_ident().unwrap().to_string(),
+            _ => panic!("unexpected destination `{}`", expr.to_token_stream()),
+        }
+    }
+
+    // Runs emitted straight-line code: `let`, assignments, blocks and `field_ops` calls.
+    fn run(stmts: &[syn::Stmt], env: &mut Env, evals: &[BabyBearExt4]) -> Option<BabyBearExt4> {
+        for stmt in stmts {
+            match stmt {
+                syn::Stmt::Local(local) => {
+                    let syn::Pat::Ident(pat) = &local.pat else {
+                        panic!("unexpected pattern");
+                    };
+                    let v = value(&local.init.as_ref().unwrap().expr, env, evals);
+                    env.insert(pat.ident.to_string(), v);
+                }
+                syn::Stmt::Expr(syn::Expr::Block(block), _) => {
+                    run(&block.block.stmts, env, evals);
+                }
+                syn::Stmt::Expr(expr, None) => return Some(value(expr, env, evals)),
+                syn::Stmt::Expr(syn::Expr::Assign(assign), _) => {
+                    let v = value(&assign.right, env, evals);
+                    env.insert(name(&assign.left), v);
+                }
+                syn::Stmt::Expr(syn::Expr::Call(call), _) => {
+                    let syn::Expr::Path(func) = &*call.func else {
+                        panic!("unexpected call");
+                    };
+                    let dst = name(&call.args[0]);
+                    let args: Vec<BabyBearExt4> = call
+                        .args
+                        .iter()
+                        .skip(1)
+                        .map(|a| value(a, env, evals))
+                        .collect();
+                    let x = env.get_mut(&dst).unwrap();
+                    match func
+                        .path
+                        .segments
+                        .last()
+                        .unwrap()
+                        .ident
+                        .to_string()
+                        .as_str()
+                    {
+                        "add_assign" => {
+                            x.add_assign(&args[0]);
+                        }
+                        "sub_assign" => {
+                            x.sub_assign(&args[0]);
+                        }
+                        "negate" => {
+                            x.negate();
+                        }
+                        "mul_assign_by_base" => {
+                            x.mul_assign(&args[0]);
+                        }
+                        "add_assign_product" | "add_assign_product_with_base" => {
+                            let mut product = args[0];
+                            product.mul_assign(&args[1]);
+                            x.add_assign(&product);
+                        }
+                        other => panic!("unexpected operation `{other}`"),
+                    }
+                }
+                _ => panic!("unexpected statement `{}`", stmt.to_token_stream()),
+            }
+        }
+        None
+    }
+
+    fn evaluate(code: TokenStream, env: &mut Env, evals: &[BabyBearExt4]) {
+        let block: syn::Block = syn::parse2(quote! { { #code } }).unwrap();
+        run(&block.stmts, env, evals);
+    }
+
+    fn ext(seed: u32) -> BabyBearExt4 {
+        <BabyBearExt4 as FieldExtension<BabyBearField>>::from_coeffs(core::array::from_fn(|i| {
+            BabyBearField::from_nonreduced_u32(seed.wrapping_mul(0x9e37_79b9) ^ (i as u32 * 7919))
+        }))
+    }
+
+    #[test]
+    fn horner_steps_match_naive_evaluation() {
+        let batch_base = ext(1);
+        let acc = ext(2);
+        for n in 1..=4 {
+            let outs: Vec<BabyBearExt4> = (0..n).map(|i| ext(10 + i)).collect();
+            let names: Vec<TokenStream> = (0..n)
+                .map(|i| quote::format_ident!("out{}", i).to_token_stream())
+                .collect();
+
+            let mut sum = BabyBearExt4::ZERO;
+            let mut power = BabyBearExt4::ONE;
+            for out in outs.iter() {
+                let mut term = *out;
+                term.mul_assign(&power);
+                sum.add_assign(&term);
+                power.mul_assign(&batch_base);
+            }
+            let mut shifted = acc;
+            shifted.mul_assign(&power);
+            shifted.add_assign(&sum);
+
+            let mut env = Env::from([
+                ("acc".to_string(), acc),
+                ("batch_base".to_string(), batch_base),
+            ]);
+            for (i, out) in outs.iter().enumerate() {
+                env.insert(format!("out{i}"), *out);
+            }
+
+            let mut horner_env = env.clone();
+            let steps = horner_steps::<DefaultBabyBearField>(quote! { acc }, &names);
+            evaluate(steps, &mut horner_env, &[]);
+            assert_eq!(horner_env["acc"], shifted, "{n} outputs");
+
+            let steps = horner_steps_from_zero::<DefaultBabyBearField>(quote! { acc }, &names);
+            evaluate(steps, &mut env, &[]);
+            assert_eq!(env["acc"], sum, "{n} outputs from zero");
+        }
+    }
+
+    #[test]
+    fn max_quadratic_eval_matches_naive_evaluation() {
+        let one = BabyBearField::ONE;
+        let mut minus_one = BabyBearField::ZERO;
+        minus_one.sub_assign(&one);
+        let zero = BabyBearField::ZERO;
+        let c = |v: u32| BabyBearField::from_nonreduced_u32(v);
+        let x = |i: usize| GKRAddress::BaseLayerWitness(i);
+
+        // Every coefficient kind (1, -1, 0, general) both opens an inner sum and accumulates.
+        let relation = CompiledMaxQuadraticGKRRelation {
+            quadratic_terms: vec![
+                (
+                    x(0),
+                    vec![(one, x(1)), (minus_one, x(2)), (c(7), x(3))].into(),
+                ),
+                (
+                    x(1),
+                    vec![(minus_one, x(0)), (one, x(4)), (zero, x(5))].into(),
+                ),
+                (
+                    x(2),
+                    vec![(c(123_456), x(2)), (minus_one, x(5)), (one, x(3))].into(),
+                ),
+                (x(5), vec![(zero, x(1)), (c(99), x(0))].into()),
+            ]
+            .into(),
+            linear_terms: vec![(one, x(0)), (minus_one, x(3)), (c(9), x(4)), (zero, x(2))].into(),
+            constant: c(42),
+        };
+        let sorted_addrs: Vec<GKRAddress> = (0..6).map(x).collect();
+        let evals: Vec<BabyBearExt4> = (0..6).map(|i| ext(20 + i)).collect();
+
+        let term = |coeff: BabyBearField, addr: &GKRAddress| {
+            let mut t = evals[addr_to_idx(addr, &sorted_addrs)];
+            t.mul_assign(&BabyBearExt4::from_base(coeff));
+            t
+        };
+        let mut expected = BabyBearExt4::from_base(relation.constant);
+        for (a, inner_terms) in relation.quadratic_terms.iter() {
+            let mut inner = BabyBearExt4::ZERO;
+            for (coeff, b) in inner_terms.iter() {
+                inner.add_assign(&term(*coeff, b));
+            }
+            inner.mul_assign(&evals[addr_to_idx(a, &sorted_addrs)]);
+            expected.add_assign(&inner);
+        }
+        for (coeff, addr) in relation.linear_terms.iter() {
+            expected.add_assign(&term(*coeff, addr));
+        }
+
+        let code = emit_max_quadratic_eval::<DefaultBabyBearField, BabyBearField>(
+            &relation,
+            "val",
+            &sorted_addrs,
+        );
+        let mut env = Env::new();
+        evaluate(code, &mut env, &evals);
+        assert_eq!(env["val"], expected);
+    }
+}

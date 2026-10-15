@@ -655,16 +655,14 @@ unsafe fn compress_block_reduced_rounds(
 impl Blake2RoundFunctionEvaluator {
     pub const SUPPORT_SPEC_SINGLE_ROUND: bool = false;
 
-    pub const SUPPORT_EXTERNAL_CHAINING_VALUE: bool = true;
-
-    /// Same as `run_round_function_with_input`, but the chaining value is `chaining_value`
-    /// instead of `self.state`, which is left untouched. `self.t` counts as usual.
+    /// Same as `run_round_function_with_input::<true>`, but the chaining value is
+    /// `chaining_value` instead of `self.state`, which is left untouched. `self.t` counts as usual.
     ///
     /// # Safety
     ///
     /// Same as `run_round_function_with_input`.
     #[inline(always)]
-    pub unsafe fn run_round_function_with_input_and_chaining_value<const REDUCED_ROUNDS: bool>(
+    pub unsafe fn run_round_function_with_input_and_chaining_value(
         &mut self,
         chaining_value: &mut [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS],
         input_buffer: &AlignedArray64<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>,
@@ -672,25 +670,7 @@ impl Blake2RoundFunctionEvaluator {
         last_round: bool,
     ) {
         self.t += (input_size_words * core::mem::size_of::<u32>()) as u32;
-        if REDUCED_ROUNDS {
-            compress_block_reduced_rounds(
-                chaining_value,
-                input_buffer.as_ptr(),
-                self.t,
-                last_round,
-            );
-        } else {
-            let extended_state = spec_round_function_full_rounds(
-                chaining_value,
-                self.t,
-                0xffffffff * last_round as u32,
-                input_buffer,
-            );
-            for i in 0..8 {
-                chaining_value[i] ^= extended_state[i];
-                chaining_value[i] ^= extended_state[i + 8];
-            }
-        }
+        compress_block_reduced_rounds(chaining_value, input_buffer.as_ptr(), self.t, last_round);
     }
 
     /// # Safety
