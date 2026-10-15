@@ -1,3 +1,4 @@
+import Airbender.Proofs.Bigint.ImportedSetup
 import Airbender.Proofs.Bigint.ArtifactChecks
 import Airbender.Review.Circuits.Bigint.Tables.Setup
 import Airbender.Review.Circuits.Bigint.Artifact
@@ -14,8 +15,7 @@ set_option maxHeartbeats 2000000
 private theorem low_byte_rows (index : Fin 1390592) (selected : (setupRow index).2.2 = 41) :
     (setupRow index).1 < 65536 ∧ (setupRow index).2.1 = (setupRow index).1 % 256 := by
   have size := index.isLt
-  unfold setupRow at selected ⊢
-  dsimp only at selected ⊢
+  rw [setup_row_characterization] at selected ⊢
   split_ifs at selected ⊢ <;> simp at selected ⊢
   omega
 
@@ -42,8 +42,7 @@ theorem fixed_row_values {p tag : Nat} [Fact p.Prime] (hp : 65536 ≤ p) (tagBou
     simpa only [Vector.getElem_map, Vector.getElem_mk, List.getElem_toArray,
       List.getElem_cons_succ, List.getElem_cons_zero] using eq
   have rowTagBound : (setupRow i).2.2 < p := by
-    unfold setupRow
-    dsimp only
+    rw [setup_row_characterization]
     split_ifs <;> simp <;> omega
   have tagEq : (setupRow i).2.2 = tag := by
     have eq := congrArg ZMod.val (tagField.symm.trans selected)

@@ -57,6 +57,20 @@ structure Imported (width : Nat) where
   program : Option Program
   deriving Repr
 
+/-- Compact literal data only after comparing every parsed element. These
+    constructors do not select a table recipe or infer unexported values. -/
+private def valuesSyntax (values : Array Nat) : CommandElabM (TSyntax `term) := do
+  if let some first := values[0]? then
+    if values.all (· == first) then
+      return ← `(Array.replicate $(quote values.size) $(quote first))
+    if (values.mapIdx fun i value => value == i).all id then
+      return ← `(Array.range $(quote values.size))
+    if (values.mapIdx fun i value => value == (first + i) % values.size).all id then
+      return ← `(Array.ofFn (fun i : Fin $(quote values.size) =>
+        ($(quote first) + i.val) % $(quote values.size)))
+  let values := values.map quote
+  `(#[$[$values],*])
+
 private def blockSyntax (block : Block) : CommandElabM (TSyntax `term) := do
   match block with
   | .affine length first step =>
@@ -64,18 +78,12 @@ private def blockSyntax (block : Block) : CommandElabM (TSyntax `term) := do
       else `(Int.negSucc $(quote (-step - 1).toNat))
     `(Airbender.Setup.Block.affine $(quote length) $(quote first) $step)
   | .dense values =>
-    let values := values.map quote
-    `(Airbender.Setup.Block.dense #[$[$values],*])
+    let values ← valuesSyntax values
+    `(Airbender.Setup.Block.dense $values)
   | .periodic repetitions stride values =>
     let stride ← if stride ≥ 0 then `(Int.ofNat $(quote stride.toNat))
       else `(Int.negSucc $(quote (-stride - 1).toNat))
-    let values ← if let some first := values[0]? then
-        if values.all (· == first) then
-          `(Array.replicate $(quote values.size) $(quote first))
-        else
-          let values := values.map quote
-          `(#[$[$values],*])
-      else `(#[])
+    let values ← valuesSyntax values
     `(Airbender.Setup.Block.periodic $(quote repetitions) $stride $values)
 
 private def columnSyntax (column : Column) : CommandElabM (TSyntax `term) := do
@@ -143,6 +151,21 @@ elab "import_setup_range " name:ident " from " path:str " virtual_range_bits " b
     | 19 => pure artifact.timestamp_range
     | _ => throwError "setup artifact exports only the native 16-/19-bit virtual ranges"
   emitData name artifact.trace_len 0 #[column] source
+
+/-- Import the native generic-table extent using exported region metadata.
+    Physical commitment padding is retained by `import_setup`; this view selects
+    exactly the real rows of the tagged generic table. -/
+elab "import_setup_generic " name:ident " from " path:str : command => do
+  let (artifact, source) ← readArtifact path.getString
+  let length := artifact.tables.foldl (fun extent region =>
+    max extent (region.offset + region.length)) 0
+  unless length > 0 do throwError "setup has no generic table regions"
+  emitData name length 0 artifact.columns source
+  let regions ← artifact.tables.mapM fun region =>
+    `(Airbender.Setup.Region.mk $(quote region.id) $(quote region.offset) $(quote region.length) $(quote region.width) $(quote region.key_columns))
+  let regionsName := mkIdent (name.getId.appendAfter "Regions")
+  elabCommand (← `(def $regionsName : Array Airbender.Setup.Region := #[$[$regions],*]))
+
 
 /-- Select a real table region and columns using the exported native ID/offset.
     Column selection is checked against the unpadded native table width. -/

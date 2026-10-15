@@ -75,14 +75,14 @@ theorem fiveTimesSevenSatisfies (high carryFlag : Bool) :
   all_goals solve
     | decide
     | (apply Verification.range16_contains; decide)
-    | (refine ⟨⟨0, by decide⟩, ?_⟩; norm_num [Bigint.setupTable, Bigint.setupRow])
-    | (refine ⟨⟨262144, by decide⟩, ?_⟩; norm_num [Bigint.setupTable, Bigint.setupRow])
-    | (refine ⟨⟨1310720, by decide⟩, ?_⟩; norm_num [Bigint.setupTable, Bigint.setupRow])
-    | (refine ⟨⟨1312768, by decide⟩, ?_⟩; norm_num [Bigint.setupTable, Bigint.setupRow])
-    | (refine ⟨⟨1316864, by decide⟩, ?_⟩; norm_num [Bigint.setupTable, Bigint.setupRow])
-    | (refine ⟨⟨1325056, by decide⟩, ?_⟩; norm_num [Bigint.setupTable, Bigint.setupRow])
-    | (refine ⟨⟨1325061, by decide⟩, ?_⟩; norm_num [Bigint.setupTable, Bigint.setupRow])
-    | (refine ⟨⟨1325063, by decide⟩, ?_⟩; norm_num [Bigint.setupTable, Bigint.setupRow])
+    | (refine ⟨⟨0, by decide⟩, ?_⟩; norm_num [Bigint.setupTable, Bigint.Proofs.setup_row_characterization])
+    | (refine ⟨⟨262144, by decide⟩, ?_⟩; norm_num [Bigint.setupTable, Bigint.Proofs.setup_row_characterization])
+    | (refine ⟨⟨1310720, by decide⟩, ?_⟩; norm_num [Bigint.setupTable, Bigint.Proofs.setup_row_characterization])
+    | (refine ⟨⟨1312768, by decide⟩, ?_⟩; norm_num [Bigint.setupTable, Bigint.Proofs.setup_row_characterization])
+    | (refine ⟨⟨1316864, by decide⟩, ?_⟩; norm_num [Bigint.setupTable, Bigint.Proofs.setup_row_characterization])
+    | (refine ⟨⟨1325056, by decide⟩, ?_⟩; norm_num [Bigint.setupTable, Bigint.Proofs.setup_row_characterization])
+    | (refine ⟨⟨1325061, by decide⟩, ?_⟩; norm_num [Bigint.setupTable, Bigint.Proofs.setup_row_characterization])
+    | (refine ⟨⟨1325063, by decide⟩, ?_⟩; norm_num [Bigint.setupTable, Bigint.Proofs.setup_row_characterization])
 
 -- (2^256 - 1) * 2: low half is 2^256 - 2, high half is one.
 def overflowRow : Nat → ZMod babyBearModulus := fun column =>
@@ -107,19 +107,19 @@ theorem overflowSatisfies :
   all_goals solve
     | decide
     | (apply Verification.range16_contains; decide)
-    | (exact ⟨⟨0, by decide⟩, by decide⟩)
-    | (exact ⟨⟨512, by decide⟩, by decide⟩)
-    | (exact ⟨⟨262144, by decide⟩, by decide⟩)
-    | (exact ⟨⟨263168, by decide⟩, by decide⟩)
-    | (exact ⟨⟨1310720, by decide⟩, by decide⟩)
-    | (exact ⟨⟨1310721, by decide⟩, by decide⟩)
-    | (exact ⟨⟨1312768, by decide⟩, by decide⟩)
-    | (exact ⟨⟨1312769, by decide⟩, by decide⟩)
-    | (exact ⟨⟨1316864, by decide⟩, by decide⟩)
-    | (exact ⟨⟨1316865, by decide⟩, by decide⟩)
-    | (exact ⟨⟨1325056, by decide⟩, by decide⟩)
-    | (exact ⟨⟨1325058, by decide⟩, by decide⟩)
-    | (exact ⟨⟨1390591, by decide⟩, by decide⟩)
+    | (refine ⟨⟨0, by decide⟩, ?_⟩; simp only [Bigint.Proofs.setup_row_characterization]; try decide)
+    | (refine ⟨⟨512, by decide⟩, ?_⟩; simp only [Bigint.Proofs.setup_row_characterization]; try decide)
+    | (refine ⟨⟨262144, by decide⟩, ?_⟩; simp only [Bigint.Proofs.setup_row_characterization]; try decide)
+    | (refine ⟨⟨263168, by decide⟩, ?_⟩; simp only [Bigint.Proofs.setup_row_characterization]; try decide)
+    | (refine ⟨⟨1310720, by decide⟩, ?_⟩; simp only [Bigint.Proofs.setup_row_characterization]; try decide)
+    | (refine ⟨⟨1310721, by decide⟩, ?_⟩; simp only [Bigint.Proofs.setup_row_characterization]; try decide)
+    | (refine ⟨⟨1312768, by decide⟩, ?_⟩; simp only [Bigint.Proofs.setup_row_characterization]; try decide)
+    | (refine ⟨⟨1312769, by decide⟩, ?_⟩; simp only [Bigint.Proofs.setup_row_characterization]; try decide)
+    | (refine ⟨⟨1316864, by decide⟩, ?_⟩; simp only [Bigint.Proofs.setup_row_characterization]; try decide)
+    | (refine ⟨⟨1316865, by decide⟩, ?_⟩; simp only [Bigint.Proofs.setup_row_characterization]; try decide)
+    | (refine ⟨⟨1325056, by decide⟩, ?_⟩; simp only [Bigint.Proofs.setup_row_characterization]; try decide)
+    | (refine ⟨⟨1325058, by decide⟩, ?_⟩; simp only [Bigint.Proofs.setup_row_characterization]; try decide)
+    | (refine ⟨⟨1390591, by decide⟩, ?_⟩; simp only [Bigint.Proofs.setup_row_characterization]; try decide)
 
 def smallWord (value : Nat) : Vector Nat 16 :=
   Vector.ofFn fun i => if i.val = 0 then value else 0
