@@ -176,26 +176,35 @@ fn one_setup_proves_standard_and_l1_feeder() {
     let mut prover =
         CpuExecutionProver::with_configuration(CpuExecutionProverConfiguration::default());
     let (binary, text) = workload("basic_fibonacci", "app");
-    let handle = prover.add_binary(
+    let standard_handle = prover.add_binary(
         ExecutionKind::Unified,
+        MachineType::Reduced,
+        binary.clone(),
+        text.clone(),
+        None,
+        &[ProofProfile::Standard],
+    );
+    let feeder_handle = prover.add_binary(
+        ExecutionKind::Unified22,
         MachineType::Reduced,
         binary,
         text,
         None,
-        &[ProofProfile::Standard, ProofProfile::L1Feeder],
+        &[ProofProfile::L1Feeder],
     );
-    let prove_with = |commitment_mode, profile| {
+    let prove_with = |handle: &execution_prover::BinaryHandle, commitment_mode, profile| {
         let result = prover.commit_memory_and_prove(
             1,
-            &handle,
+            handle,
             QuasiUARTSource::new_with_reads(BASIC_FIBONACCI_INPUTS.to_vec()),
             commitment_mode,
             profile,
         );
-        program_prover::assemble_program_proof(&prover.program_artifacts(&handle, profile), result)
+        program_prover::assemble_program_proof(&prover.program_artifacts(handle, profile), result)
     };
 
     let (standard_proof, standard_setups) = prove_with(
+        &standard_handle,
         CommitmentMode::SeparateMemoryAndWitness,
         ProofProfile::Standard,
     );
@@ -205,6 +214,7 @@ fn one_setup_proves_standard_and_l1_feeder() {
     );
 
     let (feeder_proof, feeder_setups) = prove_with(
+        &feeder_handle,
         CommitmentMode::MergedMemoryAndWitness,
         ProofProfile::L1Feeder,
     );
@@ -218,30 +228,30 @@ fn one_setup_proves_standard_and_l1_feeder() {
 }
 
 fn verify_feeder_base_proof(stream: Vec<u32>) -> [u32; 16] {
-    use full_statement_verifier::{
-        delegation_params, imports, statement_common, unified_circuit_statement,
+    use full_statement_verifier::unified_circuit_statement::{
+        address_high_bits_shift, verify_full_statement_for_unified_circuit_without_delegations,
     };
+    use full_statement_verifier::{imports, statement_common};
     use verifier_common::{errors::DebugErrorCreator, USE_REDUCED_BLAKE2_ROUNDS};
 
-    mod delegation_setups {
-        use verifier_common::{prover::definitions::MerkleTreeCap, DelegationCircuitSetupData};
-        include!("../../circuit_defs/setups/generated/delegation_parameters_100.rs");
-    }
+    use imports::unified_reduced_machine_sec_100_l1_feeder as feeder;
 
     std::thread::Builder::new()
         .stack_size(1 << 27)
         .spawn(move || unsafe {
             let mut it = stream.into_iter();
-            let setup = statement_common::read_setup_cap::<_, { prover::definitions::DEFAULT_CAP_SIZE }>(&mut it);
-            unified_circuit_statement::verify_full_statement_for_unified_circuit::<
-                _, DebugErrorCreator, true, USE_REDUCED_BLAKE2_ROUNDS, _, _
-            >(
-                &setup,
-                imports::unified_reduced_machine_sec_100_l1_feeder::verify::<_, DebugErrorCreator>,
-                &delegation_setups::DELEGATION_CIRCUITS_SETUP_PARAMS,
-                &delegation_params::all_delegation_circuit_verifiers_sec_100::<_, DebugErrorCreator>(),
-                &mut it,
-            ).expect("feeder base proof must verify")
+            let setup = statement_common::read_setup_cap::<_, { feeder::CAP_SIZE }>(&mut it);
+            verify_full_statement_for_unified_circuit_without_delegations::<
+                _,
+                DebugErrorCreator,
+                true,
+                USE_REDUCED_BLAKE2_ROUNDS,
+                { feeder::CAP_SIZE },
+                { address_high_bits_shift(feeder::TRACE_LEN_LOG2) },
+                { 1u64 << feeder::TRACE_LEN_LOG2 },
+                _,
+            >(&setup, feeder::verify::<_, DebugErrorCreator>, &mut it)
+            .expect("feeder base proof must verify")
         })
         .expect("spawn verifier thread")
         .join()

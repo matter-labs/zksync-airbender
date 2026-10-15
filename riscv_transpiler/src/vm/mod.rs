@@ -140,6 +140,9 @@ impl RamPeek for [u32] {
 }
 
 pub trait RAM: RamPeek {
+    /// Execution ROM boundary used by delegation adapters. Existing RAM
+    /// implementations retain the regular circuit geometry by default.
+    const ROM_BYTE_SIZE: usize = common_constants::ROM_BYTE_SIZE;
     const REPLAY_NON_DETERMINISM_VIA_RAM_STUB: bool = false;
 
     fn read_word(&mut self, address: u32, timestamp: TimestampScalar) -> (TimestampScalar, u32);

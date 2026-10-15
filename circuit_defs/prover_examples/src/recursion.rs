@@ -780,7 +780,7 @@ mod tests {
         );
 
         let feeder_config =
-            prover::gkr::prover_config::example_configs::l1_feeder_config_for_2_23();
+            prover::gkr::prover_config::example_configs::l1_feeder_config_for_2_22();
         println!(
             "[l1-feeder] config: base lde {}, whir steps {:?}, queries {:?}, pow {:?}, \
              intermediate lde factors {:?}",

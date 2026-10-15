@@ -10,6 +10,15 @@ mod tests;
 #[cfg(all(target_arch = "riscv32", feature = "boot_sequence"))]
 pub mod boot_sequence;
 
+/// Execution ROM of this guest; the circuit being verified can use a different ROM.
+#[cfg(target_arch = "riscv32")]
+pub const GUEST_ROM_GEOMETRY: common_constants::RomGeometry =
+    if cfg!(feature = "ram_16mb_no_heap_wrap") {
+        common_constants::L1_WRAP_ROM
+    } else {
+        common_constants::REGULAR_ROM
+    };
+
 /// Exit sequence produced by `zksync_os_finish_success_extended`
 pub const EXIT_SEQUENCE: &[u32] = &[
     0x000d2503, //	lw	a0, 0x0(s10)

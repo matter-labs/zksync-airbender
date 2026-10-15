@@ -36,6 +36,7 @@ unrolled_circuit_names=(
     "mul_div_unsigned"
     "shift_binary"
     "unified_reduced_machine"
+    "unified_reduced_machine_2_22"
 )
 
 for CIRCUIT_NAME in "${circuit_names[@]}"; do

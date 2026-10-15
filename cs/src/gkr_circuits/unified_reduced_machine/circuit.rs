@@ -691,6 +691,8 @@ mod test {
     use test_utils::skip_if_ci;
 
     const UNIFIED_CIRCUIT_TRACE_LEN_LOG2: usize = 23;
+    /// The L1 feeder layers' unified circuit (`unified_reduced_machine_2_22`).
+    const L1_FEEDER_UNIFIED_CIRCUIT_TRACE_LEN_LOG2: usize = 22;
     const LARGE_FIELD_UNIFIED_CIRCUIT_TRACE_LEN_LOG2: usize = 22;
 
     use super::*;
@@ -821,6 +823,41 @@ mod test {
         serialize_to_file(
             &artifact,
             "compiled_circuits/unified_reduced_machine_layout_no_caches_gkr.json",
+        );
+    }
+
+    /// The 2^22 unified circuit of the L1 feeder layers: same definition,
+    /// trace-dependent artifact (lookup capacity, inits-and-teardowns window
+    /// bytes), its own `gkr_circuits!`-style paths.
+    #[test]
+    fn compile_unified_reduced_machine_2_22_into_gkr() {
+        skip_if_ci!();
+        use ::field::baby_bear::base::BabyBearField;
+
+        let artifact = build_unified_artifact::<BabyBearField>(
+            true,
+            L1_FEEDER_UNIFIED_CIRCUIT_TRACE_LEN_LOG2,
+            1,
+        );
+        serialize_to_file(
+            &artifact,
+            "compiled_circuits/unified_reduced_machine_2_22_layout_gkr.json",
+        );
+    }
+
+    #[test]
+    fn compile_unified_reduced_machine_2_22_into_no_caches_gkr() {
+        skip_if_ci!();
+        use ::field::baby_bear::base::BabyBearField;
+
+        let artifact = build_unified_artifact::<BabyBearField>(
+            false,
+            L1_FEEDER_UNIFIED_CIRCUIT_TRACE_LEN_LOG2,
+            1,
+        );
+        serialize_to_file(
+            &artifact,
+            "compiled_circuits/unified_reduced_machine_2_22_layout_no_caches_gkr.json",
         );
     }
 

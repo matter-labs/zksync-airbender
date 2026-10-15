@@ -49,9 +49,8 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         }
         match commitment_mode {
             CommitmentMode::SeparateMemoryAndWitness => {}
-            CommitmentMode::MergedMemoryAndWitness => assert_eq!(
-                binary_holder.execution_kind,
-                ExecutionKind::Unified,
+            CommitmentMode::MergedMemoryAndWitness => assert!(
+                binary_holder.execution_kind.is_unified(),
                 "MergedMemoryAndWitness requires Unified execution; Unrolled is unsupported"
             ),
             CommitmentMode::MergedAndPackedMemoryAndWitness { .. } => {
@@ -127,7 +126,10 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         };
         for sequence_id in trivial_unified_inits_and_teardowns {
             let data = InitsAndTeardownsData {
-                circuit_type: CircuitType::Unrolled(UnrolledCircuitType::Unified),
+                circuit_type: binary_holder
+                    .execution_kind
+                    .unified_circuit()
+                    .expect("trivial unified inits-and-teardowns belong to a unified execution"),
                 sequence_id,
                 inits_and_teardowns: None,
             };
@@ -152,7 +154,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                         .insert(family_idx, BTreeMap::new());
                 }
             }
-            ExecutionKind::Unified => {
+            ExecutionKind::Unified | ExecutionKind::Unified22 => {
                 let family_idx = UnrolledCircuitType::Unified.get_family_idx();
                 acc.circuit_families_memory_caps
                     .insert(family_idx, BTreeMap::new());
@@ -242,11 +244,10 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         work_results_sender: &Sender<WorkerResult<B::Allocator>>,
         abort: &Arc<AtomicBool>,
     ) {
-        let unified_circuit = if binary_holder.execution_kind == ExecutionKind::L1Wrap {
-            CircuitType::L1Wrap
-        } else {
-            CircuitType::Unrolled(UnrolledCircuitType::Unified)
-        };
+        let unified_circuit = binary_holder
+            .execution_kind
+            .unified_circuit()
+            .unwrap_or(CircuitType::Unrolled(UnrolledCircuitType::Unified));
         let replayers_count = self.configuration.replay_worker_threads_count;
         let execution_kind = binary_holder.execution_kind;
         let machine_type = binary_holder.machine_type;
@@ -311,7 +312,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                         ram_config,
                         assume_canonical_mop_inputs,
                     ),
-                    ExecutionKind::Unified | ExecutionKind::L1Wrap => {
+                    ExecutionKind::Unified | ExecutionKind::Unified22 | ExecutionKind::L1Wrap => {
                         run_simulator::<_, UnifiedTracingType, _, _, _>(
                             batch_id,
                             machine_type,
@@ -363,7 +364,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                     work_results_sender,
                     abort,
                 ),
-                ExecutionKind::Unified | ExecutionKind::L1Wrap => {
+                ExecutionKind::Unified | ExecutionKind::Unified22 | ExecutionKind::L1Wrap => {
                     run_replayer::<UnifiedTracingType, _, _>(
                         batch_id,
                         worker_id,

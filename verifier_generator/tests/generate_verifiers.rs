@@ -237,26 +237,32 @@ fn generate_verifier_for_circuit_with_config<MW: FieldWrapper<BaseField = BabyBe
     write_and_fmt(&format!("{}/mod.rs", dir), &mod_rs);
 }
 
-/// High-LDE "L1 feeder" unified verifier: same circuit and 100-bit target as
-/// `unified_reduced_machine` at sec_100, but every oracle domain sits at
-/// BabyBear's two-adicity cap (base LDE 16; round-0 queries 87 -> 21), the
-/// schedule terminates at a plain-text 2^3 tail, and the base commitment is
-/// the MERGED memory+witness tree (one Merkle path per round-0 query instead
-/// of two). Generated into `.../unified_reduced_machine/sec_100_l1_feeder`.
+/// The L1 feeder unified verifier: the 2^22 `unified_reduced_machine_2_22`
+/// circuit under `l1_feeder_config_for_2_22` (every oracle domain at
+/// BabyBear's two-adicity cap, base LDE 32, cap 32, a plain-text 2^3 tail)
+/// with the MERGED memory+witness base commitment. Generated into
+/// `.../unified_reduced_machine_2_22/sec_100_l1_feeder`; the circuit is not
+/// a `gkr_circuits!` catalogue entry, so no standard verifier exists for it.
 #[test]
 fn unified_reduced_machine_l1_feeder() {
-    let circuit = CIRCUITS
-        .iter()
-        .find(|c| c.name == "unified_reduced_machine")
-        .unwrap();
-    let prover_config = prover::gkr::prover_config::example_configs::l1_feeder_config_for_2_23();
+    let circuit = CircuitData::new(
+        "unified_reduced_machine_2_22",
+        "../circuit_defs/unrolled_circuits/unified_reduced_machine_2_22",
+    );
+    let prover_config = prover::gkr::prover_config::example_configs::l1_feeder_config_for_2_22();
+    let compiled = circuit.compiled_circuit();
     assert_eq!(
-        circuit.compiled_circuit().trace_len.trailing_zeros(),
-        23,
-        "the L1 feeder config is computed for the 2^23 unified circuit"
+        compiled.trace_len.trailing_zeros() as usize,
+        prover_config.trace_len_log2,
+        "the L1 feeder config is computed for the 2^22 unified circuit"
+    );
+    assert_eq!(compiled.memory_layout.teardown_sets.len(), 2);
+    assert_eq!(
+        compiled.memory_layout.inits_and_teardowns_word_bits,
+        Some(2)
     );
     generate_verifier_for_circuit_with_config::<DefaultBabyBearField>(
-        circuit,
+        &circuit,
         &prover_config,
         &prover::gkr::prover::CommitmentMode::MergedMemoryAndWitness,
         "sec_100_l1_feeder",

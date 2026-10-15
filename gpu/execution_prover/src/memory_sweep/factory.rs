@@ -232,7 +232,7 @@ fn build_tracing_data(circuit: CircuitType, rows: usize) -> CudaResult<Option<Tr
                 },
             )?)),
         )),
-        CircuitType::Unrolled(UnrolledCircuitType::Unified) => Ok(Some(TracingDataHost::Unrolled(
+        CircuitType::Unrolled(UnrolledCircuitType::Unified | UnrolledCircuitType::Unified22) => Ok(Some(TracingDataHost::Unrolled(
             UnrolledTracingDataHost::Unified(pinned_filled_trace(
                 rows,
                 UnifiedOpcodeTracingDataWithTimestamp::NonMem(
@@ -332,7 +332,9 @@ impl SyntheticInputFactory {
             }
             CircuitType::Unrolled(unrolled) => {
                 let machine_type = match unrolled {
-                    UnrolledCircuitType::Unified => MachineType::Reduced,
+                    UnrolledCircuitType::Unified | UnrolledCircuitType::Unified22 => {
+                        MachineType::Reduced
+                    }
                     _ => MachineType::FullUnsigned,
                 };
                 build_unrolled_circuit_precomputation(
@@ -395,7 +397,9 @@ fn carries_inits_and_teardowns(circuit: CircuitType) -> bool {
     matches!(
         circuit,
         CircuitType::Unrolled(
-            UnrolledCircuitType::InitsAndTeardowns | UnrolledCircuitType::Unified
+            UnrolledCircuitType::InitsAndTeardowns
+                | UnrolledCircuitType::Unified
+                | UnrolledCircuitType::Unified22
         )
     )
 }

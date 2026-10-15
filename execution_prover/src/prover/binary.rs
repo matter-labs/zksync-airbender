@@ -37,10 +37,25 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         if profiles.contains(&ProofProfile::L1Feeder) {
             assert_eq!(
                 execution_kind,
-                ExecutionKind::Unified,
-                "ProofProfile::L1Feeder requires ExecutionKind::Unified"
+                ExecutionKind::Unified22,
+                "ProofProfile::L1Feeder requires ExecutionKind::Unified22"
             );
         }
+        match execution_kind {
+            ExecutionKind::Unified => assert_eq!(
+                profiles,
+                [ProofProfile::Standard],
+                "ExecutionKind::Unified requires exactly ProofProfile::Standard"
+            ),
+            ExecutionKind::Unified22 => assert_eq!(
+                profiles,
+                [ProofProfile::L1Feeder],
+                "ExecutionKind::Unified22 requires exactly ProofProfile::L1Feeder"
+            ),
+            ExecutionKind::Unrolled | ExecutionKind::L1Wrap => {}
+        }
+        self.backend
+            .admit_binary(execution_kind, machine_type, &profiles);
         let key = self.next_binary_id;
         self.next_binary_id += 1;
         info!("PROVER inserting binary with key {key:?}");
@@ -70,13 +85,17 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                         .map(UnrolledCircuitType::NonMemory);
                 memory.chain(non_memory).collect_vec()
             }
-            ExecutionKind::Unified => {
+            ExecutionKind::Unified | ExecutionKind::Unified22 => {
                 assert_eq!(
                     machine_type,
                     MachineType::Reduced,
-                    "Unified execution kind is only supported for Reduced machine type"
+                    "Unified execution kinds are only supported for Reduced machine type"
                 );
-                vec![UnrolledCircuitType::Unified]
+                let CircuitType::Unrolled(circuit_type) = execution_kind.unified_circuit().unwrap()
+                else {
+                    unreachable!()
+                };
+                vec![circuit_type]
             }
             ExecutionKind::L1Wrap => vec![],
         };

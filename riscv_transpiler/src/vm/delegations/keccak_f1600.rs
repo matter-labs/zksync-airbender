@@ -118,10 +118,7 @@ pub(crate) fn keccak_f1600_call<C: Counters, S: Snapshotter<C>, R: RAM, E: Execu
     let x10 = state.registers[10].value;
     let x11 = state.registers[11].value;
     debug_assert_eq!(state.timestamp % 4, 0);
-    assert!(
-        x11 as usize >= common_constants::rom::ROM_BYTE_SIZE,
-        "state ptr is not in RAM"
-    );
+    assert!(x11 as usize >= R::ROM_BYTE_SIZE, "state ptr is not in RAM");
     assert_eq!(x11 % 256, 0, "state ptr is not aligned");
     assert_eq!(x10, KECCAK_F1600_INITIAL_CONTROL_VALUE);
 

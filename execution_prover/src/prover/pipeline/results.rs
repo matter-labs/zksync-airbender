@@ -129,7 +129,7 @@ fn enqueue_ready_tracing_data<B: ExecutionBackend>(
         CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
             panic!("tracing data can not have the inits and teardowns circuit_type")
         }
-        CircuitType::Unrolled(UnrolledCircuitType::Unified) => {
+        CircuitType::Unrolled(UnrolledCircuitType::Unified | UnrolledCircuitType::Unified22) => {
             let sequence_id = data.sequence_id;
             assert!(!unpaired_unified_tracing_data.contains_key(&sequence_id));
             if let Some(inits_and_teardowns) =
@@ -213,7 +213,9 @@ impl<A: GoodAllocator> ResultAccumulator<A> {
                     let request = request_context.build_work_request(prover, Some(data), None);
                     work_requests.push_back(request);
                 }
-                CircuitType::Unrolled(UnrolledCircuitType::Unified) => {
+                CircuitType::Unrolled(
+                    UnrolledCircuitType::Unified | UnrolledCircuitType::Unified22,
+                ) => {
                     let sequence_id = data.sequence_id;
                     if sequence_id < self.trivial_unified_inits_and_teardowns_count {
                         assert!(data.inits_and_teardowns.is_none());

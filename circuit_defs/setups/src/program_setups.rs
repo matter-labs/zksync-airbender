@@ -101,8 +101,32 @@ pub fn compute_unified_program_setups_for_profile<A: GoodAllocator + 'static>(
     profile: ProofProfile,
     worker: &Worker,
 ) -> Setups {
-    let unified_setup =
-        unified_reduced_machine_circuit_setup::<A>(binary_image, text_section, use_caches, worker);
+    let unified_setup = match profile {
+        ProofProfile::Standard => unified_reduced_machine_circuit_setup::<A>(
+            binary_image,
+            text_section,
+            use_caches,
+            worker,
+        ),
+        ProofProfile::L1Feeder => unified_reduced_machine_2_22_circuit_setup::<A>(
+            binary_image,
+            text_section,
+            use_caches,
+            worker,
+        ),
+        ProofProfile::L1Wrap => {
+            panic!("ProofProfile::L1Wrap setups are built by unified_reduced_machine_proth120")
+        }
+    };
+    assert_eq!(
+        unified_setup.trace_len.trailing_zeros() as usize,
+        profile
+            .prover_config(
+                unified_setup.trace_len.trailing_zeros() as usize,
+                security_level
+            )
+            .trace_len_log2
+    );
     commit_setup_params(
         core::iter::once((
             common_constants::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX as u32,
@@ -143,6 +167,7 @@ fn commit_setup_params(
                 family_idx,
                 trace_len as u32,
                 setup_commitment.get_cap(),
+                prover_config.cap_size,
             ),
         );
     }
