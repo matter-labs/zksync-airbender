@@ -23,3 +23,4 @@ import Airbender.Review.Trace.Soundness
 import Airbender.Review.Trace.Padding
 import Airbender.Review.Trace.Modular.ExternalTheorems
 import Airbender.Review.Trace.UnifiedReduced.ModularExecution
+import Airbender.Review.Trace.ExternalBoundaries

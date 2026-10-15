@@ -17,6 +17,84 @@ An **unresolved binding** identifies a condition not yet connected to general
 acceptance. A **profile difference** is intentional semantic scope. These labels
 are not interchangeable with a full verifier or cryptographic exploit.
 
+## Finding status versus conditional proof coverage
+
+**An assumption can close a conditional proof obligation while the finding stays
+open.** Temporary assumptions that exclude an accepted bad case are recorded as
+such; they do not establish that the circuit/verifier rejects it. An acknowledged
+implementation bug needs a fix and validation, or evidence that the relevant
+acceptance path already enforces the missing property. An open PR is neither.
+
+Intended external interfaces (such as canonical statement words and contribution
+masking), supported public profiles, and properties already derived in stronger
+claims are separate categories. They are not automatically bugs. Conversely, a
+missing validation check must not be relabeled an intended interface merely
+because Lean can take it as a premise. No full malicious-proof exploit is needed
+to retain a demonstrated source defect or accepted-relation discrepancy.
+
+### Linear and open-PR review — 15 October 2026
+
+The five exported Linear issues and **all live comments** were read. Source was
+checked against this working tree at `3f4c7d67d`; PR patches are proposals at their
+inspected heads, not assumed fixes. This is the disposition of the reviewed cases,
+not a claim that every open PR or every backend has been audited.
+
+| Case | Classification and evidence | What remains open |
+| --- | --- | --- |
+| [AIH-334](https://linear.app/matterlabs/issue/AIH-334) — duplicate initialization windows | **Acknowledged implementation bug.** The comment says “Valid in general.” The [EVM generator](../../verifier_evm/src/generator/circuit_yul.rs) reads prover-selected top indices and uses them without distinctness validation. The [Rust unified statement](../../full_statement_verifier/src/unified_circuit_statement.rs) separately checks range and increasing order. | Fix EVM validation for its own geometry. The temporary [distinct-selection contract](Airbender/Review/Helpers/Context/ExternalBoundary/Initialization.lean) is not enforced there. For the reported 2^22-word/four-byte geometry, valid sparse windows 254/255 must remain valid; copying a different verifier's ceiling 64 would be incorrect. Reversed distinct windows alone are not the reported defect. |
+| [AIH-336](https://linear.app/matterlabs/issue/AIH-336) — queryable decoder filler | **Acknowledged setup-validation bug; concrete part of F09.** The comment accepts zero padding reachable by a PC lookup as a valid point. [Setup construction](../../prover/src/gkr/prover/setup.rs) starts with zero-filled columns, while the [family compiler](../../cs/src/gkr_compiler/family_circuit.rs) can omit a decoder table ID. | An unqueryable filler and agreement of committed, cached, scalar and vectorized consumers are needed. The temporary [decoder contract](Airbender/Review/Helpers/Context/ExternalBoundary/Decoder.lean) describes a corrected setup; it does not describe an implemented fix. No full invalid-proof acceptance is claimed. |
+| [AIH-339](https://linear.app/matterlabs/issue/AIH-339) — zero-clock workers | **Accepted relation gap, F03; implementation enforcement remains unresolved.** The comments explain caller-to-worker accounting and unique issued clocks. They do not establish the converse that every active worker has a caller, and do not rule out the checked zero-clock state change. | Fix or independently validate full worker-to-caller enforcement. The temporary [occurrence ledger](Airbender/Review/Helpers/Context/ExternalBoundary/Requests.lean) supplies that missing condition; the native cancelling-token permutation does not imply it. |
+| [AIH-113](https://linear.app/matterlabs/issue/AIH-113) — dropped scaled pointer range check | **Historical compiler bug with repair present in the inspected source.** [Delegation compilation](../../cs/src/gkr_compiler/delegation_circuit.rs) now passes the retained range vector into [memory lowering](../../cs/src/gkr_compiler/delegation_mem_accesses.rs), which pushes the scaled check into it. No live comments. | Do not assume every generated/cached artifact includes that repair. Compiled/artifact correspondence remains an external fidelity obligation; no new pointer-alignment assumption or newly discovered current-source bug is asserted. |
+| [AIH-315](https://linear.app/matterlabs/issue/AIH-315) — WHIR randomness reuse | **Acknowledged transcript/protocol bug.** The live comment accepts the freshness issue while noting no known soundness proof for the construction. [BLAKE2s drawing](../../transcript/src/blake2s.rs) copies the current seed before advancing and leaves the last returned block in the seed. | Validate/fix the affected WHIR draw schedule across producer and verifier. A freshness assumption would leave the bug open; no such assumption or cryptographic proof is added here. The report does not establish a full forged proof. |
+| F02 — bigint controls | **Accepted native/reference discrepancy.** Controls 0 and 65537 violate the pinned call ABI even in initialized caller cycles. | The temporary [control contract](Airbender/Review/Helpers/Context/ExternalBoundary/BigintABI.lean) selects a valid command for conditional arithmetic only. Actual control validation and full invalid-call/reference behavior still need a fix or justified acceptance binding. |
+| F04 — worker ROM | **Accepted native/reference discrepancy.** Supported COPY with ROM pointers can read zero shadows instead of public bytes; the VM's successful-call ABI rejects those pointers. | The temporary [RAM-port contract](Airbender/Review/Helpers/Context/ExternalBoundary/WorkerRAM.lean) excludes the case for conditional transport. General native acceptance has not been shown to enforce it. |
+| [PR #531](https://github.com/matter-labs/zksync-airbender/pull/531) — recursive output and branch scratch | **Actual source defects addressed by a proposal, still open here.** The [base entrypoint](../../tools/gkr_verifier/src/common_fsv_unified_base_sec_100.rs) discards verified registers and returns a constant; the [branch witness path](../../cs/src/gkr_circuits/unified_reduced_machine/jump_branch_slt.rs) reads shared field scratch as Boolean before guarding branch selection. The latter is a witness-generation defect, not by itself an acceptance exploit. | Review/apply and validate the actual fixes. No output-equality or Boolean-scratch assumption closes them. The PR itself notes validation/regeneration pending after a transcript change. Its other field/recursion fixes require their own target-specific validation. |
+| [PR #316](https://github.com/matter-labs/zksync-airbender/pull/316) — reduced-load alignment / recursive word 7 | **Reported implementation bugs in another circuit/verifier path.** The patch adds alignment constraints and rejects recursive output words omitted from hashing. | Check the affected v2 path and tests before claiming a repair; the current richer v3 FV relation and its existing alignment proof do not certify that path. |
+| [Private PR #8](https://github.com/matter-labs/zksync-airbender-private/pull/8) — FRI degree slack | **Reported protocol bug with a proposed protocol change.** Producer/verifier patches and comments were reviewed; reported CPU tests do not establish protocol soundness or reproducible recursive artifacts. | Cryptographic analysis, producer/verifier agreement and artifact reproducibility remain open for that target. No degree-bound assumption is treated as a fix. |
+
+F01's typed verifier-PC interface and F05's contribution-mask interface have
+inspected implementation mechanisms, with Rust/argument refinement still external;
+their conditional logical results remain checked. F06 is an explicit project/Sail
+profile difference. F07/F08's complete-protocol profiles are scope conditions, with
+the zero-clock exception retained under F03. F09's general extraction/fidelity
+obligation is distinct from its concrete AIH-336 bug. F10 depends on the unresolved
+F02–F04 semantic connections and is not closed by the temporary contracts.
+
+**Assessment of the Linear comments.** All five comments across these five issues
+were read; AIH-113 has none, and no comment pages remained.
+
+- **AIH-334, Aleksandr Vlasov, 1 October:** agree that the issue is valid in
+  general. Hardcoding production windows is a possible fix only if the actual
+  verifier pins valid, disjoint windows for its geometry. Assuming distinctness
+  in Lean while accepting duplicate prover-selected indices is not that fix.
+- **AIH-336, Aleksandr Vlasov, 1 October:** agree with replacing reachable zero
+  filler by a value outside the active query domain. The proposed field-minus-one
+  sentinel additionally needs the guarded limb's range and agreement of all setup
+  consumers; changing just one representation is insufficient.
+- **AIH-339, Aleksandr Vlasov, both 1 October comments:** the initial clarification
+  request and subsequent caller/worker explanation were both considered. The
+  explanation correctly establishes a worker for each issued call and unique
+  issued clocks. **I disagree with treating that argument as sufficient to dismiss
+  the finding:** a zero-clock worker's read/write virtual tokens coincide without
+  any call. Initialized physical matching excludes two such workers, but the
+  checked single-worker state change remains. This is a limitation of the
+  argument's scope, not a contradiction of its caller-to-worker implication.
+- **AIH-315, Yoav Eshel, 8 October:** agree that the reported digest reuse should
+  be treated as a bug needing fresh-digest validation. His comment explicitly
+  notes the absence of a known soundness proof and cites WHIR construction 5.1.
+  This assessment does not independently prove the paper comparison, a protocol
+  attack, or that any proposed transcript patch resolves all producer/verifier
+  schedules. No disagreement with the comment's stated caution.
+
+Other reviewed PRs do not certify this target: [#527](https://github.com/matter-labs/zksync-airbender/pull/527)
+changes the transcript protocol; [#209](https://github.com/matter-labs/zksync-airbender/pull/209)
+hardens arithmetic in the older Mersenne31 path; [#161](https://github.com/matter-labs/zksync-airbender/pull/161)
+changes CLI proof selection. [#426](https://github.com/matter-labs/zksync-airbender/pull/426)
+contains historical review examples, which are leads rather than evidence of a
+current defect or repair. The PDF in [#301](https://github.com/matter-labs/zksync-airbender/pull/301)
+and the full merge in [private #17](https://github.com/matter-labs/zksync-airbender-private/pull/17)
+were not audited. No Linear state or PR was changed.
+
 ## Implementation update: issued round coverage and wrapped preparation
 
 Update verified: 14 October 2026. Round coverage checkpoint: `9d9cf76b7`.
@@ -844,8 +922,9 @@ This is a structural/provenance issue even before cryptography.
 
 **Closure needed.** Review the actual setup identities, row contents, unsupported
 decoder entries, selector/immediate/register projection and query placement, then
-establish the implementation binding. No concrete decoder/setup discrepancy was
-demonstrated in this pass.
+establish the implementation binding. The original 13 October audit did not
+demonstrate a concrete decoder/setup discrepancy; the 15 October review above
+separately records AIH-336's acknowledged queryable-filler defect.
 
 ## F10 — Shared cycle composition does not validate the full custom CSR reference
 
@@ -872,9 +951,10 @@ continues to exclude delegation callers from its successful-instruction registry
 the complete pinned reference, including invalid calls, or make an explicit
 reference/scope decision. Current constraints and matching cannot imply the
 missing properties in the face of F02/F03. Worker ROM binding (F04) needs its stated additional inputs. Inactive
-padding (F05) now has the separately authorized conditional logical closure. Independent composition work
-is checked; the hourly task stops here rather than adding optional preparation
-or instruction variants. All generated/import/cryptographic and exceptional-path
+padding (F05) now has the separately authorized conditional logical closure.
+Independent composition work is checked. The active continuation prioritizes the
+reviewed implementation findings and their explicitly temporary contracts,
+without adding optional preparation or instruction variants. All generated/import/cryptographic and exceptional-path
 milestones remain separately deferred.
 
 ## Remaining boundary register
@@ -921,6 +1001,14 @@ category must never be described simply as public context.
 
 ## Validation and next review
 
+The temporary-contract milestone checks distinct window domains, decoder filler
+exclusion, full occurrence coverage, native command selection and RAM-port token
+transport. Regressions retain sparse/reversed distinct windows, reject duplicates
+and truncation, exhibit zero-clock native matching without a full ledger, and
+exclude the existing invalid-control and ROM-shadow witnesses only from the new
+temporary contracts. The original accepted witnesses remain checked. These are
+conditional mathematical results; no implementation finding was fixed or closed.
+
 The current milestone checks the library, both executables, all concrete Lean
 test modules, importer regressions, the full axiom audit and review/reference
 checks; totals are in [Verification status](VERIFICATION_STATUS.md).
@@ -931,8 +1019,9 @@ including exact consumption and rejection of short/reordered streams.
 uses the unified artifact's own equations with standard/TRIADD/XORROT retirement.
 The concrete unified trace checks all four dependent modular operations, all four
 x0 forms, ADD and TRIADD; a forged FMA old read is locally valid and rejected by
-initialized global matching. No circuit, reference, public boundary or finding
-classification changes. Existing terminal-PC, inactive-row, invalid-control,
+initialized global matching. The subsequent temporary-contract milestone leaves
+existing acceptance predicates, circuit artifacts and pinned references unchanged;
+its source/comment assessments are recorded above. Existing terminal-PC, inactive-row, invalid-control,
 zero-clock, ROM-shadow and discarded-load regressions remain checked.
 
 Review F01's explicit canonical boundary contract and the remaining Rust/artifact

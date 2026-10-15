@@ -66,6 +66,12 @@ Neither extension supplies desired operands or results as assumptions.
 
 ## Checked scope boundaries
 
+Keep proof coverage and finding status separate. The
+[reviewed-case register](FINDINGS.md#linear-and-open-pr-review--15-october-2026)
+distinguishes temporary assumptions for open defects from intended external
+interfaces and public profiles. A conditional theorem can be complete while an
+implementation finding remains open; an unmerged PR is not evidence of enforcement.
+
 These fixtures explain restrictions on the current claims. They concern the
 imported richer relations and logical matching; they do not establish a
 whole-system or cryptographic exploit. Keep their public inputs and scope visible
@@ -76,9 +82,15 @@ when reviewing or strengthening a theorem.
 | Inactive padding | [Inactive ADD/SUB row](Tests/InactiveRow.lean): execute zero admits PC 0→4 and result 123. The [external contribution-mask boundary](Airbender/Review/Helpers/Context/PaddingBoundary/README.md) now derives active acceptance/execution by erasing identity factors from exact whole-layout masked state/memory/request matching. Raw padding values need not stutter. Rust/GKR/cryptographic enforcement and artifact correspondence remain external; this is no demonstrated padding bug. |
 | Jump termination | [Noncanonical JAL endpoint](Tests/JumpSailHistory.lean): imported constraints, decoding and native matching admit a field-aliased terminal PC that disagrees with Sail. The [canonical verifier-boundary contract](Airbender/Review/Helpers/Context/VerifierBoundary/README.md) now replaces the direct range premise at public jump/pooled entries. Accepted state matching and typed u32 contribution closure derive full raw terminal equality and bounds. F01 is resolved under that external logical binding; the malformed witness remains valid locally and is excluded by the new contract. Cryptographic enforcement, PC-space projection and Rust/artifact correspondence remain external. |
 | Discarded LW | [Sparse-memory load](Tests/DiscardedLoad.lean): an accepted native NOP can fail original Sail's LW-to-x0 access. The unchanged-Sail claim retains `NoDiscardedLoads`; the named Airbender profile uses the pinned PC-only NOP rule. |
-| Unissued workers | [Zero-clock G worker](Tests/DelegationZeroInvocation.lean): an active worker matches no caller and changes actual x12 from 0 to 1. Issued-worker uniqueness does not exclude this prefix effect. |
-| Bigint controls | [Issued unified calls](Tests/UnifiedDelegation.lean): x12 = 0 admits no opcode; x12 = 65537 admits ADD with a nonzero high limb. Current caller-cycle observations hold, while the pinned reference rejects these control words. Full custom-CSR ABI remains open. |
-| Worker ROM | [COPY with ROM pointers](Tests/DelegationROMBoundary.lean): zero native shadows and exactly matched worker values can differ from public ROM bytes. Replacing shadow tokens with public bytes breaks matching; RAM-profile claims retain their stated domain. |
+| Unissued workers | [Zero-clock G worker](Tests/DelegationZeroInvocation.lean): an active worker matches no caller and changes actual x12 from 0 to 1. Issued-worker uniqueness does not exclude this prefix effect. The temporary occurrence-ledger contract leaves F03 / AIH-339 open. |
+| Bigint controls | [Issued unified calls](Tests/UnifiedDelegation.lean): x12 = 0 admits no opcode; x12 = 65537 admits ADD with a nonzero high limb. Current caller-cycle observations hold, while the pinned reference rejects these control words. The temporary valid-command contract leaves F02 and the full custom-CSR ABI open. |
+| Worker ROM | [COPY with ROM pointers](Tests/DelegationROMBoundary.lean): zero native shadows and exactly matched worker values can differ from public ROM bytes. Replacing shadow tokens with public bytes breaks matching. A temporary RAM-port contract restricts conditional transport and leaves F04 open. |
+
+The [temporary contracts](Airbender/Review/Helpers/Context/ExternalBoundary/README.md)
+also model distinct initialization windows and unqueryable decoder filler.
+The inspected EVM/setup paths do not establish these conditions: AIH-334 and
+AIH-336 remain implementation findings requiring fixes. No temporary contract
+is silently added to the existing general-acceptance theorems or their fixtures.
 
 ## Sources and pins
 
