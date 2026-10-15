@@ -1,5 +1,6 @@
 import Airbender.Review.Trace.UnifiedReduced.RegisterDataflow
 import Airbender.Proofs.UnifiedReduced.RegisterChains
+import Airbender.Proofs.UnifiedReduced.UnissuedWorkers
 
 namespace Airbender.UnifiedReduced.Caller.Proofs
 open Trace Trace.Proofs Arithmetic Reference.RiscV.Sail
@@ -735,5 +736,142 @@ theorem public_register_dataflow_control_preparation [Fact p.Prime] (hp : 838860
   subst cell
   have bits : token.word.toBitVec = value := by rw [word, Word.ofBitVec_roundtrip]
   exact ⟨tokens, events, atCut, permutation, history, matching, boundary, bits ▸ read, token, present, address, word⟩
+
+theorem public_caller_control_window [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat} {family : Delegation.Family}
+    (setup : data.machine.rom = Setup.table before)
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    (ordinaryProgram : Mixed.programImage before oa = some program)
+    (initialization : initialImage before cells = some data.machine.initialMemory)
+    (scope : CallerControlPreparation data program family cut) (aligned : cut % 4 = 0) :
+    8 ≤ cut ∧ ProgramCallerWindow data family (cut - 4) cut := by
+  have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
+  have count := machine_window_count size clockInverse accepted.toRequestChecks publicProgram
+    (by omega : (cut - 4) % 4 = 0) aligned (by omega) (by have := scope.afterInitial; omega) scope.beforeTerminal
+  have one : (data.windowMachineRows (cut - 4) cut).length = 1 := by
+    rw [count]
+    have := scope.afterInitial
+    omega
+  have nonempty : data.windowMachineRows (cut - 4) cut ≠ [] := by
+    intro empty
+    rw [empty] at one
+    simp at one
+  obtain ⟨row, member⟩ := List.exists_mem_of_ne_nil _ nonempty
+  obtain ⟨present, range⟩ := List.mem_filter.mp member
+  have range := of_decide_eq_true range
+  have clock := machine_clock_facts size clockInverse accepted.toRequestChecks publicProgram present
+  have positive := machine_native_clock_positive size clockInverse accepted publicProgram initialization present
+  have floor : 8 ≤ cut := by omega
+  exact ⟨floor, wrapped_program_caller_window (by omega) clockInverse setup accepted publicProgram
+    ordinaryProgram scope.registry scope.region (by omega) aligned (by omega) (by omega)
+    (by have := scope.afterInitial; omega) scope.beforeTerminal⟩
+
+theorem bigint_control_token [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat} {tokens : List (MemoryToken p)}
+    (setup : data.machine.rom = Setup.table before)
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    (ordinaryProgram : Mixed.programImage before oa = some program)
+    (initialization : initialImage before cells = some data.machine.initialMemory)
+    (tables : data.workers.setup.bigint = Bigint.setupTable)
+    (scope : CallerControlPreparation data program .bigint cut) (aligned : cut % 4 = 0)
+    (matching : (data.machine.initialMemory ++ (data.prefixSteps cut).map Prod.snd).Perm
+      (tokens ++ (data.prefixSteps cut).map Prod.fst)) :
+    ∃ token ∈ tokens, token.address = (Cell.register 12).addressCode ∧
+      (timeOfPair token.time).value = cut - 1 ∧
+      (token.word = Word.ofBitVec 0 ∨ token.word = Word.ofBitVec 1) := by
+  have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
+  obtain ⟨floor, window⟩ := public_caller_control_window hp clockInverse setup accepted publicProgram ordinaryProgram initialization scope aligned
+  have count : (data.workers.windowRows (cut - 4) cut).length = 1 := by
+    rw [← window.workerCount, window.machineCount]
+    omega
+  have nonempty : data.workers.windowRows (cut - 4) cut ≠ [] := by
+    intro empty
+    rw [empty] at count
+    simp at count
+  obtain ⟨worker, member⟩ := List.exists_mem_of_ne_nil _ nonempty
+  have family := window.family worker member
+  have present := List.mem_of_mem_filter member
+  obtain ⟨caller, matched, _⟩ := window.requests.workerMatches worker member
+  obtain ⟨callerPresent, range⟩ := List.mem_filter.mp matched.1
+  have range := of_decide_eq_true range
+  have nativeMember := List.mem_of_mem_filter callerPresent
+  have clock := machine_clock_facts size clockInverse accepted.toRequestChecks publicProgram nativeMember
+  have last : Delegation.Caller.startClock caller + 4 = cut := by omega
+  have requests := request_binding size clockInverse accepted.toRequestChecks publicProgram
+  have facts := mixed_memory_facts size clockInverse accepted publicProgram initialization requests
+  cases worker with
+  | mk kind w =>
+    change kind = .bigint at family
+    subst kind
+    let worker : Delegation.Row p := ⟨.bigint, w⟩
+    let port := Bigint.importedConstraintsMemoryPorts[18]
+    let token := worker.writeToken port
+    have portMember : port ∈ worker.ports := by simp [worker, Delegation.Row.ports, port, Bigint.importedConstraintsMemoryPorts]
+    have edge := mixed_worker_member present portMember
+    have writeClock : (timeOfPair token.time).value = Delegation.Caller.startClock caller + 3 :=
+      matched.2.2.writes port portMember
+    have timestamp : (timeOfPair token.time).value = cut - 1 := by omega
+    have inPrefix : (readToken w port, token) ∈ data.prefixSteps cut :=
+      List.mem_filter.mpr ⟨edge, decide_eq_true (by change (timeOfPair token.time).value < cut; omega)⟩
+    have included : token ∈ tokens := by
+      have produced := matching.mem_iff.mp (List.mem_append.mpr (Or.inr (List.mem_map.mpr ⟨_, inPrefix, rfl⟩)))
+      rcases List.mem_append.mp produced with included | consumed
+      · exact included
+      · obtain ⟨access, selected, equal⟩ := List.mem_map.mp consumed
+        have ordered := facts.order access (List.mem_of_mem_filter selected)
+        have earlier := of_decide_eq_true (List.mem_filter.mp selected).2
+        rw [equal, timestamp] at ordered
+        omega
+    have holds := accepted.workerConstraints worker present
+    change FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (Bigint.clockConstraints data.workers.setup.bigint) at holds
+    rw [tables] at holds
+    have core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (Bigint.importedConstraints Bigint.setupTable) := by
+      exact Verification.holds_of_sublist holds (List.sublist_append_left _ _)
+    obtain ⟨low, high⟩ := Bigint.Proofs.returned_control_bounds (by omega) core
+    have word : token.word = ⟨(w 57).val, (w 58).val⟩ := by
+      simp [token, worker, port, Delegation.Row.writeToken, MemoryToken.word, MemoryPort.writeCode,
+        Bigint.importedConstraintsMemoryPorts, WordColumns.code, WordColumns.evaluate]
+    have zero : (0 : ZMod p).val = 0 := by simp
+    haveI : Fact (1 < p) := ⟨by omega⟩
+    have one : (1 : ZMod p).val = 1 := ZMod.val_one p
+    refine ⟨token, included, rfl, timestamp, ?_⟩
+    rcases low with low | low
+    · left
+      rw [word, low, high, zero]
+      rfl
+    · right
+      rw [word, low, high, zero, one]
+      rfl
+
+theorem bigint_control_boundary_execution [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat}
+    (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)
+    (scope : CallerControlPreparation data program .bigint cut) (aligned : cut % 4 = 0) :
+    BigintControlBoundaryExecution data before cells cut := by
+  have floor := (public_caller_control_window hp clockInverse inputs.setup accepted inputs.publicProgram
+    inputs.ordinaryProgram inputs.initialization scope aligned).1
+  obtain ⟨tokens, _, events, _, atCut, _, permutation, _, history, _, matching, _, boundary, _⟩ :=
+    (mixed_window_execution (lower := cut) (upper := cut) hp clockInverse rotationInverse accepted inputs
+      aligned aligned (by omega) (by omega)).execution
+  obtain ⟨token, included, address, timestamp, word⟩ := bigint_control_token hp clockInverse inputs.setup accepted inputs.publicProgram
+    inputs.ordinaryProgram inputs.initialization (by rw [inputs.tables]; rfl) scope aligned matching
+  obtain ⟨cell, _, code, read⟩ := native_boundary_read boundary included
+  have equal : cell = Cell.register 12 := cell_address_injective (code.trans address)
+  subst cell
+  rcases word with word | word
+  · rw [word, Word.ofBitVec_roundtrip] at read
+    exact ⟨tokens, events, atCut, 0, permutation, history, matching, boundary, Or.inl rfl, read,
+      token, included, address, timestamp, word⟩
+  · rw [word, Word.ofBitVec_roundtrip] at read
+    exact ⟨tokens, events, atCut, 1, permutation, history, matching, boundary, Or.inr rfl, read,
+      token, included, address, timestamp, word⟩
 
 end Airbender.UnifiedReduced.Caller.Proofs
