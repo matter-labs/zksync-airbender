@@ -687,13 +687,13 @@ mod tests {
     /// mode under the high-LDE "L1 feeder" config (every oracle domain at
     /// BabyBear's 2^27 two-adicity cap, plain-text 2^3 tail, pow-tuned
     /// queries), so their verification gets cheap enough for the L1 (Proth120)
-    /// wrapper's 2^22-cycle unified circuit. Layer 0 proves the STANDARD
+    /// wrapper's 2^21-cycle unified circuit. Layer 0 proves the STANDARD
     /// special-opcodes verifier run over the converged pipeline proof
     /// (1 unified + 1 blake — the feeder input); every later layer proves the
     /// MERGED-mode feeder verifier run over the previous feeder proof. Each
     /// iteration measures how many cycles verifying the result takes (the
     /// measurement IS a full VM run of the feeder verifier, so it doubles as
-    /// the verification check). Stops on success (fits 2^22) or on a
+    /// the verification check). Stops on success (fits 2^21) or on a
     /// non-contracting fixed point. Prints cycles + chunk grids at every
     /// stage. Needs the caches of `test_recursive_proving_pipeline_zksync_os`
     /// and the MERGED-mode feeder fsv binary
@@ -852,18 +852,18 @@ mod tests {
                 measured.div_ceil(1 << 22),
             );
 
-            if measured <= 1 << 22 {
+            if measured <= 1 << 21 {
                 println!(
                     "[l1-feeder] TARGET REACHED: verifying the layer-{k} feeder proof takes \
-                     {measured} <= 2^22 = {} cycles — fits the L1 (Proth120) unified circuit",
-                    1u64 << 22
+                     {measured} <= 2^21 = {} cycles — fits the L1 (Proth120) wrap circuit",
+                    1u64 << 21
                 );
                 return;
             }
             if need >= chunks {
                 println!(
                     "[l1-feeder] NO FURTHER CONTRACTION: {chunks}-chunk feeder proof needs \
-                     {need} chunk(s) to re-verify at {measured} cycles (> 2^22) — the schedule \
+                     {need} chunk(s) to re-verify at {measured} cycles (> 2^21) — the schedule \
                      must get more aggressive (higher base LDE / larger intermediate rates)"
                 );
                 return;

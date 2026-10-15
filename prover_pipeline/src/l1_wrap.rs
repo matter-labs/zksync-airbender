@@ -6,26 +6,46 @@ pub(super) const L1_WRAP_KIND: ExecutionKind = ExecutionKind::L1Wrap21;
 
 /// The wrap circuit an L1 bundle was proven in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "SerializedL1WrapVersion")]
 pub enum L1WrapVersion {
-    /// `ExecutionKind::L1Wrap`: 2^22 trace, regular 4 MiB ROM.
-    #[serde(rename = "2p22")]
-    Wrap2p22,
     /// `ExecutionKind::L1Wrap21`: 2^21 trace, 512 KiB wrap ROM.
     #[serde(rename = "2p21")]
     Wrap2p21,
 }
 
+/// Every wrap version name a bundle may carry, including the retired 2^22
+/// wrap, so that an old bundle or checkpoint fails by name before any setup.
+#[derive(Deserialize)]
+enum SerializedL1WrapVersion {
+    #[serde(rename = "2p22")]
+    Retired2p22,
+    #[serde(rename = "2p21")]
+    Wrap2p21,
+}
+
+pub(super) const RETIRED_2P22_WRAP: &str =
+    "the L1 bundle was proven in the retired 2^22 wrap (\"2p22\"); this build proves only the 2^21 wrap (\"2p21\")";
+
+impl TryFrom<SerializedL1WrapVersion> for L1WrapVersion {
+    type Error = &'static str;
+
+    fn try_from(version: SerializedL1WrapVersion) -> Result<Self, Self::Error> {
+        match version {
+            SerializedL1WrapVersion::Retired2p22 => Err(RETIRED_2P22_WRAP),
+            SerializedL1WrapVersion::Wrap2p21 => Ok(Self::Wrap2p21),
+        }
+    }
+}
+
 impl L1WrapVersion {
     pub fn kind(self) -> ExecutionKind {
         match self {
-            Self::Wrap2p22 => ExecutionKind::L1Wrap,
             Self::Wrap2p21 => ExecutionKind::L1Wrap21,
         }
     }
 
     fn of_kind(kind: ExecutionKind) -> Self {
         match kind {
-            ExecutionKind::L1Wrap => Self::Wrap2p22,
             ExecutionKind::L1Wrap21 => Self::Wrap2p21,
             other => panic!("{other:?} is not an L1 wrap kind"),
         }
@@ -39,7 +59,6 @@ impl L1WrapVersion {
         self,
     ) -> prover::cs::gkr_compiler::GKRCircuitArtifact<prover::field::Proth120> {
         match self {
-            Self::Wrap2p22 => unified_reduced_machine_proth120::l1_wrap_2p22::circuit_artifact(),
             Self::Wrap2p21 => unified_reduced_machine_proth120::l1_wrap_2p21::circuit_artifact(),
         }
     }

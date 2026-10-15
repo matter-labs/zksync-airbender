@@ -642,20 +642,20 @@ mod cpu_partitioning_tests {
     use super::*;
 
     #[test]
-    fn cpu_l1_wrap_uses_log22_windows_and_two_sets() {
-        let geometry = InitsAndTeardownsGeometry::new(CircuitType::L1Wrap, 1 << 28);
-        assert_eq!(geometry.pages_per_set_log2, 22 - PAGE_SIZE_LOG2);
+    fn cpu_l1_wrap_uses_log21_windows_and_two_sets() {
+        let geometry = InitsAndTeardownsGeometry::new(CircuitType::L1Wrap21, 1 << 28);
+        assert_eq!(geometry.pages_per_set_log2, 21 - PAGE_SIZE_LOG2);
         assert_eq!(geometry.num_sets, 2);
         let pages = vec![
             0,
-            (1 << (22 - PAGE_SIZE_LOG2)) - 1,
-            1 << (22 - PAGE_SIZE_LOG2),
+            (1 << (21 - PAGE_SIZE_LOG2)) - 1,
+            1 << (21 - PAGE_SIZE_LOG2),
         ];
         let partition = InitsAndTeardownsPartitioning::new(pages, geometry);
         assert_eq!(partition.instances_count(), 1);
         assert_eq!(windows_of(&partition), [0, 1]);
         let partition = InitsAndTeardownsPartitioning::new(
-            vec![0, 1 << (22 - PAGE_SIZE_LOG2), 2 << (22 - PAGE_SIZE_LOG2)],
+            vec![0, 1 << (21 - PAGE_SIZE_LOG2), 2 << (21 - PAGE_SIZE_LOG2)],
             geometry,
         );
         assert_eq!(partition.instances_count(), 2);
@@ -961,7 +961,10 @@ mod cpu_partitioning_tests {
         const VALUE: u32 = 0xdead_c000;
         let ram_words = 2 * REGULAR_ROM.word_size();
         let worker = Worker::new_with_num_threads(2);
-        for (circuit, kept) in [(CircuitType::L1Wrap21, true), (CircuitType::L1Wrap, false)] {
+        for (circuit, kept) in [
+            (CircuitType::L1Wrap21, true),
+            (CircuitType::Unrolled(UnrolledCircuitType::Unified22), false),
+        ] {
             let geometry = InitsAndTeardownsGeometry::new(circuit, ram_words);
             let mut memory = vec![0u32; ram_words];
             let mut timestamps = vec![0 as TimestampScalar; ram_words];

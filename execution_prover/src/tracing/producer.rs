@@ -211,9 +211,9 @@ mod tests {
     use execution_prover_model::circuit_type::UnrolledCircuitType;
 
     #[test]
-    fn l1_wrap_slices_at_log22_and_preserves_the_unified_boundary() {
+    fn l1_wrap_slices_at_log21_and_preserves_the_unified_boundary() {
         for (circuit, boundary) in [
-            (CircuitType::L1Wrap, 1 << 22),
+            (CircuitType::L1Wrap21, 1 << 21),
             (CircuitType::Unrolled(UnrolledCircuitType::Unified), 1 << 23),
         ] {
             let (alloc_tx, alloc_rx) = crossbeam_channel::unbounded();

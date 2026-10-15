@@ -11,7 +11,6 @@ pub(crate) const PRESET_ARENA_BYTES: &[usize] = &[22548578304, 32212254720];
 pub(crate) const fn policy(circuit: CircuitType, arena_bytes: usize) -> ProofMemoryPolicy {
     match arena_bytes {
         22548578304 => match circuit {
-            CircuitType::L1Wrap => panic!("L1Wrap memory policy is hand-authored in presets::l1_wrap; the generated table does not cover it"),
             CircuitType::L1Wrap21 => panic!("L1Wrap memory policy is hand-authored in presets::l1_wrap; the generated table does not cover it"),
             CircuitType::Unrolled(UnrolledCircuitType::Unified22) => panic!("Unified22 is L1Feeder-only; its policy is hand-authored in presets::l1_feeder"),
             CircuitType::Delegation(DelegationCircuitType::Blake2GFunction)
@@ -135,7 +134,6 @@ pub(crate) const fn policy(circuit: CircuitType, arena_bytes: usize) -> ProofMem
             },
         },
         32212254720 => match circuit {
-            CircuitType::L1Wrap => panic!("L1Wrap memory policy is hand-authored in presets::l1_wrap; the generated table does not cover it"),
             CircuitType::L1Wrap21 => panic!("L1Wrap memory policy is hand-authored in presets::l1_wrap; the generated table does not cover it"),
             CircuitType::Unrolled(UnrolledCircuitType::Unified22) => panic!("Unified22 is L1Feeder-only; its policy is hand-authored in presets::l1_feeder"),
             CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression)

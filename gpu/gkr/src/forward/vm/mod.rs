@@ -37,7 +37,7 @@ cuda_kernel_declaration!(pub(crate)
 
 const fn production_fwd_vm_kernel(circuit_type: CircuitType) -> GkrFwdVmReleaseSignature {
     match circuit_type {
-        CircuitType::L1Wrap | CircuitType::L1Wrap21 => {
+        CircuitType::L1Wrap21 => {
             panic!("the BabyBear forward VM is not defined for L1Wrap")
         }
         CircuitType::Delegation(circuit_type) => match circuit_type {
