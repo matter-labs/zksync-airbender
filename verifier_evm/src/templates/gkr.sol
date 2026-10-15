@@ -413,6 +413,25 @@ contract GKRVerifier {
             }
         }
 
+        // #if F1
+        // One E1 round: (b, c) from the F1 calldata pair at `bit`, a = K − z(b + c), absorb
+        // c0..c3 of e_z·(a + bX + cX²) as v0, draw r, K := a + br + cr². t, s, a, c1, c2 stay
+        // unreduced where they only feed mulmod or a lane transcript_4to1_dual reduces.
+        function f1_e1_round(bit, z, k, modulus) -> r, next_k {
+            let x := shr(sub(10, and(bit, 7)), f1_cd(shr(3, bit)))
+            let b := and(shr(123, x), 0x7ffffffffffffffffffffffffffffff)
+            let c := and(x, 0x7ffffffffffffffffffffffffffffff)
+            if iszero(and(lt(b, modulus), lt(c, modulus))) { revert(0, 0) }
+            let a := add(k, sub(modulus, mulmod(z, add(b, c), modulus)))
+            let t := add(1, sub(modulus, z))
+            let s := add(add(z, z), sub(modulus, 1))
+            r := transcript_4to1_dual(
+                or(shl(128, mulmod(t, a, modulus)), add(mulmod(t, b, modulus), mulmod(s, a, modulus))),
+                or(shl(128, add(mulmod(t, c, modulus), mulmod(s, b, modulus))), mulmod(s, c, modulus)),
+                modulus)
+            next_k := addmod(a, mulmod(r, addmod(b, mulmod(r, c, modulus), modulus), modulus), modulus)
+        }
+        // #endif
         function sumcheck_rounds(ptr, claim, total_rounds) -> next_ptr, next_claim, eq_scale {
             let modulus := mload(P_PTR)
             eq_scale := 1
@@ -424,21 +443,11 @@ contract GKRVerifier {
             // run whose bit offset f1_decode left in the first round slot.
             let bit := mload(ptr)
             for { let i := 0 } lt(i, total_rounds) { i := add(i, 1) } {
-                let x := shr(sub(10, and(bit, 7)), f1_cd(shr(3, bit)))
+                let zp := add(POINT_PTR(), mul(i, 32))
+                let r
+                r, claim := f1_e1_round(bit, mload(zp), claim, modulus)
                 bit := add(bit, 246)
-                let b := and(shr(123, x), 0x7ffffffffffffffffffffffffffffff)
-                let c := and(x, 0x7ffffffffffffffffffffffffffffff)
-                if iszero(and(lt(b, modulus), lt(c, modulus))) { revert(0, 0) }
-                let z := mload(add(POINT_PTR(), mul(i, 32)))
-                let a := addmod(claim, sub(modulus, mulmod(z, add(b, c), modulus)), modulus)
-                let t := addmod(1, sub(modulus, z), modulus)
-                let s := addmod(add(z, z), sub(modulus, 1), modulus)
-                let r := transcript_4to1_dual(
-                    or(shl(128, mulmod(t, a, modulus)), addmod(mulmod(t, b, modulus), mulmod(s, a, modulus), modulus)),
-                    or(shl(128, addmod(mulmod(t, c, modulus), mulmod(s, b, modulus), modulus)), mulmod(s, c, modulus)),
-                    modulus)
-                claim := addmod(a, mulmod(r, addmod(b, mulmod(r, c, modulus), modulus), modulus), modulus)
-                mstore(add(POINT_PTR(), mul(i, 32)), r)
+                mstore(zp, r)
                 ptr := add(ptr, 64)
             }
             // #else
