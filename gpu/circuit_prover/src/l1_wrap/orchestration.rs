@@ -64,6 +64,40 @@ pub(crate) struct GpuL1WrapProofJobKeepalive<'a> {
     _proof_host_mirror: HostAllocation<[u8]>,
 }
 
+/// Until disarmed, an early exit makes exec_stream wait for everything queued on h2d_stream,
+/// so pool blocks of a dropped upload destination are not reused under an in-flight copy.
+struct H2dJoinOnDrop<'c> {
+    context: &'c ProverContext,
+    event: CudaEvent,
+    armed: bool,
+}
+
+impl<'c> H2dJoinOnDrop<'c> {
+    fn new(context: &'c ProverContext) -> CudaResult<Self> {
+        Ok(Self {
+            context,
+            event: CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?,
+            armed: true,
+        })
+    }
+}
+
+impl Drop for H2dJoinOnDrop<'_> {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        self.event
+            .record(self.context.get_h2d_stream())
+            .and_then(|()| {
+                self.context
+                    .get_exec_stream()
+                    .wait_event(&self.event, CudaStreamWaitEventFlags::DEFAULT)
+            })
+            .expect("L1Wrap: cannot order exec_stream after the pending h2d_stream uploads");
+    }
+}
+
 fn phase(name: &str, context: &ProverContext) -> CudaResult<Range> {
     let range = Range::new(name)?;
     range.start(context.get_exec_stream())?;
@@ -158,11 +192,15 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     let mut phases: Vec<Range> = Vec::new();
     let p = phase("l1_wrap.setup_transfer", context)?;
     let mut setup = PackedSetupSource::new(Arc::clone(&setup_host), partial_trees.setup, context)?;
+    let mut setup_upload_guard = H2dJoinOnDrop::new(context)?;
+    let mut setup_raw_transfer = Transfer::new()?;
+    setup_raw_transfer.record_allocated(context)?;
+    setup.schedule_raw_transfer(&mut setup_raw_transfer, context)?;
+    setup_raw_transfer.record_transferred(context)?;
     let mut setup_transfer = Transfer::new()?;
     setup_transfer.record_allocated(context)?;
-    setup.schedule_transfer(&mut setup_transfer, context)?;
+    setup.schedule_commitment_transfer(&mut setup_transfer, context)?;
     setup_transfer.record_transferred(context)?;
-    setup_transfer.ensure_transferred(context)?;
     end_phase(p, &mut phases, context)?;
     let p = phase("l1_wrap.witness", context)?;
     let mut raw = TraceHolder::<PR>::new_without_cosets(
@@ -220,6 +258,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         else {
             panic!("L1Wrap requires unrolled unified tracing data");
         };
+        setup_raw_transfer.ensure_transferred(context)?;
         generate_fused_values(
             circuit,
             &decoder.data_device,
@@ -283,6 +322,8 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     let mut seed = context.alloc::<u8>(32, AllocationPlacement::BestFit)?;
     memory_set_async(&mut seed, 0, stream)?;
     let challenge_config = PackedChallengeConfig::new(circuit, config, &commitment_mode, true);
+    setup_transfer.ensure_transferred(context)?;
+    setup_upload_guard.armed = false;
     let challenges = packed_challenges::derive(
         &mut seed,
         &commitment_mode,
@@ -400,7 +441,11 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         keepalive: GpuL1WrapProofJobKeepalive {
             _setup_host: setup_host,
             _input_callbacks: transfer.into_callbacks(),
-            _setup_callbacks: setup_transfer.into_callbacks(),
+            _setup_callbacks: {
+                let mut callbacks = setup_raw_transfer.into_callbacks();
+                callbacks.extend(setup_transfer.into_callbacks());
+                callbacks
+            },
             _relations: relations,
             _challenges: challenges,
             _gkr: gkr,
