@@ -1,3 +1,4 @@
+import Airbender.Review.Trace.Workers.Keccak.ReferenceCalls
 import Airbender.Review.Trace.Workers.Blake2Round.ReferenceCalls
 import Airbender.Review.Trace.Workers.Blake2G.ReferenceCalls
 import Airbender.Review.Trace.UnifiedReduced.BigintCalls
@@ -3127,3 +3128,54 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Blake2Round.Call.Proofs.span_reference
 #print axioms Airbender.Blake2Round.Call.execution_soundness
 #print axioms Tests.Blake2RoundCall.completed_controller_cannot_restart
+
+-- Complete Keccak reference micro-calls and derived full-state spans.
+#print axioms Airbender.Keccak.Call.Supported
+#print axioms Airbender.Keccak.Call.key
+#print axioms Airbender.Keccak.Call.indices
+#print axioms Airbender.Keccak.Call.columnState
+#print axioms Airbender.Keccak.Call.iotaColumn
+#print axioms Airbender.Keccak.Call.Operation
+#print axioms Airbender.Keccak.Call.half
+#print axioms Airbender.Keccak.Call.cells
+#print axioms Airbender.Keccak.Call.values
+#print axioms Airbender.Keccak.Call.reads
+#print axioms Airbender.Keccak.Call.results
+#print axioms Airbender.Keccak.Call.writes
+#print axioms Airbender.Keccak.Call.Executes
+#print axioms Airbender.Keccak.Call.Retires
+#print axioms Airbender.Keccak.Call.Proofs.column_selected
+#print axioms Airbender.Keccak.Call.Proofs.embedded_reads
+#print axioms Airbender.Keccak.Call.Proofs.native_operation
+#print axioms Airbender.Keccak.Call.Proofs.low_half
+#print axioms Airbender.Keccak.Call.Proofs.high_half
+#print axioms Airbender.Keccak.Call.Proofs.lane_bound
+#print axioms Airbender.Keccak.Call.Proofs.full_controller
+#print axioms Airbender.Keccak.Call.Proofs.nativeArguments
+#print axioms Airbender.Keccak.Call.Proofs.indirectIndex
+#print axioms Airbender.Keccak.Call.Proofs.cell_indirect
+#print axioms Airbender.Keccak.Call.Proofs.indirect_shape
+#print axioms Airbender.Keccak.Call.Proofs.cells_projection
+#print axioms Airbender.Keccak.Call.Proofs.controller_words
+#print axioms Airbender.Keccak.Call.Proofs.pointer_words
+#print axioms Airbender.Keccak.Call.Proofs.read_halves
+#print axioms Airbender.Keccak.Call.Proofs.written_halves
+#print axioms Airbender.Keccak.Call.Proofs.controller_write
+#print axioms Airbender.Keccak.Call.Proofs.addresses_of_effects
+#print axioms Airbender.Keccak.Call.Proofs.operands_projection
+#print axioms Airbender.Keccak.Call.Proofs.results_projection
+#print axioms Airbender.Keccak.Call.Proofs.read_lane_bound
+#print axioms Airbender.Keccak.Call.Proofs.written_lane_bound
+#print axioms Airbender.Keccak.Call.Proofs.write_projection
+#print axioms Airbender.Keccak.Call.Proofs.executes
+#print axioms Airbender.Keccak.Call.Proofs.schedule_supported
+#print axioms Airbender.Keccak.Call.Proofs.derived_control
+#print axioms Airbender.Keccak.Call.Proofs.operation_inputs
+#print axioms Airbender.Keccak.Call.Proofs.native_core
+#print axioms Airbender.Keccak.Call.Proofs.pointer_ram
+#print axioms Airbender.Keccak.Call.Proofs.abi_in_span
+#print axioms Airbender.Keccak.Call.Proofs.step_in_span
+#print axioms Airbender.Keccak.Call.Proofs.reference_call_in_span
+#print axioms Airbender.Keccak.Call.Proofs.span_reference
+#print axioms Airbender.Keccak.Call.execution_soundness
+#print axioms Tests.KeccakSchedule.noncanonical_controller_rejected
