@@ -89,8 +89,11 @@ when reviewing or strengthening a theorem.
 The [temporary contracts](Airbender/Review/Helpers/Context/ExternalBoundary/README.md)
 also model distinct initialization windows and unqueryable decoder filler.
 AIH-334 now has a tested EVM source check for complete, bounded, distinct windows;
-its formal correspondence to the selection contract remains external. AIH-336's
-setup condition remains an open implementation finding requiring a fix. No temporary contract
+its formal correspondence to the selection contract remains external. AIH-336 now
+has a source correction for the untagged decoder tail and full-domain CPU/GPU
+cache preprocessing, with checked CPU forward regressions. Accelerated runtime
+validation, regenerated proof replay and the formal setup binding remain open;
+see the [validation scope](FINDINGS.md#aih-336-source-correction-and-validation). No temporary contract
 is silently added to the existing general-acceptance theorems or their fixtures.
 
 ## Sources and pins

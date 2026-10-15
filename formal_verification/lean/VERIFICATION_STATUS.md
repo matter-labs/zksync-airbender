@@ -39,8 +39,8 @@ fixed or independently shown to be enforced. See the [case register](FINDINGS.md
 | --- | --- |
 | Initialization/teardown local soundness | Retained artifacts have no equations/range queries; needs richer proof input. |
 
-AIH-334's EVM window check is fixed and tested. AIH-336/315 and the other reviewed
-implementation findings remain open in the case register.
+AIH-334's EVM check is fixed and tested. AIH-336's tail/cache correction passes CPU
+regressions; accelerated runtime/proof replay and other findings remain in the case register.
 
 Evidence and detailed boundaries: [findings](FINDINGS.md).
 Separately scoped work: [deferred milestones](FORMAL_VERIFICATION_PLAN.md#deferred-milestones).
