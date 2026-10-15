@@ -15,6 +15,12 @@ pointer/read/range facts. Complete permutation and window claims additionally
 bind the reference output and terminal tokens for the 649-call protocol;
 invalid-control fallback is outside that complete protocol.
 
+[Call](Call.lean) states an independent complete micro-call relation in Sail:
+actual controller/pointer/lane reads, all seven mode effects and exact writes
+with full frame. The [worker reference sequence](../../Trace/Workers/Keccak/ReferenceCalls.lean)
+derives these calls from the existing initialized 649-call profile and modeled
+controller table.
+
 Start with [Artifact](Artifact.lean), [Execution](Execution.lean) and
 [Controls](Controls.lean) for the seven native modes.
 [Theta](Theta.lean), [Rho](Rho.lean), [Mix](Mix.lean), [Chi](Chi.lean) and [Iota](Iota.lean)
