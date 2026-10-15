@@ -387,10 +387,7 @@ pub(super) fn validate_l1_wrap_activation() -> Result<(), String> {
 #[cfg_attr(not(feature = "gpu"), allow(dead_code))]
 pub(super) fn validate_l1_wrap_backend(backend: ProverBackend) -> Result<(), String> {
     match backend {
-        ProverBackend::Cpu => Ok(()),
-        ProverBackend::Gpu => Err(format!(
-            "ProofTarget::L1 proves ExecutionKind::{L1_WRAP_KIND:?}, which the GPU backend does not support until W5; use --backend cpu"
-        )),
+        ProverBackend::Cpu | ProverBackend::Gpu => Ok(()),
     }
 }
 
