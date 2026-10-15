@@ -26,3 +26,5 @@ import Airbender.Review.Trace.UnifiedReduced.ModularExecution
 import Airbender.Review.Trace.ExternalBoundaries
 import Airbender.Review.Trace.UnifiedReduced.NativeMixedROM
 import Airbender.Review.Trace.UnifiedReduced.BigintCalls
+
+import Airbender.Review.Trace.Workers.Blake2G.ReferenceCalls
