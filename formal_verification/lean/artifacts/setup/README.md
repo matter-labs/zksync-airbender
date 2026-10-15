@@ -43,8 +43,11 @@ literal data and Clean static tables. Source bytes are retained, and Lake tracks
 the input files. Parsing and emission retain the same fidelity boundary as
 circuit importing; cryptographic table authentication and lookup soundness remain
 separate. The shared 13-/16-/19-bit tables now import these artifacts, with their
-membership bounds proved in `Proofs/Tables/ImportedRanges.lean`. Migration of the
-other table definitions and program-dependent consumers is still in progress.
+membership bounds proved in `Proofs/Tables/ImportedRanges.lean`. Bigint, the
+G/Keccak controllers and both G/round XOR tables also use imported data and
+kernel-checked semantics. Region slicing retains periodic interiors and checks
+every decoded value against JSON; balanced literal arrays avoid deep syntax.
+Migration of the other table definitions and program-dependent consumers is still in progress.
 
 Bigint's six fixed-table regions now use the exported native generic-table extent
 and columns. The importer emits constant, ascending and cyclic literal arrays

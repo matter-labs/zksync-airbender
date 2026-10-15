@@ -57,6 +57,12 @@ structure Imported (width : Nat) where
   program : Option Program
   deriving Repr
 
+private partial def arraySyntax (values : Array (TSyntax `term)) : CommandElabM (TSyntax `term) := do
+  if values.size ≤ 64 then return ← `(#[$[$values],*])
+  let left ← arraySyntax (values.extract 0 (values.size / 2))
+  let right ← arraySyntax (values.extract (values.size / 2) values.size)
+  `(Array.append $left $right)
+
 /-- Compact literal data only after comparing every parsed element. These
     constructors do not select a table recipe or infer unexported values. -/
 private def valuesSyntax (values : Array Nat) : CommandElabM (TSyntax `term) := do
@@ -65,11 +71,13 @@ private def valuesSyntax (values : Array Nat) : CommandElabM (TSyntax `term) := 
       return ← `(Array.replicate $(quote values.size) $(quote first))
     if (values.mapIdx fun i value => value == i).all id then
       return ← `(Array.range $(quote values.size))
+    if (values.mapIdx fun i value => value == first + i).all id then
+      return ← `(Array.ofFn (fun i : Fin $(quote values.size) => $(quote first) + i.val))
     if (values.mapIdx fun i value => value == (first + i) % values.size).all id then
       return ← `(Array.ofFn (fun i : Fin $(quote values.size) =>
         ($(quote first) + i.val) % $(quote values.size)))
   let values := values.map quote
-  `(#[$[$values],*])
+  arraySyntax values
 
 private def blockSyntax (block : Block) : CommandElabM (TSyntax `term) := do
   match block with
@@ -88,7 +96,8 @@ private def blockSyntax (block : Block) : CommandElabM (TSyntax `term) := do
 
 private def columnSyntax (column : Column) : CommandElabM (TSyntax `term) := do
   let blocks ← column.blocks.mapM blockSyntax
-  `(({blocks := #[$[$blocks],*]} : Airbender.Setup.Column))
+  let blocks ← arraySyntax blocks
+  `(({blocks := $blocks} : Airbender.Setup.Column))
 
 private def programSyntax (program : Option Program) : CommandElabM (TSyntax `term) := do
   match program with
@@ -145,25 +154,39 @@ private def emitData (name : TSyntax `ident) (length offset : Nat)
 
 /-- Restrict encoded data, retaining full blocks and slicing boundary blocks.
     This is independent of table contents; imports check every selected value. -/
-private def sliceBlock (block : Block) (start count : Nat) : Block :=
-  if start = 0 ∧ count = block.length then block else
+private def sliceBlock (block : Block) (start count : Nat) : Array Block := Id.run do
+  if start = 0 ∧ count = block.length then return #[block]
   match block with
-  | .affine _ _ step => .affine count ((block.get? start).getD 0) step
-  | .dense values => .dense (values.extract start (start + count))
+  | .affine _ _ step => return #[.affine count ((block.get? start).getD 0) step]
+  | .dense values => return #[.dense (values.extract start (start + count))]
   | .periodic _ stride values =>
-    if start % values.size = 0 ∧ count % values.size = 0 then
-      .periodic (count / values.size) stride
-        ((Array.range values.size).map fun i => (block.get? (start + i)).getD 0)
-    else .dense ((Array.range count).map fun i => (block.get? (start + i)).getD 0)
+    let leading := min count ((values.size - start % values.size) % values.size)
+    let cycleCount := (count - leading) / values.size
+    let trailing := (count - leading) % values.size
+    let mut result := #[]
+    if leading > 0 then
+      result := result.push (.dense ((Array.range leading).map fun i =>
+        (block.get? (start + i)).getD 0))
+    if cycleCount > 0 then
+      result := result.push (.periodic cycleCount stride
+        ((Array.range values.size).map fun i => (block.get? (start + leading + i)).getD 0))
+    if trailing > 0 then
+      result := result.push (.dense ((Array.range trailing).map fun i =>
+        (block.get? (start + leading + cycleCount * values.size + i)).getD 0))
+    return result
 private def sliceColumn (column : Column) (start count : Nat) : Column := Id.run do
   let mut position := 0
   let mut blocks := #[]
   for block in column.blocks do
     let first := max start position
     let last := min (start + count) (position + block.length)
-    if first < last then blocks := blocks.push (sliceBlock block (first - position) (last - first))
+    if first < last then blocks := blocks ++ sliceBlock block (first - position) (last - first)
     position := position + block.length
   return ⟨blocks⟩
+
+private def expandedValues (column : Column) : Array (Option Nat) :=
+  column.blocks.flatMap fun block =>
+    (Array.range block.length).map block.get?
 
 /-- A compact view of one native region, including every physical padding/tag
     column. Preserve its native position separately and check every re-encoded
@@ -177,8 +200,8 @@ elab "import_setup_region " name:ident " from " path:str " native_table_id " id:
     match sliced.validate region.length babyBearModulus with
     | .error error => throwError "setup region slice failed: {error}"
     | .ok () => pure ()
-    unless (Array.range region.length).all (fun i =>
-        sliced.get? i == column.get? (region.offset + i)) do
+    unless expandedValues sliced ==
+        (expandedValues column).extract region.offset (region.offset + region.length) do
       throwError "setup region slice changed a parsed value"
     pure sliced
   emitData name region.length 0 columns source
