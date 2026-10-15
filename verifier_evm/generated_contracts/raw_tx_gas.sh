@@ -2,11 +2,26 @@
 # Real per-transaction gas for the generated GKR + WHIR verifiers, measured with RAW anvil
 # transactions (proof bytes are tx calldata, paid via intrinsic/EIP-7623 — never memory-copied,
 # so no forge-harness over-count). Reads the compiled deployedBytecode from the sibling projects'
-# out/ and the calldata from ../debug_data. Prereq: forge build in gkr/ and whir/, forge build in
-# two_tx/ (or the two-tx test) for the registry artifact.
-set -e
-cd "$(dirname "$0")"
-RPC=http://127.0.0.1:8545
+# out/ and calldata from the selected version's data root. Prereq: build gkr/, whir/, and
+# two_tx/ for that version. Usage: raw_tx_gas.sh <2p22|2p21> <task-owned-port>.
+set -eu
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+. "$SCRIPT_DIR/version.sh"
+select_version "${1:?usage: raw_tx_gas.sh <2p22|2p21> <anvil-port>}"
+PORT=${2:?usage: raw_tx_gas.sh <2p22|2p21> <anvil-port>}
+case "$PORT" in *[!0-9]*|'') echo "invalid anvil port: $PORT" >&2; exit 2 ;; esac
+# Fail before touching RPC state if any service already owns this port.
+python3 - "$PORT" <<'PYPORT'
+import socket, sys
+port = int(sys.argv[1])
+if not 1 <= port <= 65535:
+    raise SystemExit("anvil port must be in 1..65535")
+with socket.socket() as probe:
+    probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    probe.bind(("127.0.0.1", port))
+PYPORT
+cd "$CONTRACTS_ROOT"
+RPC=http://127.0.0.1:$PORT
 KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 GKR=0x0000000000000000000000000000000061110001
 WHIR=0x0000000000000000000000000000000011170001
@@ -19,11 +34,30 @@ echo "== deployed bytecode sizes =="
 printf "  GKR  verifier : %d bytes\n" $(( (${#gkr_code} - 2) / 2 ))
 printf "  WHIR verifier : %d bytes\n" $(( (${#whir_code} - 2) / 2 ))
 
-pkill -f "anvil.*8545" 2>/dev/null || true
-anvil --hardfork prague --port 8545 --silent &
+CHAIN_ID=$((1000000000 + $$))
+anvil --host 127.0.0.1 --hardfork prague --chain-id "$CHAIN_ID" --port "$PORT" --silent &
 ANVIL=$!
-trap 'kill $ANVIL 2>/dev/null' EXIT
-until cast block-number --rpc-url $RPC >/dev/null 2>&1; do sleep 0.3; done
+cleanup() {
+  kill "$ANVIL" 2>/dev/null || true
+  wait "$ANVIL" 2>/dev/null || true
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+attempt=0
+while :; do
+  kill -0 "$ANVIL" 2>/dev/null || { echo "anvil exited before readiness" >&2; exit 1; }
+  if actual_chain=$(cast chain-id --rpc-url "$RPC" 2>/dev/null); then
+    [ "$actual_chain" = "$CHAIN_ID" ] || {
+      echo "RPC chain ID $actual_chain does not match owned anvil $CHAIN_ID" >&2; exit 1;
+    }
+    kill -0 "$ANVIL" 2>/dev/null || { echo "owned anvil exited" >&2; exit 1; }
+    break
+  fi
+  attempt=$((attempt + 1))
+  [ "$attempt" -lt 100 ] || { echo "anvil readiness timed out" >&2; exit 1; }
+  sleep 0.1
+done
 
 cast rpc anvil_setCode $GKR  "$gkr_code"  --rpc-url $RPC >/dev/null
 cast rpc anvil_setCode $WHIR "$whir_code" --rpc-url $RPC >/dev/null
@@ -38,17 +72,34 @@ cast rpc anvil_setCode $REG  "$reg_code"  --rpc-url $RPC >/dev/null
 cast send "$REG" "initialize_verifiers(address,address)" "$GKR" "$WHIR" \
   --private-key "$KEY" --rpc-url "$RPC" >/dev/null
 
-gkr_cd="0x$(cat ../debug_data/gkr_full_calldata.hex)"
-whir_cd="0x$(cat ../debug_data/proth120_whir_calldata_from_proof.hex)"
-
 echo "== real per-transaction gas (anvil, Prague / EIP-7623) =="
 run() {
-  name=$1; addr=$2; cd=$3
-  bytes=$(( (${#cd} - 2) / 2 ))
-  out=$(cast send "$addr" "$cd" --private-key $KEY --rpc-url $RPC --json)
-  used=$(printf '%s' "$out" | jq -r '.gasUsed')
-  status=$(printf '%s' "$out" | jq -r '.status')
-  printf "  %-4s : gasUsed = %s  (status %s, calldata %d bytes)\n" "$name" "$used" "$status" "$bytes"
+  name=$1; addr=$2; file=$3
+  counts=$(python3 - "$file" <<'PYCOUNTS'
+import pathlib, sys
+calldata = bytes.fromhex(pathlib.Path(sys.argv[1]).read_text())
+print(len(calldata), calldata.count(0))
+PYCOUNTS
+)
+  bytes=${counts% *}; zeros=${counts#* }
+  # WHIR hex exceeds Linux's per-argument limit. Send from stdin through the
+  # task-owned anvil's unlocked account; all proof bytes remain tx calldata.
+  response=$(python3 - "$file" "$initializer" "$addr" <<'PYRPC' | curl --fail --silent --show-error -H 'Content-Type: application/json' --data-binary @- "$RPC"
+import json, pathlib, sys
+calldata = bytes.fromhex(pathlib.Path(sys.argv[1]).read_text())
+print(json.dumps({"jsonrpc": "2.0", "id": 1, "method": "eth_sendTransaction",
+    "params": [{"from": sys.argv[2], "to": sys.argv[3], "gas": "0x17d7840",
+        "data": "0x" + calldata.hex()}]}))
+PYRPC
+)
+  tx=$(printf '%s' "$response" | jq -er '.result') || {
+    printf '%s\n' "$response" >&2; exit 1;
+  }
+  receipt=$(cast receipt "$tx" --rpc-url "$RPC" --json)
+  used=$(printf '%s' "$receipt" | jq -r '.gasUsed')
+  status=$(printf '%s' "$receipt" | jq -r '.status')
+  printf "  %-4s : gasUsed = %d  (status %s, calldata %d bytes, zero bytes %d)\n" "$name" "$used" "$status" "$bytes" "$zeros"
+  case "$status" in 0x1|1) ;; *) echo "$name transaction failed" >&2; exit 1 ;; esac
 }
-run GKR  $GKR  "$gkr_cd"
-run WHIR $WHIR "$whir_cd"
+run GKR "$GKR" "$DATA_ROOT/gkr_full_calldata.hex"
+run WHIR "$WHIR" "$DATA_ROOT/proth120_whir_calldata_from_proof.hex"

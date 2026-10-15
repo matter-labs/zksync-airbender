@@ -6,26 +6,33 @@
 # compiler options, deployed bytecode sizes, and REAL per-tx gas (raw anvil txs, no harness
 # memcopy over-count).
 #
-#   ./run_two_tx.sh          # full run
-#   ./run_two_tx.sh --no-gas # skip the anvil raw-tx gas step
-set -e
-cd "$(dirname "$0")"
+#   ./run_two_tx.sh 2p22 18545    # full run on a task-owned port
+#   ./run_two_tx.sh 2p21 --no-gas # skip the anvil raw-tx gas step
+set -eu
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+. "$SCRIPT_DIR/version.sh"
+select_version "${1:?usage: run_two_tx.sh <2p22|2p21> <anvil-port|--no-gas>}"
+GAS_ARG=${2:?usage: run_two_tx.sh <2p22|2p21> <anvil-port|--no-gas>}
+cd "$CONTRACTS_ROOT"
 
 # 1. generate the verifier sources + the calldata (production Rust functions; no fixtures)
 echo "== generating verifiers + calldata from the circuit artifact + proof =="
-( cd .. && cargo test -q -p verifier_evm --test generate_contracts >/dev/null )
-( cd .. && cargo test -q -p verifier_evm --test flatten_calldata   >/dev/null )
+( cd "$SCRIPT_DIR/.." && cargo test -q -p verifier_evm --test generate_contracts -- --ignored >/dev/null )
+( cd "$SCRIPT_DIR/.." && cargo test -q -p verifier_evm --test flatten_calldata -- --ignored >/dev/null )
 
 # 2. compile each verifier in its own project (different backends), + the registry
 echo "== compiling GKR (via_ir) / WHIR (via_ir) / Registry =="
 ( cd gkr    && forge build >/dev/null )
+# The wrong-PC verifier is a test control, built outside the deployment project.
+if [ "$AB_EVM_VERSION" = "2p21" ]; then
+  ( cd gkr_negative && forge build >/dev/null )
+fi
 ( cd whir   && forge build >/dev/null )
 ( cd two_tx && forge build >/dev/null )
 
 # 3. two-transaction cross-check (deterministic; forge in-harness gas is over-counted)
 echo "== two-transaction cross-check =="
-( cd two_tx && forge test --match-contract GkrWhirTwoTxTest -vv \
-    | grep -E "committed_state|Suite result|PASS|FAIL" )
+( cd two_tx && forge test --match-contract GkrWhirTwoTxTest -vv )
 
 # 4. compiler options actually used
 echo "== compiler options =="
@@ -38,6 +45,6 @@ for p in gkr whir; do
 done
 
 # 5. bytecode sizes + real per-tx gas (raw anvil transactions)
-[ "$1" = "--no-gas" ] && exit 0
+[ "$GAS_ARG" = "--no-gas" ] && exit 0
 echo "== deployed bytecode sizes + real per-tx gas (Prague / EIP-7623) =="
-./raw_tx_gas.sh | grep -E "verifier|Registry|gasUsed"
+"$SCRIPT_DIR/raw_tx_gas.sh" "$AB_EVM_VERSION" "$GAS_ARG"

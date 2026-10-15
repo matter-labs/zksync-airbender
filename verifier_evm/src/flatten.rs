@@ -9,6 +9,35 @@ use prover::gkr::prover::CommitmentMode;
 
 use crate::seed::{Circuit, Proof};
 
+/// A named field's byte offset and encoded value, recorded by the serializer.
+#[derive(Clone, Debug)]
+pub struct CalldataField {
+    pub offset: usize,
+    pub value: Vec<u8>,
+}
+
+impl CalldataField {
+    fn append(calldata: &mut Vec<u8>, value: &[u8]) -> Self {
+        let field = Self {
+            offset: calldata.len(),
+            value: value.to_vec(),
+        };
+        calldata.extend_from_slice(value);
+        field
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct GkrCalldataFields {
+    pub final_pc: CalldataField,
+    pub external_pow_nonce: CalldataField,
+}
+
+#[derive(Clone, Debug)]
+pub struct WhirCalldataFields {
+    pub batched_opening: CalldataField,
+}
+
 /// Serialize a Proth120 element as its 16-byte big-endian u128.
 fn be16(e: Proth120) -> [u8; 16] {
     e.to_u128().to_be_bytes()
@@ -35,19 +64,34 @@ fn output_evals_blob(proof: &Proof) -> Vec<u8> {
     blob
 }
 
-/// Dimension-reducing proof data (layers with `num_rounds < 22`, processed
+/// Dimension-reducing proof data (layers after the circuit's standard layers, processed
 /// output->base): per layer, the folding-round coefficients then the 10 final-step
 /// LSB lines, all elements big-endian 16-byte.
-fn dim_reduce_blob(proof: &Proof) -> Vec<u8> {
+fn dim_reduce_blob(circuit: &Circuit, proof: &Proof) -> Vec<u8> {
     let mut blob = Vec::new();
     let dim_layers: Vec<usize> = proof
         .sumcheck_intermediate_values
         .keys()
         .copied()
-        .filter(|l| proof.sumcheck_intermediate_values[l].sumcheck_num_rounds < 22)
+        .filter(|l| *l >= circuit.layers.len())
         .collect();
-    for &layer in dim_layers.iter().rev() {
+    let trace_log2 = circuit.trace_len.ilog2() as usize;
+    assert_eq!(
+        dim_layers.len(),
+        trace_log2 - crate::EXPLICIT_OUTPUT_LOG2,
+        "dimension-reducing layer count must match the circuit"
+    );
+    for (k, &layer) in dim_layers.iter().rev().enumerate() {
         let siv = &proof.sumcheck_intermediate_values[&layer];
+        assert!(
+            siv.sumcheck_num_rounds < circuit.trace_len.ilog2() as usize,
+            "dimension-reducing layer must have fewer rounds than the circuit"
+        );
+        assert_eq!(
+            siv.sumcheck_num_rounds,
+            crate::EXPLICIT_OUTPUT_LOG2 + k,
+            "dimension-reducing rounds must increase from the explicit output"
+        );
         for c in siv.internal_round_coefficients.iter() {
             for e in c.as_multilinear().iter() {
                 blob.extend_from_slice(&be16(*e));
@@ -62,7 +106,7 @@ fn dim_reduce_blob(proof: &Proof) -> Vec<u8> {
 }
 
 /// Standard circuit-layer proof data (config_idx `num_standard_layers-1 .. 0`): per
-/// layer, the 22 folding-round coefficients then the at-point evals in group-offset
+/// layer, the trace-log folding-round coefficients then the at-point evals in group-offset
 /// order. Cached / virtual-setup inputs are computed on the verifier heap and are
 /// NOT part of the calldata.
 fn circuit_blob(circuit: &Circuit, proof: &Proof) -> Vec<u8> {
@@ -72,7 +116,15 @@ fn circuit_blob(circuit: &Circuit, proof: &Proof) -> Vec<u8> {
     let num_mem = circuit.memory_layout.total_width;
     let num_wit = circuit.witness_layout.total_width;
     for config_idx in (0..num_standard_layers).rev() {
-        let siv = &proof.sumcheck_intermediate_values[&config_idx];
+        let siv = proof
+            .sumcheck_intermediate_values
+            .get(&config_idx)
+            .expect("proof is missing a standard circuit layer");
+        assert_eq!(
+            siv.sumcheck_num_rounds,
+            circuit.trace_len.ilog2() as usize,
+            "standard layer rounds must match the circuit"
+        );
         for c in siv.internal_round_coefficients.iter() {
             for e in c.as_multilinear().iter() {
                 blob.extend_from_slice(&be16(*e));
@@ -115,14 +167,42 @@ fn circuit_blob(circuit: &Circuit, proof: &Proof) -> Vec<u8> {
 ///   preimage ‖ external-challenge PoW nonce (BE8) ‖ output-evals ‖ dim-reduce blob
 ///   ‖ circuit-layer blob ‖ WHIR-batching PoW nonce (BE8).
 pub fn gkr_calldata(circuit: &Circuit, proof: &Proof, aux: &CommitmentMode) -> Vec<u8> {
+    gkr_calldata_with_fields(circuit, proof, aux).0
+}
+
+/// Serialize GKR calldata and expose semantic fields for consumers such as
+/// mutation tests. Offsets follow the actual preimage and shared machine ABI.
+pub fn gkr_calldata_with_fields(
+    circuit: &Circuit,
+    proof: &Proof,
+    aux: &CommitmentMode,
+) -> (Vec<u8>, GkrCalldataFields) {
     let mut cd: Vec<u8> = Vec::new();
     cd.extend_from_slice(&crate::seed::commit_seed_preimage(circuit, proof, aux));
-    cd.extend_from_slice(&proof.lookup_challenges_pow_nonce.to_be_bytes());
+    let CommitmentMode::MergedAndPackedMemoryAndWitness { final_pc, .. } = aux else {
+        panic!("expected packed commitment mode");
+    };
+    let final_pc = CalldataField {
+        offset: crate::generator::PREIMAGE_REGISTERS_BYTES,
+        value: final_pc.to_le_bytes().to_vec(),
+    };
+    assert_eq!(
+        &cd[final_pc.offset..final_pc.offset + final_pc.value.len()],
+        final_pc.value
+    );
+    let external_pow_nonce =
+        CalldataField::append(&mut cd, &proof.lookup_challenges_pow_nonce.to_be_bytes());
     cd.extend_from_slice(&output_evals_blob(proof));
-    cd.extend_from_slice(&dim_reduce_blob(proof));
+    cd.extend_from_slice(&dim_reduce_blob(circuit, proof));
     cd.extend_from_slice(&circuit_blob(circuit, proof));
     cd.extend_from_slice(&proof.batched_proximity_check_pow_nonce.to_be_bytes());
-    cd
+    (
+        cd,
+        GkrCalldataFields {
+            final_pc,
+            external_pow_nonce,
+        },
+    )
 }
 
 /// Assemble the WHIR-verifier calldata (whir.sol preimage + proof-stream layout):
@@ -139,12 +219,23 @@ pub fn gkr_calldata(circuit: &Circuit, proof: &Proof, aux: &CommitmentMode) -> V
 /// evaluation point (none of which live in the proof); the proof stream itself comes
 /// from `proof.whir_proof`.
 pub fn whir_calldata(
+    circuit: &Circuit,
+    proof: &Proof,
+    aux: &CommitmentMode,
+    folds: &[usize],
+    queries: &[usize],
+) -> Vec<u8> {
+    whir_calldata_with_fields(circuit, proof, aux, folds, queries).0
+}
+
+/// Serialize WHIR calldata and record the opening field as it is appended.
+pub fn whir_calldata_with_fields(
     _circuit: &Circuit,
     proof: &Proof,
     _aux: &CommitmentMode,
     folds: &[usize],
     queries: &[usize],
-) -> Vec<u8> {
+) -> (Vec<u8>, WhirCalldataFields) {
     assert_eq!(
         folds.len(),
         queries.len(),
@@ -172,7 +263,7 @@ pub fn whir_calldata(
     // ---- preimage ----
     cd.extend_from_slice(&handoff_seed);
     cd.extend_from_slice(&be16(whir_batching));
-    cd.extend_from_slice(&be16(batched_opening));
+    let batched_opening = CalldataField::append(&mut cd, &be16(batched_opening));
     for e in whir_point.iter() {
         cd.extend_from_slice(&be16(*e));
     }
@@ -250,5 +341,5 @@ pub fn whir_calldata(
             }
         }
     }
-    cd
+    (cd, WhirCalldataFields { batched_opening })
 }

@@ -10,7 +10,15 @@ static MAX_STAGE_VMHWM: AtomicU64 = AtomicU64::new(0);
 fn fixture_dir() -> PathBuf {
     std::env::var_os("AB_PROTH120_REFERENCE_DIR")
         .map(PathBuf::from)
-        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/l1_reference"))
+        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/l1_reference_2p21"))
+}
+
+fn feeder_checkpoint_name(layer: u8) -> String {
+    format!("feeder_layer_{layer}.json")
+}
+
+fn feeder_report_name(layer: u8) -> String {
+    format!("feeder_layer_{layer}_report.json")
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -305,27 +313,21 @@ impl FeederObserver for FixtureObserver<'_> {
         &mut self,
         layer: u8,
         state: &RecursionState,
-        _: &FsvRunReport,
+        report: &FsvRunReport,
     ) -> Result<(), String> {
         if layer as usize != self.layers.len() {
             return Err("L1 reference feeder observer layer order".into());
         }
         self.layers.push(layer);
-        if layer == 0 {
-            write_compact(
-                &self.sink.join("feeder_layer_0.json"),
-                &StepCheckpoint::from_state(layer, state),
-            )?;
-        }
-        let stage = if layer == 0 {
-            "feeder_first"
-        } else {
-            "feeder_second"
-        };
-        self.peak_vmhwm_kib = self.peak_vmhwm_kib.max(log_stage(stage, self.started));
-        if layer == 0 {
-            self.started = start_stage();
-        }
+        write_compact(
+            &self.sink.join(feeder_checkpoint_name(layer)),
+            &StepCheckpoint::from_state(layer, state),
+        )?;
+        write_compact(&self.sink.join(feeder_report_name(layer)), report)?;
+        self.peak_vmhwm_kib = self
+            .peak_vmhwm_kib
+            .max(log_stage(&format!("feeder_layer_{layer}"), self.started));
+        self.started = start_stage();
         Ok(())
     }
 }
@@ -333,7 +335,8 @@ impl FeederObserver for FixtureObserver<'_> {
 enum GenerateFrom<'a> {
     Program,
     RecursionUnified(&'a Path),
-    FeederLayer0(&'a Path),
+    /// A feeder-layer checkpoint: the rest of the feeder chain.
+    FeederLayer(&'a Path),
     L1Feeder(&'a Path),
 }
 
@@ -366,20 +369,16 @@ fn generate_into(sink: &Path, from: GenerateFrom<'_>) -> Result<Inventory, Strin
             artifact.timings_ms = ProofTimingsMs::default();
             write_compact(&sink.join("recursion_unified.json"), &artifact)?;
             drop(artifact);
-            generate_into(
+            let feeder = generate_into(
                 sink,
                 GenerateFrom::RecursionUnified(&sink.join("recursion_unified.json")),
             )?;
-            generate_into(sink, GenerateFrom::L1Feeder(&sink.join("l1_feeder.json")))?;
-            let files = [
-                "recursion_unified.json",
-                "feeder_layer_0.json",
-                "l1_feeder.json",
-                "l1_bundle.json",
-            ]
-            .into_iter()
-            .map(|name| file_identity(sink, name))
-            .collect::<Result<_, _>>()?;
+            let wrap = generate_into(sink, GenerateFrom::L1Feeder(&sink.join("l1_feeder.json")))?;
+            let files: Inventory = std::iter::once(file_identity(sink, "recursion_unified.json")?)
+                .chain(feeder)
+                .chain(wrap)
+                .collect();
+            let mut names: Vec<String> = files.iter().map(|file| file.name.clone()).collect();
             write_compact(
                 &sink.join("manifest.json"),
                 &ProofManifest {
@@ -402,13 +401,8 @@ fn generate_into(sink: &Path, from: GenerateFrom<'_>) -> Result<Inventory, Strin
                     files,
                 },
             )?;
-            vec![
-                "recursion_unified.json",
-                "feeder_layer_0.json",
-                "l1_feeder.json",
-                "l1_bundle.json",
-                "manifest.json",
-            ]
+            names.push("manifest.json".into());
+            names
         }
         GenerateFrom::RecursionUnified(input) => {
             preflight("feeder", 75);
@@ -437,16 +431,26 @@ fn generate_into(sink: &Path, from: GenerateFrom<'_>) -> Result<Inventory, Strin
                 )?;
                 prover.continue_artifact_observed(artifact, &mut observer)?
             };
-            if observer.layers != [0, 1] {
-                return Err("L1 reference requires both feeder observations".into());
+            if observer.layers.is_empty()
+                || observer.layers.len() != artifact.feeder_layers as usize
+            {
+                return Err(format!(
+                    "L1 reference observed feeder layers {:?} for a {}-layer chain",
+                    observer.layers, artifact.feeder_layers
+                ));
             }
             log_stage_with_peak("feeder", start, observer.peak_vmhwm_kib.max(vmhwm_kib()));
             artifact.timings_ms = ProofTimingsMs::default();
             write_compact(&sink.join("l1_feeder.json"), &artifact)?;
-            vec!["feeder_layer_0.json", "l1_feeder.json"]
+            observer
+                .layers
+                .iter()
+                .flat_map(|&layer| [feeder_checkpoint_name(layer), feeder_report_name(layer)])
+                .chain(["l1_feeder.json".to_string()])
+                .collect()
         }
-        GenerateFrom::FeederLayer0(input) => {
-            preflight("feeder_second", 75);
+        GenerateFrom::FeederLayer(input) => {
+            preflight("feeder_resume", 75);
             let manifest: ProofManifest = read_typed(
                 &input
                     .parent()
@@ -532,7 +536,7 @@ fn generate_into(sink: &Path, from: GenerateFrom<'_>) -> Result<Inventory, Strin
             );
             artifact.timings_ms = ProofTimingsMs::default();
             write_compact(&sink.join("l1_feeder.json"), &artifact)?;
-            vec!["l1_feeder.json"]
+            vec!["l1_feeder.json".to_string()]
         }
         GenerateFrom::L1Feeder(input) => {
             preflight("wrap", 60);
@@ -563,12 +567,12 @@ fn generate_into(sink: &Path, from: GenerateFrom<'_>) -> Result<Inventory, Strin
                     .as_ref()
                     .ok_or("L1 reference missing wrap bundle")?,
             )?;
-            vec!["l1_bundle.json"]
+            vec!["l1_bundle.json".to_string()]
         }
     };
     let inventory: Inventory = names
         .into_iter()
-        .map(|name| file_identity(sink, name))
+        .map(|name| file_identity(sink, &name))
         .collect::<Result<_, _>>()?;
     for file in &inventory {
         println!(
@@ -612,11 +616,15 @@ fn typed_first_difference(name: &str, expected: &[u8], actual: &[u8]) -> Option<
             schema_version, security_level, target, backend, batch_id, cycles, program_cycles,
             program_bin_keccak, program_text_keccak, timings_ms, proof_counts, chain_end_params,
             chain_hash, chain_preimage, blake_unrolled, blake_bridge, blake_final, l1, proof, setups),
-        "feeder_layer_0.json" => {
+        name if name.starts_with("feeder_layer_") && name.ends_with("_report.json") => {
+            fields!(FsvRunReport; cycles, output, nd_words_remaining, touched_windows,
+            max_touched_address)
+        }
+        name if name.starts_with("feeder_layer_") => {
             fields!(StepCheckpoint; fixture_schema_version, step, proof, setups,
             chain_end_params, input_is_base, program_cycles)
         }
-        "l1_bundle.json" => fields!(L1Bundle; proof, commitment_mode),
+        "l1_bundle.json" => fields!(L1Bundle; wrap, commitment_mode, proof),
         "manifest.json" => {
             fields!(ProofManifest; format_version, program, fsv, configuration, files)
         }
@@ -682,12 +690,22 @@ fn committed_l1_feeder_reference_is_current() {
     ));
 }
 
+/// Resumes the feeder chain from the first committed checkpoint whose proof
+/// still has more than one instance and regenerates the rest of it.
 #[test]
-#[ignore = "regenerates the second CPU feeder layer"]
-fn committed_l1_feeder_second_reference_is_current() {
-    guard(GenerateFrom::FeederLayer0(
-        &fixture_dir().join("feeder_layer_0.json"),
-    ));
+#[ignore = "regenerates the CPU feeder layers after the first multi-instance checkpoint"]
+fn committed_l1_feeder_mid_chain_resume_is_current() {
+    let reference = fixture_dir();
+    let checkpoint = (0..MAX_FEEDER_LAYERS as u8)
+        .map(|layer| reference.join(feeder_checkpoint_name(layer)))
+        .take_while(|path| path.exists())
+        .find(|path| {
+            let checkpoint: StepCheckpoint = read_typed(path).expect("feeder checkpoint");
+            feeder_proof_instances(&checkpoint.proof, None).expect("feeder checkpoint proof") > 1
+        })
+        .expect("the L1 reference has a multi-instance feeder checkpoint");
+    println!("resuming from {}", checkpoint.display());
+    guard(GenerateFrom::FeederLayer(&checkpoint));
 }
 
 #[test]
@@ -696,6 +714,48 @@ fn committed_l1_wrap_reference_is_current() {
     guard(GenerateFrom::L1Feeder(
         &fixture_dir().join("l1_feeder.json"),
     ));
+}
+
+/// The proof and commitment-mode fixtures verifier_evm's 2p21 version
+/// reads: the committed reference wrap bundle, serialized as the prover's
+/// fixture writer does.
+fn evm_fixtures() -> [(PathBuf, Vec<u8>); 2] {
+    let bundle: L1Bundle =
+        read_typed(&fixture_dir().join("l1_bundle.json")).expect("committed L1 wrap bundle");
+    bundle.validate().expect("committed L1 wrap bundle");
+    assert_eq!(bundle.wrap, L1WrapVersion::Wrap2p21);
+    let prover = Path::new(env!("CARGO_MANIFEST_DIR")).join("../prover");
+    [
+        (
+            prover.join("unified_circuit_proof_proth120_2p21.json"),
+            serde_json::to_vec_pretty(&bundle.proof).unwrap(),
+        ),
+        (
+            prover.join("unified_circuit_proof_proth120_2p21_commitment_mod_aux_data.json"),
+            serde_json::to_vec_pretty(&bundle.commitment_mode).unwrap(),
+        ),
+    ]
+}
+
+#[test]
+#[ignore = "writes the verifier_evm 2p21 proof fixtures from the committed L1 reference"]
+fn export_l1_wrap_evm_fixtures() {
+    for (path, bytes) in evm_fixtures() {
+        fs::write(&path, bytes).expect("writes the EVM proof fixture");
+        println!("wrote {}", path.display());
+    }
+}
+
+#[test]
+#[ignore = "reads the committed L1 reference"]
+fn committed_l1_wrap_evm_fixtures_are_current() {
+    for (path, bytes) in evm_fixtures() {
+        assert!(
+            read_bytes(&path).expect("committed EVM proof fixture") == bytes,
+            "{} differs from the L1 reference bundle; regenerate: cargo test -p prover_pipeline --release --lib l1_reference::export_l1_wrap_evm_fixtures -- --exact --ignored",
+            path.display()
+        );
+    }
 }
 
 fn empty_proof(final_pc: u32) -> ProgramProof {

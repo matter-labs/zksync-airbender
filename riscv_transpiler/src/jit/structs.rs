@@ -207,10 +207,13 @@ impl MemoryHolder {
         this.buffer.fill(0);
     }
 
+    /// Touched words as `(address, (last timestamp, value))`, with the values
+    /// of words below `rom_byte_size` masked to zero.
     pub fn collect_inits_and_teardowns<A: Allocator + Clone + Send + Sync>(
         &self,
         worker: &worker::Worker,
         allocator: A,
+        rom_byte_size: usize,
     ) -> Vec<Vec<(u32, (TimestampScalar, u32)), A>> {
         // parallel collect
         // first we will walk over access_bitmask and collect subparts
@@ -235,7 +238,7 @@ impl MemoryHolder {
                         if *ts != 0 {
                             let mut word_value = unsafe { *values.get_unchecked(idx) };
                             // we mask ROM region to be zero-valued
-                            if address < common_constants::rom::ROM_BYTE_SIZE {
+                            if address < rom_byte_size {
                                 word_value = 0;
                             }
                             let last_timestamp: TimestampScalar = *ts;
@@ -255,6 +258,8 @@ impl MemoryHolder {
 #[derive(Debug)]
 pub struct ReplayerMemChunks<'a> {
     pub chunks: &'a mut [(&'a [u32], &'a [TimestampScalar])],
+    /// Reads below it are ROM reads of the circuit being proven.
+    pub rom_byte_size: usize,
 }
 
 impl<'a> RamPeek for ReplayerMemChunks<'a> {
@@ -302,7 +307,7 @@ impl<'a> RAM for ReplayerMemChunks<'a> {
     #[inline(always)]
     fn mask_read_for_witness(&self, address: &mut u32, value: &mut u32) {
         debug_assert_eq!(*address % 4, 0);
-        if (*address as usize) < common_constants::rom::ROM_BYTE_SIZE {
+        if (*address as usize) < self.rom_byte_size {
             // NOTE: we no longer mask an address, just a value as it's only initialized to
             // 0 via inits, and can not be written over by circuits
             // *address = 0u32;
@@ -562,5 +567,31 @@ impl<'a> ContextImpl for FlattenedContextImpl<'a> {
     }
     fn final_state_ref(&'_ self) -> Option<&'_ MachineState> {
         self.final_state.as_ref()
+    }
+}
+
+#[cfg(test)]
+mod rom_mask_tests {
+    use super::*;
+    use common_constants::rom::{L1_WRAP_ROM, REGULAR_ROM};
+
+    #[test]
+    fn wrap_replay_mask_uses_wrap_rom() {
+        for (rom, address, masked) in [
+            (L1_WRAP_ROM, 0x0007_fffc, true),
+            (L1_WRAP_ROM, 0x0008_0000, false),
+            (L1_WRAP_ROM, 0x0010_0000, false),
+            (REGULAR_ROM, 0x0010_0000, true),
+            (REGULAR_ROM, 0x0040_0000, false),
+        ] {
+            let ram = ReplayerMemChunks {
+                chunks: &mut [],
+                rom_byte_size: rom.byte_size(),
+            };
+            let (mut masked_address, mut value) = (address, 0x1234_5678);
+            ram.mask_read_for_witness(&mut masked_address, &mut value);
+            assert_eq!(masked_address, address);
+            assert_eq!(value == 0, masked, "{rom:?} 0x{address:08x}");
+        }
     }
 }

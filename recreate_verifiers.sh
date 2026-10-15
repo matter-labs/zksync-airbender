@@ -16,6 +16,9 @@ done
 RUST_MIN_STACK=100000000 cargo test -p cs --lib -- \
     _into_gkr _into_no_caches_gkr _witness_graph --skip _large_field
 RUST_MIN_STACK=100000000 cargo test -p witness_eval_generator --lib gen_for_gkr
+# The 2^21 L1 wrap circuit (Proth120, 512 KiB ROM): layout, SSA and CPU witness.
+RUST_MIN_STACK=1073741824 cargo test -p cs --release --lib large_field_2p21
+RUST_MIN_STACK=1073741824 cargo test -p witness_eval_generator --release --lib derive_from_ssa::test::gen_for_large_field -- --exact
 
 circuit_names=(
     "bigint_with_control"
@@ -74,4 +77,5 @@ if "$proth120_reference"; then
     tools/gkr_verifier/dump_recursive_verifiers.sh --sec 100
     (cd prover_pipeline && RUST_MIN_STACK=1073741824 cargo test --release --lib l1_reference::generate_l1_reference -- --exact --ignored --nocapture --test-threads=1)
     (cd cpu_execution_prover && RUST_MIN_STACK=1073741824 cargo test --release --test l1_reference generate_l1_witness_reference -- --exact --ignored --nocapture --test-threads=1)
+    (cd prover_pipeline && cargo test --release --lib l1_reference::export_l1_wrap_evm_fixtures -- --exact --ignored --nocapture)
 fi

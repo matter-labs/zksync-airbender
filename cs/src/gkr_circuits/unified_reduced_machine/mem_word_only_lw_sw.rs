@@ -5,6 +5,7 @@ use crate::cs::circuit_trait::*;
 use crate::structured_expr::Expr;
 use crate::types::*;
 use crate::witness_placer::*;
+use common_constants::rom::RomGeometry;
 use field::PrimeField;
 
 /// Per-cycle Family-4 LW/SW constraints (the data-path piece). Caller
@@ -36,7 +37,9 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
     scratch_vars: [Variable; F4_SCRATCH_VARS],
     // Shared RC-16 slot (limb 0 of the F1/F2/F4 Register) for the SW-align `top_14`.
     top_14_slot: Variable,
+    rom: RomGeometry,
 ) -> Vec<LookupRequest<F>> {
+    let rom_second_word_bits = rom.second_word_bits() as u32;
     let rs1_low_e: Expr<F> = Expr::var(rs1_limbs[0]);
     let rs1_high_e: Expr<F> = Expr::var(rs1_limbs[1]);
 
@@ -177,7 +180,7 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
         // is_sw-gated trap, so it is free on non-Family-4 rows (poolable).
         let is_rom = of_slots[2];
         // ROM-vs-data is decided by comparing the address high limb with
-        // 2^ROM_SECOND_WORD_BITS. On non-Family-4 rows is_rom is a don't-care (the
+        // 2^rom.second_word_bits(). On non-Family-4 rows is_rom is a don't-care (the
         // residue is gated to 0 below), so we only assign it on Family-4 rows.
         {
             let cleanaddr_hi_expr = cleanaddr_hi_expr.clone();
@@ -196,9 +199,7 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
                 };
                 let is_active = is_lw_val.or(&is_sw_val);
                 let cleanaddr_hi = cleanaddr_hi_expr.evaluate_with_placer(placer);
-                let extrabits = cleanaddr_hi
-                    .as_integer()
-                    .shr(common_constants::ROM_SECOND_WORD_BITS as u32);
+                let extrabits = cleanaddr_hi.as_integer().shr(rom_second_word_bits);
                 let rom = extrabits.is_zero();
                 placer.conditionally_assign_mask(is_rom.expect_variable(), &is_active, &rom);
             };
@@ -214,9 +215,7 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
         let residue_inner: Expr<F> = Expr::constant(F::from_u32_with_reduction(1 << 16))
             * Expr::from(is_rom)
             + Expr::from(ram_addr[1])
-            - Expr::constant(F::from_u32_with_reduction(
-                1 << common_constants::ROM_SECOND_WORD_BITS,
-            ));
+            - Expr::constant(F::from_u32_with_reduction(1 << rom_second_word_bits));
         let residue: Expr<F> = is_fam4_expr.clone() * residue_inner;
         assert_eq!(residue.degree(), 2);
         let residue_var = cs.add_intermediate_named_variable_from_expr(residue, "rom residue");

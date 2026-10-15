@@ -537,10 +537,10 @@ contract WhirVerifier {
         for { let i := 0 } lt(i, zwords) { i := add(i, 1) } {
             let w := calldataload(add(64, mul(i, 32)))
             mstore(add(Z_PTR, mul(mul(i, 2), 32)), shr(128, w))
-            mstore(add(Z_PTR, mul(add(mul(i, 2), 1), 32)), and(w, MASK))
+            __WHIR_LAST_Z_LANE__
         }
         // base caps: witness (BCAP0) then setup (BCAP1)
-        let caps_off := add(64, mul(zwords, 32))
+        let caps_off := __WHIR_CAPS_OFFSET__
         calldatacopy(BCAP0_PTR, caps_off, mul(CAP, 32))
         calldatacopy(BCAP1_PTR, add(caps_off, mul(CAP, 32)), mul(CAP, 32))
         let plen := add(caps_off, mul(nbcaps, mul(CAP, 32)))

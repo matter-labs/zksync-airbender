@@ -1,0 +1,11 @@
+[profile.default]
+solc_version = "0.8.36"
+auto_detect_solc = false
+src = "src"
+script = "script"
+out = "out"
+via_ir = true
+optimizer = true
+optimizer_runs = 200
+evm_version = "prague"
+fs_permissions = [{ access = "read", path = "../../debug_data" }]

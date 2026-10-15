@@ -106,12 +106,17 @@ impl ExecutionBackend for GpuBackend {
     }
 }
 
-/// The GPU backend does not prove the 2^22 L1 feeder until W4: reject it
-/// before any host setup is built.
+/// The GPU backend does not prove the 2^22 L1 feeder until W4 nor the 2^21
+/// L1 wrap until W5: reject them before any host setup is built.
 pub(crate) fn admit_binary_registration(
     execution_kind: ExecutionKind,
     profiles: &[ProofProfile],
 ) -> Result<(), String> {
+    if execution_kind == ExecutionKind::L1Wrap21 {
+        return Err(format!(
+            "the GPU backend does not support the 2^21 L1 wrap (ExecutionKind::L1Wrap21) until W5, got {profiles:?}"
+        ));
+    }
     if execution_kind == ExecutionKind::Unified22 || profiles.contains(&ProofProfile::L1Feeder) {
         return Err(format!(
             "the GPU backend does not support the 2^22 L1 feeder (ExecutionKind::Unified22 / ProofProfile::L1Feeder) until W4, got {execution_kind:?} {profiles:?}"
@@ -145,5 +150,15 @@ mod cpu_tests {
                 "{err}"
             );
         }
+    }
+
+    #[test]
+    fn cpu_l1_wrap21_is_rejected_before_setup() {
+        let err = admit_binary_registration(ExecutionKind::L1Wrap21, &[ProofProfile::L1Wrap])
+            .unwrap_err();
+        assert!(
+            err.starts_with("the GPU backend does not support the 2^21 L1 wrap"),
+            "{err}"
+        );
     }
 }

@@ -2,12 +2,94 @@ use super::*;
 use crate::l1_feeder_tests::{artifact, empty_gkr_proof, feeder_artifact};
 use prover::definitions::FinalRegisterValue;
 
+/// A proof with zero values and the exact shape of an `L1_WRAP_KIND` proof:
+/// GKR layer rounds and round messages; packed setup (one column) and merged
+/// memory oracles, intermediate oracles, queries, leaves and paths.
+fn wrap_proof_skeleton() -> L1Proof {
+    use prover::gkr::prover::{SumcheckIntermediateProofValues, SumcheckRoundCoefficients};
+    use prover::gkr::whir::queries::{BaseFieldQuery, ExtensionFieldQuery};
+    use prover::gkr::whir::whir_proof::WhirIntermediateCommitmentAndQueries;
+
+    let circuit = L1_WRAP_KIND.unified_circuit().unwrap();
+    let log = circuit.get_domain_size_log2() as usize;
+    let config = ProofProfile::L1Wrap.prover_config(log, COMPILED_SECURITY_LEVEL.to_prover());
+    let (pack_log2, _) = l1_wrap_packing(circuit);
+    let schedule = config.whir_schedule.clone();
+    let steps = &schedule.whir_steps_schedule;
+    let folds: usize = steps.iter().sum();
+    let cap_log2 = schedule.cap_size.trailing_zeros() as usize;
+    let message_log2 = log + pack_log2;
+    let mut proof: L1Proof = empty_gkr_proof();
+    let rounds = (0..5).map(|_| log).chain((4..log).rev());
+    for (layer, sumcheck_num_rounds) in rounds.enumerate() {
+        proof.sumcheck_intermediate_values.insert(
+            layer,
+            SumcheckIntermediateProofValues {
+                sumcheck_num_rounds,
+                internal_round_coefficients: vec![
+                    SumcheckRoundCoefficients::Multilinear(
+                        Default::default()
+                    );
+                    sumcheck_num_rounds
+                ],
+                final_step_evaluations: Default::default(),
+                extra_evaluations_from_caching_relations: Default::default(),
+                _marker: core::marker::PhantomData,
+            },
+        );
+    }
+    let whir = &mut proof.whir_proof;
+    let base_path =
+        message_log2 + schedule.base_lde_factor.trailing_zeros() as usize - steps[0] - cap_log2;
+    for (base, columns) in [
+        (&mut whir.setup_commitment, 1),
+        (&mut whir.memory_commitment, 7),
+    ] {
+        base.num_columns = columns;
+        base.evals = vec![Default::default(); columns];
+        base.queries = vec![
+            BaseFieldQuery {
+                leaf_values_concatenated: vec![Default::default(); columns << steps[0]],
+                path: vec![Default::default(); base_path],
+                ..Default::default()
+            };
+            schedule.whir_queries_schedule[0]
+        ];
+    }
+    let mut poly_log2 = message_log2 - steps[0];
+    whir.intermediate_whir_oracles = (1..steps.len())
+        .map(|round| {
+            let codeword_log2 =
+                poly_log2 + schedule.whir_steps_lde_factors[round - 1].trailing_zeros() as usize;
+            poly_log2 -= steps[round];
+            WhirIntermediateCommitmentAndQueries {
+                commitment: Default::default(),
+                queries: vec![
+                    ExtensionFieldQuery {
+                        leaf_values_concatenated: vec![Default::default(); 1 << steps[round]],
+                        path: vec![Default::default(); codeword_log2 - steps[round] - cap_log2],
+                        ..Default::default()
+                    };
+                    schedule.whir_queries_schedule[round]
+                ],
+            }
+        })
+        .collect();
+    whir.pow_nonces = vec![0; steps.len()];
+    whir.sumcheck_polys = vec![Default::default(); folds];
+    whir.final_monomials = vec![Default::default(); 1 << (message_log2 - folds)];
+    whir.whir_schedule = schedule;
+    proof
+}
+
 fn result() -> L1WrapResult {
+    let (pack_log2, external_challenges_pow_bits) =
+        l1_wrap_packing(L1_WRAP_KIND.unified_circuit().unwrap());
     L1WrapResult {
-        proof: empty_gkr_proof(),
+        proof: wrap_proof_skeleton(),
         commitment_mode: CommitmentMode::MergedAndPackedMemoryAndWitness {
-            pack_log2: EVM_PRODUCTION_PACK_LOG2,
-            external_challenges_pow_bits: EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS,
+            pack_log2,
+            external_challenges_pow_bits,
             register_final_state: [FinalRegisterValue {
                 value: 0,
                 last_access_timestamp: 0,
@@ -138,13 +220,9 @@ fn wrap_rejects_an_invalid_feeder_proof_before_proving() {
         program_cycles: checkpoint.program_cycles,
         feeder_layers: checkpoint.feeder_layers,
     };
-    // the wrap stage is closed until W3's wrap circuit matches the wrap program
     let Err(error) = advance_l1_wrap(&mut NoProving, &fsv, state, 0) else {
-        panic!("the wrap stage ran before W3");
+        panic!("an invalid feeder checkpoint was wrapped");
     };
-    assert!(error.starts_with("ProofTarget::L1 requires"), "{error}");
-    // and an invalid feeder proof is rejected by its admission check
-    let error = validate_last_feeder_proof(&artifact(ProofTarget::L1Feeder, 5).proof).unwrap_err();
     assert!(error.contains("reduced-machine family"), "{error}");
 }
 
@@ -201,11 +279,7 @@ fn cpu_m8_l1_registration_plan() {
             ExecutionKind::Unified22,
             ProofProfile::L1Feeder,
         ),
-        (
-            &fsv.feeder_wrap,
-            ExecutionKind::L1Wrap,
-            ProofProfile::L1Wrap,
-        ),
+        (&fsv.feeder_wrap, L1_WRAP_KIND, ProofProfile::L1Wrap),
     ] {
         let key = handle_key(kind, MachineType::Reduced, &program.0, &program.1);
         let registration = &registrations[&key];
@@ -216,4 +290,130 @@ fn cpu_m8_l1_registration_plan() {
         assert_eq!(registration.cycles_bound, None);
         assert_eq!(registration.profiles, BTreeSet::from([profile]));
     }
+}
+
+#[test]
+fn l1_activation_accepts_cpu_wrap21() {
+    assert_eq!(L1_WRAP_KIND, ExecutionKind::L1Wrap21);
+    validate_l1_wrap_activation().unwrap();
+    validate_l1_wrap_backend(ProverBackend::Cpu).unwrap();
+    validate_artifact_envelope(&wrapped_artifact()).unwrap();
+}
+
+#[test]
+fn l1_activation_rejects_gpu_before_registration() {
+    let err = validate_l1_wrap_backend(ProverBackend::Gpu).unwrap_err();
+    assert!(
+        err.contains("ExecutionKind::L1Wrap21") && err.contains("W5"),
+        "{err}"
+    );
+}
+
+#[test]
+fn l1_bundle_requires_wrap_version() {
+    let bundle = L1Bundle::from_result(result());
+    let mut json = serde_json::to_value(&bundle).unwrap();
+    assert_eq!(json["wrap"], "2p21");
+    json.as_object_mut().unwrap().remove("wrap");
+    let err = serde_json::from_value::<L1Bundle>(json).unwrap_err();
+    assert!(err.to_string().contains("missing field `wrap`"), "{err}");
+}
+
+#[test]
+fn l1_bundle_rejects_2p22_version() {
+    let mut bundle = L1Bundle::from_result(result());
+    bundle.wrap = L1WrapVersion::Wrap2p22;
+    let err = bundle.validate().unwrap_err();
+    assert!(err.contains("proven in the Wrap2p22 wrap"), "{err}");
+}
+
+#[test]
+fn l1_bundle_rejects_truncated_whir_round() {
+    let mutations: &[(&str, fn(&mut L1Proof))] = &[
+        ("WHIR intermediate oracles", |p| {
+            p.whir_proof.intermediate_whir_oracles.pop();
+        }),
+        ("WHIR round 3 queries", |p| {
+            p.whir_proof.intermediate_whir_oracles[2].queries.pop();
+        }),
+        ("WHIR final monomials", |p| {
+            p.whir_proof.final_monomials.pop();
+        }),
+        ("WHIR PoW nonces", |p| {
+            p.whir_proof.pow_nonces.pop();
+        }),
+        ("WHIR schedule", |p| {
+            p.whir_proof.whir_schedule.whir_pow_schedule[2] -= 1;
+        }),
+        ("sumcheck rounds in GKR layer 5", |p| {
+            p.sumcheck_intermediate_values
+                .get_mut(&5)
+                .unwrap()
+                .sumcheck_num_rounds -= 1;
+        }),
+        ("GKR layers", |p| {
+            p.sumcheck_intermediate_values.pop_last();
+        }),
+        ("round messages in GKR layer 2", |p| {
+            p.sumcheck_intermediate_values
+                .get_mut(&2)
+                .unwrap()
+                .internal_round_coefficients
+                .clear();
+        }),
+        ("non-multilinear round message", |p| {
+            p.sumcheck_intermediate_values
+                .get_mut(&7)
+                .unwrap()
+                .internal_round_coefficients[3] =
+                prover::gkr::prover::SumcheckRoundCoefficients::Uniskip(vec![]);
+        }),
+        ("WHIR merged memory oracle columns", |p| {
+            p.whir_proof.memory_commitment.num_columns = 0;
+        }),
+        ("WHIR setup oracle queries", |p| {
+            p.whir_proof.setup_commitment.queries.pop();
+        }),
+        ("WHIR setup oracle columns", |p| {
+            // a self-consistent two-column setup oracle
+            let setup = &mut p.whir_proof.setup_commitment;
+            setup.num_columns = 2;
+            setup.evals.push(Default::default());
+            for query in &mut setup.queries {
+                let leaf = query.leaf_values_concatenated.clone();
+                query.leaf_values_concatenated.extend(leaf);
+            }
+        }),
+        ("WHIR round 4 leaf values", |p| {
+            p.whir_proof.intermediate_whir_oracles[3].queries[0]
+                .leaf_values_concatenated
+                .pop();
+        }),
+        ("WHIR merged memory oracle path nodes", |p| {
+            p.whir_proof.memory_commitment.queries[5].path.pop();
+        }),
+    ];
+    L1Bundle::from_result(result()).validate().unwrap();
+    for (expected, mutate) in mutations {
+        let mut bundle = L1Bundle::from_result(result());
+        mutate(&mut bundle.proof);
+        let err = bundle.validate().unwrap_err();
+        assert!(err.contains(expected), "{expected}: {err}");
+    }
+}
+
+/// The layout check against real data: the committed 2^22 EVM proof.
+#[test]
+fn committed_2p22_evm_proof_has_the_2p22_layout() {
+    let proof: L1Proof = serde_json::from_slice(
+        &std::fs::read(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../prover/unified_circuit_proof_proth120.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    validate_l1_proof_layout(&proof, L1WrapVersion::Wrap2p22).unwrap();
+    let err = validate_l1_proof_layout(&proof, L1WrapVersion::Wrap2p21).unwrap_err();
+    assert!(err.contains("GKR layers"), "{err}");
 }

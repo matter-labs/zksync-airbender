@@ -34,10 +34,11 @@ use full_statement_verifier::host_utils::{
     native_verify_unrolled, unified_switch_cycles, unrolled_blake_mode, FsvRecursionChain,
 };
 use full_statement_verifier::program_proof::ProgramProof;
-pub use l1_wrap::L1Bundle;
 use l1_wrap::{
-    advance_l1_wrap, validate_artifact_envelope, validate_feeder_proof, validate_l1_wrap_activation,
+    advance_l1_wrap, validate_artifact_envelope, validate_feeder_proof,
+    validate_l1_wrap_activation, L1_WRAP_KIND,
 };
+pub use l1_wrap::{L1Bundle, L1WrapVersion};
 use riscv_transpiler::vm::FlatResponsesSource;
 use serde::{Deserialize, Serialize};
 use setups::Setups;
@@ -254,9 +255,8 @@ pub const ARTIFACT_SCHEMA_VERSION: u32 = 5;
 pub const LEGACY_ARTIFACT_SCHEMA_VERSION: u32 = 4;
 /// The feeder chain must reach one instance within this many layers.
 pub const MAX_FEEDER_LAYERS: u32 = 8;
-/// The cycle budget of the intended 2^21 L1 wrap program (W3 asserts its
-/// wrap circuit domain equals it); independent of the active
-/// `CircuitType::L1Wrap` domain.
+/// The cycle budget of the 2^21 L1 wrap program: the domain of the wrap
+/// circuit `ProofTarget::L1` proves in (asserted at activation).
 pub const L1_WRAP_PROGRAM_CYCLE_LIMIT: usize = 1 << 21;
 
 fn default_blake_tag() -> String {
@@ -442,7 +442,7 @@ impl<B: execution_prover::backend::ExecutionBackend> ProveBackend for PipelineBa
 
     fn prove_l1_wrap(&mut self, request: L1WrapRequest<'_>) -> Result<L1WrapResult, String> {
         let key = handle_key(
-            ExecutionKind::L1Wrap,
+            L1_WRAP_KIND,
             MachineType::Reduced,
             request.bin,
             request.text,
@@ -1128,11 +1128,7 @@ fn pipeline_registrations(
         }
     }
     if start < ProofTarget::L1 && target == ProofTarget::L1 {
-        programs.push((
-            &fsv.feeder_wrap,
-            ExecutionKind::L1Wrap,
-            ProofProfile::L1Wrap,
-        ));
+        programs.push((&fsv.feeder_wrap, L1_WRAP_KIND, ProofProfile::L1Wrap));
     }
     for (program, kind, profile) in programs {
         add(kind, MachineType::Reduced, program, None, profile);
@@ -1479,11 +1475,17 @@ impl ProgramProver {
         blake: PipelineBlakeModes,
         start: Option<ProofTarget>,
     ) -> Result<Self, String> {
+        if config.target == ProofTarget::L1 {
+            validate_l1_wrap_activation()?;
+        }
         let backend = match config.backend {
             ProverBackend::Cpu => BackendImpl::Cpu(PipelineBackend::new(&config)),
             ProverBackend::Gpu => {
                 #[cfg(feature = "gpu")]
                 {
+                    if config.target == ProofTarget::L1 {
+                        l1_wrap::validate_l1_wrap_backend(config.backend)?;
+                    }
                     BackendImpl::Gpu(PipelineBackend::new(&config))
                 }
                 #[cfg(not(feature = "gpu"))]
@@ -1495,9 +1497,6 @@ impl ProgramProver {
                 }
             }
         };
-        if config.target == ProofTarget::L1 {
-            validate_l1_wrap_activation()?;
-        }
         let mut prover = Self {
             source,
             fsv: FsvPrograms::load(config.target, blake),
@@ -1987,9 +1986,6 @@ fn find_binary_exit_point(binary: &[u32]) -> Result<u32, String> {
     std::panic::catch_unwind(|| setups::program_setups::find_binary_exit_point(binary))
         .map_err(|_| "binary has no unique exit sequence".to_string())
 }
-
-#[allow(dead_code)]
-const L1_WRAP_CYCLES_BOUND: usize = 1 << 22;
 
 #[allow(dead_code)]
 /// Run `bin`/`text` on the reduced machine over `nd_words` and return its exact

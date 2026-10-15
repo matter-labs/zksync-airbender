@@ -11,9 +11,9 @@
 # SAME salt (set below), so every address is a pure function of (factory, salt, initCode). The
 # script never computes CREATE2 addresses. Two-step flow:
 #
-#   1. Leave REGISTRY_ADDR all-zero and run ./deploy.sh — it deploys ONLY the registry, prints
+#   1. Leave REGISTRY_ADDR all-zero and run ./deploy.sh <2p22|2p21> — it deploys ONLY the registry, prints
 #      the address the factory reports (ContractCreation event), and exits.
-#   2. Substitute that address into REGISTRY_ADDR below and run ./deploy.sh again — it sees the
+#   2. Substitute that address into the version-specific REGISTRY_ADDR_2P22 or REGISTRY_ADDR_2P21 environment variable and run ./deploy.sh <2p22|2p21> again — it sees the
 #      registry code already on-chain, regenerates + builds + deploys the two verifiers,
 #      then permanently authorizes that pair. Use the same KEY for both runs.
 #
@@ -23,18 +23,21 @@
 # partial run still consumes the salt for the contracts it did deploy.
 #
 # Feed the (pre-computed) GKR + WHIR addresses to ./send_proofs.sh afterwards.
-set -e
-cd "$(dirname "$0")"
+set -eu
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+. "$SCRIPT_DIR/version.sh"
+select_version "${1:?usage: deploy.sh <2p22|2p21>}"
+cd "$CONTRACTS_ROOT"
 
 # ---- configuration: edit for the target network ------------------------------------------------
 RPC=http://127.0.0.1:8545
 KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 # One salt for the whole suite. First 20 bytes zero + 21st byte zero = CreateX's unpermissioned,
 # non-redeploy-protected salt flavor (anyone can reproduce the addresses).
-SALT=0x00000000000000000000000000000000000000000000000000616972621b0001
+SALT=$DEPLOY_SALT
 # The registry's CREATE2 address. All-zero = bootstrap mode: deploy the registry, print its
 # address, and exit (substitute the printed address here before the second run).
-REGISTRY_ADDR=0x0000000000000000000000000000000000000000
+# Set REGISTRY_ADDR_2P22 or REGISTRY_ADDR_2P21 for this version; select_version loads it.
 # ------------------------------------------------------------------------------------------------
 
 CREATEX=0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed
@@ -86,7 +89,7 @@ if [ "$REGISTRY_ADDR" = "0x0000000000000000000000000000000000000000" ]; then
   REG_ADDR=$(created_address "$receipt")
   echo "   Registry : $REG_ADDR"
   echo ""
-  echo "substitute this address into REGISTRY_ADDR in $0 and run it again to"
+  echo "set REGISTRY_ADDR_2P22 or REGISTRY_ADDR_2P21 to this address and rerun $0 to"
   echo "regenerate + deploy the GKR and WHIR verifiers."
   exit 0
 fi
@@ -112,9 +115,17 @@ if [ "$(printf '%s' "$actual_initializer" | tr '[:upper:]' '[:lower:]')" != \
   exit 1
 fi
 
+# A registry authorizes one immutable pair. Fail before creating either verifier
+# if this version was already initialized (or the wrong registry was selected).
+registered_gkr=$(cast call "$REGISTRY_ADDR" 'gkrVerifier()(address)' --rpc-url "$RPC")
+if [ "$registered_gkr" != "0x0000000000000000000000000000000000000000" ]; then
+  echo "ERROR: registry already has GKR verifier $registered_gkr" >&2
+  exit 1
+fi
+
 # Regenerate the verifier sources with the registry address, rebuild.
 echo "== regenerating GKR/WHIR sources with REGISTRY_ADDRESS=$REGISTRY_ADDR =="
-( cd .. && REGISTRY_ADDRESS=$REGISTRY_ADDR cargo test -q -p verifier_evm --test generate_contracts >/dev/null )
+( cd "$SCRIPT_DIR/.." && REGISTRY_ADDRESS=$REGISTRY_ADDR cargo test -q -p verifier_evm --test generate_contracts generate_contracts_into_dir -- --exact --ignored >/dev/null )
 ( cd gkr  && forge build >/dev/null )
 ( cd whir && forge build >/dev/null )
 
@@ -132,4 +143,4 @@ cast send "$REGISTRY_ADDR" 'initialize_verifiers(address,address)' "$GKR_ADDR" "
 
 echo "== done =="
 echo "send the proof transactions with the authorized verifier addresses:"
-echo "   ./send_proofs.sh $GKR_ADDR $WHIR_ADDR"
+echo "   $SCRIPT_DIR/send_proofs.sh $AB_EVM_VERSION $GKR_ADDR $WHIR_ADDR"

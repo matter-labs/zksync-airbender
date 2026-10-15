@@ -17,21 +17,20 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         let mut profiles = profiles.to_vec();
         profiles.sort_unstable();
         profiles.dedup();
-        if execution_kind == ExecutionKind::L1Wrap || profiles.contains(&ProofProfile::L1Wrap) {
-            assert_eq!(
-                execution_kind,
-                ExecutionKind::L1Wrap,
-                "ProofProfile::L1Wrap requires ExecutionKind::L1Wrap"
+        if execution_kind.is_l1_wrap() || profiles.contains(&ProofProfile::L1Wrap) {
+            assert!(
+                execution_kind.is_l1_wrap(),
+                "ProofProfile::L1Wrap requires ExecutionKind::L1Wrap or ExecutionKind::L1Wrap21"
             );
             assert_eq!(
                 profiles,
                 [ProofProfile::L1Wrap],
-                "ExecutionKind::L1Wrap requires exactly ProofProfile::L1Wrap"
+                "ExecutionKind::{execution_kind:?} requires exactly ProofProfile::L1Wrap"
             );
             assert_eq!(
                 machine_type,
                 MachineType::Reduced,
-                "ExecutionKind::L1Wrap requires MachineType::Reduced"
+                "ExecutionKind::{execution_kind:?} requires MachineType::Reduced"
             );
         }
         if profiles.contains(&ProofProfile::L1Feeder) {
@@ -52,7 +51,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 [ProofProfile::L1Feeder],
                 "ExecutionKind::Unified22 requires exactly ProofProfile::L1Feeder"
             ),
-            ExecutionKind::Unrolled | ExecutionKind::L1Wrap => {}
+            ExecutionKind::Unrolled | ExecutionKind::L1Wrap | ExecutionKind::L1Wrap21 => {}
         }
         self.backend
             .admit_binary(execution_kind, machine_type, &profiles);
@@ -97,12 +96,13 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 };
                 vec![circuit_type]
             }
-            ExecutionKind::L1Wrap => vec![],
+            ExecutionKind::L1Wrap | ExecutionKind::L1Wrap21 => vec![],
         };
+        let rom = execution_kind.rom();
         let mut padded_binary_image = binary_image.clone();
-        crate::upstream::pad_bytecode_for_proving(&mut padded_binary_image);
+        crate::upstream::pad_bytecode_for_proving_with_rom(&mut padded_binary_image, rom);
         let mut padded_text_section = text_section.clone();
-        crate::upstream::pad_bytecode_for_proving(&mut padded_text_section);
+        crate::upstream::pad_bytecode_for_proving_with_rom(&mut padded_text_section, rom);
         let precomputations: HashMap<_, _> = circuit_types
             .into_iter()
             .map(|circuit_type| {
@@ -125,24 +125,29 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 (circuit_type, precomp)
             })
             .collect();
-        let l1_wrap_precomputations = (execution_kind == ExecutionKind::L1Wrap).then(|| {
-            use unified_reduced_machine_proth120::{
-                l1_wrap_setup, NUM_INIT_AND_TEARDOWN_SETS, TRACE_LEN_LOG2,
+        let l1_wrap_circuit = execution_kind
+            .is_l1_wrap()
+            .then(|| execution_kind.unified_circuit().unwrap());
+        let l1_wrap_precomputations = l1_wrap_circuit.map(|circuit_type| {
+            use unified_reduced_machine_proth120::{l1_wrap_2p21, l1_wrap_2p22};
+            let setup = match circuit_type {
+                CircuitType::L1Wrap => {
+                    l1_wrap_2p22::l1_wrap_setup(&padded_binary_image, &padded_text_section)
+                }
+                CircuitType::L1Wrap21 => {
+                    l1_wrap_2p21::l1_wrap_setup(&padded_binary_image, &padded_text_section)
+                }
+                _ => unreachable!(),
             };
+            assert_eq!(setup.trace_len, circuit_type.get_domain_size());
+            assert_eq!(setup.rom, circuit_type.rom());
             assert_eq!(
-                CircuitType::L1Wrap.get_domain_size_log2() as usize,
-                TRACE_LEN_LOG2
-            );
-            assert_eq!(
-                CircuitType::L1Wrap.get_num_inits_and_teardowns_sets(),
-                NUM_INIT_AND_TEARDOWN_SETS
+                setup.circuit.memory_layout.teardown_sets.len(),
+                circuit_type.get_num_inits_and_teardowns_sets()
             );
             self.backend.prepare(
-                CircuitType::L1Wrap,
-                crate::setup::CanonicalCircuitSetup::L1Wrap(l1_wrap_setup(
-                    &padded_binary_image,
-                    &padded_text_section,
-                )),
+                circuit_type,
+                crate::setup::CanonicalCircuitSetup::L1Wrap(setup),
                 self.configuration.security_level,
                 &profiles,
             )
@@ -155,11 +160,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 .map(|(circuit_type, precomp)| {
                     (CircuitType::Unrolled(*circuit_type), precomp.clone())
                 })
-                .chain(
-                    l1_wrap_precomputations
-                        .iter()
-                        .map(|precomp| (CircuitType::L1Wrap, precomp.clone())),
-                )
+                .chain(l1_wrap_circuit.zip(l1_wrap_precomputations.clone()))
                 .collect(),
         );
         pending_setup_initialization.wait();

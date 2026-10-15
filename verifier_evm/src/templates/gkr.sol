@@ -503,13 +503,13 @@ contract GKRVerifier {
             ncp := add(cp, 320)
         }
 
-        // 18 dim-reducing layers (folding_steps 4..21). Reads the 10 claims + batching from
+        // __GKR_DR_COUNT__ dim-reducing layers (folding_steps __GKR_DR_FIRST__..__GKR_DR_LAST_ROUNDS__). Reads the 10 claims + batching from
         // gkr_init (GKR_CLAIMS_PTR / GKR_BATCHING_PTR); reuses sumcheck_rounds for the monomial
         // rounds. Validated end-to-end in step1_test/GkrCompressYul (post-state 0xc3616d7d…).
         function gkr_compress(ptr, claim0, alpha0) -> next_ptr, next_claim, next_alpha {
             let batching := mload(GKR_BATCHING_PTR())
-            for { let k := 0 } lt(k, 18) { k := add(k, 1) } {
-                let fs := add(4, k)
+            for { let k := 0 } lt(k, __GKR_DR_COUNT__) { k := add(k, 1) } {
+                let fs := add(__GKR_DR_FIRST__, k)
                 // initial claim = RLC(claims, batching)
                 let claim := 0
                 let cb := 1
@@ -522,7 +522,7 @@ contract GKRVerifier {
                 ptr, claim,
                 eq_scale := sumcheck_rounds(ptr, claim, fs)
                 ptr,
-                batching := gkr_dr_final(ptr, fs, batching, eq(k, 17), eq_scale, claim)
+                batching := gkr_dr_final(ptr, fs, batching, eq(k, __GKR_DR_BOUNDARY__), eq_scale, claim)
             }
             mstore(GKR_BATCHING_PTR(), batching)
             next_ptr := ptr
@@ -604,7 +604,7 @@ contract GKRVerifier {
         // GKR→WHIR handoff: draw the 4 packing coords, merge the base-layer claims (mem++wit
         // 104→7, setup 10→1), draw the WHIR batching challenge (PoW nonce=0), form the batched
         // opening, and mark_gkr_verified(keccak(preimage)) with preimage
-        //   [seed:32][batching:16][opening:16][z = base_z(22) ++ extra(4) : 26·16][caps:2·CAP·32]
+        //   [seed:32][batching:16][opening:16][z = base_z(__GKR_BASE_COORDS__) ++ extra(4) : __GKR_MESSAGE_COORDS__·16][caps:2·CAP·32]
         // (the pack index occupies the HIGH bits of the packed enumeration, so under LSB
         // binding the packing coords EXTEND the claim point at the top).
         function emit_gkr_mark(claim_v) {

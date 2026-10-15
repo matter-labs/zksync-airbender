@@ -16,7 +16,6 @@ use execution_prover::messages::{
     SetupInitializationRequest, SetupInitializationResult, WorkRequest, WorkResult,
 };
 use execution_prover_model::allocator::HostTraceAllocator;
-use execution_prover_model::circuit_type::CircuitType;
 use execution_prover_model::trace::{ChunkedTraceHolder, InitsAndTeardownsTraceHost};
 use inits_and_teardowns::TeardownColumns;
 use std::borrow::Cow;
@@ -77,10 +76,10 @@ impl CpuJobs {
             precomputations,
             security_level,
         } = request;
-        if circuit_type == CircuitType::L1Wrap {
-            precomputations
-                .l1_wrap()
-                .initialize_setup(security_level, worker);
+        if circuit_type.is_l1_wrap() {
+            let l1_wrap = precomputations.l1_wrap();
+            assert_eq!(circuit_type, l1_wrap.circuit_type);
+            l1_wrap.initialize_setup(security_level, worker);
         } else {
             let twiddles = self.twiddles(precomputations.trace_len, worker);
             precomputations.initialize_setup(security_level, &*twiddles, worker);

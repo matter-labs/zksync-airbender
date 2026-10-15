@@ -3,9 +3,6 @@ use crate::messages::L1WrapProofRequest;
 use crate::workers::simulation::assert_l1_wrap_geometry;
 use ::prover::field::Proth120;
 use ::prover::gkr::prover::GKRProof;
-use ::prover::gkr::prover_config::example_configs::{
-    EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS, EVM_PRODUCTION_PACK_LOG2,
-};
 use ::prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
 use execution_prover_model::allocator::HostTraceAllocator;
 use execution_prover_model::trace::{UnrolledTracingDataHost, UnrolledUnifiedTraceHost};
@@ -25,8 +22,10 @@ struct L1WrapTrace<A: HostTraceAllocator> {
 }
 
 fn collect_l1_wrap_trace<A: HostTraceAllocator>(
+    circuit_type: CircuitType,
     results: impl IntoIterator<Item = WorkerResult<A>>,
 ) -> L1WrapTrace<A> {
+    assert!(circuit_type.is_l1_wrap());
     let mut traces = Vec::new();
     let mut inits = Vec::new();
     let mut simulation = None;
@@ -59,8 +58,7 @@ fn collect_l1_wrap_trace<A: HostTraceAllocator>(
     assert_l1_wrap_geometry(traces.len(), inits.len());
     let trace = traces.pop().unwrap();
     assert_eq!(
-        trace.circuit_type,
-        CircuitType::L1Wrap,
+        trace.circuit_type, circuit_type,
         "L1Wrap requires its own trace geometry"
     );
     assert_eq!(
@@ -77,13 +75,12 @@ fn collect_l1_wrap_trace<A: HostTraceAllocator>(
         panic!("L1Wrap requires a unified trace");
     };
     assert!(
-        tracing_data.len() <= CircuitType::L1Wrap.get_domain_size(),
+        tracing_data.len() <= circuit_type.get_domain_size(),
         "L1Wrap needs exactly one unified chunk"
     );
     let inits = inits.pop().unwrap();
     assert_eq!(
-        inits.circuit_type,
-        CircuitType::L1Wrap,
+        inits.circuit_type, circuit_type,
         "L1Wrap requires its own I&T geometry"
     );
     assert_eq!(
@@ -95,7 +92,7 @@ fn collect_l1_wrap_trace<A: HostTraceAllocator>(
         .expect("L1Wrap requires inits/teardowns data");
     assert_eq!(
         inits_and_teardowns.top_bits.len(),
-        CircuitType::L1Wrap.get_num_inits_and_teardowns_sets(),
+        circuit_type.get_num_inits_and_teardowns_sets(),
         "L1Wrap requires two inits/teardowns sets"
     );
     L1WrapTrace {
@@ -113,6 +110,11 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         non_determinism: ND,
     ) -> L1WrapResult {
         let holder = &self.binary_holders[&handle.0];
+        assert!(
+            holder.execution_kind.is_l1_wrap(),
+            "prove_l1_wrap requires an L1 wrap binary, got ExecutionKind::{:?}",
+            holder.execution_kind
+        );
         let (sender, receiver) = unbounded();
         self.spawn_simulation_workers(
             batch_id,
@@ -122,7 +124,8 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             &Arc::new(AtomicBool::new(false)),
         );
         drop(sender);
-        let trace = collect_l1_wrap_trace(receiver);
+        let trace =
+            collect_l1_wrap_trace(holder.execution_kind.unified_circuit().unwrap(), receiver);
         self.prove_l1_wrap_trace(batch_id, holder, trace)
     }
 
@@ -132,9 +135,11 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         holder: &BinaryHolder<B>,
         trace: L1WrapTrace<B::Allocator>,
     ) -> L1WrapResult {
+        let circuit_type = holder.execution_kind.unified_circuit().unwrap();
+        let (pack_log2, external_challenges_pow_bits) = crate::l1_wrap_packing(circuit_type);
         let commitment_mode = CommitmentMode::MergedAndPackedMemoryAndWitness {
-            pack_log2: EVM_PRODUCTION_PACK_LOG2,
-            external_challenges_pow_bits: EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS,
+            pack_log2,
+            external_challenges_pow_bits,
             final_pc: trace.simulation.final_pc,
             final_timestamp: trace.simulation.final_timestamp,
             register_final_state: trace.simulation.final_register_values,
@@ -149,6 +154,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         request_sender
             .send(WorkRequest::L1WrapProof(L1WrapProofRequest {
                 batch_id,
+                circuit_type,
                 precomputations: holder
                     .l1_wrap_precomputations
                     .as_ref()
@@ -165,6 +171,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             let WorkerResult::BackendWorkResult(WorkResult::L1WrapProof(result)) = result else {
                 panic!("unexpected backend result during L1Wrap proving");
             };
+            assert_eq!(result.circuit_type, circuit_type);
             self.free_traces(
                 Some(result.inits_and_teardowns),
                 Some(TracingDataHost::Unrolled(UnrolledTracingDataHost::Unified(
@@ -222,7 +229,7 @@ mod tests {
 
     #[test]
     fn delayed_out_of_order_replay_is_drained_before_consuming_trace() {
-        let trace = collect_l1_wrap_trace(events());
+        let trace = collect_l1_wrap_trace(CircuitType::L1Wrap, events());
         assert_eq!(trace.simulation.final_pc, 42);
         assert_eq!(trace.inits_and_teardowns.top_bits, [0, 1]);
     }
@@ -232,7 +239,7 @@ mod tests {
     fn missing_replay_is_rejected() {
         let mut events = events();
         events.pop();
-        collect_l1_wrap_trace(events);
+        collect_l1_wrap_trace(CircuitType::L1Wrap, events);
     }
 
     #[test]
@@ -241,7 +248,7 @@ mod tests {
         let trace = events().remove(0);
         let mut events = events();
         events.push(trace);
-        collect_l1_wrap_trace(events);
+        collect_l1_wrap_trace(CircuitType::L1Wrap, events);
     }
 
     #[test]
@@ -250,7 +257,7 @@ mod tests {
         let extra = events().remove(1);
         let mut events = events();
         events.push(extra);
-        collect_l1_wrap_trace(events);
+        collect_l1_wrap_trace(CircuitType::L1Wrap, events);
     }
 
     #[test]
@@ -261,7 +268,7 @@ mod tests {
             unreachable!()
         };
         trace.circuit_type = CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression);
-        collect_l1_wrap_trace(events);
+        collect_l1_wrap_trace(CircuitType::L1Wrap, events);
     }
 
     fn light_prover() -> ExecutionProver<TestBackend> {
@@ -347,10 +354,9 @@ mod tests {
                 final_timestamp,
                 common_constants::INITIAL_TIMESTAMP + 32 * common_constants::TIMESTAMP_STEP
             );
-            assert_eq!(pack_log2, EVM_PRODUCTION_PACK_LOG2);
             assert_eq!(
-                external_challenges_pow_bits,
-                EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS
+                (pack_log2, external_challenges_pow_bits),
+                crate::l1_wrap_packing(CircuitType::L1Wrap)
             );
             assert_eq!(prover.free_allocators_receiver.len(), 8);
         }

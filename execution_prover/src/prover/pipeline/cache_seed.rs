@@ -53,7 +53,9 @@ pub(super) fn seed_from_cache<B: ExecutionBackend>(
                 _ => profile,
             };
             let precomputations = match circuit_type {
-                CircuitType::L1Wrap => panic!("L1Wrap does not use the BabyBear trace cache"),
+                CircuitType::L1Wrap | CircuitType::L1Wrap21 => {
+                    panic!("L1Wrap does not use the BabyBear trace cache")
+                }
                 CircuitType::Delegation(_)
                 | CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
                     prover.common_precomputations[&circuit_type].clone()

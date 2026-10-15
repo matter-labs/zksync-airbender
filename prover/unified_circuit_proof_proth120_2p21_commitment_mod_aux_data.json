@@ -1,0 +1,138 @@
+{
+  "MergedAndPackedMemoryAndWitness": {
+    "pack_log2": 4,
+    "external_challenges_pow_bits": 20,
+    "register_final_state": [
+      {
+        "value": 0,
+        "last_access_timestamp": 8249946
+      },
+      {
+        "value": 266288,
+        "last_access_timestamp": 8249821
+      },
+      {
+        "value": 8912224,
+        "last_access_timestamp": 8249864
+      },
+      {
+        "value": 8923136,
+        "last_access_timestamp": 8249226
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 8249230
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 8249709
+      },
+      {
+        "value": 647918767,
+        "last_access_timestamp": 8249713
+      },
+      {
+        "value": 2360029080,
+        "last_access_timestamp": 8249717
+      },
+      {
+        "value": 8912272,
+        "last_access_timestamp": 8249876
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 8249758
+      },
+      {
+        "value": 144,
+        "last_access_timestamp": 8249882
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 8249886
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 8249890
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 8249894
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 8249898
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 8249902
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 8249906
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 8249910
+      },
+      {
+        "value": 647918767,
+        "last_access_timestamp": 8249914
+      },
+      {
+        "value": 2360029080,
+        "last_access_timestamp": 8249918
+      },
+      {
+        "value": 744896445,
+        "last_access_timestamp": 8249922
+      },
+      {
+        "value": 2052903735,
+        "last_access_timestamp": 8249926
+      },
+      {
+        "value": 2958592758,
+        "last_access_timestamp": 8249930
+      },
+      {
+        "value": 2896671844,
+        "last_access_timestamp": 8249934
+      },
+      {
+        "value": 117951860,
+        "last_access_timestamp": 8249938
+      },
+      {
+        "value": 3531923632,
+        "last_access_timestamp": 8249942
+      },
+      {
+        "value": 8912280,
+        "last_access_timestamp": 8249940
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 8249798
+      },
+      {
+        "value": 744896445,
+        "last_access_timestamp": 8249721
+      },
+      {
+        "value": 2052903735,
+        "last_access_timestamp": 8249725
+      },
+      {
+        "value": 2958592758,
+        "last_access_timestamp": 8249729
+      },
+      {
+        "value": 2896671844,
+        "last_access_timestamp": 8249733
+      }
+    ],
+    "final_pc": 267028,
+    "final_timestamp": 8249948
+  }
+}

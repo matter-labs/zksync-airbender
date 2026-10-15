@@ -105,6 +105,7 @@ mod cpu_tests {
                 hypercube_evals: Vec::new(),
             },
             trace_len: 1 << 22,
+            rom: common_constants::REGULAR_ROM,
         };
         L1WrapPrecomputed::new(setup, SecurityLevel::Sec100)
             .unwrap()
