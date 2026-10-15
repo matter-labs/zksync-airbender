@@ -343,13 +343,17 @@ fn pr_tail_round_update_matches_keccak() {
         preflight_dr_tail_resources_pr(&programs, 5, &context)
     }))
     .unwrap_err();
-    assert!(panic_message(rejected).contains("Proth120 DR tail supports final trace log 4 only"));
-    let plan = preflight_dr_tail_resources_pr(&programs, 4, &context);
-    plan.validate_before_enqueue(&programs, 4, &context);
+    let final_log = crate::proth120::backward::dr_tail::PR_DR_FINAL_TRACE_LOG_2;
+    assert!(panic_message(rejected).contains(&format!(
+        "Proth120 DR tail supports final trace log {final_log} only"
+    )));
+    let plan = preflight_dr_tail_resources_pr(&programs, final_log, &context);
+    plan.validate_before_enqueue(&programs, final_log, &context);
     println!("M6_DR_TAIL_ADMISSION {}", plan.admission_record());
     assert_eq!(
         plan.layers().len(),
-        prover::gkr::prover_config::example_configs::l1_wrap_2p21::TRACE_LEN_LOG2 - 4
+        prover::gkr::prover_config::example_configs::l1_wrap_2p21::TRACE_LEN_LOG2
+            - final_log as usize
     );
     let rejected = catch_unwind(AssertUnwindSafe(|| {
         plan.validate_before_enqueue(&programs, 5, &context)
@@ -361,7 +365,7 @@ fn pr_tail_round_update_matches_keccak() {
         circuit.layers.len(),
         &circuit.global_output_map,
         circuit.trace_len.trailing_zeros(),
-        4,
+        final_log,
     );
     let mut rng = StdRng::seed_from_u64(0xd7a1_5eed);
     let mut cursor = plan.cursor();
@@ -378,7 +382,7 @@ fn pr_tail_round_update_matches_keccak() {
         );
     }
     cursor.finish();
-    for folding_steps in [4, 8, 11] {
+    for folding_steps in [2, 3, 4, 8, 11] {
         let layer = plan
             .layers()
             .iter()

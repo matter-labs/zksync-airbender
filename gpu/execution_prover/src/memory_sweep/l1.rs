@@ -33,6 +33,7 @@ pub const WRAP_CANDIDATES_GIB: [usize; 2] = [21, 30];
 pub const WRAP_QUALIFYING_GIB: usize = 30;
 pub const FEEDER_CANDIDATES_GIB: [usize; 5] = [21, 30, 40, 48, 64];
 const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
+const WRAP_FINAL_TRACE_SIZE_LOG_2: u32 = l1_wrap_2p21::EXPLICIT_OUTPUT_LOG2 as u32;
 const SECURITY_LEVEL: SecurityLevel = SecurityLevel::Sec100;
 const UNIFIED22: CircuitType = CircuitType::Unrolled(UnrolledCircuitType::Unified22);
 const INITS_AND_TEARDOWNS: CircuitType =
@@ -739,7 +740,7 @@ fn measure<B: GoodAllocator>(
                 .expect("wrap target precomputations");
             let dr_tail_plan = preflight_dr_tail_resources_pr(
                 &precomputed.programs,
-                FINAL_TRACE_SIZE_LOG_2,
+                WRAP_FINAL_TRACE_SIZE_LOG_2,
                 context,
             );
             context.set_allocation_mode(AllocationMode::Inputs(target_direction));
@@ -1019,7 +1020,11 @@ fn schedule_follower<'a, B: GoodAllocator + 'a>(
             let precomputed = wrap_precomputed
                 .as_ref()
                 .expect("wrap follower precomputations");
-            preflight_dr_tail_resources_pr(&precomputed.programs, FINAL_TRACE_SIZE_LOG_2, context);
+            preflight_dr_tail_resources_pr(
+                &precomputed.programs,
+                WRAP_FINAL_TRACE_SIZE_LOG_2,
+                context,
+            );
             let mut inputs = step(
                 "follower_inputs",
                 context,

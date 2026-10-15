@@ -7,6 +7,7 @@ use gpu_prover_context::ProverContext;
 use gpu_trace::trace::holder::TraceHolder;
 use gpu_trace::trace::packed::PackedCosetRecomputeOracle;
 
+use super::backward::dr_tail::PR_DR_FINAL_TRACE_LOG_2;
 use super::backward::scheduled_execution::{
     note_device, note_resource, note_storage_inventory, resource_ledger_active, ResourceEventPr,
     ResourceIdPr,
@@ -140,8 +141,8 @@ pub fn schedule_forward_pass_pr(
     context: &ProverContext,
 ) -> CudaResult<GpuGKRForwardOutput<PR, PR>> {
     assert_eq!(
-        final_trace_size_log_2, 4,
-        "Proth120 forward final trace log must be 4"
+        final_trace_size_log_2, PR_DR_FINAL_TRACE_LOG_2,
+        "Proth120 forward final trace log must be {PR_DR_FINAL_TRACE_LOG_2}"
     );
     let mut storage = bootstrap_storage(base, setup, witness, programs);
     note_storage_inventory(context, "forward", None, ResourceEventPr::Cloned, &storage);

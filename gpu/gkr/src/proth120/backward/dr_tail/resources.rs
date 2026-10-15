@@ -15,15 +15,15 @@ use crate::backward::{
 use crate::proth120::backward::capacity::{
     dr_tail_entry_round_pr, select_capacity_pr, DrTailCapacityDecisionPr, DrTailCapacityRequestPr,
 };
-use crate::proth120::backward::dr_tail::{PR_DR_TAIL_MAX_REMAINING_ROUNDS, PR_DR_TAIL_MAX_SOURCES};
+use crate::proth120::backward::dr_tail::{
+    PR_DR_FINAL_TRACE_LOG_2, PR_DR_TAIL_MAX_REMAINING_ROUNDS, PR_DR_TAIL_MAX_SOURCES,
+};
 use crate::proth120::backward::window_dr::{
     compile_dr_window_programs_pr, dr_window_continuation_count_pr, PR_DR_MAX_ENTRY_ROUND,
 };
 use crate::proth120::programs::GkrProgramsPr;
 use crate::upstream::{DimensionReducingInputOutput, GKRAddress, OutputType};
 use crate::DrWindowLayerProgram;
-
-pub(crate) const PR_DR_FINAL_TRACE_LOG_2: u32 = 4;
 
 pub(crate) fn dimension_reducing_slots_pr(
     layer: &BTreeMap<OutputType, DimensionReducingInputOutput>,
@@ -350,7 +350,7 @@ pub fn preflight_dr_tail_resources_pr(
 ) -> DrTailProofPlanPr {
     assert_eq!(
         final_trace_size_log_2, PR_DR_FINAL_TRACE_LOG_2,
-        "Proth120 DR tail supports final trace log 4 only"
+        "Proth120 DR tail supports final trace log {PR_DR_FINAL_TRACE_LOG_2} only"
     );
     validate_dr_tail_shapes_pr(
         &dr_tail_layer_inputs_pr(programs),

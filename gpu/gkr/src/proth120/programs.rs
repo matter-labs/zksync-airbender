@@ -9,6 +9,7 @@ use gpu_gkr_compiler::{
 };
 use gpu_trace::witness::circuit_type::CircuitType;
 
+use super::backward::dr_tail::PR_DR_FINAL_TRACE_LOG_2;
 use super::backward::main_continuation_window_manifest::PR_MAIN_CONTINUATION_MASKS;
 use super::forward::challenge_banks::ForwardChallengePlan;
 use super::forward::desc::PR_FWD_VM_BUCKETS;
@@ -113,7 +114,7 @@ impl GkrProgramsPr {
         let backward_layers = backward_layer_plans(&dag, &continuations);
         let storage_layout = Arc::new(GpuGKRStorageLayout::from_artifact_with_tower(
             &runtime_circuit,
-            4,
+            PR_DR_FINAL_TRACE_LOG_2 as usize,
         ));
         Ok(Self {
             forward,
@@ -164,10 +165,10 @@ mod cpu_tests {
         }
         assert_eq!(main_layer_count, 5);
         let dr_folds = cpu_validate_dr_tail_shapes_pr(&programs);
-        assert_eq!(dr_folds.len(), 17);
-        assert_eq!(dr_folds, (4..=20).rev().collect::<Vec<_>>());
+        assert_eq!(dr_folds.len(), 19);
+        assert_eq!(dr_folds, (2..=20).rev().collect::<Vec<_>>());
         assert_eq!(layout.pack_log2(), 4);
-        assert_eq!(layout.backward_layers.len(), 22);
+        assert_eq!(layout.backward_layers.len(), 24);
         assert_eq!(layout.memory_claims.len(), 7 * 16);
         assert_eq!(layout.setup_claims.len(), 16);
         assert_eq!(layout.evaluation_point.len(), 25 * 16);

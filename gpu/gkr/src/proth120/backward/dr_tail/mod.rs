@@ -23,8 +23,9 @@ use crate::backward::{
     GpuGKRDimensionReducingLayerSlots, GKR_DIM_REDUCING_INPUTS_PER_SLOT,
     GKR_DIM_REDUCING_OUTPUTS_PER_SLOT, GKR_DIM_REDUCING_SLOTS,
 };
-use crate::upstream::{GKRAddress, PR};
+use crate::upstream::{GKRAddress, L1_WRAP_EXPLICIT_OUTPUT_LOG2, PR};
 
+pub(crate) const PR_DR_FINAL_TRACE_LOG_2: u32 = L1_WRAP_EXPLICIT_OUTPUT_LOG2 as u32;
 pub(crate) const PR_DR_TAIL_MAX_SOURCES: usize = 10;
 pub(crate) const PR_DR_TAIL_BLOCK_THREADS: u32 = 256;
 pub(crate) const PR_DR_TAIL_MAX_REMAINING_ROUNDS: usize = 8;

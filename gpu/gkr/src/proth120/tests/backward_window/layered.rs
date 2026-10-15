@@ -53,8 +53,10 @@ fn pr_backward_layered_small() {
     let artifact = Arc::clone(&fixture.artifact);
     let seed_bytes: [u8; 32] = read_back(&fixture.seed, 0u8, &context).try_into().unwrap();
     let mut proof = fixture.proof;
-    let handoff = prepare_backward_handoff_pr(fixture.gpu, fixture.seed, 4, &context).unwrap();
-    let dr_tail_plan = preflight_dr_tail_resources_pr(&programs, 4, &context);
+    let final_log = crate::proth120::backward::dr_tail::PR_DR_FINAL_TRACE_LOG_2;
+    let handoff =
+        prepare_backward_handoff_pr(fixture.gpu, fixture.seed, final_log, &context).unwrap();
+    let dr_tail_plan = preflight_dr_tail_resources_pr(&programs, final_log, &context);
     let mut sink = GKRBackwardStageSnapshotSinkPr::default();
     let mut callbacks = Callbacks::new();
     let mut execution = schedule_backward_pr(
@@ -90,9 +92,10 @@ fn pr_backward_layered_small() {
     let mut cpu = fixture.cpu;
     let trace_len = artifact.trace_len;
     let trace_log = trace_len.trailing_zeros() as usize;
+    let final_log = final_log as usize;
     let (initial_layer, dr_inputs) =
         <NaiveGKRBackend as GKRBackend<PR, PR>>::dimension_reduction_forward(
-            &backend, &mut cpu, &artifact, trace_log, 4, &pool, &worker,
+            &backend, &mut cpu, &artifact, trace_log, final_log, &pool, &worker,
         );
     let output_map = &dr_inputs[&initial_layer];
     let explicit: Vec<PR> = output_map
@@ -100,11 +103,11 @@ fn pr_backward_layered_small() {
         .flat_map(|io| io.output.iter())
         .flat_map(|address| cpu.get_ext_poly(*address).iter().copied())
         .collect();
-    assert_eq!(explicit.len(), 160);
+    assert_eq!(explicit.len(), 10 << final_log);
     let mut seed = <Keccak256Transcript as Transcript<PR, PR>>::commit_initial_u32(&[]);
     seed.0 = seed_bytes;
     commit_field_els::<PR, PR, Keccak256Transcript>(&mut seed, &explicit);
-    let mut draws = draw_random_field_els::<PR, PR, Keccak256Transcript>(&mut seed, 5);
+    let mut draws = draw_random_field_els::<PR, PR, Keccak256Transcript>(&mut seed, final_log + 1);
     let mut batching = draws.pop().unwrap();
     let point = draws;
     let mut claims: BTreeMap<usize, BTreeMap<GKRAddress, PR>> = BTreeMap::new();
@@ -151,7 +154,7 @@ fn pr_backward_layered_small() {
         },
     )];
     let mut host_values = BTreeMap::new();
-    let dr_max_rounds = 4 + dr_inputs.len() - 1;
+    let dr_max_rounds = final_log + dr_inputs.len() - 1;
     let dr_max_polys = dr_inputs
         .values()
         .map(|layer| {
@@ -169,7 +172,7 @@ fn pr_backward_layered_small() {
         &pool,
         &worker,
     );
-    let mut reduced_log = 4usize;
+    let mut reduced_log = final_log;
     for (layer_idx, layer) in dr_inputs.into_iter().rev() {
         let values = <NaiveGKRBackend as GKRBackend<PR, PR>>::dimension_reducing_sumcheck_for_layer::<
             Keccak256Transcript,

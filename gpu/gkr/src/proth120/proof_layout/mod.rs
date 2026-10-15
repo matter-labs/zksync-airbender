@@ -9,6 +9,7 @@ use gpu_core::primitives::context::DeviceAllocation;
 use gpu_prover_context::ProverContext;
 
 use crate::forward::ForwardOutputSlabTarget;
+use crate::proth120::backward::dr_tail::PR_DR_FINAL_TRACE_LOG_2;
 use crate::proth120::programs::GkrProgramsPr;
 use crate::upstream::{GKRAddress, GKRCircuitArtifact, OutputType, ProverConfig, PR};
 
@@ -101,9 +102,10 @@ impl ProofLayoutPr {
             config.trace_len_log2, log,
             "Proth120 proof config trace log mismatch"
         );
+        let final_log = PR_DR_FINAL_TRACE_LOG_2 as usize;
         assert_eq!(
-            config.sumcheck_explicit_output_size_log_2, 4,
-            "Proth120 proof final trace log must be 4"
+            config.sumcheck_explicit_output_size_log_2, final_log,
+            "Proth120 proof final trace log must be {final_log}"
         );
         let mut cursor = 0;
         let mut output_evaluations = BTreeMap::new();
@@ -116,13 +118,13 @@ impl ProofLayoutPr {
             output_evaluations.insert(
                 *kind,
                 OutputEvaluationsLayoutPr {
-                    read_set: fields(&mut cursor, 16),
-                    write_set: fields(&mut cursor, 16),
+                    read_set: fields(&mut cursor, 1 << final_log),
+                    write_set: fields(&mut cursor, 1 << final_log),
                 },
             );
         }
         let output_evaluations_range = 0..cursor;
-        let backward_layers = build_inputs::layers(programs, 4)
+        let backward_layers = build_inputs::layers(programs, final_log)
             .into_iter()
             .map(|d| BackwardLayerLayoutPr {
                 layer_idx: d.layer_idx,
