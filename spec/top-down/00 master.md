@@ -1,4 +1,4 @@
-# Airbender proof system
+# Airbender v3 proof system
 
 ![System claim and its premises](diagrams/00-system-claim_style-digitakt-pixel-console.svg)
 
@@ -580,6 +580,11 @@ of the selected chunk relation._
 _Explain that recursion proves an execution of a verifier program under the same
 machine-and-chunk architecture._
 
+- **Recursive Verification** is a technique wherein multiple proofs are accumulated into one, allowing the prover to efficiently split the workload under limited VRAM conditions while also significantly reducing accumulated proof sizes, and allowing us to post proofs directly onto Ethereum L1. The classical approach to recursion within ZKPs is to build a verifier circuit to allow proving verification of proofs recursively. It is usually necessary to specialise the circuit as a tree-like structure according to different degrees of recursion depth, otherwise a recursive-verifier proof would yield no certain information as to the program that was proven at the beginning of the recursion. In order to avoid the performance penalty and security complications often associated with such circuits, Airbender opts to encode verifiers directly as RISCV32 programs, allowing us to perform recursion simply by proving a normal execution; as such, recursion is not an extrinsic feature of Airbender but rather it is inherently consequential out of the generality of the proven ZKVM Machine. A typical way to encode recursion depth within the recursive verifier would be to hardcode fixed values for the binaries verified by the recursion (usually via Merkle-Tree hash roots), however that requires specialising distinct binaries which must be updated every time any step of the recursion change also get updated. Instead we have opted for a general-purpose approach: each recursive verifier both forwards the parameters associated with the program that it is verifying, as well as any associated output that the program itself encodes via specific registers at the end of its execution. Such values are carried over at each step of recursion, forming a chain of values which may be hashed to compress them into what is known as a "recursion hash chain". At the end of recursion, on the final step of validating the proof directly on Ethereum L1, a hardcoded expected value is compared against the recursion hash chain, thus validating the consistency of the entire recursion.
+  - consequential is a shit word to use here, maybe derivative?
+  - mention that recursion is linear and not hierarchical/tree-like
+  - clean up and make more elegant
+
 - <mark><strong>Recursive Layer Outputs</strong> are sixteen words returned by a full-statement verifier program: eight application-result words and eight recursion-chain words. The next layer proves that program's execution, including verification of the supplied inner proof. Acceptance binds the execution to the intended verifier program and its successful termination point. The base layer initializes the chain; continuation layers authenticate and propagate the inner result and chain.</mark>
 
 - <mark><strong>Recursion History</strong> uses the configured hash variant to derive an end-parameter digest E from the final PC, padded to sixteen words, followed by the ordered setup commitments. The base chain is H(0^8 ∥ E). A continuation authenticates a supplied preimage against the incoming chain hash, preserving that hash when the latest E equals the current end-parameter digest, or updating it to H(previous_hash ∥ E) otherwise. Terminal acceptance checks the chain against the intended application and verifier sequence. Consecutive repetitions are compressed, so the chain does not count recursion depth.</mark>
@@ -649,6 +654,26 @@ consistency, batching, and recursion._
 
 _Then comes the Verifier PCS Schedule Section_
 
+- **Proxmity Theorems**
+  - $\delta$
+  - $\epsilon_t \le (1 - \delta)^t$ from WHIR paper
+    - In general $\epsilon_\lambda = 2^{- \lambda} \ge \epsilon_t \implies t \ge \lceil \lambda / -lg(1 - \delta) \rceil$
+  - $\epsilon_{PoW} \le 2^{- PoW}$ from S-Two paper
+    - In general $\epsilon_\lambda = 2^{- \lambda} \ge \epsilon_{PoW} \cdot \epsilon_t \implies t \ge \lceil (\lambda - PoW) / -lg(1 - \delta) \rceil \textit{ when } \lambda \ge PoW\ bits$
+  - Unique Decoding $\delta_{uniq} = (1 - \rho) / 2$
+    - $t_{uniq} \ge \lceil \lambda / -lg(\frac{1 + \rho}{2}) \rceil$
+    - with grinding $t_{uniq} \ge \lceil (\lambda - PoW) / -lg(\frac{1 + \rho}{2}) \rceil$
+  - Johnson List Decoding $\delta_{John} = 1 - \sqrt\rho$
+    - $t_{John} \ge \lceil 2 \lambda / lg(LDE) \rceil,\ LDE=1/\rho$
+    - with grinding $t_{John} \ge \lceil 2 (\lambda - PoW) / lg(LDE) \rceil,\ LDE=1/\rho$
+  - Broken Capacity Conjecture $\delta_{cap} = 1 - \rho - \epsilon,\ \epsilon \gt 0$ from Proximity Gaps paper and WHIR paper
+    - $t_{cap} \ge \lceil \lambda / -lg(\rho + \epsilon) \rceil \ge \lceil \lambda / lg(LDE)\rceil \ when\ \epsilon \approx 0,\ LDE=1/\rho$
+    - with grinding $t_{cap} \ge \lceil (\lambda - PoW) / -lg(\rho + \epsilon) \rceil \ge \lceil (\lambda - PoW) / lg(LDE)\rceil \ when\ \epsilon \approx 0,\ LDE=1/\rho$
+    - Broken by .. paper
+  - Airbender 20% Pessimistic Capacity Conjecture
+    - $t_{Air} = 1.2 \cdot t_{cap} \ge \lceil 1.2 \lambda/lg(LDE) \rceil,\ LDE = 1/\rho$
+    - with grinding $t_{Air} = 1.2 \cdot t_{cap} \ge \lceil 1.2 (\lambda - PoW)/lg(LDE) \rceil,\ LDE = 1/\rho$
+
 - **LDE-Ratio (STIR) Soundness Gain**
 
 - **PCS-Query Soundness Gain**
@@ -666,6 +691,7 @@ _Then comes the Verifier PCS Schedule Section_
 - **Batched (DEEP) WHIR Soundness Loss**
 
 - **Grinding (PoW) Soundness Gain**
+  - grinding is a technique whereby a small amount of completeness loss is exchanged for a large amount of soundness gain
 
 - **PCS-Fold Soundness Loss**
   - already covered by LDE-Ratio?
