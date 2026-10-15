@@ -63,9 +63,10 @@ dependencies, pins or generated artifacts as part of readability cleanup.
 The [finding register](FINDINGS.md#linear-and-open-pr-review--15-october-2026)
 separates implementation bugs, temporary proof assumptions, intended external
 interfaces and supported profiles. The user authorized temporary assumptions on
-15 October 2026, with each underlying finding kept open. AIH-334 is an acknowledged
-missing validation check: its distinct-selection contract is temporary, and the
-verifier still needs a fix. Apply the same rule to decoder filler, request
+15 October 2026, with each underlying finding kept open until fixed or independently
+shown enforced. AIH-334's EVM source check is now implemented and tested; formal
+correspondence to its explicit distinct-selection interface remains external.
+Apply the same distinction to decoder filler, request
 participation, bigint controls, worker ROM and other reviewed defects. Open PRs
 are proposals; inspect their code and validation before crediting a fix. Actual
 bug fixes are authorized separately from the deferred formal-refinement work.

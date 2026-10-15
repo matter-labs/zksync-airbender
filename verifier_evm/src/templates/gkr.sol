@@ -183,6 +183,9 @@ contract GKRVerifier {
         }
 
         function transcript_init(ptr) -> next_ptr {
+            // Fiat-Shamir binds the selected indices but does not make their
+            // address windows disjoint. Validate the artifact-derived geometry.
+            gkr_validate_inits_teardowns_windows(ptr)
             // Proth120 packed-mode transcript (MergedAndPackedMemoryAndWitness), validated
             // keccak-for-keccak in step1_test/GkrStep1.sol against the real proof.
             //   seed = keccak256(preimage)                       // commit_initial_u32 (916 B: regs+PC+topbits+caps)

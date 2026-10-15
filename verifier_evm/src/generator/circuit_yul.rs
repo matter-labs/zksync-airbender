@@ -2697,6 +2697,17 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
             next_acc := pointcheck_update(acc, alpha, gate)
         }}
     ");
+    yul_println!(
+        "{}",
+        super::initialization::validation_yul(
+            circuit.trace_len,
+            circuit
+                .memory_layout
+                .inits_and_teardowns_word_bits
+                .expect("initialization word bits"),
+            circuit.memory_layout.teardown_sets.len(),
+        )
+    );
     let _ = DEBUG_ENABLE_DUMMY_CHECKS;
     let out = std::mem::take(&mut *yul_main_output().lock().unwrap());
     // Modulus representation: the ~124-bit Proth120 P as a Solidity `constant` compiles to a

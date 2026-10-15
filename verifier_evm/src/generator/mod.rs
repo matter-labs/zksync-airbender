@@ -7,6 +7,7 @@
 //!   (and a few caller-supplied) constants.
 
 mod circuit_yul;
+mod initialization;
 mod whir;
 
 pub use circuit_yul::emit_circuit_yul;
