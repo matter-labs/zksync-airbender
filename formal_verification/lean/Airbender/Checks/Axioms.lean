@@ -1,3 +1,4 @@
+import Airbender.Review.Trace.Workers.Blake2Round.ReferenceCalls
 import Airbender.Review.Trace.Workers.Blake2G.ReferenceCalls
 import Airbender.Review.Trace.UnifiedReduced.BigintCalls
 import Airbender.Review.Trace.UnifiedReduced.NativeMixedROM
@@ -3093,3 +3094,36 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Delegation.Proofs.grouped_reference
 #print axioms Airbender.Blake2G.Call.execution_soundness
 #print axioms Tests.Blake2GMemory.native_full_reference_call
+
+-- Complete extended-round reference calls, derived ABI and full-state spans.
+#print axioms Airbender.Blake2Round.Call.flags
+#print axioms Airbender.Blake2Round.Call.ABI
+#print axioms Airbender.Blake2Round.Call.InputBounded
+#print axioms Airbender.Blake2Round.Call.OutputBounded
+#print axioms Airbender.Blake2Round.Call.stateWord
+#print axioms Airbender.Blake2Round.Call.cells
+#print axioms Airbender.Blake2Round.Call.values
+#print axioms Airbender.Blake2Round.Call.reads
+#print axioms Airbender.Blake2Round.Call.results
+#print axioms Airbender.Blake2Round.Call.writes
+#print axioms Airbender.Blake2Round.Call.Executes
+#print axioms Airbender.Blake2Round.Call.Retires
+#print axioms Airbender.Blake2Round.Call.Proofs.indirectIndex
+#print axioms Airbender.Blake2Round.Call.Proofs.cell_indirect
+#print axioms Airbender.Blake2Round.Call.Proofs.indirect_shape
+#print axioms Airbender.Blake2Round.Call.Proofs.cells_projection
+#print axioms Airbender.Blake2Round.Call.Proofs.operands_projection
+#print axioms Airbender.Blake2Round.Call.Proofs.results_projection
+#print axioms Airbender.Blake2Round.Call.Proofs.write_projection
+#print axioms Airbender.Blake2Round.Call.Proofs.executes
+#print axioms Airbender.Blake2Round.Call.Proofs.round_power_bound
+#print axioms Airbender.Blake2Round.Call.Proofs.native_core
+#print axioms Airbender.Blake2Round.Call.Proofs.pointer_conditions
+#print axioms Airbender.Blake2Round.Call.Proofs.derived_control
+#print axioms Airbender.Blake2Round.Call.Proofs.abi_in_span
+#print axioms Airbender.Blake2Round.Call.Proofs.successful_controller
+#print axioms Airbender.Blake2Round.Call.Proofs.step_in_span
+#print axioms Airbender.Blake2Round.Call.Proofs.reference_call_in_span
+#print axioms Airbender.Blake2Round.Call.Proofs.span_reference
+#print axioms Airbender.Blake2Round.Call.execution_soundness
+#print axioms Tests.Blake2RoundCall.completed_controller_cannot_restart

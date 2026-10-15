@@ -35,3 +35,11 @@ history. Raw matching derives masks within each controller region; earlier worke
 remain in the prefix. Every extended-round worker must belong to one such region,
 and each region retains its local ten-position cap. Complete span counts, durations,
 mode/flags and literal preparation remain explicit; completion alone never restarts.
+
+[`Call.execution_soundness`](ReferenceCalls.lean) now supplies a sequence of
+[complete independent round calls](../../../Circuits/Blake2Round/Call.lean) in the
+actual full Sail states, with exact writes/frame and shared terminal mapping.
+The existing public mode/count and initialized history derive the whole x12
+word, exclusive round, all three mode flags and pointer ABI. The completed
+ten-round controller is rejected by the successful-call reference. Modeled-table
+fidelity, the RAM domain and mixed caller/PC/participation composition remain explicit.

@@ -600,3 +600,9 @@ spans. It derives controls and the pointer ABI before proving every Sail write
 and frame. Connecting these full calls to mixed caller PC retirement is still
 part of the same unfinished custom-CSR integration; the older complete work-vector
 reference claims remain closed.
+
+The [extended-round worker bridge](../Workers/Blake2Round/ReferenceCalls.lean)
+likewise provides complete full-state reference micro-call sequences under the
+existing prepared protocol. Full controller/mode/round agreement and the pointer
+ABI are derived. Keccak's full-state bridge and mixed hash caller PC retirement
+remain part of the same custom-CSR integration task.
