@@ -258,8 +258,20 @@ argument values are combined into one accepted program-proof statement._
 _Describe the alternative view of machine execution as read-side and write-side
 multisets of state-transition events._
 
+- **Global Machine State** is the fundamental building block of any proven circuit in Airbender. Each chunk proof collects as output an aggregated set of reads and writes to be appended to the global machine state history. The coherent linking of this global state history is what yields the entire semantic effects of the RISCV machine, and correctness according to the spec. The linking process works inheriting a previous state within the history, performed by reads, and proceeding towards a new state, performed by writes. The machine then emulates execution history via state updates as sequences of individual reads and writes, typically in pairs, one per state slot. In order to properly emulate the state history, we rely on global memory fingerprinting.
+  - slot is a bad name for state components 
 
-- **Memory Fingerprinting**
+- **Global Memory Fingerprinting**
+  - first explain what is a tuple, id -> value
+  - explain what is a read vs write
+  - explain why we need timestamps and not just counters
+  - then explain how to put together the two histories and compare
+  - then explain how to compress a tuple
+  - then explain how to compress the history comparaison
+  - argue that RLC is reasonable (maybe goes in the soundness section?)
+
+- **Global Memory Setup** is the process by which the memory fingerprinting argument is rendered global and functional across proving chunks. The security of the compression function, either at a tuple level or at a polynomial equality level, depends on the attacker's capability to manipulate aggregation and falsify the intended checks. In order to prevent this, it is standard practice to force the Prover to pre-emptively commit (via any cryptographic commitment scheme) to the set of data that he intends to use within the argument. For our purpoess, this involves all of the variables/values directly present in each read or write tuple, from which the rest of the circuit deterministically enforces constraints. As such, each proving process pre-emptively performs a memory-only witness computation pass, which simply aggregates all memory read and write information throughout the execution of the program. This data is then committed to, along with further public parameters relating to the context of the planned proof, and the Verifier is free to draw the necessary challenges used throughout the global memory argument.
+  -  The fingerprinting argument makes use of challenges to compress its ...
 
 - A global **Offline Memory Checking** permutation argument is used to guarantee consistency of our RAM, PC state, Register states, NonDeterminism I/O, and precompile Delegation subarguments. The argument is taken from the seminary Two Shuffles Make A RAM paper (https://eprint.iacr.org/2023/1115) and is implemented via standard Grand Product permutation fingerprinting: accesses are split between Read Set (RS) and Write Set (WS) sets that must complement one another, and each read/write access is defined by a fixed-width tuple. Access tuples contain sufficient information to uniquely identify both the subargument and entry index or address, and contain a 38-bit timestamp and 32-bit value to record the data. The argument works in-circuit by multiplicatively accumulating the RS and WS values after each access, including special initialisation and finalisation setup accesses, and returning the final pair to the Verifier. The Verifier then enforces its own final state by appending access tuples to the pair, and then checks them for equality. For any write tuple appended to the global memory argument, range checks on individual tuple elements are enforced; range checks on the read tuple counterparts are omitted, and their correctness hinges directly on the permutation argument. All non-delegation memory accesses have the write timestamp enforced as strictly greater than the read timestamp, whereas delegation accesses simply act as non-updateable unique bookkeeping slots via the official cycle timestamp and do not require it.
 
@@ -371,14 +383,13 @@ decoder or setup data is constructed and authenticated._
 _State the local relation for instruction, precompile, and initialization/teardown
 chunks, including active rows, padding, and the argument contributions they produce._
 
-- A **Chunk Relation** describes what must hold for a fixed circuit family, trace capacity and setup. Each "active" instruction row establishes the selected operation on its claimed input values and produces the corresponding memory accesses. The global memory argument of Section 3 establishes those inputs’ consistency with the execution. The chunk must also satisfy its local lookup obligations and compute its argument contributions from those same rows.
+- A **Circuit Chunk Relation** describes what must hold for a fixed circuit family, trace capacity and setup. Each "active" instruction row establishes the selected operation on its claimed input values and produces the corresponding memory accesses. The global memory argument of Section 3 establishes those inputs’ consistency with the execution. The chunk must also satisfy its local circuit lookup obligations and compute its argument contributions from those same rows.
 
 <u>then come the various chunk components (ins -> outs)</u>
 
-- **Chunk Inputs**
-  - fixed setup
-  - witness trace values (and auxiliary?)
-  - fixed constraint expressions
+- **Circuit Chunk Inputs** are the set of link values and parameters that each proving chunk receives and which permit it to continue machine execution at planned discrete time intervals. The first major input to each chunk of cycles is of course the circuit that it will prove: it hardcodes the constraint expressions that it must enforce across witness variables.
+- A main source of data for each chunk are the polynomials that encode the witness data which must be proven, represented in the circuit by variables linked together via quadratic expression constraints. Each such witness variable is available to the Prover as full polynomial tables, and to the Verifier as Merkle-Tree commitment caps.
+- Airbender circuits generally do not hardcode lookup-table tuples or commitments, apart from a few Sumcheck-specific optimisations. Instead, setup polynomials represent the table side of the LogUp arguments. Towards the end of each chunk’s proof, the PCS authenticates openings of these polynomials against setup Merkle-tree caps supplied as chunk inputs.
   - global memory assumptions from section 3 such as global dependency (incl trace position != execution time)
 
 - **Chunk Operation**
@@ -393,6 +404,8 @@ chunks, including active rows, padding, and the argument contributions they prod
 
 - **Chunk Outputs**
   - finally, what leaves the chunk and feeds into Section 5 for GKR/WHIR
+  - the chunk outputs last layer GKR polynomial values in plain, those are used to aggregate local memory, and appended to global memory
+  - this leaves us with polynomials, not polynomial evaluations, so random challenges are then chosen to MLE evaluate the polys, and those become the initial (final) claims for GKR to begin
 
 ### Instruction fetch and decoder lookup
 
@@ -406,6 +419,8 @@ exactly one local operation relation._
   | input pc[15:0] | input pc[31:16] | first register index | second register index | destination register index | immediate[15:0] | immediate[31:16] | family-specific | opcode-family bitmask |
 
   - expand this greatly and move it above, as it is foundational for the chunks
+  - needs to expand on lookup LHS and RHS: what are lookup tuples, what are table tuples, how to compress tuples, what is the polynomial equivalence argument, how to compress it, etc.. (same as memory argument)
+  - link to Haboeck papers, both LogUp and GKR-LogUp
 
 ### Active-cycle transition
 
@@ -495,14 +510,24 @@ verifier._
 _Describe how the chunk relation becomes a layered algebraic circuit and which
 polynomials or columns are committed._
 
-- **MLE Polynomials** represent a table of $2^N$ field values by indexing its entries with Boolean vectors $\hat y \in \{0,1\}^N$. In the context of traditional SNARK and STARK proof systems, such tables are instead interpolated as univariate polynomials over a domain of $2^N$ distinct field points, and constraint satisfaction is expressed through divisibility by the domain’s vanishing polynomial. Here, we instead interpolate over the Boolean Hypercube to support the commitment-efficient GKR protocol and its Sumcheck-based reductions. Requiring degree at most 1 in each variable makes this polynomial unique: it is the table’s Multilinear Extension $\widetilde f$, which agrees with its values on the Boolean Hypercube, although its total degree can be as high as $N$. It is reconstructed by weighting the table values with multilinear Lagrange basis polynomials, called EQ polynomials, and summing the results:
+- **MLE Polynomials** represent a table of $2^N$ field values by indexing its entries with Boolean vectors $\hat y \in \{0,1\}^N$. In the context of traditional SNARK and STARK proof systems, such tables are instead interpolated as univariate polynomials over a domain of $2^N$ distinct field points, and constraint satisfaction is expressed through divisibility by the domain’s vanishing polynomial. Here, we instead interpolate over the Boolean Hypercube to support the commitment-efficient GKR protocol and its Sumcheck-based reductions. Requiring degree at most 1 in each variable makes this polynomial unique: it is the table’s Multilinear Extension $\hat f$, which agrees with its values on the Boolean Hypercube, although its total degree can be as high as $N$. It is reconstructed by weighting the table values with multilinear Lagrange basis polynomials, called EQ polynomials, and summing the results:
 
   $$
   \hat f(\hat x)
   = \sum_{\hat y \in \{0,1\}^N} f(\hat y)\operatorname{\hat eq}(\hat x, \hat y).
   $$
 
-  This extends the table to arbitrary field coordinates, allowing the Verifier to check evaluations at challenged random points (see Schwartz-Zippel Lemma in Soundness Section 6). Most GKR or Sumcheck prover constructions exploit the low individual degree of MLE polynomials to keep protocol messages small and limit soundness errors, as well as exploiting the decomposable structure of $\hat eq(\cdot)$ polynomials.
+  This extends the table to arbitrary field coordinates, allowing the Verifier to check evaluations at challenged random points (see Schwartz-Zippel Lemma in Soundness Section 6). Most GKR or Sumcheck prover constructions exploit the low individual degree of MLE polynomials to keep protocol messages small and limit soundness errors, as well as exploiting the decomposable structure of $\hat eq(\cdot)$ polynomials. MLE Polynomials further come with the powerful property that they can be efficiently partially evaluated:
+
+  $$
+  \begin{aligned}
+  \hat f(\hat x) &= \hat f(X_1, \ldots, X_N)
+  \\&= (1 - X_1) \hat f(0, X_2, \ldots, X_N) + X_1 \hat f(1, X_2, \ldots, X_N)\ \textit{ when }\ deg_{X_1}(\hat f) \le 1
+  \\&= \hat f(0,\ldots) + X_1\bigl(\hat f(1,\ldots)-\hat f(0,\ldots)\bigr) \qquad \text{(equivalently)}
+  \end{aligned}
+  $$
+
+  Such single-varied partial evaluation is called Sumcheck-style folding (not to be confused with many other kinds of folding) and is leveraged by the Sumcheck protocol and its derivates to yield efficient Provers by repeatedly halving the MLE polynomial size.
 
 - **MLE EQ Polynomials** form the Lagrange basis for interpolation over the Boolean Hypercube. They select individual table entries on $\hat x,\hat y \in \{0,1\}^N$ as $\operatorname{eq}_{\hat y}(\hat x) = \begin{cases} 1 & \hat x = \hat y\\ 0 & \textit{else} \end{cases}$ with multilinear extension:
 
@@ -511,10 +536,42 @@ polynomials or columns are committed._
   = \prod_{i=1}^{N}\bigl((1-X_i)(1-Y_i)+X_iY_i\bigr).
   $$
 
-  Outside the Boolean Hypercube, EQ provides interpolation weights rather than a Boolean equality test. EQ is multilinear in either vector when the other is fixed, and factors into independent terms for each coordinate pair. This factorization supports the EQ-Split Sumcheck optimisations described below, benefiting both Prover and Verifier.
+  Outside the Boolean Hypercube, EQ provides interpolation weights rather than a Boolean equality test. EQ is multilinear in either vector when the other is fixed, and factors into independent terms for each coordinate pair. This factorization supports the EQ-Split Sumcheck optimisations described below, which reduce Prover computation and, when known EQ factors are reconstructed by the Verifier, proof size.
+
+- **Small-Field MLE Sumcheck** is the core arithmetisation protocol of Airbender v3. This building block is repeatedly composed in what are called "GKR Layers" (described below) in order to map chunk output polynomials back into their input polynomials. The protocol's core proven statement is a simple summation of multivariate polynomial domain evaluations:
+
+  $$
+  y = \sum_{\hat x \in \{0,1\}^N} \hat f(\hat x)
+  $$
+
+  Such sum over the boolean hypercube $\{0,1\}^N$ can be mapped to sums over half-sized $\{0,1\}^{N-1}$ domains, representable with a univariate polynomial $g \in \mathbb{F}^{\le deg_{X_1}(\hat f)}[X]$:
+
+  $$
+  \begin{aligned}
+  y &= \sum_{X_1 \in \{0,1\}} \sum_{\hat x' \in \{0,1\}^{N-1}} \hat f(X_1, \hat x')
+  \\&= \sum_{\hat x' \in \{0,1\}^{N-1}} \left( \hat f(0, \hat x') + \hat f(1, \hat x') \right)
+  \\&= g(0) + g(1)
+  \end{aligned}
+  $$
+
+  Leveraging the Schwartz-Zippel Lemma (See Section 6 on Soundness) and at the price of a small soundness loss, the Verifier can draw a challenge and the half-sized polynomials can be randomly folded into a single half-sized polynomial, enabling recursion by induction:
+
+  $$
+  \begin{aligned}
+  r &\xleftarrow\$ \mathbb{F}
+  \\
+  g(r) &= \sum_{\hat x' \in \{0,1\}^{N-1}} \hat f(r, \hat x')
+  \end{aligned}
+  $$
+
+  The Prover therefore continues providing univariate polynomial coefficients, and the Verifier checks that each polynomial’s evaluations sum to the previous claim over the coordinate domain, before selecting a challenge to shrink the evaluation domain by folding away one variable. After a logarithmic number of rounds, the summation is entirely reduced to a random evaluation of the multivariate polynomial $\hat f(r_1, \ldots, r_N) = \hat f(\hat r)$. Therefore, for a small soundness loss, the Sumcheck protocol can be viewed as mapping sums of multivariate polynomial evaluations over the entire domain to a single multivariate polynomial evaluation. The degree of the multivariate polynomial restricts the degree of the univariate polynomials and is key to maintaining succinct proof sizes, as we will see later. Once this concept is paired with multilinear EQ polynomials and algebraic gates, as in the GKR protocol below, the Sumcheck protocol can be leveraged to efficiently prove the algebraic reduction of a single output polynomial into multiple input polynomials.
+  - make an effort to distinguish small field from extension field
 
 - **Small Prime-Field MLE GKR** is Airbender v3's proof system of choice, as described in previous literature such as _"Delegating Computation: Interactive Proofs for Muggles"_ (https://www.microsoft.com/en-us/research/publication/delegating-computation-interactive-proofs-muggles/) and _"HyperPlonk: Plonk with Linear-Time Prover and High-Degree Custom Gates"_ (https://eprint.iacr.org/2022/1355) and _"A Note on the GKR Protocol"_ (https://people.cs.georgetown.edu/jthaler/GKRNote.pdf). Whereas previous Airbender versions were based only on AIR constraints, the GKR Prover splits its circuit into layers of inputs/outputs that feed into one another, leading to base layer "input" polynomials and final layer "output" polynomials. Basic AIR-like constraints which contain only a quadratic relation and no outputs are mapped to "Zerocheck" outputs (see the Hyperplonk paper), or constant zero values. Seeing as the PCS (Polynomial Commitment Scheme) is the most expensive step of a Prime-Field STARK prover, the main advantage of this approach is that GKR only requires PCS openings for the polynomials describing the base layer inputs, allowing us to push any derivate values into intermediate layer variables which significantly reduces pressure on the Commitment phase. GKR works by reduction in reverse: each output polynomial is derived via quadratic expressions from one or more input MLE polynomials present at the previous layer. The reductions are akin to many polynomial interpolations, as described in more detail later in the MLE Sumchecks section. Seeing as each GKR layer needs to prove multiple output polynomials, each layer bastches MLE Sumchecks for this purpose. The final output of each GKR layer is the proven circuit chunk's output: a pair of local memory argument ReadSet and WriteSet values, as well as three pairs of rational-split numerator-denominator values for the three LogUp arguments present in each circuit. The LogUp pairs are checked locally, while the global memory argument values are appended to the global memory argumment ReadSet and WriteSet accumulators. Each proven chunk contains a set of input polynomials as defined by its respective circuit family, with each polynomial representing an individual variable in that circuit. The GKR layers are then split into two parts: the "accumulation" layers and the "main circuit" layers. The main circuit layers take many 2^N sized base layer inputs polynomials for that circuti chunk and reduce them to a constant number of 2^N sized circuit outputs (the same as the total chunk outputs); the accumulation layers then take this same amount of outputs and compress them by accumulating them pairwise in the polynomials so that they become 2^const sized, where 2^const is a small constant number of values that can be read directly by the Verifier. The Verifier is then tasked with completing the compression of the constant sized polynomials into single pair values, which completes the GKR proving phase.
   - gkr layers equations \$$...
+  - output pairs $P_{1..8} \in \mathbb{F}^{16}$
+  - sample fold challenge $\hat z \xleftarrow\$ \mathbb{E}^4$
+  - evaluate polys $y_{1..8} = P(\hat z) = (1 - z_1) $
   
 - **Batched MLE Sumchecks** are the core proving protocol used by Airbender v3. MLE Sumchecks themselves are simple protocols used to prove the summation of multivariate witness trace Polynomials over a MLE domain, with each polynomial variable in the original witness trace being a single bit. This summation argument is applied to a structured Lagrange-like polynomial decomposition, which gates polynomial values with Lagrange-bases in the MLE domain (so-called $eq(x,y)$ polynomials, see the equations below). Such an approach allows us to leverage Sumcheck steps as reductions between output polynomials and input polynomials. Since each layer contains multiple polynomials which must be reduced, we leverage randomised RLC batching _"A Zero Knowledge Sumcheck and its Applications"_ (https://arxiv.org/abs/1704.02086) and _"HyperPlonk: Plonk with Linear-Time Prover and High-Degree Custom Gates"_ (https://eprint.iacr.org/2022/1355) to prove multiple polynomial reductions with a single one, leading to a great efficienty boost.
   - ... batched mle sumcheck equation, eq equation, protocol equations \$$
@@ -628,6 +685,10 @@ consistency, batching, and recursion._
 <u>DO NOT FORGET TO ADD PAPER REFERENCES FOR EVERY FORMULA</u>
 
 - **Schwartz-Zippel Soundness Lemma**
+
+- **RLC Fingerprinting**
+  - follows from above
+  - why it is reasonable to use this everywhere we want compression or random evaluation as a fingerprint identifier
 
 - **Security-Bits Soundness Gain**
   - 100 bits
