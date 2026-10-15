@@ -1,5 +1,6 @@
 import Airbender.Proofs.UnifiedReduced.MixedMemory
 import Airbender.Proofs.UnifiedReduced.ArithmeticExecution
+import Airbender.Proofs.UnifiedReduced.UnissuedWorkers
 
 namespace Airbender.UnifiedReduced.Caller.Proofs
 open Arithmetic Reference.RiscV Reference.RiscV.Sail Reference.Sail Trace Trace.Proofs
@@ -48,6 +49,39 @@ theorem arithmetic_ordinary [Fact p.Prime] (hp : 524288 < p)
     all_goals simp [Nat.testBit, Nat.shiftRight_eq_div_pow]
   exact ordinary_of_decoder_mask hp core fields query zero
 
+theorem ordinary_cycle_context_at
+    {data : RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
+    {initial : State} {ca oa : List (BitVec 32)} {cells : List Cell}
+    (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program initial ca oa cells)
+    (effects : MixedMemoryEffects data initial cells)
+    {events : List MemoryAccess} {finalState : State}
+    (permutation : events.Perm (data.mixedSteps.map transferEvent))
+    (order : events.Pairwise (fun a b => b.1 ≤ a.1))
+    (history : SailHistory cells events initial finalState)
+    {row : Trace.Row babyBearModulus UnifiedFamily}
+    (member : row ∈ data.machine.rows) (ordinary : row ∉ data.callers) :
+    ∃ before after,
+      SailHistory cells (events.filter fun event => decide (event.1 ≤ Delegation.Caller.startClock row)) initial before ∧
+      SailHistory cells (events.filter fun event => decide
+        (Delegation.Caller.startClock row < event.1 ∧ event.1 ≤ Delegation.Caller.finishClock row)) before after ∧
+      SailHistory cells (events.filter fun event => decide (Delegation.Caller.finishClock row < event.1)) after finalState ∧
+      SailHistory cells (rowEvents 1 row).reverse before after ∧
+      ∀ port ∈ row.ports, (readToken row.assignment port).word.Bounded := by
+  have clockSize : 2 * timestampBase + 4 < babyBearModulus := by decide
+  have floor := machine_native_clock_positive (by decide) (by decide) accepted
+    inputs.publicProgram inputs.initialization member
+  have positive : 0 < Delegation.Caller.startClock row := by omega
+  have stepClock := machine_clock_facts clockSize (by decide) accepted.toRequestChecks inputs.publicProgram member
+  obtain ⟨before, after, _, past, current, future⟩ := history_window order history
+    (by omega : Delegation.Caller.startClock row ≤ Delegation.Caller.finishClock row)
+  have cycle := cycle_window_permutation clockSize (by decide) accepted.toRequestChecks inputs.publicProgram
+    effects.requests permutation member positive
+  have native := ordinary_cycle_history clockSize (by decide) accepted.toRequestChecks inputs.publicProgram
+    member ordinary cycle (order.sublist List.filter_sublist) current
+  refine ⟨before, after, past, current, future, native, ?_⟩
+  intro port present
+  exact (effects.words _ (mixed_machine_member member (by rwa [machine_ports_ordinary member ordinary]))).1
+
 theorem ordinary_cycle_context
     {data : RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
     {initial : State} {ca oa : List (BitVec 32)} {cells : List Cell}
@@ -66,34 +100,26 @@ theorem ordinary_cycle_context
       ∀ port ∈ row.ports, (readToken row.assignment port).word.Bounded := by
   have effects := mixed_memory_effects accepted inputs
   obtain ⟨events, finalState, permutation, order, history, _, _, _⟩ := effects.execution
-  have clockSize : 2 * timestampBase + 4 < babyBearModulus := by decide
-  have positive : 0 < Delegation.Caller.startClock row :=
-    lt_of_lt_of_le started (machine_clock_floor clockSize (by decide) accepted.toRequestChecks inputs.publicProgram member)
-  have stepClock := machine_clock_facts clockSize (by decide) accepted.toRequestChecks inputs.publicProgram member
-  obtain ⟨before, after, _, past, current, future⟩ := history_window order history
-    (by omega : Delegation.Caller.startClock row ≤ Delegation.Caller.finishClock row)
-  have cycle := cycle_window_permutation clockSize (by decide) accepted.toRequestChecks inputs.publicProgram
-    effects.requests permutation member positive
-  have native := ordinary_cycle_history clockSize (by decide) accepted.toRequestChecks inputs.publicProgram
-    member ordinary cycle (order.sublist List.filter_sublist) current
-  refine ⟨events, finalState, before, after, permutation, history, past, current, future, native, ?_⟩
-  intro port present
-  exact (effects.words _ (mixed_machine_member member (by rwa [machine_ports_ordinary member ordinary]))).1
+  obtain ⟨before, after, past, current, future, native, ranges⟩ :=
+    ordinary_cycle_context_at accepted inputs effects permutation order history member ordinary
+  exact (fun _ : 0 < (timeOfPair data.machine.initial.timestamp).value =>
+    ⟨events, finalState, before, after, permutation, history, past, current, future, native, ranges⟩) started
 
-theorem mixed_arithmetic_cycle
+theorem mixed_arithmetic_cycle_at
     {data : RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
     {initial : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program initial ca oa cells)
-    (started : 0 < (timeOfPair data.machine.initial.timestamp).value)
+    (effects : MixedMemoryEffects data initial cells)
+    {events : List MemoryAccess} {finalState : State}
+    (permutation : events.Perm (data.mixedSteps.map transferEvent))
+    (order : events.Pairwise (fun a b => b.1 ≤ a.1))
+    (history : SailHistory cells events initial finalState)
     {w : Nat → ZMod babyBearModulus} {input : Input}
     (member : (⟨.machine, w⟩ : Trace.Row babyBearModulus UnifiedFamily) ∈ data.machine.rows)
     (words : WordMapping input ⟨Control.destination w, Control.finalPC w⟩ w)
     (registers : ∀ index, input.rs1 = .Regidx index ∨ input.rs2 = .Regidx index → Cell.register index ∈ cells)
     (instruction : ∃ entry ∈ program, decoderQuery w = entry.query ∧
       entry.instruction = arithmeticInstruction input) :
-    ∃ events finalState,
-      events.Perm (data.mixedSteps.map transferEvent) ∧
-      SailHistory cells events initial finalState ∧
       RetiresCycle cells events initial finalState (⟨.machine, w⟩ : Trace.Row babyBearModulus UnifiedFamily)
         (Sail.execution input) := by
   obtain ⟨entry, present, query, encoding⟩ := instruction
@@ -102,8 +128,8 @@ theorem mixed_arithmetic_cycle
   have core := Verification.holds_of_sublist (accepted.constraints _ member)
     (List.sublist_append_left (importedConstraints data.machine.rom) importedConstraintsTimestampLookups)
   have ordinary := arithmetic_ordinary (by decide) core fields encoding query
-  obtain ⟨events, finalState, before, after, permutation, history, past, current, future, native, ranges⟩ :=
-    ordinary_cycle_context accepted inputs started member ordinary
+  obtain ⟨before, after, past, current, future, native, ranges⟩ :=
+    ordinary_cycle_context_at accepted inputs effects permutation order history member ordinary
   have bounds : (readToken w importedConstraintsMemoryPorts[0]).word.Bounded ∧
       (readToken w importedConstraintsMemoryPorts[1]).word.Bounded := by
     constructor
@@ -127,8 +153,30 @@ theorem mixed_arithmetic_cycle
     (input := actualInput) registers bounds actualWords fields query encoding pc
   have retired := UnifiedReduced.Proofs.arithmetic_register_retirement (by decide) core fields query
     (input := actualInput) encoding 1 native spec
-  refine ⟨events, finalState, permutation, history, before, after, past, current, future, ?_⟩
+  refine ⟨before, after, past, current, future, ?_⟩
   simpa [Sail.execution, Sail.instruction, Reference.RiscV.Sail.registerClause, Option.get_some, actualInput, Trace.Row.start, Trace.Row.finish, Trace.Row.columns, CircuitLayout.columns,
     PCState.State.word, rawPair, importedConstraintsTraceColumns, Control.initialPC, Control.finalPC] using retired
+
+theorem mixed_arithmetic_cycle
+    {data : RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
+    {initial : State} {ca oa : List (BitVec 32)} {cells : List Cell}
+    (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program initial ca oa cells)
+    (started : 0 < (timeOfPair data.machine.initial.timestamp).value)
+    {w : Nat → ZMod babyBearModulus} {input : Input}
+    (member : (⟨.machine, w⟩ : Trace.Row babyBearModulus UnifiedFamily) ∈ data.machine.rows)
+    (words : WordMapping input ⟨Control.destination w, Control.finalPC w⟩ w)
+    (registers : ∀ index, input.rs1 = .Regidx index ∨ input.rs2 = .Regidx index → Cell.register index ∈ cells)
+    (instruction : ∃ entry ∈ program, decoderQuery w = entry.query ∧
+      entry.instruction = arithmeticInstruction input) :
+    ∃ events finalState,
+      events.Perm (data.mixedSteps.map transferEvent) ∧
+      SailHistory cells events initial finalState ∧
+      RetiresCycle cells events initial finalState (⟨.machine, w⟩ : Trace.Row babyBearModulus UnifiedFamily)
+        (Sail.execution input) := by
+  have effects := mixed_memory_effects accepted inputs
+  obtain ⟨events, finalState, permutation, order, history, _, _, _⟩ := effects.execution
+  have retired := mixed_arithmetic_cycle_at accepted inputs effects permutation order history member words registers instruction
+  exact (fun _ : 0 < (timeOfPair data.machine.initial.timestamp).value =>
+    ⟨events, finalState, permutation, history, retired⟩) started
 
 end Airbender.UnifiedReduced.Caller.Proofs

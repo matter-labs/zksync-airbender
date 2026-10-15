@@ -1,7 +1,8 @@
 # Circuit formal verification plan
 
-Finalization of the pending integration work is active, with an hourly follow-up.
-The user resumed implementation after manual review on 13 October 2026. Current
+Independent finalization work under the current inputs has reached the checked
+boundary below; the hourly continuation is retired. The user resumed implementation
+after manual review on 13 October 2026. Current
 coverage, checked counterexamples and machine-check results live in
 [Verification status](VERIFICATION_STATUS.md).
 [Directory review guide](Airbender/Review/README.md) separates per-circuit and whole-trace reading.
@@ -51,7 +52,8 @@ dependencies, pins or generated artifacts as part of readability cleanup.
 
 ## Pending integration work
 
-Three closure tasks remain below. Completed transport, cuts,
+The three remaining closure tasks below require external inputs or a scope
+decision. Independent shared-history composition is checked. Completed transport, cuts,
 selected hash-reference composition and control preparation are recorded in
 [Verification status](VERIFICATION_STATUS.md) and the review guides; do not restart
 or repeat them here. Measure progress by closing these tasks or identifying their
@@ -75,13 +77,18 @@ prefix effects. See [the coverage result](Airbender/Review/Trace/UnifiedReduced/
 The remaining whole-execution/invalid-call boundaries are tasks 2–4 below, not
 additional preparation variants.
 
-2. **Whole mixed caller retirement.** Compose the existing ordinary/custom row
-   retirement and caller/worker boundaries over one initialized execution, with
-   terminal PC and cells. Derive reads, operands and scheduling inside the proof.
-   State exactly which caller observations are proved and where a full custom-CSR
-   reference would require unavailable ABI facts. The accepted invalid bigint
-   controls prevent an unconditional valid-control claim; do not replace this
-   blocker with an assumed valid control or more preparation variants.
+2. **Whole mixed caller retirement — external ABI blocker.**
+   [Shared cycle composition](Airbender/Review/Trace/UnifiedReduced/MixedCycles.lean)
+   now places original ordinary/custom retirement, caller observations, every
+   worker and the complete raw PC/clock path in one initialized history. The
+   final retired-PC view agrees with all native terminal cells. Reads, operands,
+   decoding and scheduling are derived; the existing public configuration,
+   tracked-RAM domain and unchanged-Sail load profile stay explicit.
+   `Caller.mixed_cycle_soundness` deliberately concludes an observational
+   certificate, not successful full custom-CSR execution. Accepted bigint
+   controls 0 and 65537 still violate the pinned ABI; unissued workers still have
+   real prefix effects. Full custom retirement needs an actual binding or an
+   explicit reference/scope decision. Another preparation variant cannot close it.
 3. **Native worker ROM and invalid-call binding.** Resolve the relationship between
    native zero ROM shadows and public bytes, and between accepted caller controls
    and the pinned custom-reference ABI. Checked counterexamples already show that
@@ -100,9 +107,11 @@ Preserve the demonstrated terminal-PC, zero-clock worker, bigint-control,
 ROM-shadow and discarded-load cases. Issued bigint calls with public x12 = 0 or
 65537 and the supported COPY ROM-shadow mismatch are checked model-level gaps,
 not whole-system or cryptographic bug claims. Do not fix circuits or hide these
-cases with desired outputs, assumed valid controls or nonzero invocation. Continue
-independent work on the closure tasks while it remains available; report specific
-external blockers when the remaining claims cannot follow from current inputs.
+cases with desired outputs, assumed valid controls or nonzero invocation.
+The remaining stronger claims cannot follow from the current inputs. Resume only
+when justified call-validity/participation, worker-ROM or global-padding bindings
+are available, or the user authorizes a concrete scope change. Deferred extraction,
+cryptographic refinement and exceptional execution remain outside this task.
 
 ## Deferred milestones
 
