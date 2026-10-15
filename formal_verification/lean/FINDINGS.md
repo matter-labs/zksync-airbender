@@ -309,7 +309,8 @@ Sail retirement remain open.
 
 The [public register-dataflow entry](Airbender/Review/Helpers/UnifiedReduced/RegisterDataflow.lean)
 now allows intervening arithmetic, bitwise/shift/REV8, comparison and admitted
-TRIADD/XORROT writes to other nonzero GPRs. Original public instruction constructors bind the destination;
+TRIADD/XORROT writes to other nonzero GPRs, plus selected LW/SW gaps.
+Original public instruction constructors bind the destination;
 successful public decoding retains supported RV32 shift-payload checks. Native
 decoder equations derive its GPR bank and index without an operand bound or
 instruction result. A gap may read the tracked register and refresh its timestamp. Public decoding derives the real destination;
@@ -350,12 +351,28 @@ Stale sources remain locally valid and globally rejected; wrong destinations/
 forms, unsupported MOPs and discarded selected destinations are rejected at
 the public-registry boundary. Pinned custom clauses are unchanged; this memory
 preparation claim does not assert full custom retirement or a Zimop fallback.
-Memory gaps, worker-interleaved preparation, broader operands and full Sail
-retirement remain open.
+LW/SW gaps now have separate public scopes. Original decoding derives the LW
+GPR destination, including the native NOP projection for LW-to-x0, or SW's RAM
+write bank. Native bank separation and initialized matching preserve the tracked
+GPR without a supplied effective address, loaded value, store result or inert-gap
+premise. Every other transfer remains in the exact prefix/window matching. Native
+RAM fixtures initialize x10 = 4194304 and RAM[4194304] = 42. LW changes x10 to 42
+and refreshes the RAM token at clock nine; SW consumes actual x12 = 129, writes
+RAM = 129 at clock ten and refreshes x12 at clock nine. The tracked literal token
+stays at clock six after LW. A discarded, misaligned LW-to-x0 is also admitted:
+its native gap touches only x0, RAM and the tracked literal retain clock zero/six,
+and the program fails NoDiscardedLoads. Final signed ADDIs still derive x12 = 128
+at clock fourteen. Fabricated fresh source clocks and a fabricated RAM read of 43
+pass local native constraints/timestamps but fail initialized matching. Wrong
+public load destinations and store sources are rejected. These are native memory
+preparation claims; the original Sail discarded-load mismatch and native ROM-shadow
+boundary remain explicit. No original memory-clause retirement is added.
+Worker-interleaved preparation, broader operands and whole caller retirement remain
+open.
 
 All 116 concrete test modules and 143 importer guards pass. The full
-2,361-root axiom audit has 69 axiom-free roots and only the three standard
-Lean axioms. Review checks pass for all 124 public theorem roots, 213 declaration
+2,390-root axiom audit has 69 axiom-free roots and only the three standard
+Lean axioms. Review checks pass for all 124 public theorem roots, 215 declaration
 names and 738 guide links/anchors, with no handwritten project diagnostics.
 
 ## Review priorities

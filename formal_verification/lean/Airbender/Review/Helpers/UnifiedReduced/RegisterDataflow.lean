@@ -67,6 +67,30 @@ structure RegisterFramePreparation [Fact p.Prime] (data : RequestTrace p)
   afterInitial : (timeOfPair data.machine.initial.timestamp).value + 4 ≤ cut
   beforeTerminal : cut ≤ (timeOfPair data.machine.terminal.timestamp).value
 
+/-- A selected original LW. Discarded writes remain admitted as native NOPs;
+    no successful original Sail load or expected loaded value is assumed. -/
+structure LoadFramePreparation [Fact p.Prime] (data : RequestTrace p)
+    (program : List UnifiedReduced.ProgramEntry) (cut : Nat)
+    (source destination : BitVec 5) (immediate : BitVec 12) : Prop where
+  registry : WrappedSequentialProgram program
+  atCut : ∀ entry ∈ program, entry.pc = wrappedProgramAddress data (cut - 4) →
+    entry.instruction = .LOAD (immediate, .Regidx source, .Regidx destination, false, 4)
+  prefixScope : data.workers.windowRows (cut - 4) cut = []
+  afterInitial : (timeOfPair data.machine.initial.timestamp).value + 4 ≤ cut
+  beforeTerminal : cut ≤ (timeOfPair data.machine.terminal.timestamp).value
+
+/-- A selected original SW. Its effective address and actual write are derived;
+    no RAM address, data value or empty transfer window is supplied. -/
+structure StoreFramePreparation [Fact p.Prime] (data : RequestTrace p)
+    (program : List UnifiedReduced.ProgramEntry) (cut : Nat)
+    (source stored : BitVec 5) (immediate : BitVec 12) : Prop where
+  registry : WrappedSequentialProgram program
+  atCut : ∀ entry ∈ program, entry.pc = wrappedProgramAddress data (cut - 4) →
+    entry.instruction = .STORE (immediate, .Regidx stored, .Regidx source, 4)
+  prefixScope : data.workers.windowRows (cut - 4) cut = []
+  afterInitial : (timeOfPair data.machine.initial.timestamp).value + 4 ≤ cut
+  beforeTerminal : cut ≤ (timeOfPair data.machine.terminal.timestamp).value
+
 /-- A public arithmetic gap. Its actual reads, values and timestamps remain
     unrestricted. Only this selected cycle is worker-free. -/
 structure ArithmeticFramePreparation [Fact p.Prime] (data : RequestTrace p)
@@ -97,7 +121,7 @@ def RegisterImmediatePreparation.arithmeticFrame [Fact p.Prime]
     scope.prefixScope, scope.afterInitial, scope.beforeTerminal⟩
 
 /-- Public register dataflow with intervening arithmetic, bitwise, shift, comparison
-    and admitted custom writes to other nonzero GPRs.
+    and admitted custom writes to other nonzero GPRs, plus LW/SW memory gaps.
     Such a gap may read and refresh the tracked register; its value is preserved.
     Actual operands, tokens, selectors and intermediate states are conclusions.
     Each selected cycle is worker-free; all earlier effects remain. -/
@@ -126,6 +150,16 @@ inductive PublicRegisterDataflow [Fact p.Prime] (data : RequestTrace p)
       (prior : PublicRegisterDataflow data program (cut - 4) register value)
       (scope : RegisterFramePreparation data program cut destination)
       (destinationNonzero : destination ≠ 0) (preserves : destination ≠ register) :
+      PublicRegisterDataflow data program cut register value
+
+  | loadFrame {cut register value source destination immediate}
+      (prior : PublicRegisterDataflow data program (cut - 4) register value)
+      (scope : LoadFramePreparation data program cut source destination immediate)
+      (preserves : destination ≠ register) :
+      PublicRegisterDataflow data program cut register value
+  | storeFrame {cut register value source stored immediate}
+      (prior : PublicRegisterDataflow data program (cut - 4) register value)
+      (scope : StoreFramePreparation data program cut source stored immediate) :
       PublicRegisterDataflow data program cut register value
 
 end Airbender.UnifiedReduced.Caller
