@@ -54,6 +54,12 @@ Unified models and workers retain their own explicit public contracts. For their
 claims and remaining scope, use the status table rather than inferring whole-machine
 coverage from a local operation theorem.
 
+The [modular pooled extension](Airbender/Review/Trace/Modular/README.md) connects
+ADDMOD/SUBMOD/MULMOD/FMAMOD to the same initialized six-family history, native
+boot/ROM view and external padding boundary. Actual Sail MOP decoding derives
+native selectors; history derives operands and FMAMOD's old destination.
+Arithmetic remains the existing pinned BabyBear project specification.
+
 ## Checked scope boundaries
 
 These fixtures explain restrictions on the current claims. They concern the
