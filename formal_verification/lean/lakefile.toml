@@ -24,10 +24,25 @@ srcDir = "generated/sail-rv32"
 
 [[lean_lib]]
 name = "Airbender"
-extraDepTargets = ["addSubJson", "jumpBranchSltJson", "unsignedMulDivJson", "shiftBinopJson", "wordMemoryJson", "subwordMemoryJson", "unifiedReducedJson", "blakeGJson", "blakeRoundJson", "bigintJson", "keccakJson"]
+extraDepTargets = ["addSubJson", "jumpBranchSltJson", "unsignedMulDivJson", "shiftBinopJson", "wordMemoryJson", "subwordMemoryJson", "unifiedReducedJson", "blakeGJson", "blakeRoundJson", "bigintJson", "keccakJson", "setupSmokeJson", "setupAddSubJson", "setupBigintJson"]
 
 [[lean_lib]]
 name = "Tests"
+
+[[input_file]]
+name = "setupSmokeJson"
+path = "artifacts/setup/decoder-smoke.json"
+text = true
+
+[[input_file]]
+name = "setupAddSubJson"
+path = "artifacts/setup/add-sub.json"
+text = true
+
+[[input_file]]
+name = "setupBigintJson"
+path = "artifacts/setup/bigint.json"
+text = true
 
 [[input_file]]
 name = "addSubJson"
