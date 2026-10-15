@@ -10,21 +10,24 @@ use gpu_core::primitives::device_structures::{
 };
 use gpu_core::primitives::field::PR;
 
-use super::lde::{launch_transform, TransformPass, TransformPolicy};
+use super::lde::{launch_transform, ChunkMap, TransformPass, TransformPolicy};
 use super::{validate_disjoint, validate_matrix, validate_slice};
 
 cuda_kernel_signature_arguments_and_function!(
     pub(crate) Mobius,
     inputs: PtrAndStride<PR>, outputs: MutPtrAndStride<PR>, log_n: u32, start_stage: u32,
+    map: ChunkMap,
 );
 macro_rules! mobius_kernel {
     ($name:ident) => {
         cuda_kernel_declaration!($name(
             inputs: PtrAndStride<PR>, outputs: MutPtrAndStride<PR>, log_n: u32, start_stage: u32,
+            map: ChunkMap,
         ));
     };
 }
 mobius_kernel!(ab_pr_mobius_nonfinal_5_stages_kernel);
+mobius_kernel!(ab_pr_mobius_nonfinal_5_stages_narrow_kernel);
 mobius_kernel!(ab_pr_mobius_nonfinal_6_stages_kernel);
 mobius_kernel!(ab_pr_mobius_nonfinal_7_stages_kernel);
 mobius_kernel!(ab_pr_mobius_nonfinal_8_stages_kernel);
@@ -41,6 +44,7 @@ impl TransformPolicy for MobiusPolicy {
         MobiusFunction(match pass {
             TransformPass::Small => ab_pr_mobius_small_kernel,
             TransformPass::Nonfinal(5) => ab_pr_mobius_nonfinal_5_stages_kernel,
+            TransformPass::NonfinalNarrow(5) => ab_pr_mobius_nonfinal_5_stages_narrow_kernel,
             TransformPass::Nonfinal(6) => ab_pr_mobius_nonfinal_6_stages_kernel,
             TransformPass::Nonfinal(7) => ab_pr_mobius_nonfinal_7_stages_kernel,
             TransformPass::Nonfinal(8) => ab_pr_mobius_nonfinal_8_stages_kernel,
@@ -56,8 +60,9 @@ impl TransformPolicy for MobiusPolicy {
         target: MutPtrAndStride<PR>,
         log_n: u32,
         start_stage: u32,
+        map: ChunkMap,
     ) -> MobiusArguments {
-        MobiusArguments::new(source, target, log_n, start_stage)
+        MobiusArguments::new(source, target, log_n, start_stage, map)
     }
 }
 

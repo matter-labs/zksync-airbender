@@ -17,20 +17,39 @@ use super::{validate_context_log, validate_disjoint, validate_matrix, validate_s
 
 pub(crate) const MAX_COLUMNS_PER_LAUNCH: usize = 65535;
 
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ChunkMap {
+    pub(crate) strip_base: u32,
+    pub(crate) strip_blocks: u32,
+    pub(crate) strip_domain_bits: u32,
+}
+
+impl ChunkMap {
+    pub(crate) const FULL: Self = Self {
+        strip_base: 0,
+        strip_blocks: 1,
+        strip_domain_bits: 0,
+    };
+}
+
+const _: () = assert!(core::mem::size_of::<ChunkMap>() == 12);
+
 cuda_kernel_signature_arguments_and_function!(
     pub(crate) Dit,
     inputs: PtrAndStride<PR>, outputs: MutPtrAndStride<PR>, descriptor: TwiddleDescriptor,
-    log_n: u32, start_stage: u32,
+    log_n: u32, start_stage: u32, map: ChunkMap,
 );
 macro_rules! dit_kernel {
     ($name:ident) => {
         cuda_kernel_declaration!($name(
             inputs: PtrAndStride<PR>, outputs: MutPtrAndStride<PR>, descriptor: TwiddleDescriptor,
-            log_n: u32, start_stage: u32,
+            log_n: u32, start_stage: u32, map: ChunkMap,
         ));
     };
 }
 dit_kernel!(ab_pr_dit_nonfinal_5_stages_kernel);
+dit_kernel!(ab_pr_dit_nonfinal_5_stages_narrow_kernel);
 dit_kernel!(ab_pr_dit_nonfinal_6_stages_kernel);
 dit_kernel!(ab_pr_dit_nonfinal_7_stages_kernel);
 dit_kernel!(ab_pr_dit_nonfinal_8_stages_kernel);
@@ -57,6 +76,7 @@ cuda_kernel!(NaturalizeNaive, ab_pr_naturalize_naive_kernel(
 pub(crate) enum TransformPass {
     Small,
     Nonfinal(u32),
+    NonfinalNarrow(u32),
     Final(u32),
 }
 
@@ -70,6 +90,7 @@ pub(crate) trait TransformPolicy {
         target: MutPtrAndStride<PR>,
         log_n: u32,
         start_stage: u32,
+        map: ChunkMap,
     ) -> Self::Arguments;
 }
 
@@ -81,6 +102,7 @@ impl TransformPolicy for DitPolicy {
         DitFunction(match pass {
             TransformPass::Small => ab_pr_dit_small_kernel,
             TransformPass::Nonfinal(5) => ab_pr_dit_nonfinal_5_stages_kernel,
+            TransformPass::NonfinalNarrow(5) => ab_pr_dit_nonfinal_5_stages_narrow_kernel,
             TransformPass::Nonfinal(6) => ab_pr_dit_nonfinal_6_stages_kernel,
             TransformPass::Nonfinal(7) => ab_pr_dit_nonfinal_7_stages_kernel,
             TransformPass::Nonfinal(8) => ab_pr_dit_nonfinal_8_stages_kernel,
@@ -96,8 +118,9 @@ impl TransformPolicy for DitPolicy {
         target: MutPtrAndStride<PR>,
         log_n: u32,
         start_stage: u32,
+        map: ChunkMap,
     ) -> DitArguments {
-        DitArguments::new(source, target, self.0, log_n, start_stage)
+        DitArguments::new(source, target, self.0, log_n, start_stage, map)
     }
 }
 
@@ -256,7 +279,7 @@ fn launch_transform_chunked<P: TransformPolicy>(
             config.dynamic_smem_bytes = dynamic_bytes;
             function.launch(
                 &config,
-                &policy.arguments(input, output, log_n, start_stage),
+                &policy.arguments(input, output, log_n, start_stage, ChunkMap::FULL),
             )?;
         }
         start_stage += stages;

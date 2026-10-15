@@ -26,6 +26,18 @@ struct mobius_policy {
   DEVICE_FORCEINLINE void exchg_0(pr &a, pr &b) const { b = pr::sub(b, a); }
 };
 
+struct chunk_map {
+  u32 strip_base;
+  u32 strip_blocks;
+  u32 strip_domain_bits;
+};
+
+static_assert(sizeof(chunk_map) == 12);
+
+DEVICE_FORCEINLINE u32 chunk_block_y(const chunk_map &m) {
+  return ((blockIdx.y / m.strip_blocks) << m.strip_domain_bits) | (m.strip_base + blockIdx.y % m.strip_blocks);
+}
+
 template <class P> DEVICE_FORCEINLINE void exchange(const P &policy, pr &a, pr &b, const u32 region) {
   if constexpr (P::USES_TWIDDLES)
     policy.exchg(a, b, get_forward_pr_twiddle(policy.descriptor, region));
@@ -73,17 +85,18 @@ DEVICE_FORCEINLINE void do_2_smem_stages(pr *smem_block, const P &policy) {
     __syncwarp();
 }
 
-template <int STAGES, class P>
+template <int STAGES, bool NARROW, class P>
 DEVICE_FORCEINLINE void nonfinal(pr_matrix_getter<ld_modifier::cg> gmem_in, pr_matrix_setter<st_modifier::cg> gmem_out, const P &policy, const u32 log_n,
-                                 const u32 start_stage) {
+                                 const u32 start_stage, const chunk_map map) {
+  static_assert(!NARROW || STAGES == 5);
   constexpr int LOG_TILE_SIZE = 3;
   constexpr int TILE_SIZE = 1 << LOG_TILE_SIZE;
   constexpr int LOG_VALS_PER_THREAD = 2;
   constexpr int VALS_PER_THREAD = 1 << LOG_VALS_PER_THREAD;
-  constexpr int LOG_THREADS_PER_BLOCK = 9;
-  constexpr int LOG_VALS_PER_BLOCK = LOG_THREADS_PER_BLOCK + LOG_VALS_PER_THREAD;
+  constexpr int LOG_TILES_PER_BLOCK = NARROW ? STAGES : 8;
+  constexpr int LOG_VALS_PER_BLOCK = LOG_TILES_PER_BLOCK + LOG_TILE_SIZE;
+  constexpr int LOG_THREADS_PER_BLOCK = LOG_VALS_PER_BLOCK - LOG_VALS_PER_THREAD;
   constexpr int VALS_PER_BLOCK = 1 << LOG_VALS_PER_BLOCK;
-  constexpr int LOG_TILES_PER_BLOCK = LOG_VALS_PER_BLOCK - LOG_TILE_SIZE;
   const int exchg_region_size = 1 << (log_n - start_stage);
   const int tile_gmem_stride = exchg_region_size >> LOG_TILES_PER_BLOCK;
   const int tile_in_block = threadIdx.x >> LOG_TILE_SIZE;
@@ -93,7 +106,7 @@ DEVICE_FORCEINLINE void nonfinal(pr_matrix_getter<ld_modifier::cg> gmem_in, pr_m
   gmem_in.add_col(blockIdx.z);
   gmem_out.add_col(blockIdx.z);
   int exchg_region = blockIdx.x;
-  const int block_start_in_exchg_region = TILE_SIZE * blockIdx.y;
+  const int block_start_in_exchg_region = TILE_SIZE * chunk_block_y(map);
   const int block_start = exchg_region_size * exchg_region + block_start_in_exchg_region;
   gmem_in.add_row(block_start);
   gmem_out.add_row(block_start);

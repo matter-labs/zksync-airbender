@@ -2,6 +2,7 @@ pub mod context;
 pub mod hypercube;
 pub mod lde;
 pub mod pack;
+pub(crate) mod prefix;
 
 pub use context::{DeviceContext, TwiddleDescriptor};
 pub use hypercube::{hypercube_evals_to_monomials, update_eq_poly, EqSample};
@@ -105,5 +106,7 @@ pub(crate) fn validate_context_log(context: &DeviceContext, log_n: u32) {
     );
 }
 
+#[cfg(test)]
+mod prefix_tests;
 #[cfg(test)]
 mod tests;

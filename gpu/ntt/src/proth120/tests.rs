@@ -1279,7 +1279,7 @@ fn pr_production_eq_leaf_parity() {
 #[ignore]
 #[cfg(not(no_cuda))]
 fn pr_device_bandwidth_probe() {
-    use super::lde::{naturalize, DitPolicy, TransformPass, TransformPolicy};
+    use super::lde::{naturalize, ChunkMap, DitPolicy, TransformPass, TransformPolicy};
     use era_cudart::event::{elapsed_time, CudaEvent};
     use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
     use era_cudart::memory::memory_set_async;
@@ -1339,6 +1339,7 @@ fn pr_device_bandwidth_probe() {
                     MutPtrAndStride::new(b.as_mut_ptr(), rows),
                     log_n,
                     0,
+                    ChunkMap::FULL,
                 ),
             )
             .unwrap();
