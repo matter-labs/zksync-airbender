@@ -357,9 +357,16 @@ ABI and whole mixed execution remain separate.
    source passes local constraints/timestamps but fails initialized matching.
    Both invalid bigint controls retain the x11 refresh law. The existing complete
    selected-reference composition consumes the new dataflow, with unchanged
-   domain/setup/table, coverage and matching boundaries. Continue tracked x10/x12
-   worker writes, broader operand-dependent operations, jumps/branches and whole
-   caller retirement, retaining unsupported-control and unissued-worker cases.
+   domain/setup/table, coverage and matching boundaries. Public single-cycle bigint
+   CSR regions now derive the actual returned x12 bit from native constraints and
+   initialized matching, retaining its raw token at cut minus one. The native
+   selected-clock floor, unique worker and family are derived. COPY-with-carry
+   reads a 256-bit all-ones public RAM source and returns 192→1 at clock seven;
+   COPY and both invalid controls 0/65537 retain zero returns. Return two, wrong
+   family, ordinary code and cuts beyond the terminal are rejected. This does not
+   validate incoming controls or execute the full CSR reference. Continue exact
+   operand-dependent x10/x12 worker dataflow, broader operations, jumps/branches and
+   whole caller retirement, retaining unsupported-control and unissued-worker cases.
    COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed
    retained for the second window. Extended BLAKE and Keccak completion controls
    do not restart their protocols; checked regressions forbid treating their
