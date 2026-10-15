@@ -193,10 +193,6 @@ fn validate_inputs(
         context_log >= max_domain,
         "Proth120 WHIR: context log_max_domain below oracle domain"
     );
-    assert!(
-        max_domain != 31 || context_log == 31,
-        "Proth120 WHIR: batched LDE requires a log_max_domain 31 context"
-    );
 }
 
 #[allow(clippy::needless_pass_by_value)]

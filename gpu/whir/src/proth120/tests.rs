@@ -749,20 +749,13 @@ fn pr_commit_intermediate_matches_cpu_small() {
         let k0 = cosets - tile_cosets;
         let monomials_dev = upload(&monomials, stream);
         let offsets = schedule_coset_offsets(&shape, &ctx).unwrap();
-        let mut tile = upload(&vec![PR::ZERO; tile_cosets << log_n], stream);
-        schedule_lde_convert_pass(
-            &monomials_dev,
-            &shape,
-            offsets.as_deref(),
-            k0 as u32,
-            &mut tile,
-            &ctx,
-        )
-        .unwrap();
-        assert_fields(
-            &download(&tile, stream),
-            &cpu_tile_pass(&monomials, log_lde, k0, tile_cosets),
-        );
+        let expected = cpu_tile_pass(&monomials, log_lde, k0, tile_cosets);
+        for offsets in [Some(&offsets[..]), None] {
+            let mut tile = upload(&vec![PR::ZERO; tile_cosets << log_n], stream);
+            schedule_lde_convert_pass(&monomials_dev, &shape, offsets, k0 as u32, &mut tile, &ctx)
+                .unwrap();
+            assert_fields(&download(&tile, stream), &expected);
+        }
     }
 }
 
@@ -1221,6 +1214,49 @@ fn pr_horner_leaves_match_cpu_small() {
                 &cpu.query(q as usize, &twiddles, &worker).1,
             );
         }
+    }
+}
+
+#[test]
+fn pr_subtree_points_wide_context_match_cpu() {
+    use gpu_ntt::proth120::DeviceContext;
+    let ntt = DeviceContext::create(33).unwrap();
+    let stream = CudaStream::create().unwrap();
+    let mut rng = TestRng::new(0x7133_0d01);
+    for (log_domain, log_v, log_lde, skip_bottom) in [(33, 1, 9, 5), (33, 4, 9, 5), (31, 2, 6, 5)] {
+        let query_domain_log2 = log_domain - log_v;
+        let domain = 1u64 << query_domain_log2;
+        let mut queries = vec![(domain - 1) as u32, 0, (domain >> 1) as u32];
+        queries.extend((0..5).map(|_| (rng.next_u64() % domain) as u32));
+        let queries_dev = upload(&queries, &stream);
+        let mut points = upload(&vec![PR::ZERO; queries.len() << skip_bottom], &stream);
+        super::kernels::subtree_points(
+            &queries_dev,
+            query_domain_log2,
+            log_lde,
+            skip_bottom,
+            ntt.descriptor(),
+            log_domain,
+            &mut points,
+            &stream,
+        )
+        .unwrap();
+        let actual = download(&points, &stream);
+        let generator = fft::domain_generator_for_size::<PR>(1u64 << log_domain);
+        let k = 1u64 << skip_bottom;
+        let expected: Vec<PR> = queries
+            .iter()
+            .flat_map(|&q| {
+                let q = q as u64;
+                let c = q & ((1 << log_lde) - 1);
+                let j = q >> log_lde;
+                (0..k).map(move |t| {
+                    let q_m = c + (((j & !(k - 1)) + t) << log_lde);
+                    generator.pow_u128(((q_m << log_v) as u128) % (1u128 << log_domain))
+                })
+            })
+            .collect();
+        assert_fields(&actual, &expected);
     }
 }
 

@@ -490,7 +490,10 @@ pub(crate) fn subtree_points(
     stream: &CudaStream,
 ) -> CudaResult<()> {
     assert!(
-        log_lde <= query_domain_log2 && query_domain_log2 < log_domain && log_domain <= 31,
+        log_lde <= query_domain_log2
+            && query_domain_log2 < log_domain
+            && query_domain_log2 <= 32
+            && log_domain <= descriptor.log_max_domain(),
         "Proth120 WHIR: subtree point domain geometry invalid"
     );
     assert!(

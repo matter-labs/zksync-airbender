@@ -23,7 +23,7 @@ EXTERN __launch_bounds__(256) __global__
   if (query >= count)
     return;
   const u32 q = queries[query];
-  if (q >= (1u << query_domain_log2)) {
+  if (static_cast<u64>(q) >> query_domain_log2) {
     __trap();
     return;
   }
@@ -32,7 +32,7 @@ EXTERN __launch_bounds__(256) __global__
   const u32 j = q >> log_lde;
   const u32 q_m = c + (((j & ~k_mask) + (static_cast<u32>(gid) & k_mask)) << log_lde);
   const u32 log_v = log_domain - query_domain_log2;
-  const u32 exponent = ((q_m << log_v) << (d.log_max_domain - log_domain)) & ((1u << d.log_max_domain) - 1u);
+  const u64 exponent = ((static_cast<u64>(q_m) << log_v) << (d.log_max_domain - log_domain)) & ((u64{1} << d.log_max_domain) - 1);
   points[gid] = pr_root_power(d, exponent);
 }
 
@@ -72,7 +72,7 @@ EXTERN __launch_bounds__(128) __global__
   if (query >= count)
     return;
   const u32 q = queries[query];
-  if (q >= (1u << (log_lde + log_leaves))) {
+  if (static_cast<u64>(q) >> (log_lde + log_leaves)) {
     __trap();
     return;
   }

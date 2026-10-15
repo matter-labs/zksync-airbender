@@ -20,10 +20,10 @@ EXTERN __launch_bounds__(256) __global__
 }
 
 EXTERN __launch_bounds__(256) __global__
-    void ab_pr_lde_scale_table_kernel(const pr *in, pr *out, const proth120_twiddle_descriptor d, const u32 log_n, const u32 k0) {
+    void ab_pr_lde_scale_table_kernel(const pr *in, pr *out, const proth120_twiddle_descriptor d, const u32 log_n, const u32 log_domain, const u32 k0) {
   const u32 i = blockIdx.x * blockDim.x + threadIdx.x;
   const u32 k = k0 + blockIdx.y;
-  const u32 exponent = static_cast<u32>(static_cast<u64>(k) * i) & 0x7fffffffu;
+  const u64 exponent = ((static_cast<u64>(k) * i) << (d.log_max_domain - log_domain)) & ((u64{1} << d.log_max_domain) - 1);
   const pr value = pr::mul(load_cg(in + i), pr_root_power(d, exponent));
   store_cg(out + (static_cast<size_t>(blockIdx.y) << log_n) + i, value);
 }
