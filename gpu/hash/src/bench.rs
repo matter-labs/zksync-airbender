@@ -1,8 +1,9 @@
 use era_cudart::cuda_kernel;
 use era_cudart::device::{device_get_attribute, get_device};
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
+use era_cudart::occupancy::max_active_blocks_per_multiprocessor;
 use era_cudart::result::CudaResult;
-use era_cudart::slice::DeviceSlice;
+use era_cudart::slice::{DeviceSlice, DeviceVariable};
 use era_cudart::stream::CudaStream;
 use era_cudart_sys::CudaDeviceAttr::MultiProcessorCount;
 
@@ -150,4 +151,29 @@ pub fn bench_nodes(
     let grid = u32::try_from(count.div_ceil(128)).expect("keccak256::bench_nodes: grid overflow");
     let args = NodesArguments::new(src.as_ptr(), count as u64, 1, 0, 0, dst.as_mut_ptr());
     NodesFunction::default().launch(&CudaLaunchConfig::basic(grid, 128, stream), &args)
+}
+
+cuda_kernel!(
+    Pow,
+    ab_keccak256_pow_kernel(seed: *const u8, bits: u32, max_nonce: u64, result: *mut u64)
+);
+
+pub fn bench_pow_blocks() -> CudaResult<u32> {
+    let mpc = device_get_attribute(MultiProcessorCount, get_device()?)?;
+    let active = max_active_blocks_per_multiprocessor(&PowFunction::default(), 128, 0)?;
+    Ok(u32::try_from(mpc * active).expect("keccak256::bench_pow_blocks: grid overflow"))
+}
+
+pub fn bench_pow_bounded(
+    seed: &DeviceSlice<u8>,
+    bits: u32,
+    max_nonce: u64,
+    blocks: u32,
+    result: &mut DeviceVariable<u64>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert_eq!(seed.len(), 32);
+    assert!(blocks as u64 * 128 <= max_nonce);
+    let args = PowArguments::new(seed.as_ptr(), bits, max_nonce, result.as_mut_ptr());
+    PowFunction::default().launch(&CudaLaunchConfig::basic(blocks, 128, stream), &args)
 }
