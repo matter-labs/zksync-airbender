@@ -1,4 +1,6 @@
 import Airbender.Proofs.Keccak.Schedule
+import Airbender.Proofs.Keccak.Call
+import Airbender.Review.Trace.Workers.Keccak.ReferenceCalls
 
 namespace Tests.KeccakSchedule
 open Airbender.Keccak Airbender.Keccak.Proofs
@@ -18,5 +20,15 @@ theorem final_transition : (scheduleControl 648).nextPacked = 1544 := schedule_n
 theorem completion_does_not_restart :
     (scheduleControl 649).packed ≠ (scheduleControl 0).packed ∧
       (scheduleControl 649).nextPacked = 1552 := by decide
+
+theorem noncanonical_controller_rejected {before after : Airbender.Reference.RiscV.Sail.State}
+    (read : (Airbender.Trace.Cell.register 10).read before =
+      .ok (BitVec.ofNat 32 65536) before) :
+    ¬ Call.Executes before after := by
+  intro execution
+  obtain ⟨control, actual, bound⟩ := Call.Proofs.full_controller execution
+  have same := (EStateM.Result.ok.inj (actual.symm.trans read)).1
+  rw [same] at bound
+  norm_num at bound
 
 end Tests.KeccakSchedule

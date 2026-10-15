@@ -113,10 +113,10 @@ additional preparation variants.
    real prefix effects. [Complete bigint retirement](Airbender/Review/Trace/UnifiedReduced/BigintCalls.lean)
    is now connected under the explicit temporary F02 contract, including actual
    operands, full state/frame and original PC advance. The existing complete
-   G and extended-round spans now supply full-state reference micro-call sequences
+   G, extended-round and Keccak spans now supply full-state reference micro-call sequences
    with derived ABI.
    Hash caller PC retirement and whole mixed sequencing under the occurrence
-   ledger remain, including the Keccak full-state reference connection.
+   ledger remain.
    General acceptance still needs actual control/participation enforcement.
    Another preparation variant cannot close it.
 3. **Native worker ROM — conditional composition checked, enforcement open.**

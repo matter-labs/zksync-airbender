@@ -29,3 +29,4 @@ import Airbender.Review.Trace.UnifiedReduced.BigintCalls
 
 import Airbender.Review.Trace.Workers.Blake2G.ReferenceCalls
 import Airbender.Review.Trace.Workers.Blake2Round.ReferenceCalls
+import Airbender.Review.Trace.Workers.Keccak.ReferenceCalls

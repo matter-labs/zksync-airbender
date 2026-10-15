@@ -18,7 +18,7 @@ and the [fixed scope](FORMAL_VERIFICATION_PLAN.md).
 | [Bigint](Airbender/Review/Trace/Workers/Bigint/Theorems.lean) | All seven selected operations, carry/overflow and actual native port observations. |
 | [BLAKE2 G](Airbender/Review/Trace/Workers/Blake2G/Theorems.lean) | [Full-state reference micro-call sequences](Airbender/Review/Trace/Workers/Blake2G/ReferenceCalls.lean) and complete 56/80-call work-vector folds. |
 | [BLAKE2 extended control](Airbender/Review/Trace/Workers/Blake2Round/Theorems.lean) | [Full-state reference micro-call sequences](Airbender/Review/Trace/Workers/Blake2Round/ReferenceCalls.lean) and complete seven-/ten-round compression in actual RAM. |
-| [Keccak special5](Airbender/Review/Trace/Workers/Keccak/Theorems.lean) | All seven modes and the complete 649-call reference permutation in actual RAM. |
+| [Keccak special5](Airbender/Review/Trace/Workers/Keccak/Theorems.lean) | [Full-state reference micro-call sequences](Airbender/Review/Trace/Workers/Keccak/ReferenceCalls.lean), all seven modes and the complete 649-call reference permutation in actual RAM. |
 
 | Integration | Coverage |
 | --- | --- |
@@ -36,7 +36,7 @@ fixed or independently shown to be enforced. See the [case register](FINDINGS.md
 
 | Claim | Blocker |
 | --- | --- |
-| Full custom-CSR execution of mixed callers | Finish hash caller retirement and whole mixed sequencing under explicit participation; bigint callers and G/extended-round worker reference sequences are connected. Accepted controls 0/65537 and unissued zero-clock effects remain implementation findings. |
+| Full custom-CSR execution of mixed callers | Finish hash caller retirement and whole mixed sequencing under explicit participation; bigint callers and all hash worker reference sequences are connected. Accepted controls 0/65537 and unissued zero-clock effects remain implementation findings. |
 | Initialization/teardown local soundness | Retained artifacts have no equations/range queries; needs richer proof input. |
 
 AIH-334's EVM window check is fixed and tested. AIH-336/315 and the other reviewed
@@ -49,8 +49,8 @@ Separately scoped work: [deferred milestones](FORMAL_VERIFICATION_PLAN.md#deferr
 
 - Library, both executables and all 120 concrete test modules pass.
 - Importer regressions pass.
-- Axiom audit: 2,838 roots, 88 axiom-free; only `propext`, `Classical.choice` and `Quot.sound`.
-- All 156 public Review theorem roots are audited; review/reference checks pass.
+- Axiom audit: 2,887 roots, 89 axiom-free; only `propext`, `Classical.choice` and `Quot.sound`.
+- All 157 public Review theorem roots are audited; review/reference checks pass.
 - No handwritten project diagnostics, `sorry` or project axioms.
 
 [Reproduce the checks](README.md#reproduce).
