@@ -429,9 +429,9 @@ protocol scopes remain explicit. General operand-dependent x10/x12 results,
 broader operations and whole caller retirement remain open.
 
 All 116 concrete test modules and 143 importer guards pass. The full
-2,459-root axiom audit has 69 axiom-free roots and only the three standard
-Lean axioms. Review checks pass for all 127 public theorem roots, 225 declaration
-names and 747 guide links/anchors, with no handwritten project diagnostics.
+2,478-root axiom audit has 69 axiom-free roots and only the three standard
+Lean axioms. Review checks pass for all 128 public theorem roots, 226 declaration
+names and 754 guide links/anchors, with no handwritten project diagnostics.
 
 ## Review priorities
 
@@ -446,7 +446,7 @@ names and 747 guide links/anchors, with no handwritten project diagnostics.
 | F07 | Standalone worker claims retain control/participation conditions | Unresolved general binding; discharged in specified stronger scopes | `rounds`, `RoundMask`, `keccakActive` |
 | F08 | Complete hash claims retain protocol shape and first-span restrictions | Public-program binding derives selected span/controller shape and all issued round coverage/masks; full coverage exposes the zero-clock extended-round boundary | Mode/duration/preparation, public code profile, controller extents/full coverage and legacy prefix conditions |
 | F09 | Decoder/setup models need an implementation binding | Unresolved provenance/structural correspondence | Modeled table equality and logical decoder membership |
-| F10 | Caller-cycle effects are weaker than full custom instruction execution | Missing composition/semantic connection | Current fetch, selected worker effects and PC retirement do not execute the full CSR reference |
+| F10 | Caller-cycle effects are weaker than full custom instruction execution | Shared ordinary/caller/worker composition checked; full-call semantic connection blocked | One history and raw PC path do not turn accepted invalid calls into full CSR reference execution |
 
 Review F01's external correspondence and F02–F04 first. F05 and F06 establish why current
 participation/profile restrictions matter. F07–F10 identify assumptions or narrower
@@ -831,24 +831,35 @@ decoder entries, selector/immediate/register projection and query placement, the
 establish the implementation binding. No concrete decoder/setup discrepancy was
 demonstrated in this pass.
 
-## F10 — Caller-cycle observations do not run the full custom CSR reference
+## F10 — Shared cycle composition does not validate the full custom CSR reference
 
-**Conclusion boundary.** [CallerCycle and CallerCycleEffects](Airbender/Review/Trace/UnifiedReduced/CallerCycles.lean)
-connect actual history states, public fetch, a matched worker's selected effects,
-port reads/writes, terminal cells and Sail PC ticking. They do not invoke the full
-custom CSR operation with its control, pointer and invalid-call behavior.
+**Checked connection.** [MixedCycleEffects](Airbender/Review/Trace/UnifiedReduced/MixedCycles.lean)
+now combines original ordinary/custom retirement, current public fetch,
+[caller observations](Airbender/Review/Trace/UnifiedReduced/CallerCycles.lean),
+all workers and the complete native PC/clock path over one initialized history.
+`Caller.mixed_cycle_soundness` derives reads, operands, decoding and scheduling
+under the existing public configuration, tracked-RAM and unchanged-Sail load
+profile. The actual final memory agrees with terminal cells in the retired-PC
+view of the native path's terminal endpoint. No successful full custom-CSR
+reference sequence is claimed by this observational certificate.
+
+**Retained counterexamples.** F02's invalid bigint calls with controls 0 and
+65537 instantiate the combined certificate itself. The same assembly also covers
+actual COPY→LW/SW retirement and the zero-clock G's real prefix execution.
+The former reference rejects both controls; the latter worker has no caller.
+Adding ordinary retirement and terminal observations therefore does not supply
+full-call control/pointer/invalid-call semantics. The original standard/custom
 [Mixed.execution_soundness](Airbender/Review/Trace/UnifiedReduced/Theorems.lean)
-covers standard plus TRIADD/XORROT retirement; delegation callers are outside
-that registry.
+continues to exclude delegation callers from its successful-instruction registry.
 
-**Evidence.** F02's invalid bigint calls satisfy the caller-cycle theorem itself.
-Thus strengthening fetch/state transport has not silently established the missing
-ABI. A complete selected hash span is likewise an architectural-effect result,
-not by itself a whole mixed caller-retirement theorem.
-
-**Closure needed.** Compose ordinary/custom and caller steps with the complete
-project reference, preserving its invalid-call behavior, all native effects and
-terminal PC/cell agreement. Do not infer this result from the current theorem names.
+**External closure needed.** Bind accepted caller validity and participation to
+the complete pinned reference, including invalid calls, or make an explicit
+reference/scope decision. Current constraints and matching cannot imply the
+missing properties in the face of F02/F03. Worker ROM binding (F04) and inactive
+padding (F05) need their stated additional inputs. Independent composition work
+is checked; the hourly task stops here rather than adding optional preparation
+or instruction variants. All generated/import/cryptographic and exceptional-path
+milestones remain separately deferred.
 
 ## Remaining boundary register
 
@@ -894,13 +905,12 @@ category must never be described simply as public context.
 
 ## Validation and next review
 
-The scoped Lean build passed for `Tests.JumpSailHistory`, `Tests.InactiveRow`,
-`Tests.DelegationZeroInvocation`, `Tests.UnifiedDelegation`,
-`Tests.DelegationROMBoundary`, `Tests.DiscardedLoad`, `Tests.BigintAbi`,
-`Tests.Blake2RoundCall`, `Tests.KeccakSchedule` and `Tests.KeccakController`,
-with no handwritten Airbender/Tests diagnostics. This reused the current checked
-sources; it did not add new proofs. The snapshot's full audit/review checkpoint
-also passed before this documentation-only pass.
+The current milestone passed the library, both executables and all 116 concrete
+Lean test modules, all 143 importer guards, the full axiom audit and the
+review/reference checker. The new shared-cycle fixtures cover COPY→LW/SW,
+both invalid bigint controls and the unissued G prefix. Existing terminal-PC,
+inactive-row, ROM-shadow and discarded-load regressions remain part of those
+checks. The snapshot counts above record the final checked sources.
 
 Review F01's explicit canonical boundary contract and the remaining Rust/artifact
 and cryptographic correspondence. For unresolved F02–F04, review the actual request

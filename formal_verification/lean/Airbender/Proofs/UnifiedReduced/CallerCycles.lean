@@ -104,16 +104,18 @@ theorem caller_cycle_observations [Fact p.Prime] (hp : 2 * timestampBase + 4 < p
   have written := cell_read_PC cell (cell_read_nextPC cell written row.finish.word.toBitVec) row.finish.word.toBitVec
   exact ⟨cell, cellMember, address, read, written⟩
 
-theorem native_caller_cycles
+theorem native_caller_cycles_at
     {data : RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry} {initial : State}
     {ca oa : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program initial ca oa cells)
-    (code : CodeProfile data program cells) :
-    CallerCycleEffects data program initial cells := by
-  have effects := mixed_memory_effects accepted inputs
-  obtain ⟨events, finalState, permutation, order, history, _, _, terminal⟩ := effects.execution
+    (code : CodeProfile data program cells)
+    (effects : MixedMemoryEffects data initial cells)
+    {events : List MemoryAccess} {finalState : State}
+    (permutation : events.Perm (data.mixedSteps.map transferEvent))
+    (order : events.Pairwise (fun a b => b.1 ≤ a.1))
+    (history : SailHistory cells events initial finalState) :
+    ∀ row ∈ data.callers, CallerCycle data initial finalState cells events row := by
   have fetch := current_fetch_of_history accepted inputs code order history
-  refine ⟨effects.requests, events, finalState, permutation, order, history, fetch, ?_, terminal⟩
   intro row member
   have nativeMember := List.mem_of_mem_filter member
   have floor := machine_native_clock_positive (by decide) (by decide) accepted
@@ -131,6 +133,19 @@ theorem native_caller_cycles
     ⟨entry, present, query, pc, source before past, worker, workerMember, matched,
       caller_worker_family (by decide) query matched, effects.operations worker workerMember, observations⟩,
     caller_pc_retirement effects.requests member⟩
+
+
+theorem native_caller_cycles
+    {data : RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry} {initial : State}
+    {ca oa : List (BitVec 32)} {cells : List Cell}
+    (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program initial ca oa cells)
+    (code : CodeProfile data program cells) :
+    CallerCycleEffects data program initial cells := by
+  have effects := mixed_memory_effects accepted inputs
+  obtain ⟨events, finalState, permutation, order, history, _, _, terminal⟩ := effects.execution
+  exact ⟨effects.requests, events, finalState, permutation, order, history,
+    current_fetch_of_history accepted inputs code order history,
+    native_caller_cycles_at accepted inputs code effects permutation order history, terminal⟩
 
 
 /-- Compatibility entry retaining the earlier explicit clock premise. -/

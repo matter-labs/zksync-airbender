@@ -3,8 +3,9 @@
 This directory states execution claims for the unified artifact: ordinary and
 selected custom instruction retirement, caller-cycle observations, and complete
 reference effects on selected native-clock windows. The claims share actual
-history-derived states but use different registries and input contracts; full
-mixed execution with delegation callers remains a separate obligation.
+history-derived states. Shared cycle composition now covers every native row in
+one history and PC/clock path; full custom-CSR execution remains blocked by the
+recorded invalid-call and participation cases.
 
 ## Checked results
 
@@ -12,6 +13,7 @@ mixed execution with delegation callers remains a separate obligation.
 | --- | --- |
 | Original standard instructions retire and reach native terminal PC/cells, using public ROM bytes. | [`execution_soundness`](Theorems.lean) |
 | Standard instructions plus TRIADD/XORROT retire together; delegation callers are outside the registry. | [`Mixed.execution_soundness`](Theorems.lean) |
+| Every ordinary retirement, caller observation and worker uses one actual history and complete raw PC/clock path, with terminal cells in the final retired-PC view. Full custom-CSR execution remains separate. | [`Caller.mixed_cycle_soundness`](Theorems.lean) |
 | Machine and worker reads/writes, bounds and references share one actual initialized history. | [`Caller.mixed_memory_soundness`](Theorems.lean) |
 | Exact caller regions, counts and slots follow from state/request matching and public cuts/duration. | [`Caller.window_schedule_soundness` and `Caller.request_window_soundness`](Theorems.lean) |
 | Public sequential code identifies caller regions; native matching derives selected worker family, counts and slots. | [`Caller.program_window_schedule_soundness`](Theorems.lean) |
@@ -532,3 +534,24 @@ actual clock-five invocation, while its one-call interval cannot satisfy the
 and overlap are rejected. All four COPY/carry/invalid-bigint preparation fixtures
 remain admitted outside the hash partition. Whole custom-CSR retirement and
 unrestricted invalid-call/ROM behavior remain separate.
+
+## Shared cycle composition and stopping boundary
+
+[RetirementProfile](../../Helpers/UnifiedReduced/RetirementProfile.lean) retains
+public configuration, complete register initialization, readonly code, tracked-RAM
+data and the unchanged-Sail discarded-load restriction. It supplies no operands,
+reads, selected instructions, worker outputs or valid-control condition.
+[MixedCycleEffects](MixedCycles.lean) combines the complete raw native PC/clock
+path with original ordinary/custom retirement, caller observations and every
+worker's actual call states in one initialized architectural history. The same
+history reaches the terminal cells; its final retired view uses that path's
+terminal PC. This conclusion is not a sequence of successful full custom-CSR
+reference steps. The public theorem does not claim native worker ROM transport.
+
+The native COPY→LW/SW fixtures instantiate the shared certificate; both invalid
+bigint controls also instantiate it. The unissued G fixture retains its real
+prefix execution. These cases show exactly why observation composition does not
+supply the missing full-call semantics. Further instruction/preparation variants
+are outside the frozen scope. Stronger execution requires justified invalid-call,
+worker participation and ROM bindings; inactive padding needs global state/write
+obligations. The hourly continuation ends at these external blockers.
