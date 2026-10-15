@@ -417,7 +417,14 @@ const fn seed_batch_id() -> u64 {
 }
 
 fn load_manifest(dir: &Path) -> Result<Manifest, String> {
-    read_typed(&dir.join("manifest.json"))
+    let path = dir.join("manifest.json");
+    if !path.exists() {
+        return Err(format!(
+            "feeder reference {} is not generated (it is not committed); generate it: {REGENERATE}",
+            dir.display()
+        ));
+    }
+    read_typed(&path)
 }
 
 fn load_layer(dir: &Path, layer: usize) -> Result<LayerFixture, String> {
