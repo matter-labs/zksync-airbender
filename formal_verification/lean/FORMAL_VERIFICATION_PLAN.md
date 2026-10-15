@@ -1,7 +1,10 @@
 # Circuit formal verification plan
 
-Independent finalization work under the current inputs has reached the checked
-boundary below; the hourly continuation is retired. The user resumed implementation
+The user authorized an external contribution-mask boundary on 15 October 2026,
+analogous to the canonical verifier-PC boundary. Its exact logical
+state/memory/request binding, mask algebra and active-row projection are checked
+and reuse the existing execution results. Rust/GKR/cryptographic enforcement
+remains external. The hourly continuation stays retired. The user resumed implementation
 after manual review on 13 October 2026. Current
 coverage, checked counterexamples and machine-check results live in
 [Verification status](VERIFICATION_STATUS.md).
@@ -98,9 +101,12 @@ additional preparation variants.
 4. **Remaining global boundaries.** F01 terminal-PC normalization is resolved in
    the logical model under explicit canonical total-verifier boundary closure.
    Cryptographic enforcement and Rust/artifact correspondence remain deferred.
-   Inactive padding still needs actual global state/write obligations: the retained
-   ADD/SUB relation admits an inactive row with PC 0→4 and discarded result 123.
-   Do not infer stuttering from execute = 0. Full fetch faults, interrupts and
+   Inactive padding is now erased under the user-authorized
+   [external contribution-mask boundary](Airbender/Review/Helpers/Context/PaddingBoundary/README.md).
+   The retained ADD/SUB row still has PC 0→4 and result 123; raw stuttering is
+   neither assumed nor proved. Exact full-layout masked state/memory/request
+   matching derives active acceptance and existing execution. Rust/artifact and
+   cryptographic enforcement of that logical binding remain external. Full fetch faults, interrupts and
    exceptional execution belong to the separately scoped deferred path.
 
 Preserve the demonstrated terminal-PC, zero-clock worker, bigint-control,
@@ -109,8 +115,9 @@ ROM-shadow and discarded-load cases. Issued bigint calls with public x12 = 0 or
 not whole-system or cryptographic bug claims. Do not fix circuits or hide these
 cases with desired outputs, assumed valid controls or nonzero invocation.
 The remaining stronger claims cannot follow from the current inputs. Resume only
-when justified call-validity/participation, worker-ROM or global-padding bindings
-are available, or the user authorizes a concrete scope change. Deferred extraction,
+when justified call-validity/participation or worker-ROM bindings are available,
+or the user authorizes a concrete scope change. Padding is conditionally resolved
+through its explicit new boundary; no compiler/verifier refinement is inferred. Deferred extraction,
 cryptographic refinement and exceptional execution remain outside this task.
 
 ## Deferred milestones

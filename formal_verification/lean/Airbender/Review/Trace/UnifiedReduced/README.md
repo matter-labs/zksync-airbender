@@ -553,5 +553,12 @@ bigint controls also instantiate it. The unissued G fixture retains its real
 prefix execution. These cases show exactly why observation composition does not
 supply the missing full-call semantics. Further instruction/preparation variants
 are outside the frozen scope. Stronger execution requires justified invalid-call,
-worker participation and ROM bindings; inactive padding needs global state/write
-obligations. The hourly continuation ends at these external blockers.
+worker participation and ROM bindings; inactive padding is conditionally erased
+under the separately authorized external contribution boundary. The hourly continuation ends at these external blockers.
+
+The [external padding boundary](../../Helpers/Context/PaddingBoundary/README.md)
+now projects whole masked machine/worker layouts into these same execution
+contracts through [padded entries](../Padding.lean). Selection uses native execute
+flags, preserving active zero-clock workers and invalid bigint controls. Exact
+masked state/memory/request matching and Rust/GKR correspondence stay explicit;
+this does not strengthen the full custom-CSR or worker-ROM claims.

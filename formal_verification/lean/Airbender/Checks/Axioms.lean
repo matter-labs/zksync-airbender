@@ -1,3 +1,5 @@
+import Airbender.Review.Trace.Padding
+import Tests.PaddingBoundary
 import Airbender.Review.Trace.Families.AddSub.Theorems
 import Airbender.Review.Circuits.JumpBranchSlt.Theorems
 import Airbender.Review.Trace.Families.JumpBranchSlt.Theorems
@@ -2739,3 +2741,74 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Caller.RetirementProfile
 #print axioms Airbender.UnifiedReduced.Caller.OrdinaryCycle
 #print axioms Airbender.UnifiedReduced.Caller.MixedCycleEffects
+
+#print axioms Airbender.PaddingBoundary.mask
+#print axioms Airbender.PaddingBoundary.contribution
+#print axioms Airbender.PaddingBoundary.evaluate
+#print axioms Airbender.PaddingBoundary.contributions
+#print axioms Airbender.PaddingBoundary.active
+#print axioms Airbender.PaddingBoundary.Binding
+#print axioms Airbender.PaddingBoundary.AcceptedLayout
+#print axioms Airbender.PaddingBoundary.contribution_soundness
+#print axioms Airbender.PaddingBoundary.product_soundness
+#print axioms Airbender.PaddingBoundary.acceptance_soundness
+#print axioms Airbender.PaddingBoundary.Proofs.mask_zero
+#print axioms Airbender.PaddingBoundary.Proofs.mask_one
+#print axioms Airbender.PaddingBoundary.Proofs.contribution_zero
+#print axioms Airbender.PaddingBoundary.Proofs.contribution_one
+#print axioms Airbender.PaddingBoundary.Proofs.evaluate_contribution
+#print axioms Airbender.PaddingBoundary.Proofs.evaluate_group
+#print axioms Airbender.PaddingBoundary.Proofs.erase_contributions
+#print axioms Airbender.PaddingBoundary.Proofs.flatMap_values
+#print axioms Airbender.PaddingBoundary.Proofs.projected_states
+#print axioms Airbender.PaddingBoundary.Proofs.projected_memory
+#print axioms Airbender.PaddingBoundary.Proofs.projected_acceptance
+#print axioms Airbender.PaddingBoundary.Proofs.contributions_selected
+#print axioms Airbender.PaddingBoundary.Proofs.binding_of_accepted
+#print axioms Airbender.PaddingBoundary.Proofs.insert_identities
+#print axioms Airbender.PaddingBoundary.Proofs.binding_cons_inactive
+#print axioms Airbender.PaddingBoundary.Proofs.layout_of_accepted
+#print axioms Airbender.PaddingBoundary.Proofs.layout_cons_inactive
+#print axioms Airbender.PaddingBoundary.Proofs.active_idempotent
+#print axioms Airbender.PaddingBoundary.Proofs.active_of_accepted
+#print axioms Airbender.UnifiedReduced.Caller.Padding.active
+#print axioms Airbender.UnifiedReduced.Caller.Padding.machineContributions
+#print axioms Airbender.UnifiedReduced.Caller.Padding.workerContributions
+#print axioms Airbender.UnifiedReduced.Caller.Padding.memoryContributions
+#print axioms Airbender.UnifiedReduced.Caller.Padding.callerContributions
+#print axioms Airbender.UnifiedReduced.Caller.Padding.fulfillmentContributions
+#print axioms Airbender.UnifiedReduced.Caller.Padding.Binding
+#print axioms Airbender.UnifiedReduced.Caller.Padding.AcceptedLayout
+#print axioms Airbender.UnifiedReduced.Caller.Padding.Proofs.active_callers
+#print axioms Airbender.UnifiedReduced.Caller.Padding.Proofs.erase_memory
+#print axioms Airbender.UnifiedReduced.Caller.Padding.Proofs.erase_callers
+#print axioms Airbender.UnifiedReduced.Caller.Padding.Proofs.erase_fulfillments
+#print axioms Airbender.UnifiedReduced.Caller.Padding.Proofs.projected_states
+#print axioms Airbender.UnifiedReduced.Caller.Padding.Proofs.projected_memory
+#print axioms Airbender.UnifiedReduced.Caller.Padding.Proofs.projected_requests
+#print axioms Airbender.UnifiedReduced.Caller.Padding.Proofs.projected_acceptance
+#print axioms Airbender.UnifiedReduced.Caller.Padding.Proofs.active_of_accepted
+#print axioms Airbender.UnifiedReduced.Caller.Padding.Proofs.unmasked_memory
+#print axioms Airbender.UnifiedReduced.Caller.Padding.Proofs.unmasked_callers
+#print axioms Airbender.UnifiedReduced.Caller.Padding.Proofs.unmasked_fulfillments
+#print axioms Airbender.UnifiedReduced.Caller.Padding.Proofs.binding_of_accepted
+#print axioms Airbender.UnifiedReduced.Caller.Padding.Proofs.layout_of_accepted
+#print axioms Airbender.UnifiedReduced.Caller.Padding.Proofs.retained_worker
+#print axioms Tests.PaddingBoundary.assignment
+#print axioms Tests.PaddingBoundary.row
+#print axioms Tests.PaddingBoundary.constraints
+#print axioms Tests.PaddingBoundary.raw_inactive_effect
+#print axioms Tests.PaddingBoundary.inactive_tuples_erased
+#print axioms Tests.PaddingBoundary.zero_value_is_not_padding
+#print axioms Tests.PaddingBoundary.product_mask_is_not_tuple_matching
+#print axioms Tests.PaddingBoundary.nonboolean_selector_rejected
+#print axioms Tests.PaddingBoundary.inactive_cannot_justify_terminal_change
+#print axioms Tests.TraceExecution.padded_dependent_trace
+#print axioms Tests.DelegationZeroInvocation.unissued_worker_padding_boundary
+#print axioms Tests.DelegationZeroInvocation.unissued_worker_survives_padding
+#print axioms Tests.UnifiedDelegation.invalid_bigint_padding_boundary
+#print axioms Airbender.Trace.padded_sail_soundness
+#print axioms Airbender.Trace.padded_pooled_native_soundness
+#print axioms Airbender.UnifiedReduced.Mixed.padded_execution_soundness
+#print axioms Airbender.UnifiedReduced.Caller.Padding.acceptance_soundness
+#print axioms Airbender.UnifiedReduced.Caller.padded_mixed_cycle_soundness

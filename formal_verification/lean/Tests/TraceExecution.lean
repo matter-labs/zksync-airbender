@@ -1,3 +1,4 @@
+import Tests.PaddingBoundary
 import Airbender.Proofs.AddSub.RowClaims
 import Tests.TraceMemory
 import Airbender.Review.Circuits.AddSub.Theorems
@@ -280,5 +281,28 @@ theorem addsub_field_alias_rejected (current : State) :
   change babyBearModulus + 5 = (Tests.TraceMemory.secondRow.assignment 25).val at impossible
   have small := ZMod.val_lt (Tests.TraceMemory.secondRow.assignment 25)
   omega
+
+private def paddedTrace : Data babyBearModulus :=
+  { trace with rows := Tests.PaddingBoundary.row :: Tests.PaddingBoundary.row :: trace.rows }
+
+private theorem paddedAccepted : Airbender.PaddingBoundary.AcceptedLayout paddedTrace := by
+  have first := Airbender.PaddingBoundary.Proofs.layout_cons_inactive
+    (Airbender.PaddingBoundary.Proofs.layout_of_accepted accepted) Tests.PaddingBoundary.row
+    Tests.PaddingBoundary.raw_inactive_effect.1 (Tests.PaddingBoundary.constraints trace.rom)
+  exact Airbender.PaddingBoundary.Proofs.layout_cons_inactive first Tests.PaddingBoundary.row
+    Tests.PaddingBoundary.raw_inactive_effect.1 (Tests.PaddingBoundary.constraints trace.rom)
+
+private theorem paddedProjection : Airbender.PaddingBoundary.active paddedTrace = trace := by
+  have selected : (trace.rows.filter fun row => decide (row.assignment row.columns.execute = 1)) = trace.rows :=
+    List.filter_eq_self.mpr (fun row member => decide_eq_true (accepted.active row member))
+  simp [Airbender.PaddingBoundary.active, paddedTrace, Tests.PaddingBoundary.raw_inactive_effect.1, selected]
+
+/-- Two real inactive PC 0→4/result-123 rows coexist with the dependent active
+    ADD trace. Masked closure derives the same whole Sail execution and terminal
+    observations, without an inactive-row stuttering or zero-result premise. -/
+theorem padded_dependent_trace [MemoryPlatform SailRV32.exception] :
+    Realizes (SailStep Tests.TraceMemory.sequentialProgram) paddedTrace before cells :=
+  Trace.padded_sail_soundness (paddedProjection.symm ▸ inputs) noDiscardedLoads paddedAccepted
+    (paddedProjection.symm ▸ decoded)
 
 end Tests.TraceExecution
