@@ -5,6 +5,7 @@ use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
 use gpu_core::primitives::field::PR;
+use gpu_core::primitives::nvtx::scoped_range;
 use gpu_hash::keccak256::{
     build_partial_coset_trees_multi_coset, build_top_tree, gather_tree_cap, retained_layer_offset,
     transcript_commit_u32, Digest,
@@ -122,7 +123,10 @@ pub(crate) fn schedule_commit_intermediate(
     let r = shape.retained_per_coset;
     let stream = context.get_exec_stream();
     let mut copy = context.alloc(monomials.len(), AllocationPlacement::Bottom)?;
-    memory_copy_async(&mut copy, monomials, stream)?;
+    {
+        let _r = scoped_range(Some("ab"), "whir.commit.copy_monomials");
+        memory_copy_async(&mut copy, monomials, stream)?;
+    }
     let mut retained = context.alloc(cosets * r, AllocationPlacement::Bottom)?;
     let mut roots = context.alloc(cosets, AllocationPlacement::Bottom)?;
     let mut top_nodes =
@@ -131,14 +135,18 @@ pub(crate) fn schedule_commit_intermediate(
     let offsets = schedule_coset_offsets(shape, context)?;
     let mut tile = context.alloc(tile_cosets << shape.log_n, AllocationPlacement::Top)?;
     for k0 in (0..cosets).step_by(tile_cosets) {
-        schedule_lde_convert_pass(
-            &copy,
-            shape,
-            offsets.as_deref(),
-            k0 as u32,
-            &mut tile,
-            context,
-        )?;
+        {
+            let _r = scoped_range(Some("ab"), "whir.commit.prefix");
+            schedule_lde_convert_pass(
+                &copy,
+                shape,
+                offsets.as_deref(),
+                k0 as u32,
+                &mut tile,
+                context,
+            )?;
+        }
+        let _r = scoped_range(Some("ab"), "whir.commit.suffix");
         build_partial_coset_trees_multi_coset(
             &tile,
             shape.log_n,
@@ -154,6 +162,7 @@ pub(crate) fn schedule_commit_intermediate(
     }
     drop(tile);
     drop(offsets);
+    let _r = scoped_range(Some("ab"), "whir.commit.top");
     kernels::place_roots(&retained, r, shape.log_lde, &mut roots, stream)?;
     build_top_tree(&roots, shape.cap_log, &mut top_nodes, stream)?;
     gather_tree_cap(&roots, &top_nodes, shape.cap_log, &mut cap, stream)?;
