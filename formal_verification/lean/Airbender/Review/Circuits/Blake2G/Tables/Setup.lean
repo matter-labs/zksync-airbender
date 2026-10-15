@@ -1,31 +1,32 @@
 import Airbender.Review.Circuits.Blake2G.Tables.ControllerData
+import Airbender.Review.Circuits.Blake2G.Tables.XorData
 import Airbender.Review.Helpers.Tables.Range
-import Mathlib.Data.Nat.Bitwise
 
 namespace Airbender.Blake2G
 
-/- XOR rows model cs/src/tables/binops.rs::create_xor_table, with the five
-   widths/regions checked by the importer. Rust setup correspondence is deferred.
-   The generalized table accepts arbitrary control outputs. Its concrete native
-   controller uses imported data; no control semantics is asserted by the mixing
-   proof. -/
+/- The generalized table retains arbitrary controller outputs. Its five fixed
+   regions are literal imports; XOR semantics is proved from those data. -/
 
-def xorRow (width tag index : Nat) : Vector Nat 9 :=
-  let a := index / 2 ^ width
-  let b := index % 2 ^ width
-  #v[a, b, a ^^^ b, 0, 0, 0, 0, 0, tag]
-
+/-- Actual fixed rows with the original arbitrary-controller interface. -/
 def setupRow (control : Fin 512 → Vector Nat 7) (index : Fin 344896) : Vector Nat 9 :=
   let n := index.val
-  if n < 65536 then xorRow 8 4 n
-  else if n < 65600 then xorRow 3 17 (n - 65536)
-  else if n < 65856 then xorRow 4 18 (n - 65600)
-  else if n < 82240 then xorRow 7 19 (n - 65856)
-  else if h : n < 344384 then xorRow 9 20 (n - 82240)
+  if n < xor8DataRegion.offset + xor8DataRegion.length then xorRegionRow 0 n
+  else if n < xor3DataRegion.offset + xor3DataRegion.length then
+    xorRegionRow 1 (n - xor3DataRegion.offset)
+  else if n < xor4DataRegion.offset + xor4DataRegion.length then
+    xorRegionRow 2 (n - xor4DataRegion.offset)
+  else if n < xor7DataRegion.offset + xor7DataRegion.length then
+    xorRegionRow 3 (n - xor7DataRegion.offset)
+  else if h : n < controllerDataRegion.offset then xorRegionRow 4 (n - xor9DataRegion.offset)
   else
-    let outputs := control ⟨n - 344384, by have bound := index.isLt; dsimp [n] at *; omega⟩
-    #v[n - 344384, outputs[0], outputs[1], outputs[2], outputs[3], outputs[4],
-      outputs[5], outputs[6], 28]
+    let outputs := control ⟨n - controllerDataRegion.offset, by
+      have bound := index.isLt
+      have lower : ¬n < 344384 := h
+      dsimp [n] at *
+      change index.val - 344384 < 512
+      omega⟩
+    #v[n - controllerDataRegion.offset, outputs[0], outputs[1], outputs[2], outputs[3],
+      outputs[4], outputs[5], outputs[6], 28]
 
 def setupTable {p : Nat} [Fact p.Prime] (control : Fin 512 → Vector Nat 7) :
     Table (ZMod p) (fields 9) := .fromStatic {
@@ -33,11 +34,11 @@ def setupTable {p : Nat} [Fact p.Prime] (control : Fin 512 → Vector Nat 7) :
   length := 344896
   row i := (setupRow control i).map (fun (n : Nat) => (n : ZMod p))
   index x := match x[8].val with
-    | 4 => x[0].val * 256 + x[1].val
-    | 17 => 65536 + x[0].val * 8 + x[1].val
-    | 18 => 65600 + x[0].val * 16 + x[1].val
-    | 19 => 65856 + x[0].val * 128 + x[1].val
-    | 20 => 82240 + x[0].val * 512 + x[1].val
+    | 4 => xor8DataRegion.offset + x[0].val * 256 + x[1].val
+    | 17 => xor3DataRegion.offset + x[0].val * 8 + x[1].val
+    | 18 => xor4DataRegion.offset + x[0].val * 16 + x[1].val
+    | 19 => xor7DataRegion.offset + x[0].val * 128 + x[1].val
+    | 20 => xor9DataRegion.offset + x[0].val * 512 + x[1].val
     | 28 => controllerDataRegion.offset + x[0].val
     | _ => 0
   Spec x := ∃ i : Fin 344896, x = (setupRow control i).map (fun (n : Nat) => (n : ZMod p))

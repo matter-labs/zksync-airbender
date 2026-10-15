@@ -128,14 +128,16 @@ private def chunkQuery (a b c tag : Nat) : Lookup (ZMod babyBearModulus) where
 
 private def emptyEnv : Environment (ZMod babyBearModulus) := Verification.environment (fun _ => 0)
 
--- A maximum-width boundary pair has a real row in the modeled static setup.
+-- A maximum-width boundary pair has a real row in the imported native setup.
 example : (chunkQuery 511 256 255 20).Contains emptyEnv := by
   change ∃ i : Fin 344896,
     ((chunkQuery 511 256 255 20).entry.map (Expression.eval emptyEnv)) =
       (Blake2G.setupRow control i).map (fun (n : Nat) => (n : ZMod babyBearModulus))
   refine ⟨⟨82240 + 511 * 512 + 256, by decide⟩, ?_⟩
   have row : Blake2G.setupRow control ⟨82240 + 511 * 512 + 256, by decide⟩ =
-      #v[511, 256, 255, 0, 0, 0, 0, 0, 20] := by decide
+      #v[511, 256, 255, 0, 0, 0, 0, 0, 20] := by
+    rw [Blake2G.Proofs.setup_row_characterization]
+    decide
   rw [row]
   change (Vector.map (Expression.eval emptyEnv)
     (#v[.const (511 : ZMod babyBearModulus), .const 256, .const 255,
