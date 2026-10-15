@@ -17,8 +17,8 @@ Both compute a Mersenne31 polynomial and a BabyBear Ext4 polynomial (Horner) of 
 - `Human/Spec.lean`, `Human/SpecPoly.lean`, `Human/SpecExt4.lean` — what the program should compute
   (`combine x = 3x + 1`, a polynomial over Mersenne31, a polynomial over BabyBear's `F[w]/(w⁴ - 11)`).
 - `Human/Theorems.lean` — the final statement `ProgramCorrectOf`: from reset, with the image loaded and the input,
-  the program reaches its final self-jump with the outputs in `a0 … a5` and stays there; `ProgramCorrectMop`
-  (proven) and `ProgramCorrect` (plain image, proof not finished) instantiate it.
+  the program reaches its final self-jump with the outputs in `a0 … a5` and stays there; `ProgramCorrect` (plain
+  image) and `ProgramCorrectMop` instantiate it (both proven).
 - `HumanSail/Airbender.lean` — the Airbender machine as the official Sail RISC-V model plus a short list of
   changes, each marked `-- Airbender:` (needs the generated Sail model, `sail/regen.sh`).
 - `HumanSail/Theorems.lean` — our spec = Sail: `DecodeIsSail`, `StepIsAirbender`, and `ProgramCorrect` on the
@@ -27,10 +27,13 @@ Both compute a Mersenne31 polynomial and a BabyBear Ext4 polynomial (Horner) of 
   symbol addresses (checked by `verify.sh`).
 
 ## Everything else (`lean/slop/`, kernel-checked, not meant to be read)
-- `Slop/RV/` — symbolic execution on the RV32 spec: memory/step lemmas, generated per-word `decode` lemmas and
-  code lists (`lean/gen/words.sh`), tactics, per-function proofs (`Combine`, `Poly*`, `Memcpy*`, `Init`,
-  `BB*`, `MulAddMop`, `Horner*`, `Ext4PolyMop`, ...), `main` in two parts (`MainA`, `MainB`), link check + final
-  proof (`FinalMop`).
+- `Slop/Sym/` — a verified symbolic executor for straight-line code (value DAG, soundness, side-condition checker,
+  readback; `sym_block`/`sym_run` run it once in the kernel per block).
+- `Slop/RV/` — proofs on the RV32 spec: memory/step lemmas, generated per-word `decode` lemmas and code lists
+  (`lean/gen/words.sh`), tactics, per-function proofs (`Combine`, `Poly*`, `Memcpy*`, `Init`, `MulAddMop`,
+  `MulAdd/`, `Horner*`, `Ext4Poly/`, `Ext4PolyMop`, ...), `main` in two parts (`MainA`, `MainB`), link check +
+  final proofs (`FinalPlain`, `FinalMop`). Plain-Rust arithmetic: the executor's DAG is cut at the field operations
+  (`lean/gen/clusters.sh`, cut points found by evaluation, untrusted) and each piece is proven (`BBPlain`).
 - `Slop/Sail/` — the official Sail RISC-V model route (Airbender config, oracle evaluator, `kernel_rfl`).
 - `Slop/Equiv/` — our spec ⇔ Sail: decoder walk, symbolic Sail runner (`sail_run`), per-layer memory lemmas,
   per-instruction execute lemmas, `StepIsAirbender`, final transfer (`Final.lean`).

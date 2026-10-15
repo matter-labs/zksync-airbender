@@ -66,6 +66,28 @@ theorem mm_raw (x y : Word) (hy : y.toNat < BabyBearP) :
     rw [BitVec.toNat_add, BitVec.toNat_add, hhi, hmh, hc]; omega
   rw [hT]; exact ⟨h1, h2⟩
 
+/-- `to_u32`'s product by 1 (`lo = x`, no high part): `T ≤ p`, `T ≡ x · 2^-32`. -/
+theorem mm_raw1 (x : Word) :
+    let T := mulhuW (2013265919#32 * x) 2013265921#32 +
+      (if (x + 2013265921#32 * (2013265919#32 * x)).ult (2013265921#32 * (2013265919#32 * x)) then 1 else 0)
+    T.toNat ≤ BabyBearP ∧ T.toNat % BabyBearP = x.toNat * RINV % BabyBearP := by
+  intro T
+  simp only [T]
+  have h := mm_raw x 1#32 (by decide)
+  simp only [BitVec.mul_one] at h
+  have hh : mulhuW x 1#32 = 0#32 := by
+    apply BitVec.eq_of_toNat_eq
+    rw [mulhuW_toNat, BitVec.toNat_ofNat, BitVec.toNat_ofNat, Nat.mul_one]
+    exact Nat.div_eq_of_lt x.isLt
+  rw [hh, BitVec.zero_add] at h
+  refine ⟨?_, by have h2 := h.2; rwa [show (1#32 : Word).toNat = 1 from rfl, Nat.mul_one] at h2⟩
+  -- `⌊mp / 2^32⌋ ≤ p - 1` and the carry is at most 1
+  have hmh : (mulhuW (2013265919#32 * x) 2013265921#32).toNat ≤ 2013265920 := by
+    rw [mulhuW_toNat]; have := (2013265919#32 * x).isLt; simp only [BitVec.toNat_ofNat]; omega
+  have hC : (if (x + 2013265921#32 * (2013265919#32 * x)).ult (2013265921#32 * (2013265919#32 * x)) = true
+      then (1 : Word) else 0).toNat ≤ 1 := by split <;> simp
+  rw [BitVec.toNat_add]; simp only [BabyBearP]; omega
+
 /-- The branch-free select, mask on the right. -/
 theorem mask_sel' (c : Bool) (k : Word) :
     k &&& (0#32 - (if c = true then (1 : Word) else 0)) = if c = true then k else 0 := by
@@ -80,11 +102,22 @@ theorem hi_mh_comm (z w : Word) :
     mulhuW (2013265919#32 * z) 2013265921#32 + w = w + mulhuW (2013265919#32 * z) 2013265921#32 :=
   BitVec.add_comm _ _
 
+/-- The branch-free select `x & ([c] - 1)` (`to_u32`'s correction). -/
+theorem and_sel (c : Bool) (x : Word) :
+    x &&& ((if c = true then (1 : Word) else 0) + 4294967295#32) = if c = true then 0 else x := by
+  cases c <;> simp only [Bool.false_eq_true, ↓reduceIte] <;> bv_decide
+
 /-- A raw Montgomery product node: `T < 2p ∧ T ≡ xy·2^-32` (goal after `sym_unfold`; `y < p` in context). -/
 macro "mm_cluster" : tactic => `(tactic| (
   dsimp only [RV.alu, RV.mulhu_fold]
   simp only [RV.mulK_left, RV.mulP_left, RV.mulhuP_right, RV.hi_mh_comm]
-  exact RV.mm_raw _ _ ‹_›))
+  first | exact RV.mm_raw _ _ ‹_› | exact RV.mm_raw _ _ (by decide)))
+
+/-- A raw Montgomery product by 1 (`to_u32`): `T ≤ p ∧ T ≡ x·2^-32`. -/
+macro "mm1_cluster" : tactic => `(tactic| (
+  dsimp only [RV.alu, RV.mulhu_fold]
+  simp only [RV.mulK_left, RV.mulP_left, RV.mulhuP_right]
+  exact RV.mm_raw1 _))
 
 /-! Modular add / sub on canonical values, as `Nat`. -/
 def amN (a b : Nat) : Nat := (a + b) % BabyBearP
@@ -93,7 +126,7 @@ def smN (a b : Nat) : Nat := (a + BabyBearP - b) % BabyBearP
 /-- Linear modular logic between cuts (goal after `sym_unfold`; bounds of the cut values in context). -/
 macro "lin_cluster" : tactic => `(tactic| (
   dsimp only [RV.alu, RV.amN, RV.smN]
-  simp only [RV.mask_sel']
+  simp only [RV.mask_sel', RV.and_sel]
   split_ifs <;> simp only [BitVec.ult, decide_eq_true_eq] at * <;> simp only [RV.BabyBearP] at * <;> bv_omega))
 
 /-! To `F`. -/
@@ -109,6 +142,17 @@ theorem mm_F {t : Nat} {x y : Word} (h : t % BabyBearP = x.toNat * y.toNat * RIN
 
 theorem ofLimbs_congr {a0 a1 a2 a3 b0 b1 b2 b3 : F} (h0 : a0 = b0) (h1 : a1 = b1) (h2 : a2 = b2) (h3 : a3 = b3) :
     ofLimbs a0 a1 a2 a3 = ofLimbs b0 b1 b2 b3 := by rw [h0, h1, h2, h3]
+
+theorem mm1_F {t : Nat} {x : Word} (h : t % BabyBearP = x.toNat * RINV % BabyBearP) : (t : F) = mont x := by
+  have := congrArg (fun n : Nat => (n : F)) h
+  simp only [natCast_mod_p] at this
+  simp only [mont, this]; push_cast; ring
+
+/-- `new`: the product by `R² mod p` is the Montgomery form. -/
+theorem new_F (y : Word) : mont y * mont 1172168163#32 = (y.toNat : F) := by
+  have : (1172168163 : F) * (RINV : F) * (RINV : F) = 1 := by decide
+  simp only [mont, BitVec.toNat_ofNat]; push_cast
+  linear_combination (y.toNat : F) * this
 
 theorem amN_lt (a b : Nat) : amN a b < BabyBearP := mod_p_lt _
 theorem smN_lt (a b : Nat) : smN a b < BabyBearP := mod_p_lt _

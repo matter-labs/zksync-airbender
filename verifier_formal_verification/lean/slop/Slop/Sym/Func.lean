@@ -54,6 +54,100 @@ theorem Rel.congr {c : Ctx} {σ : SState} {S S' : State} (h : Rel c σ S) (hr : 
     (hm : S'.mem = S.mem) : Rel c σ S' :=
   ⟨h.1, h.2.1, fun r => ⟨(h.2.2.1 r).1, (hr r).trans (h.2.2.1 r).2⟩, h.2.2.2.1, hm.trans h.2.2.2.2⟩
 
+/-- `a` is outside region `R` (around register `R.b` of `S`). -/
+def Region.Outside (S : State) (R : Region) (a : Word) : Prop :=
+  (a.toNat : Int) < ((S.getReg (BitVec.ofNat 5 R.b)).toNat : Int) + R.lo ∨
+    ((S.getReg (BitVec.ofNat 5 R.b)).toNat : Int) + R.hi ≤ a.toNat
+
+/-- A straight-line block from any state `S`: if its symbolic run succeeds and the side conditions pass the checker
+(regions over `S`'s registers), the machine runs it; the final state is what the symbolic state denotes over `S`,
+ROM is unchanged, stored words read back as nodes, and memory outside any region list covering the writes is
+unchanged. -/
+theorem block_from (code : List Word) (instrs : List Instr) (σ : SState) (S : State) (A : Word)
+    (rs : List Region) (aps : List (Region × Region))
+    (hdec : code.map decode = instrs.map some) (hrun : symRun instrs initState = some σ)
+    (hpc : S.pc = A) (hal : A.toNat % 4 = 0) (hrom : A.toNat + 4 * code.length ≤ ROM_END) (hcode : CodeAt S A code)
+    (hR : ∀ R ∈ rs, R.b < 32 ∧ R.Holds (ctxOf S) initPool)
+    (hA : ∀ q ∈ aps, Apart (ctxOf S) initPool q.1 q.2)
+    (hconds : σ.conds.all (checkCond rs aps) = true) :
+    ∃ S', run code.length S = some S' ∧ S'.pc = A + BitVec.ofNat 32 (4 * code.length) ∧ Rel (ctxOf S) σ S' ∧
+      (∀ b : Word, b.toNat < ROM_END → S'.mem b = S.mem b) ∧
+      (∀ b k, b < 32 → outOK σ rs aps b k = true →
+        read S'.mem (S.getReg (BitVec.ofNat 5 b) + k) 4 = σ.pool.val (ctxOf S) (outNode σ b k)) ∧
+      (∀ wr : List Region, writesIn wr σ = true → (∀ R ∈ wr, R.b < 32 ∧ R.Holds (ctxOf S) initPool) →
+        ∀ a : Word, (∀ R ∈ wr, R.Outside S a) → S'.mem a = S.mem a) := by
+  set c := ctxOf S
+  obtain ⟨-, he, -⟩ := symRun_mono c instrs S initState σ (rel_init S) condsOK_init hrun
+  have hlt : ∀ R ∈ rs, R.b < initPool.len := fun R hR' => by simpa [initPool] using (hR R hR').1
+  have hR' : ∀ R ∈ rs, R.Holds c σ.pool := fun R hR'' => (region_ext he R (hlt R hR'')).mpr (hR R hR'').2
+  have hA' : ∀ q ∈ aps, q.1 ∈ rs → q.2 ∈ rs → Apart c σ.pool q.1 q.2 := by
+    intro q hq m₁ m₂
+    have b₁ := hlt q.1 m₁; have b₂ := hlt q.2 m₂
+    have := hA q hq
+    simp only [Apart, he.2.2 _ b₁, he.2.2 _ b₂] at this ⊢; exact this
+  obtain ⟨-, -, -, S', hrunB, hpc', hrel', hromB⟩ := run_block c code instrs S initState σ A hdec (rel_init S)
+    condsOK_init hpc hal hrom hcode hrun (conds_hold c σ rs aps hR' hA' hconds)
+  refine ⟨S', hrunB, hpc', hrel', hromB, fun b k hb hk => ?_, fun wr hwr hwR a ha => ?_⟩
+  · rw [← val_var S σ.pool he b hb]; exact read_out c σ S' hrel' rs aps hR' hA' b k hk
+  · rw [hrel'.2.2.2.2]
+    have hw : ∀ w ∈ σ.writes, ((σ.pool.val c w.base + w.off).toNat : Int) + w.n ≤ RAM_END ∧
+        (a.toNat < (σ.pool.val c w.base + w.off).toNat ∨ (σ.pool.val c w.base + w.off).toNat + w.n ≤ a.toNat) := by
+      intro w hwm
+      obtain ⟨R, hRm, hcov⟩ := List.any_eq_true.mp (List.all_eq_true.mp hwr w hwm)
+      have hRb := (hwR R hRm).1
+      have hRh : R.Holds c σ.pool :=
+        (region_ext he R (by simpa [initState, initPool] using hRb)).mpr (hwR R hRm).2
+      obtain ⟨-, b2, b3⟩ := covers_bounds c σ.pool R hRh w.base w.off w.n hcov
+      have hv := val_var S σ.pool he R.b hRb
+      have hout := ha R hRm
+      simp only [Region.covers, Bool.and_eq_true, decide_eq_true_eq] at hcov
+      simp only [Region.Outside] at hout
+      rw [hv] at b3
+      refine ⟨b2, ?_⟩
+      omega
+    exact memOf_outside c σ.pool a σ.writes (fun w hwm => (hw w hwm).2)
+      (fun w hwm => by have := (hw w hwm).1; simp only [RAM_END] at this; omega)
+
+/-- A register that ends as a folded constant holds it. -/
+theorem Rel.reg_cst {c : Ctx} {σ : SState} {S : State} (h : Rel c σ S) (r : Reg) (w : Word)
+    (hw : (σ.reg r).cst = some w) : S.getReg r = w :=
+  ((h.2.2.1 r).2).trans ((h.2.2.1 r).1.2.2.2 w hw)
+
+/-- A register that ends as the initial value of register `i`. -/
+theorem Rel.reg_var {σ : SState} {S0 S : State} (instrs : List Instr) (hrun : symRun instrs initState = some σ)
+    (h : Rel (ctxOf S0) σ S) (r : Reg) (i : Nat) (hi : i < 32) (hv : (σ.reg r).val = i) :
+    S.getReg r = S0.getReg (BitVec.ofNat 5 i) := by
+  obtain ⟨-, he, -⟩ := symRun_mono (ctxOf S0) instrs S0 initState σ (rel_init S0) condsOK_init hrun
+  rw [(h.2.2.1 r).2, hv, val_var S0 σ.pool he i hi]
+
+/-- A register that ends in address form `base + off`, `base` an initial register. -/
+theorem Rel.reg_addr {σ : SState} {S0 S : State} (instrs : List Instr) (hrun : symRun instrs initState = some σ)
+    (h : Rel (ctxOf S0) σ S) (r : Reg) (b : Nat) (k : Word) (hb : b < 32) (hv : (σ.reg r).base = b)
+    (hk : (σ.reg r).off = k) : S.getReg r = S0.getReg (BitVec.ofNat 5 b) + k := by
+  obtain ⟨-, he, -⟩ := symRun_mono (ctxOf S0) instrs S0 initState σ (rel_init S0) condsOK_init hrun
+  rw [(h.2.2.1 r).2, (h.2.2.1 r).1.2.2.1, hv, hk, val_var S0 σ.pool he b hb]
+
+/-- An initial register's node, after a run. -/
+theorem val_init (instrs : List Instr) (σ : SState) (hrun : symRun instrs initState = some σ) (S : State) (i : Nat)
+    (hi : i < 32) : σ.pool.val (ctxOf S) i = S.getReg (BitVec.ofNat 5 i) :=
+  val_var S σ.pool (symRun_mono (ctxOf S) instrs S initState σ (rel_init S) condsOK_init hrun).2.1 i hi
+
+/-- A register that ends as its own initial value. -/
+theorem Rel.reg_same {σ : SState} {S0 S : State} (instrs : List Instr) (hrun : symRun instrs initState = some σ)
+    (h : Rel (ctxOf S0) σ S) (r : Reg) (hv : (σ.reg r).val = r.toNat) : S.getReg r = S0.getReg r := by
+  rw [h.reg_var instrs hrun r r.toNat r.isLt hv]; simp
+
+theorem codeAt_take {S : State} {A : Word} {code : List Word} (h : CodeAt S A code) (n : Nat) :
+    CodeAt S A (code.take n) := fun i hi => by
+  have hi' : i < code.length := by simp at hi; omega
+  simpa [List.getElem_take] using h i hi'
+
+theorem codeAt_drop {S : State} {A : Word} {code : List Word} (h : CodeAt S A code) (n : Nat)
+    (hr : A.toNat + 4 * code.length ≤ 2 ^ 32) : CodeAt S (A + BitVec.ofNat 32 (4 * n)) (code.drop n) := fun i hi => by
+  have hi' : n + i < code.length := by simp at hi; omega
+  rw [List.getElem_drop, ← h (n + i) hi']
+  congr 1; rw [BitVec.add_assoc]; congr 1; apply BitVec.eq_of_toNat_eq; simp; omega
+
 theorem returnsW_of_sym (body : List Word) (instrs : List Instr) (σ : SState) (s : State) (frame len : Nat)
     (rs : List Region) (aps : List (Region × Region)) (post : State → State → Prop)
     (hdec : body.map decode = instrs.map some) (hrun : symRun instrs initState = some σ)

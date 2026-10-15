@@ -1,5 +1,6 @@
 import Slop.Equiv.StepIsAirbender
 import Slop.RV.FinalMop
+import Slop.RV.FinalPlain
 import HumanSail.Theorems
 
 /-! `Airbender.ProgramCorrect`: the final theorem, carried from our spec to the Airbender machine. -/
@@ -68,6 +69,10 @@ theorem program_correct_of (bytes : Array (BitVec 8)) (INPUT halt : Nat) (hb : b
     refine ⟨σ'', hσ'', ?_, ?_⟩
     · rw [hA''.2.1, hA'.2.1, hpc'']
     · intro i; rw [hA''.2.2.1, hreg, hreg'']
+
+/-- `Airbender.ProgramCorrect`: the plain-Rust image on the Airbender machine. -/
+theorem program_correct_airbender : Airbender.ProgramCorrect :=
+  program_correct_of _ _ _ (by decide +kernel) (by decide) RV.program_correct
 
 /-- `Airbender.ProgramCorrectMop`: the field-opcode image on the Airbender machine. -/
 theorem program_correct_airbender_mop : Airbender.ProgramCorrectMop :=

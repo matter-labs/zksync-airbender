@@ -1,20 +1,23 @@
 #!/usr/bin/env python3
 """Cut a block's value DAG at the results of its field operations and write the proof files.
 
-Input: the DAG printed by `gen/Dag.lean` (stdin). The model below (the op sequence of `rust/src/bb.rs`) is evaluated
-next to the DAG on random inputs; a DAG node whose value always equals a model value is a cut point ("canonical"
-node), and so is each raw Montgomery product `T` (structural: `add` with a `sltu`-of-`mul` operand). Nothing here is
-trusted: the files only state lemmas, which Lean then proves (`mm_cluster`, `lin_cluster`) or rejects.
+Input: the DAG printed by `gen/Dag.lean` (stdin). The block's model (the op sequence of `rust/src/bb.rs`, below) is
+evaluated next to the DAG on random inputs; a DAG node whose value always equals a model value is a cut point
+("canonical" node), and so is each raw Montgomery product `T` (structural: `add` with a `sltu`-of-`mul` operand).
+Nothing here is trusted: the files only state lemmas, which Lean then proves (`mm_cluster`, `mm1_cluster`,
+`lin_cluster`) or rejects.
 
-usage: clusters.py MulAdd OUTDIR < dag.txt
+usage: clusters.py BLOCK OUTDIR < dag.txt   (BLOCK: MulAdd, PolyA, PolyB)
 """
 import random
 import sys
 
 P = 0x78000001
+K = 0x77ffffff
 M32 = (1 << 32) - 1
 RINV = pow(1 << 32, P - 2, P)
-NR = 939524073  # new_ct(11): 11 in Montgomery form
+NR = 939524073   # new_ct(11): 11 in Montgomery form
+R2 = 1172168163  # MONT_R2
 
 
 def mm(a, b):
@@ -24,17 +27,13 @@ def mm(a, b):
 # ---------------------------------------------------------------- the DAG
 
 def parse(lines):
-    nodes, writes = [], []
+    nodes = []
     for ln in lines:
         t = ln.split()
-        if not t:
-            continue
-        if t[0] == "write":
-            writes.append(tuple(int(x) for x in t[1:]))
-        else:
+        if t and t[0] != "write":
             assert int(t[0]) == len(nodes)
             nodes.append(t[1:])
-    return nodes, writes
+    return nodes
 
 
 def alu(o, a, b):
@@ -66,7 +65,7 @@ def evaluate(nodes, regs, mem):
     return vs
 
 
-# ---------------------------------------------------------------- the model
+# ---------------------------------------------------------------- models
 
 class Model:
     def __init__(self):
@@ -123,32 +122,73 @@ def model_mul_add():
     nrv = m.mul("nr", v11, nr)
     g0 = m.add("g0", v00, nrv); g1 = m.add("g1", v01, v10)
     outs = [m.add("R0", g0, c[0]), m.add("R1", g1, c[1]), m.add("R2", f0, c[2]), m.add("R3", f1, c[3])]
-    # registers: a0 = acc, a1 = x, a2 = c; inputs in that order
-    return m, outs, {10: 0, 11: 4, 12: 8}
+    inputs = [(r, 4 * j) for r in (10, 11, 12) for j in range(4)]  # acc = a0, x = a1, c = a2
+
+    def final(o, ld, V, val):
+        stmt = (f"e4 {' '.join(val(i) for i in o)} = e4 {' '.join(val(ld[j]) for j in range(4))} * "
+                f"e4 {' '.join(val(ld[j]) for j in range(4, 8))} + e4 {' '.join(val(ld[j]) for j in range(8, 12))}")
+        tac = ("  simp only [e4]\n  rw [Spec.ofLimbs_mul, Spec.ofLimbs_add]\n" +
+               "".join(f"  generalize mont {val(ld[j])} = x{j} at *\n" for j in range(12)) +
+               "  simp only [{M}, mont_nonres]\n  refine ofLimbs_congr ?_ ?_ ?_ ?_ <;> ring")
+        return [stmt], tac
+    return m, outs, inputs, {}, final
 
 
-MODELS = {"MulAdd": model_mul_add}
+def model_poly_a():
+    """`ext4_poly`, before the call: `yy = new(y)`, limb by limb (y at a1)."""
+    m = Model()
+    y = [m.ld(f"y{i}", i) for i in range(4)]
+    r2 = m.const("R2", R2)
+    outs = [m.mul(f"yy{i}", y[i], r2) for i in range(4)]
+    inputs = [(11, 4 * j) for j in range(4)]
+
+    def final(o, ld, V, val):
+        return ([f"mont {val(o[i])} = ({V(ld[i])} : F)" for i in range(4)],
+                "  refine ⟨?_, ?_, ?_, ?_⟩ <;> simp only [{M}, new_F]")
+    return m, outs, inputs, {}, final
+
+
+def model_poly_b():
+    """`ext4_poly`, after the call: `to_u32` of the result `e` (at sp + 20), limb by limb; `s2..s4` hold `p - 1`,
+    `p`, `K` from before the call."""
+    m = Model()
+    e = [m.ld(f"e{i}", i) for i in range(4)]
+    one = m.const("1", 1)
+    outs = [m.mul(f"out{i}", e[i], one) for i in range(4)]
+    inputs = [(2, 20 + 4 * j) for j in range(4)]
+
+    def final(o, ld, V, val):
+        return ([f"({V(o[i])} : F) = mont {val(ld[i])}" for i in range(4)],
+                "  refine ⟨?_, ?_, ?_, ?_⟩ <;> simp only [{M}]")
+    return m, outs, inputs, {18: P - 1, 19: P, 20: K}, final
+
+
+MODELS = {"MulAdd": model_mul_add, "PolyA": model_poly_a, "PolyB": model_poly_b}
+DIRS = {"MulAdd": ("MulAdd", ""), "PolyA": ("Ext4Poly", "A"), "PolyB": ("Ext4Poly", "B")}
+DOCS = {"MulAdd": "The four stored limbs: canonical, and `acc · x + c` in `F[w]/(w⁴ - 11)`.",
+        "PolyA": "The four limbs of `yy`: canonical, and `y` in Montgomery form.",
+        "PolyB": "The four results: canonical, and the values of `e`'s limbs (`to_u32`)."}
 
 
 # ---------------------------------------------------------------- matching
 
-def analyse(nodes, model, bases, samples=40):
+def analyse(nodes, model, inputs, env, samples=40):
     rnd = random.Random(1)
-    base_addr = {r: 0x1200000 + 0x100 * i for i, r in enumerate(sorted(bases))}
+    bases = sorted({r for r, _ in inputs})
+    base_addr = {r: 0x1200000 + 0x100 * i for i, r in enumerate(bases)}
     runs = []
     for s in range(samples):
-        # edge values too: 0, 1, p - 1
-        pool = [0, 1, P - 1, P - 2] if s < 4 else None
-        inputs = [rnd.choice(pool) if pool and rnd.random() < 0.5 else rnd.randrange(P) for _ in range(12)]
+        edge = [0, 1, P - 1, P - 2]
+        vals = [rnd.choice(edge) if s < 4 and rnd.random() < 0.5 else rnd.randrange(P) for _ in inputs]
         regs = {i: rnd.randrange(1 << 32) for i in range(32)}
         regs[0] = 0
-        regs[2] = 0x1100000
+        regs.update(env)
         mem = {}
-        for r, first in bases.items():
+        for r in bases:
             regs[r] = base_addr[r]
-            for j in range(4):
-                mem[base_addr[r] + 4 * j] = inputs[first + j]
-        runs.append((evaluate(nodes, regs, mem), model.run(inputs)))
+        for (r, off), v in zip(inputs, vals):
+            mem[base_addr[r] + off] = v
+        runs.append((evaluate(nodes, regs, mem), model.run(vals)))
     n = len(nodes)
 
     def is_sltu_of_mul(j):
@@ -168,25 +208,34 @@ def analyse(nodes, model, bases, samples=40):
                 if op != "ld" or nodes[i][0] == "load":
                     canon[k] = i
                     break
-        if op == "mul" and k not in canon or op == "mul":
+        if op == "mul":
             for t in tnodes:
                 if all(dv[t] % P == mv[k] and dv[t] < 2 * P for dv, mv in runs):
                     traw[k] = t
                     break
-    return canon, traw, tnodes
+    return canon, traw
 
 
-def mul_operands(nodes, t):
-    """The `mulhu x y` of the product in raw node `t` (not the one by `p`)."""
+def const_val(nodes, env, j):
+    x = nodes[j]
+    if x[0] == "const": return int(x[1])
+    if x[0] == "var" and int(x[1]) in env: return env[int(x[1])]
+    return None
+
+
+def raw_operands(nodes, env, t):
+    """`(x, y)` of `mulhu x y` in raw node `t` (the product, not the one by `p`); `(x, None)` for a product by 1."""
     a, b = int(nodes[t][2]), int(nodes[t][3])
-    s = a if nodes[a][1] == "add" else b
-    for u in (int(nodes[s][2]), int(nodes[s][3])):
+    s, cy = (a, b) if nodes[b][1] == "sltu" else (b, a)
+    for u in ([int(nodes[s][2]), int(nodes[s][3])] if nodes[s][1] == "add" else []):
         x = nodes[u]
         if x[0] == "op" and x[1] == "mulhu":
             l, r = int(x[2]), int(x[3])
-            if not any(nodes[j] == ["const", str(P)] for j in (l, r)):
+            if P not in (const_val(nodes, env, l), const_val(nodes, env, r)):
                 return l, r
-    raise ValueError(t)
+    # product by 1: `T = mulhu(m, p) + carry(x + mp)`, `x` the first summand of the carry's sum
+    sm = int(nodes[cy][2])
+    return int(nodes[sm][2]), None
 
 
 # ---------------------------------------------------------------- Lean output
@@ -194,8 +243,10 @@ def mul_operands(nodes, t):
 def V(i): return f"V[{i}]"
 
 
-def gen(name, nodes, model, outs, bases, outdir):
-    canon, traw, tnodes = analyse(nodes, model, bases)
+def gen(name, nodes, outdir):
+    model, outs, inputs, env, final = MODELS[name]()
+    d, pre = DIRS[name]
+    canon, traw = analyse(nodes, model, inputs, env)
     steps = model.steps
     for o in outs:
         assert o in canon, f"output {steps[o][0]} not found"
@@ -204,17 +255,22 @@ def gen(name, nodes, model, outs, bases, outdir):
             assert k in traw or k in canon, f"{nm}: no node"
     used_t = sorted(set(traw.values()))
     cuts = sorted(set(canon.values()) | set(used_t))
-    const_node = {}
-    for i, x in enumerate(nodes):
-        if x[0] == "const":
-            const_node[i] = int(x[1])
+    tinfo = {t: raw_operands(nodes, env, t) for t in used_t}
+
+    def val(i): return f"({name}.σ.pool.val c {i})"
+
+    def tbound(t): return "≤" if tinfo[t][1] is None else "<"
+
+    def hyp(i, kind):
+        if kind == 1: return f"(h{i} : {V(i)} < BabyBearP)"
+        return f"(h{i} : {V(i)} {tbound(i)} {'' if tbound(i) == '≤' else '2 * '}BabyBearP)"
 
     def atom(k):
-        """(Lean Nat term, F term, bounds) of model value `k` in terms of cut nodes."""
+        """(Nat term, F term, bounds) of model value `k` in terms of cut nodes."""
         nm, op, args, extra = steps[k]
         if k in canon and op != "const":
             i = canon[k]
-            return V(i), f"mont (MulAdd.σ.pool.val c {i})", {(i, 1)}
+            return V(i), f"mont {val(i)}", {(i, 1)}
         if op == "mul" and k in traw:
             t = traw[k]
             return f"{V(t)} % BabyBearP", f"((({V(t)} : Nat) : F) * (RINV : F))", {(t, 2)}
@@ -225,11 +281,13 @@ def gen(name, nodes, model, outs, bases, outdir):
             return f"{f} ({na}) ({nb})", f"({fa} {sgn} {fb})", ba | bb
         raise ValueError(nm)
 
-    def hyp(i, kind):
-        return f"(h{i} : {V(i)} < {'2 * ' if kind == 2 else ''}BabyBearP)"
-
-    header = f"""import Slop.RV.MulAdd.Block
-import Slop.RV.BBPlain
+    envh = " ".join(f"(e{r} : c.env {r} = {w}#32)" for r, w in sorted(env.items()))
+    sp = lambda *xs: " ".join(x for x in xs if x)
+    envs = ", ".join(f"e{r}" for r in sorted(env))
+    envpre = f"  try simp only [{envs}]\n" if env else ""
+    envargs = " ".join(f"e{r}" for r in sorted(env))
+    mod = f"Slop.RV.{d}"
+    header = f"""import {{IMPORTS}}
 
 /-! GENERATED by lean/gen/clusters.sh from the DAG of `{name}` and the op sequence of `rust/src/bb.rs` — do not
 edit. -/
@@ -240,114 +298,132 @@ set_option maxHeartbeats 0
 set_option maxRecDepth 100000
 set_option linter.unusedSimpArgs false
 set_option linter.unusedTactic false
+set_option linter.unusedVariables false
+set_option linter.unreachableTactic false
 set_option hygiene false in
 local notation "V[" i "]" => BitVec.toNat (Pool.val c {name}.σ.pool i)
 """
-    # raw Montgomery products
-    raw = [header.replace("namespace RV", "namespace RV").rstrip() + "\n",
+
+    def hdr(imports): return header.replace("{IMPORTS}", "\nimport ".join(imports))
+
+    raw = [hdr([f"{mod}.Block", "Slop.RV.BBPlain"]),
            f"/-- The cut points: values of field operations, and raw Montgomery products. -/\n"
            f"def cuts : List Nat := {cuts}\n"]
-    tlem = {}
     for t in used_t:
-        x, y = mul_operands(nodes, t)
-        xs = f"(BitVec.toNat ({const_node[x]}#32 : Word))" if x in const_node else V(x)
-        xw = f"({const_node[x]}#32 : Word)" if x in const_node else f"(MulAdd.σ.pool.val c {x})"
-        assert y not in const_node
-        tlem[t] = (x, y, xw)
-        raw.append(f"""
-theorem t{t} (c : Ctx) {hyp(y, 1)} :
-    {V(t)} < 2 * BabyBearP ∧ {V(t)} % BabyBearP = {xs} * {V(y)} * RINV % BabyBearP := by
+        x, y = tinfo[t]
+        if y is None:
+            raw.append(f"""
+theorem t{t} {sp("(c : Ctx)", envh)} :
+    {V(t)} ≤ BabyBearP ∧ {V(t)} % BabyBearP = {V(x)} * RINV % BabyBearP := by
   sym_unfold using cuts.erase {t}
-  mm_cluster
+{envpre}  mm1_cluster
+""")
+            continue
+        xc, yc = const_val(nodes, env, x), const_val(nodes, env, y)
+        xs = f"(BitVec.toNat ({xc}#32 : Word))" if xc is not None else V(x)
+        ys = f"(BitVec.toNat ({yc}#32 : Word))" if yc is not None else V(y)
+        hy = "" if yc is not None else hyp(y, 1)
+        raw.append(f"""
+theorem t{t} {sp("(c : Ctx)", envh, hy)} :
+    {V(t)} < 2 * BabyBearP ∧ {V(t)} % BabyBearP = {xs} * {ys} * RINV % BabyBearP := by
+  sym_unfold using cuts.erase {t}
+{envpre}  mm_cluster
 """)
     raw.append(f"\nend RV.{name}\n")
 
-    # canonical nodes
-    canon_lem = []
+    lemmas = []
     for k, (nm, op, args, _) in enumerate(steps):
         if k not in canon or op in ("ld", "const"):
             continue
         i = canon[k]
         if op == "mul":
             t = traw[k]
-            rhs, bounds = f"{V(t)} % BabyBearP", {(t, 2)}
-            frhs = f"((({V(t)} : Nat) : F) * (RINV : F))"
+            rhs, bounds, frhs = f"{V(t)} % BabyBearP", {(t, 2)}, f"((({V(t)} : Nat) : F) * (RINV : F))"
         else:
             (na, fa, ba), (nb, fb, bb) = atom(args[0]), atom(args[1])
             f = "amN" if op == "add" else "smN"
             rhs, bounds = f"{f} ({na}) ({nb})", ba | bb
             frhs = f"({fa} {'+' if op == 'add' else '-'} {fb})"
         hs = " ".join(hyp(j, kd) for j, kd in sorted(bounds))
-        canon_lem.append((i, nm, rhs, frhs, sorted(bounds), f"""
+        lemmas.append((i, nm, rhs, frhs, sorted(bounds), f"""
 /-- `{nm}` -/
-theorem n{i} (c : Ctx) {hs} :
+theorem n{i} {sp("(c : Ctx)", envh, hs)} :
     {V(i)} = {rhs} := by
   sym_unfold using cuts.erase {i}
-  lin_cluster
+{envpre}  lin_cluster
 """))
-    canon_lem.sort()
-    half = (len(canon_lem) + 1) // 2
-    files = {"Raw.lean": "".join(raw)}
-    for part, chunk in (("Nodes1.lean", canon_lem[:half]), ("Nodes2.lean", canon_lem[half:])):
-        files[part] = header.replace("import Slop.RV.MulAdd.Block\n", "import Slop.RV.MulAdd.Raw\n") + \
-            "".join(x[-1] for x in chunk) + f"\nend RV.{name}\n"
+    lemmas.sort()
+    chunks = [lemmas[i:i + 18] for i in range(0, len(lemmas), 18)] or [[]]
+    files = {f"{pre}Raw.lean": "".join(raw)}
+    node_mods = []
+    for j, chunk in enumerate(chunks):
+        fn = f"{pre}Nodes{j + 1}"
+        node_mods.append(f"{mod}.{fn}")
+        files[fn + ".lean"] = hdr([f"{mod}.{pre}Raw"]) + "".join(x[-1] for x in chunk) + f"\nend RV.{name}\n"
 
     # the assembly
     loads = {steps[k][3]: canon[k] for k in canon if steps[k][1] == "ld"}
-    lh = " ".join(hyp(loads[j], 1) for j in range(12))
-    ow = [f"(MulAdd.σ.pool.val c {canon[o]})" for o in outs]
-    lw = [f"(MulAdd.σ.pool.val c {loads[j]})" for j in range(12)]
+    nin = len(inputs)
+    lh = " ".join(hyp(loads[j], 1) for j in range(nin))
     body = []
-    order = sorted([(i, "n") for (i, *_r) in canon_lem] + [(t, "t") for t in used_t])
+    order = sorted([(i, "n") for (i, *_r) in lemmas] + [(t, "t") for t in used_t])
     for i, kind in order:
         if kind == "t":
-            x, y, xw = tlem[i]
-            body.append(f"  have t{i} := t{i} c h{y}\n  have h{i} := t{i}.1")
+            x, y = tinfo[i]
+            yarg = "" if y is None or const_val(nodes, env, y) is not None else f" h{y}"
+            body.append(f"  have t{i} := {sp(f't{i} c', envargs, yarg.strip())}\n  have h{i} := t{i}.1")
         else:
-            (_, _, rhs, _, bounds, _) = next(x for x in canon_lem if x[0] == i)
+            (_, _, rhs, _, bounds, _) = next(x for x in lemmas if x[0] == i)
             args = " ".join(f"h{j}" for j, _ in bounds)
             lt = "amN_lt _ _" if rhs.startswith("amN") else "smN_lt _ _" if rhs.startswith("smN") else "mod_p_lt _"
-            body.append(f"  have n{i} := n{i} c {args}\n"
+            body.append(f"  have n{i} := {sp(f'n{i} c', envargs, args)}\n"
                         f"  have h{i} : {V(i)} < BabyBearP := (n{i}).trans_lt ({lt})")
-    fl = []
+    fl, mnames = [], []
     for i, kind in order:
         if kind == "t":
-            x, y, xw = tlem[i]
-            fl.append(f"  have m{i} : ((({V(i)} : Nat) : F) * (RINV : F)) = mont {xw} * mont (MulAdd.σ.pool.val c {y}) := mm_F t{i}.2")
+            x, y = tinfo[i]
+            if y is None:
+                fl.append(f"  have m{i} : (({V(i)} : Nat) : F) = mont {val(x)} := mm1_F t{i}.2")
+            else:
+                xw = f"({const_val(nodes, env, x)}#32 : Word)" if const_val(nodes, env, x) is not None else val(x)
+                yw = f"({const_val(nodes, env, y)}#32 : Word)" if const_val(nodes, env, y) is not None else val(y)
+                fl.append(f"  have m{i} : ((({V(i)} : Nat) : F) * (RINV : F)) = mont {xw} * mont {yw} := mm_F t{i}.2")
         else:
-            (_, _, rhs, frhs, bounds, _) = next(x for x in canon_lem if x[0] == i)
-            fl.append(f"  have m{i} : mont (MulAdd.σ.pool.val c {i}) = {frhs} := by\n"
+            (_, _, rhs, frhs, bounds, _) = next(x for x in lemmas if x[0] == i)
+            fl.append(f"  have m{i} : mont {val(i)} = {frhs} := by\n"
                       f"    simp only [mont]; rw [n{i}]\n"
                       f"    simp (disch := first | omega | exact (mod_p_lt _).le | exact (amN_lt _ _).le | exact (smN_lt _ _).le) only\n"
                       f"      [amN_cast, smN_cast, modp_cast]\n"
                       f"    all_goals ring")
-    names = ", ".join(f"m{i}" for i, _ in order)
-    values = header.replace("import Slop.RV.MulAdd.Block\n", "import Slop.RV.MulAdd.Nodes1\nimport Slop.RV.MulAdd.Nodes2\n") + f"""
-/-- The four stored limbs: canonical, and `acc · x + c` in `F[w]/(w⁴ - 11)`. -/
-theorem values (c : Ctx) {lh} :
-    {" ∧ ".join(f"{V(canon[o])} < BabyBearP" for o in outs)} ∧
-    e4 {" ".join(ow)} = e4 {" ".join(lw[0:4])} * e4 {" ".join(lw[4:8])} + e4 {" ".join(lw[8:12])} := by
+        mnames.append(f"m{i}")
+    o = [canon[x] for x in outs]
+    fstmts, ftac = final(o, loads, V, val)
+    if name == "PolyB":  # the results are plain values: `(V[o] : F)`, from the node lemma and `T ≡ x · 2^-32`
+        fl = [f"  have v{i} : (({V(i)} : Nat) : F) = mont {val(tinfo[traw[k]][0])} := by\n"
+              f"    rw [n{i}, modp_cast]; exact mm1_F t{traw[k]}.2"
+              for k in outs for i in [canon[k]]]
+        mnames = [f"v{canon[k]}" for k in outs]
+    values = hdr(node_mods) + f"""
+/-- {DOCS[name]} -/
+theorem values {sp("(c : Ctx)", envh, lh)} :
+    {" ∧ ".join(f"{V(i)} < BabyBearP" for i in o)} ∧
+    {" ∧ ".join(fstmts)} := by
 {chr(10).join(body)}
-  refine ⟨{", ".join(f"h{canon[o]}" for o in outs)}, ?_⟩
+  refine ⟨{", ".join(f"h{i}" for i in o)}, ?_⟩
 {chr(10).join(fl)}
-  clear * - {names.replace(",", "")}
-  simp only [e4]
-  rw [Spec.ofLimbs_mul, Spec.ofLimbs_add]
-{chr(10).join(f"  generalize mont (MulAdd.σ.pool.val c {loads[j]}) = x{j} at *" for j in range(12))}
-  simp only [{names}, mont_nonres]
-  refine ofLimbs_congr ?_ ?_ ?_ ?_ <;> ring
+  clear * - {" ".join(mnames)}
+{ftac.replace("{M}", ", ".join(mnames))}
 
 end RV.{name}
 """
-    files["Values.lean"] = values
+    files[f"{pre}Values.lean"] = values
     for fn, txt in files.items():
         with open(f"{outdir}/{fn}", "w") as f:
             f.write(txt)
-    print(f"{name}: {len(cuts)} cuts ({len(used_t)} raw), {len(canon_lem)} node lemmas", file=sys.stderr)
+    print(f"{name}: {len(cuts)} cuts ({len(used_t)} raw), {len(lemmas)} node lemmas, files {sorted(files)}",
+          file=sys.stderr)
 
 
 if __name__ == "__main__":
     name, outdir = sys.argv[1], sys.argv[2]
-    nodes, writes = parse(sys.stdin.read().splitlines())
-    m, outs, bases = MODELS[name]()
-    gen(name, nodes, m, outs, bases, outdir)
+    gen(name, parse(sys.stdin.read().splitlines()), outdir)

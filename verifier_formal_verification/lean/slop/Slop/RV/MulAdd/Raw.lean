@@ -10,6 +10,8 @@ set_option maxHeartbeats 0
 set_option maxRecDepth 100000
 set_option linter.unusedSimpArgs false
 set_option linter.unusedTactic false
+set_option linter.unusedVariables false
+set_option linter.unreachableTactic false
 set_option hygiene false in
 local notation "V[" i "]" => BitVec.toNat (Pool.val c MulAdd.σ.pool i)
 /-- The cut points: values of field operations, and raw Montgomery products. -/

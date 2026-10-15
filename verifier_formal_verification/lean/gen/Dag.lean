@@ -1,4 +1,5 @@
 import Slop.RV.MulAdd.Block
+import Slop.RV.Ext4Poly.Block
 
 /-! Prints the value DAG of a block's symbolic run (`sym_block`), for `gen/clusters.py`:
 `<id> var i | const w | op o a b | mop o a b x | load n sg b off`, then `write base off n src`. -/
@@ -27,6 +28,8 @@ def dumpDag (σ : SState) : IO Unit := do
 def main (args : List String) : IO Unit :=
   match args with
   | ["MulAdd"] => dumpDag MulAdd.σ
+  | ["PolyA"] => dumpDag PolyA.σ
+  | ["PolyB"] => dumpDag PolyB.σ
   | _ => throw (IO.userError "usage: Dag <block>")
 
 

@@ -7,7 +7,7 @@ import ImageMop
 
 /-! # The final theorems (statements only)
 
-The proofs are `RV.program_correct` and `RV.program_correct_mop` in `slop/Slop/RV/Final.lean` and
+The proofs are `RV.program_correct` and `RV.program_correct_mop` in `slop/Slop/RV/FinalPlain.lean` and
 `slop/Slop/RV/FinalMop.lean`; `verify.sh` checks that they prove exactly `RV.ProgramCorrect` and
 `RV.ProgramCorrectMop` and use only Lean's standard axioms. -/
 

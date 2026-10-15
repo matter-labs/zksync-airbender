@@ -47,27 +47,35 @@ theorem load_val (instrs : List Instr) (σ : SState) (hrun : symRun instrs initS
 private def addDef (n : Name) (type val : Expr) : CoreM Unit := do
   addAndCompile <| .defnDecl (mkDefinitionValEx n [] type val (.regular 0) .safe [])
 
-elab "sym_block " x:ident " := " code:term : command => do
+/-- Runs the executor on `words` (decoded) and adds `X.instrs`, `X.σ`, `X.dec`, `X.run`, `X.wf`. -/
+def symDefs (x : TSyntax `ident) (words : Term) : CommandElabM Unit := do
   let n := x.getId
   let ws ← liftTermElabM do
     let ty := mkApp (mkConst ``List [0]) (mkApp (mkConst ``Option [0]) (mkConst ``RV.Instr))
-    unsafe evalTerm (List (Option Instr)) ty (← `(($code).dropLast.map RV.decode))
+    unsafe evalTerm (List (Option Instr)) ty (← `(($words).map RV.decode))
   let instrs := ws.filterMap id
-  unless instrs.length == ws.length do throwError "sym_block: a word does not decode"
-  let some σ := symRun instrs initState | throwError "sym_block: the symbolic run fails"
+  unless instrs.length == ws.length do throwError "sym: a word does not decode"
+  let some σ := symRun instrs initState | throwError "sym: the symbolic run fails"
   let full := (← getCurrNamespace) ++ n
   liftCoreM do
     addDef (full ++ `instrs) (mkApp (mkConst ``List [0]) (mkConst ``RV.Instr)) (toExpr instrs)
     addDef (full ++ `σ) (mkConst ``RV.Sym.SState) (toExpr σ)
   let iI := mkIdent (n ++ `instrs); let iσ := mkIdent (n ++ `σ)
-  elabCommand (← `(theorem $(mkIdent (n ++ `dec)) : (($code).dropLast.map RV.decode) = ($iI).map some := by
-    decide +kernel))
-  elabCommand (← `(theorem $(mkIdent (n ++ `ret)) : $code = ($code).dropLast ++ [RV.Sym.retWord] := by
+  elabCommand (← `(theorem $(mkIdent (n ++ `dec)) : (($words).map RV.decode) = ($iI).map some := by
     decide +kernel))
   elabCommand (← `(theorem $(mkIdent (n ++ `run)) : RV.Sym.symRun $iI RV.Sym.initState = some $iσ := by
     decide +kernel))
   elabCommand (← `(theorem $(mkIdent (n ++ `wf)) : ($iσ).pool.WF := RV.Sym.wf_of_run _ _ $(mkIdent (n ++ `run))))
   logInfo m!"{n}: {instrs.length} instructions, {σ.pool.len} nodes, {σ.writes.length} writes, {σ.conds.length} conditions"
+
+/-- A leaf function: `code` is a straight-line body and `ret`. -/
+elab "sym_block " x:ident " := " code:term : command => do
+  symDefs x (← `(($code).dropLast))
+  elabCommand (← `(theorem $(mkIdent (x.getId ++ `ret)) : $code = ($code).dropLast ++ [RV.Sym.retWord] := by
+    decide +kernel))
+
+/-- A straight-line block (no `ret`). -/
+elab "sym_run " x:ident " := " words:term : command => symDefs x words
 
 /-- The subterms `Pool.val c p e` with `p` and `e` closed. -/
 partial def collectVals (e : Expr) (acc : Array Expr) : Array Expr :=

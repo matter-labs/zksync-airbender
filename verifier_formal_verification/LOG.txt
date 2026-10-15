@@ -7,25 +7,38 @@ commit check `git diff --cached --stat` and that no staged file is over ~200 KB.
 Moved here from an earlier prototype repo (as a snapshot; its history, which contains the large Sail model, was
 NOT imported).
 
+=== SYMBOLIC EXECUTOR + PLAIN IMAGE PROVEN (2026-10-15) ===
+- Verified symbolic executor (slop/Slop/Sym/, no sorry): hash-consed value DAG (Expr), executor for straight-line
+  code (Exec: lui/opImm/op/mop/load/store, constant folding, addi keeps a base+offset address form), soundness
+  (Sound/Block: one kernel run of a block ⇒ the machine runs it to a state the symbolic state denotes), side
+  conditions (alignment/RAM/disjointness) discharged by a checker against a few user regions (Check), readback of
+  stored words and of node values as terms (Tree: toTree/sym_unfold), whole leaf functions (Func.returnsW_of_sym)
+  and blocks from any state (Func.block_from). Tooling (Meta): `sym_block X := code` / `sym_run X := words` run the
+  executor at elaboration time, embed the final state as a literal and prove `symRun … = some X.σ` by one
+  `decide +kernel`; `sym_unfold`, `sym_side`.
+- Value correctness of plain arithmetic: "semantic per cluster, cut points found by evaluation". gen/Dag.lean dumps
+  a block's DAG; gen/clusters.py evaluates it next to the op sequence of rust/src/bb.rs on random inputs and cuts it
+  at the nodes equal to a model value plus the raw Montgomery products T = hi + ⌊mp/2^32⌋ + carry; it writes the
+  lemma files (gen/clusters.sh BLOCK). Each cut is proven by one generic lemma (BBPlain.mm_raw / mm_raw1: T < 2p,
+  T ≡ xy·2^-32) or by omega on the linear add/sub/correction logic between cuts (lin_cluster), then carried to
+  F[w]/(w^4-11) and closed by ring. The generator is untrusted: Lean proves or rejects every lemma. The same method
+  applies to any inlined arithmetic (next: Blake2s).
+- PROVEN (std axioms): RV.ProgramCorrect and Airbender.ProgramCorrect for the plain-Rust image (field crate's most
+  efficient path, everything inlined: basic.rs add/sub/mul, Ext2 Karatsuba, Ext4 tower Karatsuba), next to the mop
+  image. MulAddMop re-proven on the executor (26 s -> 4 s). Plain files: MulAdd/Block 11 s (the kernel run of 376
+  instructions), Raw 4.5 s, Nodes1/2 6-7 s, Values 4 s, Impl 3.4 s; Ext4Poly/* 3-6 s each; FinalPlain 13 s.
+- Remaining perf debt: Ext4PolyMop 34 s, MainA/B ~10-16 s, FinalMop/FinalPlain ~13 s: move them to the executor.
+
 === POC 2: BABYBEAR EXT4, TWO VARIANTS (2026-10-15) ===
 - Guest (rust/src/bb.rs mirrors field/src/baby_bear): Montgomery BabyBear, Ext4 = F[w]/(w^4-11) in the field crate's
-  limb order, Ext4 mul = mul_assign_flat_impl_fma; ext4_mul_add, ext4_horner (32 Ext4 coefficients COEFFS4 in
-  .rodata), ext4_poly (new / Horner / to_u32). Two builds: feature `mop` (field opcodes, modular_ops + modular_fma,
-  build/app_mop.bin) and plain Rust (basic.rs add_mod/mul_mod, fma_mod = add_mod(c, mul_mod(a, b)) as
-  riscv32.rs without modular_fma, as leaf functions bb_add/bb_mul/bb_fma; build/app.bin). +zimop in both builds
-  (no codegen effect without asm). Old M31 functions renamed m31_*/u32_* so they keep the same bytes in both images.
+  limb order. Two builds: feature `mop` (field opcodes, modular_ops + modular_fma, mul_assign_flat_impl_fma,
+  build/app_mop.bin) and plain Rust (the crate's most efficient non-opcode path, all #[inline(always)]: basic.rs
+  add_mod/sub_mod/mul_mod, Ext2 Karatsuba, Ext4 tower Karatsuba; build/app.bin). Only the PoC boundaries
+  ext4_mul_add / ext4_horner / ext4_poly are functions (inline(never)). Old M31 functions renamed m31_*/u32_* so they
+  keep the same bytes in both images.
 - Spec: human/Human/SpecExt4.lean (Mathlib AdjoinRoot), ProgramCorrectOf with input x, y (Ext4, 4 limbs) and outputs
   a0..a5; HumanSail mirror; Slop/Equiv/Final transfers any image's theorem to Sail+Airbender.
-- PROVEN (std axioms): RV.ProgramCorrectMop and Airbender.ProgramCorrectMop (field-opcode image end to end):
-  MulAddMop, Horner (generic in the mul-add implementation), Ext4PolyMop, Start, MainA/MainB (one proof script
-  for both images, macros), InitMop, FinalMop.
-- Plain image: bb_add, bb_mul (Montgomery reduction via mul/mulhu, BBMont.mont_reduce), bb_fma proven; MainA/MainB
-  proven for it too; ext4_mul_add (24 leaf calls) and ext4_poly (8 calls + Horner) NOT YET: too slow with the current
-  stepper (~3 s per call segment, prologues ~10 s). RV.ProgramCorrect is stated, unproven; verify.sh says so.
-- PERF DEBT (do before Blake2s): files over budget (MulAddMop 26 s, Ext4PolyMop 34 s, MainA/B ~10-16 s); omega is
-  ~30% of a step, kernel checking and simp traversal the rest. Plan: block-level executor for straight-line code
-  (decode once, one lemma per block, no per-step pc side conditions), cheaper call segments. Tools added: rv_omega
-  proof cache, rv_cut (state snapshot with normalized register facts, `with hcs` after calls), calleeSaved fast-fail.
+- PROVEN (std axioms): both images, see above.
 
 === FIELD OPS IN THE ISA: mop.rr.N (2026-10-14) ===
 - RV32.lean: Instr.mop (FieldOp add/sub/mul/fma/triAdd) for Airbender's Zimop field opcodes mop.rr.0..4 on BabyBear

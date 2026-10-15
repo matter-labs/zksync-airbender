@@ -19,20 +19,24 @@ git add -N lean/slop/Slop/RV/Code
 git diff --exit-code -- lean/slop/Slop/RV/Code || { echo "FAIL: generated code files are stale"; exit 1; }
 
 echo "== 3. Lean build (spec + proofs)"
-(cd lean && lake build Human Slop.RV.FinalMop 2>&1 | grep -E "error|Build completed" )
+(cd lean && lake build Human Slop.RV.FinalPlain Slop.RV.FinalMop 2>&1 | grep -E "error|Build completed" )
 
-echo "== 4. Final theorem (field-opcode image): statement and axioms"
+echo "== 4. Final theorems (plain-Rust image, field-opcode image): statements and axioms"
 out=$(cd lean && lake env lean --stdin <<'LEAN'
+import Slop.RV.FinalPlain
 import Slop.RV.FinalMop
+#check (RV.program_correct : RV.ProgramCorrect)
+#print axioms RV.program_correct
 #check (RV.program_correct_mop : RV.ProgramCorrectMop)
 #print axioms RV.program_correct_mop
 LEAN
 )
 echo "$out"
-echo "$out" | grep -q "^RV.program_correct_mop : RV.ProgramCorrectMop$" || { echo "FAIL: statement"; exit 1; }
-echo "$out" | grep -q "depends on axioms: \[propext, Classical.choice, Quot.sound\]$" \
-  || { echo "FAIL: unexpected axioms"; exit 1; }
-echo "(plain-Rust image: RV.ProgramCorrect is stated; its proof is not finished yet)"
+for t in "program_correct : RV.ProgramCorrect" "program_correct_mop : RV.ProgramCorrectMop"; do
+  echo "$out" | grep -q "^RV.$t$" || { echo "FAIL: statement $t"; exit 1; }
+  echo "$out" | grep -q "'RV.${t%% *}' depends on axioms: \[propext, Classical.choice, Quot.sound\]$" \
+    || { echo "FAIL: unexpected axioms (${t%% *})"; exit 1; }
+done
 echo "== 5. Our spec vs Sail (needs the generated Sail model: sail/regen.sh)"
 if [[ -d lean/sail-rv32/SailRV32 ]]; then
   out=$(cd lean && lake build HumanSail Slop.Sail.Config Slop.Equiv.Decode Slop.Equiv.Final 2>&1 \
@@ -43,6 +47,8 @@ import Slop.Equiv.Final
 #print axioms Slop.Equiv.decode_is_sail
 #check (Slop.Equiv.step_is_airbender : Airbender.StepIsAirbender)
 #print axioms Slop.Equiv.step_is_airbender
+#check (Slop.Equiv.program_correct_airbender : Airbender.ProgramCorrect)
+#print axioms Slop.Equiv.program_correct_airbender
 #check (Slop.Equiv.program_correct_airbender_mop : Airbender.ProgramCorrectMop)
 #print axioms Slop.Equiv.program_correct_airbender_mop
 LEAN
@@ -55,6 +61,10 @@ LEAN
     || { echo "FAIL: StepIsAirbender"; exit 1; }
   echo "$out" | grep -q "step_is_airbender' depends on axioms: \[propext, Classical.choice, Quot.sound\]$" \
     || { echo "FAIL: unexpected axioms (StepIsAirbender)"; exit 1; }
+  echo "$out" | grep -q "^Slop.Equiv.program_correct_airbender : Airbender.ProgramCorrect$" \
+    || { echo "FAIL: Airbender.ProgramCorrect"; exit 1; }
+  echo "$out" | grep -q "program_correct_airbender' depends on axioms: \[propext, Classical.choice, Quot.sound\]$" \
+    || { echo "FAIL: unexpected axioms (Airbender.ProgramCorrect)"; exit 1; }
   echo "$out" | grep -q "^Slop.Equiv.program_correct_airbender_mop : Airbender.ProgramCorrectMop$" \
     || { echo "FAIL: Airbender.ProgramCorrectMop"; exit 1; }
   echo "$out" | grep -q "program_correct_airbender_mop' depends on axioms: \[propext, Classical.choice, Quot.sound\]$" \
@@ -67,7 +77,7 @@ fi
 
 echo "== 6. Sanity (not a proof): run both images on the RV32 spec for a few inputs"
 (cd lean && lake build run_image >/dev/null && lake exe run_image)
-echo "OK: the image at build/app_mop.bin satisfies RV.ProgramCorrectMop (lean/human/Human/Theorems.lean)"
+echo "OK: the images at build/app.bin, build/app_mop.bin satisfy RV.ProgramCorrect, RV.ProgramCorrectMop (lean/human/Human/Theorems.lean)"
 if [[ -n "${sail_ok:-}" ]]; then
-  echo "OK: and Airbender.ProgramCorrectMop on the Sail-based Airbender machine (lean/human/HumanSail/Theorems.lean)"
+  echo "OK: and Airbender.ProgramCorrect, Airbender.ProgramCorrectMop on the Sail-based Airbender machine (lean/human/HumanSail/Theorems.lean)"
 fi
