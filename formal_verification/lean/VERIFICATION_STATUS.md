@@ -11,9 +11,15 @@ these trace claims.
 
 ## Circuit families
 
-| Circuit | Checked coverage | Remaining work |
+The final column distinguishes unfinished integration from explicit model/profile
+limits and external dependencies. It is not a list of missing instruction proofs.
+The [fixed finalization scope](FORMAL_VERIFICATION_PLAN.md#pending-integration-work)
+contains the four closure tasks; optional instruction/preparation extensions do
+not add requirements to it.
+
+| Circuit | Checked coverage | Open work / scope boundary |
 | --- | --- | --- |
-| [ADD/SUB](Airbender/Review/Circuits/AddSub/Theorems.lean) | ADD/ADDI/SUB/LUI/AUIPC destination, register and PC effects. Per-circuit `circuitModel` retains public initialization/table assumptions in `Model.lean`; shared history derives input/immediate/PC bounds, actual reads and preprocessing. ADDMOD/SUBMOD/MULMOD/FMAMOD local claims. Independent-stream reads/hints compose in restricted and six-family mixed traces. | [Global inactive-row obligations](Tests/InactiveRow.lean). Delegation ABI and whole execution with callers are tracked under the unified machine. |
+| [ADD/SUB](Airbender/Review/Circuits/AddSub/Theorems.lean) | ADD/ADDI/SUB/LUI/AUIPC destination, register and PC effects. Per-circuit `circuitModel` retains public initialization/table assumptions in `Model.lean`; shared history derives input/immediate/PC bounds, actual reads and preprocessing. ADDMOD/SUBMOD/MULMOD/FMAMOD local claims. Independent-stream reads/hints compose in restricted and six-family mixed traces. | Local instruction soundness is checked. [Global inactive-padding obligations](Tests/InactiveRow.lean) remain: execute = 0 alone permits PC 0→4 and discarded result 123. This is a retained global-model limitation, not an open ADD/SUB arithmetic proof. Caller ABI and whole mixed execution are tracked under the unified machine. |
 | [Jump/branch/SLT](Airbender/Review/Circuits/JumpBranchSlt/Theorems.lean) | JAL/JALR, all six branches and four comparisons. Per-circuit soundness derives ranges, reads, selectors and preprocessing through shared initialized history. Public models retain initialization/tables, aligned code and explicit canonical verifier closure; branches/jumps require public `misa`, and only JALR requires Machine/MLPE-clear configuration. Native retirement and family/pooled trace composition are checked. | Raw terminal bounds now follow from canonical verifier-boundary closure; cryptographic enforcement and Rust/artifact correspondence remain external. |
 | [Unsigned mul/div](Airbender/Review/Circuits/MulDiv/Theorems.lean) | MUL/MULHU/DIVU/REMU, including zero divisors. Actual public decoding, native histories/bounds, row retirement and arbitrary family traces. Per-circuit soundness derives bounds, reads and selectors from shared history; only public initialization and modeled tables remain in `Model.lean`. | Discarded writes route to ADD/SUB. |
 | [Shift/binop](Airbender/Review/Circuits/ShiftBinop/Theorems.lean) | All standard register/immediate bitwise and shifts plus REV8. Actual public Sail decoding, native clocks/grouped register histories, derived operand/result bounds, row retirement and arbitrary family traces. Per-circuit soundness derives reads, bounds and decoder interfaces from shared initialized history; only public initialization remains in `Model.lean`. | Discarded writes route to ADD/SUB. |
