@@ -189,14 +189,34 @@ impl<'a> PackedSetupSource<'a> {
         transfer: &mut Transfer<'a>,
         context: &ProverContext,
     ) -> CudaResult<()> {
+        self.schedule_raw_transfer(transfer, context)?;
+        self.schedule_commitment_transfer(transfer, context)
+    }
+
+    /// Hypercube evaluations only: the witness generation reads them.
+    pub fn schedule_raw_transfer(
+        &mut self,
+        transfer: &mut Transfer<'a>,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
         let _r = scoped_range(Some("ab"), "l1_wrap.setup_transfer.h2d");
         transfer.ensure_allocated(context)?;
-        let stream = context.get_h2d_stream();
         memory_copy_async(
             self.oracle.raw_mut().get_uninit_hypercube_evals_mut(),
             &self.host.raw_hypercube_evals[..],
-            stream,
-        )?;
+            context.get_h2d_stream(),
+        )
+    }
+
+    /// Monomials, partial trees and cap: first read by the challenge derivation (`cap`).
+    pub fn schedule_commitment_transfer(
+        &mut self,
+        transfer: &mut Transfer<'a>,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        let _r = scoped_range(Some("ab"), "l1_wrap.setup_transfer.h2d");
+        transfer.ensure_allocated(context)?;
+        let stream = context.get_h2d_stream();
         memory_copy_async(
             self.oracle.uninit_monomials_mut(),
             &self.host.packed_monomials[..],
