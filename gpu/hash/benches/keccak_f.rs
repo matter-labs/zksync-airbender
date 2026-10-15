@@ -7,8 +7,8 @@ use gpu_core::primitives::field::PR;
 use gpu_hash::bench::{
     bench_keccak_f_chain, bench_nodes, bench_partial_roots, bench_pow_blocks, bench_pow_bounded,
 };
-use gpu_hash::keccak256::keccak256_pow;
 use gpu_hash::keccak256::Digest;
+use gpu_hash::keccak256::{keccak256_pow, pow_chunk_steps};
 use sha3::{Digest as _, Keccak256};
 
 const ITERATIONS: usize = 5;
@@ -238,30 +238,45 @@ fn pow(stream: &CudaStream) {
     let blocks = bench_pow_blocks().unwrap();
     let mut seed = DeviceAllocation::<u8>::alloc(32).unwrap();
     let mut result = DeviceAllocation::<u64>::alloc(1).unwrap();
+    let mut counter = DeviceAllocation::<u64>::alloc(1).unwrap();
     memory_copy_async(&mut seed, &pow_seed(0), stream).unwrap();
     let max_nonce = 1u64 << LOG_NONCES;
-    let mut launch = || {
-        memory_copy_async(&mut result, &[max_nonce], stream)?;
-        let result = unsafe { DeviceVariable::from_raw_parts_mut(result.as_mut_ptr()) };
-        bench_pow_bounded(&seed, UNREACHABLE_BITS, max_nonce, blocks, result, stream)
-    };
-    measure(
-        &format!(
-            "pow_bounded bits={UNREACHABLE_BITS} max_nonce=2^{LOG_NONCES} blocks={blocks} block=128"
-        ),
-        max_nonce,
-        stream,
-        &mut launch,
-    );
-    let mut found = 0u64;
-    memory_copy_async(std::slice::from_mut(&mut found), &result, stream).unwrap();
-    stream.synchronize().unwrap();
-    assert_eq!(found, max_nonce, "pow_bounded found a nonce");
+    for chunk_steps in [pow_chunk_steps(UNREACHABLE_BITS, blocks), 4, 1] {
+        let mut launch = || {
+            memory_copy_async(&mut result, &[max_nonce], stream)?;
+            memory_set_async(unsafe { counter.transmute_mut::<u8>() }, 0, stream)?;
+            let result = unsafe { DeviceVariable::from_raw_parts_mut(result.as_mut_ptr()) };
+            let counter = unsafe { DeviceVariable::from_raw_parts_mut(counter.as_mut_ptr()) };
+            bench_pow_bounded(
+                &seed,
+                UNREACHABLE_BITS,
+                max_nonce,
+                blocks,
+                chunk_steps,
+                counter,
+                result,
+                stream,
+            )
+        };
+        measure(
+            &format!(
+                "pow_bounded bits={UNREACHABLE_BITS} max_nonce=2^{LOG_NONCES} blocks={blocks} block=128 chunk_steps={chunk_steps}"
+            ),
+            max_nonce,
+            stream,
+            &mut launch,
+        );
+        let mut found = 0u64;
+        memory_copy_async(std::slice::from_mut(&mut found), &result, stream).unwrap();
+        stream.synchronize().unwrap();
+        assert_eq!(found, max_nonce, "pow_bounded found a nonce");
+    }
     let start = CudaEvent::create().unwrap();
     let end = CudaEvent::create().unwrap();
     memory_copy_async(&mut seed, &pow_seed(0), stream).unwrap();
     let nonce_var = unsafe { DeviceVariable::from_raw_parts_mut(result.as_mut_ptr()) };
-    keccak256_pow(&mut seed, 20, nonce_var, stream).unwrap();
+    let counter_var = unsafe { DeviceVariable::from_raw_parts_mut(counter.as_mut_ptr()) };
+    keccak256_pow(&mut seed, 20, nonce_var, counter_var, stream).unwrap();
     stream.synchronize().unwrap();
     for bits in [20u32, 24, 27, 30] {
         let mut nonces = 0u64;
@@ -272,7 +287,8 @@ fn pow(stream: &CudaStream) {
             stream.synchronize().unwrap();
             start.record(stream).unwrap();
             let nonce_var = unsafe { DeviceVariable::from_raw_parts_mut(result.as_mut_ptr()) };
-            keccak256_pow(&mut seed, bits, nonce_var, stream).unwrap();
+            let counter_var = unsafe { DeviceVariable::from_raw_parts_mut(counter.as_mut_ptr()) };
+            keccak256_pow(&mut seed, bits, nonce_var, counter_var, stream).unwrap();
             end.record(stream).unwrap();
             end.synchronize().unwrap();
             let ms = elapsed_time(&start, &end).unwrap() as f64;
@@ -316,6 +332,10 @@ fn main() {
         return;
     }
     device_state("before");
+    eprintln!(
+        "keccak_f: deterministic_pow={}",
+        cfg!(feature = "deterministic_pow")
+    );
     eprintln!("keccak_f: iterations={ITERATIONS} after one warmup launch per variant, CUDA event time per launch");
     let stream = CudaStream::default();
     let sections: Vec<String> = std::env::args()

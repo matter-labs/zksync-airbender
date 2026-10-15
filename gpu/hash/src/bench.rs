@@ -155,7 +155,14 @@ pub fn bench_nodes(
 
 cuda_kernel!(
     Pow,
-    ab_keccak256_pow_kernel(seed: *const u8, bits: u32, max_nonce: u64, result: *mut u64)
+    ab_keccak256_pow_kernel(
+        seed: *const u8,
+        bits: u32,
+        max_nonce: u64,
+        chunk_steps: u32,
+        counter: *mut u64,
+        result: *mut u64
+    )
 );
 
 pub fn bench_pow_blocks() -> CudaResult<u32> {
@@ -169,11 +176,20 @@ pub fn bench_pow_bounded(
     bits: u32,
     max_nonce: u64,
     blocks: u32,
+    chunk_steps: u32,
+    counter: &mut DeviceVariable<u64>,
     result: &mut DeviceVariable<u64>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     assert_eq!(seed.len(), 32);
     assert!(blocks as u64 * 128 <= max_nonce);
-    let args = PowArguments::new(seed.as_ptr(), bits, max_nonce, result.as_mut_ptr());
+    let args = PowArguments::new(
+        seed.as_ptr(),
+        bits,
+        max_nonce,
+        chunk_steps,
+        counter.as_mut_ptr(),
+        result.as_mut_ptr(),
+    );
     PowFunction::default().launch(&CudaLaunchConfig::basic(blocks, 128, stream), &args)
 }

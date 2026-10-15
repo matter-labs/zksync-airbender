@@ -59,6 +59,7 @@ struct Replay {
     stream: CudaStream,
     seed: DeviceAllocation<u8>,
     nonce: DeviceAllocation<u64>,
+    counter: DeviceAllocation<u64>,
     host: Keccak256Seed,
 }
 
@@ -67,10 +68,12 @@ impl Replay {
         let stream = CudaStream::default();
         let seed = upload(&host.0, &stream);
         let nonce = DeviceAllocation::alloc(1).unwrap();
+        let counter = DeviceAllocation::alloc(1).unwrap();
         Self {
             stream,
             seed,
             nonce,
+            counter,
             host,
         }
     }
@@ -140,7 +143,8 @@ impl Replay {
     fn pow(&mut self, bits: u32, expected: u64, step: &str) -> f64 {
         let start = Instant::now();
         let device_nonce = unsafe { DeviceVariable::from_raw_parts_mut(self.nonce.as_mut_ptr()) };
-        keccak256_pow(&mut self.seed, bits, device_nonce, &self.stream).unwrap();
+        let counter = unsafe { DeviceVariable::from_raw_parts_mut(self.counter.as_mut_ptr()) };
+        keccak256_pow(&mut self.seed, bits, device_nonce, counter, &self.stream).unwrap();
         let mut nonce = [0u64];
         memory_copy_async(&mut nonce, &self.nonce, &self.stream).unwrap();
         self.stream.synchronize().unwrap();
