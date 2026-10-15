@@ -11,6 +11,7 @@
 //! `include_str!`. Intermediate/debug artifacts live under `debug_data/` and are produced by
 //! tests, never by these functions.
 
+pub mod encoding;
 pub mod flatten;
 pub mod generator;
 pub mod seed;

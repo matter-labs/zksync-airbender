@@ -47,5 +47,18 @@ fn write_calldata_into_debug_data() {
             "gkr_whir_handoff_seed.hex",
             &verifier_evm::gkr_whir_handoff_seed(&proof),
         );
+        let f1 =
+            verifier_evm::encoding::encode_single_tx(&circuit, &proof, &aux, &version.f1_params());
+        put(common::F1_CALLDATA, &f1.bytes);
+        let path = version.data_path(common::F1_FIELDS);
+        std::fs::write(
+            &path,
+            format!(
+                "{}\n",
+                serde_json::to_string_pretty(&common::f1_field_metadata(&f1)).unwrap()
+            ),
+        )
+        .unwrap();
+        eprintln!("wrote {}", path.display());
     }
 }

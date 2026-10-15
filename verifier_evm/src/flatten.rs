@@ -110,12 +110,8 @@ fn dim_reduce_blob(circuit: &Circuit, proof: &Proof) -> Vec<u8> {
 /// order. Cached / virtual-setup inputs are computed on the verifier heap and are
 /// NOT part of the calldata.
 fn circuit_blob(circuit: &Circuit, proof: &Proof) -> Vec<u8> {
-    use cs::definitions::GKRAddress;
     let mut blob = Vec::new();
-    let num_standard_layers = circuit.layers.len();
-    let num_mem = circuit.memory_layout.total_width;
-    let num_wit = circuit.witness_layout.total_width;
-    for config_idx in (0..num_standard_layers).rev() {
+    for config_idx in (0..circuit.layers.len()).rev() {
         let siv = proof
             .sumcheck_intermediate_values
             .get(&config_idx)
@@ -130,37 +126,50 @@ fn circuit_blob(circuit: &Circuit, proof: &Proof) -> Vec<u8> {
                 blob.extend_from_slice(&be16(*e));
             }
         }
-        let group_idx = |addr: &GKRAddress| -> Option<usize> {
-            match addr {
-                GKRAddress::InnerLayer { layer, offset }
-                    if *layer == config_idx && config_idx > 0 =>
-                {
-                    Some(*offset)
-                }
-                GKRAddress::BaseLayerMemory(o) if config_idx == 0 => Some(*o),
-                GKRAddress::BaseLayerWitness(o) if config_idx == 0 => Some(num_mem + *o),
-                GKRAddress::Setup(o) if config_idx == 0 => Some(num_mem + num_wit + *o),
-                _ => None, // Cached / VirtualSetup: computed on heap, not in calldata
-            }
-        };
-        let mut by_idx: std::collections::BTreeMap<usize, Proth120> = Default::default();
-        for (addr, val) in siv.final_step_evaluations.iter() {
-            if let Some(idx) = group_idx(addr) {
-                by_idx.insert(idx, val[0]);
-            }
-        }
-        for (addr, val) in siv.extra_evaluations_from_caching_relations.iter() {
-            if let Some(idx) = group_idx(addr) {
-                by_idx.insert(idx, *val);
-            }
-        }
-        let n = by_idx.keys().max().map(|m| m + 1).unwrap_or(0);
-        for i in 0..n {
-            let v = by_idx.get(&i).copied().unwrap_or(Proth120::ZERO);
+        for v in circuit_layer_evals(circuit, proof, config_idx) {
             blob.extend_from_slice(&be16(v));
         }
     }
     blob
+}
+
+/// One standard layer's at-point evals in group-offset order (gaps zero-filled), as the
+/// calldata carries them.
+pub(crate) fn circuit_layer_evals(
+    circuit: &Circuit,
+    proof: &Proof,
+    config_idx: usize,
+) -> Vec<Proth120> {
+    use cs::definitions::GKRAddress;
+    let num_mem = circuit.memory_layout.total_width;
+    let num_wit = circuit.witness_layout.total_width;
+    let siv = &proof.sumcheck_intermediate_values[&config_idx];
+    let group_idx = |addr: &GKRAddress| -> Option<usize> {
+        match addr {
+            GKRAddress::InnerLayer { layer, offset } if *layer == config_idx && config_idx > 0 => {
+                Some(*offset)
+            }
+            GKRAddress::BaseLayerMemory(o) if config_idx == 0 => Some(*o),
+            GKRAddress::BaseLayerWitness(o) if config_idx == 0 => Some(num_mem + *o),
+            GKRAddress::Setup(o) if config_idx == 0 => Some(num_mem + num_wit + *o),
+            _ => None, // Cached / VirtualSetup: computed on heap, not in calldata
+        }
+    };
+    let mut by_idx: std::collections::BTreeMap<usize, Proth120> = Default::default();
+    for (addr, val) in siv.final_step_evaluations.iter() {
+        if let Some(idx) = group_idx(addr) {
+            by_idx.insert(idx, val[0]);
+        }
+    }
+    for (addr, val) in siv.extra_evaluations_from_caching_relations.iter() {
+        if let Some(idx) = group_idx(addr) {
+            by_idx.insert(idx, *val);
+        }
+    }
+    let n = by_idx.keys().max().map(|m| m + 1).unwrap_or(0);
+    (0..n)
+        .map(|i| by_idx.get(&i).copied().unwrap_or(Proth120::ZERO))
+        .collect()
 }
 
 /// Assemble the full GKR-verifier calldata (gkr.sol stream order):
