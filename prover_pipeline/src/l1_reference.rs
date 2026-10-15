@@ -1063,16 +1063,22 @@ fn committed_l1_wrap_reference_is_current() {
 fn evm_fixtures() -> [(PathBuf, Vec<u8>); 2] {
     let bundle: L1Bundle =
         read_typed(&fixture_dir().join("l1_bundle.json")).expect("committed L1 wrap bundle");
-    bundle.validate().expect("committed L1 wrap bundle");
+    evm_fixtures_of(
+        &bundle,
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("../prover"),
+    )
+}
+
+fn evm_fixtures_of(bundle: &L1Bundle, dir: &Path) -> [(PathBuf, Vec<u8>); 2] {
+    bundle.validate().expect("L1 wrap bundle");
     assert_eq!(bundle.wrap, L1WrapVersion::Wrap2p21);
-    let prover = Path::new(env!("CARGO_MANIFEST_DIR")).join("../prover");
     [
         (
-            prover.join("unified_circuit_proof_proth120_2p21.json"),
+            dir.join("unified_circuit_proof_proth120_2p21.json"),
             serde_json::to_vec_pretty(&bundle.proof).unwrap(),
         ),
         (
-            prover.join("unified_circuit_proof_proth120_2p21_commitment_mod_aux_data.json"),
+            dir.join("unified_circuit_proof_proth120_2p21_commitment_mod_aux_data.json"),
             serde_json::to_vec_pretty(&bundle.commitment_mode).unwrap(),
         ),
     ]
@@ -1082,6 +1088,23 @@ fn evm_fixtures() -> [(PathBuf, Vec<u8>); 2] {
 #[ignore = "writes the verifier_evm 2p21 proof fixtures from the committed L1 reference"]
 fn export_l1_wrap_evm_fixtures() {
     for (path, bytes) in evm_fixtures() {
+        fs::write(&path, bytes).expect("writes the EVM proof fixture");
+        println!("wrote {}", path.display());
+    }
+}
+
+/// The same proof and commitment-mode fixtures for another L1 artifact (e.g. a
+/// second program's `cli prove --target l1` output), written into a directory
+/// of the caller's choice.
+#[test]
+#[ignore = "writes the 2p21 proof fixtures of the L1 artifact at AB_ALT_L1_ARTIFACT into AB_ALT_L1_OUT_DIR"]
+fn export_alt_l1_wrap_evm_fixtures() {
+    let artifact = std::env::var_os("AB_ALT_L1_ARTIFACT").expect("AB_ALT_L1_ARTIFACT");
+    let out = PathBuf::from(std::env::var_os("AB_ALT_L1_OUT_DIR").expect("AB_ALT_L1_OUT_DIR"));
+    let artifact: ProofArtifact = read_typed(Path::new(&artifact)).expect("L1 artifact");
+    let bundle = artifact.l1.expect("the artifact carries an L1 bundle");
+    fs::create_dir_all(&out).expect("creates the output directory");
+    for (path, bytes) in evm_fixtures_of(&bundle, &out) {
         fs::write(&path, bytes).expect("writes the EVM proof fixture");
         println!("wrote {}", path.display());
     }
