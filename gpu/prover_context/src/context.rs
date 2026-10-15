@@ -10,6 +10,7 @@ use gpu_core::allocator::host::NonConcurrentStaticHostAllocator;
 use gpu_core::allocator::tracker::{AllocationDirection, AllocationPlacement, UNBOUNDED};
 use gpu_core::primitives::context::{
     DeviceAllocation, DeviceAllocator, DeviceProperties, HostAllocation, HostAllocator,
+    UnsafeMutAccessor,
 };
 use gpu_ntt::ntt_twiddles::DeviceContext;
 use log::error;
@@ -18,6 +19,9 @@ use std::ops::Range;
 /// SM-dependent workspaces are sized for this many SMs, so their sizes do not
 /// depend on the device.
 pub const MAX_SM_COUNT: usize = 256;
+
+/// Capacity of the pinned staging buffer behind `Transfer::stage`.
+pub(crate) const H2D_STAGING_BYTES: usize = 1 << 16;
 
 #[derive(Copy, Clone, Debug)]
 pub struct ProverContextConfig {
@@ -69,6 +73,8 @@ pub struct ProverContext {
     device_allocator: DeviceAllocator,
     small_device_allocators: Option<[DeviceAllocator; 2]>,
     host_allocator: HostAllocator,
+    h2d_staging: era_cudart::memory::HostAllocation<u8>,
+    h2d_staging_fill_target: UnsafeMutAccessor<[u8]>,
     exec_stream: CudaStream,
     h2d_stream: CudaStream,
     device_allocator_mem_size: usize,
@@ -200,12 +206,19 @@ impl ProverContext {
         )?;
         let host_allocator =
             NonConcurrentStaticHostAllocator::new([host_allocation], host_block_log_size);
+        let mut h2d_staging = era_cudart::memory::HostAllocation::alloc(
+            H2D_STAGING_BYTES,
+            CudaHostAllocFlags::DEFAULT,
+        )?;
+        let h2d_staging_fill_target = UnsafeMutAccessor::new(&mut h2d_staging[..]);
         let device_properties = DeviceProperties::new()?;
         let context = Self {
             _device_context: device_context,
             device_allocator,
             small_device_allocators,
             host_allocator,
+            h2d_staging,
+            h2d_staging_fill_target,
             exec_stream,
             h2d_stream,
             device_allocator_mem_size,
@@ -236,6 +249,14 @@ impl ProverContext {
 
     pub fn get_h2d_stream(&self) -> &CudaStream {
         &self.h2d_stream
+    }
+
+    pub(crate) fn h2d_staging_source(&self) -> &[u8] {
+        &self.h2d_staging
+    }
+
+    pub(crate) fn h2d_staging_fill_target(&self) -> UnsafeMutAccessor<[u8]> {
+        self.h2d_staging_fill_target
     }
 
     #[track_caller]
