@@ -231,12 +231,54 @@ fn source() -> ProgramSource {
     )
 }
 
-fn config(target: ProofTarget) -> ProgramProverConfig {
+/// The host window a GPU reference run needs (decision O8).
+const GPU_HOST_WINDOW_GIB: u64 = 64;
+
+/// The backend the reference producer proves on. Reference inputs keep their
+/// CPU provenance: a CPU-produced seed, checkpoint or manifest is valid input
+/// for a GPU execution, and what the GPU run produces carries GPU provenance.
+#[derive(Clone, Copy)]
+struct Execution {
+    backend: ProverBackend,
+    #[cfg(feature = "gpu")]
+    gpu_memory_preset: MemoryPreset,
+}
+
+impl Execution {
+    const CPU: Self = Self {
+        backend: ProverBackend::Cpu,
+        #[cfg(feature = "gpu")]
+        gpu_memory_preset: MemoryPreset::Auto,
+    };
+
+    #[cfg(feature = "gpu")]
+    fn gpu(gpu_memory_preset: MemoryPreset) -> Self {
+        Self {
+            backend: ProverBackend::Gpu,
+            gpu_memory_preset,
+        }
+    }
+
+    fn admits_input(self, input: ProverBackend) -> bool {
+        input == ProverBackend::Cpu || input == self.backend
+    }
+
+    fn host_window_gib(self, cpu_gib: u64) -> u64 {
+        match self.backend {
+            ProverBackend::Cpu => cpu_gib,
+            ProverBackend::Gpu => GPU_HOST_WINDOW_GIB,
+        }
+    }
+}
+
+fn config(target: ProofTarget, execution: Execution) -> ProgramProverConfig {
     ProgramProverConfig {
         target,
-        backend: ProverBackend::Cpu,
+        backend: execution.backend,
         worker_threads: Some(24),
         cycles_bound: None,
+        #[cfg(feature = "gpu")]
+        gpu_memory_preset: execution.gpu_memory_preset,
         ..ProgramProverConfig::default()
     }
 }
@@ -303,6 +345,7 @@ fn log_stage(stage: &str, start: Instant) -> u64 {
 
 struct FixtureObserver<'a> {
     sink: &'a Path,
+    first_layer: u8,
     layers: Vec<u8>,
     started: Instant,
     peak_vmhwm_kib: u64,
@@ -315,7 +358,7 @@ impl FeederObserver for FixtureObserver<'_> {
         state: &RecursionState,
         report: &FsvRunReport,
     ) -> Result<(), String> {
-        if layer as usize != self.layers.len() {
+        if layer as usize != self.first_layer as usize + self.layers.len() {
             return Err("L1 reference feeder observer layer order".into());
         }
         self.layers.push(layer);
@@ -340,19 +383,24 @@ enum GenerateFrom<'a> {
     L1Feeder(&'a Path),
 }
 
-fn generate_into(sink: &Path, from: GenerateFrom<'_>) -> Result<Inventory, String> {
+fn generate_into(
+    sink: &Path,
+    from: GenerateFrom<'_>,
+    execution: Execution,
+) -> Result<Inventory, String> {
     deterministic_pow_required();
     fs::create_dir_all(sink).map_err(|error| format!("L1 reference sink: {error}"))?;
     let source = source();
     let names = match from {
         GenerateFrom::Program => {
-            preflight("program", 125);
+            preflight("program", execution.host_window_gib(125));
             let loaded = load_program(&source)?;
             let blake = PipelineBlakeModes::from_env();
             let identities = fsv_identities(blake)?;
             let start = start_stage();
             let base = {
-                let mut prover = ProgramProver::new(source.clone(), config(ProofTarget::Base))?;
+                let mut prover =
+                    ProgramProver::new(source.clone(), config(ProofTarget::Base, execution))?;
                 prover.prove_words(0, vec![])?
             };
             log_stage("base", start);
@@ -360,7 +408,7 @@ fn generate_into(sink: &Path, from: GenerateFrom<'_>) -> Result<Inventory, Strin
             let mut artifact = {
                 let mut prover = ProgramProver::for_continuation(
                     source.clone(),
-                    config(ProofTarget::RecursionUnified),
+                    config(ProofTarget::RecursionUnified, execution),
                     &base,
                 )?;
                 prover.continue_artifact(base)?
@@ -372,8 +420,13 @@ fn generate_into(sink: &Path, from: GenerateFrom<'_>) -> Result<Inventory, Strin
             let feeder = generate_into(
                 sink,
                 GenerateFrom::RecursionUnified(&sink.join("recursion_unified.json")),
+                execution,
             )?;
-            let wrap = generate_into(sink, GenerateFrom::L1Feeder(&sink.join("l1_feeder.json")))?;
+            let wrap = generate_into(
+                sink,
+                GenerateFrom::L1Feeder(&sink.join("l1_feeder.json")),
+                execution,
+            )?;
             let files: Inventory = std::iter::once(file_identity(sink, "recursion_unified.json")?)
                 .chain(feeder)
                 .chain(wrap)
@@ -390,7 +443,7 @@ fn generate_into(sink: &Path, from: GenerateFrom<'_>) -> Result<Inventory, Strin
                     fsv: identities,
                     configuration: ReferenceConfiguration {
                         security_level: COMPILED_SECURITY_LEVEL,
-                        backend: ProverBackend::Cpu,
+                        backend: execution.backend,
                         worker_threads: 24,
                         batch_id: 0,
                         blake_unrolled: blake.unrolled.tag().into(),
@@ -405,20 +458,21 @@ fn generate_into(sink: &Path, from: GenerateFrom<'_>) -> Result<Inventory, Strin
             names
         }
         GenerateFrom::RecursionUnified(input) => {
-            preflight("feeder", 75);
+            preflight("feeder", execution.host_window_gib(75));
             let artifact: ProofArtifact = read_typed(input)?;
             if artifact.target != ProofTarget::RecursionUnified
                 || artifact.batch_id != 0
-                || artifact.backend != ProverBackend::Cpu
+                || !execution.admits_input(artifact.backend)
             {
                 return Err(
-                    "L1 reference requires the CPU recursion-unified checkpoint at batch_id 0"
+                    "L1 reference requires a CPU or same-backend recursion-unified checkpoint at batch_id 0"
                         .into(),
                 );
             }
             let start = start_stage();
             let mut observer = FixtureObserver {
                 sink,
+                first_layer: 0,
                 layers: vec![],
                 started: start,
                 peak_vmhwm_kib: 0,
@@ -426,7 +480,7 @@ fn generate_into(sink: &Path, from: GenerateFrom<'_>) -> Result<Inventory, Strin
             let mut artifact = {
                 let mut prover = ProgramProver::for_continuation(
                     source.clone(),
-                    config(ProofTarget::L1Feeder),
+                    config(ProofTarget::L1Feeder, execution),
                     &artifact,
                 )?;
                 prover.continue_artifact_observed(artifact, &mut observer)?
@@ -450,7 +504,7 @@ fn generate_into(sink: &Path, from: GenerateFrom<'_>) -> Result<Inventory, Strin
                 .collect()
         }
         GenerateFrom::FeederLayer(input) => {
-            preflight("feeder_resume", 75);
+            preflight("feeder_resume", execution.host_window_gib(75));
             let manifest: ProofManifest = read_typed(
                 &input
                     .parent()
@@ -460,7 +514,7 @@ fn generate_into(sink: &Path, from: GenerateFrom<'_>) -> Result<Inventory, Strin
             let loaded = load_program(&source)?;
             if manifest.format_version != 1
                 || manifest.configuration.security_level != COMPILED_SECURITY_LEVEL
-                || manifest.configuration.backend != ProverBackend::Cpu
+                || !execution.admits_input(manifest.configuration.backend)
                 || manifest.configuration.batch_id != 0
                 || manifest.configuration.worker_threads != 24
                 || !manifest.configuration.user_nd_words.is_empty()
@@ -492,69 +546,61 @@ fn generate_into(sink: &Path, from: GenerateFrom<'_>) -> Result<Inventory, Strin
                 return Err("L1 reference feeder checkpoint fsv identity mismatch".into());
             }
             let checkpoint: StepCheckpoint = read_typed(input)?;
-            let mut state = checkpoint.into_state()?;
+            let CheckpointStep::Feeder { layer } = &checkpoint.step;
+            let first_layer = layer + 1;
+            let state = checkpoint.into_state()?;
             let start = start_stage();
-            let fsv = FsvPrograms::load(ProofTarget::L1Feeder, blake);
-            {
-                let mut backend = PipelineBackend::<cpu_execution_prover::CpuBackend>::new(
-                    &config(ProofTarget::L1Feeder),
-                    Default::default(),
-                );
-                let spec = feeder_stage(FeederRole::Recurrent);
-                let (bin, text) = fsv.feeder_program(FeederRole::Recurrent);
-                backend.register(
-                    spec.kind,
-                    MachineType::Reduced,
-                    bin,
-                    text,
-                    None,
-                    &[spec.profile],
-                );
-                state = run_feeder_layers(
-                    &mut backend,
-                    &fsv,
-                    state,
-                    0,
-                    &mut NoopObserver,
-                    &build_unified_stream,
-                    &ProductionFeederVerifier,
-                )?;
-                state = check_feeder_fit(
-                    &fsv,
-                    state,
-                    &build_unified_stream,
-                    &ProductionFeederVerifier,
-                )?;
-            }
-            log_stage("feeder_resume", start);
-            let mut artifact = finalize_artifact(
-                &fsv,
-                ProofTarget::L1Feeder,
-                ProverBackend::Cpu,
-                0,
-                &loaded,
+            let mut observer = FixtureObserver {
+                sink,
+                first_layer,
+                layers: vec![],
+                started: start,
+                peak_vmhwm_kib: 0,
+            };
+            let mut prover = ProgramProver::for_feeder_checkpoint(
+                source.clone(),
+                config(ProofTarget::L1Feeder, execution),
+                blake,
+            )?;
+            let state = prover.resume_feeder_checkpoint(state, 0, &mut observer)?;
+            let state = check_feeder_fit(
+                &prover.fsv,
                 state,
+                &build_unified_stream,
+                &ProductionFeederVerifier,
+            )?;
+            log_stage_with_peak(
+                "feeder_resume",
+                start,
+                observer.peak_vmhwm_kib.max(vmhwm_kib()),
             );
+            let mut artifact = prover.finalize_state(&loaded, state, 0);
             artifact.timings_ms = ProofTimingsMs::default();
             write_compact(&sink.join("l1_feeder.json"), &artifact)?;
-            vec!["l1_feeder.json".to_string()]
+            observer
+                .layers
+                .iter()
+                .flat_map(|&layer| [feeder_checkpoint_name(layer), feeder_report_name(layer)])
+                .chain(["l1_feeder.json".to_string()])
+                .collect()
         }
         GenerateFrom::L1Feeder(input) => {
-            preflight("wrap", 60);
+            preflight("wrap", execution.host_window_gib(60));
             let artifact: ProofArtifact = read_typed(input)?;
             if artifact.target != ProofTarget::L1Feeder
                 || artifact.batch_id != 0
-                || artifact.backend != ProverBackend::Cpu
+                || !execution.admits_input(artifact.backend)
             {
                 return Err(
-                    "L1 reference requires the CPU L1-feeder checkpoint at batch_id 0".into(),
+                    "L1 reference requires a CPU or same-backend L1-feeder checkpoint at batch_id 0"
+                        .into(),
                 );
             }
             let start = start_stage();
             let artifact = {
                 let mut prover = ProgramProver::for_continuation(
                     source.clone(),
-                    config(ProofTarget::L1),
+                    config(ProofTarget::L1, execution),
                     &artifact,
                 )?;
                 prover.continue_artifact(artifact)?
@@ -655,10 +701,202 @@ fn compare_files(reference: &Path, sink: &Path, inventory: &Inventory) -> Result
     Ok(())
 }
 
+/// `dir`'s manifest, with every listed file's length and hash checked
+/// against `dir`'s own copy.
+fn validated_manifest(dir: &Path) -> Result<ProofManifest, String> {
+    let manifest: ProofManifest = read_typed(&dir.join("manifest.json"))?;
+    for file in &manifest.files {
+        let actual = file_identity(dir, &file.name)?;
+        if actual.bytes != file.bytes || actual.keccak256 != file.keccak256 {
+            return Err(format!(
+                "L1 reference manifest of {} lists {} with another length or hash",
+                dir.display(),
+                file.name
+            ));
+        }
+    }
+    Ok(manifest)
+}
+
+/// Compares a reproduced L1 reference file with the reference's copy as
+/// typed values: the whole serialized value after normalizing the fields a
+/// GPU reproduction legitimately changes (an artifact's backend and timings),
+/// naming the first differing field. Serialized bytes, never
+/// `serde_json::Value`: the wrap proof holds integers beyond `u64`.
+fn compare_reproduced_file(name: &str, expected: &[u8], actual: &[u8]) -> Result<(), String> {
+    fn typed<T: DeserializeOwned>(name: &str, bytes: &[u8]) -> Result<T, String> {
+        serde_json::from_slice(bytes)
+            .map_err(|error| format!("L1 reference deserialize {name}: {error}"))
+    }
+    fn json<T: Serialize + ?Sized>(value: &T) -> Vec<u8> {
+        serde_json::to_vec(value).expect("L1 reference serializes")
+    }
+    macro_rules! compare {
+        ($ty:ty, [$expected:ident, $actual:ident] => $normalize:block; $($field:ident),+ $(,)?) => {{
+            let $expected: $ty = typed(name, expected)?;
+            #[allow(unused_mut)]
+            let mut $actual: $ty = typed(name, actual)?;
+            $normalize
+            if json(&$expected) == json(&$actual) {
+                return Ok(());
+            }
+            $(if json(&$expected.$field) != json(&$actual.$field) {
+                return Err(format!(
+                    "{name} differs from the L1 reference in field {}",
+                    stringify!($field)
+                ));
+            })+
+            Err(format!("{name} differs from the L1 reference in its serialized encoding"))
+        }};
+    }
+    match name {
+        "recursion_unified.json" | "l1_feeder.json" => compare!(ProofArtifact,
+            [expected_artifact, actual_artifact] => {
+                actual_artifact.backend = expected_artifact.backend;
+                actual_artifact.timings_ms = expected_artifact.timings_ms.clone();
+            };
+            schema_version, security_level, target, batch_id, cycles, program_cycles,
+            program_bin_keccak, program_text_keccak, proof_counts, chain_end_params,
+            feeder_layers, chain_hash, chain_preimage, blake_unrolled, blake_bridge, blake_final,
+            l1, proof, setups),
+        name if name.starts_with("feeder_layer_") && name.ends_with("_report.json") => {
+            if typed::<FsvRunReport>(name, expected)?.counters
+                != typed::<FsvRunReport>(name, actual)?.counters
+            {
+                return Err(format!(
+                    "{name} differs from the L1 reference in field counters"
+                ));
+            }
+            compare!(FsvRunReport, [expected_report, actual_report] => {};
+                cycles, output, nd_words_remaining, touched_windows, max_touched_address, min_sp,
+                success_pc, final_pc)
+        }
+        name if name.starts_with("feeder_layer_") => {
+            compare!(StepCheckpoint, [expected_checkpoint, actual_checkpoint] => {};
+                fixture_schema_version, step, feeder_layers, proof, setups, chain_end_params,
+                input_is_base, program_cycles)
+        }
+        "l1_bundle.json" => compare!(L1Bundle, [expected_bundle, actual_bundle] => {};
+            wrap, commitment_mode, proof),
+        _ => Err(format!("L1 reference has no typed comparison for {name}")),
+    }
+}
+
+/// The reproduction's manifest identity: the reference's except the backend,
+/// and the same file names in order (their hashes are not compared).
+fn compare_reproduced_manifest(
+    expected: &ProofManifest,
+    actual: &ProofManifest,
+) -> Result<(), String> {
+    let configuration = |manifest: &ProofManifest| {
+        let mut value = serde_json::to_value(&manifest.configuration).unwrap();
+        value.as_object_mut().unwrap().remove("backend");
+        value
+    };
+    let names = |manifest: &ProofManifest| -> Vec<String> {
+        manifest
+            .files
+            .iter()
+            .map(|file| file.name.clone())
+            .collect()
+    };
+    let json = |value: serde_json::Result<serde_json::Value>| value.unwrap();
+    for (field, same) in [
+        (
+            "format_version",
+            expected.format_version == actual.format_version,
+        ),
+        (
+            "program",
+            json(serde_json::to_value(&expected.program))
+                == json(serde_json::to_value(&actual.program)),
+        ),
+        (
+            "fsv",
+            json(serde_json::to_value(&expected.fsv)) == json(serde_json::to_value(&actual.fsv)),
+        ),
+        (
+            "configuration",
+            configuration(expected) == configuration(actual),
+        ),
+        ("files", names(expected) == names(actual)),
+    ] {
+        if !same {
+            return Err(format!(
+                "GPU reproduction manifest differs from the L1 reference in {field}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// What a GPU reproduction of the L1 reference produced.
+#[derive(Clone, Copy, Debug)]
+enum Reproduction {
+    /// The whole chain from source, with its manifest.
+    Complete,
+    /// The chain resumed after feeder checkpoint `layer`: every reference file
+    /// after that checkpoint's report.
+    ResumedAfter(u8),
+}
+
+/// The typed comparator of a GPU reproduction of the L1 reference: each
+/// directory's manifest is checked against its own files, the reproduction
+/// has exactly the reference files `reproduction` implies, in order, and
+/// every typed field of every file equals the reference except the
+/// artifacts' backend and timings. Raw hashes are never compared across the
+/// two directories; [`compare_files`] stays the CPU regeneration oracle.
+fn compare_gpu_reproduction(
+    reference: &Path,
+    sink: &Path,
+    inventory: &Inventory,
+    reproduction: Reproduction,
+) -> Result<(), String> {
+    let expected = validated_manifest(reference)?;
+    let expected_names: Vec<&str> = expected
+        .files
+        .iter()
+        .map(|file| file.name.as_str())
+        .collect();
+    let required: Vec<&str> = match reproduction {
+        Reproduction::Complete => {
+            compare_reproduced_manifest(&expected, &validated_manifest(sink)?)?;
+            expected_names
+                .iter()
+                .copied()
+                .chain(["manifest.json"])
+                .collect()
+        }
+        Reproduction::ResumedAfter(layer) => {
+            let report = feeder_report_name(layer);
+            let position = expected_names
+                .iter()
+                .position(|name| *name == report)
+                .ok_or_else(|| format!("the L1 reference has no {report}"))?;
+            expected_names[position + 1..].to_vec()
+        }
+    };
+    let names: Vec<&str> = inventory.iter().map(|file| file.name.as_str()).collect();
+    if names != required {
+        return Err(format!(
+            "GPU reproduction files {names:?} differ from the expected {required:?} ({reproduction:?})"
+        ));
+    }
+    for name in names.into_iter().filter(|name| *name != "manifest.json") {
+        compare_reproduced_file(
+            name,
+            &read_bytes(&reference.join(name))?,
+            &read_bytes(&sink.join(name))?,
+        )?;
+    }
+    Ok(())
+}
+
 fn guard(from: GenerateFrom<'_>) {
     let reference = fixture_dir();
     let sink = disposable_dir("guard");
-    let inventory = generate_into(&sink, from).expect("L1 reference guard regeneration");
+    let inventory =
+        generate_into(&sink, from, Execution::CPU).expect("L1 reference guard regeneration");
     compare_files(&reference, &sink, &inventory).unwrap_or_else(|message| panic!("{message}"));
     fs::remove_dir_all(sink).expect("L1 reference guard removes disposable sink");
 }
@@ -667,7 +905,8 @@ fn guard(from: GenerateFrom<'_>) {
 #[ignore = "regenerates the committed L1 reference: ~35 min CPU (historical), up to ~110 GiB"]
 fn generate_l1_reference() {
     let sink = disposable_dir("generate");
-    let inventory = generate_into(&sink, GenerateFrom::Program).expect("L1 reference generation");
+    let inventory = generate_into(&sink, GenerateFrom::Program, Execution::CPU)
+        .expect("L1 reference generation");
     let reference = fixture_dir();
     fs::create_dir_all(&reference).expect("L1 reference creates fixture directory");
     for file in &inventory {
@@ -693,20 +932,121 @@ fn committed_l1_feeder_reference_is_current() {
 
 /// Resumes the feeder chain from the first committed checkpoint whose proof
 /// still has more than one instance and regenerates the rest of it.
-#[test]
-#[ignore = "regenerates the CPU feeder layers after the first multi-instance checkpoint"]
-fn committed_l1_feeder_mid_chain_resume_is_current() {
+fn first_multi_instance_checkpoint() -> (PathBuf, u8) {
     let reference = fixture_dir();
-    let checkpoint = (0..MAX_FEEDER_LAYERS as u8)
-        .map(|layer| reference.join(feeder_checkpoint_name(layer)))
-        .take_while(|path| path.exists())
-        .find(|path| {
+    let (checkpoint, layer) = (0..MAX_FEEDER_LAYERS as u8)
+        .map(|layer| (reference.join(feeder_checkpoint_name(layer)), layer))
+        .take_while(|(path, _)| path.exists())
+        .find(|(path, _)| {
             let checkpoint: StepCheckpoint = read_typed(path).expect("feeder checkpoint");
             feeder_proof_instances(&checkpoint.proof, None).expect("feeder checkpoint proof") > 1
         })
         .expect("the L1 reference has a multi-instance feeder checkpoint");
     println!("resuming from {}", checkpoint.display());
-    guard(GenerateFrom::FeederLayer(&checkpoint));
+    (checkpoint, layer)
+}
+
+#[test]
+#[ignore = "regenerates the CPU feeder layers after the first multi-instance checkpoint"]
+fn committed_l1_feeder_mid_chain_resume_is_current() {
+    guard(GenerateFrom::FeederLayer(
+        &first_multi_instance_checkpoint().0,
+    ));
+}
+
+#[cfg(feature = "gpu")]
+fn gpu_reproduction(name: &str, reproduction: Reproduction, from: impl FnOnce(&Path) -> Inventory) {
+    let _ = env_logger::builder()
+        .is_test(true)
+        .format_timestamp_millis()
+        .try_init();
+    let sink = disposable_dir(name);
+    let inventory = from(&sink);
+    compare_gpu_reproduction(&fixture_dir(), &sink, &inventory, reproduction)
+        .unwrap_or_else(|message| panic!("{message}"));
+    fs::remove_dir_all(sink).expect("L1 reference GPU reproduction removes its sink");
+}
+
+/// The whole reference chain from source on the GPU at the 30 GiB preset.
+#[cfg(feature = "gpu")]
+#[test]
+#[ignore = "reproduces the L1 reference chain on the GPU"]
+fn gpu_l1_reference_matches_committed() {
+    gpu_reproduction("gpu", Reproduction::Complete, |sink| {
+        generate_into(
+            sink,
+            GenerateFrom::Program,
+            Execution::gpu(MemoryPreset::GiB30),
+        )
+        .expect("L1 reference GPU reproduction")
+    });
+}
+
+/// The CPU reference's first multi-instance feeder checkpoint resumed on the
+/// GPU at the 30 GiB preset: the remaining feeder layers, `l1_feeder.json`
+/// and the wrap.
+#[cfg(feature = "gpu")]
+#[test]
+#[ignore = "resumes the L1 reference feeder chain and wraps it on the GPU"]
+fn gpu_l1_feeder_mid_chain_resume_matches_committed() {
+    let (checkpoint, layer) = first_multi_instance_checkpoint();
+    gpu_reproduction("gpu-resume", Reproduction::ResumedAfter(layer), |sink| {
+        let execution = Execution::gpu(MemoryPreset::GiB30);
+        let mut inventory = generate_into(sink, GenerateFrom::FeederLayer(&checkpoint), execution)
+            .expect("L1 reference GPU feeder resume");
+        inventory.extend(
+            generate_into(
+                sink,
+                GenerateFrom::L1Feeder(&sink.join("l1_feeder.json")),
+                execution,
+            )
+            .expect("L1 reference GPU wrap"),
+        );
+        inventory
+    });
+}
+
+#[derive(Deserialize)]
+struct FeederSeedManifest {
+    files: Vec<(String, u64, String)>,
+}
+
+/// The BabyBear regression guard: the reference's regular recursion output
+/// equals the accepted W2/W4 feeder seed of the same program.
+#[test]
+#[ignore = "reads the W2/W4 feeder seed of basic_fibonacci (AB_F3_REFERENCE_DIR)"]
+fn cpu_recursion_unified_matches_feeder_seed() {
+    let seed_dir = std::env::var_os("AB_F3_REFERENCE_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/l1_feeder_reference")
+        })
+        .join("basic_fibonacci");
+    let name = "recursion_unified.json";
+    let seed_manifest: FeederSeedManifest = read_typed(&seed_dir.join("manifest.json"))
+        .unwrap_or_else(|error| {
+            panic!(
+                "feeder seed manifest: {error}; the feeder reference is not committed, generate it: {}",
+                super::l1_feeder_reference::REGENERATE
+            )
+        });
+    let (_, bytes, keccak256) = seed_manifest
+        .files
+        .iter()
+        .find(|(file, _, _)| file == name)
+        .expect("the feeder seed manifest lists recursion_unified.json");
+    let seed = read_bytes(&seed_dir.join(name)).expect("feeder seed");
+    assert!(
+        seed.len() as u64 == *bytes && hex_digest(&seed) == *keccak256,
+        "the feeder seed differs from its manifest"
+    );
+    validated_manifest(&fixture_dir()).expect("L1 reference manifest");
+    let reference = read_bytes(&fixture_dir().join(name)).expect("L1 reference");
+    compare_reproduced_file(name, &seed, &reference).unwrap_or_else(|message| panic!("{message}"));
+    println!(
+        "recursion_unified.json raw bytes equal: {}",
+        seed == reference
+    );
 }
 
 #[test]
@@ -1101,4 +1441,326 @@ fn guard_reports_first_differing_file() {
     assert!(error.contains("field program_cycles"), "{error}");
     assert!(error.contains(REGENERATE), "{error}");
     fs::remove_dir_all(root).unwrap();
+}
+
+/// A typed-comparator directory: a recursion-unified artifact, one feeder
+/// layer with its report, the last-feeder artifact and the manifest.
+fn typed_comparator_fixture(dir: &Path, backend: ProverBackend) -> Inventory {
+    fs::create_dir_all(dir).unwrap();
+    let loaded = LoadedProgram {
+        bin_bytes: vec![1, 2, 3, 4],
+        text_bytes: vec![5, 6, 7, 8],
+        bin_u32: vec![0x13],
+        text_u32: vec![0x13],
+    };
+    let state = || {
+        let mut state = test_state();
+        state.setups.insert(
+            1,
+            setups::UnrolledCircuitSetupParams {
+                family_idx: 1,
+                capacity: 2,
+                setup_caps: prover::merkle_trees::MerkleTreeCapVarLength { cap: vec![[7; 8]] },
+            },
+        );
+        state
+    };
+    let fsv = test_fsv();
+    let mut artifact = finalize_artifact(
+        &fsv,
+        ProofTarget::RecursionUnified,
+        backend,
+        0,
+        &loaded,
+        state(),
+    );
+    artifact.timings_ms = ProofTimingsMs::default();
+    write_compact(&dir.join("recursion_unified.json"), &artifact).unwrap();
+    let mut state = state();
+    state.chain_end_params.push([4; 8]);
+    state.feeder_layers = 1;
+    write_compact(
+        &dir.join(feeder_checkpoint_name(0)),
+        &StepCheckpoint::from_state(0, &state),
+    )
+    .unwrap();
+    write_compact(&dir.join(feeder_report_name(0)), &fake_report(2)).unwrap();
+    state.chain_end_params.push([5; 8]);
+    state.feeder_layers = 2;
+    write_compact(
+        &dir.join(feeder_checkpoint_name(1)),
+        &StepCheckpoint::from_state(1, &state),
+    )
+    .unwrap();
+    write_compact(&dir.join(feeder_report_name(1)), &fake_report(1)).unwrap();
+    state.stage = ProofTarget::L1Feeder;
+    let mut artifact = finalize_artifact(&fsv, ProofTarget::L1Feeder, backend, 0, &loaded, state);
+    artifact.timings_ms.total_ms = if backend == ProverBackend::Gpu { 1 } else { 2 };
+    write_compact(&dir.join("l1_feeder.json"), &artifact).unwrap();
+    rewrite_typed_manifest(dir, backend)
+}
+
+/// Writes `dir`'s manifest over its current files and returns its inventory.
+fn rewrite_typed_manifest(dir: &Path, backend: ProverBackend) -> Inventory {
+    let names = [
+        "recursion_unified.json".to_string(),
+        feeder_checkpoint_name(0),
+        feeder_report_name(0),
+        feeder_checkpoint_name(1),
+        feeder_report_name(1),
+        "l1_feeder.json".to_string(),
+    ];
+    let files: Inventory = names
+        .iter()
+        .map(|name| file_identity(dir, name).unwrap())
+        .collect();
+    write_compact(
+        &dir.join("manifest.json"),
+        &ProofManifest {
+            format_version: 1,
+            program: ProgramIdentity {
+                bin_keccak256: "bin".into(),
+                text_keccak256: "text".into(),
+            },
+            fsv: vec![FsvIdentity {
+                role: "feeder_wrap".into(),
+                stem: "stem".into(),
+                bin_keccak256: "bin".into(),
+                text_keccak256: "text".into(),
+            }],
+            configuration: ReferenceConfiguration {
+                security_level: COMPILED_SECURITY_LEVEL,
+                backend,
+                worker_threads: 24,
+                batch_id: 0,
+                blake_unrolled: "u".into(),
+                blake_bridge: "b".into(),
+                blake_final: "f".into(),
+                user_nd_words: vec![],
+            },
+            files,
+        },
+    )
+    .unwrap();
+    names
+        .iter()
+        .chain(std::iter::once(&"manifest.json".to_string()))
+        .map(|name| file_identity(dir, name).unwrap())
+        .collect()
+}
+
+fn mutate_json(path: &Path, mutate: impl FnOnce(&mut serde_json::Value)) {
+    let mut value: serde_json::Value = read_typed(path).unwrap();
+    mutate(&mut value);
+    write_compact(path, &value).unwrap();
+}
+
+/// Runs the comparator on a CPU reference and a GPU reproduction to which
+/// `mutate` was applied (the reproduction's manifest is rewritten after it
+/// when `remanifest`).
+fn typed_comparison(
+    reproduction: Reproduction,
+    mutate: impl FnOnce(&Path, &mut Inventory),
+    remanifest: bool,
+) -> Result<(), String> {
+    let root = disposable_dir("typed");
+    let (reference, sink) = (root.join("reference"), root.join("gpu"));
+    typed_comparator_fixture(&reference, ProverBackend::Cpu);
+    let mut inventory = typed_comparator_fixture(&sink, ProverBackend::Gpu);
+    mutate(&sink, &mut inventory);
+    if remanifest {
+        let order: Vec<String> = inventory.iter().map(|file| file.name.clone()).collect();
+        let rewritten = rewrite_typed_manifest(&sink, ProverBackend::Gpu);
+        inventory = order
+            .iter()
+            .map(|name| {
+                rewritten
+                    .iter()
+                    .find(|file| &file.name == name)
+                    .map(|file| file_identity(&sink, &file.name).unwrap())
+                    .unwrap()
+            })
+            .collect();
+    }
+    let result = compare_gpu_reproduction(&reference, &sink, &inventory, reproduction);
+    fs::remove_dir_all(root).unwrap();
+    result
+}
+
+#[test]
+fn cpu_typed_comparator_ignores_backend_and_timings() {
+    typed_comparison(Reproduction::Complete, |_, _| {}, false).unwrap();
+}
+
+#[test]
+fn cpu_typed_comparator_accepts_a_resumed_suffix() {
+    typed_comparison(
+        Reproduction::ResumedAfter(0),
+        |_, inventory| {
+            inventory.retain(|file| {
+                ![
+                    "recursion_unified.json",
+                    "feeder_layer_0.json",
+                    "feeder_layer_0_report.json",
+                    "manifest.json",
+                ]
+                .contains(&file.name.as_str())
+            })
+        },
+        false,
+    )
+    .unwrap();
+    typed_comparison(
+        Reproduction::ResumedAfter(0),
+        |_, inventory| inventory.retain(|file| file.name != "manifest.json"),
+        false,
+    )
+    .unwrap_err();
+}
+
+#[test]
+fn cpu_typed_comparator_rejects_a_shortened_reproduction() {
+    for (reproduction, keep) in [
+        (Reproduction::ResumedAfter(0), &["l1_feeder.json"][..]),
+        (
+            Reproduction::ResumedAfter(0),
+            &["feeder_layer_1.json", "feeder_layer_1_report.json"],
+        ),
+        (Reproduction::Complete, &["l1_feeder.json", "manifest.json"]),
+    ] {
+        let err = typed_comparison(
+            reproduction,
+            |_, inventory| inventory.retain(|file| keep.contains(&file.name.as_str())),
+            false,
+        )
+        .unwrap_err();
+        assert!(err.contains("differ from the expected"), "{err}");
+    }
+}
+
+#[test]
+fn cpu_typed_comparator_rejects_field_differences() {
+    for (name, field, mutate) in [
+        (
+            "l1_feeder.json",
+            "proof",
+            (|value: &mut serde_json::Value| value["proof"]["final_pc"] = 4.into())
+                as fn(&mut serde_json::Value),
+        ),
+        ("recursion_unified.json", "setups", |value| {
+            value["setups"]["1"]["capacity"] = 3.into()
+        }),
+        ("l1_feeder.json", "chain_hash", |value| {
+            value["chain_hash"][0] = 9.into()
+        }),
+        ("feeder_layer_0.json", "chain_end_params", |value| {
+            value["chain_end_params"][3][0] = 9.into()
+        }),
+        ("l1_feeder.json", "feeder_layers", |value| {
+            value["feeder_layers"] = 3.into()
+        }),
+        ("feeder_layer_0_report.json", "cycles", |value| {
+            value["cycles"] = 1.into()
+        }),
+        ("feeder_layer_0_report.json", "counters", |value| {
+            value["counters"]["cycles"] = 1.into()
+        }),
+    ] {
+        let err = typed_comparison(
+            Reproduction::Complete,
+            |sink, _| mutate_json(&sink.join(name), mutate),
+            true,
+        )
+        .unwrap_err();
+        assert_eq!(
+            err,
+            format!("{name} differs from the L1 reference in field {field}")
+        );
+    }
+}
+
+#[test]
+fn cpu_typed_comparator_rejects_a_manifest_hash_mismatch() {
+    let err = typed_comparison(
+        Reproduction::Complete,
+        |sink, _| {
+            mutate_json(&sink.join("l1_feeder.json"), |value| {
+                value["feeder_layers"] = 3.into()
+            })
+        },
+        false,
+    )
+    .unwrap_err();
+    assert!(
+        err.contains("lists l1_feeder.json with another length or hash"),
+        "{err}"
+    );
+}
+
+#[test]
+fn cpu_typed_comparator_rejects_a_reordered_inventory() {
+    let err = typed_comparison(
+        Reproduction::Complete,
+        |_, inventory| inventory.swap(1, 2),
+        false,
+    )
+    .unwrap_err();
+    assert!(err.contains("differ from the expected"), "{err}");
+}
+
+#[test]
+fn cpu_typed_comparator_rejects_another_manifest_identity() {
+    let err = typed_comparison(
+        Reproduction::Complete,
+        |sink, _| {
+            mutate_json(&sink.join("manifest.json"), |value| {
+                value["configuration"]["worker_threads"] = 12.into()
+            })
+        },
+        false,
+    )
+    .unwrap_err();
+    assert_eq!(
+        err,
+        "GPU reproduction manifest differs from the L1 reference in configuration"
+    );
+}
+
+/// The wrap bundle's proof integers exceed `u64`: a one-unit change in one of
+/// them is a proof difference, not a lossy-equal value.
+#[test]
+fn cpu_typed_comparator_compares_wrap_proof_integers_exactly() {
+    let name = "l1_bundle.json";
+    let bundle = read_bytes(&fixture_dir().join(name)).expect("L1 reference bundle");
+    compare_reproduced_file(name, &bundle, &bundle).unwrap();
+    let text = String::from_utf8(bundle.clone()).unwrap();
+    let start = text
+        .char_indices()
+        .find(|&(index, _)| {
+            text[index..]
+                .split(|c: char| !c.is_ascii_digit())
+                .next()
+                .is_some_and(|digits| {
+                    digits.len() >= 21 && digits.parse::<u128>().is_ok_and(|v| v > u64::MAX.into())
+                })
+                && !text[..index].ends_with(|c: char| c.is_ascii_digit())
+        })
+        .map(|(index, _)| index)
+        .expect("the wrap proof holds an integer beyond u64");
+    let digits = text[start..]
+        .split(|c: char| !c.is_ascii_digit())
+        .next()
+        .unwrap();
+    let changed = (digits.parse::<u128>().unwrap() - 1).to_string();
+    let mutated = format!(
+        "{}{changed}{}",
+        &text[..start],
+        &text[start + digits.len()..]
+    );
+    assert_eq!(
+        compare_reproduced_file(name, &bundle, mutated.as_bytes()),
+        Err(format!(
+            "{name} differs from the L1 reference in field proof"
+        ))
+    );
 }

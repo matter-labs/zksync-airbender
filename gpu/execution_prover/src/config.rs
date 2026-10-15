@@ -118,6 +118,44 @@ mod tests {
         assert!(std::panic::catch_unwind(|| config.context_config()).is_err());
     }
 
+    /// Every admission floor of the L1 chain (app, recursion, feeders, wrap)
+    /// fits the 30 GiB preset the CLI pins; the ones that also fit 21 GiB are
+    /// printed.
+    #[test]
+    fn cpu_l1_chain_floors_fit_pinned_arenas() {
+        use crate::memory_policy::{
+            admit_l1_feeder, admit_l1_wrap, l1_feeder::L1_FEEDER_FLOOR_BYTES,
+            l1_wrap::L1_WRAP_WHOLE_PROOF_FLOOR_BYTES, select_arena_bytes,
+        };
+        let arena = |preset| {
+            let config = GpuBackendConfiguration {
+                memory_preset: preset,
+                ..Default::default()
+            }
+            .context_config();
+            config.device_allocation_blocks_count.unwrap() << config.allocator_block_log_size
+        };
+        let (pinned, small) = (arena(MemoryPreset::GiB30), arena(MemoryPreset::GiB21));
+        admit_l1_feeder(pinned);
+        admit_l1_wrap(pinned);
+        for (name, floor) in [
+            ("generated tier", select_arena_bytes(small)),
+            ("L1Feeder", L1_FEEDER_FLOOR_BYTES),
+            ("L1Wrap", L1_WRAP_WHOLE_PROOF_FLOOR_BYTES),
+        ] {
+            assert!(
+                floor <= pinned,
+                "the {name} floor {floor} exceeds the 30 GiB preset arena {pinned}"
+            );
+            println!(
+                "L1 chain floor {name}: {floor} bytes, fits 21 GiB: {}",
+                floor <= small
+            );
+        }
+        assert_eq!(select_arena_bytes(pinned), pinned);
+        assert_eq!(select_arena_bytes(small), small);
+    }
+
     #[test]
     fn cpu_m8_context_config_pr_domain() {
         for preset in [MemoryPreset::Auto, MemoryPreset::GiB30, MemoryPreset::GiB21] {
