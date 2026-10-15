@@ -116,7 +116,8 @@ pub fn verified_mark(proof: &Proof, aux: &CommitmentMode) -> VerifiedMark {
     let regs = |first: usize| -> [u8; 32] {
         let mut w = [0u8; 32];
         for i in 0..8 {
-            w[4 * i..4 * i + 4].copy_from_slice(&register_final_state[first + i].value.to_le_bytes());
+            w[4 * i..4 * i + 4]
+                .copy_from_slice(&register_final_state[first + i].value.to_le_bytes());
         }
         w
     };

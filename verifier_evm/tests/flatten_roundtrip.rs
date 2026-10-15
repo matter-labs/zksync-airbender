@@ -94,7 +94,11 @@ fn flatten_and_seed_match_reference() {
             .flat_map(|r| preimage[r * 12..r * 12 + 4].to_vec())
             .collect()
     };
-    assert_eq!(mark.public_input.to_vec(), regs(10), "public_input != x10..x17");
+    assert_eq!(
+        mark.public_input.to_vec(),
+        regs(10),
+        "public_input != x10..x17"
+    );
     assert_eq!(mark.aux_input.to_vec(), regs(18), "aux_input != x18..x25");
     assert_eq!(
         hex::encode(mark.to_bytes()),

@@ -320,10 +320,7 @@ struct QTerm {
 /// heap, so only nonzero gate constants need an explicit seed.
 /// `gate_constant_terms`: the additive constant of each quadratic relation `(gate slot, value)`,
 /// only for gates whose constant is nonzero (it seeds `GATEVAL[slot]` before the term loops add).
-fn emit_layer0_quad_table(
-    terms: &[QTerm],
-    gate_constant_terms: &[(u32, u128)],
-) -> (String, usize) {
+fn emit_layer0_quad_table(terms: &[QTerm], gate_constant_terms: &[(u32, u128)]) -> (String, usize) {
     use std::collections::BTreeMap;
     // canonical coeff -> (byte width, is_negative, stored value). Small +ve: store as-is.
     // Small -ve (canonical near P): store magnitude P-v, negate in-loop. Else: full 16 B.

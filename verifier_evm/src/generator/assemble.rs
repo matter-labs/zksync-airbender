@@ -209,7 +209,11 @@ impl Derived {
             "gkr.sol is written for the output types {EXPECTED_OUTPUT_TYPES:?} (in this order)"
         );
         for (ty, addrs) in circuit.global_output_map.iter() {
-            assert_eq!(addrs.len(), 2, "output type {ty:?} must have exactly 2 lines");
+            assert_eq!(
+                addrs.len(),
+                2,
+                "output type {ty:?} must have exactly 2 lines"
+            );
         }
         let num_outputs = circuit.global_output_map.values().map(Vec::len).sum();
         Self {
@@ -305,7 +309,8 @@ pub fn generate_verifier(
         wc.merged_mw, d.merged_mw
     );
     assert_eq!(
-        wc.setup_merged, 1,
+        wc.setup_merged,
+        1,
         "gkr.sol folds the setup columns into ONE merged claim (NUM_SETUP {} > PACK {})",
         d.num_setup,
         1usize << pack_log2
@@ -351,7 +356,9 @@ pub fn generate_verifier(
     let output_evals = Lit::pow2(output_log2 as u128);
     let num_outputs = n(EXPECTED_OUTPUT_TYPES.len()).mul(&n(2));
     assert_eq!(num_outputs.value as usize, d.num_outputs);
-    let init_bytes = n(d.num_outputs).mul(&n(output_evals.value as usize)).mul(&n(16));
+    let init_bytes = n(d.num_outputs)
+        .mul(&n(output_evals.value as usize))
+        .mul(&n(16));
     let lsb_lines_bytes = n(d.num_outputs).mul(&n(32));
     let dim_reduce_layers = n(d.rounds).sub(&n(output_log2));
     let cap_lit = Lit::pow2(wc.cap_log2 as u128);
@@ -467,10 +474,19 @@ pub fn generate_verifier(
         ("__TEMPLATE_PREIMAGE_SETUP_CAP_OFFSET", setup_cap_offset),
         ("__TEMPLATE_PREIMAGE_MEMORY_CAP_OFFSET", memory_cap_offset),
         ("__TEMPLATE_GKR_INIT_PREIMAGE_BYTES", preimage_bytes.clone()),
-        ("__TEMPLATE_EXTERNAL_POW_BITS", n(external_pow_bits as usize)),
-        ("__TEMPLATE_WHIR_BATCH_POW_BITS", n(whir_batch_pow_bits as usize)),
+        (
+            "__TEMPLATE_EXTERNAL_POW_BITS",
+            n(external_pow_bits as usize),
+        ),
+        (
+            "__TEMPLATE_WHIR_BATCH_POW_BITS",
+            n(whir_batch_pow_bits as usize),
+        ),
         ("__TEMPLATE_EXPECTED_FINAL_PC", n(final_pc as usize)),
-        ("__TEMPLATE_WHIR_NUM_MEMWIT", n(d.mem_width).add(&n(d.wit_width))),
+        (
+            "__TEMPLATE_WHIR_NUM_MEMWIT",
+            n(d.mem_width).add(&n(d.wit_width)),
+        ),
         ("__TEMPLATE_WHIR_NUM_SETUP", n(d.num_setup)),
         ("__TEMPLATE_WHIR_MERGED_MW", merged_mw.clone()),
         ("__TEMPLATE_WHIR_PACK_LOG2", n(pack_log2)),
@@ -550,7 +566,10 @@ pub fn generate_verifier(
         ("__TEMPLATE_WHIR_GCOUNT", gcount.expr().to_string()),
         ("__TEMPLATE_WHIR_RFIN", rfin.expr().to_string()),
         ("__TEMPLATE_WHIR_MERGED_MW", merged_mw.expr().to_string()),
-        ("__TEMPLATE_WHIR_SETUP_MERGED", setup_merged.expr().to_string()),
+        (
+            "__TEMPLATE_WHIR_SETUP_MERGED",
+            setup_merged.expr().to_string(),
+        ),
     ] {
         whir = set_const(&whir, name, value, &mut assigned);
     }
@@ -559,7 +578,12 @@ pub fn generate_verifier(
     assert_eq!(whir_regions[0].0, "SEED_PTR");
     for (name, size) in &whir_regions {
         let addr = heap.region(name, size);
-        whir = set_const(&whir, &format!("__TEMPLATE_WHIR_{name}"), addr, &mut assigned);
+        whir = set_const(
+            &whir,
+            &format!("__TEMPLATE_WHIR_{name}"),
+            addr,
+            &mut assigned,
+        );
     }
 
     // 4. Splice the WHIR half into the GKR contract: one Solidity source, one transaction.
@@ -595,9 +619,7 @@ fn gkr_heap_regions(
     //    transcript_4to1_dual, the 40-byte PoW absorb),
     //  * the preimage copy transcript_init keccaks in place (preimage_bytes),
     //  * circuit.yul's per-layer cache array at SEED+64 (GKR_CIRCUIT_CACHE_PTR, max_cache_slots).
-    let seed_bytes = preimage_bytes
-        .max(96)
-        .max(64 + 32 * stats.max_cache_slots);
+    let seed_bytes = preimage_bytes.max(96).max(64 + 32 * stats.max_cache_slots);
     // Absorb scratch: gkr_init's 32 + INIT_BYTES, the circuit layers' claims-batch absorbs, and
     // emit_gkr_mark's sub-buffers (packing coords at +0, merged claims at +128, whir_fold_pack's
     // PACK-slot chunk buffer at +384 — the fixed sub-offsets the template spells out).
@@ -621,7 +643,7 @@ fn gkr_heap_regions(
     vec![
         ("MEMORY_CHALLS", "MEMORY_CHALLS_PTR", w(7)), // 6 perm-linearization challenges + additive
         ("LOGUP_CHALLS", "LOGUP_CHALLS_PTR", w(2)),   // alpha, additive
-        ("POINT", "POINT_PTR", w(d.rounds)), // the claim point grows to trace_log2 coords
+        ("POINT", "POINT_PTR", w(d.rounds)),          // the claim point grows to trace_log2 coords
         ("INIT_GAS", "GKR_INIT_GAS_PTR", Lit::num(32)),
         ("MAIN_GAS", "GKR_MAIN_GAS_PTR", Lit::num(32)),
         ("SEED", "SEED_PTR", words_for(seed_bytes)),
@@ -631,7 +653,11 @@ fn gkr_heap_regions(
         ("EQ", "GKR_EQ_PTR", w(output_evals.max(d.num_outputs))),
         ("ABS", "GKR_ABS_PTR", abs_bytes),
         ("PERM_PROD", "GKR_PERM_PROD_PTR", w(4)),
-        ("CIRCUIT_CLAIMS", "GKR_CIRCUIT_CLAIMS_PTR", w(stats.max_claims_slots)),
+        (
+            "CIRCUIT_CLAIMS",
+            "GKR_CIRCUIT_CLAIMS_PTR",
+            w(stats.max_claims_slots),
+        ),
         ("GATEVAL", "GKR_GATEVAL_PTR", w(stats.gateval_slots)),
         ("QTABLE", "GKR_QTABLE_PTR", words_for(stats.qtable_bytes)),
     ]

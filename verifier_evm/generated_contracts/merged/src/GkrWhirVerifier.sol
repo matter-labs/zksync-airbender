@@ -523,7 +523,11 @@ contract GkrWhirVerifier {
                 ptr := add(ptr, 64)
             }
             next_ptr := ptr
-            next_claim := claim
+            // Canonicalize: `claim` accumulates as mulmod(...) + raw c0 lane, i.e. anything in
+            // [0, P + 2^128). gkr_dr_final subtracts it from P with wrapping EVM arithmetic, and
+            // an unreduced claim would make that check accept a second relation
+            // (g·eq_scale ≡ claim − 2^256 mod P) — so hand back the residue.
+            next_claim := mod(claim, modulus)
         }
 
 

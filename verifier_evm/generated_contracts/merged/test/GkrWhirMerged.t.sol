@@ -109,6 +109,31 @@ contract GkrWhirMergedTest {
         require(ret.length == 96 && keccak256(ret) == keccak256(expected), "unexpected return data");
     }
 
+    // The first dim-reduce round's [c0:16][c1:16] word sits right after preimage (916 B) + PoW
+    // nonce (8 B) + output evals (10 * 16 * 16 B). A c0 lane lifted by P is a different
+    // 16-byte encoding of the same field element: the transcript absorbs the reduced value and
+    // every use reduces, so the proof must still verify with the same mark (before the
+    // canonicalization fix in sumcheck_rounds the lifted lane made gkr_dr_final's wrapping
+    // subtraction reject the honest claim).
+    uint256 constant FIRST_DIM_REDUCE_ROUND_OFFSET = 916 + 8 + 10 * 16 * 16;
+    uint128 constant P = 0x7000000000000000000000000000001;
+
+    function test_noncanonical_dim_reduce_lane_is_canonicalized() external {
+        TestRegistry registry = new TestRegistry();
+        GkrWhirVerifier v = new GkrWhirVerifier(address(registry));
+        bytes memory cd = _hex("../../debug_data/merged_calldata.hex");
+        uint128 c0 = uint128(uint256(_slice32(cd, FIRST_DIM_REDUCE_ROUND_OFFSET)) >> 128);
+        require(c0 < P, "fixture lane is canonical");
+        uint128 lifted = c0 + P; // < 2P < 2^128
+        for (uint256 b = 0; b < 16; ++b) {
+            cd[FIRST_DIM_REDUCE_ROUND_OFFSET + b] = bytes1(uint8(lifted >> (8 * (15 - b))));
+        }
+        (bool ok, bytes memory ret) = address(v).call(cd);
+        require(ok, "lifted (non-canonical) lane must verify as its residue");
+        bytes memory expected = _hex("../../debug_data/verified_mark.hex");
+        require(keccak256(ret) == keccak256(expected), "mark must be unchanged");
+    }
+
     function test_zero_registry_rejected() external {
         try new GkrWhirVerifier(address(0)) {
             revert("zero registry accepted");
