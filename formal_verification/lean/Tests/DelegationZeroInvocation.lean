@@ -1,6 +1,7 @@
 import Airbender.Review.Circuits.AddSub.CallerTheorems
 import Airbender.Review.Trace.Delegation.CallerTheorems
 import Airbender.Review.Trace.UnifiedReduced.Theorems
+import Airbender.Review.Trace.Padding
 import Airbender.Proofs.Blake2G.Claims
 import Airbender.Proofs.Delegation.Requests
 import Airbender.Proofs.Sail.WordMemoryState
@@ -1645,5 +1646,16 @@ theorem unissued_hash_mixed_cycles [Sail.ArchSem.MemoryPlatform SailRV32.excepti
     effects permutation order history unifiedCode _ terminal
   intro row member
   cases member
+
+theorem unissued_worker_padding_boundary :
+    UnifiedReduced.Caller.Padding.AcceptedLayout unifiedData [] :=
+  UnifiedReduced.Caller.Padding.Proofs.layout_of_accepted unifiedAccepted
+
+theorem unissued_worker_survives_padding :
+    native ∈ (UnifiedReduced.Caller.Padding.active unifiedData).workers.rows ∧
+    (Delegation.Requests.fulfillment native).time = (0, 0) := by
+  refine ⟨UnifiedReduced.Caller.Padding.Proofs.retained_worker (by exact List.mem_singleton_self _)
+    (unifiedAccepted.workerActive native (List.mem_singleton_self _)), ?_⟩
+  decide +kernel
 
 end Tests.DelegationZeroInvocation

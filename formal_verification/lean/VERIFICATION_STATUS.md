@@ -1,8 +1,9 @@
 # Verification status
 
 Current state; update the tables after each completed task.
-Independent finalization work under the current inputs is checked; the hourly
-follow-up is retired at the external blockers recorded in the plan.
+The user-authorized external padding boundary now derives active execution from
+whole masked layouts. Rust/GKR/cryptographic enforcement stays explicit; the hourly
+follow-up remains retired.
 **Checked** means kernel-checked soundness of the imported richer no-cache
 constraints under the interfaces in `Review/`. Standard ISA behavior comes from
 pinned Sail; Clean is the sole constraint model. Logical matching, table
@@ -20,7 +21,7 @@ not add requirements to it.
 
 | Circuit | Checked coverage | Open work / scope boundary |
 | --- | --- | --- |
-| [ADD/SUB](Airbender/Review/Circuits/AddSub/Theorems.lean) | ADD/ADDI/SUB/LUI/AUIPC destination, register and PC effects. Per-circuit `circuitModel` retains public initialization/table assumptions in `Model.lean`; shared history derives input/immediate/PC bounds, actual reads and preprocessing. ADDMOD/SUBMOD/MULMOD/FMAMOD local claims. Independent-stream reads/hints compose in restricted and six-family mixed traces. | Local instruction soundness is checked. [Global inactive-padding obligations](Tests/InactiveRow.lean) remain: execute = 0 alone permits PC 0→4 and discarded result 123. This is a retained global-model limitation, not an open ADD/SUB arithmetic proof. Caller ABI and whole mixed execution are tracked under the unified machine. |
+| [ADD/SUB](Airbender/Review/Circuits/AddSub/Theorems.lean) | ADD/ADDI/SUB/LUI/AUIPC destination, register and PC effects. Per-circuit `circuitModel` retains public initialization/table assumptions in `Model.lean`; shared history derives input/immediate/PC bounds, actual reads and preprocessing. ADDMOD/SUBMOD/MULMOD/FMAMOD local claims. Independent-stream reads/hints compose in restricted and six-family mixed traces. | Local instruction soundness is checked. [Inactive padding](Tests/InactiveRow.lean) still permits raw PC 0→4 and result 123. The [external contribution-mask boundary](Airbender/Review/Helpers/Context/PaddingBoundary/README.md) now derives architectural erasure and existing execution from exact masked closure; Rust/GKR/cryptographic enforcement remains external. ADD/SUB arithmetic is unchanged. Caller ABI and whole mixed execution are tracked under the unified machine. |
 | [Jump/branch/SLT](Airbender/Review/Circuits/JumpBranchSlt/Theorems.lean) | JAL/JALR, all six branches and four comparisons. Per-circuit soundness derives ranges, reads, selectors and preprocessing through shared initialized history. Public models retain initialization/tables, aligned code and explicit canonical verifier closure; branches/jumps require public `misa`, and only JALR requires Machine/MLPE-clear configuration. Native retirement and family/pooled trace composition are checked. | Raw terminal bounds now follow from canonical verifier-boundary closure; cryptographic enforcement and Rust/artifact correspondence remain external. |
 | [Unsigned mul/div](Airbender/Review/Circuits/MulDiv/Theorems.lean) | MUL/MULHU/DIVU/REMU, including zero divisors. Actual public decoding, native histories/bounds, row retirement and arbitrary family traces. Per-circuit soundness derives bounds, reads and selectors from shared history; only public initialization and modeled tables remain in `Model.lean`. | Discarded writes route to ADD/SUB. |
 | [Shift/binop](Airbender/Review/Circuits/ShiftBinop/Theorems.lean) | All standard register/immediate bitwise and shifts plus REV8. Actual public Sail decoding, native clocks/grouped register histories, derived operand/result bounds, row retirement and arbitrary family traces. Per-circuit soundness derives reads, bounds and decoder interfaces from shared initialized history; only public initialization remains in `Model.lean`. | Discarded writes route to ADD/SUB. |
@@ -39,8 +40,8 @@ worker states over one initialized history and raw PC/clock path. COPY→LW/SW,
 both invalid bigint controls and the unissued G all instantiate this conclusion.
 Its final PC is the explicit retired view of the native terminal endpoint; this
 is not a full custom-CSR successful-execution claim. Further closure requires
-call-validity/participation, worker ROM or global-padding inputs, or a scope
-decision. ADD/SUB's local soundness remains checked.
+call-validity/participation or worker ROM inputs, or a scope decision. Padding is
+now conditionally resolved under its explicit contribution boundary. ADD/SUB's local soundness remains checked.
 
 ## Shared work and open tasks
 
@@ -96,7 +97,7 @@ decision. ADD/SUB's local soundness remains checked.
 | Native Sail memory transport | Checked shift/binop native GPR reads/writes and x0 tokens, subword mixed GPR/word-RAM port transfers, shared byte/halfword/word physical, checked and virtual memory transfers, PMA/PMP/MMIO checks and missing-byte failures, GPR/RAM writes, byte reads, frame/code preservation and original LW/SW execution, including Machine translation, access checks, PMP/PMA and failure propagation within the reviewed configuration. |
 | Discarded LW semantics | Explicit deviation: a [checked discarded load](Tests/DiscardedLoad.lean) admits a native NOP that differs from original Sail under sparse memory. `NoDiscardedLoads` restricts the original-Sail claim; the named Airbender profile covers native discarded loads. |
 | Field generalization | Reusable prime-field proofs; minimum moduli and serialized inverse conditions explicit. BabyBear checked. Native 128-bit artifact coefficients and some BLAKE2/bigint constants still need coverage. |
-| Inactive rows | Open global padding/state obligations; selected traces bind active rows. A [checked inactive ADD/SUB row](Tests/InactiveRow.lean) has execute zero, PC 0→4 and result 123 under the retained local constraints. |
+| Inactive rows | Conditionally resolved under the [external contribution-mask boundary](Airbender/Review/Helpers/Context/PaddingBoundary/README.md): full raw constraints plus exact masked state/memory/request matching derive active acceptance and existing execution. Two PC 0→4/result-123 padding rows coexist with a checked dependent ADD execution. No raw stuttering is assumed; Rust/GKR/cryptographic enforcement remains external. |
 | Fixed-table extraction/provenance | Deferred. Current rows are modeled from Rust, without an extracted artifact or proved setup-generator binding. |
 | Richer-to-compiled/cached equivalence | Deferred. Current proof target remains the richer imported representation. |
 | Cryptographic lookup/memory enforcement | Deferred. Logical membership/permutation premises are explicit. Whole-machine prover/verifier soundness is not claimed. |
@@ -107,9 +108,9 @@ decision. ADD/SUB's local soundness remains checked.
 
 | Gate | Current result |
 | --- | --- |
-| Full Lean build | Verification library, all 116 test modules, both executables and the full axiom-audit root pass. |
+| Full Lean build | Verification library, all 117 test modules, both executables and the full axiom-audit root pass. |
 | Full-family import guards | 143 checks. |
-| Full-family axiom audit | 2478 declarations, including 69 with no axioms; only `propext`, `Classical.choice` and `Quot.sound`. |
+| Full-family axiom audit | 2548 declarations, including 73 with no axioms; only `propext`, `Classical.choice` and `Quot.sound`. |
 | Public review surface | All 127 source-declared public Review theorems have explicit axiom roots. Root and directory-guide names/links and context/trace import separation are checked by the [review check](scripts/check_review.py), including the three documented proof-assembly dependencies. |
 | Caller decoder/request-effect gate | All four public caller forms, original decoding, native PC advancement/ranges, timestamp constraints and truncated-CSR rejection checked; an initialized Keccak caller/worker fixture executes actual memory. A concrete decoded bigint caller reaches its actual initialized COPY worker and the selected project COPY reference. Missing, wrong-clock and wrong-family workers are rejected. All supporting declarations are included in the full axiom audit. |
 | Unified caller gate | All four original public CSR forms satisfy imported unified equations, modeled setup and timestamp queries. The local binding derives selectors, full-width request tokens, x0 destination and PC + 4. Truncated CSRs satisfy local equations but are rejected by the public decoder table. A real unified caller/COPY-worker pool checks original public family decoding, exact invocation/write/end clocks 5/7/8, and rejection of missing or wrong-clock workers. One shared physical caller/worker architecture also derives actual reads and bounds, checks COPY→ADDI and rejects a fabricated read. Complete hash references also bind the unified caller-only shared terminal state; empty worker-only boundaries do not affect the derived projection. Issued hash partitioning is checked under public code/protocol coverage; native ROM-shadow transport and full custom-CSR retirement require the documented external bindings. |

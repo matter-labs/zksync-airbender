@@ -63,7 +63,7 @@ when reviewing or strengthening a theorem.
 
 | Boundary | Checked fixture and consequence |
 | --- | --- |
-| Inactive padding | [Inactive ADD/SUB row](Tests/InactiveRow.lean): execute zero admits PC 0→4 and result 123 under the retained local constraints. Padding neutrality needs global state/write obligations; the selected trace model includes active rows. |
+| Inactive padding | [Inactive ADD/SUB row](Tests/InactiveRow.lean): execute zero admits PC 0→4 and result 123. The [external contribution-mask boundary](Airbender/Review/Helpers/Context/PaddingBoundary/README.md) now derives active acceptance/execution by erasing identity factors from exact whole-layout masked state/memory/request matching. Raw padding values need not stutter. Rust/GKR/cryptographic enforcement and artifact correspondence remain external; this is no demonstrated padding bug. |
 | Jump termination | [Noncanonical JAL endpoint](Tests/JumpSailHistory.lean): imported constraints, decoding and native matching admit a field-aliased terminal PC that disagrees with Sail. The [canonical verifier-boundary contract](Airbender/Review/Helpers/Context/VerifierBoundary/README.md) now replaces the direct range premise at public jump/pooled entries. Accepted state matching and typed u32 contribution closure derive full raw terminal equality and bounds. F01 is resolved under that external logical binding; the malformed witness remains valid locally and is excluded by the new contract. Cryptographic enforcement, PC-space projection and Rust/artifact correspondence remain external. |
 | Discarded LW | [Sparse-memory load](Tests/DiscardedLoad.lean): an accepted native NOP can fail original Sail's LW-to-x0 access. The unchanged-Sail claim retains `NoDiscardedLoads`; the named Airbender profile uses the pinned PC-only NOP rule. |
 | Unissued workers | [Zero-clock G worker](Tests/DelegationZeroInvocation.lean): an active worker matches no caller and changes actual x12 from 0 to 1. Issued-worker uniqueness does not exclude this prefix effect. |
@@ -570,8 +570,9 @@ data and the unchanged-Sail discarded-load restriction. Reads, bounds, decoding
 and schedules remain derived. The statement explicitly does not conclude a
 successful full custom-CSR reference sequence. Both invalid bigint controls
 instantiate the shared certificate; the zero-clock G retains its prefix effect.
-No positive initial-clock premise or valid-control assumption is added. Full-call,
-worker ROM and global-padding bindings require external inputs or a scope decision;
+No positive initial-clock premise or valid-control assumption is added. Full-call and
+worker ROM bindings require external inputs or a scope decision; padding is now
+conditionally erased through the user-authorized external contribution boundary;
 these are the stopping boundary for the hourly continuation.
 Native columns retain full address/time/value limbs, including readonly
 clock refreshes. Bounds, latest-write reads and Clean online-consistent histories
