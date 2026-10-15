@@ -251,7 +251,9 @@ fn generator_accepts_trace21_and_rejects_mismatched_config() {
             DEFAULT_REGISTRY_ADDRESS,
         )
     };
-    assert!(std::panic::catch_unwind(|| generate(&common::L1_WRAP_2P22.prover_config())).is_err());
+    let mut mismatched_config = config.clone();
+    mismatched_config.trace_len_log2 -= 1;
+    assert!(std::panic::catch_unwind(|| generate(&mismatched_config)).is_err());
     let out = generate(&config);
     assert_eq!(
         solidity_constant(&out.gkr_sol, "__TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS"),
@@ -282,37 +284,44 @@ fn generator_accepts_trace21_and_rejects_mismatched_config() {
 
 #[test]
 fn descriptor_rejects_aux_drift_and_excess_gkr_pow() {
-    for version in [
-        Version {
-            pack_log2: 3,
-            ..common::L1_WRAP_2P22
-        },
-        Version {
-            external_pow_floor: 19,
-            ..common::L1_WRAP_2P22
-        },
-        Version {
-            gkr_pow_cap: 19,
-            ..common::L1_WRAP_2P22
-        },
-    ] {
-        assert!(std::panic::catch_unwind(|| generate(&version, DEFAULT_REGISTRY_ADDRESS)).is_err());
+    for base in common::available_versions("descriptor aux drift") {
+        for version in [
+            Version {
+                pack_log2: 3,
+                ..*base
+            },
+            Version {
+                external_pow_floor: 19,
+                ..*base
+            },
+            Version {
+                gkr_pow_cap: 19,
+                ..*base
+            },
+        ] {
+            assert!(
+                std::panic::catch_unwind(|| generate(&version, DEFAULT_REGISTRY_ADDRESS)).is_err()
+            );
+        }
     }
 }
 
 #[test]
-#[should_panic(expected = "descriptor exit PC must match proof aux")]
 fn descriptor_rejects_aux_exit_pc_drift() {
-    let version = Version {
-        exit_pc: common::ExitPcSource::Frozen(0),
-        ..common::L1_WRAP_2P22
-    };
-    generate(&version, DEFAULT_REGISTRY_ADDRESS);
+    for base in common::available_versions("descriptor exit PC drift") {
+        let version = Version {
+            exit_pc: common::ExitPcSource::Frozen(0),
+            ..*base
+        };
+        common::assert_panics_with("descriptor exit PC must match proof aux", || {
+            generate(&version, DEFAULT_REGISTRY_ADDRESS)
+        });
+    }
 }
 
 #[test]
 fn generator_rejects_inconsistent_base_oracle_geometry() {
-    let version = common::L1_WRAP_2P22;
+    let version = common::L1_WRAP_2P21;
     let circuit = version.circuit();
     for field in ["lde_factor", "cap_size", "values_per_leaf"] {
         let mut config = version.prover_config();
@@ -328,7 +337,7 @@ fn generator_rejects_inconsistent_base_oracle_geometry() {
                 &config,
                 version.pack_log2,
                 20,
-                11,
+                16,
                 version.final_pc(),
                 DEFAULT_REGISTRY_ADDRESS,
             ))
@@ -340,27 +349,28 @@ fn generator_rejects_inconsistent_base_oracle_geometry() {
 
 #[test]
 fn wrong_final_pc_control_changes_only_the_expected_constant() {
-    let version = &common::L1_WRAP_2P22;
-    let valid = generate(version, DEFAULT_REGISTRY_ADDRESS);
-    let wrong = generate_wrong_final_pc(version, DEFAULT_REGISTRY_ADDRESS);
-    assert_eq!(
-        solidity_constant(&wrong.gkr_sol, "__TEMPLATE_EXPECTED_FINAL_PC"),
-        version.final_pc() ^ 1
-    );
-    let differences: Vec<_> = valid
-        .gkr_sol
-        .lines()
-        .zip(wrong.gkr_sol.lines())
-        .filter(|(a, b)| a != b)
-        .collect();
-    assert_eq!(valid.gkr_sol.lines().count(), wrong.gkr_sol.lines().count());
-    assert_eq!(differences.len(), 1);
-    assert!(differences[0]
-        .0
-        .contains("constant __TEMPLATE_EXPECTED_FINAL_PC"));
-    assert!(differences[0]
-        .1
-        .contains("constant __TEMPLATE_EXPECTED_FINAL_PC"));
-    assert_eq!(valid.whir_sol, wrong.whir_sol);
-    assert_eq!(valid.registry_sol, wrong.registry_sol);
+    for version in common::available_versions("wrong final PC control") {
+        let valid = generate(version, DEFAULT_REGISTRY_ADDRESS);
+        let wrong = generate_wrong_final_pc(version, DEFAULT_REGISTRY_ADDRESS);
+        assert_eq!(
+            solidity_constant(&wrong.gkr_sol, "__TEMPLATE_EXPECTED_FINAL_PC"),
+            version.final_pc() ^ 1
+        );
+        let differences: Vec<_> = valid
+            .gkr_sol
+            .lines()
+            .zip(wrong.gkr_sol.lines())
+            .filter(|(a, b)| a != b)
+            .collect();
+        assert_eq!(valid.gkr_sol.lines().count(), wrong.gkr_sol.lines().count());
+        assert_eq!(differences.len(), 1);
+        assert!(differences[0]
+            .0
+            .contains("constant __TEMPLATE_EXPECTED_FINAL_PC"));
+        assert!(differences[0]
+            .1
+            .contains("constant __TEMPLATE_EXPECTED_FINAL_PC"));
+        assert_eq!(valid.whir_sol, wrong.whir_sol);
+        assert_eq!(valid.registry_sol, wrong.registry_sol);
+    }
 }

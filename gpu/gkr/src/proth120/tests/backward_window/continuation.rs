@@ -41,6 +41,8 @@ fn pr_continuation_mask_dispatch_panics_by_name() {
     }
 
     let programs = super::super::cpu_abi::programs();
+    let folding_steps = programs.runtime_circuit.trace_len.trailing_zeros() as usize;
+    assert_eq!(folding_steps, 21);
     let layer_masks: Vec<u16> = programs
         .main_continuation_window
         .iter()
@@ -52,9 +54,9 @@ fn pr_continuation_mask_dispatch_panics_by_name() {
             u16::from(resolve_pr_main_continuation_kernel(program.shape.bits()).mask),
             program.shape.bits()
         );
-        let sequence = MainContinuationSequencePr::new(program, layer, 22);
-        assert_eq!(sequence.window_count(), 5);
-        assert_eq!(sequence.tail_start_round(), 18);
+        let sequence = MainContinuationSequencePr::new(program, layer, folding_steps);
+        assert_eq!(sequence.window_count(), 4);
+        assert_eq!(sequence.tail_start_round(), 15);
     }
 
     let unsupported = (0u16..=0x1f)
@@ -76,7 +78,7 @@ fn pr_continuation_mask_dispatch_panics_by_name() {
     let mut forged = programs.main_continuation_window[0].clone();
     forged.shape = MainContinuationWindowShape::GROUPED;
     let message = panic_message(catch_unwind(AssertUnwindSafe(|| {
-        MainContinuationSequencePr::new(&forged, 0, 22);
+        MainContinuationSequencePr::new(&forged, 0, folding_steps);
     })));
     assert!(
         message.contains("Proth120 main continuation has no kernel for mask 0x02"),
@@ -92,14 +94,14 @@ fn pr_continuation_mask_dispatch_panics_by_name() {
     );
 
     let program = &programs.main_continuation_window[0];
-    let tiles: Vec<usize> = [3, 6, 9, 12, 15]
+    let tiles: Vec<usize> = [3, 6, 9, 12]
         .into_iter()
         .map(|start| {
-            let (shape, row_tiles) = publication_shape_pr(program, 22, start).unwrap();
+            let (shape, row_tiles) = publication_shape_pr(program, folding_steps, start).unwrap();
             assert_eq!(shape.columns, program.sources.len());
-            assert_eq!(shape.column_elems, 8 << (19 - start));
+            assert_eq!(shape.column_elems, 8 << (18 - start));
             row_tiles
         })
         .collect();
-    assert_eq!(tiles, [2048, 256, 32, 4, 1]);
+    assert_eq!(tiles, [1024, 128, 16, 2]);
 }

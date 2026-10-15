@@ -10,20 +10,19 @@ use gpu_trace::witness::circuit_type::CircuitType;
 
 pub(crate) fn programs() -> GkrProgramsPr {
     let artifact: GKRCircuitArtifact<PR> = serde_json::from_slice(include_bytes!(
-        "../../../../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json"
+        "../../../../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120_2p21.json"
     ))
     .unwrap();
-    GkrProgramsPr::compile(CircuitType::L1Wrap, Arc::new(artifact)).unwrap()
+    GkrProgramsPr::compile(CircuitType::L1Wrap21, Arc::new(artifact)).unwrap()
 }
 
 #[test]
 fn cpu_pr_complete_launch_argument_abi() {
     let programs = programs();
-    let config = prover::gkr::prover_config::example_configs::evm_production_packed_prover_config(
-        SecurityLevel::Sec100,
-    );
-    let layout = ProofLayoutPr::new(&programs, &config);
-    layout.validate_geometry(22, 5);
+    let config =
+        prover::gkr::prover_config::ProofProfile::L1Wrap.prover_config(21, SecurityLevel::Sec100);
+    let layout = ProofLayoutPr::new(&programs, &config, 4);
+    layout.validate_geometry(&programs.runtime_circuit, 4);
     assert_eq!(layout.output_evaluations_range.len(), 160 * 16);
     let layer_zero = layout.backward_layers.last().unwrap();
     assert_eq!(layer_zero.final_step_eval_addresses.len(), 119);

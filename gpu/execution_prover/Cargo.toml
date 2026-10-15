@@ -50,9 +50,11 @@ clap = { workspace = true, optional = true }
 csv = { version = "1", optional = true }
 serde = { workspace = true, features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
+sha3 = { workspace = true, optional = true }
+unified_reduced_machine_proth120 = { workspace = true, optional = true }
 
 [features]
-memory_sweep = ["dep:clap", "dep:csv", "dep:serde", "dep:serde_json"]
+memory_sweep = ["dep:clap", "dep:csv", "dep:serde", "dep:serde_json", "dep:sha3", "dep:unified_reduced_machine_proth120"]
 default = ["deterministic_pow"]
 deterministic_pow = ["gpu_circuit_prover/deterministic_pow"]
 verifiers = ["full_statement_verifier/verifiers"]

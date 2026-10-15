@@ -260,8 +260,7 @@ mod tests {
         for (circuit_type, trace_len, rom) in [
             (CircuitType::L1Wrap21, 1 << 22, REGULAR_ROM),
             (CircuitType::L1Wrap21, 1 << 21, REGULAR_ROM),
-            (CircuitType::L1Wrap, 1 << 22, L1_WRAP_ROM),
-            (CircuitType::L1Wrap, 1 << 21, L1_WRAP_ROM),
+            (CircuitType::L1Wrap21, 1 << 22, L1_WRAP_ROM),
         ] {
             let Err(panic) = std::panic::catch_unwind(|| {
                 CpuCircuitPrecomputations::from_canonical(

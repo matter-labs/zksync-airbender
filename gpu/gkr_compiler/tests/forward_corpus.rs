@@ -47,7 +47,7 @@ const CORPUS: &[(&str, &str)] = &[
 ];
 
 const PROTH120_CORPUS: &[(&str, &str, usize)] = &[(
-    "unified_reduced_machine_layout_gkr_proth120.json",
+    "unified_reduced_machine_layout_gkr_proth120_2p21.json",
     "unified_reduced_machine",
     4,
 )];

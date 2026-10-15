@@ -10,7 +10,7 @@ use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode};
 use prover::definitions::SecurityLevel;
 use prover::gkr::prover::gkr_backend::{accumulate_base_columns_into_scalar, BatchedBaseColumn};
 use prover::gkr::prover::WhirSchedule;
-use prover::gkr::prover_config::example_configs::evm_production_packed_prover_config;
+use prover::gkr::prover_config::ProofProfile;
 use prover::gkr::sumcheck::eq_poly::fill_eq_table_lsb_first_uninit;
 use prover::gkr::whir::{
     evaluate_monomial_form, fold_eq_poly, fold_evaluation_form, fold_monomial_form,
@@ -122,8 +122,10 @@ pub(super) fn small_schedule() -> WhirSchedule {
 
 #[test]
 fn cpu_shape_l1_values() {
-    let schedule = evm_production_packed_prover_config(SecurityLevel::Sec100).whir_schedule;
-    let shape = L1WhirShape::from_schedule(&schedule, 26, 5, 2, L1_WHIR_TILE_BYTES);
+    let schedule = ProofProfile::L1Wrap
+        .prover_config(21, SecurityLevel::Sec100)
+        .whir_schedule;
+    let shape = L1WhirShape::from_schedule(&schedule, 25, 6, 2, L1_WHIR_TILE_BYTES);
     assert_eq!(
         (
             shape.log_message,
@@ -133,21 +135,21 @@ fn cpu_shape_l1_values() {
             shape.total_sumcheck_polys,
             shape.log_final
         ),
-        (26, 5, 3, 48, 22, 4)
+        (25, 6, 3, 44, 21, 4)
     );
     let round_rows = [
-        (2, 17, 30, 24, 29),
-        (4, 12, 30, 20, 27),
-        (4, 8, 27, 16, 27),
-        (4, 6, 25, 12, 27),
-        (4, 5, 21, 8, 27),
+        (2, 14, 30, 23, 29),
+        (4, 11, 27, 19, 27),
+        (4, 8, 20, 15, 27),
+        (4, 6, 20, 11, 27),
+        (3, 5, 17, 8, 28),
         (4, 4, 24, 4, 27),
     ];
     let oracle_rows = [
-        (24, 7, 31, 4, 20, 5, 3, 2, 65535, 24),
-        (20, 11, 31, 4, 16, 5, 3, 6, 4095, 24),
-        (16, 15, 31, 4, 12, 5, 3, 10, 255, 24),
-        (12, 19, 31, 4, 8, 5, 3, 14, 15, 24),
+        (23, 8, 31, 4, 19, 5, 3, 3, 32767, 24),
+        (19, 12, 31, 4, 15, 5, 3, 7, 2047, 24),
+        (15, 16, 31, 4, 11, 5, 3, 11, 127, 24),
+        (11, 20, 31, 3, 8, 5, 3, 15, 15, 25),
         (8, 23, 31, 4, 4, 4, 3, 18, 1, 24),
     ];
     for (r, round) in shape.rounds.iter().enumerate() {
@@ -748,8 +750,10 @@ fn pr_commit_intermediate_n8_production() {
     let ctx = context(4096, Some(31));
     let stream = ctx.get_exec_stream();
     let worker = Worker::new();
-    let schedule = evm_production_packed_prover_config(SecurityLevel::Sec100).whir_schedule;
-    let shape = L1WhirShape::from_schedule(&schedule, 26, 5, 2, L1_WHIR_TILE_BYTES).rounds[4]
+    let schedule = ProofProfile::L1Wrap
+        .prover_config(21, SecurityLevel::Sec100)
+        .whir_schedule;
+    let shape = L1WhirShape::from_schedule(&schedule, 25, 6, 2, L1_WHIR_TILE_BYTES).rounds[4]
         .oracle
         .unwrap();
     assert_eq!(
@@ -921,6 +925,150 @@ fn assert_openings(
             cap[cap_index]
         );
     }
+}
+
+fn assert_l1_2p21_oracle_sampled(round: usize, expected: (u32, u32, u32)) {
+    use super::openings::schedule_open_intermediate;
+
+    let config = ProofProfile::L1Wrap.prover_config(21, SecurityLevel::Sec100);
+    let whir = L1WhirShape::from_schedule(&config.whir_schedule, 25, 6, 2, L1_WHIR_TILE_BYTES);
+    let shape = whir.rounds[round].oracle.expect("committed 2p21 oracle");
+    assert_eq!((shape.log_n, shape.log_lde, shape.log_v), expected);
+    assert_eq!(shape.log_domain, 31);
+
+    assert_eq!(shape.cap_log, 3);
+    assert_eq!(
+        shape.path_len,
+        (shape.log_domain - shape.log_v - shape.cap_log) as usize
+    );
+    assert_eq!(shape.tile_cosets_log2, [3, 7, 11, 15, 18][round]);
+    assert_eq!(shape.skip_bottom, [5, 5, 5, 5, 4][round]);
+    assert_eq!(shape.retained_per_coset, [32767, 2047, 127, 15, 1][round]);
+    let started = Instant::now();
+    let mut rng = TestRng::new(0x0021_7200 + round as u64);
+    let monomials = rng.fields(1 << shape.log_n);
+    let query_log = shape.log_domain - shape.log_v;
+    let query_mask = (1u32 << query_log) - 1;
+    let mut queries = vec![0, query_mask];
+    while queries.len() < 10 {
+        let query = rng.next_u64() as u32 & query_mask;
+        if !queries.contains(&query) {
+            queries.push(query);
+        }
+    }
+    // A WHIR leaf contains the coefficients of f(X) modulo X^V - y,
+    // where V = 2^log_v and y = generator^(query * V). Evaluate the V
+    // interleaved monomial polynomials by Horner, without building an LDE/tree.
+    let generator = fft::domain_generator_for_size::<PR>(1u64 << shape.log_domain);
+    let expected_leaves = std::thread::scope(|scope| {
+        let handles: Vec<_> = queries
+            .iter()
+            .map(|&query| {
+                let monomials = &monomials;
+                scope.spawn(move || {
+                    let y = generator.pow(query << shape.log_v);
+                    let mut values = vec![PR::ZERO; 1 << shape.log_v];
+                    for coefficients in monomials.chunks_exact(values.len()).rev() {
+                        for (value, coefficient) in values.iter_mut().zip(coefficients) {
+                            value.mul_assign(&y).add_assign(coefficient);
+                        }
+                    }
+                    values
+                })
+            })
+            .collect();
+        handles
+            .into_iter()
+            .map(|handle| handle.join().unwrap())
+            .collect::<Vec<_>>()
+    });
+    let cpu_seconds = started.elapsed().as_secs_f64();
+
+    let ctx = context(4096, Some(shape.log_domain));
+    let stream = ctx.get_exec_stream();
+    let monomials_dev = upload(&monomials, stream);
+    let seed_bytes: [u8; 32] = std::array::from_fn(|_| rng.next_u64() as u8);
+    let mut seed_dev = upload(&seed_bytes, stream);
+    let mut cap_dst = upload(&vec![[0u32; 8]; 1 << shape.cap_log], stream);
+    let oracle =
+        schedule_commit_intermediate(&monomials_dev, &shape, &mut cap_dst, &mut seed_dev, &ctx)
+            .unwrap();
+    let queries_dev = upload(&queries, stream);
+    let mut out = opening_output(&shape, queries.len(), &ctx);
+    schedule_open_intermediate(&oracle, &queries_dev, query_log, &mut out, &ctx).unwrap();
+    assert_eq!(oracle.shape, shape);
+    assert_eq!(oracle.monomials.len(), monomials.len());
+    assert_eq!(oracle.roots.len(), 1 << shape.log_lde);
+    assert_eq!(
+        oracle.top_nodes.len(),
+        (1 << shape.log_lde) - (1 << shape.cap_log)
+    );
+    assert_eq!(
+        oracle.retained.len(),
+        (1 << shape.log_lde) * shape.retained_per_coset
+    );
+    let cap = download(&oracle.cap, stream);
+    assert_eq!(cap.len(), 1 << shape.cap_log);
+    assert_eq!(download(&cap_dst, stream), cap);
+    let mut cpu_seed = Keccak256Seed(seed_bytes);
+    <Keccak256Transcript as Transcript<PR, PR>>::commit_u32_with_seed(
+        &mut cpu_seed,
+        &cap_words(&cap),
+    );
+    assert_eq!(download(&seed_dev, stream), cpu_seed.0);
+    let leaves = download(&out.leaves, stream);
+    let paths = download(&out.paths, stream);
+    let indexes = download(&out.tree_indexes, stream);
+    assert_eq!(leaves.len(), queries.len() << shape.log_v);
+    assert_eq!(paths.len(), queries.len() * shape.path_len);
+    assert_eq!(indexes.len(), queries.len());
+    for (i, &query) in queries.iter().enumerate() {
+        let values = &leaves[i << shape.log_v..(i + 1) << shape.log_v];
+        assert_fields(values, &expected_leaves[i]);
+        let coset = query as usize & ((1 << shape.log_lde) - 1);
+        let leaf = query as usize >> shape.log_lde;
+        let tree_index = (fft::bitreverse_index(coset, shape.log_lde) << shape.log_leaves) | leaf;
+        assert_eq!(indexes[i] as usize, tree_index, "query {i} index");
+        let path = &paths[i * shape.path_len..(i + 1) * shape.path_len];
+        let (cap_index, digest) = reconstruct_cap(values, path, indexes[i]);
+        assert_eq!(digest, cap[cap_index], "query {i} cap reconstruction");
+        let mut wrong_path = path.to_vec();
+        wrong_path[0][0] ^= 1;
+        assert_ne!(
+            reconstruct_cap(values, &wrong_path, indexes[i]).1,
+            cap[cap_index]
+        );
+    }
+    eprintln!(
+        "L1_2P21_ORACLE sampled={} shape={expected:?} cpu_horner_s={cpu_seconds:.3} total_s={:.3}",
+        queries.len(),
+        started.elapsed().as_secs_f64()
+    );
+}
+
+#[test]
+fn pr_l1_2p21_oracle_sampled_23_8_4() {
+    assert_l1_2p21_oracle_sampled(0, (23, 8, 4));
+}
+
+#[test]
+fn pr_l1_2p21_oracle_sampled_19_12_4() {
+    assert_l1_2p21_oracle_sampled(1, (19, 12, 4));
+}
+
+#[test]
+fn pr_l1_2p21_oracle_sampled_15_16_4() {
+    assert_l1_2p21_oracle_sampled(2, (15, 16, 4));
+}
+
+#[test]
+fn pr_l1_2p21_oracle_sampled_11_20_3() {
+    assert_l1_2p21_oracle_sampled(3, (11, 20, 3));
+}
+
+#[test]
+fn pr_l1_2p21_oracle_sampled_8_23_4() {
+    assert_l1_2p21_oracle_sampled(4, (8, 23, 4));
 }
 
 fn host_sibling_offset(log_leaves: u32, skip_bottom: u32, level: u32, j: u32) -> usize {
@@ -1249,7 +1397,7 @@ fn l1_reference_dir() -> PathBuf {
         .map(PathBuf::from)
         .unwrap_or_else(|| {
             Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../prover_pipeline/fixtures/l1_reference")
+                .join("../../prover_pipeline/fixtures/l1_reference_2p21")
         })
 }
 
@@ -1297,7 +1445,7 @@ fn pr_transcript_phases_match_reference() {
     let bundle = l1_bundle();
     let proof = &bundle.proof;
     let whir = &proof.whir_proof;
-    let shape = L1WhirShape::from_schedule(&whir.whir_schedule, 26, 5, 2, L1_WHIR_TILE_BYTES);
+    let shape = L1WhirShape::from_schedule(&whir.whir_schedule, 25, 6, 2, L1_WHIR_TILE_BYTES);
     let ctx = context(256, None);
     let stream = ctx.get_exec_stream();
     let initial = proof

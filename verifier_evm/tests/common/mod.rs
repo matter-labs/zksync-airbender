@@ -5,7 +5,7 @@ use cs::gkr_compiler::GKRCircuitArtifact;
 use field::Proth120;
 use prover::definitions::SecurityLevel;
 use prover::gkr::prover::{CommitmentMode, GKRProof};
-use prover::gkr::prover_config::example_configs::{l1_wrap_2p21, l1_wrap_2p22};
+use prover::gkr::prover_config::example_configs::l1_wrap_2p21;
 use prover::gkr::prover_config::ProverConfig;
 use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
 use std::path::{Path, PathBuf};
@@ -39,26 +39,6 @@ pub struct Version {
     pub wrong_final_pc_contract: Option<&'static str>,
 }
 
-pub const L1_WRAP_2P22: Version = Version {
-    name: "2p22",
-    layout: "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
-    config: l1_wrap_2p22::packed_prover_config,
-    pack_log2: l1_wrap_2p22::PACK_LOG2,
-    external_pow_floor: l1_wrap_2p22::EXTERNAL_CHALLENGES_POW_BITS,
-    // This frozen regression version follows its committed proof/aux rather
-    // than W2's rebuilt binary. The generator asserts the same PC in the aux.
-    exit_pc: ExitPcSource::Frozen(2303948),
-    proof: "../prover/unified_circuit_proof_proth120.json",
-    aux: "../prover/unified_circuit_proof_proth120_commitment_mod_aux_data.json",
-    contracts_root: "generated_contracts",
-    data_root: "debug_data",
-    pow_cap: 30,
-    gkr_pow_cap: 25,
-    allow_missing_proof: false,
-    mutation_fields_file: None,
-    wrong_final_pc_contract: None,
-};
-
 pub const L1_WRAP_2P21: Version = Version {
     name: "2p21",
     layout: "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120_2p21.json",
@@ -77,7 +57,7 @@ pub const L1_WRAP_2P21: Version = Version {
     mutation_fields_file: Some("calldata_fields.json"),
     wrong_final_pc_contract: Some("gkr_negative/src/GkrVerifierWrongFinalPc.sol"),
 };
-pub const VERSIONS: &[Version] = &[L1_WRAP_2P22, L1_WRAP_2P21];
+pub const VERSIONS: &[Version] = &[L1_WRAP_2P21];
 
 pub fn available_versions(check: &str) -> Vec<&'static Version> {
     VERSIONS
@@ -239,4 +219,20 @@ pub fn calldata_field_metadata(
         },
         "whir": { "batched_opening": field(&whir.batched_opening, "proth120_be") },
     })
+}
+
+/// Require a named rejection while allowing missing pending proof bundles to skip reads.
+pub fn assert_panics_with<T>(expected: &str, action: impl FnOnce() -> T + std::panic::UnwindSafe) {
+    let payload = std::panic::catch_unwind(action)
+        .err()
+        .expect("expected rejection");
+    let message = payload
+        .downcast_ref::<String>()
+        .map(String::as_str)
+        .or_else(|| payload.downcast_ref::<&str>().copied())
+        .expect("text panic");
+    assert!(
+        message.contains(expected),
+        "expected {expected:?}, got {message:?}"
+    );
 }

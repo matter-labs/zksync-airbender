@@ -341,7 +341,8 @@ fn pr_dr_window_matches_host() {
     let context = dr_context();
     let programs = super::super::cpu_abi::programs();
     let window_programs = compile_dr_window_programs_pr(&programs, 4);
-    assert_eq!(window_programs.len(), 18);
+    let trace_log = prover::gkr::prover_config::example_configs::l1_wrap_2p21::TRACE_LEN_LOG2;
+    assert_eq!(window_programs.len(), trace_log - 4);
     let aliases = &programs.storage_layout.aliases;
     let mut rng = StdRng::seed_from_u64(0xd2_0e1d);
     let by_width = |width: usize| {
@@ -350,7 +351,7 @@ fn pr_dr_window_matches_host() {
             .find(|program| program.folding_steps() == width)
             .unwrap()
     };
-    for (width, entry_round) in [(9, 3), (12, 6), (15, 9), (21, 15)] {
+    for (width, entry_round) in [(9, 3), (12, 6), (15, 9), (trace_log - 1, 15)] {
         check_layer(by_width(width), aliases, entry_round, &mut rng, &context);
     }
 

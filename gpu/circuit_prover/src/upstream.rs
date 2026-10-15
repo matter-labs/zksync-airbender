@@ -31,8 +31,10 @@ pub(crate) use cs::definitions::{
 pub(crate) use cs::gkr_compiler::{GKRCircuitArtifact, OutputType};
 
 // `field` — base field.
-pub(crate) use execution_prover::L1WrapResult;
+pub(crate) use execution_prover::setup::L1WrapSetup;
+pub(crate) use execution_prover::{l1_wrap_packing, L1WrapResult};
 pub(crate) use field::Field;
+pub(crate) use prover::common_constants::rom::RomGeometry;
 
 // `prover` — CPU prover types the GPU prover mirrors / interoperates with.
 pub(crate) use prover::common_constants::TimestampScalar;
@@ -40,10 +42,6 @@ pub(crate) use prover::definitions::{GKRExternalChallenges, SecurityLevel};
 pub(crate) use prover::field::Proth120;
 pub(crate) use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
 pub(crate) use prover::gkr::prover::{GKRProof, WhirSchedule};
-pub(crate) use prover::gkr::prover_config::example_configs::{
-    EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS, EVM_PRODUCTION_PACK_LOG2,
-    EVM_PRODUCTION_TRACE_LEN_LOG2,
-};
 pub(crate) use prover::gkr::prover_config::pow_bits;
 pub(crate) use prover::gkr::prover_config::{
     validate_sumcheck_schedule, ProofProfile, ProverConfig, SumcheckScheduleClass,
@@ -59,7 +57,7 @@ pub(crate) use prover::merkle_trees::DefaultTreeConstructor;
 #[cfg(test)]
 pub(crate) use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
 #[cfg(test)]
-pub(crate) use common_constants::{INITIAL_PC, INITIAL_TIMESTAMP, ROM_WORD_SIZE};
+pub(crate) use common_constants::{INITIAL_PC, INITIAL_TIMESTAMP};
 #[cfg(test)]
 pub(crate) use cs::cs::circuit_trait::Circuit;
 #[cfg(test)]

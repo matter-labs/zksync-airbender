@@ -33,18 +33,14 @@ impl ProofProfile {
                 );
                 example_configs::l1_feeder_config_for_2_22()
             }
-            Self::L1Wrap => match trace_len_log2 {
-                example_configs::l1_wrap_2p22::TRACE_LEN_LOG2 => {
-                    example_configs::l1_wrap_2p22::packed_prover_config(security_level)
-                }
-                example_configs::l1_wrap_2p21::TRACE_LEN_LOG2 => {
-                    example_configs::l1_wrap_2p21::packed_prover_config(security_level)
-                }
-                other => panic!(
-                    "ProofProfile::L1Wrap requires the 2^21 or 2^22 Proth120 unified circuit, \
-                     got 2^{other}"
-                ),
-            },
+            Self::L1Wrap => {
+                assert_eq!(
+                    trace_len_log2,
+                    example_configs::l1_wrap_2p21::TRACE_LEN_LOG2,
+                    "ProofProfile::L1Wrap requires the 2^21 Proth120 unified circuit; the 2^22 wrap is retired"
+                );
+                example_configs::l1_wrap_2p21::packed_prover_config(security_level)
+            }
         }
     }
 }
@@ -672,29 +668,19 @@ mod test {
 
     #[test]
     fn l1_wrap_profile_dispatches_by_trace_length() {
-        for (log, expected) in [
-            (
-                21,
-                example_configs::l1_wrap_2p21::packed_prover_config(SecurityLevel::Sec100),
-            ),
-            (
-                22,
-                example_configs::l1_wrap_2p22::packed_prover_config(SecurityLevel::Sec100),
-            ),
-        ] {
-            let config = ProofProfile::L1Wrap.prover_config(log, SecurityLevel::Sec100);
-            assert_eq!(config.trace_len_log2, log);
-            assert_eq!(config.lde_factor, expected.lde_factor);
-            assert_eq!(config.whir_schedule, expected.whir_schedule);
-        }
+        let expected = example_configs::l1_wrap_2p21::packed_prover_config(SecurityLevel::Sec100);
+        let config = ProofProfile::L1Wrap.prover_config(21, SecurityLevel::Sec100);
+        assert_eq!(config.trace_len_log2, 21);
+        assert_eq!(config.lde_factor, expected.lde_factor);
+        assert_eq!(config.whir_schedule, expected.whir_schedule);
     }
 
     #[test]
     #[should_panic(
-        expected = "ProofProfile::L1Wrap requires the 2^21 or 2^22 Proth120 unified circuit, got 2^23"
+        expected = "ProofProfile::L1Wrap requires the 2^21 Proth120 unified circuit; the 2^22 wrap is retired"
     )]
     fn l1_wrap_profile_rejects_other_trace_lengths() {
-        ProofProfile::L1Wrap.prover_config(23, SecurityLevel::Sec100);
+        ProofProfile::L1Wrap.prover_config(22, SecurityLevel::Sec100);
     }
 
     #[test]

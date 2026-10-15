@@ -43,8 +43,8 @@ impl GkrProgramsPr {
     ) -> Result<Self, String> {
         assert_eq!(
             circuit_type,
-            CircuitType::L1Wrap,
-            "Proth120 GKR supports CircuitType::L1Wrap only"
+            CircuitType::L1Wrap21,
+            "Proth120 GKR supports CircuitType::L1Wrap21 only"
         );
         Self::compile_with_schedule(artifact, SCHEDULE)
     }
@@ -128,5 +128,48 @@ impl GkrProgramsPr {
             storage_layout,
             backward_layers,
         })
+    }
+}
+
+#[cfg(test)]
+mod cpu_tests {
+    use super::*;
+    use crate::backward::main_layer::execution_plan::derive_main_layer_execution_plan;
+    use crate::proth120::backward::dr_tail::cpu_validate_dr_tail_shapes_pr;
+    use crate::proth120::proof_layout::ProofLayoutPr;
+    use crate::upstream::SecurityLevel;
+    use prover::gkr::prover_config::ProofProfile;
+
+    #[test]
+    fn cpu_proth120_programs_compile_2p21() {
+        let artifact = serde_json::from_slice(include_bytes!(
+            "../../../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120_2p21.json"
+        ))
+        .unwrap();
+        let programs = GkrProgramsPr::compile(CircuitType::L1Wrap21, Arc::new(artifact)).unwrap();
+        let config = ProofProfile::L1Wrap.prover_config(21, SecurityLevel::Sec100);
+        let layout = ProofLayoutPr::new(&programs, &config, 4);
+        let main_layers = programs.runtime_circuit.layers.len();
+        let mut main_layer_count = 0;
+        for layer in &layout.backward_layers {
+            if layer.layer_idx < main_layers {
+                let plan = derive_main_layer_execution_plan(layer.sumcheck_num_rounds);
+                assert_eq!(plan.window_count(), 4);
+                assert_eq!(
+                    layer.sumcheck_num_rounds - usize::from(plan.tail_start_round()),
+                    6
+                );
+                main_layer_count += 1;
+            }
+        }
+        assert_eq!(main_layer_count, 5);
+        let dr_folds = cpu_validate_dr_tail_shapes_pr(&programs);
+        assert_eq!(dr_folds.len(), 17);
+        assert_eq!(dr_folds, (4..=20).rev().collect::<Vec<_>>());
+        assert_eq!(layout.pack_log2(), 4);
+        assert_eq!(layout.backward_layers.len(), 22);
+        assert_eq!(layout.memory_claims.len(), 7 * 16);
+        assert_eq!(layout.setup_claims.len(), 16);
+        assert_eq!(layout.evaluation_point.len(), 25 * 16);
     }
 }

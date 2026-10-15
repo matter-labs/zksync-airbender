@@ -34,7 +34,7 @@ fn capture_one_callback_and_returned_owners() {
         };
         assert_eq!(
             fixture.setup.trace_len,
-            CircuitType::L1Wrap.get_domain_size()
+            CircuitType::L1Wrap21.get_domain_size()
         );
         assert_eq!(fixture.tracing_data.len(), CYCLES as usize);
         final_timestamp
@@ -80,12 +80,12 @@ fn wrap_inputs(fixture: L1WrapFixture<'_>) -> WrapInputs {
     )
 }
 
-/// The memory holders serve the 2^22 wrap (regular 4 MiB ROM) and the 2^21
-/// wrap (512 KiB ROM) of a program storing into RAM at 1 MiB, inside the
-/// regular ROM range, in an order that hands each holder to both geometries.
-/// Every run of a binary sees exactly the inputs of its first, fresh-holder
-/// run, and the 2^21 wrap keeps the stored word's teardown value. The store
-/// program exits at its self-jump after four cycles.
+/// The memory holders serve two 2^21 wrap binaries, one of them storing into
+/// RAM at 1 MiB (inside the regular ROM range, outside the 512 KiB wrap ROM),
+/// in an order that hands each holder to both binaries. Every run of a binary
+/// sees exactly the inputs of its first, fresh-holder run, and the store
+/// binary keeps the stored word's teardown value. The store program exits at
+/// its self-jump after four cycles.
 #[test]
 fn mixed_regular_and_wrap_witness_reuse_one_holder() {
     const STORED: u32 = 0xdead_c000;
@@ -101,7 +101,7 @@ fn mixed_regular_and_wrap_witness_reuse_one_holder() {
             ..Default::default()
         });
     let regular = prover.add_binary(
-        ExecutionKind::L1Wrap,
+        ExecutionKind::L1Wrap21,
         MachineType::Reduced,
         PROGRAM.to_vec(),
         PROGRAM.to_vec(),

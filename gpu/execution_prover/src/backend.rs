@@ -10,9 +10,8 @@ use execution_prover::backend::{CircuitPrecomputation, ExecutionBackend};
 use execution_prover::config::ExecutionProverConfiguration;
 use execution_prover::messages::WorkBatch;
 use execution_prover::setup::CanonicalCircuitSetup;
-use execution_prover::{ExecutionKind, ProofProfile};
+use execution_prover::ProofProfile;
 use execution_prover_model::circuit_type::CircuitType;
-use execution_prover_model::MachineType;
 use gpu_core::primitives::field::BF;
 use riscv_transpiler::jit::JitRunnerRam;
 use std::sync::Arc;
@@ -79,15 +78,6 @@ impl ExecutionBackend for GpuBackend {
         self.extra_trace_blocks
     }
 
-    fn admit_binary(
-        &self,
-        execution_kind: ExecutionKind,
-        _machine_type: MachineType,
-        profiles: &[ProofProfile],
-    ) {
-        admit_binary_registration(execution_kind, profiles).unwrap_or_else(|err| panic!("{err}"));
-    }
-
     fn prepare(
         &self,
         circuit: CircuitType,
@@ -103,34 +93,5 @@ impl ExecutionBackend for GpuBackend {
 
     fn submit(&self, batch: WorkBatch<Self::Allocator, Self::Precomputations>) {
         self.manager.send_batch(batch);
-    }
-}
-
-/// The GPU backend does not prove the 2^21 L1 wrap until W5: reject it before
-/// any host setup is built.
-pub(crate) fn admit_binary_registration(
-    execution_kind: ExecutionKind,
-    profiles: &[ProofProfile],
-) -> Result<(), String> {
-    if execution_kind == ExecutionKind::L1Wrap21 {
-        return Err(format!(
-            "the GPU backend does not support the 2^21 L1 wrap (ExecutionKind::L1Wrap21) until W5, got {profiles:?}"
-        ));
-    }
-    Ok(())
-}
-
-#[cfg(test)]
-mod cpu_tests {
-    use super::*;
-
-    #[test]
-    fn cpu_l1_wrap21_is_rejected_before_setup() {
-        let err = admit_binary_registration(ExecutionKind::L1Wrap21, &[ProofProfile::L1Wrap])
-            .unwrap_err();
-        assert!(
-            err.starts_with("the GPU backend does not support the 2^21 L1 wrap"),
-            "{err}"
-        );
     }
 }

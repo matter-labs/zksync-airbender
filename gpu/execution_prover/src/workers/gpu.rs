@@ -63,6 +63,7 @@ pub(crate) fn get_gpu_worker_func(
 
 const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum RequestKind {
     L1WrapProof,
     MemoryCommitment,
@@ -95,6 +96,37 @@ struct RequestState {
     profile: ProofProfile,
     device_peak_bytes: Option<usize>,
     direction: Option<AllocationDirection>,
+    /// The request whose phase one was staged while this request's phase two
+    /// was enqueued: its inputs stay resident in the arena during this proof.
+    follower: Option<RequestIdentity>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct RequestIdentity {
+    circuit_type: CircuitType,
+    profile: ProofProfile,
+    kind: RequestKind,
+}
+
+impl RequestState {
+    fn identity(&self) -> RequestIdentity {
+        RequestIdentity {
+            circuit_type: self.circuit_type,
+            profile: self.profile,
+            kind: self.kind,
+        }
+    }
+}
+
+fn follower_label(follower: Option<RequestIdentity>) -> String {
+    match follower {
+        Some(RequestIdentity {
+            circuit_type,
+            profile,
+            kind,
+        }) => format!("{circuit_type:?}/{profile:?}/{kind:?}"),
+        None => "none".to_string(),
+    }
 }
 
 /// Phase-1 state: H2D transfers scheduled, no GPU job enqueued yet.
@@ -186,8 +218,11 @@ fn gpu_worker(
         mem::swap(&mut current_phase_one, &mut phase_one);
         let direction = [Descending, Ascending][even_odd_index];
         context.set_allocation_mode(AllocationMode::Proof(direction));
+        let follower = current_phase_one.as_ref().map(|p1| p1.state.identity());
         let mut phase_two = if let Some(p1) = phase_one {
-            Some(enqueue_phase_two(device_id, &context, p1, direction)?)
+            Some(enqueue_phase_two(
+                device_id, &context, p1, direction, follower,
+            )?)
         } else {
             None
         };
@@ -249,13 +284,14 @@ fn schedule_phase_one<'a>(
             tracing_data_result: None,
             security_level,
             commitment_mode: CommitmentMode::SeparateMemoryAndWitness,
-            profile: if circuit_type == CircuitType::L1Wrap {
+            profile: if circuit_type == CircuitType::L1Wrap21 {
                 ProofProfile::L1Wrap
             } else {
                 ProofProfile::Standard
             },
             device_peak_bytes: None,
             direction: None,
+            follower: None,
         };
         return Ok(PhaseOne {
             state,
@@ -301,6 +337,7 @@ fn schedule_phase_one<'a>(
                 profile,
                 device_peak_bytes: None,
                 direction: None,
+                follower: None,
             };
             (state, inits_and_teardowns, tracing_data)
         }
@@ -336,6 +373,7 @@ fn schedule_phase_one<'a>(
                 profile,
                 device_peak_bytes: None,
                 direction: None,
+                follower: None,
             };
             (state, inits_and_teardowns, tracing_data)
         }
@@ -540,14 +578,14 @@ fn schedule_l1_wrap_phase_one<'a>(
     } = request;
     assert_eq!(
         circuit_type,
-        CircuitType::L1Wrap,
-        "the GPU backend proves only the 2^22 L1 wrap until W5"
+        CircuitType::L1Wrap21,
+        "the GPU backend proves only the 2^21 L1 wrap (CircuitType::L1Wrap21)"
     );
     crate::memory_policy::admit_l1_wrap(context.get_mem_size());
     let precomputed = Arc::clone(precomputations.l1_wrap());
     let state = RequestState {
         batch_id,
-        circuit_type: CircuitType::L1Wrap,
+        circuit_type,
         sequence_id: 0,
         precomputations,
         kind: RequestKind::L1WrapProof,
@@ -562,10 +600,12 @@ fn schedule_l1_wrap_phase_one<'a>(
         profile: ProofProfile::L1Wrap,
         device_peak_bytes: None,
         direction: None,
+        follower: None,
     };
     let dr_tail_plan =
         preflight_dr_tail_resources_pr(&precomputed.programs, FINAL_TRACE_SIZE_LOG_2, context);
     let mut inputs = L1WrapInputs::new(
+        &precomputed.geometry,
         precomputed.decoder_host.clone(),
         inits_and_teardowns,
         tracing_data,
@@ -585,8 +625,10 @@ fn enqueue_phase_two<'a>(
     context: &ProverContext,
     p1: PhaseOne<'a>,
     direction: AllocationDirection,
+    follower: Option<RequestIdentity>,
 ) -> CudaResult<PhaseTwo<'a>> {
     let PhaseOne { mut state, inputs } = p1;
+    state.follower = follower;
     if let PhaseOneInputs::SetupInitialization = inputs {
         return Ok(PhaseTwo {
             state,
@@ -604,16 +646,17 @@ fn enqueue_phase_two<'a>(
         let job = gpu_circuit_prover::l1_wrap::prove::<A>(
             &precomputed.programs,
             &precomputed.circuit,
+            &precomputed.geometry,
             &precomputed.config,
             state.commitment_mode,
             inputs,
             &dr_tail_plan,
             crate::memory_policy::policy(
-                CircuitType::L1Wrap,
+                state.circuit_type,
                 ProofProfile::L1Wrap,
                 context.get_mem_size(),
             ),
-            crate::memory_policy::partial_trees(CircuitType::L1Wrap, ProofProfile::L1Wrap),
+            crate::memory_policy::partial_trees(state.circuit_type, ProofProfile::L1Wrap),
             context,
         )?;
         state.device_peak_bytes = Some(context.get_used_mem_peak());
@@ -704,6 +747,8 @@ fn enqueue_phase_two<'a>(
 
 fn finish_phase_three<'a>(device_id: i32, p2: PhaseTwo<'a>) -> CudaResult<GpuWorkResult<A>> {
     let PhaseTwo { state, job } = p2;
+    #[cfg(test)]
+    tests::observe(&state);
     let RequestState {
         batch_id,
         circuit_type,
@@ -713,15 +758,17 @@ fn finish_phase_three<'a>(device_id: i32, p2: PhaseTwo<'a>) -> CudaResult<GpuWor
         profile,
         device_peak_bytes,
         direction,
+        follower,
         ..
     } = state;
+    let follower = follower_label(follower);
     match job {
         JobType::MemoryCommitment(job) => {
             let (merkle_tree_caps, commitment_time_ms) = job.finish()?;
             let bytes = device_peak_bytes.expect("memory commitment device peak was recorded");
             let direction = direction.expect("memory commitment allocation direction was recorded");
             debug!(
-                "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced memory commitment for circuit {circuit_type:?}[{sequence_id}] profile {profile:?} direction {direction:?} device peak {bytes} B in {commitment_time_ms:.3} ms"
+                "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced memory commitment for circuit {circuit_type:?}[{sequence_id}] profile {profile:?} direction {direction:?} follower {follower} device peak {bytes} B in {commitment_time_ms:.3} ms"
             );
             Ok(GpuWorkResult::MemoryCommitment(MemoryCommitmentResult {
                 batch_id,
@@ -737,7 +784,7 @@ fn finish_phase_three<'a>(device_id: i32, p2: PhaseTwo<'a>) -> CudaResult<GpuWor
             let bytes = device_peak_bytes.expect("proof device peak was recorded");
             let direction = direction.expect("proof allocation direction was recorded");
             debug!(
-                "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced proof for circuit {circuit_type:?}[{sequence_id}] profile {profile:?} direction {direction:?} device peak {bytes} B in {proof_time_ms:.3} ms"
+                "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced proof for circuit {circuit_type:?}[{sequence_id}] profile {profile:?} direction {direction:?} follower {follower} device peak {bytes} B in {proof_time_ms:.3} ms"
             );
             Ok(GpuWorkResult::Proof(ProofResult {
                 batch_id,
@@ -753,7 +800,7 @@ fn finish_phase_three<'a>(device_id: i32, p2: PhaseTwo<'a>) -> CudaResult<GpuWor
             let bytes = device_peak_bytes.expect("L1 wrap proof device peak was recorded");
             let direction = direction.expect("L1 wrap proof allocation direction was recorded");
             debug!(
-                "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced L1 wrap proof for circuit {circuit_type:?}[{sequence_id}] profile {profile:?} direction {direction:?} device peak {bytes} B"
+                "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced L1 wrap proof for circuit {circuit_type:?}[{sequence_id}] profile {profile:?} direction {direction:?} follower {follower} device peak {bytes} B"
             );
             let inits_and_teardowns =
                 inits_and_teardowns_result.expect("L1 wrap proof returns its inits and teardowns");
@@ -784,3 +831,6 @@ fn finish_phase_three<'a>(device_id: i32, p2: PhaseTwo<'a>) -> CudaResult<GpuWor
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

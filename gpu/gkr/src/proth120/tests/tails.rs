@@ -347,7 +347,10 @@ fn pr_tail_round_update_matches_keccak() {
     let plan = preflight_dr_tail_resources_pr(&programs, 4, &context);
     plan.validate_before_enqueue(&programs, 4, &context);
     println!("M6_DR_TAIL_ADMISSION {}", plan.admission_record());
-    assert_eq!(plan.layers().len(), 18);
+    assert_eq!(
+        plan.layers().len(),
+        prover::gkr::prover_config::example_configs::l1_wrap_2p21::TRACE_LEN_LOG2 - 4
+    );
     let rejected = catch_unwind(AssertUnwindSafe(|| {
         plan.validate_before_enqueue(&programs, 5, &context)
     }))

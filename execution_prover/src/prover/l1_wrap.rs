@@ -197,7 +197,7 @@ mod tests {
     fn events() -> Vec<WorkerResult<CpuTraceAllocator>> {
         vec![
             WorkerResult::TracingData(TracingData {
-                circuit_type: CircuitType::L1Wrap,
+                circuit_type: CircuitType::L1Wrap21,
                 sequence_id: 0,
                 tracing_data: TracingDataHost::Unrolled(UnrolledTracingDataHost::Unified(
                     ChunkedTraceHolder { chunks: vec![] },
@@ -205,7 +205,7 @@ mod tests {
                 participating_snapshot_indexes: BTreeSet::from([0, 2]),
             }),
             WorkerResult::InitsAndTeardownsData(InitsAndTeardownsData {
-                circuit_type: CircuitType::L1Wrap,
+                circuit_type: CircuitType::L1Wrap21,
                 sequence_id: 0,
                 inits_and_teardowns: Some(InitsAndTeardownsTraceHost {
                     page_indices: ChunkedTraceHolder { chunks: vec![] },
@@ -229,7 +229,7 @@ mod tests {
 
     #[test]
     fn delayed_out_of_order_replay_is_drained_before_consuming_trace() {
-        let trace = collect_l1_wrap_trace(CircuitType::L1Wrap, events());
+        let trace = collect_l1_wrap_trace(CircuitType::L1Wrap21, events());
         assert_eq!(trace.simulation.final_pc, 42);
         assert_eq!(trace.inits_and_teardowns.top_bits, [0, 1]);
     }
@@ -239,7 +239,7 @@ mod tests {
     fn missing_replay_is_rejected() {
         let mut events = events();
         events.pop();
-        collect_l1_wrap_trace(CircuitType::L1Wrap, events);
+        collect_l1_wrap_trace(CircuitType::L1Wrap21, events);
     }
 
     #[test]
@@ -248,7 +248,7 @@ mod tests {
         let trace = events().remove(0);
         let mut events = events();
         events.push(trace);
-        collect_l1_wrap_trace(CircuitType::L1Wrap, events);
+        collect_l1_wrap_trace(CircuitType::L1Wrap21, events);
     }
 
     #[test]
@@ -257,7 +257,7 @@ mod tests {
         let extra = events().remove(1);
         let mut events = events();
         events.push(extra);
-        collect_l1_wrap_trace(CircuitType::L1Wrap, events);
+        collect_l1_wrap_trace(CircuitType::L1Wrap21, events);
     }
 
     #[test]
@@ -268,7 +268,7 @@ mod tests {
             unreachable!()
         };
         trace.circuit_type = CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression);
-        collect_l1_wrap_trace(CircuitType::L1Wrap, events);
+        collect_l1_wrap_trace(CircuitType::L1Wrap21, events);
     }
 
     fn light_prover() -> ExecutionProver<TestBackend> {
@@ -304,7 +304,7 @@ mod tests {
             &program,
         ));
         let holder = BinaryHolder {
-            execution_kind: ExecutionKind::L1Wrap,
+            execution_kind: ExecutionKind::L1Wrap21,
             profiles: vec![ProofProfile::L1Wrap],
             machine_type: MachineType::Reduced,
             binary_image: Arc::new(program.clone().into_boxed_slice()),
@@ -356,7 +356,7 @@ mod tests {
             );
             assert_eq!(
                 (pack_log2, external_challenges_pow_bits),
-                crate::l1_wrap_packing(CircuitType::L1Wrap)
+                crate::l1_wrap_packing(CircuitType::L1Wrap21)
             );
             assert_eq!(prover.free_allocators_receiver.len(), 8);
         }
@@ -368,7 +368,7 @@ mod tests {
             .collect();
         assert_eq!(
             wraps,
-            vec![(BATCH, CircuitType::L1Wrap, true, ProofProfile::L1Wrap); 2]
+            vec![(BATCH, CircuitType::L1Wrap21, true, ProofProfile::L1Wrap); 2]
         );
     }
 }

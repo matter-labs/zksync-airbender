@@ -227,50 +227,44 @@ fn undeclared_profile_is_rejected() {
     );
 }
 
-/// The same program registered as the 2^22 and the 2^21 L1 wrap: two handles,
-/// two setups, each proof request carrying its own circuit and packing.
+/// A 2^21 L1 wrap registration proves in its own circuit with its own packing.
 #[test]
-fn l1_wrap21_registration_is_distinct() {
-    const WRAP22_BATCH: u64 = 8020;
+fn l1_wrap21_registration_carries_its_circuit_and_packing() {
     const WRAP21_BATCH: u64 = 8021;
     let mut prover = ExecutionProver::<TestBackend>::new();
     let program = vec![0x0001_2083, 0xffdf_f06f];
-    let handles = [ExecutionKind::L1Wrap, ExecutionKind::L1Wrap21].map(|kind| {
-        prover.add_binary(
-            kind,
-            MachineType::Reduced,
-            program.clone(),
-            program.clone(),
-            Some(32),
-            &[crate::ProofProfile::L1Wrap],
-        )
-    });
-    assert_ne!(handles[0], handles[1]);
-    for (batch, handle, circuit_type) in [
-        (WRAP22_BATCH, &handles[0], CircuitType::L1Wrap),
-        (WRAP21_BATCH, &handles[1], CircuitType::L1Wrap21),
-    ] {
-        let result = prover.prove_l1_wrap(batch, handle, QuasiUARTSource::new_with_reads(vec![]));
-        let CommitmentMode::MergedAndPackedMemoryAndWitness {
-            pack_log2,
-            external_challenges_pow_bits,
-            ..
-        } = result.commitment_mode
-        else {
-            panic!("wrong mode")
-        };
-        assert_eq!(
-            (pack_log2, external_challenges_pow_bits),
-            crate::l1_wrap_packing(circuit_type)
-        );
-        let recorded = PROFILES.lock().unwrap();
-        let requests: Vec<_> = recorded
-            .iter()
-            .filter(|(request_batch, ..)| *request_batch == batch)
-            .collect();
-        assert_eq!(requests.len(), 1);
-        assert_eq!(requests[0].1, circuit_type);
-    }
+    let handle = prover.add_binary(
+        ExecutionKind::L1Wrap21,
+        MachineType::Reduced,
+        program.clone(),
+        program,
+        Some(32),
+        &[crate::ProofProfile::L1Wrap],
+    );
+    let result = prover.prove_l1_wrap(
+        WRAP21_BATCH,
+        &handle,
+        QuasiUARTSource::new_with_reads(vec![]),
+    );
+    let CommitmentMode::MergedAndPackedMemoryAndWitness {
+        pack_log2,
+        external_challenges_pow_bits,
+        ..
+    } = result.commitment_mode
+    else {
+        panic!("wrong mode")
+    };
+    assert_eq!(
+        (pack_log2, external_challenges_pow_bits),
+        crate::l1_wrap_packing(CircuitType::L1Wrap21)
+    );
+    let recorded = PROFILES.lock().unwrap();
+    let requests: Vec<_> = recorded
+        .iter()
+        .filter(|(request_batch, ..)| *request_batch == WRAP21_BATCH)
+        .collect();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].1, CircuitType::L1Wrap21);
 }
 
 #[test]
@@ -288,9 +282,7 @@ fn l1_wrap21_rejects_mismatched_profile() {
 }
 
 #[test]
-#[should_panic(
-    expected = "ProofProfile::L1Wrap requires ExecutionKind::L1Wrap or ExecutionKind::L1Wrap21"
-)]
+#[should_panic(expected = "ProofProfile::L1Wrap requires ExecutionKind::L1Wrap21")]
 fn l1_wrap_profile_requires_a_wrap_kind() {
     unified_prover(ExecutionKind::Unified, &[crate::ProofProfile::L1Wrap]);
 }

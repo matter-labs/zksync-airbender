@@ -41,8 +41,8 @@ use gpu_trace::witness::trace_unrolled::{
 use prover::definitions::{GKRExternalChallenges, SecurityLevel};
 use prover::field::Field;
 use prover::gkr::prover::SumcheckIntermediateProofValues;
-use prover::gkr::prover_config::example_configs::{
-    EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS, EVM_PRODUCTION_PACK_LOG2,
+use prover::gkr::prover_config::example_configs::l1_wrap_2p21::{
+    EXTERNAL_CHALLENGES_POW_BITS, PACK_LOG2,
 };
 use prover::gkr::prover_config::pow_bits;
 use serde::Serialize;
@@ -693,7 +693,7 @@ fn run_stages(
         config.sumcheck_explicit_output_size_log_2, 4,
         "M6 stage parity explicit output log"
     );
-    let pack_log2 = EVM_PRODUCTION_PACK_LOG2 as u32;
+    let pack_log2 = PACK_LOG2 as u32;
     let cfg = PackedCommitConfig::from_prover_config(
         &config,
         LOG_ROWS + pack_log2,
@@ -1010,11 +1010,11 @@ fn run_stages(
 
     let preparation = Instant::now();
     let programs = Arc::new(
-        GkrProgramsPr::compile(CircuitType::L1Wrap, Arc::new(circuit.clone()))
+        GkrProgramsPr::compile(CircuitType::L1Wrap21, Arc::new(circuit.clone()))
             .unwrap_or_else(|error| panic!("M6 stage parity program compile: {error}")),
     );
     let dr_tail_plan = preflight_dr_tail_resources_pr(&programs, 4, &context);
-    let layout = Arc::new(ProofLayoutPr::new(&programs, &config));
+    let layout = Arc::new(ProofLayoutPr::new(&programs, &config, 4));
     let witness_layout = &circuit.witness_layout;
     assert_eq!(
         (
@@ -1208,8 +1208,8 @@ pub(super) fn run() {
         matches!(
             bundle.commitment_mode,
             CommitmentMode::MergedAndPackedMemoryAndWitness {
-                pack_log2: EVM_PRODUCTION_PACK_LOG2,
-                external_challenges_pow_bits: EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS,
+                pack_log2: PACK_LOG2,
+                external_challenges_pow_bits: EXTERNAL_CHALLENGES_POW_BITS,
                 ..
             }
         ),

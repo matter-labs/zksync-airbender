@@ -5,15 +5,15 @@
 # proof). The verifier addresses come from OUTSIDE the script — arguments or environment — since
 # they are a property of the deployment (see ./deploy.sh), not of this repository.
 #
-#   ./send_proofs.sh <2p22|2p21> <gkr-address> <whir-address>
-#   GKR_ADDR=0x… WHIR_ADDR=0x… ./send_proofs.sh <2p22|2p21>
+#   ./send_proofs.sh <2p21> <gkr-address> <whir-address>
+#   GKR_ADDR=0x… WHIR_ADDR=0x… ./send_proofs.sh <2p21>
 #
 # Each verifier marks its committed state to the registry whose address is baked into its code;
 # the two marks matching under the registry's rules is the on-chain GKR<->WHIR link.
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 . "$SCRIPT_DIR/version.sh"
-select_version "${1:?usage: send_proofs.sh <2p22|2p21> <gkr-address> <whir-address>}"
+select_version "${1:?usage: send_proofs.sh <2p21> <gkr-address> <whir-address>}"
 shift
 
 # ---- configuration: edit for the target network ------------------------------------------------
@@ -24,7 +24,7 @@ KEY=${KEY:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}
 GKR_ADDR=${1:-${GKR_ADDR:-}}
 WHIR_ADDR=${2:-${WHIR_ADDR:-}}
 if [ -z "$GKR_ADDR" ] || [ -z "$WHIR_ADDR" ]; then
-  echo "usage: $0 <2p22|2p21> <gkr-address> <whir-address>   (or set GKR_ADDR / WHIR_ADDR)" >&2
+  echo "usage: $0 <2p21> <gkr-address> <whir-address>   (or set GKR_ADDR / WHIR_ADDR)" >&2
   exit 1
 fi
 

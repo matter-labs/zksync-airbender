@@ -21,7 +21,6 @@ pub use execution_prover::ProofProfile;
 pub use prover::definitions::{GKRExternalChallenges, SecurityLevel};
 pub use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
 pub use prover::gkr::prover::GKRProof;
-pub use prover::gkr::prover_config::example_configs::EVM_PRODUCTION_PACK_LOG2;
 pub use prover::gkr::prover_config::ProverConfig;
 pub use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
 
@@ -29,3 +28,7 @@ pub use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
 #[cfg(feature = "memory_sweep")]
 pub use setups::unrolled_circuits::inits_and_teardowns_circuit_setup;
 pub use setups::UnrolledCircuitWitnessEvalFn;
+
+// The capacity rows pin the exact layout and ROM used to build wrap programs.
+#[cfg(feature = "memory_sweep")]
+pub use unified_reduced_machine_proth120::l1_wrap_2p21;

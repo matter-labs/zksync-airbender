@@ -47,10 +47,9 @@ fn cpu_merge(input: &[PR], extra: &[PR]) -> Vec<PR> {
 fn claim_map(
     programs: &crate::proth120::programs::GkrProgramsPr,
 ) -> (Vec<GKRAddress>, Vec<PR>, BTreeMap<GKRAddress, PR>) {
-    let config = prover::gkr::prover_config::example_configs::evm_production_packed_prover_config(
-        SecurityLevel::Sec100,
-    );
-    let layout = ProofLayoutPr::new(programs, &config);
+    let config =
+        prover::gkr::prover_config::ProofProfile::L1Wrap.prover_config(21, SecurityLevel::Sec100);
+    let layout = ProofLayoutPr::new(programs, &config, 4);
     let layer = layout
         .backward_layers
         .iter()
@@ -171,24 +170,23 @@ fn pr_gather_base_claims_small() {
 fn pr_packed_merge_transcript_matches_cpu() {
     let context = make_context();
     let programs = programs();
-    let config = prover::gkr::prover_config::example_configs::evm_production_packed_prover_config(
-        SecurityLevel::Sec100,
-    );
-    let layout = Arc::new(ProofLayoutPr::new(&programs, &config));
+    let config =
+        prover::gkr::prover_config::ProofProfile::L1Wrap.prover_config(21, SecurityLevel::Sec100);
+    let layout = Arc::new(ProofLayoutPr::new(&programs, &config, 4));
     let (addresses, values, map) = claim_map(&programs);
     let dense = cpu_dense(&map, 38, 66, 10);
-    let point: Vec<_> = deterministic_columns(0, 22).into_iter().flatten().collect();
+    let point: Vec<_> = deterministic_columns(0, 21).into_iter().flatten().collect();
     let d_claims = upload(&values, &context);
     let d_point = upload(&point, &context);
     let worker = Worker::new_with_num_threads(4);
-    assert_eq!(programs.runtime_circuit.trace_len.trailing_zeros(), 22);
+    assert_eq!(programs.runtime_circuit.trace_len.trailing_zeros(), 21);
     let raw_columns =
         prover::gkr::prover_config::pow_bits::total_base_oracle_columns(&programs.runtime_circuit);
     assert_eq!(raw_columns, 114);
     let cpu_bits = prover::gkr::prover_config::pow_bits::batched_proximity_check_pow_bits::<PR, PR>(
         config.security_level.security_bits(),
-        22 + prover::gkr::prover_config::example_configs::EVM_PRODUCTION_PACK_LOG2,
-        5,
+        21 + prover::gkr::prover_config::example_configs::l1_wrap_2p21::PACK_LOG2,
+        config.lde_factor.trailing_zeros() as usize,
         raw_columns,
     );
     assert_eq!(cpu_bits, 16);
@@ -301,10 +299,10 @@ fn pr_packed_merge_transcript_matches_cpu() {
             );
             let handoff = output.whir_handoff();
             assert_eq!(handoff.claims.len(), 8);
-            assert_eq!(handoff.base_layer_point.len(), 26);
+            assert_eq!(handoff.base_layer_point.len(), 25);
             assert_eq!(handoff.batching_challenge.len(), 1);
             assert_eq!(handoff.seed.len(), 32);
-            println!("M6_PACKED_MERGE bits={bits} nonce={expected_nonce} claim_map=134 dense=114 merged=7+1 point=26 seed_transitions=3");
+            println!("M6_PACKED_MERGE bits={bits} nonce={expected_nonce} claim_map=134 dense=114 merged=7+1 point=25 seed_transitions=3");
         }
     }
 }
@@ -348,8 +346,10 @@ fn schedule_fixture_full(context: &gpu_prover_context::ProverContext) -> Schedul
     };
     let setup = {
         let binary = vec![0u32; artifact.total_tables_size - artifact.offset_for_decoder_table];
-        let driver =
-            prover::gkr::witness_gen::family_circuits::build_unified_table_driver::<PR>(&binary);
+        let driver = prover::gkr::witness_gen::family_circuits::build_unified_table_driver_with_rom::<
+            PR,
+            { prover::common_constants::rom::L1_WRAP_ROM.second_word_bits() },
+        >(&binary);
         let decoder = vec![None; artifact.total_tables_size - artifact.offset_for_decoder_table];
         prover::gkr::prover::setup::GKRSetup::<PR>::construct(&driver, &decoder, rows, &artifact)
     };
@@ -566,14 +566,12 @@ fn schedule_fixture_full(context: &gpu_prover_context::ProverContext) -> Schedul
         &d_decoder,
         DeviceMatrix::new(&raw[(38 + 63) * rows..(38 + 66) * rows], rows),
     );
-    let mut config =
-        prover::gkr::prover_config::example_configs::evm_production_packed_prover_config(
-            crate::upstream::SecurityLevel::Sec100,
-        );
+    let mut config = prover::gkr::prover_config::ProofProfile::L1Wrap
+        .prover_config(21, crate::upstream::SecurityLevel::Sec100);
     config.trace_len_log2 = log_rows as usize;
     let mut proof = crate::proth120::proof_layout::ProofSlabPr::new(
         Arc::new(crate::proth120::proof_layout::ProofLayoutPr::new(
-            &programs, &config,
+            &programs, &config, 4,
         )),
         context,
     )
@@ -587,7 +585,7 @@ fn schedule_fixture_full(context: &gpu_prover_context::ProverContext) -> Schedul
         prover::gkr::prover_config::pow_bits::batched_proximity_check_pow_bits::<PR, PR>(
             config.security_level.security_bits(),
             log_rows as usize
-                + prover::gkr::prover_config::example_configs::EVM_PRODUCTION_PACK_LOG2,
+                + prover::gkr::prover_config::example_configs::l1_wrap_2p21::PACK_LOG2,
             config.whir_schedule.base_lde_factor.trailing_zeros() as usize,
             prover::gkr::prover_config::pow_bits::total_base_oracle_columns(&artifact),
         );
@@ -833,8 +831,12 @@ fn pr_schedule_gkr_small_shape() {
     assert_eq!(
         prover::gkr::prover_config::pow_bits::batched_proximity_check_pow_bits::<PR, PR>(
             SecurityLevel::Sec100.security_bits(),
-            trace_log + prover::gkr::prover_config::example_configs::EVM_PRODUCTION_PACK_LOG2,
-            5,
+            trace_log + prover::gkr::prover_config::example_configs::l1_wrap_2p21::PACK_LOG2,
+            fixture
+                .config
+                .whir_schedule
+                .base_lde_factor
+                .trailing_zeros() as usize,
             prover::gkr::prover_config::pow_bits::total_base_oracle_columns(&artifact)
         ),
         16
@@ -906,7 +908,7 @@ fn pr_schedule_gkr_small_shape() {
         expected.intermediate_transcript_seed
     );
     println!(
-        "M6_FACADE layers={} outputs=160 claims=8 point=26 nonce={} seed={:?}",
+        "M6_FACADE layers={} outputs=160 claims=8 point=25 nonce={} seed={:?}",
         expected.sumcheck_intermediate_values.len(),
         nonce,
         seed.0

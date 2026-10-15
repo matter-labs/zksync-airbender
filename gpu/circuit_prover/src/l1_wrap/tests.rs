@@ -1,9 +1,10 @@
+use super::geometry::cpu_tests::wrap_geometry;
 use super::inputs::ALLOCATOR_BLOCK_BYTES;
 use super::*;
 use crate::proof::memory_policy::presets::l1_feeder;
 use crate::proof::memory_policy::presets::INPUTS_RESERVE_BYTES;
 use crate::upstream::OutputType;
-use crate::upstream::{FinalRegisterValue, SecurityLevel, ROM_WORD_SIZE};
+use crate::upstream::{FinalRegisterValue, GKRCircuitArtifact, SecurityLevel};
 use cs::definitions::GKRAddress;
 use gpu_gkr::proth120::proof_layout::M6ProofFields;
 use gpu_prover_context::ProverContextConfig;
@@ -11,6 +12,9 @@ use gpu_trace::witness::circuit_type::CircuitType;
 use gpu_whir::proth120::L1WhirProof;
 use prover::definitions::GKRExternalChallenges;
 use prover::gkr::prover::{SumcheckIntermediateProofValues, SumcheckRoundCoefficients};
+use prover::gkr::prover_config::example_configs::l1_wrap_2p21::{
+    EXTERNAL_CHALLENGES_POW_BITS, PACK_LOG2,
+};
 use std::alloc::Global;
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
@@ -31,8 +35,8 @@ fn panic_message(f: impl FnOnce()) -> String {
 
 fn production_mode() -> CommitmentMode {
     CommitmentMode::MergedAndPackedMemoryAndWitness {
-        pack_log2: EVM_PRODUCTION_PACK_LOG2,
-        external_challenges_pow_bits: EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS,
+        pack_log2: PACK_LOG2,
+        external_challenges_pow_bits: EXTERNAL_CHALLENGES_POW_BITS,
         register_final_state: [FinalRegisterValue {
             value: 0,
             last_access_timestamp: 0,
@@ -48,35 +52,29 @@ fn cpu_m8_l1_inputs_fit_reserve() {
         ALLOCATOR_BLOCK_BYTES,
         1 << ProverContextConfig::default().allocator_block_log_size
     );
-    let bytes = L1WrapInputs::<'static, Global>::phase_one_capacity_bytes(
-        CircuitType::L1Wrap.get_domain_size(),
-        ROM_WORD_SIZE,
-    );
+    let bytes = L1WrapInputs::<'static, Global>::phase_one_capacity_bytes(CircuitType::L1Wrap21);
     let mib = 1 << 20;
-    assert_eq!(bytes, (224 + 1 + 32 + 64 + 20 + 1) * mib);
+    assert_eq!(bytes, (112 + 1 + 16 + 32 + 3 + 1) * mib);
     assert!(bytes <= INPUTS_RESERVE_BYTES);
 }
 
 #[test]
 fn cpu_m8_l1_preflight() {
     let circuit: GKRCircuitArtifact<Proth120> = serde_json::from_str(include_str!(
-        "../../../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json"
+        "../../../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120_2p21.json"
     ))
     .expect("committed Proth120 layout");
-    let config = crate::config::prover_config(
-        CircuitType::L1Wrap,
-        ProofProfile::L1Wrap,
-        SecurityLevel::Sec100,
-    )
-    .unwrap();
+    let (geometry, config) = wrap_geometry(CircuitType::L1Wrap21);
     assert_eq!(
         L1_WRAP_NTT_LOG_MAX_DOMAIN as usize,
-        config.trace_len_log2
-            + EVM_PRODUCTION_PACK_LOG2
-            + config.lde_factor.trailing_zeros() as usize
+        config.trace_len_log2 + PACK_LOG2 + config.lde_factor.trailing_zeros() as usize
     );
-    assert_eq!(l1_wrap_batching_pow_bits(&config, &circuit), 16);
+    assert_eq!(
+        l1_wrap_batching_pow_bits(&config, &circuit, geometry.pack_log2),
+        16
+    );
     validate_l1_wrap_preconditions(
+        &geometry,
         &config,
         &production_mode(),
         L1_WRAP_POLICY,
@@ -90,12 +88,12 @@ fn cpu_m8_l1_preflight() {
         ..L1_WRAP_POLICY
     };
     let standard = crate::config::prover_config(
-        CircuitType::L1Wrap,
+        CircuitType::L1Wrap21,
         ProofProfile::Standard,
         SecurityLevel::Sec100,
     )
     .unwrap();
-    let mode_message = format!("L1Wrap requires CommitmentMode::MergedAndPackedMemoryAndWitness with pack_log2 {EVM_PRODUCTION_PACK_LOG2} and external_challenges_pow_bits {EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS}");
+    let mode_message = format!("L1Wrap21 requires CommitmentMode::MergedAndPackedMemoryAndWitness with pack_log2 {PACK_LOG2} and external_challenges_pow_bits {EXTERNAL_CHALLENGES_POW_BITS}");
     let mut other_pack = production_mode();
     if let CommitmentMode::MergedAndPackedMemoryAndWitness { pack_log2, .. } = &mut other_pack {
         *pack_log2 -= 1;
@@ -123,7 +121,7 @@ fn cpu_m8_l1_preflight() {
             production_mode(),
             L1_WRAP_POLICY,
             L1_WRAP_NTT_LOG_MAX_DOMAIN,
-            "L1Wrap requires the ProofProfile::L1Wrap prover config".to_string(),
+            "L1Wrap21 requires the ProofProfile::L1Wrap prover config".to_string(),
         ),
         (
             &config,
@@ -152,7 +150,13 @@ fn cpu_m8_l1_preflight() {
     ];
     for (config, mode, policy, log_max_domain, expected) in cases {
         assert_eq!(
-            panic_message(|| validate_l1_wrap_preconditions(config, &mode, policy, log_max_domain)),
+            panic_message(|| validate_l1_wrap_preconditions(
+                &geometry,
+                config,
+                &mode,
+                policy,
+                log_max_domain
+            )),
             expected
         );
     }
@@ -222,7 +226,7 @@ fn sentinel_whir() -> L1WhirProof {
         pow_nonces: vec![0x9988_7766_5544_3322],
         final_monomials: vec![Proth120(106), Proth120(107)],
         whir_schedule: ProofProfile::L1Wrap
-            .prover_config(22, SecurityLevel::Sec100)
+            .prover_config(21, SecurityLevel::Sec100)
             .whir_schedule,
         batching_challenge: Some(Proth120(108)),
         original_evaluation_point: Some(vec![Proth120(109), Proth120(110)]),
