@@ -1274,3 +1274,80 @@ fn pr_production_eq_leaf_parity() {
         assert_eq!(mismatches, 0, "{case}, lv {log_values}");
     }
 }
+
+#[test]
+#[ignore]
+#[cfg(not(no_cuda))]
+fn pr_device_bandwidth_probe() {
+    use super::lde::{naturalize, DitPolicy, TransformPass, TransformPolicy};
+    use era_cudart::event::{elapsed_time, CudaEvent};
+    use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
+    use era_cudart::memory::memory_set_async;
+    use gpu_core::primitives::device_structures::{MutPtrAndStride, PtrAndStride};
+    let ctx = DeviceContext::create(31).unwrap();
+    let stream = CudaStream::create().unwrap();
+    let elements = 1usize << 28;
+    let mut a = DeviceAllocation::<PR>::alloc(elements).unwrap();
+    let mut b = DeviceAllocation::<PR>::alloc(elements).unwrap();
+    unsafe {
+        memory_set_async(a.transmute_mut(), 0x11, &stream).unwrap();
+        memory_set_async(b.transmute_mut(), 0x22, &stream).unwrap();
+    }
+    let (log_n, cols) = (25u32, 7usize);
+    let rows = 1usize << log_n;
+    let start = CudaEvent::create().unwrap();
+    let end = CudaEvent::create().unwrap();
+    let measure = |name: &str, bytes: usize, launch: &mut dyn FnMut()| {
+        launch();
+        for iteration in 0..5 {
+            start.record(&stream).unwrap();
+            launch();
+            end.record(&stream).unwrap();
+            end.synchronize().unwrap();
+            let ms = elapsed_time(&start, &end).unwrap();
+            println!(
+                "{} bandwidth_probe {name} iteration {iteration}: {ms:.3} ms, {:.1} GB/s ({bytes} B R+W)",
+                chrono_like_millis(),
+                bytes as f64 / (ms as f64 * 1e6)
+            );
+        }
+    };
+    let copy_bytes = 2 * elements * size_of::<PR>();
+    measure("d2d_copy_4GiB", copy_bytes, &mut || {
+        memory_copy_async(&mut b, &a, &stream).unwrap();
+    });
+    let matrix_bytes = 2 * cols * rows * size_of::<PR>();
+    measure("naturalize_2^25x7", matrix_bytes, &mut || {
+        naturalize(
+            MutPtrAndStride::new(a.as_mut_ptr(), rows),
+            log_n,
+            cols,
+            MAX_COLUMNS_PER_LAUNCH,
+            &stream,
+        )
+        .unwrap();
+    });
+    let policy = DitPolicy(ctx.descriptor());
+    let function = policy.function(TransformPass::Nonfinal(8));
+    measure("nonfinal8_start0_2^25x7", matrix_bytes, &mut || {
+        let config = CudaLaunchConfig::basic((1, 1u32 << (log_n - 11), cols as u32), 512, &stream);
+        function
+            .launch(
+                &config,
+                &policy.arguments(
+                    PtrAndStride::new(a.as_ptr(), rows),
+                    MutPtrAndStride::new(b.as_mut_ptr(), rows),
+                    log_n,
+                    0,
+                ),
+            )
+            .unwrap();
+    });
+}
+
+fn chrono_like_millis() -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap();
+    format!("{}.{:03}", now.as_secs(), now.subsec_millis())
+}
