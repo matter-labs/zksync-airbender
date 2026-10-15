@@ -183,6 +183,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         top_bits,
         top_bits_host,
         setup_host,
+        coefficient_tables,
     } = inputs;
     let decoder = decoder.expect("L1Wrap requires a decoder table");
     let stream = context.get_exec_stream();
@@ -371,6 +372,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         &mut slab,
         dr_tail_plan,
         None,
+        Some(coefficient_tables),
         &mut callbacks,
         context,
     )?;

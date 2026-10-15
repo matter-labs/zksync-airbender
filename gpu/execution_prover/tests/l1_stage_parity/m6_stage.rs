@@ -1102,6 +1102,7 @@ fn run_stages(
         &mut slab,
         &dr_tail_plan,
         Some(UnsafeMutAccessor::new(&mut sink)),
+        None,
         &mut callbacks,
         &context,
     )

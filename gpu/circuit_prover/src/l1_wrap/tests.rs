@@ -54,7 +54,7 @@ fn cpu_m8_l1_inputs_fit_reserve() {
     );
     let bytes = L1WrapInputs::<'static, Global>::phase_one_capacity_bytes(CircuitType::L1Wrap21);
     let mib = 1 << 20;
-    assert_eq!(bytes, (112 + 1 + 16 + 32 + 3 + 1) * mib);
+    assert_eq!(bytes, (112 + 1 + 16 + 32 + 3 + 1 + 2) * mib);
     assert!(bytes <= INPUTS_RESERVE_BYTES);
 }
 

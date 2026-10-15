@@ -4,6 +4,8 @@ use std::sync::Arc;
 use era_cudart::result::CudaResult;
 use fft::GoodAllocator;
 use gpu_core::primitives::static_host::StaticPinnedBox;
+use gpu_gkr::proth120::backward::PreparedCoefficientTablesPr;
+use gpu_gkr::proth120::programs::GkrProgramsPr;
 use gpu_gkr::setup::L1WrapSetupHost;
 use gpu_prover_context::transfer::Transfer;
 use gpu_prover_context::ProverContext;
@@ -32,6 +34,7 @@ pub struct L1WrapInputs<'a, A: GoodAllocator> {
     pub(crate) top_bits: TopBitsTransfer<'a>,
     pub(crate) top_bits_host: Vec<u32>,
     pub(crate) setup_host: Arc<L1WrapSetupHost>,
+    pub(crate) coefficient_tables: PreparedCoefficientTablesPr,
 }
 
 const fn bytes(count: usize, element_bytes: usize) -> usize {
@@ -46,6 +49,7 @@ const fn bytes(count: usize, element_bytes: usize) -> usize {
 impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
     pub fn new(
         geometry: &L1WrapGeometry,
+        programs: &Arc<GkrProgramsPr>,
         decoder_host: Option<Arc<StaticPinnedBox<ExecutorFamilyDecoderData>>>,
         inits_and_teardowns: InitsAndTeardownsTraceHost<A>,
         tracing_data: UnrolledUnifiedTraceHost<A>,
@@ -76,6 +80,15 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
             context,
         )?;
         let top_bits = TopBitsTransfer::new(&top_bits_host, context)?;
+        let coefficient_tables =
+            PreparedCoefficientTablesPr::new(programs, &top_bits_host, context)?;
+        assert!(
+            coefficient_tables
+                .device_bytes()
+                .iter()
+                .all(|&table| table <= ALLOCATOR_BLOCK_BYTES),
+            "{circuit_type:?} coefficient tables exceed their phase-one reservation"
+        );
         let transfer = Transfer::new()?;
         transfer.record_allocated(context)?;
         Ok(Self {
@@ -86,6 +99,7 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
             top_bits,
             top_bits_host,
             setup_host,
+            coefficient_tables,
         })
     }
 
@@ -98,6 +112,8 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
         self.tracing_data
             .schedule_transfer(&mut self.transfer, context)?;
         self.top_bits
+            .schedule_transfer(&mut self.transfer, context)?;
+        self.coefficient_tables
             .schedule_transfer(&mut self.transfer, context)?;
         self.transfer.record_transferred(context)
     }
@@ -123,6 +139,8 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
             bytes(capacity, size_of::<TimestampScalar>()),
             bytes(decoder_entries, size_of::<ExecutorFamilyDecoderData>()),
             bytes(num_sets, size_of::<u32>()),
+            ALLOCATOR_BLOCK_BYTES,
+            ALLOCATOR_BLOCK_BYTES,
         ];
         let mut total = 0usize;
         let mut index = 0;

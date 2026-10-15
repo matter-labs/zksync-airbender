@@ -9,7 +9,7 @@ use era_cudart::result::CudaResult;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::DeviceAllocation;
-use gpu_core::primitives::static_host::alloc_static_pinned_box_from_slice;
+use gpu_core::primitives::static_host::{alloc_static_pinned_box_from_slice, StaticPinnedBox};
 use gpu_gkr_compiler::{
     CoeffProduct, CoefficientRecipeId, NormalizedCoefficientRecipe, WindowCoefficientPlan,
 };
@@ -474,17 +474,19 @@ pub(crate) struct CoefficientTablesPr {
     layers: Vec<CoefficientLayerRangesPr>,
 }
 
-pub(crate) fn schedule_coefficient_tables_upload_pr(
+type CoefficientSourcesPr = (Arc<StaticPinnedBox<PR>>, Arc<StaticPinnedBox<u32>>);
+
+fn allocate_coefficient_tables_pr(
     host: &CoefficientTablesHostPr,
     context: &ProverContext,
-) -> CudaResult<(CoefficientTablesPr, Callbacks<'static>)> {
+) -> CudaResult<(CoefficientTablesPr, CoefficientSourcesPr)> {
     host.assert_consistent();
     let values_host = host.values();
     let index_host = host.index_words();
     let values_source = Arc::new(alloc_static_pinned_box_from_slice(&values_host)?);
     let index_source = Arc::new(alloc_static_pinned_box_from_slice(&index_host)?);
-    let mut values = context.alloc(values_host.len(), AllocationPlacement::BestFit)?;
-    let mut index = context.alloc(index_host.len(), AllocationPlacement::BestFit)?;
+    let values = context.alloc(values_host.len(), AllocationPlacement::BestFit)?;
+    let index = context.alloc(index_host.len(), AllocationPlacement::BestFit)?;
     if resource_ledger_active() {
         note_device(
             context,
@@ -521,12 +523,6 @@ pub(crate) fn schedule_coefficient_tables_upload_pr(
             None,
         );
     }
-    let mut transfer = Transfer::new()?;
-    transfer.record_allocated(context)?;
-    transfer.schedule(values_source, &mut values, context)?;
-    transfer.schedule(index_source, &mut index, context)?;
-    transfer.record_transferred(context)?;
-    transfer.ensure_transferred(context)?;
     let tables = CoefficientTablesPr {
         values,
         index,
@@ -535,7 +531,94 @@ pub(crate) fn schedule_coefficient_tables_upload_pr(
         immediate_base: host.monomial_coeffs.len() + host.scalars.len(),
         layers: host.layers.clone(),
     };
+    Ok((tables, (values_source, index_source)))
+}
+
+fn schedule_coefficient_tables_copies_pr<'a>(
+    tables: &mut CoefficientTablesPr,
+    (values_source, index_source): CoefficientSourcesPr,
+    transfer: &mut Transfer<'a>,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    transfer.schedule(values_source, &mut tables.values, context)?;
+    transfer.schedule(index_source, &mut tables.index, context)
+}
+
+pub(crate) fn schedule_coefficient_tables_upload_pr(
+    host: &CoefficientTablesHostPr,
+    context: &ProverContext,
+) -> CudaResult<(CoefficientTablesPr, Callbacks<'static>)> {
+    let (mut tables, sources) = allocate_coefficient_tables_pr(host, context)?;
+    let mut transfer = Transfer::new()?;
+    transfer.record_allocated(context)?;
+    schedule_coefficient_tables_copies_pr(&mut tables, sources, &mut transfer, context)?;
+    transfer.record_transferred(context)?;
+    transfer.ensure_transferred(context)?;
     Ok((tables, transfer.into_callbacks()))
+}
+
+/// Coefficient tables built and allocated before `prove()`; the caller's input transfer uploads them.
+pub struct PreparedCoefficientTablesPr {
+    programs: Arc<GkrProgramsPr>,
+    top_bits: Vec<u32>,
+    tables: CoefficientTablesPr,
+    sources: Option<CoefficientSourcesPr>,
+}
+
+impl PreparedCoefficientTablesPr {
+    pub fn new(
+        programs: &Arc<GkrProgramsPr>,
+        top_bits: &[u32],
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
+        let host = CoefficientTablesHostPr::build(programs, top_bits);
+        let (tables, sources) = allocate_coefficient_tables_pr(&host, context)?;
+        Ok(Self {
+            programs: Arc::clone(programs),
+            top_bits: top_bits.to_vec(),
+            tables,
+            sources: Some(sources),
+        })
+    }
+
+    pub fn device_bytes(&self) -> [usize; 2] {
+        [
+            self.tables.values.len() * size_of::<PR>(),
+            self.tables.index.len() * size_of::<u32>(),
+        ]
+    }
+
+    pub fn schedule_transfer<'a>(
+        &mut self,
+        transfer: &mut Transfer<'a>,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        let sources = self
+            .sources
+            .take()
+            .expect("Proth120 coefficient tables are uploaded once");
+        schedule_coefficient_tables_copies_pr(&mut self.tables, sources, transfer, context)
+    }
+
+    pub(crate) fn into_tables(
+        self,
+        programs: &Arc<GkrProgramsPr>,
+        top_bits: &[u32],
+    ) -> CoefficientTablesPr {
+        assert!(
+            self.sources.is_none(),
+            "Proth120 coefficient tables were not uploaded"
+        );
+        assert!(
+            Arc::ptr_eq(&self.programs, programs),
+            "Proth120 coefficient tables were built for other programs"
+        );
+        assert_eq!(
+            self.top_bits, top_bits,
+            "Proth120 coefficient tables were built for other top bits"
+        );
+        self.tables
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
