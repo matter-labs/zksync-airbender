@@ -749,6 +749,7 @@ fn measure<B: GoodAllocator>(
                 context,
                 L1WrapInputs::new(
                     &precomputed.geometry,
+                    &precomputed.programs,
                     precomputed.decoder_host.clone(),
                     source.inits_and_teardowns.clone(),
                     source.tracing_data.clone(),
@@ -1025,6 +1026,7 @@ fn schedule_follower<'a, B: GoodAllocator + 'a>(
                 context,
                 L1WrapInputs::new(
                     &precomputed.geometry,
+                    &precomputed.programs,
                     precomputed.decoder_host.clone(),
                     source.inits_and_teardowns.clone(),
                     source.tracing_data.clone(),
