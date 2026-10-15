@@ -3234,4 +3234,43 @@ theorem hash_segmentation_overlap_rejected :
     ¬ UnifiedReduced.Caller.WindowsOrdered 4 [(4, 228), (8, 232)] := by
   simp [UnifiedReduced.Caller.WindowsOrdered]
 
+theorem copy_then_ram_mixed_cycles [Sail.ArchSem.MemoryPlatform SailRV32.exception] (store : Bool) :
+    UnifiedReduced.Caller.MixedCycleEffects (memoryData store) [memoryEntry store] (memoryBefore store) cells := by
+  have effects := UnifiedReduced.Caller.Proofs.mixed_memory_effects (memoryAccepted store) (memoryInputs store)
+  obtain ⟨events, finalState, permutation, order, history, _, _, terminal⟩ := effects.execution
+  apply UnifiedReduced.Caller.Proofs.mixed_cycle_effects_at (memoryAccepted store) (memoryInputs store)
+    effects permutation order history (memoryCode store) _ terminal
+  intro row member noncaller
+  rcases List.mem_cons.mp member with rfl | member
+  · refine ⟨memoryEntry store, List.mem_singleton_self _, ?_, Airbender.WordMemory.execution (memoryView store), ?_, ?_⟩
+    · cases store <;> decide +kernel
+    · cases store <;> rfl
+    · have domain : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address := by
+        intro address member
+        simp [Tests.DelegationOperationEffects.sharedCells, Tests.BigintMemory.cells] at member
+        rcases member with ⟨i, bound, rfl⟩ | ⟨i, bound, rfl⟩
+        all_goals unfold OrdinaryWordAddress
+        all_goals interval_cases i <;> decide +kernel
+      have words : UnifiedReduced.WordMemory.WordMapping (memoryView store) memoryOutput (memoryAssignment store) := by
+        constructor <;> cases store <;> decide +kernel
+      exact UnifiedReduced.Caller.Proofs.mixed_ram_cycle_at (memoryAccepted store) (memoryInputs store)
+        effects permutation order history (memoryConfiguration store) domain (memoryCode store).ram
+        (input := memoryView store) (output := memoryOutput) (by cases store <;> decide)
+        List.mem_cons_self words ⟨memoryEntry store, List.mem_cons_self,
+          by cases store <;> decide +kernel, by cases store <;> rfl⟩
+  · have same := List.mem_singleton.mp member
+    subst row
+    exact False.elim (noncaller (by cases store <;> exact List.mem_singleton_self _))
+
+theorem invalid_bigint_mixed_cycles [Sail.ArchSem.MemoryPlatform SailRV32.exception] (highControl : Bool) :
+    UnifiedReduced.Caller.MixedCycleEffects (abiData highControl) [] (abiBefore highControl) cells := by
+  have effects := UnifiedReduced.Caller.Proofs.mixed_memory_effects (abiAccepted highControl) (abiInputs highControl)
+  obtain ⟨events, finalState, permutation, order, history, _, _, terminal⟩ := effects.execution
+  apply UnifiedReduced.Caller.Proofs.mixed_cycle_effects_at (abiAccepted highControl) (abiInputs highControl)
+    effects permutation order history (abiCode highControl) _ terminal
+  intro row member noncaller
+  have same := List.mem_singleton.mp member
+  subst row
+  exact False.elim (noncaller (by cases highControl <;> exact List.mem_singleton_self _))
+
 end Tests.UnifiedDelegation

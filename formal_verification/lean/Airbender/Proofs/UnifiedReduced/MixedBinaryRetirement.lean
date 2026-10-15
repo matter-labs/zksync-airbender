@@ -32,19 +32,20 @@ theorem binary_ordinary [Fact p.Prime] (hp : 524288 < p)
   rw [metadata.1]
   cases shift <;> decide
 
-theorem mixed_binary_cycle
+theorem mixed_binary_cycle_at
     {data : RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
     {initial : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program initial ca oa cells)
-    (started : 0 < (timeOfPair data.machine.initial.timestamp).value) (shift : Bool)
+    (effects : MixedMemoryEffects data initial cells)
+    {events : List MemoryAccess} {finalState : State}
+    (permutation : events.Perm (data.mixedSteps.map transferEvent))
+    (order : events.Pairwise (fun a b => b.1 ≤ a.1))
+    (history : SailHistory cells events initial finalState) (shift : Bool)
     {w : Nat → ZMod babyBearModulus} {input : Binary.Input}
     (member : (⟨.machine, w⟩ : Trace.Row babyBearModulus UnifiedFamily) ∈ data.machine.rows)
     (words : Binary.WordMapping input ⟨Control.destination w, Control.finalPC w⟩ w)
     (instruction : ∃ entry ∈ program, decoderQuery w = entry.query ∧
       (if shift then Shift.instruction input else Binary.instruction input) = some entry.instruction) :
-    ∃ events finalState,
-      events.Perm (data.mixedSteps.map transferEvent) ∧
-      SailHistory cells events initial finalState ∧
       RetiresCycle cells events initial finalState (⟨.machine, w⟩ : Trace.Row babyBearModulus UnifiedFamily)
         (ShiftBinop.execution input) := by
   obtain ⟨entry, present, query, encoding⟩ := instruction
@@ -53,8 +54,8 @@ theorem mixed_binary_cycle
   have core := Verification.holds_of_sublist (accepted.constraints _ member)
     (List.sublist_append_left (importedConstraints data.machine.rom) importedConstraintsTimestampLookups)
   have ordinary := binary_ordinary (by decide) shift core fields query encoding
-  obtain ⟨events, finalState, before, after, permutation, history, past, current, future, native, ranges⟩ :=
-    ordinary_cycle_context accepted inputs started member ordinary
+  obtain ⟨before, after, past, current, future, native, ranges⟩ :=
+    ordinary_cycle_context_at accepted inputs effects permutation order history member ordinary
   have rightBound := ranges importedConstraintsMemoryPorts[1]
     (by simp [Trace.Row.ports, CircuitLayout.ports, importedConstraintsMemoryPorts])
   let actualInput : Binary.Input := {input with before := retiredState before (Control.initialPC w).toBitVec}
@@ -76,9 +77,30 @@ theorem mixed_binary_cycle
         inputs.setup normalized rightBound actualWords fields query (by simpa [choice] using actualEncoding) pcRead
   have retired := UnifiedReduced.Proofs.binary_register_retirement (by decide) shift core fields query
     (input := actualInput) actualEncoding 1 native spec
-  refine ⟨events, finalState, permutation, history, before, after, past, current, future, ?_⟩
+  refine ⟨before, after, past, current, future, ?_⟩
   simpa [ShiftBinop.execution, ShiftBinop.instruction, Reference.RiscV.Sail.registerClause, Option.get_some, actualInput, Trace.Row.start, Trace.Row.finish, Trace.Row.columns,
     CircuitLayout.columns, PCState.State.word, rawPair, importedConstraintsTraceColumns,
     Control.initialPC, Control.finalPC] using retired
+
+theorem mixed_binary_cycle
+    {data : RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
+    {initial : State} {ca oa : List (BitVec 32)} {cells : List Cell}
+    (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program initial ca oa cells)
+    (started : 0 < (timeOfPair data.machine.initial.timestamp).value) (shift : Bool)
+    {w : Nat → ZMod babyBearModulus} {input : Binary.Input}
+    (member : (⟨.machine, w⟩ : Trace.Row babyBearModulus UnifiedFamily) ∈ data.machine.rows)
+    (words : Binary.WordMapping input ⟨Control.destination w, Control.finalPC w⟩ w)
+    (instruction : ∃ entry ∈ program, decoderQuery w = entry.query ∧
+      (if shift then Shift.instruction input else Binary.instruction input) = some entry.instruction) :
+    ∃ events finalState,
+      events.Perm (data.mixedSteps.map transferEvent) ∧
+      SailHistory cells events initial finalState ∧
+      RetiresCycle cells events initial finalState (⟨.machine, w⟩ : Trace.Row babyBearModulus UnifiedFamily)
+        (ShiftBinop.execution input) := by
+  have effects := mixed_memory_effects accepted inputs
+  obtain ⟨events, finalState, permutation, order, history, _, _, _⟩ := effects.execution
+  have retired := mixed_binary_cycle_at accepted inputs effects permutation order history shift member words instruction
+  exact (fun _ : 0 < (timeOfPair data.machine.initial.timestamp).value =>
+    ⟨events, finalState, permutation, history, retired⟩) started
 
 end Airbender.UnifiedReduced.Caller.Proofs

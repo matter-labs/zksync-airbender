@@ -1,4 +1,5 @@
 import Airbender.Proofs.UnifiedReduced.MixedComposition
+import Airbender.Proofs.UnifiedReduced.MixedCycleComposition
 import Airbender.Proofs.UnifiedReduced.Composition
 import Airbender.Proofs.UnifiedReduced.MixedMemory
 import Airbender.Proofs.UnifiedReduced.SharedSpans
@@ -1024,5 +1025,25 @@ theorem Caller.segmented_hash_sequence_soundness [Fact p.Prime] (hp : 16777216 â
     (coverage : Caller.ProgramHashCallerCoverage data (first :: rest)) :
     Caller.SegmentedHashSequenceResult data before cells first rest :=
   Caller.Proofs.segmented_hash_sequence hp clockInverse accepted inputs scopes ordered coverage
+
+end Airbender.UnifiedReduced
+
+namespace Airbender.UnifiedReduced
+
+/-- All ordinary retirement, caller observations and worker effects use one
+    initialized history and the complete native PC/clock path. Terminal cells
+    agree in its final retired-PC view. Public configuration, code/data domain,
+    modeled tables and logical matching remain explicit. Callers satisfy the
+    existing observation contract, not full custom-CSR reference execution;
+    zero-clock residuals and invalid bigint controls remain exposed. -/
+theorem Caller.mixed_cycle_soundness
+    [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    {data : Caller.RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
+    {initial : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.MixedMemoryInputs data program initial ca oa cells)
+    (profile : Caller.RetirementProfile data program initial cells) :
+    Caller.MixedCycleEffects data program initial cells :=
+  Caller.Proofs.mixed_cycle_effects accepted inputs profile
 
 end Airbender.UnifiedReduced

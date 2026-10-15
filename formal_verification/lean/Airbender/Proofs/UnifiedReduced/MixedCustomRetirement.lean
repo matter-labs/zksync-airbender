@@ -34,27 +34,29 @@ theorem custom_ordinary [Fact p.Prime] (hp : 524288 < p)
   exact zero_ne_one (disabled.symm.trans selected)
 
 set_option backward.isDefEq.respectTransparency false in
-theorem mixed_custom_cycle
+theorem mixed_custom_cycle_at
     {data : RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
     {initial : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program initial ca oa cells)
-    (started : 0 < (timeOfPair data.machine.initial.timestamp).value)
+    (effects : MixedMemoryEffects data initial cells)
+    {events : List MemoryAccess} {finalState : State}
+    (permutation : events.Perm (data.mixedSteps.map transferEvent))
+    (order : events.Pairwise (fun a b => b.1 ≤ a.1))
+    (history : SailHistory cells events initial finalState)
     {w : Nat → ZMod babyBearModulus}
     (member : (⟨.machine, w⟩ : Trace.Row babyBearModulus UnifiedFamily) ∈ data.machine.rows)
     {entry : UnifiedReduced.ProgramEntry} (present : entry ∈ program)
     (query : decoderQuery w = entry.query) (supported : Custom.clauseFor entry.instruction ≠ none) :
-    ∃ events finalState clause,
+    ∃ clause,
       Custom.clauseFor entry.instruction = some clause ∧
-      events.Perm (data.mixedSteps.map transferEvent) ∧
-      SailHistory cells events initial finalState ∧
       RetiresCycle cells events initial finalState (⟨.machine, w⟩ : Trace.Row babyBearModulus UnifiedFamily) clause := by
   have source := run_program_sources inputs.ordinaryProgram entry present
   have fields := custom_fields_of_clause source.fields supported
   have core := Verification.holds_of_sublist (accepted.constraints _ member)
     (List.sublist_append_left (importedConstraints data.machine.rom) importedConstraintsTimestampLookups)
   have ordinary := custom_ordinary (by decide) core fields query
-  obtain ⟨events, finalState, before, after, permutation, history, past, current, future, native, ranges⟩ :=
-    ordinary_cycle_context accepted inputs started member ordinary
+  obtain ⟨before, after, past, current, future, native, ranges⟩ :=
+    ordinary_cycle_context_at accepted inputs effects permutation order history member ordinary
   have bounds (i : Fin 3) := ranges importedConstraintsMemoryPorts[i]
     (by fin_cases i <;> simp [Trace.Row.ports, CircuitLayout.ports, importedConstraintsMemoryPorts])
   have normalized := retired_state_history native (Control.initialPC w).toBitVec
@@ -69,7 +71,7 @@ theorem mixed_custom_cycle
     have destination : (.Regidx entry.data.rd : SailRV32.regidx) = input.rd := by
       rw [(UnifiedReduced.Proofs.triadd_metadata fields (input := input) encoding).1]
     have retired := UnifiedReduced.Proofs.custom_register_retirement (by decide) core fields query destination 1 native spec
-    refine ⟨events, finalState, TriAdd.execution input, ?_, permutation, history,
+    refine ⟨TriAdd.execution input, ?_,
       before, after, past, current, future, ?_⟩
     · rw [encoding]; rfl
     · simpa [Trace.Row.start, Trace.Row.finish, Trace.Row.columns, CircuitLayout.columns,
@@ -84,10 +86,32 @@ theorem mixed_custom_cycle
     have destination : (.Regidx entry.data.rd : SailRV32.regidx) = input.rd := by
       rw [(UnifiedReduced.Proofs.xorrot_metadata fields (input := input) encoding).1]
     have retired := UnifiedReduced.Proofs.custom_register_retirement (by decide) core fields query destination 1 native spec
-    refine ⟨events, finalState, XorRotate.execution input, ?_, permutation, history,
+    refine ⟨XorRotate.execution input, ?_,
       before, after, past, current, future, ?_⟩
     · rw [encoding]; fin_cases kind <;> rfl
     · simpa [Trace.Row.start, Trace.Row.finish, Trace.Row.columns, CircuitLayout.columns,
         PCState.State.word, rawPair, importedConstraintsTraceColumns, Control.initialPC, Control.finalPC] using retired
+
+set_option backward.isDefEq.respectTransparency false in
+theorem mixed_custom_cycle
+    {data : RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
+    {initial : State} {ca oa : List (BitVec 32)} {cells : List Cell}
+    (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program initial ca oa cells)
+    (started : 0 < (timeOfPair data.machine.initial.timestamp).value)
+    {w : Nat → ZMod babyBearModulus}
+    (member : (⟨.machine, w⟩ : Trace.Row babyBearModulus UnifiedFamily) ∈ data.machine.rows)
+    {entry : UnifiedReduced.ProgramEntry} (present : entry ∈ program)
+    (query : decoderQuery w = entry.query) (supported : Custom.clauseFor entry.instruction ≠ none) :
+    ∃ events finalState clause,
+      Custom.clauseFor entry.instruction = some clause ∧
+      events.Perm (data.mixedSteps.map transferEvent) ∧
+      SailHistory cells events initial finalState ∧
+      RetiresCycle cells events initial finalState (⟨.machine, w⟩ : Trace.Row babyBearModulus UnifiedFamily) clause := by
+  have effects := mixed_memory_effects accepted inputs
+  obtain ⟨events, finalState, permutation, order, history, _, _, _⟩ := effects.execution
+  obtain ⟨clause, selected, retired⟩ :=
+    mixed_custom_cycle_at accepted inputs effects permutation order history member present query supported
+  exact (fun _ : 0 < (timeOfPair data.machine.initial.timestamp).value =>
+    ⟨events, finalState, clause, selected, permutation, history, retired⟩) started
 
 end Airbender.UnifiedReduced.Caller.Proofs

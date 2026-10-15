@@ -558,14 +558,21 @@ The [prepared control window](Airbender/Review/Trace/UnifiedReduced/ControlPrepa
 connects two prepared controls through the same actual intervening machine/worker
 history. Prefix/window matching composes the second boundary; neither state nor
 control is an input. This is preparation/transport, with whole instruction retirement separate.
-[Caller cycles](Airbender/Review/Trace/UnifiedReduced/CallerCycles.lean) now bind original
-public fetch, the full-CSR matched worker family, existing local operation references,
-all actual worker observations and Sail PC retirement at the same boundaries.
-The public physical/code domain, positive machine start and existing worker ABI
-remain explicit; prepared extended-round cycles derive their masks. This establishes
-cycle observations and PC retirement, with full custom-CSR ABI and whole mixed
-execution still separate. Both issued bigint control gaps remain admitted, and
-surplus zero-clock effects remain in the shared prefix.
+[Caller cycles](Airbender/Review/Trace/UnifiedReduced/CallerCycles.lean) bind original
+public fetch, full-CSR worker identity, selected local references, actual port
+observations and Sail PC ticking. [Shared cycle composition](Airbender/Review/Trace/UnifiedReduced/MixedCycles.lean)
+now combines these observations with original ordinary/custom retirement, every
+worker's call states and the complete raw native PC/clock path in one initialized
+history. The same actual final memory agrees with terminal cells in the retired
+terminal-PC view. [RetirementProfile](Airbender/Review/Helpers/UnifiedReduced/RetirementProfile.lean)
+retains public configuration/register initialization, readonly code, tracked-RAM
+data and the unchanged-Sail discarded-load restriction. Reads, bounds, decoding
+and schedules remain derived. The statement explicitly does not conclude a
+successful full custom-CSR reference sequence. Both invalid bigint controls
+instantiate the shared certificate; the zero-clock G retains its prefix effect.
+No positive initial-clock premise or valid-control assumption is added. Full-call,
+worker ROM and global-padding bindings require external inputs or a scope decision;
+these are the stopping boundary for the hourly continuation.
 Native columns retain full address/time/value limbs, including readonly
 clock refreshes. Bounds, latest-write reads and Clean online-consistent histories
 are derived from those relations and public initialization. Retiming introduces
