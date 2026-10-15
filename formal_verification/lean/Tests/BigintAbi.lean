@@ -24,12 +24,12 @@ theorem abiRowsSatisfy (withOpcode : Bool) (high : Nat) :
   all_goals solve
     | decide
     | (apply Verification.range16_contains; norm_num [Expression.eval, Verification.environment, row, Verification.range16, fromElements, Arithmetic.limbBase])
-    | (refine ⟨⟨0, by decide⟩, ?_⟩; norm_num [setup, Bigint.setupTable, Bigint.setupRow, row, Verification.environment, Expression.eval])
-    | (refine ⟨⟨262144, by decide⟩, ?_⟩; norm_num [setup, Bigint.setupTable, Bigint.setupRow, row, Verification.environment, Expression.eval])
-    | (refine ⟨⟨1310720, by decide⟩, ?_⟩; norm_num [setup, Bigint.setupTable, Bigint.setupRow, row, Verification.environment, Expression.eval])
-    | (refine ⟨⟨1312768, by decide⟩, ?_⟩; norm_num [setup, Bigint.setupTable, Bigint.setupRow, row, Verification.environment, Expression.eval])
-    | (refine ⟨⟨1316864, by decide⟩, ?_⟩; norm_num [setup, Bigint.setupTable, Bigint.setupRow, row, Verification.environment, Expression.eval])
-    | (refine ⟨⟨1325056, by decide⟩, ?_⟩; norm_num [setup, Bigint.setupTable, Bigint.setupRow, row, Verification.environment, Expression.eval])
+    | (refine ⟨⟨0, by decide⟩, ?_⟩; norm_num [setup, Bigint.setupTable, Bigint.Proofs.setup_row_characterization, row, Verification.environment, Expression.eval])
+    | (refine ⟨⟨262144, by decide⟩, ?_⟩; norm_num [setup, Bigint.setupTable, Bigint.Proofs.setup_row_characterization, row, Verification.environment, Expression.eval])
+    | (refine ⟨⟨1310720, by decide⟩, ?_⟩; norm_num [setup, Bigint.setupTable, Bigint.Proofs.setup_row_characterization, row, Verification.environment, Expression.eval])
+    | (refine ⟨⟨1312768, by decide⟩, ?_⟩; norm_num [setup, Bigint.setupTable, Bigint.Proofs.setup_row_characterization, row, Verification.environment, Expression.eval])
+    | (refine ⟨⟨1316864, by decide⟩, ?_⟩; norm_num [setup, Bigint.setupTable, Bigint.Proofs.setup_row_characterization, row, Verification.environment, Expression.eval])
+    | (refine ⟨⟨1325056, by decide⟩, ?_⟩; norm_num [setup, Bigint.setupTable, Bigint.Proofs.setup_row_characterization, row, Verification.environment, Expression.eval])
 
 theorem noOpcodeSatisfies (high : Nat) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (row false high))
