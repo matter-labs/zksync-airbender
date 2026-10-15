@@ -92,6 +92,18 @@ separate positive initial-clock premise. The earlier clock-parameter entry remai
 available. The issued bigint invalid-control fixtures still satisfy these
 observations, so a full custom-CSR ABI remains separate.
 
+[Native mixed ROM](NativeMixedROM.lean) now transports the complete accepted
+ordinary/caller/worker memory pool from native ROM shadows to public bytes.
+Public boot data derives physical initialization; imported constraints, original
+decoder queries, full caller requests, worker assignments and raw endpoints are
+preserved. The explicit F04 worker-RAM contract leaves worker transfers unchanged.
+One initialized Sail history then derives actual reads, operation effects and
+terminal public cells. This is conditional memory composition, not full custom-CSR
+retirement or proof that arbitrary native acceptance enforces the RAM restriction.
+The [boot-ROM regression](../../../../Tests/UnifiedROMBoot.lean) and
+[issued COPY→LW/SW regressions](../../../../Tests/UnifiedDelegation.lean) check the
+connection; the existing ROM-shadow counterexample remains accepted in its old scope.
+
 [MixedWindows](MixedWindows.lean) and [WindowProjection](WindowProjection.lean)
 expose actual cut states. [JointHashWindows](JointHashWindows.lean),
 [PreparedHashWindows](PreparedHashWindows.lean) and

@@ -71,8 +71,12 @@ participation, bigint controls, worker ROM and other reviewed defects. Open PRs
 are proposals; inspect their code and validation before crediting a fix. Actual
 bug fixes are authorized separately from the deferred formal-refinement work.
 
-The three whole-execution closure tasks below retain their stated missing
-connections. Independent shared-history composition is checked. Completed transport, cuts,
+Conditional [native mixed-ROM composition](Airbender/Review/Trace/UnifiedReduced/NativeMixedROM.lean)
+is checked: public boot inputs and the explicit F04 RAM-port contract give one
+physical ordinary/caller/worker memory history and terminal public cells.
+Full custom-call retirement still needs the reference connection described below;
+the retained initialization/teardown artifact still lacks local proof input.
+Independent shared-history composition is checked. Completed transport, cuts,
 selected hash-reference composition and control preparation are recorded in
 [Verification status](VERIFICATION_STATUS.md) and the review guides; do not restart
 or repeat them here. Measure progress by closing these tasks or identifying their
@@ -108,12 +112,14 @@ additional preparation variants.
    controls 0 and 65537 still violate the pinned ABI; unissued workers still have
    real prefix effects. Full custom retirement needs an actual binding or an
    explicit reference/scope decision. Another preparation variant cannot close it.
-3. **Native worker ROM and invalid-call binding.** Resolve the relationship between
-   native zero ROM shadows and public bytes, and between accepted caller controls
-   and the pinned custom-reference ABI. Checked counterexamples already show that
-   the missing equalities/validity do not follow from the current inputs. Closing
-   these stronger claims requires justified additional circuit/artifact inputs or
-   an explicit scope decision; further local arithmetic proofs cannot supply them.
+3. **Native worker ROM — conditional composition checked, enforcement open.**
+   Public boot initialization, ordinary ROM interpretation, unchanged RAM-worker
+   transfers and shared logical matching now compose. The F04 RAM-port contract
+   remains explicit; arbitrary native acceptance still admits the ROM-shadow COPY
+   discrepancy. Its implementation finding is not closed. Control/participation
+   contracts likewise allow further conditional proof work on full custom calls;
+   that integration must establish the actual reference transition, not just
+   repeat current worker observations or selected arithmetic effects.
 4. **Remaining global boundaries.** F01 terminal-PC normalization is resolved in
    the logical model under explicit canonical total-verifier boundary closure.
    Cryptographic enforcement and Rust/artifact correspondence remain deferred.

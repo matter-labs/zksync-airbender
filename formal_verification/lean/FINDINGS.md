@@ -736,9 +736,17 @@ is not established for arbitrary native acceptance, and valid controls alone do
 not exclude the COPY fixture.
 
 **Closure needed.** Bind the native worker ports to the RAM-only call ABI or model
-the actual invalid-call behavior, then prove public-byte transport for the admitted
-scope. Ordinary machine ROM transport cannot simply be reused with worker values
-left untouched. The physical-image/RAM-profile claims remain valid.
+the actual invalid-call behavior. Conditional
+[whole mixed-memory transport](Airbender/Review/Trace/UnifiedReduced/NativeMixedROM.lean)
+is now checked under the explicit RAM-port contract: public boot inputs derive the
+physical initialization, ordinary native ROM slots are interpreted using public
+bytes, worker transfers stay unchanged, and accepted shared matching yields one
+Sail history with actual worker operations and terminal public cells. Caller
+queries/requests, worker assignments and raw PC/clock endpoints are preserved.
+The RAM contract is derived in the existing physical tracked-RAM scope; arbitrary
+native acceptance does not establish it. This completes conditional composition
+without fixing the accepted ROM-shadow discrepancy or validating full custom CSR
+retirement. The original counterexample is retained.
 
 ## F05 — Padding erasure resolved under an explicit contribution-mask boundary
 
