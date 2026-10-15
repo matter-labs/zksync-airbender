@@ -29,8 +29,10 @@ two interfaces distinct.
 project the actual [native JSON region](Tables/ControllerData.lean);
 [kernel proofs](../../../Proofs/Blake2G/ImportedController.lean) check all 512 keys,
 seven outputs and discriminator against the reference and the concrete setup rows.
-The generalized [`setup`](Tables/Setup.lean) still accepts arbitrary controllers;
-its XOR regions remain modeled pending their table migration.
+The generalized [`setup`](Tables/Setup.lean) still accepts arbitrary controllers.
+Its five XOR regions now use [actual imported data](Tables/XorData.lean);
+[kernel proofs](../../../Proofs/Blake2G/ImportedXor.lean) recover every key, XOR,
+padding and tag with the previous field bounds.
 [Protocol](Protocol.lean) fixes the complete-span constants.
 
 [Shared worker context](../../Helpers/Delegation/README.md) provides initialized matching.

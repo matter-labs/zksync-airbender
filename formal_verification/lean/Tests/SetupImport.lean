@@ -2,6 +2,8 @@ import Airbender.Import.SetupEmbed
 import Airbender.Review.Circuits.Bigint.Tables.Setup
 import Airbender.Review.Circuits.Blake2G.Tables.ControllerData
 import Airbender.Review.Circuits.Keccak.Tables.ControllerData
+import Airbender.Review.Circuits.Blake2G.Tables.XorData
+import Airbender.Review.Circuits.Blake2Round.Tables.XorData
 
 namespace Tests.SetupImport
 open Airbender Lean
@@ -40,6 +42,24 @@ private def check (condition : Bool) (label : String) : IO Unit :=
   if condition then IO.println s!"PASS {label}"
   else throw (IO.userError s!"FAIL {label}")
 
+private def values (column : Setup.Column) : Array (Option Nat) :=
+  column.blocks.flatMap fun block => (Array.range block.length).map block.get?
+
+private def checkXorRegions (label source : String) (artifact : Setup.Artifact)
+    (data : Fin 5 → Setup.TableData width) (regions : Fin 5 → Setup.Region)
+    (sources : Vector String 5) : IO Unit := do
+  for k in List.finRange 5 do
+    let imported := data k
+    let region := regions k
+    check (sources[k] == source && artifact.tables.contains region &&
+      imported.length == region.length && imported.offset == 0 &&
+      imported.columns.size == artifact.columns.size)
+      s!"{label} XOR region {region.id}: exact source, metadata and physical geometry"
+    check (imported.columns.toArray.zipIdx.all fun (column, index) =>
+      some (values column) == artifact.columns[index]?.map (fun original =>
+        (values original).extract region.offset (region.offset + region.length)))
+      s!"{label} XOR region {region.id}: every key, output, padding and tag equals JSON"
+
 def run : IO Unit := do
   let source ← IO.FS.readFile "artifacts/setup/decoder-smoke.json"
   check (source == importedSourceBytes) "setup source bytes equal embedded artifact"
@@ -73,6 +93,15 @@ def run : IO Unit := do
         controllerSetup.columns[index]?.bind (fun original =>
           original.get? (controllerRegion.offset + row)))
     "every BLAKE2 G controller key, output, padding and tag equals the parsed data"
+  checkXorRegions "BLAKE2 G" controllerSource controllerSetup Blake2G.xorData Blake2G.xorRegion
+    #v[Blake2G.xor8DataSourceBytes, Blake2G.xor3DataSourceBytes,
+      Blake2G.xor4DataSourceBytes, Blake2G.xor7DataSourceBytes, Blake2G.xor9DataSourceBytes]
+  let roundSource ← IO.FS.readFile "artifacts/setup/blake-round.json"
+  let .ok roundSetup := Setup.parse roundSource
+    | throw (IO.userError "extended BLAKE setup artifact failed import")
+  checkXorRegions "extended BLAKE" roundSource roundSetup Blake2Round.xorData Blake2Round.xorRegion
+    #v[Blake2Round.xor8DataSourceBytes, Blake2Round.xor3DataSourceBytes,
+      Blake2Round.xor4DataSourceBytes, Blake2Round.xor7DataSourceBytes, Blake2Round.xor9DataSourceBytes]
   let keccakSource ← IO.FS.readFile "artifacts/setup/keccak.json"
   let .ok keccakSetup := Setup.parse keccakSource
     | throw (IO.userError "Keccak setup artifact failed import")

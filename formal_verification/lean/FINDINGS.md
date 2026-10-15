@@ -225,10 +225,16 @@ likewise project the actual native region: [kernel proofs](Airbender/Proofs/Kecc
 check all 4,096 rows, including the key, six outputs, discriminator and complete
 inactive/fallback domain. Existing control, physical-slot and worker consumers
 use those data with their previous field scopes, interfaces and witnesses.
-Index hints use exported IDs/offsets. This table migration
+The five [G XOR regions](Airbender/Review/Circuits/Blake2G/Tables/XorData.lean) and
+[round XOR regions](Airbender/Review/Circuits/Blake2Round/Tables/XorData.lean) now also
+use their own imported rows. [G proofs](Airbender/Proofs/Blake2G/ImportedXor.lean)
+and [round proofs](Airbender/Proofs/Blake2Round/ImportedXor.lean) recover all 344,384
+fixed rows per artifact, with keys, XOR outputs, padding/tags and native field casts.
+Actual lookup/mixing consumers retain their generic fields and arbitrary controller
+interfaces. Index hints use exported IDs/offsets. This table migration
 does not close F02/F03/F04 implementation findings. All 121 Tests, both
 executables, importer and review gates pass; all old audit roots and axiom-free
-reports are preserved (2,931 roots; 91 axiom-free). Other table contents and
+reports are preserved (2,949 roots; 92 axiom-free). Other table contents and
 program-dependent consumers are still being migrated. This does not close F09's
 general query/authentication/Rust-refinement boundary or AIH-336's pending
 accelerated/full-proof validation. [Reproduction and scope](artifacts/setup/README.md).

@@ -2,6 +2,7 @@ import Airbender.Review.Circuits.Blake2Round.Tables.Setup
 import Airbender.Review.Circuits.Blake2Round.Artifact
 import Airbender.Review.Helpers.Properties
 import Airbender.Proofs.Blake2G.Tables
+import Airbender.Proofs.Blake2Round.ImportedXor
 import Airbender.Proofs.Constraints
 import Mathlib.Tactic.IntervalCases
 
@@ -15,7 +16,8 @@ private theorem padded_row (i : Fin 344384) :
       ⟨i.val, by have size := i.isLt; omega⟩ =
     #v[(setupRow i)[0], (setupRow i)[1], (setupRow i)[2], 0, 0, 0, 0, 0, (setupRow i)[3]] := by
   have size := i.isLt
-  unfold setupRow Blake2G.setupRow
+  simp only [Blake2G.Proofs.setup_row_characterization, setup_row_characterization]
+  unfold Blake2G.referenceSetupRow
   dsimp only
   split_ifs <;> simp [Blake2G.xorRow]
 
@@ -97,7 +99,8 @@ theorem xor_lookup_raw {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
 private theorem row_tag (i : Fin 344384) :
     ∃ kind : Fin 5, (setupRow i)[3] = (#v[4, 17, 18, 19, 20][kind] : Nat) := by
   have size := i.isLt
-  unfold setupRow Blake2G.setupRow
+  simp only [setup_row_characterization]
+  unfold Blake2G.referenceSetupRow
   dsimp only
   split_ifs
   all_goals simp only [Blake2G.xorRow, Vector.getElem_mk, List.getElem_toArray,
