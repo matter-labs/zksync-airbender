@@ -28,3 +28,12 @@ intermediate states and actual initial/final RAM reads.
 [Caller composition](../../Delegation/README.md) and
 [unified windows](../../UnifiedReduced/README.md) retain distinct shared-prefix
 and preparation/chaining scopes. Zero-clock surplus effects remain visible.
+
+[`Call.execution_soundness`](ReferenceCalls.lean) strengthens the worker side to
+a sequence of [complete independent reference micro-calls](../../../Circuits/Blake2G/Call.lean)
+in the actual full Sail states, including each exact write footprint and frame.
+The same initialized history reaches every terminal cell. Existing public span
+mode/count, modeled tables, aligned domain and RAM restriction remain explicit.
+The span derives valid controls and canonical aligned disjoint pointers; no new
+per-row ABI or desired result is assumed. Mixed caller fetch/PC retirement and
+whole worker participation are still composition tasks.

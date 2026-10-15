@@ -1,4 +1,5 @@
 import Airbender.Proofs.Blake2G.Claims
+import Airbender.Review.Trace.Workers.Blake2G.ReferenceCalls
 import Mathlib.Tactic.IntervalCases
 
 namespace Tests.Blake2GMemory
@@ -185,6 +186,37 @@ theorem native_operation_execution : Delegation.MemoryExecution data before cell
     all_goals simp [Cell.Aligned]
   have result := Blake2G.Native.operation_execution (by decide) (by decide) accepted operationInputs aligned
   exact ⟨result.1, result.2 native (by simp [data]) rfl⟩
+
+theorem native_full_reference_call :
+    ∃ events after, events.Perm (data.steps.map transferEvent) ∧
+      SailHistory cells events before after ∧ Blake2G.Call.Executes before after := by
+  obtain ⟨events, after, permutation, _, history, _⟩ := native_operation_execution.1
+  have localPerm : events.Perm (native.memorySteps.map transferEvent) := by
+    simpa [data, Delegation.MemoryData.steps] using permutation
+  have aligned : ∀ cell ∈ cells, cell.Aligned := by
+    intro cell member
+    simp [cells] at member
+    rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+    all_goals simp [Cell.Aligned]
+  have observed := Delegation.Proofs.row_atomic_observations (by decide) accepted
+    interface.publicState.toBoundaryInputs (row := native) (List.mem_singleton_self _) history localPerm aligned
+    (Delegation.Proofs.boundary_readable interface.publicState.toBoundaryInputs)
+  have abi : Blake2G.Call.ABI (Blake2G.Call.Proofs.nativeArguments 0 row).addresses := by
+    refine ⟨rfl, by decide +kernel, ?_, ?_, ?_, ?_⟩
+    all_goals try unfold Arithmetic.Word.Bounded
+    all_goals decide +kernel
+  have reference := Blake2G.Call.Proofs.executes (p := babyBearModulus) (by decide) (by decide)
+    (w := row) (register := 0) core abi (by decide) (by decide)
+    (fun port member => by
+      obtain ⟨i, bound, rfl⟩ := Array.mem_iff_getElem.mp member
+      have short : i < 9 := by exact bound
+      interval_cases i
+      all_goals unfold Arithmetic.Word.Bounded
+      all_goals decide +kernel +revert)
+    history localPerm (fun port member => by
+      obtain ⟨cell, _, code, read, _⟩ := observed port member
+      exact ⟨cell, code, read⟩)
+  exact ⟨events, after, permutation, history, reference⟩
 
 
 private def boundaryRow (column : Nat) : ZMod babyBearModulus :=

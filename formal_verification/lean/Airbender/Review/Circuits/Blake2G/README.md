@@ -32,3 +32,12 @@ two interfaces distinct.
 [Shared worker context](../../Helpers/Delegation/README.md) provides initialized matching.
 [Worker spans](../../Trace/Workers/Blake2G/README.md) own complete work-vector
 execution; caller preparation/chaining and whole mixed retirement remain separate.
+
+[Complete reference micro-calls](Call.lean) now read the actual x10/x11/x12 and
+selected operands, use the existing pure controller/address/G references, and
+execute the exact Sail writes with their full frame. The valid counter range
+is part of the existing successful complete-span protocol.
+[Full-state span execution](../../Trace/Workers/Blake2G/ReferenceCalls.lean)
+derives that counter, pointer ABI and every operand from the accepted initialized
+span; no per-row valid-control, pointer or expected-output premise is added.
+Mixed instruction fetch/PC retirement and global request participation stay separate.

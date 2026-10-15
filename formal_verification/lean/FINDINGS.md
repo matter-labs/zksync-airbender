@@ -1017,6 +1017,10 @@ continues to exclude delegation callers from its successful-instruction registry
 now establishes the complete successful reference state transition and PC advance
 under the temporary F02 command contract. Hash-call reference transitions and
 whole mixed sequencing under the temporary occurrence ledger remain pending.
+The [G worker reference sequence](Airbender/Review/Trace/Workers/Blake2G/ReferenceCalls.lean)
+now fixes every full Sail micro-call state/frame under the existing complete-span
+profile; it adds no per-row control/pointer/result assumption and does not yet
+claim mixed caller PC retirement.
 
 **External closure needed.** Bind accepted caller validity and participation to
 the complete pinned reference, including invalid calls, or make an explicit

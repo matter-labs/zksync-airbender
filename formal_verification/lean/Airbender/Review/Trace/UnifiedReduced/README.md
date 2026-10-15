@@ -593,3 +593,10 @@ validation: native controls 0/65537 still pass the old checks and fail the full
 reference. The COPY→LW/SW regressions use the full reference call and ordinary
 Sail retirement in the same history. Hash-call retirement and complete mixed
 reference sequencing remain the unfinished part of that integration task.
+
+The [G worker reference bridge](../Workers/Blake2G/ReferenceCalls.lean) now supplies
+complete full-state reference micro-call sequences for the existing public G
+spans. It derives controls and the pointer ABI before proving every Sail write
+and frame. Connecting these full calls to mixed caller PC retirement is still
+part of the same unfinished custom-CSR integration; the older complete work-vector
+reference claims remain closed.

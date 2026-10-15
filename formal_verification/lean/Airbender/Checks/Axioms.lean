@@ -1,3 +1,4 @@
+import Airbender.Review.Trace.Workers.Blake2G.ReferenceCalls
 import Airbender.Review.Trace.UnifiedReduced.BigintCalls
 import Airbender.Review.Trace.UnifiedReduced.NativeMixedROM
 import Airbender.Review.Trace.ExternalBoundaries
@@ -3061,3 +3062,34 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Caller.bigint_call_soundness
 #print axioms Tests.UnifiedDelegation.copy_then_ram_full_reference
 #print axioms Tests.UnifiedDelegation.invalid_bigint_full_reference_rejected
+
+-- Complete G reference micro-calls and full-state span execution.
+#print axioms Airbender.Blake2G.Call.Arguments
+#print axioms Airbender.Blake2G.Call.ABI
+#print axioms Airbender.Blake2G.Call.BoundedWords
+#print axioms Airbender.Blake2G.Call.cells
+#print axioms Airbender.Blake2G.Call.reads
+#print axioms Airbender.Blake2G.Call.results
+#print axioms Airbender.Blake2G.Call.writes
+#print axioms Airbender.Blake2G.Call.Executes
+#print axioms Airbender.Blake2G.Call.Retires
+#print axioms Airbender.Blake2G.Call.Proofs.nativeArguments
+#print axioms Airbender.Blake2G.Call.Proofs.indirectIndex
+#print axioms Airbender.Blake2G.Call.Proofs.cell_indirect
+#print axioms Airbender.Blake2G.Call.Proofs.indirect_shape
+#print axioms Airbender.Blake2G.Call.Proofs.cells_projection
+#print axioms Airbender.Blake2G.Call.Proofs.operands_projection
+#print axioms Airbender.Blake2G.Call.Proofs.results_projection
+#print axioms Airbender.Blake2G.Call.Proofs.controller_words
+#print axioms Airbender.Blake2G.Call.Proofs.controller_write
+#print axioms Airbender.Blake2G.Call.Proofs.write_projection
+#print axioms Airbender.Blake2G.Call.Proofs.executes
+#print axioms Airbender.Blake2G.Call.Proofs.scheduled_counter
+#print axioms Airbender.Blake2G.Call.Proofs.abi_in_span
+#print axioms Airbender.Blake2G.Call.Proofs.step_in_span
+#print axioms Airbender.Blake2G.Call.Proofs.reference_call_in_span
+#print axioms Airbender.Blake2G.Call.Proofs.span_reference
+#print axioms Airbender.Delegation.ReferenceCallExecution
+#print axioms Airbender.Delegation.Proofs.grouped_reference
+#print axioms Airbender.Blake2G.Call.execution_soundness
+#print axioms Tests.Blake2GMemory.native_full_reference_call
