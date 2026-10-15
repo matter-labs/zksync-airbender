@@ -8,6 +8,7 @@ import Airbender.Proofs.UnifiedReduced.Claims
 import Airbender.Review.Circuits.UnifiedReduced.Tables.Setup
 
 import Airbender.Review.Trace.UnifiedReduced.NativeMixedROM
+import Airbender.Review.Trace.UnifiedReduced.BigintCalls
 
 namespace Tests.UnifiedDelegation
 open Airbender Trace Arithmetic Reference.RiscV.Sail Reference.Sail
@@ -3297,5 +3298,50 @@ theorem rom_interpretation_keeps_worker_requests (store : Bool) :
     (UnifiedReduced.Caller.NativeROM.view (memoryBefore store) (memoryData store)).workers =
       (memoryData store).workers :=
   ⟨UnifiedReduced.Caller.NativeROM.Proofs.calls _ _, rfl⟩
+
+private theorem copyCommands (store : Bool) : UnifiedReduced.Caller.BigintCommands (memoryData store) := by
+  intro actual present _
+  have same : actual = worker := List.mem_singleton.mp present
+  subst actual
+  refine ⟨⟨6, false⟩, ?_⟩
+  unfold ExternalBoundary.BigintABI.Binding
+  rw [ExternalBoundary.BigintABI.Proofs.input_word]
+  decide +kernel
+
+theorem copy_then_ram_full_reference [Sail.ArchSem.MemoryPlatform SailRV32.exception] (store : Bool) :
+    ∃ events finalState, events.Perm ((memoryData store).mixedSteps.map transferEvent) ∧
+      events.Pairwise (fun a b => b.1 ≤ a.1) ∧ SailHistory cells events (memoryBefore store) finalState ∧
+      UnifiedReduced.Caller.BigintCallCycle (memoryData store) (memoryBefore store) finalState cells events sharedCaller ∧
+      UnifiedReduced.Caller.OrdinaryCycle [memoryEntry store] cells events (memoryBefore store) finalState (memoryRow store) := by
+  obtain ⟨events, finalState, permutation, order, history, _, ordinary, _⟩ :=
+    (copy_then_ram_mixed_cycles store).execution
+  have reference := UnifiedReduced.Caller.bigint_call_soundness (memoryAccepted store) (memoryInputs store)
+    (memoryCode store) (copyCommands store) permutation order history sharedCaller
+    (by cases store <;> exact List.mem_singleton_self _) (by decide +kernel)
+  have noncaller : memoryRow store ∉ (memoryData store).callers := by
+    intro present
+    have selected := of_decide_eq_true (List.mem_filter.mp present).2
+    change memoryAssignment store 18 = 1 at selected
+    cases store <;> norm_num [memoryAssignment, arithmetic] at selected
+  exact ⟨events, finalState, permutation, order, history, reference,
+    ordinary (memoryRow store) List.mem_cons_self noncaller⟩
+
+theorem invalid_bigint_full_reference_rejected (highControl : Bool) (after : State) :
+    ¬ Bigint.Call.Executes (abiBefore highControl) after := by
+  intro execution
+  obtain ⟨control, read, positive, bound⟩ := Bigint.Call.Proofs.executes_control_range execution
+  have actual : (Cell.register 12).read (abiBefore highControl) =
+      .ok (if highControl then 65537 else 0) (abiBefore highControl) := by
+    change run (SailRV32.readReg .x12) _ = _
+    apply read_register
+    simp [abiBefore, wordWriteState]
+  have same := (EStateM.Result.ok.inj (read.symm.trans actual)).1
+  cases highControl
+  · have zero : control = 0 := same
+    rw [zero] at positive
+    exact (Nat.not_lt_zero _) positive
+  · have large : control = 65537 := same
+    rw [large] at bound
+    exact (by decide : ¬ (65537 : BitVec 32).toNat < 256) bound
 
 end Tests.UnifiedDelegation
