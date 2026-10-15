@@ -43,7 +43,7 @@ not a claim that every open PR or every backend has been audited.
 | Case | Classification and evidence | What remains open |
 | --- | --- | --- |
 | [AIH-334](https://linear.app/matterlabs/issue/AIH-334) — duplicate initialization windows | **Fixed in the current EVM generator and both tracked GKR sources; validation below.** The Linear comment correctly accepts the original defect as “Valid in general.” [Generated validation](../../verifier_evm/src/generator/initialization.rs) now rejects duplicate/out-of-range windows before transcript processing. The [Rust unified statement](../../full_statement_verifier/src/unified_circuit_statement.rs) separately checks range and increasing order. | The [distinct-selection contract](Airbender/Review/Helpers/Context/ExternalBoundary/Initialization.lean) remains explicit: its formal correspondence to EVM execution is unproved. Valid sparse windows 254/255 and reversed distinct pairs are retained for the 2^22-word/four-byte geometry. Existing deployments are not changed by this source fix. |
-| [AIH-336](https://linear.app/matterlabs/issue/AIH-336) — queryable decoder filler | **Acknowledged setup-validation bug; concrete part of F09.** The comment accepts zero padding reachable by a PC lookup as a valid point. [Setup construction](../../prover/src/gkr/prover/setup.rs) starts with zero-filled columns, while the [family compiler](../../cs/src/gkr_compiler/family_circuit.rs) can omit a decoder table ID. | An unqueryable filler and agreement of committed, cached, scalar and vectorized consumers are needed. The temporary [decoder contract](Airbender/Review/Helpers/Context/ExternalBoundary/Decoder.lean) describes a corrected setup; it does not describe an implemented fix. No full invalid-proof acceptance is claimed. |
+| [AIH-336](https://linear.app/matterlabs/issue/AIH-336) — queryable decoder filler | **Source correction implemented; CPU setup/forward regressions checked, accelerated runtime validation pending.** The live comment agrees with excluding reachable zero padding. [Untagged decoder setup tails](../../prover/src/gkr/prover/setup.rs) now carry field-minus-one in PC-low; tagged setups retain their existing discriminator and generic zero entry. CPU and [GPU cache scheduling](../../gpu/gkr/src/setup/mod.rs) cover the full committed domain. | CUDA/AVX-512 execution and a complete regenerated proof remain to validate on a suitable host. Old decoder-only setup commitments need rebuilding; none is silently upgraded. The temporary [decoder contract](Airbender/Review/Helpers/Context/ExternalBoundary/Decoder.lean) still has an unproved extraction/authentication/query-binding connection. No full invalid-proof acceptance is claimed. |
 | [AIH-339](https://linear.app/matterlabs/issue/AIH-339) — zero-clock workers | **Accepted relation gap, F03; implementation enforcement remains unresolved.** The comments explain caller-to-worker accounting and unique issued clocks. They do not establish the converse that every active worker has a caller, and do not rule out the checked zero-clock state change. | Fix or independently validate full worker-to-caller enforcement. The temporary [occurrence ledger](Airbender/Review/Helpers/Context/ExternalBoundary/Requests.lean) supplies that missing condition; the native cancelling-token permutation does not imply it. |
 | [AIH-113](https://linear.app/matterlabs/issue/AIH-113) — dropped scaled pointer range check | **Historical compiler bug with repair present in the inspected source.** [Delegation compilation](../../cs/src/gkr_compiler/delegation_circuit.rs) now passes the retained range vector into [memory lowering](../../cs/src/gkr_compiler/delegation_mem_accesses.rs), which pushes the scaled check into it. No live comments. | Do not assume every generated/cached artifact includes that repair. Compiled/artifact correspondence remains an external fidelity obligation; no new pointer-alignment assumption or newly discovered current-source bug is asserted. |
 | [AIH-315](https://linear.app/matterlabs/issue/AIH-315) — WHIR randomness reuse | **Acknowledged transcript/protocol bug.** The live comment accepts the freshness issue while noting no known soundness proof for the construction. [BLAKE2s drawing](../../transcript/src/blake2s.rs) copies the current seed before advancing and leaves the last returned block in the seed. | Validate/fix the affected WHIR draw schedule across producer and verifier. A freshness assumption would leave the bug open; no such assumption or cryptographic proof is added here. The report does not establish a full forged proof. |
@@ -146,6 +146,64 @@ On this host the pinned Rust compiler crashed while emitting debug information
 for an existing dependency. The successful test run used environment-only
 `CARGO_PROFILE_DEV_DEBUG=0`, `CARGO_PROFILE_TEST_DEBUG=0` and `CARGO_INCREMENTAL=0`;
 no compiler pin, dependency or repository build configuration changed.
+
+### AIH-336 source correction and validation
+
+Rechecked the live issue and its complete comment page on 15 October 2026; the
+assessment of Aleksandr Vlasov's comment is unchanged. Unsupported decoder slots
+already used field-minus-one. The actual remaining problem was the zero-filled
+setup-domain tail beyond the real decoder table, particularly when the compiler
+omits a decoder table discriminator.
+
+[Setup construction](../../prover/src/gkr/prover/setup.rs) now sets PC-low to
+field-minus-one in that untagged tail, outside the existing active u16 PC-limb
+domain. Real program rows, unsupported slots, discriminator-tagged tables and
+the generic zero-entry row retain their existing meanings. Inactive witness
+queries still use their original zero/default tuple; their execute predicate
+remains zero. The correction does not assume that an active query selected a
+valid instruction.
+
+Changing only the committed columns would leave the optimized forward path
+inconsistent. CPU preprocessing now compresses every committed setup row, rather
+than truncating the cache and synthesizing a zero tail. The scalar and AVX-512
+consumers already read that cache's actual length. [GPU setup scheduling](../../gpu/gkr/src/setup/mod.rs)
+now materializes the same full domain; the existing kernel and stream/ownership
+contract are unchanged. This increases retained cache size to one extension
+value per trace row. No compiled layout, generated witness function, saved
+setup cache or proof artifact is rewritten.
+
+The [CPU regression](../../prover/src/gkr/prover/setup_tests.rs) uses both real
+cached/no-cache add/sub decoder shapes with small test domains and the native
+bytecode preprocessor. Its eight cases cover tagged/untagged tables and
+supported/unsupported PC zero. It checks exact
+real rows, out-of-range filler, legal PC-zero preservation, committed-column
+compression versus the full cache, inactive tuples, and actual production forward
+lookup numerators/denominators with cancelling valid multiplicities. It runs
+with `gkr_self_checks`. The same test fails for the old zero tail and for a
+committed-only correction with a truncated cache. The
+[CUDA scheduling regression](../../gpu/gkr/src/setup/tests.rs) now includes a
+nonzero tail and compares the complete domain with CPU arithmetic.
+
+Scoped `prover` library and `gpu_gkr` library/test checks pass on this aarch64
+Mac. The CPU regression passes; CUDA is unavailable and the AVX-512 path is not
+executed here. The test automatically reaches that accelerated path on enabled
+x86 hosts. Full regenerated proof replay, accelerated runtime agreement and
+replacement of old decoder-only setup commitments remain explicit validation
+work; the finding is not marked fully closed. F09's formal extraction, setup
+commitment authentication and compiler/verifier correspondence remain external.
+The existing Lean temporary contract is unchanged and is not counted as the
+implementation correction.
+
+The nightly compiler crashed in LLVM debug-info emission for the large prover
+test harness. The successful scoped build disables debug info only for `prover`
+through command-line profile overrides; no compiler pin or dependency changed:
+
+```sh
+cargo check --locked -p prover --lib
+cargo check --locked -p gpu_gkr --tests
+cargo test --locked --config 'profile.dev.package.prover.debug=0' --config 'profile.test.package.prover.debug=0' -p prover --lib --features gkr_self_checks decoder_padding_matches_committed_setup_in_forward_relations --no-run
+cargo test --locked --config 'profile.dev.package.prover.debug=0' --config 'profile.test.package.prover.debug=0' -p prover --lib --features gkr_self_checks decoder_padding_matches_committed_setup_in_forward_relations
+```
 
 ## Implementation update: issued round coverage and wrapped preparation
 
