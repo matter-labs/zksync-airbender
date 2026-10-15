@@ -15,6 +15,12 @@ pub struct TwiddleDescriptor {
     low_bits: u32,
 }
 
+impl TwiddleDescriptor {
+    pub fn log_max_domain(&self) -> u32 {
+        self.log_max_domain
+    }
+}
+
 const _: () = {
     assert!(core::mem::size_of::<TwiddleDescriptor>() == 40);
     assert!(core::mem::align_of::<TwiddleDescriptor>() == 8);
@@ -38,8 +44,8 @@ pub struct DeviceContext {
 impl DeviceContext {
     pub fn create(log_max_domain: u32) -> CudaResult<Self> {
         assert!(
-            (8..=31).contains(&log_max_domain),
-            "Proth120 NTT context: log_max_domain {log_max_domain} outside 8..=31"
+            (8..=33).contains(&log_max_domain),
+            "Proth120 NTT context: log_max_domain {log_max_domain} outside 8..=33"
         );
         let low_bits = log_max_domain.div_ceil(2);
         let high_bits = log_max_domain - low_bits;
@@ -152,7 +158,7 @@ mod tests {
     #[cfg(not(no_cuda))]
     fn pr_context_roots_cpu_parity() {
         let stream = CudaStream::create().unwrap();
-        for log_max_domain in [8, 12, 20, 31] {
+        for log_max_domain in [8, 12, 20, 31, 32, 33] {
             let context = DeviceContext::create(log_max_domain).unwrap();
             assert_eq!(context.log_max_domain(), log_max_domain);
             assert_context_tables(&context, &stream);

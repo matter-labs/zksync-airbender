@@ -244,6 +244,7 @@ fn batched_case(
     ctx: &DeviceContext,
     stream: &CudaStream,
     input: &[PR],
+    log_domain: u32,
     range: Range<u32>,
     twiddles: &[PR],
 ) -> Vec<PR> {
@@ -257,6 +258,7 @@ fn batched_case(
     lde_cosets_batched(
         ctx,
         &device_input[GUARD..GUARD + rows],
+        log_domain,
         range.clone(),
         &mut device_output[GUARD..GUARD + len],
         stream,
@@ -264,7 +266,7 @@ fn batched_case(
     .unwrap();
     let mut actual = download(&device_output, stream);
     assert_guards(&actual, GUARD..GUARD + len);
-    let nu = domain_generator_for_size::<PR>(1u64 << 31);
+    let nu = domain_generator_for_size::<PR>(1u64 << log_domain);
     let mut expected = vec![PR::ZERO; rows];
     for (column, coset) in range.enumerate() {
         lde_coset_lazy_r8_into(input, nu.pow_u128(coset as u128), twiddles, &mut expected);
@@ -292,19 +294,59 @@ fn pr_lde_cosets_batched_cpu_parity() {
         let twiddles = precompute_twiddles_for_fft::<PR, Global, false>(rows, &worker);
         let end = 1u32 << (31 - log_n);
         for range in [0..3, end - 2..end, end / 2..end / 2 + 5, 7..7] {
-            batched_case(&ctx, &stream, &input, range, &twiddles);
+            batched_case(&ctx, &stream, &input, 31, range, &twiddles);
         }
         if log_n == 8 {
             for count in [65536, 262144] {
-                batched_case(&ctx, &stream, &input, 0..count, &twiddles);
+                batched_case(&ctx, &stream, &input, 31, 0..count, &twiddles);
             }
         }
-        let mut adjacent = batched_case(&ctx, &stream, &input, 19..23, &twiddles);
-        adjacent.extend(batched_case(&ctx, &stream, &input, 23..27, &twiddles));
-        let union = batched_case(&ctx, &stream, &input, 19..27, &twiddles);
+        let mut adjacent = batched_case(&ctx, &stream, &input, 31, 19..23, &twiddles);
+        adjacent.extend(batched_case(&ctx, &stream, &input, 31, 23..27, &twiddles));
+        let union = batched_case(&ctx, &stream, &input, 31, 19..27, &twiddles);
         assert_raw_eq(&adjacent, &union);
     }
     println!("Proth120 root31 batches: logs 8/12/16/20, 65536/262144 columns, adjacent ranges, 0 mismatches");
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+fn pr_lde_cosets_batched_wide_context_cpu_parity() {
+    let stream = CudaStream::create().unwrap();
+    let worker = Worker::new_with_num_threads(8);
+    let mut rng = StdRng::seed_from_u64(SEED);
+    for (log_max_domain, log_domain) in [(31, 31), (33, 33), (33, 31), (33, 25)] {
+        let ctx = DeviceContext::create(log_max_domain).unwrap();
+        for log_n in [8, 12] {
+            let rows = 1usize << log_n;
+            let input: Vec<PR> = (0..rows).map(|_| random_field(&mut rng)).collect();
+            let twiddles = precompute_twiddles_for_fft::<PR, Global, false>(rows, &worker);
+            let end = 1u32 << (log_domain - log_n);
+            for range in [0..2, end - 1..end] {
+                let batched =
+                    batched_case(&ctx, &stream, &input, log_domain, range.clone(), &twiddles);
+                let nu = domain_generator_for_size::<PR>(1u64 << log_domain);
+                let device_input = upload(&input);
+                for (column, coset) in range.enumerate() {
+                    let device_offset = upload(&[nu.pow_u128(coset as u128)]);
+                    let mut device_output = upload(&vec![SENTINEL; rows]);
+                    lde_coset(
+                        &ctx,
+                        &DeviceMatrixChunk::new(&device_input[..], rows, 0, rows),
+                        &mut DeviceMatrixChunkMut::new(&mut device_output[..], rows, 0, rows),
+                        &device_offset,
+                        &stream,
+                    )
+                    .unwrap();
+                    assert_raw_eq(
+                        &download(&device_output, &stream),
+                        &batched[column * rows..(column + 1) * rows],
+                    );
+                }
+            }
+        }
+    }
+    println!("Proth120 batched + single LDE at (L, D) in (31,31) (33,33) (33,31) (33,25): logs 8/12, cosets 0/1/last, 0 mismatches");
 }
 
 #[test]
@@ -730,24 +772,22 @@ fn direct_leaf_coefficients(evals: &[PR], x: PR, log_values: u32) -> Vec<PR> {
     coefficients
 }
 
-#[test]
-#[cfg(not(no_cuda))]
-fn pr_leaf_conversion_cpu_parity() {
-    let ctx = DeviceContext::create(31).unwrap();
-    let stream = CudaStream::create().unwrap();
+fn leaf_conversion_cases(
+    ctx: &DeviceContext,
+    stream: &CudaStream,
+    rng: &mut StdRng,
+    logs: &[u32],
+    offsets_for: impl Fn(&mut StdRng, u32) -> Vec<PR>,
+) -> usize {
     let worker = Worker::new_with_num_threads(8);
-    let mut rng = StdRng::seed_from_u64(SEED);
-    let nu = domain_generator_for_size::<PR>(1u64 << 31);
-    let logs = [8, 12, 16, 20];
     let mut cases = 0;
-    for log_n in logs {
+    for &log_n in logs {
         let rows = 1usize << log_n;
-        let monomials: Vec<PR> = (0..rows).map(|_| random_field(&mut rng)).collect();
+        let monomials: Vec<PR> = (0..rows).map(|_| random_field(rng)).collect();
         let device_monomials = upload(&monomials);
         let twiddles = precompute_twiddles_for_fft::<PR, Global, false>(rows, &worker);
         let generator = domain_generator_for_size::<PR>(rows as u64);
-        let offsets = [random_nonzero(&mut rng), nu.pow_u128(19)];
-        for offset in offsets {
+        for offset in offsets_for(rng, log_n) {
             let device_offset = upload(&[offset]);
             let mut device_coset = upload(&vec![SENTINEL; rows + 2 * GUARD]);
             let input_matrix = DeviceMatrixChunk::new(&device_monomials[..], rows, 0, rows);
@@ -872,11 +912,42 @@ fn pr_leaf_conversion_cpu_parity() {
                 );
                 cases += 1;
             }
-            assert_raw_eq(&download(&device_offset, &stream), &[offset]);
+            assert_raw_eq(&download(&device_offset, stream), &[offset]);
         }
     }
+    cases
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+fn pr_leaf_conversion_cpu_parity() {
+    let ctx = DeviceContext::create(31).unwrap();
+    let stream = CudaStream::create().unwrap();
+    let mut rng = StdRng::seed_from_u64(SEED);
+    let nu = domain_generator_for_size::<PR>(1u64 << 31);
+    let logs = [8, 12, 16, 20];
+    let cases = leaf_conversion_cases(&ctx, &stream, &mut rng, &logs, |rng, _| {
+        vec![random_nonzero(rng), nu.pow_u128(19)]
+    });
     assert_eq!(cases, 40);
     println!("Proth120 leaf conversion: logs {logs:?}, lv 0..=4, {cases} cases, bulk/gathered/CPU/direct DFT, 0 mismatches");
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+fn pr_leaf_conversion_wide_context_cpu_parity() {
+    let ctx = DeviceContext::create(33).unwrap();
+    let stream = CudaStream::create().unwrap();
+    let mut rng = StdRng::seed_from_u64(SEED);
+    let logs = [8, 12];
+    for log_domain in [33, 31] {
+        let nu = domain_generator_for_size::<PR>(1u64 << log_domain);
+        let cases = leaf_conversion_cases(&ctx, &stream, &mut rng, &logs, |_, log_n| {
+            vec![nu, nu.pow_u128((1u128 << (log_domain - log_n)) - 1)]
+        });
+        assert_eq!(cases, 20);
+    }
+    println!("Proth120 leaf conversion at L = 33, D in {{33, 31}}: logs {logs:?}, lv 0..=4, cosets 1 and last, 0 mismatches");
 }
 
 fn host_available_bytes() -> usize {
@@ -953,7 +1024,15 @@ fn pr_production_lde_parity() {
         .unwrap();
         let mut actual = download(&device_output, &stream);
         let coset_mismatches = count_mismatches(&actual, &expected);
-        lde_cosets_batched(&ctx, &device_input, k..k + 1, &mut device_output, &stream).unwrap();
+        lde_cosets_batched(
+            &ctx,
+            &device_input,
+            31,
+            k..k + 1,
+            &mut device_output,
+            &stream,
+        )
+        .unwrap();
         memory_copy_async(&mut actual, &device_output, &stream).unwrap();
         stream.synchronize().unwrap();
         let batched_mismatches = count_mismatches(&actual, &expected);
@@ -996,6 +1075,7 @@ fn pr_production_batched_parity() {
             lde_cosets_batched(
                 &ctx,
                 &device_input,
+                31,
                 start..start + count,
                 &mut device_output,
                 &stream,
@@ -1131,7 +1211,15 @@ fn pr_production_eq_leaf_parity() {
     let monomials: Vec<PR> = (0..rows).map(|_| random_field(&mut rng)).collect();
     let device_monomials = upload(&monomials);
     let mut device_coset = DeviceAllocation::<PR>::alloc(rows).unwrap();
-    lde_cosets_batched(&ctx, &device_monomials, 31..32, &mut device_coset, &stream).unwrap();
+    lde_cosets_batched(
+        &ctx,
+        &device_monomials,
+        31,
+        31..32,
+        &mut device_coset,
+        &stream,
+    )
+    .unwrap();
     drop(device_monomials);
     let coset = download(&device_coset, &stream);
     let nu = domain_generator_for_size::<PR>(1u64 << 31);

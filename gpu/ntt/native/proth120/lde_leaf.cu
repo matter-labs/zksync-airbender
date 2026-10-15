@@ -16,7 +16,7 @@ template <u32 LOG_VALUES> DEVICE_FORCEINLINE void pr_convert_coset_leaves(pr *co
 #pragma unroll
   for (u32 slot = 0; slot < VALUES; slot++)
     leaf[slot] = load_cg(coset + leaf_index + leaves * bitreverse_low_bits(slot, LOG_VALUES));
-  const pr base_root_inv = pr::mul(offset_inv, pr_root_power_inv(d, leaf_index << (d.log_max_domain - log_n)));
+  const pr base_root_inv = pr::mul(offset_inv, pr_root_power_inv(d, static_cast<u64>(leaf_index) << (d.log_max_domain - log_n)));
   ab_pr_convert_leaf<LOG_VALUES>(d, leaf, base_root_inv);
 #pragma unroll
   for (u32 slot = 0; slot < VALUES; slot++)
@@ -40,7 +40,7 @@ DEVICE_FORCEINLINE void pr_convert_gathered_leaves(pr *leaves, const u32 *indice
 #pragma unroll
   for (u32 slot = 0; slot < VALUES; slot++)
     leaf[slot] = load_cg(target + slot);
-  const pr base_root_inv = pr::mul(offset_inv, pr_root_power_inv(d, leaf_index << (d.log_max_domain - log_coset)));
+  const pr base_root_inv = pr::mul(offset_inv, pr_root_power_inv(d, static_cast<u64>(leaf_index) << (d.log_max_domain - log_coset)));
   ab_pr_convert_leaf<LOG_VALUES>(d, leaf, base_root_inv);
 #pragma unroll
   for (u32 slot = 0; slot < VALUES; slot++)

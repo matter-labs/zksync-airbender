@@ -31,20 +31,20 @@ static_assert(offsetof(proth120_twiddle_descriptor, low_bits) == 36);
 static_assert(std::is_standard_layout_v<proth120_twiddle_descriptor>);
 static_assert(std::is_trivially_copyable_v<proth120_twiddle_descriptor>);
 
-DEVICE_FORCEINLINE pr pr_split_table_power(const pr *low, const pr *high, const u32 low_bits, const u32 e) {
-  const u32 lo = e & ((1u << low_bits) - 1u);
-  const u32 hi = e >> low_bits;
+DEVICE_FORCEINLINE pr pr_split_table_power(const pr *low, const pr *high, const u32 low_bits, const u64 e) {
+  const u32 lo = static_cast<u32>(e & ((u64{1} << low_bits) - 1));
+  const u32 hi = static_cast<u32>(e >> low_bits);
   if (hi == 0)
     return load_ca(low + lo);
   const pr high_power = load_ca(high + hi);
   return lo == 0 ? high_power : pr::mul(high_power, load_ca(low + lo));
 }
 
-DEVICE_FORCEINLINE pr pr_root_power(const proth120_twiddle_descriptor &d, const u32 e) {
+DEVICE_FORCEINLINE pr pr_root_power(const proth120_twiddle_descriptor &d, const u64 e) {
   return pr_split_table_power(d.forward_low, d.forward_high, d.low_bits, e);
 }
 
-DEVICE_FORCEINLINE pr pr_root_power_inv(const proth120_twiddle_descriptor &d, const u32 e) {
+DEVICE_FORCEINLINE pr pr_root_power_inv(const proth120_twiddle_descriptor &d, const u64 e) {
   return pr_split_table_power(d.inverse_low, d.inverse_high, d.low_bits, e);
 }
 
@@ -67,7 +67,7 @@ DEVICE_FORCEINLINE void pr_convert_leaf_stage(const proth120_twiddle_descriptor 
     for (u32 t = 0; t < HALF; t++) {
       const pr a = source[group * BLOCK + 2 * t];
       const pr b = source[group * BLOCK + 2 * t + 1];
-      const u32 exponent = bitreverse_low_bits(t, LOG_VALUES - 1) << (d.log_max_domain - LOG_VALUES);
+      const u64 exponent = static_cast<u64>(bitreverse_low_bits(t, LOG_VALUES - 1)) << (d.log_max_domain - LOG_VALUES);
       const pr twiddle = pr_root_power_inv(d, exponent);
       target[group * HALF + t] = pr::mul(pr::add(a, b), TWO_INV());
       target[(group | GROUPS) * HALF + t] = pr::mul(pr::mul(pr::sub(a, b), pr::mul(root_inv, twiddle)), TWO_INV());

@@ -43,7 +43,8 @@ cuda_kernel!(Scale, ab_pr_lde_scale_kernel(
     inputs: PtrAndStride<PR>, outputs: MutPtrAndStride<PR>, offset: *const PR, rows: u32,
 ));
 cuda_kernel!(ScaleTable, ab_pr_lde_scale_table_kernel(
-    inputs: *const PR, outputs: *mut PR, descriptor: TwiddleDescriptor, log_n: u32, k0: u32,
+    inputs: *const PR, outputs: *mut PR, descriptor: TwiddleDescriptor, log_n: u32,
+    log_domain: u32, k0: u32,
 ));
 cuda_kernel!(Naturalize, ab_pr_naturalize_kernel(
     inputs: PtrAndStride<PR>, outputs: MutPtrAndStride<PR>, log_n: u32,
@@ -396,15 +397,11 @@ pub(super) fn lde_coset_chunked(
 pub fn lde_cosets_batched(
     ctx: &DeviceContext,
     inputs: &DeviceSlice<PR>,
+    log_domain: u32,
     coset_range: Range<u32>,
     outputs: &mut DeviceSlice<PR>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    assert_eq!(
-        ctx.log_max_domain(),
-        31,
-        "Proth120 batched LDE requires a log_max_domain 31 context"
-    );
     assert!(
         inputs.len().is_power_of_two(),
         "Proth120 batched LDE: input length must be a power of two"
@@ -415,11 +412,16 @@ pub fn lde_cosets_batched(
         "Proth120 batched LDE: log_n {log_n} outside 8..=26"
     );
     assert!(
+        log_n <= log_domain && log_domain <= ctx.log_max_domain(),
+        "Proth120 batched LDE: log_domain {log_domain} outside {log_n}..={}",
+        ctx.log_max_domain()
+    );
+    assert!(
         coset_range.start <= coset_range.end,
         "Proth120 batched LDE: reversed coset range"
     );
     assert!(
-        coset_range.end <= 1u32 << (31 - log_n),
+        coset_range.end <= 1u32 << (log_domain - log_n),
         "Proth120 batched LDE: coset range exceeds logical domain"
     );
     let count = (coset_range.end - coset_range.start) as usize;
@@ -460,6 +462,7 @@ pub fn lde_cosets_batched(
                 output,
                 descriptor,
                 log_n,
+                log_domain,
                 coset_range.start + column as u32,
             ),
         )?;

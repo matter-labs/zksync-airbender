@@ -30,10 +30,6 @@ pub(crate) struct IntermediateOracle {
 fn validate_oracle_shape(shape: &OracleShape, context: &ProverContext) {
     let log_max_domain = context.proth120_ntt_device_context().log_max_domain();
     assert!(
-        shape.log_domain != 31 || log_max_domain == 31,
-        "Proth120 WHIR: batched LDE requires a log_max_domain 31 context"
-    );
-    assert!(
         shape.log_domain <= log_max_domain,
         "Proth120 WHIR: oracle log_domain exceeds the Proth120 context log_max_domain"
     );
@@ -48,13 +44,11 @@ fn validate_oracle_shape(shape: &OracleShape, context: &ProverContext) {
     );
 }
 
+#[allow(dead_code)]
 pub(crate) fn schedule_coset_offsets(
     shape: &OracleShape,
     context: &ProverContext,
-) -> CudaResult<Option<DeviceAllocation<PR>>> {
-    if shape.log_domain == 31 {
-        return Ok(None);
-    }
+) -> CudaResult<DeviceAllocation<PR>> {
     let mut offsets = context.alloc(1 << shape.log_lde, AllocationPlacement::BestFit)?;
     get_powers_by_val(
         domain_generator_for_size::<PR>(1u64 << shape.log_domain),
@@ -62,7 +56,7 @@ pub(crate) fn schedule_coset_offsets(
         &mut offsets,
         context.get_exec_stream(),
     )?;
-    Ok(Some(offsets))
+    Ok(offsets)
 }
 
 pub(crate) fn schedule_lde_convert_pass(
@@ -78,7 +72,14 @@ pub(crate) fn schedule_lde_convert_pass(
     let ntt = context.proth120_ntt_device_context();
     let stream = context.get_exec_stream();
     match offsets {
-        None => lde_cosets_batched(ntt, monomials, k0..k0 + cosets as u32, tile, stream)?,
+        None => lde_cosets_batched(
+            ntt,
+            monomials,
+            shape.log_domain,
+            k0..k0 + cosets as u32,
+            tile,
+            stream,
+        )?,
         Some(offsets) => {
             let input = DeviceMatrix::new(monomials, n);
             for local in 0..cosets {
@@ -132,19 +133,11 @@ pub(crate) fn schedule_commit_intermediate(
     let mut top_nodes =
         context.alloc(cosets - (1 << shape.cap_log), AllocationPlacement::Bottom)?;
     let mut cap = context.alloc(1 << shape.cap_log, AllocationPlacement::Bottom)?;
-    let offsets = schedule_coset_offsets(shape, context)?;
     let mut tile = context.alloc(tile_cosets << shape.log_n, AllocationPlacement::Top)?;
     for k0 in (0..cosets).step_by(tile_cosets) {
         {
             let _r = scoped_range(Some("ab"), "whir.commit.prefix");
-            schedule_lde_convert_pass(
-                &copy,
-                shape,
-                offsets.as_deref(),
-                k0 as u32,
-                &mut tile,
-                context,
-            )?;
+            schedule_lde_convert_pass(&copy, shape, None, k0 as u32, &mut tile, context)?;
         }
         let _r = scoped_range(Some("ab"), "whir.commit.suffix");
         build_partial_coset_trees_multi_coset(
@@ -161,7 +154,6 @@ pub(crate) fn schedule_commit_intermediate(
         )?;
     }
     drop(tile);
-    drop(offsets);
     let _r = scoped_range(Some("ab"), "whir.commit.top");
     kernels::place_roots(&retained, r, shape.log_lde, &mut roots, stream)?;
     build_top_tree(&roots, shape.cap_log, &mut top_nodes, stream)?;

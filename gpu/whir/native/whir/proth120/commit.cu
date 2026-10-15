@@ -23,8 +23,8 @@ DEVICE_FORCEINLINE void pr_whir_convert_tile_leaves(pr *tile, const u32 log_n, c
     return;
   const u32 local = static_cast<u32>(gid >> log_leaves);
   const u32 j = static_cast<u32>(gid) & ((1u << log_leaves) - 1u);
-  const u32 mask = (1u << d.log_max_domain) - 1u;
-  const u32 exponent = (((k0 + local) << (d.log_max_domain - log_domain)) + (j << (d.log_max_domain - log_n))) & mask;
+  const u64 mask = (u64{1} << d.log_max_domain) - 1;
+  const u64 exponent = ((static_cast<u64>(k0 + local) << (d.log_max_domain - log_domain)) + (static_cast<u64>(j) << (d.log_max_domain - log_n))) & mask;
   const pr base_root_inv = pr_root_power_inv(d, exponent);
   pr *coset = tile + (static_cast<u64>(local) << log_n) + j;
   const u32 leaves = 1u << log_leaves;
