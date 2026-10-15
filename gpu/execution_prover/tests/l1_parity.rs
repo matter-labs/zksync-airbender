@@ -567,7 +567,13 @@ impl FeederReference {
             });
         let input = std::env::var("AB_F3_INPUT").unwrap_or_else(|_| "basic_fibonacci".into());
         let dir = root.join(&input);
-        let manifest: FeederManifest = read_typed(&dir.join("manifest.json"));
+        let manifest_path = dir.join("manifest.json");
+        assert!(
+            manifest_path.exists(),
+            "L1 feeder parity reference {} is not generated (it is not committed); generate it: RUST_MIN_STACK=1073741824 cargo test -p prover_pipeline --release --lib l1_feeder_reference::generate_feeder_reference -- --exact --ignored --nocapture --test-threads=1",
+            dir.display()
+        );
+        let manifest: FeederManifest = read_typed(&manifest_path);
         assert_eq!(
             manifest.fixture_schema_version, 1,
             "L1 feeder parity reference schema"
