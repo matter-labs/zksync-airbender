@@ -28,3 +28,7 @@ pub use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
 #[cfg(feature = "memory_sweep")]
 pub use setups::unrolled_circuits::inits_and_teardowns_circuit_setup;
 pub use setups::UnrolledCircuitWitnessEvalFn;
+
+// The capacity rows pin the exact layout and ROM used to build wrap programs.
+#[cfg(feature = "memory_sweep")]
+pub use unified_reduced_machine_proth120::l1_wrap_2p21;
