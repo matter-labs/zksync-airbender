@@ -33,6 +33,7 @@ pub enum FsvProgram {
     UnrolledRecursionLayer,
     UnifiedBaseLayer,
     UnifiedRecursionLayer,
+    UnifiedRecursionLayerL1Feeder,
 }
 
 impl FsvProgram {
@@ -43,6 +44,7 @@ impl FsvProgram {
             Self::UnrolledRecursionLayer => "fsv_unrolled_recursion_layer_sec_100",
             Self::UnifiedBaseLayer => "fsv_unified_base_layer_sec_100",
             Self::UnifiedRecursionLayer => "fsv_unified_recursion_layer_sec_100",
+            Self::UnifiedRecursionLayerL1Feeder => "fsv_unified_recursion_layer_sec_100_l1_feeder",
         }
     }
 
@@ -54,6 +56,8 @@ impl FsvProgram {
     #[must_use]
     pub const fn supports(self, mode: BlakeMode) -> bool {
         match (self, mode) {
+            (Self::UnifiedRecursionLayerL1Feeder, BlakeMode::BlakeSpecialOpcodes) => true,
+            (Self::UnifiedRecursionLayerL1Feeder, _) => false,
             (Self::UnifiedBaseLayer | Self::UnifiedRecursionLayer, _) => true,
             (_, BlakeMode::BlakeSpecialOpcodes) => false,
             (_, _) => true,
@@ -90,6 +94,8 @@ mod tests {
         assert!(!FsvProgram::UnrolledBaseLayer.supports(BlakeMode::BlakeSpecialOpcodes));
         assert!(!FsvProgram::UnrolledRecursionLayer.supports(BlakeMode::BlakeSpecialOpcodes));
         assert!(FsvProgram::UnrolledBaseLayer.supports(BlakeMode::Compression));
+        assert!(FsvProgram::UnifiedRecursionLayerL1Feeder.supports(BlakeMode::BlakeSpecialOpcodes));
+        assert!(!FsvProgram::UnifiedRecursionLayerL1Feeder.supports(BlakeMode::Compression));
     }
 
     #[test]
@@ -105,6 +111,10 @@ mod tests {
             (
                 FsvProgram::UnifiedRecursionLayer,
                 &[BlakeMode::Compression, BlakeMode::BlakeSpecialOpcodes][..],
+            ),
+            (
+                FsvProgram::UnifiedRecursionLayerL1Feeder,
+                &[BlakeMode::BlakeSpecialOpcodes][..],
             ),
         ] {
             for mode in modes {

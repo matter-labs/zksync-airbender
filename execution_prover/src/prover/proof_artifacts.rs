@@ -16,6 +16,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
     ) -> ProofArtifacts {
         let CommitMemoryResult {
             commitment_mode: _,
+            profile: _,
             final_register_values,
             final_pc,
             final_timestamp,
@@ -28,6 +29,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         } = memory_commitment;
         let execution_kind = self.binary_holders[&binary_key].execution_kind;
         let all_challenges_seed = match execution_kind {
+            ExecutionKind::L1Wrap => panic!("L1Wrap derives its own external challenges"),
             ExecutionKind::Unrolled => fs_transform_for_permutation_argument(
                 final_register_values,
                 *final_pc,
@@ -146,6 +148,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         handle: &BinaryHandle,
         non_determinism_source: impl NonDeterminismCSRSource + Send + 'static,
         commitment_mode: CommitmentMode,
+        profile: ProofProfile,
     ) -> CommitMemoryResult {
         let non_determinism_source = Arc::new(Mutex::new(Some(non_determinism_source)));
         self.commit_memory_inner(
@@ -154,6 +157,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             *handle,
             non_determinism_source,
             commitment_mode,
+            profile,
         )
     }
 
@@ -177,6 +181,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             external_challenges,
             proof_caps,
             commit_ticket.commitment_mode,
+            commit_ticket.profile,
         )
     }
 
@@ -186,6 +191,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         handle: &BinaryHandle,
         non_determinism_source: impl NonDeterminismCSRSource + Send + 'static,
         commitment_mode: CommitmentMode,
+        profile: ProofProfile,
     ) -> ProveResult {
         let binary_key = handle.0;
         let nd_wrapper = NonDeterminismWrapper::new(non_determinism_source);
@@ -198,6 +204,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             *handle,
             non_determinism_source.clone(),
             commitment_mode,
+            profile,
         );
         let non_determinism_values = Arc::into_inner(non_determinism_source)
             .expect("non_determinism_source Arc still has other strong refs after commit_memory")
@@ -220,6 +227,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             external_challenges,
             proof_caps,
             memory_commitment.commitment_mode,
+            memory_commitment.profile,
         );
         assert_eq!(prove_result.register_final_values, final_register_values);
         assert_eq!(prove_result.final_pc, final_pc);

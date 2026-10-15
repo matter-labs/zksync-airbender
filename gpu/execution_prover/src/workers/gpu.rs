@@ -8,6 +8,7 @@ use execution_prover::messages::{
     MemoryCommitmentRequest, MemoryCommitmentResult, ProofRequest, ProofResult,
     SetupInitializationRequest, SetupInitializationResult,
 };
+use execution_prover::ProofProfile;
 use gpu_circuit_prover::proof::merged_commitment::{
     commit_merged_from_transfers, GpuGKRMergedCommitTransfer,
 };
@@ -240,6 +241,7 @@ fn schedule_phase_one<'a>(
     // Decompose the request into bookkeeping plus the host buffers that
     // become Phase 1 H2D inputs.
     let (state, inits_and_teardowns_host, tracing_data_host) = match request {
+        GpuWorkRequest::L1WrapProof(_) => panic!("GPU backend does not support L1Wrap"),
         GpuWorkRequest::MemoryCommitment(req) => {
             let MemoryCommitmentRequest {
                 batch_id,
@@ -250,7 +252,13 @@ fn schedule_phase_one<'a>(
                 tracing_data,
                 security_level,
                 commitment_mode,
+                profile,
             } = req;
+            assert_eq!(
+                profile,
+                ProofProfile::Standard,
+                "GPU backend supports only ProofProfile::Standard"
+            );
             let state = RequestState {
                 batch_id,
                 circuit_type,
@@ -278,7 +286,13 @@ fn schedule_phase_one<'a>(
                 memory_caps,
                 security_level,
                 commitment_mode,
+                profile,
             } = req;
+            assert_eq!(
+                profile,
+                ProofProfile::Standard,
+                "GPU backend supports only ProofProfile::Standard"
+            );
             let state = RequestState {
                 batch_id,
                 circuit_type,

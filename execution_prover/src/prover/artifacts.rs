@@ -15,11 +15,14 @@ pub struct RiscvFamilyArtifact {
 }
 
 impl RiscvFamilyArtifact {
-    fn from_precomputations(precomputations: &impl CircuitPrecomputation) -> Self {
+    fn from_precomputations(
+        precomputations: &impl CircuitPrecomputation,
+        profile: ProofProfile,
+    ) -> Self {
         Self {
             compiled_circuit: Arc::clone(precomputations.compiled_circuit()),
             setup_cap: precomputations
-                .setup_cap()
+                .setup_cap(profile)
                 .expect("RISC-V family setup must have columns"),
         }
     }
@@ -42,7 +45,11 @@ pub struct ProgramArtifacts {
 
 impl<B: ExecutionBackend> ExecutionProver<B> {
     /// Snapshot the compiled-circuit artifacts for a registered binary.
-    pub fn program_artifacts(&self, handle: &BinaryHandle) -> ProgramArtifacts {
+    pub fn program_artifacts(
+        &self,
+        handle: &BinaryHandle,
+        profile: ProofProfile,
+    ) -> ProgramArtifacts {
         let holder = &self.binary_holders[&handle.0];
         let riscv_families = holder
             .precomputations
@@ -50,7 +57,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             .map(|(circuit_type, precomputations)| {
                 (
                     circuit_type.get_family_idx() as u32,
-                    RiscvFamilyArtifact::from_precomputations(precomputations),
+                    RiscvFamilyArtifact::from_precomputations(precomputations, profile),
                 )
             })
             .collect();

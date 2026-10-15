@@ -5,6 +5,7 @@ use riscv_transpiler::vm::SimpleTape;
 use type_map::concurrent::TypeMap;
 
 use crate::backend::ExecutionBackend;
+use crate::ProofProfile;
 use execution_prover_model::circuit_type::UnrolledCircuitType;
 use execution_prover_model::MachineType;
 
@@ -17,10 +18,12 @@ use execution_prover_model::MachineType;
 pub enum ExecutionKind {
     Unrolled,
     Unified,
+    L1Wrap,
 }
 
 pub(super) struct BinaryHolder<B: ExecutionBackend> {
     pub(super) execution_kind: ExecutionKind,
+    pub(super) profiles: Vec<ProofProfile>,
     pub(super) machine_type: MachineType,
     pub(super) binary_image: Arc<Box<[u32]>>,
     pub(super) text_section: Arc<Box<[u32]>>,
@@ -28,4 +31,5 @@ pub(super) struct BinaryHolder<B: ExecutionBackend> {
     pub(super) jit_cache: Arc<Mutex<TypeMap>>,
     pub(super) instruction_tape: Arc<SimpleTape>,
     pub(super) precomputations: HashMap<UnrolledCircuitType, B::Precomputations>,
+    pub(super) l1_wrap_precomputations: Option<B::Precomputations>,
 }
