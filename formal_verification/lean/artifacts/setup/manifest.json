@@ -1,0 +1,177 @@
+{
+  "schema_version": 1,
+  "base_commit": "db4dcf86b580e990ee793bf9d15c93232b28e880",
+  "program_words_unpadded": [
+    19,
+    4227219,
+    111,
+    7438771
+  ],
+  "ordinary_profile": "FullUnsigned",
+  "unified_profile": "Reduced",
+  "artifacts": {
+    "add-sub.json": {
+      "sha256": "ee756c1c7b94dc914037913b12e5e016e432781222a37b5e2a2cc50b1671c3c1",
+      "trace_len": 16777216,
+      "columns": 8,
+      "circuit_sha256": "8d6266b53914df6f76f1175e4580b0e16b46e6b828ebaa6c2ec0619857f98949"
+    },
+    "bigint.json": {
+      "sha256": "213e679f53eeb59967d641741db0221af354470ebc63319c906ff78b8053f073",
+      "trace_len": 4194304,
+      "columns": 3,
+      "circuit_sha256": "2f001845674e981921e1dfeb3f840c54d6f6afb5f1caf279c81da4b3d1de2823"
+    },
+    "blake-g.json": {
+      "sha256": "46fddd31cc87e69043a6971a7ae4421954b61eccd3e7dbb91b0ca90f2f0c9458",
+      "trace_len": 4194304,
+      "columns": 9,
+      "circuit_sha256": "0bcba100a39dd8bca7ab537430e71f2dc4d04461e3609cbd6353672e3626d5bb"
+    },
+    "blake-round.json": {
+      "sha256": "ae7a24c8f0cd4e89ff5ae2d99d0ccee6e52f3a9013044b7225c4de65d41280b4",
+      "trace_len": 1048576,
+      "columns": 4,
+      "circuit_sha256": "2870dc6b097b83e739bf158f8a8cbca3a6332ab09b82986bfd8d014a175df78d"
+    },
+    "decoder-smoke.json": {
+      "sha256": "353033367a6e850e6a6de484cd0231a66fd6fc7700e444bc8eea2679d12ef665",
+      "trace_len": 524288,
+      "columns": 9,
+      "circuit_sha256": "1ea2bd9227101ec0a693de4b8135c918da93f4a5b3181b0eb87272ebc3cf7750"
+    },
+    "inits-and-teardowns.json": {
+      "sha256": "4dd7940b1ab3868b513c126cb69e53d68ee3578d11cef8b3920c45456ff4a2c3",
+      "trace_len": 16777216,
+      "columns": 0,
+      "circuit_sha256": "09001323aeee5845933934a97b1be996aa786812ab9d61cb18193fd505b3341d"
+    },
+    "jump-branch.json": {
+      "sha256": "2e10ce52836a93d86725695362761fdbc5d40b795c06521f563975e38a158cb1",
+      "trace_len": 16777216,
+      "columns": 10,
+      "circuit_sha256": "3504760eb24a91a4cdf66fb60a15519eff066ab596f647e3d59828a590a8b1a9"
+    },
+    "keccak.json": {
+      "sha256": "5b681d2bfab9ed8b348b7bf0d93fd8e8c41d2b925235a3e4f9db6d0aedf9a7aa",
+      "trace_len": 4194304,
+      "columns": 8,
+      "circuit_sha256": "84675f61b5c5a22cee8df14b6c2cc5b663fcb24bd9b2c26c2fb4f6538a33b829"
+    },
+    "mul-div.json": {
+      "sha256": "29b620a988f5caf5b68316f12a7cd5b9805734719712196c931a0dd4c7c07a04",
+      "trace_len": 8388608,
+      "columns": 9,
+      "circuit_sha256": "099abbe019d450c3a2c1692e8fca84b783a33b90f8589d5c6dc4e88daf462b35"
+    },
+    "shift-binop.json": {
+      "sha256": "2a2d7a6c9a9a31ec0b71f71ce8a9528567905dd053fa33ec64ab30696a25335e",
+      "trace_len": 16777216,
+      "columns": 10,
+      "circuit_sha256": "59c5582239807baf6669d02494db01c78e98ca418c0ded26720b076656a6c584"
+    },
+    "subword-memory.json": {
+      "sha256": "c2afccd555439d2cb4eef6710d32fb346465a0eef36e1bf81f1dca27ed906f25",
+      "trace_len": 16777216,
+      "columns": 9,
+      "circuit_sha256": "a38ac7c6d113b0747ee0fad586afc3163e285b0cd8e5afbb6160e0ab81570963"
+    },
+    "unified.json": {
+      "sha256": "1118fd1d991d488f7a72f5cf69164f80c07ef31912d4e0ddc8079dc81ff8d2f7",
+      "trace_len": 8388608,
+      "columns": 10,
+      "circuit_sha256": "ab879516e294e03d8134f2e3d0b63863167a4b77c1f3fa0f4b7ae16f9447860b"
+    },
+    "word-memory.json": {
+      "sha256": "2c21a4eb009bad64c66d49881c75296ff663fb6e3b2bf3840ae19ea04cb29cb6",
+      "trace_len": 16777216,
+      "columns": 9,
+      "circuit_sha256": "a77b3c9ca7ecee724d259433febafbe97d089e59787b5e5fb3d9b44178ceb2b8"
+    }
+  },
+  "source_sha256": {
+    "circuit_defs/circuit_common/src/lib.rs": "c5fce8fb2b3772ca4d6faad1eeb1557ae81029719b273f111529e5a502848ec4",
+    "circuit_defs/setups/src/circuits/bigint_ops_with_control_circuit/mod.rs": "816d2d062aee175dcaaf51c57aa4480287b8b47fb7d1c8209b6d25a28b22468e",
+    "circuit_defs/setups/src/circuits/blake2_g_function_circuit/mod.rs": "56373326bc3a2cb705399830bb772285ae23bf9243141ddf2eefc71ebd2f2c93",
+    "circuit_defs/setups/src/circuits/blake2_with_compression_circuit/mod.rs": "9b8d0b2ba649c33f9007cc4ef5c185def67d8c4c18d877b97a56d924366dfa32",
+    "circuit_defs/setups/src/circuits/keccak_special5_circuit/mod.rs": "58abbfac5998c3d8431c5c1d551d995df5b595f0fe6f52711b08ee77add6d477",
+    "circuit_defs/setups/src/circuits/mod.rs": "b27e7a129cc6ed99e14c5e04e9e8d7067e18804359a5552190fcb022a428608c",
+    "circuit_defs/setups/src/lib.rs": "061f1fc20c447822bbb82306832c9f45050340c7b5cd62d9d5d35dc7b6d80956",
+    "circuit_defs/setups/src/program_setups.rs": "679ce23c87bfbceeebf891145cb8d945350f85a640d2ec7f6221acdc43f702b4",
+    "circuit_defs/setups/src/unrolled_circuits/add_sub_lui_auipc_mop_circuit/mod.rs": "f65cbc436d812770e6740f1ee75391d4964f863d2049ca869b9151aae22836a6",
+    "circuit_defs/setups/src/unrolled_circuits/inits_and_teardowns_circuit/mod.rs": "44edca70997fde503102945fee12873880139003bc6b2d81d9c39f6306ce98f5",
+    "circuit_defs/setups/src/unrolled_circuits/jump_branch_slt_circuit/mod.rs": "6705a93e20699d3236f7acddbc3a311cbde03a1828992a0eaa1bf11d2fdd8d6d",
+    "circuit_defs/setups/src/unrolled_circuits/load_store_subword_only_circuit/mod.rs": "1e9f2257e496b9cd3f01360e23580118b9c86a0bc32e34c316ff5fcf8c97cdfa",
+    "circuit_defs/setups/src/unrolled_circuits/load_store_word_only_circuit/mod.rs": "c1e87e4965fe354068563684aea403ed5fea3c2b7c29225153fb523388e2f67b",
+    "circuit_defs/setups/src/unrolled_circuits/mod.rs": "ca2ff38b5dde7d27cd93ce391b22a94cb6afa0c03fcb1e9435492516d618a0db",
+    "circuit_defs/setups/src/unrolled_circuits/mul_div_circuit/mod.rs": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "circuit_defs/setups/src/unrolled_circuits/mul_div_unsigned_circuit/mod.rs": "2757183b3cb8b558e04feffdc517af5768b0a408e249d7f90904720ea86fb030",
+    "circuit_defs/setups/src/unrolled_circuits/shift_binary_circuit/mod.rs": "8e70785046a02e52b9c8a7a0fc070c7da6835a9a026af71e1777a2b5699cfe0b",
+    "circuit_defs/setups/src/unrolled_circuits/unifier_reduced_machine_circuit/mod.rs": "fa6ffc5e57f277fa0e0ab04862d5e4caecc7f8a7db4aaec4916d7384aef9435f",
+    "common_constants/src/timestamps.rs": "3e4354197a948a96ac00bea6d0c140a5fd0946dedf3db0d7452c0a12bf5b3eb3",
+    "cs/src/definitions/table_type.rs": "48ecfba65380cf8ef83f9189eda67b2aad626449623a19214f8190e280ed15d2",
+    "cs/src/gkr_circuits/add_sub_family/circuit.rs": "b95073b1ac284db6417065737e9b619e887c1614207b452e12f30764c5c63687",
+    "cs/src/gkr_circuits/add_sub_family/decoder.rs": "56b36297fa09d618283d34553e9cd70dd3d5771e0c3d9f846814a51605c83969",
+    "cs/src/gkr_circuits/add_sub_family/mod.rs": "52b5d241d6696777f5adfeb13f2ad8d79930b95f0973582f6a8f9f72c3c723b6",
+    "cs/src/gkr_circuits/binary_shifts_family/circuit.rs": "aa125b382c077c785712e83794cd6912527a96da587cde94ecc65cd92d8e1922",
+    "cs/src/gkr_circuits/binary_shifts_family/decoder.rs": "7fb407ccaf776f98e8ca6f78ad8187555aecba009edb540f0e705e8304fe3c03",
+    "cs/src/gkr_circuits/binary_shifts_family/mod.rs": "a31c9e8580df3bdbe4071f7d5b0e7707a289e03d9e400d17ce0b655e19da6f67",
+    "cs/src/gkr_circuits/decoder_trait.rs": "2cca40ec98dc700c5af3a73e1b27f2b2987e4b76c810ce115a2132620f021bf0",
+    "cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs": "019611201d1a57a9f9886b583014283666a7d1570a518b9f0281ae59c39a16cb",
+    "cs/src/gkr_circuits/delegation/blake2_g_function/mod.rs": "5bc27b9e10ead2bb1157b2af02cf5f9c8d65363c2f7162c4ee02f95f61842151",
+    "cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs": "492cc3d74dcfb87099cd3b85d2282b4c04a11797795efac47841d9130163504c",
+    "cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/mod.rs": "3e83d8ef6e5e0dfc5d9c39e1b00664e5b5282b9a8d7966a91beb45c961600832",
+    "cs/src/gkr_circuits/delegation/keccak_special5/debug_info.rs": "822698e54bff397a67913eaedcc02c0314780bcecc170df354e8558cf1eb8cd3",
+    "cs/src/gkr_circuits/delegation/keccak_special5/mod.rs": "e0737a2f8177f9b15894432ac30d2b479eacf06fa6c57a0448ef12aed84ce3d8",
+    "cs/src/gkr_circuits/delegation/mod.rs": "0c494faee72ea5dbf54beaf7b26d9bc0f205241cfad0d3eb2939af1d868462b8",
+    "cs/src/gkr_circuits/jump_branch_slt_family/circuit.rs": "4a4a058095c7133a6c8111479c003e203555636e4bdee73174ff8ec4af2586de",
+    "cs/src/gkr_circuits/jump_branch_slt_family/decoder.rs": "ba2a60e2af4b23b1c5977114fe0778d034d43e73cb09ecc56b4f6a81cbb7840c",
+    "cs/src/gkr_circuits/jump_branch_slt_family/mod.rs": "8bc6b7616aa187b6cafdc58c29a35bee8785b3045642f8cb25aa24a5c4c78131",
+    "cs/src/gkr_circuits/mem_subword_only/circuit.rs": "3a54fd5e6fa2713978050592e33d252e53d6396d1da53c304f0ae88820ac1146",
+    "cs/src/gkr_circuits/mem_subword_only/decoder.rs": "f699dc2ce799d4ca16f188d54baef9ef094649c5c1b4ae489297c37aecd5f043",
+    "cs/src/gkr_circuits/mem_subword_only/mod.rs": "41184962854faa6d98a2e76caa27ae9643d8b7ff929692acc5693cf4c1407cc1",
+    "cs/src/gkr_circuits/mem_word_only/circuit.rs": "7d04490cfc4cdbb49de0c15e974693eef38dab563db7109bca396a8011c177b2",
+    "cs/src/gkr_circuits/mem_word_only/decoder.rs": "0f26fa4facca5b599796478e2ea7488da0abb19fb2b18e202886f016c0e8bb37",
+    "cs/src/gkr_circuits/mem_word_only/mod.rs": "657991a61a25e3b539eaf06eb87ff2b6545dc350207f9442a97a7cd8e0c33ae5",
+    "cs/src/gkr_circuits/mod.rs": "506116071558fcd75000a2cf457b48aac4ea4f2cb921bda8e917e797136b7376",
+    "cs/src/gkr_circuits/mul_div/circuit.rs": "fac8dc4ca5ff3d30eb2f3626bc7eeca15a83828e982feaeed9c0faa5134498d5",
+    "cs/src/gkr_circuits/mul_div/decoder.rs": "08f30aea8ba4d77e22035522987c26df66a31ef117d23f0f72e29e5b1e067a7b",
+    "cs/src/gkr_circuits/mul_div/mod.rs": "f242efd521af2d1b516cdd241b93cd7e73726125e540beddf6f5fc9b82027716",
+    "cs/src/gkr_circuits/unified_reduced_machine/add_sub_lui_auipc_mop.rs": "9b69af15d76b7d5f6242b24d3b3f0a5be95d043d352a5683e74508c6caea9fb2",
+    "cs/src/gkr_circuits/unified_reduced_machine/binary_shifts.rs": "612fbed13a8ee4b20844a8b3cafa02e96bbf1fd8ad2384fe351fd65ae3c0735f",
+    "cs/src/gkr_circuits/unified_reduced_machine/circuit.rs": "3f8a7da83b63efbdd090db5b7e93862eef0681f6ef050355febf885e088b3b2a",
+    "cs/src/gkr_circuits/unified_reduced_machine/decoder.rs": "8d6747c67ee30b066d4c1016df4fdef391643f751c5ba845192c62ffd53f0841",
+    "cs/src/gkr_circuits/unified_reduced_machine/jump_branch_slt.rs": "509953733adbd08460779cac5aaf712ea68160b62698edeaf5e376796305121f",
+    "cs/src/gkr_circuits/unified_reduced_machine/mem_word_only.rs": "8cf7fbcd6796898f382649b7ff413e4703a789f28090b401f60e925be06f07f1",
+    "cs/src/gkr_circuits/unified_reduced_machine/mem_word_only_lw_sw.rs": "52b90a4b60f837ad65585b24a120d43ee324eb8cf9b4883449149a3cafe4d9c2",
+    "cs/src/gkr_circuits/unified_reduced_machine/mod.rs": "e25105b66244b6fac66af7808efbe59bc0423afae1c9146ed0df61020e272577",
+    "cs/src/gkr_circuits/utils.rs": "fd4fab25a2f47f071bb9b3c1a718063fcefe3af157c6537ed25442cbacf9b04c",
+    "cs/src/tables/binops.rs": "f80be76ab54364a99c18cb2d59bf6bb806eeb86bc41f9903e822b341ed840698",
+    "cs/src/tables/blake_g_function_precompile_related.rs": "4453d3f4ab491e5df8a3dac5b585dcd41bdebf76eae2f71d8255dffe0bb6c4c5",
+    "cs/src/tables/integer_ops.rs": "12bac60e7b0e2281d5fa732baffbe91cd445bc4cfb05c78824252938be3e2df9",
+    "cs/src/tables/jump_branch_opcode_related.rs": "1b7f13fb3c7a307c849cb42b271f83dc99aa555221edcf40b01c5c100f71544e",
+    "cs/src/tables/keccak_precompile_related.rs": "8db0a4cd5e84b6c5b5f9361b52bc3853d9b06ae070e29833bcd59dc1e5dedde1",
+    "cs/src/tables/memory_opcode_related.rs": "9c4b7316f68c38d18254791665e656425cbdd464b9e52ea8c3afa44809ff6422",
+    "cs/src/tables/mod.rs": "337b682ca82ca46e6884e4ec9f42e8f8289b001b9fe276f459b6e7e30c24fde2",
+    "cs/src/tables/quote.rs": "cdbe3689b4db2d807dc0d11782e083ddae809e2f00300891f096f36e0c976ef4",
+    "cs/src/tables/range_checks_and_decompositions.rs": "06cf35915106a3fb51021123c9c98593cd00d54467ccd53395b0b61eb43584a8",
+    "cs/src/tables/rom_related.rs": "603f41c52f4bac911c616797ca2425a16bfefeaa057a458e0479b12e9f481e91",
+    "cs/src/tables/shift_opcode_related.rs": "35bcb92cf05ed10b7131838594958f28faf36f7d4795cf23d9db3ddfe6b00f54",
+    "cs/src/tables/zero_entry.rs": "7636e1fcf1a66380cdde16a6f50f9ddfcebcd3f491bf55c14416cbab715c21a5",
+    "execution_prover/examples/export_setup_json.rs": "c8b2c08eac37354695a6b8ab548bfe1d889aab703c0f68755d65e2bba436fafc",
+    "execution_prover/src/setup/common.rs": "d59b65bcde61ae70821594bbd353979c3db512b0de3343f443a67d24230bc5b3",
+    "execution_prover/src/setup/unrolled.rs": "1145994a4ac19d017ff603a93d83cab17e3a66585fdf96a959c112250d1ee27e",
+    "field/src/baby_bear/base.rs": "171b523f8ed002818d81542ce4b4c7504b5be15de79c45be55e7bd3147d3349c",
+    "field/src/baby_bear/ext2.rs": "ac8cbbd9f765d6bbc189d2caa0a92b691f95a681aa8d402101fc53e8a16cadb3",
+    "field/src/baby_bear/ext4.rs": "89c9a29c39587855678b87d9659b402f3a8647022f7d8a3e3c2afda549d763e2",
+    "field/src/baby_bear/ext6.rs": "a4a5b94aff24deffa920187c66abb177ea9cbee5c2c7cd4e1d25f51af3ac5fe5",
+    "field/src/baby_bear/mod.rs": "211c1d6d05133f74e4c11731702bb66d9fb73a330961372c9d7dca64804b09d7",
+    "field/src/baby_bear/ops/basic.rs": "edae126e666aaa8837e6c5847271f22a3400a84cb0c4ee12885a8aa57b813e5d",
+    "field/src/baby_bear/ops/mod.rs": "ffb5511533ee7040386d9cf79acabf272bce906a16d71b9748f7f8521f46ba0f",
+    "field/src/baby_bear/ops/riscv32.rs": "221bf584ea223ef49b27e76be1960184e40f24ac40f66bcb00c41420b586dea3",
+    "prover/src/gkr/prover/setup.rs": "92f87b5c0c5249472cb7010a7ba14fe832097e5703a03861ee313435406b60c1",
+    "prover/src/gkr/prover/setup_artifact.rs": "8f75a6131a23bc70e36936421a94c510d3ea9e3c7c52ea64bd6f46969ca976c4",
+    "prover/src/gkr/virtual_polys/range_check.rs": "be173e3a2b3500911924aaf5fa53236cd61b302a216bfc42e6190714da3f3012",
+    "rust-toolchain.toml": "712ac2e83f5a100a1d5df2fecb07954238dd52a962690147fe93435a31afe495"
+  }
+}

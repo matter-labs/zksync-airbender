@@ -1,5 +1,6 @@
 import Airbender.Review.Helpers.Context.Model
 import Airbender.Proofs.Arithmetic.Lemmas
+import Airbender.Proofs.Tables.ImportedRanges
 
 namespace Airbender.Trace.Proofs
 
@@ -7,12 +8,12 @@ theorem range_bound {p : Nat} [Fact p.Prime] {entry : Expression (ZMod p)}
     {env : Environment (ZMod p)} (h : (timestampLookup entry).Contains env) :
     (entry.eval env).val < timestampBase := by
   have hs := (timestampLookup entry).table.imply_soundness _ _ h
-  exact (Lookup.soundess_def_field timestampTable env entry).mp hs
+  exact (Verification.imported_timestamp_iff _).mp ((Lookup.soundess_def_field timestampTable env entry).mp hs)
 
 theorem range_contains {p : Nat} [Fact p.Prime] {entry : Expression (ZMod p)}
     {env : Environment (ZMod p)} (h : (entry.eval env).val < timestampBase) :
     (timestampLookup entry).Contains env := by
-  have hc := (Lookup.completeness_def_field timestampTable env entry).mpr h
+  have hc := (Lookup.completeness_def_field timestampTable env entry).mpr ((Verification.imported_timestamp_iff _).mpr h)
   exact (timestampLookup entry).table.implied_by_completeness _ _ hc
 
 /-- Lift the two limb equations separately: the full 38-bit clock need not fit

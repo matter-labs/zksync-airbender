@@ -1,4 +1,5 @@
 import Airbender.Review.Trace.UnifiedReduced.FullExecution
+import Tests.SetupImport
 import Airbender.Review.Trace.Workers.Keccak.ReferenceCalls
 import Airbender.Review.Trace.Workers.Blake2Round.ReferenceCalls
 import Airbender.Review.Trace.Workers.Blake2G.ReferenceCalls
@@ -3202,3 +3203,19 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.full_execution
 #print axioms Airbender.UnifiedReduced.Caller.full_execution_soundness
 #print axioms Tests.UnifiedDelegation.copy_then_ram_full_execution
+
+#print axioms Airbender.Setup.signedValue_cast
+#print axioms Airbender.Verification.imported_range16_row
+#print axioms Airbender.Verification.imported_range13_row
+#print axioms Airbender.Verification.imported_timestamp_row
+#print axioms Airbender.Verification.imported_scalar_range_iff
+#print axioms Airbender.Verification.imported_range16_iff
+#print axioms Airbender.Verification.imported_range13_iff
+#print axioms Airbender.Verification.imported_timestamp_iff
+#print axioms Tests.SetupImport.imported_shape
+#print axioms Tests.SetupImport.unsupported_decoder_sentinel
+#print axioms Tests.SetupImport.real_pc_zero
+#print axioms Tests.SetupImport.range16_last
+#print axioms Tests.SetupImport.range16_padding
+#print axioms Tests.SetupImport.timestamp_last
+#print axioms Tests.SetupImport.program_words

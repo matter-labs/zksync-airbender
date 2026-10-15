@@ -205,6 +205,20 @@ cargo test --locked --config 'profile.dev.package.prover.debug=0' --config 'prof
 cargo test --locked --config 'profile.dev.package.prover.debug=0' --config 'profile.test.package.prover.debug=0' -p prover --lib --features gkr_self_checks decoder_padding_matches_committed_setup_in_forward_relations
 ```
 
+### Native setup table import — active integration
+
+The user authorized exporting and importing complete selected-program lookup
+setup, including ROM and decoder rows. The [native exporter](../../prover/src/gkr/prover/setup_artifact.rs)
+serializes actual materialized columns and the actual circuit object, with
+lossless compression and per-column source checks. [Shared range definitions](Airbender/Review/Helpers/Tables/Range.lean)
+now import native 13-/16-/19-bit rows; their previous bounds and public helpers
+are proved from those data without fresh assumptions. All 121 Tests, both
+executables, importer and review gates pass; all old audit roots and axiom-free
+reports are preserved (2,922 roots; 91 axiom-free). Other table contents and
+program-dependent consumers are still being migrated. This does not close F09's
+general query/authentication/Rust-refinement boundary or AIH-336's pending
+accelerated/full-proof validation. [Reproduction and scope](artifacts/setup/README.md).
+
 ## Implementation update: issued round coverage and wrapped preparation
 
 Update verified: 14 October 2026. Round coverage checkpoint: `9d9cf76b7`.

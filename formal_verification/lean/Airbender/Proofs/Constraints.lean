@@ -1,5 +1,6 @@
 import Clean.Circuit.Operations
 import Airbender.Review.Helpers.Tables.Range
+import Airbender.Proofs.Tables.ImportedRanges
 
 namespace Airbender.Verification
 
@@ -48,7 +49,7 @@ theorem range16_bound {p : Nat} [Fact p.Prime] {entry : Expression (ZMod p)}
     (entry.eval env).val < Arithmetic.limbBase := by
   have hs : (range16 entry).Soundness env :=
     (range16 entry).table.imply_soundness _ _ h
-  exact (Lookup.soundess_def_field range16Table env entry).mp hs
+  exact (imported_range16_iff _).mp ((Lookup.soundess_def_field range16Table env entry).mp hs)
 
 /-- Construct native table membership from a canonical bound, for concrete
     boundary and inactive-row checks. -/
@@ -56,7 +57,7 @@ theorem range16_contains {p : Nat} [Fact p.Prime] {entry : Expression (ZMod p)}
     {env : _root_.Environment (ZMod p)} (h : (entry.eval env).val < Arithmetic.limbBase) :
     (range16 entry).Contains env := by
   have hc : (range16 entry).Completeness env :=
-    (Lookup.completeness_def_field range16Table env entry).mpr h
+    (Lookup.completeness_def_field range16Table env entry).mpr ((imported_range16_iff _).mpr h)
   exact (range16 entry).table.implied_by_completeness _ _ hc
 
 /-- The carry queries use the same native range-table semantics at 13 bits. -/
@@ -64,12 +65,12 @@ theorem range13_bound {p : Nat} [Fact p.Prime] {entry : Expression (ZMod p)}
     {env : _root_.Environment (ZMod p)} (h : (range13 entry).Contains env) :
     (entry.eval env).val < 8192 := by
   have hs := (range13 entry).table.imply_soundness _ _ h
-  exact (Lookup.soundess_def_field range13Table env entry).mp hs
+  exact (imported_range13_iff _).mp ((Lookup.soundess_def_field range13Table env entry).mp hs)
 
 theorem range13_contains {p : Nat} [Fact p.Prime] {entry : Expression (ZMod p)}
     {env : _root_.Environment (ZMod p)} (h : (entry.eval env).val < 8192) :
     (range13 entry).Contains env := by
-  have hc := (Lookup.completeness_def_field range13Table env entry).mpr h
+  have hc := (Lookup.completeness_def_field range13Table env entry).mpr ((imported_range13_iff _).mpr h)
   exact (range13 entry).table.implied_by_completeness _ _ hc
 
 end Airbender.Verification
