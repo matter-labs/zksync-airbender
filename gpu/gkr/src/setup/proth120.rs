@@ -5,6 +5,7 @@ use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use gpu_core::primitives::field::PR;
+use gpu_core::primitives::nvtx::scoped_range;
 use gpu_core::primitives::static_host::{alloc_static_pinned_box_uninit, StaticPinnedBox};
 use gpu_hash::keccak256::Digest;
 use gpu_prover_context::transfer::Transfer;
@@ -188,6 +189,7 @@ impl<'a> PackedSetupSource<'a> {
         transfer: &mut Transfer<'a>,
         context: &ProverContext,
     ) -> CudaResult<()> {
+        let _r = scoped_range(Some("ab"), "l1_wrap.setup_transfer.h2d");
         transfer.ensure_allocated(context)?;
         let stream = context.get_h2d_stream();
         memory_copy_async(

@@ -515,6 +515,52 @@ fn l1_wrap_cpu_gpu_proof_diff() {
     assert_bundle_eq(&bundle, &actual);
 }
 
+/// Profiling variant: one warmup commit + proof, then the measured
+/// commit + proof in the same process with the same setup and inputs, each inside a
+/// host NVTX range `l1_wrap.iteration.{warmup,measured}`; both must equal the reference.
+#[test]
+#[ignore]
+fn l1_wrap_cpu_gpu_proof_diff_warm() {
+    let mut configuration = ExecutionProverConfiguration::default();
+    configuration.backend.memory_preset = MemoryPreset::GiB30;
+    let manifest = proof_manifest(&configuration);
+    let feeder = checkpoint(&manifest, "l1_feeder.json", "L1Feeder");
+    check_file(&manifest, "l1_bundle.json");
+    let bundle = l1_bundle();
+    let programs = fsv_programs(&manifest);
+    let mut prover = ExecutionProver::with_configuration(configuration);
+    let handle = prover.add_binary(
+        ExecutionKind::L1Wrap21,
+        MachineType::Reduced,
+        programs.wrap.0,
+        programs.wrap.1,
+        None,
+        &[ProofProfile::L1Wrap],
+    );
+    for iteration in ["warmup", "measured"] {
+        let label = format!("l1_wrap.iteration.{iteration}");
+        let started = std::time::Instant::now();
+        let actual = {
+            let _range = gpu_core::primitives::nvtx::scoped_range(None, &label);
+            let nd = build_unified_stream(&feeder.setups, &feeder.proof);
+            let result = prover.prove_l1_wrap(0, &handle, FlatResponsesSource::new_with_reads(nd));
+            ReferenceBundle {
+                proof: result.proof,
+                commitment_mode: result.commitment_mode,
+            }
+        };
+        eprintln!(
+            "{label}: {:.3} ms wall (prove_l1_wrap incl. setup init on warmup)",
+            started.elapsed().as_secs_f64() * 1e3
+        );
+        assert_eq!(
+            actual.commitment_mode, bundle.commitment_mode,
+            "L1 wrap commitment mode differs ({iteration})"
+        );
+        assert_bundle_eq(&bundle, &actual);
+    }
+}
+
 /// The fields of `prover_pipeline`'s 2^22 feeder reference manifest these tests read.
 #[derive(Deserialize)]
 struct FeederManifest {
