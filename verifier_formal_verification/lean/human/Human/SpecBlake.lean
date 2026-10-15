@@ -55,4 +55,9 @@ def compress (h : Vector Word 8) (m : Vector Word 16) (t : Word) (last : Bool) :
     round m (SIGMA 2) <| round m (SIGMA 1) <| round m (SIGMA 0) v₀
   Vector.ofFn fun i => h[i] ^^^ v[i] ^^^ v[i.val + 8]
 
+/-- Blake2s with 7 rounds (no key, 32-byte digest) of the five words `w` (20 bytes, one block): the digest words. -/
+def blake5 (w : Vector Word 5) : Vector Word 8 :=
+  compress (Vector.ofFn fun i => IV i ^^^ (if i = 0 then 0x01010020#32 else 0#32))
+    #v[w[0], w[1], w[2], w[3], w[4], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] 20#32 true
+
 end Spec

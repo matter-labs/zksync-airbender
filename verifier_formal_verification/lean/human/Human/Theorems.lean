@@ -4,6 +4,7 @@ import Human.SpecPoly
 import Human.SpecExt4
 import Image
 import ImageMop
+import Human.SpecBlake
 
 /-! # The final theorems (statements only)
 
@@ -33,7 +34,8 @@ def bb (w : Word) : Spec.F := w.toNat
 its final self-jump `halt` with
 * `a0 = combine x`, `a1 = poly x` in the Mersenne31 field (as a `u32 ≤ P`, Airbender's representation),
 * `a2 … a5` (`x12 … x15`) the limbs of `poly4 y` in BabyBear's Ext4 (canonical),
-* the other output registers `x16 … x25` zero (riscv_common's 16-word output convention),
+* `a6, a7` (`x16, x17`) the first two words of the Blake2s (7 rounds) digest of the five input words,
+* the other output registers `x18 … x25` zero (riscv_common's 16-word output convention),
 and stays there: any number of further steps keeps the PC at `halt` and every register unchanged (Airbender reads
 the outputs some steps later). For the image `bytes` with its input at `INPUT` and its final self-jump at `halt`. -/
 def ProgramCorrectOf (bytes : Array (BitVec 8)) (INPUT halt : Nat) : Prop :=
@@ -50,7 +52,9 @@ def ProgramCorrectOf (bytes : Array (BitVec 8)) (INPUT halt : Nat) : Prop :=
       (∀ i : Reg, 12 ≤ i.toNat → i.toNat ≤ 15 → (final.getReg i).toNat < BabyBearP) ∧
       Spec.ofLimbs (bb (final.getReg 12)) (bb (final.getReg 13)) (bb (final.getReg 14)) (bb (final.getReg 15)) =
         Spec.poly4 (Spec.ofLimbs (bb y0) (bb y1) (bb y2) (bb y3)) ∧
-      (∀ i : Reg, 16 ≤ i.toNat → i.toNat ≤ 25 → final.getReg i = 0) ∧
+      final.getReg 16 = (Spec.blake5 #v[x, y0, y1, y2, y3])[0] ∧
+      final.getReg 17 = (Spec.blake5 #v[x, y0, y1, y2, y3])[1] ∧
+      (∀ i : Reg, 18 ≤ i.toNat → i.toNat ≤ 25 → final.getReg i = 0) ∧
       ∀ moreSteps, ∃ later, run moreSteps final = some later ∧ later.pc = final.pc ∧
         ∀ i, later.getReg i = final.getReg i
 

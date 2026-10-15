@@ -148,6 +148,36 @@ theorem codeAt_drop {S : State} {A : Word} {code : List Word} (h : CodeAt S A co
   rw [List.getElem_drop, ← h (n + i) hi']
   congr 1; rw [BitVec.add_assoc]; congr 1; apply BitVec.eq_of_toNat_eq; simp; omega
 
+/-- A straight-line block followed by a call (`jal ra, off`): the state at the callee's entry is the block's final
+state with `pc` at the target and `ra` the return address. -/
+theorem block_jal (code : List Word) (instrs : List Instr) (σ : SState) (S : State) (A off : Word)
+    (rs : List Region) (aps : List (Region × Region))
+    (hdec : code.map decode = instrs.map some) (hrun : symRun instrs initState = some σ)
+    (hpc : S.pc = A) (hal : A.toNat % 4 = 0) (hrom : A.toNat + 4 * (code.length + 1) ≤ ROM_END)
+    (hcode : CodeAt S A code) (jw : Word) (hjw : read S.mem (A + BitVec.ofNat 32 (4 * code.length)) 4 = jw)
+    (hj : decode jw = some (.jal 1#5 off)) (htgt : (A + BitVec.ofNat 32 (4 * code.length) + off).toNat % 4 = 0)
+    (hR : ∀ R ∈ rs, R.b < 32 ∧ R.Holds (ctxOf S) initPool)
+    (hA : ∀ q ∈ aps, Apart (ctxOf S) initPool q.1 q.2)
+    (hconds : σ.conds.all (checkCond rs aps) = true) :
+    ∃ S', run (code.length + 1) S =
+        some ((S'.setPC (A + BitVec.ofNat 32 (4 * code.length) + off)).setReg 1#5
+          (A + BitVec.ofNat 32 (4 * code.length) + 4)) ∧
+      Rel (ctxOf S) σ S' ∧ (∀ b : Word, b.toNat < ROM_END → S'.mem b = S.mem b) ∧
+      (∀ b k, b < 32 → outOK σ rs aps b k = true →
+        read S'.mem (S.getReg (BitVec.ofNat 5 b) + k) 4 = σ.pool.val (ctxOf S) (outNode σ b k)) ∧
+      (∀ wr : List Region, writesIn wr σ = true → (∀ R ∈ wr, R.b < 32 ∧ R.Holds (ctxOf S) initPool) →
+        ∀ a : Word, (∀ R ∈ wr, R.Outside S a) → S'.mem a = S.mem a) := by
+  obtain ⟨S', hrun', hpc', hrel', hrom', hout', hfr'⟩ := block_from code instrs σ S A rs aps hdec hrun hpc hal
+    (by omega) hcode hR hA hconds
+  refine ⟨S', ?_, hrel', hrom', hout', hfr'⟩
+  have hw : read S'.mem S'.pc 4 = jw := by
+    rw [read_congr S'.mem S.mem _ 4 (fun j hj => hrom' _ (by rw [hpc']; simp only [ROM_END] at *; bv_omega)), hpc',
+      hjw]
+  rw [run_add, hrun', Option.bind_some, run_succ,
+    step_fetch S' jw (by rw [hpc']; bv_omega) (by rw [hpc']; simp only [ROM_END] at *; bv_omega) hw, hj,
+    Option.bind_some, exec_jal S' _ _ (by rw [hpc']; exact htgt), hpc']
+  rfl
+
 theorem returnsW_of_sym (body : List Word) (instrs : List Instr) (σ : SState) (s : State) (frame len : Nat)
     (rs : List Region) (aps : List (Region × Region)) (post : State → State → Prop)
     (hdec : body.map decode = instrs.map some) (hrun : symRun instrs initState = some σ)

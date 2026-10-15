@@ -240,8 +240,17 @@ theorem step_cst {σ σ1 : SState} {S : State} (hrel : Rel c σ S) (hcok : Conds
   split at h
   · cases h
   · rename_i a ha; obtain ⟨σ2, v⟩ := a; cases h
-    obtain ⟨-, hv, hval, -⟩ := SState.add_spec c σ σ2 _ v hrel.1 ha
-    exact step_reg c hrel hcok _ v ha rd _ rfl ⟨hv, hv, by simp, fun w' hw' => by cases hw'; rw [hval]; rfl⟩
+    obtain ⟨he, hv, hval, -⟩ := SState.add_spec c σ σ2 _ v hrel.1 ha
+    have hvw : σ2.pool.val c v = w := by rw [hval]; rfl
+    split
+    · rename_i hz
+      -- `x0` reads 0: its node (here 0) has value 0
+      have h0 : σ.pool.val c 0 = 0 := by
+        have := (hrel.2.2.1 0).2; rw [hz] at this; rw [← this]; rfl
+      have hz' : 0 < σ.pool.len := by have := (hrel.2.2.1 0).1.1; rwa [hz] at this
+      refine step_reg c hrel hcok _ v ha rd _ rfl ⟨hv, lt_of_lt_of_le hz' he.2.1, ?_, fun w' hw' => by cases hw'; exact hvw⟩
+      rw [hvw, he.2.2 0 hz', h0]; simp
+    · exact step_reg c hrel hcok _ v ha rd _ rfl ⟨hv, hv, by simp, fun w' hw' => by cases hw'; exact hvw⟩
 
 /-- After adding a node, everything still holds. -/
 theorem add_rel {σ σ1 : SState} {S : State} (hrel : Rel c σ S) (hcok : CondsOK σ) (n : Node) (v : Nat)

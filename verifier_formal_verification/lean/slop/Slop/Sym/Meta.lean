@@ -211,11 +211,14 @@ elab "sym_generalize" : tactic => Tactic.withMainContext do
   let (_, g') ← g.generalize args
   Tactic.replaceMainGoal [g']
 
+theorem getReg_x0 (S : State) : S.getReg (BitVec.ofNat 5 0) = 0#32 := rfl
+
 /-- The side goals of `returnsW_of_sym` about regions (`hR`, `hA`, `hdst`): unfolded to linear arithmetic over the
 initial registers, for `omega` with the caller's hypotheses. -/
 macro "sym_side" : tactic => `(tactic| (
   simp (disch := decide) only [List.forall_mem_cons, List.not_mem_nil, IsEmpty.forall_iff, implies_true,
-    forall_const, and_true, RV.Sym.Region.Holds, RV.Sym.Apart, RV.Sym.initPool_val, RV.ROM_END, RV.RAM_END]
+    forall_const, and_true, RV.Sym.Region.Holds, RV.Sym.Apart, RV.Sym.initPool_val, RV.Sym.getReg_x0,
+    BitVec.toNat_ofNat, Nat.zero_mod, RV.ROM_END, RV.RAM_END]
   all_goals omega))
 
 end RV.Sym

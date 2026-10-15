@@ -76,8 +76,10 @@ def opNode (o : Op) (a b : Nat) : Node := if commutes o ∧ b < a then .op o b a
 
 /-- A constant register. -/
 def SState.cst (σ : SState) (w : Word) : Option (SState × SReg) := do
+  -- address form `x0 + w` (so that loads/stores at constant addresses get a register base): `x0`'s node is 0
+  let z := (σ.reg 0).val
   let (σ, v) ← σ.add (.const w)
-  return (σ, ⟨v, v, 0, some w⟩)
+  return (σ, if z = 0 then ⟨v, 0, w, some w⟩ else ⟨v, v, 0, some w⟩)
 
 /-- `mopVal` reads the old `rd` only for `fma` and `triAdd`; otherwise that operand is canonically node 0. -/
 def mopUsesRd : FieldOp → Bool
