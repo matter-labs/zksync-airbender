@@ -29,11 +29,32 @@ inductive BinaryRegisterWrite : SailRV32.instruction → BitVec 5 → Prop where
   | srai (amount : BitVec 6) (rs1 rd : BitVec 5) : BinaryRegisterWrite (.SHIFTIOP (amount, .Regidx rs1, .Regidx rd, .SRAI)) rd
   | rev8 (rs1 rd : BitVec 5) : BinaryRegisterWrite (.REV8 (.Regidx rs1, .Regidx rd)) rd
 
+/-- The four original comparisons, with the public syntactic destination.
+    Their actual operands and Boolean result are unrestricted here. -/
+inductive ComparisonRegisterWrite : SailRV32.instruction → BitVec 5 → Prop where
+  | slt (rs2 rs1 rd : BitVec 5) : ComparisonRegisterWrite (.RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, .SLT)) rd
+  | sltu (rs2 rs1 rd : BitVec 5) : ComparisonRegisterWrite (.RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, .SLTU)) rd
+  | slti (imm : BitVec 12) (rs1 rd : BitVec 5) : ComparisonRegisterWrite (.ITYPE (imm, .Regidx rs1, .Regidx rd, .SLTI)) rd
+  | sltiu (imm : BitVec 12) (rs1 rd : BitVec 5) : ComparisonRegisterWrite (.ITYPE (imm, .Regidx rs1, .Regidx rd, .SLTIU)) rd
+
+/-- The pinned project's TRIADD and four XORROT forms. This footprint does not
+    substitute upstream Zimop fallback execution or assert custom retirement. -/
+inductive CustomRegisterWrite : SailRV32.instruction → BitVec 5 → Prop where
+  | triadd (rs2 rs1 rd : BitVec 5) : CustomRegisterWrite (.ZIMOP_MOP_RR (4, .Regidx rs2, .Regidx rs1, .Regidx rd)) rd
+  | xorrot16 (rs1 rd : BitVec 5) : CustomRegisterWrite (.ZIMOP_MOP_R (16, .Regidx rs1, .Regidx rd)) rd
+  | xorrot12 (rs1 rd : BitVec 5) : CustomRegisterWrite (.ZIMOP_MOP_R (12, .Regidx rs1, .Regidx rd)) rd
+  | xorrot8 (rs1 rd : BitVec 5) : CustomRegisterWrite (.ZIMOP_MOP_R (8, .Regidx rs1, .Regidx rd)) rd
+  | xorrot7 (rs1 rd : BitVec 5) : CustomRegisterWrite (.ZIMOP_MOP_R (7, .Regidx rs1, .Regidx rd)) rd
+
 /-- Supported public GPR-writing forms. Their results are unrestricted here. -/
 inductive PublicRegisterWrite : SailRV32.instruction → BitVec 5 → Prop where
   | arithmetic {instruction destination} (form : ArithmeticRegisterWrite instruction destination) :
       PublicRegisterWrite instruction destination
   | binary {instruction destination} (form : BinaryRegisterWrite instruction destination) :
+      PublicRegisterWrite instruction destination
+  | comparison {instruction destination} (form : ComparisonRegisterWrite instruction destination) :
+      PublicRegisterWrite instruction destination
+  | custom {instruction destination} (form : CustomRegisterWrite instruction destination) :
       PublicRegisterWrite instruction destination
 
 /-- One worker-free public GPR write, with no supplied operands or native flags. -/
@@ -75,7 +96,8 @@ def RegisterImmediatePreparation.arithmeticFrame [Fact p.Prime]
   ⟨scope.registry, by intro entry present address; rw [scope.atCut entry present address]; exact .addi _ _ _,
     scope.prefixScope, scope.afterInitial, scope.beforeTerminal⟩
 
-/-- Public register dataflow with intervening arithmetic, bitwise and shift writes to other nonzero GPRs.
+/-- Public register dataflow with intervening arithmetic, bitwise, shift, comparison
+    and admitted custom writes to other nonzero GPRs.
     Such a gap may read and refresh the tracked register; its value is preserved.
     Actual operands, tokens, selectors and intermediate states are conclusions.
     Each selected cycle is worker-free; all earlier effects remain. -/
