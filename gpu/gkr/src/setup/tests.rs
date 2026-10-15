@@ -805,7 +805,7 @@ fn forward_setup_generic_lookup_fused_kernel_overwrites_stale_fill_values() {
     let expected = expected_generic_lookup_preprocessing(
         &setup,
         generic_lookup_width,
-        generic_lookup_len,
+        trace_len,
         lookup_alpha,
     );
 
