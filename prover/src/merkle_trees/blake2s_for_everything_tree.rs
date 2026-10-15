@@ -126,6 +126,8 @@ impl<B: GoodAllocator + 'static, const USE_REDUCED_BLAKE2_ROUNDS: bool>
 {
     type Verifier = Blake2sForEverythingVerifier;
 
+    const DIGEST_BYTES: usize = BLAKE2S_DIGEST_SIZE_U32_WORDS * core::mem::size_of::<u32>();
+
     fn dummy() -> Self {
         Blake2sU32MerkleTreeWithCap {
             cap_size: 0,
@@ -177,7 +179,9 @@ impl<B: GoodAllocator + 'static, const USE_REDUCED_BLAKE2_ROUNDS: bool>
         layout: crate::merkle_trees::on_disk::OnDiskTreeLayout,
         num_cosets: usize,
     ) -> crate::merkle_trees::on_disk::OnDiskTree<Self> {
-        crate::merkle_trees::on_disk::open_disk_artifacts::<Self>(base_path, layout, num_cosets)
+        crate::merkle_trees::on_disk::open_disk_artifacts::<BabyBearField, Self>(
+            base_path, layout, num_cosets,
+        )
     }
 
     fn construct_from_cosets<E: FieldExtension<BabyBearField>, A: CosetIndexedAccessor<E>>(

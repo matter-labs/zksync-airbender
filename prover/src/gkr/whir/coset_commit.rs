@@ -1350,9 +1350,11 @@ mod test {
             }
             let mut out = [0u8; 32];
             out.copy_from_slice(Keccak256::digest(&pre).as_slice());
-            core::array::from_fn(|i| {
+            let mut digest = core::array::from_fn(|i| {
                 u32::from_be_bytes([out[4 * i], out[4 * i + 1], out[4 * i + 2], out[4 * i + 3]])
-            })
+            });
+            crate::merkle_trees::keccak256_hash_leafs::truncate_keccak_merkle_digest(&mut digest);
+            digest
         };
 
         let tree_size = lde_factor * (trace_len / vpl);
