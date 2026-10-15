@@ -306,8 +306,9 @@ ABI and whole mixed execution remain separate.
    canonical clock fourteen; malformed immediates/constants, middle operands and
    incomplete references are rejected. Existing AUIPC roots and the actual
    unissued G-prefix effect remain inhabited. Public register dataflow now admits
-   intervening arithmetic, bitwise, shift and REV8 writes to other nonzero
-   GPRs, including reads/readonly refreshes of the tracked register. Original
+   intervening arithmetic, bitwise/shift/REV8, comparison and admitted custom
+   writes to other nonzero GPRs, including reads/readonly refreshes of the
+   tracked register. Original
    public instruction constructors and successful decoding derive the native GPR
    destination bank/index, retaining supported shift-payload checks without
    operand bounds or instruction results. Original public decoding derives
@@ -328,10 +329,19 @@ ABI and whole mixed execution remain separate.
    Native XOR/AND gaps also retain two aliased reads, x12 = 127/129, x10 = 0/129,
    clock-nine refreshes and final x12 = 128 at clock fourteen. Wrong public
    destinations/forms, illegal shifts and discarded binary destinations are
-   rejected. Continue memory/comparison/custom gaps, worker-interleaved preparation,
+   rejected. All four comparisons, TRIADD and the four pinned XORROT forms now
+   derive their public GPR footprint without predicate bits, operands or results.
+   Native SLTU/TRIADD gaps preserve x12 = 127/129, retain both readonly refreshes
+   and real x10 = 0/65795 writes before final x12 = 128; the native third TRIADD
+   operand is the actual old x10 = 65537. Stale sources remain locally valid and
+   globally rejected; wrong public destinations/forms, unsupported MOPs and
+   discarded selected destinations are rejected at the registry boundary.
+   Pinned custom clauses remain unchanged; this does not assert full custom
+   retirement or substitute upstream Zimop fallback. Continue memory gaps,
+   worker-interleaved preparation,
    broader operand-dependent operations, jumps/branches and whole caller
-   retirement, retaining unsupported-
-   control and unissued-exclusion boundaries.
+   retirement, retaining the boundaries for unsupported controls and unissued
+   workers.
    COPY→ADDI cuts check actual control values 128→0→1 with a clock-seven seed
    retained for the second window. Extended BLAKE and Keccak completion controls
    do not restart their protocols; checked regressions forbid treating their
