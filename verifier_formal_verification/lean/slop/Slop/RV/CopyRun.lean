@@ -144,4 +144,18 @@ theorem codeAt_blockCopy_dst {S S' : State} {s0 d : Word} {C : List Word} {n : N
   rw [if_pos (by bv_omega)]
   congr 1; bv_omega
 
+/-- A table at offset `o` of a copied block, at the same offset in the copy. -/
+theorem codeMem_blockCopy_off {S : State} {m' : Word → BitVec 8} {s0 d : Word} {C : List Word} {n o : Nat}
+    (hc : CodeAt S (s0 + BitVec.ofNat 32 o) C)
+    (hm : ∀ a : Word, (a - d).toNat < n → m' a = blockCopy S.mem d s0 n a) (hn : o + 4 * C.length ≤ n)
+    (hd : d.toNat + n ≤ 2 ^ 32) (hs : s0.toNat + n ≤ 2 ^ 32) : CodeMem m' (d + BitVec.ofNat 32 o) C := by
+  intro i hi
+  rw [← hc i hi]
+  apply read_congr2
+  intro j hj
+  rw [hm _ (by bv_omega)]
+  simp only [blockCopy]
+  rw [if_pos (by bv_omega)]
+  congr 1; bv_omega
+
 end RV

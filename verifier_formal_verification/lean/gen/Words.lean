@@ -17,7 +17,8 @@ def codeOf (bytes : Array (BitVec 8)) (a size : Nat) : List Word :=
 
 /-- (block, address, size) of `Image`. -/
 def blocks : List (String × Nat × Nat) :=
-  [("boot", 0, Image.bb_add),  -- _start, _abs_start, _start_rust, main: everything before the functions
+  [("start", 0, Image.main),  -- _start, _abs_start, _start_rust
+   ("main", Image.main, Image.main_size),
    ("inc", Image.u32_inc, Image.u32_inc_size), ("double", Image.u32_double, Image.u32_double_size),
    ("combine", Image.u32_combine, Image.u32_combine_size),
    ("add_mod", Image.m31_add, Image.m31_add_size), ("mul_mod", Image.m31_mul, Image.m31_mul_size),
@@ -29,6 +30,7 @@ def blocks : List (String × Nat × Nat) :=
    ("ext4_add_assign", Image.ext4_add_assign, Image.ext4_add_assign_size),
    ("ext4_mul_add", Image.ext4_mul_add, Image.ext4_mul_add_size),
    ("ext4_horner", Image.ext4_horner, Image.ext4_horner_size),
+   ("ext4_poly", Image.ext4_poly, Image.ext4_poly_size),
    ("finish_success", Image.finish_success, Image.finish_success_size),
    ("finish_success_extended", Image.finish_success_extended, Image.finish_success_extended_size),
    ("init", Image.init, Image.init_size), ("memcpy", Image.memcpy, Image.memcpy_size),
@@ -38,13 +40,14 @@ def blocks : List (String × Nat × Nat) :=
 
 /-- (block, address, size) of `ImageMop`. -/
 def blocksMop : List (String × Nat × Nat) :=
-  [("boot", 0, ImageMop.ext4_horner),
+  [("start", 0, ImageMop.main), ("main", ImageMop.main, ImageMop.main_size),
    ("inc", ImageMop.u32_inc, ImageMop.u32_inc_size), ("double", ImageMop.u32_double, ImageMop.u32_double_size),
    ("combine", ImageMop.u32_combine, ImageMop.u32_combine_size),
    ("add_mod", ImageMop.m31_add, ImageMop.m31_add_size), ("mul_mod", ImageMop.m31_mul, ImageMop.m31_mul_size),
    ("poly_eval", ImageMop.m31_poly_eval, ImageMop.m31_poly_eval_size),
    ("ext4_mul_add", ImageMop.ext4_mul_add, ImageMop.ext4_mul_add_size),
    ("ext4_horner", ImageMop.ext4_horner, ImageMop.ext4_horner_size),
+   ("ext4_poly", ImageMop.ext4_poly, ImageMop.ext4_poly_size),
    ("finish_success", ImageMop.finish_success, ImageMop.finish_success_size),
    ("finish_success_extended", ImageMop.finish_success_extended, ImageMop.finish_success_extended_size),
    ("init", ImageMop.init, ImageMop.init_size), ("memcpy", ImageMop.memcpy, ImageMop.memcpy_size),

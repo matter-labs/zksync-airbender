@@ -95,6 +95,20 @@ static COEFFS4: [bb::Ext4; N4] = {
     c
 };
 
+/// `out = ∑ c_i y^i` over `COEFFS4`, for `y` given by canonical limbs; `out` canonical limbs (the `field` crate's
+/// `new` / `to_u32` around Horner).
+#[unsafe(no_mangle)]
+#[inline(never)]
+pub extern "C" fn ext4_poly(out: &mut [u32; 4], y: &[u32; 4]) {
+    let yy = bb::Ext4 {
+        c0: bb::Ext2 { c0: bb::new(y[0]), c1: bb::new(y[1]) },
+        c1: bb::Ext2 { c0: bb::new(y[2]), c1: bb::new(y[3]) },
+    };
+    let mut e = yy;
+    bb::ext4_horner(&mut e, COEFFS4.as_ptr(), N4 as u32, &yy);
+    *out = [bb::to_u32(e.c0.c0), bb::to_u32(e.c0.c1), bb::to_u32(e.c1.c0), bb::to_u32(e.c1.c1)];
+}
+
 #[unsafe(link_section = ".init.rust")]
 #[unsafe(export_name = "_start_rust")]
 unsafe extern "C" fn start_rust() -> ! {
@@ -108,12 +122,7 @@ fn main() -> ! {
     let x = input[0];
     let c = u32_combine(x);
     let p = m31_poly_eval(COEFFS.as_ptr(), N as u32, x);
-    let y = bb::Ext4 {
-        c0: bb::Ext2 { c0: bb::new(input[1]), c1: bb::new(input[2]) },
-        c1: bb::Ext2 { c0: bb::new(input[3]), c1: bb::new(input[4]) },
-    };
-    let mut e = y;
-    bb::ext4_horner(&mut e, COEFFS4.as_ptr(), N4 as u32, &y);
-    let (e0, e1, e2, e3) = (bb::to_u32(e.c0.c0), bb::to_u32(e.c0.c1), bb::to_u32(e.c1.c0), bb::to_u32(e.c1.c1));
-    riscv_common::zksync_os_finish_success(&[c, p, e0, e1, e2, e3, 0, 0])
+    let mut e = [0u32; 4];
+    ext4_poly(&mut e, &[input[1], input[2], input[3], input[4]]);
+    riscv_common::zksync_os_finish_success(&[c, p, e[0], e[1], e[2], e[3], 0, 0])
 }
