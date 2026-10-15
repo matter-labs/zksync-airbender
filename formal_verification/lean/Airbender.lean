@@ -1,4 +1,5 @@
 import Airbender.Review.Trace.Families.AddSub.Theorems
+import Airbender.Review.Trace.Modular.Theorems
 import Airbender.Import.Parse
 import Airbender.Review.Circuits.AddSub.Theorems
 import Airbender.Review.Circuits.JumpBranchSlt.Theorems
