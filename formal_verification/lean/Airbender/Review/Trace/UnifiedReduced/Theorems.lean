@@ -979,4 +979,18 @@ theorem Caller.register_dataflow_hash_preparation_soundness [Fact p.Prime] (hp :
   Caller.Proofs.hash_control_preparation hp clockInverse rotationInverse accepted inputs
     (Caller.Proofs.register_dataflow_hash_preparation_source inputs.initialization inputs.distinct prior scope nonzero entry) aligned
 
+/-- Public caller code and initialized matching derive the actual canonical
+    bigint return bit and its retained worker timestamp. Incoming control
+    validity and whole custom-CSR retirement remain separate. -/
+theorem Caller.bigint_control_boundary_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+    {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
+    {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell} {cut : Nat}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.MixedMemoryInputs data program before ca oa cells)
+    (scope : Caller.CallerControlPreparation data program .bigint cut) (aligned : cut % 4 = 0) :
+    Caller.BigintControlBoundaryExecution data before cells cut :=
+  Caller.Proofs.bigint_control_boundary_execution hp clockInverse rotationInverse accepted inputs scope aligned
+
 end Airbender.UnifiedReduced

@@ -323,6 +323,29 @@ loads keep their existing scope. This proves memory preparation, not full custom
 CSR retirement. Worker writes to the tracked x10/x12 and broader operands remain
 open; they are not assumed to preserve values.
 
+The bigint caller return now has its own checked boundary. `CallerControlPreparation`
+uses public modular CSR-region code and the aligned ordinary registry; initialized
+native clock order derives a positive selected cycle, and state/request matching
+derives its unique bigint worker. Native constraints under the existing modeled
+tables derive x12's returned word as zero or one, including a zero high limb.
+Raw token classification uses native matching, initialization and modeled tables
+before round masks. Raw prefix matching retains the actual worker token at cut
+minus one; strict order
+rejects consuming that token again before the cut. `BigintControlBoundaryExecution`
+then realizes the actual x12 read in the same initialized history, without an
+incoming opcode/control restriction, supplied output or intermediate state.
+The public `Caller.bigint_control_boundary_soundness` entry keeps the existing
+field/inverse, program/domain, table, round-mask and logical-matching boundaries.
+A [native COPY-with-carry fixture](../../../../Tests/UnifiedDelegation.lean) reads a 256-bit all-ones source from public RAM,
+returns x12 = 192→1 at clock seven and retains the source RAM word 0xffffffff.
+COPY without carry returns zero; both invalid incoming controls 0 and 65537 also
+retain actual zero returns at that clock. A fabricated return of two, wrong public
+family, ordinary-code selection and a cut past the terminal are rejected.
+This classifies the native returned bit; it does not validate the incoming bigint
+ABI or prove full CSR retirement. The unissued-worker, ROM-shadow, terminal-PC and
+discarded-load cases remain exposed. Exact operand-dependent worker results and
+computed dataflow through x10/x12 writes remain open.
+
 
 [`WrappedProgramCallerRegion`](../../Helpers/UnifiedReduced/WindowSchedule.lean)
 states the public ordinary-exclusion/full-CSR-family policy at every clock in the

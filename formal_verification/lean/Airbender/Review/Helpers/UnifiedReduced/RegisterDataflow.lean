@@ -134,6 +134,19 @@ structure CallerFramePreparation [Fact p.Prime] (data : RequestTrace p)
   /-- Its end lies inside the actual machine path. -/
   beforeTerminal : cut ≤ (timeOfPair data.machine.terminal.timestamp).value
 
+/-- A public single-cycle caller region. Its family, worker and native return
+    token are derived from accepted decoding and request/state matching. -/
+structure CallerControlPreparation [Fact p.Prime] (data : RequestTrace p)
+    (program : List UnifiedReduced.ProgramEntry) (family : Delegation.Family) (cut : Nat) : Prop where
+  /-- Public aligned sequential/comparison code outside the caller region. -/
+  registry : WrappedSequentialProgram program
+  /-- Public code excludes ordinary instructions and binds the full CSR family. -/
+  region : WrappedProgramCallerRegion data program family (cut - 4) cut
+  /-- The selected cycle begins at or after the public initial clock. -/
+  afterInitial : (timeOfPair data.machine.initial.timestamp).value + 4 ≤ cut
+  /-- The complete caller cycle lies within the machine path. -/
+  beforeTerminal : cut ≤ (timeOfPair data.machine.terminal.timestamp).value
+
 /-- Public register dataflow with intervening arithmetic, bitwise, shift, comparison
     and admitted custom writes to other nonzero GPRs, plus LW/SW memory gaps.
     Such a gap may read and refresh the tracked register; its value is preserved.
