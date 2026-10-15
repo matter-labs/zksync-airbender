@@ -191,8 +191,9 @@ impl Derived {
 /// schedule, base rate, merkle cap) comes from `prover_config`, and the base-layer packing factor
 /// from `pack_log2` (the GKR `CommitmentMode`). Deriving both verifiers from the same config is
 /// what guarantees GKR↔WHIR consistency. `external_pow_bits` / `whir_batch_pow_bits` are the two
-/// per-circuit PoW difficulties (not part of the WHIR schedule), and `final_pc` the program's
-/// terminal PC.
+/// per-circuit PoW difficulties (not part of the WHIR schedule), `final_pc` the program's
+/// terminal PC, and `digest_bytes` the Merkle commitment's digest size (25 truncated, 32 legacy).
+#[allow(clippy::too_many_arguments)]
 pub fn generate_verifiers(
     circuit: &GKRCircuitArtifact<Proth120>,
     prover_config: &ProverConfig,
@@ -201,6 +202,7 @@ pub fn generate_verifiers(
     whir_batch_pow_bits: u32,
     final_pc: u32,
     registry_address: &str,
+    digest_bytes: usize,
 ) -> GeneratedContracts {
     render(
         circuit,
@@ -210,6 +212,7 @@ pub fn generate_verifiers(
         whir_batch_pow_bits,
         final_pc,
         registry_address,
+        digest_bytes,
         &[],
     )
 }
@@ -263,6 +266,7 @@ pub fn generate_f1_verifiers(
         whir_batch_pow_bits,
         final_pc,
         "0x0000000000000000000000000000000000000000",
+        params.digest_bytes,
         &flags,
     );
     let decoder = f1::gkr_decoder(
@@ -336,6 +340,7 @@ fn render(
     whir_batch_pow_bits: u32,
     final_pc: u32,
     registry_address: &str,
+    digest_bytes: usize,
     flags: &[&str],
 ) -> GeneratedContracts {
     // The registry address is baked into BOTH verifiers (they `call` it to mark
@@ -360,10 +365,23 @@ fn render(
         prover_config.trace_len_log2, d.rounds as usize,
         "prover config trace log must match the circuit"
     );
+    let explicit_output_log2 = prover_config.sumcheck_explicit_output_size_log_2;
+    assert!(
+        (2..=4).contains(&explicit_output_log2),
+        "EVM GKR init supports explicit output log 2..=4"
+    );
     assert_eq!(
-        prover_config.sumcheck_explicit_output_size_log_2,
-        crate::EXPLICIT_OUTPUT_LOG2,
-        "EVM GKR init requires explicit output log 4"
+        circuit
+            .global_output_map
+            .values()
+            .map(Vec::len)
+            .sum::<usize>(),
+        10,
+        "EVM GKR init requires 10 output polys"
+    );
+    assert!(
+        matches!(digest_bytes, 25 | 32),
+        "EVM Merkle digests are 25 or 32 bytes"
     );
     assert_eq!(pack_log2, 4, "EVM packing requires pack log 4");
     assert_eq!(
@@ -438,10 +456,10 @@ fn render(
     }
     assert!(inlined, "gkr.sol template missing inline marker");
     let mut gkr = preprocess(&gkr, flags);
-    let dr_count = d.rounds as usize - crate::EXPLICIT_OUTPUT_LOG2;
+    let dr_count = d.rounds as usize - explicit_output_log2;
     for (marker, value, occurrences) in [
         ("__GKR_DR_COUNT__", dr_count, 2),
-        ("__GKR_DR_FIRST__", crate::EXPLICIT_OUTPUT_LOG2, 2),
+        ("__GKR_DR_FIRST__", explicit_output_log2, 2),
         ("__GKR_DR_LAST_ROUNDS__", d.rounds as usize - 1, 1),
         ("__GKR_DR_BOUNDARY__", dr_count - 1, 1),
         ("__GKR_BASE_COORDS__", d.rounds as usize, 1),
@@ -471,6 +489,9 @@ fn render(
             whir_batch_pow_bits as u128,
         ),
         ("__TEMPLATE_EXPECTED_FINAL_PC", final_pc as u128),
+        ("GKR_INIT_BYTES", (10 * 16u128) << explicit_output_log2),
+        ("GKR_OUT_LOG2", explicit_output_log2 as u128),
+        ("GKR_OUT_LANES", 1u128 << explicit_output_log2),
     ] {
         gkr = set_const(&gkr, name, value);
     }
@@ -563,6 +584,15 @@ fn render(
         whir = set_const(&whir, name, value);
     }
     let whir = set_const(&whir, "__TEMPLATE_REGISTRY_ADDRESS", &registry_literal);
+    let whir = set_const(
+        &whir,
+        "__TEMPLATE_DIGEST_MASK",
+        format!(
+            "0x{}{}",
+            "ff".repeat(digest_bytes),
+            "00".repeat(32 - digest_bytes)
+        ),
+    );
     let whir = strip_from_contract(&whir, "WhirRealProofTest");
 
     GeneratedContracts {

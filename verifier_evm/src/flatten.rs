@@ -64,6 +64,27 @@ fn output_evals_blob(proof: &Proof) -> Vec<u8> {
     blob
 }
 
+/// `e` of the proof's `2^e` explicit output evaluations per output poly.
+fn explicit_output_log2(proof: &Proof) -> usize {
+    let len = proof
+        .final_explicit_evaluations
+        .values()
+        .next()
+        .expect("proof has explicit output evaluations")[0]
+        .len();
+    assert!(
+        proof
+            .final_explicit_evaluations
+            .values()
+            .flatten()
+            .all(|evals| evals.len() == len)
+            && len.is_power_of_two()
+            && (2..=4).contains(&len.trailing_zeros()),
+        "explicit output evaluations must be 2^e per poly with e in 2..=4"
+    );
+    len.trailing_zeros() as usize
+}
+
 /// Dimension-reducing proof data (layers after the circuit's standard layers, processed
 /// output->base): per layer, the folding-round coefficients then the 10 final-step
 /// LSB lines, all elements big-endian 16-byte.
@@ -76,9 +97,10 @@ fn dim_reduce_blob(circuit: &Circuit, proof: &Proof) -> Vec<u8> {
         .filter(|l| *l >= circuit.layers.len())
         .collect();
     let trace_log2 = circuit.trace_len.ilog2() as usize;
+    let explicit_output_log2 = explicit_output_log2(proof);
     assert_eq!(
         dim_layers.len(),
-        trace_log2 - crate::EXPLICIT_OUTPUT_LOG2,
+        trace_log2 - explicit_output_log2,
         "dimension-reducing layer count must match the circuit"
     );
     for (k, &layer) in dim_layers.iter().rev().enumerate() {
@@ -89,7 +111,7 @@ fn dim_reduce_blob(circuit: &Circuit, proof: &Proof) -> Vec<u8> {
         );
         assert_eq!(
             siv.sumcheck_num_rounds,
-            crate::EXPLICIT_OUTPUT_LOG2 + k,
+            explicit_output_log2 + k,
             "dimension-reducing rounds must increase from the explicit output"
         );
         for c in siv.internal_round_coefficients.iter() {

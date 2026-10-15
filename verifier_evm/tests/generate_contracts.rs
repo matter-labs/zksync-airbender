@@ -95,6 +95,7 @@ fn render(
         batched_proximity_pow_bits,
         negative_test_exit_pc.unwrap_or(final_pc),
         registry_address,
+        version.digest_bytes,
     );
     // Check the emitted verifier's gates, not just the arguments passed to it.
     assert_eq!(
@@ -389,6 +390,7 @@ fn generator_accepts_trace21_and_rejects_mismatched_config() {
             batching_pow_bits,
             version.final_pc(),
             DEFAULT_REGISTRY_ADDRESS,
+            version.digest_bytes,
         )
     };
     let mut mismatched_config = config.clone();
@@ -399,11 +401,15 @@ fn generator_accepts_trace21_and_rejects_mismatched_config() {
         solidity_constant(&out.gkr_sol, "__TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS"),
         21
     );
-    assert!(out.gkr_sol.contains("lt(k, 17)"));
+    assert_eq!(config.sumcheck_explicit_output_size_log_2, 2);
+    assert_eq!(solidity_constant(&out.gkr_sol, "GKR_OUT_LOG2"), 2);
+    assert_eq!(solidity_constant(&out.gkr_sol, "GKR_OUT_LANES"), 4);
+    assert_eq!(solidity_constant(&out.gkr_sol, "GKR_INIT_BYTES"), 640);
+    assert!(out.gkr_sol.contains("lt(k, 19)"));
     assert!(out
         .gkr_sol
-        .contains("gkr_dr_final(ptr, fs, batching, eq(k, 16)"));
-    assert!(!out.gkr_sol.contains("lt(k, 18)"));
+        .contains("gkr_dr_final(ptr, fs, batching, eq(k, 18)"));
+    assert!(!out.gkr_sol.contains("lt(k, 17)"));
     assert_eq!(solidity_constant(&out.whir_sol, "__TEMPLATE_WHIR_NZ"), 25);
     assert!(out
         .whir_sol
@@ -418,8 +424,45 @@ fn generator_accepts_trace21_and_rejects_mismatched_config() {
     let mut bad_schedule = config.clone();
     bad_schedule.whir_schedule.whir_queries_schedule[0] = 51;
     assert!(std::panic::catch_unwind(|| generate(&bad_schedule)).is_err());
-    config.sumcheck_explicit_output_size_log_2 = 3;
-    assert!(std::panic::catch_unwind(|| generate(&config)).is_err());
+    for digest_bytes in [25, 32] {
+        let out = verifier_evm::generate_verifiers(
+            &circuit,
+            &config,
+            version.pack_log2,
+            external_pow_bits,
+            batching_pow_bits,
+            version.final_pc(),
+            DEFAULT_REGISTRY_ADDRESS,
+            digest_bytes,
+        );
+        let mask = format!(
+            "constant __TEMPLATE_DIGEST_MASK = 0x{}{};",
+            "ff".repeat(digest_bytes),
+            "00".repeat(32 - digest_bytes)
+        );
+        assert!(
+            out.whir_sol.contains(&mask),
+            "digest mask for {digest_bytes}"
+        );
+        assert_eq!(out.whir_sol.matches("__TEMPLATE_DIGEST_MASK)").count(), 3);
+    }
+    assert!(
+        std::panic::catch_unwind(|| verifier_evm::generate_verifiers(
+            &circuit,
+            &config,
+            version.pack_log2,
+            external_pow_bits,
+            batching_pow_bits,
+            version.final_pc(),
+            DEFAULT_REGISTRY_ADDRESS,
+            24,
+        ))
+        .is_err()
+    );
+    for explicit_output_log2 in [1, 5] {
+        config.sumcheck_explicit_output_size_log_2 = explicit_output_log2;
+        assert!(std::panic::catch_unwind(|| generate(&config)).is_err());
+    }
 }
 
 #[test]
@@ -480,6 +523,7 @@ fn generator_rejects_inconsistent_base_oracle_geometry() {
                 16,
                 version.final_pc(),
                 DEFAULT_REGISTRY_ADDRESS,
+                version.digest_bytes,
             ))
             .is_err(),
             "inconsistent base-oracle {field} accepted"
