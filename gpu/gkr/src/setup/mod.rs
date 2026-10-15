@@ -218,6 +218,14 @@ pub fn schedule_forward_setup_for_shape(
         d_lookup_challenges.len() >= 2,
         "lookup scheduling expects [lookup_alpha, lookup_additive_part, ...]",
     );
+    assert!(generic_lookup_len <= trace_len);
+    // Match CPU preprocessing over the entire committed setup domain. In
+    // decoder-only setups the unused tail contains a nonzero PC sentinel.
+    let generic_lookup_len = if generic_lookup_len == 0 {
+        0
+    } else {
+        trace_len
+    };
     let stream = context.get_exec_stream();
     let tracing_ranges = Vec::new();
     let callbacks = Callbacks::new();

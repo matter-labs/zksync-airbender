@@ -635,7 +635,12 @@ fn forward_setup_schedule_generic_lookup_matches_cpu() {
     let trace_len = 1usize << 10;
     let generic_lookup_width = 4;
     let generic_lookup_len = 32;
-    let setup = make_test_cpu_setup(trace_len, generic_lookup_width, generic_lookup_len);
+    let mut setup = make_test_cpu_setup(trace_len, generic_lookup_width, generic_lookup_len);
+    // A decoder-only setup's committed tail is no longer implicitly zero.
+    Arc::get_mut(&mut setup.hypercube_evals[0])
+        .unwrap()
+        .deref_mut()[generic_lookup_len..]
+        .fill(BF::MINUS_ONE);
     let context = make_test_context(256, 64);
     let log_lde_factor = 1u32;
     let log_rows_per_leaf = 1u32;
@@ -698,7 +703,7 @@ fn forward_setup_schedule_generic_lookup_matches_cpu() {
     let expected_generic_lookup = expected_generic_lookup_preprocessing(
         &setup,
         generic_lookup_width,
-        generic_lookup_len,
+        trace_len,
         lookup_alpha,
     );
     assert_eq!(actual_generic_lookup, expected_generic_lookup);

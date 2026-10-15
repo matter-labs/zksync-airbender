@@ -10,6 +10,10 @@ use fft::{materialize_powers_serial_starting_with_one, GoodAllocator};
 use field::{Field as _, FieldExtension as _};
 use std::sync::Arc;
 
+#[cfg(test)]
+#[path = "setup_tests.rs"]
+mod tests;
+
 pub struct GKRSetup<F: PrimeField + TwoAdicField> {
     pub hypercube_evals: Vec<Arc<crate::allocation_pool::AllocationType<F>>>,
 }
@@ -113,6 +117,16 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
             }
         }
 
+        if compiled_circuit.has_decoder_lookup && !compiled_circuit.tables_ids_in_generic_lookups {
+            // Without a table discriminator, zero tail rows look like a decoder
+            // query for PC zero. Both PC limbs are present, and the first one
+            // must be a u16 in an active execution. Keep unused setup rows out
+            // of that domain, as we already do for unsupported decoder entries.
+            assert_eq!(offset, 0);
+            assert!(compiled_circuit.decode_table_columns_mask[0]);
+            result[0][total_tables_size..].fill(F::MINUS_ONE);
+        }
+
         Self {
             hypercube_evals: result
                 .into_iter()
@@ -172,10 +186,12 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
             );
 
             let mut generic_lookup_preprocessing = Vec::with_capacity_in(trace_len, A::default());
-            let mut dst = &mut generic_lookup_preprocessing.spare_capacity_mut()
-                [..generic_lookup_tables_size];
+            // Cache the complete committed setup domain, including its filler.
+            // Forward scalar/SIMD consumers must not synthesize a zero tail
+            // when the committed decoder setup has a nonzero sentinel there.
+            let mut dst = &mut generic_lookup_preprocessing.spare_capacity_mut()[..trace_len];
 
-            worker.scope(generic_lookup_tables_size, |scope, geometry| {
+            worker.scope(trace_len, |scope, geometry| {
                 for thread_idx in 0..geometry.len() {
                     let chunk_size = geometry.get_chunk_size(thread_idx);
                     let chunk_start = geometry.get_chunk_start_pos(thread_idx);
@@ -206,11 +222,11 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
                     });
                 }
 
-                assert!(dst.is_empty(), "expected to process all elements, but got {} remaining. Work size is {}, num cores = {}", dst.len(), generic_lookup_tables_size, worker.get_num_cores());
+                assert!(dst.is_empty(), "expected to process all elements, but got {} remaining. Work size is {}, num cores = {}", dst.len(), trace_len, worker.get_num_cores());
             });
 
             unsafe {
-                generic_lookup_preprocessing.set_len(generic_lookup_tables_size);
+                generic_lookup_preprocessing.set_len(trace_len);
             }
 
             let decoder_lookup_fill_value = if compiled_circuit.tables_ids_in_generic_lookups {

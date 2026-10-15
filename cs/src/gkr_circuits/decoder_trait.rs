@@ -261,8 +261,8 @@ pub fn materialize_flattened_decoder_table_with_bitmask<F: PrimeField>(
     assert!(fields_bitmask[1]);
 
     // log-derivative based lookup argument doesn't require any special ordering of the table entries,
-    // so we are free to pad "unsupported" entries with just all zeroes - the only requirement is that
-    // "unsupported" PC values must not be in the table
+    // so unsupported entries may share a sentinel. It must lie outside the
+    // active PC-limb domain; zero is a valid PC and cannot serve as that sentinel.
 
     let mut result = Vec::with_capacity(supported_entries_for_family.len());
     for (idx, el) in supported_entries_for_family.iter().enumerate() {
