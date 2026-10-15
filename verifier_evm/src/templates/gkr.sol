@@ -203,12 +203,12 @@ contract GkrWhirVerifier {
             // The prior code drew straight from the absorb result (missing the draw keccak) — a
             // leftover of the old field's convention; it corrupts every round after the first.
             //
-            // canonicalize the 4 packed field lanes (mod P) before absorbing, so the transcript
-            // binds to the reduced value, not the prover's 16-byte encoding (each value has
-            // ~2^128/P ≈ 36 encodings). Re-pack keeps the [hi|lo] layout.
-            mstore(add(SEED_PTR(), 32), or(shl(128, mod(shr(128, w0), modulus)), mod(and(w0, MASK), modulus)))
-            mstore(add(SEED_PTR(), 64), or(shl(128, mod(shr(128, w1), modulus)), mod(and(w1, MASK), modulus)))
-            let seed := keccak256(SEED_PTR(), 96) // absorb 4 (canonicalized) coeffs
+            // The caller has already required all 4 lanes to be canonical (< P), so the raw
+            // words are absorbed as-is — one rule for the whole verifier: a non-canonical
+            // 16-byte encoding of a field element is rejected, never reduced.
+            mstore(add(SEED_PTR(), 32), w0)
+            mstore(add(SEED_PTR(), 64), w1)
+            let seed := keccak256(SEED_PTR(), 96) // absorb 4 (canonical) coeffs
             mstore(SEED_PTR(), seed)
             seed := keccak256(SEED_PTR(), 32)     // draw
             mstore(SEED_PTR(), seed)
@@ -454,6 +454,11 @@ contract GkrWhirVerifier {
                 let c1 := and(w0, MASK)
                 let c2 := shr(128, w1)
                 let c3 := and(w1, MASK)
+                // reject non-canonical coefficient lanes (the absorb below takes the raw words)
+                if iszero(lt(c0, modulus)) { revert(0, 0) }
+                if iszero(lt(c1, modulus)) { revert(0, 0) }
+                if iszero(lt(c2, modulus)) { revert(0, 0) }
+                if iszero(lt(c3, modulus)) { revert(0, 0) }
                 let g0g1_scaled := mulmod(add(add(add(add(c0, c0), c1), c2), c3), eq_scale, modulus)
                 let r := transcript_4to1_dual(w0, w1, modulus) // before-check draw is intentional; see HEURISTICS.md
                 // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
@@ -467,10 +472,10 @@ contract GkrWhirVerifier {
                 ptr := add(ptr, 64)
             }
             next_ptr := ptr
-            // Canonicalize: `claim` accumulates as mulmod(...) + raw c0 lane, i.e. anything in
-            // [0, P + 2^128). gkr_dr_final subtracts it from P with wrapping EVM arithmetic, and
-            // an unreduced claim would make that check accept a second relation
-            // (g·eq_scale ≡ claim − 2^256 mod P) — so hand back the residue.
+            // Canonicalize: `claim` accumulates as mulmod(...) + c0, i.e. anything in [0, 2P).
+            // gkr_dr_final subtracts it from P with wrapping EVM arithmetic, and an unreduced
+            // claim would make that check accept a second relation (g·eq_scale ≡ claim − 2^256
+            // mod P) — so hand back the residue.
             next_claim := mod(claim, modulus)
         }
 

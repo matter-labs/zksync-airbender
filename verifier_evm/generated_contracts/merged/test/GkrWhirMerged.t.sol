@@ -110,28 +110,27 @@ contract GkrWhirMergedTest {
     }
 
     // The first dim-reduce round's [c0:16][c1:16] word sits right after preimage (916 B) + PoW
-    // nonce (8 B) + output evals (10 * 16 * 16 B). A c0 lane lifted by P is a different
-    // 16-byte encoding of the same field element: the transcript absorbs the reduced value and
-    // every use reduces, so the proof must still verify with the same mark (before the
-    // canonicalization fix in sumcheck_rounds the lifted lane made gkr_dr_final's wrapping
-    // subtraction reject the honest claim).
+    // nonce (8 B) + output evals (10 * 16 * 16 B). A c0 lane lifted by P is a different 16-byte
+    // encoding of the same field element; the verifier's single rule is that non-canonical
+    // encodings are REJECTED (never reduced), so the proof must fail — and must fail at the
+    // range check, not by accident: the same lifted lane used to be accepted-or-rejected by
+    // gkr_dr_final's wrapping subtraction before sumcheck_rounds canonicalized its claim.
     uint256 constant FIRST_DIM_REDUCE_ROUND_OFFSET = 916 + 8 + 10 * 16 * 16;
     uint128 constant P = 0x7000000000000000000000000000001;
 
-    function test_noncanonical_dim_reduce_lane_is_canonicalized() external {
+    function test_noncanonical_dim_reduce_lane_rejected() external {
         TestRegistry registry = new TestRegistry();
         GkrWhirVerifier v = new GkrWhirVerifier(address(registry));
         bytes memory cd = _hex("../../debug_data/merged_calldata.hex");
         uint128 c0 = uint128(uint256(_slice32(cd, FIRST_DIM_REDUCE_ROUND_OFFSET)) >> 128);
         require(c0 < P, "fixture lane is canonical");
-        uint128 lifted = c0 + P; // < 2P < 2^128
+        uint128 lifted = c0 + P; // < 2P < 2^128: same residue, non-canonical encoding
         for (uint256 b = 0; b < 16; ++b) {
             cd[FIRST_DIM_REDUCE_ROUND_OFFSET + b] = bytes1(uint8(lifted >> (8 * (15 - b))));
         }
-        (bool ok, bytes memory ret) = address(v).call(cd);
-        require(ok, "lifted (non-canonical) lane must verify as its residue");
-        bytes memory expected = _hex("../../debug_data/verified_mark.hex");
-        require(keccak256(ret) == keccak256(expected), "mark must be unchanged");
+        (bool ok,) = address(v).call(cd);
+        require(!ok, "a non-canonical coefficient lane must be rejected");
+        require(registry.count() == 0, "nothing may be marked");
     }
 
     function test_zero_registry_rejected() external {

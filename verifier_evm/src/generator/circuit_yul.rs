@@ -2466,6 +2466,15 @@ pub fn emit_circuit_yul_with_stats(
                 let mut extras = cache_dep_offsets.clone();
                 extras.sort_unstable();
                 extras.dedup();
+                // The writeback canonicity guard range-checks exactly the lanes [0, n); every
+                // extra absorbed here must be one of them, or it would enter the transcript
+                // unchecked.
+                for &o in &extras {
+                    assert!(
+                        o < n,
+                        "layer {i}: cache-dependency offset {o} outside the guarded {n} inputs"
+                    );
+                }
                 let cached: Vec<usize> = (0..cached_count).collect();
                 (
                     n,
@@ -2598,6 +2607,11 @@ pub fn emit_circuit_yul_with_stats(
                 let c1 := and(w0, MASK)
                 let c2 := shr(128, w1)
                 let c3 := and(w1, MASK)
+                // reject non-canonical coefficient lanes (the absorb takes the raw words)
+                if iszero(lt(c0, modulus)) {{ revert(0, 0) }}
+                if iszero(lt(c1, modulus)) {{ revert(0, 0) }}
+                if iszero(lt(c2, modulus)) {{ revert(0, 0) }}
+                if iszero(lt(c3, modulus)) {{ revert(0, 0) }}
                 let g0g1_scaled := mulmod(add(add(add(add(c0, c0), c1), c2), c3), eq_scale, modulus)
                 let r := transcript_4to1_dual(w0, w1, modulus) // before-check draw is intentional; see HEURISTICS.md
                 // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
