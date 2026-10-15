@@ -4,8 +4,9 @@ This directory states execution claims for the unified artifact: ordinary and
 selected custom instruction retirement, caller-cycle observations, and complete
 reference effects on selected native-clock windows. The claims share actual
 history-derived states. Shared cycle composition now covers every native row in
-one history and PC/clock path; full custom-CSR execution remains blocked by the
-recorded invalid-call and participation cases.
+one history and PC/clock path. [Full mixed execution](FullExecution.lean) now
+connects complete custom-CSR reference transitions under explicit temporary
+F02/F03 contracts; unrestricted acceptance still has the recorded findings.
 
 ## Checked results
 
@@ -15,6 +16,7 @@ recorded invalid-call and participation cases.
 | Standard instructions plus TRIADD/XORROT retire together; delegation callers are outside the registry. | [`Mixed.execution_soundness`](Theorems.lean) |
 | Standard/TRIADD/XORROT plus ADDMOD/SUBMOD/MULMOD/FMAMOD share native initialized execution in BabyBear, including discarded writes and aliased old destinations; external masked padding is supported. | [`Modular.execution_soundness` and `Modular.padded_execution_soundness`](ModularExecution.lean) |
 | Every ordinary retirement, caller observation and worker uses one actual history and complete raw PC/clock path, with terminal cells in the final retired-PC view. Full custom-CSR execution remains separate. | [`Caller.mixed_cycle_soundness`](Theorems.lean) |
+| Ordinary/TRIADD/XORROT and complete bigint/G/extended-round/Keccak callers execute from the actual public state to terminal PC/cells under existing protocol profiles and temporary F02/F03 contracts. | [`Caller.full_execution_soundness`](FullExecution.lean) |
 | Machine and worker reads/writes, bounds and references share one actual initialized history. | [`Caller.mixed_memory_soundness`](Theorems.lean) |
 | Exact caller regions, counts and slots follow from state/request matching and public cuts/duration. | [`Caller.window_schedule_soundness` and `Caller.request_window_soundness`](Theorems.lean) |
 | Public sequential code identifies caller regions; native matching derives selected worker family, counts and slots. | [`Caller.program_window_schedule_soundness`](Theorems.lean) |
@@ -91,6 +93,16 @@ positive caller clocks from strict memory order and four-alignment, without a
 separate positive initial-clock premise. The earlier clock-parameter entry remains
 available. The issued bigint invalid-control fixtures still satisfy these
 observations, so a full custom-CSR ABI remains separate.
+
+[FullCalls](FullCalls.lean) independently dispatches complete family references,
+actual public fetch and original PC retirement. [FullExecution](FullExecution.lean)
+derives a complete `Realizes` chain from the existing prepared protocol regions
+and hash-CSR occurrence coverage. Hash schedules and initialized matching derive
+the full ABI; the explicit occurrence ledger derives participation. Public
+initial PC is bound to the native initial endpoint, with no initial nextPC
+condition. The COPY→LW/SW fixture tests nextPC 123. F02's command contract and
+F03's ledger remain temporary conditions linked to open implementation findings;
+the tracked-RAM domain retains F04's existing limitation.
 
 [Native mixed ROM](NativeMixedROM.lean) now transports the complete accepted
 ordinary/caller/worker memory pool from native ROM shadows to public bytes.

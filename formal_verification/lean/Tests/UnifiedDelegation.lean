@@ -9,6 +9,7 @@ import Airbender.Review.Circuits.UnifiedReduced.Tables.Setup
 
 import Airbender.Review.Trace.UnifiedReduced.NativeMixedROM
 import Airbender.Review.Trace.UnifiedReduced.BigintCalls
+import Airbender.Review.Trace.UnifiedReduced.FullExecution
 
 namespace Tests.UnifiedDelegation
 open Airbender Trace Arithmetic Reference.RiscV.Sail Reference.Sail
@@ -1461,6 +1462,8 @@ private def memoryBefore (store : Bool) : State :=
   let regs := regs.insert .pma_regions [rv32Region memoryAttributes]
   let regs := regs.insert .mhartid 7
   let regs := regs.insert .htif_tohost_base none
+  let regs := regs.insert .PC (0 : BitVec 32)
+  let regs := regs.insert .nextPC (123 : BitVec 32)
   {state with regs := regs}
 private def memoryEntry (store : Bool) : UnifiedReduced.ProgramEntry :=
   ⟨4, memoryBits store, if store then .STORE (0, .Regidx 12, .Regidx 10, 4)
@@ -1629,7 +1632,7 @@ private theorem memoryConfiguration (store : Bool) : FlatMemoryConfiguration (me
   · exact ⟨Vector.replicate 64 0, by simp [memoryBefore, Std.ExtDHashMap.get?_insert]⟩
   · exact ⟨memoryAttributes, by simp [memoryBefore, Std.ExtDHashMap.get?_insert], rfl, rfl, rfl⟩
   · exact ⟨7, by simp [memoryBefore, Std.ExtDHashMap.get?_insert]⟩
-  · simp [memoryBefore]
+  · simp [memoryBefore, Std.ExtDHashMap.get?_insert]
 
 private def memoryView (store : Bool) : Airbender.WordMemory.Input :=
   ⟨store, ⟨0, 64⟩, ⟨0, 0⟩, ⟨0, 0⟩, ⟨4, 0⟩, .Regidx 10, .Regidx 12, .Regidx 12, 0, default⟩
@@ -3238,12 +3241,14 @@ theorem hash_segmentation_overlap_rejected :
     ¬ UnifiedReduced.Caller.WindowsOrdered 4 [(4, 228), (8, 232)] := by
   simp [UnifiedReduced.Caller.WindowsOrdered]
 
-theorem copy_then_ram_mixed_cycles [Sail.ArchSem.MemoryPlatform SailRV32.exception] (store : Bool) :
-    UnifiedReduced.Caller.MixedCycleEffects (memoryData store) [memoryEntry store] (memoryBefore store) cells := by
-  have effects := UnifiedReduced.Caller.Proofs.mixed_memory_effects (memoryAccepted store) (memoryInputs store)
-  obtain ⟨events, finalState, permutation, order, history, _, _, terminal⟩ := effects.execution
-  apply UnifiedReduced.Caller.Proofs.mixed_cycle_effects_at (memoryAccepted store) (memoryInputs store)
-    effects permutation order history (memoryCode store) _ terminal
+private theorem memoryOrdinaryCycles [Sail.ArchSem.MemoryPlatform SailRV32.exception] (store : Bool)
+    (effects : UnifiedReduced.Caller.MixedMemoryEffects (memoryData store) (memoryBefore store) cells)
+    {events : List MemoryAccess} {finalState : State}
+    (permutation : events.Perm ((memoryData store).mixedSteps.map transferEvent))
+    (order : events.Pairwise (fun a b => b.1 ≤ a.1))
+    (history : SailHistory cells events (memoryBefore store) finalState) :
+    ∀ row ∈ (memoryData store).machine.rows, row ∉ (memoryData store).callers →
+      UnifiedReduced.Caller.OrdinaryCycle [memoryEntry store] cells events (memoryBefore store) finalState row := by
   intro row member noncaller
   rcases List.mem_cons.mp member with rfl | member
   · refine ⟨memoryEntry store, List.mem_singleton_self _, ?_, Airbender.WordMemory.execution (memoryView store), ?_, ?_⟩
@@ -3265,6 +3270,14 @@ theorem copy_then_ram_mixed_cycles [Sail.ArchSem.MemoryPlatform SailRV32.excepti
   · have same := List.mem_singleton.mp member
     subst row
     exact False.elim (noncaller (by cases store <;> exact List.mem_singleton_self _))
+
+theorem copy_then_ram_mixed_cycles [Sail.ArchSem.MemoryPlatform SailRV32.exception] (store : Bool) :
+    UnifiedReduced.Caller.MixedCycleEffects (memoryData store) [memoryEntry store] (memoryBefore store) cells := by
+  have effects := UnifiedReduced.Caller.Proofs.mixed_memory_effects (memoryAccepted store) (memoryInputs store)
+  obtain ⟨events, finalState, permutation, order, history, _, _, terminal⟩ := effects.execution
+  exact UnifiedReduced.Caller.Proofs.mixed_cycle_effects_at (memoryAccepted store) (memoryInputs store)
+    effects permutation order history (memoryCode store)
+    (memoryOrdinaryCycles store effects permutation order history) terminal
 
 theorem invalid_bigint_mixed_cycles [Sail.ArchSem.MemoryPlatform SailRV32.exception] (highControl : Bool) :
     UnifiedReduced.Caller.MixedCycleEffects (abiData highControl) [] (abiBefore highControl) cells := by
@@ -3325,6 +3338,42 @@ theorem copy_then_ram_full_reference [Sail.ArchSem.MemoryPlatform SailRV32.excep
     cases store <;> norm_num [memoryAssignment, arithmetic] at selected
   exact ⟨events, finalState, permutation, order, history, reference,
     ordinary (memoryRow store) List.mem_cons_self noncaller⟩
+
+/-- The real COPY then LW/SW fixture executes from its original public state,
+    including an initial nextPC of 123, through full CSR and ordinary retirement. -/
+theorem copy_then_ram_full_execution [Sail.ArchSem.MemoryPlatform SailRV32.exception] (store : Bool) :
+    Realizes (UnifiedReduced.Caller.FullStep [memoryEntry store] (memoryData store).program)
+      (memoryData store).machine (memoryBefore store) cells := by
+  have effects := UnifiedReduced.Caller.Proofs.mixed_memory_effects (memoryAccepted store) (memoryInputs store)
+  obtain ⟨events, finalState, permutation, order, history, _, _, terminal⟩ := effects.execution
+  have ledger : ExternalBoundary.Requests.Binding (memoryData store) := by
+    cases store
+    all_goals change [UnifiedReduced.Caller.request sharedAssignment].Perm [Delegation.Requests.fulfillment worker]
+    all_goals decide +kernel
+  have scopes : ∀ window ∈ ([] : List UnifiedReduced.Caller.HashWindow),
+      UnifiedReduced.Caller.ComputedProtocolWindowInputs (memoryData store) [memoryEntry store] window := by simp
+  have aligned : ∀ window ∈ ([] : List UnifiedReduced.Caller.HashWindow),
+      window.lower % 4 = 0 ∧ window.upper % 4 = 0 := by simp
+  have coverage : ∀ actual ∈ (memoryData store).workers.rows, actual.family ≠ .bigint →
+      Delegation.Requests.Live (Delegation.Requests.fulfillment actual) →
+      ∃ window ∈ ([] : List UnifiedReduced.Caller.HashWindow),
+        actual ∈ (memoryData store).workers.windowRows window.lower window.upper := by
+    intro actual present different _
+    have same : actual = worker := List.mem_singleton.mp present
+    subst actual
+    exact False.elim (different rfl)
+  exact UnifiedReduced.Caller.Proofs.full_execution_at (memoryAccepted store) (memoryInputs store) (memoryCode store)
+    effects.requests (by
+      have native : (memoryData store).machine.initial.word.toBitVec = 0 := by
+        change sharedCaller.start.word.toBitVec = 0
+        decide +kernel
+      rw [native]
+      apply read_register
+      simp [memoryBefore, Std.ExtDHashMap.get?_insert]) ledger
+    permutation order history (memoryOrdinaryCycles store effects permutation order history)
+    (fun row member => UnifiedReduced.Caller.Proofs.full_caller_cycle_at (memoryAccepted store) (memoryInputs store)
+      (memoryCode store) (copyCommands store) scopes aligned coverage effects permutation order history member)
+    terminal
 
 theorem invalid_bigint_full_reference_rejected (highControl : Bool) (after : State) :
     ¬ Bigint.Call.Executes (abiBefore highControl) after := by

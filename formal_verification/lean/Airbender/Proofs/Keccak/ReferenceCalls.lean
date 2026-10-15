@@ -12,13 +12,13 @@ set_option maxHeartbeats 800000
 theorem step_in_span [Fact p.Prime] (hp : 16777216 ≤ p)
     (inverse : 256 * (-7864320 : ZMod p) = 1)
     {data : Delegation.MemoryData p} {initial before after : State} {domain : List Cell}
-    {events : List MemoryAccess}
+    {events : List MemoryAccess} {historyCells : List Cell}
     (accepted : Delegation.MemoryAccepted data)
     (inputs : Keccak.Proofs.BoundaryCallInputs data initial domain)
     (tables : data.setup = Delegation.modeledSetup Controller.rows)
     (ram : ∀ address, Cell.ram address ∈ domain → ROM.limit ≤ address.toNat)
     {row : Delegation.Row p} (member : row ∈ data.rows)
-    (history : SailHistory domain events before after)
+    (history : SailHistory historyCells events before after)
     (permutation : events.Perm (row.memorySteps.map transferEvent))
     (observed : ∀ port ∈ row.ports, ∃ cell : Cell,
       cell.addressCode = port.address.code row.assignment ∧

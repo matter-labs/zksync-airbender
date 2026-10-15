@@ -35,5 +35,6 @@ in the actual full Sail states, including each exact write footprint and frame.
 The same initialized history reaches every terminal cell. Existing public span
 mode/count, modeled tables, aligned domain and RAM restriction remain explicit.
 The span derives valid controls and canonical aligned disjoint pointers; no new
-per-row ABI or desired result is assumed. Mixed caller fetch/PC retirement and
-whole worker participation are still composition tasks.
+per-row ABI or desired result is assumed. [Full mixed execution](../../UnifiedReduced/FullExecution.lean)
+now connects caller fetch/PC retirement under the explicit occurrence ledger;
+F03 participation enforcement remains an implementation finding.
