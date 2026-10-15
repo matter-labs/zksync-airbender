@@ -384,6 +384,9 @@ mod tests {
         assert_every_round_preserves_security_margin(&evm_production_packed_prover_config(
             SecurityLevel::Sec100,
         ));
+        assert_every_round_preserves_security_margin(&l1_wrap_2p21::packed_prover_config(
+            SecurityLevel::Sec100,
+        ));
     }
 
     #[test]
