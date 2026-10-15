@@ -1,5 +1,9 @@
 # Circuit formal verification plan
 
+ADDMOD/SUBMOD/MULMOD/FMAMOD now have public decoding, initialized pooled history
+and [whole execution](Airbender/Review/Trace/Modular/README.md), reusing their
+checked custom arithmetic and the existing ADD/SUB artifact.
+
 The user authorized an external contribution-mask boundary on 15 October 2026,
 analogous to the canonical verifier-PC boundary. Its exact logical
 state/memory/request binding, mask algebra and active-row projection are checked

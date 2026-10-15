@@ -21,10 +21,13 @@ Rust/artifact correspondence remain external.
 agreement for the external-read/write-hint extension and the exact stream consumption.
 The stream and its port connection are explicit; authentication of the stream is not proved.
 
+[Modular pooled execution](Modular/README.md) adds ADDMOD/SUBMOD/MULMOD/FMAMOD
+to the same six-family history, public decoding and native boot/ROM boundary.
+
 [Unified ordinary/custom retirement](UnifiedReduced/README.md#checked-results)
 has a separate registry. [Worker spans](Workers/README.md#checked-results) and
 [caller composition](Delegation/README.md#checked-results) establish their stated
-effects, without closing whole mixed caller retirement or global inactive padding.
+effects; whole mixed caller retirement remains separate.
 
 Start with [Soundness](Soundness.lean) for the primary six-family standard claim
 and its external-stream extension. [Execution](Execution.lean) defines the generic

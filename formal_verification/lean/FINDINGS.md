@@ -428,10 +428,10 @@ The existing public domain, modeled tables, logical matching and complete select
 protocol scopes remain explicit. General operand-dependent x10/x12 results,
 broader operations and whole caller retirement remain open.
 
-All 116 concrete test modules and 143 importer guards pass. The full
-2,548-root axiom audit has 73 axiom-free roots and only the three standard
-Lean axioms. Review checks pass for all 136 public theorem roots, 232 declaration
-names and 776 guide links/anchors, with no handwritten project diagnostics.
+All 118 concrete test modules and the importer regressions pass. The full
+2,588-root axiom audit has 76 axiom-free roots and only the three standard
+Lean axioms. All 139 public Review theorem roots are audited; review/reference
+checks pass with no handwritten project diagnostics.
 
 ## Review priorities
 
@@ -922,12 +922,15 @@ category must never be described simply as public context.
 
 ## Validation and next review
 
-The current milestone passed the library, both executables and all 117 concrete
-Lean test modules, all 143 importer guards, the full axiom audit and the
-review/reference checker. The new shared-cycle fixtures cover COPY→LW/SW,
-both invalid bigint controls and the unissued G prefix. Existing terminal-PC,
-inactive-row, ROM-shadow and discarded-load regressions remain part of those
-checks. The snapshot counts above record the final checked sources.
+The current milestone passed the library, both executables, all 118 concrete
+Lean test modules, importer regressions, the full axiom audit and the
+review/reference checker. [Modular pooled execution](Airbender/Review/Trace/Modular/README.md)
+now derives ADDMOD/SUBMOD/MULMOD/FMAMOD reads, selectors and retirement in the
+same initialized six-family history, including FMAMOD's aliased old destination.
+An eleven-instruction trace checks public preparation, every modular/discarded
+form and an ordinary ADD consumer; a locally valid forged old read is rejected
+globally. Existing terminal-PC, inactive-row, invalid-control, zero-clock,
+ROM-shadow and discarded-load regressions remain checked.
 
 Review F01's explicit canonical boundary contract and the remaining Rust/artifact
 and cryptographic correspondence. For unresolved F02–F04, review the actual request

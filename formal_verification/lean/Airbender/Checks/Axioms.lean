@@ -1,3 +1,5 @@
+import Tests.ModularTrace
+import Airbender.Review.Trace.Modular.Theorems
 import Airbender.Review.Trace.Padding
 import Tests.PaddingBoundary
 import Airbender.Review.Trace.Families.AddSub.Theorems
@@ -2812,3 +2814,45 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Mixed.padded_execution_soundness
 #print axioms Airbender.UnifiedReduced.Caller.Padding.acceptance_soundness
 #print axioms Airbender.UnifiedReduced.Caller.padded_mixed_cycle_soundness
+
+-- Modular operations: public decoding, initialized pooled history and whole execution.
+#print axioms Airbender.AddSub.Modular.Opcode.mop
+#print axioms Airbender.AddSub.Modular.Pooled.Proofs.addsub_execution
+#print axioms Airbender.AddSub.Modular.Pooled.Proofs.clause_original
+#print axioms Airbender.AddSub.Modular.Pooled.Proofs.fields_cases
+#print axioms Airbender.AddSub.Modular.Pooled.Proofs.modularPooledRegistry
+#print axioms Airbender.AddSub.Modular.Pooled.Proofs.native_trace_execution
+#print axioms Airbender.AddSub.Modular.Pooled.Proofs.row_step
+#print axioms Airbender.AddSub.Modular.Pooled.Proofs.source_cases
+#print axioms Airbender.AddSub.Modular.Pooled.Proofs.trace_execution
+#print axioms Airbender.AddSub.Modular.Pooled.Step
+#print axioms Airbender.AddSub.Modular.Pooled.clauseFor
+#print axioms Airbender.AddSub.Modular.Pooled.decoderFields
+#print axioms Airbender.AddSub.Modular.Pooled.native_soundness
+#print axioms Airbender.AddSub.Modular.Pooled.padded_native_soundness
+#print axioms Airbender.AddSub.Modular.Pooled.programImage
+#print axioms Airbender.AddSub.Modular.Pooled.soundness
+#print axioms Airbender.AddSub.Modular.Proofs.decoderRules
+#print axioms Airbender.AddSub.Modular.Proofs.field_bounds
+#print axioms Airbender.AddSub.Modular.Proofs.fields_cases
+#print axioms Airbender.AddSub.Modular.Proofs.memory_fields
+#print axioms Airbender.AddSub.Modular.Proofs.mop_sound
+#print axioms Airbender.AddSub.Modular.Proofs.nativeInput
+#print axioms Airbender.AddSub.Modular.Proofs.native_execution
+#print axioms Airbender.AddSub.Modular.Proofs.native_family
+#print axioms Airbender.AddSub.Modular.Proofs.native_interfaces
+#print axioms Airbender.AddSub.Modular.Proofs.native_rd
+#print axioms Airbender.AddSub.Modular.Proofs.old_destination_read
+#print axioms Airbender.AddSub.Modular.Proofs.standard_fields
+#print axioms Airbender.AddSub.Modular.Proofs.word_residue
+#print axioms Airbender.AddSub.Modular.clause
+#print axioms Airbender.AddSub.Modular.decoderFields
+#print axioms Airbender.AddSub.Modular.instruction
+#print axioms Airbender.AddSub.Modular.nativeData
+#print axioms Airbender.AddSub.Modular.opcodeOfMop
+#print axioms Tests.ModularTrace.actual_public_image
+#print axioms Tests.ModularTrace.complete_mixed_trace
+#print axioms Tests.ModularTrace.forged_old_destination_locally_valid
+#print axioms Tests.ModularTrace.forged_old_destination_rejected
+#print axioms Tests.ModularTrace.unsupported_mop_rejected
+#print axioms Tests.ModularTrace.wrong_selector_rejected

@@ -8,7 +8,7 @@ and the [fixed scope](FORMAL_VERIFICATION_PLAN.md).
 
 | Circuit | Coverage |
 | --- | --- |
-| [ADD/SUB](Airbender/Review/Circuits/AddSub/Theorems.lean) | ADD/ADDI/SUB/LUI/AUIPC; local ADDMOD/SUBMOD/MULMOD/FMAMOD. |
+| [ADD/SUB](Airbender/Review/Circuits/AddSub/Theorems.lean) | ADD/ADDI/SUB/LUI/AUIPC; [ADDMOD/SUBMOD/MULMOD/FMAMOD with pooled execution](Airbender/Review/Trace/Modular/Theorems.lean). |
 | [Jump/branch/SLT](Airbender/Review/Circuits/JumpBranchSlt/Theorems.lean) | JAL/JALR, all six branches and four comparisons. |
 | [Unsigned mul/div](Airbender/Review/Circuits/MulDiv/Theorems.lean) | MUL/MULHU/DIVU/REMU, including zero divisors. |
 | [Shift/binop](Airbender/Review/Circuits/ShiftBinop/Theorems.lean) | Standard register/immediate bitwise and shift operations; REV8. |
@@ -43,10 +43,10 @@ Separately scoped work: [deferred milestones](FORMAL_VERIFICATION_PLAN.md#deferr
 
 ## Validation
 
-- Library, both executables and all 117 concrete test modules pass.
-- 143 importer guards pass.
-- Axiom audit: 2,548 roots, 73 axiom-free; only `propext`, `Classical.choice` and `Quot.sound`.
-- All 136 public Review theorem roots are audited; review/reference checks pass.
+- Library, both executables and all 118 concrete test modules pass.
+- Importer regressions pass.
+- Axiom audit: 2,588 roots, 76 axiom-free; only `propext`, `Classical.choice` and `Quot.sound`.
+- All 139 public Review theorem roots are audited; review/reference checks pass.
 - No handwritten project diagnostics, `sorry` or project axioms.
 
 [Reproduce the checks](README.md#reproduce).
