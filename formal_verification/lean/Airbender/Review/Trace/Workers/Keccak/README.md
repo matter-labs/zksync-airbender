@@ -15,6 +15,13 @@ agreement. [`Native.window_soundness`](Theorems.lean) binds the first complete s
 at retained cut states; later workers may remain outside the window.
 Public protocol/domain/alignment/table conditions remain inputs.
 
+[`Call.execution_soundness`](ReferenceCalls.lean) additionally executes the
+independent [complete micro-call reference](../../../Circuits/Keccak/Call.lean)
+in the actual full Sail states, with exact writes and frame. The existing
+649-call schedule derives supported full controls; initialized history supplies
+canonical lane reads and the aligned RAM pointer. It adds no per-row ABI or
+expected-output premise. Mixed caller fetch/PC retirement remains separate.
+
 Read [Theorems](Theorems.lean), [Call](Call.lean) and
 [BoundaryCall](BoundaryCall.lean). [Permutation](Permutation.lean) binds
 the original complete reference to actual initial/final lane reads.

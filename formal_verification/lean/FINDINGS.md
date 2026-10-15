@@ -1018,9 +1018,10 @@ now establishes the complete successful reference state transition and PC advanc
 under the temporary F02 command contract. Hash-call reference transitions and
 whole mixed sequencing under the temporary occurrence ledger remain pending.
 The [G](Airbender/Review/Trace/Workers/Blake2G/ReferenceCalls.lean) and
-[extended-round](Airbender/Review/Trace/Workers/Blake2Round/ReferenceCalls.lean)
+[extended-round](Airbender/Review/Trace/Workers/Blake2Round/ReferenceCalls.lean) and
+[Keccak](Airbender/Review/Trace/Workers/Keccak/ReferenceCalls.lean)
 worker reference sequences now fix every full Sail micro-call state/frame under the existing complete-span
-profile; it adds no per-row control/pointer/result assumption and does not yet
+profiles; they add no per-row control/pointer/result assumption and do not yet
 claim mixed caller PC retirement.
 
 **External closure needed.** Bind accepted caller validity and participation to
