@@ -39,3 +39,12 @@ public flags, seven-/ten-round scope, fixed pointers, actual reads and terminal 
 The completion control does not automatically restart a new protocol.
 [Delegation context](../../Helpers/Delegation/README.md) and selected unified
 windows retain their own matching, table and prefix conditions.
+
+[Complete round calls](Call.lean) connect the existing pure round reference to
+actual pre-state controller/pointer/operand reads and the exact 43 Sail writes,
+including the full frame. The successful ABI couples all mode flags to the full
+x12 word and the admitted round. [Full-state span execution](../../Trace/Workers/Blake2Round/ReferenceCalls.lean)
+derives that ABI, canonical RAM pointers and all operands from the existing
+seven-/ten-round public protocol and initialized history. No new per-row valid
+controller, pointer, expected output or reference-execution premise is added.
+Mixed caller fetch/PC retirement and total participation remain separate.
