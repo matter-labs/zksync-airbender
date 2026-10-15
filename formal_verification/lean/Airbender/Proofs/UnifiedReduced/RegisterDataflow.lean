@@ -1,6 +1,8 @@
 import Airbender.Review.Trace.UnifiedReduced.RegisterDataflow
 import Airbender.Proofs.UnifiedReduced.RegisterChains
 import Airbender.Proofs.UnifiedReduced.UnissuedWorkers
+import Airbender.Proofs.UnifiedReduced.BinaryOperands
+import Airbender.Proofs.UnifiedReduced.BinaryResult
 
 namespace Airbender.UnifiedReduced.Caller.Proofs
 open Trace Trace.Proofs Arithmetic Reference.RiscV.Sail
@@ -164,6 +166,7 @@ theorem public_register_dataflow_after_initial [Fact p.Prime]
     (timeOfPair data.machine.initial.timestamp).value + 4 ≤ cut := by
   cases preparation with
   | prepared source => exact public_register_preparation_after_initial source
+  | bigintReturn scope => have := scope.caller.afterInitial; omega
   | addi _ scope _ => exact scope.afterInitial
   | frame _ scope _ _ => exact scope.afterInitial
   | arithmeticFrame _ scope _ _ => exact scope.afterInitial
@@ -654,89 +657,6 @@ theorem caller_frame_refreshes [Fact p.Prime] (hp : 8388608 ≤ p)
     obtain ⟨port, included, rfl⟩ := List.mem_map.mp step
     exact worker_register_refreshes row (by simpa using included) notPointer notControl same
 
-theorem public_register_dataflow_token [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
-    {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat} {register : BitVec 5} {value : BitVec 32}
-    (setup : data.machine.rom = Setup.table before)
-    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
-    (ordinaryProgram : Mixed.programImage before oa = some program)
-    (initialization : initialImage before cells = some data.machine.initialMemory)
-    (uniqueSeeds : (data.machine.initialMemory.map MemoryToken.address).Nodup)
-    (preparation : PublicRegisterDataflow data program cut register value) :
-    ∀ {tokens : List (MemoryToken p)}, register ≠ 0 → cut % 4 = 0 →
-      (data.machine.initialMemory ++ (data.prefixSteps cut).map Prod.snd).Perm
-        (tokens ++ (data.prefixSteps cut).map Prod.fst) →
-      ∃ token ∈ tokens, token.address = (Cell.register register).addressCode ∧ token.word = Word.ofBitVec value := by
-  induction preparation with
-  | prepared source =>
-    intro tokens nonzero aligned matching
-    obtain ⟨token, present, address, _, word⟩ := public_register_preparation_token hp clockInverse setup accepted
-      publicProgram ordinaryProgram initialization uniqueSeeds source nonzero aligned matching
-    exact ⟨token, present, address, word⟩
-  | addi prior scope sourceNonzero ih =>
-    intro tokens nonzero aligned matching
-    have floor := public_register_dataflow_after_initial prior
-    obtain ⟨token, present, address, _, word⟩ := register_immediate_preparation_token_of_value hp clockInverse setup accepted
-      publicProgram ordinaryProgram initialization scope uniqueSeeds floor
-      (fun _ prefixMatching => ih sourceNonzero (by omega) prefixMatching) nonzero aligned matching
-    exact ⟨token, present, address, word⟩
-  | frame prior scope destinationNonzero preserves ih =>
-    intro tokens nonzero aligned matching
-    have floor := public_register_dataflow_after_initial prior
-    exact register_frame_token hp clockInverse setup accepted publicProgram ordinaryProgram initialization uniqueSeeds scope
-      destinationNonzero preserves floor (fun _ prefixMatching => ih nonzero (by omega) prefixMatching) aligned matching
-  | arithmeticFrame prior scope destinationNonzero preserves ih =>
-    intro tokens nonzero aligned matching
-    have floor := public_register_dataflow_after_initial prior
-    exact arithmetic_frame_token hp clockInverse setup accepted publicProgram ordinaryProgram initialization uniqueSeeds scope
-      destinationNonzero preserves floor (fun _ prefixMatching => ih nonzero (by omega) prefixMatching) aligned matching
-  | registerFrame prior scope destinationNonzero preserves ih =>
-    intro tokens nonzero aligned matching
-    have floor := public_register_dataflow_after_initial prior
-    exact public_frame_token hp clockInverse setup accepted publicProgram ordinaryProgram initialization uniqueSeeds scope
-      destinationNonzero preserves floor (fun _ prefixMatching => ih nonzero (by omega) prefixMatching) aligned matching
-  | loadFrame prior scope preserves ih =>
-    intro tokens nonzero aligned matching
-    have floor := public_register_dataflow_after_initial prior
-    exact load_frame_token hp clockInverse setup accepted publicProgram ordinaryProgram initialization uniqueSeeds scope
-      preserves floor (fun _ prefixMatching => ih nonzero (by omega) prefixMatching) aligned matching
-  | storeFrame prior scope ih =>
-    intro tokens nonzero aligned matching
-    have floor := public_register_dataflow_after_initial prior
-    exact store_frame_token hp clockInverse setup accepted publicProgram ordinaryProgram initialization uniqueSeeds scope
-      floor (fun _ prefixMatching => ih nonzero (by omega) prefixMatching) aligned matching
-  | callerFrame prior scope notPointer notControl ih =>
-    intro tokens nonzero aligned matching
-    have floor := public_register_dataflow_after_initial prior
-    exact frame_value_token hp clockInverse accepted publicProgram initialization uniqueSeeds floor
-      (fun _ prefixMatching => ih nonzero (by omega) prefixMatching) aligned
-      (caller_frame_refreshes hp clockInverse setup accepted publicProgram ordinaryProgram scope nonzero notPointer notControl aligned)
-      matching
-
-theorem public_register_dataflow_control_preparation [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
-    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
-    {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat} {register : BitVec 5} {value : BitVec 32}
-    (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)
-    (preparation : PublicRegisterDataflow data program cut register value)
-    (nonzero : register ≠ 0) (aligned : cut % 4 = 0) :
-    RegisterDataflowBoundaryExecution data before cells cut register value := by
-  have floor := public_register_dataflow_after_initial preparation
-  obtain ⟨tokens, _, events, _, atCut, _, permutation, _, history, _, matching, _, boundary, _⟩ :=
-    (mixed_window_execution (lower := cut) (upper := cut) hp clockInverse rotationInverse accepted inputs aligned aligned (by omega) (by omega)).execution
-  have unique : (data.machine.initialMemory.map MemoryToken.address).Nodup := by
-    rw [image_addresses inputs.initialization]
-    exact inputs.distinct
-  obtain ⟨token, present, address, word⟩ := public_register_dataflow_token hp clockInverse inputs.setup accepted
-    inputs.publicProgram inputs.ordinaryProgram inputs.initialization unique preparation nonzero aligned matching
-  obtain ⟨cell, _, code, read⟩ := native_boundary_read boundary present
-  have same : cell = Cell.register register := cell_address_injective (code.trans address)
-  subst cell
-  have bits : token.word.toBitVec = value := by rw [word, Word.ofBitVec_roundtrip]
-  exact ⟨tokens, events, atCut, permutation, history, matching, boundary, bits ▸ read, token, present, address, word⟩
-
 theorem public_caller_control_window [Fact p.Prime] (hp : 8388608 ≤ p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
@@ -873,5 +793,255 @@ theorem bigint_control_boundary_execution [Fact p.Prime] (hp : 8388608 ≤ p)
   · rw [word, Word.ofBitVec_roundtrip] at read
     exact ⟨tokens, events, atCut, 1, permutation, history, matching, boundary, Or.inr rfl, read,
       token, included, address, timestamp, word⟩
+
+/-- Original public ORI decoding supplies every native field used below. -/
+theorem bigint_return_preparation_entry [Fact p.Prime] (hp : 4194304 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {ca oa : List (BitVec 32)} {cut : Nat} {register : BitVec 5}
+    (setup : data.machine.rom = Setup.table before)
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    (ordinaryProgram : Mixed.programImage before oa = some program)
+    (scope : BigintReturnPreparation data program cut register) (nonzero : register ≠ 0)
+    {w : Nat → ZMod p} (member : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∈ data.machine.rows)
+    (ordinary : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∉ data.callers)
+    (last : Delegation.Caller.startClock (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) + 4 = cut) :
+    ∃ entry ∈ program, decoderQuery w = entry.query ∧
+      entry.data = ⟨.machine, 12, 0, register, ⟨1, 0⟩, 65536, Setup.binaryTag 6⟩ := by
+  obtain ⟨entry, present, query, address⟩ := ordinary_frame_entry hp clockInverse setup accepted
+    publicProgram ordinaryProgram scope.caller.registry member ordinary last
+  have fields := (run_program_sources ordinaryProgram entry present).fields
+  rw [scope.atCut entry present address] at fields
+  have expected : Mixed.decoderFields (.ITYPE (1, .Regidx 12, .Regidx register, .ORI)) =
+      some ⟨.machine, 12, 0, register, ⟨1, 0⟩, 65536, Setup.binaryTag 6⟩ := by
+    change register ≠ 0#5 at nonzero
+    simp [Mixed.decoderFields, UnifiedReduced.decoderFields, Trace.decoderFields,
+      JumpBranchSlt.decoderFields,
+      ShiftBinop.decoderFields, binaryFields, customDecoderFields, DecoderData.mapFamily,
+      ShiftBinop.instructionFields, ShiftBinop.Operation.isShift, ShiftBinop.Operation.tag, nonzero]
+    constructor <;> rfl
+  rw [expected] at fields
+  exact ⟨entry, present, query, (Option.some.inj fields).symm⟩
+
+/-- Both actual bigint return bits normalize to one under native ORI.
+    Byte lookups, zero-register reads and selectors are all derived. -/
+theorem bigint_return_row_one [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {ca oa : List (BitVec 32)} {cut : Nat} {register : BitVec 5}
+    (setup : data.machine.rom = Setup.table before)
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    (ordinaryProgram : Mixed.programImage before oa = some program)
+    (scope : BigintReturnPreparation data program cut register) (nonzero : register ≠ 0)
+    (zeroReads : ∀ edge ∈ data.mixedSteps, edge.1.address = (Cell.register 0).addressCode → edge.1.value = 0)
+    {w : Nat → ZMod p} (member : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∈ data.machine.rows)
+    (ordinary : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∉ data.callers)
+    (last : Delegation.Caller.startClock (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) + 4 = cut)
+    (source : (readToken w importedConstraintsMemoryPorts[0]).word = Word.ofBitVec 0 ∨
+      (readToken w importedConstraintsMemoryPorts[0]).word = Word.ofBitVec 1) :
+    (writeToken importedConstraintsTraceColumns w importedConstraintsMemoryPorts[2]).address = (Cell.register register).addressCode ∧
+      (writeToken importedConstraintsTraceColumns w importedConstraintsMemoryPorts[2]).word.toBitVec = 1 := by
+  have core := Verification.holds_of_sublist (accepted.constraints _ member)
+    (List.sublist_append_left (importedConstraints data.machine.rom) importedConstraintsTimestampLookups)
+  obtain ⟨entry, _, query, metadata⟩ := bigint_return_preparation_entry (by omega) clockInverse setup accepted
+    publicProgram ordinaryProgram scope nonzero member ordinary last
+  have flags := UnifiedReduced.Proofs.decoder_selectors (by omega) core (by rw [metadata]; change 65536 < 524288; decide) query
+  have selected : w 26 = 0 ∧ w 27 = 1 := by
+    constructor
+    · simpa [metadata, importedConstraintsDecoderColumns, Nat.testBit, Nat.shiftRight_eq_div_pow] using flags 15
+    · simpa [metadata, importedConstraintsDecoderColumns, Nat.testBit, Nat.shiftRight_eq_div_pow] using flags 16
+  have other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0 := by
+    exact ⟨by simpa [metadata, importedConstraintsDecoderColumns, Nat.testBit, Nat.shiftRight_eq_div_pow] using flags 10,
+      by simpa [metadata, importedConstraintsDecoderColumns, Nat.testBit, Nat.shiftRight_eq_div_pow] using flags 11,
+      by simpa [metadata, importedConstraintsDecoderColumns, Nat.testBit, Nat.shiftRight_eq_div_pow] using flags 12,
+      by simpa [metadata, importedConstraintsDecoderColumns, Nat.testBit, Nat.shiftRight_eq_div_pow] using flags 13⟩
+  have load : w 28 = 0 := by simpa [metadata, importedConstraintsDecoderColumns, Nat.testBit, Nat.shiftRight_eq_div_pow] using flags 17
+  have indices := native_query_indices (by dsimp [limbBase]; omega) query
+  have rightIndex : (w 6).val = 0 := by simpa [metadata, importedConstraintsDecoderColumns] using indices.2.1
+  have lower := Verification.assertion_of_holds core ⟨29, by rw [UnifiedReduced.constraint_count]; decide⟩
+  have upper := Verification.assertion_of_holds core ⟨30, by rw [UnifiedReduced.constraint_count]; decide⟩
+  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment, load] at lower upper
+  have location : w 38 = w 6 := by linear_combination lower
+  have high : w 39 = 0 := by linear_combination upper
+  have portMember : importedConstraintsMemoryPorts[1] ∈ machinePorts (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) := by
+    rw [machine_ports_ordinary member ordinary]
+    simp [Trace.Row.ports, CircuitLayout.ports, importedConstraintsMemoryPorts]
+  have zero := zeroReads _ (mixed_machine_member member portMember) (by
+    simp [readToken, MemoryAddress.code, importedConstraintsMemoryPorts, Cell.addressCode,
+      load, pairCode, location, high, rightIndex])
+  change Nat.pair (w 42).val (w 43).val = Nat.pair 0 0 at zero
+  have zero := Nat.pair_eq_pair.mp zero
+  have zeroRead : w 42 = 0 ∧ w 43 = 0 := ⟨(ZMod.val_eq_zero _).mp zero.1, (ZMod.val_eq_zero _).mp zero.2⟩
+  have immediate : w 8 = 1 ∧ w 9 = 0 := by
+    constructor
+    · have q := congrArg (fun q : Vector (ZMod p) 9 => q[5]) query
+      change w 8 = (entry.data.immediate.lo : ZMod p) at q
+      rw [metadata] at q
+      change w 8 = ((1 : Nat) : ZMod p) at q
+      simpa only [Nat.cast_one] using q
+    · have q := congrArg (fun q : Vector (ZMod p) 9 => q[6]) query
+      change w 9 = (entry.data.immediate.hi : ZMod p) at q
+      rw [metadata] at q
+      change w 9 = ((0 : Nat) : ZMod p) at q
+      simpa only [Nat.cast_zero] using q
+  have funct3 : w 10 = (Setup.binaryTag 6 : ZMod p) := by
+    have q := congrArg (fun q : Vector (ZMod p) 9 => q[7]) query
+    change w 10 = (entry.data.funct3 : ZMod p) at q
+    rw [metadata] at q
+    exact q
+  have byteInverse : 256 * (-7864320 : ZMod p) = 1 := by linear_combination clockInverse
+  have modelCore := core
+  rw [setup] at modelCore
+  have leftBytes := UnifiedReduced.Proofs.binary_left_bytes (by omega) byteInverse modelCore selected other 6 (by simp) funct3
+  have immLow : ((SailRV32.Functions.sign_extend (m := 32) (1 : BitVec 12)).extractLsb' 0 8).toNat = 1 := by decide +kernel
+  have immHigh : ((SailRV32.Functions.sign_extend (m := 32) (1 : BitVec 12)).extractLsb' 8 8).toNat = 0 := by decide +kernel
+  have rightBytes := UnifiedReduced.Proofs.binary_immediate_bytes (by omega) byteInverse modelCore selected other load (1 : BitVec 12)
+    (by simpa only [immLow, immHigh, Nat.cast_one, Nat.cast_zero] using immediate) zeroRead 6 (by simp) funct3
+  have result := UnifiedReduced.Proofs.binary_destination (by omega) modelCore selected other 6 (by simp) funct3 leftBytes rightBytes
+  have readWord : (readToken w importedConstraintsMemoryPorts[0]).word = Word.mk (w 36).val (w 37).val := by
+    simp [readToken, MemoryToken.word, importedConstraintsMemoryPorts, MemoryPort.readCode, WordColumns.code]
+  refine ⟨decoded_frame_row_destination (by omega) core query (by rw [metadata]) (by rw [metadata]; change 65536 < 524288; decide)
+    (by rw [metadata]; change Nat.testBit 65536 18 = false; decide), ?_⟩
+  simp only [write_word, importedConstraintsMemoryPorts, WordColumns.evaluate]
+  rw [readWord] at source
+  rcases source with source | source
+  all_goals rw [source] at result
+  all_goals exact result.trans (by decide +kernel)
+
+/-- The raw bigint write is the actual ORI source; its normalized output is
+    retained at the exact destination timestamp for subsequent public dataflow. -/
+theorem bigint_return_preparation_token [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat} {register : BitVec 5} {tokens : List (MemoryToken p)}
+    (setup : data.machine.rom = Setup.table before)
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    (ordinaryProgram : Mixed.programImage before oa = some program)
+    (initialization : initialImage before cells = some data.machine.initialMemory)
+    (uniqueSeeds : (data.machine.initialMemory.map MemoryToken.address).Nodup)
+    (scope : BigintReturnPreparation data program cut register) (nonzero : register ≠ 0) (aligned : cut % 4 = 0)
+    (matching : (data.machine.initialMemory ++ (data.prefixSteps cut).map Prod.snd).Perm
+      (tokens ++ (data.prefixSteps cut).map Prod.fst)) :
+    ∃ token ∈ tokens, token.address = (Cell.register register).addressCode ∧
+      (timeOfPair token.time).value = cut - 2 ∧ token.word = Word.ofBitVec 1 := by
+  have afterInitial := scope.caller.afterInitial
+  obtain ⟨w, member, last, ordinary, present, timestamp, bound⟩ := preparation_output_token hp clockInverse
+    accepted publicProgram initialization scope.prefixScope (by omega) scope.beforeTerminal aligned matching
+  obtain ⟨start, prefixMatching, inStart, unique⟩ := first_port_prefix_token hp clockInverse
+    accepted publicProgram initialization uniqueSeeds (by omega) member ordinary last
+  obtain ⟨token, included, address, _, bit⟩ := bigint_control_token hp clockInverse setup accepted publicProgram
+    ordinaryProgram initialization scope.tables scope.caller (by omega) prefixMatching
+  obtain ⟨entry, _, query, metadata⟩ := bigint_return_preparation_entry (by omega) clockInverse setup accepted
+    publicProgram ordinaryProgram scope nonzero member ordinary last
+  have indices := native_query_indices (by dsimp [limbBase]; omega) query
+  have index : (w 5).val = (12 : BitVec 5).toNat := by simpa [metadata, importedConstraintsDecoderColumns] using indices.1
+  have sourceAddress : (readToken w importedConstraintsMemoryPorts[0]).address = (Cell.register 12).addressCode := by
+    simp [readToken, MemoryAddress.code, importedConstraintsMemoryPorts, Cell.addressCode, index]
+  have equal := List.inj_on_of_nodup_map unique inStart included (sourceAddress.trans address.symm)
+  have source : (readToken w importedConstraintsMemoryPorts[0]).word = Word.ofBitVec 0 ∨
+      (readToken w importedConstraintsMemoryPorts[0]).word = Word.ofBitVec 1 := by
+    rw [equal]
+    exact bit
+  have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
+  have requests := request_binding size clockInverse accepted.toRequestChecks publicProgram
+  have facts := mixed_memory_facts size clockInverse accepted publicProgram initialization requests
+  have zero := Transfer.read_cell_values_of_rules facts (Cell.register 0).addressCode 0
+    (Delegation.Caller.Proofs.initial_zero initialization)
+    (mixed_zero_rules_of_program size clockInverse accepted publicProgram ordinaryProgram requests)
+  have output := bigint_return_row_one hp clockInverse setup accepted publicProgram ordinaryProgram scope nonzero zero member ordinary last source
+  refine ⟨_, present, output.1, timestamp, ?_⟩
+  apply Word.eq_of_value bound (Word.ofBitVec_bound _)
+  have bits := congrArg BitVec.toNat output.2
+  rw [Word.toBitVec_toNat bound] at bits
+  exact bits.trans (Word.ofBitVec_value _).symm
+
+theorem public_register_dataflow_token [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat} {register : BitVec 5} {value : BitVec 32}
+    (setup : data.machine.rom = Setup.table before)
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    (ordinaryProgram : Mixed.programImage before oa = some program)
+    (initialization : initialImage before cells = some data.machine.initialMemory)
+    (uniqueSeeds : (data.machine.initialMemory.map MemoryToken.address).Nodup)
+    (preparation : PublicRegisterDataflow data program cut register value) :
+    ∀ {tokens : List (MemoryToken p)}, register ≠ 0 → cut % 4 = 0 →
+      (data.machine.initialMemory ++ (data.prefixSteps cut).map Prod.snd).Perm
+        (tokens ++ (data.prefixSteps cut).map Prod.fst) →
+      ∃ token ∈ tokens, token.address = (Cell.register register).addressCode ∧ token.word = Word.ofBitVec value := by
+  induction preparation with
+  | prepared source =>
+    intro tokens nonzero aligned matching
+    obtain ⟨token, present, address, _, word⟩ := public_register_preparation_token hp clockInverse setup accepted
+      publicProgram ordinaryProgram initialization uniqueSeeds source nonzero aligned matching
+    exact ⟨token, present, address, word⟩
+  | bigintReturn scope =>
+    intro tokens nonzero aligned matching
+    obtain ⟨token, present, address, _, word⟩ := bigint_return_preparation_token hp clockInverse setup accepted
+      publicProgram ordinaryProgram initialization uniqueSeeds scope nonzero aligned matching
+    exact ⟨token, present, address, word⟩
+  | addi prior scope sourceNonzero ih =>
+    intro tokens nonzero aligned matching
+    have floor := public_register_dataflow_after_initial prior
+    obtain ⟨token, present, address, _, word⟩ := register_immediate_preparation_token_of_value hp clockInverse setup accepted
+      publicProgram ordinaryProgram initialization scope uniqueSeeds floor
+      (fun _ prefixMatching => ih sourceNonzero (by omega) prefixMatching) nonzero aligned matching
+    exact ⟨token, present, address, word⟩
+  | frame prior scope destinationNonzero preserves ih =>
+    intro tokens nonzero aligned matching
+    have floor := public_register_dataflow_after_initial prior
+    exact register_frame_token hp clockInverse setup accepted publicProgram ordinaryProgram initialization uniqueSeeds scope
+      destinationNonzero preserves floor (fun _ prefixMatching => ih nonzero (by omega) prefixMatching) aligned matching
+  | arithmeticFrame prior scope destinationNonzero preserves ih =>
+    intro tokens nonzero aligned matching
+    have floor := public_register_dataflow_after_initial prior
+    exact arithmetic_frame_token hp clockInverse setup accepted publicProgram ordinaryProgram initialization uniqueSeeds scope
+      destinationNonzero preserves floor (fun _ prefixMatching => ih nonzero (by omega) prefixMatching) aligned matching
+  | registerFrame prior scope destinationNonzero preserves ih =>
+    intro tokens nonzero aligned matching
+    have floor := public_register_dataflow_after_initial prior
+    exact public_frame_token hp clockInverse setup accepted publicProgram ordinaryProgram initialization uniqueSeeds scope
+      destinationNonzero preserves floor (fun _ prefixMatching => ih nonzero (by omega) prefixMatching) aligned matching
+  | loadFrame prior scope preserves ih =>
+    intro tokens nonzero aligned matching
+    have floor := public_register_dataflow_after_initial prior
+    exact load_frame_token hp clockInverse setup accepted publicProgram ordinaryProgram initialization uniqueSeeds scope
+      preserves floor (fun _ prefixMatching => ih nonzero (by omega) prefixMatching) aligned matching
+  | storeFrame prior scope ih =>
+    intro tokens nonzero aligned matching
+    have floor := public_register_dataflow_after_initial prior
+    exact store_frame_token hp clockInverse setup accepted publicProgram ordinaryProgram initialization uniqueSeeds scope
+      floor (fun _ prefixMatching => ih nonzero (by omega) prefixMatching) aligned matching
+  | callerFrame prior scope notPointer notControl ih =>
+    intro tokens nonzero aligned matching
+    have floor := public_register_dataflow_after_initial prior
+    exact frame_value_token hp clockInverse accepted publicProgram initialization uniqueSeeds floor
+      (fun _ prefixMatching => ih nonzero (by omega) prefixMatching) aligned
+      (caller_frame_refreshes hp clockInverse setup accepted publicProgram ordinaryProgram scope nonzero notPointer notControl aligned)
+      matching
+
+theorem public_register_dataflow_control_preparation [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat} {register : BitVec 5} {value : BitVec 32}
+    (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)
+    (preparation : PublicRegisterDataflow data program cut register value)
+    (nonzero : register ≠ 0) (aligned : cut % 4 = 0) :
+    RegisterDataflowBoundaryExecution data before cells cut register value := by
+  have floor := public_register_dataflow_after_initial preparation
+  obtain ⟨tokens, _, events, _, atCut, _, permutation, _, history, _, matching, _, boundary, _⟩ :=
+    (mixed_window_execution (lower := cut) (upper := cut) hp clockInverse rotationInverse accepted inputs aligned aligned (by omega) (by omega)).execution
+  have unique : (data.machine.initialMemory.map MemoryToken.address).Nodup := by
+    rw [image_addresses inputs.initialization]
+    exact inputs.distinct
+  obtain ⟨token, present, address, word⟩ := public_register_dataflow_token hp clockInverse inputs.setup accepted
+    inputs.publicProgram inputs.ordinaryProgram inputs.initialization unique preparation nonzero aligned matching
+  obtain ⟨cell, _, code, read⟩ := native_boundary_read boundary present
+  have same : cell = Cell.register register := cell_address_injective (code.trans address)
+  subst cell
+  have bits : token.word.toBitVec = value := by rw [word, Word.ofBitVec_roundtrip]
+  exact ⟨tokens, events, atCut, permutation, history, matching, boundary, bits ▸ read, token, present, address, word⟩
+
 
 end Airbender.UnifiedReduced.Caller.Proofs

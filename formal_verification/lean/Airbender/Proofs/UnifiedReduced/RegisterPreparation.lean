@@ -143,49 +143,30 @@ theorem register_immediate_row_output [Fact p.Prime] (hp : 4194304 ≤ p)
     rw [readWord]
     simpa [write_word, importedConstraintsMemoryPorts, WordColumns.evaluate] using result
 
-/-- The actual first ADDI read consumes the retained source token at the
-    preceding instruction cut. This raw matching lemma is shared by finite
-    public dataflow proofs and does not require Sail states or round masks. -/
-theorem register_immediate_source_word_of_value [Fact p.Prime] (hp : 8388608 ≤ p)
+/-- The actual first native read consumes a unique retained token at the
+    preceding instruction boundary. No expected address or value is supplied. -/
+theorem first_port_prefix_token [Fact p.Prime] (hp : 8388608 ≤ p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
-    {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat}
-    {source register : BitVec 5} {value : BitVec 32} {immediate : BitVec 12}
-    (setup : data.machine.rom = Setup.table before)
+    {ca : List (BitVec 32)} {cells : List Cell} {cut : Nat}
     (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
-    (ordinaryProgram : Mixed.programImage before oa = some program)
     (initialization : initialImage before cells = some data.machine.initialMemory)
-    (scope : RegisterImmediatePreparation data program cut source register immediate)
-    (uniqueSeeds : (data.machine.initialMemory.map MemoryToken.address).Nodup)
-    (sourceFloor : (timeOfPair data.machine.initial.timestamp).value + 4 ≤ cut - 4)
-    (seedToken : ∀ start : List (MemoryToken p),
-      (data.machine.initialMemory ++ (data.prefixSteps (cut - 4)).map Prod.snd).Perm
-        (start ++ (data.prefixSteps (cut - 4)).map Prod.fst) →
-      ∃ token ∈ start, token.address = (Cell.register source).addressCode ∧
-        token.word = Word.ofBitVec value)
-    (nonzero : register ≠ 0) (aligned : cut % 4 = 0)
+    (uniqueSeeds : (data.machine.initialMemory.map MemoryToken.address).Nodup) (cutFloor : 8 ≤ cut)
     {w : Nat → ZMod p} (member : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∈ data.machine.rows)
     (ordinary : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∉ data.callers)
     (last : Delegation.Caller.startClock (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) + 4 = cut) :
-    (readToken w importedConstraintsMemoryPorts[0]).word = Word.ofBitVec value := by
+    ∃ start : List (MemoryToken p),
+      (data.machine.initialMemory ++ (data.prefixSteps (cut - 4)).map Prod.snd).Perm
+        (start ++ (data.prefixSteps (cut - 4)).map Prod.fst) ∧
+      readToken w importedConstraintsMemoryPorts[0] ∈ start ∧
+      (start.map MemoryToken.address).Nodup := by
   have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
-  have floor := sourceFloor
-  have cutFloor : 8 ≤ cut := by omega
-  have sourceAligned : (cut - 4) % 4 = 0 := by omega
   have requests := request_binding size clockInverse accepted.toRequestChecks publicProgram
   have facts := mixed_memory_facts size clockInverse accepted publicProgram initialization requests
   obtain ⟨start, earlier, later⟩ := Transfer.split_at facts (cut - 5)
   have prefixMatching := earlier.matching
   have cutoff : cut - 5 = (cut - 4) - 1 := by omega
   rw [cutoff, mixed_prefix_steps data (by omega)] at prefixMatching
-  obtain ⟨token, present, address, word⟩ := seedToken start prefixMatching
-  obtain ⟨entry, _, query, metadata⟩ := register_immediate_preparation_entry (by omega) clockInverse setup accepted
-    publicProgram ordinaryProgram scope nonzero member ordinary last
-  have indices := native_query_indices (by dsimp [limbBase]; omega) query
-  have sourceIndex : (w 5).val = source.toNat := by
-    simpa [metadata, importedConstraintsDecoderColumns] using indices.1
-  have sourceAddress : (readToken w importedConstraintsMemoryPorts[0]).address = (Cell.register source).addressCode := by
-    simp [readToken, MemoryAddress.code, importedConstraintsMemoryPorts, Cell.addressCode, sourceIndex]
   have portMember : importedConstraintsMemoryPorts[0] ∈ machinePorts (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) := by
     rw [machine_ports_ordinary member ordinary]
     simp [Trace.Row.ports, CircuitLayout.ports, importedConstraintsMemoryPorts]
@@ -218,6 +199,43 @@ theorem register_immediate_source_word_of_value [Fact p.Prime] (hp : 8388608 ≤
       omega
   have keys := boundary_keys MemoryToken.address earlier.matching earlier.addresses
   have unique : (start.map MemoryToken.address).Nodup := keys.nodup_iff.mp uniqueSeeds
+  exact ⟨start, prefixMatching, inStart, unique⟩
+
+/-- The actual first ADDI read consumes the retained source token at the
+    preceding instruction cut. This raw matching lemma is shared by finite
+    public dataflow proofs and does not require Sail states or round masks. -/
+theorem register_immediate_source_word_of_value [Fact p.Prime] (hp : 8388608 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat}
+    {source register : BitVec 5} {value : BitVec 32} {immediate : BitVec 12}
+    (setup : data.machine.rom = Setup.table before)
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    (ordinaryProgram : Mixed.programImage before oa = some program)
+    (initialization : initialImage before cells = some data.machine.initialMemory)
+    (scope : RegisterImmediatePreparation data program cut source register immediate)
+    (uniqueSeeds : (data.machine.initialMemory.map MemoryToken.address).Nodup)
+    (sourceFloor : (timeOfPair data.machine.initial.timestamp).value + 4 ≤ cut - 4)
+    (seedToken : ∀ start : List (MemoryToken p),
+      (data.machine.initialMemory ++ (data.prefixSteps (cut - 4)).map Prod.snd).Perm
+        (start ++ (data.prefixSteps (cut - 4)).map Prod.fst) →
+      ∃ token ∈ start, token.address = (Cell.register source).addressCode ∧
+        token.word = Word.ofBitVec value)
+    (nonzero : register ≠ 0) (aligned : cut % 4 = 0)
+    {w : Nat → ZMod p} (member : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∈ data.machine.rows)
+    (ordinary : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∉ data.callers)
+    (last : Delegation.Caller.startClock (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) + 4 = cut) :
+    (readToken w importedConstraintsMemoryPorts[0]).word = Word.ofBitVec value := by
+  obtain ⟨start, prefixMatching, inStart, unique⟩ := first_port_prefix_token hp clockInverse
+    accepted publicProgram initialization uniqueSeeds (by omega) member ordinary last
+  obtain ⟨token, present, address, word⟩ := seedToken start prefixMatching
+  obtain ⟨entry, _, query, metadata⟩ := register_immediate_preparation_entry (by omega) clockInverse setup accepted
+    publicProgram ordinaryProgram scope nonzero member ordinary last
+  have indices := native_query_indices (by dsimp [limbBase]; omega) query
+  have sourceIndex : (w 5).val = source.toNat := by
+    simpa [metadata, importedConstraintsDecoderColumns] using indices.1
+  have sourceAddress : (readToken w importedConstraintsMemoryPorts[0]).address = (Cell.register source).addressCode := by
+    simp [readToken, MemoryAddress.code, importedConstraintsMemoryPorts, Cell.addressCode, sourceIndex]
   have equal := List.inj_on_of_nodup_map unique inStart present (sourceAddress.trans address.symm)
   exact congrArg MemoryToken.word equal |>.trans word
 

@@ -487,8 +487,8 @@ timestamps but fails initialized matching. Both issued invalid bigint controls
 also retain the x11 refresh law; ordinary-code gaps and incomplete reference
 windows are rejected. Zero-clock prefix effects, ROM-shadow transport and discarded
 loads keep their existing scope. This proves memory preparation, not full custom
-CSR retirement. Worker writes to the tracked x10/x12 and broader operands remain
-open; they are not assumed to preserve values.
+CSR retirement. General operand-dependent worker writes to tracked x10/x12
+and broader operands remain open; no preservation is assumed.
 The bigint caller return now has its own checked boundary. `CallerControlPreparation`
 uses public modular CSR-region code and the aligned ordinary registry; initialized
 native clock order derives a positive selected cycle, and state/request matching
@@ -509,9 +509,25 @@ retain actual zero returns at that clock. A fabricated return of two, wrong publ
 family, ordinary-code selection and a cut past the terminal are rejected.
 This classifies the native returned bit; it does not validate the incoming bigint
 ABI or prove full CSR retirement. The unissued-worker, ROM-shadow, terminal-PC and
-discarded-load cases remain exposed. Exact operand-dependent worker results and
-computed dataflow through x10/x12 writes remain open.
-Whole caller retirement remains open.
+discarded-load cases remain exposed.
+
+`BigintReturnPreparation` binds the following original ORI of x12 with one to
+that actual native return. Raw initialized matching derives the ORI source
+from the retained worker token, and the existing clock inverse derives the byte
+inverse. Modeled byte lookups and public decoding derive ORI's selectors, operands
+and result one for either return bit. The `PublicRegisterDataflow.bigintReturn`
+root then joins the existing ADDI and selected-reference preparation interfaces;
+no expected source, zero-return condition or new field premise is supplied.
+[Concrete reversed-row traces](Tests/UnifiedDelegation.lean) check COPY→ORI→ADDI
+and carry-COPY→ORI→ADDI, plus both invalid incoming controls 0/65537. The actual
+worker write retains clock seven, normalized one clock ten, and final control 128
+clock fourteen. One initialized history retains the worker return and final control.
+A fabricated clock-six source passes native constraints/timestamps and fails shared
+matching. XORI is rejected by the public scope, and XORI of return one with one
+cannot supply normalized one. An incomplete 56-call G window remains rejected.
+The existing public domain, modeled tables, logical matching and complete selected
+protocol scopes remain explicit. General operand-dependent x10/x12 results,
+broader operations and whole caller retirement remain open.
 
 [Control preparation](Airbender/Review/Helpers/UnifiedReduced/ControlPreparation.lean)
 uses a public ordinary ADDI-from-x0/LUI registry and a worker-free final preparation

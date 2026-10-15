@@ -2796,4 +2796,402 @@ theorem bigint_return_invalid_actual (highControl : Bool) :
   exact ⟨tokens, events, after, permutation, history, initial, read, control, present, rfl,
     by cases highControl <;> decide, word⟩
 
+/-- COPY return zero, carry return one, and both admitted invalid controls. -/
+private def normalizeSeed (kind : Fin 4) : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
+  if kind = 0 then callerOnlyData else if kind = 1 then returnCarryData else abiData (kind = 3)
+private def normalizeSeedBefore (kind : Fin 4) : State :=
+  if kind = 0 then mixedBefore else if kind = 1 then returnCarryBefore else abiBefore (kind = 3)
+private theorem normalizeSeedAccepted (kind : Fin 4) : UnifiedReduced.Caller.MixedMemoryAccepted (normalizeSeed kind) [] := by
+  fin_cases kind
+  · exact callerOnlyAccepted
+  · exact returnCarryAccepted
+  · exact abiAccepted false
+  · exact abiAccepted true
+private theorem normalizeSeedInputs (kind : Fin 4) :
+    UnifiedReduced.Caller.MixedMemoryInputs (normalizeSeed kind) [] (normalizeSeedBefore kind) [0] [] cells := by
+  fin_cases kind
+  · exact callerOnlyInputs
+  · exact returnCarryInputs
+  · exact abiInputs false
+  · exact abiInputs true
+private def normalizeEntry : UnifiedReduced.ProgramEntry :=
+  ⟨4, 0x00166613, .ITYPE (1, .Regidx 12, .Regidx 12, .ORI), ⟨.machine, 12, 0, 12, ⟨1, 0⟩, 65536, 53⟩⟩
+private def normalizeLast : UnifiedReduced.ProgramEntry :=
+  ⟨8, 0x07f60613, .ITYPE (127, .Regidx 12, .Regidx 12, .ADDI), ⟨.machine, 12, 0, 12, ⟨127, 0⟩, 1, 0⟩⟩
+private def normalizeProgram := [normalizeEntry, normalizeLast]
+private def normalizeBefore (kind : Fin 4) : State :=
+  wordWriteState (wordWriteState (normalizeSeedBefore kind) 4 normalizeEntry.bits) 8 normalizeLast.bits
+private def normalizeAssignment (one : Bool) (stage : Fin 2) (column : Nat) : ZMod babyBearModulus :=
+  if stage = 0 then
+    if column = 0 then 4
+    else if column = 2 || column = 30 || column = 46 then 8
+    else if column = 32 || column = 5 || column = 7 || column = 44 then 12
+    else if column = 34 then 7
+    else if column = 40 then 6
+    else if column = 36 || column = 48 || column = 74 || column = 93 then if one then 1 else 0
+    else if column = 10 || column = 92 || column = 101 || column = 110 || column = 119 then 53
+    else if column = 88 then 3
+    else if column = 4 || column = 8 || column = 27 || column = 50 || column = 58 || column = 94 || column = 95 ||
+        column = 129 || column = 130 || column = 131 || column = 132 || column = 133 then 1
+    else 0
+  else
+    if column = 0 then 8
+    else if column = 2 || column = 30 || column = 5 || column = 7 || column = 44 || column = 46 then 12
+    else if column = 32 then 16
+    else if column = 34 then 10
+    else if column = 40 then 9
+    else if column = 8 then 127
+    else if column = 50 then 128
+    else if column = 4 || column = 11 || column = 36 || column = 48 ||
+        column = 129 || column = 130 || column = 131 || column = 132 || column = 133 then 1
+    else 0
+private def normalizeRow (kind : Fin 4) (stage : Fin 2) : Trace.Row babyBearModulus UnifiedFamily :=
+  ⟨.machine, normalizeAssignment (kind = 1) stage⟩
+private def normalizeData (kind : Fin 4) : UnifiedReduced.Caller.RequestTrace babyBearModulus where
+  machine := {
+    rows := [normalizeRow kind 1, normalizeRow kind 0, sharedCaller]
+    rom := UnifiedReduced.Setup.table (normalizeBefore kind)
+    initial := sharedCaller.start
+    terminal := (normalizeRow kind 1).finish
+    initialMemory := (normalizeSeed kind).machine.initialMemory
+    terminalMemory := (normalizeSeed kind).machine.terminalMemory.map fun token =>
+      if token.address = (Cell.register 0).addressCode then ⟨token.address, (13, 0), 0⟩
+      else if token.address = (Cell.register 12).addressCode then ⟨token.address, (14, 0), Nat.pair 128 0⟩
+      else token }
+  workers := (normalizeSeed kind).workers
+  program := [Tests.DelegationCaller.entry .bigint]
+private theorem normalizeCore (state : State) (one : Bool) (stage : Fin 2) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (normalizeAssignment one stage)) (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table state)) := by
+  cases one <;> fin_cases stage
+  all_goals simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
+    Verification.environment, Expression.eval, normalizeAssignment, Lookup.Contains, Table.toRaw, fromElements]
+  all_goals repeat' apply And.intro
+  all_goals solve
+    | decide +kernel
+    | (apply Verification.range16_contains; decide +kernel)
+    | (refine ⟨(0 : Fin 2097537), ?_⟩
+       change _ = (UnifiedReduced.Setup.fixedRow (0 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
+       decide +kernel)
+    | (refine ⟨(1 : Fin 2097537), ?_⟩
+       change _ = (UnifiedReduced.Setup.fixedRow (1 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
+       decide +kernel)
+    | (refine ⟨(65793 : Fin 2097537), ?_⟩
+       change _ = (UnifiedReduced.Setup.fixedRow (65793 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
+       decide +kernel)
+    | (refine ⟨(65794 : Fin 2097537), ?_⟩
+       change _ = (UnifiedReduced.Setup.fixedRow (65794 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
+       decide +kernel)
+    | (refine ⟨(66050 : Fin 2097537), ?_⟩
+       change _ = (UnifiedReduced.Setup.fixedRow (66050 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
+       decide +kernel)
+private theorem normalizeClocks (one : Bool) (stage : Fin 2) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (normalizeAssignment one stage)) UnifiedReduced.importedConstraintsTimestampLookups := by
+  rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
+  constructor
+  · simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.constraints]
+  · rw [List.forall_mem_iff_forall_getElem]
+    intro i bound
+    have short : i < 8 := by simpa only [UnifiedReduced.timestamp_count] using bound
+    interval_cases i
+    all_goals apply Trace.Proofs.range_contains
+    all_goals cases one <;> fin_cases stage <;> decide +kernel
+private theorem normalizeAccepted (kind : Fin 4) : UnifiedReduced.Caller.MixedMemoryAccepted (normalizeData kind) normalizeProgram := by
+  constructor
+  · constructor
+    · intro row member
+      rcases List.mem_cons.mp member with rfl | member
+      · exact Verification.holds_append (normalizeCore _ (decide (kind = 1)) 1) (normalizeClocks (decide (kind = 1)) 1)
+      · rcases List.mem_cons.mp member with rfl | member
+        · exact Verification.holds_append (normalizeCore _ (decide (kind = 1)) 0) (normalizeClocks (decide (kind = 1)) 0)
+        · have same := List.mem_singleton.mp member
+          subst row
+          exact Verification.holds_append (callerCoreFor _) sharedTimestamps
+    · intro row member
+      rcases List.mem_cons.mp member with rfl | member
+      · fin_cases kind <;> decide +kernel
+      · rcases List.mem_cons.mp member with rfl | member
+        · fin_cases kind <;> decide +kernel
+        · have same := List.mem_singleton.mp member
+          subst row
+          rfl
+    · change [sharedCaller.start, (normalizeRow kind 1).finish, (normalizeRow kind 0).finish, sharedCaller.finish].Perm
+        [(normalizeRow kind 1).finish, (normalizeRow kind 1).start, (normalizeRow kind 0).start, sharedCaller.start]
+      have first : sharedCaller.finish = (normalizeRow kind 0).start := rfl
+      have second : (normalizeRow kind 0).finish = (normalizeRow kind 1).start := rfl
+      rw [first, second]
+      exact (List.Perm.swap _ _ _).trans ((List.Perm.cons _ (List.Perm.swap _ _ _)).trans
+        (List.Perm.cons _ (List.Perm.cons _ (List.Perm.swap _ _ []))))
+    · intro row member
+      have same : row = sharedCaller := by fin_cases kind <;> exact List.mem_singleton.mp member
+      subst row
+      change ∃ i : Fin 1, UnifiedReduced.decoderQuery sharedAssignment =
+        Delegation.Caller.query ([Tests.DelegationCaller.entry .bigint].get i)
+      exact ⟨0, by decide +kernel⟩
+    · exact (normalizeSeedAccepted kind).workerConstraints
+    · exact (normalizeSeedAccepted kind).workerActive
+    · have equal : (normalizeData kind).calls = (normalizeData kind).fulfillments := by fin_cases kind <;> decide +kernel
+      rw [← equal]
+      exact List.perm_append_comm
+  · intro row member noncaller
+    rcases List.mem_cons.mp member with rfl | member
+    · exact ⟨(1 : Fin 2), by fin_cases kind <;> decide +kernel⟩
+    · rcases List.mem_cons.mp member with rfl | member
+      · exact ⟨(0 : Fin 2), by fin_cases kind <;> decide +kernel⟩
+      · have same := List.mem_singleton.mp member
+        subst row
+        exact False.elim (noncaller (by fin_cases kind <;> exact List.mem_singleton_self _))
+  · fin_cases kind <;> decide +kernel
+private theorem normalizeInitialization (kind : Fin 4) :
+    initialImage (normalizeBefore kind) cells = some (normalizeData kind).machine.initialMemory := by
+  have frame (state : State) (address : Nat) (bits : BitVec 32) (bound : address + 4 ≤ 12)
+      {tokens : List (MemoryToken babyBearModulus)} (initialized : initialImage state cells = some tokens) :
+      initialImage (wordWriteState state address bits) cells = some tokens := by
+    apply Trace.Proofs.image_frame initialized
+    intro cell member value read
+    cases cell with
+    | register index => exact rX_register_frame (by dsimp only [wordWriteState]) index read
+    | ram location =>
+      have lower : 12 ≤ location.toNat := by
+        simp [Tests.DelegationOperationEffects.sharedCells, Tests.BigintMemory.cells] at member
+        rcases member with ⟨i, bound, rfl⟩ | ⟨i, bound, rfl⟩
+        all_goals interval_cases i <;> decide
+      exact written_word_disjoint address bits (Or.inr (by omega)) read
+  exact frame _ 8 _ (by decide) (frame _ 4 _ (by decide) (normalizeSeedInputs kind).initialization)
+private theorem normalizeInputs (kind : Fin 4) :
+    UnifiedReduced.Caller.MixedMemoryInputs (normalizeData kind) normalizeProgram (normalizeBefore kind) [0] [4, 8] cells := by
+  refine ⟨?_, ?_, normalizeInitialization kind, (normalizeSeedInputs kind).distinct,
+    (normalizeSeedInputs kind).aligned, rfl, ?_, ?_⟩
+  · constructor
+    · have seedRead : (Cell.ram 0).read (normalizeSeedBefore kind) =
+          .ok (Tests.DelegationCaller.entry .bigint).bits (normalizeSeedBefore kind) := by
+        fin_cases kind
+        · exact written_word_disjoint 4 _ (by decide) (written_word_read _ 0 _)
+        all_goals exact written_word_read _ 0 _
+      have bytes : (Cell.ram 0).read (normalizeBefore kind) =
+          .ok (Tests.DelegationCaller.entry .bigint).bits (normalizeBefore kind) :=
+        written_word_disjoint 8 _ (by decide) (written_word_disjoint 4 _ (by decide) seedRead)
+      have decoded : run (SailRV32.Functions.encdec_backwards (Tests.DelegationCaller.entry .bigint).bits) (normalizeBefore kind) =
+          .ok (Tests.DelegationCaller.entry .bigint).instruction (normalizeBefore kind) :=
+        Tests.DelegationCaller.original_decoder .bigint (normalizeBefore kind)
+      have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
+          some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
+      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageRunWith,
+        List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+      rfl
+    · change 4 < timestampBase ∧ 0 < timestampBase
+      norm_num [timestampBase]
+    · change 4 % 4 = 0
+      decide
+  · have first : (Cell.ram 4).read (normalizeBefore kind) = .ok normalizeEntry.bits (normalizeBefore kind) :=
+      written_word_disjoint 8 _ (by decide) (written_word_read _ 4 _)
+    have last : (Cell.ram 8).read (normalizeBefore kind) = .ok normalizeLast.bits (normalizeBefore kind) := written_word_read _ 8 _
+    have df : run (SailRV32.Functions.encdec_backwards normalizeEntry.bits) (normalizeBefore kind) =
+        .ok normalizeEntry.instruction (normalizeBefore kind) := by with_unfolding_all rfl
+    have dl : run (SailRV32.Functions.encdec_backwards normalizeLast.bits) (normalizeBefore kind) =
+        .ok normalizeLast.instruction (normalizeBefore kind) := by with_unfolding_all rfl
+    have mf : UnifiedReduced.Mixed.decoderFields normalizeEntry.instruction = some normalizeEntry.data := rfl
+    have ml : UnifiedReduced.Mixed.decoderFields normalizeLast.instruction = some normalizeLast.data := rfl
+    simp only [UnifiedReduced.Mixed.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
+      programEntryRunWith, first, last, df, dl, mf, ml, bind, Option.bind, pure]
+    rfl
+  · fin_cases kind <;> rfl
+  · intro row member family
+    fin_cases kind
+    all_goals have same := List.mem_singleton.mp member
+    all_goals subst row
+    all_goals cases family
+private theorem normalizeRegistry : UnifiedReduced.Caller.WrappedSequentialProgram normalizeProgram := by
+  constructor
+  · intro entry member
+    rcases List.mem_cons.mp member with rfl | member
+    · exact .sequential (.ori _ _ _)
+    · have same := List.mem_singleton.mp member
+      subst entry
+      exact .sequential (.arithmetic (.addi _ _ _))
+  · intro entry member
+    rcases List.mem_cons.mp member with rfl | member
+    · decide
+    · have same := List.mem_singleton.mp member
+      subst entry
+      decide
+private theorem normalizeScope (kind : Fin 4) :
+    UnifiedReduced.Caller.BigintReturnPreparation (normalizeData kind) normalizeProgram 12 12 := by
+  constructor
+  · refine ⟨normalizeRegistry, ?_, by change 4 + 4 ≤ 8; decide, by change 8 ≤ 16; decide⟩
+    constructor
+    · intro entry member clock lower upper address
+      rcases List.mem_cons.mp member with rfl | member
+      · interval_cases clock
+        all_goals exact absurd address (by fin_cases kind <;> decide +kernel)
+      · have same := List.mem_singleton.mp member
+        subst entry
+        interval_cases clock
+        all_goals exact absurd address (by fin_cases kind <;> decide +kernel)
+    · intro entry member _ _ _ _
+      have same := List.mem_singleton.mp member
+      subst entry
+      rfl
+  · fin_cases kind <;> rfl
+  · intro entry member address
+    rcases List.mem_cons.mp member with rfl | member
+    · rfl
+    · have same := List.mem_singleton.mp member
+      subst entry
+      have impossible : normalizeLast.pc ≠ UnifiedReduced.Caller.wrappedProgramAddress (normalizeData kind) 8 := by
+        fin_cases kind <;> decide +kernel
+      exact False.elim (impossible address)
+  · fin_cases kind <;> decide +kernel
+  · fin_cases kind <;> decide +kernel
+private theorem normalizeLastScope (kind : Fin 4) :
+    UnifiedReduced.Caller.RegisterImmediatePreparation (normalizeData kind) normalizeProgram 16 12 12 127 := by
+  refine ⟨normalizeRegistry, ?_, ?_, by change 4 + 4 ≤ 16; decide, by change 16 ≤ 16; decide⟩
+  · intro entry member address
+    rcases List.mem_cons.mp member with rfl | member
+    · have impossible : normalizeEntry.pc ≠ UnifiedReduced.Caller.wrappedProgramAddress (normalizeData kind) 12 := by
+        fin_cases kind <;> decide +kernel
+      exact False.elim (impossible address)
+    · have same := List.mem_singleton.mp member
+      subst entry
+      rfl
+  · fin_cases kind <;> decide +kernel
+private theorem normalizeFlow (kind : Fin 4) :
+    UnifiedReduced.Caller.PublicRegisterDataflow (normalizeData kind) normalizeProgram 16 12 128 := by
+  have result := UnifiedReduced.Caller.PublicRegisterDataflow.addi (.bigintReturn (normalizeScope kind))
+    (normalizeLastScope kind) (by decide)
+  exact result
+
+theorem bigint_return_normalized_boundary (kind : Fin 4) :
+    UnifiedReduced.Caller.RegisterDataflowBoundaryExecution (normalizeData kind) (normalizeBefore kind) cells 12 12 1 :=
+  UnifiedReduced.Caller.register_dataflow_control_preparation_soundness (by decide +kernel) (by decide +kernel)
+    (by decide +kernel) (normalizeAccepted kind) (normalizeInputs kind) (.bigintReturn (normalizeScope kind)) (by decide) (by decide)
+theorem bigint_return_normalized_control (kind : Fin 4) :
+    UnifiedReduced.Caller.RegisterDataflowBoundaryExecution (normalizeData kind) (normalizeBefore kind) cells 16 12 128 :=
+  UnifiedReduced.Caller.register_dataflow_control_preparation_soundness (by decide +kernel) (by decide +kernel)
+    (by decide +kernel) (normalizeAccepted kind) (normalizeInputs kind) (normalizeFlow kind) (by decide) (by decide)
+
+theorem bigint_return_normalized_protocol_source (kind : Fin 4) :
+    UnifiedReduced.Caller.HashControlPreparation (normalizeData kind) normalizeProgram 16 (.blakeG true) :=
+  UnifiedReduced.Caller.Proofs.register_dataflow_hash_preparation_source (normalizeInputs kind).initialization
+    (normalizeInputs kind).distinct (.bigintReturn (normalizeScope kind)) (normalizeLastScope kind) (by decide) (by decide +kernel)
+theorem bigint_return_normalized_protocol_preparation (kind : Fin 4) :
+    UnifiedReduced.Caller.PreparedBoundaryExecution (normalizeData kind) (normalizeBefore kind) cells 16 12
+      (UnifiedReduced.Caller.hashPreparation (.blakeG true)) :=
+  UnifiedReduced.Caller.register_dataflow_hash_preparation_soundness (span := .blakeG true)
+    (by decide +kernel) (by decide +kernel) (by decide +kernel) (normalizeAccepted kind) (normalizeInputs kind)
+    (.bigintReturn (normalizeScope kind)) (normalizeLastScope kind) (by decide) (by decide +kernel) (by decide)
+
+theorem bigint_return_normalized_actual (kind : Fin 4) :
+    ∃ (seeds finishTokens : List (MemoryToken babyBearModulus)) (earlier current : List MemoryAccess) (start finish : State),
+      earlier.Perm (((normalizeData kind).prefixSteps 8).map transferEvent) ∧
+      current.Perm (((normalizeData kind).windowSteps 8 16).map transferEvent) ∧
+      SailHistory cells earlier (normalizeBefore kind) start ∧ SailHistory cells current start finish ∧
+      (Cell.register 12).read (normalizeBefore kind) =
+        .ok (if kind = 0 then 128 else if kind = 1 then 192 else if kind = 2 then 0 else 65537) (normalizeBefore kind) ∧
+      (Cell.register 12).read start = .ok (if kind = 1 then 1 else 0) start ∧
+      (Cell.register 12).read finish = .ok 128 finish ∧
+      (⟨(Cell.register 12).addressCode, (7, 0), Nat.pair (if kind = 1 then 1 else 0) 0⟩ : MemoryToken babyBearModulus) ∈ seeds ∧
+      (⟨(Cell.register 12).addressCode, (14, 0), Nat.pair 128 0⟩ : MemoryToken babyBearModulus) ∈ finishTokens := by
+  obtain ⟨seeds, finishTokens, earlier, current, start, finish, earlierPerm, currentPerm,
+    earlierHistory, currentHistory, prefixMatching, matching, startBoundary, finishBoundary⟩ :=
+    (UnifiedReduced.Caller.Proofs.mixed_window_execution (lower := 8) (upper := 16)
+      (by decide +kernel) (by decide +kernel) (by decide +kernel) (normalizeAccepted kind) (normalizeInputs kind)
+      (by decide) (by decide) (by decide) (by decide)).execution
+  let source : MemoryToken babyBearModulus := ⟨(Cell.register 12).addressCode, (7, 0), Nat.pair (if kind = 1 then 1 else 0) 0⟩
+  have sourceProduced : source ∈ (normalizeData kind).machine.initialMemory ++ ((normalizeData kind).prefixSteps 8).map Prod.snd := by
+    fin_cases kind <;> decide +kernel
+  have sourceNotRead : source ∉ ((normalizeData kind).prefixSteps 8).map Prod.fst := by fin_cases kind <;> decide +kernel
+  have sourcePresent : source ∈ seeds := by
+    rcases List.mem_append.mp (prefixMatching.mem_iff.mp sourceProduced) with present | read
+    · exact present
+    · exact False.elim (sourceNotRead read)
+  let output : MemoryToken babyBearModulus := ⟨(Cell.register 12).addressCode, (14, 0), Nat.pair 128 0⟩
+  have outputProduced : output ∈ seeds ++ ((normalizeData kind).windowSteps 8 16).map Prod.snd := by
+    apply List.mem_append.mpr; right
+    fin_cases kind <;> decide +kernel
+  have outputNotRead : output ∉ ((normalizeData kind).windowSteps 8 16).map Prod.fst := by fin_cases kind <;> decide +kernel
+  have outputPresent : output ∈ finishTokens := by
+    rcases List.mem_append.mp (matching.mem_iff.mp outputProduced) with present | read
+    · exact present
+    · exact False.elim (outputNotRead read)
+  obtain ⟨cell, _, code, sourceRead⟩ := UnifiedReduced.Caller.Proofs.native_boundary_read startBoundary sourcePresent
+  have same : cell = Cell.register 12 := Trace.Proofs.cell_address_injective code
+  subst cell
+  obtain ⟨cell, _, code, outputRead⟩ := UnifiedReduced.Caller.Proofs.native_boundary_read finishBoundary outputPresent
+  have same : cell = Cell.register 12 := Trace.Proofs.cell_address_injective code
+  subst cell
+  have sourceWord : source.word.toBitVec = (if kind = 1 then (1 : BitVec 32) else 0) := by fin_cases kind <;> decide +kernel
+  have outputWord : output.word.toBitVec = (128 : BitVec 32) := by decide +kernel
+  rw [sourceWord] at sourceRead
+  rw [outputWord] at outputRead
+  refine ⟨seeds, finishTokens, earlier, current, start, finish, earlierPerm, currentPerm,
+    earlierHistory, currentHistory, ?_, sourceRead, outputRead, sourcePresent, outputPresent⟩
+  apply read_register
+  fin_cases kind
+  all_goals simp [normalizeBefore, normalizeSeedBefore, mixedBefore, returnCarryBefore, returnCarryBase,
+    abiBefore, wordWriteState, Tests.DelegationOperationEffects.before, Tests.BigintMemory.before]
+
+theorem bigint_return_normalizer_xori_rejected :
+    ¬ UnifiedReduced.Caller.BigintReturnPreparation binaryData [binaryEntry] 12 12 := by
+  intro scope
+  have instruction := scope.atCut binaryEntry (List.mem_singleton_self _) rfl
+  cases instruction
+
+theorem bigint_return_xori_one_does_not_normalize : Verification.byteOperation 4 (1 : BitVec 32) 1 ≠ 1 := by decide +kernel
+
+theorem bigint_return_normalized_incomplete_reference (kind : Fin 4) :
+    ¬ UnifiedReduced.Caller.ComputedProtocolWindowInputs (normalizeData kind) normalizeProgram ⟨.blakeG true, 16, 16⟩ := by
+  intro scope
+  have count := scope.calls
+  have empty : ((normalizeData kind).workers.windowRows 16 16).length = 0 := by fin_cases kind <;> decide +kernel
+  rw [empty] at count
+  contradiction
+
+private def normalizeForgedAssignment (one : Bool) (column : Nat) : ZMod babyBearModulus :=
+  if column = 34 then 6 else normalizeAssignment one 0 column
+private def normalizeForged (kind : Fin 4) : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
+  { normalizeData kind with machine := { (normalizeData kind).machine with
+      rows := [normalizeRow kind 1, ⟨.machine, normalizeForgedAssignment (kind = 1)⟩, sharedCaller] } }
+theorem bigint_return_normalized_forged_read_rejected (kind : Fin 4) :
+    ¬ UnifiedReduced.Caller.MixedMemoryAccepted (normalizeForged kind) normalizeProgram := by
+  intro accepted
+  let token := readToken (normalizeForgedAssignment (kind = 1)) UnifiedReduced.importedConstraintsMemoryPorts[0]
+  have member : token ∈ (normalizeForged kind).mixedSteps.map Prod.fst := by fin_cases kind <;> decide +kernel
+  have absent : token ∉ (normalizeForged kind).machine.initialMemory ++ (normalizeForged kind).mixedSteps.map Prod.snd := by
+    fin_cases kind <;> decide +kernel
+  exact absent (accepted.memory.mem_iff.mpr (List.mem_append.mpr (Or.inr member)))
+theorem bigint_return_normalized_forged_read_native (one : Bool) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (normalizeForgedAssignment one))
+    (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table (normalizeBefore 0)) ++ UnifiedReduced.importedConstraintsTimestampLookups) := by
+  apply Verification.holds_append
+  ·
+    cases one
+    all_goals simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
+      Verification.environment, Expression.eval, normalizeForgedAssignment, normalizeAssignment, Lookup.Contains, Table.toRaw, fromElements]
+    all_goals repeat' apply And.intro
+    all_goals solve
+      | decide +kernel
+      | (apply Verification.range16_contains; decide +kernel)
+      | exact ⟨(0 : Fin 2097537), rfl⟩
+      | (refine ⟨(1 : Fin 2097537), ?_⟩
+         change _ = (UnifiedReduced.Setup.fixedRow (1 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
+         decide +kernel)
+      | (refine ⟨(65793 : Fin 2097537), ?_⟩
+         change _ = (UnifiedReduced.Setup.fixedRow (65793 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
+         decide +kernel)
+      | (refine ⟨(65794 : Fin 2097537), ?_⟩
+         change _ = (UnifiedReduced.Setup.fixedRow (65794 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
+         decide +kernel)
+      | (refine ⟨(66050 : Fin 2097537), ?_⟩
+         change _ = (UnifiedReduced.Setup.fixedRow (66050 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
+         decide +kernel)
+  · rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
+    constructor
+    · simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.constraints]
+    · rw [List.forall_mem_iff_forall_getElem]
+      intro i bound
+      have short : i < 8 := by simpa only [UnifiedReduced.timestamp_count] using bound
+      interval_cases i
+      all_goals apply Trace.Proofs.range_contains
+      all_goals cases one <;> decide +kernel
+
 end Tests.UnifiedDelegation

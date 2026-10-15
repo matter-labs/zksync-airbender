@@ -147,10 +147,23 @@ structure CallerControlPreparation [Fact p.Prime] (data : RequestTrace p)
   /-- The complete caller cycle lies within the machine path. -/
   beforeTerminal : cut ≤ (timeOfPair data.machine.terminal.timestamp).value
 
+/-- A native bigint return followed by the original ORI of x12 with one.
+    The public code and modeled bigint table are inputs; the actual return bit,
+    source token, byte operands and normalized value are derived. -/
+structure BigintReturnPreparation [Fact p.Prime] (data : RequestTrace p)
+    (program : List UnifiedReduced.ProgramEntry) (cut : Nat) (register : BitVec 5) : Prop where
+  caller : CallerControlPreparation data program .bigint (cut - 4)
+  tables : data.workers.setup.bigint = Bigint.setupTable
+  atCut : ∀ entry ∈ program, entry.pc = wrappedProgramAddress data (cut - 4) →
+    entry.instruction = .ITYPE (1, .Regidx 12, .Regidx register, .ORI)
+  prefixScope : data.workers.windowRows (cut - 4) cut = []
+  beforeTerminal : cut ≤ (timeOfPair data.machine.terminal.timestamp).value
+
 /-- Public register dataflow with intervening arithmetic, bitwise, shift, comparison
     and admitted custom writes to other nonzero GPRs, plus LW/SW memory gaps.
     Such a gap may read and refresh the tracked register; its value is preserved.
     Actual operands, tokens, selectors and intermediate states are conclusions.
+    Native bigint return bits can first normalize under public ORI.
     Ordinary selected cycles are worker-free. Caller gaps retain every worker;
     their tracked GPR differs from x10/x12. -/
 inductive PublicRegisterDataflow [Fact p.Prime] (data : RequestTrace p)
@@ -158,6 +171,9 @@ inductive PublicRegisterDataflow [Fact p.Prime] (data : RequestTrace p)
   | prepared {cut register value}
       (preparation : PublicRegisterPreparation data program cut register value) :
       PublicRegisterDataflow data program cut register value
+  | bigintReturn {cut register}
+      (scope : BigintReturnPreparation data program cut register) :
+      PublicRegisterDataflow data program cut register 1
   | addi {cut source register value immediate}
       (prior : PublicRegisterDataflow data program (cut - 4) source value)
       (scope : RegisterImmediatePreparation data program cut source register immediate)
