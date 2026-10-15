@@ -120,11 +120,26 @@ def RegisterImmediatePreparation.arithmeticFrame [Fact p.Prime]
   ⟨scope.registry, by intro entry present address; rw [scope.atCut entry present address]; exact .addi _ _ _,
     scope.prefixScope, scope.afterInitial, scope.beforeTerminal⟩
 
+/-- A public caller-code gap. Ordinary public entries exclude the selected
+    modular address; accepted decoding and state matching derive the caller.
+    All worker effects remain in history, without a control or invocation premise. -/
+structure CallerFramePreparation [Fact p.Prime] (data : RequestTrace p)
+    (program : List UnifiedReduced.ProgramEntry) (cut : Nat) : Prop where
+  /-- Original public sequential/comparison instructions and aligned code. -/
+  registry : WrappedSequentialProgram program
+  /-- Public ordinary code excludes this modular address; caller identity is derived. -/
+  ordinary : ∀ entry ∈ program, entry.pc ≠ wrappedProgramAddress data (cut - 4)
+  /-- The selected instruction starts after the public initial boundary. -/
+  afterInitial : (timeOfPair data.machine.initial.timestamp).value + 4 ≤ cut
+  /-- Its end lies inside the actual machine path. -/
+  beforeTerminal : cut ≤ (timeOfPair data.machine.terminal.timestamp).value
+
 /-- Public register dataflow with intervening arithmetic, bitwise, shift, comparison
     and admitted custom writes to other nonzero GPRs, plus LW/SW memory gaps.
     Such a gap may read and refresh the tracked register; its value is preserved.
     Actual operands, tokens, selectors and intermediate states are conclusions.
-    Each selected cycle is worker-free; all earlier effects remain. -/
+    Ordinary selected cycles are worker-free. Caller gaps retain every worker;
+    their tracked GPR differs from x10/x12. -/
 inductive PublicRegisterDataflow [Fact p.Prime] (data : RequestTrace p)
     (program : List UnifiedReduced.ProgramEntry) : Nat → BitVec 5 → BitVec 32 → Prop where
   | prepared {cut register value}
@@ -160,6 +175,12 @@ inductive PublicRegisterDataflow [Fact p.Prime] (data : RequestTrace p)
   | storeFrame {cut register value source stored immediate}
       (prior : PublicRegisterDataflow data program (cut - 4) register value)
       (scope : StoreFramePreparation data program cut source stored immediate) :
+      PublicRegisterDataflow data program cut register value
+
+  | callerFrame {cut register value}
+      (prior : PublicRegisterDataflow data program (cut - 4) register value)
+      (scope : CallerFramePreparation data program cut)
+      (notPointer : register ≠ 10) (notControl : register ≠ 12) :
       PublicRegisterDataflow data program cut register value
 
 end Airbender.UnifiedReduced.Caller
