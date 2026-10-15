@@ -215,10 +215,15 @@ now import native 13-/16-/19-bit rows. [Bigint fixed tables](Airbender/Review/Ci
 also import all six actual regions: [kernel proofs](Airbender/Proofs/Bigint/ImportedSetup.lean)
 recover the exact 1,390,592 rows and native field membership, and the existing carry
 and low-byte consumers use those data. No table-equivalence premise or new field
-restriction is added. Index hints use exported IDs/offsets. This table migration
+restriction is added. [G controller outputs](Airbender/Review/Circuits/Blake2G/Tables/Controller.lean)
+also project imported data; [kernel proofs](Airbender/Proofs/Blake2G/ImportedController.lean)
+check every one of the 512 native rows against the existing controller reference
+and concrete lookup rows, including key and discriminator. Arbitrary-controller
+interfaces, all inactive/invalid controls and existing witnesses are preserved.
+Index hints use exported IDs/offsets. This table migration
 does not close F02/F03/F04 implementation findings. All 121 Tests, both
 executables, importer and review gates pass; all old audit roots and axiom-free
-reports are preserved (2,925 roots; 91 axiom-free). Other table contents and
+reports are preserved (2,928 roots; 91 axiom-free). Other table contents and
 program-dependent consumers are still being migrated. This does not close F09's
 general query/authentication/Rust-refinement boundary or AIH-336's pending
 accelerated/full-proof validation. [Reproduction and scope](artifacts/setup/README.md).

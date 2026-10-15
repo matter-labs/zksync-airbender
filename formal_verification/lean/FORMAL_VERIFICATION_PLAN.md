@@ -62,9 +62,9 @@ dependencies, pins or generated artifacts as part of readability cleanup.
 
 The user authorized complete selected-program setup JSON export/import on
 15 October 2026, including ROM and decoder rows. This table-content extraction
-is now active: shared 13-/16-/19-bit and bigint fixed-table definitions import
-actual native rows, with their existing range/low-byte semantics proved and used
-by the consumers. Continue replacing the other table
+is now active: shared 13-/16-/19-bit, bigint fixed-table and G controller definitions
+import actual native rows, with their existing semantics proved and used by the
+consumers. Generalized controller parameters retain their scope. Continue replacing the other table
 models and connect the program-dependent consumers without new semantic
 assumptions. See the [artifact workflow](artifacts/setup/README.md).
 

@@ -536,6 +536,9 @@ import Clean.Specs.Keccak256
 #print axioms Tests.Blake2G.lastLaneAddress
 
 #print axioms Airbender.Blake2G.Proofs.control_lookup
+#print axioms Airbender.Blake2G.Control.Proofs.controller_rows_reference
+#print axioms Airbender.Blake2G.Control.Proofs.controller_native_row
+#print axioms Airbender.Blake2G.Control.Proofs.controller_setup_row
 #print axioms Airbender.Blake2G.Control.Proofs.controller_bounded
 #print axioms Airbender.Blake2G.Control.Proofs.controller_lanes
 #print axioms Airbender.Blake2G.Control.Proofs.controller_input
