@@ -45,3 +45,14 @@ circuit importing; cryptographic table authentication and lookup soundness remai
 separate. The shared 13-/16-/19-bit tables now import these artifacts, with their
 membership bounds proved in `Proofs/Tables/ImportedRanges.lean`. Migration of the
 other table definitions and program-dependent consumers is still in progress.
+
+Bigint's six fixed-table regions now use the exported native generic-table extent
+and columns. The importer emits constant, ascending and cyclic literal arrays
+compactly only after comparing every parsed value. Structural Lean proofs recover
+the exact carry ranges and low-byte values across all 1,390,592 real rows,
+including compression blocks that cross native region boundaries. Existing bigint
+lookup and multiplication proofs consume those imported rows with their original
+field scope. Native field casts are checked against the imported signed row view;
+no assumed table equivalence is used. Parser regressions compare all emitted
+bigint template values with the JSON data. This does not validate bigint control
+words or worker participation/ROM enforcement.

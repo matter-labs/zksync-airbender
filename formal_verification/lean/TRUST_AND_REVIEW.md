@@ -153,7 +153,10 @@ padding, and bigint's table-ID-26 region for the 13-bit range. Their exact bound
 are proved from the imported data in [ImportedRanges](Airbender/Proofs/Tables/ImportedRanges.lean),
 with the existing generic field scope and public helpers preserved. The
 [export/import workflow](artifacts/setup/README.md) includes the selected program,
-native IDs/offsets and actual circuit object. Other worker/controller/byte/ROM
+native IDs/offsets and actual circuit object. [Bigint fixed rows](Airbender/Review/Circuits/Bigint/Tables/Setup.lean)
+now also import the six native regions; [structural proofs](Airbender/Proofs/Bigint/ImportedSetup.lean)
+recover their exact carry/low-byte meanings and native field membership, and the
+existing circuit consumers use those rows. Other worker/controller/byte/ROM
 table definitions are still being migrated. Source parsing/emission, general Rust
 refinement and cryptographic query/table authentication remain separate boundaries.
 

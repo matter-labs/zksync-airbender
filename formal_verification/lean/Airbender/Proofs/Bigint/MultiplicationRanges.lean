@@ -15,8 +15,7 @@ private theorem range_rows (index : Fin 1390592) {tag : Nat}
   have size := index.isLt
   have cases : tag = 22 ∨ tag = 23 ∨ tag = 24 ∨ tag = 25 ∨ tag = 26 := by omega
   rcases cases with rfl | rfl | rfl | rfl | rfl
-  all_goals unfold setupRow at selected ⊢
-  all_goals dsimp only at selected ⊢
+  all_goals rw [Bigint.Proofs.setup_row_characterization] at selected ⊢
   all_goals split_ifs at selected ⊢ <;> simp [rangeLimit] at selected ⊢
   all_goals omega
 

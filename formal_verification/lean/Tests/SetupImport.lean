@@ -1,4 +1,5 @@
 import Airbender.Import.SetupEmbed
+import Airbender.Review.Circuits.Bigint.Tables.Setup
 
 namespace Tests.SetupImport
 open Airbender Lean
@@ -41,6 +42,18 @@ def run : IO Unit := do
   let source ← IO.FS.readFile "artifacts/setup/decoder-smoke.json"
   check (source == importedSourceBytes) "setup source bytes equal embedded artifact"
   let .ok artifact := Setup.parse source | throw (IO.userError "setup artifact failed import")
+  check (artifact.columns == imported.data.columns.toArray)
+    "every emitted setup value equals the parsed data"
+  let bigintSource ← IO.FS.readFile "artifacts/setup/bigint.json"
+  let .ok bigint := Setup.parse bigintSource
+    | throw (IO.userError "bigint setup artifact failed import")
+  check (bigintSource == Bigint.importedSetupSourceBytes &&
+    bigint.columns == Bigint.importedSetup.columns.toArray)
+    "every bigint constant/range/cyclic template equals the parsed data"
+  let extent := bigint.tables.foldl (fun size region => max size (region.offset + region.length)) 0
+  check (Bigint.importedSetup.length == extent && extent == 1390592 &&
+    Bigint.importedSetup.offset == 0 && Bigint.importedSetup.columns.size == 3)
+    "bigint consumers select the exact native generic-table extent"
   check (artifact.trace_len == imported.data.length && artifact.columns.size == 9 &&
     artifact.tables.size == 2 && artifact.circuit.structured_statements.size == 30)
     "complete setup and its native circuit decoded together"

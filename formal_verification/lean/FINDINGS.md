@@ -211,10 +211,14 @@ The user authorized exporting and importing complete selected-program lookup
 setup, including ROM and decoder rows. The [native exporter](../../prover/src/gkr/prover/setup_artifact.rs)
 serializes actual materialized columns and the actual circuit object, with
 lossless compression and per-column source checks. [Shared range definitions](Airbender/Review/Helpers/Tables/Range.lean)
-now import native 13-/16-/19-bit rows; their previous bounds and public helpers
-are proved from those data without fresh assumptions. All 121 Tests, both
+now import native 13-/16-/19-bit rows. [Bigint fixed tables](Airbender/Review/Circuits/Bigint/Tables/Setup.lean)
+also import all six actual regions: [kernel proofs](Airbender/Proofs/Bigint/ImportedSetup.lean)
+recover the exact 1,390,592 rows and native field membership, and the existing carry
+and low-byte consumers use those data. No table-equivalence premise or new field
+restriction is added. Index hints use exported IDs/offsets. This table migration
+does not close F02/F03/F04 implementation findings. All 121 Tests, both
 executables, importer and review gates pass; all old audit roots and axiom-free
-reports are preserved (2,922 roots; 91 axiom-free). Other table contents and
+reports are preserved (2,925 roots; 91 axiom-free). Other table contents and
 program-dependent consumers are still being migrated. This does not close F09's
 general query/authentication/Rust-refinement boundary or AIH-336's pending
 accelerated/full-proof validation. [Reproduction and scope](artifacts/setup/README.md).
