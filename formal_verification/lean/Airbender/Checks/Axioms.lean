@@ -2661,3 +2661,19 @@ import Clean.Specs.Keccak256
 #print axioms Tests.UnifiedDelegation.caller_gap_fabricated_source_native
 #print axioms Tests.UnifiedDelegation.ordinary_preparation_is_not_caller_gap
 #print axioms Tests.UnifiedDelegation.caller_gap_incomplete_reference_rejected
+
+#print axioms Airbender.UnifiedReduced.Caller.CallerControlPreparation
+#print axioms Airbender.UnifiedReduced.Caller.BigintControlBoundaryExecution
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.public_caller_control_window
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.bigint_control_token
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.bigint_control_boundary_execution
+#print axioms Airbender.UnifiedReduced.Caller.bigint_control_boundary_soundness
+#print axioms Tests.UnifiedDelegation.bigint_return_copy_boundary
+#print axioms Tests.UnifiedDelegation.bigint_return_invalid_controls
+#print axioms Tests.UnifiedDelegation.bigint_return_carry_boundary
+#print axioms Tests.UnifiedDelegation.bigint_return_wrong_family_rejected
+#print axioms Tests.UnifiedDelegation.bigint_return_past_terminal_rejected
+#print axioms Tests.UnifiedDelegation.bigint_return_ordinary_code_rejected
+#print axioms Tests.UnifiedDelegation.bigint_return_two_rejected
+#print axioms Tests.UnifiedDelegation.bigint_return_carry_actual
+#print axioms Tests.UnifiedDelegation.bigint_return_invalid_actual

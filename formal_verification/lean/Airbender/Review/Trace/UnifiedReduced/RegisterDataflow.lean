@@ -19,4 +19,19 @@ def RegisterDataflowBoundaryExecution [Fact p.Prime] (data : RequestTrace p) (be
     (Cell.register register).read atCut = .ok value atCut ∧
     ∃ token ∈ tokens, token.address = (Cell.register register).addressCode ∧ token.word = Word.ofBitVec value
 
+/-- The actual bigint return is a canonical bit at the instruction boundary.
+    This includes unsupported incoming controls; no opcode validity or expected
+    output is supplied. The return token retains its worker clock, cut minus one. -/
+def BigintControlBoundaryExecution [Fact p.Prime] (data : RequestTrace p) (before : State)
+    (cells : List Cell) (cut : Nat) : Prop :=
+  ∃ (tokens : List (MemoryToken p)) (events : List MemoryAccess) (atCut : State) (value : BitVec 32),
+    events.Perm ((data.prefixSteps cut).map transferEvent) ∧
+    SailHistory cells events before atCut ∧
+    (data.machine.initialMemory ++ (data.prefixSteps cut).map Prod.snd).Perm
+      (tokens ++ (data.prefixSteps cut).map Prod.fst) ∧
+    NativeBoundary tokens atCut cells ∧ (value = 0 ∨ value = 1) ∧
+    (Cell.register 12).read atCut = .ok value atCut ∧
+    ∃ token ∈ tokens, token.address = (Cell.register 12).addressCode ∧
+      (timeOfPair token.time).value = cut - 1 ∧ token.word = Word.ofBitVec value
+
 end Airbender.UnifiedReduced.Caller

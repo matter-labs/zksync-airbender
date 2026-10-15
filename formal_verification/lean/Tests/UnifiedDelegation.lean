@@ -2533,4 +2533,267 @@ theorem caller_gap_incomplete_reference_rejected :
   change 0 = 56 at count
   contradiction
 
+private theorem returnScope {data : UnifiedReduced.Caller.RequestTrace babyBearModulus}
+    (families : ∀ entry ∈ data.program, entry.data.family = .bigint)
+    (first : (timeOfPair data.machine.initial.timestamp).value = 4)
+    (last : (timeOfPair data.machine.terminal.timestamp).value = 8) :
+    UnifiedReduced.Caller.CallerControlPreparation data [] .bigint 8 := by
+  constructor
+  · constructor
+    · intro _ member
+      cases member
+    · intro _ member
+      cases member
+  · constructor
+    · intro _ member
+      cases member
+    · intro entry member _ _ _ _
+      exact families entry member
+  · omega
+  · omega
+private theorem copyReturnScope : UnifiedReduced.Caller.CallerControlPreparation callerOnlyData [] .bigint 8 := by
+  apply returnScope
+  · intro entry member
+    have same := List.mem_singleton.mp member
+    subst entry
+    rfl
+  all_goals rfl
+private theorem abiReturnScope (highControl : Bool) :
+    UnifiedReduced.Caller.CallerControlPreparation (abiData highControl) [] .bigint 8 := by
+  apply returnScope
+  · intro entry member
+    have same := List.mem_singleton.mp member
+    subst entry
+    rfl
+  all_goals rfl
+
+theorem bigint_return_copy_boundary : UnifiedReduced.Caller.BigintControlBoundaryExecution callerOnlyData mixedBefore cells 8 :=
+  UnifiedReduced.Caller.bigint_control_boundary_soundness (by decide +kernel) (by decide +kernel)
+    (by decide +kernel) callerOnlyAccepted callerOnlyInputs copyReturnScope (by decide)
+theorem bigint_return_invalid_controls (highControl : Bool) :
+    UnifiedReduced.Caller.BigintControlBoundaryExecution (abiData highControl) (abiBefore highControl) cells 8 :=
+  UnifiedReduced.Caller.bigint_control_boundary_soundness (by decide +kernel) (by decide +kernel)
+    (by decide +kernel) (abiAccepted highControl) (abiInputs highControl) (abiReturnScope highControl) (by decide)
+
+private def returnCarryAssignment (column : Nat) : ZMod babyBearModulus :=
+  if column = 1 then 5
+  else if 39 ≤ column ∧ column < 55 then 65535
+  else if column = 55 then 192
+  else if column = 57 ∨ column = 65 ∨ (83 ≤ column ∧ column < 99) then 1
+  else if column = 215 then 0
+  else if 115 ≤ column ∧ column < 131 then 255
+  else Tests.BigintMemory.row column
+private def returnCarryWorker : Delegation.Row babyBearModulus := ⟨.bigint, returnCarryAssignment⟩
+private def returnCarryBase : State :=
+  { Tests.BigintMemory.before with
+    regs := Tests.BigintMemory.before.regs.insert .x12 (192 : BitVec 32)
+    mem := (List.range 32).foldl (fun memory i => memory.insert (4194336 + i) (255 : BitVec 8)) Tests.BigintMemory.before.mem }
+private def returnCarryBefore : State := wordWriteState returnCarryBase 0 (Tests.DelegationCaller.entry .bigint).bits
+private def returnCarryData : UnifiedReduced.Caller.RequestTrace babyBearModulus where
+  machine := {
+    rows := [sharedCaller]
+    rom := UnifiedReduced.Setup.table returnCarryBefore
+    initial := sharedCaller.start
+    terminal := sharedCaller.finish
+    initialMemory := (Cell.register 0).initialToken 0 :: returnCarryWorker.memorySteps.map Prod.fst
+    terminalMemory := UnifiedReduced.Caller.destinationToken sharedAssignment :: returnCarryWorker.memorySteps.map Prod.snd }
+  workers := { base.workers with rows := [returnCarryWorker], initial := [], terminal := [] }
+  program := [Tests.DelegationCaller.entry .bigint]
+private theorem returnCarryCore : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment returnCarryAssignment) (Bigint.importedConstraints Bigint.setupTable) := by
+  simp [Bigint.importedConstraints, FlatOperation.ConstraintsHoldFlat, Verification.environment,
+    Expression.eval, returnCarryAssignment, Tests.BigintMemory.row, Lookup.Contains, Table.toRaw, fromElements]
+  repeat' apply And.intro
+  all_goals solve
+    | decide +kernel
+    | (apply Verification.range16_contains; decide +kernel)
+    | (refine ⟨⟨0, by decide⟩, ?_⟩; decide +kernel)
+    | (refine ⟨⟨262144, by decide⟩, ?_⟩; decide +kernel)
+    | (refine ⟨⟨1310720, by decide⟩, ?_⟩; decide +kernel)
+    | (refine ⟨⟨1312768, by decide⟩, ?_⟩; decide +kernel)
+    | (refine ⟨⟨1316864, by decide⟩, ?_⟩; decide +kernel)
+    | (refine ⟨⟨1325056, by decide⟩, ?_⟩; decide +kernel)
+    | (refine ⟨⟨1390591, by decide⟩, ?_⟩; decide +kernel)
+private theorem returnCarryClocks : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment returnCarryAssignment) Bigint.importedConstraintsTimestampLookups := by
+  simp [Bigint.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
+  repeat' apply And.intro
+  all_goals apply Trace.Proofs.range_contains
+  all_goals simp [Expression.eval, Verification.environment, returnCarryAssignment, Tests.BigintMemory.row]
+  all_goals decide +kernel
+private theorem returnCarryAccepted : UnifiedReduced.Caller.MixedMemoryAccepted returnCarryData [] := by
+  constructor
+  · constructor
+    · intro row member
+      have same := List.mem_singleton.mp member
+      subst row
+      exact Verification.holds_append (callerCoreFor returnCarryBefore) sharedTimestamps
+    · intro row member
+      have same := List.mem_singleton.mp member
+      subst row
+      rfl
+    · exact List.Perm.swap _ _ []
+    · intro row member
+      change row ∈ [sharedCaller] at member
+      have same := List.mem_singleton.mp member
+      subst row
+      exact ⟨(0 : Fin 1), by decide +kernel⟩
+    · intro row member
+      have same := List.mem_singleton.mp member
+      subst row
+      exact Verification.holds_append returnCarryCore returnCarryClocks
+    · intro row member
+      have same := List.mem_singleton.mp member
+      subst row
+      rfl
+    · have equal : returnCarryData.calls = returnCarryData.fulfillments := by decide +kernel
+      rw [← equal]
+      exact List.perm_append_comm
+  · intro row member ordinary
+    have same := List.mem_singleton.mp member
+    subst row
+    exact False.elim (ordinary (by change sharedCaller ∈ [sharedCaller]; exact List.mem_singleton_self _))
+  · decide +kernel
+private theorem returnCarryInitialization : initialImage returnCarryBefore cells = some returnCarryData.machine.initialMemory := by
+  have x0 : (Cell.register 0).read returnCarryBefore = .ok 0 returnCarryBefore := rfl
+  have x10 : (Cell.register 10).read returnCarryBefore = .ok 4194304 returnCarryBefore := by
+    apply read_register
+    simp [returnCarryBefore, returnCarryBase, wordWriteState, Tests.BigintMemory.before, Std.ExtDHashMap.get?_insert]
+  have x11 : (Cell.register 11).read returnCarryBefore = .ok 4194336 returnCarryBefore := by
+    apply read_register
+    simp [returnCarryBefore, returnCarryBase, wordWriteState, Tests.BigintMemory.before, Std.ExtDHashMap.get?_insert]
+  have x12 : (Cell.register 12).read returnCarryBefore = .ok 192 returnCarryBefore := by
+    apply read_register
+    simp [returnCarryBefore, returnCarryBase, wordWriteState]
+  norm_num [cells, Tests.DelegationOperationEffects.sharedCells, Tests.BigintMemory.cells,
+    List.range_succ, initialImage, List.mapM_cons, List.mapM_nil, x0, x10, x11, x12]
+  simp [Cell.read, _root_.Sail.ArchSem.readBytes, _root_.Sail.ArchSem.readByte,
+    EStateM.run, get, getThe, MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get,
+    EStateM.pure, returnCarryBefore, returnCarryBase, wordWriteState, Tests.BigintMemory.before, List.range_succ,
+    Std.ExtHashMap.getElem_insert, Cell.initialToken, returnCarryData, returnCarryWorker,
+    Delegation.Row.memorySteps, Delegation.Row.ports, Bigint.importedConstraintsMemoryPorts,
+    readToken, MemoryAddress.code, Verification.IndirectPort.rawAddress, MemoryPort.readCode,
+    WordColumns.code, WordColumns.evaluate, rawPair, returnCarryAssignment, Tests.BigintMemory.row,
+    Word.ofBitVec, limbBase]
+  decide +kernel
+private theorem returnCarryInputs : UnifiedReduced.Caller.MixedMemoryInputs returnCarryData [] returnCarryBefore [0] [] cells := by
+  refine ⟨?_, rfl, returnCarryInitialization, callerOnlyInputs.distinct, callerOnlyInputs.aligned, rfl, rfl, ?_⟩
+  · constructor
+    · have bytes : (Cell.ram 0).read returnCarryBefore = .ok (Tests.DelegationCaller.entry .bigint).bits returnCarryBefore := written_word_read _ 0 _
+      have decoded : run (SailRV32.Functions.encdec_backwards (Tests.DelegationCaller.entry .bigint).bits) returnCarryBefore =
+          .ok (Tests.DelegationCaller.entry .bigint).instruction returnCarryBefore :=
+        Tests.DelegationCaller.original_decoder .bigint returnCarryBefore
+      have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
+          some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
+      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageRunWith,
+        List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+      rfl
+    · change 4 < timestampBase ∧ 0 < timestampBase
+      norm_num [timestampBase]
+    · decide +kernel
+  · intro row member family
+    have same := List.mem_singleton.mp member
+    subst row
+    cases family
+private theorem returnCarryScope : UnifiedReduced.Caller.CallerControlPreparation returnCarryData [] .bigint 8 := by
+  apply returnScope
+  · intro entry member
+    have same := List.mem_singleton.mp member
+    subst entry
+    rfl
+  all_goals rfl
+
+theorem bigint_return_carry_boundary : UnifiedReduced.Caller.BigintControlBoundaryExecution returnCarryData returnCarryBefore cells 8 :=
+  UnifiedReduced.Caller.bigint_control_boundary_soundness (by decide +kernel) (by decide +kernel)
+    (by decide +kernel) returnCarryAccepted returnCarryInputs returnCarryScope (by decide)
+
+theorem bigint_return_wrong_family_rejected : ¬ UnifiedReduced.Caller.CallerControlPreparation callerOnlyData [] .keccak 8 := by
+  intro scope
+  have family := scope.region.callers (Tests.DelegationCaller.entry .bigint) (by simp [callerOnlyData]) 4 (by decide) (by decide) rfl
+  contradiction
+
+theorem bigint_return_past_terminal_rejected : ¬ UnifiedReduced.Caller.CallerControlPreparation callerOnlyData [] .bigint 12 := by
+  intro scope
+  have terminal := scope.beforeTerminal
+  change 12 ≤ 8 at terminal
+  omega
+
+theorem bigint_return_ordinary_code_rejected : ¬ UnifiedReduced.Caller.CallerControlPreparation frameData frameProgram .bigint 8 := by
+  intro scope
+  exact scope.region.ordinary frameSeedEntry (by simp [frameProgram]) 4 (by decide) (by decide) rfl
+
+theorem bigint_return_two_rejected : ¬ FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (fun column => if column = 57 then 2 else returnCarryAssignment column))
+    (Bigint.importedConstraints Bigint.setupTable) := by
+  intro accepted
+  have bound := (Bigint.Proofs.returned_control_bounds (by decide : 65536 ≤ babyBearModulus) accepted).1
+  have impossible : ¬ ((2 : ZMod babyBearModulus) = 0 ∨ (2 : ZMod babyBearModulus) = 1) := by decide +kernel
+  change (2 : ZMod babyBearModulus) = 0 ∨ (2 : ZMod babyBearModulus) = 1 at bound
+  exact impossible bound
+
+theorem bigint_return_carry_actual :
+    ∃ (tokens : List (MemoryToken babyBearModulus)) (events : List MemoryAccess) (after : State),
+      events.Perm ((returnCarryData.prefixSteps 8).map transferEvent) ∧
+      SailHistory cells events returnCarryBefore after ∧
+      (Cell.register 12).read returnCarryBefore = .ok 192 returnCarryBefore ∧
+      (Cell.register 12).read after = .ok 1 after ∧
+      (Cell.ram 4194336).read after = .ok 0xffffffff after ∧
+      ∃ token ∈ tokens, token.address = (Cell.register 12).addressCode ∧
+        (timeOfPair token.time).value = 7 ∧ token.word = Word.ofBitVec 1 := by
+  obtain ⟨tokens, events, after, _, permutation, history, matching, boundary, _, _, _⟩ := bigint_return_carry_boundary
+  let control := returnCarryWorker.writeToken Bigint.importedConstraintsMemoryPorts[18]
+  let source := returnCarryWorker.writeToken Bigint.importedConstraintsMemoryPorts[10]
+  have actual (token : MemoryToken babyBearModulus)
+      (produced : token ∈ returnCarryData.machine.initialMemory ++ (returnCarryData.prefixSteps 8).map Prod.snd)
+      (notRead : token ∉ (returnCarryData.prefixSteps 8).map Prod.fst) : token ∈ tokens := by
+    rcases List.mem_append.mp (matching.mem_iff.mp produced) with present | read
+    · exact present
+    · exact False.elim (notRead read)
+  have present : control ∈ tokens := actual control (by decide +kernel) (by decide +kernel)
+  have sourcePresent : source ∈ tokens := actual source (by decide +kernel) (by decide +kernel)
+  obtain ⟨cell, _, code, read⟩ := UnifiedReduced.Caller.Proofs.native_boundary_read boundary present
+  have equal : cell = Cell.register 12 := Trace.Proofs.cell_address_injective code
+  subst cell
+  obtain ⟨cell, _, code, sourceRead⟩ := UnifiedReduced.Caller.Proofs.native_boundary_read boundary sourcePresent
+  have equal : cell = Cell.ram 4194336 := Trace.Proofs.cell_address_injective code
+  subst cell
+  have controlWord : control.word = Word.ofBitVec 1 := by decide +kernel
+  have sourceWord : source.word = Word.ofBitVec 0xffffffff := by decide +kernel
+  rw [controlWord, Word.ofBitVec_roundtrip] at read
+  rw [sourceWord, Word.ofBitVec_roundtrip] at sourceRead
+  have initial : (Cell.register 12).read returnCarryBefore = .ok 192 returnCarryBefore := by
+    apply read_register
+    simp [returnCarryBefore, returnCarryBase, wordWriteState]
+  exact ⟨tokens, events, after, permutation, history, initial, read, sourceRead,
+    control, present, rfl, by decide, controlWord⟩
+
+theorem bigint_return_invalid_actual (highControl : Bool) :
+    ∃ (tokens : List (MemoryToken babyBearModulus)) (events : List MemoryAccess) (after : State),
+      events.Perm (((abiData highControl).prefixSteps 8).map transferEvent) ∧
+      SailHistory cells events (abiBefore highControl) after ∧
+      (Cell.register 12).read (abiBefore highControl) = .ok (if highControl then 65537 else 0) (abiBefore highControl) ∧
+      (Cell.register 12).read after = .ok 0 after ∧
+      ∃ token ∈ tokens, token.address = (Cell.register 12).addressCode ∧
+        (timeOfPair token.time).value = 7 ∧ token.word = Word.ofBitVec 0 := by
+  obtain ⟨tokens, events, after, _, permutation, history, matching, boundary, _, _, _⟩ := bigint_return_invalid_controls highControl
+  let control := (abiWorker highControl).writeToken Bigint.importedConstraintsMemoryPorts[18]
+  have produced : control ∈ (abiData highControl).machine.initialMemory ++ ((abiData highControl).prefixSteps 8).map Prod.snd := by
+    cases highControl <;> decide +kernel
+  have notRead : control ∉ ((abiData highControl).prefixSteps 8).map Prod.fst := by cases highControl <;> decide +kernel
+  have present : control ∈ tokens := by
+    rcases List.mem_append.mp (matching.mem_iff.mp produced) with present | read
+    · exact present
+    · exact False.elim (notRead read)
+  obtain ⟨cell, _, code, read⟩ := UnifiedReduced.Caller.Proofs.native_boundary_read boundary present
+  have equal : cell = Cell.register 12 := Trace.Proofs.cell_address_injective code
+  subst cell
+  have word : control.word = Word.ofBitVec 0 := by cases highControl <;> decide +kernel
+  rw [word, Word.ofBitVec_roundtrip] at read
+  have initial : (Cell.register 12).read (abiBefore highControl) =
+      .ok (if highControl then 65537 else 0) (abiBefore highControl) := by
+    apply read_register
+    simp [abiBefore, wordWriteState]
+  exact ⟨tokens, events, after, permutation, history, initial, read, control, present, rfl,
+    by cases highControl <;> decide, word⟩
+
 end Tests.UnifiedDelegation
