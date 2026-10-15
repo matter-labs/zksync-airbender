@@ -13,6 +13,7 @@ use execution_prover::{CommitmentMode, ProofProfile};
 use fft::Twiddles;
 use full_statement_verifier::host_utils::{build_unified_stream, load_fsv_program};
 use full_statement_verifier::program_proof::ProgramProof;
+use gpu_circuit_prover::proof::memory_policy;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::PR;
@@ -25,6 +26,7 @@ use gpu_prover_context::transfer::single_shot_h2d;
 use gpu_prover_context::{ProverContext, ProverContextConfig};
 use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode};
 use gpu_trace::trace::packed::{PackedCommitConfig, PackedCosetRecomputeOracle};
+use gpu_trace::witness::circuit_type::CircuitType;
 use gpu_whir::proth120::{
     schedule_l1_whir_fold, L1WhirInputs, L1WhirProof, L1WhirShape, L1_WHIR_TILE_BYTES,
 };
@@ -385,11 +387,17 @@ fn run_stages(fixture: L1WrapFixture<'_>, expected: Expected) -> StageReport {
     let mut differences = Vec::new();
     let config = ProofProfile::L1Wrap.prover_config(LOG_ROWS as usize, SecurityLevel::Sec100);
     let pack_log2 = PACK_LOG2 as u32;
-    let cfg = PackedCommitConfig::from_prover_config(
+    // The production L1 wrap: setup host precompute at the default depth
+    // (precomputations/l1_wrap.rs), merged commit and setup source at the preset's.
+    let partial_trees =
+        memory_policy::presets::partial_trees(CircuitType::L1Wrap21, ProofProfile::L1Wrap);
+    let setup_cfg = PackedCommitConfig::from_prover_config(
         &config,
         LOG_ROWS + pack_log2,
         gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
     );
+    let cfg =
+        PackedCommitConfig::from_prover_config(&config, LOG_ROWS + pack_log2, partial_trees.memory);
     let context = ProverContext::new(&ProverContextConfig {
         device_allocation_blocks_count: Some(ARENA_BLOCKS),
         proth120_ntt_log_max_domain: Some(31),
@@ -398,7 +406,8 @@ fn run_stages(fixture: L1WrapFixture<'_>, expected: Expected) -> StageReport {
     .unwrap();
 
     let start = Instant::now();
-    let host = L1WrapSetupHost::precompute(&fixture.setup.setup, pack_log2, cfg, &context).unwrap();
+    let host =
+        L1WrapSetupHost::precompute(&fixture.setup.setup, pack_log2, setup_cfg, &context).unwrap();
     log::info!("L1 stage parity: setup precompute {:?}", start.elapsed());
     let setup_cap = host.cap();
     compare(
@@ -408,7 +417,7 @@ fn run_stages(fixture: L1WrapFixture<'_>, expected: Expected) -> StageReport {
         &mut differences,
     );
     if setup_cap != expected.setup_cap {
-        localize_setup_cap(&fixture, cfg, &context);
+        localize_setup_cap(&fixture, setup_cfg, &context);
     }
 
     let start = Instant::now();
@@ -457,12 +466,8 @@ fn run_stages(fixture: L1WrapFixture<'_>, expected: Expected) -> StageReport {
     log::info!("L1 stage parity: trace upload {:?}", start.elapsed());
 
     let host = Arc::new(host);
-    let mut source = PackedSetupSource::new(
-        Arc::clone(&host),
-        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
-        &context,
-    )
-    .unwrap();
+    let mut source =
+        PackedSetupSource::new(Arc::clone(&host), partial_trees.setup, &context).unwrap();
     let start = Instant::now();
     let transfer = single_shot_h2d(
         |transfer| source.schedule_transfer(transfer, &context),
