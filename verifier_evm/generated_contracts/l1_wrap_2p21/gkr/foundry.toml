@@ -13,9 +13,8 @@ out = "out"
 # live low pointers (P_PTR, CIRCUIT_PTR) were moved into the spill-safe region above
 # MINIMUM_FREE_HEAP_PTR (see the layout note in gkr.sol) — otherwise the spills silently clobber
 # them and the committed state comes out wrong. Validated end-to-end by the two-tx cross-check.
-# optimizer_runs = 1: the GKR tx is bounded by the EIP-7623 calldata floor (execution gas <
-# floor), so lowering execution gas via a higher runs count does NOT reduce total tx gas — it
-# only enlarges the bytecode. runs=1 gives the smallest bytecode at identical on-chain gas.
+# optimizer_runs = 200: at runs=1 the 2^21 GKR tx exceeds its EIP-7623 calldata floor by 15,128
+# gas; runs=200 brings its execution under the floor, so the tx pays exactly the floor.
 via_ir = true
 optimizer = true
-optimizer_runs = 1
+optimizer_runs = 200

@@ -9,4 +9,4 @@ src = "src"
 out = "out"
 via_ir = true
 optimizer = true
-optimizer_runs = 1
+optimizer_runs = 200
