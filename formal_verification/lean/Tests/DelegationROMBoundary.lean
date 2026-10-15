@@ -4,6 +4,7 @@ import Tests.DelegationOperationEffects
 import Airbender.Proofs.Delegation.RequestTrace
 import Airbender.Review.Helpers.Memory.Native
 import Airbender.Proofs.Trace.ROMView
+import Airbender.Proofs.ExternalBoundary.WorkerRAM
 
 namespace Tests.DelegationROMBoundary
 open Airbender Delegation Trace Arithmetic Reference.RiscV.Sail Reference.Sail
@@ -198,5 +199,13 @@ theorem machine_only_rom_lift_breaks_matching :
     have time := congrArg MemoryToken.time same
     have noZero : ∀ edge ∈ data.sharedSteps, edge.2.time ≠ (0, 0) := by decide +kernel
     exact noZero edge present time
+
+theorem rom_shadow_requires_temporary_assumption :
+    ¬ ExternalBoundary.WorkerRAM.Binding workers.rows := by
+  intro binding
+  have outside := ExternalBoundary.WorkerRAM.Proofs.port_not_shadow binding
+    (show worker ∈ workers.rows by simp [workers])
+    (show statePort ∈ worker.ports by decide +kernel)
+  exact outside worker_accesses_rom.2.2
 
 end Tests.DelegationROMBoundary

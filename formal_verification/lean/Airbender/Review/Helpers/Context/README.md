@@ -46,3 +46,7 @@ The [external contribution-mask boundary](PaddingBoundary/README.md) now derives
 active-row acceptance from whole-layout masked closure. Its exact tuple matching
 and Rust/GKR binding remain explicit external assumptions.
 These definitions do not depend on a whole-execution contract.
+
+[Temporary finding contracts](ExternalBoundary/README.md) state additional
+conditions for conditional results. Missing implementation validation remains an
+open finding; these contracts do not strengthen general native acceptance.

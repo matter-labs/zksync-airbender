@@ -9,7 +9,7 @@ The user authorized an external contribution-mask boundary on 15 October 2026,
 analogous to the canonical verifier-PC boundary. Its exact logical
 state/memory/request binding, mask algebra and active-row projection are checked
 and reuse the existing execution results. Rust/GKR/cryptographic enforcement
-remains external. The hourly continuation stays retired. The user resumed implementation
+remains external. The hourly continuation is active. The user resumed implementation
 after manual review on 13 October 2026. Current
 coverage, checked counterexamples and machine-check results live in
 [Verification status](VERIFICATION_STATUS.md).
@@ -60,8 +60,18 @@ dependencies, pins or generated artifacts as part of readability cleanup.
 
 ## Pending integration work
 
-The three remaining closure tasks below require external inputs or a scope
-decision. Independent shared-history composition is checked. Completed transport, cuts,
+The [finding register](FINDINGS.md#linear-and-open-pr-review--15-october-2026)
+separates implementation bugs, temporary proof assumptions, intended external
+interfaces and supported profiles. The user authorized temporary assumptions on
+15 October 2026, with each underlying finding kept open. AIH-334 is an acknowledged
+missing validation check: its distinct-selection contract is temporary, and the
+verifier still needs a fix. Apply the same rule to decoder filler, request
+participation, bigint controls, worker ROM and other reviewed defects. Open PRs
+are proposals; inspect their code and validation before crediting a fix. Actual
+bug fixes are authorized separately from the deferred formal-refinement work.
+
+The three whole-execution closure tasks below retain their stated missing
+connections. Independent shared-history composition is checked. Completed transport, cuts,
 selected hash-reference composition and control preparation are recorded in
 [Verification status](VERIFICATION_STATUS.md) and the review guides; do not restart
 or repeat them here. Measure progress by closing these tasks or identifying their
@@ -117,11 +127,12 @@ additional preparation variants.
 Preserve the demonstrated terminal-PC, zero-clock worker, bigint-control,
 ROM-shadow and discarded-load cases. Issued bigint calls with public x12 = 0 or
 65537 and the supported COPY ROM-shadow mismatch are checked model-level gaps,
-not whole-system or cryptographic bug claims. Do not fix circuits or hide these
-cases with desired outputs, assumed valid controls or nonzero invocation.
-The remaining stronger claims cannot follow from the current inputs. Resume only
-when justified call-validity/participation or worker-ROM bindings are available,
-or the user authorizes a concrete scope change. Padding is conditionally resolved
+not whole-system or cryptographic exploit claims. Temporary named control,
+participation or RAM-port contracts may support conditional lemmas, but do not
+establish general acceptance, validate the full CSR, or close these findings.
+Do not assume desired results or alter the pinned references to hide a defect.
+Implementation fixes must reject the bad cases while retaining the valid ones.
+Padding is conditionally resolved
 through its explicit new boundary; no compiler/verifier refinement is inferred. Deferred extraction,
 cryptographic refinement and exceptional execution remain outside this task.
 
