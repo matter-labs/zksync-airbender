@@ -431,7 +431,7 @@ broader operations and whole caller retirement remain open.
 All 116 concrete test modules and 143 importer guards pass. The full
 2,435-root axiom audit has 69 axiom-free roots and only the three standard
 Lean axioms. Review checks pass for all 125 public theorem roots, 221 declaration
-names and 751 guide links/anchors, with no handwritten project diagnostics.
+names and 753 guide links/anchors, with no handwritten project diagnostics.
 
 ## Review priorities
 
