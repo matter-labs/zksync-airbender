@@ -579,3 +579,17 @@ contracts through [padded entries](../Padding.lean). Selection uses native execu
 flags, preserving active zero-clock workers and invalid bigint controls. Exact
 masked state/memory/request matching and Rust/GKR correspondence stay explicit;
 this does not strengthen the full custom-CSR or worker-ROM claims.
+
+## Successful bigint caller retirement
+
+[`Caller.bigint_call_soundness`](BigintCalls.lean) upgrades the bigint callers in
+any actual mixed history to [complete independent reference calls](../../Circuits/Bigint/Call.lean).
+The history derives all operand reads; accepted constraints derive the seven
+operation clauses, fixed write footprint and pointer ABI. Actual Sail writes fix
+the entire state, and original Sail PC preparation/ticking retires the caller.
+The temporary [F02 command contract](../../Helpers/Context/ExternalBoundary/BigintABI.lean)
+remains explicit. This is a conditional proof integration, not implemented control
+validation: native controls 0/65537 still pass the old checks and fail the full
+reference. The COPY→LW/SW regressions use the full reference call and ordinary
+Sail retirement in the same history. Hash-call retirement and complete mixed
+reference sequencing remain the unfinished part of that integration task.

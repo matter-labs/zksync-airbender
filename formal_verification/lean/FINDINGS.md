@@ -47,7 +47,7 @@ not a claim that every open PR or every backend has been audited.
 | [AIH-339](https://linear.app/matterlabs/issue/AIH-339) — zero-clock workers | **Accepted relation gap, F03; implementation enforcement remains unresolved.** The comments explain caller-to-worker accounting and unique issued clocks. They do not establish the converse that every active worker has a caller, and do not rule out the checked zero-clock state change. | Fix or independently validate full worker-to-caller enforcement. The temporary [occurrence ledger](Airbender/Review/Helpers/Context/ExternalBoundary/Requests.lean) supplies that missing condition; the native cancelling-token permutation does not imply it. |
 | [AIH-113](https://linear.app/matterlabs/issue/AIH-113) — dropped scaled pointer range check | **Historical compiler bug with repair present in the inspected source.** [Delegation compilation](../../cs/src/gkr_compiler/delegation_circuit.rs) now passes the retained range vector into [memory lowering](../../cs/src/gkr_compiler/delegation_mem_accesses.rs), which pushes the scaled check into it. No live comments. | Do not assume every generated/cached artifact includes that repair. Compiled/artifact correspondence remains an external fidelity obligation; no new pointer-alignment assumption or newly discovered current-source bug is asserted. |
 | [AIH-315](https://linear.app/matterlabs/issue/AIH-315) — WHIR randomness reuse | **Acknowledged transcript/protocol bug.** The live comment accepts the freshness issue while noting no known soundness proof for the construction. [BLAKE2s drawing](../../transcript/src/blake2s.rs) copies the current seed before advancing and leaves the last returned block in the seed. | Validate/fix the affected WHIR draw schedule across producer and verifier. A freshness assumption would leave the bug open; no such assumption or cryptographic proof is added here. The report does not establish a full forged proof. |
-| F02 — bigint controls | **Accepted native/reference discrepancy.** Controls 0 and 65537 violate the pinned call ABI even in initialized caller cycles. | The temporary [control contract](Airbender/Review/Helpers/Context/ExternalBoundary/BigintABI.lean) selects a valid command for conditional arithmetic only. Actual control validation and full invalid-call/reference behavior still need a fix or justified acceptance binding. |
+| F02 — bigint controls | **Accepted native/reference discrepancy.** Controls 0 and 65537 violate the pinned call ABI even in initialized caller cycles. | The temporary [control contract](Airbender/Review/Helpers/Context/ExternalBoundary/BigintABI.lean) now supports [complete conditional bigint call retirement](Airbender/Review/Trace/UnifiedReduced/BigintCalls.lean), including actual operand reads, exact Sail writes/frame and PC advance. Actual control validation and full invalid-call/reference behavior still need a fix or justified acceptance binding. |
 | F04 — worker ROM | **Accepted native/reference discrepancy.** Supported COPY with ROM pointers can read zero shadows instead of public bytes; the VM's successful-call ABI rejects those pointers. | The temporary [RAM-port contract](Airbender/Review/Helpers/Context/ExternalBoundary/WorkerRAM.lean) excludes the case for conditional transport. General native acceptance has not been shown to enforce it. |
 | [PR #531](https://github.com/matter-labs/zksync-airbender/pull/531) — recursive output and branch scratch | **Actual source defects addressed by a proposal, still open here.** The [base entrypoint](../../tools/gkr_verifier/src/common_fsv_unified_base_sec_100.rs) discards verified registers and returns a constant; the [branch witness path](../../cs/src/gkr_circuits/unified_reduced_machine/jump_branch_slt.rs) reads shared field scratch as Boolean before guarding branch selection. The latter is a witness-generation defect, not by itself an acceptance exploit. | Review/apply and validate the actual fixes. No output-equality or Boolean-scratch assumption closes them. The PR itself notes validation/regeneration pending after a transcript change. Its other field/recursion fixes require their own target-specific validation. |
 | [PR #316](https://github.com/matter-labs/zksync-airbender/pull/316) — reduced-load alignment / recursive word 7 | **Reported implementation bugs in another circuit/verifier path.** The patch adds alignment constraints and rejects recursive output words omitted from hashing. | Check the affected v2 path and tests before claiming a repair; the current richer v3 FV relation and its existing alignment proof do not certify that path. |
@@ -572,7 +572,7 @@ retain the existing regression roots with no handwritten project diagnostics.
 | F07 | Standalone worker claims retain control/participation conditions | Unresolved general binding; discharged in specified stronger scopes | `rounds`, `RoundMask`, `keccakActive` |
 | F08 | Complete hash claims retain protocol shape and first-span restrictions | Public-program binding derives selected span/controller shape and all issued round coverage/masks; full coverage exposes the zero-clock extended-round boundary | Mode/duration/preparation, public code profile, controller extents/full coverage and legacy prefix conditions |
 | F09 | Decoder/setup models need an implementation binding | Unresolved provenance/structural correspondence | Modeled table equality and logical decoder membership |
-| F10 | Caller-cycle effects are weaker than full custom instruction execution | Shared ordinary/caller/worker composition checked; full-call semantic connection blocked | One history and raw PC path do not turn accepted invalid calls into full CSR reference execution |
+| F10 | Caller-cycle effects are weaker than full custom instruction execution | Shared composition checked; complete bigint retirement connected under F02; hash/mixed sequencing pending | One history and raw PC path do not turn accepted invalid calls into full CSR reference execution |
 
 Review F01's external correspondence and F02–F04 first. F05 and F06 establish why current
 participation/profile restrictions matter. F07–F10 identify assumptions or narrower
@@ -661,6 +661,15 @@ between the VM and Lean.
 proves the existing selected arithmetic effects. It deliberately does not assume a
 valid opcode to erase the gap. An implication for each selected operation can hold
 when none is selected; current caller cycles likewise do not run the full custom CSR.
+
+**Conditional integration checked.** [Complete bigint calls](Airbender/Review/Trace/UnifiedReduced/BigintCalls.lean)
+now derive the successful independent reference transition under the temporary
+valid-command contract. Pointers, actual operands and the complete write/frame
+follow from accepted initialized matching; original Sail PC advance retires the
+caller. COPY→LW/SW uses these full reference states in the same ordinary history.
+The full reference explicitly rejects both controls 0/65537, while their original
+native acceptance and observational regressions remain unchanged. This closes
+the bigint reference-connection proof task, not F02 implementation enforcement.
 
 **Closure needed.** Bind all control bits, opcode cardinality and invalid-call
 behavior to general native acceptance and the full call reference. An assumed
@@ -1003,6 +1012,11 @@ Adding ordinary retirement and terminal observations therefore does not supply
 full-call control/pointer/invalid-call semantics. The original standard/custom
 [Mixed.execution_soundness](Airbender/Review/Trace/UnifiedReduced/Theorems.lean)
 continues to exclude delegation callers from its successful-instruction registry.
+
+**Conditional integration.** [Bigint caller retirement](Airbender/Review/Trace/UnifiedReduced/BigintCalls.lean)
+now establishes the complete successful reference state transition and PC advance
+under the temporary F02 command contract. Hash-call reference transitions and
+whole mixed sequencing under the temporary occurrence ledger remain pending.
 
 **External closure needed.** Bind accepted caller validity and participation to
 the complete pinned reference, including invalid calls, or make an explicit

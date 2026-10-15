@@ -32,3 +32,12 @@ counterexamples to the pinned bigint reference ABI; worker ROM shadows remain se
 [Shared worker context](../../Helpers/Delegation/README.md) derives reads and bounds.
 [Worker execution](../../Trace/Workers/Bigint/README.md) and
 [caller composition](../../Trace/Delegation/README.md) have broader, explicit scopes.
+
+[Complete successful calls](Call.lean) now bind the actual pre-state x10/x11/x12 and
+both canonical RAM operands to the existing seven reference operations. Atomic
+Sail cell writes specify the complete post-state and frame; the original Sail
+PC preparation/tick supplies retirement. No native assignment appears in this
+reference relation. [Mixed caller soundness](../../Trace/UnifiedReduced/BigintCalls.lean)
+derives it from accepted constraints, initialized history and the derived pointer
+ABI under the existing temporary F02 valid-command contract. Controls 0/65537
+remain accepted by the original relation and are rejected by this full reference.
