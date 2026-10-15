@@ -180,13 +180,62 @@ fn wrap_rejects_an_invalid_feeder_proof_before_proving() {
 }
 
 #[test]
-fn gpu_l1_target_fails_before_backend_initialization() {
+#[cfg(not(feature = "gpu"))]
+fn gpu_l1_target_requires_gpu_feature() {
     let config = ProgramProverConfig {
         target: ProofTarget::L1,
         backend: ProverBackend::Gpu,
         ..Default::default()
     };
     assert!(
-        matches!(ProgramProver::new(unused_source(), config), Err(error) if error == "GPU backend does not support L1Wrap")
+        matches!(ProgramProver::new(unused_source(), config), Err(error) if error == "CLI was compiled without `gpu` feature, but `--backend gpu` was requested")
     );
+}
+
+#[test]
+fn cpu_m8_l1_registration_plan() {
+    let loaded = LoadedProgram {
+        bin_bytes: vec![],
+        text_bytes: vec![],
+        bin_u32: vec![0x13],
+        text_u32: vec![0x13],
+    };
+    let fsv = FsvPrograms {
+        unrolled_blake: BlakeMode::Compression,
+        bridge_blake: BlakeMode::Compression,
+        final_blake: BlakeMode::Compression,
+        unrolled_base: (vec![], vec![]),
+        unrolled_recursion: (vec![], vec![]),
+        bridge_base: (vec![], vec![]),
+        bridge_recursion: (vec![], vec![]),
+        unified: (vec![], vec![]),
+        feeder_first: (vec![0x13, 1], vec![1]),
+        feeder: (vec![0x13, 2], vec![2]),
+    };
+    let registrations = pipeline_registrations(
+        &loaded,
+        Some(ProofTarget::RecursionUnified),
+        ProofTarget::L1,
+        None,
+        &fsv,
+    );
+    assert_eq!(registrations.len(), 3);
+    for (program, kind, profile) in [
+        (
+            &fsv.feeder_first,
+            ExecutionKind::Unified,
+            ProofProfile::L1Feeder,
+        ),
+        (&fsv.feeder, ExecutionKind::Unified, ProofProfile::L1Feeder),
+        (&fsv.feeder, ExecutionKind::L1Wrap, ProofProfile::L1Wrap),
+    ] {
+        let key = handle_key(kind, MachineType::Reduced, &program.0, &program.1);
+        let registration = &registrations[&key];
+        assert_eq!(registration.kind, kind);
+        assert_eq!(registration.machine, MachineType::Reduced);
+        assert_eq!(registration.bin, program.0);
+        assert_eq!(registration.text, program.1);
+        assert_eq!(registration.cycles_bound, None);
+        assert_eq!(registration.profiles, BTreeSet::from([profile]));
+    }
 }

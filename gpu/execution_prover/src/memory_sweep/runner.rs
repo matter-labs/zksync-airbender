@@ -150,7 +150,11 @@ fn prepare_arena(
         );
         let inputs = factory.prepare(circuit)?;
         if classify(|| {
-            let result = inputs.precomputations.setup_host.get_or_init(&context);
+            let result = inputs
+                .precomputations
+                .baby_bear()
+                .setup_host
+                .get_or_init(&context);
             drain(&context)?;
             result
         })?
@@ -234,7 +238,11 @@ fn sweep_arena(
         .filter(|(_, p)| is_selected(a, circuit_stable_name(p.circuit)))
     {
         if a.replay_presets {
-            let policy = crate::memory_policy::policy(circuit.circuit, context.get_mem_size());
+            let policy = crate::memory_policy::policy(
+                circuit.circuit,
+                execution_prover::ProofProfile::Standard,
+                context.get_mem_size(),
+            );
             let name = stable_name(policy);
             if !a.configuration.is_empty() && !a.configuration.contains(&name) {
                 return Err(

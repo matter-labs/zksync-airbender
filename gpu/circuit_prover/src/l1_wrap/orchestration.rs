@@ -1,0 +1,457 @@
+use std::sync::Arc;
+
+use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
+use era_cudart::memory::{memory_copy_async, memory_set_async};
+use era_cudart::result::CudaResult;
+use era_cudart::slice::DeviceSlice;
+use era_cudart::stream::CudaStreamWaitEventFlags;
+use fft::GoodAllocator;
+use gpu_core::allocator::tracker::AllocationPlacement;
+use gpu_core::primitives::callbacks::Callbacks;
+use gpu_core::primitives::context::{HostAllocation, UnsafeMutAccessor};
+use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
+use gpu_core::primitives::device_tracing::Range;
+use gpu_core::primitives::field::PR;
+use gpu_gkr::proth120::backward::DrTailProofPlanPr;
+use gpu_gkr::proth120::inputs::Proth120GkrWitnessInputs;
+use gpu_gkr::proth120::packed_challenges::{self, PackedChallengeConfig, PackedChallenges};
+use gpu_gkr::proth120::programs::GkrProgramsPr;
+use gpu_gkr::proth120::proof_layout::{M6ProofFields, ProofLayoutPr, ProofSlabPr};
+use gpu_gkr::proth120::{schedule_gkr, GkrOutputPr};
+use gpu_gkr::setup::{L1WrapSetupHost, PackedSetupSource};
+use gpu_prover_context::transfer::Transfer;
+use gpu_prover_context::ProverContext;
+use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode};
+use gpu_trace::trace::packed::{PackedCommitConfig, PackedCosetRecomputeOracle};
+use gpu_trace::trace::tracing_data::{TracingDataDevice, UnrolledTracingDataDevice};
+use gpu_trace::witness::proth120::{
+    generate_fused_values, generate_inits_and_teardowns, generate_lookup_multiplicities,
+    prepare_lookup_relations, Proth120LookupRelations, Proth120WitnessBuffers,
+};
+use gpu_trace::witness::trace_unrolled::PAGE_SIZE_LOG2;
+use gpu_whir::proth120::{
+    schedule_l1_whir_fold, L1WhirInputs, L1WhirProof, L1WhirScheduled, L1WhirShape,
+    L1_WHIR_TILE_BYTES,
+};
+
+use super::{l1_wrap_batching_pow_bits, validate_l1_wrap_preconditions, L1Proof, L1WrapInputs};
+use crate::proof::memory_policy::ProofMemoryPolicy;
+use crate::upstream::{
+    CommitmentMode, GKRCircuitArtifact, L1WrapResult, ProverConfig, EVM_PRODUCTION_PACK_LOG2,
+    TIMESTAMP_COLUMNS_NUM_BITS,
+};
+
+pub struct GpuL1WrapProofJob<'a> {
+    is_finished_event: CudaEvent,
+    callbacks: Callbacks<'a>,
+    m6_fields: Box<Option<M6ProofFields>>,
+    whir: Option<L1WhirScheduled>,
+    top_bits_host: Vec<u32>,
+    commitment_mode: CommitmentMode,
+    ranges: Vec<Range>,
+    keepalive: GpuL1WrapProofJobKeepalive<'a>,
+}
+
+pub(crate) struct GpuL1WrapProofJobKeepalive<'a> {
+    _setup_host: Arc<L1WrapSetupHost>,
+    _input_callbacks: Callbacks<'a>,
+    _setup_callbacks: Callbacks<'a>,
+    _relations: Proth120LookupRelations,
+    _challenges: PackedChallenges,
+    _gkr: GkrOutputPr,
+    _proof_host_mirror: HostAllocation<[u8]>,
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn prove<'a, A: GoodAllocator + 'a>(
+    programs: &Arc<GkrProgramsPr>,
+    circuit: &Arc<GKRCircuitArtifact<PR>>,
+    config: &ProverConfig,
+    commitment_mode: CommitmentMode,
+    inputs: L1WrapInputs<'a, A>,
+    dr_tail_plan: &DrTailProofPlanPr,
+    policy: ProofMemoryPolicy,
+    context: &ProverContext,
+) -> CudaResult<GpuL1WrapProofJob<'a>> {
+    inputs.transfer.ensure_transferred(context)?;
+    context.reset_used_mem_peak();
+    validate_l1_wrap_preconditions(
+        config,
+        &commitment_mode,
+        policy,
+        context.proth120_ntt_device_context().log_max_domain(),
+    );
+    let batching_pow_bits = l1_wrap_batching_pow_bits(config, circuit);
+    assert_eq!(
+        batching_pow_bits, 16,
+        "L1Wrap requires batching_pow_bits 16"
+    );
+    let cfg = PackedCommitConfig::from_prover_config(config, 26);
+    let rows = circuit.trace_len;
+    let memory_columns = circuit.memory_layout.total_width;
+    let witness_columns = circuit.witness_layout.total_width;
+    assert_eq!(rows, 1 << 22, "L1Wrap requires 2^22 trace rows");
+    assert_eq!(memory_columns, 38, "L1Wrap requires 38 memory columns");
+    assert_eq!(witness_columns, 66, "L1Wrap requires 66 witness columns");
+    assert_eq!(
+        memory_columns + witness_columns,
+        104,
+        "L1Wrap requires 104 base columns"
+    );
+    assert_eq!(
+        circuit.scratch_space_size, 41,
+        "L1Wrap requires 41 scratch columns"
+    );
+    assert_eq!(
+        circuit.generic_lookup_tables_width, 10,
+        "L1Wrap requires 10 setup columns"
+    );
+    assert!(
+        circuit.has_decoder_lookup,
+        "L1Wrap requires a decoder lookup"
+    );
+    assert_eq!(
+        inputs.top_bits_host.len(),
+        2,
+        "L1Wrap requires two top bits"
+    );
+    assert_eq!(
+        inputs.setup_host.log_rows, 22,
+        "L1Wrap setup trace log mismatch"
+    );
+    assert_eq!(
+        inputs.setup_host.columns_count, 10,
+        "L1Wrap setup columns mismatch"
+    );
+    assert_eq!(
+        inputs.setup_host.pack_log2, EVM_PRODUCTION_PACK_LOG2 as u32,
+        "L1Wrap setup pack_log2 mismatch"
+    );
+    assert_eq!(
+        inputs.setup_host.cfg, cfg,
+        "L1Wrap setup commitment config mismatch"
+    );
+    let multiplicity_start = circuit
+        .witness_layout
+        .multiplicities_columns_for_range_check_16
+        .start;
+    let multiplicity_end = circuit
+        .witness_layout
+        .multiplicities_columns_for_generic_lookup
+        .end;
+    assert!(
+        circuit
+            .witness_layout
+            .multiplicities_columns_for_range_check_16
+            .end
+            == circuit
+                .witness_layout
+                .multiplicities_columns_for_timestamp_range_check
+                .start
+            && circuit
+                .witness_layout
+                .multiplicities_columns_for_timestamp_range_check
+                .end
+                == circuit
+                    .witness_layout
+                    .multiplicities_columns_for_generic_lookup
+                    .start
+            && multiplicity_end - multiplicity_start == 3,
+        "L1Wrap requires three contiguous multiplicity columns"
+    );
+    let L1WrapInputs {
+        transfer,
+        decoder,
+        inits_and_teardowns,
+        tracing_data,
+        top_bits,
+        top_bits_host,
+        setup_host,
+    } = inputs;
+    let decoder = decoder.expect("L1Wrap requires a decoder table");
+    let stream = context.get_exec_stream();
+    let range = Range::new("l1_wrap.proof")?;
+    range.start(stream)?;
+    let mut callbacks = Callbacks::new();
+    let mut setup = PackedSetupSource::new(Arc::clone(&setup_host), context)?;
+    let mut setup_transfer = Transfer::new()?;
+    setup_transfer.record_allocated(context)?;
+    setup.schedule_transfer(&mut setup_transfer, context)?;
+    setup_transfer.record_transferred(context)?;
+    setup_transfer.ensure_transferred(context)?;
+    let mut raw = TraceHolder::<PR>::new_without_cosets(
+        22,
+        cfg.log_lde_factor,
+        cfg.log_values_per_leaf,
+        cfg.cap_log,
+        memory_columns + witness_columns,
+        TreesCacheMode::CacheNone,
+        context,
+    )?;
+    let mut scratch = context.alloc::<PR>(
+        circuit.scratch_space_size * rows,
+        AllocationPlacement::BestFit,
+    )?;
+    let mut generic = context.alloc::<u32>(
+        (circuit.generic_lookups.len() + 1) * rows,
+        AllocationPlacement::BestFit,
+    )?;
+    let mut range16 = context.alloc::<u32>(
+        circuit.range_check_16_lookup_expressions.len() * rows,
+        AllocationPlacement::BestFit,
+    )?;
+    let mut timestamp = context.alloc::<u32>(
+        circuit.timestamp_range_check_lookup_expressions.len() * rows,
+        AllocationPlacement::BestFit,
+    )?;
+    let relations = prepare_lookup_relations(circuit, context)?;
+    {
+        let (memory, witness) = raw
+            .get_uninit_hypercube_evals_mut()
+            .split_at_mut(memory_columns * rows);
+        let (generic_mapping, decoder_mapping) =
+            generic.split_at_mut(circuit.generic_lookups.len() * rows);
+        let mut buffers = Proth120WitnessBuffers {
+            memory: DeviceMatrixMut::new(memory, rows),
+            witness: DeviceMatrixMut::new(witness, rows),
+            scratch: DeviceMatrixMut::new(&mut scratch, rows),
+            generic_lookup_mapping: DeviceMatrixMut::new(generic_mapping, rows),
+            range_check_16_lookup_mapping: DeviceMatrixMut::new(&mut range16, rows),
+            range_check_timestamp_lookup_mapping: DeviceMatrixMut::new(&mut timestamp, rows),
+            decoder_lookup_mapping: decoder_mapping,
+        };
+        generate_inits_and_teardowns(
+            &circuit.memory_layout,
+            22,
+            PAGE_SIZE_LOG2,
+            &inits_and_teardowns.data_device,
+            &mut buffers.memory,
+            stream,
+        )?;
+        let TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Unified(trace)) =
+            &tracing_data.data_device
+        else {
+            panic!("L1Wrap requires unrolled unified tracing data");
+        };
+        generate_fused_values(
+            circuit,
+            &decoder.data_device,
+            trace,
+            &DeviceMatrix::new(setup.raw().get_hypercube_evals(), rows),
+            &relations,
+            &mut buffers,
+            stream,
+        )?;
+    }
+    {
+        let witness = &mut raw.get_uninit_hypercube_evals_mut()[memory_columns * rows..];
+        for (mapping, columns, active_counts_len) in [
+            (
+                &mut generic,
+                circuit
+                    .witness_layout
+                    .multiplicities_columns_for_generic_lookup
+                    .clone(),
+                circuit.total_tables_size,
+            ),
+            (
+                &mut range16,
+                circuit
+                    .witness_layout
+                    .multiplicities_columns_for_range_check_16
+                    .clone(),
+                1 << 16,
+            ),
+            (
+                &mut timestamp,
+                circuit
+                    .witness_layout
+                    .multiplicities_columns_for_timestamp_range_check
+                    .clone(),
+                1 << TIMESTAMP_COLUMNS_NUM_BITS,
+            ),
+        ] {
+            generate_lookup_multiplicities(
+                &mut DeviceMatrixMut::new(mapping, rows),
+                &mut DeviceMatrixMut::new(
+                    &mut witness[columns.start * rows..columns.end * rows],
+                    rows,
+                ),
+                active_counts_len,
+                context,
+            )?;
+        }
+    }
+    drop(tracing_data);
+    drop(inits_and_teardowns);
+    drop(decoder);
+    let mut base = PackedCosetRecomputeOracle::pack_from_columns(
+        raw,
+        EVM_PRODUCTION_PACK_LOG2 as u32,
+        context,
+    )?;
+    base.commit(&cfg, context)?;
+    let mut seed = context.alloc::<u8>(32, AllocationPlacement::BestFit)?;
+    memory_set_async(&mut seed, 0, stream)?;
+    let challenge_config = PackedChallengeConfig::new(circuit, config, &commitment_mode, true);
+    let challenges = packed_challenges::derive(
+        &mut seed,
+        &commitment_mode,
+        &top_bits.device,
+        setup.cap(),
+        base.cap(),
+        &challenge_config,
+        context,
+    )?;
+    drop(top_bits);
+    let layout = Arc::new(ProofLayoutPr::new(programs, config));
+    let mut slab = ProofSlabPr::new(Arc::clone(&layout), context)?;
+    #[allow(clippy::arc_with_non_send_sync)]
+    let witness = Proth120GkrWitnessInputs::new(
+        circuit,
+        Arc::new(scratch),
+        circuit.scratch_space_size,
+        rows,
+        DeviceMatrix::new(&generic[..circuit.generic_lookups.len() * rows], rows),
+        DeviceMatrix::new(&range16, rows),
+        DeviceMatrix::new(&timestamp, rows),
+        &generic[circuit.generic_lookups.len() * rows..],
+        DeviceMatrix::new(
+            &base.raw().get_hypercube_evals()[(memory_columns + multiplicity_start) * rows
+                ..(memory_columns + multiplicity_end) * rows],
+            rows,
+        ),
+    );
+    let mut gkr = schedule_gkr(
+        Arc::clone(programs),
+        &base,
+        &setup,
+        witness,
+        &top_bits_host,
+        &challenges,
+        config,
+        batching_pow_bits,
+        seed,
+        &mut slab,
+        dr_tail_plan,
+        None,
+        &mut callbacks,
+        context,
+    )?;
+    drop(generic);
+    drop(range16);
+    drop(timestamp);
+    let handoff = gkr.whir_handoff();
+    let shape = L1WhirShape::from_schedule(&config.whir_schedule, 26, 5, 2, L1_WHIR_TILE_BYTES);
+    let whir = schedule_l1_whir_fold(
+        &mut base,
+        &mut setup,
+        handoff.seed,
+        L1WhirInputs {
+            claims: handoff.claims,
+            base_layer_point: handoff.base_layer_point,
+            batching_challenge: handoff.batching_challenge,
+        },
+        &config.whir_schedule,
+        &shape,
+        context,
+    )?;
+    let mut mirror = unsafe { context.alloc_host_uninit_slice::<u8>(layout.bytes_len()) };
+    let slab_bytes = unsafe {
+        DeviceSlice::from_raw_parts(slab.backing.as_ptr().cast::<u8>(), layout.bytes_len())
+    };
+    memory_copy_async(&mut mirror, slab_bytes, stream)?;
+    let mirror_accessor = mirror.get_accessor();
+    let mut m6_fields = Box::new(None);
+    let m6_accessor = UnsafeMutAccessor::new(&mut *m6_fields);
+    callbacks.schedule(
+        move || {
+            let fields = layout.parse_m6_fields(unsafe { mirror_accessor.get() });
+            unsafe { m6_accessor.get_mut() }.replace(fields);
+        },
+        stream,
+    )?;
+    drop(slab);
+    let h2d_join = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
+    h2d_join.record(stream)?;
+    context
+        .get_h2d_stream()
+        .wait_event(&h2d_join, CudaStreamWaitEventFlags::DEFAULT)?;
+    range.end(stream)?;
+    let is_finished_event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
+    is_finished_event.record(stream)?;
+    Ok(GpuL1WrapProofJob {
+        is_finished_event,
+        callbacks,
+        m6_fields,
+        whir: Some(whir),
+        top_bits_host,
+        commitment_mode,
+        ranges: vec![range],
+        keepalive: GpuL1WrapProofJobKeepalive {
+            _setup_host: setup_host,
+            _input_callbacks: transfer.into_callbacks(),
+            _setup_callbacks: setup_transfer.into_callbacks(),
+            _relations: relations,
+            _challenges: challenges,
+            _gkr: gkr,
+            _proof_host_mirror: mirror,
+        },
+    })
+}
+
+impl GpuL1WrapProofJob<'_> {
+    pub fn finish(self) -> CudaResult<L1WrapResult> {
+        let Self {
+            is_finished_event,
+            callbacks,
+            mut m6_fields,
+            mut whir,
+            top_bits_host,
+            commitment_mode,
+            ranges,
+            keepalive,
+        } = self;
+        is_finished_event.synchronize()?;
+        let fields = m6_fields
+            .take()
+            .expect("L1Wrap M6 readback did not complete");
+        let whir = whir
+            .take()
+            .expect("L1Wrap WHIR job missing")
+            .into_proof_after_completion();
+        let result = assemble_l1_proof(fields, whir, top_bits_host, commitment_mode);
+        log::debug!(
+            "l1_wrap.proof: {} ms",
+            ranges
+                .last()
+                .expect("L1Wrap proof range missing")
+                .elapsed()?
+        );
+        drop(callbacks);
+        drop(keepalive);
+        Ok(result)
+    }
+}
+
+pub fn assemble_l1_proof(
+    m6: M6ProofFields,
+    whir: L1WhirProof,
+    top_bits: Vec<u32>,
+    commitment_mode: CommitmentMode,
+) -> L1WrapResult {
+    L1WrapResult {
+        proof: L1Proof {
+            external_challenges: m6.external_challenges,
+            final_explicit_evaluations: m6.final_explicit_evaluations,
+            sumcheck_intermediate_values: m6.sumcheck_intermediate_values,
+            whir_proof: whir,
+            grand_product_accumulator_computed: m6.grand_product_accumulator_computed,
+            inits_and_teardowns_top_bits: top_bits,
+            intermediate_transcript_seed: Some(m6.intermediate_transcript_seed),
+            lookup_challenges_pow_nonce: m6.lookup_challenges_pow_nonce,
+            batched_proximity_check_pow_nonce: m6.batched_proximity_check_pow_nonce,
+        },
+        commitment_mode,
+    }
+}

@@ -19,6 +19,11 @@ pub const fn align_up(bytes: usize, unit: usize) -> usize {
 pub const L1_WRAP_ARENA_MIN_BYTES: usize =
     align_up(MEASURED_M4_PEAK_BYTES + OVERLAP_BYTES, 1 << 30);
 
+/// Smallest sufficient arena of the bounded capacity matrix (`gpu/execution_prover/tests/l1_memory.rs`: 32/40/48/64 GiB candidates, both directions, three opposite followers) on the RTX PRO 6000 Blackwell (sm_120).
+pub const L1_WRAP_WHOLE_PROOF_FLOOR_BYTES: usize = 32 << 30;
+pub const L1_WRAP_FLOOR_SOURCE: &str = "measured";
+const _: () = assert!(L1_WRAP_WHOLE_PROOF_FLOOR_BYTES >= L1_WRAP_ARENA_MIN_BYTES);
+
 pub const L1_WRAP_POLICY: ProofMemoryPolicy = ProofMemoryPolicy {
     gkr: GkrMemoryPolicy::Materialize,
     setup: OpeningStrategy::PerCoset,
@@ -115,11 +120,19 @@ mod cpu_tests {
             )
         );
         assert_eq!(
-            super::super::policy(CircuitType::L1Wrap, 80 << 30),
+            super::super::policy(
+                CircuitType::L1Wrap,
+                crate::upstream::ProofProfile::L1Wrap,
+                80 << 30
+            ),
             L1_WRAP_POLICY
         );
         assert_eq!(
-            super::super::policy(CircuitType::L1Wrap, L1_WRAP_ARENA_MIN_BYTES),
+            super::super::policy(
+                CircuitType::L1Wrap,
+                crate::upstream::ProofProfile::L1Wrap,
+                L1_WRAP_ARENA_MIN_BYTES
+            ),
             L1_WRAP_POLICY
         );
         assert!(L1_WRAP_POLICY.witness.is_valid());

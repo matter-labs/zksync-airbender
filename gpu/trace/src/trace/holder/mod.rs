@@ -115,6 +115,24 @@ pub struct TraceHolder<T> {
 }
 
 impl<T> TraceHolder<T> {
+    pub fn install_partial_trees(&mut self, context: &ProverContext) -> CudaResult<()> {
+        assert!(
+            matches!(self.trees, TreesHolder::None),
+            "install_partial_trees requires TreesHolder::None"
+        );
+        assert!(
+            self.unified_device_cap.is_none() && !self.cosets_materialized,
+            "install_partial_trees requires an uncommitted trace"
+        );
+        self.trees = TreesHolder::Partial(allocate_trees(
+            1usize << self.log_lde_factor,
+            self.log_domain_size - PARTIAL_TREE_REDUCTION_LAYERS,
+            self.log_rows_per_leaf,
+            context,
+        )?);
+        Ok(())
+    }
+
     pub fn new(
         log_domain_size: u32,
         log_lde_factor: u32,

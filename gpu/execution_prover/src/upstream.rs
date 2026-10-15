@@ -22,7 +22,10 @@ pub use prover::definitions::{GKRExternalChallenges, SecurityLevel};
 pub use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
 pub use prover::gkr::prover::GKRProof;
 pub use prover::gkr::prover_config::example_configs::EVM_PRODUCTION_PACK_LOG2;
+pub use prover::gkr::prover_config::ProverConfig;
 pub use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
 
 // `setups` — per-circuit witness evaluators carrying the decoder tables.
+#[cfg(feature = "memory_sweep")]
+pub use setups::unrolled_circuits::inits_and_teardowns_circuit_setup;
 pub use setups::UnrolledCircuitWitnessEvalFn;

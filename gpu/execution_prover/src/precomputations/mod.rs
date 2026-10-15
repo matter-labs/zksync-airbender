@@ -1,6 +1,5 @@
 #[cfg(feature = "memory_sweep")]
 mod common;
-#[allow(dead_code)]
 pub mod l1_wrap;
 mod setup_host;
 #[cfg(feature = "memory_sweep")]
