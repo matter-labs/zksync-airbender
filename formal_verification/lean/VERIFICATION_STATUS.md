@@ -38,6 +38,7 @@ fixed or independently shown to be enforced. See the [case register](FINDINGS.md
 | Claim | Blocker |
 | --- | --- |
 | Initialization/teardown local soundness | Retained artifacts have no equations/range queries; needs richer proof input. |
+| Native setup table import | Shared ranges are imported and checked; other table definitions and program-dependent consumers are being migrated. |
 
 AIH-334's EVM check is fixed and tested. AIH-336's tail/cache correction passes CPU
 regressions; accelerated runtime/proof replay and other findings remain in the case register.
@@ -47,9 +48,9 @@ Separately scoped work: [deferred milestones](FORMAL_VERIFICATION_PLAN.md#deferr
 
 ## Validation
 
-- Library, both executables and all 120 concrete test modules pass.
+- Library, both executables and all 121 concrete test modules pass.
 - Importer regressions pass.
-- Axiom audit: 2,907 roots, 89 axiom-free; only `propext`, `Classical.choice` and `Quot.sound`.
+- Axiom audit: 2,922 roots, 91 axiom-free; only `propext`, `Classical.choice` and `Quot.sound`.
 - All 158 public Review theorem roots are audited; review/reference checks pass.
 - No handwritten project diagnostics, `sorry` or project axioms.
 

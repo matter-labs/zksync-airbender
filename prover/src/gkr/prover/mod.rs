@@ -59,6 +59,7 @@ pub mod dimension_reduction;
 pub mod forward_loop;
 pub mod gkr_backend;
 pub mod setup;
+pub mod setup_artifact;
 pub mod stages;
 pub mod sumcheck_loop;
 #[cfg(feature = "gkr_test_forge")]
