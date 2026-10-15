@@ -56,6 +56,52 @@ theorem modular_canonical_output {p : Nat} [Fact p.Prime] (hp : 196608 < p)
     hp ⟨olo, ohi⟩ ⟨by decide, by decide⟩ ⟨rlo, rhi⟩ cb
     (by simpa using lowEq) (by simpa using highEq)
 
+/-- Shared field calculation; each artifact derives these equations and the
+    canonical output from its own accepted constraints. -/
+theorem modular_result_of_equations {input : Modular.Input} {output : Reference.RiscV.Sail.Output}
+    {w : Nat → ZMod babyBearModulus}
+    (interfaces : Modular.InterfaceAssumptions input output w)
+    (mapping : Modular.WordMapping input output w)
+    (nonzero : input.rd ≠ Reference.RiscV.Sail.zeroRegister)
+    (canonical : output.destination.value < babyBearModulus)
+    (intermediate : (w 25 + 65536 * w 26) * (w 29 + 65536 * w 30) * 943718400 +
+      (w 31 + 65536 * w 32) * w 16 - w 41 = 0)
+    (result : (w 33 + 65536 * w 34 - (w 25 + 65536 * w 26 + w 29 + 65536 * w 30)) * w 13 +
+      (w 33 + 65536 * w 34 - (w 25 + 65536 * w 26 - (w 29 + 65536 * w 30))) * w 14 +
+      (w 33 + 65536 * w 34 - w 41) * (w 15 + w 16) = 0) :
+    output.destination.value = (Modular.arithmeticResult input.opcode input.left input.right input.oldDestination).val := by
+  have s13 := interfaces.selection 13 (by omega) (by omega)
+  have s14 := interfaces.selection 14 (by omega) (by omega)
+  have s15 := interfaces.selection 15 (by omega) (by omega)
+  have s16 := interfaces.selection 16 (by omega) (by omega)
+  have outputCast : (output.destination.value : ZMod babyBearModulus) = w 33 + 65536 * w 34 := by
+    simp [Word.value, limbBase, mapping.outputLo, mapping.outputHi]
+  simp only [mapping.left nonzero, mapping.right nonzero] at intermediate result
+  have inverse : (943718400 : ZMod babyBearModulus) = (4294967296 : ZMod babyBearModulus)⁻¹ := by
+    have unit : (943718400 : ZMod babyBearModulus) * 4294967296 = 1 := by decide
+    have nonzero : (4294967296 : ZMod babyBearModulus) ≠ 0 := by decide
+    calc
+      (943718400 : ZMod babyBearModulus) =
+          943718400 * (4294967296 * (4294967296 : ZMod babyBearModulus)⁻¹) := by
+        rw [mul_inv_cancel₀ nonzero, mul_one]
+      _ = _ := by rw [← mul_assoc, unit, one_mul]
+  unfold Modular.arithmeticResult
+  rw [← ZMod.val_natCast_of_lt canonical]
+  apply congrArg ZMod.val
+  rw [outputCast]
+  cases hop : input.opcode <;>
+    simp [hop, nonzero, Modular.Opcode.selector] at s13 s14 s15 s16 ⊢
+  · simp [s13, s14, s15, s16] at result
+    linear_combination result + mapping.right nonzero
+  · simp [s13, s14, s15, s16] at result
+    linear_combination result
+  · simp [s13, s14, s15, s16] at result intermediate
+    rw [← inverse]
+    linear_combination result - intermediate
+  · simp [s13, s14, s15, s16, mapping.oldDestination nonzero hop] at result intermediate
+    rw [← inverse]
+    linear_combination result - intermediate
+
 /-- All four custom arithmetic cases reuse the same canonical-output proof and
     shared soundness property. The fixed BabyBear artifact supplies Montgomery R^-1. -/
 theorem modular_result {input : Modular.Input} {output : Reference.RiscV.Sail.Output}
@@ -82,40 +128,19 @@ theorem modular_result {input : Modular.Input} {output : Reference.RiscV.Sail.Ou
     simpa [Word.value, limbBase, mapping.outputLo, mapping.outputHi] using
       modular_canonical_output (by decide) constraints nonstandard.1 nonstandard.2.1
         nonstandard.2.2 selected
-  have outputCast : (output.destination.value : ZMod babyBearModulus) = w 33 + 65536 * w 34 := by
-    simp [Word.value, limbBase, mapping.outputLo, mapping.outputHi]
-  have intermediate := Verification.assertion_of_holds constraints
-    ⟨1, by simp [importedConstraints, FlatOperation.constraints]⟩
-  have result := Verification.assertion_of_holds constraints
-    ⟨2, by simp [importedConstraints, FlatOperation.constraints]⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, mapping.left nonzero, mapping.right nonzero] at intermediate result
-  have inverse : (943718400 : ZMod babyBearModulus) = (4294967296 : ZMod babyBearModulus)⁻¹ := by
-    have unit : (943718400 : ZMod babyBearModulus) * 4294967296 = 1 := by decide
-    have nonzero : (4294967296 : ZMod babyBearModulus) ≠ 0 := by decide
-    calc
-      (943718400 : ZMod babyBearModulus) =
-          943718400 * (4294967296 * (4294967296 : ZMod babyBearModulus)⁻¹) := by
-        rw [mul_inv_cancel₀ nonzero, mul_one]
-      _ = _ := by rw [← mul_assoc, unit, one_mul]
-  unfold Modular.arithmeticResult
-  rw [← ZMod.val_natCast_of_lt canonical]
-  apply congrArg ZMod.val
-  rw [outputCast]
-  cases hop : input.opcode <;>
-    simp [hop, nonzero, Modular.Opcode.selector] at s13 s14 s15 s16 ⊢
-  · simp [s13, s14, s15, s16] at result
-    linear_combination result + mapping.right nonzero
-  · simp [s13, s14, s15, s16] at result
+  apply modular_result_of_equations interfaces mapping nonzero canonical
+  · have intermediate := Verification.assertion_of_holds constraints
+      ⟨1, by simp [importedConstraints, FlatOperation.constraints]⟩
+    simp [importedConstraints, FlatOperation.constraints, Expression.eval,
+      Verification.environment] at intermediate
+    linear_combination intermediate
+  · have result := Verification.assertion_of_holds constraints
+      ⟨2, by simp [importedConstraints, FlatOperation.constraints]⟩
+    simp [importedConstraints, FlatOperation.constraints, Expression.eval,
+      Verification.environment] at result
     linear_combination result
-  · simp [s13, s14, s15, s16] at result intermediate
-    rw [← inverse]
-    linear_combination result - intermediate
-  · simp [s13, s14, s15, s16, mapping.oldDestination nonzero hop] at result intermediate
-    rw [← inverse]
-    linear_combination result - intermediate
 
-private theorem modular_contract_nextPC {input : Modular.Input}
+theorem modular_contract_nextPC {input : Modular.Input}
     (hc : Modular.RegisterContract input) (pc : BitVec 32) :
     Modular.RegisterContract { input with before :=
       { input.before with regs := input.before.regs.insert .nextPC pc } } := by
@@ -128,7 +153,7 @@ private theorem modular_contract_nextPC {input : Modular.Input}
     exact Reference.RiscV.Sail.rX_nextPC input.rd (hc.oldRead nonzero condition)
   · exact Reference.RiscV.Sail.read_register_nextPC pc (by decide) hc.pcRead
 
-private theorem modular_destination {input : Modular.Input} {output : Word}
+theorem modular_destination {input : Modular.Input} {output : Word}
     (hc : Modular.RegisterContract input)
     (result : input.rd ≠ Reference.RiscV.Sail.zeroRegister → output.value =
       (Modular.arithmeticResult input.opcode input.left input.right input.oldDestination).val) :

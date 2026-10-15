@@ -22,7 +22,10 @@ agreement for the external-read/write-hint extension and the exact stream consum
 The stream and its port connection are explicit; authentication of the stream is not proved.
 
 [Modular pooled execution](Modular/README.md) adds ADDMOD/SUBMOD/MULMOD/FMAMOD
-to the same six-family history, public decoding and native boot/ROM boundary.
+to the same six-family history, public decoding and native boot/ROM boundary,
+including the combined external-read/write-hint registry.
+[Unified modular execution](UnifiedReduced/ModularExecution.lean) admits those
+four operations alongside standard instructions, TRIADD and XORROT.
 
 [Unified ordinary/custom retirement](UnifiedReduced/README.md#checked-results)
 has a separate registry. [Worker spans](Workers/README.md#checked-results) and

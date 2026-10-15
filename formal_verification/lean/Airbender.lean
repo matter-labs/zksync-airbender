@@ -21,3 +21,5 @@ import Airbender.Review.Trace.Workers.Bigint.Theorems
 import Airbender.Review.Trace.Workers.Keccak.Theorems
 import Airbender.Review.Trace.Soundness
 import Airbender.Review.Trace.Padding
+import Airbender.Review.Trace.Modular.ExternalTheorems
+import Airbender.Review.Trace.UnifiedReduced.ModularExecution

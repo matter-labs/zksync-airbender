@@ -120,18 +120,23 @@ theorem zero_operands_result [Fact p.Prime] (hp : 196608 < p)
     (destination_bounds h) (Nat.le_trans carry (by decide)) (Nat.le_trans overflow (by decide))
     (by simpa only [Nat.cast_zero] using loEq) (by simpa only [Nat.cast_zero] using hiEq)
 
-theorem row_zero_preserving [Fact p.Prime] (hp : 524288 < p)
+theorem row_zero_preserving_of_metadata [Fact p.Prime] (hp : 524288 < p)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
-    (active : w 4 = 1) {before : Reference.RiscV.Sail.State} (fetch : Fetched w before) :
+    (active : w 4 = 1) {entry : ProgramEntry} (query : decoderQuery w = entry.query)
+    (flags : ∀ i : Fin 19, w importedConstraintsDecoderColumns.flags[i] =
+      if entry.data.mask.testBit i.val then 1 else 0)
+    (zeroCases : entry.data.rd = 0 →
+      entry.data = ⟨.machine, 0, 0, 0, ⟨0, 0⟩, 1, 0⟩ ∨
+        (entry.data.mask.testBit 14 = true ∧ ∃ i : Fin 4, entry.data.mask.testBit (10 + i.val) = true) ∨
+        entry.data.mask.testBit 18 = true) :
     Trace.Proofs.RowZeroPreserving (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) := by
   intro port present zero reads
   simp [Trace.Row.ports, CircuitLayout.ports, importedConstraintsMemoryPorts] at present
   rcases present with rfl | rfl | rfl
   · exact reads _ (by simp [Trace.Row.ports, CircuitLayout.ports, importedConstraintsMemoryPorts]) le_rfl zero
   · exact reads _ (by simp [Trace.Row.ports, CircuitLayout.ports, importedConstraintsMemoryPorts]) le_rfl zero
-  · obtain ⟨entry, source, query, flags⟩ := fetch
-    have address : (w 29).val = 0 ∧ (w 44).val = 0 ∧ (w 45).val = 0 := by
+  · have address : (w 29).val = 0 ∧ (w 44).val = 0 ∧ (w 45).val = 0 := by
       simpa [MemoryAddress.code, pairCode, Cell.addressCode, Nat.pair_eq_pair] using zero
     have noRAM : w 29 = 0 := by simpa using address.1
     have location := Verification.assertion_of_holds h ⟨31, by rw [constraint_count]; decide⟩
@@ -147,7 +152,7 @@ theorem row_zero_preserving [Fact p.Prime] (hp : 524288 < p)
       have value := congrArg ZMod.val rd
       rw [targetZero, ZMod.val_zero, ZMod.val_natCast_of_lt (by have := entry.data.rd.isLt; omega)] at value
       exact BitVec.eq_of_toNat_eq value.symm
-    rcases decoder_zero_cases source.fields originalZero with nop | ⟨marker, i, operation⟩ | store
+    rcases zeroCases originalZero with nop | ⟨marker, i, operation⟩ | store
     · rw [nop] at flags
       have rs1 := congrArg (fun q : Vector (ZMod p) 9 => q[2]) query
       have rs2 := congrArg (fun q : Vector (ZMod p) 9 => q[3]) query
@@ -245,5 +250,13 @@ theorem row_zero_preserving [Fact p.Prime] (hp : 524288 < p)
       rfl
     · have ram : w 29 = 1 := by simpa [store, importedConstraintsDecoderColumns] using flags 18
       exact False.elim (zero_ne_one (noRAM.symm.trans ram))
+
+theorem row_zero_preserving [Fact p.Prime] (hp : 524288 < p)
+    {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (active : w 4 = 1) {before : Reference.RiscV.Sail.State} (fetch : Fetched w before) :
+    Trace.Proofs.RowZeroPreserving (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) := by
+  obtain ⟨entry, source, query, flags⟩ := fetch
+  exact row_zero_preserving_of_metadata hp h active query flags (decoder_zero_cases source.fields)
 
 end Airbender.UnifiedReduced.Proofs

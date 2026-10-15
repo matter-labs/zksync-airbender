@@ -1,3 +1,6 @@
+import Airbender.Review.Trace.UnifiedReduced.ModularExecution
+import Airbender.Review.Trace.Modular.ExternalTheorems
+import Tests.UnifiedModularExecution
 import Tests.ModularTrace
 import Airbender.Review.Trace.Modular.Theorems
 import Airbender.Review.Trace.Padding
@@ -2856,3 +2859,78 @@ import Clean.Specs.Keccak256
 #print axioms Tests.ModularTrace.forged_old_destination_rejected
 #print axioms Tests.ModularTrace.unsupported_mop_rejected
 #print axioms Tests.ModularTrace.wrong_selector_rejected
+
+-- Combined modular streams and native unified modular execution.
+#print axioms Airbender.AddSub.Modular.External.ExecutionTrace
+#print axioms Airbender.AddSub.Modular.External.Proofs.addsub_execution
+#print axioms Airbender.AddSub.Modular.External.Proofs.arithmetic_cases
+#print axioms Airbender.AddSub.Modular.External.Proofs.clause_original
+#print axioms Airbender.AddSub.Modular.External.Proofs.clause_standard
+#print axioms Airbender.AddSub.Modular.External.Proofs.combinedRegistry
+#print axioms Airbender.AddSub.Modular.External.Proofs.decoderRules
+#print axioms Airbender.AddSub.Modular.External.Proofs.field_bounds
+#print axioms Airbender.AddSub.Modular.External.Proofs.fields_cases
+#print axioms Airbender.AddSub.Modular.External.Proofs.memory_fields
+#print axioms Airbender.AddSub.Modular.External.Proofs.native_trace_execution
+#print axioms Airbender.AddSub.Modular.External.Proofs.row_step
+#print axioms Airbender.AddSub.Modular.External.Proofs.source_cases
+#print axioms Airbender.AddSub.Modular.External.Proofs.standard_fields
+#print axioms Airbender.AddSub.Modular.External.Proofs.trace_execution
+#print axioms Airbender.AddSub.Modular.External.Realizes
+#print axioms Airbender.AddSub.Modular.External.Step
+#print axioms Airbender.AddSub.Modular.External.StreamPorts
+#print axioms Airbender.AddSub.Modular.External.arithmeticDecoderFields
+#print axioms Airbender.AddSub.Modular.External.clause
+#print axioms Airbender.AddSub.Modular.External.decoderFields
+#print axioms Airbender.AddSub.Modular.External.isRead
+#print axioms Airbender.AddSub.Modular.External.native_soundness
+#print axioms Airbender.AddSub.Modular.External.padded_native_soundness
+#print axioms Airbender.AddSub.Modular.External.programImage
+#print axioms Airbender.AddSub.Modular.External.readCount
+#print axioms Airbender.AddSub.Modular.External.readIndex
+#print axioms Airbender.AddSub.Modular.External.response
+#print axioms Airbender.AddSub.Modular.External.soundness
+#print axioms Airbender.AddSub.Proofs.modular_contract_nextPC
+#print axioms Airbender.AddSub.Proofs.modular_destination
+#print axioms Airbender.AddSub.Proofs.modular_result_of_equations
+#print axioms Airbender.Trace.ExternalStream.Proofs.compose_rows_with_clause
+#print axioms Airbender.Trace.ExternalStream.Proofs.step_of_rebased_with_clause
+#print axioms Airbender.Trace.NonDeterminism.StepWithClause
+#print axioms Airbender.UnifiedReduced.Modular.Inputs
+#print axioms Airbender.UnifiedReduced.Modular.Proofs.canonical_output
+#print axioms Airbender.UnifiedReduced.Modular.Proofs.custom_no_standard_clause
+#print axioms Airbender.UnifiedReduced.Modular.Proofs.execution_from_history
+#print axioms Airbender.UnifiedReduced.Modular.Proofs.fields_cases
+#print axioms Airbender.UnifiedReduced.Modular.Proofs.interfaces_from_history
+#print axioms Airbender.UnifiedReduced.Modular.Proofs.lift
+#print axioms Airbender.UnifiedReduced.Modular.Proofs.memory_execution
+#print axioms Airbender.UnifiedReduced.Modular.Proofs.mop_bounds
+#print axioms Airbender.UnifiedReduced.Modular.Proofs.mop_cases
+#print axioms Airbender.UnifiedReduced.Modular.Proofs.mop_high_flags
+#print axioms Airbender.UnifiedReduced.Modular.Proofs.mop_metadata
+#print axioms Airbender.UnifiedReduced.Modular.Proofs.mop_zero_cases
+#print axioms Airbender.UnifiedReduced.Modular.Proofs.row_clause
+#print axioms Airbender.UnifiedReduced.Modular.Proofs.row_step
+#print axioms Airbender.UnifiedReduced.Modular.Proofs.source_after_history
+#print axioms Airbender.UnifiedReduced.Modular.Proofs.spec_from_history
+#print axioms Airbender.UnifiedReduced.Modular.Proofs.trace_execution
+#print axioms Airbender.UnifiedReduced.Modular.Proofs.zero_preserving
+#print axioms Airbender.UnifiedReduced.Modular.Step
+#print axioms Airbender.UnifiedReduced.Modular.clauseFor
+#print axioms Airbender.UnifiedReduced.Modular.decoderFields
+#print axioms Airbender.UnifiedReduced.Modular.execution_soundness
+#print axioms Airbender.UnifiedReduced.Modular.mopClause
+#print axioms Airbender.UnifiedReduced.Modular.mopData
+#print axioms Airbender.UnifiedReduced.Modular.mopDecoderFields
+#print axioms Airbender.UnifiedReduced.Modular.padded_execution_soundness
+#print axioms Airbender.UnifiedReduced.Modular.programImage
+#print axioms Airbender.UnifiedReduced.Proofs.row_zero_preserving_of_metadata
+#print axioms Tests.ModularTrace.ExternalFixture.actual_public_image
+#print axioms Tests.ModularTrace.ExternalFixture.complete_external_modular_trace
+#print axioms Tests.ModularTrace.ExternalFixture.short_stream_rejected
+#print axioms Tests.ModularTrace.ExternalFixture.wrong_stream_order_rejected
+#print axioms Tests.UnifiedModularExecution.actual_public_image
+#print axioms Tests.UnifiedModularExecution.complete_unified_modular_trace
+#print axioms Tests.UnifiedModularExecution.forged_fma_locally_valid
+#print axioms Tests.UnifiedModularExecution.forged_fma_rejected
+#print axioms Tests.UnifiedModularExecution.wrong_selector_rejected

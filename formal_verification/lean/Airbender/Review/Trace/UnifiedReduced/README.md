@@ -13,6 +13,7 @@ recorded invalid-call and participation cases.
 | --- | --- |
 | Original standard instructions retire and reach native terminal PC/cells, using public ROM bytes. | [`execution_soundness`](Theorems.lean) |
 | Standard instructions plus TRIADD/XORROT retire together; delegation callers are outside the registry. | [`Mixed.execution_soundness`](Theorems.lean) |
+| Standard/TRIADD/XORROT plus ADDMOD/SUBMOD/MULMOD/FMAMOD share native initialized execution in BabyBear, including discarded writes and aliased old destinations; external masked padding is supported. | [`Modular.execution_soundness` and `Modular.padded_execution_soundness`](ModularExecution.lean) |
 | Every ordinary retirement, caller observation and worker uses one actual history and complete raw PC/clock path, with terminal cells in the final retired-PC view. Full custom-CSR execution remains separate. | [`Caller.mixed_cycle_soundness`](Theorems.lean) |
 | Machine and worker reads/writes, bounds and references share one actual initialized history. | [`Caller.mixed_memory_soundness`](Theorems.lean) |
 | Exact caller regions, counts and slots follow from state/request matching and public cuts/duration. | [`Caller.window_schedule_soundness` and `Caller.request_window_soundness`](Theorems.lean) |
@@ -69,6 +70,10 @@ matching remain explicit. Window claims additionally retain cut alignment/locati
 duration, mode/count and prefix ABI conditions. No intermediate states or scheduling
 answers are supplied. Caller-cycle observations still admit the checked bigint
 invalid controls, so they are not full custom-CSR execution.
+
+[Modular regression](../../../../Tests/UnifiedModularExecution.lean) checks all
+four dependent modular operations, all four x0 forms, an ordinary ADD consumer
+and TRIADD in a single reversed-row trace with actual public instruction bytes.
 
 Start with [Theorems](Theorems.lean) and choose the exact public claim.
 [Execution](Execution.lean), [CustomExecution](CustomExecution.lean) and

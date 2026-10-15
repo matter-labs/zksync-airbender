@@ -20,6 +20,8 @@ link the scheduling, projection, control-preparation and reference claims.
 Public cut/duration, program/domain and protocol conditions remain explicit.
 
 [Registry](Registry.lean) connects the machine row to its imported layout.
+[Modular](Modular.lean) extends the standard/TRIADD/XORROT metadata registry
+with ADDMOD/SUBMOD/MULMOD/FMAMOD and the same public boot conditions.
 [Program](Program.lean), [ExecutionInputs](ExecutionInputs.lean) and
 [CustomInputs](CustomInputs.lean) name the public decoder/initialization/profile inputs.
 [NativeROM](NativeROM.lean) exposes the ordinary-machine ROM view.

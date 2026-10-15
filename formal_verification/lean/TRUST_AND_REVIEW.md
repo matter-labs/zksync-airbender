@@ -58,7 +58,11 @@ The [modular pooled extension](Airbender/Review/Trace/Modular/README.md) connect
 ADDMOD/SUBMOD/MULMOD/FMAMOD to the same initialized six-family history, native
 boot/ROM view and external padding boundary. Actual Sail MOP decoding derives
 native selectors; history derives operands and FMAMOD's old destination.
-Arithmetic remains the existing pinned BabyBear project specification.
+Arithmetic remains the existing pinned BabyBear project specification. The
+combined pooled entry includes exact external-stream consumption; the
+[unified modular entry](Airbender/Review/Trace/UnifiedReduced/ModularExecution.lean)
+uses actual unified equations alongside standard/TRIADD/XORROT retirement.
+Neither extension supplies desired operands or results as assumptions.
 
 ## Checked scope boundaries
 

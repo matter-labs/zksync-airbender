@@ -1,8 +1,9 @@
 # Circuit formal verification plan
 
-ADDMOD/SUBMOD/MULMOD/FMAMOD now have public decoding, initialized pooled history
-and [whole execution](Airbender/Review/Trace/Modular/README.md), reusing their
-checked custom arithmetic and the existing ADD/SUB artifact.
+ADDMOD/SUBMOD/MULMOD/FMAMOD have public decoding and initialized whole execution
+with [pooled external reads/hints](Airbender/Review/Trace/Modular/README.md) and
+[unified standard/TRIADD/XORROT execution](Airbender/Review/Trace/UnifiedReduced/ModularExecution.lean).
+Both reuse the checked project arithmetic and existing native artifacts.
 
 The user authorized an external contribution-mask boundary on 15 October 2026,
 analogous to the canonical verifier-PC boundary. Its exact logical

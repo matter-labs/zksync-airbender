@@ -1,4 +1,5 @@
 import Airbender.Review.Trace.Modular.Theorems
+import Airbender.Review.Trace.Modular.ExternalTheorems
 import Tests.TraceExecution
 
 namespace Tests.ModularTrace
@@ -520,5 +521,215 @@ theorem unsupported_mop_rejected :
     Modular.Pooled.decoderFields (.ZIMOP_MOP_RR (4, .Regidx 2, .Regidx 1, .Regidx 3)) = none ∧
     Modular.Pooled.decoderFields (.ZIMOP_MOP_RR (7, .Regidx 2, .Regidx 1, .Regidx 3)) = none := by
   decide
+
+namespace ExternalFixture
+
+-- Replace the public ADDI inputs by independent reads; replace the final
+-- discarded modular form by a hint. All native memory accesses remain present.
+private def mixedAssignment (index : Fin 11) (column : Nat) : ZMod babyBearModulus :=
+  if index = 0 ∨ index = 1 then
+    if column = 8 ∨ column = 10 then 0 else if column = 18 then 1 else assignment index column
+  else assignment index column
+
+private def mixedRow (index : Fin 11) : Row babyBearModulus PooledFamily := ⟨.addSub, mixedAssignment index⟩
+
+private def entryView (entry : PooledProgramEntry) : PooledProgramEntry :=
+  if entry.pc = 0 then ⟨entry.pc, 0x7c0010f3,
+    .CSRReg (0x7c0, .Regidx 0, .Regidx 1, .CSRRW),
+    { entry.data with immediate := ⟨0, 0⟩, mask := 256 }⟩
+  else if entry.pc = 4 then ⟨entry.pc, 0x7c001173,
+    .CSRReg (0x7c0, .Regidx 0, .Regidx 2, .CSRRW),
+    { entry.data with immediate := ⟨0, 0⟩, mask := 256 }⟩
+  else if entry.pc = 36 then ⟨entry.pc, 0x7c009073,
+    .CSRReg (0x7c0, .Regidx 1, .Regidx 0, .CSRRW), entry.data⟩
+  else entry
+
+private def mixedProgram := program.map entryView
+private def mixedBefore : State :=
+  { before with
+    mem := before.mem
+    |>.insert 0 0xf3 |>.insert 1 0x10 |>.insert 2 0 |>.insert 3 0x7c
+    |>.insert 4 0x73 |>.insert 5 0x11 |>.insert 6 0 |>.insert 7 0x7c
+    |>.insert 36 0x73 |>.insert 37 0x90 |>.insert 38 0 |>.insert 39 0x7c }
+
+private def mixedTrace : PooledTrace babyBearModulus :=
+  { trace with
+    rows := (List.finRange 11).reverse.map mixedRow
+    rom := ⟨ROM.table cells seed, Verification.subwordTable (ROM.words mixedBefore)⟩ }
+
+private theorem mixed_constraints (index : Fin 11) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (mixedAssignment index)) AddSub.clockConstraints := by
+  fin_cases index <;>
+    simp [AddSub.clockConstraints, AddSub.importedConstraints,
+        AddSub.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat,
+        Expression.eval, Verification.environment, mixedAssignment, assignment]
+  all_goals repeat' apply And.intro
+  all_goals first
+    | decide
+    | (apply Verification.range16_contains; decide)
+    | (apply Trace.Proofs.range_contains; decide)
+
+private theorem mixed_accepted : Accepted mixedTrace := by
+  constructor
+  · intro actual member
+    obtain ⟨index, _, rfl⟩ := List.mem_map.mp member
+    exact mixed_constraints index
+  · intro actual member
+    obtain ⟨index, _, rfl⟩ := List.mem_map.mp member
+    fin_cases index <;> rfl
+  · exact accepted.states
+  · exact accepted.memory
+
+private theorem mixed_bytes (entry : PooledProgramEntry) (member : entry ∈ mixedProgram) :
+    (Cell.ram entry.pc).read mixedBefore = .ok entry.bits mixedBefore := by
+  obtain ⟨original, originalMember, rfl⟩ := (List.mem_map (f := entryView) (l := program)).mp member
+  simp only [program, List.mem_cons, List.not_mem_nil, or_false] at originalMember
+  rcases originalMember with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+  all_goals simp [entryView, Cell.read, Sail.ArchSem.readBytes, Sail.ArchSem.readByte, EStateM.run,
+    get, getThe, MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get, EStateM.pure,
+    mixedBefore, before, Std.ExtHashMap.getElem_insert]
+
+private theorem mixed_decoding (entry : PooledProgramEntry) (member : entry ∈ mixedProgram) :
+    run (SailRV32.Functions.encdec_backwards entry.bits) mixedBefore = .ok entry.instruction mixedBefore := by
+  obtain ⟨original, originalMember, rfl⟩ := (List.mem_map (f := entryView) (l := program)).mp member
+  simp only [program, List.mem_cons, List.not_mem_nil, or_false] at originalMember
+  rcases originalMember with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+  all_goals with_unfolding_all rfl
+
+private theorem mixed_fields (entry : PooledProgramEntry) (member : entry ∈ mixedProgram) :
+    Modular.External.decoderFields entry.instruction = some entry.data := by
+  obtain ⟨original, originalMember, rfl⟩ := (List.mem_map (f := entryView) (l := program)).mp member
+  simp only [program, List.mem_cons, List.not_mem_nil, or_false] at originalMember
+  rcases originalMember with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> with_unfolding_all rfl
+
+private theorem mixed_entry (entry : PooledProgramEntry) (member : entry ∈ mixedProgram) :
+    programEntryRunWith Modular.External.decoderFields mixedBefore entry.pc = some entry := by
+  have read := mixed_bytes entry member
+  have decode := mixed_decoding entry member
+  have metadata := mixed_fields entry member
+  cases entry
+  simp only [programEntryRunWith, read, decode, metadata, bind, Option.bind, pure]
+
+theorem actual_public_image : Modular.External.programImage mixedBefore (mixedProgram.map ProgramEntry.pc) =
+    some mixedProgram := by
+  suffices build : ∀ entries : List PooledProgramEntry,
+      (∀ entry ∈ entries, programEntryRunWith Modular.External.decoderFields mixedBefore entry.pc = some entry) →
+      programImageRunWith Modular.External.decoderFields mixedBefore (entries.map ProgramEntry.pc) = some entries by
+    exact build mixedProgram mixed_entry
+  intro entries
+  induction entries with
+  | nil => intro _; rfl
+  | cons first rest ih =>
+    intro images
+    have head := images first (by simp)
+    have tail := ih (fun entry member => images entry (by simp [member]))
+    change (first.pc :: rest.map ProgramEntry.pc).mapM _ = _
+    rw [List.mapM_cons, head]
+    change Option.bind ((rest.map ProgramEntry.pc).mapM
+      (programEntryRunWith Modular.External.decoderFields mixedBefore))
+      (fun remaining => some (first :: remaining)) = some (first :: rest)
+    rw [show (rest.map ProgramEntry.pc).mapM
+      (programEntryRunWith Modular.External.decoderFields mixedBefore) = some rest from tail]
+    rfl
+
+private theorem mixed_decoded : PooledDecoded mixedTrace mixedProgram := by
+  intro actual member
+  obtain ⟨index, _, rfl⟩ := List.mem_map.mp member
+  change ∃ i : Fin 11, _
+  refine ⟨index, ?_⟩
+  fin_cases index <;> decide
+
+private theorem mixed_zero_registers : ∀ index, (Cell.register index).read mixedBefore = .ok 0 mixedBefore := by
+  have numeric : ∀ index : Nat, index < 32 →
+      (Cell.register (BitVec.ofNat 5 index)).read mixedBefore = .ok 0 mixedBefore := by
+    intro index bound
+    interval_cases index
+    all_goals first
+      | rfl
+      | (apply read_register; simp [mixedBefore, before, Tests.TraceExecution.before, Std.ExtDHashMap.get?_insert])
+  intro index
+  simpa using numeric index.toNat index.isLt
+
+private theorem mixed_image : initialImage mixedBefore cells = some mixedTrace.initialMemory := by
+  simp only [initialImage, cells, Tests.TraceExecution.cells, List.mapM_cons, List.mapM_nil, mixed_zero_registers]
+  rfl
+
+private theorem mixed_inputs : PooledBootInputs mixedTrace mixedBefore cells mixedProgram Modular.External.decoderFields := by
+  refine {
+    registers := Tests.TraceExecution.inputs.registers
+    ordinary := Tests.TraceExecution.inputs.ordinary
+    configuration := {
+      privilege := configuration.privilege
+      status := configuration.status
+      isa := configuration.isa
+      supervisorEnvironment := configuration.supervisorEnvironment
+      machineEnvironment := configuration.machineEnvironment
+      pmpOff := configuration.pmpOff
+      pmpAddresses := configuration.pmpAddresses
+      pma := configuration.pma
+      hart := configuration.hart
+      htifDisabled := configuration.htifDisabled }
+    landingPadDisabled := ?_
+    code := ?_
+    loads := ?_
+    distinct := by decide
+    aligned := Tests.TraceExecution.inputs.aligned
+    programImage := ⟨mixedProgram.map ProgramEntry.pc, actual_public_image⟩
+    profile := ⟨?_, mixed_zero_registers, ?_⟩
+    seed := rfl
+    initialBoundary := rfl
+    physicalImage := ⟨seed, mixed_image, rfl⟩
+    subwordSetup := rfl
+    verifierBoundary := ⟨⟨44, (48, 0)⟩,
+      VerifierBoundary.Proofs.binding_of_endpoints rfl rfl mixed_accepted.states⟩ }
+  · refine ⟨0, ?_, rfl⟩
+    simp [mixedBefore, before, Std.ExtDHashMap.get?_insert]
+  · intro entry member
+    obtain ⟨original, originalMember, rfl⟩ := (List.mem_map (f := entryView) (l := program)).mp member
+    simp only [program, List.mem_cons, List.not_mem_nil, or_false] at originalMember
+    rcases originalMember with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+    all_goals constructor <;> decide
+  · intro entry member
+    obtain ⟨original, originalMember, rfl⟩ := (List.mem_map (f := entryView) (l := program)).mp member
+    simp only [program, List.mem_cons, List.not_mem_nil, or_false] at originalMember
+    rcases originalMember with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+    all_goals intros; simp [entryView, Modular.instruction]
+  · apply read_register
+    simp [mixedBefore, before, Tests.TraceExecution.before, Std.ExtDHashMap.get?_insert]
+  · intro address member _
+    simp [cells, Tests.TraceExecution.cells] at member
+
+private theorem ports : Modular.External.StreamPorts mixedTrace [11, 3, 99] := by
+  intro actual member read
+  obtain ⟨index, _, rfl⟩ := List.mem_map.mp member
+  fin_cases index <;> first | decide | cases read
+
+theorem complete_external_modular_trace [MemoryPlatform SailRV32.exception] :
+    ∃ after, Modular.External.ExecutionTrace [11, 3, 99] mixedProgram (mixedBefore, 0) (after, 2) ∧
+      run (SailRV32.Functions.get_arch_pc ()) after = .ok 44 after ∧
+      (Cell.register 4).read after = .ok 576061442 after := by
+  obtain ⟨after, execution, pc, terminal⟩ := Modular.External.native_soundness mixed_inputs mixed_accepted mixed_decoded ports
+  obtain ⟨cell, _, address, read⟩ := terminal (token 4 46 2 8790) (by simp [mixedTrace, trace])
+  have same : cell = .register 4 := cell_address_injective address
+  subst cell
+  have value : (ROMView.token mixedBefore (token 4 46 2 8790)).word.toBitVec = 576061442 := by
+    simp only [ROMView.token, ROMView.shadow, token, Cell.addressCode, Nat.unpair_pair,
+      Nat.reduceEqDiff, false_and, if_false, MemoryToken.word]
+    rfl
+  rw [value] at read
+  exact ⟨after, execution, pc, read⟩
+
+theorem short_stream_rejected : ¬ Modular.External.StreamPorts mixedTrace [11] := by
+  intro supplied
+  have missing := supplied (mixedRow 1) (by simp [mixedTrace]) (by decide)
+  cases missing
+
+theorem wrong_stream_order_rejected : ¬ Modular.External.StreamPorts mixedTrace [3, 11] := by
+  intro supplied
+  have mismatch := supplied (mixedRow 0) (by simp [mixedTrace]) (by decide)
+  have impossible : (3 : BitVec 32) = 11 := Option.some.inj mismatch
+  contradiction
+
+end ExternalFixture
 
 end Tests.ModularTrace
