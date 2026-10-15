@@ -46,7 +46,7 @@ pub(crate) use prover::gkr::whir::ColumnMajorBaseOracleForLDE;
 pub(crate) use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
 pub(crate) use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
 pub(crate) use prover::transcript::Keccak256Transcript;
-pub(crate) use unified_reduced_machine_proth120::{l1_wrap_2p21, l1_wrap_2p22, L1WrapSetup};
+pub(crate) use unified_reduced_machine_proth120::{l1_wrap_2p21, L1WrapSetup};
 
 pub(crate) use setups::{
     bigint_witness_eval_fn, blake2_g_function_witness_eval_fn,

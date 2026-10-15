@@ -137,7 +137,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 .insert(sequence_id, data);
         }
         match execution_kind {
-            ExecutionKind::L1Wrap | ExecutionKind::L1Wrap21 => {
+            ExecutionKind::L1Wrap21 => {
                 panic!("ExecutionKind::{execution_kind:?} requires prove_l1_wrap")
             }
             ExecutionKind::Unrolled => {
@@ -314,29 +314,28 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                         ram_config,
                         assume_canonical_mop_inputs,
                     ),
-                    ExecutionKind::Unified
-                    | ExecutionKind::Unified22
-                    | ExecutionKind::L1Wrap
-                    | ExecutionKind::L1Wrap21 => run_simulator::<_, UnifiedTracingType, _, _, _>(
-                        batch_id,
-                        machine_type,
-                        unified_circuit,
-                        binary_image,
-                        text_section,
-                        cycles_bound,
-                        jit_cache,
-                        &mut memory_holder,
-                        non_determinism_source,
-                        free_trace_chunks_sender,
-                        free_trace_chunks_receiver,
-                        unified_snapshot_sender,
-                        work_results_sender,
-                        free_allocators_receiver,
-                        abort,
-                        &worker,
-                        ram_config,
-                        assume_canonical_mop_inputs,
-                    ),
+                    ExecutionKind::Unified | ExecutionKind::Unified22 | ExecutionKind::L1Wrap21 => {
+                        run_simulator::<_, UnifiedTracingType, _, _, _>(
+                            batch_id,
+                            machine_type,
+                            unified_circuit,
+                            binary_image,
+                            text_section,
+                            cycles_bound,
+                            jit_cache,
+                            &mut memory_holder,
+                            non_determinism_source,
+                            free_trace_chunks_sender,
+                            free_trace_chunks_receiver,
+                            unified_snapshot_sender,
+                            work_results_sender,
+                            free_allocators_receiver,
+                            abort,
+                            &worker,
+                            ram_config,
+                            assume_canonical_mop_inputs,
+                        )
+                    }
                 };
                 memory_holders_sender
                     .send(memory_holder)
@@ -369,19 +368,18 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                     work_results_sender,
                     abort,
                 ),
-                ExecutionKind::Unified
-                | ExecutionKind::Unified22
-                | ExecutionKind::L1Wrap
-                | ExecutionKind::L1Wrap21 => run_replayer::<UnifiedTracingType, _, _>(
-                    batch_id,
-                    worker_id,
-                    rom,
-                    instruction_tape,
-                    unified_snapshot_receiver,
-                    free_trace_chunks_sender,
-                    work_results_sender,
-                    abort,
-                ),
+                ExecutionKind::Unified | ExecutionKind::Unified22 | ExecutionKind::L1Wrap21 => {
+                    run_replayer::<UnifiedTracingType, _, _>(
+                        batch_id,
+                        worker_id,
+                        rom,
+                        instruction_tape,
+                        unified_snapshot_receiver,
+                        free_trace_chunks_sender,
+                        work_results_sender,
+                        abort,
+                    )
+                }
             });
         }
         drop(free_trace_chunks_sender);

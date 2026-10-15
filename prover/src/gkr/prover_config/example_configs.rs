@@ -225,56 +225,6 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
     }
 }
 
-/// The 2^22 Proth120 L1 wrap: the parameters the deployed gkr.sol/whir.sol
-/// pair is generated for.
-pub mod l1_wrap_2p22 {
-    use super::*;
-
-    /// Base trace length (the single 2^22 unified circuit chunk the L1
-    /// verifies).
-    pub const TRACE_LEN_LOG2: usize = 22;
-    /// Base-layer packing factor: the 2^22 base trace becomes a single
-    /// 2^26-variate multilinear per packed column.
-    pub const PACK_LOG2: usize = 4;
-    /// PoW bits gating the self-derived external challenges of the packed
-    /// mode.
-    pub const EXTERNAL_CHALLENGES_POW_BITS: u32 = 20;
-
-    /// A 2^22 base trace packed by [`PACK_LOG2`] into the
-    /// `message_log2 = 26` WHIR input.
-    pub fn packed_prover_config(level: SecurityLevel) -> ProverConfig {
-        ProverConfig {
-            // circuit trace length; the WHIR message is 2^(22 + pack_log2) = 2^26
-            trace_len_log2: TRACE_LEN_LOG2,
-            // the EVM verifier (gkr.sol) consumes monomial [c0..c3] rounds;
-            // keep these proofs on the windowed schedule (transcript-identical
-            // to naive)
-            same_size_sumcheck_schedule: windowed_same_size_schedule(TRACE_LEN_LOG2),
-            dimension_reducing_sumcheck_schedule: Default::default(),
-            lde_factor: 1 << 5, // base LDE factor 32 (base_lde_log2 = 5)
-            cap_size: 8,
-            // round-0 values-per-leaf = 2^whir_steps_schedule[0] = 2^2
-            base_oracles_values_per_leaf: 1 << 2,
-            // The GKR dimension-reduction stops at 2^4 and outputs explicit
-            // evaluations (this is the GKR-side knob gkr.sol is generated for —
-            // NOT the WHIR plain-text tail, which the WHIR schedule determines).
-            sumcheck_explicit_output_size_log_2: 4,
-            security_level: level,
-            whir_schedule: WhirSchedule {
-                base_lde_factor: 1 << 5,
-                cap_size: 8,
-                // 6 rounds ending in a 2^4 plain-text tail; the 6th round's
-                // huge-LDE oracle (the 2^8 poly on a 2^31 domain) is cheap with
-                // the continuous intermediate-oracle mode.
-                whir_steps_schedule: vec![2, 4, 4, 4, 4, 4],
-                whir_queries_schedule: vec![17, 12, 8, 6, 5, 4],
-                whir_steps_lde_factors: vec![1 << 7, 1 << 11, 1 << 15, 1 << 19, 1 << 23],
-                whir_pow_schedule: vec![30, 30, 27, 25, 21, 24],
-            },
-        }
-    }
-}
-
 /// The 2^21 Proth120 L1 wrap over the 512 KiB wrap ROM: a 2^21 base trace
 /// packed by [`PACK_LOG2`](l1_wrap_2p21::PACK_LOG2) into the
 /// `message_log2 = 25` WHIR input, base LDE 64, every oracle on a 2^31
@@ -336,12 +286,6 @@ pub mod l1_wrap_2p21 {
     }
 }
 
-pub use l1_wrap_2p22::{
-    packed_prover_config as evm_production_packed_prover_config,
-    EXTERNAL_CHALLENGES_POW_BITS as EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS,
-    PACK_LOG2 as EVM_PRODUCTION_PACK_LOG2, TRACE_LEN_LOG2 as EVM_PRODUCTION_TRACE_LEN_LOG2,
-};
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -398,9 +342,6 @@ mod tests {
             assert_every_round_preserves_security_margin(&config);
         }
         assert_every_round_preserves_security_margin(&l1_feeder_config_for_2_22());
-        assert_every_round_preserves_security_margin(&evm_production_packed_prover_config(
-            SecurityLevel::Sec100,
-        ));
         assert_every_round_preserves_security_margin(&l1_wrap_2p21::packed_prover_config(
             SecurityLevel::Sec100,
         ));
@@ -478,34 +419,6 @@ mod tests {
                 "round {round}: PoW {pow} is not minimal for {queries} queries"
             );
         }
-    }
-
-    #[test]
-    fn l1_wrap_2p22_is_unchanged() {
-        use l1_wrap_2p22::*;
-        assert_eq!(
-            (TRACE_LEN_LOG2, PACK_LOG2, EXTERNAL_CHALLENGES_POW_BITS),
-            (22, 4, 20)
-        );
-        let config = packed_prover_config(SecurityLevel::Sec100);
-        assert_eq!(config.trace_len_log2, 22);
-        assert_eq!(
-            config.same_size_sumcheck_schedule,
-            windowed_same_size_schedule(22)
-        );
-        assert_eq!((config.lde_factor, config.cap_size), (32, 8));
-        assert_eq!(config.base_oracles_values_per_leaf, 4);
-        assert_eq!(config.sumcheck_explicit_output_size_log_2, 4);
-        let schedule = &config.whir_schedule;
-        assert_eq!((schedule.base_lde_factor, schedule.cap_size), (32, 8));
-        assert_eq!(schedule.whir_steps_schedule, vec![2, 4, 4, 4, 4, 4]);
-        assert_eq!(schedule.whir_queries_schedule, vec![17, 12, 8, 6, 5, 4]);
-        assert_eq!(
-            schedule.whir_steps_lde_factors,
-            vec![1 << 7, 1 << 11, 1 << 15, 1 << 19, 1 << 23]
-        );
-        assert_eq!(schedule.whir_pow_schedule, vec![30, 30, 27, 25, 21, 24]);
-        config.validate_for_whir_message_size(TRACE_LEN_LOG2 + PACK_LOG2);
     }
 
     #[test]

@@ -60,8 +60,6 @@ const MUL_DIV_UNSIGNED_DOMAIN_SIZE_LOG2: u32 =
 pub enum CircuitType {
     Delegation(DelegationCircuitType),
     Unrolled(UnrolledCircuitType),
-    /// The 2^22 Proth120 L1 wrap over the regular 4 MiB ROM.
-    L1Wrap,
     /// The 2^21 Proth120 L1 wrap over the 512 KiB wrap ROM.
     L1Wrap21,
 }
@@ -77,7 +75,6 @@ impl CircuitType {
         match self {
             Self::Delegation(delegation_type) => delegation_type.get_domain_size_log2(),
             Self::Unrolled(unrolled_type) => unrolled_type.get_domain_size_log2(),
-            Self::L1Wrap => 22,
             Self::L1Wrap21 => 21,
         }
     }
@@ -87,27 +84,27 @@ impl CircuitType {
         match self {
             Self::Delegation(_) => panic!("delegation circuits do not have a circuit family idx"),
             Self::Unrolled(unrolled_type) => unrolled_type.get_family_idx(),
-            Self::L1Wrap | Self::L1Wrap21 => REDUCED_MACHINE_CIRCUIT_FAMILY_IDX,
+            Self::L1Wrap21 => REDUCED_MACHINE_CIRCUIT_FAMILY_IDX,
         }
     }
 
     pub const fn get_num_inits_and_teardowns_sets(&self) -> usize {
         match self {
             Self::Unrolled(circuit) => circuit.get_num_inits_and_teardowns_sets(),
-            Self::L1Wrap | Self::L1Wrap21 => 2,
+            Self::L1Wrap21 => 2,
             Self::Delegation(_) => panic!("delegation circuits do not carry inits and teardowns"),
         }
     }
 
     pub const fn is_l1_wrap(&self) -> bool {
-        matches!(self, Self::L1Wrap | Self::L1Wrap21)
+        matches!(self, Self::L1Wrap21)
     }
 
     /// The ROM geometry the circuit's load/store and decoder tables assume.
     pub const fn rom(&self) -> RomGeometry {
         match self {
             Self::L1Wrap21 => L1_WRAP_ROM,
-            Self::Delegation(_) | Self::Unrolled(_) | Self::L1Wrap => REGULAR_ROM,
+            Self::Delegation(_) | Self::Unrolled(_) => REGULAR_ROM,
         }
     }
 }
@@ -189,15 +186,14 @@ mod tests {
 
     #[test]
     fn l1_wrap_identities_carry_their_domain_and_rom() {
-        assert_eq!(CircuitType::L1Wrap.get_domain_size_log2(), 22);
-        assert_eq!(CircuitType::L1Wrap.rom(), REGULAR_ROM);
         assert_eq!(CircuitType::L1Wrap21.get_domain_size_log2(), 21);
         assert_eq!(CircuitType::L1Wrap21.rom(), L1_WRAP_ROM);
-        for circuit in [CircuitType::L1Wrap, CircuitType::L1Wrap21] {
-            assert!(circuit.is_l1_wrap());
-            assert_eq!(circuit.get_family_idx(), REDUCED_MACHINE_CIRCUIT_FAMILY_IDX);
-            assert_eq!(circuit.get_num_inits_and_teardowns_sets(), 2);
-        }
+        assert!(CircuitType::L1Wrap21.is_l1_wrap());
+        assert_eq!(
+            CircuitType::L1Wrap21.get_family_idx(),
+            REDUCED_MACHINE_CIRCUIT_FAMILY_IDX
+        );
+        assert_eq!(CircuitType::L1Wrap21.get_num_inits_and_teardowns_sets(), 2);
         for circuit in [
             CircuitType::Unrolled(UnrolledCircuitType::Unified),
             CircuitType::Unrolled(UnrolledCircuitType::Unified22),

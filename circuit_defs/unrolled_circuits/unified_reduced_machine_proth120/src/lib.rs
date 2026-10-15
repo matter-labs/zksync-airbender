@@ -1,12 +1,11 @@
 #![feature(allocator_api)]
 
-//! The unified reduced-machine circuit over Proth120: the L1 wrap circuit,
-//! one module per version. The crate-root names are the 2^22 version.
+//! The unified reduced-machine circuit over Proth120: the 2^21 L1 wrap circuit.
 //!
 //! The layout is the compiled JSON the EVM verifier contracts are generated
 //! from; the witness-eval fn is generated from the matching SSA.
 
-use common_constants::rom::{RomGeometry, L1_WRAP_ROM, REGULAR_ROM};
+use common_constants::rom::{RomGeometry, L1_WRAP_ROM};
 use prover::cs::gkr_circuits::decoder_trait::{
     process_binary_into_separate_tables_ext, ExecutorFamilyDecoderData, OpcodeFamilyDecoder,
 };
@@ -18,78 +17,12 @@ use prover::field::baby_bear::base::BabyBearField;
 use prover::field::Proth120;
 use prover::gkr::prover::setup::GKRSetup;
 use prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
-use prover::gkr::witness_gen::family_circuits::{
-    build_unified_table_driver, build_unified_table_driver_with_rom,
-};
+use prover::gkr::witness_gen::family_circuits::build_unified_table_driver_with_rom;
 use prover::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
 use riscv_transpiler::ir::ReducedMachineDecoderConfig;
 use std::alloc::Global;
 
 pub const NUM_INIT_AND_TEARDOWN_SETS: usize = 2;
-
-pub use l1_wrap_2p22::{
-    circuit_artifact, l1_wrap_setup, witness_eval_fn, LAYOUT_JSON, ROM, TRACE_LEN_LOG2,
-};
-
-/// The 2^22 wrap circuit over the regular 4 MiB ROM.
-pub mod l1_wrap_2p22 {
-    use super::*;
-
-    pub const TRACE_LEN_LOG2: usize =
-        prover::gkr::prover_config::example_configs::l1_wrap_2p22::TRACE_LEN_LOG2;
-    pub const ROM: RomGeometry = REGULAR_ROM;
-
-    pub const LAYOUT_JSON: &str = include_str!(
-        "../../../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json"
-    );
-
-    pub fn circuit_artifact() -> GKRCircuitArtifact<Proth120> {
-        serde_json::from_str(LAYOUT_JSON).expect("embedded Proth120 unified layout")
-    }
-
-    mod sealed {
-        use prover::cs::oracle::Placeholder;
-        use prover::cs::witness_placer::*;
-        use prover::field::Proth120;
-        use prover::gkr::witness_gen::witness_proxy::*;
-
-        include!(
-            "../../../../prover/compiled_circuits/unified_reduced_machine_generated_gkr_proth120.rs"
-        );
-    }
-
-    pub fn witness_eval_fn(
-        proxy: &'_ mut ColumnMajorWitnessProxy<'_, UnifiedRiscvCircuitOracle<'_>, Proth120>,
-    ) {
-        let fn_ptr = sealed::evaluate_witness_fn::<
-            ScalarWitnessTypeSet<Proth120, true>,
-            ColumnMajorWitnessProxy<'_, UnifiedRiscvCircuitOracle<'_>, Proth120>,
-        >;
-        (fn_ptr)(proxy);
-    }
-
-    pub fn l1_wrap_setup(binary: &[u32], text: &[u32]) -> L1WrapSetup {
-        build_l1_wrap_setup(
-            circuit_artifact(),
-            TRACE_LEN_LOG2,
-            ROM,
-            build_unified_table_driver::<Proth120>,
-            binary,
-            text,
-        )
-    }
-
-    #[cfg(test)]
-    mod test {
-        use super::*;
-
-        #[test]
-        #[ignore = "compiles the Proth120 unified circuit"]
-        fn embedded_layout_matches_the_compiler() {
-            assert_embedded_layout_matches_the_compiler(&circuit_artifact(), TRACE_LEN_LOG2, ROM);
-        }
-    }
-}
 
 /// The 2^21 wrap circuit over the 512 KiB wrap ROM.
 pub mod l1_wrap_2p21 {
