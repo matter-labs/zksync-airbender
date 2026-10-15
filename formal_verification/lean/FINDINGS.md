@@ -220,10 +220,15 @@ also project imported data; [kernel proofs](Airbender/Proofs/Blake2G/ImportedCon
 check every one of the 512 native rows against the existing controller reference
 and concrete lookup rows, including key and discriminator. Arbitrary-controller
 interfaces, all inactive/invalid controls and existing witnesses are preserved.
+[Keccak controller outputs](Airbender/Review/Circuits/Keccak/Tables/Controller.lean)
+likewise project the actual native region: [kernel proofs](Airbender/Proofs/Keccak/ImportedController.lean)
+check all 4,096 rows, including the key, six outputs, discriminator and complete
+inactive/fallback domain. Existing control, physical-slot and worker consumers
+use those data with their previous field scopes, interfaces and witnesses.
 Index hints use exported IDs/offsets. This table migration
 does not close F02/F03/F04 implementation findings. All 121 Tests, both
 executables, importer and review gates pass; all old audit roots and axiom-free
-reports are preserved (2,928 roots; 91 axiom-free). Other table contents and
+reports are preserved (2,931 roots; 91 axiom-free). Other table contents and
 program-dependent consumers are still being migrated. This does not close F09's
 general query/authentication/Rust-refinement boundary or AIH-336's pending
 accelerated/full-proof validation. [Reproduction and scope](artifacts/setup/README.md).
