@@ -257,6 +257,7 @@ fn spec_mixing_function(
     }
 }
 
+#[allow(dead_code)]
 #[inline(always)]
 #[unroll::unroll_for_loops]
 fn spec_round_function_reduced_rounds(
@@ -697,7 +698,7 @@ impl Blake2RoundFunctionEvaluator {
             self.t += input_size_bytes as u32;
             self.compress_block_reduced_rounds(input_buffer.as_ptr(), last_round);
         } else {
-            self.run_round_function_with_input_and_byte_len_full_rounds::<REDUCED_ROUNDS>(
+            self.run_round_function_with_input_and_byte_len_full_rounds(
                 input_buffer,
                 input_size_bytes,
                 last_round,
@@ -732,7 +733,7 @@ impl Blake2RoundFunctionEvaluator {
 
     #[inline]
     #[unroll::unroll_for_loops]
-    unsafe fn run_round_function_with_input_and_byte_len_full_rounds<const REDUCED_ROUNDS: bool>(
+    unsafe fn run_round_function_with_input_and_byte_len_full_rounds(
         &mut self,
         input_buffer: &AlignedArray64<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>,
         input_size_bytes: usize,
@@ -741,21 +742,12 @@ impl Blake2RoundFunctionEvaluator {
         self.t += input_size_bytes as u32;
 
         {
-            let extended_state = if REDUCED_ROUNDS {
-                spec_round_function_reduced_rounds(
-                    &self.state,
-                    self.t,
-                    0xffffffff * last_round as u32,
-                    input_buffer,
-                )
-            } else {
-                spec_round_function_full_rounds(
-                    &self.state,
-                    self.t,
-                    0xffffffff * last_round as u32,
-                    input_buffer,
-                )
-            };
+            let extended_state = spec_round_function_full_rounds(
+                &self.state,
+                self.t,
+                0xffffffff * last_round as u32,
+                input_buffer,
+            );
 
             for i in 0..8 {
                 self.state[i] ^= extended_state[i];
@@ -795,16 +787,13 @@ impl Blake2RoundFunctionEvaluator {
             let block = self.input_buffer.as_ptr();
             self.compress_block_reduced_rounds(block, last_round);
         } else {
-            self.run_round_function_with_byte_len_full_rounds::<REDUCED_ROUNDS>(
-                input_size_bytes,
-                last_round,
-            );
+            self.run_round_function_with_byte_len_full_rounds(input_size_bytes, last_round);
         }
     }
 
     #[inline]
     #[unroll::unroll_for_loops]
-    unsafe fn run_round_function_with_byte_len_full_rounds<const REDUCED_ROUNDS: bool>(
+    unsafe fn run_round_function_with_byte_len_full_rounds(
         &mut self,
         input_size_bytes: usize,
         last_round: bool,
@@ -812,21 +801,12 @@ impl Blake2RoundFunctionEvaluator {
         self.t += input_size_bytes as u32;
 
         {
-            let extended_state = if REDUCED_ROUNDS {
-                spec_round_function_reduced_rounds(
-                    &self.state,
-                    self.t,
-                    0xffffffff * last_round as u32,
-                    &self.input_buffer,
-                )
-            } else {
-                spec_round_function_full_rounds(
-                    &self.state,
-                    self.t,
-                    0xffffffff * last_round as u32,
-                    &self.input_buffer,
-                )
-            };
+            let extended_state = spec_round_function_full_rounds(
+                &self.state,
+                self.t,
+                0xffffffff * last_round as u32,
+                &self.input_buffer,
+            );
 
             for i in 0..8 {
                 self.state[i] ^= extended_state[i];
@@ -870,12 +850,12 @@ impl Blake2RoundFunctionEvaluator {
                 );
             }
         } else {
-            self.compress_node_full_rounds::<REDUCED_ROUNDS>(is_right);
+            self.compress_node_full_rounds(is_right);
         }
     }
 
     #[unroll::unroll_for_loops]
-    fn compress_node_full_rounds<const REDUCED_ROUNDS: bool>(&mut self, is_right: bool) {
+    fn compress_node_full_rounds(&mut self, is_right: bool) {
         {
             // Caller has written path witness into get_merkle_path_proof_buffer(is_right).
             // We copy self.state into the other half.
@@ -885,21 +865,12 @@ impl Blake2RoundFunctionEvaluator {
                 self.input_buffer[0..8].copy_from_slice(&self.state);
             }
 
-            let extended_state = if REDUCED_ROUNDS {
-                spec_round_function_reduced_rounds(
-                    &CONFIGURED_IV,
-                    BLAKE2S_BLOCK_SIZE_BYTES as u32,
-                    0xffffffff,
-                    &self.input_buffer,
-                )
-            } else {
-                spec_round_function_full_rounds(
-                    &CONFIGURED_IV,
-                    BLAKE2S_BLOCK_SIZE_BYTES as u32,
-                    0xffffffff,
-                    &self.input_buffer,
-                )
-            };
+            let extended_state = spec_round_function_full_rounds(
+                &CONFIGURED_IV,
+                BLAKE2S_BLOCK_SIZE_BYTES as u32,
+                0xffffffff,
+                &self.input_buffer,
+            );
 
             for i in 0..8 {
                 self.state[i] = CONFIGURED_IV[i] ^ extended_state[i] ^ extended_state[i + 8];
