@@ -24,11 +24,11 @@ theorem ofNat_shl2 (n : Nat) (h : n < 2 ^ 30) : BitVec.ofNat 32 n <<< 2 = BitVec
 set_option maxHeartbeats 1000000 in
 theorem poly_eval_empty (A : Word) (hA : 256 ≤ A.toNat) (C : List Word) (hn : C.length = 0)
     (hC : ∀ i (h : i < C.length), C[i].toNat ≤ P) :
-    ImplementsAtPre A Code.poly_eval [(A + 4294967236#32, Code.mul_mod), (A + 4294967040#32, Code.add_mod)] 48
+    ImplementsAtPre A Code.poly_eval [(A + 4294967236#32, Code.mul_mod), (A + 4294967184#32, Code.add_mod)] 48
       (polyPre C) (polyPost C) := by
   intro s hentry hcallees hcall hpre
   have hmul : CodeAt s (A + 4294967236#32) Code.mul_mod := hcallees (A + 4294967236#32, Code.mul_mod) (by simp)
-  have hadd : CodeAt s (A + 4294967040#32) Code.add_mod := hcallees (A + 4294967040#32, Code.add_mod) (by simp)
+  have hadd : CodeAt s (A + 4294967184#32) Code.add_mod := hcallees (A + 4294967184#32, Code.add_mod) (by simp)
   clear hcallees
   obtain ⟨hcoef, ha1, hT, hTr, hT4, hx⟩ := hpre
   simp only [BitVec.ofNat_eq_ofNat] at hcoef ha1 hT hTr hT4 hx

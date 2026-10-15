@@ -16,25 +16,6 @@ theorem and_bit (R i : Nat) (hi : i < 32) :
     simp only [BitVec.getLsbD_ofNat, Nat.testBit_two_pow, BitVec.getLsbD_zero, hj, decide_true, Bool.true_and] <;>
     by_cases hji : i = j <;> simp [hji, Nat.testBit_eq_decide_div_mod_eq] <;> subst hji <;> omega
 
-/-- A taken / not-taken branch, stepped by hand (the automatic side conditions do not always close; `facts`
-decide the condition after the registers are read). -/
-syntax "rv_branch_taken" " with " ident ("," term)* : tactic
-macro_rules
-  | `(tactic| rv_branch_taken with $hpc:ident $[, $xs]*) => `(tactic| (
-    apply run_of_step
-    rv_step_simp with $hpc
-    rw [exec_branch_t _ _ _ _ _ (by rv_regs; first | decide | simp only [$[$xs:term],*]; done)
-      (by rv_regs; first | (rw [$hpc:ident]; bv_omega) | bv_omega)]
-    simp only [Option.elim_some]))
-
-syntax "rv_branch_not_taken" " with " ident ("," term)* : tactic
-macro_rules
-  | `(tactic| rv_branch_not_taken with $hpc:ident $[, $xs]*) => `(tactic| (
-    apply run_of_step
-    rv_step_simp with $hpc
-    rw [exec_branch_f _ _ _ _ _ (by rv_regs; first | decide | simp only [$[$xs:term],*]; done)]
-    simp only [Option.elim_some]))
-
 theorem getReg_ite_zero (S : State) (i : Reg) : (if i = 0 then 0 else S.getReg i) = S.getReg i := by
   split
   · rename_i h; subst h; exact (r_zero S).symm

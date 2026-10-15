@@ -8,6 +8,11 @@ edition = "2024"
 # zksync_os_finish_success. As tools/gkr_verifier.
 riscv_common = { path = "../../riscv_common", features = ["boot_sequence", "ram_32mb_no_heap"] }
 
+[features]
+# BabyBear field ops via Airbender's field opcodes (mop.rr.N), as the real verifier (field: modular_ops +
+# modular_fma). Default: the same ops in plain Rust.
+mop = []
+
 [profile.release]
 opt-level = 3
 lto = true

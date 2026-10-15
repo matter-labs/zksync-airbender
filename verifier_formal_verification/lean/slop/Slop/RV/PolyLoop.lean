@@ -37,7 +37,7 @@ theorem poly_loop (A T : Word) (C : List Word) (hA : 256 ≤ A.toNat) (hAr : A.t
     read S.mem (sp0 + 4294967284#32) 4 = v9 → read S.mem (sp0 + 4294967280#32) 4 = v18 →
     read S.mem (sp0 + 4294967276#32) 4 = v19 →
     CodeAt S A Code.poly_eval → CodeAt S (A + 4294967236#32) Code.mul_mod →
-    CodeAt S (A + 4294967040#32) Code.add_mod → CodeAt S T C →
+    CodeAt S (A + 4294967184#32) Code.add_mod → CodeAt S T C →
     sp0.toNat % 16 = 0 → 4194304 + 48 ≤ sp0.toNat → sp0.toNat ≤ 1073741824 → ra0.toNat % 4 = 0 →
     A.toNat % 4 = 0 → (T.toNat + 4 * C.length + 48 ≤ sp0.toNat ∨ sp0.toNat ≤ T.toNat) →
     ∃ n s', run n S = some s' ∧ s'.pc = ra0 ∧ (s'.getReg 10#5).toNat ≤ P ∧

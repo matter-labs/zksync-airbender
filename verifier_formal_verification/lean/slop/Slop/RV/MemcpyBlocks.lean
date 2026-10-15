@@ -198,9 +198,5 @@ theorem memcpy_blk1 (A : Word) (S : State) (p q : Word)
 
 /-! Goal-directed forms: continue from the state after the block. -/
 
-theorem run_cont {S : State} {P Q : State → Prop} (H : ∃ m S', run m S = some S' ∧ Q S')
-    (h : ∀ S', Q S' → ∃ m s', run m S' = some s' ∧ P s') : ∃ m s', run m S = some s' ∧ P s' := by
-  obtain ⟨m, S', h1, h2⟩ := H
-  exact run_of_run S S' m P h1 (h S' h2)
 
 end RV

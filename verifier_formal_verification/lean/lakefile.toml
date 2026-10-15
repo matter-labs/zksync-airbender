@@ -30,7 +30,7 @@ roots = ["Slop"]
 [[lean_lib]]
 name = "Image"
 srcDir = "image"
-roots = ["Image"]
+roots = ["Image", "ImageMop"]
 
 [[lean_exe]]
 name = "dump_image"

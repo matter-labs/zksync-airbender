@@ -3,7 +3,7 @@ lean/.lake/
 lean/**/.lake/
 *.olean
 *.ilean
-build/app.elf
+build/*.elf
 build/sail-work/
 .claude/
 build/*.log

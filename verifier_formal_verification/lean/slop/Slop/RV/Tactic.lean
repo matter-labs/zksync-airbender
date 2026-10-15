@@ -27,18 +27,34 @@ elab "rv_clear_irrelevant" : tactic => withMainContext do
       ids := ids.push d.fvarId
   liftMetaTactic fun g => do return [← g.tryClearMany ids]
 
+/-- Side conditions proven so far (goal ↦ proof): the same ones come back at every step. -/
+initialize rvOmegaCache : IO.Ref (Std.HashMap Lean.Expr Lean.Expr) ← IO.mkRef {}
+
 open Lean Elab Tactic in
-/-- `bv_omega`; with env `RV_DEBUG=1`, reports failures and calls slower than 200 ms (with their goal) to stderr. -/
-elab "rv_omega" : tactic => do
+/-- `bv_omega`, reusing the proof of an identical goal proven before when all its free variables are still in scope
+(the kernel checks the reused proof like any other); with env `RV_DEBUG=1`, reports failures and calls slower than
+200 ms (with their goal) to stderr. -/
+elab "rv_omega" : tactic => withMainContext do
   let dbg := (← IO.getEnv "RV_DEBUG").isSome
   let g ← getMainGoal
+  let key ← instantiateMVars (← g.getType)
+  if !key.hasMVar then
+    if let some pf := (← rvOmegaCache.get)[key]? then
+      let lctx ← getLCtx
+      if !pf.hasAnyFVar (fun f => !lctx.contains f) then
+        g.assign pf; replaceMainGoal []; return
   let t0 ← IO.monoMsNow
   let report (ok : Bool) : TacticM Unit := do
     let dt := (← IO.monoMsNow) - t0
     if dbg && (dt > 200 || !ok) then IO.eprintln s!"[rv_omega {if ok then "ok" else "FAIL"} {dt} ms] {← Meta.ppGoal g}"
+    if (← IO.getEnv "RV_STATS").isSome then
+      IO.eprintln s!"[rv_omega_stat {if ok then "ok" else "FAIL"} {dt}] {(toString (← Meta.ppExpr (← instantiateMVars (← g.getType)))).replace "\n" " "}"
   try
     evalTactic (← `(tactic| bv_omega))
     report true
+    if !key.hasMVar then
+      let pf ← instantiateMVars (mkMVar g)
+      if !pf.hasMVar then rvOmegaCache.modify (·.insert key pf)
   catch e =>
     report false
     throw e
@@ -168,7 +184,7 @@ elab "rv_start " code:ident hcall:ident : tactic => do
   let (hpc, hrom, hra, hsp, hlo, hhi) := (mkIdent `hpc, mkIdent `hrom, mkIdent `hra, mkIdent `hsp, mkIdent `hlo,
     mkIdent `hhi)
   evalTactic (← `(tactic| obtain ⟨$hcode, $hpc, $hrom, $hra, $hsp, $hlo, $hhi⟩ := $hcall:ident))
-  evalTactic (← `(tactic| unfold Returns))
+  evalTactic (← `(tactic| try unfold Returns))
   evalTactic (← `(tactic| simp only [$code:ident, List.length_cons, List.length_nil, ROM_END, RAM_END,
     BitVec.ofNat_eq_ofNat] at $hpc $hrom $hlo $hhi $hra $hsp ⊢))
   evalTactic (← `(tactic| rv_code_facts $hcode $code:ident))
@@ -210,12 +226,23 @@ def addWritableFacts : TacticM Unit := withMainContext do
       seen := seen.push ty
 
 open Lean Elab Tactic in
+/-- The facts `cut_…` about the current state left by `rv_cut`. -/
+def cutLemmas : TacticM (Array Term) := withMainContext do
+  let mut out := #[]
+  for d in ← getLCtx do
+    if !d.isImplementationDetail && d.userName.toString.startsWith "cut_" then
+      out := out.push (mkIdent d.userName)
+  return out
+
+open Lean Elab Tactic in
 /-- One symbolic step's simplification (fetch, decode, exec) on the current goal. -/
 def rvStepSimp (ext : Array Term) : TacticM Unit := do
   let ex ← ext.mapM fun t => `(Lean.Parser.Tactic.simpLemma| $t:term)
   -- side conditions only need register facts, not the (conditional, expensive) memory-frame rewrites
   let dext := ext.filter fun t => !(t.raw.getHead?.map (·.getId.toString.startsWith "read_of_frame")).getD false
-  let facts := (← factLemmas) ++ ex
+  let cuts ← cutLemmas
+  let facts := (← factLemmas) ++ ex ++ (← cuts.mapM fun t => `(Lean.Parser.Tactic.simpLemma| $t:term))
+  let dext := dext ++ cuts
   evalTactic (← `(tactic| simp (config := { implicitDefEqProofs := false }) (disch := rv_disch with $dext,*) only [
     rv_exec, rv_state, reduceRSet, rv_word, and_not_one_of_aligned, BitVec.reduceAdd, BitVec.reduceEq,
     BitVec.reduceSetWidth, BitVec.reduceToNat, $facts,*]))
@@ -241,6 +268,101 @@ elab "rv_steps " n:num " with " xs:term,* : tactic => do
   rvSteps n.getNat xs.getElems
 
 macro "rv_ret" : tactic => `(tactic| apply run_done)
+
+open Lean Elab Tactic Meta in
+/-- Number of nodes of `e`, up to `bound`; closed subterms (literals, types, instances) count as one. -/
+partial def exprSizeUpTo (e : Expr) (bound : Nat) : Nat :=
+  let rec go (e : Expr) (acc : Nat) : Nat :=
+    if acc ≥ bound then acc else
+    if !e.hasFVar then acc + 1 else
+    match e with
+    | .app f a => go a (go f (acc + 1))
+    | .mdata _ b => go b acc
+    | .proj _ _ b => go b (acc + 1)
+    | _ => acc + 1
+  go e 0
+
+open Lean Elab Tactic Meta in
+/-- After `rv_cut`: big register values (and stored values in `cut_mem`) become fresh variables `cv_k` with
+`cvdef_k : value = cv_k` kept aside (not used by the step simp), so the goal stays small. Undo with `subst_vars`. -/
+def rvAbstractValues (bound : Nat := 25) : TacticM Unit := withMainContext do
+  let lctx ← getLCtx
+  let cuts := lctx.foldl (init := #[]) fun acc d =>
+    if !d.isImplementationDetail && d.userName.toString.startsWith "cut_r" || d.userName == `cut_mem then
+      acc.push d else acc
+  let mut next := 0
+  for d in lctx do
+    let n := d.userName.toString
+    if n.startsWith "cv_" then
+      if let some k := (n.drop 3).toNat? then next := max next (k + 1)
+  let mut cands : Array Expr := #[]
+  for d in cuts do
+    let ty ← instantiateMVars d.type
+    let_expr Eq _ _ rhs := ty | continue
+    if d.userName == `cut_mem then
+      let ref ← IO.mkRef (#[] : Array Expr)
+      forEachExpr rhs fun sub => do
+        if sub.isAppOfArity ``write 4 then
+          let v := sub.getArg! 2
+          if exprSizeUpTo v bound ≥ bound && !v.hasLooseBVars then ref.modify (·.push v)
+      for v in ← ref.get do
+        unless cands.contains v do cands := cands.push v
+    else if exprSizeUpTo rhs bound ≥ bound then
+      unless cands.contains rhs do cands := cands.push rhs
+  let locs := cuts.map fun d => mkIdent d.userName
+  for e in cands do
+    let es ← Term.exprToSyntax e
+    let v := mkIdent (Name.mkSimple s!"cv_{next}")
+    let h := mkIdent (Name.mkSimple s!"cvdef_{next}")
+    next := next + 1
+    evalTactic (← `(tactic| generalize $h:ident : $es = $v:ident at $locs*))
+
+open Lean Elab Tactic Meta in
+/-- `rv_cut`: in a goal `∃ m s', run m X = some s' ∧ …`, replaces the (grown) state term `X` by a fresh state with
+facts `cut_pc`, `cut_mem`, `cut_r1 … cut_r31` giving its PC, memory and registers in normal form (in terms of the
+start state). Later `rv_steps` use them, so the cost of a step no longer grows with the number of steps taken.
+Facts of an earlier cut are consumed and cleared. -/
+elab "rv_cut" : tactic => withMainContext do
+  let g ← getMainGoal
+  let tgt ← instantiateMVars (← g.getType)
+  let some runX := tgt.find? fun e => e.isAppOfArity ``RV.run 2 && !(e.getArg! 1).hasLooseBVars
+    | throwError "rv_cut: no `run _ X` in the goal"
+  let X := runX.getArg! 1
+  let old := (← getLCtx).foldl (init := #[]) fun acc d =>
+    if !d.isImplementationDetail && d.userName.toString.startsWith "cut_" then acc.push d.userName else acc
+  let lhs (k : Nat) (S : Expr) : MetaM Expr :=
+    if k = 0 then mkAppM ``State.pc #[S] else if k = 1 then mkAppM ``State.mem #[S] else do
+      mkAppM ``State.getReg #[S, ← mkAppOptM ``OfNat.ofNat #[mkApp (mkConst ``BitVec) (mkNatLit 5),
+        mkRawNatLit (k - 1), none]]
+  let names := #["pc", "mem"] ++ (List.range 31).toArray.map fun i => s!"r{i + 1}"
+  -- new goal: ∀ S, S.pc = X.pc → S.mem = X.mem → S.getReg 1 = X.getReg 1 → … → G[S]; the right-hand sides are
+  -- then normalized by `simp` (with the facts of the previous cut)
+  let newTy ← withLocalDeclD `S (mkConst ``State) fun S => do
+    let mut body := tgt.replace fun e => if e == X then some S else none
+    for k in (List.range names.size).reverse do
+      body := mkForall `_ .default (← mkEq (← lhs k S) (← lhs k X)) body
+    mkForallFVars #[S] body
+  let m ← mkFreshExprSyntheticOpaqueMVar newTy
+  let mut prfs := #[]
+  for k in [0:names.size] do prfs := prfs.push (← mkEqRefl (← lhs k X))
+  g.assign (mkAppN m (#[X] ++ prfs))
+  let (_, g1) ← m.mvarId!.introN 1 [`S]
+  let tmp := names.map fun n => Name.mkSimple s!"cutnew_{n}"
+  let (_, g2) ← g1.introN names.size tmp.toList
+  replaceMainGoal [g2]
+  let oldL ← old.mapM fun n => `(Lean.Parser.Tactic.simpLemma| $(mkIdent n):ident)
+  let locs := tmp.map mkIdent
+  evalTactic (← `(tactic| simp (config := { implicitDefEqProofs := false }) only [rv_state, reduceRSet,
+    BitVec.reduceAdd, $oldL,*] at $locs*))
+  withMainContext do
+    let g ← getMainGoal
+    let mut g := g
+    for n in old do
+      if let some d := (← g.getDecl).lctx.findFromUserName? n then g ← g.tryClear d.fvarId
+    for (t, n) in tmp.zip names do
+      if let some d := (← g.getDecl).lctx.findFromUserName? t then g ← g.rename d.fvarId (Name.mkSimple s!"cut_{n}")
+    replaceMainGoal [g]
+  rvAbstractValues
 
 /-- `CodeAt S a code` for a state `S` built from one where `hc : CodeAt s a code` holds (through register writes,
 jumps, RAM stores and returned calls). -/
@@ -354,5 +476,24 @@ macro_rules
     `(tactic| (
       intro a ha
       simp (disch := rv_disch with $xs',*) only [set_mem, jump_mem, next_mem, store_mem, write_outside, $xs,*]))
+
+/-- A conditional branch, stepped by hand (`rv_steps` cannot decide a condition on symbolic values, and its
+automatic side conditions loop on some backward branches): `with hpc, h₁, …` facts to decide it. -/
+syntax "rv_branch_taken" " with " ident ("," term)* : tactic
+macro_rules
+  | `(tactic| rv_branch_taken with $hpc:ident $[, $xs]*) => `(tactic| (
+    apply run_of_step
+    rv_step_simp with $hpc
+    rw [exec_branch_t _ _ _ _ _ (by rv_regs; first | decide | simp only [$[$xs:term],*]; done)
+      (by rv_regs; first | (rw [$hpc:ident]; bv_omega) | bv_omega)]
+    simp only [Option.elim_some]))
+
+syntax "rv_branch_not_taken" " with " ident ("," term)* : tactic
+macro_rules
+  | `(tactic| rv_branch_not_taken with $hpc:ident $[, $xs]*) => `(tactic| (
+    apply run_of_step
+    rv_step_simp with $hpc
+    rw [exec_branch_f _ _ _ _ _ (by rv_regs; first | decide | simp only [$[$xs:term],*]; done)]
+    simp only [Option.elim_some]))
 
 end RV

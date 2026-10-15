@@ -55,11 +55,11 @@ theorem mul_split (a b : Word) (ha : a.toNat ≤ P) (hb : b.toNat ≤ P) :
   rw [hor _ _ (by rw [h2]; omega) (by rw [h3]; omega), h1, h2, h3]
   omega
 
-/-- `mul_mod` at any address `A`, with `add_mod` where its tail call goes (`A - 0xc4`). -/
-theorem mul_mod_impl (A : Word) (hlow : 0xc4 ≤ A.toNat) :
-    ImplementsAt A Code.mul_mod [(A + 0xffffff3c#32, Code.add_mod)] 16 mulModPost := by
+/-- `mul_mod` at any address `A`, with `add_mod` where its tail call goes (`A - 0x34`). -/
+theorem mul_mod_impl (A : Word) (hlow : 0x34 ≤ A.toNat) :
+    ImplementsAt A Code.mul_mod [(A + 0xffffffcc#32, Code.add_mod)] 16 mulModPost := by
   intro s hentry hcallees hcall
-  have hadd : CodeAt s (A + 0xffffff3c#32) Code.add_mod := hcallees (A + 0xffffff3c#32, Code.add_mod) (by simp)
+  have hadd : CodeAt s (A + 0xffffffcc#32) Code.add_mod := hcallees (A + 0xffffffcc#32, Code.add_mod) (by simp)
   clear hcallees
   rw [Call, hentry] at hcall
   rv_start Code.mul_mod hcall

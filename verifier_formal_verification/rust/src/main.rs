@@ -2,27 +2,30 @@
 #![no_std]
 #![no_main]
 
-/// PoC input convention (Airbender reads input via CSR 0x7c0; we start without CSRs):
-/// the input word is the only word of .bss, which is otherwise zero (Airbender zero-initialises RAM).
+mod bb;
+
+/// PoC input convention (Airbender reads input via CSR 0x7c0; we start without CSRs): the input words are the only
+/// .bss, which is otherwise zero (Airbender zero-initialises RAM): a Mersenne31 element `x`, then a BabyBear Ext4
+/// element `y` (4 canonical limbs, `field` crate order).
 #[unsafe(no_mangle)]
-static mut INPUT: u32 = 0;
+static mut INPUT: [u32; 5] = [0; 5];
 
 #[unsafe(no_mangle)]
 #[inline(never)]
-pub extern "C" fn inc(x: u32) -> u32 {
+pub extern "C" fn u32_inc(x: u32) -> u32 {
     x.wrapping_add(1)
 }
 
 #[unsafe(no_mangle)]
 #[inline(never)]
-pub extern "C" fn double(x: u32) -> u32 {
+pub extern "C" fn u32_double(x: u32) -> u32 {
     x.wrapping_mul(2)
 }
 
 #[unsafe(no_mangle)]
 #[inline(never)]
-pub extern "C" fn combine(x: u32) -> u32 {
-    inc(x).wrapping_add(double(x))
+pub extern "C" fn u32_combine(x: u32) -> u32 {
+    u32_inc(x).wrapping_add(u32_double(x))
 }
 
 /// Mersenne31 field arithmetic, as in zksync-airbender `field/src/ops.rs` (generic, non-`use_division` kernels).
@@ -31,7 +34,7 @@ const P: u32 = (1 << 31) - 1;
 
 #[unsafe(no_mangle)]
 #[inline(never)]
-pub extern "C" fn add_mod(a: u32, b: u32) -> u32 {
+pub extern "C" fn m31_add(a: u32, b: u32) -> u32 {
     let mut sum = a.wrapping_add(b);
     let msb = sum & (1 << 31);
     sum ^= msb;
@@ -41,22 +44,22 @@ pub extern "C" fn add_mod(a: u32, b: u32) -> u32 {
 
 #[unsafe(no_mangle)]
 #[inline(never)]
-pub extern "C" fn mul_mod(a: u32, b: u32) -> u32 {
+pub extern "C" fn m31_mul(a: u32, b: u32) -> u32 {
     let product = (a as u64) * (b as u64);
     let product_low = (product as u32) & P;
     let product_high = (product >> 31) as u32;
-    add_mod(product_low, product_high)
+    m31_add(product_low, product_high)
 }
 
 /// Horner: ((c[n-1] x + c[n-2]) x + ...) x + c[0].
 #[unsafe(no_mangle)]
 #[inline(never)]
-pub extern "C" fn poly_eval(coeffs: *const u32, n: u32, x: u32) -> u32 {
+pub extern "C" fn m31_poly_eval(coeffs: *const u32, n: u32, x: u32) -> u32 {
     let mut acc = 0u32;
     let mut i = n;
     while i != 0 {
         i -= 1;
-        acc = add_mod(mul_mod(acc, x), unsafe { coeffs.add(i as usize).read() });
+        acc = m31_add(m31_mul(acc, x), unsafe { coeffs.add(i as usize).read() });
     }
     acc
 }
@@ -74,6 +77,24 @@ static COEFFS: [u32; N] = {
     c
 };
 
+const N4: usize = 32;
+
+/// Fixed Ext4 coefficients (.rodata, Montgomery form): c_i = (i + 1, 2 i + 3, i^2, 7) (canonical limbs).
+static COEFFS4: [bb::Ext4; N4] = {
+    let z = bb::Ext2 { c0: 0, c1: 0 };
+    let mut c = [bb::Ext4 { c0: z, c1: z }; N4];
+    let mut i = 0;
+    while i < N4 {
+        let k = i as u32;
+        c[i] = bb::Ext4 {
+            c0: bb::Ext2 { c0: bb::new_ct(k + 1), c1: bb::new_ct(2 * k + 3) },
+            c1: bb::Ext2 { c0: bb::new_ct(k * k), c1: bb::new_ct(7) },
+        };
+        i += 1;
+    }
+    c
+};
+
 #[unsafe(link_section = ".init.rust")]
 #[unsafe(export_name = "_start_rust")]
 unsafe extern "C" fn start_rust() -> ! {
@@ -83,8 +104,16 @@ unsafe extern "C" fn start_rust() -> ! {
 #[inline(never)]
 fn main() -> ! {
     riscv_common::boot_sequence::init();
-    let x = unsafe { core::ptr::read_volatile(&raw const INPUT) };
-    let c = combine(x);
-    let p = poly_eval(COEFFS.as_ptr(), N as u32, x);
-    riscv_common::zksync_os_finish_success(&[c, p, 0, 0, 0, 0, 0, 0])
+    let input = unsafe { core::ptr::read_volatile(&raw const INPUT) };
+    let x = input[0];
+    let c = u32_combine(x);
+    let p = m31_poly_eval(COEFFS.as_ptr(), N as u32, x);
+    let y = bb::Ext4 {
+        c0: bb::Ext2 { c0: bb::new(input[1]), c1: bb::new(input[2]) },
+        c1: bb::Ext2 { c0: bb::new(input[3]), c1: bb::new(input[4]) },
+    };
+    let mut e = y;
+    bb::ext4_horner(&mut e, COEFFS4.as_ptr(), N4 as u32, &y);
+    let (e0, e1, e2, e3) = (bb::to_u32(e.c0.c0), bb::to_u32(e.c0.c1), bb::to_u32(e.c1.c0), bb::to_u32(e.c1.c1));
+    riscv_common::zksync_os_finish_success(&[c, p, e0, e1, e2, e3, 0, 0])
 }

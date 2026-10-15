@@ -3,7 +3,7 @@
 # Files whose content is unchanged are not touched, so only the proofs of changed blocks are rebuilt.
 set -e
 cd "$(dirname "$0")/.."
-lake build Image Human.RV32 >/dev/null
+lake build Image ImageMop Human.RV32 >/dev/null
 out=$(mktemp -d)
 lake env lean gen/Words.lean | awk -v d="$out" '/^=== .* ===$/ { f = d "/" $2 ".lean"; next } { print > f }'
 mkdir -p slop/Slop/RV/Code
