@@ -26,6 +26,7 @@ def blocks : List (String × Nat × Nat) :=
    ("ext4_mul_add", Image.ext4_mul_add, Image.ext4_mul_add_size),
    ("ext4_horner", Image.ext4_horner, Image.ext4_horner_size),
    ("ext4_poly", Image.ext4_poly, Image.ext4_poly_size),
+   ("blake2s_compress", Image.blake2s_compress, Image.blake2s_compress_size),
    ("finish_success", Image.finish_success, Image.finish_success_size),
    ("finish_success_extended", Image.finish_success_extended, Image.finish_success_extended_size),
    ("init", Image.init, Image.init_size), ("memcpy", Image.memcpy, Image.memcpy_size),
@@ -43,6 +44,7 @@ def blocksMop : List (String × Nat × Nat) :=
    ("ext4_mul_add", ImageMop.ext4_mul_add, ImageMop.ext4_mul_add_size),
    ("ext4_horner", ImageMop.ext4_horner, ImageMop.ext4_horner_size),
    ("ext4_poly", ImageMop.ext4_poly, ImageMop.ext4_poly_size),
+   ("blake2s_compress", ImageMop.blake2s_compress, ImageMop.blake2s_compress_size),
    ("finish_success", ImageMop.finish_success, ImageMop.finish_success_size),
    ("finish_success_extended", ImageMop.finish_success_extended, ImageMop.finish_success_extended_size),
    ("init", ImageMop.init, ImageMop.init_size), ("memcpy", ImageMop.memcpy, ImageMop.memcpy_size),
@@ -55,6 +57,9 @@ def hex8 (w : Word) : String :=
 
 /-- Blocks that are data, not code: no `decode` lemmas. -/
 def dataBlocks : List String := ["COEFFS", "COEFFS4"]
+
+/-- Blocks proven only by the symbolic executor (`sym_block`), which decodes in the kernel: no `decode` lemmas. -/
+def symBlocks : List String := ["blake2s_compress"]
 
 def emit (n : String) (code : List Word) (data : Bool) : IO Unit := do
   IO.println s!"=== {n} ==="
@@ -69,8 +74,8 @@ def emit (n : String) (code : List Word) (data : Bool) : IO Unit := do
 
 #eval do
   for (n, a, sz) in blocks do
-    emit n (codeOf Image.bytes a sz) (dataBlocks.contains n)
+    emit n (codeOf Image.bytes a sz) (dataBlocks.contains n || symBlocks.contains n)
   for (n, a, sz) in blocksMop do
     let code := codeOf ImageMop.bytes a sz
     let shared := blocks.any fun (n', a', sz') => n' == n && codeOf Image.bytes a' sz' == code
-    unless shared do emit (n ++ "_mop") code (dataBlocks.contains n)
+    unless shared do emit (n ++ "_mop") code (dataBlocks.contains n || symBlocks.contains n)

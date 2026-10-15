@@ -91,7 +91,9 @@ theorem mm_raw1 (x : Word) :
 /-- The branch-free select, mask on the right. -/
 theorem mask_sel' (c : Bool) (k : Word) :
     k &&& (0#32 - (if c = true then (1 : Word) else 0)) = if c = true then k else 0 := by
-  cases c <;> simp only [Bool.false_eq_true, ↓reduceIte] <;> bv_decide
+  cases c <;> simp only [Bool.false_eq_true, ↓reduceIte]
+  · rw [show (0#32 - 0 : Word) = 0#32 from rfl, BitVec.and_zero]; rfl
+  · rw [show (0#32 - 1 : Word) = BitVec.allOnes 32 from rfl, BitVec.and_allOnes]
 
 /-! Normal forms of the Montgomery constants' products (the DAG orders commutative arguments by node id). -/
 theorem mulK_left (x : Word) : x * 2013265919#32 = 2013265919#32 * x := BitVec.mul_comm _ _
@@ -105,7 +107,9 @@ theorem hi_mh_comm (z w : Word) :
 /-- The branch-free select `x & ([c] - 1)` (`to_u32`'s correction). -/
 theorem and_sel (c : Bool) (x : Word) :
     x &&& ((if c = true then (1 : Word) else 0) + 4294967295#32) = if c = true then 0 else x := by
-  cases c <;> simp only [Bool.false_eq_true, ↓reduceIte] <;> bv_decide
+  cases c <;> simp only [Bool.false_eq_true, ↓reduceIte]
+  · rw [show ((0 : Word) + 4294967295#32) = BitVec.allOnes 32 from rfl, BitVec.and_allOnes]
+  · rw [show ((1 : Word) + 4294967295#32) = 0#32 from rfl, BitVec.and_zero]; rfl
 
 /-- A raw Montgomery product node: `T < 2p ∧ T ≡ xy·2^-32` (goal after `sym_unfold`; `y < p` in context). -/
 macro "mm_cluster" : tactic => `(tactic| (

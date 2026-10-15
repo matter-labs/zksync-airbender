@@ -121,7 +121,7 @@ def symDefs (x : TSyntax `ident) (words : Term) : CommandElabM Unit := do
     | l :: rest => rest.foldlM (fun acc c => mkAppM ``HAppend.hAppend #[c, acc]) l
   liftCoreM do
     addDef (full ++ `instrs) listI instrsE
-    addDef (full ++ `σ) stT prev
+    addDef (full ++ `σ) stT (toExpr σ)  -- flat: lookups in later proofs do not walk the chunks' appends
   let runPf ← liftTermElabM do
     match runs.toList.reverse with
     | [] => mkAppM ``rfl #[← mkAppM ``Option.some #[Lean.mkConst ``RV.Sym.initState]]
@@ -197,6 +197,19 @@ elab_rules : tactic
     g ← g.replaceTargetEq r.eNew r.eqProof
   Tactic.replaceMainGoal [g]
   Tactic.evalTactic (← `(tactic| simp only [RV.Sym.Tree.eval]))
+
+/-- Replaces every `Pool.val c p i` in the goal by a fresh variable (after `sym_unfold`: the cut values become
+atoms, so that `simp` does not look into the pool). -/
+elab "sym_generalize" : tactic => Tactic.withMainContext do
+  let g ← Tactic.getMainGoal
+  let tgt ← instantiateMVars (← g.getType)
+  let mut seen : Array Expr := #[]
+  for t in collectVals tgt #[] do
+    unless seen.contains t do seen := seen.push t
+  -- also open terms (`Pool.val c p i` with `c` a variable): `collectVals` keeps those with closed `p`, `i`
+  let args := seen.map fun e => { expr := e : GeneralizeArg }
+  let (_, g') ← g.generalize args
+  Tactic.replaceMainGoal [g']
 
 /-- The side goals of `returnsW_of_sym` about regions (`hR`, `hA`, `hdst`): unfolded to linear arithmetic over the
 initial registers, for `omega` with the caller's hypotheses. -/

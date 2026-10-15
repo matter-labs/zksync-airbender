@@ -10,6 +10,10 @@ mod bb;
 #[unsafe(no_mangle)]
 static mut INPUT: [u32; 5] = [0; 5];
 
+/// The Blake2s evaluator (state, message block, byte counter), zero at start like all RAM.
+#[unsafe(no_mangle)]
+static mut BLAKE: blake2s_u32::DelegatedBlake2sState = unsafe { core::mem::zeroed() };
+
 #[unsafe(no_mangle)]
 #[inline(never)]
 pub extern "C" fn u32_inc(x: u32) -> u32 {
@@ -109,6 +113,14 @@ pub extern "C" fn ext4_poly(out: &mut [u32; 4], y: &[u32; 4]) {
     *out = [bb::to_u32(e.c0.c0), bb::to_u32(e.c0.c1), bb::to_u32(e.c1.c0), bb::to_u32(e.c1.c1)];
 }
 
+/// One Blake2s compression with 7 rounds, as the verifier's transcript: `Blake2RoundFunctionEvaluator` (baseline,
+/// plain Rust in both images). `len_bytes` more input bytes, `last` marks the final block.
+#[unsafe(no_mangle)]
+#[inline(never)]
+pub extern "C" fn blake2s_compress(st: &mut blake2s_u32::DelegatedBlake2sState, len_bytes: u32, last: bool) {
+    unsafe { st.run_round_function_with_byte_len::<true>(len_bytes as usize, last) }
+}
+
 #[unsafe(link_section = ".init.rust")]
 #[unsafe(export_name = "_start_rust")]
 unsafe extern "C" fn start_rust() -> ! {
@@ -124,5 +136,10 @@ fn main() -> ! {
     let p = m31_poly_eval(COEFFS.as_ptr(), N as u32, x);
     let mut e = [0u32; 4];
     ext4_poly(&mut e, &[input[1], input[2], input[3], input[4]]);
-    riscv_common::zksync_os_finish_success(&[c, p, e[0], e[1], e[2], e[3], 0, 0])
+    // Blake2s (7 rounds) of the 5 input words: one last block of 20 bytes (the evaluator in .bss: zero at start)
+    let st = unsafe { &mut *(&raw mut BLAKE) };
+    st.state = blake2s_u32::CONFIGURED_IV;
+    st.get_witness_buffer()[..5].copy_from_slice(&input);
+    blake2s_compress(st, 20, true);
+    riscv_common::zksync_os_finish_success(&[c, p, e[0], e[1], e[2], e[3], st.state[0], st.state[1]])
 }

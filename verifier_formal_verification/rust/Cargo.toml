@@ -7,6 +7,8 @@ edition = "2024"
 # The real Airbender boot: start.s, link.x/memory.x (32 MB RAM), init() (copies .rodata/.data to RAM), memcpy,
 # zksync_os_finish_success. As tools/gkr_verifier.
 riscv_common = { path = "../../riscv_common", features = ["boot_sequence", "ram_32mb_no_heap"] }
+# The verifier's Blake2s (no features on riscv32: the baseline implementation, plain Rust).
+blake2s_u32 = { path = "../../blake2s_u32" }
 
 [features]
 # BabyBear field ops via Airbender's field opcodes (mop.rr.N), as the real verifier (field: modular_ops +

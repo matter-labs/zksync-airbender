@@ -40,7 +40,7 @@ LEAN=../lean/image/$ns.lean; mkdir -p "$(dirname $LEAN)"
          return n }
        NF == 4 && $2 != "00000000" && ($3 == "T" || $3 == "t") && name($4) != "" {
          printf "def %s : Nat := 0x%s\ndef %s_size : Nat := 0x%s\n", name($4), $1, name($4), $2 }
-       NF == 4 && $2 != "00000000" && ($3 == "B" || $3 == "b") {
+       NF == 4 && $2 != "00000000" && ($3 == "B" || $3 == "b") && $4 !~ /^\./ {
          printf "def %s : Nat := 0x%s  -- .bss (RAM, zero at start)\ndef %s_size : Nat := 0x%s\n", $4, $1, $4, $2 }
        NF == 4 && $2 != "00000000" && ($3 == "R" || $3 == "r") {
          n = $4; if (n ~ /^_R/) sub(/.*3app[0-9]+/, "", n);
