@@ -12,7 +12,10 @@ use gpu_hash::keccak256::{
     gather_merkle_paths_partial_for_queries_single_coset, gather_tree_cap,
     partial_coset_tree_scratch_len, retained_layer_offset, Digest,
 };
-use gpu_ntt::proth120::{lde_coset, pack_hypercubes_to_monomials};
+use gpu_ntt::proth120::{
+    dispatch, has_reference_finish, lde_coset, lde_coset_slot, lde_finish_reference,
+    pack_hypercubes_to_monomials, CosetSource, ScaleArgs,
+};
 use gpu_ops::powers::get_powers_by_val;
 use gpu_prover_context::ProverContext;
 
@@ -343,11 +346,13 @@ impl PackedCosetRecomputeOracle<PR> {
             .cap
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn recompute_into(
         monomials: &DeviceSlice<PR>,
         offsets: &DeviceSlice<PR>,
         log_packed: u32,
         packed_columns: usize,
+        cfg: &PackedCommitConfig,
         coset: u32,
         dst: &mut DeviceSlice<PR>,
         context: &ProverContext,
@@ -368,14 +373,32 @@ impl PackedCosetRecomputeOracle<PR> {
             len,
             "PackedCosetRecomputeOracle: recompute_coset destination length mismatch"
         );
+        let ctx = context.proth120_ntt_device_context();
+        let stream = context.get_exec_stream();
+        let plan = dispatch(
+            log_packed,
+            packed_columns,
+            cfg.log_values_per_leaf,
+            cfg.skip_bottom,
+        )
+        .and_then(|shape| shape.prefix)
+        .filter(has_reference_finish);
+        if let Some(plan) = plan {
+            let scale = ScaleArgs {
+                coset: CosetSource::Constant(coset),
+                log_domain: log_packed + cfg.log_lde_factor,
+            };
+            lde_coset_slot(ctx, monomials, dst, packed_columns, &plan, scale, stream)?;
+            return lde_finish_reference(ctx, dst, packed_columns, &plan, stream);
+        }
         let input = DeviceMatrix::new(monomials, rows);
         let mut output = DeviceMatrixMut::new(dst, rows);
         lde_coset(
-            context.proth120_ntt_device_context(),
+            ctx,
             &input,
             &mut output,
             &offsets[coset as usize..coset as usize + 1],
-            context.get_exec_stream(),
+            stream,
         )
     }
 
@@ -398,6 +421,7 @@ impl PackedCosetRecomputeOracle<PR> {
             &data.offsets,
             self.log_packed(),
             self.packed_columns,
+            &state.cfg,
             coset,
             dst,
             context,
@@ -433,6 +457,7 @@ impl PackedCosetRecomputeOracle<PR> {
                     &data.offsets,
                     self.log_packed(),
                     self.packed_columns,
+                    cfg,
                     k as u32,
                     &mut scratch,
                     context,

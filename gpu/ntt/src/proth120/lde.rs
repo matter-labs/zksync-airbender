@@ -287,7 +287,7 @@ fn launch_transform_chunked<P: TransformPolicy>(
     Ok(())
 }
 
-pub(super) fn naturalize(
+pub(crate) fn naturalize(
     values: MutPtrAndStride<PR>,
     log_n: u32,
     cols: usize,

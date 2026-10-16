@@ -34,6 +34,24 @@ struct chunk_map {
 
 static_assert(sizeof(chunk_map) == 12);
 
+struct coset_scale {
+  const u32 *coset;
+  u32 k0;
+  u32 batched;
+  u32 log_domain;
+  u32 reserved;
+};
+
+static_assert(sizeof(coset_scale) == 24);
+
+DEVICE_FORCEINLINE u32 coset_scale_index(const coset_scale &s) { return (s.coset ? *s.coset : s.k0) + (s.batched ? blockIdx.z : 0); }
+
+// offset_k^row with offset_k = w_D^k = w_L^(k << (L - D)), natural coefficient index `row`.
+DEVICE_FORCEINLINE pr coset_scale_power(const proth120_twiddle_descriptor &d, const coset_scale &s, const u32 k, const u32 row) {
+  const u64 mask = (u64{1} << d.log_max_domain) - 1;
+  return pr_root_power(d, ((static_cast<u64>(k) * row) << (d.log_max_domain - s.log_domain)) & mask);
+}
+
 DEVICE_FORCEINLINE u32 chunk_block_y(const chunk_map &m) {
   return ((blockIdx.y / m.strip_blocks) << m.strip_domain_bits) | (m.strip_base + blockIdx.y % m.strip_blocks);
 }
@@ -85,9 +103,9 @@ DEVICE_FORCEINLINE void do_2_smem_stages(pr *smem_block, const P &policy) {
     __syncwarp();
 }
 
-template <int STAGES, bool NARROW, class P>
+template <int STAGES, bool NARROW, class P, bool SCALE = false>
 DEVICE_FORCEINLINE void nonfinal(pr_matrix_getter<ld_modifier::cg> gmem_in, pr_matrix_setter<st_modifier::cg> gmem_out, const P &policy, const u32 log_n,
-                                 const u32 start_stage, const chunk_map map) {
+                                 const u32 start_stage, const chunk_map map, const coset_scale scale = {}) {
   static_assert(!NARROW || STAGES == 5);
   constexpr int LOG_TILE_SIZE = 3;
   constexpr int TILE_SIZE = 1 << LOG_TILE_SIZE;
@@ -113,6 +131,14 @@ DEVICE_FORCEINLINE void nonfinal(pr_matrix_getter<ld_modifier::cg> gmem_in, pr_m
 #pragma unroll
   for (int i{0}, addr{lane_in_tile + tile_in_block * tile_gmem_stride}; i < VALS_PER_THREAD; i++, addr += exchg_region_size >> LOG_VALS_PER_THREAD)
     vals[i] = gmem_in.get_at_row(addr);
+  if constexpr (SCALE) {
+    const u32 k = coset_scale_index(scale);
+    if (k != 0) {
+#pragma unroll
+      for (int i{0}, addr{lane_in_tile + tile_in_block * tile_gmem_stride}; i < VALS_PER_THREAD; i++, addr += exchg_region_size >> LOG_VALS_PER_THREAD)
+        vals[i] = pr::mul(vals[i], coset_scale_power(policy.descriptor, scale, k, block_start + addr));
+    }
+  }
   if (start_stage == 0) {
     policy.exchg_0(vals[0], vals[2]);
     policy.exchg_0(vals[1], vals[3]);

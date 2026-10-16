@@ -2,12 +2,16 @@ pub mod context;
 pub mod hypercube;
 pub mod lde;
 pub mod pack;
-pub(crate) mod prefix;
+pub mod prefix;
 
 pub use context::{DeviceContext, TwiddleDescriptor};
 pub use hypercube::{hypercube_evals_to_monomials, update_eq_poly, EqSample};
 pub use lde::{convert_coset_leaves, convert_gathered_leaves, lde_coset, lde_cosets_batched};
 pub use pack::pack_hypercubes_to_monomials;
+pub use prefix::{
+    dispatch, has_reference_finish, lde_coset_slot, lde_finish_reference, ChunkPlan, CosetSource,
+    Dispatch, ScaleArgs,
+};
 
 use era_cudart::slice::DeviceSlice;
 use gpu_core::primitives::device_structures::DeviceMatrixChunkImpl;

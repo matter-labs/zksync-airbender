@@ -1,10 +1,111 @@
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
+use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
+use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
 use gpu_core::primitives::device_structures::{MutPtrAndStride, PtrAndStride};
 use gpu_core::primitives::field::PR;
 
-use super::lde::{ChunkMap, TransformPass, TransformPolicy, MAX_COLUMNS_PER_LAUNCH};
+use super::context::{DeviceContext, TwiddleDescriptor};
+use super::lde::{
+    naturalize, set_max_dynamic_smem, ChunkMap, DitPolicy, TransformPass, TransformPolicy,
+    MAX_COLUMNS_PER_LAUNCH,
+};
+use super::{validate_context_log, validate_disjoint, validate_slice};
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct CosetScale {
+    coset: *const u32,
+    k0: u32,
+    batched: u32,
+    log_domain: u32,
+    reserved: u32,
+}
+
+const _: () = {
+    assert!(core::mem::size_of::<CosetScale>() == 24);
+    assert!(core::mem::offset_of!(CosetScale, k0) == 8);
+    assert!(core::mem::offset_of!(CosetScale, log_domain) == 16);
+};
+
+cuda_kernel_signature_arguments_and_function!(
+    pub(crate) DitScaled,
+    inputs: PtrAndStride<PR>, outputs: MutPtrAndStride<PR>, descriptor: TwiddleDescriptor,
+    log_n: u32, start_stage: u32, map: ChunkMap, scale: CosetScale,
+);
+macro_rules! dit_scaled_kernel {
+    ($name:ident) => {
+        cuda_kernel_declaration!($name(
+            inputs: PtrAndStride<PR>, outputs: MutPtrAndStride<PR>, descriptor: TwiddleDescriptor,
+            log_n: u32, start_stage: u32, map: ChunkMap, scale: CosetScale,
+        ));
+    };
+}
+dit_scaled_kernel!(ab_pr_dit_nonfinal_5_stages_scaled_kernel);
+dit_scaled_kernel!(ab_pr_dit_nonfinal_6_stages_scaled_kernel);
+dit_scaled_kernel!(ab_pr_dit_nonfinal_7_stages_scaled_kernel);
+dit_scaled_kernel!(ab_pr_dit_nonfinal_8_stages_scaled_kernel);
+
+fn dit_scaled_function(stages: u32) -> DitScaledFunction {
+    DitScaledFunction(match stages {
+        5 => ab_pr_dit_nonfinal_5_stages_scaled_kernel,
+        6 => ab_pr_dit_nonfinal_6_stages_scaled_kernel,
+        7 => ab_pr_dit_nonfinal_7_stages_scaled_kernel,
+        8 => ab_pr_dit_nonfinal_8_stages_scaled_kernel,
+        _ => panic!("Proth120 prefix: no scaled first pass with {stages} stages"),
+    })
+}
+
+// Logical coset k of the scale offset_k = w_D^k: by value, from device memory (openings), or
+// k0 + the launch's column index when the columns of a launch are consecutive cosets.
+#[derive(Clone, Copy)]
+pub enum CosetSource<'a> {
+    Constant(u32),
+    Device(&'a DeviceSlice<u32>),
+    Batched { k0: u32 },
+}
+
+#[derive(Clone, Copy)]
+pub struct ScaleArgs<'a> {
+    pub coset: CosetSource<'a>,
+    pub log_domain: u32,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct FirstPassScale<'a> {
+    pub(crate) descriptor: TwiddleDescriptor,
+    pub(crate) scale: ScaleArgs<'a>,
+}
+
+impl ScaleArgs<'_> {
+    fn native(&self, column: usize) -> CosetScale {
+        let (coset, k0, batched) = match self.coset {
+            CosetSource::Constant(k) => (std::ptr::null(), k, 0),
+            CosetSource::Device(slot) => {
+                assert_eq!(
+                    slot.len(),
+                    1,
+                    "Proth120 prefix: device coset must be one u32"
+                );
+                (slot.as_ptr(), 0, 0)
+            }
+            CosetSource::Batched { k0 } => (
+                std::ptr::null(),
+                k0.checked_add(u32::try_from(column).unwrap())
+                    .expect("Proth120 prefix: batched coset overflow"),
+                1,
+            ),
+        };
+        CosetScale {
+            coset,
+            k0,
+            batched,
+            log_domain: self.log_domain,
+            reserved: 0,
+        }
+    }
+}
 
 pub(crate) const L2_CHUNK_BYTES: usize = 16 << 20;
 pub(crate) const MAX_TILE_BYTES: usize = 32 << 20;
@@ -47,7 +148,7 @@ impl PrefixPass {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ChunkPlan {
+pub struct ChunkPlan {
     pub(crate) log_n: u32,
     pub(crate) cols_per_chunk: usize,
     pub(crate) strips: u32,
@@ -57,7 +158,11 @@ pub(crate) struct ChunkPlan {
 }
 
 impl ChunkPlan {
-    pub(crate) fn stages(&self) -> u32 {
+    pub fn log_n(&self) -> u32 {
+        self.log_n
+    }
+
+    pub fn stages(&self) -> u32 {
         self.passes.iter().map(|p| p.stages).sum()
     }
 
@@ -167,15 +272,18 @@ pub(crate) fn chunk_plan(
     })
 }
 
+// Per-coset stage split of a packed or WHIR oracle: the L2-chunked prefix of a = log_n - r
+// stages, then suffix tiles of 2^skip_bottom components x 2^r values x all columns (Small: one
+// block per column when log_n <= 12).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Dispatch {
-    pub(crate) small: bool,
-    pub(crate) r: u32,
-    pub(crate) tile_bytes: usize,
-    pub(crate) tiles_per_coset: usize,
-    pub(crate) prefix: Option<ChunkPlan>,
-    pub(crate) prefix_working_set: usize,
-    pub(crate) suffix_working_set: usize,
+pub struct Dispatch {
+    pub small: bool,
+    pub r: u32,
+    pub tile_bytes: usize,
+    pub tiles_per_coset: usize,
+    pub prefix: Option<ChunkPlan>,
+    pub prefix_working_set: usize,
+    pub suffix_working_set: usize,
 }
 
 pub(crate) fn twiddle_bytes(log_max_domain: u32) -> usize {
@@ -192,12 +300,7 @@ pub(crate) fn subroot_bytes(log_n: u32, log_v: u32, skip_bottom: u32) -> usize {
     }
 }
 
-pub(crate) fn dispatch(
-    log_n: u32,
-    columns: usize,
-    log_v: u32,
-    skip_bottom: u32,
-) -> Option<Dispatch> {
+pub fn dispatch(log_n: u32, columns: usize, log_v: u32, skip_bottom: u32) -> Option<Dispatch> {
     if !(8..=26).contains(&log_n)
         || columns == 0
         || !(1..=4).contains(&log_v)
@@ -253,9 +356,18 @@ pub(crate) fn launch_prefix_chunked<P: TransformPolicy>(
     target: MutPtrAndStride<PR>,
     cols: usize,
     plan: &ChunkPlan,
+    first_pass_scale: Option<FirstPassScale>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     let group = plan.cols_per_chunk.min(MAX_COLUMNS_PER_LAUNCH);
+    let scaled = first_pass_scale.map(|first| {
+        let pass = plan.passes[0];
+        assert!(
+            pass.start == 0 && !pass.narrow,
+            "Proth120 prefix: the scaled pass must be a full first pass"
+        );
+        (first, dit_scaled_function(pass.stages))
+    });
     let output_source = PtrAndStride::new(target.ptr as *const PR, target.stride);
     let functions: Vec<_> = plan
         .passes
@@ -292,12 +404,152 @@ pub(crate) fn launch_prefix_chunked<P: TransformPolicy>(
                     stream,
                 );
                 let input = if pass.start == 0 { input } else { in_place };
-                function.launch(
-                    &config,
-                    &policy.arguments(input, output, plan.log_n, pass.start, map),
-                )?;
+                match &scaled {
+                    Some((first, function)) if pass.start == 0 => function.launch(
+                        &config,
+                        &DitScaledArguments::new(
+                            input,
+                            output,
+                            first.descriptor,
+                            plan.log_n,
+                            0,
+                            map,
+                            first.scale.native(column),
+                        ),
+                    )?,
+                    _ => function.launch(
+                        &config,
+                        &policy.arguments(input, output, plan.log_n, pass.start, map),
+                    )?,
+                }
             }
         }
     }
     Ok(())
+}
+
+fn validate_coset(scale: &ScaleArgs, log_n: u32, cosets: usize, log_max_domain: u32) {
+    assert!(
+        log_n <= scale.log_domain && scale.log_domain <= log_max_domain,
+        "Proth120 prefix: log_domain {} outside {log_n}..={log_max_domain}",
+        scale.log_domain
+    );
+    let limit = 1u64 << (scale.log_domain - log_n);
+    match scale.coset {
+        CosetSource::Constant(k) => assert!(
+            u64::from(k) < limit,
+            "Proth120 prefix: coset {k} out of range"
+        ),
+        CosetSource::Batched { k0 } => assert!(
+            u64::from(k0) + cosets as u64 <= limit,
+            "Proth120 prefix: batched cosets out of range"
+        ),
+        CosetSource::Device(_) => {}
+    }
+}
+
+// The first `plan.stages()` stages of the coset LDE of `cols` monomial columns of 2^log_n rows,
+// coefficient i scaled by offset_k^i in the first pass; output stays in the network's order.
+// With `CosetSource::Batched` the output columns are cosets k0.. of one monomial column.
+pub fn lde_coset_slot(
+    ctx: &DeviceContext,
+    monomials: &DeviceSlice<PR>,
+    prefix_out: &mut DeviceSlice<PR>,
+    cols: usize,
+    plan: &ChunkPlan,
+    scale: ScaleArgs,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let rows = 1usize << plan.log_n;
+    let len = cols
+        .checked_mul(rows)
+        .expect("Proth120 prefix: length overflow");
+    let batched = matches!(scale.coset, CosetSource::Batched { .. });
+    assert_eq!(
+        monomials.len(),
+        if batched { rows } else { len },
+        "Proth120 prefix: monomial length"
+    );
+    assert_eq!(prefix_out.len(), len, "Proth120 prefix: output length");
+    let input_range = validate_slice(monomials, "Proth120 prefix input");
+    let output_range = validate_slice(prefix_out, "Proth120 prefix output");
+    validate_disjoint(
+        &input_range,
+        &output_range,
+        "Proth120 prefix: input/output overlap",
+    );
+    validate_context_log(ctx, plan.log_n);
+    validate_coset(
+        &scale,
+        plan.log_n,
+        if batched { cols } else { 1 },
+        ctx.log_max_domain(),
+    );
+    launch_prefix_chunked(
+        &DitPolicy(ctx.descriptor()),
+        PtrAndStride::new(monomials.as_ptr(), if batched { 0 } else { rows }),
+        MutPtrAndStride::new(prefix_out.as_mut_ptr(), rows),
+        cols,
+        plan,
+        Some(FirstPassScale {
+            descriptor: ctx.descriptor(),
+            scale,
+        }),
+        stream,
+    )
+}
+
+// Reference completion of a prefix output: the remaining stages as one final pass, then the
+// natural-order permutation (the `NaturalEvaluations` layout of `lde_coset`).
+pub fn lde_finish_reference(
+    ctx: &DeviceContext,
+    values: &mut DeviceSlice<PR>,
+    cols: usize,
+    plan: &ChunkPlan,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let log_n = plan.log_n;
+    let start = plan.stages();
+    let stages = log_n - start;
+    assert!(
+        has_reference_finish(plan),
+        "Proth120 prefix: no final kernel for {stages} stages"
+    );
+    let rows = 1usize << log_n;
+    let len = cols
+        .checked_mul(rows)
+        .expect("Proth120 prefix: length overflow");
+    assert_eq!(values.len(), len, "Proth120 prefix: finish length");
+    validate_slice(values, "Proth120 prefix finish values");
+    validate_context_log(ctx, log_n);
+    let policy = DitPolicy(ctx.descriptor());
+    let function = policy.function(TransformPass::Final(stages));
+    let bytes = size_of::<PR>() << stages;
+    if stages >= 10 {
+        set_max_dynamic_smem(&function, bytes)?;
+    }
+    let target = MutPtrAndStride::new(values.as_mut_ptr(), rows);
+    let source = PtrAndStride::new(target.ptr as *const PR, rows);
+    for column in (0..cols).step_by(MAX_COLUMNS_PER_LAUNCH) {
+        let chunk = (cols - column).min(MAX_COLUMNS_PER_LAUNCH);
+        let offset = column * rows;
+        let mut config =
+            CudaLaunchConfig::basic((1u32 << start, chunk as u32), 1u32 << (stages - 2), stream);
+        config.dynamic_smem_bytes = bytes;
+        function.launch(
+            &config,
+            &policy.arguments(
+                PtrAndStride::new(unsafe { source.ptr.add(offset) }, rows),
+                MutPtrAndStride::new(unsafe { target.ptr.add(offset) }, rows),
+                log_n,
+                start,
+                ChunkMap::FULL,
+            ),
+        )?;
+    }
+    naturalize(target, log_n, cols, MAX_COLUMNS_PER_LAUNCH, stream)
+}
+
+pub fn has_reference_finish(plan: &ChunkPlan) -> bool {
+    [8, 10, 12].contains(&(plan.log_n - plan.stages()))
 }

@@ -14,7 +14,8 @@ use super::lde::{
 };
 use super::prefix::{
     chunk_plan, dispatch, launch_prefix_chunked, prefix_groups, subroot_bytes, twiddle_bytes,
-    ChunkPlan, PrefixPass, L2_CHUNK_BYTES, L2_WORKING_SET_BYTES, MAX_TILE_BYTES,
+    ChunkPlan, CosetSource, FirstPassScale, PrefixPass, ScaleArgs, L2_CHUNK_BYTES,
+    L2_WORKING_SET_BYTES, MAX_TILE_BYTES,
 };
 use super::DeviceContext;
 use crate::upstream::{domain_generator_for_size, Field};
@@ -461,6 +462,7 @@ fn prefix_case<P: TransformPolicy>(
         MutPtrAndStride::new(chunked.as_mut_ptr(), rows),
         cols,
         &plan,
+        None,
         stream,
     )
     .unwrap();
@@ -470,6 +472,7 @@ fn prefix_case<P: TransformPolicy>(
         MutPtrAndStride::new(reference.as_mut_ptr(), rows),
         cols,
         &full_grid(&plan),
+        None,
         stream,
     )
     .unwrap();
@@ -625,22 +628,155 @@ fn pr_prefix_profile_probe() {
         memory_set_async(input.transmute_mut(), 0, &stream).unwrap();
     }
     let policy = DitPolicy(ctx.descriptor());
-    for label in ["prefix.warmup", "prefix.probe"] {
+    let today = chunk_plan(log_n, &[(8, false), (7, false)], L2_CHUNK_BYTES).unwrap();
+    let variants = [
+        ("prefix.warmup", plan.clone()),
+        ("prefix.probe", plan.clone()),
+        ("prefix.full", full_grid(&plan)),
+        ("prefix.today_8_7", full_grid(&today)),
+    ];
+    let start = era_cudart::event::CudaEvent::create().unwrap();
+    let end = era_cudart::event::CudaEvent::create().unwrap();
+    for (label, variant) in &variants {
         let _range = scoped_range(Some("ab"), label);
-        launch_prefix_chunked(
-            &policy,
-            PtrAndStride::new(input.as_ptr(), rows),
-            MutPtrAndStride::new(output.as_mut_ptr(), rows),
-            cols,
-            &plan,
-            &stream,
-        )
-        .unwrap();
-        stream.synchronize().unwrap();
+        for iteration in 0..3 {
+            start.record(&stream).unwrap();
+            launch_prefix_chunked(
+                &policy,
+                PtrAndStride::new(input.as_ptr(), rows),
+                MutPtrAndStride::new(output.as_mut_ptr(), rows),
+                cols,
+                variant,
+                Some(FirstPassScale {
+                    descriptor: ctx.descriptor(),
+                    scale: ScaleArgs {
+                        coset: CosetSource::Constant(3),
+                        log_domain: 31,
+                    },
+                }),
+                &stream,
+            )
+            .unwrap();
+            end.record(&stream).unwrap();
+            end.synchronize().unwrap();
+            let ms = era_cudart::event::elapsed_time(&start, &end).unwrap();
+            println!(
+                "pr_prefix_profile_probe: {label} iteration {iteration}: {ms:.3} ms for {cols} x 2^{log_n} ({} passes, {} strips)",
+                variant.passes.len(),
+                variant.strips
+            );
+            if *label == "prefix.probe" {
+                break;
+            }
+        }
     }
-    println!(
-        "pr_prefix_profile_probe: n {log_n} x {cols} prefix {} ({} launches per column)",
-        groups_text(&plan),
-        plan.launches_per_column_group()
-    );
+}
+
+fn reference_plan(log_n: u32) -> ChunkPlan {
+    chunk_plan(log_n, &prefix_groups(log_n - 8).unwrap(), L2_CHUNK_BYTES).unwrap()
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+fn pr_lde_coset_slot_fused_scale_parity() {
+    use super::{lde_coset, lde_coset_slot, lde_cosets_batched, lde_finish_reference};
+    use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
+    let stream = CudaStream::create().unwrap();
+    let mut rng = StdRng::seed_from_u64(0x9120_3201);
+    for (log_max_domain, log_domain) in [(31, 31), (33, 33), (33, 31)] {
+        let ctx = DeviceContext::create(log_max_domain).unwrap();
+        let nu = domain_generator_for_size::<PR>(1u64 << log_domain);
+        for (log_n, cols) in [(13, 3), (15, 2), (23, 2), (25, 1)] {
+            let rows = 1usize << log_n;
+            let plan = reference_plan(log_n);
+            let monomials: Vec<PR> = (0..rows * cols)
+                .map(|_| PR::new(rng.random::<u128>() % PR::ORDER))
+                .collect();
+            let device_monomials = upload(&monomials);
+            let last = (1u32 << (log_domain - log_n)) - 1;
+            let mut reference = DeviceAllocation::<PR>::alloc(rows * cols).unwrap();
+            let mut candidate = DeviceAllocation::<PR>::alloc(rows * cols).unwrap();
+            let device_last = DeviceAllocation::<u32>::alloc(1).and_then(|mut d| {
+                memory_copy(&mut d, &[last])?;
+                Ok(d)
+            });
+            let device_last = device_last.unwrap();
+            for (k, source) in [
+                (0, CosetSource::Constant(0)),
+                (1, CosetSource::Constant(1)),
+                (last, CosetSource::Constant(last)),
+                (last, CosetSource::Device(&device_last)),
+            ] {
+                let offset = upload(&[nu.pow_u128(k as u128)]);
+                lde_coset(
+                    &ctx,
+                    &DeviceMatrix::new(&device_monomials, rows),
+                    &mut DeviceMatrixMut::new(&mut reference, rows),
+                    &offset,
+                    &stream,
+                )
+                .unwrap();
+                let scale = ScaleArgs {
+                    coset: source,
+                    log_domain,
+                };
+                lde_coset_slot(
+                    &ctx,
+                    &device_monomials,
+                    &mut candidate,
+                    cols,
+                    &plan,
+                    scale,
+                    &stream,
+                )
+                .unwrap();
+                lde_finish_reference(&ctx, &mut candidate, cols, &plan, &stream).unwrap();
+                assert!(
+                    download(&candidate, &stream) == download(&reference, &stream),
+                    "fused scale differs: L {log_max_domain} D {log_domain} n {log_n} k {k}"
+                );
+            }
+        }
+        let log_n = 13;
+        let rows = 1usize << log_n;
+        let plan = reference_plan(log_n);
+        let column: Vec<PR> = (0..rows)
+            .map(|_| PR::new(rng.random::<u128>() % PR::ORDER))
+            .collect();
+        let device_column = upload(&column);
+        let end = 1u32 << (log_domain - log_n);
+        for (k0, cosets) in [(0, 4usize), (end - 4, 4), (end - 131, 129)] {
+            let mut reference = DeviceAllocation::<PR>::alloc(rows * cosets).unwrap();
+            let mut candidate = DeviceAllocation::<PR>::alloc(rows * cosets).unwrap();
+            lde_cosets_batched(
+                &ctx,
+                &device_column,
+                log_domain,
+                k0..k0 + cosets as u32,
+                &mut reference,
+                &stream,
+            )
+            .unwrap();
+            let scale = ScaleArgs {
+                coset: CosetSource::Batched { k0 },
+                log_domain,
+            };
+            lde_coset_slot(
+                &ctx,
+                &device_column,
+                &mut candidate,
+                cosets,
+                &plan,
+                scale,
+                &stream,
+            )
+            .unwrap();
+            lde_finish_reference(&ctx, &mut candidate, cosets, &plan, &stream).unwrap();
+            assert!(
+                download(&candidate, &stream) == download(&reference, &stream),
+                "batched fused scale differs: L {log_max_domain} D {log_domain} k0 {k0}"
+            );
+        }
+        println!("pr_lde_coset_slot_fused_scale_parity: L {log_max_domain} D {log_domain}: n 13/15/23/25 cosets 0/1/last (constant + device) and batched (k0, cosets) (0, 4) (last-3, 4) (last-130, 129), 0 mismatches");
+    }
 }
