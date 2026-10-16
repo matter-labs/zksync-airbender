@@ -108,6 +108,45 @@ EXTERN __global__ void ab_keccak256_append_top_paths_kernel(const digest *roots,
   }
 }
 
+// Path layers 3..log_leaves-1 of the queries in coset *coset (an openings slot, gated by *gate), block = query: layers below
+// skip_bottom from the depth-3 nodes of the query's subtree (nodes[j >> 3] of the slot's coset), the rest from the coset's
+// retained tree retained_all[*coset * retained_stride + ...].
+EXTERN __launch_bounds__(128) __global__
+    void ab_keccak256_open_paths_kernel(const digest *nodes, const digest *retained_all, const u64 retained_stride, const u32 *coset, const u32 *gate,
+                                        const u32 *queries, const u32 log_lde, const u32 log_leaves, const u32 skip_bottom, const u32 depth, digest *paths) {
+  __shared__ digest subtree[128];
+  if (gate && !*gate)
+    return;
+  const u32 query = queries[blockIdx.x];
+  if (query >= (u64{1} << (log_leaves + log_lde)))
+    __trap();
+  if ((query & ((1u << log_lde) - 1)) != *coset)
+    return;
+  const u32 tid = threadIdx.x;
+  const u32 leaf = query >> log_lde;
+  digest *path = paths + static_cast<u64>(blockIdx.x) * depth;
+  const u32 width = 1u << (skip_bottom - 3);
+  for (u32 i = tid; i < width; i += blockDim.x)
+    subtree[i] = nodes[((leaf >> skip_bottom) << (skip_bottom - 3)) + i];
+  __syncthreads();
+  for (u32 layer = 3; layer < skip_bottom; layer++) {
+    const u32 count = 1u << (skip_bottom - layer);
+    if (tid == 0)
+      path[layer] = subtree[((leaf >> layer) & (count - 1)) ^ 1];
+    digest parent;
+    if (tid < count / 2)
+      parent = hash_node(subtree[2 * tid], subtree[2 * tid + 1]);
+    __syncthreads();
+    if (tid < count / 2)
+      subtree[tid] = parent;
+    __syncthreads();
+  }
+  const digest *retained = retained_all + static_cast<u64>(*coset) * retained_stride;
+  const u64 leaves = u64{1} << log_leaves;
+  for (u32 layer = skip_bottom + tid; layer < log_leaves; layer += blockDim.x)
+    path[layer] = retained[2 * (leaves >> skip_bottom) - 2 * (leaves >> layer) + ((leaf >> layer) ^ 1)];
+}
+
 // Distinct physical cosets of the queries in first-occurrence order: touched[s] (s < count), count, and active[s] = s < count
 // (inactive slots get touched 0). One block of 1,024 threads, thread = query.
 EXTERN __launch_bounds__(1024) __global__

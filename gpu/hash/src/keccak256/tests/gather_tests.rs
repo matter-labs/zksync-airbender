@@ -897,3 +897,31 @@ fn keccak256_gather_invalid_shape_rejected() {
     assert_eq!(download(&d_paths, SENTINEL, &stream), [SENTINEL; 14]);
     assert_eq!(download(&d_indexes, 0, &stream), [0xaaaa_aaaa; 2]);
 }
+
+// Codex T4.6 repro (cpi/T4.6/codex-open-paths-host-repro): h = 10, log_lde = 1, sb = 8, retained.len = 14 and
+// stride usize::MAX - 5 made (2^log_lde - 1) * stride + per_coset wrap to 1 and admitted the launch.
+#[test]
+fn cpu_keccak256_open_paths_rejects_retained_span_overflow() {
+    use super::super::gather::open_paths_depth;
+    assert_eq!(open_paths_depth(128, 14, 7, 1, 10, 8, 0, 1, 11), 11);
+    let result = catch_unwind(|| open_paths_depth(128, 14, usize::MAX - 5, 1, 10, 8, 0, 1, 11));
+    let payload = result.expect_err("overflowing retained span accepted");
+    let text = payload
+        .downcast_ref::<String>()
+        .map(String::as_str)
+        .or_else(|| payload.downcast_ref::<&str>().copied())
+        .unwrap();
+    assert!(text.contains("retained extent overflow"), "{text}");
+    for (retained_len, stride, message) in
+        [(13, 7, "retained_all holds"), (14, 6, "retained_all holds")]
+    {
+        let result =
+            catch_unwind(|| open_paths_depth(128, retained_len, stride, 1, 10, 8, 0, 1, 11));
+        let payload = result.expect_err(message);
+        let text = payload
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .unwrap_or("");
+        assert!(text.contains(message), "{text}");
+    }
+}
