@@ -39,8 +39,9 @@ struct Term<F, E> {
     /// the current point `rho^{2^s}`
     point: F,
     /// exponent of `point` w.r.t. the generator of the field's maximal
-    /// two-adic subgroup (`2^F::TWO_ADICITY`), kept exactly under squaring
-    exp: u64,
+    /// two-adic subgroup (`2^F::TWO_ADICITY`), kept exactly under squaring;
+    /// `u128` because Proth120's two-adicity is 120
+    exp: u128,
     /// the round's leaf, folded `s` times: evaluations of the current folded
     /// polynomial on `base^{2^s} * mu_{2^{k-s}}`, coset order bit-reversed
     values: Vec<E>,
@@ -78,8 +79,9 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> InDomainTerms<F
     /// A query at `query_domain_generator^query_index` in a query domain of
     /// size `2^query_domain_log2`, with weight `ch`.
     pub(crate) fn add(&mut self, point: F, query_index: usize, query_domain_log2: usize, ch: E) {
+        assert!(F::TWO_ADICITY < u128::BITS as usize);
         assert!(query_domain_log2 <= F::TWO_ADICITY);
-        let exp = (query_index as u64) << (F::TWO_ADICITY - query_domain_log2);
+        let exp = (query_index as u128) << (F::TWO_ADICITY - query_domain_log2);
         self.terms.push(Term {
             ch,
             factor: E::ONE,
@@ -132,12 +134,12 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> InDomainTerms<F
         for term in self.terms.iter_mut() {
             let shift = F::TWO_ADICITY - domain_log2;
             assert_eq!(
-                term.exp & ((1u64 << shift) - 1),
+                term.exp & ((1u128 << shift) - 1),
                 0,
                 "an in-domain point must lie in the current oracle's domain"
             );
             let e = term.exp >> shift;
-            let leaf_index = (e & ((1u64 << num_leaves_log2) - 1)) as usize;
+            let leaf_index = (e & ((1u128 << num_leaves_log2) - 1)) as usize;
             let natural_pos = (e >> num_leaves_log2) as usize;
             term.pos = bitreverse_index(natural_pos, k as u32);
             term.base_root = generator.pow(leaf_index as u32);
@@ -281,7 +283,7 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> InDomainTerms<F
             term.values.truncate(half);
             term.pos >>= 1;
             term.point.square();
-            term.exp = (term.exp << 1) & ((1u64 << F::TWO_ADICITY) - 1);
+            term.exp = (term.exp << 1) & ((1u128 << F::TWO_ADICITY) - 1);
             term.base_root.square();
             term.base_root_inv.square();
         }
@@ -453,5 +455,38 @@ mod tests {
             multilinear_coeffs_to_evals(&mut data, &base_root, &hp_inv, k, &mut a, &mut b);
             assert_eq!(data, evals, "k = {k}");
         }
+    }
+
+    /// Proth120's two-adicity (120) puts a term's exponent
+    /// `query_index << (120 - query_domain_log2)` far beyond 64 bits at the
+    /// EVM-production geometry; the bookkeeping must survive a round of folding
+    /// and the next round's leaf lookup.
+    #[test]
+    fn proth120_in_domain_exponents_exceed_64_bits() {
+        use field::Proth120 as P;
+
+        // round 0: 2^31 RS domain (2^(22 + 4) packed message, LDE 32), 2 folding steps
+        let domain_log2 = 31;
+        let k = 2;
+        let query_domain_log2 = domain_log2 - k;
+        let query_generator = domain_generator_for_size::<P>(1u64 << query_domain_log2);
+        let mut terms = InDomainTerms::<P, P>::new();
+        for query_index in [0usize, 1, 0x1234_5678, (1 << query_domain_log2) - 1] {
+            let point = query_generator.pow(query_index as u32);
+            terms.add(point, query_index, query_domain_log2, P::ONE);
+        }
+        // `start_round` asserts that each term's leaf bookkeeping, derived from
+        // its exponent, reproduces its tracked point
+        terms.start_round(k, domain_log2, |_| (vec![P::ZERO; 1 << k], false));
+        for _ in 0..k {
+            terms.fold(&P::ONE);
+        }
+        // next round: an intermediate oracle on the same 2^31 domain, 4 folding steps
+        let k = 4;
+        terms.start_round(k, domain_log2, |_| (vec![P::ZERO; 1 << k], false));
+        for _ in 0..k {
+            terms.fold(&P::ONE);
+        }
+        assert_eq!(terms.len(), 4);
     }
 }
