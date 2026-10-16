@@ -107,7 +107,7 @@ template <u32 C, u32 V, u32 TREE_DEPTH, bool CONVERT> DEVICE_FORCEINLINE void le
     const u64 mask = (u64{1} << log_l) - 1;
     base_root_inv = pr_root_power_inv(d, ((k << (log_l - args.log_domain)) + (static_cast<u64>(leaf.j) << (log_l - args.log_n))) & mask);
   }
-  leaf_sponge<2 * C * VALUES> sponge;
+  leaf_sponge<2 * C * VALUES, true> sponge;
   static_for<C>([&](auto column) {
     pr x[VALUES];
 #pragma unroll
@@ -128,14 +128,14 @@ template <u32 C, u32 V, u32 TREE_DEPTH, bool CONVERT> DEVICE_FORCEINLINE void le
   leaves[tid] = sponge.finalize();
   __syncthreads();
   if (tid < 128)
-    layer_1[tid] = hash_node(leaves[2 * tid], leaves[2 * tid + 1]);
+    layer_1[tid] = hash_node<true>(leaves[2 * tid], leaves[2 * tid + 1]);
   __syncthreads();
   if (tid < 64)
-    layer_2[tid] = hash_node(layer_1[2 * tid], layer_1[2 * tid + 1]);
+    layer_2[tid] = hash_node<true>(layer_1[2 * tid], layer_1[2 * tid + 1]);
   __syncthreads();
   if (tid >= 32)
     return;
-  digest node = hash_node(layer_2[2 * tid], layer_2[2 * tid + 1]);
+  digest node = hash_node<true>(layer_2[2 * tid], layer_2[2 * tid + 1]);
 #pragma unroll
   for (u32 shift = 0; shift + 3 < TREE_DEPTH; shift++) {
     digest sibling;
@@ -143,7 +143,7 @@ template <u32 C, u32 V, u32 TREE_DEPTH, bool CONVERT> DEVICE_FORCEINLINE void le
     for (u32 word = 0; word < 8; word++)
       sibling.words[word] = __shfl_xor_sync(0xffffffffu, node.words[word], 1u << shift);
     if ((tid & ((2u << shift) - 1)) == 0)
-      node = hash_node(node, sibling);
+      node = hash_node<true>(node, sibling);
   }
   if (tid & ((1u << (TREE_DEPTH - 3)) - 1))
     return;

@@ -256,8 +256,8 @@ DEVICE_FORCEINLINE digest truncate_merkle_digest(digest value) {
   return value;
 }
 
-DEVICE_FORCEINLINE digest hash_node(const digest &left, const digest &right) {
-  sponge hash;
+template <bool ROUND_LOOP = false> DEVICE_FORCEINLINE digest hash_node(const digest &left, const digest &right) {
+  sponge_impl<ROUND_LOOP> hash;
 #pragma unroll
   for (unsigned lane = 0; lane < 4; lane++) {
     hash.state[lane] = byte_swap(left.words[2 * lane]) | (static_cast<u64>(byte_swap(left.words[2 * lane + 1])) << 32);
@@ -265,7 +265,7 @@ DEVICE_FORCEINLINE digest hash_node(const digest &left, const digest &right) {
   }
   hash.state[8] = 1;
   hash.state[16] = 0x8000000000000000ULL;
-  keccak_f1600(hash.state);
+  permute<ROUND_LOOP>(hash.state);
   return truncate_merkle_digest(digest_from_state(hash.state));
 }
 
@@ -283,14 +283,14 @@ template <u32 N, class F> DEVICE_FORCEINLINE void static_for(F &&f) {
 
 // Keccak-256 of a leaf preimage of LANES lanes (two per field element, `hash_leaf` order); the
 // lanes are absorbed by compile-time index so the state stays in registers.
-template <u32 LANES> struct leaf_sponge {
+template <u32 LANES, bool ROUND_LOOP = false> struct leaf_sponge {
   u64 state[25]{};
 
   template <u32 LANE> DEVICE_FORCEINLINE void absorb(const u64 value) {
     static_assert(LANE < LANES);
     state[LANE % 17] ^= value;
     if constexpr (LANE % 17 == 16)
-      keccak_f1600(state);
+      permute<ROUND_LOOP>(state);
   }
 
   template <u32 ELEMENT> DEVICE_FORCEINLINE void absorb_element(const proth120 &value) {
@@ -303,7 +303,7 @@ template <u32 LANES> struct leaf_sponge {
   DEVICE_FORCEINLINE digest finalize() {
     state[LANES % 17] ^= 1;
     state[16] ^= 0x8000000000000000ULL;
-    keccak_f1600(state);
+    permute<ROUND_LOOP>(state);
     return truncate_merkle_digest(digest_from_state(state));
   }
 };
