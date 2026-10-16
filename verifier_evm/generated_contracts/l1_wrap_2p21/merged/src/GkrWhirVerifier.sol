@@ -111,7 +111,7 @@ contract GkrWhirVerifier {
 
     // ── GKR→WHIR handoff (generated; shared with the WHIR half where the names coincide) ──────
     uint256 constant __TEMPLATE_WHIR_CAP            = 1 << 3; // base-oracle merkle cap size
-    uint256 constant __TEMPLATE_WHIR_BATCH_POW_BITS = 16; // batched_proximity_check_pow_bits
+    uint256 constant __TEMPLATE_WHIR_BATCH_POW_BITS = 18; // batched_proximity_check_pow_bits
     // Base-layer at-point claims (dense in layer0's calldata eval block): mem++wit = NUM_MEMWIT
     // cols, setup = NUM_SETUP cols. The merge folds each 2^PACK_LOG2-chunk by the PACK_LOG2
     // packing coords: NUM_MEMWIT -> MERGED_MW claims, NUM_SETUP -> SETUP_MERGED claims.
@@ -140,8 +140,8 @@ contract GkrWhirVerifier {
     // (inline assembly needs literal constants, so the literal lives in the declaration alone).
     // RS-codeword evaluation-domain generator and its inverse — a primitive 2^codeword_log2-th
     // root of unity (`Proth120::TWO_ADICITY_GENERATORS[codeword_log2]`).
-    uint256 constant __TEMPLATE_WHIR_GEN     = 0x0293B319B108C8A856BF8B8AB7799ECD;
-    uint256 constant __TEMPLATE_WHIR_GEN_INV = 0x0290A0CB0CAD8AC9DAFCDC73EBD1A223;
+    uint256 constant __TEMPLATE_WHIR_GEN     = 0x0582322E2975CE050731E45C6E78D027;
+    uint256 constant __TEMPLATE_WHIR_GEN_INV = 0x05D0D26315AE0BD27C5EE75729E33714;
     uint256 constant __TEMPLATE_WHIR_NUM_ROUNDS   = 5;
     uint256 constant __TEMPLATE_WHIR_NZ           = 21 + 3;  // WHIR eval-point coords = trace_log2 + pack_log2
     uint256 constant __TEMPLATE_WHIR_GCOUNT       = ((104 + 8 - 1) >> 3) + ((10 + 8 - 1) >> 3) + 1;  // gamma-batched base columns + 1
@@ -157,34 +157,34 @@ contract GkrWhirVerifier {
     uint256 constant __TEMPLATE_WHIR_SEED_PTR     = 16864;  // seed + in-place absorb scratch
     uint256 constant __TEMPLATE_WHIR_Z_PTR        = 17152;  // z: nz coords
     uint256 constant __TEMPLATE_WHIR_POW_PTR      = 17920;  // (scalar, running eq, coefficient) x numpow
-    uint256 constant __TEMPLATE_WHIR_ACC_PREF_PTR = 21760;
-    uint256 constant __TEMPLATE_WHIR_GAMMA_PTR    = 21792;  // gcount gamma powers
-    uint256 constant __TEMPLATE_WHIR_FOLD_CH_PTR  = 22304;  // max_fold challenges
-    uint256 constant __TEMPLATE_WHIR_HPO_PTR      = 22432;  // 2^(max_fold-1) high-power offsets
-    uint256 constant __TEMPLATE_WHIR_FBUF_PTR     = 22688;  // 2^max_fold folding buffer
-    uint256 constant __TEMPLATE_WHIR_LEAF_PTR     = 23200;  // leaf hashing scratch
-    uint256 constant __TEMPLATE_WHIR_REG_CD       = 23680;  // calldata cursor
-    uint256 constant __TEMPLATE_WHIR_REG_CLAIM    = 23712;
-    uint256 constant __TEMPLATE_WHIR_REG_NUMPOW   = 23744;
-    uint256 constant __TEMPLATE_WHIR_REG_ZIOFF    = 23776;
-    uint256 constant __TEMPLATE_WHIR_REG_CC       = 23808;
-    uint256 constant __TEMPLATE_WHIR_REG_CURDELIN = 23840;
+    uint256 constant __TEMPLATE_WHIR_ACC_PREF_PTR = 21184;
+    uint256 constant __TEMPLATE_WHIR_GAMMA_PTR    = 21216;  // gcount gamma powers
+    uint256 constant __TEMPLATE_WHIR_FOLD_CH_PTR  = 21728;  // max_fold challenges
+    uint256 constant __TEMPLATE_WHIR_HPO_PTR      = 21856;  // 2^(max_fold-1) high-power offsets
+    uint256 constant __TEMPLATE_WHIR_FBUF_PTR     = 22112;  // 2^max_fold folding buffer
+    uint256 constant __TEMPLATE_WHIR_LEAF_PTR     = 22624;  // leaf hashing scratch
+    uint256 constant __TEMPLATE_WHIR_REG_CD       = 23104;  // calldata cursor
+    uint256 constant __TEMPLATE_WHIR_REG_CLAIM    = 23136;
+    uint256 constant __TEMPLATE_WHIR_REG_NUMPOW   = 23168;
+    uint256 constant __TEMPLATE_WHIR_REG_ZIOFF    = 23200;
+    uint256 constant __TEMPLATE_WHIR_REG_CC       = 23232;
+    uint256 constant __TEMPLATE_WHIR_REG_CURDELIN = 23264;
     // GKR→WHIR handoff: the WHIR batching challenge, written by the GKR half's emit_gkr_mark.
-    uint256 constant __TEMPLATE_WHIR_HANDOFF_BATCHING_PTR = 23872;
+    uint256 constant __TEMPLATE_WHIR_HANDOFF_BATCHING_PTR = 23296;
     // cap regions (CAP*32 bytes each)
-    uint256 constant __TEMPLATE_WHIR_BCAP0_PTR    = 23904;  // witness base-oracle cap
-    uint256 constant __TEMPLATE_WHIR_BCAP1_PTR    = 24160;  // setup base-oracle cap
-    uint256 constant __TEMPLATE_WHIR_QCAP_PTR     = 24416;  // current query cap (rounds >= 1)
-    uint256 constant __TEMPLATE_WHIR_NCAP_PTR     = 24672;  // just-read intermediate cap
+    uint256 constant __TEMPLATE_WHIR_BCAP0_PTR    = 23328;  // witness base-oracle cap
+    uint256 constant __TEMPLATE_WHIR_BCAP1_PTR    = 23584;  // setup base-oracle cap
+    uint256 constant __TEMPLATE_WHIR_QCAP_PTR     = 23840;  // current query cap (rounds >= 1)
+    uint256 constant __TEMPLATE_WHIR_NCAP_PTR     = 24096;  // just-read intermediate cap
     // Per-round query drawing (matches prover `draw_query_bits`/`BitSource`):
     //   QIDX_BUF holds the drawn query indices (max_q words);
     //   DRAW_BUF holds the little-endian u32 words squeezed from the seed (one per slot).
-    uint256 constant __TEMPLATE_WHIR_QIDX_BUF_PTR = 24928;
-    uint256 constant __TEMPLATE_WHIR_DRAW_BUF_PTR = 25312;
+    uint256 constant __TEMPLATE_WHIR_QIDX_BUF_PTR = 24352;
+    uint256 constant __TEMPLATE_WHIR_DRAW_BUF_PTR = 24672;
     // do_final scratch: the plain-text tail is 2^RFIN monomials (MONO), then the tail absorb +
     // halving-fold scratch (FEVAL, 32 + 2^RFIN words).
-    uint256 constant __TEMPLATE_WHIR_MONO_PTR     = 25824;
-    uint256 constant __TEMPLATE_WHIR_FEVAL_PTR    = 29920;
+    uint256 constant __TEMPLATE_WHIR_MONO_PTR     = 25184;
+    uint256 constant __TEMPLATE_WHIR_FEVAL_PTR    = 29280;
 
     fallback(bytes calldata) external returns (bytes memory) {
         // The verified statement, read out of the MARK region once the assembly block has
@@ -2664,11 +2664,11 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             // `cb` = coset bits = log2(LDE factor) for this round's oracle tree.
             let fold, q, pow_bits, qib, vp, cb
             switch r
-            case 0 { fold := 1 q := 12 pow_bits := 30 qib := 30 vp := 2 cb := 7 }
-            case 1 { fold := 4 q := 11 pow_bits := 27 qib := 27 vp := 16 cb := 8 }
-            case 2 { fold := 4 q := 7 pow_bits := 30 qib := 27 vp := 16 cb := 12 }
-            case 3 { fold := 4 q := 6 pow_bits := 20 qib := 27 vp := 16 cb := 16 }
-            default { fold := 4 q := 5 pow_bits := 17 qib := 27 vp := 16 cb := 20 }
+            case 0 { fold := 1 q := 10 pow_bits := 25 qib := 32 vp := 2 cb := 9 }
+            case 1 { fold := 4 q := 9 pow_bits := 25 qib := 29 vp := 16 cb := 10 }
+            case 2 { fold := 4 q := 6 pow_bits := 30 qib := 29 vp := 16 cb := 14 }
+            case 3 { fold := 4 q := 5 pow_bits := 25 qib := 29 vp := 16 cb := 18 }
+            default { fold := 4 q := 4 pow_bits := 27 qib := 29 vp := 16 cb := 22 }
             // forge-lint: disable-next-line(incorrect-shift) — `shl(n, 1)` is `1 << n` (2^n), args are correct
             let idx_mask := sub(shl(qib, 1), 1)
 
@@ -2795,26 +2795,26 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
 //    13536 ..  16864  QTABLE (32 * 104 = 3328 B)
 //    16864 ..  17152  SEED_PTR (32 + (1 << 3) * 32 = 288 B)
 //    17152 ..  17920  Z_PTR (24 * 32 = 768 B)
-//    17920 ..  21760  POW_PTR (40 * 96 = 3840 B)
-//    21760 ..  21792  ACC_PREF_PTR (32 = 32 B)
-//    21792 ..  22304  GAMMA_PTR (16 * 32 = 512 B)
-//    22304 ..  22432  FOLD_CH_PTR (4 * 32 = 128 B)
-//    22432 ..  22688  HPO_PTR ((1 << 3) * 32 = 256 B)
-//    22688 ..  23200  FBUF_PTR ((1 << 4) * 32 = 512 B)
-//    23200 ..  23680  LEAF_PTR (15 * 32 = 480 B)
-//    23680 ..  23712  REG_CD (32 = 32 B)
-//    23712 ..  23744  REG_CLAIM (32 = 32 B)
-//    23744 ..  23776  REG_NUMPOW (32 = 32 B)
-//    23776 ..  23808  REG_ZIOFF (32 = 32 B)
-//    23808 ..  23840  REG_CC (32 = 32 B)
-//    23840 ..  23872  REG_CURDELIN (32 = 32 B)
-//    23872 ..  23904  HANDOFF_BATCHING_PTR (32 = 32 B)
-//    23904 ..  24160  BCAP0_PTR ((1 << 3) * 32 = 256 B)
-//    24160 ..  24416  BCAP1_PTR ((1 << 3) * 32 = 256 B)
-//    24416 ..  24672  QCAP_PTR ((1 << 3) * 32 = 256 B)
-//    24672 ..  24928  NCAP_PTR ((1 << 3) * 32 = 256 B)
-//    24928 ..  25312  QIDX_BUF_PTR (12 * 32 = 384 B)
-//    25312 ..  25824  DRAW_BUF_PTR (16 * 32 = 512 B)
-//    25824 ..  29920  MONO_PTR ((1 << 7) * 32 = 4096 B)
-//    29920 ..  34048  FEVAL_PTR (32 + (1 << 7) * 32 = 4128 B)
-//   heap end: 34048
+//    17920 ..  21184  POW_PTR (34 * 96 = 3264 B)
+//    21184 ..  21216  ACC_PREF_PTR (32 = 32 B)
+//    21216 ..  21728  GAMMA_PTR (16 * 32 = 512 B)
+//    21728 ..  21856  FOLD_CH_PTR (4 * 32 = 128 B)
+//    21856 ..  22112  HPO_PTR ((1 << 3) * 32 = 256 B)
+//    22112 ..  22624  FBUF_PTR ((1 << 4) * 32 = 512 B)
+//    22624 ..  23104  LEAF_PTR (15 * 32 = 480 B)
+//    23104 ..  23136  REG_CD (32 = 32 B)
+//    23136 ..  23168  REG_CLAIM (32 = 32 B)
+//    23168 ..  23200  REG_NUMPOW (32 = 32 B)
+//    23200 ..  23232  REG_ZIOFF (32 = 32 B)
+//    23232 ..  23264  REG_CC (32 = 32 B)
+//    23264 ..  23296  REG_CURDELIN (32 = 32 B)
+//    23296 ..  23328  HANDOFF_BATCHING_PTR (32 = 32 B)
+//    23328 ..  23584  BCAP0_PTR ((1 << 3) * 32 = 256 B)
+//    23584 ..  23840  BCAP1_PTR ((1 << 3) * 32 = 256 B)
+//    23840 ..  24096  QCAP_PTR ((1 << 3) * 32 = 256 B)
+//    24096 ..  24352  NCAP_PTR ((1 << 3) * 32 = 256 B)
+//    24352 ..  24672  QIDX_BUF_PTR (10 * 32 = 320 B)
+//    24672 ..  25184  DRAW_BUF_PTR (16 * 32 = 512 B)
+//    25184 ..  29280  MONO_PTR ((1 << 7) * 32 = 4096 B)
+//    29280 ..  33408  FEVAL_PTR (32 + (1 << 7) * 32 = 4128 B)
+//   heap end: 33408
