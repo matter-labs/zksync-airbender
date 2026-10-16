@@ -264,7 +264,9 @@ template <int R, int V, class P> DEVICE_FORCEINLINE void suffix_micro(const P &p
   constexpr int LOG_THREADS_PER_COMPONENT = R - 2;
   constexpr int THREADS_PER_COMPONENT = 1 << LOG_THREADS_PER_COMPONENT;
   constexpr int LOG_COMPONENTS = 10 - R;
+  constexpr int TWIDDLES = (1 << STAGES_DONE) - 1;
   __shared__ pr runs[1 << 10];
+  __shared__ pr twiddles[TWIDDLES << LOG_COMPONENTS];
   const u32 blocks_per_tile = (1u << args.skip_bottom) >> LOG_COMPONENTS;
   const u32 tile_in_batch = blockIdx.x / blocks_per_tile;
   const u32 component = threadIdx.x >> LOG_THREADS_PER_COMPONENT;
@@ -275,9 +277,16 @@ template <int R, int V, class P> DEVICE_FORCEINLINE void suffix_micro(const P &p
   const u32 column = blockIdx.y;
   const pr *run = args.prefix + blockIdx.z * args.prefix_coset_stride + column * args.prefix_column_stride + (static_cast<u64>(b) << R);
   pr *smem = runs + (component << R);
+  pr *table = twiddles + component * TWIDDLES;
 #pragma unroll
   for (int j = 0; j < 4; j++)
     smem[lane + j * THREADS_PER_COMPONENT] = load_cg(run + lane + j * THREADS_PER_COMPONENT);
+  if constexpr (P::USES_TWIDDLES) {
+    for (u32 i = lane; i < TWIDDLES; i += THREADS_PER_COMPONENT) {
+      const u32 t = 31 - __clz(i + 1);
+      table[i] = policy.twiddle((b << t) + i + 1 - (1u << t), -1);
+    }
+  }
   __syncthreads();
 #pragma unroll
   for (int t = 0; t < STAGES_DONE; t++) {
@@ -290,7 +299,10 @@ template <int R, int V, class P> DEVICE_FORCEINLINE void suffix_micro(const P &p
       const u32 i1 = i0 + (1u << log_half);
       pr x = smem[i0];
       pr y = smem[i1];
-      exchange(policy, x, y, (b << t) + z, -1);
+      if constexpr (P::USES_TWIDDLES)
+        policy.exchg(x, y, table[(1u << t) - 1 + z]);
+      else
+        policy.exchg_0(x, y);
       smem[i0] = x;
       smem[i1] = y;
     }
