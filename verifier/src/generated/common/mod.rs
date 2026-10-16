@@ -698,8 +698,13 @@ pub unsafe fn read_and_batch_leaf<I: NonDeterminismSource<BabyBearField>>(
     }
 }
 #[inline(always)]
-pub fn fold_whir_accumulator<const MAX_POW: usize>(
-    acc: &mut ::verifier_common::whir::WhirAccumulator<BabyBearExt4, MAX_POW>,
+pub fn fold_whir_accumulator<const MAX_POW: usize, const MAX_OOD: usize>(
+    acc: &mut ::verifier_common::whir::WhirAccumulator<
+        BabyBearField,
+        BabyBearExt4,
+        MAX_POW,
+        MAX_OOD,
+    >,
     alpha: BabyBearExt4,
     z_initial: &[BabyBearExt4],
 ) {
@@ -714,6 +719,13 @@ pub fn fold_whir_accumulator<const MAX_POW: usize>(
         field_ops::add_assign_product(&mut eq, &alpha_coeff, &zi);
         field_ops::mul_assign(&mut acc.z_initial_prefactor, &eq);
         acc.z_initial_idx += 1;
+    }
+    for entry in acc.base_pow_entries.as_mut_slice() {
+        let s = entry.current_scalar;
+        let mut eq = one_minus_alpha;
+        field_ops::add_assign_product_with_base(&mut eq, &alpha_coeff, &s);
+        field_ops::mul_assign(&mut entry.prefactor, &eq);
+        field_ops::square(&mut entry.current_scalar);
     }
     let n = acc.pow_entries.len();
     let mut i = 0;
@@ -730,8 +742,13 @@ pub fn fold_whir_accumulator<const MAX_POW: usize>(
     }
 }
 #[inline(always)]
-pub fn push_whir_pow_entry<const MAX_POW: usize>(
-    acc: &mut ::verifier_common::whir::WhirAccumulator<BabyBearExt4, MAX_POW>,
+pub fn push_whir_pow_entry<const MAX_POW: usize, const MAX_OOD: usize>(
+    acc: &mut ::verifier_common::whir::WhirAccumulator<
+        BabyBearField,
+        BabyBearExt4,
+        MAX_POW,
+        MAX_OOD,
+    >,
     current_scalar: BabyBearExt4,
     coefficient: BabyBearExt4,
 ) {
@@ -740,6 +757,24 @@ pub fn push_whir_pow_entry<const MAX_POW: usize>(
         prefactor: BabyBearExt4::ONE,
         coefficient,
     });
+}
+#[inline(always)]
+pub fn push_whir_base_pow_entry<const MAX_POW: usize, const MAX_OOD: usize>(
+    acc: &mut ::verifier_common::whir::WhirAccumulator<
+        BabyBearField,
+        BabyBearExt4,
+        MAX_POW,
+        MAX_OOD,
+    >,
+    current_scalar: BabyBearField,
+    coefficient: BabyBearExt4,
+) {
+    acc.base_pow_entries
+        .push(::verifier_common::whir::WhirPowEntry {
+            current_scalar,
+            prefactor: BabyBearExt4::ONE,
+            coefficient,
+        });
 }
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]

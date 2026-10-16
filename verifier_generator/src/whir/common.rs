@@ -47,6 +47,8 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
     let sub_coeff_one = MW::sub_assign_base(quote! { alpha_coeff }, MW::field_one());
     let fma_eq_zi = MW::add_assign_product(quote! { eq }, quote! { alpha_coeff }, quote! { zi });
     let mul_prefactor_eq = MW::mul_assign(quote! { acc.z_initial_prefactor }, quote! { eq });
+    let fma_eq_base_s =
+        MW::add_assign_product_with_base(quote! { eq }, quote! { alpha_coeff }, quote! { s });
     let fma_eq_s = MW::add_assign_product(quote! { eq }, quote! { alpha_coeff }, quote! { s });
     let mul_entry_prefactor_eq = MW::mul_assign(quote! { entry.prefactor }, quote! { eq });
     let square_current_scalar = MW::square(quote! { entry.current_scalar });
@@ -224,8 +226,8 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
         }
 
         #[inline(always)]
-        pub fn fold_whir_accumulator<const MAX_POW: usize>(
-            acc: &mut ::verifier_common::whir::WhirAccumulator<#quartic_struct, MAX_POW>,
+        pub fn fold_whir_accumulator<const MAX_POW: usize, const MAX_OOD: usize>(
+            acc: &mut ::verifier_common::whir::WhirAccumulator<#field_struct, #quartic_struct, MAX_POW, MAX_OOD>,
             alpha: #quartic_struct,
             z_initial: &[#quartic_struct],
         ) {
@@ -247,6 +249,15 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
                 acc.z_initial_idx += 1;
             }
 
+            // A base-field scalar remains in the base field under squaring.
+            for entry in acc.base_pow_entries.as_mut_slice() {
+                let s = entry.current_scalar;
+                let mut eq = one_minus_alpha;
+                #fma_eq_base_s;
+                #mul_entry_prefactor_eq;
+                field_ops::square(&mut entry.current_scalar);
+            }
+
             let n = acc.pow_entries.len();
             let mut i = 0;
             while i < n {
@@ -263,12 +274,25 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
         }
 
         #[inline(always)]
-        pub fn push_whir_pow_entry<const MAX_POW: usize>(
-            acc: &mut ::verifier_common::whir::WhirAccumulator<#quartic_struct, MAX_POW>,
+        pub fn push_whir_pow_entry<const MAX_POW: usize, const MAX_OOD: usize>(
+            acc: &mut ::verifier_common::whir::WhirAccumulator<#field_struct, #quartic_struct, MAX_POW, MAX_OOD>,
             current_scalar: #quartic_struct,
             coefficient: #quartic_struct,
         ) {
             acc.pow_entries.push(::verifier_common::whir::WhirPowEntry {
+                current_scalar,
+                prefactor: #quartic_one,
+                coefficient,
+            });
+        }
+
+        #[inline(always)]
+        pub fn push_whir_base_pow_entry<const MAX_POW: usize, const MAX_OOD: usize>(
+            acc: &mut ::verifier_common::whir::WhirAccumulator<#field_struct, #quartic_struct, MAX_POW, MAX_OOD>,
+            current_scalar: #field_struct,
+            coefficient: #quartic_struct,
+        ) {
+            acc.base_pow_entries.push(::verifier_common::whir::WhirPowEntry {
                 current_scalar,
                 prefactor: #quartic_one,
                 coefficient,

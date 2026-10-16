@@ -15,8 +15,8 @@
 use super::common::{
     compute_tree_index, draw_fresh_single_field_el, draw_single_field_el,
     eval_multilinear_with_monomial_tensor, fold_whir_accumulator, materialize_gamma_powers,
-    precompute_monomial_tensor, process_oracle_query, push_whir_pow_entry, read_reduced_field_el,
-    verify_whir_sumcheck_step,
+    precompute_monomial_tensor, process_oracle_query, push_whir_base_pow_entry,
+    push_whir_pow_entry, read_reduced_field_el, verify_whir_sumcheck_step,
 };
 use super::constants::*;
 use core::mem::MaybeUninit;
@@ -49,7 +49,12 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
     batching_challenge: BabyBearExt4,
     base_layer_claims: &[BabyBearExt4],
     z_initial: &[BabyBearExt4],
-    accumulator: &mut ::verifier_common::whir::WhirAccumulator<BabyBearExt4, MAX_POW_ENTRIES>,
+    accumulator: &mut ::verifier_common::whir::WhirAccumulator<
+        BabyBearField,
+        BabyBearExt4,
+        MAX_POW_ENTRIES,
+        { WHIR_FOLD_STEPS.len() },
+    >,
     nd_source: &mut I,
 ) -> Result<(BabyBearExt4, [u32; WHIR_CAP_WORDS]), E::Error> {
     unsafe {
@@ -154,9 +159,9 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
             field_ops::mul_assign_by_base(&mut folded, &BabyBearField::HALF);
             let mut query_point_base = extended_generator.pow(query_index as u32);
             query_point_base.exp_power_of_2(WHIR_FOLD_STEPS[0]);
-            push_whir_pow_entry(
+            push_whir_base_pow_entry(
                 accumulator,
-                <BabyBearExt4>::from_base(query_point_base),
+                query_point_base,
                 current_delinearization_challenge,
             );
             let mut t = folded;
@@ -195,7 +200,12 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: Err
     prev_oracle_cap: &[u32; WHIR_CAP_WORDS],
     round_idx: usize,
     z_initial: &[BabyBearExt4],
-    accumulator: &mut ::verifier_common::whir::WhirAccumulator<BabyBearExt4, MAX_POW_ENTRIES>,
+    accumulator: &mut ::verifier_common::whir::WhirAccumulator<
+        BabyBearField,
+        BabyBearExt4,
+        MAX_POW_ENTRIES,
+        { WHIR_FOLD_STEPS.len() },
+    >,
     nd_source: &mut I,
 ) -> Result<(BabyBearExt4, [u32; WHIR_CAP_WORDS]), E::Error> {
     unsafe {
@@ -302,9 +312,9 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: Err
                 eval_multilinear_with_monomial_tensor(leaf.as_slice(), monomial_weights.as_slice());
             let mut query_point_base = extended_generator.pow(query_index as u32);
             query_point_base.exp_power_of_2(fold_steps);
-            push_whir_pow_entry(
+            push_whir_base_pow_entry(
                 accumulator,
-                <BabyBearExt4>::from_base(query_point_base),
+                query_point_base,
                 current_delinearization_challenge,
             );
             let mut t = folded;
@@ -336,7 +346,12 @@ pub fn verify_final_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorC
     claim: BabyBearExt4,
     prev_oracle_cap: &[u32; WHIR_CAP_WORDS],
     z_initial: &[BabyBearExt4],
-    accumulator: &mut ::verifier_common::whir::WhirAccumulator<BabyBearExt4, MAX_POW_ENTRIES>,
+    accumulator: &mut ::verifier_common::whir::WhirAccumulator<
+        BabyBearField,
+        BabyBearExt4,
+        MAX_POW_ENTRIES,
+        { WHIR_FOLD_STEPS.len() },
+    >,
     nd_source: &mut I,
 ) -> Result<(), E::Error> {
     unsafe {
@@ -355,7 +370,10 @@ pub fn verify_final_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorC
             accumulator.z_initial_idx + FINAL_MONOMIALS_LEN.trailing_zeros() as usize,
             z_initial.len(),
         );
-        debug_assert_eq!(accumulator.pow_entries.len(), MAX_POW_ENTRIES);
+        debug_assert_eq!(
+            accumulator.pow_entries.len() + accumulator.base_pow_entries.len(),
+            MAX_POW_ENTRIES
+        );
         const FINAL_MONOMIALS_DATA_WORDS: usize = FINAL_MONOMIALS_LEN * EXT_DEGREE;
         const FINAL_MONOMIALS_COMMIT_BUF: usize = {
             let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + FINAL_MONOMIALS_DATA_WORDS;
@@ -499,6 +517,20 @@ pub fn verify_final_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorC
                 ei += 1;
             }
         }
+        for entry in accumulator.base_pow_entries.as_slice() {
+            let s = entry.current_scalar;
+            let mut eval = *monomials.get_unchecked(FINAL_MONOMIALS_LEN - 1);
+            let mut j = FINAL_MONOMIALS_LEN - 1;
+            while j > 0 {
+                j -= 1;
+                field_ops::mul_assign_by_base(&mut eval, &s);
+                let coeff = *monomials.get_unchecked(j);
+                field_ops::add_assign(&mut eval, &coeff);
+            }
+            field_ops::mul_assign(&mut eval, &entry.prefactor);
+            field_ops::mul_assign(&mut eval, &entry.coefficient);
+            field_ops::add_assign(&mut expected, &eval);
+        }
         if expected != claim {
             return Err(E::whir_final_constraint_failed());
         }
@@ -551,10 +583,12 @@ pub fn verify_whir<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator>(
     nd_source: &mut I,
 ) -> Result<(), E::Error> {
     let mut hash_buf = AlignedArray64::<u32, WHIR_HASH_BUF_SIZE>::new_uninit();
-    let mut accumulator =
-        ::verifier_common::whir::WhirAccumulator::<BabyBearExt4, MAX_POW_ENTRIES>::new(
-            BabyBearExt4::ONE,
-        );
+    let mut accumulator = ::verifier_common::whir::WhirAccumulator::<
+        BabyBearField,
+        BabyBearExt4,
+        MAX_POW_ENTRIES,
+        { WHIR_FOLD_STEPS.len() },
+    >::new(BabyBearExt4::ONE);
     let (mut claim, mut cap) = verify_initial_whir_round::<I, E>(
         initial_transcript,
         ts,
