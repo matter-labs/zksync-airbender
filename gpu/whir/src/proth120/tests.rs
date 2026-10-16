@@ -2091,6 +2091,17 @@ fn pr_l1_whir_fold_matches_cpu_small() {
                 &shape,
                 &ctx,
             )
+            .unwrap()
+            .schedule_readback(
+                L1WhirInputs {
+                    claims: &claims_dev,
+                    base_layer_point: &point_dev,
+                    batching_challenge: &challenge_dev,
+                },
+                base.cap_digests(),
+                setup.oracle().cap_digests(),
+                &ctx,
+            )
             .unwrap();
             jobs.push((
                 scheduled,
