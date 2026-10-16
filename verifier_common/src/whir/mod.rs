@@ -188,66 +188,94 @@ pub fn hash_leaf_data_into_state<const N: usize>(
 /// A tree-space query index and its slot in the original query-order leaf hashes.
 /// Sorting these small records avoids moving eight-word digests during sorting.
 #[derive(Clone, Copy)]
+#[repr(C)]
 pub struct MerkleQueryIndex {
     pub index: usize,
     pub query: usize,
 }
 
-#[derive(Clone, Copy)]
+// A plan reuses the sorted query buffer. The low bits of its second word
+// hold a branch-stop height; the remaining bits hold the original leaf slot.
+const MERKLE_STOP_BITS: usize = usize::BITS.ilog2() as usize + 1;
+const MERKLE_STOP_MASK: usize = (1 << MERKLE_STOP_BITS) - 1;
+const MERKLE_DUPLICATE: usize = usize::BITS as usize + 1;
+
+#[repr(C)]
 struct MerkleQueryStep {
     index: usize,
-    query: usize,
-    stop: usize,
+    slot_and_stop: usize,
 }
 
-/// A query-only authentication plan, reusable across oracles with the same
-/// sampled indices. Proof data cannot supply or alter this plan.
-pub struct MerkleQueryPlan<const MAX_QUERIES: usize> {
-    steps: LazyVec<MerkleQueryStep, MAX_QUERIES>,
-    duplicates: LazyVec<(usize, usize), MAX_QUERIES>,
-    num_queries: usize,
+impl MerkleQueryStep {
+    #[inline(always)]
+    fn query(&self) -> usize {
+        self.slot_and_stop >> MERKLE_STOP_BITS
+    }
+    #[inline(always)]
+    fn stop(&self) -> usize {
+        self.slot_and_stop & MERKLE_STOP_MASK
+    }
+}
+
+/// A query-only authentication plan borrowed from its input buffer, reusable
+/// across oracles. Proof data cannot supply or alter this plan.
+pub struct MerkleQueryPlan<'a, const MAX_QUERIES: usize> {
+    steps: &'a [MerkleQueryStep],
     max_index: usize,
 }
 
+/// Sort and encode the plan in the query buffer, without a second allocation
+/// or plan copy. This destructively encodes `query`: do not prepare the buffer
+/// twice or use its query slots after the returned borrow ends.
 pub fn prepare_merkle_queries<const MAX_QUERIES: usize>(
     queries: &mut [MerkleQueryIndex],
-) -> MerkleQueryPlan<MAX_QUERIES> {
+) -> MerkleQueryPlan<'_, MAX_QUERIES> {
     assert!(queries.len() <= MAX_QUERIES);
-    queries.sort_unstable_by_key(|node| node.index);
-    let mut plan = MerkleQueryPlan {
-        steps: LazyVec::<MerkleQueryStep, MAX_QUERIES>::new(),
-        duplicates: LazyVec::new(),
-        num_queries: queries.len(),
-        max_index: queries.last().map_or(0, |node| node.index),
-    };
-    for node in queries {
-        assert!(node.query < plan.num_queries);
-        if let Some(previous) = plan.steps.as_mut_slice().last_mut() {
-            if previous.index == node.index {
-                plan.duplicates.push((previous.query, node.query));
-                continue;
-            }
-            previous.stop =
-                (usize::BITS - (previous.index ^ node.index).leading_zeros() - 1) as usize;
-        }
-        plan.steps.push(MerkleQueryStep {
-            index: node.index,
-            query: node.query,
-            stop: usize::BITS as usize,
-        });
+    assert!(queries.len() <= usize::MAX >> MERKLE_STOP_BITS);
+    for node in queries.iter() {
+        assert!(node.query < queries.len());
     }
-    plan
+    queries.sort_unstable_by_key(|node| node.index);
+    for position in 0..queries.len() {
+        let index = queries[position].index;
+        let stop = if position > 0 && queries[position - 1].index == index {
+            MERKLE_DUPLICATE
+        } else {
+            let mut next = position + 1;
+            while next < queries.len() && queries[next].index == index {
+                next += 1;
+            }
+            if next < queries.len() {
+                (usize::BITS - (index ^ queries[next].index).leading_zeros() - 1) as usize
+            } else {
+                usize::BITS as usize
+            }
+        };
+        queries[position].query = (queries[position].query << MERKLE_STOP_BITS) | stop;
+    }
+    // Both repr(C) records consist of two usize words with identical layout
+    // and validity. Every word is initialized; the shared borrow prevents
+    // writes through the original slice while this typed view is in use.
+    let steps = unsafe {
+        core::slice::from_raw_parts(queries.as_ptr().cast::<MerkleQueryStep>(), queries.len())
+    };
+    MerkleQueryPlan {
+        steps,
+        max_index: queries.last().map_or(0, |node| node.index),
+    }
 }
 
 /// Authenticate sorted queries in depth-first order, consuming missing boundary
 /// hashes after the queried subtree they authenticate. Unary paths stay in the
 /// hasher state; only branch points need a saved digest. Duplicate query leaves
-/// are checked for equality before authentication deduplicates their indices.
+/// are checked for equality while authenticating each distinct index once.
 /// The depth and cap come from verifier parameters, never from the proof stream.
-#[inline(always)]
+// Keep this traversal out of the large generated round functions. Inlining
+// can spill Boolean guards as byte loads, unsupported by the word-only VM.
+#[inline(never)]
 pub fn verify_merkle_multiproof<I: U32WordNonDeterminismSource, const MAX_QUERIES: usize>(
     hasher: &mut DelegatedBlake2sState,
-    plan: &MerkleQueryPlan<MAX_QUERIES>,
+    plan: &MerkleQueryPlan<'_, MAX_QUERIES>,
     leaf_hashes: &[[u32; BLAKE2S_DIGEST_SIZE_U32_WORDS]],
     depth: usize,
     cap: &[u32],
@@ -255,28 +283,32 @@ pub fn verify_merkle_multiproof<I: U32WordNonDeterminismSource, const MAX_QUERIE
 ) -> bool {
     if depth >= usize::BITS as usize
         || cap.len() % BLAKE2S_DIGEST_SIZE_U32_WORDS != 0
-        || leaf_hashes.len() != plan.num_queries
+        || leaf_hashes.len() != plan.steps.len()
     {
         return false;
     }
     let cap_len = cap.len() / BLAKE2S_DIGEST_SIZE_U32_WORDS;
-    if plan.num_queries != 0 && plan.max_index >> depth >= cap_len {
+    if plan.steps.len() != 0 && plan.max_index >> depth >= cap_len {
         return false;
-    }
-    for &(first, duplicate) in plan.duplicates.as_slice() {
-        if !merkle_digest_matches(&leaf_hashes[first], &leaf_hashes[duplicate]) {
-            return false;
-        }
     }
     // At most one completed left subtree is pending at each tree level.
     let mut saved_levels = LazyVec::<usize, { usize::BITS as usize }>::new();
     let mut saved_hashes =
         [const { core::mem::MaybeUninit::<[u32; 8]>::uninit() }; usize::BITS as usize];
-    for node in plan.steps.as_slice() {
-        let stop = node.stop.min(depth);
+    for (position, node) in plan.steps.iter().enumerate() {
+        if node.stop() == MERKLE_DUPLICATE {
+            if !merkle_digest_matches(
+                &leaf_hashes[node.query()],
+                &leaf_hashes[plan.steps[position - 1].query()],
+            ) {
+                return false;
+            }
+            continue;
+        }
+        let stop = node.stop().min(depth);
         unsafe {
             blake2s_u32::spec_memcopy_u32_nonoverlapping(
-                leaf_hashes[node.query].as_ptr(),
+                leaf_hashes[node.query()].as_ptr(),
                 hasher.state.as_mut_ptr(),
                 8,
             );
