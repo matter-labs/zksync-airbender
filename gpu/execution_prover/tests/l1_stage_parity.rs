@@ -702,7 +702,7 @@ fn run_whir(fixture: L1WrapFixture<'_>, expected: WhirExpected) -> WhirReport {
     let peak_bytes = context.get_used_mem_peak();
     let gpu_ms = elapsed_time(&start_event, &end_event).unwrap();
     let phases = scheduled.phase_times_after_completion().unwrap();
-    let proof = scheduled.into_proof_after_completion();
+    let proof = unsafe { scheduled.into_proof_after_completion() };
 
     compare_bytes(
         "whir-setup-commitment",

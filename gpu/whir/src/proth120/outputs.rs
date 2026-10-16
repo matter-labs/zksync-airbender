@@ -1,12 +1,10 @@
 use std::marker::PhantomData;
-use std::sync::{Arc, Mutex};
 
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 use gpu_core::allocator::tracker::AllocationPlacement;
-use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::{DeviceAllocation, HostAllocation, UnsafeAccessor};
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::PR;
@@ -248,34 +246,39 @@ impl L1WhirPendingReadback {
             inputs.batching_challenge,
             stream,
         )?;
-        schedule_readback_and_assemble(
-            device,
+        schedule_readback_copies(&device, &mut host, memory_cap, setup_cap, stream)?;
+        Ok(L1WhirScheduled {
             host,
-            memory_cap,
-            setup_cap,
-            &schedule,
+            schedule,
             memory_columns,
             setup_columns,
             tracing_ranges,
-            context,
-        )
+        })
     }
 }
 
+/// All WHIR D2Hs enqueued; owns their host mirrors until the proof is assembled.
 pub struct L1WhirScheduled {
-    _callbacks: Callbacks<'static>,
-    _host: L1WhirProofHost,
-    result: Arc<Mutex<Option<L1WhirProof>>>,
+    host: L1WhirProofHost,
+    schedule: WhirSchedule,
+    memory_columns: usize,
+    setup_columns: usize,
     tracing_ranges: Vec<(String, Range)>,
 }
 
 impl L1WhirScheduled {
-    pub fn into_proof_after_completion(self) -> L1WhirProof {
-        self.result
-            .lock()
-            .expect("Proth120 WHIR: proof result lock poisoned")
-            .take()
-            .expect("Proth120 WHIR: proof callback has not run")
+    /// # Safety
+    ///
+    /// Every D2H enqueued by `schedule_readback` must have completed (e.g. the job's completion
+    /// event was synchronized after them) and nothing may write the mirrors during this call.
+    pub unsafe fn into_proof_after_completion(self) -> L1WhirProof {
+        let readback = self.host.readback();
+        assemble_whir_proof(
+            &readback,
+            &self.schedule,
+            self.memory_columns,
+            self.setup_columns,
+        )
     }
 
     pub fn phase_times_after_completion(&self) -> CudaResult<Vec<(String, f32)>> {
@@ -456,19 +459,13 @@ unsafe fn assemble_whir_proof(
     }
 }
 
-#[allow(clippy::needless_pass_by_value)]
-fn schedule_readback_and_assemble(
-    device: L1WhirProofDevice,
-    mut host: L1WhirProofHost,
+fn schedule_readback_copies(
+    device: &L1WhirProofDevice,
+    host: &mut L1WhirProofHost,
     memory_cap: &DeviceSlice<Digest>,
     setup_cap: &DeviceSlice<Digest>,
-    schedule: &WhirSchedule,
-    memory_columns: usize,
-    setup_columns: usize,
-    tracing_ranges: Vec<(String, Range)>,
-    context: &ProverContext,
-) -> CudaResult<L1WhirScheduled> {
-    let stream = context.get_exec_stream();
+    stream: &CudaStream,
+) -> CudaResult<()> {
     copy_base_openings(&mut host.memory, &device.memory, stream)?;
     copy_base_openings(&mut host.setup, &device.setup, stream)?;
     for (host, device) in host.intermediate.iter_mut().zip(&device.intermediate) {
@@ -483,26 +480,5 @@ fn schedule_readback_and_assemble(
     memory_copy_async(&mut host.sumcheck_polys, &device.sumcheck_polys, stream)?;
     memory_copy_async(&mut host.pow_nonces, &device.pow_nonces, stream)?;
     memory_copy_async(&mut host.final_monomials, &device.final_monomials, stream)?;
-    memory_copy_async(&mut host.batched_opening, &device.batched_opening, stream)?;
-    let readback = host.readback();
-    let result = Arc::new(Mutex::new(None));
-    let destination = Arc::clone(&result);
-    let schedule = schedule.clone();
-    let mut callbacks = Callbacks::new();
-    callbacks.schedule(
-        move || {
-            let proof =
-                unsafe { assemble_whir_proof(&readback, &schedule, memory_columns, setup_columns) };
-            *destination
-                .lock()
-                .expect("Proth120 WHIR: proof result lock poisoned") = Some(proof);
-        },
-        stream,
-    )?;
-    Ok(L1WhirScheduled {
-        _callbacks: callbacks,
-        _host: host,
-        result,
-        tracing_ranges,
-    })
+    memory_copy_async(&mut host.batched_opening, &device.batched_opening, stream)
 }
