@@ -269,7 +269,9 @@ impl<F: PrimeField> GKRCompiler<F> {
             };
 
             let partial_data = ShuffleRamTimestampComparisonPartialData {
-                intermediate_borrow: Some(borrow_var),
+                comparison: ReadTimestampComparison::PerAccess {
+                    intermediate_borrow: borrow_var,
+                },
                 read_timestamp: [read_timestamp_low, read_timestamp_high],
                 local_timestamp_in_cycle: memory_query.local_timestamp_in_cycle() as usize,
             };
@@ -565,9 +567,18 @@ impl<F: PrimeField> GKRCompiler<F> {
         // ones, and "generic" ones (that includes decoder)
 
         // Timestamps are the easiest - we collect them, and will transform into GKR layers very separately
+        let per_access_comparisons = ram_augmented_sets.iter().map(|(_, aux)| {
+            let ReadTimestampComparison::PerAccess {
+                intermediate_borrow,
+            } = aux.comparison
+            else {
+                unreachable!("the main circuit has no read timestamp groups");
+            };
+            (intermediate_borrow, aux)
+        });
         super::range_check_exprs::compile_timestamp_comparison_range_checks(
             &mut timestamp_range_check_expressions_to_compile,
-            &ram_augmented_sets,
+            per_access_comparisons,
             executor_machine_state.cycle_start_state.timestamp,
         );
 
@@ -889,7 +900,12 @@ impl<F: PrimeField> GKRCompiler<F> {
             let shuffle_ram_timestamp_comparison_aux_vars = ram_augmented_sets
                 .iter()
                 .map(|(_, el)| {
-                    let intermediate_borrow = el.intermediate_borrow.expect("is some");
+                    let ReadTimestampComparison::PerAccess {
+                        intermediate_borrow,
+                    } = el.comparison
+                    else {
+                        unreachable!("the main circuit has no read timestamp groups");
+                    };
                     Some(RamAuxComparisonSet {
                         intermediate_borrow: graph.get_address_for_variable(intermediate_borrow),
                     })
