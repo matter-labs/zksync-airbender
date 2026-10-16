@@ -15,6 +15,7 @@ use gpu_hash::keccak256::{
 use gpu_ntt::proth120::{
     dispatch, has_reference_finish, hypercube_evals_to_monomials_chunked, lde_coset,
     lde_coset_slot, lde_finish_reference, pack_hypercubes_to_monomials, CosetSource, ScaleArgs,
+    SuffixShape,
 };
 use gpu_ops::powers::get_powers_by_val;
 use gpu_prover_context::ProverContext;
@@ -24,6 +25,7 @@ use crate::upstream::{domain_generator_for_size, ProverConfig};
 use super::holder::{
     assert_partial_tree_reduction_layers, TraceHolder, MAX_PARTIAL_TREE_REDUCTION_LAYERS,
 };
+use super::sink::{commit_coset, commit_coset_scratch_lens, has_leaf_sink, SinkMode};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PackedCommitConfig {
@@ -446,6 +448,79 @@ impl PackedCosetRecomputeOracle<PR> {
         let h = self.log_packed() - cfg.log_values_per_leaf;
         let per_coset = retained_len(h, cfg.skip_bottom);
         let mut scratch = context.alloc(self.monomials().len(), AllocationPlacement::Top)?;
+        let sink = dispatch(
+            self.log_packed(),
+            self.packed_columns,
+            cfg.log_values_per_leaf,
+            cfg.skip_bottom,
+            context.get_device_properties().l2_cache_size_bytes,
+        )
+        .ok()
+        .filter(|plan| !plan.small)
+        .map(|plan| {
+            let shape = SuffixShape::new(
+                &plan,
+                self.log_packed(),
+                cfg.log_values_per_leaf,
+                cfg.skip_bottom,
+                self.packed_columns as u32,
+            );
+            (plan, shape)
+        })
+        // Below skip_bottom 8 a batch of two tiles is too small for the sink; those commits keep the
+        // reference path until the dispatch batches more tiles.
+        .filter(|(_, shape)| shape.skip_bottom >= 8 && has_leaf_sink(shape, &SinkMode::Commit));
+        if let Some((plan, shape)) = sink {
+            let (tiles_len, nodes_len, node_scratch_len) = commit_coset_scratch_lens(&plan, &shape);
+            let mut tiles = context.alloc(tiles_len, AllocationPlacement::BestFit)?;
+            let mut nodes = context.alloc(nodes_len, AllocationPlacement::BestFit)?;
+            let mut node_scratch = context.alloc(node_scratch_len, AllocationPlacement::BestFit)?;
+            let stream = context.get_exec_stream();
+            for k in 0..data.offsets.len() {
+                let base = product(k, per_coset);
+                commit_coset(
+                    context.proth120_ntt_device_context(),
+                    self.monomials(),
+                    &plan,
+                    &shape,
+                    k as u32,
+                    self.log_packed() + cfg.log_lde_factor,
+                    &mut scratch,
+                    &mut tiles,
+                    &mut nodes,
+                    &mut node_scratch,
+                    &mut data.retained[base..base + per_coset],
+                    stream,
+                )?;
+                let physical = if cfg.log_lde_factor == 0 {
+                    0
+                } else {
+                    k.reverse_bits() >> (usize::BITS - cfg.log_lde_factor)
+                };
+                let root = base + coset_root_offset(h, cfg.skip_bottom);
+                memory_copy_async(
+                    &mut data.roots[physical..physical + 1],
+                    &data.retained[root..root + 1],
+                    stream,
+                )?;
+            }
+            let _r = scoped_range(Some("ab"), "packed.commit.top");
+            build_top_tree(&data.roots, cfg.cap_log, &mut data.top_nodes, stream)?;
+            gather_tree_cap(
+                &data.roots,
+                &data.top_nodes,
+                cfg.cap_log,
+                &mut state.cap,
+                stream,
+            )?;
+            drop(_r);
+            drop(node_scratch);
+            drop(nodes);
+            drop(tiles);
+            drop(scratch);
+            self.committed = Some(state);
+            return Ok(());
+        }
         let tree_scratch_len = partial_coset_tree_scratch_len(
             self.log_packed(),
             cfg.log_values_per_leaf,
