@@ -2011,17 +2011,17 @@ fn json_difference(
 
 #[test]
 fn pr_l1_whir_fold_matches_cpu_small() {
-    assert_l1_whir_fold_matches_cpu_small(4, small_schedule(), (7, 1), 10);
+    assert_l1_whir_fold_matches_cpu_small(4, &small_schedule(), (7, 1), 10);
 }
 
 #[test]
 fn pr_l1_whir_fold_matches_cpu_small_pack3() {
-    assert_l1_whir_fold_matches_cpu_small(3, small_pack3_schedule(), (13, 2), 9);
+    assert_l1_whir_fold_matches_cpu_small(3, &small_pack3_schedule(), (13, 2), 9);
 }
 
 fn assert_l1_whir_fold_matches_cpu_small(
     pack_log2: usize,
-    schedule: WhirSchedule,
+    schedule: &WhirSchedule,
     packed_columns: (usize, usize),
     sumcheck_polys: usize,
 ) {
@@ -2073,7 +2073,7 @@ fn assert_l1_whir_fold_matches_cpu_small(
             let mut claims = packed_claims(&memory, &point, pack_log2, &worker);
             claims.extend(packed_claims(&setup, &point, pack_log2, &worker));
             let proof = cpu_whir_small(
-                &memory, &setup, &point, beta, seed, &schedule, pack_log2, &worker,
+                &memory, &setup, &point, beta, seed, schedule, pack_log2, &worker,
             );
             (point, beta, seed, claims, proof)
         })
@@ -2082,7 +2082,7 @@ fn assert_l1_whir_fold_matches_cpu_small(
     assert_eq!(log_message + cfg.log_lde_factor, 19);
     for tile_bytes in [16usize << log_message, 16usize << 19] {
         let shape = L1WhirShape::from_schedule(
-            &schedule,
+            schedule,
             log_message,
             cfg.log_lde_factor,
             cfg.log_values_per_leaf,
@@ -2142,7 +2142,7 @@ fn assert_l1_whir_fold_matches_cpu_small(
                     base_layer_point: &point_dev,
                     batching_challenge: &challenge_dev,
                 },
-                &schedule,
+                schedule,
                 &shape,
                 &ctx,
             )
