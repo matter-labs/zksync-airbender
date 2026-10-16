@@ -21,8 +21,8 @@ contract RevertingRegistry is IVerificationRegistry {
 }
 
 /// Shared helpers: versioned data, and deployment of the renders built in sibling projects
-/// (`../merged_f1`, `../negative/*`, `../instrumented/*`) from their creation code, with the
-/// registry as the constructor argument.
+/// (`../merged_f1`, `../negative/*`, `../controls/*`, `../instrumented/*`) from their creation
+/// code, with the registry as the constructor argument.
 abstract contract MergedBase {
     Vm constant vm = Vm(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D);
     string constant DATA = "../../../debug_data/l1_wrap_2p21/";
@@ -49,7 +49,12 @@ abstract contract MergedBase {
 
     /// Deploys the F1 verifier's `SetupFrontier` and places its code at the pinned address.
     function _placeFrontier() internal {
-        bytes memory init = _creation("../merged_f1/out/SetupFrontier.sol/SetupFrontier.json");
+        _placeFrontier("../merged_f1");
+    }
+
+    /// Deploys the `SetupFrontier` of the render project `project` at the pinned address.
+    function _placeFrontier(string memory project) internal {
+        bytes memory init = _creation(string.concat(project, "/out/SetupFrontier.sol/SetupFrontier.json"));
         address f;
         assembly ("memory-safe") {
             f := create(0, add(init, 32), mload(init))

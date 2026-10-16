@@ -65,12 +65,16 @@ contract WhirVerifier {
     uint256 constant __TEMPLATE_DIGEST_MASK = "{unassigned}";
     // #if F1
     uint256 constant __TEMPLATE_F1_DIGEST_BYTES = "{unassigned}"; // Merkle digest bytes on the F1 wire
-    // #endif
-    // #if F1_FRONTIER
-    // Setup frontier: a data contract holding STOP ‖ the setup tree's 2^LEVEL nodes at that level
-    // (DIGEST_BYTES each, physical order); setup paths stop SKIP = LEVEL − CAP_LOG2 levels early.
+    // The setup data contract: STOP ‖ setup frontier (if any) ‖ pinned setup cap image ‖ GKR
+    // term table; its code hash is checked once per call, before any read.
     address constant __TEMPLATE_F1_FRONTIER = "{unassigned}";
     uint256 constant __TEMPLATE_F1_FRONTIER_HASH = "{unassigned}";
+    uint256 constant __TEMPLATE_F1_DATA_CAP_OFFSET = "{unassigned}";
+    uint256 constant __TEMPLATE_F1_DATA_QTABLE_OFFSET = "{unassigned}";
+    // #endif
+    // #if F1_FRONTIER
+    // Setup frontier: the setup tree's 2^LEVEL nodes at that level (DIGEST_BYTES each, physical
+    // order) after the STOP byte; setup paths stop SKIP = LEVEL − CAP_LOG2 levels early.
     uint256 constant __TEMPLATE_F1_FRONTIER_LEVEL = "{unassigned}";
     uint256 constant __TEMPLATE_F1_FRONTIER_SKIP = "{unassigned}";
     // #endif
@@ -641,10 +645,6 @@ contract WhirVerifier {
         // above. `cd_start` = calldata offset of the WHIR proof stream (right after the GKR
         // stream's trailing 8-byte WHIR-batching PoW nonce).
         function whir_verify(cd_start) {
-        // #if F1_FRONTIER
-        // the setup frontier is this deployment's data: check its code once per call
-        if iszero(eq(extcodehash(__TEMPLATE_F1_FRONTIER), __TEMPLATE_F1_FRONTIER_HASH)) { revert(0, 0) }
-        // #endif
         // Base geometry (all generated): nz = z-coords, gcount = gamma-batched base columns + 1,
         // rfin = final-poly log2.
         let nz := __TEMPLATE_WHIR_NZ

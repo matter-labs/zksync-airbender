@@ -320,7 +320,10 @@ struct QTerm {
 /// heap, so only nonzero gate constants need an explicit seed.
 /// `gate_constant_terms`: the additive constant of each quadratic relation `(gate slot, value)`,
 /// only for gates whose constant is nonzero (it seeds `GATEVAL[slot]` before the term loops add).
-fn emit_layer0_quad_table(terms: &[QTerm], gate_constant_terms: &[(u32, u128)]) -> (String, usize) {
+fn emit_layer0_quad_table(
+    terms: &[QTerm],
+    gate_constant_terms: &[(u32, u128)],
+) -> (String, Vec<u8>) {
     use std::collections::BTreeMap;
     // canonical coeff -> (byte width, is_negative, stored value). Small +ve: store as-is.
     // Small -ve (canonical near P): store magnitude P-v, negate in-loop. Else: full 16 B.
@@ -398,7 +401,14 @@ fn emit_layer0_quad_table(terms: &[QTerm], gate_constant_terms: &[(u32, u128)]) 
             ));
         }
     }
-    // 2. materialize the packed record stream via mstore immediates
+    // 2. materialize the packed record stream: F1 copies it from its setup data contract, v0
+    //    writes it via mstore immediates
+    out.push_str("            // #if F1\n");
+    out.push_str(&format!(
+        "            extcodecopy(__TEMPLATE_F1_FRONTIER, GKR_QTABLE_PTR(), __TEMPLATE_F1_DATA_QTABLE_OFFSET, {})\n",
+        stream.len()
+    ));
+    out.push_str("            // #else\n");
     out.push_str("            // packed term records, written 32 bytes at a time\n");
     for (i, chunk) in stream.chunks(32).enumerate() {
         let mut word = [0u8; 32];
@@ -409,6 +419,7 @@ fn emit_layer0_quad_table(terms: &[QTerm], gate_constant_terms: &[(u32, u128)]) 
             i * 32
         ));
     }
+    out.push_str("            // #endif\n");
     // 3. bucket loops — modulus loaded once from the P constant into a local (cheap DUP in the
     //    shallow loop, no per-op PUSH16), calldata + gateval bases hoisted.
     out.push_str(
@@ -465,7 +476,7 @@ fn emit_layer0_quad_table(terms: &[QTerm], gate_constant_terms: &[(u32, u128)]) 
         ));
     }
     out.push_str("            }\n");
-    (out, stream.len())
+    (out, stream)
 }
 
 /// Emit the Horner accumulation of a contiguous run of quadratic gates (GATEVAL slots `lo..hi`)
@@ -638,7 +649,7 @@ fn memrel_to_calldata(
 /// Heap-usage facts about the emitted `circuit.yul`, consumed by the generator's heap-layout
 /// allocator (assemble.rs) so every circuit-sized region of the GKR heap is sized from the
 /// circuit instead of a hand-picked slot number.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct CircuitYulStats {
     /// Widest per-layer at-point eval array written to `GKR_CIRCUIT_CLAIMS_PTR` (32-byte slots).
     pub max_claims_slots: usize,
@@ -649,8 +660,9 @@ pub struct CircuitYulStats {
     pub max_absorb_bytes: usize,
     /// Layer-0 quadratic-gate accumulator slots at `GKR_GATEVAL_PTR` (32-byte slots).
     pub gateval_slots: usize,
-    /// Bytes of the packed layer-0 term table materialized at `GKR_QTABLE_PTR`.
-    pub qtable_bytes: usize,
+    /// The packed layer-0 term table materialized at `GKR_QTABLE_PTR` (zero-padded to whole
+    /// 32-byte words).
+    pub qtable: Vec<u8>,
 }
 
 /// Emit the circuit-specific `circuit.yul` (the GKR per-layer sumcheck/gate functions) for a
@@ -2296,9 +2308,9 @@ pub fn emit_circuit_yul_with_stats(
             // modulus in a stack local) BEFORE the Horner chunk calls read it. Emitted into the
             // layer body (main output; YUL_BUFFER is drained above so yul_println! targets it).
             if i == 0 && !quad_terms.is_empty() {
-                let (table_yul, qtable_bytes) =
+                let (table_yul, qtable) =
                     emit_layer0_quad_table(&quad_terms, &quad_gate_constant_terms);
-                stats.qtable_bytes = qtable_bytes;
+                stats.qtable = qtable;
                 stats.gateval_slots = quad_slot_counter as usize;
                 yul_println!("{}", table_yul);
             }
@@ -2772,7 +2784,7 @@ pub fn emit_circuit_yul_with_stats(
     let _ = DEBUG_ENABLE_DUMMY_CHECKS;
     let out = std::mem::take(&mut *yul_main_output().lock().unwrap());
     assert!(
-        stats.gateval_slots > 0 && stats.qtable_bytes > 0,
+        stats.gateval_slots > 0 && !stats.qtable.is_empty(),
         "layer 0 emitted no table-driven quadratic gates"
     );
     // Modulus representation: the ~124-bit Proth120 P as a Solidity `constant` compiles to a

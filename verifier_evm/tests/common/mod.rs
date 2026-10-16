@@ -260,6 +260,8 @@ pub fn assert_panics_with<T>(expected: &str, action: impl FnOnce() -> T + std::p
 
 pub const F1_CALLDATA: &str = "single_tx_f1.hex";
 pub const F1_FIELDS: &str = "single_tx_f1_fields.json";
+/// F1 calldata of the frontier-less control profile (setup paths to the cap).
+pub const F1_CAP_LEVEL_CALLDATA: &str = "single_tx_f1_cap_level.hex";
 /// v0 single-transaction calldata (GKR stream ‖ WHIR stream) and the registry mark it yields.
 pub const MERGED_CALLDATA: &str = "merged_calldata.hex";
 pub const VERIFIED_MARK: &str = "verified_mark.hex";
@@ -272,6 +274,10 @@ pub const MERGED_F1: &str = "merged_f1/src/GkrWhirVerifier.sol";
 pub const F1_FRONTIER_CONTRACT: &str = "merged_f1/src/SetupFrontier.sol";
 pub const F1_WRONG_FINAL_PC: &str = "negative/f1_wrong_final_pc/src/GkrWhirVerifier.sol";
 pub const F1_WRONG_SETUP_CAP: &str = "negative/f1_wrong_setup_cap/src/GkrWhirVerifier.sol";
+pub const F1_WRONG_SETUP_CAP_DATA: &str = "negative/f1_wrong_setup_cap/src/SetupFrontier.sol";
+/// The F1 verifier without a setup frontier (setup paths to the cap) and its data contract.
+pub const F1_CAP_LEVEL: &str = "controls/f1_cap_level/src/GkrWhirVerifier.sol";
+pub const F1_CAP_LEVEL_DATA: &str = "controls/f1_cap_level/src/SetupFrontier.sol";
 pub const INSTRUMENTED_V0: &str = "instrumented/v0/src/GkrWhirVerifier.sol";
 pub const INSTRUMENTED_F1: &str = "instrumented/f1/src/GkrWhirVerifier.sol";
 
@@ -286,6 +292,12 @@ impl Version {
             Some((level, _)) => params.with_setup_frontier(level),
             None => params,
         }
+    }
+
+    /// The F1 profile without a setup frontier: setup paths run to the cap.
+    pub fn f1_cap_level_params(&self) -> verifier_evm::encoding::FormatParams {
+        self.f1_params()
+            .with_setup_frontier(self.prover_config().cap_size.trailing_zeros() as usize)
     }
 
     /// `(level, nodes)` of the version's setup frontier.

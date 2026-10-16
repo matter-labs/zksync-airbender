@@ -6,8 +6,9 @@
 mod common;
 
 use common::{
-    Version, F1_FRONTIER_CONTRACT, F1_WRONG_FINAL_PC, F1_WRONG_SETUP_CAP, INSTRUMENTED_F1,
-    INSTRUMENTED_V0, MERGED_F1, MERGED_V0,
+    Version, F1_CAP_LEVEL, F1_CAP_LEVEL_DATA, F1_FRONTIER_CONTRACT, F1_WRONG_FINAL_PC,
+    F1_WRONG_SETUP_CAP, F1_WRONG_SETUP_CAP_DATA, INSTRUMENTED_F1, INSTRUMENTED_V0, MERGED_F1,
+    MERGED_V0,
 };
 use field::Proth120;
 use verifier_evm::generator::INSTRUMENTED;
@@ -241,7 +242,8 @@ fn generate_f1_with_setup(
         final_pc,
         version.inits_teardowns_top_bits,
         setup_cap,
-        setup_frontier.map(|nodes| (nodes, DEFAULT_FRONTIER_ADDRESS)),
+        setup_frontier,
+        DEFAULT_FRONTIER_ADDRESS,
         flags,
     )
 }
@@ -254,22 +256,43 @@ fn generated_sources(version: &Version) -> Vec<(String, String)> {
     }
     let f1 = generate_f1(version, version.final_pc(), &[]);
     out.push((MERGED_F1.to_string(), f1.verifier_sol));
-    if let Some(source) = f1.setup_frontier_sol {
-        out.push((F1_FRONTIER_CONTRACT.to_string(), source));
-    }
+    out.push((F1_FRONTIER_CONTRACT.to_string(), f1.setup_frontier_sol));
     out.push((
         F1_WRONG_FINAL_PC.to_string(),
         generate_f1(version, version.final_pc() ^ 1, &[]).verifier_sol,
     ));
-    // E8 control: the F1 verifier pinned to another setup cap (one bit of the first digest), so
-    // its transcript and setup commitment differ; a frontier cannot reduce to that cap.
+    // E8 control: the F1 verifier pinned to another setup (one bit of the first frontier node and
+    // the cap it reduces to, or one bit of the cap without a frontier), so its transcript and
+    // setup commitment differ while the profile matches the committed calldata.
     let (_, proof, _) = version.load();
-    let mut setup_cap = proof.whir_proof.setup_commitment.commitment.cap.cap.clone();
-    setup_cap[0][0] ^= 1;
+    let wrong = match version.setup_frontier() {
+        Some((level, mut nodes)) => {
+            nodes[0][0] ^= 1;
+            let cap = verifier_evm::encoding::merkle_reduce(
+                &nodes,
+                level - version.prover_config().cap_size.trailing_zeros() as usize,
+                version.digest_bytes,
+            );
+            generate_f1_with_setup(version, version.final_pc(), &cap, Some(&nodes), &[])
+        }
+        None => {
+            let mut cap = proof.whir_proof.setup_commitment.commitment.cap.cap.clone();
+            cap[0][0] ^= 1;
+            generate_f1_with_setup(version, version.final_pc(), &cap, None, &[])
+        }
+    };
+    out.push((F1_WRONG_SETUP_CAP.to_string(), wrong.verifier_sol));
     out.push((
-        F1_WRONG_SETUP_CAP.to_string(),
-        generate_f1_with_setup(version, version.final_pc(), &setup_cap, None, &[]).verifier_sol,
+        F1_WRONG_SETUP_CAP_DATA.to_string(),
+        wrong.setup_frontier_sol,
     ));
+    // Frontier-less control: the F1 verifier with full setup paths to the cap (its own calldata).
+    if version.setup_frontier().is_some() {
+        let cap = &proof.whir_proof.setup_commitment.commitment.cap.cap;
+        let control = generate_f1_with_setup(version, version.final_pc(), cap, None, &[]);
+        out.push((F1_CAP_LEVEL.to_string(), control.verifier_sol));
+        out.push((F1_CAP_LEVEL_DATA.to_string(), control.setup_frontier_sol));
+    }
     // The oracle renders: v0 and F1 verifiers that log every transcript keccak256 result.
     out.push((
         INSTRUMENTED_V0.to_string(),
@@ -562,6 +585,79 @@ fn f1_gkr_half_reads_calldata_only_in_the_decoder() {
     }
 }
 
+/// The F1 setup data contract holds `STOP ‖ frontier ‖ setup cap image ‖ GKR term table` (the
+/// table equal to the v0 render's literal records); the verifier pins its code hash and checks it
+/// in the fallback's entry code, before any function runs.
+#[test]
+fn f1_setup_data_holds_the_frontier_cap_and_term_table() {
+    use sha3::{Digest, Keccak256};
+    for version in common::available_versions("F1 setup data") {
+        let (_, proof, _) = version.load();
+        let cap = &proof.whir_proof.setup_commitment.commitment.cap.cap;
+        let qtable: Vec<u8> = generate(version, &[])
+            .lines()
+            .filter_map(|l| l.trim().strip_prefix("mstore(add(GKR_QTABLE_PTR(), "))
+            .flat_map(|rest| {
+                let word = rest.split_once("0x").unwrap().1.trim_end_matches(')');
+                hex::decode(word).unwrap()
+            })
+            .collect();
+        assert!(!qtable.is_empty() && qtable.len().is_multiple_of(32));
+        let cap_image: Vec<u8> = cap
+            .iter()
+            .flat_map(|d| d.iter().flat_map(|w| w.to_le_bytes()))
+            .collect();
+        let frontier = version.setup_frontier().map(|(_, nodes)| nodes);
+        for (contracts, nodes) in [
+            (generate_f1(version, version.final_pc(), &[]), frontier),
+            (
+                generate_f1_with_setup(version, version.final_pc(), cap, None, &[]),
+                None,
+            ),
+        ] {
+            let source = &contracts.verifier_sol;
+            let frontier_bytes: Vec<u8> = nodes
+                .iter()
+                .flatten()
+                .flat_map(|d| verifier_evm::encoding::digest_wire(d, version.digest_bytes))
+                .collect();
+            let code = [&[0u8][..], &frontier_bytes, &cap_image, &qtable].concat();
+            let data = contracts
+                .setup_frontier_sol
+                .split_once("hex\"")
+                .unwrap()
+                .1
+                .split_once('"')
+                .unwrap()
+                .0;
+            assert_eq!(hex::decode(data).unwrap(), code);
+            let hash = source
+                .lines()
+                .find(|l| l.contains("constant __TEMPLATE_F1_FRONTIER_HASH "))
+                .unwrap()
+                .split_once("= 0x")
+                .unwrap()
+                .1
+                .trim_end_matches(';')
+                .to_string();
+            assert_eq!(hash, hex::encode(Keccak256::digest(&code)));
+            assert_eq!(
+                solidity_constant(source, "__TEMPLATE_F1_DATA_CAP_OFFSET") as usize,
+                1 + frontier_bytes.len()
+            );
+            assert_eq!(
+                solidity_constant(source, "__TEMPLATE_F1_DATA_QTABLE_OFFSET") as usize,
+                1 + frontier_bytes.len() + cap_image.len()
+            );
+            assert!(!source.contains("mstore(add(GKR_QTABLE_PTR()"));
+            assert_eq!(source.matches("extcodehash(").count(), 1);
+            let entry = source.find("fallback(bytes calldata)").unwrap();
+            let check = source.find("extcodehash(").unwrap();
+            assert!(entry < check && check < entry + source[entry..].find("function ").unwrap());
+        }
+    }
+}
+
 /// The instrumented renders log every non-Merkle keccak256 and return the statement with the
 /// log instead of calling the registry.
 #[test]
@@ -615,9 +711,8 @@ fn f1_generator_rejects_a_profile_off_the_prover_config() {
                 version.final_pc(),
                 version.inits_teardowns_top_bits,
                 setup_cap,
-                frontier
-                    .as_ref()
-                    .map(|(_, nodes)| (&nodes[..], DEFAULT_FRONTIER_ADDRESS)),
+                frontier.as_ref().map(|(_, nodes)| &nodes[..]),
+                DEFAULT_FRONTIER_ADDRESS,
                 &[],
             )
         };
@@ -658,7 +753,8 @@ fn f1_generator_rejects_a_frontier_off_the_setup_cap() {
                     version.final_pc(),
                     version.inits_teardowns_top_bits,
                     &proof.whir_proof.setup_commitment.commitment.cap.cap,
-                    Some((&nodes, DEFAULT_FRONTIER_ADDRESS)),
+                    Some(&nodes),
+                    DEFAULT_FRONTIER_ADDRESS,
                     &[],
                 )
             },

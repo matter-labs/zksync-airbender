@@ -302,14 +302,22 @@ fn checksum_address(addr: &str) -> String {
     out
 }
 
-/// The `SetupFrontier` data contract: its runtime code is `STOP ‖ data`.
-fn setup_frontier_sol(data: &[u8], level: usize) -> String {
+/// The `SetupFrontier` data contract: its runtime code is `STOP ‖ data`, `data` = the setup
+/// frontier at `level` (if any) ‖ the pinned setup cap image ‖ the GKR term table.
+fn setup_frontier_sol(data: &[u8], level: Option<usize>) -> String {
+    let frontier = match level {
+        Some(level) => format!(
+            "the L1 wrap setup tree's {} nodes at level {level} (physical order), ",
+            1usize << level
+        ),
+        None => String::new(),
+    };
     format!(
         "// SPDX-License-Identifier: UNLICENSED
 pragma solidity =0.8.36;
 
-/// The L1 wrap setup tree's {count} nodes at level {level} (physical order) after a STOP byte; the
-/// F1 verifier reads them with EXTCODECOPY and checks this code's hash once per call.
+/// The F1 verifier's setup data after a STOP byte: {frontier}the pinned setup cap and the GKR
+/// term table; the verifier checks this code's hash once per call and reads it with EXTCODECOPY.
 contract SetupFrontier {{
     constructor() {{
         bytes memory code = hex\"00{hex}\";
@@ -319,17 +327,17 @@ contract SetupFrontier {{
     }}
 }}
 ",
-        count = 1usize << level,
         hex = data.iter().map(|b| format!("{b:02x}")).collect::<String>(),
     )
 }
 
-/// The F1 pieces of a render: the GKR decoder, the wire digest size and the setup frontier
-/// (`STOP ‖ data` code hash, data contract address, level, skipped levels).
+/// The F1 pieces of a render: the GKR decoder, the wire digest size, the setup data contract's
+/// address, and the setup frontier (nodes as wire bytes, level, skipped levels) if any.
 struct F1Render {
     decoder: f1::GkrDecoder,
     digest_bytes: usize,
-    frontier: Option<([u8; 32], String, usize, usize)>,
+    data_address: String,
+    frontier: Option<(Vec<u8>, usize, usize)>,
 }
 
 /// Generate the merged `GkrWhirVerifier` Solidity source for `circuit`: GKR and WHIR verified
@@ -375,12 +383,14 @@ pub fn generate_verifier(
         flags,
         None,
     )
+    .0
 }
 
 /// The merged F1 verifier (spec §2): every proof byte is read by the F1 decoders, the final PC
-/// and `setup_cap` are deployment constants. With a setup frontier (`params.setup_frontier_level`
-/// below the cap), `setup_frontier` gives the setup tree's nodes at that level (physical order)
-/// and the address of their `SetupFrontier` data contract. `flags` may add [`INSTRUMENTED`].
+/// and `setup_cap` are deployment constants. The setup cap and the GKR term table live in the
+/// `SetupFrontier` data contract at `data_address`; with a setup frontier
+/// (`params.setup_frontier_level` below the cap), `setup_frontier` gives the setup tree's nodes
+/// at that level (physical order), stored there first. `flags` may add [`INSTRUMENTED`].
 #[allow(clippy::too_many_arguments)]
 pub fn generate_f1_verifier(
     circuit: &GKRCircuitArtifact<Proth120>,
@@ -391,7 +401,8 @@ pub fn generate_f1_verifier(
     final_pc: u32,
     inits_teardowns_top_bits: &[u32],
     setup_cap: &[[u32; 8]],
-    setup_frontier: Option<(&[[u32; 8]], &str)>,
+    setup_frontier: Option<&[[u32; 8]]>,
+    data_address: &str,
     flags: &[&str],
 ) -> F1Contracts {
     assert!(
@@ -406,8 +417,7 @@ pub fn generate_f1_verifier(
     );
     assert_eq!(setup_cap.len(), params.cap(), "setup cap size");
     let frontier = (params.setup_frontier_skip() > 0).then(|| {
-        let (nodes, address) =
-            setup_frontier.expect("a setup frontier below the cap needs its nodes and address");
+        let nodes = setup_frontier.expect("a setup frontier below the cap needs its nodes");
         assert_eq!(
             nodes.len(),
             1 << params.setup_frontier_level,
@@ -422,11 +432,10 @@ pub fn generate_f1_verifier(
             setup_cap,
             "the setup frontier does not reduce to the setup cap"
         );
-        let data: Vec<u8> = nodes
+        nodes
             .iter()
             .flat_map(|d| crate::encoding::digest_wire(d, params.digest_bytes))
-            .collect();
-        (data, address)
+            .collect::<Vec<u8>>()
     });
     let flags: Vec<&str> = std::iter::once(F1)
         .chain(frontier.is_some().then_some(F1_FRONTIER))
@@ -442,19 +451,16 @@ pub fn generate_f1_verifier(
     let f1_render = F1Render {
         decoder,
         digest_bytes: params.digest_bytes,
-        frontier: frontier.as_ref().map(|(data, address)| {
-            use sha3::{Digest, Keccak256};
-            let mut code = vec![0u8];
-            code.extend_from_slice(data);
+        data_address: checksum_address(data_address),
+        frontier: frontier.map(|nodes| {
             (
-                Keccak256::digest(&code).into(),
-                checksum_address(address),
+                nodes,
                 params.setup_frontier_level,
                 params.setup_frontier_skip(),
             )
         }),
     };
-    let verifier_sol = render(
+    let (verifier_sol, data) = render(
         circuit,
         prover_config,
         params.pack_log2,
@@ -466,10 +472,10 @@ pub fn generate_f1_verifier(
         &flags,
         Some(&f1_render),
     );
+    let level = (params.setup_frontier_skip() > 0).then_some(params.setup_frontier_level);
     F1Contracts {
         verifier_sol,
-        setup_frontier_sol: frontier
-            .map(|(data, _)| setup_frontier_sol(&data, params.setup_frontier_level)),
+        setup_frontier_sol: setup_frontier_sol(&data.expect("an F1 render has setup data"), level),
     }
 }
 
@@ -485,7 +491,7 @@ fn render(
     digest_bytes: usize,
     flags: &[&str],
     f1: Option<&F1Render>,
-) -> String {
+) -> (String, Option<Vec<u8>>) {
     assert!(pack_log2 > 0, "pack_log2 must be positive");
     assert!(
         matches!(digest_bytes, 25 | 32),
@@ -787,6 +793,7 @@ fn render(
         "            // __WHIR_SCHEDULE_SWITCH__",
         whir_schedule_yul.trim_end_matches('\n'),
     );
+    let mut f1_data = None;
     if let Some(f) = f1 {
         assert_eq!(whir.matches("        // __F1_FINAL_HORNER__").count(), 1);
         assert_eq!(whir.matches("__F1_HORNER_NAME__").count(), 2);
@@ -816,17 +823,38 @@ fn render(
             f.digest_bytes,
             &mut assigned,
         );
-        if let Some((hash, address, level, skip)) = &f.frontier {
-            let hash: String = hash.iter().map(|b| format!("{b:02x}")).collect();
+        let nodes = f
+            .frontier
+            .as_ref()
+            .map_or(&[][..], |(nodes, _, _)| &nodes[..]);
+        let cap_offset = 1 + nodes.len();
+        let qtable_offset = cap_offset + f.decoder.setup_cap_image.len();
+        let data = [nodes, &f.decoder.setup_cap_image, &stats.qtable].concat();
+        let hash: [u8; 32] = {
+            use sha3::{Digest, Keccak256};
+            Keccak256::digest([&[0u8][..], &data].concat()).into()
+        };
+        let hash: String = hash.iter().map(|b| format!("{b:02x}")).collect();
+        for (name, value) in [
+            ("__TEMPLATE_F1_FRONTIER", f.data_address.clone()),
+            ("__TEMPLATE_F1_FRONTIER_HASH", format!("0x{hash}")),
+            ("__TEMPLATE_F1_DATA_CAP_OFFSET", cap_offset.to_string()),
+            (
+                "__TEMPLATE_F1_DATA_QTABLE_OFFSET",
+                qtable_offset.to_string(),
+            ),
+        ] {
+            whir = set_const(&whir, name, value, &mut assigned);
+        }
+        if let Some((_, level, skip)) = &f.frontier {
             for (name, value) in [
-                ("__TEMPLATE_F1_FRONTIER", address.clone()),
-                ("__TEMPLATE_F1_FRONTIER_HASH", format!("0x{hash}")),
                 ("__TEMPLATE_F1_FRONTIER_LEVEL", level.to_string()),
                 ("__TEMPLATE_F1_FRONTIER_SKIP", skip.to_string()),
             ] {
                 whir = set_const(&whir, name, value, &mut assigned);
             }
         }
+        f1_data = Some(data);
     }
     whir = set_const(
         &whir,
@@ -901,11 +929,12 @@ fn render(
             }
         }
     }
-    if flags.contains(&INSTRUMENTED) {
+    let out = if flags.contains(&INSTRUMENTED) {
         instrument(&out)
     } else {
         out
-    }
+    };
+    (out, f1_data)
 }
 
 /// The GKR heap regions `(gkr.sol constant suffix, Yul accessor name, padded size as a
@@ -956,7 +985,7 @@ fn gkr_heap_regions(
             w(stats.max_claims_slots),
         ),
         ("GATEVAL", "GKR_GATEVAL_PTR", w(stats.gateval_slots)),
-        ("QTABLE", "GKR_QTABLE_PTR", words_for(stats.qtable_bytes)),
+        ("QTABLE", "GKR_QTABLE_PTR", words_for(stats.qtable.len())),
     ];
     // F1: the decoded v0 GKR calldata image (f1_decode writes it, the GKR half reads it)
     if let Some(bytes) = f1_v0_bytes {

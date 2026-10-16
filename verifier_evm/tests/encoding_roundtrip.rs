@@ -159,6 +159,14 @@ fn committed_f1_calldata_is_current() {
             "{} is stale",
             common::F1_FIELDS
         );
+        if version.setup_frontier().is_some() {
+            let control = encode_single_tx(&circuit, &proof, &aux, &version.f1_cap_level_params());
+            assert!(
+                read(common::F1_CAP_LEVEL_CALLDATA).trim() == hex::encode(&control.bytes),
+                "{} is stale",
+                common::F1_CAP_LEVEL_CALLDATA
+            );
+        }
     }
 }
 

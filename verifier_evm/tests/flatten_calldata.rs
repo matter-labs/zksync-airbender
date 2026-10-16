@@ -53,6 +53,15 @@ fn write_calldata_into_debug_data() {
         let f1 =
             verifier_evm::encoding::encode_single_tx(&circuit, &proof, &aux, &version.f1_params());
         put(common::F1_CALLDATA, &f1.bytes);
+        if version.setup_frontier().is_some() {
+            let control = verifier_evm::encoding::encode_single_tx(
+                &circuit,
+                &proof,
+                &aux,
+                &version.f1_cap_level_params(),
+            );
+            put(common::F1_CAP_LEVEL_CALLDATA, &control.bytes);
+        }
         let path = version.data_path(common::F1_FIELDS);
         std::fs::write(
             &path,

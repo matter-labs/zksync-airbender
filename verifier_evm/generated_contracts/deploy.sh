@@ -12,8 +12,8 @@
 #
 # CREATE2 reverts on an address collision — bump the salts to deploy fresh contracts.
 # Feed the printed verifier address to ./send_proof.sh afterwards. The F1 verifier additionally
-# pins its SetupFrontier data contract's address and code hash: deploy the frontier first and
-# generate the F1 verifier with that address.
+# pins its SetupFrontier data contract's address and code hash: deploy the data contract first
+# and generate the F1 verifier with that address.
 #
 #   ./deploy.sh <2p21>
 set -eu
