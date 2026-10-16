@@ -117,12 +117,17 @@ contract GkrWhirVerifier {
     uint256 constant __TEMPLATE_WHIR_BATCH_POW_BITS = "{unassigned}"; // batched_proximity_check_pow_bits
     // Base-layer at-point claims (dense in layer0's calldata eval block): mem++wit = NUM_MEMWIT
     // cols, setup = NUM_SETUP cols. The merge folds each 2^PACK_LOG2-chunk by the PACK_LOG2
-    // packing coords: NUM_MEMWIT -> MERGED_MW claims, NUM_SETUP -> 1 claim.
+    // packing coords: NUM_MEMWIT -> MERGED_MW claims, NUM_SETUP -> SETUP_MERGED claims.
     uint256 constant __TEMPLATE_WHIR_PACK_LOG2      = "{unassigned}";
     uint256 constant __TEMPLATE_WHIR_PACK           = "{unassigned}"; // 2^PACK_LOG2
     uint256 constant __TEMPLATE_WHIR_NUM_MEMWIT     = "{unassigned}"; // memory_layout + witness_layout total widths
     uint256 constant __TEMPLATE_WHIR_NUM_SETUP      = "{unassigned}"; // generic_lookup_tables_width
     uint256 constant __TEMPLATE_WHIR_MERGED_MW      = "{unassigned}"; // ceil(NUM_MEMWIT / PACK)
+    uint256 constant __TEMPLATE_WHIR_SETUP_MERGED   = "{unassigned}"; // ceil(NUM_SETUP / PACK)
+    // emit_gkr_mark's ABS-region scratch: packing coords at +0, merged claims at MERGED_OFFSET,
+    // whir_fold_pack's PACK-slot chunk buffer at FOLD_OFFSET (generated, disjoint).
+    uint256 constant __TEMPLATE_GKR_HANDOFF_MERGED_OFFSET = "{unassigned}"; // 32 * PACK_LOG2
+    uint256 constant __TEMPLATE_GKR_HANDOFF_FOLD_OFFSET   = "{unassigned}"; // MERGED_OFFSET + 32 * (MERGED_MW + SETUP_MERGED)
     uint256 constant __TEMPLATE_WHIR_BASE_Z_COORDS  = "{unassigned}"; // layer-0 folding point length (= trace_log2)
     // The WHIR half's own constants (schedule + memory map) are spliced in here:
     // __WHIR_CONSTANTS__
@@ -686,10 +691,10 @@ contract GkrWhirVerifier {
         // Fold one PACK = 2^PACK_LOG2 chunk (count real evals from calldata, rest zero) by the
         // PACK_LOG2 packing coords at `ex` — a PACK_LOG2-var multilinear eval → single claim.
         // LSB binding: adjacent evals differ in pack-index bit 0, which pairs with ex[0], so the
-        // coords apply FORWARD (mirrors the prover's merge_claims). Scratch: ABS+384 .. +PACK·32
-        // (the generator sizes the ABS region for it).
+        // coords apply FORWARD (mirrors the prover's merge_claims). Scratch: PACK slots at
+        // ABS+FOLD_OFFSET (the generator sizes the ABS region for it).
         function whir_fold_pack(cdbase, count, ex) -> v {
-            let sc := add(GKR_ABS_PTR(), 384)
+            let sc := add(GKR_ABS_PTR(), __TEMPLATE_GKR_HANDOFF_FOLD_OFFSET)
             for { let i := 0 } lt(i, __TEMPLATE_WHIR_PACK) { i := add(i, 1) } {
                 let val := 0
                 if lt(i, count) {
@@ -718,7 +723,7 @@ contract GkrWhirVerifier {
         }
 
         // GKR→WHIR handoff: draw the PACK_LOG2 packing coords, merge the base-layer claims
-        // (mem++wit NUM_MEMWIT→MERGED_MW, setup NUM_SETUP→1), draw the WHIR batching challenge
+        // (mem++wit NUM_MEMWIT→MERGED_MW, setup NUM_SETUP→SETUP_MERGED), draw the WHIR batching challenge
         // (PoW), form the batched opening, and write the WHIR half's start state straight into
         // its memory regions: seed, batching, opening, z = base_z(BASE_Z_COORDS) ++
         // extra(PACK_LOG2), the two base-oracle caps (the pack index occupies the HIGH bits of
@@ -727,11 +732,11 @@ contract GkrWhirVerifier {
         // 8-byte WHIR-batching PoW nonce; the WHIR proof stream follows it.
         function emit_gkr_mark(claim_v, ptr) {
             let sp := SEED_PTR()
-            // ABS-region scratch (sized by the generator): packing coords at +0 (PACK_LOG2
-            // slots, <= 4), merged claims at +128 (MERGED_MW + 1 slots, <= 8), whir_fold_pack's
-            // chunk buffer at +384 (PACK slots).
+            // ABS-region scratch (sized by the generator): PACK_LOG2 packing coords at +0,
+            // MERGED_MW + SETUP_MERGED merged claims at +MERGED_OFFSET, whir_fold_pack's chunk
+            // buffer at +FOLD_OFFSET.
             let ex := GKR_ABS_PTR()
-            let mg := add(GKR_ABS_PTR(), 128)
+            let mg := add(GKR_ABS_PTR(), __TEMPLATE_GKR_HANDOFF_MERGED_OFFSET)
             // draw PACK_LOG2 packing coords
             let seed := mload(sp)
             for { let i := 0 } lt(i, __TEMPLATE_WHIR_PACK_LOG2) { i := add(i, 1) } {
@@ -739,16 +744,19 @@ contract GkrWhirVerifier {
                 mstore(sp, seed)
                 mstore(add(ex, mul(32, i)), mod(shr(128, seed), mload(P_PTR)))
             }
-            // merge base-layer claims (dense in layer0's eval block at CIRCUIT_PTR)
-            let cdbase := mload(CIRCUIT_PTR)
-            for { let c := 0 } lt(c, __TEMPLATE_WHIR_MERGED_MW) { c := add(c, 1) } {
-                let off := mul(c, __TEMPLATE_WHIR_PACK)
+            // merge base-layer claims (dense in layer0's eval block at CIRCUIT_PTR): the
+            // mem++wit groups, then the setup groups (columns NUM_MEMWIT..), each zero-padded
+            for { let g := 0 } lt(g, add(__TEMPLATE_WHIR_MERGED_MW, __TEMPLATE_WHIR_SETUP_MERGED)) { g := add(g, 1) } {
+                let col := mul(g, __TEMPLATE_WHIR_PACK)
+                let limit := __TEMPLATE_WHIR_NUM_MEMWIT
+                if iszero(lt(g, __TEMPLATE_WHIR_MERGED_MW)) {
+                    col := add(__TEMPLATE_WHIR_NUM_MEMWIT, mul(sub(g, __TEMPLATE_WHIR_MERGED_MW), __TEMPLATE_WHIR_PACK))
+                    limit := add(__TEMPLATE_WHIR_NUM_MEMWIT, __TEMPLATE_WHIR_NUM_SETUP)
+                }
                 let count := __TEMPLATE_WHIR_PACK
-                if gt(add(off, __TEMPLATE_WHIR_PACK), __TEMPLATE_WHIR_NUM_MEMWIT) {
-                count := sub(__TEMPLATE_WHIR_NUM_MEMWIT, off) }
-                mstore(add(mg, mul(32, c)), whir_fold_pack(add(cdbase, mul(16, off)), count, ex))
+                if gt(add(col, __TEMPLATE_WHIR_PACK), limit) { count := sub(limit, col) }
+                mstore(add(mg, mul(32, g)), whir_fold_pack(add(mload(CIRCUIT_PTR), mul(16, col)), count, ex))
             }
-            mstore(add(mg, mul(32, __TEMPLATE_WHIR_MERGED_MW)), whir_fold_pack(add(cdbase, mul(16, __TEMPLATE_WHIR_NUM_MEMWIT)), __TEMPLATE_WHIR_NUM_SETUP, ex))
             // draw WHIR batching (PoW fold: digest=keccak(seed||nonce_be8), top __TEMPLATE_WHIR_BATCH_POW_BITS
             // must be zero; nonce is the 8-byte BE word at the GKR stream cursor). Then draw.
             let wnonce := shr(192, calldataload(ptr))
@@ -764,7 +772,7 @@ contract GkrWhirVerifier {
             // batched opening = Σ merged_i · batching^i
             let opening := 0
             let bexp := 1
-            for { let i := 0 } lt(i, add(__TEMPLATE_WHIR_MERGED_MW, 1)) { i := add(i, 1) } {
+            for { let i := 0 } lt(i, add(__TEMPLATE_WHIR_MERGED_MW, __TEMPLATE_WHIR_SETUP_MERGED)) { i := add(i, 1) } {
                 opening := addmod(opening, mulmod(mload(add(mg, mul(32, i))), bexp, mload(P_PTR)), mload(P_PTR))
                 bexp := mulmod(bexp, batching, mload(P_PTR))
             }
