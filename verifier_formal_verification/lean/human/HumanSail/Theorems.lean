@@ -17,10 +17,6 @@ open Sail SailRV32 SailRV32.Functions Human RV.ABI
 
 namespace Airbender
 
-/-- Register `i` of a Sail state, read the way Sail's instructions read it (x0 reads as 0). -/
-noncomputable def getReg (σ : SailState) (i : RV.Reg) : BitVec 32 :=
-  match runSail (rX_bits (.Regidx i)) σ with | .ok v _ => v | .error _ _ => 0
-
 /-- Our state `s` and Sail's state `σ` agree on everything a program can see: PC, registers, memory. -/
 def AgreeSail (s : RV.State) (σ : SailState) : Prop :=
   Configured σ ∧ σ.regs .PC = s.pc ∧ (∀ i, getReg σ i = s.getReg i) ∧

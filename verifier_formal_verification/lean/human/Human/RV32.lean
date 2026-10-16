@@ -1,3 +1,5 @@
+import Human.Delegations
+
 /-! # RV32IM as Airbender runs it — our own spec, meant to be read
 
 One instruction = at most one register or memory write, plus the PC update.
@@ -7,58 +9,13 @@ loads/stores, misaligned jump targets, fetch outside ROM.
 Non-determinism (Airbender's CSR `0x7c0`): `input` is the list of answers the prover's oracle will give, in order;
 the theorems hold for every such list. Any Zicsr instruction on CSR `0x7c0` whose source (rs1, or the immediate) is 0
 reads the next answer into `rd` (≠ x0); one with `rd = x0` and a nonzero source is a no-op (Airbender's write).
-Every other combination (Airbender's transpiler panics), every other CSR, and a read with no answers left have no
+Every other combination (Airbender's transpiler panics) and a read with no answers left have no next state.
+Delegations (precompiles): CSR `0x7c7`, the Blake2s round function (`Human/Delegations.lean`); other CSRs have no
 next state.
 Differences from standard RV32IM follow Airbender's ISA table (spec/top-down/00 master.md, "Supported
 instruction set"); each is marked `-- Airbender:` below. -/
 
 namespace RV
-
-abbrev Word := BitVec 32
-abbrev Reg  := BitVec 5
-
-/-- Airbender memory map: ROM `[0, 4 MiB)` (code + constants, read-only), RAM `[4 MiB, 1 GiB)`. -/
-def ROM_END : Nat := 0x400000
-def RAM_END : Nat := 0x40000000
-
-/-- Accessing `numBytes` bytes starting at address `addr`: allowed to read (ROM or RAM), allowed to write (RAM only),
-aligned (the address is a multiple of the access size). -/
-abbrev readable (addr : Word) (numBytes : Nat) : Prop := addr.toNat + numBytes ≤ RAM_END
-abbrev writable (addr : Word) (numBytes : Nat) : Prop := ROM_END ≤ addr.toNat ∧ addr.toNat + numBytes ≤ RAM_END
-abbrev aligned  (addr : Word) (numBytes : Nat) : Prop := addr.toNat % numBytes = 0
-
-structure State where
-  pc      : Word
-  regFile : Reg → Word      -- stored values; read registers with `getReg` (x0 always reads as 0)
-  mem     : Word → BitVec 8 -- byte-addressed, little-endian
-  input   : List Word := []  -- the non-determinism input (CSR 0x7c0): the words not yet read
-
-namespace State
-/-- The value an instruction sees in register `i`: x0 is always 0. -/
-def getReg (s : State) (i : Reg) : Word := if i = 0 then 0 else s.regFile i
-def setReg (s : State) (rd : Reg) (value : Word) : State :=
-  { s with regFile := fun i => if i = rd then value else s.regFile i }
-/-- Go on to the following instruction. -/
-def nextInstr (s : State) : State := { s with pc := s.pc + 4 }
-def setPC (s : State) (target : Word) : State := { s with pc := target }
-/-- Jump to `target`; no next state unless it is 4-byte aligned (no compressed instructions). -/
-def jumpAligned (s : State) (target : Word) : Option State :=
-  if target.toNat % 4 = 0 then some (s.setPC target) else none
-end State
-
-/-- The `numBytes` bytes at `addr`, little-endian (lowest address = lowest byte). -/
-def read (mem : Word → BitVec 8) (addr : Word) : (numBytes : Nat) → Word
-  | 0     => 0
-  | n + 1 => (mem addr).zeroExtend 32 ||| (read mem (addr + 1) n <<< 8)
-
-/-- Memory after writing the low `numBytes` bytes of `value` at `addr`, little-endian. -/
-def write (mem : Word → BitVec 8) (addr : Word) (value : Word) : (numBytes : Nat) → (Word → BitVec 8)
-  | 0     => mem
-  | n + 1 => write (fun b => if b = addr then value.setWidth 8 else mem b) (addr + 1) (value >>> 8) n
-
-/-- Store the low `numBytes` bytes of `value` at `addr`. -/
-def State.store (s : State) (addr value : Word) (numBytes : Nat) : State :=
-  { s with mem := write s.mem addr value numBytes }
 
 /-- The ALU operations (of OP and OP-IMM instructions). -/
 inductive Op | add | sub | sll | slt | sltu | xor | srl | sra | or | and
@@ -130,6 +87,7 @@ inductive Instr
   | mop    (op : FieldOp) (rd rs1 rs2 : Reg)   -- Airbender: field operations (`mop.rr.N`)
   | inputRead (op : CsrOp) (rd : Reg)         -- Airbender: CSR 0x7c0, source 0: `rd` := the next input word
   | inputWrite (op : CsrOp) (src : Reg)       -- Airbender: CSR 0x7c0, `rd = x0`, source ≠ 0: no effect
+  | delegate (op : CsrOp)                     -- Airbender: CSR 0x7c7, source and `rd` 0: a Blake2s delegation call
 
 /-- Whether an instruction reads an input word. -/
 def Instr.readsInput : Instr → Bool
@@ -164,11 +122,19 @@ def exec (s : State) : Instr → Option State
       | w :: rest => some { (s.setReg rd w).nextInstr with input := rest }
       | []        => none
   | .inputWrite _ _        => some s.nextInstr
+  | .delegate _            =>                       -- Airbender: the whole run of the call's `csrrw` words
+      match Delegation.blake2s (s.getReg 10) (s.getReg 11) (s.getReg 12) s.mem with
+      | some (n, x12, out) =>
+          if isRun s.mem s.pc (read s.mem s.pc 4) n then
+            some (((s.storeWords (s.getReg 10) out.toList).setReg 12 x12).setPC (s.pc + BitVec.ofNat 32 (4 * n)))
+          else none
+      | none => none
 
-/-- Airbender: a Zicsr instruction `op` on CSR `csr` with source field `src` (rs1, or the immediate): only CSR 0x7c0,
-and only a read (`src = 0`, `rd ≠ x0`) or a write (`src ≠ 0`, `rd = x0`). -/
+/-- Airbender: a Zicsr instruction `op` on CSR `csr` with source field `src` (rs1, or the immediate): CSR 0x7c7 with
+`src` and `rd` 0 (a delegation call); CSR 0x7c0, a read (`src = 0`, `rd ≠ x0`) or a write (`src ≠ 0`, `rd = x0`). -/
 def decodeCsr (op : CsrOp) (csr : BitVec 12) (src rd : Reg) : Option Instr :=
-  if csr ≠ 0x7c0 then none
+  if csr = 0x7c7 then (if src = 0 ∧ rd = 0 then some (.delegate op) else none)
+  else if csr ≠ 0x7c0 then none
   else if src = 0 ∧ rd ≠ 0 then some (.inputRead op rd)
   else if src ≠ 0 ∧ rd = 0 then some (.inputWrite op src)
   else none

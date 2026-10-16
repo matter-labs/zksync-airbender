@@ -10,6 +10,8 @@ import Slop.Equiv.DecInputRead
 import Slop.Equiv.DecInputReadImm
 import Slop.Equiv.DecInputWrite
 import Slop.Equiv.DecInputWriteImm
+import Slop.Equiv.DecDelegate
+import Slop.Equiv.DecDelegateImm
 import HumanSail.Theorems
 
 /-! `Airbender.DecodeIsSail` (`HumanSail/Theorems.lean`): split our table `RV.decode` into its rows and use each
@@ -29,6 +31,12 @@ theorem bits_csr {w : BitVec 32} (h : ¬ w.extractLsb' 20 12 ≠ 0x7c0) : Bits w
   bits_of_toNat (by rw [not_not.mp h]; rfl)
 theorem bits_src {w : BitVec 32} (h : w.extractLsb' 15 5 = 0 ∧ w.extractLsb' 7 5 ≠ 0) : Bits w 15 5 0 :=
   bits_of_toNat (by rw [h.1]; rfl)
+theorem bits_dcsr {w : BitVec 32} (h : w.extractLsb' 20 12 = 0x7c7) : Bits w 20 12 1991 :=
+  bits_of_toNat (by rw [h]; rfl)
+theorem bits_dsrc {w : BitVec 32} (h : w.extractLsb' 15 5 = 0 ∧ w.extractLsb' 7 5 = 0) : Bits w 15 5 0 :=
+  bits_of_toNat (by rw [h.1]; rfl)
+theorem bits_drd {w : BitVec 32} (h : w.extractLsb' 15 5 = 0 ∧ w.extractLsb' 7 5 = 0) : Bits w 7 5 0 :=
+  bits_of_toNat (by rw [h.2]; rfl)
 theorem bits_rd {w : BitVec 32} (h : w.extractLsb' 15 5 ≠ 0 ∧ w.extractLsb' 7 5 = 0) : Bits w 7 5 0 :=
   bits_of_toNat (by rw [h.2]; rfl)
 
@@ -104,6 +112,12 @@ theorem decode_is_sail : Airbender.DecodeIsSail := by
     | exact dec_write_rwi w σ hs (by assumption) (by assumption) (bits_rd ‹_›) (bits_csr ‹_›)
     | exact dec_write_rsi w σ hs (by assumption) (by assumption) (bits_rd ‹_›) (bits_csr ‹_›)
     | exact dec_write_rci w σ hs (by assumption) (by assumption) (bits_rd ‹_›) (bits_csr ‹_›)
+    | exact dec_delegate_rw w σ hs (by assumption) (by assumption) (bits_dsrc ‹_›) (bits_drd ‹_›) (bits_dcsr ‹_›)
+    | exact dec_delegate_rs w σ hs (by assumption) (by assumption) (bits_dsrc ‹_›) (bits_drd ‹_›) (bits_dcsr ‹_›)
+    | exact dec_delegate_rc w σ hs (by assumption) (by assumption) (bits_dsrc ‹_›) (bits_drd ‹_›) (bits_dcsr ‹_›)
+    | exact dec_delegate_rwi w σ hs (by assumption) (by assumption) (bits_dsrc ‹_›) (bits_drd ‹_›) (bits_dcsr ‹_›)
+    | exact dec_delegate_rsi w σ hs (by assumption) (by assumption) (bits_dsrc ‹_›) (bits_drd ‹_›) (bits_dcsr ‹_›)
+    | exact dec_delegate_rci w σ hs (by assumption) (by assumption) (bits_dsrc ‹_›) (bits_drd ‹_›) (bits_dcsr ‹_›)
     | exact dec_mop_add w σ hs (by assumption) (by assumption) (by assumption)
     | exact dec_mop_sub w σ hs (by assumption) (by assumption) (by assumption)
     | exact dec_mop_mul w σ hs (by assumption) (by assumption) (by assumption)

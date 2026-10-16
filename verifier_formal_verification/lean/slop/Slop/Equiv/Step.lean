@@ -32,12 +32,13 @@ noncomputable def stepSail (next : BitVec 32) (σ : SailState) : Option (SailSta
   | .ok (some r) σ' => some (σ', r)
   | _ => none
 
-theorem step_eq (m : Airbender.Machine) (σ' : SailState) (r : Bool)
+theorem step_eq (m : Airbender.Machine) (σ' : SailState) (r : Bool) (hd : Airbender.delegation m.sail = none)
     (h : stepSail (m.input.headD 0) m.sail = some (σ', r)) :
     Airbender.step m = if r then (match m.input with | _ :: rest => some ⟨σ', rest⟩ | [] => none)
       else some ⟨σ', m.input⟩ := by
   unfold stepSail at h
   unfold Airbender.step
+  rw [hd]; dsimp only
   rcases e : runSail (Airbender.sailStep (m.input.headD 0)) m.sail with ⟨_ | r', σ''⟩ | ⟨_, _⟩ <;> rw [e] at h <;>
     simp only [reduceCtorEq, Option.some.injEq, Prod.mk.injEq] at h
   obtain ⟨rfl, rfl⟩ := h

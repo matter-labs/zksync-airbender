@@ -62,6 +62,12 @@ theorem cycle_stops  : next 0xc0001073 = none := by decide +kernel           -- 
 theorem sail_csr_7c0_illegal :
     (match runSail (SailRV32.Functions.execute (.CSRReg (0x7c0, .Regidx 0, .Regidx 10, .CSRRW)))
       Airbender.resetState with | .ok (.Illegal_Instruction ()) _ => true | _ => false) = true := by decide +kernel
+/-- Sail's own `execute` on `csrrw x0, 0x7c7, x0` (a delegation call in Airbender) is an illegal instruction too. -/
+theorem sail_csr_7c7_illegal :
+    (match runSail (SailRV32.Functions.execute (.CSRReg (0x7c7, .Regidx 0, .Regidx 0, .CSRRW)))
+      Airbender.resetState with | .ok (.Illegal_Instruction ()) _ => true | _ => false) = true := by decide +kernel
+theorem delegate_rejected : next 0x7c701073 = none := by decide +kernel   -- csrrw x0, 0x7c7, x0 with x12 = 0
+theorem csr_7c8_stops : next 0x7c801073 = none := by decide +kernel       -- csrrw x0, 0x7c8, x0 (not modelled)
 theorem input_next   : readNext 0x7c001573 [0x1234] = some (4, 0x1234, []) := by decide +kernel  -- csrrw a0, 0x7c0, x0
 theorem csrrs_read   : readNext 0x7c002573 [0x1234] = some (4, 0x1234, []) := by decide +kernel  -- csrrs a0, 0x7c0, x0
 theorem csrrci_read  : readNext 0x7c007573 [0x1234] = some (4, 0x1234, []) := by decide +kernel  -- csrrci a0, 0x7c0, 0

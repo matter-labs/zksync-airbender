@@ -12,6 +12,9 @@ Both compute a Mersenne31 polynomial, a BabyBear Ext4 polynomial (Horner) and a 
 `blake2s_u32`, 7 rounds) of their input, five words read from Airbender's non-determinism source (CSR `0x7c0`).
 
 ## What a human reads (`lean/human/`, ~200 lines)
+- `Human/State.lean` — the machine state (registers, PC, byte memory, the non-determinism input).
+- `Human/Delegations.lean` — Airbender's delegations (precompiles): the Blake2s round function (CSR `0x7c7`), built
+  from `Human/Blake2s.lean` (Blake2s constants, `G`, one round).
 - `Human/RV32.lean` — the machine: RV32IM as Airbender runs it (decoder from the encoding tables, one line of
   behaviour per instruction, memory map, the input read `csrrw rd, 0x7c0, x0` from a list of input words; anything
   else has no next state = unprovable).

@@ -8,21 +8,52 @@ namespace RV
 /-- The state with input `t`. -/
 def State.withInput (s : State) (t : List Word) : State := { s with input := t }
 
+theorem storeWords_input (s : State) (a : Word) (ws : List Word) : (s.storeWords a ws).input = s.input := by
+  induction ws generalizing s a with
+  | nil => rfl
+  | cons w ws ih => exact (ih _ _).trans rfl
+
+theorem storeWords_withInput (s : State) (a : Word) (ws : List Word) (t : List Word) :
+    (s.withInput t).storeWords a ws = (s.storeWords a ws).withInput t := by
+  induction ws generalizing s a with
+  | nil => rfl
+  | cons w ws ih => exact ih (s.store a w 4) (a + 4)
+
 /-- Only the input read moves the input. -/
 theorem exec_keeps_input {s t : State} {i : Instr} (hex : exec s i = some t) (hi : i.readsInput = false) :
     t.input = s.input := by
-  cases i <;> simp only [Instr.readsInput, reduceCtorEq] at hi <;>
-    simp only [exec, State.jumpAligned] at hex <;>
-    (repeat' split at hex) <;> simp_all [Option.map, State.setReg, State.nextInstr, State.setPC,
+  cases i
+  case delegate op =>
+    simp only [exec] at hex
+    split at hex
+    · split_ifs at hex; cases hex
+      simp only [State.setPC, State.setReg]; exact storeWords_input _ _ _
+    · cases hex
+  all_goals simp only [Instr.readsInput, reduceCtorEq] at hi
+  all_goals simp only [exec, State.jumpAligned] at hex
+  all_goals (repeat' split at hex) <;> simp_all [Option.map, State.setReg, State.nextInstr, State.setPC,
       State.store] <;> (subst_vars; simp)
 
 /-- … and the other instructions do not look at it. -/
 theorem exec_input_irrel (s : State) (i : Instr) (hi : i.readsInput = false) (t : List Word) :
     exec (s.withInput t) i = (exec s i).map (·.withInput t) := by
-  cases i <;> simp only [Instr.readsInput, reduceCtorEq] at hi <;>
-    simp only [exec, State.withInput, State.jumpAligned, State.getReg, State.setReg, State.nextInstr, State.setPC,
-      State.store] <;>
-    (repeat' split) <;> simp_all
+  cases i
+  case delegate op =>
+    show (match Delegation.blake2s (s.getReg 10) (s.getReg 11) (s.getReg 12) s.mem with
+      | some (n, x12, out) => if isRun s.mem s.pc (read s.mem s.pc 4) n then
+          some ((((s.withInput t).storeWords (s.getReg 10) out.toList).setReg 12 x12).setPC
+            (s.pc + BitVec.ofNat 32 (4 * n))) else none
+      | none => none) = _
+    simp only [exec]
+    rcases Delegation.blake2s (s.getReg 10) (s.getReg 11) (s.getReg 12) s.mem with _ | ⟨n, x12, out⟩
+    · rfl
+    · by_cases hr : isRun s.mem s.pc (read s.mem s.pc 4) n
+      · simp only [if_pos hr, storeWords_withInput, Option.map_some]; rfl
+      · simp only [if_neg hr, Option.map_none]
+  all_goals simp only [Instr.readsInput, reduceCtorEq] at hi
+  all_goals simp only [exec, State.withInput, State.jumpAligned, State.getReg, State.setReg, State.nextInstr,
+      State.setPC, State.store]
+  all_goals (repeat' split) <;> simp_all
 
 /-- One step with the input empty: no input read, and the same step with any input. -/
 theorem step_lift {s s' : State} (h : step s = some s') (he : s.input = []) :

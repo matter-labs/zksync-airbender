@@ -7,6 +7,21 @@ commit check `git diff --cached --stat` and that no staged file is over ~200 KB.
 Moved here from an earlier prototype repo (as a snapshot; its history, which contains the large Sail model, was
 NOT imported).
 
+=== DELEGATIONS SPEC: BLAKE2S ROUND FUNCTION, CSR 0x7C7 (2026-10-16) ===
+- Source: riscv_transpiler vm/delegations/blake2_round_function.rs (and replayer/delegations, same semantics): a
+  run of N identical csrrw x0, 0x7c7, x0 (N = 7 or 10 by x12 bit 16) is ONE call; pc += 4N; the replayer decodes
+  with PROTECT_AGAINST_MID_DELEGATION_JUMPS = true (the other slots illegal). x10: state (8) + extended state (16),
+  128-aligned, RAM; x11: 16-word input, 64-aligned, RAM; x10 != x11; x12: bit 16 reduced, 17 right node, 18
+  compression, x12 >>> 19 = 1; writes back the 24 words, x12 := (ctrl | (reduced ? 0x400 : 0)) << 16.
+- Spec (human/): State.lean (moved out of RV32), Blake2s.lean (IV, configuredIV, 10-row SIGMA, G, round; moved out
+  of SpecBlake), Delegations.lean (readWords, rounds, Delegation.blake2s, isRun: the run starts at the PC and is
+  exactly N long), RV32: Instr.delegate op (decodeCsr: CSR 0x7c7, source and rd 0; any Zicsr form), exec = one
+  macro step (storeWords, x12, pc + 4N). Sail side: Airbender.delegation runs Delegation.blake2s on Sail's state
+  before the Sail step (Sail: csrrw x0, 0x7c7, x0 is illegal, checked); DecDelegate/DecDelegateImm, StepDelegate
+  (kind_delegate, writeWords_eq), step_is_airbender. Test: the delegation on the five-word block = blake5.
+- Not modelled: 0x7c8 (G function), 0x7ca (u256 bigint), 0x7cb..0x7ce (Keccak). Images unchanged (no guest uses
+  the delegation yet).
+
 === CSR 0x7C0: ALL ZICSR FORMS (2026-10-16) ===
 - riscv_transpiler (ir/simple_instruction_set.rs, ZICSR_MASK = funct3 & 3 != 0): any of csrrw/s/c and the
   immediate forms on 0x7c0; source field (rs1 / zimm) 0 and rd != x0: read; rd = x0 and source != 0: write, a NOP

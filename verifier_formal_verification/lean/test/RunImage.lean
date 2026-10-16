@@ -1,6 +1,7 @@
 import Human.RV32
 import Human.Spec
 import Human.SpecBlake
+import Human.Delegations
 import Image
 import ImageMop
 open RV
@@ -75,8 +76,28 @@ def runOne (name : String) (bytes : Array (BitVec 8)) (halt : Nat) (x : Nat) (y 
     IO.println s!"{name} x = {x}, y = {y}: pc = {s.pc.toNat}, outputs {got}, expected {expected x y} {if good then "OK" else "MISMATCH"}"
     return good
 
+/-- Airbender's Blake2s delegation (7 rounds, normal mode) on one last block of the five words `w`, laid out as
+`blake2s_u32` does (state, extended state with the counter and last-block words, input at `+128`): the digest. -/
+def delegationDigest (w : List Nat) : List Nat :=
+  let ws : List Word := (List.ofFn fun i : Fin 8 => Spec.configuredIV i) ++
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20 ^^^ Spec.IV 4, 0, 0xFFFFFFFF ^^^ Spec.IV 6, 0] ++ List.replicate 8 0 ++
+    w.map (BitVec.ofNat 32 ·) ++ List.replicate 11 0
+  let mem : Word → BitVec 8 := fun a =>
+    if 0x1401000 ≤ a.toNat ∧ a.toNat < 0x1401000 + 4 * ws.length then
+      (ws.getD ((a.toNat - 0x1401000) / 4) 0 >>> (8 * (a.toNat % 4))).setWidth 8 else 0
+  match Delegation.blake2s 0x1401000 0x1401080 ((0b1001 : Word) <<< 16) mem with
+  | some (_, _, out) => (out.toList.take 8).map (·.toNat)
+  | none => []
+
 def main : IO UInt32 := do
   let mut ok := true
+  for (x, y) in [(5, [1, 2, 3, 4]), (123456789, [p - 1, 7, 0, 1234567])] do
+    let d := delegationDigest (x :: y)
+    let e := ((Spec.blake5 #v[BitVec.ofNat 32 x, BitVec.ofNat 32 y[0]!, BitVec.ofNat 32 y[1]!, BitVec.ofNat 32 y[2]!,
+      BitVec.ofNat 32 y[3]!]).toList).map (·.toNat)
+    let good := d == e
+    IO.println s!"delegation 0x7c7, x = {x}, y = {y}: {d.take 2} vs blake5 {e.take 2} {if good then "OK" else "MISMATCH"}"
+    ok := good && ok
   for (x, y) in [(0, [0, 0, 0, 0]), (5, [1, 2, 3, 4]), (123456789, [p - 1, 7, 0, 1234567]), (P, [5, p - 2, 11, 0])] do
     ok := (← runOne "app    " Image.bytes Image.halt x y) && ok
     ok := (← runOne "app_mop" ImageMop.bytes ImageMop.halt x y) && ok
