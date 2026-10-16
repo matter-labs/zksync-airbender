@@ -1,4 +1,6 @@
 import Airbender.Import.SetupEmbed
+import Airbender.Review.Circuits.Keccak.Tables.FixedData
+import Airbender.Review.Circuits.Keccak.Tables.RotationData
 import Airbender.Review.Circuits.Bigint.Tables.Setup
 import Airbender.Review.Circuits.Blake2G.Tables.ControllerData
 import Airbender.Review.Circuits.Keccak.Tables.ControllerData
@@ -9,6 +11,36 @@ namespace Tests.SetupImport
 open Airbender Lean
 
 import_setup imported from "artifacts/setup/decoder-smoke.json"
+
+/-- error: setup template column is absent -/
+#guard_msgs in
+import_setup_templates absentColumn from "artifacts/setup/keccak.json"
+  native_table_id 40 physical_column 999 row_offsets [393216]
+
+/-- error: setup template offset is outside its native region -/
+#guard_msgs in
+import_setup_templates outsideRegion from "artifacts/setup/keccak.json"
+  native_table_id 40 physical_column 2 row_offsets [1048576]
+
+/-- error: setup template offset is not a stored block boundary -/
+#guard_msgs in
+import_setup_templates insideBlock from "artifacts/setup/keccak.json"
+  native_table_id 40 physical_column 2 row_offsets [393217]
+
+/-- error: setup template block is not periodic -/
+#guard_msgs in
+import_setup_templates affineBlock from "artifacts/setup/keccak.json"
+  native_table_id 40 physical_column 2 row_offsets [0]
+
+def absentLiteral : Array Nat := #[999999999]
+
+/-- error: shared setup literal Tests.SetupImport.absentLiteral is absent from imported data -/
+#guard_msgs in
+share_setup_literals absentSharedLiteral from Keccak.zeroData using [absentLiteral]
+
+/-- error: shared setup literal must be an Array Nat definition -/
+#guard_msgs in
+share_setup_literals wrongLiteralType from Keccak.zeroData using [Keccak.rotationTemplatesColumn]
 
 theorem imported_shape : imported.data.length = 524288 ∧ imported.regions.size = 2 := by decide
 
@@ -45,7 +77,7 @@ private def check (condition : Bool) (label : String) : IO Unit :=
 private def values (column : Setup.Column) : Array (Option Nat) :=
   column.blocks.flatMap fun block => (Array.range block.length).map block.get?
 
-private def checkXorRegions (label source : String) (artifact : Setup.Artifact)
+private def checkRegions (label source : String) (artifact : Setup.Artifact)
     (data : Fin 5 → Setup.TableData width) (regions : Fin 5 → Setup.Region)
     (sources : Vector String 5) : IO Unit := do
   for k in List.finRange 5 do
@@ -54,11 +86,11 @@ private def checkXorRegions (label source : String) (artifact : Setup.Artifact)
     check (sources[k] == source && artifact.tables.contains region &&
       imported.length == region.length && imported.offset == 0 &&
       imported.columns.size == artifact.columns.size)
-      s!"{label} XOR region {region.id}: exact source, metadata and physical geometry"
+      s!"{label} region {region.id}: exact source, metadata and physical geometry"
     check (imported.columns.toArray.zipIdx.all fun (column, index) =>
       some (values column) == artifact.columns[index]?.map (fun original =>
         (values original).extract region.offset (region.offset + region.length)))
-      s!"{label} XOR region {region.id}: every key, output, padding and tag equals JSON"
+      s!"{label} region {region.id}: every key, output, padding and tag equals JSON"
 
 def run : IO Unit := do
   let source ← IO.FS.readFile "artifacts/setup/decoder-smoke.json"
@@ -93,13 +125,13 @@ def run : IO Unit := do
         controllerSetup.columns[index]?.bind (fun original =>
           original.get? (controllerRegion.offset + row)))
     "every BLAKE2 G controller key, output, padding and tag equals the parsed data"
-  checkXorRegions "BLAKE2 G" controllerSource controllerSetup Blake2G.xorData Blake2G.xorRegion
+  checkRegions "BLAKE2 G" controllerSource controllerSetup Blake2G.xorData Blake2G.xorRegion
     #v[Blake2G.xor8DataSourceBytes, Blake2G.xor3DataSourceBytes,
       Blake2G.xor4DataSourceBytes, Blake2G.xor7DataSourceBytes, Blake2G.xor9DataSourceBytes]
   let roundSource ← IO.FS.readFile "artifacts/setup/blake-round.json"
   let .ok roundSetup := Setup.parse roundSource
     | throw (IO.userError "extended BLAKE setup artifact failed import")
-  checkXorRegions "extended BLAKE" roundSource roundSetup Blake2Round.xorData Blake2Round.xorRegion
+  checkRegions "extended BLAKE" roundSource roundSetup Blake2Round.xorData Blake2Round.xorRegion
     #v[Blake2Round.xor8DataSourceBytes, Blake2Round.xor3DataSourceBytes,
       Blake2Round.xor4DataSourceBytes, Blake2Round.xor7DataSourceBytes, Blake2Round.xor9DataSourceBytes]
   let keccakSource ← IO.FS.readFile "artifacts/setup/keccak.json"
@@ -118,6 +150,37 @@ def run : IO Unit := do
       column.get? row == keccakSetup.columns[index]?.bind (fun original =>
         original.get? (keccakRegion.offset + row)))
     "every Keccak controller key, output and tag equals the parsed data"
+  checkRegions "Keccak fixed" keccakSource keccakSetup Keccak.fixedData Keccak.fixedRegion
+    #v[Keccak.zeroDataSourceBytes, Keccak.xorDataSourceBytes,
+      Keccak.iotaDataSourceBytes, Keccak.chiDataSourceBytes, Keccak.rotationDataSourceBytes]
+  let templates : Vector (Array Nat) 10 :=
+    #v[Keccak.rotationTemplates0, Keccak.rotationTemplates1, Keccak.rotationTemplates2,
+      Keccak.rotationTemplates3, Keccak.rotationTemplates4, Keccak.rotationTemplates5,
+      Keccak.rotationTemplates6, Keccak.rotationTemplates7, Keccak.rotationTemplates8,
+      Keccak.rotationTemplates9]
+  check (Keccak.rotationTemplatesSourceBytes == keccakSource &&
+    keccakSetup.tables.contains Keccak.rotationTemplatesRegion &&
+    Keccak.rotationTemplatesRegion.id == 40 && Keccak.rotationTemplatesColumn == 2 &&
+    Keccak.rotationTemplatesRowOffsets.size == 10 &&
+    Keccak.rotationTemplatesRepetitions.size == 10 && Keccak.rotationTemplatesStrides.size == 10)
+    "Keccak stored templates retain exact source and native region metadata"
+  for k in List.finRange 10 do
+    let start := Keccak.rotationTemplatesRegion.offset + Keccak.rotationTemplatesRowOffsets[k.val]!
+    check ((templates[k].zipIdx).all fun (value, index) =>
+      keccakSetup.columns[Keccak.rotationTemplatesColumn]?.bind (fun column =>
+        column.get? (start + index)) == some value)
+      s!"Keccak stored template {k.val}: every value equals the parsed physical rows"
+    let some physical := keccakSetup.columns[Keccak.rotationTemplatesColumn]?
+      | throw (IO.userError "Keccak stored-template column absent")
+    let (_, selected) := physical.blocks.foldl (fun (position, found) block =>
+      (position + block.length, if position == start then some block else found))
+      ((0 : Nat), (none : Option Setup.Block))
+    let some (.periodic count stride original) := selected
+      | throw (IO.userError "Keccak stored-template native block absent")
+    check (templates[k] == original &&
+      Keccak.rotationTemplatesRepetitions[k.val]? == some count &&
+      Keccak.rotationTemplatesStrides[k.val]? == some stride)
+      s!"Keccak stored template {k.val}: native stored values, count and stride preserved"
   check (artifact.trace_len == imported.data.length && artifact.columns.size == 9 &&
     artifact.tables.size == 2 && artifact.circuit.structured_statements.size == 30)
     "complete setup and its native circuit decoded together"

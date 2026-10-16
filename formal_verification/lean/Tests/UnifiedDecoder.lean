@@ -1,6 +1,8 @@
 import Airbender.Proofs.UnifiedReduced.Claims
 import Airbender.Proofs.Sail.WordMemoryState
 
+set_option Elab.async false
+
 namespace Tests.UnifiedDecoder
 open Airbender Arithmetic Trace Reference.RiscV.Sail Reference.Sail
 set_option warningAsError true

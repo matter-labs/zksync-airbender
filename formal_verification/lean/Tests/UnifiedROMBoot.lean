@@ -2,6 +2,8 @@ import Tests.TraceExecution
 import Airbender.Proofs.UnifiedReduced.Claims
 import Airbender.Review.Trace.UnifiedReduced.NativeMixedROM
 
+set_option Elab.async false
+
 namespace Tests.UnifiedROMBoot
 open Airbender Arithmetic Trace Reference.RiscV.Sail Reference.Sail
 open _root_.Sail.ArchSem

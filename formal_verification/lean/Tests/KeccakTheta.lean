@@ -2,6 +2,8 @@ import Airbender.Proofs.Keccak.Claims
 import Mathlib.Tactic.IntervalCases
 import Airbender.Proofs.BabyBear
 
+set_option Elab.async false
+
 namespace Tests.KeccakTheta
 open Airbender
 set_option warningAsError true
@@ -39,12 +41,13 @@ private theorem bytesHold (i : Fin 40) :
   change ∃ index : Fin 1249281,
     (Keccak.Proofs.byteEntry setup i).map (Expression.eval (Verification.environment row)) =
       (Keccak.setupRow control index).map (fun (n : Nat) => (n : ZMod babyBearModulus))
+  simp only [Keccak.Proofs.setup_row_characterization]
   refine ⟨⟨65281 + if i.val % 8 = 0 ∨ i.val % 8 = 7 then 1 else 0,
     by split_ifs <;> omega⟩, ?_⟩
   fin_cases i <;>
     dsimp [Keccak.Proofs.byteEntry, Keccak.Proofs.byteQuery, Keccak.importedConstraints,
       FlatOperation.lookups]
-  all_goals norm_num [Expression.eval, Verification.environment, row, Keccak.setupRow, Keccak.byteRow]
+  all_goals norm_num [Expression.eval, Verification.environment, row, Keccak.referenceSetupRow, Keccak.byteRow]
 
 private theorem controllerHolds :
     ((FlatOperation.lookups (Keccak.importedConstraints setup)).get

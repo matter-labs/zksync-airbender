@@ -1,6 +1,8 @@
 import Airbender.Review.Trace.Delegation.Theorems
 import Airbender.Proofs.BabyBear
 
+set_option Elab.async false
+
 namespace Tests.DelegationTimestamps
 open Airbender
 set_option warningAsError true

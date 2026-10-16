@@ -1,3 +1,4 @@
+import Airbender.Proofs.Keccak.ReferenceController
 import Airbender.Proofs.Keccak.ImportedController
 import Airbender.Proofs.Keccak.Controller
 

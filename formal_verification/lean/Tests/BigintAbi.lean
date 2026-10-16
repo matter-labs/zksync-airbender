@@ -1,6 +1,8 @@
 import Airbender.Proofs.Bigint.Claims
 import Airbender.Proofs.ExternalBoundary.BigintABI
 
+set_option Elab.async false
+
 namespace Tests.BigintAbi
 open Airbender
 set_option warningAsError true

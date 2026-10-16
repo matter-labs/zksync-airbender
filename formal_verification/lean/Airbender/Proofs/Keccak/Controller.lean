@@ -11,12 +11,12 @@ private theorem row_tag (tag index : Nat) : (byteRow tag index)[7] = tag := rfl
 private theorem rotation_tag (key : Nat) : (rotationRow key)[7] = 40 := rfl
 
 private theorem controller_region {control : Fin 4096 → Vector Nat 6}
-    (index : Fin 1249281) (selected : (setupRow control index)[7] = 37) :
-    ∃ key : Fin 4096, setupRow control index =
+    (index : Fin 1249281) (selected : (referenceSetupRow control index)[7] = 37) :
+    ∃ key : Fin 4096, referenceSetupRow control index =
       #v[key.val, (control key)[0], (control key)[1], (control key)[2],
         (control key)[3], (control key)[4], (control key)[5], 37] := by
   have bound := index.isLt
-  unfold setupRow at selected ⊢
+  unfold referenceSetupRow at selected ⊢
   dsimp only at selected ⊢
   split_ifs at selected ⊢
   all_goals simp only [row_tag, rotation_tag, Vector.getElem_replicate,
@@ -37,18 +37,19 @@ theorem controller_lookup {p : Nat} [Fact p.Prime] (hp : 4096 ≤ p)
   have member := (Lookup.mk (setupTable control).toRaw entry).table.imply_soundness _ _ h
   change ∃ index : Fin 1249281, entry.map (Expression.eval env) =
     (setupRow control index).map (fun (n : Nat) => (n : ZMod p)) at member
+  simp only [setup_row_characterization] at member
   obtain ⟨index, row⟩ := member
   have column (j : Nat) (hj : j < 8) : entry[j].eval env =
-      ((setupRow control index)[j] : ZMod p) := by
+      ((referenceSetupRow control index)[j] : ZMod p) := by
     have equation := congrArg (fun (v : Vector (ZMod p) 8) => v[j]) row
     simpa only [Vector.getElem_map] using equation
-  have tagBound : (setupRow control index)[7] < p := by
-    unfold setupRow
+  have tagBound : (referenceSetupRow control index)[7] < p := by
+    unfold referenceSetupRow
     dsimp only
     split_ifs <;> simp only [row_tag, rotation_tag, Vector.getElem_replicate,
       Vector.getElem_mk, List.getElem_toArray, List.getElem_cons_succ,
       List.getElem_cons_zero] <;> omega
-  have tag : (setupRow control index)[7] = 37 := by
+  have tag : (referenceSetupRow control index)[7] = 37 := by
     have equation := congrArg ZMod.val ((column 7 (by decide)).symm.trans selected)
     rw [ZMod.val_natCast_of_lt tagBound] at equation
     have literal : (37 : ZMod p).val = 37 := by
