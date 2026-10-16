@@ -6,8 +6,8 @@ use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_fu
 use gpu_core::primitives::field::PR;
 use gpu_core::primitives::nvtx::scoped_range;
 use gpu_hash::keccak256::{
-    build_retained_layers, launch_open_paths, open_paths_depth, reduce_digest_layers,
-    retained_layer_offset, Digest,
+    build_retained_bottom_from_nodes, build_retained_layers, launch_open_paths, open_paths_depth,
+    reduce_digest_layers, retained_layer_offset, Digest,
 };
 use gpu_ntt::proth120::{
     launch_suffix_micro, lde_coset_slot, CosetSource, DeviceContext, Dispatch, ScaleArgs,
@@ -759,6 +759,176 @@ pub fn commit_coefficient_cosets(
     build_retained_layers(
         h,
         shape.skip_bottom,
+        cosets as u32,
+        retained_per_coset,
+        retained,
+        stream,
+    )
+}
+
+cuda_kernel_signature_arguments_and_function!(
+    pub(crate) ResidueSink,
+    monomials: *const PR,
+    leaves: *mut Digest,
+    k0: u32,
+    cosets: u32,
+    log_domain: u32,
+    descriptor: TwiddleDescriptor,
+);
+macro_rules! residue_sink_kernel {
+    ($name:ident) => {
+        cuda_kernel_declaration!(
+            $name(
+                monomials: *const PR,
+                leaves: *mut Digest,
+                k0: u32,
+                cosets: u32,
+                log_domain: u32,
+                descriptor: TwiddleDescriptor,
+            )
+        );
+    };
+}
+residue_sink_kernel!(ab_pr_residue_sink_8_4_kernel);
+residue_sink_kernel!(ab_pr_residue_sink_11_3_kernel);
+residue_sink_kernel!(ab_pr_residue_sink_11_4_kernel);
+
+// The residue-sink kernel and its cosets per block.
+fn residue_sink_function(
+    log_n: u32,
+    log_v: u32,
+    skip_bottom: u32,
+) -> Option<(ResidueSinkFunction, u32)> {
+    let (function, cosets): (ResidueSinkSignature, u32) = match (log_n, log_v, skip_bottom) {
+        (8, 4, 4) => (ab_pr_residue_sink_8_4_kernel, 8),
+        (11, 3, 5) => (ab_pr_residue_sink_11_3_kernel, 1),
+        (11, 4, 5) => (ab_pr_residue_sink_11_4_kernel, 1),
+        _ => return None,
+    };
+    Some((ResidueSinkFunction(function), cosets))
+}
+
+pub fn has_residue_sink(log_n: u32, log_v: u32, skip_bottom: u32) -> bool {
+    residue_sink_function(log_n, log_v, skip_bottom).is_some()
+}
+
+// Leaf digests per residue chunk: a chunk's leaves and their first node layer stay L2-resident.
+const RESIDUE_CHUNK_LEAVES: usize = 1 << 20;
+
+fn residue_chunk_cosets(log_n: u32, log_v: u32, skip_bottom: u32, cosets: usize) -> usize {
+    let Some((_, cosets_per_block)) = residue_sink_function(log_n, log_v, skip_bottom) else {
+        panic!(
+            "residue sink: no kernel for log_n {log_n}, log_v {log_v}, skip_bottom {skip_bottom}"
+        )
+    };
+    cosets.min((RESIDUE_CHUNK_LEAVES >> (log_n - log_v)).max(cosets_per_block as usize))
+}
+
+// Digests of scratch `commit_residue_cosets` needs for `cosets` cosets: a chunk's leaves and, when
+// skip_bottom >= 2, half as many again.
+pub fn residue_scratch_len(log_n: u32, log_v: u32, skip_bottom: u32, cosets: usize) -> usize {
+    let leaves = residue_chunk_cosets(log_n, log_v, skip_bottom, cosets)
+        .checked_mul(1 << (log_n - log_v))
+        .expect("residue sink: scratch length overflow");
+    if skip_bottom >= 2 {
+        leaves + leaves / 2
+    } else {
+        leaves
+    }
+}
+
+// The retained trees (layers skip_bottom..=h, `retained_per_coset` apart) of cosets k0..k0 + cosets
+// of a small coefficient-tree oracle (one monomial column of 2^log_n, codeword 2^log_domain),
+// nothing materialized: with f = sum_r X^r P_r(X^V), each leaf's slots are P_r at its point, so a
+// block evaluates the V residue polynomials on whole cosets in shared memory and hashes the leaves;
+// per L2-sized chunk, node launches build the layers above.
+#[allow(clippy::too_many_arguments)]
+pub fn commit_residue_cosets(
+    ctx: &DeviceContext,
+    monomials: &DeviceSlice<PR>,
+    log_n: u32,
+    log_v: u32,
+    skip_bottom: u32,
+    log_domain: u32,
+    k0: u32,
+    cosets: usize,
+    scratch: &mut DeviceSlice<Digest>,
+    retained: &mut DeviceSlice<Digest>,
+    retained_per_coset: usize,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let Some((function, cosets_per_block)) = residue_sink_function(log_n, log_v, skip_bottom)
+    else {
+        panic!(
+            "residue sink: no kernel for log_n {log_n}, log_v {log_v}, skip_bottom {skip_bottom}"
+        )
+    };
+    let h = log_n - log_v;
+    assert_eq!(
+        monomials.len(),
+        1 << log_n,
+        "residue sink: monomials length"
+    );
+    assert!(
+        log_n <= log_domain && log_domain <= ctx.log_max_domain(),
+        "residue sink: log_domain {log_domain} outside {log_n}..={}",
+        ctx.log_max_domain()
+    );
+    assert!(cosets >= 1, "residue sink: no cosets");
+    assert!(
+        u64::from(k0) + cosets as u64 <= 1u64 << (log_domain - log_n),
+        "residue sink: cosets out of range"
+    );
+    assert_eq!(
+        retained_per_coset,
+        retained_layer_offset(h, skip_bottom, h) + 1,
+        "residue sink: retained per coset"
+    );
+    assert_eq!(
+        Some(retained.len()),
+        cosets.checked_mul(retained_per_coset),
+        "residue sink: retained length"
+    );
+    assert_eq!(
+        scratch.len(),
+        residue_scratch_len(log_n, log_v, skip_bottom, cosets),
+        "residue sink: scratch length"
+    );
+    let chunk = residue_chunk_cosets(log_n, log_v, skip_bottom, cosets);
+    let (leaves, rest) = scratch.split_at_mut(chunk << h);
+    for c0 in (0..cosets).step_by(chunk) {
+        let count = chunk.min(cosets - c0);
+        let leaves = &mut leaves[..count << h];
+        let grid = u32::try_from(count.div_ceil(cosets_per_block as usize))
+            .ok()
+            .filter(|&grid| grid < 1 << 31)
+            .expect("residue sink: grid.x overflow");
+        function.launch(
+            &CudaLaunchConfig::basic(grid, 256, stream),
+            &ResidueSinkArguments::new(
+                monomials.as_ptr(),
+                leaves.as_mut_ptr(),
+                k0 + c0 as u32,
+                count as u32,
+                log_domain,
+                ctx.descriptor(),
+            ),
+        )?;
+        build_retained_bottom_from_nodes(
+            leaves,
+            0,
+            h,
+            skip_bottom,
+            count as u32,
+            rest,
+            &mut retained[c0 * retained_per_coset..(c0 + count) * retained_per_coset],
+            retained_per_coset,
+            stream,
+        )?;
+    }
+    build_retained_layers(
+        h,
+        skip_bottom,
         cosets as u32,
         retained_per_coset,
         retained,

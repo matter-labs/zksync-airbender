@@ -511,6 +511,109 @@ pub fn build_retained_layers(
     )
 }
 
+// The retained trees (layers skip_bottom..=log_leaves, `retained_stride` apart) of `cosets` coset
+// trees whose depth-`node_depth` nodes are in `nodes` (coset-major, 2^(log_leaves - node_depth) per
+// coset): layers node_depth + 1..skip_bottom alternate through `scratch` (at least nodes.len() / 2)
+// and the head of `nodes`, which is overwritten; layer skip_bottom lands in `retained`.
+#[allow(clippy::too_many_arguments)]
+pub fn build_retained_from_nodes(
+    nodes: &mut DeviceSlice<Digest>,
+    node_depth: u32,
+    log_leaves: u32,
+    skip_bottom: u32,
+    cosets: u32,
+    scratch: &mut DeviceSlice<Digest>,
+    retained: &mut DeviceSlice<Digest>,
+    retained_stride: usize,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    build_retained_bottom_from_nodes(
+        nodes,
+        node_depth,
+        log_leaves,
+        skip_bottom,
+        cosets,
+        scratch,
+        retained,
+        retained_stride,
+        stream,
+    )?;
+    retained_layers(
+        "build_retained_from_nodes",
+        log_leaves,
+        skip_bottom,
+        cosets,
+        checked_u64("build_retained_from_nodes", retained_stride),
+        retained.as_mut_ptr(),
+        stream,
+    )
+}
+
+// `build_retained_from_nodes` up to layer skip_bottom; the layers above it are left to
+// `build_retained_layers`.
+#[allow(clippy::too_many_arguments)]
+pub fn build_retained_bottom_from_nodes(
+    nodes: &mut DeviceSlice<Digest>,
+    node_depth: u32,
+    log_leaves: u32,
+    skip_bottom: u32,
+    cosets: u32,
+    scratch: &mut DeviceSlice<Digest>,
+    retained: &mut DeviceSlice<Digest>,
+    retained_stride: usize,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    const NAME: &str = "build_retained_bottom_from_nodes";
+    assert!(
+        node_depth < skip_bottom && skip_bottom <= log_leaves && log_leaves <= 31,
+        "keccak256::{NAME}: node_depth < skip_bottom <= log_leaves <= 31"
+    );
+    let per_coset_nodes = 1usize << (log_leaves - node_depth);
+    assert_eq!(
+        Some(nodes.len()),
+        (cosets as usize).checked_mul(per_coset_nodes),
+        "keccak256::{NAME}: nodes.len() == cosets << (log_leaves - node_depth)"
+    );
+    assert!(
+        skip_bottom == node_depth + 1 || scratch.len() >= nodes.len() / 2,
+        "keccak256::{NAME}: scratch.len() >= nodes.len() / 2"
+    );
+    let per_coset = retained_layer_offset(log_leaves, skip_bottom, log_leaves) + 1;
+    assert!(
+        retained.len() >= tile_extent(NAME, cosets, retained_stride, per_coset),
+        "keccak256::{NAME}: retained.len() >= (cosets - 1) * retained_stride + retained per coset"
+    );
+    assert_no_overlap(NAME, nodes, scratch);
+    assert_no_overlap(NAME, nodes, retained);
+    assert_no_overlap(NAME, scratch, retained);
+    for layer in node_depth + 1..=skip_bottom {
+        let count = 1usize << (log_leaves - layer);
+        let input = if (layer - node_depth) % 2 == 1 {
+            nodes.as_ptr()
+        } else {
+            scratch.as_ptr()
+        };
+        let (output, dst_stride) = if layer == skip_bottom {
+            (retained.as_mut_ptr(), checked_u64(NAME, retained_stride))
+        } else if (layer - node_depth) % 2 == 1 {
+            (scratch.as_mut_ptr(), checked_u64(NAME, count))
+        } else {
+            (nodes.as_mut_ptr(), checked_u64(NAME, count))
+        };
+        launch_nodes(
+            NAME,
+            input,
+            count,
+            cosets,
+            checked_u64(NAME, 2 * count),
+            dst_stride,
+            output,
+            stream,
+        )?;
+    }
+    Ok(())
+}
+
 // `layers` binary-tree layers above the digests in `src` (one node launch per layer): the last
 // layer goes to `dst` (src.len() >> layers digests), the layers between alternate through
 // `scratch` (at least src.len() / 2 digests when layers >= 2) and the head of `src`, which is

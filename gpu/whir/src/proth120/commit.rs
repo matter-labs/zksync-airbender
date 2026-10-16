@@ -14,7 +14,8 @@ use gpu_ntt::proth120::{dispatch, lde_coset, lde_cosets_batched, SuffixShape};
 use gpu_ops::powers::get_powers_by_val;
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::sink::{
-    coefficient_tiles_len, commit_coefficient_cosets, has_leaf_sink, SinkMode,
+    coefficient_tiles_len, commit_coefficient_cosets, commit_residue_cosets, has_leaf_sink,
+    has_residue_sink, residue_scratch_len, SinkMode,
 };
 
 use super::kernels;
@@ -136,6 +137,60 @@ pub(crate) fn schedule_commit_intermediate(
     let mut top_nodes =
         context.alloc(cosets - (1 << shape.cap_log), AllocationPlacement::Bottom)?;
     let mut cap = context.alloc(1 << shape.cap_log, AllocationPlacement::Bottom)?;
+    if has_residue_sink(shape.log_n, shape.log_v, shape.skip_bottom) {
+        let _r = scoped_range(Some("ab"), "whir.commit.suffix");
+        let mut scratch = context.alloc(
+            residue_scratch_len(shape.log_n, shape.log_v, shape.skip_bottom, tile_cosets),
+            AllocationPlacement::Top,
+        )?;
+        for k0 in (0..cosets).step_by(tile_cosets) {
+            commit_residue_cosets(
+                context.proth120_ntt_device_context(),
+                &copy,
+                shape.log_n,
+                shape.log_v,
+                shape.skip_bottom,
+                shape.log_domain,
+                k0 as u32,
+                tile_cosets,
+                &mut scratch,
+                &mut retained[k0 * r..(k0 + tile_cosets) * r],
+                r,
+                stream,
+            )?;
+        }
+    } else {
+        schedule_commit_retained(&copy, shape, &mut retained, context)?;
+    }
+    let _r = scoped_range(Some("ab"), "whir.commit.top");
+    kernels::place_roots(&retained, r, shape.log_lde, &mut roots, stream)?;
+    build_top_tree(&roots, shape.cap_log, &mut top_nodes, stream)?;
+    gather_tree_cap(&roots, &top_nodes, shape.cap_log, &mut cap, stream)?;
+    memory_copy_async(cap_dst, &cap, stream)?;
+    transcript_commit_u32(seed, unsafe { cap_dst.transmute() }, stream)?;
+    Ok(IntermediateOracle {
+        shape: *shape,
+        monomials: copy,
+        retained,
+        roots,
+        top_nodes,
+        cap,
+    })
+}
+
+// The retained trees of every coset of an oracle on the prefix + suffix path: the fused suffix micro
+// and coefficient-tree sink when the shape has one, else the naturalized LDE, leaf conversion and
+// partial trees.
+fn schedule_commit_retained(
+    copy: &DeviceSlice<PR>,
+    shape: &OracleShape,
+    retained: &mut DeviceSlice<Digest>,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    let cosets = 1usize << shape.log_lde;
+    let tile_cosets = 1usize << shape.tile_cosets_log2;
+    let r = shape.retained_per_coset;
+    let stream = context.get_exec_stream();
     let mut tile = context.alloc(tile_cosets << shape.log_n, AllocationPlacement::Top)?;
     let fused = dispatch(
         shape.log_n,
@@ -168,7 +223,7 @@ pub(crate) fn schedule_commit_intermediate(
         for k0 in (0..cosets).step_by(tile_cosets) {
             commit_coefficient_cosets(
                 context.proth120_ntt_device_context(),
-                &copy,
+                copy,
                 &plan,
                 &suffix,
                 shape.log_domain,
@@ -186,7 +241,7 @@ pub(crate) fn schedule_commit_intermediate(
     for k0 in (0..if fused_path { 0 } else { cosets }).step_by(tile_cosets) {
         {
             let _r = scoped_range(Some("ab"), "whir.commit.prefix");
-            schedule_lde_convert_pass(&copy, shape, None, k0 as u32, &mut tile, context)?;
+            schedule_lde_convert_pass(copy, shape, None, k0 as u32, &mut tile, context)?;
         }
         let _r = scoped_range(Some("ab"), "whir.commit.suffix");
         build_partial_coset_trees_multi_coset(
@@ -203,18 +258,5 @@ pub(crate) fn schedule_commit_intermediate(
         )?;
     }
     drop(tile);
-    let _r = scoped_range(Some("ab"), "whir.commit.top");
-    kernels::place_roots(&retained, r, shape.log_lde, &mut roots, stream)?;
-    build_top_tree(&roots, shape.cap_log, &mut top_nodes, stream)?;
-    gather_tree_cap(&roots, &top_nodes, shape.cap_log, &mut cap, stream)?;
-    memory_copy_async(cap_dst, &cap, stream)?;
-    transcript_commit_u32(seed, unsafe { cap_dst.transmute() }, stream)?;
-    Ok(IntermediateOracle {
-        shape: *shape,
-        monomials: copy,
-        retained,
-        roots,
-        top_nodes,
-        cap,
-    })
+    Ok(())
 }

@@ -210,6 +210,72 @@ DEVICE_FORCEINLINE void leaf_sink(const leaf_sink_args &args, const leaf_open_ar
   args.out[blockIdx.z * args.out_coset_stride + (first.j >> TREE_DEPTH)] = node;
 }
 
+// Small WHIR oracles without materializing an LDE (f = sum_r X^r P_r(X^V), P_r(Y) = sum_t a[r + V t] Y^t, M = 2^(LOG_N - V)):
+// a block owns COSETS whole cosets k = k0 + blockIdx.x * COSETS + c (those at or past `cosets` are computed but not written);
+// per coset the V residue columns P_r scaled by (w_{D-V}^k)^t, their M-point DIT transforms in shared memory
+// (P_r(w_{D-V}^k w_M^j) at bitrev_M(j)), one thread per leaf j absorbing (P_0, .., P_{V-1}) at its point (the
+// coefficient-tree leaf) into leaves[(k - k0) * M + j].
+template <u32 LOG_N, u32 V, u32 COSETS>
+DEVICE_FORCEINLINE void residue_sink(const pr *monomials, digest *leaves, const u32 k0, const u32 cosets, const u32 log_domain,
+                                     const proth120_twiddle_descriptor &d) {
+  constexpr u32 N = 1u << LOG_N;
+  constexpr u32 H = LOG_N - V;
+  constexpr u32 M = 1u << H;
+  constexpr u32 VALUES = 1u << V;
+  constexpr u32 THREADS = 256;
+  static_assert(COSETS * M <= THREADS && COSETS * N * sizeof(pr) <= 32768 && THREADS % VALUES == 0);
+  __shared__ pr values[COSETS * N];
+  const u32 tid = threadIdx.x;
+  const u32 first = blockIdx.x * COSETS;
+  const u32 log_l = d.log_max_domain;
+  const u64 mask = (u64{1} << log_l) - 1;
+  // Thread tid loads a[tid + THREADS m]: residue r = tid % V, coefficient t = tid / V + (THREADS / V) m.
+  const u32 r = tid % VALUES;
+  for (u32 c = 0; c < COSETS && first + c < cosets; c++) {
+    const u64 step = static_cast<u64>(k0 + first + c) << (log_l - (log_domain - V));
+    pr power = pr_root_power(d, (step * (tid / VALUES)) & mask);
+    const pr stride = pr_root_power(d, (step * (THREADS / VALUES)) & mask);
+    for (u32 i = tid, t = tid / VALUES; i < N; i += THREADS, t += THREADS / VALUES) {
+      values[(c * VALUES + r) * M + t] = pr::mul(load_ca(monomials + i), power);
+      power = pr::mul(power, stride);
+    }
+  }
+  __syncthreads();
+  const u32 pairs = min(COSETS, cosets - first) * (VALUES * M / 2);
+  for (u32 stage = 0; stage < H; stage++) {
+    const u32 half = M >> (stage + 1);
+    for (u32 pair = tid; pair < pairs; pair += THREADS) {
+      const u32 column = pair / (M / 2);
+      const u32 local = pair % (M / 2);
+      const u32 region = local / half;
+      const u32 a = column * M + 2 * half * region + (local & (half - 1));
+      pr va = values[a];
+      pr vb = values[a + half];
+      dit_policy{}.exchg(va, vb, get_forward_pr_twiddle(d, region));
+      values[a] = va;
+      values[a + half] = vb;
+    }
+    __syncthreads();
+  }
+  const u32 c = tid / M;
+  if (tid >= COSETS * M || first + c >= cosets)
+    return;
+  const u32 position = bitreverse_low_bits(tid % M, H);
+  leaf_sponge<2 * VALUES, true> sponge;
+  static_for<VALUES>([&](auto t) { sponge.template absorb_element<decltype(t)::value>(values[(c * VALUES + decltype(t)::value) * M + position]); });
+  leaves[static_cast<u64>(first) * M + tid] = sponge.finalize();
+}
+
+#define RESIDUE_SINK_KERNEL(LOG_N, V, COSETS)                                                                                                                  \
+  EXTERN __launch_bounds__(256, 3) __global__ void ab_pr_residue_sink_##LOG_N##_##V##_kernel(                                                                  \
+      const pr *monomials, digest *leaves, const u32 k0, const u32 cosets, const u32 log_domain, const proth120_twiddle_descriptor d) {                        \
+    residue_sink<LOG_N, V, COSETS>(monomials, leaves, k0, cosets, log_domain, d);                                                                              \
+  }
+
+RESIDUE_SINK_KERNEL(8, 4, 8)
+RESIDUE_SINK_KERNEL(11, 3, 1)
+RESIDUE_SINK_KERNEL(11, 4, 1)
+
 #define LEAF_SINK_KERNEL(C, V, TREE_DEPTH, MODE, CONVERT)                                                                                                      \
   EXTERN __launch_bounds__(256, 2)                                                                                                                             \
       __global__ void ab_pr_leaf_sink_##C##_##V##_##TREE_DEPTH##_##MODE##_kernel(const leaf_sink_args args, const proth120_twiddle_descriptor d) {             \

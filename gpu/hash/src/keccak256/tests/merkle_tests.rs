@@ -9,8 +9,9 @@ use super::super::merkle::{partial_tree_shape, partial_tree_tile, top_tree_log_l
 use super::super::{
     assert_no_overlap, build_partial_coset_tree, build_partial_coset_tree_with_scratch,
     build_partial_coset_trees_multi_coset, build_partial_coset_trees_multi_coset_with_scratch,
-    build_top_tree, gather_tree_cap, hash_leaves, hash_leaves_multi_coset,
-    partial_coset_tree_scratch_len, retained_layer_offset, top_nodes_layer_offset, Digest,
+    build_retained_from_nodes, build_top_tree, gather_tree_cap, hash_leaves,
+    hash_leaves_multi_coset, partial_coset_tree_scratch_len, retained_layer_offset,
+    top_nodes_layer_offset, Digest,
 };
 use super::{
     bitreverse_index, column_slices, cpu_layer, cpu_tree, download, random_columns, test_worker,
@@ -327,6 +328,116 @@ fn keccak256_partial_tree_parity() {
             }
         }
     }
+}
+
+#[test]
+fn keccak256_retained_from_nodes_parity() {
+    let stream = CudaStream::default();
+    let mut rng = TestRng::new(0x6e6f_6465);
+    let log_v = 2u32;
+    for (log_leaves, node_depth, skip_bottom, cosets) in [
+        (4u32, 0u32, 4u32, 8usize),
+        (8, 0, 5, 3),
+        (8, 0, 1, 2),
+        (7, 3, 5, 5),
+        (7, 1, 2, 1),
+    ] {
+        let label = format!("log_leaves={log_leaves} node_depth={node_depth} skip_bottom={skip_bottom} cosets={cosets}");
+        let trees: Vec<_> = (0..cosets)
+            .map(|_| {
+                let values = random_columns(&mut rng, 1, 1 << (log_leaves + log_v));
+                cpu_tree(&[values], 1, log_v, 1)
+            })
+            .collect();
+        let nodes: Vec<Digest> = trees
+            .iter()
+            .flat_map(|tree| cpu_layer(tree, node_depth).to_vec())
+            .collect();
+        let per_coset = retained_layer_offset(log_leaves, skip_bottom, log_leaves) + 1;
+        let stride = per_coset + 3;
+        let mut d_nodes = upload(&nodes, &stream);
+        let scratch_len = nodes.len() / 2;
+        let mut scratch = sentinel_buffer(scratch_len + 2, &stream);
+        let mut retained = sentinel_buffer(cosets * stride, &stream);
+        build_retained_from_nodes(
+            &mut d_nodes,
+            node_depth,
+            log_leaves,
+            skip_bottom,
+            cosets as u32,
+            &mut scratch[1..scratch_len + 1],
+            &mut retained[..(cosets - 1) * stride + per_coset],
+            stride,
+            &stream,
+        )
+        .unwrap();
+        let scratch = download(&scratch, SENTINEL, &stream);
+        assert_eq!(
+            [scratch[0], scratch[scratch_len + 1]],
+            [SENTINEL; 2],
+            "{label}"
+        );
+        let retained = download(&retained, SENTINEL, &stream);
+        for (coset, tree) in trees.iter().enumerate() {
+            let base = coset * stride;
+            for layer in skip_bottom..=log_leaves {
+                let offset = base + retained_layer_offset(log_leaves, skip_bottom, layer);
+                let len = (1usize << log_leaves) >> layer;
+                assert_eq!(
+                    &retained[offset..offset + len],
+                    cpu_layer(tree, layer),
+                    "{label} coset={coset} layer={layer}"
+                );
+            }
+            assert_eq!(
+                retained[base + per_coset - 1],
+                tree.get_cap().cap[0],
+                "{label} root"
+            );
+            assert_eq!(
+                &retained[base + per_coset..base + stride],
+                &[SENTINEL; 3],
+                "{label}"
+            );
+        }
+    }
+    let mut nodes = sentinel_buffer(16, &stream);
+    let mut scratch = sentinel_buffer(8, &stream);
+    let mut retained = sentinel_buffer(1, &stream);
+    assert_named_panic(
+        "keccak256::build_retained_bottom_from_nodes: node_depth < skip_bottom <= log_leaves <= 31",
+        || {
+            build_retained_from_nodes(
+                &mut nodes,
+                4,
+                4,
+                4,
+                16,
+                &mut scratch,
+                &mut retained,
+                1,
+                &stream,
+            )
+            .unwrap();
+        },
+    );
+    assert_named_panic(
+        "keccak256::build_retained_bottom_from_nodes: scratch.len() >= nodes.len() / 2",
+        || {
+            build_retained_from_nodes(
+                &mut nodes,
+                0,
+                4,
+                4,
+                1,
+                &mut scratch[..7],
+                &mut retained,
+                1,
+                &stream,
+            )
+            .unwrap();
+        },
+    );
 }
 
 #[test]

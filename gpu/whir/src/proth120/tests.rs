@@ -704,12 +704,21 @@ fn pr_commit_intermediate_matches_cpu_small() {
     let stream = ctx.get_exec_stream();
     let worker = worker();
     let mut rng = TestRng::new(0x7201);
-    for (log_n, log_lde, passes) in [(12u32, 7u32, 32usize), (8, 11, 8), (10, 9, 1)] {
+    for (log_n, log_lde, passes) in [
+        (12u32, 7u32, 32usize),
+        (8, 11, 8),
+        (10, 9, 1),
+        (8, 11, 2048),
+        (8, 11, 1024),
+        (8, 11, 512),
+        (11, 8, 256),
+        (11, 8, 64),
+    ] {
         let cosets = 1usize << log_lde;
         let tile_bytes = (cosets / passes) << (log_n + 4);
         let shape = small_oracle(log_n, log_lde, tile_bytes);
         assert_eq!(cosets >> shape.tile_cosets_log2, passes);
-        assert_eq!(shape.log_domain, 19);
+        assert_eq!(shape.log_domain, log_n + log_lde);
         let monomials = rng.fields(1 << log_n);
         let seed: [u8; 32] = std::array::from_fn(|_| rng.next_u64() as u8);
         let cpu = cpu_ext_commit(&monomials, log_lde, &worker);
@@ -1094,9 +1103,15 @@ fn pr_open_intermediate_matches_cpu_small() {
     let stream = ctx.get_exec_stream();
     let worker = worker();
     let mut rng = TestRng::new(0x7130_7eaf);
-    for (log_n, log_lde, tile_log, log_v) in
-        [(12, 7, 2, 4), (8, 11, 8, 4), (10, 9, 9, 4), (10, 9, 9, 2)]
-    {
+    for (log_n, log_lde, tile_log, log_v) in [
+        (12, 7, 2, 4),
+        (8, 11, 8, 4),
+        (10, 9, 9, 4),
+        (10, 9, 9, 2),
+        (8, 11, 1, 4),
+        (11, 8, 0, 4),
+        (11, 8, 3, 3),
+    ] {
         let shape = opening_oracle(log_n, log_lde, tile_log, log_v);
         let monomials = rng.fields(1 << log_n);
         let twiddles = Twiddles::new(monomials.len(), &worker);
