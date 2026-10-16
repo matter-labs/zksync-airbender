@@ -265,7 +265,7 @@ fn cpu_l1_reference_loads() {
             .keys()
             .copied()
             .collect::<Vec<_>>(),
-        (0..=21).collect::<Vec<_>>()
+        (0..=23).collect::<Vec<_>>()
     );
     assert_eq!(
         whir.whir_schedule,

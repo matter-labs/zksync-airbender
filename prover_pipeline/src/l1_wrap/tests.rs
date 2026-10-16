@@ -20,7 +20,9 @@ fn wrap_proof_skeleton() -> L1Proof {
     let cap_log2 = schedule.cap_size.trailing_zeros() as usize;
     let message_log2 = log + pack_log2;
     let mut proof: L1Proof = empty_gkr_proof();
-    let rounds = (0..5).map(|_| log).chain((4..log).rev());
+    let rounds = (0..5)
+        .map(|_| log)
+        .chain((config.sumcheck_explicit_output_size_log_2..log).rev());
     for (layer, sumcheck_num_rounds) in rounds.enumerate() {
         proof.sumcheck_intermediate_values.insert(
             layer,
