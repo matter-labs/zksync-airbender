@@ -1,4 +1,5 @@
-//! Proof → calldata flattening for the on-chain GKR and WHIR verifiers.
+//! Proof → calldata flattening for the merged on-chain `GkrWhirVerifier` (one transaction:
+//! the GKR stream immediately followed by the WHIR proof stream — see [`merged_calldata`]).
 //!
 //! All bytes are computed purely from the circuit artifact, the proof, and the aux
 //! commitment-mode data — nothing here reads a fixture. The serialization mirrors
@@ -31,11 +32,8 @@ impl CalldataField {
 pub struct GkrCalldataFields {
     pub final_pc: CalldataField,
     pub external_pow_nonce: CalldataField,
-}
-
-#[derive(Clone, Debug)]
-pub struct WhirCalldataFields {
-    pub batched_opening: CalldataField,
+    /// The first dimension-reducing round's coefficient words `[c0|c1][c2|c3]`.
+    pub first_dim_reduce_round: CalldataField,
 }
 
 /// Serialize a Proth120 element as its 16-byte big-endian u128.
@@ -224,7 +222,12 @@ pub fn gkr_calldata_with_fields(
     let external_pow_nonce =
         CalldataField::append(&mut cd, &proof.lookup_challenges_pow_nonce.to_be_bytes());
     cd.extend_from_slice(&output_evals_blob(proof));
-    cd.extend_from_slice(&dim_reduce_blob(circuit, proof));
+    let dim_reduce = dim_reduce_blob(circuit, proof);
+    let first_dim_reduce_round = CalldataField {
+        offset: cd.len(),
+        value: dim_reduce[..64].to_vec(),
+    };
+    cd.extend_from_slice(&dim_reduce);
     cd.extend_from_slice(&circuit_blob(circuit, proof));
     cd.extend_from_slice(&proof.batched_proximity_check_pow_nonce.to_be_bytes());
     (
@@ -232,78 +235,49 @@ pub fn gkr_calldata_with_fields(
         GkrCalldataFields {
             final_pc,
             external_pow_nonce,
+            first_dim_reduce_round,
         },
     )
 }
 
-/// Assemble the WHIR-verifier calldata (whir.sol preimage + proof-stream layout):
-///   preimage [seed:32][batching:16][opening:16][z:nz*16][witCap][setupCap]
-///   then the proof stream (per WHIR round: sumcheck polys, intermediate oracle cap,
-///   ood sample, PoW nonce, query openings; final round: monomials, PoW nonce,
-///   final query openings).
+/// Single-transaction calldata for the merged `GkrWhirVerifier`: the GKR stream (which ends with
+/// the WHIR-batching PoW nonce) immediately followed by the WHIR proof stream. The WHIR start
+/// state (seed, batching, opening, evaluation point, base caps) is handed over in memory inside
+/// the contract, so no WHIR preimage is serialized.
 ///
 /// `folds` / `queries` are the WHIR round schedule (`whir_steps_schedule` /
-/// `whir_queries_schedule` from the same `WhirSchedule` the proof was produced with and the WHIR
+/// `whir_queries_schedule` from the same `WhirSchedule` the proof was produced with and the
 /// verifier is generated from), so the calldata stream matches both the prover and the verifier.
-///
-/// Needs the circuit + aux to reconstruct the handoff seed / batching / opening /
-/// evaluation point (none of which live in the proof); the proof stream itself comes
-/// from `proof.whir_proof`.
-pub fn whir_calldata(
+pub fn merged_calldata(
     circuit: &Circuit,
     proof: &Proof,
     aux: &CommitmentMode,
     folds: &[usize],
     queries: &[usize],
 ) -> Vec<u8> {
-    whir_calldata_with_fields(circuit, proof, aux, folds, queries).0
+    let mut cd = gkr_calldata(circuit, proof, aux);
+    cd.extend_from_slice(&whir_stream(circuit, proof, aux, folds, queries));
+    cd
 }
 
-/// Serialize WHIR calldata and record the opening field as it is appended.
-pub fn whir_calldata_with_fields(
+/// The WHIR proof stream (per round: sumcheck polys, intermediate oracle cap, ood sample, PoW
+/// nonce, query openings; final round: monomials, PoW nonce, final query openings). It follows
+/// the GKR stream in the merged single-transaction calldata.
+pub fn whir_stream(
     _circuit: &Circuit,
     proof: &Proof,
     _aux: &CommitmentMode,
     folds: &[usize],
     queries: &[usize],
-) -> (Vec<u8>, WhirCalldataFields) {
+) -> Vec<u8> {
     assert_eq!(
         folds.len(),
         queries.len(),
         "WHIR folds/queries schedule length mismatch"
     );
-    // Every committed-state value now comes straight from the proof — no GKR transcript replay:
-    // the seed from GKRProof.intermediate_transcript_seed, and batching / batched-opening /
-    // evaluation-point from the WHIR sub-proof's handoff fields (populated by the prover).
     let wp = &proof.whir_proof;
-    let handoff_seed = crate::seed::gkr_whir_handoff_seed(proof);
-    let whir_batching = wp
-        .batching_challenge
-        .expect("whir_proof.batching_challenge not set — regenerate the proof");
-    let batched_opening = wp
-        .batched_opening
-        .expect("whir_proof.batched_opening not set — regenerate the proof");
-    let whir_point = wp
-        .original_evaluation_point
-        .as_ref()
-        .expect("whir_proof.original_evaluation_point not set — regenerate the proof");
-
     let num_rounds = folds.len();
-
     let mut cd: Vec<u8> = vec![];
-    // ---- preimage ----
-    cd.extend_from_slice(&handoff_seed);
-    cd.extend_from_slice(&be16(whir_batching));
-    let batched_opening = CalldataField::append(&mut cd, &be16(batched_opening));
-    for e in whir_point.iter() {
-        cd.extend_from_slice(&be16(*e));
-    }
-    for d in wp.memory_commitment.commitment.cap.cap.iter() {
-        cd.extend_from_slice(&dig32(d));
-    }
-    for d in wp.setup_commitment.commitment.cap.cap.iter() {
-        cd.extend_from_slice(&dig32(d));
-    }
 
     // ---- proof stream ----
     let push_leaf = |cd: &mut Vec<u8>, vals: &[Proth120], path: &[[u32; 8]]| {
@@ -372,5 +346,5 @@ pub fn whir_calldata_with_fields(
             }
         }
     }
-    (cd, WhirCalldataFields { batched_opening })
+    cd
 }

@@ -1,5 +1,5 @@
-//! The `single_tx/harness` mismatched-halves control: the WHIR calldata of ANOTHER valid wrap
-//! proof of the version's shape. Its own target, so the `flatten_calldata` refresh
+//! The merged tests' mismatched-halves control: the WHIR stream of ANOTHER valid wrap proof of
+//! the version's shape. Its own target, so the `flatten_calldata` refresh
 //! (`-- --ignored`) never needs the alternate proof.
 
 mod common;
@@ -7,7 +7,7 @@ mod common;
 use sha3::{Digest, Keccak256};
 
 #[test]
-#[ignore = "writes the single-tx harness's alternate WHIR calldata from AB_ALT_L1_PROOF / AB_ALT_L1_AUX"]
+#[ignore = "writes the merged tests' alternate WHIR stream from AB_ALT_L1_PROOF / AB_ALT_L1_AUX"]
 fn write_alt_whir_calldata() {
     let read = |var: &str| {
         let path = std::env::var(var).unwrap_or_else(|_| panic!("set {var}"));
@@ -37,19 +37,19 @@ fn write_alt_whir_calldata() {
             alt_proof.whir_proof.whir_schedule, proof.whir_proof.whir_schedule,
             "the alternate proof has another WHIR schedule"
         );
-        let whir = verifier_evm::whir_calldata(&circuit, &proof, &aux, folds, queries);
-        let alt = verifier_evm::whir_calldata(&circuit, &alt_proof, &alt_aux, folds, queries);
+        let whir = verifier_evm::whir_stream(&circuit, &proof, &aux, folds, queries);
+        let alt = verifier_evm::whir_stream(&circuit, &alt_proof, &alt_aux, folds, queries);
         assert_eq!(
             alt.len(),
             whir.len(),
             "the alternate proof has another shape"
         );
         assert_ne!(alt, whir, "the alternate proof is the version's own proof");
-        let path = version.contract_path("single_tx/harness/testdata/alt_whir_calldata.hex");
+        let path = version.contract_path("merged/testdata/alt_whir_stream.hex");
         std::fs::write(&path, hex::encode(&alt)).unwrap();
         eprintln!("wrote {} ({} bytes)", path.display(), alt.len());
 
-        let readme = version.contract_path("single_tx/harness/testdata/README.md");
+        let readme = version.contract_path("merged/testdata/README.md");
         let text = std::fs::read_to_string(&readme).expect("testdata README");
         let current = text
             .lines()

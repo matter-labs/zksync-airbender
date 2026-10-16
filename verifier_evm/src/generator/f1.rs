@@ -19,6 +19,8 @@ pub(crate) struct GkrDecoder {
     pub yul: String,
     /// Length of the v0 GKR calldata image.
     pub v0_bytes: usize,
+    /// Length of the F1 GKR section (the WHIR stream starts here).
+    pub f1_bytes: usize,
 }
 
 /// `calldataload(x)` → `mload(x)`, `calldatacopy(d, x, n)` → `mcopy(d, x, n)`, `calldatasize()` →
@@ -222,8 +224,9 @@ pub(crate) fn gkr_decoder(
     let ts_pad = (8 - (38 * (NUM_REGISTERS + 1)) % 8) % 8;
     let yul = format!(
         "
-        // ── F1 decoder: the only calldata reader. Writes the v0 GKR calldata image at
-        // F1_V0_PTR(); the verifier below reads that image at v0 offsets.
+        // ── F1 decoder: the GKR half's only calldata reader. Writes the v0 GKR calldata image
+        // at F1_V0_PTR(); the GKR half reads that image at v0 offsets, the WHIR half reads its
+        // stream from calldata after the GKR section.
         // FE-run(n) at cd: element j = bits [123j, 123j + 123) MSB-first, the pad bits of the last
         // byte zero. Elements 2i, 2i + 1 lie in the word loaded at byte bit >> 3 (bit & 7 ≤ 7,
         // 7 + 246 ≤ 256) and go to the two BE16 lanes at dst + 32i. No range check here: the
@@ -294,7 +297,6 @@ pub(crate) fn gkr_decoder(
                     shl(16, and(r, 0x0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff)))
         }}
         function f1_decode() {{
-            if iszero(eq(calldatasize(), {f1})) {{ revert(0, 0) }}
             // preimage: registers (value, ts_low, ts_high) as LE u32
             for {{ let i := 0 }} lt(i, {NUM_REGISTERS}) {{ i := add(i, 1) }} {{
                 let dst := add({V0_PTR}, mul(12, i))
@@ -328,5 +330,9 @@ pub(crate) fn gkr_decoder(
         top_len = 4 * num_top_bits,
         mem_cap_v0 = 12 * NUM_REGISTERS + 12 + 4 * num_top_bits + 32 * cap,
     );
-    GkrDecoder { yul, v0_bytes: v0 }
+    GkrDecoder {
+        yul,
+        v0_bytes: v0,
+        f1_bytes: f1,
+    }
 }

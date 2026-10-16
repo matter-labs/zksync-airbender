@@ -5,7 +5,7 @@
 //! is wire-data verification, not transcript: with a setup frontier F1 walks shorter setup paths.
 
 /// The log: `count` at `LOG_PTR`, then one word per hash. Above every verifier region.
-const LOG_PTR: usize = 0x40000;
+pub(crate) const LOG_PTR: usize = 0x40000;
 
 const HELPERS: &str = "\
         function ilog_k(h) -> r {
@@ -60,10 +60,10 @@ fn rewrite_calls(src: &str, op: &str, wrap: &dyn Fn(&str) -> String) -> String {
     out
 }
 
-/// The instrumented render of a generated single-tx verifier source.
+/// The instrumented render of a generated verifier source.
 pub fn instrument(src: &str) -> String {
     let src = rewrite_calls(src, "keccak256", &|args| {
-        let merkle = ["0, 64", "LEAF_PTR, mul("]
+        let merkle = ["0, 64", "__TEMPLATE_WHIR_LEAF_PTR, mul("]
             .iter()
             .any(|p| args.trim_start().starts_with(p));
         if merkle {

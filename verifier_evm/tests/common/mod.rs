@@ -37,6 +37,9 @@ pub struct Version {
     pub allow_missing_proof: bool,
     pub mutation_fields_file: Option<&'static str>,
     pub wrong_final_pc_contract: Option<&'static str>,
+    /// The inits/teardowns RAM-set base chunk indices the program is proven with (one per
+    /// teardown set), pinned in the verifier; must equal the proof's.
+    pub inits_teardowns_top_bits: &'static [u32],
     /// Merkle digest bytes on the F1 wire (the commitment profile of the proof).
     pub digest_bytes: usize,
     /// The setup frontier the F1 verifier pins (prover_pipeline's
@@ -60,7 +63,8 @@ pub const L1_WRAP_2P21: Version = Version {
     // Task 5 will export the real proof. Remove this allowance once it is committed.
     allow_missing_proof: true,
     mutation_fields_file: Some("calldata_fields.json"),
-    wrong_final_pc_contract: Some("gkr_negative/src/GkrVerifierWrongFinalPc.sol"),
+    wrong_final_pc_contract: Some("negative/v0_wrong_final_pc/src/GkrWhirVerifier.sol"),
+    inits_teardowns_top_bits: &[0, 1],
     digest_bytes: 25,
     setup_frontier: Some("setup_frontier.json"),
 };
@@ -134,32 +138,18 @@ impl Version {
         // The scaffold's registry/configs exist before the proof; generated
         // verifier sources and calldata must never outlive an absent proof.
         let contracts = [
-            "gkr/src/GkrVerifier.sol",
-            "gkr/src/GkrVerifierProduction.sol",
-            "whir/src/WhirVerifier.sol",
-            "whir/src/WhirVerifierProduction.sol",
-            "single_tx/gkr/src/GkrVerifier.sol",
-            "single_tx/whir/src/WhirVerifier.sol",
-            "single_tx/f1/gkr/src/GkrVerifier.sol",
-            "single_tx/f1/whir/src/WhirVerifier.sol",
-            "single_tx/f1/gkr_wrong_setup_cap/src/GkrVerifierWrongSetupCap.sol",
-            "single_tx/f1/frontier/src/SetupFrontier.sol",
-            "single_tx/instrumented/gkr_v0/src/GkrVerifier.sol",
-            "single_tx/instrumented/whir_v0/src/WhirVerifier.sol",
-            "single_tx/instrumented/gkr_f1/src/GkrVerifier.sol",
-            "single_tx/instrumented/whir_f1/src/WhirVerifier.sol",
+            MERGED_V0,
+            MERGED_F1,
+            F1_FRONTIER_CONTRACT,
+            F1_WRONG_FINAL_PC,
+            F1_WRONG_SETUP_CAP,
+            INSTRUMENTED_V0,
+            INSTRUMENTED_F1,
         ];
-        let wrong_final_pc = self.wrong_final_pc_contract.into_iter().flat_map(|rel| {
-            [
-                rel.to_string(),
-                format!("single_tx/{rel}"),
-                format!("single_tx/f1/{rel}"),
-            ]
-        });
         for rel in contracts
             .into_iter()
+            .chain(self.wrong_final_pc_contract)
             .map(str::to_string)
-            .chain(wrong_final_pc)
         {
             let path = self.contract_path(&rel);
             if path.try_exists().expect("inspect generated contract path") {
@@ -229,9 +219,11 @@ impl Version {
     }
 }
 
+/// The GKR fields of the v0 merged calldata and the GKR stream length (the WHIR stream starts
+/// there).
 pub fn calldata_field_metadata(
     gkr: &verifier_evm::flatten::GkrCalldataFields,
-    whir: &verifier_evm::flatten::WhirCalldataFields,
+    gkr_bytes: usize,
 ) -> serde_json::Value {
     let field = |field: &verifier_evm::flatten::CalldataField, encoding: &str| {
         serde_json::json!({
@@ -244,8 +236,9 @@ pub fn calldata_field_metadata(
         "gkr": {
             "final_pc": field(&gkr.final_pc, "u32_le"),
             "external_pow_nonce": field(&gkr.external_pow_nonce, "u64_be"),
+            "first_dim_reduce_round": field(&gkr.first_dim_reduce_round, "proth120_be_x4"),
         },
-        "whir": { "batched_opening": field(&whir.batched_opening, "proth120_be") },
+        "gkr_bytes": gkr_bytes,
     })
 }
 
@@ -267,6 +260,20 @@ pub fn assert_panics_with<T>(expected: &str, action: impl FnOnce() -> T + std::p
 
 pub const F1_CALLDATA: &str = "single_tx_f1.hex";
 pub const F1_FIELDS: &str = "single_tx_f1_fields.json";
+/// v0 single-transaction calldata (GKR stream ‖ WHIR stream) and the registry mark it yields.
+pub const MERGED_CALLDATA: &str = "merged_calldata.hex";
+pub const VERIFIED_MARK: &str = "verified_mark.hex";
+
+/// Generated sources, relative to the version's contracts root. The v0 verifier's project
+/// (`merged/`) carries the static registry and the Foundry tests; the other projects only build
+/// their verifier for those tests.
+pub const MERGED_V0: &str = "merged/src/GkrWhirVerifier.sol";
+pub const MERGED_F1: &str = "merged_f1/src/GkrWhirVerifier.sol";
+pub const F1_FRONTIER_CONTRACT: &str = "merged_f1/src/SetupFrontier.sol";
+pub const F1_WRONG_FINAL_PC: &str = "negative/f1_wrong_final_pc/src/GkrWhirVerifier.sol";
+pub const F1_WRONG_SETUP_CAP: &str = "negative/f1_wrong_setup_cap/src/GkrWhirVerifier.sol";
+pub const INSTRUMENTED_V0: &str = "instrumented/v0/src/GkrWhirVerifier.sol";
+pub const INSTRUMENTED_F1: &str = "instrumented/f1/src/GkrWhirVerifier.sol";
 
 impl Version {
     pub fn f1_params(&self) -> verifier_evm::encoding::FormatParams {

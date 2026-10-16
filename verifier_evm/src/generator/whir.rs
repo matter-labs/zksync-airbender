@@ -6,11 +6,14 @@
 //! `CommitmentMode`) and the artifact's column widths, that fully determines every WHIR verifier
 //! parameter, so GKR and WHIR are driven from one source and cannot drift.
 //!
-//! This module derives all of those parameters ([`WhirGenConfig`]) and renders the per-round
-//! schedule Yul that `whir.sol` used to hardcode as a `switch VARIANT` block. The RS-codeword
-//! domain generators `GEN`/`GEN_INV` are computed from the Proth120 field (a primitive
-//! `2^codeword_log2`-th root of unity), not hand-supplied.
+//! This module derives all of those parameters ([`WhirGenConfig`]), renders the per-round
+//! schedule Yul that `whir.sol` used to hardcode as a `switch VARIANT` block, and sizes every
+//! WHIR memory region from the schedule ([`WhirGenConfig::memory_regions`]) so the memory map
+//! is generated rather than hand-placed. The RS-codeword domain generators `GEN`/`GEN_INV` are
+//! computed from the Proth120 field (a primitive `2^codeword_log2`-th root of unity), not
+//! hand-supplied.
 
+use super::Lit;
 use field::Proth120;
 use prover::gkr::prover::WhirSchedule;
 
@@ -32,7 +35,6 @@ pub struct WhirGenConfig {
     pub merged_mw: usize,     // ceil(num_memwit / 2^pack_log2)  (merged mem+wit base columns)
     pub setup_merged: usize,  // ceil(num_setup  / 2^pack_log2)  (merged setup base columns)
     pub gcount: usize,        // gamma-batched base columns + 1 = merged_mw + setup_merged + 1
-    pub nbcaps: usize,        // number of base-oracle merkle caps (witness, setup) = 2
     pub gen: u128,            // primitive 2^codeword_log2-th root of unity (RS domain generator)
     pub gen_inv: u128,        // its inverse
 }
@@ -51,7 +53,7 @@ impl WhirGenConfig {
         let queries = schedule.whir_queries_schedule.clone();
         let pow_bits = schedule.whir_pow_schedule.clone();
         let num_rounds = folds.len();
-        assert!(num_rounds > 0, "WHIR schedule must contain a round");
+        assert!(num_rounds >= 2, "WHIR schedule needs at least 2 rounds");
         assert_eq!(
             queries.len(),
             num_rounds,
@@ -61,6 +63,10 @@ impl WhirGenConfig {
             pow_bits.len(),
             num_rounds,
             "WHIR pow schedule length != fold schedule length"
+        );
+        assert!(
+            folds.iter().all(|&f| f >= 1),
+            "every WHIR round must fold at least one variable"
         );
         assert!(
             schedule.cap_size.is_power_of_two() && schedule.cap_size > 0,
@@ -87,14 +93,6 @@ impl WhirGenConfig {
             rfin > 0,
             "WHIR final polynomial must contain at least two monomials"
         );
-        assert!(
-            message_log2 <= 26,
-            "WHIR point scratch holds 26 coordinates"
-        );
-        assert!(
-            folds.iter().all(|fold| (1..=5).contains(fold)),
-            "WHIR folding scratch supports fold logs 1..=5"
-        );
         assert_eq!(schedule.whir_steps_lde_factors.len(), num_rounds - 1);
         let mut lde_bits = base_lde_bits;
         for (fold, lde) in folds.iter().zip(&schedule.whir_steps_lde_factors) {
@@ -103,20 +101,6 @@ impl WhirGenConfig {
                 *lde,
                 1usize << lde_bits,
                 "EVM WHIR requires a constant codeword domain"
-            );
-        }
-        // Bounds from whir.sol's fixed memory map: POW_PTR..ACC_PREF_PTR,
-        // QIDX_BUF_PTR..DRAW_BUF_PTR, and DRAW_BUF_PTR..MONO_PTR.
-        assert!(
-            queries[..num_rounds - 1].iter().sum::<usize>() + num_rounds - 1 <= 100,
-            "WHIR accumulator scratch holds 100 power constraints"
-        );
-        for (q, fold) in queries.iter().zip(&folds) {
-            assert!(*q <= 50, "WHIR query scratch holds 50 indices");
-            let words = (q * (codeword_log2 - fold)).div_ceil(32);
-            assert!(
-                (words + 1).next_multiple_of(8) <= 52,
-                "WHIR query drawing scratch holds 52 words"
             );
         }
         let pack = 1usize << pack_log2;
@@ -130,7 +114,7 @@ impl WhirGenConfig {
         let gen = Proth120::TWO_ADICITY_GENERATORS[codeword_log2].to_u128();
         let gen_inv = Proth120::TWO_ADICITY_GENERATORS_INVERSED[codeword_log2].to_u128();
 
-        Self {
+        let cfg = Self {
             num_rounds,
             folds,
             queries,
@@ -146,22 +130,36 @@ impl WhirGenConfig {
             merged_mw,
             setup_merged,
             gcount: merged_mw + setup_merged + 1,
-            nbcaps: 2,
             gen,
             gen_inv,
+        };
+        // every round's query-index bit count must leave room for the cap levels
+        for r in 0..num_rounds {
+            assert!(
+                cfg.qib(r) >= cap_log2,
+                "WHIR round {r}: query index bits {} < cap_log2 {cap_log2}",
+                cfg.qib(r)
+            );
         }
+        cfg
+    }
+
+    /// Query-index bits of round `r`'s oracle tree: `codeword_log2 - fold_r`.
+    fn qib(&self, r: usize) -> usize {
+        self.codeword_log2 - self.folds[r]
     }
 
     /// Final-polynomial Horner evaluation with eight coefficients per cursor/loop update.
     /// The fixed remainder uses literal offsets; coefficients stay in the existing MONO region.
     pub fn final_horner_yul(&self) -> String {
+        const MONO: &str = "__TEMPLATE_WHIR_MONO_PTR";
         let n = 1usize << self.rfin;
         let tail = (n - 1) % 8;
         let mut out = format!("        function horner_{n}(x) -> ev {{\n");
         if n > 8 {
             out.push_str(&format!(
-                "            let ptr := add(MONO_PTR, {})\n\
-                 \x20           let end := add(MONO_PTR, {})\n\
+                "            let ptr := add({MONO}, {})\n\
+                 \x20           let end := add({MONO}, {})\n\
                  \x20           ev := mload(ptr)\n\
                  \x20           for {{ }} gt(ptr, end) {{ }} {{\n\
                  \x20               ptr := sub(ptr, 256)\n",
@@ -181,15 +179,15 @@ impl WhirGenConfig {
             out.push_str("            }\n");
         } else {
             out.push_str(&format!(
-                "            ev := mload(add(MONO_PTR, {}))\n",
+                "            ev := mload(add({MONO}, {}))\n",
                 (n - 1) * 32
             ));
         }
         for offset in (0..tail).rev().map(|i| i * 32) {
             let addr = if offset == 0 {
-                "MONO_PTR".to_string()
+                MONO.to_string()
             } else {
-                format!("add(MONO_PTR, {offset})")
+                format!("add({MONO}, {offset})")
             };
             out.push_str(&format!(
                 "            ev := addmod(mulmod(ev, x, P), mload({addr}), P)\n"
@@ -210,7 +208,7 @@ impl WhirGenConfig {
             let q = self.queries[r];
             let pow = self.pow_bits[r];
             let vp = 1usize << fold;
-            let qib = self.codeword_log2 - fold;
+            let qib = self.qib(r);
             let cb = self.base_lde_bits + prefolds;
             prefolds += fold;
             let selector = if r + 1 == self.num_rounds {
@@ -223,5 +221,82 @@ impl WhirGenConfig {
             ));
         }
         out
+    }
+
+    /// The WHIR half's memory regions — `(constant name in whir.sol, size in bytes as a
+    /// readable expression)` in allocation order — every size derived from the schedule,
+    /// mirroring exactly how the Yul in whir.sol indexes each region (documented per entry).
+    /// The generator lays them out contiguously above the GKR heap and assigns the resulting
+    /// absolute offsets to the `__TEMPLATE_WHIR_*` pointer constants.
+    pub fn memory_regions(&self) -> Vec<(&'static str, Lit)> {
+        let max_fold = *self.folds.iter().max().unwrap();
+        let max_q = *self.queries.iter().max().unwrap();
+        let cap = Lit::pow2(self.cap_log2 as u128);
+        let cap_bytes = cap.mul(&Lit::num(32));
+        let w32 = Lit::num(32);
+        let slot = |n: usize| Lit::num(n as u128).mul(&w32);
+        // POW entries (push_pow, 96 B each): every internal round pushes 1 ood point + 1 per
+        // query; the final round pushes none.
+        let numpow: usize = (0..self.num_rounds - 1).map(|r| self.queries[r] + 1).sum();
+        // LEAF scratch: round 0 hashes (merged_mw + setup_merged) columns × vp0/2 words of
+        // the base oracles; a later round r hashes vp_r/2 words of the intermediate oracle.
+        let leaf_words = (0..self.num_rounds)
+            .map(|r| {
+                let words = (1usize << self.folds[r]) / 2;
+                if r == 0 {
+                    (self.merged_mw + self.setup_merged) * words
+                } else {
+                    words
+                }
+            })
+            .max()
+            .unwrap()
+            .max(1);
+        // DRAW_BUF: `draw_queries(q, qib)` squeezes `padded` LE u32 words, one per 32-byte
+        // slot, with padded = next_multiple_of(ceil(q·qib / 32) + 1, 8).
+        let draw_words = (0..self.num_rounds)
+            .map(|r| {
+                let num_bits = self.queries[r] * self.qib(r);
+                let nrw = num_bits.div_ceil(32);
+                (nrw + 1).next_multiple_of(8)
+            })
+            .max()
+            .unwrap();
+        let nmono = Lit::pow2(self.rfin as u128);
+        // seed word + the largest in-place absorb: the intermediate cap (cap·32 B), or the
+        // 48-B sumcheck poly / 16-B ood value / 8-B PoW nonce (all < 64 B)
+        let seed = if cap_bytes.value >= 64 {
+            w32.add(&cap_bytes)
+        } else {
+            w32.add(&Lit::num(64))
+        };
+        vec![
+            ("SEED_PTR", seed),
+            ("Z_PTR", slot(self.nz)),
+            ("POW_PTR", Lit::num(numpow as u128).mul(&Lit::num(96))),
+            ("ACC_PREF_PTR", w32.clone()),
+            ("GAMMA_PTR", slot(self.gcount)),
+            ("FOLD_CH_PTR", slot(max_fold)),
+            ("HPO_PTR", Lit::pow2(max_fold as u128 - 1).mul(&w32)),
+            ("FBUF_PTR", Lit::pow2(max_fold as u128).mul(&w32)),
+            ("LEAF_PTR", slot(leaf_words)),
+            ("REG_CD", w32.clone()),
+            ("REG_CLAIM", w32.clone()),
+            ("REG_NUMPOW", w32.clone()),
+            ("REG_ZIOFF", w32.clone()),
+            ("REG_CC", w32.clone()),
+            ("REG_CURDELIN", w32.clone()),
+            ("HANDOFF_BATCHING_PTR", w32.clone()),
+            ("BCAP0_PTR", cap_bytes.clone()),
+            ("BCAP1_PTR", cap_bytes.clone()),
+            ("QCAP_PTR", cap_bytes.clone()),
+            ("NCAP_PTR", cap_bytes.clone()),
+            ("QIDX_BUF_PTR", slot(max_q)),
+            ("DRAW_BUF_PTR", slot(draw_words)),
+            // do_final: 2^rfin monomials, then the tail absorb (32 + nmono·16 B) and the
+            // halving-fold scratch (nmono words) share FEVAL
+            ("MONO_PTR", nmono.mul(&w32)),
+            ("FEVAL_PTR", w32.add(&nmono.mul(&w32))),
+        ]
     }
 }

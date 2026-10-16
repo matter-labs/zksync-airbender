@@ -1,7 +1,8 @@
-//! Regenerates the verifier calldata + intermediate commit seed into `debug_data/` using the
-//! production flatten/seed functions (from a serialized proof + aux + circuit). This is what a
-//! deployment tool would call to prepare the two on-chain transactions' calldata. The two-tx
-//! Foundry test reads these `debug_data/*.hex` files. Nothing here is read by `src/`.
+//! Regenerates the verifier calldata, the registry mark and the intermediate commit seed into
+//! `debug_data/` using the production flatten/seed/encoding functions (from a serialized proof +
+//! aux + circuit). This is what a deployment tool would call to prepare the single transaction's
+//! calldata (v0 `merged_calldata.hex`, F1 `single_tx_f1.hex`); the merged Foundry tests read these
+//! files. Nothing here is read by `src/`.
 
 mod common;
 
@@ -24,13 +25,15 @@ fn write_calldata_into_debug_data() {
         );
         let (gkr, gkr_fields) =
             verifier_evm::flatten::gkr_calldata_with_fields(&circuit, &proof, &aux);
-        let (whir, whir_fields) = verifier_evm::flatten::whir_calldata_with_fields(
-            &circuit, &proof, &aux, folds, queries,
+        let merged = verifier_evm::merged_calldata(&circuit, &proof, &aux, folds, queries);
+        assert_eq!(&merged[..gkr.len()], &gkr[..]);
+        put(common::MERGED_CALLDATA, &merged);
+        put(
+            common::VERIFIED_MARK,
+            &verifier_evm::verified_mark(&proof, &aux).to_bytes(),
         );
-        put("gkr_full_calldata.hex", &gkr);
-        put("proth120_whir_calldata_from_proof.hex", &whir);
         if let Some(name) = version.mutation_fields_file {
-            let metadata = common::calldata_field_metadata(&gkr_fields, &whir_fields);
+            let metadata = common::calldata_field_metadata(&gkr_fields, gkr.len());
             let path = version.data_path(name);
             std::fs::write(
                 &path,

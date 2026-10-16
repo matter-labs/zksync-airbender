@@ -34,14 +34,8 @@ fn flatten_and_seed_match_reference() {
 
         let (gkr, gkr_fields) =
             verifier_evm::flatten::gkr_calldata_with_fields(&circuit, &proof, &aux);
-        assert_eq!(
-            hex::encode(&gkr),
-            read_fixture(version, "gkr_full_calldata.hex"),
-            "gkr_calldata diverged"
-        );
-
         let cfg = version.prover_config();
-        let (whir, whir_fields) = verifier_evm::flatten::whir_calldata_with_fields(
+        let whir = verifier_evm::whir_stream(
             &circuit,
             &proof,
             &aux,
@@ -49,16 +43,21 @@ fn flatten_and_seed_match_reference() {
             &cfg.whir_schedule.whir_queries_schedule,
         );
         assert_eq!(
-            hex::encode(&whir),
-            read_fixture(version, "proth120_whir_calldata_from_proof.hex"),
-            "whir_calldata diverged"
+            hex::encode([gkr.clone(), whir].concat()),
+            read_fixture(version, common::MERGED_CALLDATA),
+            "merged_calldata diverged"
+        );
+        assert_eq!(
+            hex::encode(verifier_evm::verified_mark(&proof, &aux).to_bytes()),
+            read_fixture(version, common::VERIFIED_MARK),
+            "verified_mark diverged"
         );
         if let Some(name) = version.mutation_fields_file {
             let stored: serde_json::Value =
                 serde_json::from_str(&read_fixture(version, name)).unwrap();
             assert_eq!(
                 stored,
-                common::calldata_field_metadata(&gkr_fields, &whir_fields),
+                common::calldata_field_metadata(&gkr_fields, gkr.len()),
                 "calldata field metadata diverged"
             );
         }
@@ -69,15 +68,7 @@ fn flatten_and_seed_match_reference() {
 fn serialized_mutation_fields_match_the_proof_and_aux() {
     for version in common::available_versions("calldata mutation fields") {
         let (circuit, proof, aux) = version.load();
-        let cfg = version.prover_config();
         let (gkr, fields) = verifier_evm::flatten::gkr_calldata_with_fields(&circuit, &proof, &aux);
-        let (whir, whir_fields) = verifier_evm::flatten::whir_calldata_with_fields(
-            &circuit,
-            &proof,
-            &aux,
-            &cfg.whir_schedule.whir_steps_schedule,
-            &cfg.whir_schedule.whir_queries_schedule,
-        );
         let prover::gkr::prover::CommitmentMode::MergedAndPackedMemoryAndWitness {
             final_pc, ..
         } = aux
@@ -93,19 +84,19 @@ fn serialized_mutation_fields_match_the_proof_and_aux() {
             fields.external_pow_nonce.offset,
             verifier_evm::commit_seed_preimage(&circuit, &proof, &aux).len()
         );
-        assert_eq!(
-            whir_fields.batched_opening.value,
-            proof
-                .whir_proof
-                .batched_opening
-                .unwrap()
-                .to_u128()
-                .to_be_bytes()
-        );
+        // dimension-reducing layers are serialized output-first: the highest layer index
+        let top = proof.sumcheck_intermediate_values.keys().max().unwrap();
+        let first_round = &proof.sumcheck_intermediate_values[top].internal_round_coefficients[0];
+        let expected: Vec<u8> = first_round
+            .as_multilinear()
+            .iter()
+            .flat_map(|e| e.to_u128().to_be_bytes())
+            .collect();
+        assert_eq!(fields.first_dim_reduce_round.value, expected);
         for (bytes, field) in [
             (&gkr, fields.final_pc),
             (&gkr, fields.external_pow_nonce),
-            (&whir, whir_fields.batched_opening),
+            (&gkr, fields.first_dim_reduce_round),
         ] {
             assert_eq!(
                 &bytes[field.offset..field.offset + field.value.len()],

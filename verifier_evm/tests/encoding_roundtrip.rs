@@ -7,10 +7,6 @@ use field::{Field, Proth120};
 use verifier_evm::encoding::*;
 
 const P: u128 = Proth120::ORDER;
-/// The derived WHIR committed-state header (seed, batching, opening, point, two caps) that the
-/// single-tx stream omits.
-const WHIR_HEADER_BYTES: usize = 32 + 16 + 16 + 25 * 16 + 2 * 8 * 32;
-
 fn fe(v: u128) -> Proth120 {
     Proth120::new(v)
 }
@@ -198,8 +194,8 @@ fn f1_roundtrip_reproduces_v0() {
             "GKR v0"
         );
         let whir_v0 =
-            verifier_evm::whir_calldata(&circuit, &proof, &aux, &params.folds, &params.queries);
-        assert_eq!(whir, whir_v0[WHIR_HEADER_BYTES..], "WHIR v0 stream");
+            verifier_evm::whir_stream(&circuit, &proof, &aux, &params.folds, &params.queries);
+        assert_eq!(whir, whir_v0, "WHIR v0 stream");
         assert_eq!(
             f1.fields.values().map(|(_, len)| len).sum::<usize>(),
             f1.bytes.len()
@@ -320,7 +316,7 @@ fn decoder_derives_omitted_setup_siblings_from_the_frontier() {
         let hints = DecodeHints::from_proof(&circuit, &proof, &aux, &params, Some(&frontier));
         let (_, whir) = decode_structural(&f1.bytes, &params, &hints);
         let whir_v0 =
-            verifier_evm::whir_calldata(&circuit, &proof, &aux, &params.folds, &params.queries);
-        assert_ne!(whir, whir_v0[WHIR_HEADER_BYTES..]);
+            verifier_evm::whir_stream(&circuit, &proof, &aux, &params.folds, &params.queries);
+        assert_ne!(whir, whir_v0);
     }
 }

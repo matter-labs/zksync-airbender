@@ -1,8 +1,9 @@
-//! Commit-seed + GKR→WHIR handoff-seed reconstruction.
+//! Commit-seed + GKR→WHIR handoff-seed reconstruction, and the registry-mark words.
 //!
 //! These reproduce the transcript preimage and the intermediate seeds that the
-//! prover derives while emitting proof calldata. Nothing here reads a fixture; the
-//! bytes are computed purely from the circuit artifact, the proof, and the aux
+//! prover derives while emitting proof calldata, plus the `(publicInput, auxInput,
+//! setupCommitment)` tuple the on-chain verifier reports to its registry. Nothing here reads
+//! a fixture; the bytes are computed purely from the circuit artifact, the proof, and the aux
 //! commitment-mode data. The logic mirrors the reference simulation in
 //! `prover/src/tests/gkr/large_field.rs::verify_dim_reduce_layers`.
 
@@ -75,4 +76,60 @@ pub fn gkr_whir_handoff_seed(proof: &Proof) -> [u8; 32] {
         "proof.intermediate_transcript_seed is not set — regenerate the proof with a prover \
          that records it",
     )
+}
+
+/// The `(publicInput, auxInput, setupCommitment)` tuple the on-chain verifier reports to its
+/// registry (`IVerificationRegistry.markVerified`) for this proof, each as a bytes32:
+///  * `public_input` = final registers x10..x17, `aux_input` = x18..x25 — each register's
+///    u32 value as 4 LE bytes, concatenated in register order;
+///  * `setup_commitment` = keccak256 of the setup oracle's Merkle cap, the cap digests
+///    serialized as BE u32 words (the WHIR calldata encoding of a digest).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct VerifiedMark {
+    pub public_input: [u8; 32],
+    pub aux_input: [u8; 32],
+    pub setup_commitment: [u8; 32],
+}
+
+impl VerifiedMark {
+    /// The 96-byte ABI encoding `publicInput ‖ auxInput ‖ setupCommitment` (also what the
+    /// verifier returns on success).
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut v = Vec::with_capacity(96);
+        v.extend_from_slice(&self.public_input);
+        v.extend_from_slice(&self.aux_input);
+        v.extend_from_slice(&self.setup_commitment);
+        v
+    }
+}
+
+/// Compute the registry mark for `proof` + `aux` (see [`VerifiedMark`]).
+pub fn verified_mark(proof: &Proof, aux: &CommitmentMode) -> VerifiedMark {
+    use sha3::Digest;
+    let CommitmentMode::MergedAndPackedMemoryAndWitness {
+        register_final_state,
+        ..
+    } = aux
+    else {
+        panic!("aux data must be MergedAndPackedMemoryAndWitness");
+    };
+    let regs = |first: usize| -> [u8; 32] {
+        let mut w = [0u8; 32];
+        for i in 0..8 {
+            w[4 * i..4 * i + 4]
+                .copy_from_slice(&register_final_state[first + i].value.to_le_bytes());
+        }
+        w
+    };
+    let mut cap_bytes = Vec::new();
+    for digest in proof.whir_proof.setup_commitment.commitment.cap.cap.iter() {
+        for word in digest.iter() {
+            cap_bytes.extend_from_slice(&word.to_be_bytes());
+        }
+    }
+    VerifiedMark {
+        public_input: regs(10),
+        aux_input: regs(18),
+        setup_commitment: sha3::Keccak256::digest(&cap_bytes).into(),
+    }
 }

@@ -320,7 +320,7 @@ struct QTerm {
 /// heap, so only nonzero gate constants need an explicit seed.
 /// `gate_constant_terms`: the additive constant of each quadratic relation `(gate slot, value)`,
 /// only for gates whose constant is nonzero (it seeds `GATEVAL[slot]` before the term loops add).
-fn emit_layer0_quad_table(terms: &[QTerm], gate_constant_terms: &[(u32, u128)]) -> String {
+fn emit_layer0_quad_table(terms: &[QTerm], gate_constant_terms: &[(u32, u128)]) -> (String, usize) {
     use std::collections::BTreeMap;
     // canonical coeff -> (byte width, is_negative, stored value). Small +ve: store as-is.
     // Small -ve (canonical near P): store magnitude P-v, negate in-loop. Else: full 16 B.
@@ -349,10 +349,17 @@ fn emit_layer0_quad_table(terms: &[QTerm], gate_constant_terms: &[(u32, u128)]) 
         let (width, neg, stored) = classify(t.coeff);
         let is_quad = t.b.is_some();
         let rec = buckets.entry((is_quad, neg, width)).or_default();
-        rec.push(t.slot as u8);
-        rec.push(t.a as u8);
+        // one byte per record field: a wider circuit (more gates / columns) must fail loudly here
+        // rather than silently truncate into a wrong-but-compiling table
+        let byte = |what: &str, v: u32| -> u8 {
+            u8::try_from(v).unwrap_or_else(|_| {
+                panic!("layer-0 quad table: {what} {v} does not fit the 1-byte record field")
+            })
+        };
+        rec.push(byte("gate slot", t.slot));
+        rec.push(byte("column index", t.a));
         if let Some(b) = t.b {
-            rec.push(b as u8);
+            rec.push(byte("column index", b));
         }
         rec.extend_from_slice(&stored.to_be_bytes()[16 - width..]); // `width` low bytes, big-endian
     }
@@ -458,7 +465,7 @@ fn emit_layer0_quad_table(terms: &[QTerm], gate_constant_terms: &[(u32, u128)]) 
         ));
     }
     out.push_str("            }\n");
-    out
+    (out, stream.len())
 }
 
 /// Emit the Horner accumulation of a contiguous run of quadratic gates (GATEVAL slots `lo..hi`)
@@ -628,11 +635,37 @@ fn memrel_to_calldata(
     )
 }
 
+/// Heap-usage facts about the emitted `circuit.yul`, consumed by the generator's heap-layout
+/// allocator (assemble.rs) so every circuit-sized region of the GKR heap is sized from the
+/// circuit instead of a hand-picked slot number.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct CircuitYulStats {
+    /// Widest per-layer at-point eval array written to `GKR_CIRCUIT_CLAIMS_PTR` (32-byte slots).
+    pub max_claims_slots: usize,
+    /// Most cached-relation values (incl. layer 0's injected virtual-setup polys) any layer
+    /// stores at `GKR_CIRCUIT_CACHE_PTR` (32-byte slots).
+    pub max_cache_slots: usize,
+    /// Largest claims-batch absorb (`32 + 16·n` bytes) staged at `GKR_ABS_PTR`.
+    pub max_absorb_bytes: usize,
+    /// Layer-0 quadratic-gate accumulator slots at `GKR_GATEVAL_PTR` (32-byte slots).
+    pub gateval_slots: usize,
+    /// Bytes of the packed layer-0 term table materialized at `GKR_QTABLE_PTR`.
+    pub qtable_bytes: usize,
+}
+
 /// Emit the circuit-specific `circuit.yul` (the GKR per-layer sumcheck/gate functions) for a
 /// given circuit artifact, as a String. This is the only circuit-dependent part of the GKR
-/// verifier; `generate_verifiers` inlines it into the hand-written gkr.sol template.
+/// verifier; `generate_verifier` inlines it into the hand-written gkr.sol template.
 pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
+    emit_circuit_yul_with_stats(circuit).0
+}
+
+/// [`emit_circuit_yul`] plus the heap-usage facts the generator sizes the GKR heap from.
+pub fn emit_circuit_yul_with_stats(
+    circuit: &GKRCircuitArtifact<Proth120>,
+) -> (String, CircuitYulStats) {
     const DEBUG_ENABLE_DUMMY_CHECKS: bool = false;
+    let mut stats = CircuitYulStats::default();
     // Harden against a layout with a different generic-lookup table width: the lookup-fold code
     // and the WHIR_NUM_SETUP constant both assume exactly LOOKUP_TABLES_WIDTH setup lookup columns.
     assert_eq!(
@@ -661,6 +694,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
     );
     // let mut previous_input_count = 8;
     let mut previous_input_count = 10; // TEMPORARY: unified adds another product pair for inits/teardowns
+    stats.max_claims_slots = previous_input_count; // the dim-reduce outputs the top layer reads
     for (i, layer) in circuit.layers.iter().enumerate().rev() {
         let GKRLayerDescription {
             layer,
@@ -2062,14 +2096,20 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                         >(circuit.trace_len);
                         let memory_alpha2 = Dual("α²".to_string(), Yul::memory_alpha(1));
                         // The set-window is `top_bits[set_idx] << high_bits_shift`, NOT `set_idx << shift`.
-                        // `top_bits` (the RAM-set base chunk indices) are data-dependent and cannot be
-                        // derived from the circuit, so read them from the transcript preimage in calldata:
-                        // layout is registers ‖ final_pc/ts then top_bits[..] as LE u32.
+                        // `top_bits` (the RAM-set base chunk indices) are deployment parameters pinned
+                        // in the verifier as the `__TEMPLATE_INITS_TEARDOWNS_TOP_BITS_{c}` constants;
+                        // transcript_init requires the prover's preimage values to equal them, so the
+                        // gate can use the constants directly.
                         set_idxes.map(|c| {
-                            let byteoff = super::PREIMAGE_TOP_BITS_BYTE_OFFSET + c * 4;
+                            assert!(
+                                c < super::NUM_INITS_TEARDOWNS_TOP_BITS,
+                                "inits/teardowns set index {c} has no __TEMPLATE_INITS_TEARDOWNS_TOP_BITS_ constant \
+                                 (the template pins {} sets)",
+                                super::NUM_INITS_TEARDOWNS_TOP_BITS
+                            );
                             Dual(
                                 format!("{memory_alpha2}({setup_high} + (topbits[{c}]<<{high_bits_shift}))"),
-                                yul_format!("mulmod({memory_alpha2:x}, add({setup_high:x}, shl({high_bits_shift}, gkr_inits_teardowns_topbits({byteoff}))), P)")
+                                yul_format!("mulmod({memory_alpha2:x}, add({setup_high:x}, shl({high_bits_shift}, __TEMPLATE_INITS_TEARDOWNS_TOP_BITS_{c})), P)")
                             )
                         })
                     };
@@ -2256,10 +2296,11 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
             // modulus in a stack local) BEFORE the Horner chunk calls read it. Emitted into the
             // layer body (main output; YUL_BUFFER is drained above so yul_println! targets it).
             if i == 0 && !quad_terms.is_empty() {
-                yul_println!(
-                    "{}",
-                    emit_layer0_quad_table(&quad_terms, &quad_gate_constant_terms)
-                );
+                let (table_yul, qtable_bytes) =
+                    emit_layer0_quad_table(&quad_terms, &quad_gate_constant_terms);
+                stats.qtable_bytes = qtable_bytes;
+                stats.gateval_slots = quad_slot_counter as usize;
+                yul_println!("{}", table_yul);
             }
             for call in &chunk_calls {
                 yul_println!("            {call}");
@@ -2332,6 +2373,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
         // threaded claims array for the next-executed layer. The last-executed layer (i==0) has
         // no next layer. Count == previous_input_count (this layer's absorbed eval count).
         let writeback = if i > 0 {
+            stats.max_claims_slots = stats.max_claims_slots.max(previous_input_count);
             // This writeback loop reads every one of the {previous_input_count} calldata lanes
             // ([0,n) = final_step gate inputs ++ extras) that the claims_batch absorbs below, so a
             // `< P` check here makes the absorbed transcript bytes canonical (bind to the reduced
@@ -2380,6 +2422,23 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
             }
             r
         }
+        // Heap facts for the layout allocator: cache slots this layer stores, and the bytes the
+        // claims-batch absorb below stages at GKR_ABS_PTR (seed ‖ 16 B per absorbed value).
+        {
+            let cache_slots = cached_count
+                + if i == 0 {
+                    injected_virtualpoly_relations.len()
+                } else {
+                    0
+                };
+            let absorbed = if i > 0 {
+                previous_input_count
+            } else {
+                layer0_group_widths.0 + layer0_group_widths.1 + layer0_group_widths.2
+            } + cache_slots;
+            stats.max_cache_slots = stats.max_cache_slots.max(cache_slots);
+            stats.max_absorb_bytes = stats.max_absorb_bytes.max(32 + 16 * absorbed);
+        }
         let claims_batch = if cached_count > 0 {
             let extra_set: std::collections::HashSet<usize> =
                 cache_dep_offsets.iter().copied().collect();
@@ -2402,6 +2461,15 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                 let mut extras = cache_dep_offsets.clone();
                 extras.sort_unstable();
                 extras.dedup();
+                // The writeback canonicity guard range-checks exactly the lanes [0, n); every
+                // extra absorbed here must be one of them, or it would enter the transcript
+                // unchecked.
+                for &o in &extras {
+                    assert!(
+                        o < n,
+                        "layer {i}: cache-dependency offset {o} outside the guarded {n} inputs"
+                    );
+                }
                 let cached: Vec<usize> = (0..cached_count).collect();
                 (
                     n,
@@ -2546,6 +2614,11 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                 let c1 := and(w0, MASK)
                 let c2 := shr(128, w1)
                 let c3 := and(w1, MASK)
+                // reject non-canonical coefficient lanes (the absorb takes the raw words)
+                if iszero(lt(c0, modulus)) {{ revert(0, 0) }}
+                if iszero(lt(c1, modulus)) {{ revert(0, 0) }}
+                if iszero(lt(c2, modulus)) {{ revert(0, 0) }}
+                if iszero(lt(c3, modulus)) {{ revert(0, 0) }}
                 let g0g1_scaled := mulmod(add(add(add(add(c0, c0), c1), c2), c3), eq_scale, modulus)
                 let r := transcript_4to1_dual(w0, w1, modulus) // before-check draw is intentional; see HEURISTICS.md
                 // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
@@ -2632,18 +2705,6 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
             compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 128)), val_low, P))
             compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 160)), val_high, P))
         }}
-        // Reads one inits/teardowns `top_bits` u32 from the transcript preimage (little-endian,
-        // at absolute calldata `byteoff`). These are the RAM-set base chunk indices absorbed into
-        // Fiat-Shamir, so a mismatching value breaks the transcript — safe to read from calldata.
-        function gkr_inits_teardowns_topbits(byteoff) -> v {{
-            // #if F1
-            let w := calldataload(add(F1_V0_PTR(), byteoff))
-            // #else
-            let w := calldataload(byteoff)
-            // #endif
-            v := add(add(byte(0, w), shl(8, byte(1, w))), add(shl(16, byte(2, w)), shl(24, byte(3, w))))
-        }}
-
         // Plain VARIABLE order (LSB binding): index bit k pairs with point coordinate k.
         // compose_vars sums 2^k * point[skip + k] for k in 0..len (Horner from the top
         // coordinate down); zero_vars forces the HIGHEST `len` coordinates to zero —
@@ -2710,11 +2771,17 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
     ");
     let _ = DEBUG_ENABLE_DUMMY_CHECKS;
     let out = std::mem::take(&mut *yul_main_output().lock().unwrap());
+    assert!(
+        stats.gateval_slots > 0 && stats.qtable_bytes > 0,
+        "layer 0 emitted no table-driven quadratic gates"
+    );
     // Modulus representation: the ~124-bit Proth120 P as a Solidity `constant` compiles to a
     // PUSH16 rematerialized at EVERY mulmod/addmod/sub — ~1000+ times across the layer-0 gates,
     // several KB of pure constant-push. P is already mirrored at the fixed heap slot P_PTR, so
     // read it with `mload(P_PTR)` (PUSH1 + MLOAD, consumed immediately — no live stack slot, so
     // no "stack too deep" in the deep gate sequences). Purely a size win; runtime value identical.
-    out.replace(", P)", ", mload(P_PTR))")
-        .replace("sub(P, ", "sub(mload(P_PTR), ")
+    let out = out
+        .replace(", P)", ", mload(P_PTR))")
+        .replace("sub(P, ", "sub(mload(P_PTR), ");
+    (out, stats)
 }
