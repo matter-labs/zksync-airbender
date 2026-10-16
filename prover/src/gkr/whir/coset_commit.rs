@@ -29,9 +29,53 @@ use crate::gkr::prover::stages::commitment_utils::{
     pack_polys_parallel_from_hypercubes_to_monomials,
 };
 use crate::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
-#[cfg(test)]
+use crate::merkle_trees::multiproof::{boundary_nodes, MerkleMultiProof};
 use crate::merkle_trees::PathQueryable;
 use crate::merkle_trees::{ColumnMajorMerkleTreeConstructor, MerkleTreeCapVarLength};
+/// Assign global boundary requests to the subtree that is reconstructed once.
+/// Upper requests are read immediately from the retained top tree.
+struct SubtreeMultiproof {
+    proof: MerkleMultiProof,
+    requests: std::collections::BTreeMap<usize, Vec<(usize, usize, usize)>>,
+}
+impl SubtreeMultiproof {
+    fn new<T: PathQueryable>(indices: &[usize], subtree_depth: usize, top: &T) -> Self {
+        let depth = subtree_depth + top.proof_depth();
+        let boundary = boundary_nodes(indices, depth);
+        let mut result = Self {
+            proof: MerkleMultiProof {
+                depth,
+                siblings: vec![[0; DIGEST_SIZE_U32_WORDS]; boundary.len()],
+            },
+            requests: std::collections::BTreeMap::new(),
+        };
+        for (output, (level, index)) in boundary.into_iter().enumerate() {
+            if level >= subtree_depth {
+                result.proof.siblings[output] = top.get_node(level - subtree_depth, index);
+            } else {
+                let width = 1usize << (subtree_depth - level);
+                result.requests.entry(index / width).or_default().push((
+                    output,
+                    level,
+                    index % width,
+                ));
+            }
+        }
+        result
+    }
+    fn collect<T: PathQueryable>(&mut self, group: usize, subtree: &T) {
+        if let Some(requests) = self.requests.remove(&group) {
+            for (output, level, index) in requests {
+                self.proof.siblings[output] = subtree.get_node(level, index);
+            }
+        }
+    }
+    fn finish(self) -> MerkleMultiProof {
+        assert!(self.requests.is_empty(), "unserved multiproof subtree");
+        self.proof
+    }
+}
+
 use core::marker::PhantomData;
 use fft::{bitreverse_index, Twiddles};
 #[cfg(test)]
@@ -325,9 +369,44 @@ where
         twiddles: &Twiddles<F, Global>,
         worker: &Worker,
     ) -> Vec<BaseFieldQuery<F, T>> {
+        self.query_many_impl(query_indices, twiddles, worker, false)
+            .0
+    }
+
+    pub fn query_many_compact(
+        &self,
+        query_indices: &[usize],
+        twiddles: &Twiddles<F, Global>,
+        worker: &Worker,
+    ) -> (Vec<BaseFieldQuery<F, T>>, MerkleMultiProof) {
+        let (queries, proof) = self.query_many_impl(query_indices, twiddles, worker, true);
+        (queries, proof.unwrap())
+    }
+
+    fn query_many_impl(
+        &self,
+        query_indices: &[usize],
+        twiddles: &Twiddles<F, Global>,
+        worker: &Worker,
+        compact: bool,
+    ) -> (Vec<BaseFieldQuery<F, T>>, Option<MerkleMultiProof>) {
         let num_cosets = self.lde_factor;
         let cosets_log2 = num_cosets.trailing_zeros();
         let coset_tree_size = self.coset_tree_size();
+        let mut compact_proof = compact.then(|| {
+            let indices: Vec<_> = query_indices
+                .iter()
+                .map(|&i| {
+                    bitreverse_index(i & (num_cosets - 1), cosets_log2) * coset_tree_size
+                        + (i >> cosets_log2)
+                })
+                .collect();
+            SubtreeMultiproof::new(
+                &indices,
+                coset_tree_size.trailing_zeros() as usize,
+                &self.top_tree,
+            )
+        });
         let offsets =
             offsets_vec_for_leaf_construction(1usize << self.trace_len_log2, self.values_per_leaf);
 
@@ -366,7 +445,14 @@ where
             );
 
             let physical_slot = bitreverse_index(coset_index, cosets_log2);
-            let (_root, top_path) = self.top_tree.get_proof(physical_slot);
+            if let Some(proof) = compact_proof.as_mut() {
+                proof.collect(physical_slot, &subtree);
+            }
+            let top_path = if compact {
+                Vec::new()
+            } else {
+                self.top_tree.get_proof(physical_slot).1
+            };
 
             for pos in positions {
                 let internal_index = query_indices[pos] >> cosets_log2;
@@ -383,8 +469,13 @@ where
                     }
                 }
 
-                let (_leaf_hash, mut path) = subtree.get_proof(internal_index);
-                path.extend_from_slice(&top_path);
+                let path = if compact {
+                    Vec::new()
+                } else {
+                    let (_, mut path) = subtree.get_proof(internal_index);
+                    path.extend_from_slice(&top_path);
+                    path
+                };
 
                 out[pos] = Some(BaseFieldQuery {
                     index: tree_index,
@@ -395,13 +486,36 @@ where
             }
         }
 
-        out.into_iter().map(|q| q.unwrap()).collect()
+        (
+            out.into_iter().map(|q| q.unwrap()).collect(),
+            compact_proof.map(SubtreeMultiproof::finish),
+        )
     }
 
     /// Like [`query_many`](Self::query_many) but each result also carries the leaf
     /// values reshaped into offset-major `[offset][column]` form (matching
     /// `ColumnMajorBaseOracleForLDE::query_for_folded_index`), as consumed by
     /// `whir_fold`'s round-0 batching. Results are in input order.
+    pub fn query_many_structured_compact(
+        &self,
+        query_indices: &[usize],
+        twiddles: &Twiddles<F, Global>,
+        worker: &Worker,
+    ) -> (Vec<(Vec<Vec<F>>, BaseFieldQuery<F, T>)>, MerkleMultiProof) {
+        let num_cols = self.monomial_forms.len();
+        let (queries, proof) = self.query_many_compact(query_indices, twiddles, worker);
+        let queries = queries
+            .into_iter()
+            .map(|q| {
+                let leaf = (0..self.values_per_leaf)
+                    .map(|o| q.leaf_values_concatenated[o * num_cols..(o + 1) * num_cols].to_vec())
+                    .collect();
+                (leaf, q)
+            })
+            .collect();
+        (queries, proof)
+    }
+
     pub fn query_many_structured(
         &self,
         query_indices: &[usize],
@@ -890,11 +1004,52 @@ where
         twiddles: &Twiddles<F, Global>,
         worker: &Worker,
     ) -> Vec<(usize, Vec<E>, ExtensionFieldQuery<F, E, T>)> {
+        self.query_many_impl(query_indices, twiddles, worker, false)
+            .0
+    }
+
+    pub fn query_many_compact(
+        &self,
+        query_indices: &[usize],
+        twiddles: &Twiddles<F, Global>,
+        worker: &Worker,
+    ) -> (
+        Vec<(usize, Vec<E>, ExtensionFieldQuery<F, E, T>)>,
+        MerkleMultiProof,
+    ) {
+        let (queries, proof) = self.query_many_impl(query_indices, twiddles, worker, true);
+        (queries, proof.unwrap())
+    }
+
+    fn query_many_impl(
+        &self,
+        query_indices: &[usize],
+        twiddles: &Twiddles<F, Global>,
+        worker: &Worker,
+        compact: bool,
+    ) -> (
+        Vec<(usize, Vec<E>, ExtensionFieldQuery<F, E, T>)>,
+        Option<MerkleMultiProof>,
+    ) {
         let num_cosets = self.lde_factor;
         let cosets_log2 = num_cosets.trailing_zeros();
         let coset_tree_size = (1usize << self.trace_len_log2) / self.values_per_leaf;
         let group_log2 = self.group_log2;
         let group_size = 1usize << group_log2;
+        let mut compact_proof = compact.then(|| {
+            let indices: Vec<_> = query_indices
+                .iter()
+                .map(|&i| {
+                    bitreverse_index(i & (num_cosets - 1), cosets_log2) * coset_tree_size
+                        + (i >> cosets_log2)
+                })
+                .collect();
+            SubtreeMultiproof::new(
+                &indices,
+                coset_tree_size.trailing_zeros() as usize + group_log2 as usize,
+                &self.top_tree,
+            )
+        });
 
         // Group input positions by top-tree group index.
         let mut by_group: std::collections::BTreeMap<usize, Vec<usize>> =
@@ -950,7 +1105,14 @@ where
                 false,
                 worker,
             );
-            let (_root, top_path) = self.top_tree.get_proof(group_index);
+            if let Some(proof) = compact_proof.as_mut() {
+                proof.collect(group_index, &subtree);
+            }
+            let top_path = if compact {
+                Vec::new()
+            } else {
+                self.top_tree.get_proof(group_index).1
+            };
 
             for pos in positions {
                 let query_index = query_indices[pos];
@@ -968,8 +1130,13 @@ where
                     .collect();
 
                 let group_leaf_index = slot_in_group * coset_tree_size + internal_index;
-                let (_leaf, mut path) = subtree.get_proof(group_leaf_index);
-                path.extend_from_slice(&top_path);
+                let path = if compact {
+                    Vec::new()
+                } else {
+                    let (_, mut path) = subtree.get_proof(group_leaf_index);
+                    path.extend_from_slice(&top_path);
+                    path
+                };
 
                 let query = ExtensionFieldQuery {
                     index: tree_index,
@@ -981,7 +1148,10 @@ where
             }
         }
 
-        out.into_iter().map(|q| q.unwrap()).collect()
+        (
+            out.into_iter().map(|q| q.unwrap()).collect(),
+            compact_proof.map(SubtreeMultiproof::finish),
+        )
     }
 }
 
@@ -1100,6 +1270,12 @@ mod test {
             assert_eq!(split_path, mono_path, "path @ idx={idx}");
         }
 
+        let sampled = [tree_size - 1, 0, 1, tree_size / 2, 1];
+        assert_eq!(
+            split_tree.get_multiproof(&sampled),
+            mono_tree(&mono).get_multiproof(&sampled)
+        );
+
         // RS-leaf values must match `query_for_folded_index` (offset-major leaf).
         for qi in 0..tree_size {
             let (coset_index, mono_vals, _q) = mono.query_for_folded_index(qi);
@@ -1175,7 +1351,25 @@ mod test {
         let all: Vec<usize> = (0..tree_size).collect();
         let sample: &[usize] = indices.unwrap_or(&all);
 
-        // exercise the batched path too (dedups by coset)
+        // Exercise duplicates, unsorted leaves and boundary nodes across cosets.
+        let compact_sample = [tree_size - 1, 0, 1, tree_size / 2, 1];
+        let (compact_queries, compact) =
+            coset.query_many_compact(&compact_sample, &twiddles, &worker);
+        let (in_memory_queries, in_memory_compact) =
+            mono.query_many_compact(&compact_sample, &twiddles, &worker);
+        assert_eq!(compact, in_memory_compact);
+        let tree_indices: Vec<_> = compact_queries.iter().map(|q| q.index).collect();
+        assert_eq!(compact, mono_tree(&mono).get_multiproof(&tree_indices));
+        for (query, (_, expected)) in compact_queries.iter().zip(in_memory_queries.iter()) {
+            assert!(query.path.is_empty());
+            assert!(expected.path.is_empty());
+            assert_eq!(query.index, expected.index);
+            assert_eq!(
+                query.leaf_values_concatenated,
+                expected.leaf_values_concatenated
+            );
+        }
+        // exercise the legacy batched path too (dedups by coset)
         let got_batch = coset.query_many(sample, &twiddles, &worker);
         for (pos, &qi) in sample.iter().enumerate() {
             let (_c, _v, expected) = mono.query_for_folded_index(qi);
@@ -1335,6 +1529,19 @@ mod test {
                 grouped.get_cap(),
                 "cap @ {nthreads} threads"
             );
+            let sample = [tree_size - 1, 0, 1, tree_size / 2, 1];
+            let (reference_queries, reference_proof) =
+                reference.query_many_compact(&sample, &tw1, &w1);
+            let (queries, proof) = grouped.query_many_compact(&sample, &tw, &w);
+            assert_eq!(proof, reference_proof);
+            for ((ci, values, query), (rci, rvalues, rquery)) in
+                queries.iter().zip(reference_queries.iter())
+            {
+                assert!(query.path.is_empty());
+                assert_eq!(ci, rci);
+                assert_eq!(values, rvalues);
+                assert_eq!(query.index, rquery.index);
+            }
             for qi in 0..tree_size {
                 let (_rc, rv, rq) = reference.query(qi, &tw1, &w1);
                 let (_gc, gv, gq) = grouped.query(qi, &tw, &w);
@@ -1384,6 +1591,15 @@ mod test {
             );
 
             let tree_size = lde_factor * (trace_len / vpl);
+            let sample = [tree_size - 1, 0, 1, tree_size / 2, 1];
+            let (queries, compact) = coset.query_many_compact(&sample, &twiddles, &worker);
+            let indices: Vec<_> = queries.iter().map(|(_, _, q)| q.index).collect();
+            assert_eq!(compact, mono.tree.get_multiproof(&indices));
+            for (&index, (_, values, query)) in sample.iter().zip(queries.iter()) {
+                let (_, expected, _) = mono.query_for_folded_index(index);
+                assert_eq!(*values, expected);
+                assert!(query.path.is_empty());
+            }
             for qi in 0..tree_size {
                 let (mci, mvals, mq) = mono.query_for_folded_index(qi);
                 let (cci, cvals, cq) = coset.query(qi, &twiddles, &worker);

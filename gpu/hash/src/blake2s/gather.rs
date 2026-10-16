@@ -290,6 +290,7 @@ cuda_kernel!(
         log_leaves_count: u32,
         layers_count: u32,
         slab_dst: *mut u32,
+        multiproof_plan: *const u32,
     )
 );
 
@@ -312,6 +313,34 @@ pub fn gather_merkle_paths_full_for_queries(
     layers_count: u32,
     stream: &CudaStream,
 ) -> CudaResult<()> {
+    gather_merkle_paths_full_for_queries_with_plan(
+        query_indexes,
+        log_lde_factor,
+        stride_per_coset_in_digests,
+        consolidated_tree,
+        slab_dst,
+        layers_count,
+        None,
+        stream,
+    )
+}
+
+/// With a plan, writes only boundary nodes at packed offsets into the existing
+/// worst-case-capacity output. The plan must be derived from tree-space indices
+/// in exactly the same query order and remain live through this stream use.
+pub fn gather_merkle_paths_full_for_queries_with_plan(
+    query_indexes: &DeviceSlice<u32>,
+    log_lde_factor: u32,
+    stride_per_coset_in_digests: u32,
+    consolidated_tree: &DeviceSlice<Digest>,
+    slab_dst: &mut DeviceSlice<u32>,
+    layers_count: u32,
+    multiproof_plan: Option<&DeviceSlice<u32>>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    if let Some(plan) = multiproof_plan {
+        assert_eq!(plan.len(), 1 + query_indexes.len() * layers_count as usize);
+    }
     assert!(query_indexes.len() <= u32::MAX as usize);
     let indexes_count = query_indexes.len() as u32;
     // stride_per_coset_in_digests == 2 * leaves_count for Full mode.
@@ -340,6 +369,9 @@ pub fn gather_merkle_paths_full_for_queries(
         slab_dst.len(),
         query_indexes.len() * layers_count as usize * STATE_SIZE
     );
+    if indexes_count == 0 || layers_count == 0 {
+        return Ok(());
+    }
     let (grid_dim, block_dim) =
         get_grid_block_dims_for_threads_count(WARP_SIZE / STATE_SIZE as u32, indexes_count);
     let grid_dim = (grid_dim.x, layers_count);
@@ -354,6 +386,7 @@ pub fn gather_merkle_paths_full_for_queries(
         log_leaves_count,
         layers_count,
         slab_dst.as_mut_ptr(),
+        multiproof_plan.map_or(std::ptr::null(), |p| p.as_ptr()),
     );
     GatherMerklePathsFullForQueriesFunction::default().launch(&config, &args)
 }
@@ -382,12 +415,16 @@ pub struct OraclePartialPathDesc {
     /// `slab[q * layers_count * STATE_SIZE + layer * STATE_SIZE + word]`.
     /// Must be 32-byte aligned (the bottom path layers are digest stores).
     pub slab_dst_ptr: u64,
+    /// Optional device emission plan: count followed by query-major output slots.
+    /// The plan is generated from tree-space indices in the same query order.
+    /// Nonzero selects packed boundary output; zero preserves legacy paths.
+    pub multiproof_plan_ptr: u64,
 }
 
 const _: () = {
     // Exact mirror of `gpu_oracle_partial_path_desc` in native/gather.cu —
     // layout drift silently breaks the by-value kernel ABI.
-    assert!(std::mem::size_of::<OraclePartialPathDesc>() == 32);
+    assert!(std::mem::size_of::<OraclePartialPathDesc>() == 40);
 };
 
 impl OraclePartialPathDesc {
@@ -567,6 +604,7 @@ cuda_kernel!(
         layers_count: u32,
         query_indexes: *const u32,
         indexes_count: u32,
+        multiproof_plan: *const u32,
     )
 );
 
@@ -587,6 +625,43 @@ pub fn gather_merkle_paths_partial_for_queries_from_ntt(
     query_indexes: &DeviceSlice<u32>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
+    gather_merkle_paths_partial_for_queries_from_ntt_with_plan(
+        ntt_output,
+        partial_tree,
+        slab_dst,
+        natural_log_lde_factor,
+        log_values_per_leaf,
+        log_src_cols_per_coset,
+        log_packed_leaf_count,
+        trace_len,
+        log_total_leaves_count,
+        layers_count,
+        query_indexes,
+        None,
+        stream,
+    )
+}
+
+/// Optional direct boundary emission for recursive WHIR. A plan skips redundant
+/// cached-node reads and writes; bottom subtree recomputation is unchanged.
+pub fn gather_merkle_paths_partial_for_queries_from_ntt_with_plan(
+    ntt_output: &DeviceSlice<BF>,
+    partial_tree: &DeviceSlice<u32>,
+    slab_dst: &mut DeviceSlice<u32>,
+    natural_log_lde_factor: u32,
+    log_values_per_leaf: u32,
+    log_src_cols_per_coset: u32,
+    log_packed_leaf_count: u32,
+    trace_len: u32,
+    log_total_leaves_count: u32,
+    layers_count: u32,
+    query_indexes: &DeviceSlice<u32>,
+    multiproof_plan: Option<&DeviceSlice<u32>>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    if let Some(plan) = multiproof_plan {
+        assert_eq!(plan.len(), 1 + query_indexes.len() * layers_count as usize);
+    }
     assert!(layers_count >= LOG_WARP_SIZE);
     assert!(log_total_leaves_count >= LOG_WARP_SIZE);
     // The upper-tree walk starts at log_total_leaves_count - LOG_WARP_SIZE
@@ -634,6 +709,7 @@ pub fn gather_merkle_paths_partial_for_queries_from_ntt(
         layers_count,
         query_indexes.as_ptr(),
         indexes_count,
+        multiproof_plan.map_or(std::ptr::null(), |p| p.as_ptr()),
     );
     GatherMerklePathsPartialForQueriesFromNttFunction::default().launch(&config, &args)
 }
@@ -1134,4 +1210,31 @@ pub fn gather_merkle_paths_from_rows_physical(
         merkle_paths,
     );
     GatherMerklePathsFromRowsPhysicalFunction::default().launch(&config, &args)
+}
+
+cuda_kernel!(
+    MerkleMultiproofPlan,
+    ab_merkle_multiproof_plan_kernel(indexes: *const u32, count: u32, depth: u32, plan: *mut u32)
+);
+
+/// Schedule canonical DFS compact-proof emission without a device-to-host round trip.
+/// The plan contains a digest count followed by one output offset (or u32::MAX)
+/// per query and path level. Duplicate queries retain their leaves but share nodes.
+pub fn plan_merkle_multiproof(
+    indexes: &DeviceSlice<u32>,
+    depth: u32,
+    plan: &mut DeviceSlice<u32>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!(depth < 32);
+    assert_eq!(plan.len(), 1 + indexes.len() * depth as usize);
+    checked_u32(plan.len() - 1);
+    let config = CudaLaunchConfig::basic(1, 1, stream);
+    let args = MerkleMultiproofPlanArguments::new(
+        indexes.as_ptr(),
+        checked_u32(indexes.len()),
+        depth,
+        plan.as_mut_ptr(),
+    );
+    MerkleMultiproofPlanFunction::default().launch(&config, &args)
 }

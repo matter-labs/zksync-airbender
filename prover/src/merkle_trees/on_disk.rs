@@ -267,6 +267,19 @@ impl TreeLayout {
         MerkleTreeCapVarLength { cap }
     }
 
+    fn get_node(&self, bytes: &[u8], level: usize, index: usize) -> Digest {
+        assert!(level <= self.depth);
+        assert!(index < (self.num_leaves >> level));
+        let offset = if level == self.depth {
+            self.cap_offset
+        } else if level == 0 {
+            self.leaf_offset
+        } else {
+            self.internal_offsets[level - 1]
+        };
+        Self::digest_at(bytes, offset + index * DIGEST_BYTES)
+    }
+
     fn get_proof(&self, bytes: &[u8], idx: usize) -> (Digest, Vec<Digest>) {
         // Mirrors the in-memory trees' `get_proof`: level 0 sibling from the leaf
         // layer, level `i > 0` from internal layer `L_i`.
@@ -331,6 +344,12 @@ impl core::fmt::Debug for MmapMerkleTree {
 }
 
 impl PathQueryable for MmapMerkleTree {
+    fn proof_depth(&self) -> usize {
+        self.layout.depth
+    }
+    fn get_node(&self, level: usize, index: usize) -> Digest {
+        self.layout.get_node(self.bytes(), level, index)
+    }
     fn get_cap(&self) -> MerkleTreeCapVarLength {
         self.layout.get_cap(self.bytes())
     }
@@ -401,6 +420,21 @@ impl core::fmt::Debug for OnDiskCosetTree {
 }
 
 impl PathQueryable for OnDiskCosetTree {
+    fn proof_depth(&self) -> usize {
+        self.coset_tree_size.trailing_zeros() as usize + self.top_tree.proof_depth()
+    }
+    fn get_node(&self, level: usize, index: usize) -> Digest {
+        assert!(level <= self.proof_depth());
+        let subtree_depth = self.coset_tree_size.trailing_zeros() as usize;
+        if level >= subtree_depth {
+            self.top_tree.get_node(level - subtree_depth, index)
+        } else {
+            let width = self.coset_tree_size >> level;
+            let physical_slot = index / width;
+            let natural_coset = bitreverse_index(physical_slot, self.cosets_log2);
+            self.subtrees[natural_coset].get_node(level, index % width)
+        }
+    }
     fn get_cap(&self) -> MerkleTreeCapVarLength {
         PathQueryable::get_cap(&self.top_tree)
     }
@@ -481,6 +515,18 @@ impl<T> core::fmt::Debug for OnDiskTree<T> {
 }
 
 impl<T> PathQueryable for OnDiskTree<T> {
+    fn proof_depth(&self) -> usize {
+        match self {
+            Self::Monolithic { tree, .. } => tree.proof_depth(),
+            Self::CosetSubtrees { tree, .. } => tree.proof_depth(),
+        }
+    }
+    fn get_node(&self, level: usize, index: usize) -> Digest {
+        match self {
+            Self::Monolithic { tree, .. } => tree.get_node(level, index),
+            Self::CosetSubtrees { tree, .. } => tree.get_node(level, index),
+        }
+    }
     fn get_cap(&self) -> MerkleTreeCapVarLength {
         match self {
             OnDiskTree::Monolithic { tree, .. } => PathQueryable::get_cap(tree),
@@ -717,6 +763,20 @@ mod test {
             assert_eq!(got_leaf, want_leaf, "leaf hash @ {idx}");
             assert_eq!(got_path, want_path, "path @ {idx}");
         }
+        let indices = [trace_len - 1, 0, 1, trace_len / 2, 1];
+        let compact = disk.get_multiproof(&indices);
+        assert_eq!(compact, tree.get_multiproof(&indices));
+        let expected: Vec<_> = super::super::multiproof::boundary_nodes(&indices, compact.depth)
+            .into_iter()
+            .map(|(level, index)| {
+                let leaf = indices
+                    .iter()
+                    .find(|&&leaf| ((leaf >> level) ^ 1) == index)
+                    .unwrap();
+                tree.get_proof(*leaf).1[level]
+            })
+            .collect();
+        assert_eq!(compact.siblings, expected);
         drop(disk);
         let _ = std::fs::remove_file(monolithic_tree_file_path(&prefix));
     }

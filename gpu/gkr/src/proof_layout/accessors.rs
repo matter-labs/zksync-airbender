@@ -4,7 +4,7 @@ use std::mem::size_of;
 use std::ops::Range;
 
 use super::*;
-use crate::upstream::Field;
+use crate::upstream::{Field, MerkleMultiProof};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WhirBaseLayerKind {
@@ -30,6 +30,29 @@ pub enum WhirBaseLayerKind {
 // st.global.cs.v4.b64 stores) are valid.
 
 impl ProofLayout {
+    /// Mutable device-only plan range. Must only be accessed on the exec stream.
+    ///
+    /// # Safety
+    /// `slab_base` must point to a live, aligned slab with this layout.
+    pub unsafe fn whir_base_multiproof_plan_device_mut(
+        &self,
+        slab_base: *mut u8,
+    ) -> (*mut u32, usize) {
+        Self::device_typed::<u32>(slab_base, &self.whir.base_multiproof_plan)
+    }
+
+    /// Mutable device-only plan range for an intermediate oracle.
+    ///
+    /// # Safety
+    /// `slab_base` must point to a live, aligned slab with this layout.
+    pub unsafe fn whir_intermediate_multiproof_plan_device_mut(
+        &self,
+        slab_base: *mut u8,
+        round: usize,
+    ) -> (*mut u32, usize) {
+        Self::device_typed::<u32>(slab_base, &self.whir.intermediate[round].multiproof_plan)
+    }
+
     #[inline]
     unsafe fn device_typed<T>(slab_base: *mut u8, range: &Range<usize>) -> (*mut T, usize) {
         let ptr = slab_base.add(range.start) as *mut T;
@@ -406,6 +429,8 @@ impl ProofLayout {
         // oracles sample the same tree-space indices, so the slab stores one
         // copy. See `WhirLayout::base_query_indices`.
         let base_indices = self.whir_base_query_indices_host(slab);
+        let base_sibling_count =
+            Self::host_typed::<u32>(slab, &self.whir.base_multiproof_plan)[0] as usize;
         let base = |which: WhirBaseLayerKind,
                     indices: &[u32]|
          -> WhirBaseLayerCommitmentAndQueries<BF, E4, DefaultTreeConstructor> {
@@ -424,17 +449,16 @@ impl ProofLayout {
                     Vec::new()
                 } else {
                     let leaves = self.whir_base_query_leaves_host(slab, which);
-                    let paths_flat = self.whir_base_query_paths_host(slab, which);
+
                     (0..query_count)
                         .map(|q| {
                             let leaf_start = q * leaf_values_len;
                             let leaf_end = leaf_start + leaf_values_len;
-                            let path_start_u32 = q * path_len * DIGEST_U32_WORDS;
-                            let path_end_u32 = path_start_u32 + path_len * DIGEST_U32_WORDS;
+
                             BaseFieldQuery {
                                 index: indices[q] as usize,
                                 leaf_values_concatenated: leaves[leaf_start..leaf_end].to_vec(),
-                                path: digest_bytes_of(&paths_flat[path_start_u32..path_end_u32]),
+                                path: Vec::new(),
                                 _marker: PhantomData,
                             }
                         })
@@ -448,6 +472,16 @@ impl ProofLayout {
                 num_columns: base_layout.num_columns,
                 evals,
                 queries,
+                multiproof: if base_layout.num_columns == 0 {
+                    None
+                } else {
+                    let words = self.whir_base_query_paths_host(slab, which);
+                    assert!(base_sibling_count <= query_count * path_len);
+                    Some(MerkleMultiProof {
+                        depth: path_len,
+                        siblings: digest_bytes_of(&words[..base_sibling_count * DIGEST_U32_WORDS]),
+                    })
+                },
             }
         };
         let setup_commitment = base(WhirBaseLayerKind::Setup, base_indices);
@@ -466,6 +500,8 @@ impl ProofLayout {
                 let indices = self.whir_intermediate_query_indices_host(slab, round);
                 let leaves = self.whir_intermediate_query_leaves_host(slab, round);
                 let paths_flat = self.whir_intermediate_query_paths_host(slab, round);
+                let sibling_count =
+                    Self::host_typed::<u32>(slab, &inter.multiproof_plan)[0] as usize;
                 let query_count = inter.query_count;
                 let leaf_values_len = inter.leaf_values_len;
                 let path_len = inter.path_len;
@@ -474,12 +510,11 @@ impl ProofLayout {
                     .map(|q| {
                         let leaf_start = q * leaf_values_len;
                         let leaf_end = leaf_start + leaf_values_len;
-                        let path_start_u32 = q * path_len * DIGEST_U32_WORDS;
-                        let path_end_u32 = path_start_u32 + path_len * DIGEST_U32_WORDS;
+
                         ExtensionFieldQuery {
                             index: indices[q] as usize,
                             leaf_values_concatenated: leaves[leaf_start..leaf_end].to_vec(),
-                            path: digest_bytes_of(&paths_flat[path_start_u32..path_end_u32]),
+                            path: Vec::new(),
                             _marker: PhantomData,
                         }
                     })
@@ -490,6 +525,15 @@ impl ProofLayout {
                         _marker: PhantomData,
                     },
                     queries,
+                    multiproof: {
+                        assert!(sibling_count <= query_count * path_len);
+                        Some(MerkleMultiProof {
+                            depth: path_len,
+                            siblings: digest_bytes_of(
+                                &paths_flat[..sibling_count * DIGEST_U32_WORDS],
+                            ),
+                        })
+                    },
                 }
             })
             .collect();

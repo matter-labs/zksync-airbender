@@ -164,9 +164,13 @@ DEVICE_FORCEINLINE void reduce_merkle_subtrees_block(digest *values, unsigned ac
 }
 
 // Rebuilds the bottom five layers with warp shuffles before walking the cached tree.
+// With output_slots, emit only selected boundary nodes directly into compact_dst:
+// no full path is materialized and redundant cached nodes are never loaded.
+// Bottom subtree reconstruction remains shared with the legacy gather.
 DEVICE_FORCEINLINE void collect_merkle_path_warp(u32 state[STATE_SIZE], u32 *merkle_paths, const unsigned layer_stride_words, const unsigned lane_idx,
                                                  const bool is_output_lane, const unsigned query_index, const unsigned log_total_leaves_count,
-                                                 const unsigned layers_count, const u32 *tree_bottom) {
+                                                 const unsigned layers_count, const u32 *tree_bottom, const u32 *output_slots = nullptr,
+                                                 u32 *compact_dst = nullptr) {
   u32 block[BLOCK_SIZE];
 #pragma unroll
   for (unsigned layer = 0; layer < LOG_WARP_SIZE; layer++) {
@@ -183,8 +187,10 @@ DEVICE_FORCEINLINE void collect_merkle_path_warp(u32 state[STATE_SIZE], u32 *mer
         block[i + STATE_SIZE] = other_state[i];
       }
     }
-    if (is_output_lane)
-      ::airbender::primitives::memory::store_cs(reinterpret_cast<digest *>(merkle_paths), other_state);
+    if (is_output_lane && (!output_slots || output_slots[layer] != 0xffffffffu)) {
+      u32 *dst = output_slots ? compact_dst + static_cast<size_t>(output_slots[layer]) * STATE_SIZE : merkle_paths;
+      ::airbender::primitives::memory::store_cs(reinterpret_cast<digest *>(dst), other_state);
+    }
     initialize(state);
     u32 t = 0;
     compress<true>(state, t, block, BLOCK_SIZE);
@@ -198,7 +204,10 @@ DEVICE_FORCEINLINE void collect_merkle_path_warp(u32 state[STATE_SIZE], u32 *mer
   u32 *merkle_paths_dst = merkle_paths + lane_idx;
   for (unsigned layer = LOG_WARP_SIZE; layer < layers_count; layer++) {
     const unsigned other_index = digest_index ^ 1;
-    *merkle_paths_dst = *(tree_layer + other_index * STATE_SIZE);
+    if (!output_slots || output_slots[layer] != 0xffffffffu) {
+      u32 *dst = output_slots ? compact_dst + static_cast<size_t>(output_slots[layer]) * STATE_SIZE + lane_idx : merkle_paths_dst;
+      *dst = *(tree_layer + other_index * STATE_SIZE);
+    }
     digest_index >>= 1;
     tree_layer += (1u << log_digests_count) * STATE_SIZE;
     log_digests_count--;

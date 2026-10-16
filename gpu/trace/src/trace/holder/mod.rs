@@ -1022,6 +1022,29 @@ impl TraceHolder<BF> {
         log_src_cols_per_coset: u32,
         context: &ProverContext,
     ) -> CudaResult<()> {
+        self.schedule_query_merkle_paths_into_from_ntt_with_plan(
+            query_indexes,
+            dst,
+            log_trace_len,
+            natural_log_lde_factor,
+            log_values_per_leaf,
+            log_src_cols_per_coset,
+            None,
+            context,
+        )
+    }
+
+    pub fn schedule_query_merkle_paths_into_from_ntt_with_plan(
+        &mut self,
+        query_indexes: &DeviceSlice<u32>,
+        dst: &mut DeviceSlice<u32>,
+        log_trace_len: u32,
+        natural_log_lde_factor: u32,
+        log_values_per_leaf: u32,
+        log_src_cols_per_coset: u32,
+        multiproof_plan: Option<&DeviceSlice<u32>>,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
         assert_eq!(
             self.log_lde_factor, 0,
             "schedule_query_merkle_paths_into_from_ntt: requires the WHIR-oracle TraceHolder shape (log_lde_factor = 0)"
@@ -1044,13 +1067,14 @@ impl TraceHolder<BF> {
                     .expect("Full mode has a tree backing");
                 let lde_factor = 1usize << self.log_lde_factor;
                 let stride_per_coset = consolidated_tree.len() / lde_factor;
-                gpu_hash::blake2s::gather_merkle_paths_full_for_queries(
+                gpu_hash::blake2s::gather_merkle_paths_full_for_queries_with_plan(
                     query_indexes,
                     self.log_lde_factor,
                     stride_per_coset as u32,
                     consolidated_tree,
                     dst,
                     layers_count,
+                    multiproof_plan,
                     stream,
                 )
             }
@@ -1066,7 +1090,7 @@ impl TraceHolder<BF> {
                 let partial_tree_words = consolidated_tree.len() * (gpu_hash::blake2s::STATE_SIZE);
                 let partial_tree_u32 =
                     unsafe { DeviceSlice::from_raw_parts(partial_tree_ptr, partial_tree_words) };
-                gpu_hash::blake2s::gather_merkle_paths_partial_for_queries_from_ntt(
+                gpu_hash::blake2s::gather_merkle_paths_partial_for_queries_from_ntt_with_plan(
                     cosets,
                     partial_tree_u32,
                     dst,
@@ -1078,6 +1102,7 @@ impl TraceHolder<BF> {
                     log_total_leaves_count,
                     layers_count,
                     query_indexes,
+                    multiproof_plan,
                     stream,
                 )
             }

@@ -277,21 +277,17 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
 
         #[inline(always)]
         #[allow(clippy::too_many_arguments)]
-        pub unsafe fn process_oracle_query<I: NonDeterminismSource<#field_struct>, E: ErrorCreator, const BUF_SIZE: usize, const LEAF_WORDS: usize>(
+        pub unsafe fn process_oracle_query<I: NonDeterminismSource<#field_struct>, const BUF_SIZE: usize, const LEAF_WORDS: usize>(
             hasher: &mut DelegatedBlake2sState,
             hash_buf: &mut ::verifier_common::blake2s_u32::AlignedArray64<core::mem::MaybeUninit<u32>, BUF_SIZE>,
             num_columns: usize,
-            query_index: usize,
-            depth: usize,
-            cap: &[u32],
             gamma_powers: &[#quartic_struct],
             gamma_offset: usize,
             acc0: &mut #quartic_struct,
             acc1: &mut #quartic_struct,
-            query: usize,
             nd_source: &mut I,
-        ) -> Result<(), E::Error> {
-            use ::verifier_common::whir::{hash_leaf_data_into_state, verify_merkle_path};
+        ) {
+            use ::verifier_common::whir::hash_leaf_data_into_state;
 
             let buf = hash_buf.assume_init_subarray_mut::<BUF_SIZE>();
             read_and_batch_leaf::<I>(
@@ -307,10 +303,6 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
             }
             let buf = hash_buf.assume_init_subarray::<BUF_SIZE>();
             hash_leaf_data_into_state(hasher, buf, LEAF_WORDS);
-            if !verify_merkle_path::<I>(hasher, query_index, depth, cap, nd_source) {
-                return Err(E::whir_merkle_path_failed(query));
-            }
-            Ok(())
         }
     }
 }

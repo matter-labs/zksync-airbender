@@ -743,6 +743,7 @@ mod tests {
                     &d_indexes[..],
                     &mut d_query_leaves[..],
                     &mut d_paths[..],
+                    None,
                     log_n,
                     log_c,
                     log_v,

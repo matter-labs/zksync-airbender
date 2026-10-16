@@ -331,6 +331,14 @@ impl<
         &self,
         index: usize,
     ) -> (usize, Vec<E>, ExtensionFieldQuery<F, E, T>) {
+        self.query_for_folded_index_impl(index, false)
+    }
+
+    pub(crate) fn query_for_folded_index_impl(
+        &self,
+        index: usize,
+        compact: bool,
+    ) -> (usize, Vec<E>, ExtensionFieldQuery<F, E, T>) {
         let num_cosets = self.num_cosets;
         let coset_index = index & (num_cosets - 1);
         let internal_index = index / num_cosets;
@@ -342,7 +350,11 @@ impl<
         let coset_dest_index = bitreverse_index(coset_index, num_cosets.trailing_zeros());
         let tree_index = coset_dest_index * coset_tree_size + internal_index;
 
-        let (_leaf_hash, path) = self.tree.get_proof(tree_index);
+        let (_leaf_hash, path) = if compact {
+            (self.tree.get_node(0, tree_index), Vec::new())
+        } else {
+            self.tree.get_proof(tree_index)
+        };
         let query = ExtensionFieldQuery {
             index: tree_index,
             leaf_values_concatenated: values.clone(),
@@ -573,6 +585,16 @@ mod tests {
             }
             let (ca, a, qa) = reference.query_for_folded_index(index);
             let (cb, b, qb) = by_coeff.query_for_folded_index(index);
+            let (_, direct_values, direct_query) =
+                by_coeff.query_for_folded_index_impl(index, true);
+            let (_, reference_values, reference_query) =
+                reference.query_for_folded_index_impl(index, true);
+            assert!(direct_query.path.is_empty());
+            assert!(reference_query.path.is_empty());
+            assert_eq!(direct_values, b);
+            assert_eq!(reference_values, a);
+            assert_eq!(direct_query.index, qb.index);
+            assert_eq!(reference_query.index, qa.index);
             assert_eq!(ca, cb, "{label}: coset");
             if a != b {
                 let k = a.iter().zip(b.iter()).position(|(x, y)| x != y).unwrap();
@@ -592,6 +614,14 @@ mod tests {
             reference.tree.get_cap(),
             by_coeff.tree.get_cap(),
             "cap 2^{poly_log2} x{lde_factor} vpl {values_per_leaf}"
+        );
+        let tree_indices: Vec<_> = indices
+            .iter()
+            .map(|&index| by_coeff.query_for_folded_index_impl(index, true).2.index)
+            .collect();
+        assert_eq!(
+            by_coeff.tree.get_multiproof(&tree_indices),
+            reference.tree.get_multiproof(&tree_indices)
         );
         by_coeff.release_into(pool);
     }

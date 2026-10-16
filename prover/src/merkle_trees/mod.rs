@@ -10,6 +10,7 @@ pub mod blake2s_for_everything_tree;
 pub mod blake2s_hash_leafs;
 pub mod keccak256_for_everything_tree;
 pub mod keccak256_hash_leafs;
+pub mod multiproof;
 pub mod on_disk;
 
 pub type DefaultTreeConstructor =
@@ -161,6 +162,13 @@ pub trait RSQueryable<T: 'static + Sized + Clone>: core::fmt::Debug + Send + Syn
 pub type Digest = [u32; DIGEST_SIZE_U32_WORDS];
 
 pub trait PathQueryable: core::fmt::Debug + Send + Sync {
+    /// Number of parent hashes between leaves and the committed cap.
+    fn proof_depth(&self) -> usize;
+    /// Read an existing node; level zero contains leaf hashes, and depth the cap.
+    fn get_node(&self, level: usize, index: usize) -> Digest;
+    fn get_multiproof(&self, indices: &[usize]) -> multiproof::MerkleMultiProof {
+        multiproof::from_tree(self, indices)
+    }
     fn get_cap(&self) -> MerkleTreeCapVarLength;
     fn get_proof(&self, idx: usize) -> (Digest, Vec<Digest>);
 }

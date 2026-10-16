@@ -1,6 +1,7 @@
 use super::queries::*;
 use super::*;
 use crate::gkr::prover::WhirSchedule;
+use crate::merkle_trees::multiproof::MerkleMultiProof;
 use crate::merkle_trees::MerkleTreeCapVarLength;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -38,6 +39,8 @@ pub struct WhirBaseLayerCommitmentAndQueries<
     pub num_columns: usize,
     pub evals: Vec<E>, // num_columns
     pub queries: Vec<BaseFieldQuery<F, T>>,
+    #[serde(default)]
+    pub multiproof: Option<MerkleMultiProof>,
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstructor<F>>
@@ -46,12 +49,15 @@ impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstr
     pub fn estimate_size(&self) -> usize {
         self.commitment.estimate_size()
             + self.evals.len() * E::DEGREE * core::mem::size_of::<u32>()
-            + self.queries.len()
-                * self
-                    .queries
-                    .first()
-                    .map(|el| el.estimate_size())
-                    .unwrap_or(0)
+            + self
+                .queries
+                .iter()
+                .map(|q| q.estimate_size())
+                .sum::<usize>()
+            + self
+                .multiproof
+                .as_ref()
+                .map_or(0, |p| p.siblings.len() * 32)
     }
 }
 
@@ -66,6 +72,8 @@ pub struct WhirIntermediateCommitmentAndQueries<
 > {
     pub commitment: WhirCommitment<F, T>,
     pub queries: Vec<ExtensionFieldQuery<F, E, T>>,
+    #[serde(default)]
+    pub multiproof: Option<MerkleMultiProof>,
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstructor<F>>
@@ -73,12 +81,15 @@ impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstr
 {
     pub fn estimate_size(&self) -> usize {
         self.commitment.estimate_size()
-            + self.queries.len()
-                * self
-                    .queries
-                    .first()
-                    .map(|el| el.estimate_size())
-                    .unwrap_or(0)
+            + self
+                .queries
+                .iter()
+                .map(|q| q.estimate_size())
+                .sum::<usize>()
+            + self
+                .multiproof
+                .as_ref()
+                .map_or(0, |p| p.siblings.len() * 32)
     }
 }
 

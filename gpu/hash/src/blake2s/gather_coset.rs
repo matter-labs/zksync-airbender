@@ -129,6 +129,39 @@ pub fn gather_merkle_paths_partial_for_queries_single_coset_physical(
     slab_dst: &mut DeviceSlice<u32>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
+    gather_merkle_paths_partial_for_queries_single_coset_physical_with_plan(
+        values,
+        partial_tree,
+        resident_coset,
+        log_lde_factor,
+        log_domain_size,
+        log_rows_per_leaf,
+        layers_count,
+        query_indexes,
+        slab_dst,
+        None,
+        stream,
+    )
+}
+
+/// Emits this resident coset's selected nodes directly into global packed slots.
+/// The same device plan is shared across all coset launches on the exec stream.
+pub fn gather_merkle_paths_partial_for_queries_single_coset_physical_with_plan(
+    values: &DeviceSlice<BF>,
+    partial_tree: &DeviceSlice<Digest>,
+    resident_coset: u32,
+    log_lde_factor: u32,
+    log_domain_size: u32,
+    log_rows_per_leaf: u32,
+    layers_count: u32,
+    query_indexes: &DeviceSlice<u32>,
+    slab_dst: &mut DeviceSlice<u32>,
+    multiproof_plan: Option<&DeviceSlice<u32>>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    if let Some(plan) = multiproof_plan {
+        assert_eq!(plan.len(), 1 + query_indexes.len() * layers_count as usize);
+    }
     let cols = columns_count(
         values,
         resident_coset,
@@ -155,6 +188,7 @@ pub fn gather_merkle_paths_partial_for_queries_single_coset_physical(
         partial_tree_ptr: partial_tree.as_ptr() as u64,
         columns_count: cols,
         slab_dst_ptr: slab_dst.as_mut_ptr() as u64,
+        multiproof_plan_ptr: multiproof_plan.map_or(0, |p| p.as_ptr() as u64),
         ..Default::default()
     };
     let config = CudaLaunchConfig::basic((indexes_count, 1), WARP_SIZE, stream);

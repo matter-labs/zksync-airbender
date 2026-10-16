@@ -52,3 +52,5 @@ pub(crate) use prover::gkr::whir::{
 pub(crate) use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
 #[cfg(test)]
 pub(crate) use prover::transcript::Seed;
+
+pub(crate) use prover::merkle_trees::multiproof::MerkleMultiProof;

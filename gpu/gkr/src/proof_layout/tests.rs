@@ -159,6 +159,10 @@ fn layout_is_32_byte_aligned_and_nonoverlapping() {
         "whir.base_query_indices".to_string(),
         layout.whir.base_query_indices.clone(),
     ));
+    ranges.push((
+        "whir.base_multiproof_plan".to_string(),
+        layout.whir.base_multiproof_plan.clone(),
+    ));
     for (name, base) in [
         ("setup", &layout.whir.setup),
         ("memory", &layout.whir.memory),
@@ -171,6 +175,10 @@ fn layout_is_32_byte_aligned_and_nonoverlapping() {
     }
     for (i, im) in layout.whir.intermediate.iter().enumerate() {
         ranges.push((format!("whir.intermediate[{i}].cap"), im.cap.clone()));
+        ranges.push((
+            format!("whir.intermediate[{i}].multiproof_plan"),
+            im.multiproof_plan.clone(),
+        ));
         ranges.push((
             format!("whir.intermediate[{i}].qi"),
             im.query_indices.clone(),
@@ -483,4 +491,50 @@ fn cpu_parser_preserves_whir_handoff_fields() {
     assert_eq!(proof.original_evaluation_point, Some(point));
     assert_eq!(proof.batching_challenge, Some(batching));
     assert_eq!(proof.batched_opening, Some(expected_batched_opening));
+}
+
+#[test]
+fn cpu_parser_emits_compact_whir_authentication() {
+    let layout = ProofLayout::new(&sample_inputs());
+    let mut storage = AlignedSlab::zeroed(layout.total_bytes);
+    let slab = storage.as_bytes_mut();
+    let digest = [0x12345678u32; DIGEST_U32_WORDS];
+    unsafe {
+        let (plan, _) = layout.whir_base_multiproof_plan_device_mut(slab.as_mut_ptr());
+        *plan = 1;
+        for kind in [
+            WhirBaseLayerKind::Setup,
+            WhirBaseLayerKind::Memory,
+            WhirBaseLayerKind::Witness,
+        ] {
+            let (paths, words) = layout.whir_base_query_paths_device_mut(slab.as_mut_ptr(), kind);
+            if words != 0 {
+                std::ptr::copy_nonoverlapping(digest.as_ptr(), paths, DIGEST_U32_WORDS);
+            }
+        }
+        for round in 0..layout.whir.intermediate.len() {
+            let (plan, _) =
+                layout.whir_intermediate_multiproof_plan_device_mut(slab.as_mut_ptr(), round);
+            *plan = 1;
+            let (paths, _) =
+                layout.whir_intermediate_query_paths_device_mut(slab.as_mut_ptr(), round);
+            std::ptr::copy_nonoverlapping(digest.as_ptr(), paths, DIGEST_U32_WORDS);
+        }
+    }
+    let proof = layout.parse_whir_proof(slab);
+    for oracle in [
+        &proof.setup_commitment,
+        &proof.memory_commitment,
+        &proof.witness_commitment,
+    ] {
+        if oracle.num_columns == 0 {
+            continue;
+        }
+        assert_eq!(oracle.multiproof.as_ref().unwrap().siblings, vec![digest]);
+        assert!(oracle.queries.iter().all(|q| q.path.is_empty()));
+    }
+    for oracle in &proof.intermediate_whir_oracles {
+        assert_eq!(oracle.multiproof.as_ref().unwrap().siblings, vec![digest]);
+        assert!(oracle.queries.iter().all(|q| q.path.is_empty()));
+    }
 }

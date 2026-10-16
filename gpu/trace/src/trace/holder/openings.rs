@@ -4,7 +4,7 @@
 use super::*;
 use gpu_hash::blake2s::{
     gather_leaves_for_queries_single_coset_physical,
-    gather_merkle_paths_partial_for_queries_single_coset_physical,
+    gather_merkle_paths_partial_for_queries_single_coset_physical_with_plan,
 };
 use gpu_ntt::ntt::{
     coset_to_monomials_in_place, hypercube_to_coset_in_place,
@@ -19,6 +19,17 @@ impl TraceHolder<BF> {
         queries: &DeviceSlice<u32>,
         leaves: &mut DeviceSlice<BF>,
         paths: &mut DeviceSlice<u32>,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        self.gather_openings_recomputed_with_plan(queries, leaves, paths, None, context)
+    }
+
+    pub fn gather_openings_recomputed_with_plan(
+        &mut self,
+        queries: &DeviceSlice<u32>,
+        leaves: &mut DeviceSlice<BF>,
+        paths: &mut DeviceSlice<u32>,
+        multiproof_plan: Option<&DeviceSlice<u32>>,
         context: &ProverContext,
     ) -> CudaResult<()> {
         assert!(!self.cosets_materialized);
@@ -152,7 +163,7 @@ impl TraceHolder<BF> {
                 leaves,
                 stream,
             )?;
-            gather_merkle_paths_partial_for_queries_single_coset_physical(
+            gather_merkle_paths_partial_for_queries_single_coset_physical_with_plan(
                 coset,
                 tree,
                 coset_index as u32,
@@ -162,6 +173,7 @@ impl TraceHolder<BF> {
                 layers,
                 queries,
                 paths,
+                multiproof_plan,
                 stream,
             )?;
         }

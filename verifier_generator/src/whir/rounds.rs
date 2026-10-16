@@ -63,8 +63,6 @@ fn generate_single_oracle_query_body<MW: FieldWrapper>(
     leaf_cap_expr: TokenStream,
     values_per_leaf_expr: TokenStream,
     fold_steps_expr: TokenStream,
-    oracle_depth_expr: TokenStream,
-    oracle_cap_expr: TokenStream,
 ) -> TokenStream {
     let quartic_struct = MW::quartic_struct();
 
@@ -103,11 +101,8 @@ fn generate_single_oracle_query_body<MW: FieldWrapper>(
 
         let init_buf = hash_buf.assume_init_subarray::<#hash_buf_size_const>();
         hash_leaf_data_into_state(&mut ts.hasher, init_buf, #leaf_ext_words_expr);
-        if !verify_merkle_path::<I>(
-            &mut ts.hasher, tree_index, #oracle_depth_expr, #oracle_cap_expr, nd_source,
-        ) {
-            return Err(E::whir_merkle_path_failed(q));
-        }
+        query_leaves.push(*ts.hasher.read_state_for_output_ref());
+        query_order.push(MerkleQueryIndex { index: tree_index, query: q });
 
         let mut leaf: LazyVec<#quartic_struct, { #leaf_cap_expr }> =
             LazyVec::new();
@@ -200,6 +195,8 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
 
     // Build unrolled per-oracle query calls with const-generic LEAF_WORDS
     let mut unrolled_oracle_queries = TokenStream::new();
+    let mut oracle_leaf_buffers = TokenStream::new();
+    let mut verify_oracles = TokenStream::new();
     {
         let mut gamma_offset_acc = 0usize;
         for (oracle_type, oracle_info) in oracles.iter() {
@@ -209,16 +206,24 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
             let depth = oracle_info.depth;
 
             if num_cols > 0 {
+                let leaves = quote::format_ident!("oracle_leaves_{}", gamma_off);
+                oracle_leaf_buffers.extend(quote! {
+                    let mut #leaves = LazyVec::<[u32; 8], INITIAL_NUM_QUERIES>::new();
+                });
                 unrolled_oracle_queries.extend(quote! {
-                    process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, #leaf_words>(
-                        &mut ts.hasher, hash_buf,
-                        #num_cols, tree_index,
-                        #depth,
-                        initial_transcript. #oracle_type (),
-                        &gamma_powers[..], #gamma_off,
-                        &mut acc0, &mut acc1, q,
-                        nd_source,
-                    )?;
+                    process_oracle_query::<I, WHIR_HASH_BUF_SIZE, #leaf_words>(
+                        &mut ts.hasher, hash_buf, #num_cols,
+                        &gamma_powers[..], #gamma_off, &mut acc0, &mut acc1, nd_source,
+                    );
+                    #leaves.push(*ts.hasher.read_state_for_output_ref());
+                });
+                verify_oracles.extend(quote! {
+                    if !verify_merkle_multiproof::<I, INITIAL_NUM_QUERIES>(
+                        &mut ts.hasher, &query_plan, #leaves.as_mut_slice(),
+                        #depth, initial_transcript.#oracle_type(), nd_source,
+                    ) {
+                        return Err(E::whir_merkle_path_failed(0));
+                    }
                 });
             }
             gamma_offset_acc += num_cols;
@@ -251,7 +256,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
         use ::verifier_common::whir::{
             read_commit_return_merkle_cap,
             read_and_verify_pow,
-            draw_query_indices,
+            draw_query_indices, MerkleQueryIndex, prepare_merkle_queries, verify_merkle_multiproof,
         };
         use super::common::{
             verify_whir_sumcheck_step, materialize_gamma_powers,
@@ -363,6 +368,8 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
                 let extended_generator = #field_struct::TWO_ADICITY_GENERATORS[INITIAL_RS_DOMAIN_LOG2];
                 let extended_generator_inv = #field_struct::TWO_ADICITY_GENERATORS_INVERSED[INITIAL_RS_DOMAIN_LOG2];
 
+                #oracle_leaf_buffers
+                let mut query_order = LazyVec::<MerkleQueryIndex, INITIAL_NUM_QUERIES>::new();
                 let mut q = 0;
                 while q < INITIAL_NUM_QUERIES {
                     #advance_current_delin;
@@ -376,6 +383,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
                     let mut acc0 = #quartic_zero;
                     let mut acc1 = #quartic_zero;
 
+                    query_order.push(MerkleQueryIndex { index: tree_index, query: q });
                     #unrolled_oracle_queries
 
                     #fold_computation
@@ -394,6 +402,9 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
 
                     q += 1;
                 }
+
+                let query_plan = prepare_merkle_queries::<INITIAL_NUM_QUERIES>(query_order.as_mut_slice());
+                #verify_oracles
 
                 #add_claim;
 
@@ -478,8 +489,6 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
         quote! { MAX_INTERNAL_VALUES_PER_LEAF },
         quote! { values_per_leaf },
         quote! { fold_steps },
-        quote! { oracle_depth },
-        quote! { prev_oracle_cap },
     );
 
     // Per-round fold setup: coefficient form precomputes the monomial tensor;
@@ -526,7 +535,7 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
     quote! {
         #internal_common_imports
         use ::verifier_common::whir::{
-            hash_leaf_data_into_state, verify_merkle_path,
+            hash_leaf_data_into_state,
         };
 
         pub const NUM_INTERNAL_ROUNDS: usize = #num_ir;
@@ -638,6 +647,8 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
                 let oracle_depth = WHIR_ORACLE_DEPTHS[round_idx - 1];
 
                 #internal_fold_setup
+                let mut query_order = LazyVec::<MerkleQueryIndex, MAX_INTERNAL_NUM_QUERIES>::new();
+                let mut query_leaves = LazyVec::<[u32; 8], MAX_INTERNAL_NUM_QUERIES>::new();
 
                 let mut q = 0;
                 while q < num_queries {
@@ -663,6 +674,14 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
                     #add_correction;
 
                     q += 1;
+                }
+
+                let query_plan = prepare_merkle_queries::<MAX_INTERNAL_NUM_QUERIES>(query_order.as_mut_slice());
+                if !verify_merkle_multiproof::<I, MAX_INTERNAL_NUM_QUERIES>(
+                    &mut ts.hasher, &query_plan, query_leaves.as_mut_slice(),
+                    oracle_depth, prev_oracle_cap, nd_source,
+                ) {
+                    return Err(E::whir_merkle_path_failed(0));
                 }
 
                 #add_claim;
@@ -721,8 +740,6 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
         quote! { FINAL_VALUES_PER_LEAF },
         quote! { FINAL_VALUES_PER_LEAF },
         quote! { FINAL_FOLD_STEPS },
-        quote! { oracle_depth },
-        quote! { prev_oracle_cap },
     );
 
     // Per-round fold setup (final round): coefficient form precomputes the monomial
@@ -825,6 +842,8 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
                 let oracle_depth = WHIR_ORACLE_DEPTHS[FINAL_ORACLE_DEPTH_IDX];
 
                 #final_fold_setup
+                let mut query_order = LazyVec::<MerkleQueryIndex, FINAL_NUM_QUERIES>::new();
+                let mut query_leaves = LazyVec::<[u32; 8], FINAL_NUM_QUERIES>::new();
 
                 let mut folded_values: LazyVec<#quartic_struct, FINAL_NUM_QUERIES> =
                     LazyVec::new();
@@ -850,6 +869,13 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
 
 
                 let mut q = 0;
+                let query_plan = prepare_merkle_queries::<FINAL_NUM_QUERIES>(query_order.as_mut_slice());
+                if !verify_merkle_multiproof::<I, FINAL_NUM_QUERIES>(
+                    &mut ts.hasher, &query_plan, query_leaves.as_mut_slice(),
+                    oracle_depth, prev_oracle_cap, nd_source,
+                ) {
+                    return Err(E::whir_merkle_path_failed(0));
+                }
                 while q < FINAL_NUM_QUERIES {
                     let mut query_point = *query_base_roots.get(q);
                     query_point.exp_power_of_2(FINAL_FOLD_STEPS);

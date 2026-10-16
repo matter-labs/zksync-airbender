@@ -2,6 +2,47 @@
 
 namespace airbender::hash {
 
+// Canonical DFS postorder boundary emission plan. Visit unique query leaves in
+// sorted order; emit a missing sibling after the last queried leaf in its subtree.
+// plan[0] is the packed digest count; remaining entries are query-major slots.
+EXTERN __global__ void ab_merkle_multiproof_plan_kernel(const u32 *indexes, const u32 count, const u32 depth, u32 *plan) {
+  if (blockIdx.x != 0 || threadIdx.x != 0)
+    return;
+  for (u32 i = 0; i < count * depth; ++i)
+    plan[1 + i] = 0xffffffffu;
+  u32 output = 0;
+  u32 previous = 0;
+  bool first = true;
+  for (;;) {
+    u32 leaf = 0xffffffffu;
+    u32 owner = count;
+    for (u32 q = 0; q < count; ++q) {
+      const u32 candidate = indexes[q];
+      if ((first || candidate > previous) && (owner == count || candidate < leaf)) {
+        leaf = candidate;
+        owner = q;
+      }
+    }
+    if (owner == count)
+      break;
+    for (u32 level = 0; level < depth; ++level) {
+      const u32 node = leaf >> level;
+      bool sibling_present = false;
+      bool later_in_subtree = false;
+      for (u32 q = 0; q < count; ++q) {
+        const u32 other = indexes[q];
+        sibling_present |= (other >> level) == (node ^ 1u);
+        later_in_subtree |= other > leaf && (other >> level) == node;
+      }
+      if (!sibling_present && !later_in_subtree)
+        plan[1 + owner * depth + level] = output++;
+    }
+    previous = leaf;
+    first = false;
+  }
+  plan[0] = output;
+}
+
 EXTERN __global__ void ab_gather_leaf_rows_kernel(const unsigned *indexes, const unsigned indexes_count, const bool bit_reverse_indexes,
                                                   const unsigned log_leaves_count, const unsigned log_rows_per_leaf,
                                                   const matrix_getter<bf, ld_modifier::cs> values, const matrix_setter<bf, st_modifier::cs> results) {
@@ -358,7 +399,8 @@ EXTERN __global__ void ab_gather_leaves_for_queries_from_ntt_kernel(const bf *nt
 //   slab[q * layers_count * STATE_SIZE + layer * STATE_SIZE + word]
 EXTERN __global__ void ab_gather_merkle_paths_full_for_queries_kernel(const u32 *query_indexes, const u32 indexes_count, const u32 log_lde_factor,
                                                                       const u32 stride_per_coset_in_digests, const u32 *consolidated_tree,
-                                                                      const u32 log_leaves_count, const u32 layers_count, u32 *slab_dst) {
+                                                                      const u32 log_leaves_count, const u32 layers_count, u32 *slab_dst,
+                                                                      const u32 *multiproof_plan) {
   const u32 idx = threadIdx.y + blockIdx.x * blockDim.y;
   if (idx >= indexes_count)
     return;
@@ -372,7 +414,10 @@ EXTERN __global__ void ab_gather_merkle_paths_full_for_queries_kernel(const u32 
   const u32 element_offset = threadIdx.x;
   const u32 coset_offset = coset * stride_per_coset_in_digests * STATE_SIZE;
   const u32 src_index = coset_offset + layer_offset + hash_offset + element_offset;
-  const u32 dst_index = idx * layers_count * STATE_SIZE + layer_index * STATE_SIZE + element_offset;
+  const u32 slot = multiproof_plan ? multiproof_plan[1 + idx * layers_count + layer_index] : idx * layers_count + layer_index;
+  if (slot == 0xffffffffu)
+    return;
+  const u32 dst_index = slot * STATE_SIZE + element_offset;
   slab_dst[dst_index] = consolidated_tree[src_index];
 }
 
@@ -398,10 +443,11 @@ struct gpu_oracle_partial_path_desc {
   unsigned long long partial_tree_ptr; // const u32*, consolidated partial-tree (digest words) for one oracle
   u32 columns_count;                   // 0 == inactive slot, kernel skips
   u32 _pad;
-  unsigned long long slab_dst_ptr; // u32*, slab destination for this oracle
+  unsigned long long slab_dst_ptr;        // u32*, slab destination for this oracle
+  unsigned long long multiproof_plan_ptr; // optional const u32* emission plan
 };
 
-static_assert(sizeof(gpu_oracle_partial_path_desc) == 32, "must mirror OraclePartialPathDesc in gpu/hash/src/blake2s/gather.rs");
+static_assert(sizeof(gpu_oracle_partial_path_desc) == 40, "must mirror OraclePartialPathDesc in gpu/hash/src/blake2s/gather.rs");
 
 EXTERN __global__ void ab_gather_merkle_paths_partial_for_queries_kernel(const u32 num_oracles, __grid_constant__ const gpu_oracle_partial_path_desc desc0,
                                                                          __grid_constant__ const gpu_oracle_partial_path_desc desc1,
@@ -454,7 +500,9 @@ EXTERN __global__ void ab_gather_merkle_paths_partial_for_queries_kernel(const u
   u32 t = 0;
   absorb_stream(state, t, cols_count << log_rows_per_leaf, read);
   // Query-major output layout: consecutive layers are STATE_SIZE words apart.
-  collect_merkle_path_warp(state, merkle_paths, STATE_SIZE, lane_idx, is_output_lane, query_index, log_total_leaves_count, layers_count, tree_bottom);
+  const u32 *plan = reinterpret_cast<const u32 *>(desc.multiproof_plan_ptr);
+  collect_merkle_path_warp(state, merkle_paths, STATE_SIZE, lane_idx, is_output_lane, query_index, log_total_leaves_count, layers_count, tree_bottom,
+                           plan ? plan + 1 + idx * layers_count : nullptr, slab_dst);
 }
 
 // LSB sibling of `ab_gather_merkle_paths_partial_for_queries_kernel`: each per-coset segment of the cosets backing is the BITREVERSED-order codeword. Each lane
@@ -506,7 +554,9 @@ DEVICE_FORCEINLINE void gather_merkle_paths_partial_for_queries_physical(const g
   u32 t = 0;
   absorb_stream(state, t, cols_count << log_rows_per_leaf, read);
   // Query-major output layout: consecutive layers are STATE_SIZE words apart.
-  collect_merkle_path_warp(state, merkle_paths, STATE_SIZE, lane_idx, is_output_lane, query_index, log_total_leaves_count, layers_count, tree_bottom);
+  const u32 *plan = reinterpret_cast<const u32 *>(desc.multiproof_plan_ptr);
+  collect_merkle_path_warp(state, merkle_paths, STATE_SIZE, lane_idx, is_output_lane, query_index, log_total_leaves_count, layers_count, tree_bottom,
+                           plan ? plan + 1 + idx * layers_count : nullptr, slab_dst);
 }
 
 EXTERN __global__ void ab_gather_merkle_paths_partial_for_queries_physical_kernel(__grid_constant__ const gpu_oracle_partial_path_desc desc,
@@ -540,7 +590,8 @@ EXTERN __global__ void ab_gather_merkle_paths_partial_for_queries_from_ntt_kerne
                                                                                   const u32 natural_log_lde_factor, const u32 log_values_per_leaf,
                                                                                   const u32 log_src_cols_per_coset, const u32 log_packed_leaf_count,
                                                                                   const u32 trace_len, const u32 log_total_leaves_count, const u32 layers_count,
-                                                                                  const u32 *query_indexes, const u32 indexes_count) {
+                                                                                  const u32 *query_indexes, const u32 indexes_count,
+                                                                                  const u32 *multiproof_plan) {
   const unsigned lane_idx = threadIdx.x;
   const unsigned idx = blockIdx.x;
   if (idx >= indexes_count)
@@ -584,7 +635,8 @@ EXTERN __global__ void ab_gather_merkle_paths_partial_for_queries_from_ntt_kerne
   // Bottom LOG_WARP_SIZE layers via warp-shuffle, then walk the upper layers
   // from the partial-tree backing. Single coset ⇒ partial_tree is the slab base
   // directly. Query-major output: consecutive layers are STATE_SIZE words apart.
-  collect_merkle_path_warp(state, merkle_paths, STATE_SIZE, lane_idx, is_output_lane, query_index, log_total_leaves_count, layers_count, partial_tree);
+  collect_merkle_path_warp(state, merkle_paths, STATE_SIZE, lane_idx, is_output_lane, query_index, log_total_leaves_count, layers_count, partial_tree,
+                           multiproof_plan ? multiproof_plan + 1 + idx * layers_count : nullptr, slab_dst);
 }
 
 } // namespace airbender::hash

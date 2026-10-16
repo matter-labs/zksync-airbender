@@ -298,6 +298,18 @@ pub fn schedule_gpu_whir_fold_with_sources(
         let base_layers_count = memory_trace_holder.log_domain_size
             - memory_trace_holder.log_rows_per_leaf
             - (memory_trace_holder.log_tree_cap_size - memory_trace_holder.log_lde_factor);
+        // SAFETY: the plan is a disjoint live slab range, written and read only on exec.
+        let (plan_ptr, plan_len) = unsafe {
+            proof_layout.whir_base_multiproof_plan_device_mut(proof_slab.as_ptr() as *mut u8)
+        };
+        let plan = unsafe { DeviceSlice::from_raw_parts_mut(plan_ptr, plan_len) };
+        gpu_hash::blake2s::plan_merkle_multiproof(
+            base_indices_dst,
+            base_layers_count,
+            plan,
+            stream,
+        )?;
+        let plan: &DeviceSlice<u32> = plan;
         let gather =
             |holder: &TraceHolder<BF>, leaves_dst: u64, paths_dst: u64| -> CudaResult<()> {
                 let cosets_ptr = holder.get_consolidated_cosets().as_ptr() as u64;
@@ -316,6 +328,7 @@ pub fn schedule_gpu_whir_fold_with_sources(
                     columns_count: holder.columns_count as u32,
                     _pad: 0,
                     slab_dst_ptr: paths_dst,
+                    multiproof_plan_ptr: plan.as_ptr() as u64,
                 };
                 gpu_hash::blake2s::gather_leaves_for_queries_physical(
                     leaves_desc,
@@ -357,10 +370,11 @@ pub fn schedule_gpu_whir_fold_with_sources(
             if holder.columns_count != 0 && holder.opening_policy() != OpeningStrategy::AllCosets {
                 let leaves = unsafe { DeviceSlice::from_raw_parts_mut(leaves_ptr, leaves_len) };
                 let paths = unsafe { DeviceSlice::from_raw_parts_mut(paths_ptr, paths_len) };
-                holder.gather_openings_recomputed(
+                holder.gather_openings_recomputed_with_plan(
                     device_query_indexes_for_base,
                     leaves,
                     paths,
+                    Some(plan),
                     context,
                 )?;
             } else {
@@ -538,11 +552,20 @@ pub fn schedule_gpu_whir_fold_with_sources(
             let slab_paths_dst = unsafe {
                 era_cudart::slice::DeviceSlice::from_raw_parts_mut(paths_ptr, paths_total_u32)
             };
+            // SAFETY: plan is disjoint from indices, leaves and digest output in the live slab.
+            let (plan_ptr, plan_len) = unsafe {
+                proof_layout.whir_intermediate_multiproof_plan_device_mut(
+                    proof_slab.as_ptr() as *mut u8,
+                    internal_round_idx,
+                )
+            };
+            let plan = unsafe { DeviceSlice::from_raw_parts_mut(plan_ptr, plan_len) };
             oracle_to_query.schedule_query_for_folded_indexes_to_slab(
                 device_query_indexes_for_round,
                 slab_indices_dst,
                 slab_leaves_dst_bf,
                 slab_paths_dst,
+                plan,
                 context,
             )?;
         }
@@ -719,11 +742,20 @@ pub fn schedule_gpu_whir_fold_with_sources(
             let slab_paths_dst = unsafe {
                 era_cudart::slice::DeviceSlice::from_raw_parts_mut(paths_ptr, paths_total_u32)
             };
+            // SAFETY: plan is disjoint from indices, leaves and digest output in the live slab.
+            let (plan_ptr, plan_len) = unsafe {
+                proof_layout.whir_intermediate_multiproof_plan_device_mut(
+                    proof_slab.as_ptr() as *mut u8,
+                    final_oracle_index,
+                )
+            };
+            let plan = unsafe { DeviceSlice::from_raw_parts_mut(plan_ptr, plan_len) };
             oracle_to_query.schedule_query_for_folded_indexes_to_slab(
                 device_query_indexes_for_round,
                 slab_indices_dst,
                 slab_leaves_dst_bf,
                 slab_paths_dst,
+                plan,
                 context,
             )?;
         }

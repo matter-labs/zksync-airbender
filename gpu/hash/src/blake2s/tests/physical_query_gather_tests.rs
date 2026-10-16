@@ -288,6 +288,22 @@ fn check_partial_path_gather(
     );
     let queries_device = upload_u32(&queries, stream);
 
+    let tree_indices: Vec<u32> = queries
+        .iter()
+        .map(|&q| {
+            ((bitreverse_index((q & lde_mask) as usize, log_lde_factor) as u32) << log_leaves_count)
+                | (q >> log_lde_factor)
+        })
+        .collect();
+    let tree_indices_device = upload_u32(&tree_indices, stream);
+    let mut plan = DeviceAllocation::<u32>::alloc(1 + paths_len).unwrap();
+    super::super::plan_merkle_multiproof(&tree_indices_device, layers_count, &mut plan, stream)
+        .unwrap();
+    let boundary = prover::merkle_trees::multiproof::boundary_nodes(
+        &tree_indices.iter().map(|&x| x as usize).collect::<Vec<_>>(),
+        layers_count as usize,
+    );
+    let mut compact_slabs = Vec::new();
     let mut natural_hosts = Vec::new();
     let mut natural_devices = Vec::new();
     let mut physical_devices = Vec::new();
@@ -334,6 +350,7 @@ fn check_partial_path_gather(
         new_trees.push(new_tree);
         old_slabs.push(DeviceAllocation::<Digest>::alloc(paths_len).unwrap());
         new_slabs.push(DeviceAllocation::<Digest>::alloc(paths_len).unwrap());
+        compact_slabs.push(DeviceAllocation::<Digest>::alloc(paths_len).unwrap());
         control_slabs.push(DeviceAllocation::<Digest>::alloc(paths_len).unwrap());
     }
 
@@ -348,6 +365,7 @@ fn check_partial_path_gather(
             columns_count,
             _pad: 0,
             slab_dst_ptr: old_slabs[i].as_mut_ptr() as u64,
+            multiproof_plan_ptr: 0,
         };
         new_descs[i] = OraclePartialPathDesc {
             cosets_ptr: physical_devices[i].as_ptr() as u64,
@@ -355,6 +373,7 @@ fn check_partial_path_gather(
             columns_count,
             _pad: 0,
             slab_dst_ptr: new_slabs[i].as_mut_ptr() as u64,
+            multiproof_plan_ptr: 0,
         };
         // Negative control: donor natural-order leaf addressing over the bitreversed codeword.
         control_descs[i] = OraclePartialPathDesc {
@@ -363,6 +382,7 @@ fn check_partial_path_gather(
             columns_count,
             _pad: 0,
             slab_dst_ptr: control_slabs[i].as_mut_ptr() as u64,
+            multiproof_plan_ptr: 0,
         };
     }
 
@@ -378,6 +398,21 @@ fn check_partial_path_gather(
     )
     .unwrap();
     for &desc in &new_descs[..num_oracles] {
+        gather_merkle_paths_partial_for_queries_physical(
+            desc,
+            log_lde_factor,
+            log_rows_per_hash,
+            log_leaves_count,
+            layers_count,
+            &queries_device,
+            stream,
+        )
+        .unwrap();
+    }
+    for i in 0..num_oracles {
+        let mut desc = new_descs[i];
+        desc.slab_dst_ptr = compact_slabs[i].as_mut_ptr() as u64;
+        desc.multiproof_plan_ptr = plan.as_ptr() as u64;
         gather_merkle_paths_partial_for_queries_physical(
             desc,
             log_lde_factor,
@@ -421,7 +456,28 @@ fn check_partial_path_gather(
         .iter()
         .map(|slab| download(slab, stream))
         .collect::<Vec<_>>();
+    let compact_hosts = compact_slabs
+        .iter()
+        .map(|slab| download(slab, stream))
+        .collect::<Vec<_>>();
+    let host_plan = download(&plan, stream);
     stream.synchronize().unwrap();
+    assert_eq!(host_plan[0] as usize, boundary.len());
+    // The planner must assign exactly one source slot to every canonical boundary.
+    let mut produced = vec![None; boundary.len()];
+    for (q, &index) in tree_indices.iter().enumerate() {
+        for level in 0..layers_count as usize {
+            let slot = host_plan[1 + q * layers_count as usize + level];
+            if slot != u32::MAX {
+                assert!(produced[slot as usize].is_none());
+                produced[slot as usize] = Some((level, ((index as usize) >> level) ^ 1));
+            }
+        }
+    }
+    assert_eq!(
+        produced,
+        boundary.iter().copied().map(Some).collect::<Vec<_>>()
+    );
 
     for (oracle, &cols) in cols_per_oracle.iter().enumerate() {
         assert_elementwise_eq(
@@ -451,6 +507,15 @@ fn check_partial_path_gather(
                 )
             })
             .collect::<Vec<_>>();
+        for (slot, &(level, node)) in boundary.iter().enumerate() {
+            let log_layer_leaves = log_leaves_count as usize - level;
+            let coset = bitreverse_index(node >> log_layer_leaves, log_lde_factor);
+            let local = node & ((1usize << log_layer_leaves) - 1);
+            assert_eq!(
+                compact_hosts[oracle][slot], towers[coset][level][local],
+                "{label}: compact node {slot}"
+            );
+        }
         for (idx, &q) in queries.iter().enumerate() {
             let coset = (q & lde_mask) as usize;
             let internal = (q >> log_lde_factor) as usize;

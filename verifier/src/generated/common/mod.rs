@@ -745,7 +745,6 @@ pub fn push_whir_pow_entry<const MAX_POW: usize>(
 #[allow(clippy::too_many_arguments)]
 pub unsafe fn process_oracle_query<
     I: NonDeterminismSource<BabyBearField>,
-    E: ErrorCreator,
     const BUF_SIZE: usize,
     const LEAF_WORDS: usize,
 >(
@@ -755,17 +754,13 @@ pub unsafe fn process_oracle_query<
         BUF_SIZE,
     >,
     num_columns: usize,
-    query_index: usize,
-    depth: usize,
-    cap: &[u32],
     gamma_powers: &[BabyBearExt4],
     gamma_offset: usize,
     acc0: &mut BabyBearExt4,
     acc1: &mut BabyBearExt4,
-    query: usize,
     nd_source: &mut I,
-) -> Result<(), E::Error> {
-    use verifier_common::whir::{hash_leaf_data_into_state, verify_merkle_path};
+) {
+    use verifier_common::whir::hash_leaf_data_into_state;
     let buf = hash_buf.assume_init_subarray_mut::<BUF_SIZE>();
     read_and_batch_leaf::<I>(
         &mut buf[..LEAF_WORDS],
@@ -783,8 +778,4 @@ pub unsafe fn process_oracle_query<
     }
     let buf = hash_buf.assume_init_subarray::<BUF_SIZE>();
     hash_leaf_data_into_state(hasher, buf, LEAF_WORDS);
-    if !verify_merkle_path::<I>(hasher, query_index, depth, cap, nd_source) {
-        return Err(E::whir_merkle_path_failed(query));
-    }
-    Ok(())
 }

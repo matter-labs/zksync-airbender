@@ -222,6 +222,54 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>> Setup
     /// oracle enum (which batches over cosets when it recomputes); `OnDisk` reads
     /// each query's leaf values from the on-disk RS source and its Merkle path from
     /// the mmap'd on-disk tree (both cheap, so per-query serving is fine).
+    pub(crate) fn query_many_compact(
+        &self,
+        query_indices: &[usize],
+        twiddles: &Twiddles<F, Global>,
+        worker: &Worker,
+    ) -> (
+        Vec<(Vec<Vec<F>>, BaseFieldQuery<F, T>)>,
+        crate::merkle_trees::multiproof::MerkleMultiProof,
+    ) {
+        match self {
+            Self::InMemory(oracle) => oracle.query_many_compact(query_indices, twiddles, worker),
+            Self::OnDisk {
+                rs,
+                tree,
+                values_per_leaf,
+                coset_size_log2,
+            } => {
+                let num_cosets = rs.num_cosets();
+                let coset_tree_size = (1usize << coset_size_log2) / values_per_leaf;
+                let queries: Vec<_> = query_indices
+                    .iter()
+                    .map(|&query_index| {
+                        let coset_index = query_index & (num_cosets - 1);
+                        let internal_index = query_index / num_cosets;
+                        assert!(internal_index < coset_tree_size);
+                        let values = rs.values_for_coset_and_index(
+                            coset_index,
+                            internal_index,
+                            *values_per_leaf,
+                        );
+                        let physical_slot =
+                            crate::fft::bitreverse_index(coset_index, num_cosets.trailing_zeros());
+                        let query = BaseFieldQuery::<F, T> {
+                            index: physical_slot * coset_tree_size + internal_index,
+                            leaf_values_concatenated: values.iter().flatten().copied().collect(),
+                            path: Vec::new(),
+                            _marker: core::marker::PhantomData,
+                        };
+                        (values, query)
+                    })
+                    .collect();
+                let indices: Vec<_> = queries.iter().map(|(_, q)| q.index).collect();
+                let proof = tree.get_multiproof(&indices);
+                (queries, proof)
+            }
+        }
+    }
+
     pub(crate) fn query_many(
         &self,
         query_indices: &[usize],
@@ -2180,6 +2228,7 @@ fn prove_configured_with_gkr_from_forward_eval<
         backend,
         gkr_backend,
         intermediate_oracle_mode,
+        prover_config.whir_proof_encoding,
         pool,
         worker,
     );

@@ -223,8 +223,13 @@ fn test_rejects_corrupted_final_monomials(name: &str) {
         let final_num_queries = *m::constants::WHIR_QUERIES.last().unwrap();
         let final_oracle_depth = *m::constants::WHIR_ORACLE_DEPTHS.last().unwrap();
         let leaf_words = (1usize << final_fold_steps) * 4; // ext4 per leaf position
-        let path_words = final_oracle_depth * 8; // blake2s digest size per sibling
-        let queries_words = final_num_queries * (leaf_words + path_words);
+        let proof = common::circuit_by_name(name).proof_for(SecurityLevel::Sec100);
+        let oracle = proof.whir_proof.intermediate_whir_oracles.last().unwrap();
+        let indices: Vec<_> = oracle.queries.iter().map(|q| q.index).collect();
+        let path_words =
+            prover::merkle_trees::multiproof::boundary_nodes(&indices, final_oracle_depth).len()
+                * 8;
+        let queries_words = final_num_queries * leaf_words + path_words;
         let pow_words = 2;
         let monomial_words = m::constants::FINAL_MONOMIALS_LEN * 4;
         let nds_len = common::load_nds(name, SecurityLevel::Sec100).0.len();

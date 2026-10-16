@@ -79,6 +79,7 @@ use crate::gkr::whir::coset_commit::CosetByCosetBaseCommitment;
 #[cfg(any(test, feature = "gkr_self_checks"))]
 use crate::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
 use crate::gkr::PAR_THRESHOLD;
+use crate::merkle_trees::multiproof::MerkleMultiProof;
 #[cfg(test)]
 use crate::merkle_trees::PathQueryable;
 use crate::merkle_trees::{
@@ -303,6 +304,14 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
         &self,
         index: usize,
     ) -> (usize, Vec<Vec<F>>, BaseFieldQuery<F, T>) {
+        self.query_for_folded_index_impl(index, false)
+    }
+
+    fn query_for_folded_index_impl(
+        &self,
+        index: usize,
+        compact: bool,
+    ) -> (usize, Vec<Vec<F>>, BaseFieldQuery<F, T>) {
         let num_cosets = self.num_cosets();
         let coset_index = index & (num_cosets - 1);
         let internal_index = index / num_cosets;
@@ -316,7 +325,11 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
         let coset_dest_index = bitreverse_index(coset_index, num_cosets.trailing_zeros());
         let tree_index = coset_dest_index * coset_tree_size + internal_index;
 
-        let (_leaf_hash, path) = self.tree.get_proof(tree_index);
+        let (_leaf_hash, path) = if compact {
+            (self.tree.get_node(0, tree_index), Vec::new())
+        } else {
+            self.tree.get_proof(tree_index)
+        };
 
         #[cfg(feature = "gkr_self_checks")]
         {
@@ -506,6 +519,32 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
     /// groups the indices by the LDE coset they land in and recomputes each
     /// touched coset's RS codeword + subtree once for all its queries (`twiddles`
     /// and `worker` exist for that recomputation).
+    /// Gather leaf values and only the boundary nodes needed by this query batch.
+    pub fn query_many_compact(
+        &self,
+        query_indices: &[usize],
+        twiddles: &Twiddles<F, Global>,
+        worker: &Worker,
+    ) -> (Vec<(Vec<Vec<F>>, BaseFieldQuery<F, T>)>, MerkleMultiProof) {
+        match self {
+            Self::InMemory(oracle) => {
+                let queries: Vec<_> = query_indices
+                    .iter()
+                    .map(|&index| {
+                        let (_, values, query) = oracle.query_for_folded_index_impl(index, true);
+                        (values, query)
+                    })
+                    .collect();
+                let indices: Vec<_> = queries.iter().map(|(_, q)| q.index).collect();
+                let multiproof = oracle.tree.get_multiproof(&indices);
+                (queries, multiproof)
+            }
+            Self::CosetRecompute(c) => {
+                c.query_many_structured_compact(query_indices, twiddles, worker)
+            }
+        }
+    }
+
     pub fn query_many(
         &self,
         query_indices: &[usize],
@@ -683,6 +722,14 @@ impl<
         &self,
         index: usize,
     ) -> (usize, Vec<E>, ExtensionFieldQuery<F, E, T>) {
+        self.query_for_folded_index_impl(index, false)
+    }
+
+    fn query_for_folded_index_impl(
+        &self,
+        index: usize,
+        compact: bool,
+    ) -> (usize, Vec<E>, ExtensionFieldQuery<F, E, T>) {
         let num_cosets = self.cosets.len();
         let coset_index = index & (num_cosets - 1);
         let internal_index = index / num_cosets;
@@ -702,7 +749,11 @@ impl<
         let coset_dest_index = bitreverse_index(coset_index, num_cosets.trailing_zeros());
         let tree_index = coset_dest_index * coset_tree_size + internal_index;
 
-        let (_leaf_hash, path) = self.tree.get_proof(tree_index);
+        let (_leaf_hash, path) = if compact {
+            (self.tree.get_node(0, tree_index), Vec::new())
+        } else {
+            self.tree.get_proof(tree_index)
+        };
         let query = ExtensionFieldQuery {
             index: tree_index,
             leaf_values_concatenated: values.clone(),
@@ -811,6 +862,14 @@ impl<
         &self,
         index: usize,
     ) -> (usize, Vec<E>, ExtensionFieldQuery<F, E, T>) {
+        self.query_for_folded_index_impl(index, false)
+    }
+
+    fn query_for_folded_index_impl(
+        &self,
+        index: usize,
+        compact: bool,
+    ) -> (usize, Vec<E>, ExtensionFieldQuery<F, E, T>) {
         let num_cosets = self.num_cosets();
         let coset_index = index & (num_cosets - 1);
         let internal_index = index / num_cosets;
@@ -827,7 +886,11 @@ impl<
         let coset_dest_index = bitreverse_index(coset_index, num_cosets.trailing_zeros());
         let tree_index = coset_dest_index * coset_tree_size + internal_index;
 
-        let (_leaf_hash, path) = self.tree.get_proof(tree_index);
+        let (_leaf_hash, path) = if compact {
+            (self.tree.get_node(0, tree_index), Vec::new())
+        } else {
+            self.tree.get_proof(tree_index)
+        };
         let query = ExtensionFieldQuery {
             index: tree_index,
             leaf_values_concatenated: values.clone(),
@@ -916,6 +979,46 @@ where
     /// Serve a batch of this round's queries at once (per query the same tuple as
     /// [`ColumnMajorExtensionOracleForLDE::query_for_folded_index`]), results in
     /// input order. `twiddles`/`worker` are used by the recompute variant only.
+    fn query_many_compact(
+        &self,
+        query_indices: &[usize],
+        twiddles: &Twiddles<F, Global>,
+        worker: &Worker,
+    ) -> (
+        Vec<(usize, Vec<E>, ExtensionFieldQuery<F, E, T>)>,
+        MerkleMultiProof,
+    ) {
+        let (queries, tree): (Vec<_>, &T) = match self {
+            Self::Monolithic(o) => (
+                query_indices
+                    .iter()
+                    .map(|&i| o.query_for_folded_index_impl(i, true))
+                    .collect(),
+                &o.tree,
+            ),
+            Self::InMemoryContinuous(o) => (
+                query_indices
+                    .iter()
+                    .map(|&i| o.query_for_folded_index_impl(i, true))
+                    .collect(),
+                &o.tree,
+            ),
+            Self::ByCoefficient(o) => (
+                query_indices
+                    .iter()
+                    .map(|&i| o.query_for_folded_index_impl(i, true))
+                    .collect(),
+                &o.tree,
+            ),
+            Self::CosetRecompute(c) => {
+                return c.query_many_compact(query_indices, twiddles, worker)
+            }
+        };
+        let indices: Vec<_> = queries.iter().map(|(_, _, q)| q.index).collect();
+        let multiproof = tree.get_multiproof(&indices);
+        (queries, multiproof)
+    }
+
     fn query_many(
         &self,
         query_indices: &[usize],
@@ -1071,6 +1174,13 @@ where
     }
 }
 
+/// Authentication encoding is independent from the WHIR transcript and commitments.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WhirProofEncoding {
+    Compact,
+    LegacyPaths,
+}
+
 pub fn whir_fold<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -1112,6 +1222,7 @@ pub fn whir_fold<
     // their `ColumnMajorBaseOracleForLDE` variant, so e.g. recompute-based base
     // oracles can be combined with fully materialized intermediate oracles.
     intermediate_oracle_mode: WhirIntermediateOracleMode,
+    proof_encoding: WhirProofEncoding,
     pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) -> WhirPolyCommitProof<F, E, T> {
@@ -1163,6 +1274,7 @@ pub fn whir_fold<
             num_columns: set_num_columns[i],
             evals: evals_refs[i].clone(),
             queries: vec![],
+            multiproof: None,
         };
         commitments.push(t);
     }
@@ -1506,6 +1618,7 @@ pub fn whir_fold<
                     _marker: core::marker::PhantomData,
                 },
                 queries: vec![],
+                multiproof: None,
             };
             add_whir_commitment_to_transcript::<F, E, TR, T>(&mut transcript_seed, &c.commitment);
             proof.intermediate_whir_oracles.push(c);
@@ -1602,19 +1715,40 @@ pub fn whir_fold<
         let mut set_query_iters: [Option<std::vec::IntoIter<(Vec<Vec<F>>, BaseFieldQuery<F, T>)>>;
             3] = [
             (set_num_columns[0] > 0).then(|| {
-                mem_oracle
-                    .query_many(&query_indexes, twiddles.plain(), worker)
-                    .into_iter()
+                if proof_encoding == WhirProofEncoding::Compact {
+                    let (queries, multiproof) =
+                        mem_oracle.query_many_compact(&query_indexes, twiddles.plain(), worker);
+                    proof.memory_commitment.multiproof = Some(multiproof);
+                    queries.into_iter()
+                } else {
+                    mem_oracle
+                        .query_many(&query_indexes, twiddles.plain(), worker)
+                        .into_iter()
+                }
             }),
             (set_num_columns[1] > 0).then(|| {
-                wit_oracle
-                    .query_many(&query_indexes, twiddles.plain(), worker)
-                    .into_iter()
+                if proof_encoding == WhirProofEncoding::Compact {
+                    let (queries, multiproof) =
+                        wit_oracle.query_many_compact(&query_indexes, twiddles.plain(), worker);
+                    proof.witness_commitment.multiproof = Some(multiproof);
+                    queries.into_iter()
+                } else {
+                    wit_oracle
+                        .query_many(&query_indexes, twiddles.plain(), worker)
+                        .into_iter()
+                }
             }),
             (set_num_columns[2] > 0).then(|| {
-                setup
-                    .query_many(&query_indexes, twiddles.plain(), worker)
-                    .into_iter()
+                if proof_encoding == WhirProofEncoding::Compact {
+                    let (queries, multiproof) =
+                        setup.query_many_compact(&query_indexes, twiddles.plain(), worker);
+                    proof.setup_commitment.multiproof = Some(multiproof);
+                    queries.into_iter()
+                } else {
+                    setup
+                        .query_many(&query_indexes, twiddles.plain(), worker)
+                        .into_iter()
+                }
             }),
         ];
 
@@ -1895,6 +2029,7 @@ pub fn whir_fold<
                     _marker: core::marker::PhantomData,
                 },
                 queries: vec![],
+                multiproof: None,
             };
             add_whir_commitment_to_transcript::<F, E, TR, T>(&mut transcript_seed, &c.commitment);
             proof.intermediate_whir_oracles.push(c);
@@ -1979,9 +2114,17 @@ pub fn whir_fold<
         // consume them in the original unsorted query order.
         println!("  drawing {num_queries} queries...");
         let t_queries = std::time::Instant::now();
-        let mut round_queries = rs_oracle_to_query
-            .query_many(&query_indexes, twiddles.plain(), worker)
-            .into_iter();
+        let mut round_queries = if proof_encoding == WhirProofEncoding::Compact {
+            let (queries, multiproof) =
+                rs_oracle_to_query.query_many_compact(&query_indexes, twiddles.plain(), worker);
+            let index = proof.intermediate_whir_oracles.len() - 2;
+            proof.intermediate_whir_oracles[index].multiproof = Some(multiproof);
+            queries.into_iter()
+        } else {
+            rs_oracle_to_query
+                .query_many(&query_indexes, twiddles.plain(), worker)
+                .into_iter()
+        };
         println!(
             "  [timing] round {} queries ({num_queries}) served in {:.3?}",
             internal_round + 1,
@@ -2205,9 +2348,20 @@ pub fn whir_fold<
         // Same batched-then-ordered serving as the internal rounds.
         println!("  drawing {num_queries} queries...");
         let t_queries = std::time::Instant::now();
-        let mut round_queries = rs_oracle_to_query
-            .query_many(&query_indexes, twiddles.plain(), worker)
-            .into_iter();
+        let mut round_queries = if proof_encoding == WhirProofEncoding::Compact {
+            let (queries, multiproof) =
+                rs_oracle_to_query.query_many_compact(&query_indexes, twiddles.plain(), worker);
+            proof
+                .intermediate_whir_oracles
+                .last_mut()
+                .unwrap()
+                .multiproof = Some(multiproof);
+            queries.into_iter()
+        } else {
+            rs_oracle_to_query
+                .query_many(&query_indexes, twiddles.plain(), worker)
+                .into_iter()
+        };
         println!(
             "  [timing] final-round queries ({num_queries}) served in {:.3?}",
             t_queries.elapsed()
@@ -4097,45 +4251,32 @@ mod test {
     // }
 
     fn make_base_oracle(
-        _size: usize,
-        _worker: &Worker,
-        _offset: usize,
+        size: usize,
+        worker: &Worker,
+        offset: usize,
     ) -> (
         ColumnMajorBaseOracleForLDE<F, Blake2sU32MerkleTreeWithCap>,
         Vec<F>,
     ) {
-        todo!();
-
-        // let coeffs: Vec<F> = (1..=size)
-        //     .map(|el| F::from_u32_with_reduction((el + offset) as u32))
-        //     .collect();
-        // let twiddles = Twiddles::<F, Global>::new(size, worker);
-
-        // let cosets = compute_column_major_lde_from_monomial_form(&coeffs, &twiddles, 2);
-
-        // let mut result = ColumnMajorBaseOracleForLDE { cosets: vec![] };
-        // for (column, offset) in cosets.into_iter() {
-        //     let tree = <Blake2sU32MerkleTreeWithCap as ColumnMajorMerkleTreeConstructor<F>>::construct_for_column_major_coset::<F, Global>(
-        //         &[&column[..]],
-        //         2,
-        //         1,
-        //         true,
-        //         false,
-        //         worker
-        //     );
-        //     let el = ColumnMajorBaseOracleForCoset {
-        //         original_values_normal_order: vec![ColumnMajorCosetBoundTracePart {
-        //             column: Arc::new(column),
-        //             offset,
-        //         }],
-        //         tree,
-        //         values_per_leaf: 2,
-        //         trace_len_log2: size.trailing_zeros() as usize,
-        //     };
-        //     result.cosets.push(el);
-        // }
-
-        // (result, coeffs)
+        let coefficients: Vec<_> = (1..=size)
+            .map(|i| F::from_u32_with_reduction((i + offset) as u32))
+            .collect();
+        let mut hypercube = coefficients.clone();
+        bitreverse_enumeration_inplace(&mut hypercube);
+        multivariate_coeffs_into_hypercube_evals(&mut hypercube, size.trailing_zeros());
+        let twiddles = Twiddles::<F, Global>::new(size, worker);
+        let oracle = crate::gkr::prover::stages::commitment_utils::commit_trace_part::<F, E, _, _>(
+            &crate::gkr::prover::backend::NaiveBackend,
+            &[&hypercube],
+            &twiddles,
+            2,
+            1,
+            1,
+            size.trailing_zeros() as usize,
+            &GenericAllocationPool::proxy(),
+            worker,
+        );
+        (oracle, coefficients)
     }
 
     #[test]
@@ -4408,8 +4549,9 @@ mod test {
         }
     }
 
-    #[test]
-    fn test_whir() {
+    fn produce_whir_for_test(
+        encoding: WhirProofEncoding,
+    ) -> WhirPolyCommitProof<F, E, Blake2sU32MerkleTreeWithCap> {
         let worker = Worker::new_with_num_threads(1);
         let size = 128;
 
@@ -4471,7 +4613,7 @@ mod test {
                 crate::gkr::sumcheck::access_and_fold::BaseFieldPoly::new(t.into_boxed_slice()),
             );
         }
-        let _proof = whir_fold::<F, E, _, ::transcript::Blake2sTranscript, _, _>(
+        whir_fold::<F, E, _, ::transcript::Blake2sTranscript, _, _>(
             mem,
             a,
             wit,
@@ -4490,8 +4632,70 @@ mod test {
             &crate::gkr::prover::backend::NaiveBackend,
             &crate::gkr::prover::gkr_backend::NaiveGKRBackend,
             WhirIntermediateOracleMode::Monolithic,
+            encoding,
             &GenericAllocationPool::proxy(),
             &worker,
+        )
+    }
+
+    #[test]
+    fn test_whir_direct_multiproof_matches_legacy_production() {
+        let legacy = produce_whir_for_test(WhirProofEncoding::LegacyPaths);
+        let mut compact = produce_whir_for_test(WhirProofEncoding::Compact);
+        // Compare direct boundary values with paths from a separately produced proof,
+        // then normalize authentication and require every protocol field to match.
+        fn check(
+            indices: Vec<usize>,
+            paths: Vec<Vec<crate::merkle_trees::Digest>>,
+            proof: MerkleMultiProof,
+        ) {
+            assert_eq!(proof.depth, paths[0].len());
+            let expected: Vec<_> =
+                crate::merkle_trees::multiproof::boundary_nodes(&indices, proof.depth)
+                    .into_iter()
+                    .map(|(level, index)| {
+                        let q = indices
+                            .iter()
+                            .position(|&leaf| ((leaf >> level) ^ 1) == index)
+                            .unwrap();
+                        paths[q][level]
+                    })
+                    .collect();
+            assert_eq!(proof.siblings, expected);
+        }
+        for (new, old) in [
+            (&mut compact.memory_commitment, &legacy.memory_commitment),
+            (&mut compact.witness_commitment, &legacy.witness_commitment),
+            (&mut compact.setup_commitment, &legacy.setup_commitment),
+        ] {
+            check(
+                old.queries.iter().map(|q| q.index).collect(),
+                old.queries.iter().map(|q| q.path.clone()).collect(),
+                new.multiproof.take().unwrap(),
+            );
+            for (query, reference) in new.queries.iter_mut().zip(&old.queries) {
+                assert!(query.path.is_empty());
+                query.path = reference.path.clone();
+            }
+        }
+        for (new, old) in compact
+            .intermediate_whir_oracles
+            .iter_mut()
+            .zip(&legacy.intermediate_whir_oracles)
+        {
+            check(
+                old.queries.iter().map(|q| q.index).collect(),
+                old.queries.iter().map(|q| q.path.clone()).collect(),
+                new.multiproof.take().unwrap(),
+            );
+            for (query, reference) in new.queries.iter_mut().zip(&old.queries) {
+                assert!(query.path.is_empty());
+                query.path = reference.path.clone();
+            }
+        }
+        assert_eq!(
+            serde_json::to_value(compact).unwrap(),
+            serde_json::to_value(legacy).unwrap()
         );
     }
 }

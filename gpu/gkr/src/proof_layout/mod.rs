@@ -190,8 +190,8 @@ pub(crate) struct WhirBaseLayerByteLayout {
     /// `queries[i].leaf_values_concatenated` — `query_count * leaf_values_len`
     /// `BF` values, flat.
     pub query_leaves: Range<usize>,
-    /// `queries[i].path` — `query_count * path_len` digest words (each digest
-    /// is `DIGEST_U32_WORDS` `u32`), flat.
+    /// Worst-case capacity of `query_count * path_len` digests. Production writes
+    /// a compact boundary prefix; the shared plan's first word gives its length.
     pub query_paths: Range<usize>,
     pub query_count: usize,
     pub leaf_values_len: usize,
@@ -202,6 +202,8 @@ pub(crate) struct WhirBaseLayerByteLayout {
 pub(crate) struct WhirIntermediateByteLayout {
     pub cap: Range<usize>,
     pub query_indices: Range<usize>,
+    /// Digest count and query-major emission slots, produced on device.
+    pub multiproof_plan: Range<usize>,
     /// Flat `E4` values — `query_count * leaf_values_len`.
     pub query_leaves: Range<usize>,
     pub query_paths: Range<usize>,
@@ -221,6 +223,8 @@ pub(crate) struct WhirLayout {
     /// same verifier-derived list. Allocated once at the start of `lay_whir`,
     /// before any `lay_base` call.
     pub base_query_indices: Range<usize>,
+    /// Shared device-produced boundary count and emission slots for base oracles.
+    pub base_multiproof_plan: Range<usize>,
     pub setup: WhirBaseLayerByteLayout,
     pub memory: WhirBaseLayerByteLayout,
     pub witness: WhirBaseLayerByteLayout,
@@ -417,6 +421,7 @@ impl ProofLayout {
             |cur: &mut usize, d: &WhirIntermediateDims| -> WhirIntermediateByteLayout {
                 let cap = alloc(cur, d.cap_digest_count * DIGEST_U32_WORDS, size_of::<u32>());
                 let query_indices = alloc(cur, d.query_count, size_of::<u32>());
+                let multiproof_plan = alloc(cur, 1 + d.query_count * d.path_len, size_of::<u32>());
                 let query_leaves = alloc(cur, d.query_count * d.leaf_values_len, size_of::<E4>());
                 let query_paths = alloc(
                     cur,
@@ -426,6 +431,7 @@ impl ProofLayout {
                 WhirIntermediateByteLayout {
                     cap,
                     query_indices,
+                    multiproof_plan,
                     query_leaves,
                     query_paths,
                     query_count: d.query_count,
@@ -446,6 +452,11 @@ impl ProofLayout {
         debug_assert_eq!(dims.setup.query_count, dims.memory.query_count);
         debug_assert_eq!(dims.setup.query_count, dims.witness.query_count);
         let base_query_indices = alloc(cur, dims.setup.query_count, size_of::<u32>());
+        let base_multiproof_plan = alloc(
+            cur,
+            1 + dims.memory.query_count * dims.memory.path_len,
+            size_of::<u32>(),
+        );
         let setup = lay_base(cur, &dims.setup);
         let memory = lay_base(cur, &dims.memory);
         let witness = lay_base(cur, &dims.witness);
@@ -464,6 +475,7 @@ impl ProofLayout {
             original_evaluation_point,
             batching_challenge,
             base_query_indices,
+            base_multiproof_plan,
             setup,
             memory,
             witness,

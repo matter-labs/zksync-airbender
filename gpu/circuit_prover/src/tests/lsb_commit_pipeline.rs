@@ -247,6 +247,7 @@ fn gpu_commit_and_query(
                 columns_count: columns_count as u32,
                 _pad: 0,
                 slab_dst_ptr: path_slab.as_mut_ptr() as u64,
+                multiproof_plan_ptr: 0,
             };
             gather_merkle_paths_partial_for_queries_physical(
                 path_desc,

@@ -45,6 +45,7 @@ pub fn l1_feeder_config_for_2_23() -> ProverConfig {
         base_oracles_values_per_leaf: 2,
         sumcheck_explicit_output_size_log_2: DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
         security_level: SecurityLevel::Sec100,
+        whir_proof_encoding: crate::gkr::whir::WhirProofEncoding::Compact,
         whir_schedule: WhirSchedule {
             base_lde_factor: L1_FEEDER_BASE_LDE_FACTOR,
             cap_size: DEFAULT_CAP_SIZE,
@@ -81,6 +82,7 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
             base_oracles_values_per_leaf: 2,
             sumcheck_explicit_output_size_log_2: DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
             security_level: SecurityLevel::Sec100,
+            whir_proof_encoding: crate::gkr::whir::WhirProofEncoding::Compact,
             whir_schedule: WhirSchedule {
                 base_lde_factor: DEFAULT_LDE_FACTOR,
                 cap_size: DEFAULT_CAP_SIZE,
@@ -101,6 +103,7 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
             base_oracles_values_per_leaf: 2,
             sumcheck_explicit_output_size_log_2: DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
             security_level: SecurityLevel::Sec100,
+            whir_proof_encoding: crate::gkr::whir::WhirProofEncoding::Compact,
             whir_schedule: WhirSchedule {
                 base_lde_factor: DEFAULT_LDE_FACTOR,
                 cap_size: DEFAULT_CAP_SIZE,
@@ -121,6 +124,7 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
             base_oracles_values_per_leaf: 2,
             sumcheck_explicit_output_size_log_2: DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
             security_level: SecurityLevel::Sec100,
+            whir_proof_encoding: crate::gkr::whir::WhirProofEncoding::Compact,
             whir_schedule: WhirSchedule {
                 base_lde_factor: DEFAULT_LDE_FACTOR,
                 cap_size: DEFAULT_CAP_SIZE,
@@ -141,6 +145,7 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
             base_oracles_values_per_leaf: 2,
             sumcheck_explicit_output_size_log_2: DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
             security_level: SecurityLevel::Sec100,
+            whir_proof_encoding: crate::gkr::whir::WhirProofEncoding::Compact,
             whir_schedule: WhirSchedule {
                 base_lde_factor: DEFAULT_LDE_FACTOR,
                 cap_size: DEFAULT_CAP_SIZE,
@@ -166,6 +171,7 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
             base_oracles_values_per_leaf: 2,
             sumcheck_explicit_output_size_log_2: DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
             security_level: SecurityLevel::Sec100,
+            whir_proof_encoding: crate::gkr::whir::WhirProofEncoding::Compact,
             whir_schedule: WhirSchedule {
                 base_lde_factor: DEFAULT_LDE_FACTOR,
                 cap_size: DEFAULT_CAP_SIZE,
@@ -213,6 +219,7 @@ pub fn evm_production_packed_prover_config(level: SecurityLevel) -> ProverConfig
         // NOT the WHIR plain-text tail, which the WHIR schedule determines).
         sumcheck_explicit_output_size_log_2: 4,
         security_level: level,
+        whir_proof_encoding: crate::gkr::whir::WhirProofEncoding::LegacyPaths,
         whir_schedule: WhirSchedule {
             base_lde_factor: 1 << 5,
             cap_size: 8,
@@ -266,6 +273,29 @@ mod tests {
                         .num_queries_for_rate_and_bits_of_security(security_bits - pow, rate_bits)
             );
         }
+    }
+
+    #[test]
+    fn authentication_encoding_matches_native_and_evm_consumers() {
+        use crate::gkr::whir::WhirProofEncoding;
+        for trace_log2 in 20..=24 {
+            assert_eq!(
+                config_for_security_level_under_pessimistic_conjecture(
+                    trace_log2,
+                    SecurityLevel::Sec100
+                )
+                .whir_proof_encoding,
+                WhirProofEncoding::Compact,
+            );
+        }
+        assert_eq!(
+            l1_feeder_config_for_2_23().whir_proof_encoding,
+            WhirProofEncoding::Compact
+        );
+        assert_eq!(
+            evm_production_packed_prover_config(SecurityLevel::Sec100).whir_proof_encoding,
+            WhirProofEncoding::LegacyPaths
+        );
     }
 
     #[test]

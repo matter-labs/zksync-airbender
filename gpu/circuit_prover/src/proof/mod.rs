@@ -12,7 +12,9 @@ use era_cudart::stream::CudaStreamWaitEventFlags;
 use fft::GoodAllocator;
 
 use crate::proof::inputs::GpuGKRProofTransfer;
-use crate::upstream::{validate_sumcheck_schedule, ProverConfig, SumcheckScheduleClass};
+use crate::upstream::{
+    validate_sumcheck_schedule, ProverConfig, SumcheckScheduleClass, WhirProofEncoding,
+};
 use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::UnsafeMutAccessor;
 use gpu_core::primitives::device_tracing::Range;
@@ -139,6 +141,10 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
     mut stage_snapshots: Option<Box<GKRBackwardStageSnapshotSink>>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a>> {
+    assert_eq!(
+        prover_config.whir_proof_encoding, WhirProofEncoding::Compact,
+        "GPU proving supports compact WHIR multiproofs only; legacy-path EVM proofs require the CPU prover"
+    );
     assert!(
         memory_policy.witness.is_valid(),
         "invalid witness memory policy"

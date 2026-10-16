@@ -304,6 +304,7 @@ impl GpuWhirExtensionOracle {
         tree_indexes: &era_cudart::slice::DeviceSlice<u32>,
         leaves_dst: &mut era_cudart::slice::DeviceSlice<BF>,
         paths_dst: &mut era_cudart::slice::DeviceSlice<u32>,
+        multiproof_plan: Option<&era_cudart::slice::DeviceSlice<u32>>,
         context: &ProverContext,
     ) -> CudaResult<()> {
         let queries_count = tree_indexes.len();
@@ -331,6 +332,7 @@ impl GpuWhirExtensionOracle {
                 tree_indexes,
                 leaves_dst,
                 paths_dst,
+                multiproof_plan,
                 self.trace_len_log2,
                 log_lde_factor,
                 log_values_per_leaf,
@@ -349,15 +351,17 @@ impl GpuWhirExtensionOracle {
             LOG_SRC_COLS_PER_COSET,
             context,
         )?;
-        self.trace_holder.schedule_query_merkle_paths_into_from_ntt(
-            tree_indexes,
-            paths_dst,
-            self.trace_len_log2,
-            log_lde_factor,
-            log_values_per_leaf,
-            LOG_SRC_COLS_PER_COSET,
-            context,
-        )
+        self.trace_holder
+            .schedule_query_merkle_paths_into_from_ntt_with_plan(
+                tree_indexes,
+                paths_dst,
+                self.trace_len_log2,
+                log_lde_factor,
+                log_values_per_leaf,
+                LOG_SRC_COLS_PER_COSET,
+                multiproof_plan,
+                context,
+            )
     }
 
     /// batch-gather all `device_query_indexes` of one
@@ -373,6 +377,7 @@ impl GpuWhirExtensionOracle {
         slab_indices_dst: &mut era_cudart::slice::DeviceSlice<u32>,
         slab_leaves_dst_bf: &mut era_cudart::slice::DeviceSlice<BF>,
         slab_paths_dst: &mut era_cudart::slice::DeviceSlice<u32>,
+        multiproof_plan: &mut era_cudart::slice::DeviceSlice<u32>,
         context: &ProverContext,
     ) -> CudaResult<()> {
         let stream = context.get_exec_stream();
@@ -398,10 +403,18 @@ impl GpuWhirExtensionOracle {
         // (read-only) and run after the kernel above on the same stream, so
         // they observe the tree-indexes that were just written.
         let slab_indices_view: &era_cudart::slice::DeviceSlice<u32> = slab_indices_dst;
+        let depth = self.trace_holder.log_domain_size - self.trace_holder.log_tree_cap_size;
+        gpu_hash::blake2s::plan_merkle_multiproof(
+            slab_indices_view,
+            depth,
+            multiproof_plan,
+            stream,
+        )?;
         self.schedule_query_leaves_and_paths_into_from_ntt(
             slab_indices_view,
             slab_leaves_dst_bf,
             slab_paths_dst,
+            Some(multiproof_plan),
             context,
         )
     }
@@ -431,6 +444,7 @@ impl GpuWhirExtensionOracle {
             tree_indexes,
             &mut device_leaves,
             device_paths_u32,
+            None,
             context,
         )?;
 

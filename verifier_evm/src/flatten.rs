@@ -154,6 +154,20 @@ pub fn whir_calldata(
     // the seed from GKRProof.intermediate_transcript_seed, and batching / batched-opening /
     // evaluation-point from the WHIR sub-proof's handoff fields (populated by the prover).
     let wp = &proof.whir_proof;
+    assert!(
+        [
+            &wp.setup_commitment,
+            &wp.memory_commitment,
+            &wp.witness_commitment
+        ]
+        .iter()
+        .all(|o| o.multiproof.is_none())
+            && wp
+                .intermediate_whir_oracles
+                .iter()
+                .all(|o| o.multiproof.is_none()),
+        "EVM calldata requires WHIR legacy-path generation mode",
+    );
     let handoff_seed = crate::seed::gkr_whir_handoff_seed(proof);
     let whir_batching = wp
         .batching_challenge

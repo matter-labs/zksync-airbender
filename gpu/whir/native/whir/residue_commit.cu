@@ -331,7 +331,7 @@ EXTERN __launch_bounds__(256) __global__
 }
 
 EXTERN __launch_bounds__(32) __global__
-    void ab_whir_residue_query_subwarp_kernel(const bf *coeffs, const u32 *partial_tree, bf *leaves, u32 *paths,
+    void ab_whir_residue_query_subwarp_kernel(const bf *coeffs, const u32 *partial_tree, bf *leaves, u32 *paths, const u32 *multiproof_plan,
                                               const whir_leaf_transform_params transform_params, const unsigned log_n, const unsigned log_c,
                                               const unsigned log_v, const unsigned log_total_leaves, const unsigned layers_count, const unsigned *indexes,
                                               const unsigned indexes_count) {
@@ -352,7 +352,8 @@ EXTERN __launch_bounds__(32) __global__
   u32 state[STATE_SIZE];
   hash_residue_leaf_subwarp_dispatch<true>(coef_smem, inverse_powers, log_n, log_c, log_v, tree_leaf, leaf_out, state);
   u32 *merkle_paths = paths + static_cast<size_t>(query) * layers_count * STATE_SIZE;
-  ::airbender::hash::collect_merkle_path_warp(state, merkle_paths, STATE_SIZE, lane, is_output_lane, q, log_total_leaves, layers_count, partial_tree);
+  ::airbender::hash::collect_merkle_path_warp(state, merkle_paths, STATE_SIZE, lane, is_output_lane, q, log_total_leaves, layers_count, partial_tree,
+                                              multiproof_plan ? multiproof_plan + 1 + query * layers_count : nullptr, paths);
 }
 
 // ---------------------------------------------------------------------------
@@ -620,7 +621,7 @@ EXTERN __launch_bounds__(256) __global__
 }
 
 EXTERN __launch_bounds__(256) __global__
-    void ab_whir_residue_query_block_kernel(const bf *coeffs, const u32 *partial_tree, bf *leaves, u32 *paths,
+    void ab_whir_residue_query_block_kernel(const bf *coeffs, const u32 *partial_tree, bf *leaves, u32 *paths, const u32 *multiproof_plan,
                                             const whir_leaf_transform_params transform_params, const unsigned log_n, const unsigned log_c, const unsigned log_v,
                                             const unsigned log_total_leaves, const unsigned layers_count, const unsigned *indexes,
                                             const unsigned indexes_count) {
@@ -642,7 +643,8 @@ EXTERN __launch_bounds__(256) __global__
     return;
   const unsigned lane = threadIdx.x & WARP_MASK;
   u32 *merkle_paths = paths + static_cast<size_t>(query) * layers_count * STATE_SIZE;
-  ::airbender::hash::collect_merkle_path_warp(state, merkle_paths, STATE_SIZE, lane, is_output_lane, q, log_total_leaves, layers_count, partial_tree);
+  ::airbender::hash::collect_merkle_path_warp(state, merkle_paths, STATE_SIZE, lane, is_output_lane, q, log_total_leaves, layers_count, partial_tree,
+                                              multiproof_plan ? multiproof_plan + 1 + query * layers_count : nullptr, paths);
 }
 
 } // namespace airbender::whir

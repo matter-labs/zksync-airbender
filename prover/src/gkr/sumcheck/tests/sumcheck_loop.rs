@@ -32,6 +32,7 @@ fn test_prover_config() -> prover_config::ProverConfig {
         base_oracles_values_per_leaf: 2,
         sumcheck_explicit_output_size_log_2: 4,
         security_level: crate::definitions::SecurityLevel::Sec100,
+        whir_proof_encoding: crate::gkr::whir::WhirProofEncoding::Compact,
         whir_schedule: crate::gkr::prover::WhirSchedule {
             base_lde_factor: 2,
             cap_size: 64,

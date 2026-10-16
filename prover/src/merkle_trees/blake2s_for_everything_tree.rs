@@ -239,6 +239,19 @@ impl<B: GoodAllocator + 'static, const USE_REDUCED_BLAKE2_ROUNDS: bool>
 impl<B: GoodAllocator, const USE_REDUCED_BLAKE2_ROUNDS: bool> PathQueryable
     for Blake2sU32MerkleTreeWithCap<B, USE_REDUCED_BLAKE2_ROUNDS>
 {
+    fn proof_depth(&self) -> usize {
+        self.node_hashes_enumerated_from_leafs.len()
+    }
+
+    fn get_node(&self, level: usize, index: usize) -> Digest {
+        assert!(level <= self.proof_depth());
+        if level == 0 {
+            self.leaf_hashes[index]
+        } else {
+            self.node_hashes_enumerated_from_leafs[level - 1][index]
+        }
+    }
+
     fn get_cap(&self) -> MerkleTreeCapVarLength {
         let output = if let Some(cap) = self.node_hashes_enumerated_from_leafs.last() {
             let mut result = Vec::new();

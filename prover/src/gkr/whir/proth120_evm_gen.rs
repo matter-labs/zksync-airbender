@@ -225,6 +225,7 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
         &crate::gkr::prover::backend::NaiveBackend,
         &crate::gkr::prover::gkr_backend::NaiveGKRBackend,
         WhirIntermediateOracleMode::CosetByCoset,
+        super::WhirProofEncoding::LegacyPaths,
         &crate::allocation_pool::GenericAllocationPool::proxy(),
         worker,
     );

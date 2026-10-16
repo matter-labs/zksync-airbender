@@ -238,6 +238,8 @@ pub struct ProverConfig {
     // per-circuit from `security_level` via `pow_bits`, so neither is stored here.
     pub security_level: SecurityLevel,
     pub whir_schedule: WhirSchedule,
+    /// Compact for native/RISC-V verification; legacy paths for current EVM calldata.
+    pub whir_proof_encoding: crate::gkr::whir::WhirProofEncoding,
     /// Step schedule for the same-size (per-circuit batched relation) layer
     /// sumchecks, applied to every same-size layer regardless of its input
     /// poly count. Must satisfy the STRICT grammar of

@@ -65,6 +65,7 @@ cuda_kernel_signature_arguments_and_function!(
     partial_tree: *const u32,
     leaves: *mut BF,
     paths: *mut u32,
+    multiproof_plan: *const u32,
     transform_params: WhirLeafTransformParams,
     log_n: u32,
     log_c: u32,
@@ -81,6 +82,7 @@ cuda_kernel_declaration!(
         partial_tree: *const u32,
         leaves: *mut BF,
         paths: *mut u32,
+    multiproof_plan: *const u32,
         transform_params: WhirLeafTransformParams,
         log_n: u32,
         log_c: u32,
@@ -141,6 +143,7 @@ cuda_kernel_signature_arguments_and_function!(
     partial_tree: *const u32,
     leaves: *mut BF,
     paths: *mut u32,
+    multiproof_plan: *const u32,
     transform_params: WhirLeafTransformParams,
     log_n: u32,
     log_c: u32,
@@ -157,6 +160,7 @@ cuda_kernel_declaration!(
         partial_tree: *const u32,
         leaves: *mut BF,
         paths: *mut u32,
+    multiproof_plan: *const u32,
         transform_params: WhirLeafTransformParams,
         log_n: u32,
         log_c: u32,
@@ -320,6 +324,7 @@ pub(crate) fn query(
     indexes: &DeviceSlice<u32>,
     leaves: &mut DeviceSlice<BF>,
     paths: &mut DeviceSlice<u32>,
+    multiproof_plan: Option<&DeviceSlice<u32>>,
     log_n: u32,
     log_c: u32,
     log_v: u32,
@@ -339,6 +344,9 @@ pub(crate) fn query(
     );
     let layers_count = log_total_leaves - log_cap;
     let queries_count = indexes.len();
+    if let Some(plan) = multiproof_plan {
+        assert_eq!(plan.len(), 1 + queries_count * layers_count as usize);
+    }
     assert!(queries_count > 0);
     assert!(queries_count <= u32::MAX as usize);
     assert_eq!(leaves.len(), queries_count << (log_v + 2));
@@ -360,6 +368,7 @@ pub(crate) fn query(
                 partial_tree_ptr,
                 leaves.as_mut_ptr(),
                 paths.as_mut_ptr(),
+                multiproof_plan.map_or(std::ptr::null(), |p| p.as_ptr()),
                 params,
                 log_n,
                 log_c,
@@ -381,6 +390,7 @@ pub(crate) fn query(
                 partial_tree_ptr,
                 leaves.as_mut_ptr(),
                 paths.as_mut_ptr(),
+                multiproof_plan.map_or(std::ptr::null(), |p| p.as_ptr()),
                 params,
                 log_n,
                 log_c,

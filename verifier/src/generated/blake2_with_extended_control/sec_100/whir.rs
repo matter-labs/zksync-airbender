@@ -32,7 +32,8 @@ use verifier_common::lazy_vec::LazyVec;
 use verifier_common::non_determinism_source::NonDeterminismSource;
 use verifier_common::structs::{CommitBuf, TranscriptState};
 use verifier_common::whir::{
-    draw_query_indices, read_and_verify_pow, read_commit_return_merkle_cap,
+    draw_query_indices, prepare_merkle_queries, read_and_verify_pow, read_commit_return_merkle_cap,
+    verify_merkle_multiproof, MerkleQueryIndex,
 };
 const INITIAL_QUERY_INDEX_BITS: usize = 20usize;
 const INITIAL_NUM_QUERIES: usize = 89usize;
@@ -115,6 +116,10 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
         let extended_generator = BabyBearField::TWO_ADICITY_GENERATORS[INITIAL_RS_DOMAIN_LOG2];
         let extended_generator_inv =
             BabyBearField::TWO_ADICITY_GENERATORS_INVERSED[INITIAL_RS_DOMAIN_LOG2];
+        let mut oracle_leaves_0 = LazyVec::<[u32; 8], INITIAL_NUM_QUERIES>::new();
+        let mut oracle_leaves_225 = LazyVec::<[u32; 8], INITIAL_NUM_QUERIES>::new();
+        let mut oracle_leaves_763 = LazyVec::<[u32; 8], INITIAL_NUM_QUERIES>::new();
+        let mut query_order = LazyVec::<MerkleQueryIndex, INITIAL_NUM_QUERIES>::new();
         let mut q = 0;
         while q < INITIAL_NUM_QUERIES {
             field_ops::mul_assign(
@@ -127,48 +132,43 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
                 compute_tree_index(query_index, NUM_COSETS, NUM_COSETS_LOG2, COSET_TREE_SIZE);
             let mut acc0 = BabyBearExt4::ZERO;
             let mut acc1 = BabyBearExt4::ZERO;
-            process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, 450usize>(
+            query_order.push(MerkleQueryIndex {
+                index: tree_index,
+                query: q,
+            });
+            process_oracle_query::<I, WHIR_HASH_BUF_SIZE, 450usize>(
                 &mut ts.hasher,
                 hash_buf,
                 225usize,
-                tree_index,
-                16usize,
-                initial_transcript.memory_caps_slice(),
                 &gamma_powers[..],
                 0usize,
                 &mut acc0,
                 &mut acc1,
-                q,
                 nd_source,
-            )?;
-            process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, 1076usize>(
+            );
+            oracle_leaves_0.push(*ts.hasher.read_state_for_output_ref());
+            process_oracle_query::<I, WHIR_HASH_BUF_SIZE, 1076usize>(
                 &mut ts.hasher,
                 hash_buf,
                 538usize,
-                tree_index,
-                16usize,
-                initial_transcript.witness_caps_slice(),
                 &gamma_powers[..],
                 225usize,
                 &mut acc0,
                 &mut acc1,
-                q,
                 nd_source,
-            )?;
-            process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, 12usize>(
+            );
+            oracle_leaves_225.push(*ts.hasher.read_state_for_output_ref());
+            process_oracle_query::<I, WHIR_HASH_BUF_SIZE, 12usize>(
                 &mut ts.hasher,
                 hash_buf,
                 6usize,
-                tree_index,
-                16usize,
-                initial_transcript.setup_caps_slice(),
                 &gamma_powers[..],
                 763usize,
                 &mut acc0,
                 &mut acc1,
-                q,
                 nd_source,
-            )?;
+            );
+            oracle_leaves_763.push(*ts.hasher.read_state_for_output_ref());
             let mut sum = acc0;
             field_ops::add_assign(&mut sum, &acc1);
             let mut diff = acc0;
@@ -192,12 +192,43 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
             field_ops::add_assign(&mut claim_correction, &t);
             q += 1;
         }
+        let query_plan = prepare_merkle_queries::<INITIAL_NUM_QUERIES>(query_order.as_mut_slice());
+        if !verify_merkle_multiproof::<I, INITIAL_NUM_QUERIES>(
+            &mut ts.hasher,
+            &query_plan,
+            oracle_leaves_0.as_mut_slice(),
+            16usize,
+            initial_transcript.memory_caps_slice(),
+            nd_source,
+        ) {
+            return Err(E::whir_merkle_path_failed(0));
+        }
+        if !verify_merkle_multiproof::<I, INITIAL_NUM_QUERIES>(
+            &mut ts.hasher,
+            &query_plan,
+            oracle_leaves_225.as_mut_slice(),
+            16usize,
+            initial_transcript.witness_caps_slice(),
+            nd_source,
+        ) {
+            return Err(E::whir_merkle_path_failed(0));
+        }
+        if !verify_merkle_multiproof::<I, INITIAL_NUM_QUERIES>(
+            &mut ts.hasher,
+            &query_plan,
+            oracle_leaves_763.as_mut_slice(),
+            16usize,
+            initial_transcript.setup_caps_slice(),
+            nd_source,
+        ) {
+            return Err(E::whir_merkle_path_failed(0));
+        }
         field_ops::add_assign(&mut claim, &claim_correction);
         Ok((claim, intermediate_cap))
     }
 }
 use super::common::{ext_from_raw_word_slice, EXT_DEGREE};
-use verifier_common::whir::{hash_leaf_data_into_state, verify_merkle_path};
+use verifier_common::whir::hash_leaf_data_into_state;
 pub const NUM_INTERNAL_ROUNDS: usize = 3usize;
 const INTERNAL_QUERY_INDEX_BITS: [usize; NUM_INTERNAL_ROUNDS] = [22usize, 22usize, 20usize];
 const INTERNAL_NUM_COSETS: [usize; NUM_INTERNAL_ROUNDS] = [256usize, 8192usize, 32768usize];
@@ -286,6 +317,8 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: Err
         let oracle_depth = WHIR_ORACLE_DEPTHS[round_idx - 1];
         let mut monomial_weights = LazyVec::<BabyBearExt4, MAX_INTERNAL_VALUES_PER_LEAF>::new();
         precompute_monomial_tensor(folding_challenges.as_slice(), &mut monomial_weights);
+        let mut query_order = LazyVec::<MerkleQueryIndex, MAX_INTERNAL_NUM_QUERIES>::new();
+        let mut query_leaves = LazyVec::<[u32; 8], MAX_INTERNAL_NUM_QUERIES>::new();
         let mut q = 0;
         while q < num_queries {
             field_ops::mul_assign(
@@ -306,15 +339,11 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: Err
             hash_buf.zero_range(leaf_ext_words, block_end);
             let init_buf = hash_buf.assume_init_subarray::<INTERNAL_HASH_BUF_SIZE>();
             hash_leaf_data_into_state(&mut ts.hasher, init_buf, leaf_ext_words);
-            if !verify_merkle_path::<I>(
-                &mut ts.hasher,
-                tree_index,
-                oracle_depth,
-                prev_oracle_cap,
-                nd_source,
-            ) {
-                return Err(E::whir_merkle_path_failed(q));
-            }
+            query_leaves.push(*ts.hasher.read_state_for_output_ref());
+            query_order.push(MerkleQueryIndex {
+                index: tree_index,
+                query: q,
+            });
             let mut leaf: LazyVec<BabyBearExt4, { MAX_INTERNAL_VALUES_PER_LEAF }> = LazyVec::new();
             let mut j = 0;
             while j < values_per_leaf {
@@ -336,6 +365,18 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: Err
             field_ops::mul_assign(&mut t, &current_delinearization_challenge);
             field_ops::add_assign(&mut claim_correction, &t);
             q += 1;
+        }
+        let query_plan =
+            prepare_merkle_queries::<MAX_INTERNAL_NUM_QUERIES>(query_order.as_mut_slice());
+        if !verify_merkle_multiproof::<I, MAX_INTERNAL_NUM_QUERIES>(
+            &mut ts.hasher,
+            &query_plan,
+            query_leaves.as_mut_slice(),
+            oracle_depth,
+            prev_oracle_cap,
+            nd_source,
+        ) {
+            return Err(E::whir_merkle_path_failed(0));
         }
         field_ops::add_assign(&mut claim, &claim_correction);
         Ok((claim, intermediate_cap))
@@ -409,6 +450,8 @@ pub fn verify_final_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorC
         let oracle_depth = WHIR_ORACLE_DEPTHS[FINAL_ORACLE_DEPTH_IDX];
         let mut monomial_weights = LazyVec::<BabyBearExt4, FINAL_VALUES_PER_LEAF>::new();
         precompute_monomial_tensor(folding_challenges.as_slice(), &mut monomial_weights);
+        let mut query_order = LazyVec::<MerkleQueryIndex, FINAL_NUM_QUERIES>::new();
+        let mut query_leaves = LazyVec::<[u32; 8], FINAL_NUM_QUERIES>::new();
         let mut folded_values: LazyVec<BabyBearExt4, FINAL_NUM_QUERIES> = LazyVec::new();
         let mut query_base_roots: LazyVec<BabyBearField, FINAL_NUM_QUERIES> = LazyVec::new();
         let mut q = 0;
@@ -432,15 +475,11 @@ pub fn verify_final_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorC
             hash_buf.zero_range(FINAL_LEAF_EXT_WORDS, block_end);
             let init_buf = hash_buf.assume_init_subarray::<FINAL_HASH_BUF_SIZE>();
             hash_leaf_data_into_state(&mut ts.hasher, init_buf, FINAL_LEAF_EXT_WORDS);
-            if !verify_merkle_path::<I>(
-                &mut ts.hasher,
-                tree_index,
-                oracle_depth,
-                prev_oracle_cap,
-                nd_source,
-            ) {
-                return Err(E::whir_merkle_path_failed(q));
-            }
+            query_leaves.push(*ts.hasher.read_state_for_output_ref());
+            query_order.push(MerkleQueryIndex {
+                index: tree_index,
+                query: q,
+            });
             let mut leaf: LazyVec<BabyBearExt4, { FINAL_VALUES_PER_LEAF }> = LazyVec::new();
             let mut j = 0;
             while j < FINAL_VALUES_PER_LEAF {
@@ -456,6 +495,17 @@ pub fn verify_final_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorC
             q += 1;
         }
         let mut q = 0;
+        let query_plan = prepare_merkle_queries::<FINAL_NUM_QUERIES>(query_order.as_mut_slice());
+        if !verify_merkle_multiproof::<I, FINAL_NUM_QUERIES>(
+            &mut ts.hasher,
+            &query_plan,
+            query_leaves.as_mut_slice(),
+            oracle_depth,
+            prev_oracle_cap,
+            nd_source,
+        ) {
+            return Err(E::whir_merkle_path_failed(0));
+        }
         while q < FINAL_NUM_QUERIES {
             let mut query_point = *query_base_roots.get(q);
             query_point.exp_power_of_2(FINAL_FOLD_STEPS);

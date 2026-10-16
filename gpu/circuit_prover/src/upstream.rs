@@ -121,3 +121,5 @@ pub(crate) use prover::tracers::oracles::transpiler_oracles::delegation::{
 };
 #[cfg(test)]
 pub(crate) use prover::transcript::{Blake2sTranscript, Transcript};
+
+pub(crate) use prover::gkr::whir::WhirProofEncoding;

@@ -6,6 +6,41 @@ use field::{Field, FieldExtension, PrimeField};
 use prover::gkr::prover::GKRProof;
 use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
 
+/// Append direct prover output, with a compatibility adapter for historical JSON fixtures.
+/// New proofs contain no per-query paths and require no compaction here.
+pub fn append_merkle_multiproof<'a>(
+    queries: impl Iterator<Item = (usize, &'a [[u32; 8]])>,
+    multiproof: Option<&prover::merkle_trees::multiproof::MerkleMultiProof>,
+    dst: &mut Vec<u32>,
+) {
+    use prover::merkle_trees::multiproof::boundary_nodes;
+    let queries: Vec<_> = queries.collect();
+    let indices: Vec<_> = queries.iter().map(|q| q.0).collect();
+    if let Some(proof) = multiproof {
+        assert!(
+            queries.iter().all(|q| q.1.is_empty()),
+            "mixed compact and legacy paths"
+        );
+        assert_eq!(
+            boundary_nodes(&indices, proof.depth).len(),
+            proof.siblings.len()
+        );
+        for sibling in &proof.siblings {
+            dst.extend_from_slice(sibling);
+        }
+    } else if let Some(first) = queries.first() {
+        let depth = first.1.len();
+        assert!(queries.iter().all(|q| q.1.len() == depth));
+        for (level, index) in boundary_nodes(&indices, depth) {
+            let query = queries
+                .iter()
+                .find(|q| ((q.0 >> level) ^ 1) == index)
+                .expect("boundary node must occur in a legacy query path");
+            dst.extend_from_slice(&query.1[level]);
+        }
+    }
+}
+
 fn flatten_field_els<F: PrimeField, E: FieldExtension<F>>(src: &[E], dst: &mut Vec<u32>) {
     for el in src {
         let coeffs = E::into_coeffs(*el);
@@ -155,20 +190,26 @@ where
                                 result.push(leaf[pos * num_cols + col].as_u32_raw_repr_reduced());
                             }
                         }
-                        for sibling in &oracle.queries[q].path {
-                            result.extend_from_slice(sibling);
-                        }
                     }
                 }
+            }
+            for oracle in &base_oracles {
+                append_merkle_multiproof(
+                    oracle.queries.iter().map(|q| (q.index, q.path.as_slice())),
+                    oracle.multiproof.as_ref(),
+                    &mut result,
+                );
             }
         } else {
             let oracle = &whir.intermediate_whir_oracles[round - 1];
             for query in oracle.queries.iter() {
                 flatten_field_els::<F, E>(&query.leaf_values_concatenated, &mut result);
-                for sibling in query.path.iter() {
-                    result.extend_from_slice(sibling);
-                }
             }
+            append_merkle_multiproof(
+                oracle.queries.iter().map(|q| (q.index, q.path.as_slice())),
+                oracle.multiproof.as_ref(),
+                &mut result,
+            );
         }
     }
 
@@ -192,10 +233,15 @@ where
         let last_oracle = whir.intermediate_whir_oracles.last().unwrap();
         for query in last_oracle.queries.iter() {
             flatten_field_els::<F, E>(&query.leaf_values_concatenated, &mut result);
-            for sibling in query.path.iter() {
-                result.extend_from_slice(sibling);
-            }
         }
+        append_merkle_multiproof(
+            last_oracle
+                .queries
+                .iter()
+                .map(|q| (q.index, q.path.as_slice())),
+            last_oracle.multiproof.as_ref(),
+            &mut result,
+        );
     }
 
     result
