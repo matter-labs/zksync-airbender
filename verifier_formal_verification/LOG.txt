@@ -7,6 +7,26 @@ commit check `git diff --cached --stat` and that no staged file is over ~200 KB.
 Moved here from an earlier prototype repo (as a snapshot; its history, which contains the large Sail model, was
 NOT imported).
 
+=== POC 3: BLAKE2S (2026-10-16) ===
+- Guest: the verifier's own blake2s_u32 (Blake2RoundFunctionEvaluator, baseline = plain Rust on riscv32 without
+  delegation features, so the same bytes in both images), round_function_reduced_rounds (7 rounds), in a .bss
+  static BLAKE (RAM is zero at start: no memset, no stack realignment). blake2s_compress(st, len, last) is a
+  function (1424 instructions, straight line, rotations as srli/slli/or); main hashes the five input words (one
+  last block of 20 bytes) and outputs the first two digest words in a6, a7 (x16, x17).
+- Spec: human/Human/SpecBlake.lean (RFC 7693 G/round/compress, 7 rounds, Vector-based so it also evaluates;
+  checked against hashlib at 10 rounds through the Python model), blake5; ProgramCorrectOf (both machines) now
+  states x16, x17 = blake5 of the input, x18..x25 zero.
+- Proof: one executor run of the body (Blake/Block, 30 s: the kernel run of 1423 instructions), the DAG cut at the 8
+  values of every G (gen/blake.sh: Cuts, G1..G19 with 448 one-operation lemmas + 56 G lemmas, Steps with the 56
+  steps on the 16-word working vector), Values (compress), Impl (blake2s_compress_impl, std axioms: rotations by
+  rfl, no bv_decide; bv_decide adds native-evaluation axioms, removed everywhere).
+- Executor: kernel runs chunked (64 instructions from a literal state each, deltas checked by Eq.refl), windowed
+  hash-consing (128): linear in block length (was quadratic: 136 s -> 25 s). Constant registers get the address form
+  x0 + w (loads/stores at constant addresses). sym_generalize; per-lemma cut lists (sym_unfold [ids]).
+- main redone on the executor for both images (Main/Blocks, A: init/combine/poly_eval, B: ext4_poly/blake2s, C:
+  outputs/finish; Run: the whole program from reset given the code; FinalPlain/FinalMop only link). block_jal:
+  a block followed by a call. Old MainA/MainB macros and the bb_* leaf proofs removed.
+
 === SYMBOLIC EXECUTOR + PLAIN IMAGE PROVEN (2026-10-15) ===
 - Verified symbolic executor (slop/Slop/Sym/, no sorry): hash-consed value DAG (Expr), executor for straight-line
   code (Exec: lui/opImm/op/mop/load/store, constant folding, addi keeps a base+offset address form), soundness
