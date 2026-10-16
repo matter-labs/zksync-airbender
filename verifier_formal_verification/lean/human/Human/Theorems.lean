@@ -59,10 +59,11 @@ def ProgramCorrectOf (bytes : Array (BitVec 8)) (halt : Nat) : Prop :=
     (¬ Spec.claimOK #v[x, y0, y1, y2, y3] #v[v0, v1, v2, v3] →
       ∀ numSteps final, run numSteps start = some final → final.pc ≠ BitVec.ofNat 32 halt)
 
-/-- The final theorem for the plain-Rust image (`build/app.bin`, `lean/image/Image.lean`). -/
-def ProgramCorrect : Prop := ProgramCorrectOf Image.bytes Image.halt
+/-- The final theorem for the plain-Rust image (`build/app.bin`, `lean/image/Image.lean`): Airbender's decoder accepts
+it (`Accepted`, `Human/Delegations.lean`) and it is correct. -/
+def ProgramCorrect : Prop := Accepted Image.bytes ∧ ProgramCorrectOf Image.bytes Image.halt
 
 /-- The final theorem for the field-opcode image (`build/app_mop.bin`, `lean/image/ImageMop.lean`). -/
-def ProgramCorrectMop : Prop := ProgramCorrectOf ImageMop.bytes ImageMop.halt
+def ProgramCorrectMop : Prop := Accepted ImageMop.bytes ∧ ProgramCorrectOf ImageMop.bytes ImageMop.halt
 
 end RV

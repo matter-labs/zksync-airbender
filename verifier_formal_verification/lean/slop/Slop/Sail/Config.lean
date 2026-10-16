@@ -71,7 +71,11 @@ theorem delegate_rejected : next 0x7c701073 = none := by decide +kernel   -- csr
 `x11 = 0` (in ROM): rejected by `RV.Delegation.blakeRound`. -/
 theorem delegate_bad_args :
     (Airbender.step ⟨(test 0x7c701073).set .x12 0x90000#32, []⟩).isNone = true := by decide +kernel
-theorem csr_7c8_stops : next 0x7c801073 = none := by decide +kernel       -- csrrw x0, 0x7c8, x0 (not modelled)
+theorem csr_7c8_stops : next 0x7c801073 = none := by decide +kernel       -- csrrw x0, 0x7c8, x0: x10 not 64-aligned
+/-- Keccak-f1600's CSRs (`0x7cc` … `0x7ce`) are newer than the ISA table: modelled, not decoded. -/
+theorem csr_7cc_not_decoded : (RV.decode 0x7cc01073).isNone ∧ (RV.decode 0x7ce01073).isNone := by decide +kernel
+theorem csr_7cb_decoded :
+    (match RV.decode 0x7cb01073 with | some (.delegate .keccak) => true | _ => false) = true := by decide +kernel
 theorem input_next   : readNext 0x7c001573 [0x1234] = some (4, 0x1234, []) := by decide +kernel  -- csrrw a0, 0x7c0, x0
 theorem csrrs_stops' : readNext 0x7c002573 [0x1234] = none := by decide +kernel  -- csrrs a0, 0x7c0, x0: not in the ISA
 theorem csrrci_stops : readNext 0x7c007573 [0x1234] = none := by decide +kernel  -- csrrci a0, 0x7c0, 0: not in the ISA

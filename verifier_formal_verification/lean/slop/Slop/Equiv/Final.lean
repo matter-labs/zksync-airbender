@@ -86,10 +86,11 @@ theorem program_correct_of (bytes : Array (BitVec 8)) (halt : Nat) (hb : bytes.s
 
 /-- `Airbender.ProgramCorrect`: the plain-Rust image on the Airbender machine. -/
 theorem program_correct_airbender : Airbender.ProgramCorrect :=
-  program_correct_of _ _ (by decide +kernel) RV.program_correct RV.program_correct_stuck
+  ⟨RV.program_correct.1, program_correct_of _ _ (by decide +kernel) RV.program_correct.2 RV.program_correct_stuck⟩
 
 /-- `Airbender.ProgramCorrectMop`: the field-opcode image on the Airbender machine. -/
 theorem program_correct_airbender_mop : Airbender.ProgramCorrectMop :=
-  program_correct_of _ _ (by decide +kernel) RV.program_correct_mop RV.program_correct_mop_stuck
+  ⟨RV.program_correct_mop.1, program_correct_of _ _ (by decide +kernel) RV.program_correct_mop.2
+    RV.program_correct_mop_stuck⟩
 
 end Slop.Equiv

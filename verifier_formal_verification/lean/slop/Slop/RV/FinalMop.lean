@@ -82,8 +82,13 @@ theorem program_correct_mop_run (s : State) (x y0 y1 y2 y3 v0 v1 v2 v3 : Word) (
   obtain ⟨m, W, hrun, hpcW, rest'⟩ := H.1 hc
   exact ⟨m, W, hrun, by rw [hpcW]; rfl, rest'⟩
 
+set_option maxRecDepth 100000 in
+/-- Airbender's decoder accepts the image (no delegation runs of other lengths). -/
+theorem accepted_mop : Accepted ImageMop.bytes := by decide +kernel
+
 set_option maxHeartbeats 0 in
 theorem program_correct_mop : ProgramCorrectMop := by
+  refine ⟨accepted_mop, ?_⟩
   intro s x y0 y1 y2 y3 v0 v1 v2 v3 rest hpc himg hram hin hxP hy0p hy1p hy2p hy3p
   obtain ⟨hhalt, hok, hbad⟩ := program_correct_mop_run s x y0 y1 y2 y3 v0 v1 v2 v3 rest hpc himg hram hin hxP hy0p hy1p hy2p hy3p
   refine ⟨fun hc => ?_, fun hc => ?_⟩

@@ -33,9 +33,12 @@
 - CSRs: the rows of Airbender's ISA table (what the circuits' decoder accepts; the transpiler is more lenient):
   `csrrw rd, 0x7c0, x0` (read), `csrrw x0, 0x7c0, rs1` (no-op write), `csrrw x0, <delegation csr>, x0`; anything
   else has no next state. A read with no answers left is stuck (the theorems give enough).
-- Delegations: one call per instruction (generic `Effect`: words written + one register, then pc + 4). Modelled:
-  the Blake2s round function (0x7c7, one round per call). Not yet: 0x7c8 (G function), 0x7ca (u256 bigint), 0x7cb
-  (Keccak special5); 0x7cc-0x7ce (keccak_f1600) are beyond the current ISA table.
+- Delegations: one call per instruction (generic `Effect`: words written + one register, then pc + 4): Blake2s
+  round (0x7c7), G (0x7c8), u256 bigint (0x7ca), Keccak special5 (0x7cb); Keccak-f1600 in three circuits
+  (0x7cc-0x7ce) modelled but not decoded (newer than the ISA table). Control-word layouts are from source (the
+  table does not give them). Run lengths (7/10, 56/80, 649) are a static check on the image (`Accepted`, part of
+  `ProgramCorrect`); jumping into the middle of a run is not modelled as rejected. Complete runs vs the standard
+  operation (Blake2s rounds, Keccak-f[1600], `Nat` arithmetic) are checked by `run_image` (not proven).
 - Airbender halts when PC is unchanged (`j .`); we state `step s = some s`-style fixpoint at the halt address.
 - Modularity with `+relax`: theorems are re-instantiated per layout; reused across relinks are the kind lemmas,
   word lemmas and proof scripts. Option B later: `-relax` + modelled relocations.

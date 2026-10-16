@@ -82,9 +82,9 @@ def ProgramCorrectOf (bytes : Array (BitVec 8)) (halt : Nat) : Prop :=
         final'.sail.regs .PC ≠ BitVec.ofNat 32 halt)
 
 /-- 3. for the plain-Rust image (`build/app.bin`). -/
-def ProgramCorrect : Prop := ProgramCorrectOf Image.bytes Image.halt
+def ProgramCorrect : Prop := RV.Accepted Image.bytes ∧ ProgramCorrectOf Image.bytes Image.halt
 
 /-- 3. for the field-opcode image (`build/app_mop.bin`). -/
-def ProgramCorrectMop : Prop := ProgramCorrectOf ImageMop.bytes ImageMop.halt
+def ProgramCorrectMop : Prop := RV.Accepted ImageMop.bytes ∧ ProgramCorrectOf ImageMop.bytes ImageMop.halt
 
 end Airbender

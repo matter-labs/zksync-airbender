@@ -15,8 +15,10 @@ claim `v = poly4 z` (four more words from the non-determinism source) is checked
 
 ## What a human reads (`lean/human/`, ~200 lines)
 - `Human/State.lean` — the machine state (registers, PC, byte memory, the non-determinism input).
-- `Human/Delegations.lean` — Airbender's delegations (precompiles): the Blake2s round function (CSR `0x7c7`), built
-  from `Human/Blake2s.lean` (Blake2s constants, `G`, one round).
+- `Human/Delegations.lean` — Airbender's delegations (precompiles), one call per instruction: Blake2s round (`0x7c7`)
+  and `G` (`0x7c8`), u256 bigint (`0x7ca`), Keccak special5 (`0x7cb`) and Keccak-f1600 (`0x7cc` … `0x7ce`, not yet in
+  the ISA table); `Accepted`: the decoder's run lengths. Built from `Human/Blake2s.lean` (Blake2s constants, `G`, one
+  round) and `Human/Keccak.lean` (Keccak-f[1600], FIPS 202).
 - `Human/RV32.lean` — the machine: RV32IM as Airbender runs it (decoder from the encoding tables, one line of
   behaviour per instruction, memory map, the input read `csrrw rd, 0x7c0, x0` from a list of input words; anything
   else has no next state = unprovable).

@@ -7,6 +7,22 @@ commit check `git diff --cached --stat` and that no staged file is over ~200 KB.
 Moved here from an earlier prototype repo (as a snapshot; its history, which contains the large Sail model, was
 NOT imported).
 
+=== DELEGATIONS: G, BIGINT, KECCAK (2026-10-16) ===
+- Per-call effects from source where the ISA table is silent: G (0x7c8: x12 counter bits 0-6, bit 7 = 7 rounds; G
+  k%8 of round k/8, counter wraps), bigint (0x7ca: bigintOp on Nat, result mod 2^256, flag in x12), Keccak special5
+  (0x7cb: 31 lanes, slot map laneSlot r = pi^r by recursion, 7 micro-ops, delayed iota), Keccak-f1600 (0x7cc-0x7ce,
+  newer than the table: column parity / theta+rho / chi5; modelled, not decoded). Human/Keccak.lean: standard
+  Keccak-f[1600]. Accepted (run lengths 7/10, 56/80, 649 of maximal runs of one delegation word) is part of
+  ProgramCorrect on both machines (decide +kernel, ~4 s per image).
+- test/DelegationsTest (run_image): 7 x round = blake5, 56 x G = 7 rounds, bigint ops/flags, laneSlot vs source
+  table rows 1/24, keccakF zero-state vector, 649 special5 and 361 f1600 calls = keccakF on random states. All OK.
+- Trust direction (model stricter than a circuit = vacuous "never halts"): where the circuit accepts more than the
+  VM the model follows the circuit: bigint (x12 high half ignored; no op bit -> a := 0, x12 := 0), G (counter >= n
+  -> G 0 of round 0, counter 0), special5 (any op < 7, x < 5, round < 32; outside a run's pieces the table gives
+  slots 0..5 and iota 0: "THIS IS JUNK"). Keccak-f1600 control tables list only valid controls (exact). Assumed,
+  not audited: pointer conditions; Blake2s round mask one-hot (round circuit: "TODO ... consider adding a
+  constraint"). Findings worth raising with the circuit authors.
+
 === CSR ROWS AS THE ISA TABLE; BLAKE2S ONE ROUND PER INSTRUCTION (2026-10-16) ===
 - The source of the semantics is what the circuits' decoder table accepts, i.e. the ISA table (spec/top-down,
   "00 master.md"), not the transpiler (more lenient): only csrrw. CSR 0x7c0: csrrw rd, 0x7c0, x0 (read, rd != x0),

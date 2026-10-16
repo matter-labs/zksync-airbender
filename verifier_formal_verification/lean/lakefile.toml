@@ -37,6 +37,12 @@ name = "dump_image"
 srcDir = "image"
 root = "DumpImage"
 
+# sanity checks run by run_image (not proofs)
+[[lean_lib]]
+name = "Test"
+srcDir = "test"
+roots = ["DelegationsTest"]
+
 [[lean_exe]]
 name = "run_image"
 srcDir = "test"
