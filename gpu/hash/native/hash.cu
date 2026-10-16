@@ -356,38 +356,14 @@ EXTERN __global__ void ab_blake2s_nodes_tower_multi_coset_kernel(const u32 *src,
   }
 }
 
-EXTERN __global__ void ab_blake2s_pow_kernel(const u64 *seed, const u32 bits_count, const u64 max_nonce, volatile u64 *result) {
-  const u32 digest_mask = 0xffffffff << 32 - bits_count;
-  const auto result_ptr = reinterpret_cast<unsigned long long *>(const_cast<u64 *>(result));
-  __align__(8) u32 m_u32[BLOCK_SIZE] = {};
-  auto m_u64 = reinterpret_cast<u64 *>(m_u32);
-#pragma unroll
-  for (unsigned i = 0; i < 4; i++)
-    m_u64[i] = seed[i];
-  const unsigned stride = blockDim.x * gridDim.x;
-  for (u64 nonce = threadIdx.x + blockIdx.x * blockDim.x; nonce < max_nonce; nonce += stride) {
-    m_u64[STATE_SIZE / 2] = nonce;
-    u32 state[STATE_SIZE];
-    initialize(state);
-    u32 t = 0;
-    compress<true>(state, t, m_u32, STATE_SIZE + 2);
-    if (!(state[0] & digest_mask)) {
 #ifdef AB_DETERMINISTIC_POW
-      atomicMin(result_ptr, static_cast<unsigned long long>(nonce));
+constexpr bool POW_DETERMINISTIC = true;
 #else
-      atomicCAS(result_ptr, UINT64_MAX, nonce);
+constexpr bool POW_DETERMINISTIC = false;
 #endif
-      __threadfence();
-    }
-    if (*result
-#ifdef AB_DETERMINISTIC_POW
-        <= nonce
-#else
-        != UINT64_MAX
-#endif
-    )
-      return;
-  }
+
+EXTERN __global__ void ab_blake2s_pow_kernel(const u64 *seed, const u32 bits_count, const u64 max_nonce, const u32 chunk_steps, u64 *counter, u64 *result) {
+  pow_search<POW_DETERMINISTIC>(seed, bits_count, max_nonce, chunk_steps, counter, result);
 }
 
 // ---------------------------------------------------------------------------

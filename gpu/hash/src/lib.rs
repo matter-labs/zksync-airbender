@@ -12,6 +12,7 @@ mod upstream;
 
 pub mod blake2s;
 pub mod keccak256;
+pub mod pow;
 
 #[cfg(feature = "bench")]
 pub mod bench;

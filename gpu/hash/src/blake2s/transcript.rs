@@ -9,6 +9,7 @@ use era_cudart::stream::CudaStream;
 use era_cudart_sys::CudaDeviceAttr;
 
 use super::{checked_u32, STATE_SIZE};
+use crate::pow::pow_chunk_steps;
 use gpu_core::primitives::field::E4;
 use gpu_core::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 
@@ -16,7 +17,14 @@ use gpu_core::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SI
 // asserts the 8-byte alignment this implies).
 cuda_kernel!(
     Blake2sPow,
-    ab_blake2s_pow_kernel(seed: *const u64, bits_count: u32, max_nonce: u64, result: *mut u64)
+    ab_blake2s_pow_kernel(
+        seed: *const u64,
+        bits_count: u32,
+        max_nonce: u64,
+        chunk_steps: u32,
+        counter: *mut u64,
+        result: *mut u64
+    )
 );
 
 /// Maximum number of input chunks the chunked transcript-commit kernel-arg
@@ -258,11 +266,12 @@ pub fn reduce_raw_words_to_e4(
 
 /// Grind for the nonce whose `Blake2s(seed || nonce)` digest has `bits_count`
 /// leading zero bits in word 0, writing it to `result` (the smallest such
-/// nonce under `deterministic_pow`, the first found otherwise).
+/// nonce under `deterministic_pow`, the first found otherwise). `counter` is one-word scratch.
 pub fn blake2s_pow(
     seed: &DeviceSlice<u32>,
     bits_count: u32,
     result: &mut DeviceVariable<u64>,
+    counter: &mut DeviceVariable<u64>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     assert_eq!(seed.len(), STATE_SIZE);
@@ -273,6 +282,7 @@ pub fn blake2s_pow(
     assert_eq!(seed.as_ptr() as usize % 8, 0);
     unsafe {
         memory_set_async(result.transmute_mut(), 0xff, stream)?;
+        memory_set_async(counter.transmute_mut(), 0, stream)?;
     }
     const BLOCK_SIZE: u32 = WARP_SIZE * 4;
     let device_id = get_device()?;
@@ -287,7 +297,41 @@ pub fn blake2s_pow(
         seed,
         bits_count,
         max_nonce: u64::MAX,
+        chunk_steps: pow_chunk_steps(bits_count, num_blocks),
+        counter: counter.as_mut_ptr(),
         result,
     };
     kernel_function.launch(&config, &args)
+}
+
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)]
+pub(super) fn blake2s_pow_search_bounded(
+    seed: &DeviceSlice<u32>,
+    bits_count: u32,
+    max_nonce: u64,
+    blocks: u32,
+    first_chunk: u64,
+    result: &mut DeviceVariable<u64>,
+    counter: &mut DeviceVariable<u64>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert_eq!(seed.len(), STATE_SIZE);
+    assert!((1..=32).contains(&bits_count));
+    unsafe {
+        memory_set_async(result.transmute_mut(), 0xff, stream)?;
+    }
+    era_cudart::memory::memory_copy_async(counter, std::slice::from_ref(&first_chunk), stream)?;
+    let args = Blake2sPowArguments {
+        seed: seed.as_ptr() as *const u64,
+        bits_count,
+        max_nonce,
+        chunk_steps: pow_chunk_steps(bits_count, blocks),
+        counter: counter.as_mut_ptr(),
+        result: result.as_mut_ptr(),
+    };
+    Blake2sPowFunction::default().launch(
+        &CudaLaunchConfig::basic(blocks, WARP_SIZE * 4, stream),
+        &args,
+    )
 }
