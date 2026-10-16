@@ -107,10 +107,16 @@ impl ScaleArgs<'_> {
     }
 }
 
-pub(crate) const L2_CHUNK_BYTES: usize = 16 << 20;
+pub(crate) const MAX_CHUNK_BYTES: usize = 32 << 20;
+pub(crate) const MIN_CHUNK_BYTES: usize = 1 << 20;
 pub(crate) const MAX_TILE_BYTES: usize = 32 << 20;
-pub(crate) const L2_WORKING_SET_BYTES: usize = 64 << 20;
 pub(crate) const MAX_LOG_MAX_DOMAIN: u32 = 33;
+
+// Half of the device L2: the working set at which the BabyBear NTT's measured per-NTT cost
+// minimum landed on both the 96 MiB and the 128 MiB parts (`ntt::strategy`).
+pub fn l2_working_set_budget(l2_cache_size_bytes: usize) -> usize {
+    l2_cache_size_bytes / 2
+}
 
 const LOG_TILE_LANES: u32 = 3;
 
@@ -273,17 +279,26 @@ pub(crate) fn chunk_plan(
 }
 
 // Per-coset stage split of a packed or WHIR oracle: the L2-chunked prefix of a = log_n - r
-// stages, then suffix tiles of 2^skip_bottom components x 2^r values x all columns (Small: one
-// block per column when log_n <= 12).
+// stages, then suffix tiles of 2^skip_bottom components x 2^r values x all columns, consumed
+// `tiles_per_batch` at a time (Small: one block per column when log_n <= 12). Chunk and batch
+// sizes follow from the device L2 working-set budget.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Dispatch {
     pub small: bool,
     pub r: u32,
     pub tile_bytes: usize,
     pub tiles_per_coset: usize,
+    pub tiles_per_batch: usize,
     pub prefix: Option<ChunkPlan>,
     pub prefix_working_set: usize,
     pub suffix_working_set: usize,
+    pub l2_budget: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DispatchError {
+    Unsupported,
+    L2TooSmall { l2_budget: usize },
 }
 
 pub(crate) fn twiddle_bytes(log_max_domain: u32) -> usize {
@@ -300,54 +315,87 @@ pub(crate) fn subroot_bytes(log_n: u32, log_v: u32, skip_bottom: u32) -> usize {
     }
 }
 
-pub fn dispatch(log_n: u32, columns: usize, log_v: u32, skip_bottom: u32) -> Option<Dispatch> {
-    if !(8..=26).contains(&log_n)
-        || columns == 0
-        || !(1..=4).contains(&log_v)
-        || skip_bottom > log_n - log_v
-    {
-        return None;
-    }
+fn dispatch_with_budget(
+    log_n: u32,
+    columns: usize,
+    log_v: u32,
+    skip_bottom: u32,
+    l2_budget: usize,
+) -> Option<Dispatch> {
     if log_n <= 12 {
         return Some(Dispatch {
             small: true,
             r: log_n,
             tile_bytes: columns.checked_mul(size_of::<PR>() << log_n)?,
             tiles_per_coset: 1,
+            tiles_per_batch: 1,
             prefix: None,
             prefix_working_set: 0,
             suffix_working_set: 0,
+            l2_budget,
         });
     }
-    let twiddles = twiddle_bytes(MAX_LOG_MAX_DOMAIN);
-    let subroots = subroot_bytes(log_n, log_v, skip_bottom);
+    let fixed = twiddle_bytes(MAX_LOG_MAX_DOMAIN) + subroot_bytes(log_n, log_v, skip_bottom);
     for r in [8, 7, 6] {
         let a = log_n - r;
         let tile_bytes = columns.checked_mul(size_of::<PR>() << (skip_bottom + r))?;
         if a < skip_bottom || r < log_v || tile_bytes > MAX_TILE_BYTES {
             continue;
         }
-        let Some(plan) = prefix_groups(a).and_then(|g| chunk_plan(log_n, &g, L2_CHUNK_BYTES))
-        else {
+        let Some(groups) = prefix_groups(a) else {
             continue;
         };
         let tiles_per_coset = 1usize << (a - skip_bottom);
-        let prefix_working_set = 2 * plan.chunk_bytes() + twiddles + subroots;
-        let suffix_working_set = tiles_per_coset.min(2) * tile_bytes + twiddles + subroots;
-        if prefix_working_set.max(suffix_working_set) > L2_WORKING_SET_BYTES {
+        let Some(tiles_per_batch) = (1..=tiles_per_coset.min(2))
+            .rev()
+            .find(|t| t * tile_bytes + fixed <= l2_budget)
+        else {
             continue;
-        }
+        };
+        let plan = (MIN_CHUNK_BYTES.ilog2()..=MAX_CHUNK_BYTES.ilog2())
+            .rev()
+            .filter_map(|log_chunk| chunk_plan(log_n, &groups, 1 << log_chunk))
+            .find(|plan| 2 * plan.chunk_bytes() + fixed <= l2_budget);
+        let Some(plan) = plan else {
+            continue;
+        };
         return Some(Dispatch {
             small: false,
             r,
             tile_bytes,
             tiles_per_coset,
+            tiles_per_batch,
+            prefix_working_set: 2 * plan.chunk_bytes() + fixed,
+            suffix_working_set: tiles_per_batch * tile_bytes + fixed,
             prefix: Some(plan),
-            prefix_working_set,
-            suffix_working_set,
+            l2_budget,
         });
     }
     None
+}
+
+pub fn dispatch(
+    log_n: u32,
+    columns: usize,
+    log_v: u32,
+    skip_bottom: u32,
+    l2_cache_size_bytes: usize,
+) -> Result<Dispatch, DispatchError> {
+    if !(8..=26).contains(&log_n)
+        || columns == 0
+        || !(1..=4).contains(&log_v)
+        || skip_bottom > log_n - log_v
+    {
+        return Err(DispatchError::Unsupported);
+    }
+    let l2_budget = l2_working_set_budget(l2_cache_size_bytes);
+    if let Some(shape) = dispatch_with_budget(log_n, columns, log_v, skip_bottom, l2_budget) {
+        return Ok(shape);
+    }
+    match dispatch_with_budget(log_n, columns, log_v, skip_bottom, usize::MAX / 4) {
+        Some(_) => Err(DispatchError::L2TooSmall { l2_budget }),
+        None => Err(DispatchError::Unsupported),
+    }
 }
 
 pub(crate) fn launch_prefix_chunked<P: TransformPolicy>(

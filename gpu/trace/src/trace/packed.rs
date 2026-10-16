@@ -14,7 +14,7 @@ use gpu_hash::keccak256::{
 };
 use gpu_ntt::proth120::{
     dispatch, has_reference_finish, lde_coset, lde_coset_slot, lde_finish_reference,
-    pack_hypercubes_to_monomials, CosetSource, ScaleArgs,
+    pack_hypercubes_to_monomials, CosetSource, DispatchError, ScaleArgs,
 };
 use gpu_ops::powers::get_powers_by_val;
 use gpu_prover_context::ProverContext;
@@ -375,14 +375,21 @@ impl PackedCosetRecomputeOracle<PR> {
         );
         let ctx = context.proth120_ntt_device_context();
         let stream = context.get_exec_stream();
-        let plan = dispatch(
+        let l2 = context.get_device_properties().l2_cache_size_bytes;
+        let plan = match dispatch(
             log_packed,
             packed_columns,
             cfg.log_values_per_leaf,
             cfg.skip_bottom,
-        )
-        .and_then(|shape| shape.prefix)
-        .filter(has_reference_finish);
+            l2,
+        ) {
+            Ok(shape) => shape.prefix.filter(has_reference_finish),
+            Err(DispatchError::L2TooSmall { l2_budget }) => panic!(
+                "PackedCosetRecomputeOracle: device L2 of {l2} B (working-set budget {l2_budget} B) \
+                 is too small for the coset prefix of 2^{log_packed} rows x {packed_columns} columns"
+            ),
+            Err(DispatchError::Unsupported) => None,
+        };
         if let Some(plan) = plan {
             let scale = ScaleArgs {
                 coset: CosetSource::Constant(coset),
