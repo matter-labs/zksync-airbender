@@ -566,3 +566,67 @@ fn sink_profile_probe() {
     let _range = scoped_range(Some("ab"), "sink.wide");
     sink("sink.wide", &wide_tiles, 0, wide);
 }
+
+// Timing probe of the suffix batch loop of one base coset (n = 25, C = 7, v = 2, sb = 10): 64
+// batches of suffix micro + Commit sink over a resident prefix, one warmup coset, then five
+// measured cosets (CUDA-event span per coset).
+#[test]
+#[ignore]
+#[cfg(not(no_cuda))]
+fn sink_coset_probe() {
+    use era_cudart::memory::memory_set_async;
+    let ctx = DeviceContext::create(31).unwrap();
+    let stream = CudaStream::create().unwrap();
+    let (log_n, columns, log_v, skip_bottom) = (25u32, 7u32, 2u32, 10u32);
+    let h = log_n - log_v;
+    let plan = dispatch(log_n, columns as usize, log_v, skip_bottom, device_l2()).unwrap();
+    let s = SuffixShape::new(&plan, log_n, log_v, skip_bottom, columns);
+    let column_len = (columns as usize) << log_n;
+    let mut prefix = DeviceAllocation::<PR>::alloc(column_len).unwrap();
+    unsafe {
+        memory_set_async(prefix.transmute_mut(), 0, &stream).unwrap();
+    }
+    let batch = plan.tiles_per_batch;
+    let mut tiles = DeviceAllocation::<PR>::alloc(batch * s.tile_len()).unwrap();
+    let mut nodes = DeviceAllocation::<Digest>::alloc(1 << (h - 8)).unwrap();
+    let start = era_cudart::event::CudaEvent::create().unwrap();
+    let end = era_cudart::event::CudaEvent::create().unwrap();
+    for coset in 0..6 {
+        start.record(&stream).unwrap();
+        for first in (0..s.tiles_per_coset()).step_by(batch) {
+            launch_suffix_micro(
+                &ctx,
+                &prefix,
+                column_len,
+                &mut tiles,
+                &s,
+                first as u32,
+                batch as u32,
+                1,
+                &stream,
+            )
+            .unwrap();
+            launch_sink(
+                &ctx,
+                &tiles,
+                &s,
+                first as u32,
+                batch as u32,
+                1,
+                SinkMode::Commit,
+                &mut nodes,
+                1 << (h - 8),
+                &stream,
+            )
+            .unwrap();
+        }
+        end.record(&stream).unwrap();
+        end.synchronize().unwrap();
+        let ms = era_cudart::event::elapsed_time(&start, &end).unwrap();
+        println!(
+            "sink_coset_probe: {} coset {coset}: {ms:.3} ms ({} batches of micro + sink)",
+            if coset == 0 { "warmup" } else { "measured" },
+            s.tiles_per_coset() / batch
+        );
+    }
+}
