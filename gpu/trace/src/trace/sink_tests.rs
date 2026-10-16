@@ -846,6 +846,128 @@ fn sink_open_queries_matches_gathers() {
     }
 }
 
+// ncu probe of the hot sink launches: NVTX `ab@sink.commit` = one batch (suffix micro + Commit sink)
+// of each Commit shape (base, (d) base, the two setup shapes) after a warmup batch; `ab@sink.open`
+// = the touched-coset plan and one openings slot of the base shape whose 14 queries all lie in the
+// first batch of tiles (its first open-sink launch is the hit batch), then the open paths.
+#[test]
+#[ignore]
+#[cfg(not(no_cuda))]
+fn sink_gate_profile_probe() {
+    use super::sink::{open_coset_slot, open_coset_slot_scratch_lens, OpenQueries, OpenSlot};
+    use era_cudart::memory::memory_set_async;
+    use gpu_core::primitives::nvtx::scoped_range;
+    use gpu_hash::keccak256::launch_coset_query_plan;
+    let ctx = DeviceContext::create(31).unwrap();
+    let stream = CudaStream::create().unwrap();
+    for (log_n, columns, log_v, skip_bottom) in [
+        (25u32, 7u32, 2u32, 10u32),
+        (24, 13, 1, 10),
+        (25, 1, 2, 10),
+        (24, 2, 1, 10),
+    ] {
+        let h = log_n - log_v;
+        let plan = dispatch(log_n, columns as usize, log_v, skip_bottom, device_l2()).unwrap();
+        let s = SuffixShape::new(&plan, log_n, log_v, skip_bottom, columns);
+        let column_len = (columns as usize) << log_n;
+        let mut prefix = DeviceAllocation::<PR>::alloc(column_len).unwrap();
+        unsafe {
+            memory_set_async(prefix.transmute_mut(), 0, &stream).unwrap();
+        }
+        let batch = plan.tiles_per_batch as u32;
+        let mut tiles = DeviceAllocation::<PR>::alloc(batch as usize * s.tile_len()).unwrap();
+        let mut nodes = DeviceAllocation::<Digest>::alloc(1 << (h - 3)).unwrap();
+        for (label, first) in [("sink.warmup", 0u32), ("sink.commit", batch)] {
+            let _range = scoped_range(Some("ab"), label);
+            launch_suffix_micro(
+                &ctx, &prefix, column_len, &mut tiles, &s, first, batch, 1, None, &stream,
+            )
+            .unwrap();
+            launch_sink(
+                &ctx,
+                &tiles,
+                &s,
+                first,
+                batch,
+                1,
+                SinkMode::Commit,
+                &mut nodes,
+                1 << (h - 3),
+                &stream,
+            )
+            .unwrap();
+        }
+        stream.synchronize().unwrap();
+    }
+    // Base (7 columns) and setup (1 column) openings at the L1 wrap shapes.
+    for (columns, open_label) in [(7u32, "sink.open"), (1, "sink.setup_open")] {
+        let (log_n, log_v, skip_bottom, log_lde, cap_log) = (25u32, 2u32, 10u32, 6u32, 5u32);
+        let h = log_n - log_v;
+        let rows = 1usize << log_n;
+        let plan = dispatch(log_n, columns as usize, log_v, skip_bottom, device_l2()).unwrap();
+        let s = SuffixShape::new(&plan, log_n, log_v, skip_bottom, columns);
+        let monomials = upload(&random_values(rows * columns as usize, 25));
+        let per_coset = retained_len(h, skip_bottom);
+        let retained_all = upload(&vec![[7u32; 8]; per_coset << log_lde]);
+        let a = s.log_a();
+        let queries: Vec<u32> = (0..14u32)
+            .map(|i| ((((i * 37) & 2047) + ((i % 64) << a)) << log_lde) | 3)
+            .collect();
+        let device_queries = upload(&queries);
+        let mut touched = DeviceAllocation::<u32>::alloc(queries.len()).unwrap();
+        let mut active = DeviceAllocation::<u32>::alloc(queries.len()).unwrap();
+        let mut touched_count = DeviceAllocation::<u32>::alloc(1).unwrap();
+        let (tiles_len, nodes_len) = open_coset_slot_scratch_lens(&plan, &s);
+        let mut prefix = DeviceAllocation::<PR>::alloc(rows * columns as usize).unwrap();
+        let mut tiles = DeviceAllocation::<PR>::alloc(tiles_len).unwrap();
+        let mut nodes = DeviceAllocation::<Digest>::alloc(nodes_len).unwrap();
+        let mut leaves =
+            DeviceAllocation::<PR>::alloc(queries.len() * ((columns as usize) << log_v)).unwrap();
+        let depth = (h + log_lde - cap_log) as usize;
+        let mut paths = DeviceAllocation::<Digest>::alloc(queries.len() * depth).unwrap();
+        for label in ["sink.warmup", open_label] {
+            let _range = scoped_range(Some("ab"), label);
+            launch_coset_query_plan(
+                &device_queries,
+                log_lde,
+                &mut touched,
+                &mut active,
+                &mut touched_count,
+                &stream,
+            )
+            .unwrap();
+            let mut open = OpenQueries {
+                queries: &device_queries,
+                log_lde,
+                cap_log,
+                leaves: &mut leaves,
+                paths: &mut paths,
+            };
+            open_coset_slot(
+                &ctx,
+                &monomials,
+                &plan,
+                &s,
+                OpenSlot {
+                    coset: &touched[..1],
+                    active: &active[..1],
+                },
+                log_n + log_lde,
+                &retained_all,
+                per_coset,
+                &mut open,
+                &mut prefix,
+                &mut tiles,
+                &mut nodes,
+                &stream,
+            )
+            .unwrap();
+            stream.synchronize().unwrap();
+        }
+    }
+    println!("sink_gate_profile_probe: done");
+}
+
 // Codex T4.6 repro: an openings slot with cap_log above log_lde (n = 18, v = 2, h = 16, log_lde 3,
 // cap_log 19, Q = 1, paths.len 0) is rejected before any launch, leaving its outputs untouched.
 #[test]
