@@ -1,6 +1,6 @@
 {
   "MergedAndPackedMemoryAndWitness": {
-    "pack_log2": 4,
+    "pack_log2": 3,
     "external_challenges_pow_bits": 20,
     "register_final_state": [
       {
