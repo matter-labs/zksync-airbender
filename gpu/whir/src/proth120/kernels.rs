@@ -689,7 +689,8 @@ pub(crate) fn in_domain_prepare_indexes(
             && leaf_points.len() == count
             && count > 0
             && log_v <= domain_log2
-            && domain_log2 <= 32,
+            && domain_log2 <= 33
+            && domain_log2 - log_v <= 32,
         "Proth120 WHIR: in-domain prepare geometry invalid"
     );
     InDomainPrepareIndexesFunction::default().launch(

@@ -77,8 +77,8 @@ fn gather_shape(
     let shape = leaf_shape(name, log_domain, log_v, columns);
     let cosets = checked_log_size(name, log_lde);
     assert!(
-        shape.log_leaves + log_lde <= 31,
-        "keccak256::{name}: log_coset_leaves + log_lde <= 31"
+        shape.log_leaves + log_lde <= 32,
+        "keccak256::{name}: log_coset_leaves + log_lde <= 32"
     );
     assert!(
         (resident_coset as usize) < cosets,
@@ -92,8 +92,8 @@ fn path_depth(name: &str, log_leaves: u32, log_lde: u32, cap_log: u32) -> usize 
     checked_log_size(name, log_leaves);
     checked_log_size(name, log_lde);
     assert!(
-        log_leaves + log_lde <= 31,
-        "keccak256::{name}: log_coset_leaves + log_lde <= 31"
+        log_leaves + log_lde <= 32,
+        "keccak256::{name}: log_coset_leaves + log_lde <= 32"
     );
     assert!(cap_log <= log_lde, "keccak256::{name}: cap_log <= log_lde");
     (log_leaves + log_lde - cap_log) as usize

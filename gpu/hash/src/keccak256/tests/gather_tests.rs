@@ -406,6 +406,168 @@ fn keccak256_deep_query_gather_parity() {
     }
 }
 
+/// Query indexes at the u32 limit: `log_leaves + log_lde = 32` (2^33 codeword, fold 1), queries up
+/// to `2^32 - 1`. Leaves and partial paths for one resident coset of a 2^30-coset domain; top paths
+/// and tree indexes at the production base shape (2^23 leaves per coset, 512 cosets, cap 8).
+#[test]
+fn keccak256_query_gather_max_u32_indexes() {
+    let stream = CudaStream::default();
+    let mut rng = TestRng::new(0x6d61_7833);
+    let (log_domain, log_v, log_lde, cap_log) = (3, 1, 30, 3);
+    let log_leaves = log_domain - log_v;
+    let leaves = 1usize << log_leaves;
+    let depth = (log_leaves + log_lde - cap_log) as usize;
+    for columns in [2, 13] {
+        for resident in [0u32, 5, (1 << log_lde) - 1] {
+            let coset = random_columns(&mut rng, columns, 1 << log_domain);
+            let tree = cpu_tree(std::slice::from_ref(&coset), columns, log_v, 1);
+            let queries: Vec<u32> = (0..leaves as u32)
+                .flat_map(|leaf| {
+                    [
+                        (leaf << log_lde) | resident,
+                        (leaf << log_lde) | (resident ^ 1),
+                    ]
+                })
+                .collect();
+            assert!(queries.iter().any(|&q| q >= 1 << 31));
+            let d_values = upload(&coset, &stream);
+            let d_queries = upload(&queries, &stream);
+            let value_sentinel = Proth120::new(0x5eed);
+            let values_per_query = columns << log_v;
+            let mut d_out = upload(
+                &vec![value_sentinel; queries.len() * values_per_query],
+                &stream,
+            );
+            gather_leaves_for_queries_single_coset(
+                &d_values, resident, log_lde, log_domain, log_v, &d_queries, &mut d_out, &stream,
+            )
+            .unwrap();
+            let skip_bottom = log_leaves;
+            let retained_count = 2 * (leaves >> skip_bottom) - 1;
+            let scratch_len = partial_coset_tree_scratch_len(log_domain, log_v, skip_bottom);
+            let mut d_retained = upload(&vec![SENTINEL; retained_count], &stream);
+            let mut d_scratch = upload(&vec![SENTINEL; scratch_len], &stream);
+            build_partial_coset_tree_with_scratch(
+                &d_values,
+                log_domain,
+                log_v,
+                columns as u32,
+                skip_bottom,
+                &mut d_retained,
+                &mut d_scratch,
+                &stream,
+            )
+            .unwrap();
+            let mut d_paths = upload(&vec![SENTINEL; queries.len() * depth], &stream);
+            gather_merkle_paths_partial_for_queries_single_coset(
+                &d_values,
+                resident,
+                log_lde,
+                log_domain,
+                log_v,
+                cap_log,
+                skip_bottom,
+                &d_retained,
+                &d_queries,
+                &mut d_paths,
+                &stream,
+            )
+            .unwrap();
+            let values = download(&d_out, value_sentinel, &stream);
+            let paths = download(&d_paths, SENTINEL, &stream);
+            for (i, &query) in queries.iter().enumerate() {
+                let leaf = (query >> log_lde) as usize;
+                let out = &values[i * values_per_query..(i + 1) * values_per_query];
+                let path = &paths[i * depth..(i + 1) * depth];
+                let label = format!("columns={columns} resident={resident} q={query:#x}");
+                if query & ((1 << log_lde) - 1) == resident {
+                    assert_eq!(
+                        out,
+                        expected_values(&coset, leaf, columns, log_v),
+                        "{label}"
+                    );
+                    assert_eq!(
+                        path[..log_leaves as usize],
+                        tree.get_proof(leaf).1,
+                        "{label}"
+                    );
+                } else {
+                    assert!(out.iter().all(|v| *v == value_sentinel), "{label}");
+                    assert!(path.iter().all(|d| *d == SENTINEL), "{label}");
+                }
+                assert!(
+                    path[log_leaves as usize..].iter().all(|d| *d == SENTINEL),
+                    "{label}"
+                );
+            }
+        }
+    }
+
+    let (log_leaves, log_lde) = (23u32, 9u32);
+    let depth = (log_leaves + log_lde - cap_log) as usize;
+    let cosets = 1usize << log_lde;
+    let roots: Vec<Digest> = (0..cosets)
+        .map(|_| std::array::from_fn(|_| rng.next_u64() as u32))
+        .collect();
+    let mut levels = vec![roots.clone()];
+    while levels.last().unwrap().len() > 1 << cap_log {
+        let level = levels.last().unwrap();
+        let next = level
+            .chunks_exact(2)
+            .map(|pair| hash_words(pair[0].into_iter().chain(pair[1])))
+            .collect();
+        levels.push(next);
+    }
+    let nodes_count = cosets - (1 << cap_log);
+    let d_roots = upload(&roots, &stream);
+    let mut d_nodes = upload(&vec![SENTINEL; nodes_count], &stream);
+    build_top_tree(&d_roots, cap_log, &mut d_nodes, &stream).unwrap();
+    let queries = [
+        u32::MAX,
+        1 << 31,
+        (1 << 31) - 1,
+        u32::MAX - (1 << log_lde),
+        0,
+        ((1 << log_leaves) - 1) << log_lde,
+    ];
+    let d_queries = upload(&queries, &stream);
+    let mut d_paths = upload(&vec![SENTINEL; queries.len() * depth], &stream);
+    let mut d_indexes = upload(&vec![0u32; queries.len()], &stream);
+    append_top_paths(
+        &d_roots,
+        &d_nodes,
+        log_lde,
+        cap_log,
+        log_leaves,
+        &d_queries,
+        &mut d_paths,
+        &mut d_indexes,
+        &stream,
+    )
+    .unwrap();
+    let paths = download(&d_paths, SENTINEL, &stream);
+    let indexes = download(&d_indexes, 0, &stream);
+    for (i, &query) in queries.iter().enumerate() {
+        let physical = bitreverse_index((query & ((1 << log_lde) - 1)) as usize, log_lde);
+        let leaf = (query >> log_lde) as usize;
+        assert_eq!(
+            indexes[i] as usize,
+            (physical << log_leaves) + leaf,
+            "q={query:#x}"
+        );
+        let path = &paths[i * depth..(i + 1) * depth];
+        assert!(path[..log_leaves as usize].iter().all(|d| *d == SENTINEL));
+        for layer in 0..(log_lde - cap_log) as usize {
+            assert_eq!(
+                path[log_leaves as usize + layer],
+                levels[layer][(physical >> layer) ^ 1],
+                "q={query:#x} layer={layer}"
+            );
+        }
+    }
+    assert_eq!(indexes[0], u32::MAX);
+}
+
 fn scatter_openings(
     values: impl IntoIterator<Item = (usize, Vec<Proth120>)>,
     log_domain: u32,
@@ -576,7 +738,7 @@ fn keccak256_gather_invalid_shape_rejected() {
         (0, 2, 32, 2, "log_domain <= 31"),
         (0, 2, 8, 9, "log_values_per_leaf <= log_domain"),
         (0, 32, 8, 2, "log_domain <= 31"),
-        (0, 26, 8, 2, "log_coset_leaves + log_lde <= 31"),
+        (0, 27, 8, 2, "log_coset_leaves + log_lde <= 32"),
         (4, 2, 8, 2, "resident_coset < C"),
     ] {
         named_panic(leaves_name, condition, || {
@@ -729,7 +891,7 @@ fn keccak256_gather_invalid_shape_rejected() {
     let append_name = "append_top_paths";
     for (log_lde, cap_log, log_leaves, condition) in [
         (2, 3, 6, "cap_log <= log_lde"),
-        (2, 1, 30, "log_coset_leaves + log_lde <= 31"),
+        (2, 1, 31, "log_coset_leaves + log_lde <= 32"),
         (2, 1, 32, "log_domain <= 31"),
     ] {
         named_panic(append_name, condition, || {

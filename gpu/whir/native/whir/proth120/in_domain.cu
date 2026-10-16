@@ -26,10 +26,10 @@ EXTERN __global__ void ab_pr_whir_in_domain_prepare_indexes_kernel(const u32 *ex
   const u32 gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= count)
     return;
-  const u32 e = domain_log2 == 0 ? 0u : exponents[gid] >> (32 - domain_log2);
+  // exponents are fractions of 2^32; a 2^33 domain embeds them with one more bit
+  const u64 e = domain_log2 == 0 ? 0 : (static_cast<u64>(exponents[gid]) << 32) >> (64 - domain_log2);
   const u32 leaves_log2 = domain_log2 - log_v;
-  const u32 mask = leaves_log2 >= 32 ? 0xffffffffu : (1u << leaves_log2) - 1u;
-  indexes[gid] = e & mask;
+  indexes[gid] = static_cast<u32>(e & ((u64{1} << leaves_log2) - 1));
   pr y = points[gid];
   for (u32 i = 0; i < log_v; i++)
     y = pr::sqr(y);

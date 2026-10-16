@@ -1754,6 +1754,81 @@ fn run_symbolic_group(
     }
 }
 
+/// Leaf indexes and leaf points of symbolic terms on oracle domains up to 2^33: a term drawn on a
+/// 2^q query domain (q <= 32) at index i is g_q^i; on a 2^D domain with 2^log_v values per leaf its
+/// leaf index j and leaf point y must satisfy y = g_(D - log_v)^j.
+#[test]
+fn pr_in_domain_prepare_indexes_up_to_domain_33() {
+    let ctx = context(64, None);
+    let stream = ctx.get_exec_stream();
+    let mut rng = TestRng::new(0x7433);
+    for (domain_log2, log_v) in [(14u32, 2u32), (31, 4), (32, 1), (33, 1), (33, 4)] {
+        let mut exponents = Vec::new();
+        let mut points = Vec::new();
+        for query_log2 in [1u32, 13, domain_log2.min(32)] {
+            for index in [
+                0u64,
+                1,
+                (1 << query_log2) - 1,
+                rng.next_u64() & ((1 << query_log2) - 1),
+            ] {
+                exponents.push((index << (32 - query_log2)) as u32);
+                points.push(
+                    fft::domain_generator_for_size::<PR>(1u64 << query_log2).pow(index as u32),
+                );
+            }
+        }
+        let d_exponents = upload(&exponents, stream);
+        let d_points = upload(&points, stream);
+        let mut d_indexes = upload(&vec![u32::MAX; exponents.len()], stream);
+        let mut d_leaf_points = upload(&vec![PR::ZERO; exponents.len()], stream);
+        super::kernels::in_domain_prepare_indexes(
+            &d_exponents,
+            &d_points,
+            domain_log2,
+            log_v,
+            &mut d_indexes,
+            &mut d_leaf_points,
+            stream,
+        )
+        .unwrap();
+        let indexes = download(&d_indexes, stream);
+        let leaf_points = download(&d_leaf_points, stream);
+        let leaf_generator = fft::domain_generator_for_size::<PR>(1u64 << (domain_log2 - log_v));
+        for (i, (&j, &y)) in indexes.iter().zip(&leaf_points).enumerate() {
+            assert!((j as u64) < 1 << (domain_log2 - log_v));
+            assert_eq!(
+                y,
+                leaf_generator.pow(j),
+                "D={domain_log2} log_v={log_v} term {i}"
+            );
+        }
+    }
+    for (domain_log2, log_v) in [(34, 1), (33, 0)] {
+        let rejected = catch_unwind(AssertUnwindSafe(|| {
+            let one = upload(&[0u32], stream);
+            let point = upload(&[PR::ONE], stream);
+            let mut index = upload(&[0u32], stream);
+            let mut leaf = upload(&[PR::ZERO], stream);
+            super::kernels::in_domain_prepare_indexes(
+                &one,
+                &point,
+                domain_log2,
+                log_v,
+                &mut index,
+                &mut leaf,
+                stream,
+            )
+        }))
+        .unwrap_err();
+        let text = panic_text(rejected);
+        assert!(
+            text.contains("Proth120 WHIR: in-domain prepare geometry invalid"),
+            "D={domain_log2} log_v={log_v}: {text}"
+        );
+    }
+}
+
 #[test]
 fn pr_in_domain_symbolic_matches_dense() {
     let ctx = context(1024, Some(19));
