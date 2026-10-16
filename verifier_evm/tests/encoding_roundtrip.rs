@@ -208,6 +208,7 @@ fn f1_roundtrip_reproduces_v0() {
             .map(|(_, (_, len))| len / params.digest_bytes)
             .sum();
         let profile = (
+            params.pack_log2,
             params.digest_bytes,
             params.explicit_output_log2,
             params.setup_frontier_level,
@@ -226,14 +227,16 @@ fn f1_roundtrip_reproduces_v0() {
 }
 
 /// F1 byte counts of the committed proof from the independent layout model (pair w7ba, C1:
-/// orange/.agents/plans/2026-10-15-w7b-impl/w7ba/f1-layout-codex.md; C12 and C13 for the later rows),
-/// per profile `(digest_bytes, explicit_output_log2, setup_frontier_level)`:
+/// orange/.agents/plans/2026-10-15-w7b-impl/w7ba/f1-layout-codex.md; C12, C13 and C26 for the later rows),
+/// per profile `(pack_log2, digest_bytes, explicit_output_log2, setup_frontier_level)`:
 /// `(gkr_bytes, total bytes, wire digests)`.
-const INDEPENDENT_LAYOUT_COUNTS: &[((usize, usize, usize), (usize, usize, usize))] = &[
-    ((32, 4, 3), (21_523, 88_043, 1_597)),
-    ((32, 4, 9), (21_523, 85_355, 1_513)),
-    ((25, 2, 3), (20_393, 75_790, 1_597)),
-    ((25, 2, 9), (20_393, 73_690, 1_513)),
+const INDEPENDENT_LAYOUT_COUNTS: &[((usize, usize, usize, usize), (usize, usize, usize))] = &[
+    ((4, 32, 4, 3), (21_523, 88_043, 1_597)),
+    ((4, 32, 4, 9), (21_523, 85_355, 1_513)),
+    ((4, 25, 2, 3), (20_393, 75_790, 1_597)),
+    ((4, 25, 2, 9), (20_393, 73_690, 1_513)),
+    ((3, 25, 2, 3), (20_393, 70_066, 1_384)),
+    ((3, 25, 2, 9), (20_393, 68_266, 1_312)),
 ];
 
 #[test]
