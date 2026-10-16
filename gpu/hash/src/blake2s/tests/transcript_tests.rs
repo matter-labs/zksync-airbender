@@ -43,6 +43,7 @@ fn pow() {
     assert!(digest[0].leading_zeros() >= BITS_COUNT);
 }
 
+#[cfg(feature = "deterministic_pow")]
 fn cpu_pow_digest(seed: &[u32; STATE_SIZE], nonce: u64) -> Digest {
     let mut state = Blake2sState::new();
     let mut block = [0; BLOCK_SIZE];
@@ -54,6 +55,7 @@ fn cpu_pow_digest(seed: &[u32; STATE_SIZE], nonce: u64) -> Digest {
     digest
 }
 
+#[cfg(feature = "deterministic_pow")]
 #[test]
 fn pow_counter_reaches_top_of_nonce_domain() {
     let stream = CudaStream::default();

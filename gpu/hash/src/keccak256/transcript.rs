@@ -195,7 +195,8 @@ pub(crate) fn pow_finalize(
     Keccak256PowFinalizeFunction::default().launch(&single_thread(stream), &args)
 }
 
-/// With `deterministic_pow` the result is the minimum valid nonce, otherwise the first one found.
+/// With `deterministic_pow` the counter search returns the minimum valid nonce, otherwise the
+/// grid-stride search returns the first one found; `counter` is one-word scratch.
 pub fn keccak256_pow(
     seed: &mut DeviceSlice<u8>,
     bits: u32,
@@ -222,7 +223,9 @@ pub fn keccak256_pow(
         pow_grid(NAME, u64::MAX, blocks);
         unsafe {
             memory_set_async(nonce.transmute_mut(), 0xff, stream)?;
-            memory_set_async(counter.transmute_mut(), 0, stream)?;
+            if cfg!(feature = "deterministic_pow") {
+                memory_set_async(counter.transmute_mut(), 0, stream)?;
+            }
         }
         let args = Keccak256PowArguments::new(
             seed.as_ptr(),
@@ -255,7 +258,9 @@ pub(super) fn pow_search_bounded(
     pow_shape(NAME, seed, bits, nonce);
     assert_no_overlap(NAME, nonce, counter);
     pow_grid(NAME, max_nonce, blocks);
-    era_cudart::memory::memory_copy_async(nonce, std::slice::from_ref(&max_nonce), stream)?;
+    unsafe {
+        memory_set_async(nonce.transmute_mut(), 0xff, stream)?;
+    }
     era_cudart::memory::memory_copy_async(counter, std::slice::from_ref(&first_chunk), stream)?;
     let args = Keccak256PowArguments::new(
         seed.as_ptr(),

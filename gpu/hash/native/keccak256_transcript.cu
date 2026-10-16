@@ -61,7 +61,10 @@ constexpr bool POW_DETERMINISTIC = false;
 #endif
 
 EXTERN __global__ void ab_keccak256_pow_kernel(const u8 *seed, const u32 bits, const u64 max_nonce, const u32 chunk_steps, u64 *counter, u64 *result) {
-  pow_search<POW_DETERMINISTIC>(seed, bits, max_nonce, chunk_steps, counter, result);
+  if constexpr (POW_DETERMINISTIC)
+    pow_search_counter(seed, bits, max_nonce, chunk_steps, counter, result);
+  else
+    pow_search_grid_stride<false>(seed, bits, max_nonce, result);
 }
 
 EXTERN __global__ void ab_keccak256_pow_finalize_kernel(u8 *seed_io, const u32 bits, const u64 *nonce) {
