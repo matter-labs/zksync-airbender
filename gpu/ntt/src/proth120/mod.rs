@@ -3,6 +3,7 @@ pub mod hypercube;
 pub mod lde;
 pub mod pack;
 pub mod prefix;
+pub mod suffix;
 
 pub use context::{DeviceContext, TwiddleDescriptor};
 pub use hypercube::{
@@ -14,6 +15,7 @@ pub use prefix::{
     dispatch, has_reference_finish, l2_working_set_budget, lde_coset_slot, lde_finish_reference,
     ChunkPlan, CosetSource, Dispatch, DispatchError, ScaleArgs,
 };
+pub use suffix::{launch_suffix_micro, SuffixShape};
 
 use era_cudart::slice::DeviceSlice;
 use gpu_core::primitives::device_structures::DeviceMatrixChunkImpl;
@@ -114,5 +116,7 @@ pub(crate) fn validate_context_log(context: &DeviceContext, log_n: u32) {
 
 #[cfg(test)]
 mod prefix_tests;
+#[cfg(test)]
+mod suffix_tests;
 #[cfg(test)]
 mod tests;

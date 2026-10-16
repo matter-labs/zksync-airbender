@@ -240,6 +240,73 @@ DEVICE_FORCEINLINE void nonfinal(pr_matrix_getter<ld_modifier::cg> gmem_in, pr_m
   }
 }
 
+// One suffix tile of a coset prefix: components g = G * 2^sb + w (tiles G = first_tile..), each the
+// contiguous 2^R-value run at prefix block bitrev_a(g) of every column. A 256-thread block owns
+// 2^(10 - R) components of one column; it runs their first R - V suffix stages (local stage t,
+// region (bitrev_a(g) << t) + z) and stores the 2^V-value leaf groups to the tile as
+// [tile][column][f_lo][w][2^V], f_lo = bitrev_{R - V}(group). grid = (tiles x 2^sb / components per block,
+// columns, cosets); cosets advance the prefix by prefix_coset_stride and the tile by tile_coset_stride.
+struct suffix_tile_args {
+  const pr *prefix;
+  pr *tile;
+  u64 prefix_column_stride;
+  u64 prefix_coset_stride;
+  u64 tile_coset_stride;
+  u32 log_a;
+  u32 skip_bottom;
+  u32 first_tile;
+  u32 columns;
+};
+
+template <int R, int V, class P> DEVICE_FORCEINLINE void suffix_micro(const P &policy, const suffix_tile_args args) {
+  static_assert(R >= 6 && R <= 8 && V >= 1 && V < R);
+  constexpr int STAGES_DONE = R - V;
+  constexpr int LOG_THREADS_PER_COMPONENT = R - 2;
+  constexpr int THREADS_PER_COMPONENT = 1 << LOG_THREADS_PER_COMPONENT;
+  constexpr int LOG_COMPONENTS = 10 - R;
+  __shared__ pr runs[1 << 10];
+  const u32 blocks_per_tile = (1u << args.skip_bottom) >> LOG_COMPONENTS;
+  const u32 tile_in_batch = blockIdx.x / blocks_per_tile;
+  const u32 component = threadIdx.x >> LOG_THREADS_PER_COMPONENT;
+  const u32 lane = threadIdx.x & (THREADS_PER_COMPONENT - 1);
+  const u32 w = ((blockIdx.x % blocks_per_tile) << LOG_COMPONENTS) + component;
+  const u32 g = ((args.first_tile + tile_in_batch) << args.skip_bottom) + w;
+  const u32 b = bitreverse_low_bits(g, args.log_a);
+  const u32 column = blockIdx.y;
+  const pr *run = args.prefix + blockIdx.z * args.prefix_coset_stride + column * args.prefix_column_stride + (static_cast<u64>(b) << R);
+  pr *smem = runs + (component << R);
+#pragma unroll
+  for (int j = 0; j < 4; j++)
+    smem[lane + j * THREADS_PER_COMPONENT] = load_cg(run + lane + j * THREADS_PER_COMPONENT);
+  __syncthreads();
+#pragma unroll
+  for (int t = 0; t < STAGES_DONE; t++) {
+    const int log_half = R - t - 1;
+#pragma unroll
+    for (int j = 0; j < 2; j++) {
+      const u32 pair = lane + j * THREADS_PER_COMPONENT;
+      const u32 z = pair >> log_half;
+      const u32 i0 = (z << (log_half + 1)) + (pair & ((1u << log_half) - 1));
+      const u32 i1 = i0 + (1u << log_half);
+      pr x = smem[i0];
+      pr y = smem[i1];
+      exchange(policy, x, y, (b << t) + z, -1);
+      smem[i0] = x;
+      smem[i1] = y;
+    }
+    __syncthreads();
+  }
+  pr *tile = args.tile + blockIdx.z * args.tile_coset_stride +
+             (static_cast<u64>(tile_in_batch) * args.columns + column) * (static_cast<u64>(1) << (args.skip_bottom + R));
+#pragma unroll
+  for (int j = 0; j < 4; j++) {
+    const u32 i = lane + j * THREADS_PER_COMPONENT;
+    const u32 f_lo = bitreverse_low_bits(i >> V, STAGES_DONE);
+    const pr value = smem[i];
+    tile[((static_cast<u64>(f_lo) << args.skip_bottom) + w) * (1u << V) + (i & ((1u << V) - 1))] = P::LAZY ? proth_canonical(value) : value;
+  }
+}
+
 template <int LOG_THREADS_PER_BLOCK, int STAGES, class P>
 DEVICE_FORCEINLINE void final(pr_matrix_getter<ld_modifier::cg> gmem_in, pr_matrix_setter<st_modifier::cg> gmem_out, const P &policy, const u32 log_n,
                               const u32 start_stage) {
