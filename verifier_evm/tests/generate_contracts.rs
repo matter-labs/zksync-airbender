@@ -378,12 +378,123 @@ fn generator_accepts_trace21_and_rejects_mismatched_config() {
     }
 }
 
+/// The B3 tuple (pack 3, base LDE 128, folds [1, 4, 4, 4, 4]) on the committed layout, until the
+/// canonical `l1_wrap_2p21` config moves to it.
+fn pack3_config(version: &Version) -> prover::gkr::prover_config::ProverConfig {
+    let mut config = version.prover_config();
+    config.lde_factor = 1 << 7;
+    config.base_oracles_values_per_leaf = 1 << 1;
+    let schedule = &mut config.whir_schedule;
+    schedule.base_lde_factor = 1 << 7;
+    schedule.whir_steps_schedule = vec![1, 4, 4, 4, 4];
+    schedule.whir_queries_schedule = vec![12, 11, 7, 6, 5];
+    schedule.whir_steps_lde_factors = vec![1 << 8, 1 << 12, 1 << 16, 1 << 20];
+    schedule.whir_pow_schedule = vec![30, 27, 30, 20, 17];
+    config
+}
+
+/// The v0 and F1 renders at the B3 tuple. The F1 render pins this version's setup cap and
+/// frontier (the pack-3 setup tree is a B4 output), which fixes its shape and size, not its data.
+fn pack3_renders(version: &Version) -> (String, String) {
+    let circuit = version.circuit();
+    let config = pack3_config(version);
+    let pack3 = Version {
+        pack_log2: 3,
+        ..*version
+    };
+    let (external_pow_bits, batching_pow_bits) = derived_pow_bits(&pack3, &circuit, &config);
+    assert_eq!((external_pow_bits, batching_pow_bits), (20, 16));
+    let v0 = verifier_evm::generate_verifier(
+        &circuit,
+        &config,
+        3,
+        external_pow_bits,
+        batching_pow_bits,
+        version.final_pc(),
+        version.inits_teardowns_top_bits,
+        version.digest_bytes,
+        &[],
+    );
+    let (_, proof, _) = version.load();
+    let (level, nodes) = version.setup_frontier().expect("version setup frontier");
+    let params =
+        verifier_evm::encoding::FormatParams::from_config(&config, 3, version.digest_bytes)
+            .with_setup_frontier(level);
+    let f1 = verifier_evm::generate_f1_verifier(
+        &circuit,
+        &config,
+        &params,
+        external_pow_bits,
+        batching_pow_bits,
+        version.final_pc(),
+        version.inits_teardowns_top_bits,
+        &proof.whir_proof.setup_commitment.commitment.cap.cap,
+        Some((&nodes, DEFAULT_FRONTIER_ADDRESS)),
+        &[],
+    );
+    (v0, f1.verifier_sol)
+}
+
+#[test]
+#[ignore = "writes the pack-3 renders to AB_PACK3_OUT for size measurement"]
+fn write_pack3_renders() {
+    let out = std::path::PathBuf::from(std::env::var("AB_PACK3_OUT").expect("set AB_PACK3_OUT"));
+    for version in common::selected_versions() {
+        let (v0, f1) = pack3_renders(&version);
+        for (dir, source) in [("v0", v0), ("f1", f1)] {
+            let path = out
+                .join(version.name)
+                .join(dir)
+                .join("src/GkrWhirVerifier.sol");
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, source).unwrap();
+            eprintln!("wrote {}", path.display());
+        }
+    }
+}
+
+/// Pack 3: 13 memory+witness and 2 setup claims (10 = 8 + 2), the handoff scratch disjoint inside
+/// the absorb region, the five-round schedule and the 2^7 tail, in both formats.
+#[test]
+fn generator_renders_pack3() {
+    for version in common::available_versions("pack 3 render") {
+        let (v0, f1) = pack3_renders(version);
+        for source in [&v0, &f1] {
+            for (name, value) in [
+                ("__TEMPLATE_WHIR_PACK_LOG2", 3),
+                ("__TEMPLATE_WHIR_PACK", 8),
+                ("__TEMPLATE_WHIR_MERGED_MW", 13),
+                ("__TEMPLATE_WHIR_SETUP_MERGED", 2),
+                ("__TEMPLATE_WHIR_GCOUNT", 16),
+                ("__TEMPLATE_WHIR_NZ", 24),
+                ("__TEMPLATE_WHIR_RFIN", 7),
+                ("__TEMPLATE_WHIR_NUM_ROUNDS", 5),
+                ("__TEMPLATE_GKR_HANDOFF_MERGED_OFFSET", 96),
+                ("__TEMPLATE_GKR_HANDOFF_FOLD_OFFSET", 576),
+            ] {
+                assert_eq!(solidity_constant(source, name), value, "{name}");
+            }
+            assert!(solidity_constant(source, "__TEMPLATE_GKR_ABS_BYTES") >= 576 + 8 * 32);
+            for row in [
+                "case 0 { fold := 1 q := 12 pow_bits := 30 qib := 30 vp := 2 cb := 7 }",
+                "case 1 { fold := 4 q := 11 pow_bits := 27 qib := 27 vp := 16 cb := 8 }",
+                "case 2 { fold := 4 q := 7 pow_bits := 30 qib := 27 vp := 16 cb := 12 }",
+                "case 3 { fold := 4 q := 6 pow_bits := 20 qib := 27 vp := 16 cb := 16 }",
+                "default { fold := 4 q := 5 pow_bits := 17 qib := 27 vp := 16 cb := 20 }",
+            ] {
+                assert!(source.contains(row), "missing `{row}`");
+            }
+        }
+        assert!(f1.contains("function horner_128(x)"));
+    }
+}
+
 #[test]
 fn descriptor_rejects_aux_drift_and_excess_gkr_pow() {
     for base in common::available_versions("descriptor aux drift") {
         for version in [
             Version {
-                pack_log2: 3,
+                pack_log2: base.pack_log2 - 1,
                 ..*base
             },
             Version {
@@ -590,13 +701,10 @@ fn f1_generator_rejects_a_profile_off_the_prover_config() {
             generate(&params, setup_cap)
         });
         let mut params = version.f1_params();
-        params.folds.swap(3, 4);
+        params.folds.swap(0, 1);
         common::assert_panics_with("F1 profile differs from the prover config", || {
             generate(&params, setup_cap)
         });
-        let mut params = version.f1_params();
-        params.pack_log2 = 3;
-        assert!(std::panic::catch_unwind(|| generate(&params, setup_cap)).is_err());
         common::assert_panics_with("setup cap size", || {
             generate(&version.f1_params(), &setup_cap[1..])
         });

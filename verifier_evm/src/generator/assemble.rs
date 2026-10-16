@@ -195,6 +195,7 @@ struct Derived {
     num_memwit: usize,
     num_setup: usize,
     merged_mw: usize,
+    setup_merged: usize,
     num_teardown_sets: usize,
     num_outputs: usize,
 }
@@ -225,6 +226,7 @@ impl Derived {
             num_memwit,
             num_setup: circuit.generic_lookup_tables_width,
             merged_mw: num_memwit.div_ceil(1 << pack_log2),
+            setup_merged: circuit.generic_lookup_tables_width.div_ceil(1 << pack_log2),
             num_teardown_sets: circuit.memory_layout.teardown_sets.len(),
             num_outputs,
         }
@@ -524,11 +526,9 @@ fn render(
         wc.merged_mw, d.merged_mw
     );
     assert_eq!(
-        wc.setup_merged,
-        1,
-        "gkr.sol folds the setup columns into ONE merged claim (NUM_SETUP {} > PACK {})",
-        d.num_setup,
-        1usize << pack_log2
+        wc.setup_merged, d.setup_merged,
+        "GKR/WHIR merged setup width disagree ({} vs {})",
+        wc.setup_merged, d.setup_merged
     );
     assert_eq!(
         prover_config.cap_size, prover_config.whir_schedule.cap_size,
@@ -586,6 +586,14 @@ fn render(
         .sub(&n(1))
         .shr(pack_log2 as u128);
     assert_eq!(merged_mw.value as usize, wc.merged_mw);
+    let setup_merged = n(d.num_setup)
+        .add(&n(pack))
+        .sub(&n(1))
+        .shr(pack_log2 as u128);
+    assert_eq!(setup_merged.value as usize, wc.setup_merged);
+    // emit_gkr_mark's ABS scratch: packing coords, then the merged claims, then the fold buffer
+    let handoff_merged_offset = Lit::words(pack_log2 as u128);
+    let handoff_fold_offset = Lit::words((pack_log2 + d.merged_mw + d.setup_merged) as u128);
 
     // Transcript preimage layout: registers ‖ final_pc/ts ‖ top_bits ‖ setup_cap ‖ memory_cap.
     let final_pc_offset = n(super::NUM_REGISTERS).mul(&n(super::PREIMAGE_REGISTER_STRIDE));
@@ -706,6 +714,12 @@ fn render(
         ),
         ("__TEMPLATE_WHIR_NUM_SETUP", n(d.num_setup)),
         ("__TEMPLATE_WHIR_MERGED_MW", merged_mw.clone()),
+        ("__TEMPLATE_WHIR_SETUP_MERGED", setup_merged.clone()),
+        (
+            "__TEMPLATE_GKR_HANDOFF_MERGED_OFFSET",
+            handoff_merged_offset,
+        ),
+        ("__TEMPLATE_GKR_HANDOFF_FOLD_OFFSET", handoff_fold_offset),
         ("__TEMPLATE_WHIR_PACK_LOG2", n(pack_log2)),
         ("__TEMPLATE_WHIR_PACK", pack_lit),
         ("__TEMPLATE_WHIR_BASE_Z_COORDS", n(d.rounds)),
@@ -834,11 +848,6 @@ fn render(
         .fold(n(wc.folds[0]), |acc, &f| acc.add(&n(f)));
     let rfin = n(wc.message_log2).sub(&folds_sum);
     assert_eq!(rfin.value as usize, wc.rfin);
-    let setup_merged = n(d.num_setup)
-        .add(&n(pack))
-        .sub(&n(1))
-        .shr(pack_log2 as u128);
-    assert_eq!(setup_merged.value as usize, wc.setup_merged);
     let gcount = merged_mw.add(&setup_merged).add(&n(1));
     assert_eq!(gcount.value as usize, wc.gcount);
     let nz = n(d.rounds).add(&n(pack_log2));
@@ -918,23 +927,14 @@ fn gkr_heap_regions(
     //  * circuit.yul's per-layer cache array at SEED+64 (GKR_CIRCUIT_CACHE_PTR, max_cache_slots).
     let seed_bytes = preimage_bytes.max(96).max(64 + 32 * stats.max_cache_slots);
     // Absorb scratch: gkr_init's 32 + INIT_BYTES, the circuit layers' claims-batch absorbs, and
-    // emit_gkr_mark's sub-buffers (packing coords at +0, merged claims at +128, whir_fold_pack's
-    // PACK-slot chunk buffer at +384 — the fixed sub-offsets the template spells out).
+    // emit_gkr_mark's sub-buffers (packing coords, merged claims, whir_fold_pack's PACK-slot
+    // chunk buffer — the generated HANDOFF offsets, one word each).
     let pack_log2 = pack.trailing_zeros() as usize;
-    assert!(
-        pack_log2 * 32 <= 128,
-        "emit_gkr_mark keeps the {pack_log2} packing coords in the 128-byte slot before the merged claims"
-    );
-    assert!(
-        128 + (d.merged_mw + 1) * 32 <= 384,
-        "emit_gkr_mark keeps the {} merged claims in [+128, +384) of the absorb scratch",
-        d.merged_mw + 1
-    );
-    let abs_bytes = if 32 + init_bytes.value as usize >= stats.max_absorb_bytes.max(384 + pack * 32)
-    {
+    let handoff_bytes = 32 * (pack_log2 + d.merged_mw + d.setup_merged + pack);
+    let abs_bytes = if 32 + init_bytes.value as usize >= stats.max_absorb_bytes.max(handoff_bytes) {
         Lit::num(32).add(init_bytes) // the seed word + gkr_init's output-evals absorb
     } else {
-        words_for(stats.max_absorb_bytes.max(384 + pack * 32))
+        words_for(stats.max_absorb_bytes.max(handoff_bytes))
     };
     let w = |n: usize| Lit::words(n as u128);
     let mut regions = vec![
