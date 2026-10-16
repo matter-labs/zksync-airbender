@@ -193,9 +193,10 @@ impl Transcript<Proth120, Proth120> for Keccak256Transcript {
         }
 
         // Grind in parallel: thread `t` scans the nonce stripe {t, t+T, t+2T, ...}.
-        // `found` tracks the smallest valid nonce seen so far; a thread stops once
-        // its next candidate can no longer beat it. The result is the global minimum
-        // valid nonce, so it is deterministic and identical to a sequential search.
+        // With `deterministic_pow`, `found` tracks the smallest valid nonce seen so far
+        // and a thread stops once its next candidate can no longer beat it, so the
+        // result is the global minimum valid nonce, identical to a sequential search.
+        // Without it the first published valid nonce wins and every thread stops.
         let num_threads = worker.get_num_cores().max(1) as u64;
         let found = AtomicU64::new(u64::MAX);
         worker.scope(num_threads as usize, |scope, geometry| {
@@ -207,11 +208,24 @@ impl Transcript<Proth120, Proth120> for Keccak256Transcript {
                     for stripe in start..(start + size) {
                         let mut nonce = stripe;
                         loop {
+                            #[cfg(feature = "deterministic_pow")]
                             if nonce >= found.load(Ordering::Relaxed) {
                                 break;
                             }
+                            #[cfg(not(feature = "deterministic_pow"))]
+                            if found.load(Ordering::Relaxed) != u64::MAX {
+                                break;
+                            }
                             if top_bits_are_zero(&pow_digest(seed, nonce), pow_bits) {
+                                #[cfg(feature = "deterministic_pow")]
                                 found.fetch_min(nonce, Ordering::Relaxed);
+                                #[cfg(not(feature = "deterministic_pow"))]
+                                let _ = found.compare_exchange(
+                                    u64::MAX,
+                                    nonce,
+                                    Ordering::Relaxed,
+                                    Ordering::Relaxed,
+                                );
                                 break;
                             }
                             nonce += num_threads;
@@ -362,7 +376,7 @@ mod test {
 
     #[cfg(feature = "pow")]
     #[test]
-    fn parallel_search_pow_finds_min_and_verifies() {
+    fn parallel_search_pow_finds_valid_nonce_and_verifies() {
         let worker = worker::Worker::new_with_num_threads(4);
         let seed0 = Keccak256Seed([0x77u8; 32]);
         for pow_bits in [0u32, 4, 8, 12] {
@@ -379,9 +393,15 @@ mod test {
                 <Keccak256Transcript as Transcript<Proth120, Proth120>>::search_pow(
                     &seed0, pow_bits, &worker,
                 );
+            #[cfg(feature = "deterministic_pow")]
             assert_eq!(
                 nonce, expected,
                 "search_pow must return the minimum nonce (pow={pow_bits})"
+            );
+            #[cfg(not(feature = "deterministic_pow"))]
+            assert!(
+                top_bits_are_zero(&pow_digest(&seed0, nonce), pow_bits) && nonce >= expected,
+                "search_pow must return a valid nonce (pow={pow_bits})"
             );
             assert_eq!(
                 new_seed.0,
