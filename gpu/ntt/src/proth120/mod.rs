@@ -5,7 +5,9 @@ pub mod pack;
 pub mod prefix;
 
 pub use context::{DeviceContext, TwiddleDescriptor};
-pub use hypercube::{hypercube_evals_to_monomials, update_eq_poly, EqSample};
+pub use hypercube::{
+    hypercube_evals_to_monomials, hypercube_evals_to_monomials_chunked, update_eq_poly, EqSample,
+};
 pub use lde::{convert_coset_leaves, convert_gathered_leaves, lde_coset, lde_cosets_batched};
 pub use pack::pack_hypercubes_to_monomials;
 pub use prefix::{

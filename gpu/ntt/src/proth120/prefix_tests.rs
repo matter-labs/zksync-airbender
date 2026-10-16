@@ -1012,3 +1012,43 @@ fn pr_lde_coset_slot_small_l2_parity() {
         }
     }
 }
+
+#[test]
+#[cfg(not(no_cuda))]
+fn pr_hypercube_chunked_matches_plain() {
+    use super::{hypercube_evals_to_monomials, hypercube_evals_to_monomials_chunked};
+    use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
+    let stream = CudaStream::create().unwrap();
+    let mut rng = StdRng::seed_from_u64(0x9120_2301);
+    for (log_n, cols) in [(12, 3), (16, 3), (21, 2), (23, 2), (24, 1), (25, 1)] {
+        let rows = 1usize << log_n;
+        let input: Vec<PR> = (0..rows * cols)
+            .map(|_| PR::new(rng.random::<u128>() % PR::ORDER))
+            .collect();
+        let device_input = upload(&input);
+        let mut reference = DeviceAllocation::<PR>::alloc(rows * cols).unwrap();
+        let mut candidate = DeviceAllocation::<PR>::alloc(rows * cols).unwrap();
+        hypercube_evals_to_monomials(
+            &DeviceMatrix::new(&device_input, rows),
+            &mut DeviceMatrixMut::new(&mut reference, rows),
+            &stream,
+        )
+        .unwrap();
+        let expected = download(&reference, &stream);
+        for l2_mib in [16usize, 40, 128] {
+            hypercube_evals_to_monomials_chunked(
+                &DeviceMatrix::new(&device_input, rows),
+                &mut DeviceMatrixMut::new(&mut candidate, rows),
+                l2_mib * MIB,
+                &stream,
+            )
+            .unwrap();
+            assert!(
+                download(&candidate, &stream) == expected,
+                "chunked Mobius differs at n {log_n} with L2 {l2_mib} MiB"
+            );
+        }
+        assert!(download(&device_input, &stream) == input);
+        println!("pr_hypercube_chunked_matches_plain: n {log_n} x {cols} at L2 16/40/128 MiB, 0 mismatches");
+    }
+}

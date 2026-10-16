@@ -13,8 +13,8 @@ use gpu_hash::keccak256::{
     partial_coset_tree_scratch_len, retained_layer_offset, Digest,
 };
 use gpu_ntt::proth120::{
-    dispatch, has_reference_finish, hypercube_evals_to_monomials, lde_coset, lde_coset_slot,
-    lde_finish_reference, pack_hypercubes_to_monomials, CosetSource, ScaleArgs,
+    dispatch, has_reference_finish, hypercube_evals_to_monomials_chunked, lde_coset,
+    lde_coset_slot, lde_finish_reference, pack_hypercubes_to_monomials, CosetSource, ScaleArgs,
 };
 use gpu_ops::powers::get_powers_by_val;
 use gpu_prover_context::ProverContext;
@@ -255,7 +255,8 @@ impl PackedCosetRecomputeOracle<PR> {
         if raw.allocated_columns() == oracle.packed_columns << pack_log2 {
             let input = DeviceMatrix::new(raw.padded_hypercube_evals(), packed_rows);
             let _r = scoped_range(Some("ab"), "pack.mobius");
-            hypercube_evals_to_monomials(&input, &mut output, stream)?;
+            let l2 = context.get_device_properties().l2_cache_size_bytes;
+            hypercube_evals_to_monomials_chunked(&input, &mut output, l2, stream)?;
         } else {
             let input = DeviceMatrix::new(raw.get_hypercube_evals(), pow2(oracle.log_rows));
             pack_hypercubes_to_monomials(&input, &mut output, pack_log2, stream)?;

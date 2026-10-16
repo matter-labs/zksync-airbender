@@ -10,7 +10,11 @@ use gpu_core::primitives::device_structures::{
 };
 use gpu_core::primitives::field::PR;
 
-use super::lde::{launch_transform, ChunkMap, TransformPass, TransformPolicy};
+use super::lde::{launch_transform, split_table, ChunkMap, TransformPass, TransformPolicy};
+use super::prefix::{
+    chunk_plan, l2_working_set_budget, launch_final_pass, launch_prefix_chunked, MAX_CHUNK_BYTES,
+    MIN_CHUNK_BYTES,
+};
 use super::{validate_disjoint, validate_matrix, validate_slice};
 
 cuda_kernel_signature_arguments_and_function!(
@@ -100,6 +104,64 @@ pub fn hypercube_evals_to_monomials(
         outputs.cols(),
         stream,
     )
+}
+
+// Out of place with the first stage groups of `split_table(log_n)` run as L2-chunked prefix passes
+// (strips sized from half the device L2) and the last group as one final pass in place; shapes
+// without a prefix, or whose strips do not fit, run the plain transform.
+pub fn hypercube_evals_to_monomials_chunked(
+    inputs: &(impl DeviceMatrixChunkImpl<PR> + ?Sized),
+    outputs: &mut (impl DeviceMatrixChunkMutImpl<PR> + ?Sized),
+    l2_cache_size_bytes: usize,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let (log_n, _) = validate_matrix(inputs, 0, 26, "Proth120 hypercube input");
+    let plan = (log_n > 12)
+        .then(|| split_table(log_n))
+        .filter(|splits| splits.len() > 1)
+        .and_then(|splits| {
+            let groups: Vec<(u32, bool)> = splits[..splits.len() - 1]
+                .iter()
+                .map(|&s| (s, false))
+                .collect();
+            let budget = l2_working_set_budget(l2_cache_size_bytes);
+            (MIN_CHUNK_BYTES.ilog2()..=MAX_CHUNK_BYTES.ilog2())
+                .rev()
+                .filter_map(|log_chunk| chunk_plan(log_n, &groups, 1 << log_chunk))
+                .find(|plan| 2 * plan.chunk_bytes() <= budget)
+        });
+    let Some(plan) = plan else {
+        return hypercube_evals_to_monomials(inputs, outputs, stream);
+    };
+    let (_, input_range) = validate_matrix(inputs, 0, 26, "Proth120 hypercube input");
+    let (_, output_range) = validate_matrix(outputs, 0, 26, "Proth120 hypercube output");
+    assert_eq!(
+        inputs.rows(),
+        outputs.rows(),
+        "Proth120 hypercube transform: rows differ"
+    );
+    assert_eq!(
+        inputs.cols(),
+        outputs.cols(),
+        "Proth120 hypercube transform: columns differ"
+    );
+    validate_disjoint(
+        &input_range,
+        &output_range,
+        "Proth120 hypercube transform: input/output overlap",
+    );
+    let cols = outputs.cols();
+    let target = outputs.as_mut_ptr_and_stride();
+    launch_prefix_chunked(
+        &MobiusPolicy,
+        inputs.as_ptr_and_stride(),
+        target,
+        cols,
+        &plan,
+        None,
+        stream,
+    )?;
+    launch_final_pass(&MobiusPolicy, target, log_n, plan.stages(), cols, stream)
 }
 
 pub(crate) fn hypercube_evals_to_monomials_in_place(

@@ -641,32 +641,52 @@ pub fn lde_finish_reference(
     assert_eq!(values.len(), len, "Proth120 prefix: finish length");
     validate_slice(values, "Proth120 prefix finish values");
     validate_context_log(ctx, log_n);
-    let policy = DitPolicy(ctx.descriptor());
+    let target = MutPtrAndStride::new(values.as_mut_ptr(), rows);
+    launch_final_pass(
+        &DitPolicy(ctx.descriptor()),
+        target,
+        log_n,
+        start,
+        cols,
+        stream,
+    )?;
+    naturalize(target, log_n, cols, MAX_COLUMNS_PER_LAUNCH, stream)
+}
+
+// The last `log_n - start` stages (8, 10 or 12) of `cols` columns in place.
+pub(crate) fn launch_final_pass<P: TransformPolicy>(
+    policy: &P,
+    target: MutPtrAndStride<PR>,
+    log_n: u32,
+    start: u32,
+    cols: usize,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let stages = log_n - start;
     let function = policy.function(TransformPass::Final(stages));
     let bytes = size_of::<PR>() << stages;
     if stages >= 10 {
         set_max_dynamic_smem(&function, bytes)?;
     }
-    let target = MutPtrAndStride::new(values.as_mut_ptr(), rows);
-    let source = PtrAndStride::new(target.ptr as *const PR, rows);
+    let source = PtrAndStride::new(target.ptr as *const PR, target.stride);
     for column in (0..cols).step_by(MAX_COLUMNS_PER_LAUNCH) {
         let chunk = (cols - column).min(MAX_COLUMNS_PER_LAUNCH);
-        let offset = column * rows;
+        let offset = column * target.stride;
         let mut config =
             CudaLaunchConfig::basic((1u32 << start, chunk as u32), 1u32 << (stages - 2), stream);
         config.dynamic_smem_bytes = bytes;
         function.launch(
             &config,
             &policy.arguments(
-                PtrAndStride::new(unsafe { source.ptr.add(offset) }, rows),
-                MutPtrAndStride::new(unsafe { target.ptr.add(offset) }, rows),
+                PtrAndStride::new(unsafe { source.ptr.add(offset) }, target.stride),
+                MutPtrAndStride::new(unsafe { target.ptr.add(offset) }, target.stride),
                 log_n,
                 start,
                 ChunkMap::FULL,
             ),
         )?;
     }
-    naturalize(target, log_n, cols, MAX_COLUMNS_PER_LAUNCH, stream)
+    Ok(())
 }
 
 pub fn has_reference_finish(plan: &ChunkPlan) -> bool {
