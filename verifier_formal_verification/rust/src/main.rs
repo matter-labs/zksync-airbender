@@ -4,12 +4,6 @@
 
 mod bb;
 
-/// PoC input convention (Airbender reads input via CSR 0x7c0; we start without CSRs): the input words are the only
-/// .bss, which is otherwise zero (Airbender zero-initialises RAM): a Mersenne31 element `x`, then a BabyBear Ext4
-/// element `y` (4 canonical limbs, `field` crate order).
-#[unsafe(no_mangle)]
-static mut INPUT: [u32; 5] = [0; 5];
-
 /// The Blake2s evaluator (state, message block, byte counter), zero at start like all RAM.
 #[unsafe(no_mangle)]
 static mut BLAKE: blake2s_u32::DelegatedBlake2sState = unsafe { core::mem::zeroed() };
@@ -130,7 +124,9 @@ unsafe extern "C" fn start_rust() -> ! {
 #[inline(never)]
 fn main() -> ! {
     riscv_common::boot_sequence::init();
-    let input = unsafe { core::ptr::read_volatile(&raw const INPUT) };
+    // the input, read from Airbender's non-determinism source (CSR 0x7c0): a Mersenne31 element `x`, then a BabyBear
+    // Ext4 element `y` (4 canonical limbs, `field` crate order)
+    let input: [u32; 5] = core::array::from_fn(|_| riscv_common::csr_read_word());
     let x = input[0];
     let c = u32_combine(x);
     let p = m31_poly_eval(COEFFS.as_ptr(), N as u32, x);

@@ -30,7 +30,9 @@
    Word lemmas are keyed by 32-bit value and shared across functions/programs.
 
 ## Known gaps vs real Airbender (state explicitly)
-- Input via CSR 0x7c0 not modelled yet (PoC reads a RAM word). No delegation CSRs.
+- Input: only the read form of CSR 0x7c0 (`csrrw rd, 0x7c0, x0`); the write form (a no-op in Airbender, unused by
+  the verifier) and csrrs/csrrc/immediate forms have no next state. An exhausted input is modelled as stuck. No
+  delegation CSRs.
 - Airbender halts when PC is unchanged (`j .`); we state `step s = some s`-style fixpoint at the halt address.
 - Modularity with `+relax`: theorems are re-instantiated per layout; reused across relinks are the kind lemmas,
   word lemmas and proof scripts. Option B later: `-relax` + modelled relocations.

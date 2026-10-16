@@ -1,11 +1,13 @@
 import Slop.RV.Start
 import Slop.RV.Main.C
 import Slop.RV.PolyZMod
+import Slop.RV.Input
 import Slop.RV.Halt
 import Human.Theorems
 
-/-! The whole program for either image, from reset, given the code at its addresses: `_start` → `main` (parts A, B,
-C) → the final self-jump. The images instantiate it (`FinalPlain`, `FinalMop`). -/
+/-! The whole program for either image, from reset, given the code at its addresses: `_start` → `main` (`init`, the
+input reads, parts A, B, C) → the final self-jump. The images instantiate it (`FinalPlain`, `FinalMop`). Up to the
+reads, the run is the one with the input empty (`run_lift`): it reads no input, whatever `init` does. -/
 
 namespace RV
 open Spec
@@ -25,15 +27,16 @@ theorem main_run (s : State) (codeM codeI codeEP : List Word) (calleesEP : List 
     (hAb : Ab.toNat % 4 = 0) (hAbr : Ab.toNat + 4 * Code.blake2s_compress.length ≤ 4194304)
     (hAf : Af.toNat % 4 = 0) (hAfr : Af.toNat + 0x78 + 0x84 ≤ 4194304)
     (hlen : codeM.length = 85)
-    (hb0 : codeM.take 12 = Code.main.take 12) (hb1 : (codeM.drop 13).take 8 = (Code.main.drop 13).take 8)
-    (hb2 : (codeM.drop 22).take 5 = (Code.main.drop 22).take 5)
-    (hb3 : (codeM.drop 28).take 7 = (Code.main.drop 28).take 7)
-    (hb4 : (codeM.drop 36).take 32 = (Code.main.drop 36).take 32)
+    (hb0 : codeM.take 12 = Code.main.take 12) (hbR : (codeM.drop 13).take 5 = (Code.main.drop 13).take 5)
+    (hb1 : (codeM.drop 18).take 1 = (Code.main.drop 18).take 1)
+    (hb2 : (codeM.drop 20).take 5 = (Code.main.drop 20).take 5)
+    (hb3 : (codeM.drop 26).take 7 = (Code.main.drop 26).take 7)
+    (hb4 : (codeM.drop 34).take 34 = (Code.main.drop 34).take 34)
     (hb5 : (codeM.drop 69).take 15 = (Code.main.drop 69).take 15)
     (dj0 : decode codeM[12]! = some (.jal 1#5 (Ai - 0x68#32)))
-    (dj1 : decode codeM[21]! = some (.jal 1#5 (Ac - 0x8c#32)))
-    (dj2 : decode codeM[27]! = some (.jal 1#5 (Ap - 0xa4#32)))
-    (dj3 : decode codeM[35]! = some (.jal 1#5 (Aep - 0xc4#32)))
+    (dj1 : decode codeM[19]! = some (.jal 1#5 (Ac - 0x84#32)))
+    (dj2 : decode codeM[25]! = some (.jal 1#5 (Ap - 0x9c#32)))
+    (dj3 : decode codeM[33]! = some (.jal 1#5 (Aep - 0xbc#32)))
     (dj4 : decode codeM[68]! = some (.jal 1#5 (Ab - 0x148#32)))
     (dj5 : decode codeM[84]! = some (.jal 1#5 (Af - 0x188#32)))
     (hpc : s.pc = 0) (cStart : CodeAt s 0 Code.start) (cMain : CodeAt s 0x38#32 codeM)
@@ -46,10 +49,7 @@ theorem main_run (s : State) (codeM codeI codeEP : List Word) (calleesEP : List 
     (cEP : CodeAt s Aep codeEP) (cCal : ∀ c ∈ calleesEP, CodeAt s c.1 c.2)
     (cBl : CodeAt s Ab Code.blake2s_compress)
     (cFin : CodeAt s Af Code.finish_success) (cExt : CodeAt s (Af + 0x78#32) Code.finish_success_extended)
-    (hram : RamZeroExceptInput 0x1401000 20 s)
-    (hx : read s.mem 0x1401000#32 4 = x) (hy0 : read s.mem 0x1401004#32 4 = y0)
-    (hy1 : read s.mem 0x1401008#32 4 = y1) (hy2 : read s.mem 0x140100c#32 4 = y2)
-    (hy3 : read s.mem 0x1401010#32 4 = y3) (hxP : x.toNat ≤ P)
+    (hram : RamZero s) (rest : List Word) (hin : s.input = x :: y0 :: y1 :: y2 :: y3 :: rest) (hxP : x.toNat ≤ P)
     (hy0p : y0.toNat < BabyBearP) (hy1p : y1.toNat < BabyBearP) (hy2p : y2.toNat < BabyBearP)
     (hy3p : y3.toNat < BabyBearP) :
     ∃ m W, run m s = some W ∧ W.pc = Af + 0x78#32 + 0x80#32 ∧
@@ -61,43 +61,58 @@ theorem main_run (s : State) (codeM codeI codeEP : List Word) (calleesEP : List 
       W.getReg 16 = (blake5 #v[x, y0, y1, y2, y3])[0] ∧ W.getReg 17 = (blake5 #v[x, y0, y1, y2, y3])[1] ∧
       (∀ i : Reg, 18 ≤ i.toNat → i.toNat ≤ 25 → W.getReg i = 0) ∧
       (∀ b : Word, b.toNat < ROM_END → W.mem b = s.mem b) := by
-  have rd0 := fun i (h : i < 85) => cMain i (by omega)
-  -- `_start`
-  obtain ⟨m0, S0, hrun0, hpc0, h20, hra0, hm0⟩ := start_run s hpc cStart
-  have hrom0 : ∀ b : Word, b.toNat < ROM_END → S0.mem b = s.mem b := fun b hb =>
-    hm0 b (by simp only [ROM_END] at hb; omega)
-  have rd : ∀ a : Word, 0x1401000 ≤ a.toNat → a.toNat + 4 ≤ 0x1401014 → read S0.mem a 4 = read s.mem a 4 :=
-    fun a h1 h2 => read_congr _ _ _ _ (fun j hj => hm0 _ (by bv_omega))
   have get : ∀ i (h : i < 85), codeM[i]? = some codeM[i]! := fun i h => by
     rw [getElem!_pos codeM i (by omega)]; exact List.getElem?_eq_getElem (by omega)
+  -- `_start` and `init`, with the input empty
+  set s0 := s.withInput [] with hs0
+  obtain ⟨m0, S0, hrun0, hpc0, h20, hra0, hm0⟩ := start_run s0 hpc cStart
+  have hrom0 : ∀ b : Word, b.toNat < ROM_END → S0.mem b = s.mem b := fun b hb =>
+    hm0 b (by simp only [ROM_END] at hb; omega)
+  obtain ⟨mI, S2, hrunI, hpc2, h2S2, hcp2, hrom2⟩ := main_init S0 codeM codeI Ai src hI hIl hAi hAir hsrc hpc0 h20 hra0
+    (codeAt_of_rom cMain (by rw [hlen]; simp only [ROM_END]; decide) hrom0) hlen hb0 _ (get 12 (by decide)) dj0
+    (codeAt_of_rom cInit (by rw [hIl]; simp only [ROM_END]; omega) hrom0)
+    (codeAt_of_rom cMemcpy (by rw [memcpy_length]; simp only [ROM_END]; bv_omega) hrom0)
+  obtain ⟨-, hlift⟩ := run_lift _ s0 S2 (run_trans hrun0 hrunI) rfl
+  have hrunP := hlift s.input
+  rw [show s0.withInput s.input = s from rfl] at hrunP
+  set R := S2.withInput s.input with hR
+  have hromR : ∀ b : Word, b.toNat < ROM_END → R.mem b = s.mem b := fun b hb => by
+    rw [hR, withInput_mem, hrom2 b hb, hrom0 b hb]
+  -- the input reads
+  obtain ⟨R', hrunR, hpcR', hmR', -, h19R, h21R, h22R, h23R, h24R, hregR⟩ := main_reads R codeM x y0 y1 y2 y3 rest
+    (by rw [hR, withInput_pc, hpc2]) (codeAt_of_rom cMain (by rw [hlen]; simp only [ROM_END]; decide) hromR) hlen hbR
+    (by rw [hR, withInput_input, hin])
+  have hromR' : ∀ b : Word, b.toNat < ROM_END → R'.mem b = s.mem b := fun b hb => by rw [hmR', hromR b hb]
   -- `main`, part A
-  obtain ⟨mA, T, hrunA, hpcT, h2T, h9T, hpT, hpT', h19T, h20T, h21T, h22T, h23T, h24T, htabT, hhiT, hromT⟩ :=
-    main_a S0 codeM codeI Ai Ac Ap src x y0 y1 y2 y3 hI hIl hAi hAir hAc hAc4 hAp hAp4 hApr hsrc hpc0 h20 hra0
-      (codeAt_of_rom cMain (by rw [hlen]; simp only [ROM_END]; decide) hrom0) hlen hb0 hb1 hb2
-      _ _ _ (get 12 (by decide)) (get 21 (by decide)) (get 27 (by decide)) dj0 dj1 dj2
-      (codeAt_of_rom cInit (by rw [hIl]; simp only [ROM_END]; omega) hrom0)
-      (codeAt_of_rom cMemcpy (by rw [memcpy_length]; simp only [ROM_END]; bv_omega) hrom0)
-      (codeAt_of_rom cComb (by simp only [Code.combine, List.length_cons, List.length_nil, ROM_END]; bv_omega) hrom0)
-      (codeAt_of_rom cInc (by simp only [Code.inc, List.length_cons, List.length_nil, ROM_END]; bv_omega) hrom0)
-      (codeAt_of_rom cDbl (by simp only [Code.double, List.length_cons, List.length_nil, ROM_END]; bv_omega) hrom0)
-      (codeAt_of_rom cPoly (by simp only [ROM_END]; omega) hrom0)
-      (codeAt_of_rom cMul (by simp only [Code.mul_mod, List.length_cons, List.length_nil, ROM_END]; bv_omega) hrom0)
-      (codeAt_of_rom cAdd (by simp only [Code.add_mod, List.length_cons, List.length_nil, ROM_END]; bv_omega) hrom0)
+  obtain ⟨mA, T, hrunA, hpcT, h2T, h9T, hpT, hpT', hcsT, htabT, hhiT, hromT⟩ :=
+    main_a S0 R' codeM Ac Ap src x hAc hAc4 hAp hAp4 hApr hsrc hpcR'
+      (by rw [hregR _ (by decide) (by decide) (by decide) (by decide) (by decide), hR, withInput_getReg, h2S2]) h19R
+      (codeAt_of_rom cMain (by rw [hlen]; simp only [ROM_END]; decide) hromR') hlen hb1 hb2
+      _ _ (get 19 (by decide)) (get 25 (by decide)) dj1 dj2
+      (codeAt_of_rom cComb (by simp only [Code.combine, List.length_cons, List.length_nil, ROM_END]; bv_omega) hromR')
+      (codeAt_of_rom cInc (by simp only [Code.inc, List.length_cons, List.length_nil, ROM_END]; bv_omega) hromR')
+      (codeAt_of_rom cDbl (by simp only [Code.double, List.length_cons, List.length_nil, ROM_END]; bv_omega) hromR')
+      (codeAt_of_rom cPoly (by simp only [ROM_END]; omega) hromR')
+      (codeAt_of_rom cMul (by simp only [Code.mul_mod, List.length_cons, List.length_nil, ROM_END]; bv_omega) hromR')
+      (codeAt_of_rom cAdd (by simp only [Code.add_mod, List.length_cons, List.length_nil, ROM_END]; bv_omega) hromR')
       (codeAt_of_rom cCoef (by rw [coeffs_length]; simp only [ROM_END]; omega) hrom0)
       (codeAt_of_rom cCoef4 (by rw [coeffs4_length]; simp only [ROM_END]; bv_omega) hrom0)
-      ((rd _ (by decide) (by decide)).trans hx) ((rd _ (by decide) (by decide)).trans hy0)
-      ((rd _ (by decide) (by decide)).trans hy1) ((rd _ (by decide) (by decide)).trans hy2)
-      ((rd _ (by decide) (by decide)).trans hy3) hxP
-  have hromT' : ∀ b : Word, b.toNat < ROM_END → T.mem b = s.mem b := fun b hb => (hromT b hb).trans (hrom0 b hb)
+      (fun a ha => by rw [hmR', hR, withInput_mem, hcp2 a ha]) hxP
+  have hromT' : ∀ b : Word, b.toNat < ROM_END → T.mem b = s.mem b := fun b hb => (hromT b hb).trans (hromR' b hb)
+  have kT : ∀ r : Reg, r = 19#5 ∨ r = 21#5 ∨ r = 22#5 ∨ r = 23#5 ∨ r = 24#5 → T.getReg r = R'.getReg r := fun r hr => by
+    apply hcsT r (by rcases hr with rfl|rfl|rfl|rfl|rfl <;> rv_callee_saved)
+    rcases hr with rfl|rfl|rfl|rfl|rfl <;> decide
   -- `main`, part B
   obtain ⟨mB, U, hrunB, hpcU, h2U, h9U, h18U, h20U, hcanU, hvalU, hblU, hromU⟩ :=
     main_b T codeM Aep Ab codeEP calleesEP FEP hEP hEPr hEP4 hFEP hcalr hAb hAbr (3#32 * x + 1#32) (T.getReg 10#5)
-      x y0 y1 y2 y3 hpcT h2T h9T rfl h19T h20T h21T h22T h23T h24T htabT
+      x y0 y1 y2 y3 hpcT h2T h9T rfl ((kT _ (by decide)).trans h19R) ((kT _ (by decide)).trans h21R)
+      ((kT _ (by decide)).trans h22R) ((kT _ (by decide)).trans h23R) ((kT _ (by decide)).trans h24R) htabT
       (fun a h1 h2 => by
-        rw [hhiT a (by omega) (by omega), hm0 a (by right; omega)]
-        exact hram a (by simp only [ROM_END]; omega) (by simp only [RAM_END]; omega) (by right; omega))
+        rw [hhiT a (by omega), hmR', hR, withInput_mem, hcp2 a (by omega), blockCopy_outside _ _ _ _ _ (by bv_omega),
+          hm0 a (by right; omega)]
+        exact hram a (by simp only [ROM_END]; omega) (by simp only [RAM_END]; omega))
       (codeAt_of_rom cMain (by rw [hlen]; simp only [ROM_END]; decide) hromT') hlen hb3 hb4
-      _ _ (get 35 (by decide)) (get 68 (by decide)) dj3 dj4
+      _ _ (get 33 (by decide)) (get 68 (by decide)) dj3 dj4
       (codeAt_of_rom cEP (by simp only [ROM_END]; omega) hromT')
       (fun c hc => codeAt_of_rom (cCal c hc) (by have := hcalr c hc; simp only [ROM_END]; omega) hromT')
       (codeAt_of_rom cBl (by simp only [ROM_END]; omega) hromT') hy0p hy1p hy2p hy3p
@@ -113,7 +128,8 @@ theorem main_run (s : State) (codeM codeI codeEP : List Word) (calleesEP : List 
       (codeAt_of_rom cFin (by rw [lf]; simp only [ROM_END]; omega) hromU')
       (codeAt_of_rom cExt (by rw [le]; simp only [ROM_END]; bv_omega) hromU')
   have hW : ∀ b : Word, b.toNat < ROM_END → W.mem b = s.mem b := fun b hb => (hromW b hb).trans (hromU' b hb)
-  refine ⟨_, W, run_trans (run_trans (run_trans hrun0 hrunA) hrunB) hrunC, hpcW, ?_, ?_, ?_, ?_, ?_, ?_, ?_, rz, hW⟩
+  refine ⟨_, W, run_trans (run_trans (run_trans (run_trans hrunP hrunR) hrunA) hrunB) hrunC, hpcW, ?_, ?_, ?_, ?_, ?_,
+    ?_, ?_, rz, hW⟩
   · rw [r10]; rfl
   · rw [r11]; exact hpT
   · rw [r11, ← polyW_zmod, ZMod.natCast_eq_natCast_iff']; exact hpT'

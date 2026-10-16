@@ -7,6 +7,24 @@ commit check `git diff --cached --stat` and that no staged file is over ~200 KB.
 Moved here from an earlier prototype repo (as a snapshot; its history, which contains the large Sail model, was
 NOT imported).
 
+=== POC 4: INPUT VIA CSR 0x7C0 (2026-10-16) ===
+- Airbender (riscv_transpiler ir/simple_instruction_set.rs, replayer non_determinism.rs): CSR 0x7c0 with rs1 = x0
+  reads the next oracle word into rd (rd = x0 rejected); with rd = x0 it is a write, a NOP in circuits. Only the read
+  is modelled (the verifier never writes).
+- Spec: RV.State.input : List Word (the words not yet read); Instr.inputRead rd (csrrw rd, 0x7c0, x0; decode row
+  0x73/funct3 1/csr 0x7c0/rs1 0/rd != 0); exec pops the head, no next state when the input is used up. Sail side:
+  Airbender.Machine = Sail state + input list; execute overrides CSRReg(0x7c0, x0, rd, CSRRW) (Sail would trap);
+  DecInput (Sail decodes the word to CSRReg), StepInput, step_is_airbender re-proven; Config: read and empty-input
+  checks.
+- Why a list (not an endless stream + position): a run that succeeds with the input empty reads nothing and runs the
+  same with any input (RV/Input.lean: run_lift). So no contract (Returns, ...) mentions the input; main's prefix
+  (_start, init) runs on the empty-input copy of the start state and is lifted. (Threading "reads no input" through
+  every contract was tried first and reverted: ~30 files.)
+- Guest: main reads x, y0..y3 with riscv_common::csr_read_word (INPUT static gone; BLAKE moves to 0x1401000).
+  Final statements (both machines): RAM all zero, start.input = x :: y0 :: y1 :: y2 :: y3 :: rest.
+- main: main_init (prologue + init), main_reads (the five csrrw: single steps, step_read), main_a/b/c on the new
+  block layout; Run lifts the prefix. verify.sh green, std axioms everywhere.
+
 === POC 3: BLAKE2S (2026-10-16) ===
 - Guest: the verifier's own blake2s_u32 (Blake2RoundFunctionEvaluator, baseline = plain Rust on riscv32 without
   delegation features, so the same bytes in both images), round_function_reduced_rounds (7 rounds), in a .bss

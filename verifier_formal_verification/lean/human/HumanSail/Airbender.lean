@@ -153,16 +153,10 @@ noncomputable def execute (next : BitVec 32) (instr : instruction) : SailM Execu
       | none => SailRV32.Functions.execute instr
   | _ => SailRV32.Functions.execute instr
 
-/-- The Airbender machine: Sail's state, plus the input (CSR 0x7c0) and how many of its words have been read. -/
+/-- The Airbender machine: Sail's state, plus the input (CSR 0x7c0): the words not yet read. -/
 structure Machine where
-  sail     : SailState
-  input    : Nat → BitVec 32
-  inputPos : Nat
-
-/-- Whether an instruction reads an input word. -/
-def readsInput : RV.Instr → Bool
-  | .inputRead _ => true
-  | _ => false
+  sail  : SailState
+  input : List (BitVec 32)
 
 /-- One instruction, the way Sail's own `run_hart_active` + `try_step` run a 32-bit instruction: fetch, decode,
 `nextPC := PC + 4`, execute, `PC := nextPC`. Gives whether it read an input word; `none`: no step (a fetch fault,
@@ -175,12 +169,13 @@ noncomputable def sailStep (next : BitVec 32) : SailM (Option Bool) := do
   if (← readReg Register.nextPC).toNat % 4 ≠ 0 then pure none  -- Airbender: jump targets 4-byte aligned
   else                                                         --   (no compressed instructions)
     tick_pc ()
-    pure (some (readsInput instr))
+    pure (some instr.readsInput)
 
-/-- One step of the machine. -/
+/-- One step of the machine (no next state for an input read once the input is used up). -/
 noncomputable def step (m : Machine) : Option Machine :=
-  match runSail (sailStep (m.input m.inputPos)) m.sail with
-  | .ok (some read) σ' => some { m with sail := σ', inputPos := if read then m.inputPos + 1 else m.inputPos }
-  | _ => none
+  match runSail (sailStep (m.input.headD 0)) m.sail, m.input with
+  | .ok (some false) σ', input     => some ⟨σ', input⟩
+  | .ok (some true)  σ', _ :: rest => some ⟨σ', rest⟩
+  | _, _ => none
 
 end Airbender

@@ -22,40 +22,30 @@ theorem run_agree : ∀ (n : Nat) (s s' : RV.State) (σ : Airbender.Machine), Ai
     exact ⟨σ', by simp only [Airbender.run, hσ1, Option.bind_some, hσ'], h'⟩
 
 /-- Our view of an Airbender state. -/
-noncomputable def ofSail (σ : SailState) (input : Nat → RV.Word) : RV.State :=
+noncomputable def ofSail (σ : SailState) (input : List RV.Word) : RV.State :=
   { pc := σ.regs .PC, regFile := fun i => Airbender.getReg σ i, mem := fun a => σ.mem a.toNat, input }
 
-theorem agree_ofSail (σ : SailState) (input : Nat → RV.Word) (hs : Airbender.Configured σ) :
-    Airbender.Agree (ofSail σ input) ⟨σ, input, 0⟩ := by
-  refine ⟨⟨hs, rfl, ?_, fun _ => rfl⟩, rfl, rfl⟩
+theorem agree_ofSail (σ : SailState) (input : List RV.Word) (hs : Airbender.Configured σ) :
+    Airbender.Agree (ofSail σ input) ⟨σ, input⟩ := by
+  refine ⟨⟨hs, rfl, ?_, fun _ => rfl⟩, rfl⟩
   intro i
   simp only [RV.State.getReg, ofSail]
   split_ifs with h
   · subst h; rw [reg_eq, xget_zero]
   · rfl
 
-theorem read_ofSail (σ : SailState) (input) (a : Nat) (ha : a + 4 ≤ RV.ROM_END ∨ a + 4 ≤ RV.RAM_END) :
-    RV.read (ofSail σ input).mem (BitVec.ofNat 32 a) 4 = readBytes σ.mem a 4 := by
-  have e : (BitVec.ofNat 32 a).toNat = a := by
-    simp only [BitVec.toNat_ofNat]; apply Nat.mod_eq_of_lt; simp only [RV.ROM_END, RV.RAM_END] at *; omega
-  rw [read_eq4 σ.mem (ofSail σ input).mem (fun _ => rfl) _ (by rw [e]; simp only [RV.ROM_END, RV.RAM_END] at *; omega),
-    BitVec.setWidth_eq, e]
-
 /-- The final theorem on our spec gives it on the Airbender machine, for any image. -/
-theorem program_correct_of (bytes : Array (BitVec 8)) (INPUT halt : Nat) (hb : bytes.size < 2 ^ 32)
-    (hin : INPUT + 20 ≤ RV.RAM_END) (h : RV.ProgramCorrectOf bytes INPUT halt) :
-    Airbender.ProgramCorrectOf bytes INPUT halt := by
-  intro σ input x y0 y1 y2 y3 hs hpc himg hram hx hxP hy0 hy1 hy2 hy3 hy0p hy1p hy2p hy3p
-  have hA := agree_ofSail σ input hs
-  have himg' : RV.ImageLoaded bytes (ofSail σ input) := by
+theorem program_correct_of (bytes : Array (BitVec 8)) (halt : Nat) (hb : bytes.size < 2 ^ 32)
+    (h : RV.ProgramCorrectOf bytes halt) : Airbender.ProgramCorrectOf bytes halt := by
+  intro σ x y0 y1 y2 y3 rest hs hpc himg hram hxP hy0p hy1p hy2p hy3p
+  have hA := agree_ofSail σ (x :: y0 :: y1 :: y2 :: y3 :: rest) hs
+  have himg' : RV.ImageLoaded bytes (ofSail σ (x :: y0 :: y1 :: y2 :: y3 :: rest)) := by
     intro i hi
     show σ.mem (BitVec.ofNat 32 i).toNat = _
     rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)]; exact himg i hi
-  have hram' : RV.RamZeroExceptInput INPUT 20 (ofSail σ input) := fun addr h1 h2 h3 => hram addr.toNat h1 h2 h3
-  obtain ⟨n, s', hr, hpc', h10, h11a, h11b, hlt, hlimbs, h16, h17, hz, hk⟩ := h (ofSail σ input) x y0 y1 y2 y3 hpc himg' hram'
-    ((read_ofSail σ input _ (by omega)).trans hx) hxP ((read_ofSail σ input _ (by omega)).trans hy0)
-    ((read_ofSail σ input _ (by omega)).trans hy1) ((read_ofSail σ input _ (by omega)).trans hy2)
-    ((read_ofSail σ input _ (by omega)).trans hy3) hy0p hy1p hy2p hy3p
+  have hram' : RV.RamZero (ofSail σ (x :: y0 :: y1 :: y2 :: y3 :: rest)) := fun addr h1 h2 => hram addr.toNat h1 h2
+  obtain ⟨n, s', hr, hpc', h10, h11a, h11b, hlt, hlimbs, h16, h17, hz, hk⟩ := h _ x y0 y1 y2 y3 rest hpc himg'
+    hram' rfl hxP hy0p hy1p hy2p hy3p
   obtain ⟨σ', hσ', hA'⟩ := run_agree n _ s' _ hA hr
   have hreg : ∀ i, Airbender.getReg σ'.sail i = s'.getReg i := hA'.1.2.2.1
   refine ⟨n, σ', hσ', hA'.1.2.1.trans hpc', (hreg 10).trans h10, ?_, ?_, ?_, ?_, (hreg 16).trans h16,
@@ -74,10 +64,10 @@ theorem program_correct_of (bytes : Array (BitVec 8)) (INPUT halt : Nat) (hb : b
 
 /-- `Airbender.ProgramCorrect`: the plain-Rust image on the Airbender machine. -/
 theorem program_correct_airbender : Airbender.ProgramCorrect :=
-  program_correct_of _ _ _ (by decide +kernel) (by decide) RV.program_correct
+  program_correct_of _ _ (by decide +kernel) RV.program_correct
 
 /-- `Airbender.ProgramCorrectMop`: the field-opcode image on the Airbender machine. -/
 theorem program_correct_airbender_mop : Airbender.ProgramCorrectMop :=
-  program_correct_of _ _ _ (by decide +kernel) (by decide) RV.program_correct_mop
+  program_correct_of _ _ (by decide +kernel) RV.program_correct_mop
 
 end Slop.Equiv

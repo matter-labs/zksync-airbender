@@ -39,68 +39,68 @@ Disassembly of section .text:
       60:      	sw	s8, 0x38(sp)
       64:      	addi	s0, sp, 0x60
       68:      	jal	ra, 0x23a8 <_RNvNtCscPuhoLg7gFk_12riscv_common13boot_sequence4init>
-      6c:      	lui	s4, 0x1401
-      70:      	addi	s4, s4, 0x0
-      74:      	lw	s5, 0x10(s4)
-      78:      	lw	s6, 0xc(s4)
-      7c:      	lw	s7, 0x8(s4)
-      80:      	lw	s8, 0x4(s4)
-      84:      	lw	s3, 0x0(s4)
-      88:      	addi	a0, s3, 0x0
-      8c:      	jal	ra, 0x2174 <u32_combine>
-      90:      	addi	s1, a0, 0x0
-      94:      	lui	a0, 0x1400
-      98:      	addi	a0, a0, 0x0
-      9c:      	addi	a1, zero, 0x64
-      a0:      	addi	a2, s3, 0x0
-      a4:      	jal	ra, 0x20f8 <m31_poly_eval>
-      a8:      	addi	s2, a0, 0x0
-      ac:      	sw	s8, 0x18(sp)
-      b0:      	sw	s7, 0x1c(sp)
-      b4:      	sw	s6, 0x20(sp)
-      b8:      	sw	s5, 0x24(sp)
-      bc:      	addi	a0, sp, 0x8
-      c0:      	addi	a1, sp, 0x18
-      c4:      	jal	ra, 0x1e58 <ext4_poly>
+      6c:      	csrrw	s3, 0x7c0, zero
+      70:      	csrrw	s5, 0x7c0, zero
+      74:      	csrrw	s6, 0x7c0, zero
+      78:      	csrrw	s7, 0x7c0, zero
+      7c:      	csrrw	s8, 0x7c0, zero
+      80:      	addi	a0, s3, 0x0
+      84:      	jal	ra, 0x2174 <u32_combine>
+      88:      	addi	s1, a0, 0x0
+      8c:      	lui	a0, 0x1400
+      90:      	addi	a0, a0, 0x0
+      94:      	addi	a1, zero, 0x64
+      98:      	addi	a2, s3, 0x0
+      9c:      	jal	ra, 0x20f8 <m31_poly_eval>
+      a0:      	addi	s2, a0, 0x0
+      a4:      	sw	s5, 0x18(sp)
+      a8:      	sw	s6, 0x1c(sp)
+      ac:      	sw	s7, 0x20(sp)
+      b0:      	sw	s8, 0x24(sp)
+      b4:      	addi	a0, sp, 0x8
+      b8:      	addi	a1, sp, 0x18
+      bc:      	jal	ra, 0x1e58 <ext4_poly>
+      c0:      	lui	s4, 0x1401
+      c4:      	addi	s4, s4, 0x0
       c8:      	lui	a0, 0x6b08e
       cc:      	lui	a1, 0xbb67b
       d0:      	addi	a0, a0, 0x647
       d4:      	addi	a1, a1, -0x17b
       d8:      	lui	a2, 0x3c6ef
-      dc:      	lui	a3, 0xa54ff
-      e0:      	addi	a2, a2, 0x372
+      dc:      	addi	a2, a2, 0x372
+      e0:      	lui	a3, 0xa54ff
       e4:      	addi	a3, a3, 0x53a
-      e8:      	sw	a0, 0x80(s4)
-      ec:      	sw	a1, 0x84(s4)
-      f0:      	sw	a2, 0x88(s4)
-      f4:      	sw	a3, 0x8c(s4)
+      e8:      	sw	a0, 0x0(s4)
+      ec:      	sw	a1, 0x4(s4)
+      f0:      	sw	a2, 0x8(s4)
+      f4:      	sw	a3, 0xc(s4)
       f8:      	lui	a0, 0x510e5
-      fc:      	lui	a1, 0x9b057
-     100:      	addi	a0, a0, 0x27f
+      fc:      	addi	a0, a0, 0x27f
+     100:      	lui	a1, 0x9b057
      104:      	addi	a1, a1, -0x774
      108:      	lui	a2, 0x1f83e
-     10c:      	lui	a3, 0x5be0d
-     110:      	addi	a2, a2, -0x655
+     10c:      	addi	a2, a2, -0x655
+     110:      	lui	a3, 0x5be0d
      114:      	addi	a3, a3, -0x2e7
-     118:      	sw	a0, 0x90(s4)
-     11c:      	sw	a1, 0x94(s4)
-     120:      	sw	a2, 0x98(s4)
-     124:      	sw	a3, 0x9c(s4)
-     128:      	addi	a0, s4, 0x80
-     12c:      	sw	s3, 0xc0(s4)
-     130:      	sw	s8, 0xc4(s4)
-     134:      	sw	s7, 0xc8(s4)
-     138:      	sw	s6, 0xcc(s4)
-     13c:      	sw	s5, 0xd0(s4)
-     140:      	addi	a1, zero, 0x14
-     144:      	addi	a2, zero, 0x1
+     118:      	sw	a0, 0x10(s4)
+     11c:      	sw	a1, 0x14(s4)
+     120:      	sw	a2, 0x18(s4)
+     124:      	sw	a3, 0x1c(s4)
+     128:      	sw	s3, 0x40(s4)
+     12c:      	sw	s5, 0x44(s4)
+     130:      	sw	s6, 0x48(s4)
+     134:      	sw	s7, 0x4c(s4)
+     138:      	sw	s8, 0x50(s4)
+     13c:      	addi	a1, zero, 0x14
+     140:      	addi	a2, zero, 0x1
+     144:      	addi	a0, s4, 0x0
      148:      	jal	ra, 0x18c <blake2s_compress>
      14c:      	lw	a0, 0x8(sp)
      150:      	lw	a1, 0xc(sp)
      154:      	lw	a2, 0x10(sp)
      158:      	lw	a3, 0x14(sp)
-     15c:      	lw	a4, 0x80(s4)
-     160:      	lw	a5, 0x84(s4)
+     15c:      	lw	a4, 0x0(s4)
+     160:      	lw	a5, 0x4(s4)
      164:      	sw	s1, 0x18(sp)
      168:      	sw	s2, 0x1c(sp)
      16c:      	sw	a0, 0x20(sp)

@@ -32,18 +32,23 @@ noncomputable def stepSail (next : BitVec 32) (σ : SailState) : Option (SailSta
   | .ok (some r) σ' => some (σ', r)
   | _ => none
 
-theorem step_eq (m : Airbender.Machine) : Airbender.step m =
-    (stepSail (m.input m.inputPos) m.sail).map fun p =>
-      { m with sail := p.1, inputPos := if p.2 then m.inputPos + 1 else m.inputPos } := by
-  unfold Airbender.step stepSail
-  rcases runSail (Airbender.sailStep (m.input m.inputPos)) m.sail with ⟨_ | r, σ'⟩ | ⟨e, σ'⟩ <;> rfl
+theorem step_eq (m : Airbender.Machine) (σ' : SailState) (r : Bool)
+    (h : stepSail (m.input.headD 0) m.sail = some (σ', r)) :
+    Airbender.step m = if r then (match m.input with | _ :: rest => some ⟨σ', rest⟩ | [] => none)
+      else some ⟨σ', m.input⟩ := by
+  unfold stepSail at h
+  unfold Airbender.step
+  rcases e : runSail (Airbender.sailStep (m.input.headD 0)) m.sail with ⟨_ | r', σ''⟩ | ⟨_, _⟩ <;> rw [e] at h <;>
+    simp only [reduceCtorEq, Option.some.injEq, Prod.mk.injEq] at h
+  obtain ⟨rfl, rfl⟩ := h
+  cases r' <;> rcases m.input with _ | ⟨w, rest⟩ <;> rfl
 
 theorem step_of_exec (σ : SailState) (hs : Airbender.Configured σ) (ha : (σ.regs .PC).toNat % 4 = 0)
     (h2 : (σ.regs .PC).toNat + 4 ≤ Airbender.RAM_START) (i : RV.Instr)
     (hdec : RV.decode (readBytes σ.mem (σ.regs .PC).toNat 4) = some i) (σ2 : SailState)
     (hexec : runSail (Airbender.execute next (Airbender.toSail i)) (σ.set .nextPC (σ.regs .PC + 4)) = .ok RETIRE_SUCCESS σ2)
     (hal : (σ2.regs .nextPC).toNat % 4 = 0) :
-    stepSail next σ = some (σ2.set .PC (σ2.regs .nextPC), Airbender.readsInput i) := by
+    stepSail next σ = some (σ2.set .PC (σ2.regs .nextPC), RV.Instr.readsInput i) := by
   have hf := fetch_rom σ hs ha h2 (decode_not_rvc hdec)
   unfold stepSail Airbender.sailStep
   simp only [Slop.runF_bind, hf, hdec, Slop.runF_writeReg]

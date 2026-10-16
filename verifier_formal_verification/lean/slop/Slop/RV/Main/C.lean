@@ -11,7 +11,7 @@ set_option maxHeartbeats 0
 
 namespace MainC
 abbrev rF : Region := ⟨2, 0, 96, 16⟩
-abbrev rBl : Region := ⟨20, 128, 136, 4⟩
+abbrev rBl : Region := ⟨20, 0, 8, 4⟩
 end MainC
 open MainC
 
@@ -21,7 +21,7 @@ theorem main_c (U : State) (codeM : List Word) (Af : Word) (c p e0 e1 e2 e3 d0 d
     (h20 : U.getReg 20#5 = 0x1401000#32)
     (he0 : read U.mem 0x13fff98#32 4 = e0) (he1 : read U.mem 0x13fff9c#32 4 = e1)
     (he2 : read U.mem 0x13fffa0#32 4 = e2) (he3 : read U.mem 0x13fffa4#32 4 = e3)
-    (hd0 : read U.mem 0x1401080#32 4 = d0) (hd1 : read U.mem 0x1401084#32 4 = d1)
+    (hd0 : read U.mem 0x1401000#32 4 = d0) (hd1 : read U.mem 0x1401004#32 4 = d1)
     (hmain : CodeAt U 0x38#32 codeM) (hlen : codeM.length = 85)
     (hb5 : (codeM.drop 69).take 15 = (Code.main.drop 69).take 15)
     (j5 : Word) (hj5 : codeM[84]? = some j5) (dj5 : decode j5 = some (.jal 1#5 (Af - 0x188#32)))
@@ -78,9 +78,9 @@ theorem main_c (U : State) (codeM : List Word) (Af : Word) (c p e0 e1 e2 e3 d0 d
   have w5 := st 44#32 35 e3 (by decide +kernel) (by decide +kernel)
     (by rw [ld 35 2 20#32 (by decide) (by decide +kernel) (by decide +kernel), show (BitVec.ofNat 5 2 : Reg) = 2#5 from rfl, h2]; exact he3)
   have w6 := st 48#32 36 d0 (by decide +kernel) (by decide +kernel)
-    (by rw [ld 36 20 128#32 (by decide) (by decide +kernel) (by decide +kernel), show (BitVec.ofNat 5 20 : Reg) = 20#5 from rfl, h20]; exact hd0)
+    (by rw [ld 36 20 0#32 (by decide) (by decide +kernel) (by decide +kernel), show (BitVec.ofNat 5 20 : Reg) = 20#5 from rfl, h20]; exact hd0)
   have w7 := st 52#32 37 d1 (by decide +kernel) (by decide +kernel)
-    (by rw [ld 37 20 132#32 (by decide) (by decide +kernel) (by decide +kernel), show (BitVec.ofNat 5 20 : Reg) = 20#5 from rfl, h20]; exact hd1)
+    (by rw [ld 37 20 4#32 (by decide) (by decide +kernel) (by decide +kernel), show (BitVec.ofNat 5 20 : Reg) = 20#5 from rfl, h20]; exact hd1)
   simp only [BitVec.reduceAdd] at w0 w1 w2 w3 w4 w5 w6 w7
   -- `zksync_os_finish_success`, then `zksync_os_finish_success_extended`
   obtain ⟨m1, S2, hrun1, hpc2, h22, h102, f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15,

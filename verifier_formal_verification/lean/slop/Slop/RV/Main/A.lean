@@ -4,9 +4,11 @@ import Slop.RV.Poly
 import Slop.RV.Coeffs
 import Slop.RV.Coeffs4
 import Slop.RV.Main.Blocks
+import Slop.RV.Input
 
-/-! `main`, first part (both images): the prologue and `init`, the inputs and `u32_combine`, `m31_poly_eval`; up to
-`main + 0x70`. Blocks by the symbolic executor, calls by their contracts. -/
+/-! `main`, first part (both images): the prologue and `init` (`main_init`), the five input reads (`main_reads`),
+`u32_combine` and `m31_poly_eval` (`main_a`); up to `main + 0x68`. Blocks by the symbolic executor, calls by their
+contracts. -/
 
 namespace RV
 open _root_.RV.Sym
@@ -45,43 +47,23 @@ theorem jal_pc (T : State) (t v : Word) : ((T.setPC t).setReg 1#5 v).pc = t := r
 
 namespace MainA
 abbrev rF : Region := ⟨2, -96, 0, 16⟩
-abbrev rIn : Region := ⟨0, 0x1401000, 0x1401014, 4⟩
 end MainA
 open MainA
 
-theorem main_a (S : State) (codeM codeI : List Word) (Ai Ac Ap src : Word) (x y0 y1 y2 y3 : Word)
-    (hI : InitOK Ai src codeI) (hIl : codeI.length = 34) (hAi : Ai.toNat % 4 = 0) (hAir : Ai.toNat + 136 + 4 * 1676 ≤ 4194304)
-    (hAc : Ac.toNat + 0x6c + 36 ≤ 4194304) (hAc4 : Ac.toNat % 4 = 0)
-    (hAp : 256 ≤ Ap.toNat) (hAp4 : Ap.toNat % 4 = 0) (hApr : Ap.toNat + 4 * Code.poly_eval.length ≤ 4194304)
-    (hsrc : src.toNat + 912 ≤ 4194304)
+/-- The prologue and `init`: from `main` to the first input read (`main + 0x34`). -/
+theorem main_init (S : State) (codeM codeI : List Word) (Ai src : Word)
+    (hI : InitOK Ai src codeI) (hIl : codeI.length = 34) (hAi : Ai.toNat % 4 = 0)
+    (hAir : Ai.toNat + 136 + 4 * 1676 ≤ 4194304) (hsrc : src.toNat + 912 ≤ 4194304)
     (hpc : S.pc = 0x38#32) (h2 : S.getReg 2#5 = 0x13ffff0#32) (hra : (S.getReg 1#5).toNat % 4 = 0)
-    (hmain : CodeAt S 0x38#32 codeM) (hlen : codeM.length = 85)
-    (hb0 : codeM.take 12 = Code.main.take 12) (hb1 : (codeM.drop 13).take 8 = (Code.main.drop 13).take 8)
-    (hb2 : (codeM.drop 22).take 5 = (Code.main.drop 22).take 5)
-    (j0 j1 j2 : Word) (hj0 : codeM[12]? = some j0) (hj1 : codeM[21]? = some j1) (hj2 : codeM[27]? = some j2)
-    (dj0 : decode j0 = some (.jal 1#5 (Ai - 0x68#32))) (dj1 : decode j1 = some (.jal 1#5 (Ac - 0x8c#32)))
-    (dj2 : decode j2 = some (.jal 1#5 (Ap - 0xa4#32)))
-    (hinit : CodeAt S Ai codeI) (hmc : CodeAt S (Ai + 136#32) Code.memcpy)
-    (hcomb : CodeAt S Ac Code.combine) (hinc : CodeAt S (Ac + 0x6c#32) Code.inc)
-    (hdbl : CodeAt S (Ac + 0x48#32) Code.double)
-    (hpoly : CodeAt S Ap Code.poly_eval) (hmul : CodeAt S (Ap + 4294967236#32) Code.mul_mod)
-    (hadd : CodeAt S (Ap + 4294967184#32) Code.add_mod)
-    (hcoef : CodeAt S src Code.COEFFS) (hcoef4 : CodeAt S (src + BitVec.ofNat 32 0x190) Code.COEFFS4)
-    (hx : read S.mem 0x1401000#32 4 = x) (hy0 : read S.mem 0x1401004#32 4 = y0)
-    (hy1 : read S.mem 0x1401008#32 4 = y1) (hy2 : read S.mem 0x140100c#32 4 = y2)
-    (hy3 : read S.mem 0x1401010#32 4 = y3) (hxP : x.toNat ≤ P) :
-    ∃ m T, run m S = some T ∧ T.pc = 0xa8#32 ∧ T.getReg 2#5 = 0x13fff90#32 ∧ T.getReg 9#5 = 3#32 * x + 1#32 ∧
-      (T.getReg 10#5).toNat ≤ P ∧ (T.getReg 10#5).toNat % P = polyW Code.COEFFS x.toNat % P ∧
-      T.getReg 19#5 = x ∧ T.getReg 20#5 = 0x1401000#32 ∧ T.getReg 21#5 = y3 ∧ T.getReg 22#5 = y2 ∧
-      T.getReg 23#5 = y1 ∧ T.getReg 24#5 = y0 ∧
-      CodeMem T.mem (0x1400000#32 + BitVec.ofNat 32 0x190) Code.COEFFS4 ∧
-      (∀ a : Word, 0x1400390 ≤ a.toNat → a.toNat < 0x2000000 → T.mem a = S.mem a) ∧
-      (∀ b : Word, b.toNat < ROM_END → T.mem b = S.mem b) := by
+    (hmain : CodeAt S 0x38#32 codeM) (hlen : codeM.length = 85) (hb0 : codeM.take 12 = Code.main.take 12)
+    (j0 : Word) (hj0 : codeM[12]? = some j0) (dj0 : decode j0 = some (.jal 1#5 (Ai - 0x68#32)))
+    (hinit : CodeAt S Ai codeI) (hmc : CodeAt S (Ai + 136#32) Code.memcpy) :
+    ∃ m S2, run m S = some S2 ∧ S2.pc = 0x6c#32 ∧ S2.getReg 2#5 = 0x13fff90#32 ∧
+      (∀ a : Word, 0x13ffff0 ≤ a.toNat → S2.mem a = blockCopy S.mem 20971520#32 src 912 a) ∧
+      (∀ b : Word, b.toNat < ROM_END → S2.mem b = S.mem b) := by
   have h2n : (S.getReg 2#5).toNat = 0x13ffff0 := by rw [h2]; rfl
   have hl : Code.main.length = 85 := by decide +kernel
   obtain ⟨_, e12⟩ := List.getElem?_eq_some_iff.mp hj0
-  obtain ⟨_, e21⟩ := List.getElem?_eq_some_iff.mp hj1
-  obtain ⟨_, e27⟩ := List.getElem?_eq_some_iff.mp hj2
   simp only [ROM_END, RAM_END] at *
   ------------------------------------------------------------------ prologue, `init`
   have hc0 : CodeAt S 0x38#32 (Code.main.take 12) := hb0 ▸ codeAt_take hmain 12
@@ -119,50 +101,114 @@ theorem main_a (S : State) (codeM codeI : List Word) (Ai Ac Ap src : Word) (x y0
     simp only [blockCopy]; split
     · next h => rw [s1rom _ (by bv_omega)]
     · rw [s1mem a (by right; omega)]
-  have s2in : ∀ a : Word, 0x1400390 ≤ a.toNat → S2.mem a = S.mem a := fun a ha => by
-    rw [s2hi a (by omega), blockCopy_outside _ _ _ _ _ (by bv_omega)]
-  have s2r : ∀ r : Reg, r ≠ 10#5 → r ≠ 11#5 → r ≠ 12#5 → r ≠ 13#5 → r ≠ 14#5 → r ≠ 15#5 →
-      (Main0.σ.reg r).val = r.toNat → r ≠ 1#5 → S2.getReg r = S.getReg r := fun r a b c d e f hv h1 =>
-    (hreg2 r a b c d e f).trans (s1reg r hv h1)
   have s2sp : S2.getReg 2#5 = 0x13fff90#32 := (hreg2 _ (by decide) (by decide) (by decide) (by decide) (by decide)
     (by decide)).trans s1sp
-  ------------------------------------------------------------------ the inputs, `combine`
-  have hc1 : CodeAt S2 (0x38#32 + BitVec.ofNat 32 (4 * 13)) ((Code.main.drop 13).take 8) :=
-    codeAt_of_rom (hb1 ▸ codeAt_take (codeAt_drop hmain 13 (by rw [hlen]; bv_omega)) 8)
-      (by simp [hl, ROM_END]) s2rom
-  obtain ⟨T1, hrunb1, hrel1, hrom1, -, hfr1⟩ := block_jal _ Main1.instrs Main1.σ S2 _ (Ac - 0x8c#32) [rIn] []
-    Main1.dec Main1.run (by rw [hpc2]; rfl) (by decide) (by simp [hl, ROM_END]) hc1 j1
+  exact ⟨_, S2, run_trans hrun0 hrun1, by rw [hpc2]; rfl, s2sp, s2hi, s2rom⟩
+
+/-- The five input reads (`csrrw s3/s5/s6/s7/s8, 0x7c0, x0`), from `main + 0x34`. -/
+theorem main_reads (R : State) (codeM : List Word) (x y0 y1 y2 y3 : Word) (rest : List Word)
+    (hpc : R.pc = 0x6c#32) (hmain : CodeAt R 0x38#32 codeM) (hlen : codeM.length = 85)
+    (hb : (codeM.drop 13).take 5 = (Code.main.drop 13).take 5)
+    (hin : R.input = x :: y0 :: y1 :: y2 :: y3 :: rest) :
+    ∃ R', run 5 R = some R' ∧ R'.pc = 0x80#32 ∧ R'.mem = R.mem ∧ R'.input = rest ∧
+      R'.getReg 19#5 = x ∧ R'.getReg 21#5 = y0 ∧ R'.getReg 22#5 = y1 ∧ R'.getReg 23#5 = y2 ∧ R'.getReg 24#5 = y3 ∧
+      (∀ r : Reg, r ≠ 19#5 → r ≠ 21#5 → r ≠ 22#5 → r ≠ 23#5 → r ≠ 24#5 → R'.getReg r = R.getReg r) := by
+  have hc : CodeAt R (0x38#32 + BitVec.ofNat 32 (4 * 13)) ((Code.main.drop 13).take 5) :=
+    hb ▸ codeAt_take (codeAt_drop hmain 13 (by rw [hlen]; bv_omega)) 5
+  rw [show (Code.main.drop 13).take 5 = [0x7c0019f3#32, 0x7c001af3#32, 0x7c001b73#32, 0x7c001bf3#32, 0x7c001c73#32]
+    by decide +kernel] at hc
+  have w : ∀ k (h : k < 5), read R.mem (0x6c#32 + BitVec.ofNat 32 (4 * k)) 4 =
+      [0x7c0019f3#32, 0x7c001af3#32, 0x7c001b73#32, 0x7c001bf3#32, 0x7c001c73#32][k] := fun k h => by
+    rw [← hc k (by simpa using h)]; congr 1
+  set R1 := (R.setReg 19#5 x).nextInstr.withInput (y0 :: y1 :: y2 :: y3 :: rest) with hR1
+  set R2 := (R1.setReg 21#5 y0).nextInstr.withInput (y1 :: y2 :: y3 :: rest) with hR2
+  set R3 := (R2.setReg 22#5 y1).nextInstr.withInput (y2 :: y3 :: rest) with hR3
+  set R4 := (R3.setReg 23#5 y2).nextInstr.withInput (y3 :: rest) with hR4
+  set R5 := (R4.setReg 24#5 y3).nextInstr.withInput rest with hR5
+  have p1 : R1.pc = 0x70#32 := by rw [hR1]; simp [hpc]
+  have p2 : R2.pc = 0x74#32 := by rw [hR2]; simp [p1]
+  have p3 : R3.pc = 0x78#32 := by rw [hR3]; simp [p2]
+  have p4 : R4.pc = 0x7c#32 := by rw [hR4]; simp [p3]
+  have p5 : R5.pc = 0x80#32 := by rw [hR5]; simp [p4]
+  have m1 : R1.mem = R.mem := by rw [hR1]; simp
+  have m2 : R2.mem = R.mem := by rw [hR2]; simp [m1]
+  have m3 : R3.mem = R.mem := by rw [hR3]; simp [m2]
+  have m4 : R4.mem = R.mem := by rw [hR4]; simp [m3]
+  have m5 : R5.mem = R.mem := by rw [hR5]; simp [m4]
+  have s1 := step_read R 0x7c0019f3#32 19#5 x _ (by rw [hpc]; decide) (by rw [hpc]; decide)
+    (by rw [hpc]; exact w 0 (by decide)) (by decide +kernel) hin
+  have s2 := step_read R1 0x7c001af3#32 21#5 y0 _ (by rw [p1]; decide) (by rw [p1]; decide)
+    (by rw [p1, m1]; exact w 1 (by decide)) (by decide +kernel) rfl
+  have s3 := step_read R2 0x7c001b73#32 22#5 y1 _ (by rw [p2]; decide) (by rw [p2]; decide)
+    (by rw [p2, m2]; exact w 2 (by decide)) (by decide +kernel) rfl
+  have s4 := step_read R3 0x7c001bf3#32 23#5 y2 _ (by rw [p3]; decide) (by rw [p3]; decide)
+    (by rw [p3, m3]; exact w 3 (by decide)) (by decide +kernel) rfl
+  have s5 := step_read R4 0x7c001c73#32 24#5 y3 _ (by rw [p4]; decide) (by rw [p4]; decide)
+    (by rw [p4, m4]; exact w 4 (by decide)) (by decide +kernel) rfl
+  refine ⟨R5, by rw [run_succ, s1, Option.bind_some, ← hR1, run_succ, s2, Option.bind_some, ← hR2, run_succ, s3,
+    Option.bind_some, ← hR3, run_succ, s4, Option.bind_some, ← hR4, run_succ, s5, Option.bind_some, ← hR5]; rfl, p5, m5, by rw [hR5, withInput_input], ?_, ?_, ?_, ?_, ?_, ?_⟩
+  all_goals simp only [hR5, hR4, hR3, hR2, hR1, withInput_getReg, next_r, r_set, BitVec.reduceEq, ite_true,
+    ite_false]
+  intro r a b c d e
+  simp only [a, b, c, d, e, ite_false]
+  split <;> simp_all [r_zero5]
+
+namespace MainA2
+abbrev rF : Region := ⟨2, -96, 0, 16⟩
+end MainA2
+
+/-- `u32_combine` and `m31_poly_eval`: from `main + 0x48` (after the reads) to `main + 0x68`. -/
+theorem main_a (S R : State) (codeM : List Word) (Ac Ap src : Word) (x : Word)
+    (hAc : Ac.toNat + 0x6c + 36 ≤ 4194304) (hAc4 : Ac.toNat % 4 = 0)
+    (hAp : 256 ≤ Ap.toNat) (hAp4 : Ap.toNat % 4 = 0) (hApr : Ap.toNat + 4 * Code.poly_eval.length ≤ 4194304)
+    (hsrc : src.toNat + 912 ≤ 4194304)
+    (hpc : R.pc = 0x80#32) (h2 : R.getReg 2#5 = 0x13fff90#32) (h19 : R.getReg 19#5 = x)
+    (hmain : CodeAt R 0x38#32 codeM) (hlen : codeM.length = 85)
+    (hb1 : (codeM.drop 18).take 1 = (Code.main.drop 18).take 1)
+    (hb2 : (codeM.drop 20).take 5 = (Code.main.drop 20).take 5)
+    (j1 j2 : Word) (hj1 : codeM[19]? = some j1) (hj2 : codeM[25]? = some j2)
+    (dj1 : decode j1 = some (.jal 1#5 (Ac - 0x84#32))) (dj2 : decode j2 = some (.jal 1#5 (Ap - 0x9c#32)))
+    (hcomb : CodeAt R Ac Code.combine) (hinc : CodeAt R (Ac + 0x6c#32) Code.inc)
+    (hdbl : CodeAt R (Ac + 0x48#32) Code.double)
+    (hpoly : CodeAt R Ap Code.poly_eval) (hmul : CodeAt R (Ap + 4294967236#32) Code.mul_mod)
+    (hadd : CodeAt R (Ap + 4294967184#32) Code.add_mod)
+    (hcoef : CodeAt S src Code.COEFFS) (hcoef4 : CodeAt S (src + BitVec.ofNat 32 0x190) Code.COEFFS4)
+    (hcp : ∀ a : Word, 0x13ffff0 ≤ a.toNat → R.mem a = blockCopy S.mem 20971520#32 src 912 a)
+    (hxP : x.toNat ≤ P) :
+    ∃ m T, run m R = some T ∧ T.pc = 0xa0#32 ∧ T.getReg 2#5 = 0x13fff90#32 ∧ T.getReg 9#5 = 3#32 * x + 1#32 ∧
+      (T.getReg 10#5).toNat ≤ P ∧ (T.getReg 10#5).toNat % P = polyW Code.COEFFS x.toNat % P ∧
+      (∀ r : Reg, calleeSaved r → r ≠ 9#5 → T.getReg r = R.getReg r) ∧
+      CodeMem T.mem (0x1400000#32 + BitVec.ofNat 32 0x190) Code.COEFFS4 ∧
+      (∀ a : Word, 0x13fff90 ≤ a.toNat → T.mem a = R.mem a) ∧
+      (∀ b : Word, b.toNat < ROM_END → T.mem b = R.mem b) := by
+  have hl : Code.main.length = 85 := by decide +kernel
+  obtain ⟨_, e19⟩ := List.getElem?_eq_some_iff.mp hj1
+  obtain ⟨_, e25⟩ := List.getElem?_eq_some_iff.mp hj2
+  simp only [ROM_END, RAM_END] at *
+  ------------------------------------------------------------------ `combine`
+  have hc1 : CodeAt R (0x38#32 + BitVec.ofNat 32 (4 * 18)) ((Code.main.drop 18).take 1) :=
+    hb1 ▸ codeAt_take (codeAt_drop hmain 18 (by rw [hlen]; bv_omega)) 1
+  obtain ⟨T1, hrunb1, hrel1, hrom1, -, hfr1⟩ := block_jal _ Main1.instrs Main1.σ R _ (Ac - 0x84#32) [] []
+    Main1.dec Main1.run (by rw [hpc]; rfl) (by decide) (by simp [hl, ROM_END]) hc1 j1
     (by
-      rw [show ((Code.main.drop 13).take 8).length = 8 by decide +kernel,
-        read_congr S2.mem S.mem _ 4 (fun j hj => s2rom _ (by bv_omega)),
-        show (0x38#32 + BitVec.ofNat 32 (4 * 13) + BitVec.ofNat 32 (4 * 8) : Word) =
-          0x38#32 + BitVec.ofNat 32 (4 * 21) by decide]
-      exact (hmain 21 (by omega)).trans e21)
-    dj1 (by simp; bv_omega) (by sym_side) (by simp) (by decide +kernel)
-  simp only [List.length_take, List.length_drop, hl, show min 8 (85 - 13) = 8 from rfl] at hrunb1
-  set S3 := (T1.setPC (0x38#32 + BitVec.ofNat 32 (4 * 13) + BitVec.ofNat 32 (4 * 8) + (Ac - 0x8c#32))).setReg 1#5
-    (0x38#32 + BitVec.ofNat 32 (4 * 13) + BitVec.ofNat 32 (4 * 8) + 4) with hS3
-  have rd : ∀ (k : Word) (v : Word), 0x1401000 ≤ k.toNat → k.toNat + 4 ≤ 0x1401014 → read S.mem k 4 = v →
-      read S2.mem (S2.getReg (BitVec.ofNat 5 0) + k) 4 = v := fun k v h1 h2 h => by
-    rw [getReg_x0, BitVec.zero_add, ← h]
-    exact read_congr _ _ _ _ (fun j hj => s2in _ (by bv_omega))
-  have ld : ∀ i (k v : Word), i < Main1.σ.pool.len → nodeAt Main1.σ.pool i = .load 4 true 0 k →
-      0x1401000 ≤ k.toNat → k.toNat + 4 ≤ 0x1401014 → read S.mem k 4 = v →
-      Main1.σ.pool.val (ctxOf S2) i = v := fun i k v hi h h1 h2 hv => by
-    rw [load_val _ _ Main1.run S2 i 0 k true (by decide) hi h]; exact rd k v h1 h2 hv
-  have rv1 : ∀ (r : Reg) (i : Nat), (Main1.σ.reg r).val = i → T1.getReg r = Main1.σ.pool.val (ctxOf S2) i :=
-    fun r i h => by rw [(hrel1.2.2.1 r).2, h]
+      rw [show ((Code.main.drop 18).take 1).length = 1 by decide +kernel,
+        show (0x38#32 + BitVec.ofNat 32 (4 * 18) + BitVec.ofNat 32 (4 * 1) : Word) =
+          0x38#32 + BitVec.ofNat 32 (4 * 19) by decide]
+      exact (hmain 19 (by omega)).trans e19)
+    dj1 (by simp; bv_omega) (by simp) (by simp) (by decide +kernel)
+  simp only [List.length_take, List.length_drop, hl, show min 1 (85 - 18) = 1 from rfl] at hrunb1
+  set S3 := (T1.setPC (0x38#32 + BitVec.ofNat 32 (4 * 18) + BitVec.ofNat 32 (4 * 1) + (Ac - 0x84#32))).setReg 1#5
+    (0x38#32 + BitVec.ofNat 32 (4 * 18) + BitVec.ofNat 32 (4 * 1) + 4) with hS3
   have j3 : ∀ r : Reg, r ≠ 1#5 → S3.getReg r = T1.getReg r := fun r hr => by rw [hS3, jal_getReg _ _ _ _ hr]
   have s3x : S3.getReg 10#5 = x := by
-    rw [j3 _ (by decide), rv1 _ 37 (by decide +kernel), ld 37 0x1401000#32 x (by decide +kernel) (by decide +kernel)
-      (by decide) (by decide) hx]
+    rw [j3 _ (by decide), hrel1.reg_var _ Main1.run 10#5 19 (by decide) (by decide +kernel),
+      show (BitVec.ofNat 5 19 : Reg) = 19#5 from rfl, h19]
   have s3sp : S3.getReg 2#5 = 0x13fff90#32 := by
-    rw [j3 _ (by decide), hrel1.reg_same _ Main1.run _ (by decide +kernel), s2sp]
-  have s3rom : ∀ b : Word, b.toNat < 4194304 → S3.mem b = S.mem b := fun b hb => by
-    rw [hS3, jal_mem, hrom1 b (by simp only [ROM_END]; omega), s2rom b hb]
-  have s3eq : S3.mem = S2.mem := by
+    rw [j3 _ (by decide), hrel1.reg_same _ Main1.run _ (by decide +kernel), h2]
+  have s3eq : S3.mem = R.mem := by
     rw [hS3, jal_mem]; funext a
     exact hfr1 [] (by decide +kernel) (by simp) a (by simp)
+  have s3rom : ∀ b : Word, b.toNat < 4194304 → S3.mem b = R.mem b := fun b _ => by rw [s3eq]
   have hpc3 : S3.pc = Ac := by rw [hS3, jal_pc]; bv_omega
   obtain ⟨n2, S4, hrun2, hpc4, hpost4, hcs4, hmem4⟩ := combine_impl Ac hAc S3 hpc3
     (by
@@ -189,47 +235,43 @@ theorem main_a (S : State) (codeM codeI : List Word) (Ai Ac Ap src : Word) (x y0
   replace hpost4 : S4.getReg 10#5 = 3 * S3.getReg 10#5 + 1 := hpost4
   rw [s3sp] at hmem4
   rw [hS3, jal_getReg1] at hpc4
-  have s4hi : ∀ a : Word, 0x13fff90 ≤ a.toNat → S4.mem a = S2.mem a := fun a ha => by
+  have s4hi : ∀ a : Word, 0x13fff90 ≤ a.toNat → S4.mem a = R.mem a := fun a ha => by
     rw [hmem4 a (by right; bv_omega), s3eq]
-  have s4rom : ∀ b : Word, b.toNat < 4194304 → S4.mem b = S.mem b := fun b hb => by
+  have s4rom : ∀ b : Word, b.toNat < 4194304 → S4.mem b = R.mem b := fun b hb => by
     rw [hmem4 b (by left; simp; omega), s3rom b hb]
-  have s4cs : ∀ r : Reg, calleeSaved r → (Main1.σ.reg r).val = r.toNat → S4.getReg r = S2.getReg r := fun r h hv => by
+  have s4cs : ∀ r : Reg, calleeSaved r → (Main1.σ.reg r).val = r.toNat → S4.getReg r = R.getReg r := fun r h hv => by
     rw [hcs4 r h, j3 r (by rintro rfl; simp [calleeSaved] at h), hrel1.reg_same _ Main1.run r hv]
-  have s4r : ∀ (r : Reg) (i : Nat), calleeSaved r → (Main1.σ.reg r).val = i →
-      S4.getReg r = Main1.σ.pool.val (ctxOf S2) i := fun r i h hv => by
-    rw [hcs4 r h, j3 r (by rintro rfl; simp [calleeSaved] at h), rv1 r i hv]
   have s4sp : S4.getReg 2#5 = 0x13fff90#32 := (hcs4 _ (by rv_callee_saved)).trans s3sp
   ------------------------------------------------------------------ `poly_eval`
-  have hc2 : CodeAt S4 (0x38#32 + BitVec.ofNat 32 (4 * 22)) ((Code.main.drop 22).take 5) :=
-    codeAt_of_rom (hb2 ▸ codeAt_take (codeAt_drop hmain 22 (by rw [hlen]; bv_omega)) 5)
+  have hc2 : CodeAt S4 (0x38#32 + BitVec.ofNat 32 (4 * 20)) ((Code.main.drop 20).take 5) :=
+    codeAt_of_rom (hb2 ▸ codeAt_take (codeAt_drop hmain 20 (by rw [hlen]; bv_omega)) 5)
       (by simp [hl, ROM_END]) s4rom
-  obtain ⟨T2, hrunb2, hrel2, hrom2, -, hfr2⟩ := block_jal _ Main2.instrs Main2.σ S4 _ (Ap - 0xa4#32) [] []
+  obtain ⟨T2, hrunb2, hrel2, hrom2, -, hfr2⟩ := block_jal _ Main2.instrs Main2.σ S4 _ (Ap - 0x9c#32) [] []
     Main2.dec Main2.run (by rw [hpc4]; decide) (by decide) (by simp [hl, ROM_END]) hc2 j2
     (by
-      rw [show ((Code.main.drop 22).take 5).length = 5 by decide +kernel,
-        read_congr S4.mem S.mem _ 4 (fun j hj => s4rom _ (by bv_omega)),
-        show (0x38#32 + BitVec.ofNat 32 (4 * 22) + BitVec.ofNat 32 (4 * 5) : Word) =
-          0x38#32 + BitVec.ofNat 32 (4 * 27) by decide]
-      exact (hmain 27 (by omega)).trans e27)
+      rw [show ((Code.main.drop 20).take 5).length = 5 by decide +kernel,
+        read_congr S4.mem R.mem _ 4 (fun j hj => s4rom _ (by bv_omega)),
+        show (0x38#32 + BitVec.ofNat 32 (4 * 20) + BitVec.ofNat 32 (4 * 5) : Word) =
+          0x38#32 + BitVec.ofNat 32 (4 * 25) by decide]
+      exact (hmain 25 (by omega)).trans e25)
     dj2 (by simp; bv_omega) (by simp) (by simp) (by decide +kernel)
-  simp only [List.length_take, List.length_drop, hl, show min 5 (85 - 22) = 5 from rfl] at hrunb2
-  set S5 := (T2.setPC (0x38#32 + BitVec.ofNat 32 (4 * 22) + BitVec.ofNat 32 (4 * 5) + (Ap - 0xa4#32))).setReg 1#5
-    (0x38#32 + BitVec.ofNat 32 (4 * 22) + BitVec.ofNat 32 (4 * 5) + 4) with hS5
+  simp only [List.length_take, List.length_drop, hl, show min 5 (85 - 20) = 5 from rfl] at hrunb2
+  set S5 := (T2.setPC (0x38#32 + BitVec.ofNat 32 (4 * 20) + BitVec.ofNat 32 (4 * 5) + (Ap - 0x9c#32))).setReg 1#5
+    (0x38#32 + BitVec.ofNat 32 (4 * 20) + BitVec.ofNat 32 (4 * 5) + 4) with hS5
   have j5 : ∀ r : Reg, r ≠ 1#5 → S5.getReg r = T2.getReg r := fun r hr => by rw [hS5, jal_getReg _ _ _ _ hr]
   have s5eq : S5.mem = S4.mem := by
     rw [hS5, jal_mem]; funext a
     exact hfr2 [] (by decide +kernel) (by simp) a (by simp)
-  have s5rom : ∀ b : Word, b.toNat < 4194304 → S5.mem b = S.mem b := fun b hb => by rw [s5eq, s4rom b hb]
+  have s5rom : ∀ b : Word, b.toNat < 4194304 → S5.mem b = R.mem b := fun b hb => by rw [s5eq, s4rom b hb]
   have s5sp : S5.getReg 2#5 = 0x13fff90#32 := by
     rw [j5 _ (by decide), hrel2.reg_same _ Main2.run _ (by decide +kernel), s4sp]
   have s5x : S5.getReg 12#5 = x := by
     rw [j5 _ (by decide), hrel2.reg_var _ Main2.run _ 19 (by decide) (by decide +kernel),
-      show (BitVec.ofNat 5 19 : Reg) = 19#5 from rfl, s4r _ 37 (by rv_callee_saved) (by decide +kernel),
-      ld 37 0x1401000#32 x (by decide +kernel) (by decide +kernel) (by decide) (by decide) hx]
+      show (BitVec.ofNat 5 19 : Reg) = 19#5 from rfl, s4cs _ (by rv_callee_saved) (by decide +kernel), h19]
   have hpc5 : S5.pc = Ap := by rw [hS5, jal_pc]; bv_omega
   -- the `.rodata` copy, seen from `S5`
   have s5copy : ∀ a : Word, (a - 20971520#32).toNat < 912 → S5.mem a = blockCopy S.mem 20971520#32 src 912 a :=
-    fun a ha => by rw [s5eq, s4hi a (by bv_omega), s2hi a (by bv_omega)]
+    fun a ha => by rw [s5eq, s4hi a (by bv_omega), hcp a (by bv_omega)]
   obtain ⟨n3, S6, hrun3, hpc6, hpost6, hcs6, hmem6⟩ := poly_eval_impl Ap hAp Code.COEFFS coeffs_le S5 hpc5
     (by
       intro c hc
@@ -273,41 +315,23 @@ theorem main_a (S : State) (codeM codeI : List Word) (Ai Ac Ap src : Word) (x y0
   rw [s5sp] at hmem6
   have s5x' : S5.getReg 12 = x := s5x
   simp only [polyPost, s5x'] at hpost6
-  have s6r : ∀ (r : Reg), calleeSaved r → (Main2.σ.reg r).val = r.toNat → S6.getReg r = S4.getReg r :=
-    fun r h hv => by
-      rw [hcs6 r h, j5 r (by rintro rfl; simp [calleeSaved] at h), hrel2.reg_same _ Main2.run r hv]
-  have s6y : ∀ (r : Reg) (i : Nat) (k v : Word), calleeSaved r → (Main2.σ.reg r).val = r.toNat →
-      (Main1.σ.reg r).val = i → i < Main1.σ.pool.len → nodeAt Main1.σ.pool i = .load 4 true 0 k →
-      0x1401000 ≤ k.toNat → k.toNat + 4 ≤ 0x1401014 → read S.mem k 4 = v → S6.getReg r = v :=
-    fun r i k v h hv2 hv1 hi hn h1 h2 hv => by rw [s6r r h hv2, s4r r i h hv1, ld i k v hi hn h1 h2 hv]
-  refine ⟨_, S6,
-    run_trans (run_trans (run_trans (run_trans (run_trans hrun0 hrun1) hrunb1) hrun2) hrunb2) hrun3,
-    ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
-  rotate_left 3
-  · exact hpost6.1
-  · exact hpost6.2
-  rotate_right 3
+  refine ⟨_, S6, run_trans (run_trans (run_trans hrunb1 hrun2) hrunb2) hrun3,
+    ?_, ?_, ?_, hpost6.1, hpost6.2, ?_, ?_, ?_, ?_⟩
   · rw [hpc6, hS5, jal_getReg1]; decide
   · rw [hcs6 _ (by rv_callee_saved), s5sp]
   · rw [hcs6 _ (by rv_callee_saved), j5 _ (by decide), hrel2.reg_var _ Main2.run _ 10 (by decide) (by decide +kernel),
       show (BitVec.ofNat 5 10 : Reg) = 10#5 from rfl, hpost4, s3x]; rfl
-  · exact s6y 19#5 37 0x1401000#32 x (by rv_callee_saved) (by decide +kernel) (by decide +kernel) (by decide +kernel)
-      (by decide +kernel) (by decide) (by decide) hx
-  · rw [s6r _ (by rv_callee_saved) (by decide +kernel), hcs4 _ (by rv_callee_saved), j3 _ (by decide),
-      hrel1.reg_cst 20#5 20975616#32 (by decide +kernel)]
-  · exact s6y 21#5 33 0x1401010#32 y3 (by rv_callee_saved) (by decide +kernel) (by decide +kernel) (by decide +kernel)
-      (by decide +kernel) (by decide) (by decide) hy3
-  · exact s6y 22#5 34 0x140100c#32 y2 (by rv_callee_saved) (by decide +kernel) (by decide +kernel) (by decide +kernel)
-      (by decide +kernel) (by decide) (by decide) hy2
-  · exact s6y 23#5 35 0x1401008#32 y1 (by rv_callee_saved) (by decide +kernel) (by decide +kernel) (by decide +kernel)
-      (by decide +kernel) (by decide) (by decide) hy1
-  · exact s6y 24#5 36 0x1401004#32 y0 (by rv_callee_saved) (by decide +kernel) (by decide +kernel) (by decide +kernel)
-      (by decide +kernel) (by decide) (by decide) hy0
+  · intro r hr h9
+    rw [hcs6 r hr, j5 r (by rintro rfl; simp [calleeSaved] at hr)]
+    rcases calleeSaved_cases r hr with h|h|h|h|h|h|h|h|h|h|h|h|h <;> subst h
+    all_goals first
+      | exact absurd rfl h9
+      | (rw [hrel2.reg_same _ Main2.run _ (by decide +kernel), s4cs _ (by rv_callee_saved) (by decide +kernel)])
   · intro i hi
     rw [read_congr S6.mem S5.mem _ 4 (fun j hj => hmem6 _ (by right; rw [coeffs4_length] at hi; bv_omega))]
     exact codeMem_blockCopy_off hcoef4 s5copy (by rw [coeffs4_length]) (by decide) (by omega) i hi
-  · intro a h1 h2
-    rw [hmem6 a (by right; bv_omega), s5eq, s4hi a (by omega), s2in a h1]
+  · intro a h1
+    rw [hmem6 a (by right; bv_omega), s5eq, s4hi a h1]
   · intro b hb
     rw [hmem6 b (by left; bv_omega), s5rom b hb]
 

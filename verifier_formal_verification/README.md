@@ -9,17 +9,18 @@ final theorems' statements and axioms).
 The guest is built twice (`rust/build.sh`): `build/app_mop.bin` (cargo feature `mop`: BabyBear ops via Airbender's
 field opcodes `mop.rr.N`, as the real verifier) and `build/app.bin` (the same ops in plain Rust, trusting no opcode).
 Both compute a Mersenne31 polynomial, a BabyBear Ext4 polynomial (Horner) and a Blake2s compression (the verifier's
-`blake2s_u32`, 7 rounds) of their input.
+`blake2s_u32`, 7 rounds) of their input, five words read from Airbender's non-determinism source (CSR `0x7c0`).
 
 ## What a human reads (`lean/human/`, ~200 lines)
 - `Human/RV32.lean` — the machine: RV32IM as Airbender runs it (decoder from the encoding tables, one line of
-  behaviour per instruction, memory map; anything else has no next state = unprovable).
+  behaviour per instruction, memory map, the input read `csrrw rd, 0x7c0, x0` from a list of input words; anything
+  else has no next state = unprovable).
 - `Human/Call.lean` — what "this code implements a function" means (RISC-V calling convention).
 - `Human/Spec.lean`, `Human/SpecPoly.lean`, `Human/SpecExt4.lean` — what the program should compute
   (`combine x = 3x + 1`, a polynomial over Mersenne31, a polynomial over BabyBear's `F[w]/(w⁴ - 11)`), and
   `Human/SpecBlake.lean` (Blake2s compression, RFC 7693, 7 rounds).
-- `Human/Theorems.lean` — the final statement `ProgramCorrectOf`: from reset, with the image loaded and the input,
-  the program reaches its final self-jump with the outputs in `a0 … a5` and stays there; `ProgramCorrect` (plain
+- `Human/Theorems.lean` — the final statement `ProgramCorrectOf`: from reset, with the image loaded, RAM zero and an
+  input starting with the five words, the program reaches its final self-jump with the outputs in `a0 … a5` and stays there; `ProgramCorrect` (plain
   image) and `ProgramCorrectMop` instantiate it (both proven).
 - `HumanSail/Airbender.lean` — the Airbender machine as the official Sail RISC-V model plus a short list of
   changes, each marked `-- Airbender:` (needs the generated Sail model, `sail/regen.sh`).

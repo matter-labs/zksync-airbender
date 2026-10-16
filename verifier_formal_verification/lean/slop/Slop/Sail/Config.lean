@@ -35,11 +35,11 @@ theorem sw_rom_traps : outcome 0x00b02023 = some (0, 0) := by decide +kernel  --
 
 /-! The Airbender machine (`HumanSail/Airbender.lean`): where the PC goes, one check per change from Sail. -/
 noncomputable def next (w : BitVec 32) : Option (BitVec 32) :=
-  (Airbender.step ⟨test w, fun _ => 0x1234, 0⟩).map (·.sail.regs .PC)
+  (Airbender.step ⟨test w, [0x1234]⟩).map (·.sail.regs .PC)
 
-/-- The input read: register written, input position advanced. -/
-noncomputable def readNext (w : BitVec 32) : Option (BitVec 32 × BitVec 32 × Nat) :=
-  (Airbender.step ⟨test w, fun _ => 0x1234, 0⟩).map fun m => (m.sail.regs .PC, m.sail.regs .x10, m.inputPos)
+/-- The input read (input `[0x1234]`, or none): PC, the register written, the input left. -/
+noncomputable def readNext (w : BitVec 32) (input : List (BitVec 32)) : Option (BitVec 32 × BitVec 32 × List (BitVec 32)) :=
+  (Airbender.step ⟨test w, input⟩).map fun m => (m.sail.regs .PC, m.sail.regs .x10, m.input)
 
 theorem add_next     : next 0x00b50533 = some 4 := by decide +kernel         -- add a0, a0, a1
 theorem ntl_next     : next 0x00200033 = some 4 := by decide +kernel         -- add x0, x0, x2 (Sail+Zihintntl: NTL hint)
@@ -56,6 +56,7 @@ theorem rvc_stops'   : next 0x00000505 = none := by decide +kernel           -- 
 theorem csr_stops    : next 0x7c051073 = none := by decide +kernel           -- csrrw x0, 0x7c0, a0 (write: not modelled)
 theorem csrrs_stops  : next 0x7c002573 = none := by decide +kernel           -- csrrs a0, 0x7c0, x0 (not modelled)
 theorem cycle_stops  : next 0xc0001073 = none := by decide +kernel           -- csrrw x0, cycle, x0
-theorem input_next   : readNext 0x7c001573 = some (4, 0x1234, 1) := by decide +kernel  -- csrrw a0, 0x7c0, x0
+theorem input_next   : readNext 0x7c001573 [0x1234] = some (4, 0x1234, []) := by decide +kernel  -- csrrw a0, 0x7c0, x0
+theorem input_empty_stops : readNext 0x7c001573 [] = none := by decide +kernel  -- … with the input used up
 
 end Human

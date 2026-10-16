@@ -11,8 +11,8 @@ set_option maxHeartbeats 0
 
 /-- On Sail's state: our step is a step of the machine fed the next input word. -/
 theorem step_sail (s t : RV.State) (σ : SailState) (h : Airbender.AgreeSail s σ) (ht : RV.step s = some t) :
-    ∃ σ' r, stepSail (s.input s.inputPos) σ = some (σ', r) ∧ Airbender.AgreeSail t σ' ∧ t.input = s.input ∧
-      t.inputPos = if r then s.inputPos + 1 else s.inputPos := by
+    ∃ σ' r, stepSail (s.input.headD 0) σ = some (σ', r) ∧ Airbender.AgreeSail t σ' ∧
+      if r then ∃ w, s.input = w :: t.input else t.input = s.input := by
   unfold RV.step at ht
   split_ifs at ht with hc
   obtain ⟨ha, hrom⟩ := hc
@@ -23,16 +23,16 @@ theorem step_sail (s t : RV.State) (σ : SailState) (h : Airbender.AgreeSail s �
     rw [hpcs, read_eq4 σ.mem s.mem h.2.2.2 _ (by simp only [RV.ROM_END] at hrom; omega), BitVec.setWidth_eq]
   rw [hrd] at ht
   obtain ⟨i, hdec, hex⟩ := Option.bind_eq_some_iff.mp ht
-  cases hr : Airbender.readsInput i
-  · obtain ⟨hi, hp⟩ := exec_keeps_input hex hr
-    suffices ∃ σ', stepSail (s.input s.inputPos) σ = some (σ', false) ∧ Airbender.AgreeSail t σ' by
-      obtain ⟨σ', e, a⟩ := this; exact ⟨σ', false, e, a, hi, hp⟩
+  cases hr : RV.Instr.readsInput i
+  · have hi := RV.exec_keeps_input hex hr
+    suffices ∃ σ', stepSail (s.input.headD 0) σ = some (σ', false) ∧ Airbender.AgreeSail t σ' by
+      obtain ⟨σ', e, a⟩ := this; exact ⟨σ', false, e, a, hi⟩
     have hd := hdec
     unfold RV.decode at hd
     simp only at hd
     split at hd <;> (try split_ifs at hd) <;> cases hd
     all_goals first
-      | (simp [Airbender.readsInput] at hr; done)
+      | (simp [RV.Instr.readsInput] at hr; done)
       | exact kind_lui h ha' h2 _ _ hdec hex
       | exact kind_auipc h ha' h2 _ _ hdec hex
       | exact kind_jal h ha' h2 _ _ hdec hex
@@ -44,23 +44,30 @@ theorem step_sail (s t : RV.State) (σ : SailState) (h : Airbender.AgreeSail s �
       | exact kind_shift h ha' h2 _ _ _ _ (by simp) hdec hex
       | exact kind_op h ha' h2 _ _ _ _ (by simp) hdec hex
       | exact kind_mop h ha' h2 _ _ _ _ hdec hex
-  · obtain ⟨rd, rfl⟩ : ∃ rd, i = .inputRead rd := by cases i <;> simp_all [Airbender.readsInput]
+  · obtain ⟨rd, rfl⟩ : ∃ rd, i = .inputRead rd := by cases i <;> simp_all [RV.Instr.readsInput]
     have hrd0 : rd ≠ 0 := by
       have hd := hdec
       unfold RV.decode at hd
       simp only at hd
       split at hd <;> (try split_ifs at hd with hh) <;> cases hd
       exact hh.2.2
-    simp only [RV.exec, Option.some.injEq] at hex; subst hex
-    obtain ⟨σ', e, a⟩ := kind_input (next := s.input s.inputPos) h ha' h2 rd hdec hrd0
-    exact ⟨σ', true, e, a, rfl, rfl⟩
+    simp only [RV.exec] at hex
+    rcases hs : s.input with _ | ⟨w, rest⟩ <;> rw [hs] at hex
+    · cases hex
+    simp only [Option.some.injEq] at hex; subst hex
+    obtain ⟨σ', e, a⟩ := kind_input (next := s.input.headD 0) h ha' h2 rd hdec hrd0
+    rw [hs] at e a
+    exact ⟨σ', true, e, a, w, rfl⟩
 
 theorem step_is_airbender : Airbender.StepIsAirbender := by
-  intro s t m ⟨hA, hin, hpos⟩ ht
-  obtain ⟨σ', r, e, a, h3, h4⟩ := step_sail s t m.sail hA ht
-  refine ⟨⟨σ', m.input, if r then m.inputPos + 1 else m.inputPos⟩, ?_, a, ?_, ?_⟩
-  · rw [step_eq, show m.input m.inputPos = s.input s.inputPos by rw [hin, hpos], e]; rfl
-  · show m.input = t.input; rw [h3, hin]
-  · show (if r then m.inputPos + 1 else m.inputPos) = t.inputPos; rw [h4, hpos]
+  intro s t m ⟨hA, hin⟩ ht
+  obtain ⟨σ', r, e, a, hr⟩ := step_sail s t m.sail hA ht
+  rw [← hin] at e hr
+  rw [step_eq m σ' r e]
+  cases r
+  · exact ⟨_, rfl, a, by simp only at hr ⊢; rw [hr, hin]⟩
+  · obtain ⟨w, hw⟩ := hr
+    simp only [hw]
+    exact ⟨_, rfl, a, rfl⟩
 
 end Slop.Equiv

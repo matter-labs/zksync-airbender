@@ -43,7 +43,7 @@ theorem step_agree {s t : RV.State} {σ : SailState} (h : Airbender.AgreeSail s 
     (hexec : runSail (Airbender.execute next (Airbender.toSail i)) (σ.set .nextPC (σ.regs .PC + 4)) = .ok RETIRE_SUCCESS σ2)
     (hs2 : Airbender.Configured σ2) (hpc : σ2.regs .nextPC = t.pc) (hal : t.pc.toNat % 4 = 0)
     (hr : ∀ j, xget σ2 j = t.getReg j) (hm : ∀ a : RV.Word, σ2.mem a.toNat = t.mem a) :
-    ∃ σ', stepSail next σ = some (σ', Airbender.readsInput i) ∧ Airbender.AgreeSail t σ' := by
+    ∃ σ', stepSail next σ = some (σ', RV.Instr.readsInput i) ∧ Airbender.AgreeSail t σ' := by
   refine ⟨_, step_of_exec σ h.1 ha h2 i hdec σ2 hexec (hpc ▸ hal), ?_, ?_, ?_, ?_⟩
   · exact sys_set hs2 .PC _ rfl
   · rw [set_regs_self, hpc]
@@ -62,7 +62,7 @@ theorem step_write {s : RV.State} {σ : SailState} (h : Airbender.AgreeSail s σ
     (hdec : RV.decode (readBytes σ.mem (σ.regs .PC).toNat 4) = some i) (rd : BitVec 5) (v : BitVec 32)
     (hexec : runSail (Airbender.execute next (Airbender.toSail i)) (σ.set .nextPC (σ.regs .PC + 4)) =
       .ok RETIRE_SUCCESS (xset (σ.set .nextPC (σ.regs .PC + 4)) rd v)) :
-    ∃ σ', stepSail next σ = some (σ', Airbender.readsInput i) ∧ Airbender.AgreeSail (s.setReg rd v).nextInstr σ' := by
+    ∃ σ', stepSail next σ = some (σ', RV.Instr.readsInput i) ∧ Airbender.AgreeSail (s.setReg rd v).nextInstr σ' := by
   have hpcs : σ.regs .PC = s.pc := h.2.1
   refine step_agree h ha h2 i hdec _ hexec (sys_xset (sys_set h.1 .nextPC _ rfl) rd v) ?_ ?_ ?_ ?_
   · rw [xset_nextPC, set_regs_self, hpcs]; rfl
@@ -80,7 +80,7 @@ theorem step_next {s : RV.State} {σ : SailState} (h : Airbender.AgreeSail s σ)
     (hdec : RV.decode (readBytes σ.mem (σ.regs .PC).toNat 4) = some i)
     (hexec : runSail (Airbender.execute next (Airbender.toSail i)) (σ.set .nextPC (σ.regs .PC + 4)) =
       .ok RETIRE_SUCCESS (σ.set .nextPC (σ.regs .PC + 4))) :
-    ∃ σ', stepSail next σ = some (σ', Airbender.readsInput i) ∧ Airbender.AgreeSail s.nextInstr σ' := by
+    ∃ σ', stepSail next σ = some (σ', RV.Instr.readsInput i) ∧ Airbender.AgreeSail s.nextInstr σ' := by
   have hpcs : σ.regs .PC = s.pc := h.2.1
   refine step_agree h ha h2 i hdec _ hexec (sys_set h.1 .nextPC _ rfl) ?_ ?_ ?_ ?_
   · rw [set_regs_self, hpcs]; rfl
@@ -96,7 +96,7 @@ theorem step_jump {s : RV.State} {σ : SailState} (h : Airbender.AgreeSail s σ)
     (hT : T.toNat % 4 = 0)
     (hexec : runSail (Airbender.execute next (Airbender.toSail i)) (σ.set .nextPC (σ.regs .PC + 4)) =
       .ok RETIRE_SUCCESS (xset ((σ.set .nextPC (σ.regs .PC + 4)).set .nextPC T) rd L)) :
-    ∃ σ', stepSail next σ = some (σ', Airbender.readsInput i) ∧ Airbender.AgreeSail ((s.setPC T).setReg rd L) σ' := by
+    ∃ σ', stepSail next σ = some (σ', RV.Instr.readsInput i) ∧ Airbender.AgreeSail ((s.setPC T).setReg rd L) σ' := by
   refine step_agree h ha h2 i hdec _ hexec
     (sys_xset (sys_set (sys_set h.1 .nextPC _ rfl) .nextPC _ rfl) rd L) ?_ hT ?_ ?_
   · rw [xset_nextPC, set_regs_self]; rfl
@@ -112,7 +112,7 @@ theorem step_goto {s : RV.State} {σ : SailState} (h : Airbender.AgreeSail s σ)
     (hdec : RV.decode (readBytes σ.mem (σ.regs .PC).toNat 4) = some i) (T : BitVec 32) (hT : T.toNat % 4 = 0)
     (hexec : runSail (Airbender.execute next (Airbender.toSail i)) (σ.set .nextPC (σ.regs .PC + 4)) =
       .ok RETIRE_SUCCESS ((σ.set .nextPC (σ.regs .PC + 4)).set .nextPC T)) :
-    ∃ σ', stepSail next σ = some (σ', Airbender.readsInput i) ∧ Airbender.AgreeSail (s.setPC T) σ' := by
+    ∃ σ', stepSail next σ = some (σ', RV.Instr.readsInput i) ∧ Airbender.AgreeSail (s.setPC T) σ' := by
   refine step_agree h ha h2 i hdec _ hexec (sys_set (sys_set h.1 .nextPC _ rfl) .nextPC _ rfl) ?_ hT ?_ ?_
   · rw [set_regs_self]; rfl
   · intro j; rw [xget_set_nextPC, xget_set_nextPC, agree_xget h]; rfl

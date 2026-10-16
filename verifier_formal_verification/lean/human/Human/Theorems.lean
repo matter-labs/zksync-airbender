@@ -20,30 +20,24 @@ from address 0. -/
 def ImageLoaded (bytes : Array (BitVec 8)) (s : State) : Prop :=
   ∀ i (h : i < bytes.size), s.mem (BitVec.ofNat 32 i) = bytes[i]
 
-/-- RAM is zero, as Airbender guarantees at start, except the `len` input bytes at `INPUT`: our input convention for
-now (Airbender proper reads inputs through CSR `0x7c0`, which this ISA does not have yet). -/
-def RamZeroExceptInput (INPUT len : Nat) (s : State) : Prop :=
-  ∀ addr : Word, ROM_END ≤ addr.toNat → addr.toNat < RAM_END →
-    (addr.toNat < INPUT ∨ INPUT + len ≤ addr.toNat) → s.mem addr = 0
+/-- RAM is zero, as Airbender guarantees at start. -/
+def RamZero (s : State) : Prop := ∀ addr : Word, ROM_END ≤ addr.toNat → addr.toNat < RAM_END → s.mem addr = 0
 
 /-- A register value as a BabyBear element. -/
 def bb (w : Word) : Spec.F := w.toNat
 
-/-- Booted at address 0 (registers arbitrary) with the image loaded, RAM zero except the input: a Mersenne31 element
-`x` (`x ≤ P`) at `INPUT`, then a BabyBear Ext4 element `y` (4 canonical limbs, `< BabyBearP`), the program reaches
-its final self-jump `halt` with
+/-- Booted at address 0 (registers arbitrary) with the image loaded and RAM zero, the input (CSR `0x7c0`) starting
+with a Mersenne31 element `x` (`x ≤ P`), then a BabyBear Ext4 element `y` (4 canonical limbs, `< BabyBearP`), the
+program reaches its final self-jump `halt` with
 * `a0 = combine x`, `a1 = poly x` in the Mersenne31 field (as a `u32 ≤ P`, Airbender's representation),
 * `a2 … a5` (`x12 … x15`) the limbs of `poly4 y` in BabyBear's Ext4 (canonical),
 * `a6, a7` (`x16, x17`) the first two words of the Blake2s (7 rounds) digest of the five input words,
 * the other output registers `x18 … x25` zero (riscv_common's 16-word output convention),
 and stays there: any number of further steps keeps the PC at `halt` and every register unchanged (Airbender reads
-the outputs some steps later). For the image `bytes` with its input at `INPUT` and its final self-jump at `halt`. -/
-def ProgramCorrectOf (bytes : Array (BitVec 8)) (INPUT halt : Nat) : Prop :=
-  ∀ (start : State) (x y0 y1 y2 y3 : Word), start.pc = 0 → ImageLoaded bytes start →
-    RamZeroExceptInput INPUT 20 start →
-    read start.mem (BitVec.ofNat 32 INPUT) 4 = x → x.toNat ≤ Spec.P →
-    read start.mem (BitVec.ofNat 32 (INPUT + 4)) 4 = y0 → read start.mem (BitVec.ofNat 32 (INPUT + 8)) 4 = y1 →
-    read start.mem (BitVec.ofNat 32 (INPUT + 12)) 4 = y2 → read start.mem (BitVec.ofNat 32 (INPUT + 16)) 4 = y3 →
+the outputs some steps later). For the image `bytes` with its final self-jump at `halt`. -/
+def ProgramCorrectOf (bytes : Array (BitVec 8)) (halt : Nat) : Prop :=
+  ∀ (start : State) (x y0 y1 y2 y3 : Word) (rest : List Word), start.pc = 0 → ImageLoaded bytes start →
+    RamZero start → start.input = x :: y0 :: y1 :: y2 :: y3 :: rest → x.toNat ≤ Spec.P →
     y0.toNat < BabyBearP → y1.toNat < BabyBearP → y2.toNat < BabyBearP → y3.toNat < BabyBearP →
     ∃ numSteps final, run numSteps start = some final ∧ final.pc = BitVec.ofNat 32 halt ∧
       final.getReg a0 = Spec.combine x ∧
@@ -59,9 +53,9 @@ def ProgramCorrectOf (bytes : Array (BitVec 8)) (INPUT halt : Nat) : Prop :=
         ∀ i, later.getReg i = final.getReg i
 
 /-- The final theorem for the plain-Rust image (`build/app.bin`, `lean/image/Image.lean`). -/
-def ProgramCorrect : Prop := ProgramCorrectOf Image.bytes Image.INPUT Image.halt
+def ProgramCorrect : Prop := ProgramCorrectOf Image.bytes Image.halt
 
 /-- The final theorem for the field-opcode image (`build/app_mop.bin`, `lean/image/ImageMop.lean`). -/
-def ProgramCorrectMop : Prop := ProgramCorrectOf ImageMop.bytes ImageMop.INPUT ImageMop.halt
+def ProgramCorrectMop : Prop := ProgramCorrectOf ImageMop.bytes ImageMop.halt
 
 end RV

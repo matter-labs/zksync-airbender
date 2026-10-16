@@ -12,7 +12,7 @@ open Spec
 set_option maxHeartbeats 0 in
 set_option maxRecDepth 1000000 in
 theorem program_correct : ProgramCorrect := by
-  intro s x y0 y1 y2 y3 hpc himg hram hx hxP hy0 hy1 hy2 hy3 hy0p hy1p hy2p hy3p
+  intro s x y0 y1 y2 y3 rest hpc himg hram hin hxP hy0p hy1p hy2p hy3p
   have hs : Image.bytes.size < 2 ^ 32 := by decide +kernel
   have cStart := codeAt_of_bytesW himg 0 Code.start (by decide +kernel) hs (by decide +kernel)
   have cMain := codeAt_of_bytesW himg 0x38 Code.main (by decide +kernel) hs (by decide +kernel)
@@ -33,11 +33,6 @@ theorem program_correct : ProgramCorrect := by
   have cCoef := codeAt_of_bytesW himg 0x3e60 Code.COEFFS (by decide +kernel) hs (by decide +kernel)
   have cCoef4 := codeAt_of_bytesW himg (0x3e60 + 0x190) Code.COEFFS4 (by decide +kernel) hs (by decide +kernel)
   simp only [BitVec.ofNat_eq_ofNat] at *
-  have e : ∀ k, BitVec.ofNat 32 (Image.INPUT + k) = 0x1401000#32 + BitVec.ofNat 32 k := fun k => by
-    simp only [Image.INPUT]; bv_omega
-  rw [show BitVec.ofNat 32 Image.INPUT = 0x1401000#32 from rfl] at hx
-  rw [e] at hy0 hy1 hy2 hy3
-  simp only [BitVec.reduceAdd] at hy0 hy1 hy2 hy3
   obtain ⟨m, W, hrun, hpcW, r10, r11, r11', r12, rl, r16, r17, rz, hromW⟩ :=
     main_run s Code.main Code.init Code.ext4_poly
       [(0x1e58#32 + 4294965620#32, Code.ext4_horner), (0x1e58#32 + 4294965620#32 + 168#32, Code.ext4_mul_add)] 192
@@ -48,7 +43,7 @@ theorem program_correct : ProgramCorrect := by
       (by intro c hc; simp only [List.mem_cons, List.not_mem_nil, or_false] at hc
           rcases hc with h | h <;> subst h <;> decide +kernel)
       (by decide) (by decide +kernel) (by decide) (by decide) (by decide +kernel)
-      rfl rfl rfl rfl rfl rfl
+      rfl rfl rfl rfl rfl rfl rfl
       (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel)
       (by decide +kernel)
       hpc cStart cMain cInit cMemcpy cComb cInc cDbl cPoly cMul cAdd cCoef cCoef4 cEP
@@ -57,7 +52,7 @@ theorem program_correct : ProgramCorrect := by
         rcases hc with h | h <;> subst h
         · exact cHor
         · exact cMA)
-      cBl cFin cExt hram hx hy0 hy1 hy2 hy3 hxP hy0p hy1p hy2p hy3p
+      cBl cFin cExt hram rest hin hxP hy0p hy1p hy2p hy3p
   refine ⟨m, W, hrun, by rw [hpcW]; rfl, r10, r11, r11', r12, rl, r16, r17, rz, ?_⟩
   refine halt_forever W (by rw [hpcW]; decide) (by rw [hpcW]; decide) ?_
   rw [hpcW, read_congr _ s.mem _ 4 (fun j hj => hromW _ (by simp only [ROM_END]; bv_omega))]

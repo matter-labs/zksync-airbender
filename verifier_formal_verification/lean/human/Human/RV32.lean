@@ -4,9 +4,10 @@ One instruction = at most one register or memory write, plus the PC update.
 No next state (`step = none`, i.e. unprovable in Airbender) for: anything outside Airbender's RV32IM subset
 (signed MULH/MULHSU/DIV/REM, FENCE, ECALL, CSRs other than the input read below, …), misaligned or out-of-range
 loads/stores, misaligned jump targets, fetch outside ROM.
-The program's input is Airbender's non-determinism source (CSR `0x7c0`): an endless sequence of words, read one
-at a time by `csrrw rd, 0x7c0, x0` (rd ≠ x0). Its other forms (the write `csrrw x0, 0x7c0, rs1`, a no-op in
-Airbender and unused by the verifier; `csrrs`/`csrrc`/immediate forms) have no next state here.
+The program's input is Airbender's non-determinism source (CSR `0x7c0`): a sequence of words, read one at a time
+by `csrrw rd, 0x7c0, x0` (rd ≠ x0); no next state once it is used up (the theorems say how many words are there).
+Its other forms (the write `csrrw x0, 0x7c0, rs1`, a no-op in Airbender and unused by the verifier;
+`csrrs`/`csrrc`/immediate forms) have no next state here.
 Differences from standard RV32IM follow Airbender's ISA table (spec/top-down/00 master.md, "Supported
 instruction set"); each is marked `-- Airbender:` below. -/
 
@@ -29,8 +30,7 @@ structure State where
   pc      : Word
   regFile : Reg → Word      -- stored values; read registers with `getReg` (x0 always reads as 0)
   mem     : Word → BitVec 8 -- byte-addressed, little-endian
-  input   : Nat → Word := fun _ => 0  -- the non-determinism input (CSR 0x7c0)
-  inputPos : Nat := 0                 -- how many input words have been read
+  input   : List Word := []  -- the non-determinism input (CSR 0x7c0): the words not yet read
 
 namespace State
 /-- The value an instruction sees in register `i`: x0 is always 0. -/
@@ -126,6 +126,11 @@ inductive Instr
   | mop    (op : FieldOp) (rd rs1 rs2 : Reg)   -- Airbender: field operations (`mop.rr.N`)
   | inputRead (rd : Reg)                      -- Airbender: `csrrw rd, 0x7c0, x0`, the next input word
 
+/-- Whether an instruction reads an input word. -/
+def Instr.readsInput : Instr → Bool
+  | .inputRead _ => true
+  | _ => false
+
 /-- What one instruction does to the state (`none`: Airbender cannot run it). -/
 def exec (s : State) : Instr → Option State
   | .lui rd imm            => some (s.setReg rd imm).nextInstr
@@ -149,7 +154,10 @@ def exec (s : State) : Instr → Option State
   | .op op rd rs1 rs2      => some (s.setReg rd (alu op (s.getReg rs1) (s.getReg rs2))).nextInstr
   | .mop op rd rs1 rs2     =>                       -- Airbender: `rd = x0` is not allowed (the circuit requires it)
       if rd = 0 then none else some (s.setReg rd (mopVal op (s.getReg rs1) (s.getReg rs2) (s.getReg rd))).nextInstr
-  | .inputRead rd          => some { (s.setReg rd (s.input s.inputPos)).nextInstr with inputPos := s.inputPos + 1 }
+  | .inputRead rd          =>
+      match s.input with
+      | w :: rest => some { (s.setReg rd w).nextInstr with input := rest }
+      | []        => none
 
 /-- Standard RV32IM encodings (unprivileged spec, ch. 2 and 13). -/
 def decode (word : Word) : Option Instr :=

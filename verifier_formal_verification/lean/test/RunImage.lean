@@ -11,12 +11,9 @@ and compare the outputs with a direct computation. Prints one line per run and e
 def P : Nat := 2 ^ 31 - 1
 def p : Nat := BabyBearP
 
-/-- Memory: the image, then the input words at `INPUT` (zero elsewhere). -/
-def mem0 (bytes : Array (BitVec 8)) (INPUT : Nat) (input : List Nat) : Word → BitVec 8 := fun a =>
-  if h : a.toNat < bytes.size then bytes[a.toNat]
-  else if INPUT ≤ a.toNat ∧ a.toNat < INPUT + 4 * input.length then
-    (BitVec.ofNat 32 (input.getD ((a.toNat - INPUT) / 4) 0) >>> (8 * (a.toNat % 4))).setWidth 8
-  else 0
+/-- Memory: the image (zero elsewhere). -/
+def mem0 (bytes : Array (BitVec 8)) : Word → BitVec 8 := fun a =>
+  if h : a.toNat < bytes.size then bytes[a.toNat] else 0
 
 /-- Ext4 product on limbs `(c0.c0, c0.c1, c1.c0, c1.c1)` (`w⁴ = 11`, the table of `ext4.rs`). -/
 def mul4 (a b : List Nat) : List Nat :=
@@ -42,7 +39,7 @@ def blake2 (x : Nat) (y : List Nat) : List Nat :=
 def expected (x : Nat) (y : List Nat) : List Nat :=
   [(3 * x + 1) % 2 ^ 32, ((List.range 100).map fun i => Spec.coeffNat i * x ^ i).sum % P] ++ poly4 y ++ blake2 x y
 
-/-- The memory a run touches (the stack top, the copied `.rodata`, the input) as an array, so that a long run does
+/-- The memory a run touches (the stack top, the copied `.rodata`, `.bss`) as an array, so that a long run does
 not pile up `write` closures (test code only: the steps themselves are `RV.step`). -/
 def lo : Nat := 0x13ff800
 def hi : Nat := 0x1401200
@@ -66,9 +63,9 @@ def runFlat (base : Word → BitVec 8) (k : Nat) (s : State) (halt : Nat) : IO (
       if (← IO.getEnv "RUN_DEBUG").isSome then IO.eprintln s!"chunk {c} pc {s.pc.toNat}"
   return some s
 
-def runOne (name : String) (bytes : Array (BitVec 8)) (INPUT halt : Nat) (x : Nat) (y : List Nat) : IO Bool := do
-  let base := mem0 bytes INPUT (x :: y)
-  let s0 : State := { pc := 0, regFile := fun _ => 0, mem := base }
+def runOne (name : String) (bytes : Array (BitVec 8)) (halt : Nat) (x : Nat) (y : List Nat) : IO Bool := do
+  let base := mem0 bytes
+  let s0 : State := { pc := 0, regFile := fun _ => 0, mem := base, input := (x :: y).map (BitVec.ofNat 32 ·) }
   match ← runFlat base 2000 s0 halt with
   | none => IO.println s!"{name} x = {x}, y = {y}: stuck"; return false
   | some s =>
@@ -81,6 +78,6 @@ def runOne (name : String) (bytes : Array (BitVec 8)) (INPUT halt : Nat) (x : Na
 def main : IO UInt32 := do
   let mut ok := true
   for (x, y) in [(0, [0, 0, 0, 0]), (5, [1, 2, 3, 4]), (123456789, [p - 1, 7, 0, 1234567]), (P, [5, p - 2, 11, 0])] do
-    ok := (← runOne "app    " Image.bytes Image.INPUT Image.halt x y) && ok
-    ok := (← runOne "app_mop" ImageMop.bytes ImageMop.INPUT ImageMop.halt x y) && ok
+    ok := (← runOne "app    " Image.bytes Image.halt x y) && ok
+    ok := (← runOne "app_mop" ImageMop.bytes ImageMop.halt x y) && ok
   return if ok then 0 else 1
