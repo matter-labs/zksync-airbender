@@ -67,6 +67,10 @@ theorem sail_csr_7c7_illegal :
     (match runSail (SailRV32.Functions.execute (.CSRReg (0x7c7, .Regidx 0, .Regidx 0, .CSRRW)))
       Airbender.resetState with | .ok (.Illegal_Instruction ()) _ => true | _ => false) = true := by decide +kernel
 theorem delegate_rejected : next 0x7c701073 = none := by decide +kernel   -- csrrw x0, 0x7c7, x0 with x12 = 0
+/-- A call with a real control word (7 rounds, `x12 = 0b1001 << 16`) but `x10 = 0x400004` (not 128-aligned) and
+`x11 = 0` (in ROM): rejected by `RV.Delegation.blake2s`. -/
+theorem delegate_bad_args :
+    (Airbender.step ⟨(test 0x7c701073).set .x12 0x90000#32, []⟩).isNone = true := by decide +kernel
 theorem csr_7c8_stops : next 0x7c801073 = none := by decide +kernel       -- csrrw x0, 0x7c8, x0 (not modelled)
 theorem input_next   : readNext 0x7c001573 [0x1234] = some (4, 0x1234, []) := by decide +kernel  -- csrrw a0, 0x7c0, x0
 theorem csrrs_read   : readNext 0x7c002573 [0x1234] = some (4, 0x1234, []) := by decide +kernel  -- csrrs a0, 0x7c0, x0

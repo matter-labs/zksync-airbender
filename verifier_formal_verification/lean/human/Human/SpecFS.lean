@@ -4,9 +4,11 @@ import Human.SpecExt4
 /-! # The Fiat–Shamir check the program makes
 
 The Blake2s (7 rounds) digest of the five input words is the transcript seed. The challenge `z` (an Ext4 element)
-is made of its first four words, each as a BabyBear element (reduced mod `p`, as the field crate's
-`from_raw_repr_with_reduction`; this program takes the reduced word as a canonical limb). The prover's claim `v`,
-four more input words (also reduced), must be `poly4 z`; the program checks it and fails otherwise. -/
+is made of its first four words, each reduced mod `p` as the field crate's `from_raw_repr_with_reduction` does; this
+program takes the reduced word as a canonical limb, so the limb is the field element `wᵢ mod p`. (The real verifier
+reads the same reduced word as the field crate's raw Montgomery representation, i.e. the element `(wᵢ mod p) · 2⁻³²`:
+the sampling is identical, the interpretation differs by that factor.) The prover's claim `v`, four more input words
+(also reduced), must be `poly4 z`; the program checks it and fails otherwise. -/
 
 namespace Spec
 
