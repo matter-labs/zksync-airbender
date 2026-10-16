@@ -36,12 +36,6 @@ theorem writeWords_eq : ∀ (ws : List RV.Word) (σm : Nat → BitVec 8) (s : RV
       rw [show (4 : RV.Word) = BitVec.ofNat 32 4 from rfl, word_add_toNat a 4 (by omega)]; omega
     exact writeWords_eq ws _ (s.store a w 4) (a + 4) hm' ha' b
 
-theorem blake2s_bound {x10 x11 x12 : RV.Word} {mem : RV.Word → BitVec 8} {r : Nat × RV.Word × Vector RV.Word 24}
-    (h : RV.Delegation.blake2s x10 x11 x12 mem = some r) : x10.toNat + 96 ≤ RV.RAM_END := by
-  unfold RV.Delegation.blake2s at h
-  split_ifs at h with hc
-  exact hc.2.1
-
 /-- Not a delegation call: the Airbender machine takes a Sail step. -/
 theorem delegation_none (h : Airbender.AgreeSail s σ) {i : RV.Instr}
     (hdec : RV.decode (RV.read s.mem s.pc 4) = some i) (hi : ∀ op, i ≠ .delegate op) :
@@ -68,7 +62,7 @@ theorem kind_delegate (h : Airbender.AgreeSail s σ) (op : RV.CsrOp)
   case neg => rw [if_neg hrun] at hex; cases hex
   rw [if_pos hrun, Option.some.injEq] at hex
   subst hex
-  have hbd := blake2s_bound hb
+  have hbd := RV.blake2s_bound hb
   set pc' := s.pc + BitVec.ofNat 32 (4 * n)
   set σ₁ : SailState := { σ with mem := Airbender.writeWords σ.mem (s.getReg 10) out.toList }
   refine ⟨((xset σ₁ 12 x12).set .PC pc').set .nextPC pc', ?_, ?_, ?_, ?_, ?_⟩

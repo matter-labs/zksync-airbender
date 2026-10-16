@@ -107,6 +107,30 @@ pub extern "C" fn ext4_poly(out: &mut [u32; 4], y: &[u32; 4]) {
     *out = [bb::to_u32(e.c0.c0), bb::to_u32(e.c0.c1), bb::to_u32(e.c1.c0), bb::to_u32(e.c1.c1)];
 }
 
+/// A word as a BabyBear element: at most two subtractions of the modulus (`2^32 < 3p`), as `field`'s
+/// `from_raw_repr_with_reduction`.
+#[inline(always)]
+fn reduce(x: u32) -> u32 {
+    let c = if x >= bb::ORDER { x - bb::ORDER } else { x };
+    if c >= bb::ORDER { c - bb::ORDER } else { c }
+}
+
+/// Fiat-Shamir check: the digest in `st` is the transcript seed; the challenge `z` (4 BabyBear limbs) is its first four
+/// words, reduced as the field crate's `from_raw_repr_with_reduction`. The prover claims `v = ∑ c_i z^i` (over
+/// `COEFFS4`; `v` reduced the same way). A wrong claim ends the run with `zksync_os_finish_error` (unprovable).
+#[unsafe(no_mangle)]
+#[inline(never)]
+pub extern "C" fn fs_check(st: &blake2s_u32::DelegatedBlake2sState, v: &[u32; 4]) {
+    let z = [reduce(st.state[0]), reduce(st.state[1]), reduce(st.state[2]), reduce(st.state[3])];
+    let mut ez = [0u32; 4];
+    ext4_poly(&mut ez, &z);
+    let diff = (ez[0] ^ reduce(v[0])) | (ez[1] ^ reduce(v[1])) | (ez[2] ^ reduce(v[2])) | (ez[3] ^ reduce(v[3]));
+    // one value, one branch (`black_box` keeps LLVM from splitting the comparison into four)
+    if core::hint::black_box(diff) != 0 {
+        riscv_common::zksync_os_finish_error()
+    }
+}
+
 /// One Blake2s compression with 7 rounds, as the verifier's transcript: `Blake2RoundFunctionEvaluator` (baseline,
 /// plain Rust in both images). `len_bytes` more input bytes, `last` marks the final block.
 #[unsafe(no_mangle)]
@@ -137,5 +161,9 @@ fn main() -> ! {
     st.state = blake2s_u32::CONFIGURED_IV;
     st.get_witness_buffer()[..5].copy_from_slice(&input);
     blake2s_compress(st, 20, true);
+    // Fiat-Shamir: the prover's claim `v` about the challenge drawn from the digest, from the non-determinism
+    // source; `fs_check` fails the run if it is wrong
+    let v: [u32; 4] = core::array::from_fn(|_| riscv_common::csr_read_word());
+    fs_check(st, &v);
     riscv_common::zksync_os_finish_success(&[c, p, e[0], e[1], e[2], e[3], st.state[0], st.state[1]])
 }

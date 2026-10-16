@@ -36,6 +36,7 @@ LEAN=../lean/image/$ns.lean; mkdir -p "$(dirname $LEAN)"
          if (n ~ /boot_sequence4init$/) return "init"
          if (n ~ /33zksync_os_finish_success_extended$/) return "finish_success_extended"
          if (n ~ /24zksync_os_finish_success$/) return "finish_success"
+         if (n ~ /22zksync_os_finish_error$/) return "finish_error"
          if (n ~ /^_R/) return ""
          return n }
        NF == 4 && $2 != "00000000" && ($3 == "T" || $3 == "t") && name($4) != "" {

@@ -64,9 +64,26 @@ def runFlat (base : Word → BitVec 8) (k : Nat) (s : State) (halt : Nat) : IO (
       if (← IO.getEnv "RUN_DEBUG").isSome then IO.eprintln s!"chunk {c} pc {s.pc.toNat}"
   return some s
 
+/-- The right Fiat–Shamir claim: `poly4` at the challenge (the first four digest words, mod `p`). -/
+def claim (x : Nat) (y : List Nat) : List Nat :=
+  let d := Spec.blake5 #v[BitVec.ofNat 32 x, BitVec.ofNat 32 y[0]!, BitVec.ofNat 32 y[1]!, BitVec.ofNat 32 y[2]!,
+    BitVec.ofNat 32 y[3]!]
+  poly4 [d[0].toNat % p, d[1].toNat % p, d[2].toNat % p, d[3].toNat % p]
+
+/-- A wrong claim must end in `zksync_os_finish_error`: the run gets stuck. -/
+def runBad (name : String) (bytes : Array (BitVec 8)) (halt : Nat) (x : Nat) (y : List Nat) : IO Bool := do
+  let base := mem0 bytes
+  let v := (claim x y).modifyHead (· + 1)
+  let inp : List Word := (x :: y ++ v).map (BitVec.ofNat 32 ·)
+  let s0 : State := { pc := 0, regFile := fun _ => 0, mem := base, input := inp }
+  match ← runFlat base 2000 s0 halt with
+  | none => IO.println s!"{name} x = {x}, wrong claim: stuck OK"; return true
+  | some s => IO.println s!"{name} x = {x}, wrong claim: pc = {s.pc.toNat} MISMATCH"; return false
+
 def runOne (name : String) (bytes : Array (BitVec 8)) (halt : Nat) (x : Nat) (y : List Nat) : IO Bool := do
   let base := mem0 bytes
-  let s0 : State := { pc := 0, regFile := fun _ => 0, mem := base, input := (x :: y).map (BitVec.ofNat 32 ·) }
+  let inp : List Word := (x :: y ++ claim x y).map (BitVec.ofNat 32 ·)
+  let s0 : State := { pc := 0, regFile := fun _ => 0, mem := base, input := inp }
   match ← runFlat base 2000 s0 halt with
   | none => IO.println s!"{name} x = {x}, y = {y}: stuck"; return false
   | some s =>
@@ -101,4 +118,6 @@ def main : IO UInt32 := do
   for (x, y) in [(0, [0, 0, 0, 0]), (5, [1, 2, 3, 4]), (123456789, [p - 1, 7, 0, 1234567]), (P, [5, p - 2, 11, 0])] do
     ok := (← runOne "app    " Image.bytes Image.halt x y) && ok
     ok := (← runOne "app_mop" ImageMop.bytes ImageMop.halt x y) && ok
+    ok := (← runBad "app    " Image.bytes Image.halt x y) && ok
+    ok := (← runBad "app_mop" ImageMop.bytes ImageMop.halt x y) && ok
   return if ok then 0 else 1

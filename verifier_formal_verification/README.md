@@ -9,7 +9,9 @@ final theorems' statements and axioms).
 The guest is built twice (`rust/build.sh`): `build/app_mop.bin` (cargo feature `mop`: BabyBear ops via Airbender's
 field opcodes `mop.rr.N`, as the real verifier) and `build/app.bin` (the same ops in plain Rust, trusting no opcode).
 Both compute a Mersenne31 polynomial, a BabyBear Ext4 polynomial (Horner) and a Blake2s compression (the verifier's
-`blake2s_u32`, 7 rounds) of their input, five words read from Airbender's non-determinism source (CSR `0x7c0`).
+`blake2s_u32`, 7 rounds) of their input, five words read from Airbender's non-determinism source (CSR `0x7c0`);
+then a Fiat–Shamir check: the digest is the transcript seed, the challenge `z` its first four words, and the prover's
+claim `v = poly4 z` (four more words from the non-determinism source) is checked — a wrong claim fails the run.
 
 ## What a human reads (`lean/human/`, ~200 lines)
 - `Human/State.lean` — the machine state (registers, PC, byte memory, the non-determinism input).
@@ -21,10 +23,12 @@ Both compute a Mersenne31 polynomial, a BabyBear Ext4 polynomial (Horner) and a 
 - `Human/Call.lean` — what "this code implements a function" means (RISC-V calling convention).
 - `Human/Spec.lean`, `Human/SpecPoly.lean`, `Human/SpecExt4.lean` — what the program should compute
   (`combine x = 3x + 1`, a polynomial over Mersenne31, a polynomial over BabyBear's `F[w]/(w⁴ - 11)`), and
-  `Human/SpecBlake.lean` (Blake2s compression, RFC 7693, 7 rounds).
+  `Human/SpecBlake.lean` (Blake2s compression, RFC 7693, 7 rounds), `Human/SpecFS.lean` (the challenge and the
+  claim the program checks).
 - `Human/Theorems.lean` — the final statement `ProgramCorrectOf`: from reset, with the image loaded, RAM zero and an
-  input starting with the five words, the program reaches its final self-jump with the outputs in `a0 … a7` and
-  stays there; `ProgramCorrect` (plain image) and `ProgramCorrectMop` instantiate it (both proven).
+  input starting with the five words and the claim: if the claim is right, the program reaches its final self-jump
+  with the outputs in `a0 … a7` and stays there; if it is wrong, no run ever reaches it. `ProgramCorrect` (plain
+  image) and `ProgramCorrectMop` instantiate it (both proven).
 - `HumanSail/Airbender.lean` — the Airbender machine as the official Sail RISC-V model plus a short list of
   changes, each marked `-- Airbender:` (needs the generated Sail model, `sail/regen.sh`).
 - `HumanSail/Theorems.lean` — our spec = Sail: `DecodeIsSail`, `StepIsAirbender`, and `ProgramCorrect` on the

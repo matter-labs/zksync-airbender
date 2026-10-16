@@ -8,8 +8,9 @@ namespace RV
 set_option maxHeartbeats 0
 
 set_option hygiene false in
-/-- The proof of `init_run` for an image's `init` code `code`, whose `.rodata` (912 bytes) is at ROM `src`. -/
-macro "init_run_proof" code:ident src:term : tactic => `(tactic| (
+/-- The proof of `init_run` for an image's `init` code `code`, whose `.rodata` (912 bytes) is at ROM `src` and
+(empty) `.data` at ROM `dsrc`. -/
+macro "init_run_proof" code:ident src:term:max dsrc:term:max : tactic => `(tactic| (
     rv_code_facts hcode $code
     rv_steps 20 with hpc
     rv_name T hT
@@ -51,7 +52,7 @@ macro "init_run_proof" code:ident src:term : tactic => `(tactic| (
     rv_name T2 hT2'
     have hT2m : T2.mem = S1.mem := by rw [← hT2']; simp only [rv_state]
     have hT2sp : T2.getReg 2#5 = S.getReg 2#5 := by rw [← hT2']; rv_regs
-    refine run_cont (memcpy_aligned (A + 136#32) (by bv_omega) (by bv_omega) T2 20975616#32 20480#32 0
+    refine run_cont (memcpy_aligned (A + 136#32) (by bv_omega) (by bv_omega) T2 20975616#32 $dsrc 0
       (codeAt_of_rom hc1 (by rw [memcpy_length]; simp only [ROM_END]; bv_omega) (fun b _ => by rw [hT2m]))
       (by rw [← hT2']; rv_regs) (by rw [← hT2']; rv_regs) (by rw [← hT2']; rv_regs) (by rw [← hT2']; rv_regs; decide)
       (by decide) (by decide) (by decide) (by decide) (by decide) (by decide)
@@ -90,7 +91,7 @@ macro "init_run_proof" code:ident src:term : tactic => `(tactic| (
       simp only [rv_state, r_set, jump_r, next_r, h0, h1, h2, h8, h10, h11, h12, h13, ite_false, show ¬ (i = 0) from h0]
 ))
 
-/-- `init` at `A` (with `memcpy` right after it, at `A + 136`): copies `.rodata` (912 bytes, from ROM `0x3e60`
+/-- `init` at `A` (with `memcpy` right after it, at `A + 136`): copies `.rodata` (912 bytes, from ROM `0x4050`
 to RAM `0x1400000`) and its empty `.data`; returns to `ra` with the memory outside its frames a block copy,
 ROM unchanged, and every register outside `a0 … a5` restored or untouched. -/
 theorem init_run (A : Word) (hA : A.toNat % 4 = 0) (hAr : A.toNat + 136 + 4 * 1676 ≤ 4194304) (S : State)
@@ -99,9 +100,9 @@ theorem init_run (A : Word) (hA : A.toNat % 4 = 0) (hAr : A.toNat + 136 + 4 * 16
     (hsp2 : (S.getReg 2#5).toNat ≤ 20971520) (hra : (S.getReg 1#5).toNat % 4 = 0) :
     ∃ m S', run m S = some S' ∧ S'.pc = S.getReg 1#5 ∧
       (∀ a : Word, a.toNat + 32 < (S.getReg 2#5).toNat ∨ (S.getReg 2#5).toNat ≤ a.toNat →
-        S'.mem a = blockCopy S.mem 20971520#32 15968#32 912 a) ∧
+        S'.mem a = blockCopy S.mem 20971520#32 16464#32 912 a) ∧
       (∀ b : Word, b.toNat < ROM_END → S'.mem b = S.mem b) ∧
       (∀ i : Reg, i ≠ 10#5 → i ≠ 11#5 → i ≠ 12#5 → i ≠ 13#5 → i ≠ 14#5 → i ≠ 15#5 → S'.getReg i = S.getReg i) := by
-  init_run_proof Code.init 15968#32
+  init_run_proof Code.init 16464#32 24576#32
 
 end RV

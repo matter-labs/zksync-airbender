@@ -7,6 +7,23 @@ commit check `git diff --cached --stat` and that no staged file is over ~200 KB.
 Moved here from an earlier prototype repo (as a snapshot; its history, which contains the large Sail model, was
 NOT imported).
 
+=== POC 5: FIAT-SHAMIR CHECK WITH VALIDATED NON-DETERMINISM (2026-10-16) ===
+- Guest: after blake2s_compress, main reads the prover's claim v (4 words, csr_read_word) and calls
+  fs_check(BLAKE, &v) (#[inline(never)]): z_i = reduce(digest_i) (two branch-free conditional subtractions, as
+  field's from_raw_repr_with_reduction), ez = ext4_poly(z), compare with reduce(v) (black_box: one branch), wrong ->
+  zksync_os_finish_error (csrrw x0, cycle, x0: no next state). (With the check in main, LLVM inlined init and moved
+  combine; in fs_check main keeps its shape.) Frame 0x70, x in s4, BLAKE pointer in s3; addresses moved.
+- Spec: Human/SpecFS.lean (challenge = first 4 digest words as BabyBear, claimOK v = poly4 z). Final statements
+  (both machines): input x :: y0..y3 :: v0..v3 :: rest; claim right -> as before; claim wrong -> no run reaches halt.
+- Proof: FsCheck/{Blocks, Values (red = x mod p; diff = 0 iff limbs match), Inj (ofLimbs injective: monic division
+  by w^4 - 11, no primality needed), PartA, PartB, Impl (fs_check_run: returns or AtFinishError)}, Main/F (claim
+  reads + fs_check), Main/A..C and Run re-laid out (read-free stretches lifted with run_lift twice), Stuck
+  (run_rom, stuck_never_halts: a stuck run never was at the self-loop), Final* (run lemma; ProgramCorrect;
+  StuckOnBadClaim). Sail: airbender_stuck (the machine rejects csrrw x0, cycle, x0 too), arun_add; soundness by
+  forward simulation + determinism. verify.sh green; run_image checks right and wrong claims on both images.
+- Scope: one commit-challenge-respond-verify round; the Merkle-path loop (receive siblings, hash up, compare with a
+  root) is the same shape repeated.
+
 === DELEGATIONS SPEC: BLAKE2S ROUND FUNCTION, CSR 0x7C7 (2026-10-16) ===
 - Source: riscv_transpiler vm/delegations/blake2_round_function.rs (and replayer/delegations, same semantics): a
   run of N identical csrrw x0, 0x7c7, x0 (N = 7 or 10 by x12 bit 16) is ONE call; pc += 4N; the replayer decodes

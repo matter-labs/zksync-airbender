@@ -49,18 +49,21 @@ noncomputable def run : (numSteps : Nat) → Machine → Option Machine
 
 /-- 3. The final theorem on the Airbender machine itself: `RV.ProgramCorrectOf` (`Human/Theorems.lean`), with Sail's
 state in place of ours. Started from any Airbender state (`Configured`: privilege, CSRs, memory map as after reset) at
-address 0, with the image loaded, RAM zero and an input starting with `x`, then the 4 limbs of `y`, Airbender
-reaches `halt` with `a0 = combine x`, `a1 = poly x`, `a2 … a5` the limbs of `poly4 y`, `a6, a7` the first two
+address 0, with the image loaded, RAM zero and an input starting with `x`, the 4 limbs of `y` and the 4 words of the
+Fiat–Shamir claim `v`: if the claim is right, Airbender reaches `halt` with `a0 = combine x`, `a1 = poly x`, `a2 … a5` the limbs of `poly4 y`, `a6, a7` the first two
 words of the Blake2s (7 rounds) digest of the input, `x18 … x25` zero, and stays
-there. Follows from 1 and 2 and the final theorem on our spec. -/
+there; if it is wrong, Airbender never reaches `halt`. Follows from 1 and 2 and the final theorem on our spec. -/
 def ProgramCorrectOf (bytes : Array (BitVec 8)) (halt : Nat) : Prop :=
-  ∀ (start : SailState) (x y0 y1 y2 y3 : RV.Word) (rest : List RV.Word), Configured start → start.regs .PC = 0 →
+  ∀ (start : SailState) (x y0 y1 y2 y3 v0 v1 v2 v3 : RV.Word) (rest : List RV.Word), Configured start →
+    start.regs .PC = 0 →
     (∀ i (h : i < bytes.size), start.mem i = bytes[i]) →
     (∀ addr : Nat, RV.ROM_END ≤ addr → addr < RV.RAM_END → start.mem addr = 0) →
     x.toNat ≤ Spec.P →
     y0.toNat < RV.BabyBearP → y1.toNat < RV.BabyBearP → y2.toNat < RV.BabyBearP → y3.toNat < RV.BabyBearP →
+    (Spec.claimOK #v[x, y0, y1, y2, y3] #v[v0, v1, v2, v3] →
     ∃ (numSteps : Nat) (final' : Machine),
-      run numSteps ⟨start, x :: y0 :: y1 :: y2 :: y3 :: rest⟩ = some final' ∧ let final := final'.sail
+      run numSteps ⟨start, x :: y0 :: y1 :: y2 :: y3 :: v0 :: v1 :: v2 :: v3 :: rest⟩ = some final' ∧
+      let final := final'.sail
       final.regs .PC = BitVec.ofNat 32 halt ∧
       getReg final a0 = Spec.combine x ∧
       (getReg final a1).toNat ≤ Spec.P ∧
@@ -72,7 +75,11 @@ def ProgramCorrectOf (bytes : Array (BitVec 8)) (halt : Nat) : Prop :=
       getReg final 17 = (Spec.blake5 #v[x, y0, y1, y2, y3])[1] ∧
       (∀ i : RV.Reg, 18 ≤ i.toNat → i.toNat ≤ 25 → getReg final i = 0) ∧
       ∀ moreSteps, ∃ later, run moreSteps final' = some later ∧ later.sail.regs .PC = final.regs .PC ∧
-        ∀ i, getReg later.sail i = getReg final i
+        ∀ i, getReg later.sail i = getReg final i) ∧
+    (¬ Spec.claimOK #v[x, y0, y1, y2, y3] #v[v0, v1, v2, v3] →
+      ∀ (numSteps : Nat) (final' : Machine),
+        run numSteps ⟨start, x :: y0 :: y1 :: y2 :: y3 :: v0 :: v1 :: v2 :: v3 :: rest⟩ = some final' →
+        final'.sail.regs .PC ≠ BitVec.ofNat 32 halt)
 
 /-- 3. for the plain-Rust image (`build/app.bin`). -/
 def ProgramCorrect : Prop := ProgramCorrectOf Image.bytes Image.halt

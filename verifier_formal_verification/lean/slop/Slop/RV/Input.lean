@@ -102,4 +102,10 @@ theorem step_read (s : State) (w : Word) (op : CsrOp) (rd : Reg) (v : Word) (res
   rw [step_fetch s w hpc hrom hw, hd, Option.bind_some]
   simp only [exec, hin]; rfl
 
+theorem blake2s_bound {x10 x11 x12 : Word} {mem : Word → BitVec 8} {r : Nat × Word × Vector Word 24}
+    (h : Delegation.blake2s x10 x11 x12 mem = some r) : x10.toNat + 96 ≤ RAM_END ∧ ROM_END ≤ x10.toNat := by
+  unfold Delegation.blake2s at h
+  split_ifs at h with hc
+  exact ⟨hc.2.1, hc.1⟩
+
 end RV
