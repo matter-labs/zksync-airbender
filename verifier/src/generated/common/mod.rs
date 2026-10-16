@@ -200,8 +200,7 @@ pub fn verify_sumcheck_rounds<
             }
         }
         {
-            let coeffs: [BabyBearExt4; 4] =
-                unsafe { *commit_buf.data_as::<[BabyBearExt4; 4]>(1).as_ptr() };
+            let coeffs: [BabyBearExt4; 4] = unsafe { commit_buf.read_one::<[BabyBearExt4; 4]>() };
             let p0 = coeffs[0];
             let mut p1 = coeffs[0];
             field_ops::add_assign(&mut p1, &coeffs[1]);
@@ -215,8 +214,7 @@ pub fn verify_sumcheck_rounds<
             }
         }
         ts.commit(&mut commit_buf, coeff_data_words);
-        let coeffs: [BabyBearExt4; 4] =
-            unsafe { *commit_buf.data_as::<[BabyBearExt4; 4]>(1).as_ptr() };
+        let coeffs: [BabyBearExt4; 4] = unsafe { commit_buf.read_one::<[BabyBearExt4; 4]>() };
         let r_k = {
             let raw = unsafe {
                 (ts.draw_digest().as_ptr() as *const [u32; EXT_DEGREE]).as_ref_unchecked()

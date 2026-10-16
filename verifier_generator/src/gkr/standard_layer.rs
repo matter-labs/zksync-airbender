@@ -407,7 +407,7 @@ fn emit_base_coeff_term<MW: FieldWrapper<BaseField = F>, F: PrimeField>(
 ) -> TokenStream {
     let e = quote! { evals.get_unchecked(#idx)[j] };
     let dst_ts = quote! { #dst };
-    if coeff == F::ONE {
+    if coeff.is_one() {
         if first {
             quote! { let mut #dst = #e; }
         } else {

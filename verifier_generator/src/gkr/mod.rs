@@ -133,9 +133,7 @@ pub fn generate_gkr_common<MW: FieldWrapper>() -> TokenStream {
                 }
 
                 {
-                    let coeffs: [#quartic_struct; 4] = unsafe {
-                        *commit_buf.data_as::<[#quartic_struct; 4]>(1).as_ptr()
-                    };
+                    let coeffs: [#quartic_struct; 4] = unsafe { commit_buf.read_one::<[#quartic_struct; 4]>() };
                     let p0 = coeffs[0];
                     let mut p1 = coeffs[0];
                     #add_p1_c1;
@@ -155,9 +153,7 @@ pub fn generate_gkr_common<MW: FieldWrapper>() -> TokenStream {
 
                 // SAFETY: `CommitBuf::commit` writes only the zero padding past `coeff_data_words`,
                 // so the buffer still holds the coefficients read from `nd_source` above.
-                let coeffs: [#quartic_struct; 4] = unsafe {
-                    *commit_buf.data_as::<[#quartic_struct; 4]>(1).as_ptr()
-                };
+                let coeffs: [#quartic_struct; 4] = unsafe { commit_buf.read_one::<[#quartic_struct; 4]>() };
                 let r_k = {
                     let raw = unsafe { (ts.draw_digest().as_ptr() as *const [u32; EXT_DEGREE]).as_ref_unchecked() };
                     ext_from_raw_words::<#field_struct, #quartic_struct, EXT_DEGREE>(raw)
