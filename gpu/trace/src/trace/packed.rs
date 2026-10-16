@@ -581,6 +581,14 @@ mod cpu_tests {
 
     #[test]
     fn cpu_packed_layout_formulas() {
+        let wrap = PackedCommitConfig {
+            log_lde_factor: 7,
+            log_values_per_leaf: 1,
+            cap_log: 3,
+            skip_bottom: 10,
+        };
+        assert_eq!(opening_path_len(24, &wrap), 27);
+        assert_eq!(retained_len(23, 10), 2 * ((1usize << 23) >> 10) - 1);
         for (log_packed, h) in [(26, 24), (16, 14)] {
             let cfg = PackedCommitConfig {
                 log_lde_factor: 5,

@@ -116,7 +116,7 @@ mod tests {
             .unwrap();
             assert_eq!(geometry(&feeder), (22, 16, 16, 2));
             let wrap = prover_config(CircuitType::L1Wrap21, ProofProfile::L1Wrap, level).unwrap();
-            assert_eq!(geometry(&wrap), (21, 64, 8, 4));
+            assert_eq!(geometry(&wrap), (21, 128, 8, 2));
             assert_eq!(wrap.security_level, level);
             let circuits = DelegationCircuitType::get_all_delegation_types()
                 .iter()

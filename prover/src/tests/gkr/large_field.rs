@@ -136,7 +136,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
 ) {
     let worker = Worker::new_with_num_threads(num_threads);
     let level = SecurityLevel::Sec100;
-    // Pack the 2^21 trace into the active 2^25 message at base LDE 64.
+    // Pack the 2^21 trace into the active 2^24 message at base LDE 128.
     let pack_log2 = PACK_LOG2;
     let external_challenges_pow_bits = EXTERNAL_CHALLENGES_POW_BITS;
 
@@ -281,7 +281,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
     }
 
     println!("Preparing data for proving");
-    // 4. Use the active packed-wrap config: 2^25 message at LDE 64.
+    // 4. Use the active packed-wrap config: 2^24 message at LDE 128.
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
     let prover_config = packed_prover_config(level);
 
@@ -330,7 +330,12 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
         // subtree are streamed to disk, then a small top-tree over the subtree roots — so
         // the ~2^31 codeword and its tree never have to be materialized whole. This and
         // later runs read them back lazily via mmap. Delete the cache files to recompute.
-        let setup_disk_prefix = "test_proofs/unified_setup_proth120_2p21_ondisk";
+        let setup_disk_prefix = format!(
+            "test_proofs/unified_setup_proth120_2p21_pack{pack_log2}_lde{}_vpl{}_ondisk",
+            lde_factor.trailing_zeros(),
+            values_per_leaf.trailing_zeros()
+        );
+        let setup_disk_prefix = setup_disk_prefix.as_str();
         let setup_coset_paths: Vec<_> = (0..lde_factor)
             .map(|i| coset_file_path(setup_disk_prefix, i))
             .collect();

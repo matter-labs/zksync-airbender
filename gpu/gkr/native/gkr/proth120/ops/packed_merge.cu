@@ -13,16 +13,18 @@ static_assert(sizeof(merge_arguments) == 40);
 static_assert(offsetof(merge_arguments, extra) == 16);
 static_assert(offsetof(merge_arguments, merged) == 32);
 EXTERN __global__ void ab_pr_gkr_merge_claims_kernel(const pr *claims, u32 count, const pr *extra, u32 pack_log2, pr *merged) {
+  if (pack_log2 < 1 || pack_log2 > 4)
+    __trap();
+  const u32 width = 1u << pack_log2;
   const u32 group = (blockIdx.x * blockDim.x + threadIdx.x) / 32;
   const u32 lane = threadIdx.x % 32;
-  if (pack_log2 != 4 || group >= count / 16 + (count % 16 != 0))
+  if (group >= count / width + (count % width != 0))
     return;
-  const u32 index = group * 16 + lane;
-  pr value = lane < 16 && index < count ? claims[index] : pr::ZERO();
-#pragma unroll
-  for (u32 round = 0; round < 4; ++round) {
+  const u32 index = group * width + lane;
+  pr value = lane < width && index < count ? claims[index] : pr::ZERO();
+  for (u32 round = 0; round < pack_log2; ++round) {
     const pr other = memory::shfl_xor<pr>(0xffffffffu, value, 1 << round);
-    if (lane < 16 && (lane & ((1u << (round + 1)) - 1)) == 0)
+    if (lane < width && (lane & ((1u << (round + 1)) - 1)) == 0)
       value = pr::add(value, pr::mul(pr::sub(other, value), extra[round]));
   }
   if (lane == 0)

@@ -144,6 +144,13 @@ impl GkrOutputPr {
     }
 }
 
+fn assert_supported_pack_pr(pack_log2: u32) {
+    assert!(
+        (1..=4).contains(&pack_log2),
+        "Proth120 packed merge supports pack_log2 1..=4, got {pack_log2}"
+    );
+}
+
 pub(crate) fn launch_merge_claims_pr(
     claims: &DeviceSlice<PR>,
     extra: &DeviceSlice<PR>,
@@ -151,15 +158,15 @@ pub(crate) fn launch_merge_claims_pr(
     merged: &mut DeviceSlice<PR>,
     context: &ProverContext,
 ) -> CudaResult<()> {
-    assert_eq!(pack_log2, 4, "Proth120 packed merge requires pack_log2=4");
+    assert_supported_pack_pr(pack_log2);
     assert_eq!(
         extra.len(),
-        4,
+        pack_log2 as usize,
         "Proth120 packed merge coordinate count mismatch"
     );
     assert_eq!(
         merged.len(),
-        claims.len().div_ceil(16),
+        claims.len().div_ceil(1 << pack_log2),
         "Proth120 packed merge output count mismatch"
     );
     if claims.is_empty() {
@@ -214,15 +221,17 @@ pub(crate) fn schedule_packed_merge_pr_with_snapshots<F>(
 where
     F: FnMut(usize, &DeviceSlice<u8>) -> CudaResult<()>,
 {
-    assert_eq!(pack_log2, 4, "Proth120 packed merge requires pack_log2=4");
+    assert_supported_pack_pr(pack_log2);
+    let pack_width = 1usize << pack_log2;
+    let pack_coordinates = pack_log2 as usize;
     assert_eq!(seed.len(), 32, "Proth120 packed merge seed length mismatch");
     assert_eq!(
         gathered.values.len(),
         gathered.memory_witness_count + gathered.setup_count,
         "Proth120 packed merge dense claim count mismatch"
     );
-    let memory_claim_count = gathered.memory_witness_count.div_ceil(16);
-    let setup_claim_count = gathered.setup_count.div_ceil(16);
+    let memory_claim_count = gathered.memory_witness_count.div_ceil(pack_width);
+    let setup_claim_count = gathered.setup_count.div_ceil(pack_width);
     assert_eq!(
         memory_claim_count * 16,
         proof.layout.memory_claims.len(),
@@ -234,12 +243,12 @@ where
         "Proth120 packed merge setup mirror count mismatch"
     );
     assert_eq!(
-        (claim_point.len() + 4) * 16,
+        (claim_point.len() + pack_coordinates) * 16,
         proof.layout.evaluation_point.len(),
         "Proth120 packed merge point mirror count mismatch"
     );
     let stream = context.get_exec_stream();
-    let mut extra = context.alloc(4, AllocationPlacement::BestFit)?;
+    let mut extra = context.alloc(pack_coordinates, AllocationPlacement::BestFit)?;
     transcript_draw_fields(seed, &mut extra, stream)?;
     snapshot(0, seed)?;
     let mut claims = context.alloc(
@@ -270,7 +279,10 @@ where
         &claims[memory_claim_count..],
         stream,
     )?;
-    let mut point = context.alloc(claim_point.len() + 4, AllocationPlacement::BestFit)?;
+    let mut point = context.alloc(
+        claim_point.len() + pack_coordinates,
+        AllocationPlacement::BestFit,
+    )?;
     memory_copy_async(&mut point[..claim_point.len()], claim_point, stream)?;
     memory_copy_async(&mut point[claim_point.len()..], &extra[..], stream)?;
     memory_copy_async(proof.evaluation_point_device_mut(), &point[..], stream)?;

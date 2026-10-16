@@ -21,7 +21,11 @@ fn cpu_pr_complete_launch_argument_abi() {
     let programs = programs();
     let config =
         prover::gkr::prover_config::ProofProfile::L1Wrap.prover_config(21, SecurityLevel::Sec100);
-    let layout = ProofLayoutPr::new(&programs, &config, 4);
+    let layout = ProofLayoutPr::new(
+        &programs,
+        &config,
+        prover::gkr::prover_config::example_configs::l1_wrap_2p21::PACK_LOG2,
+    );
     layout.validate_geometry(
         &programs.runtime_circuit,
         crate::proth120::backward::dr_tail::PR_DR_FINAL_TRACE_LOG_2 as usize,

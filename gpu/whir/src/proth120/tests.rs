@@ -120,12 +120,35 @@ pub(super) fn small_schedule() -> WhirSchedule {
     }
 }
 
+fn small_pack3_schedule() -> WhirSchedule {
+    WhirSchedule {
+        base_lde_factor: 64,
+        cap_size: 8,
+        whir_steps_schedule: vec![1, 4, 4],
+        whir_queries_schedule: vec![5, 4, 3],
+        whir_steps_lde_factors: vec![128, 2048],
+        whir_pow_schedule: vec![4, 0, 3],
+    }
+}
+
+/// The pack-4 L1 wrap WHIR schedule (message 2^25, base LDE 64), kept for the 2^8 oracle on a 2^23 LDE.
+fn pack4_wrap_schedule() -> WhirSchedule {
+    WhirSchedule {
+        base_lde_factor: 64,
+        cap_size: 8,
+        whir_steps_schedule: vec![2, 4, 4, 4, 3, 4],
+        whir_queries_schedule: vec![14, 11, 8, 6, 5, 4],
+        whir_steps_lde_factors: vec![1 << 8, 1 << 12, 1 << 16, 1 << 20, 1 << 23],
+        whir_pow_schedule: vec![30, 27, 20, 20, 17, 24],
+    }
+}
+
 #[test]
 fn cpu_shape_l1_values() {
     let schedule = ProofProfile::L1Wrap
         .prover_config(21, SecurityLevel::Sec100)
         .whir_schedule;
-    let shape = L1WhirShape::from_schedule(&schedule, 25, 6, 2, L1_WHIR_TILE_BYTES);
+    let shape = L1WhirShape::from_schedule(&schedule, 24, 7, 1, L1_WHIR_TILE_BYTES);
     assert_eq!(
         (
             shape.log_message,
@@ -135,22 +158,20 @@ fn cpu_shape_l1_values() {
             shape.total_sumcheck_polys,
             shape.log_final
         ),
-        (25, 6, 3, 44, 21, 4)
+        (24, 7, 3, 36, 17, 7)
     );
     let round_rows = [
-        (2, 14, 30, 23, 29),
+        (1, 12, 30, 23, 30),
         (4, 11, 27, 19, 27),
-        (4, 8, 20, 15, 27),
+        (4, 7, 30, 15, 27),
         (4, 6, 20, 11, 27),
-        (3, 5, 17, 8, 28),
-        (4, 4, 24, 4, 27),
+        (4, 5, 17, 7, 27),
     ];
     let oracle_rows = [
         (23, 8, 31, 4, 19, 5, 3, 3, 32767, 24),
         (19, 12, 31, 4, 15, 5, 3, 7, 2047, 24),
         (15, 16, 31, 4, 11, 5, 3, 11, 127, 24),
-        (11, 20, 31, 3, 8, 5, 3, 15, 15, 25),
-        (8, 23, 31, 4, 4, 4, 3, 18, 1, 24),
+        (11, 20, 31, 4, 7, 5, 3, 15, 7, 24),
     ];
     for (r, round) in shape.rounds.iter().enumerate() {
         assert_eq!(
@@ -188,7 +209,7 @@ fn cpu_shape_l1_values() {
                 ) + 1
             );
         } else {
-            assert_eq!(r, 5);
+            assert_eq!(r, 4);
         }
     }
     let s = L1WhirShape::from_schedule(&small_schedule(), 14, 5, 2, 16 << 14);
@@ -333,6 +354,7 @@ fn pr_accumulate_base_matches_cpu() {
         (8u32, 20usize, 3usize, 0u32),
         (8, 20, 3, 2),
         (8, 20, 3, 4),
+        (8, 104, 10, 3),
         (10, 104, 10, 4),
     ] {
         let rows = 1 << log_rows;
@@ -750,9 +772,7 @@ fn pr_commit_intermediate_n8_production() {
     let ctx = context(4096, Some(31));
     let stream = ctx.get_exec_stream();
     let worker = Worker::new();
-    let schedule = ProofProfile::L1Wrap
-        .prover_config(21, SecurityLevel::Sec100)
-        .whir_schedule;
+    let schedule = pack4_wrap_schedule();
     let shape = L1WhirShape::from_schedule(&schedule, 25, 6, 2, L1_WHIR_TILE_BYTES).rounds[4]
         .oracle
         .unwrap();
@@ -934,7 +954,7 @@ fn assert_l1_2p21_oracle_sampled(round: usize, expected: (u32, u32, u32)) {
     use super::openings::schedule_open_intermediate;
 
     let config = ProofProfile::L1Wrap.prover_config(21, SecurityLevel::Sec100);
-    let whir = L1WhirShape::from_schedule(&config.whir_schedule, 25, 6, 2, L1_WHIR_TILE_BYTES);
+    let whir = L1WhirShape::from_schedule(&config.whir_schedule, 24, 7, 1, L1_WHIR_TILE_BYTES);
     let shape = whir.rounds[round].oracle.expect("committed 2p21 oracle");
     assert_eq!((shape.log_n, shape.log_lde, shape.log_v), expected);
     assert_eq!(shape.log_domain, 31);
@@ -944,9 +964,9 @@ fn assert_l1_2p21_oracle_sampled(round: usize, expected: (u32, u32, u32)) {
         shape.path_len,
         (shape.log_domain - shape.log_v - shape.cap_log) as usize
     );
-    assert_eq!(shape.tile_cosets_log2, [3, 7, 11, 15, 18][round]);
-    assert_eq!(shape.skip_bottom, [5, 5, 5, 5, 4][round]);
-    assert_eq!(shape.retained_per_coset, [32767, 2047, 127, 15, 1][round]);
+    assert_eq!(shape.tile_cosets_log2, [3, 7, 11, 15][round]);
+    assert_eq!(shape.skip_bottom, [5, 5, 5, 5][round]);
+    assert_eq!(shape.retained_per_coset, [32767, 2047, 127, 7][round]);
     let started = Instant::now();
     let mut rng = TestRng::new(0x0021_7200 + round as u64);
     let monomials = rng.fields(1 << shape.log_n);
@@ -1065,13 +1085,8 @@ fn pr_l1_2p21_oracle_sampled_15_16_4() {
 }
 
 #[test]
-fn pr_l1_2p21_oracle_sampled_11_20_3() {
-    assert_l1_2p21_oracle_sampled(3, (11, 20, 3));
-}
-
-#[test]
-fn pr_l1_2p21_oracle_sampled_8_23_4() {
-    assert_l1_2p21_oracle_sampled(4, (8, 23, 4));
+fn pr_l1_2p21_oracle_sampled_11_20_4() {
+    assert_l1_2p21_oracle_sampled(3, (11, 20, 4));
 }
 
 fn host_sibling_offset(log_leaves: u32, skip_bottom: u32, level: u32, j: u32) -> usize {
@@ -1448,7 +1463,7 @@ fn pr_transcript_phases_match_reference() {
     let bundle = l1_bundle();
     let proof = &bundle.proof;
     let whir = &proof.whir_proof;
-    let shape = L1WhirShape::from_schedule(&whir.whir_schedule, 25, 6, 2, L1_WHIR_TILE_BYTES);
+    let shape = L1WhirShape::from_schedule(&whir.whir_schedule, 24, 7, 1, L1_WHIR_TILE_BYTES);
     let ctx = context(256, None);
     let stream = ctx.get_exec_stream();
     let initial = proof
@@ -1818,11 +1833,11 @@ fn pr_in_domain_symbolic_matches_dense() {
     );
 }
 
-fn packed_claims(columns: &[Vec<PR>], point: &[PR], worker: &Worker) -> Vec<PR> {
+fn packed_claims(columns: &[Vec<PR>], point: &[PR], pack_log2: usize, worker: &Worker) -> Vec<PR> {
     columns
-        .chunks(16)
+        .chunks(1 << pack_log2)
         .map(|pack| {
-            let mut evals = vec![PR::ZERO; 1 << 14];
+            let mut evals = vec![PR::ZERO; 1 << (10 + pack_log2)];
             for (i, column) in pack.iter().enumerate() {
                 evals[i << 10..(i + 1) << 10].copy_from_slice(column);
             }
@@ -1838,6 +1853,7 @@ fn cpu_whir_small(
     beta: PR,
     seed: [u8; 32],
     schedule: &WhirSchedule,
+    pack_log2: usize,
     worker: &Worker,
 ) -> super::L1WhirProof {
     use prover::cs::definitions::GKRAddress;
@@ -1850,11 +1866,11 @@ fn cpu_whir_small(
         CosetByCosetBaseCommitment::<PR, Keccak256MerkleTreeWithCap>::commit_packed(
             &columns.iter().map(Vec::as_slice).collect::<Vec<_>>(),
             &twiddles,
-            32,
-            2,
+            schedule.base_lde_factor,
+            schedule.whir_steps_schedule[0],
             8,
             10,
-            4,
+            pack_log2,
             worker,
         )
     };
@@ -1883,22 +1899,26 @@ fn cpu_whir_small(
         NaiveGKRBackend,
     >(
         memory_oracle,
-        packed_claims(memory, point, worker),
-        ColumnMajorBaseOracleForLDE::empty(4, 14, 32),
+        packed_claims(memory, point, pack_log2, worker),
+        ColumnMajorBaseOracleForLDE::empty(
+            1 << schedule.whir_steps_schedule[0],
+            10 + pack_log2,
+            schedule.base_lde_factor,
+        ),
         vec![],
         &setup_oracle,
-        packed_claims(setup, point, worker),
+        packed_claims(setup, point, pack_log2, worker),
         GKRStorage {
             layers: vec![layer],
         },
-        4,
+        pack_log2,
         point.to_vec(),
         beta,
         schedule,
         &twiddles,
         Keccak256Seed(seed),
         8,
-        14,
+        10 + pack_log2,
         &Proth120WorkStealingLazyBackend,
         &NaiveGKRBackend,
         WhirIntermediateOracleMode::CosetByCoset,
@@ -1907,8 +1927,15 @@ fn cpu_whir_small(
     )
 }
 
-fn whir_end_seed(proof: &super::L1WhirProof, initial: [u8; 32]) -> [u8; 32] {
-    let shape = L1WhirShape::from_schedule(&proof.whir_schedule, 14, 5, 2, 16 << 14);
+fn whir_end_seed(proof: &super::L1WhirProof, log_message: u32, initial: [u8; 32]) -> [u8; 32] {
+    let schedule = &proof.whir_schedule;
+    let shape = L1WhirShape::from_schedule(
+        schedule,
+        log_message,
+        schedule.base_lde_factor.trailing_zeros(),
+        schedule.whir_steps_schedule[0] as u32,
+        16 << log_message,
+    );
     let mut replay = HostReplay {
         seed: Keccak256Seed(initial),
     };
@@ -1984,6 +2011,20 @@ fn json_difference(
 
 #[test]
 fn pr_l1_whir_fold_matches_cpu_small() {
+    assert_l1_whir_fold_matches_cpu_small(4, small_schedule(), (7, 1), 10);
+}
+
+#[test]
+fn pr_l1_whir_fold_matches_cpu_small_pack3() {
+    assert_l1_whir_fold_matches_cpu_small(3, small_pack3_schedule(), (13, 2), 9);
+}
+
+fn assert_l1_whir_fold_matches_cpu_small(
+    pack_log2: usize,
+    schedule: WhirSchedule,
+    packed_columns: (usize, usize),
+    sumcheck_polys: usize,
+) {
     use super::{schedule_l1_whir_fold, L1WhirInputs};
     use gpu_gkr::setup::proth120::{L1WrapSetupHost, PackedSetupSource};
     use gpu_prover_context::transfer::single_shot_h2d;
@@ -2007,9 +2048,10 @@ fn pr_l1_whir_fold_matches_cpu_small() {
     setup[9][1] = PR::ONE;
     setup[9][2] = PR::new(PR::ORDER - 1);
     setup[9][3] = PR::from_u128_with_reduction(u128::MAX);
+    let log_message = 10 + pack_log2 as u32;
     let cfg = PackedCommitConfig {
-        log_lde_factor: 5,
-        log_values_per_leaf: 2,
+        log_lde_factor: schedule.base_lde_factor.trailing_zeros(),
+        log_values_per_leaf: schedule.whir_steps_schedule[0] as u32,
         cap_log: 3,
         skip_bottom: 5,
     };
@@ -2020,31 +2062,40 @@ fn pr_l1_whir_fold_matches_cpu_small() {
             .map(|column| Arc::new(AllocationType::from(column.into_boxed_slice())))
             .collect(),
     };
-    let setup_host = Arc::new(L1WrapSetupHost::precompute(&setup_cpu, 4, cfg, &ctx).unwrap());
+    let setup_host =
+        Arc::new(L1WrapSetupHost::precompute(&setup_cpu, pack_log2 as u32, cfg, &ctx).unwrap());
     let flat: Vec<_> = memory.iter().flatten().copied().collect();
-    let schedule = small_schedule();
     let cpu_jobs: Vec<_> = (0..2)
         .map(|_| {
-            let point = rng.fields(14);
+            let point = rng.fields(log_message as usize);
             let beta = rng.field();
             let seed: [u8; 32] = std::array::from_fn(|_| rng.next_u64() as u8);
-            let mut claims = packed_claims(&memory, &point, &worker);
-            claims.extend(packed_claims(&setup, &point, &worker));
-            let proof = cpu_whir_small(&memory, &setup, &point, beta, seed, &schedule, &worker);
+            let mut claims = packed_claims(&memory, &point, pack_log2, &worker);
+            claims.extend(packed_claims(&setup, &point, pack_log2, &worker));
+            let proof = cpu_whir_small(
+                &memory, &setup, &point, beta, seed, &schedule, pack_log2, &worker,
+            );
             (point, beta, seed, claims, proof)
         })
         .collect();
     assert_ne!(cpu_jobs[0].2, cpu_jobs[1].2);
-    for tile_bytes in [16usize << 14, 16usize << 19] {
-        let shape = L1WhirShape::from_schedule(&schedule, 14, 5, 2, tile_bytes);
-        assert_eq!(shape.total_sumcheck_polys, 10);
+    assert_eq!(log_message + cfg.log_lde_factor, 19);
+    for tile_bytes in [16usize << log_message, 16usize << 19] {
+        let shape = L1WhirShape::from_schedule(
+            &schedule,
+            log_message,
+            cfg.log_lde_factor,
+            cfg.log_values_per_leaf,
+            tile_bytes,
+        );
+        assert_eq!(shape.total_sumcheck_polys, sumcheck_polys);
         let mut prepared = Vec::new();
         for (point, beta, seed, claims, _) in &cpu_jobs {
             let mut raw = TraceHolder::new_without_cosets(
                 10,
-                5,
-                2,
-                3,
+                cfg.log_lde_factor,
+                cfg.log_values_per_leaf,
+                cfg.cap_log,
                 104,
                 TreesCacheMode::CacheNone,
                 gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
@@ -2052,7 +2103,8 @@ fn pr_l1_whir_fold_matches_cpu_small() {
             )
             .unwrap();
             memory_copy_async(raw.get_uninit_hypercube_evals_mut(), &flat, stream).unwrap();
-            let mut base = PackedCosetRecomputeOracle::pack_from_columns(raw, 4, &ctx).unwrap();
+            let mut base =
+                PackedCosetRecomputeOracle::pack_from_columns(raw, pack_log2 as u32, &ctx).unwrap();
             base.commit(&cfg, &ctx).unwrap();
             let mut setup = PackedSetupSource::new(
                 Arc::clone(&setup_host),
@@ -2124,29 +2176,34 @@ fn pr_l1_whir_fold_matches_cpu_small() {
                 let actual_json = serde_json::to_value(&proof).unwrap();
                 let diff = json_difference(&expected_json, &actual_json, "whir_proof").unwrap();
                 std::fs::write(
-                    format!("target/proth120-m7/t5-expected-{tile_bytes}-{job}.json"),
+                    format!("target/proth120-m7/t5-expected-p{pack_log2}-{tile_bytes}-{job}.json"),
                     &expected_bytes,
                 )
                 .unwrap();
                 std::fs::write(
-                    format!("target/proth120-m7/t5-actual-{tile_bytes}-{job}.json"),
+                    format!("target/proth120-m7/t5-actual-p{pack_log2}-{tile_bytes}-{job}.json"),
                     &actual_bytes,
                 )
                 .unwrap();
-                panic!("tile_bytes={tile_bytes} job={job}: {diff}");
+                panic!("pack_log2={pack_log2} tile_bytes={tile_bytes} job={job}: {diff}");
             }
             assert_eq!(
                 download(&seed_dev, stream),
-                whir_end_seed(expected, cpu_jobs[job].2)
+                whir_end_seed(expected, log_message, cpu_jobs[job].2)
             );
-            assert_eq!(proof.memory_commitment.num_columns, 7);
-            assert_eq!(proof.setup_commitment.num_columns, 1);
-            assert_eq!(proof.sumcheck_polys.len(), 10);
+            assert_eq!(
+                (
+                    proof.memory_commitment.num_columns,
+                    proof.setup_commitment.num_columns
+                ),
+                packed_columns
+            );
+            assert_eq!(proof.sumcheck_polys.len(), sumcheck_polys);
             assert_eq!(proof.ood_samples.len(), 2);
             assert_eq!(proof.pow_nonces.len(), 3);
             assert_eq!(proof.final_monomials.len(), 16);
             assert!(proof.witness_commitment.queries.is_empty());
-            eprintln!("pr_l1_whir_fold_matches_cpu_small: tile_bytes={tile_bytes} job={job} proof_bytes={} identical", actual_bytes.len());
+            eprintln!("pr_l1_whir_fold_matches_cpu_small: pack_log2={pack_log2} tile_bytes={tile_bytes} job={job} proof_bytes={} identical", actual_bytes.len());
             drop((
                 transfer,
                 base,

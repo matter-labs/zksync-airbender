@@ -1127,6 +1127,12 @@ mod test {
 
     #[test]
     fn packed_recompute_setup_matches_materialized() {
+        for num_columns in [3, 10, 104] {
+            packed_recompute_setup_matches_materialized_with(num_columns);
+        }
+    }
+
+    fn packed_recompute_setup_matches_materialized_with(num_columns: usize) {
         use crate::gkr::prover::setup::GKRSetup;
         use crate::gkr::prover_config::example_configs::l1_wrap_2p21::{
             packed_prover_config, PACK_LOG2,
@@ -1138,7 +1144,7 @@ mod test {
         config.trace_len_log2 = 6;
         let trace_len = 1 << config.trace_len_log2;
         let setup = GKRSetup {
-            hypercube_evals: (0..3)
+            hypercube_evals: (0..num_columns)
                 .map(|column| {
                     let values: Vec<_> = (0..trace_len)
                         .map(|row| {

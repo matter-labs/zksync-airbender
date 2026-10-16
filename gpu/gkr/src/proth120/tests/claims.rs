@@ -18,6 +18,8 @@ use crate::upstream::{GKRAddress, SecurityLevel, PR};
 
 use super::{deterministic_columns, make_context, read_back, upload};
 
+const PACK_LOG2: usize = prover::gkr::prover_config::example_configs::l1_wrap_2p21::PACK_LOG2;
+
 fn cpu_merge(input: &[PR], extra: &[PR]) -> Vec<PR> {
     input
         .chunks(1 << extra.len())
@@ -49,7 +51,7 @@ fn claim_map(
 ) -> (Vec<GKRAddress>, Vec<PR>, BTreeMap<GKRAddress, PR>) {
     let config =
         prover::gkr::prover_config::ProofProfile::L1Wrap.prover_config(21, SecurityLevel::Sec100);
-    let layout = ProofLayoutPr::new(programs, &config, 4);
+    let layout = ProofLayoutPr::new(programs, &config, PACK_LOG2);
     let layer = layout
         .backward_layers
         .iter()
@@ -97,7 +99,7 @@ fn pr_merge_claims_matches_cpu() {
         .flatten()
         .collect();
     let coordinates = [values[114], values[115], values[116], values[117]];
-    for extra in [
+    for full_extra in [
         coordinates,
         [
             PR::ZERO,
@@ -106,25 +108,49 @@ fn pr_merge_claims_matches_cpu() {
             PR::new((1u128 << 80) + 19),
         ],
     ] {
-        let d_extra = upload(&extra, &context);
-        for count in [1usize, 10, 15, 16, 17, 104] {
-            let d_claims = upload(&values[..count], &context);
-            let expected = cpu_merge(&values[..count], &extra);
-            let canary = PR::new((1u128 << 90) + 37);
-            let mut out = upload(&vec![canary; expected.len() + 2], &context);
-            launch_merge_claims_pr(
-                &d_claims,
-                &d_extra,
-                4,
-                &mut out[1..expected.len() + 1],
-                &context,
-            )
-            .unwrap();
-            let actual = read_back(&out, PR::ZERO, &context);
-            assert_eq!(actual[0], canary);
-            assert_eq!(actual[actual.len() - 1], canary);
-            assert_eq!(&actual[1..actual.len() - 1], &expected, "count={count}");
+        for pack_log2 in 1..=4u32 {
+            let extra = &full_extra[..pack_log2 as usize];
+            let d_extra = upload(extra, &context);
+            for count in [1usize, 7, 8, 9, 10, 15, 16, 17, 104] {
+                let d_claims = upload(&values[..count], &context);
+                let expected = cpu_merge(&values[..count], extra);
+                let canary = PR::new((1u128 << 90) + 37);
+                let mut out = upload(&vec![canary; expected.len() + 2], &context);
+                launch_merge_claims_pr(
+                    &d_claims,
+                    &d_extra,
+                    pack_log2,
+                    &mut out[1..expected.len() + 1],
+                    &context,
+                )
+                .unwrap();
+                let actual = read_back(&out, PR::ZERO, &context);
+                assert_eq!(actual[0], canary);
+                assert_eq!(actual[actual.len() - 1], canary);
+                assert_eq!(
+                    &actual[1..actual.len() - 1],
+                    &expected,
+                    "pack_log2={pack_log2} count={count}"
+                );
+            }
         }
+    }
+    let d_claims = upload(&values[..16], &context);
+    for pack_log2 in [0u32, 5] {
+        let d_extra = upload(&vec![PR::ONE; pack_log2 as usize], &context);
+        let mut out = upload(&[PR::ZERO; 16], &context);
+        let rejected = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            launch_merge_claims_pr(&d_claims, &d_extra, pack_log2, &mut out[..1], &context)
+        }))
+        .unwrap_err();
+        let message = rejected
+            .downcast_ref::<String>()
+            .cloned()
+            .unwrap_or_default();
+        assert!(
+            message.contains("Proth120 packed merge supports pack_log2 1..=4"),
+            "{message}"
+        );
     }
 }
 
@@ -172,7 +198,10 @@ fn pr_packed_merge_transcript_matches_cpu() {
     let programs = programs();
     let config =
         prover::gkr::prover_config::ProofProfile::L1Wrap.prover_config(21, SecurityLevel::Sec100);
-    let layout = Arc::new(ProofLayoutPr::new(&programs, &config, 4));
+    let pack_log2 = PACK_LOG2;
+    let memory_groups = 104usize.div_ceil(1 << pack_log2);
+    let setup_groups = 10usize.div_ceil(1 << pack_log2);
+    let layout = Arc::new(ProofLayoutPr::new(&programs, &config, pack_log2));
     let (addresses, values, map) = claim_map(&programs);
     let dense = cpu_dense(&map, 38, 66, 10);
     let point: Vec<_> = deterministic_columns(0, 21).into_iter().flatten().collect();
@@ -185,7 +214,7 @@ fn pr_packed_merge_transcript_matches_cpu() {
     assert_eq!(raw_columns, 114);
     let cpu_bits = prover::gkr::prover_config::pow_bits::batched_proximity_check_pow_bits::<PR, PR>(
         config.security_level.security_bits(),
-        21 + prover::gkr::prover_config::example_configs::l1_wrap_2p21::PACK_LOG2,
+        21 + pack_log2,
         config.lde_factor.trailing_zeros() as usize,
         raw_columns,
     );
@@ -197,7 +226,7 @@ fn pr_packed_merge_transcript_matches_cpu() {
                 PR,
                 PR,
                 Keccak256Transcript,
-            >(&mut host_seed, 4);
+            >(&mut host_seed, pack_log2);
             let mut expected_seeds = vec![host_seed.0];
             let (next_seed, expected_nonce) =
                 <Keccak256Transcript as Transcript<PR, PR>>::search_pow(&host_seed, bits, &worker);
@@ -229,7 +258,7 @@ fn pr_packed_merge_transcript_matches_cpu() {
                 gathered,
                 &mut seed,
                 &d_point,
-                4,
+                pack_log2 as u32,
                 bits,
                 &mut proof,
                 &context,
@@ -259,7 +288,7 @@ fn pr_packed_merge_transcript_matches_cpu() {
             );
             assert_eq!(read_back(output.seed(), 0u8, &context), host_seed.0);
             assert_eq!(output.setup_claims().as_ptr(), unsafe {
-                output.memory_claims().as_ptr().add(7)
+                output.memory_claims().as_ptr().add(memory_groups)
             });
             let mut host = HostSlab::new(layout.bytes_len());
             memory_copy_async(
@@ -271,11 +300,11 @@ fn pr_packed_merge_transcript_matches_cpu() {
             context.get_exec_stream().synchronize().unwrap();
             assert_eq!(
                 layout.host_fields(host.bytes(), &layout.memory_claims),
-                &expected_claims[..7]
+                &expected_claims[..memory_groups]
             );
             assert_eq!(
                 layout.host_fields(host.bytes(), &layout.setup_claims),
-                &expected_claims[7..]
+                &expected_claims[memory_groups..]
             );
             assert_eq!(
                 layout.host_fields(host.bytes(), &layout.evaluation_point),
@@ -298,11 +327,14 @@ fn pr_packed_merge_transcript_matches_cpu() {
                 expected_nonce
             );
             let handoff = output.whir_handoff();
-            assert_eq!(handoff.claims.len(), 8);
-            assert_eq!(handoff.base_layer_point.len(), 25);
+            assert_eq!(handoff.claims.len(), memory_groups + setup_groups);
+            assert_eq!(handoff.base_layer_point.len(), 21 + pack_log2);
             assert_eq!(handoff.batching_challenge.len(), 1);
             assert_eq!(handoff.seed.len(), 32);
-            println!("M6_PACKED_MERGE bits={bits} nonce={expected_nonce} claim_map=134 dense=114 merged=7+1 point=25 seed_transitions=3");
+            println!(
+                "M6_PACKED_MERGE bits={bits} nonce={expected_nonce} claim_map=134 dense=114 merged={memory_groups}+{setup_groups} point={} seed_transitions=3",
+                21 + pack_log2
+            );
         }
     }
 }
@@ -353,8 +385,9 @@ fn schedule_fixture_full(context: &gpu_prover_context::ProverContext) -> Schedul
         let decoder = vec![None; artifact.total_tables_size - artifact.offset_for_decoder_table];
         prover::gkr::prover::setup::GKRSetup::<PR>::construct(&driver, &decoder, rows, &artifact)
     };
-    let setup_host =
-        Arc::new(crate::setup::L1WrapSetupHost::precompute(&setup, 4, cfg, context).unwrap());
+    let setup_host = Arc::new(
+        crate::setup::L1WrapSetupHost::precompute(&setup, PACK_LOG2 as u32, cfg, context).unwrap(),
+    );
     let mut d_setup = crate::setup::PackedSetupSource::new(
         setup_host,
         gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
@@ -501,7 +534,8 @@ fn schedule_fixture_full(context: &gpu_prover_context::ProverContext) -> Schedul
         .unwrap();
         context.get_exec_stream().synchronize().unwrap();
     }
-    let base = PackedCosetRecomputeOracle::from_uploaded(raw, 4, cfg, context).unwrap();
+    let base =
+        PackedCosetRecomputeOracle::from_uploaded(raw, PACK_LOG2 as u32, cfg, context).unwrap();
     let scratch = deterministic_columns(log_rows, artifact.scratch_space_size);
     let mut d_scratch = context
         .alloc(rows * scratch.len(), AllocationPlacement::BestFit)
@@ -571,7 +605,7 @@ fn schedule_fixture_full(context: &gpu_prover_context::ProverContext) -> Schedul
     config.trace_len_log2 = log_rows as usize;
     let mut proof = crate::proth120::proof_layout::ProofSlabPr::new(
         Arc::new(crate::proth120::proof_layout::ProofLayoutPr::new(
-            &programs, &config, 4,
+            &programs, &config, PACK_LOG2,
         )),
         context,
     )
@@ -587,8 +621,7 @@ fn schedule_fixture_full(context: &gpu_prover_context::ProverContext) -> Schedul
     let batching_pow_bits =
         prover::gkr::prover_config::pow_bits::batched_proximity_check_pow_bits::<PR, PR>(
             config.security_level.security_bits(),
-            log_rows as usize
-                + prover::gkr::prover_config::example_configs::l1_wrap_2p21::PACK_LOG2,
+            log_rows as usize + PACK_LOG2,
             config.whir_schedule.base_lde_factor.trailing_zeros() as usize,
             prover::gkr::prover_config::pow_bits::total_base_oracle_columns(&artifact),
         );
@@ -818,7 +851,7 @@ fn pr_schedule_gkr_small_shape() {
     }
 
     let point = flatten_claim_point(&points[&0]);
-    let extra = draw_random_field_els::<PR, PR, Keccak256Transcript>(&mut seed, 4);
+    let extra = draw_random_field_els::<PR, PR, Keccak256Transcript>(&mut seed, PACK_LOG2);
     let memory_claims: Vec<_> = (0..artifact.memory_layout.total_width)
         .map(GKRAddress::BaseLayerMemory)
         .chain((0..artifact.witness_layout.total_width).map(GKRAddress::BaseLayerWitness))
@@ -835,7 +868,7 @@ fn pr_schedule_gkr_small_shape() {
     assert_eq!(
         prover::gkr::prover_config::pow_bits::batched_proximity_check_pow_bits::<PR, PR>(
             SecurityLevel::Sec100.security_bits(),
-            trace_log + prover::gkr::prover_config::example_configs::l1_wrap_2p21::PACK_LOG2,
+            trace_log + PACK_LOG2,
             fixture
                 .config
                 .whir_schedule
@@ -912,9 +945,11 @@ fn pr_schedule_gkr_small_shape() {
         expected.intermediate_transcript_seed
     );
     println!(
-        "M6_FACADE layers={} outputs={} claims=8 point=25 nonce={} seed={:?}",
+        "M6_FACADE layers={} outputs={} claims={} point={} nonce={} seed={:?}",
         expected.sumcheck_intermediate_values.len(),
         10 << crate::proth120::backward::dr_tail::PR_DR_FINAL_TRACE_LOG_2,
+        expected.merged_claims.0.len() + expected.merged_claims.1.len(),
+        expected.evaluation_point.len(),
         nonce,
         seed.0
     );

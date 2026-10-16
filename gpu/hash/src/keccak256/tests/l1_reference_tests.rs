@@ -23,8 +23,8 @@ type L1Proof = GKRProof<Proth120, Proth120, Keccak256MerkleTreeWithCap>;
 type HostTranscript = Keccak256Transcript;
 
 const LOOKUP_CHALLENGES_POW_BITS: u32 = 8;
-const BASE_LOG_DOMAIN: u32 = 25;
-const BASE_LOG_VALUES_PER_LEAF: u32 = 2;
+const BASE_LOG_DOMAIN: u32 = 24;
+const BASE_LOG_VALUES_PER_LEAF: u32 = 1;
 
 #[derive(Deserialize)]
 struct Bundle {
@@ -186,14 +186,14 @@ fn keccak256_l1_reference_replay() {
     else {
         panic!("L1 reference bundle is not in the packed commitment mode");
     };
-    assert_eq!(pack_log2, 4);
+    assert_eq!(pack_log2, 3);
     let whir = &proof.whir_proof;
     let schedule = &whir.whir_schedule;
-    assert_eq!(schedule.base_lde_factor, 64);
+    assert_eq!(schedule.base_lde_factor, 128);
     assert_eq!(schedule.cap_size, 8);
-    assert_eq!(schedule.whir_steps_schedule, [2, 4, 4, 4, 3, 4]);
-    assert_eq!(schedule.whir_queries_schedule, [14, 11, 8, 6, 5, 4]);
-    assert_eq!(schedule.whir_pow_schedule, [30, 27, 20, 20, 17, 24]);
+    assert_eq!(schedule.whir_steps_schedule, [1, 4, 4, 4, 4]);
+    assert_eq!(schedule.whir_queries_schedule, [12, 11, 7, 6, 5]);
+    assert_eq!(schedule.whir_pow_schedule, [30, 27, 30, 20, 17]);
     let mut nonces = Vec::new();
 
     let mut words = Vec::new();
@@ -251,7 +251,7 @@ fn keccak256_l1_reference_replay() {
                 &format!("round {round} ood value"),
             );
         } else {
-            assert_eq!(whir.final_monomials.len(), 16);
+            assert_eq!(whir.final_monomials.len(), 128);
             replay.commit_fields(&whir.final_monomials, "final monomials");
         }
         let bits = schedule.whir_pow_schedule[round];
@@ -306,8 +306,8 @@ fn keccak256_l1_reference_replay() {
         }
     }
     assert!(polys.next().is_none());
-    assert_eq!(checked_queries, 48);
-    assert_eq!(nonces.len(), 7);
+    assert_eq!(checked_queries, 41);
+    assert_eq!(nonces.len(), 6);
     for (bits, nonce, seconds) in &nonces {
         println!(
             "keccak256_l1_reference_replay pow bits={bits} nonce={nonce} seconds={seconds:.3}"
