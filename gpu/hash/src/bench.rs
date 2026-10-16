@@ -199,29 +199,31 @@ pub enum PowArm {
     GridStrideMin,
     GridStrideFirst,
     CounterMin,
-    CounterFirst,
 }
 
 impl PowArm {
     pub fn uses_counter(self) -> bool {
-        matches!(self, PowArm::CounterMin | PowArm::CounterFirst)
+        self == PowArm::CounterMin
     }
 
     pub fn is_min(self) -> bool {
-        matches!(self, PowArm::GridStrideMin | PowArm::CounterMin)
+        self != PowArm::GridStrideFirst
     }
 }
 
 cuda_kernel!(
-    KeccakPowGridStride,
-    keccak_pow_grid_stride,
+    PowGridStride,
+    pow_grid_stride,
     seed: *const u8,
     bits: u32,
     max_nonce: u64,
     result: *mut u64
 );
 
-keccak_pow_grid_stride!(ab_keccak256_pow_grid_stride_bench_kernel);
+pow_grid_stride!(ab_keccak256_pow_grid_stride_min_bench_kernel);
+pow_grid_stride!(ab_keccak256_pow_grid_stride_first_bench_kernel);
+pow_grid_stride!(ab_blake2s_pow_grid_stride_min_bench_kernel);
+pow_grid_stride!(ab_blake2s_pow_grid_stride_first_bench_kernel);
 
 cuda_kernel!(
     PowCounter,
@@ -235,21 +237,7 @@ cuda_kernel!(
 );
 
 pow_counter!(ab_keccak256_pow_counter_min_bench_kernel);
-pow_counter!(ab_keccak256_pow_counter_first_bench_kernel);
 pow_counter!(ab_blake2s_pow_counter_min_bench_kernel);
-pow_counter!(ab_blake2s_pow_counter_first_bench_kernel);
-
-cuda_kernel!(
-    Blake2sPowGridStride,
-    blake2s_pow_grid_stride,
-    seed: *const u8,
-    bits: u32,
-    max_nonce: u64,
-    result: *mut u64
-);
-
-blake2s_pow_grid_stride!(ab_blake2s_pow_grid_stride_min_bench_kernel);
-blake2s_pow_grid_stride!(ab_blake2s_pow_grid_stride_first_bench_kernel);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PowHash {
@@ -258,23 +246,20 @@ pub enum PowHash {
 }
 
 enum PowKernel {
-    GridStride(KeccakPowGridStrideSignature),
+    GridStride(PowGridStrideSignature),
     Counter(PowCounterSignature),
 }
 
 fn pow_kernel(hash: PowHash, arm: PowArm) -> PowKernel {
     match (hash, arm) {
         (PowHash::Keccak, PowArm::GridStrideMin) => {
-            PowKernel::GridStride(ab_keccak256_pow_grid_stride_bench_kernel)
+            PowKernel::GridStride(ab_keccak256_pow_grid_stride_min_bench_kernel)
         }
         (PowHash::Keccak, PowArm::GridStrideFirst) => {
-            panic!("keccak has no first-hit grid-stride kernel")
+            PowKernel::GridStride(ab_keccak256_pow_grid_stride_first_bench_kernel)
         }
         (PowHash::Keccak, PowArm::CounterMin) => {
             PowKernel::Counter(ab_keccak256_pow_counter_min_bench_kernel)
-        }
-        (PowHash::Keccak, PowArm::CounterFirst) => {
-            PowKernel::Counter(ab_keccak256_pow_counter_first_bench_kernel)
         }
         (PowHash::Blake2s, PowArm::GridStrideMin) => {
             PowKernel::GridStride(ab_blake2s_pow_grid_stride_min_bench_kernel)
@@ -285,9 +270,6 @@ fn pow_kernel(hash: PowHash, arm: PowArm) -> PowKernel {
         (PowHash::Blake2s, PowArm::CounterMin) => {
             PowKernel::Counter(ab_blake2s_pow_counter_min_bench_kernel)
         }
-        (PowHash::Blake2s, PowArm::CounterFirst) => {
-            PowKernel::Counter(ab_blake2s_pow_counter_first_bench_kernel)
-        }
     }
 }
 
@@ -295,7 +277,7 @@ pub fn bench_pow_arm_blocks(hash: PowHash, arm: PowArm) -> CudaResult<u32> {
     let mpc = device_get_attribute(MultiProcessorCount, get_device()?)?;
     let active = match pow_kernel(hash, arm) {
         PowKernel::GridStride(f) => {
-            max_active_blocks_per_multiprocessor(&KeccakPowGridStrideFunction(f), 128, 0)?
+            max_active_blocks_per_multiprocessor(&PowGridStrideFunction(f), 128, 0)?
         }
         PowKernel::Counter(f) => {
             max_active_blocks_per_multiprocessor(&PowCounterFunction(f), 128, 0)?
@@ -320,9 +302,8 @@ pub fn bench_pow_arm_kernel(
     let config = CudaLaunchConfig::basic(blocks, 128, stream);
     match pow_kernel(hash, arm) {
         PowKernel::GridStride(f) => {
-            let args =
-                KeccakPowGridStrideArguments::new(seed, bits, max_nonce, result.as_mut_ptr());
-            KeccakPowGridStrideFunction(f).launch(&config, &args)
+            let args = PowGridStrideArguments::new(seed, bits, max_nonce, result.as_mut_ptr());
+            PowGridStrideFunction(f).launch(&config, &args)
         }
         PowKernel::Counter(f) => {
             let args = PowCounterArguments::new(
