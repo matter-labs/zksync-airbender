@@ -4,9 +4,9 @@ use super::super::{
     WitnessPostCommitStorage,
 };
 
-/// Analytic prediction of the tracker peak of the 2^21 wrap's merged pack + commit at pack 3,
-/// 512 cosets and the preset's depth-10 trees, pending the measurement by
-/// `tests/l1_stage_parity.rs` `l1_wrap_m4_stages_match_reference` on the RTX PRO 6000 Blackwell (sm_120).
+/// Tracker peak of the 2^21 wrap's merged pack + commit at pack 3, 512 cosets and
+/// the preset's depth-10 trees (`tests/l1_stage_parity.rs` `l1_wrap_m4_stages_match_reference`)
+/// on the RTX PRO 6000 Blackwell (sm_120).
 pub const MEASURED_M4_PEAK_BYTES: usize = 11_920_211_968;
 pub const OVERLAP_BYTES: usize = 1_736_441_856;
 
@@ -24,7 +24,6 @@ pub const L1_WRAP_ARENA_MIN_BYTES: usize =
     align_up(MEASURED_M4_PEAK_BYTES + OVERLAP_BYTES, 1 << 30);
 
 /// Smallest sufficient arena of the bounded capacity matrix (`gpu/execution_prover/tests/l1_memory.rs`: 21/30 GiB candidates, both directions, three opposite followers, proof equal to the 2^21 reference) on the RTX PRO 6000 Blackwell (sm_120).
-/// Carried from the 128-coset wrap, pending the matrix at 512 cosets.
 pub const L1_WRAP_WHOLE_PROOF_FLOOR_BYTES: usize = 21 << 30;
 pub const L1_WRAP_FLOOR_SOURCE: &str = "measured";
 const _: () = assert!(L1_WRAP_WHOLE_PROOF_FLOOR_BYTES >= L1_WRAP_ARENA_MIN_BYTES);
