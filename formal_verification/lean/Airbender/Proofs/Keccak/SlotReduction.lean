@@ -1,7 +1,9 @@
+import Airbender.Proofs.Keccak.ReferenceController
 import Airbender.Proofs.Keccak.PhysicalStep
 import Airbender.Proofs.Keccak.LayoutReduction
 namespace Airbender.Keccak.Proofs
 set_option warningAsError true
+set_option Elab.async false
 set_option maxRecDepth 65536
 set_option maxHeartbeats 2000000
 private def slotCache : Vector (Vector Nat 6) 649 := #v[
@@ -654,18 +656,104 @@ private def slotCache : Vector (Vector Nat 6) 649 := #v[
 #v[21, 22, 23, 24, 25, 26],
 #v[20, 23, 24, 25, 26, 27],
 #v[0, 5, 10, 15, 20, 25]]
-private theorem slot_cache_correct : ∀ call : Fin 649, slotIndices call = slotCache[call] := by
-  simp only [slotIndices, Controller.Proofs.rows_reference, Controller.referenceRows, physical_cached]
+private abbrev cacheEntryCorrect (call : Fin 649) : Prop :=
+  Controller.referenceRows (Fin.ofNat 4096
+    ((scheduleControl ⟨call.val, Nat.lt_trans call.isLt (by decide : 649 < 650)⟩).packed + 2048)) =
+      slotCache[call]
+
+private def cachePart (base width : Nat) (fits : base + width ≤ 649)
+    (i : Fin width) : Fin 649 := ⟨base + i.val, by omega⟩
+
+private theorem cacheCorrect0 : ∀ i : Fin 64,
+    cacheEntryCorrect (cachePart 0 64 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart, Controller.referenceRows, physical_cached]
   decide +kernel
+private theorem cacheCorrect1 : ∀ i : Fin 64,
+    cacheEntryCorrect (cachePart 64 64 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart, Controller.referenceRows, physical_cached]
+  decide +kernel
+private theorem cacheCorrect2 : ∀ i : Fin 64,
+    cacheEntryCorrect (cachePart 128 64 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart, Controller.referenceRows, physical_cached]
+  decide +kernel
+private theorem cacheCorrect3 : ∀ i : Fin 64,
+    cacheEntryCorrect (cachePart 192 64 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart, Controller.referenceRows, physical_cached]
+  decide +kernel
+private theorem cacheCorrect4 : ∀ i : Fin 64,
+    cacheEntryCorrect (cachePart 256 64 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart, Controller.referenceRows, physical_cached]
+  decide +kernel
+private theorem cacheCorrect5 : ∀ i : Fin 64,
+    cacheEntryCorrect (cachePart 320 64 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart, Controller.referenceRows, physical_cached]
+  decide +kernel
+private theorem cacheCorrect6 : ∀ i : Fin 64,
+    cacheEntryCorrect (cachePart 384 64 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart, Controller.referenceRows, physical_cached]
+  decide +kernel
+private theorem cacheCorrect7 : ∀ i : Fin 64,
+    cacheEntryCorrect (cachePart 448 64 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart, Controller.referenceRows, physical_cached]
+  decide +kernel
+private theorem cacheCorrect8 : ∀ i : Fin 64,
+    cacheEntryCorrect (cachePart 512 64 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart, Controller.referenceRows, physical_cached]
+  decide +kernel
+private theorem cacheCorrect9 : ∀ i : Fin 64,
+    cacheEntryCorrect (cachePart 576 64 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart, Controller.referenceRows, physical_cached]
+  decide +kernel
+private theorem cacheCorrect10 : ∀ i : Fin 9,
+    cacheEntryCorrect (cachePart 640 9 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart, Controller.referenceRows, physical_cached]
+  decide +kernel
+
+private theorem slot_cache_correct (call : Fin 649) : slotIndices call = slotCache[call] := by
+  have checked : cacheEntryCorrect call := by
+    have bound := call.isLt
+    by_cases h0 : call.val < 64
+    · simpa only [cachePart, Nat.zero_add] using cacheCorrect0 ⟨call.val, h0⟩
+    by_cases h1 : call.val < 128
+    · simpa only [cachePart, show 64 + (call.val - 64) = call.val by omega] using
+        cacheCorrect1 ⟨call.val - 64, by omega⟩
+    by_cases h2 : call.val < 192
+    · simpa only [cachePart, show 128 + (call.val - 128) = call.val by omega] using
+        cacheCorrect2 ⟨call.val - 128, by omega⟩
+    by_cases h3 : call.val < 256
+    · simpa only [cachePart, show 192 + (call.val - 192) = call.val by omega] using
+        cacheCorrect3 ⟨call.val - 192, by omega⟩
+    by_cases h4 : call.val < 320
+    · simpa only [cachePart, show 256 + (call.val - 256) = call.val by omega] using
+        cacheCorrect4 ⟨call.val - 256, by omega⟩
+    by_cases h5 : call.val < 384
+    · simpa only [cachePart, show 320 + (call.val - 320) = call.val by omega] using
+        cacheCorrect5 ⟨call.val - 320, by omega⟩
+    by_cases h6 : call.val < 448
+    · simpa only [cachePart, show 384 + (call.val - 384) = call.val by omega] using
+        cacheCorrect6 ⟨call.val - 384, by omega⟩
+    by_cases h7 : call.val < 512
+    · simpa only [cachePart, show 448 + (call.val - 448) = call.val by omega] using
+        cacheCorrect7 ⟨call.val - 448, by omega⟩
+    by_cases h8 : call.val < 576
+    · simpa only [cachePart, show 512 + (call.val - 512) = call.val by omega] using
+        cacheCorrect8 ⟨call.val - 512, by omega⟩
+    by_cases h9 : call.val < 640
+    · simpa only [cachePart, show 576 + (call.val - 576) = call.val by omega] using
+        cacheCorrect9 ⟨call.val - 576, by omega⟩
+    · simpa only [cachePart, show 640 + (call.val - 640) = call.val by omega] using
+        cacheCorrect10 ⟨call.val - 640, by omega⟩
+  simpa only [slotIndices, Controller.Proofs.rows_reference, cacheEntryCorrect] using checked
 private theorem cached_slot_bound (call : Fin 649) (lane : Fin 6) : slotCache[call][lane] < 31 := by
   rw [← slot_cache_correct call]
-  exact Controller.Proofs.rows_bound _ lane
+  exact Controller.Proofs.rows_bound
+    (Fin.ofNat 4096 ((scheduleControl ⟨call.val, Nat.lt_trans call.isLt (by decide : 649 < 650)⟩).packed + 2048)) lane
 private def normalizedStep (call : Fin 649) (state : LaneState) : LaneState :=
   let indices := slotCache[call]
-  let read := fun lane : Fin 6 => state ⟨indices[lane], cached_slot_bound call lane⟩
+  let read := fun lane : Fin 6 => state ⟨indices[lane.val]'lane.isLt, cached_slot_bound call lane⟩
   fun physical =>
     let slot := indices.toList.idxOf physical.val
-    if h : slot < 6 then microValue (scheduleControl ⟨call.val, by omega⟩) read ⟨slot, h⟩ else state physical
+    if h : slot < 6 then microValue (scheduleControl ⟨call.val, Nat.lt_trans call.isLt (by decide : 649 < 650)⟩) read ⟨slot, h⟩ else state physical
 theorem micro_normalized (call : Fin 649) (state : LaneState) : microStep call state = normalizedStep call state := by
   unfold microStep normalizedStep
   simp only [← slot_cache_correct call]

@@ -3,6 +3,7 @@ import Airbender.Proofs.Bigint.Claims
 namespace Tests.BigintMemory
 open Airbender Trace Arithmetic
 set_option warningAsError true
+set_option Elab.async false
 set_option maxRecDepth 16384
 set_option maxHeartbeats 4000000
 
@@ -17,20 +18,40 @@ def row (column : Nat) : ZMod babyBearModulus :=
 
 private def native : Delegation.Row babyBearModulus := ⟨.bigint, row⟩
 
+private def referenceRow (index : Fin 1390592) : Nat × Nat × Nat :=
+  if index.val < 262144 then (index.val / 512, index.val % 512, 22)
+  else if index.val < 1310720 then ((index.val - 262144) / 1024, (index.val - 262144) % 1024, 23)
+  else if index.val < 1312768 then (index.val - 1310720, 0, 24)
+  else if index.val < 1316864 then (index.val - 1312768, 0, 25)
+  else if index.val < 1325056 then (index.val - 1316864, 0, 26)
+  else (index.val - 1325056, (index.val - 1325056) % 256, 41)
+
+private theorem lookup_relation (entry : Vector (Expression (ZMod babyBearModulus)) 3)
+    (env : Environment (ZMod babyBearModulus)) :
+    (Lookup.mk Bigint.setupTable.toRaw entry).Contains env ↔
+      ∃ i : Fin 1390592, entry.map (Expression.eval env) =
+        #v[((referenceRow i).1 : ZMod babyBearModulus),
+          ((referenceRow i).2.1 : ZMod babyBearModulus),
+          ((referenceRow i).2.2 : ZMod babyBearModulus)] := by
+  change (∃ i : Fin 1390592, entry.map (Expression.eval env) =
+        #v[((Bigint.setupRow i).1 : ZMod babyBearModulus),
+          ((Bigint.setupRow i).2.1 : ZMod babyBearModulus),
+          ((Bigint.setupRow i).2.2 : ZMod babyBearModulus)]) ↔ _
+  simp only [Bigint.Proofs.setup_row_characterization, referenceRow]
+
 theorem core : FlatOperation.ConstraintsHoldFlat (Verification.environment row)
     (Bigint.importedConstraints Bigint.setupTable) := by
   simp [Bigint.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-    Verification.environment, Expression.eval, row, Lookup.Contains, Table.toRaw, fromElements]
+    Verification.environment, Expression.eval, row, lookup_relation]
   repeat' apply And.intro
   all_goals solve
-    | decide
     | (apply Verification.range16_contains; decide)
-    | (refine ⟨⟨0, by decide⟩, ?_⟩; decide)
-    | (refine ⟨⟨262144, by decide⟩, ?_⟩; decide)
-    | (refine ⟨⟨1310720, by decide⟩, ?_⟩; decide)
-    | (refine ⟨⟨1312768, by decide⟩, ?_⟩; decide)
-    | (refine ⟨⟨1316864, by decide⟩, ?_⟩; decide)
-    | (refine ⟨⟨1325056, by decide⟩, ?_⟩; decide)
+    | (refine ⟨⟨0, by decide⟩, ?_⟩; simp only [referenceRow]; decide)
+    | (refine ⟨⟨262144, by decide⟩, ?_⟩; simp only [referenceRow]; decide)
+    | (refine ⟨⟨1310720, by decide⟩, ?_⟩; simp only [referenceRow]; decide)
+    | (refine ⟨⟨1312768, by decide⟩, ?_⟩; simp only [referenceRow]; decide)
+    | (refine ⟨⟨1316864, by decide⟩, ?_⟩; simp only [referenceRow]; decide)
+    | (refine ⟨⟨1325056, by decide⟩, ?_⟩; simp only [referenceRow]; decide)
 
 private theorem clocks : FlatOperation.ConstraintsHoldFlat (Verification.environment row)
     (Bigint.importedConstraintsTimestampLookups (p := babyBearModulus)) := by

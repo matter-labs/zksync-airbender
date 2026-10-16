@@ -3,6 +3,8 @@ import Tests.DelegationMemory
 import Airbender.Proofs.Delegation.SharedMemory
 import Airbender.Proofs.Trace.ImageFrame
 
+set_option Elab.async false
+
 namespace Tests.DelegationSharedMemory
 open Airbender Delegation Trace Arithmetic Reference.RiscV.Sail Reference.Sail
 set_option warningAsError true

@@ -12,6 +12,7 @@ import Airbender.Proofs.Trace.ImageFrame
 namespace Tests.DelegationZeroInvocation
 open Airbender Trace
 set_option warningAsError true
+set_option Elab.async false
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2400000
 
@@ -40,6 +41,7 @@ private theorem tableQuery (i : Fin 19) :
   let index : Fin 344896 := ⟨indices[i], indexBound i⟩
   fin_cases i
   all_goals refine ⟨index, ?_⟩
+  all_goals simp only [Blake2G.Proofs.setup_row_characterization]
   all_goals apply Vector.ext
   all_goals intro j hj
   all_goals change j < 9 at hj

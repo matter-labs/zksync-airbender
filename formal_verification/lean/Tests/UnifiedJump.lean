@@ -1,6 +1,8 @@
 import Airbender.Proofs.UnifiedReduced.Claims
 import Airbender.Proofs.BabyBear
 
+set_option Elab.async false
+
 namespace Tests.UnifiedJump
 open Airbender Arithmetic Trace Reference.RiscV Reference.RiscV.Sail Reference.Sail
 open Sail.ArchSem

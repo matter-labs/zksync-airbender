@@ -44,7 +44,7 @@ the input files. Parsing and emission retain the same fidelity boundary as
 circuit importing; cryptographic table authentication and lookup soundness remain
 separate. The shared 13-/16-/19-bit tables now import these artifacts, with their
 membership bounds proved in `Proofs/Tables/ImportedRanges.lean`. Bigint, the
-G/Keccak controllers and both G/round XOR tables also use imported data and
+G/Keccak controllers, both G/round XOR tables and all Keccak fixed tables use imported data and
 kernel-checked semantics. Region slicing retains periodic interiors and checks
 every decoded value against JSON; balanced literal arrays avoid deep syntax.
 Migration of the other table definitions and program-dependent consumers is still in progress.
@@ -67,15 +67,26 @@ value against the complete columns and preserving the native region metadata.
 reference and the concrete circuit setup, including keys, seven outputs and tag.
 Existing control, address and worker consumers now use those imported outputs;
 the generalized arbitrary-controller interface is preserved. Runtime regressions
-compare every emitted controller value with the JSON. G's XOR regions and other
-remaining table definitions still require migration.
+compare every emitted controller value with the JSON. G/round XOR regions are
+also imported and checked.
 
 Keccak's controller imports native table ID 37 and all eight physical columns.
 `Proofs/Keccak/ImportedController.lean` checks all 4,096 keys, six outputs and tag
 against the reference and concrete setup, covering every inactive and invalid
-fallback row. Two six-bit coordinates cover the full key domain for the kernel
-calculation. Existing physical-slot, address and worker consumers use imported
+fallback row. Separate 512-key certificates cover each field over the full domain.
+Existing physical-slot, address and worker consumers use imported
 outputs; generalized arbitrary controllers and all existing fixtures retain their
 scope. Runtime regressions compare all 32,768 emitted field values, native
-metadata and source bytes against the JSON. Keccak's byte/rotation regions
-remain modeled pending migration.
+metadata and source bytes against the JSON.
+
+Keccak's five fixed regions (IDs 0/4/38/39/40) import all 1,245,185 real rows and
+all physical columns. `Proofs/Keccak/ImportedFixed.lean` checks XOR/Iota/Chi,
+both rotation outputs, keys, padding/tags and native signed casts. Existing
+lookup consumers retain their generic fields, inverses and arbitrary controllers.
+The proved row equality connects the imported data to the existing mathematical
+relation, so the earlier lookup soundness arguments are reused.
+The importer shares only identical imported literal arrays. Interval certificates
+assemble the rotation proof without expanding a million rows; the 2,046 stored
+rotation template values are checked individually. Runtime regressions compare
+every emitted fixed row and stored template with JSON. Standard fixed tables and
+program-bound ROM/decoder consumers remain in progress.

@@ -2,6 +2,8 @@ import Airbender.Proofs.Keccak.Claims
 import Airbender.Proofs.BabyBear
 import Mathlib.Tactic.IntervalCases
 
+set_option Elab.async false
+
 namespace Tests.KeccakIota
 open Airbender
 set_option warningAsError true
@@ -75,6 +77,7 @@ private theorem byteValues (case : Fin 3) (i : Fin 40) :
     (Keccak.Proofs.byteEntry setup i).map (Expression.eval (Verification.environment (row case))) =
       (Keccak.setupRow control ⟨byteIndex case i, byteIndexBound case i⟩).map
         (fun (n : Nat) => (n : ZMod babyBearModulus)) := by
+  simp only [Keccak.Proofs.setup_row_characterization]
   fin_cases case <;> fin_cases i <;>
     dsimp [Keccak.Proofs.byteEntry, Keccak.Proofs.byteQuery,
       Keccak.importedConstraints, FlatOperation.lookups]

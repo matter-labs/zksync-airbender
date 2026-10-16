@@ -1,5 +1,7 @@
 import Airbender.Proofs.Blake2Round.Compression
 
+set_option Elab.async false
+
 namespace Tests.Blake2Compression
 open Airbender Arithmetic
 set_option warningAsError true

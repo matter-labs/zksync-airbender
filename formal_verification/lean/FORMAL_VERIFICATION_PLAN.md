@@ -9,7 +9,8 @@ The user authorized an external contribution-mask boundary on 15 October 2026,
 analogous to the canonical verifier-PC boundary. Its exact logical
 state/memory/request binding, mask algebra and active-row projection are checked
 and reuse the existing execution results. Rust/GKR/cryptographic enforcement
-remains external. The hourly continuation is active. The user resumed implementation
+remains external. Foreground continuation uses bounded local checks; the hourly
+schedule is paused. The user resumed implementation
 after manual review on 13 October 2026. Current
 coverage, checked counterexamples and machine-check results live in
 [Verification status](VERIFICATION_STATUS.md).
@@ -62,10 +63,10 @@ dependencies, pins or generated artifacts as part of readability cleanup.
 
 The user authorized complete selected-program setup JSON export/import on
 15 October 2026, including ROM and decoder rows. This table-content extraction
-is now active: shared 13-/16-/19-bit, bigint fixed-table, G/round XOR and G/Keccak controller definitions
+is now active: shared 13-/16-/19-bit, bigint fixed-table, G/round XOR and all Keccak fixed-table definitions
 import actual native rows, with their existing semantics proved and used by the
-consumers. Generalized controller parameters retain their scope. Continue replacing the other table
-models and connect the program-dependent consumers without new semantic
+consumers. Generalized controller parameters retain their scope. Continue replacing standard fixed tables
+and connect the program-dependent consumers without new semantic
 assumptions. See the [artifact workflow](artifacts/setup/README.md).
 
 The [finding register](FINDINGS.md#linear-and-open-pr-review--15-october-2026)
@@ -84,7 +85,8 @@ is checked: public boot inputs and the explicit F04 RAM-port contract give one
 physical ordinary/caller/worker memory history and terminal public cells.
 [Full mixed custom-call retirement](Airbender/Review/Trace/UnifiedReduced/FullExecution.lean)
 is also checked under the explicit F02/F03 and existing public protocol profiles.
-The retained initialization/teardown artifact still lacks local proof input.
+Initialization/teardown verification is authorized after table importing: interpret
+the retained GKR layers and connect their outputs to the existing boundary tokens.
 Independent shared-history composition is checked. Completed transport, cuts,
 selected hash-reference composition and control preparation are recorded in
 [Verification status](VERIFICATION_STATUS.md) and the review guides; do not restart

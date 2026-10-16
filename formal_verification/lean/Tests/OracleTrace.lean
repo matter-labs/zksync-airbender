@@ -1,5 +1,7 @@
 import Tests.TraceExecution
 
+set_option Elab.async false
+
 namespace Tests.OracleTrace
 open Airbender Arithmetic Trace Reference.RiscV.Sail Reference.Sail
 open _root_.Sail.ArchSem
