@@ -462,6 +462,27 @@ fn build_fold_helpers<MW: FieldWrapper>() -> TokenStream {
             unsafe { weights.set_len(len); }
         }
 
+        /// Evaluate authenticated, reduced coefficient words without staging a row.
+        #[inline(always)]
+        pub fn eval_multilinear_from_raw_words(
+            words: &[u32],
+            weights: &[#quartic_struct],
+        ) -> #quartic_struct {
+            debug_assert_eq!(words.len(), weights.len() * EXT_DEGREE);
+            debug_assert!(!weights.is_empty());
+            debug_assert!(weights[0] == #quartic_one);
+            let mut result = ext_from_raw_word_slice(&words[..EXT_DEGREE]);
+            let mut i = 1;
+            while i < weights.len() {
+                let mut term = ext_from_raw_word_slice(&words[i * EXT_DEGREE..(i + 1) * EXT_DEGREE]);
+                let w = unsafe { *weights.get_unchecked(i) };
+                #term_mul_weight;
+                #result_add_term;
+                i += 1;
+            }
+            result
+        }
+
         #[inline(always)]
         pub fn eval_multilinear_with_monomial_tensor(
             coeffs: &[#quartic_struct],

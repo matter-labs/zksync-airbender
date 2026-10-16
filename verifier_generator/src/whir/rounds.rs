@@ -68,11 +68,19 @@ fn generate_single_oracle_query_body<MW: FieldWrapper>(
 ) -> TokenStream {
     let quartic_struct = MW::quartic_struct();
 
-    // The leaf buffer (`leaf`) holds `values_per_leaf` field elements. Coefficient
-    // form evaluates it against the precomputed monomial tensor; evaluation form
-    // folds it with `fold_coset`. Exactly one branch is compiled.
+    // Coefficient form reads directly from the authenticated word buffer. Only
+    // evaluation form materializes a field-element row for fold_coset.
     let fold_computation = if cfg!(feature = "eval_leaves") {
         quote! {
+            let mut leaf: LazyVec<#quartic_struct, { #leaf_cap_expr }> =
+                LazyVec::new();
+            let mut j = 0;
+            while j < #values_per_leaf_expr {
+                leaf.push(ext_from_raw_word_slice(
+                    &init_buf[j * EXT_DEGREE..(j + 1) * EXT_DEGREE],
+                ));
+                j += 1;
+            }
             let base_root_inv = extended_generator_inv.pow(query_index as u32);
             let folded = fold_coset(
                 leaf.as_slice(), #fold_steps_expr,
@@ -83,8 +91,8 @@ fn generate_single_oracle_query_body<MW: FieldWrapper>(
         }
     } else {
         quote! {
-            let folded = eval_multilinear_with_monomial_tensor(
-                leaf.as_slice(),
+            let folded = eval_multilinear_from_raw_words(
+                &init_buf[..#leaf_ext_words_expr],
                 monomial_weights.as_slice(),
             );
         }
@@ -107,16 +115,6 @@ fn generate_single_oracle_query_body<MW: FieldWrapper>(
             &mut ts.hasher, tree_index, #oracle_depth_expr, #oracle_cap_expr, nd_source,
         ) {
             return Err(E::whir_merkle_path_failed(q));
-        }
-
-        let mut leaf: LazyVec<#quartic_struct, { #leaf_cap_expr }> =
-            LazyVec::new();
-        let mut j = 0;
-        while j < #values_per_leaf_expr {
-            leaf.push(ext_from_raw_word_slice(
-                &init_buf[j * EXT_DEGREE..(j + 1) * EXT_DEGREE],
-            ));
-            j += 1;
         }
 
         #fold_computation
@@ -233,7 +231,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
     } else {
         quote! {
             precompute_monomial_tensor,
-            eval_multilinear_with_monomial_tensor,
+            eval_multilinear_from_raw_words,
         }
     };
 

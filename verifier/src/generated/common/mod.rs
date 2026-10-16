@@ -607,6 +607,23 @@ pub fn precompute_monomial_tensor<const N: usize>(
         weights.set_len(len);
     }
 }
+#[doc = r" Evaluate authenticated, reduced coefficient words without staging a row."]
+#[inline(always)]
+pub fn eval_multilinear_from_raw_words(words: &[u32], weights: &[BabyBearExt4]) -> BabyBearExt4 {
+    debug_assert_eq!(words.len(), weights.len() * EXT_DEGREE);
+    debug_assert!(!weights.is_empty());
+    debug_assert!(weights[0] == BabyBearExt4::ONE);
+    let mut result = ext_from_raw_word_slice(&words[..EXT_DEGREE]);
+    let mut i = 1;
+    while i < weights.len() {
+        let mut term = ext_from_raw_word_slice(&words[i * EXT_DEGREE..(i + 1) * EXT_DEGREE]);
+        let w = unsafe { *weights.get_unchecked(i) };
+        field_ops::mul_assign(&mut term, &w);
+        field_ops::add_assign(&mut result, &term);
+        i += 1;
+    }
+    result
+}
 #[inline(always)]
 pub fn eval_multilinear_with_monomial_tensor(
     coeffs: &[BabyBearExt4],

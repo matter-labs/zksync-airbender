@@ -14,7 +14,7 @@
 )]
 use super::common::{
     compute_tree_index, draw_fresh_single_field_el, draw_single_field_el,
-    eval_multilinear_with_monomial_tensor, fold_whir_accumulator, materialize_gamma_powers,
+    eval_multilinear_from_raw_words, fold_whir_accumulator, materialize_gamma_powers,
     precompute_monomial_tensor, process_oracle_query, push_whir_base_pow_entry,
     push_whir_pow_entry, read_reduced_field_el, verify_whir_sumcheck_step,
 };
@@ -325,16 +325,10 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: Err
             ) {
                 return Err(E::whir_merkle_path_failed(q));
             }
-            let mut leaf: LazyVec<BabyBearExt4, { MAX_INTERNAL_VALUES_PER_LEAF }> = LazyVec::new();
-            let mut j = 0;
-            while j < values_per_leaf {
-                leaf.push(ext_from_raw_word_slice(
-                    &init_buf[j * EXT_DEGREE..(j + 1) * EXT_DEGREE],
-                ));
-                j += 1;
-            }
-            let folded =
-                eval_multilinear_with_monomial_tensor(leaf.as_slice(), monomial_weights.as_slice());
+            let folded = eval_multilinear_from_raw_words(
+                &init_buf[..leaf_ext_words],
+                monomial_weights.as_slice(),
+            );
             let mut query_point_base = extended_generator.pow(query_index as u32);
             query_point_base.exp_power_of_2(fold_steps);
             push_whir_base_pow_entry(
@@ -459,16 +453,10 @@ pub fn verify_final_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorC
             ) {
                 return Err(E::whir_merkle_path_failed(q));
             }
-            let mut leaf: LazyVec<BabyBearExt4, { FINAL_VALUES_PER_LEAF }> = LazyVec::new();
-            let mut j = 0;
-            while j < FINAL_VALUES_PER_LEAF {
-                leaf.push(ext_from_raw_word_slice(
-                    &init_buf[j * EXT_DEGREE..(j + 1) * EXT_DEGREE],
-                ));
-                j += 1;
-            }
-            let folded =
-                eval_multilinear_with_monomial_tensor(leaf.as_slice(), monomial_weights.as_slice());
+            let folded = eval_multilinear_from_raw_words(
+                &init_buf[..FINAL_LEAF_EXT_WORDS],
+                monomial_weights.as_slice(),
+            );
             folded_values.push(folded);
             query_base_roots.push(base_root);
             q += 1;
