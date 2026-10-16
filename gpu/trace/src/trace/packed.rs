@@ -513,6 +513,14 @@ impl PackedCosetRecomputeOracle<PR> {
         // Below skip_bottom 8 a batch of two tiles is too small for the sink; those commits keep the
         // reference path until the dispatch batches more tiles.
         .filter(|(_, shape)| shape.skip_bottom >= 8 && has_leaf_sink(shape, &SinkMode::Commit));
+        log::debug!(
+            "packed commit 2^{} x {} columns, log_v {}, skip_bottom {}: {}",
+            self.log_packed(),
+            self.packed_columns,
+            cfg.log_values_per_leaf,
+            cfg.skip_bottom,
+            if sink.is_some() { "suffix micro + leaf sink" } else { "reference path" }
+        );
         if let Some((plan, shape)) = sink {
             let (tiles_len, nodes_len, node_scratch_len) = commit_coset_scratch_lens(&plan, &shape);
             let mut tiles = context.alloc(tiles_len, AllocationPlacement::BestFit)?;
@@ -711,6 +719,14 @@ impl PackedCosetRecomputeOracle<PR> {
                 has_open_sink(&shape).then_some((plan, dispatched, shape))
             });
         let sink_path = sink.is_some();
+        log::debug!(
+            "packed openings 2^{} x {} columns, log_v {}, skip_bottom {}: {}",
+            log_packed,
+            self.packed_columns,
+            cfg.log_values_per_leaf,
+            cfg.skip_bottom,
+            if sink_path { "touched-coset open sink" } else { "reference path" }
+        );
         if let Some((plan, dispatched, shape)) = sink {
             let (tiles_len, nodes_len) = open_coset_slot_scratch_lens(&dispatched, &shape);
             let mut tiles = context.alloc(tiles_len, AllocationPlacement::BestFit)?;

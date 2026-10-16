@@ -138,6 +138,13 @@ pub(crate) fn schedule_commit_intermediate(
         context.alloc(cosets - (1 << shape.cap_log), AllocationPlacement::Bottom)?;
     let mut cap = context.alloc(1 << shape.cap_log, AllocationPlacement::Bottom)?;
     if has_residue_sink(shape.log_n, shape.log_v, shape.skip_bottom) {
+        log::debug!(
+            "whir commit 2^{} oracle, log_v {}, log_lde {}, skip_bottom {}: residue sink",
+            shape.log_n,
+            shape.log_v,
+            shape.log_lde,
+            shape.skip_bottom
+        );
         let _r = scoped_range(Some("ab"), "whir.commit.suffix");
         let mut scratch = context.alloc(
             residue_scratch_len(shape.log_n, shape.log_v, shape.skip_bottom, tile_cosets),
@@ -215,6 +222,14 @@ fn schedule_commit_retained(
         )
     });
     let fused_path = fused.is_some();
+    log::debug!(
+        "whir commit 2^{} oracle, log_v {}, log_lde {}, skip_bottom {}: {}",
+        shape.log_n,
+        shape.log_v,
+        shape.log_lde,
+        shape.skip_bottom,
+        if fused_path { "suffix micro + residue-tree sink" } else { "reference path" }
+    );
     if let Some((plan, suffix)) = fused {
         let mut tiles = context.alloc(
             coefficient_tiles_len(&suffix, tile_cosets, plan.l2_budget),
