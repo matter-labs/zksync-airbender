@@ -2,6 +2,8 @@ import Airbender.Proofs.Trace.ImageFrame
 import Tests.DelegationCaller
 import Tests.DelegationMemory
 
+set_option Elab.async false
+
 namespace Tests.DelegationRequestTrace
 open Airbender Delegation Trace Arithmetic Reference.RiscV.Sail Reference.Sail
 set_option warningAsError true

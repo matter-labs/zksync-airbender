@@ -2,6 +2,8 @@ import Airbender.Proofs.Keccak.Schedule
 import Airbender.Proofs.Keccak.Call
 import Airbender.Review.Trace.Workers.Keccak.ReferenceCalls
 
+set_option Elab.async false
+
 namespace Tests.KeccakSchedule
 open Airbender.Keccak Airbender.Keccak.Proofs
 set_option warningAsError true

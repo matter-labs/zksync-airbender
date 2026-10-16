@@ -4,6 +4,8 @@ import Airbender.Proofs.Blake2G.Tables
 import Airbender.Proofs.Blake2G.Claims
 import Mathlib.Tactic.IntervalCases
 
+set_option Elab.async false
+
 namespace Tests.Blake2G
 open Airbender
 

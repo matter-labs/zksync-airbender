@@ -1,8 +1,10 @@
 import Airbender.Proofs.Keccak.PhaseDefinitions
+import Airbender.Proofs.Keccak.SlotReduction
 
 namespace Airbender.Keccak.Proofs
 open Specs.Keccak256
 set_option warningAsError true
+set_option Elab.async false
 set_option maxRecDepth 65536
 set_option maxHeartbeats 64000000
 
@@ -11,6 +13,7 @@ theorem mix_phase_frame (round : Fin 24) (state : LaneState) (lane : Fin 25) :
   simp only [mixPhase, Fin.foldl_succ_last, Fin.foldl_zero]
   fin_cases round
   all_goals fin_cases lane
+  all_goals simp only [micro_normalized]
   all_goals rfl'
 
 theorem mix_phase_d (round : Fin 24) (state : LaneState) (column : Fin 5) :
@@ -19,6 +22,7 @@ theorem mix_phase_d (round : Fin 24) (state : LaneState) (column : Fin 5) :
   simp only [mixPhase, Fin.foldl_succ_last, Fin.foldl_zero]
   fin_cases round
   all_goals fin_cases column
+  all_goals simp only [micro_normalized]
   all_goals rfl'
 
 end Airbender.Keccak.Proofs

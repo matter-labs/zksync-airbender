@@ -1,3 +1,4 @@
+import Airbender.Proofs.Trace.ProgramConstruction
 import Airbender.Review.Circuits.AddSub.CallerTheorems
 import Airbender.Review.Trace.Delegation.CallerTheorems
 import Airbender.Proofs.Sail.WordMemoryState
@@ -8,6 +9,7 @@ import Airbender.Proofs.Trace.Timestamps
 namespace Tests.DelegationCaller
 open Airbender Delegation Trace Arithmetic Reference.RiscV.Sail Reference.Sail
 set_option warningAsError true
+set_option Elab.async false
 set_option maxRecDepth 32768
 set_option maxHeartbeats 4000000
 
@@ -89,10 +91,13 @@ theorem public_image (family : Delegation.Family) :
     Caller.programImage (before family) [0] = some [entry family] := by
   have bytes : (Cell.ram 0).read (before family) = .ok (encoding family) (before family) :=
     written_word_read default 0 (encoding family)
-  have decoded := original_decoder family (before family)
-  have fields := metadata family
-  simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields,
-    bind, Option.bind, pure]
+  have built : programEntryRunWith Caller.decoderFields (before family) 0 =
+      some (entry family) := Trace.Proofs.program_entry_run_of_reads Caller.decoderFields (before family) 0 (encoding family)
+        (instruction family) (entry family).data bytes
+        (original_decoder family (before family)) (metadata family)
+  change ([0] : List (BitVec 32)).mapM
+    (programEntryRunWith Caller.decoderFields (before family)) = some [entry family]
+  rw [List.mapM_cons, built, List.mapM_nil]
   rfl
 
 theorem public_caller (family : Delegation.Family) :

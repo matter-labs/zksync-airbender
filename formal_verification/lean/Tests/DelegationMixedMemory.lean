@@ -2,6 +2,8 @@ import Tests.DelegationOperationEffects
 import Airbender.Review.Circuits.AddSub.CallerTheorems
 import Airbender.Review.Trace.Delegation.CallerTheorems
 
+set_option Elab.async false
+
 namespace Tests.DelegationMixedMemory
 open Airbender Delegation Trace Arithmetic Reference.RiscV.Sail Reference.Sail
 set_option warningAsError true

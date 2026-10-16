@@ -1,6 +1,8 @@
 import Airbender.Proofs.Keccak.ControllerLayout
 import Airbender.Proofs.BabyBear
 
+set_option Elab.async false
+
 namespace Tests.KeccakController
 open Airbender Keccak
 set_option warningAsError true

@@ -169,8 +169,12 @@ and [round XOR rows](Airbender/Review/Circuits/Blake2Round/Tables/XorData.lean) 
 come from their own native artifacts. [G proofs](Airbender/Proofs/Blake2G/ImportedXor.lean)
 and [round proofs](Airbender/Proofs/Blake2Round/ImportedXor.lean) check all 344,384
 fixed rows per circuit, including padding/tags and native field casts; existing
-lookup consumers use those data with the original generic field scopes. Other worker/byte/ROM
-table definitions are still being migrated. Source parsing/emission, general Rust
+lookup consumers use those data with the original generic field scopes.
+[Keccak fixed rows](Airbender/Review/Circuits/Keccak/Tables/FixedData.lean) also import
+all five native regions. [Kernel proofs](Airbender/Proofs/Keccak/ImportedFixed.lean)
+recover XOR/Iota/Chi and both rotation pieces, including every key, padding and tag,
+and connect the actual lookup consumers without changing controller or field scopes.
+Standard fixed tables and program-dependent consumers are still being migrated. Source parsing/emission, general Rust
 refinement and cryptographic query/table authentication remain separate boundaries.
 
 `Accepted` checks imported equations/lookups and logical native state/memory

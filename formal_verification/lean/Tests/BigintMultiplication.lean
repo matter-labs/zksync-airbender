@@ -1,4 +1,7 @@
+import Airbender.Proofs.Bigint.LookupReference
 import Airbender.Proofs.Bigint.Claims
+
+set_option Elab.async false
 
 namespace Tests.BigintMultiplication
 open Airbender Bigint.Multiplication.Proofs
@@ -69,20 +72,19 @@ theorem fiveTimesSevenSatisfies (high carryFlag : Bool) :
       (Bigint.importedConstraints Bigint.setupTable) := by
   cases high <;> cases carryFlag
   all_goals simp [Bigint.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-    Verification.environment, Expression.eval, fiveTimesSevenRow, Lookup.Contains, Table.toRaw,
-    fromElements]
+    Verification.environment, Expression.eval, fiveTimesSevenRow, Bigint.Proofs.setup_lookup_reference_iff]
   all_goals repeat' apply And.intro
   all_goals solve
-    | decide
     | (apply Verification.range16_contains; decide)
-    | (refine ⟨⟨0, by decide⟩, ?_⟩; norm_num [Bigint.setupTable, Bigint.Proofs.setup_row_characterization])
-    | (refine ⟨⟨262144, by decide⟩, ?_⟩; norm_num [Bigint.setupTable, Bigint.Proofs.setup_row_characterization])
-    | (refine ⟨⟨1310720, by decide⟩, ?_⟩; norm_num [Bigint.setupTable, Bigint.Proofs.setup_row_characterization])
-    | (refine ⟨⟨1312768, by decide⟩, ?_⟩; norm_num [Bigint.setupTable, Bigint.Proofs.setup_row_characterization])
-    | (refine ⟨⟨1316864, by decide⟩, ?_⟩; norm_num [Bigint.setupTable, Bigint.Proofs.setup_row_characterization])
-    | (refine ⟨⟨1325056, by decide⟩, ?_⟩; norm_num [Bigint.setupTable, Bigint.Proofs.setup_row_characterization])
-    | (refine ⟨⟨1325061, by decide⟩, ?_⟩; norm_num [Bigint.setupTable, Bigint.Proofs.setup_row_characterization])
-    | (refine ⟨⟨1325063, by decide⟩, ?_⟩; norm_num [Bigint.setupTable, Bigint.Proofs.setup_row_characterization])
+    | (refine ⟨⟨0, by decide⟩, ?_⟩; norm_num [Bigint.Proofs.lookupReferenceRow])
+    | (refine ⟨⟨262144, by decide⟩, ?_⟩; norm_num [Bigint.Proofs.lookupReferenceRow])
+    | (refine ⟨⟨1310720, by decide⟩, ?_⟩; norm_num [Bigint.Proofs.lookupReferenceRow])
+    | (refine ⟨⟨1312768, by decide⟩, ?_⟩; norm_num [Bigint.Proofs.lookupReferenceRow])
+    | (refine ⟨⟨1316864, by decide⟩, ?_⟩; norm_num [Bigint.Proofs.lookupReferenceRow])
+    | (refine ⟨⟨1325056, by decide⟩, ?_⟩; norm_num [Bigint.Proofs.lookupReferenceRow])
+    | (refine ⟨⟨1325061, by decide⟩, ?_⟩; norm_num [Bigint.Proofs.lookupReferenceRow])
+    | (refine ⟨⟨1325063, by decide⟩, ?_⟩; norm_num [Bigint.Proofs.lookupReferenceRow])
+    | decide
 
 -- (2^256 - 1) * 2: low half is 2^256 - 2, high half is one.
 def overflowRow : Nat → ZMod babyBearModulus := fun column =>
@@ -102,24 +104,24 @@ theorem overflowSatisfies :
     FlatOperation.ConstraintsHoldFlat (Verification.environment overflowRow)
       (Bigint.importedConstraints Bigint.setupTable) := by
   simp [Bigint.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-    Verification.environment, Expression.eval, overflowRow, Lookup.Contains, Table.toRaw, fromElements]
+    Verification.environment, Expression.eval, overflowRow, Bigint.Proofs.setup_lookup_reference_iff]
   repeat' apply And.intro
   all_goals solve
-    | decide
     | (apply Verification.range16_contains; decide)
-    | (refine ⟨⟨0, by decide⟩, ?_⟩; simp only [Bigint.Proofs.setup_row_characterization]; try decide)
-    | (refine ⟨⟨512, by decide⟩, ?_⟩; simp only [Bigint.Proofs.setup_row_characterization]; try decide)
-    | (refine ⟨⟨262144, by decide⟩, ?_⟩; simp only [Bigint.Proofs.setup_row_characterization]; try decide)
-    | (refine ⟨⟨263168, by decide⟩, ?_⟩; simp only [Bigint.Proofs.setup_row_characterization]; try decide)
-    | (refine ⟨⟨1310720, by decide⟩, ?_⟩; simp only [Bigint.Proofs.setup_row_characterization]; try decide)
-    | (refine ⟨⟨1310721, by decide⟩, ?_⟩; simp only [Bigint.Proofs.setup_row_characterization]; try decide)
-    | (refine ⟨⟨1312768, by decide⟩, ?_⟩; simp only [Bigint.Proofs.setup_row_characterization]; try decide)
-    | (refine ⟨⟨1312769, by decide⟩, ?_⟩; simp only [Bigint.Proofs.setup_row_characterization]; try decide)
-    | (refine ⟨⟨1316864, by decide⟩, ?_⟩; simp only [Bigint.Proofs.setup_row_characterization]; try decide)
-    | (refine ⟨⟨1316865, by decide⟩, ?_⟩; simp only [Bigint.Proofs.setup_row_characterization]; try decide)
-    | (refine ⟨⟨1325056, by decide⟩, ?_⟩; simp only [Bigint.Proofs.setup_row_characterization]; try decide)
-    | (refine ⟨⟨1325058, by decide⟩, ?_⟩; simp only [Bigint.Proofs.setup_row_characterization]; try decide)
-    | (refine ⟨⟨1390591, by decide⟩, ?_⟩; simp only [Bigint.Proofs.setup_row_characterization]; try decide)
+    | (refine ⟨⟨0, by decide⟩, ?_⟩; simp only [Bigint.Proofs.lookupReferenceRow]; try decide)
+    | (refine ⟨⟨512, by decide⟩, ?_⟩; simp only [Bigint.Proofs.lookupReferenceRow]; try decide)
+    | (refine ⟨⟨262144, by decide⟩, ?_⟩; simp only [Bigint.Proofs.lookupReferenceRow]; try decide)
+    | (refine ⟨⟨263168, by decide⟩, ?_⟩; simp only [Bigint.Proofs.lookupReferenceRow]; try decide)
+    | (refine ⟨⟨1310720, by decide⟩, ?_⟩; simp only [Bigint.Proofs.lookupReferenceRow]; try decide)
+    | (refine ⟨⟨1310721, by decide⟩, ?_⟩; simp only [Bigint.Proofs.lookupReferenceRow]; try decide)
+    | (refine ⟨⟨1312768, by decide⟩, ?_⟩; simp only [Bigint.Proofs.lookupReferenceRow]; try decide)
+    | (refine ⟨⟨1312769, by decide⟩, ?_⟩; simp only [Bigint.Proofs.lookupReferenceRow]; try decide)
+    | (refine ⟨⟨1316864, by decide⟩, ?_⟩; simp only [Bigint.Proofs.lookupReferenceRow]; try decide)
+    | (refine ⟨⟨1316865, by decide⟩, ?_⟩; simp only [Bigint.Proofs.lookupReferenceRow]; try decide)
+    | (refine ⟨⟨1325056, by decide⟩, ?_⟩; simp only [Bigint.Proofs.lookupReferenceRow]; try decide)
+    | (refine ⟨⟨1325058, by decide⟩, ?_⟩; simp only [Bigint.Proofs.lookupReferenceRow]; try decide)
+    | (refine ⟨⟨1390591, by decide⟩, ?_⟩; simp only [Bigint.Proofs.lookupReferenceRow]; try decide)
+    | decide
 
 def smallWord (value : Nat) : Vector Nat 16 :=
   Vector.ofFn fun i => if i.val = 0 then value else 0

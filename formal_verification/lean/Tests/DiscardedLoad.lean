@@ -1,6 +1,8 @@
 import Tests.TraceExecution
 import Tests.TraceZeroRegister
 
+set_option Elab.async false
+
 namespace Tests.DiscardedLoad
 open Airbender Arithmetic Trace Reference.RiscV.Sail Reference.Sail
 open _root_.Sail.ArchSem

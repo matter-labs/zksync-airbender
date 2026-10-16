@@ -3,6 +3,8 @@ import Airbender.Proofs.Trace.Claims
 import Airbender.Proofs.SubwordMemory.Claims
 import Airbender.Proofs.Trace.RowContext
 
+set_option Elab.async false
+
 namespace Tests.PooledROM
 open Airbender Arithmetic Trace Reference.RiscV.Sail Reference.Sail
 open _root_.Sail.ArchSem

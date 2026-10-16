@@ -1,5 +1,7 @@
 import Airbender.Proofs.Bigint.Claims
 
+set_option Elab.async false
+
 namespace Tests.Bigint
 open Airbender
 

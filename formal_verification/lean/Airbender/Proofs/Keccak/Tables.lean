@@ -1,4 +1,4 @@
-import Airbender.Review.Circuits.Keccak.Tables.Setup
+import Airbender.Proofs.Keccak.ImportedFixed
 
 namespace Airbender.Keccak.Proofs
 set_option warningAsError true
@@ -9,12 +9,12 @@ private theorem byte_tag (tag index : Nat) : (byteRow tag index)[7] = tag := rfl
 private theorem rotation_tag (key : Nat) : (rotationRow key)[7] = 40 := rfl
 
 private theorem xor_rows {control : Fin 4096 → Vector Nat 6} (index : Fin 1249281)
-    (selected : (setupRow control index)[7] = 4) :
-    (setupRow control index)[0] < 256 ∧ (setupRow control index)[1] < 256 ∧
-      (setupRow control index)[2] =
-        (setupRow control index)[0] ^^^ (setupRow control index)[1] := by
+    (selected : (referenceSetupRow control index)[7] = 4) :
+    (referenceSetupRow control index)[0] < 256 ∧ (referenceSetupRow control index)[1] < 256 ∧
+      (referenceSetupRow control index)[2] =
+        (referenceSetupRow control index)[0] ^^^ (referenceSetupRow control index)[1] := by
   have size := index.isLt
-  unfold setupRow at selected ⊢
+  unfold referenceSetupRow at selected ⊢
   dsimp only at selected ⊢
   split_ifs at selected ⊢
   all_goals simp only [byte_tag, rotation_tag, Vector.getElem_replicate,
@@ -38,17 +38,18 @@ theorem xor_lookup {p : Nat} [Fact p.Prime] (hp : 256 ≤ p)
   have member := (Lookup.mk (setupTable control).toRaw entry).table.imply_soundness _ _ h
   change ∃ i : Fin 1249281, entry.map (Expression.eval env) =
     (setupRow control i).map (fun (n : Nat) => (n : ZMod p)) at member
+  simp only [setup_row_characterization] at member
   obtain ⟨i, row⟩ := member
-  have column (j : Nat) (hj : j < 8) : entry[j].eval env = ((setupRow control i)[j] : ZMod p) := by
+  have column (j : Nat) (hj : j < 8) : entry[j].eval env = ((referenceSetupRow control i)[j] : ZMod p) := by
     have equation := congrArg (fun (v : Vector (ZMod p) 8) => v[j]) row
     simpa only [Vector.getElem_map] using equation
-  have tagBound : (setupRow control i)[7] < p := by
-    unfold setupRow
+  have tagBound : (referenceSetupRow control i)[7] < p := by
+    unfold referenceSetupRow
     dsimp only
     split_ifs <;> simp only [byte_tag, rotation_tag, Vector.getElem_replicate,
       Vector.getElem_mk, List.getElem_toArray, List.getElem_cons_succ,
       List.getElem_cons_zero] <;> omega
-  have tagged : (setupRow control i)[7] = 4 := by
+  have tagged : (referenceSetupRow control i)[7] = 4 := by
     have equation := congrArg ZMod.val ((column 7 (by decide)).symm.trans selected)
     rw [ZMod.val_natCast_of_lt tagBound] at equation
     have four : (4 : ZMod p).val = 4 := by
@@ -56,11 +57,11 @@ theorem xor_lookup {p : Nat} [Fact p.Prime] (hp : 256 ≤ p)
     rw [four] at equation
     exact equation
   obtain ⟨a, b, xor⟩ := xor_rows i tagged
-  have c : (setupRow control i)[2] < 256 := by
+  have c : (referenceSetupRow control i)[2] < 256 := by
     rw [xor]
     exact Nat.xor_lt_two_pow (n := 8) a b
-  have value (j : Nat) (hj : j < 8) (bound : (setupRow control i)[j] < 256) :
-      (entry[j].eval env).val = (setupRow control i)[j] := by
+  have value (j : Nat) (hj : j < 8) (bound : (referenceSetupRow control i)[j] < 256) :
+      (entry[j].eval env).val = (referenceSetupRow control i)[j] := by
     rw [column j hj]
     exact ZMod.val_natCast_of_lt (by omega)
   rw [value 0 (by decide) a, value 1 (by decide) b, value 2 (by decide) c]
