@@ -69,6 +69,12 @@ contract WhirVerifier {
     address constant __TEMPLATE_REGISTRY_ADDRESS   = 0x0000000000000000000000000000000000000000;
     uint256 constant __TEMPLATE_DIGEST_MASK = 0xffffffffffffffffffffffffffffffffffffffffffffffffff00000000000000; // Merkle leaf/node hash: keccak256 truncated to the digest bytes
     uint256 constant __TEMPLATE_F1_DIGEST_BYTES = 25; // Merkle digest bytes on the F1 wire
+    // Setup frontier: a data contract holding STOP ‖ the setup tree's 2^LEVEL nodes at that level
+    // (DIGEST_BYTES each, physical order); setup paths stop SKIP = LEVEL − CAP_LOG2 levels early.
+    address constant __TEMPLATE_F1_FRONTIER = 0x000000000000000000000000000000005e7F0001;
+    uint256 constant __TEMPLATE_F1_FRONTIER_HASH = 0xa38c92cf1390e45c2ae1b2940771e1be6f03dce5c64b3120f76399732ab6ad5f;
+    uint256 constant __TEMPLATE_F1_FRONTIER_LEVEL = 9;
+    uint256 constant __TEMPLATE_F1_FRONTIER_SKIP = 6;
     uint256 constant MARK_WHIR_SELECTOR = 0xbb716068; // mark_whir_verified(bytes32)
 
     // ── hand-placed memory ────────────────────────────────────────────────────
@@ -305,7 +311,10 @@ function ilog_k(h) -> r {
         // keccak(current || sibling) for a left child, keccak(sibling || current)
         // for a right child.
         function merkle_path(leaf_hash, depth, cap_ptr, cp, qidx, coset_bits) -> next_cd {
-            let qib := add(depth, CAP_LOG2)
+            // cap_ptr 0 = the setup frontier: the walk stops LEVEL bits below the root, not CAP_LOG2
+            let top_bits := CAP_LOG2
+            if iszero(cap_ptr) { top_bits := __TEMPLATE_F1_FRONTIER_LEVEL }
+            let qib := add(depth, top_bits)
             let internal_bits := sub(qib, coset_bits)
             let internal_index := shr(coset_bits, qidx)
             // forge-lint: disable-next-line(incorrect-shift) — `shl(n, 1)` is `1 << n` (2^n), args are correct
@@ -342,14 +351,20 @@ function ilog_k(h) -> r {
                         mstore(0, sibling)
                         mstore(32, h)
                     }
-                    h := and(ilog_k(keccak256(0, 64)), __TEMPLATE_DIGEST_MASK)
+                    h := and(keccak256(0, 64), __TEMPLATE_DIGEST_MASK)
                 }
                 default {
                     // Bits above the path form the cap index.
                     cap_index := or(cap_index, shl(sub(pos, depth), bit))
                 }
             }
-            sink2(h, mload(add(cap_ptr, mul(cap_index, 32)))) // match h against cap[cap_index]
+            switch cap_ptr
+            case 0 {
+                // frontier[cap_index], after the data contract's leading STOP byte
+                extcodecopy(__TEMPLATE_F1_FRONTIER, 0, add(1, mul(__TEMPLATE_F1_DIGEST_BYTES, cap_index)), __TEMPLATE_F1_DIGEST_BYTES)
+                sink2(h, and(mload(0), __TEMPLATE_DIGEST_MASK))
+            }
+            default { sink2(h, mload(add(cap_ptr, mul(cap_index, 32)))) }
             next_cd := cp
         }
         function batch_oracle(cp, cols, goff, vp, depth, cap_ptr, qidx, cb) -> next_cd {
@@ -370,7 +385,7 @@ function ilog_k(h) -> r {
                 }
             }
             cp := f1_run_end(cp, mul(cols, vp))
-            next_cd := merkle_path(and(ilog_k(keccak256(LEAF_PTR, mul(li, 32))), __TEMPLATE_DIGEST_MASK), depth, cap_ptr, cp, qidx, cb)
+            next_cd := merkle_path(and(keccak256(LEAF_PTR, mul(li, 32)), __TEMPLATE_DIGEST_MASK), depth, cap_ptr, cp, qidx, cb)
         }
         function read_leaf(cp, vp, depth, cap_ptr, qidx, cb) -> next_cd {
             let words := shr(1, vp)
@@ -383,7 +398,7 @@ function ilog_k(h) -> r {
                 mstore(add(FBUF_PTR, mul(add(mul(i, 2), 1), 32)), and(w, MASK))
             }
             cp := f1_run_end(cp, vp)
-            next_cd := merkle_path(and(ilog_k(keccak256(LEAF_PTR, mul(words, 32))), __TEMPLATE_DIGEST_MASK), depth, cap_ptr, cp, qidx, cb)
+            next_cd := merkle_path(and(keccak256(LEAF_PTR, mul(words, 32)), __TEMPLATE_DIGEST_MASK), depth, cap_ptr, cp, qidx, cb)
         }
         // Reinterpret a 32-byte digest (8 big-endian u32 words) as the same 8
         // words each in little-endian byte order, keeping word positions. This
@@ -428,7 +443,7 @@ function ilog_k(h) -> r {
                 // (7 = merged memory+witness packed columns; setup at gamma-power 7.)
                 for { let j := 0 } lt(j, vp) { j := add(j, 1) } { mstore(add(FBUF_PTR, mul(j, 32)), 0) }
                 cp := batch_oracle(cp, __TEMPLATE_WHIR_MERGED_MW, 0, vp, depth, BCAP0_PTR, qidx, cb)
-                cp := batch_oracle(cp, __TEMPLATE_WHIR_SETUP_MERGED, __TEMPLATE_WHIR_MERGED_MW, vp, depth, BCAP1_PTR, qidx, cb)
+                cp := batch_oracle(cp, __TEMPLATE_WHIR_SETUP_MERGED, __TEMPLATE_WHIR_MERGED_MW, vp, sub(depth, __TEMPLATE_F1_FRONTIER_SKIP), 0, qidx, cb)
             }
             default {
                 cp := read_leaf(cp, vp, depth, QCAP_PTR, qidx, cb)
@@ -575,6 +590,8 @@ function ilog_k(h) -> r {
 
         // =================================================================== MAIN
         let start_gas := gas()
+        // the setup frontier is this deployment's data: check its code once per call
+        if iszero(eq(extcodehash(__TEMPLATE_F1_FRONTIER), __TEMPLATE_F1_FRONTIER_HASH)) { revert(0, 0) }
 
         // Base geometry (all generated): nz = z-coords, gcount = gamma-batched base columns + 1,
         // rfin = final-poly log2, nbcaps = base-oracle caps (witness, setup).

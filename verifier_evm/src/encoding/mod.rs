@@ -28,7 +28,7 @@ use std::collections::BTreeMap;
 use prover::gkr::prover::CommitmentMode;
 
 pub use decode::{decode_structural, DecodeHints, GkrLayerHint, WhirRoundHint};
-pub use digest::{digest_from_wire, digest_wire};
+pub use digest::{digest_from_wire, digest_wire, merkle_node, merkle_reduce};
 pub use gkr::{eval_quadratic, join_round, round_constant, split_round};
 pub use params::FormatParams;
 
@@ -104,6 +104,11 @@ pub fn check_profile(
         ws.cap_size,
         params.cap(),
         "profile cap differs from the proof"
+    );
+    let setup_path = proof.whir_proof.setup_commitment.queries[0].path.len();
+    assert!(
+        params.setup_frontier_skip() <= setup_path,
+        "profile setup frontier lies below the setup leaves"
     );
 }
 

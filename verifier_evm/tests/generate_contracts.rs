@@ -14,6 +14,9 @@ use field::Proth120;
 /// registry, since the address must exist before the verifiers generate).
 const DEFAULT_REGISTRY_ADDRESS: &str = "0x00000000000000000000000000000000caFe0001";
 const STUB_REGISTRY_ADDRESS: &str = "0x0000000000000000000000000000000000000000";
+/// Where the single-tx harness etches the `SetupFrontier` data contract the F1 WHIR verifier reads.
+const DEFAULT_FRONTIER_ADDRESS: &str = "0x000000000000000000000000000000005e7f0001";
+const F1_FRONTIER_CONTRACT: &str = "single_tx/f1/frontier/src/SetupFrontier.sol";
 
 const TEST_PAIR: [&str; 3] = [
     "gkr/src/GkrVerifier.sol",
@@ -179,32 +182,43 @@ fn generate_f1(
     flags: &[&str],
 ) -> verifier_evm::GeneratedContracts {
     let (_, proof, _) = version.load();
-    generate_f1_with_setup_cap(
+    let frontier = version.setup_frontier().map(|(_, nodes)| nodes);
+    generate_f1_with_setup(
         version,
         final_pc,
         &proof.whir_proof.setup_commitment.commitment.cap.cap,
+        frontier.as_deref(),
         flags,
     )
 }
 
-fn generate_f1_with_setup_cap(
+/// `setup_frontier`: `None` renders without a frontier (full setup paths to the cap).
+fn generate_f1_with_setup(
     version: &Version,
     final_pc: u32,
     setup_cap: &[[u32; 8]],
+    setup_frontier: Option<&[[u32; 8]]>,
     flags: &[&str],
 ) -> verifier_evm::GeneratedContracts {
     let circuit = version.circuit();
     let config = version.prover_config();
+    let params = match setup_frontier {
+        Some(_) => version.f1_params(),
+        None => version
+            .f1_params()
+            .with_setup_frontier(config.cap_size.trailing_zeros() as usize),
+    };
     let (external_pow_bits, batched_proximity_pow_bits) =
         derived_pow_bits(version, &circuit, &config);
     verifier_evm::generate_f1_verifiers(
         &circuit,
         &config,
-        &version.f1_params(),
+        &params,
         external_pow_bits,
         batched_proximity_pow_bits,
         final_pc,
         setup_cap,
+        setup_frontier.map(|nodes| (nodes, DEFAULT_FRONTIER_ADDRESS)),
         flags,
     )
 }
@@ -217,19 +231,23 @@ fn f1_sources(version: &Version) -> Vec<(String, String)> {
         .map(|rel| rel.to_string())
         .zip([f1.gkr_sol, f1.whir_sol])
         .collect();
+    if let Some(source) = f1.setup_frontier_sol {
+        out.push((F1_FRONTIER_CONTRACT.to_string(), source));
+    }
     if let Some(rel) = version.wrong_final_pc_contract {
         out.push((
             format!("{F1_PREFIX}{rel}"),
             generate_f1(version, version.final_pc() ^ 1, &[]).gkr_sol,
         ));
     }
-    // E8 control: the same verifier pinned to another setup cap (one bit of the first digest).
+    // E8 control: the same GKR verifier pinned to another setup cap (one bit of the first digest);
+    // a frontier cannot reduce to that cap, and the GKR verifier does not depend on it.
     let (_, proof, _) = version.load();
     let mut setup_cap = proof.whir_proof.setup_commitment.commitment.cap.cap.clone();
     setup_cap[0][0] ^= 1;
     out.push((
         F1_WRONG_SETUP_CAP.to_string(),
-        generate_f1_with_setup_cap(version, version.final_pc(), &setup_cap, &[]).gkr_sol,
+        generate_f1_with_setup(version, version.final_pc(), &setup_cap, None, &[]).gkr_sol,
     ));
     out
 }
@@ -656,6 +674,7 @@ fn f1_generator_rejects_a_profile_off_the_prover_config() {
         let (circuit, proof, _) = version.load();
         let config = version.prover_config();
         let setup_cap = &proof.whir_proof.setup_commitment.commitment.cap.cap;
+        let frontier = version.setup_frontier();
         let generate = |params: &verifier_evm::encoding::FormatParams| {
             verifier_evm::generate_f1_verifiers(
                 &circuit,
@@ -665,6 +684,9 @@ fn f1_generator_rejects_a_profile_off_the_prover_config() {
                 16,
                 version.final_pc(),
                 setup_cap,
+                frontier
+                    .as_ref()
+                    .map(|(_, nodes)| (&nodes[..], DEFAULT_FRONTIER_ADDRESS)),
                 &[],
             )
         };
@@ -691,8 +713,39 @@ fn f1_generator_rejects_a_profile_off_the_prover_config() {
                 16,
                 version.final_pc(),
                 &setup_cap[1..],
+                frontier
+                    .as_ref()
+                    .map(|(_, nodes)| (&nodes[..], DEFAULT_FRONTIER_ADDRESS)),
                 &[],
             )
         });
+    }
+}
+
+#[test]
+fn f1_generator_rejects_a_frontier_off_the_setup_cap() {
+    for version in common::available_versions("F1 setup frontier binding") {
+        let Some((_, mut nodes)) = version.setup_frontier() else {
+            continue;
+        };
+        let (circuit, proof, _) = version.load();
+        let config = version.prover_config();
+        nodes[0][0] ^= 1;
+        common::assert_panics_with(
+            "the setup frontier does not reduce to the setup cap",
+            || {
+                verifier_evm::generate_f1_verifiers(
+                    &circuit,
+                    &config,
+                    &version.f1_params(),
+                    20,
+                    16,
+                    version.final_pc(),
+                    &proof.whir_proof.setup_commitment.commitment.cap.cap,
+                    Some((&nodes, DEFAULT_FRONTIER_ADDRESS)),
+                    &[],
+                )
+            },
+        );
     }
 }

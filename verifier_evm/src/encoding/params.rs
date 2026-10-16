@@ -12,6 +12,9 @@ pub struct FormatParams {
     pub queries: Vec<usize>,
     /// Wire bytes per Merkle digest: 25 (truncated commitment) or 32 (legacy).
     pub digest_bytes: usize,
+    /// Setup-tree level the verifier holds as deployment data (the setup frontier); setup paths
+    /// stop there. `cap_log2` = no frontier, full paths to the cap.
+    pub setup_frontier_level: usize,
 }
 
 impl FormatParams {
@@ -38,7 +41,23 @@ impl FormatParams {
             folds: ws.whir_steps_schedule.clone(),
             queries: ws.whir_queries_schedule.clone(),
             digest_bytes,
+            setup_frontier_level: ws.cap_size.trailing_zeros() as usize,
         }
+    }
+
+    /// The profile with the setup frontier at `level` (at or below the cap level).
+    pub fn with_setup_frontier(mut self, level: usize) -> Self {
+        assert!(
+            level >= self.cap_log2,
+            "the setup frontier lies at or below the cap"
+        );
+        self.setup_frontier_level = level;
+        self
+    }
+
+    /// Setup-path siblings the frontier replaces.
+    pub fn setup_frontier_skip(&self) -> usize {
+        self.setup_frontier_level - self.cap_log2
     }
 
     pub fn cap(&self) -> usize {

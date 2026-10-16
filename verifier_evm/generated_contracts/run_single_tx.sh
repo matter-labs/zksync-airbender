@@ -16,7 +16,7 @@ cd "$CONTRACTS_ROOT"
 for p in gkr gkr_negative whir two_tx single_tx/gkr single_tx/gkr_negative single_tx/whir \
   single_tx/f1/gkr single_tx/f1/gkr_negative single_tx/f1/gkr_wrong_setup_cap single_tx/f1/whir single_tx/instrumented/gkr_v0 \
   single_tx/instrumented/gkr_f1 single_tx/instrumented/whir_v0 single_tx/instrumented/whir_f1 \
-  single_tx/harness; do
+  single_tx/f1/frontier single_tx/harness; do
   ( cd "$p" && forge build >/dev/null )
 done
 ( cd single_tx/harness && forge test -vv )

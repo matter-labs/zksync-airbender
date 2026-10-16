@@ -44,6 +44,9 @@ pub struct DecodeHints {
     pub output_evals: usize,
     pub gkr_layers: Vec<GkrLayerHint>,
     pub whir_rounds: Vec<WhirRoundHint>,
+    /// Per round-0 query, the setup-path siblings above the setup frontier, derived from the
+    /// pinned frontier and the query's physical index (the verifier's view of them).
+    pub setup_path_tails: Vec<Vec<[u32; 8]>>,
 }
 
 fn sum(els: &[Proth120]) -> Proth120 {
@@ -54,11 +57,14 @@ fn sum(els: &[Proth120]) -> Proth120 {
 }
 
 impl DecodeHints {
+    /// `setup_frontier`: the pinned setup-tree nodes at `params.setup_frontier_level` (physical
+    /// order), required when that level lies below the cap.
     pub fn from_proof(
         circuit: &Circuit,
         proof: &Proof,
         aux: &CommitmentMode,
         params: &FormatParams,
+        setup_frontier: Option<&[[u32; 8]]>,
     ) -> Self {
         let CommitmentMode::MergedAndPackedMemoryAndWitness {
             final_pc,
@@ -129,7 +135,12 @@ impl DecodeHints {
                             wp.setup_commitment
                                 .queries
                                 .iter()
-                                .map(|q| (q.leaf_values_concatenated.len(), q.path.len()))
+                                .map(|q| {
+                                    (
+                                        q.leaf_values_concatenated.len(),
+                                        q.path.len() - params.setup_frontier_skip(),
+                                    )
+                                })
                                 .collect(),
                         ),
                     ]
@@ -156,8 +167,37 @@ impl DecodeHints {
                 .sum(),
             gkr_layers,
             whir_rounds,
+            setup_path_tails: setup_path_tails(proof, params, setup_frontier),
         }
     }
+}
+
+/// The setup-path siblings above the frontier of every round-0 query: the sibling `j` levels
+/// above the frontier is node `(i >> j) ^ 1` of the frontier reduced `j` levels, `i` the query's
+/// frontier index.
+fn setup_path_tails(
+    proof: &Proof,
+    params: &FormatParams,
+    setup_frontier: Option<&[[u32; 8]]>,
+) -> Vec<Vec<[u32; 8]>> {
+    let skip = params.setup_frontier_skip();
+    let queries = &proof.whir_proof.setup_commitment.queries;
+    if skip == 0 {
+        return vec![Vec::new(); queries.len()];
+    }
+    let frontier = setup_frontier.expect("a setup frontier below the cap needs its nodes");
+    assert_eq!(frontier.len(), 1 << params.setup_frontier_level);
+    let levels: Vec<Vec<[u32; 8]>> = (0..skip)
+        .map(|j| super::digest::merkle_reduce(frontier, j, params.digest_bytes))
+        .collect();
+    queries
+        .iter()
+        .map(|q| {
+            let height = q.path.len() - skip;
+            let i = q.index >> height;
+            (0..skip).map(|j| levels[j][(i >> j) ^ 1]).collect()
+        })
+        .collect()
 }
 
 struct Reader<'a> {
@@ -273,10 +313,14 @@ pub fn decode_structural(
             be16(&mut whir, &rd.fe_run(round.monomials));
         }
         whir.extend_from_slice(rd.take(8)); // PoW nonce
-        for _ in 0..params.queries[r] {
-            for (values, path) in round.oracles.iter() {
+        for q in 0..params.queries[r] {
+            for (o, (values, path)) in round.oracles.iter().enumerate() {
                 be16(&mut whir, &rd.fe_run(*values));
                 be_digests(&mut whir, &rd.digests(*path, params.digest_bytes));
+                // round 0's second oracle is the setup tree, whose path stops at the frontier
+                if r == 0 && o == 1 {
+                    be_digests(&mut whir, &hints.setup_path_tails[q]);
+                }
             }
         }
     }

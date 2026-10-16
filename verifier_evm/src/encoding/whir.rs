@@ -71,9 +71,15 @@ pub(super) fn encode_whir(w: &mut Writer, proof: &Proof, params: &FormatParams) 
                             oracle.num_columns,
                         )),
                     );
+                    // the setup path stops at the setup frontier
+                    let kept = if name == "setup" {
+                        query.path.len() - params.setup_frontier_skip()
+                    } else {
+                        query.path.len()
+                    };
                     w.put(
                         format!("whir_0_query_{q}_{name}_path"),
-                        &digests(&query.path, params),
+                        &digests(&query.path[..kept], params),
                     );
                 }
             } else {

@@ -37,6 +37,7 @@ GKR1 = "0x00000000000000000000000000000000611b0002"
 WHIR1 = "0x0000000000000000000000000000000011170002"
 GKR_F1 = "0x00000000000000000000000000000000611b0012"
 WHIR_F1 = "0x0000000000000000000000000000000011170012"
+FRONTIER = "0x000000000000000000000000000000005e7f0001"
 
 
 def rpc(url, method, params):
@@ -134,6 +135,13 @@ def main():
         set_code(REG, rpc(url, "eth_getCode", [reg_impl, "latest"]))
         send(REG, bytes.fromhex(selector("initialize_verifiers(address,address)") + word(GKR2) + word(WHIR2)))
         wrapper = deploy(wrap_init, word(GKR1) + word(WHIR1) + word(len(gkr)))
+        frontier_artifact = root / "single_tx/f1/frontier/out/SetupFrontier.sol/SetupFrontier.json"
+        frontier_deploy_gas = None
+        if frontier_artifact.exists():
+            frontier_init, _ = artifact(frontier_artifact)
+            h, rc = send(None, bytes.fromhex(frontier_init[2:]))
+            frontier_deploy_gas = int(rc["gasUsed"], 16)
+            set_code(FRONTIER, rpc(url, "eth_getCode", [rc["contractAddress"], "latest"]))
         f1 = bytes.fromhex((data_root / "single_tx_f1.hex").read_text().strip())
         f1_gkr_bytes = json.loads((data_root / "single_tx_f1_fields.json").read_text())["gkr_bytes"]
         wrapper_f1 = deploy(wrap_init, word(GKR_F1) + word(WHIR_F1) + word(f1_gkr_bytes))
@@ -214,6 +222,7 @@ def main():
             "f1_glamsterdam_gas": results["single_tx_f1"]["glamsterdam_gas"],
             "f1_glamsterdam_floor_room": results["single_tx_f1"]["glamsterdam_floor_room"],
             "f1_hegota_gas": results["single_tx_f1"]["hegota_gas"],
+            "setup_frontier_deploy_gas": frontier_deploy_gas,
         }
         out.write_text(json.dumps(results, indent=2) + "\n")
         for k in ("two_tx_gkr", "two_tx_whir", "single_tx", "single_tx_f1"):

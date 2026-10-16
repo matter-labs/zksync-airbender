@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity =0.8.36;
 
+import {SetupFrontier} from "f1_frontier/SetupFrontier.sol";
+
 interface Vm {
     function readFile(string calldata path) external view returns (string memory);
     function parseBytes(string calldata value) external pure returns (bytes memory);
@@ -46,6 +48,7 @@ contract F1OracleTest {
         vm.etch(GKR_F1, _deployed("../instrumented/gkr_f1/out/GkrVerifier.sol/GKRVerifier.json"));
         vm.etch(WHIR_V0, _deployed("../instrumented/whir_v0/out/WhirVerifier.sol/WhirVerifier.json"));
         vm.etch(WHIR_F1, _deployed("../instrumented/whir_f1/out/WhirVerifier.sol/WhirVerifier.json"));
+        vm.etch(address(uint160(0x5e7f0001)), address(new SetupFrontier()).code);
         v0Gkr = _calldata(string.concat(DATA, "gkr_full_calldata.hex"));
         v0Whir = _calldata(string.concat(DATA, "proth120_whir_calldata_from_proof.hex"));
         f1 = _calldata(string.concat(DATA, "single_tx_f1.hex"));

@@ -1,7 +1,8 @@
-//! Instrumented verifier renders for the F1 ↔ v0 oracle: every `keccak256` result (transcript
-//! absorbs and draws, PoW digests, query draws, leaf and Merkle hashes, the committed state)
-//! is appended to a log, and every `return(p, len)` returns `[count][hash_0..hash_{count−1}]`
-//! followed by the verifier's own return data.
+//! Instrumented verifier renders for the F1 ↔ v0 oracle: every `keccak256` result except the
+//! Merkle leaf and node hashes (transcript absorbs and draws, PoW digests, query draws, the
+//! committed state) is appended to a log, and every `return(p, len)` returns
+//! `[count][hash_0..hash_{count−1}]` followed by the verifier's own return data. Merkle hashing
+//! is wire-data verification, not transcript: with a setup frontier F1 walks shorter setup paths.
 
 /// The log: `count` at `LOG_PTR`, then one word per hash. Above every verifier region.
 const LOG_PTR: usize = 0x40000;
@@ -62,7 +63,14 @@ fn rewrite_calls(src: &str, op: &str, wrap: &dyn Fn(&str) -> String) -> String {
 /// The instrumented render of a generated single-tx verifier source.
 pub fn instrument(src: &str) -> String {
     let src = rewrite_calls(src, "keccak256", &|args| {
-        format!("ilog_k(keccak256({args}))")
+        let merkle = ["0, 64", "LEAF_PTR, mul("]
+            .iter()
+            .any(|p| args.trim_start().starts_with(p));
+        if merkle {
+            format!("keccak256({args})")
+        } else {
+            format!("ilog_k(keccak256({args}))")
+        }
     });
     let src = rewrite_calls(&src, "return", &|args| format!("ilog_return({args})"));
     let at = src

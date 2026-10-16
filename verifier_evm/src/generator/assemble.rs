@@ -238,9 +238,36 @@ fn qtable_bytes(circuit_yul: &str) -> usize {
         .map_or(0, |last| (last + 32).next_multiple_of(32))
 }
 
+/// Template flag of an F1 render with a setup frontier.
+const F1_FRONTIER: &str = "F1_FRONTIER";
+
+/// The `SetupFrontier` data contract: its runtime code is `STOP ‖ data`.
+fn setup_frontier_sol(data: &[u8], level: usize) -> String {
+    format!(
+        "// SPDX-License-Identifier: UNLICENSED
+pragma solidity =0.8.36;
+
+/// The L1 wrap setup tree's {count} nodes at level {level} (physical order) after a STOP byte; the
+/// F1 WHIR verifier reads them with EXTCODECOPY and checks this code's hash once per call.
+contract SetupFrontier {{
+    constructor() {{
+        bytes memory code = hex\"00{hex}\";
+        assembly {{
+            return(add(code, 32), mload(code))
+        }}
+    }}
+}}
+",
+        count = 1usize << level,
+        hex = data.iter().map(|b| format!("{b:02x}")).collect::<String>(),
+    )
+}
+
 /// The single-tx F1 GKR + WHIR verifiers (spec §2): every proof byte is read by the F1
-/// decoders, the final PC and `setup_cap` are deployment constants. `flags` may add
-/// [`INSTRUMENTED`].
+/// decoders, the final PC and `setup_cap` are deployment constants. With a setup frontier
+/// (`params.setup_frontier_level` below the cap), `setup_frontier` gives the setup tree's
+/// nodes at that level (physical order) and the address of their `SetupFrontier` data
+/// contract. `flags` may add [`INSTRUMENTED`].
 #[allow(clippy::too_many_arguments)]
 pub fn generate_f1_verifiers(
     circuit: &GKRCircuitArtifact<Proth120>,
@@ -250,14 +277,43 @@ pub fn generate_f1_verifiers(
     whir_batch_pow_bits: u32,
     final_pc: u32,
     setup_cap: &[[u32; 8]],
+    setup_frontier: Option<(&[[u32; 8]], &str)>,
     flags: &[&str],
 ) -> GeneratedContracts {
     assert_eq!(
         params,
-        &FormatParams::from_config(prover_config, params.pack_log2, params.digest_bytes),
+        &FormatParams::from_config(prover_config, params.pack_log2, params.digest_bytes)
+            .with_setup_frontier(params.setup_frontier_level),
         "F1 profile differs from the prover config"
     );
-    let flags: Vec<&str> = std::iter::once(F1).chain(flags.iter().copied()).collect();
+    assert_eq!(setup_cap.len(), params.cap(), "setup cap size");
+    let frontier = (params.setup_frontier_skip() > 0).then(|| {
+        let (nodes, address) =
+            setup_frontier.expect("a setup frontier below the cap needs its nodes and address");
+        assert_eq!(
+            nodes.len(),
+            1 << params.setup_frontier_level,
+            "setup frontier size"
+        );
+        assert_eq!(
+            crate::encoding::merkle_reduce(
+                nodes,
+                params.setup_frontier_skip(),
+                params.digest_bytes
+            ),
+            setup_cap,
+            "the setup frontier does not reduce to the setup cap"
+        );
+        let data: Vec<u8> = nodes
+            .iter()
+            .flat_map(|d| crate::encoding::digest_wire(d, params.digest_bytes))
+            .collect();
+        (data, address)
+    });
+    let flags: Vec<&str> = std::iter::once(F1)
+        .chain(frontier.is_some().then_some(F1_FRONTIER))
+        .chain(flags.iter().copied())
+        .collect();
     let out = render(
         circuit,
         prover_config,
@@ -318,7 +374,31 @@ pub fn generate_f1_verifiers(
         )
     };
     assert_eq!(whir_sol.matches("// __F1_DIGEST_LOAD__").count(), 1);
-    let whir_sol = whir_sol.replace("// __F1_DIGEST_LOAD__", &digest_load);
+    let mut whir_sol = whir_sol.replace("// __F1_DIGEST_LOAD__", &digest_load);
+    let setup_frontier_sol = frontier.map(|(data, address)| {
+        use sha3::{Digest, Keccak256};
+        let mut code = vec![0u8];
+        code.extend_from_slice(&data);
+        let hash: String = Keccak256::digest(&code)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        for (name, value) in [
+            ("__TEMPLATE_F1_FRONTIER", checksum_address(address)),
+            ("__TEMPLATE_F1_FRONTIER_HASH", format!("0x{hash}")),
+            (
+                "__TEMPLATE_F1_FRONTIER_LEVEL",
+                params.setup_frontier_level.to_string(),
+            ),
+            (
+                "__TEMPLATE_F1_FRONTIER_SKIP",
+                params.setup_frontier_skip().to_string(),
+            ),
+        ] {
+            whir_sol = set_const(&whir_sol, name, value);
+        }
+        setup_frontier_sol(&data, params.setup_frontier_level)
+    });
     let (gkr_sol, whir_sol) = if flags.contains(&INSTRUMENTED) {
         (instrument(&gkr_sol), instrument(&whir_sol))
     } else {
@@ -328,6 +408,7 @@ pub fn generate_f1_verifiers(
         gkr_sol,
         whir_sol,
         registry_sol: out.registry_sol,
+        setup_frontier_sol,
     }
 }
 
@@ -599,5 +680,6 @@ fn render(
         gkr_sol: gkr,
         whir_sol: whir,
         registry_sol: REGISTRY_TEMPLATE.to_string(),
+        setup_frontier_sol: None,
     }
 }

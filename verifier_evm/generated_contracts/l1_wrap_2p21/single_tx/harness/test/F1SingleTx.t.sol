@@ -2,6 +2,7 @@
 pragma solidity =0.8.36;
 
 import {L1VerifierSingleTx} from "../src/L1VerifierSingleTx.sol";
+import {SetupFrontier} from "f1_frontier/SetupFrontier.sol";
 
 interface Vm {
     function readFile(string calldata path) external view returns (string memory);
@@ -22,6 +23,7 @@ contract F1SingleTxTest {
     address constant GKR_F1_WRONG_PC = address(uint160(0x611b0013));
     address constant WHIR_F1 = address(uint160(0x11170012));
     address constant GKR_F1_WRONG_SETUP_CAP = address(uint160(0x611b0014));
+    address constant FRONTIER = address(uint160(0x5e7f0001)); // the F1 WHIR verifier's frontier constant
     string constant DATA = "../../../../debug_data/l1_wrap_2p21/";
     bytes v0Gkr;
     bytes v0Whir;
@@ -53,6 +55,7 @@ contract F1SingleTxTest {
         vm.etch(GKR_F1, _deployed("../f1/gkr/out/GkrVerifier.sol/GKRVerifier.json"));
         vm.etch(GKR_F1_WRONG_PC, _deployed("../f1/gkr_negative/out/GkrVerifierWrongFinalPc.sol/GKRVerifier.json"));
         vm.etch(WHIR_F1, _deployed("../f1/whir/out/WhirVerifier.sol/WhirVerifier.json"));
+        vm.etch(FRONTIER, address(new SetupFrontier()).code);
         vm.etch(
             GKR_F1_WRONG_SETUP_CAP,
             _deployed("../f1/gkr_wrong_setup_cap/out/GkrVerifierWrongSetupCap.sol/GKRVerifier.json")
@@ -182,12 +185,55 @@ contract F1SingleTxTest {
     function test_f1_rejects_swapped_tree_blocks() public {
         (uint256 mem, uint256 len) = _field("whir_0_query_0_memory_path");
         (uint256 setup, uint256 setupLen) = _field("whir_0_query_0_setup_path");
-        require(len == setupLen, "equal path lengths");
+        if (setupLen < len) len = setupLen; // the setup path stops at the frontier
         bytes memory m = _copy(f1);
         for (uint256 i; i < len; ++i) {
             (m[mem + i], m[setup + i]) = (f1[setup + i], f1[mem + i]);
         }
         require(_rejects(proxyF1, m), "memory/setup paths swapped");
+    }
+
+    function test_f1_rejects_another_setup_frontier() public {
+        _accepts(proxyF1, f1);
+        bytes memory code = FRONTIER.code;
+        code[code.length - 1] ^= 0x01;
+        vm.etch(FRONTIER, code);
+        require(_rejects(proxyF1, f1), "frontier code differs from the pinned hash");
+    }
+
+    /// Deployment check: the frontier data reduces to the proof's setup cap with the node function.
+    function test_setup_frontier_reduces_to_the_setup_cap() public view {
+        uint256 db = vm.parseJsonUint(fields, ".digest_bytes");
+        uint256 level = vm.parseJsonUint(fields, ".setup_frontier_level");
+        bytes memory code = FRONTIER.code;
+        uint256 n = 1 << level;
+        require(code.length == 1 + n * db && code[0] == 0x00, "frontier layout");
+        bytes32 mask = bytes32(type(uint256).max << (8 * (32 - db)));
+        bytes32[] memory nodes = new bytes32[](n);
+        for (uint256 i; i < n; ++i) {
+            bytes32 d;
+            uint256 at = 33 + i * db; // +32 length word, +1 STOP
+            assembly {
+                d := mload(add(code, at))
+            }
+            nodes[i] = d & mask;
+        }
+        for (; n > 8; n /= 2) {
+            for (uint256 i; i < n / 2; ++i) {
+                nodes[i] = keccak256(abi.encodePacked(nodes[2 * i], nodes[2 * i + 1])) & mask;
+            }
+        }
+        // v0 WHIR header: seed 32, batching 16, opening 16, z 25 × 16, memory cap 8 × 32, setup cap 8 × 32
+        uint256 setupCap = 64 + 25 * 16 + 8 * 32;
+        for (uint256 i; i < 8; ++i) {
+            bytes32 c;
+            uint256 at = 32 + setupCap + 32 * i;
+            bytes memory whir = v0Whir;
+            assembly {
+                c := mload(add(whir, at))
+            }
+            require(nodes[i] == c, "frontier does not reduce to the setup cap");
+        }
     }
 
     function test_f1_rejects_wrong_setup_cap() public {
