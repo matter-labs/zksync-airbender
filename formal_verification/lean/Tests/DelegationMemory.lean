@@ -6,6 +6,8 @@ import Airbender.Proofs.Keccak.StateTransport
 import Airbender.Proofs.Delegation.CallBoundaries
 import Airbender.Proofs.Delegation.NativeSegments
 
+set_option Elab.async false
+
 namespace Tests.DelegationMemory
 open Airbender Trace
 set_option warningAsError true

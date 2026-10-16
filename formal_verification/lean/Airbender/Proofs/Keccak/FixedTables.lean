@@ -36,11 +36,11 @@ private theorem rotation_facts (key : Nat) (size : key < 1048576) :
   exact ⟨size, by omega, Nat.mod_lt _ (by decide), rfl, rfl⟩
 
 private theorem fixed_rows {control : Fin 4096 → Vector Nat 6}
-    (index : Fin 1249281) (notController : (setupRow control index)[7] ≠ 37) :
-    ByteOperationFacts (setupRow control index)[7] (setupRow control index)[0]
-      (setupRow control index)[1] (setupRow control index)[2] := by
+    (index : Fin 1249281) (notController : (referenceSetupRow control index)[7] ≠ 37) :
+    ByteOperationFacts (referenceSetupRow control index)[7] (referenceSetupRow control index)[0]
+      (referenceSetupRow control index)[1] (referenceSetupRow control index)[2] := by
   have size := index.isLt
-  unfold setupRow at notController ⊢
+  unfold referenceSetupRow at notController ⊢
   dsimp only at notController ⊢
   split_ifs at notController ⊢
   · simp [ByteOperationFacts]
@@ -64,26 +64,27 @@ theorem fixed_lookup {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
   have member := (Lookup.mk (setupTable control).toRaw entry).table.imply_soundness _ _ h
   change ∃ index : Fin 1249281, entry.map (Expression.eval env) =
     (setupRow control index).map (fun (n : Nat) => (n : ZMod p)) at member
+  simp only [setup_row_characterization] at member
   obtain ⟨index, row⟩ := member
   have column (j : Nat) (hj : j < 8) : entry[j].eval env =
-      ((setupRow control index)[j] : ZMod p) := by
+      ((referenceSetupRow control index)[j] : ZMod p) := by
     have equation := congrArg (fun (v : Vector (ZMod p) 8) => v[j]) row
     simpa only [Vector.getElem_map] using equation
-  have tagBound : (setupRow control index)[7] < p := by
-    unfold setupRow
+  have tagBound : (referenceSetupRow control index)[7] < p := by
+    unfold referenceSetupRow
     dsimp only
     split_ifs <;> simp only [byte_tag, rotation_tag, Vector.getElem_replicate,
       Vector.getElem_mk, List.getElem_toArray, List.getElem_cons_succ,
       List.getElem_cons_zero] <;> omega
-  have tagged : (entry[7].eval env).val = (setupRow control index)[7] := by
+  have tagged : (entry[7].eval env).val = (referenceSetupRow control index)[7] := by
     rw [column 7 (by decide), ZMod.val_natCast_of_lt tagBound]
   have facts := fixed_rows index (by rwa [← tagged])
-  have bounded : (setupRow control index)[0] < 1048576 ∧
-      (setupRow control index)[1] < 1048576 ∧ (setupRow control index)[2] < 1048576 := by
+  have bounded : (referenceSetupRow control index)[0] < 1048576 ∧
+      (referenceSetupRow control index)[1] < 1048576 ∧ (referenceSetupRow control index)[2] < 1048576 := by
     unfold ByteOperationFacts at facts
     split_ifs at facts <;> omega
-  have value (j : Nat) (hj : j < 8) (bound : (setupRow control index)[j] < 1048576) :
-      (entry[j].eval env).val = (setupRow control index)[j] := by
+  have value (j : Nat) (hj : j < 8) (bound : (referenceSetupRow control index)[j] < 1048576) :
+      (entry[j].eval env).val = (referenceSetupRow control index)[j] := by
     rw [column j hj]
     exact ZMod.val_natCast_of_lt (by omega)
   rw [tagged, value 0 (by decide) bounded.1, value 1 (by decide) bounded.2.1,

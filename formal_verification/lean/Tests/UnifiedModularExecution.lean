@@ -5,6 +5,7 @@ namespace Tests.UnifiedModularExecution
 open Airbender Arithmetic UnifiedReduced Trace Reference.RiscV.Sail Reference.Sail
 open _root_.Sail.ArchSem
 set_option warningAsError true
+set_option Elab.async false
 set_option maxRecDepth 32768
 set_option maxHeartbeats 8000000
 

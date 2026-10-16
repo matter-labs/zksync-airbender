@@ -2,6 +2,8 @@ import Airbender.Proofs.ShiftBinop.Execution
 import Airbender.Proofs.UnifiedReduced.Claims
 import Airbender.Proofs.BabyBear
 
+set_option Elab.async false
+
 namespace Tests.UnifiedShift
 open Airbender Arithmetic Trace Reference.RiscV Reference.RiscV.Sail Reference.Sail
 set_option warningAsError true
@@ -75,16 +77,25 @@ private def queryValues (kind : Fin 7) (slot : Fin 5) : Vector (ZMod babyBearMod
       assignment kind (base + 4), assignment kind (base + 5), assignment kind (base + 6),
       assignment kind (base + 7), assignment kind (base + 8), 0, assignment kind base]
 
-private theorem checkedRows (kind : Fin 7) (slot : Fin 5) :
-    (UnifiedReduced.Setup.table (before kind)).Contains #[] (queryValues kind slot) := by
+private theorem checkedRowsFor (initial : State) (kind : Fin 7) (slot : Fin 5) :
+    (UnifiedReduced.Setup.table initial).Contains #[] (queryValues kind slot) := by
   change ∃ i : Fin 2097537, _
-  have bound : rowIndex (queryValues kind slot) < 2097537 := by
+  have bound : rowIndex (queryValues kind slot) < 1048961 := by
     fin_cases kind <;> fin_cases slot <;> with_unfolding_all decide
-  refine ⟨⟨_, bound⟩, ?_⟩
+  refine ⟨⟨rowIndex (queryValues kind slot), by omega⟩, ?_⟩
+  change queryValues kind slot =
+    (UnifiedReduced.Setup.row initial ⟨rowIndex (queryValues kind slot), by omega⟩).map
+      (fun n : Nat => (n : ZMod babyBearModulus))
+  simp only [UnifiedReduced.Setup.row, dif_pos bound]
+  clear initial
   fin_cases kind <;> fin_cases slot <;> with_unfolding_all decide +revert
 
-private theorem constraints (kind : Fin 7) : FlatOperation.ConstraintsHoldFlat
-    (Verification.environment (assignment kind)) (UnifiedReduced.clockConstraints (UnifiedReduced.Setup.table (before kind))) := by
+private theorem checkedRows (kind : Fin 7) (slot : Fin 5) :
+    (UnifiedReduced.Setup.table (before kind)).Contains #[] (queryValues kind slot) :=
+  checkedRowsFor (before kind) kind slot
+
+private theorem constraintsFor (initial : State) (kind : Fin 7) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (assignment kind)) (UnifiedReduced.clockConstraints (UnifiedReduced.Setup.table initial)) := by
   apply Verification.holds_append
   · apply FlatOperation.constraintsHoldFlat_iff_forall_mem.mpr
     constructor
@@ -101,17 +112,22 @@ private theorem constraints (kind : Fin 7) : FlatOperation.ConstraintsHoldFlat
         Expression.eval, Verification.environment]
       all_goals solve
         | (apply Verification.range16_contains; fin_cases kind <;> with_unfolding_all decide)
-        | (with_unfolding_all exact checkedRows kind 0)
-        | (with_unfolding_all exact checkedRows kind 1)
-        | (with_unfolding_all exact checkedRows kind 2)
-        | (with_unfolding_all exact checkedRows kind 3)
-        | (with_unfolding_all exact checkedRows kind 4)
+        | (with_unfolding_all exact checkedRowsFor initial kind 0)
+        | (with_unfolding_all exact checkedRowsFor initial kind 1)
+        | (with_unfolding_all exact checkedRowsFor initial kind 2)
+        | (with_unfolding_all exact checkedRowsFor initial kind 3)
+        | (with_unfolding_all exact checkedRowsFor initial kind 4)
   · fin_cases kind
     all_goals simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
     all_goals repeat' apply And.intro
     all_goals apply Trace.Proofs.range_contains
     all_goals simp [Expression.eval, Verification.environment, assignment]
     all_goals decide
+
+private theorem constraints (kind : Fin 7) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (assignment kind))
+    (UnifiedReduced.clockConstraints (UnifiedReduced.Setup.table (before kind))) :=
+  constraintsFor (before kind) kind
 
 private def trace (kind : Fin 7) : UnifiedTrace babyBearModulus where
   rows := [row kind]

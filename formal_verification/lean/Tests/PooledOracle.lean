@@ -5,6 +5,8 @@ import Airbender.Proofs.BabyBear
 import Tests.ShiftBinopTimestamp
 import Tests.TraceExecution
 
+set_option Elab.async false
+
 namespace Tests.PooledOracle
 open Airbender Arithmetic Trace
 open Reference.RiscV.Sail Reference.Sail

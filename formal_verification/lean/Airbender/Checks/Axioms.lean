@@ -1093,6 +1093,14 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Binary.soundness
 #print axioms Tests.UnifiedBinary.native_soundness
 
+#print axioms Airbender.Keccak.Controller.Proofs.Certificate.field_of_pieces
+#print axioms Airbender.Keccak.Controller.Proofs.Certificate.field0
+#print axioms Airbender.Keccak.Controller.Proofs.Certificate.field1
+#print axioms Airbender.Keccak.Controller.Proofs.Certificate.field2
+#print axioms Airbender.Keccak.Controller.Proofs.Certificate.field3
+#print axioms Airbender.Keccak.Controller.Proofs.Certificate.field4
+#print axioms Airbender.Keccak.Controller.Proofs.Certificate.field5
+#print axioms Airbender.Keccak.Controller.Proofs.rows_data_bound
 #print axioms Airbender.Keccak.Controller.Proofs.rows_reference
 #print axioms Airbender.Keccak.Controller.Proofs.controller_native_row
 #print axioms Airbender.Keccak.Controller.Proofs.controller_setup_row
@@ -1321,6 +1329,18 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Keccak.Proofs.micro_normalized
 #print axioms Airbender.Keccak.Proofs.iota_phase_lanes
 #print axioms Airbender.Keccak.Proofs.iota_phase_parities
+#print axioms Airbender.Keccak.Proofs.IotaPart0.lanes
+#print axioms Airbender.Keccak.Proofs.IotaPart0.parities
+#print axioms Airbender.Keccak.Proofs.IotaPart1.lanes
+#print axioms Airbender.Keccak.Proofs.IotaPart1.parities
+#print axioms Airbender.Keccak.Proofs.IotaPart2.lanes
+#print axioms Airbender.Keccak.Proofs.IotaPart2.parities
+#print axioms Airbender.Keccak.Proofs.IotaPart3.lanes
+#print axioms Airbender.Keccak.Proofs.IotaPart3.parities
+#print axioms Airbender.Keccak.Proofs.IotaPart4.lanes
+#print axioms Airbender.Keccak.Proofs.IotaPart4.parities
+#print axioms Airbender.Keccak.Proofs.IotaPart5.lanes
+#print axioms Airbender.Keccak.Proofs.IotaPart5.parities
 #print axioms Airbender.Keccak.Proofs.mix_phase_frame
 #print axioms Airbender.Keccak.Proofs.mix_phase_d
 #print axioms Airbender.Keccak.Proofs.theta_phase_lanes
@@ -3249,3 +3269,52 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Blake2G.Proofs.XorCertificate.output3
 #print axioms Airbender.Blake2G.Proofs.XorCertificate.output4
 #print axioms Airbender.Blake2G.Proofs.XorCertificate.output7
+
+#print axioms Airbender.Keccak.Proofs.xor_output_checks
+#print axioms Airbender.Keccak.Proofs.chi_output_checks
+#print axioms Airbender.Keccak.Proofs.iota_output_checks
+#print axioms Airbender.Keccak.Proofs.IotaReference.byte_eq
+#print axioms Airbender.Keccak.Proofs.rotation_high_column
+#print axioms Airbender.Keccak.Proofs.rotation_low_column
+#print axioms Airbender.Keccak.Proofs.rotation_high_get
+#print axioms Airbender.Keccak.Proofs.rotation_low_get
+#print axioms Airbender.Keccak.Proofs.byte_region_reference
+#print axioms Airbender.Keccak.Proofs.rotation_region_reference
+#print axioms Airbender.Keccak.Proofs.zero_row_reference
+#print axioms Airbender.Keccak.Proofs.setup_row_characterization
+#print axioms Airbender.Keccak.Proofs.fixed_region_native_cast
+
+
+#print axioms Airbender.Keccak.Proofs.blockRows_sound
+#print axioms Airbender.Keccak.Proofs.blockCover_sound
+#print axioms Airbender.Keccak.Proofs.rotationTemplates0_size
+#print axioms Airbender.Keccak.Proofs.rotationTemplates0_get
+#print axioms Airbender.Keccak.Proofs.rotationTemplates1_size
+#print axioms Airbender.Keccak.Proofs.rotationTemplates1_get
+#print axioms Airbender.Keccak.Proofs.rotationTemplates2_size
+#print axioms Airbender.Keccak.Proofs.rotationTemplates2_get
+#print axioms Airbender.Keccak.Proofs.rotationTemplates3_size
+#print axioms Airbender.Keccak.Proofs.rotationTemplates3_get
+#print axioms Airbender.Keccak.Proofs.rotationTemplates4_size
+#print axioms Airbender.Keccak.Proofs.rotationTemplates4_get
+#print axioms Airbender.Keccak.Proofs.rotationTemplates5_size
+#print axioms Airbender.Keccak.Proofs.rotationTemplates5_get
+#print axioms Airbender.Keccak.Proofs.rotationTemplates6_size
+#print axioms Airbender.Keccak.Proofs.rotationTemplates6_get
+#print axioms Airbender.Keccak.Proofs.rotationTemplates7_size
+#print axioms Airbender.Keccak.Proofs.rotationTemplates7_get
+#print axioms Airbender.Keccak.Proofs.rotationTemplates8_size
+#print axioms Airbender.Keccak.Proofs.rotationTemplates8_get
+#print axioms Airbender.Keccak.Proofs.rotationTemplates9_size
+#print axioms Airbender.Keccak.Proofs.rotationTemplates9_get
+
+#print axioms Airbender.Trace.Proofs.program_entry_run_of_reads
+#print axioms Airbender.Trace.Proofs.program_image_run_singleton_of_reads
+
+#print axioms Tests.UnifiedDelegation.BigintFixtures.abiCore
+#print axioms Tests.UnifiedDelegation.BigintFixtures.frameWorkerCore
+#print axioms Tests.UnifiedDelegation.BigintFixtures.returnCarryCore
+
+#print axioms Airbender.Bigint.Proofs.setup_lookup_reference_iff
+
+#print axioms Airbender.Trace.Proofs.SailHistory.writes

@@ -2,6 +2,8 @@ import Airbender.Proofs.Keccak.Claims
 import Airbender.Proofs.Keccak.Lookups
 import Mathlib.Tactic.IntervalCases
 
+set_option Elab.async false
+
 namespace Tests.Keccak
 open Airbender
 set_option warningAsError true
@@ -83,7 +85,9 @@ theorem xorBoundaryAccepted : (xorQuery 255 1 254).Contains emptyEnv := by
   change ∃ i : Fin 1249281, (xorQuery 255 1 254).entry.map (Expression.eval emptyEnv) =
     (Keccak.setupRow control i).map (fun (n : Nat) => (n : ZMod babyBearModulus))
   refine ⟨⟨65282, by decide⟩, ?_⟩
-  have row : Keccak.setupRow control ⟨65282, by decide⟩ = #v[255, 1, 254, 0, 0, 0, 0, 4] := by decide
+  have row : Keccak.setupRow control ⟨65282, by decide⟩ = #v[255, 1, 254, 0, 0, 0, 0, 4] := by
+    rw [Keccak.Proofs.setup_row_characterization]
+    decide
   rw [row]
   change (Vector.map (Expression.eval emptyEnv)
     (#v[.const (255 : ZMod babyBearModulus), .const 1, .const 254,

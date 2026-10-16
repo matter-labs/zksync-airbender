@@ -2,6 +2,8 @@ import Airbender.Proofs.Blake2G.Claims
 import Airbender.Review.Trace.Workers.Blake2G.ReferenceCalls
 import Mathlib.Tactic.IntervalCases
 
+set_option Elab.async false
+
 namespace Tests.Blake2GMemory
 open Airbender Trace
 set_option warningAsError true
@@ -33,6 +35,7 @@ private theorem tableQuery (i : Fin 19) :
   let index : Fin 344896 := ⟨indices[i], indexBound i⟩
   fin_cases i
   all_goals refine ⟨index, ?_⟩
+  all_goals simp only [Blake2G.Proofs.setup_row_characterization]
   all_goals apply Vector.ext
   all_goals intro j hj
   all_goals change j < 9 at hj
@@ -229,6 +232,7 @@ private theorem boundaryTableQuery (i : Fin 19) :
   let index : Fin 344896 := ⟨indices[i], indexBound i⟩
   fin_cases i
   all_goals refine ⟨index, ?_⟩
+  all_goals simp only [Blake2G.Proofs.setup_row_characterization]
   all_goals apply Vector.ext
   all_goals intro j hj
   all_goals change j < 9 at hj

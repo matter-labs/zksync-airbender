@@ -1,6 +1,8 @@
 import Tests.Keccak
 import Tests.KeccakTheta
 
+set_option Elab.async false
+
 namespace Tests.KeccakControlUpdate
 open Airbender
 set_option warningAsError true

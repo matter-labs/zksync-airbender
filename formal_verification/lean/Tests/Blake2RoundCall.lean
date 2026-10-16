@@ -2,6 +2,8 @@ import Airbender.Proofs.Blake2Round.Call
 import Airbender.Review.Trace.Workers.Blake2Round.ReferenceCalls
 import Airbender.Proofs.Blake2Round.Claims
 
+set_option Elab.async false
+
 namespace Tests.Blake2RoundCall
 open Airbender Arithmetic
 set_option warningAsError true

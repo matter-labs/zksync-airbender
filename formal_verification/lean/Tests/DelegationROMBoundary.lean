@@ -1,3 +1,4 @@
+import Airbender.Proofs.Bigint.LookupReference
 import Tests.BigintMemory
 import Tests.DelegationCaller
 import Tests.DelegationOperationEffects
@@ -5,6 +6,8 @@ import Airbender.Proofs.Delegation.RequestTrace
 import Airbender.Review.Helpers.Memory.Native
 import Airbender.Proofs.Trace.ROMView
 import Airbender.Proofs.ExternalBoundary.WorkerRAM
+
+set_option Elab.async false
 
 namespace Tests.DelegationROMBoundary
 open Airbender Delegation Trace Arithmetic Reference.RiscV.Sail Reference.Sail
@@ -50,17 +53,16 @@ private def before : State := wordWriteState shadow 0 (Tests.DelegationCaller.en
 private theorem core : FlatOperation.ConstraintsHoldFlat (Verification.environment assignment)
     (Bigint.importedConstraints Bigint.setupTable) := by
   simp [Bigint.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-    Verification.environment, Expression.eval, assignment, Tests.BigintMemory.row, Lookup.Contains, Table.toRaw, fromElements]
+    Verification.environment, Expression.eval, assignment, Tests.BigintMemory.row, Bigint.Proofs.setup_lookup_reference_iff]
   repeat' apply And.intro
   all_goals solve
-    | decide +kernel
     | (apply Verification.range16_contains; decide +kernel)
-    | (refine ⟨⟨0, by decide⟩, ?_⟩; decide +kernel)
-    | (refine ⟨⟨262144, by decide⟩, ?_⟩; decide +kernel)
-    | (refine ⟨⟨1310720, by decide⟩, ?_⟩; decide +kernel)
-    | (refine ⟨⟨1312768, by decide⟩, ?_⟩; decide +kernel)
-    | (refine ⟨⟨1316864, by decide⟩, ?_⟩; decide +kernel)
-    | (refine ⟨⟨1325056, by decide⟩, ?_⟩; decide +kernel)
+    | (refine ⟨⟨0, by decide⟩, ?_⟩; simp only [Bigint.Proofs.lookupReferenceRow]; decide +kernel)
+    | (refine ⟨⟨262144, by decide⟩, ?_⟩; simp only [Bigint.Proofs.lookupReferenceRow]; decide +kernel)
+    | (refine ⟨⟨1310720, by decide⟩, ?_⟩; simp only [Bigint.Proofs.lookupReferenceRow]; decide +kernel)
+    | (refine ⟨⟨1312768, by decide⟩, ?_⟩; simp only [Bigint.Proofs.lookupReferenceRow]; decide +kernel)
+    | (refine ⟨⟨1316864, by decide⟩, ?_⟩; simp only [Bigint.Proofs.lookupReferenceRow]; decide +kernel)
+    | (refine ⟨⟨1325056, by decide⟩, ?_⟩; simp only [Bigint.Proofs.lookupReferenceRow]; decide +kernel)
 
 private theorem clocks : FlatOperation.ConstraintsHoldFlat (Verification.environment assignment)
     Bigint.importedConstraintsTimestampLookups := by

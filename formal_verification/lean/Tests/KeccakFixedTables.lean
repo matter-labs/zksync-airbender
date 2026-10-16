@@ -2,6 +2,8 @@ import Airbender.Proofs.Keccak.FixedTables
 import Airbender.Proofs.BabyBear
 import Mathlib.Tactic.IntervalCases
 
+set_option Elab.async false
+
 namespace Tests.KeccakFixedTables
 open Airbender
 set_option warningAsError true
@@ -16,12 +18,12 @@ private def query (tag a b c : Nat) : Lookup (ZMod babyBearModulus) :=
       .const (tag : ZMod babyBearModulus)]
 
 private theorem accepted (tag a b c : Nat) (index : Fin 1249281)
-    (physicalRow : Keccak.setupRow control index = #v[a, b, c, 0, 0, 0, 0, tag]) :
+    (physicalRow : Keccak.referenceSetupRow control index = #v[a, b, c, 0, 0, 0, 0, tag]) :
     (query tag a b c).Contains emptyEnv := by
   change ∃ index : Fin 1249281, (query tag a b c).entry.map (Expression.eval emptyEnv) =
     (Keccak.setupRow control index).map (fun (n : Nat) => (n : ZMod babyBearModulus))
   refine ⟨index, ?_⟩
-  rw [physicalRow]
+  rw [Keccak.Proofs.setup_row_characterization, physicalRow]
   change (Vector.map (n := 8) (Expression.eval emptyEnv)
     (#v[.const (a : ZMod babyBearModulus), .const (b : ZMod babyBearModulus), .const (c : ZMod babyBearModulus),
       .const 0, .const 0, .const 0, .const 0, .const (tag : ZMod babyBearModulus)] :

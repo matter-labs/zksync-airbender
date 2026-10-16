@@ -2,6 +2,8 @@ import Airbender.Proofs.UnifiedReduced.Claims
 import Airbender.Proofs.BabyBear
 import Airbender.Proofs.Sail.WordMemoryState
 
+set_option Elab.async false
+
 namespace Tests.UnifiedReduced
 open Airbender Airbender.Arithmetic
 

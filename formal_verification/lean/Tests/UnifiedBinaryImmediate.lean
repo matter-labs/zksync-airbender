@@ -1,5 +1,8 @@
+import Airbender.Proofs.Trace.ProgramConstruction
 import Airbender.Proofs.UnifiedReduced.Claims
 import Airbender.Proofs.BabyBear
+
+set_option Elab.async false
 
 namespace Tests.UnifiedBinaryImmediate
 open Airbender Arithmetic Trace Reference.RiscV Reference.RiscV.Sail Reference.Sail
@@ -53,8 +56,17 @@ private def before (kind : Fin 6) : State :=
 
 private def row (kind : Fin 6) : Row babyBearModulus UnifiedFamily := ⟨.machine, assignment kind⟩
 
-private theorem constraints (kind : Fin 6) : FlatOperation.ConstraintsHoldFlat
-    (Verification.environment (assignment kind)) (UnifiedReduced.clockConstraints (UnifiedReduced.Setup.table (before kind))) := by
+private theorem fixedMember (initial : State) (index : Fin 1048961)
+    (value : Vector (ZMod babyBearModulus) 10)
+    (equal : value = (UnifiedReduced.Setup.fixedRow index).map
+      (fun n : Nat => (n : ZMod babyBearModulus))) :
+    (UnifiedReduced.Setup.table initial).Contains #[] value := by
+  change ∃ i : Fin 2097537, _
+  refine ⟨⟨index.val, by have bound := index.isLt; omega⟩, ?_⟩
+  simpa only [UnifiedReduced.Setup.row, dif_pos index.isLt] using equal
+
+private theorem constraintsFor (initial : State) (kind : Fin 6) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (assignment kind)) (UnifiedReduced.clockConstraints (UnifiedReduced.Setup.table initial)) := by
   apply Verification.holds_append
   · fin_cases kind
     all_goals simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
@@ -62,40 +74,45 @@ private theorem constraints (kind : Fin 6) : FlatOperation.ConstraintsHoldFlat
       Verification.byteOperation, operand, immediate, rightByte, Lookup.Contains, Table.toRaw, fromElements]
     all_goals repeat' apply And.intro
     all_goals solve
-      | decide
       | (apply Verification.range16_contains; decide)
-      | exact ⟨⟨7, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨254, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨13689, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨4871, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨52737, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨44033, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨13808, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨5118, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨52992, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨44288, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨79225, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨70407, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨118273, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨109569, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨79344, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨70654, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨118528, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨109824, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨144761, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨135943, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨183809, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨175105, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨144880, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨136190, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨184064, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨175360, by decide⟩, by with_unfolding_all decide⟩
+      | (apply fixedMember initial (7 : Fin 1048961); with_unfolding_all decide)
+      | (apply fixedMember initial (254 : Fin 1048961); with_unfolding_all decide)
+      | (apply fixedMember initial (13689 : Fin 1048961); with_unfolding_all decide)
+      | (apply fixedMember initial (4871 : Fin 1048961); with_unfolding_all decide)
+      | (apply fixedMember initial (52737 : Fin 1048961); with_unfolding_all decide)
+      | (apply fixedMember initial (44033 : Fin 1048961); with_unfolding_all decide)
+      | (apply fixedMember initial (13808 : Fin 1048961); with_unfolding_all decide)
+      | (apply fixedMember initial (5118 : Fin 1048961); with_unfolding_all decide)
+      | (apply fixedMember initial (52992 : Fin 1048961); with_unfolding_all decide)
+      | (apply fixedMember initial (44288 : Fin 1048961); with_unfolding_all decide)
+      | (apply fixedMember initial (79225 : Fin 1048961); with_unfolding_all decide)
+      | (apply fixedMember initial (70407 : Fin 1048961); with_unfolding_all decide)
+      | (apply fixedMember initial (118273 : Fin 1048961); with_unfolding_all decide)
+      | (apply fixedMember initial (109569 : Fin 1048961); with_unfolding_all decide)
+      | (apply fixedMember initial (79344 : Fin 1048961); with_unfolding_all decide)
+      | (apply fixedMember initial (70654 : Fin 1048961); with_unfolding_all decide)
+      | (apply fixedMember initial (118528 : Fin 1048961); with_unfolding_all decide)
+      | (apply fixedMember initial (109824 : Fin 1048961); with_unfolding_all decide)
+      | (apply fixedMember initial (144761 : Fin 1048961); with_unfolding_all decide)
+      | (apply fixedMember initial (135943 : Fin 1048961); with_unfolding_all decide)
+      | (apply fixedMember initial (183809 : Fin 1048961); with_unfolding_all decide)
+      | (apply fixedMember initial (175105 : Fin 1048961); with_unfolding_all decide)
+      | (apply fixedMember initial (144880 : Fin 1048961); with_unfolding_all decide)
+      | (apply fixedMember initial (136190 : Fin 1048961); with_unfolding_all decide)
+      | (apply fixedMember initial (184064 : Fin 1048961); with_unfolding_all decide)
+      | (apply fixedMember initial (175360 : Fin 1048961); with_unfolding_all decide)
+      | decide
   · fin_cases kind
     all_goals simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
     all_goals repeat' apply And.intro
     all_goals apply Trace.Proofs.range_contains
     all_goals simp [Expression.eval, Verification.environment, assignment]
     all_goals decide
+
+private theorem constraints (kind : Fin 6) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (assignment kind))
+    (UnifiedReduced.clockConstraints (UnifiedReduced.Setup.table (before kind))) :=
+  constraintsFor (before kind) kind
 
 private def trace (kind : Fin 6) : UnifiedTrace babyBearModulus where
   rows := [row kind]
@@ -136,13 +153,20 @@ private theorem public_image (kind : Fin 6) : initialImage (before kind) cells =
   simp only [cells, initialImage, List.mapM_cons, List.mapM_nil, first, second, third]
   fin_cases kind <;> decide
 
+private theorem originalDecoder (initial : State) (kind : Fin 6) :
+    run (SailRV32.Functions.encdec_backwards (instructionBits kind)) initial =
+      .ok (entry kind).instruction initial := by
+  fin_cases kind <;> with_unfolding_all rfl
+
 private theorem program_image (kind : Fin 6) : UnifiedReduced.programImage (before kind) [0] = some [entry kind] := by
   have bytes : (Cell.ram 0).read (before kind) = .ok (instructionBits kind) (before kind) := by
     fin_cases kind <;> simp [Cell.read, Sail.ArchSem.readBytes, Sail.ArchSem.readByte, EStateM.run,
       get, getThe, MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get, EStateM.pure,
       before, instructionBits, immediate, Std.ExtHashMap.getElem_insert]
-  simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, bind, Option.bind, pure]
-  fin_cases kind <;> with_unfolding_all rfl
+  have fields : UnifiedReduced.decoderFields (entry kind).instruction = some (entry kind).data := by
+    fin_cases kind <;> with_unfolding_all rfl
+  exact Trace.Proofs.program_image_run_singleton_of_reads
+    UnifiedReduced.decoderFields (before kind) (entry kind) bytes (originalDecoder (before kind) kind) fields
 
 private theorem boundary (kind : Fin 6) : ClockBoundary (trace kind) := by
   constructor

@@ -70,6 +70,8 @@ import Tests.Shifts
 import Tests.TraceImport
 import Tests.SetupImport
 
+set_option Elab.async false
+
 open Airbender Lean
 
 set_option maxRecDepth 16384

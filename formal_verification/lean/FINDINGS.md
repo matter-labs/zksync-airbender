@@ -231,10 +231,16 @@ use their own imported rows. [G proofs](Airbender/Proofs/Blake2G/ImportedXor.lea
 and [round proofs](Airbender/Proofs/Blake2Round/ImportedXor.lean) recover all 344,384
 fixed rows per artifact, with keys, XOR outputs, padding/tags and native field casts.
 Actual lookup/mixing consumers retain their generic fields and arbitrary controller
-interfaces. Index hints use exported IDs/offsets. This table migration
-does not close F02/F03/F04 implementation findings. All 121 Tests, both
+interfaces. Index hints use exported IDs/offsets.
+[Keccak's five fixed regions](Airbender/Review/Circuits/Keccak/Tables/FixedData.lean)
+also import all 1,245,185 real rows. [Kernel proofs](Airbender/Proofs/Keccak/ImportedFixed.lean)
+recover XOR/Iota/Chi, both rotation pieces, every key, padding/tag and native cast;
+the actual lookup consumers use those rows with their original fields, inverses
+and arbitrary controllers. No table-equivalence premise or witness change is used.
+This table migration
+does not close F02/F03/F04 implementation findings. All 128 Tests, both
 executables, importer and review gates pass; all old audit roots and axiom-free
-reports are preserved (2,949 roots; 92 axiom-free). Other table contents and
+reports are preserved (3,011 roots; 92 axiom-free). Standard fixed tables and
 program-dependent consumers are still being migrated. This does not close F09's
 general query/authentication/Rust-refinement boundary or AIH-336's pending
 accelerated/full-proof validation. [Reproduction and scope](artifacts/setup/README.md).
@@ -1134,7 +1140,7 @@ with public PC zero and nextPC 123 and realizes the complete mixed trace.
 **Scope closure.** F10's conditional proof integration is complete. F02/F03/F04
 remain implementation findings; their temporary contracts are neither fixes nor
 unrestricted acceptance claims. Initialization/teardown is a separate artifact
-boundary, to be discussed after this integration.
+boundary, now authorized after the table import.
 
 **External closure needed.** Bind accepted caller validity and participation to
 the complete pinned reference, including invalid calls, or make an explicit
@@ -1153,7 +1159,7 @@ demonstrated bugs:
 
 | Boundary | Exact premise or missing connection | Review consequence |
 | --- | --- | --- |
-| Initialization/teardown | [NativeInputs](Airbender/Review/Helpers/Context/Boundary.lean), [InitialProfile](Airbender/Review/Helpers/Memory/Initialization.lean), boot seed/PC and distinct tracked cells are public inputs. The [retained init/teardown artifact](../../cs/compiled_circuits/inits_and_teardowns_layout_no_caches_gkr.json) has zero degree-1/2 constraints, generic lookups and 16/19-bit range-query expressions. | Public-image soundness does not prove the native initialization/teardown circuit establishes that image; richer retained proof input remains needed for that circuit. F01 is now resolved conditionally through canonical verifier-boundary closure, independently of this missing local circuit proof. |
+| Initialization/teardown | [NativeInputs](Airbender/Review/Helpers/Context/Boundary.lean), [InitialProfile](Airbender/Review/Helpers/Memory/Initialization.lean), boot seed/PC and distinct tracked cells are public inputs. The [retained init/teardown artifact](../../cs/compiled_circuits/inits_and_teardowns_layout_no_caches_gkr.json) has empty ordinary equation arrays, but its parsed GKR layers contain initial-pair and multiplication relations, teardown-column mappings and output wiring. | Public-image soundness does not yet prove the native GKR computation establishes those boundary tokens. Interpreting these imported relations and proving that connection is authorized after table importing. Cryptographic enforcement of logical matching remains external. F01's conditional canonical verifier-boundary closure is independent of this local circuit proof. |
 | Memory/fetch configuration | [FlatMemoryConfiguration and OrdinaryWordAddress](Airbender/Review/Helpers/Memory/Platform.lean) select Machine mode, the direct memory path, PMP disabled, permissive PMA and no modeled special-memory windows; code bounds/alignment and landing-pad restrictions are explicit in execution inputs. | These are supported public-profile conditions. Full faults, interrupts, MMIO, other privilege/protection configurations and the full fetch driver are not covered. |
 | Independent external input | [ExternalStream.Ports](Airbender/Review/Helpers/Core/ExternalStream.lean) binds responses to an independently supplied stream. | Exact consumption and execution do not authenticate an oracle or establish a particular externally intended stream. |
 | Logical matching | [Accepted](Airbender/Review/Helpers/Context/Model.lean), worker matching and request matching are exact permutations of full tokens. | This is the intended premise for the noncryptographic memory-history result. Product/compression equality must not be silently substituted for it; actual global participation and token construction still need their implementation binding. |

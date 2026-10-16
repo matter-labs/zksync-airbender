@@ -4,6 +4,7 @@ import Airbender.Proofs.Keccak.MicroValue
 namespace Airbender.Keccak.Proofs
 open Trace Trace.Proofs Delegation.Proofs Arithmetic Reference.RiscV.Sail
 set_option warningAsError true
+set_option Elab.async false
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1600000
 
@@ -13,29 +14,48 @@ def physicalLanes (state : State) (pointer : BitVec 32) : LaneState :=
   fun lane => ramLane state (pointer + BitVec.ofNat 32 (8 * lane.val))
 
 def slotIndices (call : Fin 649) : Vector Nat 6 :=
-  Controller.rows (Fin.ofNat 4096 ((scheduleControl ⟨call.val, by omega⟩).packed + 2048))
+  Controller.rows (Fin.ofNat 4096 ((scheduleControl ⟨call.val, Nat.lt_trans call.isLt (by decide : 649 < 650)⟩).packed + 2048))
 
 def portReads (call : Fin 649) (state : LaneState) : Vector Nat 6 :=
-  Vector.ofFn fun lane => state ⟨(slotIndices call)[lane], Controller.Proofs.rows_bound _ lane⟩
+  Vector.ofFn fun lane : Fin 6 => state ⟨(slotIndices call)[lane.val]'lane.isLt, Controller.Proofs.rows_bound
+    (Fin.ofNat 4096 ((scheduleControl ⟨call.val, Nat.lt_trans call.isLt (by decide : 649 < 650)⟩).packed + 2048)) lane⟩
 
 def microStep (call : Fin 649) (state : LaneState) : LaneState :=
-  let read := fun lane : Fin 6 => state ⟨(slotIndices call)[lane], Controller.Proofs.rows_bound _ lane⟩
+  let read := fun lane : Fin 6 => state ⟨(slotIndices call)[lane.val]'lane.isLt, Controller.Proofs.rows_bound
+    (Fin.ofNat 4096 ((scheduleControl ⟨call.val, Nat.lt_trans call.isLt (by decide : 649 < 650)⟩).packed + 2048)) lane⟩
   fun physical =>
     let slot := (slotIndices call).toList.idxOf physical.val
-    if h : slot < 6 then microValue (scheduleControl ⟨call.val, by omega⟩) read ⟨slot, h⟩ else state physical
+    if h : slot < 6 then microValue (scheduleControl ⟨call.val, Nat.lt_trans call.isLt (by decide : 649 < 650)⟩) read ⟨slot, h⟩ else state physical
 
 theorem micro_step_get (call : Fin 649) (state : LaneState) (physical : Fin 31) :
     microStep call state physical =
-      if h : (slotIndices call).toList.idxOf physical.val < 6 then
-        microValue (scheduleControl ⟨call.val, by omega⟩)
-          (fun lane => state ⟨(slotIndices call)[lane], Controller.Proofs.rows_bound _ lane⟩)
-          ⟨(slotIndices call).toList.idxOf physical.val, h⟩
-      else state physical := rfl
+      let slot := (slotIndices call).toList.idxOf physical.val
+      if h : slot < 6 then
+        microValue (scheduleControl ⟨call.val, Nat.lt_trans call.isLt (by decide : 649 < 650)⟩)
+          (fun lane : Fin 6 => state ⟨(slotIndices call)[lane.val]'lane.isLt, Controller.Proofs.rows_bound
+    (Fin.ofNat 4096 ((scheduleControl ⟨call.val, Nat.lt_trans call.isLt (by decide : 649 < 650)⟩).packed + 2048)) lane⟩)
+          ⟨slot, h⟩
+      else state physical := by
+  unfold microStep
+  rfl
+
+private theorem microValue_get_nat (control : ControlState) (bound : control.round.val < 25)
+    (read : Fin 6 → Nat) (slot : Nat) (present : slot < 6) :
+    (microWrites control (Vector.ofFn read))[slot] =
+      microValue control read ⟨slot, present⟩ := by
+  simpa only [Fin.getElem_fin] using micro_value_eq control bound read ⟨slot, present⟩
+
+private theorem lane_observation_at (values : Vector Nat 6) (read : Fin 6 → Nat)
+    (target : Nat → Nat) (observed : ∀ lane : Fin 6, read lane = target values[lane.val])
+    (slot : Nat) (present : slot < 6) (physical : Nat)
+    (index : values[slot] = physical) :
+    read ⟨slot, present⟩ = target physical :=
+  (observed ⟨slot, present⟩).trans (congrArg target index)
 
 theorem native_physical_step [Fact p.Prime] {w : Nat → ZMod p}
     {pointer : BitVec 32} {before after : State} {cells : List Cell} {events : List MemoryAccess}
     (call : Fin 649) (effects : Native.RowEffects w) (active : w Variables.execute = 1)
-    (control : (w Variables.controlReadLo).val = (scheduleControl ⟨call.val, by omega⟩).packed)
+    (control : (w Variables.controlReadLo).val = (scheduleControl ⟨call.val, Nat.lt_trans call.isLt (by decide : 649 < 650)⟩).packed)
     (mapped : statePointer w = Word.ofBitVec pointer)
     (history : SailHistory cells events before after)
     (permutation : events.Perm ((Delegation.Row.mk .keccak w).memorySteps.map Trace.transferEvent))
@@ -44,18 +64,18 @@ theorem native_physical_step [Fact p.Prime] {w : Nat → ZMod p}
       Cell.ram (pointer + BitVec.ofNat 32 (8 * physical.val + 4 * half.val)) ∈ cells)
     (readable : ∀ cell ∈ cells, ∃ value, cell.read before = .ok value before)
     (observed : ∀ lane : Fin 6,
-      Native.readLane w lane = ramLane before (pointer + BitVec.ofNat 32 (8 * (slotIndices call)[lane])) ∧
-      Native.writtenLane w lane = ramLane after (pointer + BitVec.ofNat 32 (8 * (slotIndices call)[lane]))) :
+      Native.readLane w lane = ramLane before (pointer + BitVec.ofNat 32 (8 * (slotIndices call)[lane.val]'lane.isLt)) ∧
+      Native.writtenLane w lane = ramLane after (pointer + BitVec.ofNat 32 (8 * (slotIndices call)[lane.val]'lane.isLt))) :
     physicalLanes after pointer = microStep call (physicalLanes before pointer) := by
   have reads : Vector.ofFn (Native.readLane w) = portReads call (physicalLanes before pointer) := by
     apply Vector.ext
     intro lane bound
     simpa only [Vector.getElem_ofFn, portReads, physicalLanes] using (observed ⟨lane, bound⟩).1
-  have roundBound : (scheduleControl ⟨call.val, by omega⟩).round.val < 25 := by
+  have roundBound : (scheduleControl ⟨call.val, Nat.lt_trans call.isLt (by decide : 649 < 650)⟩).round.val < 25 := by
     simp only [scheduleControl]
     have := call.isLt
     omega
-  have writes := row_micro_writes effects (scheduleControl ⟨call.val, by omega⟩) roundBound control
+  have writes := row_micro_writes effects (scheduleControl ⟨call.val, Nat.lt_trans call.isLt (by decide : 649 < 650)⟩) roundBound control
   rw [reads] at writes
   funext physical
   let slot := (slotIndices call).toList.idxOf physical.val
@@ -64,15 +84,16 @@ theorem native_physical_step [Fact p.Prime] {w : Nat → ZMod p}
       simpa only [Vector.getElem_toList] using
         List.getElem_idxOf (show (slotIndices call).toList.idxOf physical.val < (slotIndices call).toList.length by simpa using present)
     have value := congrArg (fun v : Vector Nat 6 => v[slot]) writes
-    simp only [Native.writtenLanes, Vector.getElem_ofFn] at value
-    have actual := (observed ⟨slot, present⟩).2
-    simp only [Fin.getElem_fin] at actual
-    rw [index] at actual
+    simp only [Native.writtenLanes, Vector.getElem_ofFn, portReads] at value
+    have actual := lane_observation_at (slotIndices call) (Native.writtenLane w)
+      (fun lane => ramLane after (pointer + BitVec.ofNat 32 (8 * lane)))
+      (fun lane => (observed lane).2) slot present physical.val index
     rw [micro_step_get, dif_pos present]
-    exact actual.symm.trans (value.trans (micro_value_eq (scheduleControl ⟨call.val, by omega⟩)
+    exact actual.symm.trans (value.trans (microValue_get_nat (scheduleControl ⟨call.val, Nat.lt_trans call.isLt (by decide : 649 < 650)⟩)
       roundBound (fun lane => physicalLanes before pointer
-        ⟨(slotIndices call)[lane], Controller.Proofs.rows_bound _ lane⟩) ⟨slot, present⟩))
-  · have untouched : ∀ lane : Fin 6, (slotIndices call)[lane] ≠ physical.val := by
+        ⟨(slotIndices call)[lane.val]'lane.isLt, Controller.Proofs.rows_bound
+    (Fin.ofNat 4096 ((scheduleControl ⟨call.val, Nat.lt_trans call.isLt (by decide : 649 < 650)⟩).packed + 2048)) lane⟩) slot present))
+  · have untouched : ∀ lane : Fin 6, (slotIndices call)[lane.val]'lane.isLt ≠ physical.val := by
       intro lane same
       have member : physical.val ∈ (slotIndices call).toList := by
         rw [← same]
@@ -82,7 +103,7 @@ theorem native_physical_step [Fact p.Prime] {w : Nat → ZMod p}
     have frame := @native_lane_frame p inferInstance w pointer before after cells events
       call effects active control mapped history permutation aligned tracked readable
       physical (fun lane => by
-        change (slotIndices call)[lane] ≠ physical.val
+        change (slotIndices call)[lane.val]'lane.isLt ≠ physical.val
         exact untouched lane)
     rw [micro_step_get, dif_neg present]
     exact frame

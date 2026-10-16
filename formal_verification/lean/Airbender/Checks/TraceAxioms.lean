@@ -1049,7 +1049,7 @@ import Airbender.Proofs.SubwordMemory.MemoryAccess
 
 #print axioms Airbender.Trace.WriteHistory
 #print axioms Airbender.Trace.RowPosition
-#print axioms Airbender.Trace.SailHistory.writes
+#print axioms Airbender.Trace.Proofs.SailHistory.writes
 #print axioms Airbender.Trace.Proofs.WriteHistory.unique
 #print axioms Airbender.Trace.Proofs.row_write_values
 #print axioms Airbender.Trace.Proofs.pooled_row_position

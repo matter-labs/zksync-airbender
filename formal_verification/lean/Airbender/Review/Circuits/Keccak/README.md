@@ -31,8 +31,14 @@ select the original Clean operations and the circuit's phased lane effects.
 [native JSON region](Tables/ControllerData.lean). [Kernel proofs](../../../Proofs/Keccak/ImportedController.lean)
 check all 4,096 keys, six outputs and discriminator against the reference and
 concrete setup rows, including inactive and invalid controls. The generalized
-[`setup`](Tables/Setup.lean) retains arbitrary controllers; its byte/rotation
-regions remain modeled pending their migration.
+[`setup`](Tables/Setup.lean) retains arbitrary controllers. Its five
+[fixed regions](Tables/FixedData.lean) import all 1,245,185 native rows, including
+XOR/Iota/Chi and rotation. [Kernel proofs](../../../Proofs/Keccak/ImportedFixed.lean)
+recover their exact keys, outputs, padding and tags for the existing lookup
+consumers; mathematical row characterizations live in Proofs. The checked
+`setup_row_characterization` bridge identifies each imported row with the
+existing mathematical row. Lookup soundness reuses the earlier arguments
+through that equality.
 [Addresses](Addresses.lean), [ControlUpdate](ControlUpdate.lean) and [Memory](Memory.lean)
 connect the actual indirect ports and controls to shared initialized history.
 

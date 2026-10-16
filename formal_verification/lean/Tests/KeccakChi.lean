@@ -2,6 +2,8 @@ import Airbender.Proofs.Keccak.Claims
 import Airbender.Proofs.BabyBear
 import Mathlib.Tactic.IntervalCases
 
+set_option Elab.async false
+
 namespace Tests.KeccakChi
 open Airbender
 set_option warningAsError true
@@ -69,6 +71,7 @@ private theorem bytesHold (second : Bool) (i : Fin 40) :
   change ∃ index : Fin 1249281,
     (Keccak.Proofs.byteEntry setup i).map (Expression.eval (Verification.environment (row second))) =
       (Keccak.setupRow control index).map (fun (n : Nat) => (n : ZMod babyBearModulus))
+  simp only [Keccak.Proofs.setup_row_characterization]
   let op : Fin 5 := ⟨i.val / 8, by omega⟩
   let a := (aWords second)[op] / 2 ^ (8 * (i.val % 8)) % 256
   let b := (bWords second)[op] / 2 ^ (8 * (i.val % 8)) % 256

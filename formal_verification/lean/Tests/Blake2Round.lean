@@ -2,6 +2,8 @@ import Airbender.Proofs.Blake2Round.Claims
 import Airbender.Proofs.Blake2Round.ExclusiveMask
 import Airbender.Proofs.Blake2Round.Diagonal
 
+set_option Elab.async false
+
 namespace Tests.Blake2Round
 open Airbender
 

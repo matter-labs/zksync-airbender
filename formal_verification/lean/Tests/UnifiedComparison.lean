@@ -3,6 +3,8 @@ import Airbender.Proofs.BabyBear
 import Airbender.Review.Trace.UnifiedReduced.Theorems
 import Airbender.Proofs.Sail.WordMemoryState
 
+set_option Elab.async false
+
 namespace Tests.UnifiedComparison
 open Airbender Arithmetic Trace Reference.RiscV Reference.RiscV.Sail Reference.Sail
 open Sail.ArchSem

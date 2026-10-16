@@ -1,5 +1,7 @@
 import Airbender.Proofs.UnifiedReduced.Claims
 
+set_option Elab.async false
+
 namespace Tests.UnifiedMemory
 open Airbender Arithmetic Trace Reference.RiscV Reference.RiscV.Sail Reference.Sail
 set_option warningAsError true

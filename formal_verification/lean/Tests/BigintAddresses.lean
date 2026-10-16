@@ -1,5 +1,7 @@
 import Tests.BigintMultiplication
 
+set_option Elab.async false
+
 namespace Tests.BigintAddresses
 open Airbender
 set_option maxRecDepth 16384
