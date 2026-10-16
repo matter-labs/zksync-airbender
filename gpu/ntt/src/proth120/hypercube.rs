@@ -28,6 +28,8 @@ macro_rules! mobius_kernel {
 }
 mobius_kernel!(ab_pr_mobius_nonfinal_5_stages_kernel);
 mobius_kernel!(ab_pr_mobius_nonfinal_5_stages_narrow_kernel);
+mobius_kernel!(ab_pr_mobius_nonfinal_6_stages_narrow_kernel);
+mobius_kernel!(ab_pr_mobius_nonfinal_7_stages_narrow_kernel);
 mobius_kernel!(ab_pr_mobius_nonfinal_6_stages_kernel);
 mobius_kernel!(ab_pr_mobius_nonfinal_7_stages_kernel);
 mobius_kernel!(ab_pr_mobius_nonfinal_8_stages_kernel);
@@ -45,6 +47,8 @@ impl TransformPolicy for MobiusPolicy {
             TransformPass::Small => ab_pr_mobius_small_kernel,
             TransformPass::Nonfinal(5) => ab_pr_mobius_nonfinal_5_stages_kernel,
             TransformPass::NonfinalNarrow(5) => ab_pr_mobius_nonfinal_5_stages_narrow_kernel,
+            TransformPass::NonfinalNarrow(6) => ab_pr_mobius_nonfinal_6_stages_narrow_kernel,
+            TransformPass::NonfinalNarrow(7) => ab_pr_mobius_nonfinal_7_stages_narrow_kernel,
             TransformPass::Nonfinal(6) => ab_pr_mobius_nonfinal_6_stages_kernel,
             TransformPass::Nonfinal(7) => ab_pr_mobius_nonfinal_7_stages_kernel,
             TransformPass::Nonfinal(8) => ab_pr_mobius_nonfinal_8_stages_kernel,

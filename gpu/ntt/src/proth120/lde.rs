@@ -50,6 +50,8 @@ macro_rules! dit_kernel {
 }
 dit_kernel!(ab_pr_dit_nonfinal_5_stages_kernel);
 dit_kernel!(ab_pr_dit_nonfinal_5_stages_narrow_kernel);
+dit_kernel!(ab_pr_dit_nonfinal_6_stages_narrow_kernel);
+dit_kernel!(ab_pr_dit_nonfinal_7_stages_narrow_kernel);
 dit_kernel!(ab_pr_dit_nonfinal_6_stages_kernel);
 dit_kernel!(ab_pr_dit_nonfinal_7_stages_kernel);
 dit_kernel!(ab_pr_dit_nonfinal_8_stages_kernel);
@@ -103,6 +105,8 @@ impl TransformPolicy for DitPolicy {
             TransformPass::Small => ab_pr_dit_small_kernel,
             TransformPass::Nonfinal(5) => ab_pr_dit_nonfinal_5_stages_kernel,
             TransformPass::NonfinalNarrow(5) => ab_pr_dit_nonfinal_5_stages_narrow_kernel,
+            TransformPass::NonfinalNarrow(6) => ab_pr_dit_nonfinal_6_stages_narrow_kernel,
+            TransformPass::NonfinalNarrow(7) => ab_pr_dit_nonfinal_7_stages_narrow_kernel,
             TransformPass::Nonfinal(6) => ab_pr_dit_nonfinal_6_stages_kernel,
             TransformPass::Nonfinal(7) => ab_pr_dit_nonfinal_7_stages_kernel,
             TransformPass::Nonfinal(8) => ab_pr_dit_nonfinal_8_stages_kernel,

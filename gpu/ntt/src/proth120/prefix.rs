@@ -46,14 +46,20 @@ dit_scaled_kernel!(ab_pr_dit_nonfinal_5_stages_scaled_kernel);
 dit_scaled_kernel!(ab_pr_dit_nonfinal_6_stages_scaled_kernel);
 dit_scaled_kernel!(ab_pr_dit_nonfinal_7_stages_scaled_kernel);
 dit_scaled_kernel!(ab_pr_dit_nonfinal_8_stages_scaled_kernel);
+dit_scaled_kernel!(ab_pr_dit_nonfinal_5_stages_narrow_scaled_kernel);
+dit_scaled_kernel!(ab_pr_dit_nonfinal_6_stages_narrow_scaled_kernel);
+dit_scaled_kernel!(ab_pr_dit_nonfinal_7_stages_narrow_scaled_kernel);
 
-fn dit_scaled_function(stages: u32) -> DitScaledFunction {
-    DitScaledFunction(match stages {
-        5 => ab_pr_dit_nonfinal_5_stages_scaled_kernel,
-        6 => ab_pr_dit_nonfinal_6_stages_scaled_kernel,
-        7 => ab_pr_dit_nonfinal_7_stages_scaled_kernel,
-        8 => ab_pr_dit_nonfinal_8_stages_scaled_kernel,
-        _ => panic!("Proth120 prefix: no scaled first pass with {stages} stages"),
+fn dit_scaled_function(pass: &PrefixPass) -> DitScaledFunction {
+    DitScaledFunction(match (pass.stages, pass.narrow) {
+        (5, false) => ab_pr_dit_nonfinal_5_stages_scaled_kernel,
+        (6, false) => ab_pr_dit_nonfinal_6_stages_scaled_kernel,
+        (7, false) => ab_pr_dit_nonfinal_7_stages_scaled_kernel,
+        (8, false) => ab_pr_dit_nonfinal_8_stages_scaled_kernel,
+        (5, true) => ab_pr_dit_nonfinal_5_stages_narrow_scaled_kernel,
+        (6, true) => ab_pr_dit_nonfinal_6_stages_narrow_scaled_kernel,
+        (7, true) => ab_pr_dit_nonfinal_7_stages_narrow_scaled_kernel,
+        _ => panic!("Proth120 prefix: no scaled first pass for {pass:?}"),
     })
 }
 
@@ -221,6 +227,14 @@ pub(crate) fn prefix_groups(stages: u32) -> Option<Vec<(u32, bool)>> {
     }
 }
 
+// The same groups with every pass of at most 7 stages narrow (2^stages tiles per block).
+pub(crate) fn narrow_groups(groups: &[(u32, bool)]) -> Vec<(u32, bool)> {
+    groups
+        .iter()
+        .map(|&(stages, _)| (stages, stages <= 7))
+        .collect()
+}
+
 pub(crate) fn chunk_plan(
     log_n: u32,
     groups: &[(u32, bool)],
@@ -233,7 +247,7 @@ pub(crate) fn chunk_plan(
     let mut start = 0;
     let mut passes = Vec::with_capacity(groups.len());
     for &(stages, narrow) in groups {
-        if !(5..=8).contains(&stages) || narrow && stages != 5 {
+        if !(5..=8).contains(&stages) || narrow && stages == 8 {
             return None;
         }
         let pass = PrefixPass {
@@ -410,11 +424,11 @@ pub(crate) fn launch_prefix_chunked<P: TransformPolicy>(
     let group = plan.cols_per_chunk.min(MAX_COLUMNS_PER_LAUNCH);
     let scaled = first_pass_scale.map(|first| {
         let pass = plan.passes[0];
-        assert!(
-            pass.start == 0 && !pass.narrow,
-            "Proth120 prefix: the scaled pass must be a full first pass"
+        assert_eq!(
+            pass.start, 0,
+            "Proth120 prefix: the scaled pass must be the first pass"
         );
-        (first, dit_scaled_function(pass.stages))
+        (first, dit_scaled_function(&pass))
     });
     let output_source = PtrAndStride::new(target.ptr as *const PR, target.stride);
     let functions: Vec<_> = plan

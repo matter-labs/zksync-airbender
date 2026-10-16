@@ -106,7 +106,7 @@ DEVICE_FORCEINLINE void do_2_smem_stages(pr *smem_block, const P &policy) {
 template <int STAGES, bool NARROW, class P, bool SCALE = false>
 DEVICE_FORCEINLINE void nonfinal(pr_matrix_getter<ld_modifier::cg> gmem_in, pr_matrix_setter<st_modifier::cg> gmem_out, const P &policy, const u32 log_n,
                                  const u32 start_stage, const chunk_map map, const coset_scale scale = {}) {
-  static_assert(!NARROW || STAGES == 5);
+  static_assert(!NARROW || (STAGES >= 5 && STAGES <= 7));
   constexpr int LOG_TILE_SIZE = 3;
   constexpr int TILE_SIZE = 1 << LOG_TILE_SIZE;
   constexpr int LOG_VALS_PER_THREAD = 2;

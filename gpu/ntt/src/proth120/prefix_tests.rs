@@ -13,9 +13,9 @@ use super::lde::{
     launch_transform, set_max_dynamic_smem, ChunkMap, DitPolicy, TransformPass, TransformPolicy,
 };
 use super::prefix::{
-    chunk_plan, dispatch, l2_working_set_budget, launch_prefix_chunked, prefix_groups,
-    subroot_bytes, twiddle_bytes, ChunkPlan, CosetSource, Dispatch, DispatchError, FirstPassScale,
-    PrefixPass, ScaleArgs, MAX_CHUNK_BYTES, MAX_TILE_BYTES,
+    chunk_plan, dispatch, l2_working_set_budget, launch_prefix_chunked, narrow_groups,
+    prefix_groups, subroot_bytes, twiddle_bytes, ChunkPlan, CosetSource, Dispatch, DispatchError,
+    FirstPassScale, PrefixPass, ScaleArgs, MAX_CHUNK_BYTES, MAX_TILE_BYTES,
 };
 use super::DeviceContext;
 use crate::upstream::{domain_generator_for_size, Field};
@@ -245,6 +245,10 @@ fn chunk_plan_table(l2: usize) -> Vec<(String, Result<Dispatch, DispatchError>)>
             dispatched.tiles_per_batch,
         );
         assert_closure(plan, n <= 17);
+        let groups: Vec<(u32, bool)> = plan.passes.iter().map(|p| (p.stages, p.narrow)).collect();
+        let narrow = chunk_plan(n, &narrow_groups(&groups), plan.chunk_bytes()).unwrap();
+        assert!(narrow.chunk_bytes() <= plan.chunk_bytes());
+        assert_closure(&narrow, n <= 17);
         rows.push((text, shape));
     };
     for family in &families {
@@ -515,12 +519,17 @@ fn download(values: &DeviceSlice<PR>, stream: &CudaStream) -> Vec<PR> {
     host
 }
 
+// The coarsest strip split whose grid fits grid.y <= 2^15 (one launch per pass when it does).
 fn full_grid(plan: &ChunkPlan) -> ChunkPlan {
+    let y_bits = plan.passes.iter().map(|p| p.y_bits(plan.log_n));
+    let max = y_bits.clone().max().unwrap();
+    let min = y_bits.min().unwrap();
+    let strip_domain_bits = max.saturating_sub(15).min(min);
     ChunkPlan {
         cols_per_chunk: usize::MAX,
-        strips: 1,
+        strips: 1 << strip_domain_bits,
         strip_blocks: 1,
-        strip_domain_bits: 0,
+        strip_domain_bits,
         ..plan.clone()
     }
 }
@@ -663,8 +672,10 @@ fn pr_prefix_chunked_cpu_parity() {
             .iter()
             .map(|p| (p.stages, p.narrow))
             .collect();
-        let plan = prefix_case(&policy, root, log_n, &groups, cols, &mut rng, &stream);
-        println!("pr_prefix_chunked_cpu_parity: n {log_n} prefix {} r {} strips {} x {} block-strips (d {}), {} cols, 0 mismatches", groups_text(&plan), shape.r, plan.strips, plan.strip_blocks, plan.strip_domain_bits, cols);
+        for groups in [groups.clone(), narrow_groups(&groups)] {
+            let plan = prefix_case(&policy, root, log_n, &groups, cols, &mut rng, &stream);
+            println!("pr_prefix_chunked_cpu_parity: n {log_n} prefix {} r {} strips {} x {} block-strips (d {}), {} cols, 0 mismatches", groups_text(&plan), shape.r, plan.strips, plan.strip_blocks, plan.strip_domain_bits, cols);
+        }
     }
     let ctx33 = DeviceContext::create(33).unwrap();
     let root33 = Some((domain_generator_for_size::<PR>(1u64 << 33), 33));
@@ -690,6 +701,8 @@ fn pr_prefix_chunked_mobius_cpu_parity() {
         (24, vec![(8, false), (8, false)], 1),
         (23, vec![(8, false), (7, false)], 2),
         (19, vec![(6, false), (5, true)], 3),
+        (25, vec![(8, false), (7, true)], 1),
+        (19, vec![(6, true), (5, true)], 3),
     ] {
         let plan = prefix_case(&MobiusPolicy, None, log_n, &groups, cols, &mut rng, &stream);
         println!(
@@ -749,9 +762,22 @@ fn pr_prefix_profile_probe() {
     }
     let policy = DitPolicy(ctx.descriptor());
     let today = chunk_plan(log_n, &[(8, false), (7, false)], CHUNK_16_MIB).unwrap();
+    let narrow = chunk_plan(
+        log_n,
+        &narrow_groups(
+            &plan
+                .passes
+                .iter()
+                .map(|p| (p.stages, p.narrow))
+                .collect::<Vec<_>>(),
+        ),
+        plan.chunk_bytes(),
+    )
+    .unwrap();
     let variants = [
         ("prefix.warmup", plan.clone()),
         ("prefix.probe", plan.clone()),
+        ("prefix.narrow", narrow),
         ("prefix.full", full_grid(&plan)),
         ("prefix.today_8_7", full_grid(&today)),
     ];
@@ -796,6 +822,11 @@ fn reference_plan(log_n: u32) -> ChunkPlan {
     chunk_plan(log_n, &prefix_groups(log_n - 8).unwrap(), CHUNK_16_MIB).unwrap()
 }
 
+fn narrow_reference_plan(log_n: u32) -> ChunkPlan {
+    let groups = narrow_groups(&prefix_groups(log_n - 8).unwrap());
+    chunk_plan(log_n, &groups, CHUNK_16_MIB).unwrap()
+}
+
 #[test]
 #[cfg(not(no_cuda))]
 fn pr_lde_coset_slot_fused_scale_parity() {
@@ -808,7 +839,7 @@ fn pr_lde_coset_slot_fused_scale_parity() {
         let nu = domain_generator_for_size::<PR>(1u64 << log_domain);
         for (log_n, cols) in [(13, 3), (15, 2), (23, 2), (25, 1)] {
             let rows = 1usize << log_n;
-            let plan = reference_plan(log_n);
+            let plans = [reference_plan(log_n), narrow_reference_plan(log_n)];
             let monomials: Vec<PR> = (0..rows * cols)
                 .map(|_| PR::new(rng.random::<u128>() % PR::ORDER))
                 .collect();
@@ -836,25 +867,27 @@ fn pr_lde_coset_slot_fused_scale_parity() {
                     &stream,
                 )
                 .unwrap();
-                let scale = ScaleArgs {
-                    coset: source,
-                    log_domain,
-                };
-                lde_coset_slot(
-                    &ctx,
-                    &device_monomials,
-                    &mut candidate,
-                    cols,
-                    &plan,
-                    scale,
-                    &stream,
-                )
-                .unwrap();
-                lde_finish_reference(&ctx, &mut candidate, cols, &plan, &stream).unwrap();
-                assert!(
-                    download(&candidate, &stream) == download(&reference, &stream),
-                    "fused scale differs: L {log_max_domain} D {log_domain} n {log_n} k {k}"
-                );
+                for plan in &plans {
+                    let scale = ScaleArgs {
+                        coset: source,
+                        log_domain,
+                    };
+                    lde_coset_slot(
+                        &ctx,
+                        &device_monomials,
+                        &mut candidate,
+                        cols,
+                        plan,
+                        scale,
+                        &stream,
+                    )
+                    .unwrap();
+                    lde_finish_reference(&ctx, &mut candidate, cols, plan, &stream).unwrap();
+                    assert!(
+                        download(&candidate, &stream) == download(&reference, &stream),
+                        "fused scale differs: L {log_max_domain} D {log_domain} n {log_n} k {k}"
+                    );
+                }
             }
         }
         let log_n = 13;
