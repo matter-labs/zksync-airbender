@@ -351,13 +351,13 @@ fn generator_accepts_trace21_and_rejects_mismatched_config() {
         ("__TEMPLATE_GKR_OUTPUT_EVALS", 4),
         ("__TEMPLATE_GKR_INIT_BYTES", 640),
         ("__TEMPLATE_GKR_DIM_REDUCE_LAYERS", 19),
-        ("__TEMPLATE_WHIR_NZ", 25),
-        ("__TEMPLATE_WHIR_MERGED_MW", 7),
-        ("__TEMPLATE_WHIR_SETUP_MERGED", 1),
+        ("__TEMPLATE_WHIR_NZ", 24),
+        ("__TEMPLATE_WHIR_MERGED_MW", 13),
+        ("__TEMPLATE_WHIR_SETUP_MERGED", 2),
     ] {
         assert_eq!(solidity_constant(&out, name), value, "{name}");
     }
-    assert!(out.contains("case 4 { fold := 3 q := 5 pow_bits := 17 qib := 28 vp := 8 cb := 20 }"));
+    assert!(out.contains("default { fold := 4 q := 5 pow_bits := 17 qib := 27 vp := 16 cb := 20 }"));
     let mut bad_schedule = config.clone();
     bad_schedule.whir_schedule.whir_steps_lde_factors[0] *= 2;
     assert!(std::panic::catch_unwind(|| generate(&bad_schedule)).is_err());
@@ -378,87 +378,13 @@ fn generator_accepts_trace21_and_rejects_mismatched_config() {
     }
 }
 
-/// The B3 tuple (pack 3, base LDE 128, folds [1, 4, 4, 4, 4]) on the committed layout, until the
-/// canonical `l1_wrap_2p21` config moves to it.
-fn pack3_config(version: &Version) -> prover::gkr::prover_config::ProverConfig {
-    let mut config = version.prover_config();
-    config.lde_factor = 1 << 7;
-    config.base_oracles_values_per_leaf = 1 << 1;
-    let schedule = &mut config.whir_schedule;
-    schedule.base_lde_factor = 1 << 7;
-    schedule.whir_steps_schedule = vec![1, 4, 4, 4, 4];
-    schedule.whir_queries_schedule = vec![12, 11, 7, 6, 5];
-    schedule.whir_steps_lde_factors = vec![1 << 8, 1 << 12, 1 << 16, 1 << 20];
-    schedule.whir_pow_schedule = vec![30, 27, 30, 20, 17];
-    config
-}
-
-/// The v0 and F1 renders at the B3 tuple. The F1 render pins this version's setup cap and
-/// frontier (the pack-3 setup tree is a B4 output), which fixes its shape and size, not its data.
-fn pack3_renders(version: &Version) -> (String, String) {
-    let circuit = version.circuit();
-    let config = pack3_config(version);
-    let pack3 = Version {
-        pack_log2: 3,
-        ..*version
-    };
-    let (external_pow_bits, batching_pow_bits) = derived_pow_bits(&pack3, &circuit, &config);
-    assert_eq!((external_pow_bits, batching_pow_bits), (20, 16));
-    let v0 = verifier_evm::generate_verifier(
-        &circuit,
-        &config,
-        3,
-        external_pow_bits,
-        batching_pow_bits,
-        version.final_pc(),
-        version.inits_teardowns_top_bits,
-        version.digest_bytes,
-        &[],
-    );
-    let (_, proof, _) = version.load();
-    let (level, nodes) = version.setup_frontier().expect("version setup frontier");
-    let params =
-        verifier_evm::encoding::FormatParams::from_config(&config, 3, version.digest_bytes)
-            .with_setup_frontier(level);
-    let f1 = verifier_evm::generate_f1_verifier(
-        &circuit,
-        &config,
-        &params,
-        external_pow_bits,
-        batching_pow_bits,
-        version.final_pc(),
-        version.inits_teardowns_top_bits,
-        &proof.whir_proof.setup_commitment.commitment.cap.cap,
-        Some((&nodes, DEFAULT_FRONTIER_ADDRESS)),
-        &[],
-    );
-    (v0, f1.verifier_sol)
-}
-
-#[test]
-#[ignore = "writes the pack-3 renders to AB_PACK3_OUT for size measurement"]
-fn write_pack3_renders() {
-    let out = std::path::PathBuf::from(std::env::var("AB_PACK3_OUT").expect("set AB_PACK3_OUT"));
-    for version in common::selected_versions() {
-        let (v0, f1) = pack3_renders(&version);
-        for (dir, source) in [("v0", v0), ("f1", f1)] {
-            let path = out
-                .join(version.name)
-                .join(dir)
-                .join("src/GkrWhirVerifier.sol");
-            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-            std::fs::write(&path, source).unwrap();
-            eprintln!("wrote {}", path.display());
-        }
-    }
-}
-
 /// Pack 3: 13 memory+witness and 2 setup claims (10 = 8 + 2), the handoff scratch disjoint inside
 /// the absorb region, the five-round schedule and the 2^7 tail, in both formats.
 #[test]
 fn generator_renders_pack3() {
     for version in common::available_versions("pack 3 render") {
-        let (v0, f1) = pack3_renders(version);
+        let v0 = generate(version, &[]);
+        let f1 = generate_f1(version, version.final_pc(), &[]).verifier_sol;
         for source in [&v0, &f1] {
             for (name, value) in [
                 ("__TEMPLATE_WHIR_PACK_LOG2", 3),
