@@ -165,12 +165,13 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     setup_transfer.ensure_transferred(context)?;
     end_phase(p, &mut phases, context)?;
     let p = phase("l1_wrap.witness", context)?;
-    let mut raw = TraceHolder::<PR>::new_without_cosets(
+    let mut raw = TraceHolder::<PR>::new_without_cosets_padded(
         geometry.trace_log,
         cfg.log_lde_factor,
         cfg.log_values_per_leaf,
         cfg.cap_log,
         memory_columns + witness_columns,
+        geometry.pack_log2,
         TreesCacheMode::CacheNone,
         gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
         context,

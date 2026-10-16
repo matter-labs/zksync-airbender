@@ -13,8 +13,8 @@ use gpu_hash::keccak256::{
     partial_coset_tree_scratch_len, retained_layer_offset, Digest,
 };
 use gpu_ntt::proth120::{
-    dispatch, has_reference_finish, lde_coset, lde_coset_slot, lde_finish_reference,
-    pack_hypercubes_to_monomials, CosetSource, ScaleArgs,
+    dispatch, has_reference_finish, hypercube_evals_to_monomials, lde_coset, lde_coset_slot,
+    lde_finish_reference, pack_hypercubes_to_monomials, CosetSource, ScaleArgs,
 };
 use gpu_ops::powers::get_powers_by_val;
 use gpu_prover_context::ProverContext;
@@ -249,12 +249,17 @@ impl PackedCosetRecomputeOracle<PR> {
     ) -> CudaResult<Self> {
         let mut oracle = Self::allocate_monomials(raw, pack_log2, context)?;
         let packed_rows = pow2(oracle.log_packed());
-        let input = DeviceMatrix::new(
-            oracle.raw.as_ref().unwrap().get_hypercube_evals(),
-            pow2(oracle.log_rows),
-        );
+        let raw = oracle.raw.as_ref().unwrap();
+        let stream = context.get_exec_stream();
         let mut output = DeviceMatrixMut::new(oracle.monomials.as_mut().unwrap(), packed_rows);
-        pack_hypercubes_to_monomials(&input, &mut output, pack_log2, context.get_exec_stream())?;
+        if raw.allocated_columns() == oracle.packed_columns << pack_log2 {
+            let input = DeviceMatrix::new(raw.padded_hypercube_evals(), packed_rows);
+            let _r = scoped_range(Some("ab"), "pack.mobius");
+            hypercube_evals_to_monomials(&input, &mut output, stream)?;
+        } else {
+            let input = DeviceMatrix::new(raw.get_hypercube_evals(), pow2(oracle.log_rows));
+            pack_hypercubes_to_monomials(&input, &mut output, pack_log2, stream)?;
+        }
         Ok(oracle)
     }
 
@@ -668,6 +673,93 @@ mod cpu_tests {
             let mut half_order = root;
             half_order.exp_power_of_2(log_domain as usize - 1);
             assert_ne!(half_order, PR::ONE);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::trace::holder::{TreesCacheMode, PARTIAL_TREE_REDUCTION_LAYERS};
+    use era_cudart::memory::memory_copy_async;
+    use field::Field;
+    use gpu_prover_context::ProverContextConfig;
+
+    fn holder(
+        log_rows: u32,
+        columns: usize,
+        pad: u32,
+        values: &[PR],
+        context: &ProverContext,
+    ) -> TraceHolder<PR> {
+        let mut raw = TraceHolder::new_without_cosets_padded(
+            log_rows,
+            1,
+            0,
+            0,
+            columns,
+            pad,
+            TreesCacheMode::CacheNone,
+            PARTIAL_TREE_REDUCTION_LAYERS,
+            context,
+        )
+        .unwrap();
+        assert_eq!(raw.get_hypercube_evals().len(), columns << log_rows);
+        assert_eq!(raw.allocated_columns(), columns.next_multiple_of(1 << pad));
+        memory_copy_async(
+            raw.get_uninit_hypercube_evals_mut(),
+            values,
+            context.get_exec_stream(),
+        )
+        .unwrap();
+        raw
+    }
+
+    #[test]
+    fn pr_pack_from_padded_columns_matches_gather() {
+        let context = ProverContext::new(&ProverContextConfig {
+            device_allocation_blocks_count: Some(256),
+            host_allocator_blocks_count: 256,
+            proth120_ntt_log_max_domain: Some(31),
+            ..Default::default()
+        })
+        .unwrap();
+        let stream = context.get_exec_stream();
+        let mut state = 0x9120_2201_u64;
+        let mut next = || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            (u128::from(state) << 64 | u128::from(state.rotate_left(29))) % PR::ORDER
+        };
+        for (log_rows, columns, pack_log2) in [(8, 104, 4), (12, 13, 2), (10, 16, 4), (9, 7, 3)] {
+            let values: Vec<PR> = (0..columns << log_rows).map(|_| PR::new(next())).collect();
+            let padded = PackedCosetRecomputeOracle::pack_from_columns(
+                holder(log_rows, columns, pack_log2, &values, &context),
+                pack_log2,
+                &context,
+            )
+            .unwrap();
+            let gathered = PackedCosetRecomputeOracle::pack_from_columns(
+                holder(log_rows, columns, 0, &values, &context),
+                pack_log2,
+                &context,
+            )
+            .unwrap();
+            let download = |oracle: &PackedCosetRecomputeOracle<PR>| {
+                let mut host = vec![PR::ZERO; oracle.monomials().len()];
+                memory_copy_async(&mut host, oracle.monomials(), stream).unwrap();
+                stream.synchronize().unwrap();
+                host
+            };
+            assert!(
+                download(&padded) == download(&gathered),
+                "padded pack differs at log_rows {log_rows} columns {columns} pack {pack_log2}"
+            );
+            let mut raw_back = vec![PR::ZERO; values.len()];
+            memory_copy_async(&mut raw_back, padded.raw().get_hypercube_evals(), stream).unwrap();
+            stream.synchronize().unwrap();
+            assert!(raw_back == values, "raw columns changed by the pack");
         }
     }
 }

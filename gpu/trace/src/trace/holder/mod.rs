@@ -1,7 +1,7 @@
 mod openings;
 
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
-use era_cudart::memory::memory_copy_async;
+use era_cudart::memory::{memory_copy_async, memory_set_async};
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
@@ -386,11 +386,49 @@ impl<T> TraceHolder<T> {
         partial_tree_reduction_layers: u32,
         context: &ProverContext,
     ) -> CudaResult<Self> {
+        Self::new_without_cosets_padded(
+            log_domain_size,
+            log_lde_factor,
+            log_rows_per_leaf,
+            log_tree_cap_size,
+            columns_count,
+            0,
+            trees_cache_mode,
+            partial_tree_reduction_layers,
+            context,
+        )
+    }
+
+    /// Like `new_without_cosets`, with the raw backing rounded up to a multiple of
+    /// `2^pad_columns_to_log2` columns and the extra columns zeroed on exec, so packed
+    /// groups of `2^pad_columns_to_log2` raw columns can be read in place.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_without_cosets_padded(
+        log_domain_size: u32,
+        log_lde_factor: u32,
+        log_rows_per_leaf: u32,
+        log_tree_cap_size: u32,
+        columns_count: usize,
+        pad_columns_to_log2: u32,
+        trees_cache_mode: TreesCacheMode,
+        partial_tree_reduction_layers: u32,
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
         let instances_count = 1usize << log_lde_factor;
-        let raw_hypercube_evals = std::sync::Arc::new(context.alloc(
-            columns_count << log_domain_size,
+        let allocated_columns = columns_count.next_multiple_of(1 << pad_columns_to_log2);
+        let mut backing = context.alloc(
+            allocated_columns << log_domain_size,
             AllocationPlacement::Bottom,
-        )?);
+        )?;
+        if allocated_columns > columns_count {
+            let tail = &mut backing[columns_count << log_domain_size..];
+            memory_set_async(
+                unsafe { tail.transmute_mut::<u8>() },
+                0,
+                context.get_exec_stream(),
+            )?;
+        }
+        let raw_hypercube_evals = std::sync::Arc::new(backing);
         assert_partial_tree_reduction_layers(partial_tree_reduction_layers);
         let trees = match trees_cache_mode {
             TreesCacheMode::CacheNone => TreesHolder::None,
@@ -455,19 +493,30 @@ impl<T> TraceHolder<T> {
 
     #[doc(hidden)]
     pub fn get_hypercube_evals(&self) -> &DeviceSlice<T> {
+        let len = self.columns_count << self.log_domain_size;
+        &self.padded_hypercube_evals()[..len]
+    }
+
+    /// The raw backing including the zeroed padding columns of `new_without_cosets_padded`.
+    pub fn padded_hypercube_evals(&self) -> &DeviceSlice<T> {
         self.raw_hypercube_evals
             .as_ref()
             .expect("raw hypercube values are unavailable for this holder")
     }
 
+    pub fn allocated_columns(&self) -> usize {
+        self.padded_hypercube_evals().len() >> self.log_domain_size
+    }
+
     pub fn get_uninit_hypercube_evals_mut(&mut self) -> &mut DeviceSlice<T> {
         self.cosets_materialized = false;
-        std::sync::Arc::get_mut(
+        let len = self.columns_count << self.log_domain_size;
+        &mut std::sync::Arc::get_mut(
             self.raw_hypercube_evals
                 .as_mut()
                 .expect("raw hypercube values are unavailable for this holder"),
         )
-        .expect("raw hypercube allocation must not be shared while being initialized")
+        .expect("raw hypercube allocation must not be shared while being initialized")[..len]
     }
 
     pub fn raw_hypercube_backing(&self) -> std::sync::Arc<DeviceAllocation<T>> {
