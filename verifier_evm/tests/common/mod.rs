@@ -59,6 +59,10 @@ pub const L1_WRAP_2P21: Version = Version {
 };
 pub const VERSIONS: &[Version] = &[L1_WRAP_2P21];
 
+/// A `{ proof, commitment_mode }` JSON bundle (e.g. a GPU export) that replaces the
+/// selected version's committed proof and aux for generation and calldata.
+pub const PROOF_BUNDLE_ENV: &str = "AB_EVM_PROOF_BUNDLE";
+
 pub fn available_versions(check: &str) -> Vec<&'static Version> {
     VERSIONS
         .iter()
@@ -88,7 +92,44 @@ pub fn selected_versions() -> Vec<Version> {
 }
 
 impl Version {
+    fn proof_bundle_override(&self) -> Option<PathBuf> {
+        let path = PathBuf::from(std::env::var_os(PROOF_BUNDLE_ENV)?);
+        let selected = std::env::var("AB_EVM_VERSION")
+            .unwrap_or_else(|_| panic!("{PROOF_BUNDLE_ENV} requires AB_EVM_VERSION"));
+        if selected != self.name {
+            return None;
+        }
+        assert!(
+            path.is_file(),
+            "{}: {PROOF_BUNDLE_ENV} bundle is missing: {}",
+            self.name,
+            path.display()
+        );
+        use std::io::Write;
+        writeln!(
+            std::io::stderr().lock(),
+            "{}: proof and commitment mode from {PROOF_BUNDLE_ENV}={}",
+            self.name,
+            path.display()
+        )
+        .unwrap();
+        Some(path)
+    }
+
+    fn proof_bundle_field(path: &Path, field: &str) -> serde_json::Value {
+        let mut bundle: serde_json::Value =
+            serde_json::from_reader(std::fs::File::open(path).expect("proof bundle"))
+                .expect("deserialize proof bundle");
+        bundle
+            .get_mut(field)
+            .unwrap_or_else(|| panic!("proof bundle has no field {field}"))
+            .take()
+    }
+
     pub fn require_bundle(&self) {
+        if self.proof_bundle_override().is_some() {
+            return;
+        }
         assert!(
             Path::new(self.proof).is_file(),
             "{}: proof is missing: {}; cannot generate or verify this bundle",
@@ -165,17 +206,26 @@ impl Version {
 
     pub fn load(&self) -> (Circuit, Proof, CommitmentMode) {
         self.require_bundle();
-        (
-            self.circuit(),
-            serde_json::from_reader(std::fs::File::open(self.proof).expect("proof"))
+        let proof = match self.proof_bundle_override() {
+            Some(path) => serde_json::from_value(Self::proof_bundle_field(&path, "proof"))
+                .expect("deserialize bundle proof"),
+            None => serde_json::from_reader(std::fs::File::open(self.proof).expect("proof"))
                 .expect("deserialize proof"),
-            self.commitment_mode(),
-        )
+        };
+        (self.circuit(), proof, self.commitment_mode())
     }
 
     pub fn commitment_mode(&self) -> CommitmentMode {
-        serde_json::from_reader(std::fs::File::open(self.aux).expect("commitment mode"))
-            .expect("deserialize commitment mode")
+        match self.proof_bundle_override() {
+            Some(path) => {
+                serde_json::from_value(Self::proof_bundle_field(&path, "commitment_mode"))
+                    .expect("deserialize bundle commitment mode")
+            }
+            None => {
+                serde_json::from_reader(std::fs::File::open(self.aux).expect("commitment mode"))
+                    .expect("deserialize commitment mode")
+            }
+        }
     }
 
     pub fn final_pc(&self) -> u32 {
