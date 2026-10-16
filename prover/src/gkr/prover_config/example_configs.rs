@@ -227,7 +227,7 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
 
 /// The 2^21 Proth120 L1 wrap over the 512 KiB wrap ROM: a 2^21 base trace
 /// packed by [`PACK_LOG2`](l1_wrap_2p21::PACK_LOG2) into the
-/// `message_log2 = 24` WHIR input, base LDE 128, every oracle on a 2^31
+/// `message_log2 = 24` WHIR input, base LDE 512, every oracle on a 2^33
 /// codeword.
 pub mod l1_wrap_2p21 {
     use super::*;
@@ -239,14 +239,14 @@ pub mod l1_wrap_2p21 {
     /// No WHIR round grinds above it.
     pub const MAX_POW_BITS: u32 = 30;
 
-    const BASE_LDE_FACTOR: usize = 1 << 7;
-    const WHIR_STEPS_LDE_FACTORS: [usize; 4] = [1 << 8, 1 << 12, 1 << 16, 1 << 20];
+    const BASE_LDE_FACTOR: usize = 1 << 9;
+    const WHIR_STEPS_LDE_FACTORS: [usize; 4] = [1 << 10, 1 << 14, 1 << 18, 1 << 22];
 
-    /// The per-round PoW bits, rounds 0..5 at rates 2^-7 / 2^-8 / 2^-12 /
-    /// 2^-16 / 2^-20. Every round satisfies
+    /// The per-round PoW bits, rounds 0..5 at rates 2^-9 / 2^-10 / 2^-14 /
+    /// 2^-18 / 2^-22. Every round satisfies
     /// `6 * pow + 5 * queries * rate_bits >= 600` at the least PoW that
     /// does; asserted by `l1_wrap_2p21_shape_and_security`.
-    pub const POW_BITS: [u32; 5] = [30, 27, 30, 20, 17];
+    pub const POW_BITS: [u32; 5] = [25, 25, 30, 25, 27];
 
     /// The per-round (queries, PoW bits): the queries are derived from
     /// [`POW_BITS`] and the round rates; pinned by
@@ -359,7 +359,7 @@ mod tests {
             config.same_size_sumcheck_schedule,
             windowed_same_size_schedule(21)
         );
-        assert_eq!(config.lde_factor, 128);
+        assert_eq!(config.lde_factor, 512);
         assert_eq!(config.cap_size, 8);
         assert_eq!(config.base_oracles_values_per_leaf, 2);
         assert_eq!(config.sumcheck_explicit_output_size_log_2, 2);
@@ -370,17 +370,17 @@ mod tests {
         assert_eq!(schedule.whir_steps_schedule, vec![1, 4, 4, 4, 4]);
         assert_eq!(
             schedule.whir_steps_lde_factors,
-            vec![1 << 8, 1 << 12, 1 << 16, 1 << 20]
+            vec![1 << 10, 1 << 14, 1 << 18, 1 << 22]
         );
         for (round, (queries, pow)) in QUERIES_AND_POW.iter().enumerate() {
             assert_eq!(schedule.whir_queries_schedule[round], *queries);
             assert_eq!(schedule.whir_pow_schedule[round], *pow);
         }
 
-        // every oracle on the 2^31 codeword; rate = base LDE bits + the
+        // every oracle on the 2^33 codeword; rate = base LDE bits + the
         // preceding folds
         let base_lde_log2 = schedule.base_lde_factor.trailing_zeros() as usize;
-        assert_eq!(message_log2 + base_lde_log2, 31);
+        assert_eq!(message_log2 + base_lde_log2, 33);
         let num_rounds = schedule.whir_steps_schedule.len();
         let mut poly_size_log2 = message_log2;
         let mut committed_logs = vec![message_log2];
@@ -392,13 +392,13 @@ mod tests {
             poly_size_log2 -= schedule.whir_steps_schedule[round];
             if round + 1 < num_rounds {
                 let lde_log2 = schedule.whir_steps_lde_factors[round].trailing_zeros() as usize;
-                assert_eq!(poly_size_log2 + lde_log2, 31, "round {round}");
+                assert_eq!(poly_size_log2 + lde_log2, 33, "round {round}");
                 assert!(schedule.cap_size.trailing_zeros() as usize <= lde_log2);
                 committed_logs.push(poly_size_log2);
                 oracle_round_queries += schedule.whir_queries_schedule[round];
             }
         }
-        assert_eq!(rate_bits_per_round, vec![7, 8, 12, 16, 20]);
+        assert_eq!(rate_bits_per_round, vec![9, 10, 14, 18, 22]);
         assert_eq!(committed_logs, vec![24, 23, 19, 15, 11]);
         assert!(committed_logs.iter().all(|log| *log >= 8));
         assert_eq!(poly_size_log2, 7);
@@ -512,11 +512,11 @@ mod tests {
         assert_eq!(
             rounds(&l1_wrap_2p21::packed_prover_config(SecurityLevel::Sec100)),
             [
-                (7, 12, 30),
-                (8, 11, 27),
-                (12, 7, 30),
-                (16, 6, 20),
-                (20, 5, 17)
+                (9, 10, 25),
+                (10, 9, 25),
+                (14, 6, 30),
+                (18, 5, 25),
+                (22, 4, 27)
             ]
         );
     }

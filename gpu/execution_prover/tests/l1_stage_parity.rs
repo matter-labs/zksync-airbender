@@ -13,6 +13,7 @@ use execution_prover::{CommitmentMode, ProofProfile};
 use fft::Twiddles;
 use full_statement_verifier::host_utils::{build_unified_stream, load_fsv_program};
 use full_statement_verifier::program_proof::ProgramProof;
+use gpu_circuit_prover::l1_wrap::L1_WRAP_NTT_LOG_MAX_DOMAIN;
 use gpu_circuit_prover::proof::memory_policy;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
@@ -400,7 +401,7 @@ fn run_stages(fixture: L1WrapFixture<'_>, expected: Expected) -> StageReport {
         PackedCommitConfig::from_prover_config(&config, LOG_ROWS + pack_log2, partial_trees.memory);
     let context = ProverContext::new(&ProverContextConfig {
         device_allocation_blocks_count: Some(ARENA_BLOCKS),
-        proth120_ntt_log_max_domain: Some(31),
+        proth120_ntt_log_max_domain: Some(L1_WRAP_NTT_LOG_MAX_DOMAIN),
         ..Default::default()
     })
     .unwrap();
@@ -567,7 +568,7 @@ fn run_whir(fixture: L1WrapFixture<'_>, expected: WhirExpected) -> WhirReport {
     );
     let context = ProverContext::new(&ProverContextConfig {
         device_allocation_blocks_count: Some(ARENA_BLOCKS),
-        proth120_ntt_log_max_domain: Some(31),
+        proth120_ntt_log_max_domain: Some(L1_WRAP_NTT_LOG_MAX_DOMAIN),
         ..Default::default()
     })
     .unwrap();
@@ -952,7 +953,7 @@ fn cpu_l1_wrap_m6_replay_matches_bundle() {
     );
     assert_eq!(
         (config.trace_len_log2, base_lde_log2, base_columns, batched),
-        (21, 7, 114, 16),
+        (21, 9, 114, 18),
         "M6 replay batched proximity PoW inputs"
     );
     let replay = m6_replay::replay_gkr_challenges(

@@ -16,7 +16,7 @@ use crate::upstream::{
 
 pub type L1Proof = GKRProof<Proth120, Proth120, Keccak256MerkleTreeWithCap>;
 
-pub const L1_WRAP_NTT_LOG_MAX_DOMAIN: u32 = 31;
+pub const L1_WRAP_NTT_LOG_MAX_DOMAIN: u32 = 33;
 
 pub fn validate_l1_wrap_preconditions(
     geometry: &L1WrapGeometry,

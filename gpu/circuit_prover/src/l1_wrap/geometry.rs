@@ -246,7 +246,7 @@ pub(crate) mod cpu_tests {
                 rows: 1 << 21,
                 pack_log2: 3,
                 log_message: 24,
-                log_base_lde: 7,
+                log_base_lde: 9,
                 log_base_values_per_leaf: 1,
                 cap_log: 3,
                 memory_columns: 38,
@@ -260,7 +260,7 @@ pub(crate) mod cpu_tests {
                 decoder_offset: 1_180_033,
                 decoder_words: 1 << 17,
                 external_pow_bits: 20,
-                batching_pow_bits: 16,
+                batching_pow_bits: 18,
             }
         );
         assert!(geometry.log_message <= 26 && geometry.pack_log2 <= 4);
@@ -275,8 +275,8 @@ pub(crate) mod cpu_tests {
             shape.rounds.iter().map(f).collect::<Vec<_>>()
         };
         assert_eq!(rounds(|r| r.folds as usize), [1, 4, 4, 4, 4]);
-        assert_eq!(rounds(|r| r.queries), [12, 11, 7, 6, 5]);
-        assert_eq!(rounds(|r| r.pow_bits as usize), [30, 27, 30, 20, 17]);
+        assert_eq!(rounds(|r| r.queries), [10, 9, 6, 5, 4]);
+        assert_eq!(rounds(|r| r.pow_bits as usize), [25, 25, 30, 25, 27]);
         let oracles = shape
             .rounds
             .iter()
@@ -286,13 +286,13 @@ pub(crate) mod cpu_tests {
         assert_eq!(
             oracles,
             [
-                (23, 8, 4, 31, 5),
-                (19, 12, 4, 31, 5),
-                (15, 16, 4, 31, 5),
-                (11, 20, 4, 31, 5),
+                (23, 10, 4, 33, 5),
+                (19, 14, 4, 33, 5),
+                (15, 18, 4, 33, 5),
+                (11, 22, 4, 33, 5),
             ]
         );
-        assert_eq!(shape.term_capacity, 36);
+        assert_eq!(shape.term_capacity, 30);
         assert_eq!(shape.total_sumcheck_polys, 17);
         assert_eq!(shape.log_final, 7);
         assert_eq!(shape.cap_log, geometry.cap_log);

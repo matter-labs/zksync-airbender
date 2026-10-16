@@ -189,11 +189,11 @@ fn keccak256_l1_reference_replay() {
     assert_eq!(pack_log2, 3);
     let whir = &proof.whir_proof;
     let schedule = &whir.whir_schedule;
-    assert_eq!(schedule.base_lde_factor, 128);
+    assert_eq!(schedule.base_lde_factor, 512);
     assert_eq!(schedule.cap_size, 8);
     assert_eq!(schedule.whir_steps_schedule, [1, 4, 4, 4, 4]);
-    assert_eq!(schedule.whir_queries_schedule, [12, 11, 7, 6, 5]);
-    assert_eq!(schedule.whir_pow_schedule, [30, 27, 30, 20, 17]);
+    assert_eq!(schedule.whir_queries_schedule, [10, 9, 6, 5, 4]);
+    assert_eq!(schedule.whir_pow_schedule, [25, 25, 30, 25, 27]);
     let mut nonces = Vec::new();
 
     let mut words = Vec::new();
@@ -306,7 +306,7 @@ fn keccak256_l1_reference_replay() {
         }
     }
     assert!(polys.next().is_none());
-    assert_eq!(checked_queries, 41);
+    assert_eq!(checked_queries, 34);
     assert_eq!(nonces.len(), 6);
     for (bits, nonce, seconds) in &nonces {
         println!(

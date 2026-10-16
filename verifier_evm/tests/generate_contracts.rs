@@ -346,7 +346,7 @@ fn generator_accepts_trace21_and_rejects_mismatched_config() {
     let circuit = version.circuit();
     let mut config = version.prover_config();
     let (external_pow_bits, batching_pow_bits) = derived_pow_bits(version, &circuit, &config);
-    assert_eq!((external_pow_bits, batching_pow_bits), (20, 16));
+    assert_eq!((external_pow_bits, batching_pow_bits), (20, 18));
     let generate_with = |config: &prover::gkr::prover_config::ProverConfig, digest_bytes| {
         verifier_evm::generate_verifier(
             &circuit,
@@ -380,7 +380,7 @@ fn generator_accepts_trace21_and_rejects_mismatched_config() {
     ] {
         assert_eq!(solidity_constant(&out, name), value, "{name}");
     }
-    assert!(out.contains("default { fold := 4 q := 5 pow_bits := 17 qib := 27 vp := 16 cb := 20 }"));
+    assert!(out.contains("default { fold := 4 q := 4 pow_bits := 27 qib := 29 vp := 16 cb := 22 }"));
     let mut bad_schedule = config.clone();
     bad_schedule.whir_schedule.whir_steps_lde_factors[0] *= 2;
     assert!(std::panic::catch_unwind(|| generate(&bad_schedule)).is_err());
@@ -425,11 +425,11 @@ fn generator_renders_pack3() {
             }
             assert!(solidity_constant(source, "__TEMPLATE_GKR_ABS_BYTES") >= 576 + 8 * 32);
             for row in [
-                "case 0 { fold := 1 q := 12 pow_bits := 30 qib := 30 vp := 2 cb := 7 }",
-                "case 1 { fold := 4 q := 11 pow_bits := 27 qib := 27 vp := 16 cb := 8 }",
-                "case 2 { fold := 4 q := 7 pow_bits := 30 qib := 27 vp := 16 cb := 12 }",
-                "case 3 { fold := 4 q := 6 pow_bits := 20 qib := 27 vp := 16 cb := 16 }",
-                "default { fold := 4 q := 5 pow_bits := 17 qib := 27 vp := 16 cb := 20 }",
+                "case 0 { fold := 1 q := 10 pow_bits := 25 qib := 32 vp := 2 cb := 9 }",
+                "case 1 { fold := 4 q := 9 pow_bits := 25 qib := 29 vp := 16 cb := 10 }",
+                "case 2 { fold := 4 q := 6 pow_bits := 30 qib := 29 vp := 16 cb := 14 }",
+                "case 3 { fold := 4 q := 5 pow_bits := 25 qib := 29 vp := 16 cb := 18 }",
+                "default { fold := 4 q := 4 pow_bits := 27 qib := 29 vp := 16 cb := 22 }",
             ] {
                 assert!(source.contains(row), "missing `{row}`");
             }

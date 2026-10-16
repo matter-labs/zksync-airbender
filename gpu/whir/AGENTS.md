@@ -103,7 +103,7 @@ Horner evaluation directly from monomial coefficients.
 
 The Proth120 L1 phase (`proth120/`, `schedule_l1_whir_fold`) commits each
 intermediate oracle coset by coset through one fixed tile of
-`L1_WHIR_TILE_BYTES` (32 passes of batched LDE, leaf conversion and keccak
+`L1_WHIR_TILE_BYTES` (128 passes of batched LDE, leaf conversion and keccak
 partial trees) and keeps only the retained slabs, the top tree and a monomial
 copy. Its openings recompute the queried bottom subtrees by Horner evaluation
 from that copy and never repeat an LDE; the base oracles open through

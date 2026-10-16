@@ -148,7 +148,7 @@ fn cpu_shape_l1_values() {
     let schedule = ProofProfile::L1Wrap
         .prover_config(21, SecurityLevel::Sec100)
         .whir_schedule;
-    let shape = L1WhirShape::from_schedule(&schedule, 24, 7, 1, L1_WHIR_TILE_BYTES);
+    let shape = L1WhirShape::from_schedule(&schedule, 24, 9, 1, L1_WHIR_TILE_BYTES);
     assert_eq!(
         (
             shape.log_message,
@@ -158,20 +158,20 @@ fn cpu_shape_l1_values() {
             shape.total_sumcheck_polys,
             shape.log_final
         ),
-        (24, 7, 3, 36, 17, 7)
+        (24, 9, 3, 30, 17, 7)
     );
     let round_rows = [
-        (1, 12, 30, 23, 30),
-        (4, 11, 27, 19, 27),
-        (4, 7, 30, 15, 27),
-        (4, 6, 20, 11, 27),
-        (4, 5, 17, 7, 27),
+        (1, 10, 25, 23, 32),
+        (4, 9, 25, 19, 29),
+        (4, 6, 30, 15, 29),
+        (4, 5, 25, 11, 29),
+        (4, 4, 27, 7, 29),
     ];
     let oracle_rows = [
-        (23, 8, 31, 4, 19, 5, 3, 3, 32767, 24),
-        (19, 12, 31, 4, 15, 5, 3, 7, 2047, 24),
-        (15, 16, 31, 4, 11, 5, 3, 11, 127, 24),
-        (11, 20, 31, 4, 7, 5, 3, 15, 7, 24),
+        (23, 10, 33, 4, 19, 5, 3, 3, 32767, 26),
+        (19, 14, 33, 4, 15, 5, 3, 7, 2047, 26),
+        (15, 18, 33, 4, 11, 5, 3, 11, 127, 26),
+        (11, 22, 33, 4, 7, 5, 3, 15, 7, 26),
     ];
     for (r, round) in shape.rounds.iter().enumerate() {
         assert_eq!(
@@ -982,10 +982,10 @@ fn assert_l1_2p21_oracle_sampled(round: usize, expected: (u32, u32, u32)) {
     use super::openings::schedule_open_intermediate;
 
     let config = ProofProfile::L1Wrap.prover_config(21, SecurityLevel::Sec100);
-    let whir = L1WhirShape::from_schedule(&config.whir_schedule, 24, 7, 1, L1_WHIR_TILE_BYTES);
+    let whir = L1WhirShape::from_schedule(&config.whir_schedule, 24, 9, 1, L1_WHIR_TILE_BYTES);
     let shape = whir.rounds[round].oracle.expect("committed 2p21 oracle");
     assert_eq!((shape.log_n, shape.log_lde, shape.log_v), expected);
-    assert_eq!(shape.log_domain, 31);
+    assert_eq!(shape.log_domain, 33);
 
     assert_eq!(shape.cap_log, 3);
     assert_eq!(
@@ -1008,16 +1008,17 @@ fn assert_l1_2p21_oracle_sampled(round: usize, expected: (u32, u32, u32)) {
         }
     }
     // A WHIR leaf contains the coefficients of f(X) modulo X^V - y,
-    // where V = 2^log_v and y = generator^(query * V). Evaluate the V
+    // where V = 2^log_v and y = generator^(query * V) = generator_V^query for the
+    // generator of the 2^(log_domain - log_v) query domain. Evaluate the V
     // interleaved monomial polynomials by Horner, without building an LDE/tree.
-    let generator = fft::domain_generator_for_size::<PR>(1u64 << shape.log_domain);
+    let generator = fft::domain_generator_for_size::<PR>(1u64 << query_log);
     let expected_leaves = std::thread::scope(|scope| {
         let handles: Vec<_> = queries
             .iter()
             .map(|&query| {
                 let monomials = &monomials;
                 scope.spawn(move || {
-                    let y = generator.pow(query << shape.log_v);
+                    let y = generator.pow(query);
                     let mut values = vec![PR::ZERO; 1 << shape.log_v];
                     for coefficients in monomials.chunks_exact(values.len()).rev() {
                         for (value, coefficient) in values.iter_mut().zip(coefficients) {
@@ -1098,23 +1099,23 @@ fn assert_l1_2p21_oracle_sampled(round: usize, expected: (u32, u32, u32)) {
 }
 
 #[test]
-fn pr_l1_2p21_oracle_sampled_23_8_4() {
-    assert_l1_2p21_oracle_sampled(0, (23, 8, 4));
+fn pr_l1_2p21_oracle_sampled_23_10_4() {
+    assert_l1_2p21_oracle_sampled(0, (23, 10, 4));
 }
 
 #[test]
-fn pr_l1_2p21_oracle_sampled_19_12_4() {
-    assert_l1_2p21_oracle_sampled(1, (19, 12, 4));
+fn pr_l1_2p21_oracle_sampled_19_14_4() {
+    assert_l1_2p21_oracle_sampled(1, (19, 14, 4));
 }
 
 #[test]
-fn pr_l1_2p21_oracle_sampled_15_16_4() {
-    assert_l1_2p21_oracle_sampled(2, (15, 16, 4));
+fn pr_l1_2p21_oracle_sampled_15_18_4() {
+    assert_l1_2p21_oracle_sampled(2, (15, 18, 4));
 }
 
 #[test]
-fn pr_l1_2p21_oracle_sampled_11_20_4() {
-    assert_l1_2p21_oracle_sampled(3, (11, 20, 4));
+fn pr_l1_2p21_oracle_sampled_11_22_4() {
+    assert_l1_2p21_oracle_sampled(3, (11, 22, 4));
 }
 
 fn host_sibling_offset(log_leaves: u32, skip_bottom: u32, level: u32, j: u32) -> usize {
@@ -1534,7 +1535,7 @@ fn pr_transcript_phases_match_reference() {
     let bundle = l1_bundle();
     let proof = &bundle.proof;
     let whir = &proof.whir_proof;
-    let shape = L1WhirShape::from_schedule(&whir.whir_schedule, 24, 7, 1, L1_WHIR_TILE_BYTES);
+    let shape = L1WhirShape::from_schedule(&whir.whir_schedule, 24, 9, 1, L1_WHIR_TILE_BYTES);
     let ctx = context(256, None);
     let stream = ctx.get_exec_stream();
     let initial = proof

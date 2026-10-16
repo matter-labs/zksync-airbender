@@ -4,10 +4,10 @@ use super::super::{
     WitnessPostCommitStorage,
 };
 
-/// Tracker peak of the 2^21 wrap's merged pack + commit at pack 3, 128 cosets and
-/// the preset's depth-10 trees (`tests/l1_stage_parity.rs` `l1_wrap_m4_stages_match_reference`)
-/// on the RTX PRO 6000 Blackwell (sm_120).
-pub const MEASURED_M4_PEAK_BYTES: usize = 11_517_558_784;
+/// Analytic prediction of the tracker peak of the 2^21 wrap's merged pack + commit at pack 3,
+/// 512 cosets and the preset's depth-10 trees, pending the measurement by
+/// `tests/l1_stage_parity.rs` `l1_wrap_m4_stages_match_reference` on the RTX PRO 6000 Blackwell (sm_120).
+pub const MEASURED_M4_PEAK_BYTES: usize = 11_920_211_968;
 pub const OVERLAP_BYTES: usize = 1_736_441_856;
 
 pub const fn align_up(bytes: usize, unit: usize) -> usize {
@@ -24,6 +24,7 @@ pub const L1_WRAP_ARENA_MIN_BYTES: usize =
     align_up(MEASURED_M4_PEAK_BYTES + OVERLAP_BYTES, 1 << 30);
 
 /// Smallest sufficient arena of the bounded capacity matrix (`gpu/execution_prover/tests/l1_memory.rs`: 21/30 GiB candidates, both directions, three opposite followers, proof equal to the 2^21 reference) on the RTX PRO 6000 Blackwell (sm_120).
+/// Carried from the 128-coset wrap, pending the matrix at 512 cosets.
 pub const L1_WRAP_WHOLE_PROOF_FLOOR_BYTES: usize = 21 << 30;
 pub const L1_WRAP_FLOOR_SOURCE: &str = "measured";
 const _: () = assert!(L1_WRAP_WHOLE_PROOF_FLOOR_BYTES >= L1_WRAP_ARENA_MIN_BYTES);
@@ -62,18 +63,18 @@ mod cpu_tests {
     use prover::gkr::prover_config::example_configs::l1_wrap_2p21::PACK_LOG2;
     use riscv_transpiler::witness::UnifiedOpcodeTracingDataWithTimestamp;
 
-    /// The analytic commit-phase components at 2^21, pack 3, 128 cosets and
+    /// The analytic commit-phase components at 2^21, pack 3, 512 cosets and
     /// depth-10 retained trees, without the per-commit tree scratch.
     const ANALYTIC_COMMIT_PEAK_BYTES: usize = (104 + 10) * (1 << 21) * 16
         + (13 + 2 + 13) * (1 << 24) * 16
-        + 2 * align_up(128 * ((1 << 14) - 1) * 32, 1 << 20)
+        + 2 * align_up(512 * ((1 << 14) - 1) * 32, 1 << 20)
         + 2 * 16 * (1 << 20);
 
     #[test]
     fn cpu_l1_wrap_preset_components() {
         const ROWS: usize = 1 << 21;
         const PACKED_ROWS: usize = 1 << 24;
-        const COSETS: usize = 128;
+        const COSETS: usize = 512;
         const RAW_BYTES: usize = (104 + 10) * ROWS * 16;
         const MONOMIAL_BYTES: usize = (13 + 2) * PACKED_ROWS * 16;
         const SCRATCH_BYTES: usize = 13 * PACKED_ROWS * 16;
@@ -91,7 +92,7 @@ mod cpu_tests {
                 + RETAINED_BYTES
                 + ROOTS_TOP_CAP_BYTES
                 + OFFSET_BYTES,
-            11_475_628_032
+            11_878_318_080
         );
         assert_eq!(
             ANALYTIC_COMMIT_PEAK_BYTES,

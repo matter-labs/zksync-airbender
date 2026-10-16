@@ -71,7 +71,7 @@ fn cpu_m8_l1_preflight() {
     );
     assert_eq!(
         l1_wrap_batching_pow_bits(&config, &circuit, geometry.pack_log2),
-        16
+        18
     );
     validate_l1_wrap_preconditions(
         &geometry,

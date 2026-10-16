@@ -8,6 +8,7 @@ use cpu_execution_prover::CpuExecutionProverConfiguration;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::slice::DeviceSlice;
 use execution_prover::{CommitmentMode, ProofProfile};
+use gpu_circuit_prover::l1_wrap::L1_WRAP_NTT_LOG_MAX_DOMAIN;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::{DeviceAllocation, UnsafeMutAccessor};
@@ -726,7 +727,7 @@ fn run_stages(
             base_columns,
             batched_pow_bits
         ),
-        (20, 7, 114, 16),
+        (20, 9, 114, 18),
         "M6 stage parity PoW inputs"
     );
     let replay = replay_gkr_challenges(
@@ -740,7 +741,7 @@ fn run_stages(
 
     let context = ProverContext::new(&ProverContextConfig {
         device_allocation_blocks_count: Some(M6_ARENA_BLOCKS),
-        proth120_ntt_log_max_domain: Some(31),
+        proth120_ntt_log_max_domain: Some(L1_WRAP_NTT_LOG_MAX_DOMAIN),
         ..Default::default()
     })
     .unwrap();

@@ -136,7 +136,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
 ) {
     let worker = Worker::new_with_num_threads(num_threads);
     let level = SecurityLevel::Sec100;
-    // Pack the 2^21 trace into the active 2^24 message at base LDE 128.
+    // Pack the 2^21 trace into the active 2^24 message at base LDE 512.
     let pack_log2 = PACK_LOG2;
     let external_challenges_pow_bits = EXTERNAL_CHALLENGES_POW_BITS;
 
@@ -281,7 +281,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
     }
 
     println!("Preparing data for proving");
-    // 4. Use the active packed-wrap config: 2^24 message at LDE 128.
+    // 4. Use the active packed-wrap config: 2^24 message at LDE 512.
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
     let prover_config = packed_prover_config(level);
 

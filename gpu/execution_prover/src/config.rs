@@ -180,7 +180,7 @@ mod tests {
         ] {
             config.prover_context_config.proth120_ntt_log_max_domain = Some(log_max_domain);
             let panic = std::panic::catch_unwind(|| config.context_config())
-                .expect_err("an explicit PR domain other than 31 must be rejected");
+                .expect_err("an explicit PR domain other than the L1Wrap domain must be rejected");
             assert_eq!(
                 panic.downcast_ref::<String>().expect("named domain panic"),
                 &format!("the GPU backend requires proth120_ntt_log_max_domain {L1_WRAP_NTT_LOG_MAX_DOMAIN} for L1Wrap, got {log_max_domain}")
