@@ -110,7 +110,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci() {
 /// byte-identical to the recompute-based run; this variant does not (re)write the
 /// canonical EVM proof fixtures.
 #[test]
-#[ignore = "cloud-machine scale: 64 cores + enough RAM to materialize the 2^31 packed RS codewords"]
+#[ignore = "cloud-machine scale: 64 cores + enough RAM to materialize the 2^33 packed RS codewords"]
 fn gkr_unified_packed_commitment_basic_fibonacci_64core_in_memory() {
     // BENCH_THREADS overrides the worker width for machines that are not
     // 64-core (e.g. the 88-core benchmark VM). SETUP_ON_DISK=1 keeps the
@@ -328,7 +328,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
         // On-disk setup with the "second" (per-coset subtree) tree layout: the packed
         // setup is prepared coset-by-coset — each coset's RS codewords and its cap-size-1
         // subtree are streamed to disk, then a small top-tree over the subtree roots — so
-        // the ~2^31 codeword and its tree never have to be materialized whole. This and
+        // the ~2^33 codeword and its tree never have to be materialized whole. This and
         // later runs read them back lazily via mmap. Delete the cache files to recompute.
         let setup_disk_prefix = format!(
             "test_proofs/unified_setup_proth120_2p21_pack{pack_log2}_lde{}_vpl{}_ondisk",
