@@ -10,8 +10,8 @@ use gpu_hash::keccak256::{
     reduce_digest_layers, retained_layer_offset, Digest,
 };
 use gpu_ntt::proth120::{
-    launch_suffix_micro, lde_coset_slot, CosetSource, DeviceContext, Dispatch, ScaleArgs,
-    SuffixShape, TwiddleDescriptor,
+    launch_suffix_micro, lde_coset_slot, twiddle_working_set, CosetSource, DeviceContext, Dispatch,
+    ScaleArgs, SuffixShape, TwiddleDescriptor,
 };
 
 #[repr(C)]
@@ -707,27 +707,28 @@ pub fn open_coset_slot(
     )
 }
 
-// Upper bound of one suffix batch of a coefficient tree (cosets x tiles), the L2-resident tile set.
-pub const COEFFICIENT_BATCH_BYTES: usize = 32 << 20;
+// The L2-resident tiles of one suffix batch of a coefficient tree: the L2 budget less the twiddle
+// tables (the dispatch working-set rule).
+pub fn coefficient_batch_bytes(l2_budget: usize) -> usize {
+    l2_budget.saturating_sub(twiddle_working_set())
+}
 
 // (cosets, tiles per coset) of one suffix batch of a coefficient tree: whole cosets while a coset's
 // tiles fit the batch, else one coset and as many tiles as fit.
-pub fn coefficient_batch(shape: &SuffixShape, cosets: usize) -> (usize, usize) {
+pub fn coefficient_batch(shape: &SuffixShape, cosets: usize, l2_budget: usize) -> (usize, usize) {
+    let batch_bytes = coefficient_batch_bytes(l2_budget);
     let tile_bytes = shape.tile_len() * size_of::<PR>();
     let tiles = shape.tiles_per_coset();
     let coset_bytes = tiles * tile_bytes;
-    if coset_bytes <= COEFFICIENT_BATCH_BYTES {
-        (
-            (COEFFICIENT_BATCH_BYTES / coset_bytes).min(cosets).max(1),
-            tiles,
-        )
+    if coset_bytes <= batch_bytes {
+        ((batch_bytes / coset_bytes).min(cosets).max(1), tiles)
     } else {
-        (1, (COEFFICIENT_BATCH_BYTES / tile_bytes).clamp(1, tiles))
+        (1, (batch_bytes / tile_bytes).clamp(1, tiles))
     }
 }
 
-pub fn coefficient_tiles_len(shape: &SuffixShape, cosets: usize) -> usize {
-    let (batch_cosets, batch_tiles) = coefficient_batch(shape, cosets);
+pub fn coefficient_tiles_len(shape: &SuffixShape, cosets: usize, l2_budget: usize) -> usize {
+    let (batch_cosets, batch_tiles) = coefficient_batch(shape, cosets, l2_budget);
     batch_cosets * batch_tiles * shape.tile_len()
 }
 
@@ -763,7 +764,7 @@ pub fn commit_coefficient_cosets(
     );
     assert_eq!(
         tiles.len(),
-        coefficient_tiles_len(shape, cosets),
+        coefficient_tiles_len(shape, cosets, plan.l2_budget),
         "commit_coefficient_cosets: tiles length"
     );
     assert_eq!(
@@ -794,7 +795,7 @@ pub fn commit_coefficient_cosets(
         )?;
     }
     let _r = scoped_range(Some("ab"), "whir.commit.suffix");
-    let (batch_cosets, batch_tiles) = coefficient_batch(shape, cosets);
+    let (batch_cosets, batch_tiles) = coefficient_batch(shape, cosets, plan.l2_budget);
     let tiles_per_coset = shape.tiles_per_coset();
     for first_coset in (0..cosets).step_by(batch_cosets) {
         let coset_count = batch_cosets.min(cosets - first_coset);

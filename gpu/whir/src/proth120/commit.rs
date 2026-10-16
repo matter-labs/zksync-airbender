@@ -217,7 +217,7 @@ fn schedule_commit_retained(
     let fused_path = fused.is_some();
     if let Some((plan, suffix)) = fused {
         let mut tiles = context.alloc(
-            coefficient_tiles_len(&suffix, tile_cosets),
+            coefficient_tiles_len(&suffix, tile_cosets, plan.l2_budget),
             AllocationPlacement::Top,
         )?;
         for k0 in (0..cosets).step_by(tile_cosets) {

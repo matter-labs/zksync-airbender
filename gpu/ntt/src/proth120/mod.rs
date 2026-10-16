@@ -13,7 +13,7 @@ pub use lde::{convert_coset_leaves, convert_gathered_leaves, lde_coset, lde_cose
 pub use pack::pack_hypercubes_to_monomials;
 pub use prefix::{
     dispatch, has_reference_finish, l2_working_set_budget, lde_coset_slot, lde_finish_reference,
-    ChunkPlan, CosetSource, Dispatch, DispatchError, ScaleArgs,
+    twiddle_working_set, ChunkPlan, CosetSource, Dispatch, DispatchError, ScaleArgs,
 };
 pub use suffix::{launch_suffix_micro, SuffixShape};
 

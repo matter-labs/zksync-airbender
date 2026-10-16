@@ -357,6 +357,11 @@ pub(crate) fn twiddle_bytes(log_max_domain: u32) -> usize {
     2 * size_of::<PR>() * ((1 << low) + (1 << (log_max_domain - low)))
 }
 
+// The twiddle tables every dispatch working set reserves in the L2 budget next to its data.
+pub fn twiddle_working_set() -> usize {
+    twiddle_bytes(MAX_LOG_MAX_DOMAIN)
+}
+
 fn dispatch_with_budget(
     log_n: u32,
     columns: usize,
