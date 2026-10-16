@@ -13,7 +13,9 @@ use gpu_ntt::proth120::{
 };
 
 use super::packed::retained_len;
-use super::sink::{launch_sink, sink_launch, sink_tree_depth, SinkLaunch, SinkMode};
+use super::sink::{
+    commit_coset, commit_coset_scratch_lens, launch_sink, sink_launch, SinkLaunch, SinkMode,
+};
 use crate::upstream::{domain_generator_for_size, Field};
 
 fn random_values(count: usize, seed: u64) -> Vec<PR> {
@@ -235,8 +237,8 @@ fn cpu_sink_launch_rejects_invalid_launches() {
     }
 }
 
-// Commit sink over the production batch loop (prefix, then suffix micro + sink per batch of
-// tiles, the depth-3 nodes closed by reduce_digest_layers) against the natural-order reference tree.
+// commit_coset (prefix, then suffix micro + Commit sink per batch of tiles, the node layers above
+// the depth-3 sink nodes) against the natural-order reference tree.
 #[test]
 #[cfg(not(no_cuda))]
 fn sink_commit_matches_reference() {
@@ -250,6 +252,9 @@ fn sink_commit_matches_reference() {
         (17, 1, 2, 10),
         (17, 2, 1, 9),
         (18, 7, 2, 8),
+        (18, 2, 1, 5),
+        (17, 1, 2, 4),
+        (25, 1, 2, 5),
         (25, 7, 2, 10),
         (24, 13, 1, 10),
     ] {
@@ -259,66 +264,28 @@ fn sink_commit_matches_reference() {
         let plan = dispatch(log_n, columns as usize, log_v, skip_bottom, device_l2()).unwrap();
         let s = SuffixShape::new(&plan, log_n, log_v, skip_bottom, columns);
         let mut prefix = DeviceAllocation::<PR>::alloc(rows * columns as usize).unwrap();
-        lde_coset_slot(
+        let (tiles_len, nodes_len, node_scratch_len) = commit_coset_scratch_lens(&plan, &s);
+        let mut tiles = DeviceAllocation::<PR>::alloc(tiles_len).unwrap();
+        let mut nodes = DeviceAllocation::<Digest>::alloc(nodes_len).unwrap();
+        let mut node_scratch = DeviceAllocation::<Digest>::alloc(node_scratch_len).unwrap();
+        let per_coset = retained_len(h, skip_bottom);
+        let mut retained = DeviceAllocation::<Digest>::alloc(per_coset).unwrap();
+        commit_coset(
             &ctx,
             &monomials,
+            &plan,
+            &s,
+            k,
+            31,
             &mut prefix,
-            columns as usize,
-            plan.prefix.as_ref().unwrap(),
-            ScaleArgs {
-                coset: CosetSource::Constant(k),
-                log_domain: 31,
-            },
+            &mut tiles,
+            &mut nodes,
+            &mut node_scratch,
+            &mut retained,
             &stream,
         )
         .unwrap();
         let batch = plan.tiles_per_batch;
-        let mut tiles = DeviceAllocation::<PR>::alloc(batch * s.tile_len()).unwrap();
-        let tree_depth = sink_tree_depth(&SinkMode::Commit, skip_bottom);
-        let mut nodes = DeviceAllocation::<Digest>::alloc(1 << (h - tree_depth)).unwrap();
-        let mut node_scratch =
-            DeviceAllocation::<Digest>::alloc(1 << (h - tree_depth - 1)).unwrap();
-        let per_coset = retained_len(h, skip_bottom);
-        let mut retained = DeviceAllocation::<Digest>::alloc(per_coset).unwrap();
-        for first in (0..s.tiles_per_coset()).step_by(batch) {
-            let count = batch.min(s.tiles_per_coset() - first);
-            let tiles = &mut tiles[..count * s.tile_len()];
-            launch_suffix_micro(
-                &ctx,
-                &prefix,
-                rows * columns as usize,
-                tiles,
-                &s,
-                first as u32,
-                count as u32,
-                1,
-                &stream,
-            )
-            .unwrap();
-            launch_sink(
-                &ctx,
-                tiles,
-                &s,
-                first as u32,
-                count as u32,
-                1,
-                SinkMode::Commit,
-                &mut nodes,
-                1 << (h - tree_depth),
-                &stream,
-            )
-            .unwrap();
-        }
-        let bottom = 1usize << (h - skip_bottom);
-        reduce_digest_layers(
-            &mut nodes,
-            skip_bottom - tree_depth,
-            &mut node_scratch,
-            &mut retained[..bottom],
-            &stream,
-        )
-        .unwrap();
-        build_retained_layers(h, skip_bottom, 1, per_coset, &mut retained, &stream).unwrap();
         let candidate = download(&retained, &stream);
 
         let mut natural = DeviceAllocation::<PR>::alloc(rows * columns as usize).unwrap();

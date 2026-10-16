@@ -14,8 +14,8 @@ use super::lde::{
 };
 use super::prefix::{
     chunk_plan, dispatch, l2_working_set_budget, launch_prefix_chunked, narrow_groups,
-    prefix_groups, subroot_bytes, twiddle_bytes, ChunkPlan, CosetSource, Dispatch, DispatchError,
-    FirstPassScale, PrefixPass, ScaleArgs, MAX_CHUNK_BYTES, MAX_TILE_BYTES,
+    prefix_groups, twiddle_bytes, ChunkPlan, CosetSource, Dispatch, DispatchError, FirstPassScale,
+    PrefixPass, ScaleArgs, MAX_CHUNK_BYTES, MAX_TILE_BYTES,
 };
 use super::DeviceContext;
 use crate::upstream::{domain_generator_for_size, Field};
@@ -202,7 +202,7 @@ fn chunk_plan_table(l2: usize) -> Vec<(String, Result<Dispatch, DispatchError>)>
         assert_eq!(a + dispatched.r, n);
         assert!(a >= sb && dispatched.r >= v && dispatched.tile_bytes <= MAX_TILE_BYTES);
         assert!(plan.chunk_bytes() <= MAX_CHUNK_BYTES || !dispatched.prefix_resident);
-        let fixed = twiddle_bytes(33) + subroot_bytes(n, v, sb);
+        let fixed = twiddle_bytes(33);
         assert_eq!(
             dispatched.prefix_working_set,
             2 * plan.chunk_bytes() + fixed
@@ -321,7 +321,7 @@ fn cpu_pr_chunk_plan_closure() {
             today.tiles_per_batch,
             today.prefix_resident && today.suffix_resident
         ),
-        (39 * MIB, 63 * MIB, 2, true)
+        (38 * MIB, 62 * MIB, 2, true)
     );
     let shape_d = dispatch(24, 13, 1, 10, L2_RTX_PRO_6000).unwrap();
     assert_eq!(
@@ -330,12 +330,12 @@ fn cpu_pr_chunk_plan_closure() {
             shape_d.suffix_working_set,
             shape_d.tiles_per_batch
         ),
-        (39 * MIB, 59 * MIB, 2)
+        (38 * MIB, 58 * MIB, 2)
     );
     let wide = dispatch(24, 15, 1, 10, L2_RTX_PRO_6000).unwrap();
     assert_eq!(
         (wide.r, wide.tiles_per_batch, wide.suffix_working_set),
-        (7, 1, 37 * MIB)
+        (7, 1, 36 * MIB)
     );
     let n26 = dispatch(26, 7, 2, 10, L2_RTX_PRO_6000).unwrap();
     assert_eq!(
@@ -367,7 +367,7 @@ fn cpu_pr_chunk_plan_closure() {
             today.tiles_per_batch,
             today.r
         ),
-        (39 * MIB, 35 * MIB, 1, 8)
+        (38 * MIB, 34 * MIB, 1, 8)
     );
     let shape_d = dispatch(24, 13, 1, 10, L2_RTX_5090).unwrap();
     assert_eq!(
@@ -377,7 +377,7 @@ fn cpu_pr_chunk_plan_closure() {
             shape_d.tiles_per_batch,
             shape_d.r
         ),
-        (39 * MIB, 33 * MIB, 1, 7)
+        (38 * MIB, 32 * MIB, 1, 7)
     );
 
     // Synthetic devices, 16-192 MiB L2: every production shape dispatches on every L2, the

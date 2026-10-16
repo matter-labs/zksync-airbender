@@ -305,8 +305,9 @@ pub(crate) fn chunk_plan(
 // Per-coset stage split of a packed or WHIR oracle: the L2-chunked prefix of a = log_n - r
 // stages, then suffix tiles of 2^skip_bottom components x 2^r values x all columns, consumed
 // `tiles_per_batch` at a time (Small: one block per column when log_n <= 12). Chunk and batch
-// sizes follow from the device L2 working-set budget; when the budget cannot hold them the same
-// kernels run with smaller or no L2 residency (`*_resident == false`), with identical output.
+// sizes follow from the device L2 working-set budget (chunks or tiles plus the twiddle tables; the
+// sink's node output streams); when the budget cannot hold them the same kernels run with smaller
+// or no L2 residency (`*_resident == false`), with identical output.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Dispatch {
     pub small: bool,
@@ -332,15 +333,6 @@ pub(crate) fn twiddle_bytes(log_max_domain: u32) -> usize {
     2 * size_of::<PR>() * ((1 << low) + (1 << (log_max_domain - low)))
 }
 
-// Depth-8 sub-roots of one coset, kept by base/setup commits (skip_bottom > 8).
-pub(crate) fn subroot_bytes(log_n: u32, log_v: u32, skip_bottom: u32) -> usize {
-    if skip_bottom > 8 {
-        32 << (log_n - log_v - 8)
-    } else {
-        0
-    }
-}
-
 fn dispatch_with_budget(
     log_n: u32,
     columns: usize,
@@ -363,7 +355,7 @@ fn dispatch_with_budget(
             l2_budget,
         });
     }
-    let fixed = twiddle_bytes(MAX_LOG_MAX_DOMAIN) + subroot_bytes(log_n, log_v, skip_bottom);
+    let fixed = twiddle_bytes(MAX_LOG_MAX_DOMAIN);
     for r in [8, 7, 6] {
         let a = log_n - r;
         let tile_bytes = columns.checked_mul(size_of::<PR>() << (skip_bottom + r))?;
@@ -414,7 +406,7 @@ fn dispatch_degraded(
     l2_cache_size_bytes: usize,
 ) -> Option<Dispatch> {
     let l2_budget = l2_working_set_budget(l2_cache_size_bytes);
-    let fixed = twiddle_bytes(MAX_LOG_MAX_DOMAIN) + subroot_bytes(log_n, log_v, skip_bottom);
+    let fixed = twiddle_bytes(MAX_LOG_MAX_DOMAIN);
     let column = size_of::<PR>() << log_n;
     for r in [8, 7, 6] {
         let a = log_n - r;
