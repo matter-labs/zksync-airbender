@@ -9,7 +9,7 @@ and no timer or interrupt devices. Everything Airbender does differently from th
 marked `-- Airbender:`, following Airbender's ISA table (zksync-airbender `spec/top-down/00 master.md`,
 "Supported instruction set"). Airbender's instruction formats are our own table `RV.decode`; their effect is
 Sail's `execute`. The machine adds one thing Sail does not have: the program's input (Airbender's non-determinism
-source, CSR `0x7c0`), an endless sequence of words read one at a time.
+source, CSR `0x7c0`): the words not yet read (a list; a read with none left has no next state).
 
 Our own fast spec `RV.step` (`Human/RV32.lean`), which the program proofs run on, follows this machine:
 stated in `HumanSail/Theorems.lean`, proven in `slop/Slop/Equiv/`. -/

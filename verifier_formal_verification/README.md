@@ -20,8 +20,8 @@ Both compute a Mersenne31 polynomial, a BabyBear Ext4 polynomial (Horner) and a 
   (`combine x = 3x + 1`, a polynomial over Mersenne31, a polynomial over BabyBear's `F[w]/(w⁴ - 11)`), and
   `Human/SpecBlake.lean` (Blake2s compression, RFC 7693, 7 rounds).
 - `Human/Theorems.lean` — the final statement `ProgramCorrectOf`: from reset, with the image loaded, RAM zero and an
-  input starting with the five words, the program reaches its final self-jump with the outputs in `a0 … a5` and stays there; `ProgramCorrect` (plain
-  image) and `ProgramCorrectMop` instantiate it (both proven).
+  input starting with the five words, the program reaches its final self-jump with the outputs in `a0 … a7` and
+  stays there; `ProgramCorrect` (plain image) and `ProgramCorrectMop` instantiate it (both proven).
 - `HumanSail/Airbender.lean` — the Airbender machine as the official Sail RISC-V model plus a short list of
   changes, each marked `-- Airbender:` (needs the generated Sail model, `sail/regen.sh`).
 - `HumanSail/Theorems.lean` — our spec = Sail: `DecodeIsSail`, `StepIsAirbender`, and `ProgramCorrect` on the

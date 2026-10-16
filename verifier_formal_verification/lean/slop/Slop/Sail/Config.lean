@@ -56,6 +56,10 @@ theorem rvc_stops'   : next 0x00000505 = none := by decide +kernel           -- 
 theorem csr_stops    : next 0x7c051073 = none := by decide +kernel           -- csrrw x0, 0x7c0, a0 (write: not modelled)
 theorem csrrs_stops  : next 0x7c002573 = none := by decide +kernel           -- csrrs a0, 0x7c0, x0 (not modelled)
 theorem cycle_stops  : next 0xc0001073 = none := by decide +kernel           -- csrrw x0, cycle, x0
+/-- What the override replaces: Sail's own `execute` on `csrrw a0, 0x7c0, x0` is an illegal instruction. -/
+theorem sail_csr_7c0_illegal :
+    (match runSail (SailRV32.Functions.execute (.CSRReg (0x7c0, .Regidx 0, .Regidx 10, .CSRRW)))
+      Airbender.resetState with | .ok (.Illegal_Instruction ()) _ => true | _ => false) = true := by decide +kernel
 theorem input_next   : readNext 0x7c001573 [0x1234] = some (4, 0x1234, []) := by decide +kernel  -- csrrw a0, 0x7c0, x0
 theorem input_empty_stops : readNext 0x7c001573 [] = none := by decide +kernel  -- … with the input used up
 
