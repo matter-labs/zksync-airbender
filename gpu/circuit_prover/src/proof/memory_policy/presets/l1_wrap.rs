@@ -4,8 +4,8 @@ use super::super::{
     WitnessPostCommitStorage,
 };
 
-/// Tracker peak of the 2^21 wrap's merged pack + commit at the preset's
-/// depth-10 trees (`tests/l1_stage_parity.rs` `l1_wrap_m4_stages_match_reference`)
+/// Tracker peak of the 2^21 wrap's merged pack + commit at pack 4, 64 cosets and
+/// the preset's depth-10 trees (`tests/l1_stage_parity.rs` `l1_wrap_m4_stages_match_reference`)
 /// on the RTX PRO 6000 Blackwell (sm_120).
 pub const MEASURED_M4_PEAK_BYTES: usize = 11_987_320_832;
 pub const OVERLAP_BYTES: usize = 1_736_441_856;
@@ -59,23 +59,24 @@ mod cpu_tests {
     use cs::gkr_compiler::GKRCircuitArtifact;
     use gpu_core::primitives::field::PR;
     use gpu_trace::witness::circuit_type::CircuitType;
+    use prover::gkr::prover_config::example_configs::l1_wrap_2p21::PACK_LOG2;
     use riscv_transpiler::witness::UnifiedOpcodeTracingDataWithTimestamp;
 
-    /// The analytic commit-phase components at 2^21, 64 cosets and depth-10
-    /// retained trees, without the per-commit tree scratch.
+    /// The analytic commit-phase components at 2^21, pack 3, 128 cosets and
+    /// depth-10 retained trees, without the per-commit tree scratch.
     const ANALYTIC_COMMIT_PEAK_BYTES: usize = (104 + 10) * (1 << 21) * 16
-        + (7 + 1 + 7) * (1 << 25) * 16
-        + 2 * align_up(64 * ((1 << 14) - 1) * 32, 1 << 20)
+        + (13 + 2 + 13) * (1 << 24) * 16
+        + 2 * align_up(128 * ((1 << 14) - 1) * 32, 1 << 20)
         + 2 * 16 * (1 << 20);
 
     #[test]
     fn cpu_l1_wrap_preset_components() {
         const ROWS: usize = 1 << 21;
-        const PACKED_ROWS: usize = 1 << 25;
-        const COSETS: usize = 64;
+        const PACKED_ROWS: usize = 1 << 24;
+        const COSETS: usize = 128;
         const RAW_BYTES: usize = (104 + 10) * ROWS * 16;
-        const MONOMIAL_BYTES: usize = (7 + 1) * PACKED_ROWS * 16;
-        const SCRATCH_BYTES: usize = 7 * PACKED_ROWS * 16;
+        const MONOMIAL_BYTES: usize = (13 + 2) * PACKED_ROWS * 16;
+        const SCRATCH_BYTES: usize = 13 * PACKED_ROWS * 16;
         const RETAINED_BYTES: usize = 2 * COSETS * ((1 << 14) - 1) * 32;
         const ROOTS_TOP_CAP_BYTES: usize = 2 * (COSETS + (COSETS - 8) + 8) * 32;
         const OFFSET_BYTES: usize = 2 * COSETS * 16;
@@ -90,7 +91,7 @@ mod cpu_tests {
                 + RETAINED_BYTES
                 + ROOTS_TOP_CAP_BYTES
                 + OFFSET_BYTES,
-            11_945_383_936
+            11_475_628_032
         );
         assert_eq!(
             ANALYTIC_COMMIT_PEAK_BYTES,
@@ -107,16 +108,20 @@ mod cpu_tests {
         )))
         .unwrap();
         assert_eq!(layout.trace_len, ROWS);
+        assert_eq!(PACKED_ROWS, ROWS << PACK_LOG2);
+        let pack_width = 1 << PACK_LOG2;
         let memory_columns = layout.memory_layout.total_width + layout.witness_layout.total_width;
         let setup_columns = layout.generic_lookup_tables_width;
         assert_eq!(RAW_BYTES, (memory_columns + setup_columns) * ROWS * 16);
         assert_eq!(
             MONOMIAL_BYTES,
-            (memory_columns.div_ceil(16) + setup_columns.div_ceil(16)) * PACKED_ROWS * 16
+            (memory_columns.div_ceil(pack_width) + setup_columns.div_ceil(pack_width))
+                * PACKED_ROWS
+                * 16
         );
         assert_eq!(
             SCRATCH_BYTES,
-            memory_columns.div_ceil(16) * PACKED_ROWS * 16
+            memory_columns.div_ceil(pack_width) * PACKED_ROWS * 16
         );
         let config = crate::upstream::ProofProfile::L1Wrap
             .prover_config(21, crate::upstream::SecurityLevel::Sec100);
@@ -153,8 +158,15 @@ mod cpu_tests {
         ) * 32;
         assert_eq!(tree_scratch_bytes, 8 * BLOCK_BYTES);
         assert_eq!(
-            MEASURED_M4_PEAK_BYTES,
-            ANALYTIC_COMMIT_PEAK_BYTES + tree_scratch_bytes
+            ANALYTIC_COMMIT_PEAK_BYTES + tree_scratch_bytes,
+            11_517_558_784
+        );
+        assert_eq!(
+            align_up(
+                ANALYTIC_COMMIT_PEAK_BYTES + tree_scratch_bytes + OVERLAP_BYTES,
+                1 << 30
+            ),
+            L1_WRAP_ARENA_MIN_BYTES
         );
         assert_eq!(
             L1_WRAP_ARENA_MIN_BYTES,

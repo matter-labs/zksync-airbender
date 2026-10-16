@@ -273,17 +273,17 @@ fn cpu_l1_reference_loads() {
             .prover_config(TRACE_LEN_LOG2, SecurityLevel::Sec100)
             .whir_schedule
     );
-    assert_eq!(whir.pow_nonces.len(), 6);
-    assert_eq!(whir.intermediate_whir_oracles.len(), 5);
-    assert_eq!(whir.ood_samples.len(), 5);
-    assert_eq!(whir.sumcheck_polys.len(), 21);
-    assert_eq!(whir.final_monomials.len(), 16);
+    assert_eq!(whir.pow_nonces.len(), 5);
+    assert_eq!(whir.intermediate_whir_oracles.len(), 4);
+    assert_eq!(whir.ood_samples.len(), 4);
+    assert_eq!(whir.sumcheck_polys.len(), 17);
+    assert_eq!(whir.final_monomials.len(), 128);
     assert!(whir.batching_challenge.is_some());
     assert_eq!(
         whir.original_evaluation_point
             .as_ref()
             .map(|point| point.len()),
-        Some(25)
+        Some(24)
     );
     assert!(whir.batched_opening.is_some());
     assert!(proof.intermediate_transcript_seed.is_some());

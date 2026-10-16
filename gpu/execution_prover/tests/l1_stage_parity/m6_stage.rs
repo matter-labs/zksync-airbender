@@ -726,7 +726,7 @@ fn run_stages(
             base_columns,
             batched_pow_bits
         ),
-        (20, 6, 114, 16),
+        (20, 7, 114, 16),
         "M6 stage parity PoW inputs"
     );
     let replay = replay_gkr_challenges(
@@ -1018,7 +1018,7 @@ fn run_stages(
         config.sumcheck_explicit_output_size_log_2 as u32,
         &context,
     );
-    let layout = Arc::new(ProofLayoutPr::new(&programs, &config, 4));
+    let layout = Arc::new(ProofLayoutPr::new(&programs, &config, PACK_LOG2));
     let witness_layout = &circuit.witness_layout;
     assert_eq!(
         (

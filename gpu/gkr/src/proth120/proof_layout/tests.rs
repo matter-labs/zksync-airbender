@@ -114,7 +114,11 @@ fn cpu_proof_layout_pr_roundtrip() {
     let programs = programs();
     let config =
         prover::gkr::prover_config::ProofProfile::L1Wrap.prover_config(21, SecurityLevel::Sec100);
-    let layout = ProofLayoutPr::new(&programs, &config, 4);
+    let layout = ProofLayoutPr::new(
+        &programs,
+        &config,
+        prover::gkr::prover_config::example_configs::l1_wrap_2p21::PACK_LOG2,
+    );
     let directory = std::env::var_os("AB_PROTH120_REFERENCE_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
@@ -201,9 +205,9 @@ fn cpu_proof_layout_pr_roundtrip() {
             .intermediate_transcript_seed
             .expect("Proth120 M0 bundle seed is missing"),
     };
-    assert_eq!(expected.merged_claims.0.len(), 7);
-    assert_eq!(expected.merged_claims.1.len(), 1);
-    assert_eq!(expected.evaluation_point.len(), 25);
+    assert_eq!(expected.merged_claims.0.len(), 13);
+    assert_eq!(expected.merged_claims.1.len(), 2);
+    assert_eq!(expected.evaluation_point.len(), 24);
     let mut slab = HostSlab::new(layout.bytes_len());
     layout.write_m6_fields(slab.bytes_mut(), &expected, [challenges[7], challenges[8]]);
     assert_eq!(
@@ -216,7 +220,7 @@ fn cpu_proof_layout_pr_roundtrip() {
     );
     assert_m6_fields_equal(&layout.parse_m6_fields(slab.bytes()), &expected);
     println!(
-        "M6_TYPED_ROUNDTRIP layers={} fields={} raw_column_claims=114 merged_claims=8 point=25",
+        "M6_TYPED_ROUNDTRIP layers={} fields={} raw_column_claims=114 merged_claims=15 point=24",
         expected.sumcheck_intermediate_values.len(),
         layout.bytes_len() / 16
     );
@@ -227,7 +231,11 @@ fn cpu_proof_layout_pr_geometry() {
     let programs = programs();
     let config =
         prover::gkr::prover_config::ProofProfile::L1Wrap.prover_config(21, SecurityLevel::Sec100);
-    let layout = ProofLayoutPr::new(&programs, &config, 4);
+    let layout = ProofLayoutPr::new(
+        &programs,
+        &config,
+        prover::gkr::prover_config::example_configs::l1_wrap_2p21::PACK_LOG2,
+    );
     layout.validate_geometry(
         &programs.runtime_circuit,
         crate::proth120::backward::dr_tail::PR_DR_FINAL_TRACE_LOG_2 as usize,
@@ -277,10 +285,10 @@ fn cpu_proof_layout_pr_geometry() {
             .collect::<BTreeSet<_>>(),
         (0..24).collect()
     );
-    assert_eq!(layout.memory_claims.len(), 7 * 16);
+    assert_eq!(layout.memory_claims.len(), 13 * 16);
     assert_eq!(layout.memory_claims.end, layout.setup_claims.start);
-    assert_eq!(layout.setup_claims.len(), 16);
-    assert_eq!(layout.evaluation_point.len(), 25 * 16);
+    assert_eq!(layout.setup_claims.len(), 2 * 16);
+    assert_eq!(layout.evaluation_point.len(), 24 * 16);
     assert_eq!(layout.batching_challenge.len(), 16);
     assert_eq!(layout.external_challenges.len(), 9 * 16);
     assert_eq!(layout.intermediate_transcript_seed.end, layout.bytes_len());
@@ -312,7 +320,7 @@ fn cpu_proof_layout_pr_geometry() {
         15
     );
     println!(
-        "M6_PROOF_GEOMETRY layers={} point=25 merged=7+1 sections={} bytes={} whir_sections=0",
+        "M6_PROOF_GEOMETRY layers={} point=24 merged=13+2 sections={} bytes={} whir_sections=0",
         layout.backward_layers.len(),
         ranges.len(),
         layout.bytes_len()

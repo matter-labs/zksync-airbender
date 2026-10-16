@@ -244,17 +244,17 @@ pub(crate) mod cpu_tests {
                 circuit_type: CircuitType::L1Wrap21,
                 trace_log: 21,
                 rows: 1 << 21,
-                pack_log2: 4,
-                log_message: 25,
-                log_base_lde: 6,
-                log_base_values_per_leaf: 2,
+                pack_log2: 3,
+                log_message: 24,
+                log_base_lde: 7,
+                log_base_values_per_leaf: 1,
                 cap_log: 3,
                 memory_columns: 38,
                 witness_columns: 66,
                 scratch_columns: 41,
                 setup_columns: 10,
-                packed_base_columns: 7,
-                packed_setup_columns: 1,
+                packed_base_columns: 13,
+                packed_setup_columns: 2,
                 num_it_sets: 2,
                 rom: L1_WRAP_ROM,
                 decoder_offset: 1_180_033,
@@ -274,9 +274,9 @@ pub(crate) mod cpu_tests {
         let rounds = |f: fn(&gpu_whir::proth120::RoundShape) -> usize| {
             shape.rounds.iter().map(f).collect::<Vec<_>>()
         };
-        assert_eq!(rounds(|r| r.folds as usize), [2, 4, 4, 4, 3, 4]);
-        assert_eq!(rounds(|r| r.queries), [14, 11, 8, 6, 5, 4]);
-        assert_eq!(rounds(|r| r.pow_bits as usize), [30, 27, 20, 20, 17, 24]);
+        assert_eq!(rounds(|r| r.folds as usize), [1, 4, 4, 4, 4]);
+        assert_eq!(rounds(|r| r.queries), [12, 11, 7, 6, 5]);
+        assert_eq!(rounds(|r| r.pow_bits as usize), [30, 27, 30, 20, 17]);
         let oracles = shape
             .rounds
             .iter()
@@ -289,13 +289,12 @@ pub(crate) mod cpu_tests {
                 (23, 8, 4, 31, 5),
                 (19, 12, 4, 31, 5),
                 (15, 16, 4, 31, 5),
-                (11, 20, 3, 31, 5),
-                (8, 23, 4, 31, 4),
+                (11, 20, 4, 31, 5),
             ]
         );
-        assert_eq!(shape.term_capacity, 44);
-        assert_eq!(shape.total_sumcheck_polys, 21);
-        assert_eq!(shape.log_final, 4);
+        assert_eq!(shape.term_capacity, 36);
+        assert_eq!(shape.total_sumcheck_polys, 17);
+        assert_eq!(shape.log_final, 7);
         assert_eq!(shape.cap_log, geometry.cap_log);
         let circuit = std::sync::Arc::new(committed_layout(CircuitType::L1Wrap21));
         assert_eq!(circuit.layers.len(), 5);
@@ -306,9 +305,9 @@ pub(crate) mod cpu_tests {
             layout.memory_claims.len(),
             geometry.packed_base_columns * 16
         );
-        assert_eq!(layout.memory_claims.len(), 7 * 16);
-        assert_eq!(layout.setup_claims.len(), 16);
-        assert_eq!(layout.evaluation_point.len(), 25 * 16);
+        assert_eq!(layout.memory_claims.len(), 13 * 16);
+        assert_eq!(layout.setup_claims.len(), 2 * 16);
+        assert_eq!(layout.evaluation_point.len(), 24 * 16);
     }
 
     #[test]

@@ -3,7 +3,7 @@ use crate::l1_feeder_tests::{artifact, empty_gkr_proof, feeder_artifact};
 use prover::definitions::FinalRegisterValue;
 
 /// A proof with zero values and the exact shape of an `L1_WRAP_KIND` proof:
-/// GKR layer rounds and round messages; packed setup (one column) and merged
+/// GKR layer rounds and round messages; packed setup (two columns) and merged
 /// memory oracles, intermediate oracles, queries, leaves and paths.
 fn wrap_proof_skeleton() -> L1Proof {
     use prover::gkr::prover::{SumcheckIntermediateProofValues, SumcheckRoundCoefficients};
@@ -43,9 +43,16 @@ fn wrap_proof_skeleton() -> L1Proof {
     let whir = &mut proof.whir_proof;
     let base_path =
         message_log2 + schedule.base_lde_factor.trailing_zeros() as usize - steps[0] - cap_log2;
+    let artifact = unified_reduced_machine_proth120::l1_wrap_2p21::circuit_artifact();
+    let setup_columns = artifact
+        .generic_lookup_tables_width
+        .div_ceil(1 << pack_log2);
+    let memory_columns = (artifact.memory_layout.total_width + artifact.witness_layout.total_width)
+        .div_ceil(1 << pack_log2);
+    assert_eq!((setup_columns, memory_columns), (2, 13));
     for (base, columns) in [
-        (&mut whir.setup_commitment, 1),
-        (&mut whir.memory_commitment, 7),
+        (&mut whir.setup_commitment, setup_columns),
+        (&mut whir.memory_commitment, memory_columns),
     ] {
         base.num_columns = columns;
         base.evals = vec![Default::default(); columns];
@@ -376,13 +383,15 @@ fn l1_bundle_rejects_truncated_whir_round() {
             p.whir_proof.setup_commitment.queries.pop();
         }),
         ("WHIR setup oracle columns", |p| {
-            // a self-consistent two-column setup oracle
+            // a self-consistent setup oracle with one extra column
             let setup = &mut p.whir_proof.setup_commitment;
-            setup.num_columns = 2;
+            let columns = setup.num_columns;
+            setup.num_columns += 1;
             setup.evals.push(Default::default());
             for query in &mut setup.queries {
-                let leaf = query.leaf_values_concatenated.clone();
-                query.leaf_values_concatenated.extend(leaf);
+                let column_len = query.leaf_values_concatenated.len() / columns;
+                let column = query.leaf_values_concatenated[..column_len].to_vec();
+                query.leaf_values_concatenated.extend(column);
             }
         }),
         ("WHIR round 4 leaf values", |p| {

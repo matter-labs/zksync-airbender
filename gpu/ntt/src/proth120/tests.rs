@@ -1028,11 +1028,9 @@ fn pr_production_pack_parity() {
     let worker = Worker::new_with_num_threads(8);
     let pool = GenericAllocationPool::<PR, PR>::proxy();
     let mut rng = StdRng::seed_from_u64(SEED);
-    let log_rows = 22;
-    let pack_log2 = 4;
-    let rows = 1usize << log_rows;
-    let out_rows = rows << pack_log2;
-    for cols in [16, 10] {
+    for (log_rows, pack_log2, cols) in [(22, 4u32, 16usize), (22, 4, 10), (21, 3, 8), (21, 3, 2)] {
+        let rows = 1usize << log_rows;
+        let out_rows = rows << pack_log2;
         let input_bytes = cols * rows * size_of::<PR>();
         let output_bytes = out_rows * size_of::<PR>();
         let case = format!(

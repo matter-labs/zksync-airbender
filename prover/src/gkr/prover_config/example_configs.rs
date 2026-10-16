@@ -227,34 +227,34 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
 
 /// The 2^21 Proth120 L1 wrap over the 512 KiB wrap ROM: a 2^21 base trace
 /// packed by [`PACK_LOG2`](l1_wrap_2p21::PACK_LOG2) into the
-/// `message_log2 = 25` WHIR input, base LDE 64, every oracle on a 2^31
+/// `message_log2 = 24` WHIR input, base LDE 128, every oracle on a 2^31
 /// codeword.
 pub mod l1_wrap_2p21 {
     use super::*;
 
     pub const TRACE_LEN_LOG2: usize = 21;
-    pub const PACK_LOG2: usize = 4;
+    pub const PACK_LOG2: usize = 3;
     pub const EXPLICIT_OUTPUT_LOG2: usize = 2;
     pub const EXTERNAL_CHALLENGES_POW_BITS: u32 = 20;
     /// No WHIR round grinds above it.
     pub const MAX_POW_BITS: u32 = 30;
 
-    const BASE_LDE_FACTOR: usize = 1 << 6;
-    const WHIR_STEPS_LDE_FACTORS: [usize; 5] = [1 << 8, 1 << 12, 1 << 16, 1 << 20, 1 << 23];
+    const BASE_LDE_FACTOR: usize = 1 << 7;
+    const WHIR_STEPS_LDE_FACTORS: [usize; 4] = [1 << 8, 1 << 12, 1 << 16, 1 << 20];
 
-    /// The per-round PoW bits, rounds 0..6 at rates 2^-6 / 2^-8 / 2^-12 /
-    /// 2^-16 / 2^-20 / 2^-23. Every round satisfies
+    /// The per-round PoW bits, rounds 0..5 at rates 2^-7 / 2^-8 / 2^-12 /
+    /// 2^-16 / 2^-20. Every round satisfies
     /// `6 * pow + 5 * queries * rate_bits >= 600` at the least PoW that
     /// does; asserted by `l1_wrap_2p21_shape_and_security`.
-    pub const POW_BITS: [u32; 6] = [30, 27, 20, 20, 17, 24];
+    pub const POW_BITS: [u32; 5] = [30, 27, 30, 20, 17];
 
     /// The per-round (queries, PoW bits): the queries are derived from
     /// [`POW_BITS`] and the round rates; pinned by
     /// `l1_wrap_2p21_rounds_are_pinned`.
-    pub static QUERIES_AND_POW: LazyLock<[(usize, u32); 6]> =
+    pub static QUERIES_AND_POW: LazyLock<[(usize, u32); 5]> =
         LazyLock::new(|| queries_and_pow(SecurityLevel::Sec100));
 
-    fn queries_and_pow(level: SecurityLevel) -> [(usize, u32); 6] {
+    fn queries_and_pow(level: SecurityLevel) -> [(usize, u32); 5] {
         queries_and_pow_under_pessimistic_conjecture(
             level,
             BASE_LDE_FACTOR,
@@ -272,13 +272,13 @@ pub mod l1_wrap_2p21 {
             dimension_reducing_sumcheck_schedule: Default::default(),
             lde_factor: BASE_LDE_FACTOR,
             cap_size: CAP_SIZE,
-            base_oracles_values_per_leaf: 1 << 2,
+            base_oracles_values_per_leaf: 1 << 1,
             sumcheck_explicit_output_size_log_2: EXPLICIT_OUTPUT_LOG2,
             security_level: level,
             whir_schedule: WhirSchedule {
                 base_lde_factor: BASE_LDE_FACTOR,
                 cap_size: CAP_SIZE,
-                whir_steps_schedule: vec![2, 4, 4, 4, 3, 4],
+                whir_steps_schedule: vec![1, 4, 4, 4, 4],
                 whir_queries_schedule: queries_and_pow.iter().map(|(q, _)| *q).collect(),
                 whir_steps_lde_factors: WHIR_STEPS_LDE_FACTORS.to_vec(),
                 whir_pow_schedule: queries_and_pow.iter().map(|(_, p)| *p).collect(),
@@ -354,23 +354,23 @@ mod tests {
         let config = packed_prover_config(SecurityLevel::Sec100);
         let message_log2 = TRACE_LEN_LOG2 + PACK_LOG2;
         assert_eq!(config.trace_len_log2, 21);
-        assert_eq!(message_log2, 25);
+        assert_eq!(message_log2, 24);
         assert_eq!(
             config.same_size_sumcheck_schedule,
             windowed_same_size_schedule(21)
         );
-        assert_eq!(config.lde_factor, 64);
+        assert_eq!(config.lde_factor, 128);
         assert_eq!(config.cap_size, 8);
-        assert_eq!(config.base_oracles_values_per_leaf, 4);
+        assert_eq!(config.base_oracles_values_per_leaf, 2);
         assert_eq!(config.sumcheck_explicit_output_size_log_2, 2);
         config.validate_for_whir_message_size(message_log2);
         assert!(EXTERNAL_CHALLENGES_POW_BITS <= 25);
 
         let schedule = &config.whir_schedule;
-        assert_eq!(schedule.whir_steps_schedule, vec![2, 4, 4, 4, 3, 4]);
+        assert_eq!(schedule.whir_steps_schedule, vec![1, 4, 4, 4, 4]);
         assert_eq!(
             schedule.whir_steps_lde_factors,
-            vec![1 << 8, 1 << 12, 1 << 16, 1 << 20, 1 << 23]
+            vec![1 << 8, 1 << 12, 1 << 16, 1 << 20]
         );
         for (round, (queries, pow)) in QUERIES_AND_POW.iter().enumerate() {
             assert_eq!(schedule.whir_queries_schedule[round], *queries);
@@ -398,10 +398,10 @@ mod tests {
                 oracle_round_queries += schedule.whir_queries_schedule[round];
             }
         }
-        assert_eq!(rate_bits_per_round, vec![6, 8, 12, 16, 20, 23]);
-        assert_eq!(committed_logs, vec![25, 23, 19, 15, 11, 8]);
+        assert_eq!(rate_bits_per_round, vec![7, 8, 12, 16, 20]);
+        assert_eq!(committed_logs, vec![24, 23, 19, 15, 11]);
         assert!(committed_logs.iter().all(|log| *log >= 8));
-        assert_eq!(poly_size_log2, 4);
+        assert_eq!(poly_size_log2, 7);
         assert!(oracle_round_queries <= 256);
 
         // every round: within the PoW budget, `6 * pow + 5 * queries *
@@ -512,12 +512,11 @@ mod tests {
         assert_eq!(
             rounds(&l1_wrap_2p21::packed_prover_config(SecurityLevel::Sec100)),
             [
-                (6, 14, 30),
+                (7, 12, 30),
                 (8, 11, 27),
-                (12, 8, 20),
+                (12, 7, 30),
                 (16, 6, 20),
-                (20, 5, 17),
-                (23, 4, 24)
+                (20, 5, 17)
             ]
         );
     }

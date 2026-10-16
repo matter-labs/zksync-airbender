@@ -130,8 +130,15 @@ pub(crate) fn forward_fixture_full(context: &ProverContext) -> ForwardFixturePr 
         let decoder = vec![None; artifact.total_tables_size - artifact.offset_for_decoder_table];
         prover::gkr::prover::setup::GKRSetup::<PR>::construct(&driver, &decoder, rows, &artifact)
     };
-    let setup_host =
-        Arc::new(crate::setup::L1WrapSetupHost::precompute(&setup, 4, cfg, context).unwrap());
+    let setup_host = Arc::new(
+        crate::setup::L1WrapSetupHost::precompute(
+            &setup,
+            prover::gkr::prover_config::example_configs::l1_wrap_2p21::PACK_LOG2 as u32,
+            cfg,
+            context,
+        )
+        .unwrap(),
+    );
     let mut d_setup = crate::setup::PackedSetupSource::new(
         setup_host,
         gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
@@ -280,7 +287,13 @@ pub(crate) fn forward_fixture_full(context: &ProverContext) -> ForwardFixturePr 
         .unwrap();
         context.get_exec_stream().synchronize().unwrap();
     }
-    let base = PackedCosetRecomputeOracle::from_uploaded(raw, 4, cfg, context).unwrap();
+    let base = PackedCosetRecomputeOracle::from_uploaded(
+        raw,
+        prover::gkr::prover_config::example_configs::l1_wrap_2p21::PACK_LOG2 as u32,
+        cfg,
+        context,
+    )
+    .unwrap();
     let scratch = deterministic_columns(log_rows, artifact.scratch_space_size);
     let mut d_scratch = context
         .alloc(rows * scratch.len(), AllocationPlacement::BestFit)
@@ -350,7 +363,9 @@ pub(crate) fn forward_fixture_full(context: &ProverContext) -> ForwardFixturePr 
     config.trace_len_log2 = log_rows as usize;
     let proof = crate::proth120::proof_layout::ProofSlabPr::new(
         Arc::new(crate::proth120::proof_layout::ProofLayoutPr::new(
-            &programs, &config, 4,
+            &programs,
+            &config,
+            prover::gkr::prover_config::example_configs::l1_wrap_2p21::PACK_LOG2,
         )),
         context,
     )

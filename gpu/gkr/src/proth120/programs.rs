@@ -149,7 +149,8 @@ mod cpu_tests {
         .unwrap();
         let programs = GkrProgramsPr::compile(CircuitType::L1Wrap21, Arc::new(artifact)).unwrap();
         let config = ProofProfile::L1Wrap.prover_config(21, SecurityLevel::Sec100);
-        let layout = ProofLayoutPr::new(&programs, &config, 4);
+        let pack_log2 = prover::gkr::prover_config::example_configs::l1_wrap_2p21::PACK_LOG2;
+        let layout = ProofLayoutPr::new(&programs, &config, pack_log2);
         let main_layers = programs.runtime_circuit.layers.len();
         let mut main_layer_count = 0;
         for layer in &layout.backward_layers {
@@ -167,10 +168,10 @@ mod cpu_tests {
         let dr_folds = cpu_validate_dr_tail_shapes_pr(&programs);
         assert_eq!(dr_folds.len(), 19);
         assert_eq!(dr_folds, (2..=20).rev().collect::<Vec<_>>());
-        assert_eq!(layout.pack_log2(), 4);
+        assert_eq!(layout.pack_log2(), 3);
         assert_eq!(layout.backward_layers.len(), 24);
-        assert_eq!(layout.memory_claims.len(), 7 * 16);
-        assert_eq!(layout.setup_claims.len(), 16);
-        assert_eq!(layout.evaluation_point.len(), 25 * 16);
+        assert_eq!(layout.memory_claims.len(), 13 * 16);
+        assert_eq!(layout.setup_claims.len(), 2 * 16);
+        assert_eq!(layout.evaluation_point.len(), 24 * 16);
     }
 }

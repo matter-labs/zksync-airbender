@@ -156,6 +156,11 @@ fn packed_commit_matches_cpu_small() {
         (6, 2, 1, 4, 3, 0),
     ]);
     shapes.extend((6..=10).map(|depth| (12, 4, 20, 2, 3, depth)));
+    shapes.extend([
+        (12, 3, 104, 1, 3, 5),
+        (12, 3, 10, 1, 3, 5),
+        (12, 3, 104, 1, 3, 8),
+    ]);
     for (log_rows, pack_log2, columns_count, log_v, cap_log, skip_bottom) in shapes {
         let cfg = PackedCommitConfig {
             log_lde_factor: 5,
@@ -319,18 +324,19 @@ fn root_matches(hashed_leaf: &[PR], path: &[[u32; 8]], index: usize, cap: &[[u32
 #[cfg(not(no_cuda))]
 fn packed_open_queries_match_cpu_small() {
     for skip_bottom in 5..=10 {
-        check_packed_open_queries(skip_bottom);
+        check_packed_open_queries(4, 2, skip_bottom);
+        check_packed_open_queries(3, 1, skip_bottom);
     }
 }
 
 #[cfg(not(no_cuda))]
-fn check_packed_open_queries(skip_bottom: u32) {
+fn check_packed_open_queries(pack_log2: u32, log_v: u32, skip_bottom: u32) {
     let context = make_context();
     let worker = Worker::new_with_num_threads(4);
-    let (log_rows, pack_log2) = (12, 4);
+    let log_rows = 12;
     let cfg = PackedCommitConfig {
         log_lde_factor: 5,
-        log_values_per_leaf: 2,
+        log_values_per_leaf: log_v,
         cap_log: 3,
         skip_bottom,
     };
@@ -494,18 +500,18 @@ fn l1_setup_host_round_trip_small() {
             })
             .collect(),
     };
-    for cap_log in [3, 5] {
+    for (cap_log, pack_log2, log_v) in [(3, 4, 2), (5, 4, 2), (3, 3, 1), (5, 3, 1)] {
         let cfg = PackedCommitConfig {
             log_lde_factor: 5,
-            log_values_per_leaf: 2,
+            log_values_per_leaf: log_v,
             cap_log,
             skip_bottom: 5,
         };
-        let cpu = cpu_commit(&columns, 12, 4, cfg, &twiddles, &worker);
-        let host = Arc::new(L1WrapSetupHost::precompute(&setup, 4, cfg, &context).unwrap());
+        let cpu = cpu_commit(&columns, 12, pack_log2, cfg, &twiddles, &worker);
+        let host = Arc::new(L1WrapSetupHost::precompute(&setup, pack_log2, cfg, &context).unwrap());
         assert_eq!(host.log_rows, 12);
         assert_eq!(host.columns_count, 10);
-        assert_eq!(host.pack_log2, 4);
+        assert_eq!(host.pack_log2, pack_log2);
         assert_eq!(host.cfg, cfg);
         assert_eq!(host.cap(), cpu.get_cap());
         for (physical, root) in host.roots.iter().enumerate() {
@@ -569,9 +575,10 @@ fn l1_setup_host_round_trip_small() {
             &worker,
         );
         let count = queries.len();
-        let depth = opening_path_len(16, &cfg);
+        let depth = opening_path_len(12 + pack_log2, &cfg);
+        let leaf_len = 10usize.div_ceil(1 << pack_log2) << log_v;
         let d_queries = upload(&queries, &context);
-        let mut d_leaves = upload(&vec![PR::ONE; count * 4], &context);
+        let mut d_leaves = upload(&vec![PR::ONE; count * leaf_len], &context);
         let mut d_paths = upload(&vec![[0xdead_beef; 8]; count * depth], &context);
         let mut d_indexes = upload(&vec![0xaaaa_aaaa; count], &context);
         source
@@ -587,7 +594,7 @@ fn l1_setup_host_round_trip_small() {
         let paths = read_back(&d_paths, [0; 8], &context);
         let indexes = read_back(&d_indexes, 0u32, &context);
         for (i, expected) in expected.iter().enumerate() {
-            let leaf = &leaves[i * 4..(i + 1) * 4];
+            let leaf = &leaves[i * leaf_len..(i + 1) * leaf_len];
             let path = &paths[i * depth..(i + 1) * depth];
             assert_eq!(
                 leaf,
@@ -596,18 +603,30 @@ fn l1_setup_host_round_trip_small() {
             );
             assert_eq!(path, &expected.path[..], "uploaded path {i}");
             assert_eq!(indexes[i] as usize, expected.index, "uploaded index {i}");
-            assert!(root_matches(leaf, path, expected.index, &host.cap().cap));
+            let packed_columns = cpu.monomial_forms.len();
+            let column_major: Vec<PR> = (0..packed_columns)
+                .flat_map(|column| {
+                    (0..1usize << log_v).map(move |slot| leaf[slot * packed_columns + column])
+                })
+                .collect();
+            assert!(root_matches(
+                &column_major,
+                path,
+                expected.index,
+                &host.cap().cap
+            ));
         }
-        let mut scratch = context.alloc(1 << 16, AllocationPlacement::Top).unwrap();
+        let fields: usize = cpu.monomial_forms.iter().map(|column| column.len()).sum();
+        let mut scratch = context.alloc(fields, AllocationPlacement::Top).unwrap();
         source.recompute_coset(31, &mut scratch, &context).unwrap();
-        let expected = compute_column_major_lde_single_coset(
-            &cpu.monomial_forms[0],
-            &twiddles,
-            32,
-            31,
-            &worker,
-        );
-        assert_eq!(read_back(&scratch, PR::ZERO, &context), expected.to_vec());
+        let expected: Vec<PR> = cpu
+            .monomial_forms
+            .iter()
+            .flat_map(|column| {
+                compute_column_major_lde_single_coset(column, &twiddles, 32, 31, &worker).to_vec()
+            })
+            .collect();
+        assert_eq!(read_back(&scratch, PR::ZERO, &context), expected);
         drop(scratch);
         source.release_raw();
         source.release_commitment_state();
@@ -628,7 +647,7 @@ fn l1_layout() -> GKRCircuitArtifact<Proth120> {
 
 fn deterministic_mode(final_timestamp: TimestampScalar) -> CommitmentMode {
     CommitmentMode::MergedAndPackedMemoryAndWitness {
-        pack_log2: 4,
+        pack_log2: prover::gkr::prover_config::example_configs::l1_wrap_2p21::PACK_LOG2,
         external_challenges_pow_bits: 20,
         register_final_state: std::array::from_fn(|reg| FinalRegisterValue {
             value: 0x1000_0001u32.wrapping_mul(reg as u32 + 7),
