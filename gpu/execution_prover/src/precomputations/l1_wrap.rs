@@ -126,8 +126,27 @@ mod cpu_tests {
             trace_len: 1 << 21,
             rom: common_constants::rom::L1_WRAP_ROM,
         };
-        L1WrapPrecomputed::new(CircuitType::L1Wrap21, setup, SecurityLevel::Sec100)
-            .unwrap()
-            .host();
+        let circuit_type = CircuitType::L1Wrap21;
+        let security = SecurityLevel::Sec100;
+        let config =
+            gpu_circuit_prover::config::prover_config(circuit_type, ProofProfile::L1Wrap, security)
+                .expect("supported L1Wrap config");
+        let geometry = L1WrapGeometry::new(circuit_type, &config, &setup.circuit, &setup);
+        let circuit = Arc::new(setup.circuit.clone());
+        let programs =
+            Arc::new(GkrProgramsPr::compile(circuit_type, Arc::clone(&circuit)).unwrap());
+        // The host initialization guard does not need a pinned decoder allocation.
+        let precomputed = L1WrapPrecomputed {
+            circuit_type,
+            setup,
+            circuit,
+            programs,
+            decoder_host: None,
+            security,
+            config,
+            geometry,
+            host: OnceLock::new(),
+        };
+        precomputed.host();
     }
 }
