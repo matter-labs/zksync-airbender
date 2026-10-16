@@ -67,7 +67,8 @@ contract WhirVerifier {
     uint256 constant COMMIT_PTR = 96; // recomputed committed state, marked at the end
     // GkrWhirRegistry address (test etches the deployed registry here).
     address constant __TEMPLATE_REGISTRY_ADDRESS   = 0x0000000000000000000000000000000000000000;
-    uint256 constant __TEMPLATE_F1_DIGEST_BYTES = 32; // Merkle digest bytes on the F1 wire
+    uint256 constant __TEMPLATE_DIGEST_MASK = 0xffffffffffffffffffffffffffffffffffffffffffffffffff00000000000000; // Merkle leaf/node hash: keccak256 truncated to the digest bytes
+    uint256 constant __TEMPLATE_F1_DIGEST_BYTES = 25; // Merkle digest bytes on the F1 wire
     uint256 constant MARK_WHIR_SELECTOR = 0xbb716068; // mark_whir_verified(bytes32)
 
     // ── hand-placed memory ────────────────────────────────────────────────────
@@ -154,7 +155,7 @@ contract WhirVerifier {
             }
         }
         function f1_digest(cp) -> d {
-            d := calldataload(cp)
+            d := and(calldataload(cp), 0xffffffffffffffffffffffffffffffffffffffffffffffffff00000000000000)
         }
         function verify_pow(cp, pow_bits) -> next_cd {
             let nonce := shr(192, calldataload(cp))
@@ -330,7 +331,7 @@ contract WhirVerifier {
                         mstore(0, sibling)
                         mstore(32, h)
                     }
-                    h := keccak256(0, 64)
+                    h := and(keccak256(0, 64), __TEMPLATE_DIGEST_MASK)
                 }
                 default {
                     // Bits above the path form the cap index.
@@ -358,7 +359,7 @@ contract WhirVerifier {
                 }
             }
             cp := f1_run_end(cp, mul(cols, vp))
-            next_cd := merkle_path(keccak256(LEAF_PTR, mul(li, 32)), depth, cap_ptr, cp, qidx, cb)
+            next_cd := merkle_path(and(keccak256(LEAF_PTR, mul(li, 32)), __TEMPLATE_DIGEST_MASK), depth, cap_ptr, cp, qidx, cb)
         }
         function read_leaf(cp, vp, depth, cap_ptr, qidx, cb) -> next_cd {
             let words := shr(1, vp)
@@ -371,7 +372,7 @@ contract WhirVerifier {
                 mstore(add(FBUF_PTR, mul(add(mul(i, 2), 1), 32)), and(w, MASK))
             }
             cp := f1_run_end(cp, vp)
-            next_cd := merkle_path(keccak256(LEAF_PTR, mul(words, 32)), depth, cap_ptr, cp, qidx, cb)
+            next_cd := merkle_path(and(keccak256(LEAF_PTR, mul(words, 32)), __TEMPLATE_DIGEST_MASK), depth, cap_ptr, cp, qidx, cb)
         }
         // Reinterpret a 32-byte digest (8 big-endian u32 words) as the same 8
         // words each in little-endian byte order, keeping word positions. This

@@ -227,8 +227,10 @@ fn f1_roundtrip_reproduces_v0() {
 /// F1 byte counts of the committed proof from the independent layout model (pair w7ba, C1:
 /// orange/.agents/plans/2026-10-15-w7b-impl/w7ba/f1-layout-codex.md), per profile
 /// `(digest_bytes, explicit_output_log2)`: `(gkr_bytes, total bytes, wire digests)`.
-const INDEPENDENT_LAYOUT_COUNTS: &[((usize, usize), (usize, usize, usize))] =
-    &[((32, 4), (21_523, 88_043, 1_597))];
+const INDEPENDENT_LAYOUT_COUNTS: &[((usize, usize), (usize, usize, usize))] = &[
+    ((32, 4), (21_523, 88_043, 1_597)),
+    ((25, 2), (20_393, 75_790, 1_597)),
+];
 
 #[test]
 fn f1_decoder_rejects_malformed_streams() {
