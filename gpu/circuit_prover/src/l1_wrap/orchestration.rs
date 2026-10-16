@@ -191,6 +191,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     range.start(stream)?;
     let mut callbacks = Callbacks::new();
     let mut phases: Vec<Range> = Vec::new();
+    let relations = prepare_lookup_relations(circuit, context)?;
     let p = phase("l1_wrap.setup_transfer", context)?;
     let mut setup = PackedSetupSource::new(Arc::clone(&setup_host), partial_trees.setup, context)?;
     let mut setup_upload_guard = H2dJoinOnDrop::new(context)?;
@@ -230,7 +231,6 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         circuit.timestamp_range_check_lookup_expressions.len() * rows,
         AllocationPlacement::BestFit,
     )?;
-    let relations = prepare_lookup_relations(circuit, context)?;
     {
         let (memory, witness) = raw
             .get_uninit_hypercube_evals_mut()
