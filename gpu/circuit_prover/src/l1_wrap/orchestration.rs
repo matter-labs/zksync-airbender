@@ -8,7 +8,7 @@ use era_cudart::stream::CudaStreamWaitEventFlags;
 use fft::GoodAllocator;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::callbacks::Callbacks;
-use gpu_core::primitives::context::{HostAllocation, UnsafeMutAccessor};
+use gpu_core::primitives::context::HostAllocation;
 use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::PR;
@@ -46,8 +46,9 @@ use crate::upstream::{
 pub struct GpuL1WrapProofJob<'a> {
     is_finished_event: CudaEvent,
     callbacks: Callbacks<'a>,
-    m6_fields: Box<Option<M6ProofFields>>,
-    whir: Option<L1WhirScheduled>,
+    m6_layout: Arc<ProofLayoutPr>,
+    m6_mirror: HostAllocation<[u8]>,
+    whir: L1WhirScheduled,
     top_bits_host: Vec<u32>,
     commitment_mode: CommitmentMode,
     ranges: Vec<Range>,
@@ -61,7 +62,6 @@ pub(crate) struct GpuL1WrapProofJobKeepalive<'a> {
     _relations: Proth120LookupRelations,
     _challenges: PackedChallenges,
     _gkr: GkrOutputPr,
-    _proof_host_mirror: HostAllocation<[u8]>,
 }
 
 /// Until disarmed, an early exit makes exec_stream wait for everything queued on h2d_stream,
@@ -424,16 +424,6 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         DeviceSlice::from_raw_parts(slab.backing.as_ptr().cast::<u8>(), layout.bytes_len())
     };
     memory_copy_async(&mut mirror, slab_bytes, stream)?;
-    let mirror_accessor = mirror.get_accessor();
-    let mut m6_fields = Box::new(None);
-    let m6_accessor = UnsafeMutAccessor::new(&mut *m6_fields);
-    callbacks.schedule(
-        move || {
-            let fields = layout.parse_m6_fields(unsafe { mirror_accessor.get() });
-            unsafe { m6_accessor.get_mut() }.replace(fields);
-        },
-        stream,
-    )?;
     drop(slab);
     end_phase(p, &mut phases, context)?;
     let h2d_join = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
@@ -447,8 +437,9 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     Ok(GpuL1WrapProofJob {
         is_finished_event,
         callbacks,
-        m6_fields,
-        whir: Some(whir),
+        m6_layout: layout,
+        m6_mirror: mirror,
+        whir,
         top_bits_host,
         commitment_mode,
         ranges: {
@@ -466,7 +457,6 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
             _relations: relations,
             _challenges: challenges,
             _gkr: gkr,
-            _proof_host_mirror: mirror,
         },
     })
 }
@@ -476,21 +466,18 @@ impl GpuL1WrapProofJob<'_> {
         let Self {
             is_finished_event,
             callbacks,
-            mut m6_fields,
-            mut whir,
+            m6_layout,
+            m6_mirror,
+            whir,
             top_bits_host,
             commitment_mode,
             ranges,
             keepalive,
         } = self;
         is_finished_event.synchronize()?;
-        let fields = m6_fields
-            .take()
-            .expect("L1Wrap M6 readback did not complete");
-        let whir = whir
-            .take()
-            .expect("L1Wrap WHIR job missing")
-            .into_proof_after_completion();
+        // SAFETY: the job owns both mirrors and every D2H into them precedes the synchronized event.
+        let fields = m6_layout.parse_m6_fields(unsafe { m6_mirror.get_accessor().get() });
+        let whir = unsafe { whir.into_proof_after_completion() };
         let result = assemble_l1_proof(fields, whir, top_bits_host, commitment_mode);
         for range in &ranges {
             log::debug!("{}: {} ms", range.name(), range.elapsed()?);

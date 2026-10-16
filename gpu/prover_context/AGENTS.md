@@ -34,10 +34,12 @@ truth.
   kernel launches, `memory_copy_async`, or host callbacks scheduled via
   `Callbacks::schedule` / `launch_host_fn`. `UnsafeAccessor::get()` /
   `UnsafeMutAccessor::get_mut()` are only valid inside stream-scheduled
-  closures.
+  closures (read-only exception: a job's terminal D2H mirrors in its
+  `finish()`).
 - **MUST** fill stream-ordered H2D staging buffers via a scheduled host
-  callback; consume D2H readback buffers the same way. Never touch either
-  from the scheduling thread.
+  callback; consume D2H readback buffers the same way, or — terminal
+  proof-output mirrors only — in the job's `finish()` after its completion
+  event synchronized. Never touch either while enqueueing.
 - **MUST** fork/join any op on `h2d_stream` against `exec_stream` with explicit CUDA
   events. The driver gives independent streams no implicit ordering.
 - **MUST** allocate and drop pool-backed handles on `exec_stream`; if a
