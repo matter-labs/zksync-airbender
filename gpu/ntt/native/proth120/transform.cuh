@@ -7,6 +7,7 @@ namespace airbender::ntt {
 struct dit_policy {
   proth120_twiddle_descriptor descriptor;
   static constexpr bool USES_TWIDDLES = true;
+  DEVICE_FORCEINLINE pr twiddle(const u32 region, const int) const { return get_forward_pr_twiddle(descriptor, region); }
   DEVICE_FORCEINLINE void exchg(pr &a, pr &b, const pr twiddle) const {
     b = pr::mul(b, twiddle);
     const pr t = a;
@@ -17,6 +18,15 @@ struct dit_policy {
     const pr t = a;
     a = pr::add(t, b);
     b = pr::sub(t, b);
+  }
+};
+
+// Twiddles of the block's relative stages >= 2 come from a shared-memory table in heap order:
+// relative stage t, region (blockIdx.x << t) + j at index 2^t - 1 + j.
+struct staged_dit_policy : dit_policy {
+  const pr *staged;
+  DEVICE_FORCEINLINE pr twiddle(const u32 region, const int stage) const {
+    return stage < 2 ? get_forward_pr_twiddle(descriptor, region) : staged[(1u << stage) - 1 + region - (blockIdx.x << stage)];
   }
 };
 
@@ -56,16 +66,16 @@ DEVICE_FORCEINLINE u32 chunk_block_y(const chunk_map &m) {
   return ((blockIdx.y / m.strip_blocks) << m.strip_domain_bits) | (m.strip_base + blockIdx.y % m.strip_blocks);
 }
 
-template <class P> DEVICE_FORCEINLINE void exchange(const P &policy, pr &a, pr &b, const u32 region) {
+template <class P> DEVICE_FORCEINLINE void exchange(const P &policy, pr &a, pr &b, const u32 region, const int stage = -1) {
   if constexpr (P::USES_TWIDDLES)
-    policy.exchg(a, b, get_forward_pr_twiddle(policy.descriptor, region));
+    policy.exchg(a, b, policy.twiddle(region, stage));
   else
     policy.exchg_0(a, b);
 }
 
-template <class P> DEVICE_FORCEINLINE void exchange_two(const P &policy, pr &a, pr &b, pr &c, pr &d, const u32 region) {
+template <class P> DEVICE_FORCEINLINE void exchange_two(const P &policy, pr &a, pr &b, pr &c, pr &d, const u32 region, const int stage = -1) {
   if constexpr (P::USES_TWIDDLES) {
-    const pr twiddle = get_forward_pr_twiddle(policy.descriptor, region);
+    const pr twiddle = policy.twiddle(region, stage);
     policy.exchg(a, b, twiddle);
     policy.exchg(c, d, twiddle);
   } else {
@@ -88,11 +98,11 @@ DEVICE_FORCEINLINE void do_2_smem_stages(pr *smem_block, const P &policy) {
   for (int i{0}, addr{lane_in_smem_region}; i < VALS_PER_THREAD; i++, addr += THREADS_PER_SMEM_REGION)
     vals[i] = smem[addr];
   int exchg_region = smem_region + (blockIdx.x << LOG_SMEM_REGIONS_PER_BLOCK);
-  exchange_two(policy, vals[0], vals[2], vals[1], vals[3], exchg_region);
+  exchange_two(policy, vals[0], vals[2], vals[1], vals[3], exchg_region, STAGES_SO_FAR_THIS_LAUNCH);
   if constexpr (!SKIP_LAST) {
     exchg_region <<= 1;
-    exchange(policy, vals[0], vals[1], exchg_region);
-    exchange(policy, vals[2], vals[3], exchg_region + 1);
+    exchange(policy, vals[0], vals[1], exchg_region, STAGES_SO_FAR_THIS_LAUNCH + 1);
+    exchange(policy, vals[2], vals[3], exchg_region + 1, STAGES_SO_FAR_THIS_LAUNCH + 1);
   }
 #pragma unroll
   for (int i{0}, addr{lane_in_smem_region}; i < VALS_PER_THREAD; i++, addr += THREADS_PER_SMEM_REGION)
@@ -103,7 +113,44 @@ DEVICE_FORCEINLINE void do_2_smem_stages(pr *smem_block, const P &policy) {
     __syncwarp();
 }
 
-template <int STAGES, bool NARROW, class P, bool SCALE = false>
+template <int STAGES, int LOG_TILES_PER_BLOCK, class P>
+DEVICE_FORCEINLINE void nonfinal_rest(pr (&vals)[4], pr *smem_block, pr_matrix_setter<st_modifier::cg> &gmem_out, const P &policy, const u32 start_stage,
+                                      int exchg_region, const int tile_gmem_stride, const int lane_in_tile) {
+  constexpr int LOG_TILE_SIZE = 3;
+  constexpr int VALS_PER_THREAD = 4;
+  constexpr int LOG_VALS_PER_BLOCK = LOG_TILES_PER_BLOCK + LOG_TILE_SIZE;
+  constexpr int LOG_THREADS_PER_BLOCK = LOG_VALS_PER_BLOCK - 2;
+  constexpr int VALS_PER_BLOCK = 1 << LOG_VALS_PER_BLOCK;
+  if (start_stage == 0) {
+    policy.exchg_0(vals[0], vals[2]);
+    policy.exchg_0(vals[1], vals[3]);
+  } else {
+    exchange_two(policy, vals[0], vals[2], vals[1], vals[3], exchg_region, 0);
+  }
+  exchg_region <<= 1;
+  exchange(policy, vals[0], vals[1], exchg_region, 1);
+  exchange(policy, vals[2], vals[3], exchg_region + 1, 1);
+#pragma unroll
+  for (unsigned i{0}, addr{threadIdx.x}; i < VALS_PER_THREAD; i++, addr += blockDim.x)
+    smem_block[addr] = vals[i];
+  __syncthreads();
+  do_2_smem_stages<4, 2, VALS_PER_BLOCK, LOG_THREADS_PER_BLOCK, false, P>(smem_block, policy);
+  do_2_smem_stages<4, 4, VALS_PER_BLOCK, LOG_THREADS_PER_BLOCK, (STAGES == 5), P>(smem_block, policy);
+  if constexpr (STAGES >= 7)
+    do_2_smem_stages<4, 6, VALS_PER_BLOCK, LOG_THREADS_PER_BLOCK, (STAGES == 7), P>(smem_block, policy);
+  const int warp_id = threadIdx.x >> 5;
+  const int lane_id = threadIdx.x & 31;
+  pr *smem_warp = smem_block + 32 * VALS_PER_THREAD * warp_id;
+  constexpr int TILES_PER_STORE = 32 >> LOG_TILE_SIZE;
+  constexpr int TILES_PER_WARP = (32 * VALS_PER_THREAD) >> LOG_TILE_SIZE;
+  const int tile_in_store = lane_id >> LOG_TILE_SIZE;
+  gmem_out.add_row(tile_gmem_stride * (tile_in_store + TILES_PER_WARP * warp_id) + lane_in_tile);
+#pragma unroll
+  for (int i{0}, addr_smem{lane_id}, addr_gmem{0}; i < VALS_PER_THREAD; i++, addr_smem += 32, addr_gmem += TILES_PER_STORE * tile_gmem_stride)
+    gmem_out.set_at_row(addr_gmem, smem_warp[addr_smem]);
+}
+
+template <int STAGES, bool NARROW, class P, bool SCALE = false, bool STAGED = false>
 DEVICE_FORCEINLINE void nonfinal(pr_matrix_getter<ld_modifier::cg> gmem_in, pr_matrix_setter<st_modifier::cg> gmem_out, const P &policy, const u32 log_n,
                                  const u32 start_stage, const chunk_map map, const coset_scale scale = {}) {
   static_assert(!NARROW || (STAGES >= 5 && STAGES <= 7));
@@ -139,33 +186,18 @@ DEVICE_FORCEINLINE void nonfinal(pr_matrix_getter<ld_modifier::cg> gmem_in, pr_m
         vals[i] = pr::mul(vals[i], coset_scale_power(policy.descriptor, scale, k, block_start + addr));
     }
   }
-  if (start_stage == 0) {
-    policy.exchg_0(vals[0], vals[2]);
-    policy.exchg_0(vals[1], vals[3]);
+  if constexpr (STAGED) {
+    static_assert(P::USES_TWIDDLES);
+    __shared__ pr staged[(1 << STAGES) - 1];
+    for (u32 m = 3 + threadIdx.x; m + 1 < (1u << STAGES); m += blockDim.x) {
+      const u32 t = 31 - __clz(m + 1);
+      staged[m] = get_forward_pr_twiddle(policy.descriptor, (blockIdx.x << t) + m + 1 - (1u << t));
+    }
+    const staged_dit_policy staged_policy{policy, staged};
+    nonfinal_rest<STAGES, LOG_TILES_PER_BLOCK>(vals, smem_block, gmem_out, staged_policy, start_stage, exchg_region, tile_gmem_stride, lane_in_tile);
   } else {
-    exchange_two(policy, vals[0], vals[2], vals[1], vals[3], exchg_region);
+    nonfinal_rest<STAGES, LOG_TILES_PER_BLOCK>(vals, smem_block, gmem_out, policy, start_stage, exchg_region, tile_gmem_stride, lane_in_tile);
   }
-  exchg_region <<= 1;
-  exchange(policy, vals[0], vals[1], exchg_region);
-  exchange(policy, vals[2], vals[3], exchg_region + 1);
-#pragma unroll
-  for (unsigned i{0}, addr{threadIdx.x}; i < VALS_PER_THREAD; i++, addr += blockDim.x)
-    smem_block[addr] = vals[i];
-  __syncthreads();
-  do_2_smem_stages<4, 2, VALS_PER_BLOCK, LOG_THREADS_PER_BLOCK, false, P>(smem_block, policy);
-  do_2_smem_stages<4, 4, VALS_PER_BLOCK, LOG_THREADS_PER_BLOCK, (STAGES == 5), P>(smem_block, policy);
-  if constexpr (STAGES >= 7)
-    do_2_smem_stages<4, 6, VALS_PER_BLOCK, LOG_THREADS_PER_BLOCK, (STAGES == 7), P>(smem_block, policy);
-  const int warp_id = threadIdx.x >> 5;
-  const int lane_id = threadIdx.x & 31;
-  pr *smem_warp = smem_block + 32 * VALS_PER_THREAD * warp_id;
-  constexpr int TILES_PER_STORE = 32 >> LOG_TILE_SIZE;
-  constexpr int TILES_PER_WARP = (32 * VALS_PER_THREAD) >> LOG_TILE_SIZE;
-  const int tile_in_store = lane_id >> LOG_TILE_SIZE;
-  gmem_out.add_row(tile_gmem_stride * (tile_in_store + TILES_PER_WARP * warp_id) + lane_in_tile);
-#pragma unroll
-  for (int i{0}, addr_smem{lane_id}, addr_gmem{0}; i < VALS_PER_THREAD; i++, addr_smem += 32, addr_gmem += TILES_PER_STORE * tile_gmem_stride)
-    gmem_out.set_at_row(addr_gmem, smem_warp[addr_smem]);
 }
 
 template <int LOG_THREADS_PER_BLOCK, int STAGES, class P>
