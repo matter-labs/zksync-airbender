@@ -40,7 +40,7 @@ struct Term<F, E> {
     point: F,
     /// exponent of `point` w.r.t. the generator of the field's maximal
     /// two-adic subgroup (`2^F::TWO_ADICITY`), kept exactly under squaring
-    exp: u64,
+    exp: u128,
     /// the round's leaf, folded `s` times: evaluations of the current folded
     /// polynomial on `base^{2^s} * mu_{2^{k-s}}`, coset order bit-reversed
     values: Vec<E>,
@@ -78,8 +78,8 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> InDomainTerms<F
     /// A query at `query_domain_generator^query_index` in a query domain of
     /// size `2^query_domain_log2`, with weight `ch`.
     pub(crate) fn add(&mut self, point: F, query_index: usize, query_domain_log2: usize, ch: E) {
-        assert!(query_domain_log2 <= F::TWO_ADICITY);
-        let exp = (query_index as u64) << (F::TWO_ADICITY - query_domain_log2);
+        assert!(query_domain_log2 <= F::TWO_ADICITY && F::TWO_ADICITY < u128::BITS as usize);
+        let exp = (query_index as u128) << (F::TWO_ADICITY - query_domain_log2);
         self.terms.push(Term {
             ch,
             factor: E::ONE,
@@ -126,18 +126,19 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> InDomainTerms<F
         assert!(domain_log2 <= F::TWO_ADICITY && k <= domain_log2);
         let domain = 1u64 << domain_log2;
         let num_leaves_log2 = domain_log2 - k;
+        assert!(num_leaves_log2 <= 32, "in-domain leaf index exceeds u32");
         let generator = domain_generator_for_size::<F>(domain);
         let mut scratch_a = vec![E::ZERO; n];
         let mut scratch_b = vec![E::ZERO; n];
         for term in self.terms.iter_mut() {
             let shift = F::TWO_ADICITY - domain_log2;
             assert_eq!(
-                term.exp & ((1u64 << shift) - 1),
+                term.exp & ((1u128 << shift) - 1),
                 0,
                 "an in-domain point must lie in the current oracle's domain"
             );
             let e = term.exp >> shift;
-            let leaf_index = (e & ((1u64 << num_leaves_log2) - 1)) as usize;
+            let leaf_index = (e & ((1u128 << num_leaves_log2) - 1)) as usize;
             let natural_pos = (e >> num_leaves_log2) as usize;
             term.pos = bitreverse_index(natural_pos, k as u32);
             term.base_root = generator.pow(leaf_index as u32);
@@ -281,7 +282,7 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> InDomainTerms<F
             term.values.truncate(half);
             term.pos >>= 1;
             term.point.square();
-            term.exp = (term.exp << 1) & ((1u64 << F::TWO_ADICITY) - 1);
+            term.exp = (term.exp << 1) & ((1u128 << F::TWO_ADICITY) - 1);
             term.base_root.square();
             term.base_root_inv.square();
         }
@@ -453,5 +454,71 @@ mod tests {
             multilinear_coeffs_to_evals(&mut data, &base_root, &hp_inv, k, &mut a, &mut b);
             assert_eq!(data, evals, "k = {k}");
         }
+    }
+
+    #[test]
+    fn proth120_terms_track_points_up_to_domain_33() {
+        use field::proth120::Proth120 as P;
+        use std::cell::Cell;
+
+        let next = (33, 4);
+        for (query_log2, domain_log2, k) in [
+            (31, 31, 1),
+            (31, 32, 4),
+            (31, 33, 4),
+            (32, 32, 1),
+            (32, 33, 1),
+            (32, 33, 4),
+        ] {
+            let max = (1usize << query_log2) - 1;
+            let query_generator = domain_generator_for_size::<P>(1u64 << query_log2);
+            for query_index in [0, 1, (1 << 30) + 1, (1 << 31) - 1, 1 << 31, max - 1, max] {
+                if query_index > max {
+                    continue;
+                }
+                let mut terms = InDomainTerms::<P, P>::new();
+                terms.add(
+                    query_generator.pow(query_index as u32),
+                    query_index,
+                    query_log2,
+                    P::ONE,
+                );
+                let first = (query_index as u128) << (domain_log2 - query_log2);
+                let second = (first << (next.0 - domain_log2 + k)) & ((1u128 << next.0) - 1);
+                for (e, (domain_log2, k)) in [(first, (domain_log2, k)), (second, next)] {
+                    let num_leaves_log2 = domain_log2 - k;
+                    let fetched = Cell::new(usize::MAX);
+                    terms.start_round(k, domain_log2, |i| {
+                        fetched.set(i);
+                        (vec![P::ONE; 1 << k], false)
+                    });
+                    let case =
+                        format!("q={query_log2} D={domain_log2} k={k} index={query_index:#x}");
+                    assert_eq!(
+                        fetched.get() as u128,
+                        e & ((1u128 << num_leaves_log2) - 1),
+                        "{case}"
+                    );
+                    assert_eq!(
+                        terms.terms[0].pos,
+                        bitreverse_index((e >> num_leaves_log2) as usize, k as u32),
+                        "{case}"
+                    );
+                    for _ in 0..k {
+                        terms.fold(&P::TWO);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "in-domain leaf index exceeds u32")]
+    fn proth120_terms_reject_leaf_indexes_above_u32() {
+        use field::proth120::Proth120 as P;
+
+        let mut terms = InDomainTerms::<P, P>::new();
+        terms.add(P::ONE, 0, 32, P::ONE);
+        terms.start_round(0, 33, |_| (vec![P::ONE], false));
     }
 }
