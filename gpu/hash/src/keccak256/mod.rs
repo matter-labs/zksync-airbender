@@ -3,11 +3,13 @@ use era_cudart::slice::DeviceSlice;
 mod gather;
 mod hash;
 mod merkle;
+mod query_plan;
 mod transcript;
 
 pub use gather::*;
 pub use hash::*;
 pub use merkle::*;
+pub use query_plan::*;
 pub use transcript::*;
 
 pub const DIGEST_WORDS: usize = 8;

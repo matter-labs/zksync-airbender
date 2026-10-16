@@ -108,4 +108,43 @@ EXTERN __global__ void ab_keccak256_append_top_paths_kernel(const digest *roots,
   }
 }
 
+// Distinct physical cosets of the queries in first-occurrence order: touched[s] (s < count), count, and active[s] = s < count
+// (inactive slots get touched 0). One block of 1,024 threads, thread = query.
+EXTERN __launch_bounds__(1024) __global__
+    void ab_keccak256_coset_query_plan_kernel(const u32 *queries, const u32 count, const u32 log_lde, u32 *touched, u32 *active, u32 *touched_count) {
+  __shared__ u32 first[1u << 12];
+  __shared__ u32 warp_counts[32];
+  const u32 tid = threadIdx.x;
+  const u32 lane = tid & 31;
+  const u32 warp = tid >> 5;
+  for (u32 coset = tid; coset < (1u << log_lde); coset += blockDim.x)
+    first[coset] = ~0u;
+  __syncthreads();
+  const u32 coset = tid < count ? queries[tid] & ((1u << log_lde) - 1) : 0;
+  if (tid < count)
+    atomicMin(&first[coset], tid);
+  __syncthreads();
+  const bool leading = tid < count && first[coset] == tid;
+  const u32 ballot = __ballot_sync(0xffffffffu, leading);
+  if (lane == 0)
+    warp_counts[warp] = __popc(ballot);
+  __syncthreads();
+  u32 before = 0;
+  u32 total = 0;
+  for (u32 w = 0; w < blockDim.x / 32; w++) {
+    before += w < warp ? warp_counts[w] : 0;
+    total += warp_counts[w];
+  }
+  const u32 slot = before + __popc(ballot & ((1u << lane) - 1));
+  if (leading)
+    touched[slot] = coset;
+  if (tid < count) {
+    active[tid] = tid < total;
+    if (tid >= total)
+      touched[tid] = 0;
+  }
+  if (tid == 0)
+    *touched_count = total;
+}
+
 } // namespace airbender::hash::keccak256
