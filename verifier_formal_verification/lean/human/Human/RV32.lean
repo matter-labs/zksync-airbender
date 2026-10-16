@@ -2,8 +2,11 @@
 
 One instruction = at most one register or memory write, plus the PC update.
 No next state (`step = none`, i.e. unprovable in Airbender) for: anything outside Airbender's RV32IM subset
-(signed MULH/MULHSU/DIV/REM, FENCE, ECALL, CSRs, …), misaligned or out-of-range loads/stores, misaligned jump
-targets, fetch outside ROM.
+(signed MULH/MULHSU/DIV/REM, FENCE, ECALL, CSRs other than the input read below, …), misaligned or out-of-range
+loads/stores, misaligned jump targets, fetch outside ROM.
+The program's input is Airbender's non-determinism source (CSR `0x7c0`): an endless sequence of words, read one
+at a time by `csrrw rd, 0x7c0, x0` (rd ≠ x0). Its other forms (the write `csrrw x0, 0x7c0, rs1`, a no-op in
+Airbender and unused by the verifier; `csrrs`/`csrrc`/immediate forms) have no next state here.
 Differences from standard RV32IM follow Airbender's ISA table (spec/top-down/00 master.md, "Supported
 instruction set"); each is marked `-- Airbender:` below. -/
 
@@ -26,6 +29,8 @@ structure State where
   pc      : Word
   regFile : Reg → Word      -- stored values; read registers with `getReg` (x0 always reads as 0)
   mem     : Word → BitVec 8 -- byte-addressed, little-endian
+  input   : Nat → Word := fun _ => 0  -- the non-determinism input (CSR 0x7c0)
+  inputPos : Nat := 0                 -- how many input words have been read
 
 namespace State
 /-- The value an instruction sees in register `i`: x0 is always 0. -/
@@ -119,6 +124,7 @@ inductive Instr
   | opImm  (op : Op) (rd rs1 : Reg) (imm : Word)
   | op     (op : Op) (rd rs1 rs2 : Reg)
   | mop    (op : FieldOp) (rd rs1 rs2 : Reg)   -- Airbender: field operations (`mop.rr.N`)
+  | inputRead (rd : Reg)                      -- Airbender: `csrrw rd, 0x7c0, x0`, the next input word
 
 /-- What one instruction does to the state (`none`: Airbender cannot run it). -/
 def exec (s : State) : Instr → Option State
@@ -143,6 +149,7 @@ def exec (s : State) : Instr → Option State
   | .op op rd rs1 rs2      => some (s.setReg rd (alu op (s.getReg rs1) (s.getReg rs2))).nextInstr
   | .mop op rd rs1 rs2     =>                       -- Airbender: `rd = x0` is not allowed (the circuit requires it)
       if rd = 0 then none else some (s.setReg rd (mopVal op (s.getReg rs1) (s.getReg rs2) (s.getReg rd))).nextInstr
+  | .inputRead rd          => some { (s.setReg rd (s.input s.inputPos)).nextInstr with inputPos := s.inputPos + 1 }
 
 /-- Standard RV32IM encodings (unprivileged spec, ch. 2 and 13). -/
 def decode (word : Word) : Option Instr :=
@@ -152,6 +159,7 @@ def decode (word : Word) : Option Instr :=
   let rd  : Reg := word.extractLsb' 7 5
   let rs1 : Reg := word.extractLsb' 15 5
   let rs2 : Reg := word.extractLsb' 20 5
+  let csr : BitVec 12 := word.extractLsb' 20 12
   let immI : Word := (word.extractLsb' 20 12).signExtend 32
   let immS : Word := (word.extractLsb' 25 7 ++ word.extractLsb' 7 5).signExtend 32
   let immB : Word := (word.extractLsb' 31 1 ++ word.extractLsb' 7 1 ++ word.extractLsb' 25 6 ++ word.extractLsb' 8 4
@@ -208,6 +216,7 @@ def decode (word : Word) : Option Instr :=
   | 0x73, 4, 0x45 => some (.mop .mul    rd rs1 rs2)
   | 0x73, 4, 0x47 => some (.mop .fma    rd rs1 rs2)
   | 0x73, 4, 0x61 => some (.mop .triAdd rd rs1 rs2)
+  | 0x73, 1, _    => if csr = 0x7c0 ∧ rs1 = 0 ∧ rd ≠ 0 then some (.inputRead rd) else none  -- csrrw (Zicsr)
   | _, _, _       => none
 
 /-- One step: fetch from ROM at an aligned PC, decode, execute. -/

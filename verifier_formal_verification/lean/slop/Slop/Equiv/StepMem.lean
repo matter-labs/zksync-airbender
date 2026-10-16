@@ -8,7 +8,7 @@ open Sail SailRV32 SailRV32.Functions Human
 namespace Slop.Equiv
 set_option maxHeartbeats 0
 
-variable {s t : RV.State} {σ : SailState}
+variable {s t : RV.State} {σ : SailState} {next : BitVec 32}
 
 /-- The loaded value, Sail's way = ours. -/
 theorem load_val (σm : Nat → BitVec 8) (sm : BitVec 32 → BitVec 8) (hm : ∀ b : BitVec 32, σm b.toNat = sm b)
@@ -22,12 +22,12 @@ theorem load_val (σm : Nat → BitVec 8) (sm : BitVec 32 → BitVec 8) (hm : �
 
 theorem ram_end_lt : RV.RAM_END < 2 ^ 32 := by decide
 
-theorem kind_load (h : Airbender.Agree s σ) (ha : (σ.regs .PC).toNat % 4 = 0)
+theorem kind_load (h : Airbender.AgreeSail s σ) (ha : (σ.regs .PC).toNat % 4 = 0)
     (h2 : (σ.regs .PC).toNat + 4 ≤ Airbender.RAM_START) (n : Nat) (sg : Bool) (hn : n = 1 ∨ n = 2 ∨ n = 4)
     (rd rs1 : BitVec 5) (x : BitVec 12)
     (hdec : RV.decode (readBytes σ.mem (σ.regs .PC).toNat 4) = some (.load n sg rd rs1 (x.signExtend 32)))
     (ht : RV.exec s (.load n sg rd rs1 (x.signExtend 32)) = some t) :
-    ∃ σ', Airbender.step σ = some σ' ∧ Airbender.Agree t σ' := by
+    ∃ σ', stepSail next σ = some (σ', false) ∧ Airbender.AgreeSail t σ' := by
   simp only [RV.exec] at ht
   by_cases hz : rd = 0
   · subst hz
@@ -39,7 +39,7 @@ theorem kind_load (h : Airbender.Agree s σ) (ha : (σ.regs .PC).toNat % 4 = 0)
     rw [if_pos hc, Option.some.injEq] at ht; subst ht
     obtain ⟨hal, hrd⟩ := hc
     have hx : xget (σ.set .nextPC (σ.regs .PC + 4)) rs1 = s.getReg rs1 := by rw [xget_set_nextPC, agree_xget h]
-    have e := exec_load (σ.set .nextPC (σ.regs .PC + 4)) (sys_set h.1 .nextPC _ rfl) rd rs1 x n sg hn hz
+    have e := exec_load (next := next) (σ.set .nextPC (σ.regs .PC + 4)) (sys_set h.1 .nextPC _ rfl) rd rs1 x n sg hn hz
       (by rw [hx]; exact hal) (by rw [hx]; exact hrd)
     rw [hx] at e
     have hv : extend_value (!sg) (readBytes (σ.set .nextPC (σ.regs .PC + 4)).mem (s.getReg rs1 + x.signExtend 32).toNat n)
@@ -47,12 +47,12 @@ theorem kind_load (h : Airbender.Agree s σ) (ha : (σ.regs .PC).toNat % 4 = 0)
     rw [hv] at e
     exact step_write h ha h2 _ hdec rd _ e
 
-theorem kind_store (h : Airbender.Agree s σ) (ha : (σ.regs .PC).toNat % 4 = 0)
+theorem kind_store (h : Airbender.AgreeSail s σ) (ha : (σ.regs .PC).toNat % 4 = 0)
     (h2 : (σ.regs .PC).toNat + 4 ≤ Airbender.RAM_START) (n : Nat) (hn : n = 1 ∨ n = 2 ∨ n = 4)
     (rs2 rs1 : BitVec 5) (x : BitVec 12)
     (hdec : RV.decode (readBytes σ.mem (σ.regs .PC).toNat 4) = some (.store n rs2 rs1 (x.signExtend 32)))
     (ht : RV.exec s (.store n rs2 rs1 (x.signExtend 32)) = some t) :
-    ∃ σ', Airbender.step σ = some σ' ∧ Airbender.Agree t σ' := by
+    ∃ σ', stepSail next σ = some (σ', false) ∧ Airbender.AgreeSail t σ' := by
   simp only [RV.exec] at ht
   by_cases hc : RV.aligned (s.getReg rs1 + x.signExtend 32) n ∧ RV.writable (s.getReg rs1 + x.signExtend 32) n
   case neg => rw [if_neg hc] at ht; cases ht
@@ -60,7 +60,7 @@ theorem kind_store (h : Airbender.Agree s σ) (ha : (σ.regs .PC).toNat % 4 = 0)
   obtain ⟨hal, hw1, hw2⟩ := hc
   have hx : xget (σ.set .nextPC (σ.regs .PC + 4)) rs1 = s.getReg rs1 := by rw [xget_set_nextPC, agree_xget h]
   have hx2 : xget (σ.set .nextPC (σ.regs .PC + 4)) rs2 = s.getReg rs2 := by rw [xget_set_nextPC, agree_xget h]
-  have e := exec_store (σ.set .nextPC (σ.regs .PC + 4)) (sys_set h.1 .nextPC _ rfl) rs2 rs1 x n hn
+  have e := exec_store (next := next) (σ.set .nextPC (σ.regs .PC + 4)) (sys_set h.1 .nextPC _ rfl) rs2 rs1 x n hn
     (by rw [hx]; exact hal) (by rw [hx]; exact hw1) (by rw [hx]; exact hw2)
   rw [hx, hx2] at e
   have hpcs : σ.regs .PC = s.pc := h.2.1

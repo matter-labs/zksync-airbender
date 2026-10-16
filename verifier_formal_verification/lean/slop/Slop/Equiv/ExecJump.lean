@@ -5,6 +5,7 @@ import Slop.Equiv.Jump
 open Sail SailRV32 SailRV32.Functions Human
 
 namespace Slop.Equiv
+variable {next : BitVec 32}
 
 theorem sext_n {n : Nat} (x : BitVec n) (hn : 0 < n) (h32 : n ≤ 32) :
     sign_extend (m := 32) ((x.signExtend 32).extractLsb' 0 n) = x.signExtend 32 := by
@@ -24,7 +25,7 @@ theorem bgeu_eq (a b : BitVec 32) : zopz0zKzJ_u a b = !a.ult b := by
 
 theorem exec_branch (σ : SailState) (hs : Airbender.Configured σ) (c : RV.Cond) (rs1 rs2 : BitVec 5) (x : BitVec 13)
     (hal : c.holds (xget σ rs1) (xget σ rs2) = true → (σ.regs .PC + x.signExtend 32).toNat % 4 = 0) :
-    runSail (Airbender.execute (Airbender.toSail (.branch c rs1 rs2 (x.signExtend 32)))) σ =
+    runSail (Airbender.execute next (Airbender.toSail (.branch c rs1 rs2 (x.signExtend 32)))) σ =
       if c.holds (xget σ rs1) (xget σ rs2) then .ok RETIRE_SUCCESS (σ.set .nextPC (σ.regs .PC + x.signExtend 32))
       else .ok RETIRE_SUCCESS σ := by
   have hx := sext_n x (by decide) (by decide)
@@ -38,7 +39,7 @@ theorem exec_branch (σ : SailState) (hs : Airbender.Configured σ) (c : RV.Cond
 
 theorem exec_jal (σ : SailState) (hs : Airbender.Configured σ) (rd : BitVec 5) (x : BitVec 21)
     (hal : (σ.regs .PC + x.signExtend 32).toNat % 4 = 0) :
-    runSail (Airbender.execute (Airbender.toSail (.jal rd (x.signExtend 32)))) σ =
+    runSail (Airbender.execute next (Airbender.toSail (.jal rd (x.signExtend 32)))) σ =
       .ok RETIRE_SUCCESS (xset (σ.set .nextPC (σ.regs .PC + x.signExtend 32)) rd (σ.regs .nextPC)) := by
   have hx := sext_n x (by decide) (by decide)
   simp only [Airbender.toSail, Airbender.execute, execute, execute_JAL, Slop.runF_bind, get_next_pc, hx]
@@ -54,7 +55,7 @@ theorem clear_bit0 (t : BitVec 32) : BitVec.update t 0 0#1 = t &&& ~~~1 := by
 
 theorem exec_jalr (σ : SailState) (hs : Airbender.Configured σ) (rd rs1 : BitVec 5) (x : BitVec 12)
     (hal : ((xget σ rs1 + x.signExtend 32) &&& ~~~1).toNat % 4 = 0) :
-    runSail (Airbender.execute (Airbender.toSail (.jalr rd rs1 (x.signExtend 32)))) σ =
+    runSail (Airbender.execute next (Airbender.toSail (.jalr rd rs1 (x.signExtend 32)))) σ =
       .ok RETIRE_SUCCESS (xset (σ.set .nextPC ((xget σ rs1 + x.signExtend 32) &&& ~~~1)) rd (σ.regs .nextPC)) := by
   have hx := sext_n x (by decide) (by decide)
   have hz : runSail (currentlyEnabled .Ext_Zicfilp) σ = .ok false σ := en_run hs _ _ (by decide +kernel)

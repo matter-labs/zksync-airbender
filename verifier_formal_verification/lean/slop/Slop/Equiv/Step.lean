@@ -6,6 +6,7 @@ import Slop.Equiv.Fetch
 open Sail SailRV32 SailRV32.Functions Human
 
 namespace Slop.Equiv
+variable {next : BitVec 32}
 set_option maxHeartbeats 0
 set_option maxRecDepth 1000000
 
@@ -24,15 +25,28 @@ theorem decode_not_rvc {w : BitVec 32} {i : RV.Instr} (h : RV.decode w = some i)
   simp [BitVec.extractLsb'_toNat, BitVec.extractLsb_toNat] at h3 ⊢
   omega
 
+/-- One step of the Airbender machine on Sail's state, `next` being the next input word: the new state, and whether
+the instruction read it. -/
+noncomputable def stepSail (next : BitVec 32) (σ : SailState) : Option (SailState × Bool) :=
+  match runSail (Airbender.sailStep next) σ with
+  | .ok (some r) σ' => some (σ', r)
+  | _ => none
+
+theorem step_eq (m : Airbender.Machine) : Airbender.step m =
+    (stepSail (m.input m.inputPos) m.sail).map fun p =>
+      { m with sail := p.1, inputPos := if p.2 then m.inputPos + 1 else m.inputPos } := by
+  unfold Airbender.step stepSail
+  rcases runSail (Airbender.sailStep (m.input m.inputPos)) m.sail with ⟨_ | r, σ'⟩ | ⟨e, σ'⟩ <;> rfl
+
 theorem step_of_exec (σ : SailState) (hs : Airbender.Configured σ) (ha : (σ.regs .PC).toNat % 4 = 0)
     (h2 : (σ.regs .PC).toNat + 4 ≤ Airbender.RAM_START) (i : RV.Instr)
     (hdec : RV.decode (readBytes σ.mem (σ.regs .PC).toNat 4) = some i) (σ2 : SailState)
-    (hexec : runSail (Airbender.execute (Airbender.toSail i)) (σ.set .nextPC (σ.regs .PC + 4)) = .ok RETIRE_SUCCESS σ2)
+    (hexec : runSail (Airbender.execute next (Airbender.toSail i)) (σ.set .nextPC (σ.regs .PC + 4)) = .ok RETIRE_SUCCESS σ2)
     (hal : (σ2.regs .nextPC).toNat % 4 = 0) :
-    Airbender.step σ = some (σ2.set .PC (σ2.regs .nextPC)) := by
+    stepSail next σ = some (σ2.set .PC (σ2.regs .nextPC), Airbender.readsInput i) := by
   have hf := fetch_rom σ hs ha h2 (decode_not_rvc hdec)
-  unfold Airbender.step
-  simp only [Slop.runF_bind, hf, Airbender.decode, hdec, Option.map_some, Slop.runF_writeReg]
+  unfold stepSail Airbender.sailStep
+  simp only [Slop.runF_bind, hf, hdec, Slop.runF_writeReg]
   rw [Slop.runF_readReg]
   simp only [hexec, RETIRE_SUCCESS]
   rw [Slop.runF_bind, Slop.runF_readReg]

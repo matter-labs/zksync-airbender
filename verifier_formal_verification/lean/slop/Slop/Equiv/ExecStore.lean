@@ -6,6 +6,7 @@ to Sail's memory; registers unchanged. -/
 open Sail SailRV32 SailRV32.Functions Human
 
 namespace Slop.Equiv
+variable {next : BitVec 32}
 set_option maxHeartbeats 0
 set_option maxRecDepth 1000000
 
@@ -13,7 +14,7 @@ theorem exec_store (σ : SailState) (hs : Airbender.Configured σ) (rs2 rs1 : Bi
     (hn : n = 1 ∨ n = 2 ∨ n = 4) (ha : (xget σ rs1 + x.signExtend 32).toNat % n = 0)
     (h1 : Airbender.RAM_START ≤ (xget σ rs1 + x.signExtend 32).toNat)
     (h2 : (xget σ rs1 + x.signExtend 32).toNat + n ≤ Airbender.RAM_END) :
-    runSail (Airbender.execute (Airbender.toSail (.store n rs2 rs1 (x.signExtend 32)))) σ =
+    runSail (Airbender.execute next (Airbender.toSail (.store n rs2 rs1 (x.signExtend 32)))) σ =
       .ok RETIRE_SUCCESS
         { σ with mem := writeBytes σ.mem (xget σ rs1 + x.signExtend 32).toNat n ((xget σ rs2).setWidth (8 * n)) } := by
   simp only [Airbender.toSail, Airbender.execute, execute, execute_STORE, sext12]

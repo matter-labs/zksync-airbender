@@ -6,6 +6,7 @@ import Slop.Equiv.DecOpImm
 import Slop.Equiv.DecOp1
 import Slop.Equiv.DecOp2
 import Slop.Equiv.DecMop
+import Slop.Equiv.DecInput
 import HumanSail.Theorems
 
 /-! `Airbender.DecodeIsSail` (`HumanSail/Theorems.lean`): split our table `RV.decode` into its rows and use each
@@ -19,6 +20,14 @@ namespace Slop.Equiv
 theorem bits_of_toNat {w : BitVec 32} {lo n k : Nat} (h : (w.extractLsb' lo n).toNat = k) : Bits w lo n k := by
   have : (w.extractLsb' lo n).toNat = (w.toNat >>> lo) % 2 ^ n := BitVec.extractLsb'_toNat lo n w
   unfold Bits; omega
+
+/-- The input-read row as `RV.decode` states it. -/
+theorem dec_input_row (w : BitVec 32) (σ : SailState) (hs : Airbender.Configured σ)
+    (h0 : (w.extractLsb' 0 7).toNat = 115) (h1 : (w.extractLsb' 12 3).toNat = 1)
+    (hc : w.extractLsb' 20 12 = 0x7c0 ∧ w.extractLsb' 15 5 = 0 ∧ w.extractLsb' 7 5 ≠ 0) :
+    runSail (ext_decode w) σ = .ok (Airbender.toSail (.inputRead (w.extractLsb' 7 5))) σ :=
+  dec_input w σ hs (bits_of_toNat h0) (bits_of_toNat h1) (bits_of_toNat (by rw [hc.2.1]; rfl))
+    (bits_of_toNat (by rw [hc.1]; rfl))
 
 /-- JALR outside `ExtraEncoding` has funct3 = 0. -/
 theorem jalr_f3 (w : BitVec 32) (hopc : (w.extractLsb' 0 7).toNat = 103) (hl : ¬ Airbender.ExtraEncoding w) :
@@ -65,6 +74,7 @@ theorem decode_is_sail : Airbender.DecodeIsSail := by
   unfold RV.decode at h
   dsimp only at h
   split at h
+  all_goals (try split_ifs at h)
   all_goals first | (cases h; done) | skip
   all_goals obtain rfl := Option.some.inj h
   all_goals (try have := jalr_f3 w ‹_› hl)
@@ -78,6 +88,7 @@ theorem decode_is_sail : Airbender.DecodeIsSail := by
   all_goals mk_bits
   all_goals first
     | exact dec_lui w σ hs (by assumption)
+    | exact dec_input_row w σ hs (by assumption) (by assumption) (by assumption)
     | exact dec_mop_add w σ hs (by assumption) (by assumption) (by assumption)
     | exact dec_mop_sub w σ hs (by assumption) (by assumption) (by assumption)
     | exact dec_mop_mul w σ hs (by assumption) (by assumption) (by assumption)

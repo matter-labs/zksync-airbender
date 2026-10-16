@@ -11,8 +11,8 @@ namespace Slop.Equiv
 set_option maxHeartbeats 0
 
 /-- Runs of our spec are runs of the Airbender machine. -/
-theorem run_agree : ∀ (n : Nat) (s s' : RV.State) (σ : SailState), Airbender.Agree s σ → RV.run n s = some s' →
-    ∃ σ', Airbender.run n σ = some σ' ∧ Airbender.Agree s' σ'
+theorem run_agree : ∀ (n : Nat) (s s' : RV.State) (σ : Airbender.Machine), Airbender.Agree s σ →
+    RV.run n s = some s' → ∃ σ', Airbender.run n σ = some σ' ∧ Airbender.Agree s' σ'
   | 0, s, s', σ, h, hr => by
     simp only [RV.run, Option.some.injEq] at hr; subst hr; exact ⟨σ, rfl, h⟩
   | n + 1, s, s', σ, h, hr => by
@@ -22,42 +22,43 @@ theorem run_agree : ∀ (n : Nat) (s s' : RV.State) (σ : SailState), Airbender.
     exact ⟨σ', by simp only [Airbender.run, hσ1, Option.bind_some, hσ'], h'⟩
 
 /-- Our view of an Airbender state. -/
-noncomputable def ofSail (σ : SailState) : RV.State :=
-  { pc := σ.regs .PC, regFile := fun i => Airbender.getReg σ i, mem := fun a => σ.mem a.toNat }
+noncomputable def ofSail (σ : SailState) (input : Nat → RV.Word) : RV.State :=
+  { pc := σ.regs .PC, regFile := fun i => Airbender.getReg σ i, mem := fun a => σ.mem a.toNat, input }
 
-theorem agree_ofSail (σ : SailState) (hs : Airbender.Configured σ) : Airbender.Agree (ofSail σ) σ := by
-  refine ⟨hs, rfl, ?_, fun _ => rfl⟩
+theorem agree_ofSail (σ : SailState) (input : Nat → RV.Word) (hs : Airbender.Configured σ) :
+    Airbender.Agree (ofSail σ input) ⟨σ, input, 0⟩ := by
+  refine ⟨⟨hs, rfl, ?_, fun _ => rfl⟩, rfl, rfl⟩
   intro i
   simp only [RV.State.getReg, ofSail]
   split_ifs with h
   · subst h; rw [reg_eq, xget_zero]
   · rfl
 
-theorem read_ofSail (σ : SailState) (a : Nat) (ha : a + 4 ≤ RV.ROM_END ∨ a + 4 ≤ RV.RAM_END) :
-    RV.read (ofSail σ).mem (BitVec.ofNat 32 a) 4 = readBytes σ.mem a 4 := by
+theorem read_ofSail (σ : SailState) (input) (a : Nat) (ha : a + 4 ≤ RV.ROM_END ∨ a + 4 ≤ RV.RAM_END) :
+    RV.read (ofSail σ input).mem (BitVec.ofNat 32 a) 4 = readBytes σ.mem a 4 := by
   have e : (BitVec.ofNat 32 a).toNat = a := by
     simp only [BitVec.toNat_ofNat]; apply Nat.mod_eq_of_lt; simp only [RV.ROM_END, RV.RAM_END] at *; omega
-  rw [read_eq4 σ.mem (ofSail σ).mem (fun _ => rfl) _ (by rw [e]; simp only [RV.ROM_END, RV.RAM_END] at *; omega),
+  rw [read_eq4 σ.mem (ofSail σ input).mem (fun _ => rfl) _ (by rw [e]; simp only [RV.ROM_END, RV.RAM_END] at *; omega),
     BitVec.setWidth_eq, e]
 
 /-- The final theorem on our spec gives it on the Airbender machine, for any image. -/
 theorem program_correct_of (bytes : Array (BitVec 8)) (INPUT halt : Nat) (hb : bytes.size < 2 ^ 32)
     (hin : INPUT + 20 ≤ RV.RAM_END) (h : RV.ProgramCorrectOf bytes INPUT halt) :
     Airbender.ProgramCorrectOf bytes INPUT halt := by
-  intro σ x y0 y1 y2 y3 hs hpc himg hram hx hxP hy0 hy1 hy2 hy3 hy0p hy1p hy2p hy3p
-  have hA := agree_ofSail σ hs
-  have himg' : RV.ImageLoaded bytes (ofSail σ) := by
+  intro σ input x y0 y1 y2 y3 hs hpc himg hram hx hxP hy0 hy1 hy2 hy3 hy0p hy1p hy2p hy3p
+  have hA := agree_ofSail σ input hs
+  have himg' : RV.ImageLoaded bytes (ofSail σ input) := by
     intro i hi
     show σ.mem (BitVec.ofNat 32 i).toNat = _
     rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)]; exact himg i hi
-  have hram' : RV.RamZeroExceptInput INPUT 20 (ofSail σ) := fun addr h1 h2 h3 => hram addr.toNat h1 h2 h3
-  obtain ⟨n, s', hr, hpc', h10, h11a, h11b, hlt, hlimbs, h16, h17, hz, hk⟩ := h (ofSail σ) x y0 y1 y2 y3 hpc himg' hram'
-    ((read_ofSail σ _ (by omega)).trans hx) hxP ((read_ofSail σ _ (by omega)).trans hy0)
-    ((read_ofSail σ _ (by omega)).trans hy1) ((read_ofSail σ _ (by omega)).trans hy2)
-    ((read_ofSail σ _ (by omega)).trans hy3) hy0p hy1p hy2p hy3p
-  obtain ⟨σ', hσ', hA'⟩ := run_agree n _ s' σ hA hr
-  have hreg : ∀ i, Airbender.getReg σ' i = s'.getReg i := hA'.2.2.1
-  refine ⟨n, σ', hσ', hA'.2.1.trans hpc', (hreg 10).trans h10, ?_, ?_, ?_, ?_, (hreg 16).trans h16,
+  have hram' : RV.RamZeroExceptInput INPUT 20 (ofSail σ input) := fun addr h1 h2 h3 => hram addr.toNat h1 h2 h3
+  obtain ⟨n, s', hr, hpc', h10, h11a, h11b, hlt, hlimbs, h16, h17, hz, hk⟩ := h (ofSail σ input) x y0 y1 y2 y3 hpc himg' hram'
+    ((read_ofSail σ input _ (by omega)).trans hx) hxP ((read_ofSail σ input _ (by omega)).trans hy0)
+    ((read_ofSail σ input _ (by omega)).trans hy1) ((read_ofSail σ input _ (by omega)).trans hy2)
+    ((read_ofSail σ input _ (by omega)).trans hy3) hy0p hy1p hy2p hy3p
+  obtain ⟨σ', hσ', hA'⟩ := run_agree n _ s' _ hA hr
+  have hreg : ∀ i, Airbender.getReg σ'.sail i = s'.getReg i := hA'.1.2.2.1
+  refine ⟨n, σ', hσ', hA'.1.2.1.trans hpc', (hreg 10).trans h10, ?_, ?_, ?_, ?_, (hreg 16).trans h16,
     (hreg 17).trans h17, ?_, ?_⟩
   · rw [hreg]; exact h11a
   · rw [hreg]; exact h11b
@@ -68,8 +69,8 @@ theorem program_correct_of (bytes : Array (BitVec 8)) (INPUT halt : Nat) (hb : b
     obtain ⟨s'', hr'', hpc'', hreg''⟩ := hk k
     obtain ⟨σ'', hσ'', hA''⟩ := run_agree k s' s'' σ' hA' hr''
     refine ⟨σ'', hσ'', ?_, ?_⟩
-    · rw [hA''.2.1, hA'.2.1, hpc'']
-    · intro i; rw [hA''.2.2.1, hreg, hreg'']
+    · rw [hA''.1.2.1, hA'.1.2.1, hpc'']
+    · intro i; rw [hA''.1.2.2.1, hreg, hreg'']
 
 /-- `Airbender.ProgramCorrect`: the plain-Rust image on the Airbender machine. -/
 theorem program_correct_airbender : Airbender.ProgramCorrect :=

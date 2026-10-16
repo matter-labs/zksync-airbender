@@ -8,7 +8,8 @@ The Sail model is riscv/sail-riscv, turned into Lean by `sail/regen.sh` (pins: `
 and no timer or interrupt devices. Everything Airbender does differently from that model is in this file,
 marked `-- Airbender:`, following Airbender's ISA table (zksync-airbender `spec/top-down/00 master.md`,
 "Supported instruction set"). Airbender's instruction formats are our own table `RV.decode`; their effect is
-Sail's `execute`.
+Sail's `execute`. The machine adds one thing Sail does not have: the program's input (Airbender's non-determinism
+source, CSR `0x7c0`), an endless sequence of words read one at a time.
 
 Our own fast spec `RV.step` (`Human/RV32.lean`), which the program proofs run on, follows this machine:
 stated in `HumanSail/Theorems.lean`, proven in `slop/Slop/Equiv/`. -/
@@ -122,17 +123,23 @@ noncomputable def toSail : RV.Instr → instruction
   | .op .remu rd rs1 rs2     => .REM (.Regidx rs2, .Regidx rs1, .Regidx rd, true)
   | .op op rd rs1 rs2        => .RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, sailAluOp op)
   | .mop op rd rs1 rs2       => .ZIMOP_MOP_RR (mopIndex op, .Regidx rs2, .Regidx rs1, .Regidx rd)
+  | .inputRead rd            => .CSRReg (0x7c0, .Regidx 0, .Regidx rd, .CSRRW)
 
 /-! ## The machine -/
 
-/-- Airbender's decoder is our encoding table `RV.decode` (`Human/RV32.lean`, with its `-- Airbender:` rows).
-`HumanSail/Theorems.lean` states that Sail's own decoder gives the same instruction for every word of that table,
-except the extra encodings Airbender accepts (`ExtraEncoding`). -/
-noncomputable def decode (word : BitVec 32) : Option instruction := (RV.decode word).map toSail
+/-! Airbender's decoder is our encoding table `RV.decode` (`Human/RV32.lean`, with its `-- Airbender:` rows), each
+instruction then run as Sail's `toSail` of it. `HumanSail/Theorems.lean` states that Sail's own decoder gives the
+same instruction for every word of that table, except the extra encodings Airbender accepts (`ExtraEncoding`). -/
 
-/-- Execute one instruction: as Sail does, except loads into x0 and the field operations. -/
-noncomputable def execute (instr : instruction) : SailM ExecutionResult :=
+/-- Execute one instruction (`next`: the next input word): as Sail does, except loads into x0, the field operations
+and the input read. -/
+noncomputable def execute (next : BitVec 32) (instr : instruction) : SailM ExecutionResult :=
   match instr with
+  | .CSRReg (csr, rs1, rd, .CSRRW) =>                  -- Airbender: `csrrw rd, 0x7c0, x0` reads the next input
+      if csr == 0x7c0 && rs1 == zreg && rd != zreg then do  --   word (Sail has no CSR 0x7c0 and would trap)
+        wX_bits rd next
+        pure RETIRE_SUCCESS
+      else SailRV32.Functions.execute instr
   | .LOAD (_, _, rd, _, _) => if rd == zreg then pure RETIRE_SUCCESS  -- Airbender: a load into x0 only
                               else SailRV32.Functions.execute instr   --   advances the PC (no memory access)
   | .ZIMOP_MOP_RR (n, rs2, rs1, rd) =>                 -- Airbender: `mop.rr.0 … 4` are field operations
@@ -146,21 +153,34 @@ noncomputable def execute (instr : instruction) : SailM ExecutionResult :=
       | none => SailRV32.Functions.execute instr
   | _ => SailRV32.Functions.execute instr
 
-/-- One step, the way Sail's own `run_hart_active` + `try_step` run a 32-bit instruction: fetch, decode,
-`nextPC := PC + 4`, execute, `PC := nextPC`. Anything else is not a step of Airbender (`none`): a fetch fault,
-a word outside the table, or any trap (misaligned or out-of-range access, write to ROM, …). -/
-noncomputable def step (σ : SailState) : Option SailState :=
-  let oneStep : SailM Bool := do
-    let .F_Base word ← fetch () | pure false
-    let some instr := decode word | pure false
-    writeReg Register.nextPC ((← readReg Register.PC) + 4)
-    let .Retire_Success () ← execute instr | pure false
-    if (← readReg Register.nextPC).toNat % 4 ≠ 0 then pure false  -- Airbender: jump targets 4-byte aligned
-    else                                                          --   (no compressed instructions)
-      tick_pc ()
-      pure true
-  match runSail oneStep σ with
-  | .ok true σ' => some σ'
+/-- The Airbender machine: Sail's state, plus the input (CSR 0x7c0) and how many of its words have been read. -/
+structure Machine where
+  sail     : SailState
+  input    : Nat → BitVec 32
+  inputPos : Nat
+
+/-- Whether an instruction reads an input word. -/
+def readsInput : RV.Instr → Bool
+  | .inputRead _ => true
+  | _ => false
+
+/-- One instruction, the way Sail's own `run_hart_active` + `try_step` run a 32-bit instruction: fetch, decode,
+`nextPC := PC + 4`, execute, `PC := nextPC`. Gives whether it read an input word; `none`: no step (a fetch fault,
+a word outside the table, or any trap: misaligned or out-of-range access, write to ROM, …). -/
+noncomputable def sailStep (next : BitVec 32) : SailM (Option Bool) := do
+  let .F_Base word ← fetch () | pure none
+  let some instr := RV.decode word | pure none
+  writeReg Register.nextPC ((← readReg Register.PC) + 4)
+  let .Retire_Success () ← execute next (toSail instr) | pure none
+  if (← readReg Register.nextPC).toNat % 4 ≠ 0 then pure none  -- Airbender: jump targets 4-byte aligned
+  else                                                         --   (no compressed instructions)
+    tick_pc ()
+    pure (some (readsInput instr))
+
+/-- One step of the machine. -/
+noncomputable def step (m : Machine) : Option Machine :=
+  match runSail (sailStep (m.input m.inputPos)) m.sail with
+  | .ok (some read) σ' => some { m with sail := σ', inputPos := if read then m.inputPos + 1 else m.inputPos }
   | _ => none
 
 end Airbender

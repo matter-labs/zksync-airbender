@@ -56,7 +56,7 @@ macro "close_row" : tactic => `(tactic| (
     instruction.UTYPE.injEq, instruction.JAL.injEq, instruction.JALR.injEq, instruction.BTYPE.injEq,
     instruction.ITYPE.injEq, instruction.SHIFTIOP.injEq, instruction.RTYPE.injEq, instruction.LOAD.injEq,
     instruction.STORE.injEq, instruction.MUL.injEq, instruction.DIV.injEq, instruction.REM.injEq,
-    instruction.ZIMOP_MOP_RR.injEq, Airbender.mopIndex,
+    instruction.ZIMOP_MOP_RR.injEq, instruction.CSRReg.injEq, Airbender.mopIndex,
     Prod.mk.injEq, and_true, true_and]
   and_intros
   all_goals first | rfl | decide | (congr 1; close_field) | close_field))

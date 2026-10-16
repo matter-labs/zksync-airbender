@@ -492,5 +492,6 @@ theorem symStep_sound (σ σ' : SState) (S : State) (i : Instr) (hrel : Rel c σ
   | jal => simp [symStep] at hstep
   | jalr => simp [symStep] at hstep
   | branch => simp [symStep] at hstep
+  | inputRead => simp [symStep] at hstep
 
 end RV.Sym

@@ -6,6 +6,7 @@ written to `rd`. -/
 open Sail SailRV32 SailRV32.Functions Human
 
 namespace Slop.Equiv
+variable {next : BitVec 32}
 
 theorem exec_rtype (σ : SailState) (rs2 rs1 rd : BitVec 5) (o : RV.Op)
     (ho : o = .add ∨ o = .sub ∨ o = .sll ∨ o = .slt ∨ o = .sltu ∨ o = .xor ∨ o = .srl ∨ o = .sra ∨ o = .or ∨ o = .and) :
@@ -23,7 +24,7 @@ theorem sext12 (x : BitVec 12) : sign_extend (m := 32) ((x.signExtend 32).extrac
 
 theorem exec_itype (σ : SailState) (rs1 rd : BitVec 5) (x : BitVec 12) (o : RV.Op)
     (ho : o = .add ∨ o = .slt ∨ o = .sltu ∨ o = .xor ∨ o = .or ∨ o = .and) :
-    runSail (Airbender.execute (Airbender.toSail (.opImm o rd rs1 (x.signExtend 32)))) σ =
+    runSail (Airbender.execute next (Airbender.toSail (.opImm o rd rs1 (x.signExtend 32)))) σ =
       .ok RETIRE_SUCCESS (xset σ rd (RV.alu o (xget σ rs1) (x.signExtend 32))) := by
   rcases ho with rfl | rfl | rfl | rfl | rfl | rfl <;>
   simp only [Airbender.toSail, Airbender.execute, execute, execute_ITYPE, Slop.runF_bind, rX_run, wX_run,
@@ -31,20 +32,20 @@ theorem exec_itype (σ : SailState) (rs1 rd : BitVec 5) (x : BitVec 12) (o : RV.
 
 theorem exec_op_alu (σ : SailState) (rs2 rs1 rd : BitVec 5) (o : RV.Op)
     (ho : o = .add ∨ o = .sub ∨ o = .sll ∨ o = .slt ∨ o = .sltu ∨ o = .xor ∨ o = .srl ∨ o = .sra ∨ o = .or ∨ o = .and) :
-    runSail (Airbender.execute (Airbender.toSail (.op o rd rs1 rs2))) σ =
+    runSail (Airbender.execute next (Airbender.toSail (.op o rd rs1 rs2))) σ =
       .ok RETIRE_SUCCESS (xset σ rd (RV.alu o (xget σ rs1) (xget σ rs2))) := by
   rw [← exec_rtype σ rs2 rs1 rd o ho]
   rcases ho with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> rfl
 
 theorem exec_shiftiop (σ : SailState) (rs1 rd sh : BitVec 5) (o : RV.Op) (ho : o = .sll ∨ o = .srl ∨ o = .sra) :
-    runSail (Airbender.execute (Airbender.toSail (.opImm o rd rs1 (sh.zeroExtend 32)))) σ =
+    runSail (Airbender.execute next (Airbender.toSail (.opImm o rd rs1 (sh.zeroExtend 32)))) σ =
       .ok RETIRE_SUCCESS (xset σ rd (RV.alu o (xget σ rs1) (sh.zeroExtend 32))) := by
   rcases ho with rfl | rfl | rfl <;>
   simp only [Airbender.toSail, Airbender.execute, execute, execute_SHIFTIOP, Slop.runF_bind, rX_run, wX_run,
     Slop.runF_pure, RV.alu, sll6_eq, srl6_eq, sra6_eq]
 
 theorem exec_mext (σ : SailState) (rs2 rs1 rd : BitVec 5) (o : RV.Op) (ho : o = .mul ∨ o = .mulhu ∨ o = .divu ∨ o = .remu) :
-    runSail (Airbender.execute (Airbender.toSail (.op o rd rs1 rs2))) σ =
+    runSail (Airbender.execute next (Airbender.toSail (.op o rd rs1 rs2))) σ =
       .ok RETIRE_SUCCESS (xset σ rd (RV.alu o (xget σ rs1) (xget σ rs2))) := by
   rcases ho with rfl | rfl | rfl | rfl <;>
   simp only [Airbender.toSail, Airbender.execute, execute, execute_MUL, execute_DIV, execute_REM, Slop.runF_bind,
@@ -68,13 +69,13 @@ theorem upper_eq (u : BitVec 20) :
     simp [h, show j - 12 < 20 by omega]
 
 theorem exec_lui (σ : SailState) (rd : BitVec 5) (u : BitVec 20) :
-    runSail (Airbender.execute (Airbender.toSail (.lui rd (u ++ (0 : BitVec 12))))) σ =
+    runSail (Airbender.execute next (Airbender.toSail (.lui rd (u ++ (0 : BitVec 12))))) σ =
       .ok RETIRE_SUCCESS (xset σ rd (u ++ (0 : BitVec 12))) := by
   simp only [Airbender.toSail, Airbender.execute, execute, execute_UTYPE, Slop.runF_bind, Slop.runF_pure,
     upper_eq, wX_run]
 
 theorem exec_auipc (σ : SailState) (rd : BitVec 5) (u : BitVec 20) :
-    runSail (Airbender.execute (Airbender.toSail (.auipc rd (u ++ (0 : BitVec 12))))) σ =
+    runSail (Airbender.execute next (Airbender.toSail (.auipc rd (u ++ (0 : BitVec 12))))) σ =
       .ok RETIRE_SUCCESS (xset σ rd (σ.regs .PC + (u ++ (0 : BitVec 12)))) := by
   simp only [Airbender.toSail, Airbender.execute, execute, execute_UTYPE, Slop.runF_bind, Slop.runF_pure,
     upper_eq, wX_run, get_arch_pc]

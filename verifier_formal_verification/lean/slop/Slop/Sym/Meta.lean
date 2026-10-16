@@ -29,7 +29,7 @@ deriving instance ToExpr for RV.Sym.SState
 deriving instance ToExpr for RV.Sym.Tree
 
 /-- Some state, for facts that hold in every context. -/
-def State0 : State := ⟨0, fun _ => 0, fun _ => 0⟩
+def State0 : State := { pc := 0, regFile := fun _ => 0, mem := fun _ => 0 }
 
 theorem symRun_append_eq {a b : List Instr} {σ σ1 σ2 : SState} (h1 : symRun a σ = some σ1)
     (h2 : symRun b σ1 = some σ2) : symRun (a ++ b) σ = some σ2 := by

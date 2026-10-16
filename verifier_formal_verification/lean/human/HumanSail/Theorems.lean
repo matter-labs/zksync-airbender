@@ -22,9 +22,13 @@ noncomputable def getReg (σ : SailState) (i : RV.Reg) : BitVec 32 :=
   match runSail (rX_bits (.Regidx i)) σ with | .ok v _ => v | .error _ _ => 0
 
 /-- Our state `s` and Sail's state `σ` agree on everything a program can see: PC, registers, memory. -/
-def Agree (s : RV.State) (σ : SailState) : Prop :=
+def AgreeSail (s : RV.State) (σ : SailState) : Prop :=
   Configured σ ∧ σ.regs .PC = s.pc ∧ (∀ i, getReg σ i = s.getReg i) ∧
   (∀ addr : RV.Word, σ.mem addr.toNat = s.mem addr)
+
+/-- … and on the input. -/
+def Agree (s : RV.State) (m : Machine) : Prop :=
+  AgreeSail s m.sail ∧ m.input = s.input ∧ m.inputPos = s.inputPos
 
 /-- Encodings Airbender accepts beyond standard RV32IM (`-- Airbender:` rows of `RV.decode`): JALR with
 funct3 ≠ 0; SLT, SLTU, XOR, OR, AND with funct7 other than 0000000 (and 0000001, which is the M extension). -/
@@ -40,12 +44,12 @@ def DecodeIsSail : Prop :=
 
 /-- 2. One step of our spec is one step of the Airbender machine. -/
 def StepIsAirbender : Prop :=
-  ∀ s s' σ, Agree s σ → RV.step s = some s' → ∃ σ', step σ = some σ' ∧ Agree s' σ'
+  ∀ s s' m, Agree s m → RV.step s = some s' → ∃ m', step m = some m' ∧ Agree s' m'
 
 /-- `numSteps` steps of the Airbender machine. -/
-noncomputable def run : (numSteps : Nat) → SailState → Option SailState
-  | 0,     σ => some σ
-  | n + 1, σ => (step σ).bind (run n)
+noncomputable def run : (numSteps : Nat) → Machine → Option Machine
+  | 0,     m => some m
+  | n + 1, m => (step m).bind (run n)
 
 /-- 3. The final theorem on the Airbender machine itself: `RV.ProgramCorrectOf` (`Human/Theorems.lean`), with Sail's
 state in place of ours. Started from any Airbender state (`Configured`: privilege, CSRs, memory map as after reset) at
@@ -54,7 +58,7 @@ reaches `halt` with `a0 = combine x`, `a1 = poly x`, `a2 … a5` the limbs of `p
 words of the Blake2s (7 rounds) digest of the input, `x18 … x25` zero, and stays
 there. Follows from 1 and 2 and the final theorem on our spec. -/
 def ProgramCorrectOf (bytes : Array (BitVec 8)) (INPUT halt : Nat) : Prop :=
-  ∀ (start : SailState) (x y0 y1 y2 y3 : RV.Word), Configured start → start.regs .PC = 0 →
+  ∀ (start : SailState) (input : Nat → RV.Word) (x y0 y1 y2 y3 : RV.Word), Configured start → start.regs .PC = 0 →
     (∀ i (h : i < bytes.size), start.mem i = bytes[i]) →
     (∀ addr : Nat, RV.ROM_END ≤ addr → addr < RV.RAM_END → (addr < INPUT ∨ INPUT + 20 ≤ addr) →
       start.mem addr = 0) →
@@ -62,7 +66,8 @@ def ProgramCorrectOf (bytes : Array (BitVec 8)) (INPUT halt : Nat) : Prop :=
     readBytes start.mem (INPUT + 4) 4 = y0 → readBytes start.mem (INPUT + 8) 4 = y1 →
     readBytes start.mem (INPUT + 12) 4 = y2 → readBytes start.mem (INPUT + 16) 4 = y3 →
     y0.toNat < RV.BabyBearP → y1.toNat < RV.BabyBearP → y2.toNat < RV.BabyBearP → y3.toNat < RV.BabyBearP →
-    ∃ numSteps final, run numSteps start = some final ∧ final.regs .PC = BitVec.ofNat 32 halt ∧
+    ∃ (numSteps : Nat) (final' : Machine), run numSteps ⟨start, input, 0⟩ = some final' ∧ let final := final'.sail
+      final.regs .PC = BitVec.ofNat 32 halt ∧
       getReg final a0 = Spec.combine x ∧
       (getReg final a1).toNat ≤ Spec.P ∧
       ((getReg final a1).toNat : ZMod Spec.P) = Spec.poly (x.toNat : ZMod Spec.P) ∧
@@ -72,8 +77,8 @@ def ProgramCorrectOf (bytes : Array (BitVec 8)) (INPUT halt : Nat) : Prop :=
       getReg final 16 = (Spec.blake5 #v[x, y0, y1, y2, y3])[0] ∧
       getReg final 17 = (Spec.blake5 #v[x, y0, y1, y2, y3])[1] ∧
       (∀ i : RV.Reg, 18 ≤ i.toNat → i.toNat ≤ 25 → getReg final i = 0) ∧
-      ∀ moreSteps, ∃ later, run moreSteps final = some later ∧ later.regs .PC = final.regs .PC ∧
-        ∀ i, getReg later i = getReg final i
+      ∀ moreSteps, ∃ later, run moreSteps final' = some later ∧ later.sail.regs .PC = final.regs .PC ∧
+        ∀ i, getReg later.sail i = getReg final i
 
 /-- 3. for the plain-Rust image (`build/app.bin`). -/
 def ProgramCorrect : Prop := ProgramCorrectOf Image.bytes Image.INPUT Image.halt
