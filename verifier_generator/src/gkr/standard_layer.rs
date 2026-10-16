@@ -399,23 +399,22 @@ fn emit_setup_horner_eval<MW: FieldWrapper>(
 
 /// `dst += coeff * evals[idx][j]` for a base-field `coeff`, or `let mut dst = coeff * evals[idx][j]`
 /// for the first term; a coefficient of 1 or -1 needs no multiplication.
-fn emit_base_coeff_term<MW: FieldWrapper, F: PrimeField>(
+fn emit_base_coeff_term<MW: FieldWrapper<BaseField = F>, F: PrimeField>(
     dst: &syn::Ident,
     first: bool,
     coeff: F,
     idx: usize,
 ) -> TokenStream {
-    let c = coeff.as_u32_reduced();
     let e = quote! { evals.get_unchecked(#idx)[j] };
     let dst_ts = quote! { #dst };
-    if c == 1 {
+    if coeff == F::ONE {
         if first {
             quote! { let mut #dst = #e; }
         } else {
             let add = MW::add_assign(dst_ts, e);
             quote! { #add; }
         }
-    } else if c == F::CHARACTERISTICS_U32 - 1 {
+    } else if coeff == F::MINUS_ONE {
         if first {
             let neg = MW::negate(dst_ts);
             quote! { let mut #dst = #e; #neg; }
@@ -424,7 +423,7 @@ fn emit_base_coeff_term<MW: FieldWrapper, F: PrimeField>(
             quote! { #sub; }
         }
     } else {
-        let c = MW::field_from_reduced_raw_repr(MW::coeff_to_internal_repr(c).to_token_stream());
+        let c = MW::field_from_reduced_raw_repr(coeff.as_u32_raw_repr_reduced().to_token_stream());
         if first {
             let mul = MW::mul_assign_by_base(dst_ts, c);
             quote! { let mut #dst = #e; #mul; }
@@ -435,16 +434,16 @@ fn emit_base_coeff_term<MW: FieldWrapper, F: PrimeField>(
     }
 }
 
-fn emit_max_quadratic_eval<MW: FieldWrapper, F: PrimeField>(
+fn emit_max_quadratic_eval<MW: FieldWrapper<BaseField = F>, F: PrimeField>(
     input: &prover::cs::gkr_compiler::CompiledMaxQuadraticGKRRelation<F>,
     var_name: &str,
     input_sorted_addrs: &[GKRAddress],
 ) -> TokenStream {
     let var = syn::Ident::new(var_name, proc_macro2::Span::call_site());
     let inner = syn::Ident::new("inner", proc_macro2::Span::call_site());
-    let constant = MW::coeff_to_internal_repr(input.constant.as_u32_reduced());
-    let constant =
-        MW::quartic_from_base(MW::field_from_reduced_raw_repr(constant.to_token_stream()));
+    let constant = MW::quartic_from_base(MW::field_from_reduced_raw_repr(
+        input.constant.as_u32_raw_repr_reduced().to_token_stream(),
+    ));
 
     let mut body = quote! { let mut #var = #constant; };
     for (addr_a, inner_terms) in input.quadratic_terms.iter() {
@@ -1081,7 +1080,7 @@ fn generate_simple_gate_loop<MW: FieldWrapper>(
     }
 }
 
-fn emit_single_output_value<MW: FieldWrapper, F: PrimeField>(
+fn emit_single_output_value<MW: FieldWrapper<BaseField = F>, F: PrimeField>(
     gate: &prover::cs::gkr_compiler::GateArtifacts<F>,
     input_sorted_addrs: &[GKRAddress],
 ) -> Option<TokenStream> {
@@ -1396,7 +1395,7 @@ fn emit_inits_teardowns<MW: FieldWrapper, F: PrimeField>(
     emit_single_output_gate::<MW>(body, val_comp);
 }
 
-pub fn generate_layer_final_step_accumulator<MW: FieldWrapper, F: PrimeField>(
+pub fn generate_layer_final_step_accumulator<MW: FieldWrapper<BaseField = F>, F: PrimeField>(
     layer: &GKRLayerDescription<F>,
     layer_idx: usize,
     input_sorted_addrs: &[GKRAddress],

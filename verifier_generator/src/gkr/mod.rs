@@ -153,6 +153,8 @@ pub fn generate_gkr_common<MW: FieldWrapper>() -> TokenStream {
 
                 ts.commit(&mut commit_buf, coeff_data_words);
 
+                // SAFETY: `CommitBuf::commit` writes only the zero padding past `coeff_data_words`,
+                // so the buffer still holds the coefficients read from `nd_source` above.
                 let coeffs: [#quartic_struct; 4] = unsafe {
                     *commit_buf.data_as::<[#quartic_struct; 4]>(1).as_ptr()
                 };
