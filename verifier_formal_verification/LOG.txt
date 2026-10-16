@@ -7,6 +7,13 @@ commit check `git diff --cached --stat` and that no staged file is over ~200 KB.
 Moved here from an earlier prototype repo (as a snapshot; its history, which contains the large Sail model, was
 NOT imported).
 
+=== CSR 0x7C0: ALL ZICSR FORMS (2026-10-16) ===
+- riscv_transpiler (ir/simple_instruction_set.rs, ZICSR_MASK = funct3 & 3 != 0): any of csrrw/s/c and the
+  immediate forms on 0x7c0; source field (rs1 / zimm) 0 and rd != x0: read; rd = x0 and source != 0: write, a NOP
+  in circuits; otherwise it panics. Spec: CsrOp, decodeCsr (six rows), inputRead op rd, inputWrite op src (no
+  effect). Sail side: csrToSail (CSRReg / CSRImm), execute override nonDeterminism; 12 decoder lemmas
+  (DecInputRead/ReadImm/Write/WriteImm, ~17 s each), kind_write. Config checks for every case.
+
 === POC 4: INPUT VIA CSR 0x7C0 (2026-10-16) ===
 - Airbender (riscv_transpiler ir/simple_instruction_set.rs, replayer non_determinism.rs): CSR 0x7c0 with rs1 = x0
   reads the next oracle word into rd (rd = x0 rejected); with rd = x0 it is a write, a NOP in circuits. Only the read

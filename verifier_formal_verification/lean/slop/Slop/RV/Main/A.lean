@@ -135,15 +135,15 @@ theorem main_reads (R : State) (codeM : List Word) (x y0 y1 y2 y3 : Word) (rest 
   have m3 : R3.mem = R.mem := by rw [hR3]; simp [m2]
   have m4 : R4.mem = R.mem := by rw [hR4]; simp [m3]
   have m5 : R5.mem = R.mem := by rw [hR5]; simp [m4]
-  have s1 := step_read R 0x7c0019f3#32 19#5 x _ (by rw [hpc]; decide) (by rw [hpc]; decide)
+  have s1 := step_read R 0x7c0019f3#32 .rw 19#5 x _ (by rw [hpc]; decide) (by rw [hpc]; decide)
     (by rw [hpc]; exact w 0 (by decide)) (by decide +kernel) hin
-  have s2 := step_read R1 0x7c001af3#32 21#5 y0 _ (by rw [p1]; decide) (by rw [p1]; decide)
+  have s2 := step_read R1 0x7c001af3#32 .rw 21#5 y0 _ (by rw [p1]; decide) (by rw [p1]; decide)
     (by rw [p1, m1]; exact w 1 (by decide)) (by decide +kernel) rfl
-  have s3 := step_read R2 0x7c001b73#32 22#5 y1 _ (by rw [p2]; decide) (by rw [p2]; decide)
+  have s3 := step_read R2 0x7c001b73#32 .rw 22#5 y1 _ (by rw [p2]; decide) (by rw [p2]; decide)
     (by rw [p2, m2]; exact w 2 (by decide)) (by decide +kernel) rfl
-  have s4 := step_read R3 0x7c001bf3#32 23#5 y2 _ (by rw [p3]; decide) (by rw [p3]; decide)
+  have s4 := step_read R3 0x7c001bf3#32 .rw 23#5 y2 _ (by rw [p3]; decide) (by rw [p3]; decide)
     (by rw [p3, m3]; exact w 3 (by decide)) (by decide +kernel) rfl
-  have s5 := step_read R4 0x7c001c73#32 24#5 y3 _ (by rw [p4]; decide) (by rw [p4]; decide)
+  have s5 := step_read R4 0x7c001c73#32 .rw 24#5 y3 _ (by rw [p4]; decide) (by rw [p4]; decide)
     (by rw [p4, m4]; exact w 4 (by decide)) (by decide +kernel) rfl
   refine ⟨R5, by rw [run_succ, s1, Option.bind_some, ← hR1, run_succ, s2, Option.bind_some, ← hR2, run_succ, s3,
     Option.bind_some, ← hR3, run_succ, s4, Option.bind_some, ← hR4, run_succ, s5, Option.bind_some, ← hR5]; rfl, p5, m5, by rw [hR5, withInput_input], ?_, ?_, ?_, ?_, ?_, ?_⟩

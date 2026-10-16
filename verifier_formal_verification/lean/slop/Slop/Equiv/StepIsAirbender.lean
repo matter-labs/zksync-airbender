@@ -30,9 +30,10 @@ theorem step_sail (s t : RV.State) (σ : SailState) (h : Airbender.AgreeSail s �
     have hd := hdec
     unfold RV.decode at hd
     simp only at hd
-    split at hd <;> (try split_ifs at hd) <;> cases hd
+    split at hd <;> (try simp only [RV.decodeCsr] at hd) <;> (try split_ifs at hd) <;> cases hd
     all_goals first
       | (simp [RV.Instr.readsInput] at hr; done)
+      | exact kind_write h ha' h2 _ _ hdec hex
       | exact kind_lui h ha' h2 _ _ hdec hex
       | exact kind_auipc h ha' h2 _ _ hdec hex
       | exact kind_jal h ha' h2 _ _ hdec hex
@@ -44,18 +45,12 @@ theorem step_sail (s t : RV.State) (σ : SailState) (h : Airbender.AgreeSail s �
       | exact kind_shift h ha' h2 _ _ _ _ (by simp) hdec hex
       | exact kind_op h ha' h2 _ _ _ _ (by simp) hdec hex
       | exact kind_mop h ha' h2 _ _ _ _ hdec hex
-  · obtain ⟨rd, rfl⟩ : ∃ rd, i = .inputRead rd := by cases i <;> simp_all [RV.Instr.readsInput]
-    have hrd0 : rd ≠ 0 := by
-      have hd := hdec
-      unfold RV.decode at hd
-      simp only at hd
-      split at hd <;> (try split_ifs at hd with hh) <;> cases hd
-      exact hh.2.2
+  · obtain ⟨op, rd, rfl⟩ : ∃ op rd, i = .inputRead op rd := by cases i <;> simp_all [RV.Instr.readsInput]
     simp only [RV.exec] at hex
     rcases hs : s.input with _ | ⟨w, rest⟩ <;> rw [hs] at hex
     · cases hex
     simp only [Option.some.injEq] at hex; subst hex
-    obtain ⟨σ', e, a⟩ := kind_input (next := s.input.headD 0) h ha' h2 rd hdec hrd0
+    obtain ⟨σ', e, a⟩ := kind_input (next := s.input.headD 0) h ha' h2 op rd hdec
     rw [hs] at e a
     exact ⟨σ', true, e, a, w, rfl⟩
 

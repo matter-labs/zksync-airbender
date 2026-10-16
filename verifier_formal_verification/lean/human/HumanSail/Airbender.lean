@@ -96,6 +96,16 @@ def mopIndex : RV.FieldOp → BitVec 3
 def mopOfIndex : BitVec 3 → Option RV.FieldOp
   | 0 => some .add | 1 => some .sub | 2 => some .mul | 3 => some .fma | 4 => some .triAdd | _ => none
 
+/-- A Zicsr instruction on CSR 0x7c0 in Sail's vocabulary (`src`: the register, or the immediate). -/
+noncomputable def csrToSail (op : RV.CsrOp) (src rd : RV.Reg) : instruction :=
+  match op with
+  | .rw  => .CSRReg (0x7c0, .Regidx src, .Regidx rd, .CSRRW)
+  | .rs  => .CSRReg (0x7c0, .Regidx src, .Regidx rd, .CSRRS)
+  | .rc  => .CSRReg (0x7c0, .Regidx src, .Regidx rd, .CSRRC)
+  | .rwi => .CSRImm (0x7c0, src, .Regidx rd, .CSRRW)
+  | .rsi => .CSRImm (0x7c0, src, .Regidx rd, .CSRRS)
+  | .rci => .CSRImm (0x7c0, src, .Regidx rd, .CSRRC)
+
 /-- Our instructions (`Human/RV32.lean`) in Sail's vocabulary. Immediates: Sail keeps the encoded bits, we keep
 the decoded value, so `toSail` takes the encoded bits back out. -/
 noncomputable def toSail : RV.Instr → instruction
@@ -123,7 +133,8 @@ noncomputable def toSail : RV.Instr → instruction
   | .op .remu rd rs1 rs2     => .REM (.Regidx rs2, .Regidx rs1, .Regidx rd, true)
   | .op op rd rs1 rs2        => .RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, sailAluOp op)
   | .mop op rd rs1 rs2       => .ZIMOP_MOP_RR (mopIndex op, .Regidx rs2, .Regidx rs1, .Regidx rd)
-  | .inputRead rd            => .CSRReg (0x7c0, .Regidx 0, .Regidx rd, .CSRRW)
+  | .inputRead op rd         => csrToSail op 0 rd
+  | .inputWrite op src       => csrToSail op src 0
 
 /-! ## The machine -/
 
@@ -131,14 +142,24 @@ noncomputable def toSail : RV.Instr → instruction
 instruction then run as Sail's `toSail` of it. `HumanSail/Theorems.lean` states that Sail's own decoder gives the
 same instruction for every word of that table, except the extra encodings Airbender accepts (`ExtraEncoding`). -/
 
+/-- Airbender's CSR 0x7c0 (`srcZero`: the source register or immediate is 0): a read of the next input word `next`,
+a write (no effect), or rejected. -/
+noncomputable def nonDeterminism (next : BitVec 32) (srcZero : Bool) (rd : regidx) : SailM ExecutionResult :=
+  if srcZero && rd != zreg then do
+    wX_bits rd next
+    pure RETIRE_SUCCESS
+  else if !srcZero && rd == zreg then pure RETIRE_SUCCESS
+  else pure (.Illegal_Instruction ())
+
 /-- Execute one instruction (`next`: the next input word): as Sail does, except loads into x0, the field operations
-and the input read. -/
+and CSR 0x7c0. -/
 noncomputable def execute (next : BitVec 32) (instr : instruction) : SailM ExecutionResult :=
   match instr with
-  | .CSRReg (csr, rs1, rd, .CSRRW) =>                  -- Airbender: `csrrw rd, 0x7c0, x0` reads the next input
-      if csr == 0x7c0 && rs1 == zreg && rd != zreg then do  --   word (Sail has no CSR 0x7c0 and would trap)
-        wX_bits rd next
-        pure RETIRE_SUCCESS
+  | .CSRReg (csr, rs1, rd, _) =>                       -- Airbender: CSR 0x7c0 is the non-determinism source
+      if csr == 0x7c0 then nonDeterminism next (rs1 == zreg) rd  --   (`nonDeterminism`; Sail: illegal)
+      else SailRV32.Functions.execute instr
+  | .CSRImm (csr, imm, rd, _) =>
+      if csr == 0x7c0 then nonDeterminism next (imm == 0) rd
       else SailRV32.Functions.execute instr
   | .LOAD (_, _, rd, _, _) => if rd == zreg then pure RETIRE_SUCCESS  -- Airbender: a load into x0 only
                               else SailRV32.Functions.execute instr   --   advances the PC (no memory access)

@@ -12,6 +12,7 @@ namespace RV.Sym
 open Lean Elab Command Term Meta
 
 deriving instance DecidableEq for RV.Cond
+deriving instance DecidableEq for RV.CsrOp
 deriving instance DecidableEq for RV.Instr
 deriving instance DecidableEq for RV.Sym.Node
 deriving instance DecidableEq for RV.Sym.Pool
@@ -19,6 +20,7 @@ deriving instance DecidableEq for RV.Sym.SState
 deriving instance ToExpr for RV.Op
 deriving instance ToExpr for RV.FieldOp
 deriving instance ToExpr for RV.Cond
+deriving instance ToExpr for RV.CsrOp
 deriving instance ToExpr for RV.Instr
 deriving instance ToExpr for RV.Sym.Node
 deriving instance ToExpr for RV.Sym.Pool

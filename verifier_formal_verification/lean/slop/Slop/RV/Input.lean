@@ -37,7 +37,7 @@ theorem step_lift {s s' : State} (h : step s = some s') (he : s.input = []) :
     show (if s.pc.toNat % 4 = 0 ∧ s.pc.toNat + 4 ≤ ROM_END then
       (decode (read s.mem s.pc 4)).bind (exec (s.withInput t)) else none) = _
     rw [if_pos hc, hdec, Option.bind_some, exec_input_irrel s i hr t, hex]; rfl
-  · obtain ⟨rd, rfl⟩ : ∃ rd, i = .inputRead rd := by cases i <;> simp_all [Instr.readsInput]
+  · obtain ⟨op, rd, rfl⟩ : ∃ op rd, i = .inputRead op rd := by cases i <;> simp_all [Instr.readsInput]
     simp [exec, he] at hex
 
 /-- A run with the input empty: it reads no input, and runs the same with any input. -/
@@ -64,9 +64,9 @@ namespace RV
     (s.withInput t).getReg r = s.getReg r := Eq.trans rfl rfl
 
 /-- The input read `csrrw rd, 0x7c0, x0` at the PC: `rd` gets the next input word. -/
-theorem step_read (s : State) (w : Word) (rd : Reg) (v : Word) (rest : List Word)
+theorem step_read (s : State) (w : Word) (op : CsrOp) (rd : Reg) (v : Word) (rest : List Word)
     (hpc : s.pc.toNat % 4 = 0) (hrom : s.pc.toNat + 4 ≤ ROM_END) (hw : read s.mem s.pc 4 = w)
-    (hd : decode w = some (.inputRead rd)) (hin : s.input = v :: rest) :
+    (hd : decode w = some (.inputRead op rd)) (hin : s.input = v :: rest) :
     step s = some ((s.setReg rd v).nextInstr.withInput rest) := by
   rw [step_fetch s w hpc hrom hw, hd, Option.bind_some]
   simp only [exec, hin]; rfl

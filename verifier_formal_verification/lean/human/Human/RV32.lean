@@ -4,10 +4,11 @@ One instruction = at most one register or memory write, plus the PC update.
 No next state (`step = none`, i.e. unprovable in Airbender) for: anything outside Airbender's RV32IM subset
 (signed MULH/MULHSU/DIV/REM, FENCE, ECALL, CSRs other than the input read below, …), misaligned or out-of-range
 loads/stores, misaligned jump targets, fetch outside ROM.
-The program's input is Airbender's non-determinism source (CSR `0x7c0`): a sequence of words, read one at a time
-by `csrrw rd, 0x7c0, x0` (rd ≠ x0); no next state once it is used up (the theorems say how many words are there).
-Its other forms (the write `csrrw x0, 0x7c0, rs1`, a no-op in Airbender and unused by the verifier;
-`csrrs`/`csrrc`/immediate forms) have no next state here.
+Non-determinism (Airbender's CSR `0x7c0`): `input` is the list of answers the prover's oracle will give, in order;
+the theorems hold for every such list. Any Zicsr instruction on CSR `0x7c0` whose source (rs1, or the immediate) is 0
+reads the next answer into `rd` (≠ x0); one with `rd = x0` and a nonzero source is a no-op (Airbender's write).
+Every other combination (Airbender's transpiler panics), every other CSR, and a read with no answers left have no
+next state.
 Differences from standard RV32IM follow Airbender's ISA table (spec/top-down/00 master.md, "Supported
 instruction set"); each is marked `-- Airbender:` below. -/
 
@@ -112,6 +113,9 @@ def Cond.holds : Cond → Word → Word → Bool
   | .ltu, a, b => a.ult b
   | .geu, a, b => !a.ult b
 
+/-- The Zicsr forms: `csrrw`, `csrrs`, `csrrc` (source register) and `csrrwi`, `csrrsi`, `csrrci` (immediate). -/
+inductive CsrOp | rw | rs | rc | rwi | rsi | rci
+
 /-- Immediates and offsets are stored already decoded (sign-extended / shifted). -/
 inductive Instr
   | lui    (rd : Reg) (imm : Word)
@@ -124,11 +128,12 @@ inductive Instr
   | opImm  (op : Op) (rd rs1 : Reg) (imm : Word)
   | op     (op : Op) (rd rs1 rs2 : Reg)
   | mop    (op : FieldOp) (rd rs1 rs2 : Reg)   -- Airbender: field operations (`mop.rr.N`)
-  | inputRead (rd : Reg)                      -- Airbender: `csrrw rd, 0x7c0, x0`, the next input word
+  | inputRead (op : CsrOp) (rd : Reg)         -- Airbender: CSR 0x7c0, source 0: `rd` := the next input word
+  | inputWrite (op : CsrOp) (src : Reg)       -- Airbender: CSR 0x7c0, `rd = x0`, source ≠ 0: no effect
 
 /-- Whether an instruction reads an input word. -/
 def Instr.readsInput : Instr → Bool
-  | .inputRead _ => true
+  | .inputRead _ _ => true
   | _ => false
 
 /-- What one instruction does to the state (`none`: Airbender cannot run it). -/
@@ -154,10 +159,19 @@ def exec (s : State) : Instr → Option State
   | .op op rd rs1 rs2      => some (s.setReg rd (alu op (s.getReg rs1) (s.getReg rs2))).nextInstr
   | .mop op rd rs1 rs2     =>                       -- Airbender: `rd = x0` is not allowed (the circuit requires it)
       if rd = 0 then none else some (s.setReg rd (mopVal op (s.getReg rs1) (s.getReg rs2) (s.getReg rd))).nextInstr
-  | .inputRead rd          =>
+  | .inputRead _ rd        =>
       match s.input with
       | w :: rest => some { (s.setReg rd w).nextInstr with input := rest }
       | []        => none
+  | .inputWrite _ _        => some s.nextInstr
+
+/-- Airbender: a Zicsr instruction `op` on CSR `csr` with source field `src` (rs1, or the immediate): only CSR 0x7c0,
+and only a read (`src = 0`, `rd ≠ x0`) or a write (`src ≠ 0`, `rd = x0`). -/
+def decodeCsr (op : CsrOp) (csr : BitVec 12) (src rd : Reg) : Option Instr :=
+  if csr ≠ 0x7c0 then none
+  else if src = 0 ∧ rd ≠ 0 then some (.inputRead op rd)
+  else if src ≠ 0 ∧ rd = 0 then some (.inputWrite op src)
+  else none
 
 /-- Standard RV32IM encodings (unprivileged spec, ch. 2 and 13). -/
 def decode (word : Word) : Option Instr :=
@@ -224,7 +238,12 @@ def decode (word : Word) : Option Instr :=
   | 0x73, 4, 0x45 => some (.mop .mul    rd rs1 rs2)
   | 0x73, 4, 0x47 => some (.mop .fma    rd rs1 rs2)
   | 0x73, 4, 0x61 => some (.mop .triAdd rd rs1 rs2)
-  | 0x73, 1, _    => if csr = 0x7c0 ∧ rs1 = 0 ∧ rd ≠ 0 then some (.inputRead rd) else none  -- csrrw (Zicsr)
+  | 0x73, 1, _    => decodeCsr .rw  csr rs1 rd             -- Zicsr: csrrw, csrrs, csrrc, csrrwi, csrrsi, csrrci
+  | 0x73, 2, _    => decodeCsr .rs  csr rs1 rd
+  | 0x73, 3, _    => decodeCsr .rc  csr rs1 rd
+  | 0x73, 5, _    => decodeCsr .rwi csr rs1 rd
+  | 0x73, 6, _    => decodeCsr .rsi csr rs1 rd
+  | 0x73, 7, _    => decodeCsr .rci csr rs1 rd
   | _, _, _       => none
 
 /-- One step: fetch from ROM at an aligned PC, decode, execute. -/
