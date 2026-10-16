@@ -9,7 +9,9 @@ use era_cudart::stream::CudaStream;
 use era_cudart_sys::CudaError;
 use sha3::{Digest as _, Keccak256};
 
-use super::super::transcript::{pow_chunk_steps, pow_finalize, pow_search_bounded};
+#[cfg(feature = "deterministic_pow")]
+use super::super::transcript::pow_chunk_steps;
+use super::super::transcript::{pow_finalize, pow_search_bounded};
 use super::super::{keccak256_pow, pow_helpers_probe, Seed};
 #[cfg(feature = "deterministic_pow")]
 use super::super::{transcript_draw_fields, transcript_draw_u32};
@@ -107,6 +109,7 @@ impl PowState {
         download(&self.nonce, 0, stream)[0]
     }
 
+    #[cfg(feature = "deterministic_pow")]
     fn read_counter(&self, stream: &CudaStream) -> u64 {
         download(&self.counter, 0, stream)[0]
     }
@@ -352,8 +355,8 @@ fn keccak256_pow_boundaries() {
     excluded.search(8, minimum, 1, &stream);
     assert_eq!(
         excluded.read_nonce(&stream),
-        minimum,
-        "exclusive endpoint retains the bound sentinel"
+        u64::MAX,
+        "exclusive endpoint keeps the no-hit sentinel"
     );
     assert_eq!(excluded.read_seed(&stream), endpoint_seed);
     let mut sentinel = PowState::new(&seed, 1, &stream);
@@ -475,6 +478,7 @@ fn keccak256_pow_first_hit_is_valid() {
     }
 }
 
+#[cfg(feature = "deterministic_pow")]
 #[test]
 fn keccak256_pow_counter_reaches_top_of_nonce_domain() {
     let stream = CudaStream::default();
@@ -520,7 +524,7 @@ fn keccak256_pow_exhaustion() {
     let stream = ManuallyDrop::new(CudaStream::default());
     let mut state = ManuallyDrop::new(PowState::new(&seed, 1, &stream));
     state.search(256, bound, 1, &stream);
-    assert_eq!(state.read_nonce(&stream), bound);
+    assert_eq!(state.read_nonce(&stream), u64::MAX);
     assert_eq!(state.read_seed(&stream), seed);
     state.finalize(256, &stream);
     let error = stream

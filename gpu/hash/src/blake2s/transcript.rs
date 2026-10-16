@@ -266,7 +266,8 @@ pub fn reduce_raw_words_to_e4(
 
 /// Grind for the nonce whose `Blake2s(seed || nonce)` digest has `bits_count`
 /// leading zero bits in word 0, writing it to `result` (the smallest such
-/// nonce under `deterministic_pow`, the first found otherwise). `counter` is one-word scratch.
+/// nonce under `deterministic_pow` via the counter search, the first found otherwise via the
+/// grid-stride search). `counter` is one-word scratch.
 pub fn blake2s_pow(
     seed: &DeviceSlice<u32>,
     bits_count: u32,
@@ -282,7 +283,9 @@ pub fn blake2s_pow(
     assert_eq!(seed.as_ptr() as usize % 8, 0);
     unsafe {
         memory_set_async(result.transmute_mut(), 0xff, stream)?;
-        memory_set_async(counter.transmute_mut(), 0, stream)?;
+        if cfg!(feature = "deterministic_pow") {
+            memory_set_async(counter.transmute_mut(), 0, stream)?;
+        }
     }
     const BLOCK_SIZE: u32 = WARP_SIZE * 4;
     let device_id = get_device()?;
@@ -304,7 +307,7 @@ pub fn blake2s_pow(
     kernel_function.launch(&config, &args)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "deterministic_pow"))]
 #[allow(clippy::too_many_arguments)]
 pub(super) fn blake2s_pow_search_bounded(
     seed: &DeviceSlice<u32>,

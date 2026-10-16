@@ -363,7 +363,10 @@ constexpr bool POW_DETERMINISTIC = false;
 #endif
 
 EXTERN __global__ void ab_blake2s_pow_kernel(const u64 *seed, const u32 bits_count, const u64 max_nonce, const u32 chunk_steps, u64 *counter, u64 *result) {
-  pow_search<POW_DETERMINISTIC>(seed, bits_count, max_nonce, chunk_steps, counter, result);
+  if constexpr (POW_DETERMINISTIC)
+    pow_search_counter(seed, bits_count, max_nonce, chunk_steps, counter, result);
+  else
+    pow_search_grid_stride<false>(seed, bits_count, max_nonce, result);
 }
 
 // ---------------------------------------------------------------------------

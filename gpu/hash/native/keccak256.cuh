@@ -3,6 +3,7 @@
 #include "common.cuh"
 #include "primitives/field.cuh"
 #include "primitives/proth120.cuh"
+#include <cuda/atomic>
 
 namespace airbender::hash::keccak256 {
 
@@ -426,13 +427,32 @@ DEVICE_FORCEINLINE void load_seed(const u8 *src, u8 seed[32]) {
 
 constexpr u64 POW_STOP = u64{1} << 63;
 
-template <bool DETERMINISTIC>
-DEVICE_FORCEINLINE void pow_search(const u8 *seed, const u32 bits, const u64 max_nonce, const u32 chunk_steps, u64 *counter, u64 *result) {
+DEVICE_FORCEINLINE bool advance(const u64 nonce, const u64 stride, const u64 max_nonce, u64 &next) {
+  if (stride > max_nonce || nonce >= max_nonce - stride) {
+    next = 0;
+    return false;
+  }
+  next = nonce + stride;
+  return true;
+}
+
+/// Min-nonce search: warps claim consecutive chunks of `chunk_steps * 32` nonces from `counter`;
+/// a hit pushes the counter past every valid index, and the claimed chunks are finished.
+DEVICE_FORCEINLINE void pow_search_counter(const u8 *seed, const u32 bits, const u64 max_nonce, const u32 chunk_steps, u64 *counter, u64 *result) {
   const u32 lane = threadIdx.x & 31;
   u8 current_seed[32];
   load_seed(seed, current_seed);
   auto *counter_ptr = reinterpret_cast<unsigned long long *>(counter);
   auto *result_ptr = reinterpret_cast<unsigned long long *>(result);
+  bool hit = false;
+  const auto try_nonce = [&](const u64 nonce) {
+    u8 value[32];
+    pow_digest(current_seed, nonce, value);
+    if (top_bits_are_zero(value, bits)) {
+      atomicMin(result_ptr, static_cast<unsigned long long>(nonce));
+      hit = true;
+    }
+  };
   const u64 chunk = static_cast<u64>(chunk_steps) * 32;
   while (true) {
     u64 index = 0;
@@ -442,41 +462,46 @@ DEVICE_FORCEINLINE void pow_search(const u8 *seed, const u32 bits, const u64 max
     const u64 start = index * chunk;
     if (index >= POW_STOP || __umul64hi(index, chunk) != 0 || start >= max_nonce)
       return;
-    const u64 remaining = max_nonce - start;
-    bool hit = false;
-    bool stopped = false;
+    const u64 limit = max_nonce - start;
 #pragma unroll 1
     for (u32 step = 0; step < chunk_steps; step++) {
       const u64 offset = step * 32 + lane;
-      if (offset < remaining) {
-        const u64 nonce = start + offset;
-        u8 value[32];
-        pow_digest(current_seed, nonce, value);
-        if (top_bits_are_zero(value, bits)) {
-          atomicMin(result_ptr, static_cast<unsigned long long>(nonce));
-          hit = true;
-        }
-      }
-      if (!stopped && __any_sync(0xffffffffu, hit)) {
-        if (lane == 0)
-          atomicMax(counter_ptr, static_cast<unsigned long long>(POW_STOP));
-        stopped = true;
-        if constexpr (!DETERMINISTIC)
-          return;
-      }
+      if (offset < limit)
+        try_nonce(start + offset);
     }
-    if (stopped)
+    if (__any_sync(0xffffffffu, hit)) {
+      if (lane == 0)
+        atomicMax(counter_ptr, static_cast<unsigned long long>(POW_STOP));
       return;
+    }
   }
 }
 
-DEVICE_FORCEINLINE bool advance(const u64 nonce, const u64 stride, const u64 max_nonce, u64 &next) {
-  if (stride > max_nonce || nonce >= max_nonce - stride) {
-    next = 0;
-    return false;
+/// Grid-stride search; DETERMINISTIC keeps the minimum nonce, otherwise the first published hit stops it.
+template <bool DETERMINISTIC> DEVICE_FORCEINLINE void pow_search_grid_stride(const u8 *seed, const u32 bits, const u64 max_nonce, u64 *result) {
+  u64 nonce = static_cast<u64>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const u64 stride = static_cast<u64>(gridDim.x) * blockDim.x;
+  u8 current_seed[32];
+  load_seed(seed, current_seed);
+  auto *result_ptr = reinterpret_cast<unsigned long long *>(result);
+  cuda::atomic_ref<unsigned long long, cuda::thread_scope_device> found(*result_ptr);
+  while (nonce < max_nonce) {
+    u8 value[32];
+    pow_digest(current_seed, nonce, value);
+    if (top_bits_are_zero(value, bits)) {
+      if constexpr (DETERMINISTIC)
+        atomicMin(result_ptr, static_cast<unsigned long long>(nonce));
+      else
+        atomicCAS(result_ptr, UINT64_MAX, static_cast<unsigned long long>(nonce));
+    }
+    const u64 published = found.load(cuda::memory_order_relaxed);
+    if (DETERMINISTIC ? published <= nonce : published != UINT64_MAX)
+      break;
+    u64 next;
+    if (!advance(nonce, stride, max_nonce, next))
+      break;
+    nonce = next;
   }
-  next = nonce + stride;
-  return true;
 }
 
 } // namespace airbender::hash::keccak256
