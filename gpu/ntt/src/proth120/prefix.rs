@@ -267,12 +267,22 @@ pub(crate) fn chunk_plan(
     }
     let column = size_of::<PR>() << log_n;
     if column <= chunk_bytes {
+        // Whole columns; a column whose first pass would exceed grid.y = 2^15 runs as strips.
+        let y_bits = passes.iter().map(|p| p.y_bits(log_n));
+        let strip_domain_bits = y_bits.clone().max().unwrap().saturating_sub(15);
+        if strip_domain_bits > y_bits.min().unwrap() {
+            return None;
+        }
         return Some(ChunkPlan {
             log_n,
-            cols_per_chunk: chunk_bytes / column,
-            strips: 1,
+            cols_per_chunk: if strip_domain_bits == 0 {
+                chunk_bytes / column
+            } else {
+                1
+            },
+            strips: 1 << strip_domain_bits,
             strip_blocks: 1,
-            strip_domain_bits: 0,
+            strip_domain_bits,
             passes,
         });
     }
@@ -360,7 +370,7 @@ fn dispatch_with_budget(
         if a < skip_bottom || r < log_v || tile_bytes > MAX_TILE_BYTES {
             continue;
         }
-        let Some(groups) = prefix_groups(a) else {
+        let Some(groups) = prefix_groups(a).map(|g| narrow_groups(&g)) else {
             continue;
         };
         let tiles_per_coset = 1usize << (a - skip_bottom);
@@ -412,7 +422,7 @@ fn dispatch_degraded(
         if a < skip_bottom || r < log_v || tile_bytes > MAX_TILE_BYTES {
             continue;
         }
-        let Some(groups) = prefix_groups(a) else {
+        let Some(groups) = prefix_groups(a).map(|g| narrow_groups(&g)) else {
             continue;
         };
         let full_grid = chunk_plan(log_n, &groups, column)?;

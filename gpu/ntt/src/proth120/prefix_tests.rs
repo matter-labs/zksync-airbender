@@ -343,9 +343,11 @@ fn cpu_pr_chunk_plan_closure() {
         (false, MAX_CHUNK_BYTES)
     );
     let n26_d = dispatch(26, 13, 1, 10, L2_RTX_PRO_6000).unwrap();
+    // Full grid of [7n,7n,5n]: the narrow-7 first pass has 2^16 y-blocks, so it runs as two
+    // grid-limit strips.
     assert_eq!(
         (n26_d.prefix_resident, n26_d.prefix.unwrap().strips),
-        (false, 1)
+        (false, 2)
     );
     print_table(L2_RTX_PRO_6000, &rows);
     // A100 40 MB, H100 50 MB, L40S / RTX 5090 96 MB.
