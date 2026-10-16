@@ -381,7 +381,6 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     drop(timestamp);
     end_phase(p, &mut phases, context)?;
     let p = phase("l1_wrap.whir", context)?;
-    let handoff = gkr.whir_handoff();
     let shape = L1WhirShape::from_schedule(
         &config.whir_schedule,
         geometry.log_message,
@@ -389,21 +388,37 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         geometry.log_base_values_per_leaf,
         L1_WHIR_TILE_BYTES,
     );
-    let whir = schedule_l1_whir_fold(
-        &mut base,
-        &mut setup,
-        handoff.seed,
-        L1WhirInputs {
-            claims: handoff.claims,
-            base_layer_point: handoff.base_layer_point,
-            batching_challenge: handoff.batching_challenge,
-        },
-        &config.whir_schedule,
-        &shape,
-        context,
-    )?;
+    let pending = {
+        let handoff = gkr.whir_handoff();
+        schedule_l1_whir_fold(
+            &mut base,
+            &mut setup,
+            handoff.seed,
+            L1WhirInputs {
+                claims: handoff.claims,
+                base_layer_point: handoff.base_layer_point,
+                batching_challenge: handoff.batching_challenge,
+            },
+            &config.whir_schedule,
+            &shape,
+            context,
+        )?
+    };
     end_phase(p, &mut phases, context)?;
     let p = phase("l1_wrap.readback", context)?;
+    let whir = {
+        let handoff = gkr.whir_handoff();
+        pending.schedule_readback(
+            L1WhirInputs {
+                claims: handoff.claims,
+                base_layer_point: handoff.base_layer_point,
+                batching_challenge: handoff.batching_challenge,
+            },
+            base.cap_digests(),
+            setup.oracle().cap_digests(),
+            context,
+        )?
+    };
     let mut mirror = unsafe { context.alloc_host_uninit_slice::<u8>(layout.bytes_len()) };
     let slab_bytes = unsafe {
         DeviceSlice::from_raw_parts(slab.backing.as_ptr().cast::<u8>(), layout.bytes_len())

@@ -13,6 +13,7 @@ use gpu_core::primitives::field::PR;
 use gpu_hash::keccak256::Digest;
 use gpu_prover_context::ProverContext;
 
+use super::schedule::L1WhirInputs;
 use super::shape::L1WhirShape;
 use crate::upstream::{
     BaseFieldQuery, ExtensionFieldQuery, Keccak256MerkleTreeWithCap, MerkleTreeCapVarLength,
@@ -207,6 +208,59 @@ impl L1WhirProofHost {
 }
 
 pub type L1WhirProof = WhirPolyCommitProof<PR, PR, Keccak256MerkleTreeWithCap>;
+
+/// WHIR work enqueued without any D2H; `schedule_readback` enqueues all of them.
+pub struct L1WhirPendingReadback {
+    pub(crate) device: L1WhirProofDevice,
+    pub(crate) host: L1WhirProofHost,
+    pub(crate) schedule: WhirSchedule,
+    pub(crate) memory_columns: usize,
+    pub(crate) setup_columns: usize,
+    pub(crate) tracing_ranges: Vec<(String, Range)>,
+}
+
+impl L1WhirPendingReadback {
+    /// `inputs` and the caps must be the ones the fold consumed, still alive on the same exec stream.
+    pub fn schedule_readback(
+        self,
+        inputs: L1WhirInputs<'_>,
+        memory_cap: &DeviceSlice<Digest>,
+        setup_cap: &DeviceSlice<Digest>,
+        context: &ProverContext,
+    ) -> CudaResult<L1WhirScheduled> {
+        let Self {
+            device,
+            mut host,
+            schedule,
+            memory_columns,
+            setup_columns,
+            tracing_ranges,
+        } = self;
+        let stream = context.get_exec_stream();
+        memory_copy_async(&mut host.claims, inputs.claims, stream)?;
+        memory_copy_async(
+            &mut host.original_evaluation_point,
+            inputs.base_layer_point,
+            stream,
+        )?;
+        memory_copy_async(
+            &mut host.batching_challenge,
+            inputs.batching_challenge,
+            stream,
+        )?;
+        schedule_readback_and_assemble(
+            device,
+            host,
+            memory_cap,
+            setup_cap,
+            &schedule,
+            memory_columns,
+            setup_columns,
+            tracing_ranges,
+            context,
+        )
+    }
+}
 
 pub struct L1WhirScheduled {
     _callbacks: Callbacks<'static>,
@@ -403,7 +457,7 @@ unsafe fn assemble_whir_proof(
 }
 
 #[allow(clippy::needless_pass_by_value)]
-pub(crate) fn schedule_readback_and_assemble(
+fn schedule_readback_and_assemble(
     device: L1WhirProofDevice,
     mut host: L1WhirProofHost,
     memory_cap: &DeviceSlice<Digest>,
