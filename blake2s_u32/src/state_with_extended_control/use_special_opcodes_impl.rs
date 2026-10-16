@@ -413,8 +413,17 @@ static BLAKE2S_NODE_EXTENDED_STATE: [u32; 16] =
 const _: () = assert!(core::mem::offset_of!(Blake2RoundFunctionEvaluator, state) == 0);
 const _: () = assert!(core::mem::offset_of!(Blake2RoundFunctionEvaluator, input_buffer) == 64);
 
-// Reduced-round compression of the block at `a0` into the chaining value at `a1`, with `t` in `a2`
-// and the finalization mask in `a3`. Preserves only `sp`, `gp`, `tp`, `s0` and `s1`.
+// Register contract of the two cores below, which is not the C ABI. Callers reach them with `call`
+// from `asm!`, which must list every register a core does not restore:
+// - restored: `sp`, `gp`, `tp`, `s0` and `s1`. `asm!` cannot name these, so a core saves the four
+//   that hold message words, with `ra`, in a 32-byte stack frame;
+// - clobbered: `ra` (by the `call`), `a0`-`a7` and `t0`-`t6` (`clobber_abi("C")`), and `s2`-`s11`
+//   (`out("s2") _` to `out("s11") _`), which the C ABI would have the callee preserve.
+// No floating-point register is used.
+
+// `blake2s_u32_reduced_rounds_block`: reduced-round compression of the 16-word block at `a0` into
+// the 8-word chaining value at `a1`, with `t` in `a2` and the finalization mask in `a3`. Reads the
+// block, the chaining value and `BLAKE2S_IV`; writes only the chaining value.
 core::arch::global_asm!(
     ".pushsection .text.blake2s_u32_reduced_rounds_block,\"ax\",@progbits",
     ".globl blake2s_u32_reduced_rounds_block",
@@ -509,9 +518,10 @@ core::arch::global_asm!(
     tri_add = const MOP_TRI_ADD,
 );
 
-// Reduced-round Merkle node compression of the evaluator at `a0`: the state is the right child
-// if `a1` is non-zero, else the left one, and the sibling is in the other half of the input
-// buffer. Preserves only `sp`, `gp`, `tp`, `s0` and `s1`.
+// `blake2s_u32_reduced_rounds_node`: reduced-round Merkle node compression of the evaluator at
+// `a0`. The state is the right child if `a1` is non-zero, else the left one, and the sibling is in
+// the other half of the input buffer. Reads the state, the sibling and
+// `BLAKE2S_NODE_EXTENDED_STATE`; writes only the 8-word state.
 core::arch::global_asm!(
     ".pushsection .text.blake2s_u32_reduced_rounds_node,\"ax\",@progbits",
     ".globl blake2s_u32_reduced_rounds_node",
