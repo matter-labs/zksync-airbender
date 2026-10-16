@@ -54,6 +54,17 @@ DEVICE_FORCEINLINE pr get_forward_pr_twiddle(const proth120_twiddle_descriptor &
 
 constexpr DEVICE_FORCEINLINE pr TWO_INV() { return {{0xffffffee, 0xffffffff, 0xffffffff, 0x01ffffff}}; }
 
+// 2^-LOG_VALUES: the conversion's 1/2 per stage, applied once in its last stage.
+template <u32 LOG_VALUES> DEVICE_FORCEINLINE pr pr_convert_leaf_scale() {
+  pr scale = TWO_INV();
+#pragma unroll
+  for (u32 i = 1; i < LOG_VALUES; i++)
+    scale = pr::mul(scale, TWO_INV());
+  return scale;
+}
+
+// One stage of the leaf conversion, (a + b, (a - b) * root_inv * twiddle_t) with the stages' 1/2 factors (one per stage
+// on every value) deferred to the last stage as 2^-LOG_VALUES.
 template <u32 LOG_VALUES, u32 STAGE>
 DEVICE_FORCEINLINE void pr_convert_leaf_stage(const proth120_twiddle_descriptor &d, pr (&source)[1u << LOG_VALUES], pr (&target)[1u << LOG_VALUES],
                                               const pr root_inv) {
@@ -61,6 +72,7 @@ DEVICE_FORCEINLINE void pr_convert_leaf_stage(const proth120_twiddle_descriptor 
   constexpr u32 GROUPS = 1u << STAGE;
   constexpr u32 BLOCK = VALUES >> STAGE;
   constexpr u32 HALF = BLOCK / 2;
+  constexpr bool LAST = STAGE + 1 == LOG_VALUES;
 #pragma unroll
   for (u32 group = 0; group < GROUPS; group++) {
 #pragma unroll
@@ -68,12 +80,18 @@ DEVICE_FORCEINLINE void pr_convert_leaf_stage(const proth120_twiddle_descriptor 
       const pr a = source[group * BLOCK + 2 * t];
       const pr b = source[group * BLOCK + 2 * t + 1];
       const u64 exponent = static_cast<u64>(bitreverse_low_bits(t, LOG_VALUES - 1)) << (d.log_max_domain - LOG_VALUES);
-      const pr twiddle = pr_root_power_inv(d, exponent);
-      target[group * HALF + t] = pr::mul(pr::add(a, b), TWO_INV());
-      target[(group | GROUPS) * HALF + t] = pr::mul(pr::mul(pr::sub(a, b), pr::mul(root_inv, twiddle)), TWO_INV());
+      const pr factor = pr::mul(root_inv, pr_root_power_inv(d, exponent));
+      if constexpr (LAST) {
+        const pr scale = pr_convert_leaf_scale<LOG_VALUES>();
+        target[group * HALF + t] = pr::mul(pr::add(a, b), scale);
+        target[(group | GROUPS) * HALF + t] = pr::mul(pr::sub(a, b), pr::mul(factor, scale));
+      } else {
+        target[group * HALF + t] = pr::add(a, b);
+        target[(group | GROUPS) * HALF + t] = pr::mul(pr::sub(a, b), factor);
+      }
     }
   }
-  if constexpr (STAGE + 1 < LOG_VALUES)
+  if constexpr (!LAST)
     pr_convert_leaf_stage<LOG_VALUES, STAGE + 1>(d, target, source, pr::sqr(root_inv));
   else if constexpr (LOG_VALUES & 1) {
 #pragma unroll
