@@ -4,7 +4,7 @@ use era_cudart::memory::{memory_copy_async, DeviceAllocation};
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 
-use super::super::hash::{leaf_shape, leaf_tile};
+use super::super::hash::{leaf_shape, leaf_sponge_probe, leaf_tile};
 use super::super::merkle::{partial_tree_shape, partial_tree_tile, top_tree_log_lde};
 use super::super::{
     assert_no_overlap, build_partial_coset_tree, build_partial_coset_tree_with_scratch,
@@ -253,6 +253,43 @@ fn keccak256_leaf_parity() {
                 }
             }
         }
+    }
+}
+
+#[test]
+fn keccak256_leaf_sponge_matches_hash_leaf() {
+    let stream = CudaStream::default();
+    let mut rng = TestRng::new(0x7370_6f6e);
+    for (columns, log_v) in [
+        (1usize, 1u32),
+        (1, 2),
+        (1, 3),
+        (1, 4),
+        (2, 1),
+        (7, 2),
+        (13, 1),
+    ] {
+        let log_domain = 10 + log_v;
+        let domain = 1usize << log_domain;
+        let leaves = domain >> log_v;
+        let values = random_columns(&mut rng, columns, domain);
+        let d_values = upload(&values, &stream);
+        let mut d_out = sentinel_buffer(leaves, &stream);
+        leaf_sponge_probe(
+            &d_values,
+            log_domain,
+            log_v,
+            columns as u32,
+            &mut d_out,
+            &stream,
+        )
+        .unwrap();
+        let expected = cpu_leaves(&values, columns, log_v);
+        assert_eq!(
+            download(&d_out, SENTINEL, &stream),
+            expected,
+            "columns={columns} log_v={log_v}"
+        );
     }
 }
 

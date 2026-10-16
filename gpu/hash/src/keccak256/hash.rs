@@ -170,3 +170,49 @@ pub fn hash_leaves_multi_coset(
     let config = CudaLaunchConfig::basic(grid, BLOCK_THREADS, stream);
     LeavesFunction::default().launch(&config, &args)
 }
+
+cuda_kernel!(
+    LeafSpongeProbe,
+    ab_keccak256_leaf_sponge_probe_kernel(
+        values: *const PR,
+        log_domain: u32,
+        columns: u32,
+        log_v: u32,
+        out: *mut Digest,
+    )
+);
+
+// Test support: leaf digests through the compile-time `leaf_sponge` for the production
+// (columns, log2 values per leaf) shapes (1, 1..4), (2, 1), (7, 2), (13, 1).
+#[doc(hidden)]
+pub fn leaf_sponge_probe(
+    values: &DeviceSlice<PR>,
+    log_domain: u32,
+    log_values_per_leaf: u32,
+    columns: u32,
+    out: &mut DeviceSlice<Digest>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    const NAME: &str = "leaf_sponge_probe";
+    assert!(
+        matches!(
+            (columns, log_values_per_leaf),
+            (1, 1..=4) | (2, 1) | (7, 2) | (13, 1)
+        ),
+        "keccak256::{NAME}: unsupported shape ({columns}, {log_values_per_leaf})"
+    );
+    let shape = leaf_shape(NAME, log_domain, log_values_per_leaf, columns);
+    assert_eq!(values.len(), shape.coset_values);
+    assert_eq!(out.len(), shape.leaves);
+    let config = CudaLaunchConfig::basic(shape.leaves.div_ceil(128) as u32, 128, stream);
+    LeafSpongeProbeFunction::default().launch(
+        &config,
+        &LeafSpongeProbeArguments::new(
+            values.as_ptr(),
+            log_domain,
+            columns,
+            log_values_per_leaf,
+            out.as_mut_ptr(),
+        ),
+    )
+}

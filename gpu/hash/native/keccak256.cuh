@@ -3,6 +3,8 @@
 #include "common.cuh"
 #include "primitives/field.cuh"
 #include "primitives/proth120.cuh"
+#include <type_traits>
+#include <utility>
 
 namespace airbender::hash::keccak256 {
 
@@ -266,6 +268,45 @@ DEVICE_FORCEINLINE digest hash_node(const digest &left, const digest &right) {
   keccak_f1600(hash.state);
   return truncate_merkle_digest(digest_from_state(hash.state));
 }
+
+// The two little-endian lanes of the canonical big-endian 16-byte encoding of a field element.
+DEVICE_FORCEINLINE void canonical_lanes(const proth120 &value, u64 &first, u64 &second) {
+  constexpr proth120 one = {{1, 0, 0, 0}};
+  const proth120 n = ::airbender::primitives::field::proth120_detail::mul_pick_reduction_size<1>(value, one);
+  first = byte_swap(n.limbs[3]) | static_cast<u64>(byte_swap(n.limbs[2])) << 32;
+  second = byte_swap(n.limbs[1]) | static_cast<u64>(byte_swap(n.limbs[0])) << 32;
+}
+
+template <u32 N, class F> DEVICE_FORCEINLINE void static_for(F &&f) {
+  [&]<u32... I>(std::integer_sequence<u32, I...>) { (f(std::integral_constant<u32, I>{}), ...); }(std::make_integer_sequence<u32, N>{});
+}
+
+// Keccak-256 of a leaf preimage of LANES lanes (two per field element, `hash_leaf` order); the
+// lanes are absorbed by compile-time index so the state stays in registers.
+template <u32 LANES> struct leaf_sponge {
+  u64 state[25]{};
+
+  template <u32 LANE> DEVICE_FORCEINLINE void absorb(const u64 value) {
+    static_assert(LANE < LANES);
+    state[LANE % 17] ^= value;
+    if constexpr (LANE % 17 == 16)
+      keccak_f1600(state);
+  }
+
+  template <u32 ELEMENT> DEVICE_FORCEINLINE void absorb_element(const proth120 &value) {
+    u64 first, second;
+    canonical_lanes(value, first, second);
+    absorb<2 * ELEMENT>(first);
+    absorb<2 * ELEMENT + 1>(second);
+  }
+
+  DEVICE_FORCEINLINE digest finalize() {
+    state[LANES % 17] ^= 1;
+    state[16] ^= 0x8000000000000000ULL;
+    keccak_f1600(state);
+    return truncate_merkle_digest(digest_from_state(state));
+  }
+};
 
 DEVICE_FORCEINLINE digest hash_leaf(const proth120 *values, const u32 log_domain, const u32 log_v, const u32 columns, const u32 leaf) {
   const u32 log_leaves = log_domain - log_v;
