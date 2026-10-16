@@ -317,7 +317,7 @@ function ilog_k(h) -> r {
                         mstore(0, sibling)
                         mstore(32, h)
                     }
-                    h := and(ilog_k(keccak256(0, 64)), __TEMPLATE_DIGEST_MASK)
+                    h := and(keccak256(0, 64), __TEMPLATE_DIGEST_MASK)
                 }
                 default {
                     // Bits above the path form the cap index.
@@ -343,7 +343,7 @@ function ilog_k(h) -> r {
                     mstore(s1, addmod(mload(s1), mulmod(gamma, and(w, MASK), P), P))
                 }
             }
-            next_cd := merkle_path(and(ilog_k(keccak256(LEAF_PTR, mul(li, 32))), __TEMPLATE_DIGEST_MASK), depth, cap_ptr, cp, qidx, cb)
+            next_cd := merkle_path(and(keccak256(LEAF_PTR, mul(li, 32)), __TEMPLATE_DIGEST_MASK), depth, cap_ptr, cp, qidx, cb)
         }
         function read_leaf(cp, vp, depth, cap_ptr, qidx, cb) -> next_cd {
             let words := shr(1, vp)
@@ -354,7 +354,7 @@ function ilog_k(h) -> r {
                 mstore(add(FBUF_PTR, mul(add(mul(i, 2), 1), 32)), and(w, MASK))
                 cp := add(cp, 32)
             }
-            next_cd := merkle_path(and(ilog_k(keccak256(LEAF_PTR, mul(words, 32))), __TEMPLATE_DIGEST_MASK), depth, cap_ptr, cp, qidx, cb)
+            next_cd := merkle_path(and(keccak256(LEAF_PTR, mul(words, 32)), __TEMPLATE_DIGEST_MASK), depth, cap_ptr, cp, qidx, cb)
         }
         // Reinterpret a 32-byte digest (8 big-endian u32 words) as the same 8
         // words each in little-endian byte order, keeping word positions. This

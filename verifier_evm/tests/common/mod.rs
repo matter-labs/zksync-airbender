@@ -39,6 +39,9 @@ pub struct Version {
     pub wrong_final_pc_contract: Option<&'static str>,
     /// Merkle digest bytes on the F1 wire (the commitment profile of the proof).
     pub digest_bytes: usize,
+    /// The setup frontier the F1 verifier pins (prover_pipeline's
+    /// `export_l1_wrap_setup_frontier`), if any.
+    pub setup_frontier: Option<&'static str>,
 }
 
 pub const L1_WRAP_2P21: Version = Version {
@@ -59,6 +62,7 @@ pub const L1_WRAP_2P21: Version = Version {
     mutation_fields_file: Some("calldata_fields.json"),
     wrong_final_pc_contract: Some("gkr_negative/src/GkrVerifierWrongFinalPc.sol"),
     digest_bytes: 25,
+    setup_frontier: Some("setup_frontier.json"),
 };
 pub const VERSIONS: &[Version] = &[L1_WRAP_2P21];
 
@@ -139,6 +143,7 @@ impl Version {
             "single_tx/f1/gkr/src/GkrVerifier.sol",
             "single_tx/f1/whir/src/WhirVerifier.sol",
             "single_tx/f1/gkr_wrong_setup_cap/src/GkrVerifierWrongSetupCap.sol",
+            "single_tx/f1/frontier/src/SetupFrontier.sol",
             "single_tx/instrumented/gkr_v0/src/GkrVerifier.sol",
             "single_tx/instrumented/whir_v0/src/WhirVerifier.sol",
             "single_tx/instrumented/gkr_f1/src/GkrVerifier.sol",
@@ -265,16 +270,45 @@ pub const F1_FIELDS: &str = "single_tx_f1_fields.json";
 
 impl Version {
     pub fn f1_params(&self) -> verifier_evm::encoding::FormatParams {
-        verifier_evm::encoding::FormatParams::from_config(
+        let params = verifier_evm::encoding::FormatParams::from_config(
             &self.prover_config(),
             self.pack_log2,
             self.digest_bytes,
+        );
+        match self.setup_frontier() {
+            Some((level, _)) => params.with_setup_frontier(level),
+            None => params,
+        }
+    }
+
+    /// `(level, nodes)` of the version's setup frontier.
+    pub fn setup_frontier(&self) -> Option<(usize, Vec<[u32; 8]>)> {
+        let name = self.setup_frontier?;
+        let json: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(self.data_path(name))
+                .unwrap_or_else(|_| panic!("{}: missing {name}", self.name)),
         )
+        .expect("setup frontier JSON");
+        let level = json["level"].as_u64().expect("frontier level") as usize;
+        let nodes: Vec<[u32; 8]> = json["digests"]
+            .as_array()
+            .expect("frontier digests")
+            .iter()
+            .map(|d| {
+                let hex = d.as_str().expect("hex digest");
+                std::array::from_fn(|i| u32::from_str_radix(&hex[8 * i..8 * i + 8], 16).unwrap())
+            })
+            .collect();
+        assert_eq!(nodes.len(), 1 << level, "{}: frontier size", self.name);
+        Some((level, nodes))
     }
 }
 
 /// The F1 field map as committed JSON: `{gkr_bytes, fields: {name: {offset, length}}}`.
-pub fn f1_field_metadata(f1: &verifier_evm::encoding::SingleTxCalldata) -> serde_json::Value {
+pub fn f1_field_metadata(
+    f1: &verifier_evm::encoding::SingleTxCalldata,
+    params: &verifier_evm::encoding::FormatParams,
+) -> serde_json::Value {
     let fields: serde_json::Map<String, serde_json::Value> = f1
         .fields
         .iter()
@@ -292,6 +326,8 @@ pub fn f1_field_metadata(f1: &verifier_evm::encoding::SingleTxCalldata) -> serde
         "gkr_bytes": f1.gkr_bytes,
         "bytes": f1.bytes.len(),
         "whir_rounds": whir_rounds,
+        "digest_bytes": params.digest_bytes,
+        "setup_frontier_level": params.setup_frontier_level,
         "fields": fields,
     })
 }

@@ -40,6 +40,8 @@ pub struct GeneratedContracts {
     pub whir_sol: String,
     /// The `GkrWhirRegistry` cross-check contract (static; no circuit-specific constants).
     pub registry_sol: String,
+    /// F1 with a setup frontier: the `SetupFrontier` data contract the WHIR verifier reads.
+    pub setup_frontier_sol: Option<String>,
 }
 
 // `generate_verifiers` is implemented in `assemble.rs`.

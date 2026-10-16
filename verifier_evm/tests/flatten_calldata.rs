@@ -55,7 +55,8 @@ fn write_calldata_into_debug_data() {
             &path,
             format!(
                 "{}\n",
-                serde_json::to_string_pretty(&common::f1_field_metadata(&f1)).unwrap()
+                serde_json::to_string_pretty(&common::f1_field_metadata(&f1, &version.f1_params()))
+                    .unwrap()
             ),
         )
         .unwrap();

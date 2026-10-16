@@ -71,6 +71,14 @@ contract WhirVerifier {
     // #if F1
     uint256 constant __TEMPLATE_F1_DIGEST_BYTES = 32; // Merkle digest bytes on the F1 wire
     // #endif
+    // #if F1_FRONTIER
+    // Setup frontier: a data contract holding STOP ‖ the setup tree's 2^LEVEL nodes at that level
+    // (DIGEST_BYTES each, physical order); setup paths stop SKIP = LEVEL − CAP_LOG2 levels early.
+    address constant __TEMPLATE_F1_FRONTIER = 0x0000000000000000000000000000000000000000;
+    uint256 constant __TEMPLATE_F1_FRONTIER_HASH = 0;
+    uint256 constant __TEMPLATE_F1_FRONTIER_LEVEL = 9;
+    uint256 constant __TEMPLATE_F1_FRONTIER_SKIP = 6;
+    // #endif
     uint256 constant MARK_WHIR_SELECTOR = 0xbb716068; // mark_whir_verified(bytes32)
 
     // ── hand-placed memory ────────────────────────────────────────────────────
@@ -298,7 +306,14 @@ contract WhirVerifier {
         // keccak(current || sibling) for a left child, keccak(sibling || current)
         // for a right child.
         function merkle_path(leaf_hash, depth, cap_ptr, cp, qidx, coset_bits) -> next_cd {
+            // #if F1_FRONTIER
+            // cap_ptr 0 = the setup frontier: the walk stops LEVEL bits below the root, not CAP_LOG2
+            let top_bits := CAP_LOG2
+            if iszero(cap_ptr) { top_bits := __TEMPLATE_F1_FRONTIER_LEVEL }
+            let qib := add(depth, top_bits)
+            // #else
             let qib := add(depth, CAP_LOG2)
+            // #endif
             let internal_bits := sub(qib, coset_bits)
             let internal_index := shr(coset_bits, qidx)
             // forge-lint: disable-next-line(incorrect-shift) — `shl(n, 1)` is `1 << n` (2^n), args are correct
@@ -347,7 +362,17 @@ contract WhirVerifier {
                     cap_index := or(cap_index, shl(sub(pos, depth), bit))
                 }
             }
+            // #if F1_FRONTIER
+            switch cap_ptr
+            case 0 {
+                // frontier[cap_index], after the data contract's leading STOP byte
+                extcodecopy(__TEMPLATE_F1_FRONTIER, 0, add(1, mul(__TEMPLATE_F1_DIGEST_BYTES, cap_index)), __TEMPLATE_F1_DIGEST_BYTES)
+                sink2(h, and(mload(0), __TEMPLATE_DIGEST_MASK))
+            }
+            default { sink2(h, mload(add(cap_ptr, mul(cap_index, 32)))) }
+            // #else
             sink2(h, mload(add(cap_ptr, mul(cap_index, 32)))) // match h against cap[cap_index]
+            // #endif
             next_cd := cp
         }
         function batch_oracle(cp, cols, goff, vp, depth, cap_ptr, qidx, cb) -> next_cd {
@@ -446,7 +471,11 @@ contract WhirVerifier {
                 // (7 = merged memory+witness packed columns; setup at gamma-power 7.)
                 for { let j := 0 } lt(j, vp) { j := add(j, 1) } { mstore(add(FBUF_PTR, mul(j, 32)), 0) }
                 cp := batch_oracle(cp, __TEMPLATE_WHIR_MERGED_MW, 0, vp, depth, BCAP0_PTR, qidx, cb)
+                // #if F1_FRONTIER
+                cp := batch_oracle(cp, __TEMPLATE_WHIR_SETUP_MERGED, __TEMPLATE_WHIR_MERGED_MW, vp, sub(depth, __TEMPLATE_F1_FRONTIER_SKIP), 0, qidx, cb)
+                // #else
                 cp := batch_oracle(cp, __TEMPLATE_WHIR_SETUP_MERGED, __TEMPLATE_WHIR_MERGED_MW, vp, depth, BCAP1_PTR, qidx, cb)
+                // #endif
             }
             default {
                 cp := read_leaf(cp, vp, depth, QCAP_PTR, qidx, cb)
@@ -617,6 +646,10 @@ contract WhirVerifier {
 
         // =================================================================== MAIN
         let start_gas := gas()
+        // #if F1_FRONTIER
+        // the setup frontier is this deployment's data: check its code once per call
+        if iszero(eq(extcodehash(__TEMPLATE_F1_FRONTIER), __TEMPLATE_F1_FRONTIER_HASH)) { revert(0, 0) }
+        // #endif
 
         // Base geometry (all generated): nz = z-coords, gcount = gamma-batched base columns + 1,
         // rfin = final-poly log2, nbcaps = base-oracle caps (witness, setup).

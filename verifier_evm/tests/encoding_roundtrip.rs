@@ -159,7 +159,7 @@ fn committed_f1_calldata_is_current() {
         let stored: serde_json::Value = serde_json::from_str(&read(common::F1_FIELDS)).unwrap();
         assert_eq!(
             stored,
-            common::f1_field_metadata(&f1),
+            common::f1_field_metadata(&f1, &version.f1_params()),
             "{} is stale",
             common::F1_FIELDS
         );
@@ -189,7 +189,8 @@ fn f1_roundtrip_reproduces_v0() {
         let (circuit, proof, aux) = version.load();
         let params = version.f1_params();
         let f1 = encode_single_tx(&circuit, &proof, &aux, &params);
-        let hints = DecodeHints::from_proof(&circuit, &proof, &aux, &params);
+        let frontier = version.setup_frontier().map(|(_, nodes)| nodes);
+        let hints = DecodeHints::from_proof(&circuit, &proof, &aux, &params, frontier.as_deref());
         let (gkr, whir) = decode_structural(&f1.bytes, &params, &hints);
         assert_eq!(
             gkr,
@@ -210,7 +211,11 @@ fn f1_roundtrip_reproduces_v0() {
             .filter(|(name, _)| name.ends_with("cap") || name.ends_with("path"))
             .map(|(_, (_, len))| len / params.digest_bytes)
             .sum();
-        let profile = (params.digest_bytes, params.explicit_output_log2);
+        let profile = (
+            params.digest_bytes,
+            params.explicit_output_log2,
+            params.setup_frontier_level,
+        );
         let (_, pinned) = INDEPENDENT_LAYOUT_COUNTS
             .iter()
             .find(|(p, _)| *p == profile)
@@ -225,11 +230,14 @@ fn f1_roundtrip_reproduces_v0() {
 }
 
 /// F1 byte counts of the committed proof from the independent layout model (pair w7ba, C1:
-/// orange/.agents/plans/2026-10-15-w7b-impl/w7ba/f1-layout-codex.md), per profile
-/// `(digest_bytes, explicit_output_log2)`: `(gkr_bytes, total bytes, wire digests)`.
-const INDEPENDENT_LAYOUT_COUNTS: &[((usize, usize), (usize, usize, usize))] = &[
-    ((32, 4), (21_523, 88_043, 1_597)),
-    ((25, 2), (20_393, 75_790, 1_597)),
+/// orange/.agents/plans/2026-10-15-w7b-impl/w7ba/f1-layout-codex.md; C12 and C13 for the later rows),
+/// per profile `(digest_bytes, explicit_output_log2, setup_frontier_level)`:
+/// `(gkr_bytes, total bytes, wire digests)`.
+const INDEPENDENT_LAYOUT_COUNTS: &[((usize, usize, usize), (usize, usize, usize))] = &[
+    ((32, 4, 3), (21_523, 88_043, 1_597)),
+    ((32, 4, 9), (21_523, 85_355, 1_513)),
+    ((25, 2, 3), (20_393, 75_790, 1_597)),
+    ((25, 2, 9), (20_393, 73_690, 1_513)),
 ];
 
 #[test]
@@ -238,7 +246,8 @@ fn f1_decoder_rejects_malformed_streams() {
         let (circuit, proof, aux) = version.load();
         let params = version.f1_params();
         let f1 = encode_single_tx(&circuit, &proof, &aux, &params);
-        let hints = DecodeHints::from_proof(&circuit, &proof, &aux, &params);
+        let frontier = version.setup_frontier().map(|(_, nodes)| nodes);
+        let hints = DecodeHints::from_proof(&circuit, &proof, &aux, &params, frontier.as_deref());
         let decode = |bytes: Vec<u8>| decode_structural(&bytes, &params, &hints);
         common::assert_panics_with("F1 stream truncated", || {
             decode(f1.bytes[..f1.bytes.len() - 1].to_vec())
@@ -290,5 +299,28 @@ fn encoder_rejects_a_profile_the_proof_does_not_fit() {
         let mut p = params.clone();
         p.cap_log2 += 1;
         common::assert_panics_with("profile cap differs from the proof", || encode(p));
+    }
+}
+
+#[test]
+fn decoder_derives_omitted_setup_siblings_from_the_frontier() {
+    for version in common::available_versions("F1 setup frontier tails") {
+        let params = version.f1_params();
+        if params.setup_frontier_skip() == 0 {
+            continue;
+        }
+        let (circuit, proof, aux) = version.load();
+        let (_, mut frontier) = version.setup_frontier().unwrap();
+        let f1 = encode_single_tx(&circuit, &proof, &aux, &params);
+        // the tails come from the frontier: another frontier decodes to other setup siblings
+        let index = proof.whir_proof.setup_commitment.queries[0].index;
+        let height =
+            proof.whir_proof.setup_commitment.queries[0].path.len() - params.setup_frontier_skip();
+        frontier[(index >> height) ^ 1][0] ^= 1;
+        let hints = DecodeHints::from_proof(&circuit, &proof, &aux, &params, Some(&frontier));
+        let (_, whir) = decode_structural(&f1.bytes, &params, &hints);
+        let whir_v0 =
+            verifier_evm::whir_calldata(&circuit, &proof, &aux, &params.folds, &params.queries);
+        assert_ne!(whir, whir_v0[WHIR_HEADER_BYTES..]);
     }
 }
