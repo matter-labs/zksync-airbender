@@ -4,7 +4,8 @@
 //! Each `Proth120` value is encoded as the 16-byte big-endian representation of
 //! its normal (non-Montgomery) `u128` form. A leaf's preimage is the
 //! concatenation of these 16-byte encodings for every field element in the
-//! leaf, and the leaf hash is `keccak256` of that preimage. This is exactly the
+//! leaf, and the leaf hash is `keccak256` of that preimage, truncated to
+//! [`KECCAK256_MERKLE_DIGEST_BYTES`]. The preimage is exactly the
 //! byte string the EVM verifier hashes (it packs two 128-bit values per 32-byte
 //! word and takes `keccak256` over the packed words).
 
@@ -36,6 +37,34 @@ pub(crate) fn keccak_digest_from_bytes(bytes: [u8; 32]) -> [u32; KECCAK256_DIGES
             bytes[4 * i + 3],
         ])
     })
+}
+
+/// Bytes of a Merkle digest (leaf, node, cap) that carry keccak256 output: the
+/// first 25 bytes of the hash. The rest of the 32-byte slot is zero (word 6 keeps
+/// its top byte, word 7 is zero). Transcript seeds and PoW stay 256-bit.
+pub const KECCAK256_MERKLE_DIGEST_BYTES: usize = 25;
+
+/// Zero every byte of `digest` past [`KECCAK256_MERKLE_DIGEST_BYTES`].
+#[inline(always)]
+pub fn truncate_keccak_merkle_digest(digest: &mut [u32; KECCAK256_DIGEST_SIZE_U32_WORDS]) {
+    for (i, word) in digest.iter_mut().enumerate() {
+        let kept = KECCAK256_MERKLE_DIGEST_BYTES.saturating_sub(4 * i).min(4);
+        *word &= if kept == 0 {
+            0
+        } else {
+            u32::MAX << (32 - 8 * kept)
+        };
+    }
+}
+
+/// [`keccak_digest_from_bytes`] of a keccak256 output, truncated to a Merkle digest.
+#[inline(always)]
+pub(crate) fn keccak_merkle_digest_from_bytes(
+    bytes: [u8; 32],
+) -> [u32; KECCAK256_DIGEST_SIZE_U32_WORDS] {
+    let mut digest = keccak_digest_from_bytes(bytes);
+    truncate_keccak_merkle_digest(&mut digest);
+    digest
 }
 
 /// Inverse of [`keccak_digest_from_bytes`].
@@ -121,7 +150,7 @@ where
                         debug_assert_eq!(preimage.len(), leaf_width_bytes);
                         let mut digest = [0u8; 32];
                         digest.copy_from_slice(Keccak256::digest(&preimage).as_slice());
-                        slot.write(keccak_digest_from_bytes(digest));
+                        slot.write(keccak_merkle_digest_from_bytes(digest));
                     }
                 });
             }
@@ -219,7 +248,7 @@ where
 
                         let mut digest = [0u8; 32];
                         digest.copy_from_slice(Keccak256::digest(&preimage).as_slice());
-                        slot.write(keccak_digest_from_bytes(digest));
+                        slot.write(keccak_merkle_digest_from_bytes(digest));
                     }
                 });
             }

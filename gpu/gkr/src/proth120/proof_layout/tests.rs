@@ -228,7 +228,10 @@ fn cpu_proof_layout_pr_geometry() {
     let config =
         prover::gkr::prover_config::ProofProfile::L1Wrap.prover_config(21, SecurityLevel::Sec100);
     let layout = ProofLayoutPr::new(&programs, &config, 4);
-    layout.validate_geometry(&programs.runtime_circuit, 4);
+    layout.validate_geometry(
+        &programs.runtime_circuit,
+        crate::proth120::backward::dr_tail::PR_DR_FINAL_TRACE_LOG_2 as usize,
+    );
     let mut ranges = vec![
         layout.output_evaluations_range.clone(),
         layout.external_challenges.clone(),
@@ -272,7 +275,7 @@ fn cpu_proof_layout_pr_geometry() {
             .iter()
             .map(|layer| layer.layer_idx)
             .collect::<BTreeSet<_>>(),
-        (0..22).collect()
+        (0..24).collect()
     );
     assert_eq!(layout.memory_claims.len(), 7 * 16);
     assert_eq!(layout.memory_claims.end, layout.setup_claims.start);
@@ -309,7 +312,8 @@ fn cpu_proof_layout_pr_geometry() {
         15
     );
     println!(
-        "M6_PROOF_GEOMETRY layers=22 point=25 merged=7+1 sections={} bytes={} whir_sections=0",
+        "M6_PROOF_GEOMETRY layers={} point=25 merged=7+1 sections={} bytes={} whir_sections=0",
+        layout.backward_layers.len(),
         ranges.len(),
         layout.bytes_len()
     );

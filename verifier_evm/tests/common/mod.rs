@@ -58,7 +58,7 @@ pub const L1_WRAP_2P21: Version = Version {
     allow_missing_proof: true,
     mutation_fields_file: Some("calldata_fields.json"),
     wrong_final_pc_contract: Some("gkr_negative/src/GkrVerifierWrongFinalPc.sol"),
-    digest_bytes: 32,
+    digest_bytes: 25,
 };
 pub const VERSIONS: &[Version] = &[L1_WRAP_2P21];
 

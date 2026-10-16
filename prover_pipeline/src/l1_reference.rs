@@ -1063,16 +1063,22 @@ fn committed_l1_wrap_reference_is_current() {
 fn evm_fixtures() -> [(PathBuf, Vec<u8>); 2] {
     let bundle: L1Bundle =
         read_typed(&fixture_dir().join("l1_bundle.json")).expect("committed L1 wrap bundle");
-    bundle.validate().expect("committed L1 wrap bundle");
+    evm_fixtures_of(
+        &bundle,
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("../prover"),
+    )
+}
+
+fn evm_fixtures_of(bundle: &L1Bundle, dir: &Path) -> [(PathBuf, Vec<u8>); 2] {
+    bundle.validate().expect("L1 wrap bundle");
     assert_eq!(bundle.wrap, L1WrapVersion::Wrap2p21);
-    let prover = Path::new(env!("CARGO_MANIFEST_DIR")).join("../prover");
     [
         (
-            prover.join("unified_circuit_proof_proth120_2p21.json"),
+            dir.join("unified_circuit_proof_proth120_2p21.json"),
             serde_json::to_vec_pretty(&bundle.proof).unwrap(),
         ),
         (
-            prover.join("unified_circuit_proof_proth120_2p21_commitment_mod_aux_data.json"),
+            dir.join("unified_circuit_proof_proth120_2p21_commitment_mod_aux_data.json"),
             serde_json::to_vec_pretty(&bundle.commitment_mode).unwrap(),
         ),
     ]
@@ -1085,6 +1091,163 @@ fn export_l1_wrap_evm_fixtures() {
         fs::write(&path, bytes).expect("writes the EVM proof fixture");
         println!("wrote {}", path.display());
     }
+}
+
+/// The same proof and commitment-mode fixtures for another L1 artifact (e.g. a
+/// second program's `cli prove --target l1` output), written into a directory
+/// of the caller's choice.
+#[test]
+#[ignore = "writes the 2p21 proof fixtures of the L1 artifact at AB_ALT_L1_ARTIFACT into AB_ALT_L1_OUT_DIR"]
+fn export_alt_l1_wrap_evm_fixtures() {
+    let artifact = std::env::var_os("AB_ALT_L1_ARTIFACT").expect("AB_ALT_L1_ARTIFACT");
+    let out = PathBuf::from(std::env::var_os("AB_ALT_L1_OUT_DIR").expect("AB_ALT_L1_OUT_DIR"));
+    let artifact: ProofArtifact = read_typed(Path::new(&artifact)).expect("L1 artifact");
+    let bundle = artifact.l1.expect("the artifact carries an L1 bundle");
+    fs::create_dir_all(&out).expect("creates the output directory");
+    for (path, bytes) in evm_fixtures_of(&bundle, &out) {
+        fs::write(&path, bytes).expect("writes the EVM proof fixture");
+        println!("wrote {}", path.display());
+    }
+}
+
+/// Setup-tree level the verifier's pinned setup frontier holds (the cap is level 3).
+const SETUP_FRONTIER_LEVEL: usize = 9;
+
+/// Recommits the L1 wrap setup (setup only, no proof), checks its cap against the committed
+/// reference wrap proof, and writes the `2^SETUP_FRONTIER_LEVEL` setup-tree nodes at that
+/// level, in physical order, for the verifier_evm setup frontier.
+#[test]
+#[ignore = "recommits the L1 wrap setup (about a minute of CPU) and writes the verifier_evm setup frontier"]
+fn export_l1_wrap_setup_frontier() {
+    use ::prover::field::Proth120;
+    use ::prover::gkr::whir::coset_commit::CosetByCosetBaseCommitment;
+    use ::prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
+    use ::prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
+    use ::prover::merkle_trees::PathQueryable;
+    use ::prover::worker::Worker;
+
+    let bundle: L1Bundle =
+        read_typed(&fixture_dir().join("l1_bundle.json")).expect("committed L1 wrap bundle");
+    bundle.validate().expect("committed L1 wrap bundle");
+    let setup_commitment = &bundle.proof.whir_proof.setup_commitment;
+
+    let circuit_type = CircuitType::L1Wrap21;
+    let (mut binary, mut text) = full_statement_verifier::host_utils::load_fsv_program(
+        fsv_dir(),
+        FsvProgram::UnifiedRecursionLayerL1FeederWrap,
+        BlakeMode::BlakeSpecialOpcodes,
+    );
+    setups::pad_bytecode_for_proving_with_rom(&mut binary, circuit_type.rom());
+    setups::pad_bytecode_for_proving_with_rom(&mut text, circuit_type.rom());
+    let setup = unified_reduced_machine_proth120::l1_wrap_2p21::l1_wrap_setup(&binary, &text);
+    let config = execution_prover::config::prover_config(
+        circuit_type,
+        ProofProfile::L1Wrap,
+        ::prover::definitions::SecurityLevel::Sec100,
+    );
+    let (pack_log2, _) = execution_prover::config::l1_wrap_packing(circuit_type);
+    let worker = Worker::new();
+    let twiddles = ::prover::fft::Twiddles::new(1 << (config.trace_len_log2 + pack_log2), &worker);
+    let inputs: Vec<&[Proth120]> = setup
+        .setup
+        .hypercube_evals
+        .iter()
+        .map(|column| &column[..])
+        .collect();
+    let (commitment, frontier) =
+        CosetByCosetBaseCommitment::<Proth120, Keccak256MerkleTreeWithCap>::commit_packed_with_level_nodes(
+            &inputs,
+            &twiddles,
+            config.lde_factor,
+            config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+            config.cap_size,
+            config.trace_len_log2,
+            pack_log2,
+            SETUP_FRONTIER_LEVEL,
+            &worker,
+        );
+    let cap = setup_commitment.commitment.cap.cap.clone();
+    assert_eq!(
+        commitment.get_cap().cap,
+        cap,
+        "recommitted setup differs from the reference proof's setup cap"
+    );
+    assert_eq!(
+        <Keccak256MerkleTreeWithCap as ColumnMajorMerkleTreeConstructor<Proth120>>::build_over_leaf_hashes(
+            frontier.clone(),
+            config.cap_size,
+            &worker,
+        )
+            .get_cap()
+            .cap,
+        cap,
+        "the frontier does not reduce to the setup cap"
+    );
+    // every opened setup path reaches the frontier: hash the leaf (BE16 values, column-major)
+    // and walk its lower siblings to the frontier level, where its node and sibling must be
+    // frontier entries
+    let digest_bytes =
+        <Keccak256MerkleTreeWithCap as ColumnMajorMerkleTreeConstructor<Proth120>>::DIGEST_BYTES;
+    let hash = |bytes: &[u8]| -> [u32; 8] {
+        let mut out: [u8; 32] = Keccak256::digest(bytes).into();
+        out[digest_bytes..].fill(0);
+        std::array::from_fn(|i| u32::from_be_bytes(out[4 * i..4 * i + 4].try_into().unwrap()))
+    };
+    let be = |d: &[u32; 8]| -> Vec<u8> { d.iter().flat_map(|w| w.to_be_bytes()).collect() };
+    let cap_log2 = config.cap_size.trailing_zeros() as usize;
+    let height = setup_commitment.queries[0].path.len() - (SETUP_FRONTIER_LEVEL - cap_log2);
+    let columns = setup_commitment.num_columns;
+    for query in setup_commitment.queries.iter() {
+        assert_eq!(query.path.len(), height + SETUP_FRONTIER_LEVEL - cap_log2);
+        let values = &query.leaf_values_concatenated;
+        let per_column = values.len() / columns;
+        let leaf: Vec<u8> = (0..columns)
+            .flat_map(|c| (0..per_column).map(move |o| values[o * columns + c]))
+            .flat_map(|v| v.to_u128().to_be_bytes())
+            .collect();
+        let mut node = hash(&leaf);
+        let mut index = query.index;
+        for sibling in &query.path[..height] {
+            let (left, right) = if index & 1 == 0 {
+                (node, *sibling)
+            } else {
+                (*sibling, node)
+            };
+            node = hash(&[be(&left), be(&right)].concat());
+            index >>= 1;
+        }
+        assert_eq!(
+            node, frontier[index],
+            "setup query {} does not reach its frontier node",
+            query.index
+        );
+        assert_eq!(
+            query.path[height],
+            frontier[index ^ 1],
+            "setup query {} misses the frontier sibling",
+            query.index
+        );
+    }
+    let digests: Vec<String> = frontier
+        .iter()
+        .map(|d| d.iter().map(|w| format!("{w:08x}")).collect())
+        .collect();
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../verifier_evm/debug_data/l1_wrap_2p21/setup_frontier.json");
+    fs::write(
+        &path,
+        format!(
+            "{}\n",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "level": SETUP_FRONTIER_LEVEL,
+                "cap_size": config.cap_size,
+                "digests": digests,
+            }))
+            .unwrap()
+        ),
+    )
+    .expect("writes the setup frontier");
+    println!("wrote {} ({} digests)", path.display(), frontier.len());
 }
 
 #[test]

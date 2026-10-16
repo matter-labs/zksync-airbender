@@ -175,8 +175,11 @@ fn replay_reaches_the_recorded_handoff_seed() {
             Some(replay.handoff_seed),
             proof.intermediate_transcript_seed
         );
+        // dimension-reducing layers bind e..t−1 variables, the circuit layers t each
+        let params = version.f1_params();
+        let (e, t) = (params.explicit_output_log2, params.trace_log2);
         let rounds: usize = replay.layers.iter().map(|l| l.r.len()).sum();
-        assert_eq!(rounds, 309);
+        assert_eq!(rounds, (e..t).sum::<usize>() + circuit.layers.len() * t);
     }
 }
 
@@ -201,18 +204,33 @@ fn f1_roundtrip_reproduces_v0() {
             f1.bytes.len()
         );
 
-        // Byte counts of the committed b′ proof, cross-checked against the independent
-        // layout model (pair w7ba, C1): 21,523 + 66,520 at 32-byte digests.
-        assert_eq!((f1.gkr_bytes, f1.bytes.len()), (21_523, 88_043));
         let digests: usize = f1
             .fields
             .iter()
             .filter(|(name, _)| name.ends_with("cap") || name.ends_with("path"))
-            .map(|(_, (_, len))| len / 32)
+            .map(|(_, (_, len))| len / params.digest_bytes)
             .sum();
-        assert_eq!(digests, 1_597);
+        let profile = (params.digest_bytes, params.explicit_output_log2);
+        let (_, pinned) = INDEPENDENT_LAYOUT_COUNTS
+            .iter()
+            .find(|(p, _)| *p == profile)
+            .unwrap_or_else(|| {
+                panic!(
+                    "no independent layout-model counts for profile {profile:?}: rerun the w7ba C1 \
+                     model on the new fixtures and add its row"
+                )
+            });
+        assert_eq!((f1.gkr_bytes, f1.bytes.len(), digests), *pinned);
     }
 }
+
+/// F1 byte counts of the committed proof from the independent layout model (pair w7ba, C1:
+/// orange/.agents/plans/2026-10-15-w7b-impl/w7ba/f1-layout-codex.md), per profile
+/// `(digest_bytes, explicit_output_log2)`: `(gkr_bytes, total bytes, wire digests)`.
+const INDEPENDENT_LAYOUT_COUNTS: &[((usize, usize), (usize, usize, usize))] = &[
+    ((32, 4), (21_523, 88_043, 1_597)),
+    ((25, 2), (20_393, 75_790, 1_597)),
+];
 
 #[test]
 fn f1_decoder_rejects_malformed_streams() {

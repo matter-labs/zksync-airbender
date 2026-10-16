@@ -22,6 +22,3 @@ pub use generator::{
     single_tx_whir, GeneratedContracts,
 };
 pub use seed::{commit_seed_preimage, gkr_whir_handoff_seed};
-
-/// The EVM init and packing routines specialize the 16-value boundary.
-pub(crate) const EXPLICIT_OUTPUT_LOG2: usize = 4;

@@ -29,6 +29,7 @@ use prover::gkr::whir::coset_commit::CosetByCosetBaseCommitment;
 use prover::merkle_trees::keccak256_for_everything_tree::{
     keccak_leaf_encoding_words, Keccak256MerkleTreeWithCap,
 };
+use prover::merkle_trees::keccak256_hash_leafs::truncate_keccak_merkle_digest;
 use prover::merkle_trees::{ColumnMajorMerkleTreeConstructor, PathQueryable};
 use prover::transcript::{Keccak256Transcript, Transcript};
 use std::alloc::Global;
@@ -295,9 +296,11 @@ fn keccak_words(words: impl IntoIterator<Item = u32>) -> [u32; 8] {
     let swapped: Vec<u32> = words.into_iter().map(u32::swap_bytes).collect();
     let digest =
         <Keccak256Transcript as Transcript<Proth120, Proth120>>::commit_initial_u32(&swapped).0;
-    std::array::from_fn(|word| {
+    let mut digest = std::array::from_fn(|word| {
         u32::from_be_bytes(digest[4 * word..4 * word + 4].try_into().unwrap())
-    })
+    });
+    truncate_keccak_merkle_digest(&mut digest);
+    digest
 }
 
 fn root_matches(hashed_leaf: &[PR], path: &[[u32; 8]], index: usize, cap: &[[u32; 8]]) -> bool {

@@ -1,7 +1,7 @@
 {
   "gkr": {
     "external_pow_nonce": {
-      "bytes": "0x00000000001679d0",
+      "bytes": "0x0000000000032da5",
       "encoding": "u64_be",
       "offset": 916
     },
@@ -13,7 +13,7 @@
   },
   "whir": {
     "batched_opening": {
-      "bytes": "0x00dc17a1b44dcad92b6d74f674dd3663",
+      "bytes": "0x02eb71c29c4fa6abe11fefe1752d6336",
       "encoding": "proth120_be",
       "offset": 48
     }

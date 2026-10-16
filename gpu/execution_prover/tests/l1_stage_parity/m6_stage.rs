@@ -690,7 +690,7 @@ fn run_stages(
     assert_eq!(rows, 1 << LOG_ROWS, "M6 stage parity trace length");
     let config = ProofProfile::L1Wrap.prover_config(LOG_ROWS as usize, SecurityLevel::Sec100);
     assert_eq!(
-        config.sumcheck_explicit_output_size_log_2, 4,
+        config.sumcheck_explicit_output_size_log_2, 2,
         "M6 stage parity explicit output log"
     );
     let pack_log2 = PACK_LOG2 as u32;
@@ -726,7 +726,7 @@ fn run_stages(
             base_columns,
             batched_pow_bits
         ),
-        (20, 5, 114, 16),
+        (20, 6, 114, 16),
         "M6 stage parity PoW inputs"
     );
     let replay = replay_gkr_challenges(
@@ -1013,7 +1013,11 @@ fn run_stages(
         GkrProgramsPr::compile(CircuitType::L1Wrap21, Arc::new(circuit.clone()))
             .unwrap_or_else(|error| panic!("M6 stage parity program compile: {error}")),
     );
-    let dr_tail_plan = preflight_dr_tail_resources_pr(&programs, 4, &context);
+    let dr_tail_plan = preflight_dr_tail_resources_pr(
+        &programs,
+        config.sumcheck_explicit_output_size_log_2 as u32,
+        &context,
+    );
     let layout = Arc::new(ProofLayoutPr::new(&programs, &config, 4));
     let witness_layout = &circuit.witness_layout;
     assert_eq!(

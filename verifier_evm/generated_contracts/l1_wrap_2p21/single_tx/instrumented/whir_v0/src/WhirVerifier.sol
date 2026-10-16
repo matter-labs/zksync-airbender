@@ -67,6 +67,7 @@ contract WhirVerifier {
     uint256 constant COMMIT_PTR = 96; // recomputed committed state, marked at the end
     // GkrWhirRegistry address (test etches the deployed registry here).
     address constant __TEMPLATE_REGISTRY_ADDRESS   = 0x00000000000000000000000000000000caFe0001;
+    uint256 constant __TEMPLATE_DIGEST_MASK = 0xffffffffffffffffffffffffffffffffffffffffffffffffff00000000000000; // Merkle leaf/node hash: keccak256 truncated to the digest bytes
     uint256 constant MARK_WHIR_SELECTOR = 0xbb716068; // mark_whir_verified(bytes32)
 
     // ── hand-placed memory ────────────────────────────────────────────────────
@@ -316,7 +317,7 @@ function ilog_k(h) -> r {
                         mstore(0, sibling)
                         mstore(32, h)
                     }
-                    h := ilog_k(keccak256(0, 64))
+                    h := and(ilog_k(keccak256(0, 64)), __TEMPLATE_DIGEST_MASK)
                 }
                 default {
                     // Bits above the path form the cap index.
@@ -342,7 +343,7 @@ function ilog_k(h) -> r {
                     mstore(s1, addmod(mload(s1), mulmod(gamma, and(w, MASK), P), P))
                 }
             }
-            next_cd := merkle_path(ilog_k(keccak256(LEAF_PTR, mul(li, 32))), depth, cap_ptr, cp, qidx, cb)
+            next_cd := merkle_path(and(ilog_k(keccak256(LEAF_PTR, mul(li, 32))), __TEMPLATE_DIGEST_MASK), depth, cap_ptr, cp, qidx, cb)
         }
         function read_leaf(cp, vp, depth, cap_ptr, qidx, cb) -> next_cd {
             let words := shr(1, vp)
@@ -353,7 +354,7 @@ function ilog_k(h) -> r {
                 mstore(add(FBUF_PTR, mul(add(mul(i, 2), 1), 32)), and(w, MASK))
                 cp := add(cp, 32)
             }
-            next_cd := merkle_path(ilog_k(keccak256(LEAF_PTR, mul(words, 32))), depth, cap_ptr, cp, qidx, cb)
+            next_cd := merkle_path(and(ilog_k(keccak256(LEAF_PTR, mul(words, 32))), __TEMPLATE_DIGEST_MASK), depth, cap_ptr, cp, qidx, cb)
         }
         // Reinterpret a 32-byte digest (8 big-endian u32 words) as the same 8
         // words each in little-endian byte order, keeping word positions. This

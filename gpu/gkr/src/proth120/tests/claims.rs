@@ -578,8 +578,11 @@ fn schedule_fixture_full(context: &gpu_prover_context::ProverContext) -> Schedul
     .unwrap();
     let seed_bytes = read_back(&seed, 0u8, context).try_into().unwrap();
     let lookup_nonce = read_back(challenges.nonce(), 0u64, context)[0];
-    let dr_tail_plan =
-        crate::proth120::backward::preflight_dr_tail_resources_pr(&programs, 4, context);
+    let dr_tail_plan = crate::proth120::backward::preflight_dr_tail_resources_pr(
+        &programs,
+        crate::proth120::backward::dr_tail::PR_DR_FINAL_TRACE_LOG_2,
+        context,
+    );
     let mut callbacks = gpu_core::primitives::callbacks::Callbacks::new();
     let batching_pow_bits =
         prover::gkr::prover_config::pow_bits::batched_proximity_check_pow_bits::<PR, PR>(
@@ -679,9 +682,10 @@ fn pr_schedule_gkr_small_shape() {
     let mut cpu = fixture.cpu;
     let trace_len = artifact.trace_len;
     let trace_log = trace_len.trailing_zeros() as usize;
+    let final_log = crate::proth120::backward::dr_tail::PR_DR_FINAL_TRACE_LOG_2 as usize;
     let (initial_layer, dr_inputs) =
         <NaiveGKRBackend as GKRBackend<PR, PR>>::dimension_reduction_forward(
-            &backend, &mut cpu, &artifact, trace_log, 4, &pool, &worker,
+            &backend, &mut cpu, &artifact, trace_log, final_log, &pool, &worker,
         );
     let output_map = &dr_inputs[&initial_layer];
     let final_explicit_evaluations: BTreeMap<_, _> = output_map
@@ -700,11 +704,11 @@ fn pr_schedule_gkr_small_shape() {
         .flat_map(|io| io.output.iter())
         .flat_map(|address| cpu.get_ext_poly(*address).iter().copied())
         .collect();
-    assert_eq!(explicit.len(), 160);
+    assert_eq!(explicit.len(), 10 << final_log);
     let mut seed = <Keccak256Transcript as Transcript<PR, PR>>::commit_initial_u32(&[]);
     seed.0 = seed_bytes;
     commit_field_els::<PR, PR, Keccak256Transcript>(&mut seed, &explicit);
-    let mut draws = draw_random_field_els::<PR, PR, Keccak256Transcript>(&mut seed, 5);
+    let mut draws = draw_random_field_els::<PR, PR, Keccak256Transcript>(&mut seed, final_log + 1);
     let mut batching = draws.pop().unwrap();
     let point = draws;
     let mut claims: BTreeMap<usize, BTreeMap<GKRAddress, PR>> = BTreeMap::new();
@@ -742,7 +746,7 @@ fn pr_schedule_gkr_small_shape() {
             .collect(),
     );
     let mut host_values = BTreeMap::new();
-    let dr_max_rounds = 4 + dr_inputs.len() - 1;
+    let dr_max_rounds = final_log + dr_inputs.len() - 1;
     let dr_max_polys = dr_inputs
         .values()
         .map(|layer| {
@@ -760,7 +764,7 @@ fn pr_schedule_gkr_small_shape() {
         &pool,
         &worker,
     );
-    let mut reduced_log = 4usize;
+    let mut reduced_log = final_log;
     for (layer_idx, layer) in dr_inputs.into_iter().rev() {
         let values = <NaiveGKRBackend as GKRBackend<PR, PR>>::dimension_reducing_sumcheck_for_layer::<
             Keccak256Transcript,
@@ -908,8 +912,9 @@ fn pr_schedule_gkr_small_shape() {
         expected.intermediate_transcript_seed
     );
     println!(
-        "M6_FACADE layers={} outputs=160 claims=8 point=25 nonce={} seed={:?}",
+        "M6_FACADE layers={} outputs={} claims=8 point=25 nonce={} seed={:?}",
         expected.sumcheck_intermediate_values.len(),
+        10 << crate::proth120::backward::dr_tail::PR_DR_FINAL_TRACE_LOG_2,
         nonce,
         seed.0
     );

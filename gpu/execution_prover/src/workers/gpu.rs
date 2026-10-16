@@ -33,6 +33,7 @@ use log::{debug, error, info, trace};
 
 use crate::upstream::{
     CommitmentMode, GKRExternalChallenges, MerkleTreeCapVarLength, SecurityLevel,
+    L1_WRAP_EXPLICIT_OUTPUT_LOG2,
 };
 use std::ffi::CStr;
 use std::mem;
@@ -62,6 +63,7 @@ pub(crate) fn get_gpu_worker_func(
 }
 
 const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
+const WRAP_FINAL_TRACE_SIZE_LOG_2: u32 = L1_WRAP_EXPLICIT_OUTPUT_LOG2 as u32;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum RequestKind {
@@ -603,7 +605,7 @@ fn schedule_l1_wrap_phase_one<'a>(
         follower: None,
     };
     let dr_tail_plan =
-        preflight_dr_tail_resources_pr(&precomputed.programs, FINAL_TRACE_SIZE_LOG_2, context);
+        preflight_dr_tail_resources_pr(&precomputed.programs, WRAP_FINAL_TRACE_SIZE_LOG_2, context);
     let mut inputs = L1WrapInputs::new(
         &precomputed.geometry,
         precomputed.decoder_host.clone(),

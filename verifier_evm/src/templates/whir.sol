@@ -67,6 +67,7 @@ contract WhirVerifier {
     uint256 constant COMMIT_PTR = 96; // recomputed committed state, marked at the end
     // GkrWhirRegistry address (test etches the deployed registry here).
     address constant __TEMPLATE_REGISTRY_ADDRESS   = 0x00000000000000000000000000000000caFe0001;
+    uint256 constant __TEMPLATE_DIGEST_MASK = 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff; // Merkle leaf/node hash: keccak256 truncated to the digest bytes
     // #if F1
     uint256 constant __TEMPLATE_F1_DIGEST_BYTES = 32; // Merkle digest bytes on the F1 wire
     // #endif
@@ -339,7 +340,7 @@ contract WhirVerifier {
                         mstore(0, sibling)
                         mstore(32, h)
                     }
-                    h := keccak256(0, 64)
+                    h := and(keccak256(0, 64), __TEMPLATE_DIGEST_MASK)
                 }
                 default {
                     // Bits above the path form the cap index.
@@ -376,7 +377,7 @@ contract WhirVerifier {
 // #if F1
             cp := f1_run_end(cp, mul(cols, vp))
 // #endif
-            next_cd := merkle_path(keccak256(LEAF_PTR, mul(li, 32)), depth, cap_ptr, cp, qidx, cb)
+            next_cd := merkle_path(and(keccak256(LEAF_PTR, mul(li, 32)), __TEMPLATE_DIGEST_MASK), depth, cap_ptr, cp, qidx, cb)
         }
         function read_leaf(cp, vp, depth, cap_ptr, qidx, cb) -> next_cd {
             let words := shr(1, vp)
@@ -400,7 +401,7 @@ contract WhirVerifier {
 // #if F1
             cp := f1_run_end(cp, vp)
 // #endif
-            next_cd := merkle_path(keccak256(LEAF_PTR, mul(words, 32)), depth, cap_ptr, cp, qidx, cb)
+            next_cd := merkle_path(and(keccak256(LEAF_PTR, mul(words, 32)), __TEMPLATE_DIGEST_MASK), depth, cap_ptr, cp, qidx, cb)
         }
         // Reinterpret a 32-byte digest (8 big-endian u32 words) as the same 8
         // words each in little-endian byte order, keeping word positions. This

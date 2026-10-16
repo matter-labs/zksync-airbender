@@ -407,7 +407,7 @@ pub(crate) fn forward_fixture_full(context: &ProverContext) -> ForwardFixturePr 
         &inputs,
         &banks,
         &top_bits,
-        4,
+        crate::proth120::backward::dr_tail::PR_DR_FINAL_TRACE_LOG_2,
         proof.output_evaluations_target(),
         &programs,
         context,
@@ -609,7 +609,8 @@ fn dr_fixture(context: &ProverContext) -> (GpuGKRForwardOutput<PR, PR>, Vec<PR>)
     cpu.layers.resize_with(6, Default::default);
     let mut gpu = GpuGKRStorage::<PR, PR>::default();
     gpu.set_layout(Arc::new(GpuGKRStorageLayout::from_artifact_with_tower(
-        &artifact, 4,
+        &artifact,
+        crate::proth120::backward::dr_tail::PR_DR_FINAL_TRACE_LOG_2 as usize,
     )));
     for (address, values) in artifact.global_output_map.values().flatten().zip(&columns) {
         cpu.layers[5].extension_field_inputs.insert(
@@ -623,27 +624,33 @@ fn dr_fixture(context: &ProverContext) -> (GpuGKRForwardOutput<PR, PR>, Vec<PR>)
         );
     }
     let pool = prover::allocation_pool::GenericAllocationPool::<PR, PR>::with_retain(false);
+    let final_log = crate::proth120::backward::dr_tail::PR_DR_FINAL_TRACE_LOG_2;
     let (last, description) =
         prover::gkr::prover::dimension_reduction::forward::evaluate_dimension_reduction_forward(
-            &mut cpu, &artifact, 12, 4, &pool, &worker,
+            &mut cpu,
+            &artifact,
+            12,
+            final_log as usize,
+            &pool,
+            &worker,
         );
     let slab = ForwardOutputSlabTarget {
         backing: Arc::new(
             context
                 .alloc(
-                    160,
+                    10 << final_log,
                     gpu_core::allocator::tracker::AllocationPlacement::BestFit,
                 )
                 .unwrap(),
         ),
-        len: 160,
+        len: 10 << final_log,
     };
     let prepared = prepare_dimension_reduction_forward(
         &mut gpu,
         5,
         &artifact.global_output_map,
         12,
-        4,
+        final_log,
         Some(&slab),
         context,
     )
@@ -694,7 +701,12 @@ fn pr_dr_tower_matches_cpu() {
 #[cfg(not(no_cuda))]
 fn pr_handoff_transcript_matches_cpu() {
     let context = make_context();
-    let values: Vec<_> = deterministic_columns(4, 10).into_iter().flatten().collect();
+    let final_log = crate::proth120::backward::dr_tail::PR_DR_FINAL_TRACE_LOG_2;
+    let rows = 1usize << final_log;
+    let values: Vec<_> = deterministic_columns(final_log, 10)
+        .into_iter()
+        .flatten()
+        .collect();
     #[allow(clippy::arc_with_non_send_sync)]
     let backing = Arc::new(upload(&values, &context));
     let mut storage = GpuGKRStorage::<PR, PR>::default();
@@ -717,7 +729,11 @@ fn pr_handoff_transcript_matches_cpu() {
             storage.insert_extension_at_layer(
                 1,
                 *address,
-                GpuExtensionFieldPoly::from_arc(Arc::clone(&backing), (index * 2 + local) * 16, 16),
+                GpuExtensionFieldPoly::from_arc(
+                    Arc::clone(&backing),
+                    (index * 2 + local) * rows,
+                    rows,
+                ),
             );
         }
         outputs.insert(
@@ -734,7 +750,7 @@ fn pr_handoff_transcript_matches_cpu() {
     seed.0 = seed_bytes;
     <Keccak256Transcript as Transcript<PR, PR>>::commit_base_field_elements(&mut seed, &values);
     let committed_seed = seed.0;
-    let mut expected_draws = [PR::ZERO; 5];
+    let mut expected_draws = vec![PR::ZERO; final_log as usize + 1];
     <Keccak256Transcript as Transcript<PR, PR>>::draw_random_field_elements(
         &mut seed,
         &mut expected_draws,
@@ -749,7 +765,8 @@ fn pr_handoff_transcript_matches_cpu() {
     assert_eq!(read_back(&device_seed, 0u8, &context), committed_seed);
     drop(device_seed);
     let handoff =
-        prepare_backward_handoff_pr(output, upload(&seed_bytes, &context), 4, &context).unwrap();
+        prepare_backward_handoff_pr(output, upload(&seed_bytes, &context), final_log, &context)
+            .unwrap();
     compare(
         &read_back(&handoff.d_evaluation_point_and_batching, PR::ZERO, &context),
         &expected_draws,
@@ -757,16 +774,15 @@ fn pr_handoff_transcript_matches_cpu() {
     );
     assert_eq!(read_back(&handoff.d_seed, 0u8, &context), seed.0);
     let expected: Vec<_> = values
-        .as_chunks::<16>()
-        .0
-        .iter()
+        .chunks_exact(rows)
         .map(|poly| {
             poly.iter()
                 .enumerate()
                 .fold(PR::ZERO, |sum, (index, value)| {
-                    let weight = expected_draws[..4].iter().enumerate().fold(
-                        PR::ONE,
-                        |weight, (bit, coordinate)| {
+                    let weight = expected_draws[..final_log as usize]
+                        .iter()
+                        .enumerate()
+                        .fold(PR::ONE, |weight, (bit, coordinate)| {
                             mul(
                                 weight,
                                 if index & (1 << bit) == 0 {
@@ -775,8 +791,7 @@ fn pr_handoff_transcript_matches_cpu() {
                                     *coordinate
                                 },
                             )
-                        },
-                    );
+                        });
                     sum + mul(*value, weight)
                 })
         })
