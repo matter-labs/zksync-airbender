@@ -952,7 +952,7 @@ fn cpu_l1_wrap_m6_replay_matches_bundle() {
     );
     assert_eq!(
         (config.trace_len_log2, base_lde_log2, base_columns, batched),
-        (21, 6, 114, 16),
+        (21, 7, 114, 16),
         "M6 replay batched proximity PoW inputs"
     );
     let replay = m6_replay::replay_gkr_challenges(
