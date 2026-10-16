@@ -1,5 +1,5 @@
 use field::baby_bear::{base::BabyBearField as F, ext4::BabyBearExt4 as E};
-use field::{Field, FieldExtension, PrimeField};
+use field::{FieldExtension, PrimeField};
 use verifier::add_sub_lui_auipc_mop::sec_100::common::{
     eval_multilinear_from_raw_words, eval_multilinear_with_monomial_tensor,
     precompute_monomial_tensor,
