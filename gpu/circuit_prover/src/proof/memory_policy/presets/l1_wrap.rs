@@ -4,10 +4,10 @@ use super::super::{
     WitnessPostCommitStorage,
 };
 
-/// Tracker peak of the 2^21 wrap's merged pack + commit at pack 4, 64 cosets and
+/// Tracker peak of the 2^21 wrap's merged pack + commit at pack 3, 128 cosets and
 /// the preset's depth-10 trees (`tests/l1_stage_parity.rs` `l1_wrap_m4_stages_match_reference`)
 /// on the RTX PRO 6000 Blackwell (sm_120).
-pub const MEASURED_M4_PEAK_BYTES: usize = 11_987_320_832;
+pub const MEASURED_M4_PEAK_BYTES: usize = 11_517_558_784;
 pub const OVERLAP_BYTES: usize = 1_736_441_856;
 
 pub const fn align_up(bytes: usize, unit: usize) -> usize {
@@ -158,15 +158,8 @@ mod cpu_tests {
         ) * 32;
         assert_eq!(tree_scratch_bytes, 8 * BLOCK_BYTES);
         assert_eq!(
-            ANALYTIC_COMMIT_PEAK_BYTES + tree_scratch_bytes,
-            11_517_558_784
-        );
-        assert_eq!(
-            align_up(
-                ANALYTIC_COMMIT_PEAK_BYTES + tree_scratch_bytes + OVERLAP_BYTES,
-                1 << 30
-            ),
-            L1_WRAP_ARENA_MIN_BYTES
+            MEASURED_M4_PEAK_BYTES,
+            ANALYTIC_COMMIT_PEAK_BYTES + tree_scratch_bytes
         );
         assert_eq!(
             L1_WRAP_ARENA_MIN_BYTES,
