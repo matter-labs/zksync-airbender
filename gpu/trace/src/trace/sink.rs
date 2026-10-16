@@ -632,3 +632,136 @@ pub fn open_coset_slot(
         stream,
     )
 }
+
+// Upper bound of one suffix batch of a coefficient tree (cosets x tiles), the L2-resident tile set.
+pub const COEFFICIENT_BATCH_BYTES: usize = 32 << 20;
+
+// (cosets, tiles per coset) of one suffix batch of a coefficient tree: whole cosets while a coset's
+// tiles fit the batch, else one coset and as many tiles as fit.
+pub fn coefficient_batch(shape: &SuffixShape, cosets: usize) -> (usize, usize) {
+    let tile_bytes = shape.tile_len() * size_of::<PR>();
+    let tiles = shape.tiles_per_coset();
+    let coset_bytes = tiles * tile_bytes;
+    if coset_bytes <= COEFFICIENT_BATCH_BYTES {
+        (
+            (COEFFICIENT_BATCH_BYTES / coset_bytes).min(cosets).max(1),
+            tiles,
+        )
+    } else {
+        (1, (COEFFICIENT_BATCH_BYTES / tile_bytes).clamp(1, tiles))
+    }
+}
+
+pub fn coefficient_tiles_len(shape: &SuffixShape, cosets: usize) -> usize {
+    let (batch_cosets, batch_tiles) = coefficient_batch(shape, cosets);
+    batch_cosets * batch_tiles * shape.tile_len()
+}
+
+// The retained trees (layers skip_bottom..=h, `retained_per_coset` apart) of cosets k0..k0 + cosets
+// of a coefficient-tree oracle (one monomial column, codeword 2^log_domain): the batched chunked
+// prefix of all the cosets into `prefix` (cosets x 2^log_n), then per suffix batch of
+// `coefficient_batch` the suffix micro and the CoefficientTree sink, then the layers above.
+#[allow(clippy::too_many_arguments)]
+pub fn commit_coefficient_cosets(
+    ctx: &DeviceContext,
+    monomials: &DeviceSlice<PR>,
+    plan: &Dispatch,
+    shape: &SuffixShape,
+    log_domain: u32,
+    k0: u32,
+    cosets: usize,
+    prefix: &mut DeviceSlice<PR>,
+    tiles: &mut DeviceSlice<PR>,
+    retained: &mut DeviceSlice<Digest>,
+    retained_per_coset: usize,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let rows = 1usize << shape.log_n;
+    let h = shape.log_n - shape.log_v;
+    assert_eq!(
+        shape.columns, 1,
+        "commit_coefficient_cosets: one monomial column"
+    );
+    assert_eq!(
+        prefix.len(),
+        cosets * rows,
+        "commit_coefficient_cosets: prefix length"
+    );
+    assert_eq!(
+        tiles.len(),
+        coefficient_tiles_len(shape, cosets),
+        "commit_coefficient_cosets: tiles length"
+    );
+    assert_eq!(
+        retained_per_coset,
+        retained_layer_offset(h, shape.skip_bottom, h) + 1,
+        "commit_coefficient_cosets: retained per coset"
+    );
+    assert_eq!(
+        retained.len(),
+        cosets * retained_per_coset,
+        "commit_coefficient_cosets: retained length"
+    );
+    {
+        let _r = scoped_range(Some("ab"), "whir.commit.prefix");
+        lde_coset_slot(
+            ctx,
+            monomials,
+            prefix,
+            cosets,
+            plan.prefix
+                .as_ref()
+                .expect("commit_coefficient_cosets: no prefix plan"),
+            ScaleArgs {
+                coset: CosetSource::Batched { k0 },
+                log_domain,
+            },
+            stream,
+        )?;
+    }
+    let _r = scoped_range(Some("ab"), "whir.commit.suffix");
+    let (batch_cosets, batch_tiles) = coefficient_batch(shape, cosets);
+    let tiles_per_coset = shape.tiles_per_coset();
+    for first_coset in (0..cosets).step_by(batch_cosets) {
+        let coset_count = batch_cosets.min(cosets - first_coset);
+        for first_tile in (0..tiles_per_coset).step_by(batch_tiles) {
+            let tile_count = batch_tiles.min(tiles_per_coset - first_tile);
+            let batch = &mut tiles[..coset_count * tile_count * shape.tile_len()];
+            launch_suffix_micro(
+                ctx,
+                &prefix[first_coset * rows..],
+                rows,
+                batch,
+                shape,
+                first_tile as u32,
+                tile_count as u32,
+                coset_count as u32,
+                None,
+                stream,
+            )?;
+            launch_sink(
+                ctx,
+                batch,
+                shape,
+                first_tile as u32,
+                tile_count as u32,
+                coset_count as u32,
+                SinkMode::CoefficientTree {
+                    log_domain,
+                    k0: k0 + first_coset as u32,
+                },
+                &mut retained[first_coset * retained_per_coset..],
+                retained_per_coset,
+                stream,
+            )?;
+        }
+    }
+    build_retained_layers(
+        h,
+        shape.skip_bottom,
+        cosets as u32,
+        retained_per_coset,
+        retained,
+        stream,
+    )
+}

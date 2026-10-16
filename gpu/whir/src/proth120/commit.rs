@@ -10,9 +10,12 @@ use gpu_hash::keccak256::{
     build_partial_coset_trees_multi_coset, build_top_tree, gather_tree_cap, retained_layer_offset,
     transcript_commit_u32, Digest,
 };
-use gpu_ntt::proth120::{lde_coset, lde_cosets_batched};
+use gpu_ntt::proth120::{dispatch, lde_coset, lde_cosets_batched, SuffixShape};
 use gpu_ops::powers::get_powers_by_val;
 use gpu_prover_context::ProverContext;
+use gpu_trace::trace::sink::{
+    coefficient_tiles_len, commit_coefficient_cosets, has_leaf_sink, SinkMode,
+};
 
 use super::kernels;
 use super::shape::OracleShape;
@@ -134,7 +137,53 @@ pub(crate) fn schedule_commit_intermediate(
         context.alloc(cosets - (1 << shape.cap_log), AllocationPlacement::Bottom)?;
     let mut cap = context.alloc(1 << shape.cap_log, AllocationPlacement::Bottom)?;
     let mut tile = context.alloc(tile_cosets << shape.log_n, AllocationPlacement::Top)?;
-    for k0 in (0..cosets).step_by(tile_cosets) {
+    let fused = dispatch(
+        shape.log_n,
+        1,
+        shape.log_v,
+        shape.skip_bottom,
+        context.get_device_properties().l2_cache_size_bytes,
+    )
+    .ok()
+    .filter(|plan| !plan.small)
+    .map(|plan| {
+        let suffix = SuffixShape::new(&plan, shape.log_n, shape.log_v, shape.skip_bottom, 1);
+        (plan, suffix)
+    })
+    .filter(|(_, suffix)| {
+        has_leaf_sink(
+            suffix,
+            &SinkMode::CoefficientTree {
+                log_domain: shape.log_domain,
+                k0: 0,
+            },
+        )
+    });
+    let fused_path = fused.is_some();
+    if let Some((plan, suffix)) = fused {
+        let mut tiles = context.alloc(
+            coefficient_tiles_len(&suffix, tile_cosets),
+            AllocationPlacement::Top,
+        )?;
+        for k0 in (0..cosets).step_by(tile_cosets) {
+            commit_coefficient_cosets(
+                context.proth120_ntt_device_context(),
+                &copy,
+                &plan,
+                &suffix,
+                shape.log_domain,
+                k0 as u32,
+                tile_cosets,
+                &mut tile,
+                &mut tiles,
+                &mut retained[k0 * r..(k0 + tile_cosets) * r],
+                r,
+                stream,
+            )?;
+        }
+        drop(tiles);
+    }
+    for k0 in (0..if fused_path { 0 } else { cosets }).step_by(tile_cosets) {
         {
             let _r = scoped_range(Some("ab"), "whir.commit.prefix");
             schedule_lde_convert_pass(&copy, shape, None, k0 as u32, &mut tile, context)?;
