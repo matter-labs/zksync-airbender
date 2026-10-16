@@ -14,6 +14,7 @@ use super::{validate_disjoint, validate_slice};
 pub(crate) struct SuffixTileArgs {
     prefix: *const PR,
     tile: *mut PR,
+    gate: *const u32,
     prefix_column_stride: u64,
     prefix_coset_stride: u64,
     tile_coset_stride: u64,
@@ -23,7 +24,7 @@ pub(crate) struct SuffixTileArgs {
     columns: u32,
 }
 
-const _: () = assert!(core::mem::size_of::<SuffixTileArgs>() == 56);
+const _: () = assert!(core::mem::size_of::<SuffixTileArgs>() == 64);
 
 cuda_kernel_signature_arguments_and_function!(
     pub(crate) SuffixMicro,
@@ -204,7 +205,8 @@ pub(crate) fn suffix_launch(
 
 // The suffix micro of tiles [first_tile, first_tile + tiles) of `cosets` coset prefixes
 // (prefix coset c at c * prefix_coset_stride, columns at stride 2^log_n) into `tiles` laid out
-// [coset][tile][column][f_lo][w][2^v], the coset stride being tiles * tile_len.
+// [coset][tile][column][f_lo][w][2^v], the coset stride being tiles * tile_len; a `gate` (one
+// u32 on the device) at 0 makes the launch a no-op.
 #[allow(clippy::too_many_arguments)]
 pub fn launch_suffix_micro(
     ctx: &DeviceContext,
@@ -215,8 +217,12 @@ pub fn launch_suffix_micro(
     first_tile: u32,
     tile_count: u32,
     cosets: u32,
+    gate: Option<&DeviceSlice<u32>>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
+    if let Some(gate) = gate {
+        assert_eq!(gate.len(), 1, "Proth120 suffix: gate must be one u32");
+    }
     let launch = suffix_launch(
         ctx.log_max_domain(),
         shape,
@@ -238,6 +244,7 @@ pub fn launch_suffix_micro(
     let args = SuffixTileArgs {
         prefix: prefix.as_ptr(),
         tile: tiles.as_mut_ptr(),
+        gate: gate.map_or(std::ptr::null(), |gate| gate.as_ptr()),
         prefix_column_stride: 1u64 << shape.log_n,
         prefix_coset_stride: prefix_coset_stride as u64,
         tile_coset_stride: launch.tile_coset_stride as u64,

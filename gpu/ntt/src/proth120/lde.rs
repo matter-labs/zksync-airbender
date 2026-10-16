@@ -20,20 +20,24 @@ pub(crate) const MAX_COLUMNS_PER_LAUNCH: usize = 65535;
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct ChunkMap {
+    pub(crate) gate: *const u32,
     pub(crate) strip_base: u32,
     pub(crate) strip_blocks: u32,
     pub(crate) strip_domain_bits: u32,
+    pub(crate) reserved: u32,
 }
 
 impl ChunkMap {
     pub(crate) const FULL: Self = Self {
+        gate: std::ptr::null(),
         strip_base: 0,
         strip_blocks: 1,
         strip_domain_bits: 0,
+        reserved: 0,
     };
 }
 
-const _: () = assert!(core::mem::size_of::<ChunkMap>() == 12);
+const _: () = assert!(core::mem::size_of::<ChunkMap>() == 24);
 
 cuda_kernel_signature_arguments_and_function!(
     pub(crate) Dit,

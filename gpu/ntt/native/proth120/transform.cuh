@@ -71,13 +71,18 @@ struct mobius_policy {
   DEVICE_FORCEINLINE void exchg_0(pr &a, pr &b) const { b = pr::sub(b, a); }
 };
 
+// `gate` (null: always on) points to a slot's active flag; a gated-off launch returns at entry.
 struct chunk_map {
+  const u32 *gate;
   u32 strip_base;
   u32 strip_blocks;
   u32 strip_domain_bits;
+  u32 reserved;
 };
 
-static_assert(sizeof(chunk_map) == 12);
+static_assert(sizeof(chunk_map) == 24);
+
+DEVICE_FORCEINLINE bool gated_off(const u32 *gate) { return gate && !*gate; }
 
 struct coset_scale {
   const u32 *coset;
@@ -189,6 +194,8 @@ template <int STAGES, bool NARROW, class P, bool SCALE = false, bool STAGED = fa
 DEVICE_FORCEINLINE void nonfinal(pr_matrix_getter<ld_modifier::cg> gmem_in, pr_matrix_setter<st_modifier::cg> gmem_out, const P &policy, const u32 log_n,
                                  const u32 start_stage, const chunk_map map, const coset_scale scale = {}) {
   static_assert(!NARROW || (STAGES >= 5 && STAGES <= 7));
+  if (gated_off(map.gate))
+    return;
   constexpr int LOG_TILE_SIZE = 3;
   constexpr int TILE_SIZE = 1 << LOG_TILE_SIZE;
   constexpr int LOG_VALS_PER_THREAD = 2;
@@ -249,6 +256,7 @@ DEVICE_FORCEINLINE void nonfinal(pr_matrix_getter<ld_modifier::cg> gmem_in, pr_m
 struct suffix_tile_args {
   const pr *prefix;
   pr *tile;
+  const u32 *gate;
   u64 prefix_column_stride;
   u64 prefix_coset_stride;
   u64 tile_coset_stride;
@@ -260,6 +268,8 @@ struct suffix_tile_args {
 
 template <int R, int V, class P> DEVICE_FORCEINLINE void suffix_micro(const P &policy, const suffix_tile_args args) {
   static_assert(R >= 6 && R <= 8 && V >= 1 && V < R);
+  if (gated_off(args.gate))
+    return;
   constexpr int STAGES_DONE = R - V;
   constexpr int LOG_THREADS_PER_COMPONENT = R - 2;
   constexpr int THREADS_PER_COMPONENT = 1 << LOG_THREADS_PER_COMPONENT;

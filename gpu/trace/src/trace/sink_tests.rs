@@ -381,6 +381,7 @@ fn sink_coefficient_tree_matches_reference() {
             0,
             tiles_per_coset,
             cosets,
+            None,
             &stream,
         )
         .unwrap();
@@ -511,6 +512,7 @@ fn sink_profile_probe() {
                 index * batch,
                 batch,
                 1,
+                None,
                 &stream,
             )
             .unwrap();
@@ -526,6 +528,7 @@ fn sink_profile_probe() {
         0,
         wide,
         1,
+        None,
         &stream,
     )
     .unwrap();
@@ -577,6 +580,7 @@ fn sink_coset_probe() {
                     first as u32,
                     batch as u32,
                     1,
+                    None,
                     &stream,
                 )
                 .unwrap();

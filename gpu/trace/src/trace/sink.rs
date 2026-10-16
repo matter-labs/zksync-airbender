@@ -342,6 +342,7 @@ pub fn commit_coset(
             first as u32,
             count as u32,
             1,
+            None,
             stream,
         )?;
         launch_sink(

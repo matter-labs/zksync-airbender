@@ -65,11 +65,19 @@ fn dit_scaled_function(pass: &PrefixPass) -> DitScaledFunction {
 
 // Logical coset k of the scale offset_k = w_D^k: by value, from device memory (openings), or
 // k0 + the launch's column index when the columns of a launch are consecutive cosets.
+// `Slot`: an openings slot, the coset from the touched-coset plan and every launch gated by the
+// slot's active flag.
 #[derive(Clone, Copy)]
 pub enum CosetSource<'a> {
     Constant(u32),
     Device(&'a DeviceSlice<u32>),
-    Batched { k0: u32 },
+    Batched {
+        k0: u32,
+    },
+    Slot {
+        coset: &'a DeviceSlice<u32>,
+        active: &'a DeviceSlice<u32>,
+    },
 }
 
 #[derive(Clone, Copy)]
@@ -85,10 +93,24 @@ pub(crate) struct FirstPassScale<'a> {
 }
 
 impl ScaleArgs<'_> {
+    fn gate(&self) -> *const u32 {
+        match self.coset {
+            CosetSource::Slot { active, .. } => {
+                assert_eq!(
+                    active.len(),
+                    1,
+                    "Proth120 prefix: slot gate must be one u32"
+                );
+                active.as_ptr()
+            }
+            _ => std::ptr::null(),
+        }
+    }
+
     fn native(&self, column: usize) -> CosetScale {
         let (coset, k0, batched) = match self.coset {
             CosetSource::Constant(k) => (std::ptr::null(), k, 0),
-            CosetSource::Device(slot) => {
+            CosetSource::Device(slot) | CosetSource::Slot { coset: slot, .. } => {
                 assert_eq!(
                     slot.len(),
                     1,
@@ -189,9 +211,11 @@ impl ChunkPlan {
 
     pub(crate) fn map(&self, strip: u32) -> ChunkMap {
         ChunkMap {
+            gate: std::ptr::null(),
             strip_base: strip * self.strip_blocks,
             strip_blocks: self.strip_blocks,
             strip_domain_bits: self.strip_domain_bits,
+            reserved: 0,
         }
     }
 
@@ -505,7 +529,10 @@ pub(crate) fn launch_prefix_chunked<P: TransformPolicy>(
             target.stride,
         );
         for strip in 0..plan.strips {
-            let map = plan.map(strip);
+            let mut map = plan.map(strip);
+            if let Some(first) = &first_pass_scale {
+                map.gate = first.scale.gate();
+            }
             for (pass, function) in plan.passes.iter().zip(&functions) {
                 let grid_y = plan.grid_y(pass);
                 assert!(grid_y <= 65535, "Proth120 prefix: grid.y exceeds 65535");
@@ -555,7 +582,7 @@ fn validate_coset(scale: &ScaleArgs, log_n: u32, cosets: usize, log_max_domain: 
             u64::from(k0) + cosets as u64 <= limit,
             "Proth120 prefix: batched cosets out of range"
         ),
-        CosetSource::Device(_) => {}
+        CosetSource::Device(_) | CosetSource::Slot { .. } => {}
     }
 }
 

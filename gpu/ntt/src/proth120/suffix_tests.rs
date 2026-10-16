@@ -340,6 +340,7 @@ fn pr_suffix_micro_matches_reference() {
                 first_tile as u32,
                 count as u32,
                 cosets,
+                None,
                 &stream,
             )
             .unwrap();
@@ -429,6 +430,7 @@ fn pr_suffix_profile_probe() {
                 index * batch,
                 batch,
                 1,
+                None,
                 &stream,
             )
             .unwrap();
@@ -442,4 +444,110 @@ fn pr_suffix_profile_probe() {
             );
         }
     }
+}
+
+// Openings slots (T1.2): with the slot's active flag at 0 the chunked prefix and the suffix micro
+// leave their outputs untouched; at 1 they equal the ungated launches with the coset by value.
+#[test]
+#[cfg(not(no_cuda))]
+fn pr_slot_gate_skips_launches() {
+    let ctx = DeviceContext::create(31).unwrap();
+    let stream = CudaStream::create().unwrap();
+    let mut rng = StdRng::seed_from_u64(0x9120_1201);
+    let (log_n, columns, log_v, skip_bottom) = (25u32, 7u32, 2u32, 10u32);
+    let rows = 1usize << log_n;
+    let len = rows * columns as usize;
+    let plan = super::dispatch(log_n, columns as usize, log_v, skip_bottom, 128 << 20).unwrap();
+    let chunks = plan.prefix.as_ref().unwrap();
+    let s = SuffixShape::new(&plan, log_n, log_v, skip_bottom, columns);
+    let monomials: Vec<PR> = (0..len)
+        .map(|_| PR::new(rng.random::<u128>() % PR::ORDER))
+        .collect();
+    let monomials = upload(&monomials);
+    let k = 9u32;
+    let coset = upload(&[k]);
+    let sentinel = vec![PR::new(5); len];
+    let mut reference = DeviceAllocation::<PR>::alloc(len).unwrap();
+    lde_coset_slot(
+        &ctx,
+        &monomials,
+        &mut reference,
+        columns as usize,
+        chunks,
+        ScaleArgs {
+            coset: CosetSource::Constant(k),
+            log_domain: 31,
+        },
+        &stream,
+    )
+    .unwrap();
+    let mut reference_tiles = DeviceAllocation::<PR>::alloc(2 * s.tile_len()).unwrap();
+    launch_suffix_micro(
+        &ctx,
+        &reference,
+        len,
+        &mut reference_tiles,
+        &s,
+        3,
+        2,
+        1,
+        None,
+        &stream,
+    )
+    .unwrap();
+    let reference = download(&reference, &stream);
+    let reference_tiles = download(&reference_tiles, &stream);
+    for active in [0u32, 1] {
+        let gate = upload(&[active]);
+        let mut prefix = upload(&sentinel);
+        lde_coset_slot(
+            &ctx,
+            &monomials,
+            &mut prefix,
+            columns as usize,
+            chunks,
+            ScaleArgs {
+                coset: CosetSource::Slot {
+                    coset: &coset,
+                    active: &gate,
+                },
+                log_domain: 31,
+            },
+            &stream,
+        )
+        .unwrap();
+        let mut tiles = upload(&vec![PR::new(5); 2 * s.tile_len()]);
+        launch_suffix_micro(
+            &ctx,
+            &prefix,
+            len,
+            &mut tiles,
+            &s,
+            3,
+            2,
+            1,
+            Some(&gate),
+            &stream,
+        )
+        .unwrap();
+        let prefix = download(&prefix, &stream);
+        let tiles = download(&tiles, &stream);
+        if active == 0 {
+            assert!(prefix == sentinel, "gated-off prefix wrote its output");
+            assert!(
+                tiles.iter().all(|v| v.0 == PR::new(5).0),
+                "gated-off micro wrote its tiles"
+            );
+        } else {
+            assert!(
+                prefix == reference,
+                "gated-on prefix differs from the coset by value"
+            );
+            assert!(
+                tiles == reference_tiles,
+                "gated-on micro differs from the ungated launch"
+            );
+        }
+    }
+    println!("pr_slot_gate_skips_launches: (25,7,2,10) gate 0 untouched, gate 1 byte-equal");
 }
