@@ -13,7 +13,7 @@ use gpu_hash::keccak256::{
 use gpu_ntt::proth120::{update_eq_poly, EqSample};
 use gpu_ops::powers::get_powers_by_ref;
 use gpu_prover_context::ProverContext;
-use gpu_trace::trace::packed::PackedCosetRecomputeOracle;
+use gpu_trace::trace::packed::{CosetQueryPlan, PackedCosetRecomputeOracle};
 
 use super::commit::{schedule_commit_intermediate, IntermediateOracle};
 use super::openings::schedule_open_intermediate;
@@ -317,7 +317,22 @@ pub fn schedule_l1_whir_fold(
         end_phase(phase, &mut ranges, context)?;
         let phase = start_phase(format!("gkr.whir.pr.round.{r}.openings"), context)?;
         if r == 0 {
+            let plan = (round.queries > 0)
+                .then(|| {
+                    let log_lde = base
+                        .config()
+                        .expect("Proth120 WHIR: base opened before commit")
+                        .log_lde_factor;
+                    assert_eq!(
+                        Some(log_lde),
+                        setup.oracle().config().map(|cfg| cfg.log_lde_factor),
+                        "Proth120 WHIR: base and setup log_lde_factor differ"
+                    );
+                    CosetQueryPlan::new(&indexes, log_lde, context)
+                })
+                .transpose()?;
             base.open_queries(
+                plan.as_ref(),
                 &indexes,
                 &mut outputs.memory.leaves,
                 &mut outputs.memory.paths,
@@ -325,6 +340,7 @@ pub fn schedule_l1_whir_fold(
                 context,
             )?;
             setup.open_queries(
+                plan.as_ref(),
                 &indexes,
                 &mut outputs.setup.leaves,
                 &mut outputs.setup.paths,

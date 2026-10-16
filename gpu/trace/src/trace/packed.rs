@@ -9,7 +9,7 @@ use gpu_core::primitives::nvtx::scoped_range;
 use gpu_hash::keccak256::{
     append_top_paths, build_partial_coset_tree, build_partial_coset_tree_with_scratch,
     build_top_tree, gather_leaves_for_queries_single_coset,
-    gather_merkle_paths_partial_for_queries_single_coset, gather_tree_cap,
+    gather_merkle_paths_partial_for_queries_single_coset, gather_tree_cap, launch_coset_query_plan,
     partial_coset_tree_scratch_len, retained_layer_offset, Digest,
 };
 use gpu_ntt::proth120::{
@@ -25,7 +25,10 @@ use crate::upstream::{domain_generator_for_size, ProverConfig};
 use super::holder::{
     assert_partial_tree_reduction_layers, TraceHolder, MAX_PARTIAL_TREE_REDUCTION_LAYERS,
 };
-use super::sink::{commit_coset, commit_coset_scratch_lens, has_leaf_sink, SinkMode};
+use super::sink::{
+    commit_coset, commit_coset_scratch_lens, has_leaf_sink, has_open_sink, open_coset_slot,
+    open_coset_slot_scratch_lens, OpenQueries, OpenSlot, SinkMode,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PackedCommitConfig {
@@ -137,6 +140,46 @@ pub fn retained_len(log_leaves: u32, skip_bottom: u32) -> usize {
 
 pub fn coset_root_offset(log_leaves: u32, skip_bottom: u32) -> usize {
     retained_len(log_leaves, skip_bottom) - 1
+}
+
+// The touched-coset plan of the round-0 queries (`launch_coset_query_plan`), built once per proof
+// and shared by the base and the setup openings (same queries and log_lde): openings run one gated
+// slot per query, exactly `count` of them active.
+pub struct CosetQueryPlan {
+    pub touched: DeviceAllocation<u32>,
+    pub active: DeviceAllocation<u32>,
+    pub count: DeviceAllocation<u32>,
+    pub log_lde: u32,
+}
+
+impl CosetQueryPlan {
+    pub fn new(
+        queries: &DeviceSlice<u32>,
+        log_lde: u32,
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
+        let mut touched = context.alloc(queries.len(), AllocationPlacement::BestFit)?;
+        let mut active = context.alloc(queries.len(), AllocationPlacement::BestFit)?;
+        let mut count = context.alloc(1, AllocationPlacement::BestFit)?;
+        launch_coset_query_plan(
+            queries,
+            log_lde,
+            &mut touched,
+            &mut active,
+            &mut count,
+            context.get_exec_stream(),
+        )?;
+        Ok(Self {
+            touched,
+            active,
+            count,
+            log_lde,
+        })
+    }
+
+    pub fn slots(&self) -> usize {
+        self.touched.len()
+    }
 }
 
 pub fn opening_path_len(log_packed: u32, cfg: &PackedCommitConfig) -> usize {
@@ -600,6 +643,7 @@ impl PackedCosetRecomputeOracle<PR> {
 
     pub fn open_queries(
         &self,
+        plan: Option<&CosetQueryPlan>,
         queries: &DeviceSlice<u32>,
         leaves: &mut DeviceSlice<PR>,
         paths: &mut DeviceSlice<Digest>,
@@ -645,7 +689,64 @@ impl PackedCosetRecomputeOracle<PR> {
         let per_coset = retained_len(h, cfg.skip_bottom);
         let mut scratch = context.alloc(self.monomials().len(), AllocationPlacement::Top)?;
         let stream = context.get_exec_stream();
-        for k in 0..data.offsets.len() {
+        let sink = plan
+            .filter(|plan| plan.log_lde == cfg.log_lde_factor && plan.slots() == count)
+            .and_then(|plan| {
+                let dispatched = dispatch(
+                    log_packed,
+                    self.packed_columns,
+                    cfg.log_values_per_leaf,
+                    cfg.skip_bottom,
+                    context.get_device_properties().l2_cache_size_bytes,
+                )
+                .ok()
+                .filter(|dispatched| !dispatched.small)?;
+                let shape = SuffixShape::new(
+                    &dispatched,
+                    log_packed,
+                    cfg.log_values_per_leaf,
+                    cfg.skip_bottom,
+                    self.packed_columns as u32,
+                );
+                has_open_sink(&shape).then_some((plan, dispatched, shape))
+            });
+        let sink_path = sink.is_some();
+        if let Some((plan, dispatched, shape)) = sink {
+            let (tiles_len, nodes_len) = open_coset_slot_scratch_lens(&dispatched, &shape);
+            let mut tiles = context.alloc(tiles_len, AllocationPlacement::BestFit)?;
+            let mut nodes = context.alloc(nodes_len, AllocationPlacement::BestFit)?;
+            let mut open = OpenQueries {
+                queries,
+                log_lde: cfg.log_lde_factor,
+                cap_log: cfg.cap_log,
+                leaves: &mut *leaves,
+                paths: &mut *paths,
+            };
+            for s in 0..plan.slots() {
+                let _r = scoped_range(Some("ab"), "packed.open.slot");
+                open_coset_slot(
+                    context.proth120_ntt_device_context(),
+                    self.monomials(),
+                    &dispatched,
+                    &shape,
+                    OpenSlot {
+                        coset: &plan.touched[s..s + 1],
+                        active: &plan.active[s..s + 1],
+                    },
+                    log_packed + cfg.log_lde_factor,
+                    &data.retained,
+                    per_coset,
+                    &mut open,
+                    &mut scratch,
+                    &mut tiles,
+                    &mut nodes,
+                    stream,
+                )?;
+            }
+            drop(nodes);
+            drop(tiles);
+        }
+        for k in 0..if sink_path { 0 } else { data.offsets.len() } {
             let _r = scoped_range(Some("ab"), "packed.open.slot");
             self.recompute_coset(k as u32, &mut scratch, context)?;
             gather_leaves_for_queries_single_coset(

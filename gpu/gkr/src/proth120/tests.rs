@@ -385,6 +385,7 @@ fn check_packed_open_queries(pack_log2: u32, log_v: u32, skip_bottom: u32) {
     let mut d_indexes = upload(&vec![index_canary; count + 2], &context);
     let before_commit = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         oracle.open_queries(
+            None,
             &d_queries,
             &mut d_leaves[1..count * leaf_len + 1],
             &mut d_paths[1..count * depth + 1],
@@ -397,6 +398,7 @@ fn check_packed_open_queries(pack_log2: u32, log_v: u32, skip_bottom: u32) {
     oracle.commit(&cfg, &context).unwrap();
     oracle
         .open_queries(
+            None,
             &d_queries,
             &mut d_leaves[1..count * leaf_len + 1],
             &mut d_paths[1..count * depth + 1],
@@ -459,6 +461,7 @@ fn check_packed_open_queries(pack_log2: u32, log_v: u32, skip_bottom: u32) {
     let peak = context.get_used_mem_peak();
     oracle
         .open_queries(
+            None,
             &d_empty_queries,
             &mut d_empty_leaves,
             &mut d_empty_paths,
@@ -469,6 +472,7 @@ fn check_packed_open_queries(pack_log2: u32, log_v: u32, skip_bottom: u32) {
     assert_eq!(context.get_used_mem_peak(), peak, "Q = 0 allocated scratch");
     oracle
         .open_queries(
+            None,
             &d_queries,
             &mut d_leaves[1..count * leaf_len + 1],
             &mut d_paths[1..count * depth + 1],
@@ -583,6 +587,7 @@ fn l1_setup_host_round_trip_small() {
         let mut d_indexes = upload(&vec![0xaaaa_aaaa; count], &context);
         source
             .open_queries(
+                None,
                 &d_queries,
                 &mut d_leaves,
                 &mut d_paths,

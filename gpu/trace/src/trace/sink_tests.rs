@@ -617,3 +617,301 @@ fn sink_coset_probe() {
         }
     }
 }
+
+// Openings through the touched-coset plan (one gated `open_coset_slot` per query slot) against
+// today's per-coset gathers on the natural-order cosets, for distinct retained trees per coset and
+// the query sets of spec 3.1: all in one coset, duplicates, one per coset, the last valid index,
+// Q = 1, touched order [last, 1, 0].
+#[test]
+#[cfg(not(no_cuda))]
+fn sink_open_queries_matches_gathers() {
+    use super::sink::{open_coset_slot, open_coset_slot_scratch_lens, OpenQueries, OpenSlot};
+    use gpu_hash::keccak256::{
+        gather_leaves_for_queries_single_coset,
+        gather_merkle_paths_partial_for_queries_single_coset, launch_coset_query_plan,
+    };
+    let ctx = DeviceContext::create(31).unwrap();
+    let stream = CudaStream::create().unwrap();
+    let mut state = 0x0f0e_0d0c_u64;
+    let mut next = move || {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        state as u32
+    };
+    for (log_n, columns, log_v, skip_bottom, log_lde, cap_log) in [
+        (16u32, 7u32, 2u32, 10u32, 3u32, 2u32),
+        (17, 13, 1, 10, 2, 1),
+        (18, 1, 2, 8, 3, 3),
+        (18, 2, 1, 9, 1, 0),
+    ] {
+        let rows = 1usize << log_n;
+        let h = log_n - log_v;
+        let log_domain = log_n + log_lde;
+        let cosets = 1usize << log_lde;
+        let leaf_len = (columns as usize) << log_v;
+        let depth = (h + log_lde - cap_log) as usize;
+        let monomials = upload(&random_values(
+            rows * columns as usize,
+            u64::from(log_n) << 4 | u64::from(columns),
+        ));
+        let nu = domain_generator_for_size::<PR>(1u64 << log_domain);
+        let per_coset = retained_len(h, skip_bottom);
+        let mut naturals = Vec::new();
+        let mut retained_all = DeviceAllocation::<Digest>::alloc(cosets * per_coset).unwrap();
+        let mut scratch = DeviceAllocation::<Digest>::alloc(
+            partial_coset_tree_scratch_len(log_n, log_v, skip_bottom).max(1),
+        )
+        .unwrap();
+        for k in 0..cosets {
+            let mut natural = DeviceAllocation::<PR>::alloc(rows * columns as usize).unwrap();
+            lde_coset(
+                &ctx,
+                &DeviceMatrix::new(&monomials, rows),
+                &mut DeviceMatrixMut::new(&mut natural, rows),
+                &upload(&[nu.pow(k as u32)]),
+                &stream,
+            )
+            .unwrap();
+            build_partial_coset_tree_with_scratch(
+                &natural,
+                log_n,
+                log_v,
+                columns,
+                skip_bottom,
+                &mut retained_all[k * per_coset..(k + 1) * per_coset],
+                &mut scratch,
+                &stream,
+            )
+            .unwrap();
+            naturals.push(natural);
+        }
+        let plan = dispatch(log_n, columns as usize, log_v, skip_bottom, device_l2()).unwrap();
+        let s = SuffixShape::new(&plan, log_n, log_v, skip_bottom, columns);
+        let (tiles_len, nodes_len) = open_coset_slot_scratch_lens(&plan, &s);
+        let mut prefix = DeviceAllocation::<PR>::alloc(rows * columns as usize).unwrap();
+        let mut tiles = DeviceAllocation::<PR>::alloc(tiles_len).unwrap();
+        let mut nodes = DeviceAllocation::<Digest>::alloc(nodes_len).unwrap();
+        let query = |leaf: u32, coset: u32| (leaf << log_lde) | coset;
+        let last_leaf = (1u32 << h) - 1;
+        let last_coset = cosets as u32 - 1;
+        let query_sets: Vec<(&str, Vec<u32>)> = vec![
+            (
+                "one coset",
+                (0..14)
+                    .map(|i| query((i * 977) & last_leaf, last_coset))
+                    .collect(),
+            ),
+            (
+                "duplicates",
+                vec![
+                    query(5, 1 % cosets as u32),
+                    query(5, 1 % cosets as u32),
+                    query(1029, 0),
+                    query(5, 1 % cosets as u32),
+                ],
+            ),
+            (
+                "one per coset",
+                (0..cosets as u32)
+                    .map(|c| query(next() & last_leaf, c))
+                    .collect(),
+            ),
+            (
+                "last valid index",
+                vec![
+                    query(last_leaf, last_coset),
+                    query(0, 0),
+                    query(last_leaf, last_coset),
+                ],
+            ),
+            (
+                "single",
+                vec![query(next() & last_leaf, next() & last_coset)],
+            ),
+            (
+                "touched order [last, 1, 0]",
+                vec![
+                    query(3, last_coset),
+                    query(1 << 10 | 7, 1 % cosets as u32),
+                    query(511, 0),
+                    query(12, last_coset),
+                ],
+            ),
+            (
+                "14 random",
+                (0..14)
+                    .map(|_| query(next() & last_leaf, next() & last_coset))
+                    .collect(),
+            ),
+        ];
+        for (name, queries) in query_sets {
+            let count = queries.len();
+            let device_queries = upload(&queries);
+            let sentinel = [0xdead_beefu32; 8];
+            let mut reference_leaves = DeviceAllocation::<PR>::alloc(count * leaf_len).unwrap();
+            let mut reference_paths = upload(&vec![sentinel; count * depth]);
+            for (k, natural) in naturals.iter().enumerate() {
+                gather_leaves_for_queries_single_coset(
+                    natural,
+                    k as u32,
+                    log_lde,
+                    log_n,
+                    log_v,
+                    &device_queries,
+                    &mut reference_leaves,
+                    &stream,
+                )
+                .unwrap();
+                gather_merkle_paths_partial_for_queries_single_coset(
+                    natural,
+                    k as u32,
+                    log_lde,
+                    log_n,
+                    log_v,
+                    cap_log,
+                    skip_bottom,
+                    &retained_all[k * per_coset..(k + 1) * per_coset],
+                    &device_queries,
+                    &mut reference_paths,
+                    &stream,
+                )
+                .unwrap();
+            }
+            let mut touched = DeviceAllocation::<u32>::alloc(count).unwrap();
+            let mut active = DeviceAllocation::<u32>::alloc(count).unwrap();
+            let mut touched_count = DeviceAllocation::<u32>::alloc(1).unwrap();
+            launch_coset_query_plan(
+                &device_queries,
+                log_lde,
+                &mut touched,
+                &mut active,
+                &mut touched_count,
+                &stream,
+            )
+            .unwrap();
+            let mut leaves = DeviceAllocation::<PR>::alloc(count * leaf_len).unwrap();
+            let mut paths = upload(&vec![sentinel; count * depth]);
+            let mut open = OpenQueries {
+                queries: &device_queries,
+                log_lde,
+                cap_log,
+                leaves: &mut leaves,
+                paths: &mut paths,
+            };
+            for slot in 0..count {
+                open_coset_slot(
+                    &ctx,
+                    &monomials,
+                    &plan,
+                    &s,
+                    OpenSlot {
+                        coset: &touched[slot..slot + 1],
+                        active: &active[slot..slot + 1],
+                    },
+                    log_domain,
+                    &retained_all,
+                    per_coset,
+                    &mut open,
+                    &mut prefix,
+                    &mut tiles,
+                    &mut nodes,
+                    &stream,
+                )
+                .unwrap();
+            }
+            let candidate_leaves = download(&leaves, &stream);
+            let candidate_paths = download(&paths, &stream);
+            let expected_leaves = download(&reference_leaves, &stream);
+            let expected_paths = download(&reference_paths, &stream);
+            for q in 0..count {
+                assert!(
+                    candidate_leaves[q * leaf_len..(q + 1) * leaf_len]
+                        == expected_leaves[q * leaf_len..(q + 1) * leaf_len],
+                    "({log_n},{columns},{log_v},{skip_bottom}) {name}: leaf of query {q}"
+                );
+                for layer in 0..depth {
+                    assert_eq!(
+                        candidate_paths[q * depth + layer],
+                        expected_paths[q * depth + layer],
+                        "({log_n},{columns},{log_v},{skip_bottom}) {name}: query {q} path layer {layer}"
+                    );
+                }
+            }
+            let touched_count = download(&touched_count, &stream)[0];
+            println!(
+                "sink_open_queries_matches_gathers: ({log_n},{columns},{log_v},{skip_bottom}) log_lde {log_lde} {name}: Q {count}, {touched_count} active slots, leaves + {depth}-layer paths byte-equal"
+            );
+        }
+    }
+}
+
+// Codex T4.6 repro: an openings slot with cap_log above log_lde (n = 18, v = 2, h = 16, log_lde 3,
+// cap_log 19, Q = 1, paths.len 0) is rejected before any launch, leaving its outputs untouched.
+#[test]
+#[cfg(not(no_cuda))]
+fn sink_open_slot_rejects_invalid_cap_before_launch() {
+    use super::sink::{open_coset_slot, open_coset_slot_scratch_lens, OpenQueries, OpenSlot};
+    let ctx = DeviceContext::create(31).unwrap();
+    let stream = CudaStream::create().unwrap();
+    let (log_n, columns, log_v, skip_bottom, log_lde, cap_log) =
+        (18u32, 7u32, 2u32, 8u32, 3u32, 19u32);
+    let h = log_n - log_v;
+    let rows = 1usize << log_n;
+    let plan = dispatch(log_n, columns as usize, log_v, skip_bottom, device_l2()).unwrap();
+    let s = SuffixShape::new(&plan, log_n, log_v, skip_bottom, columns);
+    let (tiles_len, nodes_len) = open_coset_slot_scratch_lens(&plan, &s);
+    let monomials = upload(&random_values(rows * columns as usize, 18));
+    let per_coset = retained_len(h, skip_bottom);
+    let retained_all = upload(&vec![[1u32; 8]; per_coset << log_lde]);
+    let queries = upload(&[(5u32 << log_lde) | 1]);
+    let coset = upload(&[1u32]);
+    let active = upload(&[1u32]);
+    let sentinel = [0x5a5a_5a5au32; 8];
+    let mut nodes = upload(&vec![sentinel; nodes_len]);
+    let mut leaves = upload(&vec![PR::new(9); (columns as usize) << log_v]);
+    let mut paths = upload::<Digest>(&[]);
+    let mut prefix = DeviceAllocation::<PR>::alloc(rows * columns as usize).unwrap();
+    let mut tiles = DeviceAllocation::<PR>::alloc(tiles_len).unwrap();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mut open = OpenQueries {
+            queries: &queries,
+            log_lde,
+            cap_log,
+            leaves: &mut leaves,
+            paths: &mut paths,
+        };
+        open_coset_slot(
+            &ctx,
+            &monomials,
+            &plan,
+            &s,
+            OpenSlot {
+                coset: &coset,
+                active: &active,
+            },
+            log_n + log_lde,
+            &retained_all,
+            per_coset,
+            &mut open,
+            &mut prefix,
+            &mut tiles,
+            &mut nodes,
+            &stream,
+        )
+    }));
+    let payload = result.expect_err("invalid cap_log accepted");
+    let text = payload
+        .downcast_ref::<String>()
+        .map(String::as_str)
+        .or_else(|| payload.downcast_ref::<&str>().copied())
+        .unwrap();
+    assert!(text.contains("cap_log <= log_lde"), "{text}");
+    stream.synchronize().unwrap();
+    assert!(download(&nodes, &stream)
+        .iter()
+        .all(|node| *node == sentinel));
+    assert!(download(&leaves, &stream)
+        .iter()
+        .all(|value| value.0 == PR::new(9).0));
+}

@@ -29,6 +29,23 @@ struct leaf_sink_args {
 
 static_assert(sizeof(leaf_sink_args) == 64);
 
+// An openings slot (skip_bottom >= 8): the queries in coset *coset whose depth-skip_bottom subtree the block belongs to,
+// gated by *gate. Hit blocks write the queried leaves' values [query][slot'][column] and path layers 0..2 [query][depth]
+// besides their depth-3 nodes; blocks without a hit return.
+struct leaf_open_args {
+  const u32 *gate;
+  const u32 *coset;
+  const u32 *queries;
+  pr *leaves;
+  digest *paths;
+  u32 count;
+  u32 log_lde;
+  u32 depth;
+  u32 reserved;
+};
+
+static_assert(sizeof(leaf_open_args) == 56);
+
 struct sink_leaf {
   u32 tile;
   u32 f_lo;
@@ -69,14 +86,34 @@ template <u32 V, class T> DEVICE_FORCEINLINE void finish_leaf_group(pr (&x)[1u <
   }
 }
 
-template <u32 C, u32 V, u32 TREE_DEPTH, bool CONVERT> DEVICE_FORCEINLINE void leaf_sink(const leaf_sink_args &args, const proth120_twiddle_descriptor &d) {
-  static_assert(TREE_DEPTH >= 3 && TREE_DEPTH <= 8);
+template <u32 C, u32 V, u32 TREE_DEPTH, bool CONVERT, bool OPEN>
+DEVICE_FORCEINLINE void leaf_sink(const leaf_sink_args &args, const leaf_open_args &open, const proth120_twiddle_descriptor &d) {
+  static_assert(TREE_DEPTH >= 3 && TREE_DEPTH <= 8 && (!OPEN || (TREE_DEPTH == 3 && !CONVERT)));
   constexpr u32 VALUES = 1u << V;
   __shared__ digest leaves[256];
   __shared__ digest layer_1[128];
   __shared__ digest layer_2[64];
   const u32 tid = threadIdx.x;
   const u32 log_f = args.log_r - V;
+  __shared__ u32 hits[OPEN ? 1024 : 1];
+  __shared__ u32 hit_count;
+  const u32 block_j = leaf_of(args, log_f, blockIdx.x * 256).j;
+  if constexpr (OPEN) {
+    if (open.gate && !*open.gate)
+      return;
+    const u32 coset = *open.coset;
+    if (tid == 0)
+      hit_count = 0;
+    __syncthreads();
+    for (u32 q = tid; q < open.count; q += 256) {
+      const u32 query = open.queries[q];
+      if ((query & ((1u << open.log_lde) - 1)) == coset && (query >> open.log_lde) >> args.skip_bottom == block_j >> args.skip_bottom)
+        hits[atomicAdd(&hit_count, 1)] = q;
+    }
+    __syncthreads();
+    if (hit_count == 0)
+      return;
+  }
   const sink_leaf leaf = leaf_of(args, log_f, blockIdx.x * 256 + tid);
   const u32 region = (bitreverse_low_bits(leaf.g, args.log_a) << log_f) + bitreverse_low_bits(leaf.f_lo, log_f);
   const u64 column_stride = u64{1} << (args.skip_bottom + args.log_r);
@@ -116,6 +153,16 @@ template <u32 C, u32 V, u32 TREE_DEPTH, bool CONVERT> DEVICE_FORCEINLINE void le
     finish_leaf_group<V>(x, twiddle);
     if constexpr (CONVERT)
       ab_pr_convert_leaf<V>(d, x, base_root_inv);
+    if constexpr (OPEN) {
+      for (u32 i = 0; i < hit_count; i++) {
+        const u32 q = hits[i];
+        if (open.queries[q] >> open.log_lde == leaf.j) {
+#pragma unroll
+          for (u32 t = 0; t < VALUES; t++)
+            open.leaves[static_cast<u64>(q) * C * VALUES + t * C + decltype(column)::value] = x[t];
+        }
+      }
+    }
     static_for<VALUES>([&](auto t) {
       constexpr u32 T = decltype(t)::value;
       if constexpr (PARKED && T >= 8)
@@ -133,6 +180,18 @@ template <u32 C, u32 V, u32 TREE_DEPTH, bool CONVERT> DEVICE_FORCEINLINE void le
   if (tid < 64)
     layer_2[tid] = hash_node<true>(layer_1[2 * tid], layer_1[2 * tid + 1]);
   __syncthreads();
+  if constexpr (OPEN) {
+    for (u32 i = tid; i < hit_count; i += 256) {
+      const u32 q = hits[i];
+      const u32 w = (open.queries[q] >> open.log_lde) - block_j;
+      if (w < 256) {
+        digest *path = open.paths + static_cast<u64>(q) * open.depth;
+        path[0] = leaves[w ^ 1];
+        path[1] = layer_1[(w >> 1) ^ 1];
+        path[2] = layer_2[(w >> 2) ^ 1];
+      }
+    }
+  }
   if (tid >= 32)
     return;
   digest node = hash_node<true>(layer_2[2 * tid], layer_2[2 * tid + 1]);
@@ -154,7 +213,13 @@ template <u32 C, u32 V, u32 TREE_DEPTH, bool CONVERT> DEVICE_FORCEINLINE void le
 #define LEAF_SINK_KERNEL(C, V, TREE_DEPTH, MODE, CONVERT)                                                                                                      \
   EXTERN __launch_bounds__(256, 2)                                                                                                                             \
       __global__ void ab_pr_leaf_sink_##C##_##V##_##TREE_DEPTH##_##MODE##_kernel(const leaf_sink_args args, const proth120_twiddle_descriptor d) {             \
-    leaf_sink<C, V, TREE_DEPTH, CONVERT>(args, d);                                                                                                             \
+    leaf_sink<C, V, TREE_DEPTH, CONVERT, false>(args, {}, d);                                                                                                  \
+  }
+
+#define LEAF_OPEN_KERNEL(C, V)                                                                                                                                 \
+  EXTERN __launch_bounds__(256, 2)                                                                                                                             \
+      __global__ void ab_pr_leaf_sink_##C##_##V##_3_open_kernel(const leaf_sink_args args, const leaf_open_args open, const proth120_twiddle_descriptor d) {   \
+    leaf_sink<C, V, 3, false, true>(args, open, d);                                                                                                            \
   }
 
 LEAF_SINK_KERNEL(1, 2, 3, commit, false)
@@ -163,5 +228,9 @@ LEAF_SINK_KERNEL(7, 2, 3, commit, false)
 LEAF_SINK_KERNEL(13, 1, 3, commit, false)
 LEAF_SINK_KERNEL(1, 3, 5, coefficient_tree, true)
 LEAF_SINK_KERNEL(1, 4, 5, coefficient_tree, true)
+LEAF_OPEN_KERNEL(1, 2)
+LEAF_OPEN_KERNEL(2, 1)
+LEAF_OPEN_KERNEL(7, 2)
+LEAF_OPEN_KERNEL(13, 1)
 
 } // namespace airbender::trace::commit

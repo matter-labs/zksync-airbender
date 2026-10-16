@@ -14,7 +14,9 @@ use gpu_trace::trace::holder::{
     assert_partial_tree_reduction_layers, TraceHolder, TreesCacheMode,
     PARTIAL_TREE_REDUCTION_LAYERS,
 };
-use gpu_trace::trace::packed::{retained_len, PackedCommitConfig, PackedCosetRecomputeOracle};
+use gpu_trace::trace::packed::{
+    retained_len, CosetQueryPlan, PackedCommitConfig, PackedCosetRecomputeOracle,
+};
 
 use super::partial_tree_projection_start;
 use crate::upstream::{CpuGKRSetup, MerkleTreeCapVarLength};
@@ -262,6 +264,7 @@ impl<'a> PackedSetupSource<'a> {
 
     pub fn open_queries(
         &self,
+        plan: Option<&CosetQueryPlan>,
         queries: &DeviceSlice<u32>,
         leaves: &mut DeviceSlice<PR>,
         paths: &mut DeviceSlice<Digest>,
@@ -269,7 +272,7 @@ impl<'a> PackedSetupSource<'a> {
         context: &ProverContext,
     ) -> CudaResult<()> {
         self.oracle
-            .open_queries(queries, leaves, paths, tree_indexes, context)
+            .open_queries(plan, queries, leaves, paths, tree_indexes, context)
     }
 
     pub fn cap(&self) -> &DeviceSlice<u32> {

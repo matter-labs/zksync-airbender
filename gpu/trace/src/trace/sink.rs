@@ -6,7 +6,8 @@ use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_fu
 use gpu_core::primitives::field::PR;
 use gpu_core::primitives::nvtx::scoped_range;
 use gpu_hash::keccak256::{
-    build_retained_layers, reduce_digest_layers, retained_layer_offset, Digest,
+    build_retained_layers, launch_open_paths, open_paths_depth, reduce_digest_layers,
+    retained_layer_offset, Digest,
 };
 use gpu_ntt::proth120::{
     launch_suffix_micro, lde_coset_slot, CosetSource, DeviceContext, Dispatch, ScaleArgs,
@@ -47,6 +48,48 @@ leaf_sink_kernel!(ab_pr_leaf_sink_7_2_3_commit_kernel);
 leaf_sink_kernel!(ab_pr_leaf_sink_13_1_3_commit_kernel);
 leaf_sink_kernel!(ab_pr_leaf_sink_1_3_5_coefficient_tree_kernel);
 leaf_sink_kernel!(ab_pr_leaf_sink_1_4_5_coefficient_tree_kernel);
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct LeafOpenArgs {
+    gate: *const u32,
+    coset: *const u32,
+    queries: *const u32,
+    leaves: *mut PR,
+    paths: *mut Digest,
+    count: u32,
+    log_lde: u32,
+    depth: u32,
+    reserved: u32,
+}
+
+const _: () = assert!(size_of::<LeafOpenArgs>() == 56);
+
+cuda_kernel_signature_arguments_and_function!(
+    pub(crate) LeafOpen,
+    args: LeafSinkArgs, open: LeafOpenArgs, descriptor: TwiddleDescriptor,
+);
+macro_rules! leaf_open_kernel {
+    ($name:ident) => {
+        cuda_kernel_declaration!(
+            $name(args: LeafSinkArgs, open: LeafOpenArgs, descriptor: TwiddleDescriptor,)
+        );
+    };
+}
+leaf_open_kernel!(ab_pr_leaf_sink_1_2_3_open_kernel);
+leaf_open_kernel!(ab_pr_leaf_sink_2_1_3_open_kernel);
+leaf_open_kernel!(ab_pr_leaf_sink_7_2_3_open_kernel);
+leaf_open_kernel!(ab_pr_leaf_sink_13_1_3_open_kernel);
+
+fn leaf_open_function(columns: u32, log_v: u32) -> Option<LeafOpenFunction> {
+    Some(LeafOpenFunction(match (columns, log_v) {
+        (1, 2) => ab_pr_leaf_sink_1_2_3_open_kernel,
+        (2, 1) => ab_pr_leaf_sink_2_1_3_open_kernel,
+        (7, 2) => ab_pr_leaf_sink_7_2_3_open_kernel,
+        (13, 1) => ab_pr_leaf_sink_13_1_3_open_kernel,
+        _ => return None,
+    }))
+}
 
 // Commit hashes the coset evaluations; CoefficientTree hashes each leaf converted to its
 // coefficients (WHIR oracles) with the coset k0 + launch coset of the 2^log_domain codeword.
@@ -367,4 +410,225 @@ pub fn commit_coset(
         stream,
     )?;
     build_retained_layers(h, sb, 1, retained.len(), retained, stream)
+}
+
+// One openings slot of the touched-coset plan: its coset and active flag (one u32 each, device).
+#[derive(Clone, Copy)]
+pub struct OpenSlot<'a> {
+    pub coset: &'a DeviceSlice<u32>,
+    pub active: &'a DeviceSlice<u32>,
+}
+
+// The openings of one Commit tree: queries (query = leaf << log_lde | physical coset), leaf
+// values [query][slot'][column] and paths [query][depth], depth = h + log_lde - cap_log.
+pub struct OpenQueries<'a> {
+    pub queries: &'a DeviceSlice<u32>,
+    pub log_lde: u32,
+    pub cap_log: u32,
+    pub leaves: &'a mut DeviceSlice<PR>,
+    pub paths: &'a mut DeviceSlice<Digest>,
+}
+
+pub fn has_open_sink(shape: &SuffixShape) -> bool {
+    (8..=10).contains(&shape.skip_bottom)
+        && has_leaf_sink(shape, &SinkMode::Commit)
+        && leaf_open_function(shape.columns, shape.log_v).is_some()
+}
+
+// The open sink of one batch of tiles for one slot: blocks whose depth-skip_bottom subtree holds a
+// query of the slot's coset hash their leaves into the slot's depth-3 `nodes` and write the
+// queried leaves and path layers 0..2; the others return.
+#[allow(clippy::too_many_arguments)]
+fn launch_open_sink(
+    ctx: &DeviceContext,
+    tiles: &DeviceSlice<PR>,
+    shape: &SuffixShape,
+    first_tile: u32,
+    tile_count: u32,
+    slot: OpenSlot,
+    open: &mut OpenQueries,
+    nodes: &mut DeviceSlice<Digest>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let launch = sink_launch(
+        ctx.log_max_domain(),
+        shape,
+        &SinkMode::Commit,
+        tiles.len(),
+        first_tile,
+        tile_count,
+        1,
+        nodes.len(),
+        nodes.len(),
+    );
+    let h = shape.log_n - shape.log_v;
+    let depth = (h + open.log_lde)
+        .checked_sub(open.cap_log)
+        .expect("leaf open: cap_log above the tree depth");
+    let count = open.queries.len();
+    assert!(
+        has_open_sink(shape),
+        "leaf open: no open sink for {shape:?}"
+    );
+    assert!(
+        (1..=1024).contains(&count) && open.log_lde <= 12,
+        "leaf open: 1 <= queries <= 1024, log_lde <= 12"
+    );
+    assert_eq!(
+        nodes.len(),
+        1 << (h - 3),
+        "leaf open: nodes.len() == leaves / 8"
+    );
+    assert_eq!(
+        open.leaves.len(),
+        count * ((shape.columns as usize) << shape.log_v),
+        "leaf open: leaves.len() == Q * columns * 2^log_v"
+    );
+    assert_eq!(
+        open.paths.len(),
+        count * depth as usize,
+        "leaf open: paths.len() == Q * depth"
+    );
+    assert!(
+        slot.coset.len() == 1 && slot.active.len() == 1,
+        "leaf open: slot coset and active are one u32"
+    );
+    let args = LeafSinkArgs {
+        tile: tiles.as_ptr(),
+        out: nodes.as_mut_ptr(),
+        tile_coset_stride: launch.tile_coset_stride as u64,
+        out_coset_stride: nodes.len() as u64,
+        log_a: shape.log_a(),
+        log_r: shape.r,
+        skip_bottom: shape.skip_bottom,
+        first_tile,
+        log_n: shape.log_n,
+        log_domain: shape.log_n,
+        k0: 0,
+        reserved: 0,
+    };
+    let open_args = LeafOpenArgs {
+        gate: slot.active.as_ptr(),
+        coset: slot.coset.as_ptr(),
+        queries: open.queries.as_ptr(),
+        leaves: open.leaves.as_mut_ptr(),
+        paths: open.paths.as_mut_ptr(),
+        count: count as u32,
+        log_lde: open.log_lde,
+        depth,
+        reserved: 0,
+    };
+    leaf_open_function(shape.columns, shape.log_v)
+        .unwrap()
+        .launch(
+            &CudaLaunchConfig::basic(launch.grid, 256, stream),
+            &LeafOpenArguments::new(args, open_args, ctx.descriptor()),
+        )
+}
+
+// Scratch of `open_coset_slot`: one batch of suffix tiles and the slot's depth-3 nodes (the
+// prefix output is the monomials' length).
+pub fn open_coset_slot_scratch_lens(plan: &Dispatch, shape: &SuffixShape) -> (usize, usize) {
+    (
+        plan.tiles_per_batch * shape.tile_len(),
+        1usize << (shape.log_n - shape.log_v - 3),
+    )
+}
+
+// The openings in one slot of the touched-coset plan (every launch gated by the slot's active
+// flag): the chunked prefix of the slot's coset, per batch of tiles the suffix micro and the open
+// sink, then the path layers above the sink from its depth-3 nodes and the coset's retained tree
+// (`retained_all`, `retained_stride` per coset).
+#[allow(clippy::too_many_arguments)]
+pub fn open_coset_slot(
+    ctx: &DeviceContext,
+    monomials: &DeviceSlice<PR>,
+    plan: &Dispatch,
+    shape: &SuffixShape,
+    slot: OpenSlot,
+    log_domain: u32,
+    retained_all: &DeviceSlice<Digest>,
+    retained_stride: usize,
+    open: &mut OpenQueries,
+    prefix: &mut DeviceSlice<PR>,
+    tiles: &mut DeviceSlice<PR>,
+    nodes: &mut DeviceSlice<Digest>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert_eq!(
+        (tiles.len(), nodes.len()),
+        open_coset_slot_scratch_lens(plan, shape),
+        "open_coset_slot: scratch lengths"
+    );
+    open_paths_depth(
+        nodes.len(),
+        retained_all.len(),
+        retained_stride,
+        open.log_lde,
+        shape.log_n - shape.log_v,
+        shape.skip_bottom,
+        open.cap_log,
+        open.queries.len(),
+        open.paths.len(),
+    );
+    lde_coset_slot(
+        ctx,
+        monomials,
+        prefix,
+        shape.columns as usize,
+        plan.prefix
+            .as_ref()
+            .expect("open_coset_slot: no prefix plan"),
+        ScaleArgs {
+            coset: CosetSource::Slot {
+                coset: slot.coset,
+                active: slot.active,
+            },
+            log_domain,
+        },
+        stream,
+    )?;
+    let column_len = (shape.columns as usize) << shape.log_n;
+    let tiles_per_coset = shape.tiles_per_coset();
+    for first in (0..tiles_per_coset).step_by(plan.tiles_per_batch) {
+        let count = plan.tiles_per_batch.min(tiles_per_coset - first);
+        let batch = &mut tiles[..count * shape.tile_len()];
+        launch_suffix_micro(
+            ctx,
+            prefix,
+            column_len,
+            batch,
+            shape,
+            first as u32,
+            count as u32,
+            1,
+            Some(slot.active),
+            stream,
+        )?;
+        launch_open_sink(
+            ctx,
+            batch,
+            shape,
+            first as u32,
+            count as u32,
+            slot,
+            open,
+            nodes,
+            stream,
+        )?;
+    }
+    launch_open_paths(
+        nodes,
+        retained_all,
+        retained_stride,
+        slot.coset,
+        slot.active,
+        open.queries,
+        open.log_lde,
+        shape.log_n - shape.log_v,
+        shape.skip_bottom,
+        open.cap_log,
+        open.paths,
+        stream,
+    )
 }

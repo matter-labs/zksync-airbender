@@ -291,9 +291,10 @@ cuda_kernel!(
     )
 );
 
-// Host checks of `launch_open_paths` (spans in checked arithmetic); returns the path depth.
+// Host checks of `launch_open_paths` (spans in checked arithmetic); returns the path depth. Public
+// so an openings slot can run them before its first launch.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn open_paths_depth(
+pub fn open_paths_depth(
     nodes_len: usize,
     retained_len: usize,
     retained_stride: usize,

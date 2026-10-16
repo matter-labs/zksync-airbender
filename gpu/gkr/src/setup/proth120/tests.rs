@@ -30,7 +30,14 @@ fn open(
         .alloc(queries.len(), AllocationPlacement::BestFit)
         .unwrap();
     oracle
-        .open_queries(queries, &mut leaves, &mut paths, &mut indexes, context)
+        .open_queries(
+            None,
+            queries,
+            &mut leaves,
+            &mut paths,
+            &mut indexes,
+            context,
+        )
         .unwrap();
     (
         read_back(&leaves, PR::ZERO, context),
