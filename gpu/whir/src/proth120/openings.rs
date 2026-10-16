@@ -48,7 +48,7 @@ pub(crate) fn schedule_open_intermediate(
             && (1..=4).contains(&shape.log_v)
             && shape.log_leaves == shape.log_n - shape.log_v
             && shape.log_domain == shape.log_n + shape.log_lde
-            && shape.log_domain <= 31
+            && shape.log_domain <= 33
             && query_domain_log2 == shape.log_leaves + shape.log_lde,
         "Proth120 WHIR: opening oracle geometry invalid"
     );

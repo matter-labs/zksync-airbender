@@ -246,6 +246,38 @@ fn rejection(
     );
 }
 
+/// A 2^33 codeword (base LDE 2^9 at message 2^24, every intermediate oracle at 2^33) fits the
+/// shape guards.
+#[test]
+fn cpu_shape_accepts_a_33_bit_codeword() {
+    let schedule = WhirSchedule {
+        base_lde_factor: 1 << 9,
+        cap_size: 8,
+        whir_steps_schedule: vec![1, 4, 4, 4, 4],
+        whir_queries_schedule: vec![10, 9, 6, 5, 4],
+        whir_steps_lde_factors: vec![1 << 10, 1 << 14, 1 << 18, 1 << 22],
+        whir_pow_schedule: vec![25, 25, 30, 25, 27],
+    };
+    let shape = L1WhirShape::from_schedule(&schedule, 24, 9, 1, L1_WHIR_TILE_BYTES);
+    let query_domains: Vec<_> = shape.rounds.iter().map(|r| r.query_domain_log2).collect();
+    assert_eq!(query_domains, [32, 29, 29, 29, 29]);
+    let oracles: Vec<_> = shape
+        .rounds
+        .iter()
+        .filter_map(|r| r.oracle)
+        .map(|o| (o.log_n, o.log_lde, o.log_v, o.log_domain))
+        .collect();
+    assert_eq!(
+        oracles,
+        [
+            (23, 10, 4, 33),
+            (19, 14, 4, 33),
+            (15, 18, 4, 33),
+            (11, 22, 4, 33)
+        ]
+    );
+}
+
 #[test]
 fn cpu_shape_rejects_invalid() {
     let s = small_schedule();
@@ -254,8 +286,11 @@ fn cpu_shape_rejects_invalid() {
     rejection(&s, 11, 5, 2, tile, "oracle log_n below 8");
     rejection(&s, 9, 5, 2, tile, "sum of folds exceeds");
     let mut bad = s.clone();
-    bad.whir_steps_lde_factors[0] = 1 << 20;
-    rejection(&bad, 14, 5, 2, tile, "oracle log_domain exceeds 31");
+    bad.whir_steps_lde_factors[0] = 1 << 22;
+    rejection(&bad, 14, 5, 2, tile, "oracle log_domain exceeds 33");
+    let mut bad = s.clone();
+    bad.base_lde_factor = 1 << 8;
+    rejection(&bad, 26, 8, 2, tile, "base log_domain exceeds 33");
     let mut bad = s.clone();
     bad.whir_steps_lde_factors[0] = 4;
     rejection(&bad, 14, 5, 2, tile, "cap_log exceeds oracle");
@@ -294,7 +329,7 @@ fn cpu_shape_rejects_invalid() {
     bad.whir_queries_schedule = vec![1; 5];
     bad.whir_pow_schedule = vec![0; 5];
     bad.whir_steps_lde_factors = vec![1 << 15; 4];
-    rejection(&bad, 26, 5, 2, tile, "oracle log_domain exceeds 31");
+    rejection(&bad, 26, 5, 2, tile, "oracle log_domain exceeds 33");
     let final_zero = WhirSchedule {
         whir_steps_schedule: vec![2, 4, 4, 4],
         whir_queries_schedule: vec![1; 4],

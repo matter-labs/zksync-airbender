@@ -85,8 +85,8 @@ impl L1WhirShape {
             "Proth120 WHIR: cap_log exceeds base log_lde"
         );
         assert!(
-            log_message + log_base_lde <= 31,
-            "Proth120 WHIR: base log_domain exceeds 31"
+            log_message + log_base_lde <= 33,
+            "Proth120 WHIR: base log_domain exceeds 33"
         );
         assert_eq!(
             schedule.whir_steps_schedule[0], log_base_values_per_leaf as usize,
@@ -137,8 +137,8 @@ impl L1WhirShape {
                 let log_domain = log_n + log_lde;
                 assert!(log_n >= 8, "Proth120 WHIR: oracle log_n below 8");
                 assert!(
-                    log_domain <= 31,
-                    "Proth120 WHIR: oracle log_domain exceeds 31"
+                    log_domain <= 33,
+                    "Proth120 WHIR: oracle log_domain exceeds 33"
                 );
                 assert!(
                     cap_log <= log_lde,
