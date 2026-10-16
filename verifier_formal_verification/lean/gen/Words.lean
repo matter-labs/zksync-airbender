@@ -6,7 +6,7 @@ words and one `decode` lemma per distinct word, so that a change in one function
 Two images: `Image` (plain Rust) and `ImageMop` (feature `mop`); a block of `ImageMop` whose bytes equal the
 same-named block of `Image` is shared, otherwise it gets its own file `<block>_mop`. -/
 open RV
-deriving instance Repr for Op, Cond, FieldOp, CsrOp, Instr
+deriving instance Repr for Op, Cond, FieldOp, DelegationKind, Instr
 
 def wordAt (bytes : Array (BitVec 8)) (a : Nat) : Word :=
   let b := fun k => (bytes[a + k]!).zeroExtend 32

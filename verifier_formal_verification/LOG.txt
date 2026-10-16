@@ -7,6 +7,19 @@ commit check `git diff --cached --stat` and that no staged file is over ~200 KB.
 Moved here from an earlier prototype repo (as a snapshot; its history, which contains the large Sail model, was
 NOT imported).
 
+=== CSR ROWS AS THE ISA TABLE; BLAKE2S ONE ROUND PER INSTRUCTION (2026-10-16) ===
+- The source of the semantics is what the circuits' decoder table accepts, i.e. the ISA table (spec/top-down,
+  "00 master.md"), not the transpiler (more lenient): only csrrw. CSR 0x7c0: csrrw rd, 0x7c0, x0 (read, rd != x0),
+  csrrw x0, 0x7c0, rs1 (no-op write, rs1 != x0); delegations: csrrw x0, <csr>, x0. Every other form/shape has no
+  next state. Reverts "CSR 0x7C0: ALL ZICSR FORMS".
+- Delegation call = one instruction (the table: "each instruction is one round"): exec applies
+  Delegation.effect (words written + one register) and goes to pc + 4; no run check in exec. Generic Effect
+  (State.lean: storeAll, applyEffect: no next state unless every write is an aligned RAM word); Sail side
+  Airbender.writeAll / applyEffect; StepDelegate proven once for every kind (applyEffect_agree, writeAll_eq).
+- Blake2s round (0x7c7) per call, from the VM's per-round blake2_round_function_impl / replayer: round 0 sets up
+  v, last round writes h'; x12 := (ctrl | ((mask << 1) & 0x3ff) << 3) << 16. Test: 7 calls on the five-word block
+  = blake5. Kinds 0x7c8/0x7ca/0x7cb decode, effect none for now.
+
 === POC 5: FIAT-SHAMIR CHECK WITH VALIDATED NON-DETERMINISM (2026-10-16) ===
 - Guest: after blake2s_compress, main reads the prover's claim v (4 words, csr_read_word) and calls
   fs_check(BLAKE, &v) (#[inline(never)]): z_i = reduce(digest_i) (two branch-free conditional subtractions, as
@@ -24,7 +37,7 @@ NOT imported).
 - Scope: one commit-challenge-respond-verify round; the Merkle-path loop (receive siblings, hash up, compare with a
   root) is the same shape repeated.
 
-=== DELEGATIONS SPEC: BLAKE2S ROUND FUNCTION, CSR 0x7C7 (2026-10-16) ===
+=== DELEGATIONS SPEC: BLAKE2S ROUND FUNCTION, CSR 0x7C7 (2026-10-16; macro step replaced by one round per call) ===
 - Source: riscv_transpiler vm/delegations/blake2_round_function.rs (and replayer/delegations, same semantics): a
   run of N identical csrrw x0, 0x7c7, x0 (N = 7 or 10 by x12 bit 16) is ONE call; pc += 4N; the replayer decodes
   with PROTECT_AGAINST_MID_DELEGATION_JUMPS = true (the other slots illegal). x10: state (8) + extended state (16),
@@ -39,7 +52,7 @@ NOT imported).
 - Not modelled: 0x7c8 (G function), 0x7ca (u256 bigint), 0x7cb..0x7ce (Keccak). Images unchanged (no guest uses
   the delegation yet).
 
-=== CSR 0x7C0: ALL ZICSR FORMS (2026-10-16) ===
+=== CSR 0x7C0: ALL ZICSR FORMS (2026-10-16; REVERTED, see CSR ROWS AS THE ISA TABLE) ===
 - riscv_transpiler (ir/simple_instruction_set.rs, ZICSR_MASK = funct3 & 3 != 0): any of csrrw/s/c and the
   immediate forms on 0x7c0; source field (rs1 / zimm) 0 and rd != x0: read; rd = x0 and source != 0: write, a NOP
   in circuits; otherwise it panics. Spec: CsrOp, decodeCsr (six rows), inputRead op rd, inputWrite op src (no

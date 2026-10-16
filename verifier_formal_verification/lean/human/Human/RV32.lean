@@ -7,11 +7,11 @@ No next state (`step = none`, i.e. unprovable in Airbender) for: anything outsid
 (signed MULH/MULHSU/DIV/REM, FENCE, ECALL, CSRs other than the input read below, …), misaligned or out-of-range
 loads/stores, misaligned jump targets, fetch outside ROM.
 Non-determinism (Airbender's CSR `0x7c0`): `input` is the list of answers the prover's oracle will give, in order;
-the theorems hold for every such list. Any Zicsr instruction on CSR `0x7c0` whose source (rs1, or the immediate) is 0
-reads the next answer into `rd` (≠ x0); one with `rd = x0` and a nonzero source is a no-op (Airbender's write).
-Every other combination (Airbender's transpiler panics) and a read with no answers left have no next state.
-Delegations (precompiles): CSR `0x7c7`, the Blake2s round function (`Human/Delegations.lean`); other CSRs have no
-next state.
+the theorems hold for every such list. `csrrw rd, 0x7c0, x0` (rd ≠ x0) reads the next answer; `csrrw x0, 0x7c0, rs1`
+(rs1 ≠ x0) is a no-op (Airbender's write, a hint for witness generation). A read with no answers left has no next
+state. Delegations (precompiles): `csrrw x0, <csr>, x0` for the CSRs of `Human/Delegations.lean`. These are the
+CSR rows of Airbender's ISA table, and the only ones: other CSRs, other forms (csrrs, csrrc, immediates; the
+transpiler is more lenient) and other shapes have no next state.
 Differences from standard RV32IM follow Airbender's ISA table (spec/top-down/00 master.md, "Supported
 instruction set"); each is marked `-- Airbender:` below. -/
 
@@ -70,9 +70,6 @@ def Cond.holds : Cond → Word → Word → Bool
   | .ltu, a, b => a.ult b
   | .geu, a, b => !a.ult b
 
-/-- The Zicsr forms: `csrrw`, `csrrs`, `csrrc` (source register) and `csrrwi`, `csrrsi`, `csrrci` (immediate). -/
-inductive CsrOp | rw | rs | rc | rwi | rsi | rci
-
 /-- Immediates and offsets are stored already decoded (sign-extended / shifted). -/
 inductive Instr
   | lui    (rd : Reg) (imm : Word)
@@ -85,13 +82,13 @@ inductive Instr
   | opImm  (op : Op) (rd rs1 : Reg) (imm : Word)
   | op     (op : Op) (rd rs1 rs2 : Reg)
   | mop    (op : FieldOp) (rd rs1 rs2 : Reg)   -- Airbender: field operations (`mop.rr.N`)
-  | inputRead (op : CsrOp) (rd : Reg)         -- Airbender: CSR 0x7c0, source 0: `rd` := the next input word
-  | inputWrite (op : CsrOp) (src : Reg)       -- Airbender: CSR 0x7c0, `rd = x0`, source ≠ 0: no effect
-  | delegate (op : CsrOp)                     -- Airbender: CSR 0x7c7, source and `rd` 0: a Blake2s delegation call
+  | inputRead (rd : Reg)                      -- Airbender: `csrrw rd, 0x7c0, x0`: `rd` := the next input word
+  | inputWrite (src : Reg)                    -- Airbender: `csrrw x0, 0x7c0, rs1`: no effect
+  | delegate (k : DelegationKind)             -- Airbender: `csrrw x0, <csr>, x0`: a delegation call
 
 /-- Whether an instruction reads an input word. -/
 def Instr.readsInput : Instr → Bool
-  | .inputRead _ _ => true
+  | .inputRead _ => true
   | _ => false
 
 /-- What one instruction does to the state (`none`: Airbender cannot run it). -/
@@ -117,26 +114,20 @@ def exec (s : State) : Instr → Option State
   | .op op rd rs1 rs2      => some (s.setReg rd (alu op (s.getReg rs1) (s.getReg rs2))).nextInstr
   | .mop op rd rs1 rs2     =>                       -- Airbender: `rd = x0` is not allowed (the circuit requires it)
       if rd = 0 then none else some (s.setReg rd (mopVal op (s.getReg rs1) (s.getReg rs2) (s.getReg rd))).nextInstr
-  | .inputRead _ rd        =>
+  | .inputRead rd          =>
       match s.input with
       | w :: rest => some { (s.setReg rd w).nextInstr with input := rest }
       | []        => none
-  | .inputWrite _ _        => some s.nextInstr
-  | .delegate _            =>                       -- Airbender: the whole run of the call's `csrrw` words
-      match Delegation.blake2s (s.getReg 10) (s.getReg 11) (s.getReg 12) s.mem with
-      | some (n, x12, out) =>
-          if isRun s.mem s.pc (read s.mem s.pc 4) n then
-            some (((s.storeWords (s.getReg 10) out.toList).setReg 12 x12).setPC (s.pc + BitVec.ofNat 32 (4 * n)))
-          else none
-      | none => none
+  | .inputWrite _          => some s.nextInstr
+  | .delegate k            =>                       -- Airbender: `Human/Delegations.lean`
+      (Delegation.effect k (s.getReg 10) (s.getReg 11) (s.getReg 12) s.mem).bind s.applyEffect
 
-/-- Airbender: a Zicsr instruction `op` on CSR `csr` with source field `src` (rs1, or the immediate): CSR 0x7c7 with
-`src` and `rd` 0 (a delegation call); CSR 0x7c0, a read (`src = 0`, `rd ≠ x0`) or a write (`src ≠ 0`, `rd = x0`). -/
-def decodeCsr (op : CsrOp) (csr : BitVec 12) (src rd : Reg) : Option Instr :=
-  if csr = 0x7c7 then (if src = 0 ∧ rd = 0 then some (.delegate op) else none)
-  else if csr ≠ 0x7c0 then none
-  else if src = 0 ∧ rd ≠ 0 then some (.inputRead op rd)
-  else if src ≠ 0 ∧ rd = 0 then some (.inputWrite op src)
+/-- Airbender: `csrrw rd, csr, rs1`: the non-determinism read (`0x7c0`, rs1 = x0, rd ≠ x0) or write (`0x7c0`,
+rd = x0, rs1 ≠ x0), or a delegation call (rs1 = rd = x0). -/
+def decodeCsr (csr : BitVec 12) (rs1 rd : Reg) : Option Instr :=
+  if csr = 0x7c0 then
+    (if rs1 = 0 ∧ rd ≠ 0 then some (.inputRead rd) else if rs1 ≠ 0 ∧ rd = 0 then some (.inputWrite rs1) else none)
+  else if rs1 = 0 ∧ rd = 0 then (DelegationKind.ofCsr csr).map .delegate
   else none
 
 /-- Standard RV32IM encodings (unprivileged spec, ch. 2 and 13). -/
@@ -204,12 +195,7 @@ def decode (word : Word) : Option Instr :=
   | 0x73, 4, 0x45 => some (.mop .mul    rd rs1 rs2)
   | 0x73, 4, 0x47 => some (.mop .fma    rd rs1 rs2)
   | 0x73, 4, 0x61 => some (.mop .triAdd rd rs1 rs2)
-  | 0x73, 1, _    => decodeCsr .rw  csr rs1 rd             -- Zicsr: csrrw, csrrs, csrrc, csrrwi, csrrsi, csrrci
-  | 0x73, 2, _    => decodeCsr .rs  csr rs1 rd
-  | 0x73, 3, _    => decodeCsr .rc  csr rs1 rd
-  | 0x73, 5, _    => decodeCsr .rwi csr rs1 rd
-  | 0x73, 6, _    => decodeCsr .rsi csr rs1 rd
-  | 0x73, 7, _    => decodeCsr .rci csr rs1 rd
+  | 0x73, 1, _    => decodeCsr csr rs1 rd               -- Zicsr: csrrw
   | _, _, _       => none
 
 /-- One step: fetch from ROM at an aligned PC, decode, execute. -/

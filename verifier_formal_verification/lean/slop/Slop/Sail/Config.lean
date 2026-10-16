@@ -54,7 +54,7 @@ theorem lw_mis_stops : next 0x00152583 = none := by decide +kernel           -- 
 theorem sw_rom_stops : next 0x00b02023 = none := by decide +kernel           -- sw a1, 0(x0): ROM
 theorem rvc_stops'   : next 0x00000505 = none := by decide +kernel           -- c.addi a0, 1
 theorem csr_write_next : next 0x7c051073 = some 4 := by decide +kernel      -- csrrw x0, 0x7c0, a0: no effect
-theorem csrwi_next   : next 0x7c02d073 = some 4 := by decide +kernel         -- csrrwi x0, 0x7c0, 5: no effect
+theorem csrwi_stops  : next 0x7c02d073 = none := by decide +kernel           -- csrrwi x0, 0x7c0, 5: not in the ISA
 theorem csr_both_stops : next 0x7c051573 = none := by decide +kernel         -- csrrw a0, 0x7c0, a0: rejected
 theorem csr_none_stops : next 0x7c001073 = none := by decide +kernel         -- csrrw x0, 0x7c0, x0: rejected
 theorem cycle_stops  : next 0xc0001073 = none := by decide +kernel           -- csrrw x0, cycle, x0
@@ -68,13 +68,13 @@ theorem sail_csr_7c7_illegal :
       Airbender.resetState with | .ok (.Illegal_Instruction ()) _ => true | _ => false) = true := by decide +kernel
 theorem delegate_rejected : next 0x7c701073 = none := by decide +kernel   -- csrrw x0, 0x7c7, x0 with x12 = 0
 /-- A call with a real control word (7 rounds, `x12 = 0b1001 << 16`) but `x10 = 0x400004` (not 128-aligned) and
-`x11 = 0` (in ROM): rejected by `RV.Delegation.blake2s`. -/
+`x11 = 0` (in ROM): rejected by `RV.Delegation.blakeRound`. -/
 theorem delegate_bad_args :
     (Airbender.step ⟨(test 0x7c701073).set .x12 0x90000#32, []⟩).isNone = true := by decide +kernel
 theorem csr_7c8_stops : next 0x7c801073 = none := by decide +kernel       -- csrrw x0, 0x7c8, x0 (not modelled)
 theorem input_next   : readNext 0x7c001573 [0x1234] = some (4, 0x1234, []) := by decide +kernel  -- csrrw a0, 0x7c0, x0
-theorem csrrs_read   : readNext 0x7c002573 [0x1234] = some (4, 0x1234, []) := by decide +kernel  -- csrrs a0, 0x7c0, x0
-theorem csrrci_read  : readNext 0x7c007573 [0x1234] = some (4, 0x1234, []) := by decide +kernel  -- csrrci a0, 0x7c0, 0
+theorem csrrs_stops' : readNext 0x7c002573 [0x1234] = none := by decide +kernel  -- csrrs a0, 0x7c0, x0: not in the ISA
+theorem csrrci_stops : readNext 0x7c007573 [0x1234] = none := by decide +kernel  -- csrrci a0, 0x7c0, 0: not in the ISA
 theorem input_empty_stops : readNext 0x7c001573 [] = none := by decide +kernel  -- … with the input used up
 
 end Human

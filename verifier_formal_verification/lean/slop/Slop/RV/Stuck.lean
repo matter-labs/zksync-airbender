@@ -15,17 +15,20 @@ def AtFinishError (T : State) : Prop :=
 theorem AtFinishError.step_none {T : State} (h : AtFinishError T) : step T = none := by
   rw [step_fetch T _ h.1 h.2.1 h.2.2, show decode 0xc0001073#32 = none by decide +kernel]; rfl
 
-theorem storeWords_rom : ∀ (ws : List Word) (s : State) (a : Word), ROM_END ≤ a.toNat →
-    a.toNat + 4 * ws.length ≤ RAM_END → ∀ b : Word, b.toNat < ROM_END → (s.storeWords a ws).mem b = s.mem b
-  | [], _, _, _, _, _, _ => rfl
-  | w :: ws, s, a, h1, h2, b, hb => by
-    simp only [List.length_cons] at h2
-    have ha4 : (a + 4).toNat = a.toNat + 4 := by
-      rw [show (4 : Word) = BitVec.ofNat 32 4 from rfl, BitVec.toNat_add, BitVec.toNat_ofNat]
-      simp only [RAM_END] at h2; omega
-    show ((s.store a w 4).storeWords (a + 4) ws).mem b = s.mem b
-    rw [storeWords_rom ws _ (a + 4) (by omega) (by omega) b hb]
-    exact write_rom _ _ _ _ ⟨h1, by omega⟩ _ hb
+theorem storeAll_rom : ∀ (ws : List (Word × Word)) (s : State), (ws.all fun aw => decide (writable aw.1 4 ∧ aligned aw.1 4)) →
+    ∀ b : Word, b.toNat < ROM_END → (s.storeAll ws).mem b = s.mem b
+  | [], _, _, _, _ => rfl
+  | (a, w) :: ws, s, h, b, hb => by
+    simp only [List.all_cons, Bool.and_eq_true, decide_eq_true_eq] at h
+    show ((s.store a w 4).storeAll ws).mem b = s.mem b
+    rw [storeAll_rom ws _ h.2 b hb]
+    exact write_rom _ _ _ _ h.1.1 _ hb
+
+theorem applyEffect_rom {s t : State} {e : Effect} (h : s.applyEffect e = some t) :
+    ∀ b : Word, b.toNat < ROM_END → t.mem b = s.mem b := by
+  unfold State.applyEffect at h
+  split_ifs at h with hw; cases h
+  exact storeAll_rom _ _ hw
 
 /-- No instruction writes ROM. -/
 theorem exec_rom {s t : State} {i : Instr} (h : exec s i = some t) : ∀ b : Word, b.toNat < ROM_END → t.mem b = s.mem b := by
@@ -35,15 +38,10 @@ theorem exec_rom {s t : State} {i : Instr} (h : exec s i = some t) : ∀ b : Wor
     simp only [exec] at h
     split_ifs at h with hc; cases h
     exact write_rom _ _ _ _ hc.2 _ hb
-  case delegate op =>
+  case delegate k =>
     simp only [exec] at h
-    rcases hd : Delegation.blake2s (s.getReg 10) (s.getReg 11) (s.getReg 12) s.mem with _ | ⟨n, x12, out⟩ <;>
-      rw [hd] at h
-    · cases h
-    dsimp only at h
-    split_ifs at h; cases h
-    have hbd := blake2s_bound hd
-    exact storeWords_rom _ s _ hbd.2 (by simp only [Vector.length_toList]; omega) b hb
+    obtain ⟨e, -, he⟩ := Option.bind_eq_some_iff.mp h
+    exact applyEffect_rom he b hb
   all_goals simp only [exec, State.jumpAligned] at h
   all_goals (repeat' split at h) <;> simp_all [Option.map, State.setReg, State.nextInstr, State.setPC] <;>
     (subst_vars; rfl)

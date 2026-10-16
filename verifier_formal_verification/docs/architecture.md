@@ -30,12 +30,12 @@
    Word lemmas are keyed by 32-bit value and shared across functions/programs.
 
 ## Known gaps vs real Airbender (state explicitly)
-- Non-determinism: every Zicsr form on CSR 0x7c0 as Airbender's transpiler accepts it (source 0: read; rd = x0:
-  no-op write; other combinations panic there and have no next state here). A read with no answers left is stuck
-  (the theorems give enough).
-- Delegations: only the Blake2s round function (CSR 0x7c7, as the VM/replayer runs a call: one macro step over the
-  whole run of 7/10 `csrrw` words). Not modelled: 0x7c8 (Blake2s G function), 0x7ca (u256 bigint), 0x7cb-0x7ce
-  (Keccak).
+- CSRs: the rows of Airbender's ISA table (what the circuits' decoder accepts; the transpiler is more lenient):
+  `csrrw rd, 0x7c0, x0` (read), `csrrw x0, 0x7c0, rs1` (no-op write), `csrrw x0, <delegation csr>, x0`; anything
+  else has no next state. A read with no answers left is stuck (the theorems give enough).
+- Delegations: one call per instruction (generic `Effect`: words written + one register, then pc + 4). Modelled:
+  the Blake2s round function (0x7c7, one round per call). Not yet: 0x7c8 (G function), 0x7ca (u256 bigint), 0x7cb
+  (Keccak special5); 0x7cc-0x7ce (keccak_f1600) are beyond the current ISA table.
 - Airbender halts when PC is unchanged (`j .`); we state `step s = some s`-style fixpoint at the halt address.
 - Modularity with `+relax`: theorems are re-instantiated per layout; reused across relinks are the kind lemmas,
   word lemmas and proof scripts. Option B later: `-relax` + modelled relocations.

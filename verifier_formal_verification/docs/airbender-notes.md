@@ -20,8 +20,8 @@ Sources: `docs/simulator_supported_instructions.md`, `docs/machine_configuration
 - NOT supported (decoder marks invalid; trusted-code => proof unsatisfiable): FENCE/FENCE.I
   ("nothing to do in fence, our memory is linear"), ECALL, EBREAK, MRET, WFI, A extension
   (explicit `IllegalInstruction`), compressed (C) — not in the decoder, programs are 4-byte aligned
-  (`ASSERT(ORIGIN(REGION_TEXT) % 4 == 0)`), all CSR ops other than CSRRW. (Older simulator; the current
-  riscv_transpiler accepts every Zicsr form on CSR 0x7c0: source 0 reads, rd = x0 is a no-op write.)
+  (`ASSERT(ORIGIN(REGION_TEXT) % 4 == 0)`), all CSR ops other than CSRRW. (The current riscv_transpiler is
+  more lenient on CSR 0x7c0; the semantics follow the circuits' decoder table = the ISA table: csrrw only.)
   Zimop/MOP only in reduced/recursion machines (`IMIsaConfigWithAllDelegations`,
   `IWithoutByteAccess*`), used for Mersenne31 `mop.rr.{0,1,2}` add/sub/mul — not in `Standard`.
 - "Reduced" machines (`IWithoutByteAccessIsaConfig*`): no MUL/DIV/byte access; recursion only, irrelevant.

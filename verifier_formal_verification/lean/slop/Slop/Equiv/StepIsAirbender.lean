@@ -12,7 +12,7 @@ set_option maxHeartbeats 0
 
 /-- On Sail's state: our step is a step of the machine fed the next input word. -/
 theorem step_sail (s t : RV.State) (σ : SailState) (h : Airbender.AgreeSail s σ) (ht : RV.step s = some t)
-    (hnd : ∀ op, RV.decode (RV.read s.mem s.pc 4) ≠ some (.delegate op)) :
+    (hnd : ∀ k, RV.decode (RV.read s.mem s.pc 4) ≠ some (.delegate k)) :
     ∃ σ' r, stepSail (s.input.headD 0) σ = some (σ', r) ∧ Airbender.AgreeSail t σ' ∧
       if r then ∃ w, s.input = w :: t.input else t.input = s.input := by
   unfold RV.step at ht
@@ -32,7 +32,7 @@ theorem step_sail (s t : RV.State) (σ : SailState) (h : Airbender.AgreeSail s �
     have hd := hdec
     unfold RV.decode at hd
     simp only at hd
-    split at hd <;> (try simp only [RV.decodeCsr] at hd) <;> (try split_ifs at hd) <;> cases hd
+    split at hd <;> (try simp only [RV.decodeCsr, RV.DelegationKind.ofCsr, apply_ite (Option.map _), Option.map_some, Option.map_none] at hd) <;> (try split_ifs at hd) <;> cases hd
     all_goals first
       | (simp [RV.Instr.readsInput] at hr; done)
       | exact kind_lui h ha' h2 _ _ hdec hex
@@ -46,14 +46,14 @@ theorem step_sail (s t : RV.State) (σ : SailState) (h : Airbender.AgreeSail s �
       | exact kind_shift h ha' h2 _ _ _ _ (by simp) hdec hex
       | exact kind_op h ha' h2 _ _ _ _ (by simp) hdec hex
       | exact kind_mop h ha' h2 _ _ _ _ hdec hex
-      | exact kind_write h ha' h2 _ _ hdec hex
+      | exact kind_write h ha' h2 _ hdec hex
       | exact absurd hdec (hnd _)
-  · obtain ⟨op, rd, rfl⟩ : ∃ op rd, i = .inputRead op rd := by cases i <;> simp_all [RV.Instr.readsInput]
+  · obtain ⟨rd, rfl⟩ : ∃ rd, i = .inputRead rd := by cases i <;> simp_all [RV.Instr.readsInput]
     simp only [RV.exec] at hex
     rcases hs : s.input with _ | ⟨w, rest⟩ <;> rw [hs] at hex
     · cases hex
     simp only [Option.some.injEq] at hex; subst hex
-    obtain ⟨σ', e, a⟩ := kind_input (next := s.input.headD 0) h ha' h2 op rd hdec
+    obtain ⟨σ', e, a⟩ := kind_input (next := s.input.headD 0) h ha' h2 rd hdec
     rw [hs] at e a
     exact ⟨σ', true, e, a, w, rfl⟩
 
@@ -63,16 +63,16 @@ theorem step_is_airbender : Airbender.StepIsAirbender := by
   unfold RV.step at ht'
   split_ifs at ht' with hc
   obtain ⟨i, hdec, hex⟩ := Option.bind_eq_some_iff.mp ht'
-  by_cases hd : ∃ op, i = .delegate op
+  by_cases hd : ∃ k, i = .delegate k
   · -- a delegation call: our definition on both sides
-    obtain ⟨op, rfl⟩ := hd
-    obtain ⟨σ', e, a⟩ := kind_delegate hA op hc hdec hex
+    obtain ⟨k, rfl⟩ := hd
+    obtain ⟨σ', e, a⟩ := kind_delegate hA k hc hdec hex
     refine ⟨⟨σ', m.input⟩, ?_, a, ?_⟩
     · unfold Airbender.step; rw [e]; rfl
     · show m.input = t.input; rw [hin]; exact (RV.exec_keeps_input hex rfl).symm
-  have hnd : ∀ op, RV.decode (RV.read s.mem s.pc 4) ≠ some (.delegate op) := fun op h =>
-    hd ⟨op, Option.some.inj (hdec.symm.trans h)⟩
-  have hnone := delegation_none hA hdec (fun op h => hd ⟨op, h⟩)
+  have hnd : ∀ k, RV.decode (RV.read s.mem s.pc 4) ≠ some (.delegate k) := fun k h =>
+    hd ⟨k, Option.some.inj (hdec.symm.trans h)⟩
+  have hnone := delegation_none hA hdec (fun k h => hd ⟨k, h⟩)
   rw [show m.sail = m.sail from rfl] at hnone
   obtain ⟨σ', r, e, a, hr⟩ := step_sail s t m.sail hA ht hnd
   rw [← hin] at e hr

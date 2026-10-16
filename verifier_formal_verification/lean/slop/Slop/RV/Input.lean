@@ -8,27 +8,43 @@ namespace RV
 /-- The state with input `t`. -/
 def State.withInput (s : State) (t : List Word) : State := { s with input := t }
 
-theorem storeWords_input (s : State) (a : Word) (ws : List Word) : (s.storeWords a ws).input = s.input := by
-  induction ws generalizing s a with
-  | nil => rfl
-  | cons w ws ih => exact (ih _ _).trans rfl
+@[simp] theorem withInput_pc (s : State) (t : List Word) : (s.withInput t).pc = s.pc := Eq.trans rfl rfl
+@[simp] theorem withInput_mem (s : State) (t : List Word) : (s.withInput t).mem = s.mem := Eq.trans rfl rfl
+@[simp] theorem withInput_input (s : State) (t : List Word) : (s.withInput t).input = t := Eq.trans rfl rfl
+@[simp] theorem withInput_getReg (s : State) (t : List Word) (r : Reg) :
+    (s.withInput t).getReg r = s.getReg r := Eq.trans rfl rfl
 
-theorem storeWords_withInput (s : State) (a : Word) (ws : List Word) (t : List Word) :
-    (s.withInput t).storeWords a ws = (s.storeWords a ws).withInput t := by
-  induction ws generalizing s a with
+theorem storeAll_input (s : State) (ws : List (Word × Word)) : (s.storeAll ws).input = s.input := by
+  induction ws generalizing s with
   | nil => rfl
-  | cons w ws ih => exact ih (s.store a w 4) (a + 4)
+  | cons w ws ih => exact (ih _).trans rfl
+
+theorem storeAll_withInput (s : State) (ws : List (Word × Word)) (t : List Word) :
+    (s.withInput t).storeAll ws = (s.storeAll ws).withInput t := by
+  induction ws generalizing s with
+  | nil => rfl
+  | cons w ws ih => exact ih (s.store w.1 w.2 4)
+
+theorem applyEffect_input {s t : State} {e : Effect} (h : s.applyEffect e = some t) : t.input = s.input := by
+  unfold State.applyEffect at h
+  split_ifs at h; cases h
+  exact storeAll_input _ _
+
+theorem applyEffect_withInput (s : State) (e : Effect) (t : List Word) :
+    (s.withInput t).applyEffect e = (s.applyEffect e).map (·.withInput t) := by
+  unfold State.applyEffect
+  split_ifs
+  · simp only [storeAll_withInput, Option.map_some]; rfl
+  · rfl
 
 /-- Only the input read moves the input. -/
 theorem exec_keeps_input {s t : State} {i : Instr} (hex : exec s i = some t) (hi : i.readsInput = false) :
     t.input = s.input := by
   cases i
-  case delegate op =>
+  case delegate k =>
     simp only [exec] at hex
-    split at hex
-    · split_ifs at hex; cases hex
-      simp only [State.setPC, State.setReg]; exact storeWords_input _ _ _
-    · cases hex
+    obtain ⟨e, -, he⟩ := Option.bind_eq_some_iff.mp hex
+    exact applyEffect_input he
   all_goals simp only [Instr.readsInput, reduceCtorEq] at hi
   all_goals simp only [exec, State.jumpAligned] at hex
   all_goals (repeat' split at hex) <;> simp_all [Option.map, State.setReg, State.nextInstr, State.setPC,
@@ -38,18 +54,11 @@ theorem exec_keeps_input {s t : State} {i : Instr} (hex : exec s i = some t) (hi
 theorem exec_input_irrel (s : State) (i : Instr) (hi : i.readsInput = false) (t : List Word) :
     exec (s.withInput t) i = (exec s i).map (·.withInput t) := by
   cases i
-  case delegate op =>
-    show (match Delegation.blake2s (s.getReg 10) (s.getReg 11) (s.getReg 12) s.mem with
-      | some (n, x12, out) => if isRun s.mem s.pc (read s.mem s.pc 4) n then
-          some ((((s.withInput t).storeWords (s.getReg 10) out.toList).setReg 12 x12).setPC
-            (s.pc + BitVec.ofNat 32 (4 * n))) else none
-      | none => none) = _
-    simp only [exec]
-    rcases Delegation.blake2s (s.getReg 10) (s.getReg 11) (s.getReg 12) s.mem with _ | ⟨n, x12, out⟩
-    · rfl
-    · by_cases hr : isRun s.mem s.pc (read s.mem s.pc 4) n
-      · simp only [if_pos hr, storeWords_withInput, Option.map_some]; rfl
-      · simp only [if_neg hr, Option.map_none]
+  case delegate k =>
+    simp only [exec, withInput_getReg, withInput_mem]
+    cases Delegation.effect k (s.getReg 10) (s.getReg 11) (s.getReg 12) s.mem with
+    | none => rfl
+    | some e => exact applyEffect_withInput s e t
   all_goals simp only [Instr.readsInput, reduceCtorEq] at hi
   all_goals simp only [exec, State.withInput, State.jumpAligned, State.getReg, State.setReg, State.nextInstr,
       State.setPC, State.store]
@@ -68,7 +77,7 @@ theorem step_lift {s s' : State} (h : step s = some s') (he : s.input = []) :
     show (if s.pc.toNat % 4 = 0 ∧ s.pc.toNat + 4 ≤ ROM_END then
       (decode (read s.mem s.pc 4)).bind (exec (s.withInput t)) else none) = _
     rw [if_pos hc, hdec, Option.bind_some, exec_input_irrel s i hr t, hex]; rfl
-  · obtain ⟨op, rd, rfl⟩ : ∃ op rd, i = .inputRead op rd := by cases i <;> simp_all [Instr.readsInput]
+  · obtain ⟨rd, rfl⟩ : ∃ rd, i = .inputRead rd := by cases i <;> simp_all [Instr.readsInput]
     simp [exec, he] at hex
 
 /-- A run with the input empty: it reads no input, and runs the same with any input. -/
@@ -88,24 +97,13 @@ end RV
 
 namespace RV
 
-@[simp] theorem withInput_pc (s : State) (t : List Word) : (s.withInput t).pc = s.pc := Eq.trans rfl rfl
-@[simp] theorem withInput_mem (s : State) (t : List Word) : (s.withInput t).mem = s.mem := Eq.trans rfl rfl
-@[simp] theorem withInput_input (s : State) (t : List Word) : (s.withInput t).input = t := Eq.trans rfl rfl
-@[simp] theorem withInput_getReg (s : State) (t : List Word) (r : Reg) :
-    (s.withInput t).getReg r = s.getReg r := Eq.trans rfl rfl
 
 /-- The input read `csrrw rd, 0x7c0, x0` at the PC: `rd` gets the next input word. -/
-theorem step_read (s : State) (w : Word) (op : CsrOp) (rd : Reg) (v : Word) (rest : List Word)
+theorem step_read (s : State) (w : Word) (rd : Reg) (v : Word) (rest : List Word)
     (hpc : s.pc.toNat % 4 = 0) (hrom : s.pc.toNat + 4 ≤ ROM_END) (hw : read s.mem s.pc 4 = w)
-    (hd : decode w = some (.inputRead op rd)) (hin : s.input = v :: rest) :
+    (hd : decode w = some (.inputRead rd)) (hin : s.input = v :: rest) :
     step s = some ((s.setReg rd v).nextInstr.withInput rest) := by
   rw [step_fetch s w hpc hrom hw, hd, Option.bind_some]
   simp only [exec, hin]; rfl
-
-theorem blake2s_bound {x10 x11 x12 : Word} {mem : Word → BitVec 8} {r : Nat × Word × Vector Word 24}
-    (h : Delegation.blake2s x10 x11 x12 mem = some r) : x10.toNat + 96 ≤ RAM_END ∧ ROM_END ≤ x10.toNat := by
-  unfold Delegation.blake2s at h
-  split_ifs at h with hc
-  exact ⟨hc.2.1, hc.1⟩
 
 end RV

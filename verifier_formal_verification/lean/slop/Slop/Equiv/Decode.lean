@@ -6,12 +6,8 @@ import Slop.Equiv.DecOpImm
 import Slop.Equiv.DecOp1
 import Slop.Equiv.DecOp2
 import Slop.Equiv.DecMop
-import Slop.Equiv.DecInputRead
-import Slop.Equiv.DecInputReadImm
-import Slop.Equiv.DecInputWrite
-import Slop.Equiv.DecInputWriteImm
+import Slop.Equiv.DecInput
 import Slop.Equiv.DecDelegate
-import Slop.Equiv.DecDelegateImm
 import HumanSail.Theorems
 
 /-! `Airbender.DecodeIsSail` (`HumanSail/Theorems.lean`): split our table `RV.decode` into its rows and use each
@@ -26,18 +22,16 @@ theorem bits_of_toNat {w : BitVec 32} {lo n k : Nat} (h : (w.extractLsb' lo n).t
   have : (w.extractLsb' lo n).toNat = (w.toNat >>> lo) % 2 ^ n := BitVec.extractLsb'_toNat lo n w
   unfold Bits; omega
 
-/-- The CSR 0x7c0 rows' conditions (`RV.decodeCsr`) as known bits. -/
-theorem bits_csr {w : BitVec 32} (h : ¬ w.extractLsb' 20 12 ≠ 0x7c0) : Bits w 20 12 1984 :=
-  bits_of_toNat (by rw [not_not.mp h]; rfl)
+/-- The CSR rows' conditions (`RV.decodeCsr`) as known bits. -/
+theorem bits_csr {w : BitVec 32} {k : Nat} {c : BitVec 12} (h : w.extractLsb' 20 12 = c) (hk : c.toNat = k) :
+    Bits w 20 12 k := bits_of_toNat (by rw [h, hk])
 theorem bits_src {w : BitVec 32} (h : w.extractLsb' 15 5 = 0 ∧ w.extractLsb' 7 5 ≠ 0) : Bits w 15 5 0 :=
   bits_of_toNat (by rw [h.1]; rfl)
-theorem bits_dcsr {w : BitVec 32} (h : w.extractLsb' 20 12 = 0x7c7) : Bits w 20 12 1991 :=
-  bits_of_toNat (by rw [h]; rfl)
+theorem bits_rd {w : BitVec 32} (h : w.extractLsb' 15 5 ≠ 0 ∧ w.extractLsb' 7 5 = 0) : Bits w 7 5 0 :=
+  bits_of_toNat (by rw [h.2]; rfl)
 theorem bits_dsrc {w : BitVec 32} (h : w.extractLsb' 15 5 = 0 ∧ w.extractLsb' 7 5 = 0) : Bits w 15 5 0 :=
   bits_of_toNat (by rw [h.1]; rfl)
 theorem bits_drd {w : BitVec 32} (h : w.extractLsb' 15 5 = 0 ∧ w.extractLsb' 7 5 = 0) : Bits w 7 5 0 :=
-  bits_of_toNat (by rw [h.2]; rfl)
-theorem bits_rd {w : BitVec 32} (h : w.extractLsb' 15 5 ≠ 0 ∧ w.extractLsb' 7 5 = 0) : Bits w 7 5 0 :=
   bits_of_toNat (by rw [h.2]; rfl)
 
 /-- JALR outside `ExtraEncoding` has funct3 = 0. -/
@@ -85,7 +79,7 @@ theorem decode_is_sail : Airbender.DecodeIsSail := by
   unfold RV.decode at h
   dsimp only at h
   split at h
-  all_goals (try simp only [RV.decodeCsr] at h)
+  all_goals (try simp only [RV.decodeCsr, RV.DelegationKind.ofCsr] at h)
   all_goals (try split_ifs at h)
   all_goals first | (cases h; done) | skip
   all_goals obtain rfl := Option.some.inj h
@@ -100,24 +94,12 @@ theorem decode_is_sail : Airbender.DecodeIsSail := by
   all_goals mk_bits
   all_goals first
     | exact dec_lui w σ hs (by assumption)
-    | exact dec_read_rw w σ hs (by assumption) (by assumption) (bits_src ‹_›) (bits_csr ‹_›)
-    | exact dec_read_rs w σ hs (by assumption) (by assumption) (bits_src ‹_›) (bits_csr ‹_›)
-    | exact dec_read_rc w σ hs (by assumption) (by assumption) (bits_src ‹_›) (bits_csr ‹_›)
-    | exact dec_read_rwi w σ hs (by assumption) (by assumption) (bits_src ‹_›) (bits_csr ‹_›)
-    | exact dec_read_rsi w σ hs (by assumption) (by assumption) (bits_src ‹_›) (bits_csr ‹_›)
-    | exact dec_read_rci w σ hs (by assumption) (by assumption) (bits_src ‹_›) (bits_csr ‹_›)
-    | exact dec_write_rw w σ hs (by assumption) (by assumption) (bits_rd ‹_›) (bits_csr ‹_›)
-    | exact dec_write_rs w σ hs (by assumption) (by assumption) (bits_rd ‹_›) (bits_csr ‹_›)
-    | exact dec_write_rc w σ hs (by assumption) (by assumption) (bits_rd ‹_›) (bits_csr ‹_›)
-    | exact dec_write_rwi w σ hs (by assumption) (by assumption) (bits_rd ‹_›) (bits_csr ‹_›)
-    | exact dec_write_rsi w σ hs (by assumption) (by assumption) (bits_rd ‹_›) (bits_csr ‹_›)
-    | exact dec_write_rci w σ hs (by assumption) (by assumption) (bits_rd ‹_›) (bits_csr ‹_›)
-    | exact dec_delegate_rw w σ hs (by assumption) (by assumption) (bits_dsrc ‹_›) (bits_drd ‹_›) (bits_dcsr ‹_›)
-    | exact dec_delegate_rs w σ hs (by assumption) (by assumption) (bits_dsrc ‹_›) (bits_drd ‹_›) (bits_dcsr ‹_›)
-    | exact dec_delegate_rc w σ hs (by assumption) (by assumption) (bits_dsrc ‹_›) (bits_drd ‹_›) (bits_dcsr ‹_›)
-    | exact dec_delegate_rwi w σ hs (by assumption) (by assumption) (bits_dsrc ‹_›) (bits_drd ‹_›) (bits_dcsr ‹_›)
-    | exact dec_delegate_rsi w σ hs (by assumption) (by assumption) (bits_dsrc ‹_›) (bits_drd ‹_›) (bits_dcsr ‹_›)
-    | exact dec_delegate_rci w σ hs (by assumption) (by assumption) (bits_dsrc ‹_›) (bits_drd ‹_›) (bits_dcsr ‹_›)
+    | exact dec_read w σ hs (by assumption) (by assumption) (bits_src ‹_›) (bits_csr ‹_› rfl)
+    | exact dec_write w σ hs (by assumption) (by assumption) (bits_rd ‹_›) (bits_csr ‹_› rfl)
+    | exact dec_delegate_blakeRound w σ hs (by assumption) (by assumption) (bits_dsrc ‹_›) (bits_drd ‹_›) (bits_csr ‹_› rfl)
+    | exact dec_delegate_blakeG w σ hs (by assumption) (by assumption) (bits_dsrc ‹_›) (bits_drd ‹_›) (bits_csr ‹_› rfl)
+    | exact dec_delegate_bigint w σ hs (by assumption) (by assumption) (bits_dsrc ‹_›) (bits_drd ‹_›) (bits_csr ‹_› rfl)
+    | exact dec_delegate_keccak w σ hs (by assumption) (by assumption) (bits_dsrc ‹_›) (bits_drd ‹_›) (bits_csr ‹_› rfl)
     | exact dec_mop_add w σ hs (by assumption) (by assumption) (by assumption)
     | exact dec_mop_sub w σ hs (by assumption) (by assumption) (by assumption)
     | exact dec_mop_mul w σ hs (by assumption) (by assumption) (by assumption)

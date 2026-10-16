@@ -48,9 +48,22 @@ def write (mem : Word → BitVec 8) (addr : Word) (value : Word) : (numBytes : N
 def State.store (s : State) (addr value : Word) (numBytes : Nat) : State :=
   { s with mem := write s.mem addr value numBytes }
 
-/-- Store the words `ws` from `addr` on. -/
-def State.storeWords (s : State) (addr : Word) : List Word → State
-  | []      => s
-  | w :: ws => (s.store addr w 4).storeWords (addr + 4) ws
+/-- What a delegation call does: the words it writes (address, value) and the new value of one register. -/
+structure Effect where
+  writes : List (Word × Word)
+  reg    : Reg
+  val    : Word
+
+/-- Store the words of `ws` (address, value). -/
+def State.storeAll (s : State) : List (Word × Word) → State
+  | []           => s
+  | (a, w) :: ws => (s.store a w 4).storeAll ws
+
+/-- A delegation call's effect, then the next instruction; no next state unless every write is an aligned word in
+RAM. -/
+def State.applyEffect (s : State) (e : Effect) : Option State :=
+  if e.writes.all fun aw => decide (writable aw.1 4 ∧ aligned aw.1 4) then
+    some ((s.storeAll e.writes).setReg e.reg e.val).nextInstr
+  else none
 
 end RV

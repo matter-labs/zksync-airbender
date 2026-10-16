@@ -93,8 +93,9 @@ def runOne (name : String) (bytes : Array (BitVec 8)) (halt : Nat) (x : Nat) (y 
     IO.println s!"{name} x = {x}, y = {y}: pc = {s.pc.toNat}, outputs {got}, expected {expected x y} {if good then "OK" else "MISMATCH"}"
     return good
 
-/-- Airbender's Blake2s delegation (7 rounds, normal mode) on one last block of the five words `w`, laid out as
-`blake2s_u32` does (state, extended state with the counter and last-block words, input at `+128`): the digest. -/
+/-- Airbender's Blake2s delegation (7 calls of CSR 0x7c7, one round each, normal mode) on one last block of the five
+words `w`, laid out as `blake2s_u32` does (state, extended state with the counter and last-block words, input at
+`+128`): the digest. -/
 def delegationDigest (w : List Nat) : List Nat :=
   let ws : List Word := (List.ofFn fun i : Fin 8 => Spec.configuredIV i) ++
     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20 ^^^ Spec.IV 4, 0, 0xFFFFFFFF ^^^ Spec.IV 6, 0] ++ List.replicate 8 0 ++
@@ -102,8 +103,12 @@ def delegationDigest (w : List Nat) : List Nat :=
   let mem : Word → BitVec 8 := fun a =>
     if 0x1401000 ≤ a.toNat ∧ a.toNat < 0x1401000 + 4 * ws.length then
       (ws.getD ((a.toNat - 0x1401000) / 4) 0 >>> (8 * (a.toNat % 4))).setWidth 8 else 0
-  match Delegation.blake2s 0x1401000 0x1401080 ((0b1001 : Word) <<< 16) mem with
-  | some (_, _, out) => (out.toList.take 8).map (·.toNat)
+  let s₀ : State := { pc := 0, regFile := fun _ => 0, mem, input := [] }
+  let s₀ := (s₀.setReg 10 0x1401000).setReg 11 0x1401080 |>.setReg 12 ((0b1001 : Word) <<< 16)
+  let call (s : Option State) : Option State := s.bind fun s =>
+    (Delegation.effect .blakeRound (s.getReg 10) (s.getReg 11) (s.getReg 12) s.mem).bind s.applyEffect
+  match (call^[7]) (some s₀) with
+  | some s => (List.range 8).map fun i => (read s.mem (0x1401000 + BitVec.ofNat 32 (4 * i)) 4).toNat
   | none => []
 
 def main : IO UInt32 := do

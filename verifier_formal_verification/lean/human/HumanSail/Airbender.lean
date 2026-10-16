@@ -96,15 +96,9 @@ def mopIndex : RV.FieldOp → BitVec 3
 def mopOfIndex : BitVec 3 → Option RV.FieldOp
   | 0 => some .add | 1 => some .sub | 2 => some .mul | 3 => some .fma | 4 => some .triAdd | _ => none
 
-/-- A Zicsr instruction on CSR `csr` in Sail's vocabulary (`src`: the register, or the immediate). -/
-noncomputable def csrToSail (csr : BitVec 12) (op : RV.CsrOp) (src rd : RV.Reg) : instruction :=
-  match op with
-  | .rw  => .CSRReg (csr, .Regidx src, .Regidx rd, .CSRRW)
-  | .rs  => .CSRReg (csr, .Regidx src, .Regidx rd, .CSRRS)
-  | .rc  => .CSRReg (csr, .Regidx src, .Regidx rd, .CSRRC)
-  | .rwi => .CSRImm (csr, src, .Regidx rd, .CSRRW)
-  | .rsi => .CSRImm (csr, src, .Regidx rd, .CSRRS)
-  | .rci => .CSRImm (csr, src, .Regidx rd, .CSRRC)
+/-- `csrrw rd, csr, rs1` in Sail's vocabulary. -/
+noncomputable def csrToSail (csr : BitVec 12) (rs1 rd : RV.Reg) : instruction :=
+  .CSRReg (csr, .Regidx rs1, .Regidx rd, .CSRRW)
 
 /-- Our instructions (`Human/RV32.lean`) in Sail's vocabulary. Immediates: Sail keeps the encoded bits, we keep
 the decoded value, so `toSail` takes the encoded bits back out. -/
@@ -133,9 +127,9 @@ noncomputable def toSail : RV.Instr → instruction
   | .op .remu rd rs1 rs2     => .REM (.Regidx rs2, .Regidx rs1, .Regidx rd, true)
   | .op op rd rs1 rs2        => .RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, sailAluOp op)
   | .mop op rd rs1 rs2       => .ZIMOP_MOP_RR (mopIndex op, .Regidx rs2, .Regidx rs1, .Regidx rd)
-  | .inputRead op rd         => csrToSail 0x7c0 op 0 rd
-  | .inputWrite op src       => csrToSail 0x7c0 op src 0
-  | .delegate op             => csrToSail 0x7c7 op 0 0
+  | .inputRead rd            => csrToSail 0x7c0 0 rd
+  | .inputWrite src          => csrToSail 0x7c0 src 0
+  | .delegate k              => csrToSail k.csr 0 0
 
 /-! ## The machine -/
 
@@ -143,24 +137,21 @@ noncomputable def toSail : RV.Instr → instruction
 instruction then run as Sail's `toSail` of it. `HumanSail/Theorems.lean` states that Sail's own decoder gives the
 same instruction for every word of that table, except the extra encodings Airbender accepts (`ExtraEncoding`). -/
 
-/-- Airbender's CSR 0x7c0 (`srcZero`: the source register or immediate is 0): a read of the next input word `next`,
-a write (no effect), or rejected. -/
-noncomputable def nonDeterminism (next : BitVec 32) (srcZero : Bool) (rd : regidx) : SailM ExecutionResult :=
-  if srcZero && rd != zreg then do
+/-- Airbender's `csrrw rd, 0x7c0, rs1`: a read of the next input word `next` (rs1 = x0, rd ≠ x0), a write (no
+effect: rs1 ≠ x0, rd = x0), or rejected. -/
+noncomputable def nonDeterminism (next : BitVec 32) (rs1 rd : regidx) : SailM ExecutionResult :=
+  if rs1 == zreg && rd != zreg then do
     wX_bits rd next
     pure RETIRE_SUCCESS
-  else if !srcZero && rd == zreg then pure RETIRE_SUCCESS
+  else if rs1 != zreg && rd == zreg then pure RETIRE_SUCCESS
   else pure (.Illegal_Instruction ())
 
 /-- Execute one instruction (`next`: the next input word): as Sail does, except loads into x0, the field operations
 and CSR 0x7c0. -/
 noncomputable def execute (next : BitVec 32) (instr : instruction) : SailM ExecutionResult :=
   match instr with
-  | .CSRReg (csr, rs1, rd, _) =>                       -- Airbender: CSR 0x7c0 is the non-determinism source
-      if csr == 0x7c0 then nonDeterminism next (rs1 == zreg) rd  --   (`nonDeterminism`; Sail: illegal)
-      else SailRV32.Functions.execute instr
-  | .CSRImm (csr, imm, rd, _) =>
-      if csr == 0x7c0 then nonDeterminism next (imm == 0) rd
+  | .CSRReg (csr, rs1, rd, .CSRRW) =>                  -- Airbender: CSR 0x7c0 is the non-determinism source
+      if csr == 0x7c0 then nonDeterminism next rs1 rd   --   (`nonDeterminism`; Sail: illegal)
       else SailRV32.Functions.execute instr
   | .LOAD (_, _, rd, _, _) => if rd == zreg then pure RETIRE_SUCCESS  -- Airbender: a load into x0 only
                               else SailRV32.Functions.execute instr   --   advances the PC (no memory access)
@@ -179,30 +170,30 @@ noncomputable def execute (next : BitVec 32) (instr : instruction) : SailM Execu
 noncomputable def getReg (σ : SailState) (i : RV.Reg) : BitVec 32 :=
   match runSail (rX_bits (.Regidx i)) σ with | .ok v _ => v | .error _ _ => 0
 
-/-- Memory after writing the words `ws` from address `addr` on, little-endian (as `RV.State.storeWords`). -/
-def writeWords (mem : Nat → BitVec 8) (addr : RV.Word) : List (BitVec 32) → (Nat → BitVec 8)
-  | []      => mem
-  | w :: ws => writeWords (writeBytes mem addr.toNat 4 w) (addr + 4) ws
+/-- Memory after writing the words of `ws` (address, value), little-endian (as `RV.State.storeAll`). -/
+def writeAll (mem : Nat → BitVec 8) : List (RV.Word × BitVec 32) → (Nat → BitVec 8)
+  | []           => mem
+  | (a, w) :: ws => writeAll (writeBytes mem a.toNat 4 w) ws
 
-/-- Airbender's delegations are custom circuits with nothing in Sail to compare against (there
-`csrrw x0, 0x7c7, x0` is an illegal instruction), so the machine runs our definition (`RV.Delegation`,
-`Human/Delegations.lean`) on Sail's state. `none`: the instruction at the PC is not a delegation call. -/
+/-- A delegation call's effect on Sail's state (as `RV.State.applyEffect`). -/
+noncomputable def applyEffect (σ : SailState) (e : RV.Effect) : Option SailState :=
+  if e.writes.all fun aw => decide (RV.writable aw.1 4 ∧ RV.aligned aw.1 4) then
+    let σ₁ : SailState := { σ with mem := writeAll σ.mem e.writes }
+    let σ₂ := match runSail (wX_bits (.Regidx e.reg) e.val) σ₁ with | .ok _ σ' => σ' | .error _ σ' => σ'
+    let pc' := σ.regs .PC + 4
+    some ((σ₂.set .PC pc').set .nextPC pc')
+  else none
+
+/-- Airbender's delegations are custom circuits with nothing in Sail to compare against (there `csrrw x0, <csr>, x0`
+is an illegal instruction), so the machine runs our definition (`RV.Delegation`, `Human/Delegations.lean`) on Sail's
+state. `none`: the instruction at the PC is not a delegation call. -/
 noncomputable def delegation (σ : SailState) : Option (Option SailState) :=
   let pc := σ.regs .PC
   let mem : RV.Word → BitVec 8 := fun a => σ.mem a.toNat
-  let w := RV.read mem pc 4
   if pc.toNat % 4 = 0 ∧ pc.toNat + 4 ≤ RAM_START then
-    match RV.decode w with
-    | some (.delegate _) => some <|
-        match RV.Delegation.blake2s (getReg σ 10) (getReg σ 11) (getReg σ 12) mem with
-        | some (n, x12, out) =>
-            if RV.isRun mem pc w n then
-              let σ₁ : SailState := { σ with mem := writeWords σ.mem (getReg σ 10) out.toList }
-              let σ₂ := match runSail (wX_bits (.Regidx 12) x12) σ₁ with | .ok _ σ' => σ' | .error _ σ' => σ'
-              let pc' := pc + BitVec.ofNat 32 (4 * n)
-              some ((σ₂.set .PC pc').set .nextPC pc')
-            else none
-        | none => none
+    match RV.decode (RV.read mem pc 4) with
+    | some (.delegate k) =>
+        some ((RV.Delegation.effect k (getReg σ 10) (getReg σ 11) (getReg σ 12) mem).bind (applyEffect σ))
     | _ => none
   else none
 
