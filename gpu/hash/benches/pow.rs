@@ -62,29 +62,20 @@ impl Arm {
         }
     }
 
-    fn returns_min(self, hash: PowHash) -> bool {
-        match (hash, self) {
-            (PowHash::Keccak, _) => true,
-            (PowHash::Blake2s, Arm::Bench(arm)) => arm.is_min(),
-            (PowHash::Blake2s, Arm::Production) => cfg!(feature = "deterministic_pow"),
+    fn returns_min(self) -> bool {
+        match self {
+            Arm::Bench(arm) => arm.is_min(),
+            Arm::Production => cfg!(feature = "deterministic_pow"),
         }
     }
 }
 
-fn bench_arms(hash: PowHash) -> Vec<PowArm> {
-    match hash {
-        PowHash::Keccak => vec![
-            PowArm::GridStrideMin,
-            PowArm::CounterMin,
-            PowArm::CounterFirst,
-        ],
-        PowHash::Blake2s => vec![
-            PowArm::GridStrideMin,
-            PowArm::GridStrideFirst,
-            PowArm::CounterMin,
-            PowArm::CounterFirst,
-        ],
-    }
+fn bench_arms(_hash: PowHash) -> Vec<PowArm> {
+    vec![
+        PowArm::GridStrideMin,
+        PowArm::GridStrideFirst,
+        PowArm::CounterMin,
+    ]
 }
 
 fn launcher_arms(hash: PowHash) -> Vec<Arm> {
@@ -397,13 +388,19 @@ fn oracle_phase() {
     eprintln!("oracle: done in {:.1} s", started.elapsed().as_secs_f64());
 }
 
-fn controls(buffers: &mut Buffers, oracle: &Oracle, stream: &CudaStream) {
-    for hash in HASHES {
+fn controls(
+    buffers: &mut Buffers,
+    oracle: &Oracle,
+    hashes: &[PowHash],
+    arms_of: fn(PowHash) -> Vec<PowArm>,
+    stream: &CudaStream,
+) {
+    for &hash in hashes {
         for bits in CONTROL_BITS {
             let seed = control_seed(hash, bits);
             let min = oracle[&oracle_key(hash, bits, CONTROL_ID)];
             buffers.set_seed(&seed, stream);
-            for arm in bench_arms(hash) {
+            for arm in arms_of(hash) {
                 let (_, upto) = buffers.bounded(hash, arm, bits, min + 1, stream);
                 let (_, below) = buffers.bounded(hash, arm, bits, min, stream);
                 let blocks = bench_pow_arm_blocks(hash, arm).unwrap();
@@ -423,9 +420,14 @@ fn controls(buffers: &mut Buffers, oracle: &Oracle, stream: &CudaStream) {
     }
 }
 
-fn bounded_phase(buffers: &mut Buffers, stream: &CudaStream) {
+fn bounded_phase(
+    buffers: &mut Buffers,
+    hashes: &[PowHash],
+    arms_of: fn(PowHash) -> Vec<PowArm>,
+    stream: &CudaStream,
+) {
     let n_max = 1u64 << BOUNDED_LOGS[BOUNDED_LOGS.len() - 1];
-    for hash in HASHES {
+    for &hash in hashes {
         let bits = match hash {
             PowHash::Keccak => 64,
             PowHash::Blake2s => 32,
@@ -450,7 +452,7 @@ fn bounded_phase(buffers: &mut Buffers, stream: &CudaStream) {
             attempt += 1;
         };
         buffers.set_seed(&seed, stream);
-        let arms = bench_arms(hash);
+        let arms = arms_of(hash);
         let orders = balanced_orders(arms.len());
         for arm in &arms {
             let blocks = bench_pow_arm_blocks(hash, *arm).unwrap();
@@ -536,7 +538,7 @@ fn launcher_phase(buffers: &mut Buffers, oracle: &Oracle, stream: &CudaStream) {
                         "{hash:?} {} bits={bits} seed={id}: invalid nonce {nonce}",
                         arm.name(hash)
                     );
-                    if arm.returns_min(hash) {
+                    if arm.returns_min() {
                         if let Some(cpu) = cpu_min {
                             assert_eq!(
                                 nonce,
@@ -623,8 +625,8 @@ fn main() {
         device_state("gpu start");
         let stream = CudaStream::default();
         let mut buffers = Buffers::new();
-        controls(&mut buffers, &oracle, &stream);
-        bounded_phase(&mut buffers, &stream);
+        controls(&mut buffers, &oracle, &HASHES, bench_arms, &stream);
+        bounded_phase(&mut buffers, &HASHES, bench_arms, &stream);
         launcher_phase(&mut buffers, &oracle, &stream);
         device_state("gpu end");
     }
