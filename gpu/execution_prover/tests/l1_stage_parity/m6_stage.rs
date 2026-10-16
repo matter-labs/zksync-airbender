@@ -726,7 +726,7 @@ fn run_stages(
             base_columns,
             batched_pow_bits
         ),
-        (20, 5, 114, 16),
+        (20, 6, 114, 16),
         "M6 stage parity PoW inputs"
     );
     let replay = replay_gkr_challenges(
