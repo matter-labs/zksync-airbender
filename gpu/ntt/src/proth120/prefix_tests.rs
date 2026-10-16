@@ -190,7 +190,7 @@ fn chunk_plan_table(l2: usize) -> Vec<(String, Result<Dispatch, DispatchError>)>
         if dispatched.small {
             let column = size_of::<PR>() << n;
             let text = format!(
-                "{key}\tSmall\t0\t{n}\t{}\t1\t0\t1\t1\t{column}\t{}\t0\t0\t0\t0\t1\t0\tPASS",
+                "{key}\tSmall\t0\t{n}\t{}\t1\t0\t1\t1\t{column}\t{}\t0\t0\t0\t0\t1\t0\ttrue\ttrue\tPASS",
                 dispatched.tile_bytes,
                 CHUNK_16_MIB / column
             );
@@ -201,7 +201,7 @@ fn chunk_plan_table(l2: usize) -> Vec<(String, Result<Dispatch, DispatchError>)>
         let a = plan.stages();
         assert_eq!(a + dispatched.r, n);
         assert!(a >= sb && dispatched.r >= v && dispatched.tile_bytes <= MAX_TILE_BYTES);
-        assert!(plan.chunk_bytes() <= MAX_CHUNK_BYTES);
+        assert!(plan.chunk_bytes() <= MAX_CHUNK_BYTES || !dispatched.prefix_resident);
         let fixed = twiddle_bytes(33) + subroot_bytes(n, v, sb);
         assert_eq!(
             dispatched.prefix_working_set,
@@ -212,12 +212,17 @@ fn chunk_plan_table(l2: usize) -> Vec<(String, Result<Dispatch, DispatchError>)>
             dispatched.tiles_per_batch * dispatched.tile_bytes + fixed
         );
         assert!((1..=2.min(dispatched.tiles_per_coset)).contains(&dispatched.tiles_per_batch));
-        assert!(
-            dispatched
-                .prefix_working_set
-                .max(dispatched.suffix_working_set)
-                <= budget
+        assert_eq!(
+            dispatched.prefix_resident,
+            dispatched.prefix_working_set <= budget
         );
+        assert_eq!(
+            dispatched.suffix_resident,
+            dispatched.suffix_working_set <= budget
+        );
+        if !(dispatched.prefix_resident && dispatched.suffix_resident) {
+            assert_eq!(dispatched.tiles_per_batch, 1);
+        }
         let slots = if name.starts_with("intermediate") {
             plan.cols_per_chunk
         } else {
@@ -230,7 +235,7 @@ fn chunk_plan_table(l2: usize) -> Vec<(String, Result<Dispatch, DispatchError>)>
             plan.chunk_bytes()
         };
         let text = format!(
-            "{key}\t{}\t{a}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{slots}\t{per_column}\t{}\t{}\t{}\t{}\t{chunk}\tPASS",
+            "{key}\t{}\t{a}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{slots}\t{per_column}\t{}\t{}\t{}\t{}\t{chunk}\t{}\t{}\tPASS",
             groups_text(plan),
             dispatched.r,
             dispatched.tile_bytes,
@@ -243,6 +248,8 @@ fn chunk_plan_table(l2: usize) -> Vec<(String, Result<Dispatch, DispatchError>)>
             dispatched.prefix_working_set,
             dispatched.suffix_working_set,
             dispatched.tiles_per_batch,
+            dispatched.prefix_resident,
+            dispatched.suffix_resident,
         );
         assert_closure(plan, n <= 17);
         let groups: Vec<(u32, bool)> = plan.passes.iter().map(|p| (p.stages, p.narrow)).collect();
@@ -293,7 +300,7 @@ fn print_table(l2: usize, rows: &[(String, Result<Dispatch, DispatchError>)]) {
         l2 / MIB,
         l2_working_set_budget(l2) / MIB
     );
-    println!("shape\tn\tC\tv\tsb\tprefix\ta\tr\ttile_B\ttiles_per_coset\tstrip_domain_bits\tstrip_blocks\tstrips\tper_strip_B\tcols_or_cosets_per_chunk\tprefix_launches_per_column\tprefix_launches_per_coset\tprefix_WS_L33_B\tsuffix_WS_L33_B\ttiles_per_batch\tchunk_B\tstatus");
+    println!("shape\tn\tC\tv\tsb\tprefix\ta\tr\ttile_B\ttiles_per_coset\tstrip_domain_bits\tstrip_blocks\tstrips\tper_strip_B\tcols_or_cosets_per_chunk\tprefix_launches_per_column\tprefix_launches_per_coset\tprefix_WS_L33_B\tsuffix_WS_L33_B\ttiles_per_batch\tchunk_B\tprefix_resident\tsuffix_resident\tstatus");
     for (row, _) in rows {
         println!("{row}");
     }
@@ -302,57 +309,19 @@ fn print_table(l2: usize, rows: &[(String, Result<Dispatch, DispatchError>)]) {
 #[test]
 fn cpu_pr_chunk_plan_closure() {
     let rows = chunk_plan_table(L2_RTX_PRO_6000);
-    let rejected = |name: &str, n: u32, c: usize| {
-        let key = format!("{name}\t{n}\t{c}\t");
-        rows.iter()
-            .find(|(row, _)| row.starts_with(&key))
-            .map(|(_, shape)| shape.clone().err())
-            .unwrap()
-    };
-    for name in ["base_today", "base_d", "setup_today", "setup_d"] {
-        let c = [
-            ("base_today", 7),
-            ("base_d", 13),
-            ("setup_today", 1),
-            ("setup_d", 2),
-        ]
-        .iter()
-        .find(|(n, _)| *n == name)
-        .unwrap()
-        .1;
-        for n in 16..=26 {
-            let expected = if n == 26 && c == 13 {
-                Some(DispatchError::Unsupported)
-            } else {
-                (n == 26 || n == 25 && c == 13).then_some(DispatchError::L2TooSmall {
-                    l2_budget: 64 * MIB,
-                })
-            };
-            assert_eq!(rejected(name, n, c), expected, "{name} n {n}");
-        }
-    }
     for (row, shape) in &rows {
-        if row.starts_with("invalid") {
-            let wide = row.starts_with("invalid\t24\t15\t");
-            assert_eq!(shape.is_ok(), wide, "{row}");
-        }
-        if row.starts_with("intermediate\t26\t") {
-            assert_eq!(
-                shape.clone().err(),
-                Some(DispatchError::L2TooSmall {
-                    l2_budget: 64 * MIB
-                })
-            );
-        }
+        let invalid = row.starts_with("invalid") && !row.starts_with("invalid\t24\t15\t");
+        assert_eq!(shape.is_err(), invalid, "{row}");
     }
     let today = dispatch(25, 7, 2, 10, L2_RTX_PRO_6000).unwrap();
     assert_eq!(
         (
             today.prefix_working_set,
             today.suffix_working_set,
-            today.tiles_per_batch
+            today.tiles_per_batch,
+            today.prefix_resident && today.suffix_resident
         ),
-        (39 * MIB, 63 * MIB, 2)
+        (39 * MIB, 63 * MIB, 2, true)
     );
     let shape_d = dispatch(24, 13, 1, 10, L2_RTX_PRO_6000).unwrap();
     assert_eq!(
@@ -368,9 +337,26 @@ fn cpu_pr_chunk_plan_closure() {
         (wide.r, wide.tiles_per_batch, wide.suffix_working_set),
         (7, 1, 37 * MIB)
     );
+    let n26 = dispatch(26, 7, 2, 10, L2_RTX_PRO_6000).unwrap();
+    assert_eq!(
+        (n26.prefix_resident, n26.prefix.unwrap().chunk_bytes()),
+        (false, MAX_CHUNK_BYTES)
+    );
+    let n26_d = dispatch(26, 13, 1, 10, L2_RTX_PRO_6000).unwrap();
+    assert_eq!(
+        (n26_d.prefix_resident, n26_d.prefix.unwrap().strips),
+        (false, 1)
+    );
     print_table(L2_RTX_PRO_6000, &rows);
-
-    let rows_5090 = chunk_plan_table(L2_RTX_5090);
+    // A100 40 MB, H100 50 MB, L40S / RTX 5090 96 MB.
+    for l2 in [40 * MIB, 50 * MIB, L2_RTX_5090] {
+        let device_rows = chunk_plan_table(l2);
+        for (row, shape) in &device_rows {
+            let invalid = row.starts_with("invalid") && !row.starts_with("invalid\t24\t15\t");
+            assert_eq!(shape.is_err(), invalid, "{row} at {} MiB", l2 / MIB);
+        }
+        print_table(l2, &device_rows);
+    }
     let today = dispatch(25, 7, 2, 10, L2_RTX_5090).unwrap();
     assert_eq!(
         (
@@ -391,10 +377,10 @@ fn cpu_pr_chunk_plan_closure() {
         ),
         (39 * MIB, 33 * MIB, 1, 7)
     );
-    print_table(L2_RTX_5090, &rows_5090);
 
-    // Synthetic devices, 16-192 MiB L2: support is monotone in L2 and larger L2 never shrinks
-    // the chunk or the batch.
+    // Synthetic devices, 16-192 MiB L2: every production shape dispatches on every L2, the
+    // residency flags only turn on with more L2, and more L2 never shrinks a resident chunk
+    // or batch.
     let shapes = [
         (25, 7, 2, 10),
         (24, 13, 1, 10),
@@ -407,38 +393,35 @@ fn cpu_pr_chunk_plan_closure() {
     ];
     for &(n, c, v, sb) in &shapes {
         let mut previous: Option<Dispatch> = None;
-        let mut first_supported = None;
-        for l2_mib in (16..=192).step_by(8) {
-            let shape = dispatch(n, c, v, sb, l2_mib * MIB);
-            match (&shape, &previous) {
-                (Ok(current), Some(prior)) => {
+        let mut first_resident = None;
+        for l2_mib in [
+            16, 24, 32, 40, 48, 50, 56, 64, 72, 80, 88, 96, 112, 128, 160, 192,
+        ] {
+            let current = dispatch(n, c, v, sb, l2_mib * MIB)
+                .unwrap_or_else(|e| panic!("({n},{c},{v},{sb}) at {l2_mib} MiB: {e:?}"));
+            let resident = current.prefix_resident && current.suffix_resident;
+            if let Some(prior) = &previous {
+                let prior_resident = prior.prefix_resident && prior.suffix_resident;
+                assert!(
+                    resident || !prior_resident,
+                    "({n},{c},{v},{sb}) at {l2_mib} MiB"
+                );
+                if resident && prior_resident {
                     let chunk = |d: &Dispatch| d.prefix.as_ref().map_or(0, ChunkPlan::chunk_bytes);
-                    assert!(
-                        chunk(current) >= chunk(prior),
-                        "({n},{c},{v},{sb}) at {l2_mib} MiB"
-                    );
+                    assert!(chunk(&current) >= chunk(prior));
                     assert!(current.tiles_per_batch >= prior.tiles_per_batch);
                 }
-                (Err(error), Some(_)) => {
-                    panic!("({n},{c},{v},{sb}) lost support at {l2_mib} MiB: {error:?}")
-                }
-                (Err(error), None) => assert!(matches!(error, DispatchError::L2TooSmall { .. })),
-                (Ok(_), None) => first_supported = Some(l2_mib),
             }
-            if let Ok(current) = shape {
-                previous = Some(current);
+            if resident && first_resident.is_none() {
+                first_resident = Some(l2_mib);
             }
+            previous = Some(current);
         }
         println!(
-            "cpu_pr_chunk_plan_closure: ({n},{c},{v},{sb}) supported from {:?} MiB of L2",
-            first_supported
+            "cpu_pr_chunk_plan_closure: ({n},{c},{v},{sb}) dispatches on 16-192 MiB, fully L2-resident from {:?} MiB",
+            first_resident
         );
     }
-    println!(
-        "cpu_pr_chunk_plan_closure: {} rows at 128 MiB and {} at 96 MiB, budget = L2 / 2",
-        rows.len(),
-        rows_5090.len()
-    );
 }
 
 fn reverse_bits(value: usize, bits: u32) -> usize {
@@ -938,4 +921,92 @@ fn device_l2() -> usize {
     gpu_core::primitives::context::DeviceProperties::new()
         .unwrap()
         .l2_cache_size_bytes
+}
+
+// Forces the dispatch of smaller devices on this GPU: every plan (resident, smaller strips or
+// full grid) gives the same prefix as its coarsest split, and prefix + final == lde_coset.
+#[test]
+#[cfg(not(no_cuda))]
+fn pr_lde_coset_slot_small_l2_parity() {
+    use super::{has_reference_finish, lde_coset, lde_coset_slot, lde_finish_reference};
+    use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
+    let ctx = DeviceContext::create(31).unwrap();
+    let stream = CudaStream::create().unwrap();
+    let mut rng = StdRng::seed_from_u64(0x9120_3401);
+    let nu = domain_generator_for_size::<PR>(1u64 << 31);
+    let k = 5u32;
+    for (log_n, columns, log_v, skip_bottom, cols) in [
+        (25, 7, 2, 10, 2),
+        (24, 13, 1, 10, 2),
+        (26, 7, 2, 10, 1),
+        (26, 13, 1, 10, 1),
+        (23, 1, 4, 5, 2),
+        (19, 1, 4, 5, 3),
+    ] {
+        let rows = 1usize << log_n;
+        let monomials: Vec<PR> = (0..rows * cols)
+            .map(|_| PR::new(rng.random::<u128>() % PR::ORDER))
+            .collect();
+        let device_monomials = upload(&monomials);
+        let mut candidate = DeviceAllocation::<PR>::alloc(rows * cols).unwrap();
+        let mut reference = DeviceAllocation::<PR>::alloc(rows * cols).unwrap();
+        let scale = ScaleArgs {
+            coset: CosetSource::Constant(k),
+            log_domain: 31,
+        };
+        for l2_mib in [16usize, 40, 50, 96, 128] {
+            let shape = dispatch(log_n, columns, log_v, skip_bottom, l2_mib * MIB).unwrap();
+            let plan = shape.prefix.as_ref().unwrap();
+            lde_coset_slot(
+                &ctx,
+                &device_monomials,
+                &mut candidate,
+                cols,
+                plan,
+                scale,
+                &stream,
+            )
+            .unwrap();
+            lde_coset_slot(
+                &ctx,
+                &device_monomials,
+                &mut reference,
+                cols,
+                &full_grid(plan),
+                scale,
+                &stream,
+            )
+            .unwrap();
+            let prefix = download(&candidate, &stream);
+            assert!(
+                prefix == download(&reference, &stream),
+                "({log_n},{columns},{log_v},{skip_bottom}) L2 {l2_mib} MiB: prefix differs from its full grid"
+            );
+            if has_reference_finish(plan) {
+                lde_finish_reference(&ctx, &mut candidate, cols, plan, &stream).unwrap();
+                let offset = upload(&[nu.pow_u128(k as u128)]);
+                lde_coset(
+                    &ctx,
+                    &DeviceMatrix::new(&device_monomials, rows),
+                    &mut DeviceMatrixMut::new(&mut reference, rows),
+                    &offset,
+                    &stream,
+                )
+                .unwrap();
+                assert!(
+                    download(&candidate, &stream) == download(&reference, &stream),
+                    "({log_n},{columns},{log_v},{skip_bottom}) L2 {l2_mib} MiB: LDE differs"
+                );
+            }
+            println!(
+                "pr_lde_coset_slot_small_l2_parity: ({log_n},{columns},{log_v},{skip_bottom}) L2 {l2_mib} MiB: prefix {} chunk {} MiB resident prefix/suffix {}/{} tiles/batch {} finish {}, 0 mismatches",
+                groups_text(plan),
+                plan.chunk_bytes() / MIB,
+                shape.prefix_resident,
+                shape.suffix_resident,
+                shape.tiles_per_batch,
+                has_reference_finish(plan)
+            );
+        }
+    }
 }
