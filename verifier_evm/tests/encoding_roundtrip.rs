@@ -175,8 +175,11 @@ fn replay_reaches_the_recorded_handoff_seed() {
             Some(replay.handoff_seed),
             proof.intermediate_transcript_seed
         );
+        // dimension-reducing layers bind e..t−1 variables, the circuit layers t each
+        let params = version.f1_params();
+        let (e, t) = (params.explicit_output_log2, params.trace_log2);
         let rounds: usize = replay.layers.iter().map(|l| l.r.len()).sum();
-        assert_eq!(rounds, 309);
+        assert_eq!(rounds, (e..t).sum::<usize>() + circuit.layers.len() * t);
     }
 }
 
