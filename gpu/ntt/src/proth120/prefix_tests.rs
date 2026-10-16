@@ -1052,3 +1052,77 @@ fn pr_hypercube_chunked_matches_plain() {
         println!("pr_hypercube_chunked_matches_plain: n {log_n} x {cols} at L2 16/40/128 MiB, 0 mismatches");
     }
 }
+
+// Lazy prefix passes at the top of their range: every input p - 1 (largest canonical value), scaled
+// by the last coset and unscaled, through single passes of 5-8 stages (wide and narrow) and the
+// production three-pass prefix; prefix + final must equal lde_coset.
+#[test]
+#[cfg(not(no_cuda))]
+fn pr_prefix_lazy_extreme_inputs() {
+    use super::{lde_coset, lde_coset_slot, lde_finish_reference};
+    use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
+    let ctx = DeviceContext::create(31).unwrap();
+    let stream = CudaStream::create().unwrap();
+    let nu = domain_generator_for_size::<PR>(1u64 << 31);
+    let cols = 2;
+    for (log_n, groups) in [
+        (16, vec![(8, false)]),
+        (15, vec![(7, false)]),
+        (15, vec![(7, true)]),
+        (14, vec![(6, false)]),
+        (14, vec![(6, true)]),
+        (13, vec![(5, false)]),
+        (13, vec![(5, true)]),
+        (24, vec![(8, false), (8, false)]),
+        (25, vec![(6, true), (6, true), (5, true)]),
+    ] {
+        let rows = 1usize << log_n;
+        let plan = chunk_plan(log_n, &groups, CHUNK_16_MIB).unwrap();
+        let monomials = vec![PR::new(PR::ORDER - 1); rows * cols];
+        let device_monomials = upload(&monomials);
+        let mut candidate = DeviceAllocation::<PR>::alloc(rows * cols).unwrap();
+        let mut reference = DeviceAllocation::<PR>::alloc(rows * cols).unwrap();
+        for k in [0, (1u32 << (31 - log_n)) - 1] {
+            let scale = ScaleArgs {
+                coset: CosetSource::Constant(k),
+                log_domain: 31,
+            };
+            lde_coset_slot(
+                &ctx,
+                &device_monomials,
+                &mut candidate,
+                cols,
+                &plan,
+                scale,
+                &stream,
+            )
+            .unwrap();
+            assert!(
+                download(&candidate, &stream)
+                    .iter()
+                    .all(|v| v.0 < PR::ORDER),
+                "noncanonical prefix store"
+            );
+            lde_finish_reference(&ctx, &mut candidate, cols, &plan, &stream).unwrap();
+            lde_coset(
+                &ctx,
+                &DeviceMatrix::new(&device_monomials, rows),
+                &mut DeviceMatrixMut::new(&mut reference, rows),
+                &upload(&[nu.pow_u128(k as u128)]),
+                &stream,
+            )
+            .unwrap();
+            let actual = download(&candidate, &stream);
+            assert!(
+                actual.iter().all(|v| v.0 < PR::ORDER),
+                "noncanonical output"
+            );
+            assert!(
+                actual == download(&reference, &stream),
+                "lazy prefix {} differs at n {log_n}, k {k}",
+                groups_text(&plan)
+            );
+        }
+        println!("pr_prefix_lazy_extreme_inputs: n {log_n} prefix {} with all inputs p - 1, k 0 and last, 0 mismatches", groups_text(&plan));
+    }
+}

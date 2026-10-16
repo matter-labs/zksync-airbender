@@ -7,6 +7,7 @@ namespace airbender::ntt {
 struct dit_policy {
   proth120_twiddle_descriptor descriptor;
   static constexpr bool USES_TWIDDLES = true;
+  static constexpr bool LAZY = false;
   DEVICE_FORCEINLINE pr twiddle(const u32 region, const int) const { return get_forward_pr_twiddle(descriptor, region); }
   DEVICE_FORCEINLINE void exchg(pr &a, pr &b, const pr twiddle) const {
     b = pr::mul(b, twiddle);
@@ -21,17 +22,51 @@ struct dit_policy {
   }
 };
 
+// Unreduced butterflies inside one nonfinal pass: starting below 2p, a pass of s <= 8 stages keeps
+// every value below (2 + 2s) p <= 18p < R / 2 (R = 2^128, p < R / 36), so `montmul_raw` of a value and
+// a canonical twiddle stays below 2p and no limb sum wraps; the pass stores `proth_canonical` values.
+struct lazy_dit_policy : dit_policy {
+  static constexpr bool LAZY = true;
+  static constexpr DEVICE_FORCEINLINE pr TWO_P() { return proth120_detail::MODULUS<2>(); }
+  DEVICE_FORCEINLINE void exchg(pr &a, pr &b, const pr twiddle) const {
+    pr product{};
+    proth120_detail::montmul_raw(b, twiddle, product);
+    exchg_0(a, product);
+    b = product;
+  }
+  DEVICE_FORCEINLINE void exchg_0(pr &a, pr &b) const {
+    pr sum{};
+    pr shifted{};
+    proth120_detail::add_limbs<false>(a, b, sum);
+    proth120_detail::add_limbs<false>(a, TWO_P(), shifted);
+    proth120_detail::sub_limbs<false>(shifted, b, b);
+    a = sum;
+  }
+};
+
+// x mod p for x < 2^128 - p, p = 7 * 2^120 + 1: with x = h * 2^120 + l, h = 7q + t (t < 7),
+// x + p - q * p = p + t * 2^120 + l - q lies in [p - q, 2p).
+DEVICE_FORCEINLINE pr proth_canonical(const pr x) {
+  const u32 q = (x.limbs[3] >> 24) / 7;
+  pr shifted{};
+  proth120_detail::add_limbs<false>(x, proth120_detail::MODULUS<1>(), shifted);
+  pr r{};
+  proth120_detail::sub_limbs<false>(shifted, pr{{q, 0, 0, (7 * q) << 24}}, r);
+  return proth120_detail::reduce<1>(r);
+}
+
 // Twiddles of the block's relative stages >= 2 come from a shared-memory table in heap order:
 // relative stage t, region (blockIdx.x << t) + j at index 2^t - 1 + j.
-struct staged_dit_policy : dit_policy {
+template <class BASE> struct staged_policy : BASE {
   const pr *staged;
   DEVICE_FORCEINLINE pr twiddle(const u32 region, const int stage) const {
-    return stage < 2 ? get_forward_pr_twiddle(descriptor, region) : staged[(1u << stage) - 1 + region - (blockIdx.x << stage)];
+    return stage < 2 ? get_forward_pr_twiddle(this->descriptor, region) : staged[(1u << stage) - 1 + region - (blockIdx.x << stage)];
   }
 };
 
 struct mobius_policy {
   static constexpr bool USES_TWIDDLES = false;
+  static constexpr bool LAZY = false;
   DEVICE_FORCEINLINE void exchg(pr &a, pr &b, const pr) const { b = pr::sub(b, a); }
   DEVICE_FORCEINLINE void exchg_0(pr &a, pr &b) const { b = pr::sub(b, a); }
 };
@@ -147,7 +182,7 @@ DEVICE_FORCEINLINE void nonfinal_rest(pr (&vals)[4], pr *smem_block, pr_matrix_s
   gmem_out.add_row(tile_gmem_stride * (tile_in_store + TILES_PER_WARP * warp_id) + lane_in_tile);
 #pragma unroll
   for (int i{0}, addr_smem{lane_id}, addr_gmem{0}; i < VALS_PER_THREAD; i++, addr_smem += 32, addr_gmem += TILES_PER_STORE * tile_gmem_stride)
-    gmem_out.set_at_row(addr_gmem, smem_warp[addr_smem]);
+    gmem_out.set_at_row(addr_gmem, P::LAZY ? proth_canonical(smem_warp[addr_smem]) : smem_warp[addr_smem]);
 }
 
 template <int STAGES, bool NARROW, class P, bool SCALE = false, bool STAGED = false>
@@ -183,7 +218,12 @@ DEVICE_FORCEINLINE void nonfinal(pr_matrix_getter<ld_modifier::cg> gmem_in, pr_m
     if (k != 0) {
 #pragma unroll
       for (int i{0}, addr{lane_in_tile + tile_in_block * tile_gmem_stride}; i < VALS_PER_THREAD; i++, addr += exchg_region_size >> LOG_VALS_PER_THREAD)
-        vals[i] = pr::mul(vals[i], coset_scale_power(policy.descriptor, scale, k, block_start + addr));
+        if constexpr (P::LAZY) {
+          pr scaled{};
+          proth120_detail::montmul_raw(vals[i], coset_scale_power(policy.descriptor, scale, k, block_start + addr), scaled);
+          vals[i] = scaled;
+        } else
+          vals[i] = pr::mul(vals[i], coset_scale_power(policy.descriptor, scale, k, block_start + addr));
     }
   }
   if constexpr (STAGED) {
@@ -193,7 +233,7 @@ DEVICE_FORCEINLINE void nonfinal(pr_matrix_getter<ld_modifier::cg> gmem_in, pr_m
       const u32 t = 31 - __clz(m + 1);
       staged[m] = get_forward_pr_twiddle(policy.descriptor, (blockIdx.x << t) + m + 1 - (1u << t));
     }
-    const staged_dit_policy staged_policy{policy, staged};
+    const staged_policy<P> staged_policy{policy, staged};
     nonfinal_rest<STAGES, LOG_TILES_PER_BLOCK>(vals, smem_block, gmem_out, staged_policy, start_stage, exchg_region, tile_gmem_stride, lane_in_tile);
   } else {
     nonfinal_rest<STAGES, LOG_TILES_PER_BLOCK>(vals, smem_block, gmem_out, policy, start_stage, exchg_region, tile_gmem_stride, lane_in_tile);
