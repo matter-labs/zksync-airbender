@@ -35,10 +35,10 @@ macro_rules! leaf_sink_kernel {
         cuda_kernel_declaration!($name(args: LeafSinkArgs, descriptor: TwiddleDescriptor,));
     };
 }
-leaf_sink_kernel!(ab_pr_leaf_sink_1_2_8_commit_kernel);
-leaf_sink_kernel!(ab_pr_leaf_sink_2_1_8_commit_kernel);
-leaf_sink_kernel!(ab_pr_leaf_sink_7_2_8_commit_kernel);
-leaf_sink_kernel!(ab_pr_leaf_sink_13_1_8_commit_kernel);
+leaf_sink_kernel!(ab_pr_leaf_sink_1_2_3_commit_kernel);
+leaf_sink_kernel!(ab_pr_leaf_sink_2_1_3_commit_kernel);
+leaf_sink_kernel!(ab_pr_leaf_sink_7_2_3_commit_kernel);
+leaf_sink_kernel!(ab_pr_leaf_sink_13_1_3_commit_kernel);
 leaf_sink_kernel!(ab_pr_leaf_sink_1_3_5_coefficient_tree_kernel);
 leaf_sink_kernel!(ab_pr_leaf_sink_1_4_5_coefficient_tree_kernel);
 
@@ -50,10 +50,14 @@ pub enum SinkMode {
     CoefficientTree { log_domain: u32, k0: u32 },
 }
 
-// The sink's in-block tree depth: depth-8 sub-roots below skip_bottom 8..=10 (closed by
-// `reduce_digests`), whole subtrees otherwise.
-pub fn sink_tree_depth(skip_bottom: u32) -> u32 {
-    skip_bottom.min(8)
+// The sink's in-block tree depth: the Commit sink stops at depth-3 nodes (32 per block, the layers
+// above are full-width node launches, `reduce_digest_layers`); the coefficient-tree sink builds its
+// whole skip_bottom-5 subtrees.
+pub fn sink_tree_depth(mode: &SinkMode, skip_bottom: u32) -> u32 {
+    match mode {
+        SinkMode::Commit => 3,
+        SinkMode::CoefficientTree { .. } => skip_bottom,
+    }
 }
 
 fn leaf_sink_function(
@@ -65,10 +69,10 @@ fn leaf_sink_function(
     let commit = matches!(mode, SinkMode::Commit);
     Some(LeafSinkFunction(
         match (columns, log_v, tree_depth, commit) {
-            (1, 2, 8, true) => ab_pr_leaf_sink_1_2_8_commit_kernel,
-            (2, 1, 8, true) => ab_pr_leaf_sink_2_1_8_commit_kernel,
-            (7, 2, 8, true) => ab_pr_leaf_sink_7_2_8_commit_kernel,
-            (13, 1, 8, true) => ab_pr_leaf_sink_13_1_8_commit_kernel,
+            (1, 2, 3, true) => ab_pr_leaf_sink_1_2_3_commit_kernel,
+            (2, 1, 3, true) => ab_pr_leaf_sink_2_1_3_commit_kernel,
+            (7, 2, 3, true) => ab_pr_leaf_sink_7_2_3_commit_kernel,
+            (13, 1, 3, true) => ab_pr_leaf_sink_13_1_3_commit_kernel,
             (1, 3, 5, false) => ab_pr_leaf_sink_1_3_5_coefficient_tree_kernel,
             (1, 4, 5, false) => ab_pr_leaf_sink_1_4_5_coefficient_tree_kernel,
             _ => return None,
@@ -80,7 +84,7 @@ pub fn has_leaf_sink(shape: &SuffixShape, mode: &SinkMode) -> bool {
     leaf_sink_function(
         shape.columns,
         shape.log_v,
-        sink_tree_depth(shape.skip_bottom),
+        sink_tree_depth(mode, shape.skip_bottom),
         mode,
     )
     .is_some()
@@ -108,7 +112,7 @@ pub(crate) fn sink_launch(
     out_len: usize,
     out_coset_stride: usize,
 ) -> SinkLaunch {
-    let tree_depth = sink_tree_depth(shape.skip_bottom);
+    let tree_depth = sink_tree_depth(mode, shape.skip_bottom);
     assert!(
         leaf_sink_function(shape.columns, shape.log_v, tree_depth, mode).is_some(),
         "leaf sink: no kernel for {} columns, log_v {}, skip_bottom {}, {mode:?}",
@@ -117,8 +121,11 @@ pub(crate) fn sink_launch(
         shape.skip_bottom
     );
     assert!(
-        shape.skip_bottom == tree_depth || (8..=10).contains(&shape.skip_bottom),
-        "leaf sink: skip_bottom {} outside 5, 8..=10",
+        match mode {
+            SinkMode::Commit => (8..=10).contains(&shape.skip_bottom),
+            SinkMode::CoefficientTree { .. } => shape.skip_bottom == 5,
+        },
+        "leaf sink: skip_bottom {} outside 8..=10 (Commit) / 5 (CoefficientTree)",
         shape.skip_bottom
     );
     assert!(

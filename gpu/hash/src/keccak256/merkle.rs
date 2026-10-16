@@ -511,6 +511,47 @@ pub fn build_retained_layers(
     )
 }
 
+// `layers` binary-tree layers above the digests in `src` (one node launch per layer): the last
+// layer goes to `dst` (src.len() >> layers digests), the layers between alternate through
+// `scratch` (at least src.len() / 2 digests when layers >= 2) and the head of `src`, which is
+// overwritten.
+pub fn reduce_digest_layers(
+    src: &mut DeviceSlice<Digest>,
+    layers: u32,
+    scratch: &mut DeviceSlice<Digest>,
+    dst: &mut DeviceSlice<Digest>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    const NAME: &str = "reduce_digest_layers";
+    assert!(
+        (1..=MAX_SKIP_BOTTOM).contains(&layers),
+        "keccak256::{NAME}: 1 <= layers <= 10"
+    );
+    let count = src.len();
+    assert_eq!(
+        Some(count),
+        dst.len().checked_mul(1 << layers),
+        "keccak256::{NAME}: src.len() == dst.len() << layers"
+    );
+    assert!(
+        layers == 1 || scratch.len() >= count / 2,
+        "keccak256::{NAME}: scratch.len() >= src.len() / 2"
+    );
+    assert_no_overlap(NAME, src, dst);
+    assert_no_overlap(NAME, src, scratch);
+    assert_no_overlap(NAME, scratch, dst);
+    for layer in 1..=layers {
+        let (input, output) = match (layer % 2, layer == layers) {
+            (1, true) => (src.as_ptr(), dst.as_mut_ptr()),
+            (1, false) => (src.as_ptr(), scratch.as_mut_ptr()),
+            (_, true) => (scratch.as_ptr(), dst.as_mut_ptr()),
+            (_, false) => (scratch.as_ptr(), src.as_mut_ptr()),
+        };
+        launch_nodes(NAME, input, count >> layer, 1, 0, 0, output, stream)?;
+    }
+    Ok(())
+}
+
 // Roots of every 2^layers consecutive digests of `src` (1 <= layers <= 5), e.g. the depth-10
 // subtree roots of a coset from its depth-8 sub-roots.
 pub fn reduce_digests(

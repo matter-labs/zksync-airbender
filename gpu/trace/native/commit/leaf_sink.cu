@@ -157,10 +157,10 @@ template <u32 C, u32 V, u32 TREE_DEPTH, bool CONVERT> DEVICE_FORCEINLINE void le
     leaf_sink<C, V, TREE_DEPTH, CONVERT>(args, d);                                                                                                             \
   }
 
-LEAF_SINK_KERNEL(1, 2, 8, commit, false)
-LEAF_SINK_KERNEL(2, 1, 8, commit, false)
-LEAF_SINK_KERNEL(7, 2, 8, commit, false)
-LEAF_SINK_KERNEL(13, 1, 8, commit, false)
+LEAF_SINK_KERNEL(1, 2, 3, commit, false)
+LEAF_SINK_KERNEL(2, 1, 3, commit, false)
+LEAF_SINK_KERNEL(7, 2, 3, commit, false)
+LEAF_SINK_KERNEL(13, 1, 3, commit, false)
 LEAF_SINK_KERNEL(1, 3, 5, coefficient_tree, true)
 LEAF_SINK_KERNEL(1, 4, 5, coefficient_tree, true)
 

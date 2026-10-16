@@ -5,7 +5,7 @@ use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
 use gpu_core::primitives::field::PR;
 use gpu_hash::keccak256::{
     build_partial_coset_tree, build_partial_coset_tree_with_scratch, build_retained_layers,
-    partial_coset_tree_scratch_len, reduce_digests, Digest,
+    partial_coset_tree_scratch_len, reduce_digest_layers, Digest,
 };
 use gpu_ntt::proth120::{
     convert_coset_leaves, dispatch, launch_suffix_micro, lde_coset, lde_coset_slot, CosetSource,
@@ -73,12 +73,12 @@ fn cpu_sink_launch_geometry() {
             126,
             2,
             1,
-            1 << 15,
-            1 << 15
+            1 << 20,
+            1 << 20
         ),
         SinkLaunch {
             grid: (512, 1, 1),
-            tree_depth: 8,
+            tree_depth: 3,
             tile_coset_stride: 2 * (7 << 18),
         }
     );
@@ -236,7 +236,7 @@ fn cpu_sink_launch_rejects_invalid_launches() {
 }
 
 // Commit sink over the production batch loop (prefix, then suffix micro + sink per batch of
-// tiles, depth-8 sub-roots closed by reduce_digests) against the natural-order reference tree.
+// tiles, the depth-3 nodes closed by reduce_digest_layers) against the natural-order reference tree.
 #[test]
 #[cfg(not(no_cuda))]
 fn sink_commit_matches_reference() {
@@ -274,8 +274,10 @@ fn sink_commit_matches_reference() {
         .unwrap();
         let batch = plan.tiles_per_batch;
         let mut tiles = DeviceAllocation::<PR>::alloc(batch * s.tile_len()).unwrap();
-        let tree_depth = sink_tree_depth(skip_bottom);
+        let tree_depth = sink_tree_depth(&SinkMode::Commit, skip_bottom);
         let mut nodes = DeviceAllocation::<Digest>::alloc(1 << (h - tree_depth)).unwrap();
+        let mut node_scratch =
+            DeviceAllocation::<Digest>::alloc(1 << (h - tree_depth - 1)).unwrap();
         let per_coset = retained_len(h, skip_bottom);
         let mut retained = DeviceAllocation::<Digest>::alloc(per_coset).unwrap();
         for first in (0..s.tiles_per_coset()).step_by(batch) {
@@ -308,17 +310,14 @@ fn sink_commit_matches_reference() {
             .unwrap();
         }
         let bottom = 1usize << (h - skip_bottom);
-        if skip_bottom > tree_depth {
-            reduce_digests(
-                &nodes,
-                skip_bottom - tree_depth,
-                &mut retained[..bottom],
-                &stream,
-            )
-            .unwrap();
-        } else {
-            memory_copy_async(&mut retained[..bottom], &nodes, &stream).unwrap();
-        }
+        reduce_digest_layers(
+            &mut nodes,
+            skip_bottom - tree_depth,
+            &mut node_scratch,
+            &mut retained[..bottom],
+            &stream,
+        )
+        .unwrap();
         build_retained_layers(h, skip_bottom, 1, per_coset, &mut retained, &stream).unwrap();
         let candidate = download(&retained, &stream);
 
@@ -503,7 +502,7 @@ fn sink_profile_probe() {
     let wide = 16u32;
     let mut tiles = DeviceAllocation::<PR>::alloc(batch as usize * s.tile_len()).unwrap();
     let mut wide_tiles = DeviceAllocation::<PR>::alloc(wide as usize * s.tile_len()).unwrap();
-    let mut nodes = DeviceAllocation::<Digest>::alloc(1 << (h - 8)).unwrap();
+    let mut nodes = DeviceAllocation::<Digest>::alloc(1 << (h - 3)).unwrap();
     let start = era_cudart::event::CudaEvent::create().unwrap();
     let end = era_cudart::event::CudaEvent::create().unwrap();
     let leaf_permutations = ((2 * columns) << log_v) / 17 + 1;
@@ -518,7 +517,7 @@ fn sink_profile_probe() {
             1,
             SinkMode::Commit,
             &mut nodes,
-            1 << (h - 8),
+            1 << (h - 3),
             &stream,
         )
         .unwrap();
@@ -526,7 +525,7 @@ fn sink_profile_probe() {
         end.synchronize().unwrap();
         let ms = era_cudart::event::elapsed_time(&start, &end).unwrap();
         let leaves = u64::from(count) << (skip_bottom + s.r - log_v);
-        let permutations = leaves * u64::from(leaf_permutations) + (leaves >> 8) * 255;
+        let permutations = leaves * u64::from(leaf_permutations) + (leaves >> 8) * 224;
         println!(
             "sink_profile_probe: {label} tiles {first}..{} {ms:.3} ms, {:.2} G keccak-f/s",
             first + count,
@@ -568,8 +567,8 @@ fn sink_profile_probe() {
 }
 
 // Timing probe of the suffix batch loop of one base coset (n = 25, C = 7, v = 2, sb = 10): 64
-// batches of suffix micro + Commit sink over a resident prefix, one warmup coset, then five
-// measured cosets (CUDA-event span per coset).
+// batches of suffix micro + Commit sink over a resident prefix plus the node layers up to
+// skip_bottom, one warmup coset, then five measured cosets (CUDA-event span per coset).
 #[test]
 #[ignore]
 #[cfg(not(no_cuda))]
@@ -588,7 +587,9 @@ fn sink_coset_probe() {
     }
     let batch = plan.tiles_per_batch;
     let mut tiles = DeviceAllocation::<PR>::alloc(batch * s.tile_len()).unwrap();
-    let mut nodes = DeviceAllocation::<Digest>::alloc(1 << (h - 8)).unwrap();
+    let mut nodes = DeviceAllocation::<Digest>::alloc(1 << (h - 3)).unwrap();
+    let mut node_scratch = DeviceAllocation::<Digest>::alloc(1 << (h - 4)).unwrap();
+    let mut bottom = DeviceAllocation::<Digest>::alloc(1 << (h - skip_bottom)).unwrap();
     let start = era_cudart::event::CudaEvent::create().unwrap();
     let end = era_cudart::event::CudaEvent::create().unwrap();
     for coset in 0..6 {
@@ -615,16 +616,24 @@ fn sink_coset_probe() {
                 1,
                 SinkMode::Commit,
                 &mut nodes,
-                1 << (h - 8),
+                1 << (h - 3),
                 &stream,
             )
             .unwrap();
         }
+        reduce_digest_layers(
+            &mut nodes,
+            skip_bottom - 3,
+            &mut node_scratch,
+            &mut bottom,
+            &stream,
+        )
+        .unwrap();
         end.record(&stream).unwrap();
         end.synchronize().unwrap();
         let ms = era_cudart::event::elapsed_time(&start, &end).unwrap();
         println!(
-            "sink_coset_probe: {} coset {coset}: {ms:.3} ms ({} batches of micro + sink)",
+            "sink_coset_probe: {} coset {coset}: {ms:.3} ms ({} batches of micro + sink, then the layers up to skip_bottom)",
             if coset == 0 { "warmup" } else { "measured" },
             s.tiles_per_coset() / batch
         );
