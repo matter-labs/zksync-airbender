@@ -679,12 +679,12 @@ pub fn emit_circuit_yul_with_stats(
     yul_main_output().lock().unwrap().clear();
     let circuit_rounds = {
         assert!(circuit.trace_len.is_power_of_two() && circuit.trace_len > 0);
-        assert_eq!(
-            circuit.trace_len,
-            1 << 22,
-            "we currently expect gkr_compress to go up to 2^22"
+        let rounds = circuit.trace_len.trailing_zeros();
+        assert!(
+            matches!(rounds, 21 | 22),
+            "GKR verifier supports trace logs 21 and 22"
         );
-        circuit.trace_len.trailing_zeros()
+        rounds
     };
     let layer0_group_widths = (
         circuit.memory_layout.total_width,
@@ -2087,11 +2087,6 @@ pub fn emit_circuit_yul_with_stats(
                     });
                     let [lhs_addr_high, rhs_addr_high] = {
                         assert_eq!(
-                            circuit.trace_len,
-                            1 << 22,
-                            "currently we expect gkr_compress to go up to 2^22"
-                        );
-                        assert_eq!(
                             circuit.memory_layout.inits_and_teardowns_word_bits.unwrap(),
                             2,
                             "we expect there to be just 2 empty low bits"
@@ -2600,6 +2595,18 @@ pub fn emit_circuit_yul_with_stats(
             // NB: need to inline __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS unfortunately
             eq_scale := 1
             let modulus := mload(P_PTR) // hoisted: DUP per use instead of re-mload every round
+            // #if F1
+            // E1 (see sumcheck_rounds): (b, c) in, c0..c3 rebuilt and absorbed, claim = K, eq_scale = 1
+            let bit := mload(ptr)
+            for {{ let i := 0 }} lt(i, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS) {{ i := add(i, 1) }} {{
+                let zp := add(POINT_PTR(), mul(i, 32))
+                let r
+                r, claim := f1_e1_round(bit, mload(zp), claim, modulus)
+                bit := add(bit, 246)
+                mstore(zp, r)
+                ptr := add(ptr, 64)
+            }}
+            // #else
             for {{ let i := 0 }} lt(i, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS) {{ i := add(i, 1) }} {{
                 let w0 := calldataload(ptr)
                 let w1 := calldataload(add(ptr, 32))
@@ -2623,6 +2630,7 @@ pub fn emit_circuit_yul_with_stats(
                 mstore(add(POINT_PTR(), mul(i, 32)), r)
                 ptr := add(ptr, 64)
             }}
+            // #endif
             next_ptr := ptr
             next_claim := claim
         }}

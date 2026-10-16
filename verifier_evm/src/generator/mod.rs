@@ -16,9 +16,13 @@
 //! forgets an assignment cannot produce a buildable verifier.
 
 mod circuit_yul;
+mod f1;
+mod instrument;
+mod preprocess;
 mod whir;
 
 pub use circuit_yul::{emit_circuit_yul, emit_circuit_yul_with_stats, CircuitYulStats};
+pub use instrument::instrument;
 pub use whir::WhirGenConfig;
 // `Lit` (below) is the generated-constant value+expression pair `WhirGenConfig::memory_regions`
 // returns.
@@ -60,7 +64,7 @@ pub struct Lit {
 impl Lit {
     pub fn num(value: u128) -> Self {
         Self {
-            value: value,
+            value,
             expr: value.to_string(),
             prec: 3,
         }
@@ -116,6 +120,15 @@ impl Lit {
     }
 }
 
+/// The F1 verifier and, with a setup frontier, the `SetupFrontier` data contract it reads.
+#[derive(Clone, Debug)]
+pub struct F1Contracts {
+    /// The merged F1 `GkrWhirVerifier` source.
+    pub verifier_sol: String,
+    /// F1 with a setup frontier: the `SetupFrontier` data contract source.
+    pub setup_frontier_sol: Option<String>,
+}
+
 // `generate_verifier` is implemented in `assemble.rs`.
 mod assemble;
-pub use assemble::generate_verifier;
+pub use assemble::{generate_f1_verifier, generate_verifier, F1, INSTRUMENTED};

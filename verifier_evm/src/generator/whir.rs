@@ -89,6 +89,20 @@ impl WhirGenConfig {
             "WHIR folds sum {total_folds} exceeds message size log2 {message_log2}"
         );
         let rfin = message_log2 - total_folds;
+        assert!(
+            rfin > 0,
+            "WHIR final polynomial must contain at least two monomials"
+        );
+        assert_eq!(schedule.whir_steps_lde_factors.len(), num_rounds - 1);
+        let mut lde_bits = base_lde_bits;
+        for (fold, lde) in folds.iter().zip(&schedule.whir_steps_lde_factors) {
+            lde_bits += fold;
+            assert_eq!(
+                *lde,
+                1usize << lde_bits,
+                "EVM WHIR requires a constant codeword domain"
+            );
+        }
         let pack = 1usize << pack_log2;
         let merged_mw = num_memwit.div_ceil(pack);
         let setup_merged = num_setup.div_ceil(pack);
@@ -133,6 +147,54 @@ impl WhirGenConfig {
     /// Query-index bits of round `r`'s oracle tree: `codeword_log2 - fold_r`.
     fn qib(&self, r: usize) -> usize {
         self.codeword_log2 - self.folds[r]
+    }
+
+    /// Final-polynomial Horner evaluation with eight coefficients per cursor/loop update.
+    /// The fixed remainder uses literal offsets; coefficients stay in the existing MONO region.
+    pub fn final_horner_yul(&self) -> String {
+        const MONO: &str = "__TEMPLATE_WHIR_MONO_PTR";
+        let n = 1usize << self.rfin;
+        let tail = (n - 1) % 8;
+        let mut out = format!("        function horner_{n}(x) -> ev {{\n");
+        if n > 8 {
+            out.push_str(&format!(
+                "            let ptr := add({MONO}, {})\n\
+                 \x20           let end := add({MONO}, {})\n\
+                 \x20           ev := mload(ptr)\n\
+                 \x20           for {{ }} gt(ptr, end) {{ }} {{\n\
+                 \x20               ptr := sub(ptr, 256)\n",
+                (n - 1) * 32,
+                tail * 32,
+            ));
+            for offset in (0..8).rev().map(|i| i * 32) {
+                let addr = if offset == 0 {
+                    "ptr".to_string()
+                } else {
+                    format!("add(ptr, {offset})")
+                };
+                out.push_str(&format!(
+                    "                ev := addmod(mulmod(ev, x, P), mload({addr}), P)\n"
+                ));
+            }
+            out.push_str("            }\n");
+        } else {
+            out.push_str(&format!(
+                "            ev := mload(add({MONO}, {}))\n",
+                (n - 1) * 32
+            ));
+        }
+        for offset in (0..tail).rev().map(|i| i * 32) {
+            let addr = if offset == 0 {
+                MONO.to_string()
+            } else {
+                format!("add({MONO}, {offset})")
+            };
+            out.push_str(&format!(
+                "            ev := addmod(mulmod(ev, x, P), mload({addr}), P)\n"
+            ));
+        }
+        out.push_str("        }\n");
+        out
     }
 
     /// Render the per-round `switch r { case i { fold q pow_bits qib vp cb } … }` block that
