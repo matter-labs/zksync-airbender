@@ -32,8 +32,8 @@ use verifier_common::lazy_vec::LazyVec;
 use verifier_common::non_determinism_source::NonDeterminismSource;
 use verifier_common::structs::{CommitBuf, TranscriptState};
 use verifier_common::whir::{
-    draw_query_indices, prepare_merkle_queries, read_and_verify_pow, read_commit_return_merkle_cap,
-    verify_merkle_multiproof, MerkleQueryIndex,
+    draw_query_indices, prepare_merkle_queries_from_hint, read_and_verify_pow,
+    read_commit_return_merkle_cap, verify_merkle_multiproof, MerkleQueryIndex,
 };
 const INITIAL_QUERY_INDEX_BITS: usize = 23usize;
 const INITIAL_NUM_QUERIES: usize = 89usize;
@@ -192,7 +192,11 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
             field_ops::add_assign(&mut claim_correction, &t);
             q += 1;
         }
-        let query_plan = prepare_merkle_queries::<INITIAL_NUM_QUERIES>(query_order.as_mut_slice());
+        let query_plan = prepare_merkle_queries_from_hint::<I, INITIAL_NUM_QUERIES>(
+            query_order.as_mut_slice(),
+            nd_source,
+        )
+        .ok_or_else(|| E::whir_merkle_path_failed(0))?;
         if !verify_merkle_multiproof::<I, INITIAL_NUM_QUERIES>(
             &mut ts.hasher,
             &query_plan,
@@ -366,8 +370,11 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: Err
             field_ops::add_assign(&mut claim_correction, &t);
             q += 1;
         }
-        let query_plan =
-            prepare_merkle_queries::<MAX_INTERNAL_NUM_QUERIES>(query_order.as_mut_slice());
+        let query_plan = prepare_merkle_queries_from_hint::<I, MAX_INTERNAL_NUM_QUERIES>(
+            query_order.as_mut_slice(),
+            nd_source,
+        )
+        .ok_or_else(|| E::whir_merkle_path_failed(0))?;
         if !verify_merkle_multiproof::<I, MAX_INTERNAL_NUM_QUERIES>(
             &mut ts.hasher,
             &query_plan,
@@ -495,7 +502,11 @@ pub fn verify_final_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorC
             q += 1;
         }
         let mut q = 0;
-        let query_plan = prepare_merkle_queries::<FINAL_NUM_QUERIES>(query_order.as_mut_slice());
+        let query_plan = prepare_merkle_queries_from_hint::<I, FINAL_NUM_QUERIES>(
+            query_order.as_mut_slice(),
+            nd_source,
+        )
+        .ok_or_else(|| E::whir_merkle_path_failed(0))?;
         if !verify_merkle_multiproof::<I, FINAL_NUM_QUERIES>(
             &mut ts.hasher,
             &query_plan,

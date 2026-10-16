@@ -193,6 +193,8 @@ where
                     }
                 }
             }
+            let query_oracle = base_oracles.iter().max_by_key(|o| o.queries.len()).unwrap();
+            append_merkle_query_order(query_oracle.queries.iter().map(|q| q.index), &mut result);
             for oracle in &base_oracles {
                 append_merkle_multiproof(
                     oracle.queries.iter().map(|q| (q.index, q.path.as_slice())),
@@ -205,6 +207,7 @@ where
             for query in oracle.queries.iter() {
                 flatten_field_els::<F, E>(&query.leaf_values_concatenated, &mut result);
             }
+            append_merkle_query_order(oracle.queries.iter().map(|q| q.index), &mut result);
             append_merkle_multiproof(
                 oracle.queries.iter().map(|q| (q.index, q.path.as_slice())),
                 oracle.multiproof.as_ref(),
@@ -234,6 +237,7 @@ where
         for query in last_oracle.queries.iter() {
             flatten_field_els::<F, E>(&query.leaf_values_concatenated, &mut result);
         }
+        append_merkle_query_order(last_oracle.queries.iter().map(|q| q.index), &mut result);
         append_merkle_multiproof(
             last_oracle
                 .queries
@@ -245,4 +249,31 @@ where
     }
 
     result
+}
+
+/// Emit original leaf slots and split heights in a packed sorting hint.
+/// Six low bits hold the height, independent of the producer's word size.
+/// Authentication boundary hashes are still generated directly by the prover.
+/// The verifier checks this permutation against its own transcript-derived indices.
+pub fn append_merkle_query_order(indices: impl Iterator<Item = usize>, output: &mut Vec<u32>) {
+    let mut order: Vec<_> = indices
+        .enumerate()
+        .map(|(slot, index)| (index, slot))
+        .collect();
+    order.sort_unstable();
+    use crate::whir::MERKLE_HINT_HEIGHT_BITS;
+    let mut previous: Option<usize> = None;
+    for (index, slot) in order {
+        let split = previous.map_or(0, |prev| {
+            if prev == index {
+                0
+            } else {
+                usize::BITS - (prev ^ index).leading_zeros() - 1
+            }
+        });
+        let slot = u32::try_from(slot).unwrap();
+        assert!(slot <= u32::MAX >> MERKLE_HINT_HEIGHT_BITS);
+        output.push((slot << MERKLE_HINT_HEIGHT_BITS) | split);
+        previous = Some(index);
+    }
 }

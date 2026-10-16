@@ -256,7 +256,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
         use ::verifier_common::whir::{
             read_commit_return_merkle_cap,
             read_and_verify_pow,
-            draw_query_indices, MerkleQueryIndex, prepare_merkle_queries, verify_merkle_multiproof,
+            draw_query_indices, MerkleQueryIndex, prepare_merkle_queries_from_hint, verify_merkle_multiproof,
         };
         use super::common::{
             verify_whir_sumcheck_step, materialize_gamma_powers,
@@ -403,7 +403,8 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
                     q += 1;
                 }
 
-                let query_plan = prepare_merkle_queries::<INITIAL_NUM_QUERIES>(query_order.as_mut_slice());
+                let query_plan = prepare_merkle_queries_from_hint::<I, INITIAL_NUM_QUERIES>(query_order.as_mut_slice(), nd_source)
+                    .ok_or_else(|| E::whir_merkle_path_failed(0))?;
                 #verify_oracles
 
                 #add_claim;
@@ -676,7 +677,8 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
                     q += 1;
                 }
 
-                let query_plan = prepare_merkle_queries::<MAX_INTERNAL_NUM_QUERIES>(query_order.as_mut_slice());
+                let query_plan = prepare_merkle_queries_from_hint::<I, MAX_INTERNAL_NUM_QUERIES>(query_order.as_mut_slice(), nd_source)
+                    .ok_or_else(|| E::whir_merkle_path_failed(0))?;
                 if !verify_merkle_multiproof::<I, MAX_INTERNAL_NUM_QUERIES>(
                     &mut ts.hasher, &query_plan, query_leaves.as_mut_slice(),
                     oracle_depth, prev_oracle_cap, nd_source,
@@ -869,7 +871,8 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
 
 
                 let mut q = 0;
-                let query_plan = prepare_merkle_queries::<FINAL_NUM_QUERIES>(query_order.as_mut_slice());
+                let query_plan = prepare_merkle_queries_from_hint::<I, FINAL_NUM_QUERIES>(query_order.as_mut_slice(), nd_source)
+                    .ok_or_else(|| E::whir_merkle_path_failed(0))?;
                 if !verify_merkle_multiproof::<I, FINAL_NUM_QUERIES>(
                     &mut ts.hasher, &query_plan, query_leaves.as_mut_slice(),
                     oracle_depth, prev_oracle_cap, nd_source,

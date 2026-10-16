@@ -229,7 +229,7 @@ fn test_rejects_corrupted_final_monomials(name: &str) {
         let path_words =
             prover::merkle_trees::multiproof::boundary_nodes(&indices, final_oracle_depth).len()
                 * 8;
-        let queries_words = final_num_queries * leaf_words + path_words;
+        let queries_words = final_num_queries * (leaf_words + 1) + path_words;
         let pow_words = 2;
         let monomial_words = m::constants::FINAL_MONOMIALS_LEN * 4;
         let nds_len = common::load_nds(name, SecurityLevel::Sec100).0.len();

@@ -196,6 +196,11 @@ pub struct MerkleQueryIndex {
 
 // A plan reuses the sorted query buffer. The low bits of its second word
 // hold a branch-stop height; the remaining bits hold the original leaf slot.
+// The wire format is the same on the 32-bit verifier and 64-bit proof producer.
+// Six bits represent every possible split height on either architecture.
+pub const MERKLE_HINT_HEIGHT_BITS: usize = 6;
+const MERKLE_HINT_HEIGHT_MASK: usize = (1 << MERKLE_HINT_HEIGHT_BITS) - 1;
+
 const MERKLE_STOP_BITS: usize = usize::BITS.ilog2() as usize + 1;
 const MERKLE_STOP_MASK: usize = (1 << MERKLE_STOP_BITS) - 1;
 const MERKLE_DUPLICATE: usize = usize::BITS as usize + 1;
@@ -218,7 +223,8 @@ impl MerkleQueryStep {
 }
 
 /// A query-only authentication plan borrowed from its input buffer, reusable
-/// across oracles. Proof data cannot supply or alter this plan.
+/// across oracles. Constructors derive it from query indices, optionally using
+/// strictly validated ordering and split-height hints.
 pub struct MerkleQueryPlan<'a, const MAX_QUERIES: usize> {
     steps: &'a [MerkleQueryStep],
     max_index: usize,
@@ -236,6 +242,96 @@ pub fn prepare_merkle_queries<const MAX_QUERIES: usize>(
         assert!(node.query < queries.len());
     }
     queries.sort_unstable_by_key(|node| node.index);
+    encode_merkle_query_plan(queries)
+}
+
+/// Validate a prover-supplied ordering of the transcript-derived query indices.
+/// Each input word packs the original leaf slot and the split height from the
+/// previous distinct index. Every height is checked against the derived indices.
+/// Strictly increasing (index, slot) pairs, n slots in [0, n), imply a complete
+/// permutation:
+/// a repeated slot always has the same index and cannot appear twice in this order.
+/// Thus the hint cannot change, omit, or duplicate a transcript-derived query.
+#[inline(never)]
+pub fn prepare_merkle_queries_from_hint<
+    'a,
+    I: U32WordNonDeterminismSource,
+    const MAX_QUERIES: usize,
+>(
+    queries: &'a mut [MerkleQueryIndex],
+    nd_source: &mut I,
+) -> Option<MerkleQueryPlan<'a, MAX_QUERIES>> {
+    assert!(queries.len() <= MAX_QUERIES);
+    assert!(queries.len() <= usize::MAX >> MERKLE_STOP_BITS);
+    let mut original_indices = [const { core::mem::MaybeUninit::<usize>::uninit() }; MAX_QUERIES];
+    for (dst, node) in original_indices.iter_mut().zip(queries.iter()) {
+        dst.write(node.index);
+    }
+    if queries.is_empty() {
+        return Some(merkle_plan_from_encoded(queries));
+    }
+    let first = nd_source.read_word() as usize;
+    let mut previous_slot = first >> MERKLE_HINT_HEIGHT_BITS;
+    if previous_slot >= queries.len() || first & MERKLE_HINT_HEIGHT_MASK != 0 {
+        return None;
+    }
+    // The copied prefix contains every in-range query slot.
+    let mut previous_index = unsafe { original_indices.get_unchecked(previous_slot).assume_init() };
+    queries[0] = MerkleQueryIndex {
+        index: previous_index,
+        query: previous_slot << MERKLE_STOP_BITS,
+    };
+    let mut unique_position = 0;
+    for position in 1..queries.len() {
+        let hint = nd_source.read_word() as usize;
+        let slot = hint >> MERKLE_HINT_HEIGHT_BITS;
+        let split = hint & MERKLE_HINT_HEIGHT_MASK;
+        if slot >= queries.len() {
+            return None;
+        }
+        // Every element below queries.len() was initialized above; slot is checked.
+        let index = unsafe { original_indices.get_unchecked(slot).assume_init() };
+        let stop;
+        if index == previous_index {
+            if slot <= previous_slot || split != 0 {
+                return None;
+            }
+            stop = MERKLE_DUPLICATE;
+        } else {
+            // floor(log2(previous_index ^ index)) is expensive on RV32I.
+            // A supplied height is exact iff shifting this XOR yields one.
+            if index < previous_index
+                || split >= usize::BITS as usize
+                || (previous_index ^ index) >> split != 1
+            {
+                return None;
+            }
+            // Finalize the preceding distinct index; duplicate slots carry tags.
+            // unique_position is strictly below position < len.
+            unsafe {
+                queries.get_unchecked_mut(unique_position).query |= split;
+            }
+            unique_position = position;
+            stop = 0;
+        }
+        queries[position] = MerkleQueryIndex {
+            index,
+            query: (slot << MERKLE_STOP_BITS) | stop,
+        };
+        previous_index = index;
+        previous_slot = slot;
+    }
+    // The first slot was initialized above; subsequent values came from in-range
+    // loop positions. The final distinct index continues to the committed cap.
+    unsafe {
+        queries.get_unchecked_mut(unique_position).query |= usize::BITS as usize;
+    }
+    Some(merkle_plan_from_encoded(queries))
+}
+
+fn encode_merkle_query_plan<const MAX_QUERIES: usize>(
+    queries: &mut [MerkleQueryIndex],
+) -> MerkleQueryPlan<'_, MAX_QUERIES> {
     for position in 0..queries.len() {
         let index = queries[position].index;
         let stop = if position > 0 && queries[position - 1].index == index {
@@ -253,6 +349,12 @@ pub fn prepare_merkle_queries<const MAX_QUERIES: usize>(
         };
         queries[position].query = (queries[position].query << MERKLE_STOP_BITS) | stop;
     }
+    merkle_plan_from_encoded(queries)
+}
+
+fn merkle_plan_from_encoded<const MAX_QUERIES: usize>(
+    queries: &mut [MerkleQueryIndex],
+) -> MerkleQueryPlan<'_, MAX_QUERIES> {
     // Both repr(C) records consist of two usize words with identical layout
     // and validity. Every word is initialized; the shared borrow prevents
     // writes through the original slice while this typed view is in use.
@@ -296,11 +398,15 @@ pub fn verify_merkle_multiproof<I: U32WordNonDeterminismSource, const MAX_QUERIE
     let mut saved_hashes =
         [const { core::mem::MaybeUninit::<[u32; 8]>::uninit() }; usize::BITS as usize];
     for (position, node) in plan.steps.iter().enumerate() {
+        // Plan constructors validate every slot against their input length,
+        // which was checked equal to leaf_hashes.len() above. The plan borrow
+        // prevents mutation of those slots while authenticating.
+        let leaf_hash = unsafe { leaf_hashes.get_unchecked(node.query()) };
         if node.stop() == MERKLE_DUPLICATE {
-            if !merkle_digest_matches(
-                &leaf_hashes[node.query()],
-                &leaf_hashes[plan.steps[position - 1].query()],
-            ) {
+            // Constructors only tag a duplicate after a preceding query.
+            let previous_slot = unsafe { plan.steps.get_unchecked(position - 1).query() };
+            let previous_hash = unsafe { leaf_hashes.get_unchecked(previous_slot) };
+            if !merkle_digest_matches(leaf_hash, previous_hash) {
                 return false;
             }
             continue;
@@ -308,7 +414,7 @@ pub fn verify_merkle_multiproof<I: U32WordNonDeterminismSource, const MAX_QUERIE
         let stop = node.stop().min(depth);
         unsafe {
             blake2s_u32::spec_memcopy_u32_nonoverlapping(
-                leaf_hashes[node.query()].as_ptr(),
+                leaf_hash.as_ptr(),
                 hasher.state.as_mut_ptr(),
                 8,
             );
@@ -348,10 +454,11 @@ pub fn verify_merkle_multiproof<I: U32WordNonDeterminismSource, const MAX_QUERIE
         }
         if stop == depth {
             let start = index * BLAKE2S_DIGEST_SIZE_U32_WORDS;
-            if !merkle_digest_matches(
-                hasher.read_state_for_output_ref(),
-                &cap[start..start + BLAKE2S_DIGEST_SIZE_U32_WORDS],
-            ) {
+            // max_index >> depth was checked below cap_len; every index is
+            // bounded by max_index and has now been shifted by exactly depth.
+            let expected =
+                unsafe { cap.get_unchecked(start..start + BLAKE2S_DIGEST_SIZE_U32_WORDS) };
+            if !merkle_digest_matches(hasher.read_state_for_output_ref(), expected) {
                 return false;
             }
         } else {

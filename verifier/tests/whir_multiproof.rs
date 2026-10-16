@@ -1,7 +1,10 @@
 use prover::merkle_trees::multiproof::{boundary_nodes, MerkleMultiProof};
 use verifier_common::blake2s_u32::{Blake2sState, DelegatedBlake2sState};
-use verifier_common::gkr::flatten::append_merkle_multiproof;
-use verifier_common::whir::{prepare_merkle_queries, verify_merkle_multiproof, MerkleQueryIndex};
+use verifier_common::gkr::flatten::{append_merkle_multiproof, append_merkle_query_order};
+use verifier_common::whir::{
+    prepare_merkle_queries, prepare_merkle_queries_from_hint, verify_merkle_multiproof,
+    MerkleQueryIndex, MERKLE_HINT_HEIGHT_BITS,
+};
 
 type Digest = [u32; 8];
 fn tree() -> Vec<Vec<Digest>> {
@@ -45,6 +48,29 @@ fn verify(indices: &[usize], leaves: &[Digest], depth: usize, cap: &[u32], words
     );
     if result {
         assert_eq!(nds.len(), 0, "all proof words must be consumed");
+    }
+    let mut hinted_order: Vec<_> = indices
+        .iter()
+        .enumerate()
+        .map(|(query, &index)| MerkleQueryIndex { index, query })
+        .collect();
+    let mut hinted_words = Vec::new();
+    append_merkle_query_order(indices.iter().copied(), &mut hinted_words);
+    hinted_words.extend_from_slice(words);
+    let mut hinted_nds = hinted_words.into_iter();
+    let hinted_plan =
+        prepare_merkle_queries_from_hint::<_, 16>(&mut hinted_order, &mut hinted_nds).unwrap();
+    let hinted_result = verify_merkle_multiproof::<_, 16>(
+        &mut DelegatedBlake2sState::new(),
+        &hinted_plan,
+        &leaves,
+        depth,
+        cap,
+        &mut hinted_nds,
+    );
+    assert_eq!(hinted_result, result, "hinted and sorted queries disagree");
+    if result {
+        assert_eq!(hinted_nds.len(), 0);
     }
     result
 }
@@ -145,6 +171,78 @@ fn authenticates_long_unary_chains_with_high_index_bits() {
                 Blake2sState::compress_two_to_one::<true>(&block, &mut digest);
             }
             assert!(verify(&[index], &[leaf], depth, &digest, &words));
+        }
+    }
+}
+
+#[test]
+fn rejects_invalid_query_order_hints() {
+    let indices = [7, 0, 7, 3];
+    let mut valid = Vec::new();
+    append_merkle_query_order(indices.into_iter(), &mut valid);
+    // Repeated slots, wrong index order, wrong tie order, and out-of-range slots.
+    for hint in [
+        [1, 3, 0, 0],
+        [3, 1, 0, 2],
+        [1, 3, 2, 0],
+        [1, 3, 0, 4],
+        [1, 3, 0, u32::MAX >> MERKLE_HINT_HEIGHT_BITS],
+    ] {
+        let mut queries = core::array::from_fn::<_, 4, _>(|query| MerkleQueryIndex {
+            index: indices[query],
+            query,
+        });
+        // Preserve correct split heights so the duplicate and out-of-range
+        // cases reach the deliberately corrupted slot after a valid prefix.
+        let words: Vec<_> = hint
+            .into_iter()
+            .zip(valid.iter())
+            .map(|(slot, word)| (slot << MERKLE_HINT_HEIGHT_BITS) | (word & 63))
+            .collect();
+        assert!(
+            prepare_merkle_queries_from_hint::<_, 4>(&mut queries, &mut words.into_iter())
+                .is_none()
+        );
+    }
+    let mut queries = core::array::from_fn::<_, 4, _>(|query| MerkleQueryIndex {
+        index: indices[query],
+        query,
+    });
+    let mut truncated = Vec::new();
+    append_merkle_query_order(indices.into_iter(), &mut truncated);
+    truncated.pop();
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = prepare_merkle_queries_from_hint::<_, 4>(&mut queries, &mut truncated.into_iter());
+    }))
+    .is_err());
+}
+
+#[test]
+fn validates_every_split_height_and_rejects_altered_heights() {
+    // Include high bits to catch wire-format and shift-width mistakes.
+    for height in 0..usize::BITS {
+        let indices = [1usize << height, 0, 1usize << height];
+        let mut hint = Vec::new();
+        append_merkle_query_order(indices.into_iter(), &mut hint);
+        let accepts = |words: &[u32]| {
+            let mut queries = core::array::from_fn::<_, 3, _>(|query| MerkleQueryIndex {
+                index: indices[query],
+                query,
+            });
+            prepare_merkle_queries_from_hint::<_, 3>(&mut queries, &mut words.iter().copied())
+                .is_some()
+        };
+        assert!(accepts(&hint));
+        for position in 0..hint.len() {
+            let original = hint[position];
+            for wrong_height in 0..64 {
+                if wrong_height == original & 63 {
+                    continue;
+                }
+                hint[position] = (original & !63) | wrong_height;
+                assert!(!accepts(&hint));
+            }
+            hint[position] = original;
         }
     }
 }
