@@ -50,7 +50,8 @@ noncomputable def run : (numSteps : Nat) → SailState → Option SailState
 /-- 3. The final theorem on the Airbender machine itself: `RV.ProgramCorrectOf` (`Human/Theorems.lean`), with Sail's
 state in place of ours. Started from any Airbender state (`Configured`: privilege, CSRs, memory map as after reset) at
 address 0, with the image loaded, RAM zero except the input (`x`, then the 4 limbs of `y`) at `INPUT`, Airbender
-reaches `halt` with `a0 = combine x`, `a1 = poly x`, `a2 … a5` the limbs of `poly4 y`, `x16 … x25` zero, and stays
+reaches `halt` with `a0 = combine x`, `a1 = poly x`, `a2 … a5` the limbs of `poly4 y`, `a6, a7` the first two
+words of the Blake2s (7 rounds) digest of the input, `x18 … x25` zero, and stays
 there. Follows from 1 and 2 and the final theorem on our spec. -/
 def ProgramCorrectOf (bytes : Array (BitVec 8)) (INPUT halt : Nat) : Prop :=
   ∀ (start : SailState) (x y0 y1 y2 y3 : RV.Word), Configured start → start.regs .PC = 0 →
@@ -68,7 +69,9 @@ def ProgramCorrectOf (bytes : Array (BitVec 8)) (INPUT halt : Nat) : Prop :=
       (∀ i : RV.Reg, 12 ≤ i.toNat → i.toNat ≤ 15 → (getReg final i).toNat < RV.BabyBearP) ∧
       Spec.ofLimbs (RV.bb (getReg final 12)) (RV.bb (getReg final 13)) (RV.bb (getReg final 14))
           (RV.bb (getReg final 15)) = Spec.poly4 (Spec.ofLimbs (RV.bb y0) (RV.bb y1) (RV.bb y2) (RV.bb y3)) ∧
-      (∀ i : RV.Reg, 16 ≤ i.toNat → i.toNat ≤ 25 → getReg final i = 0) ∧
+      getReg final 16 = (Spec.blake5 #v[x, y0, y1, y2, y3])[0] ∧
+      getReg final 17 = (Spec.blake5 #v[x, y0, y1, y2, y3])[1] ∧
+      (∀ i : RV.Reg, 18 ≤ i.toNat → i.toNat ≤ 25 → getReg final i = 0) ∧
       ∀ moreSteps, ∃ later, run moreSteps final = some later ∧ later.regs .PC = final.regs .PC ∧
         ∀ i, getReg later i = getReg final i
 

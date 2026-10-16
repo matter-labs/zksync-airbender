@@ -51,13 +51,14 @@ theorem program_correct_of (bytes : Array (BitVec 8)) (INPUT halt : Nat) (hb : b
     show σ.mem (BitVec.ofNat 32 i).toNat = _
     rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)]; exact himg i hi
   have hram' : RV.RamZeroExceptInput INPUT 20 (ofSail σ) := fun addr h1 h2 h3 => hram addr.toNat h1 h2 h3
-  obtain ⟨n, s', hr, hpc', h10, h11a, h11b, hlt, hlimbs, hz, hk⟩ := h (ofSail σ) x y0 y1 y2 y3 hpc himg' hram'
+  obtain ⟨n, s', hr, hpc', h10, h11a, h11b, hlt, hlimbs, h16, h17, hz, hk⟩ := h (ofSail σ) x y0 y1 y2 y3 hpc himg' hram'
     ((read_ofSail σ _ (by omega)).trans hx) hxP ((read_ofSail σ _ (by omega)).trans hy0)
     ((read_ofSail σ _ (by omega)).trans hy1) ((read_ofSail σ _ (by omega)).trans hy2)
     ((read_ofSail σ _ (by omega)).trans hy3) hy0p hy1p hy2p hy3p
   obtain ⟨σ', hσ', hA'⟩ := run_agree n _ s' σ hA hr
   have hreg : ∀ i, Airbender.getReg σ' i = s'.getReg i := hA'.2.2.1
-  refine ⟨n, σ', hσ', hA'.2.1.trans hpc', (hreg 10).trans h10, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨n, σ', hσ', hA'.2.1.trans hpc', (hreg 10).trans h10, ?_, ?_, ?_, ?_, (hreg 16).trans h16,
+    (hreg 17).trans h17, ?_, ?_⟩
   · rw [hreg]; exact h11a
   · rw [hreg]; exact h11b
   · intro i h1 h2; rw [hreg]; exact hlt i h1 h2

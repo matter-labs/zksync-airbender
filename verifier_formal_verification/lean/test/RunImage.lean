@@ -1,5 +1,6 @@
 import Human.RV32
 import Human.Spec
+import Human.SpecBlake
 import Image
 import ImageMop
 open RV
@@ -32,13 +33,19 @@ def add4 (a b : List Nat) : List Nat := (a.zip b).map fun (x, y) => (x + y) % p
 def poly4 (y : List Nat) : List Nat :=
   (List.range 32).reverse.foldl (fun acc i => add4 (mul4 acc y) [i + 1, 2 * i + 3, i ^ 2, 7]) [0, 0, 0, 0]
 
+/-- Blake2s (7 rounds) of the five input words: the first two digest words. -/
+def blake2 (x : Nat) (y : List Nat) : List Nat :=
+  let d := Spec.blake5 #v[BitVec.ofNat 32 x, BitVec.ofNat 32 y[0]!, BitVec.ofNat 32 y[1]!, BitVec.ofNat 32 y[2]!,
+    BitVec.ofNat 32 y[3]!]
+  [d[0].toNat, d[1].toNat]
+
 def expected (x : Nat) (y : List Nat) : List Nat :=
-  [(3 * x + 1) % 2 ^ 32, ((List.range 100).map fun i => Spec.coeffNat i * x ^ i).sum % P] ++ poly4 y
+  [(3 * x + 1) % 2 ^ 32, ((List.range 100).map fun i => Spec.coeffNat i * x ^ i).sum % P] ++ poly4 y ++ blake2 x y
 
 /-- The memory a run touches (the stack top, the copied `.rodata`, the input) as an array, so that a long run does
 not pile up `write` closures (test code only: the steps themselves are `RV.step`). -/
 def lo : Nat := 0x13ff800
-def hi : Nat := 0x1401020
+def hi : Nat := 0x1401200
 def window (m : Word → BitVec 8) : Array (BitVec 8) :=
   (Array.range (hi - lo)).map fun i =>
     if lo + i < 0x1400400 ∨ 0x1401000 ≤ lo + i then m (BitVec.ofNat 32 (lo + i)) else 0
@@ -66,7 +73,7 @@ def runOne (name : String) (bytes : Array (BitVec 8)) (INPUT halt : Nat) (x : Na
   | none => IO.println s!"{name} x = {x}, y = {y}: stuck"; return false
   | some s =>
     let got := [(s.getReg 10).toNat, (s.getReg 11).toNat % P, (s.getReg 12).toNat, (s.getReg 13).toNat,
-      (s.getReg 14).toNat, (s.getReg 15).toNat]
+      (s.getReg 14).toNat, (s.getReg 15).toNat, (s.getReg 16).toNat, (s.getReg 17).toNat]
     let good := s.pc.toNat == halt && got == expected x y
     IO.println s!"{name} x = {x}, y = {y}: pc = {s.pc.toNat}, outputs {got}, expected {expected x y} {if good then "OK" else "MISMATCH"}"
     return good
