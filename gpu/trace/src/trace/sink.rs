@@ -44,7 +44,9 @@ macro_rules! leaf_sink_kernel {
 }
 leaf_sink_kernel!(ab_pr_leaf_sink_1_2_3_commit_kernel);
 leaf_sink_kernel!(ab_pr_leaf_sink_2_1_3_commit_kernel);
+leaf_sink_kernel!(ab_pr_leaf_sink_6_2_3_commit_kernel);
 leaf_sink_kernel!(ab_pr_leaf_sink_7_2_3_commit_kernel);
+leaf_sink_kernel!(ab_pr_leaf_sink_12_1_3_commit_kernel);
 leaf_sink_kernel!(ab_pr_leaf_sink_13_1_3_commit_kernel);
 leaf_sink_kernel!(ab_pr_leaf_sink_1_3_5_coefficient_tree_kernel);
 leaf_sink_kernel!(ab_pr_leaf_sink_1_4_5_coefficient_tree_kernel);
@@ -80,14 +82,18 @@ macro_rules! leaf_open_kernel {
 }
 leaf_open_kernel!(ab_pr_leaf_sink_1_2_3_open_kernel);
 leaf_open_kernel!(ab_pr_leaf_sink_2_1_3_open_kernel);
+leaf_open_kernel!(ab_pr_leaf_sink_6_2_3_open_kernel);
 leaf_open_kernel!(ab_pr_leaf_sink_7_2_3_open_kernel);
+leaf_open_kernel!(ab_pr_leaf_sink_12_1_3_open_kernel);
 leaf_open_kernel!(ab_pr_leaf_sink_13_1_3_open_kernel);
 
 fn leaf_open_function(columns: u32, log_v: u32) -> Option<LeafOpenFunction> {
     Some(LeafOpenFunction(match (columns, log_v) {
         (1, 2) => ab_pr_leaf_sink_1_2_3_open_kernel,
         (2, 1) => ab_pr_leaf_sink_2_1_3_open_kernel,
+        (6, 2) => ab_pr_leaf_sink_6_2_3_open_kernel,
         (7, 2) => ab_pr_leaf_sink_7_2_3_open_kernel,
+        (12, 1) => ab_pr_leaf_sink_12_1_3_open_kernel,
         (13, 1) => ab_pr_leaf_sink_13_1_3_open_kernel,
         _ => return None,
     }))
@@ -126,7 +132,9 @@ fn leaf_sink_function(
         match (columns, log_v, tree_depth, commit, converted) {
             (1, 2, 3, true, _) => ab_pr_leaf_sink_1_2_3_commit_kernel,
             (2, 1, 3, true, _) => ab_pr_leaf_sink_2_1_3_commit_kernel,
+            (6, 2, 3, true, _) => ab_pr_leaf_sink_6_2_3_commit_kernel,
             (7, 2, 3, true, _) => ab_pr_leaf_sink_7_2_3_commit_kernel,
+            (12, 1, 3, true, _) => ab_pr_leaf_sink_12_1_3_commit_kernel,
             (13, 1, 3, true, _) => ab_pr_leaf_sink_13_1_3_commit_kernel,
             (1, 3, 5, false, false) => ab_pr_leaf_sink_1_3_5_residue_tree_kernel,
             (1, 4, 5, false, false) => ab_pr_leaf_sink_1_4_5_residue_tree_kernel,

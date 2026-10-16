@@ -250,6 +250,8 @@ fn sink_commit_matches_reference() {
     for (log_n, columns, log_v, skip_bottom) in [
         (16, 7, 2, 10),
         (16, 13, 1, 10),
+        (16, 12, 1, 10),
+        (16, 6, 2, 10),
         (17, 1, 2, 10),
         (17, 2, 1, 9),
         (18, 7, 2, 8),
@@ -258,6 +260,8 @@ fn sink_commit_matches_reference() {
         (25, 1, 2, 5),
         (25, 7, 2, 10),
         (24, 13, 1, 10),
+        (24, 12, 1, 10),
+        (25, 6, 2, 10),
     ] {
         let rows = 1usize << log_n;
         let h = log_n - log_v;
@@ -613,6 +617,8 @@ fn sink_coset_probe() {
         (24, 13, 1, 10),
         (25, 1, 2, 10),
         (24, 2, 1, 10),
+        (24, 12, 1, 10),
+        (25, 6, 2, 10),
     ] {
         let h = log_n - log_v;
         let plan = dispatch(log_n, columns as usize, log_v, skip_bottom, device_l2()).unwrap();
@@ -703,6 +709,8 @@ fn sink_open_queries_matches_gathers() {
     for (log_n, columns, log_v, skip_bottom, log_lde, cap_log) in [
         (16u32, 7u32, 2u32, 10u32, 3u32, 2u32),
         (17, 13, 1, 10, 2, 1),
+        (17, 12, 1, 10, 2, 1),
+        (16, 6, 2, 10, 3, 2),
         (18, 1, 2, 8, 3, 3),
         (18, 2, 1, 9, 1, 0),
     ] {
@@ -926,6 +934,8 @@ fn sink_gate_profile_probe() {
         (24, 13, 1, 10),
         (25, 1, 2, 10),
         (24, 2, 1, 10),
+        (24, 12, 1, 10),
+        (25, 6, 2, 10),
     ] {
         let h = log_n - log_v;
         let plan = dispatch(log_n, columns as usize, log_v, skip_bottom, device_l2()).unwrap();
@@ -960,9 +970,15 @@ fn sink_gate_profile_probe() {
         }
         stream.synchronize().unwrap();
     }
-    // Base (7 columns) and setup (1 column) openings at the L1 wrap shapes.
-    for (columns, open_label) in [(7u32, "sink.open"), (1, "sink.setup_open")] {
-        let (log_n, log_v, skip_bottom, log_lde, cap_log) = (25u32, 2u32, 10u32, 6u32, 5u32);
+    // Base (7 columns) and setup (1 column) openings at the L1 wrap shapes, and the 96-column base
+    // packed at 3 (12 columns, v 1) and at 4 (6 columns).
+    for (columns, log_n, log_v, open_label) in [
+        (7u32, 25u32, 2u32, "sink.open"),
+        (1, 25, 2, "sink.setup_open"),
+        (12, 24, 1, "sink.open_12"),
+        (6, 25, 2, "sink.open_6"),
+    ] {
+        let (skip_bottom, log_lde, cap_log) = (10u32, 6u32, 5u32);
         let h = log_n - log_v;
         let rows = 1usize << log_n;
         let plan = dispatch(log_n, columns as usize, log_v, skip_bottom, device_l2()).unwrap();
