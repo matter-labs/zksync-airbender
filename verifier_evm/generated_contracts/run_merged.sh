@@ -15,7 +15,7 @@ select_version "${1:?usage: run_merged.sh <2p21> <anvil-port|--no-gas> [out.json
 GAS_ARG=${2:?usage: run_merged.sh <2p21> <anvil-port|--no-gas> [out.json]}
 cd "$CONTRACTS_ROOT"
 for p in merged merged_f1 negative/v0_wrong_final_pc negative/f1_wrong_final_pc \
-  negative/f1_wrong_setup_cap instrumented/v0 instrumented/f1; do
+  negative/f1_wrong_setup_cap controls/f1_cap_level instrumented/v0 instrumented/f1; do
   ( cd "$p" && forge build >/dev/null )
 done
 ( cd merged_f1 && forge build --sizes | grep -E 'GkrWhirVerifier' ) || true

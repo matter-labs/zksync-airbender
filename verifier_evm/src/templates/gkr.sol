@@ -154,6 +154,10 @@ contract GkrWhirVerifier {
         // #endif
             revert(0, 0)
         }
+        // #if F1
+        // the setup data contract is this deployment's data: check its code before any read
+        if iszero(eq(extcodehash(__TEMPLATE_F1_FRONTIER), __TEMPLATE_F1_FRONTIER_HASH)) { revert(0, 0) }
+        // #endif
         // assembly ("memory-safe") {
         // Proof/transcript bytes preserve logical stream order. Rust must append
         // fixed-width BE integer bytes: u32::to_be_bytes(), u64::to_be_bytes(),

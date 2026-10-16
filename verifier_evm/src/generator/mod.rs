@@ -120,13 +120,13 @@ impl Lit {
     }
 }
 
-/// The F1 verifier and, with a setup frontier, the `SetupFrontier` data contract it reads.
+/// The F1 verifier and the `SetupFrontier` data contract it reads.
 #[derive(Clone, Debug)]
 pub struct F1Contracts {
     /// The merged F1 `GkrWhirVerifier` source.
     pub verifier_sol: String,
-    /// F1 with a setup frontier: the `SetupFrontier` data contract source.
-    pub setup_frontier_sol: Option<String>,
+    /// The `SetupFrontier` data contract source.
+    pub setup_frontier_sol: String,
 }
 
 // `generate_verifier` is implemented in `assemble.rs`.

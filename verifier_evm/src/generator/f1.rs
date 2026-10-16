@@ -17,6 +17,9 @@ const NUM_REGISTERS: usize = 32;
 /// The decoder's layout: every F1 run in stream order with its v0 destination.
 pub(crate) struct GkrDecoder {
     pub yul: String,
+    /// The pinned setup cap as the v0 image holds it (32 bytes per digest, LE u32 words); the
+    /// decoder copies it from the setup data contract.
+    pub setup_cap_image: Vec<u8>,
     /// Length of the v0 GKR calldata image.
     pub v0_bytes: usize,
     /// Length of the F1 GKR section (the WHIR stream starts here).
@@ -113,6 +116,7 @@ pub(crate) fn calldata_to_v0_memory(src: &str, v0_bytes: usize) -> String {
 }
 
 /// 32-byte `[u32; 8]` digest words as the preimage stores them: each word little-endian.
+#[allow(dead_code)]
 fn le_words_literal(d: &[u32; 8]) -> String {
     let bytes: Vec<u8> = d.iter().flat_map(|w| w.to_le_bytes()).collect();
     format!(
@@ -201,17 +205,12 @@ pub(crate) fn gkr_decoder(
         layers = widths.len(),
     );
 
-    let setup_cap_stores: String = setup_cap
+    let setup_cap_image: Vec<u8> = setup_cap
         .iter()
-        .enumerate()
-        .map(|(i, d)| {
-            format!(
-                "            mstore(add({V0_PTR}, {}), {})\n",
-                12 * NUM_REGISTERS + 12 + 4 * num_top_bits + 32 * i,
-                le_words_literal(d)
-            )
-        })
+        .flat_map(|d| d.iter().flat_map(|w| w.to_le_bytes()))
         .collect();
+    let setup_cap_v0 = 12 * NUM_REGISTERS + 12 + 4 * num_top_bits;
+    let setup_cap_len = setup_cap_image.len();
     let digest_mask = if db == 32 {
         "w".to_string()
     } else {
@@ -314,7 +313,8 @@ pub(crate) fn gkr_decoder(
             if and(byte(0, calldataload({ts_last})), {ts_pad_mask:#x}) {{ revert(0, 0) }}
             calldatacopy(add({V0_PTR}, {top_v0}), {top_off}, {top_len})
             // pinned setup cap
-{setup_cap_stores}            // memory cap: {cap} DIGESTs of {db} bytes
+            extcodecopy(__TEMPLATE_F1_FRONTIER, add({V0_PTR}, {setup_cap_v0}), __TEMPLATE_F1_DATA_CAP_OFFSET, {setup_cap_len})
+            // memory cap: {cap} DIGESTs of {db} bytes
             for {{ let i := 0 }} lt(i, {cap}) {{ i := add(i, 1) }} {{
                 let w := calldataload(add({cap_off}, mul({db}, i)))
                 mstore(add({V0_PTR}, add({mem_cap_v0}, mul(32, i))), f1_bswap32x8({digest_mask}))
@@ -332,6 +332,7 @@ pub(crate) fn gkr_decoder(
     );
     GkrDecoder {
         yul,
+        setup_cap_image,
         v0_bytes: v0,
         f1_bytes: f1,
     }

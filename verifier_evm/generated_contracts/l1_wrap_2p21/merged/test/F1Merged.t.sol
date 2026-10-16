@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity =0.8.36;
 
-/// Format F1 (verifier_evm::encoding) on the merged F1 `GkrWhirVerifier` (`../merged_f1`), against
-/// the merged v0 verifier on the same proof. The F1 runtime is checked against EIP-170 by
-/// `test_f1_runtime_size_fits_eip170`; the functional tests deploy it regardless
-/// (`forge test --disable-code-size-limit` while it does not fit).
-///   forge test -vv --match-contract F1MergedTest --disable-code-size-limit
+/// Format F1 (verifier_evm::encoding) on the merged F1 `GkrWhirVerifier` (`../merged_f1`) and its
+/// setup data contract, against the merged v0 verifier on the same proof. The F1 runtime is
+/// checked against EIP-170 by `test_f1_runtime_size_fits_eip170`.
+///   forge test -vv --match-contract F1MergedTest
 
 import {GkrWhirVerifier} from "../src/GkrWhirVerifier.sol";
 import {TestRegistry} from "../src/TestRegistry.sol";
@@ -59,6 +58,43 @@ contract F1MergedTest is MergedBase {
 
     function _finalRound(string memory suffix) internal view returns (string memory) {
         return string.concat("whir_", vm.toString(vm.parseJsonUint(fields, ".whir_rounds") - 1), suffix);
+    }
+
+    /// Code offsets of the setup cap image and the GKR term table in the setup data contract.
+    function _dataOffsets() internal view returns (uint256 cap, uint256 table) {
+        uint256 db = vm.parseJsonUint(fields, ".digest_bytes");
+        cap = 1 + (1 << vm.parseJsonUint(fields, ".setup_frontier_level")) * db;
+        table = cap + 32 * 8;
+    }
+
+    /// `code` with the pinned setup data hash `from` re-pinned to `to`: the one PUSH32 operand (at
+    /// an instruction boundary) holding the hash or its negation (the optimizer compares by adding
+    /// −hash).
+    function _repin(bytes memory code, bytes32 from, bytes32 to) internal pure returns (bytes memory out) {
+        out = _copy(code);
+        uint256 n;
+        for (uint256 i; i < out.length; ++i) {
+            uint8 op = uint8(out[i]);
+            if (op < 0x60 || op > 0x7f) continue;
+            if (op == 0x7f && i + 33 <= out.length) {
+                bytes32 w = _slice32(out, i + 1);
+                bytes32 v;
+                bool hit = true;
+                unchecked {
+                    if (w == from) v = to;
+                    else if (uint256(w) == 0 - uint256(from)) v = bytes32(0 - uint256(to));
+                    else hit = false;
+                }
+                if (hit) {
+                    assembly ("memory-safe") {
+                        mstore(add(add(out, 33), i), v)
+                    }
+                    ++n;
+                }
+            }
+            i += op - 0x5f;
+        }
+        require(n == 1, "the pinned setup data hash must be one PUSH32 operand");
     }
 
     function _flipLastByte(string memory name) internal view returns (bytes memory m) {
@@ -162,22 +198,52 @@ contract F1MergedTest is MergedBase {
         require(_rejects(f1v, m), "memory/setup paths swapped");
     }
 
-    function test_f1_rejects_another_setup_frontier() external {
+    /// Every section of the setup data (frontier, setup cap image, GKR term table) is covered by
+    /// the pinned code hash, and the data contract must exist.
+    function test_f1_rejects_altered_setup_data() external {
         _accepts(f1v, f1);
         bytes memory code = FRONTIER.code;
-        code[code.length - 1] ^= 0x01;
-        vm.etch(FRONTIER, code);
-        require(_rejects(f1v, f1), "frontier code differs from the pinned hash");
+        (uint256 cap, uint256 table) = _dataOffsets();
+        uint256[4] memory at = [uint256(1), cap, table, code.length - 1];
+        for (uint256 i; i < at.length; ++i) {
+            bytes memory m = _copy(code);
+            m[at[i]] ^= 0x01;
+            vm.etch(FRONTIER, m);
+            require(_rejects(f1v, f1), "setup data differs from the pinned hash");
+        }
+        vm.etch(FRONTIER, "");
+        require(_rejects(f1v, f1), "no setup data contract");
     }
 
-    /// Deployment check: the frontier data reduces to the proof's setup cap (LE u32 words in the
-    /// v0 preimage at the setup-cap offset) with the node function.
+    /// A verifier re-pinned to altered setup data rejects the proof: the setup cap and the GKR
+    /// term table are read, not only hashed.
+    function test_f1_rejects_repinned_wrong_setup_data() external {
+        bytes memory code = FRONTIER.code;
+        bytes memory verifier = f1v.code;
+        bytes32 pinned = keccak256(code);
+        vm.etch(f1v, _repin(verifier, pinned, pinned));
+        _accepts(f1v, f1);
+        (uint256 cap, uint256 table) = _dataOffsets();
+        uint256[2] memory at = [cap, table];
+        for (uint256 i; i < at.length; ++i) {
+            bytes memory m = _copy(code);
+            m[at[i]] ^= 0x01;
+            vm.etch(FRONTIER, m);
+            vm.etch(f1v, _repin(verifier, pinned, keccak256(m)));
+            require(_rejects(f1v, f1), "verifier pinned to altered setup data");
+        }
+    }
+
+    /// Deployment check: the frontier reduces to the proof's setup cap (LE u32 words in the v0
+    /// preimage at the setup-cap offset) with the node function, and the data's setup cap image
+    /// is those preimage bytes.
     function test_setup_frontier_reduces_to_the_setup_cap() external view {
         uint256 db = vm.parseJsonUint(fields, ".digest_bytes");
         uint256 level = vm.parseJsonUint(fields, ".setup_frontier_level");
         bytes memory code = FRONTIER.code;
         uint256 n = 1 << level;
-        require(code.length == 1 + n * db && code[0] == 0x00, "frontier layout");
+        (uint256 capAt, uint256 table) = _dataOffsets();
+        require(code.length > table && code[0] == 0x00, "setup data layout");
         bytes32 mask = bytes32(type(uint256).max << (8 * (32 - db)));
         bytes32[] memory nodes = new bytes32[](n);
         for (uint256 i; i < n; ++i) {
@@ -198,13 +264,32 @@ contract F1MergedTest is MergedBase {
             }
             require(nodes[i] == bytes32(be), "frontier does not reduce to the setup cap");
         }
+        require(
+            keccak256(_slice(code, capAt, table)) == keccak256(_slice(v0cd, setupCap, setupCap + 32 * 8)),
+            "setup cap image"
+        );
     }
 
+    /// E8 control: a verifier pinned to another setup (one frontier node and the cap it reduces
+    /// to), with its own setup data in place.
     function test_f1_rejects_wrong_setup_cap() external {
+        _placeFrontier("../negative/f1_wrong_setup_cap");
         address wrong = _deploy(
             "../negative/f1_wrong_setup_cap/out/GkrWhirVerifier.sol/GkrWhirVerifier.json", address(registry)
         );
-        require(_rejects(wrong, f1), "verifier pinned to another setup cap");
+        require(_rejects(wrong, f1), "verifier pinned to another setup");
+    }
+
+    /// The F1 render without a setup frontier (setup paths to the cap) accepts its own calldata
+    /// with the v0 statement.
+    function test_f1_cap_level_control_accepts() external {
+        _placeFrontier("../controls/f1_cap_level");
+        address control = _deploy(
+            "../controls/f1_cap_level/out/GkrWhirVerifier.sol/GkrWhirVerifier.json", address(registry)
+        );
+        bytes memory r0 = _accepts(v0, v0cd);
+        bytes memory r1 = _accepts(control, _hex(string.concat(DATA, "single_tx_f1_cap_level.hex")));
+        require(keccak256(r0) == keccak256(r1), "control statement differs from v0");
     }
 
     function test_f1_rejects_altered_register_state() external {
