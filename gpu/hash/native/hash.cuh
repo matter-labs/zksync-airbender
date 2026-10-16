@@ -257,4 +257,60 @@ DEVICE_FORCEINLINE void collect_merkle_path_block(digest *frontier, u32 *merkle_
   }
 }
 
+constexpr u64 POW_STOP = u64{1} << 63;
+
+template <bool DETERMINISTIC>
+DEVICE_FORCEINLINE void pow_search(const u64 *seed, const u32 bits_count, const u64 max_nonce, const u32 chunk_steps, u64 *counter, u64 *result) {
+  const u32 lane = threadIdx.x & 31;
+  const u32 digest_mask = 0xffffffff << 32 - bits_count;
+  auto *counter_ptr = reinterpret_cast<unsigned long long *>(counter);
+  auto *result_ptr = reinterpret_cast<unsigned long long *>(result);
+  __align__(8) u32 m_u32[BLOCK_SIZE] = {};
+  auto m_u64 = reinterpret_cast<u64 *>(m_u32);
+#pragma unroll
+  for (unsigned i = 0; i < 4; i++)
+    m_u64[i] = seed[i];
+  const u64 chunk = static_cast<u64>(chunk_steps) * 32;
+  while (true) {
+    u64 index = 0;
+    if (lane == 0)
+      index = atomicAdd(counter_ptr, 1ull);
+    index = __shfl_sync(0xffffffffu, index, 0);
+    const u64 start = index * chunk;
+    if (index >= POW_STOP || __umul64hi(index, chunk) != 0 || start >= max_nonce)
+      return;
+    const u64 remaining = max_nonce - start;
+    bool hit = false;
+    bool stopped = false;
+#pragma unroll 1
+    for (u32 step = 0; step < chunk_steps; step++) {
+      const u64 offset = step * 32 + lane;
+      if (offset < remaining) {
+        const u64 nonce = start + offset;
+        m_u64[STATE_SIZE / 2] = nonce;
+        u32 state[STATE_SIZE];
+        initialize(state);
+        u32 t = 0;
+        compress<true>(state, t, m_u32, STATE_SIZE + 2);
+        if (!(state[0] & digest_mask)) {
+          if constexpr (DETERMINISTIC)
+            atomicMin(result_ptr, static_cast<unsigned long long>(nonce));
+          else
+            atomicCAS(result_ptr, UINT64_MAX, static_cast<unsigned long long>(nonce));
+          hit = true;
+        }
+      }
+      if (!stopped && __any_sync(0xffffffffu, hit)) {
+        if (lane == 0)
+          atomicMax(counter_ptr, static_cast<unsigned long long>(POW_STOP));
+        stopped = true;
+        if constexpr (!DETERMINISTIC)
+          return;
+      }
+    }
+    if (stopped)
+      return;
+  }
+}
+
 } // namespace airbender::hash
