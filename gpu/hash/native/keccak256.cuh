@@ -18,6 +18,20 @@ static_assert(sizeof(digest) == 32);
 static_assert(alignof(digest) == 4);
 static_assert(std::is_standard_layout_v<digest>);
 
+// Digest global memory access as two 16-byte vectors (the address must be 16-byte aligned).
+DEVICE_FORCEINLINE digest load_digest(const digest *address) {
+  const uint4 *vectors = reinterpret_cast<const uint4 *>(address);
+  const uint4 lo = vectors[0];
+  const uint4 hi = vectors[1];
+  return {{lo.x, lo.y, lo.z, lo.w, hi.x, hi.y, hi.z, hi.w}};
+}
+
+DEVICE_FORCEINLINE void store_digest(digest *address, const digest &value) {
+  uint4 *vectors = reinterpret_cast<uint4 *>(address);
+  vectors[0] = make_uint4(value.words[0], value.words[1], value.words[2], value.words[3]);
+  vectors[1] = make_uint4(value.words[4], value.words[5], value.words[6], value.words[7]);
+}
+
 DEVICE_FORCEINLINE u64 rotate_left(u64 value, unsigned shift) { return shift == 0 ? value : (value << shift) | (value >> (64 - shift)); }
 
 DEVICE_FORCEINLINE u32 byte_swap(u32 value) { return __byte_perm(value, 0, 0x0123); }

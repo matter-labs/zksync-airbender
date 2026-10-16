@@ -198,6 +198,10 @@ fn launch_nodes(
     dst: *mut Digest,
     stream: &CudaStream,
 ) -> CudaResult<()> {
+    assert!(
+        (src as usize).is_multiple_of(16) && (dst as usize).is_multiple_of(16),
+        "keccak256::{name}: node digests must be 16-byte aligned"
+    );
     let grid = grid_dim(
         name,
         checked_product(name, cosets_in_tile as usize, count),

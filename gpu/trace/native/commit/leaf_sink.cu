@@ -8,6 +8,7 @@ using ::airbender::hash::keccak256::digest;
 using ::airbender::hash::keccak256::hash_node;
 using ::airbender::hash::keccak256::leaf_sponge;
 using ::airbender::hash::keccak256::static_for;
+using ::airbender::hash::keccak256::store_digest;
 
 // Tiles [first_tile, first_tile + tiles) of the suffix tile layout [coset][tile][column][f_lo][w][2^V]: one thread per
 // leaf j = g + 2^a f_lo, g = (first_tile + tile) 2^sb + w; the block's 256 leaves give its depth-TREE_DEPTH nodes
@@ -263,7 +264,7 @@ DEVICE_FORCEINLINE void residue_sink(const pr *monomials, digest *leaves, const 
   const u32 position = bitreverse_low_bits(tid % M, H);
   leaf_sponge<2 * VALUES, true> sponge;
   static_for<VALUES>([&](auto t) { sponge.template absorb_element<decltype(t)::value>(values[(c * VALUES + decltype(t)::value) * M + position]); });
-  leaves[static_cast<u64>(first) * M + tid] = sponge.finalize();
+  store_digest(leaves + static_cast<u64>(first) * M + tid, sponge.finalize());
 }
 
 #define RESIDUE_SINK_KERNEL(LOG_N, V, COSETS)                                                                                                                  \

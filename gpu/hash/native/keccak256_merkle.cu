@@ -54,7 +54,7 @@ EXTERN __global__ void ab_keccak256_nodes_kernel(const digest *src, const u64 co
   const u64 coset = gid / count;
   const u64 index = gid % count;
   const digest *children = src + coset * src_stride + 2 * index;
-  dst[coset * dst_stride + index] = hash_node(children[0], children[1]);
+  store_digest(dst + coset * dst_stride + index, hash_node(load_digest(children), load_digest(children + 1)));
 }
 
 EXTERN __global__ void ab_keccak256_gather_cap_kernel(const digest *src, const u64 count, digest *dst) {

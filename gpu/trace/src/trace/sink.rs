@@ -894,6 +894,10 @@ pub fn commit_residue_cosets(
         residue_scratch_len(log_n, log_v, skip_bottom, cosets),
         "residue sink: scratch length"
     );
+    assert!(
+        (scratch.as_ptr() as usize).is_multiple_of(16),
+        "residue sink: scratch must be 16-byte aligned"
+    );
     let chunk = residue_chunk_cosets(log_n, log_v, skip_bottom, cosets);
     let (leaves, rest) = scratch.split_at_mut(chunk << h);
     for c0 in (0..cosets).step_by(chunk) {
