@@ -48,6 +48,8 @@ leaf_sink_kernel!(ab_pr_leaf_sink_7_2_3_commit_kernel);
 leaf_sink_kernel!(ab_pr_leaf_sink_13_1_3_commit_kernel);
 leaf_sink_kernel!(ab_pr_leaf_sink_1_3_5_coefficient_tree_kernel);
 leaf_sink_kernel!(ab_pr_leaf_sink_1_4_5_coefficient_tree_kernel);
+leaf_sink_kernel!(ab_pr_leaf_sink_1_3_5_residue_tree_kernel);
+leaf_sink_kernel!(ab_pr_leaf_sink_1_4_5_residue_tree_kernel);
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -109,21 +111,27 @@ pub fn sink_tree_depth(mode: &SinkMode, skip_bottom: u32) -> u32 {
     }
 }
 
+// CoefficientTree leaves come from the residue-tree kernels (the group before its last log_v stages,
+// unscaled by the coset power); the converting kernels (last log_v stages, then the leaf conversion)
+// are the reference.
 fn leaf_sink_function(
     columns: u32,
     log_v: u32,
     tree_depth: u32,
     mode: &SinkMode,
+    converted: bool,
 ) -> Option<LeafSinkFunction> {
     let commit = matches!(mode, SinkMode::Commit);
     Some(LeafSinkFunction(
-        match (columns, log_v, tree_depth, commit) {
-            (1, 2, 3, true) => ab_pr_leaf_sink_1_2_3_commit_kernel,
-            (2, 1, 3, true) => ab_pr_leaf_sink_2_1_3_commit_kernel,
-            (7, 2, 3, true) => ab_pr_leaf_sink_7_2_3_commit_kernel,
-            (13, 1, 3, true) => ab_pr_leaf_sink_13_1_3_commit_kernel,
-            (1, 3, 5, false) => ab_pr_leaf_sink_1_3_5_coefficient_tree_kernel,
-            (1, 4, 5, false) => ab_pr_leaf_sink_1_4_5_coefficient_tree_kernel,
+        match (columns, log_v, tree_depth, commit, converted) {
+            (1, 2, 3, true, _) => ab_pr_leaf_sink_1_2_3_commit_kernel,
+            (2, 1, 3, true, _) => ab_pr_leaf_sink_2_1_3_commit_kernel,
+            (7, 2, 3, true, _) => ab_pr_leaf_sink_7_2_3_commit_kernel,
+            (13, 1, 3, true, _) => ab_pr_leaf_sink_13_1_3_commit_kernel,
+            (1, 3, 5, false, false) => ab_pr_leaf_sink_1_3_5_residue_tree_kernel,
+            (1, 4, 5, false, false) => ab_pr_leaf_sink_1_4_5_residue_tree_kernel,
+            (1, 3, 5, false, true) => ab_pr_leaf_sink_1_3_5_coefficient_tree_kernel,
+            (1, 4, 5, false, true) => ab_pr_leaf_sink_1_4_5_coefficient_tree_kernel,
             _ => return None,
         },
     ))
@@ -145,6 +153,7 @@ pub fn has_leaf_sink(shape: &SuffixShape, mode: &SinkMode) -> bool {
             shape.log_v,
             sink_tree_depth(mode, shape.skip_bottom),
             mode,
+            false,
         )
         .is_some()
 }
@@ -173,7 +182,7 @@ pub(crate) fn sink_launch(
 ) -> SinkLaunch {
     let tree_depth = sink_tree_depth(mode, shape.skip_bottom);
     assert!(
-        leaf_sink_function(shape.columns, shape.log_v, tree_depth, mode).is_some(),
+        leaf_sink_function(shape.columns, shape.log_v, tree_depth, mode, false).is_some(),
         "leaf sink: no kernel for {} columns, log_v {}, skip_bottom {}, {mode:?}",
         shape.columns,
         shape.log_v,
@@ -272,6 +281,65 @@ pub fn launch_sink(
     out_coset_stride: usize,
     stream: &CudaStream,
 ) -> CudaResult<()> {
+    launch_leaf_sink(
+        ctx,
+        tiles,
+        shape,
+        first_tile,
+        tile_count,
+        cosets,
+        mode,
+        out,
+        out_coset_stride,
+        false,
+        stream,
+    )
+}
+
+// `launch_sink` with the converting CoefficientTree kernels (the reference of the residue-tree ones).
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn launch_sink_converted(
+    ctx: &DeviceContext,
+    tiles: &DeviceSlice<PR>,
+    shape: &SuffixShape,
+    first_tile: u32,
+    tile_count: u32,
+    cosets: u32,
+    mode: SinkMode,
+    out: &mut DeviceSlice<Digest>,
+    out_coset_stride: usize,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    launch_leaf_sink(
+        ctx,
+        tiles,
+        shape,
+        first_tile,
+        tile_count,
+        cosets,
+        mode,
+        out,
+        out_coset_stride,
+        true,
+        stream,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn launch_leaf_sink(
+    ctx: &DeviceContext,
+    tiles: &DeviceSlice<PR>,
+    shape: &SuffixShape,
+    first_tile: u32,
+    tile_count: u32,
+    cosets: u32,
+    mode: SinkMode,
+    out: &mut DeviceSlice<Digest>,
+    out_coset_stride: usize,
+    converted: bool,
+    stream: &CudaStream,
+) -> CudaResult<()> {
     let launch = sink_launch(
         ctx.log_max_domain(),
         shape,
@@ -308,8 +376,14 @@ pub fn launch_sink(
         k0,
         reserved: 0,
     };
-    let function =
-        leaf_sink_function(shape.columns, shape.log_v, launch.tree_depth, &mode).unwrap();
+    let function = leaf_sink_function(
+        shape.columns,
+        shape.log_v,
+        launch.tree_depth,
+        &mode,
+        converted,
+    )
+    .unwrap();
     function.launch(
         &CudaLaunchConfig::basic(launch.grid, 256, stream),
         &LeafSinkArguments::new(args, ctx.descriptor()),

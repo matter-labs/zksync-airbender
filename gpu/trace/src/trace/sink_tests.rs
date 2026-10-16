@@ -14,7 +14,8 @@ use gpu_ntt::proth120::{
 
 use super::packed::retained_len;
 use super::sink::{
-    commit_coset, commit_coset_scratch_lens, launch_sink, sink_launch, SinkLaunch, SinkMode,
+    commit_coset, commit_coset_scratch_lens, launch_sink, launch_sink_converted, sink_launch,
+    SinkLaunch, SinkMode,
 };
 use crate::upstream::{domain_generator_for_size, Field};
 
@@ -330,7 +331,8 @@ fn sink_commit_matches_reference() {
 }
 
 // CoefficientTree sink over batched cosets (one micro + one sink launch per batch of cosets)
-// against lde_coset + convert_coset_leaves + the partial tree, per coset.
+// against lde_coset + convert_coset_leaves + the partial tree, per coset; the residue-tree sink
+// nodes equal the converting kernel's.
 #[test]
 #[cfg(not(no_cuda))]
 fn sink_coefficient_tree_matches_reference() {
@@ -400,6 +402,32 @@ fn sink_coefficient_tree_matches_reference() {
             &stream,
         )
         .unwrap();
+        let mut converted = DeviceAllocation::<Digest>::alloc(cosets as usize * per_coset).unwrap();
+        launch_sink_converted(
+            &ctx,
+            &tiles,
+            &s,
+            0,
+            tiles_per_coset,
+            cosets,
+            SinkMode::CoefficientTree { log_domain, k0 },
+            &mut converted,
+            per_coset,
+            &stream,
+        )
+        .unwrap();
+        let sink_nodes = 1usize << (h - skip_bottom);
+        let residue_nodes = download(&retained, &stream);
+        let converted_nodes = download(&converted, &stream);
+        for coset in 0..cosets as usize {
+            let range = coset * per_coset..coset * per_coset + sink_nodes;
+            assert_eq!(
+                residue_nodes[range.clone()],
+                converted_nodes[range],
+                "({log_n},{log_v},D {log_domain}) coset {}: residue-tree and converting sinks differ",
+                k0 as usize + coset
+            );
+        }
         build_retained_layers(h, skip_bottom, cosets, per_coset, &mut retained, &stream).unwrap();
         let candidate = download(&retained, &stream);
 

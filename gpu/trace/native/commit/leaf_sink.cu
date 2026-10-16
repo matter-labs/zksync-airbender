@@ -87,9 +87,15 @@ template <u32 V, class T> DEVICE_FORCEINLINE void finish_leaf_group(pr (&x)[1u <
   }
 }
 
-template <u32 C, u32 V, u32 TREE_DEPTH, bool CONVERT, bool OPEN>
+// The hashed leaf of a group: its evaluations (Commit), or its residues P_r(y) (CoefficientTree) either through the last V
+// stages and the leaf conversion (converted) or straight from the group before the last V stages, which holds
+// a^r P_r(y) for the coset scale a = w_D^k (residues).
+enum class leaf_form : u32 { evaluations, converted, residues };
+
+template <u32 C, u32 V, u32 TREE_DEPTH, leaf_form FORM, bool OPEN>
 DEVICE_FORCEINLINE void leaf_sink(const leaf_sink_args &args, const leaf_open_args &open, const proth120_twiddle_descriptor &d) {
-  static_assert(TREE_DEPTH >= 3 && TREE_DEPTH <= 8 && (!OPEN || (TREE_DEPTH == 3 && !CONVERT)));
+  static_assert(TREE_DEPTH >= 3 && TREE_DEPTH <= 8 && (!OPEN || (TREE_DEPTH == 3 && FORM == leaf_form::evaluations)));
+  static_assert(FORM != leaf_form::residues || C == 1);
   constexpr u32 VALUES = 1u << V;
   __shared__ digest leaves[256];
   __shared__ digest layer_1[128];
@@ -123,7 +129,7 @@ DEVICE_FORCEINLINE void leaf_sink(const leaf_sink_args &args, const leaf_open_ar
   // The column loop's twiddles (C > 1) and the leaf elements absorbed after the first permutation (C = 1, V = 4) wait in
   // shared memory instead of registers, [entry][thread].
   constexpr u32 HOISTED = C > 1 ? VALUES - 1 : 0;
-  constexpr u32 PARKED = C == 1 && VALUES > 8 ? VALUES - 8 : 0;
+  constexpr u32 PARKED = C == 1 && VALUES > 8 && FORM != leaf_form::residues ? VALUES - 8 : 0;
   __shared__ pr waiting[(HOISTED > PARKED ? HOISTED : PARKED) * 256 + 1];
   if constexpr (HOISTED) {
 #pragma unroll
@@ -138,40 +144,56 @@ DEVICE_FORCEINLINE void leaf_sink(const leaf_sink_args &args, const leaf_open_ar
     else
       return get_forward_pr_twiddle(d, (region << u) + z);
   };
+  __shared__ pr unscale[FORM == leaf_form::residues ? VALUES : 1];
+  if constexpr (FORM == leaf_form::residues) {
+    if (tid < VALUES) {
+      const u32 log_l = d.log_max_domain;
+      const u64 k = args.k0 + blockIdx.z;
+      unscale[tid] = pr_root_power_inv(d, ((k * tid) << (log_l - args.log_domain)) & ((u64{1} << log_l) - 1));
+    }
+    __syncthreads();
+  }
   pr base_root_inv{};
-  if constexpr (CONVERT) {
+  if constexpr (FORM == leaf_form::converted) {
     const u32 log_l = d.log_max_domain;
     const u64 k = args.k0 + blockIdx.z;
     const u64 mask = (u64{1} << log_l) - 1;
     base_root_inv = pr_root_power_inv(d, ((k << (log_l - args.log_domain)) + (static_cast<u64>(leaf.j) << (log_l - args.log_n))) & mask);
   }
   leaf_sponge<2 * C * VALUES, true> sponge;
-  static_for<C>([&](auto column) {
-    pr x[VALUES];
-#pragma unroll
-    for (u32 t = 0; t < VALUES; t++)
-      x[t] = load_in_order(group + decltype(column)::value * column_stride + t);
-    finish_leaf_group<V>(x, twiddle);
-    if constexpr (CONVERT)
-      ab_pr_convert_leaf<V>(d, x, base_root_inv);
-    if constexpr (OPEN) {
-      for (u32 i = 0; i < hit_count; i++) {
-        const u32 q = hits[i];
-        if (open.queries[q] >> open.log_lde == leaf.j) {
-#pragma unroll
-          for (u32 t = 0; t < VALUES; t++)
-            open.leaves[static_cast<u64>(q) * C * VALUES + t * C + decltype(column)::value] = x[t];
-        }
-      }
-    }
+  if constexpr (FORM == leaf_form::residues)
     static_for<VALUES>([&](auto t) {
       constexpr u32 T = decltype(t)::value;
-      if constexpr (PARKED && T >= 8)
-        waiting[(T - 8) * 256 + tid] = x[T];
-      else
-        sponge.template absorb_element<decltype(column)::value * VALUES + T>(x[T]);
+      const pr x = load_in_order(group + T);
+      sponge.template absorb_element<T>(T == 0 ? x : pr::mul(x, unscale[T]));
     });
-  });
+  else
+    static_for<C>([&](auto column) {
+      pr x[VALUES];
+#pragma unroll
+      for (u32 t = 0; t < VALUES; t++)
+        x[t] = load_in_order(group + decltype(column)::value * column_stride + t);
+      finish_leaf_group<V>(x, twiddle);
+      if constexpr (FORM == leaf_form::converted)
+        ab_pr_convert_leaf<V>(d, x, base_root_inv);
+      if constexpr (OPEN) {
+        for (u32 i = 0; i < hit_count; i++) {
+          const u32 q = hits[i];
+          if (open.queries[q] >> open.log_lde == leaf.j) {
+#pragma unroll
+            for (u32 t = 0; t < VALUES; t++)
+              open.leaves[static_cast<u64>(q) * C * VALUES + t * C + decltype(column)::value] = x[t];
+          }
+        }
+      }
+      static_for<VALUES>([&](auto t) {
+        constexpr u32 T = decltype(t)::value;
+        if constexpr (PARKED && T >= 8)
+          waiting[(T - 8) * 256 + tid] = x[T];
+        else
+          sponge.template absorb_element<decltype(column)::value * VALUES + T>(x[T]);
+      });
+    });
   static_for<PARKED>([&](auto t) { sponge.template absorb_element<8 + decltype(t)::value>(waiting[decltype(t)::value * 256 + tid]); });
   leaves[tid] = sponge.finalize();
   __syncthreads();
@@ -277,24 +299,26 @@ RESIDUE_SINK_KERNEL(8, 4, 8)
 RESIDUE_SINK_KERNEL(11, 3, 1)
 RESIDUE_SINK_KERNEL(11, 4, 1)
 
-#define LEAF_SINK_KERNEL(C, V, TREE_DEPTH, MODE, CONVERT)                                                                                                      \
-  EXTERN __launch_bounds__(256, 2)                                                                                                                             \
-      __global__ void ab_pr_leaf_sink_##C##_##V##_##TREE_DEPTH##_##MODE##_kernel(const leaf_sink_args args, const proth120_twiddle_descriptor d) {             \
-    leaf_sink<C, V, TREE_DEPTH, CONVERT, false>(args, {}, d);                                                                                                  \
+#define LEAF_SINK_KERNEL(C, V, TREE_DEPTH, MODE, FORM, BLOCKS)                                                                                                 \
+  EXTERN __launch_bounds__(256, BLOCKS)                                                                                                                        \
+  __global__ void ab_pr_leaf_sink_##C##_##V##_##TREE_DEPTH##_##MODE##_kernel(const leaf_sink_args args, const proth120_twiddle_descriptor d) {                 \
+    leaf_sink<C, V, TREE_DEPTH, leaf_form::FORM, false>(args, {}, d);                                                                                          \
   }
 
 #define LEAF_OPEN_KERNEL(C, V)                                                                                                                                 \
   EXTERN __launch_bounds__(256, 2)                                                                                                                             \
       __global__ void ab_pr_leaf_sink_##C##_##V##_3_open_kernel(const leaf_sink_args args, const leaf_open_args open, const proth120_twiddle_descriptor d) {   \
-    leaf_sink<C, V, 3, false, true>(args, open, d);                                                                                                            \
+    leaf_sink<C, V, 3, leaf_form::evaluations, true>(args, open, d);                                                                                           \
   }
 
-LEAF_SINK_KERNEL(1, 2, 3, commit, false)
-LEAF_SINK_KERNEL(2, 1, 3, commit, false)
-LEAF_SINK_KERNEL(7, 2, 3, commit, false)
-LEAF_SINK_KERNEL(13, 1, 3, commit, false)
-LEAF_SINK_KERNEL(1, 3, 5, coefficient_tree, true)
-LEAF_SINK_KERNEL(1, 4, 5, coefficient_tree, true)
+LEAF_SINK_KERNEL(1, 2, 3, commit, evaluations, 2)
+LEAF_SINK_KERNEL(2, 1, 3, commit, evaluations, 2)
+LEAF_SINK_KERNEL(7, 2, 3, commit, evaluations, 2)
+LEAF_SINK_KERNEL(13, 1, 3, commit, evaluations, 2)
+LEAF_SINK_KERNEL(1, 3, 5, coefficient_tree, converted, 2)
+LEAF_SINK_KERNEL(1, 4, 5, coefficient_tree, converted, 2)
+LEAF_SINK_KERNEL(1, 3, 5, residue_tree, residues, 3)
+LEAF_SINK_KERNEL(1, 4, 5, residue_tree, residues, 3)
 LEAF_OPEN_KERNEL(1, 2)
 LEAF_OPEN_KERNEL(2, 1)
 LEAF_OPEN_KERNEL(7, 2)
