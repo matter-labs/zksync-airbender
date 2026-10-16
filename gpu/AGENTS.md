@@ -107,11 +107,13 @@ root in `gkr_eval_ir`; `gpu_gkr_compiler` depends on it.
   upward threads a `&ProverContext` through its scheduling functions. See
   [`prover_context/AGENTS.md`](prover_context/AGENTS.md).
 - **`gpu_trace`** = witness generation (`witness/**`) + trace commit/holder
-  (`trace/**`), with its own `gpu_trace_native` (52 kernels: 24 literal + 28
-  token-pasted witness and fused stage-1 kernels, two per circuit under
-  `witness/circuits/`), namespace `airbender::trace::witness::*`.
-  Self-contained (only `gpu_core`'s base headers; no `export_include`, no
-  PoW kernel). Owns the upstream-constant drift guards (compile-time asserts
+  (`trace/**`), with its own `gpu_trace_native` (64 kernels: 24 literal + 28
+  token-pasted BabyBear witness and fused stage-1 kernels, two per circuit under
+  `witness/circuits/`, 6 Proth120 witness kernels incl. one test probe, and the
+  6 leaf-sink kernels), namespace `airbender::trace::witness::*`.
+  The witness sources need only `gpu_core`'s base headers; the Proth120 leaf
+  sink (`commit/leaf_sink.cu`, `airbender::trace::commit`) also reads
+  gpu_ntt's and gpu_hash's exported headers. No `export_include`, no PoW kernel. Owns the upstream-constant drift guards (compile-time asserts
   in `src/witness/mod.rs`) for witness-circuit constants borrowed from `cs`
   / `common_constants`. See [`trace/AGENTS.md`](trace/AGENTS.md).
 - **`gpu_gkr`** = the GKR engine (forward pass, backward/sumcheck rounds,
@@ -160,7 +162,7 @@ tests live in `gpu/execution_prover/tests/program.rs`, behind `verifiers`.
   behavior that should apply to all kernel crates.
 - **C++ namespace = owning crate:** `airbender::hash` (gpu_hash),
   `airbender::ntt` (gpu_ntt), `airbender::ops::*` (gpu_ops),
-  `airbender::primitives::*` (gpu_core); `airbender::trace::witness::*`
+  `airbender::primitives::*` (gpu_core); `airbender::trace::{witness::*, commit}`
   (gpu_trace); `airbender::gkr::{backward, forward, ops, setup}` (gpu_gkr);
   `airbender::whir` (gpu_whir). `circuit_prover` owns no kernels of its own
   (no `native/` tree) — it no longer has an `airbender::witness::*` or

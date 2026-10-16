@@ -447,23 +447,98 @@ fn build_partial_coset_trees_impl(
             )?;
         }
     }
-    let log_leaves = shape.leaves.log_leaves;
-    let base = retained.as_mut_ptr();
+    retained_layers(
+        name,
+        shape.leaves.log_leaves,
+        skip_bottom,
+        cosets_in_tile,
+        tile.retained_stride,
+        retained.as_mut_ptr(),
+        stream,
+    )
+}
+
+fn retained_layers(
+    name: &str,
+    log_leaves: u32,
+    skip_bottom: u32,
+    cosets_in_tile: u32,
+    retained_stride: u64,
+    base: *mut Digest,
+    stream: &CudaStream,
+) -> CudaResult<()> {
     for layer in skip_bottom..log_leaves {
         let src = retained_layer_offset(log_leaves, skip_bottom, layer);
         let dst = retained_layer_offset(log_leaves, skip_bottom, layer + 1);
         launch_nodes(
             name,
             unsafe { base.add(src) },
-            shape.leaves.leaves >> (layer + 1),
+            1usize << (log_leaves - layer - 1),
             cosets_in_tile,
-            tile.retained_stride,
-            tile.retained_stride,
+            retained_stride,
+            retained_stride,
             unsafe { base.add(dst) },
             stream,
         )?;
     }
     Ok(())
+}
+
+// Layers skip_bottom + 1..=log_leaves of `cosets_in_tile` retained trees whose layer skip_bottom
+// is in place (retained[coset * retained_stride + subtree]).
+pub fn build_retained_layers(
+    log_leaves: u32,
+    skip_bottom: u32,
+    cosets_in_tile: u32,
+    retained_stride: usize,
+    retained: &mut DeviceSlice<Digest>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    const NAME: &str = "build_retained_layers";
+    let per_coset = retained_layer_offset(log_leaves, skip_bottom, log_leaves) + 1;
+    assert!(
+        retained.len() >= tile_extent(NAME, cosets_in_tile, retained_stride, per_coset),
+        "keccak256::{NAME}: retained.len() >= (cosets_in_tile - 1) * retained_stride + retained per coset"
+    );
+    retained_layers(
+        NAME,
+        log_leaves,
+        skip_bottom,
+        cosets_in_tile,
+        checked_u64(NAME, retained_stride),
+        retained.as_mut_ptr(),
+        stream,
+    )
+}
+
+// Roots of every 2^layers consecutive digests of `src` (1 <= layers <= 5), e.g. the depth-10
+// subtree roots of a coset from its depth-8 sub-roots.
+pub fn reduce_digests(
+    src: &DeviceSlice<Digest>,
+    layers: u32,
+    dst: &mut DeviceSlice<Digest>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    const NAME: &str = "reduce_digests";
+    assert!(
+        (1..=LOG_WARP_SIZE).contains(&layers),
+        "keccak256::{NAME}: 1 <= layers <= 5"
+    );
+    assert_eq!(
+        Some(src.len()),
+        dst.len().checked_mul(1 << layers),
+        "keccak256::{NAME}: src.len() == dst.len() << layers"
+    );
+    assert_no_overlap(NAME, src, dst);
+    let args = ReduceRootsArguments::new(
+        src.as_ptr(),
+        checked_u64(NAME, dst.len()),
+        layers,
+        dst.as_mut_ptr(),
+    );
+    let grid = grid_dim(NAME, src.len(), BLOCK_THREADS);
+    ReduceRootsFunction::default()
+        .launch(&CudaLaunchConfig::basic(grid, BLOCK_THREADS, stream), &args)
 }
 
 pub fn build_top_tree(

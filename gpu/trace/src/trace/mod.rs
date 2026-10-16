@@ -6,4 +6,7 @@ pub mod holder;
 pub mod memory;
 pub mod memory_transfer;
 pub mod packed;
+pub mod sink;
+#[cfg(test)]
+mod sink_tests;
 pub mod tracing_data;
