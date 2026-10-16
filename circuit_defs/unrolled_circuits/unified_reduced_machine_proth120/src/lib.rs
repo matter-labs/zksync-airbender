@@ -122,7 +122,7 @@ pub mod l1_wrap_2p21 {
                 config.lde_factor.trailing_zeros() as usize,
                 total_base_oracle_columns(&circuit),
             );
-            assert_eq!(batching_pow, 16);
+            assert_eq!(batching_pow, 18);
         }
 
         #[test]

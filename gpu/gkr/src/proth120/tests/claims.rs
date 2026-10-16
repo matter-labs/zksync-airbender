@@ -218,7 +218,7 @@ fn pr_packed_merge_transcript_matches_cpu() {
         config.lde_factor.trailing_zeros() as usize,
         raw_columns,
     );
-    assert_eq!(cpu_bits, 16);
+    assert_eq!(cpu_bits, 18);
     for initial_seed in [[0u8; 32], [0xffu8; 32]] {
         for bits in [0, cpu_bits] {
             let mut host_seed = Keccak256Seed(initial_seed);
@@ -625,7 +625,7 @@ fn schedule_fixture_full(context: &gpu_prover_context::ProverContext) -> Schedul
             config.whir_schedule.base_lde_factor.trailing_zeros() as usize,
             prover::gkr::prover_config::pow_bits::total_base_oracle_columns(&artifact),
         );
-    assert_eq!(batching_pow_bits, 16);
+    assert_eq!(batching_pow_bits, 18);
     let output = crate::proth120::schedule_gkr(
         Arc::clone(&programs),
         &base,
@@ -876,10 +876,10 @@ fn pr_schedule_gkr_small_shape() {
                 .trailing_zeros() as usize,
             prover::gkr::prover_config::pow_bits::total_base_oracle_columns(&artifact)
         ),
-        16
+        18
     );
     let (next_seed, nonce) =
-        <Keccak256Transcript as Transcript<PR, PR>>::search_pow(&seed, 16, &worker);
+        <Keccak256Transcript as Transcript<PR, PR>>::search_pow(&seed, 18, &worker);
     seed = next_seed;
     let batching_challenge = draw_random_field_els::<PR, PR, Keccak256Transcript>(&mut seed, 1)[0];
     let products: Vec<[PR; 2]> = [
