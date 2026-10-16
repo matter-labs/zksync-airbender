@@ -748,11 +748,14 @@ _Then comes the Verifier PCS Schedule Section_
 - **PCS-OOD Soundness Gain+Loss**
 
 - **WHIR (OOD, etc) Soundness Loss**
+  - mention grinding before every non-ood query round
 
 - **Batched (DEEP) WHIR Soundness Loss**
+  - mention grinding for the batch because the number of queries is reduced
+  - a rather complicated computation of errors here, binding together RLC batching for compression, MCA for proximity, LIST for combinations, QUERY for RLC consistency.
+ε_total ≤ ε_comb + ε_queries + ε_folding + ε_OOD + ε_binding. Most of it from WHIR paper (collection of other results)
 
-- **Grinding (PoW) Soundness Gain**
-  - grinding is a technique whereby a small amount of completeness loss is exchanged for a large amount of soundness gain
+- **Grinding (PoW) Soundness Gain** is a technique whereby a small amount of completeness loss is exchanged for a large amount of soundness gain. Before drawing a specific batch of challenges, the Prover performs a search approximately $2^{PoW+\epsilon}$ values to find a $(PoW+\epsilon)$-bit nonce which once appended to the Fiat-Shamir transcript will yield a hash output with $PoW$ leading bits set to zero. The Verifier then proceeds with drawing from the transcript, validating and discarding these leading bits. The technique significantly restricts the number of theoretically valid transcript combinations, however it also exponentially aguments soundness by boosting challenge querying security bits by as many bits as are required to be leading zeros. When the Prover has access to a parallel computational accelerator, such "grinding" searches yield a minimal impact on Prover runtime for a significant security boost. This technique is used by Airbender to keep total PCS query count low (ie low proof size) and nevertheless maintaining a high level of overall security guarantee.
 
 - **PCS-Fold Soundness Loss**
   - already covered by LDE-Ratio?
