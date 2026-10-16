@@ -44,7 +44,7 @@ pub fn generate_whir_verify<MW: FieldWrapper>(whir_hash_buf_size: usize) -> Toke
         ) -> Result<(), E::Error> {
             let mut hash_buf = AlignedArray64::<u32, WHIR_HASH_BUF_SIZE>::new_uninit();
             let mut accumulator = ::verifier_common::whir::WhirAccumulator::<
-                #field_struct, #quartic_struct, MAX_POW_ENTRIES,
+                #field_struct, #quartic_struct, MAX_POW_ENTRIES, { WHIR_FOLD_STEPS.len() },
             >::new(#quartic_one);
             let (mut claim, mut cap) = verify_initial_whir_round::<I, E>(
                 initial_transcript,

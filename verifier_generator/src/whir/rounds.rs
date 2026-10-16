@@ -278,7 +278,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
             base_layer_claims: &[#quartic_struct],
             z_initial: &[#quartic_struct],
             accumulator: &mut ::verifier_common::whir::WhirAccumulator<
-                #field_struct, #quartic_struct, MAX_POW_ENTRIES,
+                #field_struct, #quartic_struct, MAX_POW_ENTRIES, { WHIR_FOLD_STEPS.len() },
             >,
             nd_source: &mut I,
         ) -> Result<(#quartic_struct, [u32; WHIR_CAP_WORDS]), E::Error> {
@@ -552,7 +552,7 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
             round_idx: usize,
             z_initial: &[#quartic_struct],
             accumulator: &mut ::verifier_common::whir::WhirAccumulator<
-                #field_struct, #quartic_struct, MAX_POW_ENTRIES,
+                #field_struct, #quartic_struct, MAX_POW_ENTRIES, { WHIR_FOLD_STEPS.len() },
             >,
             nd_source: &mut I,
         ) -> Result<(#quartic_struct, [u32; WHIR_CAP_WORDS]), E::Error> {
@@ -768,7 +768,7 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
             prev_oracle_cap: &[u32; WHIR_CAP_WORDS],
             z_initial: &[#quartic_struct],
             accumulator: &mut ::verifier_common::whir::WhirAccumulator<
-                #field_struct, #quartic_struct, MAX_POW_ENTRIES,
+                #field_struct, #quartic_struct, MAX_POW_ENTRIES, { WHIR_FOLD_STEPS.len() },
             >,
             nd_source: &mut I,
         ) -> Result<(), E::Error> {

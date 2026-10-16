@@ -53,6 +53,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
         BabyBearField,
         BabyBearExt4,
         MAX_POW_ENTRIES,
+        { WHIR_FOLD_STEPS.len() },
     >,
     nd_source: &mut I,
 ) -> Result<(BabyBearExt4, [u32; WHIR_CAP_WORDS]), E::Error> {
@@ -228,6 +229,7 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: Err
         BabyBearField,
         BabyBearExt4,
         MAX_POW_ENTRIES,
+        { WHIR_FOLD_STEPS.len() },
     >,
     nd_source: &mut I,
 ) -> Result<(BabyBearExt4, [u32; WHIR_CAP_WORDS]), E::Error> {
@@ -372,6 +374,7 @@ pub fn verify_final_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorC
         BabyBearField,
         BabyBearExt4,
         MAX_POW_ENTRIES,
+        { WHIR_FOLD_STEPS.len() },
     >,
     nd_source: &mut I,
 ) -> Result<(), E::Error> {
@@ -614,6 +617,7 @@ pub fn verify_whir<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator>(
         BabyBearField,
         BabyBearExt4,
         MAX_POW_ENTRIES,
+        { WHIR_FOLD_STEPS.len() },
     >::new(BabyBearExt4::ONE);
     let (mut claim, mut cap) = verify_initial_whir_round::<I, E>(
         initial_transcript,

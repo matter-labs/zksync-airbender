@@ -64,8 +64,8 @@ fn whir_base_pow_entries_match_embedded_extension_entries() {
         BabyBearField::from_nonreduced_u32(123_456_789),
     ];
     let z_initial: Vec<BabyBearExt4> = (0..3).map(|i| ext(30 + i)).collect();
-    let mut base = WhirAccumulator::<BabyBearField, BabyBearExt4, 8>::new(ext(3));
-    let mut embedded = WhirAccumulator::<BabyBearField, BabyBearExt4, 8>::new(ext(3));
+    let mut base = WhirAccumulator::<BabyBearField, BabyBearExt4, 8, 8>::new(ext(3));
+    let mut embedded = WhirAccumulator::<BabyBearField, BabyBearExt4, 8, 8>::new(ext(3));
 
     let ext_point = ext(4);
     let ext_coefficient = ext(5);

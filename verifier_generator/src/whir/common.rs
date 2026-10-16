@@ -226,8 +226,8 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
         }
 
         #[inline(always)]
-        pub fn fold_whir_accumulator<const MAX_POW: usize>(
-            acc: &mut ::verifier_common::whir::WhirAccumulator<#field_struct, #quartic_struct, MAX_POW>,
+        pub fn fold_whir_accumulator<const MAX_POW: usize, const MAX_OOD: usize>(
+            acc: &mut ::verifier_common::whir::WhirAccumulator<#field_struct, #quartic_struct, MAX_POW, MAX_OOD>,
             alpha: #quartic_struct,
             z_initial: &[#quartic_struct],
         ) {
@@ -279,8 +279,8 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
         }
 
         #[inline(always)]
-        pub fn push_whir_pow_entry<const MAX_POW: usize>(
-            acc: &mut ::verifier_common::whir::WhirAccumulator<#field_struct, #quartic_struct, MAX_POW>,
+        pub fn push_whir_pow_entry<const MAX_POW: usize, const MAX_OOD: usize>(
+            acc: &mut ::verifier_common::whir::WhirAccumulator<#field_struct, #quartic_struct, MAX_POW, MAX_OOD>,
             current_scalar: #quartic_struct,
             coefficient: #quartic_struct,
         ) {
@@ -292,8 +292,8 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
         }
 
         #[inline(always)]
-        pub fn push_whir_base_pow_entry<const MAX_POW: usize>(
-            acc: &mut ::verifier_common::whir::WhirAccumulator<#field_struct, #quartic_struct, MAX_POW>,
+        pub fn push_whir_base_pow_entry<const MAX_POW: usize, const MAX_OOD: usize>(
+            acc: &mut ::verifier_common::whir::WhirAccumulator<#field_struct, #quartic_struct, MAX_POW, MAX_OOD>,
             current_scalar: #field_struct,
             coefficient: #quartic_struct,
         ) {

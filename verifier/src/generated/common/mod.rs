@@ -692,8 +692,13 @@ pub unsafe fn read_and_batch_leaf<I: NonDeterminismSource<BabyBearField>>(
     }
 }
 #[inline(always)]
-pub fn fold_whir_accumulator<const MAX_POW: usize>(
-    acc: &mut ::verifier_common::whir::WhirAccumulator<BabyBearField, BabyBearExt4, MAX_POW>,
+pub fn fold_whir_accumulator<const MAX_POW: usize, const MAX_OOD: usize>(
+    acc: &mut ::verifier_common::whir::WhirAccumulator<
+        BabyBearField,
+        BabyBearExt4,
+        MAX_POW,
+        MAX_OOD,
+    >,
     alpha: BabyBearExt4,
     z_initial: &[BabyBearExt4],
 ) {
@@ -737,8 +742,13 @@ pub fn fold_whir_accumulator<const MAX_POW: usize>(
     }
 }
 #[inline(always)]
-pub fn push_whir_pow_entry<const MAX_POW: usize>(
-    acc: &mut ::verifier_common::whir::WhirAccumulator<BabyBearField, BabyBearExt4, MAX_POW>,
+pub fn push_whir_pow_entry<const MAX_POW: usize, const MAX_OOD: usize>(
+    acc: &mut ::verifier_common::whir::WhirAccumulator<
+        BabyBearField,
+        BabyBearExt4,
+        MAX_POW,
+        MAX_OOD,
+    >,
     current_scalar: BabyBearExt4,
     coefficient: BabyBearExt4,
 ) {
@@ -749,8 +759,13 @@ pub fn push_whir_pow_entry<const MAX_POW: usize>(
     });
 }
 #[inline(always)]
-pub fn push_whir_base_pow_entry<const MAX_POW: usize>(
-    acc: &mut ::verifier_common::whir::WhirAccumulator<BabyBearField, BabyBearExt4, MAX_POW>,
+pub fn push_whir_base_pow_entry<const MAX_POW: usize, const MAX_OOD: usize>(
+    acc: &mut ::verifier_common::whir::WhirAccumulator<
+        BabyBearField,
+        BabyBearExt4,
+        MAX_POW,
+        MAX_OOD,
+    >,
     current_scalar: BabyBearField,
     coefficient: BabyBearExt4,
 ) {
