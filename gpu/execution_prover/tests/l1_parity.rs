@@ -515,6 +515,103 @@ fn l1_wrap_cpu_gpu_proof_diff() {
     assert_bundle_eq(&bundle, &actual);
 }
 
+/// Exports a GPU L1 wrap proof made without `deterministic_pow` (first-hit PoW) as
+/// `target/l1_parity/l1_wrap_gpu_first_hit.json` for the EVM verifier harness
+/// (`AB_EVM_PROOF_BUNDLE`); it need not equal the CPU reference.
+#[test]
+#[ignore]
+fn l1_wrap_gpu_first_hit_proof_export() {
+    assert!(
+        !cfg!(feature = "deterministic_pow"),
+        "build with --no-default-features --features verifiers: the export is the first-hit PoW proof"
+    );
+    let mut configuration = ExecutionProverConfiguration::default();
+    configuration.backend.memory_preset = MemoryPreset::GiB30;
+    let manifest = proof_manifest(&configuration);
+    let feeder = checkpoint(&manifest, "l1_feeder.json", "L1Feeder");
+    check_file(&manifest, "l1_bundle.json");
+    let bundle = l1_bundle();
+    let programs = fsv_programs(&manifest);
+    let mut prover = ExecutionProver::with_configuration(configuration);
+    let handle = prover.add_binary(
+        ExecutionKind::L1Wrap21,
+        MachineType::Reduced,
+        programs.wrap.0,
+        programs.wrap.1,
+        None,
+        &[ProofProfile::L1Wrap],
+    );
+    let nd = build_unified_stream(&feeder.setups, &feeder.proof);
+    let result = prover.prove_l1_wrap(0, &handle, FlatResponsesSource::new_with_reads(nd));
+    let actual = ReferenceBundle {
+        proof: result.proof,
+        commitment_mode: result.commitment_mode,
+    };
+    assert_eq!(
+        actual.commitment_mode, bundle.commitment_mode,
+        "L1 wrap commitment mode differs"
+    );
+    let (e, a) = (&bundle.proof, &actual.proof);
+    eprintln!(
+        "first-hit export: byte-equal to the CPU reference: {}; lookup PoW nonce {} (reference {}), batching PoW nonce {} (reference {}), WHIR PoW nonces {:?} (reference {:?}); differing fields: {:?}",
+        bytes(&bundle) == bytes(&actual),
+        a.lookup_challenges_pow_nonce,
+        e.lookup_challenges_pow_nonce,
+        a.batched_proximity_check_pow_nonce,
+        e.batched_proximity_check_pow_nonce,
+        a.whir_proof.pow_nonces,
+        e.whir_proof.pow_nonces,
+        bundle_differences(&bundle, &actual)
+    );
+    write_bundle("l1_wrap_gpu_first_hit.json", &actual);
+}
+
+/// Profiling variant: one warmup commit + proof, then the measured
+/// commit + proof in the same process with the same setup and inputs, each inside a
+/// host NVTX range `l1_wrap.iteration.{warmup,measured}`; both must equal the reference.
+#[test]
+#[ignore]
+fn l1_wrap_cpu_gpu_proof_diff_warm() {
+    let mut configuration = ExecutionProverConfiguration::default();
+    configuration.backend.memory_preset = MemoryPreset::GiB30;
+    let manifest = proof_manifest(&configuration);
+    let feeder = checkpoint(&manifest, "l1_feeder.json", "L1Feeder");
+    check_file(&manifest, "l1_bundle.json");
+    let bundle = l1_bundle();
+    let programs = fsv_programs(&manifest);
+    let mut prover = ExecutionProver::with_configuration(configuration);
+    let handle = prover.add_binary(
+        ExecutionKind::L1Wrap21,
+        MachineType::Reduced,
+        programs.wrap.0,
+        programs.wrap.1,
+        None,
+        &[ProofProfile::L1Wrap],
+    );
+    for iteration in ["warmup", "measured"] {
+        let label = format!("l1_wrap.iteration.{iteration}");
+        let started = std::time::Instant::now();
+        let actual = {
+            let _range = gpu_core::primitives::nvtx::scoped_range(None, &label);
+            let nd = build_unified_stream(&feeder.setups, &feeder.proof);
+            let result = prover.prove_l1_wrap(0, &handle, FlatResponsesSource::new_with_reads(nd));
+            ReferenceBundle {
+                proof: result.proof,
+                commitment_mode: result.commitment_mode,
+            }
+        };
+        eprintln!(
+            "{label}: {:.3} ms wall (prove_l1_wrap incl. setup init on warmup)",
+            started.elapsed().as_secs_f64() * 1e3
+        );
+        assert_eq!(
+            actual.commitment_mode, bundle.commitment_mode,
+            "L1 wrap commitment mode differs ({iteration})"
+        );
+        assert_bundle_eq(&bundle, &actual);
+    }
+}
+
 /// The fields of `prover_pipeline`'s 2^22 feeder reference manifest these tests read.
 #[derive(Deserialize)]
 struct FeederManifest {

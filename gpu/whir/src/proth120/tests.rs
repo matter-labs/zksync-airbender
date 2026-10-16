@@ -2091,6 +2091,17 @@ fn pr_l1_whir_fold_matches_cpu_small() {
                 &shape,
                 &ctx,
             )
+            .unwrap()
+            .schedule_readback(
+                L1WhirInputs {
+                    claims: &claims_dev,
+                    base_layer_point: &point_dev,
+                    batching_challenge: &challenge_dev,
+                },
+                base.cap_digests(),
+                setup.oracle().cap_digests(),
+                &ctx,
+            )
             .unwrap();
             jobs.push((
                 scheduled,
@@ -2113,7 +2124,7 @@ fn pr_l1_whir_fold_matches_cpu_small() {
             let times = scheduled.phase_times_after_completion().unwrap();
             assert_eq!(times.len(), 17);
             assert!(times.iter().all(|(_, ms)| *ms >= 0.0));
-            let proof = scheduled.into_proof_after_completion();
+            let proof = unsafe { scheduled.into_proof_after_completion() };
             let expected_bytes = serde_json::to_vec(expected).unwrap();
             let actual_bytes = serde_json::to_vec(&proof).unwrap();
             if expected_bytes != actual_bytes {

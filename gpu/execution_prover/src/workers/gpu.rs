@@ -606,6 +606,7 @@ fn schedule_l1_wrap_phase_one<'a>(
         preflight_dr_tail_resources_pr(&precomputed.programs, FINAL_TRACE_SIZE_LOG_2, context);
     let mut inputs = L1WrapInputs::new(
         &precomputed.geometry,
+        &precomputed.programs,
         precomputed.decoder_host.clone(),
         inits_and_teardowns,
         tracing_data,

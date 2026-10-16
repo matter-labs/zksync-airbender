@@ -131,7 +131,14 @@ pub fn transcript_draw_fields(
 
 cuda_kernel!(
     Keccak256Pow,
-    ab_keccak256_pow_kernel(seed: *const u8, bits: u32, max_nonce: u64, result: *mut u64)
+    ab_keccak256_pow_kernel(
+        seed: *const u8,
+        bits: u32,
+        max_nonce: u64,
+        chunk_steps: u32,
+        counter: *mut u64,
+        result: *mut u64
+    )
 );
 
 cuda_kernel!(
@@ -175,7 +182,9 @@ fn pow_grid(name: &str, max_nonce: u64, blocks: u32) {
     );
 }
 
-pub(super) fn pow_finalize(
+pub use crate::pow::pow_chunk_steps;
+
+pub(crate) fn pow_finalize(
     seed: &mut DeviceSlice<u8>,
     bits: u32,
     nonce: &DeviceVariable<u64>,
@@ -186,14 +195,19 @@ pub(super) fn pow_finalize(
     Keccak256PowFinalizeFunction::default().launch(&single_thread(stream), &args)
 }
 
+/// With `deterministic_pow` the counter search returns the minimum valid nonce, otherwise the
+/// grid-stride search returns the first one found; `counter` is one-word scratch.
 pub fn keccak256_pow(
     seed: &mut DeviceSlice<u8>,
     bits: u32,
     nonce: &mut DeviceVariable<u64>,
+    counter: &mut DeviceVariable<u64>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     const NAME: &str = "keccak256_pow";
     pow_shape(NAME, seed, bits, nonce);
+    assert_no_overlap(NAME, nonce, counter);
+    assert_no_overlap(NAME, seed, counter);
     if bits == 0 {
         unsafe {
             memory_set_async(nonce.transmute_mut(), 0, stream)?;
@@ -209,8 +223,18 @@ pub fn keccak256_pow(
         pow_grid(NAME, u64::MAX, blocks);
         unsafe {
             memory_set_async(nonce.transmute_mut(), 0xff, stream)?;
+            if cfg!(feature = "deterministic_pow") {
+                memory_set_async(counter.transmute_mut(), 0, stream)?;
+            }
         }
-        let args = Keccak256PowArguments::new(seed.as_ptr(), bits, u64::MAX, nonce.as_mut_ptr());
+        let args = Keccak256PowArguments::new(
+            seed.as_ptr(),
+            bits,
+            u64::MAX,
+            pow_chunk_steps(bits, blocks),
+            counter.as_mut_ptr(),
+            nonce.as_mut_ptr(),
+        );
         kernel.launch(
             &CudaLaunchConfig::basic(blocks, BLOCK_THREADS, stream),
             &args,
@@ -225,14 +249,27 @@ pub(super) fn pow_search_bounded(
     bits: u32,
     max_nonce: u64,
     blocks: u32,
+    first_chunk: u64,
     nonce: &mut DeviceVariable<u64>,
+    counter: &mut DeviceVariable<u64>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     const NAME: &str = "pow_search_bounded";
     pow_shape(NAME, seed, bits, nonce);
+    assert_no_overlap(NAME, nonce, counter);
     pow_grid(NAME, max_nonce, blocks);
-    era_cudart::memory::memory_copy_async(nonce, std::slice::from_ref(&max_nonce), stream)?;
-    let args = Keccak256PowArguments::new(seed.as_ptr(), bits, max_nonce, nonce.as_mut_ptr());
+    unsafe {
+        memory_set_async(nonce.transmute_mut(), 0xff, stream)?;
+    }
+    era_cudart::memory::memory_copy_async(counter, std::slice::from_ref(&first_chunk), stream)?;
+    let args = Keccak256PowArguments::new(
+        seed.as_ptr(),
+        bits,
+        max_nonce,
+        pow_chunk_steps(bits, blocks),
+        counter.as_mut_ptr(),
+        nonce.as_mut_ptr(),
+    );
     Keccak256PowFunction::default().launch(
         &CudaLaunchConfig::basic(blocks, BLOCK_THREADS, stream),
         &args,

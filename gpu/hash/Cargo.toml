@@ -56,3 +56,13 @@ workspace = true
 name = "keccak256"
 harness = false
 required-features = ["bench"]
+
+[[bench]]
+name = "keccak_f"
+harness = false
+required-features = ["bench"]
+
+[[bench]]
+name = "pow"
+harness = false
+required-features = ["bench"]

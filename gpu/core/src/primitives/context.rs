@@ -68,6 +68,9 @@ impl<T: ?Sized> UnsafeAccessor<T> {
     /// that the referent has been initialized by prior stream ops and is not
     /// being concurrently mutated. The original holder must remain alive
     /// until that callback has been *scheduled*; see contract doc.
+    /// Read-only exception: a job's terminal D2H mirror, read in its `finish()`
+    /// after the job's completion event synchronized, while the job still owns
+    /// the allocation and nothing writes it.
     pub unsafe fn get(&self) -> &T {
         &*self.0
     }

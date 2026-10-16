@@ -2,19 +2,23 @@ use std::mem::ManuallyDrop;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 use era_cudart::memory::DeviceAllocation;
-use era_cudart::slice::{DeviceSlice, DeviceVariable};
+#[cfg(feature = "deterministic_pow")]
+use era_cudart::slice::DeviceSlice;
+use era_cudart::slice::DeviceVariable;
 use era_cudart::stream::CudaStream;
 use era_cudart_sys::CudaError;
 use sha3::{Digest as _, Keccak256};
 
+#[cfg(feature = "deterministic_pow")]
+use super::super::transcript::pow_chunk_steps;
 use super::super::transcript::{pow_finalize, pow_search_bounded};
-use super::super::{
-    keccak256_pow, pow_helpers_probe, transcript_draw_fields, transcript_draw_u32, Seed,
-};
+use super::super::{keccak256_pow, pow_helpers_probe, Seed};
+#[cfg(feature = "deterministic_pow")]
+use super::super::{transcript_draw_fields, transcript_draw_u32};
 use super::{download, test_worker, upload, TestRng};
-use crate::upstream::{
-    assemble_query_index, BitSource, Keccak256Seed, Keccak256Transcript, Proth120, Transcript,
-};
+#[cfg(feature = "deterministic_pow")]
+use crate::upstream::{assemble_query_index, BitSource};
+use crate::upstream::{Keccak256Seed, Keccak256Transcript, Proth120, Transcript};
 
 type HostTranscript = Keccak256Transcript;
 const GUARD: u8 = 0x5c;
@@ -22,6 +26,7 @@ const GUARD: u8 = 0x5c;
 struct PowState {
     seed: DeviceAllocation<u8>,
     nonce: DeviceAllocation<u64>,
+    counter: DeviceAllocation<u64>,
     offset: usize,
 }
 
@@ -32,33 +37,51 @@ impl PowState {
         Self {
             seed: upload(&bytes, stream),
             nonce: upload(&[0x5eed_5eed_5eed_5eed], stream),
+            counter: upload(&[0x5eed_5eed_5eed_5eed], stream),
             offset,
         }
     }
 
+    #[cfg(feature = "deterministic_pow")]
     fn seed_slice(&mut self) -> &mut DeviceSlice<u8> {
         &mut self.seed[self.offset..self.offset + 32]
     }
 
     fn run(&mut self, bits: u32, stream: &CudaStream) {
         let nonce = unsafe { DeviceVariable::from_raw_parts_mut(self.nonce.as_mut_ptr()) };
+        let counter = unsafe { DeviceVariable::from_raw_parts_mut(self.counter.as_mut_ptr()) };
         keccak256_pow(
             &mut self.seed[self.offset..self.offset + 32],
             bits,
             nonce,
+            counter,
             stream,
         )
         .unwrap();
     }
 
     fn search(&mut self, bits: u32, bound: u64, blocks: u32, stream: &CudaStream) {
+        self.search_from(bits, bound, blocks, 0, stream);
+    }
+
+    fn search_from(
+        &mut self,
+        bits: u32,
+        bound: u64,
+        blocks: u32,
+        first_chunk: u64,
+        stream: &CudaStream,
+    ) {
         let nonce = unsafe { DeviceVariable::from_raw_parts_mut(self.nonce.as_mut_ptr()) };
+        let counter = unsafe { DeviceVariable::from_raw_parts_mut(self.counter.as_mut_ptr()) };
         pow_search_bounded(
             &self.seed[self.offset..self.offset + 32],
             bits,
             bound,
             blocks,
+            first_chunk,
             nonce,
+            counter,
             stream,
         )
         .unwrap();
@@ -84,6 +107,11 @@ impl PowState {
 
     fn read_nonce(&self, stream: &CudaStream) -> u64 {
         download(&self.nonce, 0, stream)[0]
+    }
+
+    #[cfg(feature = "deterministic_pow")]
+    fn read_counter(&self, stream: &CudaStream) -> u64 {
+        download(&self.counter, 0, stream)[0]
     }
 }
 
@@ -121,6 +149,7 @@ fn assert_named_panic(name: &str, condition: &str, action: impl FnOnce()) {
     );
 }
 
+#[cfg(feature = "deterministic_pow")]
 #[test]
 fn keccak256_pow_min_nonce_parity() {
     let stream = CudaStream::default();
@@ -326,8 +355,8 @@ fn keccak256_pow_boundaries() {
     excluded.search(8, minimum, 1, &stream);
     assert_eq!(
         excluded.read_nonce(&stream),
-        minimum,
-        "exclusive endpoint retains the bound sentinel"
+        u64::MAX,
+        "exclusive endpoint keeps the no-hit sentinel"
     );
     assert_eq!(excluded.read_seed(&stream), endpoint_seed);
     let mut sentinel = PowState::new(&seed, 1, &stream);
@@ -341,6 +370,7 @@ fn keccak256_pow_boundaries() {
     );
 }
 
+#[cfg(feature = "deterministic_pow")]
 #[test]
 fn keccak256_pow_draw_sequence_parity() {
     let stream = CudaStream::default();
@@ -403,6 +433,88 @@ fn keccak256_pow_draw_sequence_parity() {
     );
 }
 
+#[cfg(not(feature = "deterministic_pow"))]
+#[test]
+fn keccak256_pow_first_hit_is_valid() {
+    let stream = CudaStream::default();
+    let worker = test_worker();
+    let mut rng = TestRng::new(0x706f_7766_6972);
+    let seeds = [
+        [0u8; 32],
+        std::array::from_fn(|index| index as u8),
+        std::array::from_fn(|_| rng.next_u64() as u8),
+    ];
+    for (index, seed) in seeds.iter().enumerate() {
+        for bits in [0u32, 1, 4, 8, 11, 12, 16, 20] {
+            let offset = [0, 1, 7][index];
+            let mut public = PowState::new(seed, offset, &stream);
+            public.run(bits, &stream);
+            let nonce = public.read_nonce(&stream);
+            let digest = cpu_digest(seed, nonce);
+            assert!(cpu_predicate(&digest, bits), "seed={index} bits={bits}");
+            assert_eq!(
+                public.read_seed(&stream),
+                digest,
+                "seed={index} bits={bits}"
+            );
+            let (_, minimum) = <HostTranscript as Transcript<Proth120, Proth120>>::search_pow(
+                &Keccak256Seed(*seed),
+                bits,
+                &worker,
+            );
+            let bound = minimum.checked_add(1).unwrap().max(17 * 128);
+            for blocks in [1, 2, 17] {
+                let mut bounded = PowState::new(seed, offset, &stream);
+                bounded.search(bits, bound, blocks, &stream);
+                let nonce = bounded.read_nonce(&stream);
+                assert!(nonce < bound, "seed={index} bits={bits} blocks={blocks}");
+                assert!(
+                    cpu_predicate(&cpu_digest(seed, nonce), bits),
+                    "seed={index} bits={bits} blocks={blocks}"
+                );
+            }
+            println!("pow seed={index} bits={bits} first_hit={nonce} minimum={minimum}");
+        }
+    }
+}
+
+#[cfg(feature = "deterministic_pow")]
+#[test]
+fn keccak256_pow_counter_reaches_top_of_nonce_domain() {
+    let stream = CudaStream::default();
+    let seed = [0x3cu8; 32];
+    let bits = 4;
+    for blocks in [1, 2, 17] {
+        assert_eq!(pow_chunk_steps(bits, blocks), 1);
+    }
+    let first_chunk = u64::MAX / 32 - 4;
+    let hits: Vec<u64> = (first_chunk * 32..u64::MAX)
+        .filter(|nonce| cpu_predicate(&cpu_digest(&seed, *nonce), bits))
+        .collect();
+    assert!(!hits.is_empty());
+    for blocks in [1, 2, 17] {
+        let mut state = PowState::new(&seed, 0, &stream);
+        state.search_from(bits, u64::MAX, blocks, first_chunk, &stream);
+        let nonce = state.read_nonce(&stream);
+        if cfg!(feature = "deterministic_pow") {
+            assert_eq!(nonce, hits[0], "blocks={blocks}");
+        } else {
+            assert!(hits.contains(&nonce), "blocks={blocks}");
+        }
+    }
+    let chunk = 32 * pow_chunk_steps(256, 1) as u64;
+    let last_chunk = (u64::MAX - 1) / chunk;
+    let mut state = PowState::new(&seed, 0, &stream);
+    state.search_from(256, u64::MAX, 1, last_chunk, &stream);
+    assert_eq!(state.read_nonce(&stream), u64::MAX);
+    assert_eq!(state.read_counter(&stream), last_chunk + 5);
+    let mut state = PowState::new(&seed, 0, &stream);
+    state.search_from(256, u64::MAX, 1, u64::MAX / 32, &stream);
+    assert_eq!(state.read_nonce(&stream), u64::MAX);
+    assert_eq!(state.read_counter(&stream), u64::MAX / 32 + 4);
+    println!("top-of-domain hits={} first={}", hits.len(), hits[0]);
+}
+
 #[test]
 #[ignore]
 fn keccak256_pow_exhaustion() {
@@ -412,7 +524,7 @@ fn keccak256_pow_exhaustion() {
     let stream = ManuallyDrop::new(CudaStream::default());
     let mut state = ManuallyDrop::new(PowState::new(&seed, 1, &stream));
     state.search(256, bound, 1, &stream);
-    assert_eq!(state.read_nonce(&stream), bound);
+    assert_eq!(state.read_nonce(&stream), u64::MAX);
     assert_eq!(state.read_seed(&stream), seed);
     state.finalize(256, &stream);
     let error = stream

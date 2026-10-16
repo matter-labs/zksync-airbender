@@ -11,7 +11,10 @@ use super::backward::scheduled_execution::{
     note_device, note_resource, resource_ledger_active, ResourceCountsPr, ResourceEventPr,
     ResourceIdPr, ResourceLedgerScopePr,
 };
-use super::backward::{schedule_backward_pr, DrTailProofPlanPr, GKRBackwardStageSnapshotSinkPr};
+use super::backward::{
+    schedule_backward_pr, DrTailProofPlanPr, GKRBackwardStageSnapshotSinkPr,
+    PreparedCoefficientTablesPr,
+};
 use super::forward::{
     prepare_backward_handoff_pr, schedule_forward_challenge_banks, schedule_forward_pass_pr,
 };
@@ -37,6 +40,7 @@ pub fn schedule_gkr(
     proof: &mut ProofSlabPr,
     dr_tail_plan: &DrTailProofPlanPr,
     stage_snapshots: Option<UnsafeMutAccessor<GKRBackwardStageSnapshotSinkPr>>,
+    coefficient_tables: Option<PreparedCoefficientTablesPr>,
     callbacks: &mut Callbacks<'_>,
     context: &ProverContext,
 ) -> CudaResult<GkrOutputPr> {
@@ -117,6 +121,7 @@ pub fn schedule_gkr(
         challenges,
         proof,
         stage_snapshots,
+        coefficient_tables,
         callbacks,
         context,
     )?;

@@ -14,6 +14,7 @@ use gpu_prover_context::ProverContext;
 
 use super::banks::{
     schedule_coefficient_tables_upload_pr, CoefficientTablesHostPr, CoefficientTablesPr,
+    PreparedCoefficientTablesPr,
 };
 use super::dr_tail::DrTailProofPlanPr;
 use super::eq::BackwardScratchPr;
@@ -476,6 +477,7 @@ pub fn schedule_backward_pr(
     challenges: &PackedChallenges,
     proof: &mut ProofSlabPr,
     stage_snapshots: Option<UnsafeMutAccessor<GKRBackwardStageSnapshotSinkPr>>,
+    prepared_coefficient_tables: Option<PreparedCoefficientTablesPr>,
     callbacks: &mut Callbacks<'_>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRBackwardScheduledExecutionPr> {
@@ -502,9 +504,19 @@ pub fn schedule_backward_pr(
     tracing_ranges.push(post_forward_handoff_range);
     let workflow_range = Range::new("gkr.proth120.backward.schedule")?;
     workflow_range.start(stream)?;
-    let host = CoefficientTablesHostPr::build(&programs, &inits_and_teardowns_top_bits);
-    let (coefficient_tables, coefficient_upload_callbacks) =
-        schedule_coefficient_tables_upload_pr(&host, context)?;
+    let (coefficient_tables, coefficient_upload_callbacks) = match prepared_coefficient_tables {
+        Some(prepared) => {
+            let tables = prepared.into_tables(&programs, &inits_and_teardowns_top_bits);
+            if resource_ledger_active() {
+                tables.note_resources(context, "backward", ResourceEventPr::Allocated);
+            }
+            (tables, Callbacks::new())
+        }
+        None => {
+            let host = CoefficientTablesHostPr::build(&programs, &inits_and_teardowns_top_bits);
+            schedule_coefficient_tables_upload_pr(&host, context)?
+        }
+    };
     let mut scratch = BackwardScratchPr::new(context)?;
     let mut input = LayerInputPr {
         seed: d_seed,

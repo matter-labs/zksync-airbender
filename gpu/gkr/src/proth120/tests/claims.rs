@@ -603,6 +603,7 @@ fn schedule_fixture_full(context: &gpu_prover_context::ProverContext) -> Schedul
         &mut proof,
         &dr_tail_plan,
         None,
+        None,
         &mut callbacks,
         context,
     )

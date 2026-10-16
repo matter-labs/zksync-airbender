@@ -15,7 +15,8 @@ edge cases, and wiring behind each rule.
   kernel launches, `memory_copy_async`, or host callbacks scheduled via
   `Callbacks::schedule` / `launch_host_fn`. `UnsafeAccessor::get()` /
   `UnsafeMutAccessor::get_mut()` are only valid inside stream-scheduled
-  closures.
+  closures (one read-only exception: a job's terminal D2H mirrors in its
+  `finish()`, see *D2H copies*).
 - **MUST** fill stream-ordered H2D staging buffers via a scheduled host
   callback (captured `UnsafeMutAccessor`). `.copy_from_slice(...)` right after
   allocation races the prior pool owner's outstanding DMA, even when it
@@ -26,8 +27,9 @@ edge cases, and wiring behind each rule.
   pool: the scheduling thread writes once during construction, and every stream
   operation thereafter only reads. See *SchedulerHostAllocator* below for the
   construction invariant and what belongs there.
-- **MUST** consume D2H readback buffers via a scheduled host callback, never
-  from the scheduling thread.
+- **MUST** consume D2H readback buffers via a scheduled host callback, or —
+  for a job's terminal proof-output mirrors only — in its `finish()` after its
+  completion event synchronized; never while enqueueing.
 - **MUST** fork/join any op on an auxiliary stream (`h2d_stream`)
   against `exec_stream` with explicit CUDA events. The driver gives independent
   streams no implicit ordering.
@@ -101,6 +103,11 @@ executing through the same pointer (or its DMA not yet complete), and the host
 pool allocator is not stream-aware — a freshly-allocated block may still be
 the target of an unfinished DMA from its prior owner.
 
+The one exception is read-only: a job's terminal D2H mirrors may be read in
+its `finish()` after the job's completion event synchronized (see *D2H
+copies*). What makes it legal is per-job completion plus retained ownership,
+not which thread runs `finish()`.
+
 A common mistake is to fill a host staging buffer with `.copy_from_slice(...)`
 right after allocating it, then enqueue the `memory_copy_async`. This appears
 to work when the stream is idle but breaks as soon as the buffer's pool block
@@ -131,9 +138,11 @@ once the *next* stream op holding the pointer (the memcpy after a fill, the
 consumer callback after a readback) has been **scheduled**. Never fill or read
 from the scheduling thread.
 
-**Proof output buffers**: proof data is assembled inside exec-stream callbacks
-into non-pool heap memory (`Vec`, `BTreeMap`, owned `Option<Proof>`). No
-context allocation needs to outlive the scheduling phase.
+**Proof output buffers**: proof data is assembled into non-pool heap memory
+(`Vec`, `BTreeMap`, owned `Option<Proof>`), either inside exec-stream
+callbacks or in the job's `finish()` from terminal D2H mirrors (see *D2H
+copies*). In the second case the job owns those host mirrors, so they outlive
+the scheduling phase until assembly returns.
 
 ### SchedulerHostAllocator
 
@@ -216,10 +225,19 @@ kernels do not read a buffer that is still being transferred.
 
 ## D2H copies
 
-D2H copies run on `exec_stream`. Schedule the consumer callback after the copy.
-The stream-ordered host-pool destination may be released once that callback is
-scheduled. Keep the callback owner alive until stream or event synchronization
-confirms completion: the CUDA callback dispatch holds only a weak reference.
+D2H copies run on `exec_stream`. A consumer needed while enqueueing runs in a
+callback scheduled after its copy; the stream-ordered host-pool destination may
+be released once that callback is scheduled. Keep the callback owner alive until
+stream or event synchronization confirms completion: the CUDA callback dispatch
+holds only a weak reference.
+
+A terminal proof-output mirror may instead be read on the host in the job's
+`finish()`, after that job's completion event synchronized successfully. The
+event must be recorded after every copy into the mirror (and after any
+auxiliary-stream joins it depends on); the job must own the host allocation
+until the read returns, and no later queued operation may write it. Do not read
+it if the synchronize failed, and do not replace the per-job event wait by a
+stream or device synchronize (that would also wait for later jobs).
 
 ## H2D keepalive callbacks
 

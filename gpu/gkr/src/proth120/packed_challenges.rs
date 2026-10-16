@@ -165,7 +165,8 @@ pub fn derive(
     }
     memory_copy_async(&mut words[setup_end..], merged_cap, stream)?;
     transcript_commit_initial_u32(&words, seed, stream)?;
-    keccak256_pow(seed, cfg.pow_bits, &mut nonce[0], stream)?;
+    let mut counter = context.alloc(1, AllocationPlacement::BestFit)?;
+    keccak256_pow(seed, cfg.pow_bits, &mut nonce[0], &mut counter[0], stream)?;
     transcript_draw_fields(seed, &mut challenges, stream)?;
     drop(words);
     Ok(PackedChallenges {

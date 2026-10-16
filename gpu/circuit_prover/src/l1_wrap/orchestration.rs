@@ -8,7 +8,7 @@ use era_cudart::stream::CudaStreamWaitEventFlags;
 use fft::GoodAllocator;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::callbacks::Callbacks;
-use gpu_core::primitives::context::{HostAllocation, UnsafeMutAccessor};
+use gpu_core::primitives::context::HostAllocation;
 use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::PR;
@@ -46,8 +46,9 @@ use crate::upstream::{
 pub struct GpuL1WrapProofJob<'a> {
     is_finished_event: CudaEvent,
     callbacks: Callbacks<'a>,
-    m6_fields: Box<Option<M6ProofFields>>,
-    whir: Option<L1WhirScheduled>,
+    m6_layout: Arc<ProofLayoutPr>,
+    m6_mirror: HostAllocation<[u8]>,
+    whir: L1WhirScheduled,
     top_bits_host: Vec<u32>,
     commitment_mode: CommitmentMode,
     ranges: Vec<Range>,
@@ -61,7 +62,52 @@ pub(crate) struct GpuL1WrapProofJobKeepalive<'a> {
     _relations: Proth120LookupRelations,
     _challenges: PackedChallenges,
     _gkr: GkrOutputPr,
-    _proof_host_mirror: HostAllocation<[u8]>,
+}
+
+/// Until disarmed, an early exit makes exec_stream wait for everything queued on h2d_stream,
+/// so pool blocks of a dropped upload destination are not reused under an in-flight copy.
+struct H2dJoinOnDrop<'c> {
+    context: &'c ProverContext,
+    event: CudaEvent,
+    armed: bool,
+}
+
+impl<'c> H2dJoinOnDrop<'c> {
+    fn new(context: &'c ProverContext) -> CudaResult<Self> {
+        Ok(Self {
+            context,
+            event: CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?,
+            armed: true,
+        })
+    }
+}
+
+impl Drop for H2dJoinOnDrop<'_> {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        self.event
+            .record(self.context.get_h2d_stream())
+            .and_then(|()| {
+                self.context
+                    .get_exec_stream()
+                    .wait_event(&self.event, CudaStreamWaitEventFlags::DEFAULT)
+            })
+            .expect("L1Wrap: cannot order exec_stream after the pending h2d_stream uploads");
+    }
+}
+
+fn phase(name: &str, context: &ProverContext) -> CudaResult<Range> {
+    let range = Range::new(name)?;
+    range.start(context.get_exec_stream())?;
+    Ok(range)
+}
+
+fn end_phase(range: Range, phases: &mut Vec<Range>, context: &ProverContext) -> CudaResult<()> {
+    range.end(context.get_exec_stream())?;
+    phases.push(range);
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -137,18 +183,28 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         top_bits,
         top_bits_host,
         setup_host,
+        coefficient_tables,
     } = inputs;
     let decoder = decoder.expect("L1Wrap requires a decoder table");
     let stream = context.get_exec_stream();
     let range = Range::new("l1_wrap.proof")?;
     range.start(stream)?;
     let mut callbacks = Callbacks::new();
+    let mut phases: Vec<Range> = Vec::new();
+    let relations = prepare_lookup_relations(circuit, context)?;
+    let p = phase("l1_wrap.setup_transfer", context)?;
     let mut setup = PackedSetupSource::new(Arc::clone(&setup_host), partial_trees.setup, context)?;
+    let mut setup_upload_guard = H2dJoinOnDrop::new(context)?;
+    let mut setup_raw_transfer = Transfer::new()?;
+    setup_raw_transfer.record_allocated(context)?;
+    setup.schedule_raw_transfer(&mut setup_raw_transfer, context)?;
+    setup_raw_transfer.record_transferred(context)?;
     let mut setup_transfer = Transfer::new()?;
     setup_transfer.record_allocated(context)?;
-    setup.schedule_transfer(&mut setup_transfer, context)?;
+    setup.schedule_commitment_transfer(&mut setup_transfer, context)?;
     setup_transfer.record_transferred(context)?;
-    setup_transfer.ensure_transferred(context)?;
+    end_phase(p, &mut phases, context)?;
+    let p = phase("l1_wrap.witness", context)?;
     let mut raw = TraceHolder::<PR>::new_without_cosets(
         geometry.trace_log,
         cfg.log_lde_factor,
@@ -175,7 +231,6 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         circuit.timestamp_range_check_lookup_expressions.len() * rows,
         AllocationPlacement::BestFit,
     )?;
-    let relations = prepare_lookup_relations(circuit, context)?;
     {
         let (memory, witness) = raw
             .get_uninit_hypercube_evals_mut()
@@ -204,6 +259,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         else {
             panic!("L1Wrap requires unrolled unified tracing data");
         };
+        setup_raw_transfer.ensure_transferred(context)?;
         generate_fused_values(
             circuit,
             &decoder.data_device,
@@ -253,14 +309,22 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
             )?;
         }
     }
+    end_phase(p, &mut phases, context)?;
     drop(tracing_data);
     drop(inits_and_teardowns);
     drop(decoder);
+    let p = phase("l1_wrap.pack", context)?;
     let mut base = PackedCosetRecomputeOracle::pack_from_columns(raw, geometry.pack_log2, context)?;
+    end_phase(p, &mut phases, context)?;
+    let p = phase("l1_wrap.commit", context)?;
     base.commit(&cfg, context)?;
+    end_phase(p, &mut phases, context)?;
+    let p = phase("l1_wrap.challenges", context)?;
     let mut seed = context.alloc::<u8>(32, AllocationPlacement::BestFit)?;
     memory_set_async(&mut seed, 0, stream)?;
     let challenge_config = PackedChallengeConfig::new(circuit, config, &commitment_mode, true);
+    setup_transfer.ensure_transferred(context)?;
+    setup_upload_guard.armed = false;
     let challenges = packed_challenges::derive(
         &mut seed,
         &commitment_mode,
@@ -271,6 +335,8 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         context,
     )?;
     drop(top_bits);
+    end_phase(p, &mut phases, context)?;
+    let p = phase("l1_wrap.gkr", context)?;
     let layout = Arc::new(ProofLayoutPr::new(
         programs,
         config,
@@ -306,13 +372,15 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         &mut slab,
         dr_tail_plan,
         None,
+        Some(coefficient_tables),
         &mut callbacks,
         context,
     )?;
     drop(generic);
     drop(range16);
     drop(timestamp);
-    let handoff = gkr.whir_handoff();
+    end_phase(p, &mut phases, context)?;
+    let p = phase("l1_wrap.whir", context)?;
     let shape = L1WhirShape::from_schedule(
         &config.whir_schedule,
         geometry.log_message,
@@ -320,35 +388,44 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         geometry.log_base_values_per_leaf,
         L1_WHIR_TILE_BYTES,
     );
-    let whir = schedule_l1_whir_fold(
-        &mut base,
-        &mut setup,
-        handoff.seed,
-        L1WhirInputs {
-            claims: handoff.claims,
-            base_layer_point: handoff.base_layer_point,
-            batching_challenge: handoff.batching_challenge,
-        },
-        &config.whir_schedule,
-        &shape,
-        context,
-    )?;
+    let pending = {
+        let handoff = gkr.whir_handoff();
+        schedule_l1_whir_fold(
+            &mut base,
+            &mut setup,
+            handoff.seed,
+            L1WhirInputs {
+                claims: handoff.claims,
+                base_layer_point: handoff.base_layer_point,
+                batching_challenge: handoff.batching_challenge,
+            },
+            &config.whir_schedule,
+            &shape,
+            context,
+        )?
+    };
+    end_phase(p, &mut phases, context)?;
+    let p = phase("l1_wrap.readback", context)?;
+    let whir = {
+        let handoff = gkr.whir_handoff();
+        pending.schedule_readback(
+            L1WhirInputs {
+                claims: handoff.claims,
+                base_layer_point: handoff.base_layer_point,
+                batching_challenge: handoff.batching_challenge,
+            },
+            base.cap_digests(),
+            setup.oracle().cap_digests(),
+            context,
+        )?
+    };
     let mut mirror = unsafe { context.alloc_host_uninit_slice::<u8>(layout.bytes_len()) };
     let slab_bytes = unsafe {
         DeviceSlice::from_raw_parts(slab.backing.as_ptr().cast::<u8>(), layout.bytes_len())
     };
     memory_copy_async(&mut mirror, slab_bytes, stream)?;
-    let mirror_accessor = mirror.get_accessor();
-    let mut m6_fields = Box::new(None);
-    let m6_accessor = UnsafeMutAccessor::new(&mut *m6_fields);
-    callbacks.schedule(
-        move || {
-            let fields = layout.parse_m6_fields(unsafe { mirror_accessor.get() });
-            unsafe { m6_accessor.get_mut() }.replace(fields);
-        },
-        stream,
-    )?;
     drop(slab);
+    end_phase(p, &mut phases, context)?;
     let h2d_join = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
     h2d_join.record(stream)?;
     context
@@ -360,19 +437,26 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     Ok(GpuL1WrapProofJob {
         is_finished_event,
         callbacks,
-        m6_fields,
-        whir: Some(whir),
+        m6_layout: layout,
+        m6_mirror: mirror,
+        whir,
         top_bits_host,
         commitment_mode,
-        ranges: vec![range],
+        ranges: {
+            phases.push(range);
+            phases
+        },
         keepalive: GpuL1WrapProofJobKeepalive {
             _setup_host: setup_host,
             _input_callbacks: transfer.into_callbacks(),
-            _setup_callbacks: setup_transfer.into_callbacks(),
+            _setup_callbacks: {
+                let mut callbacks = setup_raw_transfer.into_callbacks();
+                callbacks.extend(setup_transfer.into_callbacks());
+                callbacks
+            },
             _relations: relations,
             _challenges: challenges,
             _gkr: gkr,
-            _proof_host_mirror: mirror,
         },
     })
 }
@@ -382,29 +466,22 @@ impl GpuL1WrapProofJob<'_> {
         let Self {
             is_finished_event,
             callbacks,
-            mut m6_fields,
-            mut whir,
+            m6_layout,
+            m6_mirror,
+            whir,
             top_bits_host,
             commitment_mode,
             ranges,
             keepalive,
         } = self;
         is_finished_event.synchronize()?;
-        let fields = m6_fields
-            .take()
-            .expect("L1Wrap M6 readback did not complete");
-        let whir = whir
-            .take()
-            .expect("L1Wrap WHIR job missing")
-            .into_proof_after_completion();
+        // SAFETY: the job owns both mirrors and every D2H into them precedes the synchronized event.
+        let fields = m6_layout.parse_m6_fields(unsafe { m6_mirror.get_accessor().get() });
+        let whir = unsafe { whir.into_proof_after_completion() };
         let result = assemble_l1_proof(fields, whir, top_bits_host, commitment_mode);
-        log::debug!(
-            "l1_wrap.proof: {} ms",
-            ranges
-                .last()
-                .expect("L1Wrap proof range missing")
-                .elapsed()?
-        );
+        for range in &ranges {
+            log::debug!("{}: {} ms", range.name(), range.elapsed()?);
+        }
         drop(callbacks);
         drop(keepalive);
         Ok(result)

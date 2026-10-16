@@ -683,6 +683,17 @@ fn run_whir(fixture: L1WrapFixture<'_>, expected: WhirExpected) -> WhirReport {
         &shape,
         &context,
     )
+    .unwrap()
+    .schedule_readback(
+        L1WhirInputs {
+            claims: &claims,
+            base_layer_point: &point,
+            batching_challenge: &batching_challenge,
+        },
+        oracle.cap_digests(),
+        source.oracle().cap_digests(),
+        &context,
+    )
     .unwrap();
     end_event.record(stream).unwrap();
     let enqueue = start.elapsed();
@@ -691,7 +702,7 @@ fn run_whir(fixture: L1WrapFixture<'_>, expected: WhirExpected) -> WhirReport {
     let peak_bytes = context.get_used_mem_peak();
     let gpu_ms = elapsed_time(&start_event, &end_event).unwrap();
     let phases = scheduled.phase_times_after_completion().unwrap();
-    let proof = scheduled.into_proof_after_completion();
+    let proof = unsafe { scheduled.into_proof_after_completion() };
 
     compare_bytes(
         "whir-setup-commitment",
