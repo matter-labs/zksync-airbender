@@ -14,8 +14,8 @@ use gpu_ntt::proth120::{
 
 use super::packed::retained_len;
 use super::sink::{
-    commit_coset, commit_coset_scratch_lens, launch_sink, launch_sink_converted, sink_launch,
-    SinkLaunch, SinkMode,
+    coefficient_batches, commit_coset, commit_coset_scratch_lens, launch_sink,
+    launch_sink_converted, sink_launch, SinkLaunch, SinkMode,
 };
 use crate::upstream::{domain_generator_for_size, Field};
 
@@ -328,6 +328,39 @@ fn sink_commit_matches_reference() {
             s.tiles_per_coset()
         );
     }
+}
+
+// coefficient_batches covers every (coset, tile) of a call once, each batch within one batch.
+#[test]
+fn coefficient_batches_cover_each_tile_once() {
+    for (cosets, tiles, batch_cosets, batch_tiles) in [
+        (4, 1024, 1, 464),
+        (8, 1024, 1, 464),
+        (1, 1024, 1, 464),
+        (3, 1024, 1, 512),
+        (5, 7, 1, 3),
+        (7, 100, 1, 33),
+        (128, 64, 7, 64),
+        (2048, 4, 116, 4),
+        (1, 64, 1, 64),
+    ] {
+        let batches = coefficient_batches(cosets, tiles, batch_cosets, batch_tiles);
+        let mut seen = vec![0u32; cosets * tiles];
+        for &(first_coset, coset_count, first_tile, tile_count) in &batches {
+            assert!(coset_count >= 1 && tile_count >= 1);
+            assert!(coset_count * tile_count <= batch_cosets * batch_tiles);
+            for coset in first_coset..first_coset + coset_count {
+                for tile in first_tile..first_tile + tile_count {
+                    seen[coset * tiles + tile] += 1;
+                }
+            }
+        }
+        assert!(
+            seen.iter().all(|&count| count == 1),
+            "({cosets}, {tiles}, {batch_cosets}, {batch_tiles})"
+        );
+    }
+    assert_eq!(coefficient_batches(4, 1024, 1, 464)[8..], [(0, 4, 928, 96)]);
 }
 
 // CoefficientTree sink over batched cosets (one micro + one sink launch per batch of cosets)

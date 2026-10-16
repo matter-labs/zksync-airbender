@@ -727,6 +727,44 @@ pub fn coefficient_batch(shape: &SuffixShape, cosets: usize, l2_budget: usize) -
     }
 }
 
+// The suffix batches (first coset, cosets, first tile, tiles) of `cosets` cosets of a coefficient
+// tree: whole-coset groups when a coset's tiles fit a batch; else per coset its full batches, then
+// the tiles left over after them for as many cosets at once as fit one batch.
+pub fn coefficient_batches(
+    cosets: usize,
+    tiles_per_coset: usize,
+    batch_cosets: usize,
+    batch_tiles: usize,
+) -> Vec<(usize, usize, usize, usize)> {
+    assert!(
+        cosets >= 1 && batch_cosets >= 1 && (1..=tiles_per_coset).contains(&batch_tiles),
+        "coefficient_batches: empty batch"
+    );
+    if batch_tiles == tiles_per_coset {
+        return (0..cosets)
+            .step_by(batch_cosets)
+            .map(|first| (first, batch_cosets.min(cosets - first), 0, tiles_per_coset))
+            .collect();
+    }
+    let full = tiles_per_coset / batch_tiles * batch_tiles;
+    let mut batches: Vec<_> = (0..cosets)
+        .flat_map(|coset| {
+            (0..full)
+                .step_by(batch_tiles)
+                .map(move |first| (coset, 1, first, batch_tiles))
+        })
+        .collect();
+    let rest = tiles_per_coset - full;
+    if let Some(per) = batch_tiles.checked_div(rest) {
+        batches.extend(
+            (0..cosets)
+                .step_by(per)
+                .map(|first| (first, per.min(cosets - first), full, rest)),
+        );
+    }
+    batches
+}
+
 pub fn coefficient_tiles_len(shape: &SuffixShape, cosets: usize, l2_budget: usize) -> usize {
     let (batch_cosets, batch_tiles) = coefficient_batch(shape, cosets, l2_budget);
     batch_cosets * batch_tiles * shape.tile_len()
@@ -796,40 +834,36 @@ pub fn commit_coefficient_cosets(
     }
     let _r = scoped_range(Some("ab"), "whir.commit.suffix");
     let (batch_cosets, batch_tiles) = coefficient_batch(shape, cosets, plan.l2_budget);
-    let tiles_per_coset = shape.tiles_per_coset();
-    for first_coset in (0..cosets).step_by(batch_cosets) {
-        let coset_count = batch_cosets.min(cosets - first_coset);
-        for first_tile in (0..tiles_per_coset).step_by(batch_tiles) {
-            let tile_count = batch_tiles.min(tiles_per_coset - first_tile);
-            let batch = &mut tiles[..coset_count * tile_count * shape.tile_len()];
-            launch_suffix_micro(
-                ctx,
-                &prefix[first_coset * rows..],
-                rows,
-                batch,
-                shape,
-                first_tile as u32,
-                tile_count as u32,
-                coset_count as u32,
-                None,
-                stream,
-            )?;
-            launch_sink(
-                ctx,
-                batch,
-                shape,
-                first_tile as u32,
-                tile_count as u32,
-                coset_count as u32,
-                SinkMode::CoefficientTree {
-                    log_domain,
-                    k0: k0 + first_coset as u32,
-                },
-                &mut retained[first_coset * retained_per_coset..],
-                retained_per_coset,
-                stream,
-            )?;
-        }
+    let batches = coefficient_batches(cosets, shape.tiles_per_coset(), batch_cosets, batch_tiles);
+    for (first_coset, coset_count, first_tile, tile_count) in batches {
+        let batch = &mut tiles[..coset_count * tile_count * shape.tile_len()];
+        launch_suffix_micro(
+            ctx,
+            &prefix[first_coset * rows..],
+            rows,
+            batch,
+            shape,
+            first_tile as u32,
+            tile_count as u32,
+            coset_count as u32,
+            None,
+            stream,
+        )?;
+        launch_sink(
+            ctx,
+            batch,
+            shape,
+            first_tile as u32,
+            tile_count as u32,
+            coset_count as u32,
+            SinkMode::CoefficientTree {
+                log_domain,
+                k0: k0 + first_coset as u32,
+            },
+            &mut retained[first_coset * retained_per_coset..],
+            retained_per_coset,
+            stream,
+        )?;
     }
     build_retained_layers(
         h,
