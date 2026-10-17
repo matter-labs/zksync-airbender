@@ -70,6 +70,19 @@ impl Blake2RoundFunctionEvaluator {
         ]
     }
 
+    /// Starts a new hash whose chaining value is `h` instead of the IV.
+    #[inline(always)]
+    pub fn reset_with_chaining_value(&mut self, h: &[u32; BLAKE2S_DIGEST_SIZE_U32_WORDS]) {
+        unsafe {
+            crate::spec_memcopy_u32_nonoverlapping(
+                h.as_ptr(),
+                self.state.as_mut_ptr().cast::<u32>(),
+                BLAKE2S_DIGEST_SIZE_U32_WORDS,
+            );
+        }
+        self.t = 0;
+    }
+
     #[inline(always)]
     pub const fn read_state_for_output_ref(&self) -> &[u32; BLAKE2S_DIGEST_SIZE_U32_WORDS] {
         &self.state

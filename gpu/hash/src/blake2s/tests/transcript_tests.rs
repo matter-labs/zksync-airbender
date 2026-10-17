@@ -102,8 +102,8 @@ fn host_commit(seed: &[u32; STATE_SIZE], input: &[u32]) -> [u32; STATE_SIZE] {
 }
 
 #[test]
-fn transcript_commit_parity_two_blocks() {
-    // 8 + 12 = 20 words — two blocks (16 + 4). The load-bearing backward
+fn transcript_commit_parity_three_e4() {
+    // 12 words chained from the seed — one block. The load-bearing backward
     // sumcheck case: commit_field_els with 3 E4 elements. Kept as an explicit
     // named case; the randomized sweep below covers the other block counts.
     let seed = [0x42; STATE_SIZE];
@@ -506,5 +506,32 @@ fn transcript_squeeze_fresh_e4_parity() {
         assert_eq!(d_out, h_out, "output mismatch for count={count}");
         assert_eq!(d_final_seed, h_seed.0, "seed mismatch for count={count}");
         assert_ne!(d_out[0], host_draw_e4(&seed, 1).0[0]);
+    }
+}
+
+#[test]
+fn transcript_pow_update_parity() {
+    let mut rng = rand::rng();
+    let stream = CudaStream::default();
+    for _ in 0..8 {
+        let seed: [u32; STATE_SIZE] = std::array::from_fn(|_| rng.random());
+        let nonce: u64 = rng.random();
+        let mut h_seed = Seed(seed);
+        Blake2sTranscript::verify_pow(&mut h_seed, nonce, 0);
+
+        let mut d_seed = DeviceAllocation::alloc(STATE_SIZE).unwrap();
+        let mut d_nonce = DeviceAllocation::alloc(2).unwrap();
+        memory_copy_async(&mut d_seed, &seed[..], &stream).unwrap();
+        memory_copy_async(
+            &mut d_nonce,
+            &[nonce as u32, (nonce >> 32) as u32][..],
+            &stream,
+        )
+        .unwrap();
+        super::transcript_pow_update(&mut d_seed, &d_nonce, &stream).unwrap();
+        let mut actual = [0u32; STATE_SIZE];
+        memory_copy_async(&mut actual[..], &d_seed, &stream).unwrap();
+        stream.synchronize().unwrap();
+        assert_eq!(actual, h_seed.0, "nonce={nonce}");
     }
 }

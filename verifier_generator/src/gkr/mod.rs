@@ -1855,7 +1855,7 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
                 // Commit the at-point evals TOGETHER with the extra cached-relation evals in a
                 // SINGLE transcript commit, BEFORE drawing the batching challenge — mirroring the
                 // prover (`commit_field_els(new_claims ++ extra_evals)` then draw). `CommitBuf`
-                // hashes `seed || data` per call, so two separate commits would diverge from the
+                // hashes `data` chained from the seed per call, so two separate commits would diverge from the
                 // prover's one; instead the extra evals are appended into `eval_buf` and the single
                 // commit below (inside `pre_draw_extra_code`) covers `data_words + extra`.
                 #pre_draw_extra_code
@@ -2155,15 +2155,15 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
             let evals = #max_evals * EXT_DEGREE;
             let max_data = if dim_reducing > standard { dim_reducing } else { standard };
             let max_data = if max_data > evals { max_data } else { evals };
-            let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + max_data;
+            let total = max_data;
             total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
         };
         pub const GKR_COMMIT_BUF: usize = {
-            let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + SUMCHECK_POLY_COEFFS * EXT_DEGREE;
+            let total = SUMCHECK_POLY_COEFFS * EXT_DEGREE;
             total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
         };
         pub const GKR_EVALS_COMMIT_BUF: usize = {
-            let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + #max_evals * EXT_DEGREE;
+            let total = #max_evals * EXT_DEGREE;
             total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
         };
         // Sized for the larger of the two draws that share this buffer: the

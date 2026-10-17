@@ -315,7 +315,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
                 }
 
                 const CAP_COMMIT_BUF: usize = {
-                    let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + WHIR_CAP_WORDS;
+                    let total = WHIR_CAP_WORDS;
                     (total + BLAKE2S_BLOCK_SIZE_U32_WORDS - 1)
                         / BLAKE2S_BLOCK_SIZE_U32_WORDS
                         * BLAKE2S_BLOCK_SIZE_U32_WORDS
@@ -327,7 +327,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
 
                 const OOD_DATA_WORDS: usize = super::common::EXT_DEGREE;
                 const OOD_COMMIT_BUF: usize = {
-                    let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + OOD_DATA_WORDS;
+                    let total = OOD_DATA_WORDS;
                     (total + BLAKE2S_BLOCK_SIZE_U32_WORDS - 1)
                         / BLAKE2S_BLOCK_SIZE_U32_WORDS
                         * BLAKE2S_BLOCK_SIZE_U32_WORDS
@@ -583,7 +583,7 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
                 }
 
                 const CAP_COMMIT_BUF: usize = {
-                    let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + WHIR_CAP_WORDS;
+                    let total = WHIR_CAP_WORDS;
                     (total + BLAKE2S_BLOCK_SIZE_U32_WORDS - 1)
                         / BLAKE2S_BLOCK_SIZE_U32_WORDS
                         * BLAKE2S_BLOCK_SIZE_U32_WORDS
@@ -595,7 +595,7 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
 
                 const OOD_DATA_WORDS: usize = EXT_DEGREE;
                 const OOD_COMMIT_BUF: usize = {
-                    let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + OOD_DATA_WORDS;
+                    let total = OOD_DATA_WORDS;
                     (total + BLAKE2S_BLOCK_SIZE_U32_WORDS - 1)
                         / BLAKE2S_BLOCK_SIZE_U32_WORDS
                         * BLAKE2S_BLOCK_SIZE_U32_WORDS
@@ -799,7 +799,7 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
 
                 const FINAL_MONOMIALS_DATA_WORDS: usize = FINAL_MONOMIALS_LEN * EXT_DEGREE;
                 const FINAL_MONOMIALS_COMMIT_BUF: usize = {
-                    let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + FINAL_MONOMIALS_DATA_WORDS;
+                    let total = FINAL_MONOMIALS_DATA_WORDS;
                     (total + BLAKE2S_BLOCK_SIZE_U32_WORDS - 1)
                         / BLAKE2S_BLOCK_SIZE_U32_WORDS
                         * BLAKE2S_BLOCK_SIZE_U32_WORDS

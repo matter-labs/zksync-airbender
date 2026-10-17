@@ -77,7 +77,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
             round_idx += 1;
         }
         const CAP_COMMIT_BUF: usize = {
-            let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + WHIR_CAP_WORDS;
+            let total = WHIR_CAP_WORDS;
             (total + BLAKE2S_BLOCK_SIZE_U32_WORDS - 1) / BLAKE2S_BLOCK_SIZE_U32_WORDS
                 * BLAKE2S_BLOCK_SIZE_U32_WORDS
         };
@@ -86,7 +86,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
         let ood_point = draw_single_field_el(ts);
         const OOD_DATA_WORDS: usize = super::common::EXT_DEGREE;
         const OOD_COMMIT_BUF: usize = {
-            let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + OOD_DATA_WORDS;
+            let total = OOD_DATA_WORDS;
             (total + BLAKE2S_BLOCK_SIZE_U32_WORDS - 1) / BLAKE2S_BLOCK_SIZE_U32_WORDS
                 * BLAKE2S_BLOCK_SIZE_U32_WORDS
         };
@@ -227,7 +227,7 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: Err
             round += 1;
         }
         const CAP_COMMIT_BUF: usize = {
-            let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + WHIR_CAP_WORDS;
+            let total = WHIR_CAP_WORDS;
             (total + BLAKE2S_BLOCK_SIZE_U32_WORDS - 1) / BLAKE2S_BLOCK_SIZE_U32_WORDS
                 * BLAKE2S_BLOCK_SIZE_U32_WORDS
         };
@@ -236,7 +236,7 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: Err
         let ood_point = draw_single_field_el(ts);
         const OOD_DATA_WORDS: usize = EXT_DEGREE;
         const OOD_COMMIT_BUF: usize = {
-            let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + OOD_DATA_WORDS;
+            let total = OOD_DATA_WORDS;
             (total + BLAKE2S_BLOCK_SIZE_U32_WORDS - 1) / BLAKE2S_BLOCK_SIZE_U32_WORDS
                 * BLAKE2S_BLOCK_SIZE_U32_WORDS
         };
@@ -369,7 +369,7 @@ pub fn verify_final_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorC
         debug_assert_eq!(accumulator.pow_entries.len(), MAX_POW_ENTRIES);
         const FINAL_MONOMIALS_DATA_WORDS: usize = FINAL_MONOMIALS_LEN * EXT_DEGREE;
         const FINAL_MONOMIALS_COMMIT_BUF: usize = {
-            let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + FINAL_MONOMIALS_DATA_WORDS;
+            let total = FINAL_MONOMIALS_DATA_WORDS;
             (total + BLAKE2S_BLOCK_SIZE_U32_WORDS - 1) / BLAKE2S_BLOCK_SIZE_U32_WORDS
                 * BLAKE2S_BLOCK_SIZE_U32_WORDS
         };
