@@ -473,7 +473,7 @@
       "path": "Airbender/Proofs/Trace/ZeroValues.lean",
       "source_path": "Airbender/Proofs/Trace/ZeroValues.lean",
       "source_sha256": "82dbbbc8e05408155d3d07cf4c3ca8a451fd9293db489ee150a99c465fcd4421",
-      "change": "Preserve decreasing-time x0 read/write induction from actual public Sail seeds; remove the source-field inverse premise."
+      "change": "Preserve decreasing-time x0 read/write induction from actual public Sail seeds; remove the source-field inverse premise. Factor only the initial x0 seed root and final event extraction into internal lemmas; retain the original public-image wrappers and decreasing-time proof for projected initialization."
     },
     {
       "path": "Airbender/Proofs/Trace/ZeroRegister.lean",
@@ -679,6 +679,33 @@
       "backport_reuse_path": "Tests/WordMemoryHistory.lean",
       "backport_reuse_sha256": "2e39bada36324c394de5965b5d114ff636461e0667c5ec21b12b656fa9dabd72",
       "change": "Copy the checked full native RAM/ROM/x0 row fixture and constraints. Assemble reversed dependent SW/LW rows with actual Sail seeds/bytes and prove the intermediate RAM write/read and destination write from native history; no intermediate/read/result premise."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Memory/ShadowImage.lean",
+      "source_path": "Airbender/Review/Helpers/Memory/Native.lean",
+      "source_sha256": "65dd803783e3f15f35df487569fad6ce10fa2f68374e3a165473ec7949a6d403",
+      "change": "Reuse the exact source shadow-address predicate. Keep v2 native seed words independent of Sail ROM bytes with a new architectural/ghost constructor; do not copy the v3 physical zero-boot or ROM-view claims."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Projection.lean",
+      "backport_reuse_revision": "3f40579b5adab84b0de94cdf232f6db226c23aae",
+      "backport_reuse_path": "Airbender/Proofs/Trace/NativeSailHistory.lean",
+      "backport_reuse_sha256": "672c27c28b5be605be84cfe8a121713e0b02bab3dc4d276dbe21f8e39841bde3",
+      "change": "Reuse full native history splitting and unchanged Clean-to-Sail realization. Add whole-address latest-write/consistency projection, deriving transfers only for retained cells while keeping full native acceptance."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/ShadowImage.lean",
+      "backport_reuse_revision": "3f40579b5adab84b0de94cdf232f6db226c23aae",
+      "backport_reuse_path": "Airbender/Proofs/Trace/PublicImage.lean",
+      "backport_reuse_sha256": "65d9550abaea6bbd8d80d26c6f77b0c64039c4129f14dbb74244a741816e8bfd",
+      "change": "Reuse canonical seed/PC clock recovery and shared matching/x0/row-order proofs. Derive ghost/architectural separation, full native seed uniqueness and projected actual Sail realization without shadow reads."
+    },
+    {
+      "path": "Tests/WordMemoryProjection.lean",
+      "backport_reuse_revision": "3f40579b5adab84b0de94cdf232f6db226c23aae",
+      "backport_reuse_path": "Tests/WordMemoryHistory.lean",
+      "backport_reuse_sha256": "4e2a3d945a397e515e38fbcbecceb22f775b0e65cb3f408e89968f9ba350ddf0",
+      "change": "Copy the full native row/constraint fixture. Build separate architectural/native shadow seeds and actual public LW bytes; derive retained/erased events and actual masked Sail writes when shadow reads fail and shadow/ROM values differ."
     }
   ]
 }

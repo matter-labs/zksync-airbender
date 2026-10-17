@@ -13,3 +13,4 @@ import Airbender.Review.Trace.Families.WordMemory.History
 import Airbender.Review.Trace.Families.WordMemory.Values
 import Airbender.Review.Trace.Families.WordMemory.Inputs
 import Airbender.Review.Trace.Families.WordMemory.SailHistory
+import Airbender.Review.Trace.Families.WordMemory.Projection

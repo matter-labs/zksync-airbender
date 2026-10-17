@@ -85,8 +85,14 @@ and native clock/port order with no per-row numerical input premises.
 [Word-memory Sail cell histories](Families/WordMemory/SailHistory.lean) now derive
 actual reads/writes and intermediate states, with clock-derived row grouping and
 mixed-port x0 preservation. A reversed store/load pair derives its intermediate
-RAM state and the later read. This uses the full supplied native cell image;
-boot/padding/shadow projection and original instruction execution remain separate.
+RAM state and the later read. That claim uses the full supplied native cell image.
+[Architectural projection](Families/WordMemory/Projection.lean) now uses separate
+public architectural and native-shadow seeds. It preserves the full Clean history
+while realizing only architectural addresses in Sail, deriving clocks, unique
+addresses, x0 preservation and final matching. Ordinary/x0 ROM loads retain native
+shadow events despite missing Sail shadow bytes and distinct shadow/ROM values.
+Physical native boot/padding/ROM binding and original instruction execution remain
+separate.
 
 These are logical selected-profile results. Remaining families and physical
 setup/argument fidelity remain in [the plan](../../../FORMAL_VERIFICATION_PLAN.md).

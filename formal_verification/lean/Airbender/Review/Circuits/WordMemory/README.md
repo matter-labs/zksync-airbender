@@ -29,7 +29,8 @@ and all 1048576 aligned ROM rows. Missing public words retain native 0xc0001073
 UNIMP padding. Neither lookup is conditional: even a RAM access queries its ROM
 shadow address. ROM loads also retain the native readonly RAM port; its discarded
 read now participates in the checked initialized logical history. Its
-architectural projection remains separate. These definitions model the pinned native
+architectural projection is checked by the separate
+[trace theorem](../../Trace/Families/WordMemory/Projection.lean). These definitions model the pinned native
 four-MiB profile. [Public ROM extraction](../../Helpers/Tables/WordROMImage.lean)
 now binds native ROM data to actual Sail bytes within the extracted prefix.
 Physical setup export and boot/padding/shadow-state binding remain separate.
@@ -42,7 +43,8 @@ the last port targets either a register or RAM above the ROM boundary. No initia
 Sail state, expected read or ROM-byte equivalence is supplied. Ordinary/x0 ROM
 loads retain readonly shadow accesses; a changing RAM store cannot inhabit that
 address region. Native matching still includes all refresh tokens. Architectural
-shadow projection remains open.
+shadow projection is now checked under separate public architectural/shadow
+initialization, with physical boot/ROM binding still open.
 
 [Regressions](../../../../Tests/WordMemory.lean) instantiate full native RAM loads,
 RAM stores and ROM loads, including masked x0 loads and UNIMP padding. Changed ROM
@@ -75,8 +77,10 @@ prefix; a complete extracted four-MiB image covers every native ROM address.
 Initialized logical reads and ranges now follow from public seeds, accepted
 matching and decoder membership. [Actual Sail cell histories](../../Trace/Families/WordMemory/SailHistory.lean)
 now realize reads/writes and intermediate states in the full supplied native cell
-image. Missing padding/boot state, architectural ROM-shadow projection and
-original Sail instruction execution remain open. The local load formula keeps its native x0 flag; the
+image. [Projected histories](../../Trace/Families/WordMemory/Projection.lean) now
+omit shadow addresses from Sail while retaining full native matching and separate
+public seeds. Physical padding/boot/ROM binding and original Sail instruction
+execution remain open. The local load formula keeps its native x0 flag; the
 separate public decoder proof now derives that flag's exact relation to rd.
 The arithmetic-only trace registry remains unchanged until those connections
 are proved. See the [plan](../../../../FORMAL_VERIFICATION_PLAN.md) and

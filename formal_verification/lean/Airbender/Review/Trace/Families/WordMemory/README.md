@@ -46,7 +46,7 @@ actual public LW/SW bytes, source registers, RAM cells and initial PC. Nonempty
 RAM loads/stores have complete histories; masked x0 ROM loads retain newest-read
 and range guarantees for the shadow RAM port. Omitting its seed fails actual
 logical matching. This fixture explicitly initializes the native shadow cell;
-its projection into architectural ROM state remains separate.
+the separate architectural projection below now avoids that Sail shadow read.
 
 ## Checked native-row inputs
 
@@ -97,11 +97,34 @@ image covers every ROM address. Full native UNIMP padding remains represented.
 The constructor does not fill absent padding bytes in Sail state.
 [Native shadow value preservation](../../../Circuits/WordMemory/Theorems.lean)
 now shows every RAM access below four MiB only refreshes its existing value.
-The complete native history still retains those accesses and their timestamps;
-projecting them into architectural access histories remains a separate step.
+The complete native history still retains those accesses and their timestamps.
 
-Actual intermediate Sail cell transfers are checked for the supplied native
-image. Sail boot/padding state, discarded ROM-shadow projection and original
-instruction execution/retirement remain open. The existing
+## Checked architectural projection
+
+[Projected cell histories](Projection.lean) now erase whole shadow-address domains
+from Sail transfers while preserving the complete accepted native history.
+[Clean projection](../../../../Proofs/Trace/Projection.lean) preserves online
+consistency and newest writes at every retained address, with the original Clean
+semantics unchanged. Native clocks still derive complete row order.
+
+[The separate public initializer](../../../Helpers/Memory/ShadowImage.lean) reads
+architectural GPR/RAM cells from Sail and appends independent canonical native
+shadow seeds. Domain uniqueness and initial clocks are derived; the shared x0
+induction uses only the architectural register seed. Native matching, full decoder
+membership and public RAM alignment derive actual reads/writes, intermediate
+states and final architectural matching. Shadow cells need no Sail bytes or
+shadow/ROM-value equality. Calculations stay in
+[the assembly](../../../../Proofs/Trace/Families/WordMemory/ShadowImage.lean).
+
+[Ordinary/x0 ROM-load regressions](../../../../../Tests/WordMemoryProjection.lean)
+build actual instruction bytes and accepted native rows. The shadow location is
+unreadable in Sail and its native value differs from the loaded ROM word. Full
+native history still contains its refresh; the projected transfer history derives
+the actual masked Sail register write.
+
+The public shadow seeds describe a logical initialized native image. Binding them
+to physical native zero boot, extending numerical/port assembly to this boundary,
+Sail boot/padding state, actual ROM-table binding and original instruction
+execution/retirement remain open. The existing
 arithmetic execution registry and its claims retain their scope. Physical setup
 export, mixed/custom programs and cryptographic argument enforcement are separate.

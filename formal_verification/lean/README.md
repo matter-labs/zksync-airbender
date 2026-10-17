@@ -51,8 +51,8 @@ now recovers original Sail source evidence, exact zero flags and native
 PC/immediate bounds/alignment from complete padded membership, including x0
 loads. [ROM extraction](Airbender/Review/Helpers/Tables/WordROMImage.lean) now reads
 actual Sail bytes; native ROM query data inside that prefix has an original Sail
-read proof. A complete four-MiB extraction covers all native ROM addresses. Sail
-boot/padding/shadow state and word-memory execution remain pending.
+read proof. A complete four-MiB extraction covers all native ROM addresses. Physical native
+boot/padding/ROM binding and word-memory instruction execution remain pending.
 [Initialized word-memory history](Airbender/Review/Trace/Families/WordMemory/History.lean)
 now derives complete Clean consistency, latest native reads and every per-row/prior
 clock input from actual public seed reads and accepted matching.
@@ -65,9 +65,13 @@ native clock/port order without per-row numerical premises.
 now derive actual original Sail reads/writes and intermediate states from the
 full supplied native image. Mixed-port x0 writes are preserved, and reversed
 store/load rows derive their intermediate RAM state and later read. Architectural
-ROM-shadow projection and instruction execution remain separate. Native shadow
-accesses below four MiB are now proved value-preserving, with every refresh token
-retained in logical matching.
+ROM-shadow accesses below four MiB are proved value-preserving, with every refresh
+token retained in logical matching. [Architectural projection](Airbender/Review/Trace/Families/WordMemory/Projection.lean)
+now realizes only GPR/RAM transfers while retaining the complete native history.
+A separate public initializer reads architectural cells and independently retains
+native shadow seeds. Ordinary/x0 ROM loads derive actual masked Sail writes even
+with unreadable shadow locations and distinct shadow/ROM values. Physical native
+boot/ROM binding and original instruction execution remain separate.
 Remaining families, Rust
 setup generation/export and cryptographic argument soundness remain pending. This checkpoint does not inherit v3's completed coverage.
 

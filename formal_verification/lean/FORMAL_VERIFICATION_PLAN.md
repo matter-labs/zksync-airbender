@@ -84,10 +84,16 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    read without a supplied state/read result. This realizes the full supplied
    native image, including shadow cells tracked as RAM. Native shadow accesses
    below four MiB now provably preserve their exact read value; native matching
-   still retains every refresh token. Use this when projecting architectural
-   accesses without equating shadow seeds to ROM bytes. Connect physical
-   boot/padding/shadow-state projection, original Sail memory/platform transport
-   and instruction execution/retirement interfaces. Physical setup/export binding remains open.
+   still retains every refresh token. Whole-address projection now preserves
+   Clean consistency/latest writes and realizes only architectural cells in Sail.
+   A separate public initializer reads architectural cells and retains canonical
+   native shadow seeds independently; clocks, unique addresses, x0 preservation
+   and complete row grouping are derived. Ordinary/x0 ROM-load regressions retain
+   full matching and actual masked Sail writes with unreadable shadow locations
+   and distinct native shadow/ROM values. Bind this initializer to physical native
+   boot/padding, extend numerical/port interfaces to the projected boundary, and
+   connect actual ROM bytes, Sail memory/platform transport and original
+   instruction execution/retirement interfaces. Physical setup/export binding remains open.
    Preserve v2 PC rollover and native timestamp offsets;
    keep physical setup generation/export and mixed/custom expansion explicit.
 2. Add native jump/branch/SLT and extend the shared execution relation with checked

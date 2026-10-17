@@ -22,8 +22,9 @@ The same public seed boundary and generic history induction now support the
 [word-memory registry](../../Trace/Families/WordMemory/History.lean), including
 all native mixed ports and discarded shadow reads. Its
 [write rules](../../../Proofs/Trace/Families/WordMemory/Values.lean) preserve ranges
-through RAM copies, ROM data selection and actual x0-masked writes. Architectural
-ROM-shadow projection remains separate.
+through RAM copies, ROM data selection and actual x0-masked writes. The separate
+[architectural projection](../../Trace/Families/WordMemory/Projection.lean) is now
+checked under its own public seed constructor.
 [Sail history](SailHistory.lean) retains the shared actual-read/write representation;
 [its proof](../../../Proofs/Trace/SailHistory.lean) derives all intermediate states
 from Clean consistency and public seeds. V2 masked writes preserve x0; public
@@ -32,8 +33,15 @@ transport actual Sail accesses, including readonly alias stutters.
 The [word-memory instance](../../Trace/Families/WordMemory/SailHistory.lean) now
 uses the same realization/grouping with checked mixed-port x0 preservation. It
 recovers actual source-register reads, RAM/register writes and intermediate
-states for the full supplied native cell image. Architectural ROM-shadow
-projection remains separate. Instruction
-execution and physical zero-boot/ROM interpretation remain pending.
+states for the full supplied native cell image.
+[Whole-address projection](Projection.lean) retains the original full native
+history while erasing shadow addresses from architectural transfers.
+[Shadow-aware initialization](ShadowImage.lean) reads only architectural cells
+and appends independent canonical native shadow seeds. Its
+[short trace claim](../../Trace/Families/WordMemory/Projection.lean) derives actual
+Sail transfers and final architectural matching, including ROM loads with no
+Sail shadow bytes. Clocks, unique addresses and x0 preservation follow from the
+constructors and accepted native matching/decoding. Physical native zero-boot/ROM
+binding and original instruction execution remain pending.
 [Indirect descriptors](IndirectPorts.lean) are retained reusable definitions;
 v2 batched worker arguments and indirect-port import remain pending.

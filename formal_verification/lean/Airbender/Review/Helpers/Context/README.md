@@ -26,4 +26,7 @@ now reuses shared matching proofs to derive every per-row/prior clock input from
 the public seed boundary. [Complete logical history](../../Trace/Families/WordMemory/History.lean)
 and native word ranges are checked. [Sail cell histories](../../Trace/Families/WordMemory/SailHistory.lean)
 now derive actual transfers and intermediate states in native clock order;
-original instruction execution and architectural ROM-shadow projection remain pending. The arithmetic execution registry is unchanged.
+[architectural projection](../../Trace/Families/WordMemory/Projection.lean) now
+retains full native matching with separate public shadow seeds. Physical native
+boot/ROM binding and original instruction execution remain pending. The arithmetic
+execution registry is unchanged.

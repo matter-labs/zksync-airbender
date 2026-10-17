@@ -119,8 +119,23 @@ now derives exact raw read/write value-code equality for every imported RAM port
 mapped below four MiB. Full native constraints and metadata suffice: the final
 port targets registers or RAM outside that prefix; the earlier ports are
 readonly refreshes. The native clock tokens still participate in matching.
-This is a prerequisite for architectural projection, not a binding between
-shadow data and ROM bytes. [Public ROM extraction](Airbender/Review/Helpers/Tables/WordROMImage.lean)
+The separate [architectural projection](Airbender/Review/Trace/Families/WordMemory/Projection.lean)
+now erases whole shadow-address domains from Sail transfers while preserving the
+complete native Clean history. [Projection calculations](Airbender/Proofs/Trace/Projection.lean)
+prove consistency and latest-write preservation without changing Clean semantics.
+[The public initializer](Airbender/Review/Helpers/Memory/ShadowImage.lean) reads
+only architectural cells, then appends canonical native shadow seeds supplied as
+public initialization data. Domain separation/uniqueness and zero seed clocks
+are derived; the shared x0 induction now takes its root from architectural seeds
+alone. Native matching, decoder membership and derived clocks supply row order,
+actual Sail reads/writes and final architectural matching. Neither desired reads,
+intermediate states nor shadow/ROM-value equality are inputs. Ordinary/x0 ROM-load
+regressions retain the native shadow refresh even when its location has no Sail
+bytes and its value differs from the loaded ROM word. These logical public shadow
+seeds are not a proof of the physical native zero-boot profile. Numerical/port
+interfaces still need assembly for this projected boundary; physical boot/padding,
+ROM-table binding and original instruction execution remain separate.
+[Public ROM extraction](Airbender/Review/Helpers/Tables/WordROMImage.lean)
 now obtains words by actual original Sail reads. The
 [ROM read bridge](Airbender/Review/Trace/Families/WordMemory/ROMImage.lean) recovers
 native table data inside the extracted prefix, deriving both data limbs and the

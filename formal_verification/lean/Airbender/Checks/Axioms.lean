@@ -12,6 +12,7 @@ import Tests.WordMemory
 import Tests.WordROMImage
 import Tests.WordMemoryHistory
 import Tests.WordMemorySailHistory
+import Tests.WordMemoryProjection
 
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
@@ -414,3 +415,26 @@ import Tests.WordMemorySailHistory
 #print axioms Airbender.WordMemory.Proofs.shadow_refresh
 #print axioms Tests.WordMemory.rom_shadow_value_preserved
 #print axioms Tests.WordMemory.changing_store_not_shadow
+
+#print axioms Airbender.Trace.Proofs.last_write_project
+#print axioms Airbender.Trace.Proofs.consistent_project
+#print axioms Airbender.Trace.Proofs.matches_project
+#print axioms Airbender.Trace.Proofs.projected_native_sail_history
+#print axioms Airbender.Trace.Proofs.zero_reads_from_seeds
+#print axioms Airbender.Trace.Proofs.zero_writes_from_reads
+#print axioms Airbender.WordMemory.Proofs.architectural_register
+#print axioms Airbender.WordMemory.Proofs.architectural_ram
+#print axioms Airbender.WordMemory.Proofs.shadow_image_parts
+#print axioms Airbender.WordMemory.Proofs.shadow_image_unique
+#print axioms Airbender.WordMemory.Proofs.shadow_clock_boundary
+#print axioms Airbender.WordMemory.Proofs.shadow_image_projection
+#print axioms Airbender.WordMemory.Proofs.shadow_initial_zero
+#print axioms Airbender.WordMemory.Proofs.shadow_event_cells
+#print axioms Airbender.WordMemory.Proofs.shadow_zero_writes
+#print axioms Airbender.WordMemory.Proofs.projected_row_history
+#print axioms Airbender.WordMemory.public_projected_sail_history
+#print axioms Tests.WordMemoryProjection.public_decoder_built
+#print axioms Tests.WordMemoryProjection.missing_shadow_bytes
+#print axioms Tests.WordMemoryProjection.projected_rom_history
+#print axioms Tests.WordMemoryProjection.projected_rom_sail_write
+#print axioms Tests.WordMemoryProjection.shadow_value_is_not_rom

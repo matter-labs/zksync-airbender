@@ -33,11 +33,11 @@ private theorem initial_zero_value {p : Nat} {before : Reference.RiscV.Sail.Stat
 
 /-- Public Sail initialization and actual prior-write matching root all x0 reads.
     Each family discharges the local preservation law from its imported circuit. -/
-theorem zero_reads_of_preserving [Fact p.Prime] [ClockLaws Kind p]
+theorem zero_reads_from_seeds [Fact p.Prime] [ClockLaws Kind p]
     (hp : 2 * timestampBase + 4 < p)
     {trace : Data p Kind} (accepted : Accepted trace) (boundary : ClockBoundary trace)
-    {before : Reference.RiscV.Sail.State} {cells : List Cell}
-    (image : initialImage before cells = some trace.initialMemory)
+    (initialZero : ∀ token ∈ trace.initialMemory,
+      token.address = (Cell.register 0).addressCode → token.value = 0)
     (preserves : ZeroPreserving trace) :
     ∀ row ∈ trace.rows, ∀ port ∈ row.ports,
       port.address.code row.assignment = (Cell.register 0).addressCode →
@@ -51,7 +51,7 @@ theorem zero_reads_of_preserving [Fact p.Prime] [ClockLaws Kind p]
     | h time ih =>
       intro row member port present clock address
       rcases earlier_write hp accepted boundary row member port present with initial | previous
-      · exact initial_zero_value image initial address
+      · exact initialZero _ initial address
       · obtain ⟨writer, writerMember, source, sourceMember, same, earlier⟩ := previous
         have sourceZero : source.address.code writer.assignment = (Cell.register 0).addressCode :=
           (congrArg MemoryToken.address same).trans address
@@ -62,15 +62,26 @@ theorem zero_reads_of_preserving [Fact p.Prime] [ClockLaws Kind p]
   intro row member port present
   exact propagated _ row member port present rfl
 
-theorem zero_writes_of_preserving [Fact p.Prime] [ClockLaws Kind p]
+theorem zero_reads_of_preserving [Fact p.Prime] [ClockLaws Kind p]
     (hp : 2 * timestampBase + 4 < p)
     {trace : Data p Kind} (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (image : initialImage before cells = some trace.initialMemory)
     (preserves : ZeroPreserving trace) :
+    ∀ row ∈ trace.rows, ∀ port ∈ row.ports,
+      port.address.code row.assignment = (Cell.register 0).addressCode →
+      (readToken row.assignment port).value = 0 :=
+  zero_reads_from_seeds hp accepted boundary
+    (fun _ member address => initial_zero_value image member address) preserves
+
+theorem zero_writes_from_reads [Fact p.Prime] [ClockLaws Kind p]
+    {trace : Data p Kind}
+    (reads : ∀ row ∈ trace.rows, ∀ port ∈ row.ports,
+      port.address.code row.assignment = (Cell.register 0).addressCode →
+      (readToken row.assignment port).value = 0)
+    (preserves : ZeroPreserving trace) :
     ∀ event ∈ trace.nativeEvents, event.2.1 = (Cell.register 0).addressCode →
       memoryWord event.2.2.2 = 0 := by
-  have reads := zero_reads_of_preserving hp accepted boundary image preserves
   intro event member address
   change event ∈ trace.memorySteps.map (fun edge =>
     (trace.memoryEpoch + (timeOfPair edge.2.time).value, edge.1.address, edge.1.value, edge.2.value)) at member
@@ -83,5 +94,15 @@ theorem zero_writes_of_preserving [Fact p.Prime] [ClockLaws Kind p]
   change memoryWord (writeToken row.columns row.assignment port).value = 0
   rw [zero]
   rfl
+
+theorem zero_writes_of_preserving [Fact p.Prime] [ClockLaws Kind p]
+    (hp : 2 * timestampBase + 4 < p)
+    {trace : Data p Kind} (accepted : Accepted trace) (boundary : ClockBoundary trace)
+    {before : Reference.RiscV.Sail.State} {cells : List Cell}
+    (image : initialImage before cells = some trace.initialMemory)
+    (preserves : ZeroPreserving trace) :
+    ∀ event ∈ trace.nativeEvents, event.2.1 = (Cell.register 0).addressCode →
+      memoryWord event.2.2.2 = 0 :=
+  zero_writes_from_reads (zero_reads_of_preserving hp accepted boundary image preserves) preserves
 
 end Airbender.Trace.Proofs
