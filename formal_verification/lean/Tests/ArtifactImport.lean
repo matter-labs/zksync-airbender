@@ -71,6 +71,7 @@ import Tests.TraceImport
 import Tests.SetupImport
 import Tests.SetupProgramImport
 import Tests.SetupDecoderImport
+import Tests.InitializationImport
 
 set_option Elab.async false
 
@@ -94,6 +95,7 @@ example : ¬ (Verification.range16 (Expression.const (65536 : ZMod babyBearModul
 
 def main : IO UInt32 := do
   try
+    Tests.InitializationImport.run
     let source ← IO.FS.readFile "../../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json"
     let .ok c := parseCircuit source | throw (IO.userError "no-cache artifact failed import")
     check (c.structured_statements.size == 30) "no-cache artifact: all 30 constraints imported"

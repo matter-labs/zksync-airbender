@@ -41,6 +41,7 @@ then select a family below.
 | BLAKE2 G | [Guide](Blake2G/README.md) | A local G operation versus a complete work-vector span. |
 | Extended BLAKE | [Guide](Blake2Round/README.md) | Worker phases versus complete seven-/ten-round compression. |
 | Keccak | [Guide](Keccak/README.md) | Per-mode effects versus a complete permutation span. |
+| Initialization/teardown | [Guide](Initialization/README.md) | Actual standalone/inline GKR products and computed boundary tokens. |
 
 For a model, inspect its imported constraints, represented inputs/outputs and
 interface assumptions. Follow the named columns to the artifact and the selected

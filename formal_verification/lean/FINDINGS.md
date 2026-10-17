@@ -1139,8 +1139,8 @@ with public PC zero and nextPC 123 and realizes the complete mixed trace.
 
 **Scope closure.** F10's conditional proof integration is complete. F02/F03/F04
 remain implementation findings; their temporary contracts are neither fixes nor
-unrestricted acceptance claims. Initialization/teardown is a separate artifact
-boundary, now authorized after the table import.
+unrestricted acceptance claims. Initialization/teardown now has its separately
+checked imported-GKR boundary connection, described below.
 
 **External closure needed.** Bind accepted caller validity and participation to
 the complete pinned reference, including invalid calls, or make an explicit
@@ -1159,7 +1159,7 @@ demonstrated bugs:
 
 | Boundary | Exact premise or missing connection | Review consequence |
 | --- | --- | --- |
-| Initialization/teardown | [NativeInputs](Airbender/Review/Helpers/Context/Boundary.lean), [InitialProfile](Airbender/Review/Helpers/Memory/Initialization.lean), boot seed/PC and distinct tracked cells are public inputs. The [retained init/teardown artifact](../../cs/compiled_circuits/inits_and_teardowns_layout_no_caches_gkr.json) has empty ordinary equation arrays, but its parsed GKR layers contain initial-pair and multiplication relations, teardown-column mappings and output wiring. | Public-image soundness does not yet prove the native GKR computation establishes those boundary tokens. Interpreting these imported relations and proving that connection is authorized after table importing. Cryptographic enforcement of logical matching remains external. F01's conditional canonical verifier-boundary closure is independent of this local circuit proof. |
+| Initialization/teardown | [Imported standalone and inline GKR soundness](Airbender/Review/Circuits/Initialization/Theorems.lean) proves exact products of computed native RAM tokens. [Execution adapters](Airbender/Review/Trace/Initialization.lean) derive the old native seed correspondence, aligned/distinct cells and register coverage from the actual layout and public distinct windows; actual raw teardown columns supply terminal RAM tokens. | Local circuit-to-token correspondence is checked. Public Sail profile, initial PC/clock, configuration/program/setup binding, distinct windows and separate register teardown remain legitimate inputs. Exact logical matching, Rust/parser fidelity and cryptographic enforcement remain external; sampled product equality is not a permutation proof. No new implementation bug is claimed. |
 | Memory/fetch configuration | [FlatMemoryConfiguration and OrdinaryWordAddress](Airbender/Review/Helpers/Memory/Platform.lean) select Machine mode, the direct memory path, PMP disabled, permissive PMA and no modeled special-memory windows; code bounds/alignment and landing-pad restrictions are explicit in execution inputs. | These are supported public-profile conditions. Full faults, interrupts, MMIO, other privilege/protection configurations and the full fetch driver are not covered. |
 | Independent external input | [ExternalStream.Ports](Airbender/Review/Helpers/Core/ExternalStream.lean) binds responses to an independently supplied stream. | Exact consumption and execution do not authenticate an oracle or establish a particular externally intended stream. |
 | Logical matching | [Accepted](Airbender/Review/Helpers/Context/Model.lean), worker matching and request matching are exact permutations of full tokens. | This is the intended premise for the noncryptographic memory-history result. Product/compression equality must not be silently substituted for it; actual global participation and token construction still need their implementation binding. |
