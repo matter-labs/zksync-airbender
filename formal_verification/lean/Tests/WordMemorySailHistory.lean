@@ -1,3 +1,4 @@
+import Airbender.Proofs.Trace.Families.WordMemory.ProjectedPorts
 import Airbender.Review.Trace.Families.WordMemory.SailHistory
 
 namespace Tests.WordMemorySailHistory
@@ -198,6 +199,27 @@ private theorem aligned : ∀ cell ∈ cells, cell.Aligned := by
   simp only [cells, List.mem_cons, List.not_mem_nil, or_false] at member
   rcases member with rfl | rfl | rfl | rfl <;> simp [Cell.Aligned]
 
+private theorem projected_of_history {events : List MemoryAccess}
+    {start finish : Reference.RiscV.Sail.State} (history : SailHistory cells events start finish) :
+    SailHistory cells (events.filter fun event => Airbender.WordMemory.architecturalAddress event.2.1)
+      start finish := by
+  have architectural : ∀ cell ∈ cells,
+      Airbender.WordMemory.architecturalAddress cell.addressCode = true := by
+    intro cell present
+    simp only [cells, List.mem_cons, List.not_mem_nil, or_false] at present
+    rcases present with rfl | rfl | rfl | rfl
+    · exact Airbender.WordMemory.Proofs.architectural_register _
+    · exact Airbender.WordMemory.Proofs.architectural_register _
+    · rw [Airbender.WordMemory.Proofs.architectural_ram]; decide
+    · exact Airbender.WordMemory.Proofs.architectural_register _
+  have selected : (events.filter fun event => Airbender.WordMemory.architecturalAddress event.2.1) = events := by
+    apply List.filter_eq_self.mpr
+    intro event present
+    obtain ⟨cell, member, address⟩ := Trace.Proofs.history_address_member history present
+    rw [← address]
+    exact architectural cell member
+  exact selected.symm ▸ history
+
 /-- Reversed native rows derive the intermediate store state and the later load
     from that state. No intermediate state/read or final-value premise is given. -/
 theorem dependent_store_load : ∃ middle after,
@@ -213,21 +235,29 @@ theorem dependent_store_load : ∃ middle after,
     (rowEvents trace.memoryEpoch storeRow).reverse) before after at history
   obtain ⟨middle, storeHistory, loadHistory⟩ := Trace.Proofs.sail_history_append.mp history
   refine ⟨middle, after, ?_, ?_, ?_⟩
-  · have written := Airbender.WordMemory.Proofs.row_history_write _ storeHistory
+  · have written := Airbender.WordMemory.Proofs.projected_history_write (by decide) _
+      (accepted.constraints storeRow (by simp [trace])) (projected_of_history storeHistory)
       (port := Airbender.WordMemory.importedConstraintsMemoryPorts[2]) rfl
       (cell := Cell.ram 4194320) (by decide)
     simpa [memoryWord, MemoryPort.writeCode, WordColumns.code, WordColumns.evaluate,
       Airbender.WordMemory.importedConstraintsMemoryPorts, storeRow, row, Nat.unpair_pair, Word.toBitVec, Word.value,
       show (123 : ZMod mersenne31Modulus).val = 123 from by decide] using written
-  · have read := Airbender.WordMemory.Proofs.row_history_read _ loadHistory
+  · have read := Airbender.WordMemory.Proofs.projected_history_read (by decide) _
+      (accepted.constraints loadRow (by simp [trace])) (projected_of_history loadHistory)
       (port := Airbender.WordMemory.importedConstraintsMemoryPorts[1])
       (by change _ ∈ Airbender.WordMemory.importedConstraintsMemoryPorts
           simp [Airbender.WordMemory.importedConstraintsMemoryPorts])
+      (by
+        have address : Airbender.WordMemory.importedConstraintsMemoryPorts[1].address.code
+            loadRow.assignment = (Cell.ram 4194320).addressCode := by decide
+        rw [address, Airbender.WordMemory.Proofs.architectural_ram]
+        decide)
       (cell := Cell.ram 4194320) (by decide)
     simpa [memoryWord, MemoryPort.readCode, WordColumns.code, WordColumns.evaluate,
       Airbender.WordMemory.importedConstraintsMemoryPorts, loadRow, loadAssignment, row, Nat.unpair_pair, Word.toBitVec, Word.value,
       show (123 : ZMod mersenne31Modulus).val = 123 from by decide] using read
-  · have written := Airbender.WordMemory.Proofs.row_history_write _ loadHistory
+  · have written := Airbender.WordMemory.Proofs.projected_history_write (by decide) _
+      (accepted.constraints loadRow (by simp [trace])) (projected_of_history loadHistory)
       (port := Airbender.WordMemory.importedConstraintsMemoryPorts[2]) rfl
       (cell := Cell.register 3) (by decide)
     simpa [memoryWord, MemoryPort.writeCode, WordColumns.code, WordColumns.evaluate,

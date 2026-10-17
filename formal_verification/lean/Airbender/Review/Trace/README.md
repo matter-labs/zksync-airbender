@@ -91,8 +91,11 @@ public architectural and native-shadow seeds. It preserves the full Clean histor
 while realizing only architectural addresses in Sail, deriving clocks, unique
 addresses, x0 preservation and final matching. Ordinary/x0 ROM loads retain native
 shadow events despite missing Sail shadow bytes and distinct shadow/ROM values.
-Physical native boot/padding/ROM binding and original instruction execution remain
-separate.
+[Projected native inputs](Families/WordMemory/Inputs.lean) now derive address
+addition, bounded aligned PCs, modular successors and native clock effects.
+Retained-port transport recovers actual pre-state reads and final masked writes,
+with final-port retention proved from native constraints. Physical native
+boot/padding/ROM binding and original instruction execution remain separate.
 
 These are logical selected-profile results. Remaining families and physical
 setup/argument fidelity remain in [the plan](../../../FORMAL_VERIFICATION_PLAN.md).

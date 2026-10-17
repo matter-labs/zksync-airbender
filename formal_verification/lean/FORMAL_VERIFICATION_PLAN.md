@@ -92,11 +92,18 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    canonical seed bounds to the unchanged shared range induction, deriving all
    full native read/write/terminal ranges, including erased shadows. Ordinary/x0 ROM-load regressions retain
    full matching and actual masked Sail writes with unreadable shadow locations
-   and distinct native shadow/ROM values. Bind this initializer to physical native
-   boot/padding, derive effective-address/PC and port/Sail interfaces for this
-   projected boundary, and
-   connect actual ROM bytes, Sail memory/platform transport and original
-   instruction execution/retirement interfaces. Physical setup/export binding remains open.
+   and distinct native shadow/ROM values. Projected initialization and public
+   decoding now derive effective-address addition, bounded aligned PCs, modular
+   successors and native clock/port effects through the existing calculations.
+   Shared readonly-prefix transport recovers every retained port read in the
+   instruction pre-state and the final actual masked write; native constraints
+   prove that the final port always survives projection. Ordinary/x0 ROM loads
+   and reversed dependent RAM store/load rows exercise these interfaces without
+   supplied reads/intermediate states. Connect actual public ROM bytes, derive
+   code/ROM-byte preservation from native store regions and checked public ROM
+   domains, and assemble original Sail memory/platform transport, instruction
+   execution and retirement.
+   Bind the separate native initializer to physical boot/padding. Physical setup/export binding remains open.
    Preserve v2 PC rollover and native timestamp offsets;
    keep physical setup generation/export and mixed/custom expansion explicit.
 2. Add native jump/branch/SLT and extend the shared execution relation with checked

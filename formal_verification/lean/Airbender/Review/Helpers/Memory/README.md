@@ -43,7 +43,12 @@ Sail transfers and final architectural matching, including ROM loads with no
 Sail shadow bytes. Clocks, unique addresses and x0 preservation follow from the
 constructors and accepted native matching/decoding. The same initializer now
 supplies all seed bounds to the existing shared native range induction, deriving
-read/write/terminal ranges for retained and erased accesses alike. Physical native zero-boot/ROM
-binding and original instruction execution remain pending.
+read/write/terminal ranges for retained and erased accesses alike.
+[Retained-port transport](../../../Proofs/Trace/PortProjection.lean) now handles
+readonly refresh prefixes and aliases after projection. The
+[native word-memory instance](../../../Proofs/Trace/Families/WordMemory/ProjectedPorts.lean)
+proves final-port retention and derives actual pre-state source reads and masked
+writes. Physical native zero-boot/ROM binding and original instruction execution
+remain pending.
 [Indirect descriptors](IndirectPorts.lean) are retained reusable definitions;
 v2 batched worker arguments and indirect-port import remain pending.

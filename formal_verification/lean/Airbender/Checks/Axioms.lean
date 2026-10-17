@@ -443,3 +443,18 @@ import Tests.WordMemoryProjection
 #print axioms Airbender.WordMemory.Proofs.shadow_value_bounds
 #print axioms Airbender.WordMemory.public_projected_value_bounds
 #print axioms Tests.WordMemoryProjection.projected_native_bounds
+
+#print axioms Airbender.WordMemory.Proofs.source_bound_of_reads
+#print axioms Airbender.WordMemory.Proofs.native_effects_from_bounds
+#print axioms Airbender.WordMemory.Proofs.projected_native_effects
+#print axioms Airbender.WordMemory.Proofs.native_destination_kept
+#print axioms Airbender.WordMemory.Proofs.projected_history_read
+#print axioms Airbender.WordMemory.Proofs.projected_history_write
+#print axioms Airbender.WordMemory.Proofs.projected_source_read
+#print axioms Airbender.Trace.Proofs.readonly_history_reads
+#print axioms Airbender.Trace.Proofs.projected_row_reads
+#print axioms Airbender.Trace.Proofs.projected_native_read
+#print axioms Airbender.Trace.Proofs.projected_native_write
+#print axioms Airbender.WordMemory.public_projected_native_effects
+#print axioms Tests.WordMemoryProjection.projected_native_effects
+#print axioms Tests.WordMemoryProjection.projected_source_sail_read

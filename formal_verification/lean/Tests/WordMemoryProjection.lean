@@ -1,4 +1,6 @@
 import Airbender.Review.Trace.Families.WordMemory.Projection
+import Airbender.Review.Trace.Families.WordMemory.Inputs
+import Airbender.Proofs.Trace.Families.WordMemory.ProjectedPorts
 
 namespace Tests.WordMemoryProjection
 open Airbender Verification Arithmetic Trace
@@ -192,6 +194,29 @@ private def event (discard : Bool) (port : Fin 3) : MemoryAccess :=
   ((trace discard).memoryEpoch + (actual.event native.columns native.assignment).1,
     actual.address.code native.assignment, actual.readCode native.assignment, actual.writeCode native.assignment)
 
+private theorem projected_events (discard : Bool) :
+    ((rowEvents (trace discard).memoryEpoch (nativeRow false true discard)).reverse.filter
+      fun edge => Airbender.WordMemory.architecturalAddress edge.2.1) =
+      [event discard 2, event discard 0] := by
+  have first : Airbender.WordMemory.architecturalAddress (event discard 0).2.1 = true := by
+    have address : (event discard 0).2.1 = (Cell.register 1).addressCode := by
+      cases discard <;> decide
+    rw [address]
+    exact Airbender.WordMemory.Proofs.architectural_register _
+  have middle : Airbender.WordMemory.architecturalAddress (event discard 1).2.1 = false := by
+    have address : (event discard 1).2.1 = (Cell.ram 16).addressCode := by
+      cases discard <;> decide
+    rw [address, Airbender.WordMemory.Proofs.architectural_ram]
+    decide
+  have last : Airbender.WordMemory.architecturalAddress (event discard 2).2.1 = true := by
+    have address : (event discard 2).2.1 = (destination discard).addressCode := by
+      cases discard <;> decide
+    rw [address]
+    exact Airbender.WordMemory.Proofs.architectural_register _
+  change ([event discard 2, event discard 1, event discard 0].filter _) = _
+  simp only [List.filter_cons, first, middle, last, Bool.false_eq_true,
+    ↓reduceIte, List.filter_nil]
+
 /-- Both ordinary and discarded native ROM loads retain full matching while
     realizing only source/destination GPRs. No Sail shadow byte or read is supplied. -/
 theorem projected_rom_history (discard : Bool) :
@@ -220,62 +245,53 @@ theorem projected_rom_history (discard : Bool) :
   have retained : List.Mem (event discard 1) history.val := checked.1.mem_iff.mpr
     (List.mem_append_right _ nativeShadow)
   refine ⟨history, after, checked, retained, ?_, final⟩
-  have shape : (([nativeRow false true discard].flatMap fun native =>
-        (rowEvents (trace discard).memoryEpoch native).reverse).filter fun edge =>
-        Airbender.WordMemory.architecturalAddress edge.2.1) =
-        [event discard 2, event discard 0] := by
-    have first : Airbender.WordMemory.architecturalAddress (event discard 0).2.1 = true := by
-      have address : (event discard 0).2.1 = (Cell.register 1).addressCode := by
-        cases discard <;> decide
-      rw [address]
-      exact Airbender.WordMemory.Proofs.architectural_register _
-    have middle : Airbender.WordMemory.architecturalAddress (event discard 1).2.1 = false := by
-      have address : (event discard 1).2.1 = (Cell.ram 16).addressCode := by
-        cases discard <;> decide
-      rw [address, Airbender.WordMemory.Proofs.architectural_ram]
-      decide
-    have last : Airbender.WordMemory.architecturalAddress (event discard 2).2.1 = true := by
-      have address : (event discard 2).2.1 = (destination discard).addressCode := by
-        cases discard <;> decide
-      rw [address]
-      exact Airbender.WordMemory.Proofs.architectural_register _
-    change ([event discard 2, event discard 1, event discard 0].filter _) = _
-    simp only [List.filter_cons, first, middle, last, Bool.false_eq_true,
-      ↓reduceIte, List.filter_nil]
-  exact shape ▸ actual
+  have actualRow : SailHistory (cells discard)
+      ((rowEvents (trace discard).memoryEpoch (nativeRow false true discard)).reverse.filter
+        fun edge => Airbender.WordMemory.architecturalAddress edge.2.1) (before discard) after := by
+    simpa only [List.flatMap_cons, List.flatMap_nil, List.append_nil] using actual
+  exact projected_events discard ▸ actualRow
 
-/-- Projected native ROM loads perform the actual masked Sail GPR write, with
-    readonly source refreshes stuttering even though the shadow is not readable. -/
+private theorem single_projected_history (discard : Bool) :
+    ∃ after, SailHistory (cells discard)
+      ((rowEvents (trace discard).memoryEpoch (nativeRow false true discard)).reverse.filter
+        fun edge => Airbender.WordMemory.architecturalAddress edge.2.1) (before discard) after := by
+  obtain ⟨_, after, _, _, history, _⟩ := projected_rom_history discard
+  exact ⟨after, (projected_events discard).symm ▸ history⟩
+
+/-- The native decoder identifies the actual retained source-GPR read even
+    when the ROM-shadow bytes are absent from the instruction pre-state. -/
+theorem projected_source_sail_read (discard : Bool) :
+    ∃ after, SailHistory (cells discard)
+      ((rowEvents (trace discard).memoryEpoch (nativeRow false true discard)).reverse.filter
+        fun edge => Airbender.WordMemory.architecturalAddress edge.2.1) (before discard) after ∧
+      Reference.Sail.run (SailRV32.Functions.rX_bits (.Regidx (entry discard).data.rs1)) (before discard) =
+        .ok (Airbender.WordMemory.sourceWord (row false true discard)).toBitVec (before discard) := by
+  obtain ⟨after, history⟩ := single_projected_history discard
+  exact ⟨after, history, Airbender.WordMemory.Proofs.projected_source_read (by decide) _
+    (satisfies false true discard rfl) history (entry := entry discard) (by cases discard <;> decide)⟩
+
+/-- Generic retained-port transport derives the actual masked Sail GPR write
+    from the native metadata, including original x0 ROM loads. -/
 theorem projected_rom_sail_write (discard : Bool) :
     ∃ after, Reference.Sail.run
       ((destination discard).write (if discard then 0 else 0xc0001073)) (before discard) =
         .ok () after := by
-  obtain ⟨_, after, _, _, history, _⟩ := projected_rom_history discard
+  obtain ⟨after, history⟩ := single_projected_history discard
   refine ⟨after, ?_⟩
-  cases history with
-  | cons past target tm ta tr tw =>
-    cases past with
-    | cons empty source sm sa sr sw =>
-      cases empty with
-      | nil =>
-        have readonly : (event discard 0).2.2.1 = (event discard 0).2.2.2 := rfl
-        have first := Trace.Proofs.cell_write_same sr
-        rw [readonly] at first
-        have same := (EStateM.Result.ok.inj (first.symm.trans sw)).2
-        subst_vars
-        have address : (event discard 2).2.1 = (destination discard).addressCode := by
-          cases discard <;> decide
-        have sameCell := Trace.Proofs.cell_address_injective (ta.trans address)
-        subst target
-        have value : memoryWord (event discard 2).2.2.2 =
-            (if discard then 0 else 0xc0001073) := by
-          cases discard <;>
-            simp [event, memoryWord, MemoryPort.writeCode, WordColumns.code,
-              WordColumns.evaluate, Airbender.WordMemory.importedConstraintsMemoryPorts,
-              nativeRow, row, Nat.unpair_pair, Word.toBitVec, Word.value]
-          all_goals decide
-        rw [value] at tw
-        exact tw
+  have written := Airbender.WordMemory.Proofs.projected_history_write (by decide) _
+    (satisfies false true discard rfl) history
+    (port := Airbender.WordMemory.importedConstraintsMemoryPorts[2]) rfl
+    (cell := destination discard) (by cases discard <;> decide)
+  have value : memoryWord (event discard 2).2.2.2 = (if discard then 0 else 0xc0001073) := by
+    cases discard <;>
+      simp [event, memoryWord, MemoryPort.writeCode, WordColumns.code,
+        WordColumns.evaluate, Airbender.WordMemory.importedConstraintsMemoryPorts,
+        nativeRow, row, Nat.unpair_pair, Word.toBitVec, Word.value]
+    all_goals decide
+  change Reference.Sail.run ((destination discard).write (memoryWord (event discard 2).2.2.2))
+    (before discard) = .ok () after at written
+  rw [value] at written
+  exact written
 
 /-- The native shadow refresh value is independent of the actual loaded ROM word. -/
 theorem shadow_value_is_not_rom :
@@ -290,5 +306,18 @@ theorem projected_native_bounds (discard : Bool) :
       (writeToken native.columns native.assignment port).word.Bounded) ∧
     (∀ token ∈ (trace discard).terminalMemory, token.word.Bounded) :=
   Airbender.WordMemory.public_projected_value_bounds (inputs discard) (accepted discard) (decoded discard)
+
+/-- Public instruction bytes and separate shadow initialization recover every
+    native address/PC/clock input despite unreadable shadow locations in Sail. -/
+theorem projected_native_effects (discard : Bool) :
+    ∀ native ∈ (trace discard).rows,
+      (Airbender.WordMemory.addressWord native.assignment).toBitVec =
+        (Airbender.WordMemory.sourceWord native.assignment).toBitVec +
+          (Airbender.WordMemory.immediateWord native.assignment).toBitVec ∧
+      native.start.word.Bounded ∧ native.start.word.lo % 4 = 0 ∧
+      native.finish.word.Bounded ∧ native.finish.word.toBitVec = native.start.word.toBitVec + 4 ∧
+      ClockEffects native.columns native.assignment :=
+  Airbender.WordMemory.public_projected_native_effects (inputs discard)
+    (public_decoder_built discard) (accepted discard) (decoded discard)
 
 end Tests.WordMemoryProjection

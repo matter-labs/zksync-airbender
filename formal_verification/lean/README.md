@@ -72,8 +72,13 @@ A separate public initializer reads architectural cells and independently retain
 native shadow seeds. Ordinary/x0 ROM loads derive actual masked Sail writes even
 with unreadable shadow locations and distinct shadow/ROM values. The same public
 constructor now derives all full native read/write/terminal ranges through the
-unchanged shared range induction, including erased shadow accesses. Physical native
-boot/ROM binding and original instruction execution remain separate.
+unchanged shared range induction, including erased shadow accesses.
+[Projected native inputs](Airbender/Review/Trace/Families/WordMemory/Inputs.lean)
+now derive address addition, bounded aligned PCs, modular successors and clock
+laws through the same native calculations. Retained-port transport recovers
+actual Sail source reads and masked writes; full constraints keep the final port
+architectural. Ordinary/x0 ROM loads and dependent RAM store/load rows are checked.
+Physical native boot/ROM binding and original instruction execution remain separate.
 Remaining families, Rust
 setup generation/export and cryptographic argument soundness remain pending. This checkpoint does not inherit v3's completed coverage.
 

@@ -11,8 +11,9 @@ def addressWord {p : Nat} (w : Nat → ZMod p) : Arithmetic.Word := ⟨(w 19).va
 /-- Native transfer observables. The README names every column. Bounded address
     arithmetic and public decoder recovery are checked separately. Initialized
     logical ranges/history and actual Sail cell transfers are checked for the
-    supplied native image; architectural shadow projection and instruction
-    execution remain open. -/
+    supplied native image. A separate projected boundary now derives architectural
+    histories and native row interfaces; physical boot/ROM binding and original
+    instruction execution remain open. -/
 structure NativeTransfers {p : Nat} (rom : Verification.WordROM) (w : Nat → ZMod p) : Prop where
   storeBit : w 12 = 0 ∨ w 12 = 1
   addressBounds : (w 19).val < 65536 ∧ (w 20).val < 65536

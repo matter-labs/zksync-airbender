@@ -137,9 +137,20 @@ seeds are not a proof of the physical native zero-boot profile. The
 now derives every full native read, actual write and terminal word bound from
 canonical seed construction, accepted matching and full decoder membership.
 The existing shared decreasing-time induction and native load/store/mask rules
-are reused unchanged, retaining all shadow accesses. Effective-address/PC and
-port/Sail interfaces still need assembly for this boundary; physical boot/padding,
-ROM-table binding and original instruction execution remain separate.
+are reused unchanged, retaining all shadow accesses.
+[Projected native effects](Airbender/Review/Trace/Families/WordMemory/Inputs.lean)
+now recover source bounds from initialized native reads and call the existing
+address/PC calculations with actual public decoder facts and derived clocks.
+Both initialization boundaries share one numerical assembly; their public
+interfaces retain their original meanings. Native PC effects are not Sail
+retirement. [Retained-port transport](Airbender/Proofs/Trace/Families/WordMemory/ProjectedPorts.lean)
+now recovers actual original Sail pre-state reads and final masked writes.
+A shared readonly-prefix induction handles retained aliases and erased ports;
+full v2 constraints prove that the final mixed port targets a GPR or RAM outside
+the ROM prefix. Decoder indices identify the source GPR without an expected read
+premise. Ordinary/x0 ROM loads and reversed dependent RAM store/load regressions
+exercise these general lemmas. Physical boot/padding, ROM-table binding and
+original instruction execution/retirement remain separate.
 [Public ROM extraction](Airbender/Review/Helpers/Tables/WordROMImage.lean)
 now obtains words by actual original Sail reads. The
 [ROM read bridge](Airbender/Review/Trace/Families/WordMemory/ROMImage.lean) recovers

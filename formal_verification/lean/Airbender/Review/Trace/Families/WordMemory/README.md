@@ -130,10 +130,26 @@ shadow accesses retain their full native bounds even when Sail has no shadow
 bytes. Both ordinary and x0 ROM-load regressions check these ranges without any
 per-row or per-port bound premise.
 
+[Projected native inputs](Inputs.lean) now derive effective-address addition,
+bounded aligned native PCs, modular successors and clock/port effects from the
+same separate initializer and actual public decoder. Both boundaries use one
+[numerical assembly](../../../../Proofs/Trace/Families/WordMemory/Inputs.lean);
+[the projected wrapper](../../../../Proofs/Trace/Families/WordMemory/ProjectedInputs.lean)
+discharges source ranges and clocks without reading shadow bytes.
+
+[Shared retained-port transport](../../../../Proofs/Trace/PortProjection.lean)
+proves that readonly refresh prefixes stutter and all retained reads use the
+instruction pre-state, including aliases. The
+[native instance](../../../../Proofs/Trace/Families/WordMemory/ProjectedPorts.lean)
+proves final-port retention from actual v2 constraints: loads write GPRs and
+stores target RAM outside the ROM prefix. It derives the actual final masked
+write and original Sail source-GPR read from decoder metadata. No shadow read,
+expected source value or intermediate state is supplied. Ordinary/x0 ROM loads
+with absent shadow bytes and the reversed dependent RAM store/load regression
+exercise the general retained-port lemmas.
+
 The public shadow seeds describe a logical initialized native image. Binding them
-to physical native zero boot, deriving effective-address/PC and port/Sail
-interfaces for this boundary,
-Sail boot/padding state, actual ROM-table binding and original instruction
-execution/retirement remain open. The existing
+to physical native zero boot, Sail boot/padding state, actual ROM-table binding
+and original instruction execution/retirement remain open. The existing
 arithmetic execution registry and its claims retain their scope. Physical setup
 export, mixed/custom programs and cryptographic argument enforcement are separate.

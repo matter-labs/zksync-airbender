@@ -678,7 +678,7 @@
       "backport_reuse_revision": "868796d746cbb97b459a2b23fd147f209fcbb6ef",
       "backport_reuse_path": "Tests/WordMemoryHistory.lean",
       "backport_reuse_sha256": "2e39bada36324c394de5965b5d114ff636461e0667c5ec21b12b656fa9dabd72",
-      "change": "Copy the checked full native RAM/ROM/x0 row fixture and constraints. Assemble reversed dependent SW/LW rows with actual Sail seeds/bytes and prove the intermediate RAM write/read and destination write from native history; no intermediate/read/result premise."
+      "change": "Copy the checked full native RAM/ROM/x0 row fixture and constraints. Assemble reversed dependent SW/LW rows with actual Sail seeds/bytes and prove the intermediate RAM write/read and destination write from native history; no intermediate/read/result premise. Exercise the generic retained-port RAM read/write transport on the same dependent states, preserving all original fixture and value conclusions."
     },
     {
       "path": "Airbender/Review/Helpers/Memory/ShadowImage.lean",
@@ -705,7 +705,42 @@
       "backport_reuse_revision": "3f40579b5adab84b0de94cdf232f6db226c23aae",
       "backport_reuse_path": "Tests/WordMemoryHistory.lean",
       "backport_reuse_sha256": "4e2a3d945a397e515e38fbcbecceb22f775b0e65cb3f408e89968f9ba350ddf0",
-      "change": "Copy the full native row/constraint fixture. Build separate architectural/native shadow seeds and actual public LW bytes; derive retained/erased events and actual masked Sail writes when shadow reads fail and shadow/ROM values differ."
+      "change": "Copy the full native row/constraint fixture. Build separate architectural/native shadow seeds and actual public LW bytes; derive retained/erased events and actual masked Sail writes when shadow reads fail and shadow/ROM values differ. Exercise the general projected native numerical effects, retained source read and masked final-write proofs; share the actual event-projection calculation between regressions."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/Inputs.lean",
+      "backport_reuse_revision": "9cc01075bc2ea93b8e568a20d810866cba329d32",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/Inputs.lean",
+      "backport_reuse_sha256": "8c99772851384f21159e3608632bdaf665c9765a2ea835d1f2941b5d0534fafe",
+      "change": "Factor only source-bound extraction and native numerical assembly into shared internal lemmas; preserve full-image wrappers, original native address/PC calculations and every public assumption/conclusion."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/ProjectedInputs.lean",
+      "backport_reuse_revision": "9cc01075bc2ea93b8e568a20d810866cba329d32",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/Inputs.lean",
+      "backport_reuse_sha256": "8c99772851384f21159e3608632bdaf665c9765a2ea835d1f2941b5d0534fafe",
+      "change": "Use the same native numerical assembly with ranges/clocks derived from the separate architectural/native-shadow initializer and actual public decoding, without Sail shadow reads or per-row numerical premises."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/WordMemory/Inputs.lean",
+      "backport_reuse_revision": "9cc01075bc2ea93b8e568a20d810866cba329d32",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/WordMemory/Inputs.lean",
+      "backport_reuse_sha256": "cf27232e28c6b964452d04e64c6e16b0570a1d7e177911aaf10b75f286b82248",
+      "change": "Retain the existing short native-effects statement and expose the same result under the separate shadow initializer; preserve the original full-image claim unchanged."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/PortProjection.lean",
+      "backport_reuse_revision": "9cc01075bc2ea93b8e568a20d810866cba329d32",
+      "backport_reuse_path": "Airbender/Proofs/Trace/RowHistory.lean",
+      "backport_reuse_sha256": "994b26a52dfd8dfb5e6adabfdbff225b69258c6256d7ef591a750eb67b7d9cae",
+      "change": "Generalize the existing actual-Sail readonly stutter/read argument to arbitrary retained readonly prefixes, then reuse imported three-port shape to derive filtered pre-state reads and final writes."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/ProjectedPorts.lean",
+      "backport_reuse_revision": "9cc01075bc2ea93b8e568a20d810866cba329d32",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/PortReads.lean",
+      "backport_reuse_sha256": "450eaadb853a6ab79bf105e15d014484c0e3790b009dff286f15eb2c1e3a9348",
+      "change": "Reuse source-index recovery and actual native port mapping with the checked generic filtered transport. Derive final-port retention from v2 load/store geometry and constraints; do not assume shadow readability or desired reads."
     }
   ]
 }
