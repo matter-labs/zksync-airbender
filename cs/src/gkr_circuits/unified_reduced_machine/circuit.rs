@@ -76,10 +76,10 @@ pub enum UnifiedCircuitProfile {
     ColumnCuts,
 }
 
-/// Production profile of the BabyBear unified circuit.
+/// Production profile shared by the BabyBear and Proth120 unified circuits.
+/// Both fields use the same field-generic production entry points.
+/// Baseline is retained for differential tests.
 pub const REGULAR_UNIFIED_PROFILE: UnifiedCircuitProfile = UnifiedCircuitProfile::ColumnCuts;
-/// Production profile of the Proth120 unified circuit.
-pub const LARGE_FIELD_UNIFIED_PROFILE: UnifiedCircuitProfile = UnifiedCircuitProfile::ColumnCuts;
 
 /// Per-family count of *branch-local* scratch Booleans — committed Booleans used
 /// only inside that family's flag-gated constraints, hence unconstrained (free)

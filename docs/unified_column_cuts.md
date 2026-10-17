@@ -23,7 +23,7 @@ Paths are relative to the repository root; `circuit.rs`, `decoder.rs`, `jump_bra
 `binary_shifts.rs`, `add_sub_lui_auipc_mop.rs`, `mem_word_only_lw_sw.rs`,
 `column_cuts_tests.rs` and `liveness.rs` are under `cs/src/gkr_circuits/unified_reduced_machine/`.
 The previous circuit is kept as `UnifiedCircuitProfile::Baseline` for differential tests
-only; `REGULAR_UNIFIED_PROFILE` and `LARGE_FIELD_UNIFIED_PROFILE` are both `ColumnCuts`
+only; both fields use the shared production `REGULAR_UNIFIED_PROFILE = ColumnCuts`
 (`circuit.rs:69-82`) and there is no production opt-in.
 
 ## 1. What changed
@@ -302,7 +302,7 @@ What follows from it:
 | Generated witness code is satisfying on real traces (§4) | `tests::gkr::unified_generated_witness::generated_witness_satisfies_{regular_layout,proth120_wrap_layout}` | `prover` | |
 | cs-evaluator control on real cycles | `single_cycle_tests::unified_circuit_tests::test::unified_column_cuts_real_cycles_satisfied` | `prover` | `#[ignore]`; replays ~700 cycles |
 | Committed CUDA witness source and forward schedule follow the new layout | `gpu_witness_eval_generator` `tests::{committed_witness_cuh_is_current, every_committed_cuh_is_listed}`; `gpu_gkr_compiler` `every_retained_forward_artifact_validates_compiles_and_encodes` (`tests/forward_corpus.rs:42`) | GPU crates | currentness guards, no GPU needed; they do not establish GPU execution parity |
-| End to end | BabyBear unified CPU proof regenerated (`regenerate-babybear-proof.log`), verified natively (`verifier` `tests/native.rs::unified_reduced_machine_sec_100`, `verify-babybear-native.log`) and by the FSV checks (first run 7 passed, 1 failed; the exact transpiler rerun passed: `verify-babybear-fsv.log`, `verify-babybear-fsv-transpiler.log`). Proth120 2^22 proof regeneration completed (`regenerate-proth120-proof.log`, `gkr_unified_packed_commitment_basic_fibonacci` 1 passed); its standalone native/EVM verification is reported separately in the PR evidence. Docker-reproduced verifier binaries: 57 of 57 artifacts equal to the committed ones, the nine changed files being the three unified FSV variants × bin/elf/text (`verifier-binaries.json`) | | logs in the PR's evidence record (`orange/.agents/plans/2026-10-17-column-cuts-extract/`) |
+| End to end | BabyBear unified CPU proof regenerated (`regenerate-babybear-proof.log`), verified natively (`verifier` `tests/native.rs::unified_reduced_machine_sec_100`, `verify-babybear-native.log`) and by the FSV checks (first run 7 passed, 1 failed; the exact transpiler rerun passed: `verify-babybear-fsv.log`, `verify-babybear-fsv-transpiler.log`). Proth120 2^22 proof regeneration completed (`regenerate-proth120-proof.log`, `gkr_unified_packed_commitment_basic_fibonacci` 1 passed); its standalone native/EVM verification is reported separately in the PR evidence. Docker-reproduced verifier binaries: 57 of 57 artifacts equal to the committed ones, the nine changed files being the three unified FSV variants × bin/elf/text (`docker-binary-identity.json` records the 57/57 identity; `verifier-binaries.json` records the nine changed artifacts) | | logs in the PR's evidence record (`orange/.agents/plans/2026-10-17-column-cuts-extract/`) |
 
 Not covered, and stated so deliberately:
 
