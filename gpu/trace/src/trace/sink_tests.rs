@@ -15,7 +15,7 @@ use gpu_ntt::proth120::{
 use super::packed::retained_len;
 use super::sink::{
     coefficient_batches, commit_coset, commit_coset_scratch_lens, launch_sink,
-    launch_sink_converted, sink_launch, SinkLaunch, SinkMode,
+    launch_sink_reference, sink_launch, SinkLaunch, SinkMode,
 };
 use crate::upstream::{domain_generator_for_size, Field};
 
@@ -367,6 +367,75 @@ fn coefficient_batches_cover_each_tile_once() {
     assert_eq!(coefficient_batches(4, 1024, 1, 464)[8..], [(0, 4, 928, 96)]);
 }
 
+// The Commit sinks (several keccak-f rounds per loop iteration) against the round-loop reference
+// kernels on the same tiles: last tiles of two cosets.
+#[test]
+#[cfg(not(no_cuda))]
+fn sink_commit_matches_round_loop() {
+    let ctx = DeviceContext::create(31).unwrap();
+    let stream = CudaStream::create().unwrap();
+    for (log_n, columns, log_v, skip_bottom) in [
+        (16, 7, 2, 10),
+        (16, 13, 1, 10),
+        (16, 12, 1, 10),
+        (16, 6, 2, 10),
+        (17, 1, 2, 10),
+        (17, 2, 1, 9),
+        (25, 7, 2, 10),
+        (24, 13, 1, 10),
+    ] {
+        let plan = dispatch(log_n, columns as usize, log_v, skip_bottom, device_l2()).unwrap();
+        let s = SuffixShape::new(&plan, log_n, log_v, skip_bottom, columns);
+        let cosets = 2u32;
+        let tile_count = plan.tiles_per_batch.min(s.tiles_per_coset()) as u32;
+        let first_tile = s.tiles_per_coset() as u32 - tile_count;
+        let tiles = upload(&random_values(
+            cosets as usize * tile_count as usize * s.tile_len(),
+            u64::from(log_n) << 8 | u64::from(columns),
+        ));
+        let items = 1usize << (log_n - log_v - 3);
+        let mut candidate = upload(&vec![Digest::default(); cosets as usize * items]);
+        let mut reference = upload(&vec![Digest::default(); cosets as usize * items]);
+        for (out, launch) in [
+            (&mut candidate, launch_sink as fn(_, _, _, _, _, _, _, _, _, _) -> _),
+            (&mut reference, launch_sink_reference),
+        ] {
+            launch(
+                &ctx,
+                &tiles,
+                &s,
+                first_tile,
+                tile_count,
+                cosets,
+                SinkMode::Commit,
+                out,
+                items,
+                &stream,
+            )
+            .unwrap();
+        }
+        let candidate = download(&candidate, &stream);
+        let reference = download(&reference, &stream);
+        let written = reference
+            .iter()
+            .filter(|&&node| node != Digest::default())
+            .count();
+        assert_eq!(
+            written,
+            (cosets as usize * tile_count as usize) << (skip_bottom + s.r - log_v - 3),
+            "({log_n},{columns},{log_v},{skip_bottom}): written nodes"
+        );
+        assert!(
+            candidate == reference,
+            "({log_n},{columns},{log_v},{skip_bottom}): Commit sink and round-loop reference differ"
+        );
+        println!(
+            "sink_commit_matches_round_loop: ({log_n},{columns},{log_v},{skip_bottom}) tiles {first_tile}..{} of 2 cosets: {written} nodes equal",
+            first_tile + tile_count
+        );
+    }
+}
+
 // CoefficientTree sink over batched cosets (one micro + one sink launch per batch of cosets)
 // against lde_coset + convert_coset_leaves + the partial tree, per coset; the residue-tree sink
 // nodes equal the converting kernel's.
@@ -440,7 +509,7 @@ fn sink_coefficient_tree_matches_reference() {
         )
         .unwrap();
         let mut converted = DeviceAllocation::<Digest>::alloc(cosets as usize * per_coset).unwrap();
-        launch_sink_converted(
+        launch_sink_reference(
             &ctx,
             &tiles,
             &s,

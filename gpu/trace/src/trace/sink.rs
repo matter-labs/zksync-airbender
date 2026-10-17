@@ -48,6 +48,12 @@ leaf_sink_kernel!(ab_pr_leaf_sink_6_2_3_commit_kernel);
 leaf_sink_kernel!(ab_pr_leaf_sink_7_2_3_commit_kernel);
 leaf_sink_kernel!(ab_pr_leaf_sink_12_1_3_commit_kernel);
 leaf_sink_kernel!(ab_pr_leaf_sink_13_1_3_commit_kernel);
+leaf_sink_kernel!(ab_pr_leaf_sink_1_2_3_commit_round_loop_kernel);
+leaf_sink_kernel!(ab_pr_leaf_sink_2_1_3_commit_round_loop_kernel);
+leaf_sink_kernel!(ab_pr_leaf_sink_6_2_3_commit_round_loop_kernel);
+leaf_sink_kernel!(ab_pr_leaf_sink_7_2_3_commit_round_loop_kernel);
+leaf_sink_kernel!(ab_pr_leaf_sink_12_1_3_commit_round_loop_kernel);
+leaf_sink_kernel!(ab_pr_leaf_sink_13_1_3_commit_round_loop_kernel);
 leaf_sink_kernel!(ab_pr_leaf_sink_1_3_5_coefficient_tree_kernel);
 leaf_sink_kernel!(ab_pr_leaf_sink_1_4_5_coefficient_tree_kernel);
 leaf_sink_kernel!(ab_pr_leaf_sink_1_3_5_residue_tree_kernel);
@@ -119,23 +125,30 @@ pub fn sink_tree_depth(mode: &SinkMode, skip_bottom: u32) -> u32 {
 
 // CoefficientTree leaves come from the residue-tree kernels (the group before its last log_v stages,
 // unscaled by the coset power); the converting kernels (last log_v stages, then the leaf conversion)
-// are the reference.
+// are the reference. The Commit kernels run several keccak-f rounds per loop iteration; the
+// round-loop kernels (one round per iteration) are the reference.
 fn leaf_sink_function(
     columns: u32,
     log_v: u32,
     tree_depth: u32,
     mode: &SinkMode,
-    converted: bool,
+    reference: bool,
 ) -> Option<LeafSinkFunction> {
     let commit = matches!(mode, SinkMode::Commit);
     Some(LeafSinkFunction(
-        match (columns, log_v, tree_depth, commit, converted) {
-            (1, 2, 3, true, _) => ab_pr_leaf_sink_1_2_3_commit_kernel,
-            (2, 1, 3, true, _) => ab_pr_leaf_sink_2_1_3_commit_kernel,
-            (6, 2, 3, true, _) => ab_pr_leaf_sink_6_2_3_commit_kernel,
-            (7, 2, 3, true, _) => ab_pr_leaf_sink_7_2_3_commit_kernel,
-            (12, 1, 3, true, _) => ab_pr_leaf_sink_12_1_3_commit_kernel,
-            (13, 1, 3, true, _) => ab_pr_leaf_sink_13_1_3_commit_kernel,
+        match (columns, log_v, tree_depth, commit, reference) {
+            (1, 2, 3, true, false) => ab_pr_leaf_sink_1_2_3_commit_kernel,
+            (2, 1, 3, true, false) => ab_pr_leaf_sink_2_1_3_commit_kernel,
+            (6, 2, 3, true, false) => ab_pr_leaf_sink_6_2_3_commit_kernel,
+            (7, 2, 3, true, false) => ab_pr_leaf_sink_7_2_3_commit_kernel,
+            (12, 1, 3, true, false) => ab_pr_leaf_sink_12_1_3_commit_kernel,
+            (13, 1, 3, true, false) => ab_pr_leaf_sink_13_1_3_commit_kernel,
+            (1, 2, 3, true, true) => ab_pr_leaf_sink_1_2_3_commit_round_loop_kernel,
+            (2, 1, 3, true, true) => ab_pr_leaf_sink_2_1_3_commit_round_loop_kernel,
+            (6, 2, 3, true, true) => ab_pr_leaf_sink_6_2_3_commit_round_loop_kernel,
+            (7, 2, 3, true, true) => ab_pr_leaf_sink_7_2_3_commit_round_loop_kernel,
+            (12, 1, 3, true, true) => ab_pr_leaf_sink_12_1_3_commit_round_loop_kernel,
+            (13, 1, 3, true, true) => ab_pr_leaf_sink_13_1_3_commit_round_loop_kernel,
             (1, 3, 5, false, false) => ab_pr_leaf_sink_1_3_5_residue_tree_kernel,
             (1, 4, 5, false, false) => ab_pr_leaf_sink_1_4_5_residue_tree_kernel,
             (1, 3, 5, false, true) => ab_pr_leaf_sink_1_3_5_coefficient_tree_kernel,
@@ -304,10 +317,11 @@ pub fn launch_sink(
     )
 }
 
-// `launch_sink` with the converting CoefficientTree kernels (the reference of the residue-tree ones).
+// `launch_sink` with the reference kernels: the round-loop Commit kernels and the converting
+// CoefficientTree kernels.
 #[cfg(test)]
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn launch_sink_converted(
+pub(crate) fn launch_sink_reference(
     ctx: &DeviceContext,
     tiles: &DeviceSlice<PR>,
     shape: &SuffixShape,
@@ -345,7 +359,7 @@ fn launch_leaf_sink(
     mode: SinkMode,
     out: &mut DeviceSlice<Digest>,
     out_coset_stride: usize,
-    converted: bool,
+    reference: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     let launch = sink_launch(
@@ -389,7 +403,7 @@ fn launch_leaf_sink(
         shape.log_v,
         launch.tree_depth,
         &mode,
-        converted,
+        reference,
     )
     .unwrap();
     function.launch(

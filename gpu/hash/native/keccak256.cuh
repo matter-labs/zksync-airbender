@@ -149,6 +149,32 @@ template <bool ROUND_LOOP> DEVICE_FORCEINLINE void permute(u64 state[25]) {
 
 DEVICE_FORCEINLINE void keccak_f1600(u64 state[25]) { permute<false>(state); }
 
+// Round constant `round`: keccak-f[1600] round constants set bits only at 2^j - 1 (j < 7); bit j of the round's
+// 7-bit pattern is bit 7 (round % 8) + j of the round / 8 pattern word.
+DEVICE_FORCEINLINE u64 round_constant_from_pattern(const unsigned round) {
+  const u64 patterns = round < 8 ? 0x00abe509fe178d01ULL : round < 16 ? 0x00a7767bf4cd460eULL : 0x00e886c79cc5a452ULL;
+  const unsigned pattern = static_cast<unsigned>(patterns >> (7 * (round & 7))) & 0x7f;
+  u64 constant = 0;
+#pragma unroll
+  for (unsigned j = 0; j < 7; j++)
+    constant |= static_cast<u64>((pattern >> j) & 1) << ((1u << j) - 1);
+  return constant;
+}
+
+// keccak-f[1600] with ROUNDS rounds per loop iteration; 1 is `permute<true>`, 24 is `permute<false>`.
+template <unsigned ROUNDS> DEVICE_FORCEINLINE void permute_rounds(u64 state[25]) {
+  static_assert(24 % ROUNDS == 0);
+  if constexpr (ROUNDS == 1 || ROUNDS == 24) {
+    permute<ROUNDS == 1>(state);
+  } else {
+#pragma unroll 1
+    for (unsigned round = 0; round < 24; round += ROUNDS)
+#pragma unroll
+      for (unsigned j = 0; j < ROUNDS; j++)
+        keccak_round(state, round_constant_from_pattern(round + j));
+  }
+}
+
 template <unsigned HALF> DEVICE_FORCEINLINE u64 canonical_lane(const u8 bytes[16]) {
   u64 lane = 0;
 #pragma unroll
@@ -270,8 +296,8 @@ DEVICE_FORCEINLINE digest truncate_merkle_digest(digest value) {
   return value;
 }
 
-template <bool ROUND_LOOP = false> DEVICE_FORCEINLINE digest hash_node(const digest &left, const digest &right) {
-  sponge_impl<ROUND_LOOP> hash;
+template <unsigned ROUNDS = 24> DEVICE_FORCEINLINE digest hash_node(const digest &left, const digest &right) {
+  sponge hash;
 #pragma unroll
   for (unsigned lane = 0; lane < 4; lane++) {
     hash.state[lane] = byte_swap(left.words[2 * lane]) | (static_cast<u64>(byte_swap(left.words[2 * lane + 1])) << 32);
@@ -279,7 +305,7 @@ template <bool ROUND_LOOP = false> DEVICE_FORCEINLINE digest hash_node(const dig
   }
   hash.state[8] = 1;
   hash.state[16] = 0x8000000000000000ULL;
-  permute<ROUND_LOOP>(hash.state);
+  permute_rounds<ROUNDS>(hash.state);
   return truncate_merkle_digest(digest_from_state(hash.state));
 }
 
@@ -297,14 +323,14 @@ template <u32 N, class F> DEVICE_FORCEINLINE void static_for(F &&f) {
 
 // Keccak-256 of a leaf preimage of LANES lanes (two per field element, `hash_leaf` order); the
 // lanes are absorbed by compile-time index so the state stays in registers.
-template <u32 LANES, bool ROUND_LOOP = false> struct leaf_sponge {
+template <u32 LANES, unsigned ROUNDS = 24> struct leaf_sponge {
   u64 state[25]{};
 
   template <u32 LANE> DEVICE_FORCEINLINE void absorb(const u64 value) {
     static_assert(LANE < LANES);
     state[LANE % 17] ^= value;
     if constexpr (LANE % 17 == 16)
-      permute<ROUND_LOOP>(state);
+      permute_rounds<ROUNDS>(state);
   }
 
   template <u32 ELEMENT> DEVICE_FORCEINLINE void absorb_element(const proth120 &value) {
@@ -317,7 +343,7 @@ template <u32 LANES, bool ROUND_LOOP = false> struct leaf_sponge {
   DEVICE_FORCEINLINE digest finalize() {
     state[LANES % 17] ^= 1;
     state[16] ^= 0x8000000000000000ULL;
-    permute<ROUND_LOOP>(state);
+    permute_rounds<ROUNDS>(state);
     return truncate_merkle_digest(digest_from_state(state));
   }
 };

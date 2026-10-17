@@ -92,7 +92,7 @@ template <u32 V, class T> DEVICE_FORCEINLINE void finish_leaf_group(pr (&x)[1u <
 // a^r P_r(y) for the coset scale a = w_D^k (residues).
 enum class leaf_form : u32 { evaluations, converted, residues };
 
-template <u32 C, u32 V, u32 TREE_DEPTH, leaf_form FORM, bool OPEN>
+template <u32 C, u32 V, u32 TREE_DEPTH, leaf_form FORM, bool OPEN, u32 ROUNDS>
 DEVICE_FORCEINLINE void leaf_sink(const leaf_sink_args &args, const leaf_open_args &open, const proth120_twiddle_descriptor &d) {
   static_assert(TREE_DEPTH >= 3 && TREE_DEPTH <= 8 && (!OPEN || (TREE_DEPTH == 3 && FORM == leaf_form::evaluations)));
   static_assert(FORM != leaf_form::residues || C == 1);
@@ -160,7 +160,7 @@ DEVICE_FORCEINLINE void leaf_sink(const leaf_sink_args &args, const leaf_open_ar
     const u64 mask = (u64{1} << log_l) - 1;
     base_root_inv = pr_root_power_inv(d, ((k << (log_l - args.log_domain)) + (static_cast<u64>(leaf.j) << (log_l - args.log_n))) & mask);
   }
-  leaf_sponge<2 * C * VALUES, true> sponge;
+  leaf_sponge<2 * C * VALUES, ROUNDS> sponge;
   if constexpr (FORM == leaf_form::residues)
     static_for<VALUES>([&](auto t) {
       constexpr u32 T = decltype(t)::value;
@@ -198,10 +198,10 @@ DEVICE_FORCEINLINE void leaf_sink(const leaf_sink_args &args, const leaf_open_ar
   leaves[tid] = sponge.finalize();
   __syncthreads();
   if (tid < 128)
-    layer_1[tid] = hash_node<true>(leaves[2 * tid], leaves[2 * tid + 1]);
+    layer_1[tid] = hash_node<ROUNDS>(leaves[2 * tid], leaves[2 * tid + 1]);
   __syncthreads();
   if (tid < 64)
-    layer_2[tid] = hash_node<true>(layer_1[2 * tid], layer_1[2 * tid + 1]);
+    layer_2[tid] = hash_node<ROUNDS>(layer_1[2 * tid], layer_1[2 * tid + 1]);
   __syncthreads();
   if constexpr (OPEN) {
     for (u32 i = tid; i < hit_count; i += 256) {
@@ -217,7 +217,7 @@ DEVICE_FORCEINLINE void leaf_sink(const leaf_sink_args &args, const leaf_open_ar
   }
   if (tid >= 32)
     return;
-  digest node = hash_node<true>(layer_2[2 * tid], layer_2[2 * tid + 1]);
+  digest node = hash_node<ROUNDS>(layer_2[2 * tid], layer_2[2 * tid + 1]);
 #pragma unroll
   for (u32 shift = 0; shift + 3 < TREE_DEPTH; shift++) {
     digest sibling;
@@ -225,7 +225,7 @@ DEVICE_FORCEINLINE void leaf_sink(const leaf_sink_args &args, const leaf_open_ar
     for (u32 word = 0; word < 8; word++)
       sibling.words[word] = __shfl_xor_sync(0xffffffffu, node.words[word], 1u << shift);
     if ((tid & ((2u << shift) - 1)) == 0)
-      node = hash_node<true>(node, sibling);
+      node = hash_node<ROUNDS>(node, sibling);
   }
   if (tid & ((1u << (TREE_DEPTH - 3)) - 1))
     return;
@@ -284,7 +284,7 @@ DEVICE_FORCEINLINE void residue_sink(const pr *monomials, digest *leaves, const 
   if (tid >= COSETS * M || first + c >= cosets)
     return;
   const u32 position = bitreverse_low_bits(tid % M, H);
-  leaf_sponge<2 * VALUES, true> sponge;
+  leaf_sponge<2 * VALUES, 1> sponge;
   static_for<VALUES>([&](auto t) { sponge.template absorb_element<decltype(t)::value>(values[(c * VALUES + decltype(t)::value) * M + position]); });
   store_digest(leaves + static_cast<u64>(first) * M + tid, sponge.finalize());
 }
@@ -299,28 +299,36 @@ RESIDUE_SINK_KERNEL(8, 4, 8)
 RESIDUE_SINK_KERNEL(11, 3, 1)
 RESIDUE_SINK_KERNEL(11, 4, 1)
 
-#define LEAF_SINK_KERNEL(C, V, TREE_DEPTH, MODE, FORM, BLOCKS)                                                                                                 \
+#define LEAF_SINK_KERNEL(C, V, TREE_DEPTH, MODE, FORM, BLOCKS, ROUNDS)                                                                                         \
   EXTERN __launch_bounds__(256, BLOCKS)                                                                                                                        \
   __global__ void ab_pr_leaf_sink_##C##_##V##_##TREE_DEPTH##_##MODE##_kernel(const leaf_sink_args args, const proth120_twiddle_descriptor d) {                 \
-    leaf_sink<C, V, TREE_DEPTH, leaf_form::FORM, false>(args, {}, d);                                                                                          \
+    leaf_sink<C, V, TREE_DEPTH, leaf_form::FORM, false, ROUNDS>(args, {}, d);                                                                                  \
   }
 
 #define LEAF_OPEN_KERNEL(C, V)                                                                                                                                 \
   EXTERN __launch_bounds__(256, 2)                                                                                                                             \
       __global__ void ab_pr_leaf_sink_##C##_##V##_3_open_kernel(const leaf_sink_args args, const leaf_open_args open, const proth120_twiddle_descriptor d) {   \
-    leaf_sink<C, V, 3, leaf_form::evaluations, true>(args, open, d);                                                                                           \
+    leaf_sink<C, V, 3, leaf_form::evaluations, true, 1>(args, open, d);                                                                                        \
   }
 
-LEAF_SINK_KERNEL(1, 2, 3, commit, evaluations, 2)
-LEAF_SINK_KERNEL(2, 1, 3, commit, evaluations, 2)
-LEAF_SINK_KERNEL(6, 2, 3, commit, evaluations, 2)
-LEAF_SINK_KERNEL(7, 2, 3, commit, evaluations, 2)
-LEAF_SINK_KERNEL(12, 1, 3, commit, evaluations, 2)
-LEAF_SINK_KERNEL(13, 1, 3, commit, evaluations, 2)
-LEAF_SINK_KERNEL(1, 3, 5, coefficient_tree, converted, 2)
-LEAF_SINK_KERNEL(1, 4, 5, coefficient_tree, converted, 2)
-LEAF_SINK_KERNEL(1, 3, 5, residue_tree, residues, 3)
-LEAF_SINK_KERNEL(1, 4, 5, residue_tree, residues, 3)
+// Commit sinks: minimum resident blocks per SM and keccak-f rounds per loop iteration, the fastest per shape (7, 12 and 13
+// columns spill a few registers outside the round loops at 3 blocks).
+LEAF_SINK_KERNEL(1, 2, 3, commit, evaluations, 3, 4)
+LEAF_SINK_KERNEL(2, 1, 3, commit, evaluations, 3, 4)
+LEAF_SINK_KERNEL(6, 2, 3, commit, evaluations, 2, 3)
+LEAF_SINK_KERNEL(7, 2, 3, commit, evaluations, 3, 4)
+LEAF_SINK_KERNEL(12, 1, 3, commit, evaluations, 3, 4)
+LEAF_SINK_KERNEL(13, 1, 3, commit, evaluations, 3, 4)
+LEAF_SINK_KERNEL(1, 2, 3, commit_round_loop, evaluations, 2, 1)
+LEAF_SINK_KERNEL(2, 1, 3, commit_round_loop, evaluations, 2, 1)
+LEAF_SINK_KERNEL(6, 2, 3, commit_round_loop, evaluations, 2, 1)
+LEAF_SINK_KERNEL(7, 2, 3, commit_round_loop, evaluations, 2, 1)
+LEAF_SINK_KERNEL(12, 1, 3, commit_round_loop, evaluations, 2, 1)
+LEAF_SINK_KERNEL(13, 1, 3, commit_round_loop, evaluations, 2, 1)
+LEAF_SINK_KERNEL(1, 3, 5, coefficient_tree, converted, 2, 1)
+LEAF_SINK_KERNEL(1, 4, 5, coefficient_tree, converted, 2, 1)
+LEAF_SINK_KERNEL(1, 3, 5, residue_tree, residues, 3, 1)
+LEAF_SINK_KERNEL(1, 4, 5, residue_tree, residues, 3, 1)
 LEAF_OPEN_KERNEL(1, 2)
 LEAF_OPEN_KERNEL(2, 1)
 LEAF_OPEN_KERNEL(6, 2)
