@@ -41,6 +41,21 @@ def binaryGapData (negative : Bool) : UnifiedReduced.Caller.RequestTrace babyBea
         ⟨(Cell.register 10).addressCode, (10, 0), Nat.pair (if negative then 129 else 0) 0⟩,
         ⟨(Cell.register 12).addressCode, (14, 0), Nat.pair 128 0⟩] } }
 
+private theorem binaryGapMember (initial : State) (index : Fin 524545)
+    (value : Vector (ZMod babyBearModulus) 10)
+    (equal : value = ((Verification.referenceShiftBinopRow index).set 9
+      (UnifiedReduced.Setup.binaryTag (Verification.referenceShiftBinopRow index)[9])).map
+        (fun n : Nat => (n : ZMod babyBearModulus))) :
+    (UnifiedReduced.Setup.table initial).Contains #[] value := by
+  change ∃ i : Fin 2097537, _
+  refine ⟨⟨index.val, by have bound := index.isLt; omega⟩, ?_⟩
+  dsimp only
+  rw [UnifiedReduced.Setup.Proofs.row_eq_reference]
+  have fixedBound : index.val < 1048961 := by have := index.isLt; omega
+  simpa only [UnifiedReduced.Setup.referenceRow, dif_pos fixedBound,
+    UnifiedReduced.Setup.referenceFixedRow, dif_pos index.isLt,
+    UnifiedReduced.Setup.referenceBinaryRow, Verification.shiftBinopRow_eq_reference] using equal
+
 theorem binaryGapCore (negative : Bool) (stage : Fin 3) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (binaryGapAssignment negative stage))
     (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table (binaryGapBefore negative))) := by
@@ -50,18 +65,14 @@ theorem binaryGapCore (negative : Bool) (stage : Fin 3) : FlatOperation.Constrai
     Lookup.Contains, Table.toRaw, fromElements]
   all_goals repeat' apply And.intro
   all_goals solve
-    | decide +kernel
     | (apply Verification.range16_contains; decide +kernel)
-    | (refine ⟨(0 : Fin 2097537), ?_⟩
-       change (#v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0] : Vector (ZMod babyBearModulus) 10) =
-         (UnifiedReduced.Setup.fixedRow (0 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
-       decide +kernel)
-    | exact ⟨⟨1, by decide⟩, by with_unfolding_all decide +kernel⟩
-    | exact ⟨⟨257, by decide⟩, by with_unfolding_all decide +kernel⟩
-    | exact ⟨⟨257 + 127 * 256 + 127, by decide⟩, by with_unfolding_all decide +kernel⟩
-    | exact ⟨⟨131329, by decide⟩, by with_unfolding_all decide +kernel⟩
-    | exact ⟨⟨131329 + 129 * 256 + 129, by decide⟩, by with_unfolding_all decide +kernel⟩
-
+    | (apply binaryGapMember _ (⟨0, by decide⟩ : Fin 524545); with_unfolding_all decide +kernel)
+    | (apply binaryGapMember _ (⟨1, by decide⟩ : Fin 524545); with_unfolding_all decide +kernel)
+    | (apply binaryGapMember _ (⟨257, by decide⟩ : Fin 524545); with_unfolding_all decide +kernel)
+    | (apply binaryGapMember _ (⟨257 + 127 * 256 + 127, by decide⟩ : Fin 524545); with_unfolding_all decide +kernel)
+    | (apply binaryGapMember _ (⟨131329, by decide⟩ : Fin 524545); with_unfolding_all decide +kernel)
+    | (apply binaryGapMember _ (⟨131329 + 129 * 256 + 129, by decide⟩ : Fin 524545); with_unfolding_all decide +kernel)
+    | decide +kernel
 
 theorem binaryGapClocks (negative : Bool) (stage : Fin 3) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (binaryGapAssignment negative stage)) UnifiedReduced.importedConstraintsTimestampLookups := by

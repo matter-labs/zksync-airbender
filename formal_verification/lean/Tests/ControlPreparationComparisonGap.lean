@@ -60,17 +60,19 @@ theorem comparisonCustomGapCore (negative : Bool) (stage : Fin 3) : FlatOperatio
     Lookup.Contains, Table.toRaw, fromElements]
   all_goals repeat' apply And.intro
   all_goals solve
-    | decide +kernel
     | (apply Verification.range16_contains; decide +kernel)
-    | (refine ⟨(0 : Fin 2097537), ?_⟩
-       change (#v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0] : Vector (ZMod babyBearModulus) 10) =
-         (UnifiedReduced.Setup.fixedRow (0 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
-       decide +kernel)
-    | (refine ⟨⟨524545, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
-    | (refine ⟨⟨655617, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
-    | (refine ⟨⟨786745, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow,
+    | (with_unfolding_all refine ⟨⟨0, by decide⟩, ?_⟩
+       dsimp only
+       rw [UnifiedReduced.Setup.Proofs.row_eq_reference]
+       simp only [UnifiedReduced.Setup.referenceRow, UnifiedReduced.Setup.referenceFixedRow,
+         UnifiedReduced.Setup.referenceBinaryRow, Verification.shiftBinopRow_eq_reference]
+       with_unfolding_all decide +kernel)
+    | (with_unfolding_all refine ⟨⟨524545, by decide⟩, ?_⟩; dsimp only; rw [UnifiedReduced.Setup.Proofs.row_eq_reference]; norm_num [UnifiedReduced.Setup.referenceRow, UnifiedReduced.Setup.referenceFixedRow])
+    | (with_unfolding_all refine ⟨⟨655617, by decide⟩, ?_⟩; dsimp only; rw [UnifiedReduced.Setup.Proofs.row_eq_reference]; norm_num [UnifiedReduced.Setup.referenceRow, UnifiedReduced.Setup.referenceFixedRow])
+    | (with_unfolding_all refine ⟨⟨786745, by decide⟩, ?_⟩; dsimp only; rw [UnifiedReduced.Setup.Proofs.row_eq_reference]; norm_num [UnifiedReduced.Setup.referenceRow, UnifiedReduced.Setup.referenceFixedRow,
         UnifiedReduced.Setup.conditionalKey, Verification.conditionalValue])
-    | (refine ⟨⟨721161, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
+    | (with_unfolding_all refine ⟨⟨721161, by decide⟩, ?_⟩; dsimp only; rw [UnifiedReduced.Setup.Proofs.row_eq_reference]; norm_num [UnifiedReduced.Setup.referenceRow, UnifiedReduced.Setup.referenceFixedRow])
+    | decide +kernel
 
 theorem comparisonCustomGapClocks (negative : Bool) (stage : Fin 3) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (comparisonCustomGapAssignment negative stage)) UnifiedReduced.importedConstraintsTimestampLookups := by
@@ -398,12 +400,15 @@ theorem public_comparison_custom_gap_stale_source_native (negative : Bool) :
       Lookup.Contains, Table.toRaw, fromElements]
     all_goals repeat' apply And.intro
     all_goals solve
-      | decide +kernel
       | (apply Verification.range16_contains; decide +kernel)
-      | (refine ⟨(0 : Fin 2097537), ?_⟩
-         change (#v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0] : Vector (ZMod babyBearModulus) 10) =
-           (UnifiedReduced.Setup.fixedRow (0 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
-         decide +kernel)
+      | (with_unfolding_all refine ⟨⟨0, by decide⟩, ?_⟩
+         dsimp only
+         rw [UnifiedReduced.Setup.Proofs.row_eq_reference]
+         simp only [UnifiedReduced.Setup.referenceRow, UnifiedReduced.Setup.referenceFixedRow,
+           UnifiedReduced.Setup.referenceBinaryRow, Verification.shiftBinopRow_eq_reference]
+         with_unfolding_all decide +kernel)
+      | decide +kernel
+
   · rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
     constructor
     · simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.constraints]

@@ -52,6 +52,7 @@ theorem control_conditional_lookup [Fact p.Prime] (hp : 4194304 ≤ p)
   apply (Lookup.completeness_def conditionalTable (Verification.environment w)
     (.var ⟨60⟩ + .const 65536 * .var ⟨58⟩ + .const 131072 * .var ⟨53⟩ +
       .const 262144 * .var ⟨57⟩ + .const 524288 * .var ⟨10⟩, .var ⟨59⟩)).mpr
+  simp only [conditionalTable_characterization]
   with_unfolding_all change ∃ i : Fin 4194304,
     (w 60 + 65536 * w 58 + 131072 * w 53 + 262144 * w 57 + 524288 * w 10, w 59) =
     ((i.val : ZMod p), (conditionalValue i.val : ZMod p))

@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.UnifiedReduced.Tables.NativeFixedData
+import Airbender.Review.Circuits.UnifiedReduced.Tables.Native.ROMData
+import Airbender.Review.Circuits.WordMemory.Tables.ZeroData
+import Airbender.Review.Circuits.WordMemory.Tables.ROMData
+import Airbender.Review.Helpers.Tables.SubwordROMData
 import Airbender.Import.SetupEmbed
 import Airbender.Review.Circuits.Keccak.Tables.FixedData
 import Airbender.Review.Circuits.Keccak.Tables.RotationData
@@ -6,6 +11,10 @@ import Airbender.Review.Circuits.Blake2G.Tables.ControllerData
 import Airbender.Review.Circuits.Keccak.Tables.ControllerData
 import Airbender.Review.Circuits.Blake2G.Tables.XorData
 import Airbender.Review.Circuits.Blake2Round.Tables.XorData
+import Airbender.Review.Helpers.Tables.PairData
+import Tests.SetupRegionImport
+import Airbender.Review.Helpers.Tables.ShiftData
+import Airbender.Review.Helpers.Tables.SubwordData
 
 namespace Tests.SetupImport
 open Airbender Lean
@@ -74,13 +83,10 @@ private def check (condition : Bool) (label : String) : IO Unit :=
   if condition then IO.println s!"PASS {label}"
   else throw (IO.userError s!"FAIL {label}")
 
-private def values (column : Setup.Column) : Array (Option Nat) :=
-  column.blocks.flatMap fun block => (Array.range block.length).map block.get?
-
-private def checkRegions (label source : String) (artifact : Setup.Artifact)
-    (data : Fin 5 → Setup.TableData width) (regions : Fin 5 → Setup.Region)
-    (sources : Vector String 5) : IO Unit := do
-  for k in List.finRange 5 do
+private def checkRegions {count : Nat} (label source : String) (artifact : Setup.Artifact)
+    (data : Fin count → Setup.TableData width) (regions : Fin count → Setup.Region)
+    (sources : Vector String count) : IO Unit := do
+  for k in List.finRange count do
     let imported := data k
     let region := regions k
     check (sources[k] == source && artifact.tables.contains region &&
@@ -88,11 +94,76 @@ private def checkRegions (label source : String) (artifact : Setup.Artifact)
       imported.columns.size == artifact.columns.size)
       s!"{label} region {region.id}: exact source, metadata and physical geometry"
     check (imported.columns.toArray.zipIdx.all fun (column, index) =>
-      some (values column) == artifact.columns[index]?.map (fun original =>
-        (values original).extract region.offset (region.offset + region.length)))
+      match artifact.columns[index]? with
+      | some original => Setup.Slices.matchesSource original column region.offset region.length
+      | none => false)
       s!"{label} region {region.id}: every key, output, padding and tag equals JSON"
 
 def run : IO Unit := do
+  let jumpSource ← IO.FS.readFile "artifacts/setup/jump-branch.json"
+  let .ok jump := Setup.parse jumpSource
+    | throw (IO.userError "jump/branch setup artifact failed import")
+  let jumpData : Vector (Setup.TableData 10) 4 :=
+    #v[Verification.regZeroData, Verification.signData,
+      Verification.jumpCleanupData, Verification.conditionalData]
+  let jumpRegions : Vector Setup.Region 4 :=
+    #v[Verification.regZeroDataRegion, Verification.signDataRegion,
+      Verification.jumpCleanupDataRegion, Verification.conditionalDataRegion]
+  checkRegions "jump/branch fixed" jumpSource jump (fun k => jumpData[k])
+    (fun k => jumpRegions[k])
+    #v[Verification.regZeroDataSourceBytes, Verification.signDataSourceBytes,
+      Verification.jumpCleanupDataSourceBytes, Verification.conditionalDataSourceBytes]
+  let mulSource ← IO.FS.readFile "artifacts/setup/mul-div.json"
+  let .ok mulSetup := Setup.parse mulSource
+    | throw (IO.userError "mul/div setup artifact failed import")
+  checkRegions "mul/div low-byte" mulSource mulSetup
+    (fun (_ : Fin 1) => Verification.lowByteData)
+    (fun _ => Verification.lowByteDataRegion) #v[Verification.lowByteDataSourceBytes]
+  let shiftSource ← IO.FS.readFile "artifacts/setup/shift-binop.json"
+  let .ok shiftSetup := Setup.parse shiftSource
+    | throw (IO.userError "shift/binop setup artifact failed import")
+  checkRegions "shift/binop fixed" shiftSource shiftSetup Verification.shiftData Verification.shiftRegion
+    #v[Verification.byteZeroDataSourceBytes, Verification.byteSignDataSourceBytes,
+      Verification.byteXorDataSourceBytes, Verification.byteOrDataSourceBytes,
+      Verification.byteAndDataSourceBytes, Verification.byteTruncateDataSourceBytes,
+      Verification.byteShiftDataSourceBytes]
+  let subwordSource ← IO.FS.readFile "artifacts/setup/subword-memory.json"
+  let .ok subwordSetup := Setup.parse subwordSource
+    | throw (IO.userError "subword setup artifact failed import")
+  checkRegions "subword disabled" subwordSource subwordSetup
+    (fun (_ : Fin 1) => Verification.subwordZeroData)
+    (fun _ => Verification.subwordZeroDataRegion) #v[Verification.subwordZeroDataSourceBytes]
+  checkRegions "subword fixed" subwordSource subwordSetup
+    Verification.subwordFixedData Verification.subwordFixedRegion
+    #v[Verification.storePlaceDataSourceBytes, Verification.storeClearDataSourceBytes,
+      Verification.loadHalfDataSourceBytes, Verification.loadByteDataSourceBytes]
+  checkRegions "subword ROM" subwordSource subwordSetup
+    (fun k : Fin 2 => Verification.subwordROMData (k.val == 1))
+    (fun k => Verification.subwordROMRegion (k.val == 1))
+    #v[Verification.subwordROMHalfDataSourceBytes, Verification.subwordROMByteDataSourceBytes]
+  let wordSource ← IO.FS.readFile "artifacts/setup/word-memory.json"
+  let .ok wordSetup := Setup.parse wordSource
+    | throw (IO.userError "word-memory setup artifact failed import")
+  let wordData : Vector (Setup.TableData 9) 2 := #v[Trace.ROM.nativeWordZeroData, Trace.ROM.nativeWordData]
+  let wordRegions : Vector Setup.Region 2 := #v[Trace.ROM.nativeWordZeroDataRegion, Trace.ROM.nativeWordDataRegion]
+  checkRegions "word ROM" wordSource wordSetup (fun k => wordData[k]) (fun k => wordRegions[k])
+    #v[Trace.ROM.nativeWordZeroDataSourceBytes, Trace.ROM.nativeWordDataSourceBytes]
+  let unifiedSource ← IO.FS.readFile "artifacts/setup/unified.json"
+  let .ok unifiedSetup := Setup.parse unifiedSource
+    | throw (IO.userError "unified setup artifact failed import")
+  checkRegions "unified fixed" unifiedSource unifiedSetup
+    UnifiedReduced.Setup.nativeFixedData UnifiedReduced.Setup.nativeFixedRegion
+    #v[UnifiedReduced.Setup.nativeZeroDataSourceBytes, UnifiedReduced.Setup.nativeByteSignDataSourceBytes,
+      UnifiedReduced.Setup.nativeXorDataSourceBytes, UnifiedReduced.Setup.nativeOrDataSourceBytes,
+      UnifiedReduced.Setup.nativeAndDataSourceBytes, UnifiedReduced.Setup.nativeTruncationDataSourceBytes,
+      UnifiedReduced.Setup.nativeShiftDataSourceBytes, UnifiedReduced.Setup.nativeRegisterZeroDataSourceBytes,
+      UnifiedReduced.Setup.nativeSignDataSourceBytes, UnifiedReduced.Setup.nativeCleanupDataSourceBytes,
+      UnifiedReduced.Setup.nativeConditionalDataSourceBytes, UnifiedReduced.Setup.nativeRotate16DataSourceBytes,
+      UnifiedReduced.Setup.nativeRotate12DataSourceBytes, UnifiedReduced.Setup.nativeRotate8DataSourceBytes,
+      UnifiedReduced.Setup.nativeRotate7DataSourceBytes]
+  checkRegions "unified ROM" unifiedSource unifiedSetup
+    (fun _ : Fin 1 => UnifiedReduced.Setup.nativeROMData)
+    (fun _ => UnifiedReduced.Setup.nativeROMDataRegion) #v[UnifiedReduced.Setup.nativeROMDataSourceBytes]
   let source ← IO.FS.readFile "artifacts/setup/decoder-smoke.json"
   check (source == importedSourceBytes) "setup source bytes equal embedded artifact"
   let .ok artifact := Setup.parse source | throw (IO.userError "setup artifact failed import")

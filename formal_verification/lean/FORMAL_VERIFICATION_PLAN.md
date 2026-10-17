@@ -61,13 +61,11 @@ dependencies, pins or generated artifacts as part of readability cleanup.
 
 ## Pending integration work
 
-The user authorized complete selected-program setup JSON export/import on
-15 October 2026, including ROM and decoder rows. This table-content extraction
-is now active: shared 13-/16-/19-bit, bigint fixed-table, G/round XOR and all Keccak fixed-table definitions
-import actual native rows, with their existing semantics proved and used by the
-consumers. Generalized controller parameters retain their scope. Continue replacing standard fixed tables
-and connect the program-dependent consumers without new semantic
-assumptions. See the [artifact workflow](artifacts/setup/README.md).
+The complete selected-program setup JSON migration is checked: imported fixed,
+controller, ROM and decoder rows supply the table contents and their checked
+consumer bridges. Generalized public program/controller scopes are preserved.
+Library, executables, every concrete test module, importer regressions and
+axiom/review checks pass. See the [artifact workflow](artifacts/setup/README.md).
 
 The [finding register](FINDINGS.md#linear-and-open-pr-review--15-october-2026)
 separates implementation bugs, temporary proof assumptions, intended external

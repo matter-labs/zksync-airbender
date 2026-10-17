@@ -8,6 +8,7 @@ import Mathlib.Tactic.IntervalCases
 namespace Airbender.Blake2Round.Preparation.Proofs
 open Arithmetic
 
+set_option Elab.async false
 set_option maxRecDepth 4096
 set_option maxHeartbeats 2000000
 
@@ -92,12 +93,67 @@ theorem chaining {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     by rw [constraint_count]; have := i.isLt; omega⟩
   have high := Verification.assertion_of_holds h ⟨6 + 4 * i.val,
     by rw [constraint_count]; have := i.isLt; omega⟩
+  clear h
   cases compression <;> fin_cases i <;>
     simp [importedConstraints, FlatOperation.constraints, Expression.eval,
       Verification.environment, selected, words, Variables.chainingInputs,
       Variables.stateReads, configured_limbs] at lo high ⊢
   all_goals constructor
   all_goals first | linear_combination -lo | linear_combination -high
+
+private def extendedExpected {p : Nat} (w : Nat → ZMod p) (first compression : Bool) :
+    Vector Word 16 :=
+  if first then words w Variables.chainingInputs ++
+    (if compression then compressionIV
+      else (iv.set 4 (words w Variables.extendedReads)[12]).set 6
+        (words w Variables.extendedReads)[14])
+  else words w Variables.extendedReads
+
+/- Check one imported pair at a time so Boolean cases do not retain sixteen
+   expanded constraint arrays in one tactic state. -/
+macro "round_extended_word " name:ident index:num low:num high:num : command =>
+  `(private theorem $name {p : Nat} [Fact p.Prime]
+      {setup : Table (ZMod p) (fields 4)} {w : Nat → ZMod p} (first compression : Bool)
+      (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+      (firstFlag : w 142 = if first then 1 else 0)
+      (compressionFlag : w 141 = if compression then 1 else 0) :
+      w Variables.preparedState[$index].1 = (extendedExpected w first compression)[$index].lo ∧
+      w Variables.preparedState[$index].2 = (extendedExpected w first compression)[$index].hi := by
+    have normal := Verification.assertion_of_holds h ⟨3, by rw [constraint_count]; decide⟩
+    simp [importedConstraints, FlatOperation.constraints, Expression.eval,
+      Verification.environment] at normal
+    have normalFlag : w 153 = (if first then 1 else 0) * (1 - if compression then 1 else 0) := by
+      rw [← firstFlag, ← compressionFlag]
+      linear_combination -normal
+    have lo := Verification.assertion_of_holds h ⟨$low, by rw [constraint_count]; decide⟩
+    have high := Verification.assertion_of_holds h ⟨$high, by rw [constraint_count]; decide⟩
+    clear h normal
+    simp [importedConstraints, FlatOperation.constraints, Expression.eval,
+      Verification.environment] at lo high
+    dsimp only [extendedExpected]
+    cases first <;> cases compression
+    all_goals simp only [Bool.false_eq_true, ↓reduceIte]
+    all_goals simp [get_append8, firstFlag, compressionFlag, normalFlag, words, Variables.preparedState,
+      Variables.chainingInputs, Variables.extendedReads, iv_limbs, compression_limbs] at lo high ⊢
+    all_goals constructor
+    all_goals first | linear_combination -lo | linear_combination -high)
+
+round_extended_word extended_word0 0 5 7
+round_extended_word extended_word1 1 9 11
+round_extended_word extended_word2 2 13 15
+round_extended_word extended_word3 3 17 19
+round_extended_word extended_word4 4 21 23
+round_extended_word extended_word5 5 25 27
+round_extended_word extended_word6 6 29 31
+round_extended_word extended_word7 7 33 35
+round_extended_word extended_word8 8 36 37
+round_extended_word extended_word9 9 38 39
+round_extended_word extended_word10 10 40 41
+round_extended_word extended_word11 11 42 43
+round_extended_word extended_word12 12 48 49
+round_extended_word extended_word13 13 44 45
+round_extended_word extended_word14 14 50 51
+round_extended_word extended_word15 15 46 47
 
 set_option maxHeartbeats 4000000 in
 theorem extended {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
@@ -110,12 +166,6 @@ theorem extended {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
         else (iv.set 4 (words w Variables.extendedReads)[12]).set 6
           (words w Variables.extendedReads)[14])
       else words w Variables.extendedReads := by
-  have normal := Verification.assertion_of_holds h ⟨3, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment] at normal
-  have normalFlag : w 153 = (if first then 1 else 0) * (1 - if compression then 1 else 0) := by
-    rw [← firstFlag, ← compressionFlag]
-    linear_combination -normal
   apply words_eq
   · intro i
     cases first <;> cases compression
@@ -126,22 +176,25 @@ theorem extended {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     all_goals constructor
     all_goals first | exact ZMod.val_lt _ | omega
   intro i
-  let loIndices : Vector Nat 16 := #v[5, 9, 13, 17, 21, 25, 29, 33, 36, 38, 40, 42, 48, 44, 50, 46]
-  let hiIndices : Vector Nat 16 := #v[7, 11, 15, 19, 23, 27, 31, 35, 37, 39, 41, 43, 49, 45, 51, 47]
-  have lo := Verification.assertion_of_holds h ⟨loIndices[i],
-    by rw [constraint_count]; fin_cases i <;> norm_num [loIndices]⟩
-  have high := Verification.assertion_of_holds h ⟨hiIndices[i],
-    by rw [constraint_count]; fin_cases i <;> norm_num [hiIndices]⟩
-  clear h normal
-  fin_cases i <;> simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, loIndices, hiIndices] at lo high
-  all_goals cases first <;> cases compression
-  all_goals simp only [Bool.false_eq_true, ↓reduceIte]
-  all_goals simp only [Fin.getElem_fin, get_append8]
-  all_goals simp [firstFlag, compressionFlag, normalFlag, words, Variables.preparedState,
-    Variables.chainingInputs, Variables.extendedReads, iv_limbs, compression_limbs] at lo high ⊢
-  all_goals constructor
-  all_goals first | linear_combination -lo | linear_combination -high
+  change w Variables.preparedState[i].1 = (extendedExpected w first compression)[i].lo ∧
+    w Variables.preparedState[i].2 = (extendedExpected w first compression)[i].hi
+  fin_cases i
+  · exact extended_word0 first compression h firstFlag compressionFlag
+  · exact extended_word1 first compression h firstFlag compressionFlag
+  · exact extended_word2 first compression h firstFlag compressionFlag
+  · exact extended_word3 first compression h firstFlag compressionFlag
+  · exact extended_word4 first compression h firstFlag compressionFlag
+  · exact extended_word5 first compression h firstFlag compressionFlag
+  · exact extended_word6 first compression h firstFlag compressionFlag
+  · exact extended_word7 first compression h firstFlag compressionFlag
+  · exact extended_word8 first compression h firstFlag compressionFlag
+  · exact extended_word9 first compression h firstFlag compressionFlag
+  · exact extended_word10 first compression h firstFlag compressionFlag
+  · exact extended_word11 first compression h firstFlag compressionFlag
+  · exact extended_word12 first compression h firstFlag compressionFlag
+  · exact extended_word13 first compression h firstFlag compressionFlag
+  · exact extended_word14 first compression h firstFlag compressionFlag
+  · exact extended_word15 first compression h firstFlag compressionFlag
 
 set_option maxHeartbeats 4000000 in
 theorem message {p : Nat} [Fact p.Prime]

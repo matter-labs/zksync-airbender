@@ -21,7 +21,11 @@ private def index (kind : Fin 4) : Fin 2097537 :=
 theorem public_tables_accept (kind : Fin 4) :
     (UnifiedReduced.Setup.table (default : Reference.RiscV.Sail.State)).Contains #[] (values kind) := by
   change ∃ i : Fin 2097537, _
-  exact ⟨index kind, by fin_cases kind <;> norm_num [values, index, UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow, UnifiedReduced.Setup.conditionalKey, conditionalValue]⟩
+  refine ⟨index kind, ?_⟩
+  dsimp only
+  rw [UnifiedReduced.Setup.Proofs.row_eq_reference]
+  fin_cases kind <;> norm_num [values, index, UnifiedReduced.Setup.referenceRow,
+    UnifiedReduced.Setup.referenceFixedRow, UnifiedReduced.Setup.conditionalKey, conditionalValue]
 
 theorem sign_wrong_rejected :
     ¬(Lookup.mk (UnifiedReduced.Setup.table (default : Reference.RiscV.Sail.State)).toRaw

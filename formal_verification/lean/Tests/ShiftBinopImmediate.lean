@@ -31,7 +31,9 @@ theorem constraints : FlatOperation.ConstraintsHoldFlat (Verification.environmen
            (Verification.shiftBinopRow i).map (fun (n : Nat) => (n : ZMod babyBearModulus))
        refine ⟨⟨256, by decide⟩, ?_⟩
        have shape : Verification.shiftBinopRow ⟨256, by decide⟩ =
-           (#v[255, 255, 0, 0, 0, 0, 0, 0, 0, 3] : Vector Nat 10) := by decide
+           (#v[255, 255, 0, 0, 0, 0, 0, 0, 0, 3] : Vector Nat 10) := by
+         rw [Verification.shiftBinopRow_eq_reference]
+         decide +kernel
        rw [shape]
        apply Vector.ext
        intro j bound
@@ -42,7 +44,9 @@ theorem constraints : FlatOperation.ConstraintsHoldFlat (Verification.environmen
            (Verification.shiftBinopRow i).map (fun (n : Nat) => (n : ZMod babyBearModulus))
        refine ⟨⟨512, by decide⟩, ?_⟩
        have shape : Verification.shiftBinopRow ⟨512, by decide⟩ =
-           (#v[0, 255, 255, 0, 0, 0, 0, 0, 0, 4] : Vector Nat 10) := by decide
+           (#v[0, 255, 255, 0, 0, 0, 0, 0, 0, 4] : Vector Nat 10) := by
+         rw [Verification.shiftBinopRow_eq_reference]
+         decide +kernel
        rw [shape]
        apply Vector.ext
        intro j bound
