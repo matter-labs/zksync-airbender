@@ -1,31 +1,23 @@
-# Shared modeled tables
+# Imported setup tables
 
-Shared 13-/16-/19-bit range rows now come from [native setup JSON](../../../../artifacts/setup/README.md),
-with kernel-checked membership bounds. [Bigint fixed rows](../../Circuits/Bigint/Tables/Setup.lean)
-also import native data with their carry/low-byte semantics checked. Other table definitions are still
-being migrated from their reviewed models. The definitions state
-which logical queries are members and how returned values are interpreted. Their
-correspondence with the Rust setup generator and cryptographic lookup enforcement
-are separate obligations.
+Table contents come from [native setup JSON](../../../../artifacts/setup/README.md).
+Review keeps artifact paths, query layouts, native IDs/offsets and field casts.
+The mathematical row relations and their proofs belong in `Proofs/`; consuming
+instruction proofs reuse those relations through checked imported-data connections.
 
-## Checked connections
+[Range](Range.lean), [Bytes](Bytes.lean), [Subword](Subword.lean) and
+[Lookups](Lookups.lean) expose the shared tables. Circuit-specific tables and
+controllers live in each circuit's `Tables/` directory. The checked connections
+cover keys, outputs, padding, discriminators and disabled queries, with the
+original field and inverse conditions.
 
-The [lookup lemmas](../../../Proofs/Lookups.lean) extract modeled pair/range-sign/
-low-byte behavior from membership; [byte-table lemmas](../../../Proofs/ByteTables.lean)
-characterize tagged binary rows and their lookup results under stated field bounds.
-Consuming circuit proofs use these results to recover ranges and operation effects.
-Range and bigint proofs concern the actual imported rows; byte/subword proofs still concern
-their modeled rows. General Rust refinement and cryptographic enforcement remain separate.
+Program-dependent compatibility views retain arbitrary public programs.
+[Imported word ROM](../../Circuits/WordMemory/ImportedROM.lean),
+[imported subword setup](../../Circuits/SubwordMemory/ImportedSetup.lean) and
+[unified execution](../../Trace/ImportedDecoder.lean) connect the complete selected
+setup to those views under explicit public byte binding. The retained program
+is a specialization, rather than a restriction on the earlier generalized claims.
 
-[Range](Range.lean) defines limb-range rows; [Bytes](Bytes.lean) defines shared
-byte constructions; [Subword](Subword.lean) defines subword/ROM rows;
-[Lookups](Lookups.lean) supplies shared lookup encodings.
-
-Review the row contents, query layout, field interpretation and disabled-query
-behavior used by the consuming claim. Circuit-specific controllers and setup
-belong in that circuit's Tables directory.
-
-Clean supplies the lookup semantics. The imported ranges and remaining table models
-have distinct provenance; the native table migration is in progress.
-Membership and cryptographic enforcement are separate boundaries.
+Clean supplies logical membership. Parsing/emission fidelity, general Rust setup
+refinement and cryptographic query/table authentication remain separate boundaries.
 See [trust and provenance](../../../../TRUST_AND_REVIEW.md#modeled-tables-and-logical-arguments).

@@ -842,14 +842,32 @@ theorem customCore (kind : Fin 5) : FlatOperation.ConstraintsHoldFlat
     Verification.environment, Expression.eval, customAssignment, Lookup.Contains, Table.toRaw, fromElements]
   all_goals repeat' apply And.intro
   all_goals solve
-    | decide +kernel
     | (apply Verification.range16_contains; decide +kernel)
-    | (refine ⟨⟨0, by decide⟩, ?_⟩; with_unfolding_all decide +kernel)
-    | (refine ⟨⟨1, by decide⟩, ?_⟩; with_unfolding_all decide +kernel)
-    | (refine ⟨⟨786817, by decide⟩, ?_⟩; with_unfolding_all decide +kernel)
-    | (refine ⟨⟨852353, by decide⟩, ?_⟩; with_unfolding_all decide +kernel)
-    | (refine ⟨⟨917889, by decide⟩, ?_⟩; with_unfolding_all decide +kernel)
-    | (refine ⟨⟨983425, by decide⟩, ?_⟩; with_unfolding_all decide +kernel)
+    | (with_unfolding_all refine ⟨⟨0, by decide⟩, ?_⟩
+       dsimp only
+       rw [UnifiedReduced.Setup.Proofs.row_eq_reference]
+       with_unfolding_all decide +kernel)
+    | (with_unfolding_all refine ⟨⟨1, by decide⟩, ?_⟩
+       dsimp only
+       rw [UnifiedReduced.Setup.Proofs.row_eq_reference]
+       with_unfolding_all decide +kernel)
+    | (with_unfolding_all refine ⟨⟨786817, by decide⟩, ?_⟩
+       dsimp only
+       rw [UnifiedReduced.Setup.Proofs.row_eq_reference]
+       with_unfolding_all decide +kernel)
+    | (with_unfolding_all refine ⟨⟨852353, by decide⟩, ?_⟩
+       dsimp only
+       rw [UnifiedReduced.Setup.Proofs.row_eq_reference]
+       with_unfolding_all decide +kernel)
+    | (with_unfolding_all refine ⟨⟨917889, by decide⟩, ?_⟩
+       dsimp only
+       rw [UnifiedReduced.Setup.Proofs.row_eq_reference]
+       with_unfolding_all decide +kernel)
+    | (with_unfolding_all refine ⟨⟨983425, by decide⟩, ?_⟩
+       dsimp only
+       rw [UnifiedReduced.Setup.Proofs.row_eq_reference]
+       with_unfolding_all decide +kernel)
+    | decide +kernel
 
 theorem customClocks (kind : Fin 5) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (customAssignment kind)) UnifiedReduced.importedConstraintsTimestampLookups := by
@@ -1003,12 +1021,27 @@ theorem binaryCore : FlatOperation.ConstraintsHoldFlat
     Verification.environment, Expression.eval, binaryAssignment, arithmetic, Lookup.Contains, Table.toRaw, fromElements]
   repeat' apply And.intro
   all_goals solve
-    | decide +kernel
     | (apply Verification.range16_contains; decide +kernel)
     | exact ⟨⟨0, by decide⟩, rfl⟩
-    | (refine ⟨⟨1, by decide⟩, ?_⟩; with_unfolding_all decide +kernel)
-    | (refine ⟨⟨257, by decide⟩, ?_⟩; with_unfolding_all decide +kernel)
-    | (refine ⟨⟨258, by decide⟩, ?_⟩; with_unfolding_all decide +kernel)
+    | (with_unfolding_all refine ⟨⟨1, by decide⟩, ?_⟩
+       dsimp only
+       rw [UnifiedReduced.Setup.Proofs.row_eq_reference]
+       simp only [UnifiedReduced.Setup.referenceRow, UnifiedReduced.Setup.referenceFixedRow,
+         UnifiedReduced.Setup.referenceBinaryRow, Verification.shiftBinopRow_eq_reference]
+       with_unfolding_all decide +kernel)
+    | (with_unfolding_all refine ⟨⟨257, by decide⟩, ?_⟩
+       dsimp only
+       rw [UnifiedReduced.Setup.Proofs.row_eq_reference]
+       simp only [UnifiedReduced.Setup.referenceRow, UnifiedReduced.Setup.referenceFixedRow,
+         UnifiedReduced.Setup.referenceBinaryRow, Verification.shiftBinopRow_eq_reference]
+       with_unfolding_all decide +kernel)
+    | (with_unfolding_all refine ⟨⟨258, by decide⟩, ?_⟩
+       dsimp only
+       rw [UnifiedReduced.Setup.Proofs.row_eq_reference]
+       simp only [UnifiedReduced.Setup.referenceRow, UnifiedReduced.Setup.referenceFixedRow,
+         UnifiedReduced.Setup.referenceBinaryRow, Verification.shiftBinopRow_eq_reference]
+       with_unfolding_all decide +kernel)
+    | decide +kernel
 
 theorem binaryClocks : FlatOperation.ConstraintsHoldFlat
     (Verification.environment binaryAssignment) UnifiedReduced.importedConstraintsTimestampLookups := by
@@ -1132,17 +1165,17 @@ theorem comparisonCore : FlatOperation.ConstraintsHoldFlat
     Verification.environment, Expression.eval, comparisonAssignment, arithmetic, Lookup.Contains, Table.toRaw, fromElements]
   repeat' apply And.intro
   all_goals solve
-    | decide +kernel
     | (apply Verification.range16_contains; decide +kernel)
-    | (refine ⟨⟨524545, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
-    | (refine ⟨⟨524546, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
-    | (refine ⟨⟨655617, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
-    | (refine ⟨⟨786742, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow,
+    | (with_unfolding_all refine ⟨⟨524545, by decide⟩, ?_⟩; dsimp only; rw [UnifiedReduced.Setup.Proofs.row_eq_reference]; norm_num [UnifiedReduced.Setup.referenceRow, UnifiedReduced.Setup.referenceFixedRow])
+    | (with_unfolding_all refine ⟨⟨524546, by decide⟩, ?_⟩; dsimp only; rw [UnifiedReduced.Setup.Proofs.row_eq_reference]; norm_num [UnifiedReduced.Setup.referenceRow, UnifiedReduced.Setup.referenceFixedRow])
+    | (with_unfolding_all refine ⟨⟨655617, by decide⟩, ?_⟩; dsimp only; rw [UnifiedReduced.Setup.Proofs.row_eq_reference]; norm_num [UnifiedReduced.Setup.referenceRow, UnifiedReduced.Setup.referenceFixedRow])
+    | (with_unfolding_all refine ⟨⟨786742, by decide⟩, ?_⟩; dsimp only; rw [UnifiedReduced.Setup.Proofs.row_eq_reference]; norm_num [UnifiedReduced.Setup.referenceRow, UnifiedReduced.Setup.referenceFixedRow,
         UnifiedReduced.Setup.conditionalKey, Verification.conditionalValue])
-    | (refine ⟨⟨786745, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow,
+    | (with_unfolding_all refine ⟨⟨786745, by decide⟩, ?_⟩; dsimp only; rw [UnifiedReduced.Setup.Proofs.row_eq_reference]; norm_num [UnifiedReduced.Setup.referenceRow, UnifiedReduced.Setup.referenceFixedRow,
         UnifiedReduced.Setup.conditionalKey, Verification.conditionalValue])
-    | (refine ⟨⟨721152, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
-    | (refine ⟨⟨721161, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
+    | (with_unfolding_all refine ⟨⟨721152, by decide⟩, ?_⟩; dsimp only; rw [UnifiedReduced.Setup.Proofs.row_eq_reference]; norm_num [UnifiedReduced.Setup.referenceRow, UnifiedReduced.Setup.referenceFixedRow])
+    | (with_unfolding_all refine ⟨⟨721161, by decide⟩, ?_⟩; dsimp only; rw [UnifiedReduced.Setup.Proofs.row_eq_reference]; norm_num [UnifiedReduced.Setup.referenceRow, UnifiedReduced.Setup.referenceFixedRow])
+    | decide +kernel
 
 theorem comparisonClocks : FlatOperation.ConstraintsHoldFlat
     (Verification.environment comparisonAssignment) UnifiedReduced.importedConstraintsTimestampLookups := by
@@ -1293,19 +1326,19 @@ theorem controlCore (kind : Fin 4) : FlatOperation.ConstraintsHoldFlat
     Verification.environment, Expression.eval, controlAssignment, arithmetic, Lookup.Contains, Table.toRaw, fromElements]
   all_goals repeat' apply And.intro
   all_goals solve
-    | decide +kernel
     | (apply Verification.range16_contains; decide +kernel)
-    | (refine ⟨⟨524545, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
-    | (refine ⟨⟨524553, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
-    | (refine ⟨⟨655617, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
-    | (refine ⟨⟨786689, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow,
+    | (with_unfolding_all refine ⟨⟨524545, by decide⟩, ?_⟩; dsimp only; rw [UnifiedReduced.Setup.Proofs.row_eq_reference]; norm_num [UnifiedReduced.Setup.referenceRow, UnifiedReduced.Setup.referenceFixedRow])
+    | (with_unfolding_all refine ⟨⟨524553, by decide⟩, ?_⟩; dsimp only; rw [UnifiedReduced.Setup.Proofs.row_eq_reference]; norm_num [UnifiedReduced.Setup.referenceRow, UnifiedReduced.Setup.referenceFixedRow])
+    | (with_unfolding_all refine ⟨⟨655617, by decide⟩, ?_⟩; dsimp only; rw [UnifiedReduced.Setup.Proofs.row_eq_reference]; norm_num [UnifiedReduced.Setup.referenceRow, UnifiedReduced.Setup.referenceFixedRow])
+    | (with_unfolding_all refine ⟨⟨786689, by decide⟩, ?_⟩; dsimp only; rw [UnifiedReduced.Setup.Proofs.row_eq_reference]; norm_num [UnifiedReduced.Setup.referenceRow, UnifiedReduced.Setup.referenceFixedRow,
         UnifiedReduced.Setup.conditionalKey, Verification.conditionalValue])
-    | (refine ⟨⟨786697, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow,
+    | (with_unfolding_all refine ⟨⟨786697, by decide⟩, ?_⟩; dsimp only; rw [UnifiedReduced.Setup.Proofs.row_eq_reference]; norm_num [UnifiedReduced.Setup.referenceRow, UnifiedReduced.Setup.referenceFixedRow,
         UnifiedReduced.Setup.conditionalKey, Verification.conditionalValue])
-    | (refine ⟨⟨786713, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow,
+    | (with_unfolding_all refine ⟨⟨786713, by decide⟩, ?_⟩; dsimp only; rw [UnifiedReduced.Setup.Proofs.row_eq_reference]; norm_num [UnifiedReduced.Setup.referenceRow, UnifiedReduced.Setup.referenceFixedRow,
         UnifiedReduced.Setup.conditionalKey, Verification.conditionalValue])
-    | (refine ⟨⟨721161, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
-    | (refine ⟨⟨721165, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
+    | (with_unfolding_all refine ⟨⟨721161, by decide⟩, ?_⟩; dsimp only; rw [UnifiedReduced.Setup.Proofs.row_eq_reference]; norm_num [UnifiedReduced.Setup.referenceRow, UnifiedReduced.Setup.referenceFixedRow])
+    | (with_unfolding_all refine ⟨⟨721165, by decide⟩, ?_⟩; dsimp only; rw [UnifiedReduced.Setup.Proofs.row_eq_reference]; norm_num [UnifiedReduced.Setup.referenceRow, UnifiedReduced.Setup.referenceFixedRow])
+    | decide +kernel
 
 theorem controlClocks (kind : Fin 4) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (controlAssignment kind)) UnifiedReduced.importedConstraintsTimestampLookups := by

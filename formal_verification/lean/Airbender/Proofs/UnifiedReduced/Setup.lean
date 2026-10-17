@@ -1,3 +1,5 @@
+import Airbender.Proofs.UnifiedReduced.Tables.FixedCharacterization
+import Airbender.Proofs.Tables.ShiftCharacterization
 import Airbender.Review.Circuits.UnifiedReduced.Tables.Setup
 import Airbender.Proofs.ByteTables
 
@@ -8,19 +10,21 @@ set_option maxRecDepth 16384
 set_option maxHeartbeats 1000000
 
 theorem shift_tag_bound (i : Fin 524545) : (shiftBinopRow i)[9] < 10 := by
-  unfold shiftBinopRow
+  simp only [shiftBinopRow_eq_reference]
+  unfold referenceShiftBinopRow referenceShiftNatRow
   dsimp only
   split_ifs <;> simp [binaryByteRow]
 
 theorem row_tag_bound (before : Reference.RiscV.Sail.State) (i : Fin 2097537) :
     (row before i)[9] < 55 := by
-  unfold row
+  rw [row_eq_reference]
+  unfold referenceRow
   split
-  · unfold fixedRow
+  · unfold referenceFixedRow
     dsimp only
     split
     · have bound := shift_tag_bound ⟨i.val, by assumption⟩
-      simp only [binaryRow, Vector.getElem_set_self]
+      simp only [referenceBinaryRow, Vector.getElem_set_self]
       unfold binaryTag
       split_ifs <;> omega
     · split
@@ -57,7 +61,8 @@ theorem lookup_row [Fact p.Prime] (hp : 55 ≤ p)
 
 theorem fixed_outside_tag (i : Fin 1048961) (outside : ¬ i.val < 524545) :
     (fixedRow i)[9] < 52 := by
-  unfold fixedRow
+  rw [fixedRow_eq_reference]
+  unfold referenceFixedRow
   dsimp only
   split
   · contradiction
@@ -76,26 +81,29 @@ theorem fixed_outside_tag (i : Fin 1048961) (outside : ¬ i.val < 524545) :
 theorem wide_region {before : Reference.RiscV.Sail.State} {i : Fin 2097537} {tag : Nat}
     (wide : tag = 4 ∨ tag = 6 ∨ tag = 7) (selected : (row before i)[9] = binaryTag tag) :
     ∃ j : Fin 524545, row before i = binaryRow j ∧ (shiftBinopRow j)[9] = tag := by
+  simp only [row_eq_reference, binaryRow_eq_reference] at *
   have ht : binaryTag tag = 52 ∨ binaryTag tag = 53 ∨ binaryTag tag = 54 := by
     rcases wide with rfl | rfl | rfl <;> simp [binaryTag]
   by_cases top : i.val < 1048961
   · by_cases first : i.val < 524545
-    · have same : row before i = binaryRow ⟨i.val, first⟩ := by
-        simp only [row, top, dif_pos, fixedRow, first]
+    · have same : referenceRow before i = referenceBinaryRow ⟨i.val, first⟩ := by
+        simp only [referenceRow, top, dif_pos, referenceFixedRow, first]
       refine ⟨⟨i.val, first⟩, same, ?_⟩
-      rw [same] at selected
+      have projected := congrArg (fun values : Vector Nat 10 => values[9]'(by decide)) same
+      replace selected : (referenceBinaryRow ⟨i.val, first⟩)[9] = binaryTag tag :=
+        projected.symm.trans selected
       have bound := shift_tag_bound ⟨i.val, first⟩
-      simp only [binaryRow, Vector.getElem_set_self] at selected
+      simp only [referenceBinaryRow, Vector.getElem_set_self] at selected
       unfold binaryTag at selected
       rcases wide with rfl | rfl | rfl
       all_goals split_ifs at selected <;> omega
-    · have same : row before i = fixedRow ⟨i.val, top⟩ := dif_pos top
-      have bound : (row before i)[9] < 52 := by
+    · have same : referenceRow before i = referenceFixedRow ⟨i.val, top⟩ := dif_pos top
+      have bound : (referenceRow before i)[9] < 52 := by
         rw [same]
-        exact fixed_outside_tag ⟨i.val, top⟩ first
+        simpa only [fixedRow_eq_reference] using fixed_outside_tag ⟨i.val, top⟩ first
       rcases ht with ht | ht | ht <;> omega
-  · have tagValue : (row before i)[9] = 34 := by
-      simp only [row, top]
+  · have tagValue : (referenceRow before i)[9] = 34 := by
+      simp only [referenceRow, top]
       rfl
     rw [tagValue] at selected
     rcases ht with ht | ht | ht <;> omega

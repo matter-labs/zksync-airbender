@@ -53,6 +53,7 @@ private theorem constraints : FlatOperation.ConstraintsHoldFlat
       Expression.eval, Verification.environment, assignment,
       JumpHistory.assignment, JumpTimestamp.assignment]
     repeat' apply And.intro
+    all_goals try (unfold Verification.jumpCleanup; rw [Verification.jumpCleanupTable_characterization])
     all_goals first
       | decide
       | (apply Verification.range16_contains; decide)

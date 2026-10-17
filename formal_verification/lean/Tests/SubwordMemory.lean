@@ -1,3 +1,4 @@
+import Airbender.Proofs.Tables.SubwordCharacterization
 import Airbender.Proofs.SubwordMemory.Claims
 import Airbender.Proofs.SubwordMemory.Stores
 import Airbender.Proofs.BabyBear
@@ -64,10 +65,10 @@ theorem satisfies_setup :
   intro i
   fin_cases i
   · refine ⟨⟨196609, by decide⟩, ?_⟩
-    norm_num [fixtureRow, Verification.subwordRow, Verification.subwordDataRow,
+    norm_num [fixtureRow, Verification.subwordNativeRow_eq_reference, Verification.referenceSubwordRow, Verification.subwordRow, Verification.subwordDataRow,
       Verification.subwordLoadLimbs, Verification.subwordStoreContribution]
   · refine ⟨⟨528949, by decide⟩, ?_⟩
-    norm_num [fixtureRow, Verification.subwordRow, Verification.subwordDataRow,
+    norm_num [fixtureRow, Verification.subwordNativeRow_eq_reference, Verification.referenceSubwordRow, Verification.subwordRow, Verification.subwordDataRow,
       Verification.subwordLoadLimbs, Verification.subwordStoreContribution]
 
 example : (Word.mk (row 33).val (row 34).val).Bounded :=
@@ -177,13 +178,13 @@ private theorem satisfies_store (byte : Bool) :
     | decide
     | (apply Verification.range16_contains; decide)
     | (refine ⟨⟨201269, by decide⟩, ?_⟩
-       norm_num [Verification.subwordRow, Verification.subwordDataRow, Verification.subwordStoreContribution])
+       norm_num [Verification.subwordNativeRow_eq_reference, Verification.referenceSubwordRow, Verification.subwordRow, Verification.subwordDataRow, Verification.subwordStoreContribution])
     | (refine ⟨⟨65708, by decide⟩, ?_⟩
-       norm_num [Verification.subwordRow, Verification.subwordDataRow, Verification.subwordStoreContribution])
+       norm_num [Verification.subwordNativeRow_eq_reference, Verification.referenceSubwordRow, Verification.subwordRow, Verification.subwordDataRow, Verification.subwordStoreContribution])
     | (refine ⟨⟨153209, by decide⟩, ?_⟩
-       norm_num [Verification.subwordRow, Verification.subwordDataRow, Verification.subwordStoreContribution])
+       norm_num [Verification.subwordNativeRow_eq_reference, Verification.referenceSubwordRow, Verification.subwordRow, Verification.subwordDataRow, Verification.subwordStoreContribution])
     | (refine ⟨⟨0, by decide⟩, ?_⟩
-       norm_num [Verification.subwordRow, Verification.subwordDataRow])
+       norm_num [Verification.subwordNativeRow_eq_reference, Verification.referenceSubwordRow, Verification.subwordRow, Verification.subwordDataRow])
 
 example : Word.mk ((storeRow true) 33).val ((storeRow true) 34).val = Word.mk 43828 22136 := by
   have result := SubwordMemory.Proofs.store_data (p := babyBearModulus)
@@ -265,14 +266,14 @@ private theorem satisfies_rom (byte : Bool) :
     | decide
     | (apply Verification.range16_contains; decide)
     | (refine ⟨⟨131073, by decide⟩, ?_⟩
-       norm_num [Verification.subwordRow, Verification.subwordDataRow, Verification.subwordStoreContribution])
+       norm_num [Verification.subwordNativeRow_eq_reference, Verification.referenceSubwordRow, Verification.subwordRow, Verification.subwordDataRow, Verification.subwordStoreContribution])
     | (refine ⟨⟨196609, by decide⟩, ?_⟩
-       norm_num [Verification.subwordRow, Verification.subwordDataRow, Verification.subwordStoreContribution])
+       norm_num [Verification.subwordNativeRow_eq_reference, Verification.referenceSubwordRow, Verification.subwordRow, Verification.subwordDataRow, Verification.subwordStoreContribution])
     | (refine ⟨⟨655368, by decide⟩, ?_⟩
-       norm_num [romWord, Word.toBitVec, Word.value, limbBase, Verification.subwordRow,
+       norm_num [romWord, Word.toBitVec, Word.value, limbBase, Verification.subwordNativeRow_eq_reference, Verification.referenceSubwordRow, Verification.subwordRow,
          Verification.subwordDataRow, Verification.subwordLoadLimbs])
     | (refine ⟨⟨4849678, by decide⟩, ?_⟩
-       norm_num [romWord, Word.toBitVec, Word.value, limbBase, Verification.subwordRow,
+       norm_num [romWord, Word.toBitVec, Word.value, limbBase, Verification.subwordNativeRow_eq_reference, Verification.referenceSubwordRow, Verification.subwordRow,
          Verification.subwordDataRow, Verification.subwordLoadLimbs])
 
 example (byte : Bool) : (Word.mk ((romRow byte) 33).val ((romRow byte) 34).val).toBitVec =
