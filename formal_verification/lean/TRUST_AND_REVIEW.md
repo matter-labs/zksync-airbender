@@ -79,15 +79,26 @@ derive port selection, actual masked loads and RAM-only stores. The x0 flag
 remains visible until public decoding identifies it. Native Mersenne31 address
 addition now derives its carries and ranged output under explicit source/immediate
 bounds. Native PC bounds/alignment and clock inputs yield modular successors,
-four-tick advancement and port order; initialized word-memory history must derive
-these inputs. [Public LW/SW decoding](Airbender/Review/Trace/Families/WordMemory/Decoder.lean)
+four-tick advancement and port order. The initialized word-memory instance now
+recovers every per-row/prior clock input from matching and the actual public
+seed/PC boundary, reusing the existing shared clock/history proofs. [Public LW/SW decoding](Airbender/Review/Trace/Families/WordMemory/Decoder.lean)
 now recovers actual Sail bytes/decoding and native fields from complete padded
 membership. Native Boolean store-mask equations reject padding; generic source,
 PC/immediate and register-index proofs are reused. Exact zero flags and incoming
 alignment are derived, including stores and original loads to x0. The separate
-native registry does not extend the arithmetic execution claim. Initialized
-source/read bounds, discarded shadow projection and original Sail execution
-remain open. [Public ROM extraction](Airbender/Review/Helpers/Tables/WordROMImage.lean)
+native registry does not extend the arithmetic execution claim.
+[Initialized word-memory history](Airbender/Review/Trace/Families/WordMemory/History.lean)
+now derives complete Clean online consistency and newest preceding native reads
+for all three ports, including readonly ROM-shadow accesses.
+[Native value ranges](Airbender/Review/Trace/Families/WordMemory/Values.lean)
+reuse the unchanged decreasing-time induction with proved native load/store/mask
+rules: stores copy an earlier operand port; loads select canonical ROM data or
+bounded RAM reads. Full decoder membership supplies the zero flag. Actual public
+seed reads replace all initial values/clocks, deriving every read, actual write
+and terminal word bound without per-row answers. This logical result retains
+shadow tokens; it does not identify them with architectural ROM contents.
+Actual intermediate Sail reads, discarded shadow projection and instruction
+execution remain open. [Public ROM extraction](Airbender/Review/Helpers/Tables/WordROMImage.lean)
 now obtains words by actual original Sail reads. The
 [ROM read bridge](Airbender/Review/Trace/Families/WordMemory/ROMImage.lean) recovers
 native table data inside the extracted prefix, deriving both data limbs and the

@@ -74,8 +74,13 @@ complete padded logical table; native equations reject padding and recover exact
 zero flags, PC/immediate bounds/alignment and original Sail source evidence,
 including loads to x0. [Public ROM extraction](../Helpers/Tables/WordROMImage.lean)
 now binds native ROM data to actual Sail bytes in the extracted prefix. A complete
-four-MiB extraction covers the native ROM region. Initialized word-memory history,
-Sail boot/padding/shadow state and execution remain separate.
+four-MiB extraction covers the native ROM region. Initialized word-memory
+[logical history](Families/WordMemory/History.lean) and
+[word ranges](Families/WordMemory/Values.lean) now reuse the shared matching/clock
+and decreasing-time proofs. Public seeds discharge all initial clock/value inputs;
+full decoder membership supplies the zero flag. Every native port participates,
+including discarded ROM-shadow reads. Actual intermediate Sail reads,
+boot/padding/shadow projection and instruction execution remain separate.
 
 These are logical selected-profile results. Remaining families and physical
 setup/argument fidelity remain in [the plan](../../../FORMAL_VERIFICATION_PLAN.md).

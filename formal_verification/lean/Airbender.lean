@@ -9,3 +9,5 @@ import Airbender.Review.Trace.Families.AddSub.Theorems
 import Airbender.Review.Circuits.WordMemory.Theorems
 import Airbender.Review.Trace.Families.WordMemory.Decoder
 import Airbender.Review.Trace.Families.WordMemory.ROMImage
+import Airbender.Review.Trace.Families.WordMemory.History
+import Airbender.Review.Trace.Families.WordMemory.Values

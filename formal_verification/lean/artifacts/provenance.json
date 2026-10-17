@@ -616,6 +616,41 @@
       "backport_reuse_path": "Airbender/Review/Trace/Decoder.lean",
       "backport_reuse_sha256": "3343bc47d112efb35dfe8830ec32f11869997ae734bdae930c585dfcb30ae08a",
       "change": "Retain the short public source-recovery theorem structure for actual LW/SW setup construction and complete native membership. State no initialized word-memory history, ROM-byte binding or execution claim."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/History.lean",
+      "backport_reuse_revision": "22376d324a4d410ca5d5142f22be6c892356179c",
+      "backport_reuse_path": "Airbender/Proofs/Trace/History.lean",
+      "backport_reuse_sha256": "8744aced970a79398c71a4ca8357918d1e18e6835ceeaa683a301889416826c9",
+      "change": "Instantiate the existing generic ClockLaws contract from checked native v2 word-memory equations/metadata; reuse all matched-clock, complete Clean history and latest-read calculations unchanged."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/Values.lean",
+      "backport_reuse_revision": "22376d324a4d410ca5d5142f22be6c892356179c",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Values.lean",
+      "backport_reuse_sha256": "9931063c28c6660998fe378a6dac0b27db6860fec55fd878434ee5e9f4aa770b",
+      "change": "Prove the native word-memory write preservation rule from full load/store/mask constraints and earlier port reads; reuse the generic decreasing-time induction unchanged. No per-row range/read/flag result is assumed."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/WordMemory/History.lean",
+      "backport_reuse_revision": "22376d324a4d410ca5d5142f22be6c892356179c",
+      "backport_reuse_path": "Airbender/Review/Trace/Initialization.lean",
+      "backport_reuse_sha256": "6dc0708950cb42460be1b81c93b6dd0a06bf834c40dd01ae08f55b229d3b9e4f",
+      "change": "Specialize the existing public-image logical-memory claim to the checked word-memory registry and native clock instance, retaining all ports including ROM-shadow accesses."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/WordMemory/Values.lean",
+      "backport_reuse_revision": "22376d324a4d410ca5d5142f22be6c892356179c",
+      "backport_reuse_path": "Airbender/Review/Trace/Values.lean",
+      "backport_reuse_sha256": "3607b3932a2f41a29b6dae404e6eb3581ead3f7c0ed7b1db427581cce2b8077f",
+      "change": "Keep the existing short public read/write/terminal range statement; instantiate only the new checked native word-memory write rules and decoder flag recovery."
+    },
+    {
+      "path": "Tests/WordMemoryHistory.lean",
+      "backport_reuse_revision": "22376d324a4d410ca5d5142f22be6c892356179c",
+      "backport_reuse_path": "Tests/WordMemory.lean",
+      "backport_reuse_sha256": "88a51818983a85de2c3a79a8d2922cef1f8e773e6e72c5388c02c7d7c1469994",
+      "change": "Reuse the full native load/store/ROM/x0 assignment and constraint fixtures, then construct actual public seeds/PC/decoder bytes and nonempty initialized histories; reject omitted discarded shadow tokens."
     }
   ]
 }

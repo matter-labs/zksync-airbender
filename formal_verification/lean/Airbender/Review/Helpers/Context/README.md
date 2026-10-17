@@ -21,5 +21,8 @@ context definitions have no whole-execution dependency.
 [Word-memory registry](WordMemory.lean) separately binds the checked word-memory
 artifact, mixed ports, ten-column decoder query and native ROM setup type. Its
 [public decoding](../../Trace/Families/WordMemory/Decoder.lean) now recovers actual
-LW/SW source evidence. Initialized word-memory history/Sail execution remain
-pending; the existing arithmetic execution registry is unchanged.
+LW/SW source evidence. The [word-memory clock instance](../../../Proofs/Trace/Families/WordMemory/History.lean)
+now reuses shared matching proofs to derive every per-row/prior clock input from
+the public seed boundary. [Complete logical history](../../Trace/Families/WordMemory/History.lean)
+and native word ranges are checked; actual intermediate Sail reads/execution and
+ROM-shadow projection remain pending. The arithmetic execution registry is unchanged.

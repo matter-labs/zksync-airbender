@@ -70,8 +70,13 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    flags and PC/immediate bounds/alignment, including original x0 loads.
    Actual Sail byte extraction now binds native ROM data inside the public
    prefix; a complete four-MiB extraction covers every native ROM address.
-   Connect Sail boot/padding state, initialized source/port read ranges (including
-   discarded ROM-shadow accesses), remaining local inputs and original Sail
+   Initialized logical word-memory history now reuses shared matching, native
+   clock recovery and decreasing-time range induction. Public seed construction
+   derives all initial/per-row/prior clock inputs and all read/write/terminal
+   word bounds, including discarded ROM-shadow reads; full decoder membership
+   supplies the zero flag. Nonempty LW/SW/x0 fixtures and omitted-shadow rejection
+   are checked. Connect actual intermediate Sail source/port reads, boot/padding
+   and shadow-state projection, remaining local inputs and original Sail
    execution/retirement interfaces. Physical setup/export binding remains open.
    Preserve v2 PC rollover and native timestamp offsets;
    keep physical setup generation/export and mixed/custom expansion explicit.

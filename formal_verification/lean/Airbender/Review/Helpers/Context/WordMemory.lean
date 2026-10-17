@@ -3,8 +3,8 @@ import Airbender.Review.Circuits.WordMemory.Artifact
 
 namespace Airbender.Trace
 
-/-- Separate checked native registry while initialized word-memory/Sail assembly
-    is pending. The arithmetic execution registry is unchanged. -/
+/-- Checked native registry for word-memory decoding and initialized logical
+    history. Sail assembly remains pending; arithmetic execution is unchanged. -/
 inductive WordMemoryFamily where
   | wordMemory
   deriving DecidableEq

@@ -18,6 +18,12 @@ seed values and initial PC to actual Sail reads; missing data rejects constructi
 derive seed bounds, zero clocks, address injectivity and read-state preservation.
 [Value proofs](../../../Proofs/Trace/Values.lean) now derive native read/write/terminal
 word bounds using initialized history and the decoded zero flag.
+The same public seed boundary and generic history induction now support the
+[word-memory registry](../../Trace/Families/WordMemory/History.lean), including
+all native mixed ports and discarded shadow reads. Its
+[write rules](../../../Proofs/Trace/Families/WordMemory/Values.lean) preserve ranges
+through RAM copies, ROM data selection and actual x0-masked writes. Architectural
+ROM-shadow projection remains separate.
 [Sail history](SailHistory.lean) retains the shared actual-read/write representation;
 [its proof](../../../Proofs/Trace/SailHistory.lean) derives all intermediate states
 from Clean consistency and public seeds. V2 masked writes preserve x0; public

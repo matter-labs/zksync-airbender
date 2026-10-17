@@ -24,6 +24,30 @@ subword/unsigned constructors, missing bytes and bad capacity are checked. A bad
 zero flag passes all native constraints but full lookup membership rejects it.
 This validates the separate decoder boundary; it is not an implementation defect.
 
+## Checked initialized history
+
+[Memory soundness](History.lean) constructs complete Clean online consistency
+and newest preceding reads from the actual public seed image and accepted native
+state/memory matching. The existing [public boundary](../../../Helpers/Memory/PublicImage.lean)
+now works for either native registry with the same fields and constructors.
+The [clock instance](../../../../Proofs/Trace/Families/WordMemory/History.lean)
+discharges the shared laws from actual v2 equations and port metadata. Initial
+clock four and seed clocks zero derive all per-row/prior ranges, alignment,
+four-tick advancement and strict port order. No row ordering is supplied.
+
+[Word bounds](Values.lean) derive every native read, actual masked write and
+terminal word range. The [write rule](../../../../Proofs/Trace/Families/WordMemory/Values.lean)
+uses earlier port reads for RAM loads/stores and canonical table words for ROM
+loads. Full decoder membership supplies the zero flag. The existing decreasing-time
+induction is reused unchanged, including every discarded native read.
+
+[Initialized regressions](../../../../../Tests/WordMemoryHistory.lean) build
+actual public LW/SW bytes, source registers, RAM cells and initial PC. Nonempty
+RAM loads/stores have complete histories; masked x0 ROM loads retain newest-read
+and range guarantees for the shadow RAM port. Omitting its seed fails actual
+logical matching. This fixture explicitly initializes the native shadow cell;
+its projection into architectural ROM state remains separate.
+
 ## Remaining connection
 
 [Public ROM extraction](../../../Helpers/Tables/WordROMImage.lean) now obtains
@@ -32,7 +56,7 @@ native ROM query data inside the extracted prefix; a complete extracted four-MiB
 image covers every ROM address. Full native UNIMP padding remains represented.
 The constructor does not fill absent padding bytes in Sail state.
 
-Initialized word-memory source/port reads, Sail boot/padding state, discarded
+Actual intermediate Sail source/port reads, Sail boot/padding state, discarded
 ROM-shadow access projection and original Sail execution/retirement remain open. The existing
 arithmetic execution registry and its claims retain their scope. Physical setup
 export, mixed/custom programs and cryptographic argument enforcement are separate.

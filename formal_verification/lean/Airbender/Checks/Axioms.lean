@@ -10,6 +10,7 @@ import Tests.X0History
 import Tests.ArithmeticExecution
 import Tests.WordMemory
 import Tests.WordROMImage
+import Tests.WordMemoryHistory
 
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
@@ -373,3 +374,17 @@ import Tests.WordROMImage
 #print axioms Tests.WordROMImage.excessive_count_rejected
 #print axioms Tests.WordROMImage.absent_padding_bytes
 #print axioms Tests.WordROMImage.changed_native_data_rejected
+
+#print axioms Airbender.WordMemory.public_memory_soundness
+#print axioms Airbender.WordMemory.public_value_bounds
+#print axioms Airbender.WordMemory.Proofs.written_limb_bounds
+#print axioms Airbender.WordMemory.Proofs.row_write_rule
+#print axioms Airbender.WordMemory.Proofs.decoded_write_rules
+#print axioms Airbender.WordMemory.Proofs.image_value_bounds
+#print axioms Tests.WordMemoryHistory.public_decoder_built
+#print axioms Tests.WordMemoryHistory.ram_load_history
+#print axioms Tests.WordMemoryHistory.ram_store_history
+#print axioms Tests.WordMemoryHistory.discarded_rom_shadow_latest
+#print axioms Tests.WordMemoryHistory.all_native_bounds
+#print axioms Tests.WordMemoryHistory.derived_clocks
+#print axioms Tests.WordMemoryHistory.omitted_shadow_rejected

@@ -53,6 +53,12 @@ loads. [ROM extraction](Airbender/Review/Helpers/Tables/WordROMImage.lean) now r
 actual Sail bytes; native ROM query data inside that prefix has an original Sail
 read proof. A complete four-MiB extraction covers all native ROM addresses. Sail
 boot/padding/shadow state and word-memory execution remain pending.
+[Initialized word-memory history](Airbender/Review/Trace/Families/WordMemory/History.lean)
+now derives complete Clean consistency, latest native reads and every per-row/prior
+clock input from actual public seed reads and accepted matching.
+[Read/write/terminal ranges](Airbender/Review/Trace/Families/WordMemory/Values.lean)
+follow through actual native load/store/mask rules and full decoder membership,
+including discarded shadow reads. Actual intermediate Sail reads remain separate.
 Remaining families, Rust
 setup generation/export and cryptographic argument soundness remain pending. This checkpoint does not inherit v3's completed coverage.
 

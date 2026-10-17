@@ -6,7 +6,8 @@ namespace Airbender.Trace
     Reads come from the original Sail interpreter; failures reject construction.
     The initial native clock is four and every seed clock is zero. This is a
     logical boundary; physical boot/profile and decoder enforcement are separate. -/
-structure ImageBoundary {p : Nat} [Fact p.Prime] (trace : Data p)
+structure ImageBoundary {Kind : Type} [CircuitLayout Kind]
+    {p : Nat} [Fact p.Prime] (trace : Data p Kind)
     (before : Reference.RiscV.Sail.State) (cells : List Cell) : Prop where
   /-- The public tracked-cell domain has no duplicate register/RAM cells. -/
   domain : cells.Nodup

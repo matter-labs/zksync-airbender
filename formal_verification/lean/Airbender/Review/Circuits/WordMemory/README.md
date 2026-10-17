@@ -28,7 +28,8 @@ Stores require the RAM region and copy the second port into the actual write.
 and all 1048576 aligned ROM rows. Missing public words retain native 0xc0001073
 UNIMP padding. Neither lookup is conditional: even a RAM access queries its ROM
 shadow address. ROM loads also retain the native readonly RAM port; its discarded
-read remains a history obligation. These definitions model the pinned native
+read now participates in the checked initialized logical history. Its
+architectural projection remains separate. These definitions model the pinned native
 four-MiB profile. [Public ROM extraction](../../Helpers/Tables/WordROMImage.lean)
 now binds native ROM data to actual Sail bytes within the extracted prefix.
 Physical setup export and boot/padding/shadow-state binding remain separate.
@@ -44,7 +45,8 @@ Only canonical source/immediate bounds remain explicit. The
 [PC proof](../../../Proofs/WordMemory/PC.lean) preserves RV32 rollover under initial
 bounds/alignment. The [clock proof](../../../Proofs/WordMemory/Timestamp.lean)
 derives four-tick advancement and strict port order under the shared initial/prior
-clock inputs. These inputs must still come from initialized word-memory history.
+clock inputs. The [initialized history instance](../../Trace/Families/WordMemory/History.lean)
+now derives these clock inputs from matching and the actual public seed boundary.
 Regressions read a non-padding public ROM word, derive native port order and
 simultaneously wrap the address and PC from 0xfffffffc to zero.
 
@@ -57,8 +59,10 @@ padding; original x0 loads and sign extension are retained.
 
 Native ROM data now has an actual Sail-byte bridge inside an extracted public
 prefix; a complete extracted four-MiB image covers every native ROM address.
-Initialized source/port reads, missing Sail padding/boot state, discarded
-ROM-shadow access projection and original Sail load/store execution remain open. The local load formula keeps its native x0 flag; the
+Initialized logical reads and ranges now follow from public seeds, accepted
+matching and decoder membership. Actual intermediate Sail source/port reads,
+missing padding/boot state, discarded ROM-shadow projection and original Sail
+load/store execution remain open. The local load formula keeps its native x0 flag; the
 separate public decoder proof now derives that flag's exact relation to rd.
 The arithmetic-only trace registry remains unchanged until those connections
 are proved. See the [plan](../../../../FORMAL_VERIFICATION_PLAN.md) and

@@ -10,7 +10,8 @@ def addressWord {p : Nat} (w : Nat → ZMod p) : Arithmetic.Word := ⟨(w 19).va
 
 /-- Native transfer observables. The README names every column. Bounded address
     arithmetic and public decoder recovery are checked separately. Initialized
-    source/port reads and original Sail instruction execution remain open. -/
+    logical ranges/history are checked; actual Sail port reads and instruction
+    execution remain open. -/
 structure NativeTransfers {p : Nat} (rom : Verification.WordROM) (w : Nat → ZMod p) : Prop where
   storeBit : w 12 = 0 ∨ w 12 = 1
   addressBounds : (w 19).val < 65536 ∧ (w 20).val < 65536
