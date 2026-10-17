@@ -19,4 +19,8 @@ theorem memory_ports : importedConstraintsMemoryPorts =
        ⟨⟨2, #v[50, 51], 52⟩, .register 7, #v[35, 36], some #v[37, 38]⟩] :
        Array Trace.MemoryPort) := rfl
 
+theorem memory_clocks : importedConstraintsMemoryPorts.map Trace.MemoryPort.clock =
+    importedConstraintsTraceColumns.ports := by
+  simp [importedConstraintsMemoryPorts, importedConstraintsTraceColumns]
+
 end Airbender.AddSub.Proofs

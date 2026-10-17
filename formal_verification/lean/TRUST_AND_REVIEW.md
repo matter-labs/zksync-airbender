@@ -6,6 +6,9 @@ Start with [Properties](Airbender/Review/Helpers/Properties.lean), then the shor
 [ADD/SUB theorems](Airbender/Review/Circuits/AddSub/Theorems.lean) and their
 [Model](Airbender/Review/Circuits/AddSub/Model.lean). The local theorem takes
 explicit decoded-input interfaces; it is not an initialized whole-run claim.
+The separate short [trace memory theorem](Airbender/Review/Trace/History.lean)
+constructs complete Clean memory history and latest reads from native logical
+matching and explicit initialization tokens.
 
 ## Sources and pins
 
@@ -28,8 +31,10 @@ instances interpret those same signed equations and are not additional native ar
 extents, physical banks, consecutive port slots and query/borrow counts. Emitted
 metadata is pinned by [mechanical bindings](Airbender/Proofs/AddSub/ArtifactChecks.lean).
 The [clock proof](Airbender/Proofs/AddSub/Timestamp.lean) derives advancement and
-strict access order under explicit initial/prior clock bounds and alignment;
-it does not supply initialized matching or actual memory reads.
+strict access order under local initial/prior clock bounds and alignment.
+The [initialized history layer](Airbender/Proofs/Trace/History.lean) discharges
+those per-row inputs from logical state/memory matching and public initial clock
+bounds. The v2 carry equations need no source-field inverse constant.
 
 The [schema](Airbender/Import/Schema.lean) is the consumed local-row projection of
 the v2 compiled artifact. All linear/quadratic equations and scalar/timestamp
@@ -52,7 +57,11 @@ four-byte path, including upstream nextPC initialization and PC retirement.
 Public instruction/operand interfaces, actual Sail reads and initial alignment
 remain explicit. Selector bits, result bounds, arithmetic and PC effects follow
 from the imported constraints. In particular, v2's high-PC wrap is preserved.
-Exceptions, interrupts, completeness, initialized whole traces and cryptographic
+The logical history theorem additionally proves newest preceding reads of
+injectively encoded native tokens, including readonly timestamp refreshes. Its
+initial image is explicit logical data: binding it to public Sail registers/RAM,
+deriving operand bounds and connecting those reads to Sail remain pending.
+Exceptions, interrupts, completeness, whole Sail execution and cryptographic
 soundness are outside this checkpoint. The copied custom-operation specification
 has no checked v2 consumer yet.
 

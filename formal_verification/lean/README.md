@@ -20,9 +20,12 @@ formalization revision 805909325; exact source identities and hashes are in
 Current scope is conditional ADD/ADDI/SUB/LUI/AUIPC row soundness, including actual
 masked destination writes, discarded x0 writes and aligned 32-bit PC wraparound.
 Decoding, input bounds, preprocessing and actual Sail reads remain explicit local
-interfaces. Native direct port/state metadata and local timestamp advancement/ordering are
-also connected. Initialized whole traces, setup extraction and cryptographic
-argument soundness are pending. This checkpoint does not inherit v3's completed coverage.
+interfaces. Native direct port/state metadata now supports
+[initialized logical memory history](Airbender/Review/Trace/History.lean): accepted
+state/memory matching and initial clock boundaries derive all row/prior clock
+bounds, complete Clean memory consistency and latest reads. Public Sail image
+binding, setup/decoder extraction, whole Sail execution and cryptographic argument
+soundness remain pending. This checkpoint does not inherit v3's completed coverage.
 
 ## Read these first
 

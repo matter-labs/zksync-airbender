@@ -3,6 +3,7 @@ import Tests.PC
 import Tests.CircuitRows
 import Tests.Timestamps
 import Tests.NativeClocks
+import Tests.InitializedHistory
 
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
@@ -54,3 +55,22 @@ import Tests.NativeClocks
 #print axioms Tests.NativeClocks.native_clock_advances
 #print axioms Airbender.Trace.WordColumns.code_u16
 #print axioms Airbender.Trace.WordColumns.evaluate_u16
+
+#print axioms Airbender.AddSub.Proofs.final_clock_bound
+#print axioms Airbender.AddSub.Proofs.clock_advance
+#print axioms Airbender.Trace.Proofs.clock_inputs
+#print axioms Airbender.Trace.Proofs.trace_clocks
+#print axioms Airbender.Trace.Proofs.native_state_path
+#print axioms Airbender.Trace.Proofs.access_times_unique
+#print axioms Airbender.Trace.Proofs.native_memory_paths
+#print axioms Airbender.Trace.Proofs.initialized_addresses
+#print axioms Airbender.Trace.Proofs.latest_reads
+#print axioms Airbender.Trace.Proofs.native_cell_histories
+#print axioms Airbender.Trace.Proofs.native_memory_history
+#print axioms Airbender.Trace.native_memory_soundness
+#print axioms Tests.InitializedHistory.complete_history
+#print axioms Tests.InitializedHistory.destination_latest
+#print axioms Tests.InitializedHistory.stale_local_satisfies
+#print axioms Tests.InitializedHistory.stale_history_rejected
+
+#print axioms Airbender.AddSub.Proofs.memory_clocks

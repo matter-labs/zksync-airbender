@@ -197,6 +197,14 @@
     {
       "path": "Airbender/Review/Helpers/Memory/IndirectPorts.lean",
       "sha256": "d461fe5626a3aae16da56095fb5237cd7a669bd0d262547a4368bda1b1809b75"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/ClockHistory.lean",
+      "sha256": "5bcc6db747eb409c8d2ace8bc04625c3a0fcc338b7af3d08af07b51eacd6fffb"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Memory/History.lean",
+      "sha256": "57d1f17e5e81cb1b117e367fe6f63844ea74706d60130944a3fb87bb3ecdf2b1"
     }
   ],
   "circuit_artifacts": [
@@ -272,6 +280,72 @@
       "path": "Airbender/Proofs/Trace/Timestamps.lean",
       "source_path": "Airbender/Proofs/Trace/Timestamps.lean",
       "change": "Unchanged generic increment/comparison/port-order/clock-effects theorem text extracted from v3; import only reusable column contracts, without v3 family assemblies."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Context/PCState/Model.lean",
+      "source_path": "Airbender/Review/Helpers/Context/PCState/Model.lean",
+      "source_sha256": "f496764d5b9620b0a7df18dc7d286ea92b9ce6cff578f35d2c963a50a5cf9014",
+      "change": "Unchanged encode, State and boundary definitions extracted; omit the unconnected v3 modeled decoder and context interfaces."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Context/Model.lean",
+      "source_path": "Airbender/Review/Helpers/Context/Model.lean",
+      "source_sha256": "2850e793d9d5b08fa390c1e28163e45c17df926ee9b1fc1bc7a7e02bda137855",
+      "change": "Keep row, raw token, accepted matching and history definitions. Restrict the native registry to v2 ADD/SUB, use Unit setup until decoder import, and omit unconnected decoder descriptors. No semantic read/word-bound premises added."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/History.lean",
+      "source_path": "Airbender/Proofs/Trace/History.lean",
+      "source_sha256": "ff6a62b9275e3a739ba7de660420d8e0a7c631490f95bbaa1339d523dd19e864",
+      "change": "Reuse matched-clock recovery. Instantiate only v2 ADD/SUB native equations and metadata; remove the BabyBear-specific inverse premise, using the two native carry equations."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/StateClocks.lean",
+      "source_path": "Airbender/Proofs/Trace/StateClocks.lean",
+      "source_sha256": "8e45da6053009bd522fa8d8089446f0039eeab2616a793cd5f59b3190b90304b",
+      "change": "Unchanged proof bodies apart from removing the BabyBear inverse argument now unnecessary for v2 clock advancement."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Paths.lean",
+      "source_path": "Airbender/Proofs/Trace/Paths.lean",
+      "source_sha256": "ef21a6e67293c38673f62c29d5b0643077985fc2ccd4935371341ad68596ba12",
+      "change": "Reuse complete Clean source/sink paths and state-path instantiation; remove the BabyBear inverse argument."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/MemoryPaths.lean",
+      "source_path": "Airbender/Proofs/Trace/MemoryPaths.lean",
+      "source_sha256": "26e5b63b7d8b372773903f23983c99626c0c6468e44e5bd22bfa984143ab2131",
+      "change": "Reuse per-address complete paths, finite-support reduction and native matching connection; remove the BabyBear inverse argument."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/MemoryOrigins.lean",
+      "source_path": "Airbender/Proofs/Trace/MemoryOrigins.lean",
+      "source_sha256": "f7ad48953fc1a24469d17a53dc7645ea57cbfc0a254d635591327df845cdf83e",
+      "change": "Reuse initialized-address and earlier-write induction; import the needed native path layer rather than the unrelated slot layer; remove the BabyBear inverse argument."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/LatestReads.lean",
+      "source_path": "Airbender/Proofs/Trace/LatestReads.lean",
+      "source_sha256": "e8b58d6ba31f71789952cc157d7d9a182f2dbf18e6ffa0a8c3e84c9dbaa28d32",
+      "change": "Reuse latest-read proof from consecutive path ranks; remove the BabyBear inverse argument."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/OfflineMemory.lean",
+      "source_path": "Airbender/Proofs/Trace/OfflineMemory.lean",
+      "source_sha256": "2d3fc2ce75784ef65a97ee078ea18cc74b8d8569a8144bfc308e047d199fc445",
+      "change": "Reuse native-to-Clean per-cell history construction; remove the BabyBear inverse argument."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Slots.lean",
+      "source_path": "Airbender/Proofs/Trace/Slots.lean",
+      "source_sha256": "dbc19f8c81eb7adc5725181aeca4b257dcfdb89b84f712ce0d9d945bf3b78a58",
+      "change": "Reuse state-clock/access-time uniqueness; remove the BabyBear inverse argument."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/MemoryHistory.lean",
+      "source_path": "Airbender/Proofs/Trace/MemoryHistory.lean",
+      "source_sha256": "55b52749fabbae2e671d08894b26ddd717d1238c28837c8a18bd9e88c5099611",
+      "change": "Reuse complete Clean history construction and time relabeling. Explicitly import Slots after narrowing MemoryOrigins; remove the BabyBear inverse argument."
     }
   ]
 }

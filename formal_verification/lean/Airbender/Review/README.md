@@ -8,11 +8,12 @@ Proofs; artifact interpretation has a separate Import boundary.
 | Result | Where to review it |
 | --- | --- |
 | Conditional v2 arithmetic rows agree with original Sail destination/register and PC effects. | [ADD/SUB](Circuits/AddSub/README.md) |
+| Initialized logical v2 memory matching constructs complete Clean history and newest preceding reads. | [Trace history](Trace/README.md) |
 
 Start with [Properties](Helpers/Properties.lean) for `Properties.Soundness` and
 `Properties.Completeness`, then choose
 [one circuit](Circuits/README.md) or [whole-trace review](Trace/README.md).
-The latter currently records pending integration rather than a v2 execution theorem.
+The trace route separates checked logical memory history from the pending Sail execution connection.
 
 ## Scope and evidence
 

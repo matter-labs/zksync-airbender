@@ -36,14 +36,18 @@ The original v3 schedule remains separate and paused.
 
 ## Pending integration work
 
-Native direct shuffle-RAM/state metadata and ADD/SUB clock extraction are checked.
-Initial/prior clock bounds and alignment remain in the shared clock inputs;
-actual memory matching and public decoding are the next connections.
+Native direct shuffle-RAM/state metadata, ADD/SUB clock extraction and initialized
+logical memory histories are checked. Accepted state/memory matching and initial
+clock boundaries now derive all row/prior clock inputs, complete Clean memory
+consistency and newest preceding reads. Public Sail image binding and decoding
+are the next connections.
 
-1. Import v2 decoder metadata and fixed/setup rows, then construct initialized
-   ADD/SUB history. The row theorem currently takes decoded packed masks,
-   preprocessing, bounds and Sail reads explicitly; derive these from public
-   decoding and initialized history. Reuse the checked native clock/port descriptors.
+1. Import v2 decoder metadata and fixed/setup rows. Bind the logical initial
+   tokens to public Sail state and derive operand bounds and actual Sail reads
+   through the checked initialized memory history. The row theorem still takes
+   decoded packed masks, preprocessing, bounds and Sail reads explicitly; derive
+   these from public decoding and initialized history. Reuse the checked native
+   clock/port descriptors and complete-path proofs.
 2. Port word-memory and jump/branch/SLT alongside the first initialized ADD/SUB
    trace. Preserve v2 PC rollover behavior and verify native timestamp offsets.
 3. Port unsigned mul/div, shift/binop and subword memory into the same shared

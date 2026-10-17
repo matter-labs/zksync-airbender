@@ -19,18 +19,32 @@ theorem timestamp_equations {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
   · linear_combination -low
   · linear_combination -high
 
-theorem clock_effects {p : Nat} [Fact p.Prime] (hp : 1048580 < p) {w : Nat → ZMod p}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
-    (inputs : Trace.ClockInputs importedConstraintsTraceColumns w) :
-    Trace.ClockEffects importedConstraintsTraceColumns w := by
+theorem final_clock_bound {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints) :
+    (Trace.decodeTimestamp w importedConstraintsTraceColumns.finalTime).Bounded := by
   have lower := Verification.timestamp19_bound (Verification.lookup_of_holds h
     ⟨4, by rw [lookup_count]; decide⟩)
   have upper := Verification.timestamp19_bound (Verification.lookup_of_holds h
     ⟨5, by rw [lookup_count]; decide⟩)
   simp [Expression.eval, Verification.environment] at lower upper
-  have finalBounds : (Trace.decodeTimestamp w importedConstraintsTraceColumns.finalTime).Bounded :=
-    ⟨lower, upper⟩
-  apply Trace.Proofs.clock_effects hp inputs finalBounds
+  exact ⟨lower, upper⟩
+
+/-- V2's two separate carry equations need no BabyBear inverse constant. -/
+theorem clock_advance {p : Nat} [Fact p.Prime] (hp : 1048580 < p) {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
+    (initial : (Trace.decodeTimestamp w importedConstraintsTraceColumns.initialTime).Bounded) :
+    (Trace.decodeTimestamp w importedConstraintsTraceColumns.finalTime).value =
+      (Trace.decodeTimestamp w importedConstraintsTraceColumns.initialTime).value + 4 := by
+  obtain ⟨c, bit, low, high⟩ := timestamp_equations h
+  apply Trace.Proofs.increment hp initial (final_clock_bound h) bit
+  · simpa [Trace.decodeTimestamp, importedConstraintsTraceColumns] using low
+  · simpa [Trace.decodeTimestamp, importedConstraintsTraceColumns] using high
+
+theorem clock_effects {p : Nat} [Fact p.Prime] (hp : 1048580 < p) {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
+    (inputs : Trace.ClockInputs importedConstraintsTraceColumns w) :
+    Trace.ClockEffects importedConstraintsTraceColumns w := by
+  apply Trace.Proofs.clock_effects hp inputs (final_clock_bound h)
     (by simpa [importedConstraintsTraceColumns, Trace.timestampBase] using timestamp_equations h)
   · intro port member
     simp [importedConstraintsTraceColumns] at member
