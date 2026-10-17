@@ -87,9 +87,15 @@ PC/immediate and register-index proofs are reused. Exact zero flags and incoming
 alignment are derived, including stores and original loads to x0. The separate
 native registry does not extend the arithmetic execution claim. Initialized
 source/read bounds, discarded shadow projection and original Sail execution
-remain open. Public ROM words are explicit inputs;
-physical Rust setup/export and actual Sail-byte binding are not proved, and
-no table-equivalence or expected-read premise is introduced. The initialized
+remain open. [Public ROM extraction](Airbender/Review/Helpers/Tables/WordROMImage.lean)
+now obtains words by actual original Sail reads. The
+[ROM read bridge](Airbender/Review/Trace/Families/WordMemory/ROMImage.lean) recovers
+native table data inside the extracted prefix, deriving both data limbs and the
+actual effective address. A complete four-MiB extraction discharges prefix
+coverage for every native ROM address. Full native UNIMP rows remain present;
+missing Sail padding bytes are not filled by extraction. Supplying the actual
+Sail boot/padding/shadow state and physical Rust setup/export remain separate.
+No expected-read or table-equivalence premise is introduced. The initialized
 trace registry remains arithmetic-only.
 
 ## Public state, profiles and external inputs

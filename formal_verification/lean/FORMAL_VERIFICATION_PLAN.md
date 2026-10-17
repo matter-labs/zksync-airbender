@@ -68,9 +68,11 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    Public LW/SW decoding is now checked in a separate native registry: complete
    padded membership recovers actual original Sail source evidence, exact zero
    flags and PC/immediate bounds/alignment, including original x0 loads.
-   Connect actual Sail ROM-byte binding, initialized source/read ranges (including
+   Actual Sail byte extraction now binds native ROM data inside the public
+   prefix; a complete four-MiB extraction covers every native ROM address.
+   Connect Sail boot/padding state, initialized source/port read ranges (including
    discarded ROM-shadow accesses), remaining local inputs and original Sail
-   execution/retirement interfaces.
+   execution/retirement interfaces. Physical setup/export binding remains open.
    Preserve v2 PC rollover and native timestamp offsets;
    keep physical setup generation/export and mixed/custom expansion explicit.
 2. Add native jump/branch/SLT and extend the shared execution relation with checked

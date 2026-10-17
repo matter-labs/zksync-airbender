@@ -8,9 +8,9 @@ def sourceWord {p : Nat} (w : Nat → ZMod p) : Arithmetic.Word := ⟨(w 17).val
 def immediateWord {p : Nat} (w : Nat → ZMod p) : Arithmetic.Word := ⟨(w 9).val, (w 10).val⟩
 def addressWord {p : Nat} (w : Nat → ZMod p) : Arithmetic.Word := ⟨(w 19).val, (w 20).val⟩
 
-/-- Native transfer checkpoint, before public decoder/history/Sail assembly.
-    The README names every observable column. Bounded address arithmetic is a
-    separate checked claim; initialized reads and the decoder-owned x0 flag remain open. -/
+/-- Native transfer observables. The README names every column. Bounded address
+    arithmetic and public decoder recovery are checked separately. Initialized
+    source/port reads and original Sail instruction execution remain open. -/
 structure NativeTransfers {p : Nat} (rom : Verification.WordROM) (w : Nat → ZMod p) : Prop where
   storeBit : w 12 = 0 ∨ w 12 = 1
   addressBounds : (w 19).val < 65536 ∧ (w 20).val < 65536

@@ -10,5 +10,10 @@ all 65536 high-limb classifications and all 1048576 aligned word rows. Missing
 words use native UNIMP padding. Membership derives alignment, classification and
 exact public ROM data in [the table proofs](../../../Proofs/WordMemory/Tables.lean).
 The native word-memory queries are unconditional, including RAM shadow lookups.
-Public Sail-byte binding, physical Rust table export and cryptographic enforcement
-remain separate. No table-equivalence or expected-read premise is used.
+[Public ROM extraction](WordROMImage.lean) now reads actual original Sail bytes
+into a bounded word vector and retains the complete native UNIMP tail. The
+[read bridge](../../../Proofs/WordMemory/ROMImage.lean) recovers native ROM query
+data as actual Sail reads inside the extracted prefix. Extracting all 1048576
+words covers the entire ROM region. Missing padding bytes are not filled by the
+constructor; boot/padding/shadow state, physical export and cryptographic
+connections remain separate. No expected-read or table-equivalence premise is used.

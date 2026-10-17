@@ -9,6 +9,7 @@ import Tests.DecoderSetup
 import Tests.X0History
 import Tests.ArithmeticExecution
 import Tests.WordMemory
+import Tests.WordROMImage
 
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
@@ -357,3 +358,18 @@ import Tests.WordMemory
 #print axioms Tests.WordMemory.word_decoder_padding_rejected
 #print axioms Tests.WordMemory.bad_flag_native_satisfies
 #print axioms Tests.WordMemory.bad_flag_decoder_rejected
+
+#print axioms Airbender.WordMemory.public_rom_prefix_read
+#print axioms Airbender.WordMemory.Proofs.read_rom_words
+#print axioms Airbender.WordMemory.Proofs.rom_image_reads
+#print axioms Airbender.WordMemory.Proofs.native_rom_prefix_read
+#print axioms Airbender.WordMemory.Proofs.rom_query_address
+#print axioms Airbender.WordMemory.Proofs.native_rom_read
+#print axioms Airbender.WordMemory.Proofs.native_full_rom_read
+#print axioms Tests.WordROMImage.public_native_rom_read
+#print axioms Tests.WordROMImage.extracted_prefix
+#print axioms Tests.WordROMImage.native_tail_retained
+#print axioms Tests.WordROMImage.missing_rom_bytes_rejected
+#print axioms Tests.WordROMImage.excessive_count_rejected
+#print axioms Tests.WordROMImage.absent_padding_bytes
+#print axioms Tests.WordROMImage.changed_native_data_rejected

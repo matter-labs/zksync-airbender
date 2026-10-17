@@ -49,7 +49,10 @@ successors and four-tick port scheduling are checked under explicit input bounds
 and clock interfaces. [Public LW/SW decoding](Airbender/Review/Trace/Families/WordMemory/Decoder.lean)
 now recovers original Sail source evidence, exact zero flags and native
 PC/immediate bounds/alignment from complete padded membership, including x0
-loads. Original Sail word-memory execution and ROM-byte binding remain pending.
+loads. [ROM extraction](Airbender/Review/Helpers/Tables/WordROMImage.lean) now reads
+actual Sail bytes; native ROM query data inside that prefix has an original Sail
+read proof. A complete four-MiB extraction covers all native ROM addresses. Sail
+boot/padding/shadow state and word-memory execution remain pending.
 Remaining families, Rust
 setup generation/export and cryptographic argument soundness remain pending. This checkpoint does not inherit v3's completed coverage.
 

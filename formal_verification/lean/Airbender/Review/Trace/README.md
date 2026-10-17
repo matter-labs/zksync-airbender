@@ -72,8 +72,10 @@ stores witness rows backwards yet reaches original Sail PC 8 and x2=247.
 native registry and short source-recovery theorem. Actual LW/SW bytes build a
 complete padded logical table; native equations reject padding and recover exact
 zero flags, PC/immediate bounds/alignment and original Sail source evidence,
-including loads to x0. Initialized word-memory history, ROM-byte binding and Sail
-execution remain separate.
+including loads to x0. [Public ROM extraction](../Helpers/Tables/WordROMImage.lean)
+now binds native ROM data to actual Sail bytes in the extracted prefix. A complete
+four-MiB extraction covers the native ROM region. Initialized word-memory history,
+Sail boot/padding/shadow state and execution remain separate.
 
 These are logical selected-profile results. Remaining families and physical
 setup/argument fidelity remain in [the plan](../../../FORMAL_VERIFICATION_PLAN.md).

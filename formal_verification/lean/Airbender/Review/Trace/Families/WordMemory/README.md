@@ -26,8 +26,13 @@ This validates the separate decoder boundary; it is not an implementation defect
 
 ## Remaining connection
 
-This is public decoding. Public ROM words still need their actual Sail-byte
-binding. Initialized word-memory read/source bounds, discarded ROM-shadow access
-projection and original Sail execution/retirement remain open. The existing
+[Public ROM extraction](../../../Helpers/Tables/WordROMImage.lean) now obtains
+ROM words from actual Sail bytes. The short [read theorem](ROMImage.lean) binds
+native ROM query data inside the extracted prefix; a complete extracted four-MiB
+image covers every ROM address. Full native UNIMP padding remains represented.
+The constructor does not fill absent padding bytes in Sail state.
+
+Initialized word-memory source/port reads, Sail boot/padding state, discarded
+ROM-shadow access projection and original Sail execution/retirement remain open. The existing
 arithmetic execution registry and its claims retain their scope. Physical setup
 export, mixed/custom programs and cryptographic argument enforcement are separate.

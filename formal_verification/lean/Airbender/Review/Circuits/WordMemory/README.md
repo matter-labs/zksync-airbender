@@ -29,7 +29,9 @@ and all 1048576 aligned ROM rows. Missing public words retain native 0xc0001073
 UNIMP padding. Neither lookup is conditional: even a RAM access queries its ROM
 shadow address. ROM loads also retain the native readonly RAM port; its discarded
 read remains a history obligation. These definitions model the pinned native
-four-MiB profile; physical setup export and public Sail-byte binding remain open.
+four-MiB profile. [Public ROM extraction](../../Helpers/Tables/WordROMImage.lean)
+now binds native ROM data to actual Sail bytes within the extracted prefix.
+Physical setup export and boot/padding/shadow-state binding remain separate.
 
 [Regressions](../../../../Tests/WordMemory.lean) instantiate full native RAM loads,
 RAM stores and ROM loads, including masked x0 loads and UNIMP padding. Changed ROM
@@ -53,9 +55,10 @@ actual original Sail source evidence, exact x0 flags, immediate/PC bounds and
 incoming alignment from complete padded membership. Native equations exclude
 padding; original x0 loads and sign extension are retained.
 
-Original Sail byte binding for the public ROM words, initialized source/read bounds
-(including discarded ROM-shadow accesses) and original Sail load/store execution
-remain to be connected. The local load formula keeps its native x0 flag; the
+Native ROM data now has an actual Sail-byte bridge inside an extracted public
+prefix; a complete extracted four-MiB image covers every native ROM address.
+Initialized source/port reads, missing Sail padding/boot state, discarded
+ROM-shadow access projection and original Sail load/store execution remain open. The local load formula keeps its native x0 flag; the
 separate public decoder proof now derives that flag's exact relation to rd.
 The arithmetic-only trace registry remains unchanged until those connections
 are proved. See the [plan](../../../../FORMAL_VERIFICATION_PLAN.md) and
