@@ -2,8 +2,9 @@
 
 ## Checked result
 
-[Theorem](Theorems.lean) proves native v2 transfer laws from the complete imported
-row constraints. [Model](Model.lean) lists the observables and the exact scope.
+[Theorems](Theorems.lean) prove native v2 transfer laws and bounded RV32 address
+addition from the complete imported row constraints. [Model](Model.lean) lists the
+observables and the exact scope.
 [Artifact](Artifact.lean) imports every native equation and query; all calculations
 stay in [Proofs](../../../Proofs/WordMemory/Transfers.lean).
 
@@ -35,11 +36,22 @@ RAM stores and ROM loads, including masked x0 loads and UNIMP padding. Changed R
 reads, unaligned addresses and ROM stores are rejected. The importer rejects
 unknown/dynamic table selectors, malformed query arities and unmapped columns.
 
+The [address calculation](../../../Proofs/WordMemory/Address.lean) uses the native
+Mersenne31 carry encoding and derives both carries and actual ranged output.
+Only canonical source/immediate bounds remain explicit. The
+[PC proof](../../../Proofs/WordMemory/PC.lean) preserves RV32 rollover under initial
+bounds/alignment. The [clock proof](../../../Proofs/WordMemory/Timestamp.lean)
+derives four-tick advancement and strict port order under the shared initial/prior
+clock inputs. These inputs must still come from initialized word-memory history.
+Regressions read a non-padding public ROM word, derive native port order and
+simultaneously wrap the address and PC from 0xfffffffc to zero.
+
 ## Next connection
 
-This is a native transfer checkpoint. The source-plus-immediate RV32 address
-calculation, PC/clock laws, public LW/SW decoding, initialized reads/bounds and
-original Sail load/store execution remain to be connected. The native x0 flag
+This is a native row checkpoint. Public LW/SW decoding, original Sail byte binding
+for the public ROM words, initialized reads/bounds (including discarded ROM-shadow
+accesses) and original Sail load/store execution remain to be connected. The
+native x0 flag
 is visible in the load formula; its relation to rd is a decoder obligation.
 The arithmetic-only trace registry remains unchanged until those connections
 are proved. See the [plan](../../../../FORMAL_VERIFICATION_PLAN.md) and

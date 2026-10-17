@@ -1,5 +1,6 @@
 import Airbender.Review.Circuits.WordMemory.Model
 import Airbender.Proofs.WordMemory.Transfers
+import Airbender.Proofs.WordMemory.Address
 import Airbender.Proofs.Mersenne31
 
 namespace Airbender.WordMemory
@@ -11,5 +12,13 @@ theorem native_transfers (rom : Verification.WordROM) (w : Nat → ZMod mersenne
     FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints rom) →
     NativeTransfers rom w :=
   Proofs.transfers (by decide)
+
+/-- Native Mersenne31 address addition, including RV32 wraparound. Source and
+    decoded-immediate bounds remain explicit until initialized history/decoding. -/
+theorem native_address (rom : Verification.WordROM) (w : Nat → ZMod mersenne31Modulus) :
+    FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints rom) →
+    (sourceWord w).Bounded → (immediateWord w).Bounded →
+    (addressWord w).toBitVec = (sourceWord w).toBitVec + (immediateWord w).toBitVec :=
+  Proofs.effective_address
 
 end Airbender.WordMemory

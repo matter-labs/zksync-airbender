@@ -317,3 +317,17 @@ import Tests.WordMemory
 #print axioms Tests.WordMemory.changed_rom_read_rejected
 #print axioms Tests.WordMemory.unaligned_address_rejected
 #print axioms Tests.WordMemory.native_rom_padding
+
+#print axioms Airbender.WordMemory.native_address
+#print axioms Airbender.WordMemory.Proofs.effective_address
+#print axioms Airbender.WordMemory.Proofs.native_pc_successor
+#print axioms Airbender.WordMemory.Proofs.timestamp_equations
+#print axioms Airbender.WordMemory.Proofs.final_clock_bound
+#print axioms Airbender.WordMemory.Proofs.clock_advance
+#print axioms Airbender.WordMemory.Proofs.clock_effects
+#print axioms Tests.WordMemory.image_load
+#print axioms Tests.WordMemory.ram_effective_address
+#print axioms Tests.WordMemory.native_clock_order
+#print axioms Tests.WordMemory.native_pc_increment
+#print axioms Tests.WordMemory.native_address_wrap
+#print axioms Tests.WordMemory.native_pc_wrap

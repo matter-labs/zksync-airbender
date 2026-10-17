@@ -76,9 +76,12 @@ four-MiB profile, including every separator row, every aligned ROM row and UNIMP
 padding. Both native fixed queries remain unconditional. Membership derives
 address alignment, RAM classification and exact public ROM values; equations
 derive port selection, actual masked loads and RAM-only stores. The x0 flag
-remains visible until public decoding identifies it. Source-plus-immediate RV32
-address arithmetic, PC/clock assembly, initialized word-memory history and
-original Sail execution remain open. Public ROM words are explicit inputs;
+remains visible until public decoding identifies it. Native Mersenne31 address
+addition now derives its carries and ranged output under explicit source/immediate
+bounds. Native PC bounds/alignment and clock inputs yield modular successors,
+four-tick advancement and port order; initialized word-memory history must derive
+these inputs. Public LW/SW decoding, initialized reads/bounds, discarded shadow
+access projection and original Sail execution remain open. Public ROM words are explicit inputs;
 physical Rust setup/export and actual Sail-byte binding are not proved, and
 no table-equivalence or expected-read premise is introduced. The initialized
 trace registry remains arithmetic-only.

@@ -44,7 +44,9 @@ code-byte reads, decoding and normal steps, including empty traces. Reversed
 dependent ADD/ADDI witness rows reach PC 8 and x2=247. The [word-memory transfer checkpoint](Airbender/Review/Circuits/WordMemory/README.md)
 now imports all native equations/queries and mixed ports. Complete modeled ROM
 tables derive address alignment, exact ROM data, RAM/ROM load selection, masked
-writes and RAM-only stores. Original Sail word-memory execution remains pending.
+writes and RAM-only stores. Native Mersenne31 address addition, modular PC
+successors and four-tick port scheduling are checked under explicit input bounds
+and clock interfaces. Original Sail word-memory execution remains pending.
 Remaining families, Rust
 setup generation/export and cryptographic argument soundness remain pending. This checkpoint does not inherit v3's completed coverage.
 

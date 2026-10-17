@@ -5,7 +5,7 @@
 | Family | Claim and interfaces |
 | --- | --- |
 | ADD/SUB/LUI/AUIPC | [Guide](AddSub/README.md), [theorems](AddSub/Theorems.lean), [model](AddSub/Model.lean) |
-| Word-memory transfers | [Guide](WordMemory/README.md), [theorem](WordMemory/Theorems.lean), [model](WordMemory/Model.lean); native transfers only, Sail assembly pending |
+| Word-memory rows | [Guide](WordMemory/README.md), [theorem](WordMemory/Theorems.lean), [model](WordMemory/Model.lean); native transfers/address arithmetic, Sail assembly pending |
 
 The remaining v2 families are tracked in the [plan](../../../FORMAL_VERIFICATION_PLAN.md).
 Local row soundness and whole execution are distinct milestones.

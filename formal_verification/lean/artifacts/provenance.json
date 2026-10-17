@@ -564,6 +564,30 @@
       "source_path": "Airbender/Proofs/WordMemory/ArtifactChecks.lean",
       "source_sha256": "e97ba144116d2c22cb80cd5fea54309f0f4a921125c96cc98f63f7a6af946cca",
       "change": "Preserve constraint/query counts and typed clock/port/decoder bindings; use actual v2 mixed-port address selectors, offsets, zero flag and write columns."
+    },
+    {
+      "path": "Airbender/Proofs/WordMemory/Address.lean",
+      "source_path": "Airbender/Proofs/WordMemory.lean",
+      "source_sha256": "97d9527e5d1f20a8abeec174aaaed0fd82e3f4dd470cd77631879cff24303093",
+      "change": "Preserve the effective-address word-lifting structure, replacing source BabyBear carry/inverse premises with the actual v2 Mersenne31 polynomial and implicit low carry. Derive output bounds from native range queries; retain explicit canonical source/immediate bounds and RV32 wraparound."
+    },
+    {
+      "path": "Airbender/Proofs/WordMemory/PC.lean",
+      "source_path": "Airbender/Proofs/AddSub/PC.lean",
+      "source_sha256": "e656f7f75c6f944fbb05ee0f2ef2b32b031061827b6fae9f4c2c10e8224bbcb5",
+      "change": "Reuse the already checked v2 native_pc_successor calculation from AddSub/PC.lean at backport checkpoint 6c77d1419. Transplant only native equation indices and the high inverse witness column; retain aligned RV32 rollover, derived output bounds and no source-field inverse premise.",
+      "backport_reuse_revision": "6c77d1419",
+      "backport_reuse_path": "Airbender/Proofs/AddSub/PC.lean",
+      "backport_reuse_sha256": "2dadbc797c1f6c80e819771710d4202dbe50c14aae0557fff8d1aa9f33ebee13"
+    },
+    {
+      "path": "Airbender/Proofs/WordMemory/Timestamp.lean",
+      "source_path": "Airbender/Proofs/AddSub/Timestamp.lean",
+      "source_sha256": "4e2b36b279a470168aaac42b4874db92309dac8e3ed35872f73bf497322a5964",
+      "change": "Reuse the already checked v2 AddSub/Timestamp.lean structure at checkpoint 6c77d1419, rebinding actual native word-memory carry/port/lookup indices. Retain explicit local ClockInputs, native four-tick advancement and strict port order without a source-field inverse premise.",
+      "backport_reuse_revision": "6c77d1419",
+      "backport_reuse_path": "Airbender/Proofs/AddSub/Timestamp.lean",
+      "backport_reuse_sha256": "8c657060753cb3b1850d525a4ce9acfa9e84da332d255b3a24eef007f3a69e30"
     }
   ]
 }

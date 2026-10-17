@@ -1,7 +1,10 @@
 import Airbender.Review.Circuits.WordMemory.Theorems
+import Airbender.Proofs.WordMemory.Address
+import Airbender.Proofs.WordMemory.PC
+import Airbender.Proofs.WordMemory.Timestamp
 
 namespace Tests.WordMemory
-open Airbender Verification
+open Airbender Verification Arithmetic
 
 private def rom : WordROM := ⟨[], by decide⟩
 
@@ -112,5 +115,107 @@ theorem unaligned_address_rejected :
 
 theorem native_rom_padding : rom.word 0 = BitVec.ofNat 32 3221229683 ∧
     rom.word 1048575 = BitVec.ofNat 32 3221229683 := ⟨rfl, rfl⟩
+
+private def image : WordROM := ⟨[0, 0, 0, 0, 0xdeadbeef], by decide⟩
+
+private def imageRow (i : Nat) : ZMod mersenne31Modulus :=
+  if i = 26 ∨ i = 37 ∨ i = 39 ∨ i = 41 then 48879
+  else if i = 27 ∨ i = 38 ∨ i = 40 ∨ i = 42 then 57005
+  else row false true false i
+
+private theorem image_satisfies :
+    FlatOperation.ConstraintsHoldFlat (environment imageRow)
+      (Airbender.WordMemory.importedConstraints image) := by
+  simp [Airbender.WordMemory.importedConstraints, FlatOperation.ConstraintsHoldFlat,
+    Expression.eval, environment, imageRow, row]
+  repeat' apply And.intro
+  all_goals first | (apply range16_contains; decide) |
+    (apply timestamp19_contains; decide) | try decide
+  all_goals
+    simp only [Lookup.Contains, fixed3, Table.toRaw, romSeparatorTable,
+      romWordTable, Table.fromStatic, StaticTable.toTable, ProvableType.fromElements,
+      Expression.eval, Vector.map_mk, List.map_toArray, List.map_cons, List.map_nil,
+      imageRow, row]
+    solve
+    | refine ⟨⟨0, by decide⟩, ?_⟩
+      norm_num [romSeparatorRow]
+    | refine ⟨⟨4, by decide⟩, ?_⟩
+      norm_num [WordROM.row, WordROM.word, image]; decide
+
+theorem image_load :
+    FlatOperation.ConstraintsHoldFlat (environment imageRow)
+      (Airbender.WordMemory.importedConstraints image) ∧
+    imageRow 37 = 48879 ∧ imageRow 38 = 57005 :=
+  ⟨image_satisfies, rfl, rfl⟩
+
+theorem ram_effective_address :
+    (Airbender.WordMemory.addressWord (row false false false)).toBitVec =
+      (Airbender.WordMemory.sourceWord (row false false false)).toBitVec +
+      (Airbender.WordMemory.immediateWord (row false false false)).toBitVec := by
+  apply Airbender.WordMemory.native_address _ _ (satisfies false false false rfl)
+  all_goals constructor <;> decide
+
+theorem native_clock_order :
+    Trace.ClockEffects Airbender.WordMemory.importedConstraintsTraceColumns (row false false false) := by
+  apply Airbender.WordMemory.Proofs.clock_effects (by decide) (satisfies false false false rfl)
+  constructor
+  · constructor <;> decide
+  · decide
+  · intro port member
+    simp [Airbender.WordMemory.importedConstraintsTraceColumns] at member
+    rcases member with rfl | rfl | rfl <;> constructor <;> decide
+
+theorem native_pc_increment :
+    (⟨(row false false false 13).val, (row false false false 14).val⟩ : Word).Bounded ∧
+    (⟨(row false false false 13).val, (row false false false 14).val⟩ : Word).toBitVec =
+      (⟨0, 0⟩ : Word).toBitVec + 4 := by
+  apply Airbender.WordMemory.Proofs.native_pc_successor (by decide)
+    (satisfies false false false rfl)
+  · exact ⟨rfl, rfl, rfl, rfl⟩
+  · constructor <;> decide
+  · decide
+
+private def wrappedRow (i : Nat) : ZMod mersenne31Modulus :=
+  if i = 0 ∨ i = 17 then 65532
+  else if i = 1 ∨ i = 18 then 65535
+  else if i = 9 then 4
+  else if i = 13 ∨ i = 19 ∨ i = 28 ∨ i = 43 ∨ i = 45 then 0
+  else if i = 21 ∨ i = 44 ∨ i = 46 then 1
+  else row false true false i
+
+/-- Full native row simultaneously wraps address and PC from 0xfffffffc to zero. -/
+private theorem wrapped_satisfies :
+    FlatOperation.ConstraintsHoldFlat (environment wrappedRow)
+      (Airbender.WordMemory.importedConstraints rom) := by
+  simp [Airbender.WordMemory.importedConstraints, FlatOperation.ConstraintsHoldFlat,
+    Expression.eval, environment, wrappedRow, row]
+  repeat' apply And.intro
+  all_goals first | (apply range16_contains; decide) |
+    (apply timestamp19_contains; decide) | try decide
+  all_goals
+    simp only [Lookup.Contains, fixed3, Table.toRaw, romSeparatorTable,
+      romWordTable, Table.fromStatic, StaticTable.toTable, ProvableType.fromElements,
+      Expression.eval, Vector.map_mk, List.map_toArray, List.map_cons, List.map_nil,
+      wrappedRow, row]
+    refine ⟨⟨0, by decide⟩, ?_⟩
+    norm_num [romSeparatorRow, WordROM.row, WordROM.word, rom]
+
+theorem native_address_wrap :
+    (Airbender.WordMemory.addressWord wrappedRow).toBitVec = 0 ∧
+    (Airbender.WordMemory.addressWord wrappedRow).toBitVec =
+      (Airbender.WordMemory.sourceWord wrappedRow).toBitVec +
+      (Airbender.WordMemory.immediateWord wrappedRow).toBitVec := by
+  refine ⟨by decide, ?_⟩
+  apply Airbender.WordMemory.native_address _ _ wrapped_satisfies
+  all_goals constructor <;> decide
+
+theorem native_pc_wrap :
+    (⟨(wrappedRow 13).val, (wrappedRow 14).val⟩ : Arithmetic.Word).Bounded ∧
+    (⟨(wrappedRow 13).val, (wrappedRow 14).val⟩ : Arithmetic.Word).toBitVec =
+      (⟨65532, 65535⟩ : Arithmetic.Word).toBitVec + 4 := by
+  apply Airbender.WordMemory.Proofs.native_pc_successor (by decide) wrapped_satisfies
+  · exact ⟨rfl, rfl, rfl, rfl⟩
+  · constructor <;> decide
+  · decide
 
 end Tests.WordMemory

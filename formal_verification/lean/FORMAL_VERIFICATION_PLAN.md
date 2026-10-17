@@ -63,8 +63,11 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
 1. Finish binding native word-memory alongside checked arithmetic execution.
    All v2 equations/queries/metadata and native-shaped ROM tables now support
    checked transfer laws, alignment, exact ROM values and RAM-only stores.
-   Connect source-plus-immediate RV32 address arithmetic, native PC/clock laws,
-   public LW/SW decoding, initialized reads/ranges and original Sail interfaces.
+   Native address arithmetic, modular PC successors and clock/port laws are also
+   checked under explicit source/immediate/initial-PC and clock inputs.
+   Connect public LW/SW decoding, actual Sail ROM-byte binding, initialized
+   reads/ranges (including discarded ROM-shadow accesses), derived local inputs
+   and original Sail interfaces.
    Preserve v2 PC rollover and native timestamp offsets;
    keep physical setup generation/export and mixed/custom expansion explicit.
 2. Add native jump/branch/SLT and extend the shared execution relation with checked
