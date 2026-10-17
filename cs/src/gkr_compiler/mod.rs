@@ -22,8 +22,14 @@ use field::PrimeField;
 use std::collections::*;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum ReadTimestampComparison {
+    PerAccess { intermediate_borrow: Variable },
+    Grouped { group: u8 },
+}
+
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct ShuffleRamTimestampComparisonPartialData {
-    pub(crate) intermediate_borrow: Option<Variable>,
+    pub(crate) comparison: ReadTimestampComparison,
     pub(crate) read_timestamp: [Variable; 2],
     pub(crate) local_timestamp_in_cycle: usize,
 }
