@@ -702,29 +702,14 @@ where
     groups.pop().unwrap()
 }
 
-pub fn build_unified_full_trace<C>(
+/// Replay the captured VM run into the per-cycle unified oracle data.
+pub fn replay_unified_cycles<C>(
     vm: &VmRunOutput<C>,
-    unified_circuit: &GKRCircuitArtifact<BabyBearField>,
     num_calls: usize,
-    eval_fn: fn(
-        &mut crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy<
-            '_,
-            UnifiedRiscvCircuitOracle<'_>,
-            BabyBearField,
-        >,
-    ),
-    run_memory_consistency_check: bool,
-    worker: &Worker,
-) -> (
-    GKRFullWitnessTrace<BabyBearField, Global, Global>,
-    TableDriver<BabyBearField>,
-    Vec<Option<ExecutorFamilyDecoderData>>,
-    Vec<u32>,
-)
+) -> Vec<UnifiedOpcodeTracingDataWithTimestamp>
 where
     C: Counters + Copy + Default + PartialEq + std::fmt::Debug,
 {
-    // Replay the captured trace into the unified destination holder.
     let mut state = vm.snapshotter.initial_snapshot.state;
     let mut ram_log_buffers = vm
         .snapshotter
@@ -747,6 +732,32 @@ where
         &mut tracer,
     );
     assert_eq!(vm.expected_final_state(), state);
+    buffer
+}
+
+pub fn build_unified_full_trace<C>(
+    vm: &VmRunOutput<C>,
+    unified_circuit: &GKRCircuitArtifact<BabyBearField>,
+    num_calls: usize,
+    eval_fn: fn(
+        &mut crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy<
+            '_,
+            UnifiedRiscvCircuitOracle<'_>,
+            BabyBearField,
+        >,
+    ),
+    run_memory_consistency_check: bool,
+    worker: &Worker,
+) -> (
+    GKRFullWitnessTrace<BabyBearField, Global, Global>,
+    TableDriver<BabyBearField>,
+    Vec<Option<ExecutorFamilyDecoderData>>,
+    Vec<u32>,
+)
+where
+    C: Counters + Copy + Default + PartialEq + std::fmt::Debug,
+{
+    let buffer = replay_unified_cycles(vm, num_calls);
 
     use common_constants::*;
     use cs::gkr_circuits::*;

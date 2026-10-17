@@ -8,8 +8,9 @@ use ::field::baby_bear::base::BabyBearField;
 use ::field::Field;
 use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
 use cs::gkr_circuits::unified_reduced_machine::{
-    FAMILY_1_FLAG_OFFSET, FAMILY_1_TRI_ADD_BIT, FAMILY_2_FLAG_OFFSET, FAMILY_3_BINARY_OP_BIT,
-    FAMILY_3_FLAG_OFFSET, FAMILY_4_LW_BIT, FAMILY_4_SW_BIT,
+    UnifiedCircuitProfile, FAMILY_1_FLAG_OFFSET, FAMILY_1_TRI_ADD_BIT, FAMILY_2_FLAG_OFFSET,
+    FAMILY_3_BINARY_OP_BIT, FAMILY_3_FLAG_OFFSET, FAMILY_4_LW_BIT, FAMILY_4_SW_BIT,
+    REGULAR_UNIFIED_PROFILE, UNIFIED_RD_IS_ZERO_BIT, UNIFIED_REDUCED_MACHINE_NUM_FLAGS,
 };
 use cs::tables::TableType;
 use proptest::prelude::*;
@@ -48,6 +49,17 @@ fn find_family_row(
     })
 }
 
+const COLUMN_CUTS: bool = matches!(REGULAR_UNIFIED_PROFILE, UnifiedCircuitProfile::ColumnCuts);
+
+/// Name of limb `i` of the shared F1/F2/F4 register in the committed regular layout.
+fn shared_register_limb(i: usize) -> String {
+    if COLUMN_CUTS {
+        format!("shared scratch var[{}]", 17 + i)
+    } else {
+        format!("shared F1/F2 intermediate reg[{i}]")
+    }
+}
+
 fn build_satisfying_trace_with_mutation(
     mutate: impl FnOnce(
         &GKRCircuitArtifact<BabyBearField>,
@@ -69,7 +81,7 @@ fn build_satisfying_trace_with_mutation(
         )
     };
 
-    let config = ProgramConfig::multi_family_smoke_blake_g_function();
+    let config = ProgramConfig::multi_family_smoke_blake_compression();
     let vm = run_vm_and_capture::<CountersT, riscv_transpiler::ir::ReducedMachineDecoderConfig>(
         &config, &worker,
     );
@@ -92,6 +104,52 @@ fn build_satisfying_trace_with_mutation(
     mutate(&circuit, &mut full_trace);
 
     (circuit, full_trace)
+}
+
+type DecoderTable = Vec<Option<cs::gkr_circuits::decoder_trait::ExecutorFamilyDecoderData>>;
+
+/// The honest multi-family-smoke trace on the committed regular layout, with its decoder
+/// table, checked to pass every checker: arithmetic, RC-16/timestamp ranges and decoder
+/// membership.
+fn honest_trace_with_decoder_table() -> (
+    GKRCircuitArtifact<BabyBearField>,
+    GKRFullWitnessTrace<BabyBearField, Global, Global>,
+    DecoderTable,
+) {
+    type CountersT = DelegationsAndUnifiedCounters;
+    let worker = Worker::new_with_num_threads(8);
+    let circuit: GKRCircuitArtifact<BabyBearField> =
+        deserialize_from_file("../cs/compiled_circuits/unified_reduced_machine_layout_gkr.json");
+    let config = ProgramConfig::multi_family_smoke_blake_compression();
+    let vm = run_vm_and_capture::<CountersT, riscv_transpiler::ir::ReducedMachineDecoderConfig>(
+        &config, &worker,
+    );
+    let num_calls = vm
+        .counters
+        .get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
+    let (trace, _table_driver, decoder_table, _top_bits) =
+        super::orchestration::unified::build_unified_full_trace(
+            &vm,
+            &circuit,
+            num_calls,
+            super::unified_reduced_machine::witness_eval_fn,
+            false,
+            &worker,
+        );
+    assert!(
+        check_satisfied(&circuit, &trace),
+        "honest trace: arithmetic"
+    );
+    assert!(
+        check_lookups_in_range(&circuit, &trace),
+        "honest trace: ranges"
+    );
+    assert_eq!(
+        first_decoder_lookup_violation(&circuit, &trace, &decoder_table),
+        None,
+        "honest trace: decoder membership"
+    );
+    (circuit, trace, decoder_table)
 }
 
 /// Force a misaligned `writeaddr_lo` on an SW row.
@@ -520,8 +578,11 @@ fn empty_family_mask_on_executing_row_rejected() {
         // committed table doesn't have an entry mapping this PC to all-zero
         // family bits), not from a trivially-failing arithmetic constraint
         // that's incidental to the actual attack.
-        let any_active_addr = find_base_layer_address(circuit, "unified family-dispatch one-hot");
-        write_cell(trace, any_active_addr, exec_row, BabyBearField::ZERO);
+        if !COLUMN_CUTS {
+            let any_active_addr =
+                find_base_layer_address(circuit, "unified family-dispatch one-hot");
+            write_cell(trace, any_active_addr, exec_row, BabyBearField::ZERO);
+        }
     });
     assert!(
         !check_satisfied(&circuit, &full_trace),
@@ -742,7 +803,7 @@ fn unified_top14_pooled_corruption_on_sw_row_rejected() {
     let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
         let sw_addr = find_base_layer_address(circuit, &format!("family_bit[{FAMILY_4_SW_BIT}]"));
         // top_14 aliases limb 0 of the shared F1/F2/F4 intermediate Register.
-        let top14_addr = find_base_layer_address(circuit, "shared F1/F2 intermediate reg[0]");
+        let top14_addr = find_base_layer_address(circuit, &shared_register_limb(0));
         let sw_row = (0..base_trace_len(trace))
             .find(|&r| read_cell(trace, sw_addr, r) == BabyBearField::ONE)
             .expect("multi_family_smoke must execute at least one SW");
@@ -1073,7 +1134,7 @@ fn baseline_trace_is_memory_consistent() {
         )
     };
 
-    let config = ProgramConfig::multi_family_smoke_blake_g_function();
+    let config = ProgramConfig::multi_family_smoke_blake_compression();
     let vm = run_vm_and_capture::<CountersT, riscv_transpiler::ir::ReducedMachineDecoderConfig>(
         &config, &worker,
     );
@@ -1216,7 +1277,7 @@ fn assert_only_alignment_trap_fails(
         "the single failing constraint must be the trap (involves both alignment bits); got {vars:?}"
     );
     assert!(
-        !has("shared F1/F2 intermediate reg[0]"),
+        !has(&shared_register_limb(0)),
         "the single failing constraint must NOT be a decomposition (top_14 present); got {vars:?}"
     );
     assert!(
@@ -1398,6 +1459,356 @@ fn generate_malicious_unified_proofs() {
                 .expect("multi_family_smoke must execute at least one F3 (shift or binary-op)");
             let cur = read_cell(trace, scratch0, row);
             write_cell(trace, scratch0, row, cur + BabyBearField::ONE);
+        },
+    );
+}
+
+/// G2 negative cases for the column-cuts gates, all on one honest trace (the control passes
+/// arithmetic, ranges and decoder membership). Each case writes cells after witness
+/// generation, checks the named rejection, and restores the cells. Attribution to the
+/// `ColumnCuts` constraints (linear tie, affine rd-zero gate, linear PC-bump gate) is asserted
+/// when the committed regular layout is `ColumnCuts`; rejection itself is asserted under both
+/// profiles.
+#[test]
+fn column_cuts_negative_cases_rejected() {
+    type F = BabyBearField;
+    let (circuit, mut trace, table) = honest_trace_with_decoder_table();
+    let addr = |name: &str| find_base_layer_address(&circuit, name);
+    let bit = |i: usize| addr(&format!("family_bit[{i}]"));
+    let execute = addr("Execute flag for cycle");
+    let rd_write = [
+        addr("rd/mem write write_value[0]"),
+        addr("rd/mem write write_value[1]"),
+    ];
+    let pc_in = [addr("initial_pc[0]"), addr("initial_pc[1]")];
+    let pc_out = [addr("final_pc[0]"), addr("final_pc[1]")];
+    let carry = addr("unified pc-bump carry");
+    let register = [
+        addr(&shared_register_limb(0)),
+        addr(&shared_register_limb(1)),
+    ];
+    let rows = base_trace_len(&trace);
+    let f = |x: u32| F::from_u32_with_reduction(x);
+    let get = |trace: &GKRFullWitnessTrace<F, Global, Global>, a, r| read_cell(trace, a, r);
+    let rd_zero = UNIFIED_RD_IS_ZERO_BIT;
+    let f2_bits = FAMILY_2_FLAG_OFFSET..FAMILY_2_FLAG_OFFSET + 4;
+
+    let mask_of = |trace: &GKRFullWitnessTrace<F, Global, Global>, r: usize| -> u32 {
+        (0..UNIFIED_REDUCED_MACHINE_NUM_FLAGS)
+            .filter(|&i| get(trace, bit(i), r) == F::ONE)
+            .fold(0, |m, i| m | 1 << i)
+    };
+    let executing =
+        |trace: &GKRFullWitnessTrace<F, Global, Global>, r: usize| get(trace, execute, r) == F::ONE;
+    let find = |pred: &dyn Fn(usize) -> bool, what: &str| -> usize {
+        (0..rows)
+            .find(|&r| pred(r))
+            .unwrap_or_else(|| panic!("no {what} row"))
+    };
+
+    let names_of = |failing: &[(&'static str, usize, Vec<String>)]| -> Vec<Vec<String>> {
+        failing.iter().map(|(_, _, n)| n.clone()).collect()
+    };
+    let has = |names: &[String], s: &str| names.iter().any(|n| n == s);
+    let bit_name = |i: usize| format!("family_bit[{i}]");
+    let is_tie = |kind: &str, names: &[String]| {
+        kind == "deg1"
+            && has(names, "Execute flag for cycle")
+            && (0..UNIFIED_REDUCED_MACHINE_NUM_FLAGS)
+                .all(|i| has(names, &bit_name(i)) == (i != rd_zero))
+    };
+    let is_padding_zero = |names: &[String]| {
+        has(names, "Execute flag for cycle")
+            && (0..UNIFIED_REDUCED_MACHINE_NUM_FLAGS).all(|i| has(names, &bit_name(i)))
+    };
+    let is_rd_zero_pair = |names: &[String], limb: usize| {
+        names.len() == 2
+            && has(names, &format!("rd/mem write write_value[{limb}]"))
+            && (has(names, &bit_name(rd_zero)) || has(names, "gate_fam2_rd_zero"))
+    };
+    let is_pc_bump_low =
+        |names: &[String]| has(names, "final_pc[0]") && has(names, "unified pc-bump carry");
+
+    // Apply `writes`, run `check`, restore.
+    fn case(
+        name: &str,
+        trace: &mut GKRFullWitnessTrace<BabyBearField, Global, Global>,
+        writes: &[(GKRAddress, usize, BabyBearField)],
+        check: impl FnOnce(&GKRFullWitnessTrace<BabyBearField, Global, Global>),
+    ) {
+        let saved: Vec<_> = writes
+            .iter()
+            .map(|&(a, r, _)| (a, r, read_cell(trace, a, r)))
+            .collect();
+        for &(a, r, v) in writes {
+            write_cell(trace, a, r, v);
+        }
+        check(trace);
+        for (a, r, v) in saved {
+            write_cell(trace, a, r, v);
+        }
+        println!("{name}: rejected as expected");
+    }
+
+    // 1. Two dispatch bits on an LW row.
+    let lw = find(&|r| get(&trace, bit(FAMILY_4_LW_BIT), r) == F::ONE, "LW");
+    case(
+        "two dispatch bits",
+        &mut trace,
+        &[(bit(FAMILY_4_SW_BIT), lw, F::ONE)],
+        &|t: &GKRFullWitnessTrace<F, Global, Global>| {
+            let failing = failing_constraints_on_row(&circuit, t, lw);
+            assert!(!failing.is_empty());
+            if COLUMN_CUTS {
+                assert!(
+                    failing.iter().any(|(k, _, n)| is_tie(*k, n)),
+                    "{failing:#?}"
+                );
+            }
+            assert_eq!(
+                first_decoder_lookup_violation(&circuit, t, &table),
+                Some(lw)
+            );
+        },
+    );
+
+    // 2. No dispatch bit on an executing ADD row.
+    let add = find(&|r| executing(&trace, r) && mask_of(&trace, r) == 1, "ADD");
+    case(
+        "zero dispatch bits on an executing row",
+        &mut trace,
+        &[(bit(0), add, F::ZERO)],
+        &|t: &GKRFullWitnessTrace<F, Global, Global>| {
+            if COLUMN_CUTS {
+                let failing = failing_constraints_on_row(&circuit, t, add);
+                assert!(
+                    failing.iter().any(|(k, _, n)| is_tie(*k, n)),
+                    "{failing:#?}"
+                );
+            }
+            assert_eq!(
+                first_decoder_lookup_violation(&circuit, t, &table),
+                Some(add)
+            );
+        },
+    );
+
+    // 3. A dispatch bit, or RD_IS_ZERO, on a padding row.
+    let padding = find(&|r| !executing(&trace, r), "padding");
+    for (label, b) in [
+        ("dispatch bit on padding", 0),
+        ("RD_IS_ZERO on padding", rd_zero),
+    ] {
+        case(
+            label,
+            &mut trace,
+            &[(bit(b), padding, F::ONE)],
+            |t: &GKRFullWitnessTrace<F, Global, Global>| {
+                let failing = failing_constraints_on_row(&circuit, t, padding);
+                assert!(
+                    failing.iter().any(|(_, _, n)| is_padding_zero(n)),
+                    "{failing:#?}"
+                );
+                if COLUMN_CUTS {
+                    assert_eq!(failing.iter().any(|(k, _, n)| is_tie(*k, n)), b != rd_zero);
+                }
+            },
+        );
+    }
+
+    // 4. RD_IS_ZERO on a non-F2 row: (a) nonzero rd write -> the rd-zero pair (ColumnCuts);
+    // (b) zero rd write and zero shared-register slots -> arithmetic accepts, and the
+    // decoder lookup is the defence (as under Baseline).
+    let add_nonzero = find(
+        &|r| {
+            executing(&trace, r)
+                && mask_of(&trace, r) == 1
+                && get(&trace, rd_write[0], r) != F::ZERO
+        },
+        "ADD with nonzero rd write",
+    );
+    case(
+        "RD_IS_ZERO on a non-F2 row (nonzero rd)",
+        &mut trace,
+        &[(bit(rd_zero), add_nonzero, F::ONE)],
+        &|t: &GKRFullWitnessTrace<F, Global, Global>| {
+            if COLUMN_CUTS {
+                let failing = failing_constraints_on_row(&circuit, t, add_nonzero);
+                assert!(
+                    failing.iter().any(|(_, _, n)| is_rd_zero_pair(n, 0)),
+                    "{failing:#?}"
+                );
+            }
+            assert_eq!(
+                first_decoder_lookup_violation(&circuit, t, &table),
+                Some(add_nonzero)
+            );
+        },
+    );
+    let add_zero = find(
+        &|r| {
+            executing(&trace, r)
+                && mask_of(&trace, r) == 1
+                && rd_write
+                    .iter()
+                    .chain(register.iter())
+                    .all(|a| get(&trace, *a, r) == F::ZERO)
+        },
+        "ADD with zero rd write and zero register slots",
+    );
+    case(
+        "RD_IS_ZERO on a non-F2 row (zero rd)",
+        &mut trace,
+        &[(bit(rd_zero), add_zero, F::ONE)],
+        &|t: &GKRFullWitnessTrace<F, Global, Global>| {
+            assert!(failing_constraints_on_row(&circuit, t, add_zero).is_empty());
+            assert_eq!(
+                first_decoder_lookup_violation(&circuit, t, &table),
+                Some(add_zero)
+            );
+        },
+    );
+
+    // 5, 6. A nonzero rd write on JAL with rd = x0, on JALR with rd = x0, and on a branch,
+    // both limbs each.
+    let f2_row = |sub_op: usize, what: &str| {
+        find(
+            &|r| {
+                let m = mask_of(&trace, r);
+                executing(&trace, r)
+                    && m >> (FAMILY_2_FLAG_OFFSET + sub_op) & 1 == 1
+                    && m >> rd_zero & 1 == 1
+            },
+            what,
+        )
+    };
+    let jal_x0 = f2_row(0, "JAL with rd = x0");
+    let jalr_x0 = f2_row(1, "JALR with rd = x0");
+    let branch = f2_row(3, "branch");
+    for (label, row) in [
+        ("JAL x0 writes rd", jal_x0),
+        ("JALR x0 writes rd", jalr_x0),
+        ("branch writes rd", branch),
+    ] {
+        for limb in 0..2 {
+            case(
+                label,
+                &mut trace,
+                &[(rd_write[limb], row, f(0x1234))],
+                |t: &GKRFullWitnessTrace<F, Global, Global>| {
+                    let failing = failing_constraints_on_row(&circuit, t, row);
+                    assert!(
+                        failing.iter().any(|(_, _, n)| is_rd_zero_pair(n, limb)),
+                        "{failing:#?}"
+                    );
+                },
+            );
+        }
+    }
+
+    // 7a. A non-F2 row whose pc_out is not pc + 4, for one row of each non-F2 family.
+    let non_f2_rows: Vec<usize> = [0usize, FAMILY_3_FLAG_OFFSET, FAMILY_4_LW_BIT]
+        .into_iter()
+        .map(|b| {
+            find(
+                &|r| {
+                    executing(&trace, r)
+                        && get(&trace, bit(b), r) == F::ONE
+                        && get(&trace, carry, r) == F::ZERO
+                },
+                "non-F2 row without carry",
+            )
+        })
+        .collect();
+    for &row in non_f2_rows.iter() {
+        let forged = get(&trace, pc_out[0], row) + f(4);
+        case(
+            "non-F2 pc_out != pc + 4",
+            &mut trace,
+            &[(pc_out[0], row, forged)],
+            &|t: &GKRFullWitnessTrace<F, Global, Global>| {
+                let failing = failing_constraints_on_row(&circuit, t, row);
+                assert!(
+                    failing.iter().any(|(_, _, n)| is_pc_bump_low(n)),
+                    "{failing:#?}"
+                );
+            },
+        );
+    }
+
+    // 7b. A forged carry on a no-carry row: both PC-bump constraints hold, the pc_out[0]
+    // RC-16 rejects.
+    let row = non_f2_rows[0];
+    let mut low = get(&trace, pc_in[0], row) + f(4);
+    low.sub_assign(&f(1 << 16));
+    let high = get(&trace, pc_in[1], row) + F::ONE;
+    case(
+        "forged PC carry",
+        &mut trace,
+        &[
+            (carry, row, F::ONE),
+            (pc_out[0], row, low),
+            (pc_out[1], row, high),
+        ],
+        |t: &GKRFullWitnessTrace<F, Global, Global>| {
+            assert!(failing_constraints_on_row(&circuit, t, row).is_empty());
+            assert!(!check_lookups_in_range(&circuit, t));
+        },
+    );
+
+    // 8. The aliased scratch slots 17/18 (F3 rs1 byte splits) and 7 (an F3 shift-output
+    // byte) hold F3 bytes on F3 rows. Each slot has a nonzero honest F3 occupant on some row,
+    // and the honest control above accepts them. On an
+    // F3 row with slot 7 nonzero: (a) slot 7 and pc_out[0] forged to an F2-style jump target
+    // -> the PC-bump gate rejects; (b) slot 7 changed alone -> F3's own constraints reject and
+    // no Family-2 constraint is involved.
+    let slots = [17usize, 18, 7].map(|k| addr(&format!("shared scratch var[{k}]")));
+    let is_f3 = |trace: &GKRFullWitnessTrace<F, Global, Global>, r: usize| {
+        executing(trace, r)
+            && (0..2).any(|i| get(trace, bit(FAMILY_3_FLAG_OFFSET + i), r) == F::ONE)
+    };
+    for (k, slot) in [17, 18, 7].into_iter().zip(slots) {
+        let row = find(
+            &|r| is_f3(&trace, r) && get(&trace, slot, r) != F::ZERO,
+            &format!("F3 row with a nonzero byte in slot {k}"),
+        );
+        println!("slot {k}: honest nonzero F3 occupant on row {row}");
+    }
+    let slot7 = slots[2];
+    let f3 = find(
+        &|r| is_f3(&trace, r) && get(&trace, slot7, r) != F::ZERO,
+        "F3 row with a nonzero byte in slot 7",
+    );
+    let target = get(&trace, pc_in[0], f3) + f(8);
+    case(
+        "F3 alias steering the PC",
+        &mut trace,
+        &[(slot7, f3, target), (pc_out[0], f3, target)],
+        |t: &GKRFullWitnessTrace<F, Global, Global>| {
+            let failing = failing_constraints_on_row(&circuit, t, f3);
+            assert!(
+                failing.iter().any(|(_, _, n)| is_pc_bump_low(n)),
+                "{failing:#?}"
+            );
+        },
+    );
+    let bumped = get(&trace, slot7, f3) + F::ONE;
+    case(
+        "F3 alias changed alone",
+        &mut trace,
+        &[(slot7, f3, bumped)],
+        |t: &GKRFullWitnessTrace<F, Global, Global>| {
+            let failing = failing_constraints_on_row(&circuit, t, f3);
+            assert!(!failing.is_empty());
+            for names in names_of(&failing) {
+                assert!(
+                    f2_bits
+                        .clone()
+                        .chain([rd_zero])
+                        .all(|b| !has(&names, &bit_name(b))),
+                    "a Family-2 constraint reads the F3 alias: {names:?}"
+                );
+            }
         },
     );
 }

@@ -146,10 +146,10 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
                 q,
                 nd_source,
             )?;
-            process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, 132usize>(
+            process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, 116usize>(
                 &mut ts.hasher,
                 hash_buf,
-                66usize,
+                58usize,
                 tree_index,
                 19usize,
                 initial_transcript.witness_caps_slice(),
@@ -168,7 +168,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
                 19usize,
                 initial_transcript.setup_caps_slice(),
                 &gamma_powers[..],
-                104usize,
+                96usize,
                 &mut acc0,
                 &mut acc1,
                 q,
@@ -603,7 +603,7 @@ const _: () = assert!(
         .len(),
     "WHIR stats labels array is too small for NUM_INTERNAL_ROUNDS"
 );
-pub const WHIR_HASH_BUF_SIZE: usize = 144usize;
+pub const WHIR_HASH_BUF_SIZE: usize = 128usize;
 pub fn verify_whir<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator>(
     initial_transcript: &ConcreteInitialTranscript,
     ts: &mut TranscriptState,

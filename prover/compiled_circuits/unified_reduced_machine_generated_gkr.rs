@@ -198,17 +198,17 @@ fn eval_fn_3<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     let v_139 = WitnessComputationCore::select(&v_49, &v_133, &v_138);
     let v_140 = v_139.truncate();
     witness_proxy.set_witness_place_u16(
-        48usize,
-        W::U16::select(&v_26, &v_140, &witness_proxy.get_witness_place_u16(48usize)),
+        44usize,
+        W::U16::select(&v_26, &v_140, &witness_proxy.get_witness_place_u16(44usize)),
     );
     let v_142 = v_139.shr(16u32);
     let v_143 = v_142.truncate();
     witness_proxy.set_witness_place_u16(
-        49usize,
-        W::U16::select(&v_26, &v_143, &witness_proxy.get_witness_place_u16(49usize)),
+        45usize,
+        W::U16::select(&v_26, &v_143, &witness_proxy.get_witness_place_u16(45usize)),
     );
     let v_145 = W::Field::from_integer(v_68);
-    witness_proxy.set_witness_place(50usize, v_145);
+    witness_proxy.set_witness_place(48usize, v_145);
 }
 #[allow(unused_variables, clippy::let_unit_value)]
 fn eval_fn_4<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
@@ -304,14 +304,14 @@ fn eval_fn_4<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     let v_58 = WitnessComputationCore::select(&v_15, &v_53, &v_57);
     let v_59 = v_58.truncate();
     witness_proxy.set_witness_place_u16(
-        48usize,
-        W::U16::select(&v_14, &v_59, &witness_proxy.get_witness_place_u16(48usize)),
+        44usize,
+        W::U16::select(&v_14, &v_59, &witness_proxy.get_witness_place_u16(44usize)),
     );
     let v_61 = v_58.shr(16u32);
     let v_62 = v_61.truncate();
     witness_proxy.set_witness_place_u16(
-        49usize,
-        W::U16::select(&v_14, &v_62, &witness_proxy.get_witness_place_u16(49usize)),
+        45usize,
+        W::U16::select(&v_14, &v_62, &witness_proxy.get_witness_place_u16(45usize)),
     );
 }
 #[allow(unused_variables, clippy::let_unit_value)]
@@ -396,7 +396,6 @@ fn eval_fn_6<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     );
 }
 #[allow(unused_variables, clippy::let_unit_value)]
-#[inline(always)]
 fn eval_fn_7<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
     witness_proxy: &'a mut P,
 ) where
@@ -407,50 +406,33 @@ fn eval_fn_7<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     W::U8: Copy,
     W::I32: Copy,
 {
-    let v_0 = witness_proxy.get_witness_place_boolean(15usize);
-    let v_1 = witness_proxy.get_witness_place_boolean(16usize);
-    let v_2 = witness_proxy.get_witness_place_boolean(17usize);
-    let v_3 = witness_proxy.get_witness_place_boolean(18usize);
-    let v_4 = witness_proxy.get_witness_place_boolean(19usize);
-    let v_5 = W::Mask::or(&v_0, &v_1);
-    let v_6 = W::Mask::negate(&v_4);
-    let v_7 = W::Mask::and(&v_5, &v_6);
-    witness_proxy.set_witness_place_boolean(53usize, v_7);
-    let v_9 = W::Mask::and(&v_2, &v_6);
-    witness_proxy.set_witness_place_boolean(54usize, v_9);
-    let v_11 = W::Mask::or(&v_5, &v_2);
-    let v_12 = W::Mask::or(&v_11, &v_3);
-    let v_13 = W::Mask::and(&v_12, &v_4);
-    witness_proxy.set_witness_place_boolean(55usize, v_13);
+    let v_0 = witness_proxy.get_witness_place_boolean(20usize);
+    let v_1 = witness_proxy.get_witness_place_boolean(21usize);
+    let v_2 = witness_proxy.get_memory_place_u16(2usize);
+    let v_3 = witness_proxy.get_memory_place_u16(3usize);
+    let v_4 = witness_proxy.get_memory_place_u16(7usize);
+    let v_5 = witness_proxy.get_memory_place_u16(8usize);
+    let v_6 = W::Mask::or(&v_0, &v_1);
+    let v_7 = v_2.truncate();
+    let v_8 = v_7.widen();
+    witness_proxy.set_witness_place_u16(
+        44usize,
+        W::U16::select(&v_6, &v_8, &witness_proxy.get_witness_place_u16(44usize)),
+    );
+    let v_10 = v_3.truncate();
+    let v_11 = v_10.widen();
+    witness_proxy.set_witness_place_u16(
+        45usize,
+        W::U16::select(&v_6, &v_11, &witness_proxy.get_witness_place_u16(45usize)),
+    );
+    let v_13 = v_4.truncate();
+    witness_proxy.set_witness_place_u8(46usize, v_13);
+    let v_15 = v_5.truncate();
+    witness_proxy.set_witness_place_u8(47usize, v_15);
 }
 #[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_8<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
-    witness_proxy: &'a mut P,
-) where
-    W::Field: Copy,
-    W::Mask: Copy,
-    W::U32: Copy,
-    W::U16: Copy,
-    W::U8: Copy,
-    W::I32: Copy,
-{
-    let v_0 = witness_proxy.get_memory_place_u16(2usize);
-    let v_1 = witness_proxy.get_memory_place_u16(3usize);
-    let v_2 = witness_proxy.get_memory_place_u16(7usize);
-    let v_3 = witness_proxy.get_memory_place_u16(8usize);
-    let v_4 = v_0.truncate();
-    witness_proxy.set_witness_place_u8(44usize, v_4);
-    let v_6 = v_1.truncate();
-    witness_proxy.set_witness_place_u8(45usize, v_6);
-    let v_8 = v_2.truncate();
-    witness_proxy.set_witness_place_u8(46usize, v_8);
-    let v_10 = v_3.truncate();
-    witness_proxy.set_witness_place_u8(47usize, v_10);
-}
-#[allow(unused_variables, clippy::let_unit_value)]
-#[inline(always)]
-fn eval_fn_9<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
     witness_proxy: &'a mut P,
 ) where
     W::Field: Copy,
@@ -473,7 +455,507 @@ fn eval_fn_9<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     );
 }
 #[allow(unused_variables, clippy::let_unit_value)]
+fn eval_fn_9<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
+    witness_proxy: &'a mut P,
+) where
+    W::Field: Copy,
+    W::Mask: Copy,
+    W::U32: Copy,
+    W::U16: Copy,
+    W::U8: Copy,
+    W::I32: Copy,
+{
+    let v_0 = witness_proxy.get_witness_place_boolean(20usize);
+    let v_1 = witness_proxy.get_memory_place(7usize);
+    let v_2 = witness_proxy.get_witness_place(46usize);
+    let v_3 = W::Field::constant(BabyBearField(0u32));
+    let v_4 = W::Field::constant(BabyBearField(268435454u32));
+    let mut v_5 = v_3;
+    W::Field::add_assign_product(&mut v_5, &v_4, &v_2);
+    let v_6 = W::Field::constant(BabyBearField(16777216u32));
+    let mut v_7 = v_3;
+    W::Field::add_assign_product(&mut v_7, &v_6, &v_1);
+    let v_8 = W::Field::constant(BabyBearField(1996488705u32));
+    let mut v_9 = v_7;
+    W::Field::add_assign_product(&mut v_9, &v_8, &v_2);
+    let v_10 = W::Field::constant(BabyBearField(134217711u32));
+    let v_11 = v_10.as_integer();
+    let v_12 = v_11.truncate();
+    let v_13 = witness_proxy.maybe_lookup::<2usize, 1usize>(&[v_5, v_9], v_12, v_0);
+    let v_14 = v_13[0usize];
+    witness_proxy.set_witness_place(
+        27usize,
+        W::Field::select(&v_0, &v_14, &witness_proxy.get_witness_place(27usize)),
+    );
+}
+#[allow(unused_variables, clippy::let_unit_value)]
 fn eval_fn_10<
+    'a,
+    'b: 'a,
+    W: WitnessTypeSet<BabyBearField>,
+    P: WitnessProxy<BabyBearField, W> + 'b,
+>(
+    witness_proxy: &'a mut P,
+) where
+    W::Field: Copy,
+    W::Mask: Copy,
+    W::U32: Copy,
+    W::U16: Copy,
+    W::U8: Copy,
+    W::I32: Copy,
+{
+    let v_0 = witness_proxy.get_witness_place_u16(2usize);
+    let v_1 = witness_proxy.get_witness_place_u16(3usize);
+    let v_2 = witness_proxy.get_memory_place_boolean(9usize);
+    let v_3 = witness_proxy.get_memory_place_boolean(16usize);
+    let v_4 = witness_proxy.get_memory_place_u16(2usize);
+    let v_5 = witness_proxy.get_memory_place_u16(3usize);
+    let v_6 = W::Mask::or(&v_2, &v_3);
+    let v_7 = W::U16::overflowing_add(&v_4, &v_0).1;
+    witness_proxy.set_witness_place_boolean(
+        22usize,
+        W::Mask::select(
+            &v_6,
+            &v_7,
+            &witness_proxy.get_witness_place_boolean(22usize),
+        ),
+    );
+    let v_9 = W::U16::overflowing_add(&v_5, &v_1).1;
+    let mut v_10 = v_5;
+    W::U16::add_assign(&mut v_10, &v_1);
+    let v_11 = W::U32::from_mask(v_7);
+    let v_12 = v_11.truncate();
+    let v_13 = W::U16::overflowing_add(&v_10, &v_12).1;
+    let v_14 = W::Mask::or(&v_9, &v_13);
+    witness_proxy.set_witness_place_boolean(
+        23usize,
+        W::Mask::select(
+            &v_6,
+            &v_14,
+            &witness_proxy.get_witness_place_boolean(23usize),
+        ),
+    );
+}
+#[allow(unused_variables, clippy::let_unit_value)]
+fn eval_fn_11<
+    'a,
+    'b: 'a,
+    W: WitnessTypeSet<BabyBearField>,
+    P: WitnessProxy<BabyBearField, W> + 'b,
+>(
+    witness_proxy: &'a mut P,
+) where
+    W::Field: Copy,
+    W::Mask: Copy,
+    W::U32: Copy,
+    W::U16: Copy,
+    W::U8: Copy,
+    W::I32: Copy,
+{
+    let v_0 = witness_proxy.get_memory_place(9usize);
+    let v_1 = witness_proxy.get_memory_place(16usize);
+    let v_2 = witness_proxy.get_memory_place(10usize);
+    let v_3 = witness_proxy.get_memory_place(11usize);
+    let v_4 = witness_proxy.get_memory_place(17usize);
+    let v_5 = witness_proxy.get_memory_place(18usize);
+    let v_6 = witness_proxy.get_memory_place_boolean(9usize);
+    let v_7 = witness_proxy.get_memory_place_boolean(16usize);
+    let v_8 = W::Mask::or(&v_6, &v_7);
+    let v_9 = W::Field::constant(BabyBearField(0u32));
+    let mut v_10 = v_9;
+    W::Field::add_assign_product(&mut v_10, &v_0, &v_2);
+    let mut v_11 = v_10;
+    W::Field::add_assign_product(&mut v_11, &v_1, &v_4);
+    witness_proxy.set_witness_place(
+        27usize,
+        W::Field::select(&v_8, &v_11, &witness_proxy.get_witness_place(27usize)),
+    );
+    let mut v_13 = v_9;
+    W::Field::add_assign_product(&mut v_13, &v_0, &v_3);
+    let mut v_14 = v_13;
+    W::Field::add_assign_product(&mut v_14, &v_1, &v_5);
+    witness_proxy.set_witness_place(
+        28usize,
+        W::Field::select(&v_8, &v_14, &witness_proxy.get_witness_place(28usize)),
+    );
+}
+#[allow(unused_variables, clippy::let_unit_value)]
+#[inline(always)]
+fn eval_fn_12<
+    'a,
+    'b: 'a,
+    W: WitnessTypeSet<BabyBearField>,
+    P: WitnessProxy<BabyBearField, W> + 'b,
+>(
+    witness_proxy: &'a mut P,
+) where
+    W::Field: Copy,
+    W::Mask: Copy,
+    W::U32: Copy,
+    W::U16: Copy,
+    W::U8: Copy,
+    W::I32: Copy,
+{
+    let v_0 = witness_proxy.get_memory_place(9usize);
+    let v_1 = witness_proxy.get_memory_place(16usize);
+    let v_2 = witness_proxy.get_memory_place(11usize);
+    let v_3 = witness_proxy.get_memory_place(18usize);
+    let v_4 = witness_proxy.get_memory_place_boolean(9usize);
+    let v_5 = witness_proxy.get_memory_place_boolean(16usize);
+    let v_6 = W::Mask::or(&v_4, &v_5);
+    let v_7 = W::Field::constant(BabyBearField(0u32));
+    let mut v_8 = v_7;
+    W::Field::add_assign_product(&mut v_8, &v_0, &v_2);
+    let mut v_9 = v_8;
+    W::Field::add_assign_product(&mut v_9, &v_1, &v_3);
+    let v_10 = v_9.as_integer();
+    let v_11 = v_10.shr(6u32);
+    let v_12 = W::U32::constant(0u32);
+    let v_13 = W::U32::equal(&v_11, &v_12);
+    witness_proxy.set_witness_place_boolean(
+        24usize,
+        W::Mask::select(
+            &v_6,
+            &v_13,
+            &witness_proxy.get_witness_place_boolean(24usize),
+        ),
+    );
+}
+#[allow(unused_variables, clippy::let_unit_value)]
+fn eval_fn_13<
+    'a,
+    'b: 'a,
+    W: WitnessTypeSet<BabyBearField>,
+    P: WitnessProxy<BabyBearField, W> + 'b,
+>(
+    witness_proxy: &'a mut P,
+) where
+    W::Field: Copy,
+    W::Mask: Copy,
+    W::U32: Copy,
+    W::U16: Copy,
+    W::U8: Copy,
+    W::I32: Copy,
+{
+    let v_0 = witness_proxy.get_memory_place_boolean(9usize);
+    let v_1 = witness_proxy.get_memory_place_boolean(16usize);
+    let v_2 = witness_proxy.get_memory_place_u16(10usize);
+    let v_3 = witness_proxy.get_memory_place_u16(17usize);
+    let v_4 = W::Mask::or(&v_0, &v_1);
+    let v_5 = WitnessComputationCore::select(&v_0, &v_2, &v_3);
+    let v_6 = v_5.get_lowest_bits(1u32);
+    let v_7 = W::U16::constant(1u16);
+    let v_8 = W::U16::equal(&v_6, &v_7);
+    witness_proxy.set_witness_place_boolean(
+        25usize,
+        W::Mask::select(
+            &v_4,
+            &v_8,
+            &witness_proxy.get_witness_place_boolean(25usize),
+        ),
+    );
+    let v_10 = v_5.shr(1u32);
+    let v_11 = v_10.get_lowest_bits(1u32);
+    let v_12 = W::U16::equal(&v_11, &v_7);
+    witness_proxy.set_witness_place_boolean(
+        26usize,
+        W::Mask::select(
+            &v_4,
+            &v_12,
+            &witness_proxy.get_witness_place_boolean(26usize),
+        ),
+    );
+    let v_14 = v_5.shr(2u32);
+    witness_proxy.set_witness_place_u16(
+        44usize,
+        W::U16::select(&v_4, &v_14, &witness_proxy.get_witness_place_u16(44usize)),
+    );
+}
+#[allow(unused_variables, clippy::let_unit_value)]
+fn eval_fn_14<
+    'a,
+    'b: 'a,
+    W: WitnessTypeSet<BabyBearField>,
+    P: WitnessProxy<BabyBearField, W> + 'b,
+>(
+    witness_proxy: &'a mut P,
+) where
+    W::Field: Copy,
+    W::Mask: Copy,
+    W::U32: Copy,
+    W::U16: Copy,
+    W::U8: Copy,
+    W::I32: Copy,
+{
+    let v_0 = witness_proxy.get_witness_place(4usize);
+    let v_1 = witness_proxy.get_witness_place(15usize);
+    let v_2 = witness_proxy.get_witness_place(16usize);
+    let v_3 = witness_proxy.get_witness_place(17usize);
+    let v_4 = witness_proxy.get_witness_place(18usize);
+    let v_5 = witness_proxy.get_witness_place(20usize);
+    let v_6 = witness_proxy.get_witness_place(21usize);
+    let v_7 = W::Field::constant(BabyBearField(0u32));
+    let mut v_8 = v_7;
+    W::Field::add_assign_product(&mut v_8, &v_0, &v_6);
+    let v_9 = W::Field::constant(BabyBearField(1342177270u32));
+    let mut v_10 = v_8;
+    W::Field::add_assign_product(&mut v_10, &v_9, &v_1);
+    let mut v_11 = v_10;
+    W::Field::add_assign_product(&mut v_11, &v_9, &v_2);
+    let mut v_12 = v_11;
+    W::Field::add_assign_product(&mut v_12, &v_9, &v_3);
+    let mut v_13 = v_12;
+    W::Field::add_assign_product(&mut v_13, &v_9, &v_4);
+    let v_14 = W::Field::constant(BabyBearField(402653165u32));
+    let mut v_15 = v_13;
+    W::Field::add_assign_product(&mut v_15, &v_14, &v_5);
+    witness_proxy.set_scratch_place(5usize, v_15);
+}
+#[allow(unused_variables, clippy::let_unit_value)]
+#[inline(always)]
+fn eval_fn_15<
+    'a,
+    'b: 'a,
+    W: WitnessTypeSet<BabyBearField>,
+    P: WitnessProxy<BabyBearField, W> + 'b,
+>(
+    witness_proxy: &'a mut P,
+) where
+    W::Field: Copy,
+    W::Mask: Copy,
+    W::U32: Copy,
+    W::U16: Copy,
+    W::U8: Copy,
+    W::I32: Copy,
+{
+    let v_0 = witness_proxy.get_witness_place(15usize);
+    let v_1 = witness_proxy.get_witness_place(16usize);
+    let v_2 = witness_proxy.get_witness_place(17usize);
+    let v_3 = witness_proxy.get_witness_place(18usize);
+    let v_4 = witness_proxy.get_witness_place(21usize);
+    let v_5 = witness_proxy.get_memory_place(3usize);
+    let v_6 = witness_proxy.get_witness_place(44usize);
+    let v_7 = W::Field::constant(BabyBearField(0u32));
+    let mut v_8 = v_7;
+    W::Field::add_assign_product(&mut v_8, &v_0, &v_5);
+    let mut v_9 = v_8;
+    W::Field::add_assign_product(&mut v_9, &v_1, &v_5);
+    let mut v_10 = v_9;
+    W::Field::add_assign_product(&mut v_10, &v_2, &v_5);
+    let mut v_11 = v_10;
+    W::Field::add_assign_product(&mut v_11, &v_3, &v_5);
+    let mut v_12 = v_11;
+    W::Field::add_assign_product(&mut v_12, &v_4, &v_6);
+    witness_proxy.set_scratch_place(6usize, v_12);
+}
+#[allow(unused_variables, clippy::let_unit_value)]
+fn eval_fn_16<
+    'a,
+    'b: 'a,
+    W: WitnessTypeSet<BabyBearField>,
+    P: WitnessProxy<BabyBearField, W> + 'b,
+>(
+    witness_proxy: &'a mut P,
+) where
+    W::Field: Copy,
+    W::Mask: Copy,
+    W::U32: Copy,
+    W::U16: Copy,
+    W::U8: Copy,
+    W::I32: Copy,
+{
+    let v_0 = witness_proxy.get_witness_place(4usize);
+    let v_1 = witness_proxy.get_witness_place(15usize);
+    let v_2 = witness_proxy.get_witness_place(16usize);
+    let v_3 = witness_proxy.get_witness_place(17usize);
+    let v_4 = witness_proxy.get_witness_place(18usize);
+    let v_5 = witness_proxy.get_witness_place(20usize);
+    let v_6 = witness_proxy.get_witness_place(21usize);
+    let v_7 = W::Field::constant(BabyBearField(0u32));
+    let mut v_8 = v_7;
+    W::Field::add_assign_product(&mut v_8, &v_0, &v_6);
+    let v_9 = W::Field::constant(BabyBearField(1342177270u32));
+    let mut v_10 = v_8;
+    W::Field::add_assign_product(&mut v_10, &v_9, &v_1);
+    let mut v_11 = v_10;
+    W::Field::add_assign_product(&mut v_11, &v_9, &v_2);
+    let mut v_12 = v_11;
+    W::Field::add_assign_product(&mut v_12, &v_9, &v_3);
+    let mut v_13 = v_12;
+    W::Field::add_assign_product(&mut v_13, &v_9, &v_4);
+    let v_14 = W::Field::constant(BabyBearField(402653165u32));
+    let mut v_15 = v_13;
+    W::Field::add_assign_product(&mut v_15, &v_14, &v_5);
+    witness_proxy.set_scratch_place(14usize, v_15);
+}
+#[allow(unused_variables, clippy::let_unit_value)]
+fn eval_fn_17<
+    'a,
+    'b: 'a,
+    W: WitnessTypeSet<BabyBearField>,
+    P: WitnessProxy<BabyBearField, W> + 'b,
+>(
+    witness_proxy: &'a mut P,
+) where
+    W::Field: Copy,
+    W::Mask: Copy,
+    W::U32: Copy,
+    W::U16: Copy,
+    W::U8: Copy,
+    W::I32: Copy,
+{
+    let v_0 = witness_proxy.get_witness_place(4usize);
+    let v_1 = witness_proxy.get_witness_place(15usize);
+    let v_2 = witness_proxy.get_witness_place(16usize);
+    let v_3 = witness_proxy.get_witness_place(17usize);
+    let v_4 = witness_proxy.get_witness_place(18usize);
+    let v_5 = witness_proxy.get_witness_place(20usize);
+    let v_6 = witness_proxy.get_witness_place(21usize);
+    let v_7 = W::Field::constant(BabyBearField(0u32));
+    let mut v_8 = v_7;
+    W::Field::add_assign_product(&mut v_8, &v_0, &v_6);
+    let v_9 = W::Field::constant(BabyBearField(1610612628u32));
+    let mut v_10 = v_8;
+    W::Field::add_assign_product(&mut v_10, &v_9, &v_1);
+    let mut v_11 = v_10;
+    W::Field::add_assign_product(&mut v_11, &v_9, &v_2);
+    let mut v_12 = v_11;
+    W::Field::add_assign_product(&mut v_12, &v_9, &v_3);
+    let mut v_13 = v_12;
+    W::Field::add_assign_product(&mut v_13, &v_9, &v_4);
+    let v_14 = W::Field::constant(BabyBearField(402653165u32));
+    let mut v_15 = v_13;
+    W::Field::add_assign_product(&mut v_15, &v_14, &v_5);
+    witness_proxy.set_scratch_place(23usize, v_15);
+}
+#[allow(unused_variables, clippy::let_unit_value)]
+fn eval_fn_18<
+    'a,
+    'b: 'a,
+    W: WitnessTypeSet<BabyBearField>,
+    P: WitnessProxy<BabyBearField, W> + 'b,
+>(
+    witness_proxy: &'a mut P,
+) where
+    W::Field: Copy,
+    W::Mask: Copy,
+    W::U32: Copy,
+    W::U16: Copy,
+    W::U8: Copy,
+    W::I32: Copy,
+{
+    let v_0 = witness_proxy.get_witness_place(4usize);
+    let v_1 = witness_proxy.get_witness_place(15usize);
+    let v_2 = witness_proxy.get_witness_place(16usize);
+    let v_3 = witness_proxy.get_witness_place(17usize);
+    let v_4 = witness_proxy.get_witness_place(18usize);
+    let v_5 = witness_proxy.get_witness_place(20usize);
+    let v_6 = witness_proxy.get_witness_place(21usize);
+    let v_7 = W::Field::constant(BabyBearField(0u32));
+    let mut v_8 = v_7;
+    W::Field::add_assign_product(&mut v_8, &v_0, &v_6);
+    let v_9 = W::Field::constant(BabyBearField(536870908u32));
+    let mut v_10 = v_8;
+    W::Field::add_assign_product(&mut v_10, &v_9, &v_1);
+    let mut v_11 = v_10;
+    W::Field::add_assign_product(&mut v_11, &v_9, &v_2);
+    let mut v_12 = v_11;
+    W::Field::add_assign_product(&mut v_12, &v_9, &v_3);
+    let mut v_13 = v_12;
+    W::Field::add_assign_product(&mut v_13, &v_9, &v_4);
+    let v_14 = W::Field::constant(BabyBearField(402653165u32));
+    let mut v_15 = v_13;
+    W::Field::add_assign_product(&mut v_15, &v_14, &v_5);
+    witness_proxy.set_scratch_place(32usize, v_15);
+}
+#[allow(unused_variables, clippy::let_unit_value)]
+#[inline(always)]
+fn eval_fn_19<
+    'a,
+    'b: 'a,
+    W: WitnessTypeSet<BabyBearField>,
+    P: WitnessProxy<BabyBearField, W> + 'b,
+>(
+    witness_proxy: &'a mut P,
+) where
+    W::Field: Copy,
+    W::Mask: Copy,
+    W::U32: Copy,
+    W::U16: Copy,
+    W::U8: Copy,
+    W::I32: Copy,
+{
+    let v_0 = witness_proxy.get_memory_place_u16(22usize);
+    let v_1 = W::U16::constant(4u16);
+    let v_2 = W::U16::overflowing_add(&v_0, &v_1).1;
+    witness_proxy.set_witness_place_boolean(51usize, v_2);
+}
+#[allow(unused_variables, clippy::let_unit_value)]
+fn eval_fn_20<
+    'a,
+    'b: 'a,
+    W: WitnessTypeSet<BabyBearField>,
+    P: WitnessProxy<BabyBearField, W> + 'b,
+>(
+    witness_proxy: &'a mut P,
+) where
+    W::Field: Copy,
+    W::Mask: Copy,
+    W::U32: Copy,
+    W::U16: Copy,
+    W::U8: Copy,
+    W::I32: Copy,
+{
+    let v_0 = witness_proxy.get_witness_place(15usize);
+    let v_1 = witness_proxy.get_witness_place(16usize);
+    let v_2 = witness_proxy.get_witness_place(17usize);
+    let v_3 = witness_proxy.get_witness_place(18usize);
+    let v_4 = witness_proxy.get_witness_place(44usize);
+    let v_5 = witness_proxy.get_witness_place(45usize);
+    let v_6 = witness_proxy.get_witness_place_boolean(15usize);
+    let v_7 = witness_proxy.get_witness_place_boolean(16usize);
+    let v_8 = W::Mask::or(&v_6, &v_7);
+    let v_9 = witness_proxy.get_witness_place_boolean(17usize);
+    let v_10 = W::Mask::or(&v_8, &v_9);
+    let v_11 = witness_proxy.get_witness_place_boolean(18usize);
+    let v_12 = W::Mask::or(&v_10, &v_11);
+    let v_13 = W::Field::constant(BabyBearField(0u32));
+    let mut v_14 = v_13;
+    W::Field::add_assign_product(&mut v_14, &v_0, &v_4);
+    let mut v_15 = v_14;
+    W::Field::add_assign_product(&mut v_15, &v_0, &v_5);
+    let mut v_16 = v_15;
+    W::Field::add_assign_product(&mut v_16, &v_1, &v_4);
+    let mut v_17 = v_16;
+    W::Field::add_assign_product(&mut v_17, &v_1, &v_5);
+    let mut v_18 = v_17;
+    W::Field::add_assign_product(&mut v_18, &v_2, &v_4);
+    let mut v_19 = v_18;
+    W::Field::add_assign_product(&mut v_19, &v_2, &v_5);
+    let mut v_20 = v_19;
+    W::Field::add_assign_product(&mut v_20, &v_3, &v_4);
+    let mut v_21 = v_20;
+    W::Field::add_assign_product(&mut v_21, &v_3, &v_5);
+    let mut v_22 = v_13;
+    W::Field::add_assign(&mut v_22, &v_0);
+    let mut v_23 = v_22;
+    W::Field::add_assign(&mut v_23, &v_1);
+    let mut v_24 = v_23;
+    W::Field::add_assign(&mut v_24, &v_2);
+    let mut v_25 = v_24;
+    W::Field::add_assign(&mut v_25, &v_3);
+    let v_26 = v_25.as_integer();
+    let v_27 = v_26.truncate();
+    let v_28 = W::Mask::constant(true);
+    let v_29 = witness_proxy.maybe_lookup::<1usize, 1usize>(&[v_21], v_27, v_28);
+    let v_30 = v_29[0usize];
+    witness_proxy.set_witness_place(
+        27usize,
+        W::Field::select(&v_12, &v_30, &witness_proxy.get_witness_place(27usize)),
+    );
+}
+#[allow(unused_variables, clippy::let_unit_value)]
+fn eval_fn_21<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -526,7 +1008,7 @@ fn eval_fn_10<
     );
 }
 #[allow(unused_variables, clippy::let_unit_value)]
-fn eval_fn_11<
+fn eval_fn_22<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -587,596 +1069,7 @@ fn eval_fn_11<
     );
 }
 #[allow(unused_variables, clippy::let_unit_value)]
-fn eval_fn_12<
-    'a,
-    'b: 'a,
-    W: WitnessTypeSet<BabyBearField>,
-    P: WitnessProxy<BabyBearField, W> + 'b,
->(
-    witness_proxy: &'a mut P,
-) where
-    W::Field: Copy,
-    W::Mask: Copy,
-    W::U32: Copy,
-    W::U16: Copy,
-    W::U8: Copy,
-    W::I32: Copy,
-{
-    let v_0 = witness_proxy.get_witness_place_boolean(20usize);
-    let v_1 = witness_proxy.get_memory_place(7usize);
-    let v_2 = witness_proxy.get_witness_place(46usize);
-    let v_3 = W::Field::constant(BabyBearField(0u32));
-    let v_4 = W::Field::constant(BabyBearField(268435454u32));
-    let mut v_5 = v_3;
-    W::Field::add_assign_product(&mut v_5, &v_4, &v_2);
-    let v_6 = W::Field::constant(BabyBearField(16777216u32));
-    let mut v_7 = v_3;
-    W::Field::add_assign_product(&mut v_7, &v_6, &v_1);
-    let v_8 = W::Field::constant(BabyBearField(1996488705u32));
-    let mut v_9 = v_7;
-    W::Field::add_assign_product(&mut v_9, &v_8, &v_2);
-    let v_10 = W::Field::constant(BabyBearField(134217711u32));
-    let v_11 = v_10.as_integer();
-    let v_12 = v_11.truncate();
-    let v_13 = witness_proxy.maybe_lookup::<2usize, 1usize>(&[v_5, v_9], v_12, v_0);
-    let v_14 = v_13[0usize];
-    witness_proxy.set_witness_place(
-        27usize,
-        W::Field::select(&v_0, &v_14, &witness_proxy.get_witness_place(27usize)),
-    );
-}
-#[allow(unused_variables, clippy::let_unit_value)]
-fn eval_fn_13<
-    'a,
-    'b: 'a,
-    W: WitnessTypeSet<BabyBearField>,
-    P: WitnessProxy<BabyBearField, W> + 'b,
->(
-    witness_proxy: &'a mut P,
-) where
-    W::Field: Copy,
-    W::Mask: Copy,
-    W::U32: Copy,
-    W::U16: Copy,
-    W::U8: Copy,
-    W::I32: Copy,
-{
-    let v_0 = witness_proxy.get_witness_place_u16(2usize);
-    let v_1 = witness_proxy.get_witness_place_u16(3usize);
-    let v_2 = witness_proxy.get_memory_place_boolean(9usize);
-    let v_3 = witness_proxy.get_memory_place_boolean(16usize);
-    let v_4 = witness_proxy.get_memory_place_u16(2usize);
-    let v_5 = witness_proxy.get_memory_place_u16(3usize);
-    let v_6 = W::Mask::or(&v_2, &v_3);
-    let v_7 = W::U16::overflowing_add(&v_4, &v_0).1;
-    witness_proxy.set_witness_place_boolean(
-        22usize,
-        W::Mask::select(
-            &v_6,
-            &v_7,
-            &witness_proxy.get_witness_place_boolean(22usize),
-        ),
-    );
-    let v_9 = W::U16::overflowing_add(&v_5, &v_1).1;
-    let mut v_10 = v_5;
-    W::U16::add_assign(&mut v_10, &v_1);
-    let v_11 = W::U32::from_mask(v_7);
-    let v_12 = v_11.truncate();
-    let v_13 = W::U16::overflowing_add(&v_10, &v_12).1;
-    let v_14 = W::Mask::or(&v_9, &v_13);
-    witness_proxy.set_witness_place_boolean(
-        23usize,
-        W::Mask::select(
-            &v_6,
-            &v_14,
-            &witness_proxy.get_witness_place_boolean(23usize),
-        ),
-    );
-}
-#[allow(unused_variables, clippy::let_unit_value)]
-fn eval_fn_14<
-    'a,
-    'b: 'a,
-    W: WitnessTypeSet<BabyBearField>,
-    P: WitnessProxy<BabyBearField, W> + 'b,
->(
-    witness_proxy: &'a mut P,
-) where
-    W::Field: Copy,
-    W::Mask: Copy,
-    W::U32: Copy,
-    W::U16: Copy,
-    W::U8: Copy,
-    W::I32: Copy,
-{
-    let v_0 = witness_proxy.get_memory_place(9usize);
-    let v_1 = witness_proxy.get_memory_place(16usize);
-    let v_2 = witness_proxy.get_memory_place(10usize);
-    let v_3 = witness_proxy.get_memory_place(11usize);
-    let v_4 = witness_proxy.get_memory_place(17usize);
-    let v_5 = witness_proxy.get_memory_place(18usize);
-    let v_6 = witness_proxy.get_memory_place_boolean(9usize);
-    let v_7 = witness_proxy.get_memory_place_boolean(16usize);
-    let v_8 = W::Mask::or(&v_6, &v_7);
-    let v_9 = W::Field::constant(BabyBearField(0u32));
-    let mut v_10 = v_9;
-    W::Field::add_assign_product(&mut v_10, &v_0, &v_2);
-    let mut v_11 = v_10;
-    W::Field::add_assign_product(&mut v_11, &v_1, &v_4);
-    witness_proxy.set_witness_place(
-        27usize,
-        W::Field::select(&v_8, &v_11, &witness_proxy.get_witness_place(27usize)),
-    );
-    let mut v_13 = v_9;
-    W::Field::add_assign_product(&mut v_13, &v_0, &v_3);
-    let mut v_14 = v_13;
-    W::Field::add_assign_product(&mut v_14, &v_1, &v_5);
-    witness_proxy.set_witness_place(
-        28usize,
-        W::Field::select(&v_8, &v_14, &witness_proxy.get_witness_place(28usize)),
-    );
-}
-#[allow(unused_variables, clippy::let_unit_value)]
-#[inline(always)]
-fn eval_fn_15<
-    'a,
-    'b: 'a,
-    W: WitnessTypeSet<BabyBearField>,
-    P: WitnessProxy<BabyBearField, W> + 'b,
->(
-    witness_proxy: &'a mut P,
-) where
-    W::Field: Copy,
-    W::Mask: Copy,
-    W::U32: Copy,
-    W::U16: Copy,
-    W::U8: Copy,
-    W::I32: Copy,
-{
-    let v_0 = witness_proxy.get_memory_place(9usize);
-    let v_1 = witness_proxy.get_memory_place(16usize);
-    let v_2 = witness_proxy.get_memory_place(11usize);
-    let v_3 = witness_proxy.get_memory_place(18usize);
-    let v_4 = witness_proxy.get_memory_place_boolean(9usize);
-    let v_5 = witness_proxy.get_memory_place_boolean(16usize);
-    let v_6 = W::Mask::or(&v_4, &v_5);
-    let v_7 = W::Field::constant(BabyBearField(0u32));
-    let mut v_8 = v_7;
-    W::Field::add_assign_product(&mut v_8, &v_0, &v_2);
-    let mut v_9 = v_8;
-    W::Field::add_assign_product(&mut v_9, &v_1, &v_3);
-    let v_10 = v_9.as_integer();
-    let v_11 = v_10.shr(6u32);
-    let v_12 = W::U32::constant(0u32);
-    let v_13 = W::U32::equal(&v_11, &v_12);
-    witness_proxy.set_witness_place_boolean(
-        24usize,
-        W::Mask::select(
-            &v_6,
-            &v_13,
-            &witness_proxy.get_witness_place_boolean(24usize),
-        ),
-    );
-}
-#[allow(unused_variables, clippy::let_unit_value)]
-fn eval_fn_16<
-    'a,
-    'b: 'a,
-    W: WitnessTypeSet<BabyBearField>,
-    P: WitnessProxy<BabyBearField, W> + 'b,
->(
-    witness_proxy: &'a mut P,
-) where
-    W::Field: Copy,
-    W::Mask: Copy,
-    W::U32: Copy,
-    W::U16: Copy,
-    W::U8: Copy,
-    W::I32: Copy,
-{
-    let v_0 = witness_proxy.get_memory_place_boolean(9usize);
-    let v_1 = witness_proxy.get_memory_place_boolean(16usize);
-    let v_2 = witness_proxy.get_memory_place_u16(10usize);
-    let v_3 = witness_proxy.get_memory_place_u16(17usize);
-    let v_4 = W::Mask::or(&v_0, &v_1);
-    let v_5 = WitnessComputationCore::select(&v_0, &v_2, &v_3);
-    let v_6 = v_5.get_lowest_bits(1u32);
-    let v_7 = W::U16::constant(1u16);
-    let v_8 = W::U16::equal(&v_6, &v_7);
-    witness_proxy.set_witness_place_boolean(
-        25usize,
-        W::Mask::select(
-            &v_4,
-            &v_8,
-            &witness_proxy.get_witness_place_boolean(25usize),
-        ),
-    );
-    let v_10 = v_5.shr(1u32);
-    let v_11 = v_10.get_lowest_bits(1u32);
-    let v_12 = W::U16::equal(&v_11, &v_7);
-    witness_proxy.set_witness_place_boolean(
-        26usize,
-        W::Mask::select(
-            &v_4,
-            &v_12,
-            &witness_proxy.get_witness_place_boolean(26usize),
-        ),
-    );
-    let v_14 = v_5.shr(2u32);
-    witness_proxy.set_witness_place_u16(
-        48usize,
-        W::U16::select(&v_4, &v_14, &witness_proxy.get_witness_place_u16(48usize)),
-    );
-}
-#[allow(unused_variables, clippy::let_unit_value)]
-fn eval_fn_17<
-    'a,
-    'b: 'a,
-    W: WitnessTypeSet<BabyBearField>,
-    P: WitnessProxy<BabyBearField, W> + 'b,
->(
-    witness_proxy: &'a mut P,
-) where
-    W::Field: Copy,
-    W::Mask: Copy,
-    W::U32: Copy,
-    W::U16: Copy,
-    W::U8: Copy,
-    W::I32: Copy,
-{
-    let v_0 = witness_proxy.get_witness_place(4usize);
-    let v_1 = witness_proxy.get_witness_place(15usize);
-    let v_2 = witness_proxy.get_witness_place(16usize);
-    let v_3 = witness_proxy.get_witness_place(17usize);
-    let v_4 = witness_proxy.get_witness_place(18usize);
-    let v_5 = witness_proxy.get_witness_place(20usize);
-    let v_6 = witness_proxy.get_witness_place(21usize);
-    let v_7 = W::Field::constant(BabyBearField(0u32));
-    let mut v_8 = v_7;
-    W::Field::add_assign_product(&mut v_8, &v_0, &v_6);
-    let v_9 = W::Field::constant(BabyBearField(1342177270u32));
-    let mut v_10 = v_8;
-    W::Field::add_assign_product(&mut v_10, &v_9, &v_1);
-    let mut v_11 = v_10;
-    W::Field::add_assign_product(&mut v_11, &v_9, &v_2);
-    let mut v_12 = v_11;
-    W::Field::add_assign_product(&mut v_12, &v_9, &v_3);
-    let mut v_13 = v_12;
-    W::Field::add_assign_product(&mut v_13, &v_9, &v_4);
-    let v_14 = W::Field::constant(BabyBearField(402653165u32));
-    let mut v_15 = v_13;
-    W::Field::add_assign_product(&mut v_15, &v_14, &v_5);
-    witness_proxy.set_scratch_place(5usize, v_15);
-}
-#[allow(unused_variables, clippy::let_unit_value)]
-#[inline(always)]
-fn eval_fn_18<
-    'a,
-    'b: 'a,
-    W: WitnessTypeSet<BabyBearField>,
-    P: WitnessProxy<BabyBearField, W> + 'b,
->(
-    witness_proxy: &'a mut P,
-) where
-    W::Field: Copy,
-    W::Mask: Copy,
-    W::U32: Copy,
-    W::U16: Copy,
-    W::U8: Copy,
-    W::I32: Copy,
-{
-    let v_0 = witness_proxy.get_witness_place(15usize);
-    let v_1 = witness_proxy.get_witness_place(16usize);
-    let v_2 = witness_proxy.get_witness_place(17usize);
-    let v_3 = witness_proxy.get_witness_place(18usize);
-    let v_4 = witness_proxy.get_witness_place(21usize);
-    let v_5 = witness_proxy.get_memory_place(3usize);
-    let v_6 = witness_proxy.get_witness_place(44usize);
-    let v_7 = W::Field::constant(BabyBearField(0u32));
-    let mut v_8 = v_7;
-    W::Field::add_assign_product(&mut v_8, &v_0, &v_5);
-    let mut v_9 = v_8;
-    W::Field::add_assign_product(&mut v_9, &v_1, &v_5);
-    let mut v_10 = v_9;
-    W::Field::add_assign_product(&mut v_10, &v_2, &v_5);
-    let mut v_11 = v_10;
-    W::Field::add_assign_product(&mut v_11, &v_3, &v_5);
-    let mut v_12 = v_11;
-    W::Field::add_assign_product(&mut v_12, &v_4, &v_6);
-    witness_proxy.set_scratch_place(6usize, v_12);
-}
-#[allow(unused_variables, clippy::let_unit_value)]
-fn eval_fn_19<
-    'a,
-    'b: 'a,
-    W: WitnessTypeSet<BabyBearField>,
-    P: WitnessProxy<BabyBearField, W> + 'b,
->(
-    witness_proxy: &'a mut P,
-) where
-    W::Field: Copy,
-    W::Mask: Copy,
-    W::U32: Copy,
-    W::U16: Copy,
-    W::U8: Copy,
-    W::I32: Copy,
-{
-    let v_0 = witness_proxy.get_witness_place(4usize);
-    let v_1 = witness_proxy.get_witness_place(15usize);
-    let v_2 = witness_proxy.get_witness_place(16usize);
-    let v_3 = witness_proxy.get_witness_place(17usize);
-    let v_4 = witness_proxy.get_witness_place(18usize);
-    let v_5 = witness_proxy.get_witness_place(20usize);
-    let v_6 = witness_proxy.get_witness_place(21usize);
-    let v_7 = W::Field::constant(BabyBearField(0u32));
-    let mut v_8 = v_7;
-    W::Field::add_assign_product(&mut v_8, &v_0, &v_6);
-    let v_9 = W::Field::constant(BabyBearField(1342177270u32));
-    let mut v_10 = v_8;
-    W::Field::add_assign_product(&mut v_10, &v_9, &v_1);
-    let mut v_11 = v_10;
-    W::Field::add_assign_product(&mut v_11, &v_9, &v_2);
-    let mut v_12 = v_11;
-    W::Field::add_assign_product(&mut v_12, &v_9, &v_3);
-    let mut v_13 = v_12;
-    W::Field::add_assign_product(&mut v_13, &v_9, &v_4);
-    let v_14 = W::Field::constant(BabyBearField(402653165u32));
-    let mut v_15 = v_13;
-    W::Field::add_assign_product(&mut v_15, &v_14, &v_5);
-    witness_proxy.set_scratch_place(14usize, v_15);
-}
-#[allow(unused_variables, clippy::let_unit_value)]
-fn eval_fn_20<
-    'a,
-    'b: 'a,
-    W: WitnessTypeSet<BabyBearField>,
-    P: WitnessProxy<BabyBearField, W> + 'b,
->(
-    witness_proxy: &'a mut P,
-) where
-    W::Field: Copy,
-    W::Mask: Copy,
-    W::U32: Copy,
-    W::U16: Copy,
-    W::U8: Copy,
-    W::I32: Copy,
-{
-    let v_0 = witness_proxy.get_witness_place(4usize);
-    let v_1 = witness_proxy.get_witness_place(15usize);
-    let v_2 = witness_proxy.get_witness_place(16usize);
-    let v_3 = witness_proxy.get_witness_place(17usize);
-    let v_4 = witness_proxy.get_witness_place(18usize);
-    let v_5 = witness_proxy.get_witness_place(20usize);
-    let v_6 = witness_proxy.get_witness_place(21usize);
-    let v_7 = W::Field::constant(BabyBearField(0u32));
-    let mut v_8 = v_7;
-    W::Field::add_assign_product(&mut v_8, &v_0, &v_6);
-    let v_9 = W::Field::constant(BabyBearField(1610612628u32));
-    let mut v_10 = v_8;
-    W::Field::add_assign_product(&mut v_10, &v_9, &v_1);
-    let mut v_11 = v_10;
-    W::Field::add_assign_product(&mut v_11, &v_9, &v_2);
-    let mut v_12 = v_11;
-    W::Field::add_assign_product(&mut v_12, &v_9, &v_3);
-    let mut v_13 = v_12;
-    W::Field::add_assign_product(&mut v_13, &v_9, &v_4);
-    let v_14 = W::Field::constant(BabyBearField(402653165u32));
-    let mut v_15 = v_13;
-    W::Field::add_assign_product(&mut v_15, &v_14, &v_5);
-    witness_proxy.set_scratch_place(23usize, v_15);
-}
-#[allow(unused_variables, clippy::let_unit_value)]
-fn eval_fn_21<
-    'a,
-    'b: 'a,
-    W: WitnessTypeSet<BabyBearField>,
-    P: WitnessProxy<BabyBearField, W> + 'b,
->(
-    witness_proxy: &'a mut P,
-) where
-    W::Field: Copy,
-    W::Mask: Copy,
-    W::U32: Copy,
-    W::U16: Copy,
-    W::U8: Copy,
-    W::I32: Copy,
-{
-    let v_0 = witness_proxy.get_witness_place(4usize);
-    let v_1 = witness_proxy.get_witness_place(15usize);
-    let v_2 = witness_proxy.get_witness_place(16usize);
-    let v_3 = witness_proxy.get_witness_place(17usize);
-    let v_4 = witness_proxy.get_witness_place(18usize);
-    let v_5 = witness_proxy.get_witness_place(20usize);
-    let v_6 = witness_proxy.get_witness_place(21usize);
-    let v_7 = W::Field::constant(BabyBearField(0u32));
-    let mut v_8 = v_7;
-    W::Field::add_assign_product(&mut v_8, &v_0, &v_6);
-    let v_9 = W::Field::constant(BabyBearField(536870908u32));
-    let mut v_10 = v_8;
-    W::Field::add_assign_product(&mut v_10, &v_9, &v_1);
-    let mut v_11 = v_10;
-    W::Field::add_assign_product(&mut v_11, &v_9, &v_2);
-    let mut v_12 = v_11;
-    W::Field::add_assign_product(&mut v_12, &v_9, &v_3);
-    let mut v_13 = v_12;
-    W::Field::add_assign_product(&mut v_13, &v_9, &v_4);
-    let v_14 = W::Field::constant(BabyBearField(402653165u32));
-    let mut v_15 = v_13;
-    W::Field::add_assign_product(&mut v_15, &v_14, &v_5);
-    witness_proxy.set_scratch_place(32usize, v_15);
-}
-#[allow(unused_variables, clippy::let_unit_value)]
-#[inline(always)]
-fn eval_fn_22<
-    'a,
-    'b: 'a,
-    W: WitnessTypeSet<BabyBearField>,
-    P: WitnessProxy<BabyBearField, W> + 'b,
->(
-    witness_proxy: &'a mut P,
-) where
-    W::Field: Copy,
-    W::Mask: Copy,
-    W::U32: Copy,
-    W::U16: Copy,
-    W::U8: Copy,
-    W::I32: Copy,
-{
-    let v_0 = witness_proxy.get_memory_place_u16(22usize);
-    let v_1 = W::U16::constant(4u16);
-    let v_2 = W::U16::overflowing_add(&v_0, &v_1).1;
-    witness_proxy.set_witness_place_boolean(57usize, v_2);
-}
-#[allow(unused_variables, clippy::let_unit_value)]
-#[inline(always)]
 fn eval_fn_23<
-    'a,
-    'b: 'a,
-    W: WitnessTypeSet<BabyBearField>,
-    P: WitnessProxy<BabyBearField, W> + 'b,
->(
-    witness_proxy: &'a mut P,
-) where
-    W::Field: Copy,
-    W::Mask: Copy,
-    W::U32: Copy,
-    W::U16: Copy,
-    W::U8: Copy,
-    W::I32: Copy,
-{
-    let v_0 = witness_proxy.get_memory_place_boolean(21usize);
-    let v_1 = witness_proxy.get_witness_place_boolean(15usize);
-    let v_2 = witness_proxy.get_witness_place_boolean(16usize);
-    let v_3 = witness_proxy.get_witness_place_boolean(17usize);
-    let v_4 = witness_proxy.get_witness_place_boolean(18usize);
-    let v_5 = W::Mask::or(&v_1, &v_2);
-    let v_6 = W::Mask::or(&v_5, &v_3);
-    let v_7 = W::Mask::or(&v_6, &v_4);
-    let v_8 = W::Mask::negate(&v_7);
-    let v_9 = W::Mask::and(&v_0, &v_8);
-    witness_proxy.set_witness_place_boolean(58usize, v_9);
-}
-#[allow(unused_variables, clippy::let_unit_value)]
-fn eval_fn_24<
-    'a,
-    'b: 'a,
-    W: WitnessTypeSet<BabyBearField>,
-    P: WitnessProxy<BabyBearField, W> + 'b,
->(
-    witness_proxy: &'a mut P,
-) where
-    W::Field: Copy,
-    W::Mask: Copy,
-    W::U32: Copy,
-    W::U16: Copy,
-    W::U8: Copy,
-    W::I32: Copy,
-{
-    let v_0 = witness_proxy.get_memory_place_boolean(21usize);
-    let v_1 = witness_proxy.get_witness_place_boolean(5usize);
-    let v_2 = witness_proxy.get_witness_place_boolean(6usize);
-    let v_3 = witness_proxy.get_witness_place_boolean(7usize);
-    let v_4 = witness_proxy.get_witness_place_boolean(8usize);
-    let v_5 = witness_proxy.get_witness_place_boolean(9usize);
-    let v_6 = witness_proxy.get_witness_place_boolean(10usize);
-    let v_7 = witness_proxy.get_witness_place_boolean(11usize);
-    let v_8 = witness_proxy.get_witness_place_boolean(12usize);
-    let v_9 = witness_proxy.get_witness_place_boolean(13usize);
-    let v_10 = witness_proxy.get_witness_place_boolean(14usize);
-    let v_11 = witness_proxy.get_witness_place_boolean(15usize);
-    let v_12 = witness_proxy.get_witness_place_boolean(16usize);
-    let v_13 = witness_proxy.get_witness_place_boolean(17usize);
-    let v_14 = witness_proxy.get_witness_place_boolean(18usize);
-    let v_15 = witness_proxy.get_witness_place_boolean(20usize);
-    let v_16 = witness_proxy.get_witness_place_boolean(21usize);
-    let v_17 = witness_proxy.get_memory_place_boolean(9usize);
-    let v_18 = witness_proxy.get_memory_place_boolean(16usize);
-    let v_19 = W::Mask::or(&v_1, &v_2);
-    let v_20 = W::Mask::or(&v_19, &v_3);
-    let v_21 = W::Mask::or(&v_20, &v_4);
-    let v_22 = W::Mask::or(&v_21, &v_5);
-    let v_23 = W::Mask::or(&v_22, &v_6);
-    let v_24 = W::Mask::or(&v_23, &v_7);
-    let v_25 = W::Mask::or(&v_24, &v_8);
-    let v_26 = W::Mask::or(&v_25, &v_9);
-    let v_27 = W::Mask::or(&v_26, &v_10);
-    let v_28 = W::Mask::or(&v_27, &v_11);
-    let v_29 = W::Mask::or(&v_28, &v_12);
-    let v_30 = W::Mask::or(&v_29, &v_13);
-    let v_31 = W::Mask::or(&v_30, &v_14);
-    let v_32 = W::Mask::or(&v_31, &v_15);
-    let v_33 = W::Mask::or(&v_32, &v_16);
-    let v_34 = W::Mask::or(&v_33, &v_17);
-    let v_35 = W::Mask::or(&v_34, &v_18);
-    let v_36 = W::Mask::and(&v_0, &v_35);
-    witness_proxy.set_witness_place_boolean(59usize, v_36);
-}
-#[allow(unused_variables, clippy::let_unit_value)]
-fn eval_fn_25<
-    'a,
-    'b: 'a,
-    W: WitnessTypeSet<BabyBearField>,
-    P: WitnessProxy<BabyBearField, W> + 'b,
->(
-    witness_proxy: &'a mut P,
-) where
-    W::Field: Copy,
-    W::Mask: Copy,
-    W::U32: Copy,
-    W::U16: Copy,
-    W::U8: Copy,
-    W::I32: Copy,
-{
-    let v_0 = witness_proxy.get_witness_place(15usize);
-    let v_1 = witness_proxy.get_witness_place(16usize);
-    let v_2 = witness_proxy.get_witness_place(17usize);
-    let v_3 = witness_proxy.get_witness_place(18usize);
-    let v_4 = witness_proxy.get_witness_place(48usize);
-    let v_5 = witness_proxy.get_witness_place(49usize);
-    let v_6 = witness_proxy.get_witness_place_boolean(15usize);
-    let v_7 = witness_proxy.get_witness_place_boolean(16usize);
-    let v_8 = W::Mask::or(&v_6, &v_7);
-    let v_9 = witness_proxy.get_witness_place_boolean(17usize);
-    let v_10 = W::Mask::or(&v_8, &v_9);
-    let v_11 = witness_proxy.get_witness_place_boolean(18usize);
-    let v_12 = W::Mask::or(&v_10, &v_11);
-    let v_13 = W::Field::constant(BabyBearField(0u32));
-    let mut v_14 = v_13;
-    W::Field::add_assign_product(&mut v_14, &v_0, &v_4);
-    let mut v_15 = v_14;
-    W::Field::add_assign_product(&mut v_15, &v_0, &v_5);
-    let mut v_16 = v_15;
-    W::Field::add_assign_product(&mut v_16, &v_1, &v_4);
-    let mut v_17 = v_16;
-    W::Field::add_assign_product(&mut v_17, &v_1, &v_5);
-    let mut v_18 = v_17;
-    W::Field::add_assign_product(&mut v_18, &v_2, &v_4);
-    let mut v_19 = v_18;
-    W::Field::add_assign_product(&mut v_19, &v_2, &v_5);
-    let mut v_20 = v_19;
-    W::Field::add_assign_product(&mut v_20, &v_3, &v_4);
-    let mut v_21 = v_20;
-    W::Field::add_assign_product(&mut v_21, &v_3, &v_5);
-    let mut v_22 = v_13;
-    W::Field::add_assign(&mut v_22, &v_0);
-    let mut v_23 = v_22;
-    W::Field::add_assign(&mut v_23, &v_1);
-    let mut v_24 = v_23;
-    W::Field::add_assign(&mut v_24, &v_2);
-    let mut v_25 = v_24;
-    W::Field::add_assign(&mut v_25, &v_3);
-    let v_26 = v_25.as_integer();
-    let v_27 = v_26.truncate();
-    let v_28 = W::Mask::constant(true);
-    let v_29 = witness_proxy.maybe_lookup::<1usize, 1usize>(&[v_21], v_27, v_28);
-    let v_30 = v_29[0usize];
-    witness_proxy.set_witness_place(
-        27usize,
-        W::Field::select(&v_12, &v_30, &witness_proxy.get_witness_place(27usize)),
-    );
-}
-#[allow(unused_variables, clippy::let_unit_value)]
-fn eval_fn_26<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1229,7 +1122,7 @@ fn eval_fn_26<
     );
 }
 #[allow(unused_variables, clippy::let_unit_value)]
-fn eval_fn_27<
+fn eval_fn_24<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1290,7 +1183,7 @@ fn eval_fn_27<
     );
 }
 #[allow(unused_variables, clippy::let_unit_value)]
-fn eval_fn_28<
+fn eval_fn_25<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1344,7 +1237,7 @@ fn eval_fn_28<
     );
 }
 #[allow(unused_variables, clippy::let_unit_value)]
-fn eval_fn_29<
+fn eval_fn_26<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1403,7 +1296,7 @@ fn eval_fn_29<
     );
 }
 #[allow(unused_variables, clippy::let_unit_value)]
-fn eval_fn_30<
+fn eval_fn_27<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1458,7 +1351,7 @@ fn eval_fn_30<
     );
 }
 #[allow(unused_variables, clippy::let_unit_value)]
-fn eval_fn_31<
+fn eval_fn_28<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1518,7 +1411,7 @@ fn eval_fn_31<
     );
 }
 #[allow(unused_variables, clippy::let_unit_value)]
-fn eval_fn_32<
+fn eval_fn_29<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1562,7 +1455,7 @@ fn eval_fn_32<
 }
 #[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
-fn eval_fn_33<
+fn eval_fn_30<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1593,7 +1486,7 @@ fn eval_fn_33<
 }
 #[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
-fn eval_fn_34<
+fn eval_fn_31<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1621,7 +1514,7 @@ fn eval_fn_34<
 }
 #[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
-fn eval_fn_35<
+fn eval_fn_32<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1644,7 +1537,7 @@ fn eval_fn_35<
     witness_proxy.set_scratch_place(12usize, v_3);
 }
 #[allow(unused_variables, clippy::let_unit_value)]
-fn eval_fn_36<
+fn eval_fn_33<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1693,7 +1586,7 @@ fn eval_fn_36<
 }
 #[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
-fn eval_fn_37<
+fn eval_fn_34<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1724,7 +1617,7 @@ fn eval_fn_37<
 }
 #[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
-fn eval_fn_38<
+fn eval_fn_35<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1752,35 +1645,7 @@ fn eval_fn_38<
 }
 #[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
-fn eval_fn_39<
-    'a,
-    'b: 'a,
-    W: WitnessTypeSet<BabyBearField>,
-    P: WitnessProxy<BabyBearField, W> + 'b,
->(
-    witness_proxy: &'a mut P,
-) where
-    W::Field: Copy,
-    W::Mask: Copy,
-    W::U32: Copy,
-    W::U16: Copy,
-    W::U8: Copy,
-    W::I32: Copy,
-{
-    let v_0 = witness_proxy.get_witness_place(20usize);
-    let v_1 = witness_proxy.get_witness_place(21usize);
-    let v_2 = witness_proxy.get_witness_place(32usize);
-    let v_3 = witness_proxy.get_witness_place(34usize);
-    let v_4 = W::Field::constant(BabyBearField(0u32));
-    let mut v_5 = v_4;
-    W::Field::add_assign_product(&mut v_5, &v_0, &v_2);
-    let mut v_6 = v_5;
-    W::Field::add_assign_product(&mut v_6, &v_1, &v_3);
-    witness_proxy.set_scratch_place(19usize, v_6);
-}
-#[allow(unused_variables, clippy::let_unit_value)]
-#[inline(always)]
-fn eval_fn_40<
+fn eval_fn_36<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1808,31 +1673,7 @@ fn eval_fn_40<
 }
 #[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
-fn eval_fn_41<
-    'a,
-    'b: 'a,
-    W: WitnessTypeSet<BabyBearField>,
-    P: WitnessProxy<BabyBearField, W> + 'b,
->(
-    witness_proxy: &'a mut P,
-) where
-    W::Field: Copy,
-    W::Mask: Copy,
-    W::U32: Copy,
-    W::U16: Copy,
-    W::U8: Copy,
-    W::I32: Copy,
-{
-    let v_0 = witness_proxy.get_witness_place(20usize);
-    let v_1 = witness_proxy.get_witness_place(34usize);
-    let v_2 = W::Field::constant(BabyBearField(0u32));
-    let mut v_3 = v_2;
-    W::Field::add_assign_product(&mut v_3, &v_0, &v_1);
-    witness_proxy.set_scratch_place(21usize, v_3);
-}
-#[allow(unused_variables, clippy::let_unit_value)]
-#[inline(always)]
-fn eval_fn_42<
+fn eval_fn_37<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1856,7 +1697,7 @@ fn eval_fn_42<
 }
 #[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
-fn eval_fn_43<
+fn eval_fn_38<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1887,7 +1728,7 @@ fn eval_fn_43<
 }
 #[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
-fn eval_fn_44<
+fn eval_fn_39<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1915,7 +1756,7 @@ fn eval_fn_44<
 }
 #[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
-fn eval_fn_45<
+fn eval_fn_40<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1943,7 +1784,7 @@ fn eval_fn_45<
 }
 #[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
-fn eval_fn_46<
+fn eval_fn_41<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1971,7 +1812,7 @@ fn eval_fn_46<
 }
 #[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
-fn eval_fn_47<
+fn eval_fn_42<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1995,7 +1836,7 @@ fn eval_fn_47<
 }
 #[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
-fn eval_fn_48<
+fn eval_fn_43<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2019,7 +1860,7 @@ fn eval_fn_48<
 }
 #[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
-fn eval_fn_49<
+fn eval_fn_44<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2047,7 +1888,7 @@ fn eval_fn_49<
 }
 #[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
-fn eval_fn_50<
+fn eval_fn_45<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2075,7 +1916,7 @@ fn eval_fn_50<
 }
 #[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
-fn eval_fn_51<
+fn eval_fn_46<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2103,7 +1944,7 @@ fn eval_fn_51<
 }
 #[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
-fn eval_fn_52<
+fn eval_fn_47<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2127,7 +1968,7 @@ fn eval_fn_52<
 }
 #[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
-fn eval_fn_53<
+fn eval_fn_48<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2150,7 +1991,7 @@ fn eval_fn_53<
     witness_proxy.set_scratch_place(40usize, v_3);
 }
 #[allow(unused_variables, clippy::let_unit_value)]
-fn eval_fn_54<
+fn eval_fn_49<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2206,7 +2047,7 @@ fn eval_fn_54<
     );
 }
 #[allow(unused_variables, clippy::let_unit_value)]
-fn eval_fn_55<
+fn eval_fn_50<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2328,7 +2169,7 @@ fn eval_fn_55<
     );
 }
 #[allow(unused_variables, clippy::let_unit_value)]
-fn eval_fn_56<
+fn eval_fn_51<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2381,49 +2222,54 @@ fn eval_fn_56<
     let v_29 = WitnessComputationCore::select(&v_4, &v_26, &v_28);
     let v_30 = WitnessComputationCore::select(&v_5, &v_25, &v_29);
     let v_31 = WitnessComputationCore::select(&v_6, &v_16, &v_30);
-    let v_32 = v_31.shr(16u32);
-    let v_33 = v_32.truncate();
-    let v_35 = W::Mask::or(&v_7, &v_6);
-    let v_36 = W::Mask::or(&v_35, &v_4);
-    let v_37 = W::Mask::or(&v_36, &v_5);
-    let v_38 = W::U16::constant(4u16);
-    let v_39 = W::U16::overflowing_add(&v_0, &v_38).1;
-    let v_40 = W::U16::overflowing_add(&v_8, &v_2).1;
-    let v_41 = W::U16::overflowing_add(&v_0, &v_2).1;
-    let v_42 = W::Mask::select(&v_27, &v_41, &v_39);
-    let v_43 = W::Mask::select(&v_4, &v_41, &v_42);
-    let v_44 = W::Mask::select(&v_5, &v_40, &v_43);
-    let v_45 = W::Mask::select(&v_6, &v_39, &v_44);
+    let v_32 = v_31.truncate();
+    let v_33 = W::U16::constant(65532u16);
+    let v_34 = W::U16::and(&v_32, &v_33);
+    let v_36 = v_31.shr(16u32);
+    let v_37 = v_36.truncate();
+    let v_39 = W::Mask::or(&v_7, &v_6);
+    let v_40 = W::Mask::or(&v_39, &v_4);
+    let v_41 = W::Mask::or(&v_40, &v_5);
+    let v_42 = W::U16::constant(4u16);
+    let v_43 = W::U16::overflowing_add(&v_0, &v_42).1;
+    let v_44 = W::U16::overflowing_add(&v_8, &v_2).1;
+    let v_45 = W::U16::overflowing_add(&v_0, &v_2).1;
+    let v_46 = W::Mask::select(&v_27, &v_45, &v_43);
+    let v_47 = W::Mask::select(&v_4, &v_45, &v_46);
+    let v_48 = W::Mask::select(&v_5, &v_44, &v_47);
+    let v_49 = W::Mask::select(&v_6, &v_43, &v_48);
     witness_proxy.set_witness_place_boolean(
         24usize,
         W::Mask::select(
-            &v_37,
-            &v_45,
+            &v_41,
+            &v_49,
             &witness_proxy.get_witness_place_boolean(24usize),
         ),
     );
-    let v_47 = W::U32::overflowing_add(&v_14, &v_15).1;
-    let v_48 = W::U32::overflowing_add(&v_20, &v_24).1;
-    let v_49 = W::U32::overflowing_add(&v_14, &v_24).1;
-    let v_50 = W::Mask::select(&v_27, &v_49, &v_47);
-    let v_51 = W::Mask::select(&v_4, &v_49, &v_50);
-    let v_52 = W::Mask::select(&v_5, &v_48, &v_51);
-    let v_53 = W::Mask::select(&v_6, &v_47, &v_52);
+    let v_51 = W::U32::overflowing_add(&v_14, &v_15).1;
+    let v_52 = W::U32::overflowing_add(&v_20, &v_24).1;
+    let v_53 = W::U32::overflowing_add(&v_14, &v_24).1;
+    let v_54 = W::Mask::select(&v_27, &v_53, &v_51);
+    let v_55 = W::Mask::select(&v_4, &v_53, &v_54);
+    let v_56 = W::Mask::select(&v_5, &v_52, &v_55);
+    let v_57 = W::Mask::select(&v_6, &v_51, &v_56);
     witness_proxy.set_witness_place_boolean(
         25usize,
         W::Mask::select(
-            &v_37,
-            &v_53,
+            &v_41,
+            &v_57,
             &witness_proxy.get_witness_place_boolean(25usize),
         ),
     );
-    let v_55 = v_31.truncate();
-    witness_proxy.set_witness_place_u16(51usize, v_55);
-    witness_proxy.set_witness_place_boolean(52usize, v_27);
+    witness_proxy.set_witness_place_u16(
+        34usize,
+        W::U16::select(&v_41, &v_32, &witness_proxy.get_witness_place_u16(34usize)),
+    );
+    witness_proxy.set_witness_place_boolean(49usize, v_27);
 }
 #[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
-fn eval_fn_57<
+fn eval_fn_52<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2442,7 +2288,7 @@ fn eval_fn_57<
     let v_1 = witness_proxy.get_witness_place_boolean(16usize);
     let v_2 = witness_proxy.get_witness_place_boolean(17usize);
     let v_3 = witness_proxy.get_witness_place_boolean(18usize);
-    let v_4 = witness_proxy.get_witness_place_u16(51usize);
+    let v_4 = witness_proxy.get_witness_place_u16(34usize);
     let v_5 = W::Mask::or(&v_3, &v_2);
     let v_6 = W::Mask::or(&v_5, &v_0);
     let v_7 = W::Mask::or(&v_6, &v_1);
@@ -2460,7 +2306,7 @@ fn eval_fn_57<
     );
 }
 #[allow(unused_variables, clippy::let_unit_value)]
-fn eval_fn_59<
+fn eval_fn_53<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2502,7 +2348,7 @@ fn eval_fn_59<
 }
 #[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
-fn eval_fn_60<
+fn eval_fn_54<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2520,10 +2366,10 @@ fn eval_fn_60<
     let v_0 = witness_proxy.get_memory_place_boolean(9usize);
     let v_1 = witness_proxy.get_witness_place_boolean(24usize);
     let v_2 = W::Mask::and(&v_0, &v_1);
-    witness_proxy.set_witness_place_boolean(56usize, v_2);
+    witness_proxy.set_witness_place_boolean(50usize, v_2);
 }
 #[allow(unused_variables, clippy::let_unit_value)]
-fn eval_fn_61<
+fn eval_fn_55<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2545,7 +2391,7 @@ fn eval_fn_61<
     let v_4 = witness_proxy.get_witness_place(18usize);
     let v_5 = witness_proxy.get_witness_place(20usize);
     let v_6 = witness_proxy.get_witness_place(21usize);
-    let v_7 = witness_proxy.get_witness_place(56usize);
+    let v_7 = witness_proxy.get_witness_place(50usize);
     let v_8 = W::Field::constant(BabyBearField(0u32));
     let v_9 = W::Field::constant(BabyBearField(1073741752u32));
     let mut v_10 = v_0;
@@ -2569,7 +2415,7 @@ fn eval_fn_61<
     witness_proxy.set_scratch_place(1usize, v_19);
 }
 #[allow(unused_variables, clippy::let_unit_value)]
-fn eval_fn_62<
+fn eval_fn_56<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2593,31 +2439,31 @@ fn eval_fn_62<
     let v_6 = witness_proxy.get_witness_place(21usize);
     let v_7 = witness_proxy.get_witness_place(27usize);
     let v_8 = witness_proxy.get_witness_place(28usize);
-    let v_9 = witness_proxy.get_witness_place(46usize);
-    let v_10 = witness_proxy.get_witness_place(48usize);
-    let v_11 = witness_proxy.get_witness_place(49usize);
-    let v_12 = witness_proxy.get_witness_place(56usize);
+    let v_9 = witness_proxy.get_witness_place(44usize);
+    let v_10 = witness_proxy.get_witness_place(45usize);
+    let v_11 = witness_proxy.get_witness_place(46usize);
+    let v_12 = witness_proxy.get_witness_place(50usize);
     let v_13 = W::Field::constant(BabyBearField(0u32));
     let mut v_14 = v_13;
     W::Field::add_assign_product(&mut v_14, &v_0, &v_6);
     let mut v_15 = v_14;
-    W::Field::add_assign_product(&mut v_15, &v_1, &v_10);
+    W::Field::add_assign_product(&mut v_15, &v_1, &v_9);
     let mut v_16 = v_15;
-    W::Field::add_assign_product(&mut v_16, &v_1, &v_11);
+    W::Field::add_assign_product(&mut v_16, &v_1, &v_10);
     let mut v_17 = v_16;
-    W::Field::add_assign_product(&mut v_17, &v_2, &v_10);
+    W::Field::add_assign_product(&mut v_17, &v_2, &v_9);
     let mut v_18 = v_17;
-    W::Field::add_assign_product(&mut v_18, &v_2, &v_11);
+    W::Field::add_assign_product(&mut v_18, &v_2, &v_10);
     let mut v_19 = v_18;
-    W::Field::add_assign_product(&mut v_19, &v_3, &v_10);
+    W::Field::add_assign_product(&mut v_19, &v_3, &v_9);
     let mut v_20 = v_19;
-    W::Field::add_assign_product(&mut v_20, &v_3, &v_11);
+    W::Field::add_assign_product(&mut v_20, &v_3, &v_10);
     let mut v_21 = v_20;
-    W::Field::add_assign_product(&mut v_21, &v_4, &v_10);
+    W::Field::add_assign_product(&mut v_21, &v_4, &v_9);
     let mut v_22 = v_21;
-    W::Field::add_assign_product(&mut v_22, &v_4, &v_11);
+    W::Field::add_assign_product(&mut v_22, &v_4, &v_10);
     let mut v_23 = v_22;
-    W::Field::add_assign_product(&mut v_23, &v_5, &v_9);
+    W::Field::add_assign_product(&mut v_23, &v_5, &v_11);
     let mut v_24 = v_23;
     W::Field::add_assign_product(&mut v_24, &v_7, &v_12);
     let v_25 = W::Field::constant(BabyBearField(268295646u32));
@@ -2628,7 +2474,7 @@ fn eval_fn_62<
     witness_proxy.set_scratch_place(2usize, v_27);
 }
 #[allow(unused_variables, clippy::let_unit_value)]
-fn eval_fn_63<
+fn eval_fn_57<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2653,7 +2499,7 @@ fn eval_fn_63<
     let v_7 = witness_proxy.get_memory_place(19usize);
     let v_8 = witness_proxy.get_witness_place(27usize);
     let v_9 = witness_proxy.get_witness_place(46usize);
-    let v_10 = witness_proxy.get_witness_place(56usize);
+    let v_10 = witness_proxy.get_witness_place(50usize);
     let v_11 = W::Field::constant(BabyBearField(0u32));
     let mut v_12 = v_11;
     W::Field::add_assign_product(&mut v_12, &v_0, &v_8);
@@ -2681,7 +2527,7 @@ fn eval_fn_63<
 }
 #[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
-fn eval_fn_64<
+fn eval_fn_58<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2699,7 +2545,7 @@ fn eval_fn_64<
     let v_0 = witness_proxy.get_witness_place(20usize);
     let v_1 = witness_proxy.get_memory_place(20usize);
     let v_2 = witness_proxy.get_witness_place(27usize);
-    let v_3 = witness_proxy.get_witness_place(56usize);
+    let v_3 = witness_proxy.get_witness_place(50usize);
     let v_4 = W::Field::constant(BabyBearField(0u32));
     let mut v_5 = v_4;
     W::Field::add_assign_product(&mut v_5, &v_0, &v_2);
@@ -2709,7 +2555,7 @@ fn eval_fn_64<
 }
 #[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
-fn eval_fn_65<
+fn eval_fn_59<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2737,7 +2583,7 @@ fn eval_fn_65<
 }
 #[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
-fn eval_fn_66<
+fn eval_fn_60<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2765,7 +2611,7 @@ fn eval_fn_66<
 }
 #[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
-fn eval_fn_67<
+fn eval_fn_61<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2793,7 +2639,7 @@ fn eval_fn_67<
 }
 #[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
-fn eval_fn_68<
+fn eval_fn_62<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2817,7 +2663,7 @@ fn eval_fn_68<
 }
 #[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
-fn eval_fn_69<
+fn eval_fn_63<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2848,7 +2694,7 @@ fn eval_fn_69<
     );
 }
 #[allow(unused_variables, clippy::let_unit_value)]
-fn eval_fn_70<
+fn eval_fn_64<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2908,7 +2754,59 @@ fn eval_fn_70<
 }
 #[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
-fn eval_fn_71<
+fn eval_fn_65<
+    'a,
+    'b: 'a,
+    W: WitnessTypeSet<BabyBearField>,
+    P: WitnessProxy<BabyBearField, W> + 'b,
+>(
+    witness_proxy: &'a mut P,
+) where
+    W::Field: Copy,
+    W::Mask: Copy,
+    W::U32: Copy,
+    W::U16: Copy,
+    W::U8: Copy,
+    W::I32: Copy,
+{
+    let v_0 = witness_proxy.get_witness_place(20usize);
+    let v_1 = witness_proxy.get_witness_place(21usize);
+    let v_2 = witness_proxy.get_witness_place(32usize);
+    let v_3 = witness_proxy.get_witness_place(34usize);
+    let v_4 = W::Field::constant(BabyBearField(0u32));
+    let mut v_5 = v_4;
+    W::Field::add_assign_product(&mut v_5, &v_0, &v_2);
+    let mut v_6 = v_5;
+    W::Field::add_assign_product(&mut v_6, &v_1, &v_3);
+    witness_proxy.set_scratch_place(19usize, v_6);
+}
+#[allow(unused_variables, clippy::let_unit_value)]
+#[inline(always)]
+fn eval_fn_66<
+    'a,
+    'b: 'a,
+    W: WitnessTypeSet<BabyBearField>,
+    P: WitnessProxy<BabyBearField, W> + 'b,
+>(
+    witness_proxy: &'a mut P,
+) where
+    W::Field: Copy,
+    W::Mask: Copy,
+    W::U32: Copy,
+    W::U16: Copy,
+    W::U8: Copy,
+    W::I32: Copy,
+{
+    let v_0 = witness_proxy.get_witness_place(20usize);
+    let v_1 = witness_proxy.get_witness_place(34usize);
+    let v_2 = W::Field::constant(BabyBearField(0u32));
+    let mut v_3 = v_2;
+    W::Field::add_assign_product(&mut v_3, &v_0, &v_1);
+    witness_proxy.set_scratch_place(21usize, v_3);
+}
+#[allow(unused_variables, clippy::let_unit_value)]
+#[inline(always)]
+fn eval_fn_67<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2939,7 +2837,7 @@ fn eval_fn_71<
     );
 }
 #[allow(unused_variables, clippy::let_unit_value)]
-fn eval_fn_72<
+fn eval_fn_68<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -3044,7 +2942,7 @@ fn eval_fn_72<
     witness_proxy.set_scratch_place(24usize, v_51);
 }
 #[allow(unused_variables, clippy::let_unit_value)]
-fn eval_fn_73<
+fn eval_fn_69<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -3088,7 +2986,7 @@ fn eval_fn_73<
 }
 #[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
-fn eval_fn_74<
+fn eval_fn_70<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -3119,7 +3017,7 @@ fn eval_fn_74<
     );
 }
 #[allow(unused_variables, clippy::let_unit_value)]
-fn eval_fn_75<
+fn eval_fn_71<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -3141,17 +3039,17 @@ fn eval_fn_75<
     let v_4 = witness_proxy.get_witness_place(20usize);
     let v_5 = witness_proxy.get_witness_place(21usize);
     let v_6 = witness_proxy.get_memory_place(3usize);
-    let v_7 = witness_proxy.get_witness_place(45usize);
-    let v_8 = witness_proxy.get_witness_place(51usize);
+    let v_7 = witness_proxy.get_witness_place(34usize);
+    let v_8 = witness_proxy.get_witness_place(45usize);
     let v_9 = W::Field::constant(BabyBearField(0u32));
     let mut v_10 = v_9;
-    W::Field::add_assign_product(&mut v_10, &v_0, &v_8);
+    W::Field::add_assign_product(&mut v_10, &v_0, &v_7);
     let mut v_11 = v_10;
-    W::Field::add_assign_product(&mut v_11, &v_1, &v_8);
+    W::Field::add_assign_product(&mut v_11, &v_1, &v_7);
     let mut v_12 = v_11;
-    W::Field::add_assign_product(&mut v_12, &v_2, &v_8);
+    W::Field::add_assign_product(&mut v_12, &v_2, &v_7);
     let mut v_13 = v_12;
-    W::Field::add_assign_product(&mut v_13, &v_3, &v_8);
+    W::Field::add_assign_product(&mut v_13, &v_3, &v_7);
     let v_14 = W::Field::constant(BabyBearField(16777216u32));
     let mut v_15 = v_5;
     W::Field::mul_assign(&mut v_15, &v_14);
@@ -3161,14 +3059,14 @@ fn eval_fn_75<
     let mut v_18 = v_5;
     W::Field::mul_assign(&mut v_18, &v_17);
     let mut v_19 = v_16;
-    W::Field::add_assign_product(&mut v_19, &v_18, &v_7);
+    W::Field::add_assign_product(&mut v_19, &v_18, &v_8);
     let v_20 = W::Field::constant(BabyBearField(805306362u32));
     let mut v_21 = v_19;
     W::Field::add_assign_product(&mut v_21, &v_20, &v_4);
     witness_proxy.set_scratch_place(33usize, v_21);
 }
 #[allow(unused_variables, clippy::let_unit_value)]
-fn eval_fn_76<
+fn eval_fn_72<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -3227,7 +3125,7 @@ fn eval_fn_76<
     witness_proxy.set_scratch_place(34usize, v_27);
 }
 #[allow(unused_variables, clippy::let_unit_value)]
-fn eval_fn_77<
+fn eval_fn_73<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -3271,7 +3169,7 @@ fn eval_fn_77<
 }
 #[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
-fn eval_fn_78<
+fn eval_fn_74<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -3372,6 +3270,7 @@ pub fn evaluate_witness_fn<
     eval_fn_55(witness_proxy);
     eval_fn_56(witness_proxy);
     eval_fn_57(witness_proxy);
+    eval_fn_58(witness_proxy);
     eval_fn_59(witness_proxy);
     eval_fn_60(witness_proxy);
     eval_fn_61(witness_proxy);
@@ -3388,8 +3287,4 @@ pub fn evaluate_witness_fn<
     eval_fn_72(witness_proxy);
     eval_fn_73(witness_proxy);
     eval_fn_74(witness_proxy);
-    eval_fn_75(witness_proxy);
-    eval_fn_76(witness_proxy);
-    eval_fn_77(witness_proxy);
-    eval_fn_78(witness_proxy);
 }
