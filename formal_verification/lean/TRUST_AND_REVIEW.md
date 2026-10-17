@@ -48,3 +48,13 @@ from the imported constraints. In particular, v2's high-PC wrap is preserved.
 Exceptions, interrupts, completeness, initialized whole traces and cryptographic
 soundness are outside this checkpoint. The copied custom-operation specification
 has no checked v2 consumer yet.
+
+## Verification resources
+
+The [bounded runner](scripts/check_all.py) compiles project modules in dependency
+order and caches source/dependency fingerprints. Each proof process and each gate
+runs under the shared [macOS watchdog](scripts/bounded_fv.py) with one Lean worker,
+Lean -j1/-M3072, physical-footprint ceiling 3072 MiB, resident ceiling 4096 MiB and
+finite wall limits. The watchdog is copied from the validated v3 incident response;
+it is sampled, not an OS hard ceiling. Small parent/child timeout and allocation
+probes verify termination. No native circuit, field or dependency pin changed.

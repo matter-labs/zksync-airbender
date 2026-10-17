@@ -39,5 +39,6 @@ Current checked checkpoint:
 - Both public Review theorems have explicit axiom roots; guide references, links and layering checks pass.
 - Source provenance: 46 unchanged reused files, one native circuit artifact and nine native Rust sources.
 - No handwritten project warnings, admitted proofs or project axioms.
+- Serial bounded gates pass; parent/child timeout and memory probes confirm termination with no live owned processes.
 
 Run the [reproduction commands](README.md#reproduce) for the current checkpoint.

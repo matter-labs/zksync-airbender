@@ -22,6 +22,18 @@ Derive local selectors, bounds and actual reads before promoting a row claim to
 an initialized trace claim. Never hide a result or desired intermediate state in
 an interface. Keep public assumptions visible and v2 findings independent.
 
+## Continuing execution
+
+The user authorized hourly continuation and regular commits on 17 October 2026.
+The active schedule is Continue Airbender v2 formal verification backport, attached
+to this backport chat. Keep working in the isolated dev-based worktree and commit
+small verified milestones with Conventional Commits. Do not push without authorization.
+Use the [serial bounded verification runner](scripts/check_all.py) and its
+[validated watchdog](scripts/bounded_fv.py): one Lean worker, Lean memory cap
+3072 MiB, total footprint at most 3072 MiB, resident at most 4096 MiB and finite
+wall budgets. Confirm termination after limits and redesign instead of raising caps.
+The original v3 schedule remains separate and paused.
+
 ## Pending integration work
 
 1. Import v2 memory/state/decoder metadata and fixed/setup rows. The first row

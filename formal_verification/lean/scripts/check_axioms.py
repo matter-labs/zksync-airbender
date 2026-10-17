@@ -7,7 +7,7 @@ import subprocess
 ROOT = Path(__file__).resolve().parent.parent
 
 def check():
-    result = subprocess.run(["lake", "env", "lean", "Airbender/Checks/Axioms.lean"],
+    result = subprocess.run(["lake", "env", "lean", "-j1", "-M3072", "Airbender/Checks/Axioms.lean"],
                             cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     if result.returncode:
         raise ValueError(result.stdout[-4000:])

@@ -4,6 +4,7 @@
 from pathlib import Path
 from collections import deque
 import re
+import sys
 import subprocess
 import tempfile
 from urllib.parse import unquote, urlsplit
@@ -87,7 +88,7 @@ run_cmd do
     with tempfile.TemporaryDirectory(prefix="airbender-review-") as directory:
         path = Path(directory) / "Inventory.lean"
         path.write_text(code)
-        result = subprocess.run(["lake", "env", "lean", str(path)], cwd=ROOT,
+        result = subprocess.run(["lake", "env", "lean", "-j1", "-M3072", str(path)], cwd=ROOT,
                                 text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     if result.returncode:
         raise ValueError(result.stdout[-4000:])
@@ -158,7 +159,9 @@ def main():
     modules = [".".join(path.relative_to(ROOT).with_suffix("").parts)
                for path in sorted((ROOT / "Airbender/Review").rglob("*.lean"))]
     # Build first so the compiler inventory describes the current source tree.
-    subprocess.run(["lake", "build", "Airbender.Checks.Axioms", *modules], cwd=ROOT, check=True)
+    if "--no-build" not in sys.argv:
+        subprocess.run([sys.executable, "scripts/check_all.py"], cwd=ROOT, check=True)
+        return
     roots, _ = check_axioms()
     print(f"PASS {roots} theorem axiom roots")
     references = guide_names()

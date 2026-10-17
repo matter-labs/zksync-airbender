@@ -58,12 +58,18 @@ Run from formal_verification/lean:
 
 ```sh
 python3 scripts/prepare_clean.py
-lake build Airbender airbender_import airbender_tests Tests.AddSub Tests.PC Tests.CircuitRows Tests.Timestamps Airbender.Checks.Axioms
-lake exe airbender_tests
-lake exe airbender_import ../../cs/add_sub_lui_auipc_mop_preprocessed_layout.json
-python3 scripts/check_axioms.py
-python3 scripts/check_review.py
+python3 scripts/check_resource_guard.py
+python3 scripts/check_all.py
 ```
+
+[The serial verification runner](scripts/check_all.py) checks each module with
+one Lean thread and a 3072 MiB Lean allocation cap. The shared
+[macOS watchdog](scripts/bounded_fv.py) limits the owned process tree to 3072 MiB
+physical footprint, 4096 MiB resident memory and a finite wall budget, kills owned
+processes after a violation and confirms termination. It uses a global lock and
+rejects multiple Lean workers. These are sampled process measurements, not an OS
+hard physical-memory ceiling. Redesign a proof when it exceeds the limits.
+Dependency bootstrap also needs these limits; do not launch unbounded proof builds.
 
 Importer rejection tests are not a proof of faithful parsing. The
 [trust boundaries](TRUST_AND_REVIEW.md) identify what remains external; the
