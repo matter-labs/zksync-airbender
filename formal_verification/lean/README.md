@@ -23,9 +23,10 @@ Decoding, input bounds, preprocessing and actual Sail reads remain explicit loca
 interfaces. Native direct port/state metadata now supports
 [initialized logical memory history](Airbender/Review/Trace/History.lean): accepted
 state/memory matching and initial clock boundaries derive all row/prior clock
-bounds, complete Clean memory consistency and latest reads. Public Sail image
-binding, setup/decoder extraction, whole Sail execution and cryptographic argument
-soundness remain pending. This checkpoint does not inherit v3's completed coverage.
+bounds, complete Clean memory consistency and latest reads. [Public Sail image construction](Airbender/Review/Trace/Initialization.lean) now
+binds seed tokens and initial PC to actual upstream reads, deriving seed bounds,
+clocks and uniqueness. Setup/decoder extraction, subsequent Sail-read transport,
+whole Sail execution and cryptographic argument soundness remain pending. This checkpoint does not inherit v3's completed coverage.
 
 ## Read these first
 

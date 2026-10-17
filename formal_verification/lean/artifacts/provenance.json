@@ -205,6 +205,14 @@
     {
       "path": "Airbender/Review/Helpers/Memory/History.lean",
       "sha256": "57d1f17e5e81cb1b117e367fe6f63844ea74706d60130944a3fb87bb3ecdf2b1"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Memory/InitialImage.lean",
+      "sha256": "8403dba2a41a47d0221b755f8e13537ad60bb759aca6b263fe705ee29df810f6"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/InitialImage.lean",
+      "sha256": "5d19ed3b9848e755522aaf758f07646990fba7a6add595e05098c4c0b2080864"
     }
   ],
   "circuit_artifacts": [
@@ -346,6 +354,18 @@
       "source_path": "Airbender/Proofs/Trace/MemoryHistory.lean",
       "source_sha256": "55b52749fabbae2e671d08894b26ddd717d1238c28837c8a18bd9e88c5099611",
       "change": "Reuse complete Clean history construction and time relabeling. Explicitly import Slots after narrowing MemoryOrigins; remove the BabyBear inverse argument."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Memory/Values.lean",
+      "source_path": "Airbender/Review/Helpers/Memory/Values.lean",
+      "source_sha256": "b0feaadde263cb4a968c6516df5b9277fc59eee022b0f0769fde246004b03cc4",
+      "change": "Unchanged MemoryToken.word definition extracted; omit source word-ROM conditions until their v2 circuit connection."
+    },
+    {
+      "path": "Airbender/Proofs/PCState.lean",
+      "source_path": "Airbender/Proofs/PCState.lean",
+      "source_sha256": "853846ad5a505bf7e5e5180715f795c4dd2a359abb14e5ca487c5a16b6394e7a",
+      "change": "Unchanged encoded_bounds theorem extracted; omit unconnected v3 modeled-decoder and outgoing-PC theorems."
     }
   ]
 }

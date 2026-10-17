@@ -1,8 +1,9 @@
 import Tests.AddSub
-import Airbender.Review.Trace.History
+import Airbender.Review.Trace.Initialization
 
 namespace Tests.InitializedHistory
 open Airbender Trace
+open Reference.Sail _root_.Sail.ArchSem
 
 -- x1 + x1 -> x1. Readonly ports refresh the same cell at clocks 4 and 5;
 -- the actual destination write at clock 6 replaces 123 with 246.
@@ -96,5 +97,59 @@ theorem stale_history_rejected : ¬ Accepted staleTrace := by
   have count := h.memory.count_eq (cell 4 123)
   revert count
   decide
+
+private def before : Reference.RiscV.Sail.State where
+  regs := (Std.ExtDHashMap.emptyWithCapacity)
+    |>.insert .x1 (123 : BitVec 32) |>.insert .PC (0 : BitVec 32)
+  mem := Std.ExtHashMap.emptyWithCapacity
+  tags := ()
+  cycleCount := 0
+  sailOutput := #[]
+
+private theorem public_inputs : ImageBoundary trace before [Cell.register 1] := by
+  have read : (Cell.register 1).read before = .ok (123 : BitVec 32) before := by
+    apply Reference.RiscV.Sail.read_register
+    simp [before, Std.ExtDHashMap.get?_insert]
+  have pc : Reference.Sail.run (SailRV32.Functions.get_arch_pc ()) before =
+      .ok (0 : BitVec 32) before := by
+    apply Reference.RiscV.Sail.read_register
+    simp [before]
+  constructor
+  · decide
+  · simp only [initialImage, List.mapM_cons, List.mapM_nil]
+    rw [read]
+    rfl
+  · rw [initialState, pc]
+    rfl
+
+/-- The seed is now constructed from the original Sail read of public x1. -/
+theorem public_image_history : ∃ history, MemoryHistory trace history :=
+  (public_image_memory_soundness public_inputs accepted).1
+
+-- Failure proofs follow the pinned source Tests/TraceInitialImage.lean.
+/-- Missing public registers reject image construction rather than defaulting to zero. -/
+theorem missing_register_rejected :
+    initialImage (p := mersenne31Modulus) before [Cell.register 2] = none := by
+  have absent : Cell.read (.register 2) before =
+      .error _root_.Sail.Error.Unreachable before := by
+    have missing : before.regs.get? .x2 = none := by
+      simp [before, Std.ExtDHashMap.get?_insert]
+    change run (SailRV32.readReg .x2) before = _
+    dsimp [run, SailRV32.readReg, PreSail.readReg, interpretSailEffects, FreeM.liftM,
+      interpretInstructionEffect]
+    simp [missing, throw, throwThe, MonadExceptOf.throw, EStateM.throw, EStateM.run]
+  simp only [initialImage, List.mapM_cons, absent]
+  rfl
+
+/-- Missing byte memory also rejects the public image constructor. -/
+theorem missing_bytes_rejected :
+    initialImage (p := mersenne31Modulus) before [Cell.ram 0] = none := by
+  have absent : Cell.read (.ram 0) before =
+      .error (_root_.Sail.Error.OutOfMemoryRange 0) before := by
+    simp [Cell.read, readBytes, readByte, EStateM.run, get, getThe, MonadStateOf.get,
+      bind, EStateM.bind, EStateM.get, throw, throwThe, MonadExceptOf.throw,
+      EStateM.throw, before]
+  simp only [initialImage, List.mapM_cons, absent]
+  rfl
 
 end Tests.InitializedHistory

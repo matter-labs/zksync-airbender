@@ -39,12 +39,14 @@ The original v3 schedule remains separate and paused.
 Native direct shuffle-RAM/state metadata, ADD/SUB clock extraction and initialized
 logical memory histories are checked. Accepted state/memory matching and initial
 clock boundaries now derive all row/prior clock inputs, complete Clean memory
-consistency and newest preceding reads. Public Sail image binding and decoding
-are the next connections.
+consistency and newest preceding reads. Public Sail image construction now binds
+seed tokens and initial PC to actual reads, deriving initial bounds/clocks and
+unique addresses. Public decoding and subsequent bound/read transport are next.
 
-1. Import v2 decoder metadata and fixed/setup rows. Bind the logical initial
-   tokens to public Sail state and derive operand bounds and actual Sail reads
-   through the checked initialized memory history. The row theorem still takes
+1. Import v2 decoder metadata and fixed/setup rows. Connect the
+   decoder-owned destination-zero flag before deriving masked-write bounds.
+   Derive operand bounds and subsequent actual Sail reads through initialized
+   history, using the checked public Sail seed/initial-PC constructors. The row theorem still takes
    decoded packed masks, preprocessing, bounds and Sail reads explicitly; derive
    these from public decoding and initialized history. Reuse the checked native
    clock/port descriptors and complete-path proofs.

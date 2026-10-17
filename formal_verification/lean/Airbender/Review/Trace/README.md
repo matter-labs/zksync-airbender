@@ -19,8 +19,15 @@ one native ADD row with both sources and destination at x1. Sequential readonly
 refreshes are accepted. Reusing the seed for the second read satisfies local
 constraints but fails logical memory matching.
 
-This is a logical initialized-memory result. Public Sail image binding, operand
-bounds, preprocessing, public decoding and a whole Sail execution reaching the
-native terminal PC/cells remain in [the plan](../../../FORMAL_VERIFICATION_PLAN.md).
+[Public-image memory soundness](Initialization.lean) replaces the clock and
+uniqueness premises with [public constructors](../Helpers/Memory/PublicImage.lean).
+The original Sail interpreter reads every public tracked cell and the starting
+architectural PC. The native initial clock is four; seed clocks are zero. Missing
+registers or bytes fail construction. Seed bounds, seed clocks and unique encoded
+addresses are derived, without witness-supplied initial read values.
+
+These are logical initialized-memory results. Operand bounds, subsequent Sail
+read transport, preprocessing, public decoding and whole Sail execution reaching
+the native terminal PC/cells remain in [the plan](../../../FORMAL_VERIFICATION_PLAN.md).
 Cryptographic enforcement of the logical permutations remains a separate boundary.
 Existing [local circuit claims](../Circuits/README.md) retain their explicit interfaces.

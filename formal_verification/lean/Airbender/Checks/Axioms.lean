@@ -74,3 +74,23 @@ import Tests.InitializedHistory
 #print axioms Tests.InitializedHistory.stale_history_rejected
 
 #print axioms Airbender.AddSub.Proofs.memory_clocks
+
+#print axioms Airbender.PCState.Proofs.encoded_bounds
+#print axioms Airbender.Trace.Proofs.cell_read_frame
+#print axioms Airbender.Trace.Proofs.initial_token_word
+#print axioms Airbender.Trace.Proofs.image_reads
+#print axioms Airbender.Trace.Proofs.image_sources
+#print axioms Airbender.Trace.Proofs.image_addresses
+#print axioms Airbender.Trace.Proofs.image_cell_source
+#print axioms Airbender.Trace.Proofs.image_bounds
+#print axioms Airbender.Trace.Proofs.image_clocks
+#print axioms Airbender.Trace.Proofs.cell_address_injective
+#print axioms Airbender.Trace.Proofs.image_unique
+#print axioms Airbender.Trace.Proofs.initial_state_source
+#print axioms Airbender.Trace.Proofs.initial_pc_bound
+#print axioms Airbender.Trace.Proofs.initial_state_pc
+#print axioms Airbender.Trace.Proofs.image_clock_boundary
+#print axioms Airbender.Trace.public_image_memory_soundness
+#print axioms Tests.InitializedHistory.public_image_history
+#print axioms Tests.InitializedHistory.missing_register_rejected
+#print axioms Tests.InitializedHistory.missing_bytes_rejected

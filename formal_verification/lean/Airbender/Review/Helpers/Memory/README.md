@@ -12,6 +12,10 @@ actual native address/time/value tokens, preserving raw field limbs injectively.
 The checked [trace claim](../../Trace/History.lean) constructs complete Clean
 online consistency and newest preceding reads from matching, initial clock
 boundaries and unique seed addresses. No expected read value is supplied.
-Public Sail image binding and derived word bounds remain pending.
+[Initial image](InitialImage.lean) and [public boundary](PublicImage.lean) now bind
+seed values and initial PC to actual Sail reads; missing data rejects construction.
+[Image proofs](../../../Proofs/Trace/InitialImage.lean) are copied unchanged and
+derive seed bounds, zero clocks, address injectivity and read-state preservation.
+Later read/word-bound transport and physical zero-boot/ROM interpretation remain pending.
 [Indirect descriptors](IndirectPorts.lean) are retained reusable definitions;
 v2 batched worker arguments and indirect-port import remain pending.

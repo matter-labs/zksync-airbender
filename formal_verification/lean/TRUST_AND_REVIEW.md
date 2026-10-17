@@ -8,7 +8,9 @@ Start with [Properties](Airbender/Review/Helpers/Properties.lean), then the shor
 explicit decoded-input interfaces; it is not an initialized whole-run claim.
 The separate short [trace memory theorem](Airbender/Review/Trace/History.lean)
 constructs complete Clean memory history and latest reads from native logical
-matching and explicit initialization tokens.
+matching and explicit initialization tokens. The
+[public-image theorem](Airbender/Review/Trace/Initialization.lean) obtains those
+tokens and the initial PC from actual Sail reads of a supplied state/domain.
 
 ## Sources and pins
 
@@ -59,8 +61,12 @@ remain explicit. Selector bits, result bounds, arithmetic and PC effects follow
 from the imported constraints. In particular, v2's high-PC wrap is preserved.
 The logical history theorem additionally proves newest preceding reads of
 injectively encoded native tokens, including readonly timestamp refreshes. Its
-initial image is explicit logical data: binding it to public Sail registers/RAM,
-deriving operand bounds and connecting those reads to Sail remain pending.
+initial image may now be constructed from actual public Sail registers/RAM;
+missing data fails, and successful reads preserve that state. The supplied public
+domain is independent of the witness. This logical image does not yet establish
+the physical zero-boot profile or native ROM-shadow interpretation. Subsequent
+Sail-read transport and operand bounds remain pending; v2's decoder-owned zero
+flag must be connected before deriving actual masked-write bounds.
 Exceptions, interrupts, completeness, whole Sail execution and cryptographic
 soundness are outside this checkpoint. The copied custom-operation specification
 has no checked v2 consumer yet.

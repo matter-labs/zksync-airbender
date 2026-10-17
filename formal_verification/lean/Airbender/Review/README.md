@@ -9,6 +9,7 @@ Proofs; artifact interpretation has a separate Import boundary.
 | --- | --- |
 | Conditional v2 arithmetic rows agree with original Sail destination/register and PC effects. | [ADD/SUB](Circuits/AddSub/README.md) |
 | Initialized logical v2 memory matching constructs complete Clean history and newest preceding reads. | [Trace history](Trace/README.md) |
+| Public Sail image construction supplies actual seed values and initial PC, rejecting missing registers/bytes. | [Initialization](Trace/Initialization.lean) |
 
 Start with [Properties](Helpers/Properties.lean) for `Properties.Soundness` and
 `Properties.Completeness`, then choose
