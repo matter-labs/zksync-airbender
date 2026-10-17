@@ -1,3 +1,15 @@
+import Airbender.Proofs.Initialization.Boundary
+import Airbender.Proofs.Initialization.Geometry
+import Airbender.Proofs.Initialization.Native
+import Airbender.Proofs.Initialization.NativeGeometry
+import Airbender.Proofs.Initialization.PooledInputs
+import Airbender.Proofs.Initialization.Products
+import Airbender.Proofs.Initialization.Tokens
+import Airbender.Proofs.Initialization.Trees
+import Airbender.Proofs.Initialization.UnifiedInputs
+import Airbender.Review.Circuits.Initialization.Theorems
+import Airbender.Review.Trace.Initialization
+import Tests.Initialization
 import Tests.UnifiedDelegationNormalization
 import Airbender.Proofs.Bigint.MultiplicationColumnsChunk0
 import Airbender.Proofs.Bigint.MultiplicationColumnsChunk1
@@ -4236,3 +4248,39 @@ import Clean.Specs.Keccak256
 #print axioms Tests.UnifiedDelegationNormalization.fixedMember
 
 #print axioms Airbender.Verification.subwordNativeRow
+
+#print axioms Airbender.Initialization.Proofs.address_split
+#print axioms Airbender.Initialization.Proofs.address_word
+#print axioms Airbender.Initialization.Proofs.computed_seed
+#print axioms Airbender.Initialization.Proofs.eval_leaves
+#print axioms Airbender.Initialization.Proofs.factor_token
+#print axioms Airbender.Initialization.Proofs.follows_sound
+#print axioms Airbender.Initialization.Proofs.initial_ram_tokens
+#print axioms Airbender.Initialization.Proofs.initial_token
+#print axioms Airbender.Initialization.Proofs.matrix_product
+#print axioms Airbender.Initialization.Proofs.output_token_product
+#print axioms Airbender.Initialization.Proofs.pooled_inputs
+#print axioms Airbender.Initialization.Proofs.root_tokens
+#print axioms Airbender.Initialization.Proofs.standalone_geometry
+#print axioms Airbender.Initialization.Proofs.standalone_initial_leaves
+#print axioms Airbender.Initialization.Proofs.standalone_initial_tokens
+#print axioms Airbender.Initialization.Proofs.standalone_products
+#print axioms Airbender.Initialization.Proofs.standalone_terminal_leaves
+#print axioms Airbender.Initialization.Proofs.standalone_terminal_tokens
+#print axioms Airbender.Initialization.Proofs.terminal_token
+#print axioms Airbender.Initialization.Proofs.token_address
+#print axioms Airbender.Initialization.Proofs.token_list_product
+#print axioms Airbender.Initialization.Proofs.unified_geometry
+#print axioms Airbender.Initialization.Proofs.unified_initial_leaves
+#print axioms Airbender.Initialization.Proofs.unified_initial_tokens
+#print axioms Airbender.Initialization.Proofs.unified_inputs
+#print axioms Airbender.Initialization.Proofs.unified_products
+#print axioms Airbender.Initialization.Proofs.unified_terminal_leaves
+#print axioms Airbender.Initialization.Proofs.unified_terminal_tokens
+#print axioms Airbender.Initialization.standalone_execution
+#print axioms Airbender.Initialization.standalone_soundness
+#print axioms Airbender.Initialization.unified_boundary_execution
+#print axioms Airbender.Initialization.unified_soundness
+#print axioms Tests.Initialization.standalone_noncanonical_accepted
+#print axioms Tests.Initialization.unified_noncanonical_accepted
+#print axioms Tests.Initialization.unit_accepted

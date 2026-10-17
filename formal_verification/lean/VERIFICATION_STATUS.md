@@ -28,6 +28,7 @@ and the [fixed scope](FORMAL_VERIFICATION_PLAN.md).
 | [Hash spans](Airbender/Review/Trace/UnifiedReduced/Segmentation.lean) | Existing preparation and selected references compose; issued hash workers partition into complete spans under the public protocol profile. |
 | [Canonical terminal PC](Airbender/Review/Helpers/Context/VerifierBoundary/README.md) | Checked under the external canonical verifier boundary. |
 | [Inactive padding](Airbender/Review/Helpers/Context/PaddingBoundary/README.md) | Architectural erasure and existing execution derived under the external contribution-mask boundary. |
+| [Initialization/teardown](Airbender/Review/Circuits/Initialization/README.md) | Actual standalone/inline GKR products, computed RAM boundary tokens and pooled/unified execution adapters; native zero seed and domain properties derived. |
 | [Native mixed ROM](Airbender/Review/Trace/UnifiedReduced/NativeMixedROM.lean) | Public boot bytes and the explicit worker RAM contract compose into one ordinary/caller/worker memory history and terminal cells. F04 enforcement remains open. |
 
 ## Remaining work
@@ -35,9 +36,8 @@ and the [fixed scope](FORMAL_VERIFICATION_PLAN.md).
 Temporary assumptions narrow proofs; implementation findings remain open until
 fixed or independently shown to be enforced. See the [case register](FINDINGS.md#linear-and-open-pr-review--15-october-2026).
 
-| Claim | Blocker |
-| --- | --- |
-| Initialization/teardown local soundness | Interpret the imported GKR gates and prove their boundary-token correspondence; implementation authorized. |
+No authorized local proof-integration work remains. Implementation findings and
+external validation/refinement boundaries stay in the case register and deferred plan.
 
 AIH-334's EVM check is fixed and tested. AIH-336's tail/cache correction passes CPU
 regressions; accelerated runtime/proof replay and other findings remain in the case register.
@@ -49,10 +49,10 @@ Separately scoped work: [deferred milestones](FORMAL_VERIFICATION_PLAN.md#deferr
 
 Current checked checkpoint:
 
-- Library, both executables and all 133 concrete test modules pass.
+- Library, both executables and all 135 concrete test modules pass.
 - Importer regressions pass.
-- Axiom audit: 3,624 roots, 149 axiom-free; only `propext`, `Classical.choice` and `Quot.sound`.
-- All 162 public Review theorem roots are audited; review/reference checks pass.
+- Axiom audit: 3,659 roots, 149 axiom-free; only `propext`, `Classical.choice` and `Quot.sound`.
+- All 166 public Review theorem roots are audited; review/reference checks pass.
 - No handwritten project diagnostics, `sorry` or project axioms.
 
 [Reproduce the checks](README.md#reproduce).

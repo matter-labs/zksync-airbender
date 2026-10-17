@@ -48,6 +48,11 @@ bounds, instruction order and actual retirement from one initialized history.
 
 ## Choose the composition scope
 
+[Initialization/teardown adapters](Initialization.lean) connect imported standalone
+and inline GKR products to computed pooled/unified RAM boundaries. Their public
+profiles omit the old seed correspondence; geometry and imported tokens derive
+it. Exact logical matching and public Sail/configuration inputs remain explicit.
+
 | Directory | Review it for |
 | --- | --- |
 | [Families](Families/README.md) | Restricted ADD/SUB + word-memory and standalone family execution. |
