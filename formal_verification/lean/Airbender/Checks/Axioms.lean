@@ -228,3 +228,15 @@ import Tests.X0History
 #print axioms Tests.X0History.raw_result_retained
 #print axioms Tests.X0History.initialized_zero_reads
 #print axioms Tests.X0History.discarded_write_stutters
+
+#print axioms Airbender.AddSub.Proofs.native_pc_successor
+#print axioms Airbender.Trace.Proofs.program_addresses
+#print axioms Airbender.Trace.Proofs.indexed_pc_aligned
+#print axioms Airbender.Trace.Proofs.setup_pc_aligned
+#print axioms Airbender.Trace.Proofs.decoded_pc_aligned
+#print axioms Airbender.Trace.Proofs.decoded_pc_successor
+#print axioms Airbender.Trace.Proofs.image_pc_soundness
+#print axioms Airbender.Trace.public_pc_soundness
+#print axioms Tests.InitializedHistory.initialized_pc_path
+#print axioms Tests.InitializedHistory.initialized_terminal_pc_bound
+#print axioms Tests.InitializedHistory.empty_terminal_pc_bound

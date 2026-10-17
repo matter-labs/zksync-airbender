@@ -409,7 +409,7 @@
       "path": "Airbender/Proofs/Trace/Program.lean",
       "source_path": "Airbender/Proofs/Trace/Program.lean",
       "source_sha256": "88ce31938a4df60bdc397ced357f26d7182b26b22a86da95b11ccd372371e0e5",
-      "change": "Reuse entry_source/program_sources and canonical PC-word proof text. Shift immediate projections from source columns 5/6 to v2 columns 6/7 and ten-column vectors. Prove bounds for the selected v2 decoder projection. Retain canonical register-index recovery with the v2 ten-column query."
+      "change": "Reuse entry_source/program_sources and canonical PC-word proof text. Shift immediate projections from source columns 5/6 to v2 columns 6/7 and ten-column vectors. Prove bounds for the selected v2 decoder projection. Retain canonical register-index recovery with the v2 ten-column query. Successful mapM construction now also proves exact preservation of the public indexed PC sequence."
     },
     {
       "path": "Airbender/Proofs/Trace/Values.lean",
@@ -464,6 +464,12 @@
       "source_path": "Airbender/Proofs/Trace/PortReads.lean",
       "source_sha256": "23e228aef0d686a2dc7fa306e19139daf1f56c9777efad91eb6155de1e03efdf",
       "change": "Extract unchanged generic three-port and row read/write transport proofs for the selected v2 registry; add ten-column native register-index transport for both source reads and actual masked destination writes."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/PC.lean",
+      "source_path": "Airbender/Proofs/Trace/PC.lean",
+      "source_sha256": "1bac70347232024f37e694b1b9f2e0096e6ffd0661e2475eb9588ac189b876a3",
+      "change": "Follow the source native-PC assembly structure, using v2 decoded incoming ranges/alignment and native carry/wrap equations. Derive every output and terminal PC bound without the source inverse or no-overflow clauses; actual Sail retirement remains separate."
     }
   ]
 }

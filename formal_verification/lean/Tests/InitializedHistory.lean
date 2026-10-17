@@ -3,6 +3,7 @@ import Airbender.Review.Trace.Initialization
 import Airbender.Review.Trace.Decoder
 import Airbender.Review.Trace.Values
 import Airbender.Review.Trace.SailHistory
+import Airbender.Review.Trace.PC
 import Airbender.Proofs.Trace.PortReads
 import Airbender.Proofs.Trace.AccessExecution
 
@@ -301,5 +302,35 @@ theorem alias_actual_write : ∃ after,
       Nat.pair 246 0 := rfl
   rw [value, memoryWord, Nat.unpair_pair] at written
   exact ⟨after, written⟩
+
+/-- Actual public bytes/setup and native equations discharge all row PC inputs. -/
+theorem initialized_pc_path : nativeRow.start.word.Bounded ∧ nativeRow.start.word.lo % 4 = 0 ∧
+    nativeRow.finish.word.Bounded ∧ nativeRow.finish.word.toBitVec = nativeRow.start.word.toBitVec + 4 :=
+  (public_pc_soundness public_inputs setup_built accepted decoded).1 nativeRow (by simp [trace])
+
+theorem initialized_terminal_pc_bound : trace.terminal.word.Bounded :=
+  (public_pc_soundness public_inputs setup_built accepted decoded).2
+
+private def emptyTrace : Data mersenne31Modulus :=
+  { trace with
+    rows := []
+    terminal := trace.initial
+    terminalMemory := trace.initialMemory }
+
+/-- With no participating rows, the external terminal PC is bounded from the
+    actual public Sail initial PC, rather than an outgoing-row assumption. -/
+theorem empty_terminal_pc_bound : emptyTrace.terminal.word.Bounded := by
+  have inputs : ImageBoundary emptyTrace before [Cell.register 1] :=
+    ⟨public_inputs.domain, public_inputs.image, public_inputs.initial⟩
+  have accepted : Accepted emptyTrace := by
+    constructor
+    · intro row member; simp [emptyTrace] at member
+    · intro row member; simp [emptyTrace] at member
+    · exact List.Perm.refl _
+    · exact List.Perm.refl _
+  have setup : decoderSetupImage before 0 0 = some (DecoderSetup.mk [] 1) := rfl
+  have decoded : Decoded emptyTrace ⟨[], 1⟩ := by
+    intro row member; simp [emptyTrace] at member
+  exact (public_pc_soundness inputs setup accepted decoded).2
 
 end Tests.InitializedHistory

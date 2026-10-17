@@ -48,13 +48,16 @@ are checked. Initialized history now derives native read/write/terminal bounds;
 canonical decoder PC/immediate and register-index bounds are checked. Native history
 now constructs actual Sail reads/writes and intermediate states, including x0
 preservation from v2 masked writes. Derived clock order groups complete rows;
-readonly refreshes preserve the instruction pre-state even with aliases. Complete
-row-interface assembly and instruction execution are next.
+readonly refreshes preserve the instruction pre-state even with aliases. Public
+indexed PCs now derive every incoming PC alignment, including RV32 truncation.
+Native equations derive bounded outgoing successors, and state matching bounds the
+terminal PC. Complete row-interface assembly and instruction execution are next.
 
 1. Assemble ADD/SUB local interfaces from decoded public instructions and the
-   checked actual Sail row reads/writes. Derive preprocessing, immediate encoding,
-   selector mask and PC alignment; connect grouped cell states through actual Sail
-   retirement along the checked native PC/state path. The checked setup constructor selects the
+   checked actual Sail row reads/writes and derived native PC facts. Derive
+   preprocessing, immediate encoding and selector mask; connect grouped cell states
+   through actual Sail retirement along the checked native PC/state path. The checked
+   setup constructor selects the
    five arithmetic opcodes; Rust setup generation/export fidelity and mixed/custom
    program expansion remain separate. Preserve ten-column flatten order, raw
    funct3, original x0 fields and native minus-one padding. Do not replace logical

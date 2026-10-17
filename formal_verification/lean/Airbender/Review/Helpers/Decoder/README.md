@@ -29,3 +29,7 @@ only the destination write is masked. The local row interface preserves this.
 When constructing public tables, retain raw opcode funct3 bits even for U-type
 instructions and native minus-one padding; the source's nine-column projection
 cannot be copied unchanged.
+
+Successful construction also retains its exact indexed PC sequence. The
+[PC composition](../../../Proofs/Trace/PC.lean) derives all incoming bounds and
+alignment through RV32 truncation before applying native carry/wrap equations.

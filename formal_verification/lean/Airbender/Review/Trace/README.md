@@ -47,6 +47,11 @@ is supplied. Clock-derived [row grouping](../../Proofs/Trace/RowHistory.lean) an
 reads and actual masked writes, including aliases. Both the aliased ADD and
 [retained SUB-to-x0](../../../Tests/X0History.lean) have nonempty regressions.
 
+[Native PC soundness](PC.lean) derives incoming PC bounds/alignment from public
+indexed setup addresses, preserving RV32 truncation. The native carry/wrap
+equations prove bounded successors; state matching and the public initial PC
+bound the terminal PC, including empty traces. No per-row PC inputs are supplied.
+
 These are logical selected-profile results. Complete preprocessing/row assembly
 and whole Sail execution reaching the native terminal
 PC/cells remain in [the plan](../../../FORMAL_VERIFICATION_PLAN.md).

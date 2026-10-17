@@ -22,12 +22,13 @@ not completed v2 coverage.
 | Public decoder setup | Actual public bytes and pinned Sail decoding construct selected five-opcode rows at PCs 4*i with power-of-two capacity and the complete native-shaped minus-one tail. Missing/unsupported/effectful entries fail. Native packed-mask equations exclude padding before logical membership recovers public source evidence, zero flags and canonical PC/immediate words. Rust generation/export fidelity remains separate. |
 | Initialized native word bounds | Public Sail seeds, accepted matching/clocks and complete decoder membership derive every native read, actual masked write and terminal word bound. No per-row bounds or flag answers are supplied. |
 | Native-to-Sail history | Public seeds, native matching and complete decoder membership derive actual Sail cell reads/writes and all intermediate states. Native masked writes preserve x0 without v3 NOP preprocessing. Public RAM-cell alignment supplies disjoint byte windows. Native clocks derive row ordering/grouping and readonly refreshes stutter even with aliases; decoder indices identify actual Sail GPR reads/writes. Instruction execution remains separate. |
+| Native PC path | Successful public setup retains its indexed PCs and derives every incoming bound/alignment through RV32 truncation. Native carry/wrap equations derive bounded outgoing successors; state matching and the actual public initial PC bound the terminal PC, including empty traces. No per-row PC premise is supplied. Actual Sail retirement remains separate. |
 | Range tables | Native Clean static-table definitions with explicit range semantics; v2 setup-generator binding is pending. |
 
 ## Remaining work
 
 - Bind physical Rust decoder/setup exports and expand mixed/custom programs; complete decoded row-interface assembly.
-- Use the checked native-to-Sail row history to derive preprocessing, PC alignment and complete execution interfaces, then prove instruction retirement and whole-run execution.
+- Use the checked native-to-Sail row history to derive preprocessing and complete execution interfaces, then prove instruction retirement and whole-run execution.
 - Backport the remaining ordinary circuit families, worker operations, unified machine, full traces and initialization/teardown.
 - Retest v3 findings against v2 before carrying over counterexamples or temporary assumptions.
 - Prove the deferred import/compiler/cryptographic connections under a separately scoped claim.
@@ -42,8 +43,8 @@ Current checked checkpoint:
 
 - Library, both CLI entrypoints and all ten concrete test modules pass.
 - Importer regressions: 36 checks pass.
-- Axiom audit: 213 explicit roots; only propext, Classical.choice and Quot.sound.
-- All nine public Review theorems (two circuit claims, five trace claims and two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Axiom audit: 224 explicit roots; only propext, Classical.choice and Quot.sound.
+- All ten public Review theorems (two circuit claims, six trace claims and two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
 - Source provenance: 59 unchanged reused files, one native circuit artifact and thirteen native Rust sources.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
@@ -52,6 +53,7 @@ Current checked checkpoint:
 - Actual ADD bytes build a padded setup and yield public Sail source evidence and native read/terminal bounds. The retained padding is rejected by native equations. A bad zero flag passes local constraints and makes an unbounded write, but lookup membership rejects it.
 - U-type raw funct3, sign-extended ADDI, original-opcode x0 decoding and invalid setup capacity regressions pass.
 - Actual Sail history realizes the alias fixture; all three reads use the instruction pre-state and the destination writes 246. An initialized original SUB-to-x0 fixture retains nonzero operands/raw result and its masked write is an actual Sail stutter.
+- The accepted public alias fixture derives all PC inputs/successors and its terminal bound. An empty-row fixture derives its terminal bound from the actual public initial PC. The native wraparound regression passes through the factored column-only calculation.
 - No handwritten project warnings, admitted proofs or project axioms.
 - Serial bounded gates pass; parent/child timeout and memory probes confirm termination with no live owned processes.
 

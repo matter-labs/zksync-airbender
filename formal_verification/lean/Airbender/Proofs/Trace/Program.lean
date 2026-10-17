@@ -122,4 +122,34 @@ theorem query_register_indices {p : Nat} (hp : limbBase < p) {row : Row p} {entr
     (row.assignment row.decoderColumns.rd).val = entry.data.rd.toNat :=
   native_query_indices hp equal
 
+/-- Successful public construction retains exactly the supplied PC sequence. -/
+theorem program_addresses {Kind : Type} {before : Reference.RiscV.Sail.State}
+    {addresses : List (BitVec 32)} {program : List (ProgramEntry Kind)}
+    {projection : SailRV32.instruction → Option (DecoderData Kind)}
+    (image : programImageWith projection before addresses = some program) :
+    program.map ProgramEntry.pc = addresses := by
+  unfold programImageWith at image
+  induction addresses generalizing program with
+  | nil =>
+    simp only [List.mapM_nil, pure, Option.some.injEq] at image
+    subst program
+    rfl
+  | cons address addresses ih =>
+    rw [List.mapM_cons] at image
+    cases first : programEntryWith projection before address with
+    | none => simp [first, bind, Option.bind] at image
+    | some entry =>
+      cases rest : addresses.mapM (programEntryWith projection before) with
+      | none => simp [first, rest, bind, Option.bind] at image
+      | some entries =>
+        simp only [first, rest, bind, Option.bind, pure, Option.some.injEq] at image
+        subst program
+        simp only [List.map_cons, (entry_source first).1, ih rest]
+
+/-- Native indexed PCs retain four-byte alignment through RV32 truncation. -/
+theorem indexed_pc_aligned (i : Nat) :
+    (Word.ofBitVec (BitVec.ofNat 32 (4 * i))).lo % 4 = 0 := by
+  change ((4 * i % 4294967296) % 65536) % 4 = 0
+  omega
+
 end Airbender.Trace.Proofs

@@ -93,7 +93,12 @@ of public RAM cells supplies disjoint byte windows. Native clocks derive complet
 row grouping and the PC/state path; readonly refreshes preserve each instruction
 pre-state even with aliases. Decoder register indices select original Sail GPR
 accessors. These cell transfers do not yet establish instruction execution or
-retirement; complete local-interface assembly remains pending.
+retirement; complete local-interface assembly remains pending. The
+[native PC theorem](Airbender/Review/Trace/PC.lean) now derives all incoming PC
+bounds/alignment from public indexed setup PCs through RV32 truncation. Native
+v2 carry/wrap equations derive bounded outgoing successors. State matching and
+the actual public initial PC bound the external terminal PC, including empty
+traces. This PC-path result does not establish Sail retirement or whole execution.
 Exceptions, interrupts, completeness, whole Sail execution and cryptographic
 soundness are outside this checkpoint. The copied custom-operation specification
 has no checked v2 consumer yet.
