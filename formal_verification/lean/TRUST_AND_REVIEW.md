@@ -132,8 +132,13 @@ actual Sail reads/writes and final architectural matching. Neither desired reads
 intermediate states nor shadow/ROM-value equality are inputs. Ordinary/x0 ROM-load
 regressions retain the native shadow refresh even when its location has no Sail
 bytes and its value differs from the loaded ROM word. These logical public shadow
-seeds are not a proof of the physical native zero-boot profile. Numerical/port
-interfaces still need assembly for this projected boundary; physical boot/padding,
+seeds are not a proof of the physical native zero-boot profile. The
+[projected range claim](Airbender/Review/Trace/Families/WordMemory/Projection.lean)
+now derives every full native read, actual write and terminal word bound from
+canonical seed construction, accepted matching and full decoder membership.
+The existing shared decreasing-time induction and native load/store/mask rules
+are reused unchanged, retaining all shadow accesses. Effective-address/PC and
+port/Sail interfaces still need assembly for this boundary; physical boot/padding,
 ROM-table binding and original instruction execution remain separate.
 [Public ROM extraction](Airbender/Review/Helpers/Tables/WordROMImage.lean)
 now obtains words by actual original Sail reads. The

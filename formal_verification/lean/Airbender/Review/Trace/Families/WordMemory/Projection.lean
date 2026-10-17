@@ -23,4 +23,17 @@ theorem public_projected_sail_history {trace : Data mersenne31Modulus WordMemory
       SailStateMatches cells history after :=
   Proofs.projected_row_history (by decide) inputs accepted decoded aligned
 
+/-- Separate architectural/shadow initialization also bounds every full native
+    read, actual write and terminal token, including erased shadow accesses. -/
+theorem public_projected_value_bounds {trace : Data mersenne31Modulus WordMemoryFamily}
+    {setup : DecoderSetup} {before : Reference.RiscV.Sail.State}
+    {cells : List Cell} {seeds : List ShadowSeed}
+    (inputs : ShadowImageBoundary trace before cells seeds) (accepted : Accepted trace)
+    (decoded : Decoded trace setup) :
+    (∀ row ∈ trace.rows, ∀ port ∈ row.ports, (readToken row.assignment port).word.Bounded) ∧
+    (∀ row ∈ trace.rows, ∀ port ∈ row.ports,
+      (writeToken row.columns row.assignment port).word.Bounded) ∧
+    (∀ token ∈ trace.terminalMemory, token.word.Bounded) :=
+  Proofs.shadow_value_bounds (by decide) inputs accepted decoded
+
 end Airbender.WordMemory

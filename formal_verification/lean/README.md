@@ -70,7 +70,9 @@ token retained in logical matching. [Architectural projection](Airbender/Review/
 now realizes only GPR/RAM transfers while retaining the complete native history.
 A separate public initializer reads architectural cells and independently retains
 native shadow seeds. Ordinary/x0 ROM loads derive actual masked Sail writes even
-with unreadable shadow locations and distinct shadow/ROM values. Physical native
+with unreadable shadow locations and distinct shadow/ROM values. The same public
+constructor now derives all full native read/write/terminal ranges through the
+unchanged shared range induction, including erased shadow accesses. Physical native
 boot/ROM binding and original instruction execution remain separate.
 Remaining families, Rust
 setup generation/export and cryptographic argument soundness remain pending. This checkpoint does not inherit v3's completed coverage.

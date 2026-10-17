@@ -88,10 +88,13 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    Clean consistency/latest writes and realizes only architectural cells in Sail.
    A separate public initializer reads architectural cells and retains canonical
    native shadow seeds independently; clocks, unique addresses, x0 preservation
-   and complete row grouping are derived. Ordinary/x0 ROM-load regressions retain
+   and complete row grouping are derived. The same constructor now supplies
+   canonical seed bounds to the unchanged shared range induction, deriving all
+   full native read/write/terminal ranges, including erased shadows. Ordinary/x0 ROM-load regressions retain
    full matching and actual masked Sail writes with unreadable shadow locations
    and distinct native shadow/ROM values. Bind this initializer to physical native
-   boot/padding, extend numerical/port interfaces to the projected boundary, and
+   boot/padding, derive effective-address/PC and port/Sail interfaces for this
+   projected boundary, and
    connect actual ROM bytes, Sail memory/platform transport and original
    instruction execution/retirement interfaces. Physical setup/export binding remains open.
    Preserve v2 PC rollover and native timestamp offsets;

@@ -88,6 +88,40 @@ theorem shadow_image_projection {p : Nat} [Fact p.Prime]
   rw [combined, List.filter_append, real, ghost, List.append_nil]
   exact image
 
+/-- Both constructor branches contain canonical RV32 words. Native shadow
+    bounds require no corresponding Sail memory read. -/
+theorem shadow_image_bounds {p : Nat} [Fact p.Prime]
+    {trace : Data p WordMemoryFamily} {before : Reference.RiscV.Sail.State}
+    {cells : List Cell} {seeds : List ShadowSeed} (inputs : ShadowImageBoundary trace before cells seeds) :
+    ∀ token ∈ trace.initialMemory, token.word.Bounded := by
+  obtain ⟨tokens, image, combined⟩ := shadow_image_parts inputs
+  intro token present
+  rw [combined] at present
+  rcases List.mem_append.mp present with real | ghost
+  · exact Trace.Proofs.image_bounds image token real
+  · obtain ⟨seed, _, rfl⟩ := List.mem_map.mp ghost
+    rw [Trace.Proofs.initial_token_word]
+    exact Word.ofBitVec_bound _
+
+/-- The existing full-native decreasing-time range induction is unchanged.
+    It retains discarded shadow reads even though Sail transfers project them out. -/
+theorem shadow_value_bounds {p : Nat} [Fact p.Prime] (hp : 4194304 < p)
+    {trace : Data p WordMemoryFamily} {setup : DecoderSetup}
+    {before : Reference.RiscV.Sail.State} {cells : List Cell} {seeds : List ShadowSeed}
+    (inputs : ShadowImageBoundary trace before cells seeds) (accepted : Accepted trace)
+    (decoded : Decoded trace setup) :
+    (∀ row ∈ trace.rows, ∀ port ∈ row.ports, (readToken row.assignment port).word.Bounded) ∧
+    (∀ row ∈ trace.rows, ∀ port ∈ row.ports,
+      (writeToken row.columns row.assignment port).word.Bounded) ∧
+    (∀ token ∈ trace.terminalMemory, token.word.Bounded) := by
+  have clockSize : 2 * timestampBase + 4 < p := by dsimp [timestampBase]; omega
+  have clocks := shadow_clock_boundary (by omega) inputs
+  have bounds := shadow_image_bounds inputs
+  have rules := decoded_write_rules hp accepted decoded
+  exact ⟨Trace.Proofs.read_bounds_of_rules clockSize accepted clocks bounds rules,
+    Trace.Proofs.write_bounds_of_rules clockSize accepted clocks bounds rules,
+    Trace.Proofs.terminal_bounds_of_rules clockSize accepted clocks bounds rules⟩
+
 /-- Only the architectural GPR seed can have x0's address. Ghost native RAM
     values are independent of Sail ROM bytes and cannot enter this induction. -/
 theorem shadow_initial_zero {p : Nat} [Fact p.Prime]

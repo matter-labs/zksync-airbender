@@ -438,3 +438,8 @@ import Tests.WordMemoryProjection
 #print axioms Tests.WordMemoryProjection.projected_rom_history
 #print axioms Tests.WordMemoryProjection.projected_rom_sail_write
 #print axioms Tests.WordMemoryProjection.shadow_value_is_not_rom
+
+#print axioms Airbender.WordMemory.Proofs.shadow_image_bounds
+#print axioms Airbender.WordMemory.Proofs.shadow_value_bounds
+#print axioms Airbender.WordMemory.public_projected_value_bounds
+#print axioms Tests.WordMemoryProjection.projected_native_bounds

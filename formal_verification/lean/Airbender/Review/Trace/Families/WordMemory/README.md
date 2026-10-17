@@ -122,8 +122,17 @@ unreadable in Sail and its native value differs from the loaded ROM word. Full
 native history still contains its refresh; the projected transfer history derives
 the actual masked Sail register write.
 
+[Projected native bounds](Projection.lean) also derive every native read, actual
+write and terminal word range from this initializer. Canonical architectural and
+shadow seed words root the existing shared decreasing-time induction; native
+load/store/mask rules and decoder flag recovery are reused unchanged. Discarded
+shadow accesses retain their full native bounds even when Sail has no shadow
+bytes. Both ordinary and x0 ROM-load regressions check these ranges without any
+per-row or per-port bound premise.
+
 The public shadow seeds describe a logical initialized native image. Binding them
-to physical native zero boot, extending numerical/port assembly to this boundary,
+to physical native zero boot, deriving effective-address/PC and port/Sail
+interfaces for this boundary,
 Sail boot/padding state, actual ROM-table binding and original instruction
 execution/retirement remain open. The existing
 arithmetic execution registry and its claims retain their scope. Physical setup

@@ -281,4 +281,14 @@ theorem projected_rom_sail_write (discard : Bool) :
 theorem shadow_value_is_not_rom :
     (event false 1).2.2.2 ≠ (event false 2).2.2.2 := by decide
 
+/-- Full native ranges still include unreadable-in-Sail shadow cells, for both
+    original ROM loads and discarded x0 writes. No per-port bound is an input. -/
+theorem projected_native_bounds (discard : Bool) :
+    (∀ native ∈ (trace discard).rows, ∀ port ∈ native.ports,
+      (readToken native.assignment port).word.Bounded) ∧
+    (∀ native ∈ (trace discard).rows, ∀ port ∈ native.ports,
+      (writeToken native.columns native.assignment port).word.Bounded) ∧
+    (∀ token ∈ (trace discard).terminalMemory, token.word.Bounded) :=
+  Airbender.WordMemory.public_projected_value_bounds (inputs discard) (accepted discard) (decoded discard)
+
 end Tests.WordMemoryProjection

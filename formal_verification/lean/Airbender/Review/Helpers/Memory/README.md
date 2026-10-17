@@ -41,7 +41,9 @@ and appends independent canonical native shadow seeds. Its
 [short trace claim](../../Trace/Families/WordMemory/Projection.lean) derives actual
 Sail transfers and final architectural matching, including ROM loads with no
 Sail shadow bytes. Clocks, unique addresses and x0 preservation follow from the
-constructors and accepted native matching/decoding. Physical native zero-boot/ROM
+constructors and accepted native matching/decoding. The same initializer now
+supplies all seed bounds to the existing shared native range induction, deriving
+read/write/terminal ranges for retained and erased accesses alike. Physical native zero-boot/ROM
 binding and original instruction execution remain pending.
 [Indirect descriptors](IndirectPorts.lean) are retained reusable definitions;
 v2 batched worker arguments and indirect-port import remain pending.
