@@ -1017,8 +1017,7 @@ pub(super) fn print_inventory<F: PrimeField>(label: &str, audit: &LivenessAudit<
 #[cfg(test)]
 mod tests {
     use super::super::circuit::{
-        build_unified_artifact_core, UnifiedCircuitProfile, LARGE_FIELD_UNIFIED_PROFILE,
-        REGULAR_UNIFIED_PROFILE,
+        build_unified_artifact_core, UnifiedCircuitProfile, REGULAR_UNIFIED_PROFILE,
     };
     use super::*;
     use crate::witness_placer::graph_description::{Expression, RawExpression};
@@ -1115,11 +1114,7 @@ mod tests {
         audit_artifact("committed regular 2^23", &regular, REGULAR_UNIFIED_PROFILE);
         let wrap: GKRCircuitArtifact<Proth120> =
             read_layout("compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json");
-        audit_artifact(
-            "committed proth120 2^22",
-            &wrap,
-            LARGE_FIELD_UNIFIED_PROFILE,
-        );
+        audit_artifact("committed proth120 2^22", &wrap, REGULAR_UNIFIED_PROFILE);
     }
 
     /// Test of the test: readers injected into the compiled B layers are rejected, by the
@@ -1724,7 +1719,7 @@ mod tests {
             &read_ssa::<Proth120>(
                 "compiled_circuits/unified_reduced_machine_ssa_gkr_proth120.json",
             ),
-            LARGE_FIELD_UNIFIED_PROFILE,
+            REGULAR_UNIFIED_PROFILE,
         );
     }
 }

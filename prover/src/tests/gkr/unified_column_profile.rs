@@ -1,6 +1,6 @@
 //! Compare the baseline circuit with the globally selected column cuts.
 use cs::gkr_circuits::unified_reduced_machine::{
-    build_unified_artifact_core, UnifiedCircuitProfile, LARGE_FIELD_UNIFIED_PROFILE,
+    build_unified_artifact, build_unified_artifact_core, UnifiedCircuitProfile,
     REGULAR_UNIFIED_PROFILE,
 };
 use field::baby_bear::base::BabyBearField;
@@ -13,12 +13,7 @@ fn check<F: PrimeField>(label: &str, trace_log2: usize) {
         1,
         UnifiedCircuitProfile::Baseline,
     );
-    let cuts = build_unified_artifact_core::<F, BabyBearField>(
-        true,
-        trace_log2,
-        1,
-        UnifiedCircuitProfile::ColumnCuts,
-    );
+    let cuts = build_unified_artifact::<F>(true, trace_log2, 1);
     assert_eq!(baseline.memory_layout.total_width, 38, "{label}");
     assert_eq!(cuts.memory_layout.total_width, 38, "{label}");
     assert_eq!(baseline.witness_layout.total_width, 66, "{label}");
@@ -67,10 +62,6 @@ fn check<F: PrimeField>(label: &str, trace_log2: usize) {
 #[ignore = "compiles four unified artifacts"]
 fn unified_profile_width_vectors() {
     assert_eq!(REGULAR_UNIFIED_PROFILE, UnifiedCircuitProfile::ColumnCuts);
-    assert_eq!(
-        LARGE_FIELD_UNIFIED_PROFILE,
-        UnifiedCircuitProfile::ColumnCuts
-    );
     check::<BabyBearField>("regular 2^23", 23);
     check::<Proth120>("proth120 2^22", 22);
 }

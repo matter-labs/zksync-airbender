@@ -17,7 +17,7 @@ use ::field::{PrimeField, Proth120};
 use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
 use cs::gkr_circuits::unified_reduced_machine::{
     UnifiedCircuitProfile, FAMILY_2_FLAG_OFFSET, FAMILY_3_FLAG_OFFSET, FAMILY_4_LW_BIT,
-    LARGE_FIELD_UNIFIED_PROFILE, REGULAR_UNIFIED_PROFILE, UNIFIED_REDUCED_MACHINE_NUM_FLAGS,
+    REGULAR_UNIFIED_PROFILE, UNIFIED_REDUCED_MACHINE_NUM_FLAGS,
 };
 use cs::gkr_circuits::ExecutorFamilyDecoderData;
 use riscv_transpiler::ir::ReducedMachineDecoderConfig;
@@ -144,6 +144,6 @@ fn generated_witness_satisfies_proth120_wrap_layout() {
         &circuit,
         &trace,
         &decoder_table,
-        LARGE_FIELD_UNIFIED_PROFILE,
+        REGULAR_UNIFIED_PROFILE,
     );
 }
