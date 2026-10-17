@@ -17,7 +17,7 @@ private def sourceByte (i : Nat) : Nat := (source.extractLsb' (8 * i) 8).toNat
 private def result (tag : Fin 4) (zero : Bool) : Nat :=
   if tag.val = 3 then 315468672 else
     (Verification.shiftOperation (code tag) source (amount tag zero)).toNat
-private def part (tag : Fin 4) (zero : Bool) (i j : Nat) : Nat :=
+private def «part» (tag : Fin 4) (zero : Bool) (i j : Nat) : Nat :=
   (BitVec.extractLsb' (8 * j) 8
     (Verification.shiftByteContribution i (sourceByte i) (amount tag zero) (code tag))).toNat
 
@@ -37,12 +37,12 @@ private def row (tag : Fin 4) (immediate zero : Bool) : Nat → ZMod babyBearMod
   | 32 => (result tag zero / 65536 : Nat)
   | 35 | 54 => if zeroRight tag immediate then 0 else amount tag zero
   | 55 => 8
-  | n => if 36 ≤ n ∧ n < 52 then part tag zero ((n - 36) / 4) ((n - 36) % 4) else
+  | n => if 36 ≤ n ∧ n < 52 then «part» tag zero ((n - 36) / 4) ((n - 36) % 4) else
     if 56 ≤ n ∧ n < 92 then
       let i := (n - 56) / 9
       match (n - 56) % 9 with
       | 0 => i | 1 => sourceByte i | 2 => amount tag zero | 3 => code tag
-      | 8 => 9 | j => part tag zero i (j - 4)
+      | 8 => 9 | j => «part» tag zero i (j - 4)
     else 0
 
 private def rowIndex (xs : Vector (ZMod babyBearModulus) 10) : Nat :=
@@ -77,10 +77,11 @@ private theorem satisfies (tag : Fin 4) (immediate zero : Bool) :
       simp [importedConstraints, FlatOperation.lookups, Lookup.Contains,
         Verification.shiftBinopLookup, Verification.shiftBinopTable, Table.fromStatic,
         Table.toRaw, Expression.eval, Verification.environment, row, amount,
-        sourceByte, source, part, code, zeroRight, Verification.shiftByteContribution]
+        sourceByte, source, «part», code, zeroRight, Verification.shiftByteContribution]
     all_goals solve
       | (apply Verification.range16_contains; decide)
       | (with_unfolding_all refine checkedRow _ (by decide) ?_
+         rw [Verification.shiftBinopRow_eq_reference]
          apply Vector.ext
          intro j bound
          rw [Vector.getElem_map]

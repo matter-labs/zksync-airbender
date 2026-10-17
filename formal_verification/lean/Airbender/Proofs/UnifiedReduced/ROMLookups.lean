@@ -8,10 +8,11 @@ set_option maxRecDepth 16384
 set_option maxHeartbeats 1000000
 
 private theorem fixed_nonrom (i : Fin 1048961) : (fixedRow i)[9] ≠ 34 := by
-  unfold fixedRow
+  rw [fixedRow_eq_reference]
+  unfold referenceFixedRow
   dsimp only
   split
-  · simp only [binaryRow, Vector.getElem_set_self]
+  · simp only [referenceBinaryRow, Vector.getElem_set_self]
     have bound := shift_tag_bound ⟨i.val, by assumption⟩
     unfold binaryTag
     split_ifs <;> omega

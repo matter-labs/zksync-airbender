@@ -24,7 +24,7 @@ srcDir = "generated/sail-rv32"
 
 [[lean_lib]]
 name = "Airbender"
-extraDepTargets = ["addSubJson", "jumpBranchSltJson", "unsignedMulDivJson", "shiftBinopJson", "wordMemoryJson", "subwordMemoryJson", "unifiedReducedJson", "blakeGJson", "blakeRoundJson", "bigintJson", "keccakJson", "setupSmokeJson", "setupAddSubJson", "setupBigintJson", "setupBlakeGJson", "setupKeccakJson", "setupBlakeRoundJson"]
+extraDepTargets = ["addSubJson", "jumpBranchSltJson", "unsignedMulDivJson", "shiftBinopJson", "wordMemoryJson", "subwordMemoryJson", "unifiedReducedJson", "blakeGJson", "blakeRoundJson", "bigintJson", "keccakJson", "setupSmokeJson", "setupAddSubJson", "setupBigintJson", "setupBlakeGJson", "setupKeccakJson", "setupBlakeRoundJson", "setupJumpBranchJson", "setupMulDivJson", "setupShiftBinopJson", "setupWordMemoryJson", "setupSubwordMemoryJson", "setupUnifiedJson", "setupInitsJson", "initializationJson"]
 
 [[lean_lib]]
 name = "Tests"
@@ -120,4 +120,44 @@ text = true
 [[input_file]]
 name = "setupBlakeRoundJson"
 path = "artifacts/setup/blake-round.json"
+text = true
+
+[[input_file]]
+name = "setupJumpBranchJson"
+path = "artifacts/setup/jump-branch.json"
+text = true
+
+[[input_file]]
+name = "setupMulDivJson"
+path = "artifacts/setup/mul-div.json"
+text = true
+
+[[input_file]]
+name = "setupShiftBinopJson"
+path = "artifacts/setup/shift-binop.json"
+text = true
+
+[[input_file]]
+name = "setupWordMemoryJson"
+path = "artifacts/setup/word-memory.json"
+text = true
+
+[[input_file]]
+name = "setupSubwordMemoryJson"
+path = "artifacts/setup/subword-memory.json"
+text = true
+
+[[input_file]]
+name = "setupUnifiedJson"
+path = "artifacts/setup/unified.json"
+text = true
+
+[[input_file]]
+name = "setupInitsJson"
+path = "artifacts/setup/inits-and-teardowns.json"
+text = true
+
+[[input_file]]
+name = "initializationJson"
+path = "../../cs/compiled_circuits/inits_and_teardowns_layout_no_caches_gkr.json"
 text = true

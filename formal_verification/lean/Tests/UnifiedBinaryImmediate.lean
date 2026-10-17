@@ -56,14 +56,20 @@ private def before (kind : Fin 6) : State :=
 
 private def row (kind : Fin 6) : Row babyBearModulus UnifiedFamily := ⟨.machine, assignment kind⟩
 
-private theorem fixedMember (initial : State) (index : Fin 1048961)
+private theorem fixedMember (initial : State) (index : Fin 524545)
     (value : Vector (ZMod babyBearModulus) 10)
-    (equal : value = (UnifiedReduced.Setup.fixedRow index).map
-      (fun n : Nat => (n : ZMod babyBearModulus))) :
+    (equal : value = ((Verification.referenceShiftBinopRow index).set 9
+      (UnifiedReduced.Setup.binaryTag (Verification.referenceShiftBinopRow index)[9])).map
+        (fun n : Nat => (n : ZMod babyBearModulus))) :
     (UnifiedReduced.Setup.table initial).Contains #[] value := by
   change ∃ i : Fin 2097537, _
   refine ⟨⟨index.val, by have bound := index.isLt; omega⟩, ?_⟩
-  simpa only [UnifiedReduced.Setup.row, dif_pos index.isLt] using equal
+  dsimp only
+  rw [UnifiedReduced.Setup.Proofs.row_eq_reference]
+  have fixedBound : index.val < 1048961 := by have := index.isLt; omega
+  simpa only [UnifiedReduced.Setup.referenceRow, dif_pos fixedBound,
+    UnifiedReduced.Setup.referenceFixedRow, dif_pos index.isLt,
+    UnifiedReduced.Setup.referenceBinaryRow, Verification.shiftBinopRow_eq_reference] using equal
 
 private theorem constraintsFor (initial : State) (kind : Fin 6) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (assignment kind)) (UnifiedReduced.clockConstraints (UnifiedReduced.Setup.table initial)) := by
@@ -75,32 +81,32 @@ private theorem constraintsFor (initial : State) (kind : Fin 6) : FlatOperation.
     all_goals repeat' apply And.intro
     all_goals solve
       | (apply Verification.range16_contains; decide)
-      | (apply fixedMember initial (7 : Fin 1048961); with_unfolding_all decide)
-      | (apply fixedMember initial (254 : Fin 1048961); with_unfolding_all decide)
-      | (apply fixedMember initial (13689 : Fin 1048961); with_unfolding_all decide)
-      | (apply fixedMember initial (4871 : Fin 1048961); with_unfolding_all decide)
-      | (apply fixedMember initial (52737 : Fin 1048961); with_unfolding_all decide)
-      | (apply fixedMember initial (44033 : Fin 1048961); with_unfolding_all decide)
-      | (apply fixedMember initial (13808 : Fin 1048961); with_unfolding_all decide)
-      | (apply fixedMember initial (5118 : Fin 1048961); with_unfolding_all decide)
-      | (apply fixedMember initial (52992 : Fin 1048961); with_unfolding_all decide)
-      | (apply fixedMember initial (44288 : Fin 1048961); with_unfolding_all decide)
-      | (apply fixedMember initial (79225 : Fin 1048961); with_unfolding_all decide)
-      | (apply fixedMember initial (70407 : Fin 1048961); with_unfolding_all decide)
-      | (apply fixedMember initial (118273 : Fin 1048961); with_unfolding_all decide)
-      | (apply fixedMember initial (109569 : Fin 1048961); with_unfolding_all decide)
-      | (apply fixedMember initial (79344 : Fin 1048961); with_unfolding_all decide)
-      | (apply fixedMember initial (70654 : Fin 1048961); with_unfolding_all decide)
-      | (apply fixedMember initial (118528 : Fin 1048961); with_unfolding_all decide)
-      | (apply fixedMember initial (109824 : Fin 1048961); with_unfolding_all decide)
-      | (apply fixedMember initial (144761 : Fin 1048961); with_unfolding_all decide)
-      | (apply fixedMember initial (135943 : Fin 1048961); with_unfolding_all decide)
-      | (apply fixedMember initial (183809 : Fin 1048961); with_unfolding_all decide)
-      | (apply fixedMember initial (175105 : Fin 1048961); with_unfolding_all decide)
-      | (apply fixedMember initial (144880 : Fin 1048961); with_unfolding_all decide)
-      | (apply fixedMember initial (136190 : Fin 1048961); with_unfolding_all decide)
-      | (apply fixedMember initial (184064 : Fin 1048961); with_unfolding_all decide)
-      | (apply fixedMember initial (175360 : Fin 1048961); with_unfolding_all decide)
+      | (apply fixedMember initial (7 : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember initial (254 : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember initial (13689 : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember initial (4871 : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember initial (52737 : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember initial (44033 : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember initial (13808 : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember initial (5118 : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember initial (52992 : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember initial (44288 : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember initial (79225 : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember initial (70407 : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember initial (118273 : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember initial (109569 : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember initial (79344 : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember initial (70654 : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember initial (118528 : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember initial (109824 : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember initial (144761 : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember initial (135943 : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember initial (183809 : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember initial (175105 : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember initial (144880 : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember initial (136190 : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember initial (184064 : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember initial (175360 : Fin 524545); with_unfolding_all decide)
       | decide
   · fin_cases kind
     all_goals simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]

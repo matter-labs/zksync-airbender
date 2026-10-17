@@ -37,8 +37,7 @@ fixed or independently shown to be enforced. See the [case register](FINDINGS.md
 
 | Claim | Blocker |
 | --- | --- |
-| Initialization/teardown local soundness | Interpret the imported GKR gates and prove their boundary-token correspondence; queued after table importing. |
-| Native setup table import | Shared ranges and all bigint/G/round/Keccak fixed tables are imported and checked; standard fixed tables and program-dependent consumers remain. |
+| Initialization/teardown local soundness | Interpret the imported GKR gates and prove their boundary-token correspondence; implementation authorized. |
 
 AIH-334's EVM check is fixed and tested. AIH-336's tail/cache correction passes CPU
 regressions; accelerated runtime/proof replay and other findings remain in the case register.
@@ -48,10 +47,12 @@ Separately scoped work: [deferred milestones](FORMAL_VERIFICATION_PLAN.md#deferr
 
 ## Validation
 
-- Library, both executables and all 128 concrete test modules pass.
+Current checked checkpoint:
+
+- Library, both executables and all 133 concrete test modules pass.
 - Importer regressions pass.
-- Axiom audit: 3,011 roots, 92 axiom-free; only `propext`, `Classical.choice` and `Quot.sound`.
-- All 158 public Review theorem roots are audited; review/reference checks pass.
+- Axiom audit: 3,624 roots, 149 axiom-free; only `propext`, `Classical.choice` and `Quot.sound`.
+- All 162 public Review theorem roots are audited; review/reference checks pass.
 - No handwritten project diagnostics, `sorry` or project axioms.
 
 [Reproduce the checks](README.md#reproduce).

@@ -48,6 +48,7 @@ theorem satisfies (indirect wrap zero : Bool) :
     simp [JumpBranchSlt.importedConstraints, FlatOperation.ConstraintsHoldFlat,
       Expression.eval, Verification.environment, row, initial, offset, base, final]
   repeat' apply And.intro
+  all_goals try (unfold Verification.jumpCleanup; rw [Verification.jumpCleanupTable_characterization])
   all_goals solve
     | (apply Verification.range16_contains; decide)
     | (with_unfolding_all change ∃ i : Fin 65536,

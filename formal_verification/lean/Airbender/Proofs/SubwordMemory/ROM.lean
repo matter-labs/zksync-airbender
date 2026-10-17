@@ -1,3 +1,4 @@
+import Airbender.Proofs.Tables.SubwordCharacterization
 import Airbender.Proofs.SubwordMemory.Lookups
 
 namespace Airbender.Verification
@@ -15,50 +16,124 @@ private def romData (program : Nat → BitVec 32) (byte : Bool) (i : Nat) : Nat 
   subwordLoadLimbs byte (half + 65536 * (i / (if byte then 4 else 2) % 2) +
     (if byte then 131072 * (i % 2) else 0))
 
+private theorem tag_ite (condition : Prop) [Decidable condition]
+    (a b : Vector Nat 9) :
+    (if condition then a else b)[8] = if condition then a[8] else b[8] := by
+  split <;> rfl
+
+private theorem reference_rom_tag (program : Nat → BitVec 32) (i : Fin 13238273) :
+    (referenceSubwordRow program i)[8] =
+      if i.val = 0 then 0 else if i.val < 131073 then 29
+      else if i.val < 262145 then 30 else if i.val < 393217 then 42
+      else if i.val < 655361 then 43 else if i.val < 4849665 then 44 else 45 := by
+  unfold referenceSubwordRow subwordRow
+  simp only [tag_ite, subwordDataRow, Vector.getElem_mk,
+    List.getElem_toArray, List.getElem_cons_zero, List.getElem_cons_succ]
+
+private theorem half_key (n : Nat) :
+    romKey false n = 4 * (n / 4) + 4194304 * (n / 2 % 2) + 8388608 * (n % 2) := by
+  simp only [romKey, Bool.false_eq_true, reduceIte, Nat.div_one, Nat.add_zero]
+
+private theorem half_data (program : Nat → BitVec 32) (n : Nat) :
+    romData program false n = subwordLoadLimbs false
+      (((program (n / 4)).toNat / (if n % 2 = 1 then 65536 else 1)) % 65536 +
+        65536 * (n / 2 % 2)) := by
+  simp only [romData, Bool.false_eq_true, reduceIte, Nat.div_one, Nat.add_zero]
+
+private theorem byte_key (n : Nat) :
+    romKey true n = 4 * (n / 8) + 4194304 * (n / 4 % 2) +
+      8388608 * (n / 2 % 2) + 16777216 * (n % 2) := by
+  simp only [romKey, reduceIte]
+
+private theorem byte_data (program : Nat → BitVec 32) (n : Nat) :
+    romData program true n = subwordLoadLimbs true
+      (((program (n / 8)).toNat / (if n / 2 % 2 = 1 then 65536 else 1)) % 65536 +
+        65536 * (n / 4 % 2) + 131072 * (n % 2)) := by
+  simp only [romData, reduceIte]
+
+private theorem reference_half_row (program : Nat → BitVec 32) (i : Fin 13238273)
+    (lower : 655361 ≤ i.val) (upper : i.val < 4849665) :
+    referenceSubwordRow program i =
+      subwordDataRow (romKey false (i.val - 655361))
+        (romData program false (i.val - 655361)).1
+        (romData program false (i.val - 655361)).2 44 := by
+  unfold referenceSubwordRow subwordRow
+  simp only [if_neg (show i.val ≠ 0 by omega),
+    if_neg (show ¬i.val < 131073 by omega), if_neg (show ¬i.val < 262145 by omega),
+    if_neg (show ¬i.val < 393217 by omega), if_neg (show ¬i.val < 655361 by omega),
+    if_pos upper]
+  rw [half_key, half_data]
+
+private theorem reference_byte_row (program : Nat → BitVec 32) (i : Fin 13238273)
+    (lower : 4849665 ≤ i.val) :
+    referenceSubwordRow program i =
+      subwordDataRow (romKey true (i.val - 4849665))
+        (romData program true (i.val - 4849665)).1
+        (romData program true (i.val - 4849665)).2 45 := by
+  unfold referenceSubwordRow subwordRow
+  simp only [if_neg (show i.val ≠ 0 by omega),
+    if_neg (show ¬i.val < 131073 by omega), if_neg (show ¬i.val < 262145 by omega),
+    if_neg (show ¬i.val < 393217 by omega), if_neg (show ¬i.val < 655361 by omega),
+    if_neg (show ¬i.val < 4849665 by omega)]
+  rw [byte_key, byte_data]
+
+private theorem mapped_field {p : Nat} {entry : Vector (ZMod p) 9} {row : Vector Nat 9}
+    (equal : entry = row.map (fun n : Nat => (n : ZMod p))) (lane : Fin 9) :
+    entry[lane.val] = (row[lane.val] : ZMod p) := by
+  simpa only [Vector.getElem_map] using
+    congrArg (fun values : Vector (ZMod p) 9 => values[lane.val]) equal
+
 set_option maxRecDepth 4096 in
 set_option maxHeartbeats 800000 in
+private theorem rom_values_reference {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
+    {program : Nat → BitVec 32} {entry : Vector (ZMod p) 9} (byte : Bool)
+    (h : ∃ i : Fin 13238273, entry =
+      (referenceSubwordRow program i).map (fun n : Nat => (n : ZMod p)))
+    (selected : entry[8] = ((if byte then 45 else 44 : Nat) : ZMod p)) :
+    ∃ i : Nat, i < (if byte then 8388608 else 4194304) ∧ entry[0] = (romKey byte i : ZMod p) ∧
+      entry[1] = ((romData program byte i).1 : ZMod p) ∧ entry[2] = ((romData program byte i).2 : ZMod p) := by
+  obtain ⟨i, equal⟩ := h
+  have tagBound : (referenceSubwordRow program i)[8] < p := by
+    rw [reference_rom_tag]
+    split_ifs <;> omega
+  have natural : (referenceSubwordRow program i)[8] = (if byte then 45 else 44) := by
+    apply bounded_nat_eq (F := ZMod p) (p := p) tagBound
+      (by cases byte <;> simp only [Bool.false_eq_true, reduceIte] <;> omega)
+    exact (mapped_field equal ⟨8, by decide⟩).symm.trans selected
+  rw [reference_rom_tag] at natural
+  have indexBound := i.isLt
+  have region : if byte then 4849665 ≤ i.val else 655361 ≤ i.val ∧ i.val < 4849665 := by
+    cases byte <;> simp only [Bool.false_eq_true, reduceIte] at natural ⊢
+    all_goals split_ifs at natural <;> omega
+  cases byte
+  · simp only [Bool.false_eq_true, reduceIte] at region ⊢
+    have shape := equal.trans (congrArg (fun row : Vector Nat 9 =>
+      row.map (fun n : Nat => (n : ZMod p))) (reference_half_row program i region.1 region.2))
+    refine ⟨i.val - 655361, by omega, ?_, ?_, ?_⟩
+    · exact mapped_field shape ⟨0, by decide⟩
+    · exact mapped_field shape ⟨1, by decide⟩
+    · exact mapped_field shape ⟨2, by decide⟩
+  · simp only [reduceIte] at region ⊢
+    have shape := equal.trans (congrArg (fun row : Vector Nat 9 =>
+      row.map (fun n : Nat => (n : ZMod p))) (reference_byte_row program i region))
+    refine ⟨i.val - 4849665, by omega, ?_, ?_, ?_⟩
+    · exact mapped_field shape ⟨0, by decide⟩
+    · exact mapped_field shape ⟨1, by decide⟩
+    · exact mapped_field shape ⟨2, by decide⟩
+
+set_option maxRecDepth 4096 in
 private theorem rom_values {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
     {program : Nat → BitVec 32} {entry : Vector (ZMod p) 9} (byte : Bool)
     (h : (subwordTable program).Contains #[] entry)
     (selected : entry[8] = ((if byte then 45 else 44 : Nat) : ZMod p)) :
     ∃ i : Nat, i < (if byte then 8388608 else 4194304) ∧ entry[0] = (romKey byte i : ZMod p) ∧
       entry[1] = ((romData program byte i).1 : ZMod p) ∧ entry[2] = ((romData program byte i).2 : ZMod p) := by
-  change ∃ i : Fin 13238273, entry = (subwordRow program i).map (fun (n : Nat) => (n : ZMod p)) at h
-  obtain ⟨i, rfl⟩ := h
-  have tagBound : (subwordRow program i)[8] < p := by
-    unfold subwordRow
-    dsimp only
-    split_ifs <;> first
-      | (change (0 : Nat) < p; omega)
-      | (change (29 : Nat) < p; omega)
-      | (change (30 : Nat) < p; omega)
-      | (change (42 : Nat) < p; omega)
-      | (change (43 : Nat) < p; omega)
-      | (change (44 : Nat) < p; omega)
-      | (change (45 : Nat) < p; omega)
-  have natural : (subwordRow program i)[8] = (if byte then 45 else 44) := by
-    apply bounded_nat_eq (F := ZMod p) (p := p) tagBound
-      (by cases byte <;> simp only [Bool.false_eq_true, if_false, if_true] <;> omega)
-    simpa only [Vector.getElem_map] using selected
-  have indexBound := i.isLt
-  cases byte <;> unfold subwordRow at natural ⊢ <;> dsimp only at natural ⊢
-  all_goals split_ifs at natural ⊢
-  all_goals solve
-    | contradiction
-    | (change (29 : Nat) = _ at natural; contradiction)
-    | (change (30 : Nat) = _ at natural; contradiction)
-    | (change (42 : Nat) = _ at natural; contradiction)
-    | (change (43 : Nat) = _ at natural; contradiction)
-    | (change (44 : Nat) = 45 at natural; contradiction)
-    | (change (45 : Nat) = 44 at natural; contradiction)
-    | (change (44 : Nat) = 44 at natural
-       refine ⟨i.val - 655361, by omega, ?_, ?_, ?_⟩
-       all_goals simp_all only [romKey, romData, Bool.false_eq_true, if_false, Nat.div_one, Vector.getElem_map]
-       all_goals rfl)
-    | (change (45 : Nat) = 45 at natural
-       refine ⟨i.val - 4849665, by omega, ?_, ?_, ?_⟩
-       all_goals simp_all only [romKey, romData, if_true, Vector.getElem_map]
-       all_goals rfl)
+  apply rom_values_reference hp byte ?_ selected
+  change ∃ i : Fin 13238273, entry =
+    (subwordNativeRow program i).map (fun n : Nat => (n : ZMod p)) at h
+  obtain ⟨i, equal⟩ := h
+  exact ⟨i, equal.trans (congrArg (fun row : Vector Nat 9 =>
+    row.map (fun n : Nat => (n : ZMod p))) (subwordNativeRow_eq_reference program i))⟩
 
 /-- Every modeled ROM row returns canonical result limbs, independently of
     address/key reconstruction. This supplies native history's write bounds. -/

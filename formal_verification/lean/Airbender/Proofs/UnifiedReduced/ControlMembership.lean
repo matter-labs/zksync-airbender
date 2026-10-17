@@ -34,6 +34,7 @@ theorem control_constraints [Fact p.Prime] (hp : 4194304 ≤ p)
     apply (pairLookup regIsZeroTable _ _).table.implied_by_completeness
     apply (Lookup.completeness_def regIsZeroTable (Verification.environment w)
       (.var ⟨78⟩ + .var ⟨79⟩, .var ⟨57⟩)).mpr
+    simp only [regIsZeroTable_characterization]
     with_unfolding_all change ∃ i : Fin 131072, (w 78 + w 79, w 57) =
       ((i.val : ZMod p), ((if i.val = 0 then 1 else 0 : Nat) : ZMod p))
     refine ⟨⟨(w 78 + w 79).val, zeroBound⟩, ?_⟩
@@ -42,6 +43,7 @@ theorem control_constraints [Fact p.Prime] (hp : 4194304 ≤ p)
       (Verification.environment w) := by
     apply (pairLookup u16SignTable _ _).table.implied_by_completeness
     apply (Lookup.completeness_def u16SignTable (Verification.environment w) (.var ⟨37⟩, .var ⟨58⟩)).mpr
+    simp only [u16SignTable_characterization]
     with_unfolding_all change ∃ i : Fin 65536, (w 37, w 58) =
       ((i.val : ZMod p), ((i.val / 32768 : Nat) : ZMod p))
     exact ⟨⟨(w 37).val, leftHi⟩, Prod.ext (ZMod.natCast_zmod_val _).symm values.2.1⟩
@@ -50,6 +52,7 @@ theorem control_constraints [Fact p.Prime] (hp : 4194304 ≤ p)
     apply (jumpCleanup _ _ _).table.implied_by_completeness
     apply (Lookup.completeness_def jumpCleanupTable (Verification.environment w)
       (.var ⟨81⟩, .var ⟨56⟩, .var ⟨30⟩)).mpr
+    simp only [jumpCleanupTable_characterization]
     with_unfolding_all change ∃ i : Fin 65536, (w 81, w 56, w 30) =
       ((i.val : ZMod p), ((i.val / 2 % 2 : Nat) : ZMod p), ((i.val - i.val % 4 : Nat) : ZMod p))
     exact ⟨⟨(w 81).val, raw⟩, Prod.ext (ZMod.natCast_zmod_val _).symm

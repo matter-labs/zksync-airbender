@@ -58,6 +58,17 @@ theorem original_decoder (kind : Fin 4) (state : State) :
     run (SailRV32.Functions.encdec_backwards (bits kind)) state = .ok (entry kind).instruction state := by
   fin_cases kind <;> with_unfolding_all rfl
 
+private theorem fixedMember (initial : State) (index : Fin 1048961)
+    (value : Vector (ZMod babyBearModulus) 10)
+    (equal : value = (Setup.referenceFixedRow index).map
+      (fun n : Nat => (n : ZMod babyBearModulus))) :
+    (Setup.table initial).Contains #[] value := by
+  change ∃ i : Fin 2097537, _
+  refine ⟨⟨index.val, by have bound := index.isLt; omega⟩, ?_⟩
+  dsimp only
+  rw [Setup.Proofs.row_eq_reference]
+  simpa only [Setup.referenceRow, dif_pos index.isLt] using equal
+
 theorem native_constraints (kind : Fin 4) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (assignment kind)) (clockConstraints (Setup.table (before kind))) := by
   apply Verification.holds_append
@@ -67,25 +78,59 @@ theorem native_constraints (kind : Fin 4) : FlatOperation.ConstraintsHoldFlat
       Lookup.Contains, Table.toRaw, fromElements]
     all_goals repeat' apply And.intro
     all_goals solve
-      | decide
       | (apply Verification.range16_contains; decide)
-      | exact ⟨⟨1, by decide⟩, by with_unfolding_all decide⟩
-      | (refine ⟨⟨786817 + 0 * 65536 + 0x34 * 256 + 0x78, by decide⟩, ?_⟩; with_unfolding_all decide)
-      | (refine ⟨⟨786817 + 0 * 65536 + 0x12 * 256 + 0x56, by decide⟩, ?_⟩; with_unfolding_all decide)
-      | (refine ⟨⟨786817 + 0 * 65536 + 0xcd * 256 + 1, by decide⟩, ?_⟩; with_unfolding_all decide)
-      | (refine ⟨⟨786817 + 0 * 65536 + 0xab * 256 + 0xef, by decide⟩, ?_⟩; with_unfolding_all decide)
-      | (refine ⟨⟨786817 + 1 * 65536 + 0x34 * 256 + 0x78, by decide⟩, ?_⟩; with_unfolding_all decide)
-      | (refine ⟨⟨786817 + 1 * 65536 + 0x12 * 256 + 0x56, by decide⟩, ?_⟩; with_unfolding_all decide)
-      | (refine ⟨⟨786817 + 1 * 65536 + 0xcd * 256 + 1, by decide⟩, ?_⟩; with_unfolding_all decide)
-      | (refine ⟨⟨786817 + 1 * 65536 + 0xab * 256 + 0xef, by decide⟩, ?_⟩; with_unfolding_all decide)
-      | (refine ⟨⟨786817 + 2 * 65536 + 0x34 * 256 + 0x78, by decide⟩, ?_⟩; with_unfolding_all decide)
-      | (refine ⟨⟨786817 + 2 * 65536 + 0x12 * 256 + 0x56, by decide⟩, ?_⟩; with_unfolding_all decide)
-      | (refine ⟨⟨786817 + 2 * 65536 + 0xcd * 256 + 1, by decide⟩, ?_⟩; with_unfolding_all decide)
-      | (refine ⟨⟨786817 + 2 * 65536 + 0xab * 256 + 0xef, by decide⟩, ?_⟩; with_unfolding_all decide)
-      | (refine ⟨⟨786817 + 3 * 65536 + 0x34 * 256 + 0x78, by decide⟩, ?_⟩; with_unfolding_all decide)
-      | (refine ⟨⟨786817 + 3 * 65536 + 0x12 * 256 + 0x56, by decide⟩, ?_⟩; with_unfolding_all decide)
-      | (refine ⟨⟨786817 + 3 * 65536 + 0xcd * 256 + 1, by decide⟩, ?_⟩; with_unfolding_all decide)
-      | (refine ⟨⟨786817 + 3 * 65536 + 0xab * 256 + 0xef, by decide⟩, ?_⟩; with_unfolding_all decide)
+      | (apply fixedMember _ (⟨1, by decide⟩ : Fin 1048961)
+         simp only [Setup.referenceFixedRow, Setup.referenceBinaryRow, Verification.shiftBinopRow_eq_reference]
+         with_unfolding_all decide)
+      | (apply fixedMember _ (⟨786817 + 0 * 65536 + 0x34 * 256 + 0x78, by decide⟩ : Fin 1048961)
+         simp only [Setup.referenceFixedRow, Setup.referenceBinaryRow, Verification.shiftBinopRow_eq_reference]
+         with_unfolding_all decide)
+      | (apply fixedMember _ (⟨786817 + 0 * 65536 + 0x12 * 256 + 0x56, by decide⟩ : Fin 1048961)
+         simp only [Setup.referenceFixedRow, Setup.referenceBinaryRow, Verification.shiftBinopRow_eq_reference]
+         with_unfolding_all decide)
+      | (apply fixedMember _ (⟨786817 + 0 * 65536 + 0xcd * 256 + 1, by decide⟩ : Fin 1048961)
+         simp only [Setup.referenceFixedRow, Setup.referenceBinaryRow, Verification.shiftBinopRow_eq_reference]
+         with_unfolding_all decide)
+      | (apply fixedMember _ (⟨786817 + 0 * 65536 + 0xab * 256 + 0xef, by decide⟩ : Fin 1048961)
+         simp only [Setup.referenceFixedRow, Setup.referenceBinaryRow, Verification.shiftBinopRow_eq_reference]
+         with_unfolding_all decide)
+      | (apply fixedMember _ (⟨786817 + 1 * 65536 + 0x34 * 256 + 0x78, by decide⟩ : Fin 1048961)
+         simp only [Setup.referenceFixedRow, Setup.referenceBinaryRow, Verification.shiftBinopRow_eq_reference]
+         with_unfolding_all decide)
+      | (apply fixedMember _ (⟨786817 + 1 * 65536 + 0x12 * 256 + 0x56, by decide⟩ : Fin 1048961)
+         simp only [Setup.referenceFixedRow, Setup.referenceBinaryRow, Verification.shiftBinopRow_eq_reference]
+         with_unfolding_all decide)
+      | (apply fixedMember _ (⟨786817 + 1 * 65536 + 0xcd * 256 + 1, by decide⟩ : Fin 1048961)
+         simp only [Setup.referenceFixedRow, Setup.referenceBinaryRow, Verification.shiftBinopRow_eq_reference]
+         with_unfolding_all decide)
+      | (apply fixedMember _ (⟨786817 + 1 * 65536 + 0xab * 256 + 0xef, by decide⟩ : Fin 1048961)
+         simp only [Setup.referenceFixedRow, Setup.referenceBinaryRow, Verification.shiftBinopRow_eq_reference]
+         with_unfolding_all decide)
+      | (apply fixedMember _ (⟨786817 + 2 * 65536 + 0x34 * 256 + 0x78, by decide⟩ : Fin 1048961)
+         simp only [Setup.referenceFixedRow, Setup.referenceBinaryRow, Verification.shiftBinopRow_eq_reference]
+         with_unfolding_all decide)
+      | (apply fixedMember _ (⟨786817 + 2 * 65536 + 0x12 * 256 + 0x56, by decide⟩ : Fin 1048961)
+         simp only [Setup.referenceFixedRow, Setup.referenceBinaryRow, Verification.shiftBinopRow_eq_reference]
+         with_unfolding_all decide)
+      | (apply fixedMember _ (⟨786817 + 2 * 65536 + 0xcd * 256 + 1, by decide⟩ : Fin 1048961)
+         simp only [Setup.referenceFixedRow, Setup.referenceBinaryRow, Verification.shiftBinopRow_eq_reference]
+         with_unfolding_all decide)
+      | (apply fixedMember _ (⟨786817 + 2 * 65536 + 0xab * 256 + 0xef, by decide⟩ : Fin 1048961)
+         simp only [Setup.referenceFixedRow, Setup.referenceBinaryRow, Verification.shiftBinopRow_eq_reference]
+         with_unfolding_all decide)
+      | (apply fixedMember _ (⟨786817 + 3 * 65536 + 0x34 * 256 + 0x78, by decide⟩ : Fin 1048961)
+         simp only [Setup.referenceFixedRow, Setup.referenceBinaryRow, Verification.shiftBinopRow_eq_reference]
+         with_unfolding_all decide)
+      | (apply fixedMember _ (⟨786817 + 3 * 65536 + 0x12 * 256 + 0x56, by decide⟩ : Fin 1048961)
+         simp only [Setup.referenceFixedRow, Setup.referenceBinaryRow, Verification.shiftBinopRow_eq_reference]
+         with_unfolding_all decide)
+      | (apply fixedMember _ (⟨786817 + 3 * 65536 + 0xcd * 256 + 1, by decide⟩ : Fin 1048961)
+         simp only [Setup.referenceFixedRow, Setup.referenceBinaryRow, Verification.shiftBinopRow_eq_reference]
+         with_unfolding_all decide)
+      | (apply fixedMember _ (⟨786817 + 3 * 65536 + 0xab * 256 + 0xef, by decide⟩ : Fin 1048961)
+         simp only [Setup.referenceFixedRow, Setup.referenceBinaryRow, Verification.shiftBinopRow_eq_reference]
+         with_unfolding_all decide)
+      | decide
   · fin_cases kind
     all_goals simp [importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
     all_goals repeat' apply And.intro

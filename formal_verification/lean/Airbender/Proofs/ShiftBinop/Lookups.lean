@@ -1,3 +1,4 @@
+import Airbender.Proofs.Tables.ShiftCharacterization
 import Airbender.Proofs.ByteTables
 import Airbender.Proofs.Arithmetic.Bytes
 import Mathlib.Tactic.IntervalCases
@@ -13,12 +14,13 @@ theorem binary_sign_lookup {p : Nat} [Fact p.Prime] (hp : 256 < p)
       (entry[1].eval env).val = if (entry[0].eval env).val < 128 then 0 else 255 := by
   obtain ⟨i, tagged, column⟩ := tagged_lookup_row hp h 3 (by decide) selected
   have interval : 1 ≤ i.val ∧ i.val < 257 := by
-    unfold shiftBinopRow at tagged
+    simp only [shiftBinopRow_eq_reference] at tagged
+    unfold referenceShiftBinopRow referenceShiftNatRow at tagged
     dsimp only at tagged
     split_ifs at tagged <;> simp [binaryByteRow] at tagged <;> omega
   have shape : shiftBinopRow i =
       #v[i.val - 1, if i.val - 1 < 128 then 0 else 255, 0, 0, 0, 0, 0, 0, 0, 3] := by
-    simp [shiftBinopRow, show i.val ≠ 0 by omega, interval.2]
+    simp [shiftBinopRow_eq_reference, referenceShiftBinopRow, referenceShiftNatRow, show i.val ≠ 0 by omega, interval.2]
   have a := column 0 (by decide)
   have b := column 1 (by decide)
   rw [shape] at a b
@@ -35,11 +37,12 @@ private theorem truncation_rows (i : Fin 524545)
     (shiftBinopRow i)[0] < 256 ∧ (shiftBinopRow i)[1] < 256 ∧
       (shiftBinopRow i)[2] = (shiftBinopRow i)[0] % 32 := by
   have interval : 196865 ≤ i.val ∧ i.val < 262401 := by
-    unfold shiftBinopRow at selected
+    simp only [shiftBinopRow_eq_reference] at selected
+    unfold referenceShiftBinopRow referenceShiftNatRow at selected
     dsimp only at selected
     split_ifs at selected <;> simp [binaryByteRow] at selected
     all_goals omega
-  simp only [shiftBinopRow, show i.val ≠ 0 by omega, if_false,
+  simp only [shiftBinopRow_eq_reference, referenceShiftBinopRow, referenceShiftNatRow, show i.val ≠ 0 by omega, if_false,
     show ¬ i.val < 257 by omega, show ¬ i.val < 65793 by omega,
     show ¬ i.val < 131329 by omega, show ¬ i.val < 196865 by omega,
     interval.2, if_true]
@@ -75,7 +78,8 @@ private theorem shift_rows (i : Fin 524545) (selected : (shiftBinopRow i)[9] = 9
       ((shiftByteContribution (shiftBinopRow i)[0] (shiftBinopRow i)[1]
         (shiftBinopRow i)[2] (shiftBinopRow i)[3]).extractLsb' (8 * j.val) 8).toNat := by
   have lower : 262401 ≤ i.val := by
-    unfold shiftBinopRow at selected
+    simp only [shiftBinopRow_eq_reference] at selected
+    unfold referenceShiftBinopRow referenceShiftNatRow at selected
     dsimp only at selected
     split_ifs at selected <;> simp [binaryByteRow] at selected
     all_goals omega
@@ -87,7 +91,7 @@ private theorem shift_rows (i : Fin 524545) (selected : (shiftBinopRow i)[9] = 9
       #v[key / 65536, key / 256 % 256, key / 8 % 32, key % 8,
         output % 256, output / 256 % 256, output / 65536 % 256,
         output / 16777216 % 256, 0, 9] := by
-    simp [shiftBinopRow, show i.val ≠ 0 by omega, show ¬ i.val < 257 by omega,
+    simp [shiftBinopRow_eq_reference, referenceShiftBinopRow, referenceShiftNatRow, show i.val ≠ 0 by omega, show ¬ i.val < 257 by omega,
       show ¬ i.val < 65793 by omega, show ¬ i.val < 131329 by omega,
       show ¬ i.val < 196865 by omega, show ¬ i.val < 262401 by omega]
   rw [shape]

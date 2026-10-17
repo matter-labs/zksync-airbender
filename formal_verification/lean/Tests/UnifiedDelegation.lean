@@ -1,4 +1,5 @@
 import Tests.UnifiedDelegationShared
+import Tests.UnifiedDelegationNormalization
 
 namespace Tests.UnifiedDelegation
 open Airbender Trace Arithmetic Reference.RiscV.Sail Reference.Sail
@@ -1106,30 +1107,7 @@ private def normalizeLast : UnifiedReduced.ProgramEntry :=
 private def normalizeProgram := [normalizeEntry, normalizeLast]
 private def normalizeBefore (kind : Fin 4) : State :=
   wordWriteState (wordWriteState (normalizeSeedBefore kind) 4 normalizeEntry.bits) 8 normalizeLast.bits
-private def normalizeAssignment (one : Bool) (stage : Fin 2) (column : Nat) : ZMod babyBearModulus :=
-  if stage = 0 then
-    if column = 0 then 4
-    else if column = 2 || column = 30 || column = 46 then 8
-    else if column = 32 || column = 5 || column = 7 || column = 44 then 12
-    else if column = 34 then 7
-    else if column = 40 then 6
-    else if column = 36 || column = 48 || column = 74 || column = 93 then if one then 1 else 0
-    else if column = 10 || column = 92 || column = 101 || column = 110 || column = 119 then 53
-    else if column = 88 then 3
-    else if column = 4 || column = 8 || column = 27 || column = 50 || column = 58 || column = 94 || column = 95 ||
-        column = 129 || column = 130 || column = 131 || column = 132 || column = 133 then 1
-    else 0
-  else
-    if column = 0 then 8
-    else if column = 2 || column = 30 || column = 5 || column = 7 || column = 44 || column = 46 then 12
-    else if column = 32 then 16
-    else if column = 34 then 10
-    else if column = 40 then 9
-    else if column = 8 then 127
-    else if column = 50 then 128
-    else if column = 4 || column = 11 || column = 36 || column = 48 ||
-        column = 129 || column = 130 || column = 131 || column = 132 || column = 133 then 1
-    else 0
+private abbrev normalizeAssignment := Tests.UnifiedDelegationNormalization.assignment
 private def normalizeRow (kind : Fin 4) (stage : Fin 2) : Trace.Row babyBearModulus UnifiedFamily :=
   ⟨.machine, normalizeAssignment (kind = 1) stage⟩
 private def normalizeData (kind : Fin 4) : UnifiedReduced.Caller.RequestTrace babyBearModulus where
@@ -1146,29 +1124,9 @@ private def normalizeData (kind : Fin 4) : UnifiedReduced.Caller.RequestTrace ba
   workers := (normalizeSeed kind).workers
   program := [Tests.DelegationCaller.entry .bigint]
 private theorem normalizeCore (state : State) (one : Bool) (stage : Fin 2) : FlatOperation.ConstraintsHoldFlat
-    (Verification.environment (normalizeAssignment one stage)) (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table state)) := by
-  cases one <;> fin_cases stage
-  all_goals simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-    Verification.environment, Expression.eval, normalizeAssignment, Lookup.Contains, Table.toRaw, fromElements]
-  all_goals repeat' apply And.intro
-  all_goals solve
-    | decide +kernel
-    | (apply Verification.range16_contains; decide +kernel)
-    | (refine ⟨(0 : Fin 2097537), ?_⟩
-       change _ = (UnifiedReduced.Setup.fixedRow (0 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
-       decide +kernel)
-    | (refine ⟨(1 : Fin 2097537), ?_⟩
-       change _ = (UnifiedReduced.Setup.fixedRow (1 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
-       decide +kernel)
-    | (refine ⟨(65793 : Fin 2097537), ?_⟩
-       change _ = (UnifiedReduced.Setup.fixedRow (65793 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
-       decide +kernel)
-    | (refine ⟨(65794 : Fin 2097537), ?_⟩
-       change _ = (UnifiedReduced.Setup.fixedRow (65794 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
-       decide +kernel)
-    | (refine ⟨(66050 : Fin 2097537), ?_⟩
-       change _ = (UnifiedReduced.Setup.fixedRow (66050 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
-       decide +kernel)
+    (Verification.environment (normalizeAssignment one stage)) (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table state)) :=
+  Tests.UnifiedDelegationNormalization.constraints state one stage
+
 private theorem normalizeClocks (one : Bool) (stage : Fin 2) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (normalizeAssignment one stage)) UnifiedReduced.importedConstraintsTimestampLookups := by
   rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
@@ -1453,21 +1411,12 @@ theorem bigint_return_normalized_forged_read_native (one : Bool) : FlatOperation
       Verification.environment, Expression.eval, normalizeForgedAssignment, normalizeAssignment, Lookup.Contains, Table.toRaw, fromElements]
     all_goals repeat' apply And.intro
     all_goals solve
-      | decide +kernel
       | (apply Verification.range16_contains; decide +kernel)
-      | exact ⟨(0 : Fin 2097537), rfl⟩
-      | (refine ⟨(1 : Fin 2097537), ?_⟩
-         change _ = (UnifiedReduced.Setup.fixedRow (1 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
-         decide +kernel)
-      | (refine ⟨(65793 : Fin 2097537), ?_⟩
-         change _ = (UnifiedReduced.Setup.fixedRow (65793 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
-         decide +kernel)
-      | (refine ⟨(65794 : Fin 2097537), ?_⟩
-         change _ = (UnifiedReduced.Setup.fixedRow (65794 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
-         decide +kernel)
-      | (refine ⟨(66050 : Fin 2097537), ?_⟩
-         change _ = (UnifiedReduced.Setup.fixedRow (66050 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
-         decide +kernel)
+      | (apply Tests.UnifiedDelegationNormalization.fixedMember _ (⟨1, by decide⟩ : Fin 524545); with_unfolding_all decide +kernel)
+      | (apply Tests.UnifiedDelegationNormalization.fixedMember _ (⟨65793, by decide⟩ : Fin 524545); with_unfolding_all decide +kernel)
+      | (apply Tests.UnifiedDelegationNormalization.fixedMember _ (⟨65794, by decide⟩ : Fin 524545); with_unfolding_all decide +kernel)
+      | (apply Tests.UnifiedDelegationNormalization.fixedMember _ (⟨66050, by decide⟩ : Fin 524545); with_unfolding_all decide +kernel)
+      | decide +kernel
   · rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
     constructor
     · simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.constraints]

@@ -31,3 +31,6 @@ import Airbender.Review.Trace.Workers.Blake2G.ReferenceCalls
 import Airbender.Review.Trace.Workers.Blake2Round.ReferenceCalls
 import Airbender.Review.Trace.Workers.Keccak.ReferenceCalls
 import Airbender.Review.Trace.UnifiedReduced.FullExecution
+import Airbender.Review.Trace.ImportedDecoder
+import Airbender.Review.Circuits.WordMemory.ImportedROM
+import Airbender.Review.Circuits.SubwordMemory.ImportedSetup

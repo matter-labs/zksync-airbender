@@ -205,7 +205,7 @@ cargo test --locked --config 'profile.dev.package.prover.debug=0' --config 'prof
 cargo test --locked --config 'profile.dev.package.prover.debug=0' --config 'profile.test.package.prover.debug=0' -p prover --lib --features gkr_self_checks decoder_padding_matches_committed_setup_in_forward_relations
 ```
 
-### Native setup table import — active integration
+### Native setup table import — checked
 
 The user authorized exporting and importing complete selected-program lookup
 setup, including ROM and decoder rows. The [native exporter](../../prover/src/gkr/prover/setup_artifact.rs)
@@ -237,13 +237,13 @@ also import all 1,245,185 real rows. [Kernel proofs](Airbender/Proofs/Keccak/Imp
 recover XOR/Iota/Chi, both rotation pieces, every key, padding/tag and native cast;
 the actual lookup consumers use those rows with their original fields, inverses
 and arbitrary controllers. No table-equivalence premise or witness change is used.
-This table migration
-does not close F02/F03/F04 implementation findings. All 128 Tests, both
-executables, importer and review gates pass; all old audit roots and axiom-free
-reports are preserved (3,011 roots; 92 axiom-free). Standard fixed tables and
-program-dependent consumers are still being migrated. This does not close F09's
-general query/authentication/Rust-refinement boundary or AIH-336's pending
-accelerated/full-proof validation. [Reproduction and scope](artifacts/setup/README.md).
+Standard fixed and complete selected-program ROM/decoder contents also now import
+actual rows. Their relation bridges and native execution adapters pass the full
+checks: library, both executables, all 133 concrete test modules, importer
+regressions and axiom/review checks. The audit covers 3,624 roots (149 axiom-free);
+every previous 3,011 report is exactly preserved, including all 92 axiom-free reports. This work does not close F02/F03/F04 implementation
+findings, F09's general query/authentication/Rust-refinement boundary or AIH-336's
+pending accelerated/full-proof validation. [Reproduction and scope](artifacts/setup/README.md).
 
 ## Implementation update: issued round coverage and wrapped preparation
 

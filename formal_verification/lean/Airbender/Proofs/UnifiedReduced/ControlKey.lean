@@ -1,4 +1,4 @@
-import Airbender.Review.Circuits.UnifiedReduced.Tables.Setup
+import Airbender.Proofs.UnifiedReduced.Tables.ReferenceRows
 import Airbender.Proofs.Lookups
 
 namespace Airbender.UnifiedReduced.Proofs

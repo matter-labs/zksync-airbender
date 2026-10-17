@@ -54,14 +54,14 @@ private theorem constraints (taken : Bool) : FlatOperation.ConstraintsHoldFlat
     all_goals solve
       | decide
       | (apply Verification.range16_contains; decide)
-      | (refine ⟨⟨524545, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
-      | (refine ⟨⟨655617, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
-      | (refine ⟨⟨786697, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow,
+      | (with_unfolding_all refine ⟨⟨524545, by decide⟩, ?_⟩; dsimp only; rw [UnifiedReduced.Setup.Proofs.row_eq_reference]; norm_num [UnifiedReduced.Setup.referenceRow, UnifiedReduced.Setup.referenceFixedRow])
+      | (with_unfolding_all refine ⟨⟨655617, by decide⟩, ?_⟩; dsimp only; rw [UnifiedReduced.Setup.Proofs.row_eq_reference]; norm_num [UnifiedReduced.Setup.referenceRow, UnifiedReduced.Setup.referenceFixedRow])
+      | (with_unfolding_all refine ⟨⟨786697, by decide⟩, ?_⟩; dsimp only; rw [UnifiedReduced.Setup.Proofs.row_eq_reference]; norm_num [UnifiedReduced.Setup.referenceRow, UnifiedReduced.Setup.referenceFixedRow,
           UnifiedReduced.Setup.conditionalKey, Verification.conditionalValue])
-      | (refine ⟨⟨786713, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow,
+      | (with_unfolding_all refine ⟨⟨786713, by decide⟩, ?_⟩; dsimp only; rw [UnifiedReduced.Setup.Proofs.row_eq_reference]; norm_num [UnifiedReduced.Setup.referenceRow, UnifiedReduced.Setup.referenceFixedRow,
           UnifiedReduced.Setup.conditionalKey, Verification.conditionalValue])
-      | (refine ⟨⟨721157, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
-      | (refine ⟨⟨721161, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
+      | (with_unfolding_all refine ⟨⟨721157, by decide⟩, ?_⟩; dsimp only; rw [UnifiedReduced.Setup.Proofs.row_eq_reference]; norm_num [UnifiedReduced.Setup.referenceRow, UnifiedReduced.Setup.referenceFixedRow])
+      | (with_unfolding_all refine ⟨⟨721161, by decide⟩, ?_⟩; dsimp only; rw [UnifiedReduced.Setup.Proofs.row_eq_reference]; norm_num [UnifiedReduced.Setup.referenceRow, UnifiedReduced.Setup.referenceFixedRow])
   · cases taken <;> simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
     all_goals repeat' apply And.intro
     all_goals apply Trace.Proofs.range_contains

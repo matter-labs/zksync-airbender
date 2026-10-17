@@ -1,81 +1,76 @@
-import Airbender.Review.Helpers.Tables.Lookups
+import Airbender.Review.Helpers.Tables.SubwordROMData
+import Airbender.Review.Helpers.Tables.SubwordData
 import Airbender.Review.Circuits.JumpBranchSlt.Tables.Control
 
 namespace Airbender.Verification
 
-/- Symbolic rows from cs/src/tables/memory_opcode_related.rs and rom_related.rs,
-   selected by mem_subword_only/circuit.rs. Tags are from table_type.rs. This
-   reconstructs the tables; extraction and Rust setup correspondence are deferred.
-   `program` supplies independently fixed ROM words, including any padding. -/
+/-- The generalized public-program interface reads load outputs from the actual
+    imported fixed regions. Native selected-program ROM correspondence is proved
+    separately; arbitrary public program functions retain their scope. -/
+def subwordImportedLimbs (byte : Bool) (key : Nat) : Nat × Nat :=
+  let data := if byte then loadByteData else loadHalfData
+  let index := key % data.length
+  (((data.columns[1]).get? index).getD 0, ((data.columns[2]).get? index).getD 0)
 
-def subwordLoadLimbs (byte : Bool) (key : Nat) : Nat × Nat :=
-  let half := key % 65536
-  let value := if byte then half / (if key / 131072 % 2 = 1 then 256 else 1) % 256 else half
-  let negative := key / 65536 % 2 = 1 ∧ (if byte then 128 else 32768) ≤ value
-  (value + (if byte && negative then 65280 else 0), if negative then 65535 else 0)
+/-- Generalized public-program interface over the imported ROM address layout
+    and imported fixed load outputs. The concrete selected-program connection to
+    the independently imported ROM output columns is proved separately. -/
+def subwordProgramROMRow (program : Nat → BitVec 32) (byte : Bool) (n : Nat) : Vector Nat 9 :=
+  let group := if byte then 8 else 4
+  let signed := n / (group / 2) % 2
+  let highHalf := if byte then n / 2 % 2 else n % 2
+  let highByte := if byte then n % 2 else 0
+  let half := (program (n / group)).toNat / (if highHalf = 1 then 65536 else 1) % 65536
+  let outputs := subwordImportedLimbs byte (half + 65536 * signed + 131072 * highByte)
+  ((subwordROMRow byte n).set 1 outputs.1).set 2 outputs.2
 
-def subwordDataRow (key lo hi tag : Nat) : Vector Nat 9 :=
-  #v[key, lo, hi, 0, 0, 0, 0, 0, tag]
-
-/-- Tag 30 clears the selected old byte; tag 29 places the source's low byte. -/
-def subwordStoreContribution (clear : Bool) (key : Nat) : Nat :=
-  let half := key % 65536
-  if clear then
-    if key / 65536 % 2 = 1 then half % 256 else half - half % 256
-  else (key % 256) * (if key / 65536 % 2 = 1 then 256 else 1)
-
-def subwordRow (program : Nat → BitVec 32) (index : Fin 13238273) : Vector Nat 9 :=
+/-- Native fixed rows and the original arbitrary-public-program interface. -/
+def subwordNativeRow (program : Nat → BitVec 32) (index : Fin 13238273) : Vector Nat 9 :=
   let n := index.val
-  if n = 0 then subwordDataRow 0 0 0 0
-  else if n < 131073 then
-    let key := n - 1
-    subwordDataRow key (subwordStoreContribution false key) 0 29
-  else if n < 262145 then
-    let key := n - 131073
-    subwordDataRow key (subwordStoreContribution true key) 0 30
-  else if n < 393217 then
-    let key := n - 262145
-    let data := subwordLoadLimbs false key
-    subwordDataRow key data.1 data.2 42
-  else if n < 655361 then
-    let key := n - 393217
-    let data := subwordLoadLimbs true key
-    subwordDataRow key data.1 data.2 43
-  else if n < 4849665 then
-    let i := n - 655361
-    let address := 4 * (i / 4)
-    let signed := i / 2 % 2
-    let half := (program (i / 4)).toNat / (if i % 2 = 1 then 65536 else 1) % 65536
-    let data := subwordLoadLimbs false (half + 65536 * signed)
-    subwordDataRow (address + 4194304 * signed + 8388608 * (i % 2)) data.1 data.2 44
-  else
-    let i := n - 4849665
-    let address := 4 * (i / 8)
-    let signed := i / 4 % 2
-    let highHalf := i / 2 % 2
-    let highByte := i % 2
-    let half := (program (i / 8)).toNat / (if highHalf = 1 then 65536 else 1) % 65536
-    let data := subwordLoadLimbs true (half + 65536 * signed + 131072 * highByte)
-    subwordDataRow (address + 4194304 * signed + 8388608 * highHalf + 16777216 * highByte)
-      data.1 data.2 45
+  if n = subwordZeroDataRegion.offset then
+    subwordZeroData.columns.map (fun column => (column.get? 0).getD 0)
+  else if n < storeClearDataRegion.offset then subwordFixedRow 0 (n - storePlaceDataRegion.offset)
+  else if n < loadHalfDataRegion.offset then subwordFixedRow 1 (n - storeClearDataRegion.offset)
+  else if n < loadByteDataRegion.offset then subwordFixedRow 2 (n - loadHalfDataRegion.offset)
+  else if n < subwordROMHalfDataRegion.offset then subwordFixedRow 3 (n - loadByteDataRegion.offset)
+  else if n < subwordROMByteDataRegion.offset then
+    subwordProgramROMRow program false (n - subwordROMHalfDataRegion.offset)
+  else subwordProgramROMRow program true (n - subwordROMByteDataRegion.offset)
 
-def subwordTable {p : Nat} [Fact p.Prime] (program : Nat → BitVec 32) :
+def subwordTableOfRows {p : Nat} [Fact p.Prime] (rows : Fin 13238273 → Vector Nat 9) :
     Table (ZMod p) (fields 9) := .fromStatic {
   name := "Airbender.SubwordMemory"
   length := 13238273
-  row i := (subwordRow program i).map (fun (n : Nat) => (n : ZMod p))
-  index x := match x[8].val with
-    | 29 => 1 + x[0].val
-    | 30 => 131073 + x[0].val
-    | 42 => 262145 + x[0].val
-    | 43 => 393217 + x[0].val
-    | 44 => 655361 + 4 * (x[0].val % 4194304 / 4) + 2 * (x[0].val / 4194304 % 2) +
-        x[0].val / 8388608 % 2
-    | 45 => 4849665 + 8 * (x[0].val % 4194304 / 4) + 4 * (x[0].val / 4194304 % 2) +
-        2 * (x[0].val / 8388608 % 2) + x[0].val / 16777216 % 2
-    | _ => 0
-  Spec x := ∃ i : Fin 13238273, x = (subwordRow program i).map (fun (n : Nat) => (n : ZMod p))
+  row i := (rows i).map (fun (n : Nat) => (n : ZMod p))
+  index x :=
+    if x[8].val = storePlaceDataRegion.id then storePlaceDataRegion.offset + x[0].val
+    else if x[8].val = storeClearDataRegion.id then storeClearDataRegion.offset + x[0].val
+    else if x[8].val = loadHalfDataRegion.id then loadHalfDataRegion.offset + x[0].val
+    else if x[8].val = loadByteDataRegion.id then loadByteDataRegion.offset + x[0].val
+    else if x[8].val = subwordROMHalfDataRegion.id then
+      subwordROMHalfDataRegion.offset + 4 * (x[0].val % 4194304 / 4) +
+        2 * (x[0].val / 4194304 % 2) + x[0].val / 8388608 % 2
+    else if x[8].val = subwordROMByteDataRegion.id then
+      subwordROMByteDataRegion.offset + 8 * (x[0].val % 4194304 / 4) +
+        4 * (x[0].val / 4194304 % 2) + 2 * (x[0].val / 8388608 % 2) +
+        x[0].val / 16777216 % 2
+    else subwordZeroDataRegion.offset
+  Spec x := ∃ i : Fin 13238273, x = (rows i).map (fun (n : Nat) => (n : ZMod p))
   contains_iff _ := Iff.rfl
 }
+
+/-- General public-program specialization of the imported fixed-row view. -/
+def subwordTable {p : Nat} [Fact p.Prime] (program : Nat → BitVec 32) :
+    Table (ZMod p) (fields 9) := subwordTableOfRows (subwordNativeRow program)
+
+/-- Complete native row view, including both independently imported ROM regions. -/
+def importedSubwordRow (index : Fin 13238273) : Vector Nat 9 :=
+  if index.val < subwordROMHalfDataRegion.offset then subwordNativeRow (fun _ => 0) index
+  else if index.val < subwordROMByteDataRegion.offset then
+    subwordROMRow false (index.val - subwordROMHalfDataRegion.offset)
+  else subwordROMRow true (index.val - subwordROMByteDataRegion.offset)
+
+def importedSubwordTable {p : Nat} [Fact p.Prime] : Table (ZMod p) (fields 9) :=
+  subwordTableOfRows importedSubwordRow
 
 end Airbender.Verification

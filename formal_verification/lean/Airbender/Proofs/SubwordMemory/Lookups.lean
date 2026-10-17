@@ -1,3 +1,4 @@
+import Airbender.Proofs.Tables.SubwordCharacterization
 import Airbender.Review.Helpers.Tables.Subword
 import Airbender.Proofs.Arithmetic.Word
 import Airbender.Proofs.Sail.Memory
@@ -26,10 +27,11 @@ theorem subword_ram_values {p : Nat} [Fact p.Prime] (hp : 262144 < p)
     ∃ key : Nat, key < (if byte then 262144 else 131072) ∧ entry[0] = (key : ZMod p) ∧
       entry[1] = ((subwordLoadLimbs byte key).1 : ZMod p) ∧
       entry[2] = ((subwordLoadLimbs byte key).2 : ZMod p) := by
-  change ∃ i : Fin 13238273, entry = (subwordRow program i).map (fun (n : Nat) => (n : ZMod p)) at h
+  change ∃ i : Fin 13238273, entry = (subwordNativeRow program i).map (fun (n : Nat) => (n : ZMod p)) at h
   obtain ⟨i, rfl⟩ := h
-  have tagBound : (subwordRow program i)[8] < p := by
-    unfold subwordRow
+  have tagBound : (subwordNativeRow program i)[8] < p := by
+    simp only [subwordNativeRow_eq_reference]
+    unfold referenceSubwordRow subwordRow
     dsimp only
     split_ifs <;> first
       | (change (0 : Nat) < p; omega)
@@ -39,12 +41,13 @@ theorem subword_ram_values {p : Nat} [Fact p.Prime] (hp : 262144 < p)
       | (change (43 : Nat) < p; omega)
       | (change (44 : Nat) < p; omega)
       | (change (45 : Nat) < p; omega)
-  have natural : (subwordRow program i)[8] = (if byte then 43 else 42) := by
+  have natural : (subwordNativeRow program i)[8] = (if byte then 43 else 42) := by
     apply bounded_nat_eq (F := ZMod p) (p := p) tagBound
       (by cases byte <;> simp only [Bool.false_eq_true, if_false, if_true] <;> omega)
     simpa only [Vector.getElem_map] using selected
   have indexBound := i.isLt
-  cases byte <;> unfold subwordRow at natural ⊢ <;> dsimp only at natural ⊢
+  cases byte <;> simp only [subwordNativeRow_eq_reference] at natural ⊢ <;>
+    unfold referenceSubwordRow subwordRow at natural ⊢ <;> dsimp only at natural ⊢
   all_goals split_ifs at natural ⊢
   all_goals solve
     | contradiction
@@ -78,10 +81,11 @@ theorem subword_store_values {p : Nat} [Fact p.Prime] (hp : 262144 < p)
     ∃ key : Nat, key < 131072 ∧ entry[0] = (key : ZMod p) ∧
       entry[1] = (subwordStoreContribution clear key : ZMod p) ∧
       entry[2] = 0 := by
-  change ∃ i : Fin 13238273, entry = (subwordRow program i).map (fun (n : Nat) => (n : ZMod p)) at h
+  change ∃ i : Fin 13238273, entry = (subwordNativeRow program i).map (fun (n : Nat) => (n : ZMod p)) at h
   obtain ⟨i, rfl⟩ := h
-  have tagBound : (subwordRow program i)[8] < p := by
-    unfold subwordRow
+  have tagBound : (subwordNativeRow program i)[8] < p := by
+    simp only [subwordNativeRow_eq_reference]
+    unfold referenceSubwordRow subwordRow
     dsimp only
     split_ifs <;> first
       | (change (0 : Nat) < p; omega)
@@ -91,12 +95,13 @@ theorem subword_store_values {p : Nat} [Fact p.Prime] (hp : 262144 < p)
       | (change (43 : Nat) < p; omega)
       | (change (44 : Nat) < p; omega)
       | (change (45 : Nat) < p; omega)
-  have natural : (subwordRow program i)[8] = (if clear then 30 else 29) := by
+  have natural : (subwordNativeRow program i)[8] = (if clear then 30 else 29) := by
     apply bounded_nat_eq (F := ZMod p) (p := p) tagBound
       (by cases clear <;> simp only [Bool.false_eq_true, if_false, if_true] <;> omega)
     simpa only [Vector.getElem_map] using selected
   have indexBound := i.isLt
-  cases clear <;> unfold subwordRow at natural ⊢ <;> dsimp only at natural ⊢
+  cases clear <;> simp only [subwordNativeRow_eq_reference] at natural ⊢ <;>
+    unfold referenceSubwordRow subwordRow at natural ⊢ <;> dsimp only at natural ⊢
   all_goals split_ifs at natural ⊢
   all_goals solve
     | contradiction
@@ -124,10 +129,11 @@ theorem subword_zero_values {p : Nat} [Fact p.Prime] (hp : 262144 < p)
     {program : Nat → BitVec 32} {entry : Vector (ZMod p) 9}
     (h : (subwordTable program).Contains #[] entry) (selected : entry[8] = 0) :
     entry[0] = 0 ∧ entry[1] = 0 ∧ entry[2] = 0 := by
-  change ∃ i : Fin 13238273, entry = (subwordRow program i).map (fun (n : Nat) => (n : ZMod p)) at h
+  change ∃ i : Fin 13238273, entry = (subwordNativeRow program i).map (fun (n : Nat) => (n : ZMod p)) at h
   obtain ⟨i, rfl⟩ := h
-  have tagBound : (subwordRow program i)[8] < p := by
-    unfold subwordRow
+  have tagBound : (subwordNativeRow program i)[8] < p := by
+    simp only [subwordNativeRow_eq_reference]
+    unfold referenceSubwordRow subwordRow
     dsimp only
     split_ifs <;> first
       | (change (0 : Nat) < p; omega)
@@ -137,10 +143,11 @@ theorem subword_zero_values {p : Nat} [Fact p.Prime] (hp : 262144 < p)
       | (change (43 : Nat) < p; omega)
       | (change (44 : Nat) < p; omega)
       | (change (45 : Nat) < p; omega)
-  have natural : (subwordRow program i)[8] = 0 :=
+  have natural : (subwordNativeRow program i)[8] = 0 :=
     bounded_nat_eq (F := ZMod p) (p := p) tagBound (by omega)
       (by simpa only [Vector.getElem_map, Nat.cast_zero] using selected)
-  unfold subwordRow at natural ⊢
+  simp only [subwordNativeRow_eq_reference] at natural ⊢
+  unfold referenceSubwordRow subwordRow at natural ⊢
   dsimp only at natural ⊢
   split_ifs at natural ⊢
   all_goals solve

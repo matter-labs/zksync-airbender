@@ -1,3 +1,4 @@
+import Airbender.Proofs.Tables.SubwordCharacterization
 import Tests.TraceExecution
 import Airbender.Proofs.Trace.Claims
 import Airbender.Proofs.SubwordMemory.Claims
@@ -56,19 +57,19 @@ private theorem bytes : (Cell.ram 0).read before = .ok 0x00104083 before := by
     bind, pure, EStateM.bind, EStateM.get, EStateM.pure, before, Std.ExtHashMap.getElem_insert]
 
 private theorem clearing_row (program : Nat → BitVec 32) :
-    Verification.subwordRow program ⟨196609, by decide⟩ = #v[65536, 0, 0, 0, 0, 0, 0, 0, 30] := by
-  norm_num [Verification.subwordRow, Verification.subwordDataRow, Verification.subwordStoreContribution]
+    Verification.subwordNativeRow program ⟨196609, by decide⟩ = #v[65536, 0, 0, 0, 0, 0, 0, 0, 30] := by
+  norm_num [Verification.subwordNativeRow_eq_reference, Verification.referenceSubwordRow, Verification.subwordRow, Verification.subwordDataRow, Verification.subwordStoreContribution]
 
 private theorem rom_row (program : Nat → BitVec 32) :
-    Verification.subwordRow program ⟨4849666, by decide⟩ =
+    Verification.subwordNativeRow program ⟨4849666, by decide⟩ =
       Verification.subwordDataRow 16777216
         (Verification.subwordLoadLimbs true ((program 0).toNat % 65536 + 131072)).1
         (Verification.subwordLoadLimbs true ((program 0).toNat % 65536 + 131072)).2 45 := by
-  norm_num [Verification.subwordRow]
+  norm_num [Verification.subwordNativeRow_eq_reference, Verification.referenceSubwordRow, Verification.subwordRow]
 
 private theorem clear_query : trace.rom.subwordMemory.Contains #[] #v[65536, 0, 0, 0, 0, 0, 0, 0, 30] := by
   change ∃ i : Fin 13238273, (#v[65536, 0, 0, 0, 0, 0, 0, 0, 30] : Vector (ZMod babyBearModulus) 9) =
-    (Verification.subwordRow (ROM.words before) i).map (fun (n : Nat) => (n : ZMod babyBearModulus))
+    (Verification.subwordNativeRow (ROM.words before) i).map (fun (n : Nat) => (n : ZMod babyBearModulus))
   refine ⟨⟨196609, by decide⟩, ?_⟩
   rw [clearing_row]
   apply Vector.ext
@@ -90,7 +91,7 @@ theorem native_constraints : FlatOperation.ConstraintsHoldFlat
        have word := ROM.Proofs.words_at_address (by decide : (0 : BitVec 32).toNat % 4 = 0) bytes
        change ROM.words before 0 = 0x00104083 at word
        change (#v[16777216, 64, 0, 0, 0, 0, 0, 0, 45] : Vector (ZMod babyBearModulus) 9) =
-         ((Verification.subwordRow (ROM.words before) ⟨4849666, by decide⟩).map
+         ((Verification.subwordNativeRow (ROM.words before) ⟨4849666, by decide⟩).map
            fun (n : Nat) => (n : ZMod babyBearModulus))
        rw [rom_row]
        rw [word]

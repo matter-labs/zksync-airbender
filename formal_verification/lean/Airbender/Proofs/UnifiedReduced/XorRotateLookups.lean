@@ -9,18 +9,21 @@ set_option maxHeartbeats 1600000
 theorem rotate_region {before : Reference.RiscV.Sail.State} {i : Fin 2097537} {tag : Nat}
     (lower : 47 ≤ tag) (upper : tag < 51) (selected : (row before i)[9] = tag) :
     ∃ j : Fin 262144, row before i = rotateRow j ∧ 47 + j.val / 65536 = tag := by
+  simp only [row_eq_reference, rotateRow_eq_reference] at *
   by_cases top : i.val < 1048961
   · by_cases first : i.val < 524545
-    · have same : row before i = binaryRow ⟨i.val, first⟩ := by
-        simp only [row, top, dif_pos, fixedRow, first]
-      rw [same] at selected
+    · have same : referenceRow before i = referenceBinaryRow ⟨i.val, first⟩ := by
+        simp only [referenceRow, top, dif_pos, referenceFixedRow, first]
+      have projected := congrArg (fun values : Vector Nat 10 => values[9]'(by decide)) same
+      replace selected := projected.symm.trans selected
       have bound := shift_tag_bound ⟨i.val, first⟩
-      simp only [binaryRow, Vector.getElem_set_self] at selected
+      simp only [referenceBinaryRow, Vector.getElem_set_self] at selected
       unfold binaryTag at selected
       split_ifs at selected <;> omega
-    · have same : row before i = fixedRow ⟨i.val, top⟩ := dif_pos top
-      rw [same] at selected
-      unfold fixedRow at selected
+    · have same : referenceRow before i = referenceFixedRow ⟨i.val, top⟩ := dif_pos top
+      have projected := congrArg (fun values : Vector Nat 10 => values[9]'(by decide)) same
+      replace selected := projected.symm.trans selected
+      unfold referenceFixedRow at selected
       dsimp only at selected
       split at selected
       · contradiction
@@ -36,10 +39,10 @@ theorem rotate_region {before : Reference.RiscV.Sail.State} {i : Fin 2097537} {t
                 have jBound : i.val - 786817 < 262144 := by omega
                 refine ⟨⟨i.val - 786817, jBound⟩, ?_, selected⟩
                 rw [same]
-                simp only [fixedRow]
+                simp only [referenceFixedRow]
                 split_ifs; first | omega | rfl
-  · have value : (row before i)[9] = 34 := by
-      simp only [row, top]
+  · have value : (referenceRow before i)[9] = 34 := by
+      simp only [referenceRow, top]
       rfl
     omega
 
@@ -55,6 +58,7 @@ theorem rotate_lookup [Fact p.Prime] (hp : 256 < p)
           (#[16, 12, 8, 7][kind.val]!)).extractLsb' (8 * byte.val) 8).toNat := by
   obtain ⟨i, tagged, columns⟩ := lookup_row (by omega : 55 ≤ p) holds tag (by omega) selected
   obtain ⟨j, same, tagValue⟩ := rotate_region lower upper tagged
+  simp only [rotateRow_eq_reference] at same
   have shape (k : Nat) (bound : k < 10) := columns k bound
   have left := shape 0 (by decide)
   have right := shape 1 (by decide)
@@ -75,6 +79,6 @@ theorem rotate_lookup [Fact p.Prime] (hp : 256 < p)
   have value := shape (2 + byte.val) (by have := byte.isLt; omega)
   rw [same] at value
   fin_cases byte
-  all_goals simpa [rotateRow, BitVec.extractLsb'_toNat, Nat.shiftRight_eq_div_pow] using value
+  all_goals simpa [referenceRotateRow, BitVec.extractLsb'_toNat, Nat.shiftRight_eq_div_pow] using value
 
 end Airbender.UnifiedReduced.Setup.Proofs

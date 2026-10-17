@@ -19,6 +19,7 @@ theorem unboundedFinalPCSatisfies :
   simp [JumpBranchSlt.importedConstraints, FlatOperation.ConstraintsHoldFlat,
     Expression.eval, Verification.environment, row]
   repeat' apply And.intro
+  all_goals try (unfold Verification.jumpCleanup; rw [Verification.jumpCleanupTable_characterization])
   all_goals first
     | (apply Verification.range16_contains; decide)
     | (with_unfolding_all change ∃ i : Fin 131072,
@@ -72,6 +73,7 @@ theorem edgeSatisfies (signed immediate wrapPC : Bool) :
   cases signed <;> cases immediate <;> cases wrapPC <;> simp [JumpBranchSlt.importedConstraints, FlatOperation.ConstraintsHoldFlat,
     Expression.eval, Verification.environment, edgeRow]
   repeat' apply And.intro
+  all_goals try (unfold Verification.jumpCleanup; rw [Verification.jumpCleanupTable_characterization])
   all_goals first
     | (apply Verification.range16_contains; decide)
     | (with_unfolding_all change ∃ i : Fin 131072,
@@ -166,6 +168,7 @@ private theorem negativeSatisfies :
   simp [JumpBranchSlt.importedConstraints, FlatOperation.ConstraintsHoldFlat,
     Expression.eval, Verification.environment, negativeRow]
   repeat' apply And.intro
+  all_goals try (unfold Verification.jumpCleanup; rw [Verification.jumpCleanupTable_characterization])
   all_goals first
     | (apply Verification.range16_contains; decide)
     | (with_unfolding_all change ∃ i : Fin 131072,

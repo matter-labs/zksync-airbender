@@ -35,7 +35,9 @@ theorem constraints :
            (Verification.shiftBinopRow i).map (fun (n : Nat) => (n : ZMod babyBearModulus))
        refine ⟨⟨196865, by decide⟩, ?_⟩
        have shape : Verification.shiftBinopRow ⟨196865, by decide⟩ =
-           (#v[0, 0, 0, 0, 0, 0, 0, 0, 0, 8] : Vector Nat 10) := by decide
+           (#v[0, 0, 0, 0, 0, 0, 0, 0, 0, 8] : Vector Nat 10) := by
+         rw [Verification.shiftBinopRow_eq_reference]
+         decide +kernel
        rw [shape]
        apply Vector.ext
        intro j bound
@@ -46,7 +48,9 @@ theorem constraints :
            (Verification.shiftBinopRow i).map (fun (n : Nat) => (n : ZMod babyBearModulus))
        refine ⟨⟨262402, by decide⟩, ?_⟩
        have shape : Verification.shiftBinopRow ⟨262402, by decide⟩ =
-           (#v[0, 0, 0, 1, 0, 0, 0, 0, 0, 9] : Vector Nat 10) := by decide
+           (#v[0, 0, 0, 1, 0, 0, 0, 0, 0, 9] : Vector Nat 10) := by
+         rw [Verification.shiftBinopRow_eq_reference]
+         decide +kernel
        rw [shape]
        apply Vector.ext
        intro j bound
@@ -57,7 +61,9 @@ theorem constraints :
            (Verification.shiftBinopRow i).map (fun (n : Nat) => (n : ZMod babyBearModulus))
        refine ⟨⟨327938, by decide⟩, ?_⟩
        have shape : Verification.shiftBinopRow ⟨327938, by decide⟩ =
-           (#v[1, 0, 0, 1, 0, 0, 0, 0, 0, 9] : Vector Nat 10) := by decide
+           (#v[1, 0, 0, 1, 0, 0, 0, 0, 0, 9] : Vector Nat 10) := by
+         rw [Verification.shiftBinopRow_eq_reference]
+         decide +kernel
        rw [shape]
        apply Vector.ext
        intro j bound
@@ -68,7 +74,9 @@ theorem constraints :
            (Verification.shiftBinopRow i).map (fun (n : Nat) => (n : ZMod babyBearModulus))
        refine ⟨⟨393474, by decide⟩, ?_⟩
        have shape : Verification.shiftBinopRow ⟨393474, by decide⟩ =
-           (#v[2, 0, 0, 1, 0, 0, 0, 0, 0, 9] : Vector Nat 10) := by decide
+           (#v[2, 0, 0, 1, 0, 0, 0, 0, 0, 9] : Vector Nat 10) := by
+         rw [Verification.shiftBinopRow_eq_reference]
+         decide +kernel
        rw [shape]
        apply Vector.ext
        intro j bound
@@ -79,7 +87,9 @@ theorem constraints :
            (Verification.shiftBinopRow i).map (fun (n : Nat) => (n : ZMod babyBearModulus))
        refine ⟨⟨459010, by decide⟩, ?_⟩
        have shape : Verification.shiftBinopRow ⟨459010, by decide⟩ =
-           (#v[3, 0, 0, 1, 0, 0, 0, 0, 0, 9] : Vector Nat 10) := by decide
+           (#v[3, 0, 0, 1, 0, 0, 0, 0, 0, 9] : Vector Nat 10) := by
+         rw [Verification.shiftBinopRow_eq_reference]
+         decide +kernel
        rw [shape]
        apply Vector.ext
        intro j bound

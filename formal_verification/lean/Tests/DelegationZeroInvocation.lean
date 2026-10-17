@@ -448,12 +448,14 @@ private theorem preparationCore : FlatOperation.ConstraintsHoldFlat
     Verification.environment, Expression.eval, preparationAssignment, Lookup.Contains, Table.toRaw, fromElements]
   repeat' apply And.intro
   all_goals solve
-    | decide +kernel
     | (apply Verification.range16_contains; decide +kernel)
-    | (refine ⟨(0 : Fin 2097537), ?_⟩
-       change (#v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0] : Vector (ZMod babyBearModulus) 10) =
-         (UnifiedReduced.Setup.fixedRow (0 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
-       decide +kernel)
+    | (with_unfolding_all refine ⟨⟨0, by decide⟩, ?_⟩
+       dsimp only
+       rw [UnifiedReduced.Setup.Proofs.row_eq_reference]
+       simp only [UnifiedReduced.Setup.referenceRow, UnifiedReduced.Setup.referenceFixedRow,
+         UnifiedReduced.Setup.referenceBinaryRow, Verification.shiftBinopRow_eq_reference]
+       with_unfolding_all decide +kernel)
+    | decide +kernel
 
 private theorem preparationClocks : FlatOperation.ConstraintsHoldFlat
     (Verification.environment preparationAssignment) UnifiedReduced.importedConstraintsTimestampLookups := by
@@ -1055,12 +1057,14 @@ private theorem operandCore : FlatOperation.ConstraintsHoldFlat
     Verification.environment, Expression.eval, operandAssignment, preparationAssignment, Lookup.Contains, Table.toRaw, fromElements]
   repeat' apply And.intro
   all_goals solve
-    | decide +kernel
     | (apply Verification.range16_contains; decide +kernel)
-    | (refine ⟨(0 : Fin 2097537), ?_⟩
-       change (#v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0] : Vector (ZMod babyBearModulus) 10) =
-         (UnifiedReduced.Setup.fixedRow (0 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
-       decide +kernel)
+    | (with_unfolding_all refine ⟨⟨0, by decide⟩, ?_⟩
+       dsimp only
+       rw [UnifiedReduced.Setup.Proofs.row_eq_reference]
+       simp only [UnifiedReduced.Setup.referenceRow, UnifiedReduced.Setup.referenceFixedRow,
+         UnifiedReduced.Setup.referenceBinaryRow, Verification.shiftBinopRow_eq_reference]
+       with_unfolding_all decide +kernel)
+    | decide +kernel
 
 private theorem operandClocks : FlatOperation.ConstraintsHoldFlat
     (Verification.environment operandAssignment) UnifiedReduced.importedConstraintsTimestampLookups := by
@@ -1233,12 +1237,14 @@ private theorem dataflowCore (second : Bool) : FlatOperation.ConstraintsHoldFlat
     Verification.environment, Expression.eval, dataflowAssignment, preparationAssignment, Lookup.Contains, Table.toRaw, fromElements]
   all_goals repeat' apply And.intro
   all_goals solve
-    | decide +kernel
     | (apply Verification.range16_contains; decide +kernel)
-    | (refine ⟨(0 : Fin 2097537), ?_⟩
-       change (#v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0] : Vector (ZMod babyBearModulus) 10) =
-         (UnifiedReduced.Setup.fixedRow (0 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
-       decide +kernel)
+    | (with_unfolding_all refine ⟨⟨0, by decide⟩, ?_⟩
+       dsimp only
+       rw [UnifiedReduced.Setup.Proofs.row_eq_reference]
+       simp only [UnifiedReduced.Setup.referenceRow, UnifiedReduced.Setup.referenceFixedRow,
+         UnifiedReduced.Setup.referenceBinaryRow, Verification.shiftBinopRow_eq_reference]
+       with_unfolding_all decide +kernel)
+    | decide +kernel
 
 private theorem dataflowClocks : FlatOperation.ConstraintsHoldFlat
     (Verification.environment dataflowAssignment) UnifiedReduced.importedConstraintsTimestampLookups := by
@@ -1514,12 +1520,15 @@ private theorem issuedCallerCore : FlatOperation.ConstraintsHoldFlat (Verificati
     Verification.environment, Expression.eval, issuedCallerAssignment, Lookup.Contains, Table.toRaw, fromElements]
   repeat' apply And.intro
   all_goals solve
-    | decide +kernel
     | (apply Verification.range16_contains; decide +kernel)
-    | (refine ⟨(0 : Fin 2097537), ?_⟩
-       change (#v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0] : Vector (ZMod babyBearModulus) 10) =
-         (UnifiedReduced.Setup.fixedRow (0 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
-       decide +kernel)
+    | (with_unfolding_all refine ⟨⟨0, by decide⟩, ?_⟩
+       dsimp only
+       rw [UnifiedReduced.Setup.Proofs.row_eq_reference]
+       simp only [UnifiedReduced.Setup.referenceRow, UnifiedReduced.Setup.referenceFixedRow,
+         UnifiedReduced.Setup.referenceBinaryRow, Verification.shiftBinopRow_eq_reference]
+       with_unfolding_all decide +kernel)
+    | decide +kernel
+
 private theorem issuedCallerClocks : FlatOperation.ConstraintsHoldFlat (Verification.environment issuedCallerAssignment)
     UnifiedReduced.importedConstraintsTimestampLookups := by
   rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]

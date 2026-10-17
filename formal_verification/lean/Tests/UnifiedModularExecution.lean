@@ -230,22 +230,252 @@ private def trace : UnifiedTrace babyBearModulus where
   terminalMemory := [token 0 45 0 0, token 1 48 11 0, token 2 49 3 0,
     token 3 44 2 8790, token 4 46 2 8790, token 5 50 14 0] ++ seed.drop 6
 
-private theorem constraints (index : Fin 12) : FlatOperation.ConstraintsHoldFlat
-    (Verification.environment (assignment index)) (clockConstraints trace.rom) := by
-  fin_cases index <;> apply Verification.holds_append
+private theorem fixedMember (initial : State) (index : Fin 524545)
+    (value : Vector (ZMod babyBearModulus) 10)
+    (equal : value = ((Verification.referenceShiftBinopRow index).set 9
+      (UnifiedReduced.Setup.binaryTag (Verification.referenceShiftBinopRow index)[9])).map
+        (fun n : Nat => (n : ZMod babyBearModulus))) :
+    (UnifiedReduced.Setup.table initial).Contains #[] value := by
+  change ∃ i : Fin 2097537, _
+  refine ⟨⟨index.val, by have bound := index.isLt; omega⟩, ?_⟩
+  dsimp only
+  rw [UnifiedReduced.Setup.Proofs.row_eq_reference]
+  have fixedBound : index.val < 1048961 := by have := index.isLt; omega
+  simpa only [UnifiedReduced.Setup.referenceRow, dif_pos fixedBound,
+    UnifiedReduced.Setup.referenceFixedRow, dif_pos index.isLt,
+    UnifiedReduced.Setup.referenceBinaryRow, Verification.shiftBinopRow_eq_reference] using equal
+
+private theorem constraints0 : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (assignment 0)) (clockConstraints trace.rom) := by
+  apply Verification.holds_append
   all_goals first
     | (simp [importedConstraints, trace, FlatOperation.ConstraintsHoldFlat,
         Verification.environment, Expression.eval, assignment, Lookup.Contains, Table.toRaw, fromElements]
        repeat' apply And.intro
        all_goals solve
-         | decide
          | (apply Verification.range16_contains; decide)
-         | (exact ⟨⟨0, by decide⟩, by with_unfolding_all decide⟩))
+         | (apply fixedMember _ (⟨0, by decide⟩ : Fin 524545); with_unfolding_all decide)
+         | decide)
     | (simp [importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
        repeat' apply And.intro
        all_goals apply Trace.Proofs.range_contains
        all_goals simp [Expression.eval, Verification.environment, assignment]
        all_goals decide)
+
+
+private theorem constraints1 : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (assignment 1)) (clockConstraints trace.rom) := by
+  apply Verification.holds_append
+  all_goals first
+    | (simp [importedConstraints, trace, FlatOperation.ConstraintsHoldFlat,
+        Verification.environment, Expression.eval, assignment, Lookup.Contains, Table.toRaw, fromElements]
+       repeat' apply And.intro
+       all_goals solve
+         | (apply Verification.range16_contains; decide)
+         | (apply fixedMember _ (⟨0, by decide⟩ : Fin 524545); with_unfolding_all decide)
+         | decide)
+    | (simp [importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
+       repeat' apply And.intro
+       all_goals apply Trace.Proofs.range_contains
+       all_goals simp [Expression.eval, Verification.environment, assignment]
+       all_goals decide)
+
+
+private theorem constraints2 : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (assignment 2)) (clockConstraints trace.rom) := by
+  apply Verification.holds_append
+  all_goals first
+    | (simp [importedConstraints, trace, FlatOperation.ConstraintsHoldFlat,
+        Verification.environment, Expression.eval, assignment, Lookup.Contains, Table.toRaw, fromElements]
+       repeat' apply And.intro
+       all_goals solve
+         | (apply Verification.range16_contains; decide)
+         | (apply fixedMember _ (⟨0, by decide⟩ : Fin 524545); with_unfolding_all decide)
+         | decide)
+    | (simp [importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
+       repeat' apply And.intro
+       all_goals apply Trace.Proofs.range_contains
+       all_goals simp [Expression.eval, Verification.environment, assignment]
+       all_goals decide)
+
+
+private theorem constraints3 : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (assignment 3)) (clockConstraints trace.rom) := by
+  apply Verification.holds_append
+  all_goals first
+    | (simp [importedConstraints, trace, FlatOperation.ConstraintsHoldFlat,
+        Verification.environment, Expression.eval, assignment, Lookup.Contains, Table.toRaw, fromElements]
+       repeat' apply And.intro
+       all_goals solve
+         | (apply Verification.range16_contains; decide)
+         | (apply fixedMember _ (⟨0, by decide⟩ : Fin 524545); with_unfolding_all decide)
+         | decide)
+    | (simp [importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
+       repeat' apply And.intro
+       all_goals apply Trace.Proofs.range_contains
+       all_goals simp [Expression.eval, Verification.environment, assignment]
+       all_goals decide)
+
+
+private theorem constraints4 : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (assignment 4)) (clockConstraints trace.rom) := by
+  apply Verification.holds_append
+  all_goals first
+    | (simp [importedConstraints, trace, FlatOperation.ConstraintsHoldFlat,
+        Verification.environment, Expression.eval, assignment, Lookup.Contains, Table.toRaw, fromElements]
+       repeat' apply And.intro
+       all_goals solve
+         | (apply Verification.range16_contains; decide)
+         | (apply fixedMember _ (⟨0, by decide⟩ : Fin 524545); with_unfolding_all decide)
+         | decide)
+    | (simp [importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
+       repeat' apply And.intro
+       all_goals apply Trace.Proofs.range_contains
+       all_goals simp [Expression.eval, Verification.environment, assignment]
+       all_goals decide)
+
+
+private theorem constraints5 : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (assignment 5)) (clockConstraints trace.rom) := by
+  apply Verification.holds_append
+  all_goals first
+    | (simp [importedConstraints, trace, FlatOperation.ConstraintsHoldFlat,
+        Verification.environment, Expression.eval, assignment, Lookup.Contains, Table.toRaw, fromElements]
+       repeat' apply And.intro
+       all_goals solve
+         | (apply Verification.range16_contains; decide)
+         | (apply fixedMember _ (⟨0, by decide⟩ : Fin 524545); with_unfolding_all decide)
+         | decide)
+    | (simp [importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
+       repeat' apply And.intro
+       all_goals apply Trace.Proofs.range_contains
+       all_goals simp [Expression.eval, Verification.environment, assignment]
+       all_goals decide)
+
+
+private theorem constraints6 : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (assignment 6)) (clockConstraints trace.rom) := by
+  apply Verification.holds_append
+  all_goals first
+    | (simp [importedConstraints, trace, FlatOperation.ConstraintsHoldFlat,
+        Verification.environment, Expression.eval, assignment, Lookup.Contains, Table.toRaw, fromElements]
+       repeat' apply And.intro
+       all_goals solve
+         | (apply Verification.range16_contains; decide)
+         | (apply fixedMember _ (⟨0, by decide⟩ : Fin 524545); with_unfolding_all decide)
+         | decide)
+    | (simp [importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
+       repeat' apply And.intro
+       all_goals apply Trace.Proofs.range_contains
+       all_goals simp [Expression.eval, Verification.environment, assignment]
+       all_goals decide)
+
+
+private theorem constraints7 : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (assignment 7)) (clockConstraints trace.rom) := by
+  apply Verification.holds_append
+  all_goals first
+    | (simp [importedConstraints, trace, FlatOperation.ConstraintsHoldFlat,
+        Verification.environment, Expression.eval, assignment, Lookup.Contains, Table.toRaw, fromElements]
+       repeat' apply And.intro
+       all_goals solve
+         | (apply Verification.range16_contains; decide)
+         | (apply fixedMember _ (⟨0, by decide⟩ : Fin 524545); with_unfolding_all decide)
+         | decide)
+    | (simp [importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
+       repeat' apply And.intro
+       all_goals apply Trace.Proofs.range_contains
+       all_goals simp [Expression.eval, Verification.environment, assignment]
+       all_goals decide)
+
+
+private theorem constraints8 : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (assignment 8)) (clockConstraints trace.rom) := by
+  apply Verification.holds_append
+  all_goals first
+    | (simp [importedConstraints, trace, FlatOperation.ConstraintsHoldFlat,
+        Verification.environment, Expression.eval, assignment, Lookup.Contains, Table.toRaw, fromElements]
+       repeat' apply And.intro
+       all_goals solve
+         | (apply Verification.range16_contains; decide)
+         | (apply fixedMember _ (⟨0, by decide⟩ : Fin 524545); with_unfolding_all decide)
+         | decide)
+    | (simp [importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
+       repeat' apply And.intro
+       all_goals apply Trace.Proofs.range_contains
+       all_goals simp [Expression.eval, Verification.environment, assignment]
+       all_goals decide)
+
+
+private theorem constraints9 : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (assignment 9)) (clockConstraints trace.rom) := by
+  apply Verification.holds_append
+  all_goals first
+    | (simp [importedConstraints, trace, FlatOperation.ConstraintsHoldFlat,
+        Verification.environment, Expression.eval, assignment, Lookup.Contains, Table.toRaw, fromElements]
+       repeat' apply And.intro
+       all_goals solve
+         | (apply Verification.range16_contains; decide)
+         | (apply fixedMember _ (⟨0, by decide⟩ : Fin 524545); with_unfolding_all decide)
+         | decide)
+    | (simp [importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
+       repeat' apply And.intro
+       all_goals apply Trace.Proofs.range_contains
+       all_goals simp [Expression.eval, Verification.environment, assignment]
+       all_goals decide)
+
+
+private theorem constraints10 : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (assignment 10)) (clockConstraints trace.rom) := by
+  apply Verification.holds_append
+  all_goals first
+    | (simp [importedConstraints, trace, FlatOperation.ConstraintsHoldFlat,
+        Verification.environment, Expression.eval, assignment, Lookup.Contains, Table.toRaw, fromElements]
+       repeat' apply And.intro
+       all_goals solve
+         | (apply Verification.range16_contains; decide)
+         | (apply fixedMember _ (⟨0, by decide⟩ : Fin 524545); with_unfolding_all decide)
+         | decide)
+    | (simp [importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
+       repeat' apply And.intro
+       all_goals apply Trace.Proofs.range_contains
+       all_goals simp [Expression.eval, Verification.environment, assignment]
+       all_goals decide)
+
+
+private theorem constraints11 : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (assignment 11)) (clockConstraints trace.rom) := by
+  apply Verification.holds_append
+  all_goals first
+    | (simp [importedConstraints, trace, FlatOperation.ConstraintsHoldFlat,
+        Verification.environment, Expression.eval, assignment, Lookup.Contains, Table.toRaw, fromElements]
+       repeat' apply And.intro
+       all_goals solve
+         | (apply Verification.range16_contains; decide)
+         | (apply fixedMember _ (⟨0, by decide⟩ : Fin 524545); with_unfolding_all decide)
+         | decide)
+    | (simp [importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
+       repeat' apply And.intro
+       all_goals apply Trace.Proofs.range_contains
+       all_goals simp [Expression.eval, Verification.environment, assignment]
+       all_goals decide)
+
+
+private theorem constraints (index : Fin 12) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (assignment index)) (clockConstraints trace.rom) := by
+  fin_cases index
+  · exact constraints0
+  · exact constraints1
+  · exact constraints2
+  · exact constraints3
+  · exact constraints4
+  · exact constraints5
+  · exact constraints6
+  · exact constraints7
+  · exact constraints8
+  · exact constraints9
+  · exact constraints10
+  · exact constraints11
 
 private theorem accepted : Accepted trace := by
   constructor
@@ -400,9 +630,9 @@ theorem forged_fma_locally_valid : FlatOperation.ConstraintsHoldFlat
       Verification.environment, Expression.eval, forged, assignment, Lookup.Contains, Table.toRaw, fromElements]
     repeat' apply And.intro
     all_goals solve
-      | decide
       | (apply Verification.range16_contains; decide)
-      | (exact ⟨⟨0, by decide⟩, by with_unfolding_all decide⟩)
+      | (apply fixedMember _ (⟨0, by decide⟩ : Fin 524545); with_unfolding_all decide)
+      | decide
   · simp [importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
     repeat' apply And.intro
     all_goals apply Trace.Proofs.range_contains

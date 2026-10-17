@@ -27,6 +27,7 @@ def referenceSetupRow (control : Fin 512 → Vector Nat 7) (index : Fin 344896) 
 namespace Proofs
 open Airbender.Setup Airbender.Setup.Proofs
 set_option warningAsError true
+set_option Elab.async false
 set_option maxRecDepth 131072
 set_option maxHeartbeats 4000000
 
@@ -80,8 +81,90 @@ private theorem first_get (kind : Fin 5) (n : Nat) (hn : n < (xorData kind).leng
     Array.size_replicate, if_pos (native_length kind ▸ hn)] using
     periodic_constant_get _ _ n positive (native_length kind ▸ hn)
 
+private theorem offset_add (n offset : Nat) (lower : offset ≤ n) :
+    offset + (n - offset) = n := by omega
+
+private theorem xor9_tail_bound (n : Nat) (upper : n < 262144) :
+    n - 8 - 261632 < 504 := by omega
+
+private theorem xor9_tail_mod (n : Nat) (upper : n < 262144)
+    (lower : ¬n - 8 < 261632) : 8 + (n - 261640) = n % 512 := by
+  have split : n = 512 * 511 + (8 + (n - 261640)) := by omega
+  have small : 8 + (n - 261640) < 512 := by omega
+  have equal := congrArg (fun value => value % 512) split
+  rw [Nat.mul_add_mod, Nat.mod_eq_of_lt small] at equal
+  exact equal.symm
+
+private theorem take_input_block (block : Block) (rest : List Block) (n length : Nat)
+    (size : block.length = length) (bound : n < length) :
+    getFromBlocks (block :: rest) n = block.get? n := by
+  rw [getFromBlocks, size, if_pos bound]
+
+private theorem skip_input_block (block : Block) (rest : List Block) (n length : Nat)
+    (size : block.length = length) (bound : ¬n < length) :
+    getFromBlocks (block :: rest) n = getFromBlocks rest (n - length) := by
+  rw [getFromBlocks, size, if_neg bound]
+
+private theorem column_get_three (leading middle tail : Block) (n : Nat) :
+    (Column.mk #[leading, middle, tail]).get? n = getFromBlocks [leading, middle, tail] n := rfl
+
+private theorem input_function_length (count width : Nat) (values : Fin width → Nat) :
+    (Block.periodic count 0 (Array.ofFn values)).length = count * width := by
+  simp only [Block.length, Array.size_ofFn]
+
+private theorem xor9_input_blocks (leading middle tail : Block)
+    (s0 : leading.length = 8) (s1 : middle.length = 261632) (s2 : tail.length = 504)
+    (g0 : ∀ n, n < 8 → leading.get? n = some n)
+    (g1 : ∀ n, n < 261632 → middle.get? n = some ((8 + n % 512) % 512))
+    (g2 : ∀ n, n < 504 → tail.get? n = some (8 + n))
+    (n : Nat) (upper : n < 262144) :
+    getFromBlocks [leading, middle, tail] n = some (n % 512) := by
+  by_cases h0 : n < 8
+  · rw [take_input_block leading _ n 8 s0 h0, g0 n h0,
+      Nat.mod_eq_of_lt (lt_trans h0 (by decide : 8 < 512))]
+  rw [skip_input_block leading _ n 8 s0 h0]
+  by_cases h1 : n - 8 < 261632
+  · rw [take_input_block middle _ (n - 8) 261632 s1 h1, g1 (n - 8) h1,
+      Nat.add_mod_mod, offset_add n 8 (Nat.le_of_not_gt h0)]
+  rw [skip_input_block middle _ (n - 8) 261632 s1 h1]
+  have bound := xor9_tail_bound n upper
+  rw [take_input_block tail [] (n - 8 - 261632) 504 s2 bound,
+    g2 (n - 8 - 261632) bound, Nat.sub_sub]
+  exact congrArg some (xor9_tail_mod n upper h1)
+
+private theorem xor9_second (n : Nat) (upper : n < 262144) :
+    (Column.mk #[.dense (Array.range 8),
+      .periodic 511 0 (Array.ofFn (fun i : Fin 512 => (8 + i.val) % 512)),
+      .affine 504 8 1]).get? n = some (n % 512) := by
+  rw [column_get_three]
+  exact xor9_input_blocks (.dense (Array.range 8))
+    (.periodic 511 0 (Array.ofFn (fun i : Fin 512 => (8 + i.val) % 512)))
+    (.affine 504 8 1) rfl (input_function_length 511 512 (fun i => (8 + i.val) % 512)) rfl
+    (fun m bound => dense_range_get 8 m bound)
+    (fun m bound => periodic_cyclic_get 512 511 8 m (by decide) bound)
+    (fun m bound => affine_get 504 8 m bound) n upper
+
+private def secondColumn (kind : Fin 5) : Column :=
+  #v[Column.mk #[.periodic 256 0 (Array.range 256)],
+    Column.mk #[.periodic 8 0 (Array.range 8)],
+    Column.mk #[.periodic 1 0 (Array.range 8),
+      .periodic 15 0 (Array.ofFn (fun i : Fin 16 => (8 + i.val) % 16)),
+      .dense (Array.ofFn (fun i : Fin 8 => 8 + i.val))],
+    Column.mk #[.dense (Array.range 8),
+      .periodic 127 0 (Array.ofFn (fun i : Fin 128 => (8 + i.val) % 128)),
+      .dense (Array.ofFn (fun i : Fin 120 => 8 + i.val))],
+    Column.mk #[.dense (Array.range 8),
+      .periodic 511 0 (Array.ofFn (fun i : Fin 512 => (8 + i.val) % 512)),
+      .affine 504 8 1]][kind]
+
+private theorem second_column_shape (kind : Fin 5) :
+    (xorData kind).columns[1] = secondColumn kind := by
+  fin_cases kind <;> rfl
+
 private theorem second_get (kind : Fin 5) (n : Nat) (hn : n < (xorData kind).length) :
     (xorData kind).columns[1].get? n = some (n % chunkSize kind) := by
+  rw [second_column_shape]
+  rw [native_length] at hn
   fin_cases kind
   · change (Column.mk #[.periodic 256 0 (Array.range 256)]).get? n = some (n % 256)
     change n < 65536 at hn
@@ -119,15 +202,7 @@ private theorem second_get (kind : Fin 5) (n : Nat) (hn : n < (xorData kind).len
       .periodic 511 0 (Array.ofFn (fun i : Fin 512 => (8 + i.val) % 512)),
       .affine 504 8 1]).get? n = some (n % 512)
     change n < 262144 at hn
-    by_cases h0 : n < 8
-    · simp [Column.get?, getFromBlocks, Block.length, dense_range_get, h0]
-      omega
-    · by_cases h1 : n - 8 < 261632
-      · simp [Column.get?, getFromBlocks, Block.length, periodic_cyclic_get, h0, h1]
-        omega
-      · simp (disch := omega) [Column.get?, getFromBlocks, Block.length, h0, h1,
-          affine_get]
-        omega
+    exact xor9_second n hn
 
 private theorem padding_get (kind : Fin 5) (j : Fin 5) (n : Nat)
     (hn : n < (xorData kind).length) :
@@ -161,10 +236,7 @@ private theorem output_covered (kind : Fin 5) :
   all_goals dsimp only [xorData, xor8Data, xor3Data, xor4Data, xor7Data, xor9Data,
     Vector.getElem_mk, Fin.getElem_fin, List.getElem_toArray,
     List.getElem_cons_zero, List.getElem_cons_succ]
-  all_goals simp only [raw_toList_append, List.map_append, List.sum_append,
-    List.map_cons, List.map_nil, List.sum_cons, List.sum_nil, Block.length,
-    Array.size_ofFn, raw_size_append, literal_size, List.length_cons, List.length_nil,
-    Nat.reduceAdd, Nat.reduceMul]
+  all_goals simp (config := { maxSteps := 1000000 }) [Block.length]
 
 private theorem output_get (kind : Fin 5) (n : Nat) (hn : n < (xorData kind).length) :
     (xorData kind).columns[2].get? n = some (n / chunkSize kind ^^^ n % chunkSize kind) := by

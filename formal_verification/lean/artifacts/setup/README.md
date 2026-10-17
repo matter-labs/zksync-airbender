@@ -22,7 +22,7 @@ program-padding and setup builders. The default is the no-cache circuit used by
 FV. Other family names are `jump-branch`, `mul-div`, `shift-binop`, `word-memory`,
 `subword-memory` and `unified`. The four workers (`bigint`, `blake-g`, `blake-round`,
 `keccak`) and `inits-and-teardowns` take `- -` for their program-independent inputs.
-Initialization/teardown local proof work remains deferred for discussion.
+Initialization/teardown gate verification is authorized after table integration.
 
 The retained production-shape artifacts use image and text
 words `[0x13, 0x00408093, 0x6f, 0x007181b3]`, with native zero padding. Ordinary
@@ -47,7 +47,11 @@ membership bounds proved in `Proofs/Tables/ImportedRanges.lean`. Bigint, the
 G/Keccak controllers, both G/round XOR tables and all Keccak fixed tables use imported data and
 kernel-checked semantics. Region slicing retains periodic interiors and checks
 every decoded value against JSON; balanced literal arrays avoid deep syntax.
-Migration of the other table definitions and program-dependent consumers is still in progress.
+Standard fixed-table consumers likewise use imported rows, with mathematical
+characterizations under `Proofs/Tables`. Independently imported unified fixed
+regions are checked against the shared relations, including all four XOR
+rotations. Native IDs and offsets drive index hints; logical enumeration may
+reorder the physical regions.
 
 Bigint's six fixed-table regions now use the exported native generic-table extent
 and columns. The importer emits constant, ascending and cyclic literal arrays
@@ -88,5 +92,20 @@ relation, so the earlier lookup soundness arguments are reused.
 The importer shares only identical imported literal arrays. Interval certificates
 assemble the rotation proof without expanding a million rows; the 2,046 stored
 rotation template values are checked individually. Runtime regressions compare
-every emitted fixed row and stored template with JSON. Standard fixed tables and
-program-bound ROM/decoder consumers remain in progress.
+every emitted fixed row and stored template with JSON.
+
+The selected word-, halfword- and byte-ROM regions retain every address/control
+combination and native zero-padded image word. Kernel proofs connect their keys,
+outputs, padding and tags to independently imported public image bytes. Decoder
+imports retain all real rows, unsupported sentinels, fixed-prefix tags and the
+whole committed tail for all seven machine artifacts. Their supported rows are
+checked against original Sail decoding of independently imported text. Public
+byte/configuration binding is explicit; the earlier arbitrary-program claims
+retain their scope. No table-content equivalence is supplied by the caller.
+
+`airbender_tests` compares emitted source bytes, metadata and every expanded
+region/decoder value with JSON, independently of the structural kernel
+certificates. Affine slice validation checks equal starts and strides over the
+whole overlap; all other values are compared individually. The imported-data
+semantic proofs do not establish Rust refinement, cryptographic authentication,
+F02/F03/F04 enforcement or AIH-336's accelerated/full-proof validation.

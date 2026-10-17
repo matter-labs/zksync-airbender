@@ -27,6 +27,7 @@ theorem constraints (rollover : Bool) :
       JumpBranchSlt.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat,
       Expression.eval, Verification.environment, assignment]
   all_goals repeat' apply And.intro
+  all_goals try (unfold Verification.jumpCleanup; rw [Verification.jumpCleanupTable_characterization])
   all_goals first
     | decide
     | (apply Verification.range16_contains; decide)

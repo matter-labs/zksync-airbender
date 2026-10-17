@@ -51,6 +51,21 @@ private def before (kind : Fin 3) : State :=
 
 private def row (kind : Fin 3) : Row babyBearModulus UnifiedFamily := ⟨.machine, assignment kind⟩
 
+private theorem fixedMember (initial : State) (index : Fin 524545)
+    (value : Vector (ZMod babyBearModulus) 10)
+    (equal : value = ((Verification.referenceShiftBinopRow index).set 9
+      (UnifiedReduced.Setup.binaryTag (Verification.referenceShiftBinopRow index)[9])).map
+        (fun n : Nat => (n : ZMod babyBearModulus))) :
+    (UnifiedReduced.Setup.table initial).Contains #[] value := by
+  change ∃ i : Fin 2097537, _
+  refine ⟨⟨index.val, by have bound := index.isLt; omega⟩, ?_⟩
+  dsimp only
+  rw [UnifiedReduced.Setup.Proofs.row_eq_reference]
+  have fixedBound : index.val < 1048961 := by have := index.isLt; omega
+  simpa only [UnifiedReduced.Setup.referenceRow, dif_pos fixedBound,
+    UnifiedReduced.Setup.referenceFixedRow, dif_pos index.isLt,
+    UnifiedReduced.Setup.referenceBinaryRow, Verification.shiftBinopRow_eq_reference] using equal
+
 private theorem constraints (kind : Fin 3) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (assignment kind)) (UnifiedReduced.clockConstraints (UnifiedReduced.Setup.table (before kind))) := by
   apply Verification.holds_append
@@ -62,19 +77,19 @@ private theorem constraints (kind : Fin 3) : FlatOperation.ConstraintsHoldFlat
     all_goals solve
       | decide
       | (apply Verification.range16_contains; decide)
-      | exact ⟨⟨1, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨257 + 0x34 * 256 + 0x78, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨257 + 0x12 * 256 + 0x56, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨257 + 0xcd * 256 + 1, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨257 + 0xab * 256 + 0xef, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨65793 + 0x34 * 256 + 0x78, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨65793 + 0x12 * 256 + 0x56, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨65793 + 0xcd * 256 + 1, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨65793 + 0xab * 256 + 0xef, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨131329 + 0x34 * 256 + 0x78, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨131329 + 0x12 * 256 + 0x56, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨131329 + 0xcd * 256 + 1, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨131329 + 0xab * 256 + 0xef, by decide⟩, by with_unfolding_all decide⟩
+      | (apply fixedMember _ (⟨1, by decide⟩ : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember _ (⟨257 + 0x34 * 256 + 0x78, by decide⟩ : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember _ (⟨257 + 0x12 * 256 + 0x56, by decide⟩ : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember _ (⟨257 + 0xcd * 256 + 1, by decide⟩ : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember _ (⟨257 + 0xab * 256 + 0xef, by decide⟩ : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember _ (⟨65793 + 0x34 * 256 + 0x78, by decide⟩ : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember _ (⟨65793 + 0x12 * 256 + 0x56, by decide⟩ : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember _ (⟨65793 + 0xcd * 256 + 1, by decide⟩ : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember _ (⟨65793 + 0xab * 256 + 0xef, by decide⟩ : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember _ (⟨131329 + 0x34 * 256 + 0x78, by decide⟩ : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember _ (⟨131329 + 0x12 * 256 + 0x56, by decide⟩ : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember _ (⟨131329 + 0xcd * 256 + 1, by decide⟩ : Fin 524545); with_unfolding_all decide)
+      | (apply fixedMember _ (⟨131329 + 0xab * 256 + 0xef, by decide⟩ : Fin 524545); with_unfolding_all decide)
   · fin_cases kind
     all_goals simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
     all_goals repeat' apply And.intro

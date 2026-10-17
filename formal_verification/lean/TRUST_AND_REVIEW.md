@@ -121,7 +121,8 @@ the Rust artifact directly. Audit [Parse](Airbender/Import/Parse.lean),
 [Embed](Airbender/Import/Embed.lean). Coefficient cast equivalence is proved, but
 faithful parsing/emission is not. Placement guards reject missing or ambiguous
 logical variables and check memory/witness banks. Named imported descriptors do
-not prove that Rust preprocessing or decoder-table contents match the model.
+not prove Rust preprocessing fidelity. Imported setup-row meanings are checked
+separately below; Rust execution and query/authentication binding remain external.
 
 The target remains the richer no-cache representation. Compiled-gate implication,
 witness extension and cached-layout equivalence are unproved. Generic prime-field
@@ -174,8 +175,11 @@ lookup consumers use those data with the original generic field scopes.
 all five native regions. [Kernel proofs](Airbender/Proofs/Keccak/ImportedFixed.lean)
 recover XOR/Iota/Chi and both rotation pieces, including every key, padding and tag,
 and connect the actual lookup consumers without changing controller or field scopes.
-Standard fixed tables and program-dependent consumers are still being migrated. Source parsing/emission, general Rust
-refinement and cryptographic query/table authentication remain separate boundaries.
+Standard fixed tables and selected-program ROM/decoder contents now import actual data.
+Their relation bridges and native execution adapters pass the complete library,
+test, importer and axiom/review checks. Arbitrary
+program/controller interfaces retain their scope. Source parsing/emission, general
+Rust refinement and cryptographic query/table authentication remain separate boundaries.
 
 `Accepted` checks imported equations/lookups and logical native state/memory
 permutations. Decoder membership and caller/request matching are likewise logical
