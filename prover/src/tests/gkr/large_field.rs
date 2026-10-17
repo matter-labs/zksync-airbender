@@ -79,7 +79,7 @@ fn basic_fibonacci_config() -> ProgramConfig {
 /// `circuit_tester`: some hand crafted program for testing, uses no oracles and no
 /// delegations (reduced-machine ASM), so nothing exercises a precompile CSR.
 #[cfg(test)]
-fn circuit_tester_config() -> ProgramConfig {
+pub(super) fn circuit_tester_config() -> ProgramConfig {
     ProgramConfig {
         binary_path: "../examples/circuit_tester/app.bin".to_string(),
         text_section_path: "../examples/circuit_tester/app.text".to_string(),

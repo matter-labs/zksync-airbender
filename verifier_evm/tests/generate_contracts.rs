@@ -62,7 +62,7 @@ fn whir_batch_pow_bits(circuit: &GKRCircuitArtifact<Proth120>, config: &ProverCo
     )
 }
 
-fn generate_contract(final_pc: u32) -> String {
+fn generate_contract(final_pc: u32, inits_teardowns_top_bits: &[u32]) -> String {
     let json = std::fs::read_to_string(
         "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
     )
@@ -77,13 +77,13 @@ fn generate_contract(final_pc: u32) -> String {
         EXTERNAL_POW_BITS,
         whir_batch_pow_bits(&circuit, &prover_config),
         final_pc,
-        INITS_TEARDOWNS_TOP_BITS,
+        inits_teardowns_top_bits,
     )
 }
 
 #[test]
 fn generate_contract_into_dir() {
-    let src = generate_contract(feeder_exit_pc());
+    let src = generate_contract(feeder_exit_pc(), INITS_TEARDOWNS_TOP_BITS);
 
     let p = Path::new("generated_contracts/merged/src/GkrWhirVerifier.sol");
     std::fs::create_dir_all(p.parent().unwrap()).unwrap();
@@ -93,9 +93,10 @@ fn generate_contract_into_dir() {
 
 #[test]
 fn generate_fixture_contract_into_dir() {
-    // This preimage is checked against the saved proof by flatten_roundtrip. Its final PC is
-    // a property of that proof's program, not a deployment parameter for the production
-    // verifier above. The preimage begins with 32 registers of three LE u32 words each.
+    // This preimage is checked against the saved proof by flatten_roundtrip. Its final PC
+    // and teardown top bits are properties of that proof's program, not deployment
+    // parameters for the production verifier above. The preimage begins with 32 registers
+    // of three LE u32 words each, then final PC/timestamp (12 bytes), then the top bits.
     let preimage = hex::decode(
         std::fs::read_to_string("debug_data/gkr_step1_preimage.hex")
             .unwrap()
@@ -103,7 +104,14 @@ fn generate_fixture_contract_into_dir() {
     )
     .unwrap();
     let final_pc = u32::from_le_bytes(preimage[32 * 12..32 * 12 + 4].try_into().unwrap());
-    let src = generate_contract(final_pc);
+    let top_bits_offset = 32 * 12 + 12;
+    let top_bits: Vec<_> = (0..INITS_TEARDOWNS_TOP_BITS.len())
+        .map(|i| {
+            let offset = top_bits_offset + i * 4;
+            u32::from_le_bytes(preimage[offset..offset + 4].try_into().unwrap())
+        })
+        .collect();
+    let src = generate_contract(final_pc, &top_bits);
     let declaration = "contract GkrWhirVerifier {";
     assert_eq!(src.matches(declaration).count(), 1);
     let src = src.replacen(declaration, "contract GkrWhirVerifierFixture {", 1);

@@ -54,6 +54,10 @@ mod relative_timestamps;
 #[cfg(test)]
 mod unified_circuit;
 #[cfg(test)]
+mod unified_column_profile;
+#[cfg(test)]
+mod unified_generated_witness;
+#[cfg(test)]
 mod unified_negative_tests;
 
 #[allow(dead_code)]
@@ -130,6 +134,65 @@ pub(crate) fn write_cell<F: PrimeField, A: GoodAllocator, B: GoodAllocator>(
         GKRAddress::BaseLayerMemory(col) => trace.column_major_memory_trace[col][row] = value,
         other => panic!("not a base-layer address: {other:?}"),
     }
+}
+
+/// Decoder-lookup membership: on every executing row, the tuple (pc[0], pc[1], rs1, rs2,
+/// rd, imm[0], imm[1], funct3, Σ 2^i · family_bit[i]) read from the layout's
+/// `machine_state` / `decoder_input` columns must equal the decoder-table row of that PC.
+/// The compiled masked decoder lookup reads exactly this tuple (the cs test
+/// `decoder_lookup_oracle_matches_compiled_relation`); `check_satisfied` and
+/// `check_lookups_in_range` do not evaluate it. Returns the first violating row.
+#[cfg(test)]
+pub(crate) fn first_decoder_lookup_violation<F: PrimeField, A: GoodAllocator, B: GoodAllocator>(
+    circuit: &GKRCircuitArtifact<F>,
+    trace: &GKRFullWitnessTrace<F, A, B>,
+    decoder_table: &[Option<cs::gkr_circuits::decoder_trait::ExecutorFamilyDecoderData>],
+) -> Option<usize> {
+    use cs::gkr_circuits::decoder_trait::materialize_flattened_decoder_table_with_bitmask;
+
+    let table = materialize_flattened_decoder_table_with_bitmask::<F>(
+        decoder_table,
+        &circuit.decode_table_columns_mask,
+    );
+    let machine = circuit.memory_layout.machine_state.unwrap();
+    let decoder = circuit.memory_layout.decoder_input.as_ref().unwrap();
+    let side = |i: usize| {
+        if decoder.decoder_witness_is_in_memory {
+            GKRAddress::BaseLayerMemory(i)
+        } else {
+            GKRAddress::BaseLayerWitness(i)
+        }
+    };
+    let columns = [
+        GKRAddress::BaseLayerMemory(machine.initial_state.pc[0]),
+        GKRAddress::BaseLayerMemory(machine.initial_state.pc[1]),
+        GKRAddress::BaseLayerMemory(decoder.rs1_index),
+        decoder.rs2_index,
+        decoder.rd_index,
+        side(decoder.imm[0]),
+        side(decoder.imm[1]),
+        side(decoder.funct3.expect("unified decoder has funct3")),
+    ];
+    let execute = GKRAddress::BaseLayerMemory(machine.execute);
+    (0..base_trace_len(trace)).find(|&row| {
+        if read_cell(trace, execute, row) != F::ONE {
+            return false;
+        }
+        let mut tuple: Vec<F> = columns.iter().map(|a| read_cell(trace, *a, row)).collect();
+        let mut mask = F::ZERO;
+        let mut power = F::ONE;
+        for bit in decoder.circuit_family_mask_bits.iter() {
+            let mut t = read_cell(trace, *bit, row);
+            t.mul_assign(&power);
+            mask.add_assign(&t);
+            power.double();
+        }
+        tuple.push(mask);
+        let pc = tuple[0].as_u32_reduced() as usize | (tuple[1].as_u32_reduced() as usize) << 16;
+        table
+            .get(pc / 4)
+            .is_none_or(|entry| pc % 4 != 0 || entry.as_slice() != tuple.as_slice())
+    })
 }
 
 #[cfg(test)]
@@ -841,7 +904,7 @@ mod unified_reduced_machine {
     use ::cs::witness_placer::WitnessTypeSet;
     use ::cs::witness_placer::{
         WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger,
-        WitnessComputationalU16, WitnessComputationalU32, WitnessMask,
+        WitnessComputationalU16, WitnessComputationalU32, WitnessComputationalU8, WitnessMask,
     };
     use ::field::baby_bear::base::BabyBearField;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
@@ -867,7 +930,7 @@ pub mod unified_reduced_machine_proth120 {
     use ::cs::witness_placer::WitnessTypeSet;
     use ::cs::witness_placer::{
         WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger,
-        WitnessComputationalU16, WitnessComputationalU32, WitnessMask,
+        WitnessComputationalU16, WitnessComputationalU32, WitnessComputationalU8, WitnessMask,
     };
     use ::field::proth120::Proth120;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
