@@ -17,7 +17,12 @@ seed values and initial PC to actual Sail reads; missing data rejects constructi
 [Image proofs](../../../Proofs/Trace/InitialImage.lean) are copied unchanged and
 derive seed bounds, zero clocks, address injectivity and read-state preservation.
 [Value proofs](../../../Proofs/Trace/Values.lean) now derive native read/write/terminal
-word bounds using initialized history and the decoded zero flag. Transport to
-later Sail states and physical zero-boot/ROM interpretation remain pending.
+word bounds using initialized history and the decoded zero flag.
+[Sail history](SailHistory.lean) retains the shared actual-read/write representation;
+[its proof](../../../Proofs/Trace/SailHistory.lean) derives all intermediate states
+from Clean consistency and public seeds. V2 masked writes preserve x0; public
+RAM alignment supplies byte-window disjointness. [Grouped row reads/writes](../../../Proofs/Trace/PortReads.lean)
+transport actual Sail accesses, including readonly alias stutters. Instruction
+execution and physical zero-boot/ROM interpretation remain pending.
 [Indirect descriptors](IndirectPorts.lean) are retained reusable definitions;
 v2 batched worker arguments and indirect-port import remain pending.

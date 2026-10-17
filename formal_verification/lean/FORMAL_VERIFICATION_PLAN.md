@@ -45,13 +45,16 @@ unique addresses. Ten-column native decoder placement/query order is checked,
 including the separate zero flag. Selected-profile public Sail setup construction,
 full padded logical membership, native padding exclusion and recovered zero flags
 are checked. Initialized history now derives native read/write/terminal bounds;
-canonical decoder PC/immediate bounds are checked. Subsequent Sail-read transport
-and complete row-interface assembly are next.
+canonical decoder PC/immediate and register-index bounds are checked. Native history
+now constructs actual Sail reads/writes and intermediate states, including x0
+preservation from v2 masked writes. Derived clock order groups complete rows;
+readonly refreshes preserve the instruction pre-state even with aliases. Complete
+row-interface assembly and instruction execution are next.
 
-1. Transport native latest reads and word bounds into actual Sail states and
-   assemble ADD/SUB local interfaces from decoded public instructions. Derive
-   preprocessing, register indices, immediate encoding, selector mask, PC alignment
-   and each intermediate Sail state. The checked setup constructor selects the
+1. Assemble ADD/SUB local interfaces from decoded public instructions and the
+   checked actual Sail row reads/writes. Derive preprocessing, immediate encoding,
+   selector mask and PC alignment; connect grouped cell states through actual Sail
+   retirement along the checked native PC/state path. The checked setup constructor selects the
    five arithmetic opcodes; Rust setup generation/export fidelity and mixed/custom
    program expansion remain separate. Preserve ten-column flatten order, raw
    funct3, original x0 fields and native minus-one padding. Do not replace logical

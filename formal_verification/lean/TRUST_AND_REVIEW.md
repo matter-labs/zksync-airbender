@@ -85,7 +85,15 @@ read/write/terminal bounds. It combines original public seed reads, actual match
 strict native port order and a zero flag proved from decoder membership. Raw-result
 ranges alone do not suffice for a masked write: a concrete bad flag passes local
 equations and produces an unbounded write, while full lookup membership rejects it.
-Subsequent Sail-read transport and complete local-interface assembly remain pending.
+The short [Sail-history theorem](Airbender/Review/Trace/SailHistory.lean) now
+constructs actual Sail cell transfers and intermediate states. Clean consistency
+derives reads from the public seed state; native masked-write equations and the
+decoded zero flag preserve hardwired x0, without v3 NOP preprocessing. Alignment
+of public RAM cells supplies disjoint byte windows. Native clocks derive complete
+row grouping and the PC/state path; readonly refreshes preserve each instruction
+pre-state even with aliases. Decoder register indices select original Sail GPR
+accessors. These cell transfers do not yet establish instruction execution or
+retirement; complete local-interface assembly remains pending.
 Exceptions, interrupts, completeness, whole Sail execution and cryptographic
 soundness are outside this checkpoint. The copied custom-operation specification
 has no checked v2 consumer yet.

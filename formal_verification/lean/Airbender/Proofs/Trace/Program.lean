@@ -99,4 +99,27 @@ theorem native_query_immediate_word {Kind : Type} {p : Nat} (hp : limbBase < p)
   rw [low, high, ZMod.val_natCast_of_lt (lt_trans bound.1 hp),
     ZMod.val_natCast_of_lt (lt_trans bound.2 hp)]
 
+/-- Canonical register indices from any family's imported ten-column query. -/
+theorem native_query_indices {Kind : Type} {p : Nat} (hp : limbBase < p)
+    {columns : TraceColumns} {decoder : DecoderColumns} {w : Nat → ZMod p}
+    {entry : ProgramEntry Kind}
+    (equal : nativeDecoderQuery columns decoder w = entry.query) :
+    (w decoder.rs1).val = entry.data.rs1.toNat ∧
+    (w decoder.rs2).val = entry.data.rs2.toNat ∧
+    (w decoder.rd).val = entry.data.rd.toNat := by
+  have scalar {column : Nat} {index : BitVec 5}
+      (same : w column = (index.toNat : ZMod p)) : (w column).val = index.toNat := by
+    rw [same, ZMod.val_natCast_of_lt (lt_trans index.isLt (by dsimp [limbBase] at hp; omega))]
+  exact ⟨scalar (congrArg (fun q : Vector (ZMod p) 10 => q[2]) equal),
+    scalar (congrArg (fun q : Vector (ZMod p) 10 => q[3]) equal),
+    scalar (congrArg (fun q : Vector (ZMod p) 10 => q[4]) equal)⟩
+
+/-- All three native register indices are fixed by the same decoder query. -/
+theorem query_register_indices {p : Nat} (hp : limbBase < p) {row : Row p} {entry : ProgramEntry}
+    (equal : row.decoderQuery = entry.query) :
+    (row.assignment row.decoderColumns.rs1).val = entry.data.rs1.toNat ∧
+    (row.assignment row.decoderColumns.rs2).val = entry.data.rs2.toNat ∧
+    (row.assignment row.decoderColumns.rd).val = entry.data.rd.toNat :=
+  native_query_indices hp equal
+
 end Airbender.Trace.Proofs

@@ -38,8 +38,17 @@ complete decoder lookup membership. The source's decreasing-time induction is
 reused; readonly ports preserve values, while native range/mask equations bound
 destination writes after the zero flag is recovered. No per-row bounds are inputs.
 
-These are logical selected-profile results. Subsequent Sail read transport,
-preprocessing/row assembly and whole Sail execution reaching the native terminal
+[Actual Sail history](SailHistory.lean) realizes every accepted native transfer
+from the public initial state. The [shared history representation](../Helpers/Memory/SailHistory.lean)
+uses original Sail reads/writes and Clean last-write values. Native v2 mask
+equations preserve x0 without NOP preprocessing; only public RAM-cell alignment
+is supplied. Clock-derived [row grouping](../../Proofs/Trace/RowHistory.lean) and
+[port transport](../../Proofs/Trace/PortReads.lean) recover instruction pre-state
+reads and actual masked writes, including aliases. Both the aliased ADD and
+[retained SUB-to-x0](../../../Tests/X0History.lean) have nonempty regressions.
+
+These are logical selected-profile results. Complete preprocessing/row assembly
+and whole Sail execution reaching the native terminal
 PC/cells remain in [the plan](../../../FORMAL_VERIFICATION_PLAN.md).
 Cryptographic enforcement of the logical permutations remains a separate boundary.
 Existing [local circuit claims](../Circuits/README.md) retain their explicit interfaces.

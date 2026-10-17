@@ -213,6 +213,30 @@
     {
       "path": "Airbender/Proofs/Trace/InitialImage.lean",
       "sha256": "5d19ed3b9848e755522aaf758f07646990fba7a6add595e05098c4c0b2080864"
+    },
+    {
+      "path": "Airbender/Proofs/Arithmetic/Bytes.lean",
+      "sha256": "54099627ad981d8fa9068e6d52e2651e35e067a472b83782896622d551d1519d"
+    },
+    {
+      "path": "Airbender/Proofs/Sail/Memory.lean",
+      "sha256": "6558e455370333012f15ba9c3381b8f6513705da8ed831b398bcbdf63c1e2181"
+    },
+    {
+      "path": "Airbender/Proofs/Sail/WordMemoryState.lean",
+      "sha256": "e6395198b1db2409868a08ca3440484fa46564c6e53898dc267094dd3fa0b3c6"
+    },
+    {
+      "path": "Airbender/Proofs/Sail/RegisterState.lean",
+      "sha256": "f11af0ec82d715323581798646b7cfbb0f4cd6f5fbb5044201dafc6938e3fee0"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Memory/SailHistory.lean",
+      "sha256": "b524ba4ccc30c966384f92b1484ff7f593e2ab807827f0a3e0b515fa1f1d8e43"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/AccessExecution.lean",
+      "sha256": "6adb5a52000f87286ccc421f49519f361fb9ff39d8fab990acf31285d78175e1"
     }
   ],
   "circuit_artifacts": [
@@ -385,13 +409,61 @@
       "path": "Airbender/Proofs/Trace/Program.lean",
       "source_path": "Airbender/Proofs/Trace/Program.lean",
       "source_sha256": "88ce31938a4df60bdc397ced357f26d7182b26b22a86da95b11ccd372371e0e5",
-      "change": "Reuse entry_source/program_sources and canonical PC-word proof text. Shift immediate projections from source columns 5/6 to v2 columns 6/7 and ten-column vectors. Prove bounds for the selected v2 decoder projection."
+      "change": "Reuse entry_source/program_sources and canonical PC-word proof text. Shift immediate projections from source columns 5/6 to v2 columns 6/7 and ten-column vectors. Prove bounds for the selected v2 decoder projection. Retain canonical register-index recovery with the v2 ten-column query."
     },
     {
       "path": "Airbender/Proofs/Trace/Values.lean",
       "source_path": "Airbender/Proofs/Trace/Values.lean",
       "source_sha256": "1b52185af525478318397592a2e63e4fe695eec528ef68d2ab3761e48caa69d8",
       "change": "Reuse raw word projections and generic decreasing-time range induction. Remove the BabyBear-specific inverse argument. Prove concrete v2 write sources from native mask equations/ranges and the zero flag recovered from full decoder membership; no ROM assumptions for this family."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Addresses.lean",
+      "source_path": "Airbender/Proofs/Trace/Addresses.lean",
+      "source_sha256": "533bdb6f972bbc65c7b84293d47ffb6fd05d099784fe6528bce146a609576466",
+      "change": "Preserve cell/address projection and initialized-domain proofs; remove the source-field timestamp inverse premise using the checked native v2 clock laws."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/SailCells.lean",
+      "source_path": "Airbender/Proofs/Trace/SailCells.lean",
+      "source_sha256": "bcb0b6d8aa54e55487d1cdcdead80c1a261312861e01ee910b23c0deb0d9dca7",
+      "change": "Preserve original Sail cell readback, frame, stutter and readability proofs; omit the unneeded physical-platform configuration lemma/import."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/SailHistory.lean",
+      "source_path": "Airbender/Proofs/Trace/SailHistory.lean",
+      "source_sha256": "b35db28f3d1e93eb46c277f3fc33c33bc8fa6855c203a6174fc35a30c652808a",
+      "change": "Preserve the Clean-last-write representation, seed binding, actual Sail realization and read transport proofs; omit the unneeded physical-platform configuration theorem and revise the v3 x0-preprocessing comment."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/NativeSailHistory.lean",
+      "source_path": "Airbender/Proofs/Trace/NativeSailHistory.lean",
+      "source_sha256": "bce92d6d34c12d160d05a34fef9b68aa24964f003745f4b04837f1a40c34a4c4",
+      "change": "Preserve initialization-epoch split, domain recovery and actual Sail realization; remove the source-field inverse premise using v2 clock proofs."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/ZeroValues.lean",
+      "source_path": "Airbender/Proofs/Trace/ZeroValues.lean",
+      "source_sha256": "82dbbbc8e05408155d3d07cf4c3ca8a451fd9293db489ee150a99c465fcd4421",
+      "change": "Preserve decreasing-time x0 read/write induction from actual public Sail seeds; remove the source-field inverse premise."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/ZeroRegister.lean",
+      "source_path": "Airbender/Proofs/Trace/ZeroRegister.lean",
+      "source_sha256": "eeee4a265ad1e28fbe4a8d808d1f79d04173ebf48e408f9e642166d3850ed2fc",
+      "change": "Replace v3 NOP-preprocessing and other-family cases with native v2 masked-destination equations and ten-column decoder-owned zero flag. Derive x0 preservation and actual Sail-history assembly with no per-row value or desired-state premise."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/RowHistory.lean",
+      "source_path": "Airbender/Proofs/Trace/RowHistory.lean",
+      "source_sha256": "6826d6bd6cf1ccb8df679afd4f1f245e60e1d4246e1096342cfe9a8c9803d5af",
+      "change": "Preserve native event projection, derived row order, complete PC/state path, row grouping and readonly-stutter proofs; remove the source-field inverse and replace v3 projection rules with the proved native v2 zero-write law."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/PortReads.lean",
+      "source_path": "Airbender/Proofs/Trace/PortReads.lean",
+      "source_sha256": "23e228aef0d686a2dc7fa306e19139daf1f56c9777efad91eb6155de1e03efdf",
+      "change": "Extract unchanged generic three-port and row read/write transport proofs for the selected v2 registry; add ten-column native register-index transport for both source reads and actual masked destination writes."
     }
   ]
 }

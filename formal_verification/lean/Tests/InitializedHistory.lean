@@ -2,6 +2,9 @@ import Tests.AddSub
 import Airbender.Review.Trace.Initialization
 import Airbender.Review.Trace.Decoder
 import Airbender.Review.Trace.Values
+import Airbender.Review.Trace.SailHistory
+import Airbender.Proofs.Trace.PortReads
+import Airbender.Proofs.Trace.AccessExecution
 
 namespace Tests.InitializedHistory
 open Airbender Trace
@@ -242,5 +245,61 @@ theorem bad_flag_decoder_rejected : ¬ Decoded badTrace setup := by
   change (2 : ZMod mersenne31Modulus) = 0 at flag
   revert flag
   decide
+
+private theorem aligned : ∀ cell ∈ [Cell.register 1], cell.Aligned := by
+  intro cell member
+  have same : cell = Cell.register 1 := by simpa using member
+  subst cell
+  trivial
+
+/-- The public theorem derives actual Sail transfers for the accepted alias row. -/
+theorem initialized_sail_history :
+    ∃ (history : TimestampSortedMemoryAccessList) (events : List MemoryAccess)
+      (seed : TimestampSortedMemoryAccessList) (after : Reference.RiscV.Sail.State),
+      MemoryHistory trace history ∧ List.append (α := MemoryAccess) events seed.val = history.val ∧
+      events.Perm trace.nativeEvents ∧ SailHistory [Cell.register 1] events before after ∧
+      SailStateMatches [Cell.register 1] history after :=
+  public_image_sail_history public_inputs accepted decoded aligned
+
+private theorem native_row_history : ∃ after,
+    SailHistory [Cell.register 1] (rowEvents trace.memoryEpoch nativeRow).reverse before after := by
+  obtain ⟨_, rows, after, _, permutation, _, history, _⟩ :=
+    Trace.Proofs.decoded_row_history (by decide) accepted boundary public_inputs.image
+      public_inputs.domain aligned decoded
+  have same : rows = [nativeRow] := List.perm_singleton.mp permutation
+  subst rows
+  exact ⟨after, by simpa using history⟩
+
+/-- Readonly refreshes stutter even when all three addresses alias: the
+    destination old-value read still comes from the original Sail pre-state. -/
+theorem alias_destination_prestate_read :
+    (Cell.register 1).read before = .ok (123 : BitVec 32) before := by
+  obtain ⟨after, history⟩ := native_row_history
+  have read := Trace.Proofs.row_history_read trace.memoryEpoch history
+    (port := Airbender.AddSub.importedConstraintsMemoryPorts[2])
+    (by change Airbender.AddSub.importedConstraintsMemoryPorts[2] ∈
+          Airbender.AddSub.importedConstraintsMemoryPorts
+        simp [Airbender.AddSub.importedConstraintsMemoryPorts])
+    (cell := Cell.register 1) (by rfl)
+  change (Cell.register 1).read before = .ok
+    (memoryWord (Airbender.AddSub.importedConstraintsMemoryPorts[2].readCode assignment)) before at read
+  have value : Airbender.AddSub.importedConstraintsMemoryPorts[2].readCode assignment =
+      Nat.pair 123 0 := rfl
+  rw [value, memoryWord, Nat.unpair_pair] at read
+  exact read
+
+/-- The grouped history supplies the actual Sail x1 write of 246. -/
+theorem alias_actual_write : ∃ after,
+    run (SailRV32.Functions.wX_bits (.Regidx 1) (246 : BitVec 32)) before = .ok () after := by
+  obtain ⟨after, history⟩ := native_row_history
+  have written := Trace.Proofs.addsub_history_register_write (by decide) trace.memoryEpoch history
+    (entry := addEntry) (by decide)
+  change run ((Cell.register 1).write
+    (memoryWord (Airbender.AddSub.importedConstraintsMemoryPorts[2].writeCode assignment)))
+      before = .ok () after at written
+  have value : Airbender.AddSub.importedConstraintsMemoryPorts[2].writeCode assignment =
+      Nat.pair 246 0 := rfl
+  rw [value, memoryWord, Nat.unpair_pair] at written
+  exact ⟨after, written⟩
 
 end Tests.InitializedHistory

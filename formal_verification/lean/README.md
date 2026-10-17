@@ -31,8 +31,11 @@ binds seed tokens and initial PC to actual upstream reads, deriving seed bounds,
 clocks and uniqueness. [Public decoder recovery](Airbender/Review/Trace/Decoder.lean)
 rejects native minus-one padding from the imported mask equations. Logical decoder
 membership and initialized history now derive native read/write/terminal word
-bounds. Rust setup generation/export, subsequent Sail-read transport, whole Sail
-execution and cryptographic argument soundness remain pending. This checkpoint does not inherit v3's completed coverage.
+bounds. [Native-to-Sail history](Airbender/Review/Trace/SailHistory.lean) now derives
+actual cell reads/writes and intermediate states, with native x0 preservation and
+clock-derived row grouping. Readonly refreshes preserve the instruction pre-state,
+including aliases. Complete instruction interfaces, Rust setup generation/export,
+whole Sail execution and cryptographic argument soundness remain pending. This checkpoint does not inherit v3's completed coverage.
 
 ## Read these first
 
