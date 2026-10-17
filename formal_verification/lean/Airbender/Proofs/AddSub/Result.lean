@@ -16,6 +16,31 @@ theorem carry_bits {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
   · apply Arithmetic.boolean_nat; convert lo using 1; ring
   · apply Arithmetic.boolean_nat; convert hi using 1; ring
 
+/-- Native writes are bounded after decoder membership proves the zero flag.
+    Raw-result bounds alone do not bound a write through an unconstrained mask. -/
+theorem written_limb_bounds {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
+    (flag : w 8 = 0 ∨ w 8 = 1) :
+    (w 37).val < limbBase ∧ (w 38).val < limbBase := by
+  have lower := Verification.range16_bound (Verification.lookup_of_holds h
+    ⟨0, by rw [lookup_count]; decide⟩)
+  have upper := Verification.range16_bound (Verification.lookup_of_holds h
+    ⟨1, by rw [lookup_count]; decide⟩)
+  simp [Expression.eval, Verification.environment] at lower upper
+  have lo := Verification.assertion_of_holds h ⟨24, by rw [constraint_count]; decide⟩
+  have hi := Verification.assertion_of_holds h ⟨25, by rw [constraint_count]; decide⟩
+  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
+    Verification.environment] at lo hi
+  rcases flag with zero | one
+  · rw [zero] at lo hi
+    have left : w 37 = w 29 := by linear_combination -lo
+    have right : w 38 = w 30 := by linear_combination -hi
+    simpa only [left, right] using And.intro lower upper
+  · rw [one] at lo hi
+    have left : w 37 = 0 := by linear_combination -lo
+    have right : w 38 = 0 := by linear_combination -hi
+    simp [left, right, limbBase]
+
 theorem output_columns {p : Nat} [Fact p.Prime] {input : Sail.Input} {output : Sail.Output}
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)

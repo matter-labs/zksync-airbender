@@ -26,8 +26,20 @@ architectural PC. The native initial clock is four; seed clocks are zero. Missin
 registers or bytes fail construction. Seed bounds, seed clocks and unique encoded
 addresses are derived, without witness-supplied initial read values.
 
-These are logical initialized-memory results. Operand bounds, subsequent Sail
-read transport, preprocessing, public decoding and whole Sail execution reaching
-the native terminal PC/cells remain in [the plan](../../../FORMAL_VERIFICATION_PLAN.md).
+[Public decoder recovery](Decoder.lean) constructs selected arithmetic-profile
+setup rows from public bytes and original Sail decoding. Logical lookup membership
+includes the native minus-one padding tail. The imported packed-mask equations
+exclude that tail, recovering actual decoded public instructions and the zero flag.
+Canonical decoder PC/immediate words follow in the proof layer.
+
+[Public-image value bounds](Values.lean) derives all native reads, actual writes
+and terminal word bounds from the public seed image, accepted native history and
+complete decoder lookup membership. The source's decreasing-time induction is
+reused; readonly ports preserve values, while native range/mask equations bound
+destination writes after the zero flag is recovered. No per-row bounds are inputs.
+
+These are logical selected-profile results. Subsequent Sail read transport,
+preprocessing/row assembly and whole Sail execution reaching the native terminal
+PC/cells remain in [the plan](../../../FORMAL_VERIFICATION_PLAN.md).
 Cryptographic enforcement of the logical permutations remains a separate boundary.
 Existing [local circuit claims](../Circuits/README.md) retain their explicit interfaces.

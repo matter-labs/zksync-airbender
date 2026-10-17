@@ -42,18 +42,20 @@ clock boundaries now derive all row/prior clock inputs, complete Clean memory
 consistency and newest preceding reads. Public Sail image construction now binds
 seed tokens and initial PC to actual reads, deriving initial bounds/clocks and
 unique addresses. Ten-column native decoder placement/query order is checked,
-including the separate zero flag. Public table construction/membership and
-subsequent bound/read transport are next.
+including the separate zero flag. Selected-profile public Sail setup construction,
+full padded logical membership, native padding exclusion and recovered zero flags
+are checked. Initialized history now derives native read/write/terminal bounds;
+canonical decoder PC/immediate bounds are checked. Subsequent Sail-read transport
+and complete row-interface assembly are next.
 
-1. Import v2 fixed/setup decoder rows and bind public program construction.
-   Preserve the ten-column flatten order, raw opcode funct3 bits, original x0
-   opcode/operands and native minus-one padding. Connect the decoder-owned
-   destination-zero flag before deriving masked-write bounds.
-   Derive operand bounds and subsequent actual Sail reads through initialized
-   history, using the checked public Sail seed/initial-PC constructors. The row theorem still takes
-   decoded packed masks, preprocessing, bounds and Sail reads explicitly; derive
-   these from public decoding and initialized history. Reuse the checked native
-   clock/port descriptors and complete-path proofs.
+1. Transport native latest reads and word bounds into actual Sail states and
+   assemble ADD/SUB local interfaces from decoded public instructions. Derive
+   preprocessing, register indices, immediate encoding, selector mask, PC alignment
+   and each intermediate Sail state. The checked setup constructor selects the
+   five arithmetic opcodes; Rust setup generation/export fidelity and mixed/custom
+   program expansion remain separate. Preserve ten-column flatten order, raw
+   funct3, original x0 fields and native minus-one padding. Do not replace logical
+   lookup authentication with a table-equivalence premise.
 2. Port word-memory and jump/branch/SLT alongside the first initialized ADD/SUB
    trace. Preserve v2 PC rollover behavior and verify native timestamp offsets.
 3. Port unsigned mul/div, shift/binop and subword memory into the same shared

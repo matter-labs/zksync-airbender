@@ -16,6 +16,8 @@ boundaries and unique seed addresses. No expected read value is supplied.
 seed values and initial PC to actual Sail reads; missing data rejects construction.
 [Image proofs](../../../Proofs/Trace/InitialImage.lean) are copied unchanged and
 derive seed bounds, zero clocks, address injectivity and read-state preservation.
-Later read/word-bound transport and physical zero-boot/ROM interpretation remain pending.
+[Value proofs](../../../Proofs/Trace/Values.lean) now derive native read/write/terminal
+word bounds using initialized history and the decoded zero flag. Transport to
+later Sail states and physical zero-boot/ROM interpretation remain pending.
 [Indirect descriptors](IndirectPorts.lean) are retained reusable definitions;
 v2 batched worker arguments and indirect-port import remain pending.

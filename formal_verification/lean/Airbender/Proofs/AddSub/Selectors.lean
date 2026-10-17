@@ -53,6 +53,32 @@ private theorem selector_bound {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
     rw [eq]
     simpa only [ZMod.val_natCast] using le_trans (Nat.mod_le n p) bound
 
+theorem packed_mask_bound {p : Nat} [Fact p.Prime] (hp : 256 < p)
+    {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints) :
+    (w 12).val ≤ 255 := by
+  have b0 : (w 17).val ≤ 1 := selector_bound h ⟨0, by decide⟩
+  have b1 : (w 18).val ≤ 1 := selector_bound h ⟨1, by decide⟩
+  have b2 : (w 19).val ≤ 1 := selector_bound h ⟨2, by decide⟩
+  have b3 : (w 20).val ≤ 1 := selector_bound h ⟨3, by decide⟩
+  have b4 : (w 21).val ≤ 1 := selector_bound h ⟨4, by decide⟩
+  have b5 : (w 22).val ≤ 1 := selector_bound h ⟨5, by decide⟩
+  have b6 : (w 23).val ≤ 1 := selector_bound h ⟨6, by decide⟩
+  have b7 : (w 24).val ≤ 1 := selector_bound h ⟨7, by decide⟩
+  have packed := Verification.assertion_of_holds h ⟨34, by rw [constraint_count]; decide⟩
+  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
+    Verification.environment] at packed
+  let n := (w 17).val + 2 * (w 18).val + 4 * (w 19).val + 8 * (w 20).val +
+    16 * (w 21).val + 32 * (w 22).val + 64 * (w 23).val + 128 * (w 24).val
+  have bound : n ≤ 255 := by dsimp [n]; omega
+  have equation : (n : ZMod p) = w 12 := by
+    dsimp [n]
+    simp only [Nat.cast_add, Nat.cast_mul, Nat.cast_ofNat, ZMod.natCast_zmod_val]
+    linear_combination packed
+  have same := congrArg ZMod.val equation
+  rw [ZMod.val_natCast_of_lt (by omega : n < p)] at same
+  omega
+
 theorem selected_bits {p : Nat} [Fact p.Prime] (hp : 196608 < p)
     {input : Sail.Input} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)

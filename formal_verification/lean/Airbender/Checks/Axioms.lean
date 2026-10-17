@@ -5,6 +5,7 @@ import Tests.Timestamps
 import Tests.NativeClocks
 import Tests.InitializedHistory
 import Tests.NativeDecoderMetadata
+import Tests.DecoderSetup
 
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
@@ -100,3 +101,41 @@ import Tests.NativeDecoderMetadata
 #print axioms Tests.NativeDecoderMetadata.query_order
 #print axioms Tests.CircuitRows.x0_sub_satisfies
 #print axioms Tests.CircuitRows.x0_sub_execution
+
+#print axioms Airbender.AddSub.Proofs.packed_mask_bound
+#print axioms Airbender.AddSub.Proofs.written_limb_bounds
+#print axioms Airbender.Trace.Proofs.entry_source
+#print axioms Airbender.Trace.Proofs.program_sources
+#print axioms Airbender.Trace.Proofs.decoder_field_bounds
+#print axioms Airbender.Trace.Proofs.word_of_pc_query
+#print axioms Airbender.Trace.Proofs.native_query_pc_word
+#print axioms Airbender.Trace.Proofs.native_query_immediate_word
+#print axioms Airbender.Trace.Proofs.padding_excluded
+#print axioms Airbender.Trace.Proofs.decoder_member
+#print axioms Airbender.Trace.Proofs.setup_sources
+#print axioms Airbender.Trace.Proofs.decoded_sources
+#print axioms Airbender.Trace.Proofs.decoded_zero_flag
+#print axioms Airbender.Trace.Proofs.decoded_word_bounds
+#print axioms Airbender.Trace.Proofs.read_bounds_of_sources
+#print axioms Airbender.Trace.Proofs.write_bounds_of_sources
+#print axioms Airbender.Trace.Proofs.terminal_bounds_of_sources
+#print axioms Airbender.Trace.Proofs.row_write_source
+#print axioms Airbender.Trace.Proofs.decoded_write_sources
+#print axioms Airbender.Trace.public_decoder_soundness
+#print axioms Airbender.Trace.public_image_value_bounds
+#print axioms Tests.InitializedHistory.setup_built
+#print axioms Tests.InitializedHistory.padding_retained
+#print axioms Tests.InitializedHistory.native_padding_rejected
+#print axioms Tests.InitializedHistory.public_decode_source
+#print axioms Tests.InitializedHistory.decoder_word_bounds
+#print axioms Tests.InitializedHistory.initialized_read_bounds
+#print axioms Tests.InitializedHistory.initialized_terminal_bounds
+#print axioms Tests.InitializedHistory.setup_capacity_rejected
+#print axioms Tests.InitializedHistory.bad_flag_local_satisfies
+#print axioms Tests.InitializedHistory.bad_flag_write_unbounded
+#print axioms Tests.InitializedHistory.bad_flag_decoder_rejected
+#print axioms Tests.DecoderSetup.upper_funct3
+#print axioms Tests.DecoderSetup.negative_immediate
+#print axioms Tests.DecoderSetup.x0_retains_sub
+
+#print axioms Airbender.Trace.Proofs.image_value_bounds

@@ -20,15 +20,19 @@ formalization revision 805909325; exact source identities and hashes are in
 Current scope is conditional ADD/ADDI/SUB/LUI/AUIPC row soundness, including actual
 masked destination writes, original-opcode discarded x0 writes and aligned
 32-bit PC wraparound. Native ten-column decoder placement/query order is checked;
-public setup rows and membership remain separate.
+public selected-profile setup construction and logical padded membership are now
+connected separately from Rust generation/export fidelity.
 Decoding, input bounds, preprocessing and actual Sail reads remain explicit local
 interfaces. Native direct port/state metadata now supports
 [initialized logical memory history](Airbender/Review/Trace/History.lean): accepted
 state/memory matching and initial clock boundaries derive all row/prior clock
 bounds, complete Clean memory consistency and latest reads. [Public Sail image construction](Airbender/Review/Trace/Initialization.lean) now
 binds seed tokens and initial PC to actual upstream reads, deriving seed bounds,
-clocks and uniqueness. Setup/decoder extraction, subsequent Sail-read transport,
-whole Sail execution and cryptographic argument soundness remain pending. This checkpoint does not inherit v3's completed coverage.
+clocks and uniqueness. [Public decoder recovery](Airbender/Review/Trace/Decoder.lean)
+rejects native minus-one padding from the imported mask equations. Logical decoder
+membership and initialized history now derive native read/write/terminal word
+bounds. Rust setup generation/export, subsequent Sail-read transport, whole Sail
+execution and cryptographic argument soundness remain pending. This checkpoint does not inherit v3's completed coverage.
 
 ## Read these first
 

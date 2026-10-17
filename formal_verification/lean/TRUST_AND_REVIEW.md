@@ -42,7 +42,15 @@ bounds. The v2 carry equations need no source-field inverse constant.
 ten v2 query columns, including the decoder-owned zero flag and packed mask.
 Group extents and memory/witness bank choices are checked; extra unconsumed
 funct7/family descriptor fields fail closed. This is metadata interpretation,
-not public setup-row construction or a logical membership proof. The v2 decoder
+separate from the [public selected-profile setup constructor](Airbender/Review/Helpers/Decoder/Setup.lean).
+The constructor reads public bytes and original Sail decoding at native PCs 4*i,
+retains a power-of-two capacity and the full all-minus-one tail, and rejects
+missing/unsupported/effectful entries. It covers the selected five arithmetic
+instructions. General Rust generation/export correspondence remains unproved;
+no physical exported setup artifact or mixed/custom-opcode coverage is claimed.
+Logical membership is explicit over the complete table, with no table-equivalence
+premise. Native packed-mask equations exclude padding and recover actual decoded
+source evidence, the zero flag and canonical decoder PC/immediate words. The v2 decoder
 retains original opcode masks/operands for x0, unlike the source's NOP projection;
 the local interface and a nonzero-operand SUB-to-x0 regression now preserve that.
 
@@ -72,9 +80,12 @@ injectively encoded native tokens, including readonly timestamp refreshes. Its
 initial image may now be constructed from actual public Sail registers/RAM;
 missing data fails, and successful reads preserve that state. The supplied public
 domain is independent of the witness. This logical image does not yet establish
-the physical zero-boot profile or native ROM-shadow interpretation. Subsequent
-Sail-read transport and operand bounds remain pending; v2's decoder-owned zero
-flag must be connected before deriving actual masked-write bounds.
+the physical zero-boot profile or native ROM-shadow interpretation. The [value-bound theorem](Airbender/Review/Trace/Values.lean) now derives native
+read/write/terminal bounds. It combines original public seed reads, actual matching,
+strict native port order and a zero flag proved from decoder membership. Raw-result
+ranges alone do not suffice for a masked write: a concrete bad flag passes local
+equations and produces an unbounded write, while full lookup membership rejects it.
+Subsequent Sail-read transport and complete local-interface assembly remain pending.
 Exceptions, interrupts, completeness, whole Sail execution and cryptographic
 soundness are outside this checkpoint. The copied custom-operation specification
 has no checked v2 consumer yet.

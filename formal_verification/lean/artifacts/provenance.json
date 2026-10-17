@@ -374,6 +374,24 @@
       "source_path": "Airbender/Proofs/PCState.lean",
       "source_sha256": "853846ad5a505bf7e5e5180715f795c4dd2a359abb14e5ca487c5a16b6394e7a",
       "change": "Unchanged encoded_bounds theorem extracted; omit unconnected v3 modeled-decoder and outgoing-PC theorems."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Decoder/Program.lean",
+      "source_path": "Airbender/Review/Helpers/Decoder/Program.lean",
+      "source_sha256": "8c16ed192fec8e3457da311a3abc38cba24bcf2b91e3171ec983e927fb70b05b",
+      "change": "Reuse pure public-byte/Sail constructors, entry records and source evidence. Restrict projection to five v2 arithmetic opcodes; preserve original x0 fields, masks 1/2/4/8/16, raw U-type funct3 and the ten-column query. Omit unused v3/stateful decoder interfaces."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Program.lean",
+      "source_path": "Airbender/Proofs/Trace/Program.lean",
+      "source_sha256": "88ce31938a4df60bdc397ced357f26d7182b26b22a86da95b11ccd372371e0e5",
+      "change": "Reuse entry_source/program_sources and canonical PC-word proof text. Shift immediate projections from source columns 5/6 to v2 columns 6/7 and ten-column vectors. Prove bounds for the selected v2 decoder projection."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Values.lean",
+      "source_path": "Airbender/Proofs/Trace/Values.lean",
+      "source_sha256": "1b52185af525478318397592a2e63e4fe695eec528ef68d2ab3761e48caa69d8",
+      "change": "Reuse raw word projections and generic decreasing-time range induction. Remove the BabyBear-specific inverse argument. Prove concrete v2 write sources from native mask equations/ranges and the zero flag recovered from full decoder membership; no ROM assumptions for this family."
     }
   ]
 }
