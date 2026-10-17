@@ -1,6 +1,7 @@
 import Tests.AddSub
 import Airbender.Review.Trace.SailHistory
 import Airbender.Proofs.Trace.PortReads
+import Airbender.Proofs.Trace.Arithmetic
 
 namespace Tests.X0History
 open Airbender Trace Reference.Sail
@@ -47,10 +48,12 @@ private theorem accepted : Accepted trace := by
     decide
 
 private def before : Reference.RiscV.Sail.State :=
-  { (default : Reference.RiscV.Sail.State) with regs :=
-    (Std.ExtDHashMap.emptyWithCapacity
+  { (default : Reference.RiscV.Sail.State) with
+    regs := (Std.ExtDHashMap.emptyWithCapacity
       |>.insert .x1 (5 : BitVec 32) |>.insert .x2 (3 : BitVec 32)
-      |>.insert .PC (0 : BitVec 32)) }
+      |>.insert .PC (0 : BitVec 32))
+    mem := (Std.ExtHashMap.emptyWithCapacity
+      |>.insert 0 (0x33 : BitVec 8) |>.insert 1 0x80 |>.insert 2 0x20 |>.insert 3 0x40) }
 private def cells : List Cell := [.register 1, .register 2, .register 0]
 
 private theorem inputs : ImageBoundary trace before cells := by
@@ -113,5 +116,31 @@ theorem discarded_write_stutters :
   have same := (EStateM.Result.ok.inj written).2
   rw [← same] at single
   exact single
+
+set_option maxRecDepth 32768 in
+/-- The retained SUB opcode is built from actual public little-endian bytes. -/
+theorem setup_built : decoderSetupImage before 1 1 = some setup := by
+  have bytes : (Cell.ram 0).read before = .ok 0x40208033 before := by
+    simp [Cell.read, _root_.Sail.ArchSem.readBytes, _root_.Sail.ArchSem.readByte,
+      EStateM.run, get, getThe, MonadStateOf.get, bind, pure, EStateM.bind,
+      EStateM.get, EStateM.pure, before, Std.ExtHashMap.getElem_insert]
+  have program : programImage before [0] = some [entry] := by
+    simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, bind, Option.bind]
+    rfl
+  change (programImage before [0]).bind (fun entries => some ⟨entries, 1⟩) = some setup
+  rw [program]
+  rfl
+
+/-- Original SUB-to-x0 retires PC+4 while its actual native data write stutters.
+    No local decoder/operand/Sail-read interface is supplied by this regression. -/
+theorem discarded_sail_retirement :
+    run (Reference.RiscV.Sail.normalStep
+      (SailRV32.Functions.execute_RTYPE (.Regidx 2) (.Regidx 1) (.Regidx 0) .SUB)) before =
+      .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState before 4) := by
+  have checked := Trace.Proofs.arithmetic_row_execution (w := assignment) (before := before)
+    (by decide) inputs setup_built accepted decoded
+    (by simp [trace, nativeRow]) (entry := entry) rfl (by decide) .sub 1 2 0 0 0 rfl discarded_write_stutters
+    (Trace.Proofs.initial_state_pc (by decide) inputs.initial)
+  exact checked
 
 end Tests.X0History

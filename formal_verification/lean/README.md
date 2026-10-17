@@ -36,8 +36,10 @@ actual cell reads/writes and intermediate states, with native x0 preservation an
 clock-derived row grouping. Readonly refreshes preserve the instruction pre-state,
 including aliases. The [native PC path](Airbender/Review/Trace/PC.lean) now derives
 all incoming bounds/alignment, bounded RV32 successors and the terminal PC bound.
-Complete instruction interfaces, Rust setup generation/export,
-whole Sail execution and cryptographic argument soundness remain pending. This checkpoint does not inherit v3's completed coverage.
+The [decoded row assembly](Airbender/Proofs/Trace/Arithmetic.lean) now derives the
+complete local interfaces and original Sail preparation/execution/retirement for
+all five arithmetic opcodes. Rust setup generation/export, complete initialized
+Sail trace composition and cryptographic argument soundness remain pending. This checkpoint does not inherit v3's completed coverage.
 
 ## Read these first
 

@@ -52,8 +52,14 @@ indexed setup addresses, preserving RV32 truncation. The native carry/wrap
 equations prove bounded successors; state matching and the public initial PC
 bound the terminal PC, including empty traces. No per-row PC inputs are supplied.
 
-These are logical selected-profile results. Complete preprocessing/row assembly
-and whole Sail execution reaching the native terminal
+[Decoded arithmetic assembly](../../Proofs/Trace/Arithmetic.lean) now derives
+complete local interfaces and original Sail row retirement. The shared
+[control transport](../../Proofs/Trace/Retirement.lean) preserves actual cell
+reads/writes through PC preparation and retirement; no extra erased-source
+readability premises are needed on v2. Concrete alias ADD and actual-byte
+SUB-to-x0 regressions reach the original Sail retirement states.
+
+These are logical selected-profile results. Whole Sail execution reaching the native terminal
 PC/cells remain in [the plan](../../../FORMAL_VERIFICATION_PLAN.md).
 Cryptographic enforcement of the logical permutations remains a separate boundary.
 Existing [local circuit claims](../Circuits/README.md) retain their explicit interfaces.

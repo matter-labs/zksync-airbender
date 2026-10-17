@@ -4,6 +4,7 @@ import Airbender.Review.Trace.Decoder
 import Airbender.Review.Trace.Values
 import Airbender.Review.Trace.SailHistory
 import Airbender.Review.Trace.PC
+import Airbender.Proofs.Trace.Arithmetic
 import Airbender.Proofs.Trace.PortReads
 import Airbender.Proofs.Trace.AccessExecution
 
@@ -332,5 +333,20 @@ theorem empty_terminal_pc_bound : emptyTrace.terminal.word.Bounded := by
   have decoded : Decoded emptyTrace ⟨[], 1⟩ := by
     intro row member; simp [emptyTrace] at member
   exact (public_pc_soundness inputs setup accepted decoded).2
+
+/-- Native history and actual public decoding discharge every local interface
+    and reach the original Sail ADD retirement state. -/
+theorem initialized_sail_retirement : ∃ after,
+    SailHistory [Cell.register 1] (rowEvents trace.memoryEpoch nativeRow).reverse before after ∧
+    run (Reference.RiscV.Sail.normalStep
+      (SailRV32.Functions.execute_RTYPE (.Regidx 1) (.Regidx 1) (.Regidx 1) .ADD)) before =
+      .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after 4) := by
+  obtain ⟨after, history⟩ := native_row_history
+  refine ⟨after, history, ?_⟩
+  have checked := Trace.Proofs.arithmetic_row_execution (w := assignment) (before := before)
+    (by decide) public_inputs setup_built accepted decoded
+    (by simp [trace, nativeRow]) (entry := addEntry) rfl (by decide) .add 1 1 1 0 0 rfl history
+    (Trace.Proofs.initial_state_pc (by decide) public_inputs.initial)
+  exact checked
 
 end Tests.InitializedHistory

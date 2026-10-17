@@ -470,6 +470,24 @@
       "source_path": "Airbender/Proofs/Trace/PC.lean",
       "source_sha256": "1bac70347232024f37e694b1b9f2e0096e6ffd0661e2475eb9588ac189b876a3",
       "change": "Follow the source native-PC assembly structure, using v2 decoded incoming ranges/alignment and native carry/wrap equations. Derive every output and terminal PC bound without the source inverse or no-overflow clauses; actual Sail retirement remains separate."
+    },
+    {
+      "path": "Airbender/Proofs/AddSub/DecodedInterface.lean",
+      "source_path": "Airbender/Proofs/AddSub/DecodedInterface.lean",
+      "source_sha256": "04cfc134c8c1510e2a06aab1daa2fd59630a646acf82f1e5addd4ad410e021af",
+      "change": "Preserve reference/preprocessing proof structure; use native v2 masks and U-type funct3, retaining original x0 sources. Remove v3 erased-source readability premises because selected v2 fields already identify the original used GPRs."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Retirement.lean",
+      "source_path": "Airbender/Proofs/Trace/Retirement.lean",
+      "source_sha256": "b8c46e2a078d857218343bfa5eca57c5303bd2336882dbe26741a1551e457063",
+      "change": "Preserve actual cell/control commutation, rebasing, normal-step and projected-write retirement proofs. Omit the currently unneeded CSR-configuration transport lemmas; no replacement Sail state semantics."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Arithmetic.lean",
+      "source_path": "Airbender/Proofs/Trace/Arithmetic.lean",
+      "source_sha256": "abbcf44003540855c6cd5f523954bc7039fbdc3e0b7266acefe553ccb9037409",
+      "change": "Follow source row-range/input/interface/execution/rebasing assembly. Use native v2 operand/immediate/output/PC columns, public initialized value/PC proofs and ten-column decoder mask/zero flag. Remove source field inverses, ROM table and erased-source premises. Original Sail retirement reaches the actual masked native write."
     }
   ]
 }

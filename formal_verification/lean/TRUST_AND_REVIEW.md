@@ -93,7 +93,12 @@ of public RAM cells supplies disjoint byte windows. Native clocks derive complet
 row grouping and the PC/state path; readonly refreshes preserve each instruction
 pre-state even with aliases. Decoder register indices select original Sail GPR
 accessors. These cell transfers do not yet establish instruction execution or
-retirement; complete local-interface assembly remains pending. The
+retirement by themselves. The [row assembly](Airbender/Proofs/Trace/Arithmetic.lean)
+now derives the complete five-opcode local interfaces and applies original Sail
+preparation, execution and retirement. Actual control-register commutation
+transports cell histories and supplies rebased PC reads. The resulting state is
+the actual masked native write followed by original Sail control updates,
+including retained SUB-to-x0. Whole-trace composition remains pending. The
 [native PC theorem](Airbender/Review/Trace/PC.lean) now derives all incoming PC
 bounds/alignment from public indexed setup PCs through RV32 truncation. Native
 v2 carry/wrap equations derive bounded outgoing successors. State matching and

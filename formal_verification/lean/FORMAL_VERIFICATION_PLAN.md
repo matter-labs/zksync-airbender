@@ -51,17 +51,19 @@ preservation from v2 masked writes. Derived clock order groups complete rows;
 readonly refreshes preserve the instruction pre-state even with aliases. Public
 indexed PCs now derive every incoming PC alignment, including RV32 truncation.
 Native equations derive bounded outgoing successors, and state matching bounds the
-terminal PC. Complete row-interface assembly and instruction execution are next.
+terminal PC. The proof layer now assembles all five arithmetic row interfaces
+and original Sail preparation/execution/retirement from these derived facts and
+actual native history. Rebased control transport derives PC reads and reaches the
+actual masked write. Whole-trace composition and terminal Sail values are next.
 
-1. Assemble ADD/SUB local interfaces from decoded public instructions and the
-   checked actual Sail row reads/writes and derived native PC facts. Derive
-   preprocessing, immediate encoding and selector mask; connect grouped cell states
-   through actual Sail retirement along the checked native PC/state path. The checked
-   setup constructor selects the
-   five arithmetic opcodes; Rust setup generation/export fidelity and mixed/custom
-   program expansion remain separate. Preserve ten-column flatten order, raw
-   funct3, original x0 fields and native minus-one padding. Do not replace logical
-   lookup authentication with a table-equivalence premise.
+1. Compose checked ADD/SUB row retirement along the native PC/state path. Preserve
+   actual public code bytes and original decoding through GPR/control updates;
+   derive the final Sail register/RAM values and handle empty traces. Promote a
+   complete initialized execution claim after these connections are checked.
+   Rust setup generation/export fidelity and mixed/custom program expansion remain
+   separate. Preserve ten-column flatten order, raw funct3, original x0 fields and
+   native minus-one padding. Do not replace lookup authentication with a
+   table-equivalence premise.
 2. Port word-memory and jump/branch/SLT alongside the first initialized ADD/SUB
    trace. Preserve v2 PC rollover behavior and verify native timestamp offsets.
 3. Port unsigned mul/div, shift/binop and subword memory into the same shared
