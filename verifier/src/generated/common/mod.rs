@@ -191,10 +191,6 @@ pub fn verify_sumcheck_rounds<
     let mut eq_prefactor = BabyBearExt4::ONE;
     let coeff_data_words = SUMCHECK_POLY_COEFFS * EXT_DEGREE;
     let mut commit_buf = CommitBuf::<COMMIT_BUF>::new();
-    let mut draw_buf = LazyVec::<u32, BLAKE2S_DIGEST_SIZE_U32_WORDS>::new();
-    unsafe {
-        draw_buf.set_len(BLAKE2S_DIGEST_SIZE_U32_WORDS);
-    }
     for round in 0..NUM_ROUNDS {
         {
             let mut i = 0;
@@ -203,48 +199,45 @@ pub fn verify_sumcheck_rounds<
                 i += 1;
             }
         }
-        let coeffs: [BabyBearExt4; 4] =
-            unsafe { *commit_buf.data_as::<[BabyBearExt4; 4]>(1).as_ptr() };
-        let p0 = coeffs[0];
-        let mut p1 = coeffs[0];
-        field_ops::add_assign(&mut p1, &coeffs[1]);
-        field_ops::add_assign(&mut p1, &coeffs[2]);
-        field_ops::add_assign(&mut p1, &coeffs[3]);
-        let mut sum = p0;
-        field_ops::add_assign(&mut sum, &p1);
-        field_ops::mul_assign(&mut sum, &eq_prefactor);
-        if sum != claim {
-            return Err(E::gkr_sumcheck_round_failed(layer_idx, round));
+        {
+            let coeffs: [BabyBearExt4; 4] = unsafe { commit_buf.read_one::<[BabyBearExt4; 4]>() };
+            let p0 = coeffs[0];
+            let mut p1 = coeffs[0];
+            field_ops::add_assign(&mut p1, &coeffs[1]);
+            field_ops::add_assign(&mut p1, &coeffs[2]);
+            field_ops::add_assign(&mut p1, &coeffs[3]);
+            let mut sum = p0;
+            field_ops::add_assign(&mut sum, &p1);
+            field_ops::mul_assign(&mut sum, &eq_prefactor);
+            if sum != claim {
+                return Err(E::gkr_sumcheck_round_failed(layer_idx, round));
+            }
         }
         ts.commit(&mut commit_buf, coeff_data_words);
-        ts.draw_raw(draw_buf.as_mut_slice());
+        let coeffs: [BabyBearExt4; 4] = unsafe { commit_buf.read_one::<[BabyBearExt4; 4]>() };
         let r_k = {
             let raw = unsafe {
-                (draw_buf.as_slice().as_ptr() as *const [u32; EXT_DEGREE]).as_ref_unchecked()
+                (ts.draw_digest().as_ptr() as *const [u32; EXT_DEGREE]).as_ref_unchecked()
             };
             ext_from_raw_words::<BabyBearField, BabyBearExt4, EXT_DEGREE>(raw)
         };
         {
-            let mut result = coeffs[3];
-            field_ops::mul_assign(&mut result, &r_k);
-            field_ops::add_assign(&mut result, &coeffs[2]);
-            field_ops::mul_assign(&mut result, &r_k);
-            field_ops::add_assign(&mut result, &coeffs[1]);
-            field_ops::mul_assign(&mut result, &r_k);
-            field_ops::add_assign(&mut result, &coeffs[0]);
-            claim = result;
+            let mut h2 = coeffs[2];
+            field_ops::add_assign_product(&mut h2, &coeffs[3], &r_k);
+            let mut h1 = coeffs[1];
+            field_ops::add_assign_product(&mut h1, &h2, &r_k);
+            let mut h0 = coeffs[0];
+            field_ops::add_assign_product(&mut h0, &h1, &r_k);
+            claim = h0;
         }
         {
             let p = unsafe { *challenges.get_unchecked(round) };
-            let mut one_minus_r = BabyBearExt4::ONE;
-            field_ops::sub_assign(&mut one_minus_r, &r_k);
-            let mut one_minus_p = BabyBearExt4::ONE;
-            field_ops::sub_assign(&mut one_minus_p, &p);
-            let mut t = one_minus_r;
-            field_ops::mul_assign(&mut t, &one_minus_p);
-            let mut rp = r_k;
-            field_ops::mul_assign(&mut rp, &p);
-            field_ops::add_assign(&mut t, &rp);
+            let mut t = r_k;
+            field_ops::mul_assign(&mut t, &p);
+            field_ops::double(&mut t);
+            field_ops::sub_assign(&mut t, &r_k);
+            field_ops::sub_assign(&mut t, &p);
+            field_ops::add_assign_base(&mut t, &BabyBearField::ONE);
             eq_prefactor = t;
         }
         unsafe { *challenges.get_unchecked_mut(round) = r_k };
@@ -475,31 +468,33 @@ pub unsafe fn compute_claim<const N: usize>(
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
     let mut combined = BabyBearExt4::ZERO;
-    let mut current_batch = BabyBearExt4::ONE;
-    let mut i = 0;
-    while i < N {
+    let mut i = N;
+    while i > 0 {
+        i -= 1;
         let (n, o0, o1) = unsafe { *descs.get_unchecked(i) };
         if n == 0 {
-            field_ops::mul_assign(&mut current_batch, &batch_base);
+            field_ops::mul_assign(&mut combined, &batch_base);
         } else if n == 1 {
             let claim = *output_claims.get_unchecked(o0);
-            let mut t = current_batch;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-            field_ops::mul_assign(&mut current_batch, &batch_base);
+            {
+                let mut h = claim;
+                field_ops::add_assign_product(&mut h, &combined, &batch_base);
+                combined = h;
+            }
         } else {
             let c0 = *output_claims.get_unchecked(o0);
-            let mut t0 = current_batch;
-            field_ops::mul_assign(&mut t0, &c0);
-            field_ops::add_assign(&mut combined, &t0);
-            field_ops::mul_assign(&mut current_batch, &batch_base);
             let c1 = *output_claims.get_unchecked(o1);
-            let mut t1 = current_batch;
-            field_ops::mul_assign(&mut t1, &c1);
-            field_ops::add_assign(&mut combined, &t1);
-            field_ops::mul_assign(&mut current_batch, &batch_base);
+            {
+                let mut h = c1;
+                field_ops::add_assign_product(&mut h, &combined, &batch_base);
+                combined = h;
+            }
+            {
+                let mut h = c0;
+                field_ops::add_assign_product(&mut h, &combined, &batch_base);
+                combined = h;
+            }
         }
-        i += 1;
     }
     combined
 }

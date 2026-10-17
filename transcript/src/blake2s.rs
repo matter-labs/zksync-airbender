@@ -83,26 +83,60 @@ impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
         buf: &AlignedArray64<u32, N>,
         total_words: usize,
     ) {
-        hasher.reset_with_chaining_value(&seed.0);
         let num_blocks = total_words.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS).max(1);
         let last_active = total_words - (num_blocks - 1) * BLAKE2S_BLOCK_SIZE_U32_WORDS;
-        unsafe {
-            for i in 0..num_blocks - 1 {
-                let block_ptr = (buf.as_ptr()).add(i * BLAKE2S_BLOCK_SIZE_U32_WORDS);
-                let block =
-                    &*(block_ptr as *const AlignedArray64<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>);
-                hasher.run_round_function_with_input::<REDUCED_ROUNDS>(
-                    block,
-                    BLAKE2S_BLOCK_SIZE_U32_WORDS,
-                    false,
+        #[cfg(all(target_arch = "riscv32", feature = "special_opcodes_extension"))]
+        {
+            const { assert!(REDUCED_ROUNDS) };
+            hasher.t = 0;
+            unsafe {
+                for i in 0..num_blocks - 1 {
+                    let block_ptr = (buf.as_ptr()).add(i * BLAKE2S_BLOCK_SIZE_U32_WORDS);
+                    let block =
+                        &*(block_ptr as *const AlignedArray64<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>);
+                    hasher.run_round_function_with_input_and_chaining_value(
+                        &mut seed.0,
+                        block,
+                        BLAKE2S_BLOCK_SIZE_U32_WORDS,
+                        false,
+                    );
+                }
+                let last_ptr = (buf.as_ptr()).add((num_blocks - 1) * BLAKE2S_BLOCK_SIZE_U32_WORDS);
+                let last_block =
+                    &*(last_ptr as *const AlignedArray64<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>);
+                hasher.run_round_function_with_input_and_chaining_value(
+                    &mut seed.0,
+                    last_block,
+                    last_active,
+                    true,
                 );
             }
-            let last_ptr = (buf.as_ptr()).add((num_blocks - 1) * BLAKE2S_BLOCK_SIZE_U32_WORDS);
-            let last_block =
-                &*(last_ptr as *const AlignedArray64<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>);
-            hasher.run_round_function_with_input::<REDUCED_ROUNDS>(last_block, last_active, true);
         }
-        *seed = Seed(hasher.read_state_for_output());
+        #[cfg(not(all(target_arch = "riscv32", feature = "special_opcodes_extension")))]
+        {
+            hasher.reset_with_chaining_value(&seed.0);
+            unsafe {
+                for i in 0..num_blocks - 1 {
+                    let block_ptr = (buf.as_ptr()).add(i * BLAKE2S_BLOCK_SIZE_U32_WORDS);
+                    let block =
+                        &*(block_ptr as *const AlignedArray64<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>);
+                    hasher.run_round_function_with_input::<REDUCED_ROUNDS>(
+                        block,
+                        BLAKE2S_BLOCK_SIZE_U32_WORDS,
+                        false,
+                    );
+                }
+                let last_ptr = (buf.as_ptr()).add((num_blocks - 1) * BLAKE2S_BLOCK_SIZE_U32_WORDS);
+                let last_block =
+                    &*(last_ptr as *const AlignedArray64<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>);
+                hasher.run_round_function_with_input::<REDUCED_ROUNDS>(
+                    last_block,
+                    last_active,
+                    true,
+                );
+            }
+            *seed = Seed(hasher.read_state_for_output());
+        }
     }
 
     /// Commit from a pre-arranged aligned buffer where `[data | zero-padding]` is
@@ -503,6 +537,12 @@ impl<const REDUCED_ROUNDS: bool> TranscriptState<REDUCED_ROUNDS> {
             &mut self.hasher,
             &mut self.seed,
         );
+    }
+
+    /// The words `draw_raw` writes into an 8-word destination; the transcript does not advance.
+    #[inline(always)]
+    pub fn draw_digest(&self) -> &[u32; BLAKE2S_DIGEST_SIZE_U32_WORDS] {
+        &self.seed.0
     }
 
     #[inline(always)]
@@ -977,6 +1017,32 @@ mod raw_draw_tests {
                 "commit_base_field_elements_impl, len {len}"
             );
         }
+    }
+
+    fn digest_draw_matches_raw_draw<const REDUCED_ROUNDS: bool>() {
+        let mut state = TranscriptState::<REDUCED_ROUNDS>::new(
+            Blake2sTranscript::<REDUCED_ROUNDS>::commit_initial(&[1, 2, 3]),
+        );
+        let mut buf = CommitBuf::<16>::new();
+        for i in 0..5 {
+            buf.data_write(i, 100 + i as u32);
+        }
+        state.commit(&mut buf, 5);
+
+        let seed = state.seed;
+        let digest = *state.draw_digest();
+        assert_eq!(state.seed, seed);
+        assert_eq!(*state.draw_digest(), digest);
+
+        let mut raw = [0u32; BLAKE2S_DIGEST_SIZE_U32_WORDS];
+        state.draw_raw(&mut raw);
+        assert_eq!(raw, digest);
+    }
+
+    #[test]
+    fn draw_digest_matches_raw_draw() {
+        digest_draw_matches_raw_draw::<true>();
+        digest_draw_matches_raw_draw::<false>();
     }
 
     #[test]
