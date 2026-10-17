@@ -50,6 +50,8 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
     let fma_eq_s = MW::add_assign_product(quote! { eq }, quote! { alpha_coeff }, quote! { s });
     let mul_entry_prefactor_eq = MW::mul_assign(quote! { entry.prefactor }, quote! { eq });
     let square_current_scalar = MW::square(quote! { entry.current_scalar });
+    let fma_eq_base_s =
+        MW::add_assign_product_with_base(quote! { eq }, quote! { alpha_coeff }, quote! { s });
 
     quote! {
         #[inline(always)]
@@ -224,8 +226,8 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
         }
 
         #[inline(always)]
-        pub fn fold_whir_accumulator<const MAX_POW: usize>(
-            acc: &mut ::verifier_common::whir::WhirAccumulator<#quartic_struct, MAX_POW>,
+        pub fn fold_whir_accumulator<const MAX_POW: usize, const MAX_OOD: usize>(
+            acc: &mut ::verifier_common::whir::WhirAccumulator<#field_struct, #quartic_struct, MAX_POW, MAX_OOD>,
             alpha: #quartic_struct,
             z_initial: &[#quartic_struct],
         ) {
@@ -260,15 +262,42 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
                 }
                 i += 1;
             }
+
+            let n = acc.base_pow_entries.len();
+            let mut i = 0;
+            while i < n {
+                unsafe {
+                    let entry = acc.base_pow_entries.get_unchecked_mut(i);
+                    let s = entry.current_scalar;
+                    let mut eq = one_minus_alpha;
+                    #fma_eq_base_s;
+                    #mul_entry_prefactor_eq;
+                    #square_current_scalar;
+                }
+                i += 1;
+            }
         }
 
         #[inline(always)]
-        pub fn push_whir_pow_entry<const MAX_POW: usize>(
-            acc: &mut ::verifier_common::whir::WhirAccumulator<#quartic_struct, MAX_POW>,
+        pub fn push_whir_pow_entry<const MAX_POW: usize, const MAX_OOD: usize>(
+            acc: &mut ::verifier_common::whir::WhirAccumulator<#field_struct, #quartic_struct, MAX_POW, MAX_OOD>,
             current_scalar: #quartic_struct,
             coefficient: #quartic_struct,
         ) {
             acc.pow_entries.push(::verifier_common::whir::WhirPowEntry {
+                current_scalar,
+                prefactor: #quartic_one,
+                coefficient,
+            });
+        }
+
+        #[inline(always)]
+        pub fn push_whir_base_pow_entry<const MAX_POW: usize, const MAX_OOD: usize>(
+            acc: &mut ::verifier_common::whir::WhirAccumulator<#field_struct, #quartic_struct, MAX_POW, MAX_OOD>,
+            current_scalar: #field_struct,
+            coefficient: #quartic_struct,
+        ) {
+            acc.base_pow_entries.push(::verifier_common::whir::WhirBasePowEntry {
                 current_scalar,
                 prefactor: #quartic_one,
                 coefficient,
@@ -407,8 +436,8 @@ fn build_fold_helpers<MW: FieldWrapper>() -> TokenStream {
         // evaluate with the monomial tensor of the folding challenges ----
         let quartic_one = MW::quartic_one();
         // eval_multilinear_with_monomial_tensor: result += c * w
-        let term_mul_weight = MW::mul_assign(quote! { term }, quote! { w });
-        let result_add_term = MW::add_assign(quote! { result }, quote! { term });
+        let result_add_term_weight =
+            MW::add_assign_product(quote! { result }, quote! { term }, quote! { w });
         // precompute_monomial_tensor: w_alpha = w * alpha
         let walpha_mul_alpha = MW::mul_assign(quote! { w_alpha }, quote! { alpha });
         quote! {
@@ -449,10 +478,9 @@ fn build_fold_helpers<MW: FieldWrapper>() -> TokenStream {
             let mut result = unsafe { *coeffs.get_unchecked(0) };
             let mut i = 1;
             while i < n {
-                let mut term = unsafe { *coeffs.get_unchecked(i) };
+                let term = unsafe { *coeffs.get_unchecked(i) };
                 let w = unsafe { *weights.get_unchecked(i) };
-                #term_mul_weight;
-                #result_add_term;
+                #result_add_term_weight;
                 i += 1;
             }
             result
