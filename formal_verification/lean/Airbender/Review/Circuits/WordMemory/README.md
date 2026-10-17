@@ -41,7 +41,10 @@ unknown/dynamic table selectors, malformed query arities and unmapped columns.
 
 The [address calculation](../../../Proofs/WordMemory/Address.lean) uses the native
 Mersenne31 carry encoding and derives both carries and actual ranged output.
-Only canonical source/immediate bounds remain explicit. The
+Canonical source/immediate bounds are explicit in this local statement; the
+[initialized assembly](../../Trace/Families/WordMemory/Inputs.lean) now derives
+them, incoming PC bounds/alignment and every clock input from public construction,
+accepted history and full decoder membership. The
 [PC proof](../../../Proofs/WordMemory/PC.lean) preserves RV32 rollover under initial
 bounds/alignment. The [clock proof](../../../Proofs/WordMemory/Timestamp.lean)
 derives four-tick advancement and strict port order under the shared initial/prior

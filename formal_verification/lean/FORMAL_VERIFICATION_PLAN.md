@@ -75,9 +75,11 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    derives all initial/per-row/prior clock inputs and all read/write/terminal
    word bounds, including discarded ROM-shadow reads; full decoder membership
    supplies the zero flag. Nonempty LW/SW/x0 fixtures and omitted-shadow rejection
-   are checked. Connect actual intermediate Sail source/port reads, boot/padding
-   and shadow-state projection, remaining local inputs and original Sail
-   execution/retirement interfaces. Physical setup/export binding remains open.
+   are checked. Initialized native-row assembly now derives effective-address
+   addition, bounded aligned PCs, modular successors and clock/port order using
+   existing native calculations unchanged, with no per-row numerical premises.
+   Connect actual intermediate Sail source/port reads, boot/padding/shadow-state
+   projection, Sail memory/platform transport and execution/retirement interfaces. Physical setup/export binding remains open.
    Preserve v2 PC rollover and native timestamp offsets;
    keep physical setup generation/export and mixed/custom expansion explicit.
 2. Add native jump/branch/SLT and extend the shared execution relation with checked

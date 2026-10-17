@@ -1,5 +1,6 @@
 import Airbender.Review.Trace.Families.WordMemory.History
 import Airbender.Review.Trace.Families.WordMemory.Values
+import Airbender.Review.Trace.Families.WordMemory.Inputs
 
 namespace Tests.WordMemoryHistory
 open Airbender Verification Arithmetic Trace
@@ -239,5 +240,19 @@ theorem omitted_shadow_rejected : ¬ Accepted omittedShadow := by
   have count := accepted.memory.count_eq ((nativeRow false true true).reads[1]'(by decide))
   revert count
   decide
+
+/-- All address/PC/clock inputs are derived from the actual public fixtures. -/
+theorem initialized_native_effects (store inROM discard : Bool)
+    (legal : (store && inROM) = false) :
+    ∀ actual ∈ (trace store inROM discard).rows,
+      (Airbender.WordMemory.addressWord actual.assignment).toBitVec =
+        (Airbender.WordMemory.sourceWord actual.assignment).toBitVec +
+          (Airbender.WordMemory.immediateWord actual.assignment).toBitVec ∧
+      actual.start.word.Bounded ∧ actual.start.word.lo % 4 = 0 ∧
+      actual.finish.word.Bounded ∧ actual.finish.word.toBitVec = actual.start.word.toBitVec + 4 ∧
+      ClockEffects actual.columns actual.assignment :=
+  Airbender.WordMemory.public_native_effects (inputs store inROM discard)
+    (public_decoder_built store inROM discard) (accepted store inROM discard legal)
+    (decoded store inROM discard)
 
 end Tests.WordMemoryHistory

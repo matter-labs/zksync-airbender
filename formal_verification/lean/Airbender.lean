@@ -11,3 +11,4 @@ import Airbender.Review.Trace.Families.WordMemory.Decoder
 import Airbender.Review.Trace.Families.WordMemory.ROMImage
 import Airbender.Review.Trace.Families.WordMemory.History
 import Airbender.Review.Trace.Families.WordMemory.Values
+import Airbender.Review.Trace.Families.WordMemory.Inputs

@@ -79,7 +79,9 @@ four-MiB extraction covers the native ROM region. Initialized word-memory
 [word ranges](Families/WordMemory/Values.lean) now reuse the shared matching/clock
 and decreasing-time proofs. Public seeds discharge all initial clock/value inputs;
 full decoder membership supplies the zero flag. Every native port participates,
-including discarded ROM-shadow reads. Actual intermediate Sail reads,
+including discarded ROM-shadow reads. [Native-row assembly](Families/WordMemory/Inputs.lean)
+now derives effective-address addition, bounded aligned PCs, modular successors
+and native clock/port order with no per-row numerical input premises. Actual intermediate Sail reads,
 boot/padding/shadow projection and instruction execution remain separate.
 
 These are logical selected-profile results. Remaining families and physical

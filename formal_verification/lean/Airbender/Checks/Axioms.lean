@@ -388,3 +388,8 @@ import Tests.WordMemoryHistory
 #print axioms Tests.WordMemoryHistory.all_native_bounds
 #print axioms Tests.WordMemoryHistory.derived_clocks
 #print axioms Tests.WordMemoryHistory.omitted_shadow_rejected
+
+#print axioms Airbender.WordMemory.public_native_effects
+#print axioms Airbender.WordMemory.Proofs.image_source_bound
+#print axioms Airbender.WordMemory.Proofs.image_native_effects
+#print axioms Tests.WordMemoryHistory.initialized_native_effects

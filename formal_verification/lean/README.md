@@ -58,7 +58,10 @@ now derives complete Clean consistency, latest native reads and every per-row/pr
 clock input from actual public seed reads and accepted matching.
 [Read/write/terminal ranges](Airbender/Review/Trace/Families/WordMemory/Values.lean)
 follow through actual native load/store/mask rules and full decoder membership,
-including discarded shadow reads. Actual intermediate Sail reads remain separate.
+including discarded shadow reads. [Native-row effects](Airbender/Review/Trace/Families/WordMemory/Inputs.lean)
+now derive effective-address addition, bounded aligned PCs, RV32 successors and
+native clock/port order without per-row numerical premises. Actual intermediate
+Sail reads remain separate.
 Remaining families, Rust
 setup generation/export and cryptographic argument soundness remain pending. This checkpoint does not inherit v3's completed coverage.
 

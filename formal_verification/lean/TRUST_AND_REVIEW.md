@@ -97,6 +97,12 @@ bounded RAM reads. Full decoder membership supplies the zero flag. Actual public
 seed reads replace all initial values/clocks, deriving every read, actual write
 and terminal word bound without per-row answers. This logical result retains
 shadow tokens; it does not identify them with architectural ROM contents.
+[Initialized native-row assembly](Airbender/Review/Trace/Families/WordMemory/Inputs.lean)
+now obtains source bounds from the first actual port, immediate/PC bounds and
+alignment from successful public setup, and all clock inputs from matching.
+Existing native address/PC/clock proofs are called unchanged, deriving address
+addition, bounded aligned PCs, modular PC successors and native access order.
+No per-row numerical interface or desired address/PC result is supplied.
 Actual intermediate Sail reads, discarded shadow projection and instruction
 execution remain open. [Public ROM extraction](Airbender/Review/Helpers/Tables/WordROMImage.lean)
 now obtains words by actual original Sail reads. The

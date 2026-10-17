@@ -48,6 +48,17 @@ and range guarantees for the shadow RAM port. Omitting its seed fails actual
 logical matching. This fixture explicitly initializes the native shadow cell;
 its projection into architectural ROM state remains separate.
 
+## Checked native-row inputs
+
+[Native effects](Inputs.lean) derive effective-address addition, bounded aligned
+incoming PCs, bounded modular PC successors and native clock/port order from the
+same public image, actual decoder setup and accepted matching. The
+[assembly](../../../../Proofs/Trace/Families/WordMemory/Inputs.lean) obtains the
+source word from the first actual port and its initialized range proof. It calls
+the existing native address, PC and clock calculations unchanged. No per-row
+range, carry, PC, clock or desired-effect premise is supplied. The initialized
+LW/SW/x0/ROM-shadow fixtures exercise the complete assembly.
+
 ## Remaining connection
 
 [Public ROM extraction](../../../Helpers/Tables/WordROMImage.lean) now obtains
