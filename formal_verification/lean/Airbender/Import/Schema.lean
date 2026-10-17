@@ -32,6 +32,21 @@ inductive LookupExpression where
   | Expression : CompiledDegree1Constraint → LookupExpression
   deriving Repr, FromJson, ToJson
 
+/-- Only the two native fixed tables consumed by word-only memory are supported. -/
+inductive FixedTableId where
+  | RomAddressSpaceSeparator
+  | RomRead
+  deriving Repr, DecidableEq, FromJson, ToJson
+
+inductive FixedTableIndex where
+  | Constant : FixedTableId → FixedTableIndex
+  deriving Repr, FromJson
+
+structure FixedLookup where
+  input_columns : Array LookupExpression
+  table_index : FixedTableIndex
+  deriving Repr, FromJson
+
 /-- Fail closed for features without an emitter; do not silently omit obligations. -/
 structure EmptyArray where
   deriving Repr
@@ -39,7 +54,7 @@ structure EmptyArray where
 instance : FromJson EmptyArray where
   fromJson? j := do
     unless (← j.getArr?).isEmpty do
-      throw "unsupported nonempty lookup sets or inter-row state linkage"
+      throw "unsupported nonempty inter-row state linkage"
     pure ⟨⟩
 
 structure WitnessSubtree where
@@ -47,7 +62,7 @@ structure WitnessSubtree where
   boolean_vars_columns_range : ColumnSet
   range_check_8_columns : ColumnSet
   range_check_16_columns : ColumnSet
-  width_3_lookups : EmptyArray
+  width_3_lookups : Array FixedLookup
   range_check_16_lookup_expressions : Array LookupExpression
   timestamp_range_check_lookup_expressions : Array LookupExpression
   deriving Repr, FromJson

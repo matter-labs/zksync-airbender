@@ -243,6 +243,10 @@
     {
       "path": "../../cs/add_sub_lui_auipc_mop_preprocessed_layout.json",
       "sha256": "892518daa757dc8e33c5e92e6813c98e4e04aa2d98da1b0559b1c6fc990dbc06"
+    },
+    {
+      "path": "../../cs/word_only_load_store_preprocessed_layout.json",
+      "sha256": "55783ac0d9efaeedea9575b4dd6e79192b7c708ca8fe128cc1e2455125e1b04d"
     }
   ],
   "native_sources": [
@@ -297,6 +301,30 @@
     {
       "path": "../../cs/src/machine/ops/unrolled/decoder/mod.rs",
       "sha256": "266811af6e96d37e2caa632e0b009b314267de094f557789228d5e201278f018"
+    },
+    {
+      "path": "../../cs/src/machine/ops/unrolled/load_store_word_only.rs",
+      "sha256": "4aaaad1948f16a4f87846e90efebbb7c9c730c78990a036d23b9813783c40edb"
+    },
+    {
+      "path": "../../cs/src/machine/ops/unrolled/decoder/memory_word_only.rs",
+      "sha256": "2bc360f7546d79c6d6e41b9c623517b085365e49039603403531f05f32bd934d"
+    },
+    {
+      "path": "../../cs/src/tables/rom_related.rs",
+      "sha256": "688c72b91a88031078556ff1c1f0cdb2dbb0486bca793f18e732fbbdefdb90de"
+    },
+    {
+      "path": "../../cs/src/machine/machine_configurations/mod.rs",
+      "sha256": "361117251174dc2d1410d45f4c098a567ff48d9390dc3ff990f67c95f3b30d0e"
+    },
+    {
+      "path": "../../common_constants/src/rom.rs",
+      "sha256": "24cb545862acba58f6355e0165c0c03732949d1968a3fbb3d0e2e4f004144962"
+    },
+    {
+      "path": "../../cs/src/machine/mod.rs",
+      "sha256": "a3712dc8df473298ef958ea377610c2029b419979e147ff468d27755e1ec0fe7"
     }
   ],
   "adaptations": [
@@ -524,6 +552,18 @@
       "source_path": "Airbender/Proofs/Trace/CompositionCore.lean",
       "source_sha256": "f90e27d63e600eca9a64f86c621baf688dfaa9892c043ac74ef29f74f7daebc8",
       "change": "Assemble the source shared composition structure with native v2 register-space metadata and initialized images. Prove all code bytes survive native GPR history, replay actual pure Sail decoding, compose original row clauses in derived order, and derive exact terminal PC/cells, including empty traces."
+    },
+    {
+      "path": "Airbender/Review/Circuits/WordMemory/Artifact.lean",
+      "source_path": "Airbender/Review/Circuits/WordMemory/Artifact.lean",
+      "source_sha256": "eababad3125b92a7db421fdd1436b7917de49a023824247478ec794fad3e98e1",
+      "change": "Preserve explicit native import and separate metadata; replace v3 GKR/BabyBear input with complete native v2 row equations, scalar/timestamp queries and both unconditional width-three ROM queries. Native four-MiB table models retain UNIMP padding."
+    },
+    {
+      "path": "Airbender/Proofs/WordMemory/ArtifactChecks.lean",
+      "source_path": "Airbender/Proofs/WordMemory/ArtifactChecks.lean",
+      "source_sha256": "e97ba144116d2c22cb80cd5fea54309f0f4a921125c96cc98f63f7a6af946cca",
+      "change": "Preserve constraint/query counts and typed clock/port/decoder bindings; use actual v2 mixed-port address selectors, offsets, zero flag and write columns."
     }
   ]
 }

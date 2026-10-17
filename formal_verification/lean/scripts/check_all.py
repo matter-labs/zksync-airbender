@@ -101,7 +101,8 @@ def main():
         return
     bounded([*LEAN, "--run", "Tests/ArtifactImport.lean"], "importer-tests")
     bounded([*LEAN, "--run", "Airbender/Import/Main.lean",
-        "../../cs/add_sub_lui_auipc_mop_preprocessed_layout.json"], "importer-cli")
+        "../../cs/add_sub_lui_auipc_mop_preprocessed_layout.json",
+        "../../cs/word_only_load_store_preprocessed_layout.json"], "importer-cli")
     bounded([sys.executable, "scripts/check_review.py", "--no-build"], "review-and-axioms")
     print("PASS all serial bounded verification gates", flush=True)
 

@@ -41,7 +41,11 @@ complete local interfaces and original Sail preparation/execution/retirement for
 all five arithmetic opcodes. [Complete initialized arithmetic execution](Airbender/Review/Trace/Families/AddSub/Theorems.lean)
 now reaches exact native terminal PC/register/RAM values through original Sail
 code-byte reads, decoding and normal steps, including empty traces. Reversed
-dependent ADD/ADDI witness rows reach PC 8 and x2=247. Remaining families, Rust
+dependent ADD/ADDI witness rows reach PC 8 and x2=247. The [word-memory transfer checkpoint](Airbender/Review/Circuits/WordMemory/README.md)
+now imports all native equations/queries and mixed ports. Complete modeled ROM
+tables derive address alignment, exact ROM data, RAM/ROM load selection, masked
+writes and RAM-only stores. Original Sail word-memory execution remains pending.
+Remaining families, Rust
 setup generation/export and cryptographic argument soundness remain pending. This checkpoint does not inherit v3's completed coverage.
 
 ## Read these first

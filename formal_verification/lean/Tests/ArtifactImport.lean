@@ -82,6 +82,39 @@ def main : IO UInt32 := do
     check (rejected (parseCircuit lookup.compress)) "reject unsupported fixed lookups"
     let badRange := {c.witness_layout with range_check_8_columns := ⟨0, 1⟩}
     check (rejected ({c with witness_layout := badRange}.validate)) "reject unsupported byte ranges"
+    let wordSource ← IO.FS.readFile "../../cs/word_only_load_store_preprocessed_layout.json"
+    let word ← IO.ofExcept (parseCircuit wordSource)
+    check (word.degree_2_constraints.size == 31 && word.degree_1_constraints.size == 4)
+      "all native word-memory polynomials retained"
+    check (word.witness_layout.width_3_lookups.size == 2 &&
+      word.witness_layout.range_check_16_lookup_expressions.size == 2 &&
+      word.witness_layout.timestamp_range_check_lookup_expressions.size == 8)
+      "all native word-memory fixed and range queries retained"
+    let wordPorts ← IO.ofExcept word.memoryPorts
+    check (wordPorts[1]?.any (fun port => port.address == .mixed 12 true #v[28,29]) &&
+      wordPorts[2]?.any (fun port => port.address == .mixed 32 true #v[33,34] &&
+        port.writeValue == some (.u16 #v[37,38]))) "native word-memory mixed ports"
+    check ((← IO.ofExcept word.decoderColumns) == ⟨5,6,7,8,#v[9,10],11,12⟩)
+      "native word-memory decoder flag and mask"
+    let some query := word.witness_layout.width_3_lookups[0]?
+      | throw (IO.userError "missing native fixed lookup")
+    let withQueries := fun queries => {word with witness_layout :=
+      {word.witness_layout with width_3_lookups := queries}}
+    check (rejected ((withQueries #[{query with input_columns := query.input_columns.extract 0 2}]).validate))
+      "reject short fixed lookup"
+    check (rejected ((withQueries #[{query with input_columns := query.input_columns.push (.Variable (.WitnessSubtree 0))}]).validate))
+      "reject wide fixed lookup"
+    check (rejected ((withQueries #[{query with input_columns :=
+      #[.Variable (.WitnessSubtree 999), .Variable (.WitnessSubtree 19), .Variable (.WitnessSubtree 20)]}]).validate))
+      "reject out-of-layout fixed lookup column"
+    check (rejected ((withQueries #[{query with input_columns :=
+      #[.Expression ⟨#[(⟨⟨1, by decide⟩⟩, .SetupSubtree 0)], ⟨⟨0, by decide⟩⟩⟩,
+        .Variable (.WitnessSubtree 19), .Variable (.WitnessSubtree 20)]}]).validate))
+      "reject unmapped fixed lookup expression"
+    check (rejected (fromJson? (Json.mkObj [("Constant", toJson "Xor")]) :
+      Except String FixedTableIndex)) "reject unsupported fixed table"
+    check (rejected (fromJson? (Json.mkObj [("Variable", toJson (0 : Nat))]) :
+      Except String FixedTableIndex)) "reject dynamic fixed-table selection"
     check (rejected (parseCircuit "{}")) "reject missing required schema"
     return (0 : UInt32)
   catch error =>

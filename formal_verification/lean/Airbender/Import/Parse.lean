@@ -68,6 +68,11 @@ def Circuit.validate (c : Circuit) : Except String Unit := do
     let _ ← c.quadraticExpression q
   for q in c.degree_1_constraints do
     let _ ← c.linearExpression q
+  for q in w.width_3_lookups do
+    unless q.input_columns.size == 3 do
+      throw "native fixed lookup must have exactly three columns"
+    for entry in q.input_columns do
+      let _ ← c.lookupExpression entry
   for q in w.range_check_16_lookup_expressions ++ w.timestamp_range_check_lookup_expressions do
     let _ ← c.lookupExpression q
 

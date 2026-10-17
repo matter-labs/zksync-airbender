@@ -56,8 +56,9 @@ the local interface and a nonzero-operand SUB-to-x0 regression now preserve that
 
 The [schema](Airbender/Import/Schema.lean) is the consumed local-row projection of
 the v2 compiled artifact. All linear/quadratic equations and scalar/timestamp
-queries are emitted as native Clean operations. Unsupported nonempty fixed
-lookups, byte ranges and state linkage fail closed. Native stage-two arguments,
+queries are emitted as native Clean operations. Only the two native word-memory
+fixed tables are supported, with exactly three columns. Unknown tables, dynamic selectors, malformed arities, byte ranges and
+state linkage fail closed. Native stage-two arguments,
 public boundary conditions, decoder tables and memory matching are not implied
 by this projection. Their remaining work is explicit in the status and plan.
 
@@ -67,6 +68,20 @@ destination-write variables 37/38 rather than raw arithmetic variables 29/30.
 The proof connects both using the imported x0 mask equations. Pinning and parser
 regressions check parts of this connection; formal parsing/emission fidelity is
 not proved.
+
+The separate [word-memory checkpoint](Airbender/Review/Circuits/WordMemory/Theorems.lean)
+imports every native equation/query and all mixed port/decoder metadata. The
+[table models](Airbender/Review/Helpers/Tables/WordROM.lean) enumerate the native
+four-MiB profile, including every separator row, every aligned ROM row and UNIMP
+padding. Both native fixed queries remain unconditional. Membership derives
+address alignment, RAM classification and exact public ROM values; equations
+derive port selection, actual masked loads and RAM-only stores. The x0 flag
+remains visible until public decoding identifies it. Source-plus-immediate RV32
+address arithmetic, PC/clock assembly, initialized word-memory history and
+original Sail execution remain open. Public ROM words are explicit inputs;
+physical Rust setup/export and actual Sail-byte binding are not proved, and
+no table-equivalence or expected-read premise is introduced. The initialized
+trace registry remains arithmetic-only.
 
 ## Public state, profiles and external inputs
 

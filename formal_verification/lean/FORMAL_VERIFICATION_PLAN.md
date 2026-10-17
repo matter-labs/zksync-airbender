@@ -60,9 +60,12 @@ including empty traces. Native GPR metadata preserves all code bytes; actual pur
 decoder evidence is retained from construction. A reversed two-row ADD/ADDI
 witness derives PC 8 and x2=247 with no intermediate/result premise.
 
-1. Bind native word-memory alongside checked arithmetic execution. Import actual
-   v2 equations/queries/metadata and derive initialized reads, ranges and original
-   Sail load/store interfaces. Preserve v2 PC rollover and native timestamp offsets;
+1. Finish binding native word-memory alongside checked arithmetic execution.
+   All v2 equations/queries/metadata and native-shaped ROM tables now support
+   checked transfer laws, alignment, exact ROM values and RAM-only stores.
+   Connect source-plus-immediate RV32 address arithmetic, native PC/clock laws,
+   public LW/SW decoding, initialized reads/ranges and original Sail interfaces.
+   Preserve v2 PC rollover and native timestamp offsets;
    keep physical setup generation/export and mixed/custom expansion explicit.
 2. Add native jump/branch/SLT and extend the shared execution relation with checked
    control-flow interfaces. Preserve full native setup padding and actual public
@@ -75,8 +78,10 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
 5. Port unified execution, protocol spans, terminal boundaries, padding and
    initialization/teardown under their actual v2 argument interfaces.
 
-Expand importer support only when a concrete circuit requires it. Nonempty
-fixed-lookup sets, 8-bit columns and state linkage currently fail closed.
+Expand importer support only when a concrete circuit requires it. The two native
+word-memory fixed tables are now supported with exact three-column queries.
+Other fixed tables, dynamic table selectors, 8-bit columns and state linkage
+continue to fail closed.
 Do not copy unused v3 Review theorems into the v2 build.
 
 ## Deferred milestones

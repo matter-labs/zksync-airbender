@@ -25,6 +25,7 @@ not completed v2 coverage.
 | Native PC path | Successful public setup retains its indexed PCs and derives every incoming bound/alignment through RV32 truncation. Native carry/wrap equations derive bounded outgoing successors; state matching and the actual public initial PC bound the terminal PC, including empty traces. No per-row PC premise is supplied. Actual Sail retirement remains separate. |
 | Decoded arithmetic row retirement | Proof-layer assembly derives mask/zero flag, preprocessing, operand/immediate bounds, original Sail reads, PC facts and native observable mapping for all five arithmetic opcodes. Original Sail normal preparation/execution/retirement reaches the actual masked native write. Control-register commutation supplies rebased PC reads. No erased-source or per-row numerical premise is added to the initialized assembly. Complete trace composition is checked below. |
 | Initialized arithmetic execution | Public Sail state and selected five-opcode setup, accepted native constraints/state/memory matching and public RAM alignment derive a finite original Sail normal-path trace to exact terminal PC/register/RAM values. All row order, reads, bounds, selectors, preprocessing, intermediate states and retirement effects are proved. Actual code-byte reads and pure original decoding are preserved across native GPR updates; empty traces are included. Physical setup/argument enforcement remains separate. |
+| [Word-memory native transfers](Airbender/Review/Circuits/WordMemory/Theorems.lean) | All 31 quadratic/four linear equations, two scalar/eight timestamp queries and both fixed three-column ROM queries are imported. Three native ports and all decoder columns are checked. Complete native-shaped separator/ROM tables derive canonical aligned address limbs, exact ROM data, mixed port selection, masked RAM/ROM loads and RAM-only stores. Source-plus-immediate address arithmetic, native PC/clocks, public decoding/history and original Sail execution are subsequent milestones. |
 | Range tables | Native Clean static-table definitions with explicit range semantics; v2 setup-generator binding is pending. |
 
 ## Remaining work
@@ -36,18 +37,18 @@ not completed v2 coverage.
 - Prove the deferred import/compiler/cryptographic connections under a separately scoped claim.
 
 No whole-machine or cryptographic soundness is claimed. Completeness is defined
-but unproved. Unsupported fixed lookups and inter-row linkage are rejected by
-the initial importer rather than omitted from its local target.
+but unproved. Unsupported fixed tables/dynamic selectors, byte ranges and inter-row linkage
+are rejected rather than omitted from the local importer target.
 
 ## Validation
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all eleven concrete test modules pass.
-- Importer regressions: 36 checks pass.
-- Axiom audit: 275 explicit roots; only propext, Classical.choice and Quot.sound.
-- All eleven public Review theorems (two circuit claims, seven trace claims and two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
-- Source provenance: 59 unchanged reused files, one native circuit artifact and thirteen native Rust sources.
+- Library, both CLI entrypoints and all twelve concrete test modules pass.
+- Importer regressions: 46 checks pass.
+- Axiom audit: 296 explicit roots; only propext, Classical.choice and Quot.sound.
+- All twelve public Review theorems (three circuit claims, seven trace claims and two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Source provenance: 59 unchanged reused files, two native circuit artifacts and nineteen native Rust sources.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
 - Public Sail x1/PC reads construct the accepted alias fixture; missing register and byte data reject construction.
@@ -58,6 +59,7 @@ Current checked checkpoint:
 - The accepted public alias fixture derives all PC inputs/successors and its terminal bound. An empty-row fixture derives its terminal bound from the actual public initial PC. The native wraparound regression passes through the factored column-only calculation.
 - The accepted alias ADD now reaches original Sail retirement with all local interfaces derived. Actual SUB bytes construct the x0 setup; original SUB-to-x0 retires PC+4 with the native data stutter, without caller-supplied operand or Sail-read interfaces.
 - Complete execution passes on the alias ADD, original SUB-to-x0 and empty trace. Reversed dependent ADD/ADDI witness rows derive a finite original Sail trace reaching PC 8 and x2=247; no intermediate read/state or final-value premise is supplied.
+- Full native RAM load/store and ROM load rows pass, including x0-masked ROM loads. Native UNIMP padding is retained; changed ROM values, unaligned addresses and ROM stores are rejected. Fixed-query arity, table selection and column mapping fail-closed regressions pass.
 - No handwritten project warnings, admitted proofs or project axioms.
 - Serial bounded gates pass; parent/child timeout and memory probes confirm termination with no live owned processes.
 

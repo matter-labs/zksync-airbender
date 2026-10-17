@@ -1,6 +1,6 @@
 import Airbender.Import.Parse
 import Airbender.Import.Coefficients
-import Airbender.Review.Helpers.Tables.Range
+import Airbender.Review.Helpers.Tables.WordROM
 import Lean
 
 open Lean Elab Command
@@ -23,9 +23,9 @@ private partial def cleanExprSyntax (e : Expr) : CommandElabM (TSyntax `term) :=
     es.foldlM (fun acc e => do `(_root_.Expression.mul $acc $(← cleanExprSyntax e)))
       (← cleanConstantSyntax 1)
 
-/-- Import v2 compiled row equations and scalar ranges into native Clean operations.
+/-- Import v2 compiled row equations, ranges and selected fixed queries into Clean.
     Import/generation fidelity and setup/memory arguments remain explicit boundaries. -/
-elab "import_clean " name:ident " from " path:str metadata:(" trace_metadata")? : command => do
+elab "import_clean " name:ident " from " path:str fixed:(" word_memory_lookups")? metadata:(" trace_metadata")? : command => do
   let c ← match parseCircuit (← IO.FS.readFile path.getString) with
     | .ok c => pure c
     | .error e => throwError "v2 circuit import failed: {e}"
@@ -47,10 +47,28 @@ elab "import_clean " name:ident " from " path:str metadata:(" trace_metadata")? 
     | .error e => throwError "v2 timestamp import failed: {e}"
   let timestamps ← clocks.toList.mapM fun e => do
     `(_root_.FlatOperation.lookup (Airbender.Verification.timestamp19 $(← cleanExprSyntax e)))
-  let ops := (assertions ++ lookups ++ timestamps).toArray
   let prime := mkIdent `p
-  elabCommand (← `(def $name {$prime : Nat} [Fact (Nat.Prime $prime)] :
-    List (_root_.FlatOperation (ZMod $prime)) := [$[$ops],*]))
+  let rom := mkIdent `rom
+  unless c.witness_layout.width_3_lookups.isEmpty || fixed.isSome do
+    throwError "v2 fixed lookups require an explicit word_memory_lookups target"
+  if fixed.isSome && c.witness_layout.width_3_lookups.isEmpty then
+    throwError "v2 word-memory target has no native fixed lookups"
+  let fixedLookups ← c.witness_layout.width_3_lookups.toList.mapM fun query => do
+    let entries ← match query.input_columns.mapM c.lookupExpression with
+      | .ok entries => entries.mapM cleanExprSyntax
+      | .error e => throwError "v2 fixed lookup import failed: {e}"
+    let table ← match query.table_index with
+      | .Constant .RomAddressSpaceSeparator => `(Verification.romSeparatorTable (p := $prime))
+      | .Constant .RomRead => `(Verification.romWordTable (p := $prime) $rom)
+    `(_root_.FlatOperation.lookup (Verification.fixed3 $table
+      #v[$(entries[0]!), $(entries[1]!), $(entries[2]!)]))
+  let ops := (assertions ++ lookups ++ timestamps ++ fixedLookups).toArray
+  if fixed.isSome then
+    elabCommand (← `(def $name {$prime : Nat} [Fact (Nat.Prime $prime)]
+      ($rom : Verification.WordROM) : List (_root_.FlatOperation (ZMod $prime)) := [$[$ops],*]))
+  else
+    elabCommand (← `(def $name {$prime : Nat} [Fact (Nat.Prime $prime)] :
+      List (_root_.FlatOperation (ZMod $prime)) := [$[$ops],*]))
   if metadata.isSome then
     let columns ← match c.traceColumns with
       | .ok columns => pure columns

@@ -8,6 +8,7 @@ import Tests.NativeDecoderMetadata
 import Tests.DecoderSetup
 import Tests.X0History
 import Tests.ArithmeticExecution
+import Tests.WordMemory
 
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
@@ -294,3 +295,25 @@ import Tests.ArithmeticExecution
 #print axioms Tests.InitializedHistory.initialized_sail_execution
 #print axioms Tests.InitializedHistory.empty_sail_execution
 #print axioms Tests.X0History.discarded_sail_execution
+
+#print axioms Airbender.WordMemory.native_transfers
+#print axioms Airbender.WordMemory.Proofs.constraint_count
+#print axioms Airbender.WordMemory.Proofs.lookup_count
+#print axioms Airbender.WordMemory.Proofs.clock_columns
+#print axioms Airbender.WordMemory.Proofs.memory_ports
+#print axioms Airbender.WordMemory.Proofs.memory_clocks
+#print axioms Airbender.WordMemory.Proofs.decoder_columns
+#print axioms Airbender.WordMemory.Proofs.separator_query
+#print axioms Airbender.WordMemory.Proofs.rom_query
+#print axioms Airbender.WordMemory.Proofs.address_bounds
+#print axioms Airbender.WordMemory.Proofs.separator_values
+#print axioms Airbender.WordMemory.Proofs.rom_values
+#print axioms Airbender.WordMemory.Proofs.transfers
+#print axioms Tests.WordMemory.ram_load
+#print axioms Tests.WordMemory.ram_store
+#print axioms Tests.WordMemory.rom_load
+#print axioms Tests.WordMemory.discarded_rom_load
+#print axioms Tests.WordMemory.rom_store_rejected
+#print axioms Tests.WordMemory.changed_rom_read_rejected
+#print axioms Tests.WordMemory.unaligned_address_rejected
+#print axioms Tests.WordMemory.native_rom_padding
