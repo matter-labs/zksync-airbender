@@ -57,6 +57,22 @@ def main : IO UInt32 := do
     check (rejected (c.memoryColumns ⟨0,2⟩ 2)) "reject wrong native column-group extent"
     check (rejected (c.memoryColumns ⟨c.memory_layout.total_width,1⟩ 2))
       "reject native multi-limb group overflow"
+    let decoder ← IO.ofExcept c.decoderColumns
+    check (decoder == ⟨5,6,7,8,#v[9,10],11,12⟩) "native ten-column decoder placement"
+    let some state := c.memory_layout.intermediate_state_layout
+      | throw (IO.userError "missing test decoder state")
+    let withState := fun state => {c with memory_layout :=
+      {c.memory_layout with intermediate_state_layout := some state}}
+    check (rejected ((withState {state with rd_is_zero := ⟨0,2⟩}).decoderColumns))
+      "reject decoder zero-flag group extent"
+    check (rejected ((withState {state with imm := ⟨c.witness_layout.total_width - 1,1⟩}).decoderColumns))
+      "reject decoder immediate group overflow"
+    check (rejected ((withState {state with funct7 := ⟨0,1⟩}).decoderColumns))
+      "reject unsupported decoder funct7 field"
+    check (rejected ((withState {state with circuit_family := ⟨0,1⟩}).decoderColumns))
+      "reject unsupported decoder family field"
+    check (rejected ((withState {state with circuit_family_extra_mask := .SetupSubtree 0}).decoderColumns))
+      "reject unmapped decoder packed mask"
     let json ← IO.ofExcept (Json.parse source)
     let linked ← IO.ofExcept (replaceField json "state_linkage_constraints" (.arr #[.arr #[]]))
     check (rejected (parseCircuit linked.compress)) "reject unsupported inter-row linkage"

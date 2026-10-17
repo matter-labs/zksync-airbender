@@ -18,7 +18,9 @@ formalization revision 805909325; exact source identities and hashes are in
 [provenance](artifacts/provenance.json). Circuit and runtime Rust are unchanged.
 
 Current scope is conditional ADD/ADDI/SUB/LUI/AUIPC row soundness, including actual
-masked destination writes, discarded x0 writes and aligned 32-bit PC wraparound.
+masked destination writes, original-opcode discarded x0 writes and aligned
+32-bit PC wraparound. Native ten-column decoder placement/query order is checked;
+public setup rows and membership remain separate.
 Decoding, input bounds, preprocessing and actual Sail reads remain explicit local
 interfaces. Native direct port/state metadata now supports
 [initialized logical memory history](Airbender/Review/Trace/History.lean): accepted

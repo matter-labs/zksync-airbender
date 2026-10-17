@@ -60,7 +60,7 @@ theorem result_word {p : Nat} [Fact p.Prime] (hp : 196608 < p)
       | .lui => input.row.immediate.toBitVec
       | .auipc => input.row.pc.toBitVec + input.row.immediate.toBitVec := by
   obtain ⟨⟨c, cb, hc⟩, ⟨d, db, hd⟩⟩ := carry_bits h
-  obtain ⟨s0, s1, s2, s3, s4, s5, s6, s7⟩ := selected_bits hp h a.decoderMask nonzero
+  obtain ⟨s0, s1, s2, s3, s4, s5, s6, s7⟩ := selected_bits hp h a.decoderMask
   obtain ⟨ol, oh⟩ := output_columns h a.destinationZero nonzero m
   have lo := Verification.assertion_of_holds h ⟨32, by rw [constraint_count]; decide⟩
   have hi := Verification.assertion_of_holds h ⟨33, by rw [constraint_count]; decide⟩

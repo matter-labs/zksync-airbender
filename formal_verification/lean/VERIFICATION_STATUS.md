@@ -18,6 +18,7 @@ not completed v2 coverage.
 | Native state/port clocks | Typed physical state and three direct ports, including actual destination writes. Four-tick advancement and strict previous-write/port order follow from imported equations/queries under initial/prior clock bounds and alignment. The initialized-history layer now derives these local inputs from matching and initial boundaries. |
 | Initialized logical memory | Accepted native state/memory matching, initial clock bounds/alignment and unique seed addresses construct complete Clean online consistency, per-address paths and newest preceding reads. Readonly refreshes and actual destination writes are included. Public Sail seed/initial-PC construction is checked separately below. |
 | Public initial image | Actual Sail register/RAM and PC reads construct native seed tokens and initial PC at native clock four. Missing registers/bytes reject construction. Seed word/clock bounds and address uniqueness follow; no per-row values or clocks are supplied. Physical boot/profile remains separate. |
+| Native decoder placement | Ten-column v2 query order, separate rd-zero flag, packed mask and actual memory/witness bank placement are imported and mechanically checked. Unsupported extra descriptor fields fail closed. Public table construction/membership is pending. |
 | Range tables | Native Clean static-table definitions with explicit range semantics; v2 setup-generator binding is pending. |
 
 ## Remaining work
@@ -36,14 +37,15 @@ the initial importer rather than omitted from its local target.
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all seven concrete test modules pass.
-- Importer regressions: 30 checks pass.
-- Axiom audit: 86 explicit roots; only propext, Classical.choice and Quot.sound.
+- Library, both CLI entrypoints and all eight concrete test modules pass.
+- Importer regressions: 36 checks pass.
+- Axiom audit: 90 explicit roots; only propext, Classical.choice and Quot.sound.
 - All six public Review theorems (two circuit claims, two initialized-memory claims and two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
-- Source provenance: 53 unchanged reused files, one native circuit artifact and eleven native Rust sources.
+- Source provenance: 53 unchanged reused files, one native circuit artifact and thirteen native Rust sources.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
 - Public Sail x1/PC reads construct the accepted alias fixture; missing register and byte data reject construction.
+- Original-opcode SUB-to-x0 with nonzero source operands passes native constraints and the public Sail theorem.
 - No handwritten project warnings, admitted proofs or project axioms.
 - Serial bounded gates pass; parent/child timeout and memory probes confirm termination with no live owned processes.
 

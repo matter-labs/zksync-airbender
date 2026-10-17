@@ -38,6 +38,14 @@ The [initialized history layer](Airbender/Proofs/Trace/History.lean) discharges
 those per-row inputs from logical state/memory matching and public initial clock
 bounds. The v2 carry equations need no source-field inverse constant.
 
+[Decoder placement](Airbender/Review/Helpers/Decoder/README.md) now resolves all
+ten v2 query columns, including the decoder-owned zero flag and packed mask.
+Group extents and memory/witness bank choices are checked; extra unconsumed
+funct7/family descriptor fields fail closed. This is metadata interpretation,
+not public setup-row construction or a logical membership proof. The v2 decoder
+retains original opcode masks/operands for x0, unlike the source's NOP projection;
+the local interface and a nonzero-operand SUB-to-x0 regression now preserve that.
+
 The [schema](Airbender/Import/Schema.lean) is the consumed local-row projection of
 the v2 compiled artifact. All linear/quadratic equations and scalar/timestamp
 queries are emitted as native Clean operations. Unsupported nonempty fixed

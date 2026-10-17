@@ -13,9 +13,13 @@ The public surface has two theorem statements: `Airbender.AddSub.soundness` and
 `Airbender.AddSub.mersenne31_soundness`. Selector recovery, arithmetic
 and PC calculations stay under Proofs. Individual selector bits and result/PC
 bounds are derived; packed native decoding, preprocessing, input bounds and
-original Sail reads remain explicit until initialized history is backported.
+original Sail reads remain explicit until public decoding and history transport
+discharge them for initialized execution.
 The final PC is modular RV32, including aligned wraparound at 0xfffffffc.
-Native [clock and port descriptors](Artifact.lean) now come from typed v2 JSON;
+V2 retains the original opcode mask and operands for x0 writes. The
+[nonzero-operand SUB-to-x0 regression](../../../../Tests/CircuitRows.lean) applies
+the public theorem to original Sail execution while the actual write is zero.
+Native [clock, port and decoder descriptors](Artifact.lean) now come from typed v2 JSON;
 [clock effects](../../../Proofs/AddSub/Timestamp.lean) derive four-tick advancement
 and strict port order under the shared [clock inputs](../../Helpers/Context/README.md).
 

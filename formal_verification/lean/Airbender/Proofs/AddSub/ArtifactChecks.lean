@@ -23,4 +23,7 @@ theorem memory_clocks : importedConstraintsMemoryPorts.map Trace.MemoryPort.cloc
     importedConstraintsTraceColumns.ports := by
   simp [importedConstraintsMemoryPorts, importedConstraintsTraceColumns]
 
+theorem decoder_columns : importedConstraintsDecoderColumns =
+    (⟨5, 6, 7, 8, #v[9, 10], 11, 12⟩ : Trace.DecoderColumns) := rfl
+
 end Airbender.AddSub.Proofs

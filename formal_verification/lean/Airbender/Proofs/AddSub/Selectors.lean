@@ -56,7 +56,7 @@ private theorem selector_bound {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
 theorem selected_bits {p : Nat} [Fact p.Prime] (hp : 196608 < p)
     {input : Sail.Input} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
-    (mask : w 12 = (decodedMask input : ZMod p)) (nonzero : input.rd ≠ Sail.zeroRegister) :
+    (mask : w 12 = (decodedMask input : ZMod p)) :
     w 17 = (if input.row.opcode = .add then 1 else 0) ∧
     w 18 = (if input.row.opcode = .addi then 1 else 0) ∧
     w 19 = (if input.row.opcode = .sub then 1 else 0) ∧
@@ -78,7 +78,7 @@ theorem selected_bits {p : Nat} [Fact p.Prime] (hp : 196608 < p)
       32 * w 22 + 64 * w 23 + 128 * w 24 = (decodedMask input : ZMod p) := by
     linear_combination packed
   have maskBound : decodedMask input < p := by
-    cases hop : input.row.opcode <;> simp [decodedMask, nonzero, hop] <;> omega
+    cases hop : input.row.opcode <;> simp [decodedMask, hop] <;> omega
   have natural : (w 17).val + 2 * (w 18).val + 4 * (w 19).val + 8 * (w 20).val +
       16 * (w 21).val + 32 * (w 22).val + 64 * (w 23).val + 128 * (w 24).val =
       decodedMask input := by
@@ -86,7 +86,7 @@ theorem selected_bits {p : Nat} [Fact p.Prime] (hp : 196608 < p)
     simpa only [Nat.cast_add, Nat.cast_mul, Nat.cast_ofNat, ZMod.natCast_zmod_val] using equation
   cases hop : input.row.opcode
   all_goals
-    simp only [decodedMask, nonzero, if_false, hop] at natural
+    simp only [decodedMask, hop] at natural
     simp only [reduceCtorEq, if_true, if_false]
     refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
     all_goals

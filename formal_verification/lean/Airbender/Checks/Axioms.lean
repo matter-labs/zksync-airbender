@@ -4,6 +4,7 @@ import Tests.CircuitRows
 import Tests.Timestamps
 import Tests.NativeClocks
 import Tests.InitializedHistory
+import Tests.NativeDecoderMetadata
 
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
@@ -94,3 +95,8 @@ import Tests.InitializedHistory
 #print axioms Tests.InitializedHistory.public_image_history
 #print axioms Tests.InitializedHistory.missing_register_rejected
 #print axioms Tests.InitializedHistory.missing_bytes_rejected
+
+#print axioms Airbender.AddSub.Proofs.decoder_columns
+#print axioms Tests.NativeDecoderMetadata.query_order
+#print axioms Tests.CircuitRows.x0_sub_satisfies
+#print axioms Tests.CircuitRows.x0_sub_execution

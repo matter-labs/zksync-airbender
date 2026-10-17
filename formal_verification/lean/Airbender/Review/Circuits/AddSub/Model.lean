@@ -6,15 +6,15 @@ namespace Airbender.AddSub
 open Reference.RiscV Arithmetic
 
 /-- Public instruction interpreted in the native v2 packed family mask.
-    Pure writes to x0 are preprocessed as zero-operand ADD. -/
+    V2 retains the original opcode for discarded x0 writes. -/
 def decodedMask (input : Sail.Input) : Nat :=
-  if input.rd = Sail.zeroRegister then 1 else match input.row.opcode with
+  match input.row.opcode with
     | .add => 1 | .addi => 2 | .sub => 4 | .lui => 8 | .auipc => 16
 
-/-- Preprocessed operands; the original instruction remains the Sail reference. -/
+/-- Preprocessed operands for nondiscarded writes; x0 needs no arithmetic interface. -/
 abbrev Preprocessing (input : Sail.Input) : Prop :=
   if input.rd = Sail.zeroRegister then
-    input.row.left = ⟨0, 0⟩ ∧ input.row.right = ⟨0, 0⟩ ∧ input.row.immediate = ⟨0, 0⟩
+    True
   else match input.row.opcode with
     | .add | .sub => input.row.immediate = ⟨0, 0⟩
     | .addi => input.row.right = ⟨0, 0⟩

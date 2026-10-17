@@ -1,5 +1,6 @@
 import Airbender.Review.Circuits.AddSub.Artifact
 import Airbender.Review.Helpers.Memory.Ports
+import Airbender.Review.Helpers.Decoder.NativeData
 import Airbender.Review.Helpers.Context.PCState.Model
 import Airbender.Review.Helpers.Properties
 
@@ -19,6 +20,8 @@ class CircuitLayout (Kind : Type) where
   columns : Kind → TraceColumns
   /-- Imported register/RAM access descriptors, in their native port order. -/
   ports : Kind → Array MemoryPort
+  /-- Imported preprocessed decoder-query placement; membership remains separate. -/
+  decoderColumns : Kind → DecoderColumns
   /-- A family may supply modeled setup tables when its native queries are imported. -/
   Setup : (p : Nat) → [Fact p.Prime] → Type := fun _ _ => Unit
   /-- The richer imported Clean constraints, including clock lookups. -/
@@ -28,6 +31,7 @@ class CircuitLayout (Kind : Type) where
 instance : CircuitLayout Family where
   columns | .addSub => AddSub.importedConstraintsTraceColumns
   ports | .addSub => AddSub.importedConstraintsMemoryPorts
+  decoderColumns | .addSub => AddSub.importedConstraintsDecoderColumns
   constraints | .addSub, _ => AddSub.importedConstraints
 
 /-- One circuit row: `family` selects its imported artifact, and `assignment`
@@ -44,6 +48,12 @@ def Row.columns (row : Row p Kind) : TraceColumns :=
 
 def Row.ports (row : Row p Kind) : Array MemoryPort :=
   CircuitLayout.ports row.family
+
+def Row.decoderColumns (row : Row p Kind) : DecoderColumns :=
+  CircuitLayout.decoderColumns row.family
+
+abbrev Row.decoderQuery (row : Row p Kind) : Vector (ZMod p) 10 :=
+  nativeDecoderQuery row.columns row.decoderColumns row.assignment
 
 def Row.constraints [Fact p.Prime] (row : Row p Kind)
     (rom : CircuitLayout.Setup (Kind := Kind) p) :

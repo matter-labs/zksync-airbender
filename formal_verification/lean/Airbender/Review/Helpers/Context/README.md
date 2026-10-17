@@ -10,7 +10,8 @@ v2 equations and all eight timestamp queries to the unchanged generic clock
 lemmas. [Native row data and logical matching](Model.lean) preserve the source's
 small registry/token structure, restricted to v2 ADD/SUB. The
 [PC/state representation](PCState/Model.lean) retains raw PC/time pairs; unconnected
-v3 modeled decoder definitions are omitted.
+v3 modeled decoder tables are omitted; native v2 ten-column decoder placement is
+retained by the row registry, separately from table membership.
 
 [History proofs](../../../Proofs/Trace/History.lean) derive row/prior clock bounds
 and alignment from accepted state/memory matching and only initial clock inputs.

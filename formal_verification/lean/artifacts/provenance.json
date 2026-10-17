@@ -265,6 +265,14 @@
     {
       "path": "../../cs/src/definitions/cycle_state.rs",
       "sha256": "2f831d04021cd7478f1040cb748bec4ba6c6fe07b9037625aa7672924463481e"
+    },
+    {
+      "path": "../../cs/src/machine/ops/unrolled/decoder/bytecode_preprocessor.rs",
+      "sha256": "aae4eb19dda564d5644b8193b4afe84d1a73ffa2ac3a2dd64becff9cd442f204"
+    },
+    {
+      "path": "../../cs/src/machine/ops/unrolled/decoder/mod.rs",
+      "sha256": "266811af6e96d37e2caa632e0b009b314267de094f557789228d5e201278f018"
     }
   ],
   "adaptations": [
@@ -299,7 +307,7 @@
       "path": "Airbender/Review/Helpers/Context/Model.lean",
       "source_path": "Airbender/Review/Helpers/Context/Model.lean",
       "source_sha256": "2850e793d9d5b08fa390c1e28163e45c17df926ee9b1fc1bc7a7e02bda137855",
-      "change": "Keep row, raw token, accepted matching and history definitions. Restrict the native registry to v2 ADD/SUB, use Unit setup until decoder import, and omit unconnected decoder descriptors. No semantic read/word-bound premises added."
+      "change": "Keep row, raw token, accepted matching and history definitions. Restrict the registry to v2 ADD/SUB with its ten-column native decoder placement; use Unit setup until table extraction. No semantic read/word-bound premises added."
     },
     {
       "path": "Airbender/Proofs/Trace/History.lean",

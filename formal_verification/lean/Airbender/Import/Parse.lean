@@ -1,5 +1,6 @@
 import Airbender.Import.Schema
 import Airbender.Review.Helpers.Memory.Ports
+import Airbender.Review.Helpers.Decoder.Columns
 
 namespace Airbender
 open Lean
@@ -123,12 +124,38 @@ def Circuit.memoryPorts (c : Circuit) : Except String (Array Trace.MemoryPort) :
     let some clock := clocks.ports[index]? | throw "native port clock is missing"
     pure ⟨clock, address, read, write⟩
 
+/-- Decoder payload groups live in the native bank selected by the state layout. -/
+private def Circuit.decoderBankColumns (c : Circuit) (inMemory : Bool)
+    (columns : ColumnSet) (width : Nat) : Except String (Array Nat) := do
+  if inMemory then c.memoryColumns columns width
+  else
+    unless columns.num_elements == 1 && columns.start + width ≤ c.witness_layout.total_width do
+      throw "native decoder column group has wrong extent or width"
+    (List.range width).toArray.mapM fun offset =>
+      c.logicalVariable (.WitnessSubtree (columns.start + offset))
+
+/-- Resolve v2's native ten-column decoder query, keeping rd_is_zero distinct
+    from the packed family mask. Extra descriptor fields fail closed for now. -/
+def Circuit.decoderColumns (c : Circuit) : Except String Trace.DecoderColumns := do
+  let some state := c.memory_layout.intermediate_state_layout
+    | throw "native decoder state is missing"
+  unless state.funct7.num_elements == 0 && state.circuit_family.num_elements == 0 do
+    throw "unsupported extra native decoder fields"
+  let rs1 ← c.memoryColumns state.rs1_index 1
+  let zero ← c.decoderBankColumns state.decoder_witness_is_in_memory state.rd_is_zero 1
+  let immediate ← c.decoderBankColumns state.decoder_witness_is_in_memory state.imm 2
+  let funct3 ← c.decoderBankColumns state.decoder_witness_is_in_memory state.funct3 1
+  pure ⟨rs1[0]!, ← c.logicalVariable state.rs2_index, ← c.logicalVariable state.rd_index,
+    zero[0]!, #v[immediate[0]!, immediate[1]!], funct3[0]!,
+    ← c.logicalVariable state.circuit_family_extra_mask⟩
+
 def parseCircuit (source : String) : Except String Circuit := do
   let json ← Json.parse source
   let c : Circuit ← fromJson? json
   c.validate
   if c.memory_layout.intermediate_state_layout.isSome || c.memory_layout.machine_state_layout.isSome then
     let _ ← c.memoryPorts
+    let _ ← c.decoderColumns
   pure c
 
 def loadCircuit (path : System.FilePath) : IO (Except String Circuit) :=

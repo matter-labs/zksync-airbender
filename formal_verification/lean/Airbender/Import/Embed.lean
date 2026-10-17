@@ -80,5 +80,13 @@ elab "import_clean " name:ident " from " path:str metadata:(" trace_metadata")? 
       `((⟨$(← clock port.clock), $address, Trace.WordColumns.u16 $(← pair read), $write⟩ : Trace.MemoryPort))
     let portsName := mkIdent (name.getId.appendAfter "MemoryPorts")
     elabCommand (← `(def $portsName : Array Trace.MemoryPort := #[$[$portTerms],*]))
+    let decoder ← match c.decoderColumns with
+      | .ok decoder => pure decoder
+      | .error e => throwError "v2 decoder metadata import failed: {e}"
+    let decoderName := mkIdent (name.getId.appendAfter "DecoderColumns")
+    elabCommand (← `(def $decoderName : Trace.DecoderColumns :=
+      ⟨$(quote decoder.rs1), $(quote decoder.rs2), $(quote decoder.rd),
+        $(quote decoder.rdIsZero), $(← pair decoder.immediate),
+        $(quote decoder.funct3), $(quote decoder.mask)⟩))
 
 end Airbender

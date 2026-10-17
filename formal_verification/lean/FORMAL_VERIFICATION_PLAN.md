@@ -41,10 +41,14 @@ logical memory histories are checked. Accepted state/memory matching and initial
 clock boundaries now derive all row/prior clock inputs, complete Clean memory
 consistency and newest preceding reads. Public Sail image construction now binds
 seed tokens and initial PC to actual reads, deriving initial bounds/clocks and
-unique addresses. Public decoding and subsequent bound/read transport are next.
+unique addresses. Ten-column native decoder placement/query order is checked,
+including the separate zero flag. Public table construction/membership and
+subsequent bound/read transport are next.
 
-1. Import v2 decoder metadata and fixed/setup rows. Connect the
-   decoder-owned destination-zero flag before deriving masked-write bounds.
+1. Import v2 fixed/setup decoder rows and bind public program construction.
+   Preserve the ten-column flatten order, raw opcode funct3 bits, original x0
+   opcode/operands and native minus-one padding. Connect the decoder-owned
+   destination-zero flag before deriving masked-write bounds.
    Derive operand bounds and subsequent actual Sail reads through initialized
    history, using the checked public Sail seed/initial-PC constructors. The row theorem still takes
    decoded packed masks, preprocessing, bounds and Sail reads explicitly; derive
