@@ -83,8 +83,11 @@ is checked: public boot inputs and the explicit F04 RAM-port contract give one
 physical ordinary/caller/worker memory history and terminal public cells.
 [Full mixed custom-call retirement](Airbender/Review/Trace/UnifiedReduced/FullExecution.lean)
 is also checked under the explicit F02/F03 and existing public protocol profiles.
-Initialization/teardown verification is authorized after table importing: interpret
-the retained GKR layers and connect their outputs to the existing boundary tokens.
+Initialization/teardown local verification is checked: imported standalone and
+inline GKR gates compute the exact existing RAM boundary-token products.
+[Execution adapters](Airbender/Review/Trace/Initialization.lean) derive the native
+zero seed and domain properties; public Sail/configuration/statement conditions
+and cryptographic enforcement of logical matching remain explicit.
 Independent shared-history composition is checked. Completed transport, cuts,
 selected hash-reference composition and control preparation are recorded in
 [Verification status](VERIFICATION_STATUS.md) and the review guides; do not restart
