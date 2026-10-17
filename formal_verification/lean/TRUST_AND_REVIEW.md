@@ -64,6 +64,18 @@ combined pooled entry includes exact external-stream consumption; the
 uses actual unified equations alongside standard/TRIADD/XORROT retirement.
 Neither extension supplies desired operands or results as assumptions.
 
+[Initialization/teardown](Airbender/Review/Circuits/Initialization/README.md) now
+interprets the actual standalone and unified inline GKR slices. Gate satisfaction
+proves exact products of computed RAM initialization/teardown tokens, including
+actual raw teardown columns and native output wiring. The
+[execution adapters](Airbender/Review/Trace/Initialization.lean) derive seed
+correspondence, aligned/distinct cells and register coverage from imported
+geometry and public distinct windows. Public Sail/program/configuration and
+starting PC/clock conditions remain; native ROM shadows are zero independently
+of program bytes. Register teardown is outside these RAM-only slices. Exact
+logical matching is still assumed separately from product computation;
+Rust/parser fidelity and cryptographic enforcement are not inferred.
+
 ## Checked scope boundaries
 
 Keep proof coverage and finding status separate. The
