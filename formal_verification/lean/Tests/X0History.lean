@@ -2,6 +2,7 @@ import Tests.AddSub
 import Airbender.Review.Trace.SailHistory
 import Airbender.Proofs.Trace.PortReads
 import Airbender.Proofs.Trace.Arithmetic
+import Airbender.Review.Trace.Families.AddSub.Theorems
 
 namespace Tests.X0History
 open Airbender Trace Reference.Sail
@@ -142,5 +143,8 @@ theorem discarded_sail_retirement :
     (by simp [trace, nativeRow]) (entry := entry) rfl (by decide) .sub 1 2 0 0 0 rfl discarded_write_stutters
     (Trace.Proofs.initial_state_pc (by decide) inputs.initial)
   exact checked
+
+theorem discarded_sail_execution : Realizes (SailStep setup.program) trace before cells :=
+  public_sail_execution inputs setup_built accepted decoded aligned
 
 end Tests.X0History

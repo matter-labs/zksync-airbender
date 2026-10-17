@@ -409,7 +409,7 @@
       "path": "Airbender/Proofs/Trace/Program.lean",
       "source_path": "Airbender/Proofs/Trace/Program.lean",
       "source_sha256": "88ce31938a4df60bdc397ced357f26d7182b26b22a86da95b11ccd372371e0e5",
-      "change": "Reuse entry_source/program_sources and canonical PC-word proof text. Shift immediate projections from source columns 5/6 to v2 columns 6/7 and ten-column vectors. Prove bounds for the selected v2 decoder projection. Retain canonical register-index recovery with the v2 ten-column query. Successful mapM construction now also proves exact preservation of the public indexed PC sequence."
+      "change": "Reuse entry_source/program_sources and canonical PC-word proof text. Shift immediate projections from source columns 5/6 to v2 columns 6/7 and ten-column vectors. Prove bounds for the selected v2 decoder projection. Retain canonical register-index recovery with the v2 ten-column query. Successful mapM construction now also proves exact preservation of the public indexed PC sequence. Retain the actual pure original decoder term from successful selected-profile construction and lift it through program mapM."
     },
     {
       "path": "Airbender/Proofs/Trace/Values.lean",
@@ -487,7 +487,43 @@
       "path": "Airbender/Proofs/Trace/Arithmetic.lean",
       "source_path": "Airbender/Proofs/Trace/Arithmetic.lean",
       "source_sha256": "abbcf44003540855c6cd5f523954bc7039fbdc3e0b7266acefe553ccb9037409",
-      "change": "Follow source row-range/input/interface/execution/rebasing assembly. Use native v2 operand/immediate/output/PC columns, public initialized value/PC proofs and ten-column decoder mask/zero flag. Remove source field inverses, ROM table and erased-source premises. Original Sail retirement reaches the actual masked native write."
+      "change": "Follow source row-range/input/interface/execution/rebasing assembly. Use native v2 operand/immediate/output/PC columns, public initialized value/PC proofs and ten-column decoder mask/zero flag. Remove source field inverses, ROM table and erased-source premises. Original Sail retirement reaches the actual masked native write. Select original generated Sail clauses from the actual five supported decoded constructors for complete composition."
+    },
+    {
+      "path": "Airbender/Review/Trace/Execution.lean",
+      "source_path": "Airbender/Review/Trace/Execution.lean",
+      "source_sha256": "68a6f14299e2da6150de237754f10f2af2e9f6fcc3a1528b7ca40bde0f48589a",
+      "change": "Extract unchanged StepWith and Realizes definitions and their comments; import only the selected native program/word interface rather than unported ROM/platform boundaries."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/AddSub/Execution.lean",
+      "source_path": "Airbender/Review/Trace/Families/AddSub/Execution.lean",
+      "source_sha256": "bf6efa2f5c6a8390857ea73872b53004267c845f90f4b73875ebc9028596ecab",
+      "change": "Preserve the family-specific Sail step/finite-trace alias structure. Select original registerClause for the five v2 arithmetic opcodes; omit unported named profile deviations and word-memory rows."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/AddSub/Theorems.lean",
+      "source_path": "Airbender/Review/Trace/Families/AddSub/Theorems.lean",
+      "source_sha256": "cca47d7e46e3d33eeb48022ee3aacce7dec39b86a28fbd4ca8a4915ad78327eb",
+      "change": "Specialize the checked native composition to v2 Mersenne31 arithmetic execution. Public image and actual selected setup supply initial state/bytes; complete logical native matching and public RAM alignment remain explicit. No intermediate states, read/result values or table equivalence are premises."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Terminal.lean",
+      "source_path": "Airbender/Proofs/Trace/Terminal.lean",
+      "source_sha256": "3385029aac8a7e029f139f6e81a5573fc7a8157b06d7422a58e60f516592e930",
+      "change": "Preserve terminal path, maximal last-write and actual terminal Sail-read proofs; remove the v3 field inverse using checked native v2 clock laws."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/CompositionCore.lean",
+      "source_path": "Airbender/Proofs/Trace/CompositionCore.lean",
+      "source_sha256": "f90e27d63e600eca9a64f86c621baf688dfaa9892c043ac74ef29f74f7daebc8",
+      "change": "Preserve native path boundaries, row sequencing, code-memory frame and terminal postconditions. Remove the source field inverse. Use pure original decoder evidence extracted from successful v2 setup construction for replay/rebasing, instead of the broader MISA-dependent decoder proof; the public theorem adds no decoding premise."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Composition.lean",
+      "source_path": "Airbender/Proofs/Trace/CompositionCore.lean",
+      "source_sha256": "f90e27d63e600eca9a64f86c621baf688dfaa9892c043ac74ef29f74f7daebc8",
+      "change": "Assemble the source shared composition structure with native v2 register-space metadata and initialized images. Prove all code bytes survive native GPR history, replay actual pure Sail decoding, compose original row clauses in derived order, and derive exact terminal PC/cells, including empty traces."
     }
   ]
 }

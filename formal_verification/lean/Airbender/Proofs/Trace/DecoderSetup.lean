@@ -134,4 +134,21 @@ theorem decoded_pc_aligned {p : Nat} [Fact p.Prime] (hp : limbBase < p)
   rw [canonical]
   exact setup_pc_aligned image entry member
 
+/-- Pure-decoder evidence is extracted from successful public construction;
+    execution does not assume per-row decoder results in later Sail states. -/
+theorem setup_decoders_pure {before : Reference.RiscV.Sail.State} {count logCapacity : Nat}
+    {setup : DecoderSetup} (image : decoderSetupImage before count logCapacity = some setup) :
+    ∀ entry ∈ setup.program,
+      SailRV32.Functions.encdec_backwards entry.bits = .pure entry.instruction := by
+  unfold decoderSetupImage at image
+  split at image
+  · cases built : programImage before
+        ((List.range count).map fun i => BitVec.ofNat 32 (4 * i)) with
+    | none => simp [built] at image
+    | some program =>
+      simp only [built, bind, Option.bind, pure, Option.some.injEq] at image
+      subst setup
+      exact program_decoders_pure built
+  · cases image
+
 end Airbender.Trace.Proofs

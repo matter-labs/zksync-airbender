@@ -5,6 +5,7 @@ import Airbender.Review.Trace.Values
 import Airbender.Review.Trace.SailHistory
 import Airbender.Review.Trace.PC
 import Airbender.Proofs.Trace.Arithmetic
+import Airbender.Review.Trace.Families.AddSub.Theorems
 import Airbender.Proofs.Trace.PortReads
 import Airbender.Proofs.Trace.AccessExecution
 
@@ -348,5 +349,23 @@ theorem initialized_sail_retirement : ∃ after,
     (by simp [trace, nativeRow]) (entry := addEntry) rfl (by decide) .add 1 1 1 0 0 rfl history
     (Trace.Proofs.initial_state_pc (by decide) public_inputs.initial)
   exact checked
+
+theorem initialized_sail_execution : Realizes (SailStep setup.program) trace before [Cell.register 1] :=
+  public_sail_execution public_inputs setup_built accepted decoded aligned
+
+/-- Empty native execution preserves the actual initialized cell image and PC. -/
+theorem empty_sail_execution : Realizes (SailStep []) emptyTrace before [Cell.register 1] := by
+  have inputs : ImageBoundary emptyTrace before [Cell.register 1] :=
+    ⟨public_inputs.domain, public_inputs.image, public_inputs.initial⟩
+  have accepted : Accepted emptyTrace := by
+    constructor
+    · intro row member; simp [emptyTrace] at member
+    · intro row member; simp [emptyTrace] at member
+    · exact List.Perm.refl _
+    · exact List.Perm.refl _
+  have image : decoderSetupImage before 0 0 = some (DecoderSetup.mk [] 1) := rfl
+  have decoded : Decoded emptyTrace ⟨[], 1⟩ := by
+    intro row member; simp [emptyTrace] at member
+  exact public_sail_execution inputs image accepted decoded aligned
 
 end Tests.InitializedHistory

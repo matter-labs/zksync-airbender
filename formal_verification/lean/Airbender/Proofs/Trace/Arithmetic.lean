@@ -196,4 +196,39 @@ theorem arithmetic_rebased_step [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   rw [retired_state_overwrite] at rebased
   exact rebased
 
+/-- Select the original Sail clause from the actual five-opcode decoder result.
+    All operands, ranges, preprocessing and control effects remain derived. -/
+theorem arithmetic_instruction_execution [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    {trace : Data p} {setup : DecoderSetup} {initial : State} {cells : List Cell}
+    {count logCapacity : Nat} (inputs : ImageBoundary trace initial cells)
+    (image : decoderSetupImage initial count logCapacity = some setup)
+    (accepted : Accepted trace) (decoded : Decoded trace setup)
+    {w : Nat → ZMod p} (member : (⟨.addSub, w⟩ : Row p) ∈ trace.rows)
+    {entry : ProgramEntry} (fields : decoderFields entry.instruction = some entry.data)
+    (query : (⟨.addSub, w⟩ : Row p).decoderQuery = entry.query)
+    {before after : State}
+    (history : SailHistory cells (rowEvents trace.memoryEpoch (⟨.addSub, w⟩ : Row p)).reverse before after) :
+    ∃ clause, registerClause entry.instruction = some clause ∧
+      run (normalStep clause) (retiredState before (Word.mk (w 0).val (w 1).val).toBitVec) =
+        .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after (arithmeticOutput w).pc.toBitVec) := by
+  have arithmetic (opcode : Opcode) (rs1 rs2 rd : BitVec 5)
+      (imm : BitVec 12) (upper : BitVec 20)
+      (encoding : entry.instruction = instruction (arithmeticInput opcode rs1 rs2 rd imm upper w before)) :
+      ∃ clause, registerClause entry.instruction = some clause ∧
+        run (normalStep clause) (retiredState before (Word.mk (w 0).val (w 1).val).toBitVec) =
+          .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after (arithmeticOutput w).pc.toBitVec) := by
+    have checked := arithmetic_rebased_step hp inputs image accepted decoded member fields query
+      opcode rs1 rs2 rd imm upper encoding history
+    cases opcode
+    all_goals refine ⟨_, ?_, checked⟩
+    all_goals rw [encoding]; rfl
+  unfold decoderFields at fields
+  split at fields
+  case h_1 => rename_i _ rs2 rs1 rd encoding; exact arithmetic .add rs1 rs2 rd 0 0 encoding
+  case h_2 => rename_i _ rs2 rs1 rd encoding; exact arithmetic .sub rs1 rs2 rd 0 0 encoding
+  case h_3 => rename_i _ imm rs1 rd encoding; exact arithmetic .addi rs1 0 rd imm 0 encoding
+  case h_4 => rename_i _ imm rd encoding; exact arithmetic .lui 0 0 rd 0 imm encoding
+  case h_5 => rename_i _ imm rd encoding; exact arithmetic .auipc 0 0 rd 0 imm encoding
+  case h_6 => cases fields
+
 end Airbender.Trace.Proofs

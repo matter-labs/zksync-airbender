@@ -17,13 +17,13 @@ This is the v2 backport based on dev revision
 formalization revision 805909325; exact source identities and hashes are in
 [provenance](artifacts/provenance.json). Circuit and runtime Rust are unchanged.
 
-Current scope is conditional ADD/ADDI/SUB/LUI/AUIPC row soundness, including actual
-masked destination writes, original-opcode discarded x0 writes and aligned
-32-bit PC wraparound. Native ten-column decoder placement/query order is checked;
+Current scope includes complete initialized ADD/ADDI/SUB/LUI/AUIPC normal-path
+execution and conditional row soundness, including actual masked destination
+writes, original-opcode discarded x0 writes and aligned 32-bit PC wraparound. Native ten-column decoder placement/query order is checked;
 public selected-profile setup construction and logical padded membership are now
 connected separately from Rust generation/export fidelity.
-Decoding, input bounds, preprocessing and actual Sail reads remain explicit local
-interfaces. Native direct port/state metadata now supports
+The local circuit statements expose decoding, input bounds, preprocessing and
+actual Sail reads; the initialized assembly below derives those interfaces. Native direct port/state metadata now supports
 [initialized logical memory history](Airbender/Review/Trace/History.lean): accepted
 state/memory matching and initial clock boundaries derive all row/prior clock
 bounds, complete Clean memory consistency and latest reads. [Public Sail image construction](Airbender/Review/Trace/Initialization.lean) now
@@ -38,8 +38,11 @@ including aliases. The [native PC path](Airbender/Review/Trace/PC.lean) now deri
 all incoming bounds/alignment, bounded RV32 successors and the terminal PC bound.
 The [decoded row assembly](Airbender/Proofs/Trace/Arithmetic.lean) now derives the
 complete local interfaces and original Sail preparation/execution/retirement for
-all five arithmetic opcodes. Rust setup generation/export, complete initialized
-Sail trace composition and cryptographic argument soundness remain pending. This checkpoint does not inherit v3's completed coverage.
+all five arithmetic opcodes. [Complete initialized arithmetic execution](Airbender/Review/Trace/Families/AddSub/Theorems.lean)
+now reaches exact native terminal PC/register/RAM values through original Sail
+code-byte reads, decoding and normal steps, including empty traces. Reversed
+dependent ADD/ADDI witness rows reach PC 8 and x2=247. Remaining families, Rust
+setup generation/export and cryptographic argument soundness remain pending. This checkpoint does not inherit v3's completed coverage.
 
 ## Read these first
 

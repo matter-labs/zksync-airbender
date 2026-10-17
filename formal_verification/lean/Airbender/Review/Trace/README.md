@@ -59,7 +59,16 @@ reads/writes through PC preparation and retirement; no extra erased-source
 readability premises are needed on v2. Concrete alias ADD and actual-byte
 SUB-to-x0 regressions reach the original Sail retirement states.
 
-These are logical selected-profile results. Whole Sail execution reaching the native terminal
-PC/cells remain in [the plan](../../../FORMAL_VERIFICATION_PLAN.md).
+[Complete arithmetic execution](Families/AddSub/Theorems.lean) now proves the
+[shared reference relation](Execution.lean): actual Sail code-byte reads and
+original decoding precede each normal preparation/execution/retirement step.
+Native GPR metadata preserves all code bytes. Pure decoder evidence is extracted
+from successful setup construction and replayed in each derived state. Native
+state/memory matching derive the terminal PC and exact tracked cells, including
+empty traces. The [dependent two-row regression](../../../Tests/ArithmeticExecution.lean)
+stores witness rows backwards yet reaches original Sail PC 8 and x2=247.
+
+These are logical selected-profile results. Remaining families and physical
+setup/argument fidelity remain in [the plan](../../../FORMAL_VERIFICATION_PLAN.md).
 Cryptographic enforcement of the logical permutations remains a separate boundary.
 Existing [local circuit claims](../Circuits/README.md) retain their explicit interfaces.

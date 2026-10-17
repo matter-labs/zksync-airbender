@@ -54,18 +54,19 @@ Native equations derive bounded outgoing successors, and state matching bounds t
 terminal PC. The proof layer now assembles all five arithmetic row interfaces
 and original Sail preparation/execution/retirement from these derived facts and
 actual native history. Rebased control transport derives PC reads and reaches the
-actual masked write. Whole-trace composition and terminal Sail values are next.
+actual masked write. Complete initialized five-opcode execution now composes
+original Sail byte reads/decoding and normal steps to exact terminal PC/cells,
+including empty traces. Native GPR metadata preserves all code bytes; actual pure
+decoder evidence is retained from construction. A reversed two-row ADD/ADDI
+witness derives PC 8 and x2=247 with no intermediate/result premise.
 
-1. Compose checked ADD/SUB row retirement along the native PC/state path. Preserve
-   actual public code bytes and original decoding through GPR/control updates;
-   derive the final Sail register/RAM values and handle empty traces. Promote a
-   complete initialized execution claim after these connections are checked.
-   Rust setup generation/export fidelity and mixed/custom program expansion remain
-   separate. Preserve ten-column flatten order, raw funct3, original x0 fields and
-   native minus-one padding. Do not replace lookup authentication with a
-   table-equivalence premise.
-2. Port word-memory and jump/branch/SLT alongside the first initialized ADD/SUB
-   trace. Preserve v2 PC rollover behavior and verify native timestamp offsets.
+1. Bind native word-memory alongside checked arithmetic execution. Import actual
+   v2 equations/queries/metadata and derive initialized reads, ranges and original
+   Sail load/store interfaces. Preserve v2 PC rollover and native timestamp offsets;
+   keep physical setup generation/export and mixed/custom expansion explicit.
+2. Add native jump/branch/SLT and extend the shared execution relation with checked
+   control-flow interfaces. Preserve full native setup padding and actual public
+   code-byte/decoder evidence; do not add per-row result or PC premises.
 3. Port unsigned mul/div, shift/binop and subword memory into the same shared
    context; retain their family-specific assumptions and supported ISA profile.
 4. Rebind bigint/BLAKE/Keccak workers and callers. Retest control validity,

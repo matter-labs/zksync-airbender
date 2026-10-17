@@ -152,4 +152,52 @@ theorem indexed_pc_aligned (i : Nat) :
   change ((4 * i % 4294967296) % 65536) % 4 = 0
   omega
 
+/-- The selected constructor accepts only actual pure original Sail decoder
+    results. Retain that evidence so execution can replay decoding after writes. -/
+theorem entry_decoder_pure {Kind : Type} {before : Reference.RiscV.Sail.State} {pc : BitVec 32}
+    {entry : ProgramEntry Kind} {projection : SailRV32.instruction → Option (DecoderData Kind)}
+    (image : programEntryWith projection before pc = some entry) :
+    SailRV32.Functions.encdec_backwards entry.bits = .pure entry.instruction := by
+  unfold programEntryWith at image
+  cases read : (Cell.ram pc).read before with
+  | error error after => simp [read, bind, Option.bind] at image
+  | ok bits after =>
+    simp only [read, bind, Option.bind] at image
+    cases decoded : SailRV32.Functions.encdec_backwards bits with
+    | impure _ _ => simp [decoded] at image
+    | pure instruction =>
+      simp only [decoded] at image
+      cases fields : projection instruction with
+      | none => simp [fields] at image
+      | some data =>
+        simp only [fields, pure, Option.some.injEq] at image
+        subst entry
+        exact decoded
+
+theorem program_decoders_pure {Kind : Type} {before : Reference.RiscV.Sail.State}
+    {addresses : List (BitVec 32)} {program : List (ProgramEntry Kind)}
+    {projection : SailRV32.instruction → Option (DecoderData Kind)}
+    (image : programImageWith projection before addresses = some program) :
+    ∀ entry ∈ program, SailRV32.Functions.encdec_backwards entry.bits = .pure entry.instruction := by
+  unfold programImageWith at image
+  induction addresses generalizing program with
+  | nil =>
+    simp only [List.mapM_nil, pure, Option.some.injEq] at image
+    subst program
+    simp
+  | cons address addresses ih =>
+    rw [List.mapM_cons] at image
+    cases first : programEntryWith projection before address with
+    | none => simp [first, bind, Option.bind] at image
+    | some entry =>
+      cases rest : addresses.mapM (programEntryWith projection before) with
+      | none => simp [first, rest, bind, Option.bind] at image
+      | some entries =>
+        simp only [first, rest, bind, Option.bind, pure, Option.some.injEq] at image
+        subst program
+        intro actual member
+        rcases List.mem_cons.mp member with rfl | member
+        · exact entry_decoder_pure first
+        · exact ih rest actual member
+
 end Airbender.Trace.Proofs

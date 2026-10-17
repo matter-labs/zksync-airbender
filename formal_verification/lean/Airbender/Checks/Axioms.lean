@@ -7,6 +7,7 @@ import Tests.InitializedHistory
 import Tests.NativeDecoderMetadata
 import Tests.DecoderSetup
 import Tests.X0History
+import Tests.ArithmeticExecution
 
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
@@ -268,3 +269,28 @@ import Tests.X0History
 #print axioms Tests.InitializedHistory.initialized_sail_retirement
 #print axioms Tests.X0History.setup_built
 #print axioms Tests.X0History.discarded_sail_retirement
+
+#print axioms Airbender.Trace.Proofs.entry_decoder_pure
+#print axioms Airbender.Trace.Proofs.program_decoders_pure
+#print axioms Airbender.Trace.Proofs.setup_decoders_pure
+#print axioms Airbender.Trace.Proofs.arithmetic_instruction_execution
+#print axioms Airbender.Trace.Proofs.last_write_max
+#print axioms Airbender.Trace.Proofs.terminal_latest_value
+#print axioms Airbender.Trace.Proofs.terminal_sail_reads
+#print axioms Airbender.Trace.Proofs.ordered_row_boundaries
+#print axioms Airbender.Trace.Proofs.entry_source_retired_state
+#print axioms Airbender.Trace.Proofs.step_of_rebased
+#print axioms Airbender.Trace.Proofs.register_history_memory
+#print axioms Airbender.Trace.Proofs.compose_native_rows
+#print axioms Airbender.Trace.Proofs.native_trace_postconditions
+#print axioms Airbender.Trace.Proofs.native_event_register_space
+#print axioms Airbender.Trace.Proofs.native_history_memory
+#print axioms Airbender.Trace.Proofs.entry_source_after_native_history
+#print axioms Airbender.Trace.Proofs.image_execution_soundness
+#print axioms Airbender.Trace.public_sail_execution
+#print axioms Tests.ArithmeticExecution.setup_built
+#print axioms Tests.ArithmeticExecution.sail_execution
+#print axioms Tests.ArithmeticExecution.dependent_final_values
+#print axioms Tests.InitializedHistory.initialized_sail_execution
+#print axioms Tests.InitializedHistory.empty_sail_execution
+#print axioms Tests.X0History.discarded_sail_execution

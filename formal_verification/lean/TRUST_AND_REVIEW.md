@@ -98,14 +98,26 @@ now derives the complete five-opcode local interfaces and applies original Sail
 preparation, execution and retirement. Actual control-register commutation
 transports cell histories and supplies rebased PC reads. The resulting state is
 the actual masked native write followed by original Sail control updates,
-including retained SUB-to-x0. Whole-trace composition remains pending. The
+including retained SUB-to-x0. Complete arithmetic trace composition is checked
+below. The
 [native PC theorem](Airbender/Review/Trace/PC.lean) now derives all incoming PC
 bounds/alignment from public indexed setup PCs through RV32 truncation. Native
 v2 carry/wrap equations derive bounded outgoing successors. State matching and
 the actual public initial PC bound the external terminal PC, including empty
 traces. This PC-path result does not establish Sail retirement or whole execution.
-Exceptions, interrupts, completeness, whole Sail execution and cryptographic
-soundness are outside this checkpoint. The copied custom-operation specification
+[Complete arithmetic execution](Airbender/Review/Trace/Families/AddSub/Theorems.lean)
+now composes every native row, in derived clock order, into the original Sail
+normal-path relation. The [reference relation](Airbender/Review/Trace/Execution.lean)
+checks actual sequential Sail code-byte reads, original decoding, matching PC and
+normal preparation/execution/retirement. Native register-space metadata and actual
+history prove that all code bytes survive, including bytes outside the tracked
+cell domain. Successful selected setup construction retains the actual pure
+decoder term, allowing replay in each derived state without a new decoding
+premise. State/memory matching derive exact terminal PC/cells, including empty
+traces. No row order, intermediate state/read, desired terminal value or table
+equivalence is assumed. The reversed dependent ADD/ADDI regression reaches PC 8
+and x2=247. Architectural fetch permissions, exceptions, interrupts, other ISA
+families, completeness and cryptographic soundness remain outside this checkpoint. The copied custom-operation specification
 has no checked v2 consumer yet.
 
 ## Verification resources
