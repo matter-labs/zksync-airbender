@@ -24,6 +24,13 @@ endpoint is another representation of zero. The [coefficient lemma](Airbender/Im
 proves signed interpretation in the native characteristic. Other generic prime
 instances interpret those same signed equations and are not additional native artifacts.
 
+[Native clock/port import](Airbender/Import/Parse.lean) checks two-limb group
+extents, physical banks, consecutive port slots and query/borrow counts. Emitted
+metadata is pinned by [mechanical bindings](Airbender/Proofs/AddSub/ArtifactChecks.lean).
+The [clock proof](Airbender/Proofs/AddSub/Timestamp.lean) derives advancement and
+strict access order under explicit initial/prior clock bounds and alignment;
+it does not supply initialized matching or actual memory reads.
+
 The [schema](Airbender/Import/Schema.lean) is the consumed local-row projection of
 the v2 compiled artifact. All linear/quadratic equations and scalar/timestamp
 queries are emitted as native Clean operations. Unsupported nonempty fixed

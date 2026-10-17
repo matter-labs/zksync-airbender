@@ -38,12 +38,25 @@ def main : IO UInt32 := do
       "reject ambiguous physical-column mapping"
     check (rejected ({c with variable_mapping := ⟨c.variable_mapping.entries.push (25, .SetupSubtree 0)⟩}.validate))
       "reject duplicate logical IDs"
-    check (rejected ({c with memory_layout := ⟨0⟩}.validate)) "reject out-of-bounds native columns"
+    check (rejected ({c with memory_layout := {c.memory_layout with total_width := 0}}.validate)) "reject out-of-bounds native columns"
     check (rejected ({c with degree_2_constraints := c.degree_2_constraints.extract 1 c.degree_2_constraints.size}.validate))
       "reject omitted native Boolean constraint"
     check (rejected ({c with witness_layout := {c.witness_layout with
       range_check_16_lookup_expressions := c.witness_layout.range_check_16_lookup_expressions.extract 1 4}}.validate))
       "reject omitted native scalar range"
+    let clocks ← IO.ofExcept c.traceColumns
+    let ports ← IO.ofExcept c.memoryPorts
+    check (clocks.execute == 4 && clocks.initialPC == #v[0,1] && clocks.finalTime == #v[15,16])
+      "native machine-state placement"
+    check (ports.size == 3 && ports[2]?.any (fun port => port.writeValue == some (.u16 #v[37,38])))
+      "native actual-write metadata"
+    check (rejected ({c with memory_queries_timestamp_comparison_aux_vars := #[]}.traceColumns))
+      "reject incomplete native borrow metadata"
+    check (rejected ({c with memory_layout := {c.memory_layout with
+      machine_state_layout := none}}.traceColumns)) "reject missing native final state"
+    check (rejected (c.memoryColumns ⟨0,2⟩ 2)) "reject wrong native column-group extent"
+    check (rejected (c.memoryColumns ⟨c.memory_layout.total_width,1⟩ 2))
+      "reject native multi-limb group overflow"
     let json ← IO.ofExcept (Json.parse source)
     let linked ← IO.ofExcept (replaceField json "state_linkage_constraints" (.arr #[.arr #[]]))
     check (rejected (parseCircuit linked.compress)) "reject unsupported inter-row linkage"

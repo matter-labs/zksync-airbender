@@ -36,9 +36,14 @@ The original v3 schedule remains separate and paused.
 
 ## Pending integration work
 
-1. Import v2 memory/state/decoder metadata and fixed/setup rows. The first row
-   theorem currently takes decoded packed masks, preprocessing, bounds and Sail
-   reads explicitly; replace these with public decoding and initialized history.
+Native direct shuffle-RAM/state metadata and ADD/SUB clock extraction are checked.
+Initial/prior clock bounds and alignment remain in the shared clock inputs;
+actual memory matching and public decoding are the next connections.
+
+1. Import v2 decoder metadata and fixed/setup rows, then construct initialized
+   ADD/SUB history. The row theorem currently takes decoded packed masks,
+   preprocessing, bounds and Sail reads explicitly; derive these from public
+   decoding and initialized history. Reuse the checked native clock/port descriptors.
 2. Port word-memory and jump/branch/SLT alongside the first initialized ADD/SUB
    trace. Preserve v2 PC rollover behavior and verify native timestamp offsets.
 3. Port unsigned mul/div, shift/binop and subword memory into the same shared

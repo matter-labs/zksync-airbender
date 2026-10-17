@@ -2,6 +2,7 @@ import Airbender
 import Tests.PC
 import Tests.CircuitRows
 import Tests.Timestamps
+import Tests.NativeClocks
 
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
@@ -38,3 +39,18 @@ import Tests.Timestamps
 #print axioms Tests.CircuitRows.discarded_write_satisfies
 #print axioms Tests.Timestamps.wrong_borrow_rejected
 #print axioms Tests.Timestamps.wrong_decoder_mask_rejected
+#print axioms Airbender.AddSub.Proofs.clock_columns
+#print axioms Airbender.AddSub.Proofs.memory_ports
+#print axioms Airbender.AddSub.Proofs.timestamp_equations
+#print axioms Airbender.AddSub.Proofs.clock_effects
+#print axioms Airbender.Trace.Proofs.increment
+#print axioms Airbender.Trace.Proofs.comparison_of_room
+#print axioms Airbender.Trace.Proofs.comparison
+#print axioms Airbender.Trace.Proofs.native_port_order_of_room
+#print axioms Airbender.Trace.Proofs.distinct_slots
+#print axioms Airbender.Trace.Proofs.native_port_order
+#print axioms Airbender.Trace.Proofs.clock_effects
+#print axioms Tests.NativeClocks.native_order
+#print axioms Tests.NativeClocks.native_clock_advances
+#print axioms Airbender.Trace.WordColumns.code_u16
+#print axioms Airbender.Trace.WordColumns.evaluate_u16

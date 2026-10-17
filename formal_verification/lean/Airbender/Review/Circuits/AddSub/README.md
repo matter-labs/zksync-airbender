@@ -15,6 +15,9 @@ and PC calculations stay under Proofs. Individual selector bits and result/PC
 bounds are derived; packed native decoding, preprocessing, input bounds and
 original Sail reads remain explicit until initialized history is backported.
 The final PC is modular RV32, including aligned wraparound at 0xfffffffc.
+Native [clock and port descriptors](Artifact.lean) now come from typed v2 JSON;
+[clock effects](../../../Proofs/AddSub/Timestamp.lean) derive four-tick advancement
+and strict port order under the shared [clock inputs](../../Helpers/Context/README.md).
 
 | Observable | Native logical variable IDs |
 | --- | --- |

@@ -185,6 +185,18 @@
     {
       "path": "vendor/sail-riscv/source/model/postlude/step.sail",
       "sha256": "dde12d4dc49cdc7f36d2d7a8bd9adc8ad4945e212ac52fb511061266e5b136b0"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Context/Columns.lean",
+      "sha256": "d86472f6254b08dd6f5b831fb25ab208869711afc79dc3a72822614022ec1a60"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Memory/Ports.lean",
+      "sha256": "a02ca748ac795ee050aa511a8a1bd13471f35f2f774bc565bc65d3559e4169cd"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Memory/IndirectPorts.lean",
+      "sha256": "d461fe5626a3aae16da56095fb5237cd7a669bd0d262547a4368bda1b1809b75"
     }
   ],
   "circuit_artifacts": [
@@ -229,6 +241,14 @@
     {
       "path": "../../common_constants/src/timestamps.rs",
       "sha256": "8791deff3e54eefa623a87d10b3133e43404f36fd92eeedae46057e9553f629c"
+    },
+    {
+      "path": "../../cs/src/definitions/ram_access.rs",
+      "sha256": "eb98c1ba6df3c9172b6cab3e0d69dcf6999824415702e98e8ed6e8b1b9b96c8d"
+    },
+    {
+      "path": "../../cs/src/definitions/cycle_state.rs",
+      "sha256": "2f831d04021cd7478f1040cb748bec4ba6c6fe07b9037625aa7672924463481e"
     }
   ],
   "adaptations": [
@@ -242,6 +262,16 @@
       "path": "scripts/check_review.py",
       "source_path": "scripts/check_review.py",
       "change": "Preserve public-theorem inventory, guide resolution and layering checks; replace GKR setup-specific validation with v2 provenance and axiom checks."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Context/Timestamps.lean",
+      "source_path": "Airbender/Review/Helpers/Context/Timestamps.lean",
+      "change": "Preserve timestamp definitions; use the v2 modeled scalar range pending setup extraction."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Timestamps.lean",
+      "source_path": "Airbender/Proofs/Trace/Timestamps.lean",
+      "change": "Unchanged generic increment/comparison/port-order/clock-effects theorem text extracted from v3; import only reusable column contracts, without v3 family assemblies."
     }
   ]
 }

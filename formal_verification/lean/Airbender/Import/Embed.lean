@@ -25,7 +25,7 @@ private partial def cleanExprSyntax (e : Expr) : CommandElabM (TSyntax `term) :=
 
 /-- Import v2 compiled row equations and scalar ranges into native Clean operations.
     Import/generation fidelity and setup/memory arguments remain explicit boundaries. -/
-elab "import_clean " name:ident " from " path:str : command => do
+elab "import_clean " name:ident " from " path:str metadata:(" trace_metadata")? : command => do
   let c ← match parseCircuit (← IO.FS.readFile path.getString) with
     | .ok c => pure c
     | .error e => throwError "v2 circuit import failed: {e}"
@@ -51,5 +51,34 @@ elab "import_clean " name:ident " from " path:str : command => do
   let prime := mkIdent `p
   elabCommand (← `(def $name {$prime : Nat} [Fact (Nat.Prime $prime)] :
     List (_root_.FlatOperation (ZMod $prime)) := [$[$ops],*]))
+  if metadata.isSome then
+    let columns ← match c.traceColumns with
+      | .ok columns => pure columns
+      | .error e => throwError "v2 clock metadata import failed: {e}"
+    let ports ← match c.memoryPorts with
+      | .ok ports => pure ports
+      | .error e => throwError "v2 memory metadata import failed: {e}"
+    let pair : Vector Nat 2 → CommandElabM (TSyntax `term) := fun v => `(#v[$(quote v[0]), $(quote v[1])])
+    let clock : Trace.TimestampPort → CommandElabM (TSyntax `term) := fun port => do
+      `((⟨$(quote port.offset), $(← pair port.previous), $(quote port.borrow)⟩ : Trace.TimestampPort))
+    let clockTerms ← columns.ports.mapM clock
+    let traceName := mkIdent (name.getId.appendAfter "TraceColumns")
+    elabCommand (← `(def $traceName : Trace.TraceColumns :=
+      ⟨$(quote columns.execute), $(← pair columns.initialPC), $(← pair columns.finalPC),
+        $(← pair columns.initialTime), $(← pair columns.finalTime), #[$[$clockTerms],*]⟩))
+    let portTerms ← ports.mapM fun port => do
+      let address ← match port.address with
+        | .register index => `(Trace.MemoryAddress.register $(quote index))
+        | .mixed selector polarity indices =>
+          `(Trace.MemoryAddress.mixed $(quote selector) $(quote polarity) $(← pair indices))
+        | _ => throwError "unsupported v2 direct address"
+      let .u16 read := port.readValue | throwError "v2 direct word must have two limbs"
+      let write ← match port.writeValue with
+        | none => `(none)
+        | some (.u16 write) => `(some (Trace.WordColumns.u16 $(← pair write)))
+        | _ => throwError "v2 direct write must have two limbs"
+      `((⟨$(← clock port.clock), $address, Trace.WordColumns.u16 $(← pair read), $write⟩ : Trace.MemoryPort))
+    let portsName := mkIdent (name.getId.appendAfter "MemoryPorts")
+    elabCommand (← `(def $portsName : Array Trace.MemoryPort := #[$[$portTerms],*]))
 
 end Airbender

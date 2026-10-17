@@ -15,12 +15,13 @@ not completed v2 coverage.
 | --- | --- |
 | V2 artifact import | All 34 quadratic and 3 linear equations, four 16-bit and eight 19-bit timestamp queries from the pinned ADD/SUB layout. Bounds/placement guards and both native zero coefficient encodings. |
 | Reused foundation | Unchanged property definitions, word representation/arithmetic and pinned Sail reference/execution lemmas. Source hashes are checked. |
+| Native state/port clocks | Typed physical state and three direct ports, including actual destination writes. Four-tick advancement and strict previous-write/port order follow from imported equations/queries under initial/prior clock bounds and alignment. Initialized matching remains pending. |
 | Range tables | Native Clean static-table definitions with explicit range semantics; v2 setup-generator binding is pending. |
 
 ## Remaining work
 
 - Bind public program bytes and native decoder/setup rows; discharge local preprocessing and decoded-mask interfaces.
-- Import native port/state metadata and initialized memory history; derive actual reads and operand bounds.
+- Construct initialized memory history from the imported native port/state descriptors; derive actual reads and operand bounds.
 - Backport the remaining ordinary circuit families, worker operations, unified machine, full traces and initialization/teardown.
 - Retest v3 findings against v2 before carrying over counterexamples or temporary assumptions.
 - Prove the deferred import/compiler/cryptographic connections under a separately scoped claim.
@@ -33,11 +34,11 @@ the initial importer rather than omitted from its local target.
 
 Current checked checkpoint:
 
-- Library, both executables and all five concrete test modules pass.
-- Importer regressions: 24 checks pass.
-- Axiom audit: 35 explicit roots; only propext, Classical.choice and Quot.sound.
-- Both public Review theorems have explicit axiom roots; guide references, links and layering checks pass.
-- Source provenance: 46 unchanged reused files, one native circuit artifact and nine native Rust sources.
+- Library, both executables and all six concrete test modules pass.
+- Importer regressions: 30 checks pass.
+- Axiom audit: 50 explicit roots; only propext, Classical.choice and Quot.sound.
+- All four public Review theorems (two circuit claims and two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Source provenance: 49 unchanged reused files, one native circuit artifact and eleven native Rust sources.
 - No handwritten project warnings, admitted proofs or project axioms.
 - Serial bounded gates pass; parent/child timeout and memory probes confirm termination with no live owned processes.
 

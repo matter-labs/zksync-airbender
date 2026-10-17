@@ -52,10 +52,72 @@ structure WitnessSubtree where
   timestamp_range_check_lookup_expressions : Array LookupExpression
   deriving Repr, FromJson
 
-/-- Only widths are needed to resolve local equations. Native memory/state
-    arguments are not imported as accepted logical matching in this milestone. -/
+structure RegisterOnlyAccessAddress where
+  register_index : ColumnSet
+  deriving Repr, FromJson
+
+structure RegisterOrRamAccessAddress where
+  is_register : ColumnSet
+  address : ColumnSet
+  deriving Repr, FromJson
+
+inductive ShuffleRamAddress where
+  | RegisterOnly : RegisterOnlyAccessAddress → ShuffleRamAddress
+  | RegisterOrRam : RegisterOrRamAccessAddress → ShuffleRamAddress
+  deriving Repr, FromJson
+
+structure ShuffleRamQueryReadColumns where
+  in_cycle_write_index : U32
+  address : ShuffleRamAddress
+  read_timestamp : ColumnSet
+  read_value : ColumnSet
+  deriving Repr, FromJson
+
+structure ShuffleRamQueryWriteColumns where
+  in_cycle_write_index : U32
+  address : ShuffleRamAddress
+  read_timestamp : ColumnSet
+  read_value : ColumnSet
+  write_value : ColumnSet
+  deriving Repr, FromJson
+
+def ShuffleRamQueryWriteColumns.toShuffleRamQueryReadColumns
+    (q : ShuffleRamQueryWriteColumns) : ShuffleRamQueryReadColumns :=
+  ⟨q.in_cycle_write_index, q.address, q.read_timestamp, q.read_value⟩
+
+inductive ShuffleRamQueryColumns where
+  | Readonly : ShuffleRamQueryReadColumns → ShuffleRamQueryColumns
+  | Write : ShuffleRamQueryWriteColumns → ShuffleRamQueryColumns
+  deriving Repr, FromJson
+
+structure MachineStatePermutationVariables where
+  pc : ColumnSet
+  timestamp : ColumnSet
+  deriving Repr, FromJson
+
+structure IntermediateStatePermutationVariables where
+  execute : ColumnSet
+  pc : ColumnSet
+  timestamp : ColumnSet
+  rs1_index : ColumnSet
+  rs2_index : ColumnAddress
+  rd_index : ColumnAddress
+  decoder_witness_is_in_memory : Bool
+  rd_is_zero : ColumnSet
+  imm : ColumnSet
+  funct3 : ColumnSet
+  funct7 : ColumnSet
+  circuit_family : ColumnSet
+  circuit_family_extra_mask : ColumnAddress
+  deriving Repr, FromJson
+
+/-- Consumed direct shuffle-RAM and state metadata. Batched delegation arguments
+    and cryptographic memory/state enforcement are separate milestones. -/
 structure MemorySubtree where
   total_width : Nat
+  shuffle_ram_access_sets : Array ShuffleRamQueryColumns
+  machine_state_layout : Option MachineStatePermutationVariables
+  intermediate_state_layout : Option IntermediateStatePermutationVariables
   deriving Repr, FromJson
 
 structure SetupLayout where
@@ -72,6 +134,8 @@ structure Circuit where
   degree_1_constraints : Array CompiledDegree1Constraint
   state_linkage_constraints : EmptyArray
   variable_mapping : ObjectMap Nat ColumnAddress
+  memory_queries_timestamp_comparison_aux_vars : Array ColumnAddress
+  executor_family_circuit_next_timestamp_aux_var : Option ColumnAddress
   deriving Repr, FromJson
 
 inductive Expr where
