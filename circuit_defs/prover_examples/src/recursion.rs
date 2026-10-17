@@ -877,7 +877,7 @@ mod tests {
     /// cycles <= 2^22) as ONE Proth120 packed unified-circuit proof with the
     /// EVM-production parameters, writing the proof + commitment-mode aux
     /// fixtures into `prover/` — exactly where the verifier_evm generation and
-    /// the two-transaction test (`generated_contracts/two_tx/run_two_tx.sh`)
+    /// the single-transaction verifier test (`generated_contracts/run_merged.sh`)
     /// pick them up. Requires `--features l1` and the caches of
     /// `test_l1_feeder_high_lde_research`; the packed setup commitment is
     /// served by coset recomputation (program-specific, nothing cached).
@@ -925,8 +925,8 @@ mod tests {
             &worker,
         );
         println!(
-            "L1 wrap complete: run the two-transaction cross-check with \
-             verifier_evm/generated_contracts/two_tx/run_two_tx.sh"
+            "L1 wrap complete: run the single-transaction verification with \
+             verifier_evm/generated_contracts/run_merged.sh"
         );
     }
 

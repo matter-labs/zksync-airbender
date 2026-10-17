@@ -1,7 +1,8 @@
 //! Regenerates the verifier calldata + intermediate commit seed into `debug_data/` using the
 //! production flatten/seed functions (from a serialized proof + aux + circuit). This is what a
-//! deployment tool would call to prepare the two on-chain transactions' calldata. The two-tx
-//! Foundry test reads these `debug_data/*.hex` files. Nothing here is read by `src/`.
+//! deployment tool would call to prepare the single on-chain transaction's calldata
+//! (`merged_calldata.hex`, read by the merged Foundry test). The other files are debug
+//! intermediates for transcript work. Nothing here is read by `src/`.
 
 mod common;
 
@@ -48,13 +49,21 @@ fn write_calldata_into_debug_data() {
         &cfg.whir_schedule.whir_steps_schedule,
         &cfg.whir_schedule.whir_queries_schedule,
     );
+    // the single transaction's calldata: GKR stream ‖ WHIR proof stream
+    put(
+        "merged_calldata.hex",
+        &verifier_evm::merged_calldata(&circuit, &proof, &aux, folds, queries),
+    );
+    // the (publicInput, auxInput, setupCommitment) tuple the verifier reports to its registry
+    // (and returns) for this proof — the Foundry test checks the registry against it
+    put(
+        "verified_mark.hex",
+        &verifier_evm::verified_mark(&proof, &aux).to_bytes(),
+    );
+    // debug intermediates
     put(
         "gkr_full_calldata.hex",
         &verifier_evm::gkr_calldata(&circuit, &proof, &aux),
-    );
-    put(
-        "proth120_whir_calldata_from_proof.hex",
-        &verifier_evm::whir_calldata(&circuit, &proof, &aux, folds, queries),
     );
     put(
         "gkr_step1_preimage.hex",
