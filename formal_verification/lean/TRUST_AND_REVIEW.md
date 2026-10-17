@@ -114,7 +114,13 @@ read, with no supplied intermediate/read/result. The full supplied native cell
 image still includes shadow cells tracked as RAM; these cell-transfer results
 do not establish architectural ROM-shadow projection or original instruction
 execution. Physical boot/padding binding and Sail instruction/platform transport
-remain open. [Public ROM extraction](Airbender/Review/Helpers/Tables/WordROMImage.lean)
+remain open. The [native shadow theorem](Airbender/Review/Circuits/WordMemory/Theorems.lean)
+now derives exact raw read/write value-code equality for every imported RAM port
+mapped below four MiB. Full native constraints and metadata suffice: the final
+port targets registers or RAM outside that prefix; the earlier ports are
+readonly refreshes. The native clock tokens still participate in matching.
+This is a prerequisite for architectural projection, not a binding between
+shadow data and ROM bytes. [Public ROM extraction](Airbender/Review/Helpers/Tables/WordROMImage.lean)
 now obtains words by actual original Sail reads. The
 [ROM read bridge](Airbender/Review/Trace/Families/WordMemory/ROMImage.lean) recovers
 native table data inside the extracted prefix, deriving both data limbs and the

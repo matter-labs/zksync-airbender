@@ -65,7 +65,9 @@ native clock/port order without per-row numerical premises.
 now derive actual original Sail reads/writes and intermediate states from the
 full supplied native image. Mixed-port x0 writes are preserved, and reversed
 store/load rows derive their intermediate RAM state and later read. Architectural
-ROM-shadow projection and instruction execution remain separate.
+ROM-shadow projection and instruction execution remain separate. Native shadow
+accesses below four MiB are now proved value-preserving, with every refresh token
+retained in logical matching.
 Remaining families, Rust
 setup generation/export and cryptographic argument soundness remain pending. This checkpoint does not inherit v3's completed coverage.
 

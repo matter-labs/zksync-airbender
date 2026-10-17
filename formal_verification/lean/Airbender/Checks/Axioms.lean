@@ -409,3 +409,8 @@ import Tests.WordMemorySailHistory
 #print axioms Tests.WordMemoryHistory.discarded_rom_sail_stutter
 #print axioms Tests.WordMemorySailHistory.public_setup_built
 #print axioms Tests.WordMemorySailHistory.dependent_store_load
+
+#print axioms Airbender.WordMemory.native_shadow_refresh
+#print axioms Airbender.WordMemory.Proofs.shadow_refresh
+#print axioms Tests.WordMemory.rom_shadow_value_preserved
+#print axioms Tests.WordMemory.changing_store_not_shadow

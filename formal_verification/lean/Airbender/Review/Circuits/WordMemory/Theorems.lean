@@ -1,6 +1,7 @@
 import Airbender.Review.Circuits.WordMemory.Model
 import Airbender.Proofs.WordMemory.Transfers
 import Airbender.Proofs.WordMemory.Address
+import Airbender.Proofs.WordMemory.Shadow
 import Airbender.Proofs.Mersenne31
 
 namespace Airbender.WordMemory
@@ -21,5 +22,17 @@ theorem native_address (rom : Verification.WordROM) (w : Nat → ZMod mersenne31
     (sourceWord w).Bounded → (immediateWord w).Bounded →
     (addressWord w).toBitVec = (sourceWord w).toBitVec + (immediateWord w).toBitVec :=
   Proofs.effective_address
+
+/-- Every native RAM access below the four-MiB ROM boundary only refreshes its
+    existing value. Full native matching still includes that access. This does
+    not identify shadow values with architectural ROM bytes. -/
+theorem native_shadow_refresh {rom : Verification.WordROM}
+    {w : Nat → ZMod mersenne31Modulus}
+    (native : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints rom))
+    {port : Trace.MemoryPort} (present : port ∈ importedConstraintsMemoryPorts)
+    {address : BitVec 32} (region : address.toNat < 4194304)
+    (same : port.address.code w = (Trace.Cell.ram address).addressCode) :
+    port.writeCode w = port.readCode w :=
+  Proofs.shadow_refresh (by decide) native present region same
 
 end Airbender.WordMemory

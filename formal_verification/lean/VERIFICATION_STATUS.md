@@ -32,6 +32,7 @@ not completed v2 coverage.
 | [Word-memory value ranges](Airbender/Review/Trace/Families/WordMemory/Values.lean) | Native load/store/mask equations preserve word bounds through earlier port copies or canonical ROM data. Full padded decoder membership recovers the zero flag. The unchanged shared decreasing-time induction derives every read, actual write and terminal word bound from actual public seeds and matching, including discarded shadow reads and x0-masked writes. Actual Sail cell transfers are checked below for the supplied native image; architectural ROM-shadow projection and instruction execution remain separate. |
 | [Initialized word-memory native effects](Airbender/Review/Trace/Families/WordMemory/Inputs.lean) | The first native port's initialized range and actual public decoder setup discharge every local numerical input to the existing native address/PC/clock calculations. Effective-address addition, bounded aligned incoming PCs, bounded RV32 PC successors and four-tick/port-order laws follow, retaining wraparound. No per-row range, carry, PC, clock or desired effect is assumed. Actual Sail cell transfers are checked below for the supplied native image; architectural ROM-shadow projection and instruction execution remain separate. |
 | [Word-memory Sail cell histories](Airbender/Review/Trace/Families/WordMemory/SailHistory.lean) | Mixed-port equations and full decoder membership prove hardwired x0 preservation. Shared Clean-to-Sail realization and native row grouping derive actual cell reads/writes, intermediate states and final cell matching from the supplied public seed image and public RAM alignment. Readonly refreshes preserve the instruction pre-state; decoder metadata identifies the original Sail source GPR. This retains all native shadow cells as tracked RAM; architectural shadow projection and original instruction execution remain separate. |
+| [Native shadow value preservation](Airbender/Review/Circuits/WordMemory/Theorems.lean) | Every imported native RAM port mapped below the four-MiB ROM boundary preserves its exact raw value code. Full constraints and port metadata exclude final-port stores there; the first two ports only refresh timestamps. No initial Sail image, expected value or ROM-byte equivalence is assumed. Full native matching retains all shadow tokens; architectural projection remains separate. |
 | Range tables | Native Clean static-table definitions with explicit range semantics; v2 setup-generator binding is pending. |
 
 ## Remaining work
@@ -52,8 +53,8 @@ Current checked checkpoint:
 
 - Library, both CLI entrypoints and all fifteen concrete test modules pass.
 - Importer regressions: 46 checks pass.
-- Axiom audit: 379 explicit roots; only propext, Classical.choice and Quot.sound.
-- All nineteen public Review theorems (four circuit claims, thirteen trace claims and two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Axiom audit: 383 explicit roots; only propext, Classical.choice and Quot.sound.
+- All twenty public Review theorems (five circuit claims, thirteen trace claims and two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
 - Source provenance: 59 unchanged reused files, two native circuit artifacts and nineteen native Rust sources.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
@@ -72,6 +73,7 @@ Current checked checkpoint:
 - Nonempty public LW/SW and x0/ROM-shadow fixtures derive complete Clean history, newest reads, every row/prior clock input and all native word ranges. Actual public bytes build the decoder setup. Omitting a discarded shadow read's initialization token fails logical matching. The shadow fixture explicitly initializes the logical native RAM cell; architectural ROM projection is not claimed.
 - Initialized public LW/SW/x0/ROM-shadow fixtures derive native effective addresses, incoming PC ranges/alignment, bounded modular successors and clock/port order through the existing calculations, without local numerical premises.
 - Actual source-GPR reads, RAM-load register writes, RAM-store byte writes and x0/ROM-shadow cell stuttering are derived from nonempty initialized histories. Reversed dependent SW/LW rows construct real public decoder bytes and derive an intermediate store state, subsequent read of 123 and destination register write; no intermediate state/read or final-value premise is supplied. These are cell-transfer results, not original instruction execution claims.
+- Ordinary and x0 ROM-load shadow ports satisfy the general native value-preservation theorem. A real changing RAM store is excluded from every address in the readonly shadow region. Native matching/initialization obligations remain intact.
 - No handwritten project warnings, admitted proofs or project axioms.
 - Serial bounded gates pass; parent/child timeout and memory probes confirm termination with no live owned processes.
 

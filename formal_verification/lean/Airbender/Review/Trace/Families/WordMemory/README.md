@@ -95,6 +95,10 @@ ROM words from actual Sail bytes. The short [read theorem](ROMImage.lean) binds
 native ROM query data inside the extracted prefix; a complete extracted four-MiB
 image covers every ROM address. Full native UNIMP padding remains represented.
 The constructor does not fill absent padding bytes in Sail state.
+[Native shadow value preservation](../../../Circuits/WordMemory/Theorems.lean)
+now shows every RAM access below four MiB only refreshes its existing value.
+The complete native history still retains those accesses and their timestamps;
+projecting them into architectural access histories remains a separate step.
 
 Actual intermediate Sail cell transfers are checked for the supplied native
 image. Sail boot/padding state, discarded ROM-shadow projection and original

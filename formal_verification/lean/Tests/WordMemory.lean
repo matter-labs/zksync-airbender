@@ -414,4 +414,25 @@ theorem bad_flag_decoder_rejected :
   revert flag
   decide
 
+/-- Both ordinary and x0 ROM loads retain a readonly native RAM-shadow access. -/
+theorem rom_shadow_value_preserved (discard : Bool) :
+    Airbender.WordMemory.importedConstraintsMemoryPorts[1].writeCode (row false true discard) =
+      Airbender.WordMemory.importedConstraintsMemoryPorts[1].readCode (row false true discard) :=
+  Airbender.WordMemory.native_shadow_refresh (satisfies false true discard rfl)
+    (port := Airbender.WordMemory.importedConstraintsMemoryPorts[1])
+    (by simp [Airbender.WordMemory.importedConstraintsMemoryPorts])
+    (address := 16) (by decide) (by cases discard <;> decide)
+
+/-- A real changing RAM store cannot be projected into the readonly shadow domain. -/
+theorem changing_store_not_shadow {address : BitVec 32} (region : address.toNat < 4194304) :
+    Airbender.WordMemory.importedConstraintsMemoryPorts[2].address.code (row true false false) ≠
+      (Trace.Cell.ram address).addressCode := by
+  intro same
+  have preserved := Airbender.WordMemory.native_shadow_refresh (satisfies true false false rfl)
+    (port := Airbender.WordMemory.importedConstraintsMemoryPorts[2])
+    (by simp [Airbender.WordMemory.importedConstraintsMemoryPorts]) region same
+  have changing : Airbender.WordMemory.importedConstraintsMemoryPorts[2].writeCode (row true false false) ≠
+      Airbender.WordMemory.importedConstraintsMemoryPorts[2].readCode (row true false false) := by decide
+  exact changing preserved
+
 end Tests.WordMemory

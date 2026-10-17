@@ -34,6 +34,16 @@ four-MiB profile. [Public ROM extraction](../../Helpers/Tables/WordROMImage.lean
 now binds native ROM data to actual Sail bytes within the extracted prefix.
 Physical setup export and boot/padding/shadow-state binding remain separate.
 
+The [native shadow theorem](Theorems.lean) now proves exact read/write value-code
+equality for every imported RAM port mapped to an address below four MiB.
+The [calculation](../../../Proofs/WordMemory/Shadow.lean) uses full native
+constraints and port metadata: the first two ports only refresh timestamps, and
+the last port targets either a register or RAM above the ROM boundary. No initial
+Sail state, expected read or ROM-byte equivalence is supplied. Ordinary/x0 ROM
+loads retain readonly shadow accesses; a changing RAM store cannot inhabit that
+address region. Native matching still includes all refresh tokens. Architectural
+shadow projection remains open.
+
 [Regressions](../../../../Tests/WordMemory.lean) instantiate full native RAM loads,
 RAM stores and ROM loads, including masked x0 loads and UNIMP padding. Changed ROM
 reads, unaligned addresses and ROM stores are rejected. The importer rejects

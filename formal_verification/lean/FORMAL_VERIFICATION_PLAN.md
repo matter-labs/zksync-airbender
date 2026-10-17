@@ -82,7 +82,10 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    mixed-port x0 preservation, source-GPR transport and actual register/RAM writes.
    Reversed dependent store/load rows derive the intermediate RAM state and later
    read without a supplied state/read result. This realizes the full supplied
-   native image, including shadow cells tracked as RAM. Connect physical
+   native image, including shadow cells tracked as RAM. Native shadow accesses
+   below four MiB now provably preserve their exact read value; native matching
+   still retains every refresh token. Use this when projecting architectural
+   accesses without equating shadow seeds to ROM bytes. Connect physical
    boot/padding/shadow-state projection, original Sail memory/platform transport
    and instruction execution/retirement interfaces. Physical setup/export binding remains open.
    Preserve v2 PC rollover and native timestamp offsets;
