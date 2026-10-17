@@ -46,7 +46,10 @@ now imports all native equations/queries and mixed ports. Complete modeled ROM
 tables derive address alignment, exact ROM data, RAM/ROM load selection, masked
 writes and RAM-only stores. Native Mersenne31 address addition, modular PC
 successors and four-tick port scheduling are checked under explicit input bounds
-and clock interfaces. Original Sail word-memory execution remains pending.
+and clock interfaces. [Public LW/SW decoding](Airbender/Review/Trace/Families/WordMemory/Decoder.lean)
+now recovers original Sail source evidence, exact zero flags and native
+PC/immediate bounds/alignment from complete padded membership, including x0
+loads. Original Sail word-memory execution and ROM-byte binding remain pending.
 Remaining families, Rust
 setup generation/export and cryptographic argument soundness remain pending. This checkpoint does not inherit v3's completed coverage.
 

@@ -30,6 +30,15 @@ When constructing public tables, retain raw opcode funct3 bits even for U-type
 instructions and native minus-one padding; the source's nine-column projection
 cannot be copied unchanged.
 
+[Word-memory decoding](WordMemory.lean) uses the same generic original-byte/Sail
+construction for LW/SW, with its own native registry and complete minus-one tail.
+It retains sign extension, funct3=2, original x0 loads and the separate zero flag.
+The [word-memory proof](../../../Proofs/Trace/Families/WordMemory/Decoder.lean)
+rejects padding using the native Boolean store mask, then derives actual source
+evidence, exact zero flags and PC/immediate bounds/alignment. A local native row
+with flag 2 is rejected by full decoder membership. This is not yet initialized
+word-memory execution or a public ROM-byte binding.
+
 Successful construction also retains its exact indexed PC sequence. The
 [PC composition](../../../Proofs/Trace/PC.lean) derives all incoming bounds and
 alignment through RV32 truncation before applying native carry/wrap equations.

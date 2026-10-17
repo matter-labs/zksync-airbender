@@ -48,11 +48,15 @@ simultaneously wrap the address and PC from 0xfffffffc to zero.
 
 ## Next connection
 
-This is a native row checkpoint. Public LW/SW decoding, original Sail byte binding
-for the public ROM words, initialized reads/bounds (including discarded ROM-shadow
-accesses) and original Sail load/store execution remain to be connected. The
-native x0 flag
-is visible in the load formula; its relation to rd is a decoder obligation.
+[Public LW/SW decoding](../../Trace/Families/WordMemory/README.md) now derives
+actual original Sail source evidence, exact x0 flags, immediate/PC bounds and
+incoming alignment from complete padded membership. Native equations exclude
+padding; original x0 loads and sign extension are retained.
+
+Original Sail byte binding for the public ROM words, initialized source/read bounds
+(including discarded ROM-shadow accesses) and original Sail load/store execution
+remain to be connected. The local load formula keeps its native x0 flag; the
+separate public decoder proof now derives that flag's exact relation to rd.
 The arithmetic-only trace registry remains unchanged until those connections
 are proved. See the [plan](../../../../FORMAL_VERIFICATION_PLAN.md) and
 [trust boundaries](../../../../TRUST_AND_REVIEW.md).

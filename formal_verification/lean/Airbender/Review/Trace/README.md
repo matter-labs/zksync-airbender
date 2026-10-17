@@ -68,6 +68,13 @@ state/memory matching derive the terminal PC and exact tracked cells, including
 empty traces. The [dependent two-row regression](../../../Tests/ArithmeticExecution.lean)
 stores witness rows backwards yet reaches original Sail PC 8 and x2=247.
 
+[Word-memory public decoding](Families/WordMemory/README.md) now has a separate
+native registry and short source-recovery theorem. Actual LW/SW bytes build a
+complete padded logical table; native equations reject padding and recover exact
+zero flags, PC/immediate bounds/alignment and original Sail source evidence,
+including loads to x0. Initialized word-memory history, ROM-byte binding and Sail
+execution remain separate.
+
 These are logical selected-profile results. Remaining families and physical
 setup/argument fidelity remain in [the plan](../../../FORMAL_VERIFICATION_PLAN.md).
 Cryptographic enforcement of the logical permutations remains a separate boundary.

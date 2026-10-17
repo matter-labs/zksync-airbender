@@ -588,6 +588,34 @@
       "backport_reuse_revision": "6c77d1419",
       "backport_reuse_path": "Airbender/Proofs/AddSub/Timestamp.lean",
       "backport_reuse_sha256": "8c657060753cb3b1850d525a4ce9acfa9e84da332d255b3a24eef007f3a69e30"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Context/WordMemory.lean",
+      "backport_reuse_revision": "adf219b06",
+      "backport_reuse_path": "Airbender/Review/Helpers/Context/Model.lean",
+      "backport_reuse_sha256": "cbb0a6c97ebda38e3877b163b13cae7ad86c3b50795bd66862b23517a43bdd76",
+      "change": "Reuse the native row registry shape in a separate singleton word-memory kind with actual v2 artifact/ports/decoder and WordROM setup. Preserve the arithmetic execution registry and its existing claims."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Decoder/WordMemory.lean",
+      "backport_reuse_revision": "adf219b06",
+      "backport_reuse_path": "Airbender/Review/Helpers/Decoder/Setup.lean",
+      "backport_reuse_sha256": "855b7054ec49cdddd4d37950ad2a54f5f8f5269d25363cc58623c87d1952d220",
+      "change": "Reuse complete padded logical setup and actual public-byte/pure-Sail constructor structure. Project the pinned native v2 LW/SW fields, including separate zero flag, sign extension, funct3=2 and retained x0 loads. Reuse unchanged generic program construction definitions."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/Decoder.lean",
+      "backport_reuse_revision": "adf219b06",
+      "backport_reuse_path": "Airbender/Proofs/Trace/DecoderSetup.lean",
+      "backport_reuse_sha256": "17f340768e8db38af8eeea2c8f7d45e78d4d060ee0c26c9e47e778bce352dd33",
+      "change": "Reuse source recovery, full-padding membership, decoded bounds/alignment and pure decoder assembly with unchanged generic program lemmas. Replace arithmetic mask bounds with native v2 Boolean store-mask padding exclusion; derive exact decoder-owned zero flags for the separate native word-memory kind."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/WordMemory/Decoder.lean",
+      "backport_reuse_revision": "adf219b06",
+      "backport_reuse_path": "Airbender/Review/Trace/Decoder.lean",
+      "backport_reuse_sha256": "3343bc47d112efb35dfe8830ec32f11869997ae734bdae930c585dfcb30ae08a",
+      "change": "Retain the short public source-recovery theorem structure for actual LW/SW setup construction and complete native membership. State no initialized word-memory history, ROM-byte binding or execution claim."
     }
   ]
 }

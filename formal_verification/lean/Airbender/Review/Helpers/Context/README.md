@@ -17,3 +17,9 @@ retained by the row registry, separately from table membership.
 and alignment from accepted state/memory matching and only initial clock inputs.
 V2's two carry equations replace the source's BabyBear inverse argument. These
 context definitions have no whole-execution dependency.
+
+[Word-memory registry](WordMemory.lean) separately binds the checked word-memory
+artifact, mixed ports, ten-column decoder query and native ROM setup type. Its
+[public decoding](../../Trace/Families/WordMemory/Decoder.lean) now recovers actual
+LW/SW source evidence. Initialized word-memory history/Sail execution remain
+pending; the existing arithmetic execution registry is unchanged.

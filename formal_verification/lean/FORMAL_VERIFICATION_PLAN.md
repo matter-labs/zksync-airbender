@@ -65,9 +65,12 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    checked transfer laws, alignment, exact ROM values and RAM-only stores.
    Native address arithmetic, modular PC successors and clock/port laws are also
    checked under explicit source/immediate/initial-PC and clock inputs.
-   Connect public LW/SW decoding, actual Sail ROM-byte binding, initialized
-   reads/ranges (including discarded ROM-shadow accesses), derived local inputs
-   and original Sail interfaces.
+   Public LW/SW decoding is now checked in a separate native registry: complete
+   padded membership recovers actual original Sail source evidence, exact zero
+   flags and PC/immediate bounds/alignment, including original x0 loads.
+   Connect actual Sail ROM-byte binding, initialized source/read ranges (including
+   discarded ROM-shadow accesses), remaining local inputs and original Sail
+   execution/retirement interfaces.
    Preserve v2 PC rollover and native timestamp offsets;
    keep physical setup generation/export and mixed/custom expansion explicit.
 2. Add native jump/branch/SLT and extend the shared execution relation with checked

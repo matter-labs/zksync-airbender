@@ -1,4 +1,5 @@
 import Airbender.Review.Circuits.WordMemory.Theorems
+import Airbender.Review.Trace.Families.WordMemory.Decoder
 import Airbender.Proofs.WordMemory.Address
 import Airbender.Proofs.WordMemory.PC
 import Airbender.Proofs.WordMemory.Timestamp
@@ -217,5 +218,200 @@ theorem native_pc_wrap :
   · exact ⟨rfl, rfl, rfl, rfl⟩
   · constructor <;> decide
   · decide
+
+
+private def decoderRow (w : Nat → ZMod mersenne31Modulus) :
+    Trace.Row mersenne31Modulus Trace.WordMemoryFamily := ⟨.wordMemory, w⟩
+private def decoderTrace (w : Nat → ZMod mersenne31Modulus) :
+    Trace.Data mersenne31Modulus Trace.WordMemoryFamily where
+  rows := [decoderRow w]
+  rom := rom
+  initial := (decoderRow w).start
+  terminal := (decoderRow w).finish
+  initialMemory := (decoderRow w).reads
+  terminalMemory := (decoderRow w).writes
+
+private theorem decoder_accepted {w : Nat → ZMod mersenne31Modulus}
+    (native : FlatOperation.ConstraintsHoldFlat (environment w)
+      (Airbender.WordMemory.importedConstraints rom)) (active : w 4 = 1) :
+    Trace.Accepted (decoderTrace w) := by
+  constructor
+  · intro row member
+    have same : row = decoderRow w := by simpa [decoderTrace] using member
+    subst row
+    exact native
+  · intro row member
+    have same : row = decoderRow w := by simpa [decoderTrace] using member
+    subst row
+    exact active
+  · change [(decoderRow w).start, (decoderRow w).finish].Perm
+      [(decoderRow w).finish, (decoderRow w).start]
+    exact List.Perm.swap _ _ []
+  · change ((decoderRow w).reads ++ (decoderRow w).writes).Perm
+      ((decoderRow w).writes ++ (decoderRow w).reads)
+    exact List.perm_append_comm
+
+private def decoderBefore (store : Bool) : Reference.RiscV.Sail.State :=
+  { (default : Reference.RiscV.Sail.State) with mem :=
+    (Std.ExtHashMap.emptyWithCapacity
+      |>.insert 0 (if store then (0x23 : BitVec 8) else 0x83)
+      |>.insert 1 (if store then 0xa0 else 0xa1) |>.insert 2 (if store then 0x20 else 0) |>.insert 3 0) }
+
+private def decoderEntry (store discard : Bool) : Trace.ProgramEntry Trace.WordMemoryFamily :=
+  if store then
+    ⟨0, 0x0020a023, .STORE (0, .Regidx 2, .Regidx 1, 4),
+      ⟨.wordMemory, 1, 2, 0, ⟨0, 0⟩, 1, 2⟩⟩
+  else
+    ⟨0, (if discard then 0x0000a003 else 0x0000a183),
+      .LOAD (0, .Regidx 1, .Regidx (if discard then 0 else 3), false, 4),
+      ⟨.wordMemory, 1, 0, (if discard then 0 else 3), ⟨0, 0⟩, 0, 2⟩⟩
+private def decoderSetup (store discard : Bool) : Airbender.WordMemory.DecoderSetup :=
+  ⟨[decoderEntry store discard], 1⟩
+
+private def publicBefore (store discard : Bool) : Reference.RiscV.Sail.State :=
+  if discard && !store then
+    { (decoderBefore store) with mem :=
+      (Std.ExtHashMap.emptyWithCapacity |>.insert 0 (0x03 : BitVec 8)
+        |>.insert 1 0xa0 |>.insert 2 0 |>.insert 3 0) }
+  else decoderBefore store
+
+set_option maxRecDepth 32768 in
+private theorem decoder_image (store discard : Bool) :
+    Airbender.WordMemory.decoderSetupImage (publicBefore store discard) 1 1 =
+      some (decoderSetup store discard) := by
+  have bytes : (Trace.Cell.ram 0).read (publicBefore store discard) =
+      .ok (decoderEntry store discard).bits (publicBefore store discard) := by
+    cases store <;> cases discard <;>
+      simp [Trace.Cell.read, _root_.Sail.ArchSem.readBytes, _root_.Sail.ArchSem.readByte,
+        EStateM.run, get, getThe, MonadStateOf.get, bind, pure, EStateM.bind,
+        EStateM.get, EStateM.pure, publicBefore, decoderBefore, decoderEntry,
+        Std.ExtHashMap.getElem_insert]
+  have program : Trace.programImageWith Airbender.WordMemory.decoderFields
+      (publicBefore store discard) [0] = some [decoderEntry store discard] := by
+    simp only [Trace.programImageWith, List.mapM_cons, List.mapM_nil,
+      Trace.programEntryWith, bytes, bind, Option.bind]
+    cases store <;> cases discard <;> rfl
+  change (Trace.programImageWith Airbender.WordMemory.decoderFields
+    (publicBefore store discard) [0]).bind
+    (fun entries => some (Airbender.WordMemory.DecoderSetup.mk entries 1)) =
+      some (decoderSetup store discard)
+  rw [program]
+  rfl
+
+private theorem decoder_member (store discard : Bool) :
+    Airbender.WordMemory.Decoded (decoderTrace (row store false discard))
+      (decoderSetup store discard) := by
+  intro actual member
+  have same : actual = decoderRow (row store false discard) := by simpa [decoderTrace] using member
+  subst actual
+  change ∃ i : Fin 2, (decoderRow (row store false discard)).decoderQuery =
+    (decoderSetup store discard).row i
+  refine ⟨⟨0, by decide⟩, ?_⟩
+  cases store <;> cases discard <;> decide
+
+theorem public_load_decoding :
+    ∀ native ∈ (decoderTrace (row false false false)).rows,
+      ∃ entry ∈ (decoderSetup false false).program,
+        entry.SourceWith (publicBefore false false) Airbender.WordMemory.decoderFields ∧
+        native.decoderQuery = entry.query :=
+  Airbender.WordMemory.public_decoder_soundness (decoder_image false false)
+    (decoder_accepted (satisfies false false false rfl) rfl) (decoder_member false false)
+
+theorem public_store_decoding :
+    ∀ native ∈ (decoderTrace (row true false false)).rows,
+      ∃ entry ∈ (decoderSetup true false).program,
+        entry.SourceWith (publicBefore true false) Airbender.WordMemory.decoderFields ∧
+        native.decoderQuery = entry.query :=
+  Airbender.WordMemory.public_decoder_soundness (decoder_image true false)
+    (decoder_accepted (satisfies true false false rfl) rfl) (decoder_member true false)
+
+theorem public_x0_load_decoding :
+    ∀ native ∈ (decoderTrace (row false false true)).rows,
+      ∃ entry ∈ (decoderSetup false true).program,
+        entry.SourceWith (publicBefore false true) Airbender.WordMemory.decoderFields ∧
+        native.decoderQuery = entry.query :=
+  Airbender.WordMemory.public_decoder_soundness (decoder_image false true)
+    (decoder_accepted (satisfies false false true rfl) rfl) (decoder_member false true)
+
+theorem decoded_native_inputs :
+    (decoderRow (row false false false)).start.word.Bounded ∧
+    (decoderRow (row false false false)).decoderImmediate.Bounded ∧
+    (decoderRow (row false false false)).start.word.lo % 4 = 0 := by
+  have accepted := decoder_accepted (satisfies false false false rfl) rfl
+  have present : decoderRow (row false false false) ∈ (decoderTrace (row false false false)).rows := by
+    simp [decoderTrace]
+  have bounds := Airbender.WordMemory.Proofs.decoded_word_bounds (by decide)
+    (decoder_image false false) accepted (decoder_member false false) _ present
+  exact ⟨bounds.1, bounds.2,
+    Airbender.WordMemory.Proofs.decoded_pc_aligned (by decide)
+      (decoder_image false false) accepted (decoder_member false false) _ present⟩
+
+theorem negative_load_projection : Airbender.WordMemory.decoderFields
+    (.LOAD (0xfff, .Regidx 1, .Regidx 0, false, 4)) =
+      some ⟨.wordMemory, 1, 0, 0, ⟨65535, 65535⟩, 0, 2⟩ := rfl
+
+theorem negative_store_projection : Airbender.WordMemory.decoderFields
+    (.STORE (0xfff, .Regidx 2, .Regidx 1, 4)) =
+      some ⟨.wordMemory, 1, 2, 0, ⟨65535, 65535⟩, 1, 2⟩ := rfl
+
+theorem unsupported_memory_projection :
+    Airbender.WordMemory.decoderFields (.LOAD (0, .Regidx 1, .Regidx 3, true, 4)) = none ∧
+    Airbender.WordMemory.decoderFields (.LOAD (0, .Regidx 1, .Regidx 3, false, 1)) = none ∧
+    Airbender.WordMemory.decoderFields (.STORE (0, .Regidx 2, .Regidx 1, 2)) = none := ⟨rfl, rfl, rfl⟩
+
+private def missingBefore : Reference.RiscV.Sail.State :=
+  { (default : Reference.RiscV.Sail.State) with mem := Std.ExtHashMap.emptyWithCapacity }
+
+theorem missing_word_decoder_bytes :
+    Airbender.WordMemory.decoderSetupImage missingBefore 1 1 = none := by
+  simp [Airbender.WordMemory.decoderSetupImage, Trace.programImageWith,
+    Trace.programEntryWith, Trace.Cell.read, _root_.Sail.ArchSem.readBytes,
+    _root_.Sail.ArchSem.readByte, EStateM.run, get, getThe, MonadStateOf.get,
+    bind, pure, EStateM.bind, EStateM.get, throw, throwThe,
+    MonadExceptOf.throw, EStateM.throw, missingBefore]
+
+theorem insufficient_word_decoder_capacity :
+    Airbender.WordMemory.decoderSetupImage (publicBefore false false) 2 0 = none := rfl
+
+theorem word_decoder_padding_retained :
+    (decoderSetup false false).row (p := mersenne31Modulus) ⟨1, by decide⟩ =
+      Vector.replicate 10 (-1) := rfl
+
+theorem word_decoder_padding_rejected :
+    (decoderRow (row false false false)).decoderQuery ≠ Vector.replicate 10 (-1) :=
+  Airbender.WordMemory.Proofs.padding_excluded (by decide) (satisfies false false false rfl)
+
+private def badFlagRow (i : Nat) : ZMod mersenne31Modulus :=
+  if i = 8 then 2 else if i = 37 ∨ i = 41 then -123 else row false false false i
+
+theorem bad_flag_native_satisfies :
+    FlatOperation.ConstraintsHoldFlat (environment badFlagRow)
+      (Airbender.WordMemory.importedConstraints rom) := by
+  simp [Airbender.WordMemory.importedConstraints, FlatOperation.ConstraintsHoldFlat,
+    Expression.eval, environment, badFlagRow, row]
+  repeat' apply And.intro
+  all_goals first | (apply range16_contains; decide) |
+    (apply timestamp19_contains; decide) | try decide
+  all_goals
+    simp only [Lookup.Contains, fixed3, Table.toRaw, romSeparatorTable,
+      romWordTable, Table.fromStatic, StaticTable.toTable, ProvableType.fromElements,
+      Expression.eval, Vector.map_mk, List.map_toArray, List.map_cons, List.map_nil,
+      badFlagRow, row]
+    solve
+    | refine ⟨⟨64, by decide⟩, ?_⟩
+      norm_num [romSeparatorRow]
+    | refine ⟨⟨4, by decide⟩, ?_⟩
+      norm_num [WordROM.row, WordROM.word, rom]
+
+theorem bad_flag_decoder_rejected :
+    ¬ Airbender.WordMemory.Decoded (decoderTrace badFlagRow) (decoderSetup false false) := by
+  intro decoded
+  have accepted := decoder_accepted bad_flag_native_satisfies rfl
+  have present : decoderRow badFlagRow ∈ (decoderTrace badFlagRow).rows := by simp [decoderTrace]
+  have flag := Airbender.WordMemory.Proofs.decoded_zero_flag_exact (by decide)
+    accepted decoded _ present
+  change (2 : ZMod mersenne31Modulus) = 0 at flag
+  revert flag
+  decide
 
 end Tests.WordMemory

@@ -7,3 +7,4 @@ import Airbender.Review.Trace.SailHistory
 import Airbender.Review.Trace.PC
 import Airbender.Review.Trace.Families.AddSub.Theorems
 import Airbender.Review.Circuits.WordMemory.Theorems
+import Airbender.Review.Trace.Families.WordMemory.Decoder

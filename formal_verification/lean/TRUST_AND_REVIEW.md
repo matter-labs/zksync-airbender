@@ -80,8 +80,14 @@ remains visible until public decoding identifies it. Native Mersenne31 address
 addition now derives its carries and ranged output under explicit source/immediate
 bounds. Native PC bounds/alignment and clock inputs yield modular successors,
 four-tick advancement and port order; initialized word-memory history must derive
-these inputs. Public LW/SW decoding, initialized reads/bounds, discarded shadow
-access projection and original Sail execution remain open. Public ROM words are explicit inputs;
+these inputs. [Public LW/SW decoding](Airbender/Review/Trace/Families/WordMemory/Decoder.lean)
+now recovers actual Sail bytes/decoding and native fields from complete padded
+membership. Native Boolean store-mask equations reject padding; generic source,
+PC/immediate and register-index proofs are reused. Exact zero flags and incoming
+alignment are derived, including stores and original loads to x0. The separate
+native registry does not extend the arithmetic execution claim. Initialized
+source/read bounds, discarded shadow projection and original Sail execution
+remain open. Public ROM words are explicit inputs;
 physical Rust setup/export and actual Sail-byte binding are not proved, and
 no table-equivalence or expected-read premise is introduced. The initialized
 trace registry remains arithmetic-only.
