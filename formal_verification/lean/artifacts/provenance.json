@@ -1,0 +1,247 @@
+{
+  "source_revision": "805909325323812df4b7479288b9058d1d2671f5",
+  "target_revision": "67ee094449abaebc77e58435f130ce6ea27721e5",
+  "reused_files": [
+    {
+      "path": "Airbender/Review/Helpers/Properties.lean",
+      "sha256": "ed2b0384182f7dfdd1e0b0829c01599c9d247d9a5c996730e2e9db210fa7c9ad"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Core/Word.lean",
+      "sha256": "36a7419da878f713455a768f88ac5f4d78048234cde48d6d65b262499655ca70"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Core/Sail.lean",
+      "sha256": "791db9fa44e00cec1e68d3d63ff9f42e0e289aed0d20921b62405c38564e39a1"
+    },
+    {
+      "path": "Airbender/Review/Circuits/AddSub/Reference.lean",
+      "sha256": "0a47b5994651509976fce994fe2f4f50f4ecba108a3d2a22cf641184bb192ec2"
+    },
+    {
+      "path": "Airbender/Proofs/AddSub/SailContract.lean",
+      "sha256": "b9faa36bcb59136c8b1b87af02c81186e3ad77c966c558cf4a2d457d5ccdf60e"
+    },
+    {
+      "path": "Airbender/Proofs/Arithmetic/Lemmas.lean",
+      "sha256": "a658bfbb16c085a21de61f86c290b165435f4bef6174ad0ca15cf39f8fc727cc"
+    },
+    {
+      "path": "Airbender/Proofs/Arithmetic/Word.lean",
+      "sha256": "3d21bbc1aee3b09c7978f3365504e1ad0ed85ad2fd7db957647b8e8cb3efff15"
+    },
+    {
+      "path": "Airbender/Proofs/Sail/Sequential.lean",
+      "sha256": "dbd6d8cb7836b40e74d4bdac0c613e3ab4fa604cfdba518a5c69cafd41fd7da9"
+    },
+    {
+      "path": "Airbender/Proofs/Sail/RiscV.lean",
+      "sha256": "ff07ef22e58c57cdb9e519139d699ee9af3381c8732ecdd9bdf13f7c44800986"
+    },
+    {
+      "path": "Airbender/Proofs/Sail/PC.lean",
+      "sha256": "d120ac1c6d234e5c26f702877b8beaf438ab76cedaa0d18b25d0bd9de41abf67"
+    },
+    {
+      "path": "Airbender/Import/Json.lean",
+      "sha256": "2cbfa1679f37a5a7402b993c277ce56c4ee0988d176fa92134bf1b383e8bf651"
+    },
+    {
+      "path": "lean-toolchain",
+      "sha256": "efac0b94923b2d8b6840cd35be9177ad0fc5ab2332f4f4311c98712cee92fdee"
+    },
+    {
+      "path": "lake-manifest.json",
+      "sha256": "4515880257d1029f87537e1f26b4c815d018d3250fe620b83a7430d28d6aaf4b"
+    },
+    {
+      "path": ".gitignore",
+      "sha256": "4873b7056260387328bbaed9d085ca53c6562bc25c5fc677f4aabd6807ae4e87"
+    },
+    {
+      "path": "scripts/prepare_clean.py",
+      "sha256": "aaee5e9f9a28bdd0b093b38f05245d1f1bca013857be1cc38d2a1ebae36122da"
+    },
+    {
+      "path": "scripts/generate_sail.py",
+      "sha256": "2bbc5e3b30a43e9a5aff5217b3e31a240a27361f5946a210dc6b644d353708b1"
+    },
+    {
+      "path": "scripts/sail_slice.ml",
+      "sha256": "8a8fd612447310f5a418b4435522b65a6534401209ff87d896e192dc03f418a6"
+    },
+    {
+      "path": "scripts/SailPlatform.lean",
+      "sha256": "03c820d8cd6d4064a5acee7b1d8f9d233b01d0ae04046263b8ea78402022597c"
+    },
+    {
+      "path": "generated/sail-rv32/README.md",
+      "sha256": "2c42837def5595beec63488d155304fa18cf3fcd8bba92b00e55b642ea2fa39c"
+    },
+    {
+      "path": "generated/sail-rv32/SAIL_COMPILER_LICENSE",
+      "sha256": "cc5133e58dd523cb772ac7b2c3047845b54667fe856165aef651f059ca51b2fe"
+    },
+    {
+      "path": "generated/sail-rv32/SailRV32.lean",
+      "sha256": "415fe0bbffe8a626bb3c4eee3e7d8b1007689340d8058cd06025d032db7952f4"
+    },
+    {
+      "path": "generated/sail-rv32/SailRV32/Defs.lean",
+      "sha256": "01ef1acf8d539eb15e9ade1b30c0b17bb40e02d142475954a1598e975bfa6b2d"
+    },
+    {
+      "path": "generated/sail-rv32/SailRV32/FakeReal.lean",
+      "sha256": "7fd4dd3710716205f9beaa21cddfdccaa5d77529bb2af5f72b7f9f023fb6c2a9"
+    },
+    {
+      "path": "generated/sail-rv32/SailRV32/SailPlatform.lean",
+      "sha256": "03c820d8cd6d4064a5acee7b1d8f9d233b01d0ae04046263b8ea78402022597c"
+    },
+    {
+      "path": "generated/sail-rv32/SailRV32/SpecializationArchSem.lean",
+      "sha256": "ca8477a86fc89204ffd71cbba42a00c0d3805b7953caea55b26cc5f800eb73b5"
+    },
+    {
+      "path": "generated/sail-rv32/extracted_base_pc.sail",
+      "sha256": "f668c0f7f5b426670a564a4dd142871984073bfce6752417473d9bfa3e2f16b3"
+    },
+    {
+      "path": "generated/sail-rv32/provenance.json",
+      "sha256": "79dcc16c6d17143bc77127b03e218020fce2b2a5863b690988f5fe4cb01de9b8"
+    },
+    {
+      "path": "generated/sail-rv32/rv32d_v256_e32.json",
+      "sha256": "63f389fbd8f38b02326e668c6fa61ac88f0e01d05fb4140c995df0252cdb28e0"
+    },
+    {
+      "path": "vendor/airbender/00-master.md",
+      "sha256": "81e265ea926e442fcf54882e67dead41842fa50cb07d87014ec02bc7a4dce0ce"
+    },
+    {
+      "path": "vendor/airbender/provenance.json",
+      "sha256": "80172ffe7807468b771db142dab34a87d5dc2de59511291bf5d0ef0fdb35ed5a"
+    },
+    {
+      "path": "vendor/sail-riscv/LICENCE",
+      "sha256": "14cfdf5bfb57ba19f57f31c4a79b3712ede0fda06b1674cb40dec393f8694185"
+    },
+    {
+      "path": "vendor/sail-riscv/source/c_emulator/riscv_model_impl.cpp",
+      "sha256": "61f7e9ab3b7bd3a2c8fc6fee78a8207330fbc8b650703faa867680a599a3aa7c"
+    },
+    {
+      "path": "vendor/sail-riscv/source/c_emulator/riscv_model_impl.h",
+      "sha256": "be1de073ca7e69d68e3b33045ad9c288fd280fe504aafa52287d1d53c3ea09ca"
+    },
+    {
+      "path": "vendor/sail-riscv/source/model/core/arithmetic.sail",
+      "sha256": "e96d68eadd62816e02e5bed6ff428aa2098df37294675f066284370eb21dfcde"
+    },
+    {
+      "path": "vendor/sail-riscv/source/model/core/pc_access.sail",
+      "sha256": "355d650e0da14d8f0900d605cdf1ec6c550a907410a671b13c9a761fbb849db6"
+    },
+    {
+      "path": "vendor/sail-riscv/source/model/core/regs.sail",
+      "sha256": "e6f0ac2cac40355285fb7c5bb942eb27bfe0a61c6642b61ae003431c66a6b463"
+    },
+    {
+      "path": "vendor/sail-riscv/source/model/core/xlen.sail",
+      "sha256": "cdb0c29104dbf0899914480d3f30d126015c3eefa713a36ae2588ce9c5d3790a"
+    },
+    {
+      "path": "vendor/sail-riscv/source/model/extensions/B/zbb_insts.sail",
+      "sha256": "f1da764702541715c7f381cae59e56ac9b0011eb0726ecf7ffe5ecbb216ebbbe"
+    },
+    {
+      "path": "vendor/sail-riscv/source/model/extensions/I/base_insts.sail",
+      "sha256": "45e8b9f96ccbe93b42218cf3bac8349129f1e2b16fe12c16283bd24e36415f66"
+    },
+    {
+      "path": "vendor/sail-riscv/source/model/extensions/I/base_types.sail",
+      "sha256": "0446e25572148fa80fc7125985625520c9191396eeca09b065e5b66474aa2da0"
+    },
+    {
+      "path": "vendor/sail-riscv/source/model/extensions/I/jalr_seq.sail",
+      "sha256": "5bbb143f7020c930c8ce3922df427c16aaba4317f30b2c2e02fb1244de53faec"
+    },
+    {
+      "path": "vendor/sail-riscv/source/model/extensions/M/mext_insts.sail",
+      "sha256": "f439cf260459ac1dd6031bf208c7444400b31bfa73dba5cec867d0edffa152f6"
+    },
+    {
+      "path": "vendor/sail-riscv/source/model/extensions/M/mext_types.sail",
+      "sha256": "f85cefe5cdfd593d4479000a1c32a7345f2febd151dab57a229c6391de6636df"
+    },
+    {
+      "path": "vendor/sail-riscv/source/model/extensions/Zicsr/zicsr_insts.sail",
+      "sha256": "137441624950ab9b17258fae874a6484d81b39fc5e641267f5c68a325f212e6e"
+    },
+    {
+      "path": "vendor/sail-riscv/source/model/mops/Zimop/zimop_insts.sail",
+      "sha256": "4559573d4f809c022af1702249a9ffd844e2a4063367e05afb66da9e212e9c02"
+    },
+    {
+      "path": "vendor/sail-riscv/source/model/postlude/step.sail",
+      "sha256": "dde12d4dc49cdc7f36d2d7a8bd9adc8ad4945e212ac52fb511061266e5b136b0"
+    }
+  ],
+  "circuit_artifacts": [
+    {
+      "path": "../../cs/add_sub_lui_auipc_mop_preprocessed_layout.json",
+      "sha256": "892518daa757dc8e33c5e92e6813c98e4e04aa2d98da1b0559b1c6fc990dbc06"
+    }
+  ],
+  "native_sources": [
+    {
+      "path": "../../cs/src/one_row_compiler/mod.rs",
+      "sha256": "97716ca2be04ff8e107d24522ab5d9314b7712a85e7da34d530a026588620704"
+    },
+    {
+      "path": "../../cs/src/one_row_compiler/compile_layout.rs",
+      "sha256": "588c8f8638820a69eb8f7be293e0d03efa955fc9f6d0906210d6fdd54a292b4b"
+    },
+    {
+      "path": "../../cs/src/definitions/constraints.rs",
+      "sha256": "16870015a8db2d461c038b4a589a15a012d35ce35a8ff87a67c50870fefd7b38"
+    },
+    {
+      "path": "../../cs/src/definitions/witness_tree.rs",
+      "sha256": "4c98a566b0cb04ff7fd6513367609b25290567ace6c182ea998c9a7bc1c57197"
+    },
+    {
+      "path": "../../cs/src/definitions/columns.rs",
+      "sha256": "f8c3a8aa3ff2163524c908c94e1f48878bfc5afecc754bbcf8de5f929dc6faac"
+    },
+    {
+      "path": "../../cs/src/machine/ops/unrolled/add_sub_lui_auipc_mop.rs",
+      "sha256": "19e9868a6bab99c3d2abb3cf133e59dcffed9ed11d680960acf213a7efd1c5e4"
+    },
+    {
+      "path": "../../cs/src/machine/ops/unrolled/decoder/add_sub_lui_auipc_mop.rs",
+      "sha256": "60304b1ad99fba6e3ada44980fe2c2c965d05a3390bad87ac0f421a172cfce2a"
+    },
+    {
+      "path": "../../field/src/base.rs",
+      "sha256": "82af866724d799bcb9d70ff20c71107632fea65d0dc88541fe7559e3de1b7c82"
+    },
+    {
+      "path": "../../common_constants/src/timestamps.rs",
+      "sha256": "8791deff3e54eefa623a87d10b3133e43404f36fd92eeedae46057e9553f629c"
+    }
+  ],
+  "adaptations": [
+    {
+      "path": "Airbender/Proofs/AddSub/Arithmetic.lean",
+      "source_path": "Airbender/Proofs/AddSub.lean",
+      "declaration": "Airbender.AddSub.Proofs.result_of_limbs",
+      "change": "Unchanged theorem text extracted into an artifact-independent module; imports use the v2 row model."
+    },
+    {
+      "path": "scripts/check_review.py",
+      "source_path": "scripts/check_review.py",
+      "change": "Preserve public-theorem inventory, guide resolution and layering checks; replace GKR setup-specific validation with v2 provenance and axiom checks."
+    }
+  ]
+}

@@ -1,0 +1,69 @@
+{
+  "model_repository": "https://github.com/riscv/sail-riscv",
+  "model_revision": "bf32036e9aea614298e3ccf32d7a33d71ddc7c1b",
+  "compiler_repository": "https://github.com/rems-project/sail",
+  "compiler_revision": "3df54034910b31a1e00d948ee965b2e9603d68e0",
+  "runtime_revision": "c816ea7ad03cce98d51acee252540fd4215fede8",
+  "xlen": 32,
+  "module": "airbender_pc_slice (requires I_insts, M_insts, Zba, Zbb, Zicsr, Zimop)",
+  "roots": [
+    "execute_RTYPE",
+    "execute_ITYPE",
+    "execute_REV8",
+    "execute_BTYPE",
+    "execute_JAL",
+    "execute_JALR",
+    "execute_LOAD",
+    "execute_STORE",
+    "execute_SHIFTIOP",
+    "execute_UTYPE",
+    "execute_MUL",
+    "execute_DIV",
+    "execute_REM",
+    "get_arch_pc",
+    "get_next_pc",
+    "tick_pc",
+    "normal_base_next_pc",
+    "encdec_backwards"
+  ],
+  "decoder_scope": "Original mapping clauses of the selected modules; successful restricted-ISA decoding only. Postlude ILLEGAL fallback and other extension modules are excluded.",
+  "extractions": [
+    {
+      "source": "model/postlude/step.sail",
+      "sha256": "dde12d4dc49cdc7f36d2d7a8bd9adc8ad4945e212ac52fb511061266e5b136b0",
+      "function": "run_hart_active",
+      "branch": "normal F_Base",
+      "line": 174,
+      "statement": "nextPC = PC + 4;"
+    }
+  ],
+  "extracted_source_sha256": "f668c0f7f5b426670a564a4dd142871984073bfce6752417473d9bfa3e2f16b3",
+  "config_sha256": "63f389fbd8f38b02326e668c6fa61ac88f0e01d05fb4140c995df0252cdb28e0",
+  "adapter_sha256": "8a8fd612447310f5a418b4435522b65a6534401209ff87d896e192dc03f418a6",
+  "platform_binding": {
+    "source": "scripts/SailPlatform.lean",
+    "sha256": "03c820d8cd6d4064a5acee7b1d8f9d233b01d0ae04046263b8ea78402022597c",
+    "experimental_extensions": false,
+    "emulator_default_source": "c_emulator/riscv_model_impl.h",
+    "emulator_default_sha256": "be1de073ca7e69d68e3b33045ad9c288fd280fe504aafa52287d1d53c3ea09ca",
+    "emulator_getter_source": "c_emulator/riscv_model_impl.cpp",
+    "emulator_getter_sha256": "61f7e9ab3b7bd3a2c8fc6fee78a8207330fbc8b650703faa867680a599a3aa7c"
+  },
+  "platform_parameterization": {
+    "original_functions_sha256": "2b0d862a9feff63d32fefd0a1f967bd4c75485601387cb8e4b258a73bd2bd492",
+    "insertion_marker": "namespace Functions\n\n",
+    "inserted_header": "variable [MemoryPlatform exception]\n\nabbrev plat_term_write {m : Type \u2192 Type} [MonadLift SailM m] (byte : BitVec 8) : m Unit :=\n  liftM (Sail.ArchSem.plat_term_write (ue := exception) byte)\n\nabbrev load_reservation {m : Type \u2192 Type} [MonadLift SailM m]\n    (address : BitVec Arch.addr_size) (width : Nat) : m Unit :=\n  liftM (Sail.ArchSem.load_reservation (ue := exception) address width)\n\nabbrev match_reservation (address : BitVec Arch.addr_size) : Bool :=\n  Sail.ArchSem.match_reservation (ue := exception) address\n\n",
+    "externs": [
+      "plat_term_write",
+      "load_reservation",
+      "match_reservation"
+    ]
+  },
+  "generated_sha256": {
+    "SailRV32/Defs.lean": "01ef1acf8d539eb15e9ade1b30c0b17bb40e02d142475954a1598e975bfa6b2d",
+    "SailRV32/FakeReal.lean": "7fd4dd3710716205f9beaa21cddfdccaa5d77529bb2af5f72b7f9f023fb6c2a9",
+    "SailRV32/SailPlatform.lean": "03c820d8cd6d4064a5acee7b1d8f9d233b01d0ae04046263b8ea78402022597c",
+    "SailRV32/SpecializationArchSem.lean": "ca8477a86fc89204ffd71cbba42a00c0d3805b7953caea55b26cc5f800eb73b5",
+    "SailRV32.lean": "415fe0bbffe8a626bb3c4eee3e7d8b1007689340d8058cd06025d032db7952f4"
+  }
+}

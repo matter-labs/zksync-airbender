@@ -1,0 +1,49 @@
+# Circuit formal verification plan
+
+Backport the current formalization to Airbender v2 on dev while preserving its
+small review surface, directory roles, pinned references and explicit trust
+boundaries. This document is a snapshot of pending work; checked coverage lives
+in [Verification status](VERIFICATION_STATUS.md), and accepted counterexamples
+and unresolved connections live in [Findings](FINDINGS.md).
+
+## Integrated review contract
+
+Keep the same ownership boundaries as the source formalization:
+
+- Review/Circuits owns selected references, artifacts, observable mappings and short public claims.
+- Review/Helpers owns common properties, word representations, tables and local context.
+- Review/Trace owns whole-execution and terminal-state contracts.
+- Proofs owns calculations, selector recovery, native-equation checks and composition.
+- Import owns the separate artifact-fidelity boundary.
+
+Use original Clean constraint semantics and original pinned Sail standard clauses.
+Reuse shared proofs unchanged when possible; record adaptations explicitly.
+Derive local selectors, bounds and actual reads before promoting a row claim to
+an initialized trace claim. Never hide a result or desired intermediate state in
+an interface. Keep public assumptions visible and v2 findings independent.
+
+## Pending integration work
+
+1. Import v2 memory/state/decoder metadata and fixed/setup rows. The first row
+   theorem currently takes decoded packed masks, preprocessing, bounds and Sail
+   reads explicitly; replace these with public decoding and initialized history.
+2. Port word-memory and jump/branch/SLT alongside the first initialized ADD/SUB
+   trace. Preserve v2 PC rollover behavior and verify native timestamp offsets.
+3. Port unsigned mul/div, shift/binop and subword memory into the same shared
+   context; retain their family-specific assumptions and supported ISA profile.
+4. Rebind bigint/BLAKE/Keccak workers and callers. Retest control validity,
+   unissued workers, ROM behavior and request participation on v2 before reusing
+   any source finding or temporary premise.
+5. Port unified execution, protocol spans, terminal boundaries, padding and
+   initialization/teardown under their actual v2 argument interfaces.
+
+Expand importer support only when a concrete circuit requires it. Nonempty
+fixed-lookup sets, 8-bit columns and state linkage currently fail closed.
+Do not copy unused v3 Review theorems into the v2 build.
+
+## Deferred milestones
+
+Faithful Rust/JSON/Lean generation, full compiled argument correspondence,
+cryptographic lookup/memory/statement enforcement and completeness remain
+separate milestones. Every promoted public theorem needs a nonvacuous regression,
+an explicit axiom root and resolved review-guide links.
