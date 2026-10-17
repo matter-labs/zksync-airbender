@@ -1,6 +1,7 @@
 import Airbender.Review.Trace.Families.WordMemory.History
 import Airbender.Review.Trace.Families.WordMemory.Values
 import Airbender.Review.Trace.Families.WordMemory.Inputs
+import Airbender.Review.Trace.Families.WordMemory.SailHistory
 
 namespace Tests.WordMemoryHistory
 open Airbender Verification Arithmetic Trace
@@ -254,5 +255,79 @@ theorem initialized_native_effects (store inROM discard : Bool)
   Airbender.WordMemory.public_native_effects (inputs store inROM discard)
     (public_decoder_built store inROM discard) (accepted store inROM discard legal)
     (decoded store inROM discard)
+
+private theorem aligned (store inROM discard : Bool) :
+    ∀ cell ∈ cells store inROM discard, cell.Aligned := by
+  cases store <;> cases inROM <;> cases discard <;> intro cell member
+  all_goals
+    simp [cells, second, last] at member
+    rcases member with rfl | rfl | rfl <;> simp [Cell.Aligned, address]
+
+private theorem single_row_sail_history (store inROM discard : Bool)
+    (legal : (store && inROM) = false) :
+    ∃ after, SailHistory (cells store inROM discard)
+      (rowEvents (trace store inROM discard).memoryEpoch (nativeRow store inROM discard)).reverse
+      (before store inROM discard) after := by
+  obtain ⟨_, rows, after, _, permutation, _, history, _⟩ :=
+    Airbender.WordMemory.public_sail_cell_history (inputs store inROM discard)
+      (accepted store inROM discard legal) (decoded store inROM discard) (aligned store inROM discard)
+  have same : rows = [nativeRow store inROM discard] := List.perm_singleton.mp permutation
+  subst rows
+  exact ⟨after, by simpa using history⟩
+
+/-- Decoder metadata identifies the actual source GPR in the derived pre-state. -/
+theorem ram_source_sail_read : ∃ after,
+    SailHistory (cells false false false)
+      (rowEvents (trace false false false).memoryEpoch (nativeRow false false false)).reverse
+      (before false false false) after ∧
+    Reference.Sail.run (SailRV32.Functions.rX_bits (.Regidx 1)) (before false false false) =
+      .ok (Airbender.WordMemory.sourceWord (row false false false)).toBitVec (before false false false) := by
+  obtain ⟨after, history⟩ := single_row_sail_history false false false rfl
+  exact ⟨after, history, Airbender.WordMemory.Proofs.history_source_read (by decide) _ history
+    (entry := entry false false) (by decide)⟩
+
+/-- Original Sail register writes realize the actual masked native RAM load. -/
+theorem ram_load_sail_write : ∃ after,
+    SailHistory (cells false false false)
+      (rowEvents (trace false false false).memoryEpoch (nativeRow false false false)).reverse
+      (before false false false) after ∧
+    Reference.Sail.run ((Cell.register 3).write 123) (before false false false) = .ok () after := by
+  obtain ⟨after, history⟩ := single_row_sail_history false false false rfl
+  refine ⟨after, history, ?_⟩
+  have written := Airbender.WordMemory.Proofs.row_history_write _ history
+    (port := Airbender.WordMemory.importedConstraintsMemoryPorts[2]) rfl
+    (cell := Cell.register 3) (by decide)
+  simpa [memoryWord, MemoryPort.writeCode, WordColumns.code, WordColumns.evaluate,
+    Airbender.WordMemory.importedConstraintsMemoryPorts, nativeRow, row, Nat.unpair_pair, Word.toBitVec, Word.value,
+    show (123 : ZMod mersenne31Modulus).val = 123 from by decide] using written
+
+/-- Original Sail byte-memory writes realize the actual native RAM store. -/
+theorem ram_store_sail_write : ∃ after,
+    SailHistory (cells true false false)
+      (rowEvents (trace true false false).memoryEpoch (nativeRow true false false)).reverse
+      (before true false false) after ∧
+    Reference.Sail.run ((Cell.ram 4194320).write 123) (before true false false) = .ok () after := by
+  obtain ⟨after, history⟩ := single_row_sail_history true false false rfl
+  refine ⟨after, history, ?_⟩
+  have written := Airbender.WordMemory.Proofs.row_history_write _ history
+    (port := Airbender.WordMemory.importedConstraintsMemoryPorts[2]) rfl
+    (cell := Cell.ram 4194320) (by decide)
+  simpa [memoryWord, MemoryPort.writeCode, WordColumns.code, WordColumns.evaluate,
+    Airbender.WordMemory.importedConstraintsMemoryPorts, nativeRow, row, Nat.unpair_pair, Word.toBitVec, Word.value,
+    show (123 : ZMod mersenne31Modulus).val = 123 from by decide] using written
+
+/-- Native readonly shadows remain in the history while x0's actual write stutters.
+    This is a cell-history claim, not architectural ROM instruction execution. -/
+theorem discarded_rom_sail_stutter :
+    SailHistory (cells false true true)
+      (rowEvents (trace false true true).memoryEpoch (nativeRow false true true)).reverse
+      (before false true true) (before false true true) := by
+  obtain ⟨after, history⟩ := single_row_sail_history false true true rfl
+  have written := Airbender.WordMemory.Proofs.row_history_write _ history
+    (port := Airbender.WordMemory.importedConstraintsMemoryPorts[2]) rfl
+    (cell := Cell.register 0) (by decide)
+  change EStateM.Result.ok () (before false true true) = .ok () after at written
+  have same := (EStateM.Result.ok.inj written).2
+  rwa [← same] at history
 
 end Tests.WordMemoryHistory

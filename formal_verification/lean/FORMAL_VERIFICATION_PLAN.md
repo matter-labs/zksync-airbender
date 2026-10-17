@@ -78,8 +78,13 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    are checked. Initialized native-row assembly now derives effective-address
    addition, bounded aligned PCs, modular successors and clock/port order using
    existing native calculations unchanged, with no per-row numerical premises.
-   Connect actual intermediate Sail source/port reads, boot/padding/shadow-state
-   projection, Sail memory/platform transport and execution/retirement interfaces. Physical setup/export binding remains open.
+   Actual Sail cell realization and native row grouping are now checked with
+   mixed-port x0 preservation, source-GPR transport and actual register/RAM writes.
+   Reversed dependent store/load rows derive the intermediate RAM state and later
+   read without a supplied state/read result. This realizes the full supplied
+   native image, including shadow cells tracked as RAM. Connect physical
+   boot/padding/shadow-state projection, original Sail memory/platform transport
+   and instruction execution/retirement interfaces. Physical setup/export binding remains open.
    Preserve v2 PC rollover and native timestamp offsets;
    keep physical setup generation/export and mixed/custom expansion explicit.
 2. Add native jump/branch/SLT and extend the shared execution relation with checked

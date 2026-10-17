@@ -63,9 +63,10 @@ padding; original x0 loads and sign extension are retained.
 Native ROM data now has an actual Sail-byte bridge inside an extracted public
 prefix; a complete extracted four-MiB image covers every native ROM address.
 Initialized logical reads and ranges now follow from public seeds, accepted
-matching and decoder membership. Actual intermediate Sail source/port reads,
-missing padding/boot state, discarded ROM-shadow projection and original Sail
-load/store execution remain open. The local load formula keeps its native x0 flag; the
+matching and decoder membership. [Actual Sail cell histories](../../Trace/Families/WordMemory/SailHistory.lean)
+now realize reads/writes and intermediate states in the full supplied native cell
+image. Missing padding/boot state, architectural ROM-shadow projection and
+original Sail instruction execution remain open. The local load formula keeps its native x0 flag; the
 separate public decoder proof now derives that flag's exact relation to rd.
 The arithmetic-only trace registry remains unchanged until those connections
 are proved. See the [plan](../../../../FORMAL_VERIFICATION_PLAN.md) and

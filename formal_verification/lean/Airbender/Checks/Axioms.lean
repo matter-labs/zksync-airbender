@@ -11,6 +11,7 @@ import Tests.ArithmeticExecution
 import Tests.WordMemory
 import Tests.WordROMImage
 import Tests.WordMemoryHistory
+import Tests.WordMemorySailHistory
 
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
@@ -393,3 +394,18 @@ import Tests.WordMemoryHistory
 #print axioms Airbender.WordMemory.Proofs.image_source_bound
 #print axioms Airbender.WordMemory.Proofs.image_native_effects
 #print axioms Tests.WordMemoryHistory.initialized_native_effects
+
+#print axioms Airbender.WordMemory.public_sail_cell_history
+#print axioms Airbender.WordMemory.Proofs.row_zero_write_from_reads
+#print axioms Airbender.WordMemory.Proofs.decoded_zero_preserving
+#print axioms Airbender.WordMemory.Proofs.native_zero_writes
+#print axioms Airbender.WordMemory.Proofs.image_row_history
+#print axioms Airbender.WordMemory.Proofs.row_history_read
+#print axioms Airbender.WordMemory.Proofs.row_history_write
+#print axioms Airbender.WordMemory.Proofs.history_source_read
+#print axioms Tests.WordMemoryHistory.ram_source_sail_read
+#print axioms Tests.WordMemoryHistory.ram_load_sail_write
+#print axioms Tests.WordMemoryHistory.ram_store_sail_write
+#print axioms Tests.WordMemoryHistory.discarded_rom_sail_stutter
+#print axioms Tests.WordMemorySailHistory.public_setup_built
+#print axioms Tests.WordMemorySailHistory.dependent_store_load

@@ -60,8 +60,12 @@ clock input from actual public seed reads and accepted matching.
 follow through actual native load/store/mask rules and full decoder membership,
 including discarded shadow reads. [Native-row effects](Airbender/Review/Trace/Families/WordMemory/Inputs.lean)
 now derive effective-address addition, bounded aligned PCs, RV32 successors and
-native clock/port order without per-row numerical premises. Actual intermediate
-Sail reads remain separate.
+native clock/port order without per-row numerical premises.
+[Word-memory Sail cell histories](Airbender/Review/Trace/Families/WordMemory/SailHistory.lean)
+now derive actual original Sail reads/writes and intermediate states from the
+full supplied native image. Mixed-port x0 writes are preserved, and reversed
+store/load rows derive their intermediate RAM state and later read. Architectural
+ROM-shadow projection and instruction execution remain separate.
 Remaining families, Rust
 setup generation/export and cryptographic argument soundness remain pending. This checkpoint does not inherit v3's completed coverage.
 

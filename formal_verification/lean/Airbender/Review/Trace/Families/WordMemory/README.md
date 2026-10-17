@@ -59,6 +59,35 @@ the existing native address, PC and clock calculations unchanged. No per-row
 range, carry, PC, clock or desired-effect premise is supplied. The initialized
 LW/SW/x0/ROM-shadow fixtures exercise the complete assembly.
 
+## Checked Sail cell histories
+
+[Cell-history theorem](SailHistory.lean) constructs actual original Sail cell
+reads/writes and every intermediate state in derived native clock order. Its
+public inputs remain the existing seed/PC construction, accepted matching, full
+decoder membership and alignment of the public RAM-cell domain. The
+[x0 proof](../../../../Proofs/Trace/Families/WordMemory/ZeroRegister.lean) handles
+mixed ports directly: readonly ports preserve reads, stores select RAM, and
+loads to rd=0 receive the decoded native zero mask. No NOP projection, per-row
+read, desired intermediate state or x0 answer is supplied.
+
+Shared Clean-to-Sail realization and grouping are reused unchanged. The
+[port transport](../../../../Proofs/Trace/Families/WordMemory/PortReads.lean)
+recovers every read in the instruction pre-state and the final actual mixed
+register/RAM write. Decoder indices identify the actual original Sail source GPR.
+Readonly refreshes stutter, including aliases and discarded shadow accesses.
+
+[Single-row regressions](../../../../../Tests/WordMemoryHistory.lean) derive
+actual Sail source reads, RAM-load register writes, RAM-store byte writes and
+x0/ROM-shadow cell stuttering. A [reversed dependent store/load](../../../../../Tests/WordMemorySailHistory.lean)
+builds both public decoder instructions and derives the intermediate store state,
+the later read of 123 and the destination write from native history. None is an
+input premise.
+
+This theorem realizes the full supplied native cell domain. In particular, its
+existing public image binds shadow cells as tracked RAM. It does not solve the
+projection from a physical native shadow image to architectural ROM contents,
+or prove execution of original LOAD/STORE instruction clauses.
+
 ## Remaining connection
 
 [Public ROM extraction](../../../Helpers/Tables/WordROMImage.lean) now obtains
@@ -67,7 +96,8 @@ native ROM query data inside the extracted prefix; a complete extracted four-MiB
 image covers every ROM address. Full native UNIMP padding remains represented.
 The constructor does not fill absent padding bytes in Sail state.
 
-Actual intermediate Sail source/port reads, Sail boot/padding state, discarded
-ROM-shadow access projection and original Sail execution/retirement remain open. The existing
+Actual intermediate Sail cell transfers are checked for the supplied native
+image. Sail boot/padding state, discarded ROM-shadow projection and original
+instruction execution/retirement remain open. The existing
 arithmetic execution registry and its claims retain their scope. Physical setup
 export, mixed/custom programs and cryptographic argument enforcement are separate.

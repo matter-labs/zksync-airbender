@@ -103,8 +103,18 @@ alignment from successful public setup, and all clock inputs from matching.
 Existing native address/PC/clock proofs are called unchanged, deriving address
 addition, bounded aligned PCs, modular PC successors and native access order.
 No per-row numerical interface or desired address/PC result is supplied.
-Actual intermediate Sail reads, discarded shadow projection and instruction
-execution remain open. [Public ROM extraction](Airbender/Review/Helpers/Tables/WordROMImage.lean)
+[Actual Sail cell histories](Airbender/Review/Trace/Families/WordMemory/SailHistory.lean)
+now reuse shared Clean realization and clock-derived row grouping. The native
+mixed-port proof preserves x0: readonly ports copy reads, stores address RAM,
+and decoded loads to x0 mask the actual write to zero. Original Sail source GPR
+reads and the final mixed register/RAM write are recovered in each instruction
+pre-state; readonly aliases stutter. Public RAM alignment remains visible.
+Reversed dependent store/load rows derive their intermediate state and later
+read, with no supplied intermediate/read/result. The full supplied native cell
+image still includes shadow cells tracked as RAM; these cell-transfer results
+do not establish architectural ROM-shadow projection or original instruction
+execution. Physical boot/padding binding and Sail instruction/platform transport
+remain open. [Public ROM extraction](Airbender/Review/Helpers/Tables/WordROMImage.lean)
 now obtains words by actual original Sail reads. The
 [ROM read bridge](Airbender/Review/Trace/Families/WordMemory/ROMImage.lean) recovers
 native table data inside the extracted prefix, deriving both data limbs and the

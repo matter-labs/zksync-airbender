@@ -651,6 +651,34 @@
       "backport_reuse_path": "Tests/WordMemory.lean",
       "backport_reuse_sha256": "88a51818983a85de2c3a79a8d2922cef1f8e773e6e72c5388c02c7d7c1469994",
       "change": "Reuse the full native load/store/ROM/x0 assignment and constraint fixtures, then construct actual public seeds/PC/decoder bytes and nonempty initialized histories; reject omitted discarded shadow tokens."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/ZeroRegister.lean",
+      "backport_reuse_revision": "868796d746cbb97b459a2b23fd147f209fcbb6ef",
+      "backport_reuse_path": "Airbender/Proofs/Trace/ZeroRegister.lean",
+      "backport_reuse_sha256": "9d32e0b5513175e4db4d340c66af58982cea3bbbe2f5c7086d6187011085a9b2",
+      "change": "Reuse native x0/read induction and generic Clean-to-Sail/grouping interfaces. Prove the actual mixed-port geometry and v2 load masking from full constraints and public decoder membership; stores select RAM, without a NOP projection or per-row zero/read premise."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/PortReads.lean",
+      "backport_reuse_revision": "868796d746cbb97b459a2b23fd147f209fcbb6ef",
+      "backport_reuse_path": "Airbender/Proofs/Trace/PortReads.lean",
+      "backport_reuse_sha256": "f6225d59b59c7f52b93ebff530dbcecf662e110f0d4debb547d8dfdf66c6ef10",
+      "change": "Specialize unchanged three-port read/write transport to the native word-memory registry, retaining readonly alias stutters; recover the actual Sail source register from native decoder metadata."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/WordMemory/SailHistory.lean",
+      "backport_reuse_revision": "868796d746cbb97b459a2b23fd147f209fcbb6ef",
+      "backport_reuse_path": "Airbender/Review/Trace/SailHistory.lean",
+      "backport_reuse_sha256": "cd341cf538194e534af3e5a273c3b760dafff36481f85f075a9573cc2b3787d7",
+      "change": "Keep the short actual-cell-transfer interface over public seeds, accepted matching, decoded membership and RAM alignment; expose clock-derived grouping for the word-memory instance and retain the explicit architectural ROM-shadow/instruction-execution boundary."
+    },
+    {
+      "path": "Tests/WordMemorySailHistory.lean",
+      "backport_reuse_revision": "868796d746cbb97b459a2b23fd147f209fcbb6ef",
+      "backport_reuse_path": "Tests/WordMemoryHistory.lean",
+      "backport_reuse_sha256": "2e39bada36324c394de5965b5d114ff636461e0667c5ec21b12b656fa9dabd72",
+      "change": "Copy the checked full native RAM/ROM/x0 row fixture and constraints. Assemble reversed dependent SW/LW rows with actual Sail seeds/bytes and prove the intermediate RAM write/read and destination write from native history; no intermediate/read/result premise."
     }
   ]
 }

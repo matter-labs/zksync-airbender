@@ -24,5 +24,6 @@ artifact, mixed ports, ten-column decoder query and native ROM setup type. Its
 LW/SW source evidence. The [word-memory clock instance](../../../Proofs/Trace/Families/WordMemory/History.lean)
 now reuses shared matching proofs to derive every per-row/prior clock input from
 the public seed boundary. [Complete logical history](../../Trace/Families/WordMemory/History.lean)
-and native word ranges are checked; actual intermediate Sail reads/execution and
-ROM-shadow projection remain pending. The arithmetic execution registry is unchanged.
+and native word ranges are checked. [Sail cell histories](../../Trace/Families/WordMemory/SailHistory.lean)
+now derive actual transfers and intermediate states in native clock order;
+original instruction execution and architectural ROM-shadow projection remain pending. The arithmetic execution registry is unchanged.

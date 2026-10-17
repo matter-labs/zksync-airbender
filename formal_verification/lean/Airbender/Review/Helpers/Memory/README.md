@@ -28,7 +28,12 @@ ROM-shadow projection remains separate.
 [its proof](../../../Proofs/Trace/SailHistory.lean) derives all intermediate states
 from Clean consistency and public seeds. V2 masked writes preserve x0; public
 RAM alignment supplies byte-window disjointness. [Grouped row reads/writes](../../../Proofs/Trace/PortReads.lean)
-transport actual Sail accesses, including readonly alias stutters. Instruction
+transport actual Sail accesses, including readonly alias stutters.
+The [word-memory instance](../../Trace/Families/WordMemory/SailHistory.lean) now
+uses the same realization/grouping with checked mixed-port x0 preservation. It
+recovers actual source-register reads, RAM/register writes and intermediate
+states for the full supplied native cell image. Architectural ROM-shadow
+projection remains separate. Instruction
 execution and physical zero-boot/ROM interpretation remain pending.
 [Indirect descriptors](IndirectPorts.lean) are retained reusable definitions;
 v2 batched worker arguments and indirect-port import remain pending.

@@ -81,8 +81,12 @@ and decreasing-time proofs. Public seeds discharge all initial clock/value input
 full decoder membership supplies the zero flag. Every native port participates,
 including discarded ROM-shadow reads. [Native-row assembly](Families/WordMemory/Inputs.lean)
 now derives effective-address addition, bounded aligned PCs, modular successors
-and native clock/port order with no per-row numerical input premises. Actual intermediate Sail reads,
-boot/padding/shadow projection and instruction execution remain separate.
+and native clock/port order with no per-row numerical input premises.
+[Word-memory Sail cell histories](Families/WordMemory/SailHistory.lean) now derive
+actual reads/writes and intermediate states, with clock-derived row grouping and
+mixed-port x0 preservation. A reversed store/load pair derives its intermediate
+RAM state and the later read. This uses the full supplied native cell image;
+boot/padding/shadow projection and original instruction execution remain separate.
 
 These are logical selected-profile results. Remaining families and physical
 setup/argument fidelity remain in [the plan](../../../FORMAL_VERIFICATION_PLAN.md).
