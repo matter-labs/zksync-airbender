@@ -15,7 +15,10 @@ private def environment : Environment (ZMod babyBearModulus) := Verification.env
 theorem wide_xor_accepted : (Lookup.mk (Setup.table default).toRaw (query 0x95)).Contains environment := by
   change ∃ i : Fin 2097537, (query 0x95).map (Expression.eval environment) =
     (Setup.row default i).map (fun (n : Nat) => (n : ZMod babyBearModulus))
-  exact ⟨⟨257 + 0xac * 256 + 0x39, by decide⟩, by with_unfolding_all decide⟩
+  refine ⟨⟨257 + 0xac * 256 + 0x39, by decide⟩, ?_⟩
+  rw [Setup.Proofs.row_eq_reference]
+  simp only [Setup.referenceRow, Setup.referenceFixedRow, Setup.referenceBinaryRow,
+    Verification.shiftBinopRow_eq_reference]; decide +kernel
 
 theorem wide_xor_checked :
     BitVec.ofNat 8 ((query 0x95)[2].eval environment).val =
@@ -29,6 +32,6 @@ theorem wrong_result_rejected :
   have result := (Setup.Proofs.wide_lookup (by decide) accepted 4 (Or.inl rfl) (by decide)).2.2.2.1
   exact (by decide : BitVec.ofNat 8 0x94 ≠ byteOperation 4 (BitVec.ofNat 8 0xac) (BitVec.ofNat 8 0x39)) result
 
-theorem native_zero_row : Setup.row default ⟨0, by decide⟩ = Vector.replicate 10 0 := by decide
+theorem native_zero_row : Setup.row default ⟨0, by decide⟩ = Vector.replicate 10 0 := by decide +kernel
 
 end Tests.UnifiedSetup

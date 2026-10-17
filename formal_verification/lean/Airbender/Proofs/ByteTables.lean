@@ -1,3 +1,4 @@
+import Airbender.Proofs.Tables.ShiftCharacterization
 import Airbender.Review.Helpers.Tables.Bytes
 
 namespace Airbender.Verification
@@ -22,7 +23,8 @@ theorem tagged_lookup_row {p : Nat} [Fact p.Prime] (hp : 256 < p)
     have eq := congrArg (fun (v : Vector (ZMod p) 10) => v[j]) rows
     simpa only [Vector.getElem_map] using eq
   have tagBound : (shiftBinopRow i)[9] < p := by
-    unfold shiftBinopRow
+    simp only [shiftBinopRow_eq_reference]
+    unfold referenceShiftBinopRow referenceShiftNatRow
     dsimp only
     split_ifs <;> simp [binaryByteRow] <;> omega
   refine ⟨i, ?_, column⟩
@@ -49,7 +51,8 @@ theorem binary_row_shape (index : Fin 524545) (tag : Nat)
     (valid : tag = 4 ∨ tag = 6 ∨ tag = 7)
     (selected : (shiftBinopRow index)[9] = tag) :
     ∃ key, shiftBinopRow index = binaryByteRow tag key := by
-  unfold shiftBinopRow at selected ⊢
+  simp only [shiftBinopRow_eq_reference] at selected ⊢
+  unfold referenceShiftBinopRow referenceShiftNatRow at selected ⊢
   dsimp only at selected ⊢
   split_ifs at selected ⊢ <;> try dsimp only at selected ⊢
   all_goals simp [binaryByteRow] at selected

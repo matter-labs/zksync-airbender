@@ -28,21 +28,14 @@ theorem satisfies :
          (#v[0, 0, 0, 0, 0, 0, 0, 0, 0, 3] : Vector (ZMod babyBearModulus) 10) =
            (Verification.shiftBinopRow i).map (fun (n : Nat) => (n : ZMod babyBearModulus))
        refine ⟨⟨1, by decide⟩, ?_⟩
-       apply Vector.ext
-       intro i bound
-       rw [Vector.getElem_map]
-       interval_cases i <;> norm_num [Verification.shiftBinopRow])
+       rw [Verification.shiftBinopRow_eq_reference]
+       decide +kernel)
     | (with_unfolding_all change ∃ i : Fin 524545,
          (#v[0, 0, 0, 0, 0, 0, 0, 0, 0, 4] : Vector (ZMod babyBearModulus) 10) =
            (Verification.shiftBinopRow i).map (fun (n : Nat) => (n : ZMod babyBearModulus))
        refine ⟨⟨257, by decide⟩, ?_⟩
-       have zeroRow : Verification.shiftBinopRow ⟨257, by decide⟩ =
-           (#v[0, 0, 0, 0, 0, 0, 0, 0, 0, 4] : Vector Nat 10) := by decide
-       rw [zeroRow]
-       apply Vector.ext
-       intro i bound
-       rw [Vector.getElem_map]
-       interval_cases i <;> norm_num)
+       rw [Verification.shiftBinopRow_eq_reference]
+       decide +kernel)
     | decide
 
 -- Nonzero table rows: complementary bytes, the sign boundary, maximum shift
@@ -52,19 +45,27 @@ example (operation : Fin 3) :
       by fin_cases operation <;> decide⟩ =
       #v[90, 165, if operation = 2 then 0 else 255, 0, 0, 0, 0, 0, 0,
         [4, 6, 7].get operation] := by
-  fin_cases operation <;> decide
+  fin_cases operation <;> rw [Verification.shiftBinopRow_eq_reference] <;> decide +kernel
 
 example : Verification.shiftBinopRow ⟨128, by decide⟩ =
-    #v[127, 0, 0, 0, 0, 0, 0, 0, 0, 3] := by decide
+    #v[127, 0, 0, 0, 0, 0, 0, 0, 0, 3] := by
+  rw [Verification.shiftBinopRow_eq_reference]
+  decide +kernel
 
 example : Verification.shiftBinopRow ⟨129, by decide⟩ =
-    #v[128, 255, 0, 0, 0, 0, 0, 0, 0, 3] := by decide
+    #v[128, 255, 0, 0, 0, 0, 0, 0, 0, 3] := by
+  rw [Verification.shiftBinopRow_eq_reference]
+  decide +kernel
 
 example : Verification.shiftBinopRow ⟨262400, by decide⟩ =
-    #v[255, 255, 31, 0, 0, 0, 0, 0, 0, 8] := by decide
+    #v[255, 255, 31, 0, 0, 0, 0, 0, 0, 8] := by
+  rw [Verification.shiftBinopRow_eq_reference]
+  decide +kernel
 
 example : Verification.shiftBinopRow ⟨492028, by decide⟩ =
-    #v[3, 128, 31, 3, 255, 255, 255, 255, 0, 9] := by decide
+    #v[3, 128, 31, 3, 255, 255, 255, 255, 0, 9] := by
+  rw [Verification.shiftBinopRow_eq_reference]
+  decide +kernel
 
 example : (⟨0, 1⟩ : Arithmetic.Word).toBitVec =
     (⟨65532, 0⟩ : Arithmetic.Word).toBitVec + 4 := by

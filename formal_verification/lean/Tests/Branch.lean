@@ -42,8 +42,9 @@ theorem satisfies (tag : Fin 6) (wrap : Bool) :
       JumpBranchSlt.importedConstraints := by
   fin_cases tag <;> cases wrap <;>
     simp [JumpBranchSlt.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-      Expression.eval, Verification.environment, row, taken, initial, offset, final]
+      Expression.eval, Verification.environment, row, taken, initial, offset, final, Verification.jumpCleanup]
   repeat' apply And.intro
+  all_goals try rw [Verification.jumpCleanupTable_characterization]
   all_goals solve
     | (apply Verification.range16_contains; decide)
     | (with_unfolding_all change ∃ i : Fin 65536,
@@ -173,8 +174,9 @@ private theorem equalSatisfies (neq : Bool) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (equalRow neq))
       JumpBranchSlt.importedConstraints := by
   cases neq <;> simp [JumpBranchSlt.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-    Expression.eval, Verification.environment, equalRow]
+    Expression.eval, Verification.environment, equalRow, Verification.jumpCleanup]
   repeat' apply And.intro
+  all_goals try rw [Verification.jumpCleanupTable_characterization]
   all_goals solve
     | (apply Verification.range16_contains; decide)
     | (with_unfolding_all change ∃ i : Fin 65536,

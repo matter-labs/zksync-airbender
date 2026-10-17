@@ -72,6 +72,7 @@ private theorem satisfies (operation : Fin 3) (immediate : Bool) :
     all_goals solve
       | (apply Verification.range16_contains; decide)
       | (with_unfolding_all refine checkedRow _ (by decide) ?_
+         rw [Verification.shiftBinopRow_eq_reference]
          apply Vector.ext
          intro j bound
          rw [Vector.getElem_map]

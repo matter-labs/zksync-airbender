@@ -20,7 +20,7 @@ private def amount (kind : Fin 7) : Nat := if kind.val = 6 then 0 else if immedi
 private def outputWord (kind : Fin 7) : BitVec 32 :=
   Verification.shiftOperation (operation kind).tag 0xabcd1234 (amount kind)
 private def leftByte (i : Nat) : Nat := ((0xabcd1234 : BitVec 32).extractLsb' (8 * i) 8).toNat
-private def part (kind : Fin 7) (i j : Nat) : Nat :=
+private def «part» (kind : Fin 7) (i j : Nat) : Nat :=
   ((Verification.shiftByteContribution i (leftByte i) (amount kind) (operation kind).tag).extractLsb' (8 * j) 8).toNat
 
 private def assignment (kind : Fin 7) : Nat → ZMod babyBearModulus
@@ -42,12 +42,12 @@ private def assignment (kind : Fin 7) : Nat → ZMod babyBearModulus
   | 90 => if unusedRight kind then 0 else 0x9b
   | 88 => 8
   | 80 => 0xabcd1234 * (rightWord kind).toNat * 943718400
-  | n => if 58 ≤ n ∧ n < 74 then part kind ((n - 58) / 4) ((n - 58) % 4) else
+  | n => if 58 ≤ n ∧ n < 74 then «part» kind ((n - 58) / 4) ((n - 58) % 4) else
     if 92 ≤ n ∧ n < 128 then
       let i := (n - 92) / 9
       match (n - 92) % 9 with
       | 0 => 9 | 1 => i | 2 => leftByte i | 3 => amount kind
-      | 4 => (operation kind).tag | j => part kind i (j - 5)
+      | 4 => (operation kind).tag | j => «part» kind i (j - 5)
     else 0
 
 private def instructionBits (kind : Fin 7) : BitVec 32 :=
@@ -87,6 +87,11 @@ private theorem checkedRowsFor (initial : State) (kind : Fin 7) (slot : Fin 5) :
     (UnifiedReduced.Setup.row initial ⟨rowIndex (queryValues kind slot), by omega⟩).map
       (fun n : Nat => (n : ZMod babyBearModulus))
   simp only [UnifiedReduced.Setup.row, dif_pos bound]
+  rw [UnifiedReduced.Setup.Proofs.fixedRow_eq_reference]
+  have binaryBound : rowIndex (queryValues kind slot) < 524545 := by
+    fin_cases kind <;> fin_cases slot <;> with_unfolding_all decide
+  simp only [UnifiedReduced.Setup.referenceFixedRow, dif_pos binaryBound,
+    UnifiedReduced.Setup.referenceBinaryRow, Verification.shiftBinopRow_eq_reference]
   clear initial
   fin_cases kind <;> fin_cases slot <;> with_unfolding_all decide +revert
 
@@ -94,21 +99,93 @@ private theorem checkedRows (kind : Fin 7) (slot : Fin 5) :
     (UnifiedReduced.Setup.table (before kind)).Contains #[] (queryValues kind slot) :=
   checkedRowsFor (before kind) kind slot
 
+private theorem equations0 (initial : State) :
+    ∀ constraint ∈ FlatOperation.constraints (UnifiedReduced.importedConstraints
+      (p := babyBearModulus) (UnifiedReduced.Setup.table initial)),
+      constraint.eval (Verification.environment (assignment (0 : Fin 7))) = 0 := by
+  simp [UnifiedReduced.importedConstraints, FlatOperation.constraints,
+    Expression.eval, Verification.environment, assignment, amount, leftByte, «part», operation, immediateForm,
+    unusedRight, payload, rightWord, outputWord, Verification.shiftByteContribution,
+    Verification.shiftOperation, ShiftBinop.Operation.tag]; with_unfolding_all decide
+
+private theorem equations1 (initial : State) :
+    ∀ constraint ∈ FlatOperation.constraints (UnifiedReduced.importedConstraints
+      (p := babyBearModulus) (UnifiedReduced.Setup.table initial)),
+      constraint.eval (Verification.environment (assignment (1 : Fin 7))) = 0 := by
+  simp [UnifiedReduced.importedConstraints, FlatOperation.constraints,
+    Expression.eval, Verification.environment, assignment, amount, leftByte, «part», operation, immediateForm,
+    unusedRight, payload, rightWord, outputWord, Verification.shiftByteContribution,
+    Verification.shiftOperation, ShiftBinop.Operation.tag]; with_unfolding_all decide
+
+private theorem equations2 (initial : State) :
+    ∀ constraint ∈ FlatOperation.constraints (UnifiedReduced.importedConstraints
+      (p := babyBearModulus) (UnifiedReduced.Setup.table initial)),
+      constraint.eval (Verification.environment (assignment (2 : Fin 7))) = 0 := by
+  simp [UnifiedReduced.importedConstraints, FlatOperation.constraints,
+    Expression.eval, Verification.environment, assignment, amount, leftByte, «part», operation, immediateForm,
+    unusedRight, payload, rightWord, outputWord, Verification.shiftByteContribution,
+    Verification.shiftOperation, ShiftBinop.Operation.tag]; with_unfolding_all decide
+
+private theorem equations3 (initial : State) :
+    ∀ constraint ∈ FlatOperation.constraints (UnifiedReduced.importedConstraints
+      (p := babyBearModulus) (UnifiedReduced.Setup.table initial)),
+      constraint.eval (Verification.environment (assignment (3 : Fin 7))) = 0 := by
+  simp [UnifiedReduced.importedConstraints, FlatOperation.constraints,
+    Expression.eval, Verification.environment, assignment, amount, leftByte, «part», operation, immediateForm,
+    unusedRight, payload, rightWord, outputWord, Verification.shiftByteContribution,
+    Verification.shiftOperation, ShiftBinop.Operation.tag]; with_unfolding_all decide
+
+private theorem equations4 (initial : State) :
+    ∀ constraint ∈ FlatOperation.constraints (UnifiedReduced.importedConstraints
+      (p := babyBearModulus) (UnifiedReduced.Setup.table initial)),
+      constraint.eval (Verification.environment (assignment (4 : Fin 7))) = 0 := by
+  simp [UnifiedReduced.importedConstraints, FlatOperation.constraints,
+    Expression.eval, Verification.environment, assignment, amount, leftByte, «part», operation, immediateForm,
+    unusedRight, payload, rightWord, outputWord, Verification.shiftByteContribution,
+    Verification.shiftOperation, ShiftBinop.Operation.tag]; with_unfolding_all decide
+
+private theorem equations5 (initial : State) :
+    ∀ constraint ∈ FlatOperation.constraints (UnifiedReduced.importedConstraints
+      (p := babyBearModulus) (UnifiedReduced.Setup.table initial)),
+      constraint.eval (Verification.environment (assignment (5 : Fin 7))) = 0 := by
+  simp [UnifiedReduced.importedConstraints, FlatOperation.constraints,
+    Expression.eval, Verification.environment, assignment, amount, leftByte, «part», operation, immediateForm,
+    unusedRight, payload, rightWord, outputWord, Verification.shiftByteContribution,
+    Verification.shiftOperation, ShiftBinop.Operation.tag]; with_unfolding_all decide
+
+private theorem equations6 (initial : State) :
+    ∀ constraint ∈ FlatOperation.constraints (UnifiedReduced.importedConstraints
+      (p := babyBearModulus) (UnifiedReduced.Setup.table initial)),
+      constraint.eval (Verification.environment (assignment (6 : Fin 7))) = 0 := by
+  simp [UnifiedReduced.importedConstraints, FlatOperation.constraints,
+    Expression.eval, Verification.environment, assignment, amount, leftByte, «part», operation, immediateForm,
+    unusedRight, payload, rightWord, outputWord, Verification.shiftByteContribution,
+    Verification.shiftOperation, ShiftBinop.Operation.tag]; with_unfolding_all decide
+
+private theorem equationsFor (initial : State) (kind : Fin 7) :
+    ∀ constraint ∈ FlatOperation.constraints (UnifiedReduced.importedConstraints
+      (p := babyBearModulus) (UnifiedReduced.Setup.table initial)),
+      constraint.eval (Verification.environment (assignment kind)) = 0 := by
+  fin_cases kind
+  · exact equations0 initial
+  · exact equations1 initial
+  · exact equations2 initial
+  · exact equations3 initial
+  · exact equations4 initial
+  · exact equations5 initial
+  · exact equations6 initial
+
 private theorem constraintsFor (initial : State) (kind : Fin 7) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (assignment kind)) (UnifiedReduced.clockConstraints (UnifiedReduced.Setup.table initial)) := by
   apply Verification.holds_append
   · apply FlatOperation.constraintsHoldFlat_iff_forall_mem.mpr
     constructor
-    · fin_cases kind
-      all_goals simp [UnifiedReduced.importedConstraints, FlatOperation.constraints,
-        Expression.eval, Verification.environment, assignment, amount, leftByte, part, operation, immediateForm,
-        unusedRight, payload, rightWord, outputWord, Verification.shiftByteContribution, Verification.shiftOperation, ShiftBinop.Operation.tag]
-      all_goals with_unfolding_all decide
+    · exact equationsFor initial kind
     · intro query member
       obtain ⟨i, rfl⟩ := List.mem_iff_get.mp member
       fin_cases i
       all_goals simp [UnifiedReduced.importedConstraints, FlatOperation.lookups, Lookup.Contains,
-        UnifiedReduced.Setup.table, Table.fromStatic, Table.toRaw, fromElements,
+        UnifiedReduced.Setup.table,  Table.toRaw, fromElements,
         Expression.eval, Verification.environment]
       all_goals solve
         | (apply Verification.range16_contains; fin_cases kind <;> with_unfolding_all decide)

@@ -69,6 +69,8 @@ import Tests.Binop
 import Tests.Shifts
 import Tests.TraceImport
 import Tests.SetupImport
+import Tests.SetupProgramImport
+import Tests.SetupDecoderImport
 
 set_option Elab.async false
 
@@ -108,6 +110,8 @@ def main : IO UInt32 := do
     check (source == AddSub.importedConstraintsSourceBytes) "embedded source equals current artifact bytes"
     Tests.TraceImport.run
     Tests.SetupImport.run
+    Tests.SetupProgramImport.run
+    Tests.SetupDecoderImport.run
     let wordSource ← IO.FS.readFile "../../cs/compiled_circuits/mem_word_only_layout_no_caches_gkr.json"
     let .ok word := parseCircuit wordSource | throw (IO.userError "word-memory artifact failed import")
     let .ok wordQueries := word.wordMemoryQueries | throw (IO.userError "word-memory ROM query failed import")
