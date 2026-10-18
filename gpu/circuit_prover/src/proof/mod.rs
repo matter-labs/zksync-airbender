@@ -170,7 +170,7 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         decoder,
         inits_and_teardowns,
         tracing_data,
-        memory,
+        mut memory,
         top_bits,
         top_bits_host,
         external_challenges,
@@ -235,6 +235,12 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
     drop(tracing_data);
     drop(inits_and_teardowns);
     drop(decoder);
+    // Persisted commitment trees replace the openings' per-coset tree rebuild.
+    if let Some((geometry, trees)) = memory.take_partial_trees() {
+        stage1_output
+            .memory_trace_holder
+            .install_transferred_partial_trees(geometry, trees);
+    }
 
     let output_evaluations_slab =
         unsafe { proof_layout.output_evaluations_device_mut(proof_slab.as_ptr() as *mut u8) }.map(

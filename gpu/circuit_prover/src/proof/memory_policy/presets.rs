@@ -85,6 +85,12 @@ pub fn admit_l1_feeder(arena_bytes: usize) {
     );
 }
 
+/// Whether the commitment exports its memory partial trees for the proof to
+/// open, and the proof requires them.
+pub fn persists_memory_partial_trees(circuit: CircuitType, profile: ProofProfile) -> bool {
+    is_l1_feeder(circuit, profile)
+}
+
 pub fn merged_commit_strategy(circuit: CircuitType, profile: ProofProfile) -> MergedCommitStrategy {
     if is_l1_feeder(circuit, profile) {
         MergedCommitStrategy::Monomials
@@ -134,6 +140,18 @@ mod cpu_tests {
             merged_commit_strategy(unified, ProofProfile::Standard),
             MergedCommitStrategy::AllCosets
         );
+        assert!(persists_memory_partial_trees(
+            unified22,
+            ProofProfile::L1Feeder
+        ));
+        assert!(!persists_memory_partial_trees(
+            unified,
+            ProofProfile::Standard
+        ));
+        assert!(!persists_memory_partial_trees(
+            CircuitType::L1Wrap21,
+            ProofProfile::L1Wrap
+        ));
         let feeder_trees = partial_trees(unified22, ProofProfile::L1Feeder);
         assert_eq!(feeder_trees, l1_feeder::PARTIAL_TREES);
         assert_eq!((feeder_trees.setup, feeder_trees.memory), (10, 10));
@@ -179,6 +197,10 @@ mod cpu_tests {
             .chain(unrolled.into_iter().map(CircuitType::Unrolled))
             .chain([unified, CircuitType::L1Wrap21])
         {
+            assert!(!persists_memory_partial_trees(
+                circuit,
+                ProofProfile::Standard
+            ));
             let expected = format!("ProofProfile::L1Feeder requires CircuitType::Unrolled(UnrolledCircuitType::Unified22), got {circuit:?}");
             named_panic(
                 &|| {
@@ -195,6 +217,12 @@ mod cpu_tests {
             named_panic(
                 &|| {
                     merged_commit_strategy(circuit, ProofProfile::L1Feeder);
+                },
+                expected.clone(),
+            );
+            named_panic(
+                &|| {
+                    persists_memory_partial_trees(circuit, ProofProfile::L1Feeder);
                 },
                 expected,
             );
@@ -216,6 +244,12 @@ mod cpu_tests {
             named_panic(
                 &|| {
                     merged_commit_strategy(unified22, profile);
+                },
+                expected.clone(),
+            );
+            named_panic(
+                &|| {
+                    persists_memory_partial_trees(unified22, profile);
                 },
                 expected,
             );

@@ -848,6 +848,7 @@ fn measure<B: GoodAllocator>(
                     target,
                     presets::merged_commit_strategy(UNIFIED22, ProofProfile::L1Feeder),
                     case.partial_trees(UNIFIED22, ProofProfile::L1Feeder),
+                    false,
                     context,
                 ),
             )?;
@@ -885,6 +886,7 @@ fn measure<B: GoodAllocator>(
                         inputs,
                         presets::merged_commit_strategy(UNIFIED22, ProofProfile::L1Feeder),
                         case.partial_trees(UNIFIED22, ProofProfile::L1Feeder),
+                        false,
                         context,
                     ),
                 )?;

@@ -77,9 +77,15 @@ pub fn commit_merged_from_transfers<'a, A: GoodAllocator + 'a>(
     inputs: GpuGKRMergedCommitTransfer<'a, A>,
     strategy: MergedCommitStrategy,
     partial_trees: PartialTreePolicy,
+    persist_partial_trees: bool,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
     partial_trees.assert_valid();
+    assert!(
+        !persist_partial_trees || strategy == MergedCommitStrategy::Monomials,
+        "only the {:?} merged commitment persists its partial trees, got {strategy:?}",
+        MergedCommitStrategy::Monomials
+    );
     assert_eq!(
         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
         prover_config.whir_schedule.whir_steps_schedule[0]
@@ -168,7 +174,7 @@ pub fn commit_merged_from_transfers<'a, A: GoodAllocator + 'a>(
             callbacks,
             Some(inputs),
             range,
-            false,
+            persist_partial_trees,
             context,
         ),
     }

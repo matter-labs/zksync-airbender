@@ -733,6 +733,7 @@ fn enqueue_phase_two<'a>(
                 bundle,
                 crate::memory_policy::merged_commit_strategy(circuit_type, state.profile),
                 crate::memory_policy::partial_trees(circuit_type, state.profile),
+                false,
                 context,
             )?;
             state.device_peak_bytes = Some(context.get_used_mem_peak());
