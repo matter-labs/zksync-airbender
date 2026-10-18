@@ -77,7 +77,7 @@ contract GkrWhirVerifier {
     uint256 constant __TEMPLATE_GKR_PERM_PROD_BYTES      = 32 * 4;
     uint256 constant __TEMPLATE_GKR_CIRCUIT_CLAIMS_BYTES = 32 * 74;
     uint256 constant __TEMPLATE_GKR_GATEVAL_BYTES        = 32 * 120;
-    uint256 constant __TEMPLATE_GKR_QTABLE_BYTES         = 32 * 114;
+    uint256 constant __TEMPLATE_GKR_QTABLE_BYTES         = 32 * 105;
 
     // ── Transcript preimage: registers ‖ final_pc/ts ‖ inits/teardowns top_bits ‖ setup_cap ‖
     //    memory_cap (LE u32 words). The register prefix is the RISC-V machine state (fixed);
@@ -98,7 +98,7 @@ contract GkrWhirVerifier {
     uint8 constant __TEMPLATE_INITS_TEARDOWNS_TOP_BITS_0 = 0;
     uint8 constant __TEMPLATE_INITS_TEARDOWNS_TOP_BITS_1 = 1;
     uint256 constant __TEMPLATE_EXTERNAL_POW_BITS = 20; // external-challenge PoW difficulty
-    uint256 constant __TEMPLATE_EXPECTED_FINAL_PC = 2009644; // program's terminal PC — binds the verified statement to this program
+    uint256 constant __TEMPLATE_EXPECTED_FINAL_PC = 2006592; // program's terminal PC — binds the verified statement to this program
 
     // ── GKR entry + dimension reduction (generated from the circuit / config) ─────────────────
     uint256 constant __TEMPLATE_GKR_NUM_OUTPUTS        = 5 * 2; // GKR output polys (global_output_map lines)
@@ -148,37 +148,37 @@ contract GkrWhirVerifier {
 
     // ── Memory map (generated: contiguous regions above the GKR heap, each sized from the
     //    schedule — see WhirGenConfig::memory_regions for every region's size formula) ────────
-    uint256 constant __TEMPLATE_WHIR_SEED_PTR     = 17536;  // seed + in-place absorb scratch
-    uint256 constant __TEMPLATE_WHIR_Z_PTR        = 17824;  // z: nz coords
-    uint256 constant __TEMPLATE_WHIR_POW_PTR      = 18656;  // (scalar, running eq, coefficient) x numpow
-    uint256 constant __TEMPLATE_WHIR_ACC_PREF_PTR = 23744;
-    uint256 constant __TEMPLATE_WHIR_GAMMA_PTR    = 23776;  // gcount gamma powers
-    uint256 constant __TEMPLATE_WHIR_FOLD_CH_PTR  = 24032;  // max_fold challenges
-    uint256 constant __TEMPLATE_WHIR_HPO_PTR      = 24160;  // 2^(max_fold-1) high-power offsets
-    uint256 constant __TEMPLATE_WHIR_FBUF_PTR     = 24416;  // 2^max_fold folding buffer
-    uint256 constant __TEMPLATE_WHIR_LEAF_PTR     = 24928;  // leaf hashing scratch
-    uint256 constant __TEMPLATE_WHIR_REG_CD       = 25376;  // calldata cursor
-    uint256 constant __TEMPLATE_WHIR_REG_CLAIM    = 25408;
-    uint256 constant __TEMPLATE_WHIR_REG_NUMPOW   = 25440;
-    uint256 constant __TEMPLATE_WHIR_REG_ZIOFF    = 25472;
-    uint256 constant __TEMPLATE_WHIR_REG_CC       = 25504;
-    uint256 constant __TEMPLATE_WHIR_REG_CURDELIN = 25536;
+    uint256 constant __TEMPLATE_WHIR_SEED_PTR     = 17248;  // seed + in-place absorb scratch
+    uint256 constant __TEMPLATE_WHIR_Z_PTR        = 17536;  // z: nz coords
+    uint256 constant __TEMPLATE_WHIR_POW_PTR      = 18368;  // (scalar, running eq, coefficient) x numpow
+    uint256 constant __TEMPLATE_WHIR_ACC_PREF_PTR = 23456;
+    uint256 constant __TEMPLATE_WHIR_GAMMA_PTR    = 23488;  // gcount gamma powers
+    uint256 constant __TEMPLATE_WHIR_FOLD_CH_PTR  = 23744;  // max_fold challenges
+    uint256 constant __TEMPLATE_WHIR_HPO_PTR      = 23872;  // 2^(max_fold-1) high-power offsets
+    uint256 constant __TEMPLATE_WHIR_FBUF_PTR     = 24128;  // 2^max_fold folding buffer
+    uint256 constant __TEMPLATE_WHIR_LEAF_PTR     = 24640;  // leaf hashing scratch
+    uint256 constant __TEMPLATE_WHIR_REG_CD       = 25088;  // calldata cursor
+    uint256 constant __TEMPLATE_WHIR_REG_CLAIM    = 25120;
+    uint256 constant __TEMPLATE_WHIR_REG_NUMPOW   = 25152;
+    uint256 constant __TEMPLATE_WHIR_REG_ZIOFF    = 25184;
+    uint256 constant __TEMPLATE_WHIR_REG_CC       = 25216;
+    uint256 constant __TEMPLATE_WHIR_REG_CURDELIN = 25248;
     // GKR→WHIR handoff: the WHIR batching challenge, written by the GKR half's emit_gkr_mark.
-    uint256 constant __TEMPLATE_WHIR_HANDOFF_BATCHING_PTR = 25568;
+    uint256 constant __TEMPLATE_WHIR_HANDOFF_BATCHING_PTR = 25280;
     // cap regions (CAP*32 bytes each)
-    uint256 constant __TEMPLATE_WHIR_BCAP0_PTR    = 25600;  // witness base-oracle cap
-    uint256 constant __TEMPLATE_WHIR_BCAP1_PTR    = 25856;  // setup base-oracle cap
-    uint256 constant __TEMPLATE_WHIR_QCAP_PTR     = 26112;  // current query cap (rounds >= 1)
-    uint256 constant __TEMPLATE_WHIR_NCAP_PTR     = 26368;  // just-read intermediate cap
+    uint256 constant __TEMPLATE_WHIR_BCAP0_PTR    = 25312;  // witness base-oracle cap
+    uint256 constant __TEMPLATE_WHIR_BCAP1_PTR    = 25568;  // setup base-oracle cap
+    uint256 constant __TEMPLATE_WHIR_QCAP_PTR     = 25824;  // current query cap (rounds >= 1)
+    uint256 constant __TEMPLATE_WHIR_NCAP_PTR     = 26080;  // just-read intermediate cap
     // Per-round query drawing (matches prover `draw_query_bits`/`BitSource`):
     //   QIDX_BUF holds the drawn query indices (max_q words);
     //   DRAW_BUF holds the little-endian u32 words squeezed from the seed (one per slot).
-    uint256 constant __TEMPLATE_WHIR_QIDX_BUF_PTR = 26624;
-    uint256 constant __TEMPLATE_WHIR_DRAW_BUF_PTR = 27168;
+    uint256 constant __TEMPLATE_WHIR_QIDX_BUF_PTR = 26336;
+    uint256 constant __TEMPLATE_WHIR_DRAW_BUF_PTR = 26880;
     // do_final scratch: the plain-text tail is 2^RFIN monomials (MONO), then the tail absorb +
     // halving-fold scratch (FEVAL, 32 + 2^RFIN words).
-    uint256 constant __TEMPLATE_WHIR_MONO_PTR     = 27936;
-    uint256 constant __TEMPLATE_WHIR_FEVAL_PTR    = 28448;
+    uint256 constant __TEMPLATE_WHIR_MONO_PTR     = 27648;
+    uint256 constant __TEMPLATE_WHIR_FEVAL_PTR    = 28160;
 
     fallback(bytes calldata) external returns (bytes memory) {
         // The verified statement, read out of the MARK region once the assembly block has
@@ -1138,188 +1138,179 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
             // packed term records, written 32 bytes at a time
             mstore(add(GKR_QTABLE_PTR(), 0), 0x1d1d011f2b011f2c011f2d011f2e011f2f011f30011f31011f32011f33011f34)
             mstore(add(GKR_QTABLE_PTR(), 32), 0x011f35011f36011f37011f38011f39011f3a011f3b011f09011f100120150122)
-            mstore(add(GKR_QTABLE_PTR(), 64), 0x2b04222c04222d04222e04222f04223004223104223204223304223404223a04)
-            mstore(add(GKR_QTABLE_PTR(), 96), 0x223b04220904221004285801311201321101330b01340a013e37043e38044235)
-            mstore(add(GKR_QTABLE_PTR(), 128), 0x044236044a2e014a2f014a30014a31014b2e014b2f014b30014b3101563a0357)
-            mstore(add(GKR_QTABLE_PTR(), 160), 0x3502573602573702573802573a095f3a02603533603633603733603833603a09)
-            mstore(add(GKR_QTABLE_PTR(), 192), 0x683a01693505693605693705693805693a09723505723605723705723805723a)
-            mstore(add(GKR_QTABLE_PTR(), 224), 0x09763501763601763701763801763a08763b03492e7800492f78004930780049)
-            mstore(add(GKR_QTABLE_PTR(), 256), 0x3178001d18000000e00000000000000000000000001d1c06ffff200000000000)
-            mstore(add(GKR_QTABLE_PTR(), 288), 0x000000000000011e18000000dfff20000000000000000000001e1c06ffff2000)
-            mstore(add(GKR_QTABLE_PTR(), 320), 0xe0000000000000000000014c2f000000000000000000000001680000034d5606)
-            mstore(add(GKR_QTABLE_PTR(), 352), 0xffffffffffffffffffffff00000001005c01015b01025a010359010458010540)
-            mstore(add(GKR_QTABLE_PTR(), 384), 0x01063f01073e01083d01093c010a10010b09010c3b010d3a010e39010f380110)
-            mstore(add(GKR_QTABLE_PTR(), 416), 0x3701113601123501133401143301153201163101173001182f01192e011a2d01)
-            mstore(add(GKR_QTABLE_PTR(), 448), 0x1b2c011c2b011d1901202b01202c01202d01202e01202f012030012031012032)
-            mstore(add(GKR_QTABLE_PTR(), 480), 0x01203301203401203501203601203701203801203a01203b0120090120100132)
-            mstore(add(GKR_QTABLE_PTR(), 512), 0x27013426013e57043f57014e1501770940771040005c5c01015b5b01025a5a01)
-            mstore(add(GKR_QTABLE_PTR(), 544), 0x035959010458580105404001063f3f01073e3e01083d3d01093c3c010a101001)
-            mstore(add(GKR_QTABLE_PTR(), 576), 0x0b0909010c3b3b010d3a3a010e3939010f383801103737011136360112353501)
-            mstore(add(GKR_QTABLE_PTR(), 608), 0x1334340114333301153232011631310117303001182f2f01192e2e011a2d2d01)
-            mstore(add(GKR_QTABLE_PTR(), 640), 0x1b2c2c011c2b2b01212b5901212b1701212c5901212c1701212d5901212d1701)
-            mstore(add(GKR_QTABLE_PTR(), 672), 0x212e5901212e1701212f5901212f170121305901213017012131590121311701)
-            mstore(add(GKR_QTABLE_PTR(), 704), 0x213259012132170121335901213317012134590121341701213a5901213a1701)
-            mstore(add(GKR_QTABLE_PTR(), 736), 0x213b5901213b170121590901215910012109170121101701222b1601222c1601)
-            mstore(add(GKR_QTABLE_PTR(), 768), 0x222d1601222e1601222f16012230160122311601223216012233160122341601)
-            mstore(add(GKR_QTABLE_PTR(), 800), 0x223a1601223b16012209160122101601233f0901233f10012340090123401001)
-            mstore(add(GKR_QTABLE_PTR(), 832), 0x243f10012440100224521004253f090125400902255209042658080126091401)
-            mstore(add(GKR_QTABLE_PTR(), 864), 0x26101401275807012709130127101301293e10012a3e10012b4210012c420901)
-            mstore(add(GKR_QTABLE_PTR(), 896), 0x2d4110012e4109012f2909012f2910012f3c09012f3c10012f0309012f031001)
-            mstore(add(GKR_QTABLE_PTR(), 928), 0x302809013028100130020901300210013227100134260901353a4401353a4801)
-            mstore(add(GKR_QTABLE_PTR(), 960), 0x353a4c01353a5001353b4401353b4701353b4a01353b5101363a4201363a4601)
-            mstore(add(GKR_QTABLE_PTR(), 992), 0x363a4a01363a4e01363b4201363b4901363b4c01363b4f013739140138391301)
-            mstore(add(GKR_QTABLE_PTR(), 1024), 0x393714013a3553013a3653013a3853013a3914013b3552013b3652013b374301)
-            mstore(add(GKR_QTABLE_PTR(), 1056), 0x3b3852013b3913013c3540013c3640013c4057013d2935013d2936013d295701)
-            mstore(add(GKR_QTABLE_PTR(), 1088), 0x3d353e013d3517013d363e013d3603013d373e013d3717013d383e013d381701)
-            mstore(add(GKR_QTABLE_PTR(), 1120), 0x3e2835013e2836013e2857013e3516013e3602013e3716013e3816013f384301)
-            mstore(add(GKR_QTABLE_PTR(), 1152), 0x403544014036440140374401403844014129370141353c014135170141363c01)
-            mstore(add(GKR_QTABLE_PTR(), 1184), 0x4136170141373c01413753014137080141383c01413853014138080142283701)
-            mstore(add(GKR_QTABLE_PTR(), 1216), 0x4235160142361601423752014237070142385201423807014332140144321301)
-            mstore(add(GKR_QTABLE_PTR(), 1248), 0x4532060146320501473208014832070149292b0149292d01492b3d01492b0301)
-            mstore(add(GKR_QTABLE_PTR(), 1280), 0x492b0801492c3d01492c0801492c1401492d3d01492d1701492e3d01492e5301)
-            mstore(add(GKR_QTABLE_PTR(), 1312), 0x492f3d01492f530149303d014930530149313d014931530149343d0149343e01)
-            mstore(add(GKR_QTABLE_PTR(), 1344), 0x493403014934080149340f014a282b014a282d014a2b02014a2b07014a2c0701)
-            mstore(add(GKR_QTABLE_PTR(), 1376), 0x4a2c13014a2d16014a2e52014a2f52014a3052014a3152014a3402014a340701)
-            mstore(add(GKR_QTABLE_PTR(), 1408), 0x4a340e014c2e02014c2e07014c2f02014c3013014c3113014d0207014e151501)
-            mstore(add(GKR_QTABLE_PTR(), 1440), 0x4f3a5101503a5001513a4f01513b5101523a4e01523b5001532a3a01533b4f01)
-            mstore(add(GKR_QTABLE_PTR(), 1472), 0x54283a0154351a0154361a0154371a0154381a01543a4101543b4e0155354001)
-            mstore(add(GKR_QTABLE_PTR(), 1504), 0x553640015537400155384001553b410156354801563648015637480156384801)
-            mstore(add(GKR_QTABLE_PTR(), 1536), 0x572a3b01583a4d01593a4c015a3a4b015a3b4d015b3a4a015b3b4c015c2a3a01)
-            mstore(add(GKR_QTABLE_PTR(), 1568), 0x5c3b4b015d283a015d3a41015d3b4a015e3543015e3643015e3743015e384301)
-            mstore(add(GKR_QTABLE_PTR(), 1600), 0x5e3a53015e3b41015e3b55015f2a35105f2a36105f2a37105f2a38105f353d04)
-            mstore(add(GKR_QTABLE_PTR(), 1632), 0x5f3541085f3542025f3545015f363d045f3641085f3642025f3645015f373d04)
-            mstore(add(GKR_QTABLE_PTR(), 1664), 0x5f3741085f3742025f3745015f383d045f3841085f3842025f3845015f3b5301)
-            mstore(add(GKR_QTABLE_PTR(), 1696), 0x602a3b01613a4901623a4801633a4701633b4901643a4601643b4801652a3a01)
-            mstore(add(GKR_QTABLE_PTR(), 1728), 0x653b470166283a01663a4101663b460167293b01673545016736450167374501)
-            mstore(add(GKR_QTABLE_PTR(), 1760), 0x6738450168354401683644016837440168384401692a3b016a3a45016b3a4401)
-            mstore(add(GKR_QTABLE_PTR(), 1792), 0x6c3a43016c3b45016d3a42016d3b44016e2a3a016e3b43016f283a016f3a4101)
-            mstore(add(GKR_QTABLE_PTR(), 1824), 0x6f3b420170283b0170354201703642017037420170384201703a5201703b5401)
-            mstore(add(GKR_QTABLE_PTR(), 1856), 0x71350301713603017137030171380301713b5201722a3b01733a410173145801)
-            mstore(add(GKR_QTABLE_PTR(), 1888), 0x74354101743641017437410174384101743b41017413580175293b0175355201)
-            mstore(add(GKR_QTABLE_PTR(), 1920), 0x75355301753652017536530175375201753753017538520175385301753a5401)
-            mstore(add(GKR_QTABLE_PTR(), 1952), 0x75415801761558227709420177104201353a450100353a490100353a4d010035)
-            mstore(add(GKR_QTABLE_PTR(), 1984), 0x3a510100353b450100353b480100353b4b0100353b4e0100363a430100363a47)
-            mstore(add(GKR_QTABLE_PTR(), 2016), 0x0100363a4b0100363a4f0100363b430100363b460100363b4d0100363b500100)
-            mstore(add(GKR_QTABLE_PTR(), 2048), 0x4c2e03000100004c2e08000100004c2f03000100004c3014000100004c311400)
-            mstore(add(GKR_QTABLE_PTR(), 2080), 0x0100004d0208000100004d0307000100007542580001000077093e0001000077)
-            mstore(add(GKR_QTABLE_PTR(), 2112), 0x103e000100001e181806ffffffffe4000000000000000000011e181c00000000)
-            mstore(add(GKR_QTABLE_PTR(), 2144), 0x0038000000000000000000001e1c1c06ffffffffe4000000000000000000014c)
-            mstore(add(GKR_QTABLE_PTR(), 2176), 0x2e4006fffffffffffffffffffffe1ffffffd4c2f4006ffffffffffffffffffff)
-            mstore(add(GKR_QTABLE_PTR(), 2208), 0xfe1ffffffd4d303e06ffffffffffffff87ffffff000000014d303f06ffffffff)
-            mstore(add(GKR_QTABLE_PTR(), 2240), 0xffffff0ffffffe000000014d304006fffffffffffffe1ffffffc000000014d30)
-            mstore(add(GKR_QTABLE_PTR(), 2272), 0x4206ffffffffffffffffff87ffffff00014d313e06ffffffffffffff87ffffff)
-            mstore(add(GKR_QTABLE_PTR(), 2304), 0x000000014d313f06ffffffffffffff0ffffffe000000014d314006ffffffffff)
-            mstore(add(GKR_QTABLE_PTR(), 2336), 0xfffe1ffffffc000000014d314206ffffffffffffffffff87ffffff00014d310e)
-            mstore(add(GKR_QTABLE_PTR(), 2368), 0x000000000000000000000001000000004d310f00000000000000000001000000)
-            mstore(add(GKR_QTABLE_PTR(), 2400), 0x0000004d030800000000000000000000000100000000553a5300070000000000)
-            mstore(add(GKR_QTABLE_PTR(), 2432), 0x000000000000000000553a0306f90000000000000000000000000001553b5500)
-            mstore(add(GKR_QTABLE_PTR(), 2464), 0x070000000000000000000000000000553b0806f9000000000000000000000000)
-            mstore(add(GKR_QTABLE_PTR(), 2496), 0x0001563b5300070000000000000000000000000000563b0306f9000000000000)
-            mstore(add(GKR_QTABLE_PTR(), 2528), 0x0000000000000001673a5200070000000000000000000000000000673a0206f9)
-            mstore(add(GKR_QTABLE_PTR(), 2560), 0x0000000000000000000000000001673b54000700000000000000000000000000)
-            mstore(add(GKR_QTABLE_PTR(), 2592), 0x00673b0706f90000000000000000000000000001683b52000700000000000000)
-            mstore(add(GKR_QTABLE_PTR(), 2624), 0x00000000000000683b0206f90000000000000000000000000001743a54000700)
-            mstore(add(GKR_QTABLE_PTR(), 2656), 0x00000000000000000000000000743a0706f90000000000000000000000000001)
-            mstore(add(GKR_QTABLE_PTR(), 2688), 0x1f2b15011f2c15011f2d15011f2e15011f2f15011f3015011f3115011f321501)
-            mstore(add(GKR_QTABLE_PTR(), 2720), 0x1f3315011f3415011f3515011f3615011f3715011f3815011f3915011f3a1501)
-            mstore(add(GKR_QTABLE_PTR(), 2752), 0x1f3b15011f0915011f101501212b1b01212c1b01212d1b01212e1b01212f1b01)
-            mstore(add(GKR_QTABLE_PTR(), 2784), 0x21301b0121311b0121321b0121331b0121341b01213a1b01213b1b0121091b01)
-            mstore(add(GKR_QTABLE_PTR(), 2816), 0x21101b01222b1a01222c1a01222d1a01222e1a01222f1a0122301a0122311a01)
-            mstore(add(GKR_QTABLE_PTR(), 2848), 0x22321a0122331a0122341a01223a1a01223b1a0122091a0122101a0124101101)
-            mstore(add(GKR_QTABLE_PTR(), 2880), 0x25090a01265814012608090126081001275813012707090127071001283e0901)
-            mstore(add(GKR_QTABLE_PTR(), 2912), 0x2b1012012c090b012d1011012e090a012f090b012f10120130090a0130101101)
-            mstore(add(GKR_QTABLE_PTR(), 2944), 0x311012013210110133090b0134090a01353a1401353b1401363a1301363b1301)
-            mstore(add(GKR_QTABLE_PTR(), 2976), 0x3a3514013a3614013a3814013a3953013b3513013b3613013b3713013b381301)
-            mstore(add(GKR_QTABLE_PTR(), 3008), 0x3b3952013d351b013d361b013d371b013d381b013e3548013e3648013e374801)
-            mstore(add(GKR_QTABLE_PTR(), 3040), 0x3e38480140293701403508014036080140370801403808014135530141365301)
-            mstore(add(GKR_QTABLE_PTR(), 3072), 0x413703014138030142355201423652014237020142380201492b1401492c0301)
-            mstore(add(GKR_QTABLE_PTR(), 3104), 0x492d1401492e1401492f14014930140149311401493414014a2b13014a2c0201)
-            mstore(add(GKR_QTABLE_PTR(), 3136), 0x4a2d13014a2e13014a2f13014a3013014a3113014a3413014b2e3c014b2f3c01)
-            mstore(add(GKR_QTABLE_PTR(), 3168), 0x4b303c014b313c014c2e13014c2f07014c2f13014c3056014c315601222b5900)
-            mstore(add(GKR_QTABLE_PTR(), 3200), 0x010000222c5900010000222d5900010000222e5900010000222f590001000022)
-            mstore(add(GKR_QTABLE_PTR(), 3232), 0x3059000100002231590001000022325900010000223359000100002234590001)
-            mstore(add(GKR_QTABLE_PTR(), 3264), 0x0000223a5900010000223b590001000022590900010000225910000100002f3d)
-            mstore(add(GKR_QTABLE_PTR(), 3296), 0x09000100002f3d1000010000303c0900010000303c10000100003d353f000100)
-            mstore(add(GKR_QTABLE_PTR(), 3328), 0x003d363f000100003d373f000100003d383f000100003e353e000100003e363e)
-            mstore(add(GKR_QTABLE_PTR(), 3360), 0x000100003e373e000100003e383e0001000041353d0001000041363d00010000)
-            mstore(add(GKR_QTABLE_PTR(), 3392), 0x41373d0001000041383d0001000042353c0001000042363c0001000042373c00)
-            mstore(add(GKR_QTABLE_PTR(), 3424), 0x01000042383c00010000492b3c00010000492c3c00010000492d3c0001000049)
-            mstore(add(GKR_QTABLE_PTR(), 3456), 0x2e3c00010000492f3c0001000049303c0001000049313c0001000049343c0001)
-            mstore(add(GKR_QTABLE_PTR(), 3488), 0x000049343f000100004a2b3d000100004a2c3d000100004a2d3d000100004a2e)
-            mstore(add(GKR_QTABLE_PTR(), 3520), 0x3d000100004a2f3d000100004a303d000100004a313d000100004a343d000100)
-            mstore(add(GKR_QTABLE_PTR(), 3552), 0x004a343e000100004c2e3e780000014c2e3ff00000024c2e14000100004c2f3e)
-            mstore(add(GKR_QTABLE_PTR(), 3584), 0x780000014c2f3ff00000024c2f08000100004c2f14000100004d304178000001)
-            mstore(add(GKR_QTABLE_PTR(), 3616), 0x4d31417800000100000000000000000000000000000000000000000000000000)
+            mstore(add(GKR_QTABLE_PTR(), 64), 0x1504285801311201321101330b01340a013e37043e38044235044236044a2e01)
+            mstore(add(GKR_QTABLE_PTR(), 96), 0x4a2f014a30014a31014b2e014b2f014b30014b3101563a035735025736025737)
+            mstore(add(GKR_QTABLE_PTR(), 128), 0x02573802573a095f3a02603533603633603733603833603a09683a0169350569)
+            mstore(add(GKR_QTABLE_PTR(), 160), 0x3605693705693805693a09723505723605723705723805723a09763501763601)
+            mstore(add(GKR_QTABLE_PTR(), 192), 0x763701763801763a08763b03492e7800492f780049307800493178001d180000)
+            mstore(add(GKR_QTABLE_PTR(), 224), 0x00e00000000000000000000000001d1c06ffff20000000000000000000000001)
+            mstore(add(GKR_QTABLE_PTR(), 256), 0x1e18000000dfff20000000000000000000001e1c06ffff2000e0000000000000)
+            mstore(add(GKR_QTABLE_PTR(), 288), 0x000000014c2f000000000000000000000001680000034d5606ffffffffffffff)
+            mstore(add(GKR_QTABLE_PTR(), 320), 0xffffffff00000001005c01015b01025a01035901045801054001063f01073e01)
+            mstore(add(GKR_QTABLE_PTR(), 352), 0x083d01093c010a10010b09010c3b010d3a010e39010f38011037011136011235)
+            mstore(add(GKR_QTABLE_PTR(), 384), 0x01133401143301153201163101173001182f01192e011a2d011b2c011c2b011d)
+            mstore(add(GKR_QTABLE_PTR(), 416), 0x1901202b01202c01202d01202e01202f01203001203101203201203301203401)
+            mstore(add(GKR_QTABLE_PTR(), 448), 0x203501203601203701203801203a01203b012009012010012235042236042237)
+            mstore(add(GKR_QTABLE_PTR(), 480), 0x042238043227013426013e57043f57014e1501770940771040005c5c01015b5b)
+            mstore(add(GKR_QTABLE_PTR(), 512), 0x01025a5a01035959010458580105404001063f3f01073e3e01083d3d01093c3c)
+            mstore(add(GKR_QTABLE_PTR(), 544), 0x010a1010010b0909010c3b3b010d3a3a010e3939010f38380110373701113636)
+            mstore(add(GKR_QTABLE_PTR(), 576), 0x01123535011334340114333301153232011631310117303001182f2f01192e2e)
+            mstore(add(GKR_QTABLE_PTR(), 608), 0x011a2d2d011b2c2c011c2b2b0121351b0121361b0121371b0121381b01215915)
+            mstore(add(GKR_QTABLE_PTR(), 640), 0x012115170122351a0122361a0122371a0122381a0122151601233f0901233f10)
+            mstore(add(GKR_QTABLE_PTR(), 672), 0x012340090123401001243f10012440100224521004253f090125400902255209)
+            mstore(add(GKR_QTABLE_PTR(), 704), 0x04265808012609140126101401275807012709130127101301293e10012a3e10)
+            mstore(add(GKR_QTABLE_PTR(), 736), 0x012b4210012c4209012d4110012e4109012f2909012f2910012f3c09012f3c10)
+            mstore(add(GKR_QTABLE_PTR(), 768), 0x012f0309012f0310013028090130281001300209013002100132271001342609)
+            mstore(add(GKR_QTABLE_PTR(), 800), 0x01353a4401353a4801353a4c01353a5001353b4401353b4701353b4a01353b51)
+            mstore(add(GKR_QTABLE_PTR(), 832), 0x01363a4201363a4601363a4a01363a4e01363b4201363b4901363b4c01363b4f)
+            mstore(add(GKR_QTABLE_PTR(), 864), 0x013739140138391301393714013a3553013a3653013a3853013a3914013b3552)
+            mstore(add(GKR_QTABLE_PTR(), 896), 0x013b3652013b3743013b3852013b3913013c3540013c3640013c4057013d2935)
+            mstore(add(GKR_QTABLE_PTR(), 928), 0x013d2936013d2957013d353e013d3517013d363e013d3603013d373e013d3717)
+            mstore(add(GKR_QTABLE_PTR(), 960), 0x013d383e013d3817013e2835013e2836013e2857013e3516013e3602013e3716)
+            mstore(add(GKR_QTABLE_PTR(), 992), 0x013e3816013f384301403544014036440140374401403844014129370141353c)
+            mstore(add(GKR_QTABLE_PTR(), 1024), 0x014135170141363c014136170141373c01413753014137080141383c01413853)
+            mstore(add(GKR_QTABLE_PTR(), 1056), 0x0141380801422837014235160142361601423752014237070142385201423807)
+            mstore(add(GKR_QTABLE_PTR(), 1088), 0x0143321401443213014532060146320501473208014832070149292b0149292d)
+            mstore(add(GKR_QTABLE_PTR(), 1120), 0x01492b3d01492b0301492b0801492c3d01492c0801492c1401492d3d01492d17)
+            mstore(add(GKR_QTABLE_PTR(), 1152), 0x01492e3d01492e5301492f3d01492f530149303d014930530149313d01493153)
+            mstore(add(GKR_QTABLE_PTR(), 1184), 0x0149343d0149343e01493403014934080149340f014a282b014a282d014a2b02)
+            mstore(add(GKR_QTABLE_PTR(), 1216), 0x014a2b07014a2c07014a2c13014a2d16014a2e52014a2f52014a3052014a3152)
+            mstore(add(GKR_QTABLE_PTR(), 1248), 0x014a3402014a3407014a340e014c2e02014c2e07014c2f02014c3013014c3113)
+            mstore(add(GKR_QTABLE_PTR(), 1280), 0x014d0207014e1515014f3a5101503a5001513a4f01513b5101523a4e01523b50)
+            mstore(add(GKR_QTABLE_PTR(), 1312), 0x01532a3a01533b4f0154283a0154351a0154361a0154371a0154381a01543a41)
+            mstore(add(GKR_QTABLE_PTR(), 1344), 0x01543b4e0155354001553640015537400155384001553b410156354801563648)
+            mstore(add(GKR_QTABLE_PTR(), 1376), 0x015637480156384801572a3b01583a4d01593a4c015a3a4b015a3b4d015b3a4a)
+            mstore(add(GKR_QTABLE_PTR(), 1408), 0x015b3b4c015c2a3a015c3b4b015d283a015d3a41015d3b4a015e3543015e3643)
+            mstore(add(GKR_QTABLE_PTR(), 1440), 0x015e3743015e3843015e3a53015e3b41015e3b55015f2a35105f2a36105f2a37)
+            mstore(add(GKR_QTABLE_PTR(), 1472), 0x105f2a38105f353d045f3541085f3542025f3545015f363d045f3641085f3642)
+            mstore(add(GKR_QTABLE_PTR(), 1504), 0x025f3645015f373d045f3741085f3742025f3745015f383d045f3841085f3842)
+            mstore(add(GKR_QTABLE_PTR(), 1536), 0x025f3845015f3b5301602a3b01613a4901623a4801633a4701633b4901643a46)
+            mstore(add(GKR_QTABLE_PTR(), 1568), 0x01643b4801652a3a01653b470166283a01663a4101663b460167293b01673545)
+            mstore(add(GKR_QTABLE_PTR(), 1600), 0x0167364501673745016738450168354401683644016837440168384401692a3b)
+            mstore(add(GKR_QTABLE_PTR(), 1632), 0x016a3a45016b3a44016c3a43016c3b45016d3a42016d3b44016e2a3a016e3b43)
+            mstore(add(GKR_QTABLE_PTR(), 1664), 0x016f283a016f3a41016f3b420170283b01703542017036420170374201703842)
+            mstore(add(GKR_QTABLE_PTR(), 1696), 0x01703a5201703b540171350301713603017137030171380301713b5201722a3b)
+            mstore(add(GKR_QTABLE_PTR(), 1728), 0x01733a41017314580174354101743641017437410174384101743b4101741358)
+            mstore(add(GKR_QTABLE_PTR(), 1760), 0x0175293b01753552017535530175365201753653017537520175375301753852)
+            mstore(add(GKR_QTABLE_PTR(), 1792), 0x0175385301753a540175415801761558227709420177104201353a450100353a)
+            mstore(add(GKR_QTABLE_PTR(), 1824), 0x490100353a4d0100353a510100353b450100353b480100353b4b0100353b4e01)
+            mstore(add(GKR_QTABLE_PTR(), 1856), 0x00363a430100363a470100363a4b0100363a4f0100363b430100363b46010036)
+            mstore(add(GKR_QTABLE_PTR(), 1888), 0x3b4d0100363b5001002235590001000022365900010000223759000100002238)
+            mstore(add(GKR_QTABLE_PTR(), 1920), 0x59000100004c2e03000100004c2e08000100004c2f03000100004c3014000100)
+            mstore(add(GKR_QTABLE_PTR(), 1952), 0x004c3114000100004d0208000100004d0307000100007542580001000077093e)
+            mstore(add(GKR_QTABLE_PTR(), 1984), 0x0001000077103e000100001e181806ffffffffe4000000000000000000011e18)
+            mstore(add(GKR_QTABLE_PTR(), 2016), 0x1c000000000038000000000000000000001e1c1c06ffffffffe4000000000000)
+            mstore(add(GKR_QTABLE_PTR(), 2048), 0x000000014c2e4006fffffffffffffffffffffe1ffffffd4c2f4006ffffffffff)
+            mstore(add(GKR_QTABLE_PTR(), 2080), 0xfffffffffffe1ffffffd4d303e06ffffffffffffff87ffffff000000014d303f)
+            mstore(add(GKR_QTABLE_PTR(), 2112), 0x06ffffffffffffff0ffffffe000000014d304006fffffffffffffe1ffffffc00)
+            mstore(add(GKR_QTABLE_PTR(), 2144), 0x0000014d304206ffffffffffffffffff87ffffff00014d313e06ffffffffffff)
+            mstore(add(GKR_QTABLE_PTR(), 2176), 0xff87ffffff000000014d313f06ffffffffffffff0ffffffe000000014d314006)
+            mstore(add(GKR_QTABLE_PTR(), 2208), 0xfffffffffffffe1ffffffc000000014d314206ffffffffffffffffff87ffffff)
+            mstore(add(GKR_QTABLE_PTR(), 2240), 0x00014d310e000000000000000000000001000000004d310f0000000000000000)
+            mstore(add(GKR_QTABLE_PTR(), 2272), 0x00010000000000004d030800000000000000000000000100000000553a530007)
+            mstore(add(GKR_QTABLE_PTR(), 2304), 0x0000000000000000000000000000553a0306f900000000000000000000000000)
+            mstore(add(GKR_QTABLE_PTR(), 2336), 0x01553b5500070000000000000000000000000000553b0806f900000000000000)
+            mstore(add(GKR_QTABLE_PTR(), 2368), 0x00000000000001563b5300070000000000000000000000000000563b0306f900)
+            mstore(add(GKR_QTABLE_PTR(), 2400), 0x00000000000000000000000001673a5200070000000000000000000000000000)
+            mstore(add(GKR_QTABLE_PTR(), 2432), 0x673a0206f90000000000000000000000000001673b5400070000000000000000)
+            mstore(add(GKR_QTABLE_PTR(), 2464), 0x000000000000673b0706f90000000000000000000000000001683b5200070000)
+            mstore(add(GKR_QTABLE_PTR(), 2496), 0x000000000000000000000000683b0206f9000000000000000000000000000174)
+            mstore(add(GKR_QTABLE_PTR(), 2528), 0x3a5400070000000000000000000000000000743a0706f9000000000000000000)
+            mstore(add(GKR_QTABLE_PTR(), 2560), 0x00000000011f2b15011f2c15011f2d15011f2e15011f2f15011f3015011f3115)
+            mstore(add(GKR_QTABLE_PTR(), 2592), 0x011f3215011f3315011f3415011f3515011f3615011f3715011f3815011f3915)
+            mstore(add(GKR_QTABLE_PTR(), 2624), 0x011f3a15011f3b15011f0915011f101501213559012135170121365901213617)
+            mstore(add(GKR_QTABLE_PTR(), 2656), 0x012137590121371701213859012138170121151b012235160122361601223716)
+            mstore(add(GKR_QTABLE_PTR(), 2688), 0x012238160122151a012410110125090a01265814012608090126081001275813)
+            mstore(add(GKR_QTABLE_PTR(), 2720), 0x012707090127071001283e09012b1012012c090b012d1011012e090a012f090b)
+            mstore(add(GKR_QTABLE_PTR(), 2752), 0x012f10120130090a0130101101311012013210110133090b0134090a01353a14)
+            mstore(add(GKR_QTABLE_PTR(), 2784), 0x01353b1401363a1301363b13013a3514013a3614013a3814013a3953013b3513)
+            mstore(add(GKR_QTABLE_PTR(), 2816), 0x013b3613013b3713013b3813013b3952013d351b013d361b013d371b013d381b)
+            mstore(add(GKR_QTABLE_PTR(), 2848), 0x013e3548013e3648013e3748013e384801402937014035080140360801403708)
+            mstore(add(GKR_QTABLE_PTR(), 2880), 0x0140380801413553014136530141370301413803014235520142365201423702)
+            mstore(add(GKR_QTABLE_PTR(), 2912), 0x0142380201492b1401492c0301492d1401492e1401492f140149301401493114)
+            mstore(add(GKR_QTABLE_PTR(), 2944), 0x01493414014a2b13014a2c02014a2d13014a2e13014a2f13014a3013014a3113)
+            mstore(add(GKR_QTABLE_PTR(), 2976), 0x014a3413014b2e3c014b2f3c014b303c014b313c014c2e13014c2f07014c2f13)
+            mstore(add(GKR_QTABLE_PTR(), 3008), 0x014c3056014c315601225915000100002f3d09000100002f3d1000010000303c)
+            mstore(add(GKR_QTABLE_PTR(), 3040), 0x0900010000303c10000100003d353f000100003d363f000100003d373f000100)
+            mstore(add(GKR_QTABLE_PTR(), 3072), 0x003d383f000100003e353e000100003e363e000100003e373e000100003e383e)
+            mstore(add(GKR_QTABLE_PTR(), 3104), 0x0001000041353d0001000041363d0001000041373d0001000041383d00010000)
+            mstore(add(GKR_QTABLE_PTR(), 3136), 0x42353c0001000042363c0001000042373c0001000042383c00010000492b3c00)
+            mstore(add(GKR_QTABLE_PTR(), 3168), 0x010000492c3c00010000492d3c00010000492e3c00010000492f3c0001000049)
+            mstore(add(GKR_QTABLE_PTR(), 3200), 0x303c0001000049313c0001000049343c0001000049343f000100004a2b3d0001)
+            mstore(add(GKR_QTABLE_PTR(), 3232), 0x00004a2c3d000100004a2d3d000100004a2e3d000100004a2f3d000100004a30)
+            mstore(add(GKR_QTABLE_PTR(), 3264), 0x3d000100004a313d000100004a343d000100004a343e000100004c2e3e780000)
+            mstore(add(GKR_QTABLE_PTR(), 3296), 0x014c2e3ff00000024c2e14000100004c2f3e780000014c2f3ff00000024c2f08)
+            mstore(add(GKR_QTABLE_PTR(), 3328), 0x000100004c2f14000100004d3041780000014d31417800000100000000000000)
             // accumulate every term into gateval[gate_slot], one loop per bucket
             {
             let modulus := P
             let col_base := mload(CIRCUIT_PTR) // calldata base of the column at-point evals
             let gateval := GKR_GATEVAL_PTR()
-            // linear    terms, coeff  1B positive  (81 records)
-            { let rec_ptr := add(GKR_QTABLE_PTR(), 0) let rec_end := add(rec_ptr, 243)
+            // linear    terms, coeff  1B positive  (68 records)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 0) let rec_end := add(rec_ptr, 204)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 3) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(and(shr(232, rec), 0xff), shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), modulus), modulus))
             } }
             // linear    terms, coeff  2B positive  (4 records)
-            { let rec_ptr := add(GKR_QTABLE_PTR(), 243) let rec_end := add(rec_ptr, 16)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 204) let rec_end := add(rec_ptr, 16)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 4) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(and(shr(224, rec), 0xffff), shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), modulus), modulus))
             } }
             // linear    terms, coeff 16B canonical (6 records)
-            { let rec_ptr := add(GKR_QTABLE_PTR(), 259) let rec_end := add(rec_ptr, 108)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 220) let rec_end := add(rec_ptr, 108)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 18) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(and(shr(112, rec), MASK), shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), modulus), modulus))
             } }
-            // linear    terms, coeff  1B negative  (55 records)
-            { let rec_ptr := add(GKR_QTABLE_PTR(), 367) let rec_end := add(rec_ptr, 165)
+            // linear    terms, coeff  1B negative  (59 records)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 328) let rec_end := add(rec_ptr, 177)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 3) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(sub(modulus, and(shr(232, rec), 0xff)), shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), modulus), modulus))
             } }
-            // quadratic terms, coeff  1B positive  (359 records)
-            { let rec_ptr := add(GKR_QTABLE_PTR(), 532) let rec_end := add(rec_ptr, 1436)
+            // quadratic terms, coeff  1B positive  (328 records)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 505) let rec_end := add(rec_ptr, 1312)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 4) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(and(shr(224, rec), 0xff), mulmod(shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), shr(128, calldataload(add(col_base, mul(16, byte(2, rec))))), modulus), modulus), modulus))
             } }
             // quadratic terms, coeff  2B positive  (16 records)
-            { let rec_ptr := add(GKR_QTABLE_PTR(), 1968) let rec_end := add(rec_ptr, 80)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 1817) let rec_end := add(rec_ptr, 80)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 5) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(and(shr(216, rec), 0xffff), mulmod(shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), shr(128, calldataload(add(col_base, mul(16, byte(2, rec))))), modulus), modulus), modulus))
             } }
-            // quadratic terms, coeff  4B positive  (10 records)
-            { let rec_ptr := add(GKR_QTABLE_PTR(), 2048) let rec_end := add(rec_ptr, 70)
+            // quadratic terms, coeff  4B positive  (14 records)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 1897) let rec_end := add(rec_ptr, 98)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 7) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(and(shr(200, rec), 0xffffffff), mulmod(shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), shr(128, calldataload(add(col_base, mul(16, byte(2, rec))))), modulus), modulus), modulus))
             } }
             // quadratic terms, coeff 16B canonical (30 records)
-            { let rec_ptr := add(GKR_QTABLE_PTR(), 2118) let rec_end := add(rec_ptr, 570)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 1995) let rec_end := add(rec_ptr, 570)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 19) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(and(shr(104, rec), MASK), mulmod(shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), shr(128, calldataload(add(col_base, mul(16, byte(2, rec))))), modulus), modulus), modulus))
             } }
-            // quadratic terms, coeff  1B negative  (127 records)
-            { let rec_ptr := add(GKR_QTABLE_PTR(), 2688) let rec_end := add(rec_ptr, 508)
+            // quadratic terms, coeff  1B negative  (113 records)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 2565) let rec_end := add(rec_ptr, 452)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 4) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(sub(modulus, and(shr(224, rec), 0xff)), mulmod(shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), shr(128, calldataload(add(col_base, mul(16, byte(2, rec))))), modulus), modulus), modulus))
             } }
-            // quadratic terms, coeff  4B negative  (61 records)
-            { let rec_ptr := add(GKR_QTABLE_PTR(), 3196) let rec_end := add(rec_ptr, 427)
+            // quadratic terms, coeff  4B negative  (48 records)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 3017) let rec_end := add(rec_ptr, 336)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 7) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
@@ -2782,29 +2773,29 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
 //     7552 ..   7680  PERM_PROD (32 * 4 = 128 B)
 //     7680 ..  10048  CIRCUIT_CLAIMS (32 * 74 = 2368 B)
 //    10048 ..  13888  GATEVAL (32 * 120 = 3840 B)
-//    13888 ..  17536  QTABLE (32 * 114 = 3648 B)
-//    17536 ..  17824  SEED_PTR (32 + (1 << 3) * 32 = 288 B)
-//    17824 ..  18656  Z_PTR (26 * 32 = 832 B)
-//    18656 ..  23744  POW_PTR (53 * 96 = 5088 B)
-//    23744 ..  23776  ACC_PREF_PTR (32 = 32 B)
-//    23776 ..  24032  GAMMA_PTR (8 * 32 = 256 B)
-//    24032 ..  24160  FOLD_CH_PTR (4 * 32 = 128 B)
-//    24160 ..  24416  HPO_PTR ((1 << 3) * 32 = 256 B)
-//    24416 ..  24928  FBUF_PTR ((1 << 4) * 32 = 512 B)
-//    24928 ..  25376  LEAF_PTR (14 * 32 = 448 B)
-//    25376 ..  25408  REG_CD (32 = 32 B)
-//    25408 ..  25440  REG_CLAIM (32 = 32 B)
-//    25440 ..  25472  REG_NUMPOW (32 = 32 B)
-//    25472 ..  25504  REG_ZIOFF (32 = 32 B)
-//    25504 ..  25536  REG_CC (32 = 32 B)
-//    25536 ..  25568  REG_CURDELIN (32 = 32 B)
-//    25568 ..  25600  HANDOFF_BATCHING_PTR (32 = 32 B)
-//    25600 ..  25856  BCAP0_PTR ((1 << 3) * 32 = 256 B)
-//    25856 ..  26112  BCAP1_PTR ((1 << 3) * 32 = 256 B)
-//    26112 ..  26368  QCAP_PTR ((1 << 3) * 32 = 256 B)
-//    26368 ..  26624  NCAP_PTR ((1 << 3) * 32 = 256 B)
-//    26624 ..  27168  QIDX_BUF_PTR (17 * 32 = 544 B)
-//    27168 ..  27936  DRAW_BUF_PTR (24 * 32 = 768 B)
-//    27936 ..  28448  MONO_PTR ((1 << 4) * 32 = 512 B)
-//    28448 ..  28992  FEVAL_PTR (32 + (1 << 4) * 32 = 544 B)
-//   heap end: 28992
+//    13888 ..  17248  QTABLE (32 * 105 = 3360 B)
+//    17248 ..  17536  SEED_PTR (32 + (1 << 3) * 32 = 288 B)
+//    17536 ..  18368  Z_PTR (26 * 32 = 832 B)
+//    18368 ..  23456  POW_PTR (53 * 96 = 5088 B)
+//    23456 ..  23488  ACC_PREF_PTR (32 = 32 B)
+//    23488 ..  23744  GAMMA_PTR (8 * 32 = 256 B)
+//    23744 ..  23872  FOLD_CH_PTR (4 * 32 = 128 B)
+//    23872 ..  24128  HPO_PTR ((1 << 3) * 32 = 256 B)
+//    24128 ..  24640  FBUF_PTR ((1 << 4) * 32 = 512 B)
+//    24640 ..  25088  LEAF_PTR (14 * 32 = 448 B)
+//    25088 ..  25120  REG_CD (32 = 32 B)
+//    25120 ..  25152  REG_CLAIM (32 = 32 B)
+//    25152 ..  25184  REG_NUMPOW (32 = 32 B)
+//    25184 ..  25216  REG_ZIOFF (32 = 32 B)
+//    25216 ..  25248  REG_CC (32 = 32 B)
+//    25248 ..  25280  REG_CURDELIN (32 = 32 B)
+//    25280 ..  25312  HANDOFF_BATCHING_PTR (32 = 32 B)
+//    25312 ..  25568  BCAP0_PTR ((1 << 3) * 32 = 256 B)
+//    25568 ..  25824  BCAP1_PTR ((1 << 3) * 32 = 256 B)
+//    25824 ..  26080  QCAP_PTR ((1 << 3) * 32 = 256 B)
+//    26080 ..  26336  NCAP_PTR ((1 << 3) * 32 = 256 B)
+//    26336 ..  26880  QIDX_BUF_PTR (17 * 32 = 544 B)
+//    26880 ..  27648  DRAW_BUF_PTR (24 * 32 = 768 B)
+//    27648 ..  28160  MONO_PTR ((1 << 4) * 32 = 512 B)
+//    28160 ..  28704  FEVAL_PTR (32 + (1 << 4) * 32 = 544 B)
+//   heap end: 28704
