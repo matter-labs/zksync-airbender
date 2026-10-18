@@ -174,6 +174,22 @@ missing Sail padding bytes are not filled by extraction. Supplying the actual
 Sail boot/padding/shadow state and physical Rust setup/export remain separate.
 No expected-read or table-equivalence premise is introduced. The initialized
 trace registry remains arithmetic-only.
+[Platform configuration](Airbender/Review/Helpers/Memory/Platform.lean) and seven
+Sail platform proof modules are now copied unchanged from the same pinned source.
+They specify actual initialized Machine CSRs, disabled PMP entries, an RV32 PMA
+region with permissions and ordinary addresses outside CLINT/signature windows;
+HTIF is disabled by its public CSR. These are configuration/domain data, not
+successful-access or expected-value assumptions. The original MemoryPlatform
+interface remains explicit. [Initialized preservation](Airbender/Review/Trace/Families/WordMemory/Platform.lean)
+derives the same configuration in every realized native prefix and the final
+architectural state. [Native RAM transport](Airbender/Proofs/Trace/Families/WordMemory/MemoryTransport.lean)
+derives actual read/write values and byte alignment from v2 equations/ports and
+projected histories, then calls unchanged Sail virtual-memory proofs. The
+reversed dependent SW/LW regression derives actual virtual store/load results
+from the same matched history and public setup; no later read or intermediate
+state/result is supplied. This proves the RAM memory-call path, while ROM-load
+transport, original LOAD/STORE instruction execution/retirement, physical boot and
+cryptographic enforcement remain separate.
 
 ## Public state, profiles and external inputs
 

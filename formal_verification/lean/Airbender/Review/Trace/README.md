@@ -103,6 +103,12 @@ instruction reads/decoding across every projected prefix, even with changing RAM
 stores. Missing bytes remain absent; physical boot/export and original LOAD/STORE
 execution remain open.
 
+[Public platform configuration](Families/WordMemory/Platform.lean) now survives
+initialized projected histories. Eight unchanged source modules supply the
+original Sail Machine/PMP/PMA and ordinary-memory interface. Actual native RAM
+reads/writes now reach Sail virtual-memory calls on the dependent SW/LW fixture;
+ROM-load transport and original instruction execution/retirement remain open.
+
 These are logical selected-profile results. Remaining families and physical
 setup/argument fidelity remain in [the plan](../../../FORMAL_VERIFICATION_PLAN.md).
 Cryptographic enforcement of the logical permutations remains a separate boundary.

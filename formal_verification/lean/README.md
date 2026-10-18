@@ -83,7 +83,12 @@ now preserves all bytes below four MiB and every successful public ROM extractio
 Public programs fitting that region retain original Sail instruction reads and
 decoding through each projected prefix. A changing SW/LW history retains both
 instruction words and their ROM image; absent shadow bytes stay absent.
-Physical native boot/ROM binding and original instruction execution remain separate.
+[Platform configuration](Airbender/Review/Trace/Families/WordMemory/Platform.lean)
+now survives initialized projected histories. Eight unchanged pinned modules
+supply Sail's Machine translation, PMP/PMA and ordinary-memory path. Native RAM
+ports derive actual virtual-memory store/load results on the same dependent
+SW/LW fixture. ROM-load transport, physical boot/ROM binding and original
+instruction execution remain separate.
 Remaining families, Rust
 setup generation/export and cryptographic argument soundness remain pending. This checkpoint does not inherit v3's completed coverage.
 

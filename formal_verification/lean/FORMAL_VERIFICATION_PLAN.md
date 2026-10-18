@@ -106,8 +106,15 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    complete code-byte windows for programs fitting the native ROM region, and
    original Sail source/decoding evidence survives. A reversed dependent SW/LW
    regression simultaneously derives a real RAM change, retained ROM extraction
-   and original code evidence without a later-read/result premise. Assemble
-   original Sail memory/platform transport, instruction execution and retirement.
+   and original code evidence without a later-read/result premise. Eight unchanged
+   pinned Sail platform modules now discharge Machine translation, PMP/PMA and
+   ordinary-memory helpers under public configuration. Actual projected native
+   histories preserve that configuration. Native RAM reads/writes and alignment
+   now feed original virtual-memory calls; the same reversed dependent SW/LW
+   fixture derives a real virtual store and subsequent load without expected
+   intermediate/read/state premises. Extend this transport to ROM loads using
+   actual public ROM extraction, then assemble original LOAD/STORE instruction
+   execution and retirement.
    Bind the separate native initializer to physical boot/padding. Physical setup/export binding remains open.
    Preserve v2 PC rollover and native timestamp offsets;
    keep physical setup generation/export and mixed/custom expansion explicit.

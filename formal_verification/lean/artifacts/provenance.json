@@ -237,6 +237,38 @@
     {
       "path": "Airbender/Proofs/Trace/AccessExecution.lean",
       "sha256": "6adb5a52000f87286ccc421f49519f361fb9ff39d8fab990acf31285d78175e1"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Memory/Platform.lean",
+      "sha256": "d1a0f044a43a5d074352ab8c4d062c1209198c73957566f88aa1b814198fd45c"
+    },
+    {
+      "path": "Airbender/Proofs/Sail/FlatMemory.lean",
+      "sha256": "51c01e2ab7b01106625dfa39b81224123f0dd6ec6145e25152616afef06f1ffc"
+    },
+    {
+      "path": "Airbender/Proofs/Sail/PMP.lean",
+      "sha256": "9f11239e567d94519e611e4d72f8a089bab79700d1341d699a52f98855ecd96b"
+    },
+    {
+      "path": "Airbender/Proofs/Sail/PMA.lean",
+      "sha256": "42bd95c5f26d4aa8ea1e85248909e59432940f3dd4c5e36c8ad7169cf64f870f"
+    },
+    {
+      "path": "Airbender/Proofs/Sail/MMIO.lean",
+      "sha256": "2eef51e0b57c44e1f907ac5f87a4d10189f2c5ad97d1bd008fd724e66af4ce6c"
+    },
+    {
+      "path": "Airbender/Proofs/Sail/PhysicalMemory.lean",
+      "sha256": "f5769b32ccd1ea923d51b6b04f2c47da6370df91ef642467fd02708c25cebf16"
+    },
+    {
+      "path": "Airbender/Proofs/Sail/CheckedMemory.lean",
+      "sha256": "dcdd4491fb5c222977f8a947f013b8c5801ba4c60b8fad3d66a3551dedbf25df"
+    },
+    {
+      "path": "Airbender/Proofs/Sail/VirtualMemory.lean",
+      "sha256": "d79c9673d034477ad0fef2bf2942f9b071ffee5144b376a2574ad8834fcfd384"
     }
   ],
   "circuit_artifacts": [
@@ -760,6 +792,24 @@
       "backport_reuse_path": "Airbender/Proofs/WordMemory/ROMImage.lean",
       "backport_reuse_sha256": "5cf5e27c80ce3a76fc26014b363c2f737edeac19ba72da6eb949df260a7ecfa8",
       "change": "Reuse the existing extracted-prefix recursion and successful-read state frame. Transport the actual readROMWords/wordROMImage constructor through proved byte preservation; keep original extraction, native lookup bridge and missing-padding behavior unchanged."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Platform.lean",
+      "source_path": "Airbender/Proofs/Trace/CodeHistory.lean",
+      "source_sha256": "8c50b1c72abc1cdd137a368fa2b4e4591be6a80b242aea74a6009d3e26e63c5d",
+      "change": "Reuse actual Sail cell/history induction with unchanged configuration_gpr_write and configuration_word_write. Derive public CSR/platform preservation from actual GPR/RAM writes, including projected native histories."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/MemoryTransport.lean",
+      "source_path": "Airbender/Proofs/Trace/WordMemory.lean",
+      "source_sha256": "03ad1a8296aa4adb8bdc5041a31224c7532392fc63c00ee43c8df44ec34b89c6",
+      "change": "Adapt source local_word_transport/word_row_transport to actual v2 mixed ports, field/decoder columns and architectural projection. Derive native RAM reads/writes and alignment, reuse unchanged original Sail virtual-memory path, and retain initialized native matching/configuration without v3 inverse constants or desired-read/result premises."
+    },
+    {
+      "path": "Tests/WordMemorySailHistory.lean",
+      "source_path": "Tests/SailCheckedMemory.lean",
+      "source_sha256": "dcdaaafcbf5995fdedcd57435f490ffbb529bf1e920b18aaa1faec5f293de1f1",
+      "change": "Copy the concrete Machine/PMP/PMA configuration and its proof. Reuse the same accepted reversed native SW/LW history, public setup and derived native address/source facts to prove original Sail virtual-memory store/load effects and retained configuration. Preserve every existing cell/ROM-history regression; original instruction execution remains separate."
     }
   ]
 }

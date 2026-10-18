@@ -169,6 +169,28 @@ loads also preserve missing shadow bytes while full native matching retains thei
 refreshes. This frame neither creates absent padding bytes nor proves original
 LOAD/STORE execution/retirement.
 
+## Checked platform and RAM transport
+
+[The public preservation claim](Platform.lean) retains the actual Machine/PMP/PMA
+configuration through initialized projected histories, with full native matching.
+[Configuration and ordinary-address definitions](../../../Helpers/Memory/Platform.lean)
+are copied unchanged. Seven unchanged pinned Sail proof modules discharge original
+translation, permissions, byte encoding and platform helpers. Ordinary addresses
+exclude actual CLINT/signature windows; the public CSR image disables HTIF.
+No successful-access or desired-value condition is hidden in the configuration.
+
+[Native transport](../../../../Proofs/Trace/Families/WordMemory/MemoryTransport.lean)
+derives effective-address alignment and actual RAM reads/writes from v2 equations
+and retained ports. The existing public initialized assembly discharges source
+and address facts; actual histories derive intermediate states. These facts now
+feed original Sail virtual-memory calls under the explicit public configuration,
+ordinary-address and MemoryPlatform interfaces. The same reversed SW/LW fixture
+initializes real CSRs and derives a virtual store and subsequent read of 123,
+while all existing cell, code and ROM-preservation regressions still pass.
+
+ROM loads still need their public-byte bridge composed with virtual transport.
+Original LOAD/STORE clause execution and retirement remain the next connection.
+
 The public shadow seeds describe a logical initialized native image. Binding them
 to physical native zero boot, Sail boot/padding state, actual ROM-table binding
 and original instruction execution/retirement remain open. The existing

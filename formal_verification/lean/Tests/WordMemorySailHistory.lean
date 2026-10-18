@@ -1,3 +1,4 @@
+import Airbender.Review.Trace.Families.WordMemory.Platform
 import Airbender.Proofs.Trace.Families.WordMemory.ProjectedPorts
 import Airbender.Review.Trace.Families.WordMemory.SailHistory
 import Airbender.Review.Trace.Families.WordMemory.CodeHistory
@@ -128,11 +129,21 @@ private theorem accepted : Accepted trace := by
       [storeRow.start] [loadRow.finish, loadRow.start]
   · decide
 
+private def attributes : SailRV32.PMA :=
+  { (default : SailRV32.PMA) with readable := true, writable := true, executable := true }
+
 private def before : Reference.RiscV.Sail.State :=
   { (default : Reference.RiscV.Sail.State) with
-    regs := (Std.ExtDHashMap.emptyWithCapacity
+    regs := ((Std.ExtDHashMap.emptyWithCapacity :
+      Std.ExtDHashMap SailRV32.Register SailRV32.RegisterType)
       |>.insert .x1 (4194320 : BitVec 32) |>.insert .x2 (123 : BitVec 32)
-      |>.insert .x3 (0 : BitVec 32) |>.insert .PC (0 : BitVec 32))
+      |>.insert .x3 (0 : BitVec 32) |>.insert .PC (0 : BitVec 32)
+      |>.insert .mstatus 0 |>.insert .cur_privilege .Machine |>.insert .misa 0x40000100
+      |>.insert .senvcfg 0 |>.insert .menvcfg 0x10
+      |>.insert .pmpcfg_n (Vector.replicate 64 0)
+      |>.insert .pmpaddr_n (Vector.replicate 64 0)
+      |>.insert .pma_regions [Reference.RiscV.Sail.rv32Region attributes]
+      |>.insert .mhartid 7 |>.insert .htif_tohost_base none)
     mem := (Std.ExtHashMap.emptyWithCapacity
       |>.insert 4194320 (0 : BitVec 8) |>.insert 4194321 0 |>.insert 4194322 0 |>.insert 4194323 0
       |>.insert 0 0x23 |>.insert 1 0xa0 |>.insert 2 0x20 |>.insert 3 0
@@ -155,7 +166,7 @@ private theorem inputs : ImageBoundary trace before cells := by
       EStateM.get, EStateM.pure, before, Std.ExtHashMap.getElem_insert]
   have pc : Reference.Sail.run (SailRV32.Functions.get_arch_pc ()) before = .ok (0 : BitVec 32) before := by
     apply Reference.RiscV.Sail.read_register
-    simp [before]
+    simp [before, Std.ExtDHashMap.get?_insert]
   constructor
   · decide
   · simp only [cells, initialImage, List.mapM_cons, List.mapM_nil, source, operand, memory, target]
@@ -310,5 +321,68 @@ theorem initialized_rom_preservation : ∃ after : Reference.RiscV.Sail.State,
   · simpa [memoryWord, ramToken, Nat.unpair_pair, Word.toBitVec, Word.value] using read
   · simp [before, Std.ExtHashMap.getElem_insert]
   · rw [bytes 16 (by decide)]; simp [before]
+
+set_option backward.isDefEq.respectTransparency false in
+private theorem configuration : Reference.RiscV.Sail.FlatMemoryConfiguration before := by
+  constructor
+  · simp [before, Std.ExtDHashMap.get?_insert]
+  · simp [before, Std.ExtDHashMap.get?_insert]
+  · exact ⟨0x40000100, by simp [before, Std.ExtDHashMap.get?_insert]⟩
+  · exact ⟨0, by simp [before, Std.ExtDHashMap.get?_insert]⟩
+  · exact ⟨0x10, by simp [before, Std.ExtDHashMap.get?_insert]⟩
+  · simp [before, Std.ExtDHashMap.get?_insert]
+  · exact ⟨Vector.replicate 64 0, by simp [before, Std.ExtDHashMap.get?_insert]⟩
+  · exact ⟨attributes, by simp [before, Std.ExtDHashMap.get?_insert], rfl, rfl, rfl⟩
+  · exact ⟨7, by simp [before, Std.ExtDHashMap.get?_insert]⟩
+  · simp [before]
+
+/-- The same reversed native SW/LW rows now traverse original Sail virtual
+    memory, permissions and platform helpers. Matching derives the intermediate
+    state/read; native/public construction derives source and address inputs. -/
+theorem dependent_virtual_store_load [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] :
+    ∃ middle after : Reference.RiscV.Sail.State,
+      Reference.Sail.run (SailRV32.Functions.vmem_write (.Regidx 1) 0 4 123
+        (.Store .Data) false false false) before = .ok (.Ok true) middle ∧
+      Reference.Sail.run (SailRV32.Functions.vmem_read (.Regidx 1) 0 4
+        (.Load .Data) false false false) middle = .ok (.Ok (123 : BitVec 32)) middle ∧
+      Reference.Sail.run ((Cell.register 3).write 123) middle = .ok () after ∧
+      Reference.RiscV.Sail.FlatMemoryConfiguration middle ∧
+      Reference.RiscV.Sail.FlatMemoryConfiguration after := by
+  obtain ⟨_, rows, after, _, permutation, ordered, history, _, finalConfig⟩ :=
+    Airbender.WordMemory.public_projected_platform_configuration projected_inputs
+      accepted decoded aligned configuration
+  have same : rows = [loadRow, storeRow] :=
+    List.Perm.eq_of_pairwise' ordered (by decide) permutation
+  subst rows
+  change SailHistory cells
+    (((rowEvents trace.memoryEpoch loadRow).reverse ++
+      (rowEvents trace.memoryEpoch storeRow).reverse).filter
+        fun event => Airbender.WordMemory.architecturalAddress event.2.1) before after at history
+  rw [List.filter_append] at history
+  obtain ⟨middle, storeHistory, loadHistory⟩ := Trace.Proofs.sail_history_append.mp history
+  have middleConfig := Trace.Proofs.sail_history_configuration storeHistory configuration
+  have effects := Airbender.WordMemory.Proofs.projected_native_effects projected_inputs
+    public_setup_built accepted decoded
+  have storeAddress := (effects storeRow (by simp [trace])).1
+  have loadAddress := (effects loadRow (by simp [trace])).1
+  have store := Airbender.WordMemory.Proofs.projected_virtual_ram_write (by decide) _
+    (satisfies true false false rfl) (by rfl) storeAddress
+    (entry := storeEntry) (by decide) configuration
+    (by unfold Reference.RiscV.Sail.OrdinaryWordAddress; decide) storeHistory
+  have load := Airbender.WordMemory.Proofs.projected_virtual_ram_read (by decide) _
+    load_satisfies (by rfl) (by decide) loadAddress
+    (entry := loadEntry) (by decide) middleConfig
+    (by unfold Reference.RiscV.Sail.OrdinaryWordAddress; decide) loadHistory
+  refine ⟨middle, after, ?_, ?_, ?_, middleConfig, finalConfig⟩
+  · simpa [storeEntry, Airbender.WordMemory.immediateWord, row, Word.toBitVec, Word.value,
+      show (123 : ZMod mersenne31Modulus).val = 123 from by decide] using store
+  · simpa [loadEntry, Airbender.WordMemory.immediateWord, loadAssignment, row, Word.toBitVec, Word.value,
+      show (123 : ZMod mersenne31Modulus).val = 123 from by decide] using load
+  · have written := Airbender.WordMemory.Proofs.projected_history_write (by decide) _
+      load_satisfies loadHistory (port := Airbender.WordMemory.importedConstraintsMemoryPorts[2])
+      rfl (cell := Cell.register 3) (by decide)
+    simpa [memoryWord, MemoryPort.writeCode, WordColumns.code, WordColumns.evaluate,
+      Airbender.WordMemory.importedConstraintsMemoryPorts, loadRow, loadAssignment, row, Nat.unpair_pair,
+      Word.toBitVec, Word.value, show (123 : ZMod mersenne31Modulus).val = 123 from by decide] using written
 
 end Tests.WordMemorySailHistory

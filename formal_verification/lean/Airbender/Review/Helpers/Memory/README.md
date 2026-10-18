@@ -52,3 +52,10 @@ writes. Physical native zero-boot/ROM binding and original instruction execution
 remain pending.
 [Indirect descriptors](IndirectPorts.lean) are retained reusable definitions;
 v2 batched worker arguments and indirect-port import remain pending.
+
+[Platform](Platform.lean) is copied unchanged from the pinned source. Its public
+configuration describes actual Machine CSRs, PMP/PMA permissions, disabled HTIF
+and an ordinary-address domain outside CLINT/signature windows. Native projected
+histories now [preserve it](../../Trace/Families/WordMemory/Platform.lean), and
+actual RAM port effects feed original Sail virtual-memory calls. Original
+instruction execution and physical boot/profile binding remain separate.
