@@ -1,188 +1,20 @@
 use super::circuit::{
-    dispatch_sum, non_f2_dispatch_sum, pc_bump_gate,
-    unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr_core,
-    unified_register_all_tables, UnifiedCircuitProfile, UNIFIED_REDUCED_MACHINE_NUM_FLAGS,
+    dispatch_sum, pc_bump_gate, FAMILY_2_FLAG_OFFSET, UNIFIED_REDUCED_MACHINE_NUM_FLAGS,
 };
-use super::decoder::row_classes::unified_row_classes;
-use super::decoder::{
-    unified_decoder_mask_violation, UnifiedReducedMachineFamilyCircuitMask, UNIFIED_RD_IS_ZERO_BIT,
-};
+use super::decoder::{unified_decoder_mask_violation, UnifiedReducedMachineFamilyCircuitMask};
 use super::jump_branch_slt::f2_rd_write_gates;
 use crate::constraint::{Constraint, Term};
-use crate::cs::circuit_impl::BasicAssembly;
-use crate::cs::circuit_output::CircuitOutput;
-use crate::cs::circuit_trait::*;
 use crate::definitions::Variable;
-use crate::structured_expr::{Expr, StructuredStatement};
+use crate::gkr_circuits::jump_branch_slt_family::{
+    BRANCH_BIT, JALR_BIT, JAL_BIT, RD_IS_ZERO_BIT, SLT_BIT,
+};
+use crate::gkr_compiler::GKRCircuitArtifact;
+use crate::structured_expr::Expr;
 use crate::types::Boolean;
+use crate::witness_placer::graph_description::{Expression, RawExpression};
 use field::baby_bear::base::BabyBearField;
-use field::{Field, PrimeField, Proth120};
-use std::collections::{BTreeSet, HashMap};
-
-const BASELINE_HELPERS: [&str; 5] = [
-    "is_jal_or_jalr_writes_rd",
-    "is_slt_writes_rd",
-    "gate_fam2_rd_zero",
-    "unified pc-bump gate",
-    "unified family-dispatch one-hot",
-];
-
-/// The `Baseline` constraint system with its execute and flag variables.
-struct BaselineSystem<F: PrimeField> {
-    output: CircuitOutput<F>,
-    execute: Variable,
-    bits: [Variable; UNIFIED_REDUCED_MACHINE_NUM_FLAGS],
-}
-
-impl<F: PrimeField> BaselineSystem<F> {
-    fn build<MopF: PrimeField>() -> Self {
-        let mut cs = BasicAssembly::<F>::new();
-        unified_register_all_tables(&mut cs);
-        unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr_core::<F, MopF, _>(
-            &mut cs,
-            UnifiedCircuitProfile::Baseline,
-        );
-        let (output, _) = cs.finalize();
-        let execute = output.executor_machine_state.as_ref().unwrap().execute;
-        let bits = output.circuit_family_bitmask.clone().try_into().unwrap();
-        Self {
-            output,
-            execute,
-            bits,
-        }
-    }
-
-    fn named(&self, name: &str) -> Variable {
-        let matches: Vec<_> = self
-            .output
-            .variable_names
-            .iter()
-            .filter(|(_, n)| n.as_str() == name)
-            .map(|(v, _)| *v)
-            .collect();
-        assert_eq!(matches.len(), 1, "variable {name}");
-        matches[0]
-    }
-
-    /// The unique asserted constraint that defines `helper`: the helper appears in a
-    /// degree-1 term with a nonzero coefficient, and every other term contains only
-    /// execute and flag variables.
-    fn definition_of(&self, helper: Variable) -> Constraint<F> {
-        let inputs: BTreeSet<Variable> = self.bits.iter().copied().chain([self.execute]).collect();
-        let candidates: Vec<_> = self
-            .output
-            .structured_statements
-            .iter()
-            .filter_map(|s| match s {
-                StructuredStatement::AssertZero {
-                    compiled_constraint,
-                    ..
-                } => Some(compiled_constraint),
-                _ => None,
-            })
-            .filter(|c| {
-                let mut linear_helper = false;
-                for term in c.terms.iter() {
-                    let Term::Expression {
-                        coeff,
-                        inner,
-                        degree,
-                    } = term
-                    else {
-                        continue;
-                    };
-                    let vars = &inner[..*degree];
-                    if vars.contains(&helper) {
-                        if *degree != 1 || coeff.is_zero() {
-                            return false;
-                        }
-                        linear_helper = true;
-                    } else if !vars.iter().all(|v| inputs.contains(v)) {
-                        return false;
-                    }
-                }
-                linear_helper
-            })
-            .collect();
-        assert_eq!(candidates.len(), 1, "definition of {helper:?}");
-        candidates[0].clone()
-    }
-
-    fn assignment(&self, execute: bool, mask: u32) -> HashMap<Variable, F> {
-        let mut values: HashMap<_, _> = self
-            .bits
-            .iter()
-            .enumerate()
-            .map(|(i, v)| (*v, bool_to_field(mask >> i & 1 == 1)))
-            .collect();
-        values.insert(self.execute, bool_to_field(execute));
-        values
-    }
-
-    fn mask(&self) -> UnifiedReducedMachineFamilyCircuitMask {
-        UnifiedReducedMachineFamilyCircuitMask::from_full_mask(self.bits.map(Boolean::Is))
-    }
-}
-
-/// A `Baseline` helper together with its defining constraint.
-struct Helper<F: PrimeField> {
-    var: Variable,
-    definition: Constraint<F>,
-}
-
-impl<F: PrimeField> Helper<F> {
-    fn new(system: &BaselineSystem<F>, name: &str) -> Self {
-        let var = system.named(name);
-        Self {
-            var,
-            definition: system.definition_of(var),
-        }
-    }
-
-    /// The helper's value forced by its own definition under `values`.
-    fn solve(&self, values: &HashMap<Variable, F>) -> F {
-        let helper = self.var;
-        let mut helper_coeff = F::ZERO;
-        let mut rest = F::ZERO;
-        for term in self.definition.terms.iter() {
-            match term {
-                Term::Constant(c) => {
-                    rest.add_assign(c);
-                }
-                Term::Expression {
-                    coeff,
-                    inner,
-                    degree,
-                } if inner[..*degree] == [helper] => {
-                    helper_coeff.add_assign(coeff);
-                }
-                Term::Expression {
-                    coeff,
-                    inner,
-                    degree,
-                } => {
-                    let mut t = *coeff;
-                    for v in &inner[..*degree] {
-                        t.mul_assign(&values[v]);
-                    }
-                    rest.add_assign(&t);
-                }
-            }
-        }
-        let mut value = rest;
-        value.negate();
-        value.mul_assign(&helper_coeff.inverse().unwrap());
-        value
-    }
-}
-
-fn bool_to_field<F: PrimeField>(b: bool) -> F {
-    if b {
-        F::ONE
-    } else {
-        F::ZERO
-    }
-}
+use field::{PrimeField, Proth120};
+use std::collections::HashMap;
 
 fn eval<F: PrimeField>(constraint: &Constraint<F>, values: &HashMap<Variable, F>) -> F {
     let mut result = F::ZERO;
@@ -207,145 +39,140 @@ fn eval<F: PrimeField>(constraint: &Constraint<F>, values: &HashMap<Variable, F>
     result
 }
 
-/// `[jal|jalr writes rd, slt writes rd, rd = x0, PC-bump gate, execute − Σ dispatch]` of the
-/// `ColumnCuts` profile, as the circuit builds them.
-fn column_cuts_gates<F: PrimeField>(system: &BaselineSystem<F>) -> [Constraint<F>; 5] {
-    let mask = system.mask();
-    let f2 = mask.jump_branch_slt();
-    let [jj, slt, rd_zero] = f2_rd_write_gates(
-        f2.perform_jal(),
-        f2.perform_jalr(),
-        f2.perform_slt(),
-        f2.perform_branch(),
-        f2.rd_is_zero(),
-    );
-    [
-        jj,
-        slt,
-        rd_zero,
-        pc_bump_gate(system.execute, &mask),
-        Expr::var(system.execute) - dispatch_sum(&mask),
-    ]
-    .map(|e| e.to_max_quadratic_constraint())
-}
-
-fn padding_zeroed(execute: bool, mask: u32) -> bool {
-    execute || mask == 0
-}
-
-fn gates_match_on_row_classes<F: PrimeField, MopF: PrimeField>() {
-    let system = BaselineSystem::<F>::build::<MopF>();
-    let helpers = BASELINE_HELPERS.map(|n| Helper::new(&system, n));
-    let gates = column_cuts_gates(&system);
-    let rows = unified_row_classes()
-        .into_iter()
-        .map(|mask| (true, mask))
-        .chain([(false, 0)]);
-    for (execute, mask) in rows {
-        let values = system.assignment(execute, mask);
-        let old = helpers.each_ref().map(|h| h.solve(&values));
-        let new = gates.each_ref().map(|g| eval(g, &values));
-        assert_eq!(old[..4], new[..4], "execute {execute} mask {mask:#b}");
-        assert_eq!(new[4], F::ZERO, "tie on execute {execute} mask {mask:#b}");
-        assert_eq!(old[4], bool_to_field(execute), "one-hot on mask {mask:#b}");
-    }
-}
-
-/// On every decoder row class and on padding, each `ColumnCuts` gate equals the value its
-/// `Baseline` helper is forced to by the helper's own definition, and the linear tie holds.
+/// On every row the circuit admits (an executing row whose mask passes the check the decoder
+/// table build enforces, or a padding row, whose flags are zero), the three F2 rd-write gates
+/// and the PC-bump gate equal the helper columns they replace, and the dispatch tie holds.
 #[test]
-fn column_cuts_gates_match_baseline_helpers_on_all_row_classes() {
-    gates_match_on_row_classes::<BabyBearField, BabyBearField>();
-    gates_match_on_row_classes::<Proth120, BabyBearField>();
-}
-
-/// Over all 2^20 Boolean (execute, mask) assignments, in both fields, the PC-bump gate minus
-/// `non_f2_dispatch_sum` equals the tie residual `execute − dispatch_sum`: the two gates are
-/// interchangeable on every assignment that satisfies the tie.
-#[test]
-fn pc_bump_gate_differs_from_non_f2_dispatch_sum_by_the_tie_residual() {
-    fn check<F: PrimeField, MopF: PrimeField>() {
-        let system = BaselineSystem::<F>::build::<MopF>();
-        let mask = system.mask();
-        let [gate, sum, tie] = [
-            pc_bump_gate(system.execute, &mask),
-            non_f2_dispatch_sum(&mask),
-            Expr::var(system.execute) - dispatch_sum(&mask),
+fn column_cut_gates_equal_the_replaced_helpers_on_admitted_rows() {
+    fn check<F: PrimeField>() {
+        let execute = Variable(0);
+        let bits: [Variable; UNIFIED_REDUCED_MACHINE_NUM_FLAGS] =
+            std::array::from_fn(|i| Variable(i as u64 + 1));
+        let mask = UnifiedReducedMachineFamilyCircuitMask::from_full_mask(bits.map(Boolean::Is));
+        let f2 = mask.jump_branch_slt();
+        let [jj, slt, rd_zero] = f2_rd_write_gates(
+            f2.perform_jal(),
+            f2.perform_jalr(),
+            f2.perform_slt(),
+            f2.perform_branch(),
+            f2.rd_is_zero(),
+        );
+        let gates = [
+            jj,
+            slt,
+            rd_zero,
+            pc_bump_gate(execute, &mask),
+            Expr::var(execute) - dispatch_sum(&mask),
         ]
         .map(|e| e.to_max_quadratic_constraint());
-        for execute in [false, true] {
-            for mask in 0..1u32 << UNIFIED_REDUCED_MACHINE_NUM_FLAGS {
-                let values = system.assignment(execute, mask);
-                let mut difference = eval(&gate, &values);
-                difference.sub_assign(&eval(&sum, &values));
-                assert_eq!(difference, eval(&tie, &values), "{execute} {mask:#b}");
+
+        let executing: Vec<u32> = (0..1u32 << UNIFIED_REDUCED_MACHINE_NUM_FLAGS)
+            .filter(|&m| unified_decoder_mask_violation(m).is_none())
+            .collect();
+        assert_eq!(executing.len(), 20);
+        for (e, m) in executing.into_iter().map(|m| (1, m)).chain([(0, 0)]) {
+            let mut values: HashMap<_, _> = bits
+                .iter()
+                .enumerate()
+                .map(|(i, v)| (*v, F::from_u32_unchecked(m >> i & 1)))
+                .collect();
+            values.insert(execute, F::from_u32_unchecked(e));
+            let f2_bit = |b: usize| (m >> (FAMILY_2_FLAG_OFFSET + b) & 1) as i64;
+            let [j, jr, s, b, z] =
+                [JAL_BIT, JALR_BIT, SLT_BIT, BRANCH_BIT, RD_IS_ZERO_BIT].map(f2_bit);
+            let helpers = [
+                (j + jr) * (1 - z),
+                s * (1 - z),
+                (j + jr + s + b) * z,
+                e as i64 * (1 - (j + jr + s + b)),
+                0,
+            ];
+            for (i, (gate, helper)) in gates.iter().zip(helpers).enumerate() {
+                assert!(helper == 0 || helper == 1, "helper {i} on mask {m:#b}");
+                assert_eq!(
+                    eval(gate, &values),
+                    F::from_u32_unchecked(helper as u32),
+                    "gate {i}, execute {e}, mask {m:#b}"
+                );
             }
         }
     }
-    check::<BabyBearField, BabyBearField>();
-    check::<Proth120, BabyBearField>();
+    check::<BabyBearField>();
+    check::<Proth120>();
 }
 
-/// Over all 2^20 Boolean (execute, mask) assignments: the tie with padding zeroing admits a
-/// subset of what the `Baseline` one-hot admits, missing exactly the two `execute = 1`
-/// assignments with no dispatch bit (neither a decoder row); on that subset the PC-bump
-/// gate equals the `Baseline` helper; and the affine F2 gates equal their helpers
-/// exactly on the masks the decoder-mask validator accepts.
+/// The committed layouts and witness graphs of both fields: each aliased scratch slot has
+/// exactly one bare RC-16 lookup, and no u8 or bool writer. The generated witness function
+/// reads a masked-off target back at the writer's own width, so a narrow writer would truncate
+/// the u16 limb another family leaves in the slot.
 #[test]
-fn dispatch_tie_strengthens_one_hot_exhaustively() {
-    let system = BaselineSystem::<BabyBearField>::build::<BabyBearField>();
-    let helpers = BASELINE_HELPERS.map(|n| Helper::new(&system, n));
-    let gates = column_cuts_gates(&system);
-    let classes = unified_row_classes();
-    let one = BabyBearField::ONE;
-    let mut only_old = Vec::new();
-    let mut affine_mismatch = BTreeSet::new();
-    for execute in [false, true] {
-        for mask in 0..1u32 << UNIFIED_REDUCED_MACHINE_NUM_FLAGS {
-            let values = system.assignment(execute, mask);
-            let padding = padding_zeroed(execute, mask);
-            let one_hot = helpers[4].solve(&values);
-            let in_old = padding && (one_hot.is_zero() || one_hot == one);
-            let in_new = padding && eval(&gates[4], &values).is_zero();
-            assert!(!in_new || in_old, "tie admits {execute} {mask:#b}");
-            if in_old && !in_new {
-                only_old.push((execute, mask));
-            }
-            if !in_new {
-                continue;
-            }
-            assert_eq!(
-                eval(&gates[3], &values),
-                helpers[3].solve(&values),
-                "PC-bump gate on {execute} {mask:#b}"
-            );
-            let affine_ok = (0..3).all(|i| eval(&gates[i], &values) == helpers[i].solve(&values));
-            if !affine_ok {
-                affine_mismatch.insert(mask);
-            }
-            if execute {
-                assert_eq!(
-                    affine_ok,
-                    unified_decoder_mask_violation(mask).is_none(),
-                    "affine gates on {mask:#b}"
-                );
-                assert_eq!(
-                    classes.contains(&mask),
-                    unified_decoder_mask_violation(mask).is_none()
-                );
-            }
-        }
+fn aliased_slots_are_range_checked_and_written_at_least_u16() {
+    fn read_json<T: serde::de::DeserializeOwned>(path: &str) -> T {
+        let file = std::fs::File::open(path).unwrap_or_else(|e| panic!("{path}: {e}"));
+        serde_json::from_reader(std::io::BufReader::new(file)).unwrap()
     }
-    let rd_is_zero = 1u32 << UNIFIED_RD_IS_ZERO_BIT;
-    assert_eq!(only_old, vec![(true, 0), (true, rd_is_zero)]);
-    assert!(only_old.iter().all(|(_, m)| !classes.contains(m)));
-    println!(
-        "masks where the affine F2 gates differ from the Baseline helpers ({}): {:?}",
-        affine_mismatch.len(),
-        affine_mismatch
-            .iter()
-            .map(|m| format!("{m:#021b}"))
-            .collect::<Vec<_>>()
+
+    fn check<F: PrimeField + serde::de::DeserializeOwned>(layout: &str, ssa: &str) {
+        let artifact: GKRCircuitArtifact<F> = read_json(layout);
+        let ssa: Vec<Vec<RawExpression<F>>> = read_json(ssa);
+        let slot_var = |slot: usize| {
+            let name = format!("shared scratch var[{slot}]");
+            let vars: Vec<Variable> = artifact
+                .variable_names
+                .iter()
+                .filter(|(_, n)| **n == name)
+                .map(|(v, _)| *v)
+                .collect();
+            assert_eq!(vars.len(), 1, "{layout}: {name}");
+            vars[0]
+        };
+        let writer_types = |slot: usize| -> Vec<&'static str> {
+            let var = slot_var(slot);
+            ssa.iter()
+                .flatten()
+                .filter_map(|e| match e {
+                    RawExpression::WriteVariable {
+                        into_variable,
+                        source_subexpr,
+                        ..
+                    } if *into_variable == var => Some(match source_subexpr {
+                        Expression::Bool(_) => "bool",
+                        Expression::Field(_) => "field",
+                        Expression::U8(_) => "u8",
+                        Expression::U16(_) => "u16",
+                        Expression::U32(_) => "u32",
+                    }),
+                    _ => None,
+                })
+                .collect()
+        };
+        for slot in [17, 18, 7] {
+            let addr = artifact.placement_data[&slot_var(slot)];
+            let range_checks = artifact
+                .range_check_16_lookup_expressions
+                .iter()
+                .filter(|l| l.input.is_trivial_single_input() && l.input.linear_terms[0].1 == addr)
+                .count();
+            assert_eq!(range_checks, 1, "{layout} slot {slot}: RC-16 lookups");
+            let types = writer_types(slot);
+            assert!(types.len() >= 2, "{layout} slot {slot}: writers {types:?}");
+            assert!(
+                types.iter().all(|t| !matches!(*t, "u8" | "bool")),
+                "{layout} slot {slot}: writers {types:?}"
+            );
+        }
+        assert!(
+            writer_types(19).contains(&"u8"),
+            "{layout}: slot 19's byte writer not seen"
+        );
+    }
+
+    check::<BabyBearField>(
+        "compiled_circuits/unified_reduced_machine_layout_gkr.json",
+        "compiled_circuits/unified_reduced_machine_ssa_gkr.json",
     );
-    assert_eq!(affine_mismatch.len(), 16);
+    check::<Proth120>(
+        "compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
+        "compiled_circuits/unified_reduced_machine_ssa_gkr_proth120.json",
+    );
 }
