@@ -96,6 +96,12 @@ addition, bounded aligned PCs, modular successors and native clock effects.
 Retained-port transport recovers actual pre-state reads and final masked writes,
 with final-port retention proved from native constraints. Physical native
 boot/padding/ROM binding and original instruction execution remain separate.
+[Code/ROM preservation](Families/WordMemory/CodeHistory.lean) now derives equality
+of every byte entry below four MiB and retains every successful public ROM
+extraction. Public programs fitting the native ROM region preserve original Sail
+instruction reads/decoding across every projected prefix, even with changing RAM
+stores. Missing bytes remain absent; physical boot/export and original LOAD/STORE
+execution remain open.
 
 These are logical selected-profile results. Remaining families and physical
 setup/argument fidelity remain in [the plan](../../../FORMAL_VERIFICATION_PLAN.md).

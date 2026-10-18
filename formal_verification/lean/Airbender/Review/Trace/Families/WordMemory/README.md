@@ -148,6 +148,27 @@ expected source value or intermediate state is supplied. Ordinary/x0 ROM loads
 with absent shadow bytes and the reversed dependent RAM store/load regression
 exercise the general retained-port lemmas.
 
+## Checked code and ROM preservation
+
+[The short public claim](CodeHistory.lean) adds equality of every byte entry below
+four MiB and preservation of every successful public ROM extraction to initialized
+projected histories. Actual native stores target RAM above this region. The
+[shared byte frame](../../../../Proofs/Trace/CodeHistory.lean) uses original Sail
+register and byte-write lemmas; it covers missing bytes and code outside the
+tracked cell domain. The [native assembly](../../../../Proofs/Trace/Families/WordMemory/CodeHistory.lean)
+reuses public initialization, full matching and projected realization unchanged.
+
+For public programs fitting the native ROM region, actual indexed setup
+construction bounds each complete instruction window. Original byte reads and
+checked pure Sail decoding survive every projected prefix. No expected later
+fetch or table-equivalence premise is supplied. The
+[reversed changing SW/LW regression](../../../../../Tests/WordMemorySailHistory.lean)
+derives terminal RAM 123 from an initial zero while retaining both instruction
+words, their extracted two-word ROM and original source evidence. Ordinary/x0 ROM
+loads also preserve missing shadow bytes while full native matching retains their
+refreshes. This frame neither creates absent padding bytes nor proves original
+LOAD/STORE execution/retirement.
+
 The public shadow seeds describe a logical initialized native image. Binding them
 to physical native zero boot, Sail boot/padding state, actual ROM-table binding
 and original instruction execution/retirement remain open. The existing

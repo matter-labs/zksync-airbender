@@ -99,10 +99,15 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    instruction pre-state and the final actual masked write; native constraints
    prove that the final port always survives projection. Ordinary/x0 ROM loads
    and reversed dependent RAM store/load rows exercise these interfaces without
-   supplied reads/intermediate states. Connect actual public ROM bytes, derive
-   code/ROM-byte preservation from native store regions and checked public ROM
-   domains, and assemble original Sail memory/platform transport, instruction
-   execution and retirement.
+   supplied reads/intermediate states. Projected transfers now preserve every
+   byte below four MiB, including missing bytes and code outside the tracked
+   domain. Actual RAM writes remain outside that region. Successful public ROM
+   extractions survive every projected prefix; public setup construction derives
+   complete code-byte windows for programs fitting the native ROM region, and
+   original Sail source/decoding evidence survives. A reversed dependent SW/LW
+   regression simultaneously derives a real RAM change, retained ROM extraction
+   and original code evidence without a later-read/result premise. Assemble
+   original Sail memory/platform transport, instruction execution and retirement.
    Bind the separate native initializer to physical boot/padding. Physical setup/export binding remains open.
    Preserve v2 PC rollover and native timestamp offsets;
    keep physical setup generation/export and mixed/custom expansion explicit.

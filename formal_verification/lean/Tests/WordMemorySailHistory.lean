@@ -1,10 +1,12 @@
 import Airbender.Proofs.Trace.Families.WordMemory.ProjectedPorts
 import Airbender.Review.Trace.Families.WordMemory.SailHistory
+import Airbender.Review.Trace.Families.WordMemory.CodeHistory
+import Airbender.Proofs.Trace.Terminal
 
 namespace Tests.WordMemorySailHistory
 open Airbender Verification Arithmetic Trace
 
-private def rom : WordROM := ⟨[], by decide⟩
+private def rom : WordROM := ⟨[0x0020a023, 0x0000a183], by decide⟩
 
 /-- Full native row with PC zero, time four and prior port timestamps zero. -/
 private def row (store inROM discard : Bool) (i : Nat) : ZMod mersenne31Modulus :=
@@ -199,19 +201,20 @@ private theorem aligned : ∀ cell ∈ cells, cell.Aligned := by
   simp only [cells, List.mem_cons, List.not_mem_nil, or_false] at member
   rcases member with rfl | rfl | rfl | rfl <;> simp [Cell.Aligned]
 
+private theorem architectural : ∀ cell ∈ cells,
+    Airbender.WordMemory.architecturalAddress cell.addressCode = true := by
+  intro cell present
+  simp only [cells, List.mem_cons, List.not_mem_nil, or_false] at present
+  rcases present with rfl | rfl | rfl | rfl
+  · exact Airbender.WordMemory.Proofs.architectural_register _
+  · exact Airbender.WordMemory.Proofs.architectural_register _
+  · rw [Airbender.WordMemory.Proofs.architectural_ram]; decide
+  · exact Airbender.WordMemory.Proofs.architectural_register _
+
 private theorem projected_of_history {events : List MemoryAccess}
     {start finish : Reference.RiscV.Sail.State} (history : SailHistory cells events start finish) :
     SailHistory cells (events.filter fun event => Airbender.WordMemory.architecturalAddress event.2.1)
       start finish := by
-  have architectural : ∀ cell ∈ cells,
-      Airbender.WordMemory.architecturalAddress cell.addressCode = true := by
-    intro cell present
-    simp only [cells, List.mem_cons, List.not_mem_nil, or_false] at present
-    rcases present with rfl | rfl | rfl | rfl
-    · exact Airbender.WordMemory.Proofs.architectural_register _
-    · exact Airbender.WordMemory.Proofs.architectural_register _
-    · rw [Airbender.WordMemory.Proofs.architectural_ram]; decide
-    · exact Airbender.WordMemory.Proofs.architectural_register _
   have selected : (events.filter fun event => Airbender.WordMemory.architecturalAddress event.2.1) = events := by
     apply List.filter_eq_self.mpr
     intro event present
@@ -263,5 +266,49 @@ theorem dependent_store_load : ∃ middle after,
     simpa [memoryWord, MemoryPort.writeCode, WordColumns.code, WordColumns.evaluate,
       Airbender.WordMemory.importedConstraintsMemoryPorts, loadRow, loadAssignment, row, Nat.unpair_pair, Word.toBitVec, Word.value,
       show (123 : ZMod mersenne31Modulus).val = 123 from by decide] using written
+
+private theorem projected_inputs :
+    Airbender.WordMemory.ShadowImageBoundary trace before cells [] := by
+  constructor
+  · simpa using inputs.domain
+  · exact architectural
+  · simp
+  · simp [Airbender.WordMemory.shadowInitialImage, Airbender.WordMemory.shadowTokens, inputs.image]
+  · exact inputs.initial
+
+private theorem code_image : wordROMImage before 2 = some trace.rom := by
+  have storeRead := (Airbender.WordMemory.Proofs.setup_sources public_setup_built
+    storeEntry (by simp [setup])).bytes
+  have loadRead := (Airbender.WordMemory.Proofs.setup_sources public_setup_built
+    loadEntry (by simp [setup])).bytes
+  change (Cell.ram 0).read before = .ok storeEntry.bits before at storeRead
+  change (Cell.ram 4).read before = .ok loadEntry.bits before at loadRead
+  unfold wordROMImage
+  rw [dif_pos (by decide)]
+  simp only [readROMWords, show BitVec.ofNat 32 (4 * 0) = (0 : BitVec 32) from rfl,
+    show BitVec.ofNat 32 (4 * 1) = (4 : BitVec 32) from rfl, storeRead, loadRead,
+    bind, Option.bind, pure]
+  rfl
+
+/-- The public initialized theorem preserves actual code/ROM extraction while
+    native matching derives a real RAM change from zero to 123. Neither the
+    later bytes, decoded instruction nor terminal read is an input. -/
+theorem initialized_rom_preservation : ∃ after : Reference.RiscV.Sail.State,
+    (∀ key < 4194304, after.mem[key]? = before.mem[key]?) ∧
+    wordROMImage after 2 = some trace.rom ∧
+    (∀ entry ∈ setup.program, entry.SourceWith after Airbender.WordMemory.decoderFields) ∧
+    (Cell.ram 4194320).read after = .ok (123 : BitVec 32) after ∧
+    before.mem[4194320]? = some (0 : BitVec 8) ∧ after.mem[16]? = none := by
+  obtain ⟨history, rows, after, complete, _, _, matched, bytes, images, sources⟩ :=
+    Airbender.WordMemory.public_projected_rom_preservation projected_inputs accepted decoded aligned
+  obtain ⟨cell, _, address, read⟩ := Trace.Proofs.terminal_sail_reads (by decide) accepted
+    (Airbender.WordMemory.Proofs.shadow_clock_boundary (by decide) projected_inputs)
+    inputs.image inputs.domain complete matched (ramToken 9 123) (by simp [trace])
+  have same : cell = Cell.ram 4194320 := Trace.Proofs.cell_address_injective address
+  subst cell
+  refine ⟨after, bytes, images code_image, sources public_setup_built (by decide), ?_, ?_, ?_⟩
+  · simpa [memoryWord, ramToken, Nat.unpair_pair, Word.toBitVec, Word.value] using read
+  · simp [before, Std.ExtHashMap.getElem_insert]
+  · rw [bytes 16 (by decide)]; simp [before]
 
 end Tests.WordMemorySailHistory

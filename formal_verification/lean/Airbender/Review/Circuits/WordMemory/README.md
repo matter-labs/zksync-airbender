@@ -79,8 +79,12 @@ matching and decoder membership. [Actual Sail cell histories](../../Trace/Famili
 now realize reads/writes and intermediate states in the full supplied native cell
 image. [Projected histories](../../Trace/Families/WordMemory/Projection.lean) now
 omit shadow addresses from Sail while retaining full native matching and separate
-public seeds. Physical padding/boot/ROM binding and original Sail instruction
-execution remain open. The local load formula keeps its native x0 flag; the
+public seeds. [Code/ROM preservation](../../Trace/Families/WordMemory/CodeHistory.lean)
+now derives unchanged bytes below four MiB and retained successful public ROM
+extraction through these transfers, including changing RAM stores. Original
+instruction reads/decoding survive for public programs fitting the native ROM
+region. Physical padding/boot/ROM binding and original Sail instruction execution
+remain open. The local load formula keeps its native x0 flag; the
 separate public decoder proof now derives that flag's exact relation to rd.
 The arithmetic-only trace registry remains unchanged until those connections
 are proved. See the [plan](../../../../FORMAL_VERIFICATION_PLAN.md) and

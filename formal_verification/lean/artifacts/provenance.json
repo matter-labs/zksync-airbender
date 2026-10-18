@@ -678,7 +678,7 @@
       "backport_reuse_revision": "868796d746cbb97b459a2b23fd147f209fcbb6ef",
       "backport_reuse_path": "Tests/WordMemoryHistory.lean",
       "backport_reuse_sha256": "2e39bada36324c394de5965b5d114ff636461e0667c5ec21b12b656fa9dabd72",
-      "change": "Copy the checked full native RAM/ROM/x0 row fixture and constraints. Assemble reversed dependent SW/LW rows with actual Sail seeds/bytes and prove the intermediate RAM write/read and destination write from native history; no intermediate/read/result premise. Exercise the generic retained-port RAM read/write transport on the same dependent states, preserving all original fixture and value conclusions."
+      "change": "Copy the checked full native RAM/ROM/x0 row fixture and constraints. Assemble reversed dependent SW/LW rows with actual Sail seeds/bytes and prove the intermediate RAM write/read and destination write from native history; no intermediate/read/result premise. Exercise the generic retained-port RAM read/write transport on the same dependent states, preserving all original fixture and value conclusions. Reuse the same accepted reversed SW/LW history to derive terminal RAM 123 while preserving original instruction reads, pure decoding, actual ROM extraction and missing bytes; no later-state read or value premise."
     },
     {
       "path": "Airbender/Review/Helpers/Memory/ShadowImage.lean",
@@ -705,7 +705,7 @@
       "backport_reuse_revision": "3f40579b5adab84b0de94cdf232f6db226c23aae",
       "backport_reuse_path": "Tests/WordMemoryHistory.lean",
       "backport_reuse_sha256": "4e2a3d945a397e515e38fbcbecceb22f775b0e65cb3f408e89968f9ba350ddf0",
-      "change": "Copy the full native row/constraint fixture. Build separate architectural/native shadow seeds and actual public LW bytes; derive retained/erased events and actual masked Sail writes when shadow reads fail and shadow/ROM values differ. Exercise the general projected native numerical effects, retained source read and masked final-write proofs; share the actual event-projection calculation between regressions."
+      "change": "Copy the full native row/constraint fixture. Build separate architectural/native shadow seeds and actual public LW bytes; derive retained/erased events and actual masked Sail writes when shadow reads fail and shadow/ROM values differ. Exercise the general projected native numerical effects, retained source read and masked final-write proofs; share the actual event-projection calculation between regressions. Preserve every ROM-prefix byte, including absent shadow bytes, under the same ordinary/x0 histories while retaining full native refresh matching."
     },
     {
       "path": "Airbender/Proofs/Trace/Families/WordMemory/Inputs.lean",
@@ -741,6 +741,25 @@
       "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/PortReads.lean",
       "backport_reuse_sha256": "450eaadb853a6ab79bf105e15d014484c0e3790b009dff286f15eb2c1e3a9348",
       "change": "Reuse source-index recovery and actual native port mapping with the checked generic filtered transport. Derive final-port retention from v2 load/store geometry and constraints; do not assume shadow readability or desired reads."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/CodeHistory.lean",
+      "source_path": "Airbender/Proofs/Trace/CodeHistory.lean",
+      "source_sha256": "8c50b1c72abc1cdd137a368fa2b4e4591be6a80b242aea74a6009d3e26e63c5d",
+      "change": "Adapt source history_code_frame_of_domain and entry_source_after_history to preserve individual byte entries below a public domain and transport original word reads/pure decoding. Reuse unchanged original Sail GPR/write/frame lemmas; avoid v3 field inverses, full shadow images and ROM table assumptions."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/CodeHistory.lean",
+      "source_path": "Airbender/Proofs/Trace/CodeHistory.lean",
+      "source_sha256": "8c50b1c72abc1cdd137a368fa2b4e4591be6a80b242aea74a6009d3e26e63c5d",
+      "change": "Adapt source code/ROM-history assembly to the checked v2 architectural projection and native four-MiB domain. Reuse initialized matching/realization unchanged, derive indexed public code windows and transport actual ROM extraction and original Sail source evidence without per-row expected fetch/value premises."
+    },
+    {
+      "path": "Airbender/Proofs/WordMemory/ROMImage.lean",
+      "backport_reuse_revision": "44c2d3bdc17c235ba137d3d7dd0d58f264a7367c",
+      "backport_reuse_path": "Airbender/Proofs/WordMemory/ROMImage.lean",
+      "backport_reuse_sha256": "5cf5e27c80ce3a76fc26014b363c2f737edeac19ba72da6eb949df260a7ecfa8",
+      "change": "Reuse the existing extracted-prefix recursion and successful-read state frame. Transport the actual readROMWords/wordROMImage constructor through proved byte preservation; keep original extraction, native lookup bridge and missing-padding behavior unchanged."
     }
   ]
 }

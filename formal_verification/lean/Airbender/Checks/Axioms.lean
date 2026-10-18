@@ -458,3 +458,17 @@ import Tests.WordMemoryProjection
 #print axioms Airbender.WordMemory.public_projected_native_effects
 #print axioms Tests.WordMemoryProjection.projected_native_effects
 #print axioms Tests.WordMemoryProjection.projected_source_sail_read
+
+#print axioms Airbender.Trace.Proofs.history_byte_frame_of_domain
+#print axioms Airbender.Trace.Proofs.word_read_byte_frame
+#print axioms Airbender.Trace.Proofs.entry_source_after_byte_frame
+#print axioms Airbender.WordMemory.Proofs.read_rom_words_after_frame
+#print axioms Airbender.WordMemory.Proofs.rom_image_after_frame
+#print axioms Airbender.WordMemory.Proofs.architectural_ram_domain
+#print axioms Airbender.WordMemory.Proofs.projected_history_rom_bytes
+#print axioms Airbender.WordMemory.Proofs.setup_rom_pc
+#print axioms Airbender.WordMemory.Proofs.setup_sources_after_history
+#print axioms Airbender.WordMemory.Proofs.projected_rom_preservation
+#print axioms Airbender.WordMemory.public_projected_rom_preservation
+#print axioms Tests.WordMemorySailHistory.initialized_rom_preservation
+#print axioms Tests.WordMemoryProjection.projected_rom_byte_frame

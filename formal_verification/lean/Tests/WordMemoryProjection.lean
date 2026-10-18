@@ -1,3 +1,4 @@
+import Airbender.Review.Trace.Families.WordMemory.CodeHistory
 import Airbender.Review.Trace.Families.WordMemory.Projection
 import Airbender.Review.Trace.Families.WordMemory.Inputs
 import Airbender.Proofs.Trace.Families.WordMemory.ProjectedPorts
@@ -319,5 +320,19 @@ theorem projected_native_effects (discard : Bool) :
       ClockEffects native.columns native.assignment :=
   Airbender.WordMemory.public_projected_native_effects (inputs discard)
     (public_decoder_built discard) (accepted discard) (decoded discard)
+
+/-- Ordinary/x0 loads preserve absent shadow bytes as well as actual code bytes;
+    their distinct native shadow values remain in the complete matched history. -/
+theorem projected_rom_byte_frame (discard : Bool) :
+    ∃ (history : TimestampSortedMemoryAccessList) (after : Reference.RiscV.Sail.State),
+      MemoryHistory (trace discard) history ∧ List.Mem (event discard 1) history.val ∧
+      (∀ key < 4194304, after.mem[key]? = (before discard).mem[key]?) ∧
+      after.mem[16]? = none := by
+  obtain ⟨history, after, complete, shadow, actual, _⟩ := projected_rom_history discard
+  have bytes := Airbender.WordMemory.Proofs.projected_history_rom_bytes
+    (inputs discard).architectural actual
+  refine ⟨history, after, complete, shadow, bytes, ?_⟩
+  rw [bytes 16 (by decide)]
+  simp [before]
 
 end Tests.WordMemoryProjection

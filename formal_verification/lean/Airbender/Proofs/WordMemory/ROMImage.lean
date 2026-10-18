@@ -3,6 +3,7 @@ import Airbender.Review.Circuits.WordMemory.Model
 import Airbender.Proofs.Trace.InitialImage
 import Airbender.Proofs.WordMemory.Tables
 import Airbender.Proofs.Trace.Program
+import Airbender.Proofs.Trace.CodeHistory
 
 namespace Airbender.WordMemory.Proofs
 open Arithmetic Verification Trace
@@ -115,5 +116,47 @@ theorem native_full_rom_read {p : Nat} [Fact p.Prime] (hp : 4194304 < p)
   change (w 20).val < 64 at region
   change (w 19).val + 65536 * (w 20).val < 4 * 1048576
   omega
+
+/-- Reuse the extracted-prefix recursion in a later state whose ROM bytes agree.
+    No ROM vector is recomputed by evaluation or postulated by a table premise. -/
+theorem read_rom_words_after_frame {before after : Reference.RiscV.Sail.State}
+    (bytes : ∀ key < 4194304, after.mem[key]? = before.mem[key]?)
+    {count : Nat} (bound : count ≤ 1048576) {words : Vector (BitVec 32) count}
+    (image : readROMWords before count = some words) :
+    readROMWords after count = some words := by
+  induction count with
+  | zero => simp only [readROMWords] at image ⊢; exact image
+  | succ count ih =>
+    unfold readROMWords at image ⊢
+    cases previous : readROMWords before count with
+    | none => simp [previous, bind, Option.bind] at image
+    | some extracted =>
+      have earlier := ih (by omega) previous
+      cases read : (Cell.ram (BitVec.ofNat 32 (4 * count))).read before with
+      | error error state => simp [previous, read, bind, Option.bind] at image
+      | ok value state =>
+        have same := Trace.Proofs.cell_read_frame _ read
+        subst state
+        have within : (BitVec.ofNat 32 (4 * count)).toNat + 4 ≤ 4194304 := by
+          rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)]
+          omega
+        have later := Trace.Proofs.word_read_byte_frame bytes within read
+        simpa only [previous, earlier, read, later, bind, Option.bind] using image
+
+/-- Every successful public ROM extraction survives actual byte preservation,
+    including the full image. Absent padding bytes stay absent. -/
+theorem rom_image_after_frame {before after : Reference.RiscV.Sail.State}
+    (bytes : ∀ key < 4194304, after.mem[key]? = before.mem[key]?)
+    {count : Nat} {rom : WordROM} (image : wordROMImage before count = some rom) :
+    wordROMImage after count = some rom := by
+  by_cases bound : count ≤ 1048576
+  · unfold wordROMImage at image ⊢
+    simp only [dif_pos bound] at image ⊢
+    cases built : readROMWords before count with
+    | none => simp [built, bind, Option.bind] at image
+    | some words =>
+      have later := read_rom_words_after_frame bytes bound built
+      simpa only [built, later] using image
+  · simp [wordROMImage, bound] at image
 
 end Airbender.WordMemory.Proofs

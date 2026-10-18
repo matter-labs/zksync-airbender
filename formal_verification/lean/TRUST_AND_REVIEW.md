@@ -151,6 +151,19 @@ the ROM prefix. Decoder indices identify the source GPR without an expected read
 premise. Ordinary/x0 ROM loads and reversed dependent RAM store/load regressions
 exercise these general lemmas. Physical boot/padding, ROM-table binding and
 original instruction execution/retirement remain separate.
+[Code/ROM preservation](Airbender/Review/Trace/Families/WordMemory/CodeHistory.lean)
+now derives equality of every byte entry below four MiB through actual projected
+Sail histories. The checked architectural domain and native final-port retention
+exclude actual stores there; byte windows use the unchanged original Sail runtime
+write/frame lemmas. Missing bytes and words outside the tracked cell list are
+covered. Every successful public ROM extraction survives, including the full
+image. For programs fitting the native ROM region, actual indexed setup
+construction bounds each complete code window; its checked pure decoder and
+original byte reads survive every history prefix. No later fetch, expected ROM
+value or table-equivalence premise is added. The changing reversed SW/LW fixture
+simultaneously derives terminal RAM 123, unchanged code/ROM extraction and original
+source evidence. Physical padding/boot/export and original instruction execution
+remain separate.
 [Public ROM extraction](Airbender/Review/Helpers/Tables/WordROMImage.lean)
 now obtains words by actual original Sail reads. The
 [ROM read bridge](Airbender/Review/Trace/Families/WordMemory/ROMImage.lean) recovers

@@ -15,5 +15,7 @@ into a bounded word vector and retains the complete native UNIMP tail. The
 [read bridge](../../../Proofs/WordMemory/ROMImage.lean) recovers native ROM query
 data as actual Sail reads inside the extracted prefix. Extracting all 1048576
 words covers the entire ROM region. Missing padding bytes are not filled by the
-constructor; boot/padding/shadow state, physical export and cryptographic
-connections remain separate. No expected-read or table-equivalence premise is used.
+constructor. [Initialized projected histories](../../Trace/Families/WordMemory/CodeHistory.lean)
+now preserve every actual byte entry below four MiB and every successful
+extraction through changing RAM stores. Boot/padding/shadow state, physical export
+and cryptographic connections remain separate. No expected-read or table-equivalence premise is used.
