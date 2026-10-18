@@ -8,16 +8,13 @@ use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
-use gpu_core::primitives::static_host::alloc_static_pinned_box_from_slice;
 use gpu_gkr_compiler::{
     CoeffProduct, CoefficientRecipeId, NormalizedCoefficientRecipe, WindowCoefficientPlan,
 };
 use gpu_prover_context::transfer::{Transfer, TransferKeepalive};
 use gpu_prover_context::ProverContext;
 
-use super::scheduled_execution::{
-    note_device, note_resource, resource_ledger_active, ResourceEventPr, ResourceIdPr,
-};
+use super::scheduled_execution::{note_device, resource_ledger_active, ResourceEventPr};
 use crate::backward::window::coefficient_bank::{
     coefficient_bank_challenge_slot, CoefficientBankError, BWD_COEFF_CHALLENGE_CLAIM_BATCHING,
 };
@@ -242,6 +239,7 @@ fn translate_recipe(
     recipe: &NormalizedCoefficientRecipe,
     recipe_index: usize,
     top_bits: &[u32],
+    keep_zeros: bool,
 ) -> Result<Vec<(PR, CoeffMonomialPr)>, CoefficientBankError> {
     let mut merged: BTreeMap<(u16, u8, u8, u8, u8), PR> = BTreeMap::new();
     for (product_index, product) in recipe.terms.iter().enumerate() {
@@ -268,13 +266,17 @@ fn translate_recipe(
     }
     Ok(merged
         .into_iter()
-        .filter(|(_, scalar)| !scalar.is_zero())
+        .filter(|(_, scalar)| keep_zeros || !scalar.is_zero())
         .map(|(key, scalar)| (scalar, CoeffMonomialPr::from_key(key)))
         .collect())
 }
 
 impl CoefficientTablesHostPr {
     pub(crate) fn build(programs: &GkrProgramsPr, top_bits: &[u32]) -> Self {
+        Self::build_with(programs, top_bits, false)
+    }
+
+    fn build_with(programs: &GkrProgramsPr, top_bits: &[u32], keep_zeros: bool) -> Self {
         let layers = programs.r0.len();
         assert_eq!(
             programs.continuations.layers.len(),
@@ -315,12 +317,12 @@ impl CoefficientTablesHostPr {
                         "Proth120 R0 layer {layer} plan {index} is an unsupported LinearBasis plan"
                     ),
                 };
-                tables.push_recipe(recipe, index, scalar, top_bits, layer);
+                tables.push_recipe(recipe, index, scalar, top_bits, layer, keep_zeros);
             }
             let r0_len = tables.recipes.len() - recipe_first;
             tables.push_literals();
             for (index, recipe) in continuation.coefficients.iter().enumerate() {
-                tables.push_recipe(recipe, index, None, top_bits, layer);
+                tables.push_recipe(recipe, index, None, top_bits, layer, keep_zeros);
             }
             let continuation_len = tables.recipes.len() - recipe_first - r0_len;
             assert!(
@@ -357,10 +359,12 @@ impl CoefficientTablesHostPr {
         scalar: Option<PR>,
         top_bits: &[u32],
         layer: usize,
+        keep_zeros: bool,
     ) {
-        let translated = translate_recipe(recipe, index, top_bits).unwrap_or_else(|error| {
-            panic!("Proth120 coefficient tables layer {layer} recipe {index}: {error:?}")
-        });
+        let translated =
+            translate_recipe(recipe, index, top_bits, keep_zeros).unwrap_or_else(|error| {
+                panic!("Proth120 coefficient tables layer {layer} recipe {index}: {error:?}")
+            });
         self.push_monomials(&translated, scalar);
     }
 
@@ -473,17 +477,17 @@ pub(crate) struct CoefficientTablesPr {
     layers: Vec<CoefficientLayerRangesPr>,
 }
 
-pub(crate) fn schedule_coefficient_tables_upload_pr(
+type CoefficientWordsPr = (Vec<PR>, Vec<u32>);
+
+fn allocate_coefficient_tables_pr(
     host: &CoefficientTablesHostPr,
     context: &ProverContext,
-) -> CudaResult<(CoefficientTablesPr, TransferKeepalive<'static>)> {
+) -> CudaResult<(CoefficientTablesPr, CoefficientWordsPr)> {
     host.assert_consistent();
     let values_host = host.values();
     let index_host = host.index_words();
-    let values_source = Arc::new(alloc_static_pinned_box_from_slice(&values_host)?);
-    let index_source = Arc::new(alloc_static_pinned_box_from_slice(&index_host)?);
-    let mut values = context.alloc(values_host.len(), AllocationPlacement::BestFit)?;
-    let mut index = context.alloc(index_host.len(), AllocationPlacement::BestFit)?;
+    let values = context.alloc(values_host.len(), AllocationPlacement::BestFit)?;
+    let index = context.alloc(index_host.len(), AllocationPlacement::BestFit)?;
     if resource_ledger_active() {
         note_device(
             context,
@@ -501,31 +505,7 @@ pub(crate) fn schedule_coefficient_tables_upload_pr(
             "bwd.coefficient_tables.index",
             &index,
         );
-        note_resource(
-            context,
-            "backward",
-            None,
-            ResourceEventPr::HostKeepalive,
-            "bwd.coefficient_tables.values_source",
-            ResourceIdPr::host(&values_source[..]),
-            None,
-        );
-        note_resource(
-            context,
-            "backward",
-            None,
-            ResourceEventPr::HostKeepalive,
-            "bwd.coefficient_tables.index_source",
-            ResourceIdPr::host(&index_source[..]),
-            None,
-        );
     }
-    let mut transfer = Transfer::new()?;
-    transfer.record_allocated(context)?;
-    transfer.schedule(values_source, &mut values, context)?;
-    transfer.schedule(index_source, &mut index, context)?;
-    transfer.record_transferred(context)?;
-    transfer.ensure_transferred(context)?;
     let tables = CoefficientTablesPr {
         values,
         index,
@@ -534,7 +514,91 @@ pub(crate) fn schedule_coefficient_tables_upload_pr(
         immediate_base: host.monomial_coeffs.len() + host.scalars.len(),
         layers: host.layers.clone(),
     };
+    Ok((tables, (values_host, index_host)))
+}
+
+fn stage_coefficient_tables_pr(
+    tables: &mut CoefficientTablesPr,
+    (values, index): &CoefficientWordsPr,
+    transfer: &mut Transfer<'_>,
+) {
+    transfer.stage(values, &mut tables.values);
+    transfer.stage(index, &mut tables.index);
+}
+
+pub(crate) fn schedule_coefficient_tables_upload_pr(
+    host: &CoefficientTablesHostPr,
+    context: &ProverContext,
+) -> CudaResult<(CoefficientTablesPr, TransferKeepalive<'static>)> {
+    let (mut tables, words) = allocate_coefficient_tables_pr(host, context)?;
+    let mut transfer = Transfer::new()?;
+    transfer.record_allocated(context)?;
+    stage_coefficient_tables_pr(&mut tables, &words, &mut transfer);
+    transfer.record_transferred(context)?;
+    transfer.ensure_transferred(context)?;
     Ok((tables, transfer.into_keepalive()))
+}
+
+/// Coefficient tables built and allocated before `schedule_gkr`; the caller
+/// stages them into its own input transfer.
+pub struct PreparedCoefficientTablesPr {
+    programs: Arc<GkrProgramsPr>,
+    top_bits: Vec<u32>,
+    tables: CoefficientTablesPr,
+    words: Option<CoefficientWordsPr>,
+}
+
+impl PreparedCoefficientTablesPr {
+    pub fn new(
+        programs: &Arc<GkrProgramsPr>,
+        top_bits: &[u32],
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
+        let host = CoefficientTablesHostPr::build(programs, top_bits);
+        let (tables, words) = allocate_coefficient_tables_pr(&host, context)?;
+        Ok(Self {
+            programs: Arc::clone(programs),
+            top_bits: top_bits.to_vec(),
+            tables,
+            words: Some(words),
+        })
+    }
+
+    pub fn stage_transfer(&mut self, transfer: &mut Transfer<'_>) {
+        let words = self
+            .words
+            .take()
+            .expect("Proth120 coefficient tables are staged once");
+        stage_coefficient_tables_pr(&mut self.tables, &words, transfer);
+    }
+
+    pub(crate) fn into_tables(
+        self,
+        programs: &Arc<GkrProgramsPr>,
+        top_bits: &[u32],
+    ) -> CoefficientTablesPr {
+        assert!(
+            self.words.is_none(),
+            "Proth120 coefficient tables were not staged"
+        );
+        assert!(
+            Arc::ptr_eq(&self.programs, programs),
+            "Proth120 coefficient tables were built for other programs"
+        );
+        assert_eq!(
+            self.top_bits, top_bits,
+            "Proth120 coefficient tables were built for other top bits"
+        );
+        self.tables
+    }
+}
+
+/// Upper bound of the bytes [`PreparedCoefficientTablesPr`] stages for any top
+/// bits: the tables without dropping the monomials whose coefficient is zero.
+pub fn max_coefficient_table_bytes(programs: &GkrProgramsPr) -> usize {
+    let top_bits = vec![1; programs.runtime_circuit.memory_layout.teardown_sets.len()];
+    let host = CoefficientTablesHostPr::build_with(programs, &top_bits, true);
+    host.values().len() * size_of::<PR>() + host.index_words().len() * size_of::<u32>()
 }
 
 #[derive(Clone, Copy, Debug)]

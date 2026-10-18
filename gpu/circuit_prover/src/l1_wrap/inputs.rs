@@ -7,6 +7,7 @@ use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::static_host::StaticPinnedBox;
+use gpu_gkr::proth120::backward::PreparedCoefficientTablesPr;
 use gpu_gkr::proth120::base_layer_claims::BaseClaimIndicesPr;
 use gpu_gkr::proth120::packed_challenges::{transcript_prefix_words, BOUNDARY_PREFIX_U32_LEN};
 use gpu_gkr::setup::L1WrapSetupHost;
@@ -40,6 +41,7 @@ pub struct L1WrapInputs<'a, A: GoodAllocator> {
     pub(crate) setup_host: Arc<L1WrapSetupHost>,
     pub(crate) constants: Arc<L1WrapConstantsHost>,
     pub(crate) relations: Proth120LookupRelations,
+    pub(crate) coefficient_tables: PreparedCoefficientTablesPr,
     pub(crate) base_claim_indices: BaseClaimIndicesPr,
     pub(crate) request_range: Option<Range>,
 }
@@ -91,6 +93,8 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
         let transcript_prefix =
             context.alloc::<u32>(transcript_prefix_host.len(), AllocationPlacement::BestFit)?;
         let relations = Proth120LookupRelations::allocate(&constants.relations, context)?;
+        let coefficient_tables =
+            PreparedCoefficientTablesPr::new(&constants.programs, &top_bits_host, context)?;
         let base_claim_indices =
             BaseClaimIndicesPr::allocate(&constants.base_claim_indices, context)?;
         let transfer = Transfer::new()?;
@@ -106,6 +110,7 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
             setup_host,
             constants,
             relations,
+            coefficient_tables,
             base_claim_indices,
             request_range: None,
         })
@@ -120,6 +125,7 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
     pub fn schedule(&mut self, context: &ProverContext) -> CudaResult<()> {
         self.transfer
             .stage(&self.transcript_prefix_host, &mut self.transcript_prefix);
+        self.coefficient_tables.stage_transfer(&mut self.transfer);
         if let Some(decoder) = self.decoder.as_mut() {
             decoder.schedule_transfer(&mut self.transfer, context)?;
         }

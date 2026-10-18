@@ -2,10 +2,13 @@ use super::geometry::cpu_tests::wrap_geometry;
 use super::inputs::ALLOCATOR_BLOCK_BYTES;
 use super::*;
 use crate::proof::memory_policy::presets::l1_feeder;
-use crate::proof::memory_policy::presets::INPUTS_RESERVE_BYTES;
+use crate::proof::memory_policy::presets::{H2D_STAGING_BYTES, INPUTS_RESERVE_BYTES};
 use crate::upstream::OutputType;
 use crate::upstream::{FinalRegisterValue, GKRCircuitArtifact, SecurityLevel};
 use cs::definitions::GKRAddress;
+use gpu_gkr::proth120::backward::max_coefficient_table_bytes;
+use gpu_gkr::proth120::packed_challenges::BOUNDARY_PREFIX_U32_LEN;
+use gpu_gkr::proth120::programs::GkrProgramsPr;
 use gpu_gkr::proth120::proof_layout::M6ProofFields;
 use gpu_prover_context::ProverContextConfig;
 use gpu_trace::witness::circuit_type::CircuitType;
@@ -56,6 +59,23 @@ fn cpu_m8_l1_inputs_fit_reserve() {
     let mib = 1 << 20;
     assert_eq!(bytes, (112 + 1 + 16 + 32 + 3 + 1) * mib);
     assert!(bytes <= INPUTS_RESERVE_BYTES);
+}
+
+#[test]
+fn cpu_l1_wrap_phase_one_staging_fits() {
+    let circuit: GKRCircuitArtifact<Proth120> = serde_json::from_str(include_str!(
+        "../../../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120_2p21.json"
+    ))
+    .expect("committed Proth120 layout");
+    let num_sets = circuit.memory_layout.teardown_sets.len();
+    let programs = GkrProgramsPr::compile(CircuitType::L1Wrap21, std::sync::Arc::new(circuit))
+        .expect("L1Wrap21 programs");
+    let staged = (BOUNDARY_PREFIX_U32_LEN + num_sets) * size_of::<u32>()
+        + max_coefficient_table_bytes(&programs);
+    assert!(
+        staged <= H2D_STAGING_BYTES,
+        "L1Wrap phase one stages up to {staged} bytes, the staging buffer holds {H2D_STAGING_BYTES}"
+    );
 }
 
 #[test]

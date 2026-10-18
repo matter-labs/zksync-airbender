@@ -153,6 +153,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         setup_host,
         constants: _,
         relations,
+        coefficient_tables,
         base_claim_indices,
         request_range,
     } = inputs;
@@ -336,6 +337,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         dr_tail_plan,
         None,
         GkrPreparedInputsPr {
+            coefficient_tables: Some(coefficient_tables),
             base_claim_indices: Some(base_claim_indices),
         },
         &mut callbacks,

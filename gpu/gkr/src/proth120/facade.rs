@@ -7,6 +7,7 @@ use gpu_core::primitives::context::{DeviceAllocation, UnsafeMutAccessor};
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::packed::PackedCosetRecomputeOracle;
 
+use super::backward::banks::PreparedCoefficientTablesPr;
 use super::backward::dr_tail::PR_DR_FINAL_TRACE_LOG_2;
 use super::backward::scheduled_execution::{
     note_device, note_resource, resource_ledger_active, ResourceCountsPr, ResourceEventPr,
@@ -29,6 +30,7 @@ use crate::upstream::{ProverConfig, PR};
 /// input transfer; each `None` is built and copied in during the schedule.
 #[derive(Default)]
 pub struct GkrPreparedInputsPr {
+    pub coefficient_tables: Option<PreparedCoefficientTablesPr>,
     pub base_claim_indices: Option<BaseClaimIndicesPr>,
 }
 
@@ -50,7 +52,10 @@ pub fn schedule_gkr(
     callbacks: &mut Callbacks<'_>,
     context: &ProverContext,
 ) -> CudaResult<GkrOutputPr> {
-    let GkrPreparedInputsPr { base_claim_indices } = prepared;
+    let GkrPreparedInputsPr {
+        coefficient_tables,
+        base_claim_indices,
+    } = prepared;
     assert_eq!(
         config.trace_len_log2,
         base.log_rows() as usize,
@@ -128,6 +133,7 @@ pub fn schedule_gkr(
         challenges,
         proof,
         stage_snapshots,
+        coefficient_tables,
         callbacks,
         context,
     )?;

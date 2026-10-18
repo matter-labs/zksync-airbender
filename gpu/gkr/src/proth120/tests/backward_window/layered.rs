@@ -67,6 +67,7 @@ fn pr_backward_layered_small() {
         &fixture.challenges,
         &mut proof,
         Some(UnsafeMutAccessor::new(&mut sink)),
+        None,
         &mut callbacks,
         &context,
     )

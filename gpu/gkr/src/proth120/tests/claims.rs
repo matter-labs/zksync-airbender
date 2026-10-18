@@ -656,6 +656,7 @@ fn schedule_fixture_full(context: &gpu_prover_context::ProverContext) -> Schedul
         &dr_tail_plan,
         None,
         crate::proth120::GkrPreparedInputsPr {
+            coefficient_tables: None,
             base_claim_indices: Some(indices),
         },
         &mut callbacks,
