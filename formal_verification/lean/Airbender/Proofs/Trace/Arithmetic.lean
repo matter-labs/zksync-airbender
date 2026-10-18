@@ -1,6 +1,7 @@
 import Airbender.Proofs.Trace.PortReads
 import Airbender.Proofs.Trace.Retirement
 import Airbender.Proofs.Trace.PC
+import Airbender.Proofs.Trace.ProgramImage
 import Airbender.Proofs.Trace.Values
 import Airbender.Proofs.AddSub.DecodedInterface
 
@@ -22,8 +23,8 @@ def arithmeticOutput (w : Nat → ZMod p) : Output :=
     and the selected public decoder row, rather than per-row assumptions. -/
 theorem arithmetic_row_ranges [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {trace : Data p} {setup : DecoderSetup} {initial : State} {cells : List Cell}
-    {count logCapacity : Nat} (inputs : ImageBoundary trace initial cells)
-    (image : decoderSetupImage initial count logCapacity = some setup)
+    {count : Nat} (inputs : ImageBoundary trace initial cells)
+    (image : IndexedProgram initial count setup.program)
     (accepted : Accepted trace) (decoded : Decoded trace setup)
     {w : Nat → ZMod p} (member : (⟨.addSub, w⟩ : Row p) ∈ trace.rows) :
     (Word.mk (w 25).val (w 26).val).Bounded ∧
@@ -38,7 +39,7 @@ theorem arithmetic_row_ranges [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (by change AddSub.importedConstraintsMemoryPorts[1] ∈ AddSub.importedConstraintsMemoryPorts
         simp [AddSub.importedConstraintsMemoryPorts])
   rw [read_word] at left right
-  exact ⟨left, right, (decoded_word_bounds large image accepted decoded _ member).2⟩
+  exact ⟨left, right, (indexed_decoder_inputs large image accepted decoded _ member).2.1⟩
 
 /-- Original decoded constructors, actual native port reads and canonical words
     discharge the existing local ADD/SUB interface. This internal lemma exposes
@@ -112,8 +113,8 @@ theorem arithmetic_mapping [Fact p.Prime] {w : Nat → ZMod p} {before : State}
 /-- Global acceptance/public setup supply every numerical local premise. -/
 theorem arithmetic_row_interface [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {trace : Data p} {setup : DecoderSetup} {initial : State} {cells : List Cell}
-    {count logCapacity : Nat} (inputs : ImageBoundary trace initial cells)
-    (image : decoderSetupImage initial count logCapacity = some setup)
+    {count : Nat} (inputs : ImageBoundary trace initial cells)
+    (image : IndexedProgram initial count setup.program)
     (accepted : Accepted trace) (decoded : Decoded trace setup)
     {w : Nat → ZMod p} (member : (⟨.addSub, w⟩ : Row p) ∈ trace.rows)
     {entry : ProgramEntry} (fields : decoderFields entry.instruction = some entry.data)
@@ -129,8 +130,8 @@ theorem arithmetic_row_interface [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have large : limbBase < p := by dsimp [limbBase, timestampBase] at *; omega
   exact local_arithmetic_interface large trace.memoryEpoch
     (arithmetic_row_ranges hp inputs image accepted decoded member)
-    (decoded_word_bounds large image accepted decoded _ member).1
-    (decoded_pc_aligned large image accepted decoded _ member)
+    (indexed_decoder_inputs large image accepted decoded _ member).1
+    (indexed_decoder_inputs large image accepted decoded _ member).2.2
     fields query opcode rs1 rs2 rd immediate upper encoding history pc
 
 /-- Original Sail preparation/execution/retirement reaches the actual native
@@ -138,8 +139,8 @@ theorem arithmetic_row_interface [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     native history and projected Sail write, rather than supplied as a result. -/
 theorem arithmetic_row_execution [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {trace : Data p} {setup : DecoderSetup} {initial : State} {cells : List Cell}
-    {count logCapacity : Nat} (inputs : ImageBoundary trace initial cells)
-    (image : decoderSetupImage initial count logCapacity = some setup)
+    {count : Nat} (inputs : ImageBoundary trace initial cells)
+    (image : IndexedProgram initial count setup.program)
     (accepted : Accepted trace) (decoded : Decoded trace setup)
     {w : Nat → ZMod p} (member : (⟨.addSub, w⟩ : Row p) ∈ trace.rows)
     {entry : ProgramEntry} (fields : decoderFields entry.instruction = some entry.data)
@@ -174,8 +175,8 @@ theorem arithmetic_row_execution [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     retirement overwrites controls while retaining the derived native data state. -/
 theorem arithmetic_rebased_step [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {trace : Data p} {setup : DecoderSetup} {initial : State} {cells : List Cell}
-    {count logCapacity : Nat} (inputs : ImageBoundary trace initial cells)
-    (image : decoderSetupImage initial count logCapacity = some setup)
+    {count : Nat} (inputs : ImageBoundary trace initial cells)
+    (image : IndexedProgram initial count setup.program)
     (accepted : Accepted trace) (decoded : Decoded trace setup)
     {w : Nat → ZMod p} (member : (⟨.addSub, w⟩ : Row p) ∈ trace.rows)
     {entry : ProgramEntry} (fields : decoderFields entry.instruction = some entry.data)
@@ -200,8 +201,8 @@ theorem arithmetic_rebased_step [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     All operands, ranges, preprocessing and control effects remain derived. -/
 theorem arithmetic_instruction_execution [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {trace : Data p} {setup : DecoderSetup} {initial : State} {cells : List Cell}
-    {count logCapacity : Nat} (inputs : ImageBoundary trace initial cells)
-    (image : decoderSetupImage initial count logCapacity = some setup)
+    {count : Nat} (inputs : ImageBoundary trace initial cells)
+    (image : IndexedProgram initial count setup.program)
     (accepted : Accepted trace) (decoded : Decoded trace setup)
     {w : Nat → ZMod p} (member : (⟨.addSub, w⟩ : Row p) ∈ trace.rows)
     {entry : ProgramEntry} (fields : decoderFields entry.instruction = some entry.data)

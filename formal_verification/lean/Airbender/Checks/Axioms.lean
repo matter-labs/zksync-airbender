@@ -21,6 +21,7 @@ import Tests.NativeSparseSetup
 import Tests.SparseExecution
 import Tests.NativeScalars
 import Tests.NativeArithmeticSetup
+import Tests.SparseArithmeticExecution
 
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
@@ -744,3 +745,18 @@ import Tests.NativeArithmeticSetup
 #print axioms Tests.NativeArithmeticSetup.public_text
 #print axioms Tests.NativeArithmeticSetup.later_constraints
 #print axioms Tests.NativeArithmeticSetup.later_source
+#print axioms Airbender.Trace.Proofs.sparse_decoder_member
+#print axioms Airbender.Trace.Proofs.strict_indexed_program
+#print axioms Airbender.Trace.Proofs.sparse_indexed_program
+#print axioms Airbender.Trace.Proofs.IndexedProgram.pc_aligned
+#print axioms Airbender.Trace.Proofs.sparse_selected_decoded
+#print axioms Airbender.Trace.Proofs.indexed_decoder_inputs
+#print axioms Airbender.Trace.Proofs.sparse_image_execution_soundness
+#print axioms Airbender.Trace.sparse_public_sail_execution
+#print axioms Tests.SparseArithmeticExecution.native_constraints
+#print axioms Tests.SparseArithmeticExecution.accepted
+#print axioms Tests.SparseArithmeticExecution.decoder_built
+#print axioms Tests.SparseArithmeticExecution.decoded
+#print axioms Tests.SparseArithmeticExecution.initialized_execution
+#print axioms Tests.SparseArithmeticExecution.terminal_values
+#print axioms Airbender.Trace.Proofs.indexed_execution_soundness

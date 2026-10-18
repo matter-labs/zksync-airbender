@@ -171,5 +171,14 @@ now certifies every slot of a native export against independent original Sail
 public bytes/decoding. Native equations exclude its interior UNIMP hole and full
 tail before membership recovers a supported source. The nonempty ADD witness at
 PC 24 retains its original index after the hole. General decoder refinement,
-custom MOPs, sparse initialized arithmetic execution and full physical setup/
-argument connections remain separate.
+custom MOPs and full physical setup/argument connections remain separate.
+
+[Sparse initialized arithmetic execution](Families/AddSub/SparseExecution.lean)
+now reuses the existing native history, numerical, original Sail and terminal
+proofs. Actual strict/sparse constructors derive [internal indexed evidence](../../Proofs/Trace/ProgramImage.lean);
+the strict public statement is unchanged. Complete native membership excludes
+holes/tail and retains every original PC/byte. The full initialized alias fixture
+selects actual exported slot six at public PC 24 and reaches PC 28 and x1=246.
+No indexed-source evidence, per-row bound/read, intermediate state, desired result
+or table equivalence is a public premise. Custom MOPs, general decoder/export
+refinement and physical argument enforcement remain separate.

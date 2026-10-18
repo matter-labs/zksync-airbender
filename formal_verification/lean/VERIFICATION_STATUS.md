@@ -43,7 +43,7 @@ not completed v2 coverage.
 
 ## Remaining work
 
-- Generalize native export certificates to arbitrary public programs, compose sparse initialized arithmetic execution and bind full physical trace assembly; connect physical initialization and expand mixed/custom programs.
+- Generalize native export certificates to arbitrary public programs and bind full physical trace assembly; connect physical initialization and expand mixed/custom programs.
 - Extend initialized execution to jump/branch/SLT and the remaining supported families; preserve each native metadata and argument boundary.
 - Backport the remaining ordinary circuit families, worker operations, unified machine, full traces and initialization/teardown.
 - Retest v3 findings against v2 before carrying over counterexamples or temporary assumptions.
@@ -247,19 +247,45 @@ membership. Nineteen importer checks reject malformed and incompatible artifacts
 fixture and equivalent binary text reproduce byte for byte.
 
 This is a concrete native-data/source certificate. General Rust/Sail decoder
-agreement, arbitrary-program certificates, custom modular MOP semantics, sparse
-initialized arithmetic execution and physical trace/argument refinement remain
-separate. No instruction skipping an executed hole or new implementation defect
+agreement, arbitrary-program certificates, custom modular MOP semantics and
+physical trace/argument refinement remain separate. Sparse initialized arithmetic
+execution is now checked below. No instruction skipping an executed hole or new implementation defect
 is claimed.
+
+## Initialized sparse arithmetic execution
+
+[The short sparse arithmetic claim](Airbender/Review/Trace/Families/AddSub/SparseExecution.lean)
+now derives original fetched/decoded ADD/ADDI/SUB/LUI/AUIPC execution and exact
+terminal PC/cells from actual public initialization, successful sparse byte/Sail
+construction and complete accepted native matching/decoder membership. Public
+RAM-cell alignment remains visible. Native packed-mask equations reject every
+unsupported hole and tail row before source selection.
+
+[Internal indexed constructor evidence](Airbender/Proofs/Trace/ProgramImage.lean)
+is derived from either actual builder. The existing arithmetic numerical,
+original Sail clause/retirement, history/code-frame and terminal proofs then
+serve both. The strict public theorem keeps its original statement. The supported
+entry list is an internal proof index; all public code bytes and original indexed
+PCs remain intact. No indexed-source, per-row bound/read, intermediate state,
+desired terminal value or table-equivalence premise is added to the public claim.
+
+[The nonempty regression](Tests/SparseArithmeticExecution.lean) selects actual
+exported slot six at PC 24. Full native equations/lookups and complete aliased
+x1-port matching derive the clock-four/five refreshes, destination read and actual
+clock-six write. Original public bytes/decoding then yield execution to PC 28 and
+x1=246. The UNIMP word at PC 20 remains in memory; public initial PC 24 does not
+assert control flow skipping an executed hole. General Rust decoder agreement,
+arbitrary-program export certificates, custom MOPs and physical trace/argument
+refinement remain separate.
 
 ## Validation
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all twenty-four concrete test modules pass.
+- Library, both CLI entrypoints and all twenty-five concrete test modules pass.
 - Importer regressions: 117 checks pass.
-- Axiom audit: 699 explicit roots; only propext, Classical.choice and Quot.sound.
-- All thirty-five public Review theorems (five circuit claims, twenty-seven trace claims and three helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Axiom audit: 714 explicit roots; only propext, Classical.choice and Quot.sound.
+- All thirty-six public Review theorems (five circuit claims, twenty-eight trace claims and three helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
 - Source provenance: 71 unchanged reused files, two native circuit artifacts, thirty-two native Rust sources, four native setup artifacts and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.

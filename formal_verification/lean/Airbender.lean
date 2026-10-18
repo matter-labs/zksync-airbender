@@ -23,3 +23,4 @@ import Airbender.Review.Trace.Families.WordMemory.SparseDecoder
 import Airbender.Review.Trace.Families.WordMemory.SparseExecution
 import Airbender.Review.Helpers.Tables.NativeScalars
 import Airbender.Review.Trace.Families.AddSub.NativeDecoder
+import Airbender.Review.Trace.Families.AddSub.SparseExecution

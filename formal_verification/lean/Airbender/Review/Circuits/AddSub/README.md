@@ -52,4 +52,12 @@ public bytes and original Sail decoding. The [short source claim](../../Trace/Fa
 uses native equations and actual exported membership. Signed ADDI, original x0
 SUB, raw U-type funct3 and a full native ADD row at PC 24 after an UNIMP hole are
 checked. This certificate covers its concrete public input; general decoder
-refinement, custom MOPs and sparse initialized arithmetic execution remain open.
+refinement and custom MOP semantics remain open.
+
+[Sparse initialized execution](../../Trace/Families/AddSub/SparseExecution.lean)
+now reuses these arithmetic calculations and original Sail clauses through the
+same native history/retirement/terminal assembly as the strict claim. Actual
+public construction and complete native matching derive internal source/PC
+facts. [The full post-hole alias regression](../../../../Tests/SparseArithmeticExecution.lean)
+selects actual exported PC 24 and derives PC 28 and x1=246, with the public UNIMP
+hole intact. Physical trace/argument refinement remains separate.

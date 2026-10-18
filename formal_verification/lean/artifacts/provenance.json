@@ -1557,6 +1557,97 @@
       "backport_reuse_path": "../native_setup_exporter/src/main.rs",
       "backport_reuse_sha256": "f6e9f87fb6455de8ed965f8b8144f1419b780a00f62bf96001675b591e02ab5b",
       "change": "Reuse the pinned native preprocessor/materializer APIs and unchanged exhaustive lossless codec with AddSubLuiAuipcMopDecoder. Add separate arithmetic fixture/text modes without dependency changes, physical trace allocation or changes to old profiles."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Decoder/ArithmeticSparse.lean",
+      "backport_reuse_revision": "9a59368200e7d211303a7e5b9e8d2201525b7c9f",
+      "backport_reuse_path": "Airbender/Review/Helpers/Decoder/WordMemorySparse.lean",
+      "backport_reuse_sha256": "7e24037da057c7097a1f87073d6317eb5dc9f27bd3f0e34e134ed3a6b9ce8267",
+      "change": "Adapt the small sparse projection/membership interface to arithmetic. Keep the original ten-column table with all holes/tail; no preselected entry, decoder flag or result is a public premise."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/ProgramImage.lean",
+      "backport_reuse_revision": "9a59368200e7d211303a7e5b9e8d2201525b7c9f",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/ProgramImage.lean",
+      "backport_reuse_sha256": "2c06b177666a85ecfcbb36cf449f8a1a5c7c5cb1e57032db0932b842cda607f1",
+      "change": "Reuse strict/sparse constructor evidence and finite internal selection structure for arithmetic. Derive source/pure-decoder/indexed-PC evidence from actual public constructors; arithmetic packed-mask equations exclude hole/tail before selection. Derive canonical words/alignment from accepted native membership. Omit word-memory-only ROM coverage."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Arithmetic.lean",
+      "backport_reuse_revision": "9a59368200e7d211303a7e5b9e8d2201525b7c9f",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Arithmetic.lean",
+      "backport_reuse_sha256": "1542700a0285b449eb5d42dda2db573fbfc6bfb6dee9822ec6872a491e3605df",
+      "change": "Keep local native arithmetic calculations, original Sail clauses, register transport, mapping and retirement assembly. Accept proof-internal indexed program evidence instead of a strict constructor at numerical assembly entry points; derive bounds/alignment through the shared indexed decoder helper. Public claims discharge that evidence from actual constructors."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Composition.lean",
+      "backport_reuse_revision": "9a59368200e7d211303a7e5b9e8d2201525b7c9f",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Composition.lean",
+      "backport_reuse_sha256": "4e42ab5e4401c0619461176c2acf9847431e49482e5b0abc336a78416450f6c4",
+      "change": "Preserve native history grouping/code-frame/original Sail/terminal composition. Factor indexed execution from the strict public constructor and retain the old strict theorem statement as a short constructor adapter. Only constructor evidence and selected source recovery change."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Composition.lean",
+      "backport_reuse_revision": "9a59368200e7d211303a7e5b9e8d2201525b7c9f",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/Composition.lean",
+      "backport_reuse_sha256": "49db829674d6817746efd9f644ee706259ace6cd58ff6dac8318568b5f5fa253",
+      "change": "Follow the already checked word-memory indexed-execution/strict-wrapper structure so strict and sparse arithmetic share the existing native history and original Sail assembly."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/SparseExecution.lean",
+      "backport_reuse_revision": "9a59368200e7d211303a7e5b9e8d2201525b7c9f",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/SparseExecution.lean",
+      "backport_reuse_sha256": "4d71f738182d328695a203a4c262ec36210b787506a1e7b2b924cc35dc77c2b4",
+      "change": "Reuse the short sparse-to-indexed assembly adapter for arithmetic. Complete accepted native lookup membership derives supported selection; public PCs, actual bytes, original Sail clauses and all logical history stay unchanged."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/AddSub/SparseExecution.lean",
+      "backport_reuse_revision": "9a59368200e7d211303a7e5b9e8d2201525b7c9f",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/WordMemory/SparseExecution.lean",
+      "backport_reuse_sha256": "6cf194b3b6ef8b03f4df0a755c606ce4767a038ee0eef5b7a001d2d7ea99dd87",
+      "change": "Adapt one short public sparse execution claim to arithmetic, exposing only actual public initialization/construction, accepted native constraints/matching, complete decoder membership and public cell alignment. No proof-internal indexed evidence or table equivalence is a premise."
+    },
+    {
+      "path": "Tests/SparseArithmeticExecution.lean",
+      "backport_reuse_revision": "9a59368200e7d211303a7e5b9e8d2201525b7c9f",
+      "backport_reuse_path": "Tests/InitializedHistory.lean",
+      "backport_reuse_sha256": "46ba8edca2fcd37a215a451e7bb646be9c258dfb5192d3660f4f024d9dcca764",
+      "change": "Reuse the full native aliased ADD history, public image/PC construction and exact terminal-value observation at original post-hole PC 24. Native clock-four/five refreshes derive the destination read and clock-six actual write; no per-row read/state/result premise."
+    },
+    {
+      "path": "Tests/SparseArithmeticExecution.lean",
+      "backport_reuse_revision": "9a59368200e7d211303a7e5b9e8d2201525b7c9f",
+      "backport_reuse_path": "Tests/SparseExecution.lean",
+      "backport_reuse_sha256": "195190bde3d9c86d842a3224e92690be4cb468cd0864b0d28b4115ceac1a2d26",
+      "change": "Reuse actual exported sparse membership and the public-byte decoder-certificate frame bridge. Select original arithmetic slot six after the UNIMP hole; derive original fetched execution from public PC 24 to 28 and x1=246. No execution skipping an unsupported word is claimed."
+    },
+    {
+      "path": "Tests/SparseArithmeticExecution.lean",
+      "backport_reuse_revision": "9a59368200e7d211303a7e5b9e8d2201525b7c9f",
+      "backport_reuse_path": "Tests/NativeArithmeticSetup.lean",
+      "backport_reuse_sha256": "d1bda4a5987001ed7aed8ca2054c7c24cfe03ca489ba803b271f5563d06563f8",
+      "change": "Reuse the checked actual native arithmetic PC/inverse assignment and full exported-row certificate. Add alias timestamps/old destination value, verify every native equation/lookup and complete matching, then apply the general sparse execution claim."
+    },
+    {
+      "path": "Tests/NativeArithmeticSetup.lean",
+      "backport_reuse_revision": "9a59368200e7d211303a7e5b9e8d2201525b7c9f",
+      "backport_reuse_path": "Tests/NativeArithmeticSetup.lean",
+      "backport_reuse_sha256": "d1bda4a5987001ed7aed8ca2054c7c24cfe03ca489ba803b271f5563d06563f8",
+      "change": "Expose the unchanged checked native assignment as a test helper for initialized sparse execution; no theorem, native value or assumption changes."
+    },
+    {
+      "path": "Tests/InitializedHistory.lean",
+      "backport_reuse_revision": "9a59368200e7d211303a7e5b9e8d2201525b7c9f",
+      "backport_reuse_path": "Tests/InitializedHistory.lean",
+      "backport_reuse_sha256": "46ba8edca2fcd37a215a451e7bb646be9c258dfb5192d3660f4f024d9dcca764",
+      "change": "Keep existing accepted alias fixtures and public strict claims. Supply derived strict indexed-constructor evidence to the generalized proof-internal arithmetic retirement lemma."
+    },
+    {
+      "path": "Tests/X0History.lean",
+      "backport_reuse_revision": "9a59368200e7d211303a7e5b9e8d2201525b7c9f",
+      "backport_reuse_path": "Tests/X0History.lean",
+      "backport_reuse_sha256": "d7c0604f676ef88f11c4ca123e50c052172228084e24bbf79f732f6d19e277e8",
+      "change": "Keep original nonzero-operand SUB-to-x0 fixtures and public strict claims. Supply derived strict indexed-constructor evidence to the generalized proof-internal retirement lemma."
     }
   ],
   "setup_artifacts": [

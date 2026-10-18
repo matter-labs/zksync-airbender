@@ -50,16 +50,16 @@ theorem entry_source_after_native_history [Fact p.Prime] {trace : Data p}
 /-- All native rows compose through actual fetched/decoded original Sail steps.
     Acceptance and public constructors derive row order, intermediate states,
     local interfaces, retirement and terminal register/RAM values. -/
-theorem image_execution_soundness [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem indexed_execution_soundness [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {trace : Data p} {setup : DecoderSetup} {initial : State} {cells : List Cell}
-    {count logCapacity : Nat} (inputs : ImageBoundary trace initial cells)
-    (image : decoderSetupImage initial count logCapacity = some setup)
+    {count : Nat} (inputs : ImageBoundary trace initial cells)
+    (image : IndexedProgram initial count setup.program)
     (accepted : Accepted trace) (decoded : Decoded trace setup)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
     Realizes (StepWith decoderFields registerClause setup.program) trace initial cells := by
   have large : limbBase < p := by dsimp [limbBase, timestampBase] at *; omega
   have clocks := image_clock_boundary (by dsimp [timestampBase] at hp; omega) inputs
-  have pureDecoders := setup_decoders_pure image
+  have pureDecoders := image.pureDecoders
   obtain ⟨history, rows, nativeAfter, consistent, permutation, ordered, nativeHistory, matched⟩ :=
     decoded_row_history hp accepted clocks inputs.image inputs.domain aligned decoded
   have chain := ordered_row_boundaries hp accepted clocks permutation ordered
@@ -75,8 +75,9 @@ theorem image_execution_soundness [Fact p.Prime] (hp : 2 * timestampBase + 4 < p
       StepWith decoderFields registerClause setup.program (retiredState before row.start.word.toBitVec)
         (retiredState after row.finish.word.toBitVec) := by
     intro row member before after past native earlier current
-    obtain ⟨entry, present, source, query⟩ := decoded_sources
-      (by dsimp [limbBase] at large; omega) image accepted decoded row member
+    obtain ⟨entry, present, query⟩ := decoder_member
+      (by dsimp [limbBase] at large; omega) (accepted.constraints row member) (decoded row member)
+    have source := image.sources entry present
     have replay := pureDecoders entry present
     have sourceHere := entry_source_after_native_history source replay native earlier
     have canonical := native_query_pc_word large query
@@ -94,5 +95,15 @@ theorem image_execution_soundness [Fact p.Prime] (hp : 2 * timestampBase + 4 < p
     (fun event member => events.mem_iff.mp member) chain nativeHistory
   exact native_trace_postconditions hp accepted clocks inputs.image inputs.domain pc
     consistent chain nativeHistory matched execution
+
+/-- Existing strict public construction derives the shared proof evidence. -/
+theorem image_execution_soundness [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    {trace : Data p} {setup : DecoderSetup} {initial : State} {cells : List Cell}
+    {count logCapacity : Nat} (inputs : ImageBoundary trace initial cells)
+    (image : decoderSetupImage initial count logCapacity = some setup)
+    (accepted : Accepted trace) (decoded : Decoded trace setup)
+    (aligned : ∀ cell ∈ cells, cell.Aligned) :
+    Realizes (StepWith decoderFields registerClause setup.program) trace initial cells :=
+  indexed_execution_soundness hp inputs (strict_indexed_program image) accepted decoded aligned
 
 end Airbender.Trace.Proofs

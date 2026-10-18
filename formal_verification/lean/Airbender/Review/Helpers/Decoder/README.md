@@ -78,4 +78,13 @@ checks every exported row against original Sail public bytes, with signed ADDI,
 original SUB-to-x0, raw U-type funct3 and a supported word after an interior hole.
 Native packed-mask equations exclude both hole/tail sentinels; [the source claim](../../Trace/Families/AddSub/NativeDecoder.lean)
 adds no table-equivalence premise. This concrete export does not establish general
-Rust decoder agreement, custom MOPs or sparse initialized arithmetic execution.
+Rust decoder agreement or custom MOP semantics.
+
+[Arithmetic sparse membership](ArithmeticSparse.lean) now feeds the
+[short initialized execution claim](../../Trace/Families/AddSub/SparseExecution.lean).
+[Proof-internal evidence](../../../Proofs/Trace/ProgramImage.lean) is derived from
+actual strict/sparse construction, including original bytes, pure decoding and
+indexed PC locations. Native mask equations reject unsupported slots before the
+same arithmetic history/retirement/terminal assembly runs. The physical sparse
+table keeps all holes/tail; its supported list is only an internal proof index.
+General Rust/export and physical argument correspondence remain separate.

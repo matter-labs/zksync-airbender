@@ -345,7 +345,7 @@ theorem initialized_sail_retirement : ∃ after,
   obtain ⟨after, history⟩ := native_row_history
   refine ⟨after, history, ?_⟩
   have checked := Trace.Proofs.arithmetic_row_execution (w := assignment) (before := before)
-    (by decide) public_inputs setup_built accepted decoded
+    (by decide) public_inputs (Trace.Proofs.strict_indexed_program setup_built) accepted decoded
     (by simp [trace, nativeRow]) (entry := addEntry) rfl (by decide) .add 1 1 1 0 0 rfl history
     (Trace.Proofs.initial_state_pc (by decide) public_inputs.initial)
   exact checked

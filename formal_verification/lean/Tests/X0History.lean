@@ -139,7 +139,7 @@ theorem discarded_sail_retirement :
       (SailRV32.Functions.execute_RTYPE (.Regidx 2) (.Regidx 1) (.Regidx 0) .SUB)) before =
       .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState before 4) := by
   have checked := Trace.Proofs.arithmetic_row_execution (w := assignment) (before := before)
-    (by decide) inputs setup_built accepted decoded
+    (by decide) inputs (Trace.Proofs.strict_indexed_program setup_built) accepted decoded
     (by simp [trace, nativeRow]) (entry := entry) rfl (by decide) .sub 1 2 0 0 0 rfl discarded_write_stutters
     (Trace.Proofs.initial_state_pc (by decide) inputs.initial)
   exact checked

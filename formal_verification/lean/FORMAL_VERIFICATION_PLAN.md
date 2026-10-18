@@ -207,10 +207,19 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    an interior UNIMP hole and ADD at original PC 24. Native packed-mask equations
    exclude holes/tail; a complete post-hole ADD row recovers its actual source.
    Exact fixture/binary reproduction and nineteen strict importer checks pass.
-   No table-equivalence premise or custom MOP coverage is added. Next generalize
-   exported-data certificates to arbitrary public programs, connect sparse
-   arithmetic construction to initialized execution and bind full physical trace
-   assembly/initialization.
+   No table-equivalence premise or custom MOP coverage is added.
+   [Sparse initialized arithmetic execution](Airbender/Review/Trace/Families/AddSub/SparseExecution.lean)
+   now shares the existing numerical/native history/original Sail/terminal
+   assembly through proof-internal indexed evidence derived from either builder.
+   The strict public theorem statement is unchanged; complete sparse membership
+   excludes holes/tail before source selection. A fully initialized nonempty ADD
+   fixture uses actual exported slot six at original PC 24 and derives fetched
+   execution to PC 28 and x1=246. Full alias matching derives every refresh/read;
+   no indexed-source, per-row bound/read, intermediate state/result or table
+   equivalence is a public premise. The PC-20 UNIMP hole remains public bytes;
+   initial PC 24 is supplied, with no control-flow skip asserted. Next generalize
+   exported-data certificates to arbitrary public programs and bind full physical
+   trace assembly/initialization.
    The fixture certificates are not general Rust/export/LDE/compiler refinement.
    Rust refinement and cryptographic enforcement remain separate.
    Preserve v2 PC rollover and native timestamp offsets;

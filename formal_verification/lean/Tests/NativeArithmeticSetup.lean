@@ -27,7 +27,7 @@ theorem hole_and_tail :
 theorem public_text : arithmeticTextWords = 7 ∧
     (List.range 7).map arithmeticText.get? = words.toList.map (some ∘ BitVec.toNat) := by decide +kernel
 
-private def assignment (i : Nat) : ZMod mersenne31Modulus :=
+def assignment (i : Nat) : ZMod mersenne31Modulus :=
   if i = 39 then 346014073 else Tests.AddSub.row 1 123 123 0 246 0 0 0 24 0 28 0 0 0 i
 private def laterRow : Row mersenne31Modulus := ⟨.addSub, assignment⟩
 
