@@ -439,16 +439,16 @@ theorem changing_store_not_shadow {address : BitVec 32} (region : address.toNat 
 
 /-- A complete native x0 load after the interior hole, with matching immediate
     and zero-padded ROM shadow. No expected read/result is supplied. -/
-private def sparseAfterHole (i : Nat) : ZMod mersenne31Modulus :=
+def sparseAfterHole (i : Nat) : ZMod mersenne31Modulus :=
   if i = 0 then 12 else if i = 13 then 16 else if i = 9 then 16
   else if i = 43 then 896194221 -- native inverse of 12 - 65532
   else if i = 17 ∨ i = 26 ∨ i = 27 then 0 else row false false true i
 
 private def sparseROM : WordROM := WordMemory.NativeSparse.programROM.zeroPadded
 
-private theorem sparse_after_hole_constraints :
+theorem sparse_after_hole_native_constraints {table : WordROM} (zero : table.word 4 = 0) :
     FlatOperation.ConstraintsHoldFlat (environment sparseAfterHole)
-      (WordMemory.importedConstraints sparseROM) := by
+      (WordMemory.importedConstraints table) := by
   simp [WordMemory.importedConstraints, FlatOperation.ConstraintsHoldFlat,
     Expression.eval, environment, sparseAfterHole, row]
   repeat' apply And.intro
@@ -461,9 +461,13 @@ private theorem sparse_after_hole_constraints :
     solve
     | refine ⟨⟨64, by decide⟩, ?_⟩; norm_num [romSeparatorRow]
     | refine ⟨⟨4, by decide⟩, ?_⟩
-      have word : sparseROM.word 4 = 0 := WordMemory.Proofs.zero_padding_tail _ (by decide) (by decide)
-      norm_num [WordROM.row, word]
+      norm_num [WordROM.row, zero]
       decide +kernel
+
+private theorem sparse_after_hole_constraints :
+    FlatOperation.ConstraintsHoldFlat (environment sparseAfterHole)
+      (WordMemory.importedConstraints sparseROM) :=
+  sparse_after_hole_native_constraints (WordMemory.Proofs.zero_padding_tail _ (by decide) (by decide))
 
 /-- Accepted full native constraints and actual exported membership recover the
     original LW-to-x0 source at PC 12, beyond the unsupported word at PC four. -/

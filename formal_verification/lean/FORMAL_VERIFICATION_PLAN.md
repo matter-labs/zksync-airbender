@@ -184,8 +184,16 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    Sail reads/decoding construct its sparse setup, and every exported decoder row
    is certified against it. A complete native x0-load row at PC 12 satisfies all
    original equations/lookups and recovers its actual public source. No table
-   equivalence is a premise. Next connect sparse matching to initialized execution,
-   generalize exported-data certificates to arbitrary public programs, export
+   equivalence is a premise. [Sparse initialized execution](Airbender/Review/Trace/Families/WordMemory/SparseExecution.lean)
+   now shares the existing native history, numerical, code-frame, original Sail
+   clause/retirement and terminal assembly. Actual strict/sparse constructors
+   derive proof-internal indexed source evidence; the strict public claim is
+   unchanged. A nonempty fully initialized x0-load fixture selects actual exported
+   slot three and derives original execution from public PC 12 to PC 16, RAM 123
+   and x0 zero. The PC-four hole remains in actual public bytes; no step through
+   an unsupported instruction or control-flow skip is claimed. No per-row read,
+   intermediate state/result or table-equivalence premise is supplied.
+   Next generalize exported-data certificates to arbitrary public programs, export
    arithmetic/timestamp rows and bind full physical trace assembly/initialization.
    The fixture certificates are not general Rust/export/LDE/compiler refinement.
    Rust refinement and cryptographic enforcement remain separate.

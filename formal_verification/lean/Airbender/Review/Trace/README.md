@@ -151,3 +151,11 @@ complete tagged ROM membership to actual Sail bytes after explicit padding.
 Compiled placement and all table offsets are checked; dummy/wrong-table/zero-padding
 rows are distinguished by native tags. Actual Rust column exports, normalization/
 LDE refinement and physical argument enforcement remain separate.
+
+[Sparse word-memory execution](Families/WordMemory/SparseExecution.lean) now uses
+successful public construction with unsupported interior slots and complete
+native matching. The shared history/original Sail/terminal assembly derives the
+same exact observable while keeping original PCs and actual bytes unchanged.
+The real x0-load regression starts at public PC 12, selects actual exported slot
+three after the PC-four hole, and reaches PC 16 with RAM 123 and x0 zero.
+General Rust/export and physical argument connections remain separate.

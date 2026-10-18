@@ -18,6 +18,7 @@ import Tests.WordMemoryNativeBoot
 import Tests.PhysicalSetup
 import Tests.NativeSetup
 import Tests.NativeSparseSetup
+import Tests.SparseExecution
 
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
@@ -693,3 +694,23 @@ import Tests.NativeSparseSetup
 #print axioms Tests.NativeSparseSetup.insufficient_capacity
 #print axioms Tests.NativeSparseSetup.inputs_retained
 #print axioms Tests.WordMemory.native_sparse_after_hole_source
+#print axioms Airbender.WordMemory.Proofs.strict_indexed_program
+#print axioms Airbender.WordMemory.Proofs.sparse_indexed_program
+#print axioms Airbender.WordMemory.Proofs.IndexedProgram.pc_aligned
+#print axioms Airbender.WordMemory.Proofs.IndexedProgram.rom_pc
+#print axioms Airbender.WordMemory.Proofs.sparse_selected_decoded
+#print axioms Airbender.WordMemory.Proofs.indexed_decoder_inputs
+#print axioms Airbender.WordMemory.Proofs.indexed_native_effects_from_bounds
+#print axioms Airbender.WordMemory.Proofs.indexed_projected_native_effects
+#print axioms Airbender.WordMemory.Proofs.indexed_sources_after_history
+#print axioms Airbender.WordMemory.Proofs.indexed_instruction_retirement
+#print axioms Airbender.WordMemory.Proofs.indexed_execution_soundness
+#print axioms Airbender.WordMemory.Proofs.sparse_image_execution_soundness
+#print axioms Airbender.WordMemory.sparse_public_sail_execution
+#print axioms Tests.WordMemory.sparse_after_hole_native_constraints
+#print axioms Tests.SparseExecution.accepted
+#print axioms Tests.SparseExecution.decoder_built
+#print axioms Tests.SparseExecution.rom_built
+#print axioms Tests.SparseExecution.decoded
+#print axioms Tests.SparseExecution.initialized_execution
+#print axioms Tests.SparseExecution.terminal_values

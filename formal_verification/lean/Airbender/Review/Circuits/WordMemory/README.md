@@ -141,5 +141,7 @@ UNIMP at PC four and supported original LW/SW/x0 words at 0/8/12. [Proofs](../..
 construct its public sparse setup from actual Sail bytes and certify every exported
 decoder row. [The source claim](../../Trace/Families/WordMemory/SparseDecoder.lean)
 uses native constraints/membership to recover original source evidence, including
-a complete post-hole x0-load row. Sparse initialized execution and general Rust
-or physical setup correspondence remain open.
+a complete post-hole x0-load row. [Sparse initialized execution](../../Trace/Families/WordMemory/SparseExecution.lean)
+now reuses that full native witness and actual exported slot three in a real
+public Sail state, deriving execution from public PC 12 to PC 16 and exact
+terminal cells. General Rust/export and physical setup correspondence remain open.

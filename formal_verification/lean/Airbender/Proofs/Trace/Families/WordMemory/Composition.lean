@@ -11,12 +11,12 @@ set_option backward.isDefEq.respectTransparency false in
 /-- Accepted native rows compose through original fetched/decoded LW/SW steps.
     Public initialization derives row order, states, reads, ranges and exact
     terminal cells. Public cell/seed domains supply ordinary RAM and ROM coverage. -/
-theorem image_execution_soundness [MemoryPlatform SailRV32.exception]
+theorem indexed_execution_soundness [MemoryPlatform SailRV32.exception]
     {trace : Data mersenne31Modulus WordMemoryFamily} {setup : DecoderSetup}
     {initial : State} {cells : List Cell} {seeds : List ShadowSeed}
-    {count logCapacity romCount : Nat}
+    {count romCount : Nat}
     (inputs : ShadowImageBoundary trace initial cells seeds)
-    (decoder : decoderSetupImage initial count logCapacity = some setup)
+    (decoder : IndexedProgram initial count setup.program)
     (accepted : Accepted trace) (decoded : Decoded trace setup)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
     (configuration : FlatMemoryConfiguration initial)
@@ -26,7 +26,7 @@ theorem image_execution_soundness [MemoryPlatform SailRV32.exception]
     (covered : ∀ seed ∈ seeds, seed.1.toNat < 4 * romCount) :
     WordMemory.Realizes setup.program trace initial cells := by
   have clocks := shadow_clock_boundary (by decide) inputs
-  have pureDecoders := setup_decoders_pure decoder
+  have pureDecoders := decoder.pureDecoders
   obtain ⟨history, rows, nativeAfter, consistent, permutation, ordered, nativeHistory, matched⟩ :=
     projected_row_history (by decide) inputs accepted decoded aligned
   have chain := Trace.Proofs.ordered_row_boundaries (by decide) accepted clocks permutation ordered
@@ -43,9 +43,11 @@ theorem image_execution_soundness [MemoryPlatform SailRV32.exception]
       StepWith decoderFields instructionClause setup.program (retiredState before row.start.word.toBitVec)
         (retiredState after row.finish.word.toBitVec) := by
     intro row member before after past _native earlier current
-    obtain ⟨entry, present, source, query⟩ := decoded_sources (by decide) decoder accepted decoded row member
+    obtain ⟨entry, present, query⟩ := decoder_member (by decide)
+      (accepted.constraints row member) (decoded row member)
+    have source := decoder.sources entry present
     have replay := pureDecoders entry present
-    have sourceHere := setup_sources_after_history inputs.architectural earlier decoder programROM entry present
+    have sourceHere := indexed_sources_after_history inputs.architectural earlier decoder programROM entry present
     have canonical := Trace.Proofs.native_query_pc_word (by decide) query
     change row.start.word = Word.ofBitVec entry.pc at canonical
     have pcWord : row.start.word.toBitVec = entry.pc := by
@@ -56,7 +58,7 @@ theorem image_execution_soundness [MemoryPlatform SailRV32.exception]
       | mk family w =>
         cases family
         have domains := initialized_address_domains (by decide) inputs accepted ordinary covered member
-        exact initialized_instruction_retirement inputs decoder accepted decoded member source.fields query
+        exact indexed_instruction_retirement inputs decoder accepted decoded member source.fields query
           (Trace.Proofs.sail_history_configuration earlier configuration)
           (rom_image_after_frame (projected_history_rom_bytes inputs.architectural earlier) image)
           domains.1 domains.2 current
@@ -65,5 +67,22 @@ theorem image_execution_soundness [MemoryPlatform SailRV32.exception]
     (fun event member => events.mem_iff.mp member) chain nativeHistory
   exact Trace.Proofs.projected_trace_postconditions (by decide) accepted clocks architecturalAddress
     (shadow_image_projection inputs) (shadow_image_unique inputs) pc consistent chain nativeHistory matched execution
+
+theorem image_execution_soundness [MemoryPlatform SailRV32.exception]
+    {trace : Data mersenne31Modulus WordMemoryFamily} {setup : DecoderSetup}
+    {initial : State} {cells : List Cell} {seeds : List ShadowSeed}
+    {count logCapacity romCount : Nat}
+    (inputs : ShadowImageBoundary trace initial cells seeds)
+    (decoder : decoderSetupImage initial count logCapacity = some setup)
+    (accepted : Accepted trace) (decoded : Decoded trace setup)
+    (aligned : ∀ cell ∈ cells, cell.Aligned)
+    (configuration : FlatMemoryConfiguration initial)
+    (image : wordROMImage initial romCount = some trace.rom)
+    (programROM : count ≤ 1048576)
+    (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
+    (covered : ∀ seed ∈ seeds, seed.1.toNat < 4 * romCount) :
+    WordMemory.Realizes setup.program trace initial cells :=
+  indexed_execution_soundness inputs (strict_indexed_program decoder) accepted decoded
+    aligned configuration image programROM ordinary covered
 
 end Airbender.WordMemory.Proofs

@@ -1350,6 +1350,76 @@
       "backport_reuse_path": "scripts/check_native_setup.py",
       "backport_reuse_sha256": "815230c18d39cb65c620e09ce6db8e1f2502d5ff95a578336080a0d2cee1ae47",
       "change": "Retain all original export/CLI rejection checks. Generate the interior-hole fixture through unchanged native binary image/text APIs and compare every output byte against the pinned second export."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/ProgramImage.lean",
+      "backport_reuse_revision": "fd4ba0baf4c7089da8729b4249a14a2d4a54df8e",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/Decoder.lean",
+      "backport_reuse_sha256": "788e9b4a43e18f760791f36900aa9248a5c2a6cf81b450cfb2de8678ef3f4877",
+      "change": "Derive internal indexed source/pure-decoder evidence from actual strict or sparse public construction. Accepted native mask equations eliminate sparse holes/tail before selecting an internal finite entry index. Preserve every original PC and byte; no selected-table equivalence or constructed-evidence premise is added to Review."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/Inputs.lean",
+      "backport_reuse_revision": "fd4ba0baf4c7089da8729b4249a14a2d4a54df8e",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/Inputs.lean",
+      "backport_reuse_sha256": "222db2956ab35182f0df512605dc7b4edba5d8dbe2b3c3b8ef6700b1cbf0a67b",
+      "change": "Factor indexed decoder inputs through the same existing native source/address/PC/clock calculations. Keep the strict public constructor statement as a thin compatibility wrapper; original RV32 wraparound is unchanged."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/ProjectedInputs.lean",
+      "backport_reuse_revision": "fd4ba0baf4c7089da8729b4249a14a2d4a54df8e",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/ProjectedInputs.lean",
+      "backport_reuse_sha256": "a400f0501288f3ccb0c75e21e9d17a7eeafbb7d449fb891d0b9656fadffa0d2e",
+      "change": "Reuse the original full matched shadow range and clock assembly unchanged; generalize only proof-internal construction evidence and retain the strict statement."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/CodeHistory.lean",
+      "backport_reuse_revision": "fd4ba0baf4c7089da8729b4249a14a2d4a54df8e",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/CodeHistory.lean",
+      "backport_reuse_sha256": "6de2e268df998133183df70e430eee8e316a8c0676457a5ff3897b04c93cd795",
+      "change": "Use actual indexed source evidence to bound complete ROM byte windows for sparse programs. Reuse original history byte frames and pure-decoder transport without rewriting code bytes or supplying later fetches."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/Execution.lean",
+      "backport_reuse_revision": "fd4ba0baf4c7089da8729b4249a14a2d4a54df8e",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/Execution.lean",
+      "backport_reuse_sha256": "31981c2476ad01eff2e03cfeddd66e63fd835ec760ebf6f5e8600a0b5c7a6f31",
+      "change": "Share original native-to-Sail preparation/clause/retirement assembly between strict and sparse builders through derived internal evidence. Keep all original RAM/ROM/x0 branches, address domains and native modular PC behavior; preserve the strict interface."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/Composition.lean",
+      "backport_reuse_revision": "fd4ba0baf4c7089da8729b4249a14a2d4a54df8e",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/Composition.lean",
+      "backport_reuse_sha256": "6d2613d07fafa300981e34ea397f619297307a07c02b95e1f4a0823d8774c9a6",
+      "change": "Reuse the complete native history, actual code replay, original row retirement and exact architectural terminal assembly. Generalize only proof-internal indexed constructor evidence; leave the strict public theorem unchanged."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/SparseExecution.lean",
+      "backport_reuse_revision": "fd4ba0baf4c7089da8729b4249a14a2d4a54df8e",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/Composition.lean",
+      "backport_reuse_sha256": "6d2613d07fafa300981e34ea397f619297307a07c02b95e1f4a0823d8774c9a6",
+      "change": "Derive selected entry membership and indexed source evidence from actual complete sparse matching and successful public construction, then reuse shared initialized execution. Public holes and original PCs remain untouched; no source/read/result/table-equivalence premise is introduced."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/WordMemory/SparseExecution.lean",
+      "backport_reuse_revision": "fd4ba0baf4c7089da8729b4249a14a2d4a54df8e",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/WordMemory/Theorems.lean",
+      "backport_reuse_sha256": "f737b8d40ae292302cf81449abfdd9843261f40ba24d995ccea29a1f2f376008",
+      "change": "Keep one short sparse initialized original-Sail execution claim with the same actual public initialization, configuration, ROM extraction/domain and accepted native boundaries. Calculations and constructor evidence stay in Proofs."
+    },
+    {
+      "path": "Tests/WordMemory.lean",
+      "backport_reuse_revision": "fd4ba0baf4c7089da8729b4249a14a2d4a54df8e",
+      "backport_reuse_path": "Tests/WordMemory.lean",
+      "backport_reuse_sha256": "cc6b22e2a9bafd96828adaa7e3fc4072a774e03f0aec78775f1aa433302868a4",
+      "change": "Reuse the exact existing full native x0-load witness at PC 12. Parameterize only its complete ROM-table constraint proof by the proved zero shadow word, allowing initialized tests to use a small actual extracted ROM prefix; retain the original zero-padded/exported-source regression."
+    },
+    {
+      "path": "Tests/SparseExecution.lean",
+      "backport_reuse_revision": "fd4ba0baf4c7089da8729b4249a14a2d4a54df8e",
+      "backport_reuse_path": "Tests/WordMemoryROMTransport.lean",
+      "backport_reuse_sha256": "f09efa9571a92bcccc08cd91c7f7bb9cbfa23831c41d050cac28e770ddd6a456",
+      "change": "Reuse actual public register/CSR/byte initialization, complete native token matching, ROM extraction and terminal-value checks. The same existing x0-load witness starts at public PC 12 after an interior unsupported slot, selects actual exported decoder slot three, and derives complete original execution to PC 16 with RAM 123 and x0 zero. No intermediate state/read/result is a premise."
     }
   ],
   "setup_artifacts": [

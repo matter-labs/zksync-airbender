@@ -385,8 +385,8 @@ cover general successful sparse construction and this pinned actual export.
 [The nonempty regression](Tests/WordMemory.lean) satisfies every original native
 row equation and lookup for an x0 load at PC 12 before recovering its original
 public source through exported membership. Missing bytes/capacity and supported
-post-hole fields are checked separately. These are decoder/source claims; sparse
-initialized execution, arbitrary-program Rust decoder refinement and full physical
+post-hole fields are checked separately. The separate initialized execution claim
+below now composes sparse decoding with full native matching. Arbitrary-program Rust decoder refinement and full physical
 trace/argument connections remain open.
 
 The sparse constructor supplements the strict selected-profile builder. It reads
@@ -397,8 +397,35 @@ slots regardless of their position. Shared successful-entry, source, pure-decode
 indexed-PC and field-query lemmas are reused unchanged. The complete actual native
 fixture equality is a kernel theorem over literal rows and constructed public
 bytes, not an assumption fed to the source claim. The decoder data still precedes
-physical setup padding/normalization/LDE. Native membership enforcement, general
-Rust/Sail decoder agreement and sparse initialized execution remain separate.
+physical setup padding/normalization/LDE. Native membership enforcement and general
+Rust/Sail decoder agreement remain separate; initialized sparse execution is checked below.
+
+
+## Initialized sparse word-memory execution
+
+[The short sparse execution claim](Airbender/Review/Trace/Families/WordMemory/SparseExecution.lean)
+now derives the same finite original Sail LW/SW relation and exact native terminal
+PC/cells from successful sparse construction and full accepted native matching.
+Public initialization, configuration, actual ROM extraction, ordinary RAM and
+ROM-prefix seed coverage retain their existing meanings. Native equations reject
+holes/tail before selecting real entries; every original indexed PC is preserved.
+
+[Internal constructor evidence](Airbender/Proofs/Trace/Families/WordMemory/ProgramImage.lean)
+is derived from actual strict or sparse construction. Shared native numerical,
+code-frame, original clause/retirement and terminal assembly then serve both
+builders. The existing strict public claim is unchanged. The internal supported
+entry list is only a proof selection index; the public sparse table keeps every
+physical hole and no code byte or PC is rewritten. No per-row bound, source/read,
+intermediate state, desired result or table-equivalence premise is introduced.
+
+[The nonempty initialized regression](Tests/SparseExecution.lean) reuses the full
+native x0-load witness and actual exported decoder slot three. Real public code,
+registers, CSRs and RAM bytes plus complete native state/memory tokens derive
+original fetched execution from public PC 12 to PC 16, unchanged RAM 123 and x0
+zero. The unsupported word at PC four remains in the public image. The supplied
+initial PC is 12; this does not assert control flow that skips an executed hole.
+General Rust/Sail decoder agreement, arbitrary-program export certificates,
+physical setup/initialization and cryptographic enforcement remain separate.
 
 ## Public state, profiles and external inputs
 

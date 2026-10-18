@@ -43,7 +43,7 @@ not completed v2 coverage.
 
 ## Remaining work
 
-- Connect sparse decoding to initialized execution, generalize native export certificates to arbitrary public programs, add arithmetic/timestamp exports and full physical trace assembly; connect physical initialization and expand mixed/custom programs.
+- Generalize native export certificates to arbitrary public programs, add arithmetic/timestamp exports and full physical trace assembly; connect physical initialization and expand mixed/custom programs.
 - Extend initialized execution to jump/branch/SLT and the remaining supported families; preserve each native metadata and argument boundary.
 - Backport the remaining ordinary circuit families, worker operations, unified machine, full traces and initialization/teardown.
 - Retest v3 findings against v2 before carrying over counterexamples or temporary assumptions.
@@ -165,18 +165,45 @@ cover general successful sparse construction and this pinned actual export.
 [The nonempty regression](Tests/WordMemory.lean) satisfies every original native
 row equation and lookup for an x0 load at PC 12 before recovering its original
 public source through exported membership. Missing bytes/capacity and supported
-post-hole fields are checked separately. These are decoder/source claims; sparse
-initialized execution, arbitrary-program Rust decoder refinement and full physical
+post-hole fields are checked separately. The separate initialized execution claim
+below now composes sparse decoding with full native matching. Arbitrary-program Rust decoder refinement and full physical
 trace/argument connections remain open.
+
+
+## Initialized sparse word-memory execution
+
+[The short sparse execution claim](Airbender/Review/Trace/Families/WordMemory/SparseExecution.lean)
+now derives the same finite original Sail LW/SW relation and exact native terminal
+PC/cells from successful sparse construction and full accepted native matching.
+Public initialization, configuration, actual ROM extraction, ordinary RAM and
+ROM-prefix seed coverage retain their existing meanings. Native equations reject
+holes/tail before selecting real entries; every original indexed PC is preserved.
+
+[Internal constructor evidence](Airbender/Proofs/Trace/Families/WordMemory/ProgramImage.lean)
+is derived from actual strict or sparse construction. Shared native numerical,
+code-frame, original clause/retirement and terminal assembly then serve both
+builders. The existing strict public claim is unchanged. The internal supported
+entry list is only a proof selection index; the public sparse table keeps every
+physical hole and no code byte or PC is rewritten. No per-row bound, source/read,
+intermediate state, desired result or table-equivalence premise is introduced.
+
+[The nonempty initialized regression](Tests/SparseExecution.lean) reuses the full
+native x0-load witness and actual exported decoder slot three. Real public code,
+registers, CSRs and RAM bytes plus complete native state/memory tokens derive
+original fetched execution from public PC 12 to PC 16, unchanged RAM 123 and x0
+zero. The unsupported word at PC four remains in the public image. The supplied
+initial PC is 12; this does not assert control flow that skips an executed hole.
+General Rust/Sail decoder agreement, arbitrary-program export certificates,
+physical setup/initialization and cryptographic enforcement remain separate.
 
 ## Validation
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all twenty-one concrete test modules pass.
+- Library, both CLI entrypoints and all twenty-two concrete test modules pass.
 - Importer regressions: 84 checks pass.
-- Axiom audit: 651 explicit roots; only propext, Classical.choice and Quot.sound.
-- All thirty-two public Review theorems (five circuit claims, twenty-five trace claims and two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Axiom audit: 671 explicit roots; only propext, Classical.choice and Quot.sound.
+- All thirty-three public Review theorems (five circuit claims, twenty-six trace claims and two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
 - Source provenance: 71 unchanged reused files, two native circuit artifacts, thirty-one native Rust sources, two native setup fixtures and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
@@ -210,6 +237,7 @@ Current checked checkpoint:
 - Exact setup metadata for both native artifacts and fifteen added importer regressions pass. The active four-column tagged row model has exactly the existing ROM/separator meanings, including every dummy/padding tuple. Nonempty original Sail bytes and explicit zero padding derive actual reads from tagged ROM membership; altered words and wrong padding tags are rejected. The normalized final setup row is explicitly outside this model's lookup domain; actual Rust/export/LDE and argument correspondence remains separate.
 - The standalone native exporter passes offline locked checking and exact fixture reproduction. Little-endian binary image/text inputs reproduce the fixture; partial words and oversized inputs reject before output. Lean certifies all actual regional ROM/separator/range values, the entire unsupported decoder tail and the loader's image zeros; original LW/SW/x0 and explicit UNIMP/sentinel regressions pass. Compressed-field, extent, region, tag and unknown-field mutations fail closed. Parse/emission, general Rust/compiler refinement and physical trace/LDE/argument connections remain separate.
 - Sparse public construction retains actual unsupported interior words at their original PCs and rejects missing/effectful inputs. Native equations derive hole/tail exclusion, original Sail sources, canonical decoder words/alignment and exact x0 flags. The second native export reproduces exactly and its entire decoder matches constructed public Sail data. A full native x0-load constraint witness at PC 12 recovers actual source evidence beyond the UNIMP hole; missing bytes/capacity and all post-hole fields pass. Sparse initialized execution and arbitrary-program Rust refinement remain separate.
+- Sparse initialized original execution passes with real code/register/CSR/RAM bytes, complete native matching and actual exported slot-three membership. The existing full x0-load witness starts at public PC 12, retains the PC-four hole, and derives terminal PC 16, RAM 123 and x0 zero. The same strict initialized execution, boot and padding regressions remain intact.
 - No handwritten project warnings, admitted proofs or project axioms.
 - Serial bounded gates pass; parent/child timeout and memory probes confirm termination with no live owned processes.
 

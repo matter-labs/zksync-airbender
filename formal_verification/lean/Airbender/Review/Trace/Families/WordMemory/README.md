@@ -346,5 +346,20 @@ when supported instructions are separated by unsupported pure words. Native mask
 equations exclude holes and the full tail. Shared query calculations derive all
 canonical decoder inputs without per-row bounds/flags. [An actual native export](../../../Circuits/WordMemory/Tables/NativeSparseData.lean)
 has a complete row certificate from original public bytes and a full native
-x0-load witness at PC 12. This decoder connection still needs integration with
-initialized whole execution; no whole mixed-program claim is made.
+x0-load witness at PC 12.
+
+[The sparse initialized theorem](SparseExecution.lean) now uses the same finite
+original Sail execution and terminal observable as the strict theorem. Actual
+construction derives indexed source/decoder evidence internally; all native
+history, numerical, code-frame, clause/retirement and terminal proofs are shared.
+Native mask equations exclude holes before finite entry selection, preserving
+actual public slots, PCs and bytes. No constructed evidence, per-row read/bound,
+intermediate state/result or table equivalence is a public premise.
+
+[The initialized regression](../../../../../Tests/SparseExecution.lean) reuses the
+full native x0-load witness, actual exported slot three and real public
+code/register/CSR/RAM bytes. Complete native state/memory matching derives original
+fetched execution from public PC 12 to PC 16, unchanged RAM 123 and x0 zero.
+Initial PC 12 is public input; no control flow through or skipping an executed
+unsupported word is claimed. General export/Rust refinement, physical setup and
+initialization, mixed-family execution and argument enforcement remain open.

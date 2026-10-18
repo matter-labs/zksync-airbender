@@ -1,5 +1,6 @@
 import Airbender.Proofs.Trace.Families.WordMemory.ShadowImage
 import Airbender.Proofs.Trace.CodeHistory
+import Airbender.Proofs.Trace.Families.WordMemory.ProgramImage
 import Airbender.Proofs.WordMemory.ROMImage
 
 namespace Airbender.WordMemory.Proofs
@@ -63,6 +64,19 @@ theorem setup_sources_after_history {cells : List Cell}
   exact Trace.Proofs.entry_source_after_byte_frame (projected_history_rom_bytes kept history)
     (setup_sources image entry present) (setup_rom_pc image profile entry present)
     (setup_decoders_pure image entry present)
+
+/-- Both public constructors preserve original bytes and pure decoding through
+    the same actual architectural history; indexed PCs bound complete windows. -/
+theorem indexed_sources_after_history {cells : List Cell}
+    (kept : ∀ cell ∈ cells, architecturalAddress cell.addressCode = true)
+    {events : List MemoryAccess} {before after : State}
+    (history : SailHistory cells events before after)
+    {count : Nat} {program : List (ProgramEntry WordMemoryFamily)}
+    (image : IndexedProgram before count program) (profile : count ≤ 1048576) :
+    ∀ entry ∈ program, entry.SourceWith after decoderFields := by
+  intro entry present
+  exact Trace.Proofs.entry_source_after_byte_frame (projected_history_rom_bytes kept history)
+    (image.sources entry present) (image.rom_pc profile present) (image.pureDecoders entry present)
 
 /-- Add code/ROM preservation to the existing initialized architectural-history
     assembly. All native seeds and discarded shadow accesses remain matched. -/

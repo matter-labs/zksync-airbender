@@ -66,5 +66,8 @@ hole/tail exclusion from native equations and recover actual Sail sources,
 canonical words/alignment and the exact zero flag. The [actual interior-hole export](../../Circuits/WordMemory/Tables/NativeSparseData.lean)
 has a [complete kernel certificate](../../../Proofs/WordMemory/NativeSparseSetup.lean)
 from original public bytes. [Public claims](../../Trace/Families/WordMemory/SparseDecoder.lean)
-remain short; general Rust decoder agreement, sparse initialized execution and
-full physical setup/argument correspondence remain separate.
+remain short. [Sparse initialized execution](../../Trace/Families/WordMemory/SparseExecution.lean)
+now derives actual construction evidence internally and reuses the strict
+history/retirement/terminal assembly. Original slots, PCs and bytes remain intact.
+General Rust decoder agreement and full physical setup/argument correspondence
+remain separate.
