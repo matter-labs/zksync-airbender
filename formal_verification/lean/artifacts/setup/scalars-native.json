@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "field_modulus": 2147483647,
+  "profile": "range16_timestamp19",
+  "range16": {
+    "length": 65536,
+    "columns": [
+      {
+        "blocks": [
+          {
+            "kind": "affine",
+            "length": 65536,
+            "first": 0,
+            "step": 1
+          }
+        ]
+      }
+    ]
+  },
+  "timestamp19": {
+    "length": 524288,
+    "columns": [
+      {
+        "blocks": [
+          {
+            "kind": "affine",
+            "length": 524288,
+            "first": 0,
+            "step": 1
+          }
+        ]
+      }
+    ]
+  }
+}

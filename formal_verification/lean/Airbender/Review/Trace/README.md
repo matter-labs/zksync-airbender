@@ -159,3 +159,9 @@ same exact observable while keeping original PCs and actual bytes unchanged.
 The real x0-load regression starts at public PC 12, selects actual exported slot
 three after the PC-four hole, and reaches PC 16 with RAM 123 and x0 zero.
 General Rust/export and physical argument connections remain separate.
+
+[Shared scalar certificates](../Helpers/Tables/NativeScalars.lean) now connect
+actual range16/timestamp19 prefix data and modeled active zero padding to the
+unchanged Clean range helpers used by initialized execution. These data/row
+claims preserve the existing logical trace boundary; they do not establish
+physical lookup multiplicities, normalization/LDE or argument enforcement.

@@ -3,6 +3,7 @@
 //! Export actual native v2 table-driver/decoder rows, before physical trace assembly.
 mod columns;
 use columns::EncodedColumn;
+use cs::definitions::TIMESTAMP_COLUMNS_NUM_BITS;
 use cs::machine::machine_configurations::pad_bytecode;
 use cs::machine::ops::unrolled::load_store_word_only::{
     create_word_only_load_store_special_tables, word_only_load_store_table_driver_fn,
@@ -53,6 +54,41 @@ struct Artifact {
     tables: Vec<Region>,
     decoder: Matrix,
     range16: Matrix,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Scalars {
+    version: u32,
+    field_modulus: u64,
+    profile: String,
+    range16: Matrix,
+    timestamp19: Matrix,
+}
+
+fn export_scalars() -> Scalars {
+    let range = TableType::RangeCheckLarge.generate_table::<Mersenne31Field>();
+    let mut rows = Vec::new();
+    range.dump_limited_columns::<1>(&mut rows);
+    let range16 = matrix(&rows);
+    drop(rows);
+    // Unchanged generation clause from pinned prover/src/prover_stages/mod.rs.
+    // Read the native constant through cs::definitions, without a prover build.
+    let timestamp_range_check_table: Vec<_> = (0..(1 << TIMESTAMP_COLUMNS_NUM_BITS))
+        .map(|el| Mersenne31Field(el as u32))
+        .collect();
+    Scalars {
+        version: 1,
+        field_modulus: MODULUS,
+        profile: "range16_timestamp19".into(),
+        range16,
+        timestamp19: Matrix {
+            length: timestamp_range_check_table.len(),
+            columns: vec![column(timestamp_range_check_table.len(), MODULUS, |i| {
+                timestamp_range_check_table[i].as_u64_reduced() as u32
+            })],
+        },
+    }
 }
 
 fn column(length: usize, bound: u64, value: impl Fn(usize) -> u32) -> EncodedColumn {
@@ -150,6 +186,17 @@ fn export(mut image: Vec<u32>, text: Vec<u32>) -> Artifact {
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args_os().collect();
+    if args.len() == 3 && args[1] == "--scalars" {
+        let artifact = export_scalars();
+        let bytes = serde_json::to_vec_pretty(&artifact)?;
+        let recovered: Scalars = serde_json::from_slice(&bytes)?;
+        assert_eq!(
+            serde_json::to_value(&artifact)?,
+            serde_json::to_value(recovered)?
+        );
+        std::fs::write(args.last().unwrap(), [bytes, vec![b'\n']].concat())?;
+        return Ok(());
+    }
     let artifact = if args.len() == 3 && args[1] == "--fixture" {
         let words = vec![0x0100a183, 0x0030a823, 0x0100a003, 0xc0001073];
         export(words.clone(), words)
@@ -160,7 +207,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
     } else {
         return Err(
-            "usage: exporter IMAGE.bin TEXT.bin OUTPUT.json | exporter --fixture OUTPUT.json"
+            "usage: exporter IMAGE.bin TEXT.bin OUTPUT.json | exporter --fixture OUTPUT.json | exporter --scalars OUTPUT.json"
                 .into(),
         );
     };

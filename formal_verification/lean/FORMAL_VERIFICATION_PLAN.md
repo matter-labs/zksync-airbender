@@ -193,8 +193,16 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    and x0 zero. The PC-four hole remains in actual public bytes; no step through
    an unsupported instruction or control-flow skip is claimed. No per-row read,
    intermediate state/result or table-equivalence premise is supplied.
-   Next generalize exported-data certificates to arbitrary public programs, export
-   arithmetic/timestamp rows and bind full physical trace assembly/initialization.
+   [Shared native scalar export](Airbender/Review/Helpers/Tables/NativeScalars.lean)
+   now certifies every range16/timestamp19 prefix value and source-shaped active
+   zero filler. The timestamp generation clause is copied unchanged from pinned
+   native source with its existing constant; no full prover build is needed.
+   Exact lookup meanings connect to the unchanged Clean helpers. Both compiled
+   scalar placements, endpoints/padding and fourteen strict importer checks pass;
+   the reserved normalization row and physical multiplicity enforcement remain
+   outside this model. Next generalize exported-data certificates to arbitrary
+   public programs, export arithmetic decoder rows and bind full physical trace
+   assembly/initialization.
    The fixture certificates are not general Rust/export/LDE/compiler refinement.
    Rust refinement and cryptographic enforcement remain separate.
    Preserve v2 PC rollover and native timestamp offsets;

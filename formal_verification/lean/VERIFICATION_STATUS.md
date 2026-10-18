@@ -43,7 +43,7 @@ not completed v2 coverage.
 
 ## Remaining work
 
-- Generalize native export certificates to arbitrary public programs, add arithmetic/timestamp exports and full physical trace assembly; connect physical initialization and expand mixed/custom programs.
+- Generalize native export certificates to arbitrary public programs, add arithmetic decoder exports and full physical trace assembly; connect physical initialization and expand mixed/custom programs.
 - Extend initialized execution to jump/branch/SLT and the remaining supported families; preserve each native metadata and argument boundary.
 - Backport the remaining ordinary circuit families, worker operations, unified machine, full traces and initialization/teardown.
 - Retest v3 findings against v2 before carrying over counterexamples or temporary assumptions.
@@ -140,7 +140,7 @@ connects actual tagged exported rows to original Sail bytes after explicit paddi
 with the actual four-word prefix extraction as its public input condition.
 The original LW/SW/x0 prefix and explicit unsupported UNIMP slot are checked.
 These certificates cover this pinned native fixture; arbitrary programs, arithmetic
-native exports, timestamp19 and full physical trace padding/normalization/LDE
+native decoder exports and full physical trace padding/normalization/LDE
 correspondence remain open, as do physical initialization and argument enforcement.
 
 ## Sparse native decoder construction
@@ -196,15 +196,45 @@ initial PC is 12; this does not assert control flow that skips an executed hole.
 General Rust/Sail decoder agreement, arbitrary-program export certificates,
 physical setup/initialization and cryptographic enforcement remain separate.
 
+
+## Native shared scalar prefixes
+
+[The separate scalar artifact](artifacts/setup/scalars-native.json) now retains
+all 65,536 range16 and 524,288 timestamp19 values using two lossless affine
+blocks. The standalone exporter calls the native range16 API and copies the
+pinned prover's three-line timestamp generation clause unchanged, using the
+native constant reexported by cs. The standard gate checks that exact clause
+identity, every compressed value and byte-for-byte regeneration. No prover
+build, dependency change or full physical trace allocation is required. Existing
+program fixtures and their format are unchanged.
+
+[Literal scalar data and active rows](Airbender/Review/Helpers/Tables/NativeScalarData.lean)
+retain both actual prefixes, then model the native active zero fill. The final
+normalization row stays outside this domain. [Symbolic certificates](Airbender/Proofs/Tables/NativeScalars.lean)
+prove every prefix/filler row and exactly the original 16/19-bit range meanings,
+then connect them to the unchanged Clean range helpers used by both circuits.
+A [short shared scalar claim](Airbender/Review/Helpers/Tables/NativeScalars.lean)
+adds no table-equivalence premise. Repeated zero filler is retained as valid
+range data; this statement does not prove physical lookup multiplicities.
+
+[Regressions](Tests/NativeScalars.lean) check both compiled column placements 0/1,
+actual prefix endpoints, the first filler and last active row, exact regional
+endpoints and out-of-range rejection. The importer rejects malformed extents,
+widths, canonical values, unknown nested fields and incompatible profiles.
+These are complete native regional data certificates plus a source-shaped
+active-padding model. Formal Rust physical trace/normalization/LDE/argument
+refinement, arithmetic decoder exports and arbitrary-program certificates remain
+separate.
+
 ## Validation
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all twenty-two concrete test modules pass.
-- Importer regressions: 84 checks pass.
-- Axiom audit: 671 explicit roots; only propext, Classical.choice and Quot.sound.
-- All thirty-three public Review theorems (five circuit claims, twenty-six trace claims and two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
-- Source provenance: 71 unchanged reused files, two native circuit artifacts, thirty-one native Rust sources, two native setup fixtures and four exporter source/manifest/lock files.
+- Library, both CLI entrypoints and all twenty-three concrete test modules pass.
+- Importer regressions: 98 checks pass.
+- Axiom audit: 685 explicit roots; only propext, Classical.choice and Quot.sound.
+- All thirty-four public Review theorems (five circuit claims, twenty-six trace claims and three helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Source provenance: 71 unchanged reused files, two native circuit artifacts, thirty-two native Rust sources, three native setup artifacts and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
 - Public Sail x1/PC reads construct the accepted alias fixture; missing register and byte data reject construction.
@@ -238,6 +268,7 @@ Current checked checkpoint:
 - The standalone native exporter passes offline locked checking and exact fixture reproduction. Little-endian binary image/text inputs reproduce the fixture; partial words and oversized inputs reject before output. Lean certifies all actual regional ROM/separator/range values, the entire unsupported decoder tail and the loader's image zeros; original LW/SW/x0 and explicit UNIMP/sentinel regressions pass. Compressed-field, extent, region, tag and unknown-field mutations fail closed. Parse/emission, general Rust/compiler refinement and physical trace/LDE/argument connections remain separate.
 - Sparse public construction retains actual unsupported interior words at their original PCs and rejects missing/effectful inputs. Native equations derive hole/tail exclusion, original Sail sources, canonical decoder words/alignment and exact x0 flags. The second native export reproduces exactly and its entire decoder matches constructed public Sail data. A full native x0-load constraint witness at PC 12 recovers actual source evidence beyond the UNIMP hole; missing bytes/capacity and all post-hole fields pass. Sparse initialized execution and arbitrary-program Rust refinement remain separate.
 - Sparse initialized original execution passes with real code/register/CSR/RAM bytes, complete native matching and actual exported slot-three membership. The existing full x0-load witness starts at public PC 12, retains the PC-four hole, and derives terminal PC 16, RAM 123 and x0 zero. The same strict initialized execution, boot and padding regressions remain intact.
+- Both shared scalar prefixes reproduce exactly from the native API/extracted timestamp clause. Symbolic proofs cover every actual value and modeled active filler row, retaining repeated zero rows in the domain and excluding normalization. Existing Clean range helpers have proved exact membership connections. Prefix/padding/endpoints, both compiled placements and fourteen strict importer regressions pass. No full trace is evaluated; physical Rust/argument enforcement remains separate.
 - No handwritten project warnings, admitted proofs or project axioms.
 - Serial bounded gates pass; parent/child timeout and memory probes confirm termination with no live owned processes.
 

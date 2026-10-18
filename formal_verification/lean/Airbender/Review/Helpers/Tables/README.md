@@ -45,10 +45,19 @@ row. [Exact membership/read proofs](../../../Proofs/WordMemory/PhysicalSetup.lea
 recover both existing logical tables and actual padded Sail words without a
 large evaluated trace or assumed table equivalence. [The public read claim](../../Trace/Families/WordMemory/Setup.lean)
 exposes loader construction and tagged membership. Actual Rust/export/LDE and
-argument correspondence remain separate; scalar-row binding is not claimed.
+argument correspondence remain separate; shared scalar data is checked below.
 
 [Literal native v2 data](../../Circuits/WordMemory/Tables/NativeSetupData.lean) now
 has [symbolic certificates](../../../Proofs/WordMemory/NativeSetup.lean) against the
 existing complete ROM/separator/range models. The [lossless importer](../../../Import/Setup.lean)
 keeps parsing/emission separate from kernel checks. Only the pinned fixture has
 this actual exported-data connection; full trace assembly/LDE remains open.
+
+[Actual shared scalar data](NativeScalarData.lean) imports complete native
+range16/timestamp19 prefixes and models the native active zero filler. The
+[short scalar claim](NativeScalars.lean) exposes exact bounds; [calculations](../../../Proofs/Tables/NativeScalars.lean)
+certify every prefix/filler row and connect to unchanged original Clean helpers.
+Both compiled column placements are checked. Zero filler remains valid range
+data, and the reserved normalization row is excluded. No large trace is evaluated
+or table-equivalence premise supplied. Rust physical trace/LDE/multiplicity and
+argument enforcement remain separate.

@@ -84,4 +84,14 @@ elab "import_native_setup " name:ident " from " path:str : command => do
   let sourceName := mkIdent (name.getId.appendAfter "SourceBytes")
   elabCommand (← `(def $sourceName : String := $(quote source)))
 
+/-- Import both actual native scalar prefixes without selecting values by a
+    recipe. Shared compiled layout guards establish scalar placement at 0/1. -/
+elab "import_native_scalars " name:ident " from " path:str : command => do
+  let source ← IO.FS.readFile path.getString
+  let artifact ← match parseScalars source with
+    | .ok artifact => pure artifact
+    | .error error => throwError "native scalar import failed: {error}"
+  emitData (mkIdent (name.getId.appendAfter "Range16")) artifact.range16 0
+  emitData (mkIdent (name.getId.appendAfter "Timestamp19")) artifact.timestamp19 1
+
 end Airbender.Setup

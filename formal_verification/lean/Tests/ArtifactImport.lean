@@ -15,6 +15,39 @@ private def replaceField (j : Json) (name : String) (value : Json) : Except Stri
   let obj ← j.getObj?
   pure (Json.mkObj (obj.toArray.toList.filter (fun entry => entry.1 != name) ++ [(name, value)]))
 
+private def scalarChecks (setupSource : String) : IO Unit := do
+  let scalarSource ← IO.FS.readFile "artifacts/setup/scalars-native.json"
+  let scalar ← IO.ofExcept (Setup.parseScalars scalarSource)
+  check (scalar.range16.length == 65536 && scalar.timestamp19.length == 524288)
+    "actual native range16/timestamp19 scalar extents"
+  check (rejected ({scalar with version := 2}.validate)) "reject scalar export version"
+  check (rejected ({scalar with field_modulus := 2013265921}.validate)) "reject v3 scalar field"
+  check (rejected ({scalar with profile := "timestamp19"}.validate)) "reject changed scalar profile"
+  check (rejected ({scalar with timestamp19 := {scalar.timestamp19 with length := 524287}}.validate))
+    "reject truncated timestamp prefix"
+  check (rejected ({scalar with timestamp19 := {scalar.timestamp19 with columns := #[]}}.validate))
+    "reject missing timestamp column"
+  check (rejected ({scalar with timestamp19 := {scalar.timestamp19 with columns :=
+    scalar.timestamp19.columns ++ scalar.timestamp19.columns}}.validate)) "reject extra timestamp column"
+  check (rejected ({scalar with timestamp19 := {scalar.timestamp19 with columns :=
+    #[⟨#[.affine 524287 0 1]⟩]}}.validate)) "reject incomplete compressed timestamp column"
+  check (rejected ({scalar with timestamp19 := {scalar.timestamp19 with columns :=
+    #[⟨#[.affine 524288 2147483647 0]⟩]}}.validate)) "reject noncanonical timestamp data"
+  let scalarJson ← IO.ofExcept (Json.parse scalarSource)
+  let unknownScalar ← IO.ofExcept (replaceField scalarJson "invented" (.bool true))
+  check (rejected (Setup.parseScalars unknownScalar.compress)) "reject unknown scalar export field"
+  let timestampJson ← IO.ofExcept (scalarJson.getObjVal? "timestamp19")
+  let extraMatrix ← IO.ofExcept (replaceField timestampJson "invented" (.bool true))
+  let extraScalar ← IO.ofExcept (replaceField scalarJson "timestamp19" extraMatrix)
+  check (rejected (Setup.parseScalars extraScalar.compress)) "reject unknown scalar matrix field"
+  let columns ← IO.ofExcept ((← IO.ofExcept (timestampJson.getObjVal? "columns")).getArr?)
+  let extraColumn ← IO.ofExcept (replaceField columns[0]! "invented" (.bool true))
+  let extraMatrix ← IO.ofExcept (replaceField timestampJson "columns" (Json.arr #[extraColumn]))
+  let extraScalar ← IO.ofExcept (replaceField scalarJson "timestamp19" extraMatrix)
+  check (rejected (Setup.parseScalars extraScalar.compress)) "reject unknown scalar column field"
+  check (rejected (Setup.parseScalars setupSource)) "reject program artifact as scalar export"
+  check (rejected (Setup.parse scalarSource)) "reject scalar artifact as program export"
+
 def main : IO UInt32 := do
   try
     let source ← IO.FS.readFile "../../cs/add_sub_lui_auipc_mop_preprocessed_layout.json"
@@ -189,6 +222,7 @@ def main : IO UInt32 := do
     check (rejected (Setup.parse unknown.compress)) "reject unknown setup export field"
     let badBlock ← IO.ofExcept (Json.parse "{\"kind\":\"affine\",\"length\":1,\"first\":0,\"step\":0,\"invented\":1}")
     check (rejected (fromJson? badBlock : Except String Setup.Block)) "reject unknown compressed block field"
+    scalarChecks setupSource
     return (0 : UInt32)
   catch error =>
     IO.eprintln s!"FAIL {error}"

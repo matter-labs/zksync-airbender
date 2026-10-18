@@ -40,3 +40,8 @@ See [trust boundaries](../../../../TRUST_AND_REVIEW.md) before extending the cla
 capacity and reserved final row. No generic lookup groups are silently added;
 all 62 table offsets are zero. The existing local/trace claims are unchanged;
 actual Rust setup exports and argument enforcement remain separate.
+
+[Shared native scalar prefixes](../../Helpers/Tables/NativeScalars.lean) now bind
+the complete range16/timestamp19 data and modeled active zero fill to the existing
+Clean range meanings. Both compiled columns 0/1 are checked. Arithmetic native
+decoder export and physical trace/normalization/LDE/argument refinement stay open.

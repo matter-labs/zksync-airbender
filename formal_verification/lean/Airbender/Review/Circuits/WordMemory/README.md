@@ -145,3 +145,9 @@ a complete post-hole x0-load row. [Sparse initialized execution](../../Trace/Fam
 now reuses that full native witness and actual exported slot three in a real
 public Sail state, deriving execution from public PC 12 to PC 16 and exact
 terminal cells. General Rust/export and physical setup correspondence remain open.
+
+[Shared scalar data](../../Helpers/Tables/NativeScalars.lean) now has complete
+native range16/timestamp19 prefix certificates and source-shaped active zero
+padding, with exact existing Clean helper membership. Its compiled placement is
+checked alongside arithmetic. Physical trace/LDE/multiplicity and argument
+refinement remain separate.

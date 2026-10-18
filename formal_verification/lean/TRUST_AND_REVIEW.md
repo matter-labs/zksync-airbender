@@ -350,7 +350,7 @@ connects actual tagged exported rows to original Sail bytes after explicit paddi
 with the actual four-word prefix extraction as its public input condition.
 The original LW/SW/x0 prefix and explicit unsupported UNIMP slot are checked.
 These certificates cover this pinned native fixture; arbitrary programs, arithmetic
-native exports, timestamp19 and full physical trace padding/normalization/LDE
+native decoder exports and full physical trace padding/normalization/LDE
 correspondence remain open, as do physical initialization and argument enforcement.
 
 The exporter uses the same pinned native APIs as setup callers, retaining image
@@ -426,6 +426,36 @@ zero. The unsupported word at PC four remains in the public image. The supplied
 initial PC is 12; this does not assert control flow that skips an executed hole.
 General Rust/Sail decoder agreement, arbitrary-program export certificates,
 physical setup/initialization and cryptographic enforcement remain separate.
+
+
+## Native shared scalar prefixes
+
+[The separate scalar artifact](artifacts/setup/scalars-native.json) now retains
+all 65,536 range16 and 524,288 timestamp19 values using two lossless affine
+blocks. The standalone exporter calls the native range16 API and copies the
+pinned prover's three-line timestamp generation clause unchanged, using the
+native constant reexported by cs. The standard gate checks that exact clause
+identity, every compressed value and byte-for-byte regeneration. No prover
+build, dependency change or full physical trace allocation is required. Existing
+program fixtures and their format are unchanged.
+
+[Literal scalar data and active rows](Airbender/Review/Helpers/Tables/NativeScalarData.lean)
+retain both actual prefixes, then model the native active zero fill. The final
+normalization row stays outside this domain. [Symbolic certificates](Airbender/Proofs/Tables/NativeScalars.lean)
+prove every prefix/filler row and exactly the original 16/19-bit range meanings,
+then connect them to the unchanged Clean range helpers used by both circuits.
+A [short shared scalar claim](Airbender/Review/Helpers/Tables/NativeScalars.lean)
+adds no table-equivalence premise. Repeated zero filler is retained as valid
+range data; this statement does not prove physical lookup multiplicities.
+
+[Regressions](Tests/NativeScalars.lean) check both compiled column placements 0/1,
+actual prefix endpoints, the first filler and last active row, exact regional
+endpoints and out-of-range rejection. The importer rejects malformed extents,
+widths, canonical values, unknown nested fields and incompatible profiles.
+These are complete native regional data certificates plus a source-shaped
+active-padding model. Formal Rust physical trace/normalization/LDE/argument
+refinement, arithmetic decoder exports and arbitrary-program certificates remain
+separate.
 
 ## Public state, profiles and external inputs
 

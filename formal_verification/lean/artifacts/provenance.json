@@ -421,6 +421,10 @@
     {
       "path": "../../circuit_defs/unrolled_circuits/load_store_word_only/src/lib.rs",
       "sha256": "7a854945a03f8e9f7bea4b380b935432e7e3bac7300910fd9cc4e93657186b8e"
+    },
+    {
+      "path": "../../cs/src/definitions/constants.rs",
+      "sha256": "9aff0ffba4429ce0c7b5fcf68942902708f949981259cafdfce0bd24201f2771"
     }
   ],
   "adaptations": [
@@ -1420,6 +1424,69 @@
       "backport_reuse_path": "Tests/WordMemoryROMTransport.lean",
       "backport_reuse_sha256": "f09efa9571a92bcccc08cd91c7f7bb9cbfa23831c41d050cac28e770ddd6a456",
       "change": "Reuse actual public register/CSR/byte initialization, complete native token matching, ROM extraction and terminal-value checks. The same existing x0-load witness starts at public PC 12 after an interior unsupported slot, selects actual exported decoder slot three, and derives complete original execution to PC 16 with RAM 123 and x0 zero. No intermediate state/read/result is a premise."
+    },
+    {
+      "path": "Airbender/Import/Setup.lean",
+      "backport_reuse_revision": "11c7bb597401eacb658ee78b4849ec23300600e6",
+      "backport_reuse_path": "Airbender/Import/Setup.lean",
+      "backport_reuse_sha256": "a4efecfb2786c0bafc7204a2690f1c80939a448881b5bcd047e2457a4e73e3f9",
+      "change": "Reuse unchanged compressed column/matrix validation. Add a separate program-independent range16/timestamp19 profile with exact known keys, Mersenne31 field, scalar widths/extents and canonical complete data; preserve existing program artifact parsing."
+    },
+    {
+      "path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_revision": "11c7bb597401eacb658ee78b4849ec23300600e6",
+      "backport_reuse_path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_sha256": "33a320fe390169e91963573cd7517388a9f6617f388fa0fbfdd3cf2b1291738e",
+      "change": "Reuse unchanged literal column emission and data constructors. Add a separate native scalar import command at the checked common setup offsets 0/1, without inferring table values or changing the existing setup artifact command."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/NativeScalarData.lean",
+      "backport_reuse_revision": "11c7bb597401eacb658ee78b4849ec23300600e6",
+      "backport_reuse_path": "Airbender/Review/Circuits/WordMemory/Tables/NativeSetupData.lean",
+      "backport_reuse_sha256": "1b76043137afd55246dba440d1d2ee07ea5293bed74cd51c0b9eaaa5a3e43717",
+      "change": "Reuse literal native-data import. Expose shared range16/timestamp19 prefixes and source-shaped active zero padding; exclude the reserved normalization row. Physical Rust trace/LDE enforcement remains separate."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/NativeScalars.lean",
+      "backport_reuse_revision": "11c7bb597401eacb658ee78b4849ec23300600e6",
+      "backport_reuse_path": "Airbender/Proofs/WordMemory/NativeSetup.lean",
+      "backport_reuse_sha256": "7a8c84864b2bb92ba831416e59bbf6b6caef71c699e4948a5a532253b0a7bebf",
+      "change": "Copy the affine getter unchanged and reuse symbolic full-prefix certification. Derive all active zero-padding rows and exact 16/19-bit membership; bind these proved ranges to the unchanged original Clean lookup helpers without a table-equivalence premise."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/NativeScalars.lean",
+      "backport_reuse_revision": "11c7bb597401eacb658ee78b4849ec23300600e6",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/WordMemory/SparseDecoder.lean",
+      "backport_reuse_sha256": "6f1a6caf5d7ae3fd15068dd27180132e70d66dd22eb0a400186c534af37c1445",
+      "change": "Keep one short shared native-scalar range claim. State actual exported prefixes plus the explicit source-shaped active-row model, leaving calculations under Proofs and physical trace/normalization/LDE/argument refinement separate."
+    },
+    {
+      "path": "Tests/NativeScalars.lean",
+      "backport_reuse_revision": "11c7bb597401eacb658ee78b4849ec23300600e6",
+      "backport_reuse_path": "Tests/NativeSetup.lean",
+      "backport_reuse_sha256": "0023dc5da918a410ab39c8731c14eab80404a2ea71b2c83ebe90c697e219dded",
+      "change": "Reuse finite native-data kernel checks. Exercise exact prefix endpoints, active zero padding including the last usable row, actual compiled scalar placements in both families, range acceptance/rejection and regional column endpoints."
+    },
+    {
+      "path": "Tests/ArtifactImport.lean",
+      "backport_reuse_revision": "11c7bb597401eacb658ee78b4849ec23300600e6",
+      "backport_reuse_path": "Tests/ArtifactImport.lean",
+      "backport_reuse_sha256": "e73172d17cdb54b3a7e4763e04d6a7a5e147786ee8edb69ea8c56f3f0a77c9ce",
+      "change": "Add fourteen actual scalar import/geometry/canonicalness/unknown-field and cross-profile regressions. Split the new IO checks into a helper to avoid deep elaboration rather than raising recursion or resource caps."
+    },
+    {
+      "path": "scripts/check_native_setup.py",
+      "backport_reuse_revision": "11c7bb597401eacb658ee78b4849ec23300600e6",
+      "backport_reuse_path": "scripts/check_native_setup.py",
+      "backport_reuse_sha256": "3d7c6385ba503051029b75109e579eae0a5bb2fa0d3d9ddefd3efa5a9f16ec9c",
+      "change": "Keep original native fixture/CLI checks. Verify exact normalized timestamp generation clause identity against pinned native source and reproduce the program-independent scalar artifact byte for byte after offline scoped Cargo checking."
+    },
+    {
+      "path": "../native_setup_exporter/src/main.rs",
+      "backport_reuse_revision": "11c7bb597401eacb658ee78b4849ec23300600e6",
+      "backport_reuse_path": "../native_setup_exporter/src/main.rs",
+      "backport_reuse_sha256": "6311b34ae31f34602c9a054699efe4ac1bf8a45b37858710a450ba5f729e54ed",
+      "change": "Retain all existing program modes and the unchanged lossless codec. Add a separate scalar mode using the actual range16 API and the verbatim native timestamp clause with the cs-reexported constant; no full prover build, dependency change or physical trace allocation."
     }
   ],
   "setup_artifacts": [
@@ -1450,6 +1517,15 @@
       ],
       "image_padding": "native pad_bytecode::<4194304>; exactly 1048576 words",
       "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5"
+    },
+    {
+      "path": "artifacts/setup/scalars-native.json",
+      "sha256": "96ead164447216a5ee9bf27504f1f999afb82f1b785cbc32884617a6518d34bf",
+      "profile": "shared native v2 Mersenne31 range16/timestamp19 regional prefixes",
+      "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py; exporter --scalars",
+      "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5",
+      "timestamp_clause_source": "../../prover/src/prover_stages/mod.rs",
+      "physical_trace": "active zero fill is modeled separately; reserved normalization row and LDE excluded"
     }
   ],
   "native_exporter_files": [
@@ -1463,7 +1539,7 @@
     },
     {
       "path": "../native_setup_exporter/src/main.rs",
-      "sha256": "6311b34ae31f34602c9a054699efe4ac1bf8a45b37858710a450ba5f729e54ed"
+      "sha256": "f6e9f87fb6455de8ed965f8b8144f1419b780a00f62bf96001675b591e02ab5b"
     },
     {
       "path": "../native_setup_exporter/src/columns.rs",

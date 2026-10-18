@@ -158,4 +158,29 @@ def parse (source : String) : Except String Artifact := do
   artifact.validate
   return artifact
 
+/-- Program-independent native scalar prefixes. Physical zero padding and the
+    reserved normalization row are separate from these exported local values. -/
+structure ScalarArtifact where
+  version : Nat
+  field_modulus : Nat
+  profile : String
+  range16 : Matrix
+  timestamp19 : Matrix
+  deriving Repr, FromJson
+
+def ScalarArtifact.validate (artifact : ScalarArtifact) : Except String Unit := do
+  unless artifact.version == 1 && artifact.field_modulus == mersenne31Modulus &&
+      artifact.profile == "range16_timestamp19" do throw "unsupported native scalar profile"
+  artifact.range16.validate 65536 1
+  artifact.timestamp19.validate 524288 1
+
+def parseScalars (source : String) : Except String ScalarArtifact := do
+  let json ← Json.parse source
+  exactKeys json #["version", "field_modulus", "profile", "range16", "timestamp19"]
+  matrixKeys (← json.getObjVal? "range16")
+  matrixKeys (← json.getObjVal? "timestamp19")
+  let artifact : ScalarArtifact ← fromJson? json
+  artifact.validate
+  return artifact
+
 end Airbender.Setup

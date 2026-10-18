@@ -19,6 +19,7 @@ import Tests.PhysicalSetup
 import Tests.NativeSetup
 import Tests.NativeSparseSetup
 import Tests.SparseExecution
+import Tests.NativeScalars
 
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
@@ -714,3 +715,17 @@ import Tests.SparseExecution
 #print axioms Tests.SparseExecution.decoded
 #print axioms Tests.SparseExecution.initialized_execution
 #print axioms Tests.SparseExecution.terminal_values
+#print axioms Airbender.Verification.NativeSetup.Proofs.scalar_lengths
+#print axioms Airbender.Verification.NativeSetup.Proofs.exported_scalar_rows
+#print axioms Airbender.Verification.NativeSetup.Proofs.active_scalar_rows
+#print axioms Airbender.Verification.NativeSetup.Proofs.scalar_padding_zero
+#print axioms Airbender.Verification.NativeSetup.Proofs.scalar_lookup
+#print axioms Airbender.Verification.NativeSetup.Proofs.range16_lookup
+#print axioms Airbender.Verification.NativeSetup.Proofs.timestamp19_lookup
+#print axioms Airbender.Verification.NativeSetup.native_scalar_lookup
+#print axioms Tests.NativeScalars.geometry
+#print axioms Tests.NativeScalars.compiled_placements
+#print axioms Tests.NativeScalars.prefix_boundaries
+#print axioms Tests.NativeScalars.active_padding
+#print axioms Tests.NativeScalars.native_bounds
+#print axioms Tests.NativeScalars.finite_endpoints
