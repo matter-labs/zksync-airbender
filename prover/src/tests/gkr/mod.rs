@@ -188,7 +188,7 @@ pub(crate) fn first_decoder_lookup_violation<F: PrimeField, A: GoodAllocator, B:
         let pc = tuple[0].as_u32_reduced() as usize | (tuple[1].as_u32_reduced() as usize) << 16;
         table
             .get(pc / 4)
-            .is_none_or(|entry| pc % 4 != 0 || entry.as_slice() != tuple.as_slice())
+            .is_none_or(|entry| !pc.is_multiple_of(4) || entry.as_slice() != tuple.as_slice())
     })
 }
 

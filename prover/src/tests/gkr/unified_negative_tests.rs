@@ -1530,12 +1530,9 @@ fn column_cuts_negative_cases_rejected() {
         "two dispatch bits",
         &mut trace,
         &[(bit(FAMILY_4_SW_BIT), lw, F::ONE)],
-        &|t: &GKRFullWitnessTrace<F, Global, Global>| {
+        |t: &GKRFullWitnessTrace<F, Global, Global>| {
             let failing = failing_constraints_on_row(&circuit, t, lw);
-            assert!(
-                failing.iter().any(|(k, _, n)| is_tie(*k, n)),
-                "{failing:#?}"
-            );
+            assert!(failing.iter().any(|(k, _, n)| is_tie(k, n)), "{failing:#?}");
             assert_eq!(
                 first_decoder_lookup_violation(&circuit, t, &table),
                 Some(lw)
@@ -1549,12 +1546,9 @@ fn column_cuts_negative_cases_rejected() {
         "zero dispatch bits on an executing row",
         &mut trace,
         &[(bit(0), add, F::ZERO)],
-        &|t: &GKRFullWitnessTrace<F, Global, Global>| {
+        |t: &GKRFullWitnessTrace<F, Global, Global>| {
             let failing = failing_constraints_on_row(&circuit, t, add);
-            assert!(
-                failing.iter().any(|(k, _, n)| is_tie(*k, n)),
-                "{failing:#?}"
-            );
+            assert!(failing.iter().any(|(k, _, n)| is_tie(k, n)), "{failing:#?}");
             assert_eq!(
                 first_decoder_lookup_violation(&circuit, t, &table),
                 Some(add)
@@ -1578,7 +1572,7 @@ fn column_cuts_negative_cases_rejected() {
                     failing.iter().any(|(_, _, n)| is_padding_zero(n)),
                     "{failing:#?}"
                 );
-                assert_eq!(failing.iter().any(|(k, _, n)| is_tie(*k, n)), b != rd_zero);
+                assert_eq!(failing.iter().any(|(k, _, n)| is_tie(k, n)), b != rd_zero);
             },
         );
     }
@@ -1598,7 +1592,7 @@ fn column_cuts_negative_cases_rejected() {
         "RD_IS_ZERO on a non-F2 row (nonzero rd)",
         &mut trace,
         &[(bit(rd_zero), add_nonzero, F::ONE)],
-        &|t: &GKRFullWitnessTrace<F, Global, Global>| {
+        |t: &GKRFullWitnessTrace<F, Global, Global>| {
             let failing = failing_constraints_on_row(&circuit, t, add_nonzero);
             assert!(
                 failing.iter().any(|(_, _, n)| is_rd_zero_pair(n, 0)),
@@ -1625,7 +1619,7 @@ fn column_cuts_negative_cases_rejected() {
         "RD_IS_ZERO on a non-F2 row (zero rd)",
         &mut trace,
         &[(bit(rd_zero), add_zero, F::ONE)],
-        &|t: &GKRFullWitnessTrace<F, Global, Global>| {
+        |t: &GKRFullWitnessTrace<F, Global, Global>| {
             assert!(failing_constraints_on_row(&circuit, t, add_zero).is_empty());
             assert_eq!(
                 first_decoder_lookup_violation(&circuit, t, &table),
@@ -1691,7 +1685,7 @@ fn column_cuts_negative_cases_rejected() {
             "non-F2 pc_out != pc + 4",
             &mut trace,
             &[(pc_out[0], row, forged)],
-            &|t: &GKRFullWitnessTrace<F, Global, Global>| {
+            |t: &GKRFullWitnessTrace<F, Global, Global>| {
                 let failing = failing_constraints_on_row(&circuit, t, row);
                 assert!(
                     failing.iter().any(|(_, _, n)| is_pc_bump_low(n)),
