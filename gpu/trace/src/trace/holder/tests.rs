@@ -1920,9 +1920,15 @@ fn persisted_partial_trees_open_like_rebuilt_trees() {
             committed.retain_after_commitment(WitnessPostCommitStorage::RawAndMonomials);
             let range = Range::new("persisted_partial_trees").unwrap();
             range.start(stream).unwrap();
-            let job =
-                schedule_memory_cap_readback(&committed, Callbacks::new(), range, true, &context)
-                    .unwrap();
+            let job = schedule_memory_cap_readback(
+                &committed,
+                Callbacks::new(),
+                None,
+                range,
+                true,
+                &context,
+            )
+            .unwrap();
             let mut slab_host =
                 vec![Digest::default(); geometry.cosets_count() * geometry.coset_stride()];
             memory_copy_async(
@@ -1965,7 +1971,10 @@ fn persisted_partial_trees_open_like_rebuilt_trees() {
                 let mut memory = GpuGKRMemoryTransfer::new(Arc::new(host), &context).unwrap();
                 let mut transfer = Transfer::new().unwrap();
                 transfer.record_allocated(&context).unwrap();
-                memory.schedule_transfer(&mut transfer, &context).unwrap();
+                memory.stage_transfer(&mut transfer);
+                memory
+                    .schedule_partial_trees_transfer(&mut transfer, &context)
+                    .unwrap();
                 transfer.record_transferred(&context).unwrap();
                 transfer.ensure_transferred(&context).unwrap();
                 let (geometry, device) = memory.take_partial_trees().unwrap();

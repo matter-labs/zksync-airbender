@@ -147,6 +147,8 @@ impl<'a, A: GoodAllocator + 'a> GpuGKRProofTransfer<'a, A> {
             self.transfer.stage(&self.top_bits_host, top_bits);
         }
         self.external_challenges.stage_transfer(&mut self.transfer);
+        self.memory
+            .schedule_partial_trees_transfer(&mut self.transfer, context)?;
         if let Some(setup) = self.setup.as_mut() {
             setup.schedule_transfer(&mut self.transfer, context)?;
         }
