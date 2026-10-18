@@ -17,9 +17,7 @@ use gpu_trace::trace::packed::{CosetQueryPlan, PackedCosetRecomputeOracle};
 
 use super::commit::{schedule_commit_intermediate, IntermediateOracle};
 use super::openings::schedule_open_intermediate;
-use super::outputs::{
-    schedule_readback_and_assemble, L1WhirProofDevice, L1WhirProofHost, L1WhirScheduled,
-};
+use super::outputs::{L1WhirPendingReadback, L1WhirProofDevice, L1WhirProofHost};
 use super::shape::L1WhirShape;
 use super::state::{
     schedule_accumulate_base, schedule_batched_opening, schedule_eq_from_point,
@@ -205,26 +203,15 @@ pub fn schedule_l1_whir_fold(
     schedule: &WhirSchedule,
     shape: &L1WhirShape,
     context: &ProverContext,
-) -> CudaResult<L1WhirScheduled> {
+) -> CudaResult<L1WhirPendingReadback> {
     validate_inputs(base, setup, seed, &inputs, schedule, shape, context);
     let stream = context.get_exec_stream();
     let mut ranges = Vec::new();
     let memory_columns = base.packed_columns();
     let setup_columns = setup.oracle().packed_columns();
     let mut outputs = L1WhirProofDevice::new(shape, memory_columns, setup_columns, context)?;
-    let mut host = L1WhirProofHost::new(shape, &outputs, memory_columns, setup_columns, context);
+    let host = L1WhirProofHost::new(shape, &outputs, context);
     let phase = start_phase("gkr.whir.pr.accumulate".to_owned(), context)?;
-    memory_copy_async(&mut host.claims, inputs.claims, stream)?;
-    memory_copy_async(
-        &mut host.original_evaluation_point,
-        inputs.base_layer_point,
-        stream,
-    )?;
-    memory_copy_async(
-        &mut host.batching_challenge,
-        inputs.batching_challenge,
-        stream,
-    )?;
     let mut state = L1WhirState::new(shape.log_message, shape.term_capacity, context)?;
     let mut powers = context.alloc(inputs.claims.len(), AllocationPlacement::BestFit)?;
     get_powers_by_ref(
@@ -383,15 +370,13 @@ pub fn schedule_l1_whir_fold(
     );
     drop(state);
     drop(challenge);
-    schedule_readback_and_assemble(
-        outputs,
+    Ok(L1WhirPendingReadback {
+        device: outputs,
         host,
-        base.cap_digests(),
-        setup.oracle().cap_digests(),
-        schedule,
+        schedule: schedule.clone(),
         memory_columns,
         setup_columns,
-        ranges,
-        context,
-    )
+        setup_cap: setup.host.cap().cap,
+        tracing_ranges: ranges,
+    })
 }

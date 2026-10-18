@@ -418,7 +418,7 @@ fn pr_accumulate_base_matches_cpu() {
         if log_rows == 10 {
             let shape = L1WhirShape::from_schedule(&small_schedule(), 14, 5, 2, 16 << 14);
             let outputs = super::outputs::L1WhirProofDevice::new(&shape, 7, 1, &ctx).unwrap();
-            let _host = super::outputs::L1WhirProofHost::new(&shape, &outputs, 7, 1, &ctx);
+            let _host = super::outputs::L1WhirProofHost::new(&shape, &outputs, &ctx);
             assert_eq!(outputs.memory.leaves.len(), 5 * 4 * 7);
             assert_eq!(outputs.setup.leaves.len(), 5 * 4);
             assert_eq!(outputs.memory.paths.len(), 5 * 14);
@@ -2195,6 +2195,16 @@ fn assert_l1_whir_fold_matches_cpu_small(
                 },
                 schedule,
                 &shape,
+                &ctx,
+            )
+            .unwrap()
+            .schedule_readback_and_assemble(
+                base.cap_digests(),
+                L1WhirInputs {
+                    claims: &claims_dev,
+                    base_layer_point: &point_dev,
+                    batching_challenge: &challenge_dev,
+                },
                 &ctx,
             )
             .unwrap();

@@ -31,7 +31,7 @@ use gpu_trace::witness::proth120::{
 };
 use gpu_trace::witness::trace_unrolled::PAGE_SIZE_LOG2;
 use gpu_whir::proth120::{
-    schedule_l1_whir_fold, L1WhirInputs, L1WhirProof, L1WhirScheduled, L1WhirShape,
+    schedule_l1_whir_fold, L1WhirInputs, L1WhirKeepalive, L1WhirProof, L1WhirShape,
     L1_WHIR_TILE_BYTES,
 };
 
@@ -47,10 +47,7 @@ use crate::upstream::{
 pub struct GpuL1WrapProofJob<'a> {
     is_finished_event: CudaEvent,
     callbacks: Callbacks<'a>,
-    m6_fields: Box<Option<M6ProofFields>>,
-    whir: Option<L1WhirScheduled>,
-    top_bits_host: Vec<u32>,
-    commitment_mode: CommitmentMode,
+    result: Box<Option<L1WrapResult>>,
     ranges: Vec<Range>,
     keepalive: GpuL1WrapProofJobKeepalive<'a>,
 }
@@ -61,6 +58,7 @@ pub(crate) struct GpuL1WrapProofJobKeepalive<'a> {
     _relations: Proth120LookupRelations,
     _challenges: PackedChallenges,
     _gkr: GkrOutputPr,
+    _whir: L1WhirKeepalive,
     _proof_host_mirror: HostAllocation<[u8]>,
 }
 
@@ -353,7 +351,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         geometry.log_base_values_per_leaf,
         L1_WHIR_TILE_BYTES,
     );
-    let whir = schedule_l1_whir_fold(
+    let mut whir = schedule_l1_whir_fold(
         &mut base,
         &mut setup,
         handoff.seed,
@@ -373,13 +371,26 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         DeviceSlice::from_raw_parts(slab.backing.as_ptr().cast::<u8>(), layout.bytes_len())
     };
     memory_copy_async(&mut mirror, slab_bytes, stream)?;
+    whir.schedule_readback(base.cap_digests(), context)?;
     let mirror_accessor = mirror.get_accessor();
-    let mut m6_fields = Box::new(None);
-    let m6_accessor = UnsafeMutAccessor::new(&mut *m6_fields);
+    let whir_readback = whir.readback();
+    let mut result = Box::new(None);
+    let result_accessor = UnsafeMutAccessor::new(&mut *result);
     callbacks.schedule(
         move || {
+            let _range = scoped_range(Some("ab"), "l1_wrap.assembly");
             let fields = layout.parse_m6_fields(unsafe { mirror_accessor.get() });
-            unsafe { m6_accessor.get_mut() }.replace(fields);
+            let (memory_claims, setup_claims) = &fields.merged_claims;
+            let whir = unsafe {
+                whir_readback.assemble(
+                    memory_claims,
+                    setup_claims,
+                    &fields.evaluation_point,
+                    fields.batching_challenge,
+                )
+            };
+            let proof = assemble_l1_proof(fields, whir, top_bits_host.clone(), commitment_mode);
+            unsafe { result_accessor.get_mut() }.replace(proof);
         },
         stream,
     )?;
@@ -399,10 +410,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     Ok(GpuL1WrapProofJob {
         is_finished_event,
         callbacks,
-        m6_fields,
-        whir: Some(whir),
-        top_bits_host,
-        commitment_mode,
+        result,
         ranges: {
             phases.push(range);
             phases
@@ -413,6 +421,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
             _relations: relations,
             _challenges: challenges,
             _gkr: gkr,
+            _whir: whir.into_keepalive(),
             _proof_host_mirror: mirror,
         },
     })
@@ -423,23 +432,15 @@ impl GpuL1WrapProofJob<'_> {
         let Self {
             is_finished_event,
             callbacks,
-            mut m6_fields,
-            mut whir,
-            top_bits_host,
-            commitment_mode,
+            mut result,
             ranges,
             keepalive,
         } = self;
         let _range = scoped_range(Some("ab"), "l1_wrap.finish");
         is_finished_event.synchronize()?;
-        let fields = m6_fields
+        let result = result
             .take()
-            .expect("L1Wrap M6 readback did not complete");
-        let whir = whir
-            .take()
-            .expect("L1Wrap WHIR job missing")
-            .into_proof_after_completion();
-        let result = assemble_l1_proof(fields, whir, top_bits_host, commitment_mode);
+            .expect("L1Wrap proof assembly callback did not run");
         for range in &ranges {
             log::debug!("{}: {} ms", range.name(), range.elapsed()?);
         }

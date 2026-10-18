@@ -13,6 +13,7 @@ use gpu_core::primitives::field::PR;
 use gpu_hash::keccak256::Digest;
 use gpu_prover_context::ProverContext;
 
+use super::schedule::L1WhirInputs;
 use super::shape::L1WhirShape;
 use crate::upstream::{
     BaseFieldQuery, ExtensionFieldQuery, Keccak256MerkleTreeWithCap, MerkleTreeCapVarLength,
@@ -141,10 +142,6 @@ pub(crate) struct L1WhirProofHost {
     pub(crate) setup: BaseOpeningsHost,
     pub(crate) intermediate: Vec<IntermediateProofHost>,
     pub(crate) memory_cap: HostAllocation<[Digest]>,
-    pub(crate) setup_cap: HostAllocation<[Digest]>,
-    pub(crate) claims: HostAllocation<[PR]>,
-    pub(crate) original_evaluation_point: HostAllocation<[PR]>,
-    pub(crate) batching_challenge: HostAllocation<[PR]>,
     pub(crate) ood_samples: HostAllocation<[PR]>,
     pub(crate) sumcheck_polys: HostAllocation<[PR]>,
     pub(crate) pow_nonces: HostAllocation<[u64]>,
@@ -168,8 +165,6 @@ impl L1WhirProofHost {
     pub(crate) fn new(
         shape: &L1WhirShape,
         device: &L1WhirProofDevice,
-        memory_columns: usize,
-        setup_columns: usize,
         context: &ProverContext,
     ) -> Self {
         unsafe {
@@ -187,15 +182,6 @@ impl L1WhirProofHost {
                     })
                     .collect(),
                 memory_cap: context.alloc_host_uninit_slice(1 << shape.cap_log),
-                setup_cap: context.alloc_host_uninit_slice(1 << shape.cap_log),
-                claims: context.alloc_host_uninit_slice(
-                    memory_columns
-                        .checked_add(setup_columns)
-                        .expect("Proth120 WHIR: claims length overflow"),
-                ),
-                original_evaluation_point: context
-                    .alloc_host_uninit_slice(shape.log_message as usize),
-                batching_challenge: context.alloc_host_uninit_slice(1),
                 ood_samples: context.alloc_host_uninit_slice(device.ood_samples.len()),
                 sumcheck_polys: context.alloc_host_uninit_slice(device.sumcheck_polys.len()),
                 pow_nonces: context.alloc_host_uninit_slice(device.pow_nonces.len()),
@@ -208,11 +194,139 @@ impl L1WhirProofHost {
 
 pub type L1WhirProof = WhirPolyCommitProof<PR, PR, Keccak256MerkleTreeWithCap>;
 
+/// The WHIR fold's GPU work, enqueued without any D2H: the caller reads the proof
+/// back with [`Self::schedule_readback`] and assembles it from [`Self::readback`]
+/// in its own callback, or uses [`Self::schedule_readback_and_assemble`].
+pub struct L1WhirPendingReadback {
+    pub(crate) device: L1WhirProofDevice,
+    pub(crate) host: L1WhirProofHost,
+    pub(crate) schedule: WhirSchedule,
+    pub(crate) memory_columns: usize,
+    pub(crate) setup_columns: usize,
+    pub(crate) setup_cap: Vec<Digest>,
+    pub(crate) tracing_ranges: Vec<(String, Range)>,
+}
+
+impl L1WhirPendingReadback {
+    /// Enqueues the proof's D2H copies on `exec_stream`, back to back;
+    /// `memory_cap` is the cap of the base oracle the fold opened.
+    pub fn schedule_readback(
+        &mut self,
+        memory_cap: &DeviceSlice<Digest>,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        let stream = context.get_exec_stream();
+        let (host, device) = (&mut self.host, &self.device);
+        copy_base_openings(&mut host.memory, &device.memory, stream)?;
+        copy_base_openings(&mut host.setup, &device.setup, stream)?;
+        for (host, device) in host.intermediate.iter_mut().zip(&device.intermediate) {
+            memory_copy_async(&mut host.cap, &device.cap, stream)?;
+            memory_copy_async(&mut host.leaves, &device.leaves, stream)?;
+            memory_copy_async(&mut host.paths, &device.paths, stream)?;
+            memory_copy_async(&mut host.tree_indexes, &device.tree_indexes, stream)?;
+        }
+        memory_copy_async(&mut host.memory_cap, memory_cap, stream)?;
+        memory_copy_async(&mut host.ood_samples, &device.ood_samples, stream)?;
+        memory_copy_async(&mut host.sumcheck_polys, &device.sumcheck_polys, stream)?;
+        memory_copy_async(&mut host.pow_nonces, &device.pow_nonces, stream)?;
+        memory_copy_async(&mut host.final_monomials, &device.final_monomials, stream)?;
+        memory_copy_async(&mut host.batched_opening, &device.batched_opening, stream)
+    }
+
+    /// Readers of the mirrors `schedule_readback` fills, for a callback enqueued after it.
+    pub fn readback(&self) -> L1WhirReadback {
+        L1WhirReadback {
+            host: self.host.readback(),
+            schedule: self.schedule.clone(),
+            memory_columns: self.memory_columns,
+            setup_columns: self.setup_columns,
+            setup_cap: self.setup_cap.clone(),
+        }
+    }
+
+    /// Owns the mirrors until the job's completion; the device outputs are released.
+    pub fn into_keepalive(self) -> L1WhirKeepalive {
+        L1WhirKeepalive {
+            _host: self.host,
+            tracing_ranges: self.tracing_ranges,
+        }
+    }
+
+    /// Standalone readback: also copies the GKR claims, evaluation point and
+    /// batching challenge the WHIR proof repeats, and assembles the proof in a
+    /// callback of its own.
+    pub fn schedule_readback_and_assemble(
+        mut self,
+        memory_cap: &DeviceSlice<Digest>,
+        inputs: L1WhirInputs<'_>,
+        context: &ProverContext,
+    ) -> CudaResult<L1WhirScheduled> {
+        let stream = context.get_exec_stream();
+        let mut claims = unsafe { context.alloc_host_uninit_slice::<PR>(inputs.claims.len()) };
+        let mut point =
+            unsafe { context.alloc_host_uninit_slice::<PR>(inputs.base_layer_point.len()) };
+        let mut batching = unsafe { context.alloc_host_uninit_slice::<PR>(1) };
+        memory_copy_async(&mut claims, inputs.claims, stream)?;
+        memory_copy_async(&mut point, inputs.base_layer_point, stream)?;
+        memory_copy_async(&mut batching, inputs.batching_challenge, stream)?;
+        self.schedule_readback(memory_cap, context)?;
+        let readback = self.readback();
+        let (claims_reader, point_reader, batching_reader) = (
+            claims.get_accessor(),
+            point.get_accessor(),
+            batching.get_accessor(),
+        );
+        let memory_columns = self.memory_columns;
+        let result = Arc::new(Mutex::new(None));
+        let destination = Arc::clone(&result);
+        let mut callbacks = Callbacks::new();
+        callbacks.schedule(
+            move || {
+                let claims = unsafe { claims_reader.get() };
+                let (memory_claims, setup_claims) = claims.split_at(memory_columns);
+                let proof = unsafe {
+                    readback.assemble(
+                        memory_claims,
+                        setup_claims,
+                        point_reader.get(),
+                        batching_reader.get()[0],
+                    )
+                };
+                *destination
+                    .lock()
+                    .expect("Proth120 WHIR: proof result lock poisoned") = Some(proof);
+            },
+            stream,
+        )?;
+        Ok(L1WhirScheduled {
+            _callbacks: callbacks,
+            keepalive: self.into_keepalive(),
+            _inputs_host: [claims, point, batching],
+            result,
+        })
+    }
+}
+
+/// The WHIR proof mirrors and phase ranges, kept until the job completes.
+pub struct L1WhirKeepalive {
+    _host: L1WhirProofHost,
+    tracing_ranges: Vec<(String, Range)>,
+}
+
+impl L1WhirKeepalive {
+    pub fn phase_times_after_completion(&self) -> CudaResult<Vec<(String, f32)>> {
+        self.tracing_ranges
+            .iter()
+            .map(|(name, range)| Ok((name.clone(), range.elapsed()?)))
+            .collect()
+    }
+}
+
 pub struct L1WhirScheduled {
     _callbacks: Callbacks<'static>,
-    _host: L1WhirProofHost,
+    keepalive: L1WhirKeepalive,
+    _inputs_host: [HostAllocation<[PR]>; 3],
     result: Arc<Mutex<Option<L1WhirProof>>>,
-    tracing_ranges: Vec<(String, Range)>,
 }
 
 impl L1WhirScheduled {
@@ -225,10 +339,7 @@ impl L1WhirScheduled {
     }
 
     pub fn phase_times_after_completion(&self) -> CudaResult<Vec<(String, f32)>> {
-        self.tracing_ranges
-            .iter()
-            .map(|(name, range)| Ok((name.clone(), range.elapsed()?)))
-            .collect()
+        self.keepalive.phase_times_after_completion()
     }
 }
 
@@ -243,15 +354,11 @@ struct IntermediateReadback {
     openings: BaseOpeningsReadback,
 }
 
-struct L1WhirReadback {
+struct L1WhirMirrorReaders {
     memory: BaseOpeningsReadback,
     setup: BaseOpeningsReadback,
     intermediate: Vec<IntermediateReadback>,
     memory_cap: UnsafeAccessor<[Digest]>,
-    setup_cap: UnsafeAccessor<[Digest]>,
-    claims: UnsafeAccessor<[PR]>,
-    original_evaluation_point: UnsafeAccessor<[PR]>,
-    batching_challenge: UnsafeAccessor<[PR]>,
     ood_samples: UnsafeAccessor<[PR]>,
     sumcheck_polys: UnsafeAccessor<[PR]>,
     pow_nonces: UnsafeAccessor<[u64]>,
@@ -270,8 +377,8 @@ impl BaseOpeningsHost {
 }
 
 impl L1WhirProofHost {
-    fn readback(&self) -> L1WhirReadback {
-        L1WhirReadback {
+    fn readback(&self) -> L1WhirMirrorReaders {
+        L1WhirMirrorReaders {
             memory: self.memory.readback(),
             setup: self.setup.readback(),
             intermediate: self
@@ -287,10 +394,6 @@ impl L1WhirProofHost {
                 })
                 .collect(),
             memory_cap: self.memory_cap.get_accessor(),
-            setup_cap: self.setup_cap.get_accessor(),
-            claims: self.claims.get_accessor(),
-            original_evaluation_point: self.original_evaluation_point.get_accessor(),
-            batching_challenge: self.batching_challenge.get_accessor(),
             ood_samples: self.ood_samples.get_accessor(),
             sumcheck_polys: self.sumcheck_polys.get_accessor(),
             pow_nonces: self.pow_nonces.get_accessor(),
@@ -330,125 +433,102 @@ unsafe fn assemble_base_queries(
         .collect()
 }
 
-unsafe fn assemble_whir_proof(
-    host: &L1WhirReadback,
-    schedule: &WhirSchedule,
+/// Readers of a pending readback's mirrors plus what the proof needs besides them.
+pub struct L1WhirReadback {
+    host: L1WhirMirrorReaders,
+    schedule: WhirSchedule,
     memory_columns: usize,
     setup_columns: usize,
-) -> L1WhirProof {
-    let claims = host.claims.get();
-    let intermediate_whir_oracles = host
-        .intermediate
-        .iter()
-        .map(|oracle| {
-            let indexes = oracle.openings.tree_indexes.get();
-            let leaves = oracle.openings.leaves.get();
-            let paths = oracle.openings.paths.get();
-            let width = leaves.len() / indexes.len();
-            let depth = paths.len() / indexes.len();
-            WhirIntermediateCommitmentAndQueries {
+    setup_cap: Vec<Digest>,
+}
+
+impl L1WhirReadback {
+    /// Assembles the WHIR proof; the claims, evaluation point and batching
+    /// challenge are the GKR output values the fold consumed.
+    ///
+    /// # Safety
+    ///
+    /// Only inside a stream callback enqueued after the readback's copies.
+    pub unsafe fn assemble(
+        &self,
+        memory_claims: &[PR],
+        setup_claims: &[PR],
+        original_evaluation_point: &[PR],
+        batching_challenge: PR,
+    ) -> L1WhirProof {
+        let host = &self.host;
+        assert_eq!(
+            memory_claims.len(),
+            self.memory_columns,
+            "Proth120 WHIR: memory claims length differs from the packed columns"
+        );
+        assert_eq!(
+            setup_claims.len(),
+            self.setup_columns,
+            "Proth120 WHIR: setup claims length differs from the packed columns"
+        );
+        let intermediate_whir_oracles = host
+            .intermediate
+            .iter()
+            .map(|oracle| {
+                let indexes = oracle.openings.tree_indexes.get();
+                let leaves = oracle.openings.leaves.get();
+                let paths = oracle.openings.paths.get();
+                let width = leaves.len() / indexes.len();
+                let depth = paths.len() / indexes.len();
+                WhirIntermediateCommitmentAndQueries {
+                    commitment: WhirCommitment {
+                        cap: MerkleTreeCapVarLength {
+                            cap: oracle.cap.get().to_vec(),
+                        },
+                        _marker: PhantomData,
+                    },
+                    queries: indexes
+                        .iter()
+                        .enumerate()
+                        .map(|(q, &index)| ExtensionFieldQuery {
+                            index: index as usize,
+                            leaf_values_concatenated: leaves[q * width..(q + 1) * width].to_vec(),
+                            path: paths[q * depth..(q + 1) * depth].to_vec(),
+                            _marker: PhantomData,
+                        })
+                        .collect(),
+                }
+            })
+            .collect();
+        WhirPolyCommitProof {
+            setup_commitment: WhirBaseLayerCommitmentAndQueries {
                 commitment: WhirCommitment {
                     cap: MerkleTreeCapVarLength {
-                        cap: oracle.cap.get().to_vec(),
+                        cap: self.setup_cap.clone(),
                     },
                     _marker: PhantomData,
                 },
-                queries: indexes
-                    .iter()
-                    .enumerate()
-                    .map(|(q, &index)| ExtensionFieldQuery {
-                        index: index as usize,
-                        leaf_values_concatenated: leaves[q * width..(q + 1) * width].to_vec(),
-                        path: paths[q * depth..(q + 1) * depth].to_vec(),
-                        _marker: PhantomData,
-                    })
-                    .collect(),
-            }
-        })
-        .collect();
-    WhirPolyCommitProof {
-        setup_commitment: WhirBaseLayerCommitmentAndQueries {
-            commitment: WhirCommitment {
-                cap: MerkleTreeCapVarLength {
-                    cap: host.setup_cap.get().to_vec(),
-                },
-                _marker: PhantomData,
+                num_columns: self.setup_columns,
+                evals: setup_claims.to_vec(),
+                queries: assemble_base_queries(&host.setup),
             },
-            num_columns: setup_columns,
-            evals: claims[memory_columns..memory_columns + setup_columns].to_vec(),
-            queries: assemble_base_queries(&host.setup),
-        },
-        memory_commitment: WhirBaseLayerCommitmentAndQueries {
-            commitment: WhirCommitment {
-                cap: MerkleTreeCapVarLength {
-                    cap: host.memory_cap.get().to_vec(),
+            memory_commitment: WhirBaseLayerCommitmentAndQueries {
+                commitment: WhirCommitment {
+                    cap: MerkleTreeCapVarLength {
+                        cap: host.memory_cap.get().to_vec(),
+                    },
+                    _marker: PhantomData,
                 },
-                _marker: PhantomData,
+                num_columns: self.memory_columns,
+                evals: memory_claims.to_vec(),
+                queries: assemble_base_queries(&host.memory),
             },
-            num_columns: memory_columns,
-            evals: claims[..memory_columns].to_vec(),
-            queries: assemble_base_queries(&host.memory),
-        },
-        witness_commitment: Default::default(),
-        intermediate_whir_oracles,
-        ood_samples: host.ood_samples.get().to_vec(),
-        sumcheck_polys: host.sumcheck_polys.get().as_chunks::<3>().0.to_vec(),
-        pow_nonces: host.pow_nonces.get().to_vec(),
-        final_monomials: host.final_monomials.get().to_vec(),
-        whir_schedule: schedule.clone(),
-        batching_challenge: Some(host.batching_challenge.get()[0]),
-        original_evaluation_point: Some(host.original_evaluation_point.get().to_vec()),
-        batched_opening: Some(host.batched_opening.get()[0]),
+            witness_commitment: Default::default(),
+            intermediate_whir_oracles,
+            ood_samples: host.ood_samples.get().to_vec(),
+            sumcheck_polys: host.sumcheck_polys.get().as_chunks::<3>().0.to_vec(),
+            pow_nonces: host.pow_nonces.get().to_vec(),
+            final_monomials: host.final_monomials.get().to_vec(),
+            whir_schedule: self.schedule.clone(),
+            batching_challenge: Some(batching_challenge),
+            original_evaluation_point: Some(original_evaluation_point.to_vec()),
+            batched_opening: Some(host.batched_opening.get()[0]),
+        }
     }
-}
-
-#[allow(clippy::needless_pass_by_value)]
-pub(crate) fn schedule_readback_and_assemble(
-    device: L1WhirProofDevice,
-    mut host: L1WhirProofHost,
-    memory_cap: &DeviceSlice<Digest>,
-    setup_cap: &DeviceSlice<Digest>,
-    schedule: &WhirSchedule,
-    memory_columns: usize,
-    setup_columns: usize,
-    tracing_ranges: Vec<(String, Range)>,
-    context: &ProverContext,
-) -> CudaResult<L1WhirScheduled> {
-    let stream = context.get_exec_stream();
-    copy_base_openings(&mut host.memory, &device.memory, stream)?;
-    copy_base_openings(&mut host.setup, &device.setup, stream)?;
-    for (host, device) in host.intermediate.iter_mut().zip(&device.intermediate) {
-        memory_copy_async(&mut host.cap, &device.cap, stream)?;
-        memory_copy_async(&mut host.leaves, &device.leaves, stream)?;
-        memory_copy_async(&mut host.paths, &device.paths, stream)?;
-        memory_copy_async(&mut host.tree_indexes, &device.tree_indexes, stream)?;
-    }
-    memory_copy_async(&mut host.memory_cap, memory_cap, stream)?;
-    memory_copy_async(&mut host.setup_cap, setup_cap, stream)?;
-    memory_copy_async(&mut host.ood_samples, &device.ood_samples, stream)?;
-    memory_copy_async(&mut host.sumcheck_polys, &device.sumcheck_polys, stream)?;
-    memory_copy_async(&mut host.pow_nonces, &device.pow_nonces, stream)?;
-    memory_copy_async(&mut host.final_monomials, &device.final_monomials, stream)?;
-    memory_copy_async(&mut host.batched_opening, &device.batched_opening, stream)?;
-    let readback = host.readback();
-    let result = Arc::new(Mutex::new(None));
-    let destination = Arc::clone(&result);
-    let schedule = schedule.clone();
-    let mut callbacks = Callbacks::new();
-    callbacks.schedule(
-        move || {
-            let proof =
-                unsafe { assemble_whir_proof(&readback, &schedule, memory_columns, setup_columns) };
-            *destination
-                .lock()
-                .expect("Proth120 WHIR: proof result lock poisoned") = Some(proof);
-        },
-        stream,
-    )?;
-    Ok(L1WhirScheduled {
-        _callbacks: callbacks,
-        _host: host,
-        result,
-        tracing_ranges,
-    })
 }

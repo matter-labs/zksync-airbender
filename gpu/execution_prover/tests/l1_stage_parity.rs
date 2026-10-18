@@ -690,6 +690,16 @@ fn run_whir(fixture: L1WrapFixture<'_>, expected: WhirExpected) -> WhirReport {
         &shape,
         &context,
     )
+    .unwrap()
+    .schedule_readback_and_assemble(
+        oracle.cap_digests(),
+        L1WhirInputs {
+            claims: &claims,
+            base_layer_point: &point,
+            batching_challenge: &batching_challenge,
+        },
+        &context,
+    )
     .unwrap();
     end_event.record(stream).unwrap();
     let enqueue = start.elapsed();
