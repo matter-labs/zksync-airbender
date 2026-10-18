@@ -30,6 +30,7 @@ import Tests.JumpDecoder
 import Tests.NativeJumpSetup
 import Tests.ControlHistory
 import Tests.ControlValues
+import Tests.ControlRegisters
 
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
@@ -941,3 +942,11 @@ import Tests.ControlValues
 #print axioms Tests.ControlValues.bad_flag_native
 #print axioms Tests.ControlValues.bad_flag_unbounded
 #print axioms Tests.ControlValues.bad_flag_decoder_rejected
+#print axioms Airbender.JumpBranchSlt.Proofs.row_history_read
+#print axioms Airbender.JumpBranchSlt.Proofs.row_history_write
+#print axioms Airbender.JumpBranchSlt.Proofs.history_register_reads
+#print axioms Airbender.JumpBranchSlt.Proofs.history_register_write
+#print axioms Airbender.JumpBranchSlt.Proofs.history_destination_read
+#print axioms Airbender.JumpBranchSlt.Proofs.image_register_history
+#print axioms Airbender.JumpBranchSlt.public_register_history
+#print axioms Tests.ControlRegisters.initialized_reads_write

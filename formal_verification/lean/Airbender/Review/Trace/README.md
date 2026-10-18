@@ -213,3 +213,12 @@ uses native x0 masks and shared row grouping to derive actual reads/writes and
 intermediate states; the [exported-JAL regression](../../../Tests/ControlValues.lean)
 checks the old x1=123 read and actual link write four. Original control instructions
 and terminal instruction-state matching remain open. Existing arithmetic and word-memory claims retain their meanings.
+
+[Control register histories](Families/JumpBranchSlt/Registers.lean) now bind every
+original decoded source/destination accessor to actual native ports in derived
+clock order. The shared readonly-prefix proof keeps all three reads in one
+cell-history pre-state; the final masked write reaches the constructed row-after
+state. Older/current/newer Sail histories connect every boundary to public
+initialization and the full terminal cell history. [The exported-JAL regression](../../../Tests/ControlRegisters.lean)
+derives both x0 reads, old x1=123 and link write four without supplied intermediate
+states. Original control clauses and native PC/operation semantics remain open.

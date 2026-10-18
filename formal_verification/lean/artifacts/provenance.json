@@ -2217,6 +2217,48 @@
       "backport_reuse_path": "Tests/ControlHistory.lean",
       "backport_reuse_sha256": "8303ba037c6b1d2c38400d921ac7685ba94f27b1922af03cdf63a7d3ff33d0c2",
       "change": "Reuse the full accepted JAL -4 native row/history with both aliased x0 refreshes, old x1=123 and actual link write four. Apply the two new public claims and zero-write theorem without chosen reads, clocks, intermediate states or desired terminal premises."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/PortReads.lean",
+      "backport_reuse_revision": "ff9fdc618100951e4908c47da286d5ef3c0ede3c",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/PortReads.lean",
+      "backport_reuse_sha256": "450eaadb853a6ab79bf105e15d014484c0e3790b009dff286f15eb2c1e3a9348",
+      "change": "Copy the two native three-port readonly-prefix read/write wrappers with only family names and the final-port comment changed. Actual imported control metadata discharges all three shape/readonly equalities by reflexivity; the generic alias-preserving transport proof remains unchanged."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/PortReads.lean",
+      "backport_reuse_revision": "ff9fdc618100951e4908c47da286d5ef3c0ede3c",
+      "backport_reuse_path": "Airbender/Proofs/Trace/PortReads.lean",
+      "backport_reuse_sha256": "f6225d59b59c7f52b93ebff530dbcecf662e110f0d4debb547d8dfdf66c6ef10",
+      "change": "Copy both ADD/SUB decoded-register read/write proofs with only native family, row type and names changed; qualify the same shared native_query_indices lemma. Add the analogous old-destination read, using the existing final port and the same decoded rd bound. No original control instruction clause is claimed."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/RegisterHistory.lean",
+      "backport_reuse_revision": "ff9fdc618100951e4908c47da286d5ef3c0ede3c",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/ZeroRegister.lean",
+      "backport_reuse_sha256": "5170d48e05c6109a14d315e591058238c6fad61a39387fe7d6d107d5f7f7b6bf",
+      "change": "Reuse the established initialized grouped-history result shape and proof application for the separate control registry. Extend it with original public source evidence and per-segment decoded register read/write observables, constructing all row boundary states rather than accepting them as inputs."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/RegisterHistory.lean",
+      "backport_reuse_revision": "ff9fdc618100951e4908c47da286d5ef3c0ede3c",
+      "backport_reuse_path": "Airbender/Proofs/Trace/RowHistory.lean",
+      "backport_reuse_sha256": "994b26a52dfd8dfb5e6adabfdbff225b69258c6256d7ef591a750eb67b7d9cae",
+      "change": "Reuse the unchanged sail_history_append theorem twice to split the derived reverse-clock history at each row. The resulting older/current/newer Sail histories tie all source/destination reads and the actual masked write to the real instruction cell pre-state, including aliases; no selected schedule or desired state is assumed."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/JumpBranchSlt/Registers.lean",
+      "backport_reuse_revision": "ff9fdc618100951e4908c47da286d5ef3c0ede3c",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/WordMemory/SailHistory.lean",
+      "backport_reuse_sha256": "cb33e9e68b8695898d6f0c4ade0f8b11f7f67ced03ee12bec34bb49796b29490",
+      "change": "Retain the short public initialization/acceptance/decoding/alignment interface and one proof-layer call. Expose successful original public sparse construction and actual per-segment Sail GPR observables with constructed states; original instruction/PC execution and physical argument refinement remain separate."
+    },
+    {
+      "path": "Tests/ControlRegisters.lean",
+      "backport_reuse_revision": "ff9fdc618100951e4908c47da286d5ef3c0ede3c",
+      "backport_reuse_path": "Tests/ControlHistory.lean",
+      "backport_reuse_sha256": "8303ba037c6b1d2c38400d921ac7685ba94f27b1922af03cdf63a7d3ff33d0c2",
+      "change": "Reuse the accepted full native JAL -4 trace, original public bytes, explicit initial state and alias-token matching through Tests.ControlValues. Extract singleton history segments from the new public claim and derive both x0 reads, old x1=123 and actual link write four from decoded indices and native port data; use only small kernel-checked canonical residues."
     }
   ],
   "setup_artifacts": [

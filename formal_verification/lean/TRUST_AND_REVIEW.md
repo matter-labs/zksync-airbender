@@ -788,3 +788,26 @@ unbounded; full decoder membership rejects it. This checks the explicit lookup
 boundary rather than establishing an accepted-trace defect. Original control
 instruction execution, terminal instruction-state matching, physical control
 boot and Rust/compiler/cryptographic refinement remain open.
+
+## Initialized control register transfers
+
+[The native port connection](Airbender/Proofs/Trace/Families/JumpBranchSlt/PortReads.lean)
+reuses unchanged readonly-prefix transport: both source reads and the old
+destination read use one cell-history pre-state, even with aliases. Full native
+decoder membership identifies the actual original Sail GPR accessors; the final
+port performs the actual masked register write, retaining x0 behavior.
+
+[One public claim](Airbender/Review/Trace/Families/JumpBranchSlt/Registers.lean)
+combines actual public sparse construction with initialized native matching and
+[proof-layer segment assembly](Airbender/Proofs/Trace/Families/JumpBranchSlt/RegisterHistory.lean).
+Derived clock order fixes the complete row sequence. Shared append/split proofs
+construct each row's before/after states and its older/current/newer Sail histories;
+no segment state, expected read, selected schedule or desired write is supplied.
+Each segment retains source evidence from original public bytes and pure Sail decoding.
+
+[The exported-JAL regression](Tests/ControlRegisters.lean) extracts its singleton
+segment from that public theorem and derives both x0 reads, old x1=123 and the
+actual link write four. This connects original register accesses to native cell
+transfers; original control instruction clauses, native branch/jump/comparison
+semantics, PC preparation/retirement and full terminal instruction-state matching
+remain open. Physical setup/Rust/compiler/cryptographic refinement stays separate.

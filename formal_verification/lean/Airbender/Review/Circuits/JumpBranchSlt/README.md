@@ -102,3 +102,9 @@ matching. [Initialized word bounds](../../Trace/Families/JumpBranchSlt/Values.le
 and [Sail cell transfers](../../Trace/Families/JumpBranchSlt/SailHistory.lean) now
 reuse actual decoded masks and shared history induction, including x0 writes.
 Original instruction execution and terminal instruction-state matching remain open. No expected read, schedule or per-row clock is supplied.
+
+[Initialized decoded register transfers](../../Trace/Families/JumpBranchSlt/Registers.lean)
+now connect original Sail GPR accessors to actual native source/destination ports.
+All three reads use a constructed cell-history pre-state, including aliases, and
+the final port performs the actual masked write. Original control operation
+semantics, instruction clauses and PC retirement remain separate.

@@ -291,9 +291,16 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    reuse native destination masks, shared zero-value induction and row grouping
    to derive actual cell transfers/intermediate states. The exported JAL fixture
    checks old x1=123 to actual link four with both x0 refreshes retained.
-   Next recover instruction-prestate port reads and derive original control Sail
-   clauses, full execution and actual terminal instruction-state matching. General Rust/compiler and
-   cryptographic refinement remain separate. No per-row result/PC or
+   [Original control register accesses](Airbender/Review/Trace/Families/JumpBranchSlt/Registers.lean)
+   are now connected to the derived native history: unchanged readonly-prefix
+   transport and decoded indices recover both source reads, the old destination
+   read and actual masked write in one cell-history pre-state. Shared append/split
+   proofs derive every row's actual segment states and original public source
+   entry, without a per-row state/read/schedule premise. The exported JAL fixture
+   derives both x0 reads, old x1=123 and link write four through the public claim.
+   Next derive native operation semantics and original control Sail clauses,
+   then PC preparation/retirement, full execution and actual terminal instruction-state
+   matching. General Rust/compiler and cryptographic refinement remain separate. No per-row result/PC or
    table-equivalence premise is added.
 
 3. Port unsigned mul/div, shift/binop and subword memory into the same shared

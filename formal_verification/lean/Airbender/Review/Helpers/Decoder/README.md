@@ -114,3 +114,9 @@ membership in the separate native control registry. Public original-byte
 construction derives supported masks and zero flags for [initialized ranges](../../Trace/Families/JumpBranchSlt/Values.lean);
 actual address/query equality and native masks supply x0 preservation for
 [Sail cell histories](../../Trace/Families/JumpBranchSlt/SailHistory.lean).
+
+[Initialized control register access](../../Trace/Families/JumpBranchSlt/Registers.lean)
+uses these original public source entries and native query indices to select both
+Sail source reads, the old destination read and actual masked write. The states
+come from shared native history segmentation; original instruction clauses and
+PC/operation semantics remain a separate connection.
