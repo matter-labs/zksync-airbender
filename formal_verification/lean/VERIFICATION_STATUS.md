@@ -44,7 +44,7 @@ not completed v2 coverage.
 ## Remaining work
 
 - Bind physical Rust decoder/setup exports and expand mixed/custom programs.
-- Extend initialized execution to native word-memory, jump/branch/SLT and the remaining supported families; preserve each native metadata and argument boundary.
+- Extend initialized execution to jump/branch/SLT and the remaining supported families; preserve each native metadata and argument boundary.
 - Backport the remaining ordinary circuit families, worker operations, unified machine, full traces and initialization/teardown.
 - Retest v3 findings against v2 before carrying over counterexamples or temporary assumptions.
 - Prove the deferred import/compiler/cryptographic connections under a separately scoped claim.
@@ -75,15 +75,35 @@ setup/export, mixed families and cryptographic enforcement remain separate.
 Architectural fetch permissions, exceptions and interrupts remain outside this
 successful-step reference relation.
 
+## Fixed native boot and padding paths
+
+[The short native-boot theorem](Airbender/Review/Trace/Families/WordMemory/NativeBoot.lean)
+replaces arbitrary initial values/PC reads with the unchanged original Sail
+zero-initialization profile, native PC zero/time four and all-zero native seeds.
+[Assembly](Airbender/Proofs/Trace/Families/WordMemory/Boot.lean) derives the existing
+architectural/shadow initializer and complete original LW/SW execution. Actual
+initial reads still come from Sail; missing cells are not defaulted.
+[Full native paths](Airbender/Proofs/Trace/Families/WordMemory/BootShadow.lean)
+force terminal shadows to remain zero without interpreting them as physical ROM.
+
+Native source review confirms zero GPR/RAM initialization and address-preserving
+zero witness masks below four MiB. The proving loader zero-pads its input word
+image; the raw ROM table constructor retains UNIMP only beyond its supplied
+image. [The separate padding model](Airbender/Review/Helpers/Tables/WordROMPadding.lean)
+proves full extent, prefix retention and zero tail symbolically. This does not
+construct actual Sail padding bytes or prove Rust/compiler/export refinement.
+Public configuration, actual ROM extraction/coverage, domain alignment and ordinary
+RAM remain explicit. Physical initialization/setup argument enforcement is open.
+
 ## Validation
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all seventeen concrete test modules pass.
+- Library, both CLI entrypoints and all eighteen concrete test modules pass.
 - Importer regressions: 46 checks pass.
-- Axiom audit: 557 explicit roots; only propext, Classical.choice and Quot.sound.
-- All twenty-six public Review theorems (five circuit claims, nineteen trace claims and two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
-- Source provenance: 67 unchanged reused files, two native circuit artifacts and nineteen native Rust sources.
+- Axiom audit: 578 explicit roots; only propext, Classical.choice and Quot.sound.
+- All twenty-seven public Review theorems (five circuit claims, twenty trace claims and two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Source provenance: 69 unchanged reused files, two native circuit artifacts and twenty-four native Rust sources.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
 - Public Sail x1/PC reads construct the accepted alias fixture; missing register and byte data reject construction.
@@ -111,6 +131,7 @@ Current checked checkpoint:
 - The unchanged reversed accepted native SW/LW fixture now reaches the original instruction clauses in its derived states. Native/public construction supplies selectors, source/address facts and actual reads. The later load reads the real preceding store value 123 and reaches the actual destination write; no intermediate state, expected read or desired result is supplied. All previous cell, code, ROM and virtual-memory regressions remain intact.
 - The same original clauses now pass native row preparation/retirement. Ordinary/x0 ROM loads retain actual memory behavior and reach native PC 4; reversed SW/LW normal steps start from the actual public Sail state and reach PC 8, RAM 123 and x3=123 from native terminal matching. The combined proof derives addresses/native successors and dispatches original instructions without per-row read, prepared-state or desired-PC inputs. General finite trace/fetch composition is now checked above.
 - General fetched/decoded word-memory execution passes on reversed dependent SW/LW, ordinary/x0 ROM loads and an empty native trace. The same general relation reaches actual PC 8 and native terminal RAM/x3=123. Native matching retains independent shadow value 123 while actual ROM reads 0xc0001073. All local address domains are derived from public cells/seeds; no per-row range/read/order/state/result premise is supplied.
+- Fixed-zero native boot passes on original ordinary/x0 LW fixtures with all actual GPRs zero, real public instruction/ROM bytes and fully matched zero native shadows. General execution derives PC four and actual masked destinations; full native paths derive terminal shadow zero. Invented seed values and an actual nonzero public GPR are rejected. Symbolic padding checks retain input words and distinguish zero loader padding from raw-table UNIMP fallback; absent Sail padding bytes remain actual failures.
 - No handwritten project warnings, admitted proofs or project axioms.
 - Serial bounded gates pass; parent/child timeout and memory probes confirm termination with no live owned processes.
 

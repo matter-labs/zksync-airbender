@@ -13,6 +13,7 @@ Proofs; artifact interpretation has a separate Import boundary.
 | Public arithmetic-profile decoding and full padded lookup recover actual Sail instructions; initialized history derives native word bounds. | [Decoder](Trace/Decoder.lean), [values](Trace/Values.lean) |
 | Complete initialized arithmetic execution reaches exact terminal PC/cells through original Sail normal steps. | [Arithmetic execution](Trace/Families/AddSub/Theorems.lean) |
 | Initialized word-memory execution checks actual fetched/decoded original LW/SW and exact terminal PC/architectural cells, retaining full native shadow matching. | [Word-memory execution](Trace/Families/WordMemory/Theorems.lean) |
+| Fixed native zero boot derives the existing original execution boundary; complete native paths preserve zero shadow values independently of ROM bytes. | [Native boot](Trace/Families/WordMemory/NativeBoot.lean) |
 
 Start with [Properties](Helpers/Properties.lean) for `Properties.Soundness` and
 `Properties.Completeness`, then choose

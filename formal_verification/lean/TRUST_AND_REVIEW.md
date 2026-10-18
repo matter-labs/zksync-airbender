@@ -149,8 +149,8 @@ A shared readonly-prefix induction handles retained aliases and erased ports;
 full v2 constraints prove that the final mixed port targets a GPR or RAM outside
 the ROM prefix. Decoder indices identify the source GPR without an expected read
 premise. Ordinary/x0 ROM loads and reversed dependent RAM store/load regressions
-exercise these general lemmas. Physical boot/padding, ROM-table binding and
-original instruction execution/retirement is checked below.
+exercise these general lemmas. Original instruction execution/retirement is
+checked below; physical boot/padding and ROM-table enforcement remain separate.
 [Code/ROM preservation](Airbender/Review/Trace/Families/WordMemory/CodeHistory.lean)
 now derives equality of every byte entry below four MiB through actual projected
 Sail histories. The checked architectural domain and native final-port retention
@@ -173,7 +173,7 @@ coverage for every native ROM address. Full native UNIMP rows remain present;
 missing Sail padding bytes are not filled by extraction. Supplying the actual
 Sail boot/padding/shadow state and physical Rust setup/export remain separate.
 No expected-read or table-equivalence premise is introduced. The initialized
-trace registry remains arithmetic-only.
+arithmetic and word-memory registries retain separate selected-profile claims.
 [Platform configuration](Airbender/Review/Helpers/Memory/Platform.lean) and seven
 Sail platform proof modules are now copied unchanged from the same pinned source.
 They specify actual initialized Machine CSRs, disabled PMP entries, an RV32 PMA
@@ -255,6 +255,38 @@ physical zero boot, absent Sail padding, native setup/export fidelity or
 cryptographic enforcement. The successful-step relation checks actual code-byte
 reads and decoding; architectural fetch permissions, interrupts and exceptions
 remain outside this checkpoint.
+
+[Fixed native boot](Airbender/Review/Trace/Families/WordMemory/NativeBoot.lean)
+now derives the previous general initializer from the original zero-initialization
+profile. The [profile and Sail boot image](Airbender/Review/Helpers/Memory/Initialization.lean)
+and [boot-image equivalence proof](Airbender/Proofs/Trace/Initialization.lean) are
+copied unchanged. Only the four-MiB limit and native all-zero token constructor
+are extracted from the v3 ROM/native modules; their old table-equivalence and
+witness-rewrite interfaces are omitted. Native v2 VM/RAM/replayer sources confirm
+GPR/RAM zero initialization, PC zero/time four and value-only ROM witness masking;
+these sources are pinned separately from formal Rust refinement.
+
+[Boot assembly](Airbender/Proofs/Trace/Families/WordMemory/Boot.lean) uses actual
+Sail profile reads to derive the architectural zero image and fixed shadow seeds.
+Complete original LW/SW execution then uses the previous theorem unchanged.
+[Native shadow paths](Airbender/Proofs/Trace/Families/WordMemory/BootShadow.lean)
+recover every actual imported row/port and propagate its checked unchanged raw
+value through complete matching to terminal zero. Neither physical ROM bytes nor
+a desired terminal value is a premise. Ordinary/x0 fixtures initialize all 32
+actual GPR reads to zero and derive PC four, masked destination results and native
+shadow zero. Nonzero public GPR data and invented native seeds reject the profile.
+
+The native proving loader calls word padding with zero through the full four-MiB
+region. The raw ROM table generator uses UNIMP only past the image it receives;
+a complete padded image has no in-region fallback. The separate
+[padding definition](Airbender/Review/Helpers/Tables/WordROMPadding.lean) models
+this zero extension, with symbolic list proofs of extent, prefix retention and
+zero tail. No million-word list is evaluated as a certificate. This definition
+does not modify Sail state: absent bytes still fail actual reads. Constructing
+actual Sail padding bytes and binding physical setup/initialization exports
+remain next; general Rust/compiler refinement and cryptographic enforcement are
+separately scoped. Public configuration, successful ROM extraction/coverage and
+ordinary/aligned architectural domains remain visible in the boot execution claim.
 
 ## Public state, profiles and external inputs
 

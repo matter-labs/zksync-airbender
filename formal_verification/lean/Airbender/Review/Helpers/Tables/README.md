@@ -19,3 +19,12 @@ constructor. [Initialized projected histories](../../Trace/Families/WordMemory/C
 now preserve every actual byte entry below four MiB and every successful
 extraction through changing RAM stores. Boot/padding/shadow state, physical export
 and cryptographic connections remain separate. No expected-read or table-equivalence premise is used.
+
+[Proving-loader padding](WordROMPadding.lean) separately retains the input words
+and zero-extends them to the full native region. V2's raw table constructor uses
+UNIMP only past the image it receives; passing a full padded image leaves no
+in-region fallback. [Symbolic proofs](../../../Proofs/WordMemory/ROMPadding.lean)
+check length, unchanged prefix and zero tail without evaluating the million-entry
+list. This list model constructs no Sail bytes and proves no Rust refinement;
+[regressions](../../../../Tests/WordMemoryNativeBoot.lean) preserve actual failure
+on absent Sail padding.

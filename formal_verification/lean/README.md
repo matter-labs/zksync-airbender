@@ -111,6 +111,16 @@ ordinary/x0 ROM loads and empty traces pass. Physical boot/ROM binding remains o
 Remaining families, Rust
 setup generation/export and cryptographic argument soundness remain pending. This checkpoint does not inherit v3's completed coverage.
 
+[Fixed native zero boot](Airbender/Review/Trace/Families/WordMemory/NativeBoot.lean)
+now derives the general initialized execution boundary from the unchanged original
+Sail zero profile and fixed native seeds/PC. Ordinary/x0 ROM fixtures reach PC
+four and their actual destination values from all-zero GPRs; full native paths
+keep shadows zero independently of ROM contents. Native word padding was retested:
+the proving loader fills its input tail with zero, while the raw table constructor
+uses UNIMP only beyond the supplied image. [A separate model](Airbender/Review/Helpers/Tables/WordROMPadding.lean)
+proves this padding's extent/prefix/tail symbolically. Actual Sail padding bytes,
+physical setup/initialization exports and Rust/cryptographic enforcement remain open.
+
 ## Read these first
 
 The [Review guide](Airbender/Review/README.md) has two routes:

@@ -14,6 +14,7 @@ import Tests.WordMemoryHistory
 import Tests.WordMemorySailHistory
 import Tests.WordMemoryProjection
 import Tests.WordMemoryROMTransport
+import Tests.WordMemoryNativeBoot
 
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
@@ -595,3 +596,24 @@ import Tests.WordMemoryROMTransport
 #print axioms Tests.WordMemorySailHistory.dependent_fetched_final_values
 #print axioms Tests.WordMemorySailHistory.empty_fetched_execution
 #print axioms Tests.WordMemoryROMTransport.initialized_fetched_execution
+#print axioms Airbender.Trace.Proofs.boot_image
+#print axioms Airbender.Trace.Proofs.boot_boundary
+#print axioms Airbender.WordMemory.Proofs.architectural_boot_image
+#print axioms Airbender.WordMemory.Proofs.native_boot_shadow_boundary
+#print axioms Airbender.WordMemory.Proofs.native_boot_execution_soundness
+#print axioms Airbender.WordMemory.Proofs.shadow_edge_value
+#print axioms Airbender.WordMemory.Proofs.path_value_preserved
+#print axioms Airbender.WordMemory.Proofs.native_boot_shadow_terminal
+#print axioms Airbender.WordMemory.Proofs.zero_padding_length
+#print axioms Airbender.WordMemory.Proofs.zero_padding_prefix
+#print axioms Airbender.WordMemory.Proofs.zero_padding_tail
+#print axioms Airbender.WordMemory.native_boot_execution
+#print axioms Tests.WordMemoryNativeBoot.public_decoder_built
+#print axioms Tests.WordMemoryNativeBoot.public_rom_built
+#print axioms Tests.WordMemoryNativeBoot.zero_boot_fetched_execution
+#print axioms Tests.WordMemoryNativeBoot.invented_seed_rejected
+#print axioms Tests.WordMemoryNativeBoot.shadow_terminal_zero
+#print axioms Tests.WordMemoryNativeBoot.zero_boot_final_values
+#print axioms Tests.WordMemoryNativeBoot.native_padding_paths
+#print axioms Tests.WordMemoryNativeBoot.padding_does_not_fill_sail_bytes
+#print axioms Tests.WordMemoryNativeBoot.nonzero_public_register_rejected

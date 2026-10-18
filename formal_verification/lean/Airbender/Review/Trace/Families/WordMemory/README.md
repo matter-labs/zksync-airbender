@@ -287,3 +287,25 @@ physical ROM-table exports. Complete original word-memory execution/retirement
 is checked above under the explicit logical public domains.
 The existing arithmetic execution registry and its claims retain their scope. Physical setup
 export, mixed/custom programs and cryptographic argument enforcement are separate.
+
+## Checked fixed native zero boot
+
+[The small public theorem](NativeBoot.lean) retains the same finite original Sail
+execution and architectural terminal observable. [Fixed boot data](../../../Helpers/Memory/NativeBoot.lean)
+uses zero native GPR/RAM/shadow values, PC zero/time four and the unchanged
+[original Sail profile](../../../Helpers/Memory/Initialization.lean). Actual
+initial reads and public geometry derive the prior general initializer;
+[the assembly](../../../../Proofs/Trace/Families/WordMemory/Boot.lean) supplies no
+per-row range/read/state/result premises. Configuration, alignment, ordinary RAM
+and actual extracted-ROM coverage stay explicit. [Full native shadow paths](../../../../Proofs/Trace/Families/WordMemory/BootShadow.lean)
+keep terminal values zero independently of actual ROM bytes.
+
+[Ordinary/x0 boot regressions](../../../../../Tests/WordMemoryNativeBoot.lean)
+initialize all original Sail GPR reads to zero, build actual instruction/ROM bytes
+and reach native PC four and actual masked destinations. Invented seeds and an
+actual nonzero public GPR are rejected. [The padding model](../../../Helpers/Tables/WordROMPadding.lean)
+reflects v2's proving-loader zero extension; the raw table constructor still uses
+UNIMP beyond its supplied image. Symbolic proofs distinguish those paths without
+evaluating a million words, and missing Sail padding bytes remain failures.
+Actual Sail padding construction, physical initialization/setup exports and
+Rust/cryptographic enforcement remain open.

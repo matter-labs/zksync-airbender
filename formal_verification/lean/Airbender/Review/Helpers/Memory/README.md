@@ -48,8 +48,8 @@ read/write/terminal ranges for retained and erased accesses alike.
 readonly refresh prefixes and aliases after projection. The
 [native word-memory instance](../../../Proofs/Trace/Families/WordMemory/ProjectedPorts.lean)
 proves final-port retention and derives actual pre-state source reads and masked
-writes. Physical native zero-boot/ROM binding and original instruction execution
-remain pending.
+writes. Original instruction execution and the fixed logical native zero-boot
+connection are now checked; physical argument/ROM enforcement remains separate.
 [Indirect descriptors](IndirectPorts.lean) are retained reusable definitions;
 v2 batched worker arguments and indirect-port import remain pending.
 
@@ -69,5 +69,14 @@ RAM reads, selectors and masked destination effects.
 reuses actual history/control commutation and unchanged configuration frames;
 original preparation and tick_pc preserve these native data effects.
 [Native assembly](../../../Proofs/Trace/Families/WordMemory/Execution.lean) derives
-exact modular PC successors. General finite trace/fetch composition and physical
-boot/profile binding remain separate.
+exact modular PC successors. Complete finite trace/fetch composition and the
+fixed zero-boot profile connection are checked; physical enforcement remains separate.
+
+[Original initialization](Initialization.lean) and its
+[proof](../../../Proofs/Trace/Initialization.lean) are copied unchanged. The
+[fixed native boundary](NativeBoot.lean) derives architectural zero reads and
+independent zero shadow seeds from the original profile and native public domain.
+[The short boot theorem](../../Trace/Families/WordMemory/NativeBoot.lean) reuses
+complete original execution, while actual native shadow paths force terminal zero.
+The v2 runtime/replayer sources are pinned. Actual Sail padding bytes, physical
+setup/initialization enforcement and general Rust refinement remain separate.

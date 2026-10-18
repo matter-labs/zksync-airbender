@@ -269,6 +269,14 @@
     {
       "path": "Airbender/Proofs/Sail/VirtualMemory.lean",
       "sha256": "d79c9673d034477ad0fef2bf2942f9b071ffee5144b376a2574ad8834fcfd384"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Memory/Initialization.lean",
+      "sha256": "24c4adc3b324c98d5c0af915953f0f953585a7926475314a86e1e1e667c9798f"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Initialization.lean",
+      "sha256": "939053d89e8ea3563997addc62243b45573aa5f724e9efdb7d2104e922bf062b"
     }
   ],
   "circuit_artifacts": [
@@ -357,6 +365,26 @@
     {
       "path": "../../cs/src/machine/mod.rs",
       "sha256": "a3712dc8df473298ef958ea377610c2029b419979e147ff468d27755e1ec0fe7"
+    },
+    {
+      "path": "../../riscv_transpiler/src/vm/mod.rs",
+      "sha256": "aa91e0ea82c8a9d61e459a18426a7a35b2987faddf81d0eebdd77ca7babe1686"
+    },
+    {
+      "path": "../../riscv_transpiler/src/vm/ram_with_rom_region.rs",
+      "sha256": "f56bc6e882712b1c0eb660313dd2e7765de07f762c6b01e676a72bdcc5ca1d64"
+    },
+    {
+      "path": "../../riscv_transpiler/src/replayer/mod.rs",
+      "sha256": "cbf466208f50f5937d01ff0a07cec66a59674d900463c53b8986055cdf5380da"
+    },
+    {
+      "path": "../../execution_utils/src/lib.rs",
+      "sha256": "0bb7ad548956ec6b2e31b79b5a2952fd6cef51bc5580432c70475e71ce31150e"
+    },
+    {
+      "path": "../../circuit_defs/setups/src/lib.rs",
+      "sha256": "0d7a40709beacf7cc94a0597120e92b8b44fd6cfd3ab97b45efef762c298ff8e"
     }
   ],
   "adaptations": [
@@ -986,6 +1014,72 @@
       "backport_reuse_path": "Tests/WordMemoryROMTransport.lean",
       "backport_reuse_sha256": "af4c027477e302734288c5b3f83f96b91050c384c2ef03fd82060a26c556f16e",
       "change": "Keep ordinary/x0 accepted ROM fixtures and prior extraction, matching, virtual-read, clause and retirement tests. Apply general fetched/decoded composition to both; public seed coverage is derived from address 16 in the actual five-word ROM prefix, with shadow 123 distinct from ROM 0xc0001073."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Memory/ROM.lean",
+      "source_path": "Airbender/Review/Helpers/Memory/ROM.lean",
+      "source_sha256": "6fe2b373afe258f288fb9cee4106d5dd2804d2bcba277e384cb55dd284aa18a6",
+      "change": "Copy only the unchanged native four-MiB limit for the original boot definitions. Omit the unused v3 ROM-table formats, zero-fallback reader and table-equivalence interface."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Memory/NativeBoot.lean",
+      "source_path": "Airbender/Review/Helpers/Memory/Native.lean",
+      "source_sha256": "65dd803783e3f15f35df487569fad6ce10fa2f68374e3a165473ec7949a6d403",
+      "change": "Copy only nativeBootImage verbatim. Retest v2 runtime zero GPR/RAM initialization, PC zero/time four and address-preserving zero ROM witness masking. Replace the v3 witness rewrite and old table-equivalence boundary with the checked v2 architectural/shadow domain and fixed zero seeds."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/Boot.lean",
+      "backport_reuse_revision": "135642844b30ba088ba16d2464434c4469807565",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/Composition.lean",
+      "backport_reuse_sha256": "6d2613d07fafa300981e34ea397f619297307a07c02b95e1f4a0823d8774c9a6",
+      "change": "Reuse complete original fetched/decoded LW/SW execution unchanged. Original boot_image and public geometry derive its actual initial image, PC and canonical shadow seeds; no subsequent read, intermediate state or result is supplied."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/BootShadow.lean",
+      "backport_reuse_revision": "135642844b30ba088ba16d2464434c4469807565",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Terminal.lean",
+      "backport_reuse_sha256": "f4c047fe489d92a34b657b21ec96f62e0f804111675e356ecf45c2e3f85953a7",
+      "change": "Reuse the native terminal-path recovery structure and strict native token matching. Equality of each actual shadow edge propagates fixed boot zero to terminal tokens without reading or reinterpreting Sail ROM bytes."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/BootShadow.lean",
+      "backport_reuse_revision": "135642844b30ba088ba16d2464434c4469807565",
+      "backport_reuse_path": "Airbender/Proofs/WordMemory/Shadow.lean",
+      "backport_reuse_sha256": "e4c39e770d82636010556be084a90063d09b63e2b085ddee133d533e79f45a11",
+      "change": "Reuse checked native shadow_refresh unchanged. Recover each actual row and port from the complete memory graph, then derive raw-value preservation and terminal zero along the accepted native path."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/WordROMPadding.lean",
+      "backport_reuse_revision": "135642844b30ba088ba16d2464434c4469807565",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/WordROM.lean",
+      "backport_reuse_sha256": "6ccef544884aa5b88d71fb8eb5208e269ee55f28ae19d414b76ed1d2d61e91ee",
+      "change": "Keep the raw ROM table and UNIMP fallback unchanged. Add the separate zero-extension model actually used by the v2 proving-loader word padding; preserve the full native capacity. Symbolic list proofs establish prefix retention and zero tail without evaluating a million words or inventing Sail bytes."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/WordMemory/NativeBoot.lean",
+      "backport_reuse_revision": "135642844b30ba088ba16d2464434c4469807565",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/WordMemory/Theorems.lean",
+      "backport_reuse_sha256": "f737b8d40ae292302cf81449abfdd9843261f40ba24d995ccea29a1f2f376008",
+      "change": "Keep the short initialized execution wrapper and reference observable. Fixed native zero boot plus the original initial Sail profile derive the previous general initialization boundary; configuration, actual ROM extraction, public domains and physical enforcement limits stay visible."
+    },
+    {
+      "path": "Tests/WordMemoryNativeBoot.lean",
+      "backport_reuse_revision": "135642844b30ba088ba16d2464434c4469807565",
+      "backport_reuse_path": "Tests/WordMemoryROMTransport.lean",
+      "backport_reuse_sha256": "f09efa9571a92bcccc08cd91c7f7bb9cbfa23831c41d050cac28e770ddd6a456",
+      "change": "Reuse real public decoding/configuration/ROM extraction and full native ordinary/x0 fixtures. Initialize all actual GPRs and native shadows to zero; LW uses immediate 16 with rs1=x1 initially zero. General boot execution derives PC four, the actual masked destination and native terminal shadow zeros. Check invented seeds and nonzero public GPR rejection, distinct padding paths and absent Sail bytes."
+    },
+    {
+      "path": "Tests/WordMemoryNativeBoot.lean",
+      "source_path": "Tests/TraceInitialization.lean",
+      "source_sha256": "2fd5b12eb0a1921cc9f867a3ec3ee4ab53fe3cbc790b777b379010433d15f255",
+      "change": "Reuse the original all-GPR numeric case proof and actual zero-profile checks, plus the nonzero-public-register rejection pattern. Native v2 data and original LW-to-x0 decoding replace the v3 arithmetic fixture."
+    },
+    {
+      "path": "Tests/WordMemoryNativeBoot.lean",
+      "source_path": "Tests/NativeROM.lean",
+      "source_sha256": "218cfb806d3cc797ac5cf8b5d240f555b66aba724d12161d82fd0ad5bf2fb324",
+      "change": "Reuse the zero-native-shadow versus actual ROM boot regression structure. Keep original v2 witness columns, imported constraints and full matching; omit v3 witness-value rewriting and NOP projection."
     }
   ]
 }

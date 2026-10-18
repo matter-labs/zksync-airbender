@@ -107,3 +107,11 @@ separate public decoder proof now derives that flag's exact relation to rd.
 The arithmetic and word-memory registries retain separate selected-profile
 execution claims; mixed/custom execution remains open. See the [plan](../../../../FORMAL_VERIFICATION_PLAN.md) and
 [trust boundaries](../../../../TRUST_AND_REVIEW.md).
+
+[Fixed native zero boot](../../Trace/Families/WordMemory/NativeBoot.lean) now derives
+complete selected execution from original Sail zero-profile reads and native
+zero seeds/PC. Complete native shadow paths keep terminal values zero. Native
+loader word padding uses zero, separately from the raw table's UNIMP fallback;
+[the padding model](../../Helpers/Tables/WordROMPadding.lean) checks both paths
+symbolically. Actual Sail padding, physical setup/initialization exports and
+argument enforcement remain separate.

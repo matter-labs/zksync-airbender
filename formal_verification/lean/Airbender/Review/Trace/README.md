@@ -135,3 +135,11 @@ These are logical selected-profile results. Remaining families and physical
 setup/argument fidelity remain in [the plan](../../../FORMAL_VERIFICATION_PLAN.md).
 Cryptographic enforcement of the logical permutations remains a separate boundary.
 Existing [local circuit claims](../Circuits/README.md) retain their explicit interfaces.
+
+[Fixed word-memory zero boot](Families/WordMemory/NativeBoot.lean) now derives the
+same execution contract from original Sail zero-profile reads and fixed native
+seeds/PC. Complete native paths preserve shadow zero independently of ROM bytes.
+Ordinary/x0 boot regressions derive PC four and actual masked destinations.
+The proving loader's zero extension and raw-table UNIMP fallback have separate
+[checked models](../Helpers/Tables/WordROMPadding.lean); actual Sail padding and
+physical initialization/setup exports remain open.
