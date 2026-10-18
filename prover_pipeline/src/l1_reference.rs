@@ -838,6 +838,9 @@ enum Reproduction {
     /// The chain resumed after feeder checkpoint `layer`: every reference file
     /// after that checkpoint's report.
     ResumedAfter(u8),
+    /// The chain resumed from the recursion-unified checkpoint: every reference
+    /// file after `recursion_unified.json`.
+    ResumedAfterRecursionUnified,
 }
 
 /// The typed comparator of a GPU reproduction of the L1 reference: each
@@ -873,6 +876,13 @@ fn compare_gpu_reproduction(
                 .iter()
                 .position(|name| *name == report)
                 .ok_or_else(|| format!("the L1 reference has no {report}"))?;
+            expected_names[position + 1..].to_vec()
+        }
+        Reproduction::ResumedAfterRecursionUnified => {
+            let position = expected_names
+                .iter()
+                .position(|name| *name == "recursion_unified.json")
+                .ok_or("the L1 reference has no recursion_unified.json")?;
             expected_names[position + 1..].to_vec()
         }
     };
@@ -1004,6 +1014,36 @@ fn gpu_l1_feeder_mid_chain_resume_matches_committed() {
         );
         inventory
     });
+}
+
+/// The CPU reference's recursion-unified checkpoint proved on the GPU at the
+/// 30 GiB preset: every feeder layer, `l1_feeder.json` and the wrap.
+#[cfg(feature = "gpu")]
+#[test]
+#[ignore = "proves the L1 reference feeder chain and wraps it on the GPU"]
+fn gpu_l1_feeder_chain_matches_committed() {
+    gpu_reproduction(
+        "gpu-feeder-chain",
+        Reproduction::ResumedAfterRecursionUnified,
+        |sink| {
+            let execution = Execution::gpu(MemoryPreset::GiB30);
+            let mut inventory = generate_into(
+                sink,
+                GenerateFrom::RecursionUnified(&fixture_dir().join("recursion_unified.json")),
+                execution,
+            )
+            .expect("L1 reference GPU feeder chain");
+            inventory.extend(
+                generate_into(
+                    sink,
+                    GenerateFrom::L1Feeder(&sink.join("l1_feeder.json")),
+                    execution,
+                )
+                .expect("L1 reference GPU wrap"),
+            );
+            inventory
+        },
+    );
 }
 
 #[derive(Deserialize)]
