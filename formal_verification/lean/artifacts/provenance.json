@@ -1961,6 +1961,66 @@
       "backport_reuse_path": "Tests/JumpControl.lean",
       "backport_reuse_sha256": "ea852e65783bb585cfbd884d60b22b12462fd0f37f8cd23d020cfc0846aba71e",
       "change": "Reuse complete actual native witness/check structure for JAL x1,-4. Check canonical target limbs, all polynomials and the other fifteen queries for a field-minus-one high variant, actual scalar-query rejection, and bad outgoing high rejection under every supported mask."
+    },
+    {
+      "path": "Airbender/Review/Circuits/JumpBranchSlt/Decoder.lean",
+      "source_path": "Airbender/Review/Circuits/JumpBranchSlt/Decoder.lean",
+      "source_sha256": "00ef4ed7c96c0115c1d25cfdbe8b2c88e366f4ba628a9b6f3d4b212d8c2e61e0",
+      "change": "Reuse original Sail-constructor projection and Unit entry/query/source structure. Adapt to native v2 ten-column metadata: retain original x0 operations, SLTI mask 8, branch mask 16, unchanged JAL/JALR masks 1/2 and raw JAL encoding funct3. Use the existing complete sparse constructor, without source v3 NOP/discard-mask/tag conventions."
+    },
+    {
+      "path": "Airbender/Review/Circuits/JumpBranchSlt/Decoder.lean",
+      "source_path": "Airbender/Review/Circuits/JumpBranchSlt/Artifact.lean",
+      "source_sha256": "c2d4f637b0c457ff702c5767ddfed1ccb43d2f8cd629802efa6d2776d9ba7bd6",
+      "change": "Copy Branch.funct3 unchanged into the control decoder metadata module; the v2 compiled artifact and every imported native constraint remain unchanged."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/Decoder.lean",
+      "source_path": "Airbender/Proofs/JumpBranchSlt/Decoder.lean",
+      "source_sha256": "cb727b8c663ad1170a80a94a9ec2166339358d18c0c540a4535c66319aae90e2",
+      "change": "Reuse the constructor-case field-bound proof structure. Recover supported v2 masks and raw funct3 bounds without source discarded-write exclusions; use complete sparse public construction and native query equality for source evidence."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/Decoder.lean",
+      "backport_reuse_revision": "3751201f446157dba6af7423d2bc00190dadd287",
+      "backport_reuse_path": "Airbender/Proofs/Trace/DecoderSetup.lean",
+      "backport_reuse_sha256": "17f340768e8db38af8eeea2c8f7d45e78d4d060ee0c26c9e47e778bce352dd33",
+      "change": "Reuse native packed-mask sentinel exclusion and full source recovery, applying the actual five-bit v2 control equations and unchanged generic sparse-member/source lemmas. No decoder-field/table-equivalence or output-range premise."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/Decoder.lean",
+      "backport_reuse_revision": "3751201f446157dba6af7423d2bc00190dadd287",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/Decoder.lean",
+      "backport_reuse_sha256": "788e9b4a43e18f760791f36900aa9248a5c2a6cf81b450cfb2de8678ef3f4877",
+      "change": "Reuse exact canonical native query-word/index and decoded-zero-flag derivation. Bind control logical variables 0/1, 9/10 and 7/8; derive supported masks, raw funct3 and incoming alignment from original public construction, then apply checked local PC bounds."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/Selectors.lean",
+      "backport_reuse_revision": "3751201f446157dba6af7423d2bc00190dadd287",
+      "backport_reuse_path": "Airbender/Proofs/AddSub/Selectors.lean",
+      "backport_reuse_sha256": "5437b1f270d37e0270426057a8c784aab46e2b4ffef55efcf4503245df747b42",
+      "change": "Preserve prior selector partition and bit proofs; append the same bounded packed-mask calculation for five bits and actual equation 33, excluding minus-one holes/tail without a supported-mask premise."
+    },
+    {
+      "path": "Airbender/Review/Circuits/JumpBranchSlt/Theorems.lean",
+      "backport_reuse_revision": "3751201f446157dba6af7423d2bc00190dadd287",
+      "backport_reuse_path": "Airbender/Review/Circuits/JumpBranchSlt/Theorems.lean",
+      "backport_reuse_sha256": "a07dc8b80c379905343405db7a6b3eb13684096d7f9c4f20665baf877e342bdd",
+      "change": "Keep existing short native fixed-effects/conditional-PC statements and append one short public original-decoding plus PC-bound claim. Its inputs are successful actual-byte construction, complete native constraints and full padded logical membership; calculations remain in Proofs."
+    },
+    {
+      "path": "Tests/JumpDecoder.lean",
+      "backport_reuse_revision": "3751201f446157dba6af7423d2bc00190dadd287",
+      "backport_reuse_path": "Airbender/Proofs/AddSub/NativeSetup.lean",
+      "backport_reuse_sha256": "7095cb9a51026c8fa0351abc8e9739b31fa7d36aec78a178c67206a2b26e1297",
+      "change": "Reuse actual public byte-memory reads and sparse Sail slot-construction certificate structure for JAL -4, an UNIMP hole and original SLTIU-to-x0. Check full tail, missing bytes/capacity, original x0 constructors and all branch tags."
+    },
+    {
+      "path": "Tests/JumpDecoder.lean",
+      "backport_reuse_revision": "3751201f446157dba6af7423d2bc00190dadd287",
+      "backport_reuse_path": "Tests/JumpPC.lean",
+      "backport_reuse_sha256": "e64d0533532db1a6c3d9446ee2985449efd47e189b1a5a6d007b68c1fb4a3802",
+      "change": "Reuse complete native JAL constraint/table witness checking. Correct raw public funct3 to seven and unconditional result to one; instantiate the new public claim, reject the old local tag-zero query, and retest the malformed high variant with actual public membership and original polynomial semantics."
     }
   ],
   "setup_artifacts": [

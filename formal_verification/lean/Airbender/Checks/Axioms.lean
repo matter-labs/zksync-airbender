@@ -26,6 +26,7 @@ import Tests.NativeDecoderRows
 import Tests.NativeRows
 import Tests.JumpControl
 import Tests.JumpPC
+import Tests.JumpDecoder
 
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
@@ -849,3 +850,33 @@ import Tests.JumpPC
 #print axioms Tests.JumpPC.noncanonical_other_queries
 #print axioms Tests.JumpPC.noncanonical_native_rejected
 #print axioms Tests.JumpPC.supported_negative_high_rejected
+
+#print axioms Airbender.JumpBranchSlt.Proofs.packed_mask_bound
+#print axioms Airbender.JumpBranchSlt.native_public_decoding
+#print axioms Airbender.JumpBranchSlt.Proofs.decoder_field_bounds
+#print axioms Airbender.JumpBranchSlt.Proofs.padding_excluded
+#print axioms Airbender.JumpBranchSlt.Proofs.decoder_member
+#print axioms Airbender.JumpBranchSlt.Proofs.fetched_sources
+#print axioms Airbender.JumpBranchSlt.Proofs.query_mask
+#print axioms Airbender.JumpBranchSlt.Proofs.query_tag
+#print axioms Airbender.JumpBranchSlt.Proofs.query_inputs
+#print axioms Airbender.JumpBranchSlt.Proofs.decoded_inputs
+#print axioms Airbender.JumpBranchSlt.Proofs.public_decoder
+#print axioms Tests.JumpDecoder.public_words
+#print axioms Tests.JumpDecoder.public_image
+#print axioms Tests.JumpDecoder.raw_jal_funct3
+#print axioms Tests.JumpDecoder.comparisons_to_x0
+#print axioms Tests.JumpDecoder.unsigned_and_jalr_x0
+#print axioms Tests.JumpDecoder.branch_masks
+#print axioms Tests.JumpDecoder.hole_and_tail
+#print axioms Tests.JumpDecoder.native_constraints
+#print axioms Tests.JumpDecoder.public_membership
+#print axioms Tests.JumpDecoder.public_decoding
+#print axioms Tests.JumpDecoder.public_inputs
+#print axioms Tests.JumpDecoder.wrong_jal_tag_rejected
+#print axioms Tests.JumpDecoder.insufficient_capacity
+#print axioms Tests.JumpDecoder.discarded_jal
+#print axioms Tests.JumpDecoder.noncanonical_public_membership
+#print axioms Tests.JumpDecoder.noncanonical_polynomials
+#print axioms Tests.JumpDecoder.noncanonical_native_rejected
+#print axioms Tests.JumpDecoder.missing_byte_rejected

@@ -13,7 +13,8 @@ not completed v2 coverage.
 
 | Integration | Coverage |
 | --- | --- |
-| [Jump/branch/SLT fixed effects](Airbender/Review/Circuits/JumpBranchSlt/Theorems.lean) | All 36 native equations, six scalar/eight timestamp/two fixed queries and exact metadata imported. Actual cleanup/conditional table certificates derive key bounds and exact native control/cleanup values; full active JAL witness and alignment rejection checked. Supported native masks now derive both outgoing PC limb bounds; the JAL -4 negative-high witness shape fails an actual scalar query. Public decoding, initialized history and original Sail instruction/trace execution remain open. |
+| [Jump/branch/SLT fixed effects](Airbender/Review/Circuits/JumpBranchSlt/Theorems.lean) | All 36 native equations, six scalar/eight timestamp/two fixed queries and exact metadata imported. Actual cleanup/conditional table certificates derive key bounds and exact native control/cleanup values; full active JAL witness and alignment rejection checked. Supported native masks now derive both outgoing PC limb bounds; the JAL -4 negative-high witness shape fails an actual scalar query. Public decoding is checked below; initialized history and original Sail instruction/trace execution remain open. |
+| [Public control decoding](Airbender/Review/Circuits/JumpBranchSlt/Decoder.lean) | Actual public bytes and original Sail decoding construct a full sparse/padded ten-column table. Native equations reject holes/tail, recovering supported masks, canonical inputs/alignment and exact x0 flags; the short native claim derives outgoing PC bounds without a mask/range premise. Separate SLTI/branch masks, retained x0 operations and raw JAL funct3 are checked. Native program export, initialized reads, instruction execution and terminal matching remain open. |
 | V2 artifact import | All 34 quadratic and 3 linear equations, four 16-bit and eight 19-bit timestamp queries from the pinned ADD/SUB layout. Bounds/placement guards and both native zero coefficient encodings. |
 | Reused foundation | Unchanged property definitions, word representation/arithmetic and pinned Sail reference/execution lemmas. Source hashes are checked. |
 | Native state/port clocks | Typed physical state and three direct ports, including actual destination writes. Four-tick advancement and strict previous-write/port order follow from imported equations/queries under initial/prior clock bounds and alignment. The initialized-history layer now derives these local inputs from matching and initial boundaries. |
@@ -357,9 +358,9 @@ satisfies every equation/lookup and exercises that public claim. Altered results
 oversized flags and a JAL target with bit one set reject; its cleanup-table row
 alone remains valid. Three wrong import modes and 27 new importer checks pass.
 
-Public decoder construction, initialized jump/branch/SLT reads and original Sail
-execution remain open. The native PC assessment below adds no verifier-closure
-premise. General Rust/JSON/Lean refinement, physical trace/normalization/LDE and
+Initialized jump/branch/SLT reads and original Sail execution remain open.
+Public control decoding is checked below. The native PC assessment adds no
+verifier-closure premise. General Rust/JSON/Lean refinement, physical trace/normalization/LDE and
 cryptographic lookup enforcement remain separate.
 
 ## Native control PC bounds
@@ -370,26 +371,60 @@ derives both actual outgoing limb bounds under supported decoder masks
 recover one-hot selection from the five native Boolean equations and packed
 mask equation. [PC assembly](Airbender/Proofs/JumpBranchSlt/PC.lean) proves that
 outgoing high variable 14 equals candidate variable 43, ranged by actual scalar
-query five; outgoing low variable 13 equals ranged key 42 or cleaned value 48.
+query index 5; outgoing low variable 13 equals ranged key 42 or cleaned value 48.
 No outgoing/terminal range, expected PC or verifier-PC closure is a premise.
-Public-byte/decoder membership must still derive the supported mask in future
-initialized execution; the local theorem states that boundary explicitly.
+Public-byte/decoder membership now derives that supported mask below;
+initialized control execution remains separate.
 
-[Regressions](Tests/JumpPC.lean) check a complete native JAL x1,-4 at PC zero,
-with canonical target limbs 65532/65535 and actual link write four. The field
+[Local regressions](Tests/JumpPC.lean) check every native constraint for JAL mask
+1 and immediate -4 at PC zero, with target limbs 65532/65535 and actual link
+write four. Actual public decoder fields are checked below. The field
 minus-one high-limb variant passes all 36 polynomials and the other 15 queries,
 but fails actual scalar query index 5. Thus this v3 F01 witness shape is rejected
 by v2 native constraints. This does not claim general jump/branch/SLT Sail or
 terminal-history soundness, nor resolve other families' boundary obligations.
 
+## Public control decoding
+
+[The public projection](Airbender/Review/Circuits/JumpBranchSlt/Decoder.lean)
+follows the pinned [native decoder](../../cs/src/machine/ops/unrolled/decoder/jump_slt_branch.rs):
+five masks, original x0 operations and the separate zero flag.
+SLTI/SLTIU use mask 8, branches use mask 16, and JAL retains raw encoding funct3
+bits: JAL -4 has tag 7. The pinned original Sail decoder supplies instructions;
+no source v3 NOP, discarded-jump mask or JAL tag convention is imported.
+The reused sparse constructor reads every actual public word, keeps unsupported
+pure words at their original PCs, preserves the complete minus-one tail, and
+rejects missing bytes, effectful decoding or insufficient capacity.
+
+[Proof assembly](Airbender/Proofs/JumpBranchSlt/Decoder.lean) first derives packed
+mask <=31 from actual native Boolean/mask equations, excluding every sentinel.
+Membership then recovers original bytes/decoding and all ten native query fields.
+Canonical PC/immediate limbs, incoming alignment, exact x0 flag, raw funct3 and
+supported masks follow. [One short public claim](Airbender/Review/Circuits/JumpBranchSlt/Theorems.lean)
+combines this source recovery with outgoing PC bounds; no caller-supplied mask,
+word/PC range, expected decoding result or verifier-PC closure is a premise.
+
+[Public-byte regressions](Tests/JumpDecoder.lean) use JAL -4, an interior UNIMP
+hole and original SLTIU-to-x0 at PC 8. The complete native JAL row with tag 7
+passes the public claim; its earlier local tag-zero variant fails membership.
+The noncanonical high-PC variant retains actual public membership and passes
+all polynomials, but fails the native range query. Constructor tests retain
+signed/unsigned comparisons, both jumps to x0 and all six branch conditions;
+missing bytes/capacity and the full hole/tail domain are checked.
+
+Initialized control reads, original instruction execution and terminal matching
+remain open. This is a logical public decoder/constraint connection; actual
+native program-prefix export, general Rust decoder/setup/trace refinement and
+cryptographic enforcement remain separately scoped.
+
 ## Validation
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all twenty-nine concrete test modules pass.
+- Library, both CLI entrypoints and all thirty concrete test modules pass.
 - Importer regressions: 156 checks pass.
-- Axiom audit: 798 explicit roots; only propext, Classical.choice and Quot.sound.
-- All forty-six public Review theorems (seven circuit claims, thirty trace claims and nine helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Axiom audit: 827 explicit roots; only propext, Classical.choice and Quot.sound.
+- All forty-seven public Review theorems (eight circuit claims, thirty trace claims and nine helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
 - Source provenance: 71 unchanged reused files, three native circuit artifacts, thirty-six native Rust sources, six native setup artifacts and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
@@ -426,6 +461,7 @@ Current checked checkpoint:
 - Sparse initialized original execution passes with real code/register/CSR/RAM bytes, complete native matching and actual exported slot-three membership. The existing full x0-load witness starts at public PC 12, retains the PC-four hole, and derives terminal PC 16, RAM 123 and x0 zero. The same strict initialized execution, boot and padding regressions remain intact.
 - Both shared scalar prefixes reproduce exactly from the native API/extracted timestamp clause. Symbolic proofs cover every actual value and modeled active filler row, retaining repeated zero rows in the domain and excluding normalization. Existing Clean range helpers have proved exact membership connections. Prefix/padding/endpoints, both compiled placements and fourteen strict importer regressions pass. No full trace is evaluated; physical Rust/argument enforcement remains separate.
 - Native control PC bounds pass for all five supported packed masks. A complete JAL -4 witness retains canonical target 0xfffffffc; its noncanonical high-limb variant passes all native polynomials and the other fifteen queries but is rejected by the actual candidate-high range query. No terminal range or verifier-PC closure premise is supplied.
+- Public control decoding now derives all local decoder inputs from original Sail bytes and full sparse/padded membership. The full JAL -4 witness uses actual raw funct3 seven and derives outgoing PC bounds without a mask premise; tag-zero mismatch, x0 comparisons/jumps, all branch tags, unsupported holes/tail and missing bytes/capacity regressions pass. The malformed high-PC variant retains real public membership and all polynomials but fails the native range query. Initialized original control execution remains open.
 - No handwritten project warnings, admitted proofs or project axioms.
 - Serial bounded gates pass; parent/child timeout and memory probes confirm termination with no live owned processes.
 

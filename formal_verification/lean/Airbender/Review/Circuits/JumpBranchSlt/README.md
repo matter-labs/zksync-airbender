@@ -1,14 +1,14 @@
 # Jump/branch/SLT circuit review
 
 The current checkpoint derives native conditional-control and low-PC cleanup
-effects and supported-mask outgoing PC bounds from every imported row equation
-and lookup. Original Sail instruction
+effects, public original decoding and outgoing PC bounds from every imported
+row equation/lookup and full padded decoder membership. Original Sail instruction
 and initialized trace soundness remain open.
 
 ## Checked results
 
 1. Read [Theorems](Theorems.lean) for the short native fixed-effects and PC-bound claims.
-2. Read [Model](Model.lean) for exact native observables and derived values/bounds.
+2. Read [Model](Model.lean) for native observables and [Decoder](Decoder.lean) for original public source construction.
 3. Read [Artifact](Artifact.lean) and [control tables](Tables/Control.lean) for the
    complete v2 equations/queries and independent table meanings.
 
@@ -52,8 +52,23 @@ raw or cleaned key. No outgoing/terminal range or verifier closure is supplied.
 other native query, but fails actual scalar query index 5. The source F01 witness
 shape is excluded locally; no source closure interface is adopted.
 
-Public decoding must still derive the supported mask. Initialized reads,
-original Sail clauses/retirement, full family execution and terminal matching
-remain open. General Rust/JSON/Lean refinement,
+[Public control decoding](Decoder.lean) now derives the supported mask from
+actual bytes and original Sail decoding through the reused sparse constructor.
+[Calculations](../../../Proofs/JumpBranchSlt/Decoder.lean) reject every hole/tail
+sentinel using native packed-mask bounds, then recover canonical PC/immediate
+words, incoming alignment, raw funct3 and the exact zero flag. The short public
+claim adds no mask, word-range or expected decoding-result premise.
+
+[The native v2 decoder](../../../../../../cs/src/machine/ops/unrolled/decoder/jump_slt_branch.rs)
+retains original SLT/SLTI and jumps to x0; SLTI uses mask 8 and branches mask
+16. JAL also retains raw opcode funct3, so the [actual JAL -4 byte fixture](../../../../Tests/JumpDecoder.lean)
+uses tag 7. That full native row passes; the earlier local tag-zero row is excluded
+by public membership. The malformed high-PC variant still has public membership
+and satisfies all polynomials, but the native range query rejects it. The fixture
+retains UNIMP at PC 4 and original SLTIU-to-x0 at PC 8; full padding, all branch
+conditions and missing byte/capacity checks pass.
+
+Actual native program-prefix export, initialized reads, original Sail clauses/
+retirement, full family execution and terminal matching remain open. General Rust/JSON/Lean refinement,
 physical setup/normalization/LDE and cryptographic argument enforcement remain
 separate. No implementation vulnerability is established.

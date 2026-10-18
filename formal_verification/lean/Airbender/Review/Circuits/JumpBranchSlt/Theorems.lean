@@ -1,5 +1,5 @@
 import Airbender.Review.Circuits.JumpBranchSlt.Model
-import Airbender.Proofs.JumpBranchSlt.PC
+import Airbender.Proofs.JumpBranchSlt.Decoder
 
 namespace Airbender.JumpBranchSlt
 
@@ -17,5 +17,16 @@ theorem native_pc_bounds {w : Nat → ZMod mersenne31Modulus}
     (mask : (w 12).val ∈ [1, 2, 4, 8, 16]) :
     (w 13).val < 65536 ∧ (w 14).val < 65536 :=
   Proofs.pc_bounds holds mask
+
+/-- Original public bytes and full padded native query membership derive source
+    decoding and outgoing PC bounds. Initialized instruction execution is separate. -/
+theorem native_public_decoding {w : Nat → ZMod mersenne31Modulus}
+    {setup : Trace.SparseDecoderSetup Unit} {before : Reference.RiscV.Sail.State}
+    {count logCapacity : Nat}
+    (image : sparseDecoderSetupImage before count logCapacity = some setup)
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
+    (member : setup.table.Contains #[] (decoderQuery w)) :
+    Fetched w before ∧ (w 13).val < 65536 ∧ (w 14).val < 65536 :=
+  Proofs.public_decoder image holds member
 
 end Airbender.JumpBranchSlt

@@ -261,10 +261,19 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    scalar-ranged variable 43, and outgoing low is the raw or cleaned ranged key.
    The JAL -4 field-minus-one variant passes all polynomials and the other 15
    queries but fails actual scalar query index 5; the canonical target passes.
-   Do not copy the v3 F01 closure premise into this local claim. Next bind native
-   public decoding to the supported mask and initialized reads, then original
-   Sail instructions, full execution and actual terminal state matching.
-   No per-row result/PC or table-equivalence premise is added.
+   Do not copy the v3 F01 closure premise into this local claim.
+   [Public control decoding](Airbender/Review/Circuits/JumpBranchSlt/Decoder.lean)
+   now constructs actual original Sail bytes/metadata and full sparse padding;
+   native packed-mask bounds exclude sentinels and recover the supported mask,
+   canonical words/alignment and exact x0 flag. The public claim derives PC
+   bounds without a supplied mask. Retain v2 SLTI mask 8, branch mask 16, original
+   x0 operations and raw JAL funct3 (tag 7 for -4). The full public JAL witness
+   passes; wrong tag-zero membership and the malformed high PC reject.
+   Next certify an actual native control program prefix, register native clocks/
+   ports for initialized history and derive reads, then original Sail instructions,
+   full execution and actual terminal state matching. General Rust/compiler and
+   cryptographic refinement remain separate. No per-row result/PC or
+   table-equivalence premise is added.
 
 3. Port unsigned mul/div, shift/binop and subword memory into the same shared
    context; retain their family-specific assumptions and supported ISA profile.

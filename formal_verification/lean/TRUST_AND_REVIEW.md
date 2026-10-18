@@ -587,9 +587,9 @@ satisfies every equation/lookup and exercises that public claim. Altered results
 oversized flags and a JAL target with bit one set reject; its cleanup-table row
 alone remains valid. Three wrong import modes and 27 new importer checks pass.
 
-Public decoder construction, initialized jump/branch/SLT reads and original Sail
-execution remain open. The native PC assessment below adds no verifier-closure
-premise. General Rust/JSON/Lean refinement, physical trace/normalization/LDE and
+Initialized jump/branch/SLT reads and original Sail execution remain open.
+Public control decoding is checked below. The native PC assessment adds no
+verifier-closure premise. General Rust/JSON/Lean refinement, physical trace/normalization/LDE and
 cryptographic lookup enforcement remain separate.
 
 ## Native control PC bounds
@@ -600,17 +600,51 @@ derives both actual outgoing limb bounds under supported decoder masks
 recover one-hot selection from the five native Boolean equations and packed
 mask equation. [PC assembly](Airbender/Proofs/JumpBranchSlt/PC.lean) proves that
 outgoing high variable 14 equals candidate variable 43, ranged by actual scalar
-query five; outgoing low variable 13 equals ranged key 42 or cleaned value 48.
+query index 5; outgoing low variable 13 equals ranged key 42 or cleaned value 48.
 No outgoing/terminal range, expected PC or verifier-PC closure is a premise.
-Public-byte/decoder membership must still derive the supported mask in future
-initialized execution; the local theorem states that boundary explicitly.
+Public-byte/decoder membership now derives that supported mask below;
+initialized control execution remains separate.
 
-[Regressions](Tests/JumpPC.lean) check a complete native JAL x1,-4 at PC zero,
-with canonical target limbs 65532/65535 and actual link write four. The field
+[Local regressions](Tests/JumpPC.lean) check every native constraint for JAL mask
+1 and immediate -4 at PC zero, with target limbs 65532/65535 and actual link
+write four. Actual public decoder fields are checked below. The field
 minus-one high-limb variant passes all 36 polynomials and the other 15 queries,
 but fails actual scalar query index 5. Thus this v3 F01 witness shape is rejected
 by v2 native constraints. This does not claim general jump/branch/SLT Sail or
 terminal-history soundness, nor resolve other families' boundary obligations.
+
+## Public control decoding
+
+[The public projection](Airbender/Review/Circuits/JumpBranchSlt/Decoder.lean)
+follows the pinned [native decoder](../../cs/src/machine/ops/unrolled/decoder/jump_slt_branch.rs):
+five masks, original x0 operations and the separate zero flag.
+SLTI/SLTIU use mask 8, branches use mask 16, and JAL retains raw encoding funct3
+bits: JAL -4 has tag 7. The pinned original Sail decoder supplies instructions;
+no source v3 NOP, discarded-jump mask or JAL tag convention is imported.
+The reused sparse constructor reads every actual public word, keeps unsupported
+pure words at their original PCs, preserves the complete minus-one tail, and
+rejects missing bytes, effectful decoding or insufficient capacity.
+
+[Proof assembly](Airbender/Proofs/JumpBranchSlt/Decoder.lean) first derives packed
+mask <=31 from actual native Boolean/mask equations, excluding every sentinel.
+Membership then recovers original bytes/decoding and all ten native query fields.
+Canonical PC/immediate limbs, incoming alignment, exact x0 flag, raw funct3 and
+supported masks follow. [One short public claim](Airbender/Review/Circuits/JumpBranchSlt/Theorems.lean)
+combines this source recovery with outgoing PC bounds; no caller-supplied mask,
+word/PC range, expected decoding result or verifier-PC closure is a premise.
+
+[Public-byte regressions](Tests/JumpDecoder.lean) use JAL -4, an interior UNIMP
+hole and original SLTIU-to-x0 at PC 8. The complete native JAL row with tag 7
+passes the public claim; its earlier local tag-zero variant fails membership.
+The noncanonical high-PC variant retains actual public membership and passes
+all polynomials, but fails the native range query. Constructor tests retain
+signed/unsigned comparisons, both jumps to x0 and all six branch conditions;
+missing bytes/capacity and the full hole/tail domain are checked.
+
+Initialized control reads, original instruction execution and terminal matching
+remain open. This is a logical public decoder/constraint connection; actual
+native program-prefix export, general Rust decoder/setup/trace refinement and
+cryptographic enforcement remain separately scoped.
 
 ## Public state, profiles and external inputs
 

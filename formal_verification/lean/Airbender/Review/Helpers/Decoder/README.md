@@ -95,3 +95,13 @@ literal-data certificate proves repeated filler adds no query, retaining every
 active row and excluding final normalization. [The arithmetic execution bridge](../../Trace/Families/AddSub/ActiveSetup.lean)
 uses that membership directly; native mask equations still reject sentinels.
 General Rust trace/export/LDE and cryptographic enforcement remain separate.
+
+[Control decoding](../../Circuits/JumpBranchSlt/Decoder.lean) reuses sparse public
+construction with v2's five packed masks and ten-column native query. Original
+SLT/SLTI and jumps to x0 remain intact; SLTI uses mask 8, branches 16, and JAL
+retains raw encoding funct3. [Native calculations](../../../Proofs/JumpBranchSlt/Decoder.lean)
+exclude all sentinels before recovering original Sail source fields, canonical
+words/alignment and the exact zero flag, then derive outgoing PC bounds without
+a supplied mask. [The public-byte fixture](../../../../Tests/JumpDecoder.lean)
+uses JAL -4 with tag 7, an UNIMP hole and original SLTIU-to-x0. Native program
+export, initialized control execution and physical argument refinement remain open.
