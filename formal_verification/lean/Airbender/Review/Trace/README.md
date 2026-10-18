@@ -197,3 +197,10 @@ All scalar, tagged generic and decoder groups keep their own padding domains;
 logical meanings. The real alias fixture still reaches PC 28/x1=246 with native
 matching and public byte/Sail construction. Rust trace/normalization/LDE,
 arbitrary-program decoder certificates and cryptographic enforcement remain open.
+
+[Jump/branch/SLT fixed effects](../Circuits/JumpBranchSlt/README.md) now have exact
+native equations/metadata and complete native fixed-table certificates. A full
+active JAL witness and alignment rejection pass. This is a local prerequisite:
+public native decoding, initialized family histories, original Sail execution
+and outgoing/terminal PC assessment remain open. Existing initialized arithmetic
+and word-memory trace claims retain their meanings.

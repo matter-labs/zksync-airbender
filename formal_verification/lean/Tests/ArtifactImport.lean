@@ -109,6 +109,74 @@ private def decoderPaddingChecks : IO Unit := do
   check (rejected (Setup.parseDecoderPadding (← IO.FS.readFile "artifacts/setup/arithmetic-native.json")))
     "reject decoder prefix as padding export"
 
+private def controlChecks : IO Unit := do
+  let source ← IO.FS.readFile "artifacts/setup/jump-control-native.json"
+  let artifact ← IO.ofExcept (Setup.parseControl source)
+  let some cleanup := artifact.tables[0]? | throw (IO.userError "missing native cleanup region")
+  let some conditional := artifact.tables[1]? | throw (IO.userError "missing native conditional region")
+  check (artifact.generic_rows == 65664 && artifact.tables.size == 2 &&
+    cleanup.id == 17 && conditional.id == 43)
+    "actual native control table extent and tags"
+  check (rejected ({artifact with version := 2}.validate)) "reject control export version"
+  check (rejected ({artifact with field_modulus := 2013265921}.validate)) "reject v3 control field"
+  check (rejected ({artifact with profile := "range16_timestamp19"}.validate)) "reject changed control profile"
+  check (rejected ({artifact with generic_rows := 65665}.validate)) "reject invented control dummy row"
+  check (rejected ({artifact with tables := artifact.tables.extract 0 1}.validate)) "reject missing control region"
+  check (rejected ({artifact with tables := artifact.tables.push cleanup}.validate))
+    "reject extra control region"
+  check (rejected ({artifact with tables := #[{cleanup with id := 0}, conditional]}.validate))
+    "reject changed native cleanup tag"
+  check (rejected ({artifact with tables := #[cleanup, {conditional with offset := 65537}]}.validate))
+    "reject shifted native conditional region"
+  check (rejected ({artifact with tables := #[conditional, cleanup]}.validate)) "reject reordered native control regions"
+  check (rejected ({artifact with tables := #[cleanup, {conditional with data :=
+    {conditional.data with length := 127}}]}.validate)) "reject truncated conditional extent"
+  check (rejected ({artifact with tables := #[{cleanup with data :=
+    {cleanup.data with columns := cleanup.data.columns.extract 0 3}}, conditional]}.validate))
+    "reject missing native control tag column"
+  check (rejected ({artifact with tables := #[{cleanup with data :=
+    {cleanup.data with columns := cleanup.data.columns.set! 0 ⟨#[.affine 65535 0 1]⟩}}, conditional]}.validate))
+    "reject incomplete native cleanup column"
+  check (rejected ({artifact with tables := #[{cleanup with data :=
+    {cleanup.data with columns := cleanup.data.columns.set! 0 ⟨#[.affine 65536 2147483647 0]⟩}}, conditional]}.validate))
+    "reject noncanonical native control field"
+  let json ← IO.ofExcept (Json.parse source)
+  let unknown ← IO.ofExcept (replaceField json "invented" (.bool true))
+  check (rejected (Setup.parseControl unknown.compress)) "reject unknown control export field"
+  let regions ← IO.ofExcept ((← IO.ofExcept (json.getObjVal? "tables")).getArr?)
+  let region ← IO.ofExcept (replaceField regions[0]! "invented" (.bool true))
+  let unknown ← IO.ofExcept (replaceField json "tables" (Json.arr (regions.set! 0 region)))
+  check (rejected (Setup.parseControl unknown.compress)) "reject unknown control region field"
+  let matrix ← IO.ofExcept (regions[0]!.getObjVal? "data")
+  let extra ← IO.ofExcept (replaceField matrix "invented" (.bool true))
+  let region ← IO.ofExcept (replaceField regions[0]! "data" extra)
+  let unknown ← IO.ofExcept (replaceField json "tables" (Json.arr (regions.set! 0 region)))
+  check (rejected (Setup.parseControl unknown.compress)) "reject unknown control matrix field"
+  check (rejected (Setup.parse source)) "reject control artifact as program export"
+  check (rejected (Setup.parseScalars source)) "reject control artifact as scalar export"
+  check (rejected (Setup.parseControl (← IO.FS.readFile "artifacts/setup/scalars-native.json")))
+    "reject scalar export as control artifact"
+  let circuit ← IO.ofExcept (parseCircuit (← IO.FS.readFile "../../cs/jump_branch_slt_preprocessed_layout.json"))
+  check (circuit.degree_2_constraints.size == 33 && circuit.degree_1_constraints.size == 3 &&
+    circuit.witness_layout.width_3_lookups.size == 2 &&
+    circuit.witness_layout.range_check_16_lookup_expressions.size == 6 &&
+    circuit.witness_layout.timestamp_range_check_lookup_expressions.size == 8)
+    "all native jump branch slt equations and queries retained"
+  check (rejected ({circuit with total_tables_size := 65665}.validate)) "reject control layout dummy extent"
+  check (rejected ({circuit with table_offsets := circuit.table_offsets.set! 43 65537}.validate))
+    "reject control layout table offset"
+  let some first := circuit.witness_layout.width_3_lookups[0]? | throw (IO.userError "missing control query")
+  let some second := circuit.witness_layout.width_3_lookups[1]? | throw (IO.userError "missing cleanup query")
+  check (rejected ({circuit with witness_layout := {circuit.witness_layout with width_3_lookups :=
+    #[{first with table_index := .Constant .RomRead}, second]}}.validate)) "reject mixed native lookup profiles"
+  check (rejected ({circuit with witness_layout := {circuit.witness_layout with width_3_lookups :=
+    #[first, first]}}.validate)) "reject repeated native control table"
+  check (rejected ({circuit with witness_layout := {circuit.witness_layout with width_3_lookups :=
+    #[second, first]}}.validate)) "reject reversed control lookup profile"
+  check (rejected ({circuit with witness_layout := {circuit.witness_layout with width_3_lookups :=
+    #[{first with input_columns := first.input_columns.extract 0 2}, second]}}.validate))
+    "reject two-column v3-shaped control query"
+
 def main : IO UInt32 := do
   try
     let source ← IO.FS.readFile "../../cs/add_sub_lui_auipc_mop_preprocessed_layout.json"
@@ -286,6 +354,7 @@ def main : IO UInt32 := do
     scalarChecks setupSource
     decoderChecks setupSource
     decoderPaddingChecks
+    controlChecks
     return (0 : UInt32)
   catch error =>
     IO.eprintln s!"FAIL {error}"

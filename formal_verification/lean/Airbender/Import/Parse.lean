@@ -57,8 +57,13 @@ def Circuit.setupColumns (c : Circuit) : Except String Verification.SetupColumns
       layout.timestamp_range_check_setup_column.start == 1 &&
       layout.timestamp_range_check_setup_column.num_elements == 1 do
     throw "unsupported native scalar setup placement"
-  let generic := if c.witness_layout.width_3_lookups.isEmpty then 0 else 1
-  let rows := if generic == 0 then 0 else 1114113
+  let ids := c.witness_layout.width_3_lookups.map fun query =>
+    match query.table_index with | .Constant id => id
+  let memory := ids == #[FixedTableId.RomAddressSpaceSeparator, .RomRead]
+  let control := ids == #[FixedTableId.ConditionalJmpBranchSlt, .JumpCleanupOffset]
+  unless ids.isEmpty || memory || control do throw "unsupported native fixed lookup profile"
+  let generic := if ids.isEmpty then 0 else 1
+  let rows := if memory then 1114113 else if control then 65664 else 0
   unless layout.generic_lookup_setup_columns.start == 2 &&
       layout.generic_lookup_setup_columns.num_elements == generic do
     throw "unsupported native tagged setup groups"
@@ -69,7 +74,11 @@ def Circuit.setupColumns (c : Circuit) : Except String Verification.SetupColumns
   unless c.total_tables_size == rows && c.table_offsets.size == 62 do
     throw "unsupported native generic setup extent"
   let expected := (List.range 62).toArray.map fun id =>
-    if generic == 0 || id == 0 then 0 else if id ≤ 23 then 1 else if id == 24 then 65537 else 1114113
+    if memory then
+      if id == 0 then 0 else if id ≤ 23 then 1 else if id == 24 then 65537 else 1114113
+    else if control then
+      if id ≤ 17 then 0 else if id ≤ 43 then 65536 else 65664
+    else 0
   unless c.table_offsets == expected do
     throw "unsupported native fixed-table offsets"
   pure ⟨c.trace_len, layout.total_width, 0, 1, 2, generic,

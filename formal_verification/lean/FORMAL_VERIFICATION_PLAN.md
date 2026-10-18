@@ -249,13 +249,19 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
 2. Add native jump/branch/SLT and extend the shared execution relation with checked
    control-flow interfaces. Preserve full native setup padding and actual public
    code-byte/decoder evidence; do not add per-row result or PC premises.
-   Initial native inspection identifies [the concrete layout](../../cs/jump_branch_slt_preprocessed_layout.json):
-   33 quadratic/three linear equations, six scalar/eight timestamp queries and
-   two fixed queries. Import their actual conditional-control and jump-cleanup
-   tables before promoting local claims. [The native decoder](../../cs/src/machine/ops/unrolled/decoder/jump_slt_branch.rs)
-   retains five packed family bits, signed/unsigned funct3 and original x0
-   flags. Retest the source terminal-PC/closure finding on these v2 constraints
-   before reusing any closure interface or finding; no v2 assessment is claimed.
+   [The concrete native artifact](Airbender/Review/Circuits/JumpBranchSlt/Artifact.lean)
+   and both fixed tables are now checked: all 36 equations, 16 lookups and exact
+   typed metadata; [actual native export](artifacts/setup/jump-control-native.json)
+   has cleanup/conditional tags 17/43 and offsets 0/65536 without a dummy row.
+   Symbolic/small finite certificates derive exact membership and fixed effects.
+   The full active JAL witness, wrong targets/profiles, signed/unsigned flags,
+   changed outputs and actual JAL alignment rejection pass. The v2 conditional
+   table keeps flags and funct3 separate. Next retest raw outgoing/terminal PC
+   behavior before adopting any source closure finding/interface; include the
+   actual scalar range query on logical variable 43 in that audit. Bind native
+   public decoding and initialized reads, then original Sail instructions and
+   full execution. No per-row result/PC or table-equivalence premise is added.
+
 3. Port unsigned mul/div, shift/binop and subword memory into the same shared
    context; retain their family-specific assumptions and supported ISA profile.
 4. Rebind bigint/BLAKE/Keccak workers and callers. Retest control validity,
@@ -265,8 +271,8 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    initialization/teardown under their actual v2 argument interfaces.
 
 Expand importer support only when a concrete circuit requires it. The two native
-word-memory fixed tables are now supported with exact three-column queries.
-Other fixed tables, dynamic table selectors, 8-bit columns and state linkage
+word-memory and two native control fixed tables are now supported with exact
+three-column queries and explicit profiles. Other fixed tables, dynamic table selectors, 8-bit columns and state linkage
 continue to fail closed.
 Do not copy unused v3 Review theorems into the v2 build.
 

@@ -18,3 +18,9 @@ alias regression derives original Sail PC 28/x1=246 through complete native
 matching. Setup projections, rather than table-equivalence premises, connect
 physical columns to existing lookup meanings. Rust/normalization/LDE and
 cryptographic enforcement remain separate.
+
+[The control family prerequisite](../../Circuits/JumpBranchSlt/README.md) now
+imports all native equations/queries and proves actual fixed-table effects on a
+nonempty active JAL witness. Its public decoding, initialized original Sail
+execution and terminal-PC/closure assessment remain open; it has no family
+execution claim yet.

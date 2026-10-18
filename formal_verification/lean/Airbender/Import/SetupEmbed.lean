@@ -117,4 +117,12 @@ elab "import_native_decoder_padding " name:ident " from " path:str : command => 
   let values := artifact.row.map quote
   elabCommand (← `(def $name : Vector Nat 10 := #v[$[$values],*]))
 
+/-- Import complete native tagged control rows as literal values only. -/
+elab "import_native_control " name:ident " from " path:str : command => do
+  let artifact ← match parseControl (← IO.FS.readFile path.getString) with
+    | .ok artifact => pure artifact
+    | .error error => throwError "native control table import failed: {error}"
+  for (region, suffix) in artifact.tables.zip #["Cleanup", "Conditional"] do
+    emitData (mkIdent (name.getId.appendAfter suffix)) region.data region.offset
+
 end Airbender.Setup

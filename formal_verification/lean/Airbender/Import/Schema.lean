@@ -32,10 +32,12 @@ inductive LookupExpression where
   | Expression : CompiledDegree1Constraint → LookupExpression
   deriving Repr, FromJson, ToJson
 
-/-- Only the two native fixed tables consumed by word-only memory are supported. -/
+/-- Native fixed tables consumed by the checked memory/control profiles. -/
 inductive FixedTableId where
   | RomAddressSpaceSeparator
   | RomRead
+  | ConditionalJmpBranchSlt
+  | JumpCleanupOffset
   deriving Repr, DecidableEq, FromJson, ToJson
 
 inductive FixedTableIndex where

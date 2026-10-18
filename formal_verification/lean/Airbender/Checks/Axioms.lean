@@ -24,6 +24,7 @@ import Tests.NativeArithmeticSetup
 import Tests.SparseArithmeticExecution
 import Tests.NativeDecoderRows
 import Tests.NativeRows
+import Tests.JumpControl
 
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
@@ -807,3 +808,31 @@ import Tests.NativeRows
 #print axioms Tests.SparseArithmeticExecution.physical_decoded
 #print axioms Tests.SparseArithmeticExecution.physical_initialized_execution
 #print axioms Airbender.Verification.NativeSetup.Proofs.column_decoder_data
+#print axioms Airbender.JumpBranchSlt.Proofs.constraint_count
+#print axioms Airbender.JumpBranchSlt.Proofs.lookup_count
+#print axioms Airbender.JumpBranchSlt.Proofs.setup_columns
+#print axioms Airbender.JumpBranchSlt.Proofs.clock_columns
+#print axioms Airbender.JumpBranchSlt.Proofs.memory_ports
+#print axioms Airbender.JumpBranchSlt.Proofs.memory_clocks
+#print axioms Airbender.JumpBranchSlt.Proofs.decoder_columns
+#print axioms Airbender.JumpBranchSlt.Proofs.native_cleanup_rows
+#print axioms Airbender.JumpBranchSlt.Proofs.native_conditional_rows
+#print axioms Airbender.JumpBranchSlt.Proofs.cleanup_lookup
+#print axioms Airbender.JumpBranchSlt.Proofs.conditional_lookup
+#print axioms Airbender.JumpBranchSlt.Proofs.cleanup_values
+#print axioms Airbender.JumpBranchSlt.Proofs.conditional_values
+#print axioms Airbender.JumpBranchSlt.Proofs.conditional_query
+#print axioms Airbender.JumpBranchSlt.Proofs.cleanup_query
+#print axioms Airbender.JumpBranchSlt.Proofs.fixed_effects
+#print axioms Airbender.JumpBranchSlt.native_fixed_effects
+#print axioms Airbender.Verification.native_jump_cleanup
+#print axioms Airbender.Verification.native_conditional_control
+#print axioms Tests.JumpControl.native_jal_constraints
+#print axioms Tests.JumpControl.native_jal_effects
+#print axioms Tests.JumpControl.cleanup_low_bits
+#print axioms Tests.JumpControl.signed_unsigned
+#print axioms Tests.JumpControl.equality_branches
+#print axioms Tests.JumpControl.altered_cleanup_rejected
+#print axioms Tests.JumpControl.altered_signed_result_rejected
+#print axioms Tests.JumpControl.oversized_flags_rejected
+#print axioms Tests.JumpControl.unaligned_jal_rejected

@@ -1,0 +1,308 @@
+{
+  "version": 1,
+  "field_modulus": 2147483647,
+  "profile": "jump_branch_slt_fixed",
+  "generic_rows": 65664,
+  "tables": [
+    {
+      "id": 17,
+      "offset": 0,
+      "data": {
+        "length": 65536,
+        "columns": [
+          {
+            "blocks": [
+              {
+                "kind": "affine",
+                "length": 65536,
+                "first": 0,
+                "step": 1
+              }
+            ]
+          },
+          {
+            "blocks": [
+              {
+                "kind": "periodic",
+                "repetitions": 16384,
+                "stride": 0,
+                "values": [
+                  0,
+                  0,
+                  1,
+                  1
+                ]
+              }
+            ]
+          },
+          {
+            "blocks": [
+              {
+                "kind": "periodic",
+                "repetitions": 16384,
+                "stride": 4,
+                "values": [
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              }
+            ]
+          },
+          {
+            "blocks": [
+              {
+                "kind": "affine",
+                "length": 65536,
+                "first": 17,
+                "step": 0
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 43,
+      "offset": 65536,
+      "data": {
+        "length": 128,
+        "columns": [
+          {
+            "blocks": [
+              {
+                "kind": "periodic",
+                "repetitions": 16,
+                "stride": 1,
+                "values": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              }
+            ]
+          },
+          {
+            "blocks": [
+              {
+                "kind": "periodic",
+                "repetitions": 16,
+                "stride": 0,
+                "values": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ]
+              }
+            ]
+          },
+          {
+            "blocks": [
+              {
+                "kind": "dense",
+                "values": [
+                  0,
+                  1,
+                  0,
+                  0,
+                  0,
+                  1,
+                  0,
+                  1,
+                  0
+                ]
+              },
+              {
+                "kind": "affine",
+                "length": 4,
+                "first": 1,
+                "step": 0
+              },
+              {
+                "kind": "dense",
+                "values": [
+                  0,
+                  1,
+                  0,
+                  1
+                ]
+              },
+              {
+                "kind": "affine",
+                "length": 4,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "dense",
+                "values": [
+                  1,
+                  0,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  0,
+                  0,
+                  1,
+                  1,
+                  0,
+                  1,
+                  0,
+                  0,
+                  1,
+                  0
+                ]
+              },
+              {
+                "kind": "affine",
+                "length": 4,
+                "first": 1,
+                "step": 0
+              },
+              {
+                "kind": "periodic",
+                "repetitions": 4,
+                "stride": 0,
+                "values": [
+                  0,
+                  1
+                ]
+              },
+              {
+                "kind": "dense",
+                "values": [
+                  0,
+                  0,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  0,
+                  0,
+                  1,
+                  0,
+                  0
+                ]
+              },
+              {
+                "kind": "periodic",
+                "repetitions": 5,
+                "stride": 0,
+                "values": [
+                  0,
+                  1
+                ]
+              },
+              {
+                "kind": "dense",
+                "values": [
+                  1,
+                  0,
+                  1
+                ]
+              },
+              {
+                "kind": "affine",
+                "length": 4,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "dense",
+                "values": [
+                  1,
+                  0,
+                  1,
+                  1,
+                  0,
+                  0,
+                  1,
+                  0,
+                  1,
+                  1,
+                  0,
+                  0,
+                  1,
+                  0,
+                  0,
+                  0,
+                  1,
+                  0,
+                  1,
+                  0
+                ]
+              },
+              {
+                "kind": "affine",
+                "length": 4,
+                "first": 1,
+                "step": 0
+              },
+              {
+                "kind": "dense",
+                "values": [
+                  0,
+                  1,
+                  0,
+                  1
+                ]
+              },
+              {
+                "kind": "affine",
+                "length": 4,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "dense",
+                "values": [
+                  1,
+                  0,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  0
+                ]
+              }
+            ]
+          },
+          {
+            "blocks": [
+              {
+                "kind": "affine",
+                "length": 128,
+                "first": 43,
+                "step": 0
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

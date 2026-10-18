@@ -36,7 +36,7 @@ sampled process-tree memory ceilings and wall budget. Do not run it alongside Le
 
 The binary accepts --fixture OUTPUT.json, --scalars OUTPUT.json,
 IMAGE.bin TEXT.bin OUTPUT.json, --arithmetic-fixture OUTPUT.json or
---arithmetic TEXT.bin OUTPUT.json or --decoder-padding OUTPUT.json.
+--arithmetic TEXT.bin OUTPUT.json, --decoder-padding OUTPUT.json or --control OUTPUT.json.
 Use it only under the same bounded watchdog. Output is written to the requested
 local path after all lossless and JSON roundtrip checks pass.
 
@@ -87,3 +87,15 @@ actual prefix and derive exact membership. Source comments mentioning zeros do
 not change the executable sentinel. No 2^24-row allocation is needed; reserved
 normalization, general Rust trace/LDE refinement and argument enforcement remain
 separate. The standard gate reproduces this artifact byte for byte.
+
+The [native control artifact](../lean/artifacts/setup/jump-control-native.json)
+is produced by --control OUTPUT.json through the actual jump/branch/SLT table
+driver. It retains all four fields of every cleanup/conditional tuple: tags
+17/43, offsets 0/65536 and lengths 65536/128, with no synthesized dummy row.
+[Certificates](../lean/Airbender/Proofs/JumpBranchSlt/ControlTables.lean) cover the
+large cleanup domain symbolically and all 128 conditional rows by finite kernel
+checks. [The native circuit claim](../lean/Airbender/Review/Circuits/JumpBranchSlt/Theorems.lean)
+derives exact control/cleanup effects from both actual fixed queries. Public
+program/decoder and original Sail family execution remain separate, as do
+physical trace/normalization/LDE and Rust/argument refinement. The standard gate
+regenerates this artifact byte for byte using the unchanged lossless codec.

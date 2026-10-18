@@ -13,6 +13,7 @@ not completed v2 coverage.
 
 | Integration | Coverage |
 | --- | --- |
+| [Jump/branch/SLT fixed effects](Airbender/Review/Circuits/JumpBranchSlt/Theorems.lean) | All 36 native equations, six scalar/eight timestamp/two fixed queries and exact metadata imported. Actual cleanup/conditional table certificates derive key bounds and exact native control/cleanup values; full active JAL witness and alignment rejection checked. Public decoding, initialized history, original Sail instruction/trace execution and terminal-PC assessment remain open. |
 | V2 artifact import | All 34 quadratic and 3 linear equations, four 16-bit and eight 19-bit timestamp queries from the pinned ADD/SUB layout. Bounds/placement guards and both native zero coefficient encodings. |
 | Reused foundation | Unchanged property definitions, word representation/arithmetic and pinned Sail reference/execution lemmas. Source hashes are checked. |
 | Native state/port clocks | Typed physical state and three direct ports, including actual destination writes. Four-tick advancement and strict previous-write/port order follow from imported equations/queries under initial/prior clock bounds and alignment. The initialized-history layer now derives these local inputs from matching and initial boundaries. |
@@ -334,15 +335,43 @@ Rust trace construction, arbitrary-program decoder certificates, reserved-row
 normalization/LDE, physical lookup multiplicities and cryptographic enforcement
 remain separate. No implementation defect or table-equivalence premise is added.
 
+## Native jump/branch/SLT fixed effects
+
+[The native control artifact](Airbender/Review/Circuits/JumpBranchSlt/Artifact.lean)
+now imports all 33 quadratic/three linear equations, six scalar/eight timestamp
+queries and both native fixed triples. Exact port/clock/decoder/setup metadata is
+checked. The explicit control profile rejects mixed/repeated/reversed tables and
+wrong offsets; memory imports retain their existing meaning.
+
+[Actual native table data](artifacts/setup/jump-control-native.json) comes from
+the family table driver and unchanged lossless codec. It retains 65,536 cleanup
+rows tagged 17 followed by 128 conditional rows tagged 43, with no inserted dummy
+row. The conditional query keeps flags and funct3 in separate columns. [Certificates](Airbender/Proofs/JumpBranchSlt/ControlTables.lean)
+prove every cleanup row symbolically, every conditional row by small finite
+kernel checks and exact native tagged membership through [two short claims](Airbender/Review/Helpers/Tables/Control.lean).
+
+[The short local circuit claim](Airbender/Review/Circuits/JumpBranchSlt/Theorems.lean)
+derives key bounds, the control result, retained bit one and the cleaned low PC
+from actual imported queries. [A full active JAL witness](Tests/JumpControl.lean)
+satisfies every equation/lookup and exercises that public claim. Altered results,
+oversized flags and a JAL target with bit one set reject; its cleanup-table row
+alone remains valid. Three wrong import modes and 27 new importer checks pass.
+
+These are native fixed-lookup effects. Public decoder construction, initialized
+jump/branch/SLT reads, original Sail execution and terminal-PC/closure assessment
+remain open. The v3 terminal finding or closure premise is not adopted. General
+Rust/JSON/Lean refinement, physical trace/normalization/LDE and cryptographic
+lookup enforcement remain separate.
+
 ## Validation
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all twenty-seven concrete test modules pass.
-- Importer regressions: 129 checks pass.
-- Axiom audit: 759 explicit roots; only propext, Classical.choice and Quot.sound.
-- All forty-two public Review theorems (five circuit claims, thirty trace claims and seven helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
-- Source provenance: 71 unchanged reused files, two native circuit artifacts, thirty-two native Rust sources, five native setup artifacts and four exporter source/manifest/lock files.
+- Library, both CLI entrypoints and all twenty-eight concrete test modules pass.
+- Importer regressions: 156 checks pass.
+- Axiom audit: 787 explicit roots; only propext, Classical.choice and Quot.sound.
+- All forty-five public Review theorems (six circuit claims, thirty trace claims and nine helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Source provenance: 71 unchanged reused files, three native circuit artifacts, thirty-six native Rust sources, six native setup artifacts and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
 - Public Sail x1/PC reads construct the accepted alias fixture; missing register and byte data reject construction.

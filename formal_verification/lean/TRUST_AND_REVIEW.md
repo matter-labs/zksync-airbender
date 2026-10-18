@@ -565,6 +565,34 @@ Rust trace construction, arbitrary-program decoder certificates, reserved-row
 normalization/LDE, physical lookup multiplicities and cryptographic enforcement
 remain separate. No implementation defect or table-equivalence premise is added.
 
+## Native jump/branch/SLT fixed effects
+
+[The native control artifact](Airbender/Review/Circuits/JumpBranchSlt/Artifact.lean)
+now imports all 33 quadratic/three linear equations, six scalar/eight timestamp
+queries and both native fixed triples. Exact port/clock/decoder/setup metadata is
+checked. The explicit control profile rejects mixed/repeated/reversed tables and
+wrong offsets; memory imports retain their existing meaning.
+
+[Actual native table data](artifacts/setup/jump-control-native.json) comes from
+the family table driver and unchanged lossless codec. It retains 65,536 cleanup
+rows tagged 17 followed by 128 conditional rows tagged 43, with no inserted dummy
+row. The conditional query keeps flags and funct3 in separate columns. [Certificates](Airbender/Proofs/JumpBranchSlt/ControlTables.lean)
+prove every cleanup row symbolically, every conditional row by small finite
+kernel checks and exact native tagged membership through [two short claims](Airbender/Review/Helpers/Tables/Control.lean).
+
+[The short local circuit claim](Airbender/Review/Circuits/JumpBranchSlt/Theorems.lean)
+derives key bounds, the control result, retained bit one and the cleaned low PC
+from actual imported queries. [A full active JAL witness](Tests/JumpControl.lean)
+satisfies every equation/lookup and exercises that public claim. Altered results,
+oversized flags and a JAL target with bit one set reject; its cleanup-table row
+alone remains valid. Three wrong import modes and 27 new importer checks pass.
+
+These are native fixed-lookup effects. Public decoder construction, initialized
+jump/branch/SLT reads, original Sail execution and terminal-PC/closure assessment
+remain open. The v3 terminal finding or closure premise is not adopted. General
+Rust/JSON/Lean refinement, physical trace/normalization/LDE and cryptographic
+lookup enforcement remain separate.
+
 ## Public state, profiles and external inputs
 
 The theorem covers original Sail ADD/ADDI/SUB/LUI/AUIPC execution on the successful

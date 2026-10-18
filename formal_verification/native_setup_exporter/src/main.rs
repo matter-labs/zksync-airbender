@@ -88,6 +88,47 @@ struct DecoderPadding {
     row: [u32; 10],
 }
 
+/// Actual fixed tables registered by the native jump/branch/SLT family.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ControlTables {
+    version: u32,
+    field_modulus: u64,
+    profile: String,
+    generic_rows: usize,
+    tables: Vec<Region>,
+}
+
+fn export_control_tables() -> ControlTables {
+    let mut driver = TableDriver::<Mersenne31Field>::new();
+    cs::machine::ops::unrolled::jump_branch_slt::jump_branch_slt_table_driver_fn(&mut driver);
+    let rows = driver.dump_tables();
+    let mut offset = 0;
+    let tables = driver
+        .tables
+        .iter()
+        .filter(|table| table.get_size() != 0)
+        .map(|table| {
+            let length = table.get_size();
+            let region = Region {
+                id: table.get_table_id(),
+                offset,
+                data: matrix(&rows[offset..offset + length]),
+            };
+            offset += length;
+            region
+        })
+        .collect();
+    assert_eq!(offset, rows.len());
+    ControlTables {
+        version: 1,
+        field_modulus: MODULUS,
+        profile: "jump_branch_slt_fixed".into(),
+        generic_rows: rows.len(),
+        tables,
+    }
+}
+
 fn export_decoder_padding() -> DecoderPadding {
     let row = decoder_table_padding::<Mersenne31Field>().map(|value| value.as_u64_reduced() as u32);
     assert!(row.iter().all(|&value| (value as u64) < MODULUS));
@@ -236,6 +277,17 @@ fn export(mut image: Vec<u32>, text: Vec<u32>) -> Artifact {
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args_os().collect();
+    if args.len() == 3 && args[1] == "--control" {
+        let artifact = export_control_tables();
+        let bytes = serde_json::to_vec_pretty(&artifact)?;
+        let recovered: ControlTables = serde_json::from_slice(&bytes)?;
+        assert_eq!(
+            serde_json::to_value(&artifact)?,
+            serde_json::to_value(recovered)?
+        );
+        std::fs::write(args.last().unwrap(), [bytes, vec![b'\n']].concat())?;
+        return Ok(());
+    }
     if args.len() == 3 && args[1] == "--decoder-padding" {
         let artifact = export_decoder_padding();
         let bytes = serde_json::to_vec_pretty(&artifact)?;
@@ -290,7 +342,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
     } else {
         return Err(
-            "usage: exporter IMAGE.bin TEXT.bin OUTPUT.json | exporter --fixture OUTPUT.json | exporter --scalars OUTPUT.json | exporter --arithmetic TEXT.bin OUTPUT.json | exporter --arithmetic-fixture OUTPUT.json | exporter --decoder-padding OUTPUT.json"
+            "usage: exporter IMAGE.bin TEXT.bin OUTPUT.json | exporter --fixture OUTPUT.json | exporter --scalars OUTPUT.json | exporter --arithmetic TEXT.bin OUTPUT.json | exporter --arithmetic-fixture OUTPUT.json | exporter --decoder-padding OUTPUT.json | exporter --control OUTPUT.json"
                 .into(),
         );
     };

@@ -79,3 +79,13 @@ has no generic group. Decoder filler overlaps the still-active ROM region, and
 final active rows retain distinct zero/minus-one fillers. [Regressions](../../../../Tests/NativeRows.lean)
 check these boundaries and reject scalar overflow, truncated windows and wrong
 tags. Rust construction/normalization/LDE and argument enforcement remain separate.
+
+[Native control tables](Control.lean) now expose exact tagged membership for the
+65,536 cleanup and 128 conditional rows. [Definitions](../../Circuits/JumpBranchSlt/Tables/Control.lean)
+retain separate flags/funct3 keys and bit-one/cleaned-low outputs; [certificates](../../../Proofs/JumpBranchSlt/ControlTables.lean)
+check every actual native value without enumerating the large cleanup domain.
+Native tags 17/43 and offsets 0/65536 retain a profile without a dummy row.
+[Full-row native effects](../../Circuits/JumpBranchSlt/Theorems.lean) consume actual
+queries, while public decoding/initialized original Sail execution and terminal
+PC assessment remain separate. Physical control setup padding and argument
+refinement are not claimed by these regional certificates.

@@ -295,6 +295,10 @@
     {
       "path": "../../cs/word_only_load_store_preprocessed_layout.json",
       "sha256": "55783ac0d9efaeedea9575b4dd6e79192b7c708ca8fe128cc1e2455125e1b04d"
+    },
+    {
+      "path": "../../cs/jump_branch_slt_preprocessed_layout.json",
+      "sha256": "c398f7091c9935105bf2f174d9cd7dea2de4c6f51e21a5e483b18319020979d3"
     }
   ],
   "native_sources": [
@@ -425,6 +429,22 @@
     {
       "path": "../../cs/src/definitions/constants.rs",
       "sha256": "9aff0ffba4429ce0c7b5fcf68942902708f949981259cafdfce0bd24201f2771"
+    },
+    {
+      "path": "../../cs/src/machine/ops/unrolled/jump_branch_slt.rs",
+      "sha256": "2d8dd96e683e75a0353c25fe21d1312906439eaaaeb942a07fad7e2d305b1a67"
+    },
+    {
+      "path": "../../cs/src/machine/ops/unrolled/decoder/jump_slt_branch.rs",
+      "sha256": "2440dc986dbb340d77cf8160f79e51219a55f83538394872131d6ad97f28669f"
+    },
+    {
+      "path": "../../cs/src/tables/branch_opcode_related.rs",
+      "sha256": "ca667c111698a1398cdd4d48469ad9cf9c1e398efe4b02b2aed0db4923a4e226"
+    },
+    {
+      "path": "../../cs/src/tables/jump_opcode_related.rs",
+      "sha256": "31e3df900250588fa3a2430f042c6d48301d449e2da8a16bdb0fe9539d426568"
     }
   ],
   "adaptations": [
@@ -1781,6 +1801,138 @@
       "backport_reuse_path": "Tests/SparseArithmeticExecution.lean",
       "backport_reuse_sha256": "8c9721845a44de84b5284a09d58d778808fc4b7cf35e18e1f4e905b9c448d5ce",
       "change": "Preserve all existing native constraints, aliased-port matching, public initialization and decoder certificates. Exercise full setup-row decoder columns in initialized original Sail execution; terminal PC 28/x1=246 now follows from that interface."
+    },
+    {
+      "path": "Airbender/Import/Schema.lean",
+      "backport_reuse_revision": "76d5d1b2b1831db886ce687dc37cf6cfe346dd45",
+      "backport_reuse_path": "Airbender/Import/Schema.lean",
+      "backport_reuse_sha256": "59cc42d195809d1251ee9abf617e06ca38bc0d77934a984c9b147eeef11c32b7",
+      "change": "Retain all native physical address, polynomial and metadata fields; add only the two actual fixed table IDs consumed by the v2 jump/branch/SLT target."
+    },
+    {
+      "path": "Airbender/Import/Parse.lean",
+      "backport_reuse_revision": "76d5d1b2b1831db886ce687dc37cf6cfe346dd45",
+      "backport_reuse_path": "Airbender/Import/Parse.lean",
+      "backport_reuse_sha256": "b191523b4e6cde22eebf2b21bcee0dad1d201b58ca56238206d560def54a0da5",
+      "change": "Preserve every equation/address/Boolean/range/port/decoder guard. Recognize exact ordered memory/control fixed profiles and their actual 62 native offsets, extents and compiled placement. Reject mixed/repeated/reversed profiles instead of inferring a word-memory group from nonempty lookups."
+    },
+    {
+      "path": "Airbender/Import/Embed.lean",
+      "backport_reuse_revision": "76d5d1b2b1831db886ce687dc37cf6cfe346dd45",
+      "backport_reuse_path": "Airbender/Import/Embed.lean",
+      "backport_reuse_sha256": "bf94441b97a5f498813fa8991c4128e23c335983de097081121855cd7fc3347c",
+      "change": "Preserve exact polynomial/scalar/timestamp emission and original word-memory target. Add an explicit control target for both complete native triples, rejecting missing/mismatched modes; no query masking, desired result or omitted constraints."
+    },
+    {
+      "path": "Airbender/Import/Setup.lean",
+      "backport_reuse_revision": "76d5d1b2b1831db886ce687dc37cf6cfe346dd45",
+      "backport_reuse_path": "Airbender/Import/Setup.lean",
+      "backport_reuse_sha256": "cf7318a4d339fc340ed69f2d224fda12f8fca0bacfced10810a636a43bd20cfc",
+      "change": "Append strict native control regional artifact validation using the unchanged lossless column parser, exact fields/version/field/profile, tags 17/43, offsets 0/65536, extents 65536/128 and four-column tuples."
+    },
+    {
+      "path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_revision": "76d5d1b2b1831db886ce687dc37cf6cfe346dd45",
+      "backport_reuse_path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_sha256": "75980a099a263af39b1062333b6534d5d038d8ac18b5b42b63e0ec46bdb5748c",
+      "change": "Append a literal native control import using unchanged matrix/column emission helpers. Values are certified in Proofs, not selected from a recipe by the importer."
+    },
+    {
+      "path": "Airbender/Review/Circuits/JumpBranchSlt/Artifact.lean",
+      "backport_reuse_revision": "76d5d1b2b1831db886ce687dc37cf6cfe346dd45",
+      "backport_reuse_path": "Airbender/Review/Circuits/WordMemory/Artifact.lean",
+      "backport_reuse_sha256": "301f625845f47b86dd170a92a3a8159146c526a6c1fd871c8192585b1b050061",
+      "change": "Reuse the complete compiled-artifact entry point. Import every native jump/branch/SLT equation, six scalar/eight timestamp/two fixed queries and exact metadata with the explicit control profile."
+    },
+    {
+      "path": "Airbender/Review/Circuits/JumpBranchSlt/Model.lean",
+      "backport_reuse_revision": "76d5d1b2b1831db886ce687dc37cf6cfe346dd45",
+      "backport_reuse_path": "Airbender/Review/Circuits/WordMemory/Model.lean",
+      "backport_reuse_sha256": "45e7b4d8e926f5b5ab6054b1443ee05000ccc51b542d101140177a00d95a19a2",
+      "change": "Reuse the native-observable property style. Expose the actual four-bit control query and cleanup columns, bounds and effects only; original instruction/initialized trace soundness is not claimed."
+    },
+    {
+      "path": "Airbender/Review/Circuits/JumpBranchSlt/Tables/Control.lean",
+      "backport_reuse_revision": "76d5d1b2b1831db886ce687dc37cf6cfe346dd45",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/WordROM.lean",
+      "backport_reuse_sha256": "6ccef544884aa5b88d71fb8eb5208e269ee55f28ae19d414b76ed1d2d61e91ee",
+      "change": "Reuse original Clean three-column StaticTable semantics. Define independent v2 flag/funct3/result and key/bit1/cleaned rows with exact native meanings; the source v3 conditional pair representation is not reused."
+    },
+    {
+      "path": "Airbender/Review/Circuits/JumpBranchSlt/Tables/NativeData.lean",
+      "backport_reuse_revision": "76d5d1b2b1831db886ce687dc37cf6cfe346dd45",
+      "backport_reuse_path": "Airbender/Review/Circuits/WordMemory/Tables/NativeSetupData.lean",
+      "backport_reuse_sha256": "1b76043137afd55246dba440d1d2ee07ea5293bed74cd51c0b9eaaa5a3e43717",
+      "change": "Reuse literal actual native data import structure for complete control tables, including all four fields and native offsets/tags."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/ControlTables.lean",
+      "backport_reuse_revision": "76d5d1b2b1831db886ce687dc37cf6cfe346dd45",
+      "backport_reuse_path": "Airbender/Proofs/Tables/NativeScalars.lean",
+      "backport_reuse_sha256": "ef765ee768a0adfbb0a9cb2ea9a250d6bce89ed32a2b52929da820e5f6c03638",
+      "change": "Copy affine_get unchanged and reuse the unchanged periodic getter. Prove all cleanup rows symbolically from four-entry templates, all 128 conditional rows by finite kernel certificate, and exact native tagged membership plus query bounds/values. No large enumeration or table-equivalence premise."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/Queries.lean",
+      "backport_reuse_revision": "76d5d1b2b1831db886ce687dc37cf6cfe346dd45",
+      "backport_reuse_path": "Airbender/Proofs/WordMemory/Tables.lean",
+      "backport_reuse_sha256": "19dcf3c51cdb364af28a3e6068baaa1950e88928741c37152f560729048df4b9",
+      "change": "Reuse original Clean lookup extraction and native query normalization; derive fixed control/cleanup effects from actual full native constraints, with no desired query/output or table-equivalence premise."
+    },
+    {
+      "path": "Airbender/Review/Circuits/JumpBranchSlt/Theorems.lean",
+      "backport_reuse_revision": "76d5d1b2b1831db886ce687dc37cf6cfe346dd45",
+      "backport_reuse_path": "Airbender/Review/Circuits/WordMemory/Theorems.lean",
+      "backport_reuse_sha256": "8abc50cb9cbad168dbbf505eef206877c63b8bef1015ca7c8802fdd3d069b552",
+      "change": "Keep one short public native fixed-effects theorem over all imported constraints. Assembly stays in Proofs; this is not a Sail instruction/trace claim."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/Control.lean",
+      "backport_reuse_revision": "76d5d1b2b1831db886ce687dc37cf6cfe346dd45",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/NativeRows.lean",
+      "backport_reuse_sha256": "2ecce6bd0b249ebb515e9c4a9e8c8c646eb4d25d9ee65f0b5f70656ae11be0a0",
+      "change": "Keep two short exact native tagged table membership statements; complete actual data and calculated semantics remain in their distinct data/Proofs modules."
+    },
+    {
+      "path": "Tests/JumpControl.lean",
+      "backport_reuse_revision": "76d5d1b2b1831db886ce687dc37cf6cfe346dd45",
+      "backport_reuse_path": "Tests/WordMemory.lean",
+      "backport_reuse_sha256": "57f2f508deab336567840e8b3e87b196cea85ebed609b7d12194220caf09aa2e",
+      "change": "Reuse complete native constraint/lookups witness structure and Clean table normalization. Add an active JAL x1,+8 witness, mismatched target compile rejection, signed/unsigned and equality cases, altered-value/out-of-domain rejection and actual native JAL alignment-equation rejection."
+    },
+    {
+      "path": "Tests/ArtifactImport.lean",
+      "backport_reuse_revision": "76d5d1b2b1831db886ce687dc37cf6cfe346dd45",
+      "backport_reuse_path": "Tests/ArtifactImport.lean",
+      "backport_reuse_sha256": "a3686f284542ba846953f8fccfd8bec154fbffd3cfdec1d0247fb932e354630f",
+      "change": "Preserve all 129 existing checks and append 27 strict native control profile, field, extent, tag, offset, compressed data, unknown-field, cross-profile and circuit-query checks with checked fixture access."
+    },
+    {
+      "path": "scripts/check_native_setup.py",
+      "backport_reuse_revision": "76d5d1b2b1831db886ce687dc37cf6cfe346dd45",
+      "backport_reuse_path": "scripts/check_native_setup.py",
+      "backport_reuse_sha256": "f4dd83a934bb379496f218efb7ada881889c49414b28fbd994a6ea11bc026bff",
+      "change": "Keep all existing regeneration/input checks and reproduce the actual native jump/branch/SLT fixed-table export byte for byte."
+    },
+    {
+      "path": "scripts/check_all.py",
+      "backport_reuse_revision": "76d5d1b2b1831db886ce687dc37cf6cfe346dd45",
+      "backport_reuse_path": "scripts/check_all.py",
+      "backport_reuse_sha256": "f8f68a4686637c98eb54eede97d384745d75771994986641819aa53d898e1f01",
+      "change": "Keep every resource/watchdog/build/audit rule unchanged. Add only the concrete third native layout to the importer CLI gate."
+    },
+    {
+      "path": "../native_setup_exporter/src/main.rs",
+      "backport_reuse_revision": "76d5d1b2b1831db886ce687dc37cf6cfe346dd45",
+      "backport_reuse_path": "../native_setup_exporter/src/main.rs",
+      "backport_reuse_sha256": "523449858141504885c7e4aa5898fa95a0794b0d91885fc22190345225dd10e1",
+      "change": "Reuse actual native TableDriver dump and unchanged exhaustive lossless codec. Add a separate --control mode invoking jump_branch_slt_table_driver_fn, retaining every actual tagged regional row with JSON roundtrip validation; all prior export modes remain unchanged."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/ArtifactChecks.lean",
+      "source_path": "Airbender/Proofs/JumpBranchSlt/ArtifactChecks.lean",
+      "source_sha256": "92a00314a71a895cc49ec95446a928eb4e40563d11509d6ac7dfcbff946b5eec",
+      "change": "Reuse count/column audit structure and the unchanged memory_clocks proof. Replace every layout value and count by checked native v2 metadata: 36 equations/16 lookups, explicit rd-zero/packed mask and actual masked destination variables. No v3 selector/layout or coverage claim is inherited."
     }
   ],
   "setup_artifacts": [
@@ -1846,6 +1998,14 @@
       "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5",
       "native_api": "cs::machine::ops::unrolled::decoder_table_padding::<Mersenne31Field>",
       "physical_trace": "source-shaped active decoder extension; reserved normalization row, Rust full trace/LDE refinement and argument enforcement excluded"
+    },
+    {
+      "path": "artifacts/setup/jump-control-native.json",
+      "sha256": "6a3bca2c5c8f90ee24323b198183b2265ff84be04423113aee23b507f1b7a900",
+      "profile": "complete actual native v2 jump/branch/SLT fixed tables, cleanup tag 17 and conditional tag 43",
+      "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5",
+      "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py; exporter --control",
+      "boundary": "regional values and exact table meanings certified; no native decoder/public program, Rust trace/normalization/LDE or argument refinement claim"
     }
   ],
   "native_exporter_files": [
@@ -1859,7 +2019,7 @@
     },
     {
       "path": "../native_setup_exporter/src/main.rs",
-      "sha256": "523449858141504885c7e4aa5898fa95a0794b0d91885fc22190345225dd10e1"
+      "sha256": "b3a4d3495a9899159ddd261b07bf980058958a51c2dcc9ff2eeb00a4e410dd73"
     },
     {
       "path": "../native_setup_exporter/src/columns.rs",

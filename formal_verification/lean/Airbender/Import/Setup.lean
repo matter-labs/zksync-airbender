@@ -232,4 +232,32 @@ def parseDecoderPadding (source : String) : Except String DecoderPaddingArtifact
   artifact.validate
   return artifact
 
+/-- Exact regional fixed tables registered by the native control-flow family. -/
+structure ControlArtifact where
+  version : Nat
+  field_modulus : Nat
+  profile : String
+  generic_rows : Nat
+  tables : Array Region
+  deriving Repr, FromJson
+
+def ControlArtifact.validate (artifact : ControlArtifact) : Except String Unit := do
+  unless artifact.version == 1 && artifact.field_modulus == mersenne31Modulus &&
+      artifact.profile == "jump_branch_slt_fixed" do throw "unsupported native control table profile"
+  unless artifact.generic_rows == 65664 && artifact.tables.size == 2 do
+    throw "unexpected native control table extent"
+  for (region, (id, offset, length)) in artifact.tables.zip #[(17, 0, 65536), (43, 65536, 128)] do
+    unless region.id == id && region.offset == offset do throw "unexpected native control region"
+    region.data.validate length 4
+
+def parseControl (source : String) : Except String ControlArtifact := do
+  let json ← Json.parse source
+  exactKeys json #["version", "field_modulus", "profile", "generic_rows", "tables"]
+  for region in (← (← json.getObjVal? "tables").getArr?) do
+    exactKeys region #["id", "offset", "data"]
+    matrixKeys (← region.getObjVal? "data")
+  let artifact : ControlArtifact ← fromJson? json
+  artifact.validate
+  return artifact
+
 end Airbender.Setup
