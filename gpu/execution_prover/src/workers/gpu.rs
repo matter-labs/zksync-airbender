@@ -18,6 +18,7 @@ use gpu_circuit_prover::proof::{
     admit_dr_tail_before_transfers, DrTailPreflightRequest, GpuGKRProofJob,
 };
 use gpu_core::allocator::tracker::AllocationDirection::{self, Ascending, Descending};
+use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr::proth120::backward::{preflight_dr_tail_resources_pr, DrTailProofPlanPr};
 use gpu_gkr::setup::GpuGKRSetupTransfer;
@@ -618,6 +619,8 @@ fn schedule_l1_wrap_phase_one<'a>(
         CircuitType::L1Wrap21,
         "the GPU backend proves only the 2^21 L1 wrap (CircuitType::L1Wrap21)"
     );
+    let request_range = Range::new("l1_wrap.request")?;
+    request_range.start(context.get_exec_stream())?;
     crate::memory_policy::admit_l1_wrap(context.get_mem_size());
     let precomputed = Arc::clone(precomputations.l1_wrap());
     let state = RequestState {
@@ -650,6 +653,7 @@ fn schedule_l1_wrap_phase_one<'a>(
         precomputed.host(),
         context,
     )?;
+    inputs.time_request(request_range);
     trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] scheduling L1 wrap H2D bundle");
     inputs.schedule(context)?;
     Ok(PhaseOne {

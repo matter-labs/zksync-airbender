@@ -5,6 +5,7 @@ use era_cudart::result::CudaResult;
 use fft::GoodAllocator;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
+use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::static_host::StaticPinnedBox;
 use gpu_gkr::setup::L1WrapSetupHost;
 use gpu_prover_context::transfer::Transfer;
@@ -33,6 +34,7 @@ pub struct L1WrapInputs<'a, A: GoodAllocator> {
     pub(crate) top_bits: DeviceAllocation<u32>,
     pub(crate) top_bits_host: Vec<u32>,
     pub(crate) setup_host: Arc<L1WrapSetupHost>,
+    pub(crate) request_range: Option<Range>,
 }
 
 const fn bytes(count: usize, element_bytes: usize) -> usize {
@@ -87,7 +89,14 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
             top_bits,
             top_bits_host,
             setup_host,
+            request_range: None,
         })
+    }
+
+    /// `range` was started on `exec_stream` before these inputs were built;
+    /// `prove()` ends it after the proof readback.
+    pub fn time_request(&mut self, range: Range) {
+        self.request_range = Some(range);
     }
 
     pub fn schedule(&mut self, context: &ProverContext) -> CudaResult<()> {

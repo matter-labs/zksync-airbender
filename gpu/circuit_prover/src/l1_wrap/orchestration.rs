@@ -12,6 +12,7 @@ use gpu_core::primitives::context::{HostAllocation, UnsafeMutAccessor};
 use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::PR;
+use gpu_core::primitives::nvtx::scoped_range;
 use gpu_gkr::proth120::backward::DrTailProofPlanPr;
 use gpu_gkr::proth120::inputs::Proth120GkrWitnessInputs;
 use gpu_gkr::proth120::packed_challenges::{self, PackedChallengeConfig, PackedChallenges};
@@ -149,6 +150,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         top_bits,
         top_bits_host,
         setup_host,
+        request_range,
     } = inputs;
     let decoder = decoder.expect("L1Wrap requires a decoder table");
     let stream = context.get_exec_stream();
@@ -379,6 +381,9 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     )?;
     drop(slab);
     end_phase(p, &mut phases, context)?;
+    if let Some(request_range) = request_range {
+        end_phase(request_range, &mut phases, context)?;
+    }
     let h2d_join = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
     h2d_join.record(stream)?;
     context
@@ -422,6 +427,7 @@ impl GpuL1WrapProofJob<'_> {
             ranges,
             keepalive,
         } = self;
+        let _range = scoped_range(Some("ab"), "l1_wrap.finish");
         is_finished_event.synchronize()?;
         let fields = m6_fields
             .take()
