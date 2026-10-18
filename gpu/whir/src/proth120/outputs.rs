@@ -448,7 +448,8 @@ impl L1WhirReadback {
     ///
     /// # Safety
     ///
-    /// Only inside a stream callback enqueued after the readback's copies.
+    /// Only inside a stream callback enqueued after the readback's copies, while
+    /// the pending readback or its [`L1WhirKeepalive`] is still alive.
     pub unsafe fn assemble(
         &self,
         memory_claims: &[PR],

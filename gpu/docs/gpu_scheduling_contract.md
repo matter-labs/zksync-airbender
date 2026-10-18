@@ -242,6 +242,18 @@ The stream-ordered host-pool destination may be released once that callback is
 scheduled. Keep the callback owner alive until stream or event synchronization
 confirms completion: the CUDA callback dispatch holds only a weak reference.
 
+**L1 wrap.** Commitment, device-derived challenges and proof are one device
+workflow. Every H2D of a wrap request (trace inputs, setup, per-circuit
+constants from pinned buffers built at setup initialization, staged per-request
+values) goes into its phase-one `Transfer`. Between `prove()`'s
+`ensure_transferred` and the readback phase nothing crosses to the host: no
+copy to or from it, no callback, no host synchronization; kernels, D2D copies,
+memsets and device-side event waits stay on the device. The readback phase
+copies the proof slab and the WHIR proof fields back to back, then schedules
+one callback that assembles the `L1WrapResult`. A host hop in between would
+stall the stream, and a small exec-stream H2D can queue behind the next
+request's phase-one copies on the copy engine.
+
 ## H2D source lifetime
 
 A `Transfer` owns the `Arc` sources of its direct copies and its staging fill

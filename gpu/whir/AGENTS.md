@@ -107,8 +107,10 @@ intermediate oracle coset by coset through one fixed tile of
 partial trees) and keeps only the retained slabs, the top tree and a monomial
 copy. Its openings recompute the queried bottom subtrees by Horner evaluation
 from that copy and never repeat an LDE; the base oracles open through
-`gpu_trace`'s packed replay. Proof fields are read back into pinned twins and
-assembled in one exec-stream callback (`L1WhirScheduled`).
+`gpu_trace`'s packed replay. `schedule_l1_whir_fold` enqueues no D2H: it returns
+an `L1WhirPendingReadback`, whose `schedule_readback` copies the proof fields into
+host-pool twins for the caller's own assembly callback (`readback()`), and whose
+`schedule_readback_and_assemble` keeps a standalone copy-and-callback path.
 
 ## Widening convention
 
