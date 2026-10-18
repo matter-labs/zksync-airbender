@@ -207,5 +207,9 @@ clock/port registry and proved shared clock laws. Actual public Sail seeds/PC pl
 full matching derive complete Clean history and newest reads, retaining readonly
 alias refreshes and actual masked writes. [The full JAL -4 regression](../../../Tests/ControlHistory.lean)
 retains both x0 reads and the link write; a stale local read fails matching.
-Control word bounds, original Sail cell/instruction execution and terminal cell
-matching remain open. Existing arithmetic and word-memory claims retain their meanings.
+[Control word ranges](Families/JumpBranchSlt/Values.lean) now follow from public
+sparse decoding and initialized induction. [Sail cell history](Families/JumpBranchSlt/SailHistory.lean)
+uses native x0 masks and shared row grouping to derive actual reads/writes and
+intermediate states; the [exported-JAL regression](../../../Tests/ControlValues.lean)
+checks the old x1=123 read and actual link write four. Original control instructions
+and terminal instruction-state matching remain open. Existing arithmetic and word-memory claims retain their meanings.

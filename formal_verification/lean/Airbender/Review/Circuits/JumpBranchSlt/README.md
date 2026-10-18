@@ -98,5 +98,7 @@ history claim](../../Trace/Families/JumpBranchSlt/History.lean) uses actual publ
 Sail seed/PC reads and complete native matching to derive all row/prior clocks,
 complete Clean history and newest reads. [The JAL fixture](../../../../Tests/ControlHistory.lean)
 keeps both readonly x0 refreshes and the actual link write; stale local reads fail
-matching. Control word bounds, actual Sail cells/instructions and terminal cell
-matching remain separate. No expected read, schedule or per-row clock is supplied.
+matching. [Initialized word bounds](../../Trace/Families/JumpBranchSlt/Values.lean)
+and [Sail cell transfers](../../Trace/Families/JumpBranchSlt/SailHistory.lean) now
+reuse actual decoded masks and shared history induction, including x0 writes.
+Original instruction execution and terminal instruction-state matching remain open. No expected read, schedule or per-row clock is supplied.

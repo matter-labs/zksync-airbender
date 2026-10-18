@@ -31,3 +31,5 @@ import Airbender.Review.Trace.Families.AddSub.PhysicalSetup
 import Airbender.Review.Circuits.JumpBranchSlt.Theorems
 import Airbender.Review.Helpers.Tables.Control
 import Airbender.Review.Trace.Families.JumpBranchSlt.History
+import Airbender.Review.Trace.Families.JumpBranchSlt.Values
+import Airbender.Review.Trace.Families.JumpBranchSlt.SailHistory

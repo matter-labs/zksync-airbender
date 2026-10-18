@@ -284,9 +284,15 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    matching. The accepted JAL -4 fixture retains both aliased x0 refreshes and the
    actual link write; stale local reads fail matching. Missing register data,
    19-bit lower-clock carry, derived port effects and terminal clocks are checked.
-   Next derive control word/write bounds and x0 preservation from public decoding/
-   initialized history, then actual Sail cell reads, original instructions,
-   full execution and actual terminal state matching. General Rust/compiler and
+   [Control word bounds](Airbender/Review/Trace/Families/JumpBranchSlt/Values.lean)
+   now follow from actual public sparse decoding, native write equations and
+   unchanged initialized range induction, including all readonly aliases and
+   terminal tokens. [Hardwired-x0 preservation and Sail cell history](Airbender/Review/Trace/Families/JumpBranchSlt/SailHistory.lean)
+   reuse native destination masks, shared zero-value induction and row grouping
+   to derive actual cell transfers/intermediate states. The exported JAL fixture
+   checks old x1=123 to actual link four with both x0 refreshes retained.
+   Next recover instruction-prestate port reads and derive original control Sail
+   clauses, full execution and actual terminal instruction-state matching. General Rust/compiler and
    cryptographic refinement remain separate. No per-row result/PC or
    table-equivalence premise is added.
 

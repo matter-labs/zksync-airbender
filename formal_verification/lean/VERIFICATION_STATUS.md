@@ -13,9 +13,10 @@ not completed v2 coverage.
 
 | Integration | Coverage |
 | --- | --- |
-| [Jump/branch/SLT fixed effects](Airbender/Review/Circuits/JumpBranchSlt/Theorems.lean) | All 36 native equations, six scalar/eight timestamp/two fixed queries and exact metadata imported. Actual cleanup/conditional table certificates derive key bounds and exact native control/cleanup values; full active JAL witness and alignment rejection checked. Supported native masks now derive both outgoing PC limb bounds; the JAL -4 negative-high witness shape fails an actual scalar query. Public decoding is checked below; initialized history and original Sail instruction/trace execution remain open. |
-| [Public control decoding](Airbender/Review/Circuits/JumpBranchSlt/Decoder.lean) | Actual public bytes and original Sail decoding construct a full sparse/padded ten-column table. Native equations reject holes/tail, recovering supported masks, canonical inputs/alignment and exact x0 flags; the short native claim derives outgoing PC bounds without a mask/range premise. Separate SLTI/branch masks, retained x0 operations and raw JAL funct3 are checked. Concrete native program export and initialized native history are certified below; original Sail cell/instruction execution and terminal matching remain open. |
-| [Initialized native control history](Airbender/Review/Trace/Families/JumpBranchSlt/History.lean) | The separate native clock/port registry proves the shared clock contract from actual control equations/queries. Public Sail seeds/PC and complete native matching derive every row/prior clock, complete Clean history and newest reads for all three ports, retaining readonly alias refreshes and actual masked writes. Control word bounds and original Sail cell/instruction execution remain separate. |
+| [Jump/branch/SLT fixed effects](Airbender/Review/Circuits/JumpBranchSlt/Theorems.lean) | All 36 native equations, six scalar/eight timestamp/two fixed queries and exact metadata imported. Actual cleanup/conditional table certificates derive key bounds and exact native control/cleanup values; full active JAL witness and alignment rejection checked. Supported native masks now derive both outgoing PC limb bounds; the JAL -4 negative-high witness shape fails an actual scalar query. Public decoding is checked below; initialized history and cell transfers are checked below; original Sail instruction/trace execution remains open. |
+| [Public control decoding](Airbender/Review/Circuits/JumpBranchSlt/Decoder.lean) | Actual public bytes and original Sail decoding construct a full sparse/padded ten-column table. Native equations reject holes/tail, recovering supported masks, canonical inputs/alignment and exact x0 flags; the short native claim derives outgoing PC bounds without a mask/range premise. Separate SLTI/branch masks, retained x0 operations and raw JAL funct3 are checked. Concrete native program export and initialized native history are certified below; original Sail instruction execution and terminal instruction-state matching remain open. |
+| [Initialized native control history](Airbender/Review/Trace/Families/JumpBranchSlt/History.lean) | The separate native clock/port registry proves the shared clock contract from actual control equations/queries. Public Sail seeds/PC and complete native matching derive every row/prior clock, complete Clean history and newest reads for all three ports, retaining readonly alias refreshes and actual masked writes. Control word bounds and Sail cell transfers are checked below; original instruction execution remains separate. |
+| Initialized control values/cells | [Word bounds](Airbender/Review/Trace/Families/JumpBranchSlt/Values.lean) derive every native read/write/terminal range from actual public sparse decoding and initialized matching. [Sail cell history](Airbender/Review/Trace/Families/JumpBranchSlt/SailHistory.lean) derives all intermediate cell states in native clock order, including x0 preservation from actual masks. Original control instruction execution and terminal instruction-state matching remain open. |
 | V2 artifact import | All 34 quadratic and 3 linear equations, four 16-bit and eight 19-bit timestamp queries from the pinned ADD/SUB layout. Bounds/placement guards and both native zero coefficient encodings. |
 | Reused foundation | Unchanged property definitions, word representation/arithmetic and pinned Sail reference/execution lemmas. Source hashes are checked. |
 | Native state/port clocks | Typed physical state and three direct ports, including actual destination writes. Four-tick advancement and strict previous-write/port order follow from imported equations/queries under initial/prior clock bounds and alignment. The initialized-history layer now derives these local inputs from matching and initial boundaries. |
@@ -466,19 +467,47 @@ constraint but fail full matching. Actual exported decoder membership is retaine
 Missing explicit register data rejects initialization. A separate full native row
 checks lower-clock carry; derived port effects and terminal clocks are checked.
 
-Control word/write bounds, hardwired-x0 preservation through arbitrary histories,
-actual Sail cell/instruction execution and terminal cell matching remain open.
-Physical control boot, general Rust/trace refinement and cryptographic
-enforcement stay separate.
+Control word/write bounds, hardwired-x0 preservation and actual Sail cell history
+are now checked below. Original control instruction execution, exact terminal
+instruction-state matching, physical control boot, general Rust/trace refinement
+and cryptographic enforcement remain separate.
+
+## Initialized control values and Sail cells
+
+[Native write calculations](Airbender/Proofs/JumpBranchSlt/Writes.lean) derive the
+actual destination bounds from the one-hot native selectors, masked-write
+equations, scalar-ranged link and exact conditional-control table. Successful
+public sparse decoding supplies supported masks and the x0 flag. [The short
+range claim](Airbender/Review/Trace/Families/JumpBranchSlt/Values.lean) combines
+these rules with public seeds and unchanged decreasing-time history induction,
+deriving every native read/write/terminal word bound, including aliased refreshes.
+
+[Native x0 preservation](Airbender/Proofs/Trace/Families/JumpBranchSlt/ZeroRegister.lean)
+uses the actual destination address, decoded zero flag and four native write
+equations. Shared induction derives zero-valued x0 writes throughout the accepted
+history. [The short Sail cell claim](Airbender/Review/Trace/Families/JumpBranchSlt/SailHistory.lean)
+reuses unchanged row grouping and Clean-to-Sail realization to derive intermediate
+states and actual cell reads/writes in native clock order. It supplies no expected
+read, per-row bound, selected schedule or intermediate state.
+
+[The exported-JAL regression](Tests/ControlValues.lean) constructs the same public
+bytes with the explicit initialized register state, transfers actual exported
+membership and applies both claims. It retains both x0 refreshes and checks that
+the actual final port reads old x1=123 and writes the link four. A malformed
+zero flag of two satisfies all local native constraints and makes the write
+unbounded; full decoder membership rejects it. This checks the explicit lookup
+boundary rather than establishing an accepted-trace defect. Original control
+instruction execution, terminal instruction-state matching, physical control
+boot and Rust/compiler/cryptographic refinement remain open.
 
 ## Validation
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all thirty-two concrete test modules pass.
+- Library, both CLI entrypoints and all thirty-three concrete test modules pass.
 - Importer regressions: 169 checks pass.
-- Axiom audit: 859 explicit roots; only propext, Classical.choice and Quot.sound.
-- All forty-nine public Review theorems (nine circuit claims, thirty-one trace claims and nine helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Axiom audit: 882 explicit roots; only propext, Classical.choice and Quot.sound.
+- All fifty-one public Review theorems (nine circuit claims, thirty-three trace claims and nine helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
 - Source provenance: 71 unchanged reused files, three native circuit artifacts, thirty-six native Rust sources, seven native setup artifacts and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.

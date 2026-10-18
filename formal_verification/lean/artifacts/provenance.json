@@ -2140,6 +2140,83 @@
       "backport_reuse_path": "Tests/JumpDecoder.lean",
       "backport_reuse_sha256": "cda428261516301702e6c492328cae88083d47b1beed8f1dba7410a307ae4741",
       "change": "Reuse full native JAL -4 constraint/fixed-query checking with raw funct3 seven and exact exported membership. Adapt only actual destination old read and second readonly previous clock; check fresh and stale local rows, derive all clocks/effects from public initialization, and independently check the native lower-clock carry row with all original constraints/queries."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/Selectors.lean",
+      "backport_reuse_revision": "df96cadaf10a17e789ed8bd8a01d040e743d8650",
+      "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/Selectors.lean",
+      "backport_reuse_sha256": "e844b4256800c68c7c2b64de22d82fe4120f249042c796511e6d3cc93e87580e",
+      "change": "Preserve all prior selector proofs exactly; append a canonical-residue sum calculation using the existing native Boolean bounds and supported-mask partition to derive the three possible write-route pairs."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/Writes.lean",
+      "backport_reuse_revision": "df96cadaf10a17e789ed8bd8a01d040e743d8650",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/Values.lean",
+      "backport_reuse_sha256": "5608c8633a73749fc73ccd3d3e97906f725f376bbc10dd0d5ef976df48be5ee8",
+      "change": "Reuse the native masked-write bound proof structure. Replace the memory-family transfer calculation with new control-specific equations 20..23: actual destination 38/39 selects zero, scalar-ranged link 26/27, or the native conditional-control bit. This is a new checked native v2 connection; no operand/result bound is supplied."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Decoder/Control.lean",
+      "backport_reuse_revision": "df96cadaf10a17e789ed8bd8a01d040e743d8650",
+      "backport_reuse_path": "Airbender/Review/Helpers/Decoder/WordMemory.lean",
+      "backport_reuse_sha256": "87d8310fc7d457268e4f32c940bd520bace5aaf624aec0ec59ef6a057184b3d1",
+      "change": "Copy full table-membership predicate structure into the separate control registry with sparse Unit setup; retain the existing native control circuit decoder unchanged."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/Decoder.lean",
+      "backport_reuse_revision": "df96cadaf10a17e789ed8bd8a01d040e743d8650",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/Decoder.lean",
+      "backport_reuse_sha256": "788e9b4a43e18f760791f36900aa9248a5c2a6cf81b450cfb2de8678ef3f4877",
+      "change": "Reuse row-query reduction and full-membership metadata recovery. Invoke the already-checked control sparse public constructor/source proof to derive supported masks and Boolean destination-zero flags, without changing circuit decoder clauses."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/Values.lean",
+      "backport_reuse_revision": "df96cadaf10a17e789ed8bd8a01d040e743d8650",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/Values.lean",
+      "backport_reuse_sha256": "5608c8633a73749fc73ccd3d3e97906f725f376bbc10dd0d5ef976df48be5ee8",
+      "change": "Reuse readonly refresh rules and the complete shared initialized range-induction assembly. The control destination uses locally proved native bounded writes; actual sparse public construction supplies supported mask and zero flag. Shared read/write/terminal range proofs remain unchanged."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/ZeroRegister.lean",
+      "backport_reuse_revision": "df96cadaf10a17e789ed8bd8a01d040e743d8650",
+      "backport_reuse_path": "Airbender/Proofs/Trace/ZeroRegister.lean",
+      "backport_reuse_sha256": "9d32e0b5513175e4db4d340c66af58982cea3bbbe2f5c7086d6187011085a9b2",
+      "change": "Reuse canonical rd recovery from actual address/query, hardwired-x0 read induction, decoded membership and zero-write assembly. Replace only native control registry/setup and destination equations 20..23/variables 38..39; original x0 instructions remain intact."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/ZeroRegister.lean",
+      "backport_reuse_revision": "df96cadaf10a17e789ed8bd8a01d040e743d8650",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/ZeroRegister.lean",
+      "backport_reuse_sha256": "5170d48e05c6109a14d315e591058238c6fad61a39387fe7d6d107d5f7f7b6bf",
+      "change": "Reuse the final native_row_history application unchanged in structure, specialized to control Unit setup and the native clock bound. Derive complete grouped Sail cell history and intermediate states from public seeds, matching and proved x0 preservation; original instruction execution remains separate."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/JumpBranchSlt/Values.lean",
+      "backport_reuse_revision": "df96cadaf10a17e789ed8bd8a01d040e743d8650",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/WordMemory/Values.lean",
+      "backport_reuse_sha256": "1b7dab424b4c2c850fa405e868f8cbc85c40b0fcda8699e5003f34f117e1b3f1",
+      "change": "Copy the short public read/write/terminal bounds statement and proof call. Specialize to control sparse Unit setup and expose successful original public construction, needed to derive supported masks; add no per-row numerical premise."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/JumpBranchSlt/SailHistory.lean",
+      "backport_reuse_revision": "df96cadaf10a17e789ed8bd8a01d040e743d8650",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/WordMemory/SailHistory.lean",
+      "backport_reuse_sha256": "cb33e9e68b8695898d6f0c4ade0f8b11f7f67ced03ee12bec34bb49796b29490",
+      "change": "Copy the short clock-ordered Sail cell-history statement and final proof call, changing only native family/setup and proof import; keep original control instruction execution and physical boot separate."
+    },
+    {
+      "path": "Tests/ControlValues.lean",
+      "backport_reuse_revision": "df96cadaf10a17e789ed8bd8a01d040e743d8650",
+      "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/NativeSetup.lean",
+      "backport_reuse_sha256": "8e76871b5d658e6bdd0ae880dabd04d6ad8db8618faf136b1e64db4d81402e86",
+      "change": "Reuse actual public Sail byte reads and sparse-constructor kernel certificate for the same exported three-word program, with the explicit initialized register state. Exported row equality transfers membership; no default-register-map emptiness is assumed."
+    },
+    {
+      "path": "Tests/ControlValues.lean",
+      "backport_reuse_revision": "df96cadaf10a17e789ed8bd8a01d040e743d8650",
+      "backport_reuse_path": "Tests/ControlHistory.lean",
+      "backport_reuse_sha256": "8303ba037c6b1d2c38400d921ac7685ba94f27b1922af03cdf63a7d3ff33d0c2",
+      "change": "Reuse the full accepted JAL -4 native row/history with both aliased x0 refreshes, old x1=123 and actual link write four. Apply the two new public claims and zero-write theorem without chosen reads, clocks, intermediate states or desired terminal premises."
     }
   ],
   "setup_artifacts": [

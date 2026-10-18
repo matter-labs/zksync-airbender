@@ -108,3 +108,9 @@ now has a [complete independent Sail certificate](../../../Proofs/JumpBranchSlt/
 Every prefix/tail row matches the public construction, feeding the short exported
 source/PC claim without a table-equivalence premise. General Rust decoder agreement,
 initialized control execution and physical argument refinement remain open.
+
+[The control membership interface](Control.lean) keeps full sparse Unit-setup
+membership in the separate native control registry. Public original-byte
+construction derives supported masks and zero flags for [initialized ranges](../../Trace/Families/JumpBranchSlt/Values.lean);
+actual address/query equality and native masks supply x0 preservation for
+[Sail cell histories](../../Trace/Families/JumpBranchSlt/SailHistory.lean).

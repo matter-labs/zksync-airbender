@@ -103,4 +103,44 @@ theorem packed_mask_bound {p : Nat} [Fact p.Prime] (hp : 32 < p)
   rw [ZMod.val_natCast_of_lt (by omega : n < p)] at same
   omega
 
+/-- Native one-hot selection leaves only three write routes. Calculations use
+    canonical selector residues; no chosen selector or result is supplied. -/
+theorem write_routes {p : Nat} [Fact p.Prime] (hp : 32 < p)
+    {w : Nat → ZMod p}
+    (native : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
+    (mask : (w 12).val ∈ [1,2,4,8,16]) :
+    (w 17 + w 18 = 0 ∧ w 19 + w 20 = 0) ∨
+    (w 17 + w 18 = 1 ∧ w 19 + w 20 = 0) ∨
+    (w 17 + w 18 = 0 ∧ w 19 + w 20 = 1) := by
+  have total := (selector_partition (by omega) native mask).1
+  have b0 : (w 17).val ≤ 1 := selector_bound native ⟨0, by decide⟩
+  have b1 : (w 18).val ≤ 1 := selector_bound native ⟨1, by decide⟩
+  have b2 : (w 19).val ≤ 1 := selector_bound native ⟨2, by decide⟩
+  have b3 : (w 20).val ≤ 1 := selector_bound native ⟨3, by decide⟩
+  have b4 : (w 21).val ≤ 1 := selector_bound native ⟨4, by decide⟩
+  have natural : (w 17).val + (w 18).val + (w 19).val + (w 20).val + (w 21).val = 1 := by
+    apply Arithmetic.bounded_nat_eq (F := ZMod p) (p := p)
+      (by omega) (by omega)
+    simpa only [Nat.cast_add, Nat.cast_one, ZMod.natCast_zmod_val] using total
+  have choices :
+      ((w 17).val + (w 18).val = 0 ∧ (w 19).val + (w 20).val = 0) ∨
+      ((w 17).val + (w 18).val = 1 ∧ (w 19).val + (w 20).val = 0) ∨
+      ((w 17).val + (w 18).val = 0 ∧ (w 19).val + (w 20).val = 1) := by omega
+  rcases choices with zero | link | comparison
+  · left; constructor
+    · simpa only [Nat.cast_add, Nat.cast_zero, ZMod.natCast_zmod_val] using
+        congrArg (fun n : Nat => (n : ZMod p)) zero.1
+    · simpa only [Nat.cast_add, Nat.cast_zero, ZMod.natCast_zmod_val] using
+        congrArg (fun n : Nat => (n : ZMod p)) zero.2
+  · right; left; constructor
+    · simpa only [Nat.cast_add, Nat.cast_one, ZMod.natCast_zmod_val] using
+        congrArg (fun n : Nat => (n : ZMod p)) link.1
+    · simpa only [Nat.cast_add, Nat.cast_zero, ZMod.natCast_zmod_val] using
+        congrArg (fun n : Nat => (n : ZMod p)) link.2
+  · right; right; constructor
+    · simpa only [Nat.cast_add, Nat.cast_zero, ZMod.natCast_zmod_val] using
+        congrArg (fun n : Nat => (n : ZMod p)) comparison.1
+    · simpa only [Nat.cast_add, Nat.cast_one, ZMod.natCast_zmod_val] using
+        congrArg (fun n : Nat => (n : ZMod p)) comparison.2
+
 end Airbender.JumpBranchSlt.Proofs

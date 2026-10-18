@@ -29,6 +29,7 @@ import Tests.JumpPC
 import Tests.JumpDecoder
 import Tests.NativeJumpSetup
 import Tests.ControlHistory
+import Tests.ControlValues
 
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
@@ -916,3 +917,27 @@ import Tests.ControlHistory
 #print axioms Tests.ControlHistory.missing_register_rejected
 #print axioms Tests.ControlHistory.rollover_constraints
 #print axioms Tests.ControlHistory.rollover_advance
+
+#print axioms Airbender.JumpBranchSlt.Proofs.write_routes
+#print axioms Airbender.JumpBranchSlt.Proofs.written_limb_bounds
+#print axioms Airbender.JumpBranchSlt.Proofs.row_decoder_query
+#print axioms Airbender.JumpBranchSlt.Proofs.decoded_sources
+#print axioms Airbender.JumpBranchSlt.Proofs.decoded_mask_flag
+#print axioms Airbender.JumpBranchSlt.Proofs.row_write_rule
+#print axioms Airbender.JumpBranchSlt.Proofs.decoded_write_rules
+#print axioms Airbender.JumpBranchSlt.Proofs.image_value_bounds
+#print axioms Airbender.JumpBranchSlt.Proofs.row_zero_write_from_reads
+#print axioms Airbender.JumpBranchSlt.Proofs.decoded_zero_preserving
+#print axioms Airbender.JumpBranchSlt.Proofs.native_zero_writes
+#print axioms Airbender.JumpBranchSlt.Proofs.image_row_history
+#print axioms Airbender.JumpBranchSlt.public_value_bounds
+#print axioms Airbender.JumpBranchSlt.public_sail_cell_history
+#print axioms Tests.ControlValues.decoder_image
+#print axioms Tests.ControlValues.decoded
+#print axioms Tests.ControlValues.value_bounds
+#print axioms Tests.ControlValues.destination
+#print axioms Tests.ControlValues.zero_events
+#print axioms Tests.ControlValues.cell_history
+#print axioms Tests.ControlValues.bad_flag_native
+#print axioms Tests.ControlValues.bad_flag_unbounded
+#print axioms Tests.ControlValues.bad_flag_decoder_rejected

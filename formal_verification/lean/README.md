@@ -499,10 +499,10 @@ constraint but fail full matching. Actual exported decoder membership is retaine
 Missing explicit register data rejects initialization. A separate full native row
 checks lower-clock carry; derived port effects and terminal clocks are checked.
 
-Control word/write bounds, hardwired-x0 preservation through arbitrary histories,
-actual Sail cell/instruction execution and terminal cell matching remain open.
-Physical control boot, general Rust/trace refinement and cryptographic
-enforcement stay separate.
+Control word/write bounds, hardwired-x0 preservation and actual Sail cell history
+are now checked below. Original control instruction execution, exact terminal
+instruction-state matching, physical control boot, general Rust/trace refinement
+and cryptographic enforcement remain separate.
 
 ## Reproduce
 
@@ -536,3 +536,31 @@ With Lean's editor extension, inspect the embedded constraints with:
 import Airbender.Review.Circuits.AddSub.Artifact
 #print Airbender.AddSub.importedConstraints
 ```
+
+## Initialized control values and Sail cells
+
+[Native write calculations](Airbender/Proofs/JumpBranchSlt/Writes.lean) derive the
+actual destination bounds from the one-hot native selectors, masked-write
+equations, scalar-ranged link and exact conditional-control table. Successful
+public sparse decoding supplies supported masks and the x0 flag. [The short
+range claim](Airbender/Review/Trace/Families/JumpBranchSlt/Values.lean) combines
+these rules with public seeds and unchanged decreasing-time history induction,
+deriving every native read/write/terminal word bound, including aliased refreshes.
+
+[Native x0 preservation](Airbender/Proofs/Trace/Families/JumpBranchSlt/ZeroRegister.lean)
+uses the actual destination address, decoded zero flag and four native write
+equations. Shared induction derives zero-valued x0 writes throughout the accepted
+history. [The short Sail cell claim](Airbender/Review/Trace/Families/JumpBranchSlt/SailHistory.lean)
+reuses unchanged row grouping and Clean-to-Sail realization to derive intermediate
+states and actual cell reads/writes in native clock order. It supplies no expected
+read, per-row bound, selected schedule or intermediate state.
+
+[The exported-JAL regression](Tests/ControlValues.lean) constructs the same public
+bytes with the explicit initialized register state, transfers actual exported
+membership and applies both claims. It retains both x0 refreshes and checks that
+the actual final port reads old x1=123 and writes the link four. A malformed
+zero flag of two satisfies all local native constraints and makes the write
+unbounded; full decoder membership rejects it. This checks the explicit lookup
+boundary rather than establishing an accepted-trace defect. Original control
+instruction execution, terminal instruction-state matching, physical control
+boot and Rust/compiler/cryptographic refinement remain open.
