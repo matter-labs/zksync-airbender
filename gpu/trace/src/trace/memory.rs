@@ -1,5 +1,8 @@
 use crate::trace::holder::{
-    bitreverse_index, TraceHolder, TreesCacheMode, WitnessPostCommitStorage,
+    bitreverse_index, TraceHolder, TreesCacheMode, TreesHolder, WitnessPostCommitStorage,
+};
+use crate::trace::memory_transfer::{
+    validate_partial_trees, PartialTrees, PartialTreesGeometry, PARTIAL_TREES_LAYOUT_VERSION,
 };
 use crate::trace::tracing_data::{
     DelegationTracingDataDevice, TracingDataDevice, UnrolledTracingDataDevice,
@@ -25,7 +28,7 @@ use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength, ProverConfig};
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
-use era_cudart::slice::DeviceSlice;
+use era_cudart::slice::{CudaSliceMut, DeviceSlice};
 use fft::GoodAllocator;
 
 pub struct MemoryCommitmentJob<'a> {
@@ -33,24 +36,47 @@ pub struct MemoryCommitmentJob<'a> {
     callbacks: Callbacks<'a>,
     inputs: Option<TransferKeepalive<'a>>,
     tree_caps: Box<Option<Vec<MerkleTreeCapVarLength>>>,
+    partial_trees: Option<(PartialTreesGeometry, Box<Option<Vec<Digest>>>)>,
     range: Range,
 }
 
 impl<'a> MemoryCommitmentJob<'a> {
     pub fn finish(self) -> CudaResult<(Vec<MerkleTreeCapVarLength>, f32)> {
+        let (tree_caps, partial_trees, commitment_time_ms) = self.finish_with_partial_trees()?;
+        assert!(
+            partial_trees.is_none(),
+            "exported partial trees must be taken with finish_with_partial_trees"
+        );
+        Ok((tree_caps, commitment_time_ms))
+    }
+
+    /// The per-coset caps plus the partial trees, if this commitment exported them.
+    pub fn finish_with_partial_trees(
+        self,
+    ) -> CudaResult<(Vec<MerkleTreeCapVarLength>, Option<PartialTrees>, f32)> {
         let Self {
             is_finished_event,
             callbacks,
             inputs,
             tree_caps,
+            partial_trees,
             range,
         } = self;
         is_finished_event.synchronize()?;
         drop(callbacks);
         drop(inputs);
         let tree_caps = tree_caps.unwrap();
+        let partial_trees = partial_trees.map(|(geometry, nodes)| {
+            let trees = PartialTrees {
+                layout_version: PARTIAL_TREES_LAYOUT_VERSION,
+                geometry,
+                nodes: nodes.unwrap(),
+            };
+            validate_partial_trees(&trees, &geometry, &tree_caps);
+            trees
+        });
         let commitment_time_ms = range.elapsed()?;
-        Ok((tree_caps, commitment_time_ms))
+        Ok((tree_caps, partial_trees, commitment_time_ms))
     }
 }
 
@@ -279,7 +305,7 @@ pub fn schedule_memory_commitment_job<'a>(
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
     holder.commit_all(context)?;
-    schedule_memory_cap_readback(holder, callbacks, inputs, range, context)
+    schedule_memory_cap_readback(holder, callbacks, inputs, range, false, context)
 }
 
 pub fn schedule_memory_commitment_job_in_place<'a>(
@@ -291,27 +317,79 @@ pub fn schedule_memory_commitment_job_in_place<'a>(
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
     holder.install_partial_trees(context)?;
     holder.commit_in_place(None, context)?;
-    schedule_memory_cap_readback(holder, callbacks, inputs, range, context)
+    schedule_memory_cap_readback(holder, callbacks, inputs, range, false, context)
 }
 
+/// With `persist_partial_trees`, the job also exports the partial trees for
+/// the proof to open instead of rebuilding them.
 pub fn schedule_memory_commitment_job_with_monomials<'a>(
     holder: &mut TraceHolder<BF>,
     callbacks: Callbacks<'a>,
     inputs: Option<TransferKeepalive<'a>>,
     range: Range,
+    persist_partial_trees: bool,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
     holder.install_partial_trees(context)?;
     holder.commit_with_monomials(None, context)?;
     holder.retain_after_commitment(WitnessPostCommitStorage::RawAndMonomials);
-    schedule_memory_cap_readback(holder, callbacks, inputs, range, context)
+    schedule_memory_cap_readback(
+        holder,
+        callbacks,
+        inputs,
+        range,
+        persist_partial_trees,
+        context,
+    )
 }
 
-fn schedule_memory_cap_readback<'a>(
+/// Copies only the nodes the builder wrote (`PARTIAL_TREES_LAYOUT_VERSION`)
+/// into one compact readback buffer, then into the returned host vector.
+fn schedule_partial_trees_readback<'a>(
+    holder: &TraceHolder<BF>,
+    callbacks: &mut Callbacks<'a>,
+    context: &ProverContext,
+) -> CudaResult<(PartialTreesGeometry, Box<Option<Vec<Digest>>>)> {
+    assert!(
+        matches!(holder.trees, TreesHolder::Partial(_)),
+        "partial-tree export requires cached partial trees"
+    );
+    let geometry = PartialTreesGeometry::of_holder(holder);
+    let live = geometry.coset_live_len();
+    let stream = context.get_exec_stream();
+    let mut nodes_host =
+        unsafe { context.alloc_host_uninit_slice::<Digest>(geometry.cosets_count() * live) };
+    for coset in 0..geometry.cosets_count() {
+        let tree = holder
+            .get_tree_slice(coset)
+            .expect("partial trees are cached");
+        // SAFETY: an in-bounds subrange of the readback buffer, written only by
+        // this copy and read only by the callback scheduled after it.
+        let dst = unsafe { &mut nodes_host.as_mut_slice()[coset * live..(coset + 1) * live] };
+        memory_copy_async(dst, &tree[..live], stream)?;
+    }
+    let nodes_host_accessor = nodes_host.get_accessor();
+    let mut nodes = Box::new(None);
+    let dst_nodes_accessor = UnsafeMutAccessor::new(nodes.as_mut());
+    callbacks.schedule(
+        move || unsafe {
+            assert!(dst_nodes_accessor
+                .get_mut()
+                .replace(nodes_host_accessor.get().to_vec())
+                .is_none());
+        },
+        stream,
+    )?;
+    drop(nodes_host);
+    Ok((geometry, nodes))
+}
+
+pub(crate) fn schedule_memory_cap_readback<'a>(
     holder: &TraceHolder<BF>,
     mut callbacks: Callbacks<'a>,
     inputs: Option<TransferKeepalive<'a>>,
     range: Range,
+    persist_partial_trees: bool,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
     let stream = context.get_exec_stream();
@@ -347,6 +425,15 @@ fn schedule_memory_cap_readback<'a>(
     // the callback above has already been scheduled, so the contract's
     // scheduled-not-completed lifetime rule is satisfied.
     drop(cap_host);
+    let partial_trees = if persist_partial_trees {
+        Some(schedule_partial_trees_readback(
+            holder,
+            &mut callbacks,
+            context,
+        )?)
+    } else {
+        None
+    };
     range.end(stream)?;
     let is_finished_event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
     is_finished_event.record(stream)?;
@@ -355,6 +442,7 @@ fn schedule_memory_cap_readback<'a>(
         callbacks,
         inputs,
         tree_caps,
+        partial_trees,
         range,
     };
     Ok(job)

@@ -168,6 +168,7 @@ pub fn commit_merged_from_transfers<'a, A: GoodAllocator + 'a>(
             callbacks,
             Some(inputs),
             range,
+            false,
             context,
         ),
     }

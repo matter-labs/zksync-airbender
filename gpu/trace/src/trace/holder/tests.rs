@@ -1813,3 +1813,173 @@ fn cpu_partial_tree_reduction_layers_resolution() {
         std::panic::catch_unwind(|| resolve_partial_tree_reduction_layers(5, 6, 0, 0, 2)).is_err()
     );
 }
+
+fn open_recomputed(
+    holder: &mut TraceHolder<BF>,
+    queries_host: &[u32],
+    context: &ProverContext,
+) -> (Vec<BF>, Vec<u32>) {
+    let stream = context.get_exec_stream();
+    let layers = holder.log_domain_size
+        - holder.log_rows_per_leaf
+        - (holder.log_tree_cap_size - holder.log_lde_factor);
+    let mut queries = context
+        .alloc(queries_host.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    memory_copy_async(&mut queries, queries_host, stream).unwrap();
+    let leaf_sentinel = vec![
+        BF::from_u32_unchecked(42);
+        queries_host.len() * (holder.columns_count << holder.log_rows_per_leaf)
+    ];
+    let path_sentinel = vec![0xdeadbeefu32; queries_host.len() * layers as usize * 8];
+    let mut leaves = context
+        .alloc::<BF>(leaf_sentinel.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    let mut paths = context
+        .alloc::<u32>(path_sentinel.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    memory_copy_async(&mut leaves, &leaf_sentinel, stream).unwrap();
+    memory_copy_async(&mut paths, &path_sentinel, stream).unwrap();
+    holder.defer_materialization_until_queries(OpeningStrategy::PerCoset);
+    holder.finish_raw_batching(context).unwrap();
+    holder
+        .gather_openings_recomputed(&queries, &mut leaves, &mut paths, context)
+        .unwrap();
+    let mut leaves_host = vec![BF::ZERO; leaves.len()];
+    let mut paths_host = vec![0u32; paths.len()];
+    memory_copy_async(&mut leaves_host, &leaves, stream).unwrap();
+    memory_copy_async(&mut paths_host, &paths, stream).unwrap();
+    stream.synchronize().unwrap();
+    assert_ne!(leaves_host, leaf_sentinel);
+    assert_ne!(paths_host, path_sentinel);
+    (leaves_host, paths_host)
+}
+
+#[test]
+fn persisted_partial_trees_open_like_rebuilt_trees() {
+    use crate::trace::memory::schedule_memory_cap_readback;
+    use crate::trace::memory_transfer::{
+        GpuGKRMemoryTransfer, GpuGKRMemoryTransferHost, PartialTreesGeometry,
+    };
+    use gpu_core::primitives::callbacks::Callbacks;
+    use gpu_core::primitives::device_tracing::Range;
+    use gpu_prover_context::transfer::Transfer;
+    use std::sync::Arc;
+
+    let context = make_test_context(256, 128);
+    let stream = context.get_exec_stream();
+    let log_n = 20;
+    let log_f = 4;
+    let log_rows = 1;
+    let cols = 2;
+    let source: Vec<_> = (0..cols << log_n)
+        .map(|i| BF::from_u32_unchecked(((i * 29) ^ (i >> 9)) as u32))
+        .collect();
+    let sentinel: Digest = [0xdeadbeef; 8];
+    let last_leaf = (1u32 << (log_n - log_rows)) - 1;
+    // Every coset, each queried more than once.
+    let every_coset: Vec<u32> = (0..1u32 << log_f)
+        .flat_map(|c| [c, (last_leaf << log_f) | c, (137 << log_f) | c, c])
+        .collect();
+    // No query in coset 1, the first one transformed (fused with the iNTT).
+    let without_first: Vec<u32> = every_coset
+        .iter()
+        .copied()
+        .filter(|query| query & ((1 << log_f) - 1) != 1)
+        .collect();
+    for log_cap in [log_f, log_f + 2] {
+        for reduction_layers in [PARTIAL_TREE_REDUCTION_LAYERS, 10] {
+            let label = format!("cap 2^{log_cap}, depth {reduction_layers}");
+            let new_holder = || {
+                let mut holder = TraceHolder::<BF>::new_without_cosets(
+                    log_n,
+                    log_f,
+                    log_rows,
+                    log_cap,
+                    cols,
+                    TreesCacheMode::CacheNone,
+                    reduction_layers,
+                    &context,
+                )
+                .unwrap();
+                memory_copy_async(holder.get_uninit_hypercube_evals_mut(), &source, stream)
+                    .unwrap();
+                holder
+            };
+            // The production commitment sequence of
+            // `schedule_memory_commitment_job_with_monomials`, with the tree
+            // slots poisoned before the build.
+            let mut committed = new_holder();
+            committed.install_partial_trees(&context).unwrap();
+            let geometry = PartialTreesGeometry::of_holder(&committed);
+            let TreesHolder::Partial(slab) = &mut committed.trees else {
+                unreachable!()
+            };
+            memory_copy_async(slab, &vec![sentinel; slab.len()], stream).unwrap();
+            committed.commit_with_monomials(None, &context).unwrap();
+            committed.retain_after_commitment(WitnessPostCommitStorage::RawAndMonomials);
+            let range = Range::new("persisted_partial_trees").unwrap();
+            range.start(stream).unwrap();
+            let job =
+                schedule_memory_cap_readback(&committed, Callbacks::new(), range, true, &context)
+                    .unwrap();
+            let mut slab_host =
+                vec![Digest::default(); geometry.cosets_count() * geometry.coset_stride()];
+            memory_copy_async(
+                &mut slab_host,
+                committed.get_consolidated_tree().unwrap(),
+                stream,
+            )
+            .unwrap();
+            let (caps, trees, _) = job.finish_with_partial_trees().unwrap();
+            stream.synchronize().unwrap();
+            drop(committed);
+            let trees = trees.expect("the commitment exported its partial trees");
+            let live = geometry.coset_live_len();
+            assert_eq!(trees.geometry, geometry, "{label}");
+            assert_eq!(trees.nodes.len(), geometry.cosets_count() * live, "{label}");
+            assert!(!trees.nodes.contains(&sentinel), "{label}: payload");
+            for (coset, (device, exported)) in slab_host
+                .chunks_exact(geometry.coset_stride())
+                .zip(trees.nodes.chunks_exact(live))
+                .enumerate()
+            {
+                assert_eq!(
+                    &device[..live],
+                    exported,
+                    "{label}: coset {coset} live nodes"
+                );
+                assert!(
+                    device[live..].iter().all(|digest| *digest == sentinel),
+                    "{label}: coset {coset} builder wrote past its cap"
+                );
+            }
+            for queries in [&every_coset, &without_first] {
+                let mut imported = new_holder();
+                let host = GpuGKRMemoryTransferHost::from_per_coset_caps_and_partial_trees(
+                    &caps,
+                    PartialTreesGeometry::of_holder(&imported),
+                    &trees,
+                )
+                .unwrap();
+                let mut memory = GpuGKRMemoryTransfer::new(Arc::new(host), &context).unwrap();
+                let mut transfer = Transfer::new().unwrap();
+                transfer.record_allocated(&context).unwrap();
+                memory.schedule_transfer(&mut transfer, &context).unwrap();
+                transfer.record_transferred(&context).unwrap();
+                transfer.ensure_transferred(&context).unwrap();
+                let (geometry, device) = memory.take_partial_trees().unwrap();
+                imported.install_transferred_partial_trees(geometry, device);
+                let imported_openings = open_recomputed(&mut imported, queries, &context);
+                let rebuilt_openings = open_recomputed(&mut new_holder(), queries, &context);
+                assert!(
+                    imported_openings == rebuilt_openings,
+                    "{label}, {} queries: imported-tree openings differ from rebuilt",
+                    queries.len()
+                );
+                drop(memory);
+                drop(transfer);
+            }
+        }
+    }
+}

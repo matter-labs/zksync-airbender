@@ -491,6 +491,33 @@ impl<T> TraceHolder<T> {
         self.unified_device_cap = Some(cap);
     }
 
+    /// Installs partial trees transferred from this oracle's commitment, so the
+    /// openings read them instead of rebuilding every coset's tree.
+    pub fn install_transferred_partial_trees(
+        &mut self,
+        geometry: crate::trace::memory_transfer::PartialTreesGeometry,
+        trees: DeviceAllocation<Digest>,
+    ) {
+        assert!(
+            matches!(self.trees, TreesHolder::None),
+            "install_transferred_partial_trees requires TreesHolder::None"
+        );
+        assert!(
+            !self.cosets_materialized && self.columns_count != 0,
+            "install_transferred_partial_trees requires an unmaterialized, non-empty oracle"
+        );
+        assert_eq!(
+            geometry,
+            crate::trace::memory_transfer::PartialTreesGeometry::of_holder(self),
+            "transferred partial trees differ from this oracle's geometry"
+        );
+        assert_eq!(
+            trees.len(),
+            geometry.cosets_count() * geometry.coset_stride()
+        );
+        self.trees = TreesHolder::Partial(trees);
+    }
+
     #[doc(hidden)]
     pub fn get_hypercube_evals(&self) -> &DeviceSlice<T> {
         let len = self.columns_count << self.log_domain_size;
