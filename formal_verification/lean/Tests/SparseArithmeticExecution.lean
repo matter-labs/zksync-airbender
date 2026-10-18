@@ -1,6 +1,7 @@
 import Tests.NativeArithmeticSetup
 import Airbender.Review.Trace.Families.AddSub.SparseExecution
 import Airbender.Review.Trace.Families.AddSub.ActiveSetup
+import Airbender.Review.Trace.Families.AddSub.PhysicalSetup
 
 namespace Tests.SparseArithmeticExecution
 open Airbender Trace Reference.Sail Reference.RiscV.Sail
@@ -139,12 +140,25 @@ theorem active_initialized_execution :
     (by intro actual member; have same : actual = Cell.register 1 := by simpa [cells] using member
         subst actual; trivial)
 
+/-- Native lookup now selects the ten decoder columns of the complete setup row. -/
+theorem physical_decoded : ∀ row ∈ trace.rows,
+    Verification.NativeSetup.ColumnLookup .arithmetic ⟨[], by decide⟩ 2 row.decoderQuery := by
+  intro actual member
+  exact (Verification.NativeSetup.Proofs.column_decoder_lookup _ _ _).mpr
+    (active_decoded actual member)
+
+theorem physical_initialized_execution :
+    Realizes (SailStep AddSub.NativeSetup.setup.program) trace before cells :=
+  physical_setup_sail_execution inputs decoder_built accepted physical_decoded
+    (by intro actual member; have same : actual = Cell.register 1 := by simpa [cells] using member
+        subst actual; trivial)
+
 /-- Actual fetched/decoded original ADD reaches PC 28 and x1=246. Neither
     the destination read, an intermediate state nor final value is a premise. -/
 theorem terminal_values : ∃ after, SailTrace AddSub.NativeSetup.setup.program before after ∧
     run (SailRV32.Functions.get_arch_pc ()) after = .ok (28 : BitVec 32) after ∧
     run (SailRV32.Functions.rX_bits (.Regidx 1)) after = .ok (246 : BitVec 32) after := by
-  obtain ⟨after, execution, pc, values⟩ := active_initialized_execution
+  obtain ⟨after, execution, pc, values⟩ := physical_initialized_execution
   obtain ⟨target, _, address, read⟩ := values (cell 6 246) (by simp [trace])
   have same : target = Cell.register 1 := Trace.Proofs.cell_address_injective address
   subst target

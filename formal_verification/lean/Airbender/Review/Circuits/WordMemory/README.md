@@ -158,3 +158,11 @@ complete active setup domain. [The short membership certificate](../../Helpers/T
 proves no new query is added; the existing sparse source certificate then supplies
 decoder membership internally. The reserved normalization row, full Rust trace/
 LDE correspondence and physical argument enforcement remain separate.
+
+[Complete setup rows](../../Helpers/Tables/NativeRowsData.lean) now combine scalar
+columns 0/1, the four-column tagged group at 2 and decoder at 6. [Projections](../../../Proofs/Tables/NativeRows.lean)
+recover exact existing scalar, ROM/separator and actual decoder membership.
+[Regressions](../../../../Tests/NativeRows.lean) retain tagged ROM data even after
+decoder filler begins, plus distinct final fillers and wrong-tag rejection.
+This remains a source-shaped row model; Rust trace/LDE and argument refinement
+are separate.

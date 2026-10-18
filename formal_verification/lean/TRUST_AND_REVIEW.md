@@ -540,6 +540,31 @@ These are native data certificates and a source-shaped active-row model; general
 Rust full-trace/normalization/LDE refinement, arbitrary-program certificates and
 physical lookup/cryptographic enforcement remain separate. No defect is established.
 
+## Complete active setup rows
+
+[Complete row definitions](Airbender/Review/Helpers/Tables/NativeRowsData.lean)
+now combine actual scalar prefixes, tagged generic tables and actual decoder
+prefixes/fillers at the imported 12/16-column layouts. [Three short claims](Airbender/Review/Helpers/Tables/NativeRows.lean)
+recover scalar bounds, actual decoder data and tagged membership. [Projection
+proofs](Airbender/Proofs/Tables/NativeRows.lean) also connect these columns to the
+unchanged Clean scalar, ROM and separator tables. Full query widths must fit;
+the arithmetic layout cannot authenticate a nonexistent generic group.
+
+[Boundary regressions](Tests/NativeRows.lean) check that decoder filler overlaps
+the still-active tagged ROM region, while final active rows mix scalar/generic
+zeros with decoder minus-one values. Truncated windows, scalar overflow and wrong
+padding tags reject. Only small row widths are evaluated; the active domain stays
+symbolic. [The short arithmetic bridge](Airbender/Review/Trace/Families/AddSub/PhysicalSetup.lean)
+uses actual decoder columns of these complete rows, and the unchanged initialized
+alias witness still derives PC 28/x1=246. Native equations, state/memory matching
+and public byte/Sail construction retain their existing meanings.
+
+This checks complete source-shaped row assembly and logical column membership.
+The decoder connection still covers the three pinned concrete exports. General
+Rust trace construction, arbitrary-program decoder certificates, reserved-row
+normalization/LDE, physical lookup multiplicities and cryptographic enforcement
+remain separate. No implementation defect or table-equivalence premise is added.
+
 ## Public state, profiles and external inputs
 
 The theorem covers original Sail ADD/ADDI/SUB/LUI/AUIPC execution on the successful

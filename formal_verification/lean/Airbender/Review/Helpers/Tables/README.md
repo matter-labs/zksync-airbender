@@ -1,9 +1,9 @@
 # Table review
 
 [Range](Range.lean) uses native Clean static tables for 16-bit scalar and 19-bit
-timestamp queries. Concrete enumeration proves their range semantics. Binding
-these rows to actual v2 setup generation remains pending; imported query
-expressions alone do not prove the cryptographic lookup argument.
+timestamp queries. Concrete enumeration proves their range semantics; actual native prefixes and
+source-shaped full-row placement are certified below. Rust trace/LDE refinement
+and cryptographic lookup enforcement remain separate.
 
 [Word ROM](WordROM.lean) models the pinned native four-MiB separator/read tables:
 all 65536 high-limb classifications and all 1048576 aligned word rows. Missing
@@ -70,3 +70,12 @@ The reserved normalization row is excluded. Native arithmetic/word-memory column
 placements, supported rows and first/last active filler are checked; full Rust
 trace/normalization/LDE refinement and physical argument enforcement remain open.
 Physical lookup multiplicities remain a separate boundary.
+
+[Complete active rows](NativeRowsData.lean) now combine all native groups at the
+12/16-column compiled layouts. [Three short membership claims](NativeRows.lean)
+expose scalar, decoder and tagged queries; [projections](../../../Proofs/Tables/NativeRows.lean)
+recover existing Clean scalar/fixed meanings. Queries must fit in full; arithmetic
+has no generic group. Decoder filler overlaps the still-active ROM region, and
+final active rows retain distinct zero/minus-one fillers. [Regressions](../../../../Tests/NativeRows.lean)
+check these boundaries and reject scalar overflow, truncated windows and wrong
+tags. Rust construction/normalization/LDE and argument enforcement remain separate.

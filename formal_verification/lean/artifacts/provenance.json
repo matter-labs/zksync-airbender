@@ -1732,6 +1732,55 @@
       "backport_reuse_path": "../native_setup_exporter/src/main.rs",
       "backport_reuse_sha256": "914f83b0aefd41a581f8a9e7ac831233413dc5668874cd28701382bfd3450f18",
       "change": "Preserve existing native scalar/program/arithmetic generation and the unchanged lossless codec. Add a separate tiny direct decoder_table_padding::<Mersenne31Field> export with canonical value/JSON roundtrip checks; no physical trace allocation or dependency change."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/NativeRowsData.lean",
+      "backport_reuse_revision": "5f346138e826f9a136b91aa65659b9604136eadd",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/NativeDecoderData.lean",
+      "backport_reuse_sha256": "e7a7c804c5b6c992973d7530ace771cbdd1f108b9fa055c4f5ef4e87e15adc07",
+      "change": "Reuse actual native scalar/decoder prefixes, their source-shaped active-row fillers and shared active domain. Assemble complete 12/16-column rows using direct native column assignments, exact imported placement and guarded whole-width windows; retain tags, absent arithmetic generic groups and the reserved normalization boundary."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/NativeRows.lean",
+      "backport_reuse_revision": "5f346138e826f9a136b91aa65659b9604136eadd",
+      "backport_reuse_path": "Airbender/Proofs/Tables/NativeScalars.lean",
+      "backport_reuse_sha256": "ef765ee768a0adfbb0a9cb2ea9a250d6bce89ed32a2b52929da820e5f6c03638",
+      "change": "Reuse existing scalar, decoder and tagged generic membership certificates. Prove imported width and exact complete-row column projections, then recover original Clean scalar/fixed tables and actual decoder data without table-equivalence premises, large evaluated traces or a Rust/LDE refinement claim."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/NativeRows.lean",
+      "backport_reuse_revision": "5f346138e826f9a136b91aa65659b9604136eadd",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/NativeDecoder.lean",
+      "backport_reuse_sha256": "9f9560f8bb16057558b89f535be5c2737c8da586056468b566768c371105a2ef",
+      "change": "Keep three short full-row scalar/decoder/tagged membership claims. Definitions expose actual column windows and native row groups; all projection and semantic assembly stays under Proofs."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/PhysicalSetup.lean",
+      "backport_reuse_revision": "5f346138e826f9a136b91aa65659b9604136eadd",
+      "backport_reuse_path": "Airbender/Proofs/Trace/ActiveDecoder.lean",
+      "backport_reuse_sha256": "f940306ccfa1522a5c566f9f507cd119424d66fdc4f2d3c490ade82185d80507",
+      "change": "Reuse the internal decoder adaptation boundary. Recover complete active decoder membership from the actual compiled decoder columns of the assembled arithmetic setup row."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/AddSub/PhysicalSetup.lean",
+      "backport_reuse_revision": "5f346138e826f9a136b91aa65659b9604136eadd",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/AddSub/ActiveSetup.lean",
+      "backport_reuse_sha256": "4ae8d99c549f5b2ce2535a8cf01df0c9ba59d168b378c9a4b884f03fbcaaaa57",
+      "change": "Reuse initialized original Sail execution with complete setup-row decoder queries at imported placement. Actual public construction and native matching retain their meanings; no row result, intermediate state or table-equivalence premise."
+    },
+    {
+      "path": "Tests/NativeRows.lean",
+      "backport_reuse_revision": "5f346138e826f9a136b91aa65659b9604136eadd",
+      "backport_reuse_path": "Tests/NativeDecoderRows.lean",
+      "backport_reuse_sha256": "f77ab38b38417e8394d410a6bf9021f38242de39185573535493c0122c8c4b33",
+      "change": "Retain compiled geometry, actual sentinel and active boundary test structure. Check full row widths/fillers, overlapping decoder-filler and ROM regions, absent generic groups, truncated windows, scalar overflow, actual tagged ROM data and wrong padding tags. Finite certificates inspect only small concrete row widths."
+    },
+    {
+      "path": "Tests/SparseArithmeticExecution.lean",
+      "backport_reuse_revision": "5f346138e826f9a136b91aa65659b9604136eadd",
+      "backport_reuse_path": "Tests/SparseArithmeticExecution.lean",
+      "backport_reuse_sha256": "8c9721845a44de84b5284a09d58d778808fc4b7cf35e18e1f4e905b9c448d5ce",
+      "change": "Preserve all existing native constraints, aliased-port matching, public initialization and decoder certificates. Exercise full setup-row decoder columns in initialized original Sail execution; terminal PC 28/x1=246 now follows from that interface."
     }
   ],
   "setup_artifacts": [

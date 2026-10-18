@@ -23,6 +23,7 @@ import Tests.NativeScalars
 import Tests.NativeArithmeticSetup
 import Tests.SparseArithmeticExecution
 import Tests.NativeDecoderRows
+import Tests.NativeRows
 
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
@@ -778,3 +779,31 @@ import Tests.NativeDecoderRows
 #print axioms Tests.NativeDecoderRows.tail_is_not_zero
 #print axioms Tests.SparseArithmeticExecution.active_decoded
 #print axioms Tests.SparseArithmeticExecution.active_initialized_execution
+#print axioms Airbender.Verification.NativeSetup.Proofs.compiled_width
+#print axioms Airbender.Verification.NativeSetup.Proofs.scalar_window
+#print axioms Airbender.Verification.NativeSetup.Proofs.decoder_window
+#print axioms Airbender.Verification.NativeSetup.Proofs.generic_window
+#print axioms Airbender.Verification.NativeSetup.Proofs.column_scalar_lookup
+#print axioms Airbender.Verification.NativeSetup.Proofs.column_decoder_lookup
+#print axioms Airbender.Verification.NativeSetup.Proofs.column_tagged_lookup
+#print axioms Airbender.Verification.NativeSetup.Proofs.column_range16_lookup
+#print axioms Airbender.Verification.NativeSetup.Proofs.column_timestamp19_lookup
+#print axioms Airbender.Verification.NativeSetup.Proofs.column_rom_lookup
+#print axioms Airbender.Verification.NativeSetup.Proofs.column_separator_lookup
+#print axioms Airbender.Verification.NativeSetup.native_row_scalar
+#print axioms Airbender.Verification.NativeSetup.native_row_decoder
+#print axioms Airbender.Verification.NativeSetup.native_row_tagged
+#print axioms Airbender.Trace.Proofs.physical_arithmetic_decoded
+#print axioms Airbender.Trace.physical_setup_sail_execution
+#print axioms Tests.NativeRows.compiled_layouts
+#print axioms Tests.NativeRows.truncated_queries_rejected
+#print axioms Tests.NativeRows.absent_generic_rejected
+#print axioms Tests.NativeRows.last_active_row
+#print axioms Tests.NativeRows.overlapping_regions
+#print axioms Tests.NativeRows.scalar_overflow_rejected
+#print axioms Tests.NativeRows.padding_queries
+#print axioms Tests.NativeRows.original_rom_tuple
+#print axioms Tests.NativeRows.dummy_wrong_tag
+#print axioms Tests.SparseArithmeticExecution.physical_decoded
+#print axioms Tests.SparseArithmeticExecution.physical_initialized_execution
+#print axioms Airbender.Verification.NativeSetup.Proofs.column_decoder_data

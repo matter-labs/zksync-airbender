@@ -26,3 +26,5 @@ import Airbender.Review.Trace.Families.AddSub.NativeDecoder
 import Airbender.Review.Trace.Families.AddSub.SparseExecution
 import Airbender.Review.Helpers.Tables.NativeDecoder
 import Airbender.Review.Trace.Families.AddSub.ActiveSetup
+import Airbender.Review.Helpers.Tables.NativeRows
+import Airbender.Review.Trace.Families.AddSub.PhysicalSetup

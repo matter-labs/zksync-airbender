@@ -67,3 +67,10 @@ all active decoder rows from the actual prefix and native padding API sentinel.
 Symbolic membership recovery feeds the existing initialized sparse execution;
 the same full alias fixture still reaches PC 28/x1=246. The final normalization
 row and full Rust trace/LDE/argument correspondence remain separate.
+
+[Complete setup rows](../../Helpers/Tables/NativeRowsData.lean) now assemble both
+actual scalar columns and the full decoder group. [The column-based execution
+bridge](../../Trace/Families/AddSub/PhysicalSetup.lean) consumes the decoder at its
+compiled position and derives the same initialized alias execution. The layout
+has no generic group; truncated queries fail. Original constraints, logical
+matching and the Rust/normalization/LDE/argument boundaries retain their meanings.

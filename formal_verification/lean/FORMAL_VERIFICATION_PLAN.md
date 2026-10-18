@@ -232,6 +232,16 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    LDE/argument refinement remain separate. Next generalize exported-data
    certificates to arbitrary public programs and bind full physical trace
    assembly/initialization.
+   [Complete active setup rows](Airbender/Review/Helpers/Tables/NativeRowsData.lean)
+   now assemble all scalar/generic/decoder columns, with exact imported placement
+   and unchanged Clean scalar/fixed-table membership derived in Proofs. Full
+   windows reject truncation; arithmetic has no generic group. Decoder filler can
+   overlap still-active tagged ROM data, and last active rows retain distinct
+   scalar/generic zero and decoder minus-one fillers. The initialized arithmetic
+   alias regression now consumes complete-row decoder columns and derives the
+   same PC 28/x1=246. Next refine this row model against Rust trace construction
+   and generalize native decoder certificates; normalization/LDE, multiplicities
+   and cryptographic enforcement stay separate.
    The fixture certificates are not general Rust/export/LDE/compiler refinement.
    Rust refinement and cryptographic enforcement remain separate.
    Preserve v2 PC rollover and native timestamp offsets;
@@ -239,6 +249,13 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
 2. Add native jump/branch/SLT and extend the shared execution relation with checked
    control-flow interfaces. Preserve full native setup padding and actual public
    code-byte/decoder evidence; do not add per-row result or PC premises.
+   Initial native inspection identifies [the concrete layout](../../cs/jump_branch_slt_preprocessed_layout.json):
+   33 quadratic/three linear equations, six scalar/eight timestamp queries and
+   two fixed queries. Import their actual conditional-control and jump-cleanup
+   tables before promoting local claims. [The native decoder](../../cs/src/machine/ops/unrolled/decoder/jump_slt_branch.rs)
+   retains five packed family bits, signed/unsigned funct3 and original x0
+   flags. Retest the source terminal-PC/closure finding on these v2 constraints
+   before reusing any closure interface or finding; no v2 assessment is claimed.
 3. Port unsigned mul/div, shift/binop and subword memory into the same shared
    context; retain their family-specific assumptions and supported ISA profile.
 4. Rebind bigint/BLAKE/Keccak workers and callers. Retest control validity,

@@ -11,3 +11,10 @@ and complete logical decoder membership derive row order, intermediate states,
 operands, ranges, selectors, preprocessing and retirement. Only public RAM-cell
 alignment is supplied. Calculations stay in [Proofs](../../../Proofs/Trace/Composition.lean).
 Other families and physical/cryptographic argument enforcement remain pending.
+
+[The complete-row arithmetic bridge](AddSub/PhysicalSetup.lean) now consumes
+actual decoder columns of the source-shaped active setup model. Its initialized
+alias regression derives original Sail PC 28/x1=246 through complete native
+matching. Setup projections, rather than table-equivalence premises, connect
+physical columns to existing lookup meanings. Rust/normalization/LDE and
+cryptographic enforcement remain separate.

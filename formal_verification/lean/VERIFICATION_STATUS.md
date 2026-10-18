@@ -43,7 +43,7 @@ not completed v2 coverage.
 
 ## Remaining work
 
-- Generalize native export certificates to arbitrary public programs and bind full physical trace assembly; connect physical initialization and expand mixed/custom programs.
+- Generalize native export certificates to arbitrary public programs and refine the checked complete row model against Rust trace construction; connect physical initialization and expand mixed/custom programs.
 - Extend initialized execution to jump/branch/SLT and the remaining supported families; preserve each native metadata and argument boundary.
 - Backport the remaining ordinary circuit families, worker operations, unified machine, full traces and initialization/teardown.
 - Retest v3 findings against v2 before carrying over counterexamples or temporary assumptions.
@@ -309,14 +309,39 @@ These are native data certificates and a source-shaped active-row model; general
 Rust full-trace/normalization/LDE refinement, arbitrary-program certificates and
 physical lookup/cryptographic enforcement remain separate. No defect is established.
 
+## Complete active setup rows
+
+[Complete row definitions](Airbender/Review/Helpers/Tables/NativeRowsData.lean)
+now combine actual scalar prefixes, tagged generic tables and actual decoder
+prefixes/fillers at the imported 12/16-column layouts. [Three short claims](Airbender/Review/Helpers/Tables/NativeRows.lean)
+recover scalar bounds, actual decoder data and tagged membership. [Projection
+proofs](Airbender/Proofs/Tables/NativeRows.lean) also connect these columns to the
+unchanged Clean scalar, ROM and separator tables. Full query widths must fit;
+the arithmetic layout cannot authenticate a nonexistent generic group.
+
+[Boundary regressions](Tests/NativeRows.lean) check that decoder filler overlaps
+the still-active tagged ROM region, while final active rows mix scalar/generic
+zeros with decoder minus-one values. Truncated windows, scalar overflow and wrong
+padding tags reject. Only small row widths are evaluated; the active domain stays
+symbolic. [The short arithmetic bridge](Airbender/Review/Trace/Families/AddSub/PhysicalSetup.lean)
+uses actual decoder columns of these complete rows, and the unchanged initialized
+alias witness still derives PC 28/x1=246. Native equations, state/memory matching
+and public byte/Sail construction retain their existing meanings.
+
+This checks complete source-shaped row assembly and logical column membership.
+The decoder connection still covers the three pinned concrete exports. General
+Rust trace construction, arbitrary-program decoder certificates, reserved-row
+normalization/LDE, physical lookup multiplicities and cryptographic enforcement
+remain separate. No implementation defect or table-equivalence premise is added.
+
 ## Validation
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all twenty-six concrete test modules pass.
+- Library, both CLI entrypoints and all twenty-seven concrete test modules pass.
 - Importer regressions: 129 checks pass.
-- Axiom audit: 731 explicit roots; only propext, Classical.choice and Quot.sound.
-- All thirty-eight public Review theorems (five circuit claims, twenty-nine trace claims and four helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Axiom audit: 759 explicit roots; only propext, Classical.choice and Quot.sound.
+- All forty-two public Review theorems (five circuit claims, thirty trace claims and seven helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
 - Source provenance: 71 unchanged reused files, two native circuit artifacts, thirty-two native Rust sources, five native setup artifacts and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.

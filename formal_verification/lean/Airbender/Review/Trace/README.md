@@ -189,3 +189,11 @@ row. [The shared certificate](../Helpers/Tables/NativeDecoder.lean) proves the
 full domain adds no query; the same initialized alias witness reaches PC 28 and
 x1=246. No padding exclusion or table equivalence is a public premise. Final
 normalization, Rust full-trace/LDE and physical argument enforcement remain open.
+
+[Complete-row arithmetic execution](Families/AddSub/PhysicalSetup.lean) now uses
+decoder queries at imported columns of [assembled native rows](../Helpers/Tables/NativeRowsData.lean).
+All scalar, tagged generic and decoder groups keep their own padding domains;
+[projection proofs](../../Proofs/Tables/NativeRows.lean) derive their existing
+logical meanings. The real alias fixture still reaches PC 28/x1=246 with native
+matching and public byte/Sail construction. Rust trace/normalization/LDE,
+arbitrary-program decoder certificates and cryptographic enforcement remain open.
