@@ -99,7 +99,7 @@ contract GkrWhirVerifier {
     uint8 constant __TEMPLATE_INITS_TEARDOWNS_TOP_BITS_0 = 0;
     uint8 constant __TEMPLATE_INITS_TEARDOWNS_TOP_BITS_1 = 1;
     uint256 constant __TEMPLATE_EXTERNAL_POW_BITS = 20; // external-challenge PoW difficulty
-    uint256 constant __TEMPLATE_EXPECTED_FINAL_PC = 267028; // program's terminal PC — binds the verified statement to this program
+    uint256 constant __TEMPLATE_EXPECTED_FINAL_PC = 266852; // program's terminal PC — binds the verified statement to this program
 
     // ── GKR entry + dimension reduction (generated from the circuit / config) ─────────────────
     uint256 constant __TEMPLATE_GKR_NUM_OUTPUTS        = 5 * 2; // GKR output polys (global_output_map lines)
@@ -336,21 +336,21 @@ contract GkrWhirVerifier {
             }
             {
                 let lo, hi := f1_ts(32)
-                mstore(add(F1_V0_PTR(), 384), shl(224, 0x14130400)) // pinned final PC
+                mstore(add(F1_V0_PTR(), 384), shl(224, 0x64120400)) // pinned final PC
                 mstore(add(F1_V0_PTR(), 388), f1_le19(lo))
                 mstore(add(F1_V0_PTR(), 392), f1_le19(hi))
             }
             if and(byte(0, calldataload(284)), 0x3) { revert(0, 0) }
             calldatacopy(add(F1_V0_PTR(), 396), 285, 8)
             // pinned setup cap
-            mstore(add(F1_V0_PTR(), 404), 0x675ce5c1eecebfdf3beb56145e1f7b03176e1f05d78d32b9000000da00000000)
-            mstore(add(F1_V0_PTR(), 436), 0xe5a2bd95738b5899544bd13d79354af57711ff3bf678aedf000000c500000000)
-            mstore(add(F1_V0_PTR(), 468), 0x56337157be86af531a6d67b40e73094d36bbba8e15f97f85000000c500000000)
-            mstore(add(F1_V0_PTR(), 500), 0x4b5bbb81226bffee338212f8187de3c705f78b8d1db4a4180000003a00000000)
-            mstore(add(F1_V0_PTR(), 532), 0x387f84a3d5d0e1681801d25211041ddadd5914ffe65a21e80000006500000000)
-            mstore(add(F1_V0_PTR(), 564), 0x60afeabc8602c96904eb3af0fddfa6fe4bf7f72638909436000000dd00000000)
-            mstore(add(F1_V0_PTR(), 596), 0x5c6a3ed26415acf637c790a374dd68d5a33cda094a8953da000000ee00000000)
-            mstore(add(F1_V0_PTR(), 628), 0x17984c2bfb9fbcb44f8c4d3dc7359188f68a0a719f4b9bb00000007300000000)
+            mstore(add(F1_V0_PTR(), 404), 0xc391e67ad736c6bea50e0a07f12e4dc439f48192e08b593f0000007900000000)
+            mstore(add(F1_V0_PTR(), 436), 0x31be9a5f4812de6874d8765e4f970fbec0324b1975fe20c40000008200000000)
+            mstore(add(F1_V0_PTR(), 468), 0xe0865133e870b94ab4eabad86001e7d0f2416343905f24670000004e00000000)
+            mstore(add(F1_V0_PTR(), 500), 0xf428fb10b5cdadcd9b1c045e92d910046a62fb2ba3b5d5dd000000fd00000000)
+            mstore(add(F1_V0_PTR(), 532), 0x1a1129c675c57c05ffef58b2cca5c16800dd08116dde845a000000ac00000000)
+            mstore(add(F1_V0_PTR(), 564), 0xc3c0cb7be26c1e41bac32c95450f09819675c1c4d9a44b490000003000000000)
+            mstore(add(F1_V0_PTR(), 596), 0x9750146855bdf51e313cb3dfcf8bf4649a4c1bf391016b7e000000a000000000)
+            mstore(add(F1_V0_PTR(), 628), 0x1a28ecb656b1b01ad0dbd4f0414ed17c9d6b13544a578e690000007100000000)
             // memory cap: 8 DIGESTs of 25 bytes
             for { let i := 0 } lt(i, 8) { i := add(i, 1) } {
                 let w := calldataload(add(293, mul(25, i)))
