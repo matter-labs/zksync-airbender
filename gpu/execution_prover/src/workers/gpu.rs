@@ -6,7 +6,8 @@ use era_cudart::device::{get_device_properties, set_device};
 use era_cudart::result::CudaResult;
 use execution_prover::messages::{
     L1WrapProofRequest, L1WrapProofResult, MemoryCommitmentRequest, MemoryCommitmentResult,
-    ProofRequest, ProofResult, SetupInitializationRequest, SetupInitializationResult,
+    MemoryPartialTrees, ProofRequest, ProofResult, SetupInitializationRequest,
+    SetupInitializationResult,
 };
 use execution_prover::ProofProfile;
 use gpu_circuit_prover::l1_wrap::{GpuL1WrapProofJob, L1WrapInputs};
@@ -22,8 +23,11 @@ use gpu_gkr::proth120::backward::{preflight_dr_tail_resources_pr, DrTailProofPla
 use gpu_gkr::setup::GpuGKRSetupTransfer;
 use gpu_prover_context::{AllocationMode, ProverContext, ProverContextConfig};
 use gpu_trace::trace::decoder::DecoderTableTransfer;
+use gpu_trace::trace::holder::resolve_partial_tree_reduction_layers;
 use gpu_trace::trace::memory::{commit_memory_from_transfers, MemoryCommitmentJob};
-use gpu_trace::trace::memory_transfer::{GpuGKRMemoryTransfer, GpuGKRMemoryTransferHost};
+use gpu_trace::trace::memory_transfer::{
+    GpuGKRMemoryTransfer, GpuGKRMemoryTransferHost, PartialTrees, PartialTreesGeometry,
+};
 use gpu_trace::trace::tracing_data::{
     InitsAndTeardownsTransfer, TracingDataHost, TracingDataTransfer, UnrolledTracingDataHost,
 };
@@ -32,8 +36,8 @@ use gpu_trace::witness::trace_unrolled::InitsAndTeardownsTraceHost;
 use log::{debug, error, info, trace};
 
 use crate::upstream::{
-    CommitmentMode, GKRExternalChallenges, MerkleTreeCapVarLength, SecurityLevel,
-    L1_WRAP_EXPLICIT_OUTPUT_LOG2,
+    CommitmentMode, GKRCircuitArtifact, GKRExternalChallenges, MerkleTreeCapVarLength,
+    ProverConfig, SecurityLevel, L1_WRAP_EXPLICIT_OUTPUT_LOG2,
 };
 use std::ffi::CStr;
 use std::mem;
@@ -89,6 +93,9 @@ struct RequestState {
     /// Per-coset caps from a prior commit_memory phase; only present for
     /// Proof requests and consumed in Phase 1 to build the memory transfer.
     memory_caps: Option<Vec<MerkleTreeCapVarLength>>,
+    /// The partial trees its commitment persisted; only for Proof requests
+    /// whose profile persists them, consumed in Phase 1 with the caps.
+    memory_partial_trees: Option<MemoryPartialTrees>,
     /// Original host witnesses returned to the orchestrator after the GPU work
     /// completes so their allocators return to the pool.
     inits_and_teardowns_result: Option<InitsAndTeardownsTraceHost<A>>,
@@ -282,6 +289,7 @@ fn schedule_phase_one<'a>(
             kind: RequestKind::SetupInitialization,
             external_challenges: None,
             memory_caps: None,
+            memory_partial_trees: None,
             inits_and_teardowns_result: None,
             tracing_data_result: None,
             security_level,
@@ -305,7 +313,7 @@ fn schedule_phase_one<'a>(
     }
     // Decompose the request into bookkeeping plus the host buffers that
     // become Phase 1 H2D inputs.
-    let (state, inits_and_teardowns_host, tracing_data_host) = match request {
+    let (mut state, inits_and_teardowns_host, tracing_data_host) = match request {
         GpuWorkRequest::L1WrapProof(_) => {
             unreachable!("L1Wrap proof requests return early above")
         }
@@ -332,6 +340,7 @@ fn schedule_phase_one<'a>(
                 kind: RequestKind::MemoryCommitment,
                 external_challenges: None,
                 memory_caps: None,
+                memory_partial_trees: None,
                 inits_and_teardowns_result: inits_and_teardowns.clone(),
                 tracing_data_result: tracing_data.clone(),
                 security_level,
@@ -353,6 +362,7 @@ fn schedule_phase_one<'a>(
                 tracing_data,
                 external_challenges,
                 memory_caps,
+                memory_partial_trees,
                 security_level,
                 commitment_mode,
                 profile,
@@ -368,6 +378,7 @@ fn schedule_phase_one<'a>(
                 kind: RequestKind::Proof,
                 external_challenges: Some(external_challenges),
                 memory_caps: Some(memory_caps),
+                memory_partial_trees,
                 inits_and_teardowns_result: inits_and_teardowns.clone(),
                 tracing_data_result: tracing_data.clone(),
                 security_level,
@@ -387,6 +398,7 @@ fn schedule_phase_one<'a>(
     let circuit_type = state.circuit_type;
     let sequence_id = state.sequence_id;
     let is_proof = matches!(state.kind, RequestKind::Proof);
+    let memory_partial_trees = state.memory_partial_trees.take();
 
     let proof_prover_config = is_proof.then(|| {
         gpu_circuit_prover::config::prover_config(circuit_type, state.profile, state.security_level)
@@ -478,11 +490,34 @@ fn schedule_phase_one<'a>(
                     .memory_caps
                     .as_ref()
                     .expect("Proof requires memory_caps");
-                let memory_host = GpuGKRMemoryTransferHost::from_per_coset_caps(
-                    memory_caps,
-                    log_lde_factor,
-                    log_tree_cap_size,
-                );
+                let memory_host =
+                    match proof_partial_trees(circuit_type, state.profile, memory_partial_trees) {
+                        Some(trees) => {
+                            GpuGKRMemoryTransferHost::from_per_coset_caps_and_partial_trees(
+                                memory_caps,
+                                memory_partial_trees_geometry(
+                                    state
+                                        .precomputations
+                                        .baby_bear()
+                                        .gkr_programs
+                                        .compiled_circuit(),
+                                    prover_config,
+                                    state.commitment_mode,
+                                    crate::memory_policy::partial_trees(
+                                        circuit_type,
+                                        state.profile,
+                                    )
+                                    .memory,
+                                ),
+                                &trees,
+                            )?
+                        }
+                        None => GpuGKRMemoryTransferHost::from_per_coset_caps(
+                            memory_caps,
+                            log_lde_factor,
+                            log_tree_cap_size,
+                        ),
+                    };
                 let memory_transfer = GpuGKRMemoryTransfer::new(Arc::new(memory_host), context)?;
                 let external_challenges_value = state
                     .external_challenges
@@ -593,6 +628,7 @@ fn schedule_l1_wrap_phase_one<'a>(
         kind: RequestKind::L1WrapProof,
         external_challenges: None,
         memory_caps: None,
+        memory_partial_trees: None,
         inits_and_teardowns_result: Some(inits_and_teardowns.clone()),
         tracing_data_result: Some(TracingDataHost::Unrolled(UnrolledTracingDataHost::Unified(
             tracing_data.clone(),
@@ -733,7 +769,7 @@ fn enqueue_phase_two<'a>(
                 bundle,
                 crate::memory_policy::merged_commit_strategy(circuit_type, state.profile),
                 crate::memory_policy::partial_trees(circuit_type, state.profile),
-                false,
+                crate::memory_policy::persists_memory_partial_trees(circuit_type, state.profile),
                 context,
             )?;
             state.device_peak_bytes = Some(context.get_used_mem_peak());
@@ -767,7 +803,10 @@ fn finish_phase_three<'a>(device_id: i32, p2: PhaseTwo<'a>) -> CudaResult<GpuWor
     let follower = follower_label(follower);
     match job {
         JobType::MemoryCommitment(job) => {
-            let (merkle_tree_caps, commitment_time_ms) = job.finish()?;
+            let (merkle_tree_caps, partial_trees, commitment_time_ms) =
+                job.finish_with_partial_trees()?;
+            let memory_partial_trees =
+                partial_trees.map(|trees| persisted_partial_trees(circuit_type, profile, trees));
             let bytes = device_peak_bytes.expect("memory commitment device peak was recorded");
             let direction = direction.expect("memory commitment allocation direction was recorded");
             debug!(
@@ -780,6 +819,7 @@ fn finish_phase_three<'a>(device_id: i32, p2: PhaseTwo<'a>) -> CudaResult<GpuWor
                 inits_and_teardowns: inits_and_teardowns_result,
                 tracing_data: tracing_data_result,
                 merkle_tree_caps,
+                memory_partial_trees,
             }))
         }
         JobType::Proof(job) => {
@@ -832,6 +872,114 @@ fn finish_phase_three<'a>(device_id: i32, p2: PhaseTwo<'a>) -> CudaResult<GpuWor
                 },
             ))
         }
+    }
+}
+
+/// The geometry of a proof's memory-oracle partial trees: the oracle stage 1
+/// builds for `commitment_mode` at the policy's resolved memory depth.
+pub(crate) fn memory_partial_trees_geometry(
+    compiled_circuit: &GKRCircuitArtifact<BF>,
+    prover_config: &ProverConfig,
+    commitment_mode: CommitmentMode,
+    memory_reduction_layers: u32,
+) -> PartialTreesGeometry {
+    let log_domain_size = compiled_circuit.trace_len.trailing_zeros();
+    let log_lde_factor = prover_config.lde_factor.trailing_zeros();
+    let log_rows_per_leaf = prover_config.base_oracles_values_per_leaf.trailing_zeros();
+    let log_tree_cap_size = prover_config.cap_size.trailing_zeros();
+    let memory_width = compiled_circuit.memory_layout.total_width;
+    let columns_count = match commitment_mode {
+        CommitmentMode::MergedMemoryAndWitness => {
+            memory_width + compiled_circuit.witness_layout.total_width
+        }
+        _ => memory_width,
+    };
+    PartialTreesGeometry {
+        log_domain_size,
+        log_lde_factor,
+        log_rows_per_leaf,
+        log_tree_cap_size,
+        reduction_layers: resolve_partial_tree_reduction_layers(
+            memory_reduction_layers,
+            log_domain_size,
+            log_lde_factor,
+            log_rows_per_leaf,
+            log_tree_cap_size,
+        ),
+        columns_count,
+    }
+}
+
+/// The trees a proof request carries: required exactly when its profile
+/// persists them, and only those of its own circuit and profile.
+pub(crate) fn proof_partial_trees(
+    circuit_type: CircuitType,
+    profile: ProofProfile,
+    trees: Option<MemoryPartialTrees>,
+) -> Option<PartialTrees> {
+    let required = crate::memory_policy::persists_memory_partial_trees(circuit_type, profile);
+    let trees = match (required, trees) {
+        (true, Some(trees)) => trees,
+        (true, None) => panic!(
+            "{circuit_type:?}/{profile:?} proof requires the memory partial trees persisted by its commitment"
+        ),
+        (false, Some(_)) => {
+            panic!("{circuit_type:?}/{profile:?} proof does not take memory partial trees")
+        }
+        (false, None) => return None,
+    };
+    let MemoryPartialTrees {
+        layout_version,
+        circuit_type: trees_circuit_type,
+        profile: trees_profile,
+        log_domain_size,
+        log_lde_factor,
+        log_rows_per_leaf,
+        log_tree_cap_size,
+        reduction_layers,
+        columns_count,
+        nodes,
+    } = trees;
+    assert_eq!(
+        (trees_circuit_type, trees_profile),
+        (circuit_type, profile),
+        "memory partial trees belong to another circuit or profile"
+    );
+    Some(PartialTrees {
+        layout_version,
+        geometry: PartialTreesGeometry {
+            log_domain_size,
+            log_lde_factor,
+            log_rows_per_leaf,
+            log_tree_cap_size,
+            reduction_layers,
+            columns_count,
+        },
+        nodes,
+    })
+}
+
+fn persisted_partial_trees(
+    circuit_type: CircuitType,
+    profile: ProofProfile,
+    trees: PartialTrees,
+) -> MemoryPartialTrees {
+    let PartialTrees {
+        layout_version,
+        geometry,
+        nodes,
+    } = trees;
+    MemoryPartialTrees {
+        layout_version,
+        circuit_type,
+        profile,
+        log_domain_size: geometry.log_domain_size,
+        log_lde_factor: geometry.log_lde_factor,
+        log_rows_per_leaf: geometry.log_rows_per_leaf,
+        log_tree_cap_size: geometry.log_tree_cap_size,
+        reduction_layers: geometry.reduction_layers,
+        columns_count: geometry.columns_count,
+        nodes,
     }
 }
 

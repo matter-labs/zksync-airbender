@@ -4,11 +4,13 @@ use std::time::Duration;
 use common_constants::TimestampScalar;
 
 use super::BinaryHandle;
+use crate::messages::MemoryPartialTrees;
 use crate::upstream::{
     DefaultTreeConstructor, FinalRegisterValue, GKRProof, MerkleTreeCapVarLength,
 };
 use crate::upstream::{BF, E4};
 use crate::{CommitmentMode, ProofProfile};
+use execution_prover_model::circuit_type::CircuitType;
 
 pub struct CommitMemoryResult {
     pub commitment_mode: CommitmentMode,
@@ -19,6 +21,9 @@ pub struct CommitMemoryResult {
     pub circuit_families_memory_caps: BTreeMap<u8, Vec<Vec<MerkleTreeCapVarLength>>>,
     pub inits_and_teardowns_memory_caps: Vec<Vec<MerkleTreeCapVarLength>>,
     pub delegation_circuits_memory_caps: BTreeMap<u32, Vec<Vec<MerkleTreeCapVarLength>>>,
+    /// Partial trees the backend persisted, keyed by circuit and sequence ID;
+    /// moved into this commitment's proof requests by `prove`.
+    pub(super) memory_partial_trees: BTreeMap<(CircuitType, usize), MemoryPartialTrees>,
     /// Unified mode only (0 otherwise): the number of LEADING unified circuits
     /// whose inits-and-teardowns are trivial (dummy, all-zero). Only the
     /// trailing circuits carry real i&t data. Consumed by the FS-seed

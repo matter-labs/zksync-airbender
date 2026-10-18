@@ -1,10 +1,14 @@
 use super::factory::{PreparedCircuit, SyntheticInputFactory};
-use super::probe::{drain, input_transfers, preset_setup_reduction_layers, schedule_proof_inputs};
+use super::probe::{
+    drain, input_transfers, preset_memory_reduction_layers, preset_setup_reduction_layers,
+    schedule_proof_inputs,
+};
 use crate::precomputations::l1_wrap::L1WrapPrecomputed;
 use crate::upstream::{
     l1_wrap_2p21, CommitmentMode, CpuGKRSetup, L1WrapSetup, MerkleTreeCapVarLength, ProofProfile,
     ProverConfig, SecurityLevel,
 };
+use crate::workers::gpu::memory_partial_trees_geometry;
 use crate::A;
 use era_cudart::result::CudaResult;
 use era_cudart_sys::CudaError;
@@ -19,6 +23,7 @@ use gpu_core::allocator::tracker::AllocationDirection;
 use gpu_gkr::proth120::backward::preflight_dr_tail_resources_pr;
 use gpu_gkr::setup::GpuGKRSetupTransfer;
 use gpu_prover_context::{AllocationMode, ProverContext, ProverContextConfig};
+use gpu_trace::trace::memory_transfer::{PartialTrees, PARTIAL_TREES_LAYOUT_VERSION};
 use gpu_trace::witness::circuit_type::{CircuitType, UnrolledCircuitType};
 use gpu_trace::witness::trace_unrolled::{InitsAndTeardownsTraceHost, UnrolledUnifiedTraceHost};
 use serde::{Deserialize, Serialize};
@@ -499,6 +504,35 @@ fn synthetic_caps(config: &ProverConfig) -> Vec<MerkleTreeCapVarLength> {
     vec![cap; config.lde_factor]
 }
 
+/// A follower's stand-in for the trees its commitment would persist: the
+/// production shape, ending in `caps` so it imports as a real artifact would.
+fn synthetic_partial_trees(
+    prepared: &PreparedCircuit,
+    caps: &[MerkleTreeCapVarLength],
+    memory_reduction_layers: u32,
+) -> PartialTrees {
+    let geometry = memory_partial_trees_geometry(
+        prepared
+            .precomputations
+            .baby_bear()
+            .gkr_programs
+            .compiled_circuit(),
+        &feeder_config(),
+        CommitmentMode::MergedMemoryAndWitness,
+        memory_reduction_layers,
+    );
+    let live = geometry.coset_live_len();
+    let mut nodes = vec![[0u32; 8]; geometry.cosets_count() * live];
+    for (coset, cap) in nodes.chunks_exact_mut(live).zip(caps) {
+        coset[live - cap.cap.len()..].copy_from_slice(&cap.cap);
+    }
+    PartialTrees {
+        layout_version: PARTIAL_TREES_LAYOUT_VERSION,
+        geometry,
+        nodes,
+    }
+}
+
 fn capacity_context(arena_bytes: usize) -> ProverContext {
     let defaults = ProverContextConfig::default();
     let blocks = arena_bytes >> defaults.allocator_block_log_size;
@@ -848,12 +882,12 @@ fn measure<B: GoodAllocator>(
                     target,
                     presets::merged_commit_strategy(UNIFIED22, ProofProfile::L1Feeder),
                     case.partial_trees(UNIFIED22, ProofProfile::L1Feeder),
-                    false,
+                    presets::persists_memory_partial_trees(UNIFIED22, ProofProfile::L1Feeder),
                     context,
                 ),
             )?;
             row.measured_peak_bytes = Some(context.get_used_mem_peak());
-            let (caps, _) = step("target_finish", context, job.finish())?;
+            let (caps, _, _) = step("target_finish", context, job.finish_with_partial_trees())?;
             row.output_fingerprint = Some(output_digest(
                 serde_json::to_vec(&caps).expect("L1 feeder caps serialize"),
             ));
@@ -886,17 +920,22 @@ fn measure<B: GoodAllocator>(
                         inputs,
                         presets::merged_commit_strategy(UNIFIED22, ProofProfile::L1Feeder),
                         case.partial_trees(UNIFIED22, ProofProfile::L1Feeder),
-                        false,
+                        presets::persists_memory_partial_trees(UNIFIED22, ProofProfile::L1Feeder),
                         context,
                     ),
                 )?;
-                let (caps, _) = step("prerequisite_commit", context, job.finish())?;
+                let (caps, trees, _) = step(
+                    "prerequisite_commit",
+                    context,
+                    job.finish_with_partial_trees(),
+                )?;
                 step("prerequisite_commit", context, drain(context))?;
                 row.prerequisite_peak_bytes = Some(context.get_used_mem_peak());
-                feeder
-                    .as_mut()
-                    .expect("feeder target inputs")
-                    .set_memory_caps(caps);
+                let prepared = feeder.as_mut().expect("feeder target inputs");
+                prepared.set_memory_caps(caps);
+                prepared.set_memory_partial_trees(
+                    trees.expect("the feeder commitment persists its partial trees"),
+                );
             }
             let prepared = feeder.as_ref().expect("feeder target inputs");
             context.set_allocation_mode(AllocationMode::Inputs(target_direction));
@@ -909,6 +948,7 @@ fn measure<B: GoodAllocator>(
                     context,
                     prepared,
                     case.partial_trees(UNIFIED22, ProofProfile::L1Feeder).setup,
+                    case.partial_trees(UNIFIED22, ProofProfile::L1Feeder).memory,
                 ),
             )?;
             step(
@@ -996,14 +1036,20 @@ fn schedule_follower<'a, B: GoodAllocator + 'a>(
                     context,
                     prepared,
                     preset_setup_reduction_layers(prepared),
+                    preset_memory_reduction_layers(prepared),
                 ),
             )?;
             (Some(inputs), None)
         }
         Follower::Feeder => {
             let prepared = feeder.as_mut().expect("feeder follower inputs");
+            let memory_reduction_layers =
+                case.partial_trees(UNIFIED22, ProofProfile::L1Feeder).memory;
             if prepared.memory_caps.is_none() {
-                prepared.set_memory_caps(synthetic_caps(&feeder_config()));
+                let caps = synthetic_caps(&feeder_config());
+                let trees = synthetic_partial_trees(prepared, &caps, memory_reduction_layers);
+                prepared.set_memory_caps(caps);
+                prepared.set_memory_partial_trees(trees);
             }
             let (inputs, _) = step(
                 "follower_inputs",
@@ -1013,6 +1059,7 @@ fn schedule_follower<'a, B: GoodAllocator + 'a>(
                     context,
                     prepared,
                     preset_setup_reduction_layers(prepared),
+                    memory_reduction_layers,
                 ),
             )?;
             (Some(inputs), None)

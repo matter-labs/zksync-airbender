@@ -13,6 +13,7 @@ use fft::GoodAllocator;
 use full_statement_verifier::host_utils::{build_unified_stream, load_fsv_program};
 use full_statement_verifier::program_proof::ProgramProof;
 use gpu_circuit_prover::l1_wrap::L1Proof;
+use gpu_trace::witness::circuit_type::UnrolledCircuitType;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use setups::Setups;
@@ -323,5 +324,75 @@ fn l1_wrap_followed_worker_parity() {
         "requests 1 and 2 must run in opposite allocation directions, got {:?} and {:?}",
         wraps[0].direction,
         wraps[1].direction
+    );
+}
+
+fn tagged_partial_trees(circuit_type: CircuitType, profile: ProofProfile) -> MemoryPartialTrees {
+    MemoryPartialTrees {
+        layout_version: 1,
+        circuit_type,
+        profile,
+        log_domain_size: 22,
+        log_lde_factor: 4,
+        log_rows_per_leaf: 1,
+        log_tree_cap_size: 4,
+        reduction_layers: 10,
+        columns_count: 104,
+        nodes: vec![[7; 8]; 3],
+    }
+}
+
+const UNIFIED: CircuitType = CircuitType::Unrolled(UnrolledCircuitType::Unified);
+const UNIFIED22: CircuitType = CircuitType::Unrolled(UnrolledCircuitType::Unified22);
+
+#[test]
+fn cpu_proof_partial_trees_follow_the_profile() {
+    let trees = proof_partial_trees(
+        UNIFIED22,
+        ProofProfile::L1Feeder,
+        Some(tagged_partial_trees(UNIFIED22, ProofProfile::L1Feeder)),
+    )
+    .expect("L1Feeder proofs import their trees");
+    assert_eq!(trees.layout_version, 1);
+    assert_eq!(
+        trees.geometry,
+        PartialTreesGeometry {
+            log_domain_size: 22,
+            log_lde_factor: 4,
+            log_rows_per_leaf: 1,
+            log_tree_cap_size: 4,
+            reduction_layers: 10,
+            columns_count: 104,
+        }
+    );
+    assert_eq!(trees.nodes, vec![[7; 8]; 3]);
+    assert!(proof_partial_trees(UNIFIED, ProofProfile::Standard, None).is_none());
+}
+
+#[test]
+#[should_panic(
+    expected = "Unrolled(Unified22)/L1Feeder proof requires the memory partial trees persisted by its commitment"
+)]
+fn cpu_feeder_proof_without_partial_trees_panics() {
+    proof_partial_trees(UNIFIED22, ProofProfile::L1Feeder, None);
+}
+
+#[test]
+#[should_panic(expected = "Unrolled(Unified)/Standard proof does not take memory partial trees")]
+fn cpu_standard_proof_with_partial_trees_panics() {
+    proof_partial_trees(
+        UNIFIED,
+        ProofProfile::Standard,
+        Some(tagged_partial_trees(UNIFIED, ProofProfile::Standard)),
+    );
+}
+
+#[test]
+#[should_panic(expected = "memory partial trees belong to another circuit or profile")]
+fn cpu_partial_trees_of_another_circuit_panic() {
+    proof_partial_trees(
+        UNIFIED22,
+        ProofProfile::L1Feeder,
+        Some(tagged_partial_trees(UNIFIED, ProofProfile::L1Feeder)),
     );
 }

@@ -35,6 +35,7 @@ use era_cudart::memory::{CudaHostAllocFlags, HostAllocation};
 use era_cudart::result::CudaResult;
 use execution_prover_model::MachineType;
 use gpu_core::primitives::field::{BF, E4};
+use gpu_trace::trace::memory_transfer::PartialTrees;
 use gpu_trace::trace::tracing_data::{
     DelegationTracingDataHostSource, TracingDataHost, UnrolledTracingDataHost,
 };
@@ -247,7 +248,8 @@ fn build_tracing_data(circuit: CircuitType, rows: usize) -> CudaResult<Option<Tr
 }
 
 /// One circuit's reusable synthetic inputs. `memory_caps` stays `None` until
-/// the runner has fed back the warm GPU memory commitment for this circuit.
+/// the runner has fed back the warm GPU memory commitment for this circuit;
+/// `memory_partial_trees` too, for profiles whose commitment persists them.
 pub(crate) struct PreparedCircuit {
     pub(crate) circuit: CircuitType,
     pub(crate) profile: ProofProfile,
@@ -255,11 +257,16 @@ pub(crate) struct PreparedCircuit {
     pub(super) security_level: SecurityLevel,
     pub(super) inputs: SyntheticInputs,
     pub(super) memory_caps: Option<Vec<MerkleTreeCapVarLength>>,
+    pub(super) memory_partial_trees: Option<PartialTrees>,
 }
 
 impl PreparedCircuit {
     pub(crate) fn set_memory_caps(&mut self, memory_caps: Vec<MerkleTreeCapVarLength>) {
         self.memory_caps = Some(memory_caps);
+    }
+
+    pub(crate) fn set_memory_partial_trees(&mut self, trees: PartialTrees) {
+        self.memory_partial_trees = Some(trees);
     }
 }
 
@@ -368,6 +375,7 @@ impl SyntheticInputFactory {
             security_level: self.security_level,
             inputs,
             memory_caps: None,
+            memory_partial_trees: None,
         })
     }
 }

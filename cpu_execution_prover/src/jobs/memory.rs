@@ -308,6 +308,7 @@ pub(super) fn run<A: HostTraceAllocator>(
         inits_and_teardowns,
         tracing_data,
         merkle_tree_caps,
+        memory_partial_trees: None,
     }
 }
 

@@ -1,5 +1,8 @@
 use super::factory::{stable_external_challenges, PreparedCircuit};
-use crate::upstream::{DefaultTreeConstructor, GKRProof, MerkleTreeCapVarLength, ProofProfile};
+use crate::upstream::{
+    CommitmentMode, DefaultTreeConstructor, GKRProof, MerkleTreeCapVarLength, ProofProfile,
+};
+use crate::workers::gpu::memory_partial_trees_geometry;
 use crate::A;
 use era_cudart::result::CudaResult;
 use gpu_circuit_prover::config::prover_config;
@@ -109,11 +112,16 @@ pub(super) fn preset_setup_reduction_layers(circuit: &PreparedCircuit) -> u32 {
     crate::memory_policy::partial_trees(circuit.circuit, circuit.profile).setup
 }
 
+pub(super) fn preset_memory_reduction_layers(circuit: &PreparedCircuit) -> u32 {
+    crate::memory_policy::partial_trees(circuit.circuit, circuit.profile).memory
+}
+
 pub(super) fn schedule_proof_inputs<'a>(
     device_id: i32,
     context: &ProverContext,
     circuit: &PreparedCircuit,
     setup_reduction_layers: u32,
+    memory_reduction_layers: u32,
 ) -> CudaResult<(GpuGKRProofTransfer<'a, A>, DrTailProofPlan)> {
     let config = prover_config(circuit.circuit, circuit.profile, circuit.security_level).unwrap();
     let programs = &circuit.precomputations.baby_bear().gkr_programs;
@@ -134,14 +142,38 @@ pub(super) fn schedule_proof_inputs<'a>(
         .get_initialized(circuit.profile)
         .map(|host| GpuGKRSetupTransfer::new(host, setup_reduction_layers, context))
         .transpose()?;
-    let memory_host = GpuGKRMemoryTransferHost::from_per_coset_caps(
-        circuit
-            .memory_caps
-            .as_ref()
-            .expect("warm memory commitment"),
-        config.lde_factor.trailing_zeros(),
-        config.cap_size.trailing_zeros(),
-    );
+    let memory_caps = circuit
+        .memory_caps
+        .as_ref()
+        .expect("warm memory commitment");
+    let memory_host =
+        if crate::memory_policy::persists_memory_partial_trees(circuit.circuit, circuit.profile) {
+            GpuGKRMemoryTransferHost::from_per_coset_caps_and_partial_trees(
+                memory_caps,
+                memory_partial_trees_geometry(
+                    programs.compiled_circuit(),
+                    &config,
+                    CommitmentMode::MergedMemoryAndWitness,
+                    memory_reduction_layers,
+                ),
+                circuit
+                    .memory_partial_trees
+                    .as_ref()
+                    .expect("proof inputs require the partial trees persisted by the commitment"),
+            )?
+        } else {
+            assert!(
+                circuit.memory_partial_trees.is_none(),
+                "{:?}/{:?} proof inputs do not take memory partial trees",
+                circuit.circuit,
+                circuit.profile
+            );
+            GpuGKRMemoryTransferHost::from_per_coset_caps(
+                memory_caps,
+                config.lde_factor.trailing_zeros(),
+                config.cap_size.trailing_zeros(),
+            )
+        };
     let memory = GpuGKRMemoryTransfer::new(Arc::new(memory_host), context)?;
     let num_teardown_sets = programs
         .compiled_circuit()
@@ -185,6 +217,7 @@ pub(super) fn input_footprint(
         context,
         circuit,
         preset_setup_reduction_layers(circuit),
+        preset_memory_reduction_layers(circuit),
     );
     drain(context)?;
     let inputs = inputs?;
@@ -225,6 +258,7 @@ pub(super) fn run_case(
         context,
         target,
         preset_setup_reduction_layers(target),
+        preset_memory_reduction_layers(target),
     ) {
         Ok(inputs) => inputs,
         Err(error) => {
@@ -241,6 +275,7 @@ pub(super) fn run_case(
         context,
         follower,
         preset_setup_reduction_layers(follower),
+        preset_memory_reduction_layers(follower),
     );
     context.set_allocation_mode(AllocationMode::Proof(direction));
     let result = match &follower {
