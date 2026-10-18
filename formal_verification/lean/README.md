@@ -87,8 +87,12 @@ instruction words and their ROM image; absent shadow bytes stay absent.
 now survives initialized projected histories. Eight unchanged pinned modules
 supply Sail's Machine translation, PMP/PMA and ordinary-memory path. Native RAM
 ports derive actual virtual-memory store/load results on the same dependent
-SW/LW fixture. ROM-load transport, physical boot/ROM binding and original
-instruction execution remain separate.
+SW/LW fixture. [ROM transport and original LW clauses](Airbender/Proofs/Trace/Families/WordMemory/ROMExecution.lean)
+now derive actual ROM virtual reads and original instruction-body effects from
+public bytes and native history, including original x0. Initialized ordinary/x0
+fixtures retain distinct native shadow and ROM values and reach the same actual
+after-state. RAM clauses, normal preparation/PC retirement, complete word-memory
+execution and physical boot/ROM binding remain separate.
 Remaining families, Rust
 setup generation/export and cryptographic argument soundness remain pending. This checkpoint does not inherit v3's completed coverage.
 

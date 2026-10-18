@@ -810,6 +810,33 @@
       "source_path": "Tests/SailCheckedMemory.lean",
       "source_sha256": "dcdaaafcbf5995fdedcd57435f490ffbb529bf1e920b18aaa1faec5f293de1f1",
       "change": "Copy the concrete Machine/PMP/PMA configuration and its proof. Reuse the same accepted reversed native SW/LW history, public setup and derived native address/source facts to prove original Sail virtual-memory store/load effects and retained configuration. Preserve every existing cell/ROM-history regression; original instruction execution remains separate."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/ROMTransport.lean",
+      "backport_reuse_revision": "08e38ba742efccce7fe7932a5e03f652b09ba8cf",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/MemoryTransport.lean",
+      "backport_reuse_sha256": "13d2a149cd63754c5f9a70429fd479bd1af5939308eeb48631f9e28e2d236ab0",
+      "change": "Reuse the actual retained source/virtual-read transport and initialized native address assembly. Compose preserved public ROM extraction with original Sail virtual memory; derive the ordinary-address domain from the native ROM bound, preserving full independent shadow matching without expected read/value premises."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/ROMExecution.lean",
+      "source_path": "Airbender/Proofs/Trace/WordMemory.lean",
+      "source_sha256": "03ad1a8296aa4adb8bdc5041a31224c7532392fc63c00ee43c8df44ec34b89c6",
+      "change": "Adapt the source original word-load clause assembly to native v2 projected ports and decoder fields (funct3=2). Reuse unchanged load_word, run_bind_of_ok and write_zero. Derive actual ROM destination writes from native masked writes, retaining original x0 decoding rather than a NOP. Instruction preparation/PC retirement and full word-memory execution remain separate."
+    },
+    {
+      "path": "Tests/WordMemoryROMTransport.lean",
+      "backport_reuse_revision": "08e38ba742efccce7fe7932a5e03f652b09ba8cf",
+      "backport_reuse_path": "Tests/WordMemoryProjection.lean",
+      "backport_reuse_sha256": "9b432fde2e88ffc20d7eeb1c2ca067686cb2db8a3a22c294301c64b12adff755",
+      "change": "Copy the accepted ordinary/x0 ROM native rows, independent canonical shadow seeds, public decoder construction and projected native history. Populate actual ROM bytes for public extraction; derive original virtual reads and original LW clause execution to the same actual after-state. Prove native shadow value 123 differs from actual ROM bytes, while retaining all native refresh tokens."
+    },
+    {
+      "path": "Tests/WordMemoryROMTransport.lean",
+      "backport_reuse_revision": "08e38ba742efccce7fe7932a5e03f652b09ba8cf",
+      "backport_reuse_path": "Tests/WordMemorySailHistory.lean",
+      "backport_reuse_sha256": "76f65c4dae2f0382e6f549ce9a5a850d323c33b07b3093a3988437df79467473",
+      "change": "Reuse the concrete public Machine/PMP/PMA CSR image and configuration proof in the ordinary/x0 ROM fixtures; no desired memory result or successful-access premise is added."
     }
   ]
 }

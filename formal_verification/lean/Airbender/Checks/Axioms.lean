@@ -13,6 +13,7 @@ import Tests.WordROMImage
 import Tests.WordMemoryHistory
 import Tests.WordMemorySailHistory
 import Tests.WordMemoryProjection
+import Tests.WordMemoryROMTransport
 
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
@@ -564,3 +565,12 @@ import Tests.WordMemoryProjection
 #print axioms Airbender.WordMemory.Proofs.projected_platform_configuration
 #print axioms Airbender.WordMemory.public_projected_platform_configuration
 #print axioms Tests.WordMemorySailHistory.dependent_virtual_store_load
+#print axioms Airbender.WordMemory.Proofs.native_rom_ordinary
+#print axioms Airbender.WordMemory.Proofs.projected_virtual_rom_read
+#print axioms Airbender.WordMemory.Proofs.initialized_virtual_rom_read
+#print axioms Airbender.WordMemory.Proofs.projected_rom_destination_write
+#print axioms Airbender.WordMemory.Proofs.projected_rom_load_execution
+#print axioms Tests.WordMemoryROMTransport.public_decoder_built
+#print axioms Tests.WordMemoryROMTransport.public_rom_built
+#print axioms Tests.WordMemoryROMTransport.shadow_value_differs
+#print axioms Tests.WordMemoryROMTransport.initialized_virtual_rom_load

@@ -112,9 +112,15 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    histories preserve that configuration. Native RAM reads/writes and alignment
    now feed original virtual-memory calls; the same reversed dependent SW/LW
    fixture derives a real virtual store and subsequent load without expected
-   intermediate/read/state premises. Extend this transport to ROM loads using
-   actual public ROM extraction, then assemble original LOAD/STORE instruction
-   execution and retirement.
+   intermediate/read/state premises. Actual public ROM extraction and preserved
+   prefixes now feed original Sail virtual ROM loads. Native address bounds derive
+   their ordinary-address domain. Native masked writes now match the original LW
+   destination effect, including x0 without NOP projection; the proof layer reaches
+   the original ROM LW clause result in the actual native after-state. Ordinary/x0
+   initialized fixtures construct actual ROM/decoder bytes and configuration while
+   retaining shadow value 123 distinct from the loaded ROM word 0xc0001073.
+   Assemble original RAM LOAD/STORE clauses next, then normal instruction
+   preparation, PC retirement and complete initialized word-memory execution.
    Bind the separate native initializer to physical boot/padding. Physical setup/export binding remains open.
    Preserve v2 PC rollover and native timestamp offsets;
    keep physical setup generation/export and mixed/custom expansion explicit.

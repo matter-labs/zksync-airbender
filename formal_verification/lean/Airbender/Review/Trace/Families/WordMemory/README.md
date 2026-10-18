@@ -188,11 +188,34 @@ ordinary-address and MemoryPlatform interfaces. The same reversed SW/LW fixture
 initializes real CSRs and derives a virtual store and subsequent read of 123,
 while all existing cell, code and ROM-preservation regressions still pass.
 
-ROM loads still need their public-byte bridge composed with virtual transport.
-Original LOAD/STORE clause execution and retirement remain the next connection.
+## Checked ROM virtual transport and LW clauses
+
+[ROM transport](../../../../Proofs/Trace/Families/WordMemory/ROMTransport.lean)
+now composes retained source reads and native address/alignment with actual
+public ROM extraction. Preserved prefixes retain the extraction and public
+configuration. Native ROM bounds derive the ordinary-address condition. The
+original Sail virtual read returns the actual ROM word without a shadow read or
+expected-value premise.
+
+[Original LW assembly](../../../../Proofs/Trace/Families/WordMemory/ROMExecution.lean)
+then connects the actual native masked write to the original unmasked Sail
+instruction effect. Exact native decoder fields recover original registers and
+sign extension. For rd=x0, the pinned original write discards either value; the
+original instruction is retained without NOP preprocessing. Calculations and
+clause assembly remain entirely under Proofs.
+
+[Initialized ordinary/x0 regressions](../../../../../Tests/WordMemoryROMTransport.lean)
+construct actual ROM bytes, original decoder bytes and public configuration, then
+derive original virtual reads, actual masked writes and original LW clause
+results in the same native after-state. Full native matching retains shadow
+value 123 independently of the actual ROM word 0xc0001073. Successful extraction
+requires present bytes; absent padding is not filled.
+
+Original RAM LOAD/STORE clauses, normal instruction preparation/PC retirement
+and complete initialized word-memory execution remain the next connection.
 
 The public shadow seeds describe a logical initialized native image. Binding them
-to physical native zero boot, Sail boot/padding state, actual ROM-table binding
-and original instruction execution/retirement remain open. The existing
-arithmetic execution registry and its claims retain their scope. Physical setup
+to physical native zero boot and Sail boot/padding state remains open, along with
+physical ROM-table exports and complete original word-memory execution/retirement.
+The existing arithmetic execution registry and its claims retain their scope. Physical setup
 export, mixed/custom programs and cryptographic argument enforcement are separate.

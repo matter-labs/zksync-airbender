@@ -85,9 +85,12 @@ extraction through these transfers, including changing RAM stores. Original
 instruction reads/decoding survive for public programs fitting the native ROM
 region. [Platform preservation](../../Trace/Families/WordMemory/Platform.lean)
 now retains public Machine/PMP/PMA configuration, and native RAM effects feed
-original Sail virtual-memory calls under ordinary-address conditions. ROM-load
-transport, physical padding/boot/ROM binding and original Sail instruction
-execution remain open. The local load formula keeps its native x0 flag; the
+original Sail virtual-memory calls under ordinary-address conditions.
+[ROM virtual transport and original LW clauses](../../../Proofs/Trace/Families/WordMemory/ROMExecution.lean)
+now reach the actual native after-state from public ROM bytes, including original
+x0 loads without NOP projection. Native shadow values stay independently matched.
+Physical padding/boot/ROM binding, original RAM clauses and complete Sail
+instruction preparation/retirement remain open. The local load formula keeps its native x0 flag; the
 separate public decoder proof now derives that flag's exact relation to rd.
 The arithmetic-only trace registry remains unchanged until those connections
 are proved. See the [plan](../../../../FORMAL_VERIFICATION_PLAN.md) and

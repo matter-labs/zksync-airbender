@@ -57,5 +57,9 @@ v2 batched worker arguments and indirect-port import remain pending.
 configuration describes actual Machine CSRs, PMP/PMA permissions, disabled HTIF
 and an ordinary-address domain outside CLINT/signature windows. Native projected
 histories now [preserve it](../../Trace/Families/WordMemory/Platform.lean), and
-actual RAM port effects feed original Sail virtual-memory calls. Original
-instruction execution and physical boot/profile binding remain separate.
+actual RAM port effects feed original Sail virtual-memory calls.
+[ROM transport](../../../Proofs/Trace/Families/WordMemory/ROMTransport.lean) now
+combines actual public extraction with retained reads; native ROM bounds derive
+ordinary addresses. Original ROM LW clauses, including x0, reach actual native
+after-states without equating shadow and ROM values. Original RAM clauses,
+complete preparation/retirement and physical boot/profile binding remain separate.

@@ -106,8 +106,14 @@ execution remain open.
 [Public platform configuration](Families/WordMemory/Platform.lean) now survives
 initialized projected histories. Eight unchanged source modules supply the
 original Sail Machine/PMP/PMA and ordinary-memory interface. Actual native RAM
-reads/writes now reach Sail virtual-memory calls on the dependent SW/LW fixture;
-ROM-load transport and original instruction execution/retirement remain open.
+reads/writes now reach Sail virtual-memory calls on the dependent SW/LW fixture.
+[ROM transport](../../Proofs/Trace/Families/WordMemory/ROMTransport.lean) now derives
+original virtual reads from actual public bytes; native ROM bounds discharge
+ordinary addresses. [Original LW clauses](../../Proofs/Trace/Families/WordMemory/ROMExecution.lean)
+reach the actual masked-write after-state, retaining original x0 loads. Initialized
+ordinary/x0 regressions retain full shadow matching with distinct shadow/ROM
+values. RAM clauses, normal preparation/PC retirement and complete word-memory
+execution remain open.
 
 These are logical selected-profile results. Remaining families and physical
 setup/argument fidelity remain in [the plan](../../../FORMAL_VERIFICATION_PLAN.md).

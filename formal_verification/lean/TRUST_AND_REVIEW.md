@@ -187,9 +187,23 @@ derives actual read/write values and byte alignment from v2 equations/ports and
 projected histories, then calls unchanged Sail virtual-memory proofs. The
 reversed dependent SW/LW regression derives actual virtual store/load results
 from the same matched history and public setup; no later read or intermediate
-state/result is supplied. This proves the RAM memory-call path, while ROM-load
-transport, original LOAD/STORE instruction execution/retirement, physical boot and
-cryptographic enforcement remain separate.
+state/result is supplied. This proves the RAM memory-call path.
+[ROM transport](Airbender/Proofs/Trace/Families/WordMemory/ROMTransport.lean) now
+composes retained source reads, derived address/alignment and actual public ROM
+extraction through preserved prefixes into original Sail virtual ROM reads.
+Native ROM address bounds discharge the ordinary-address condition, with no extra
+MMIO success premise. [Original ROM LW assembly](Airbender/Proofs/Trace/Families/WordMemory/ROMExecution.lean)
+uses native masked writes and exact public decoder fields to reach the original
+LW clause result in the actual native after-state. Nonzero rd gets the actual
+ROM word; the pinned original x0 write discards it, without NOP projection.
+[Initialized regressions](Tests/WordMemoryROMTransport.lean) construct actual
+ROM/decoder bytes and configuration for both cases. Their native shadow value 123
+remains independently initialized and matched while the actual ROM bytes supply
+0xc0001073. No expected read, shadow/ROM equivalence or desired intermediate/result
+state is supplied. Extraction still requires present bytes and does not create
+missing padding. These are original clause results; RAM clauses, normal
+preparation/PC retirement and complete initialized word-memory execution remain
+open, along with physical boot/export and cryptographic enforcement.
 
 ## Public state, profiles and external inputs
 
