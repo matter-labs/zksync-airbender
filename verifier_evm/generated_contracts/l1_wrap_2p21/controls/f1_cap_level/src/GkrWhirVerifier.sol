@@ -99,7 +99,7 @@ contract GkrWhirVerifier {
     uint8 constant __TEMPLATE_INITS_TEARDOWNS_TOP_BITS_0 = 0;
     uint8 constant __TEMPLATE_INITS_TEARDOWNS_TOP_BITS_1 = 1;
     uint256 constant __TEMPLATE_EXTERNAL_POW_BITS = 20; // external-challenge PoW difficulty
-    uint256 constant __TEMPLATE_EXPECTED_FINAL_PC = 267028; // program's terminal PC — binds the verified statement to this program
+    uint256 constant __TEMPLATE_EXPECTED_FINAL_PC = 266852; // program's terminal PC — binds the verified statement to this program
 
     // ── GKR entry + dimension reduction (generated from the circuit / config) ─────────────────
     uint256 constant __TEMPLATE_GKR_NUM_OUTPUTS        = 5 * 2; // GKR output polys (global_output_map lines)
@@ -156,7 +156,7 @@ contract GkrWhirVerifier {
     // The setup data contract: STOP ‖ setup frontier (if any) ‖ pinned setup cap image ‖ GKR
     // term table; its code hash is checked once per call, before any read.
     address constant __TEMPLATE_F1_FRONTIER = 0x5FbDB2315678afecb367f032d93F642f64180aa3;
-    uint256 constant __TEMPLATE_F1_FRONTIER_HASH = 0xc7eec67261b1491bbbbdea4d800a226f1ecd3823a3097e1814488ae27289f5ce;
+    uint256 constant __TEMPLATE_F1_FRONTIER_HASH = 0xc864cf6ac6e156845cb89aa3d2a99b997792477d0de0781c6b366a851949588d;
     uint256 constant __TEMPLATE_F1_DATA_CAP_OFFSET = 1;
     uint256 constant __TEMPLATE_F1_DATA_QTABLE_OFFSET = 257;
 
@@ -348,7 +348,7 @@ contract GkrWhirVerifier {
             }
             {
                 let lo, hi := f1_ts(32)
-                mstore(add(F1_V0_PTR(), 384), shl(224, 0x14130400)) // pinned final PC
+                mstore(add(F1_V0_PTR(), 384), shl(224, 0x64120400)) // pinned final PC
                 mstore(add(F1_V0_PTR(), 388), f1_le19(lo))
                 mstore(add(F1_V0_PTR(), 392), f1_le19(hi))
             }
