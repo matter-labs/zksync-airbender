@@ -292,7 +292,7 @@ With the 14-term gate the totals were 2,428 R0 words (597 base-field records) an
 continuation words. GPU profiling of that version against `Baseline` showed both layer-0
 kernels' instruction counts and times growing with these word counts at approximately equal
 cost per word, which is what motivated the 5-term form. That observation is about the two
-profiled programs; timing of the 5-term version is a separate measurement.
+profiled programs; the measured end-to-end effect of the 5-term version is reported in §5.
 
 Method: sixteen configurations were built in process with a per-edit variant of the profile
 used only for this measurement, lowered with `gkr_eval_ir::lower_dag`, and compiled
@@ -384,15 +384,17 @@ Coverage limits:
   `#[ignore]` by default; the committed-layout and committed-SSA variants only read JSON and
   should run in CI.
 
-With the earlier 14-term PC-bump gate, a same-device comparison on the regular 2^23 GPU
-path over 10 Ethereum blocks used the baseline, the column cuts and a baseline with a
-freshly searched forward schedule. Each arm ran two processes over the same blocks,
-excluding warmup. Mean per-block proving times were 4,779, 4,781 and 4,780 ms respectively.
-No consistent material end-to-end change was observed in that session; this is not an
-equivalence result and does not measure the five-term version. In the same experiment,
-the regular GKR verifier-input stream shrank from 329,072 to 323,248 bytes (−1.77%), and
-recursion verifier cycles fell by about 0.7–0.8% across the two observed proof classes.
-L1 feeder/wrap GPU measurements are pending.
+On the regular 2^23 GPU path, a same-device comparison of trunk against this change over 10
+Ethereum blocks (two processes per side over the same blocks, interleaved, warmup excluded)
+measured mean per-block proving times of 4,774.6 and 4,761.9 ms. The paired per-block
+difference is −12.7 ms mean and −12.0 ms median (range −35.0 to +12.0 ms). It sits in the
+recursion layers that use the unified circuit (bridge −7.5 ms, recursion rounds −5.5 ms);
+the base layer, which does not use the unified circuit, changed by +0.4 ms. Profiles of one
+block's seven regular unified proofs attribute −11.8 ms to witness generation plus
+commitment and −2.5 ms to the first layer's backward kernels. This is one session on one
+device, not an equivalence bound. The regular GKR verifier-input stream shrinks from 329,072
+to 323,248 bytes (−1.77 %), and recursion verifier cycles fall by about 0.7–0.8 % across the
+two observed proof classes. L1 feeder/wrap GPU measurements are pending.
 
 On an earlier L1 branch, rather than this change's trunk base, the regular unified
 recursion verifier program went from 3,519,971 to 3,502,526 cycles and the L1 wrap program
