@@ -89,6 +89,26 @@ private def decoderChecks (setupSource : String) : IO Unit := do
   check (rejected (Setup.parseDecoder (← IO.FS.readFile "artifacts/setup/scalars-native.json")))
     "reject scalar artifact as decoder export"
 
+private def decoderPaddingChecks : IO Unit := do
+  let source ← IO.FS.readFile "artifacts/setup/decoder-padding-native.json"
+  let artifact ← IO.ofExcept (Setup.parseDecoderPadding source)
+  check (artifact.row.size == 10) "actual native decoder padding extent"
+  check (rejected ({artifact with version := 2}.validate)) "reject decoder padding version"
+  check (rejected ({artifact with field_modulus := 2013265921}.validate)) "reject v3 padding field"
+  check (rejected ({artifact with profile := "zero_padding"}.validate)) "reject changed padding profile"
+  check (rejected ({artifact with row := artifact.row.extract 0 9}.validate)) "reject short padding row"
+  check (rejected ({artifact with row := artifact.row.push 0}.validate)) "reject long padding row"
+  check (rejected ({artifact with row := artifact.row.set! 0 2147483647}.validate))
+    "reject noncanonical padding value"
+  let json ← IO.ofExcept (Json.parse source)
+  let unknown ← IO.ofExcept (replaceField json "invented" (.bool true))
+  check (rejected (Setup.parseDecoderPadding unknown.compress)) "reject unknown padding field"
+  check (rejected (Setup.parse source)) "reject padding artifact as program export"
+  check (rejected (Setup.parseScalars source)) "reject padding artifact as scalar export"
+  check (rejected (Setup.parseDecoder source)) "reject padding artifact as decoder prefix export"
+  check (rejected (Setup.parseDecoderPadding (← IO.FS.readFile "artifacts/setup/arithmetic-native.json")))
+    "reject decoder prefix as padding export"
+
 def main : IO UInt32 := do
   try
     let source ← IO.FS.readFile "../../cs/add_sub_lui_auipc_mop_preprocessed_layout.json"
@@ -265,6 +285,7 @@ def main : IO UInt32 := do
     check (rejected (fromJson? badBlock : Except String Setup.Block)) "reject unknown compressed block field"
     scalarChecks setupSource
     decoderChecks setupSource
+    decoderPaddingChecks
     return (0 : UInt32)
   catch error =>
     IO.eprintln s!"FAIL {error}"

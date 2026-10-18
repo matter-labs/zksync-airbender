@@ -211,4 +211,25 @@ def parseDecoder (source : String) : Except String DecoderArtifact := do
   artifact.validate
   return artifact
 
+/-- A tiny direct native API export, separate from regional prefix artifacts. -/
+structure DecoderPaddingArtifact where
+  version : Nat
+  field_modulus : Nat
+  profile : String
+  row : Array Nat
+  deriving Repr, FromJson
+
+def DecoderPaddingArtifact.validate (artifact : DecoderPaddingArtifact) : Except String Unit := do
+  unless artifact.version == 1 && artifact.field_modulus == mersenne31Modulus &&
+      artifact.profile == "decoder_padding" do throw "unsupported native decoder padding profile"
+  unless artifact.row.size == 10 && artifact.row.all (· < mersenne31Modulus) do
+    throw "invalid native decoder padding row"
+
+def parseDecoderPadding (source : String) : Except String DecoderPaddingArtifact := do
+  let json ← Json.parse source
+  exactKeys json #["version", "field_modulus", "profile", "row"]
+  let artifact : DecoderPaddingArtifact ← fromJson? json
+  artifact.validate
+  return artifact
+
 end Airbender.Setup

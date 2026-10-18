@@ -217,9 +217,21 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    execution to PC 28 and x1=246. Full alias matching derives every refresh/read;
    no indexed-source, per-row bound/read, intermediate state/result or table
    equivalence is a public premise. The PC-20 UNIMP hole remains public bytes;
-   initial PC 24 is supplied, with no control-flow skip asserted. Next generalize
-   exported-data certificates to arbitrary public programs and bind full physical
-   trace assembly/initialization.
+   initial PC 24 is supplied, with no control-flow skip asserted.
+   [Active decoder rows](Airbender/Review/Helpers/Tables/NativeDecoder.lean)
+   now retain each of the three actual native prefixes and the direct native
+   padding API output throughout the remaining 15,728,639 active rows. Literal
+   minus-one padding is already present in every prefix, so symbolic proofs
+   derive exact membership without a table-equivalence premise. Compiled column
+   positions 2/6, native capacity and active boundaries are checked. The short
+   [arithmetic bridge](Airbender/Review/Trace/Families/AddSub/ActiveSetup.lean)
+   derives initialized execution from this full active decoder domain; the same
+   real alias fixture reaches PC 28/x1=246. No huge trace allocation or finite
+   domain enumeration is used. Native source comments mentioning zeros do not
+   replace actual sentinel data. Reserved c0 normalization and Rust full-trace/
+   LDE/argument refinement remain separate. Next generalize exported-data
+   certificates to arbitrary public programs and bind full physical trace
+   assembly/initialization.
    The fixture certificates are not general Rust/export/LDE/compiler refinement.
    Rust refinement and cryptographic enforcement remain separate.
    Preserve v2 PC rollover and native timestamp offsets;

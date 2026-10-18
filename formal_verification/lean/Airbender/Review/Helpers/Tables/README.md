@@ -61,3 +61,12 @@ Both compiled column placements are checked. Zero filler remains valid range
 data, and the reserved normalization row is excluded. No large trace is evaluated
 or table-equivalence premise supplied. Rust physical trace/LDE/multiplicity and
 argument enforcement remain separate.
+
+[Active decoder rows](NativeDecoderData.lean) now retain three actual native
+prefixes plus the direct native padding API output through all active setup rows.
+[The short membership claim](NativeDecoder.lean) uses symbolic literal-data
+certificates: minus-one filler is already in each prefix and adds no query.
+The reserved normalization row is excluded. Native arithmetic/word-memory column
+placements, supported rows and first/last active filler are checked; full Rust
+trace/normalization/LDE refinement and physical argument enforcement remain open.
+Physical lookup multiplicities remain a separate boundary.

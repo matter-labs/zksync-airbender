@@ -88,3 +88,10 @@ indexed PC locations. Native mask equations reject unsupported slots before the
 same arithmetic history/retirement/terminal assembly runs. The physical sparse
 table keeps all holes/tail; its supported list is only an internal proof index.
 General Rust/export and physical argument correspondence remain separate.
+
+[The complete active decoder domain](../Tables/NativeDecoder.lean) now extends
+actual native prefixes with the actual native minus-one padding API row. A
+literal-data certificate proves repeated filler adds no query, retaining every
+active row and excluding final normalization. [The arithmetic execution bridge](../../Trace/Families/AddSub/ActiveSetup.lean)
+uses that membership directly; native mask equations still reject sentinels.
+General Rust trace/export/LDE and cryptographic enforcement remain separate.

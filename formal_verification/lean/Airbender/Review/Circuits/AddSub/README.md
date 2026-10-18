@@ -61,3 +61,9 @@ public construction and complete native matching derive internal source/PC
 facts. [The full post-hole alias regression](../../../../Tests/SparseArithmeticExecution.lean)
 selects actual exported PC 24 and derives PC 28 and x1=246, with the public UNIMP
 hole intact. Physical trace/argument refinement remains separate.
+
+[The active setup bridge](../../Trace/Families/AddSub/ActiveSetup.lean) now uses
+all active decoder rows from the actual prefix and native padding API sentinel.
+Symbolic membership recovery feeds the existing initialized sparse execution;
+the same full alias fixture still reaches PC 28/x1=246. The final normalization
+row and full Rust trace/LDE/argument correspondence remain separate.

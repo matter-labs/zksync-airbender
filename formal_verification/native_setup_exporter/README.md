@@ -36,7 +36,7 @@ sampled process-tree memory ceilings and wall budget. Do not run it alongside Le
 
 The binary accepts --fixture OUTPUT.json, --scalars OUTPUT.json,
 IMAGE.bin TEXT.bin OUTPUT.json, --arithmetic-fixture OUTPUT.json or
---arithmetic TEXT.bin OUTPUT.json.
+--arithmetic TEXT.bin OUTPUT.json or --decoder-padding OUTPUT.json.
 Use it only under the same bounded watchdog. Output is written to the requested
 local path after all lossless and JSON roundtrip checks pass.
 
@@ -77,3 +77,13 @@ and the short source claim. Fixture/binary modes reproduce identical output and
 reject partial/oversized text before output. The native decoder's custom modular
 MOPs are outside this concrete certificate; general Rust decoder agreement,
 arbitrary-program certificates and physical trace/argument refinement remain open.
+
+The tiny [decoder-padding artifact](../lean/artifacts/setup/decoder-padding-native.json)
+calls the same native decoder-padding API used beyond the regional prefix in
+physical setup assembly. It exports ten canonical minus-one values with JSON
+roundtrip checks. [Symbolic active-row certificates](../lean/Airbender/Proofs/Tables/NativeDecoder.lean)
+retain every extra active row, prove the sentinel is already present in each
+actual prefix and derive exact membership. Source comments mentioning zeros do
+not change the executable sentinel. No 2^24-row allocation is needed; reserved
+normalization, general Rust trace/LDE refinement and argument enforcement remain
+separate. The standard gate reproduces this artifact byte for byte.

@@ -9,8 +9,8 @@ use cs::machine::ops::unrolled::load_store_word_only::{
     create_word_only_load_store_special_tables, word_only_load_store_table_driver_fn,
 };
 use cs::machine::ops::unrolled::{
-    materialize_flattened_decoder_table, preprocess_bytecode, AddSubLuiAuipcMopDecoder,
-    OpcodeFamilyDecoder, WordOnlyMemoryFamilyDecoder,
+    decoder_table_padding, materialize_flattened_decoder_table, preprocess_bytecode,
+    AddSubLuiAuipcMopDecoder, OpcodeFamilyDecoder, WordOnlyMemoryFamilyDecoder,
 };
 use cs::tables::{TableDriver, TableType};
 use field::{Mersenne31Field, PrimeField};
@@ -76,6 +76,27 @@ struct ArithmeticDecoder {
     text_words: usize,
     text: EncodedColumn,
     decoder: Matrix,
+}
+
+/// The same native sentinel used by get_main_domain_trace beyond the prefix.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DecoderPadding {
+    version: u32,
+    field_modulus: u64,
+    profile: String,
+    row: [u32; 10],
+}
+
+fn export_decoder_padding() -> DecoderPadding {
+    let row = decoder_table_padding::<Mersenne31Field>().map(|value| value.as_u64_reduced() as u32);
+    assert!(row.iter().all(|&value| (value as u64) < MODULUS));
+    DecoderPadding {
+        version: 1,
+        field_modulus: MODULUS,
+        profile: "decoder_padding".into(),
+        row,
+    }
 }
 
 fn export_arithmetic(text: Vec<u32>) -> ArithmeticDecoder {
@@ -215,6 +236,17 @@ fn export(mut image: Vec<u32>, text: Vec<u32>) -> Artifact {
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args_os().collect();
+    if args.len() == 3 && args[1] == "--decoder-padding" {
+        let artifact = export_decoder_padding();
+        let bytes = serde_json::to_vec_pretty(&artifact)?;
+        let recovered: DecoderPadding = serde_json::from_slice(&bytes)?;
+        assert_eq!(
+            serde_json::to_value(&artifact)?,
+            serde_json::to_value(recovered)?
+        );
+        std::fs::write(args.last().unwrap(), [bytes, vec![b'\n']].concat())?;
+        return Ok(());
+    }
     if (args.len() == 3 && args[1] == "--arithmetic-fixture")
         || (args.len() == 4 && args[1] == "--arithmetic")
     {
@@ -258,7 +290,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
     } else {
         return Err(
-            "usage: exporter IMAGE.bin TEXT.bin OUTPUT.json | exporter --fixture OUTPUT.json | exporter --scalars OUTPUT.json | exporter --arithmetic TEXT.bin OUTPUT.json | exporter --arithmetic-fixture OUTPUT.json"
+            "usage: exporter IMAGE.bin TEXT.bin OUTPUT.json | exporter --fixture OUTPUT.json | exporter --scalars OUTPUT.json | exporter --arithmetic TEXT.bin OUTPUT.json | exporter --arithmetic-fixture OUTPUT.json | exporter --decoder-padding OUTPUT.json"
                 .into(),
         );
     };

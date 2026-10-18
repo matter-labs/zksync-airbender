@@ -22,6 +22,7 @@ import Tests.SparseExecution
 import Tests.NativeScalars
 import Tests.NativeArithmeticSetup
 import Tests.SparseArithmeticExecution
+import Tests.NativeDecoderRows
 
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
@@ -760,3 +761,20 @@ import Tests.SparseArithmeticExecution
 #print axioms Tests.SparseArithmeticExecution.initialized_execution
 #print axioms Tests.SparseArithmeticExecution.terminal_values
 #print axioms Airbender.Trace.Proofs.indexed_execution_soundness
+#print axioms Airbender.Verification.NativeSetup.Proofs.decoder_padding_value
+#print axioms Airbender.Verification.NativeSetup.Proofs.decoder_padding_in_prefix
+#print axioms Airbender.Verification.NativeSetup.Proofs.decoder_active_prefix
+#print axioms Airbender.Verification.NativeSetup.Proofs.decoder_active_tail
+#print axioms Airbender.Verification.NativeSetup.Proofs.decoder_membership
+#print axioms Airbender.Verification.NativeSetup.native_decoder_membership
+#print axioms Airbender.Trace.Proofs.active_arithmetic_decoded
+#print axioms Airbender.Trace.Proofs.active_word_memory_decoded
+#print axioms Airbender.Trace.active_setup_sail_execution
+#print axioms Tests.NativeDecoderRows.compiled_geometry
+#print axioms Tests.NativeDecoderRows.native_padding
+#print axioms Tests.NativeDecoderRows.supported_prefix
+#print axioms Tests.NativeDecoderRows.active_boundaries
+#print axioms Tests.NativeDecoderRows.padding_retained
+#print axioms Tests.NativeDecoderRows.tail_is_not_zero
+#print axioms Tests.SparseArithmeticExecution.active_decoded
+#print axioms Tests.SparseArithmeticExecution.active_initialized_execution

@@ -509,6 +509,37 @@ assert control flow skipping an executed hole. General Rust decoder agreement,
 arbitrary-program export certificates, custom MOPs and physical trace/argument
 refinement remain separate.
 
+## Active native decoder setup rows
+
+[The direct native padding export](artifacts/setup/decoder-padding-native.json)
+now calls the same native decoder-padding API as physical setup assembly. Its
+ten canonical Mersenne31 values are all minus one. Exact regeneration and twelve
+strict importer checks preserve the separate parsing/emission fidelity boundary.
+The native materializer comment mentions possible zeros, but the executable
+materializer and active setup filler use minus one; no zero-padding premise is
+introduced.
+
+[The active row model](Airbender/Review/Helpers/Tables/NativeDecoderData.lean)
+retains each of the three actual decoder prefixes and all 15,728,639 additional
+active rows. The final c0-normalization row is excluded. [Symbolic certificates](Airbender/Proofs/Tables/NativeDecoder.lean)
+prove the actual sentinel is already present in every prefix, so [full active
+membership](Airbender/Review/Helpers/Tables/NativeDecoder.lean) adds no query.
+This equivalence is proved from literal data, never supplied as a premise. Physical
+lookup multiplicities remain a separate boundary.
+Compiled arithmetic/word-memory placement at columns 2/6, native capacity,
+supported post-hole rows and both active padding boundaries are checked without
+enumerating or allocating a 2^24-row trace.
+
+[The short arithmetic execution bridge](Airbender/Review/Trace/Families/AddSub/ActiveSetup.lean)
+uses this complete active decoder domain with the existing public constructor,
+accepted native matching and sparse execution. The initialized alias regression
+still derives PC 24 to 28 and x1=246 through actual exported membership. An
+internal word-memory adapter also derives its sparse decoder membership.
+Existing native packed-mask/store-mask equations reject the retained sentinel.
+These are native data certificates and a source-shaped active-row model; general
+Rust full-trace/normalization/LDE refinement, arbitrary-program certificates and
+physical lookup/cryptographic enforcement remain separate. No defect is established.
+
 ## Public state, profiles and external inputs
 
 The theorem covers original Sail ADD/ADDI/SUB/LUI/AUIPC execution on the successful

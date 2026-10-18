@@ -151,3 +151,10 @@ native range16/timestamp19 prefix certificates and source-shaped active zero
 padding, with exact existing Clean helper membership. Its compiled placement is
 checked alongside arithmetic. Physical trace/LDE/multiplicity and argument
 refinement remain separate.
+
+[Active decoder data](../../Helpers/Tables/NativeDecoderData.lean) now retains
+both actual word-memory prefixes and the native minus-one filler through the
+complete active setup domain. [The short membership certificate](../../Helpers/Tables/NativeDecoder.lean)
+proves no new query is added; the existing sparse source certificate then supplies
+decoder membership internally. The reserved normalization row, full Rust trace/
+LDE correspondence and physical argument enforcement remain separate.

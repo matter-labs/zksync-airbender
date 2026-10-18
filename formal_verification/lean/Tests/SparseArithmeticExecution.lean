@@ -1,5 +1,6 @@
 import Tests.NativeArithmeticSetup
 import Airbender.Review.Trace.Families.AddSub.SparseExecution
+import Airbender.Review.Trace.Families.AddSub.ActiveSetup
 
 namespace Tests.SparseArithmeticExecution
 open Airbender Trace Reference.Sail Reference.RiscV.Sail
@@ -121,12 +122,29 @@ theorem initialized_execution : Realizes (SailStep AddSub.NativeSetup.setup.prog
     (by intro actual member; have same : actual = Cell.register 1 := by simpa [cells] using member
         subst actual; trivial)
 
+/-- Actual native tuple membership over all 2^24-1 active setup rows. -/
+theorem active_decoded : ∀ row ∈ trace.rows,
+    Verification.NativeSetup.DecoderContains .arithmetic row.decoderQuery := by
+  intro actual member
+  have same : actual = nativeRow := by simpa [trace] using member
+  subst actual
+  refine ⟨⟨6, by decide⟩, ?_⟩
+  have real : nativeRow.decoderQuery =
+      Verification.NativeSetup.decoderPrefixRow .arithmetic ⟨6, by decide⟩ := by decide +kernel
+  exact real.trans (Verification.NativeSetup.Proofs.decoder_active_prefix _ _).symm
+
+theorem active_initialized_execution :
+    Realizes (SailStep AddSub.NativeSetup.setup.program) trace before cells :=
+  active_setup_sail_execution inputs decoder_built accepted active_decoded
+    (by intro actual member; have same : actual = Cell.register 1 := by simpa [cells] using member
+        subst actual; trivial)
+
 /-- Actual fetched/decoded original ADD reaches PC 28 and x1=246. Neither
     the destination read, an intermediate state nor final value is a premise. -/
 theorem terminal_values : ∃ after, SailTrace AddSub.NativeSetup.setup.program before after ∧
     run (SailRV32.Functions.get_arch_pc ()) after = .ok (28 : BitVec 32) after ∧
     run (SailRV32.Functions.rX_bits (.Regidx 1)) after = .ok (246 : BitVec 32) after := by
-  obtain ⟨after, execution, pc, values⟩ := initialized_execution
+  obtain ⟨after, execution, pc, values⟩ := active_initialized_execution
   obtain ⟨target, _, address, read⟩ := values (cell 6 246) (by simp [trace])
   have same : target = Cell.register 1 := Trace.Proofs.cell_address_injective address
   subst target

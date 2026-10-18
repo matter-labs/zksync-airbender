@@ -30,6 +30,9 @@ def main():
         assert output.read_bytes() == (ROOT / "artifacts/setup/word-memory-native.json").read_bytes()
         print("PASS reproducible native setup export", flush=True)
         binary = TARGET / "debug/airbender-v2-native-setup-exporter"
+        subprocess.run([str(binary), "--decoder-padding", str(output)], check=True)
+        assert output.read_bytes() == (ROOT / "artifacts/setup/decoder-padding-native.json").read_bytes()
+        print("PASS reproducible actual native decoder padding API export", flush=True)
         subprocess.run([str(binary), "--scalars", str(output)], check=True)
         assert output.read_bytes() == (ROOT / "artifacts/setup/scalars-native.json").read_bytes()
         print("PASS reproducible native range16/timestamp19 scalar export", flush=True)

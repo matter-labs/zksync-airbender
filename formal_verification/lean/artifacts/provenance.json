@@ -1648,6 +1648,90 @@
       "backport_reuse_path": "Tests/X0History.lean",
       "backport_reuse_sha256": "d7c0604f676ef88f11c4ca123e50c052172228084e24bbf79f732f6d19e277e8",
       "change": "Keep original nonzero-operand SUB-to-x0 fixtures and public strict claims. Supply derived strict indexed-constructor evidence to the generalized proof-internal retirement lemma."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/NativeDecoderData.lean",
+      "backport_reuse_revision": "560540923a6e431f4c5e888395d3abca9033e82f",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/NativeScalarData.lean",
+      "backport_reuse_sha256": "fd9e2f779ea9bc85d9ab91e7b50caa4291caca1713f775dedbdda5e0e3a69a3d",
+      "change": "Reuse literal native data plus a source-shaped active-row extension. Select three existing native decoder prefixes and the direct native padding API row; preserve all 2^24-1 active rows and exclude the reserved normalization row. Use minus-one native decoder padding, not scalar zero filler."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/NativeDecoder.lean",
+      "backport_reuse_revision": "560540923a6e431f4c5e888395d3abca9033e82f",
+      "backport_reuse_path": "Airbender/Proofs/Tables/NativeScalars.lean",
+      "backport_reuse_sha256": "ef765ee768a0adfbb0a9cb2ea9a250d6bce89ed32a2b52929da820e5f6c03638",
+      "change": "Reuse symbolic prefix/tail certificate structure. Prove the actual exported padding row is minus one, occurs in every actual decoder prefix and adds no query in the full active domain. Native tuple membership equivalence is proved from literal data, not assumed."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/NativeDecoder.lean",
+      "backport_reuse_revision": "560540923a6e431f4c5e888395d3abca9033e82f",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/NativeScalars.lean",
+      "backport_reuse_sha256": "01f69fa4f75382e9a62c1d9b07b4ecb5fed8bafa82214d935312b1e0f146690f",
+      "change": "Keep one short shared native active decoder membership claim. The full padding domain is retained; source-shaped row-model correspondence is separate from Rust normalization/LDE and physical argument enforcement."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/ActiveDecoder.lean",
+      "backport_reuse_revision": "560540923a6e431f4c5e888395d3abca9033e82f",
+      "backport_reuse_path": "Airbender/Proofs/Trace/ProgramImage.lean",
+      "backport_reuse_sha256": "026920e041a385bb8f1860ea8be5ef002acb5027c139d75451adf61dbac0bbb2",
+      "change": "Reuse proof-internal decoder-membership adaptation. Derive arithmetic and word-memory sparse membership from the full active row domain and existing complete native prefix certificates; no extra table equivalence or padding-exclusion premise."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/AddSub/ActiveSetup.lean",
+      "backport_reuse_revision": "560540923a6e431f4c5e888395d3abca9033e82f",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/AddSub/SparseExecution.lean",
+      "backport_reuse_sha256": "ec07055638e2b5f25d5307d802ecf65f4cf6b1d2f3e0f04763bf5e8a1086a299",
+      "change": "Adapt one short initialized execution claim to the actual arithmetic native export with full active setup decoder membership. Reuse existing sparse execution; public initialization/construction/native matching/alignment keep their meanings."
+    },
+    {
+      "path": "Tests/NativeDecoderRows.lean",
+      "backport_reuse_revision": "560540923a6e431f4c5e888395d3abca9033e82f",
+      "backport_reuse_path": "Tests/NativeScalars.lean",
+      "backport_reuse_sha256": "ef1b801e000f96e90b8b7cee6f485e19fb8320730077972e61219fe04f97a3c8",
+      "change": "Reuse actual geometry/placement, finite prefix and symbolic active-tail regressions for native decoder padding. Check all three actual supported prefixes, first/last active filler, sentinel retention and nonzero padding. Prove the large Fin-domain size symbolically, without enumeration."
+    },
+    {
+      "path": "Tests/SparseArithmeticExecution.lean",
+      "backport_reuse_revision": "560540923a6e431f4c5e888395d3abca9033e82f",
+      "backport_reuse_path": "Tests/SparseArithmeticExecution.lean",
+      "backport_reuse_sha256": "3fd2b0eae58a78aa01314ea2fb7089933e1bae5764f0e532deb8a84d46f5f472",
+      "change": "Keep the full initialized alias witness and actual original code/decoder. Derive membership over the complete active setup domain and apply the short active execution claim. Existing final PC 28/x1=246 regression now follows from that stronger data-domain connection; no expected read/state/result premise."
+    },
+    {
+      "path": "Airbender/Import/Setup.lean",
+      "backport_reuse_revision": "560540923a6e431f4c5e888395d3abca9033e82f",
+      "backport_reuse_path": "Airbender/Import/Setup.lean",
+      "backport_reuse_sha256": "2e0cd79a868015774305450911d3f4d9921026ede5c34abb3c3447bb2677d626",
+      "change": "Preserve existing compressed program/scalar/decoder profiles. Add a separate direct native padding-row profile with exact keys/version/field/profile, ten canonical values and no inferred row semantics."
+    },
+    {
+      "path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_revision": "560540923a6e431f4c5e888395d3abca9033e82f",
+      "backport_reuse_path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_sha256": "f8ad913ebcc50bff3f64fb4a1141291f77560373f1541aeb3602c5a60d7a5e82",
+      "change": "Retain every existing literal emission helper unchanged. Add a tiny literal ten-value padding import command; kernel proofs establish its meaning."
+    },
+    {
+      "path": "Tests/ArtifactImport.lean",
+      "backport_reuse_revision": "560540923a6e431f4c5e888395d3abca9033e82f",
+      "backport_reuse_path": "Tests/ArtifactImport.lean",
+      "backport_reuse_sha256": "aedb0aa31353027d941be618ca1b2d4d255248cea5a37fa0bd7d23938adcdb11",
+      "change": "Retain all prior tests and add twelve direct native padding profile/extent/canonical/unknown-key/cross-profile checks in a separate IO helper."
+    },
+    {
+      "path": "scripts/check_native_setup.py",
+      "backport_reuse_revision": "560540923a6e431f4c5e888395d3abca9033e82f",
+      "backport_reuse_path": "scripts/check_native_setup.py",
+      "backport_reuse_sha256": "66fcaa72e67450ffc1d6e5de3d1de909226878fd3a1aefb8ef6e79fdb721a128",
+      "change": "Retain every old regeneration/binary-rejection check and reproduce the actual native padding API row byte for byte."
+    },
+    {
+      "path": "../native_setup_exporter/src/main.rs",
+      "backport_reuse_revision": "560540923a6e431f4c5e888395d3abca9033e82f",
+      "backport_reuse_path": "../native_setup_exporter/src/main.rs",
+      "backport_reuse_sha256": "914f83b0aefd41a581f8a9e7ac831233413dc5668874cd28701382bfd3450f18",
+      "change": "Preserve existing native scalar/program/arithmetic generation and the unchanged lossless codec. Add a separate tiny direct decoder_table_padding::<Mersenne31Field> export with canonical value/JSON roundtrip checks; no physical trace allocation or dependency change."
     }
   ],
   "setup_artifacts": [
@@ -1704,6 +1788,15 @@
         1081523
       ],
       "boundary": "concrete original-Sail sparse setup certificate over every exported slot; custom MOPs, arbitrary programs and full physical trace refinement remain separate"
+    },
+    {
+      "path": "artifacts/setup/decoder-padding-native.json",
+      "sha256": "d227277f746f3dcfa1fb74aafb3e825c6813140b833f44fd0ebdd121642839b9",
+      "profile": "shared native v2 Mersenne31 decoder_table_padding API output; complete ten-column sentinel",
+      "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py; exporter --decoder-padding",
+      "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5",
+      "native_api": "cs::machine::ops::unrolled::decoder_table_padding::<Mersenne31Field>",
+      "physical_trace": "source-shaped active decoder extension; reserved normalization row, Rust full trace/LDE refinement and argument enforcement excluded"
     }
   ],
   "native_exporter_files": [
@@ -1717,7 +1810,7 @@
     },
     {
       "path": "../native_setup_exporter/src/main.rs",
-      "sha256": "914f83b0aefd41a581f8a9e7ac831233413dc5668874cd28701382bfd3450f18"
+      "sha256": "523449858141504885c7e4aa5898fa95a0794b0d91885fc22190345225dd10e1"
     },
     {
       "path": "../native_setup_exporter/src/columns.rs",

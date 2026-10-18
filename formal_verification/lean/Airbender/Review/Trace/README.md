@@ -182,3 +182,10 @@ selects actual exported slot six at public PC 24 and reaches PC 28 and x1=246.
 No indexed-source evidence, per-row bound/read, intermediate state, desired result
 or table equivalence is a public premise. Custom MOPs, general decoder/export
 refinement and physical argument enforcement remain separate.
+
+[Active setup arithmetic execution](Families/AddSub/ActiveSetup.lean) now consumes
+complete active decoder membership over the actual native prefix and padding API
+row. [The shared certificate](../Helpers/Tables/NativeDecoder.lean) proves the
+full domain adds no query; the same initialized alias witness reaches PC 28 and
+x1=246. No padding exclusion or table equivalence is a public premise. Final
+normalization, Rust full-trace/LDE and physical argument enforcement remain open.

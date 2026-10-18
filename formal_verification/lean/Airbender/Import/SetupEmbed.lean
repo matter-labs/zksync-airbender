@@ -108,4 +108,13 @@ elab "import_native_decoder " name:ident " from " path:str : command => do
   let textWords := mkIdent (name.getId.appendAfter "TextWords")
   elabCommand (← `(def $textWords : Nat := $(quote artifact.text_words)))
 
+/-- Literal native sentinel data only; its meaning is proved in the kernel. -/
+elab "import_native_decoder_padding " name:ident " from " path:str : command => do
+  let source ← IO.FS.readFile path.getString
+  let artifact ← match parseDecoderPadding source with
+    | .ok artifact => pure artifact
+    | .error error => throwError "native decoder padding import failed: {error}"
+  let values := artifact.row.map quote
+  elabCommand (← `(def $name : Vector Nat 10 := #v[$[$values],*]))
+
 end Airbender.Setup
