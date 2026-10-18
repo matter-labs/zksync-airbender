@@ -10,9 +10,9 @@ DECODER TABLE BY THE SAME EXECUTE-GATED LOOKUP AS BEFORE.
 The unified circuit (`cs/src/gkr_circuits/unified_reduced_machine/`) now commits 38 memory
 plus 58 witness base columns instead of 38 plus 66, in both fields. Four edits remove eight
 witness columns: three temporaries move into scratch-pool slots that Family 3 already owns,
-the family one-hot helper becomes a linear tie on `execute`, the PC-bump helper becomes a sum
-of dispatch flags, and three Family 2 rd-write helpers become affine expressions in the
-decoder flags. The helper columns' defining constraints and Booleanity checks go with them,
+the family one-hot helper becomes a linear tie on `execute`, the PC-bump helper becomes
+`execute` minus the four Family 2 sub-opcode flags, and three Family 2 rd-write helpers become
+affine expressions in the decoder flags. The helper columns' defining constraints and Booleanity checks go with them,
 which is why the first GKR layer has nine fewer gates; the relations they enforced are
 carried by constraints on the retained columns. Nothing else about the circuit changes: the
 memory layout, the lookup counts, the scratch width 41, the generic-lookup setup width 10 and
@@ -53,8 +53,8 @@ The eight columns, by the `Baseline` variable names that disappear from the comp
 |---|---|---|---|---|---|
 | 1, 2 | `shared F1/F2 intermediate reg[0..1]` | F1 modular-op canonicity residual, F2 saved PC / comparison result, F4 (limb 0) `top_14` of the SW/LW address split | A 16-bit-range-checked u32 temporary shared by three families that never fire on the same row | Family 3's rs1 byte-split slots `shared scratch var[17]`, `[18]` are free on every non-F3 row and are read only under F3 flags; F3's values there are bytes, so the slots' RC-16 holds on F3 rows too | The same register, now `Register(scratch_vars[17], scratch_vars[18])` with an explicit RC-16 on each slot (`circuit.rs:395-407`); every F1/F2/F4 reader keeps its family gate (§3.1) |
 | 3 | `Intermedaite low for PC computation` | F2 low limb of the next PC before the alignment cleanup, for every F2 sub-op including SLT's sequential `pc + 4` | u16 temporary read only by F2 | F3's shift-output slot `shared scratch var[7]` is free on non-F3 rows and read only under F3 flags | `pc_tmp_slot = scratch_vars[7]` with the same RC-16 (`jump_branch_slt.rs:100-109`); all F2 readers keep their gates (§3.1) |
-| 4 | `unified family-dispatch one-hot` | Boolean `execute · Σ dispatch bits`, enforcing "at most one family per executing row" | Degree-2 trick: a Boolean helper bounds the product | The bound is a linear fact once the helper is dropped | `execute − Σ dispatch bits = 0`, explicit degree-1 constraint (`circuit.rs:691-695`); "exactly one" on executing rows, none on padding (§3.2) |
-| 5 | `unified pc-bump gate` | Boolean `execute · (1 − Σ F2 sub-op bits)` gating `pc_out = pc_in + 4` | Keeps the two PC-bump constraints at degree 2 | Under the tie, this value equals the sum of the non-F2 dispatch bits, which is linear | gate := `Σ (F1 + F3 + F4 dispatch bits)` (`circuit.rs:607`, `non_f2_dispatch_sum` at `:480`); both PC-bump constraints unchanged otherwise (§3.3) |
+| 4 | `unified family-dispatch one-hot` | Boolean `execute · Σ dispatch bits`, enforcing "at most one family per executing row" | Degree-2 trick: a Boolean helper bounds the product | The bound is a linear fact once the helper is dropped | `execute − Σ dispatch bits = 0`, explicit degree-1 constraint (`circuit.rs:703-707`); "exactly one" on executing rows, none on padding (§3.2) |
+| 5 | `unified pc-bump gate` | Boolean `execute · (1 − Σ F2 sub-op bits)` gating `pc_out = pc_in + 4` | Keeps the two PC-bump constraints at degree 2 | On admitted rows this value equals the linear `execute − Σ F2 sub-op bits` | gate := `execute − Σ F2 sub-op bits` (`pc_bump_gate`, `circuit.rs:509-516`, used at `:619`); both PC-bump constraints unchanged otherwise (§3.3) |
 | 6 | `is_jal_or_jalr_writes_rd` | F2 gate `(jal + jalr)(1 − rd_is_zero)` | Degree-2 helper | On every decoder row it equals `jal + jalr + branch − rd_is_zero` | that affine gate (`jump_branch_slt.rs:1090-1102`) in the unchanged rd-write constraints (§3.4) |
 | 7 | `is_slt_writes_rd` | F2 gate `slt · (1 − rd_is_zero)` | Degree-2 helper | SLT never carries `rd_is_zero`, so it equals `slt` | `slt` (§3.4) |
 | 8 | `gate_fam2_rd_zero` | F2 gate `(jal + jalr + slt + branch) · rd_is_zero` | Degree-2 helper | `rd_is_zero` only ever comes with an F2 sub-op, so it equals `rd_is_zero` | `rd_is_zero` (§3.4) |
@@ -81,7 +81,7 @@ every padding row. Three facts about the flags are the shared premise.
    `unified_decoder_table`). Unsupported PCs are materialized as all-`MINUS_ONE` rows
    (`decoder_trait.rs:264-274`) and cannot match a range-checked PC.
 3. **Padding rows have no flags.** `(1 − execute) · Σ (all 19 flags) = 0` is unchanged
-   (`circuit.rs:698-720`); with Booleanity it zeroes every flag, including `RD_IS_ZERO`, on
+   (`circuit.rs:710-732`); with Booleanity it zeroes every flag, including `RD_IS_ZERO`, on
    `execute = 0` rows, where the decoder lookup is disabled.
 
 So the only flag assignments a prover can present are a validated decoder-table mask on an
@@ -164,12 +164,12 @@ depend only on the rs1 limbs, so there is no cycle (`circuit.rs:119-125`).
 `Baseline` allocated a Boolean `is_any_family_active` with the setup constraint
 `is_any_family_active = execute · Σ dispatch bits`; Booleanity of the helper then forced
 `Σ dispatch bits ∈ {0, 1}` on executing rows. The dispatch bits are the 18 flags other than
-`RD_IS_ZERO` (`dispatch_sum`, `circuit.rs:495-507`).
+`RD_IS_ZERO` (`dispatch_sum`, `circuit.rs:495-504`).
 
 `ColumnCuts` asserts the explicit degree-1 constraint
 
 ```text
-execute − Σ dispatch bits = 0        (circuit.rs:691-695)
+execute − Σ dispatch bits = 0        (circuit.rs:703-707)
 ```
 
 through `add_constraint_expr_allow_explicit_linear_prevent_optimizations_expr`; the compiler
@@ -190,25 +190,47 @@ subset of the set the `Baseline` helper admitted, and the difference is exactly 
 assignments `execute = 1` with mask 0 or `RD_IS_ZERO` alone, neither of which is a decoder
 row.
 
-### 3.3 The PC-bump gate becomes the sum of the non-F2 dispatch bits
+### 3.3 The PC-bump gate becomes `execute` minus the Family 2 sub-opcode flags
 
 The two PC-bump constraints are unchanged:
 
 ```text
 gate · (pc_in[0] + 4 − pc_out[0] − 2^16 · pc_inc_carry) = 0
-gate · (pc_inc_carry + pc_in[1] − pc_out[1]) = 0          (circuit.rs:615-624)
+gate · (pc_inc_carry + pc_in[1] − pc_out[1]) = 0          (circuit.rs:626-636)
 ```
 
-with `pc_inc_carry` Boolean and `pc_out` limbs RC-16 as before (`circuit.rs:526-556`).
+with `pc_inc_carry` Boolean and `pc_out` limbs RC-16 as before (`circuit.rs:537-567`).
 `Baseline` computed `gate` into a Boolean helper defined by
 `gate = execute − Σ execute · F2 sub-op bits`. `ColumnCuts` uses
-`gate := Σ (F1 + F3 + F4 dispatch bits)` (`circuit.rs:607`, `non_f2_dispatch_sum`). Under the
-tie, `Σ non-F2 = execute − Σ F2 sub-ops`, which is the helper's defining value on every
-admitted row: 1 on F1/F3/F4 rows, 0 on F2 rows (Family 2 owns the PC there) and 0 on padding,
-where the PC-bump equations impose nothing, as before; the unconditional RC-16 on the
-`pc_out` limbs and the memory and boundary obligations on the PC are untouched. The gate is degree 1, so both constraints stay
-degree 2. The exhaustive test above also checks, on every tie-admitted assignment, that the
-new gate equals the value the old helper's definition forces.
+
+```text
+gate := execute − (jal + jalr + slt + branch)        (pc_bump_gate, circuit.rs:509-516)
+```
+
+which is the helper's defining value without the `execute` factor on the F2 flags. The two agree
+on every admitted row: there `execute = 1`, or the F2 flags are zero on padding. The gate is 1
+on F1/F3/F4 rows, 0 on F2 rows (Family 2 owns the PC there) and 0 on padding, where the PC-bump
+equations impose nothing, as before; the unconditional RC-16 on the `pc_out` limbs and the
+memory and boundary obligations on the PC are untouched. The gate is degree 1, so both
+constraints stay degree 2. `RD_IS_ZERO` is not subtracted: a branch row has
+`execute = branch = RD_IS_ZERO = 1` and needs gate 0.
+
+The sum of the 14 non-F2 dispatch flags (`non_f2_dispatch_sum`, `circuit.rs:480-492`) is an
+equivalent gate. The two differ by exactly the tie residual,
+
+```text
+(execute − Σ F2 sub-op bits) − Σ non-F2 dispatch bits = execute − Σ dispatch bits
+```
+
+so with the tie asserted (§3.2) they impose the same PC-bump constraints in either field, with
+no premise about Booleanity or the decoder. The 5-term form is used because each gate term
+multiplies both PC-bump constraints: with the 14-term gate the first layer's backward programs
+grow by about 9 %, with the 5-term gate they end up smaller than `Baseline`'s (§3.5).
+
+`column_cuts_tests.rs::pc_bump_gate_differs_from_non_f2_dispatch_sum_by_the_tie_residual`
+checks the identity above on all 2^20 Boolean `(execute, mask)` assignments in both fields,
+and the exhaustive test of §3.2 checks, on every tie-admitted assignment, that the gate equals
+the value the old helper's definition forces.
 
 ### 3.4 The three F2 rd-write gates become affine in the decoder flags
 
@@ -249,6 +271,40 @@ constraint and compares it with the `ColumnCuts` gate on every decoder row class
 padding; `dispatch_tie_strengthens_one_hot_exhaustively` does the same over all 2^20 Boolean
 assignments and confirms that among the tie-admitted executing assignments the affine gates differ from
 the helpers on exactly 16 masks, every one of which the validator rejects.
+
+### 3.5 What each edit costs in the first layer's backward programs
+
+Removing columns does not by itself make the GKR backward pass cheaper: the first layer's
+expressions are compiled into an R0 window program and a main-continuation window program,
+and the two backward kernels that run them do work that grows with the program length.
+Per-edit sizes for the regular BabyBear 2^23 circuit:
+
+| Edit | Witness columns | R0 window words | Base-field records | Main-continuation words | Degree-2 quadratic terms |
+|---|---:|---:|---:|---:|---:|
+| Pool aliasing (§3.1) | −3 | 0 | 0 | 0 | 0 |
+| Dispatch tie (§3.2) | −1 | −8 | −2 | −6 | −19 |
+| PC-bump gate as `non_f2_dispatch_sum` (14 terms) | −1 | +244 | +61 | +183 | +73 |
+| PC-bump gate as `pc_bump_gate` (5 terms, §3.3) | −1 | +16 | +4 | +12 | +19 |
+| F2 affine gates (§3.4) | −3 | −40 | −10 | −30 | +2 |
+| **All four, 5-term gate** | **−8** | **2,232 → 2,200** | **548 → 540** | **1,710 → 1,686** | **382 → 384** |
+
+With the 14-term gate the totals were 2,428 R0 words (597 base-field records) and 1,857
+continuation words. GPU profiling of that version against `Baseline` showed both layer-0
+kernels' instruction counts and times growing with these word counts at approximately equal
+cost per word, which is what motivated the 5-term form. That observation is about the two
+profiled programs; timing of the 5-term version is a separate measurement.
+
+Method: sixteen configurations were built in process with a per-edit variant of the profile
+used only for this measurement, lowered with `gkr_eval_ir::lower_dag`, and compiled
+with `gpu_gkr_compiler`'s `compile_r0` and `lower_main_continuation_window_program` for layer
+0. Thirteen use the original edits: `Baseline`, each edit alone, each edit removed from the
+all-edits build, the all-edits build, and three mixed controls (tie + PC-bump,
+aliasing + tie, aliasing + tie + PC-bump). The other three are reformulations, among them
+the 5-term gate. The `Baseline` build and the all-edits build reproduced the committed
+layouts exactly. For every edit, adding it to `Baseline` and removing it from the all-edits
+build changed every count by the same amount, and the mixed controls agree with the sums, so
+the rows are additive marginals that sum to the totals. The 5-term row is the difference to
+the build without the PC-bump edit.
 
 ## 4. The completeness defect found during implementation, and the rule it produced
 
@@ -294,6 +350,7 @@ What follows from it:
 | Decoder masks obey the facts of §2; validator exact over all 2^19 masks | `decoder::tests::{unified_decoder_accepts_exactly_the_enumerated_kinds, unified_decoder_mask_validator_is_exact, invalid_decoded_mask_panics}` (11 decoder tests) | `cs` | |
 | The real setup tables obey the facts | `unified_setup_decoder_tables_pass_the_mask_validator` | `setups` (tests) | every entry of the regular guests' tables through the setups' own builder |
 | Each new gate equals its removed helper on every row class and padding; tie strictly stronger; 16 off-table masks | `column_cuts_tests::{column_cuts_gates_match_baseline_helpers_on_all_row_classes, dispatch_tie_strengthens_one_hot_exhaustively}` | `cs` | exhaustive over 2^20 `(execute, mask)` |
+| The 5-term PC-bump gate minus `non_f2_dispatch_sum` is the tie residual (§3.3) | `column_cuts_tests::pc_bump_gate_differs_from_non_f2_dispatch_sum_by_the_tie_residual` | `cs` | exhaustive over 2^20 `(execute, mask)`, both fields |
 | No reader of slots 17/18/7 is live on a row another family occupies; one unconditional RC-16 per slot; no memory-tuple reader | `liveness::tests::{aliasing_liveness_committed_layouts, aliasing_liveness_in_memory}` | `cs` | `#[ignore]`; resolves every compiled relation to a polynomial over base columns and substitutes each row class |
 | The walker can fail | `liveness::tests::aliasing_liveness_checker_rejects_injected_readers` | `cs` | `#[ignore]`; negative control |
 | The decoder-lookup oracle used by the tests matches the compiled decoder relation | `liveness::tests::decoder_lookup_oracle_matches_compiled_relation` | `cs` | `#[ignore]` |
@@ -302,7 +359,7 @@ What follows from it:
 | Generated witness code is satisfying on real traces (§4) | `tests::gkr::unified_generated_witness::generated_witness_satisfies_{regular_layout,proth120_wrap_layout}` | `prover` | |
 | cs-evaluator control on real cycles | `single_cycle_tests::unified_circuit_tests::test::unified_column_cuts_real_cycles_satisfied` | `prover` | `#[ignore]`; replays ~700 cycles |
 | Committed CUDA witness source and forward schedule follow the new layout | `gpu_witness_eval_generator` `tests::{committed_witness_cuh_is_current, every_committed_cuh_is_listed}`; `gpu_gkr_compiler` `every_retained_forward_artifact_validates_compiles_and_encodes` (`tests/forward_corpus.rs:42`) | GPU crates | currentness guards, no GPU needed; they do not establish GPU execution parity |
-| BabyBear proof generation and native verification | `prover::tests::gkr::unified_circuit::gkr_run_unified_test_sec_100`; `verifier::native::unified_reduced_machine_sec_100` | `prover`, `verifier` | The producer regenerates the unified CPU proof; the `native` integration target verifies the committed proof with the generated verifier. |
+| BabyBear proof generation and native verification | `prover::tests::gkr::unified_circuit::gkr_run_unified_test_sec_100`; `verifier::native::unified_reduced_machine_sec_100` | `prover`, `verifier` | Set `GKR_BLAKE=compression` for the smoke fixture. The producer regenerates the unified CPU proof; the `native` integration target verifies the committed proof with the generated verifier. |
 | Full-statement verification of the BabyBear fixture | `full_statement_verifier::unified::{unified_base_layer_accepts_valid_proof, unified_base_layer_rejects_corrupted_stream, rejects_corrupted_setup_cap, rejects_tampered_final_register_state, rejects_num_it_circuits_zero, rejects_num_it_circuits_exceeds_num_circuits, rejects_duplicated_multi_instance, unified_base_layer_transpiler_accepts_valid_proof}` | `full_statement_verifier` | Eight tests in integration target `unified`, all `#[ignore]`; checks the valid fixture, corrupted proof/setup/state, invalid instance counts and the RISC-V verifier. The transpiler test also requires the optional base-layer verifier binary. |
 | Proth120 2^22 packed proof and calldata consistency | `prover::tests::gkr::large_field::gkr_unified_packed_commitment_basic_fibonacci`; `verifier_evm::flatten_roundtrip::flatten_and_seed_match_reference` | `prover`, `verifier_evm` | The ignored producer proves `circuit_tester` despite its name. The `flatten_roundtrip` integration test checks calldata and transcript values against the committed proof. This smoke fixture is not full-chain L1 parity coverage. |
 | Merged EVM verifier acceptance and rejection | `GkrWhirMergedTest::{test_merged_single_tx, test_production_verifier_rejects_other_program, test_noncanonical_dim_reduce_lane_rejected, test_zero_registry_rejected, test_codeless_registry_rejected, test_refusing_registry_fails_verification}` | `verifier_evm` Foundry suite | Six tests in `generated_contracts/merged/test/GkrWhirMerged.t.sol`. The fixture contract binds the saved proof's program; the production contract retains the feeder binding. |
@@ -327,13 +384,15 @@ Coverage limits:
   `#[ignore]` by default; the committed-layout and committed-SSA variants only read JSON and
   should run in CI.
 
-On the regular 2^23 GPU path, a same-device comparison over 10 Ethereum blocks used the
-baseline, the column cuts and a baseline with a freshly searched forward schedule. Each
-arm ran two processes over the same blocks, excluding warmup. Mean per-block proving
-times were 4,779, 4,781 and 4,780 ms respectively: the column-cut deltas were within the
-schedule control's noise. The regular GKR verifier-input stream shrank from 329,072 to
-323,248 bytes (−1.77%), and recursion verifier cycles fell by 0.70–0.81% across the two
-observed proof classes. L1 feeder/wrap GPU measurements are pending.
+With the earlier 14-term PC-bump gate, a same-device comparison on the regular 2^23 GPU
+path over 10 Ethereum blocks used the baseline, the column cuts and a baseline with a
+freshly searched forward schedule. Each arm ran two processes over the same blocks,
+excluding warmup. Mean per-block proving times were 4,779, 4,781 and 4,780 ms respectively.
+No consistent material end-to-end change was observed in that session; this is not an
+equivalence result and does not measure the five-term version. In the same experiment,
+the regular GKR verifier-input stream shrank from 329,072 to 323,248 bytes (−1.77%), and
+recursion verifier cycles fell by about 0.7–0.8% across the two observed proof classes.
+L1 feeder/wrap GPU measurements are pending.
 
 On an earlier L1 branch, rather than this change's trunk base, the regular unified
 recursion verifier program went from 3,519,971 to 3,502,526 cycles and the L1 wrap program
@@ -346,9 +405,9 @@ not timing predictions for the trunk or L1 GPU paths.
 Read in this order:
 
 1. `circuit.rs`: the `UnifiedCircuitProfile` enum and slot constants (`:69-132`), the
-   register allocation (`:393-407`), `non_f2_dispatch_sum`/`dispatch_sum` (`:480-505`), the
-   PC-bump gate (`:560-624`) and the dispatch tie with the padding-zeroing constraint
-   (`:629-720`).
+   register allocation (`:393-407`), `non_f2_dispatch_sum`/`dispatch_sum`/`pc_bump_gate`
+   (`:480-516`), the PC-bump constraints (`:571-636`) and the dispatch tie with the
+   padding-zeroing constraint (`:641-732`).
 2. `jump_branch_slt.rs:1084-1102` (`f2_rd_write_gates`) and the rd-write constraints at
    `:1050-1073`; `decoder.rs:35-54` and `:147-163` for the mask facts and the panic.
 3. `binary_shifts.rs:58-113` for the slot assignment and the u16 conditional writers; then
