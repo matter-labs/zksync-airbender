@@ -19,7 +19,32 @@ pub fn unified_reduced_machine_circuit_setup<A: GoodAllocator + 'static>(
     let compiled_circuit = ::unified_reduced_machine::get_circuit(use_caches);
     let table_driver = ::unified_reduced_machine::get_table_driver(binary_image);
 
-    let decoder_table = unified_decoder_table::<A>(text_section);
+    use common_constants::*;
+    use cs::gkr_circuits::*;
+    use riscv_transpiler::ir::ReducedMachineDecoderConfig;
+
+    let decoders: Vec<Box<dyn OpcodeFamilyDecoder>> = vec![Box::new(UnifiedReducedMachineDecoder)];
+    const SUPPORTED_CSRS: &[u16] = &[
+        NON_DETERMINISM_CSR as u16,
+        BLAKE2S_DELEGATION_CSR_REGISTER as u16,
+        BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16,
+        KECCAK_SPECIAL5_CSR_REGISTER as u16,
+        BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER as u16,
+    ];
+    let mut preprocessing_data = process_binary_into_separate_tables_ext::<
+        BabyBearField,
+        ReducedMachineDecoderConfig,
+        true,
+        A,
+    >(
+        text_section,
+        &decoders,
+        common_constants::ROM_WORD_SIZE,
+        SUPPORTED_CSRS,
+    );
+    let decoder_table = preprocessing_data
+        .remove(&REDUCED_MACHINE_CIRCUIT_FAMILY_IDX)
+        .expect("UnifiedReducedMachineDecoder must produce a family-128 entry");
 
     let trace_len = 1
         << <::unified_reduced_machine::UnifiedReducedMachineCircuit as RiscVCycleCircuit<
@@ -45,36 +70,4 @@ pub fn unified_reduced_machine_circuit_setup<A: GoodAllocator + 'static>(
         setup,
         witness_eval_fn,
     }
-}
-
-/// The decoder table used by the unified setup, exposed for decoder-invariant tests.
-pub fn unified_decoder_table<A: GoodAllocator + 'static>(
-    text_section: &[u32],
-) -> Vec<Option<ExecutorFamilyDecoderData>, A> {
-    use common_constants::*;
-    use cs::gkr_circuits::*;
-    use riscv_transpiler::ir::ReducedMachineDecoderConfig;
-
-    let decoders: Vec<Box<dyn OpcodeFamilyDecoder>> = vec![Box::new(UnifiedReducedMachineDecoder)];
-    const SUPPORTED_CSRS: &[u16] = &[
-        NON_DETERMINISM_CSR as u16,
-        BLAKE2S_DELEGATION_CSR_REGISTER as u16,
-        BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16,
-        KECCAK_SPECIAL5_CSR_REGISTER as u16,
-        BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER as u16,
-    ];
-    let mut preprocessing_data = process_binary_into_separate_tables_ext::<
-        BabyBearField,
-        ReducedMachineDecoderConfig,
-        true,
-        A,
-    >(
-        text_section,
-        &decoders,
-        common_constants::ROM_WORD_SIZE,
-        SUPPORTED_CSRS,
-    );
-    preprocessing_data
-        .remove(&REDUCED_MACHINE_CIRCUIT_FAMILY_IDX)
-        .expect("UnifiedReducedMachineDecoder must produce a family-128 entry")
 }
