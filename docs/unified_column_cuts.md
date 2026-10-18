@@ -302,9 +302,18 @@ What follows from it:
 | Generated witness code is satisfying on real traces (§4) | `tests::gkr::unified_generated_witness::generated_witness_satisfies_{regular_layout,proth120_wrap_layout}` | `prover` | |
 | cs-evaluator control on real cycles | `single_cycle_tests::unified_circuit_tests::test::unified_column_cuts_real_cycles_satisfied` | `prover` | `#[ignore]`; replays ~700 cycles |
 | Committed CUDA witness source and forward schedule follow the new layout | `gpu_witness_eval_generator` `tests::{committed_witness_cuh_is_current, every_committed_cuh_is_listed}`; `gpu_gkr_compiler` `every_retained_forward_artifact_validates_compiles_and_encodes` (`tests/forward_corpus.rs:42`) | GPU crates | currentness guards, no GPU needed; they do not establish GPU execution parity |
-| End to end | BabyBear unified CPU proof regenerated (`regenerate-babybear-proof.log`), verified natively (`verifier` `tests/native.rs::unified_reduced_machine_sec_100`, `verify-babybear-native.log`) and by the FSV checks (first run 7 passed, 1 failed; the exact transpiler rerun passed: `verify-babybear-fsv.log`, `verify-babybear-fsv-transpiler.log`). Proth120 2^22 proof regeneration completed (`regenerate-proth120-proof.log`, `gkr_unified_packed_commitment_basic_fibonacci` 1 passed); its standalone native/EVM verification is reported separately in the PR evidence. Docker-reproduced verifier binaries: 57 of 57 artifacts equal to the committed ones, the nine changed files being the three unified FSV variants × bin/elf/text (`docker-binary-identity.json` records the 57/57 identity; `verifier-binaries.json` records the nine changed artifacts) | | logs in the PR's evidence record (`orange/.agents/plans/2026-10-17-column-cuts-extract/`) |
+| BabyBear proof generation and native verification | `prover::tests::gkr::unified_circuit::gkr_run_unified_test_sec_100`; `verifier::native::unified_reduced_machine_sec_100` | `prover`, `verifier` | The producer regenerates the unified CPU proof; the `native` integration target verifies the committed proof with the generated verifier. |
+| Full-statement verification of the BabyBear fixture | `full_statement_verifier::unified::{unified_base_layer_accepts_valid_proof, unified_base_layer_rejects_corrupted_stream, rejects_corrupted_setup_cap, rejects_tampered_final_register_state, rejects_num_it_circuits_zero, rejects_num_it_circuits_exceeds_num_circuits, rejects_duplicated_multi_instance, unified_base_layer_transpiler_accepts_valid_proof}` | `full_statement_verifier` | Eight tests in integration target `unified`, all `#[ignore]`; checks the valid fixture, corrupted proof/setup/state, invalid instance counts and the RISC-V verifier. The transpiler test also requires the optional base-layer verifier binary. |
+| Proth120 2^22 packed proof and calldata consistency | `prover::tests::gkr::large_field::gkr_unified_packed_commitment_basic_fibonacci`; `verifier_evm::flatten_roundtrip::flatten_and_seed_match_reference` | `prover`, `verifier_evm` | The ignored producer proves `circuit_tester` despite its name. The `flatten_roundtrip` integration test checks calldata and transcript values against the committed proof. This smoke fixture is not full-chain L1 parity coverage. |
+| Merged EVM verifier acceptance and rejection | `GkrWhirMergedTest::{test_merged_single_tx, test_production_verifier_rejects_other_program, test_noncanonical_dim_reduce_lane_rejected, test_zero_registry_rejected, test_codeless_registry_rejected, test_refusing_registry_fails_verification}` | `verifier_evm` Foundry suite | Six tests in `generated_contracts/merged/test/GkrWhirMerged.t.sol`. The fixture contract binds the saved proof's program; the production contract retains the feeder binding. |
 
-Not covered, and stated so deliberately:
+For integration tests, `crate::target::test` names the crate, Cargo test target and test.
+The regenerated verifier binaries were reproduced using the pinned
+Docker build in [`tools/reproduce`](../tools/reproduce/README.md): all 57 tracked artifacts
+matched byte-for-byte. Nine artifacts changed relative to the baseline: the three unified
+FSV variants, each with `.bin`, `.elf` and `.text` outputs.
+
+Coverage limits:
 
 - The generated-witness tests check arithmetic, the two range-check families and decoder
   membership. They do not check membership of the other generic lookups (Family 3's byte
@@ -312,27 +321,25 @@ Not covered, and stated so deliberately:
   18 on an F3 row that keeps arithmetic and RC-16 satisfied is rejected only by the real
   lookup argument. The native round trip enforces that argument on the honest program it
   proves; no adversarial round trip with such an injected corruption was run, and the unit
-  checkers would not see it. A
-  lookup-membership oracle and a negative case for that corruption are the obvious additions.
+  checkers would not see it. A lookup-membership oracle and a negative case for that
+  corruption would cover this gap.
 - The writer-width rule is scoped to slots 17/18/7, and the six `liveness` tests are
   `#[ignore]` by default; the committed-layout and committed-SSA variants only read JSON and
   should run in CI.
 
-An independent review by a pair that had no part in the design or the implementation
-(Fable and Astra, 2026-10-17) reached the verdict "sound for the four transformations under
-the existing circuit/setup/lookup model; no required circuit change" from both reviewers
-independently, with the two gaps above as its nonblocking findings. Report:
-`.agents/audits/2026-10-17-column-cuts-soundness-review/REPORT.md` in the orange tree,
-with both independent assessments and both cross-reviews beside it.
+On the regular 2^23 GPU path, a same-device comparison over 10 Ethereum blocks used the
+baseline, the column cuts and a baseline with a freshly searched forward schedule. Each
+arm ran two processes over the same blocks, excluding warmup. Mean per-block proving
+times were 4,779, 4,781 and 4,780 ms respectively: the column-cut deltas were within the
+schedule control's noise. The regular GKR verifier-input stream shrank from 329,072 to
+323,248 bytes (−1.77%), and recursion verifier cycles fell by 0.70–0.81% across the two
+observed proof classes. L1 feeder/wrap GPU measurements are pending.
 
-Measured on the earlier L1 branch, not on this PR's trunk base: the regular unified
+On an earlier L1 branch, rather than this change's trunk base, the regular unified
 recursion verifier program went from 3,519,971 to 3,502,526 cycles and the L1 wrap program
-from 2,062,486 to 2,043,353 cycles, and the regular verifier ROM grew by 512 bytes
-(2,211,108 → 2,211,620); logs under `.agents/audits/2026-10-16-column-cuts/` in the orange
-tree: `G4/logs/cpu-metrics-A.log:92,94`, `G4/logs/regular-verifier-cycles-B.log:11`,
-`H4/logs-r2/codex-wrap-cycles.log:11`. For this extraction no GPU prover timing and no GPU
-execution-parity run have been completed; the GPU rows of the map above are source and
-schedule currentness guards only.
+from 2,062,486 to 2,043,353 cycles. The regular verifier ROM grew by 512 bytes
+(2,211,108 → 2,211,620). These are results for that branch's programs and proof shapes,
+not timing predictions for the trunk or L1 GPU paths.
 
 ## 6. Where to look first, and how to re-derive
 
