@@ -115,6 +115,33 @@ def main : IO UInt32 := do
       Except String FixedTableIndex)) "reject unsupported fixed table"
     check (rejected (fromJson? (Json.mkObj [("Variable", toJson (0 : Nat))]) :
       Except String FixedTableIndex)) "reject dynamic fixed-table selection"
+    check ((← IO.ofExcept c.setupColumns) == ⟨16777216,12,0,1,2,0,2,1048576,0⟩)
+      "native arithmetic physical setup placement"
+    check ((← IO.ofExcept word.setupColumns) == ⟨16777216,16,0,1,2,1,6,1048576,1114113⟩)
+      "native word-memory tagged setup placement"
+    check (rejected ({word with trace_len := 1048576}.validate)) "reject changed setup trace extent"
+    check (rejected ({word with executor_family_decoder_table_size := 0}.validate))
+      "reject missing decoder setup extent"
+    check (rejected ({word with setup_layout := {word.setup_layout with
+      timestamp_setup_columns := ⟨0,1⟩}}.validate)) "reject unsupported timestamp setup group"
+    check (rejected ({word with setup_layout := {word.setup_layout with
+      range_check_16_setup_column := ⟨1,1⟩}}.validate)) "reject overlapping scalar setup columns"
+    check (rejected ({word with setup_layout := {word.setup_layout with
+      timestamp_range_check_setup_column := ⟨1,2⟩}}.validate)) "reject scalar setup group extent"
+    check (rejected ({word with setup_layout := {word.setup_layout with
+      generic_lookup_setup_columns := ⟨2,2⟩}}.validate)) "reject multiple generic setup groups"
+    check (rejected ({word with setup_layout := {word.setup_layout with
+      preprocessed_decoder_setup_columns := ⟨5,1⟩}}.validate)) "reject decoder overlap with native tag"
+    check (rejected ({word with setup_layout := {word.setup_layout with
+      preprocessed_decoder_setup_columns := ⟨6,2⟩}}.validate)) "reject multiple decoder setup groups"
+    check (rejected ({word with setup_layout := {word.setup_layout with total_width := 17}}.validate))
+      "reject unaccounted setup columns"
+    check (rejected ({word with total_tables_size := 1114112}.validate)) "reject missing native dummy row"
+    check (rejected ({word with table_offsets := #[]}.validate)) "reject missing native table offsets"
+    check (rejected ({word with table_offsets := word.table_offsets.set! 24 65536}.validate))
+      "reject shifted native ROM table"
+    check (rejected ({c with table_offsets := c.table_offsets.set! 0 1}.validate))
+      "reject invented arithmetic generic setup rows"
     check (rejected (parseCircuit "{}")) "reject missing required schema"
     return (0 : UInt32)
   catch error =>

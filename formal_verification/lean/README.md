@@ -126,6 +126,14 @@ premise. Ordinary/x0 regressions retain full native matching; missing/oversized
 prefixes reject construction. Physical setup/initialization exports and
 Rust/cryptographic enforcement remain open.
 
+[Native physical setup placement](Airbender/Review/Helpers/Tables/SetupColumns.lean)
+is now checked for both artifacts, including all offsets and the reserved last
+row. The complete [tagged row model](Airbender/Review/Helpers/Tables/PhysicalSetup.lean)
+retains dummy/zero padding and native tags 23/24. Symbolic proofs recover exact
+ROM/separator membership and actual Sail reads after public loader construction;
+nonempty byte fixtures reject altered words and wrong tags. Actual native column
+exports, normalization/LDE refinement and argument enforcement remain open.
+
 ## Read these first
 
 The [Review guide](Airbender/Review/README.md) has two routes:

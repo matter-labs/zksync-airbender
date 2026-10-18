@@ -136,6 +136,11 @@ structure MemorySubtree where
   deriving Repr, FromJson
 
 structure SetupLayout where
+  timestamp_setup_columns : ColumnSet
+  range_check_16_setup_column : ColumnSet
+  timestamp_range_check_setup_column : ColumnSet
+  generic_lookup_setup_columns : ColumnSet
+  preprocessed_decoder_setup_columns : ColumnSet
   total_width : Nat
   deriving Repr, FromJson
 
@@ -145,6 +150,10 @@ structure Circuit where
   witness_layout : WitnessSubtree
   memory_layout : MemorySubtree
   setup_layout : SetupLayout
+  executor_family_decoder_table_size : Nat
+  trace_len : Nat
+  table_offsets : Array Nat
+  total_tables_size : Nat
   degree_2_constraints : Array CompiledDegree2Constraint
   degree_1_constraints : Array CompiledDegree1Constraint
   state_linkage_constraints : EmptyArray

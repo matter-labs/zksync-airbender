@@ -26,4 +26,8 @@ theorem memory_clocks : importedConstraintsMemoryPorts.map Trace.MemoryPort.cloc
 theorem decoder_columns : importedConstraintsDecoderColumns =
     (⟨5, 6, 7, 8, #v[9, 10], 11, 12⟩ : Trace.DecoderColumns) := rfl
 
+/-- All physical setup columns, native capacity and reserved-row extent. -/
+theorem setup_columns : importedConstraintsSetupColumns =
+    (⟨16777216, 12, 0, 1, 2, 0, 2, 1048576, 0⟩ : Verification.SetupColumns) := rfl
+
 end Airbender.AddSub.Proofs

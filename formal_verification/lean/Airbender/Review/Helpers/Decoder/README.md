@@ -50,3 +50,10 @@ retained. [Native word-memory row assembly](../../../Proofs/Trace/Families/WordM
 now uses actual decoding to select checked preparation/clause/retirement paths;
 all calculations remain under Proofs. General finite trace/fetch composition
 and physical setup/export remain separate.
+
+[Setup placement](../Tables/SetupColumns.lean) now imports and guards the ten-wide
+physical decoder group at column 2 for arithmetic or 6 for word-memory, with
+native capacity 2^20 in a 2^24-row setup trace. Tagged generic tuples occupy
+word-memory columns 2..5, including the native table ID. This checks compiled
+placement; actual Rust-generated decoder columns, unsupported-slot materialization
+and physical export/argument fidelity remain separate.

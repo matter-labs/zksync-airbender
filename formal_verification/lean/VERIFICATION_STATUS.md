@@ -104,15 +104,34 @@ configuration, ordinary RAM and code-prefix inclusion stay visible. Physical
 initialization/setup exports, Rust/compiler refinement and argument enforcement
 remain open.
 
+## Native setup geometry and tagged row model
+
+[Imported setup placement](Airbender/Review/Helpers/Tables/SetupColumns.lean) now
+covers the exact arithmetic/word-memory widths 12/16, scalar columns 0/1,
+three-value-plus-tag generic groups, ten-column decoder groups, all 62 native
+table offsets, decoder capacity and the final row reserved for normalization.
+Malformed extents, overlaps, missing dummy rows and changed offsets fail closed.
+
+[The native-shaped active row model](Airbender/Review/Helpers/Tables/PhysicalSetup.lean)
+retains the dummy tuple, every separator/ROM tuple with native tags 23/24 and all
+zero padding. [Symbolic proofs](Airbender/Proofs/WordMemory/PhysicalSetup.lean)
+recover exact logical membership and reject wrong-table/dummy/padding tags.
+[One short public read claim](Airbender/Review/Trace/Families/WordMemory/Setup.lean)
+derives actual Sail words from tagged ROM membership after explicit loader
+construction. A nonempty original-LW fixture proves original/padded reads and
+altered-data rejection without expected-read or table-equivalence premises.
+No large trace/map/list is evaluated. Actual Rust-generated scalar/decoder/generic
+column exports, normalization/LDE refinement and argument enforcement remain open.
+
 ## Validation
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all eighteen concrete test modules pass.
-- Importer regressions: 46 checks pass.
-- Axiom audit: 600 explicit roots; only propext, Classical.choice and Quot.sound.
-- All twenty-eight public Review theorems (five circuit claims, twenty-one trace claims and two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
-- Source provenance: 69 unchanged reused files, two native circuit artifacts and twenty-four native Rust sources.
+- Library, both CLI entrypoints and all nineteen concrete test modules pass.
+- Importer regressions: 61 checks pass.
+- Axiom audit: 614 explicit roots; only propext, Classical.choice and Quot.sound.
+- All twenty-nine public Review theorems (five circuit claims, twenty-two trace claims and two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Source provenance: 69 unchanged reused files, two native circuit artifacts and thirty-one native Rust sources.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
 - Public Sail x1/PC reads construct the accepted alias fixture; missing register and byte data reject construction.
@@ -142,6 +161,7 @@ Current checked checkpoint:
 - General fetched/decoded word-memory execution passes on reversed dependent SW/LW, ordinary/x0 ROM loads and an empty native trace. The same general relation reaches actual PC 8 and native terminal RAM/x3=123. Native matching retains independent shadow value 123 while actual ROM reads 0xc0001073. All local address domains are derived from public cells/seeds; no per-row range/read/order/state/result premise is supplied.
 - Fixed-zero native boot passes on original ordinary/x0 LW fixtures with all actual GPRs zero, real public instruction/ROM bytes and fully matched zero native shadows. General execution derives PC four and actual masked destinations; full native paths derive terminal shadow zero. Invented seed values and an actual nonzero public GPR are rejected. Symbolic padding checks retain input words and distinguish zero loader padding from raw-table UNIMP fallback; absent Sail padding bytes remain actual failures.
 - Explicit Sail byte padding derives full four-MiB extraction, original zero-profile/configuration/setup preservation and complete native boot execution on ordinary/x0 loads. Prefix and out-of-ROM bytes are retained, the last ROM byte is zero and a formerly missing tail word becomes readable. Missing/oversized supplied prefixes reject construction. All large extents are handled symbolically; no evaluated large certificate or supplied padding/coverage/read/state/result premise is used.
+- Exact setup metadata for both native artifacts and fifteen added importer regressions pass. The active four-column tagged row model has exactly the existing ROM/separator meanings, including every dummy/padding tuple. Nonempty original Sail bytes and explicit zero padding derive actual reads from tagged ROM membership; altered words and wrong padding tags are rejected. The normalized final setup row is explicitly outside this model's lookup domain; actual Rust/export/LDE and argument correspondence remains separate.
 - No handwritten project warnings, admitted proofs or project axioms.
 - Serial bounded gates pass; parent/child timeout and memory probes confirm termination with no live owned processes.
 

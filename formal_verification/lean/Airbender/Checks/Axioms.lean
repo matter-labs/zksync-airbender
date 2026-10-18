@@ -15,6 +15,7 @@ import Tests.WordMemorySailHistory
 import Tests.WordMemoryProjection
 import Tests.WordMemoryROMTransport
 import Tests.WordMemoryNativeBoot
+import Tests.PhysicalSetup
 
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
@@ -639,3 +640,17 @@ import Tests.WordMemoryNativeBoot
 #print axioms Airbender.Trace.Proofs.program_entry_after_read_frame
 #print axioms Airbender.Trace.Proofs.program_image_after_read_frame
 #print axioms Airbender.WordMemory.Proofs.padded_decoder_setup
+#print axioms Airbender.AddSub.Proofs.setup_columns
+#print axioms Airbender.WordMemory.Proofs.setup_columns
+#print axioms Airbender.WordMemory.Proofs.physical_rom_lookup
+#print axioms Airbender.WordMemory.Proofs.physical_separator_lookup
+#print axioms Airbender.WordMemory.Proofs.physical_padding_tag
+#print axioms Airbender.WordMemory.Proofs.physical_rom_read
+#print axioms Airbender.WordMemory.Proofs.padded_physical_rom_read
+#print axioms Airbender.WordMemory.physical_setup_rom_read
+#print axioms Tests.PhysicalSetup.rom_prefix
+#print axioms Tests.PhysicalSetup.rom_tail
+#print axioms Tests.PhysicalSetup.actual_rom_reads
+#print axioms Tests.PhysicalSetup.altered_rom_rejected
+#print axioms Tests.PhysicalSetup.separator_row
+#print axioms Tests.PhysicalSetup.padding_cannot_supply_rom

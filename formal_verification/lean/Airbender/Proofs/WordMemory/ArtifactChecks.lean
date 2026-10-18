@@ -26,4 +26,8 @@ theorem memory_clocks : importedConstraintsMemoryPorts.map Trace.MemoryPort.cloc
 theorem decoder_columns : importedConstraintsDecoderColumns =
     (⟨5, 6, 7, 8, #v[9, 10], 11, 12⟩ : Trace.DecoderColumns) := rfl
 
+/-- Native generic tuple width includes its tag; decoder begins after it. -/
+theorem setup_columns : importedConstraintsSetupColumns =
+    (⟨16777216, 16, 0, 1, 2, 1, 6, 1048576, 1114113⟩ : Verification.SetupColumns) := rfl
+
 end Airbender.WordMemory.Proofs

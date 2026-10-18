@@ -70,6 +70,14 @@ elab "import_clean " name:ident " from " path:str fixed:(" word_memory_lookups")
     elabCommand (← `(def $name {$prime : Nat} [Fact (Nat.Prime $prime)] :
       List (_root_.FlatOperation (ZMod $prime)) := [$[$ops],*]))
   if metadata.isSome then
+    let setup ← match c.setupColumns with
+      | .ok setup => pure setup
+      | .error e => throwError "v2 setup metadata import failed: {e}"
+    let setupName := mkIdent (name.getId.appendAfter "SetupColumns")
+    elabCommand (← `(def $setupName : Verification.SetupColumns :=
+      ⟨$(quote setup.traceLength), $(quote setup.width), $(quote setup.range16),
+        $(quote setup.timestamp19), $(quote setup.genericStart), $(quote setup.genericGroups),
+        $(quote setup.decoderStart), $(quote setup.decoderCapacity), $(quote setup.genericRows)⟩))
     let columns ← match c.traceColumns with
       | .ok columns => pure columns
       | .error e => throwError "v2 clock metadata import failed: {e}"

@@ -319,3 +319,17 @@ domain derive all coverage; no expected padding read or per-row state is supplie
 Ordinary/x0 native boot fixtures pass complete original execution from the padded
 state, including exact byte boundaries and missing/oversized prefix rejection.
 Physical initialization/setup exports and Rust/cryptographic enforcement remain open.
+
+## Checked physical setup-row model
+
+[The short read claim](Setup.lean) binds native-shaped tagged ROM membership to
+actual Sail bytes after successful explicit loader construction. [Imported placement](../../../Helpers/Tables/SetupColumns.lean)
+checks the exact 16-column artifact, all offsets and active/reserved extents.
+[The complete tagged model](../../../Helpers/Tables/PhysicalSetup.lean) retains
+native dummy/zero-padding tuples, separator tag 23 and word-ROM tag 24.
+[Calculations](../../../../Proofs/WordMemory/PhysicalSetup.lean) derive exact
+logical membership, key/data bounds and actual reads; no table equivalence or
+expected value/read is supplied. [Nonempty regressions](../../../../../Tests/PhysicalSetup.lean)
+recover original/padded words and reject altered ROM data and wrong padding tags.
+Actual Rust-generated scalar/decoder/generic exports, normalization/LDE refinement,
+physical initialization and argument enforcement remain separate.

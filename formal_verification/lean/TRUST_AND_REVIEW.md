@@ -306,6 +306,35 @@ Physical setup/initialization exports, general Rust/compiler refinement and
 cryptographic enforcement remain separately scoped; constructing a Sail model
 of the native loader does not formally verify the Rust loader itself.
 
+[Native setup metadata](Airbender/Review/Helpers/Tables/SetupColumns.lean) is now
+consumed from both pinned compiled layouts and guarded before emission. The
+arithmetic profile has width 12 and decoder start 2; word-memory has width 16,
+a generic tuple at 2..5 and decoder start 6. All 62 fixed-table offsets and real
+generic-row counts are checked, including the native dummy row. Both traces have
+2^24 rows and 2^20 decoder capacity. Unsupported groups, overlaps and extents fail.
+Native setup, table/tag and normalization sources are separately hash-pinned.
+
+The [active tagged-row model](Airbender/Review/Helpers/Tables/PhysicalSetup.lean)
+copies the source layout: dummy tag zero, separator tag 23 at offset one, word-ROM
+tag 24 at offset 65537, then zero tuples through the usable trace. The final row
+is reserved for native c0 normalization and is not assigned a lookup meaning by
+this model. The Rust source changes that row only; its formal refinement and the
+stage-two exclusion/argument connection remain external. No v3 nine-column/tag-34
+export certificate is carried onto this v2 model.
+
+[Membership calculations](Airbender/Proofs/WordMemory/PhysicalSetup.lean) prove
+that each native tagged region has exactly the unchanged three-column logical
+table meaning. All dummy and padding tuples remain present and are excluded by
+their tags, rather than filtered out or postulated equivalent. Key/data bounds
+and alignment follow from actual modeled rows; original public extraction then
+supplies actual Sail bytes. [The short read claim](Airbender/Review/Trace/Families/WordMemory/Setup.lean)
+uses explicit loader construction and tagged membership, with no expected-read,
+coverage or table-equivalence premise. Nonempty original/padded words and altered
+word rejection exercise this bridge. This is a checked source-shaped row model
+plus exact compiled placement, not a proof that Rust-generated/exported setup
+field values or LDE commitments equal it. Actual scalar/decoder/generic exports,
+physical initialization and cryptographic enforcement remain separate.
+
 ## Public state, profiles and external inputs
 
 The theorem covers original Sail ADD/ADDI/SUB/LUI/AUIPC execution on the successful

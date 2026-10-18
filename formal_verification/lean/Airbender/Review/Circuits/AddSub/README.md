@@ -34,3 +34,9 @@ and strict port order under the shared [clock inputs](../../Helpers/Context/READ
 [Accepted native execution and rejected changed write](../../../../Tests/AddSub.lean)
 and [native PC wraparound](../../../../Tests/PC.lean) exercise the artifact proof.
 See [trust boundaries](../../../../TRUST_AND_REVIEW.md) before extending the claim.
+
+[Setup metadata](../../Helpers/Tables/SetupColumns.lean) now checks this artifact's
+12 physical columns, scalar groups at 0/1, ten-wide decoder group at 2, native
+capacity and reserved final row. No generic lookup groups are silently added;
+all 62 table offsets are zero. The existing local/trace claims are unchanged;
+actual Rust setup exports and argument enforcement remain separate.

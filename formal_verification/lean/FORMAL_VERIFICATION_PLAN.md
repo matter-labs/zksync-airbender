@@ -162,8 +162,17 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    claim now derives every shadow coverage condition from construction and the
    existing public ROM domain. Ordinary/x0 native fixtures pass complete original
    execution from that padded state; missing/oversized prefixes reject padding.
-   Next connect physical setup/initialization exports and the actual native setup
-   rows to these constructors; no general Rust/compiler refinement is claimed.
+   Physical setup geometry is now imported and guarded for both artifacts:
+   exact 12/16-column placement, ten-wide decoder groups, four-wide tagged tuples,
+   complete table offsets, decoder capacity and the reserved normalization row.
+   The [active setup-row model](Airbender/Review/Helpers/Tables/PhysicalSetup.lean)
+   retains native dummy/zero-padding tuples and tags 23/24. Symbolic proofs derive
+   exactly the existing logical ROM/separator membership from these tuples;
+   tagged ROM membership then derives actual Sail reads after the public loader.
+   Nonempty real-byte fixtures check original/padded reads and altered-word/tag
+   rejection. No large trace or ROM vector is evaluated. Next obtain actual native
+   scalar/decoder/generic setup exports and connect physical initialization;
+   the row model is not Rust/export/LDE or general compiler refinement.
    Rust refinement and cryptographic enforcement remain separate.
    Preserve v2 PC rollover and native timestamp offsets;
    keep physical setup generation/export and mixed/custom expansion explicit.

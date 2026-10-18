@@ -145,3 +145,9 @@ The proving loader's zero extension and raw-table UNIMP fallback have separate
 now constructs actual Sail zero bytes and derives full ROM extraction plus
 setup/profile/configuration preservation. The padded-boot claim derives all ROM
 coverage; physical initialization/setup exports remain open.
+
+[The native setup-row read bridge](Families/WordMemory/Setup.lean) now connects
+complete tagged ROM membership to actual Sail bytes after explicit padding.
+Compiled placement and all table offsets are checked; dummy/wrong-table/zero-padding
+rows are distinguished by native tags. Actual Rust column exports, normalization/
+LDE refinement and physical argument enforcement remain separate.

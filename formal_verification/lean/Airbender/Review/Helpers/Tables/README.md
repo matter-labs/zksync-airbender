@@ -36,3 +36,13 @@ huge map/list or assuming table equivalence. [Padded boot execution](../../Trace
 preserves original public decoding/configuration/profile and derives all ROM
 coverage; missing or oversized prefixes fail. General Rust/export/argument
 fidelity remains separate.
+
+[Physical setup placement](SetupColumns.lean) records the guarded native 12/16
+columns, scalar/decoder groups, four-column generic tuples and row capacities.
+[The active tagged-row model](PhysicalSetup.lean) keeps the dummy row, native
+separator/ROM tags 23/24 and all zero padding, excluding the final normalization
+row. [Exact membership/read proofs](../../../Proofs/WordMemory/PhysicalSetup.lean)
+recover both existing logical tables and actual padded Sail words without a
+large evaluated trace or assumed table equivalence. [The public read claim](../../Trace/Families/WordMemory/Setup.lean)
+exposes loader construction and tagged membership. Actual Rust/export/LDE and
+argument correspondence remain separate; scalar-row binding is not claimed.

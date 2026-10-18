@@ -385,6 +385,34 @@
     {
       "path": "../../circuit_defs/setups/src/lib.rs",
       "sha256": "0d7a40709beacf7cc94a0597120e92b8b44fd6cfd3ab97b45efef762c298ff8e"
+    },
+    {
+      "path": "../../cs/src/definitions/setup_tree.rs",
+      "sha256": "ba7154824c09111e3cac0c80197dc61923090e435b84ff612963a404df3934ab"
+    },
+    {
+      "path": "../../cs/src/definitions/table_type.rs",
+      "sha256": "a63788c5cae8d205bd1c67de2f1d18e7a6b30ff17368575171cba8429c8f6828"
+    },
+    {
+      "path": "../../cs/src/tables/mod.rs",
+      "sha256": "6a5c53706e1f1bb468a72d8906e754a97a05f77fd526363c8035468cc45cb07f"
+    },
+    {
+      "path": "../../prover/src/prover_stages/mod.rs",
+      "sha256": "9c70c5136094a803a8987229306eeb2f150322af5cb72e927046682e12a411b6"
+    },
+    {
+      "path": "../../fft/src/row_major/mod.rs",
+      "sha256": "df1410245d5bf534aebd63c0dcea335313ed5d7246392a98daf728039cc0ace2"
+    },
+    {
+      "path": "../../circuit_defs/setups/src/unrolled_circuits/load_store_word_only_circuit/mod.rs",
+      "sha256": "d9153f4dd120d5c113ba3ea606e79c5d3e2219a55f7371f7c71b45b7c3611d33"
+    },
+    {
+      "path": "../../circuit_defs/unrolled_circuits/load_store_word_only/src/lib.rs",
+      "sha256": "7a854945a03f8e9f7bea4b380b935432e7e3bac7300910fd9cc4e93657186b8e"
     }
   ],
   "adaptations": [
@@ -1136,6 +1164,90 @@
       "backport_reuse_path": "Tests/WordMemoryNativeBoot.lean",
       "backport_reuse_sha256": "6712888140b11b380095a9cf00941efaae94c66fe107b31c818415da912ed81d",
       "change": "Reuse the existing ordinary/x0 full native rows, original bytes, public setup/configuration and zero seeds. Factor their ROM-slot check symbolically to accept the loader-padded image, then verify actual new zero reads, full extraction/execution, byte boundaries and rejection of missing/oversized prefixes without evaluating the full map/list."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/SetupColumns.lean",
+      "backport_reuse_revision": "e86ca8509c3413d12d69e0e1d8f4679604ec0b78",
+      "backport_reuse_path": "Airbender/Review/Helpers/Decoder/Columns.lean",
+      "backport_reuse_sha256": "dd383c4c5eba16944717ff2fc2c9372afd148e96e4472f097f1297f31b8b35e4",
+      "change": "Reuse the small typed native-placement record structure. Expose the physical setup width, scalar/tagged/decoder columns, trace extent, decoder capacity and generic row extent without a row-equivalence premise."
+    },
+    {
+      "path": "Airbender/Import/Schema.lean",
+      "backport_reuse_revision": "e86ca8509c3413d12d69e0e1d8f4679604ec0b78",
+      "backport_reuse_path": "Airbender/Import/Schema.lean",
+      "backport_reuse_sha256": "b808bc899a130e416b05ade5697ce08f27d4665a9e14803165fc612cc7f17c17",
+      "change": "Extend the consumed v2 compiled-layout projection with all setup column groups, native trace/decoder lengths and complete fixed-table offsets. Preserve Mersenne31 coefficients and all original row constraints."
+    },
+    {
+      "path": "Airbender/Import/Parse.lean",
+      "backport_reuse_revision": "e86ca8509c3413d12d69e0e1d8f4679604ec0b78",
+      "backport_reuse_path": "Airbender/Import/Parse.lean",
+      "backport_reuse_sha256": "1cde0438cc7cbbe6bde764e8df8d4f9a3962e5d54cb978c024960a2f7d50965b",
+      "change": "Reuse fail-closed native metadata validation. Guard the actual 12/16-column profiles, four-wide tagged tuples, ten-wide decoder groups, all 62 table offsets, dummy-row extent and reserved-last-row capacity. Unsupported shapes fail; this does not import Rust-generated field values."
+    },
+    {
+      "path": "Airbender/Import/Embed.lean",
+      "backport_reuse_revision": "e86ca8509c3413d12d69e0e1d8f4679604ec0b78",
+      "backport_reuse_path": "Airbender/Import/Embed.lean",
+      "backport_reuse_sha256": "531e53e7735f417cc16137ae1f830ae4a21de1fdd360690b4619fbe7609d941d",
+      "change": "Reuse checked placement emission for one additional SetupColumns definition beside each existing native clock/port/decoder binding. Row equations and query emission are unchanged."
+    },
+    {
+      "path": "Airbender/Proofs/AddSub/ArtifactChecks.lean",
+      "backport_reuse_revision": "e86ca8509c3413d12d69e0e1d8f4679604ec0b78",
+      "backport_reuse_path": "Airbender/Proofs/AddSub/ArtifactChecks.lean",
+      "backport_reuse_sha256": "af4b79606964e636a7f9885753f81e37342dc5f6855df50e1d660019ad4b3d34",
+      "change": "Keep all existing artifact bindings and check the actual imported arithmetic physical setup geometry by kernel reduction."
+    },
+    {
+      "path": "Airbender/Proofs/WordMemory/ArtifactChecks.lean",
+      "backport_reuse_revision": "e86ca8509c3413d12d69e0e1d8f4679604ec0b78",
+      "backport_reuse_path": "Airbender/Proofs/WordMemory/ArtifactChecks.lean",
+      "backport_reuse_sha256": "d866f0ba4c1371e30ad030b43c0242495cd178788f419ff408db1588597477ae",
+      "change": "Keep all existing artifact bindings and check the actual imported word-memory physical geometry, including the generic tag column before decoder column six."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/PhysicalSetup.lean",
+      "backport_reuse_revision": "e86ca8509c3413d12d69e0e1d8f4679604ec0b78",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/WordROM.lean",
+      "backport_reuse_sha256": "6ccef544884aa5b88d71fb8eb5208e269ee55f28ae19d414b76ed1d2d61e91ee",
+      "change": "Reuse both complete native logical row definitions unchanged. Model active physical tuples with native v2 tags 23/24, actual dummy/table offsets, complete zero padding and explicit exclusion of the normalization row. V3 nine-column/tag-34 exports are not copied or claimed."
+    },
+    {
+      "path": "Airbender/Proofs/WordMemory/PhysicalSetup.lean",
+      "backport_reuse_revision": "e86ca8509c3413d12d69e0e1d8f4679604ec0b78",
+      "backport_reuse_path": "Airbender/Proofs/WordMemory/Tables.lean",
+      "backport_reuse_sha256": "19dcf3c51cdb364af28a3e6068baaa1950e88928741c37152f560729048df4b9",
+      "change": "Reuse complete-row query recovery and canonical key/data extraction. Prove exact tagged-model membership against the unchanged logical ROM/separator tables, rejecting dummy/wrong-table/zero-padding tags symbolically without enumerating the trace."
+    },
+    {
+      "path": "Airbender/Proofs/WordMemory/PhysicalSetup.lean",
+      "backport_reuse_revision": "e86ca8509c3413d12d69e0e1d8f4679604ec0b78",
+      "backport_reuse_path": "Airbender/Proofs/WordMemory/ROMImage.lean",
+      "backport_reuse_sha256": "d65b2a355a01ec1f4b21b597256e9b1caed33efe2b5a01e7e655928eb9367611",
+      "change": "Reuse full actual ROM extraction, canonical two-limb reconstruction and explicit byte-padding construction unchanged. Tagged model membership derives actual Sail word reads without expected-read, range, alignment or table-equivalence premises. Rust/export/LDE refinement remains separate."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/WordMemory/Setup.lean",
+      "backport_reuse_revision": "e86ca8509c3413d12d69e0e1d8f4679604ec0b78",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/WordMemory/ROMImage.lean",
+      "backport_reuse_sha256": "534ef855dd2103535ccd76bda4d9b3859c43ab950e1d52fe407f61971cac8563",
+      "change": "Keep one short actual-ROM-read wrapper with explicit public loader success and native-shaped tagged setup membership. Calculations and row assembly remain in Proofs, and physical Rust/export/LDE fidelity stays visible."
+    },
+    {
+      "path": "Tests/PhysicalSetup.lean",
+      "backport_reuse_revision": "e86ca8509c3413d12d69e0e1d8f4679604ec0b78",
+      "backport_reuse_path": "Tests/WordROMImage.lean",
+      "backport_reuse_sha256": "9fe151ff5806d5b012ef422b6ff2ed055b58eabbd921f70fb54a34b582f7f52a",
+      "change": "Reuse actual Sail instruction bytes and public ROM construction for a nonempty original LW word. Symbolic physical-region membership recovers both the instruction and a newly padded zero word, rejects altered ROM data, and distinguishes separator and generic-padding tags without evaluating large maps/lists/traces."
+    },
+    {
+      "path": "Tests/ArtifactImport.lean",
+      "backport_reuse_revision": "e86ca8509c3413d12d69e0e1d8f4679604ec0b78",
+      "backport_reuse_path": "Tests/ArtifactImport.lean",
+      "backport_reuse_sha256": "9a721e23c838ebebc73a2f62541c38960106d511f41bb2993bf17a5c24ae869b",
+      "change": "Retain all original importer checks; add exact setup bindings and malformed trace/capacity/group/overlap/offset/dummy-row regressions."
     }
   ]
 }

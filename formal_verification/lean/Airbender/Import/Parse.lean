@@ -1,6 +1,7 @@
 import Airbender.Import.Schema
 import Airbender.Review.Helpers.Memory.Ports
 import Airbender.Review.Helpers.Decoder.Columns
+import Airbender.Review.Helpers.Tables.SetupColumns
 
 namespace Airbender
 open Lean
@@ -42,8 +43,41 @@ private def Circuit.hasBoolean (c : Circuit) (address : ColumnAddress) : Bool :=
         q.constant_term.canonical == 0
     | _, _ => false
 
+/-- Validate the selected v2 physical setup geometry, including full table
+    offsets and the row reserved by get_main_domain_trace/normalization.
+    This imports placement, not Rust-generated field values or LDE commitments. -/
+def Circuit.setupColumns (c : Circuit) : Except String Verification.SetupColumns := do
+  let layout := c.setup_layout
+  unless c.trace_len == 16777216 && c.executor_family_decoder_table_size == 1048576 do
+    throw "unsupported native setup trace/decoder capacity"
+  unless layout.timestamp_setup_columns.num_elements == 0 do
+    throw "native timestamp setup groups are not supported"
+  unless layout.range_check_16_setup_column.start == 0 &&
+      layout.range_check_16_setup_column.num_elements == 1 &&
+      layout.timestamp_range_check_setup_column.start == 1 &&
+      layout.timestamp_range_check_setup_column.num_elements == 1 do
+    throw "unsupported native scalar setup placement"
+  let generic := if c.witness_layout.width_3_lookups.isEmpty then 0 else 1
+  let rows := if generic == 0 then 0 else 1114113
+  unless layout.generic_lookup_setup_columns.start == 2 &&
+      layout.generic_lookup_setup_columns.num_elements == generic do
+    throw "unsupported native tagged setup groups"
+  unless layout.preprocessed_decoder_setup_columns.start == 2 + 4 * generic &&
+      layout.preprocessed_decoder_setup_columns.num_elements == 1 &&
+      layout.total_width == 12 + 4 * generic do
+    throw "overlapping or incomplete native decoder setup placement"
+  unless c.total_tables_size == rows && c.table_offsets.size == 62 do
+    throw "unsupported native generic setup extent"
+  let expected := (List.range 62).toArray.map fun id =>
+    if generic == 0 || id == 0 then 0 else if id ≤ 23 then 1 else if id == 24 then 65537 else 1114113
+  unless c.table_offsets == expected do
+    throw "unsupported native fixed-table offsets"
+  pure ⟨c.trace_len, layout.total_width, 0, 1, 2, generic,
+    layout.preprocessed_decoder_setup_columns.start, c.executor_family_decoder_table_size, rows⟩
+
 /-- Check every consumed address and expression before emitting a theorem target. -/
 def Circuit.validate (c : Circuit) : Except String Unit := do
+  let _ ← c.setupColumns
   let keys := c.variable_mapping.entries.map Prod.fst
   unless keys.toList.Nodup do throw "duplicate logical variable IDs"
   for (_, address) in c.variable_mapping.entries do

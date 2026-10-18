@@ -118,3 +118,12 @@ now constructs real tail bytes, derives full ROM extraction and transports the
 original setup/profile/configuration into complete boot execution. No expected
 padding reads or ROM coverage are supplied. Physical setup/initialization exports
 and argument enforcement remain separate.
+
+[Physical setup placement](../../Helpers/Tables/SetupColumns.lean) now guards all
+16 columns, four-wide tagged generic groups, decoder start six, all fixed-table
+offsets and the reserved final row. [The active row model](../../Helpers/Tables/PhysicalSetup.lean)
+retains native dummy/zero padding and tags 23/24. [The small byte-read bridge](../../Trace/Families/WordMemory/Setup.lean)
+recovers actual padded Sail words from tagged ROM membership, including a nonempty
+original instruction and zero tail. This checks the source-shaped model and
+compiled placement; actual exported column values, Rust/LDE refinement and
+cryptographic argument correspondence remain open.
