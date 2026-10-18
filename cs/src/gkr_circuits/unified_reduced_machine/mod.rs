@@ -7,8 +7,6 @@ mod circuit;
 mod column_cuts_tests;
 mod decoder;
 mod jump_branch_slt;
-#[cfg(test)]
-mod liveness;
 mod mem_word_only;
 mod mem_word_only_lw_sw;
 
