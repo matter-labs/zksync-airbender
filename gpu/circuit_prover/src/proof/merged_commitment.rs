@@ -4,6 +4,7 @@ use era_cudart::result::CudaResult;
 use fft::GoodAllocator;
 
 use crate::upstream::{CommitmentMode, ProverConfig};
+use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::device_tracing::Range;
 use gpu_gkr::proof_layout::GpuGKRTraceGeometry;
 use gpu_gkr::setup::GpuGKRSetupTransfer;
@@ -102,7 +103,8 @@ pub fn commit_merged_from_transfers<'a, A: GoodAllocator + 'a>(
         WitnessPostCommitStorage::RawAndCosets,
         context,
     )?;
-    let mut callbacks = transfer.into_callbacks();
+    let inputs = transfer.into_keepalive();
+    let mut callbacks = Callbacks::new();
     // The setup H2D reads pinned host memory the setup host owns.
     let setup_host = Arc::clone(&setup.host);
     callbacks.schedule(
@@ -119,6 +121,7 @@ pub fn commit_merged_from_transfers<'a, A: GoodAllocator + 'a>(
     schedule_memory_commitment_job(
         &mut stage1_output.memory_trace_holder,
         callbacks,
+        Some(inputs),
         range,
         context,
     )
