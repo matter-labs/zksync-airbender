@@ -1,17 +1,17 @@
 {
   "gkr": {
     "external_pow_nonce": {
-      "bytes": "0x00000000002c4704",
+      "bytes": "0x000000000015fac2",
       "encoding": "u64_be",
       "offset": 916
     },
     "final_pc": {
-      "bytes": "0x14130400",
+      "bytes": "0x64120400",
       "encoding": "u32_le",
       "offset": 384
     },
     "first_dim_reduce_round": {
-      "bytes": "0x067ee27394b3341b731fc9d613dbab0e0027167bb021c13c09c863beffaacb7800b0ecd9781295e61ec322488d1bf89a05221d566b704e840fc61da5eb62ecc1",
+      "bytes": "0x03ddaa8434b9eaa5069cd0de337ed85404c39855d1c944f0152e66e426fab760012f0effc78a48fbd438c92553158921018fab147dfd1fe9d3a56c778f98cb00",
       "encoding": "proth120_be_x4",
       "offset": 1564
     }
