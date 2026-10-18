@@ -13,7 +13,7 @@ use crate::types::*;
 use crate::witness_placer::*;
 use field::PrimeField;
 
-use super::circuit::{LookupRequest, UnifiedCircuitProfile, F2_SCRATCH_BOOLS, F2_SCRATCH_VARS};
+use super::circuit::{LookupRequest, F2_SCRATCH_BOOLS, F2_SCRATCH_VARS};
 
 const UNIFIED_JUMP_BRANCH_SLT_TABLES_WIDTH: usize = 3;
 
@@ -45,9 +45,8 @@ pub fn jump_branch_slt_unified_table_driver_fn<F: PrimeField>(table_driver: &mut
 /// Family 2 (jump/branch/slt) constraints for the unified circuit. Mirrors the
 /// standalone inner with two unified-specific adaptations:
 /// (1) the `JumpCleanupOffset` lookup is gated so non-Family-2 cycles route to
-/// `ZeroEntry`, and (2) the rd-write constraints are gated per opcode (committed
-/// `is_X_writes_rd` Booleans under `Baseline`, affine decoder-mask expressions under
-/// `ColumnCuts`) so non-Family-2 cycles don't pin rd_write_limbs.
+/// `ZeroEntry`, and (2) the rd-write constraints are gated per opcode by affine
+/// decoder-mask expressions so non-Family-2 cycles don't pin rd_write_limbs.
 pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,
@@ -58,8 +57,7 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     intermediate_reg: Register<F>,
     scratch_bools: [Boolean; F2_SCRATCH_BOOLS],
     scratch_vars: [Variable; F2_SCRATCH_VARS],
-    pc_tmp_slot: Variable,
-    profile: UnifiedCircuitProfile,
+    pc_intermediate_addition_tmp_low: Variable,
 ) -> Vec<LookupRequest<F>> {
     // U16 views of rs1/rs2 reassembled from U8 bytes via free algebra.
     // Only the high rs1 limb is still needed as a `Constraint` (fed to the
@@ -97,12 +95,6 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
         Invariant::RangeChecked { width: 16 },
     );
 
-    let pc_intermediate_addition_tmp_low = match profile {
-        UnifiedCircuitProfile::Baseline => {
-            cs.add_named_variable("Intermedaite low for PC computation")
-        }
-        UnifiedCircuitProfile::ColumnCuts => pc_tmp_slot,
-    };
     cs.require_invariant(
         pc_intermediate_addition_tmp_low,
         Invariant::RangeChecked { width: 16 },
@@ -566,7 +558,6 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
         ];
         let rs1_vars = rs1_limbs;
         let pc_out_low_var = inputs.cycle_end_state.pc[0];
-        let pc_tmp_is_pooled = profile == UnifiedCircuitProfile::ColumnCuts;
 
         let is_slt_var = is_slt.expect_variable();
         let is_jal_var = is_jal.expect_variable();
@@ -692,9 +683,6 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
                 );
             }
 
-            if !pc_tmp_is_pooled {
-                placer.assign_u32_from_u16_parts(pc_out_vars, &out_value);
-            }
             // Conditional on is_fam2: add_rel_1 carry bools alias shared bool-pool slots.
             let is_fam2 = {
                 let mut m = placer.get_boolean(is_branch_var);
@@ -703,20 +691,17 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
                 m = m.or(&placer.get_boolean(is_jalr_var));
                 m
             };
-            if pc_tmp_is_pooled {
-                // The PC temporary is a pooled slot that other families own on their rows,
-                // so only Family 2 writes it; pc_out takes the same values as under
-                // `Baseline` (low limb cleared of bits 0-1) on every row.
-                let low = out_value.truncate();
-                placer.assign_u16(pc_out_vars[1], &out_value.shr(16).truncate());
-                placer.assign_u16(
-                    pc_out_low_var,
-                    &low.and(&<CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(
-                        0xFFFCu16,
-                    )),
-                );
-                placer.conditionally_assign_u16(pc_out_vars[0], &is_fam2, &low);
-            }
+            // The PC temporary is a pooled slot that other families own on their rows,
+            // so only Family 2 writes it; pc_out[0] is its low limb cleared of bits 0-1.
+            let low = out_value.truncate();
+            placer.assign_u16(pc_out_vars[1], &out_value.shr(16).truncate());
+            placer.assign_u16(
+                pc_out_low_var,
+                &low.and(&<CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(
+                    0xFFFCu16,
+                )),
+            );
+            placer.conditionally_assign_u16(pc_out_vars[0], &is_fam2, &low);
             placer.conditionally_assign_mask(
                 add_rel_1_intermediate_of_var,
                 &is_fam2,
@@ -866,23 +851,6 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
         cs.set_values(value_fn);
     }
 
-    // Assign pc_out[0] = pc_intermediate_addition_tmp_low & ~0x3 (the JumpCleanupOffset
-    // table mapping). Non-Family-2 cycles: pc_intermediate defaults to pc+4 which is
-    // already 4-aligned, so this is a no-op. Padding (execute=0): no constraint reads
-    // pc_out[0]'s value, so the override is harmless. `ColumnCuts` assigns pc_out[0]
-    // together with the pooled temporary above.
-    if profile == UnifiedCircuitProfile::Baseline {
-        let pc_out_low_var = inputs.cycle_end_state.pc[0];
-        let value_fn = move |placer: &mut CS::WitnessPlacer| {
-            let tmp_low = placer.get_u16(pc_intermediate_addition_tmp_low);
-            let aligned = tmp_low.and(&<CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(
-                0xFFFCu16,
-            ));
-            placer.assign_u16(pc_out_low_var, &aligned);
-        };
-        cs.set_values(value_fn);
-    }
-
     // JumpCleanupOffset request for the shared pool: tuple
     // (is_fam2*input, is_fam2*bit_1, is_fam2*pc_out_low) under
     // table_id = is_fam2 * JumpCleanupOffset; (0,0,0)/ZeroEntry on non-F2 rows.
@@ -902,93 +870,13 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
             * Expr::from(next_pc_bit_1),
     );
 
-    // Per-opcode rd-write helpers. JAL and JALR are merged into a single helper
-    // (`is_jal_or_jalr_writes_rd`) because they always appear summed at the two
-    // rd-write use sites and produce the same value (saved_pc); decoder-enforced
-    // mutual exclusion keeps the sum Boolean. SLT and the rd=0 gate keep separate
-    // helpers because they enter different constraints.
-    //   is_jal_or_jalr_writes_rd = (is_jal + is_jalr) * (1 - rd_is_zero)
-    //   is_slt_writes_rd         = is_slt           * (1 - rd_is_zero)
-    //   gate_fam2_rd_zero        = (any F2 sub-op)  * rd_is_zero
-    // Non-Family-2 cycles: all three 0 ⇒ every rd-write constraint below trivially
-    // holds, so other families own rd_write_limbs on their own cycles.
-    // `ColumnCuts` replaces the three helpers by the affine `f2_rd_write_gates`.
-    let (jj_writes_gate, slt_writes_gate, rd_zero_gate, writes_rd_vars) = match profile {
-        UnifiedCircuitProfile::Baseline => {
-            let is_jal_or_jalr_writes_rd =
-                cs.add_named_boolean_variable("is_jal_or_jalr_writes_rd");
-            let is_slt_writes_rd = cs.add_named_boolean_variable("is_slt_writes_rd");
-            let gate_fam2_rd_zero = cs.add_named_boolean_variable("gate_fam2_rd_zero");
-
-            {
-                let is_jal_var = is_jal.expect_variable();
-                let is_jalr_var = is_jalr.expect_variable();
-                let is_slt_var = is_slt.expect_variable();
-                let is_branch_var = is_branch.expect_variable();
-                let rd_is_zero_var = rd_is_zero.expect_variable();
-                let value_fn = move |placer: &mut CS::WitnessPlacer| {
-                    let is_jal_m = placer.get_boolean(is_jal_var);
-                    let is_jalr_m = placer.get_boolean(is_jalr_var);
-                    let is_slt_m = placer.get_boolean(is_slt_var);
-                    let is_branch_m = placer.get_boolean(is_branch_var);
-                    let rd_is_zero_m = placer.get_boolean(rd_is_zero_var);
-                    let not_rd_zero = rd_is_zero_m.negate();
-                    let is_jal_or_jalr = is_jal_m.or(&is_jalr_m);
-                    placer.assign_mask(
-                        is_jal_or_jalr_writes_rd.expect_variable(),
-                        &is_jal_or_jalr.and(&not_rd_zero),
-                    );
-                    placer.assign_mask(
-                        is_slt_writes_rd.expect_variable(),
-                        &is_slt_m.and(&not_rd_zero),
-                    );
-                    let any_f2 = is_jal_m.or(&is_jalr_m).or(&is_slt_m).or(&is_branch_m);
-                    placer.assign_mask(
-                        gate_fam2_rd_zero.expect_variable(),
-                        &any_f2.and(&rd_is_zero_m),
-                    );
-                };
-                cs.set_values(value_fn);
-            }
-
-            // Helper-Boolean setup (deg 2 each).
-            // is_jal_or_jalr_writes_rd = (is_jal + is_jalr) * (1 - rd_is_zero)
-            // Rearranged: is_jal_or_jalr_writes_rd + (is_jal + is_jalr)*rd_is_zero - is_jal - is_jalr = 0
-            cs.add_constraint_expr(
-                Expr::from(is_jal_or_jalr_writes_rd)
-                    + (Expr::from(is_jal) + Expr::from(is_jalr)) * Expr::from(rd_is_zero)
-                    - Expr::from(is_jal)
-                    - Expr::from(is_jalr),
-            );
-            cs.add_constraint_expr(
-                Expr::from(is_slt_writes_rd) + Expr::from(is_slt) * Expr::from(rd_is_zero)
-                    - Expr::from(is_slt),
-            );
-            // gate_fam2_rd_zero = (is_jal + is_jalr + is_slt + is_branch) * rd_is_zero  (deg 2)
-            cs.add_constraint_expr(
-                Expr::from(gate_fam2_rd_zero)
-                    - (Expr::from(is_jal)
-                        + Expr::from(is_jalr)
-                        + Expr::from(is_slt)
-                        + Expr::from(is_branch))
-                        * Expr::from(rd_is_zero),
-            );
-            (
-                Expr::from(is_jal_or_jalr_writes_rd),
-                Expr::from(is_slt_writes_rd),
-                Expr::from(gate_fam2_rd_zero),
-                Some([
-                    is_jal_or_jalr_writes_rd.expect_variable(),
-                    is_slt_writes_rd.expect_variable(),
-                ]),
-            )
-        }
-        UnifiedCircuitProfile::ColumnCuts => {
-            let [jj, slt, rd_zero] =
-                f2_rd_write_gates(is_jal, is_jalr, is_slt, is_branch, rd_is_zero);
-            (jj, slt, rd_zero, None)
-        }
-    };
+    // Per-opcode rd-write gates, affine in the decoder flags (`f2_rd_write_gates`). JAL and
+    // JALR share one gate because they always appear summed at the two rd-write use sites
+    // and produce the same value (saved_pc). Non-Family-2 cycles: all three 0 ⇒ every
+    // rd-write constraint below trivially holds, so other families own rd_write_limbs on
+    // their own cycles.
+    let [jj_writes_gate, slt_writes_gate, rd_zero_gate] =
+        f2_rd_write_gates(is_jal, is_jalr, is_slt, is_branch, rd_is_zero);
 
     // Self-generating witness contract (`ASSUME_MEMORY_VALUES_ASSIGNED ==
     // false`): the oracle is trusted only for INPUTS (instruction, register /
@@ -1017,19 +905,9 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
             let is_slt_m = placer.get_boolean(is_slt_var);
             let is_branch_m = placer.get_boolean(is_branch_var);
             let any_f2 = is_jal_m.or(&is_jalr_m).or(&is_slt_m).or(&is_branch_m);
-            let (jj_writes, slt_writes) = match writes_rd_vars {
-                Some([jj_writes_var, slt_writes_var]) => (
-                    placer.get_boolean(jj_writes_var),
-                    placer.get_boolean(slt_writes_var),
-                ),
-                None => {
-                    let not_rd_zero = placer.get_boolean(rd_is_zero_var).negate();
-                    (
-                        is_jal_m.or(&is_jalr_m).and(&not_rd_zero),
-                        is_slt_m.and(&not_rd_zero),
-                    )
-                }
-            };
+            let not_rd_zero = placer.get_boolean(rd_is_zero_var).negate();
+            let jj_writes = is_jal_m.or(&is_jalr_m).and(&not_rd_zero);
+            let slt_writes = is_slt_m.and(&not_rd_zero);
 
             let saved_pc_low = placer.get_u16(saved_pc_low_var);
             let saved_pc_high = placer.get_u16(saved_pc_high_var);
@@ -1081,11 +959,10 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     ]
 }
 
-/// `ColumnCuts` rd-write gates `[jal or jalr writes rd, slt writes rd, rd = x0]`, affine in
-/// the Family-2 decoder flags. On every decoder row class and on padding they equal the
-/// `Baseline` helpers `(jal + jalr)·(1 − rd_is_zero)`, `slt·(1 − rd_is_zero)` and
-/// `(jal + jalr + slt + branch)·rd_is_zero`, because RD_IS_ZERO comes only with a
-/// Family-2 sub-opcode, always with BRANCH and never with SLT
+/// rd-write gates `[jal or jalr writes rd, slt writes rd, rd = x0]`, affine in the Family-2
+/// decoder flags. On every admitted row they equal `(jal + jalr)·(1 − rd_is_zero)`,
+/// `slt·(1 − rd_is_zero)` and `(jal + jalr + slt + branch)·rd_is_zero`, because RD_IS_ZERO
+/// comes only with a Family-2 sub-opcode, always with BRANCH and never with SLT
 /// (`unified_decoder_mask_violation`).
 pub(super) fn f2_rd_write_gates<F: PrimeField>(
     is_jal: Boolean,

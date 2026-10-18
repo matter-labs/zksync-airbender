@@ -54,8 +54,6 @@ mod relative_timestamps;
 #[cfg(test)]
 mod unified_circuit;
 #[cfg(test)]
-mod unified_column_profile;
-#[cfg(test)]
 mod unified_generated_witness;
 #[cfg(test)]
 mod unified_negative_tests;
@@ -139,9 +137,8 @@ pub(crate) fn write_cell<F: PrimeField, A: GoodAllocator, B: GoodAllocator>(
 /// Decoder-lookup membership: on every executing row, the tuple (pc[0], pc[1], rs1, rs2,
 /// rd, imm[0], imm[1], funct3, Σ 2^i · family_bit[i]) read from the layout's
 /// `machine_state` / `decoder_input` columns must equal the decoder-table row of that PC.
-/// The compiled masked decoder lookup reads exactly this tuple (the cs test
-/// `decoder_lookup_oracle_matches_compiled_relation`); `check_satisfied` and
-/// `check_lookups_in_range` do not evaluate it. Returns the first violating row.
+/// `check_satisfied` and `check_lookups_in_range` do not evaluate the decoder lookup.
+/// Returns the first violating row.
 #[cfg(test)]
 pub(crate) fn first_decoder_lookup_violation<F: PrimeField, A: GoodAllocator, B: GoodAllocator>(
     circuit: &GKRCircuitArtifact<F>,

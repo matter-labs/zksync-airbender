@@ -29,10 +29,10 @@ const F4_STANDALONE_IS_STORE_BIT: usize = 0;
 /// dispatch bit.
 pub const UNIFIED_RD_IS_ZERO_BIT: usize = F2_OFFSET + RD_IS_ZERO_BIT;
 
-/// The first decoder-mask fact a unified decoder entry violates, or `None`. The
-/// `ColumnCuts` profile's linear dispatch tie, linear PC-bump gate and affine F2
-/// rd-write gates are equal to the `Baseline` helpers only on masks that pass this.
-pub fn unified_decoder_mask_violation(bits: u32) -> Option<&'static str> {
+/// The first decoder-mask fact a unified decoder entry violates, or `None`. The unified
+/// circuit's linear dispatch tie, PC-bump gate and affine F2 rd-write gates equal the
+/// helper columns they replace on masks that pass this.
+pub(super) fn unified_decoder_mask_violation(bits: u32) -> Option<&'static str> {
     if bits >> UNIFIED_REDUCED_MACHINE_NUM_FLAGS != 0 {
         return Some("flag bits beyond the unified bitmask");
     }

@@ -1,4 +1,4 @@
-use super::circuit::{LookupRequest, UnifiedCircuitProfile, F3_SCRATCH_VARS};
+use super::circuit::{LookupRequest, F3_SCRATCH_VARS};
 use super::*;
 use crate::cs::circuit_trait::*;
 use crate::cs::lookup_utils::peek_lookup_values_unconstrained_into_variables;
@@ -30,7 +30,6 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     rs2_limbs: [Variable; 2],
     rd_write_limbs: [Variable; 2],
     scratch_space: [Variable; F3_SCRATCH_VARS],
-    profile: UnifiedCircuitProfile,
 ) -> Vec<LookupRequest<F>> {
     // NOTE: by preprocessing if we have rd == 0 in any of the opcodes below, then
     // we have rs1 = x0, rs2 = x0 and imm = 0, and it's preprocessed into plain addition,
@@ -82,33 +81,21 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
         hi_byte(rs2_limbs[1], rs2_b2),
     ];
     {
-        // `ColumnCuts`: the rs1 split slots also hold the shared F1/F2/F4 register on
-        // other families' rows, so Family 3 writes them only on its own rows, u16-typed so
-        // that the generated masked-off select keeps the register limb untruncated.
-        let f3_flags = (profile == UnifiedCircuitProfile::ColumnCuts).then(|| {
-            [
-                decoder.perform_shift().expect_variable(),
-                decoder.perform_binary_op().expect_variable(),
-            ]
-        });
+        // The rs1 split slots also hold the shared F1/F2/F4 register on other families'
+        // rows, so Family 3 writes them only on its own rows, u16-typed so that the
+        // generated masked-off select keeps the register limb untruncated.
+        let is_shift_var = decoder.perform_shift().expect_variable();
+        let is_binary_op_var = decoder.perform_binary_op().expect_variable();
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
             let rs1_lo = placer.get_u16(rs1_limbs[0]);
             let rs1_hi = placer.get_u16(rs1_limbs[1]);
             let rs2_lo = placer.get_u16(rs2_limbs[0]);
             let rs2_hi = placer.get_u16(rs2_limbs[1]);
-            match f3_flags {
-                None => {
-                    placer.assign_u8(rs1_b0, &rs1_lo.truncate());
-                    placer.assign_u8(rs1_b2, &rs1_hi.truncate());
-                }
-                Some([is_shift, is_binary_op]) => {
-                    let is_f3 = placer
-                        .get_boolean(is_shift)
-                        .or(&placer.get_boolean(is_binary_op));
-                    placer.conditionally_assign_u16(rs1_b0, &is_f3, &rs1_lo.truncate().widen());
-                    placer.conditionally_assign_u16(rs1_b2, &is_f3, &rs1_hi.truncate().widen());
-                }
-            }
+            let is_f3 = placer
+                .get_boolean(is_shift_var)
+                .or(&placer.get_boolean(is_binary_op_var));
+            placer.conditionally_assign_u16(rs1_b0, &is_f3, &rs1_lo.truncate().widen());
+            placer.conditionally_assign_u16(rs1_b2, &is_f3, &rs1_hi.truncate().widen());
             placer.assign_u8(rs2_b0, &rs2_lo.truncate());
             placer.assign_u8(rs2_b2, &rs2_hi.truncate());
         };

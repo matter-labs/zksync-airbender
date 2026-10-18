@@ -1,7 +1,6 @@
 //! The SSA-generated unified witness functions satisfy the committed layouts on real
 //! traces: regular 2^23 over the multi-family smoke program and Proth120 2^22
 //! over `circuit_tester` (no delegations).
-//! `unified_column_cuts_real_cycles_satisfied` is the cs debug evaluator counterpart.
 
 use super::large_field::{build_unified_trace_without_precompiles, circuit_tester_config};
 use super::orchestration::common::{run_vm_and_capture, ProgramConfig};
@@ -16,8 +15,7 @@ use ::field::baby_bear::base::BabyBearField;
 use ::field::{PrimeField, Proth120};
 use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
 use cs::gkr_circuits::unified_reduced_machine::{
-    UnifiedCircuitProfile, FAMILY_2_FLAG_OFFSET, FAMILY_3_FLAG_OFFSET, FAMILY_4_LW_BIT,
-    REGULAR_UNIFIED_PROFILE, UNIFIED_REDUCED_MACHINE_NUM_FLAGS,
+    FAMILY_2_FLAG_OFFSET, FAMILY_3_FLAG_OFFSET, FAMILY_4_LW_BIT, UNIFIED_REDUCED_MACHINE_NUM_FLAGS,
 };
 use cs::gkr_circuits::ExecutorFamilyDecoderData;
 use riscv_transpiler::ir::ReducedMachineDecoderConfig;
@@ -25,14 +23,13 @@ use riscv_transpiler::vm::{Counters, DelegationsAndUnifiedCounters};
 use std::alloc::Global;
 use worker::Worker;
 
-/// Every checker accepts the trace, every family executes, and under `ColumnCuts` some
-/// non-F3 row holds a register limb above a byte in the aliased slot 17.
+/// Every checker accepts the trace, every family executes, and some non-F3 row holds a
+/// register limb above a byte in the aliased slot 17.
 fn assert_generated_witness_satisfies<F: PrimeField>(
     label: &str,
     circuit: &GKRCircuitArtifact<F>,
     trace: &GKRFullWitnessTrace<F, Global, Global>,
     decoder_table: &[Option<ExecutorFamilyDecoderData>],
-    profile: UnifiedCircuitProfile,
 ) {
     assert!(check_satisfied(circuit, trace), "{label}: arithmetic");
     assert!(check_lookups_in_range(circuit, trace), "{label}: ranges");
@@ -76,12 +73,10 @@ fn assert_generated_witness_satisfies<F: PrimeField>(
         rows_per_family.iter().all(|&n| n > 0),
         "{label}: family coverage {rows_per_family:?}"
     );
-    if profile == UnifiedCircuitProfile::ColumnCuts {
-        assert!(
-            wide_non_f3_register_rows > 0,
-            "{label}: no non-F3 row holds a register limb above 0xFF in slot 17"
-        );
-    }
+    assert!(
+        wide_non_f3_register_rows > 0,
+        "{label}: no non-F3 row holds a register limb above 0xFF in slot 17"
+    );
 }
 
 fn regular_witness_satisfies(label: &str, layout: &str) {
@@ -103,13 +98,7 @@ fn regular_witness_satisfies(label: &str, layout: &str) {
         false,
         &worker,
     );
-    assert_generated_witness_satisfies(
-        label,
-        &circuit,
-        &trace,
-        &decoder_table,
-        REGULAR_UNIFIED_PROFILE,
-    );
+    assert_generated_witness_satisfies(label, &circuit, &trace, &decoder_table);
 }
 
 #[test]
@@ -144,6 +133,5 @@ fn generated_witness_satisfies_proth120_wrap_layout() {
         &circuit,
         &trace,
         &decoder_table,
-        REGULAR_UNIFIED_PROFILE,
     );
 }

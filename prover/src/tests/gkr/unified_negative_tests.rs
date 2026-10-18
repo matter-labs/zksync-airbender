@@ -8,9 +8,9 @@ use ::field::baby_bear::base::BabyBearField;
 use ::field::Field;
 use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
 use cs::gkr_circuits::unified_reduced_machine::{
-    UnifiedCircuitProfile, FAMILY_1_FLAG_OFFSET, FAMILY_1_TRI_ADD_BIT, FAMILY_2_FLAG_OFFSET,
-    FAMILY_3_BINARY_OP_BIT, FAMILY_3_FLAG_OFFSET, FAMILY_4_LW_BIT, FAMILY_4_SW_BIT,
-    REGULAR_UNIFIED_PROFILE, UNIFIED_RD_IS_ZERO_BIT, UNIFIED_REDUCED_MACHINE_NUM_FLAGS,
+    FAMILY_1_FLAG_OFFSET, FAMILY_1_TRI_ADD_BIT, FAMILY_2_FLAG_OFFSET, FAMILY_3_BINARY_OP_BIT,
+    FAMILY_3_FLAG_OFFSET, FAMILY_4_LW_BIT, FAMILY_4_SW_BIT, UNIFIED_RD_IS_ZERO_BIT,
+    UNIFIED_REDUCED_MACHINE_NUM_FLAGS,
 };
 use cs::tables::TableType;
 use proptest::prelude::*;
@@ -47,17 +47,6 @@ fn find_family_row(
             && funct3_filter
                 .is_none_or(|ids| ids.contains(&read_cell(trace, funct3_addr, r).as_u32_reduced()))
     })
-}
-
-const COLUMN_CUTS: bool = matches!(REGULAR_UNIFIED_PROFILE, UnifiedCircuitProfile::ColumnCuts);
-
-/// Name of limb `i` of the shared F1/F2/F4 register in the committed regular layout.
-fn shared_register_limb(i: usize) -> String {
-    if COLUMN_CUTS {
-        format!("shared scratch var[{}]", 17 + i)
-    } else {
-        format!("shared F1/F2 intermediate reg[{i}]")
-    }
 }
 
 fn build_satisfying_trace_with_mutation(
@@ -181,9 +170,9 @@ fn misaligned_sw_writeaddr_lo_rejected() {
 }
 
 /// one-hot family dispatch. Set a second family bit on an LW row,
-/// so two dispatch bits are hot on the same executing row. The setup
-/// constraint `is_any_family_active - execute * Σ family-bits = 0` then
-/// evaluates to `1 - 1*2 = -1 ≠ 0`, so `check_satisfied` rejects.
+/// so two dispatch bits are hot on the same executing row. The dispatch
+/// tie `execute - Σ dispatch bits = 0` then evaluates to `1 - 2 ≠ 0`, so
+/// `check_satisfied` rejects.
 #[test]
 fn two_family_bits_on_one_row_rejected() {
     let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
@@ -203,9 +192,9 @@ fn two_family_bits_on_one_row_rejected() {
 
 /// Pin `rd_write_limbs[1] = 0` when SLT writes rd. The Family-2 rd-write
 /// rewrite from standalone's `selected_rd_high = (is_jal+is_jalr)*saved_pc_high`
-/// to per-opcode `is_X_writes_rd` helpers lost the implicit
+/// to per-opcode rd-write gates lost the implicit
 /// `selected_rd_high = 0 for SLT` zeroing; the explicit constraint
-/// `is_slt_writes_rd * rd_write_limbs[1] = 0` (in jump_branch_slt.rs) restores
+/// `slt * rd_write_limbs[1] = 0` (in jump_branch_slt.rs) restores
 /// it. This test mutates `rd_write_limbs[1]` on an SLT row to a 16-bit non-zero
 /// value (so the top-level RC doesn't catch it) and asserts `check_satisfied`
 /// rejects — guards against accidental constraint drop in future refactors.
@@ -221,7 +210,7 @@ fn slt_rd_write_high_limb_nonzero_rejected() {
             .find(|&r| read_cell(trace, slt_addr, r) == BabyBearField::ONE)
             .expect("multi_family_smoke must execute at least one SLT");
         // 16-bit non-zero so the implicit top-level RC doesn't catch it; only
-        // the explicit `is_slt_writes_rd * rd_write_limbs[1] = 0` constraint should.
+        // the explicit `slt * rd_write_limbs[1] = 0` constraint should.
         write_cell(trace, rd_write_hi_addr, slt_row, BabyBearField::new(0x1234));
     });
     assert!(
@@ -555,7 +544,7 @@ fn unified_lw_coherent_misaligned_readaddr_rejected() {
 /// has `execute = 1`. The decoder lookup (gated by `execute`) will see the row
 /// claim a bitmask of all zeros, which doesn't match any committed decoder
 /// table entry. `check_satisfied` should reject via the decoder lookup
-/// mismatch (or the dispatch one-hot constraint, depending on which fires first
+/// mismatch (or the dispatch tie, depending on which fires first
 /// in the evaluator).
 #[test]
 fn empty_family_mask_on_executing_row_rejected() {
@@ -571,17 +560,6 @@ fn empty_family_mask_on_executing_row_rejected() {
         for bit in 0..cs::gkr_circuits::unified_reduced_machine::UNIFIED_REDUCED_MACHINE_NUM_FLAGS {
             let addr = find_base_layer_address(circuit, &format!("family_bit[{}]", bit));
             write_cell(trace, addr, exec_row, BabyBearField::ZERO);
-        }
-        // Also clear is_any_family_active so the dispatch one-hot setup
-        // (`is_any_family_active - execute * Σbits = 0`) is locally consistent
-        // — the rejection then comes from the decoder lookup mismatch (the
-        // committed table doesn't have an entry mapping this PC to all-zero
-        // family bits), not from a trivially-failing arithmetic constraint
-        // that's incidental to the actual attack.
-        if !COLUMN_CUTS {
-            let any_active_addr =
-                find_base_layer_address(circuit, "unified family-dispatch one-hot");
-            write_cell(trace, any_active_addr, exec_row, BabyBearField::ZERO);
         }
     });
     assert!(
@@ -639,11 +617,10 @@ fn range_check_16_violation_caught_by_lookup_oracle() {
 
 /// Cross-family flag collision. Sets a bit from
 /// Family 1 (ADD, bit 0) AND a bit from Family 2 (JAL, bit 8) hot on the same
-/// executing row. The unified dispatch one-hot constraint at
-/// `apply_unified_family_dispatch_one_hot` (`is_any_family_active - execute * Σ family-dispatch-bits = 0`,
-/// with `is_any_family_active` Boolean) forces the sum across families to be in
-/// {0, 1} on executing rows. Two cross-family bits set ⇒ sum ≥ 2 ⇒ the Boolean
-/// is_any_family_active can't satisfy. `check_satisfied` must reject.
+/// executing row. The unified dispatch tie at
+/// `apply_unified_family_dispatch_one_hot` (`execute - Σ family-dispatch-bits = 0`)
+/// forces the sum across families to be 1 on executing rows. Two cross-family
+/// bits set ⇒ sum = 2. `check_satisfied` must reject.
 #[test]
 fn cross_family_flag_collision_rejected() {
     let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
@@ -769,7 +746,7 @@ fn unified_f2_pooled_bool_binds_on_slt_row_rejected() {
 /// branch decision, a gated lookup output) is aliased into the shared
 /// scratch-Variable pool at slot [2] (`"shared scratch var[2]"`). On an SLT row
 /// with `rd != 0` the rd-write low constraint pins
-/// `is_slt_writes_rd * should_jump_or_slt_value = ... * rd_write_limbs[0]`, so
+/// `slt * should_jump_or_slt_value = ... * rd_write_limbs[0]`, so
 /// corrupting the slot breaks it (the same first-SLT-row anchor the
 /// `slt_rd_write_high_limb_nonzero_rejected` test relies on guarantees
 /// `rd != 0`). `check_satisfied` must reject — proving the Variable-pool aliasing
@@ -803,7 +780,7 @@ fn unified_top14_pooled_corruption_on_sw_row_rejected() {
     let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
         let sw_addr = find_base_layer_address(circuit, &format!("family_bit[{FAMILY_4_SW_BIT}]"));
         // top_14 aliases limb 0 of the shared F1/F2/F4 intermediate Register.
-        let top14_addr = find_base_layer_address(circuit, &shared_register_limb(0));
+        let top14_addr = find_base_layer_address(circuit, "shared scratch var[17]");
         let sw_row = (0..base_trace_len(trace))
             .find(|&r| read_cell(trace, sw_addr, r) == BabyBearField::ONE)
             .expect("multi_family_smoke must execute at least one SW");
@@ -1252,7 +1229,7 @@ fn generate_malicious_unified_proof(
 ///
 /// The trap is the unique base-layer constraint that involves BOTH pooled
 /// alignment bits (`shared scratch bool[3]` = bit_0, `shared scratch bool[4]` =
-/// bit_1) while touching NEITHER `shared F1/F2 intermediate reg[0]` (= top_14,
+/// bit_1) while touching NEITHER `shared scratch var[17]` (= top_14,
 /// present in both gated decompositions) NOR `MULMOD intermediate value` (the
 /// ungated Montgomery helper). This lets the trap-isolation tests below prove
 /// their mutation trips the trap and nothing else — empirically verified by the
@@ -1277,7 +1254,7 @@ fn assert_only_alignment_trap_fails(
         "the single failing constraint must be the trap (involves both alignment bits); got {vars:?}"
     );
     assert!(
-        !has(&shared_register_limb(0)),
+        !has("shared scratch var[17]"),
         "the single failing constraint must NOT be a decomposition (top_14 present); got {vars:?}"
     );
     assert!(
@@ -1463,12 +1440,9 @@ fn generate_malicious_unified_proofs() {
     );
 }
 
-/// G2 negative cases for the column-cuts gates, all on one honest trace (the control passes
+/// Negative cases for the column-cut gates, all on one honest trace (the control passes
 /// arithmetic, ranges and decoder membership). Each case writes cells after witness
-/// generation, checks the named rejection, and restores the cells. Attribution to the
-/// `ColumnCuts` constraints (linear tie, affine rd-zero gate, linear PC-bump gate) is asserted
-/// when the committed regular layout is `ColumnCuts`; rejection itself is asserted under both
-/// profiles.
+/// generation, checks the named rejection, and restores the cells.
 #[test]
 fn column_cuts_negative_cases_rejected() {
     type F = BabyBearField;
@@ -1484,8 +1458,8 @@ fn column_cuts_negative_cases_rejected() {
     let pc_out = [addr("final_pc[0]"), addr("final_pc[1]")];
     let carry = addr("unified pc-bump carry");
     let register = [
-        addr(&shared_register_limb(0)),
-        addr(&shared_register_limb(1)),
+        addr("shared scratch var[17]"),
+        addr("shared scratch var[18]"),
     ];
     let rows = base_trace_len(&trace);
     let f = |x: u32| F::from_u32_with_reduction(x);
@@ -1524,7 +1498,7 @@ fn column_cuts_negative_cases_rejected() {
     let is_rd_zero_pair = |names: &[String], limb: usize| {
         names.len() == 2
             && has(names, &format!("rd/mem write write_value[{limb}]"))
-            && (has(names, &bit_name(rd_zero)) || has(names, "gate_fam2_rd_zero"))
+            && has(names, &bit_name(rd_zero))
     };
     let is_pc_bump_low =
         |names: &[String]| has(names, "final_pc[0]") && has(names, "unified pc-bump carry");
@@ -1558,13 +1532,10 @@ fn column_cuts_negative_cases_rejected() {
         &[(bit(FAMILY_4_SW_BIT), lw, F::ONE)],
         &|t: &GKRFullWitnessTrace<F, Global, Global>| {
             let failing = failing_constraints_on_row(&circuit, t, lw);
-            assert!(!failing.is_empty());
-            if COLUMN_CUTS {
-                assert!(
-                    failing.iter().any(|(k, _, n)| is_tie(*k, n)),
-                    "{failing:#?}"
-                );
-            }
+            assert!(
+                failing.iter().any(|(k, _, n)| is_tie(*k, n)),
+                "{failing:#?}"
+            );
             assert_eq!(
                 first_decoder_lookup_violation(&circuit, t, &table),
                 Some(lw)
@@ -1579,13 +1550,11 @@ fn column_cuts_negative_cases_rejected() {
         &mut trace,
         &[(bit(0), add, F::ZERO)],
         &|t: &GKRFullWitnessTrace<F, Global, Global>| {
-            if COLUMN_CUTS {
-                let failing = failing_constraints_on_row(&circuit, t, add);
-                assert!(
-                    failing.iter().any(|(k, _, n)| is_tie(*k, n)),
-                    "{failing:#?}"
-                );
-            }
+            let failing = failing_constraints_on_row(&circuit, t, add);
+            assert!(
+                failing.iter().any(|(k, _, n)| is_tie(*k, n)),
+                "{failing:#?}"
+            );
             assert_eq!(
                 first_decoder_lookup_violation(&circuit, t, &table),
                 Some(add)
@@ -1609,16 +1578,14 @@ fn column_cuts_negative_cases_rejected() {
                     failing.iter().any(|(_, _, n)| is_padding_zero(n)),
                     "{failing:#?}"
                 );
-                if COLUMN_CUTS {
-                    assert_eq!(failing.iter().any(|(k, _, n)| is_tie(*k, n)), b != rd_zero);
-                }
+                assert_eq!(failing.iter().any(|(k, _, n)| is_tie(*k, n)), b != rd_zero);
             },
         );
     }
 
-    // 4. RD_IS_ZERO on a non-F2 row: (a) nonzero rd write -> the rd-zero pair (ColumnCuts);
+    // 4. RD_IS_ZERO on a non-F2 row: (a) nonzero rd write -> the rd-zero pair;
     // (b) zero rd write and zero shared-register slots -> arithmetic accepts, and the
-    // decoder lookup is the defence (as under Baseline).
+    // decoder lookup is the defence.
     let add_nonzero = find(
         &|r| {
             executing(&trace, r)
@@ -1632,13 +1599,11 @@ fn column_cuts_negative_cases_rejected() {
         &mut trace,
         &[(bit(rd_zero), add_nonzero, F::ONE)],
         &|t: &GKRFullWitnessTrace<F, Global, Global>| {
-            if COLUMN_CUTS {
-                let failing = failing_constraints_on_row(&circuit, t, add_nonzero);
-                assert!(
-                    failing.iter().any(|(_, _, n)| is_rd_zero_pair(n, 0)),
-                    "{failing:#?}"
-                );
-            }
+            let failing = failing_constraints_on_row(&circuit, t, add_nonzero);
+            assert!(
+                failing.iter().any(|(_, _, n)| is_rd_zero_pair(n, 0)),
+                "{failing:#?}"
+            );
             assert_eq!(
                 first_decoder_lookup_violation(&circuit, t, &table),
                 Some(add_nonzero)
