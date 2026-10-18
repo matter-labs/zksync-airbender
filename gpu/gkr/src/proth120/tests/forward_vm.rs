@@ -152,12 +152,12 @@ pub(crate) fn forward_fixture_full(context: &ProverContext) -> ForwardFixturePr 
     .unwrap();
     transfer.ensure_transferred(context).unwrap();
     let top_bits = vec![1u32; artifact.memory_layout.teardown_sets.len()];
-    let d_top = upload(&top_bits, context);
+    let mode = super::deterministic_mode(0x2_0000_0003);
+    let d_top = upload(&super::transcript_prefix_words(&mode, &top_bits), context);
     let cap = upload(&super::deterministic_words(8, 73), context);
     let mut seed = upload(&[0u8; 32], context);
     let challenges = super::derive(
         &mut seed,
-        &super::deterministic_mode(0x2_0000_0003),
         &d_top,
         &cap,
         &cap,
@@ -547,13 +547,12 @@ fn pr_challenge_banks_match_host_powers() {
     let context = make_context();
     let programs = super::cpu_abi::programs();
     let mode = super::deterministic_mode(0x2_0000_0003);
-    let top = upload(&[1u32, 2], &context);
+    let top = upload(&super::transcript_prefix_words(&mode, &[1u32, 2]), &context);
     let setup = upload(&super::deterministic_words(8, 31), &context);
     let base = upload(&super::deterministic_words(8, 71), &context);
     let mut seed = upload(&[0u8; 32], &context);
     let challenges = super::derive(
         &mut seed,
-        &mode,
         &top,
         &setup,
         &base,

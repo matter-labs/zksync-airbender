@@ -651,6 +651,7 @@ fn schedule_l1_wrap_phase_one<'a>(
         inits_and_teardowns,
         tracing_data,
         precomputed.host(),
+        &commitment_mode,
         context,
     )?;
     inputs.time_request(request_range);

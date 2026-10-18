@@ -789,6 +789,7 @@ fn measure<B: GoodAllocator>(
                     source.inits_and_teardowns.clone(),
                     source.tracing_data.clone(),
                     precomputed.host(),
+                    &source.commitment_mode,
                     context,
                 ),
             )?;
@@ -1084,6 +1085,7 @@ fn schedule_follower<'a, B: GoodAllocator + 'a>(
                     source.inits_and_teardowns.clone(),
                     source.tracing_data.clone(),
                     precomputed.host(),
+                    &source.commitment_mode,
                     context,
                 ),
             )?;

@@ -147,7 +147,8 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         decoder,
         inits_and_teardowns,
         tracing_data,
-        top_bits,
+        transcript_prefix,
+        transcript_prefix_host: _,
         top_bits_host,
         setup_host,
         request_range,
@@ -288,14 +289,13 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     let challenge_config = PackedChallengeConfig::new(circuit, config, &commitment_mode, true);
     let challenges = packed_challenges::derive(
         &mut seed,
-        &commitment_mode,
-        &top_bits,
+        &transcript_prefix,
         setup.cap(),
         base.cap(),
         &challenge_config,
         context,
     )?;
-    drop(top_bits);
+    drop(transcript_prefix);
     end_phase(p, &mut phases, context)?;
     let p = phase("l1_wrap.gkr", context)?;
     let layout = Arc::new(ProofLayoutPr::new(

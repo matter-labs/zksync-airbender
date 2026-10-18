@@ -19,7 +19,8 @@ use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::PR;
 use gpu_core::primitives::static_host::alloc_static_pinned_box_uninit;
 use gpu_gkr::proth120::packed_challenges::{
-    derive, split_challenges, PackedChallengeConfig, PACKED_CHALLENGE_DRAWS,
+    derive, split_challenges, transcript_prefix_words, PackedChallengeConfig,
+    PACKED_CHALLENGE_DRAWS,
 };
 use gpu_gkr::setup::{L1WrapSetupHost, PackedSetupSource};
 use gpu_prover_context::transfer::single_shot_h2d;
@@ -500,10 +501,17 @@ fn run_stages(fixture: L1WrapFixture<'_>, expected: Expected) -> StageReport {
         &mut differences,
     );
 
-    let mut top_bits = context
-        .alloc(expected.top_bits.len(), AllocationPlacement::BestFit)
+    let transcript_prefix_host =
+        transcript_prefix_words(&fixture.commitment_mode, &expected.top_bits);
+    let mut transcript_prefix = context
+        .alloc(transcript_prefix_host.len(), AllocationPlacement::BestFit)
         .unwrap();
-    memory_copy_async(&mut top_bits, &expected.top_bits, context.get_exec_stream()).unwrap();
+    memory_copy_async(
+        &mut transcript_prefix,
+        &transcript_prefix_host,
+        context.get_exec_stream(),
+    )
+    .unwrap();
     let challenge_cfg = PackedChallengeConfig::new(
         &fixture.setup.circuit,
         &config,
@@ -518,8 +526,7 @@ fn run_stages(fixture: L1WrapFixture<'_>, expected: Expected) -> StageReport {
     let start = Instant::now();
     let challenges = derive(
         &mut seed,
-        &fixture.commitment_mode,
-        &top_bits,
+        &transcript_prefix,
         source.cap(),
         oracle.cap(),
         &challenge_cfg,

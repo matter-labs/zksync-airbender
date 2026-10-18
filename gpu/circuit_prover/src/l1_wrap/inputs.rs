@@ -7,6 +7,7 @@ use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::static_host::StaticPinnedBox;
+use gpu_gkr::proth120::packed_challenges::{transcript_prefix_words, BOUNDARY_PREFIX_U32_LEN};
 use gpu_gkr::setup::L1WrapSetupHost;
 use gpu_prover_context::transfer::Transfer;
 use gpu_prover_context::ProverContext;
@@ -22,7 +23,7 @@ use gpu_trace::witness::trace_unrolled::{
 
 use super::L1WrapGeometry;
 use crate::proof::memory_policy::presets::l1_wrap::align_up;
-use crate::upstream::TimestampScalar;
+use crate::upstream::{CommitmentMode, TimestampScalar};
 
 pub(crate) const ALLOCATOR_BLOCK_BYTES: usize = 1 << 20;
 
@@ -31,7 +32,8 @@ pub struct L1WrapInputs<'a, A: GoodAllocator> {
     pub(crate) decoder: Option<DecoderTableTransfer<'a>>,
     pub(crate) inits_and_teardowns: InitsAndTeardownsTransfer<'a, A>,
     pub(crate) tracing_data: TracingDataTransfer<'a, A>,
-    pub(crate) top_bits: DeviceAllocation<u32>,
+    pub(crate) transcript_prefix: DeviceAllocation<u32>,
+    pub(crate) transcript_prefix_host: Vec<u32>,
     pub(crate) top_bits_host: Vec<u32>,
     pub(crate) setup_host: Arc<L1WrapSetupHost>,
     pub(crate) request_range: Option<Range>,
@@ -53,6 +55,7 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
         inits_and_teardowns: InitsAndTeardownsTraceHost<A>,
         tracing_data: UnrolledUnifiedTraceHost<A>,
         setup_host: Arc<L1WrapSetupHost>,
+        commitment_mode: &CommitmentMode,
         context: &ProverContext,
     ) -> CudaResult<Self> {
         let circuit_type = geometry.circuit_type;
@@ -78,7 +81,9 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
             trace_len,
             context,
         )?;
-        let top_bits = context.alloc::<u32>(top_bits_host.len(), AllocationPlacement::BestFit)?;
+        let transcript_prefix_host = transcript_prefix_words(commitment_mode, &top_bits_host);
+        let transcript_prefix =
+            context.alloc::<u32>(transcript_prefix_host.len(), AllocationPlacement::BestFit)?;
         let transfer = Transfer::new()?;
         transfer.record_allocated(context)?;
         Ok(Self {
@@ -86,7 +91,8 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
             decoder,
             inits_and_teardowns,
             tracing_data,
-            top_bits,
+            transcript_prefix,
+            transcript_prefix_host,
             top_bits_host,
             setup_host,
             request_range: None,
@@ -100,7 +106,8 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
     }
 
     pub fn schedule(&mut self, context: &ProverContext) -> CudaResult<()> {
-        self.transfer.stage(&self.top_bits_host, &mut self.top_bits);
+        self.transfer
+            .stage(&self.transcript_prefix_host, &mut self.transcript_prefix);
         if let Some(decoder) = self.decoder.as_mut() {
             decoder.schedule_transfer(&mut self.transfer, context)?;
         }
@@ -131,7 +138,7 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
             bytes(capacity, size_of::<u32>()),
             bytes(capacity, size_of::<TimestampScalar>()),
             bytes(decoder_entries, size_of::<ExecutorFamilyDecoderData>()),
-            bytes(num_sets, size_of::<u32>()),
+            bytes(BOUNDARY_PREFIX_U32_LEN + num_sets, size_of::<u32>()),
         ];
         let mut total = 0usize;
         let mut index = 0;

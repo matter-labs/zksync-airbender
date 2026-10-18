@@ -4,7 +4,6 @@ use era_cudart::slice::{DeviceSlice, DeviceVariable};
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::PR;
-use gpu_core::primitives::static_host::{alloc_static_pinned_box_from_slice, StaticPinnedBox};
 use gpu_hash::keccak256::{
     keccak256_pow, transcript_commit_initial_u32, transcript_draw_fields, DIGEST_WORDS,
 };
@@ -41,6 +40,17 @@ pub fn boundary_prefix_words(mode: &CommitmentMode) -> [u32; BOUNDARY_PREFIX_U32
     words[96] = *final_pc;
     words[97] = final_timestamp_low;
     words[98] = final_timestamp_high;
+    words
+}
+
+/// The words `derive` commits ahead of the setup and merged caps: the boundary
+/// prefix of `mode` followed by the inits-and-teardowns top bits.
+pub fn transcript_prefix_words(
+    mode: &CommitmentMode,
+    inits_and_teardowns_top_bits: &[u32],
+) -> Vec<u32> {
+    let mut words = boundary_prefix_words(mode).to_vec();
+    words.extend_from_slice(inits_and_teardowns_top_bits);
     words
 }
 
@@ -93,7 +103,6 @@ impl PackedChallengeConfig {
 }
 
 pub struct PackedChallenges {
-    _prefix_host: StaticPinnedBox<u32>,
     nonce: DeviceAllocation<u64>,
     challenges: DeviceAllocation<PR>,
 }
@@ -113,10 +122,10 @@ impl PackedChallenges {
     }
 }
 
+/// `transcript_prefix` holds [`transcript_prefix_words`] on the device.
 pub fn derive(
     seed: &mut DeviceSlice<u8>,
-    mode: &CommitmentMode,
-    inits_and_teardowns_top_bits: &DeviceSlice<u32>,
+    transcript_prefix: &DeviceSlice<u32>,
     setup_cap: &DeviceSlice<u32>,
     merged_cap: &DeviceSlice<u32>,
     cfg: &PackedChallengeConfig,
@@ -127,9 +136,9 @@ pub fn derive(
         .and_then(|cap| cap.checked_mul(DIGEST_WORDS))
         .expect("packed_challenges: cap length overflow");
     assert_eq!(
-        inits_and_teardowns_top_bits.len(),
-        cfg.top_bits_len,
-        "packed_challenges: top_bits.len() == top_bits_len"
+        transcript_prefix.len(),
+        BOUNDARY_PREFIX_U32_LEN + cfg.top_bits_len,
+        "packed_challenges: transcript_prefix.len() == BOUNDARY_PREFIX_U32_LEN + top_bits_len"
     );
     assert_eq!(
         setup_cap.len(),
@@ -141,25 +150,13 @@ pub fn derive(
         cap_words,
         "packed_challenges: merged_cap.len() == 8 << cap_log"
     );
-    let prefix_host = alloc_static_pinned_box_from_slice(&boundary_prefix_words(mode))?;
-    let top_end = BOUNDARY_PREFIX_U32_LEN + cfg.top_bits_len;
+    let top_end = transcript_prefix.len();
     let setup_end = top_end + setup_cap.len();
     let mut words = context.alloc(setup_end + cap_words, AllocationPlacement::BestFit)?;
     let mut nonce = context.alloc(1, AllocationPlacement::BestFit)?;
     let mut challenges = context.alloc(PACKED_CHALLENGE_DRAWS, AllocationPlacement::BestFit)?;
     let stream = context.get_exec_stream();
-    memory_copy_async(
-        &mut words[..BOUNDARY_PREFIX_U32_LEN],
-        &prefix_host[..],
-        stream,
-    )?;
-    if !inits_and_teardowns_top_bits.is_empty() {
-        memory_copy_async(
-            &mut words[BOUNDARY_PREFIX_U32_LEN..top_end],
-            inits_and_teardowns_top_bits,
-            stream,
-        )?;
-    }
+    memory_copy_async(&mut words[..top_end], transcript_prefix, stream)?;
     if !setup_cap.is_empty() {
         memory_copy_async(&mut words[top_end..setup_end], setup_cap, stream)?;
     }
@@ -169,11 +166,7 @@ pub fn derive(
     keccak256_pow(seed, cfg.pow_bits, &mut nonce[0], &mut counter[0], stream)?;
     transcript_draw_fields(seed, &mut challenges, stream)?;
     drop(words);
-    Ok(PackedChallenges {
-        _prefix_host: prefix_host,
-        nonce,
-        challenges,
-    })
+    Ok(PackedChallenges { nonce, challenges })
 }
 
 pub fn split_challenges(

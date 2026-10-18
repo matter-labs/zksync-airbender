@@ -401,12 +401,12 @@ fn schedule_fixture_full(context: &gpu_prover_context::ProverContext) -> Schedul
     .unwrap();
     transfer.ensure_transferred(context).unwrap();
     let top_bits = vec![1u32; artifact.memory_layout.teardown_sets.len()];
-    let d_top = upload(&top_bits, context);
+    let mode = super::deterministic_mode(0x2_0000_0003);
+    let d_top = upload(&super::transcript_prefix_words(&mode, &top_bits), context);
     let cap = upload(&super::deterministic_words(8, 73), context);
     let mut seed = upload(&[0u8; 32], context);
     let challenges = super::derive(
         &mut seed,
-        &super::deterministic_mode(0x2_0000_0003),
         &d_top,
         &cap,
         &cap,

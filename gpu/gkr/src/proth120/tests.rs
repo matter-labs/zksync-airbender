@@ -37,8 +37,8 @@ use std::sync::Arc;
 use worker::Worker;
 
 use super::packed_challenges::{
-    boundary_prefix_words, derive, lookup_pow_bits, split_challenges, PackedChallengeConfig,
-    BOUNDARY_PREFIX_U32_LEN, PACKED_CHALLENGE_DRAWS,
+    boundary_prefix_words, derive, lookup_pow_bits, split_challenges, transcript_prefix_words,
+    PackedChallengeConfig, BOUNDARY_PREFIX_U32_LEN, PACKED_CHALLENGE_DRAWS,
 };
 use crate::setup::{L1WrapSetupHost, PackedSetupSource};
 
@@ -764,14 +764,13 @@ fn packed_challenges_match_cpu_transcript_small() {
         >>::draw_random_field_elements_with_pow(
             &seed, pow_bits, &mut expected, &worker
         );
-        let d_top_bits = upload(&top_bits, &context);
+        let d_prefix = upload(&transcript_prefix_words(&mode, &top_bits), &context);
         let d_setup_cap = upload(setup_words, &context);
         let d_merged_cap = upload(&merged_cap, &context);
         let mut d_seed = upload(&[0u8; 32], &context);
         let challenges = derive(
             &mut d_seed,
-            &mode,
-            &d_top_bits,
+            &d_prefix,
             &d_setup_cap,
             &d_merged_cap,
             &cfg,

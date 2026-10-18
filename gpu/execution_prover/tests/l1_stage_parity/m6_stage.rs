@@ -20,7 +20,9 @@ use gpu_gkr::proth120::backward::{
     ResourceCountsPr, ResourceEventPr, ResourceIdPr, ResourceRecordPr,
 };
 use gpu_gkr::proth120::inputs::Proth120GkrWitnessInputs;
-use gpu_gkr::proth120::packed_challenges::{derive, PackedChallengeConfig};
+use gpu_gkr::proth120::packed_challenges::{
+    derive, transcript_prefix_words, PackedChallengeConfig,
+};
 use gpu_gkr::proth120::programs::GkrProgramsPr;
 use gpu_gkr::proth120::proof_layout::{M6ProofFields, ProofLayoutPr, ProofSlabPr};
 use gpu_gkr::proth120::{schedule_gkr, GkrOutputPr};
@@ -769,15 +771,16 @@ fn run_stages(
     setup_transfer.ensure_transferred(&context).unwrap();
     let relations = prepare_lookup_relations(circuit, &context).unwrap();
     let (inputs, input_transfer) = upload_inputs(&fixture, &context);
-    let mut top_bits = context
-        .alloc(
-            fixture.inits_and_teardowns.top_bits.len(),
-            AllocationPlacement::BestFit,
-        )
+    let transcript_prefix_host = transcript_prefix_words(
+        &fixture.commitment_mode,
+        &fixture.inits_and_teardowns.top_bits,
+    );
+    let mut transcript_prefix = context
+        .alloc(transcript_prefix_host.len(), AllocationPlacement::BestFit)
         .unwrap();
     memory_copy_async(
-        &mut top_bits,
-        &fixture.inits_and_teardowns.top_bits,
+        &mut transcript_prefix,
+        &transcript_prefix_host,
         context.get_exec_stream(),
     )
     .unwrap();
@@ -964,8 +967,7 @@ fn run_stages(
     let mut seed = context.alloc(32, AllocationPlacement::BestFit).unwrap();
     let challenges = derive(
         &mut seed,
-        &fixture.commitment_mode,
-        &top_bits,
+        &transcript_prefix,
         source.cap(),
         oracle.cap(),
         &challenge_cfg,
