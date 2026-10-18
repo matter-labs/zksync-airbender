@@ -113,5 +113,8 @@ complete selected execution from original Sail zero-profile reads and native
 zero seeds/PC. Complete native shadow paths keep terminal values zero. Native
 loader word padding uses zero, separately from the raw table's UNIMP fallback;
 [the padding model](../../Helpers/Tables/WordROMPadding.lean) checks both paths
-symbolically. Actual Sail padding, physical setup/initialization exports and
-argument enforcement remain separate.
+symbolically. [Explicit Sail padding](../../Helpers/Tables/PaddedROMImage.lean)
+now constructs real tail bytes, derives full ROM extraction and transports the
+original setup/profile/configuration into complete boot execution. No expected
+padding reads or ROM coverage are supplied. Physical setup/initialization exports
+and argument enforcement remain separate.

@@ -282,11 +282,29 @@ a complete padded image has no in-region fallback. The separate
 [padding definition](Airbender/Review/Helpers/Tables/WordROMPadding.lean) models
 this zero extension, with symbolic list proofs of extent, prefix retention and
 zero tail. No million-word list is evaluated as a certificate. This definition
-does not modify Sail state: absent bytes still fail actual reads. Constructing
-actual Sail padding bytes and binding physical setup/initialization exports
-remain next; general Rust/compiler refinement and cryptographic enforcement are
-separately scoped. Public configuration, successful ROM extraction/coverage and
-ordinary/aligned architectural domains remain visible in the boot execution claim.
+does not itself modify Sail state: absent input bytes still fail actual reads.
+The added [explicit loader constructor](Airbender/Review/Helpers/Tables/PaddedROMImage.lean)
+uses successful original prefix extraction, inserts actual zero bytes into the
+remaining finite ROM interval and returns the matching zero-padded native ROM.
+[Symbolic byte proofs](Airbender/Proofs/Sail/BytePadding.lean) establish exact
+lookup/overwrite behavior, successful zero reads and prefix/outside preservation.
+[Extractor assembly](Airbender/Proofs/WordMemory/ROMBytePadding.lean) derives the
+complete four-MiB extraction from actual reads, without an evaluated large map/list,
+lookup certificate or table-equivalence premise. Missing/oversized prefixes fail.
+
+[Setup transport](Airbender/Proofs/Trace/PaddedSetup.lean) retains actual public
+decoding when its code lies in the supplied prefix. Registers, the original boot
+profile and Machine/PMP/PMA configuration survive the explicit memory operation.
+[Boot composition](Airbender/Proofs/Trace/Families/WordMemory/BootPadding.lean)
+feeds the previous initialized execution theorem unchanged; full ROM extraction
+and the existing public shadow domain discharge all ROM coverage. The short
+public claim adds only constructor success and code-prefix inclusion to the
+original boot/configuration/alignment/ordinary-RAM and accepted native interfaces.
+No expected padding reads, per-row state or desired result is assumed. Ordinary/x0
+fixtures exercise this path while preserving all full native shadow matching.
+Physical setup/initialization exports, general Rust/compiler refinement and
+cryptographic enforcement remain separately scoped; constructing a Sail model
+of the native loader does not formally verify the Rust loader itself.
 
 ## Public state, profiles and external inputs
 

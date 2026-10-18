@@ -152,9 +152,18 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    retested: it zero-extends the input words to four MiB, while the raw table
    constructor uses UNIMP only outside the image it receives. The separate
    [padding model](Airbender/Review/Helpers/Tables/WordROMPadding.lean) now proves
-   full extent, unchanged prefix and zero tail symbolically. Next construct and
-   verify actual Sail padding bytes and connect physical setup/initialization
-   exports; the current model never fills absent Sail bytes implicitly.
+   full extent, unchanged prefix and zero tail symbolically. The explicit
+   [loader constructor](Airbender/Review/Helpers/Tables/PaddedROMImage.lean) now
+   pads actual Sail byte memory and derives complete four-MiB ROM extraction.
+   Symbolic lookup/word-vector proofs avoid evaluating a huge map or list.
+   Prefix bytes, ordinary RAM, registers, the original zero profile and public
+   Machine/PMP/PMA configuration are preserved. Actual public decoder setup
+   survives when its code lies in the supplied prefix. The small padded-boot
+   claim now derives every shadow coverage condition from construction and the
+   existing public ROM domain. Ordinary/x0 native fixtures pass complete original
+   execution from that padded state; missing/oversized prefixes reject padding.
+   Next connect physical setup/initialization exports and the actual native setup
+   rows to these constructors; no general Rust/compiler refinement is claimed.
    Rust refinement and cryptographic enforcement remain separate.
    Preserve v2 PC rollover and native timestamp offsets;
    keep physical setup generation/export and mixed/custom expansion explicit.

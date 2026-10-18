@@ -281,9 +281,9 @@ now reaches PC 8 and native terminal RAM/x3=123 through this general relation;
 ordinary/x0 ROM loads and an empty native trace also pass. The public Review adds
 one short execution theorem; calculations remain under Proofs.
 
-The public shadow seeds describe a logical initialized native image. Binding them
-to physical native zero boot and Sail boot/padding state remains open, along with
-physical ROM-table exports. Complete original word-memory execution/retirement
+The general public shadow seeds describe a logical initialized native image.
+The fixed native zero-profile and explicit Sail padding connections are checked
+below; physical initialization and ROM-table exports remain open. Complete original word-memory execution/retirement
 is checked above under the explicit logical public domains.
 The existing arithmetic execution registry and its claims retain their scope. Physical setup
 export, mixed/custom programs and cryptographic argument enforcement are separate.
@@ -307,5 +307,15 @@ actual nonzero public GPR are rejected. [The padding model](../../../Helpers/Tab
 reflects v2's proving-loader zero extension; the raw table constructor still uses
 UNIMP beyond its supplied image. Symbolic proofs distinguish those paths without
 evaluating a million words, and missing Sail padding bytes remain failures.
-Actual Sail padding construction, physical initialization/setup exports and
-Rust/cryptographic enforcement remain open.
+The [explicit loader constructor](../../../Helpers/Tables/PaddedROMImage.lean)
+now fills actual Sail tail bytes. [Symbolic lookup/extraction](../../../../Proofs/WordMemory/ROMBytePadding.lean)
+derives full ROM extraction; prefix/outside bytes and original zero-profile/
+configuration registers survive. [Decoder transport](../../../../Proofs/Trace/PaddedSetup.lean)
+retains the actual public setup when its code fits the supplied prefix.
+
+The added padded-boot claim in the same small public file feeds the previous
+execution theorem unchanged. Full-ROM extraction and the existing public shadow
+domain derive all coverage; no expected padding read or per-row state is supplied.
+Ordinary/x0 native boot fixtures pass complete original execution from the padded
+state, including exact byte boundaries and missing/oversized prefix rejection.
+Physical initialization/setup exports and Rust/cryptographic enforcement remain open.

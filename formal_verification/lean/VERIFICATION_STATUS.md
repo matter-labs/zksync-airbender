@@ -90,10 +90,19 @@ Native source review confirms zero GPR/RAM initialization and address-preserving
 zero witness masks below four MiB. The proving loader zero-pads its input word
 image; the raw ROM table constructor retains UNIMP only beyond its supplied
 image. [The separate padding model](Airbender/Review/Helpers/Tables/WordROMPadding.lean)
-proves full extent, prefix retention and zero tail symbolically. This does not
-construct actual Sail padding bytes or prove Rust/compiler/export refinement.
-Public configuration, actual ROM extraction/coverage, domain alignment and ordinary
-RAM remain explicit. Physical initialization/setup argument enforcement is open.
+proves full extent, prefix retention and zero tail symbolically. The explicit
+[loader constructor](Airbender/Review/Helpers/Tables/PaddedROMImage.lean) now
+inserts actual zero bytes into Sail memory and derives complete four-MiB public
+ROM extraction without evaluating a huge map/list. Prefix/outside bytes, all
+registers, the original zero profile and public configuration are preserved.
+Public decoder setup survives when its code fits the supplied prefix. The added
+[short padded-boot theorem](Airbender/Review/Trace/Families/WordMemory/NativeBoot.lean)
+derives all ROM-shadow coverage from construction. Ordinary/x0 native fixtures
+exercise complete original execution, byte boundaries and previously absent
+zero reads; missing and excessive prefixes reject construction. Public alignment,
+configuration, ordinary RAM and code-prefix inclusion stay visible. Physical
+initialization/setup exports, Rust/compiler refinement and argument enforcement
+remain open.
 
 ## Validation
 
@@ -101,8 +110,8 @@ Current checked checkpoint:
 
 - Library, both CLI entrypoints and all eighteen concrete test modules pass.
 - Importer regressions: 46 checks pass.
-- Axiom audit: 578 explicit roots; only propext, Classical.choice and Quot.sound.
-- All twenty-seven public Review theorems (five circuit claims, twenty trace claims and two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Axiom audit: 600 explicit roots; only propext, Classical.choice and Quot.sound.
+- All twenty-eight public Review theorems (five circuit claims, twenty-one trace claims and two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
 - Source provenance: 69 unchanged reused files, two native circuit artifacts and twenty-four native Rust sources.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
@@ -132,6 +141,7 @@ Current checked checkpoint:
 - The same original clauses now pass native row preparation/retirement. Ordinary/x0 ROM loads retain actual memory behavior and reach native PC 4; reversed SW/LW normal steps start from the actual public Sail state and reach PC 8, RAM 123 and x3=123 from native terminal matching. The combined proof derives addresses/native successors and dispatches original instructions without per-row read, prepared-state or desired-PC inputs. General finite trace/fetch composition is now checked above.
 - General fetched/decoded word-memory execution passes on reversed dependent SW/LW, ordinary/x0 ROM loads and an empty native trace. The same general relation reaches actual PC 8 and native terminal RAM/x3=123. Native matching retains independent shadow value 123 while actual ROM reads 0xc0001073. All local address domains are derived from public cells/seeds; no per-row range/read/order/state/result premise is supplied.
 - Fixed-zero native boot passes on original ordinary/x0 LW fixtures with all actual GPRs zero, real public instruction/ROM bytes and fully matched zero native shadows. General execution derives PC four and actual masked destinations; full native paths derive terminal shadow zero. Invented seed values and an actual nonzero public GPR are rejected. Symbolic padding checks retain input words and distinguish zero loader padding from raw-table UNIMP fallback; absent Sail padding bytes remain actual failures.
+- Explicit Sail byte padding derives full four-MiB extraction, original zero-profile/configuration/setup preservation and complete native boot execution on ordinary/x0 loads. Prefix and out-of-ROM bytes are retained, the last ROM byte is zero and a formerly missing tail word becomes readable. Missing/oversized supplied prefixes reject construction. All large extents are handled symbolically; no evaluated large certificate or supplied padding/coverage/read/state/result premise is used.
 - No handwritten project warnings, admitted proofs or project axioms.
 - Serial bounded gates pass; parent/child timeout and memory probes confirm termination with no live owned processes.
 

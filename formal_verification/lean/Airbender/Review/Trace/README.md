@@ -141,5 +141,7 @@ same execution contract from original Sail zero-profile reads and fixed native
 seeds/PC. Complete native paths preserve shadow zero independently of ROM bytes.
 Ordinary/x0 boot regressions derive PC four and actual masked destinations.
 The proving loader's zero extension and raw-table UNIMP fallback have separate
-[checked models](../Helpers/Tables/WordROMPadding.lean); actual Sail padding and
-physical initialization/setup exports remain open.
+[checked models](../Helpers/Tables/WordROMPadding.lean). The [explicit loader](../Helpers/Tables/PaddedROMImage.lean)
+now constructs actual Sail zero bytes and derives full ROM extraction plus
+setup/profile/configuration preservation. The padded-boot claim derives all ROM
+coverage; physical initialization/setup exports remain open.

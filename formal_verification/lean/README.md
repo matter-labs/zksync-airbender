@@ -118,8 +118,13 @@ four and their actual destination values from all-zero GPRs; full native paths
 keep shadows zero independently of ROM contents. Native word padding was retested:
 the proving loader fills its input tail with zero, while the raw table constructor
 uses UNIMP only beyond the supplied image. [A separate model](Airbender/Review/Helpers/Tables/WordROMPadding.lean)
-proves this padding's extent/prefix/tail symbolically. Actual Sail padding bytes,
-physical setup/initialization exports and Rust/cryptographic enforcement remain open.
+proves this padding's extent/prefix/tail symbolically. The explicit
+[loader constructor](Airbender/Review/Helpers/Tables/PaddedROMImage.lean) now
+inserts actual Sail zero bytes and derives full four-MiB extraction, setup/profile
+preservation and complete boot execution without a supplied padding/coverage
+premise. Ordinary/x0 regressions retain full native matching; missing/oversized
+prefixes reject construction. Physical setup/initialization exports and
+Rust/cryptographic enforcement remain open.
 
 ## Read these first
 

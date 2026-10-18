@@ -54,9 +54,10 @@ private def row (store inROM discard : Bool) (i : Nat) : ZMod mersenne31Modulus 
   else if i = 45 then 2147450879
   else 0
 
-private theorem satisfies (store inROM discard : Bool) (legal : (store && inROM) = false) :
+private theorem satisfies_rom (image : WordROM) (query : image.word 4 = 0xc0001073)
+    (store inROM discard : Bool) (legal : (store && inROM) = false) :
     FlatOperation.ConstraintsHoldFlat (environment (row store inROM discard))
-      (Airbender.WordMemory.importedConstraints (rom discard)) := by
+      (Airbender.WordMemory.importedConstraints image) := by
   cases store <;> cases inROM <;> cases discard <;> simp_all only [Bool.false_and,
     Bool.true_and, Bool.true_eq_false]
   all_goals
@@ -71,12 +72,17 @@ private theorem satisfies (store inROM discard : Bool) (legal : (store && inROM)
         Expression.eval, Vector.map_mk, List.map_toArray, List.map_cons, List.map_nil, row]
       solve
       | refine ⟨⟨0, by decide⟩, ?_⟩
-        norm_num [romSeparatorRow, WordROM.row, WordROM.word, rom]
+        norm_num [romSeparatorRow, WordROM.row, query]
       | refine ⟨⟨64, by decide⟩, ?_⟩
-        norm_num [romSeparatorRow, WordROM.row, WordROM.word, rom]
+        norm_num [romSeparatorRow, WordROM.row, query]
       | refine ⟨⟨4, by decide⟩, ?_⟩
-        norm_num [romSeparatorRow, WordROM.row, WordROM.word, rom]
+        norm_num [romSeparatorRow, WordROM.row, query]
         decide
+
+private theorem satisfies (store inROM discard : Bool) (legal : (store && inROM) = false) :
+    FlatOperation.ConstraintsHoldFlat (environment (row store inROM discard))
+      (Airbender.WordMemory.importedConstraints (rom discard)) :=
+  satisfies_rom _ (by cases discard <;> rfl) store inROM discard legal
 
 private def nativeRow (store inROM discard : Bool) : Row mersenne31Modulus WordMemoryFamily :=
   ⟨.wordMemory, row store inROM discard⟩
@@ -364,5 +370,84 @@ theorem nonzero_public_register_rejected (discard : Bool) :
   rw [actual] at zero
   have impossible : (1 : BitVec 32) = 0 := (EStateM.Result.ok.inj zero).1
   exact (by decide : ¬(1 : BitVec 32) = 0) impossible
+
+private def paddedTrace (discard : Bool) : Data mersenne31Modulus WordMemoryFamily :=
+  { trace discard with rom := (rom discard).zeroPadded }
+
+private theorem padded_accepted (discard : Bool) : Accepted (paddedTrace discard) := by
+  have base := accepted discard
+  constructor
+  · intro actual member
+    have same : actual = nativeRow false true discard := by simpa [paddedTrace, trace] using member
+    subst actual
+    apply satisfies_rom _ ?_ false true discard rfl
+    change (rom discard).zeroPadded.word 4 = 0xc0001073
+    rw [Airbender.WordMemory.Proofs.zero_padding_prefix _ (by cases discard <;> decide)]
+    rfl
+  · exact base.active
+  · exact base.states
+  · exact base.memory
+
+/-- Explicit padding makes previously absent byte 20 readable, while the
+    original input still fails there. No large map is evaluated by this proof. -/
+theorem explicit_padding_reads_zero (discard : Bool) :
+    (Cell.ram 20).read (Reference.RiscV.Sail.paddedROMState (before discard) 5) =
+      .ok 0 (Reference.RiscV.Sail.paddedROMState (before discard) 5) :=
+  Reference.RiscV.Sail.padded_rom_zero_read _ (by decide) (by decide) (by decide)
+
+/-- Actual byte padding and the native zero-padded ROM are a single successful
+    public loader construction, with the entire four-MiB extraction derived. -/
+theorem explicit_padding_image (discard : Bool) :
+    paddedWordROMImage (before discard) 5 =
+      some (Reference.RiscV.Sail.paddedROMState (before discard) 5, (paddedTrace discard).rom) ∧
+    wordROMImage (Reference.RiscV.Sail.paddedROMState (before discard) 5) 1048576 =
+      some (paddedTrace discard).rom := by
+  constructor
+  · unfold paddedWordROMImage
+    rw [public_rom_built]
+    rfl
+  · exact Airbender.WordMemory.Proofs.padded_rom_image (public_rom_built discard)
+
+/-- Original ordinary/x0 LW execution now starts in explicitly padded Sail
+    memory; full ROM coverage comes from construction, not a coverage premise. -/
+theorem padded_boot_fetched_execution [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    (discard : Bool) :
+    Airbender.WordMemory.Realizes (setup discard).program (paddedTrace discard)
+      (Reference.RiscV.Sail.paddedROMState (before discard) 5) (cells discard) := by
+  have boot : Airbender.WordMemory.NativeBootBoundary (paddedTrace discard) (before discard)
+      (cells discard) shadows := by
+    have original := inputs discard
+    exact ⟨original.domain, original.architectural, original.shadowsInROM, original.profile,
+      original.seed, original.initial⟩
+  have lookup : Airbender.WordMemory.Decoded (paddedTrace discard) (setup discard) := decoded discard
+  apply Airbender.WordMemory.padded_boot_execution boot (explicit_padding_image discard).1
+    (public_decoder_built discard) (by decide) (padded_accepted discard) lookup
+    (aligned discard) (configuration discard)
+  intro address member
+  simp [cells, destination] at member
+
+/-- Padding has exact finite overwrite behavior and does not invent bytes
+    outside its interval, including immediately beyond the four-MiB ROM. -/
+theorem explicit_padding_boundaries (discard : Bool) :
+    (Reference.RiscV.Sail.paddedROMState (before discard) 5).mem[19]? = (before discard).mem[19]? ∧
+    (Reference.RiscV.Sail.paddedROMState (before discard) 5).mem[4194303]? = some 0 ∧
+    (Reference.RiscV.Sail.paddedROMState (before discard) 5).mem[4194304]? = (before discard).mem[4194304]? := by
+  simp only [Reference.RiscV.Sail.padded_rom_byte _ _ _ (by decide : 5 ≤ 1048576)]
+  norm_num
+
+private def missingPrefix : Reference.RiscV.Sail.State :=
+  { (default : Reference.RiscV.Sail.State) with mem := Std.ExtHashMap.emptyWithCapacity }
+
+/-- The explicit loader rejects missing supplied bytes and excessive counts;
+    zero padding never repairs an invalid prefix. -/
+theorem explicit_padding_rejects_invalid :
+    paddedWordROMImage missingPrefix 1 = none ∧
+    paddedWordROMImage missingPrefix 1048577 = none := by
+  constructor
+  · simp [paddedWordROMImage, wordROMImage, readROMWords, Cell.read,
+      _root_.Sail.ArchSem.readBytes, _root_.Sail.ArchSem.readByte,
+      EStateM.run, get, getThe, MonadStateOf.get, bind, pure, EStateM.bind,
+      EStateM.get, throw, throwThe, MonadExceptOf.throw, EStateM.throw, missingPrefix]
+  · rfl
 
 end Tests.WordMemoryNativeBoot

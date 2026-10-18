@@ -1080,6 +1080,62 @@
       "source_path": "Tests/NativeROM.lean",
       "source_sha256": "218cfb806d3cc797ac5cf8b5d240f555b66aba724d12161d82fd0ad5bf2fb324",
       "change": "Reuse the zero-native-shadow versus actual ROM boot regression structure. Keep original v2 witness columns, imported constraints and full matching; omit v3 witness-value rewriting and NOP projection."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Memory/BytePadding.lean",
+      "backport_reuse_revision": "7ae27c80badf09edad998756a10b06b88ee46806",
+      "backport_reuse_path": "Airbender/Review/Helpers/Memory/InitialImage.lean",
+      "backport_reuse_sha256": "8403dba2a41a47d0221b755f8e13537ad60bb759aca6b263fe705ee29df810f6",
+      "change": "Use the original Sail State/byte map and actual Cell.read unchanged. Add explicit finite zero-byte inserts for the v2 proving-loader tail; no default read or replacement memory semantics."
+    },
+    {
+      "path": "Airbender/Proofs/Sail/BytePadding.lean",
+      "backport_reuse_revision": "7ae27c80badf09edad998756a10b06b88ee46806",
+      "backport_reuse_path": "Airbender/Proofs/Sail/WordMemoryState.lean",
+      "backport_reuse_sha256": "e6395198b1db2409868a08ca3440484fa46564c6e53898dc267094dd3fa0b3c6",
+      "change": "Reuse original read_word_of_bytes, read_word_memory and register frames unchanged. Symbolic finite-insert lookup derives real zero reads, prefix/outside preservation, public configuration and the original zero profile."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/PaddedROMImage.lean",
+      "backport_reuse_revision": "7ae27c80badf09edad998756a10b06b88ee46806",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/WordROMImage.lean",
+      "backport_reuse_sha256": "52e66c40f501dced9f29692e8d4b5e0d3e4edd4fd7c05ba9453c2af100f6ed24",
+      "change": "Reuse the actual public prefix extractor and its missing-byte/capacity rejection unchanged. Pair explicit Sail byte padding with the existing native zeroPadded ROM model; supply no expected words or table equivalence."
+    },
+    {
+      "path": "Airbender/Proofs/WordMemory/ROMBytePadding.lean",
+      "backport_reuse_revision": "7ae27c80badf09edad998756a10b06b88ee46806",
+      "backport_reuse_path": "Airbender/Proofs/WordMemory/ROMImage.lean",
+      "backport_reuse_sha256": "d65b2a355a01ec1f4b21b597256e9b1caed33efe2b5a01e7e655928eb9367611",
+      "change": "Reuse actual prefix read recovery and symbolic vector recursion. Prove the converse extractor from successful reads, then derive full four-MiB extraction from the actual padding constructor without evaluating a million-word map/list."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/PaddedSetup.lean",
+      "backport_reuse_revision": "7ae27c80badf09edad998756a10b06b88ee46806",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Program.lean",
+      "backport_reuse_sha256": "2cc2d12b94684e084b174333f7bed1a8b2237a3edd0c0b5f1e20169592347541",
+      "change": "Reuse the actual pure-decoder builder and its mapM induction. Transport actual prefix reads across padding, retaining every selected entry and complete minus-one setup tail; derive code windows from public lengths."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/BootPadding.lean",
+      "backport_reuse_revision": "7ae27c80badf09edad998756a10b06b88ee46806",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/Boot.lean",
+      "backport_reuse_sha256": "f5bf0c15d4d399872e3596e8cf13a3573d174f8c71048200996f77b17bfd916c",
+      "change": "Reuse initialized original LW/SW execution unchanged. Explicit byte construction preserves the original zero profile/configuration/setup and derives full ROM extraction plus every shadow coverage condition, without supplied padding reads or intermediate states."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/WordMemory/NativeBoot.lean",
+      "backport_reuse_revision": "7ae27c80badf09edad998756a10b06b88ee46806",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/WordMemory/NativeBoot.lean",
+      "backport_reuse_sha256": "cfca918c8ec927bcdaa7af66ff9d442ceed99489198f77e542969c22b28dbead",
+      "change": "Keep the existing extracted-prefix claim; add one short constructor-based claim for explicitly padded Sail memory with full coverage derived in Proofs. Physical Rust/export/argument fidelity remains separate."
+    },
+    {
+      "path": "Tests/WordMemoryNativeBoot.lean",
+      "backport_reuse_revision": "7ae27c80badf09edad998756a10b06b88ee46806",
+      "backport_reuse_path": "Tests/WordMemoryNativeBoot.lean",
+      "backport_reuse_sha256": "6712888140b11b380095a9cf00941efaae94c66fe107b31c818415da912ed81d",
+      "change": "Reuse the existing ordinary/x0 full native rows, original bytes, public setup/configuration and zero seeds. Factor their ROM-slot check symbolically to accept the loader-padded image, then verify actual new zero reads, full extraction/execution, byte boundaries and rejection of missing/oversized prefixes without evaluating the full map/list."
     }
   ]
 }

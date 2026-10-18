@@ -28,3 +28,11 @@ check length, unchanged prefix and zero tail without evaluating the million-entr
 list. This list model constructs no Sail bytes and proves no Rust refinement;
 [regressions](../../../../Tests/WordMemoryNativeBoot.lean) preserve actual failure
 on absent Sail padding.
+
+[The explicit loader](PaddedROMImage.lean) now combines successful original prefix
+extraction with actual Sail zero-byte inserts. [Symbolic extraction proofs](../../../Proofs/WordMemory/ROMBytePadding.lean)
+derive a complete four-MiB ROM from those actual reads, without evaluating the
+huge map/list or assuming table equivalence. [Padded boot execution](../../Trace/Families/WordMemory/NativeBoot.lean)
+preserves original public decoding/configuration/profile and derives all ROM
+coverage; missing or oversized prefixes fail. General Rust/export/argument
+fidelity remains separate.

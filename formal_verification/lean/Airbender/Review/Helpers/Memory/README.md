@@ -78,5 +78,9 @@ fixed zero-boot profile connection are checked; physical enforcement remains sep
 independent zero shadow seeds from the original profile and native public domain.
 [The short boot theorem](../../Trace/Families/WordMemory/NativeBoot.lean) reuses
 complete original execution, while actual native shadow paths force terminal zero.
-The v2 runtime/replayer sources are pinned. Actual Sail padding bytes, physical
-setup/initialization enforcement and general Rust refinement remain separate.
+The v2 runtime/replayer sources are pinned. [Explicit byte padding](BytePadding.lean)
+now inserts finite zero bytes using the original Sail map. Exact lookup, actual
+zero-word reads, prefix/outside preservation and original boot/configuration
+frames are proved symbolically. The [public loader](../Tables/PaddedROMImage.lean)
+derives complete ROM extraction and boot execution; physical setup/initialization
+enforcement and general Rust refinement remain separate.
