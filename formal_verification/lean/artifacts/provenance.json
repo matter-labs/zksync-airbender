@@ -1280,6 +1280,76 @@
       "source_path": "Airbender/Proofs/Tables/ImportedROMProgram.lean",
       "source_sha256": "816295b7c64eb761fb354bde1248daa2c493d408ae00e38a6d0312a02f6dda1c",
       "change": "Reuse the complete imported-ROM certificate strategy: check the finite prefix and prove actual exported affine/periodic/zero tails symbolically. Certify every v2 ROM/separator/range row, all unsupported decoder slots and the public image tail, then reuse the existing physical membership and actual Sail read bridge. No table-equivalence or desired-read premise is introduced."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Decoder/SparseSetup.lean",
+      "backport_reuse_revision": "b55441b4b5caaa032f4903ef70329f1836d5dfdc",
+      "backport_reuse_path": "Airbender/Review/Helpers/Decoder/Program.lean",
+      "backport_reuse_sha256": "5d4682f64b9d18e3cd615ec4ff6de95a95a56b832336dff710b946cec3823c8b",
+      "change": "Reuse original public word reads, pure Sail decoding, ProgramEntry metadata and ten-column queries. Read every supplied word; preserve unsupported pure words as indexed holes, reject missing/effectful words, and retain the complete minus-one tail without compacting PCs."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Decoder/WordMemorySparse.lean",
+      "backport_reuse_revision": "b55441b4b5caaa032f4903ef70329f1836d5dfdc",
+      "backport_reuse_path": "Airbender/Review/Helpers/Decoder/WordMemory.lean",
+      "backport_reuse_sha256": "87d8310fc7d457268e4f32c940bd520bace5aaf624aec0ec59ef6a057184b3d1",
+      "change": "Reuse the unchanged v2 LW/SW projection and x0 behavior with a separate sparse public constructor and complete lookup interface. Keep the original strict constructor unchanged."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/SparseDecoderSetup.lean",
+      "backport_reuse_revision": "b55441b4b5caaa032f4903ef70329f1836d5dfdc",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Program.lean",
+      "backport_reuse_sha256": "2cc2d12b94684e084b174333f7bed1a8b2237a3edd0c0b5f1e20169592347541",
+      "change": "Reuse successful-entry/source/pure-decoder and indexed-PC lemmas unchanged. Generalize list recovery through optional slots, retaining actual byte reads, original source PCs and alignment. Non-sentinel membership selects a real supported entry without a result/table-equivalence premise."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/SparseDecoder.lean",
+      "backport_reuse_revision": "b55441b4b5caaa032f4903ef70329f1836d5dfdc",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/Decoder.lean",
+      "backport_reuse_sha256": "788e9b4a43e18f760791f36900aa9248a5c2a6cf81b450cfb2de8678ef3f4877",
+      "change": "Reuse the unchanged native Boolean store-mask padding exclusion and generic query reconstruction. Derive original Sail source evidence, canonical PC/immediate bounds, incoming alignment and exact x0 flag for arbitrary successfully constructed sparse programs."
+    },
+    {
+      "path": "Airbender/Review/Circuits/WordMemory/Tables/NativeSparseData.lean",
+      "backport_reuse_revision": "b55441b4b5caaa032f4903ef70329f1836d5dfdc",
+      "backport_reuse_path": "Airbender/Review/Circuits/WordMemory/Tables/NativeSetupData.lean",
+      "backport_reuse_sha256": "1b76043137afd55246dba440d1d2ee07ea5293bed74cd51c0b9eaaa5a3e43717",
+      "change": "Reuse the tiny literal native artifact entry point for a fresh v2 export with an interior UNIMP word. Expose independent actual public bytes and original LW/SW/x0 entries at PCs 0/8/12; no unsupported word is compacted or projected to a NOP."
+    },
+    {
+      "path": "Airbender/Proofs/WordMemory/NativeSparseSetup.lean",
+      "backport_reuse_revision": "b55441b4b5caaa032f4903ef70329f1836d5dfdc",
+      "backport_reuse_path": "Airbender/Proofs/WordMemory/NativeSetup.lean",
+      "backport_reuse_sha256": "7a8c84864b2bb92ba831416e59bbf6b6caef71c699e4948a5a532253b0a7bebf",
+      "change": "Reuse full exported-row certification with a finite checked prefix and symbolic million-slot tail. Construct the sparse public setup from actual original Sail byte reads/decoding, prove every exported decoder row equals the constructed row, then derive source evidence from native constraints/membership. Row equality is proved, never a premise."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/WordMemory/SparseDecoder.lean",
+      "backport_reuse_revision": "b55441b4b5caaa032f4903ef70329f1836d5dfdc",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/WordMemory/Decoder.lean",
+      "backport_reuse_sha256": "c3307bcdda8a70123a17c871e5e6d82577809e3fc038df198d4b5c51ab53e629",
+      "change": "Keep two short claims: generic sparse public decoding and the pinned actual native interior-hole export. State genuine native constraints/membership; calculations and source construction stay under Proofs."
+    },
+    {
+      "path": "Tests/NativeSparseSetup.lean",
+      "backport_reuse_revision": "b55441b4b5caaa032f4903ef70329f1836d5dfdc",
+      "backport_reuse_path": "Tests/NativeSetup.lean",
+      "backport_reuse_sha256": "0023dc5da918a410ab39c8731c14eab80404a2ea71b2c83ebe90c697e219dded",
+      "change": "Reuse finite native-data kernel checks. Check actual public construction, supported post-hole PCs and x0 fields, original Sail sources, retained public input words, missing-byte failure and insufficient capacity."
+    },
+    {
+      "path": "Tests/WordMemory.lean",
+      "backport_reuse_revision": "b55441b4b5caaa032f4903ef70329f1836d5dfdc",
+      "backport_reuse_path": "Tests/WordMemory.lean",
+      "backport_reuse_sha256": "371dd0d55eb26a507e27c536d1d11e648221fa6bca4d26008920cd4fea936ff1",
+      "change": "Reuse the complete original native RAM/x0 witness with PC 12, immediate 16, native PC auxiliary inverse and actual padded-ROM shadow data. All original equations/lookups pass before exported membership recovers the original public LW-to-x0 source beyond the unsupported word."
+    },
+    {
+      "path": "scripts/check_native_setup.py",
+      "backport_reuse_revision": "b55441b4b5caaa032f4903ef70329f1836d5dfdc",
+      "backport_reuse_path": "scripts/check_native_setup.py",
+      "backport_reuse_sha256": "815230c18d39cb65c620e09ce6db8e1f2502d5ff95a578336080a0d2cee1ae47",
+      "change": "Retain all original export/CLI rejection checks. Generate the interior-hole fixture through unchanged native binary image/text APIs and compare every output byte against the pinned second export."
     }
   ],
   "setup_artifacts": [
@@ -1293,6 +1363,20 @@
         3188771,
         16818179,
         3221229683
+      ],
+      "image_padding": "native pad_bytecode::<4194304>; exactly 1048576 words",
+      "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5"
+    },
+    {
+      "path": "artifacts/setup/word-memory-holes-native.json",
+      "sha256": "96146deda9699c8b656e0540fe90cbf12cc0bd0077447a4380cf42a827e21dca",
+      "profile": "native v2 Mersenne31 word-memory table driver and decoder with an interior unsupported word; pre-physical-trace rows",
+      "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py",
+      "image_and_text_words": [
+        16818563,
+        3221229683,
+        3188771,
+        16818179
       ],
       "image_padding": "native pad_bytecode::<4194304>; exactly 1048576 words",
       "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5"

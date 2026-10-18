@@ -340,3 +340,11 @@ prefix extraction; explicit loader padding and symbolic complete-row certificate
 derive the read. [The data entry point](../../../Circuits/WordMemory/Tables/NativeSetupData.lean)
 keeps actual native values visible, while all calculations remain in Proofs.
 General native program/decoder and full physical argument connections stay open.
+
+[Sparse decoder claims](SparseDecoder.lean) recover original public Sail sources
+when supported instructions are separated by unsupported pure words. Native mask
+equations exclude holes and the full tail. Shared query calculations derive all
+canonical decoder inputs without per-row bounds/flags. [An actual native export](../../../Circuits/WordMemory/Tables/NativeSparseData.lean)
+has a complete row certificate from original public bytes and a full native
+x0-load witness at PC 12. This decoder connection still needs integration with
+initialized whole execution; no whole mixed-program claim is made.

@@ -135,3 +135,11 @@ cover every regional ROM/separator/range row and unsupported decoder tail. The
 [trace read bridge](../../Trace/Families/WordMemory/Setup.lean) connects actual ROM
 rows to public Sail bytes; full physical setup/LDE and general program construction
 remain separate.
+
+[The interior-hole native data](Tables/NativeSparseData.lean) retains unsupported
+UNIMP at PC four and supported original LW/SW/x0 words at 0/8/12. [Proofs](../../../Proofs/WordMemory/NativeSparseSetup.lean)
+construct its public sparse setup from actual Sail bytes and certify every exported
+decoder row. [The source claim](../../Trace/Families/WordMemory/SparseDecoder.lean)
+uses native constraints/membership to recover original source evidence, including
+a complete post-hole x0-load row. Sparse initialized execution and general Rust
+or physical setup correspondence remain open.

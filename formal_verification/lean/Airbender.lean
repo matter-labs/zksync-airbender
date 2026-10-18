@@ -19,3 +19,4 @@ import Airbender.Review.Trace.Families.WordMemory.Platform
 import Airbender.Review.Trace.Families.WordMemory.Theorems
 import Airbender.Review.Trace.Families.WordMemory.NativeBoot
 import Airbender.Review.Trace.Families.WordMemory.Setup
+import Airbender.Review.Trace.Families.WordMemory.SparseDecoder

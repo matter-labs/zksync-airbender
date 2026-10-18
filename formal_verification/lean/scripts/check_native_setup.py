@@ -29,6 +29,12 @@ def main():
         subprocess.run([str(binary), str(image), str(text), str(output)], check=True)
         assert output.read_bytes() == (ROOT / "artifacts/setup/word-memory-native.json").read_bytes()
         print("PASS little-endian image/text CLI inputs", flush=True)
+        holes = [0x0100a183, 0xc0001073, 0x0030a823, 0x0100a003]
+        image.write_bytes(b"".join(word.to_bytes(4, "little") for word in holes))
+        text.write_bytes(image.read_bytes())
+        subprocess.run([str(binary), str(image), str(text), str(output)], check=True)
+        assert output.read_bytes() == (ROOT / "artifacts/setup/word-memory-holes-native.json").read_bytes()
+        print("PASS reproducible native interior-hole export", flush=True)
         for label, image_bytes, text_bytes in [
             ("partial image word", b"xx", text.read_bytes()),
             ("partial text word", image.read_bytes(), b"xx"),

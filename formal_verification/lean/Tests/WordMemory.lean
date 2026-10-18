@@ -1,5 +1,7 @@
 import Airbender.Review.Circuits.WordMemory.Theorems
 import Airbender.Review.Trace.Families.WordMemory.Decoder
+import Airbender.Review.Trace.Families.WordMemory.SparseDecoder
+import Airbender.Proofs.WordMemory.ROMPadding
 import Airbender.Proofs.WordMemory.Address
 import Airbender.Proofs.WordMemory.PC
 import Airbender.Proofs.WordMemory.Timestamp
@@ -434,5 +436,44 @@ theorem changing_store_not_shadow {address : BitVec 32} (region : address.toNat 
   have changing : Airbender.WordMemory.importedConstraintsMemoryPorts[2].writeCode (row true false false) ≠
       Airbender.WordMemory.importedConstraintsMemoryPorts[2].readCode (row true false false) := by decide
   exact changing preserved
+
+/-- A complete native x0 load after the interior hole, with matching immediate
+    and zero-padded ROM shadow. No expected read/result is supplied. -/
+private def sparseAfterHole (i : Nat) : ZMod mersenne31Modulus :=
+  if i = 0 then 12 else if i = 13 then 16 else if i = 9 then 16
+  else if i = 43 then 896194221 -- native inverse of 12 - 65532
+  else if i = 17 ∨ i = 26 ∨ i = 27 then 0 else row false false true i
+
+private def sparseROM : WordROM := WordMemory.NativeSparse.programROM.zeroPadded
+
+private theorem sparse_after_hole_constraints :
+    FlatOperation.ConstraintsHoldFlat (environment sparseAfterHole)
+      (WordMemory.importedConstraints sparseROM) := by
+  simp [WordMemory.importedConstraints, FlatOperation.ConstraintsHoldFlat,
+    Expression.eval, environment, sparseAfterHole, row]
+  repeat' apply And.intro
+  all_goals first | (apply range16_contains; decide) |
+    (apply timestamp19_contains; decide) | try decide
+  all_goals
+    simp only [Lookup.Contains, fixed3, Table.toRaw, romSeparatorTable,
+      romWordTable, Table.fromStatic, StaticTable.toTable, ProvableType.fromElements,
+      Expression.eval, Vector.map_mk, List.map_toArray, List.map_cons, List.map_nil, sparseAfterHole, row]
+    solve
+    | refine ⟨⟨64, by decide⟩, ?_⟩; norm_num [romSeparatorRow]
+    | refine ⟨⟨4, by decide⟩, ?_⟩
+      have word : sparseROM.word 4 = 0 := WordMemory.Proofs.zero_padding_tail _ (by decide) (by decide)
+      norm_num [WordROM.row, word]
+      decide +kernel
+
+/-- Accepted full native constraints and actual exported membership recover the
+    original LW-to-x0 source at PC 12, beyond the unsupported word at PC four. -/
+theorem native_sparse_after_hole_source :
+    ∃ entry ∈ WordMemory.NativeSparse.setup.program,
+      entry.SourceWith WordMemory.NativeSparse.before WordMemory.decoderFields ∧
+      (Trace.Row.mk .wordMemory sparseAfterHole : Trace.Row mersenne31Modulus Trace.WordMemoryFamily).decoderQuery = entry.query := by
+  apply WordMemory.exported_sparse_decoder_soundness
+    (row := (Trace.Row.mk .wordMemory sparseAfterHole : Trace.Row mersenne31Modulus Trace.WordMemoryFamily))
+    (rom := sparseROM) sparse_after_hole_constraints
+  exact ⟨⟨3, by decide⟩, by decide +kernel⟩
 
 end Tests.WordMemory

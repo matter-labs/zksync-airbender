@@ -39,11 +39,11 @@ not completed v2 coverage.
 | [Word-memory platform configuration](Airbender/Review/Trace/Families/WordMemory/Platform.lean) | Initialized projected histories preserve the public original Sail Machine/PMP/PMA configuration. Eight platform modules are copied unchanged from the pinned source. Native RAM address/port equations derive actual Sail reads/writes and alignment; unchanged Sail translation, permission and ordinary-memory helpers transport those effects into actual virtual-memory calls. The dependent native SW/LW regression derives a virtual store and later read of 123 with no supplied intermediate state/read/result. Public ordinary-address and configuration conditions remain explicit. Original clauses and row preparation/retirement are checked below; complete trace composition is checked below; physical boot/export remains separate. |
 | Original word-memory clauses | [ROM transport](Airbender/Proofs/Trace/Families/WordMemory/ROMTransport.lean) composes actual public byte extraction, retained source reads, native address/alignment and preserved configuration into original Sail virtual ROM reads. Native ROM bounds derive ordinary addresses. [Clause assembly](Airbender/Proofs/Trace/Families/WordMemory/ROMExecution.lean) derives the original unmasked destination effect from native masked writes, including original x0 without NOP projection. [Initialized regressions](Tests/WordMemoryROMTransport.lean) construct real decoder/ROM bytes and reach original LW clause results in the same actual native after-state, with full shadow matching and shadow value 123 distinct from actual ROM word 0xc0001073. [RAM clause assembly](Airbender/Proofs/Trace/Families/WordMemory/RAMExecution.lean) derives load/store selectors and original registers/immediate from the public decoder, actual rs2/RAM reads from retained ports, and original RAM LW/SW results in the actual cell-transfer states. [The reversed dependent fixture](Tests/WordMemorySailHistory.lean) reaches original SW then LW results with actual read 123 and actual destination write, without an intermediate state/read/result premise. Ordinary-address and configuration conditions remain explicit. Row preparation/PC retirement is checked below; complete word-memory trace composition is checked below. |
 | Decoded word-memory row retirement | [Original clause selection](Airbender/Review/Helpers/Decoder/Instruction.lean) reuses the pinned dispatcher without v3 discarded-load deviations. [Retirement](Airbender/Proofs/Trace/Families/WordMemory/Retirement.lean) transports actual histories, configuration and ROM bytes through original nextPC preparation and tick_pc. [Native assembly](Airbender/Proofs/Trace/Families/WordMemory/Execution.lean) derives effective addresses and exact modular native PC successors from initialized matching/public decoding, selecting original RAM LW/SW or ROM LW. No prepared read/state or desired PC result is assumed. Ordinary/x0 ROM regressions retire to native PC 4; reversed dependent SW/LW normal steps derive actual PC 8 and terminal RAM/x3 values 123. Local ordinary-RAM and extracted-prefix coverage domains remain explicit; complete finite trace/fetch composition is checked below; physical boot/export remains open. |
-| Range tables | Native Clean static-table definitions with explicit range semantics; v2 setup-generator binding is pending. |
+| Range tables | Native Clean static-table definitions with explicit range semantics; the pinned range16 fixture is certified row by row. General scalar/physical setup correspondence remains open. |
 
 ## Remaining work
 
-- Extend the checked native word-memory fixture to general public decoder/program construction, arithmetic/timestamp exports and full physical trace assembly; connect physical initialization and expand mixed/custom programs.
+- Connect sparse decoding to initialized execution, generalize native export certificates to arbitrary public programs, add arithmetic/timestamp exports and full physical trace assembly; connect physical initialization and expand mixed/custom programs.
 - Extend initialized execution to jump/branch/SLT and the remaining supported families; preserve each native metadata and argument boundary.
 - Backport the remaining ordinary circuit families, worker operations, unified machine, full traces and initialization/teardown.
 - Retest v3 findings against v2 before carrying over counterexamples or temporary assumptions.
@@ -143,15 +143,41 @@ These certificates cover this pinned native fixture; arbitrary programs, arithme
 native exports, timestamp19 and full physical trace padding/normalization/LDE
 correspondence remain open, as do physical initialization and argument enforcement.
 
+## Sparse native decoder construction
+
+[Sparse public decoding](Airbender/Review/Helpers/Decoder/SparseSetup.lean) now
+reads every supplied word and retains unsupported pure decoder results as holes
+at their original PCs. Missing bytes and effectful decoding reject construction.
+The complete native-shaped minus-one tail is retained. [Recovery](Airbender/Proofs/Trace/Families/WordMemory/SparseDecoder.lean)
+reuses the actual native Boolean store-mask equation to exclude both holes and
+tail slots before deriving original Sail bytes/decoding, canonical PC/immediate
+bounds, incoming alignment and the exact x0 flag. No per-row metadata or desired
+result is supplied.
+
+A [second actual native export](artifacts/setup/word-memory-holes-native.json)
+places UNIMP between LW and SW/LW-to-x0. Supported PCs remain 0, 8 and 12.
+[Public byte data](Airbender/Review/Circuits/WordMemory/Tables/NativeSparseData.lean)
+and [certificates](Airbender/Proofs/WordMemory/NativeSparseSetup.lean) construct the
+sparse setup through original Sail reads/decoding and prove every exported decoder
+row equals its constructed row, including the interior hole and million-slot tail.
+[Two short public claims](Airbender/Review/Trace/Families/WordMemory/SparseDecoder.lean)
+cover general successful sparse construction and this pinned actual export.
+[The nonempty regression](Tests/WordMemory.lean) satisfies every original native
+row equation and lookup for an x0 load at PC 12 before recovering its original
+public source through exported membership. Missing bytes/capacity and supported
+post-hole fields are checked separately. These are decoder/source claims; sparse
+initialized execution, arbitrary-program Rust decoder refinement and full physical
+trace/argument connections remain open.
+
 ## Validation
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all twenty concrete test modules pass.
+- Library, both CLI entrypoints and all twenty-one concrete test modules pass.
 - Importer regressions: 84 checks pass.
-- Axiom audit: 629 explicit roots; only propext, Classical.choice and Quot.sound.
-- All thirty public Review theorems (five circuit claims, twenty-three trace claims and two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
-- Source provenance: 71 unchanged reused files, two native circuit artifacts, thirty-one native Rust sources, one native setup fixture and four exporter source/manifest/lock files.
+- Axiom audit: 651 explicit roots; only propext, Classical.choice and Quot.sound.
+- All thirty-two public Review theorems (five circuit claims, twenty-five trace claims and two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Source provenance: 71 unchanged reused files, two native circuit artifacts, thirty-one native Rust sources, two native setup fixtures and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
 - Public Sail x1/PC reads construct the accepted alias fixture; missing register and byte data reject construction.
@@ -183,6 +209,7 @@ Current checked checkpoint:
 - Explicit Sail byte padding derives full four-MiB extraction, original zero-profile/configuration/setup preservation and complete native boot execution on ordinary/x0 loads. Prefix and out-of-ROM bytes are retained, the last ROM byte is zero and a formerly missing tail word becomes readable. Missing/oversized supplied prefixes reject construction. All large extents are handled symbolically; no evaluated large certificate or supplied padding/coverage/read/state/result premise is used.
 - Exact setup metadata for both native artifacts and fifteen added importer regressions pass. The active four-column tagged row model has exactly the existing ROM/separator meanings, including every dummy/padding tuple. Nonempty original Sail bytes and explicit zero padding derive actual reads from tagged ROM membership; altered words and wrong padding tags are rejected. The normalized final setup row is explicitly outside this model's lookup domain; actual Rust/export/LDE and argument correspondence remains separate.
 - The standalone native exporter passes offline locked checking and exact fixture reproduction. Little-endian binary image/text inputs reproduce the fixture; partial words and oversized inputs reject before output. Lean certifies all actual regional ROM/separator/range values, the entire unsupported decoder tail and the loader's image zeros; original LW/SW/x0 and explicit UNIMP/sentinel regressions pass. Compressed-field, extent, region, tag and unknown-field mutations fail closed. Parse/emission, general Rust/compiler refinement and physical trace/LDE/argument connections remain separate.
+- Sparse public construction retains actual unsupported interior words at their original PCs and rejects missing/effectful inputs. Native equations derive hole/tail exclusion, original Sail sources, canonical decoder words/alignment and exact x0 flags. The second native export reproduces exactly and its entire decoder matches constructed public Sail data. A full native x0-load constraint witness at PC 12 recovers actual source evidence beyond the UNIMP hole; missing bytes/capacity and all post-hole fields pass. Sparse initialized execution and arbitrary-program Rust refinement remain separate.
 - No handwritten project warnings, admitted proofs or project axioms.
 - Serial bounded gates pass; parent/child timeout and memory probes confirm termination with no live owned processes.
 

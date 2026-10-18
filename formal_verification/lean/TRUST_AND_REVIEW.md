@@ -365,6 +365,41 @@ Kernel proofs certify the emitted data, not the IO path. The native setup artifa
 exporter manifest/lock/sources and reused code are hash-pinned and checked by the
 standard gate. No v3 field, tag, decoder filler or physical-layout claim is imported.
 
+[Sparse public decoding](Airbender/Review/Helpers/Decoder/SparseSetup.lean) now
+reads every supplied word and retains unsupported pure decoder results as holes
+at their original PCs. Missing bytes and effectful decoding reject construction.
+The complete native-shaped minus-one tail is retained. [Recovery](Airbender/Proofs/Trace/Families/WordMemory/SparseDecoder.lean)
+reuses the actual native Boolean store-mask equation to exclude both holes and
+tail slots before deriving original Sail bytes/decoding, canonical PC/immediate
+bounds, incoming alignment and the exact x0 flag. No per-row metadata or desired
+result is supplied.
+
+A [second actual native export](artifacts/setup/word-memory-holes-native.json)
+places UNIMP between LW and SW/LW-to-x0. Supported PCs remain 0, 8 and 12.
+[Public byte data](Airbender/Review/Circuits/WordMemory/Tables/NativeSparseData.lean)
+and [certificates](Airbender/Proofs/WordMemory/NativeSparseSetup.lean) construct the
+sparse setup through original Sail reads/decoding and prove every exported decoder
+row equals its constructed row, including the interior hole and million-slot tail.
+[Two short public claims](Airbender/Review/Trace/Families/WordMemory/SparseDecoder.lean)
+cover general successful sparse construction and this pinned actual export.
+[The nonempty regression](Tests/WordMemory.lean) satisfies every original native
+row equation and lookup for an x0 load at PC 12 before recovering its original
+public source through exported membership. Missing bytes/capacity and supported
+post-hole fields are checked separately. These are decoder/source claims; sparse
+initialized execution, arbitrary-program Rust decoder refinement and full physical
+trace/argument connections remain open.
+
+The sparse constructor supplements the strict selected-profile builder. It reads
+actual bytes before deciding whether a pure original Sail result belongs to this
+family; it cannot turn a missing/effectful word into a hole. Optional slots retain
+all original indexed PCs, and the native query's mask bit excludes unsupported
+slots regardless of their position. Shared successful-entry, source, pure-decoder,
+indexed-PC and field-query lemmas are reused unchanged. The complete actual native
+fixture equality is a kernel theorem over literal rows and constructed public
+bytes, not an assumption fed to the source claim. The decoder data still precedes
+physical setup padding/normalization/LDE. Native membership enforcement, general
+Rust/Sail decoder agreement and sparse initialized execution remain separate.
+
 ## Public state, profiles and external inputs
 
 The theorem covers original Sail ADD/ADDI/SUB/LUI/AUIPC execution on the successful

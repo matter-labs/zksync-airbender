@@ -57,3 +57,14 @@ native capacity 2^20 in a 2^24-row setup trace. Tagged generic tuples occupy
 word-memory columns 2..5, including the native table ID. This checks compiled
 placement; actual Rust-generated decoder columns, unsupported-slot materialization
 and physical export/argument fidelity remain separate.
+
+[Sparse construction](SparseSetup.lean) also retains unsupported pure words as
+indexed holes. Missing bytes/effectful decoding fail; supported PCs remain 4*i.
+[The word-memory interface](WordMemorySparse.lean) reuses the original projection.
+[Calculations](../../../Proofs/Trace/Families/WordMemory/SparseDecoder.lean) derive
+hole/tail exclusion from native equations and recover actual Sail sources,
+canonical words/alignment and the exact zero flag. The [actual interior-hole export](../../Circuits/WordMemory/Tables/NativeSparseData.lean)
+has a [complete kernel certificate](../../../Proofs/WordMemory/NativeSparseSetup.lean)
+from original public bytes. [Public claims](../../Trace/Families/WordMemory/SparseDecoder.lean)
+remain short; general Rust decoder agreement, sparse initialized execution and
+full physical setup/argument correspondence remain separate.

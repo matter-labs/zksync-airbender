@@ -44,3 +44,10 @@ connects this fixture's actual ROM rows to Sail byte reads after explicit paddin
 General native program construction, other families, timestamp19, full physical
 trace assembly/normalization/LDE, Rust/JSON/Lean emission refinement and argument
 soundness remain separate. Hash identities are in the [provenance record](../lean/artifacts/provenance.json).
+
+The second pinned fixture orders LW, UNIMP, SW and LW-to-x0. The same unchanged
+native binary image/text API regenerates it byte for byte. Supported decoder PCs
+remain 0, 8 and 12 around the unsupported slot at four. [The sparse certificate](../lean/Airbender/Proofs/WordMemory/NativeSparseSetup.lean)
+constructs actual public Sail source data and proves equality of every exported
+decoder row, including the interior hole and complete tail. This adds no general
+Rust/Sail decoder refinement or physical setup/argument claim.

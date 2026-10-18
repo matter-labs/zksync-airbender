@@ -176,9 +176,18 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    reproduction, exhaustive lossless compression checks and symbolic certificates
    for every ROM/separator/range row, unsupported decoder slot and image zero tail.
    Its actual tagged ROM rows feed original Sail reads through the existing loader.
-   Next connect the native decoder data to general public program construction,
-   export arithmetic/timestamp rows and bind full physical trace assembly and
-   initialization. This fixture is not general Rust/export/LDE/compiler refinement.
+   [Sparse public construction](Airbender/Review/Helpers/Decoder/SparseSetup.lean)
+   now retains unsupported pure words at indexed PCs and rejects missing/effectful
+   inputs. Native mask equations exclude holes/tail before source recovery and
+   derive canonical words/alignment and the exact zero flag. A second actual native
+   export has an interior UNIMP slot: supported PCs stay 0/8/12. Actual original
+   Sail reads/decoding construct its sparse setup, and every exported decoder row
+   is certified against it. A complete native x0-load row at PC 12 satisfies all
+   original equations/lookups and recovers its actual public source. No table
+   equivalence is a premise. Next connect sparse matching to initialized execution,
+   generalize exported-data certificates to arbitrary public programs, export
+   arithmetic/timestamp rows and bind full physical trace assembly/initialization.
+   The fixture certificates are not general Rust/export/LDE/compiler refinement.
    Rust refinement and cryptographic enforcement remain separate.
    Preserve v2 PC rollover and native timestamp offsets;
    keep physical setup generation/export and mixed/custom expansion explicit.

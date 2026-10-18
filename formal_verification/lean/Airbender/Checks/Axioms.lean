@@ -17,6 +17,7 @@ import Tests.WordMemoryROMTransport
 import Tests.WordMemoryNativeBoot
 import Tests.PhysicalSetup
 import Tests.NativeSetup
+import Tests.NativeSparseSetup
 
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
@@ -670,3 +671,25 @@ import Tests.NativeSetup
 #print axioms Tests.NativeSetup.public_words
 #print axioms Tests.NativeSetup.separator_boundary
 #print axioms Tests.NativeSetup.finite_endpoints
+#print axioms Airbender.Trace.Proofs.slot_selected
+#print axioms Airbender.Trace.Proofs.slots_selected
+#print axioms Airbender.Trace.Proofs.sparse_setup_selected
+#print axioms Airbender.Trace.Proofs.sparse_setup_sources
+#print axioms Airbender.Trace.Proofs.sparse_member
+#print axioms Airbender.WordMemory.Proofs.sparse_decoder_member
+#print axioms Airbender.WordMemory.Proofs.sparse_decoded_sources
+#print axioms Airbender.WordMemory.Proofs.sparse_decoded_inputs
+#print axioms Airbender.WordMemory.Proofs.sparse_fixture_words
+#print axioms Airbender.WordMemory.Proofs.sparse_fixture_image
+#print axioms Airbender.WordMemory.Proofs.sparse_exported_tail
+#print axioms Airbender.WordMemory.Proofs.sparse_exported_rows
+#print axioms Airbender.WordMemory.Proofs.sparse_exported_source
+#print axioms Airbender.WordMemory.sparse_public_decoder_soundness
+#print axioms Airbender.WordMemory.exported_sparse_decoder_soundness
+#print axioms Tests.NativeSparseSetup.constructed
+#print axioms Tests.NativeSparseSetup.supported_after_hole
+#print axioms Tests.NativeSparseSetup.original_sources
+#print axioms Tests.NativeSparseSetup.missing_hole_bytes
+#print axioms Tests.NativeSparseSetup.insufficient_capacity
+#print axioms Tests.NativeSparseSetup.inputs_retained
+#print axioms Tests.WordMemory.native_sparse_after_hole_source
