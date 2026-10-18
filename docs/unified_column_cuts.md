@@ -38,7 +38,7 @@ root.
 The widths and the first layer's gate count are those of the committed layouts
 `cs/compiled_circuits/unified_reduced_machine_layout_gkr.json` and
 `unified_reduced_machine_layout_gkr_proth120.json` (`memory_layout.total_width`,
-`witness_layout.total_width`, `layers[0].gates`), against the same files in the parent commit.
+`witness_layout.total_width`, `layers[0].gates`), against the same files before the column cuts.
 
 The eight columns, by their names in the previous layout:
 
@@ -301,7 +301,7 @@ leaves in that slot. Family 3 writes its byte splits as
 For integration tests, `crate::target::test` names the crate, Cargo test target and test.
 The regenerated verifier binaries were reproduced using the pinned Docker build in
 [`tools/reproduce`](../tools/reproduce/README.md): all 57 tracked artifacts matched
-byte-for-byte. Nine artifacts changed relative to the parent commit: the three unified FSV
+byte-for-byte. Nine artifacts changed relative to the build before the column cuts: the three unified FSV
 variants, each with `.bin`, `.elf` and `.text` outputs.
 
 Coverage limits:
@@ -312,9 +312,10 @@ Coverage limits:
   18 on an F3 row that keeps arithmetic and RC-16 satisfied is rejected only by the real
   lookup argument. The native round trip enforces that argument on the honest program it
   proves; no adversarial round trip with such an injected corruption was run.
-- No test checks that a reader of slot 17, 18 or 7 is inactive on other families' rows. §2
-  needs that only for completeness; the generated-witness tests and the proof round trips
-  exercise it on real programs.
+- No test exhaustively checks that every reader of slot 17, 18 or 7 is inactive on other
+  families' rows; the slot-7 cases of `column_cuts_negative_cases_rejected` check it for the
+  Family 2 constraints on an F3 row. §2 needs the property only for completeness; the
+  generated-witness tests and the proof round trips exercise it on real programs.
 - The writer-width rule is checked for slots 17, 18 and 7 only.
 
 On the regular 2^23 GPU path, a same-device comparison of trunk against this change over 10
@@ -327,7 +328,7 @@ block's seven regular unified proofs attribute −11.8 ms to witness generation 
 commitment and −2.5 ms to the first layer's backward kernels. This is one session on one
 device, not an equivalence bound. The regular GKR verifier-input stream shrinks from 329,072
 to 323,248 bytes (−1.77 %), and recursion verifier cycles fall by about 0.7–0.8 % across the
-two observed proof classes. L1 feeder/wrap GPU measurements are pending.
+two observed proof classes.
 
 ## 6. Re-deriving the artifacts
 
