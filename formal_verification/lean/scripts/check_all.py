@@ -99,6 +99,7 @@ def main():
     build(args.modules)
     if args.build_only:
         return
+    bounded([sys.executable, "scripts/check_native_setup.py"], "native-setup-export")
     bounded([*LEAN, "--run", "Tests/ArtifactImport.lean"], "importer-tests")
     bounded([*LEAN, "--run", "Airbender/Import/Main.lean",
         "../../cs/add_sub_lui_auipc_mop_preprocessed_layout.json",

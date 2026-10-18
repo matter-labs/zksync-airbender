@@ -332,8 +332,38 @@ uses explicit loader construction and tagged membership, with no expected-read,
 coverage or table-equivalence premise. Nonempty original/padded words and altered
 word rejection exercise this bridge. This is a checked source-shaped row model
 plus exact compiled placement, not a proof that Rust-generated/exported setup
-field values or LDE commitments equal it. Actual scalar/decoder/generic exports,
-physical initialization and cryptographic enforcement remain separate.
+field values or LDE commitments equal it. The native regional fixture connection
+below closes the former data gap for that one exported program. General physical
+trace assembly, initialization and cryptographic enforcement remain separate.
+
+[The native exporter](../native_setup_exporter/README.md) now calls the pinned
+v2 table driver, word-memory decoder materializer and range16 generator directly.
+Its [9 KiB fixture](artifacts/setup/word-memory-native.json) retains separate
+public image/text inputs, all 1,114,113 generic tuples with native offsets/tags,
+all 1,048,576 decoder slots and all 65,536 scalar entries. Lossless compression
+is checked against every materialized value before serialization. No full setup
+trace, LDE or witness is built. [Literal import](Airbender/Import/SetupEmbed.lean)
+and [symbolic certificates](Airbender/Proofs/WordMemory/NativeSetup.lean) check every
+ROM/separator/range row, unsupported decoder tail and public image zero tail.
+The short [exported-ROM read claim](Airbender/Review/Trace/Families/WordMemory/Setup.lean)
+connects actual tagged exported rows to original Sail bytes after explicit padding,
+with the actual four-word prefix extraction as its public input condition.
+The original LW/SW/x0 prefix and explicit unsupported UNIMP slot are checked.
+These certificates cover this pinned native fixture; arbitrary programs, arithmetic
+native exports, timestamp19 and full physical trace padding/normalization/LDE
+correspondence remain open, as do physical initialization and argument enforcement.
+
+The exporter uses the same pinned native APIs as setup callers, retaining image
+and text independently. It copies the pinned lossless column codec, validates
+canonical values/coverage and compares every recovered element to native output.
+The CLI writes only after those checks and JSON roundtrip. The importer rejects
+unknown fields, incompatible versions/fields/families, changed native extents,
+missing columns, moved/retagged regions and invalid compressed data. Its literal
+emitter reuses the pinned compact-array helpers unchanged. These are executable
+checks; neither Rust serialization nor Lean parsing/emission is formally refined.
+Kernel proofs certify the emitted data, not the IO path. The native setup artifact,
+exporter manifest/lock/sources and reused code are hash-pinned and checked by the
+standard gate. No v3 field, tag, decoder filler or physical-layout claim is imported.
 
 ## Public state, profiles and external inputs
 

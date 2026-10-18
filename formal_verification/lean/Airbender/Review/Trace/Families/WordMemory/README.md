@@ -333,3 +333,10 @@ expected value/read is supplied. [Nonempty regressions](../../../../../Tests/Phy
 recover original/padded words and reject altered ROM data and wrong padding tags.
 Actual Rust-generated scalar/decoder/generic exports, normalization/LDE refinement,
 physical initialization and argument enforcement remain separate.
+
+[The setup bridge](Setup.lean) also accepts actual tagged ROM rows from the pinned
+native fixture. The sole public byte condition is the successful four-word Sail
+prefix extraction; explicit loader padding and symbolic complete-row certificates
+derive the read. [The data entry point](../../../Circuits/WordMemory/Tables/NativeSetupData.lean)
+keeps actual native values visible, while all calculations remain in Proofs.
+General native program/decoder and full physical argument connections stay open.

@@ -108,8 +108,8 @@ RAM, configuration, program size in ROM and actual ROM-prefix seed coverage
 remain explicit; native matching discharges each local address domain. The
 reversed SW/LW fixture reaches PC 8 and RAM/x3=123 through this general relation;
 ordinary/x0 ROM loads and empty traces pass. Physical boot/ROM binding remains open.
-Remaining families, Rust
-setup generation/export and cryptographic argument soundness remain pending. This checkpoint does not inherit v3's completed coverage.
+Remaining families, general Rust
+setup generation/export refinement and cryptographic argument soundness remain pending. This checkpoint does not inherit v3's completed coverage.
 
 [Fixed native zero boot](Airbender/Review/Trace/Families/WordMemory/NativeBoot.lean)
 now derives the general initialized execution boundary from the unchanged original
@@ -131,8 +131,26 @@ is now checked for both artifacts, including all offsets and the reserved last
 row. The complete [tagged row model](Airbender/Review/Helpers/Tables/PhysicalSetup.lean)
 retains dummy/zero padding and native tags 23/24. Symbolic proofs recover exact
 ROM/separator membership and actual Sail reads after public loader construction;
-nonempty byte fixtures reject altered words and wrong tags. Actual native column
-exports, normalization/LDE refinement and argument enforcement remain open.
+nonempty byte fixtures reject altered words and wrong tags. The actual regional
+export fixture is checked below; full physical trace assembly, normalization/LDE
+refinement and argument enforcement remain open.
+
+[The native exporter](../native_setup_exporter/README.md) now calls the pinned
+v2 table driver, word-memory decoder materializer and range16 generator directly.
+Its [9 KiB fixture](artifacts/setup/word-memory-native.json) retains separate
+public image/text inputs, all 1,114,113 generic tuples with native offsets/tags,
+all 1,048,576 decoder slots and all 65,536 scalar entries. Lossless compression
+is checked against every materialized value before serialization. No full setup
+trace, LDE or witness is built. [Literal import](Airbender/Import/SetupEmbed.lean)
+and [symbolic certificates](Airbender/Proofs/WordMemory/NativeSetup.lean) check every
+ROM/separator/range row, unsupported decoder tail and public image zero tail.
+The short [exported-ROM read claim](Airbender/Review/Trace/Families/WordMemory/Setup.lean)
+connects actual tagged exported rows to original Sail bytes after explicit padding,
+with the actual four-word prefix extraction as its public input condition.
+The original LW/SW/x0 prefix and explicit unsupported UNIMP slot are checked.
+These certificates cover this pinned native fixture; arbitrary programs, arithmetic
+native exports, timestamp19 and full physical trace padding/normalization/LDE
+correspondence remain open, as do physical initialization and argument enforcement.
 
 ## Read these first
 
@@ -181,6 +199,9 @@ processes after a violation and confirms termination. It uses a global lock and
 rejects multiple Lean workers. These are sampled process measurements, not an OS
 hard physical-memory ceiling. Redesign a proof when it exceeds the limits.
 Dependency bootstrap also needs these limits; do not launch unbounded proof builds.
+The same runner checks the standalone native exporter offline with its isolated
+manifest/lock and one Cargo job, then reproduces the pinned fixture and rejects
+malformed inputs. Use the repository-pinned Rust nightly alongside Lean.
 
 Importer rejection tests are not a proof of faithful parsing. The
 [trust boundaries](TRUST_AND_REVIEW.md) identify what remains external; the

@@ -1,5 +1,6 @@
 import Airbender.Import.Parse
 import Airbender.Import.Coefficients
+import Airbender.Import.Setup
 
 open Airbender Lean
 
@@ -143,6 +144,51 @@ def main : IO UInt32 := do
     check (rejected ({c with table_offsets := c.table_offsets.set! 0 1}.validate))
       "reject invented arithmetic generic setup rows"
     check (rejected (parseCircuit "{}")) "reject missing required schema"
+    let setupSource ← IO.FS.readFile "artifacts/setup/word-memory-native.json"
+    let setup ← IO.ofExcept (Setup.parse setupSource)
+    check (setup.tables.map (·.id) == #[0,23,24] && setup.generic_rows == 1114113)
+      "actual native table-driver export geometry"
+    check (setup.decoder.columns.size == 10 && setup.range16.columns.size == 1)
+      "actual native decoder and scalar export widths"
+    check (rejected ({setup with version := 2}.validate)) "reject unsupported setup export version"
+    check (rejected ({setup with field_modulus := 2013265921}.validate)) "reject v3 setup field"
+    check (rejected ({setup with family := "add_sub"}.validate)) "reject unselected setup family"
+    check (rejected ({setup with generic_rows := 1114112}.validate)) "reject lost exported generic row"
+    check (rejected ({setup with tables := setup.tables.extract 1 3}.validate)) "reject lost exported dummy table"
+    let some rom := setup.tables[2]? | throw (IO.userError "missing exported ROM region")
+    check (rejected ({setup with tables := setup.tables.set! 2 {rom with id := 34}}.validate))
+      "reject v3 exported ROM tag"
+    check (rejected ({setup with tables := setup.tables.set! 2 {rom with offset := 65536}}.validate))
+      "reject shifted exported ROM region"
+    check (rejected ({setup with tables := setup.tables.set! 2 {rom with data :=
+      {rom.data with columns := rom.data.columns.extract 0 3}}}.validate)) "reject missing exported tag column"
+    check (rejected ({setup with decoder := {setup.decoder with length := 1048575}}.validate))
+      "reject truncated exported decoder domain"
+    check (rejected ({setup with decoder := {setup.decoder with columns := setup.decoder.columns.extract 0 9}}.validate))
+      "reject missing exported decoder column"
+    check (rejected ({setup with range16 := {setup.range16 with columns := #[⟨#[.affine 65535 0 1]⟩]}}.validate))
+      "reject incomplete compressed scalar column"
+    check (rejected ((⟨#[.affine 4 2147483647 0]⟩ : Setup.Column).validate 4 mersenne31Modulus))
+      "reject noncanonical compressed field value"
+    check (rejected ((⟨#[.affine 4 0 (-1)]⟩ : Setup.Column).validate 4 mersenne31Modulus))
+      "reject negative affine endpoint"
+    check (rejected ((⟨#[.periodic 4 (-1) #[0]]⟩ : Setup.Column).validate 4 mersenne31Modulus))
+      "reject negative periodic endpoint"
+    check (rejected ((⟨#[.periodic 0 0 #[1]]⟩ : Setup.Column).validate 0 mersenne31Modulus))
+      "reject zero-length periodic block"
+    check (rejected ((⟨#[.dense #[]]⟩ : Setup.Column).validate 0 mersenne31Modulus))
+      "reject empty dense block"
+    check (rejected ((⟨#[.affine 1 0 9223372036854775808]⟩ : Setup.Column).validate 1 mersenne31Modulus))
+      "reject out-of-Rust-range compressed stride"
+    check (rejected ({setup with program := {setup.program with image_words := 4}}.validate))
+      "reject unpadded exported image extent"
+    check (rejected ({setup with program := {setup.program with text_words := 1048577}}.validate))
+      "reject oversized exported text extent"
+    let setupJson ← IO.ofExcept (Json.parse setupSource)
+    let unknown ← IO.ofExcept (replaceField setupJson "invented" (.bool true))
+    check (rejected (Setup.parse unknown.compress)) "reject unknown setup export field"
+    let badBlock ← IO.ofExcept (Json.parse "{\"kind\":\"affine\",\"length\":1,\"first\":0,\"step\":0,\"invented\":1}")
+    check (rejected (fromJson? badBlock : Except String Setup.Block)) "reject unknown compressed block field"
     return (0 : UInt32)
   catch error =>
     IO.eprintln s!"FAIL {error}"

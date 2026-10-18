@@ -16,6 +16,7 @@ import Tests.WordMemoryProjection
 import Tests.WordMemoryROMTransport
 import Tests.WordMemoryNativeBoot
 import Tests.PhysicalSetup
+import Tests.NativeSetup
 
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
@@ -654,3 +655,18 @@ import Tests.PhysicalSetup
 #print axioms Tests.PhysicalSetup.altered_rom_rejected
 #print axioms Tests.PhysicalSetup.separator_row
 #print axioms Tests.PhysicalSetup.padding_cannot_supply_rom
+#print axioms Airbender.Setup.Proofs.periodic_get
+#print axioms Airbender.Setup.Proofs.zeroTail_sound
+#print axioms Airbender.WordMemory.Proofs.exported_rom_rows
+#print axioms Airbender.WordMemory.Proofs.exported_range_rows
+#print axioms Airbender.WordMemory.Proofs.exported_decoder_padding
+#print axioms Airbender.WordMemory.Proofs.exported_image_zero
+#print axioms Airbender.WordMemory.Proofs.exported_separator_rows
+#print axioms Airbender.WordMemory.Proofs.exported_rom_physical
+#print axioms Airbender.WordMemory.Proofs.exported_rom_read
+#print axioms Airbender.WordMemory.exported_setup_rom_read
+#print axioms Tests.NativeSetup.decoder_prefix
+#print axioms Tests.NativeSetup.unsupported_word
+#print axioms Tests.NativeSetup.public_words
+#print axioms Tests.NativeSetup.separator_boundary
+#print axioms Tests.NativeSetup.finite_endpoints

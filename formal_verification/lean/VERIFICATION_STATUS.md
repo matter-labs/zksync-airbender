@@ -43,7 +43,7 @@ not completed v2 coverage.
 
 ## Remaining work
 
-- Bind physical Rust decoder/setup exports and expand mixed/custom programs.
+- Extend the checked native word-memory fixture to general public decoder/program construction, arithmetic/timestamp exports and full physical trace assembly; connect physical initialization and expand mixed/custom programs.
 - Extend initialized execution to jump/branch/SLT and the remaining supported families; preserve each native metadata and argument boundary.
 - Backport the remaining ordinary circuit families, worker operations, unified machine, full traces and initialization/teardown.
 - Retest v3 findings against v2 before carrying over counterexamples or temporary assumptions.
@@ -120,18 +120,38 @@ recover exact logical membership and reject wrong-table/dummy/padding tags.
 derives actual Sail words from tagged ROM membership after explicit loader
 construction. A nonempty original-LW fixture proves original/padded reads and
 altered-data rejection without expected-read or table-equivalence premises.
-No large trace/map/list is evaluated. Actual Rust-generated scalar/decoder/generic
-column exports, normalization/LDE refinement and argument enforcement remain open.
+No large trace/map/list is evaluated. Actual regional native values are now checked
+for the fixture below; general program construction, physical trace assembly,
+normalization/LDE refinement and argument enforcement remain open.
+
+## Actual native setup export
+
+[The native exporter](../native_setup_exporter/README.md) now calls the pinned
+v2 table driver, word-memory decoder materializer and range16 generator directly.
+Its [9 KiB fixture](artifacts/setup/word-memory-native.json) retains separate
+public image/text inputs, all 1,114,113 generic tuples with native offsets/tags,
+all 1,048,576 decoder slots and all 65,536 scalar entries. Lossless compression
+is checked against every materialized value before serialization. No full setup
+trace, LDE or witness is built. [Literal import](Airbender/Import/SetupEmbed.lean)
+and [symbolic certificates](Airbender/Proofs/WordMemory/NativeSetup.lean) check every
+ROM/separator/range row, unsupported decoder tail and public image zero tail.
+The short [exported-ROM read claim](Airbender/Review/Trace/Families/WordMemory/Setup.lean)
+connects actual tagged exported rows to original Sail bytes after explicit padding,
+with the actual four-word prefix extraction as its public input condition.
+The original LW/SW/x0 prefix and explicit unsupported UNIMP slot are checked.
+These certificates cover this pinned native fixture; arbitrary programs, arithmetic
+native exports, timestamp19 and full physical trace padding/normalization/LDE
+correspondence remain open, as do physical initialization and argument enforcement.
 
 ## Validation
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all nineteen concrete test modules pass.
-- Importer regressions: 61 checks pass.
-- Axiom audit: 614 explicit roots; only propext, Classical.choice and Quot.sound.
-- All twenty-nine public Review theorems (five circuit claims, twenty-two trace claims and two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
-- Source provenance: 69 unchanged reused files, two native circuit artifacts and thirty-one native Rust sources.
+- Library, both CLI entrypoints and all twenty concrete test modules pass.
+- Importer regressions: 84 checks pass.
+- Axiom audit: 629 explicit roots; only propext, Classical.choice and Quot.sound.
+- All thirty public Review theorems (five circuit claims, twenty-three trace claims and two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Source provenance: 71 unchanged reused files, two native circuit artifacts, thirty-one native Rust sources, one native setup fixture and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
 - Public Sail x1/PC reads construct the accepted alias fixture; missing register and byte data reject construction.
@@ -162,6 +182,7 @@ Current checked checkpoint:
 - Fixed-zero native boot passes on original ordinary/x0 LW fixtures with all actual GPRs zero, real public instruction/ROM bytes and fully matched zero native shadows. General execution derives PC four and actual masked destinations; full native paths derive terminal shadow zero. Invented seed values and an actual nonzero public GPR are rejected. Symbolic padding checks retain input words and distinguish zero loader padding from raw-table UNIMP fallback; absent Sail padding bytes remain actual failures.
 - Explicit Sail byte padding derives full four-MiB extraction, original zero-profile/configuration/setup preservation and complete native boot execution on ordinary/x0 loads. Prefix and out-of-ROM bytes are retained, the last ROM byte is zero and a formerly missing tail word becomes readable. Missing/oversized supplied prefixes reject construction. All large extents are handled symbolically; no evaluated large certificate or supplied padding/coverage/read/state/result premise is used.
 - Exact setup metadata for both native artifacts and fifteen added importer regressions pass. The active four-column tagged row model has exactly the existing ROM/separator meanings, including every dummy/padding tuple. Nonempty original Sail bytes and explicit zero padding derive actual reads from tagged ROM membership; altered words and wrong padding tags are rejected. The normalized final setup row is explicitly outside this model's lookup domain; actual Rust/export/LDE and argument correspondence remains separate.
+- The standalone native exporter passes offline locked checking and exact fixture reproduction. Little-endian binary image/text inputs reproduce the fixture; partial words and oversized inputs reject before output. Lean certifies all actual regional ROM/separator/range values, the entire unsupported decoder tail and the loader's image zeros; original LW/SW/x0 and explicit UNIMP/sentinel regressions pass. Compressed-field, extent, region, tag and unknown-field mutations fail closed. Parse/emission, general Rust/compiler refinement and physical trace/LDE/argument connections remain separate.
 - No handwritten project warnings, admitted proofs or project axioms.
 - Serial bounded gates pass; parent/child timeout and memory probes confirm termination with no live owned processes.
 

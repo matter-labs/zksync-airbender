@@ -46,3 +46,9 @@ recover both existing logical tables and actual padded Sail words without a
 large evaluated trace or assumed table equivalence. [The public read claim](../../Trace/Families/WordMemory/Setup.lean)
 exposes loader construction and tagged membership. Actual Rust/export/LDE and
 argument correspondence remain separate; scalar-row binding is not claimed.
+
+[Literal native v2 data](../../Circuits/WordMemory/Tables/NativeSetupData.lean) now
+has [symbolic certificates](../../../Proofs/WordMemory/NativeSetup.lean) against the
+existing complete ROM/separator/range models. The [lossless importer](../../../Import/Setup.lean)
+keeps parsing/emission separate from kernel checks. Only the pinned fixture has
+this actual exported-data connection; full trace assembly/LDE remains open.

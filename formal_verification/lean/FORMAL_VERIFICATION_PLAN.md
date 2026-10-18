@@ -170,9 +170,15 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    exactly the existing logical ROM/separator membership from these tuples;
    tagged ROM membership then derives actual Sail reads after the public loader.
    Nonempty real-byte fixtures check original/padded reads and altered-word/tag
-   rejection. No large trace or ROM vector is evaluated. Next obtain actual native
-   scalar/decoder/generic setup exports and connect physical initialization;
-   the row model is not Rust/export/LDE or general compiler refinement.
+   rejection. The [standalone native exporter](../native_setup_exporter/README.md)
+   now emits actual regional generic/decoder/range16 values and public image/text
+   data without building a full trace. The pinned LW/SW/x0/UNIMP fixture has exact
+   reproduction, exhaustive lossless compression checks and symbolic certificates
+   for every ROM/separator/range row, unsupported decoder slot and image zero tail.
+   Its actual tagged ROM rows feed original Sail reads through the existing loader.
+   Next connect the native decoder data to general public program construction,
+   export arithmetic/timestamp rows and bind full physical trace assembly and
+   initialization. This fixture is not general Rust/export/LDE/compiler refinement.
    Rust refinement and cryptographic enforcement remain separate.
    Preserve v2 PC rollover and native timestamp offsets;
    keep physical setup generation/export and mixed/custom expansion explicit.

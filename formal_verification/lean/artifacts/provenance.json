@@ -277,6 +277,14 @@
     {
       "path": "Airbender/Proofs/Trace/Initialization.lean",
       "sha256": "939053d89e8ea3563997addc62243b45573aa5f724e9efdb7d2104e922bf062b"
+    },
+    {
+      "path": "Airbender/Proofs/Tables/PeriodicColumns.lean",
+      "sha256": "fb6c79c7a12a01aa90daae1c592a8e2ec509f511f459698fa87800bd09f16341"
+    },
+    {
+      "path": "Airbender/Proofs/Tables/ZeroTail.lean",
+      "sha256": "bd5bd468c071342a0bf47e2bdb25fc4c59d806d1572c9f2235bce651425ba28c"
     }
   ],
   "circuit_artifacts": [
@@ -1248,6 +1256,68 @@
       "backport_reuse_path": "Tests/ArtifactImport.lean",
       "backport_reuse_sha256": "9a721e23c838ebebc73a2f62541c38960106d511f41bb2993bf17a5c24ae869b",
       "change": "Retain all original importer checks; add exact setup bindings and malformed trace/capacity/group/overlap/offset/dummy-row regressions."
+    },
+    {
+      "path": "Airbender/Import/Setup.lean",
+      "source_path": "Airbender/Import/Setup.lean",
+      "source_sha256": "ef262da0edd86cfbf7b12cecd4fc7aa89f36c80f39fc94a457399e13d9c64ffc",
+      "change": "Copy unchanged Block/Column lossless definitions and validation. Adapt the regional artifact schema and strict key/profile/geometry validation to native v2 Mersenne31 table-driver and decoder outputs before physical trace assembly."
+    },
+    {
+      "path": "Airbender/Import/SetupEmbed.lean",
+      "source_path": "Airbender/Import/SetupEmbed.lean",
+      "source_sha256": "362076300ec90a7104eb59b1494405f6a8bafe8456e56f43babe55fe3e0343f3",
+      "change": "Copy unchanged literal array/value/block/column emission helpers. Emit exact local Mersenne31 rows, native offsets and public image/text columns; preserve the separate parse/emission fidelity boundary without BabyBear signed lifts or v3 GKR layout assumptions."
+    },
+    {
+      "path": "Airbender/Review/Circuits/WordMemory/Tables/NativeSetupData.lean",
+      "source_path": "Airbender/Review/Circuits/WordMemory/Tables/ROMData.lean",
+      "source_sha256": "4a2060d8b9052c9c0b29ca89b32bc17d7b246782add95535fc7ca179beb70149",
+      "change": "Reuse the tiny literal-data entry point for a newly generated native v2 fixture. Retain native table tags 23/24, ten decoder columns, explicit image/text words and an unsupported original UNIMP word; no v3 artifact data is reused."
+    },
+    {
+      "path": "Airbender/Proofs/WordMemory/NativeSetup.lean",
+      "source_path": "Airbender/Proofs/Tables/ImportedROMProgram.lean",
+      "source_sha256": "816295b7c64eb761fb354bde1248daa2c493d408ae00e38a6d0312a02f6dda1c",
+      "change": "Reuse the complete imported-ROM certificate strategy: check the finite prefix and prove actual exported affine/periodic/zero tails symbolically. Certify every v2 ROM/separator/range row, all unsupported decoder slots and the public image tail, then reuse the existing physical membership and actual Sail read bridge. No table-equivalence or desired-read premise is introduced."
+    }
+  ],
+  "setup_artifacts": [
+    {
+      "path": "artifacts/setup/word-memory-native.json",
+      "sha256": "ad0d4858b0110b36a72672193be9033b459300037e9615c231773e6f7bc6f008",
+      "profile": "native v2 Mersenne31 word-memory table-driver rows, decoder materializer and range16, before physical trace assembly/normalization/LDE",
+      "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py",
+      "image_and_text_words": [
+        16818563,
+        3188771,
+        16818179,
+        3221229683
+      ],
+      "image_padding": "native pad_bytecode::<4194304>; exactly 1048576 words",
+      "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5"
+    }
+  ],
+  "native_exporter_files": [
+    {
+      "path": "../native_setup_exporter/Cargo.toml",
+      "sha256": "6b24b1e85099f69a68866ff68be921b48d337cd332dd292cb5ee3a581d8927ed"
+    },
+    {
+      "path": "../native_setup_exporter/Cargo.lock",
+      "sha256": "611bf37f2564dea45ff6374eb330e91f76c80e902bcf40af89e0b7aefa8f1cab"
+    },
+    {
+      "path": "../native_setup_exporter/src/main.rs",
+      "sha256": "6311b34ae31f34602c9a054699efe4ac1bf8a45b37858710a450ba5f729e54ed"
+    },
+    {
+      "path": "../native_setup_exporter/src/columns.rs",
+      "sha256": "be209e01ca686a802564f984c29770f6a64f3d933b778e7dcfd5f384314ca923",
+      "source_revision": "805909325323812df4b7479288b9058d1d2671f5",
+      "source_repository_path": "prover/src/gkr/prover/setup_artifact.rs",
+      "source_sha256": "8f75a6131a23bc70e36936421a94c510d3ea9e3c7c52ea64bd6f46969ca976c4",
+      "change": "Copy unchanged ColumnBlock and EncodedColumn implementations, including exhaustive matches_values validation; omit unrelated GKR/full-trace setup assembly."
     }
   ]
 }

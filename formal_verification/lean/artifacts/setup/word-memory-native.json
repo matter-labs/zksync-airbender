@@ -1,0 +1,480 @@
+{
+  "version": 1,
+  "field_modulus": 2147483647,
+  "family": "load_store_word_only",
+  "program": {
+    "image_words": 1048576,
+    "image": {
+      "blocks": [
+        {
+          "kind": "dense",
+          "values": [
+            16818563,
+            3188771,
+            16818179,
+            3221229683
+          ]
+        },
+        {
+          "kind": "affine",
+          "length": 1048572,
+          "first": 0,
+          "step": 0
+        }
+      ]
+    },
+    "text_words": 4,
+    "text": {
+      "blocks": [
+        {
+          "kind": "dense",
+          "values": [
+            16818563,
+            3188771,
+            16818179,
+            3221229683
+          ]
+        }
+      ]
+    }
+  },
+  "generic_rows": 1114113,
+  "tables": [
+    {
+      "id": 0,
+      "offset": 0,
+      "data": {
+        "length": 1,
+        "columns": [
+          {
+            "blocks": [
+              {
+                "kind": "dense",
+                "values": [
+                  0
+                ]
+              }
+            ]
+          },
+          {
+            "blocks": [
+              {
+                "kind": "dense",
+                "values": [
+                  0
+                ]
+              }
+            ]
+          },
+          {
+            "blocks": [
+              {
+                "kind": "dense",
+                "values": [
+                  0
+                ]
+              }
+            ]
+          },
+          {
+            "blocks": [
+              {
+                "kind": "dense",
+                "values": [
+                  0
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 23,
+      "offset": 1,
+      "data": {
+        "length": 65536,
+        "columns": [
+          {
+            "blocks": [
+              {
+                "kind": "affine",
+                "length": 65536,
+                "first": 0,
+                "step": 1
+              }
+            ]
+          },
+          {
+            "blocks": [
+              {
+                "kind": "affine",
+                "length": 64,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 65472,
+                "first": 1,
+                "step": 0
+              }
+            ]
+          },
+          {
+            "blocks": [
+              {
+                "kind": "periodic",
+                "repetitions": 1024,
+                "stride": 0,
+                "values": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7,
+                  8,
+                  9,
+                  10,
+                  11,
+                  12,
+                  13,
+                  14,
+                  15,
+                  16,
+                  17,
+                  18,
+                  19,
+                  20,
+                  21,
+                  22,
+                  23,
+                  24,
+                  25,
+                  26,
+                  27,
+                  28,
+                  29,
+                  30,
+                  31,
+                  32,
+                  33,
+                  34,
+                  35,
+                  36,
+                  37,
+                  38,
+                  39,
+                  40,
+                  41,
+                  42,
+                  43,
+                  44,
+                  45,
+                  46,
+                  47,
+                  48,
+                  49,
+                  50,
+                  51,
+                  52,
+                  53,
+                  54,
+                  55,
+                  56,
+                  57,
+                  58,
+                  59,
+                  60,
+                  61,
+                  62,
+                  63
+                ]
+              }
+            ]
+          },
+          {
+            "blocks": [
+              {
+                "kind": "affine",
+                "length": 65536,
+                "first": 23,
+                "step": 0
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 24,
+      "offset": 65537,
+      "data": {
+        "length": 1048576,
+        "columns": [
+          {
+            "blocks": [
+              {
+                "kind": "affine",
+                "length": 1048576,
+                "first": 0,
+                "step": 4
+              }
+            ]
+          },
+          {
+            "blocks": [
+              {
+                "kind": "dense",
+                "values": [
+                  41347,
+                  43043,
+                  40963,
+                  4211
+                ]
+              },
+              {
+                "kind": "affine",
+                "length": 1048572,
+                "first": 0,
+                "step": 0
+              }
+            ]
+          },
+          {
+            "blocks": [
+              {
+                "kind": "dense",
+                "values": [
+                  256,
+                  48,
+                  256,
+                  49152
+                ]
+              },
+              {
+                "kind": "affine",
+                "length": 1048572,
+                "first": 0,
+                "step": 0
+              }
+            ]
+          },
+          {
+            "blocks": [
+              {
+                "kind": "affine",
+                "length": 1048576,
+                "first": 24,
+                "step": 0
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "decoder": {
+    "length": 1048576,
+    "columns": [
+      {
+        "blocks": [
+          {
+            "kind": "dense",
+            "values": [
+              0,
+              4,
+              8
+            ]
+          },
+          {
+            "kind": "affine",
+            "length": 1048573,
+            "first": 2147483646,
+            "step": 0
+          }
+        ]
+      },
+      {
+        "blocks": [
+          {
+            "kind": "dense",
+            "values": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "kind": "affine",
+            "length": 1048573,
+            "first": 2147483646,
+            "step": 0
+          }
+        ]
+      },
+      {
+        "blocks": [
+          {
+            "kind": "dense",
+            "values": [
+              1,
+              1,
+              1
+            ]
+          },
+          {
+            "kind": "affine",
+            "length": 1048573,
+            "first": 2147483646,
+            "step": 0
+          }
+        ]
+      },
+      {
+        "blocks": [
+          {
+            "kind": "dense",
+            "values": [
+              0,
+              3,
+              0
+            ]
+          },
+          {
+            "kind": "affine",
+            "length": 1048573,
+            "first": 2147483646,
+            "step": 0
+          }
+        ]
+      },
+      {
+        "blocks": [
+          {
+            "kind": "dense",
+            "values": [
+              3,
+              0,
+              0
+            ]
+          },
+          {
+            "kind": "affine",
+            "length": 1048573,
+            "first": 2147483646,
+            "step": 0
+          }
+        ]
+      },
+      {
+        "blocks": [
+          {
+            "kind": "dense",
+            "values": [
+              0,
+              1,
+              1
+            ]
+          },
+          {
+            "kind": "affine",
+            "length": 1048573,
+            "first": 2147483646,
+            "step": 0
+          }
+        ]
+      },
+      {
+        "blocks": [
+          {
+            "kind": "dense",
+            "values": [
+              16,
+              16,
+              16
+            ]
+          },
+          {
+            "kind": "affine",
+            "length": 1048573,
+            "first": 2147483646,
+            "step": 0
+          }
+        ]
+      },
+      {
+        "blocks": [
+          {
+            "kind": "dense",
+            "values": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "kind": "affine",
+            "length": 1048573,
+            "first": 2147483646,
+            "step": 0
+          }
+        ]
+      },
+      {
+        "blocks": [
+          {
+            "kind": "dense",
+            "values": [
+              2,
+              2,
+              2
+            ]
+          },
+          {
+            "kind": "affine",
+            "length": 1048573,
+            "first": 2147483646,
+            "step": 0
+          }
+        ]
+      },
+      {
+        "blocks": [
+          {
+            "kind": "dense",
+            "values": [
+              0,
+              1,
+              0
+            ]
+          },
+          {
+            "kind": "affine",
+            "length": 1048573,
+            "first": 2147483646,
+            "step": 0
+          }
+        ]
+      }
+    ]
+  },
+  "range16": {
+    "length": 65536,
+    "columns": [
+      {
+        "blocks": [
+          {
+            "kind": "affine",
+            "length": 65536,
+            "first": 0,
+            "step": 1
+          }
+        ]
+      }
+    ]
+  }
+}

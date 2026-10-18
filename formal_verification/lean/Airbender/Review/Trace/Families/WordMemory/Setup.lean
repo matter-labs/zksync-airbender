@@ -1,4 +1,5 @@
 import Airbender.Proofs.WordMemory.PhysicalSetup
+import Airbender.Proofs.WordMemory.NativeSetup
 
 namespace Airbender.WordMemory
 open Verification Trace Reference.RiscV.Sail
@@ -13,5 +14,15 @@ theorem physical_setup_rom_read {before initial : State} {rom : WordROM} {count 
     (Cell.ram (BitVec.ofNat 32 key.val)).read initial =
       .ok (Arithmetic.Word.mk lo.val hi.val).toBitVec initial :=
   Proofs.padded_physical_rom_read image member
+
+/-- Actual ROM rows from the pinned native fixture recover original Sail bytes
+    after the explicit loader. General Rust/export/LDE refinement stays separate. -/
+theorem exported_setup_rom_read {before : State}
+    (image : wordROMImage before 4 = some Native.programROM)
+    {key lo hi : ZMod mersenne31Modulus}
+    (member : ∃ i : Fin 1048576, Native.exportedROM.row i = (#v[key, lo, hi]).push 24) :
+    (Cell.ram (BitVec.ofNat 32 key.val)).read (paddedROMState before 4) =
+      .ok (Arithmetic.Word.mk lo.val hi.val).toBitVec (paddedROMState before 4) :=
+  Proofs.exported_rom_read image member
 
 end Airbender.WordMemory

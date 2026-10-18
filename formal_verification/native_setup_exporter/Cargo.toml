@@ -1,0 +1,13 @@
+[package]
+name = "airbender-v2-native-setup-exporter"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+cs = { path = "../../cs" }
+field = { path = "../../field" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

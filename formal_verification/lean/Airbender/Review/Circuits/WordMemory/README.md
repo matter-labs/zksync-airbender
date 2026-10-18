@@ -127,3 +127,11 @@ recovers actual padded Sail words from tagged ROM membership, including a nonemp
 original instruction and zero tail. This checks the source-shaped model and
 compiled placement; actual exported column values, Rust/LDE refinement and
 cryptographic argument correspondence remain open.
+
+[Native setup data](Tables/NativeSetupData.lean) imports the pinned v2 table-driver
+fixture: original public LW/SW/x0/UNIMP words, native generic regions, ten-column
+decoder and range16 values. [Certificates](../../../Proofs/WordMemory/NativeSetup.lean)
+cover every regional ROM/separator/range row and unsupported decoder tail. The
+[trace read bridge](../../Trace/Families/WordMemory/Setup.lean) connects actual ROM
+rows to public Sail bytes; full physical setup/LDE and general program construction
+remain separate.
