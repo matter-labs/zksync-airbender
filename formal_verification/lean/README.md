@@ -91,7 +91,11 @@ SW/LW fixture. [ROM transport and original LW clauses](Airbender/Proofs/Trace/Fa
 now derive actual ROM virtual reads and original instruction-body effects from
 public bytes and native history, including original x0. Initialized ordinary/x0
 fixtures retain distinct native shadow and ROM values and reach the same actual
-after-state. RAM clauses, normal preparation/PC retirement, complete word-memory
+after-state. [RAM LW/SW clause assembly](Airbender/Proofs/Trace/Families/WordMemory/RAMExecution.lean)
+now reaches the same derived native cell-transfer states. Public decoding derives
+selectors/registers/immediates, and retained ports derive actual operand/RAM
+reads. The reversed fixture reaches original SW then LW results with actual read
+123 and destination write. Normal preparation/PC retirement, complete word-memory
 execution and physical boot/ROM binding remain separate.
 Remaining families, Rust
 setup generation/export and cryptographic argument soundness remain pending. This checkpoint does not inherit v3's completed coverage.

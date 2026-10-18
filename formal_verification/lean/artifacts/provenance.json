@@ -837,6 +837,27 @@
       "backport_reuse_path": "Tests/WordMemorySailHistory.lean",
       "backport_reuse_sha256": "76f65c4dae2f0382e6f549ce9a5a850d323c33b07b3093a3988437df79467473",
       "change": "Reuse the concrete public Machine/PMP/PMA CSR image and configuration proof in the ordinary/x0 ROM fixtures; no desired memory result or successful-access premise is added."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/RAMExecution.lean",
+      "backport_reuse_revision": "2b42dfde201d9b1bfb1bd2c52027993bd6df4745",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/ROMExecution.lean",
+      "backport_reuse_sha256": "e1b9c8cf21506cc62982ad39b4cdae6954cfbd8dc0bc7b1c43bc9af0232311d3",
+      "change": "Reuse the checked v2 original-LW assembly and native masked-write/x0 argument with retained RAM read limbs. Recover original load/store selectors and immediates from exact native public decoder fields; call unchanged original Sail load_word, store_word and write_zero. RAM address/configuration domains remain explicit local interfaces; instruction preparation and PC retirement remain separate."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/RAMExecution.lean",
+      "backport_reuse_revision": "2b42dfde201d9b1bfb1bd2c52027993bd6df4745",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/ProjectedPorts.lean",
+      "backport_reuse_sha256": "04284cb36202f5a48580e312b602f1adae749e8617a092d8d215bb59a0ad4775",
+      "change": "Adapt the retained source-GPR read argument to native SW port 1. Derive its GPR address from native store equations and rs2 from decoder metadata; recover the actual pre-state value without an operand/read premise, including aliases and x0."
+    },
+    {
+      "path": "Tests/WordMemorySailHistory.lean",
+      "backport_reuse_revision": "2b42dfde201d9b1bfb1bd2c52027993bd6df4745",
+      "backport_reuse_path": "Tests/WordMemorySailHistory.lean",
+      "backport_reuse_sha256": "76f65c4dae2f0382e6f549ce9a5a850d323c33b07b3093a3988437df79467473",
+      "change": "Keep the existing accepted reversed SW/LW native witness, public setup, actual CSR image and all regressions unchanged. Reuse initialized projected history, clock-derived row grouping, native address assembly and configuration preservation to reach original SW then LW clause results in the same derived states, with actual read 123 and actual destination write. No intermediate state/read, selector or desired-result input is added."
     }
   ]
 }

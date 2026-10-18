@@ -119,8 +119,14 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    the original ROM LW clause result in the actual native after-state. Ordinary/x0
    initialized fixtures construct actual ROM/decoder bytes and configuration while
    retaining shadow value 123 distinct from the loaded ROM word 0xc0001073.
-   Assemble original RAM LOAD/STORE clauses next, then normal instruction
-   preparation, PC retirement and complete initialized word-memory execution.
+   Original RAM LW/SW clauses now reach the actual native cell-transfer states.
+   Native decoder fields derive opcode selectors, original registers and sign
+   extension; retained native ports derive rs2 and RAM reads, including masked
+   load writes/x0. The same reversed dependent fixture reaches original SW then
+   LW clause results with actual read 123 and the actual destination write,
+   without a supplied intermediate state/read or desired result. Assemble normal
+   instruction preparation, PC retirement and complete initialized word-memory
+   execution next.
    Bind the separate native initializer to physical boot/padding. Physical setup/export binding remains open.
    Preserve v2 PC rollover and native timestamp offsets;
    keep physical setup generation/export and mixed/custom expansion explicit.

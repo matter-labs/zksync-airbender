@@ -61,5 +61,8 @@ actual RAM port effects feed original Sail virtual-memory calls.
 [ROM transport](../../../Proofs/Trace/Families/WordMemory/ROMTransport.lean) now
 combines actual public extraction with retained reads; native ROM bounds derive
 ordinary addresses. Original ROM LW clauses, including x0, reach actual native
-after-states without equating shadow and ROM values. Original RAM clauses,
-complete preparation/retirement and physical boot/profile binding remain separate.
+after-states without equating shadow and ROM values.
+[Original RAM clauses](../../../Proofs/Trace/Families/WordMemory/RAMExecution.lean)
+now reuse actual native port effects and public decoder metadata, deriving rs2,
+RAM reads, selectors and masked destination effects. Complete preparation/
+retirement and physical boot/profile binding remain separate.

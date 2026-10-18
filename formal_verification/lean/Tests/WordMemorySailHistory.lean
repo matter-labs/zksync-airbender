@@ -1,3 +1,4 @@
+import Airbender.Proofs.Trace.Families.WordMemory.RAMExecution
 import Airbender.Review.Trace.Families.WordMemory.Platform
 import Airbender.Proofs.Trace.Families.WordMemory.ProjectedPorts
 import Airbender.Review.Trace.Families.WordMemory.SailHistory
@@ -382,6 +383,60 @@ theorem dependent_virtual_store_load [_root_.Sail.ArchSem.MemoryPlatform SailRV3
       load_satisfies loadHistory (port := Airbender.WordMemory.importedConstraintsMemoryPorts[2])
       rfl (cell := Cell.register 3) (by decide)
     simpa [memoryWord, MemoryPort.writeCode, WordColumns.code, WordColumns.evaluate,
+      Airbender.WordMemory.importedConstraintsMemoryPorts, loadRow, loadAssignment, row, Nat.unpair_pair,
+      Word.toBitVec, Word.value, show (123 : ZMod mersenne31Modulus).val = 123 from by decide] using written
+
+/-- The accepted reversed SW/LW rows reach original instruction-clause
+    results in the same realized native states. The load observes the actual
+    preceding store; no intermediate state/read or desired result is supplied. -/
+theorem dependent_original_store_load [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] :
+    ∃ middle after : Reference.RiscV.Sail.State,
+      Reference.Sail.run (SailRV32.Functions.execute_STORE 0 (.Regidx 2) (.Regidx 1) 4) before =
+        .ok SailRV32.Functions.RETIRE_SUCCESS middle ∧
+      Reference.Sail.run (SailRV32.Functions.execute_LOAD 0 (.Regidx 1) (.Regidx 3) false 4) middle =
+        .ok SailRV32.Functions.RETIRE_SUCCESS after ∧
+      (Cell.ram 4194320).read middle = .ok (123 : BitVec 32) middle ∧
+      Reference.Sail.run ((Cell.register 3).write 123) middle = .ok () after := by
+  obtain ⟨_, rows, after, _, permutation, ordered, history, _, _⟩ :=
+    Airbender.WordMemory.public_projected_platform_configuration projected_inputs
+      accepted decoded aligned configuration
+  have same : rows = [loadRow, storeRow] :=
+    List.Perm.eq_of_pairwise' ordered (by decide) permutation
+  subst rows
+  change SailHistory cells
+    (((rowEvents trace.memoryEpoch loadRow).reverse ++
+      (rowEvents trace.memoryEpoch storeRow).reverse).filter
+        fun event => Airbender.WordMemory.architecturalAddress event.2.1) before after at history
+  rw [List.filter_append] at history
+  obtain ⟨middle, storeHistory, loadHistory⟩ := Trace.Proofs.sail_history_append.mp history
+  have middleConfig := Trace.Proofs.sail_history_configuration storeHistory configuration
+  have effects := Airbender.WordMemory.Proofs.projected_native_effects projected_inputs
+    public_setup_built accepted decoded
+  have storeAddress := (effects storeRow (by simp [trace])).1
+  have loadAddress := (effects loadRow (by simp [trace])).1
+  have storeFields := (Airbender.WordMemory.Proofs.setup_sources public_setup_built
+    storeEntry (by simp [setup])).fields
+  have loadFields := (Airbender.WordMemory.Proofs.setup_sources public_setup_built
+    loadEntry (by simp [setup])).fields
+  have store := Airbender.WordMemory.Proofs.projected_ram_store_execution (by decide) _
+    (satisfies true false false rfl) storeAddress storeFields (by decide)
+    (imm := 0) (rs1 := 1) (rs2 := 2) rfl configuration
+    (by unfold Reference.RiscV.Sail.OrdinaryWordAddress; decide) storeHistory
+  have load := Airbender.WordMemory.Proofs.projected_ram_load_execution (by decide) _
+    load_satisfies loadAddress loadFields (by decide)
+    (imm := 0) (rs1 := 1) (rd := 3) rfl middleConfig (by decide)
+    (by unfold Reference.RiscV.Sail.OrdinaryWordAddress; decide) loadHistory
+  have read := Airbender.WordMemory.Proofs.projected_ram_read (by decide) _
+    load_satisfies (by rfl) (by decide) loadHistory
+  have written := Airbender.WordMemory.Proofs.projected_history_write (by decide) _
+    load_satisfies loadHistory (port := Airbender.WordMemory.importedConstraintsMemoryPorts[2])
+    rfl (cell := Cell.register 3) (by decide)
+  refine ⟨middle, after, store, load, ?_, ?_⟩
+  · simpa [Airbender.WordMemory.addressWord, loadAssignment, row, Word.toBitVec, Word.value,
+      limbBase, show (16 : ZMod mersenne31Modulus).val = 16 from by decide,
+      show (64 : ZMod mersenne31Modulus).val = 64 from by decide,
+      show (123 : ZMod mersenne31Modulus).val = 123 from by decide] using read
+  · simpa [memoryWord, MemoryPort.writeCode, WordColumns.code, WordColumns.evaluate,
       Airbender.WordMemory.importedConstraintsMemoryPorts, loadRow, loadAssignment, row, Nat.unpair_pair,
       Word.toBitVec, Word.value, show (123 : ZMod mersenne31Modulus).val = 123 from by decide] using written
 

@@ -201,9 +201,21 @@ ROM/decoder bytes and configuration for both cases. Their native shadow value 12
 remains independently initialized and matched while the actual ROM bytes supply
 0xc0001073. No expected read, shadow/ROM equivalence or desired intermediate/result
 state is supplied. Extraction still requires present bytes and does not create
-missing padding. These are original clause results; RAM clauses, normal
-preparation/PC retirement and complete initialized word-memory execution remain
-open, along with physical boot/export and cryptographic enforcement.
+missing padding.
+[RAM clause assembly](Airbender/Proofs/Trace/Families/WordMemory/RAMExecution.lean)
+now recovers the actual original rs2 read from the retained native store port,
+using native address equations and decoder indices. The actual masked RAM-load
+write matches the original unmasked Sail write, including x0. Exact public
+fields derive load/store selectors, original registers and sign-extended
+immediates. The unchanged original Sail memory and clause lemmas then reach
+actual native cell-transfer states, with configuration/ordinary-address domains
+still explicit. The same reversed accepted SW/LW fixture derives original SW and
+LW results in its realized states, actual later read 123 and the actual register
+write. No intermediate state/read or desired result is supplied; previous cell,
+code, ROM and virtual-memory regressions remain unchanged. These are original
+clause results; normal preparation/PC retirement and complete initialized
+word-memory execution remain open, along with physical boot/export and
+cryptographic enforcement.
 
 ## Public state, profiles and external inputs
 

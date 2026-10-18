@@ -574,3 +574,8 @@ import Tests.WordMemoryROMTransport
 #print axioms Tests.WordMemoryROMTransport.public_rom_built
 #print axioms Tests.WordMemoryROMTransport.shadow_value_differs
 #print axioms Tests.WordMemoryROMTransport.initialized_virtual_rom_load
+#print axioms Airbender.WordMemory.Proofs.projected_ram_destination_write
+#print axioms Airbender.WordMemory.Proofs.projected_store_source_read
+#print axioms Airbender.WordMemory.Proofs.projected_ram_load_execution
+#print axioms Airbender.WordMemory.Proofs.projected_ram_store_execution
+#print axioms Tests.WordMemorySailHistory.dependent_original_store_load

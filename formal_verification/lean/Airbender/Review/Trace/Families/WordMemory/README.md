@@ -211,8 +211,27 @@ results in the same native after-state. Full native matching retains shadow
 value 123 independently of the actual ROM word 0xc0001073. Successful extraction
 requires present bytes; absent padding is not filled.
 
-Original RAM LOAD/STORE clauses, normal instruction preparation/PC retirement
-and complete initialized word-memory execution remain the next connection.
+## Checked original RAM LW/SW clauses
+
+[RAM clause assembly](../../../../Proofs/Trace/Families/WordMemory/RAMExecution.lean)
+reuses the original LW assembly with the actual retained RAM read. Native masks
+match original destination writes, including x0 without NOP projection. For
+stores, native equations select the retained rs2 GPR on port 1; decoder metadata
+identifies the original register and the history derives its actual pre-state
+read, including aliases and x0. Exact public fields derive load/store selectors
+and sign-extended immediates. Unchanged original Sail memory and clause lemmas
+reach the actual states supplied by native cell realization.
+
+[The existing reversed dependent fixture](../../../../../Tests/WordMemorySailHistory.lean)
+now reaches original SW then LW results in those same derived states, with actual
+later read 123 and actual destination write. Public configuration and ordinary
+addresses remain explicit; no expected operand/read, intermediate state or
+desired result is supplied. Existing cell/code/ROM/virtual-memory tests remain
+unchanged. The public Review theorem surface is unchanged; the assembly remains
+under Proofs.
+
+Normal instruction preparation/PC retirement and complete initialized word-memory
+execution remain the next connection.
 
 The public shadow seeds describe a logical initialized native image. Binding them
 to physical native zero boot and Sail boot/padding state remains open, along with

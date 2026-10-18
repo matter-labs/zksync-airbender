@@ -112,8 +112,11 @@ original virtual reads from actual public bytes; native ROM bounds discharge
 ordinary addresses. [Original LW clauses](../../Proofs/Trace/Families/WordMemory/ROMExecution.lean)
 reach the actual masked-write after-state, retaining original x0 loads. Initialized
 ordinary/x0 regressions retain full shadow matching with distinct shadow/ROM
-values. RAM clauses, normal preparation/PC retirement and complete word-memory
-execution remain open.
+values. [Original RAM clauses](../../Proofs/Trace/Families/WordMemory/RAMExecution.lean)
+now reach actual cell-transfer states using derived selectors, rs2/RAM reads and
+native masked writes. The reversed dependent fixture reaches original SW then
+LW results without intermediate state/read/result premises. Normal preparation,
+PC retirement and complete word-memory execution remain open.
 
 These are logical selected-profile results. Remaining families and physical
 setup/argument fidelity remain in [the plan](../../../FORMAL_VERIFICATION_PLAN.md).
