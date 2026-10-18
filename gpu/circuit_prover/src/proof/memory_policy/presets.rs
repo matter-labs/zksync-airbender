@@ -12,8 +12,9 @@ pub mod l1_wrap;
 pub const INPUTS_RESERVE_BYTES: usize = 1537 << 20;
 
 /// `ProverContextConfig::h2d_staging_bytes`: the largest total any request
-/// bundle stages through `Transfer::stage`.
-pub const H2D_STAGING_BYTES: usize = gpu_prover_context::DEFAULT_H2D_STAGING_BYTES;
+/// bundle stages through `Transfer::stage`, an L1 feeder proof's persisted
+/// memory partial trees (2 MiB) plus the default capacity for small values.
+pub const H2D_STAGING_BYTES: usize = (2 << 20) + gpu_prover_context::DEFAULT_H2D_STAGING_BYTES;
 
 pub const L1_ARENA_BYTES: usize = 64 << 30;
 
@@ -113,6 +114,40 @@ mod cpu_tests {
     use gpu_trace::witness::circuit_type::{
         DelegationCircuitType, UnrolledMemoryCircuitType, UnrolledNonMemoryCircuitType,
     };
+
+    #[test]
+    fn cpu_h2d_staging_covers_the_l1_feeder_partial_trees() {
+        use gpu_trace::trace::holder::resolve_partial_tree_reduction_layers;
+        use gpu_trace::trace::memory_transfer::PartialTreesGeometry;
+        let unified22 = CircuitType::Unrolled(UnrolledCircuitType::Unified22);
+        for security in crate::config::GPU_SUPPORTED_SECURITY_LEVELS {
+            let config =
+                crate::config::prover_config(unified22, ProofProfile::L1Feeder, security).unwrap();
+            let log_domain_size = unified22.get_domain_size().trailing_zeros();
+            let log_lde_factor = config.lde_factor.trailing_zeros();
+            let log_rows_per_leaf = config.base_oracles_values_per_leaf.trailing_zeros();
+            let log_tree_cap_size = config.cap_size.trailing_zeros();
+            let geometry = PartialTreesGeometry {
+                log_domain_size,
+                log_lde_factor,
+                log_rows_per_leaf,
+                log_tree_cap_size,
+                reduction_layers: resolve_partial_tree_reduction_layers(
+                    partial_trees(unified22, ProofProfile::L1Feeder).memory,
+                    log_domain_size,
+                    log_lde_factor,
+                    log_rows_per_leaf,
+                    log_tree_cap_size,
+                ),
+                columns_count: 0,
+            };
+            let trees = geometry.cosets_count()
+                * geometry.coset_stride()
+                * size_of::<gpu_hash::blake2s::Digest>();
+            assert_eq!(trees, 2 << 20, "{security:?}");
+            assert!(trees + gpu_prover_context::DEFAULT_H2D_STAGING_BYTES <= H2D_STAGING_BYTES);
+        }
+    }
 
     #[test]
     fn cpu_m8_feeder_policy() {

@@ -511,7 +511,7 @@ fn schedule_phase_one<'a>(
                                     .memory,
                                 ),
                                 &trees,
-                            )?
+                            )
                         }
                         None => GpuGKRMemoryTransferHost::from_per_coset_caps(
                             memory_caps,

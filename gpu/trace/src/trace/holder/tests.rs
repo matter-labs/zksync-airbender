@@ -27,12 +27,25 @@ fn make_test_context(
     device_allocation_blocks_count: usize,
     host_pool_size_mb: usize,
 ) -> ProverContext {
+    make_test_context_with_staging(
+        device_allocation_blocks_count,
+        host_pool_size_mb,
+        ProverContextConfig::default().h2d_staging_bytes,
+    )
+}
+
+fn make_test_context_with_staging(
+    device_allocation_blocks_count: usize,
+    host_pool_size_mb: usize,
+    h2d_staging_bytes: usize,
+) -> ProverContext {
     let default_block_log_size = ProverContextConfig::default().allocator_block_log_size;
     let arena_bytes = device_allocation_blocks_count << default_block_log_size;
     let test_blocks_count = arena_bytes >> TEST_DEVICE_ALLOCATOR_BLOCK_LOG_SIZE;
     let mut config = ProverContextConfig {
         allocator_block_log_size: TEST_DEVICE_ALLOCATOR_BLOCK_LOG_SIZE,
         device_allocation_blocks_count: Some(test_blocks_count),
+        h2d_staging_bytes,
         ..Default::default()
     };
     let host_block_size = 1usize << config.host_allocator_block_log_size;
@@ -1866,7 +1879,7 @@ fn persisted_partial_trees_open_like_rebuilt_trees() {
     use gpu_prover_context::transfer::Transfer;
     use std::sync::Arc;
 
-    let context = make_test_context(256, 128);
+    let context = make_test_context_with_staging(256, 128, 17 << 20);
     let stream = context.get_exec_stream();
     let log_n = 20;
     let log_f = 4;
@@ -1966,15 +1979,11 @@ fn persisted_partial_trees_open_like_rebuilt_trees() {
                     &caps,
                     PartialTreesGeometry::of_holder(&imported),
                     &trees,
-                )
-                .unwrap();
+                );
                 let mut memory = GpuGKRMemoryTransfer::new(Arc::new(host), &context).unwrap();
                 let mut transfer = Transfer::new().unwrap();
                 transfer.record_allocated(&context).unwrap();
                 memory.stage_transfer(&mut transfer);
-                memory
-                    .schedule_partial_trees_transfer(&mut transfer, &context)
-                    .unwrap();
                 transfer.record_transferred(&context).unwrap();
                 transfer.ensure_transferred(&context).unwrap();
                 let (geometry, device) = memory.take_partial_trees().unwrap();

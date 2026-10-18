@@ -1,7 +1,7 @@
 //! H2D transfer of a memory Merkle cap. Per-coset host caps are packed into a
 //! contiguous host buffer in bit-reversed coset order and staged into a
 //! matching device allocation on `h2d_stream`. A commitment's persisted
-//! partial trees are copied from a pinned buffer, in natural coset order.
+//! partial trees are staged the same way, in natural coset order.
 
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -15,7 +15,6 @@ use crate::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer}
 use crate::upstream::MerkleTreeCapVarLength;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
-use gpu_core::primitives::static_host::{alloc_static_pinned_box_uninit, StaticPinnedBox};
 use gpu_hash::blake2s::Digest;
 use gpu_prover_context::transfer::Transfer;
 use gpu_prover_context::ProverContext;
@@ -122,7 +121,7 @@ pub struct GpuGKRMemoryTransferHost {
     pub(crate) unified_tree_cap: Vec<Digest>,
     /// Persisted partial trees in the device layout: natural coset order,
     /// `coset_stride` digests per coset, the unwritten suffix zeroed.
-    pub(crate) partial_trees: Option<(PartialTreesGeometry, Arc<StaticPinnedBox<Digest>>)>,
+    pub(crate) partial_trees: Option<(PartialTreesGeometry, Vec<Digest>)>,
 }
 
 impl GpuGKRMemoryTransferHost {
@@ -167,19 +166,17 @@ impl GpuGKRMemoryTransferHost {
         memory_tree_caps: &[MerkleTreeCapVarLength],
         expected: PartialTreesGeometry,
         trees: &PartialTrees,
-    ) -> CudaResult<Self> {
+    ) -> Self {
         validate_partial_trees(trees, &expected, memory_tree_caps);
         let mut host = Self::from_per_coset_caps(
             memory_tree_caps,
             expected.log_lde_factor,
             expected.log_tree_cap_size,
         );
-        let mut slab = alloc_static_pinned_box_uninit::<Digest>(
-            expected.cosets_count() * expected.coset_stride(),
-        )?;
+        let mut slab = vec![Digest::default(); expected.cosets_count() * expected.coset_stride()];
         write_device_layout(&expected, &trees.nodes, &mut slab);
-        host.partial_trees = Some((expected, Arc::new(slab)));
-        Ok(host)
+        host.partial_trees = Some((expected, slab));
+        host
     }
 }
 
@@ -219,22 +216,13 @@ impl<'a> GpuGKRMemoryTransfer<'a> {
         })
     }
 
+    /// Stages the unified cap and the persisted partial trees, if any.
     pub fn stage_transfer(&mut self, transfer: &mut Transfer<'a>) {
         transfer.stage(&self.host.unified_tree_cap, &mut self.unified_device_cap);
-    }
-
-    /// Direct copy of the persisted partial trees, if any; schedule it after
-    /// every value of the bundle is staged.
-    pub fn schedule_partial_trees_transfer(
-        &mut self,
-        transfer: &mut Transfer<'a>,
-        context: &ProverContext,
-    ) -> CudaResult<()> {
         if let Some(device) = self.partial_trees.as_mut() {
             let (_, slab) = self.host.partial_trees.as_ref().unwrap();
-            transfer.schedule(Arc::clone(slab), device, context)?;
+            transfer.stage(slab, device);
         }
-        Ok(())
     }
 
     pub fn unified_device_cap(&self) -> &DeviceAllocation<Digest> {

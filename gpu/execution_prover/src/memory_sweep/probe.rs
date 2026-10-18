@@ -160,7 +160,7 @@ pub(super) fn schedule_proof_inputs<'a>(
                     .memory_partial_trees
                     .as_ref()
                     .expect("proof inputs require the partial trees persisted by the commitment"),
-            )?
+            )
         } else {
             assert!(
                 circuit.memory_partial_trees.is_none(),
