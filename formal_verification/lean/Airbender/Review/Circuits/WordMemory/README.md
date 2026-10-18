@@ -92,8 +92,11 @@ x0 loads without NOP projection. Native shadow values stay independently matched
 [Original RAM clauses](../../../Proofs/Trace/Families/WordMemory/RAMExecution.lean)
 now derive selectors, actual rs2/RAM reads and destination effects through native
 ports and public decoding; the dependent SW/LW fixture reaches the same realized
-states. Physical padding/boot/ROM binding and complete Sail instruction
-preparation/retirement remain open. The local load formula keeps its native x0 flag; the
+states. [Initialized native row retirement](../../../Proofs/Trace/Families/WordMemory/Execution.lean)
+now derives addresses/native PC successors and composes original preparation,
+clauses and tick_pc. The ordinary/x0 ROM and dependent SW/LW fixtures reach the
+same native outgoing PCs and actual data states. General finite trace/fetch
+composition and physical padding/boot/ROM binding remain open. The local load formula keeps its native x0 flag; the
 separate public decoder proof now derives that flag's exact relation to rd.
 The arithmetic-only trace registry remains unchanged until those connections
 are proved. See the [plan](../../../../FORMAL_VERIFICATION_PLAN.md) and

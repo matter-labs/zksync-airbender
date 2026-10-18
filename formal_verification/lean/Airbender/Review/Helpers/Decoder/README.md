@@ -42,3 +42,11 @@ word-memory execution or a public ROM-byte binding.
 Successful construction also retains its exact indexed PC sequence. The
 [PC composition](../../../Proofs/Trace/PC.lean) derives all incoming bounds and
 alignment through RV32 truncation before applying native carry/wrap equations.
+
+[Original clause selection](Instruction.lean) copies the pinned memory/register
+dispatcher, selecting original Sail LOAD/STORE clauses. The v3 discarded-load
+profile and its exclusions are omitted: v2 original LW-to-x0 memory behavior is
+retained. [Native word-memory row assembly](../../../Proofs/Trace/Families/WordMemory/Execution.lean)
+now uses actual decoding to select checked preparation/clause/retirement paths;
+all calculations remain under Proofs. General finite trace/fetch composition
+and physical setup/export remain separate.

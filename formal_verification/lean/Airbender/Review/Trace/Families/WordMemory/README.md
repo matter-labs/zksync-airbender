@@ -230,8 +230,35 @@ desired result is supplied. Existing cell/code/ROM/virtual-memory tests remain
 unchanged. The public Review theorem surface is unchanged; the assembly remains
 under Proofs.
 
-Normal instruction preparation/PC retirement and complete initialized word-memory
-execution remain the next connection.
+## Checked native row retirement
+
+[Original clause selection](../../../Helpers/Decoder/Instruction.lean) copies
+only the pinned original memory/register dispatcher. The v3 discarded-load
+profile and exclusions are omitted; original LW-to-x0 still performs its actual
+memory read. No unused v3 execution theorem is imported.
+
+[Retirement transport](../../../../Proofs/Trace/Families/WordMemory/Retirement.lean)
+reuses the existing actual cell/history commutation with PC and nextPC, plus
+unchanged public configuration frames. Original Sail nextPC preparation leaves
+native GPR/RAM effects and actual ROM extraction intact. The checked original
+clauses run in these derived prepared states, and tick_pc reaches the same actual
+cell state at the modular successor. No prepared read/state is supplied.
+
+[Initialized row assembly](../../../../Proofs/Trace/Families/WordMemory/Execution.lean)
+recovers effective addresses and exact native PC successors from accepted matching
+and public decoding. It selects RAM LW/SW or ROM LW and reaches that native
+outgoing PC under local ordinary-RAM and actual extracted-prefix coverage domains.
+The latter does not populate missing Sail padding bytes.
+
+[Reversed SW/LW normal steps](../../../../../Tests/WordMemorySailHistory.lean)
+now start from the actual public Sail state and reach PC 8, terminal RAM 123 and
+x3=123 from native matching. Both [ordinary/x0 ROM fixtures](../../../../../Tests/WordMemoryROMTransport.lean)
+retain all earlier results and now retire to native PC 4 with original memory
+behavior. No intermediate state/read or desired PC/value is an input. The public
+Review adds only the small original-clause reference; all assembly stays under
+Proofs.
+
+General initialized finite trace/fetch composition remains the next connection.
 
 The public shadow seeds describe a logical initialized native image. Binding them
 to physical native zero boot and Sail boot/padding state remains open, along with

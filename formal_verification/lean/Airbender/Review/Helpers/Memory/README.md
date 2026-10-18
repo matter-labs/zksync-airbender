@@ -64,5 +64,10 @@ ordinary addresses. Original ROM LW clauses, including x0, reach actual native
 after-states without equating shadow and ROM values.
 [Original RAM clauses](../../../Proofs/Trace/Families/WordMemory/RAMExecution.lean)
 now reuse actual native port effects and public decoder metadata, deriving rs2,
-RAM reads, selectors and masked destination effects. Complete preparation/
-retirement and physical boot/profile binding remain separate.
+RAM reads, selectors and masked destination effects.
+[Row retirement](../../../Proofs/Trace/Families/WordMemory/Retirement.lean) now
+reuses actual history/control commutation and unchanged configuration frames;
+original preparation and tick_pc preserve these native data effects.
+[Native assembly](../../../Proofs/Trace/Families/WordMemory/Execution.lean) derives
+exact modular PC successors. General finite trace/fetch composition and physical
+boot/profile binding remain separate.

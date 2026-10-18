@@ -858,6 +858,54 @@
       "backport_reuse_path": "Tests/WordMemorySailHistory.lean",
       "backport_reuse_sha256": "76f65c4dae2f0382e6f549ce9a5a850d323c33b07b3093a3988437df79467473",
       "change": "Keep the existing accepted reversed SW/LW native witness, public setup, actual CSR image and all regressions unchanged. Reuse initialized projected history, clock-derived row grouping, native address assembly and configuration preservation to reach original SW then LW clause results in the same derived states, with actual read 123 and actual destination write. No intermediate state/read, selector or desired-result input is added."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Decoder/Instruction.lean",
+      "source_path": "Airbender/Review/Helpers/Decoder/Instruction.lean",
+      "source_sha256": "50c223bd029b1885dad4bb236a3c0a4d53a1d53f5d2f2b2795bc9e503237fdf7",
+      "change": "Copy instructionClause and its documentation verbatim, selecting original Sail LOAD/STORE clauses or the existing register dispatcher. Prune unused imports and omit v3 ISAProfile/profileClause/NoDiscardedLoads: v2 retains original LW-to-x0 memory behavior, already connected to native masked writes. No v3 deviation is claimed on v2."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/Retirement.lean",
+      "backport_reuse_revision": "89d1916d90c676813f196ded7d012d4eb184d071",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/RAMExecution.lean",
+      "backport_reuse_sha256": "2eb61af1a90bf452758d491139a71edbdb6bc455fd4fdee53ecd21741a31fbd3",
+      "change": "Retain checked RAM LW/SW native/decoder/history interfaces. Reuse unchanged actual clauses after transporting native histories and public configuration through original nextPC preparation; original tick_pc reaches the actual cell state at the modular successor. No prepared read/state or PC result is supplied."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/Retirement.lean",
+      "backport_reuse_revision": "89d1916d90c676813f196ded7d012d4eb184d071",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/ROMExecution.lean",
+      "backport_reuse_sha256": "e1b9c8cf21506cc62982ad39b4cdae6954cfbd8dc0bc7b1c43bc9af0232311d3",
+      "change": "Retain checked ROM LW prefix/native/decoder interfaces, including original x0. Transport actual public ROM extraction through control-only updates, then reuse the original checked memory clause and retirement path without shadow/ROM-value equivalence."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/Retirement.lean",
+      "backport_reuse_revision": "89d1916d90c676813f196ded7d012d4eb184d071",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Retirement.lean",
+      "backport_reuse_sha256": "61553514a54434011a5b166dafefca4d996a056290ef25f8046de2de88b45e1d",
+      "change": "Reuse retired_state_history, sail_history_control, retired_state_pc, normal_step_native and retired_state_overwrite unchanged. Combine them with unchanged configuration_pc_write/configuration_next_pc_write and the actual derived native memory clauses; original Sail controls remain authoritative."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/Execution.lean",
+      "backport_reuse_revision": "89d1916d90c676813f196ded7d012d4eb184d071",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Arithmetic.lean",
+      "backport_reuse_sha256": "1542700a0285b449eb5d42dda2db573fbfc6bfb6dee9822ec6872a491e3605df",
+      "change": "Reuse the actual-decoder case split and native-to-Sail retirement assembly structure for native LW/SW. Initialized projected native effects derive addresses and modular PC successors; checked RAM/ROM paths reach the exact native outgoing PC. Keep local ordinary RAM and actual extracted-prefix coverage domains explicit; whole-trace code/fetch composition remains separate."
+    },
+    {
+      "path": "Tests/WordMemorySailHistory.lean",
+      "backport_reuse_revision": "89d1916d90c676813f196ded7d012d4eb184d071",
+      "backport_reuse_path": "Tests/WordMemorySailHistory.lean",
+      "backport_reuse_sha256": "71546e37643382d9c874f80fe3959574549ccff3dc8b5ad15fa3ba5680138d37",
+      "change": "Keep the same accepted reversed SW/LW witness, real public code/CSR image and all earlier regressions. Use the new native row-retirement assembly to derive both original normal steps, PC 8 and terminal RAM/x3 values 123 from actual native matching, with no intermediate/read/PC/result premise."
+    },
+    {
+      "path": "Tests/WordMemoryROMTransport.lean",
+      "backport_reuse_revision": "89d1916d90c676813f196ded7d012d4eb184d071",
+      "backport_reuse_path": "Tests/WordMemoryROMTransport.lean",
+      "backport_reuse_sha256": "9e4b836399c08fcdbe439d6a33798df633a4ce3e8434701b92a88df93f3235da",
+      "change": "Keep both accepted ordinary/x0 ROM fixtures, independent native shadow seeds and all earlier extraction/virtual-read/clause/masked-write results. Add original normal preparation/retirement to native PC 4 through the combined initialized row assembly, retaining actual ROM reads for x0 and full shadow matching."
     }
   ]
 }

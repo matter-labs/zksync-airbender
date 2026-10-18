@@ -95,8 +95,12 @@ after-state. [RAM LW/SW clause assembly](Airbender/Proofs/Trace/Families/WordMem
 now reaches the same derived native cell-transfer states. Public decoding derives
 selectors/registers/immediates, and retained ports derive actual operand/RAM
 reads. The reversed fixture reaches original SW then LW results with actual read
-123 and destination write. Normal preparation/PC retirement, complete word-memory
-execution and physical boot/ROM binding remain separate.
+123 and destination write. [Native row retirement](Airbender/Proofs/Trace/Families/WordMemory/Execution.lean)
+now derives exact modular native PC successors and composes original Sail
+preparation, memory clauses and tick_pc through actual history/configuration
+transport. Ordinary/x0 ROM loads reach native PC 4, and reversed SW/LW normal
+steps reach PC 8 and actual terminal RAM/x3=123. General finite trace/fetch
+composition and physical boot/ROM binding remain separate.
 Remaining families, Rust
 setup generation/export and cryptographic argument soundness remain pending. This checkpoint does not inherit v3's completed coverage.
 

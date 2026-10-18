@@ -213,9 +213,24 @@ still explicit. The same reversed accepted SW/LW fixture derives original SW and
 LW results in its realized states, actual later read 123 and the actual register
 write. No intermediate state/read or desired result is supplied; previous cell,
 code, ROM and virtual-memory regressions remain unchanged. These are original
-clause results; normal preparation/PC retirement and complete initialized
-word-memory execution remain open, along with physical boot/export and
-cryptographic enforcement.
+clause results.
+[Original clause dispatch](Airbender/Review/Helpers/Decoder/Instruction.lean) now
+copies the pinned original memory/register selector verbatim, omitting the v3
+profile that turns LW-to-x0 into a NOP. V2's original x0 memory behavior is retained.
+[Retirement transport](Airbender/Proofs/Trace/Families/WordMemory/Retirement.lean)
+reuses existing actual history/control commutation and public configuration
+frames through Sail's original nextPC preparation. Actual ROM extraction survives
+these control-only updates. The derived original clauses and tick_pc reach the
+same actual cell state at the modular successor; no prepared read or state is
+supplied. [Initialized native row assembly](Airbender/Proofs/Trace/Families/WordMemory/Execution.lean)
+derives effective addresses and exact native PC successors, then selects original
+RAM LW/SW or ROM LW from actual decoder fields. Local ordinary-RAM and extracted
+ROM-prefix coverage conditions remain explicit. The unchanged native fixtures now
+also check original normal steps: ordinary/x0 ROM loads retire to native PC 4;
+the reversed SW/LW chain starts from its actual public Sail state and reaches
+PC 8 and terminal RAM/x3=123 through native terminal matching. No intermediate
+state/read or desired PC/value is a premise. General finite trace/fetch
+composition, physical boot/export and cryptographic enforcement remain open.
 
 ## Public state, profiles and external inputs
 

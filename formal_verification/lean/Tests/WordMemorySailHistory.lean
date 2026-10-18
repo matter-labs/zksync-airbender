@@ -1,4 +1,4 @@
-import Airbender.Proofs.Trace.Families.WordMemory.RAMExecution
+import Airbender.Proofs.Trace.Families.WordMemory.Execution
 import Airbender.Review.Trace.Families.WordMemory.Platform
 import Airbender.Proofs.Trace.Families.WordMemory.ProjectedPorts
 import Airbender.Review.Trace.Families.WordMemory.SailHistory
@@ -439,5 +439,90 @@ theorem dependent_original_store_load [_root_.Sail.ArchSem.MemoryPlatform SailRV
   · simpa [memoryWord, MemoryPort.writeCode, WordColumns.code, WordColumns.evaluate,
       Airbender.WordMemory.importedConstraintsMemoryPorts, loadRow, loadAssignment, row, Nat.unpair_pair,
       Word.toBitVec, Word.value, show (123 : ZMod mersenne31Modulus).val = 123 from by decide] using written
+
+set_option backward.isDefEq.respectTransparency false in
+/-- Original preparation and retirement compose the same reversed native rows
+    into actual SW then LW normal steps. Their derived native PC path reaches
+    eight, and native terminal matching supplies the actual RAM/GPR values. -/
+theorem dependent_retired_store_load [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] :
+    ∃ middle after : Reference.RiscV.Sail.State,
+      Reference.Sail.run (Reference.RiscV.Sail.normalStep
+        (SailRV32.Functions.execute_STORE 0 (.Regidx 2) (.Regidx 1) 4)) before =
+          .ok SailRV32.Functions.RETIRE_SUCCESS middle ∧
+      Reference.Sail.run (Reference.RiscV.Sail.normalStep
+        (SailRV32.Functions.execute_LOAD 0 (.Regidx 1) (.Regidx 3) false 4)) middle =
+          .ok SailRV32.Functions.RETIRE_SUCCESS after ∧
+      Reference.Sail.run (SailRV32.Functions.get_arch_pc ()) after = .ok (8 : BitVec 32) after ∧
+      (Cell.ram 4194320).read after = .ok (123 : BitVec 32) after ∧
+      (Cell.register 3).read after = .ok (123 : BitVec 32) after := by
+  obtain ⟨nativeHistory, rows, after, complete, permutation, ordered, actual, matched, _⟩ :=
+    Airbender.WordMemory.public_projected_platform_configuration projected_inputs
+      accepted decoded aligned configuration
+  have same : rows = [loadRow, storeRow] :=
+    List.Perm.eq_of_pairwise' ordered (by decide) permutation
+  subst rows
+  change SailHistory cells
+    (((rowEvents trace.memoryEpoch loadRow).reverse ++
+      (rowEvents trace.memoryEpoch storeRow).reverse).filter
+        fun event => Airbender.WordMemory.architecturalAddress event.2.1) before after at actual
+  rw [List.filter_append] at actual
+  obtain ⟨middle, storeHistory, loadHistory⟩ := Trace.Proofs.sail_history_append.mp actual
+  have middleConfig := Trace.Proofs.sail_history_configuration storeHistory configuration
+  have middleImage := Airbender.WordMemory.Proofs.rom_image_after_frame
+    (Airbender.WordMemory.Proofs.projected_history_rom_bytes architectural storeHistory) code_image
+  have storeFields := (Airbender.WordMemory.Proofs.setup_sources public_setup_built
+    storeEntry (by simp [setup])).fields
+  have loadFields := (Airbender.WordMemory.Proofs.setup_sources public_setup_built
+    loadEntry (by simp [setup])).fields
+  obtain ⟨storeClause, storeChosen, storeStep⟩ := Airbender.WordMemory.Proofs.initialized_instruction_retirement
+    projected_inputs public_setup_built accepted decoded (w := row true false false)
+    (by change storeRow ∈ trace.rows; simp [trace]) storeFields (by decide) configuration code_image
+    (by intro _; unfold Reference.RiscV.Sail.OrdinaryWordAddress; decide)
+    (by intro region; exact ((by decide : ¬ (Airbender.WordMemory.addressWord (row true false false)).hi < 64) region).elim)
+    storeHistory
+  obtain ⟨loadClause, loadChosen, loadStep⟩ := Airbender.WordMemory.Proofs.initialized_instruction_retirement
+    projected_inputs public_setup_built accepted decoded (w := loadAssignment)
+    (by change loadRow ∈ trace.rows; simp [trace]) loadFields (by decide) middleConfig middleImage
+    (by intro _; unfold Reference.RiscV.Sail.OrdinaryWordAddress; decide)
+    (by intro region; exact ((by decide : ¬ (Airbender.WordMemory.addressWord loadAssignment).hi < 64) region).elim)
+    loadHistory
+  change some (SailRV32.Functions.execute_STORE 0 (.Regidx 2) (.Regidx 1) 4) = some storeClause at storeChosen
+  change some (SailRV32.Functions.execute_LOAD 0 (.Regidx 1) (.Regidx 3) false 4) = some loadClause at loadChosen
+  rw [← Option.some.inj storeChosen] at storeStep
+  rw [← Option.some.inj loadChosen] at loadStep
+  have stored : Reference.Sail.run (Reference.RiscV.Sail.normalStep
+      (SailRV32.Functions.execute_STORE 0 (.Regidx 2) (.Regidx 1) 4))
+      (Trace.retiredState before 0) =
+        .ok SailRV32.Functions.RETIRE_SUCCESS (Trace.retiredState middle 4) := by
+    simpa [row, Word.toBitVec, Word.value, limbBase,
+      show (4 : ZMod mersenne31Modulus).val = 4 from by decide] using storeStep
+  have loaded : Reference.Sail.run (Reference.RiscV.Sail.normalStep
+      (SailRV32.Functions.execute_LOAD 0 (.Regidx 1) (.Regidx 3) false 4))
+      (Trace.retiredState middle 4) =
+        .ok SailRV32.Functions.RETIRE_SUCCESS (Trace.retiredState after 8) := by
+    simpa [loadAssignment, row, Word.toBitVec, Word.value, limbBase,
+      show (4 : ZMod mersenne31Modulus).val = 4 from by decide,
+      show (8 : ZMod mersenne31Modulus).val = 8 from by decide] using loadStep
+  have initialPC : Reference.Sail.run (SailRV32.Functions.get_arch_pc ()) before = .ok (0 : BitVec 32) before := by
+    apply Reference.RiscV.Sail.read_register
+    simp [before, Std.ExtDHashMap.get?_insert]
+  rw [Trace.Proofs.normal_step_rebased initialPC] at stored
+  have terminal := Trace.Proofs.terminal_sail_reads (by decide) accepted
+    (Airbender.WordMemory.Proofs.shadow_clock_boundary (by decide) projected_inputs)
+    inputs.image inputs.domain complete matched
+  obtain ⟨ramCell, _, ramAddress, ramRead⟩ := terminal (ramToken 9 123) (by simp [trace])
+  have ramSame : ramCell = Cell.ram 4194320 := Trace.Proofs.cell_address_injective ramAddress
+  subst ramCell
+  obtain ⟨rdCell, _, rdAddress, rdRead⟩ := terminal (regToken 3 10 123 0) (by simp [trace])
+  have rdSame : rdCell = Cell.register 3 := Trace.Proofs.cell_address_injective rdAddress
+  subst rdCell
+  refine ⟨Trace.retiredState middle 4, Trace.retiredState after 8,
+    stored, loaded, Trace.Proofs.retired_state_pc _ _, ?_, ?_⟩
+  · have read := Trace.Proofs.cell_read_PC (Cell.ram 4194320)
+      (Trace.Proofs.cell_read_nextPC (Cell.ram 4194320) ramRead 8) 8
+    simpa [Trace.retiredState, memoryWord, ramToken, Nat.unpair_pair, Word.toBitVec, Word.value] using read
+  · have read := Trace.Proofs.cell_read_PC (Cell.register 3)
+      (Trace.Proofs.cell_read_nextPC (Cell.register 3) rdRead 8) 8
+    simpa [Trace.retiredState, memoryWord, regToken, Nat.unpair_pair, Word.toBitVec, Word.value] using read
 
 end Tests.WordMemorySailHistory

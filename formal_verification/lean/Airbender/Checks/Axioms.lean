@@ -579,3 +579,8 @@ import Tests.WordMemoryROMTransport
 #print axioms Airbender.WordMemory.Proofs.projected_ram_load_execution
 #print axioms Airbender.WordMemory.Proofs.projected_ram_store_execution
 #print axioms Tests.WordMemorySailHistory.dependent_original_store_load
+#print axioms Airbender.WordMemory.Proofs.projected_ram_load_retirement
+#print axioms Airbender.WordMemory.Proofs.projected_ram_store_retirement
+#print axioms Airbender.WordMemory.Proofs.projected_rom_load_retirement
+#print axioms Airbender.WordMemory.Proofs.initialized_instruction_retirement
+#print axioms Tests.WordMemorySailHistory.dependent_retired_store_load

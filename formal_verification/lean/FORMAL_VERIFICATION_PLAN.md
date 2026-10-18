@@ -124,9 +124,19 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    extension; retained native ports derive rs2 and RAM reads, including masked
    load writes/x0. The same reversed dependent fixture reaches original SW then
    LW clause results with actual read 123 and the actual destination write,
-   without a supplied intermediate state/read or desired result. Assemble normal
-   instruction preparation, PC retirement and complete initialized word-memory
-   execution next.
+   without a supplied intermediate state/read or desired result. Original Sail
+   nextPC preparation and PC retirement now compose all three RAM/ROM clause
+   paths through unchanged control/history/configuration lemmas. Actual decoding
+   selects original LW/SW; initialized effects derive the effective address and
+   exact modular native PC successor. The small original Sail dispatcher is
+   reused without v3's discarded-load profile. Ordinary/x0 ROM fixtures retire
+   to native PC 4, and the same reversed SW/LW fixture reaches actual PC 8 and
+   terminal RAM/x3 values 123 without intermediate/read/PC/result premises.
+   Compose the general initialized word-memory trace next: retain actual code
+   reads/pure decoding, configuration and ROM coverage through every realized
+   prefix; conclude the finite original normal-path relation and exact terminal
+   PC/cells. Local ordinary-RAM and extracted-prefix coverage conditions remain
+   explicit until that assembly discharges them from public domains/ROM inputs.
    Bind the separate native initializer to physical boot/padding. Physical setup/export binding remains open.
    Preserve v2 PC rollover and native timestamp offsets;
    keep physical setup generation/export and mixed/custom expansion explicit.

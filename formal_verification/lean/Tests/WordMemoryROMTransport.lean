@@ -1,4 +1,4 @@
-import Airbender.Proofs.Trace.Families.WordMemory.ROMExecution
+import Airbender.Proofs.Trace.Families.WordMemory.Execution
 import Airbender.Review.Trace.Families.WordMemory.ROMImage
 import Airbender.Review.Trace.Families.WordMemory.CodeHistory
 import Airbender.Review.Trace.Families.WordMemory.Projection
@@ -271,7 +271,11 @@ theorem initialized_virtual_rom_load [_root_.Sail.ArchSem.MemoryPlatform SailRV3
         (before discard) = .ok () after ∧
       Reference.Sail.run (SailRV32.Functions.execute_LOAD 0 (.Regidx 1)
         (.Regidx (if discard then 0 else 3)) false 4) (before discard) =
-        .ok SailRV32.Functions.RETIRE_SUCCESS after := by
+        .ok SailRV32.Functions.RETIRE_SUCCESS after ∧
+      Reference.Sail.run (Reference.RiscV.Sail.normalStep
+        (SailRV32.Functions.execute_LOAD 0 (.Regidx 1) (.Regidx (if discard then 0 else 3)) false 4))
+        (before discard) = .ok SailRV32.Functions.RETIRE_SUCCESS
+          (Trace.retiredState after 4) := by
   obtain ⟨history, rows, after, complete, permutation, _, actual, matched⟩ :=
     Airbender.WordMemory.public_projected_sail_history (inputs discard) (accepted discard)
       (decoded discard) (aligned discard)
@@ -302,7 +306,25 @@ theorem initialized_virtual_rom_load [_root_.Sail.ArchSem.MemoryPlatform SailRV3
     (imm := 0) (rs1 := 1) (rd := if discard then 0 else 3) rfl
     (configuration discard) (public_rom_built discard)
     (by cases discard <;> decide) (by cases discard <;> decide) current
-  refine ⟨history, after, complete, matched, ?_, ?_, execution⟩
+  obtain ⟨clause, chosen, normal⟩ := Airbender.WordMemory.Proofs.initialized_instruction_retirement
+    (inputs discard) (public_decoder_built discard) (accepted discard) (decoded discard)
+    (w := row false true discard) (by change nativeRow false true discard ∈ (trace discard).rows; simp [trace])
+    fields query (configuration discard) (public_rom_built discard)
+    (by intro ram; exact ((by cases discard <;> decide : ¬ 64 ≤ (row false true discard 20).val) ram).elim)
+    (by intro _; cases discard <;> decide) current
+  change some (SailRV32.Functions.execute_LOAD 0 (.Regidx 1) (.Regidx (if discard then 0 else 3)) false 4) = some clause at chosen
+  rw [← Option.some.inj chosen] at normal
+  have initialPC : Reference.Sail.run (SailRV32.Functions.get_arch_pc ()) (before discard) =
+      .ok (0 : BitVec 32) (before discard) := by
+    apply Reference.RiscV.Sail.read_register
+    simp [before, Std.ExtDHashMap.get?_insert]
+  have incoming : (Word.mk (row false true discard 0).val (row false true discard 1).val).toBitVec = 0 := by
+    cases discard <;> decide
+  have outgoing : (Word.mk (row false true discard 13).val (row false true discard 14).val).toBitVec = 4 := by
+    cases discard <;> decide
+  rw [incoming, outgoing] at normal
+  rw [Trace.Proofs.normal_step_rebased initialPC] at normal
+  refine ⟨history, after, complete, matched, ?_, ?_, execution, normal⟩
   · simpa [entry, Airbender.WordMemory.immediateWord, row, Word.toBitVec, Word.value, limbBase,
       show (4211 : ZMod mersenne31Modulus).val = 4211 from by decide,
       show (49152 : ZMod mersenne31Modulus).val = 49152 from by decide] using read

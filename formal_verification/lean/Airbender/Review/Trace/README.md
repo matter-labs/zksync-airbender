@@ -115,8 +115,13 @@ ordinary/x0 regressions retain full shadow matching with distinct shadow/ROM
 values. [Original RAM clauses](../../Proofs/Trace/Families/WordMemory/RAMExecution.lean)
 now reach actual cell-transfer states using derived selectors, rs2/RAM reads and
 native masked writes. The reversed dependent fixture reaches original SW then
-LW results without intermediate state/read/result premises. Normal preparation,
-PC retirement and complete word-memory execution remain open.
+LW results without intermediate state/read/result premises.
+[Native row retirement](../../Proofs/Trace/Families/WordMemory/Execution.lean) now
+composes original preparation/clause/tick_pc using derived native PC successors
+and actual history/configuration transport. Ordinary/x0 ROM loads reach native
+PC 4; the same reversed SW/LW normal steps reach PC 8 and terminal RAM/x3=123.
+Local ordinary-RAM and actual ROM-prefix coverage remain explicit; general
+finite trace/fetch composition remains open.
 
 These are logical selected-profile results. Remaining families and physical
 setup/argument fidelity remain in [the plan](../../../FORMAL_VERIFICATION_PLAN.md).
