@@ -39,11 +39,11 @@ not completed v2 coverage.
 | [Word-memory platform configuration](Airbender/Review/Trace/Families/WordMemory/Platform.lean) | Initialized projected histories preserve the public original Sail Machine/PMP/PMA configuration. Eight platform modules are copied unchanged from the pinned source. Native RAM address/port equations derive actual Sail reads/writes and alignment; unchanged Sail translation, permission and ordinary-memory helpers transport those effects into actual virtual-memory calls. The dependent native SW/LW regression derives a virtual store and later read of 123 with no supplied intermediate state/read/result. Public ordinary-address and configuration conditions remain explicit. Original clauses and row preparation/retirement are checked below; complete trace composition is checked below; physical boot/export remains separate. |
 | Original word-memory clauses | [ROM transport](Airbender/Proofs/Trace/Families/WordMemory/ROMTransport.lean) composes actual public byte extraction, retained source reads, native address/alignment and preserved configuration into original Sail virtual ROM reads. Native ROM bounds derive ordinary addresses. [Clause assembly](Airbender/Proofs/Trace/Families/WordMemory/ROMExecution.lean) derives the original unmasked destination effect from native masked writes, including original x0 without NOP projection. [Initialized regressions](Tests/WordMemoryROMTransport.lean) construct real decoder/ROM bytes and reach original LW clause results in the same actual native after-state, with full shadow matching and shadow value 123 distinct from actual ROM word 0xc0001073. [RAM clause assembly](Airbender/Proofs/Trace/Families/WordMemory/RAMExecution.lean) derives load/store selectors and original registers/immediate from the public decoder, actual rs2/RAM reads from retained ports, and original RAM LW/SW results in the actual cell-transfer states. [The reversed dependent fixture](Tests/WordMemorySailHistory.lean) reaches original SW then LW results with actual read 123 and actual destination write, without an intermediate state/read/result premise. Ordinary-address and configuration conditions remain explicit. Row preparation/PC retirement is checked below; complete word-memory trace composition is checked below. |
 | Decoded word-memory row retirement | [Original clause selection](Airbender/Review/Helpers/Decoder/Instruction.lean) reuses the pinned dispatcher without v3 discarded-load deviations. [Retirement](Airbender/Proofs/Trace/Families/WordMemory/Retirement.lean) transports actual histories, configuration and ROM bytes through original nextPC preparation and tick_pc. [Native assembly](Airbender/Proofs/Trace/Families/WordMemory/Execution.lean) derives effective addresses and exact modular native PC successors from initialized matching/public decoding, selecting original RAM LW/SW or ROM LW. No prepared read/state or desired PC result is assumed. Ordinary/x0 ROM regressions retire to native PC 4; reversed dependent SW/LW normal steps derive actual PC 8 and terminal RAM/x3 values 123. Local ordinary-RAM and extracted-prefix coverage domains remain explicit; complete finite trace/fetch composition is checked below; physical boot/export remains open. |
-| Range tables | Native Clean static-table definitions with explicit range semantics; the pinned range16 fixture is certified row by row. General scalar/physical setup correspondence remains open. |
+| Range tables | Actual native range16/timestamp19 prefixes and modeled active zero fill have exact unchanged Clean static-table meanings. The reserved normalization row, physical multiplicities and Rust trace/LDE refinement remain separate. |
 
 ## Remaining work
 
-- Generalize native export certificates to arbitrary public programs, add arithmetic decoder exports and full physical trace assembly; connect physical initialization and expand mixed/custom programs.
+- Generalize native export certificates to arbitrary public programs, compose sparse initialized arithmetic execution and bind full physical trace assembly; connect physical initialization and expand mixed/custom programs.
 - Extend initialized execution to jump/branch/SLT and the remaining supported families; preserve each native metadata and argument boundary.
 - Backport the remaining ordinary circuit families, worker operations, unified machine, full traces and initialization/teardown.
 - Retest v3 findings against v2 before carrying over counterexamples or temporary assumptions.
@@ -140,8 +140,8 @@ connects actual tagged exported rows to original Sail bytes after explicit paddi
 with the actual four-word prefix extraction as its public input condition.
 The original LW/SW/x0 prefix and explicit unsupported UNIMP slot are checked.
 These certificates cover this pinned native fixture; arbitrary programs, arithmetic
-native decoder exports and full physical trace padding/normalization/LDE
-correspondence remain open, as do physical initialization and argument enforcement.
+native decoder certificates are checked separately below; full physical trace
+padding/normalization/LDE, initialization and argument enforcement remain open.
 
 ## Sparse native decoder construction
 
@@ -223,18 +223,44 @@ endpoints and out-of-range rejection. The importer rejects malformed extents,
 widths, canonical values, unknown nested fields and incompatible profiles.
 These are complete native regional data certificates plus a source-shaped
 active-padding model. Formal Rust physical trace/normalization/LDE/argument
-refinement, arithmetic decoder exports and arbitrary-program certificates remain
-separate.
+refinement and arbitrary-program certificates remain separate. The concrete
+arithmetic decoder certificate is checked below.
+
+## Actual native arithmetic decoder export
+
+[The native arithmetic artifact](artifacts/setup/arithmetic-native.json) now
+retains all 1,048,576 ten-column decoder slots from the actual v2 arithmetic
+preprocessor/materializer. Its seven public words exercise ADD, signed ADDI,
+SUB to x0, LUI/AUIPC with nonzero raw funct3 bits, an unsupported UNIMP word at
+PC 20 and another ADD at its original PC 24. Existing program/scalar artifacts
+and the unchanged exhaustive lossless codec retain their meanings.
+
+[Independent public bytes and entries](Airbender/Review/Circuits/AddSub/Tables/NativeSetupData.lean)
+feed original Sail reads and decoding. [Kernel certificates](Airbender/Proofs/AddSub/NativeSetup.lean)
+construct the sparse setup and prove equality of every actual exported row,
+including the interior hole and full tail. Native packed-mask equations exclude
+both sentinels before [the short source claim](Airbender/Review/Trace/Families/AddSub/NativeDecoder.lean)
+recovers original public evidence. Row equality is proved, never assumed.
+[The regression](Tests/NativeArithmeticSetup.lean) checks all five field shapes,
+public text identity and a complete native ADD row at PC 24 with actual exported
+membership. Nineteen importer checks reject malformed and incompatible artifacts;
+fixture and equivalent binary text reproduce byte for byte.
+
+This is a concrete native-data/source certificate. General Rust/Sail decoder
+agreement, arbitrary-program certificates, custom modular MOP semantics, sparse
+initialized arithmetic execution and physical trace/argument refinement remain
+separate. No instruction skipping an executed hole or new implementation defect
+is claimed.
 
 ## Validation
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all twenty-three concrete test modules pass.
-- Importer regressions: 98 checks pass.
-- Axiom audit: 685 explicit roots; only propext, Classical.choice and Quot.sound.
-- All thirty-four public Review theorems (five circuit claims, twenty-six trace claims and three helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
-- Source provenance: 71 unchanged reused files, two native circuit artifacts, thirty-two native Rust sources, three native setup artifacts and four exporter source/manifest/lock files.
+- Library, both CLI entrypoints and all twenty-four concrete test modules pass.
+- Importer regressions: 117 checks pass.
+- Axiom audit: 699 explicit roots; only propext, Classical.choice and Quot.sound.
+- All thirty-five public Review theorems (five circuit claims, twenty-seven trace claims and three helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Source provenance: 71 unchanged reused files, two native circuit artifacts, thirty-two native Rust sources, four native setup artifacts and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
 - Public Sail x1/PC reads construct the accepted alias fixture; missing register and byte data reject construction.

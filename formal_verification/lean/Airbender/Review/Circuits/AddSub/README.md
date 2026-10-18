@@ -43,5 +43,13 @@ actual Rust setup exports and argument enforcement remain separate.
 
 [Shared native scalar prefixes](../../Helpers/Tables/NativeScalars.lean) now bind
 the complete range16/timestamp19 data and modeled active zero fill to the existing
-Clean range meanings. Both compiled columns 0/1 are checked. Arithmetic native
-decoder export and physical trace/normalization/LDE/argument refinement stay open.
+Clean range meanings. Both compiled columns 0/1 are checked. Physical trace/
+normalization/LDE/argument refinement stays open.
+
+[Actual native arithmetic decoder data](Tables/NativeSetupData.lean) now has a
+[complete row certificate](../../../Proofs/AddSub/NativeSetup.lean) from independent
+public bytes and original Sail decoding. The [short source claim](../../Trace/Families/AddSub/NativeDecoder.lean)
+uses native equations and actual exported membership. Signed ADDI, original x0
+SUB, raw U-type funct3 and a full native ADD row at PC 24 after an UNIMP hole are
+checked. This certificate covers its concrete public input; general decoder
+refinement, custom MOPs and sparse initialized arithmetic execution remain open.

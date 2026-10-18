@@ -20,6 +20,7 @@ import Tests.NativeSetup
 import Tests.NativeSparseSetup
 import Tests.SparseExecution
 import Tests.NativeScalars
+import Tests.NativeArithmeticSetup
 
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
@@ -729,3 +730,17 @@ import Tests.NativeScalars
 #print axioms Tests.NativeScalars.active_padding
 #print axioms Tests.NativeScalars.native_bounds
 #print axioms Tests.NativeScalars.finite_endpoints
+#print axioms Airbender.AddSub.Proofs.native_fixture_words
+#print axioms Airbender.AddSub.Proofs.native_fixture_image
+#print axioms Airbender.AddSub.Proofs.native_exported_tail
+#print axioms Airbender.AddSub.Proofs.native_exported_rows
+#print axioms Airbender.AddSub.Proofs.native_exported_source
+#print axioms Airbender.AddSub.exported_decoder_soundness
+#print axioms Tests.NativeArithmeticSetup.constructed
+#print axioms Tests.NativeArithmeticSetup.signed_immediate
+#print axioms Tests.NativeArithmeticSetup.original_x0
+#print axioms Tests.NativeArithmeticSetup.raw_upper_fields
+#print axioms Tests.NativeArithmeticSetup.hole_and_tail
+#print axioms Tests.NativeArithmeticSetup.public_text
+#print axioms Tests.NativeArithmeticSetup.later_constraints
+#print axioms Tests.NativeArithmeticSetup.later_source

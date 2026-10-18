@@ -183,4 +183,32 @@ def parseScalars (source : String) : Except String ScalarArtifact := do
   artifact.validate
   return artifact
 
+/-- Arithmetic preprocessing is separate from generic/scalar table assembly.
+    This profile records the actual native family, including its custom MOPs;
+    each semantic certificate states which public input it covers. -/
+structure DecoderArtifact where
+  version : Nat
+  field_modulus : Nat
+  family : String
+  text_words : Nat
+  text : Column
+  decoder : Matrix
+  deriving Repr, FromJson
+
+def DecoderArtifact.validate (artifact : DecoderArtifact) : Except String Unit := do
+  unless artifact.version == 1 && artifact.field_modulus == mersenne31Modulus &&
+      artifact.family == "add_sub_lui_auipc_mop" do throw "unsupported native decoder profile"
+  unless artifact.text_words ≤ 1048576 do throw "unexpected native text extent"
+  artifact.text.validate artifact.text_words 4294967296
+  artifact.decoder.validate 1048576 10
+
+def parseDecoder (source : String) : Except String DecoderArtifact := do
+  let json ← Json.parse source
+  exactKeys json #["version", "field_modulus", "family", "text_words", "text", "decoder"]
+  columnKeys (← json.getObjVal? "text")
+  matrixKeys (← json.getObjVal? "decoder")
+  let artifact : DecoderArtifact ← fromJson? json
+  artifact.validate
+  return artifact
+
 end Airbender.Setup

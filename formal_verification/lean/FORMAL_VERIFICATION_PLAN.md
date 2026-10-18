@@ -200,8 +200,16 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    Exact lookup meanings connect to the unchanged Clean helpers. Both compiled
    scalar placements, endpoints/padding and fourteen strict importer checks pass;
    the reserved normalization row and physical multiplicity enforcement remain
-   outside this model. Next generalize exported-data certificates to arbitrary
-   public programs, export arithmetic decoder rows and bind full physical trace
+   outside this model. The [actual arithmetic export](Airbender/Review/Trace/Families/AddSub/NativeDecoder.lean)
+   now certifies all 1,048,576 native ten-column slots against independent public
+   bytes and original Sail sparse construction. The seven-word fixture covers
+   all five arithmetic opcodes, signed ADDI, original SUB-to-x0, raw U-type funct3,
+   an interior UNIMP hole and ADD at original PC 24. Native packed-mask equations
+   exclude holes/tail; a complete post-hole ADD row recovers its actual source.
+   Exact fixture/binary reproduction and nineteen strict importer checks pass.
+   No table-equivalence premise or custom MOP coverage is added. Next generalize
+   exported-data certificates to arbitrary public programs, connect sparse
+   arithmetic construction to initialized execution and bind full physical trace
    assembly/initialization.
    The fixture certificates are not general Rust/export/LDE/compiler refinement.
    Rust refinement and cryptographic enforcement remain separate.

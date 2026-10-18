@@ -2,7 +2,8 @@
 
 This standalone crate calls the pinned dev word-memory table driver, ROM/separator
 constructors, decoder preprocessor/materializer and 16-bit scalar table generator.
-A separate scalar mode also reuses the exact pinned timestamp generation clause
+The arithmetic mode calls AddSubLuiAuipcMopDecoder through the same native decoder
+APIs. A separate scalar mode also reuses the exact pinned timestamp generation clause
 and native bit-width constant, without building the prover crate.
 It exports actual regional rows before physical trace padding, c0 normalization,
 LDE and commitments. It does not call the full setup builder or allocate a full
@@ -33,7 +34,9 @@ are isolated by this crate's manifest/lock; build output stays in lean/.lake.
 The standard lean/scripts/check_all.py gate runs it under the same global lock,
 sampled process-tree memory ceilings and wall budget. Do not run it alongside Lean.
 
-The binary accepts --fixture OUTPUT.json, --scalars OUTPUT.json or IMAGE.bin TEXT.bin OUTPUT.json.
+The binary accepts --fixture OUTPUT.json, --scalars OUTPUT.json,
+IMAGE.bin TEXT.bin OUTPUT.json, --arithmetic-fixture OUTPUT.json or
+--arithmetic TEXT.bin OUTPUT.json.
 Use it only under the same bounded watchdog. Output is written to the requested
 local path after all lossless and JSON roundtrip checks pass.
 
@@ -63,3 +66,14 @@ identity against pinned native source, every compressed value and exact output.
 prefix values plus the separate source-shaped active zero-padding model, deriving
 exact original Clean range meanings. The final normalization row and physical
 trace/multiplicity/LDE/argument refinement remain outside this claim.
+
+The [arithmetic fixture](../lean/artifacts/setup/arithmetic-native.json) contains
+ADD, signed ADDI, SUB to x0, LUI/AUIPC with raw funct3 bits, an UNIMP hole at PC 20
+and ADD at original PC 24. All 1,048,576 ten-column native rows are retained.
+[Independent original Sail certificates](../lean/Airbender/Proofs/AddSub/NativeSetup.lean)
+construct its actual public sparse setup and prove every exported row equal,
+including holes/tail. A full native ADD witness exercises post-hole membership
+and the short source claim. Fixture/binary modes reproduce identical output and
+reject partial/oversized text before output. The native decoder's custom modular
+MOPs are outside this concrete certificate; general Rust decoder agreement,
+arbitrary-program certificates and physical trace/argument refinement remain open.

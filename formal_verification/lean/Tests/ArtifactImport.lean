@@ -48,6 +48,47 @@ private def scalarChecks (setupSource : String) : IO Unit := do
   check (rejected (Setup.parseScalars setupSource)) "reject program artifact as scalar export"
   check (rejected (Setup.parse scalarSource)) "reject scalar artifact as program export"
 
+private def decoderChecks (setupSource : String) : IO Unit := do
+  let source ← IO.FS.readFile "artifacts/setup/arithmetic-native.json"
+  let artifact ← IO.ofExcept (Setup.parseDecoder source)
+  check (artifact.text_words == 7 && artifact.decoder.length == 1048576 &&
+    artifact.decoder.columns.size == 10) "actual native arithmetic decoder extent"
+  check (rejected ({artifact with version := 2}.validate)) "reject decoder export version"
+  check (rejected ({artifact with field_modulus := 2013265921}.validate)) "reject v3 decoder export field"
+  check (rejected ({artifact with family := "load_store_word_only"}.validate)) "reject changed decoder family"
+  check (rejected ({artifact with text_words := 1048577}.validate)) "reject oversized decoder text"
+  check (rejected ({artifact with text_words := 6}.validate)) "reject incomplete decoder text extent"
+  check (rejected ({artifact with text := ⟨#[.dense #[4294967296]]⟩, text_words := 1}.validate))
+    "reject oversized decoder input word"
+  check (rejected ({artifact with decoder := {artifact.decoder with length := 1048575}}.validate))
+    "reject truncated arithmetic decoder"
+  check (rejected ({artifact with decoder := {artifact.decoder with columns :=
+    (artifact.decoder.columns.extract 0 9)}}.validate)) "reject missing arithmetic decoder column"
+  check (rejected ({artifact with decoder := {artifact.decoder with columns :=
+    (artifact.decoder.columns.push ⟨#[.affine 1048576 0 0]⟩)}}.validate)) "reject extra arithmetic decoder column"
+  check (rejected ({artifact with decoder := {artifact.decoder with columns :=
+    (artifact.decoder.columns.set! 0 ⟨#[.affine 1048575 0 0]⟩)}}.validate)) "reject incomplete decoder column"
+  check (rejected ({artifact with decoder := {artifact.decoder with columns :=
+    (artifact.decoder.columns.set! 0 ⟨#[.affine 1048576 2147483647 0]⟩)}}.validate))
+    "reject noncanonical arithmetic decoder cell"
+  let json ← IO.ofExcept (Json.parse source)
+  let unknown ← IO.ofExcept (replaceField json "invented" (.bool true))
+  check (rejected (Setup.parseDecoder unknown.compress)) "reject unknown decoder export field"
+  let matrix ← IO.ofExcept (json.getObjVal? "decoder")
+  let extraMatrix ← IO.ofExcept (replaceField matrix "invented" (.bool true))
+  let unknown ← IO.ofExcept (replaceField json "decoder" extraMatrix)
+  check (rejected (Setup.parseDecoder unknown.compress)) "reject unknown decoder matrix field"
+  let columns ← IO.ofExcept ((← IO.ofExcept (matrix.getObjVal? "columns")).getArr?)
+  let extraColumn ← IO.ofExcept (replaceField columns[0]! "invented" (.bool true))
+  let extraMatrix ← IO.ofExcept (replaceField matrix "columns" (Json.arr (columns.set! 0 extraColumn)))
+  let unknown ← IO.ofExcept (replaceField json "decoder" extraMatrix)
+  check (rejected (Setup.parseDecoder unknown.compress)) "reject unknown decoder column field"
+  check (rejected (Setup.parseDecoder setupSource)) "reject program artifact as decoder export"
+  check (rejected (Setup.parse source)) "reject decoder artifact as program export"
+  check (rejected (Setup.parseScalars source)) "reject decoder artifact as scalar export"
+  check (rejected (Setup.parseDecoder (← IO.FS.readFile "artifacts/setup/scalars-native.json")))
+    "reject scalar artifact as decoder export"
+
 def main : IO UInt32 := do
   try
     let source ← IO.FS.readFile "../../cs/add_sub_lui_auipc_mop_preprocessed_layout.json"
@@ -223,6 +264,7 @@ def main : IO UInt32 := do
     let badBlock ← IO.ofExcept (Json.parse "{\"kind\":\"affine\",\"length\":1,\"first\":0,\"step\":0,\"invented\":1}")
     check (rejected (fromJson? badBlock : Except String Setup.Block)) "reject unknown compressed block field"
     scalarChecks setupSource
+    decoderChecks setupSource
     return (0 : UInt32)
   catch error =>
     IO.eprintln s!"FAIL {error}"

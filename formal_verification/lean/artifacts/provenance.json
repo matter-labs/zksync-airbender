@@ -1487,6 +1487,76 @@
       "backport_reuse_path": "../native_setup_exporter/src/main.rs",
       "backport_reuse_sha256": "6311b34ae31f34602c9a054699efe4ac1bf8a45b37858710a450ba5f729e54ed",
       "change": "Retain all existing program modes and the unchanged lossless codec. Add a separate scalar mode using the actual range16 API and the verbatim native timestamp clause with the cs-reexported constant; no full prover build, dependency change or physical trace allocation."
+    },
+    {
+      "path": "Airbender/Review/Circuits/AddSub/Tables/NativeSetupData.lean",
+      "backport_reuse_revision": "0d075021628c0134a9ecc49925fd6c318c468039",
+      "backport_reuse_path": "Airbender/Review/Circuits/WordMemory/Tables/NativeSparseData.lean",
+      "backport_reuse_sha256": "208d7867083cec286387ff2ce0b577fc254cf2fbff2adb2f3cd3d40eed9b1be3",
+      "change": "Reuse literal native data/public-byte/independent-entry structure for actual arithmetic export with all five Sail arithmetic opcodes and an interior UNIMP hole. Retain native signed ADDI, raw U-type funct3 and original SUB-to-x0 operands; custom MOPs excluded from this concrete certificate."
+    },
+    {
+      "path": "Airbender/Proofs/AddSub/NativeSetup.lean",
+      "backport_reuse_revision": "0d075021628c0134a9ecc49925fd6c318c468039",
+      "backport_reuse_path": "Airbender/Proofs/WordMemory/NativeSparseSetup.lean",
+      "backport_reuse_sha256": "962cae2199b349211ad1bd9917f7f92fc34119cc7739f9a26aec5686725193d4",
+      "change": "Adapt the finite-prefix/symbolic-tail certificate to seven actual arithmetic slots, including the mixed affine/dense native codec prefix. Reuse generic sparse source lemmas unchanged and existing native arithmetic packed-mask padding exclusion. Prove every exported row equals the independently constructed original Sail setup; no equivalence premise."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/AddSub/NativeDecoder.lean",
+      "backport_reuse_revision": "0d075021628c0134a9ecc49925fd6c318c468039",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/WordMemory/SparseDecoder.lean",
+      "backport_reuse_sha256": "6f1a6caf5d7ae3fd15068dd27180132e70d66dd22eb0a400186c534af37c1445",
+      "change": "Keep a single short actual-export source recovery claim from native constraints and complete exported membership. All source construction, sentinel exclusion and row calculations remain in Proofs; no whole sparse arithmetic execution is claimed."
+    },
+    {
+      "path": "Tests/NativeArithmeticSetup.lean",
+      "backport_reuse_revision": "0d075021628c0134a9ecc49925fd6c318c468039",
+      "backport_reuse_path": "Tests/NativeSparseSetup.lean",
+      "backport_reuse_sha256": "c7460f319762cebdad9c589697e02bade06d8baa1613d4d154ad75d2e1c87eac",
+      "change": "Reuse original-Sail constructed-source and concrete native-data checks for signed immediates, original x0 opcodes, raw U-type fields, holes/tail and public text binding."
+    },
+    {
+      "path": "Tests/NativeArithmeticSetup.lean",
+      "backport_reuse_revision": "0d075021628c0134a9ecc49925fd6c318c468039",
+      "backport_reuse_path": "Tests/AddSub.lean",
+      "backport_reuse_sha256": "9df0af407290e37187622f349ddda8b015ded6557c726f4991a59a5e316009ef",
+      "change": "Reuse unchanged native assignment helper and constraint discharge for a nonempty ADD at PC 24 after the public hole. Only PC/inverse witness changes; all imported equations/lookups pass before actual exported membership recovers original source."
+    },
+    {
+      "path": "Airbender/Import/Setup.lean",
+      "backport_reuse_revision": "0d075021628c0134a9ecc49925fd6c318c468039",
+      "backport_reuse_path": "Airbender/Import/Setup.lean",
+      "backport_reuse_sha256": "f729db5323bea3d347a85f712c891d6d524aae0fbf0a5ffd1a9de9501106a188",
+      "change": "Retain unchanged lossless compressed column/matrix validation and existing program/scalar profiles. Add separate native arithmetic decoder/text profile with exact keys, geometry, field, family and canonical coverage checks."
+    },
+    {
+      "path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_revision": "0d075021628c0134a9ecc49925fd6c318c468039",
+      "backport_reuse_path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_sha256": "76fd42ff9390949489186c27eca121816c4b0fce8b5b28cf177bef7b03e9387d",
+      "change": "Reuse unchanged literal column/block/value emission. Add separate native arithmetic decoder/text import command; no implicit row recipe or semantic equivalence introduced."
+    },
+    {
+      "path": "Tests/ArtifactImport.lean",
+      "backport_reuse_revision": "0d075021628c0134a9ecc49925fd6c318c468039",
+      "backport_reuse_path": "Tests/ArtifactImport.lean",
+      "backport_reuse_sha256": "771bdb9116a2aed4360d2050645dcd1bc4cbf40bc8a7810d19893bea2db25000",
+      "change": "Retain all prior tests and add nineteen strict arithmetic decoder profile/geometry/coverage/canonical-key/cross-profile checks in a separate small IO helper."
+    },
+    {
+      "path": "scripts/check_native_setup.py",
+      "backport_reuse_revision": "0d075021628c0134a9ecc49925fd6c318c468039",
+      "backport_reuse_path": "scripts/check_native_setup.py",
+      "backport_reuse_sha256": "6284fb505a7de224a15e44e73c40b8592822666020011890080e6aaf61e90836",
+      "change": "Retain all program/scalar native checks. Reproduce arithmetic fixture and equivalent little-endian text input byte for byte; reject partial/oversized arithmetic inputs before output."
+    },
+    {
+      "path": "../native_setup_exporter/src/main.rs",
+      "backport_reuse_revision": "0d075021628c0134a9ecc49925fd6c318c468039",
+      "backport_reuse_path": "../native_setup_exporter/src/main.rs",
+      "backport_reuse_sha256": "f6e9f87fb6455de8ed965f8b8144f1419b780a00f62bf96001675b591e02ab5b",
+      "change": "Reuse the pinned native preprocessor/materializer APIs and unchanged exhaustive lossless codec with AddSubLuiAuipcMopDecoder. Add separate arithmetic fixture/text modes without dependency changes, physical trace allocation or changes to old profiles."
     }
   ],
   "setup_artifacts": [
@@ -1526,6 +1596,23 @@
       "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5",
       "timestamp_clause_source": "../../prover/src/prover_stages/mod.rs",
       "physical_trace": "active zero fill is modeled separately; reserved normalization row and LDE excluded"
+    },
+    {
+      "path": "artifacts/setup/arithmetic-native.json",
+      "sha256": "3da2cc9bdebd280b400c5507c766d6af21f08d49823c232404e00598b815a104",
+      "profile": "native v2 Mersenne31 arithmetic decoder regional rows; ADD/ADDI/SUB/LUI/AUIPC, original x0, signed immediate, raw U-type funct3 and interior UNIMP hole",
+      "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py; exporter --arithmetic-fixture or --arithmetic TEXT.bin",
+      "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5",
+      "text_words": [
+        1081523,
+        4293951763,
+        1075871795,
+        29111,
+        21015,
+        3221229683,
+        1081523
+      ],
+      "boundary": "concrete original-Sail sparse setup certificate over every exported slot; custom MOPs, arbitrary programs and full physical trace refinement remain separate"
     }
   ],
   "native_exporter_files": [
@@ -1539,7 +1626,7 @@
     },
     {
       "path": "../native_setup_exporter/src/main.rs",
-      "sha256": "f6e9f87fb6455de8ed965f8b8144f1419b780a00f62bf96001675b591e02ab5b"
+      "sha256": "914f83b0aefd41a581f8a9e7ac831233413dc5668874cd28701382bfd3450f18"
     },
     {
       "path": "../native_setup_exporter/src/columns.rs",

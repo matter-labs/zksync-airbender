@@ -349,9 +349,9 @@ The short [exported-ROM read claim](Airbender/Review/Trace/Families/WordMemory/S
 connects actual tagged exported rows to original Sail bytes after explicit padding,
 with the actual four-word prefix extraction as its public input condition.
 The original LW/SW/x0 prefix and explicit unsupported UNIMP slot are checked.
-These certificates cover this pinned native fixture; arbitrary programs, arithmetic
-native decoder exports and full physical trace padding/normalization/LDE
-correspondence remain open, as do physical initialization and argument enforcement.
+These certificates cover the pinned word-memory fixture. The arithmetic native
+decoder certificate is checked separately below. Arbitrary programs, full physical
+trace padding/normalization/LDE, initialization and argument enforcement remain open.
 
 The exporter uses the same pinned native APIs as setup callers, retaining image
 and text independently. It copies the pinned lossless column codec, validates
@@ -454,8 +454,34 @@ endpoints and out-of-range rejection. The importer rejects malformed extents,
 widths, canonical values, unknown nested fields and incompatible profiles.
 These are complete native regional data certificates plus a source-shaped
 active-padding model. Formal Rust physical trace/normalization/LDE/argument
-refinement, arithmetic decoder exports and arbitrary-program certificates remain
-separate.
+refinement and arbitrary-program certificates remain separate. The concrete
+arithmetic decoder certificate is checked below.
+
+## Actual native arithmetic decoder export
+
+[The native arithmetic artifact](artifacts/setup/arithmetic-native.json) now
+retains all 1,048,576 ten-column decoder slots from the actual v2 arithmetic
+preprocessor/materializer. Its seven public words exercise ADD, signed ADDI,
+SUB to x0, LUI/AUIPC with nonzero raw funct3 bits, an unsupported UNIMP word at
+PC 20 and another ADD at its original PC 24. Existing program/scalar artifacts
+and the unchanged exhaustive lossless codec retain their meanings.
+
+[Independent public bytes and entries](Airbender/Review/Circuits/AddSub/Tables/NativeSetupData.lean)
+feed original Sail reads and decoding. [Kernel certificates](Airbender/Proofs/AddSub/NativeSetup.lean)
+construct the sparse setup and prove equality of every actual exported row,
+including the interior hole and full tail. Native packed-mask equations exclude
+both sentinels before [the short source claim](Airbender/Review/Trace/Families/AddSub/NativeDecoder.lean)
+recovers original public evidence. Row equality is proved, never assumed.
+[The regression](Tests/NativeArithmeticSetup.lean) checks all five field shapes,
+public text identity and a complete native ADD row at PC 24 with actual exported
+membership. Nineteen importer checks reject malformed and incompatible artifacts;
+fixture and equivalent binary text reproduce byte for byte.
+
+This is a concrete native-data/source certificate. General Rust/Sail decoder
+agreement, arbitrary-program certificates, custom modular MOP semantics, sparse
+initialized arithmetic execution and physical trace/argument refinement remain
+separate. No instruction skipping an executed hole or new implementation defect
+is claimed.
 
 ## Public state, profiles and external inputs
 

@@ -46,6 +46,24 @@ def main():
         subprocess.run([str(binary), str(image), str(text), str(output)], check=True)
         assert output.read_bytes() == (ROOT / "artifacts/setup/word-memory-holes-native.json").read_bytes()
         print("PASS reproducible native interior-hole export", flush=True)
+        arithmetic = [0x001080b3, 0xfff08113, 0x40208033, 0x000071b7,
+                      0x00005217, 0xc0001073, 0x001080b3]
+        subprocess.run([str(binary), "--arithmetic-fixture", str(output)], check=True)
+        expected = (ROOT / "artifacts/setup/arithmetic-native.json").read_bytes()
+        assert output.read_bytes() == expected
+        print("PASS reproducible native arithmetic decoder export", flush=True)
+        text.write_bytes(b"".join(word.to_bytes(4, "little") for word in arithmetic))
+        subprocess.run([str(binary), "--arithmetic", str(text), str(output)], check=True)
+        assert output.read_bytes() == expected
+        print("PASS arithmetic little-endian text CLI input", flush=True)
+        for label, content in [("partial arithmetic text", b"xx"),
+                               ("oversized arithmetic text", bytes(4194308))]:
+            text.write_bytes(content)
+            output.unlink(missing_ok=True)
+            result = subprocess.run([str(binary), "--arithmetic", str(text), str(output)],
+                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            assert result.returncode != 0 and not output.exists(), label
+            print("PASS reject " + label, flush=True)
         for label, image_bytes, text_bytes in [
             ("partial image word", b"xx", text.read_bytes()),
             ("partial text word", image.read_bytes(), b"xx"),

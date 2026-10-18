@@ -9,8 +9,8 @@ use cs::machine::ops::unrolled::load_store_word_only::{
     create_word_only_load_store_special_tables, word_only_load_store_table_driver_fn,
 };
 use cs::machine::ops::unrolled::{
-    materialize_flattened_decoder_table, preprocess_bytecode, OpcodeFamilyDecoder,
-    WordOnlyMemoryFamilyDecoder,
+    materialize_flattened_decoder_table, preprocess_bytecode, AddSubLuiAuipcMopDecoder,
+    OpcodeFamilyDecoder, WordOnlyMemoryFamilyDecoder,
 };
 use cs::tables::{TableDriver, TableType};
 use field::{Mersenne31Field, PrimeField};
@@ -64,6 +64,35 @@ struct Scalars {
     profile: String,
     range16: Matrix,
     timestamp19: Matrix,
+}
+
+/// Actual native decoder rows plus their public little-endian text input.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ArithmeticDecoder {
+    version: u32,
+    field_modulus: u64,
+    family: String,
+    text_words: usize,
+    text: EncodedColumn,
+    decoder: Matrix,
+}
+
+fn export_arithmetic(text: Vec<u32>) -> ArithmeticDecoder {
+    let family: Box<dyn OpcodeFamilyDecoder> = Box::new(AddSubLuiAuipcMopDecoder);
+    let (entries, witness) =
+        preprocess_bytecode::<Mersenne31Field, Global>(&text, CAPACITY, &family, &[]);
+    drop(witness);
+    let rows = materialize_flattened_decoder_table(&entries);
+    drop(entries);
+    ArithmeticDecoder {
+        version: 1,
+        field_modulus: MODULUS,
+        family: "add_sub_lui_auipc_mop".into(),
+        text_words: text.len(),
+        text: column(text.len(), 1u64 << 32, |i| text[i]),
+        decoder: matrix(&rows),
+    }
 }
 
 fn export_scalars() -> Scalars {
@@ -186,6 +215,28 @@ fn export(mut image: Vec<u32>, text: Vec<u32>) -> Artifact {
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args_os().collect();
+    if (args.len() == 3 && args[1] == "--arithmetic-fixture")
+        || (args.len() == 4 && args[1] == "--arithmetic")
+    {
+        let words = if args.len() == 3 {
+            // ADD, signed ADDI, SUB to x0, raw U-type funct3 bits, UNIMP hole,
+            // then ADD at its original PC 24. Custom modular MOPs are not tested here.
+            vec![
+                0x001080b3, 0xfff08113, 0x40208033, 0x000071b7, 0x00005217, 0xc0001073, 0x001080b3,
+            ]
+        } else {
+            read_words(Path::new(&args[2]))?
+        };
+        let artifact = export_arithmetic(words);
+        let bytes = serde_json::to_vec_pretty(&artifact)?;
+        let recovered: ArithmeticDecoder = serde_json::from_slice(&bytes)?;
+        assert_eq!(
+            serde_json::to_value(&artifact)?,
+            serde_json::to_value(recovered)?
+        );
+        std::fs::write(args.last().unwrap(), [bytes, vec![b'\n']].concat())?;
+        return Ok(());
+    }
     if args.len() == 3 && args[1] == "--scalars" {
         let artifact = export_scalars();
         let bytes = serde_json::to_vec_pretty(&artifact)?;
@@ -207,7 +258,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
     } else {
         return Err(
-            "usage: exporter IMAGE.bin TEXT.bin OUTPUT.json | exporter --fixture OUTPUT.json | exporter --scalars OUTPUT.json"
+            "usage: exporter IMAGE.bin TEXT.bin OUTPUT.json | exporter --fixture OUTPUT.json | exporter --scalars OUTPUT.json | exporter --arithmetic TEXT.bin OUTPUT.json | exporter --arithmetic-fixture OUTPUT.json"
                 .into(),
         );
     };

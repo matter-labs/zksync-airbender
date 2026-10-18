@@ -165,3 +165,11 @@ actual range16/timestamp19 prefix data and modeled active zero padding to the
 unchanged Clean range helpers used by initialized execution. These data/row
 claims preserve the existing logical trace boundary; they do not establish
 physical lookup multiplicities, normalization/LDE or argument enforcement.
+
+[Actual arithmetic decoder source recovery](Families/AddSub/NativeDecoder.lean)
+now certifies every slot of a native export against independent original Sail
+public bytes/decoding. Native equations exclude its interior UNIMP hole and full
+tail before membership recovers a supported source. The nonempty ADD witness at
+PC 24 retains its original index after the hole. General decoder refinement,
+custom MOPs, sparse initialized arithmetic execution and full physical setup/
+argument connections remain separate.

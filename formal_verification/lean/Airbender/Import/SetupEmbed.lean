@@ -94,4 +94,18 @@ elab "import_native_scalars " name:ident " from " path:str : command => do
   emitData (mkIdent (name.getId.appendAfter "Range16")) artifact.range16 0
   emitData (mkIdent (name.getId.appendAfter "Timestamp19")) artifact.timestamp19 1
 
+/-- Import a native arithmetic decoder and its public text as literal data.
+    No decoder recipe or semantic equivalence is inserted by this command. -/
+elab "import_native_decoder " name:ident " from " path:str : command => do
+  let source ← IO.FS.readFile path.getString
+  let artifact ← match parseDecoder source with
+    | .ok artifact => pure artifact
+    | .error error => throwError "native decoder import failed: {error}"
+  emitData (mkIdent (name.getId.appendAfter "Decoder")) artifact.decoder 0
+  let column ← columnSyntax artifact.text
+  let target := mkIdent (name.getId.appendAfter "Text")
+  elabCommand (← `(def $target : Airbender.Setup.Column := $column))
+  let textWords := mkIdent (name.getId.appendAfter "TextWords")
+  elabCommand (← `(def $textWords : Nat := $(quote artifact.text_words)))
+
 end Airbender.Setup

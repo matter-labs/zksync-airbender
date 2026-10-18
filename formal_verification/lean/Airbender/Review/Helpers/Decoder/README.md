@@ -71,3 +71,11 @@ now derives actual construction evidence internally and reuses the strict
 history/retirement/terminal assembly. Original slots, PCs and bytes remain intact.
 General Rust decoder agreement and full physical setup/argument correspondence
 remain separate.
+
+[Actual native arithmetic data](../../Circuits/AddSub/Tables/NativeSetupData.lean)
+now reuses this generic sparse constructor. Its [complete certificate](../../../Proofs/AddSub/NativeSetup.lean)
+checks every exported row against original Sail public bytes, with signed ADDI,
+original SUB-to-x0, raw U-type funct3 and a supported word after an interior hole.
+Native packed-mask equations exclude both hole/tail sentinels; [the source claim](../../Trace/Families/AddSub/NativeDecoder.lean)
+adds no table-equivalence premise. This concrete export does not establish general
+Rust decoder agreement, custom MOPs or sparse initialized arithmetic execution.
