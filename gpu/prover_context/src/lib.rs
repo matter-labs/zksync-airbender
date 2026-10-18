@@ -10,7 +10,9 @@ mod context;
 pub mod transfer;
 pub(crate) mod upstream;
 
-pub use context::{AllocationMode, ProverContext, ProverContextConfig, MAX_SM_COUNT};
+pub use context::{
+    AllocationMode, ProverContext, ProverContextConfig, DEFAULT_H2D_STAGING_BYTES, MAX_SM_COUNT,
+};
 
 #[cfg(test)]
 gpu_core::force_serial_libtest!();

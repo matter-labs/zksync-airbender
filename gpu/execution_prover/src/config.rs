@@ -26,6 +26,7 @@ impl GpuBackendConfiguration {
     pub(super) fn context_config(self) -> ProverContextConfig {
         let mut config = self.prover_context_config;
         config.inputs_reserve_bytes = crate::memory_policy::INPUTS_RESERVE_BYTES;
+        config.h2d_staging_bytes = crate::memory_policy::H2D_STAGING_BYTES;
         match config.proth120_ntt_log_max_domain {
             None => config.proth120_ntt_log_max_domain = Some(L1_WRAP_NTT_LOG_MAX_DOMAIN),
             Some(log_max_domain) => assert!(

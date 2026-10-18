@@ -539,6 +539,7 @@ fn capacity_context(arena_bytes: usize) -> ProverContext {
     let context = ProverContext::new(&ProverContextConfig {
         device_allocation_blocks_count: Some(blocks),
         inputs_reserve_bytes: presets::INPUTS_RESERVE_BYTES,
+        h2d_staging_bytes: presets::H2D_STAGING_BYTES,
         proth120_ntt_log_max_domain: Some(L1_WRAP_NTT_LOG_MAX_DOMAIN),
         ..defaults
     })
