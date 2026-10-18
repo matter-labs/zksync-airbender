@@ -267,22 +267,24 @@ fn commit_memory_inner<'a>(
 pub fn schedule_memory_commitment_job<'a>(
     holder: &mut TraceHolder<BF>,
     callbacks: Callbacks<'a>,
+    inputs: Option<TransferKeepalive<'a>>,
     range: Range,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
     holder.commit_all(context)?;
-    schedule_memory_cap_readback(holder, callbacks, range, context)
+    schedule_memory_cap_readback(holder, callbacks, inputs, range, context)
 }
 
 pub fn schedule_memory_commitment_job_in_place<'a>(
     holder: &mut TraceHolder<BF>,
     callbacks: Callbacks<'a>,
+    inputs: Option<TransferKeepalive<'a>>,
     range: Range,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
     holder.install_partial_trees(context)?;
     holder.commit_in_place(None, context)?;
-    schedule_memory_cap_readback(holder, callbacks, range, context)
+    schedule_memory_cap_readback(holder, callbacks, inputs, range, context)
 }
 
 fn schedule_memory_cap_readback<'a>(

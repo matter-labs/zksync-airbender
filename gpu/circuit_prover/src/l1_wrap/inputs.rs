@@ -3,6 +3,8 @@ use std::sync::Arc;
 
 use era_cudart::result::CudaResult;
 use fft::GoodAllocator;
+use gpu_core::allocator::tracker::AllocationPlacement;
+use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::static_host::StaticPinnedBox;
 use gpu_gkr::setup::L1WrapSetupHost;
 use gpu_prover_context::transfer::Transfer;
@@ -17,7 +19,6 @@ use gpu_trace::witness::trace_unrolled::{
     UnrolledUnifiedTraceHost, PAGE_SIZE_LOG2,
 };
 
-use crate::proof::inputs::TopBitsTransfer;
 use crate::proof::memory_policy::presets::l1_wrap::align_up;
 use crate::upstream::TimestampScalar;
 
@@ -28,7 +29,7 @@ pub struct L1WrapInputs<'a, A: GoodAllocator> {
     pub(crate) decoder: Option<DecoderTableTransfer<'a>>,
     pub(crate) inits_and_teardowns: InitsAndTeardownsTransfer<'a, A>,
     pub(crate) tracing_data: TracingDataTransfer<'a, A>,
-    pub(crate) top_bits: TopBitsTransfer<'a>,
+    pub(crate) top_bits: DeviceAllocation<u32>,
     pub(crate) top_bits_host: Vec<u32>,
     pub(crate) setup_host: Arc<L1WrapSetupHost>,
 }
@@ -72,7 +73,7 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
             trace_len,
             context,
         )?;
-        let top_bits = TopBitsTransfer::new(&top_bits_host, context)?;
+        let top_bits = context.alloc::<u32>(top_bits_host.len(), AllocationPlacement::BestFit)?;
         let transfer = Transfer::new()?;
         transfer.record_allocated(context)?;
         Ok(Self {
@@ -87,14 +88,13 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
     }
 
     pub fn schedule(&mut self, context: &ProverContext) -> CudaResult<()> {
+        self.transfer.stage(&self.top_bits_host, &mut self.top_bits);
         if let Some(decoder) = self.decoder.as_mut() {
             decoder.schedule_transfer(&mut self.transfer, context)?;
         }
         self.inits_and_teardowns
             .schedule_transfer(&mut self.transfer, context)?;
         self.tracing_data
-            .schedule_transfer(&mut self.transfer, context)?;
-        self.top_bits
             .schedule_transfer(&mut self.transfer, context)?;
         self.transfer.record_transferred(context)
     }

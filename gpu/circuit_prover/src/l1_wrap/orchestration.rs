@@ -19,7 +19,7 @@ use gpu_gkr::proth120::programs::GkrProgramsPr;
 use gpu_gkr::proth120::proof_layout::{M6ProofFields, ProofLayoutPr, ProofSlabPr};
 use gpu_gkr::proth120::{schedule_gkr, GkrOutputPr};
 use gpu_gkr::setup::{L1WrapSetupHost, PackedSetupSource};
-use gpu_prover_context::transfer::Transfer;
+use gpu_prover_context::transfer::{Transfer, TransferKeepalive};
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode};
 use gpu_trace::trace::packed::{PackedCommitConfig, PackedCosetRecomputeOracle};
@@ -54,8 +54,8 @@ pub struct GpuL1WrapProofJob<'a> {
 
 pub(crate) struct GpuL1WrapProofJobKeepalive<'a> {
     _setup_host: Arc<L1WrapSetupHost>,
-    _input_callbacks: Callbacks<'a>,
-    _setup_callbacks: Callbacks<'a>,
+    _input_transfer: TransferKeepalive<'a>,
+    _setup_transfer: TransferKeepalive<'a>,
     _relations: Proth120LookupRelations,
     _challenges: PackedChallenges,
     _gkr: GkrOutputPr,
@@ -297,7 +297,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     let challenges = packed_challenges::derive(
         &mut seed,
         &commitment_mode,
-        &top_bits.device,
+        &top_bits,
         setup.cap(),
         base.cap(),
         &challenge_config,
@@ -390,8 +390,8 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         ranges: vec![range],
         keepalive: GpuL1WrapProofJobKeepalive {
             _setup_host: setup_host,
-            _input_callbacks: transfer.into_callbacks(),
-            _setup_callbacks: setup_transfer.into_callbacks(),
+            _input_transfer: transfer.into_keepalive(),
+            _setup_transfer: setup_transfer.into_keepalive(),
             _relations: relations,
             _challenges: challenges,
             _gkr: gkr,
