@@ -183,8 +183,8 @@ def parseScalars (source : String) : Except String ScalarArtifact := do
   artifact.validate
   return artifact
 
-/-- Arithmetic preprocessing is separate from generic/scalar table assembly.
-    This profile records the actual native family, including its custom MOPs;
+/-- Decoder preprocessing is separate from generic/scalar table assembly.
+    Each profile records the actual native family, including arithmetic custom MOPs;
     each semantic certificate states which public input it covers. -/
 structure DecoderArtifact where
   version : Nat
@@ -195,21 +195,32 @@ structure DecoderArtifact where
   decoder : Matrix
   deriving Repr, FromJson
 
-def DecoderArtifact.validate (artifact : DecoderArtifact) : Except String Unit := do
+private def validateDecoder (family : String) (artifact : DecoderArtifact) : Except String Unit := do
   unless artifact.version == 1 && artifact.field_modulus == mersenne31Modulus &&
-      artifact.family == "add_sub_lui_auipc_mop" do throw "unsupported native decoder profile"
+      artifact.family == family do throw "unsupported native decoder profile"
   unless artifact.text_words ≤ 1048576 do throw "unexpected native text extent"
   artifact.text.validate artifact.text_words 4294967296
   artifact.decoder.validate 1048576 10
 
-def parseDecoder (source : String) : Except String DecoderArtifact := do
+def DecoderArtifact.validate (artifact : DecoderArtifact) : Except String Unit :=
+  validateDecoder "add_sub_lui_auipc_mop" artifact
+
+private def parseDecoderFor (family source : String) : Except String DecoderArtifact := do
   let json ← Json.parse source
   exactKeys json #["version", "field_modulus", "family", "text_words", "text", "decoder"]
   columnKeys (← json.getObjVal? "text")
   matrixKeys (← json.getObjVal? "decoder")
   let artifact : DecoderArtifact ← fromJson? json
-  artifact.validate
+  validateDecoder family artifact
   return artifact
+
+/-- The arithmetic entry point retains its exact original family guard. -/
+def parseDecoder (source : String) : Except String DecoderArtifact :=
+  parseDecoderFor "add_sub_lui_auipc_mop" source
+
+/-- Separate signed native control profile; unsigned-only profiles fail closed. -/
+def parseControlDecoder (source : String) : Except String DecoderArtifact :=
+  parseDecoderFor "jump_branch_slt_signed" source
 
 /-- A tiny direct native API export, separate from regional prefix artifacts. -/
 structure DecoderPaddingArtifact where

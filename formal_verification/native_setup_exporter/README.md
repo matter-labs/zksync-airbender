@@ -36,7 +36,8 @@ sampled process-tree memory ceilings and wall budget. Do not run it alongside Le
 
 The binary accepts --fixture OUTPUT.json, --scalars OUTPUT.json,
 IMAGE.bin TEXT.bin OUTPUT.json, --arithmetic-fixture OUTPUT.json or
---arithmetic TEXT.bin OUTPUT.json, --decoder-padding OUTPUT.json or --control OUTPUT.json.
+--arithmetic TEXT.bin OUTPUT.json, --decoder-padding OUTPUT.json, --control OUTPUT.json,
+--control-decoder-fixture OUTPUT.json or --control-decoder TEXT.bin OUTPUT.json.
 Use it only under the same bounded watchdog. Output is written to the requested
 local path after all lossless and JSON roundtrip checks pass.
 
@@ -99,3 +100,16 @@ derives exact control/cleanup effects from both actual fixed queries. Public
 program/decoder and original Sail family execution remain separate, as do
 physical trace/normalization/LDE and Rust/argument refinement. The standard gate
 regenerates this artifact byte for byte using the unchanged lossless codec.
+
+The [signed control decoder fixture](../lean/artifacts/setup/jump-decoder-native.json)
+uses the actual pinned signed jump/branch/SLT decoder through the same native
+preprocessor/materializer. Both fixture and little-endian text modes reproduce
+JAL -4 (raw funct3 7), an UNIMP hole and original SLTIU-to-x0 at PC 8, retaining
+all 1,048,576 ten-column rows and the native minus-one tail. Partial/oversized text
+rejects before output. Separate strict Lean profiles reject crossed arithmetic/
+control or unsigned-only artifacts. [Independent Sail certificates](../lean/Airbender/Proofs/JumpBranchSlt/NativeSetup.lean)
+reuse the arithmetic proof structure to establish every exported row equals
+actual public construction. The short exported-decoder claim consumes full native
+constraints and actual membership, deriving source evidence and PC bounds. This
+concrete input certificate leaves arbitrary-program Rust decoder refinement,
+initialized original control execution and physical trace/argument binding open.

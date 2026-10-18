@@ -1,0 +1,203 @@
+{
+  "version": 1,
+  "field_modulus": 2147483647,
+  "family": "jump_branch_slt_signed",
+  "text_words": 3,
+  "text": {
+    "blocks": [
+      {
+        "kind": "dense",
+        "values": [
+          4292866287,
+          3221229683,
+          4293963795
+        ]
+      }
+    ]
+  },
+  "decoder": {
+    "length": 1048576,
+    "columns": [
+      {
+        "blocks": [
+          {
+            "kind": "dense",
+            "values": [
+              0,
+              2147483646,
+              8
+            ]
+          },
+          {
+            "kind": "affine",
+            "length": 1048573,
+            "first": 2147483646,
+            "step": 0
+          }
+        ]
+      },
+      {
+        "blocks": [
+          {
+            "kind": "dense",
+            "values": [
+              0,
+              2147483646,
+              0
+            ]
+          },
+          {
+            "kind": "affine",
+            "length": 1048573,
+            "first": 2147483646,
+            "step": 0
+          }
+        ]
+      },
+      {
+        "blocks": [
+          {
+            "kind": "dense",
+            "values": [
+              0,
+              2147483646,
+              1
+            ]
+          },
+          {
+            "kind": "affine",
+            "length": 1048573,
+            "first": 2147483646,
+            "step": 0
+          }
+        ]
+      },
+      {
+        "blocks": [
+          {
+            "kind": "dense",
+            "values": [
+              0,
+              2147483646,
+              0
+            ]
+          },
+          {
+            "kind": "affine",
+            "length": 1048573,
+            "first": 2147483646,
+            "step": 0
+          }
+        ]
+      },
+      {
+        "blocks": [
+          {
+            "kind": "dense",
+            "values": [
+              1,
+              2147483646,
+              0
+            ]
+          },
+          {
+            "kind": "affine",
+            "length": 1048573,
+            "first": 2147483646,
+            "step": 0
+          }
+        ]
+      },
+      {
+        "blocks": [
+          {
+            "kind": "dense",
+            "values": [
+              0,
+              2147483646,
+              1
+            ]
+          },
+          {
+            "kind": "affine",
+            "length": 1048573,
+            "first": 2147483646,
+            "step": 0
+          }
+        ]
+      },
+      {
+        "blocks": [
+          {
+            "kind": "dense",
+            "values": [
+              65532,
+              2147483646,
+              65535
+            ]
+          },
+          {
+            "kind": "affine",
+            "length": 1048573,
+            "first": 2147483646,
+            "step": 0
+          }
+        ]
+      },
+      {
+        "blocks": [
+          {
+            "kind": "dense",
+            "values": [
+              65535,
+              2147483646,
+              65535
+            ]
+          },
+          {
+            "kind": "affine",
+            "length": 1048573,
+            "first": 2147483646,
+            "step": 0
+          }
+        ]
+      },
+      {
+        "blocks": [
+          {
+            "kind": "dense",
+            "values": [
+              7,
+              2147483646,
+              3
+            ]
+          },
+          {
+            "kind": "affine",
+            "length": 1048573,
+            "first": 2147483646,
+            "step": 0
+          }
+        ]
+      },
+      {
+        "blocks": [
+          {
+            "kind": "dense",
+            "values": [
+              1,
+              2147483646,
+              8
+            ]
+          },
+          {
+            "kind": "affine",
+            "length": 1048573,
+            "first": 2147483646,
+            "step": 0
+          }
+        ]
+      }
+    ]
+  }
+}

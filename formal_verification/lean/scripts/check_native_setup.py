@@ -62,6 +62,22 @@ def main():
         subprocess.run([str(binary), "--arithmetic", str(text), str(output)], check=True)
         assert output.read_bytes() == expected
         print("PASS arithmetic little-endian text CLI input", flush=True)
+        control = [0xffdff0ef, 0xc0001073, 0xfff0b013]
+        subprocess.run([str(binary), "--control-decoder-fixture", str(output)], check=True)
+        expected_control = (ROOT / "artifacts/setup/jump-decoder-native.json").read_bytes()
+        assert output.read_bytes() == expected_control
+        text.write_bytes(b"".join(word.to_bytes(4, "little") for word in control))
+        subprocess.run([str(binary), "--control-decoder", str(text), str(output)], check=True)
+        assert output.read_bytes() == expected_control
+        print("PASS reproducible native signed control decoder and binary text input", flush=True)
+        for label, content in [("partial control text", b"xx"),
+                               ("oversized control text", bytes(4194308))]:
+            text.write_bytes(content)
+            output.unlink(missing_ok=True)
+            result = subprocess.run([str(binary), "--control-decoder", str(text), str(output)],
+                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            assert result.returncode != 0 and not output.exists(), label
+            print("PASS reject " + label, flush=True)
         for label, content in [("partial arithmetic text", b"xx"),
                                ("oversized arithmetic text", bytes(4194308))]:
             text.write_bytes(content)

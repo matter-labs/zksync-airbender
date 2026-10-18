@@ -5,46 +5,14 @@ namespace Tests.JumpDecoder
 open Airbender Trace Verification
 open Reference.RiscV.Sail
 
-/-- The public image is actual instruction bytes, independent of native values. -/
-def before : State :=
-  { (default : State) with mem := ((Std.ExtHashMap.emptyWithCapacity : Std.ExtHashMap Nat (BitVec 8))
-    |>.insert 0 0xef |>.insert 1 0xf0 |>.insert 2 0xdf |>.insert 3 0xff
-    |>.insert 4 0x73 |>.insert 5 0x10 |>.insert 6 0x00 |>.insert 7 0xc0
-    |>.insert 8 0x13 |>.insert 9 0xb0 |>.insert 10 0xf0 |>.insert 11 0xff) }
-
-def jalEntry : JumpBranchSlt.ProgramEntry :=
-  ⟨0, 0xffdff0ef, .JAL (0x1ffffc, .Regidx 1),
-    ⟨(), 0, 0, 1, ⟨65532, 65535⟩, 1, 7⟩⟩
-
-def sltiEntry : JumpBranchSlt.ProgramEntry :=
-  ⟨8, 0xfff0b013, .ITYPE (4095, .Regidx 1, .Regidx 0, .SLTIU),
-    ⟨(), 1, 0, 0, ⟨65535, 65535⟩, 8, 3⟩⟩
-
-def setup : SparseDecoderSetup Unit :=
-  ⟨[some jalEntry, none, some sltiEntry], 1048573⟩
+open JumpBranchSlt.NativeSetup
 
 theorem public_words (i : Fin 3) :
-    (Cell.ram (BitVec.ofNat 32 (4 * i.val))).read before =
-      .ok (#v[0xffdff0ef, 0xc0001073, 0xfff0b013] : Vector (BitVec 32) 3)[i.val] before := by
-  fin_cases i <;>
-    simp [Cell.read, _root_.Sail.ArchSem.readBytes, _root_.Sail.ArchSem.readByte,
-      EStateM.run, get, getThe, MonadStateOf.get, bind, pure, EStateM.bind,
-      EStateM.get, EStateM.pure, before, Std.ExtHashMap.getElem_insert]
+    (Cell.ram (BitVec.ofNat 32 (4 * i.val))).read before = .ok words[i.val] before :=
+  JumpBranchSlt.Proofs.native_fixture_words i
 
-set_option maxRecDepth 32768 in
-theorem public_image : JumpBranchSlt.sparseDecoderSetupImage before 3 20 = some setup := by
-  have slots : ([0,4,8] : List (BitVec 32)).mapM
-      (programSlotWith JumpBranchSlt.decoderFields before) = some setup.slots := by
-    simp only [List.mapM_cons, List.mapM_nil, programSlotWith,
-      show (Cell.ram 0).read before = .ok (0xffdff0ef : BitVec 32) before from public_words ⟨0, by decide⟩,
-      show (Cell.ram 4).read before = .ok (0xc0001073 : BitVec 32) before from public_words ⟨1, by decide⟩,
-      show (Cell.ram 8).read before = .ok (0xfff0b013 : BitVec 32) before from public_words ⟨2, by decide⟩,
-      bind, Option.bind]
-    cbv
-  change (([0,4,8] : List (BitVec 32)).mapM (programSlotWith JumpBranchSlt.decoderFields before)).bind
-    (fun entries => some (SparseDecoderSetup.mk entries 1048573)) = some setup
-  rw [slots]
-  rfl
+theorem public_image : JumpBranchSlt.sparseDecoderSetupImage before 3 20 = some setup :=
+  JumpBranchSlt.Proofs.native_fixture_image
 
 /-- Negative JAL retains raw encoded funct3 seven, unlike the source v3 profile. -/
 theorem raw_jal_funct3 : JumpBranchSlt.decoderFields jalEntry.instruction = some jalEntry.data := rfl

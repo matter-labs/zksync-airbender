@@ -68,7 +68,23 @@ and satisfies all polynomials, but the native range query rejects it. The fixtur
 retains UNIMP at PC 4 and original SLTIU-to-x0 at PC 8; full padding, all branch
 conditions and missing byte/capacity checks pass.
 
-Actual native program-prefix export, initialized reads, original Sail clauses/
+Actual native program-prefix export is certified below. Initialized reads, original Sail clauses/
 retirement, full family execution and terminal matching remain open. General Rust/JSON/Lean refinement,
 physical setup/normalization/LDE and cryptographic argument enforcement remain
 separate. No implementation vulnerability is established.
+
+## Actual exported decoder
+
+[The native prefix](../../../../artifacts/setup/jump-decoder-native.json) is imported
+as [literal public data](Tables/NativeSetupData.lean). It uses the same three-word
+public fixture and independently calls the pinned signed Rust decoder. [Certificates](../../../Proofs/JumpBranchSlt/NativeSetup.lean)
+reuse the arithmetic proof structure to check every actual prefix/tail row against
+original Sail construction. The short exported-decoder claim in [Theorems](Theorems.lean)
+derives original source evidence and PC bounds from full native constraints and
+actual exported membership. No table-equivalence or range premise is supplied.
+
+[Regressions](../../../../Tests/NativeJumpSetup.lean) retain raw JAL tag 7, the
+UNIMP hole, original SLTIU-to-x0 at PC 8 and all million padded slots. The full
+accepted JAL row applies the claim; the local tag-zero query is rejected. Public
+text equality and crossed arithmetic/control importer rejection are checked.
+General Rust decoder/physical trace refinement and initialized execution remain open.

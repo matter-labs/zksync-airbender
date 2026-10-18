@@ -27,6 +27,7 @@ import Tests.NativeRows
 import Tests.JumpControl
 import Tests.JumpPC
 import Tests.JumpDecoder
+import Tests.NativeJumpSetup
 
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
@@ -880,3 +881,17 @@ import Tests.JumpDecoder
 #print axioms Tests.JumpDecoder.noncanonical_polynomials
 #print axioms Tests.JumpDecoder.noncanonical_native_rejected
 #print axioms Tests.JumpDecoder.missing_byte_rejected
+
+#print axioms Airbender.JumpBranchSlt.Proofs.native_fixture_words
+#print axioms Airbender.JumpBranchSlt.Proofs.native_fixture_image
+#print axioms Airbender.JumpBranchSlt.Proofs.native_exported_tail
+#print axioms Airbender.JumpBranchSlt.Proofs.native_exported_rows
+#print axioms Airbender.JumpBranchSlt.Proofs.native_exported_source
+#print axioms Airbender.JumpBranchSlt.exported_decoder_soundness
+#print axioms Tests.NativeJumpSetup.constructed
+#print axioms Tests.NativeJumpSetup.public_text
+#print axioms Tests.NativeJumpSetup.signed_jal
+#print axioms Tests.NativeJumpSetup.post_hole_x0
+#print axioms Tests.NativeJumpSetup.hole_and_tail
+#print axioms Tests.NativeJumpSetup.exported_jal
+#print axioms Tests.NativeJumpSetup.wrong_tag_rejected

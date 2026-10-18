@@ -2021,6 +2021,83 @@
       "backport_reuse_path": "Tests/JumpPC.lean",
       "backport_reuse_sha256": "e64d0533532db1a6c3d9446ee2985449efd47e189b1a5a6d007b68c1fb4a3802",
       "change": "Reuse complete native JAL constraint/table witness checking. Correct raw public funct3 to seven and unconditional result to one; instantiate the new public claim, reject the old local tag-zero query, and retest the malformed high variant with actual public membership and original polynomial semantics."
+    },
+    {
+      "path": "Airbender/Review/Circuits/JumpBranchSlt/Tables/NativeSetupData.lean",
+      "backport_reuse_revision": "7936dd5c425c1b07422619625e7894b1b0459d00",
+      "backport_reuse_path": "Tests/JumpDecoder.lean",
+      "backport_reuse_sha256": "08c1e5306fbdbe133ed391fe680e4ff573cf25d5a1fb2222a6818a31aec41be6",
+      "change": "Move the existing independent public byte memory, original JAL/SLTIU entries and sparse setup unchanged into literal-data Review infrastructure; add actual native export import and its three public words."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/NativeSetup.lean",
+      "backport_reuse_revision": "7936dd5c425c1b07422619625e7894b1b0459d00",
+      "backport_reuse_path": "Tests/JumpDecoder.lean",
+      "backport_reuse_sha256": "08c1e5306fbdbe133ed391fe680e4ff573cf25d5a1fb2222a6818a31aec41be6",
+      "change": "Move the existing Sail byte-read and original sparse-construction proofs into Proofs; retain the exact public words, hole, original x0 and raw JAL tag seven."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/NativeSetup.lean",
+      "backport_reuse_revision": "7936dd5c425c1b07422619625e7894b1b0459d00",
+      "backport_reuse_path": "Airbender/Proofs/AddSub/NativeSetup.lean",
+      "backport_reuse_sha256": "7095cb9a51026c8fa0351abc8e9739b31fa7d36aec78a178c67206a2b26e1297",
+      "change": "Reuse literal export/public setup row equality: three finite prefix checks plus the unchanged dense/affine symbolic-tail argument adapted to the three-slot control fixture. Transfer actual membership into the existing public decoder source/PC theorem; no table-equivalence premise."
+    },
+    {
+      "path": "Airbender/Review/Circuits/JumpBranchSlt/Theorems.lean",
+      "backport_reuse_revision": "7936dd5c425c1b07422619625e7894b1b0459d00",
+      "backport_reuse_path": "Airbender/Review/Circuits/JumpBranchSlt/Theorems.lean",
+      "backport_reuse_sha256": "04348890ee59f176e030a99482a6d95ec37c4d56352dd272886fc1d3133a6d93",
+      "change": "Keep all three native claims and append one short actual-export source/PC claim, with calculations entirely in Proofs."
+    },
+    {
+      "path": "Tests/JumpDecoder.lean",
+      "backport_reuse_revision": "7936dd5c425c1b07422619625e7894b1b0459d00",
+      "backport_reuse_path": "Tests/JumpDecoder.lean",
+      "backport_reuse_sha256": "08c1e5306fbdbe133ed391fe680e4ff573cf25d5a1fb2222a6818a31aec41be6",
+      "change": "Reuse the same public fixture via moved NativeSetup definitions and proof aliases; preserve all native JAL acceptance, original x0/branch constructors, mask/range and malformed-high rejection checks."
+    },
+    {
+      "path": "Tests/NativeJumpSetup.lean",
+      "backport_reuse_revision": "7936dd5c425c1b07422619625e7894b1b0459d00",
+      "backport_reuse_path": "Tests/NativeArithmeticSetup.lean",
+      "backport_reuse_sha256": "d0f6b2d0ce6286423447a358784a12f9e9633da1050df883857486b8574a649c",
+      "change": "Reuse concrete exported-text, signed immediate, original x0, interior hole/full tail and accepted-row source checks for the actual signed native control prefix. Reject crossed importer profiles and the earlier locally valid tag-zero query."
+    },
+    {
+      "path": "Airbender/Import/Setup.lean",
+      "backport_reuse_revision": "7936dd5c425c1b07422619625e7894b1b0459d00",
+      "backport_reuse_path": "Airbender/Import/Setup.lean",
+      "backport_reuse_sha256": "0afe2607913b806291ea4ddd64d51a8e6933aa9f901fd80c028eceaed53889c6",
+      "change": "Retain exact arithmetic profile validation and factor only common strict decoder shape/field checks, adding a separate signed-control parser which rejects other families."
+    },
+    {
+      "path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_revision": "7936dd5c425c1b07422619625e7894b1b0459d00",
+      "backport_reuse_path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_sha256": "182a1fed4953b19bba0a01aac8fc06868cdcd82827da457246e3c4b3b5fed8c1",
+      "change": "Copy literal decoder/text emission unchanged for a separate signed-control import command; the arithmetic command retains its exact profile guard and data-only boundary."
+    },
+    {
+      "path": "Tests/ArtifactImport.lean",
+      "backport_reuse_revision": "7936dd5c425c1b07422619625e7894b1b0459d00",
+      "backport_reuse_path": "Tests/ArtifactImport.lean",
+      "backport_reuse_sha256": "f4d3a618ac77c7869af20a45734904b7ef3b2036bdb8ba56de0c79aa7bc0f78a",
+      "change": "Retain all prior importer checks and add thirteen actual control profile/extent/canonicality/schema and crossed-family rejection cases."
+    },
+    {
+      "path": "../native_setup_exporter/src/main.rs",
+      "backport_reuse_revision": "7936dd5c425c1b07422619625e7894b1b0459d00",
+      "backport_reuse_path": "../native_setup_exporter/src/main.rs",
+      "backport_reuse_sha256": "b3a4d3495a9899159ddd261b07bf980058958a51c2dcc9ff2eeb00a4e410dd73",
+      "change": "Reuse native preprocessor/materializer, exhaustive lossless codec and roundtrip output; factor decoder selection and add pinned JumpSltBranchDecoder true fixture/binary modes. Arithmetic and all other existing output remains byte-identical; shared columns codec unchanged."
+    },
+    {
+      "path": "scripts/check_native_setup.py",
+      "backport_reuse_revision": "7936dd5c425c1b07422619625e7894b1b0459d00",
+      "backport_reuse_path": "scripts/check_native_setup.py",
+      "backport_reuse_sha256": "edd34cbc2801e2ff294e194a0089451ecd05fdd980539fc35bea4981cae28d5d",
+      "change": "Preserve all six prior exact artifact reproductions and append signed-control fixture/binary reproduction plus partial/oversized input rejection under the same guard."
     }
   ],
   "setup_artifacts": [
@@ -2094,6 +2171,19 @@
       "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5",
       "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py; exporter --control",
       "boundary": "regional values and exact table meanings certified; no native decoder/public program, Rust trace/normalization/LDE or argument refinement claim"
+    },
+    {
+      "path": "artifacts/setup/jump-decoder-native.json",
+      "sha256": "38547b3ccbc4aa07604068e9f7e9aa4a419f3b32c32b780555e09b8d70af1ad4",
+      "profile": "native v2 signed jump/branch/SLT ten-column decoder regional prefix; original JAL -4 raw funct3 seven, UNIMP hole and original SLTIU-to-x0",
+      "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5",
+      "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py; exporter --control-decoder-fixture or --control-decoder TEXT.bin",
+      "text_words": [
+        4292866287,
+        3221229683,
+        4293963795
+      ],
+      "boundary": "concrete original-Sail public sparse constructor certificate for every exported row, including full minus-one tail; arbitrary programs, Rust/JSON/compiler/physical trace refinement and initialized execution remain separate"
     }
   ],
   "native_exporter_files": [
@@ -2107,7 +2197,7 @@
     },
     {
       "path": "../native_setup_exporter/src/main.rs",
-      "sha256": "b3a4d3495a9899159ddd261b07bf980058958a51c2dcc9ff2eeb00a4e410dd73"
+      "sha256": "62793447818bd000dd44cf9a57dca61e4eb5f2f1fbddc3c107b46713707a0873"
     },
     {
       "path": "../native_setup_exporter/src/columns.rs",

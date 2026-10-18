@@ -1,5 +1,5 @@
 import Airbender.Review.Circuits.JumpBranchSlt.Model
-import Airbender.Proofs.JumpBranchSlt.Decoder
+import Airbender.Proofs.JumpBranchSlt.NativeSetup
 
 namespace Airbender.JumpBranchSlt
 
@@ -28,5 +28,13 @@ theorem native_public_decoding {w : Nat → ZMod mersenne31Modulus}
     (member : setup.table.Contains #[] (decoderQuery w)) :
     Fetched w before ∧ (w 13).val < 65536 ∧ (w 14).val < 65536 :=
   Proofs.public_decoder image holds member
+
+/-- Pinned actual native export membership recovers original public source and
+    PC bounds. General Rust decoder and initialized execution remain separate. -/
+theorem exported_decoder_soundness {w : Nat → ZMod mersenne31Modulus}
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
+    (member : ∃ i : Fin 1048576, decoderQuery w = NativeSetup.controlDecoder.row i) :
+    Fetched w NativeSetup.before ∧ (w 13).val < 65536 ∧ (w 14).val < 65536 :=
+  Proofs.native_exported_source holds member
 
 end Airbender.JumpBranchSlt

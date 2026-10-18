@@ -103,5 +103,8 @@ retains raw encoding funct3. [Native calculations](../../../Proofs/JumpBranchSlt
 exclude all sentinels before recovering original Sail source fields, canonical
 words/alignment and the exact zero flag, then derive outgoing PC bounds without
 a supplied mask. [The public-byte fixture](../../../../Tests/JumpDecoder.lean)
-uses JAL -4 with tag 7, an UNIMP hole and original SLTIU-to-x0. Native program
-export, initialized control execution and physical argument refinement remain open.
+uses JAL -4 with tag 7, an UNIMP hole and original SLTIU-to-x0. [Actual native export](../../Circuits/JumpBranchSlt/Tables/NativeSetupData.lean)
+now has a [complete independent Sail certificate](../../../Proofs/JumpBranchSlt/NativeSetup.lean).
+Every prefix/tail row matches the public construction, feeding the short exported
+source/PC claim without a table-equivalence premise. General Rust decoder agreement,
+initialized control execution and physical argument refinement remain open.

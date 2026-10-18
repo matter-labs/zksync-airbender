@@ -269,8 +269,15 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    bounds without a supplied mask. Retain v2 SLTI mask 8, branch mask 16, original
    x0 operations and raw JAL funct3 (tag 7 for -4). The full public JAL witness
    passes; wrong tag-zero membership and the malformed high PC reject.
-   Next certify an actual native control program prefix, register native clocks/
-   ports for initialized history and derive reads, then original Sail instructions,
+   [The actual native control decoder export](artifacts/setup/jump-decoder-native.json)
+   is now certified against independently constructed public Sail data, preserving
+   raw JAL tag 7, the interior hole and original SLTIU-to-x0 at PC 8. Every prefix/
+   tail row is proved equal using the arithmetic certificate structure, and the
+   short exported-decoder claim derives source evidence/PC bounds from actual
+   membership plus all native constraints. Both binary/fixture modes reproduce;
+   crossed/unsigned-only profiles, malformed inputs and tag-zero membership fail.
+   Next register native clocks/ports for initialized history and derive reads,
+   then original Sail instructions,
    full execution and actual terminal state matching. General Rust/compiler and
    cryptographic refinement remain separate. No per-row result/PC or
    table-equivalence premise is added.

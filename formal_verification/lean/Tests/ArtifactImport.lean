@@ -89,6 +89,39 @@ private def decoderChecks (setupSource : String) : IO Unit := do
   check (rejected (Setup.parseDecoder (← IO.FS.readFile "artifacts/setup/scalars-native.json")))
     "reject scalar artifact as decoder export"
 
+private def controlDecoderChecks : IO Unit := do
+  let source ← IO.FS.readFile "artifacts/setup/jump-decoder-native.json"
+  let artifact ← IO.ofExcept (Setup.parseControlDecoder source)
+  check (artifact.text_words == 3 && artifact.decoder.length == 1048576 &&
+    artifact.decoder.columns.size == 10) "actual native signed control decoder extent"
+  check (rejected (Setup.parseDecoder source)) "reject control decoder as arithmetic"
+  check (rejected (Setup.parseControlDecoder (← IO.FS.readFile "artifacts/setup/arithmetic-native.json")))
+    "reject arithmetic decoder as control"
+  check (rejected (Setup.parseControlDecoder (← IO.FS.readFile "artifacts/setup/jump-control-native.json")))
+    "reject fixed control tables as decoder"
+  let json ← IO.ofExcept (Json.parse source)
+  for (key, value, label) in [
+      ("version", toJson (2 : Nat), "reject control decoder version"),
+      ("field_modulus", toJson (2013265921 : Nat), "reject v3 control decoder field"),
+      ("family", toJson "jump_branch_slt_unsigned", "reject unsigned-only control decoder"),
+      ("text_words", toJson (1048577 : Nat), "reject oversized control text"),
+      ("text_words", toJson (2 : Nat), "reject incomplete control text"),
+      ("invented", Json.bool true, "reject unknown control decoder field")] do
+    let changed ← IO.ofExcept (replaceField json key value)
+    check (rejected (Setup.parseControlDecoder changed.compress)) label
+  let matrix ← IO.ofExcept (json.getObjVal? "decoder")
+  let changed ← IO.ofExcept (replaceField matrix "length" (toJson (1048575 : Nat)))
+  let changed ← IO.ofExcept (replaceField json "decoder" changed)
+  check (rejected (Setup.parseControlDecoder changed.compress)) "reject truncated control decoder"
+  let columns ← IO.ofExcept ((← IO.ofExcept (matrix.getObjVal? "columns")).getArr?)
+  let changed ← IO.ofExcept (replaceField matrix "columns" (Json.arr (columns.extract 0 9)))
+  let changed ← IO.ofExcept (replaceField json "decoder" changed)
+  check (rejected (Setup.parseControlDecoder changed.compress)) "reject missing control decoder column"
+  let bad ← IO.ofExcept (Json.parse "{\"blocks\":[{\"kind\":\"affine\",\"length\":1048576,\"first\":2147483647,\"step\":0}]}")
+  let changed ← IO.ofExcept (replaceField matrix "columns" (Json.arr (columns.set! 0 bad)))
+  let changed ← IO.ofExcept (replaceField json "decoder" changed)
+  check (rejected (Setup.parseControlDecoder changed.compress)) "reject noncanonical control decoder cell"
+
 private def decoderPaddingChecks : IO Unit := do
   let source ← IO.FS.readFile "artifacts/setup/decoder-padding-native.json"
   let artifact ← IO.ofExcept (Setup.parseDecoderPadding source)
@@ -353,6 +386,7 @@ def main : IO UInt32 := do
     check (rejected (fromJson? badBlock : Except String Setup.Block)) "reject unknown compressed block field"
     scalarChecks setupSource
     decoderChecks setupSource
+    controlDecoderChecks
     decoderPaddingChecks
     controlChecks
     return (0 : UInt32)

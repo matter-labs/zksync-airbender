@@ -447,9 +447,34 @@ signed/unsigned comparisons, both jumps to x0 and all six branch conditions;
 missing bytes/capacity and the full hole/tail domain are checked.
 
 Initialized control reads, original instruction execution and terminal matching
-remain open. This is a logical public decoder/constraint connection; actual
-native program-prefix export, general Rust decoder/setup/trace refinement and
-cryptographic enforcement remain separately scoped.
+remain open. Actual native program-prefix export is certified below for the
+concrete input; general Rust decoder/setup/trace refinement and cryptographic
+enforcement remain separately scoped.
+
+## Actual native control decoder export
+
+[The actual native prefix](artifacts/setup/jump-decoder-native.json) calls the pinned
+signed jump/branch/SLT decoder through the existing preprocessor/materializer.
+Its 3.7 KiB lossless artifact retains all 1,048,576 ten-column rows: original
+JAL -4 with raw funct3 7, UNIMP at PC 4, original SLTIU-to-x0 at PC 8 and the
+complete minus-one tail. Fixture and little-endian text modes reproduce identical
+output; partial/oversized text rejects before output. Separate strict importer
+profiles reject unsigned-only, crossed-family, malformed and noncanonical data.
+
+[Literal public data](Airbender/Review/Circuits/JumpBranchSlt/Tables/NativeSetupData.lean)
+reuses the preceding byte fixture without changing its words or original Sail
+instructions. [Certificates](Airbender/Proofs/JumpBranchSlt/NativeSetup.lean) reuse
+the arithmetic certificate structure: three finite prefix checks and a symbolic
+full-tail proof establish every exported row equals the independently constructed
+public table. [One short export claim](Airbender/Review/Circuits/JumpBranchSlt/Theorems.lean)
+then derives public source evidence and outgoing PC bounds from actual membership
+and every accepted native constraint, without table-equivalence or range premises.
+[Regressions](Tests/NativeJumpSetup.lean) include the full native JAL row, retained
+post-hole x0 fields, actual public text and rejection of the old local tag-zero query.
+
+This certifies the concrete input. Arbitrary programs, general Rust/JSON/compiler
+refinement, physical trace/normalization/LDE, initialized control reads, original
+instruction execution, terminal matching and cryptographic enforcement remain open.
 
 ## Reproduce
 

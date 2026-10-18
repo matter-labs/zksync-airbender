@@ -108,6 +108,20 @@ elab "import_native_decoder " name:ident " from " path:str : command => do
   let textWords := mkIdent (name.getId.appendAfter "TextWords")
   elabCommand (← `(def $textWords : Nat := $(quote artifact.text_words)))
 
+/-- Import the separate native signed control decoder as literal public data.
+    No decoder recipe or semantic equivalence is inserted by this command. -/
+elab "import_native_control_decoder " name:ident " from " path:str : command => do
+  let source ← IO.FS.readFile path.getString
+  let artifact ← match parseControlDecoder source with
+    | .ok artifact => pure artifact
+    | .error error => throwError "native decoder import failed: {error}"
+  emitData (mkIdent (name.getId.appendAfter "Decoder")) artifact.decoder 0
+  let column ← columnSyntax artifact.text
+  let target := mkIdent (name.getId.appendAfter "Text")
+  elabCommand (← `(def $target : Airbender.Setup.Column := $column))
+  let textWords := mkIdent (name.getId.appendAfter "TextWords")
+  elabCommand (← `(def $textWords : Nat := $(quote artifact.text_words)))
+
 /-- Literal native sentinel data only; its meaning is proved in the kernel. -/
 elab "import_native_decoder_padding " name:ident " from " path:str : command => do
   let source ← IO.FS.readFile path.getString

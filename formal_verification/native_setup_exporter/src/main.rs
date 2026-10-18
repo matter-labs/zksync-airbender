@@ -10,7 +10,8 @@ use cs::machine::ops::unrolled::load_store_word_only::{
 };
 use cs::machine::ops::unrolled::{
     decoder_table_padding, materialize_flattened_decoder_table, preprocess_bytecode,
-    AddSubLuiAuipcMopDecoder, OpcodeFamilyDecoder, WordOnlyMemoryFamilyDecoder,
+    AddSubLuiAuipcMopDecoder, JumpSltBranchDecoder, OpcodeFamilyDecoder,
+    WordOnlyMemoryFamilyDecoder,
 };
 use cs::tables::{TableDriver, TableType};
 use field::{Mersenne31Field, PrimeField};
@@ -69,7 +70,7 @@ struct Scalars {
 /// Actual native decoder rows plus their public little-endian text input.
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct ArithmeticDecoder {
+struct DecoderArtifact {
     version: u32,
     field_modulus: u64,
     family: String,
@@ -140,21 +141,40 @@ fn export_decoder_padding() -> DecoderPadding {
     }
 }
 
-fn export_arithmetic(text: Vec<u32>) -> ArithmeticDecoder {
-    let family: Box<dyn OpcodeFamilyDecoder> = Box::new(AddSubLuiAuipcMopDecoder);
+fn export_decoder(
+    text: Vec<u32>,
+    family: Box<dyn OpcodeFamilyDecoder>,
+    profile: &str,
+) -> DecoderArtifact {
     let (entries, witness) =
         preprocess_bytecode::<Mersenne31Field, Global>(&text, CAPACITY, &family, &[]);
     drop(witness);
     let rows = materialize_flattened_decoder_table(&entries);
     drop(entries);
-    ArithmeticDecoder {
+    DecoderArtifact {
         version: 1,
         field_modulus: MODULUS,
-        family: "add_sub_lui_auipc_mop".into(),
+        family: profile.into(),
         text_words: text.len(),
         text: column(text.len(), 1u64 << 32, |i| text[i]),
         decoder: matrix(&rows),
     }
+}
+
+fn export_arithmetic(text: Vec<u32>) -> DecoderArtifact {
+    export_decoder(
+        text,
+        Box::new(AddSubLuiAuipcMopDecoder),
+        "add_sub_lui_auipc_mop",
+    )
+}
+
+fn export_control_decoder(text: Vec<u32>) -> DecoderArtifact {
+    export_decoder(
+        text,
+        Box::new(JumpSltBranchDecoder::<true>),
+        "jump_branch_slt_signed",
+    )
 }
 
 fn export_scalars() -> Scalars {
@@ -313,7 +333,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
         let artifact = export_arithmetic(words);
         let bytes = serde_json::to_vec_pretty(&artifact)?;
-        let recovered: ArithmeticDecoder = serde_json::from_slice(&bytes)?;
+        let recovered: DecoderArtifact = serde_json::from_slice(&bytes)?;
+        assert_eq!(
+            serde_json::to_value(&artifact)?,
+            serde_json::to_value(recovered)?
+        );
+        std::fs::write(args.last().unwrap(), [bytes, vec![b'\n']].concat())?;
+        return Ok(());
+    }
+    if (args.len() == 3 && args[1] == "--control-decoder-fixture")
+        || (args.len() == 4 && args[1] == "--control-decoder")
+    {
+        let words = if args.len() == 3 {
+            // Original JAL x1,-4 (raw funct3 seven), UNIMP hole, SLTIU x0,x1,-1.
+            vec![0xffdff0ef, 0xc0001073, 0xfff0b013]
+        } else {
+            read_words(Path::new(&args[2]))?
+        };
+        let artifact = export_control_decoder(words);
+        let bytes = serde_json::to_vec_pretty(&artifact)?;
+        let recovered: DecoderArtifact = serde_json::from_slice(&bytes)?;
         assert_eq!(
             serde_json::to_value(&artifact)?,
             serde_json::to_value(recovered)?
@@ -342,7 +381,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
     } else {
         return Err(
-            "usage: exporter IMAGE.bin TEXT.bin OUTPUT.json | exporter --fixture OUTPUT.json | exporter --scalars OUTPUT.json | exporter --arithmetic TEXT.bin OUTPUT.json | exporter --arithmetic-fixture OUTPUT.json | exporter --decoder-padding OUTPUT.json | exporter --control OUTPUT.json"
+            "usage: exporter IMAGE.bin TEXT.bin OUTPUT.json | exporter --fixture OUTPUT.json | exporter --scalars OUTPUT.json | exporter --arithmetic TEXT.bin OUTPUT.json | exporter --arithmetic-fixture OUTPUT.json | exporter --decoder-padding OUTPUT.json | exporter --control OUTPUT.json | exporter --control-decoder TEXT.bin OUTPUT.json | exporter --control-decoder-fixture OUTPUT.json"
                 .into(),
         );
     };
