@@ -1,12 +1,13 @@
 # Jump/branch/SLT circuit review
 
 The current checkpoint derives native conditional-control and low-PC cleanup
-effects from every imported row equation and lookup. Original Sail instruction
+effects and supported-mask outgoing PC bounds from every imported row equation
+and lookup. Original Sail instruction
 and initialized trace soundness remain open.
 
 ## Checked results
 
-1. Read [Theorems](Theorems.lean) for the short native fixed-effects claim.
+1. Read [Theorems](Theorems.lean) for the short native fixed-effects and PC-bound claims.
 2. Read [Model](Model.lean) for exact native observables and derived values/bounds.
 3. Read [Artifact](Artifact.lean) and [control tables](Tables/Control.lean) for the
    complete v2 equations/queries and independent table meanings.
@@ -27,6 +28,7 @@ expose exact native tagged membership. No table equivalence is a premise.
 | Source words / actual masked destination | 22,23 and 24,25 / 38,39 |
 | Raw funct3 / conditional result | 11 / 35 |
 | Cleanup key / bit one / cleaned low PC | 42 / 47 / 48 |
+| Scalar-ranged candidate high PC | 43 |
 
 [The compiled metadata audit](../../../Proofs/JumpBranchSlt/ArtifactChecks.lean)
 checks all 36 equations/16 lookups, three register ports, native clocks, ten-column
@@ -40,8 +42,18 @@ rejection and the actual JAL alignment equation. A cleanup row with bit one set
 is valid table data; the native jump constraint rejects that target. Explicit
 import targets reject missing/mismatched fixed-table profiles.
 
-Public decoding, initialized reads, original Sail clauses/retirement and full
-family execution remain open. Retest native outgoing/terminal PC behavior before
-adopting a source finding or closure interface. General Rust/JSON/Lean refinement,
+[PC calculations](../../../Proofs/JumpBranchSlt/PC.lean) derive both outgoing limb
+bounds under explicit supported masks 1/2/4/8/16, selecting JAL, JALR,
+SLT/SLTU, SLTI/SLTIU and conditional branches respectively. Native Boolean/packed
+equations supply exclusivity; high PC equals ranged variable 43 and low PC is the ranged
+raw or cleaned key. No outgoing/terminal range or verifier closure is supplied.
+[The JAL -4 regression](../../../../Tests/JumpPC.lean) accepts canonical target
+0xfffffffc. Its field-minus-one high variant passes all polynomials and every
+other native query, but fails actual scalar query index 5. The source F01 witness
+shape is excluded locally; no source closure interface is adopted.
+
+Public decoding must still derive the supported mask. Initialized reads,
+original Sail clauses/retirement, full family execution and terminal matching
+remain open. General Rust/JSON/Lean refinement,
 physical setup/normalization/LDE and cryptographic argument enforcement remain
 separate. No implementation vulnerability is established.

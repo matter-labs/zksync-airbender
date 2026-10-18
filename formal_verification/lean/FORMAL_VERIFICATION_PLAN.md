@@ -256,11 +256,15 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    Symbolic/small finite certificates derive exact membership and fixed effects.
    The full active JAL witness, wrong targets/profiles, signed/unsigned flags,
    changed outputs and actual JAL alignment rejection pass. The v2 conditional
-   table keeps flags and funct3 separate. Next retest raw outgoing/terminal PC
-   behavior before adopting any source closure finding/interface; include the
-   actual scalar range query on logical variable 43 in that audit. Bind native
-   public decoding and initialized reads, then original Sail instructions and
-   full execution. No per-row result/PC or table-equivalence premise is added.
+   table keeps flags and funct3 separate. [Native PC bounds](Airbender/Proofs/JumpBranchSlt/PC.lean)
+   now follow from all constraints and supported masks: outgoing high equals
+   scalar-ranged variable 43, and outgoing low is the raw or cleaned ranged key.
+   The JAL -4 field-minus-one variant passes all polynomials and the other 15
+   queries but fails actual scalar query index 5; the canonical target passes.
+   Do not copy the v3 F01 closure premise into this local claim. Next bind native
+   public decoding to the supported mask and initialized reads, then original
+   Sail instructions, full execution and actual terminal state matching.
+   No per-row result/PC or table-equivalence premise is added.
 
 3. Port unsigned mul/div, shift/binop and subword memory into the same shared
    context; retain their family-specific assumptions and supported ISA profile.

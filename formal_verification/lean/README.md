@@ -392,11 +392,30 @@ satisfies every equation/lookup and exercises that public claim. Altered results
 oversized flags and a JAL target with bit one set reject; its cleanup-table row
 alone remains valid. Three wrong import modes and 27 new importer checks pass.
 
-These are native fixed-lookup effects. Public decoder construction, initialized
-jump/branch/SLT reads, original Sail execution and terminal-PC/closure assessment
-remain open. The v3 terminal finding or closure premise is not adopted. General
-Rust/JSON/Lean refinement, physical trace/normalization/LDE and cryptographic
-lookup enforcement remain separate.
+Public decoder construction, initialized jump/branch/SLT reads and original Sail
+execution remain open. The native PC assessment below adds no verifier-closure
+premise. General Rust/JSON/Lean refinement, physical trace/normalization/LDE and
+cryptographic lookup enforcement remain separate.
+
+## Native control PC bounds
+
+[The short native PC claim](Airbender/Review/Circuits/JumpBranchSlt/Theorems.lean)
+derives both actual outgoing limb bounds under supported decoder masks
+1/2/4/8/16. [Selector calculations](Airbender/Proofs/JumpBranchSlt/Selectors.lean)
+recover one-hot selection from the five native Boolean equations and packed
+mask equation. [PC assembly](Airbender/Proofs/JumpBranchSlt/PC.lean) proves that
+outgoing high variable 14 equals candidate variable 43, ranged by actual scalar
+query five; outgoing low variable 13 equals ranged key 42 or cleaned value 48.
+No outgoing/terminal range, expected PC or verifier-PC closure is a premise.
+Public-byte/decoder membership must still derive the supported mask in future
+initialized execution; the local theorem states that boundary explicitly.
+
+[Regressions](Tests/JumpPC.lean) check a complete native JAL x1,-4 at PC zero,
+with canonical target limbs 65532/65535 and actual link write four. The field
+minus-one high-limb variant passes all 36 polynomials and the other 15 queries,
+but fails actual scalar query index 5. Thus this v3 F01 witness shape is rejected
+by v2 native constraints. This does not claim general jump/branch/SLT Sail or
+terminal-history soundness, nor resolve other families' boundary obligations.
 
 ## Reproduce
 

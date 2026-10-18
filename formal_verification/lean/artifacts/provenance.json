@@ -1933,6 +1933,34 @@
       "source_path": "Airbender/Proofs/JumpBranchSlt/ArtifactChecks.lean",
       "source_sha256": "92a00314a71a895cc49ec95446a928eb4e40563d11509d6ac7dfcbff946b5eec",
       "change": "Reuse count/column audit structure and the unchanged memory_clocks proof. Replace every layout value and count by checked native v2 metadata: 36 equations/16 lookups, explicit rd-zero/packed mask and actual masked destination variables. No v3 selector/layout or coverage claim is inherited."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/Selectors.lean",
+      "backport_reuse_revision": "7d90b97cb1d5d020dd91c1d84fe09072c1795031",
+      "backport_reuse_path": "Airbender/Proofs/AddSub/Selectors.lean",
+      "backport_reuse_sha256": "5437b1f270d37e0270426057a8c784aab46e2b4ffef55efcf4503245df747b42",
+      "change": "Copy the five native selector-bound proof branches unchanged; adapt the original bounded packed-mask calculation to the actual five-bit v2 control mask equation 33, deriving selector exclusivity from supported input masks."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/PC.lean",
+      "backport_reuse_revision": "7d90b97cb1d5d020dd91c1d84fe09072c1795031",
+      "backport_reuse_path": "Airbender/Proofs/WordMemory/Tables.lean",
+      "backport_reuse_sha256": "19dcf3c51cdb364af28a3e6068baaa1950e88928741c37152f560729048df4b9",
+      "change": "Reuse exact Clean native scalar-query extraction. Derive candidate-high range from actual query five, outgoing high equality and raw/cleaned low selection from native equations and checked selector partition; bound both outputs without a supplied output/terminal range or verifier closure."
+    },
+    {
+      "path": "Airbender/Review/Circuits/JumpBranchSlt/Theorems.lean",
+      "backport_reuse_revision": "7d90b97cb1d5d020dd91c1d84fe09072c1795031",
+      "backport_reuse_path": "Airbender/Review/Circuits/JumpBranchSlt/Theorems.lean",
+      "backport_reuse_sha256": "410bc0ba3bc2594361af66d1807ae39b1139ead8109360ddd068479d5a6e077a",
+      "change": "Preserve the existing short fixed-effects claim; append one short native outgoing-PC bound theorem with explicit supported decoder masks. Public-byte decoding, initialized reads and original Sail execution remain separate; calculations stay in Proofs."
+    },
+    {
+      "path": "Tests/JumpPC.lean",
+      "backport_reuse_revision": "7d90b97cb1d5d020dd91c1d84fe09072c1795031",
+      "backport_reuse_path": "Tests/JumpControl.lean",
+      "backport_reuse_sha256": "ea852e65783bb585cfbd884d60b22b12462fd0f37f8cd23d020cfc0846aba71e",
+      "change": "Reuse complete actual native witness/check structure for JAL x1,-4. Check canonical target limbs, all polynomials and the other fifteen queries for a field-minus-one high variant, actual scalar-query rejection, and bad outgoing high rejection under every supported mask."
     }
   ],
   "setup_artifacts": [

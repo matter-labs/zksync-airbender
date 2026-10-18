@@ -25,6 +25,7 @@ import Tests.SparseArithmeticExecution
 import Tests.NativeDecoderRows
 import Tests.NativeRows
 import Tests.JumpControl
+import Tests.JumpPC
 
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
@@ -836,3 +837,15 @@ import Tests.JumpControl
 #print axioms Tests.JumpControl.altered_signed_result_rejected
 #print axioms Tests.JumpControl.oversized_flags_rejected
 #print axioms Tests.JumpControl.unaligned_jal_rejected
+
+#print axioms Airbender.JumpBranchSlt.Proofs.selector_partition
+#print axioms Airbender.JumpBranchSlt.Proofs.candidate_high_bound
+#print axioms Airbender.JumpBranchSlt.Proofs.pc_columns
+#print axioms Airbender.JumpBranchSlt.Proofs.pc_bounds
+#print axioms Airbender.JumpBranchSlt.native_pc_bounds
+#print axioms Tests.JumpPC.negative_jal_constraints
+#print axioms Tests.JumpPC.negative_jal_bounds
+#print axioms Tests.JumpPC.noncanonical_polynomials
+#print axioms Tests.JumpPC.noncanonical_other_queries
+#print axioms Tests.JumpPC.noncanonical_native_rejected
+#print axioms Tests.JumpPC.supported_negative_high_rejected
