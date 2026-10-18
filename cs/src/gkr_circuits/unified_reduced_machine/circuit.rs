@@ -503,6 +503,17 @@ pub(super) fn dispatch_sum<F: PrimeField>(
     )
 }
 
+/// `ColumnCuts` PC-bump gate: `execute − Σ` Family 2 sub-opcode bits (JAL, JALR, SLT, BRANCH;
+/// not RD_IS_ZERO). It differs from `non_f2_dispatch_sum` by exactly the tie residual
+/// `execute − dispatch_sum`, so the two gates agree on every row that satisfies the tie.
+pub(super) fn pc_bump_gate<F: PrimeField>(
+    execute: Variable,
+    unified_mask: &UnifiedReducedMachineFamilyCircuitMask,
+) -> Expr<F> {
+    let family_2_bits = unified_mask.jump_branch_slt_bits();
+    Expr::var(execute) - Expr::sum(family_2_bits[..4].iter().map(|&b| Expr::from(b)).collect())
+}
+
 /// Adds the `pc_next = pc + 4` constraint, gated on `execute AND no Family-2 sub-opcode bit set`.
 /// Family 2's body owns the un-gated PC machinery for jal/jalr/branch/slt; this function fills
 /// in the constraint for the rest of the families AND must trivially hold on padding rows
@@ -554,8 +565,9 @@ fn apply_unified_pc_bump<F: PrimeField, CS: Circuit<F>>(
         cs.set_values(value_fn);
     }
 
-    // `ColumnCuts`: the dispatch tie `execute = Σ dispatch bits` makes the gate below
-    // equal to the linear Σ of the non-Family-2 dispatch bits, so no helper column.
+    // `ColumnCuts`: no helper column. `pc_bump_gate` is the helper's value without the
+    // `execute` factor on the F2 bits; under the dispatch tie `execute = Σ dispatch bits` it
+    // equals the Σ of the non-Family-2 dispatch bits, with 5 terms instead of 14.
     let pc_bump_gate: Expr<F> = match profile {
         UnifiedCircuitProfile::Baseline => {
             // Helper Boolean: gate = execute * (1 - sum(family_2 sub-opcode bits)).
@@ -604,7 +616,7 @@ fn apply_unified_pc_bump<F: PrimeField, CS: Circuit<F>>(
             }
             Expr::from(pc_bump_gate)
         }
-        UnifiedCircuitProfile::ColumnCuts => non_f2_dispatch_sum(unified_mask),
+        UnifiedCircuitProfile::ColumnCuts => pc_bump_gate(execute, unified_mask),
     };
 
     let pc_step: Expr<F> =

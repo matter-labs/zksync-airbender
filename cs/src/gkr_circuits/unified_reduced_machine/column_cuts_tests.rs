@@ -1,5 +1,5 @@
 use super::circuit::{
-    dispatch_sum, non_f2_dispatch_sum,
+    dispatch_sum, non_f2_dispatch_sum, pc_bump_gate,
     unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr_core,
     unified_register_all_tables, UnifiedCircuitProfile, UNIFIED_REDUCED_MACHINE_NUM_FLAGS,
 };
@@ -223,7 +223,7 @@ fn column_cuts_gates<F: PrimeField>(system: &BaselineSystem<F>) -> [Constraint<F
         jj,
         slt,
         rd_zero,
-        non_f2_dispatch_sum(&mask),
+        pc_bump_gate(system.execute, &mask),
         Expr::var(system.execute) - dispatch_sum(&mask),
     ]
     .map(|e| e.to_max_quadratic_constraint())
@@ -259,10 +259,37 @@ fn column_cuts_gates_match_baseline_helpers_on_all_row_classes() {
     gates_match_on_row_classes::<Proth120, BabyBearField>();
 }
 
+/// Over all 2^20 Boolean (execute, mask) assignments, in both fields, the PC-bump gate minus
+/// `non_f2_dispatch_sum` equals the tie residual `execute − dispatch_sum`: the two gates are
+/// interchangeable on every assignment that satisfies the tie.
+#[test]
+fn pc_bump_gate_differs_from_non_f2_dispatch_sum_by_the_tie_residual() {
+    fn check<F: PrimeField, MopF: PrimeField>() {
+        let system = BaselineSystem::<F>::build::<MopF>();
+        let mask = system.mask();
+        let [gate, sum, tie] = [
+            pc_bump_gate(system.execute, &mask),
+            non_f2_dispatch_sum(&mask),
+            Expr::var(system.execute) - dispatch_sum(&mask),
+        ]
+        .map(|e| e.to_max_quadratic_constraint());
+        for execute in [false, true] {
+            for mask in 0..1u32 << UNIFIED_REDUCED_MACHINE_NUM_FLAGS {
+                let values = system.assignment(execute, mask);
+                let mut difference = eval(&gate, &values);
+                difference.sub_assign(&eval(&sum, &values));
+                assert_eq!(difference, eval(&tie, &values), "{execute} {mask:#b}");
+            }
+        }
+    }
+    check::<BabyBearField, BabyBearField>();
+    check::<Proth120, BabyBearField>();
+}
+
 /// Over all 2^20 Boolean (execute, mask) assignments: the tie with padding zeroing admits a
 /// subset of what the `Baseline` one-hot admits, missing exactly the two `execute = 1`
-/// assignments with no dispatch bit (neither a decoder row); on that subset the linear
-/// PC-bump gate equals the `Baseline` helper; and the affine F2 gates equal their helpers
+/// assignments with no dispatch bit (neither a decoder row); on that subset the PC-bump
+/// gate equals the `Baseline` helper; and the affine F2 gates equal their helpers
 /// exactly on the masks the decoder-mask validator accepts.
 #[test]
 fn dispatch_tie_strengthens_one_hot_exhaustively() {
