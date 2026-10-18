@@ -95,13 +95,13 @@ shadow events despite missing Sail shadow bytes and distinct shadow/ROM values.
 addition, bounded aligned PCs, modular successors and native clock effects.
 Retained-port transport recovers actual pre-state reads and final masked writes,
 with final-port retention proved from native constraints. Physical native
-boot/padding/ROM binding and original instruction execution remain separate.
+boot/padding/ROM binding remains separate; original execution is checked below.
 [Code/ROM preservation](Families/WordMemory/CodeHistory.lean) now derives equality
 of every byte entry below four MiB and retains every successful public ROM
 extraction. Public programs fitting the native ROM region preserve original Sail
 instruction reads/decoding across every projected prefix, even with changing RAM
-stores. Missing bytes remain absent; physical boot/export and original LOAD/STORE
-execution remain open.
+stores. Missing bytes remain absent; physical boot/export remains open. Original
+LOAD/STORE execution is checked below.
 
 [Public platform configuration](Families/WordMemory/Platform.lean) now survives
 initialized projected histories. Eight unchanged source modules supply the
@@ -121,7 +121,15 @@ composes original preparation/clause/tick_pc using derived native PC successors
 and actual history/configuration transport. Ordinary/x0 ROM loads reach native
 PC 4; the same reversed SW/LW normal steps reach PC 8 and terminal RAM/x3=123.
 Local ordinary-RAM and actual ROM-prefix coverage remain explicit; general
-finite trace/fetch composition remains open.
+finite trace/fetch composition is now checked by
+[the short execution theorem](Families/WordMemory/Theorems.lean). Its
+[observable](Families/WordMemory/Execution.lean) retains exact native terminal PC
+and architectural cells while full matching retains all shadow tokens. Public
+cell/seed domains derive every local ordinary-RAM and ROM-prefix condition;
+configuration, program size in ROM and actual extraction remain visible.
+Original bytes/decoding, configuration and ROM extraction survive every derived
+prefix. The reversed SW/LW trace reaches PC 8 and terminal RAM/x3=123 through the
+general relation; ordinary/x0 ROM loads and empty traces also pass.
 
 These are logical selected-profile results. Remaining families and physical
 setup/argument fidelity remain in [the plan](../../../FORMAL_VERIFICATION_PLAN.md).

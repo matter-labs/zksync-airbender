@@ -132,11 +132,16 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    reused without v3's discarded-load profile. Ordinary/x0 ROM fixtures retire
    to native PC 4, and the same reversed SW/LW fixture reaches actual PC 8 and
    terminal RAM/x3 values 123 without intermediate/read/PC/result premises.
-   Compose the general initialized word-memory trace next: retain actual code
-   reads/pure decoding, configuration and ROM coverage through every realized
-   prefix; conclude the finite original normal-path relation and exact terminal
-   PC/cells. Local ordinary-RAM and extracted-prefix coverage conditions remain
-   explicit until that assembly discharges them from public domains/ROM inputs.
+   [General initialized word-memory execution](Airbender/Review/Trace/Families/WordMemory/Theorems.lean)
+   now composes every derived row through actual code reads, original decoding
+   and normal preparation/clause/retirement. Public cell and shadow-seed domains
+   discharge all local ordinary-RAM and actual ROM-prefix coverage conditions.
+   Projected composition retains every native shadow token in matching and
+   concludes the exact terminal PC and architectural cells, without equating
+   shadow values with actual ROM bytes. The reversed dependent SW/LW fixture
+   reaches PC 8 and RAM/x3=123 through this general relation; ordinary/x0 ROM
+   loads and empty traces also pass. Configuration, public program size in ROM,
+   ordinary public RAM and actual ROM extraction/seed coverage remain visible.
    Bind the separate native initializer to physical boot/padding. Physical setup/export binding remains open.
    Preserve v2 PC rollover and native timestamp offsets;
    keep physical setup generation/export and mixed/custom expansion explicit.

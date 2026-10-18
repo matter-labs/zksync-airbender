@@ -258,10 +258,32 @@ behavior. No intermediate state/read or desired PC/value is an input. The public
 Review adds only the small original-clause reference; all assembly stays under
 Proofs.
 
-General initialized finite trace/fetch composition remains the next connection.
+## Checked finite original execution
+
+[The short public theorem](Theorems.lean) proves the explicit
+[reference and terminal observable](Execution.lean). Every native row becomes an
+actual fetched/decoded original LW/SW normal step. Exact terminal PC and
+architectural cells follow from full native history; shadow values remain
+independent matched native data. The original x0 load still reads memory.
+
+[Address domains](../../../../Proofs/Trace/Families/WordMemory/AddressDomain.lean)
+root effective RAM addresses in actual public cells and ROM addresses in separate
+public shadow seeds. Public ordinary RAM and coverage by the actual extracted ROM
+prefix discharge every local access domain. Public configuration and program
+size within the native ROM region remain visible. No per-row range, source/read,
+order, intermediate state or desired result is supplied.
+
+[Composition](../../../../Proofs/Trace/Families/WordMemory/Composition.lean) reuses
+the existing native row induction, control rebasing and terminal assembly with
+whole-address filtering. Code reads, pure decoding, configuration and successful
+ROM extraction survive each realized prefix. The reversed dependent SW/LW fixture
+now reaches PC 8 and native terminal RAM/x3=123 through this general relation;
+ordinary/x0 ROM loads and an empty native trace also pass. The public Review adds
+one short execution theorem; calculations remain under Proofs.
 
 The public shadow seeds describe a logical initialized native image. Binding them
 to physical native zero boot and Sail boot/padding state remains open, along with
-physical ROM-table exports and complete original word-memory execution/retirement.
+physical ROM-table exports. Complete original word-memory execution/retirement
+is checked above under the explicit logical public domains.
 The existing arithmetic execution registry and its claims retain their scope. Physical setup
 export, mixed/custom programs and cryptographic argument enforcement are separate.

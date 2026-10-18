@@ -150,7 +150,7 @@ full v2 constraints prove that the final mixed port targets a GPR or RAM outside
 the ROM prefix. Decoder indices identify the source GPR without an expected read
 premise. Ordinary/x0 ROM loads and reversed dependent RAM store/load regressions
 exercise these general lemmas. Physical boot/padding, ROM-table binding and
-original instruction execution/retirement remain separate.
+original instruction execution/retirement is checked below.
 [Code/ROM preservation](Airbender/Review/Trace/Families/WordMemory/CodeHistory.lean)
 now derives equality of every byte entry below four MiB through actual projected
 Sail histories. The checked architectural domain and native final-port retention
@@ -229,8 +229,32 @@ ROM-prefix coverage conditions remain explicit. The unchanged native fixtures no
 also check original normal steps: ordinary/x0 ROM loads retire to native PC 4;
 the reversed SW/LW chain starts from its actual public Sail state and reaches
 PC 8 and terminal RAM/x3=123 through native terminal matching. No intermediate
-state/read or desired PC/value is a premise. General finite trace/fetch
-composition, physical boot/export and cryptographic enforcement remain open.
+state/read or desired PC/value is a premise. General finite trace/fetch composition
+is now checked below; physical boot/export and cryptographic enforcement remain open.
+
+[Complete initialized word-memory execution](Airbender/Review/Trace/Families/WordMemory/Theorems.lean)
+uses the existing actual fetched/decoded StepWith relation with original LW/SW
+clauses. Whole-address [composition](Airbender/Proofs/Trace/ProjectedComposition.lean)
+filters only Sail transfers; all native events and matching still derive row
+order and PC boundaries. Each prefix preserves actual code bytes, pure decoder
+evidence, public configuration and successful ROM extraction. Public ordinary-RAM
+and shadow-seed coverage domains root every local address condition through
+accepted matching. No per-row range/read/order, intermediate state or desired
+result is an assumption.
+
+[Terminal assembly](Airbender/Proofs/Trace/ProjectedTerminal.lean) uses the complete
+unfiltered Clean history for latest values. The explicit
+[architectural observable](Airbender/Review/Trace/Families/WordMemory/Execution.lean)
+requires exact native terminal PC and retained GPR/RAM cells; native shadow values
+are independent of actual ROM bytes. Empty traces preserve the actual starting
+PC/cells. The general theorem passes the reversed SW/LW trace and derives PC 8,
+RAM 123 and x3=123, plus ordinary/x0 ROM and empty-trace regressions. Configuration,
+program size in native ROM, ordinary public RAM and successful actual ROM-prefix
+extraction/seed coverage remain visible logical inputs. They do not establish
+physical zero boot, absent Sail padding, native setup/export fidelity or
+cryptographic enforcement. The successful-step relation checks actual code-byte
+reads and decoding; architectural fetch permissions, interrupts and exceptions
+remain outside this checkpoint.
 
 ## Public state, profiles and external inputs
 

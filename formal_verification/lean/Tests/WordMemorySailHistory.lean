@@ -1,4 +1,4 @@
-import Airbender.Proofs.Trace.Families.WordMemory.Execution
+import Airbender.Review.Trace.Families.WordMemory.Theorems
 import Airbender.Review.Trace.Families.WordMemory.Platform
 import Airbender.Proofs.Trace.Families.WordMemory.ProjectedPorts
 import Airbender.Review.Trace.Families.WordMemory.SailHistory
@@ -524,5 +524,65 @@ theorem dependent_retired_store_load [_root_.Sail.ArchSem.MemoryPlatform SailRV3
   · have read := Trace.Proofs.cell_read_PC (Cell.register 3)
       (Trace.Proofs.cell_read_nextPC (Cell.register 3) rdRead 8) 8
     simpa [Trace.retiredState, memoryWord, regToken, Nat.unpair_pair, Word.toBitVec, Word.value] using read
+
+/-- General fetched/decoded composition derives the reversed dependent SW/LW
+    execution; all local address domains come from the public cells and seeds. -/
+theorem dependent_fetched_execution [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] :
+    Airbender.WordMemory.Realizes setup.program trace before cells := by
+  apply Airbender.WordMemory.public_sail_execution projected_inputs public_setup_built
+    accepted decoded aligned configuration code_image (by decide)
+  · intro address member
+    have same : address = (4194320 : BitVec 32) := by simpa [cells] using member
+    subst address
+    unfold Reference.RiscV.Sail.OrdinaryWordAddress
+    decide
+  · simp
+
+/-- The general fetched trace reaches PC 8 and the native terminal RAM/x3 values
+    123, using actual terminal matching rather than the two-row manual assembly. -/
+theorem dependent_fetched_final_values [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] :
+    ∃ after, Relation.ReflTransGen (Airbender.WordMemory.SailStep setup.program) before after ∧
+      Reference.Sail.run (SailRV32.Functions.get_arch_pc ()) after = .ok (8 : BitVec 32) after ∧
+      (Cell.ram 4194320).read after = .ok (123 : BitVec 32) after ∧
+      (Cell.register 3).read after = .ok (123 : BitVec 32) after := by
+  obtain ⟨after, execution, pc, values⟩ := dependent_fetched_execution
+  obtain ⟨ramCell, _, ramAddress, ramRead⟩ := values (ramToken 9 123) (by simp [trace])
+    (by simp [Airbender.WordMemory.architecturalAddress, Airbender.WordMemory.shadow, ramToken, Nat.unpair_pair])
+  have ramSame : ramCell = Cell.ram 4194320 := Trace.Proofs.cell_address_injective ramAddress
+  subst ramCell
+  obtain ⟨rdCell, _, rdAddress, rdRead⟩ := values (regToken 3 10 123 0) (by simp [trace])
+    (by simp [Airbender.WordMemory.architecturalAddress, Airbender.WordMemory.shadow, regToken, Nat.unpair_pair])
+  have rdSame : rdCell = Cell.register 3 := Trace.Proofs.cell_address_injective rdAddress
+  subst rdCell
+  refine ⟨after, execution, pc, ?_, ?_⟩
+  · simpa [MemoryToken.word, ramToken, Nat.unpair_pair, Word.toBitVec, Word.value] using ramRead
+  · simpa [MemoryToken.word, regToken, Nat.unpair_pair, Word.toBitVec, Word.value] using rdRead
+
+private def emptyTrace : Data mersenne31Modulus WordMemoryFamily :=
+  { trace with rows := [], terminal := trace.initial, terminalMemory := trace.initialMemory }
+
+/-- Empty native traces preserve the actual public state and every retained
+    initial token, with no fabricated execution or final PC premise. -/
+theorem empty_fetched_execution [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] :
+    Airbender.WordMemory.Realizes setup.program emptyTrace before cells := by
+  have boundary : Airbender.WordMemory.ShadowImageBoundary emptyTrace before cells [] :=
+    ⟨projected_inputs.domain, projected_inputs.architectural, projected_inputs.shadows,
+      projected_inputs.image, projected_inputs.initial⟩
+  have checked : Accepted emptyTrace := by
+    constructor
+    · intro actual member; simp [emptyTrace] at member
+    · intro actual member; simp [emptyTrace] at member
+    · exact List.Perm.refl _
+    · exact List.Perm.refl _
+  have decoding : Airbender.WordMemory.Decoded emptyTrace setup := by
+    intro actual member; simp [emptyTrace] at member
+  apply Airbender.WordMemory.public_sail_execution boundary public_setup_built
+    checked decoding aligned configuration code_image (by decide)
+  · intro address member
+    have same : address = (4194320 : BitVec 32) := by simpa [cells] using member
+    subst address
+    unfold Reference.RiscV.Sail.OrdinaryWordAddress
+    decide
+  · simp
 
 end Tests.WordMemorySailHistory

@@ -906,6 +906,86 @@
       "backport_reuse_path": "Tests/WordMemoryROMTransport.lean",
       "backport_reuse_sha256": "9e4b836399c08fcdbe439d6a33798df633a4ce3e8434701b92a88df93f3235da",
       "change": "Keep both accepted ordinary/x0 ROM fixtures, independent native shadow seeds and all earlier extraction/virtual-read/clause/masked-write results. Add original normal preparation/retirement to native PC 4 through the combined initialized row assembly, retaining actual ROM reads for x0 and full shadow matching."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/ProjectedComposition.lean",
+      "source_path": "Airbender/Proofs/Trace/CompositionCore.lean",
+      "source_sha256": "f90e27d63e600eca9a64f86c621baf688dfaa9892c043ac74ef29f74f7daebc8",
+      "change": "Adapt compose_native_rows by filtering actual Sail transfers at whole addresses. Keep the native row permutation, complete clocks/PC chain, original step rebasing and empty/nonempty induction unchanged in meaning; no erased native token is dropped from matching."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/ProjectedTerminal.lean",
+      "source_path": "Airbender/Proofs/Trace/Terminal.lean",
+      "source_sha256": "3385029aac8a7e029f139f6e81a5573fc7a8157b06d7422a58e60f516592e930",
+      "change": "Reuse terminal_sail_reads construction for retained terminal addresses. Full native address matching finds the seed; selected public image identifies the architectural cell, and unchanged terminal_latest_value supplies its actual value from the unfiltered Clean history."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/ProjectedTerminal.lean",
+      "source_path": "Airbender/Proofs/Trace/CompositionCore.lean",
+      "source_sha256": "f90e27d63e600eca9a64f86c621baf688dfaa9892c043ac74ef29f74f7daebc8",
+      "change": "Adapt native_trace_postconditions to projected transfers and selected terminal observations. Preserve original PC/control commutation and empty-trace handling; the native terminal PC is exact and independent shadow values are not claimed as Sail ROM bytes."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/WordMemory/Execution.lean",
+      "source_path": "Airbender/Review/Trace/Execution.lean",
+      "source_sha256": "68a6f14299e2da6150de237754f10f2af2e9f6fcc3a1528b7ca40bde0f48589a",
+      "change": "Keep the existing fetched/decoded original StepWith relation and finite reference-trace/terminal-observation structure. The word-memory observable selects architectural terminal tokens explicitly, while Accepted retains every native shadow token. Original LW-to-x0 remains an actual memory operation."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/AddressDomain.lean",
+      "backport_reuse_revision": "e87706ba3d91639eb8579fc8adba48b013b65f95",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/MemoryTransport.lean",
+      "backport_reuse_sha256": "13d2a149cd63754c5f9a70429fd479bd1af5939308eeb48631f9e28e2d236ab0",
+      "change": "Reuse effective_cell_word and store_port_address unchanged; copy the existing native load-port address calculation. Match effective cells to actual public architectural cells or independent native shadow seeds, deriving each local RAM/ROM domain from public domains."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/AddressDomain.lean",
+      "backport_reuse_revision": "e87706ba3d91639eb8579fc8adba48b013b65f95",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/ShadowImage.lean",
+      "backport_reuse_sha256": "16bfcba717d4d5a4e5f9a913be39079ce0ed586f273366f310405704583f2f57",
+      "change": "Reuse shadow_image_parts, shadow_clock_boundary and initialized native address paths unchanged. Architectural-domain and shadow-seed bounds separate RAM and ROM without witness-supplied address ranges or expected reads."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/Composition.lean",
+      "backport_reuse_revision": "e87706ba3d91639eb8579fc8adba48b013b65f95",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Composition.lean",
+      "backport_reuse_sha256": "4e42ab5e4401c0619461176c2acf9847431e49482e5b0abc336a78416450f6c4",
+      "change": "Reuse initialized arithmetic execution assembly: derived row permutation, complete native event permutation, public initial PC, pure decoder replay, checked per-row retirement and terminal postconditions. Apply filtered composition to native LW/SW rather than assuming row order, reads or results."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/Composition.lean",
+      "backport_reuse_revision": "e87706ba3d91639eb8579fc8adba48b013b65f95",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/Execution.lean",
+      "backport_reuse_sha256": "31981c2476ad01eff2e03cfeddd66e63fd835ec760ebf6f5e8600a0b5c7a6f31",
+      "change": "Reuse initialized_instruction_retirement unchanged for RAM LW/SW and ROM LW, including original x0 and modular PC successors. Discharge its ordinary-RAM and ROM-prefix domains through public cell/seed domains and native matching."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/WordMemory/Composition.lean",
+      "backport_reuse_revision": "e87706ba3d91639eb8579fc8adba48b013b65f95",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/CodeHistory.lean",
+      "backport_reuse_sha256": "6de2e268df998133183df70e430eee8e316a8c0676457a5ff3897b04c93cd795",
+      "change": "Reuse setup_sources_after_history and projected_history_rom_bytes unchanged to derive actual fetched bytes, original pure decoding and ROM extraction in every realized prefix. Reuse existing platform history preservation for actual CSR configuration."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/WordMemory/Theorems.lean",
+      "backport_reuse_revision": "e87706ba3d91639eb8579fc8adba48b013b65f95",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/AddSub/Theorems.lean",
+      "backport_reuse_sha256": "794fcc6c0b14b9aa7e63076b29be2e7231fba75c6fdb558a5b2f0d4baca12147",
+      "change": "Copy the short public whole-execution wrapper structure. Keep actual configuration, ordinary public RAM domain, public program-in-ROM size and shadow-seed ROM-prefix coverage visible; all proof assembly stays under Proofs."
+    },
+    {
+      "path": "Tests/WordMemorySailHistory.lean",
+      "backport_reuse_revision": "e87706ba3d91639eb8579fc8adba48b013b65f95",
+      "backport_reuse_path": "Tests/WordMemorySailHistory.lean",
+      "backport_reuse_sha256": "0375ec41ac411afaf7dd82eedb29e53cbdde0a1003ae8eb732e732ddcb12af8a",
+      "change": "Keep the same reversed accepted SW/LW fixture and all earlier results. Apply the general fetched/decoded trace theorem to derive finite original execution, PC 8 and terminal RAM/x3=123, then check an empty native trace over the same actual public image without a final-PC premise."
+    },
+    {
+      "path": "Tests/WordMemoryROMTransport.lean",
+      "backport_reuse_revision": "e87706ba3d91639eb8579fc8adba48b013b65f95",
+      "backport_reuse_path": "Tests/WordMemoryROMTransport.lean",
+      "backport_reuse_sha256": "af4c027477e302734288c5b3f83f96b91050c384c2ef03fd82060a26c556f16e",
+      "change": "Keep ordinary/x0 accepted ROM fixtures and prior extraction, matching, virtual-read, clause and retirement tests. Apply general fetched/decoded composition to both; public seed coverage is derived from address 16 in the actual five-word ROM prefix, with shadow 123 distinct from ROM 0xc0001073."
     }
   ]
 }

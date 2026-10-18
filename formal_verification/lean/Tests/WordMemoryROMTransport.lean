@@ -1,4 +1,4 @@
-import Airbender.Proofs.Trace.Families.WordMemory.Execution
+import Airbender.Review.Trace.Families.WordMemory.Theorems
 import Airbender.Review.Trace.Families.WordMemory.ROMImage
 import Airbender.Review.Trace.Families.WordMemory.CodeHistory
 import Airbender.Review.Trace.Families.WordMemory.Projection
@@ -333,5 +333,20 @@ theorem initialized_virtual_rom_load [_root_.Sail.ArchSem.MemoryPlatform SailRV3
         Airbender.WordMemory.importedConstraintsMemoryPorts, nativeRow, row, Nat.unpair_pair,
         Word.toBitVec, Word.value, limbBase, show (4211 : ZMod mersenne31Modulus).val = 4211 from by decide,
         show (49152 : ZMod mersenne31Modulus).val = 49152 from by decide] using written
+
+/-- Ordinary and x0 ROM loads satisfy the complete fetched/decoded trace claim.
+    Native shadow 123 stays independent of the actual ROM word 0xc0001073. -/
+theorem initialized_fetched_execution [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    (discard : Bool) :
+    Airbender.WordMemory.Realizes (setup discard).program (trace discard) (before discard) (cells discard) := by
+  apply Airbender.WordMemory.public_sail_execution (inputs discard) (public_decoder_built discard)
+    (accepted discard) (decoded discard) (aligned discard) (configuration discard)
+    (public_rom_built discard) (by decide)
+  · intro address member
+    simp [cells, destination] at member
+  · intro seed member
+    have same : seed = ((16, 123) : Airbender.WordMemory.ShadowSeed) := by simpa [seeds] using member
+    subst seed
+    decide
 
 end Tests.WordMemoryROMTransport

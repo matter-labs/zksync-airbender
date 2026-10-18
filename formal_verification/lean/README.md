@@ -52,7 +52,7 @@ PC/immediate bounds/alignment from complete padded membership, including x0
 loads. [ROM extraction](Airbender/Review/Helpers/Tables/WordROMImage.lean) now reads
 actual Sail bytes; native ROM query data inside that prefix has an original Sail
 read proof. A complete four-MiB extraction covers all native ROM addresses. Physical native
-boot/padding/ROM binding and word-memory instruction execution remain pending.
+boot/padding/ROM binding remains pending; word-memory execution is checked below.
 [Initialized word-memory history](Airbender/Review/Trace/Families/WordMemory/History.lean)
 now derives complete Clean consistency, latest native reads and every per-row/prior
 clock input from actual public seed reads and accepted matching.
@@ -99,8 +99,15 @@ reads. The reversed fixture reaches original SW then LW results with actual read
 now derives exact modular native PC successors and composes original Sail
 preparation, memory clauses and tick_pc through actual history/configuration
 transport. Ordinary/x0 ROM loads reach native PC 4, and reversed SW/LW normal
-steps reach PC 8 and actual terminal RAM/x3=123. General finite trace/fetch
-composition and physical boot/ROM binding remain separate.
+steps reach PC 8 and actual terminal RAM/x3=123.
+[Complete initialized word-memory execution](Airbender/Review/Trace/Families/WordMemory/Theorems.lean)
+now composes every native row through actual fetched bytes, original decoding
+and normal Sail steps. It derives exact native terminal PC and architectural
+cells, retaining full matching for independent shadow tokens. Public ordinary
+RAM, configuration, program size in ROM and actual ROM-prefix seed coverage
+remain explicit; native matching discharges each local address domain. The
+reversed SW/LW fixture reaches PC 8 and RAM/x3=123 through this general relation;
+ordinary/x0 ROM loads and empty traces pass. Physical boot/ROM binding remains open.
 Remaining families, Rust
 setup generation/export and cryptographic argument soundness remain pending. This checkpoint does not inherit v3's completed coverage.
 

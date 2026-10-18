@@ -584,3 +584,14 @@ import Tests.WordMemoryROMTransport
 #print axioms Airbender.WordMemory.Proofs.projected_rom_load_retirement
 #print axioms Airbender.WordMemory.Proofs.initialized_instruction_retirement
 #print axioms Tests.WordMemorySailHistory.dependent_retired_store_load
+#print axioms Airbender.Trace.Proofs.compose_projected_rows
+#print axioms Airbender.Trace.Proofs.projected_terminal_reads
+#print axioms Airbender.Trace.Proofs.projected_trace_postconditions
+#print axioms Airbender.WordMemory.Proofs.effective_public_cell
+#print axioms Airbender.WordMemory.Proofs.initialized_address_domains
+#print axioms Airbender.WordMemory.Proofs.image_execution_soundness
+#print axioms Airbender.WordMemory.public_sail_execution
+#print axioms Tests.WordMemorySailHistory.dependent_fetched_execution
+#print axioms Tests.WordMemorySailHistory.dependent_fetched_final_values
+#print axioms Tests.WordMemorySailHistory.empty_fetched_execution
+#print axioms Tests.WordMemoryROMTransport.initialized_fetched_execution

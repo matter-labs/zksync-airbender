@@ -95,9 +95,15 @@ ports and public decoding; the dependent SW/LW fixture reaches the same realized
 states. [Initialized native row retirement](../../../Proofs/Trace/Families/WordMemory/Execution.lean)
 now derives addresses/native PC successors and composes original preparation,
 clauses and tick_pc. The ordinary/x0 ROM and dependent SW/LW fixtures reach the
-same native outgoing PCs and actual data states. General finite trace/fetch
-composition and physical padding/boot/ROM binding remain open. The local load formula keeps its native x0 flag; the
+same native outgoing PCs and actual data states.
+[Complete initialized execution](../../Trace/Families/WordMemory/Theorems.lean)
+now composes actual fetched/decoded original normal steps to the native terminal
+PC and architectural cells, retaining independent shadow tokens in matching.
+Public configuration, ordinary RAM, ROM program size and actual extracted-prefix
+seed coverage remain explicit; every local row domain is derived. Reversed SW/LW,
+ordinary/x0 ROM loads and empty native traces pass. Physical padding/boot/ROM
+binding remains open. The local load formula keeps its native x0 flag; the
 separate public decoder proof now derives that flag's exact relation to rd.
-The arithmetic-only trace registry remains unchanged until those connections
-are proved. See the [plan](../../../../FORMAL_VERIFICATION_PLAN.md) and
+The arithmetic and word-memory registries retain separate selected-profile
+execution claims; mixed/custom execution remains open. See the [plan](../../../../FORMAL_VERIFICATION_PLAN.md) and
 [trust boundaries](../../../../TRUST_AND_REVIEW.md).
