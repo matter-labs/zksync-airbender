@@ -228,7 +228,11 @@ fn schedule_commit_retained(
         shape.log_v,
         shape.log_lde,
         shape.skip_bottom,
-        if fused_path { "suffix micro + residue-tree sink" } else { "reference path" }
+        if fused_path {
+            "suffix micro + residue-tree sink"
+        } else {
+            "reference path"
+        }
     );
     if let Some((plan, suffix)) = fused {
         let mut tiles = context.alloc(

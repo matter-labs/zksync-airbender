@@ -397,7 +397,10 @@ fn sink_commit_matches_round_loop() {
         let mut candidate = upload(&vec![Digest::default(); cosets as usize * items]);
         let mut reference = upload(&vec![Digest::default(); cosets as usize * items]);
         for (out, launch) in [
-            (&mut candidate, launch_sink as fn(_, _, _, _, _, _, _, _, _, _) -> _),
+            (
+                &mut candidate,
+                launch_sink as fn(_, _, _, _, _, _, _, _, _, _) -> _,
+            ),
             (&mut reference, launch_sink_reference),
         ] {
             launch(

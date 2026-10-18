@@ -519,7 +519,11 @@ impl PackedCosetRecomputeOracle<PR> {
             self.packed_columns,
             cfg.log_values_per_leaf,
             cfg.skip_bottom,
-            if sink.is_some() { "suffix micro + leaf sink" } else { "reference path" }
+            if sink.is_some() {
+                "suffix micro + leaf sink"
+            } else {
+                "reference path"
+            }
         );
         if let Some((plan, shape)) = sink {
             let (tiles_len, nodes_len, node_scratch_len) = commit_coset_scratch_lens(&plan, &shape);
@@ -725,7 +729,11 @@ impl PackedCosetRecomputeOracle<PR> {
             self.packed_columns,
             cfg.log_values_per_leaf,
             cfg.skip_bottom,
-            if sink_path { "touched-coset open sink" } else { "reference path" }
+            if sink_path {
+                "touched-coset open sink"
+            } else {
+                "reference path"
+            }
         );
         if let Some((plan, dispatched, shape)) = sink {
             let (tiles_len, nodes_len) = open_coset_slot_scratch_lens(&dispatched, &shape);
