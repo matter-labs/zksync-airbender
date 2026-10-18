@@ -68,7 +68,7 @@ and satisfies all polynomials, but the native range query rejects it. The fixtur
 retains UNIMP at PC 4 and original SLTIU-to-x0 at PC 8; full padding, all branch
 conditions and missing byte/capacity checks pass.
 
-Actual native program-prefix export is certified below. Initialized reads, original Sail clauses/
+Actual native program-prefix export and initialized native history are certified below. Original Sail cell reads, clauses/
 retirement, full family execution and terminal matching remain open. General Rust/JSON/Lean refinement,
 physical setup/normalization/LDE and cryptographic argument enforcement remain
 separate. No implementation vulnerability is established.
@@ -88,3 +88,15 @@ UNIMP hole, original SLTIU-to-x0 at PC 8 and all million padded slots. The full
 accepted JAL row applies the claim; the local tag-zero query is rejected. Public
 text equality and crossed arithmetic/control importer rejection are checked.
 General Rust decoder/physical trace refinement and initialized execution remain open.
+
+## Initialized native history
+
+[The separate registry](../../Helpers/Context/JumpBranchSlt.lean) binds every
+imported control port and clock column. [Calculations](../../../Proofs/JumpBranchSlt/Timestamp.lean)
+prove native four-tick/port-order laws, including lower-clock carry. [The short
+history claim](../../Trace/Families/JumpBranchSlt/History.lean) uses actual public
+Sail seed/PC reads and complete native matching to derive all row/prior clocks,
+complete Clean history and newest reads. [The JAL fixture](../../../../Tests/ControlHistory.lean)
+keeps both readonly x0 refreshes and the actual link write; stale local reads fail
+matching. Control word bounds, actual Sail cells/instructions and terminal cell
+matching remain separate. No expected read, schedule or per-row clock is supplied.

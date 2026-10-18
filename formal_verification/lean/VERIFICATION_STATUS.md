@@ -14,7 +14,8 @@ not completed v2 coverage.
 | Integration | Coverage |
 | --- | --- |
 | [Jump/branch/SLT fixed effects](Airbender/Review/Circuits/JumpBranchSlt/Theorems.lean) | All 36 native equations, six scalar/eight timestamp/two fixed queries and exact metadata imported. Actual cleanup/conditional table certificates derive key bounds and exact native control/cleanup values; full active JAL witness and alignment rejection checked. Supported native masks now derive both outgoing PC limb bounds; the JAL -4 negative-high witness shape fails an actual scalar query. Public decoding is checked below; initialized history and original Sail instruction/trace execution remain open. |
-| [Public control decoding](Airbender/Review/Circuits/JumpBranchSlt/Decoder.lean) | Actual public bytes and original Sail decoding construct a full sparse/padded ten-column table. Native equations reject holes/tail, recovering supported masks, canonical inputs/alignment and exact x0 flags; the short native claim derives outgoing PC bounds without a mask/range premise. Separate SLTI/branch masks, retained x0 operations and raw JAL funct3 are checked. Concrete native program export is certified below; initialized reads, instruction execution and terminal matching remain open. |
+| [Public control decoding](Airbender/Review/Circuits/JumpBranchSlt/Decoder.lean) | Actual public bytes and original Sail decoding construct a full sparse/padded ten-column table. Native equations reject holes/tail, recovering supported masks, canonical inputs/alignment and exact x0 flags; the short native claim derives outgoing PC bounds without a mask/range premise. Separate SLTI/branch masks, retained x0 operations and raw JAL funct3 are checked. Concrete native program export and initialized native history are certified below; original Sail cell/instruction execution and terminal matching remain open. |
+| [Initialized native control history](Airbender/Review/Trace/Families/JumpBranchSlt/History.lean) | The separate native clock/port registry proves the shared clock contract from actual control equations/queries. Public Sail seeds/PC and complete native matching derive every row/prior clock, complete Clean history and newest reads for all three ports, retaining readonly alias refreshes and actual masked writes. Control word bounds and original Sail cell/instruction execution remain separate. |
 | V2 artifact import | All 34 quadratic and 3 linear equations, four 16-bit and eight 19-bit timestamp queries from the pinned ADD/SUB layout. Bounds/placement guards and both native zero coefficient encodings. |
 | Reused foundation | Unchanged property definitions, word representation/arithmetic and pinned Sail reference/execution lemmas. Source hashes are checked. |
 | Native state/port clocks | Typed physical state and three direct ports, including actual destination writes. Four-tick advancement and strict previous-write/port order follow from imported equations/queries under initial/prior clock bounds and alignment. The initialized-history layer now derives these local inputs from matching and initial boundaries. |
@@ -412,10 +413,10 @@ all polynomials, but fails the native range query. Constructor tests retain
 signed/unsigned comparisons, both jumps to x0 and all six branch conditions;
 missing bytes/capacity and the full hole/tail domain are checked.
 
-Initialized control reads, original instruction execution and terminal matching
-remain open. Actual native program-prefix export is certified below for the
-concrete input; general Rust decoder/setup/trace refinement and cryptographic
-enforcement remain separately scoped.
+Initialized native control history is checked below. Original Sail cell/instruction
+execution and terminal matching remain open. Actual native program-prefix export
+is certified below for the concrete input; general Rust decoder/setup/trace
+refinement and cryptographic enforcement remain separately scoped.
 
 ## Actual native control decoder export
 
@@ -439,17 +440,45 @@ and every accepted native constraint, without table-equivalence or range premise
 post-hole x0 fields, actual public text and rejection of the old local tag-zero query.
 
 This certifies the concrete input. Arbitrary programs, general Rust/JSON/compiler
-refinement, physical trace/normalization/LDE, initialized control reads, original
-instruction execution, terminal matching and cryptographic enforcement remain open.
+refinement, physical trace/normalization/LDE, original Sail control cell/instruction
+execution, terminal matching and cryptographic enforcement remain open.
+Initialized native control history is checked below.
+
+## Initialized native control history
+
+[The separate control registry](Airbender/Review/Helpers/Context/JumpBranchSlt.lean)
+binds all three imported register ports, raw state/clock columns and ten-column
+decoder placement. [Native clock extraction](Airbender/Proofs/JumpBranchSlt/Timestamp.lean)
+reuses the word-memory calculation structure with the checked control equation/
+query indices. Four-tick advancement, 19-bit carry and strict previous-write/port
+ordering feed the unchanged shared clock/history proofs through a proved instance.
+
+[One short public claim](Airbender/Review/Trace/Families/JumpBranchSlt/History.lean)
+uses actual Sail seed/PC construction and full native state/memory matching to
+construct complete Clean history and newest preceding reads for every port.
+All row/prior clock bounds and seed-address uniqueness are derived. No expected
+read, per-row range/clock/order or desired terminal value is supplied.
+
+[The nonempty JAL -4 regression](Tests/ControlHistory.lean) retains both aliased
+x0 reads, the public old x1 value 123 and actual link write four. Its second read
+consumes the first timestamp refresh; stale local rows still pass every native
+constraint but fail full matching. Actual exported decoder membership is retained.
+Missing explicit register data rejects initialization. A separate full native row
+checks lower-clock carry; derived port effects and terminal clocks are checked.
+
+Control word/write bounds, hardwired-x0 preservation through arbitrary histories,
+actual Sail cell/instruction execution and terminal cell matching remain open.
+Physical control boot, general Rust/trace refinement and cryptographic
+enforcement stay separate.
 
 ## Validation
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all thirty-one concrete test modules pass.
+- Library, both CLI entrypoints and all thirty-two concrete test modules pass.
 - Importer regressions: 169 checks pass.
-- Axiom audit: 840 explicit roots; only propext, Classical.choice and Quot.sound.
-- All forty-eight public Review theorems (nine circuit claims, thirty trace claims and nine helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Axiom audit: 859 explicit roots; only propext, Classical.choice and Quot.sound.
+- All forty-nine public Review theorems (nine circuit claims, thirty-one trace claims and nine helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
 - Source provenance: 71 unchanged reused files, three native circuit artifacts, thirty-six native Rust sources, seven native setup artifacts and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
@@ -488,6 +517,7 @@ Current checked checkpoint:
 - Native control PC bounds pass for all five supported packed masks. A complete JAL -4 witness retains canonical target 0xfffffffc; its noncanonical high-limb variant passes all native polynomials and the other fifteen queries but is rejected by the actual candidate-high range query. No terminal range or verifier-PC closure premise is supplied.
 - Public control decoding now derives all local decoder inputs from original Sail bytes and full sparse/padded membership. The full JAL -4 witness uses actual raw funct3 seven and derives outgoing PC bounds without a mask premise; tag-zero mismatch, x0 comparisons/jumps, all branch tags, unsupported holes/tail and missing bytes/capacity regressions pass. The malformed high-PC variant retains real public membership and all polynomials but fails the native range query. Initialized original control execution remains open.
 - The native control decoder prefix reproduces exactly and every slot equals the actual public Sail constructor. Raw JAL tag 7, original post-hole SLTIU-to-x0 fields, public text, complete tail, crossed importer profiles and tag-zero rejection pass. The accepted full JAL row instantiates the short exported-decoder source/PC claim.
+- Native control clocks and all three imported ports discharge the shared history contract. A full JAL -4 history starts from actual Sail x0/x1/PC reads, consumes its aliased readonly refresh and retains the actual link write. Stale local reads pass native constraints but fail memory matching; explicit missing-register data rejects initialization. Lower-clock carry, every derived port effect and exact terminal clock accumulation pass.
 - No handwritten project warnings, admitted proofs or project axioms.
 - Serial bounded gates pass; parent/child timeout and memory probes confirm termination with no live owned processes.
 

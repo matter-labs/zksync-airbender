@@ -30,3 +30,14 @@ now derive actual transfers and intermediate states in native clock order;
 retains full native matching with separate public shadow seeds. Physical native
 boot/ROM binding and original instruction execution remain pending. The arithmetic
 execution registry is unchanged.
+
+[The control registry](JumpBranchSlt.lean) now binds the native jump/branch/SLT
+artifact, all three register ports and raw state/decoder columns. [Clock extraction](../../../Proofs/JumpBranchSlt/Timestamp.lean)
+reuses the word-memory structure with control-specific borrow/carry/query indices;
+[its proved shared instance](../../../Proofs/Trace/Families/JumpBranchSlt/History.lean)
+derives all row/prior clocks from actual public seeds/PC and accepted matching.
+[One short history claim](../../Trace/Families/JumpBranchSlt/History.lean) obtains
+complete Clean consistency and newest reads. No expected read, per-row clock or
+ordering premise is added. [Aliased JAL and lower-clock carry tests](../../../../Tests/ControlHistory.lean)
+pass; stale matching and missing explicit register data reject. Control word bounds,
+actual Sail cell/instruction execution and terminal cell matching remain separate.

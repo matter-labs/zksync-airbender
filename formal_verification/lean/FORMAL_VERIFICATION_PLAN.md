@@ -276,8 +276,16 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    short exported-decoder claim derives source evidence/PC bounds from actual
    membership plus all native constraints. Both binary/fixture modes reproduce;
    crossed/unsigned-only profiles, malformed inputs and tag-zero membership fail.
-   Next register native clocks/ports for initialized history and derive reads,
-   then original Sail instructions,
+   [Native control clocks/ports](Airbender/Review/Helpers/Context/JumpBranchSlt.lean)
+   now discharge the unchanged shared clock/history contract, using actual native
+   carry/borrow equations and all eight timestamp queries. [The short public history
+   claim](Airbender/Review/Trace/Families/JumpBranchSlt/History.lean) derives complete
+   Clean history and newest reads from actual public Sail seeds/PC plus full native
+   matching. The accepted JAL -4 fixture retains both aliased x0 refreshes and the
+   actual link write; stale local reads fail matching. Missing register data,
+   19-bit lower-clock carry, derived port effects and terminal clocks are checked.
+   Next derive control word/write bounds and x0 preservation from public decoding/
+   initialized history, then actual Sail cell reads, original instructions,
    full execution and actual terminal state matching. General Rust/compiler and
    cryptographic refinement remain separate. No per-row result/PC or
    table-equivalence premise is added.

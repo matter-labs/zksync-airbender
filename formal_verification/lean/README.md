@@ -446,10 +446,10 @@ all polynomials, but fails the native range query. Constructor tests retain
 signed/unsigned comparisons, both jumps to x0 and all six branch conditions;
 missing bytes/capacity and the full hole/tail domain are checked.
 
-Initialized control reads, original instruction execution and terminal matching
-remain open. Actual native program-prefix export is certified below for the
-concrete input; general Rust decoder/setup/trace refinement and cryptographic
-enforcement remain separately scoped.
+Initialized native control history is checked below. Original Sail cell/instruction
+execution and terminal matching remain open. Actual native program-prefix export
+is certified below for the concrete input; general Rust decoder/setup/trace
+refinement and cryptographic enforcement remain separately scoped.
 
 ## Actual native control decoder export
 
@@ -473,8 +473,36 @@ and every accepted native constraint, without table-equivalence or range premise
 post-hole x0 fields, actual public text and rejection of the old local tag-zero query.
 
 This certifies the concrete input. Arbitrary programs, general Rust/JSON/compiler
-refinement, physical trace/normalization/LDE, initialized control reads, original
-instruction execution, terminal matching and cryptographic enforcement remain open.
+refinement, physical trace/normalization/LDE, original Sail control cell/instruction
+execution, terminal matching and cryptographic enforcement remain open.
+Initialized native control history is checked below.
+
+## Initialized native control history
+
+[The separate control registry](Airbender/Review/Helpers/Context/JumpBranchSlt.lean)
+binds all three imported register ports, raw state/clock columns and ten-column
+decoder placement. [Native clock extraction](Airbender/Proofs/JumpBranchSlt/Timestamp.lean)
+reuses the word-memory calculation structure with the checked control equation/
+query indices. Four-tick advancement, 19-bit carry and strict previous-write/port
+ordering feed the unchanged shared clock/history proofs through a proved instance.
+
+[One short public claim](Airbender/Review/Trace/Families/JumpBranchSlt/History.lean)
+uses actual Sail seed/PC construction and full native state/memory matching to
+construct complete Clean history and newest preceding reads for every port.
+All row/prior clock bounds and seed-address uniqueness are derived. No expected
+read, per-row range/clock/order or desired terminal value is supplied.
+
+[The nonempty JAL -4 regression](Tests/ControlHistory.lean) retains both aliased
+x0 reads, the public old x1 value 123 and actual link write four. Its second read
+consumes the first timestamp refresh; stale local rows still pass every native
+constraint but fail full matching. Actual exported decoder membership is retained.
+Missing explicit register data rejects initialization. A separate full native row
+checks lower-clock carry; derived port effects and terminal clocks are checked.
+
+Control word/write bounds, hardwired-x0 preservation through arbitrary histories,
+actual Sail cell/instruction execution and terminal cell matching remain open.
+Physical control boot, general Rust/trace refinement and cryptographic
+enforcement stay separate.
 
 ## Reproduce
 

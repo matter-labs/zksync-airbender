@@ -200,7 +200,12 @@ arbitrary-program decoder certificates and cryptographic enforcement remain open
 
 [Jump/branch/SLT fixed effects](../Circuits/JumpBranchSlt/README.md) now have exact
 native equations/metadata and complete native fixed-table certificates. A full
-active JAL witness and alignment rejection pass. This is a local prerequisite:
-public native decoding, initialized family histories, original Sail execution
-and outgoing/terminal PC assessment remain open. Existing initialized arithmetic
-and word-memory trace claims retain their meanings.
+active JAL witness and alignment rejection pass. Public decoding/native export and
+local outgoing PC bounds are checked in the circuit guide. [Initialized native
+control history](Families/JumpBranchSlt/History.lean) now uses its separate imported
+clock/port registry and proved shared clock laws. Actual public Sail seeds/PC plus
+full matching derive complete Clean history and newest reads, retaining readonly
+alias refreshes and actual masked writes. [The full JAL -4 regression](../../../Tests/ControlHistory.lean)
+retains both x0 reads and the link write; a stale local read fails matching.
+Control word bounds, original Sail cell/instruction execution and terminal cell
+matching remain open. Existing arithmetic and word-memory claims retain their meanings.

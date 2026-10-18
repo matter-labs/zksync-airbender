@@ -2098,6 +2098,48 @@
       "backport_reuse_path": "scripts/check_native_setup.py",
       "backport_reuse_sha256": "edd34cbc2801e2ff294e194a0089451ecd05fdd980539fc35bea4981cae28d5d",
       "change": "Preserve all six prior exact artifact reproductions and append signed-control fixture/binary reproduction plus partial/oversized input rejection under the same guard."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/Timestamp.lean",
+      "backport_reuse_revision": "06fb36c16092278921b66d83b090f7df6b98c6f4",
+      "backport_reuse_path": "Airbender/Proofs/WordMemory/Timestamp.lean",
+      "backport_reuse_sha256": "a6c93567e14e1b5b04f835e2ce7fea49d68fd5322e016db83675bb0eb18df0d7",
+      "change": "Copy the native v2 clock calculation structure and shared increment/effects assembly. Remove only the word-ROM parameter, bind control Boolean carry/borrow assertions 14/11/12/13, advancement equations 34/35, timestamp lookups 6..13 and previous-clock/borrow variables 51..59. All four methods are kernel checked against the actual imported control artifact; no source BabyBear inverse is introduced."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Context/JumpBranchSlt.lean",
+      "backport_reuse_revision": "06fb36c16092278921b66d83b090f7df6b98c6f4",
+      "backport_reuse_path": "Airbender/Review/Helpers/Context/WordMemory.lean",
+      "backport_reuse_sha256": "6b1b79399171526b50ea28141943f134a090860a289c951aafa1e55778da335c",
+      "change": "Copy the separate singleton-family registry structure, selecting the actual imported control state/ports/decoder columns and native constraints with Unit setup. Do not change the arithmetic or word-memory registries or assert Sail implementation."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/History.lean",
+      "backport_reuse_revision": "06fb36c16092278921b66d83b090f7df6b98c6f4",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/History.lean",
+      "backport_reuse_sha256": "04d34f1762359db6fdc3cf5fc9838ac7c8265cc64c91bb91fcb38e32b0d2d634",
+      "change": "Copy the complete shared ClockLaws instance assembly with only native family/module names changed. Native control timestamp calculations and metadata discharge every obligation; shared clock/history/latest-read proofs remain unchanged."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/JumpBranchSlt/History.lean",
+      "backport_reuse_revision": "06fb36c16092278921b66d83b090f7df6b98c6f4",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/WordMemory/History.lean",
+      "backport_reuse_sha256": "31cb24615ff1e4fd9bba61ee47cd07dfe8ff7016383b28cb6f166945e601c1d4",
+      "change": "Copy the short public memory-history theorem structure for the separate checked control registry. Actual Sail seed/PC construction and full native matching derive clock boundaries, unique addresses, complete Clean history and latest reads; word bounds and actual Sail cell/instruction execution remain separate."
+    },
+    {
+      "path": "Tests/ControlHistory.lean",
+      "backport_reuse_revision": "06fb36c16092278921b66d83b090f7df6b98c6f4",
+      "backport_reuse_path": "Tests/InitializedHistory.lean",
+      "backport_reuse_sha256": "435d6f6bc83a03fcaaf45467e207c4c239219844151798b1f06a6c84928dcb1c",
+      "change": "Reuse explicit alias-token permutations, public Sail seed/PC extraction, latest-read application, stale matching rejection and interpreter-level missing-register proof. Instantiate two readonly x0 accesses and actual JAL x1 link write, retaining public old x1=123 and full native matching. Construct the missing-register map explicitly rather than assuming default Sail registers are empty."
+    },
+    {
+      "path": "Tests/ControlHistory.lean",
+      "backport_reuse_revision": "06fb36c16092278921b66d83b090f7df6b98c6f4",
+      "backport_reuse_path": "Tests/JumpDecoder.lean",
+      "backport_reuse_sha256": "cda428261516301702e6c492328cae88083d47b1beed8f1dba7410a307ae4741",
+      "change": "Reuse full native JAL -4 constraint/fixed-query checking with raw funct3 seven and exact exported membership. Adapt only actual destination old read and second readonly previous clock; check fresh and stale local rows, derive all clocks/effects from public initialization, and independently check the native lower-clock carry row with all original constraints/queries."
     }
   ],
   "setup_artifacts": [

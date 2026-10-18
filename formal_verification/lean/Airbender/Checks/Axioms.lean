@@ -28,6 +28,7 @@ import Tests.JumpControl
 import Tests.JumpPC
 import Tests.JumpDecoder
 import Tests.NativeJumpSetup
+import Tests.ControlHistory
 
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
@@ -895,3 +896,23 @@ import Tests.NativeJumpSetup
 #print axioms Tests.NativeJumpSetup.hole_and_tail
 #print axioms Tests.NativeJumpSetup.exported_jal
 #print axioms Tests.NativeJumpSetup.wrong_tag_rejected
+
+#print axioms Airbender.JumpBranchSlt.Proofs.timestamp_equations
+#print axioms Airbender.JumpBranchSlt.Proofs.final_clock_bound
+#print axioms Airbender.JumpBranchSlt.Proofs.clock_advance
+#print axioms Airbender.JumpBranchSlt.Proofs.clock_effects
+#print axioms Airbender.JumpBranchSlt.public_memory_soundness
+#print axioms Tests.ControlHistory.native_constraints
+#print axioms Tests.ControlHistory.accepted
+#print axioms Tests.ControlHistory.public_inputs
+#print axioms Tests.ControlHistory.public_history
+#print axioms Tests.ControlHistory.second_latest
+#print axioms Tests.ControlHistory.stale_rejected
+#print axioms Tests.ControlHistory.derived_clocks
+#print axioms Tests.ControlHistory.advance
+#print axioms Tests.ControlHistory.exported_membership
+#print axioms Tests.ControlHistory.effects
+#print axioms Tests.ControlHistory.terminal_clock
+#print axioms Tests.ControlHistory.missing_register_rejected
+#print axioms Tests.ControlHistory.rollover_constraints
+#print axioms Tests.ControlHistory.rollover_advance
