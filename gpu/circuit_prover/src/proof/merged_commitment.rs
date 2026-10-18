@@ -161,6 +161,7 @@ pub fn commit_merged_from_transfers<'a, A: GoodAllocator + 'a>(
         MergedCommitStrategy::Monomials => schedule_memory_commitment_job_with_monomials(
             &mut stage1_output.memory_trace_holder,
             callbacks,
+            Some(inputs),
             range,
             context,
         ),
