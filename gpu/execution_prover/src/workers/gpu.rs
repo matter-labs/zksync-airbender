@@ -651,6 +651,7 @@ fn schedule_l1_wrap_phase_one<'a>(
         inits_and_teardowns,
         tracing_data,
         precomputed.host(),
+        precomputed.constants(),
         &commitment_mode,
         context,
     )?;

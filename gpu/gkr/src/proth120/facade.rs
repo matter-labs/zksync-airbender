@@ -13,6 +13,7 @@ use super::backward::scheduled_execution::{
     ResourceIdPr, ResourceLedgerScopePr,
 };
 use super::backward::{schedule_backward_pr, DrTailProofPlanPr, GKRBackwardStageSnapshotSinkPr};
+use super::base_layer_claims::BaseClaimIndicesPr;
 use super::forward::{
     prepare_backward_handoff_pr, schedule_forward_challenge_banks, schedule_forward_pass_pr,
 };
@@ -23,6 +24,13 @@ use super::programs::GkrProgramsPr;
 use super::proof_layout::ProofSlabPr;
 use crate::setup::PackedSetupSource;
 use crate::upstream::{ProverConfig, PR};
+
+/// Per-proof GKR inputs the caller uploads ahead of `schedule_gkr`, with its own
+/// input transfer; each `None` is built and copied in during the schedule.
+#[derive(Default)]
+pub struct GkrPreparedInputsPr {
+    pub base_claim_indices: Option<BaseClaimIndicesPr>,
+}
 
 #[allow(clippy::too_many_arguments)]
 pub fn schedule_gkr(
@@ -38,9 +46,11 @@ pub fn schedule_gkr(
     proof: &mut ProofSlabPr,
     dr_tail_plan: &DrTailProofPlanPr,
     stage_snapshots: Option<UnsafeMutAccessor<GKRBackwardStageSnapshotSinkPr>>,
+    prepared: GkrPreparedInputsPr,
     callbacks: &mut Callbacks<'_>,
     context: &ProverContext,
 ) -> CudaResult<GkrOutputPr> {
+    let GkrPreparedInputsPr { base_claim_indices } = prepared;
     assert_eq!(
         config.trace_len_log2,
         base.log_rows() as usize,
@@ -127,6 +137,7 @@ pub fn schedule_gkr(
         setup,
         pack_log2,
         batching_pow_bits,
+        base_claim_indices,
         proof,
         context,
     )?;

@@ -8,8 +8,10 @@ use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::PR;
 use gpu_core::primitives::static_host::{alloc_static_pinned_box_from_slice, StaticPinnedBox};
+use gpu_prover_context::transfer::Transfer;
 use gpu_prover_context::ProverContext;
 use std::mem::{align_of, offset_of, size_of};
+use std::sync::Arc;
 
 #[repr(C, align(16))]
 #[derive(Clone, Copy, Debug, Default)]
@@ -89,7 +91,7 @@ impl From<&PRLinearRelation> for Proth120LinearRelation {
     }
 }
 
-/// Owns pinned H2D sources, so it must be kept until the completion event of the last launch that reads it.
+/// May own pinned H2D sources, so it must be kept until the completion event of the last launch that reads it.
 pub struct Proth120LookupRelations {
     _host: Option<StaticPinnedBox<Proth120LinearRelation>>,
     device: Option<DeviceAllocation<Proth120LinearRelation>>,
@@ -120,12 +122,62 @@ impl Proth120LookupRelations {
     pub(crate) fn counts(&self) -> (usize, usize) {
         (self.range_check_16_count, self.timestamp_count)
     }
+
+    /// Device buffer for `host`'s relations, filled by [`Self::schedule_transfer`].
+    pub fn allocate(
+        host: &Proth120LookupRelationsHost,
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
+        let device = host
+            .relations
+            .as_ref()
+            .map(|relations| context.alloc(relations.len(), AllocationPlacement::BestFit))
+            .transpose()?;
+        Ok(Self {
+            _host: None,
+            device,
+            range_check_16_count: host.range_check_16_count,
+            timestamp_count: host.timestamp_count,
+        })
+    }
+
+    pub fn schedule_transfer<'a>(
+        &mut self,
+        host: &Proth120LookupRelationsHost,
+        transfer: &mut Transfer<'a>,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        if let (Some(relations), Some(device)) = (&host.relations, self.device.as_mut()) {
+            transfer.schedule(Arc::clone(relations), device, context)?;
+        }
+        Ok(())
+    }
 }
 
-pub fn prepare_lookup_relations(
-    circuit: &GKRCircuitArtifact<PR>,
-    context: &ProverContext,
-) -> CudaResult<Proth120LookupRelations> {
+/// A circuit's lookup relations in device layout, built once per circuit; the
+/// pinned buffer is the H2D source of every proof's [`Proth120LookupRelations`].
+pub struct Proth120LookupRelationsHost {
+    relations: Option<Arc<StaticPinnedBox<Proth120LinearRelation>>>,
+    range_check_16_count: usize,
+    timestamp_count: usize,
+}
+
+impl Proth120LookupRelationsHost {
+    pub fn new(circuit: &GKRCircuitArtifact<PR>) -> CudaResult<Self> {
+        let relations = linear_relations(circuit);
+        Ok(Self {
+            relations: if relations.is_empty() {
+                None
+            } else {
+                Some(Arc::new(alloc_static_pinned_box_from_slice(&relations)?))
+            },
+            range_check_16_count: circuit.range_check_16_lookup_expressions.len(),
+            timestamp_count: circuit.timestamp_range_check_lookup_expressions.len(),
+        })
+    }
+}
+
+fn linear_relations(circuit: &GKRCircuitArtifact<PR>) -> Vec<Proth120LinearRelation> {
     let range_check_16: &[PRSingleColumnLookupRelation] =
         &circuit.range_check_16_lookup_expressions;
     let timestamp: &[PRSingleColumnLookupRelation] =
@@ -136,6 +188,14 @@ pub fn prepare_lookup_relations(
         .map(|relation| (&relation.input).into())
         .collect();
     assert!(relations.len() <= u32::MAX as usize);
+    relations
+}
+
+pub fn prepare_lookup_relations(
+    circuit: &GKRCircuitArtifact<PR>,
+    context: &ProverContext,
+) -> CudaResult<Proth120LookupRelations> {
+    let relations = linear_relations(circuit);
     let (host, device) = if relations.is_empty() {
         (None, None)
     } else {
@@ -147,7 +207,7 @@ pub fn prepare_lookup_relations(
     Ok(Proth120LookupRelations {
         _host: host,
         device,
-        range_check_16_count: range_check_16.len(),
-        timestamp_count: timestamp.len(),
+        range_check_16_count: circuit.range_check_16_lookup_expressions.len(),
+        timestamp_count: circuit.timestamp_range_check_lookup_expressions.len(),
     })
 }

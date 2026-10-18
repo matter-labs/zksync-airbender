@@ -1,7 +1,7 @@
 use std::sync::{Arc, OnceLock};
 
 use era_cudart::result::CudaResult;
-use gpu_circuit_prover::l1_wrap::L1WrapGeometry;
+use gpu_circuit_prover::l1_wrap::{L1WrapConstantsHost, L1WrapGeometry};
 use gpu_core::primitives::field::PR;
 use gpu_core::primitives::static_host::StaticPinnedBox;
 use gpu_gkr::proth120::programs::GkrProgramsPr;
@@ -27,6 +27,7 @@ pub struct L1WrapPrecomputed {
     pub config: ProverConfig,
     pub geometry: L1WrapGeometry,
     host: OnceLock<Arc<L1WrapSetupHost>>,
+    constants: OnceLock<Arc<L1WrapConstantsHost>>,
 }
 
 impl L1WrapPrecomputed {
@@ -55,6 +56,7 @@ impl L1WrapPrecomputed {
             config,
             geometry,
             host: OnceLock::new(),
+            constants: OnceLock::new(),
         })
     }
 
@@ -74,18 +76,22 @@ impl L1WrapPrecomputed {
             circuit_type.get_domain_size(),
             "{circuit_type:?} setup trace length mismatch"
         );
-        self.host
+        self.host.get_or_try_init(|| {
+            let cfg = PackedCommitConfig::from_prover_config(
+                &self.config,
+                self.geometry.log_message,
+                gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+            );
+            L1WrapSetupHost::precompute(&self.setup.setup, self.geometry.pack_log2, cfg, context)
+                .map(Arc::new)
+        })?;
+        self.constants
             .get_or_try_init(|| {
-                let cfg = PackedCommitConfig::from_prover_config(
+                L1WrapConstantsHost::new(
+                    &self.programs,
+                    &self.circuit,
                     &self.config,
-                    self.geometry.log_message,
-                    gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
-                );
-                L1WrapSetupHost::precompute(
-                    &self.setup.setup,
-                    self.geometry.pack_log2,
-                    cfg,
-                    context,
+                    &self.geometry,
                 )
                 .map(Arc::new)
             })
@@ -95,6 +101,14 @@ impl L1WrapPrecomputed {
     pub fn host(&self) -> Arc<L1WrapSetupHost> {
         Arc::clone(
             self.host
+                .get()
+                .expect("L1Wrap setup initialization must run before proving"),
+        )
+    }
+
+    pub fn constants(&self) -> Arc<L1WrapConstantsHost> {
+        Arc::clone(
+            self.constants
                 .get()
                 .expect("L1Wrap setup initialization must run before proving"),
         )
@@ -146,6 +160,7 @@ mod cpu_tests {
             config,
             geometry,
             host: OnceLock::new(),
+            constants: OnceLock::new(),
         };
         precomputed.host();
     }

@@ -7,6 +7,7 @@ use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::static_host::StaticPinnedBox;
+use gpu_gkr::proth120::base_layer_claims::BaseClaimIndicesPr;
 use gpu_gkr::proth120::packed_challenges::{transcript_prefix_words, BOUNDARY_PREFIX_U32_LEN};
 use gpu_gkr::setup::L1WrapSetupHost;
 use gpu_prover_context::transfer::Transfer;
@@ -16,12 +17,13 @@ use gpu_trace::trace::tracing_data::{
     InitsAndTeardownsTransfer, TracingDataHost, TracingDataTransfer, UnrolledTracingDataHost,
 };
 use gpu_trace::witness::circuit_type::CircuitType;
+use gpu_trace::witness::proth120::Proth120LookupRelations;
 use gpu_trace::witness::trace_unrolled::{
     ExecutorFamilyDecoderData, InitsAndTeardownsTraceHost, UnifiedOpcodeTracingDataWithTimestamp,
     UnrolledUnifiedTraceHost, PAGE_SIZE_LOG2,
 };
 
-use super::L1WrapGeometry;
+use super::{L1WrapConstantsHost, L1WrapGeometry};
 use crate::proof::memory_policy::presets::l1_wrap::align_up;
 use crate::upstream::{CommitmentMode, TimestampScalar};
 
@@ -36,6 +38,9 @@ pub struct L1WrapInputs<'a, A: GoodAllocator> {
     pub(crate) transcript_prefix_host: Vec<u32>,
     pub(crate) top_bits_host: Vec<u32>,
     pub(crate) setup_host: Arc<L1WrapSetupHost>,
+    pub(crate) constants: Arc<L1WrapConstantsHost>,
+    pub(crate) relations: Proth120LookupRelations,
+    pub(crate) base_claim_indices: BaseClaimIndicesPr,
     pub(crate) request_range: Option<Range>,
 }
 
@@ -55,6 +60,7 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
         inits_and_teardowns: InitsAndTeardownsTraceHost<A>,
         tracing_data: UnrolledUnifiedTraceHost<A>,
         setup_host: Arc<L1WrapSetupHost>,
+        constants: Arc<L1WrapConstantsHost>,
         commitment_mode: &CommitmentMode,
         context: &ProverContext,
     ) -> CudaResult<Self> {
@@ -84,6 +90,9 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
         let transcript_prefix_host = transcript_prefix_words(commitment_mode, &top_bits_host);
         let transcript_prefix =
             context.alloc::<u32>(transcript_prefix_host.len(), AllocationPlacement::BestFit)?;
+        let relations = Proth120LookupRelations::allocate(&constants.relations, context)?;
+        let base_claim_indices =
+            BaseClaimIndicesPr::allocate(&constants.base_claim_indices, context)?;
         let transfer = Transfer::new()?;
         transfer.record_allocated(context)?;
         Ok(Self {
@@ -95,6 +104,9 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
             transcript_prefix_host,
             top_bits_host,
             setup_host,
+            constants,
+            relations,
+            base_claim_indices,
             request_range: None,
         })
     }
@@ -114,6 +126,10 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
         self.inits_and_teardowns
             .schedule_transfer(&mut self.transfer, context)?;
         self.tracing_data
+            .schedule_transfer(&mut self.transfer, context)?;
+        self.relations
+            .schedule_transfer(&self.constants.relations, &mut self.transfer, context)?;
+        self.base_claim_indices
             .schedule_transfer(&mut self.transfer, context)?;
         self.transfer.record_transferred(context)
     }

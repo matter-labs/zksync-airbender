@@ -18,7 +18,7 @@ use gpu_gkr::proth120::inputs::Proth120GkrWitnessInputs;
 use gpu_gkr::proth120::packed_challenges::{self, PackedChallengeConfig, PackedChallenges};
 use gpu_gkr::proth120::programs::GkrProgramsPr;
 use gpu_gkr::proth120::proof_layout::{M6ProofFields, ProofLayoutPr, ProofSlabPr};
-use gpu_gkr::proth120::{schedule_gkr, GkrOutputPr};
+use gpu_gkr::proth120::{schedule_gkr, GkrOutputPr, GkrPreparedInputsPr};
 use gpu_gkr::setup::{L1WrapSetupHost, PackedSetupSource};
 use gpu_prover_context::transfer::{Transfer, TransferKeepalive};
 use gpu_prover_context::ProverContext;
@@ -27,7 +27,7 @@ use gpu_trace::trace::packed::{PackedCommitConfig, PackedCosetRecomputeOracle};
 use gpu_trace::trace::tracing_data::{TracingDataDevice, UnrolledTracingDataDevice};
 use gpu_trace::witness::proth120::{
     generate_fused_values, generate_inits_and_teardowns, generate_lookup_multiplicities,
-    prepare_lookup_relations, Proth120LookupRelations, Proth120WitnessBuffers,
+    Proth120LookupRelations, Proth120WitnessBuffers,
 };
 use gpu_trace::witness::trace_unrolled::PAGE_SIZE_LOG2;
 use gpu_whir::proth120::{
@@ -151,6 +151,9 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         transcript_prefix_host: _,
         top_bits_host,
         setup_host,
+        constants: _,
+        relations,
+        base_claim_indices,
         request_range,
     } = inputs;
     let decoder = decoder.expect("L1Wrap requires a decoder table");
@@ -195,7 +198,6 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         circuit.timestamp_range_check_lookup_expressions.len() * rows,
         AllocationPlacement::BestFit,
     )?;
-    let relations = prepare_lookup_relations(circuit, context)?;
     {
         let (memory, witness) = raw
             .get_uninit_hypercube_evals_mut()
@@ -333,6 +335,9 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         &mut slab,
         dr_tail_plan,
         None,
+        GkrPreparedInputsPr {
+            base_claim_indices: Some(base_claim_indices),
+        },
         &mut callbacks,
         context,
     )?;

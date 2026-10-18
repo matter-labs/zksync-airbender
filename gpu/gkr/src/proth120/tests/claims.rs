@@ -168,6 +168,7 @@ fn pr_gather_base_claims_small() {
         circuit.memory_layout.total_width,
         circuit.witness_layout.total_width,
         circuit.generic_lookup_tables_width,
+        None,
         &context,
     )
     .unwrap();
@@ -244,7 +245,7 @@ fn pr_packed_merge_transcript_matches_cpu() {
             expected_point.extend_from_slice(&extra);
             let mut seed = upload(&initial_seed, &context);
             let gathered =
-                schedule_gather_base_claims_pr(&d_claims, &addresses, 38, 66, 10, &context)
+                schedule_gather_base_claims_pr(&d_claims, &addresses, 38, 66, 10, None, &context)
                     .unwrap();
             let mut proof = ProofSlabPr::new(Arc::clone(&layout), &context).unwrap();
             let mut snapshots: Vec<_> = (0..3)
@@ -603,13 +604,28 @@ fn schedule_fixture_full(context: &gpu_prover_context::ProverContext) -> Schedul
     let mut config = prover::gkr::prover_config::ProofProfile::L1Wrap
         .prover_config(21, crate::upstream::SecurityLevel::Sec100);
     config.trace_len_log2 = log_rows as usize;
-    let mut proof = crate::proth120::proof_layout::ProofSlabPr::new(
-        Arc::new(crate::proth120::proof_layout::ProofLayoutPr::new(
-            &programs, &config, PACK_LOG2,
-        )),
+    let layout = Arc::new(crate::proth120::proof_layout::ProofLayoutPr::new(
+        &programs, &config, PACK_LOG2,
+    ));
+    let indices_host = crate::proth120::base_layer_claims::BaseClaimIndicesHostPr::new(
+        &programs,
+        &layout,
+        artifact.memory_layout.total_width,
+        artifact.witness_layout.total_width,
+        artifact.generic_lookup_tables_width,
+    )
+    .unwrap();
+    let mut indices =
+        crate::proth120::base_layer_claims::BaseClaimIndicesPr::allocate(&indices_host, context)
+            .unwrap();
+    let indices_transfer = gpu_prover_context::transfer::single_shot_h2d(
+        |transfer| indices.schedule_transfer(transfer, context),
         context,
     )
     .unwrap();
+    indices_transfer.ensure_transferred(context).unwrap();
+    let mut proof =
+        crate::proth120::proof_layout::ProofSlabPr::new(Arc::clone(&layout), context).unwrap();
     let seed_bytes = read_back(&seed, 0u8, context).try_into().unwrap();
     let lookup_nonce = read_back(challenges.nonce(), 0u64, context)[0];
     let dr_tail_plan = crate::proth120::backward::preflight_dr_tail_resources_pr(
@@ -639,11 +655,15 @@ fn schedule_fixture_full(context: &gpu_prover_context::ProverContext) -> Schedul
         &mut proof,
         &dr_tail_plan,
         None,
+        crate::proth120::GkrPreparedInputsPr {
+            base_claim_indices: Some(indices),
+        },
         &mut callbacks,
         context,
     )
     .unwrap();
     context.get_exec_stream().synchronize().unwrap();
+    drop(indices_transfer);
     drop(callbacks);
     drop(base);
     drop(d_setup);

@@ -13,7 +13,9 @@ mod tests;
 pub use fused::generate_fused_values;
 pub use inits_and_teardowns::generate_inits_and_teardowns;
 pub use multiplicities::generate_lookup_multiplicities;
-pub use relations::{prepare_lookup_relations, Proth120LookupRelations};
+pub use relations::{
+    prepare_lookup_relations, Proth120LookupRelations, Proth120LookupRelationsHost,
+};
 
 pub struct Proth120WitnessBuffers<'a> {
     pub memory: DeviceMatrixMut<'a, PR>,

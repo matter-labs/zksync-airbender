@@ -7,7 +7,7 @@ pub mod packed_challenges;
 pub mod packed_merge;
 pub mod programs;
 pub mod proof_layout;
-pub use facade::schedule_gkr;
+pub use facade::{schedule_gkr, GkrPreparedInputsPr};
 pub use packed_merge::{GkrOutputPr, GkrWhirHandoffPr};
 
 #[cfg(test)]

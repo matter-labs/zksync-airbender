@@ -12,7 +12,9 @@ use gpu_trace::trace::packed::PackedCosetRecomputeOracle;
 
 use crate::proth120::backward::scheduled_execution::{note_device, ResourceEventPr};
 use crate::proth120::backward::GpuGKRBackwardScheduledExecutionPr;
-use crate::proth120::base_layer_claims::{schedule_gather_base_claims_pr, GatheredBaseClaimsPr};
+use crate::proth120::base_layer_claims::{
+    schedule_gather_base_claims_pr, BaseClaimIndicesPr, GatheredBaseClaimsPr,
+};
 use crate::proth120::proof_layout::ProofSlabPr;
 use crate::setup::PackedSetupSource;
 use crate::upstream::PR;
@@ -55,6 +57,7 @@ pub fn schedule_base_layer_claims_and_packed_merge_pr(
     setup: &PackedSetupSource<'_>,
     pack_log2: u32,
     batching_pow_bits: u32,
+    base_claim_indices: Option<BaseClaimIndicesPr>,
     proof: &mut ProofSlabPr,
     context: &ProverContext,
 ) -> CudaResult<GkrOutputPr> {
@@ -87,6 +90,7 @@ pub fn schedule_base_layer_claims_and_packed_merge_pr(
         memory_columns,
         witness_columns,
         setup.raw().columns_count,
+        base_claim_indices,
         context,
     )?;
     let (seed, point) = backward.final_device_seed_and_claim_point_mut();

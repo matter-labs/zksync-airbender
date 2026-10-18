@@ -1,9 +1,11 @@
+mod constants;
 mod geometry;
 mod inputs;
 mod orchestration;
 #[cfg(test)]
 mod tests;
 
+pub use constants::L1WrapConstantsHost;
 pub use geometry::{l1_wrap_batching_pow_bits, L1WrapGeometry};
 pub use inputs::L1WrapInputs;
 pub use orchestration::{assemble_l1_proof, prove, GpuL1WrapProofJob};
