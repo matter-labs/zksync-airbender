@@ -1822,6 +1822,26 @@ fn cpu_typed_comparator_accepts_a_resumed_suffix() {
 }
 
 #[test]
+fn cpu_typed_comparator_accepts_the_recursion_unified_suffix() {
+    typed_comparison(
+        Reproduction::ResumedAfterRecursionUnified,
+        |_, inventory| {
+            inventory.retain(|file| {
+                !["recursion_unified.json", "manifest.json"].contains(&file.name.as_str())
+            })
+        },
+        false,
+    )
+    .unwrap();
+    typed_comparison(
+        Reproduction::ResumedAfterRecursionUnified,
+        |_, inventory| inventory.retain(|file| file.name != "manifest.json"),
+        false,
+    )
+    .unwrap_err();
+}
+
+#[test]
 fn cpu_typed_comparator_rejects_a_shortened_reproduction() {
     for (reproduction, keep) in [
         (Reproduction::ResumedAfter(0), &["l1_feeder.json"][..]),
