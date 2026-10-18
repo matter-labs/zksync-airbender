@@ -7,13 +7,12 @@ use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
 use gpu_core::allocator::tracker::AllocationPlacement;
-use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::static_host::alloc_static_pinned_box_from_slice;
 use gpu_gkr_compiler::{
     CoeffProduct, CoefficientRecipeId, NormalizedCoefficientRecipe, WindowCoefficientPlan,
 };
-use gpu_prover_context::transfer::Transfer;
+use gpu_prover_context::transfer::{Transfer, TransferKeepalive};
 use gpu_prover_context::ProverContext;
 
 use super::scheduled_execution::{
@@ -477,7 +476,7 @@ pub(crate) struct CoefficientTablesPr {
 pub(crate) fn schedule_coefficient_tables_upload_pr(
     host: &CoefficientTablesHostPr,
     context: &ProverContext,
-) -> CudaResult<(CoefficientTablesPr, Callbacks<'static>)> {
+) -> CudaResult<(CoefficientTablesPr, TransferKeepalive<'static>)> {
     host.assert_consistent();
     let values_host = host.values();
     let index_host = host.index_words();
@@ -535,7 +534,7 @@ pub(crate) fn schedule_coefficient_tables_upload_pr(
         immediate_base: host.monomial_coeffs.len() + host.scalars.len(),
         layers: host.layers.clone(),
     };
-    Ok((tables, transfer.into_callbacks()))
+    Ok((tables, transfer.into_keepalive()))
 }
 
 #[derive(Clone, Copy, Debug)]

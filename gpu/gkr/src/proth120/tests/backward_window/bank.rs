@@ -180,7 +180,7 @@ fn pr_eval_coefficients_matches_host() {
     let programs = programs();
     let top_bits = fixture_top_bits(&programs);
     let host = CoefficientTablesHostPr::build(&programs, &top_bits);
-    let (tables, callbacks) = schedule_coefficient_tables_upload_pr(&host, &context).unwrap();
+    let (tables, keepalive) = schedule_coefficient_tables_upload_pr(&host, &context).unwrap();
     let mut rng = StdRng::seed_from_u64(0xba4c);
     let poison = PR::from_u128_with_reduction(0x0bad_cafe);
     for case in 0..3 {
@@ -278,7 +278,7 @@ fn pr_eval_coefficients_matches_host() {
         assert_eq!(read_back(&d_challenges, PR::ZERO, &context), challenges);
     }
     context.get_exec_stream().synchronize().unwrap();
-    drop(callbacks);
+    drop(keepalive);
 }
 
 fn synthetic_tables(counts: &[usize]) -> CoefficientTablesHostPr {
@@ -363,7 +363,7 @@ fn pr_eval_coefficients_synthetic_ranges() {
     let context = make_context();
     let counts = [0usize, 1, 2, 3, 31, 32, 33, 63, 64, 65, 297, 5, 1];
     let host = synthetic_tables(&counts);
-    let (tables, callbacks) = schedule_coefficient_tables_upload_pr(&host, &context).unwrap();
+    let (tables, keepalive) = schedule_coefficient_tables_upload_pr(&host, &context).unwrap();
     let mut rng = StdRng::seed_from_u64(0x5e7);
     let challenges: Vec<PR> = (0..PR_COEFF_CHALLENGES)
         .map(|_| random_canonical(&mut rng))
@@ -391,5 +391,5 @@ fn pr_eval_coefficients_synthetic_ranges() {
         assert_eq!(&actual[1..count + 1], &expected[first..first + count]);
     }
     context.get_exec_stream().synchronize().unwrap();
-    drop(callbacks);
+    drop(keepalive);
 }

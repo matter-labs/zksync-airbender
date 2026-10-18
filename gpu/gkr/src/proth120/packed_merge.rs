@@ -4,9 +4,9 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::{DeviceSlice, DeviceVariable};
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
 use gpu_core::allocator::tracker::AllocationPlacement;
-use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_hash::keccak256::{keccak256_pow, transcript_draw_fields};
+use gpu_prover_context::transfer::TransferKeepalive;
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::packed::PackedCosetRecomputeOracle;
 
@@ -44,7 +44,7 @@ pub struct GkrOutputPr {
     seed: DeviceAllocation<u8>,
     _extra: DeviceAllocation<PR>,
     _gathered: GatheredBaseClaimsPr,
-    _coefficient_upload_callbacks: Option<Callbacks<'static>>,
+    _coefficient_upload_keepalive: Option<TransferKeepalive<'static>>,
     pub(crate) backward: Option<GpuGKRBackwardScheduledExecutionPr>,
 }
 
@@ -104,7 +104,7 @@ pub fn schedule_base_layer_claims_and_packed_merge_pr(
         proof,
         context,
     )?;
-    output._coefficient_upload_callbacks = backward.coefficient_upload_callbacks.take();
+    output._coefficient_upload_keepalive = backward.coefficient_upload_keepalive.take();
     Ok(output)
 }
 
@@ -319,7 +319,7 @@ where
         seed: output_seed,
         _extra: extra,
         _gathered: gathered,
-        _coefficient_upload_callbacks: None,
+        _coefficient_upload_keepalive: None,
         backward: None,
     })
 }

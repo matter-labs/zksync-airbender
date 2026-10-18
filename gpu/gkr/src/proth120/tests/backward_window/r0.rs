@@ -321,7 +321,7 @@ fn pr_r0_window_matches_host_sumcheck_small() {
     } = forward_fixture_full(&context);
     let (_, storage, _, _) = gpu.into_parts();
     let host_tables = CoefficientTablesHostPr::build(&programs, &top_bits);
-    let (tables, callbacks) =
+    let (tables, keepalive) =
         schedule_coefficient_tables_upload_pr(&host_tables, &context).unwrap();
     let mut rng = StdRng::seed_from_u64(0x7e0);
     let layers: Vec<LayerInputs> = [1usize, 0]
@@ -461,6 +461,6 @@ fn pr_r0_window_matches_host_sumcheck_small() {
     }
     println!("M6_T5_R0_LAUNCHES {launched:?}");
     context.get_exec_stream().synchronize().unwrap();
-    drop(callbacks);
+    drop(keepalive);
     drop(proof);
 }

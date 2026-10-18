@@ -10,6 +10,7 @@ use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::{DeviceAllocation, UnsafeMutAccessor};
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::E4;
+use gpu_prover_context::transfer::TransferKeepalive;
 use gpu_prover_context::ProverContext;
 
 use super::banks::{
@@ -387,7 +388,7 @@ pub struct GpuGKRBackwardScheduledExecutionPr {
     pub(crate) final_claim_layout: Option<ClaimBufferLayout>,
     pub(crate) coefficient_tables: Option<CoefficientTablesPr>,
     #[allow(dead_code)]
-    pub(crate) coefficient_upload_callbacks: Option<Callbacks<'static>>,
+    pub(crate) coefficient_upload_keepalive: Option<TransferKeepalive<'static>>,
     pub(crate) scratch: Option<BackwardScratchPr>,
     pub(crate) _transcript_handoff: Option<GpuGKRTranscriptHandoff<PR>>,
 }
@@ -503,7 +504,7 @@ pub fn schedule_backward_pr(
     let workflow_range = Range::new("gkr.proth120.backward.schedule")?;
     workflow_range.start(stream)?;
     let host = CoefficientTablesHostPr::build(&programs, &inits_and_teardowns_top_bits);
-    let (coefficient_tables, coefficient_upload_callbacks) =
+    let (coefficient_tables, coefficient_upload_keepalive) =
         schedule_coefficient_tables_upload_pr(&host, context)?;
     let mut scratch = BackwardScratchPr::new(context)?;
     let mut input = LayerInputPr {
@@ -631,7 +632,7 @@ pub fn schedule_backward_pr(
         final_device_claims: Some(claims),
         final_claim_layout: Some(claim_layout),
         coefficient_tables: Some(coefficient_tables),
-        coefficient_upload_callbacks: Some(coefficient_upload_callbacks),
+        coefficient_upload_keepalive: Some(coefficient_upload_keepalive),
         scratch: Some(scratch),
         _transcript_handoff: Some(transcript_handoff),
     };
