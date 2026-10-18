@@ -55,9 +55,15 @@ fn cpu_m8_l1_inputs_fit_reserve() {
         ALLOCATOR_BLOCK_BYTES,
         1 << ProverContextConfig::default().allocator_block_log_size
     );
-    let bytes = L1WrapInputs::<'static, Global>::phase_one_capacity_bytes(CircuitType::L1Wrap21);
+    let (geometry, _) = wrap_geometry(CircuitType::L1Wrap21);
+    let bytes = L1WrapInputs::<'static, Global>::phase_one_capacity_bytes(
+        &geometry,
+        crate::proof::memory_policy::presets::l1_wrap::PARTIAL_TREES.setup,
+    );
     let mib = 1 << 20;
-    assert_eq!(bytes, (112 + 1 + 16 + 32 + 3 + 1) * mib);
+    // Tracing data, I&T pages/values/timestamps, decoder, transcript prefix,
+    // then the setup's raw evaluations, packed monomials and depth-10 trees.
+    assert_eq!(bytes, (112 + 1 + 16 + 32 + 3 + 1 + 320 + 512 + 64) * mib);
     assert!(bytes <= INPUTS_RESERVE_BYTES);
 }
 

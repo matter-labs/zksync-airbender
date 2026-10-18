@@ -789,6 +789,8 @@ fn measure<B: GoodAllocator>(
                     source.inits_and_teardowns.clone(),
                     source.tracing_data.clone(),
                     precomputed.host(),
+                    case.partial_trees(CircuitType::L1Wrap21, ProofProfile::L1Wrap)
+                        .setup,
                     precomputed.constants(),
                     &source.commitment_mode,
                     context,
@@ -800,7 +802,9 @@ fn measure<B: GoodAllocator>(
                 context,
                 context.get_h2d_stream().synchronize(),
             )?;
-            row.target_input_bytes = Some(context.get_used_mem_current() - before);
+            let bytes = context.get_used_mem_current() - before;
+            assert_wrap_inputs_within_bound(bytes, precomputed, case);
+            row.target_input_bytes = Some(bytes);
             let follower = schedule_follower(
                 case,
                 context,
@@ -1086,6 +1090,8 @@ fn schedule_follower<'a, B: GoodAllocator + 'a>(
                     source.inits_and_teardowns.clone(),
                     source.tracing_data.clone(),
                     precomputed.host(),
+                    case.partial_trees(CircuitType::L1Wrap21, ProofProfile::L1Wrap)
+                        .setup,
                     precomputed.constants(),
                     &source.commitment_mode,
                     context,
@@ -1095,8 +1101,29 @@ fn schedule_follower<'a, B: GoodAllocator + 'a>(
             (None, Some(inputs))
         }
     };
-    row.follower_input_bytes = Some(context.get_used_mem_current() - before);
+    let bytes = context.get_used_mem_current() - before;
+    if let (Follower::Wrap, Some(precomputed)) = (case.follower, wrap_precomputed) {
+        assert_wrap_inputs_within_bound(bytes, precomputed, case);
+    }
+    row.follower_input_bytes = Some(bytes);
     Ok(follower)
+}
+
+/// The phase-one capacity bound must cover what a wrap's inputs actually take.
+fn assert_wrap_inputs_within_bound(
+    bytes: usize,
+    precomputed: &L1WrapPrecomputed,
+    case: &CapacityCase,
+) {
+    let bound = L1WrapInputs::<std::alloc::Global>::phase_one_capacity_bytes(
+        &precomputed.geometry,
+        case.partial_trees(CircuitType::L1Wrap21, ProofProfile::L1Wrap)
+            .setup,
+    );
+    assert!(
+        bytes <= bound,
+        "L1Wrap phase-one inputs took {bytes} bytes, above their {bound}-byte bound"
+    );
 }
 
 pub fn validate_row(row: &CapacityRow, key: &str, revision: &str) -> Result<(), String> {

@@ -6,18 +6,20 @@ use fft::GoodAllocator;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::device_tracing::Range;
+use gpu_core::primitives::field::PR;
 use gpu_core::primitives::static_host::StaticPinnedBox;
 use gpu_gkr::proth120::backward::PreparedCoefficientTablesPr;
 use gpu_gkr::proth120::base_layer_claims::BaseClaimIndicesPr;
 use gpu_gkr::proth120::packed_challenges::{transcript_prefix_words, BOUNDARY_PREFIX_U32_LEN};
-use gpu_gkr::setup::L1WrapSetupHost;
+use gpu_gkr::setup::{L1WrapSetupHost, PackedSetupSource};
+use gpu_hash::keccak256::Digest;
 use gpu_prover_context::transfer::Transfer;
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::decoder::DecoderTableTransfer;
+use gpu_trace::trace::packed::retained_len;
 use gpu_trace::trace::tracing_data::{
     InitsAndTeardownsTransfer, TracingDataHost, TracingDataTransfer, UnrolledTracingDataHost,
 };
-use gpu_trace::witness::circuit_type::CircuitType;
 use gpu_trace::witness::proth120::Proth120LookupRelations;
 use gpu_trace::witness::trace_unrolled::{
     ExecutorFamilyDecoderData, InitsAndTeardownsTraceHost, UnifiedOpcodeTracingDataWithTimestamp,
@@ -39,6 +41,8 @@ pub struct L1WrapInputs<'a, A: GoodAllocator> {
     pub(crate) transcript_prefix_host: Vec<u32>,
     pub(crate) top_bits_host: Vec<u32>,
     pub(crate) setup_host: Arc<L1WrapSetupHost>,
+    pub(crate) setup: PackedSetupSource<'a>,
+    pub(crate) setup_reduction_layers: u32,
     pub(crate) constants: Arc<L1WrapConstantsHost>,
     pub(crate) relations: Proth120LookupRelations,
     pub(crate) coefficient_tables: PreparedCoefficientTablesPr,
@@ -62,6 +66,7 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
         inits_and_teardowns: InitsAndTeardownsTraceHost<A>,
         tracing_data: UnrolledUnifiedTraceHost<A>,
         setup_host: Arc<L1WrapSetupHost>,
+        setup_reduction_layers: u32,
         constants: Arc<L1WrapConstantsHost>,
         commitment_mode: &CommitmentMode,
         context: &ProverContext,
@@ -97,6 +102,8 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
             PreparedCoefficientTablesPr::new(&constants.programs, &top_bits_host, context)?;
         let base_claim_indices =
             BaseClaimIndicesPr::allocate(&constants.base_claim_indices, context)?;
+        let setup =
+            PackedSetupSource::new(Arc::clone(&setup_host), setup_reduction_layers, context)?;
         let transfer = Transfer::new()?;
         transfer.record_allocated(context)?;
         Ok(Self {
@@ -108,6 +115,8 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
             transcript_prefix_host,
             top_bits_host,
             setup_host,
+            setup,
+            setup_reduction_layers,
             constants,
             relations,
             coefficient_tables,
@@ -137,10 +146,17 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
             .schedule_transfer(&self.constants.relations, &mut self.transfer, context)?;
         self.base_claim_indices
             .schedule_transfer(&mut self.transfer, context)?;
+        self.setup.schedule_transfer(&mut self.transfer, context)?;
         self.transfer.record_transferred(context)
     }
 
-    pub const fn phase_one_capacity_bytes(circuit_type: CircuitType) -> usize {
+    /// Bytes the phase-one inputs take in the inputs reserve: every part rounded up
+    /// to an allocator block.
+    pub fn phase_one_capacity_bytes(
+        geometry: &L1WrapGeometry,
+        setup_reduction_layers: u32,
+    ) -> usize {
+        let circuit_type = geometry.circuit_type;
         assert!(
             circuit_type.is_l1_wrap(),
             "L1Wrap phase-one capacity requires an L1 wrap circuit type"
@@ -151,6 +167,8 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
         let capacity = num_sets
             .checked_mul(trace_len)
             .expect("L1Wrap phase-one capacity overflow");
+        let log_leaves =
+            geometry.trace_log + geometry.pack_log2 - geometry.log_base_values_per_leaf;
         let parts = [
             bytes(
                 trace_len,
@@ -161,15 +179,17 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
             bytes(capacity, size_of::<TimestampScalar>()),
             bytes(decoder_entries, size_of::<ExecutorFamilyDecoderData>()),
             bytes(BOUNDARY_PREFIX_U32_LEN + num_sets, size_of::<u32>()),
+            bytes(geometry.setup_columns * geometry.rows, size_of::<PR>()),
+            bytes(
+                geometry.packed_setup_columns * (geometry.rows << geometry.pack_log2),
+                size_of::<PR>(),
+            ),
+            bytes(
+                (1 << geometry.log_base_lde)
+                    * retained_len(log_leaves, setup_reduction_layers.min(log_leaves)),
+                size_of::<Digest>(),
+            ),
         ];
-        let mut total = 0usize;
-        let mut index = 0;
-        while index < parts.len() {
-            total = total
-                .checked_add(parts[index])
-                .expect("L1Wrap phase-one capacity overflow");
-            index += 1;
-        }
-        total
+        parts.iter().sum()
     }
 }

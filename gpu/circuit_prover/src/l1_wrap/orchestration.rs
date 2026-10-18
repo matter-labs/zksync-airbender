@@ -19,8 +19,8 @@ use gpu_gkr::proth120::packed_challenges::{self, PackedChallengeConfig, PackedCh
 use gpu_gkr::proth120::programs::GkrProgramsPr;
 use gpu_gkr::proth120::proof_layout::{M6ProofFields, ProofLayoutPr, ProofSlabPr};
 use gpu_gkr::proth120::{schedule_gkr, GkrOutputPr, GkrPreparedInputsPr};
-use gpu_gkr::setup::{L1WrapSetupHost, PackedSetupSource};
-use gpu_prover_context::transfer::{Transfer, TransferKeepalive};
+use gpu_gkr::setup::L1WrapSetupHost;
+use gpu_prover_context::transfer::TransferKeepalive;
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode};
 use gpu_trace::trace::packed::{PackedCommitConfig, PackedCosetRecomputeOracle};
@@ -58,7 +58,6 @@ pub struct GpuL1WrapProofJob<'a> {
 pub(crate) struct GpuL1WrapProofJobKeepalive<'a> {
     _setup_host: Arc<L1WrapSetupHost>,
     _input_transfer: TransferKeepalive<'a>,
-    _setup_transfer: TransferKeepalive<'a>,
     _relations: Proth120LookupRelations,
     _challenges: PackedChallenges,
     _gkr: GkrOutputPr,
@@ -130,6 +129,10 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         inputs.setup_host.pack_log2, geometry.pack_log2,
         "{circuit_type:?} setup pack_log2 mismatch"
     );
+    assert_eq!(
+        inputs.setup_reduction_layers, partial_trees.setup,
+        "{circuit_type:?} phase-one setup partial-tree depth differs from the proof's"
+    );
     assert!(
         inputs.setup_host.cfg.same_protocol_geometry(&cfg),
         "{circuit_type:?} setup commitment config mismatch"
@@ -151,6 +154,8 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         transcript_prefix_host: _,
         top_bits_host,
         setup_host,
+        mut setup,
+        setup_reduction_layers: _,
         constants: _,
         relations,
         coefficient_tables,
@@ -163,14 +168,6 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     range.start(stream)?;
     let mut callbacks = Callbacks::new();
     let mut phases: Vec<Range> = Vec::new();
-    let p = phase("l1_wrap.setup_transfer", context)?;
-    let mut setup = PackedSetupSource::new(Arc::clone(&setup_host), partial_trees.setup, context)?;
-    let mut setup_transfer = Transfer::new()?;
-    setup_transfer.record_allocated(context)?;
-    setup.schedule_transfer(&mut setup_transfer, context)?;
-    setup_transfer.record_transferred(context)?;
-    setup_transfer.ensure_transferred(context)?;
-    end_phase(p, &mut phases, context)?;
     let p = phase("l1_wrap.witness", context)?;
     let mut raw = TraceHolder::<PR>::new_without_cosets_padded(
         geometry.trace_log,
@@ -413,7 +410,6 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         keepalive: GpuL1WrapProofJobKeepalive {
             _setup_host: setup_host,
             _input_transfer: transfer.into_keepalive(),
-            _setup_transfer: setup_transfer.into_keepalive(),
             _relations: relations,
             _challenges: challenges,
             _gkr: gkr,
