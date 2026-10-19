@@ -700,6 +700,98 @@ fn run_bigint_profile_test() {
     run_profile(&prepare_bigint_profiling_fixture());
 }
 
+/// Bigint rows the replayed example never issues: EQ with equal and with unequal operands
+/// (both orders) and an ADD returning its carry; the rest of the trace is padding. The CPU
+/// test `bigint_honest_trace_satisfies_the_lowered_relations` checks the same operations.
+fn synthetic_bigint_eq_delegation_buffer() -> Vec<BigintDelegationWitness> {
+    use common_constants::bigint_with_control::{ADD_OP_BIT_IDX, EQ_OP_BIT_IDX};
+    use riscv_transpiler::witness::{RegisterOrIndirectReadData, RegisterOrIndirectReadWriteData};
+
+    let operand = [
+        0x8765_4321,
+        0x0fed_cba9,
+        7,
+        0,
+        0xdead_beef,
+        1,
+        0,
+        0x1234_5678,
+    ];
+    let small = |value: u32| std::array::from_fn::<u32, 8, _>(|i| if i == 0 { value } else { 0 });
+    let calls = [
+        (EQ_OP_BIT_IDX, operand, operand, operand, 1),
+        (EQ_OP_BIT_IDX, small(5), small(3), small(5), 0),
+        (EQ_OP_BIT_IDX, small(3), small(5), small(3), 0),
+        (ADD_OP_BIT_IDX, [u32::MAX; 8], small(1), [0; 8], 1),
+    ];
+    calls
+        .iter()
+        .enumerate()
+        .map(|(index, &(bit, a, b, result, x12_out))| {
+            let write_timestamp = (1 << 24)
+                + 16 * index as common_constants::TimestampScalar
+                + common_constants::DELEGATION_INVOCATION_OFFSET;
+            let timestamp = common_constants::TimestampData::from_scalar(write_timestamp - 5);
+            let a_ptr = common_constants::rom::ROM_BYTE_SIZE as u32 + 128 * index as u32;
+            let register = |read_value: u32, write_value: u32| RegisterOrIndirectReadWriteData {
+                read_value,
+                write_value,
+                timestamp,
+            };
+            let mut row = BigintDelegationWitness::empty();
+            row.write_timestamp = write_timestamp;
+            row.reg_accesses = [
+                register(a_ptr, a_ptr),
+                register(a_ptr + 64, a_ptr + 64),
+                register(1 << bit, x12_out),
+            ];
+            row.indirect_reads = b.map(|read_value| RegisterOrIndirectReadData {
+                read_value,
+                timestamp,
+            });
+            row.indirect_writes = std::array::from_fn(|i| register(a[i], result[i]));
+            row
+        })
+        .collect()
+}
+
+/// bigint delegation proof_parity over EQ-equal, EQ-unequal, non-EQ and padding rows: GPU proof
+/// == CPU reference, byte-identical, so the CUDA witness commits to the CPU witness on those rows.
+/// `#[ignore]`d as a heavy GPU test — run with `--ignored`.
+#[test]
+#[ignore]
+fn run_bigint_eq_proof_parity_test() {
+    let buffer = synthetic_bigint_eq_delegation_buffer();
+    let eq_results: Vec<u32> = buffer
+        .iter()
+        .filter(|row| {
+            row.reg_accesses[2].read_value
+                == 1 << common_constants::bigint_with_control::EQ_OP_BIT_IDX
+        })
+        .map(|row| row.reg_accesses[2].write_value)
+        .collect();
+    assert!(eq_results.contains(&0) && eq_results.contains(&1));
+
+    let mut table_driver = TableDriver::<BF>::new();
+    cs::gkr_circuits::delegation::bigint_with_control::bigint_with_extended_control_delegation_circuit_table_driver_fn(
+        &mut table_driver,
+    );
+    let oracle = BigintDelegationOracle {
+        cycle_data: &buffer,
+        marker: core::marker::PhantomData,
+    };
+    let fixture = prepare_delegation_proof_fixture(
+        DelegationCircuitType::BigIntWithControl,
+        BIGINT_DELEGATION_LAYOUT_PATH,
+        &table_driver,
+        buffer.clone(),
+        &oracle,
+        bigint_with_extended_control_mod::witness_eval_fn,
+        CircuitType::Delegation(DelegationCircuitType::BigIntWithControl).get_domain_size(),
+    );
+    run_proof_parity(&fixture);
+}
+
 // ---------------------------------------------------------------------------
 // keccak_special5 delegation fixture wrappers + test functions
 //

@@ -41,6 +41,8 @@ pub(crate) fn bincode_serialize_to_file<T: serde::Serialize>(el: &T, filename: &
 pub mod orchestration;
 
 #[cfg(test)]
+mod bigint_eq_result;
+#[cfg(test)]
 mod family_circuits;
 // Also exposed under `feature = "test"`: the L1 wrap driver in
 // `prover_examples` reuses the Proth120 unified packed-proving pieces
