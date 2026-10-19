@@ -13,10 +13,10 @@
     clippy::large_const_arrays
 )]
 use super::common::{
-    dot_eq, draw_field_els_into, draw_field_els_into_after_pow, draw_single_field_el,
-    draw_single_field_el_after_pow, ext_from_nds, ext_from_raw_words, fold_standard_claims,
-    make_eq_poly, read_field_el, read_reduced_field_el, verify_final_step_check,
-    verify_sumcheck_rounds, EXT_DEGREE,
+    dot_eq, draw_field_els_into, draw_field_els_into_after_pow, draw_fresh_field_els_into,
+    draw_single_field_el, draw_single_field_el_after_pow, ext_from_nds, ext_from_raw_words,
+    fold_standard_claims, make_eq_poly, read_field_el, read_reduced_field_el,
+    verify_final_step_check, verify_sumcheck_rounds, EXT_DEGREE,
 };
 use super::constants::*;
 use verifier_common::blake2s_u32::{BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS};
@@ -26017,7 +26017,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let mut extra_coordinates: [BabyBearExt4; PACK_LOG2] = [BabyBearExt4::ZERO; PACK_LOG2];
-            draw_field_els_into::<PACKED_EXTRA_DRAW_BUF>(ts, &mut extra_coordinates);
+            draw_fresh_field_els_into::<PACKED_EXTRA_DRAW_BUF>(ts, &mut extra_coordinates);
             let merged_len = ::verifier_common::gkr::merge_packed_claims(
                 state.prev_claims.as_mut_slice(),
                 &PACKED_CLAIM_SET_LENS,

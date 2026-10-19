@@ -24,7 +24,6 @@ use prover::cs::gkr_compiler::{
     GKRCacheRelation, GKRCircuitArtifact, GKRLayerDescription, OutputType,
     SpecialMemoryContributionRelation,
 };
-use prover::gkr::prover::WhirSchedule;
 use prover::gkr::prover_config::pow_bits;
 
 pub mod dim_reducing_layer;
@@ -1928,7 +1927,10 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
         quote! {
             {
                 let mut extra_coordinates: [#quartic_struct; PACK_LOG2] = [#quartic_zero; PACK_LOG2];
-                draw_field_els_into::<PACKED_EXTRA_DRAW_BUF>(ts, &mut extra_coordinates);
+                // FRESH draw: the GKR phase ended with a draw (the last layer's batching
+                // challenge) and nothing was committed since, so advance the seed first
+                // instead of re-emitting that challenge's words (mirrors the prover).
+                draw_fresh_field_els_into::<PACKED_EXTRA_DRAW_BUF>(ts, &mut extra_coordinates);
                 let merged_len = ::verifier_common::gkr::merge_packed_claims(
                     state.prev_claims.as_mut_slice(),
                     &PACKED_CLAIM_SET_LENS,
@@ -2335,7 +2337,7 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
         };
         use super::common::{
             verify_sumcheck_rounds, verify_final_step_check, fold_standard_claims,
-            make_eq_poly, dot_eq, draw_field_els_into, draw_single_field_el,
+            make_eq_poly, dot_eq, draw_field_els_into, draw_fresh_field_els_into, draw_single_field_el,
             draw_field_els_into_after_pow, draw_single_field_el_after_pow,
             read_field_el, read_reduced_field_el,
             ext_from_nds, ext_from_raw_words,

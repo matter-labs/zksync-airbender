@@ -32,7 +32,8 @@ use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::stages::commitment_utils;
 use crate::gkr::prover::sumcheck_loop::flatten_claim_point;
 use crate::gkr::prover::transcript_utils::{
-    commit_field_els, draw_random_field_els, draw_random_field_els_with_pow,
+    commit_field_els, draw_fresh_random_field_els, draw_random_field_els,
+    draw_random_field_els_with_pow,
 };
 use crate::gkr::prover::utils::flatten_merkle_caps_iter_into;
 use crate::gkr::prover_config::{pow_bits, ProverConfig};
@@ -2030,8 +2031,15 @@ fn prove_configured_with_gkr_from_forward_eval<
     let pack_log2 = prover_config.pack_log2;
     let (mem_polys_claims, wit_polys_claims, setup_polys_claims) = if pack_log2 > 0 {
         // We already have all prover-controlled variables in the transcript, so we can just draw
-        // extra coordinates' values here
-        let extra_coordinates: Vec<E> = draw_random_field_els::<F, E, TR>(&mut seed, pack_log2);
+        // extra coordinates' values here. The GKR phase ENDS with a draw (the last layer's
+        // batching challenge) and nothing is committed in between, so the draw must be a
+        // FRESH one: the Blake2s transcript emits the current seed words as the first output
+        // block of every draw, and a plain draw here would re-emit the words of that last
+        // challenge as the first packing coordinate. `draw_fresh` advances the seed past
+        // the digest the preceding draw emitted first (a no-op difference for the Keccak
+        // transcript, whose every draw hashes before reading). The verifier mirrors this.
+        let extra_coordinates: Vec<E> =
+            draw_fresh_random_field_els::<F, E, TR>(&mut seed, pack_log2);
 
         // now recursively merge every committed set (an empty set stays empty)
         let [mem_polys_claims, wit_polys_claims, setup_polys_claims] =

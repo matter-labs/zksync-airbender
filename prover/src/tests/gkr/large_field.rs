@@ -632,7 +632,8 @@ fn validate_packed_transcript_recipe() {
 #[test]
 fn capture_gkr_dim_reduce_reference() {
     use crate::gkr::prover::transcript_utils::{
-        commit_field_els, draw_random_field_els, draw_random_field_els_with_pow,
+        commit_field_els, draw_fresh_random_field_els, draw_random_field_els,
+        draw_random_field_els_with_pow,
     };
     use crate::gkr::prover::utils::flatten_merkle_caps_iter_into;
     use crate::gkr::prover::GKRProof;
@@ -1135,7 +1136,8 @@ fn circuit_layer_g(
 #[test]
 fn verify_dim_reduce_layers() {
     use crate::gkr::prover::transcript_utils::{
-        commit_field_els, draw_random_field_els, draw_random_field_els_with_pow,
+        commit_field_els, draw_fresh_random_field_els, draw_random_field_els,
+        draw_random_field_els_with_pow,
     };
     use crate::gkr::prover::utils::flatten_merkle_caps_iter_into;
     use crate::gkr::prover::GKRProof;
@@ -1914,9 +1916,12 @@ fn verify_dim_reduce_layers() {
         mem_wit.extend((0..num_wit).map(|i| get(GKRAddress::BaseLayerWitness(i))));
         let setup_claims: Vec<E> = (0..num_setup).map(|i| get(GKRAddress::Setup(i))).collect();
 
-        // draw extra_coordinates (pack_log2), then merge
-        let extra =
-            draw_random_field_els::<Proth120, Proth120, Keccak256Transcript>(&mut seed, pack_log2);
+        // draw extra_coordinates (pack_log2) FRESH (the GKR phase ended with a draw; for the
+        // Keccak transcript every draw hashes before reading, so this equals a plain draw),
+        // then merge
+        let extra = draw_fresh_random_field_els::<Proth120, Proth120, Keccak256Transcript>(
+            &mut seed, pack_log2,
+        );
         let merge = |input: &[E], extra: &[E]| -> Vec<E> {
             let pl = extra.len();
             let mut result = vec![];

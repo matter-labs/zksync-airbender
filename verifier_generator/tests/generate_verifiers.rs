@@ -228,7 +228,7 @@ fn generate_verifier_for_circuit_with_config<MW: FieldWrapper<BaseField = BabyBe
             { constants::NUM_WITNESS_COMMITS },
             { constants::NUM_SETUP_COMMITS },
             { constants::PADDING_WORDS },
-            { constants::GKR_ROUNDS },
+            { constants::CLAIM_POINT_CAPACITY },
             { constants::GKR_ADDRS },
             gkr::VerifierImplementation,
         >(external_challenges, nd_source)

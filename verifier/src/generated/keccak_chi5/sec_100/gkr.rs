@@ -13,10 +13,10 @@
     clippy::large_const_arrays
 )]
 use super::common::{
-    dot_eq, draw_field_els_into, draw_field_els_into_after_pow, draw_single_field_el,
-    draw_single_field_el_after_pow, ext_from_nds, ext_from_raw_words, fold_standard_claims,
-    make_eq_poly, read_field_el, read_reduced_field_el, verify_final_step_check,
-    verify_sumcheck_rounds, EXT_DEGREE,
+    dot_eq, draw_field_els_into, draw_field_els_into_after_pow, draw_fresh_field_els_into,
+    draw_single_field_el, draw_single_field_el_after_pow, ext_from_nds, ext_from_raw_words,
+    fold_standard_claims, make_eq_poly, read_field_el, read_reduced_field_el,
+    verify_final_step_check, verify_sumcheck_rounds, EXT_DEGREE,
 };
 use super::constants::*;
 use verifier_common::blake2s_u32::{BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS};
