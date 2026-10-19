@@ -823,15 +823,44 @@ certificate. Unified whole-machine/protocol composition, remaining families,
 physical initialization/teardown and general Rust/compiler/cryptographic
 refinement remain separate.
 
+## Unsigned mul/div native artifact and byte tables
+
+[The native artifact](Airbender/Review/Circuits/MulDiv/Artifact.lean) now retains
+all 43 quadratic/six linear equations, six scalar/eight timestamp queries and
+six exact three-column RangeCheckSmall queries. These pair all eleven declared
+byte columns; the final odd column keeps two zero padding entries. Checked
+native setup metadata retains table ID eight, offset zero and 65,536 rows.
+Native state/port/decoder metadata is imported separately from semantic claims.
+Two optimized-out variables retain bounded, unique scratch metadata; every
+attempt to consume such an address as a constraint/query input is rejected.
+
+[Actual native table-driver data](Airbender/Review/Helpers/Tables/NativeSmallRangeData.lean)
+is exported reproducibly from pinned v2 Rust with its fourth tag column.
+[Symbolic certificates](Airbender/Proofs/MulDiv/SmallRange.lean) prove every one
+of the 65,536 actual rows and exact Clean membership through stored periodic
+columns, without enumerating the domain or assuming table equivalence.
+[The native queries](Airbender/Proofs/MulDiv/ByteBounds.lean) derive all eleven
+byte bounds directly from accepted local constraints. No numerical bound or
+expected arithmetic result is supplied.
+
+[Boundary regressions](Tests/MulDivArtifact.lean) accept byte endpoints and
+reject overflow, nonzero third padding and wrong native tags. Importer
+mutations reject missing/repeated/unmapped queries, odd-byte padding changes,
+optimized-out equation/query use, scratch overflow/aliasing and altered table
+profiles/geometry. This closes the unsigned mul/div importer dependency;
+MUL/MULHU/DIVU/REMU numerical correctness, public decoding, initialized history
+and original Sail execution remain unfinished. No native defect is established.
+General Rust/compiler/physical argument refinement remains separate.
+
 ## Validation
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all forty-five concrete test modules pass.
-- Importer regressions: 169 checks pass.
-- Axiom audit: 1034 explicit roots; only propext, Classical.choice and Quot.sound.
+- Library, both CLI entrypoints and all forty-six concrete test modules pass.
+- Importer regressions: 202 checks pass.
+- Axiom audit: 1048 explicit roots; only propext, Classical.choice and Quot.sound.
 - All sixty-two public Review theorems (ten circuit claims, forty-three trace claims and nine helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
-- Source provenance: 74 unchanged reused files, three native circuit artifacts, thirty-six native Rust sources, seven native setup artifacts and four exporter source/manifest/lock files.
+- Source provenance: 74 unchanged reused files, four native circuit artifacts, forty native Rust sources, eight native setup artifacts and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
 - Public Sail x1/PC reads construct the accepted alias fixture; missing register and byte data reject construction.

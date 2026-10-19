@@ -389,10 +389,20 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
 
 3. Port unsigned mul/div, shift/binop and subword memory into the same shared
    context; retain their family-specific assumptions and supported ISA profile.
-   The native unsigned mul/div layout has eleven 8-bit range columns; the
-   current importer deliberately rejects them. First connect those actual
-   columns/lookups and add fail-closed importer checks before importing its
-   arithmetic proofs or claiming native multiply/divide coverage.
+   [Unsigned mul/div artifact import](Airbender/Review/Circuits/MulDiv/README.md)
+   now retains all native equations and six paired-byte queries covering eleven
+   8-bit columns. Actual table-driver rows and exact tagged Clean membership
+   have symbolic certificates; native constraints derive every byte bound.
+   Optimized-out scratch variables remain unconsumable. Importer mutation
+   checks cover pairing/padding, scratch uses and native profile geometry.
+   Next rebind MUL/MULHU/DIVU/REMU calculations, including zero divisors and
+   native discarded-write behavior, before adding original public decoding,
+   initialized history and Sail execution. No arithmetic coverage is claimed
+   solely from the checked import. The source product proof takes an explicit
+   inverse-scale interface: its -30720 constant must be rebound to native v2
+   32768 (65536 * 32768 = 1 in Mersenne31), along with the native packed mask
+   and different byte/result columns. Reuse the parameterized arithmetic
+   lemmas unchanged where their field minima hold.
 4. Rebind bigint/BLAKE/Keccak workers and callers. Retest control validity,
    unissued workers, ROM behavior and request participation on v2 before reusing
    any source finding or temporary premise.
@@ -401,8 +411,9 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
 
 Expand importer support only when a concrete circuit requires it. The two native
 word-memory and two native control fixed tables are now supported with exact
-three-column queries and explicit profiles. Other fixed tables, dynamic table selectors, 8-bit columns and state linkage
-continue to fail closed.
+three-column queries and explicit profiles. The unsigned mul/div paired-byte profile is also supported with exact tagged
+native data and checked odd-column zero padding. Other fixed tables, dynamic
+table selectors, unpaired byte columns and state linkage continue to fail closed.
 Do not copy unused v3 Review theorems into the v2 build.
 
 ## Deferred milestones

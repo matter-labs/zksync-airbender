@@ -1,4 +1,5 @@
 import Airbender
+import Tests.MulDivArtifact
 import Tests.ControlSequence
 import Tests.ControlExecution
 import Tests.JumpExecution
@@ -1106,3 +1107,18 @@ import Tests.JumpLink
 #print axioms Tests.ControlSequence.execution
 #print axioms Tests.ControlSequence.stale_rejected
 #print axioms Tests.ControlSequence.final_values
+
+#print axioms Airbender.Verification.small_range_values
+#print axioms Airbender.Verification.small_range_contains
+#print axioms Airbender.MulDiv.Proofs.native_small_range_rows
+#print axioms Airbender.MulDiv.Proofs.native_small_range_lookup
+#print axioms Airbender.MulDiv.Proofs.constraint_count
+#print axioms Airbender.MulDiv.Proofs.lookup_count
+#print axioms Airbender.MulDiv.Proofs.setup_columns
+#print axioms Airbender.MulDiv.Proofs.decoder_columns
+#print axioms Airbender.MulDiv.Proofs.native_byte_bounds
+#print axioms Tests.MulDivArtifact.endpoints
+#print axioms Tests.MulDivArtifact.first_overflow
+#print axioms Tests.MulDivArtifact.second_overflow
+#print axioms Tests.MulDivArtifact.third_column
+#print axioms Tests.MulDivArtifact.wrong_tag

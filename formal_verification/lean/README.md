@@ -17,7 +17,7 @@ This is the v2 backport based on dev revision
 formalization revision 805909325; exact source identities and hashes are in
 [provenance](artifacts/provenance.json). Circuit and runtime Rust are unchanged.
 
-Current coverage spans three circuit families:
+Current execution coverage spans three circuit families:
 
 - [ADD/ADDI/SUB/LUI/AUIPC](Airbender/Review/Trace/Families/AddSub/Theorems.lean):
   complete initialized original Sail execution and native terminal matching.
@@ -32,7 +32,9 @@ Current coverage spans three circuit families:
   now derives finite original Sail execution, terminal PC/register matching and
   raw terminal PC bounds from accepted native matching and public inputs.
 
-Multiply/divide, shifts/binops, subword memory, delegation and whole-machine
+[Unsigned mul/div artifact and byte-table binding](Airbender/Review/Circuits/MulDiv/README.md)
+are now checked; multiply/divide instruction semantics remain unfinished.
+Shifts/binops, subword memory, delegation and whole-machine
 protocol composition are still unfinished; the [plan](FORMAL_VERIFICATION_PLAN.md)
 tracks the remaining dependencies. The checkpoint details below retain their
 original snapshot structure.
@@ -897,3 +899,32 @@ checked enforcement boundary, not a native defect or a new Rust program-export
 certificate. Unified whole-machine/protocol composition, remaining families,
 physical initialization/teardown and general Rust/compiler/cryptographic
 refinement remain separate.
+
+## Unsigned mul/div native artifact and byte tables
+
+[The native artifact](Airbender/Review/Circuits/MulDiv/Artifact.lean) now retains
+all 43 quadratic/six linear equations, six scalar/eight timestamp queries and
+six exact three-column RangeCheckSmall queries. These pair all eleven declared
+byte columns; the final odd column keeps two zero padding entries. Checked
+native setup metadata retains table ID eight, offset zero and 65,536 rows.
+Native state/port/decoder metadata is imported separately from semantic claims.
+Two optimized-out variables retain bounded, unique scratch metadata; every
+attempt to consume such an address as a constraint/query input is rejected.
+
+[Actual native table-driver data](Airbender/Review/Helpers/Tables/NativeSmallRangeData.lean)
+is exported reproducibly from pinned v2 Rust with its fourth tag column.
+[Symbolic certificates](Airbender/Proofs/MulDiv/SmallRange.lean) prove every one
+of the 65,536 actual rows and exact Clean membership through stored periodic
+columns, without enumerating the domain or assuming table equivalence.
+[The native queries](Airbender/Proofs/MulDiv/ByteBounds.lean) derive all eleven
+byte bounds directly from accepted local constraints. No numerical bound or
+expected arithmetic result is supplied.
+
+[Boundary regressions](Tests/MulDivArtifact.lean) accept byte endpoints and
+reject overflow, nonzero third padding and wrong native tags. Importer
+mutations reject missing/repeated/unmapped queries, odd-byte padding changes,
+optimized-out equation/query use, scratch overflow/aliasing and altered table
+profiles/geometry. This closes the unsigned mul/div importer dependency;
+MUL/MULHU/DIVU/REMU numerical correctness, public decoding, initialized history
+and original Sail execution remain unfinished. No native defect is established.
+General Rust/compiler/physical argument refinement remains separate.

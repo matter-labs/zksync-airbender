@@ -270,5 +270,23 @@ def parseControl (source : String) : Except String ControlArtifact := do
   let artifact : ControlArtifact ← fromJson? json
   artifact.validate
   return artifact
+/-- The same strict regional envelope as control tables, with its own profile.
+    This imports only actual unsigned mul/div fixed rows, not decoder semantics. -/
+def parseSmallRange (source : String) : Except String ControlArtifact := do
+  let json ← Json.parse source
+  exactKeys json #["version", "field_modulus", "profile", "generic_rows", "tables"]
+  for region in (← (← json.getObjVal? "tables").getArr?) do
+    exactKeys region #["id", "offset", "data"]
+    matrixKeys (← region.getObjVal? "data")
+  let artifact : ControlArtifact ← fromJson? json
+  unless artifact.version == 1 && artifact.field_modulus == mersenne31Modulus &&
+      artifact.profile == "unsigned_mul_div_fixed" do throw "unsupported native byte-table profile"
+  unless artifact.generic_rows == 65536 && artifact.tables.size == 1 do
+    throw "unexpected native byte-table extent"
+  let some region := artifact.tables[0]? | throw "missing native byte table"
+  unless region.id == 8 && region.offset == 0 do throw "unexpected native byte-table region"
+  region.data.validate 65536 4
+  return artifact
+
 
 end Airbender.Setup

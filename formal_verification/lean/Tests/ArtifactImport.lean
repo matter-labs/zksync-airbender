@@ -210,6 +210,91 @@ private def controlChecks : IO Unit := do
     #[{first with input_columns := first.input_columns.extract 0 2}, second]}}.validate))
     "reject two-column v3-shaped control query"
 
+private def mulDivChecks : IO Unit := do
+  let source ← IO.FS.readFile "../../cs/mul_div_unsigned_preprocessed_layout.json"
+  let c ← IO.ofExcept (parseCircuit source)
+  check (c.degree_2_constraints.size == 43 && c.degree_1_constraints.size == 6)
+    "all native unsigned mul/div equations retained"
+  check (c.witness_layout.range_check_8_columns.start == 9 &&
+    c.witness_layout.range_check_8_columns.num_elements == 11 &&
+    c.witness_layout.width_3_lookups.size == 6 &&
+    c.witness_layout.range_check_16_lookup_expressions.size == 6 &&
+    c.witness_layout.timestamp_range_check_lookup_expressions.size == 8)
+    "all eleven byte columns and six paired native fixed queries retained"
+  check ((← IO.ofExcept c.setupColumns) == ⟨16777216,16,0,1,2,1,6,1048576,65536⟩)
+    "native unsigned mul/div tagged setup placement"
+  check ((← IO.ofExcept c.decoderColumns) == ⟨5,6,7,8,#v[9,10],11,12⟩)
+    "native unsigned mul/div decoder placement"
+  check (c.scratch_space_size_for_witness_gen == 2 &&
+    c.variable_mapping.entries.contains (27,.OptimizedOut 0) &&
+    c.variable_mapping.entries.contains (28,.OptimizedOut 1)) "native optimized-out scratch metadata retained"
+  check (rejected (c.logicalVariable (.OptimizedOut 0))) "reject consuming optimized-out column"
+  check (rejected ({c with scratch_space_size_for_witness_gen := 1}.validate))
+    "reject optimized-out scratch overflow"
+  check (rejected ({c with variable_mapping := ⟨c.variable_mapping.entries.push (999,.OptimizedOut 0)⟩}.validate))
+    "reject ambiguous optimized-out scratch mapping"
+  let one : Coefficient ← IO.ofExcept (fromJson? (toJson (1 : Nat)))
+  let zero : Coefficient ← IO.ofExcept (fromJson? (toJson (0 : Nat)))
+  check (rejected ({c with degree_1_constraints := (c.degree_1_constraints.push
+    ⟨#[(one,.OptimizedOut 0)],zero⟩)}.validate)) "reject optimized-out equation input"
+  let withQueries := fun queries => {c with witness_layout :=
+    {c.witness_layout with width_3_lookups := queries}}
+  let some first := c.witness_layout.width_3_lookups[0]? | throw (IO.userError "missing native byte query")
+  let some second := c.witness_layout.width_3_lookups[1]? | throw (IO.userError "missing second native byte query")
+  let some last := c.witness_layout.width_3_lookups[5]? | throw (IO.userError "missing odd native byte query")
+  let changedFirst := fun query => withQueries (c.witness_layout.width_3_lookups.set! 0 query)
+  check (rejected ((withQueries (c.witness_layout.width_3_lookups.extract 0 5)).validate))
+    "reject omitted paired native byte query"
+  check (rejected ((changedFirst second).validate)) "reject repeated paired byte query"
+  check (rejected ((changedFirst {first with input_columns := first.input_columns.extract 0 2}).validate))
+    "reject short native byte tuple"
+  check (rejected ((changedFirst {first with input_columns := first.input_columns.set! 2 (.Expression ⟨#[],one⟩)}).validate))
+    "reject nonzero third byte-query padding"
+  check (rejected ((changedFirst {first with input_columns := first.input_columns.set! 0 (.Variable (.OptimizedOut 0))}).validate))
+    "reject optimized-out fixed query input"
+  check (rejected ((changedFirst {first with table_index := .Constant .JumpCleanupOffset}).validate))
+    "reject mixed unsigned mul/div fixed profile"
+  check (rejected ((withQueries (c.witness_layout.width_3_lookups.set! 5
+    {last with input_columns := last.input_columns.set! 1 (.Expression ⟨#[],one⟩)})).validate))
+    "reject nonzero odd-byte second padding"
+  check (rejected ({c with witness_layout := {c.witness_layout with range_check_8_columns := ⟨9,10⟩}}.validate))
+    "reject unaccounted native byte query"
+  check (rejected ({c with witness_layout := {c.witness_layout with range_check_8_columns := ⟨9,12⟩}}.validate))
+    "reject declared byte without native query input"
+  check (rejected ({c with witness_layout := {c.witness_layout with range_check_8_columns := ⟨c.witness_layout.total_width,11⟩}}.validate))
+    "reject native byte range outside witness bank"
+  check (rejected ({c with variable_mapping := ⟨c.variable_mapping.entries.filter (fun entry => entry.1 != 35)⟩}.validate))
+    "reject unmapped native byte input"
+  check (rejected ({c with witness_layout := {c.witness_layout with range_check_16_lookup_expressions :=
+    (c.witness_layout.range_check_16_lookup_expressions.push (.Variable (.OptimizedOut 0)))}}.validate))
+    "reject optimized-out scalar query input"
+  check (rejected ({c with total_tables_size := 65535}.validate)) "reject truncated native byte setup"
+  check (rejected ({c with table_offsets := c.table_offsets.set! 9 65535}.validate))
+    "reject shifted native byte setup offset"
+  let fixedSource ← IO.FS.readFile "artifacts/setup/mul-div-small-range-native.json"
+  let fixed ← IO.ofExcept (Setup.parseSmallRange fixedSource)
+  check (fixed.generic_rows == 65536 && fixed.tables.map (·.id) == #[8])
+    "actual native byte-table tagged export geometry"
+  check (rejected (Setup.parseControl fixedSource)) "reject byte tables as control tables"
+  check (rejected (Setup.parseSmallRange (← IO.FS.readFile "artifacts/setup/jump-control-native.json")))
+    "reject control tables as byte tables"
+  let json ← IO.ofExcept (Json.parse fixedSource)
+  for (key,value,label) in [
+      ("version",toJson (2 : Nat),"reject byte-table export version"),
+      ("field_modulus",toJson (2013265921 : Nat),"reject v3 byte-table field"),
+      ("profile",toJson "jump_branch_slt_fixed","reject changed byte-table profile"),
+      ("generic_rows",toJson (65535 : Nat),"reject byte-table export extent"),
+      ("invented",Json.bool true,"reject unknown byte-table export field")] do
+    let changed ← IO.ofExcept (replaceField json key value)
+    check (rejected (Setup.parseSmallRange changed.compress)) label
+  let tables ← IO.ofExcept ((← IO.ofExcept (json.getObjVal? "tables")).getArr?)
+  let region := tables[0]!
+  for (key,value,label) in [("id",toJson (9 : Nat),"reject changed native byte-table tag"),
+      ("offset",toJson (1 : Nat),"reject shifted native byte-table export")] do
+    let changed ← IO.ofExcept (replaceField region key value)
+    let changed ← IO.ofExcept (replaceField json "tables" (.arr #[changed]))
+    check (rejected (Setup.parseSmallRange changed.compress)) label
+
 def main : IO UInt32 := do
   try
     let source ← IO.FS.readFile "../../cs/add_sub_lui_auipc_mop_preprocessed_layout.json"
@@ -277,7 +362,7 @@ def main : IO UInt32 := do
     let lookup ← IO.ofExcept (replaceField json "witness_layout" lookup)
     check (rejected (parseCircuit lookup.compress)) "reject unsupported fixed lookups"
     let badRange := {c.witness_layout with range_check_8_columns := ⟨0, 1⟩}
-    check (rejected ({c with witness_layout := badRange}.validate)) "reject unsupported byte ranges"
+    check (rejected ({c with witness_layout := badRange}.validate)) "reject byte columns without native fixed queries"
     let wordSource ← IO.FS.readFile "../../cs/word_only_load_store_preprocessed_layout.json"
     let word ← IO.ofExcept (parseCircuit wordSource)
     check (word.degree_2_constraints.size == 31 && word.degree_1_constraints.size == 4)
@@ -389,6 +474,7 @@ def main : IO UInt32 := do
     controlDecoderChecks
     decoderPaddingChecks
     controlChecks
+    mulDivChecks
     return (0 : UInt32)
   catch error =>
     IO.eprintln s!"FAIL {error}"

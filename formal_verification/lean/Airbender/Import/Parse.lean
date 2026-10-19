@@ -11,6 +11,7 @@ def Circuit.logicalVariable (c : Circuit) (address : ColumnAddress) : Except Str
     | .WitnessSubtree n => decide (n < c.witness_layout.total_width)
     | .MemorySubtree n => decide (n < c.memory_layout.total_width)
     | .SetupSubtree n => decide (n < c.setup_layout.total_width)
+    | .OptimizedOut _ => false
   unless inBounds do throw "physical column outside native layout"
   match (c.variable_mapping.entries.filter fun (_, a) => a == address).toList with
   | [(v, _)] => pure v
@@ -61,9 +62,10 @@ def Circuit.setupColumns (c : Circuit) : Except String Verification.SetupColumns
     match query.table_index with | .Constant id => id
   let memory := ids == #[FixedTableId.RomAddressSpaceSeparator, .RomRead]
   let control := ids == #[FixedTableId.ConditionalJmpBranchSlt, .JumpCleanupOffset]
-  unless ids.isEmpty || memory || control do throw "unsupported native fixed lookup profile"
+  let small := !ids.isEmpty && ids.all (· == FixedTableId.RangeCheckSmall)
+  unless ids.isEmpty || memory || control || small do throw "unsupported native fixed lookup profile"
   let generic := if ids.isEmpty then 0 else 1
-  let rows := if memory then 1114113 else if control then 65664 else 0
+  let rows := if memory then 1114113 else if control then 65664 else if small then 65536 else 0
   unless layout.generic_lookup_setup_columns.start == 2 &&
       layout.generic_lookup_setup_columns.num_elements == generic do
     throw "unsupported native tagged setup groups"
@@ -78,6 +80,8 @@ def Circuit.setupColumns (c : Circuit) : Except String Verification.SetupColumns
       if id == 0 then 0 else if id ≤ 23 then 1 else if id == 24 then 65537 else 1114113
     else if control then
       if id ≤ 17 then 0 else if id ≤ 43 then 65536 else 65664
+    else if small then
+      if id ≤ 8 then 0 else 65536
     else 0
   unless c.table_offsets == expected do
     throw "unsupported native fixed-table offsets"
@@ -90,12 +94,39 @@ def Circuit.validate (c : Circuit) : Except String Unit := do
   let keys := c.variable_mapping.entries.map Prod.fst
   unless keys.toList.Nodup do throw "duplicate logical variable IDs"
   for (_, address) in c.variable_mapping.entries do
-    let _ ← c.logicalVariable address
+    match address with
+    | .OptimizedOut index =>
+      unless index < c.scratch_space_size_for_witness_gen do
+        throw "optimized-out variable outside native scratch space"
+      unless (c.variable_mapping.entries.filter fun (_, a) => a == address).size == 1 do
+        throw "ambiguous optimized-out scratch mapping"
+    | _ => let _ ← c.logicalVariable address
   let w := c.witness_layout
   unless w.boolean_vars_columns_range.start + w.boolean_vars_columns_range.num_elements ≤ w.total_width do
     throw "Boolean column range outside witness layout"
-  unless w.range_check_8_columns.num_elements == 0 do
-    throw "8-bit range columns are not yet supported"
+  let bytes := w.range_check_8_columns
+  unless bytes.start + bytes.num_elements ≤ w.total_width do
+    throw "8-bit column range outside witness layout"
+  let byteQueries := w.width_3_lookups.filter fun q =>
+    match q.table_index with | .Constant id => id == .RangeCheckSmall
+  unless byteQueries.size == (bytes.num_elements + 1) / 2 do
+    throw "native byte columns lack their paired fixed queries"
+  let isZero := fun entry => match entry with
+    | LookupExpression.Expression e => e.linear_terms.isEmpty && e.constant_term.canonical == 0
+    | _ => false
+  for j in [:byteQueries.size] do
+    let some q := byteQueries[j]? | throw "missing native byte query"
+    unless q.input_columns.size == 3 do throw "native byte lookup must have three columns"
+    let some first := q.input_columns[0]? | throw "missing first native byte"
+    let some second := q.input_columns[1]? | throw "missing second native byte"
+    let some padding := q.input_columns[2]? | throw "missing native byte padding"
+    let atColumn := fun (entry : LookupExpression) (offset : Nat) => match entry with
+      | LookupExpression.Variable address => address == .WitnessSubtree (bytes.start + offset)
+      | _ => false
+    unless atColumn first (2 * j) &&
+        (if 2 * j + 1 < bytes.num_elements then atColumn second (2 * j + 1)
+         else isZero second) && isZero padding do
+      throw "native byte queries do not match paired column order and zero padding"
   unless w.range_check_16_columns.start + w.range_check_16_columns.num_elements ≤ w.total_width do
     throw "16-bit column range outside witness layout"
   for i in [:w.boolean_vars_columns_range.num_elements] do

@@ -1101,3 +1101,32 @@ checked enforcement boundary, not a native defect or a new Rust program-export
 certificate. Unified whole-machine/protocol composition, remaining families,
 physical initialization/teardown and general Rust/compiler/cryptographic
 refinement remain separate.
+
+## Unsigned mul/div native artifact and byte tables
+
+[The native artifact](Airbender/Review/Circuits/MulDiv/Artifact.lean) now retains
+all 43 quadratic/six linear equations, six scalar/eight timestamp queries and
+six exact three-column RangeCheckSmall queries. These pair all eleven declared
+byte columns; the final odd column keeps two zero padding entries. Checked
+native setup metadata retains table ID eight, offset zero and 65,536 rows.
+Native state/port/decoder metadata is imported separately from semantic claims.
+Two optimized-out variables retain bounded, unique scratch metadata; every
+attempt to consume such an address as a constraint/query input is rejected.
+
+[Actual native table-driver data](Airbender/Review/Helpers/Tables/NativeSmallRangeData.lean)
+is exported reproducibly from pinned v2 Rust with its fourth tag column.
+[Symbolic certificates](Airbender/Proofs/MulDiv/SmallRange.lean) prove every one
+of the 65,536 actual rows and exact Clean membership through stored periodic
+columns, without enumerating the domain or assuming table equivalence.
+[The native queries](Airbender/Proofs/MulDiv/ByteBounds.lean) derive all eleven
+byte bounds directly from accepted local constraints. No numerical bound or
+expected arithmetic result is supplied.
+
+[Boundary regressions](Tests/MulDivArtifact.lean) accept byte endpoints and
+reject overflow, nonzero third padding and wrong native tags. Importer
+mutations reject missing/repeated/unmapped queries, odd-byte padding changes,
+optimized-out equation/query use, scratch overflow/aliasing and altered table
+profiles/geometry. This closes the unsigned mul/div importer dependency;
+MUL/MULHU/DIVU/REMU numerical correctness, public decoding, initialized history
+and original Sail execution remain unfinished. No native defect is established.
+General Rust/compiler/physical argument refinement remains separate.

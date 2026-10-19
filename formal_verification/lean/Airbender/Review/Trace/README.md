@@ -313,3 +313,9 @@ and [reversed dependent JAL/JALR](../../../Tests/ControlSequence.lean) pass;
 stale-link data passes local constraints/decoding/state matching and fails
 native memory matching. No per-row step, desired state/read/result or terminal
 closure premise is supplied. Whole-machine/protocol/init/teardown remain open.
+
+[Unsigned mul/div](../Circuits/MulDiv/README.md) now has a checked native
+artifact and paired-byte table connection. This adds no trace execution claim:
+public decoding, initialized register history and original MUL/DIV retirement
+still require native v2 connections. The existing three execution families and
+shared logical history definitions are unchanged.

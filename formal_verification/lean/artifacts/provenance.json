@@ -311,6 +311,10 @@
     {
       "path": "../../cs/jump_branch_slt_preprocessed_layout.json",
       "sha256": "c398f7091c9935105bf2f174d9cd7dea2de4c6f51e21a5e483b18319020979d3"
+    },
+    {
+      "path": "../../cs/mul_div_unsigned_preprocessed_layout.json",
+      "sha256": "f080a0bec56466ae853d031a501bddc3b2b60389a6958f74b965a706c437a39f"
     }
   ],
   "native_sources": [
@@ -457,6 +461,22 @@
     {
       "path": "../../cs/src/tables/jump_opcode_related.rs",
       "sha256": "31e3df900250588fa3a2430f042c6d48301d449e2da8a16bdb0fe9539d426568"
+    },
+    {
+      "path": "../../cs/src/tables/range_checks_and_decompositions.rs",
+      "sha256": "30a46151b72c3fcb769b8be9a6d4b35026b48aed29889f9d8cbc498e069e3f77"
+    },
+    {
+      "path": "../../cs/src/cs/cs_reference.rs",
+      "sha256": "a8032abc65bd85c8d11a9ad6fa787ff9907ea3793914ce3504c4ae52a9e629cf"
+    },
+    {
+      "path": "../../cs/src/machine/ops/unrolled/mul_div.rs",
+      "sha256": "ca09603a2666b75baa3de7dddb7c075cb56b24f0029fba6f4b3e3e6d83aa93fe"
+    },
+    {
+      "path": "../../cs/src/machine/ops/unrolled/decoder/mul_div.rs",
+      "sha256": "987d7c32e0f950d8820ab122d05757342c827a77a3c069718f70bba445d1adba"
     }
   ],
   "adaptations": [
@@ -2881,6 +2901,76 @@
       "backport_reuse_path": "Tests/ArithmeticExecution.lean",
       "backport_reuse_sha256": "a20250b88effb3abb821a87007035d4e366e628e85bd0cb8d3023fac6120b7c2",
       "change": "Reuse reversed dependent-row fixture structure, explicit native state/memory permutation checks, public initialization and extraction of actual terminal values from composed Realizes. Derive the intermediate link four and terminal x1 eight without read/state/result premises."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/SmallRange.lean",
+      "backport_reuse_revision": "5cf124675732f36330cc1a4c76da8e9005e3759b",
+      "backport_reuse_path": "Airbender/Review/Circuits/JumpBranchSlt/Tables/Control.lean",
+      "backport_reuse_sha256": "acd60b7435a34022bd0ed6b35de0929bf6e21763f49279f3251d266a88831124",
+      "change": "Reuse the focused original Clean static-table definition pattern, adapting actual native ID-eight pair ordering, retained third zero and 65,536-row extent. This is a v2 table connection, not copied v3 arithmetic coverage."
+    },
+    {
+      "path": "Airbender/Proofs/MulDiv/SmallRange.lean",
+      "backport_reuse_revision": "5cf124675732f36330cc1a4c76da8e9005e3759b",
+      "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/ControlTables.lean",
+      "backport_reuse_sha256": "b183f814449652bfd5d646a1f7033a698b0b2209ccc777508d60ab8861a86682",
+      "change": "Copy affine_get and single_get helper declarations unchanged; reuse symbolic native row access and tagged membership connection. Avoid concrete-template rewrite search by composing equalities directly; no raised elaboration/memory budgets or table-equivalence premise."
+    },
+    {
+      "path": "Airbender/Proofs/MulDiv/SmallRange.lean",
+      "backport_reuse_revision": "5cf124675732f36330cc1a4c76da8e9005e3759b",
+      "backport_reuse_path": "Airbender/Proofs/Tables/PeriodicColumns.lean",
+      "backport_reuse_sha256": "fb6c79c7a12a01aa90daae1c592a8e2ec509f511f459698fa87800bd09f16341",
+      "change": "Reuse periodic_get unchanged on both actual exported 256-entry templates. Derive all native byte-pair rows symbolically, retaining tag eight."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SmallRange.lean",
+      "backport_reuse_revision": "5cf124675732f36330cc1a4c76da8e9005e3759b",
+      "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/ControlTables.lean",
+      "backport_reuse_sha256": "b183f814449652bfd5d646a1f7033a698b0b2209ccc777508d60ab8861a86682",
+      "change": "Reuse canonical field-value extraction from exact static row membership. Derive both byte bounds and actual zero padding, and construct membership from those native values."
+    },
+    {
+      "path": "Airbender/Proofs/MulDiv/ByteBounds.lean",
+      "backport_reuse_revision": "5cf124675732f36330cc1a4c76da8e9005e3759b",
+      "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/Queries.lean",
+      "backport_reuse_sha256": "f17f84befea4b7961243b0866fdd9ee09972728d5de46a9904a4bcb2cdd8a2d6",
+      "change": "Reuse lookup_of_holds extraction and native Clean evaluation unchanged, adapting the six actual paired-byte queries and all eleven native logical variable IDs."
+    },
+    {
+      "path": "Airbender/Proofs/MulDiv/ArtifactChecks.lean",
+      "backport_reuse_revision": "5cf124675732f36330cc1a4c76da8e9005e3759b",
+      "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/ArtifactChecks.lean",
+      "backport_reuse_sha256": "88143cecb8172b12097a4c1d6c990ad1b828016876ce3e08c6fecb5fcf4d7ee7",
+      "change": "Reuse direct definition-equality checks for retained equation/query counts and native decoder/setup metadata; no instruction semantics claim."
+    },
+    {
+      "path": "Airbender/Import/Setup.lean",
+      "backport_reuse_revision": "5cf124675732f36330cc1a4c76da8e9005e3759b",
+      "backport_reuse_path": "Airbender/Import/Setup.lean",
+      "backport_reuse_sha256": "d6b474503ea24b2b0fb0a39c32e19725bd9e47d03a1cbf9c2ff74e45f2b6426a",
+      "change": "Reuse the strict regional ControlArtifact JSON envelope and exact key/matrix validation for a separately guarded unsigned_mul_div_fixed profile, ID eight, offset zero and 65,536 tagged rows."
+    },
+    {
+      "path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_revision": "5cf124675732f36330cc1a4c76da8e9005e3759b",
+      "backport_reuse_path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_sha256": "b0ef880f56474d3c9166da6b2d8f12e4d32e5d52b37e6f5b23def477bd6d0ed0",
+      "change": "Reuse unchanged emitData/block encoding to import literal actual byte-table values; no recipe replaces parsed data."
+    },
+    {
+      "path": "Tests/MulDivArtifact.lean",
+      "backport_reuse_revision": "5cf124675732f36330cc1a4c76da8e9005e3759b",
+      "backport_reuse_path": "Tests/NativeScalars.lean",
+      "backport_reuse_sha256": "ef1b801e000f96e90b8b7cee6f485e19fb8320730077972e61219fe04f97a3c8",
+      "change": "Reuse concrete range endpoint/overflow and native-data membership regressions. Add retained zero-third-column and wrong-tag rejection for actual paired-byte table semantics."
+    },
+    {
+      "path": "Tests/ArtifactImport.lean",
+      "backport_reuse_revision": "5cf124675732f36330cc1a4c76da8e9005e3759b",
+      "backport_reuse_path": "Tests/ArtifactImport.lean",
+      "backport_reuse_sha256": "c0b9f987462753be16999fc703cdf92155b9c26bce13b086b76517c9af28d89b",
+      "change": "Reuse mutation-check structure for native paired-byte profile, strict setup export envelope and fail-closed physical mapping; add optimized-out scratch boundaries without treating scratch as a live input."
     }
   ],
   "setup_artifacts": [
@@ -2967,6 +3057,10 @@
         4293963795
       ],
       "boundary": "concrete original-Sail public sparse constructor certificate for every exported row, including full minus-one tail; arbitrary programs, Rust/JSON/compiler/physical trace refinement and initialized execution remain separate"
+    },
+    {
+      "path": "artifacts/setup/mul-div-small-range-native.json",
+      "sha256": "de08a64221be93a48a6535934bb76555d6f1a2a9be1fa89cbf8514c91c1c473e"
     }
   ],
   "native_exporter_files": [
@@ -2980,7 +3074,7 @@
     },
     {
       "path": "../native_setup_exporter/src/main.rs",
-      "sha256": "62793447818bd000dd44cf9a57dca61e4eb5f2f1fbddc3c107b46713707a0873"
+      "sha256": "f6a863fbe69aaeebd6b0970b723b48b96e11aa9c8d1f6caf9d7bdaf3cef948e4"
     },
     {
       "path": "../native_setup_exporter/src/columns.rs",

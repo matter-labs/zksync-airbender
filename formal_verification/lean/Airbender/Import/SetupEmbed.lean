@@ -139,4 +139,12 @@ elab "import_native_control " name:ident " from " path:str : command => do
   for (region, suffix) in artifact.tables.zip #["Cleanup", "Conditional"] do
     emitData (mkIdent (name.getId.appendAfter suffix)) region.data region.offset
 
+/-- Literal values from the native unsigned mul/div table driver, retaining ID 8. -/
+elab "import_native_small_range " name:ident " from " path:str : command => do
+  let artifact ← match parseSmallRange (← IO.FS.readFile path.getString) with
+    | .ok artifact => pure artifact
+    | .error error => throwError "native byte-table import failed: {error}"
+  let some region := artifact.tables[0]? | throwError "missing native byte table"
+  emitData name region.data region.offset
+
 end Airbender.Setup

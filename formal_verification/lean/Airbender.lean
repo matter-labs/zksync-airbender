@@ -28,6 +28,7 @@ import Airbender.Review.Helpers.Tables.NativeDecoder
 import Airbender.Review.Trace.Families.AddSub.ActiveSetup
 import Airbender.Review.Helpers.Tables.NativeRows
 import Airbender.Review.Trace.Families.AddSub.PhysicalSetup
+import Airbender.Review.Circuits.MulDiv.Artifact
 import Airbender.Review.Circuits.JumpBranchSlt.Theorems
 import Airbender.Review.Helpers.Tables.Control
 import Airbender.Review.Trace.Families.JumpBranchSlt.History

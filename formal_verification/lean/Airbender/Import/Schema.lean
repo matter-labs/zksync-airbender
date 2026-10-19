@@ -8,6 +8,7 @@ inductive ColumnAddress where
   | WitnessSubtree : Nat → ColumnAddress
   | MemorySubtree : Nat → ColumnAddress
   | SetupSubtree : Nat → ColumnAddress
+  | OptimizedOut : Nat → ColumnAddress
   deriving Repr, DecidableEq, FromJson, ToJson
 
 /-- num_elements counts WIDTH-sized groups in Rust ColumnSet<WIDTH>. -/
@@ -32,12 +33,13 @@ inductive LookupExpression where
   | Expression : CompiledDegree1Constraint → LookupExpression
   deriving Repr, FromJson, ToJson
 
-/-- Native fixed tables consumed by the checked memory/control profiles. -/
+/-- Native fixed tables consumed by the checked memory/control/byte profiles. -/
 inductive FixedTableId where
   | RomAddressSpaceSeparator
   | RomRead
   | ConditionalJmpBranchSlt
   | JumpCleanupOffset
+  | RangeCheckSmall
   deriving Repr, DecidableEq, FromJson, ToJson
 
 inductive FixedTableIndex where
@@ -159,6 +161,7 @@ structure Circuit where
   degree_2_constraints : Array CompiledDegree2Constraint
   degree_1_constraints : Array CompiledDegree1Constraint
   state_linkage_constraints : EmptyArray
+  scratch_space_size_for_witness_gen : Nat
   variable_mapping : ObjectMap Nat ColumnAddress
   memory_queries_timestamp_comparison_aux_vars : Array ColumnAddress
   executor_family_circuit_next_timestamp_aux_var : Option ColumnAddress

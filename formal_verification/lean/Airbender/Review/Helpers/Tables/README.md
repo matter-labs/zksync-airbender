@@ -89,3 +89,10 @@ Native tags 17/43 and offsets 0/65536 retain a profile without a dummy row.
 queries, while public decoding/initialized original Sail execution and terminal
 PC assessment remain separate. Physical control setup padding and argument
 refinement are not claimed by these regional certificates.
+
+[Native paired byte ranges](SmallRange.lean) retain exact three-column queries
+and odd-column zero padding for unsigned mul/div. [Exported literal rows](NativeSmallRangeData.lean)
+include ID eight; [symbolic certificates](../../../Proofs/MulDiv/SmallRange.lean)
+check all 65,536 actual pairs and identify exact Clean membership. Both byte
+bounds follow from membership; nonzero third padding and wrong tags fail.
+General physical setup/argument/compiler refinement remains separate.
