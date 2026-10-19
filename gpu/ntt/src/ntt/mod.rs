@@ -238,3 +238,120 @@ pub const MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE: usize = strategy::TWO_PASS_COMPAC
 pub fn log_size_supports_natural_to_bitrev_lde(log_n: usize) -> bool {
     (MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE..=strategy::NATURAL_TO_BITREV_MAX_LOG_N).contains(&log_n)
 }
+
+/// A base commitment must fit both the generated transforms and the field's
+/// root domain. This validation does not initialize CUDA or allocate tables.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BaseCommitmentTransformError {
+    UnsupportedMessageSize { requested: u32, min: u32, max: u32 },
+    LogSizeOverflow { message_log2: u32, lde_log2: u32 },
+    LdeDomainTooLarge { requested: u32, max: u32 },
+}
+
+impl std::fmt::Display for BaseCommitmentTransformError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            Self::UnsupportedMessageSize { requested, min, max } => write!(
+                f,
+                "base commitment message log2 {requested} is outside the GPU transform range {min}..={max}"
+            ),
+            Self::LogSizeOverflow { message_log2, lde_log2 } => write!(
+                f,
+                "base commitment LDE log2 overflows: message {message_log2} + LDE {lde_log2}"
+            ),
+            Self::LdeDomainTooLarge { requested, max } => write!(
+                f,
+                "base commitment LDE domain log2 {requested} exceeds BabyBear root-order limit {max}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for BaseCommitmentTransformError {}
+
+/// Validates the Mobius and natural-coefficient to bit-reversed LDE path used
+/// by base commitments. The smaller legacy MSB-convention path is excluded.
+pub fn validate_base_commitment_transform_shape(
+    message_log2: u32,
+    lde_log2: u32,
+) -> Result<(), BaseCommitmentTransformError> {
+    // The generated Mobius final pass and the finest twiddle arrays share this
+    // upper bound. Widening the LDE selector alone must not widen admission.
+    let max =
+        strategy::NATURAL_TO_BITREV_MAX_LOG_N.min(crate::ntt_twiddles::LOG_MAX_NTT_SIZE) as u32;
+    if !log_size_supports_natural_to_bitrev_lde(message_log2 as usize) || message_log2 > max {
+        return Err(BaseCommitmentTransformError::UnsupportedMessageSize {
+            requested: message_log2,
+            min: MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE as u32,
+            max,
+        });
+    }
+    let domain_log2 = message_log2.checked_add(lde_log2).ok_or(
+        BaseCommitmentTransformError::LogSizeOverflow {
+            message_log2,
+            lde_log2,
+        },
+    )?;
+    if domain_log2 > OMEGA_LOG_ORDER {
+        return Err(BaseCommitmentTransformError::LdeDomainTooLarge {
+            requested: domain_log2,
+            max: OMEGA_LOG_ORDER,
+        });
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod cpu_base_commitment_transform_tests {
+    use super::*;
+
+    #[test]
+    fn supported_domains_include_compact_and_production_shapes() {
+        for message in 13..=24 {
+            for lde in 0..=27 - message {
+                assert_eq!(
+                    validate_base_commitment_transform_shape(message, lde),
+                    Ok(())
+                );
+            }
+        }
+        // Blake 20/4 and unified 23/1 both commit a log-24 message with LDE 2.
+        assert_eq!(validate_base_commitment_transform_shape(24, 1), Ok(()));
+    }
+
+    #[test]
+    fn rejects_legacy_and_above_range_messages() {
+        for requested in [0, 12, 25, u32::MAX] {
+            assert_eq!(
+                validate_base_commitment_transform_shape(requested, 0),
+                Err(BaseCommitmentTransformError::UnsupportedMessageSize {
+                    requested,
+                    min: 13,
+                    max: 24,
+                })
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_field_domain_even_when_message_transform_fits() {
+        assert_eq!(
+            validate_base_commitment_transform_shape(24, 4),
+            Err(BaseCommitmentTransformError::LdeDomainTooLarge {
+                requested: 28,
+                max: 27
+            })
+        );
+    }
+
+    #[test]
+    fn rejects_log_addition_overflow() {
+        assert_eq!(
+            validate_base_commitment_transform_shape(24, u32::MAX),
+            Err(BaseCommitmentTransformError::LogSizeOverflow {
+                message_log2: 24,
+                lde_log2: u32::MAX,
+            })
+        );
+    }
+}

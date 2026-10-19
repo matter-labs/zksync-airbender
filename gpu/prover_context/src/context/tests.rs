@@ -2,6 +2,18 @@ use super::*;
 use era_cudart_sys::CudaError;
 
 #[test]
+fn cpu_base_commitment_transform_validation_needs_no_context() {
+    assert_eq!(
+        ProverContext::validate_base_commitment_transform_shape(24, 1),
+        Ok(())
+    );
+    let error = ProverContext::validate_base_commitment_transform_shape(24, 4).unwrap_err();
+    assert!(error.to_string().contains("root-order limit 27"));
+    let error = ProverContext::validate_base_commitment_transform_shape(25, 1).unwrap_err();
+    assert!(error.to_string().contains("transform range 13..=24"));
+}
+
+#[test]
 fn cpu_exact_arena_rejects_invalid_block_counts_before_cuda() {
     let config = ProverContextConfig::default();
     let wrapping_blocks = (usize::MAX >> config.allocator_block_log_size) + 1;

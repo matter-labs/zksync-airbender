@@ -87,6 +87,15 @@ pub struct ProverContext {
 }
 
 impl ProverContext {
+    /// Numeric preflight for BabyBear base-commitment transforms; callable before a
+    /// context is created and without touching either CUDA stream.
+    pub fn validate_base_commitment_transform_shape(
+        message_log2: u32,
+        lde_log2: u32,
+    ) -> Result<(), gpu_ntt::ntt::BaseCommitmentTransformError> {
+        gpu_ntt::ntt::validate_base_commitment_transform_shape(message_log2, lde_log2)
+    }
+
     pub fn new(config: &ProverContextConfig) -> CudaResult<Self> {
         Self::new_with_auto_arena_size(config, |available| available)
     }
