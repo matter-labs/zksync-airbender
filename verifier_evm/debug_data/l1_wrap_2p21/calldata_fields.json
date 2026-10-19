@@ -1,7 +1,7 @@
 {
   "gkr": {
     "external_pow_nonce": {
-      "bytes": "0x000000000015fac2",
+      "bytes": "0x0000000000235153",
       "encoding": "u64_be",
       "offset": 916
     },
@@ -11,7 +11,7 @@
       "offset": 384
     },
     "first_dim_reduce_round": {
-      "bytes": "0x03ddaa8434b9eaa5069cd0de337ed85404c39855d1c944f0152e66e426fab760012f0effc78a48fbd438c92553158921018fab147dfd1fe9d3a56c778f98cb00",
+      "bytes": "0x012ebb72cf9a0bed0d71f41b8d849487018525f798880db61233eae8eeae530d04e95931156df956f4e8bc26ad66bdfa016c465de8458d56d389c88962702f91",
       "encoding": "proth120_be_x4",
       "offset": 1564
     }

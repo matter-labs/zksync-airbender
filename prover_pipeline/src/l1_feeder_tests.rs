@@ -997,7 +997,10 @@ fn feeder_loop_stops_at_the_layer_cap() {
         .map(|n| n + 2)
         .collect();
     let (result, layers) = run_scripted(&script, ScriptedChain::state());
-    assert!(result.err().unwrap().contains("did not reach one instance"));
+    assert!(result
+        .err()
+        .unwrap()
+        .contains("did not reach one terminal C instance"));
     assert_eq!(layers.len(), MAX_FEEDER_LAYERS as usize);
 }
 

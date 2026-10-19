@@ -31,7 +31,7 @@ const CHECKPOINT_SCHEMA_VERSION: u32 = 2;
 /// A feeder-layer checkpoint: the state after feeder layer `layer`
 /// (zero-based), so `feeder_layers = layer + 1`. Resuming it continues the
 /// feeder loop at layer `layer + 1` (or only validates the wrap fit when the
-/// checkpoint proof already has one instance).
+/// checkpoint proof is terminal C).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct StepCheckpoint {
     fixture_schema_version: u32,
@@ -198,8 +198,8 @@ fn fsv_identities(blake: PipelineBlakeModes) -> Result<Vec<FsvIdentity>, String>
             BlakeMode::BlakeSpecialOpcodes,
         ),
         (
-            "feeder",
-            FsvProgram::UnifiedRecursionLayerL1Feeder,
+            "feeder_a",
+            FsvProgram::UnifiedRecursionLayerL1FeederA,
             BlakeMode::BlakeSpecialOpcodes,
         ),
         (
@@ -233,6 +233,14 @@ fn source() -> ProgramSource {
 
 /// The host window a GPU reference run needs (decision O8).
 const GPU_HOST_WINDOW_GIB: u64 = 64;
+
+// CPU stages keep 40 GiB above the historical 110 GiB program peak
+// and the feeder's 96 GiB planning budget.
+// The 2026-10-19 run measured 72.80 GiB for Base and 88.79 GiB for RecUnified.
+const CPU_PROGRAM_HOST_WINDOW_GIB: u64 = 150;
+pub(super) const CPU_FEEDER_HOST_WINDOW_GIB: u64 = 136;
+// The measured wrap peak was 37.57 GiB; round to 40 GiB plus the host reserve.
+const CPU_WRAP_HOST_WINDOW_GIB: u64 = 80;
 
 /// The backend the reference producer proves on. Reference inputs keep their
 /// CPU provenance: a CPU-produced seed, checkpoint or manifest is valid input
@@ -383,6 +391,38 @@ enum GenerateFrom<'a> {
     L1Feeder(&'a Path),
 }
 
+fn write_reference_manifest(
+    sink: &Path,
+    execution: Execution,
+    files: Inventory,
+    program: ProgramIdentity,
+    fsv: Vec<FsvIdentity>,
+    blake: PipelineBlakeModes,
+) -> Result<Vec<String>, String> {
+    let mut names: Vec<String> = files.iter().map(|file| file.name.clone()).collect();
+    write_compact(
+        &sink.join("manifest.json"),
+        &ProofManifest {
+            format_version: 1,
+            program,
+            fsv,
+            configuration: ReferenceConfiguration {
+                security_level: COMPILED_SECURITY_LEVEL,
+                backend: execution.backend,
+                worker_threads: 24,
+                batch_id: 0,
+                blake_unrolled: blake.unrolled.tag().into(),
+                blake_bridge: blake.bridge.tag().into(),
+                blake_final: blake.final_layer.tag().into(),
+                user_nd_words: vec![],
+            },
+            files,
+        },
+    )?;
+    names.push("manifest.json".into());
+    Ok(names)
+}
+
 fn generate_into(
     sink: &Path,
     from: GenerateFrom<'_>,
@@ -393,7 +433,10 @@ fn generate_into(
     let source = source();
     let names = match from {
         GenerateFrom::Program => {
-            preflight("program", execution.host_window_gib(125));
+            preflight(
+                "program",
+                execution.host_window_gib(CPU_PROGRAM_HOST_WINDOW_GIB),
+            );
             let loaded = load_program(&source)?;
             let blake = PipelineBlakeModes::from_env();
             let identities = fsv_identities(blake)?;
@@ -431,34 +474,23 @@ fn generate_into(
                 .chain(feeder)
                 .chain(wrap)
                 .collect();
-            let mut names: Vec<String> = files.iter().map(|file| file.name.clone()).collect();
-            write_compact(
-                &sink.join("manifest.json"),
-                &ProofManifest {
-                    format_version: 1,
-                    program: ProgramIdentity {
-                        bin_keccak256: hex_digest(&loaded.bin_bytes),
-                        text_keccak256: hex_digest(&loaded.text_bytes),
-                    },
-                    fsv: identities,
-                    configuration: ReferenceConfiguration {
-                        security_level: COMPILED_SECURITY_LEVEL,
-                        backend: execution.backend,
-                        worker_threads: 24,
-                        batch_id: 0,
-                        blake_unrolled: blake.unrolled.tag().into(),
-                        blake_bridge: blake.bridge.tag().into(),
-                        blake_final: blake.final_layer.tag().into(),
-                        user_nd_words: vec![],
-                    },
-                    files,
+            write_reference_manifest(
+                sink,
+                execution,
+                files,
+                ProgramIdentity {
+                    bin_keccak256: hex_digest(&loaded.bin_bytes),
+                    text_keccak256: hex_digest(&loaded.text_bytes),
                 },
-            )?;
-            names.push("manifest.json".into());
-            names
+                identities,
+                blake,
+            )?
         }
         GenerateFrom::RecursionUnified(input) => {
-            preflight("feeder", execution.host_window_gib(75));
+            preflight(
+                "feeder",
+                execution.host_window_gib(CPU_FEEDER_HOST_WINDOW_GIB),
+            );
             let artifact: ProofArtifact = read_typed(input)?;
             if artifact.target != ProofTarget::RecursionUnified
                 || artifact.batch_id != 0
@@ -504,7 +536,10 @@ fn generate_into(
                 .collect()
         }
         GenerateFrom::FeederLayer(input) => {
-            preflight("feeder_resume", execution.host_window_gib(75));
+            preflight(
+                "feeder_resume",
+                execution.host_window_gib(CPU_FEEDER_HOST_WINDOW_GIB),
+            );
             let manifest: ProofManifest = read_typed(
                 &input
                     .parent()
@@ -585,7 +620,7 @@ fn generate_into(
                 .collect()
         }
         GenerateFrom::L1Feeder(input) => {
-            preflight("wrap", execution.host_window_gib(60));
+            preflight("wrap", execution.host_window_gib(CPU_WRAP_HOST_WINDOW_GIB));
             let artifact: ProofArtifact = read_typed(input)?;
             if artifact.target != ProofTarget::L1Feeder
                 || artifact.batch_id != 0
@@ -912,7 +947,7 @@ fn guard(from: GenerateFrom<'_>) {
 }
 
 #[test]
-#[ignore = "regenerates the committed L1 reference: ~35 min CPU (historical), up to ~110 GiB"]
+#[ignore = "requires 150 GiB for Program, then 136 GiB free in the same process; does not fit this host: use generate_l1_reference_from_recursion_unified"]
 fn generate_l1_reference() {
     let sink = disposable_dir("generate");
     let inventory = generate_into(&sink, GenerateFrom::Program, Execution::CPU)
@@ -926,6 +961,62 @@ fn generate_l1_reference() {
     fs::remove_dir_all(sink).expect("L1 reference removes staging directory");
 }
 
+/// Run in a fresh process after independently reproducing the committed standard seed.
+/// The full Program path still needs 136 GiB free after upstream retained state;
+/// its single-process regeneration does not fit this host with the 40 GiB reserve.
+#[test]
+#[ignore = "regenerates CPU feeder+wrap from the committed standard seed; requires a fresh process and 136 GiB"]
+fn generate_l1_reference_from_recursion_unified() {
+    deterministic_pow_required();
+    let reference = fixture_dir();
+    let previous = validated_manifest(&reference).expect("committed reference identity");
+    assert_eq!(previous.format_version, 1);
+    let loaded = load_program(&source()).expect("L1 reference program");
+    let program = ProgramIdentity {
+        bin_keccak256: hex_digest(&loaded.bin_bytes),
+        text_keccak256: hex_digest(&loaded.text_bytes),
+    };
+    assert_eq!(previous.program.bin_keccak256, program.bin_keccak256);
+    assert_eq!(previous.program.text_keccak256, program.text_keccak256);
+    let blake = PipelineBlakeModes::from_env();
+    assert_eq!(previous.configuration.backend, ProverBackend::Cpu);
+    assert_eq!(
+        previous.configuration.security_level,
+        COMPILED_SECURITY_LEVEL
+    );
+    assert_eq!(previous.configuration.worker_threads, 24);
+    assert_eq!(previous.configuration.batch_id, 0);
+    assert!(previous.configuration.user_nd_words.is_empty());
+    assert_eq!(previous.configuration.blake_unrolled, blake.unrolled.tag());
+    assert_eq!(previous.configuration.blake_bridge, blake.bridge.tag());
+    assert_eq!(previous.configuration.blake_final, blake.final_layer.tag());
+    let identities = fsv_identities(blake).expect("L1 reference FSV identities");
+    let seed = file_identity(&reference, "recursion_unified.json").expect("committed seed");
+    let sink = disposable_dir("generate-feeder");
+    fs::create_dir_all(&sink).expect("L1 reference staging directory");
+    fs::copy(reference.join(&seed.name), sink.join(&seed.name)).expect("stage committed seed");
+    let feeder = generate_into(
+        &sink,
+        GenerateFrom::RecursionUnified(&sink.join(&seed.name)),
+        Execution::CPU,
+    )
+    .expect("L1 reference feeder generation");
+    let wrap = generate_into(
+        &sink,
+        GenerateFrom::L1Feeder(&sink.join("l1_feeder.json")),
+        Execution::CPU,
+    )
+    .expect("L1 reference wrap generation");
+    let files = std::iter::once(seed).chain(feeder).chain(wrap).collect();
+    let names = write_reference_manifest(&sink, Execution::CPU, files, program, identities, blake)
+        .expect("L1 reference manifest");
+    for name in names {
+        fs::rename(sink.join(&name), reference.join(&name))
+            .expect("L1 reference promotes complete fixture set");
+    }
+    fs::remove_dir_all(sink).expect("L1 reference removes staging directory");
+}
+
 #[test]
 #[ignore = "regenerates the full CPU L1 reference chain"]
 fn committed_l1_reference_is_current() {
@@ -933,35 +1024,39 @@ fn committed_l1_reference_is_current() {
 }
 
 #[test]
-#[ignore = "regenerates both CPU feeder layers"]
+#[ignore = "regenerates the CPU feeder chain"]
 fn committed_l1_feeder_reference_is_current() {
     guard(GenerateFrom::RecursionUnified(
         &fixture_dir().join("recursion_unified.json"),
     ));
 }
 
-/// Resumes the feeder chain from the first committed checkpoint whose proof
-/// still has more than one instance and regenerates the rest of it.
-fn first_multi_instance_checkpoint() -> (PathBuf, u8) {
+/// Every nonterminal A checkpoint, including a single A instance.
+fn nonterminal_feeder_checkpoints() -> Vec<(PathBuf, u8)> {
     let reference = fixture_dir();
-    let (checkpoint, layer) = (0..MAX_FEEDER_LAYERS as u8)
+    let checkpoints: Vec<_> = (0..MAX_FEEDER_LAYERS as u8)
         .map(|layer| (reference.join(feeder_checkpoint_name(layer)), layer))
         .take_while(|(path, _)| path.exists())
-        .find(|(path, _)| {
+        .filter(|(path, _)| {
             let checkpoint: StepCheckpoint = read_typed(path).expect("feeder checkpoint");
-            feeder_proof_instances(&checkpoint.proof, None).expect("feeder checkpoint proof") > 1
+            validate_feeder_proof(&checkpoint.proof, None).expect("feeder checkpoint profile")
+                == FeederProfile::A
         })
-        .expect("the L1 reference has a multi-instance feeder checkpoint");
-    println!("resuming from {}", checkpoint.display());
-    (checkpoint, layer)
+        .collect();
+    assert!(
+        !checkpoints.is_empty(),
+        "the L1 reference has no A checkpoint"
+    );
+    checkpoints
 }
 
 #[test]
-#[ignore = "regenerates the CPU feeder layers after the first multi-instance checkpoint"]
+#[ignore = "regenerates the CPU feeder suffix from every nonterminal A checkpoint"]
 fn committed_l1_feeder_mid_chain_resume_is_current() {
-    guard(GenerateFrom::FeederLayer(
-        &first_multi_instance_checkpoint().0,
-    ));
+    for (checkpoint, _) in nonterminal_feeder_checkpoints() {
+        println!("resuming from {}", checkpoint.display());
+        guard(GenerateFrom::FeederLayer(&checkpoint));
+    }
 }
 
 #[cfg(feature = "gpu")]
@@ -992,32 +1087,34 @@ fn gpu_l1_reference_matches_committed() {
     });
 }
 
-/// The CPU reference's first multi-instance feeder checkpoint resumed on the
-/// GPU at the 30 GiB preset: the remaining feeder layers, `l1_feeder.json`
-/// and the wrap.
+/// Both nonterminal A checkpoints resumed on the GPU at 21 GiB, including
+/// A x 1 -> C x 1, followed by the wrap.
 #[cfg(feature = "gpu")]
 #[test]
-#[ignore = "resumes the L1 reference feeder chain and wraps it on the GPU"]
+#[ignore = "resumes every nonterminal A reference checkpoint and wraps it on the GPU"]
 fn gpu_l1_feeder_mid_chain_resume_matches_committed() {
-    let (checkpoint, layer) = first_multi_instance_checkpoint();
-    gpu_reproduction("gpu-resume", Reproduction::ResumedAfter(layer), |sink| {
-        let execution = Execution::gpu(MemoryPreset::GiB30);
-        let mut inventory = generate_into(sink, GenerateFrom::FeederLayer(&checkpoint), execution)
-            .expect("L1 reference GPU feeder resume");
-        inventory.extend(
-            generate_into(
-                sink,
-                GenerateFrom::L1Feeder(&sink.join("l1_feeder.json")),
-                execution,
-            )
-            .expect("L1 reference GPU wrap"),
-        );
-        inventory
-    });
+    for (checkpoint, layer) in nonterminal_feeder_checkpoints() {
+        println!("resuming from {}", checkpoint.display());
+        gpu_reproduction("gpu-resume", Reproduction::ResumedAfter(layer), |sink| {
+            let execution = Execution::gpu(MemoryPreset::GiB21);
+            let mut inventory =
+                generate_into(sink, GenerateFrom::FeederLayer(&checkpoint), execution)
+                    .expect("L1 reference GPU feeder resume");
+            inventory.extend(
+                generate_into(
+                    sink,
+                    GenerateFrom::L1Feeder(&sink.join("l1_feeder.json")),
+                    execution,
+                )
+                .expect("L1 reference GPU wrap"),
+            );
+            inventory
+        });
+    }
 }
 
 /// The CPU reference's recursion-unified checkpoint proved on the GPU at the
-/// 30 GiB preset: every feeder layer, `l1_feeder.json` and the wrap.
+/// 21 GiB preset: every feeder layer, `l1_feeder.json` and the wrap.
 #[cfg(feature = "gpu")]
 #[test]
 #[ignore = "proves the L1 reference feeder chain and wraps it on the GPU"]
@@ -1026,7 +1123,7 @@ fn gpu_l1_feeder_chain_matches_committed() {
         "gpu-feeder-chain",
         Reproduction::ResumedAfterRecursionUnified,
         |sink| {
-            let execution = Execution::gpu(MemoryPreset::GiB30);
+            let execution = Execution::gpu(MemoryPreset::GiB21);
             let mut inventory = generate_into(
                 sink,
                 GenerateFrom::RecursionUnified(&fixture_dir().join("recursion_unified.json")),
@@ -1995,4 +2092,255 @@ fn cpu_typed_comparator_compares_wrap_proof_integers_exactly() {
             "{name} differs from the L1 reference in field proof"
         ))
     );
+}
+
+/// Timer boundaries match the arm22 control: F1 prediction start through
+/// the last feeder native verification, with construction and wrap-fit outside.
+#[cfg(feature = "gpu")]
+#[derive(Default)]
+struct FeederTimingObserver {
+    start: Option<Instant>,
+    layer_ends_us: Vec<(u8, usize, u64)>,
+    trace_lengths: Vec<usize>,
+}
+
+#[cfg(feature = "gpu")]
+impl FeederObserver for FeederTimingObserver {
+    fn layer_started(&mut self, layer: u8) {
+        if layer == 0 {
+            self.start = Some(Instant::now());
+        }
+    }
+
+    fn feeder_layer(
+        &mut self,
+        layer: u8,
+        state: &RecursionState,
+        _: &FsvRunReport,
+    ) -> Result<(), String> {
+        let at = self.start.expect("F1 started").elapsed().as_micros() as u64;
+        let instances = feeder_proof_instances(&state.proof, None)?;
+        self.layer_ends_us.push((layer, instances, at));
+        let family = UnrolledCircuitType::Unified.get_family_idx() as u32;
+        let trace_len = state
+            .proof
+            .compiled_riscv_circuits
+            .get(&family)
+            .ok_or("timed proof carries no compiled unified circuit")?
+            .trace_len;
+        self.trace_lengths.push(trace_len);
+        Ok(())
+    }
+}
+
+#[cfg(feature = "gpu")]
+#[test]
+#[ignore = "production feeder timing; requires an ops quiet window"]
+fn gpu_l1_feeder_timing() {
+    let _ = env_logger::builder()
+        .is_test(true)
+        .format_timestamp_millis()
+        .try_init();
+    let repeats: usize = std::env::var("AB_L1_TIMING_REPEATS")
+        .map(|value| value.parse().expect("AB_L1_TIMING_REPEATS"))
+        .unwrap_or(5);
+    assert!(repeats > 0);
+    deterministic_pow_required();
+    let input: ProofArtifact =
+        read_typed(&fixture_dir().join("recursion_unified.json")).expect("committed timing input");
+    let mut prover = ProgramProver::for_continuation(
+        source(),
+        config(ProofTarget::L1Feeder, Execution::gpu(MemoryPreset::GiB30)),
+        &input,
+    )
+    .expect("production feeder timing prover");
+    let mut expected_proof = None;
+    let mut run = |phase: &str, round: usize| {
+        let mut observer = FeederTimingObserver::default();
+        println!("s9-timing-start phase={phase} round={round} shape=s9");
+        let start = Instant::now();
+        let artifact = prover
+            .continue_artifact_observed(input.clone(), &mut observer)
+            .expect("production feeder timing chain");
+        let total_us = start.elapsed().as_micros();
+        let wall_us = observer.layer_ends_us.last().expect("feeder layers").2;
+        assert!(wall_us > 0);
+        let profiles: Vec<_> = observer
+            .trace_lengths
+            .iter()
+            .map(|&trace_len| {
+                FeederProfile::ALL
+                    .into_iter()
+                    .find(|profile| profile.circuit().get_domain_size() == trace_len)
+                    .expect("timed feeder profile")
+            })
+            .collect();
+        assert_eq!(
+            profiles,
+            [FeederProfile::A, FeederProfile::A, FeederProfile::C]
+        );
+        assert_eq!(
+            observer
+                .layer_ends_us
+                .iter()
+                .map(|entry| entry.1)
+                .collect::<Vec<_>>(),
+            [2, 1, 1]
+        );
+        assert_eq!(artifact.feeder_layers, 3);
+        // Validation and serialization are outside the retained feeder wall.
+        prover
+            .verify(&artifact)
+            .expect("timed artifact trusted verification");
+        let proof = serde_json::to_vec(&artifact.proof).expect("timed proof serialization");
+        if let Some(expected) = &expected_proof {
+            assert_eq!(&proof, expected, "timed proofs must be deterministic");
+        } else {
+            expected_proof = Some(proof);
+        }
+        println!(
+            "s9-timing arena_gib=30 phase={phase} round={round} shape=s9 feeder_wall_us={wall_us} continue_total_us={total_us} feeder_layers={} layer_ends_us={:?} profiles={:?}",
+            artifact.feeder_layers, observer.layer_ends_us, profiles
+        );
+    };
+    run("warmup", 0);
+    for round in 0..repeats {
+        run("timed", round);
+    }
+    println!("s9 vmhwm_kib={}", vmhwm_kib());
+}
+
+#[test]
+fn cpu_l1_feeder_profiles_and_capacity_margins() {
+    let reference = fixture_dir();
+    validated_manifest(&reference).expect("L1 reference manifest");
+    for (layer, profile, instances, cycles, spare) in [
+        (0, FeederProfile::A, 2, 16_168_947, 608_269),
+        (1, FeederProfile::A, 1, 5_969_875, 2_418_733),
+        (2, FeederProfile::C, 1, 2_995_757, 1_198_547),
+    ] {
+        let checkpoint: StepCheckpoint =
+            read_typed(&reference.join(feeder_checkpoint_name(layer))).expect("feeder checkpoint");
+        assert_eq!(
+            validate_feeder_proof(&checkpoint.proof, Some(instances)).unwrap(),
+            profile
+        );
+        setups::validate_setups_cap_size(&checkpoint.setups, profile.cap_size()).unwrap();
+        let report: FsvRunReport = read_typed(&reference.join(feeder_report_name(layer)))
+            .expect("feeder prediction report");
+        assert_eq!(report.cycles, cycles, "feeder layer {layer} cycles");
+        assert_eq!(report.nd_words_remaining, 0);
+        assert_eq!(
+            predicted_feeder_shape(&report).unwrap(),
+            (profile, instances)
+        );
+        assert_eq!(
+            instances as u64 * profile.circuit().get_domain_size() as u64 - report.cycles,
+            spare
+        );
+    }
+    assert_eq!(
+        nonterminal_feeder_checkpoints()
+            .iter()
+            .map(|(_, layer)| *layer)
+            .collect::<Vec<_>>(),
+        [0, 1]
+    );
+    let artifact: ProofArtifact =
+        read_typed(&reference.join("l1_feeder.json")).expect("terminal feeder artifact");
+    assert_eq!(artifact.feeder_layers, 3);
+    let stream = build_unified_stream(&artifact.setups, &artifact.proof);
+    let output = FeederProfile::C.native_verify(stream.clone()).unwrap();
+    let program = load_fsv_program(
+        fsv_dir(),
+        FsvProgram::UnifiedRecursionLayerL1FeederWrap,
+        BlakeMode::BlakeSpecialOpcodes,
+    );
+    let report = observe_wrap_program(&program, stream).unwrap();
+    validate_wrap_report(&report, &output).unwrap();
+    assert_eq!(report.cycles, 2_063_057);
+    assert_eq!(L1_WRAP_PROGRAM_CYCLE_LIMIT as u64 - report.cycles, 34_095);
+}
+
+#[test]
+fn cpu_native_feeder_a_accepts_a_valid_stream_and_rejects_trailing_words() {
+    let checkpoint: StepCheckpoint =
+        read_typed(&fixture_dir().join(feeder_checkpoint_name(0))).expect("profile-A checkpoint");
+    assert_eq!(
+        validate_feeder_proof(&checkpoint.proof, Some(2)).unwrap(),
+        FeederProfile::A
+    );
+    let mut stream = build_unified_stream(&checkpoint.setups, &checkpoint.proof);
+    let output = FeederProfile::A
+        .native_verify(stream.clone())
+        .expect("valid A stream");
+    ensure_recursion_chain_binds_program(
+        &output,
+        &rebuild_chain(&checkpoint.chain_end_params).unwrap().hash(),
+    )
+    .expect("A proof authenticates its checkpoint history");
+    stream.push(0);
+    let error = FeederProfile::A.native_verify(stream).unwrap_err();
+    assert!(error.contains("1 trailing words"), "{error}");
+}
+
+#[test]
+#[ignore = "measures trusted feeder continuation admission on the committed reference"]
+fn cpu_l1_feeder_continuation_admission_cost() {
+    preflight("continuation_admission", 64);
+    validated_manifest(&fixture_dir()).expect("L1 reference manifest");
+    let artifact: ProofArtifact =
+        read_typed(&fixture_dir().join("l1_feeder.json")).expect("terminal feeder artifact");
+    let source = source();
+    let start = Instant::now();
+    admit_continuation(&artifact, &source, ProofTarget::L1).expect("trusted continuation");
+    println!(
+        "s9-continuation-admission wall_us={} vmhwm_kib={}",
+        start.elapsed().as_micros(),
+        vmhwm_kib()
+    );
+}
+
+/// The marginal construction cost after the other three feeder registrations.
+/// No proof is produced and the production registration set remains unchanged.
+#[cfg(feature = "gpu")]
+#[test]
+#[ignore = "measures the unused F1-at-C registration; requires a shared GPU lock"]
+fn gpu_l1_feeder_first_c_registration_cost() {
+    preflight("registration_cost", GPU_HOST_WINDOW_GIB);
+    let loaded = load_program(&source()).unwrap();
+    let fsv = FsvPrograms::load(ProofTarget::L1Feeder, PipelineBlakeModes::from_env());
+    let mut registrations = pipeline_registrations(
+        &loaded,
+        Some(ProofTarget::RecursionUnified),
+        ProofTarget::L1Feeder,
+        None,
+        &fsv,
+    );
+    assert_eq!(registrations.len(), 4);
+    let first_c_key = handle_key(
+        ExecutionKind::Unified22,
+        MachineType::Reduced,
+        &fsv.feeder_first.0,
+        &fsv.feeder_first.1,
+    );
+    let first_c = registrations
+        .remove(&first_c_key)
+        .expect("F1 at C registration");
+    assert_eq!(first_c.profiles, BTreeSet::from([ProofProfile::L1Feeder]));
+    let config = config(ProofTarget::L1Feeder, Execution::gpu(MemoryPreset::GiB30));
+    let mut defaults = execution_prover::ExecutionProverConfiguration::<
+        gpu_execution_prover::GpuBackendConfiguration,
+    >::default();
+    defaults.backend.memory_preset = config.gpu_memory_preset;
+    let start = Instant::now();
+    let mut backend: PipelineBackend<gpu_execution_prover::GpuBackend> =
+        PipelineBackend::new(&config, defaults);
+    register_pipeline_plan(&mut backend, registrations);
+    let three_registrations_ms = elapsed_ms(start);
+    let before_vmhwm = vmhwm_kib();
+    let start = Instant::now();
+    register_pipeline_plan(&mut backend, BTreeMap::from([(first_c_key, first_c)]));
+    println!("s9-registration backend=gpu arena_gib=30 three_registrations_ms={three_registrations_ms} marginal_first_c_ms={} vmhwm_before_kib={before_vmhwm} vmhwm_after_kib={}",
+        elapsed_ms(start), vmhwm_kib());
 }

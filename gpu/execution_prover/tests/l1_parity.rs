@@ -6,7 +6,7 @@ use execution_prover::{CommitmentMode, ExecutionKind, MachineType, ProofProfile}
 use execution_prover_model::circuit_type::UnrolledCircuitType;
 use full_statement_verifier::host_utils::{
     build_unified_stream, compute_end_params, load_fsv_program, native_verify_unified_l1_feeder,
-    FsvRecursionChain,
+    native_verify_unified_l1_feeder_a, FsvRecursionChain,
 };
 use full_statement_verifier::program_proof::ProgramProof;
 use gpu_execution_prover::{ExecutionProver, ExecutionProverConfiguration, MemoryPreset};
@@ -733,37 +733,50 @@ impl FeederReference {
     }
 }
 
-/// One GPU feeder layer as `prover_pipeline` proves it: `Unified22` with
-/// `[L1Feeder]` in the merged commitment mode, batch 0, at the 30 GiB preset.
+fn feeder_profile(proof: &ProgramProof) -> (ExecutionKind, ProofProfile) {
+    let family = UnrolledCircuitType::Unified.get_family_idx() as u32;
+    match proof.compiled_riscv_circuits[&family].trace_len {
+        n if n == UnrolledCircuitType::Unified.get_domain_size() => {
+            (ExecutionKind::Unified, ProofProfile::L1FeederA)
+        }
+        n if n == UnrolledCircuitType::Unified22.get_domain_size() => {
+            (ExecutionKind::Unified22, ProofProfile::L1Feeder)
+        }
+        n => panic!("unsupported feeder trace length {n}"),
+    }
+}
+
+/// One GPU feeder layer at the expected proof's production profile, in the
+/// merged commitment mode, batch 0, at the 30 GiB preset.
 fn prove_feeder_layer(
     words: (Vec<u32>, Vec<u32>),
     proof: &ProgramProof,
     setups: &Setups,
     chain_end_params: &[[u32; 8]],
+    expected: &ProgramProof,
 ) -> (ProgramProof, Setups, Vec<[u32; 8]>) {
+    let (kind, profile) = feeder_profile(expected);
     let mut configuration = ExecutionProverConfiguration::default();
     configuration.backend.memory_preset = MemoryPreset::GiB30;
     assert_eq!(configuration.security_level, SecurityLevel::Sec100);
     let mut prover = ExecutionProver::with_configuration(configuration);
     let handle = prover.add_binary(
-        ExecutionKind::Unified22,
+        kind,
         MachineType::Reduced,
         words.0,
         words.1,
         None,
-        &[ProofProfile::L1Feeder],
+        &[profile],
     );
     let result = prover.commit_memory_and_prove(
         0,
         &handle,
         FlatResponsesSource::new_with_reads(build_unified_stream(setups, proof)),
         CommitmentMode::MergedMemoryAndWitness,
-        ProofProfile::L1Feeder,
+        profile,
     );
-    let (mut layer_proof, layer_setups) = program_prover::assemble_program_proof(
-        &prover.program_artifacts(&handle, ProofProfile::L1Feeder),
-        result,
-    );
+    let (mut layer_proof, layer_setups) =
+        program_prover::assemble_program_proof(&prover.program_artifacts(&handle, profile), result);
     let mut chain = rebuild_chain(chain_end_params);
     layer_proof.set_recursion_chain(&chain);
     let end = compute_end_params(&layer_setups, layer_proof.final_pc);
@@ -806,8 +819,13 @@ fn assert_feeder_layer_eq(
         "L1 feeder layer {} chain hash",
         expected.layer
     );
-    let native_output = native_verify_unified_l1_feeder(build_unified_stream(setups, proof))
-        .unwrap_or_else(|error| panic!("L1 feeder layer {}: {error}", expected.layer));
+    let stream = build_unified_stream(setups, proof);
+    let native_output = match feeder_profile(proof).1 {
+        ProofProfile::L1FeederA => native_verify_unified_l1_feeder_a(stream),
+        ProofProfile::L1Feeder => native_verify_unified_l1_feeder(stream),
+        _ => unreachable!(),
+    }
+    .unwrap_or_else(|error| panic!("L1 feeder layer {}: {error}", expected.layer));
     assert_eq!(
         native_output, expected.native_output,
         "L1 feeder layer {} native output",
@@ -822,8 +840,13 @@ fn l1_feeder_f1_cpu_gpu_proof_diff() {
     let seed = reference.seed();
     let expected = reference.layer(0);
     let program = reference.program("feeder_first", FsvProgram::UnifiedRecursionLayer);
-    let (proof, setups, end_params) =
-        prove_feeder_layer(program, &seed.proof, &seed.setups, &seed.chain_end_params);
+    let (proof, setups, end_params) = prove_feeder_layer(
+        program,
+        &seed.proof,
+        &seed.setups,
+        &seed.chain_end_params,
+        &expected.proof,
+    );
     assert_feeder_layer_eq(&expected, &proof, &setups, &end_params);
 }
 
@@ -833,12 +856,13 @@ fn l1_feeder_f2_cpu_gpu_proof_diff() {
     let reference = FeederReference::load();
     let input = reference.layer(0);
     let expected = reference.layer(1);
-    let program = reference.program("feeder", FsvProgram::UnifiedRecursionLayerL1Feeder);
+    let program = reference.program("feeder_a", FsvProgram::UnifiedRecursionLayerL1FeederA);
     let (proof, setups, end_params) = prove_feeder_layer(
         program,
         &input.proof,
         &input.setups,
         &input.chain_end_params,
+        &expected.proof,
     );
     assert_feeder_layer_eq(&expected, &proof, &setups, &end_params);
 }
@@ -849,12 +873,13 @@ fn l1_feeder_f3_cpu_gpu_proof_diff() {
     let reference = FeederReference::load();
     let input = reference.layer(1);
     let expected = reference.layer(2);
-    let program = reference.program("feeder", FsvProgram::UnifiedRecursionLayerL1Feeder);
+    let program = reference.program("feeder_a", FsvProgram::UnifiedRecursionLayerL1FeederA);
     let (proof, setups, end_params) = prove_feeder_layer(
         program,
         &input.proof,
         &input.setups,
         &input.chain_end_params,
+        &expected.proof,
     );
     assert_feeder_layer_eq(&expected, &proof, &setups, &end_params);
 }

@@ -178,7 +178,7 @@ struct FsvIdentity {
 fn fsv_identities() -> Result<Vec<FsvIdentity>, String> {
     [
         ("feeder_first", FsvProgram::UnifiedRecursionLayer),
-        ("feeder", FsvProgram::UnifiedRecursionLayerL1Feeder),
+        ("feeder_a", FsvProgram::UnifiedRecursionLayerL1FeederA),
         ("feeder_wrap", FsvProgram::UnifiedRecursionLayerL1FeederWrap),
     ]
     .into_iter()
@@ -272,11 +272,11 @@ impl FeederObserver for Recorder<'_> {
             return Err("feeder reference observer layer order".into());
         }
         let instances = feeder_proof_instances(&state.proof, None)?;
-        let predicted_instances = predicted_feeder_shape(report)?.1;
-        let chunk = UnrolledCircuitType::Unified22.get_domain_size() as u64;
+        let (profile, predicted_instances) = predicted_feeder_shape(report)?;
+        let chunk = profile.circuit().get_domain_size() as u64;
         let chunk_margin_cycles = predicted_instances as u64 * chunk - report.cycles;
-        let native_output =
-            native_verify_unified_l1_feeder(build_unified_stream(&state.setups, &state.proof))?;
+        let native_output = validate_feeder_proof(&state.proof, None)?
+            .native_verify(build_unified_stream(&state.setups, &state.proof))?;
         let chain = rebuild_chain(&state.chain_end_params)?;
         let role = if layer == 0 { "first" } else { "recurrent" };
         let fixture = LayerFixture {
@@ -345,7 +345,7 @@ fn generate_input(sink: &Path, input: &Input) -> Result<Vec<String>, String> {
     deterministic_pow_required();
     fs::create_dir_all(sink).map_err(|error| format!("feeder reference sink: {error}"))?;
     let seed = seed(sink, input)?;
-    preflight("feeder", 75);
+    preflight("feeder", super::l1_reference::CPU_FEEDER_HOST_WINDOW_GIB);
     let source = source(input);
     let loaded = load_program(&source)?;
     let mut prover = ProgramProver::for_continuation(source, config(ProofTarget::L1Feeder), &seed)?;
@@ -435,6 +435,12 @@ fn stream_of(fixture: &LayerFixture) -> Vec<u32> {
     build_unified_stream(&fixture.setups, &fixture.proof)
 }
 
+fn native_verify_layer(fixture: &LayerFixture) -> Result<[u32; 16], String> {
+    let profile = validate_feeder_proof(&fixture.proof, None)?;
+    setups::validate_setups_cap_size(&fixture.setups, profile.cap_size())?;
+    profile.native_verify(stream_of(fixture))
+}
+
 fn feeder_program(program: FsvProgram) -> ProgramWords {
     load_fsv_program(fsv_dir(), program, BlakeMode::BlakeSpecialOpcodes)
 }
@@ -489,9 +495,10 @@ fn verify_input(dir: &Path, input: &Input) -> Result<Manifest, String> {
                 input.name
             ));
         }
+        let profile = validate_feeder_proof(&fixture.proof, Some(fixture.predicted_instances))?;
         let instances = feeder_proof_instances(&fixture.proof, Some(fixture.predicted_instances))?;
         if let Some(previous) = previous_instances {
-            if instances >= previous {
+            if profile == FeederProfile::A && instances >= previous {
                 return Err(format!(
                     "feeder reference {} layer {layer} did not converge",
                     input.name
@@ -513,7 +520,7 @@ fn verify_input(dir: &Path, input: &Input) -> Result<Manifest, String> {
                 input.name
             ));
         }
-        let output = native_verify_unified_l1_feeder(stream_of(&fixture))?;
+        let output = native_verify_layer(&fixture)?;
         if output != fixture.native_output {
             return Err(format!(
                 "feeder reference {} layer {layer} native output mismatch",
@@ -670,7 +677,7 @@ fn resumed_feeder_chains_match_the_fresh_chain() {
 }
 
 /// The merge-margin gate: the production regular-link feeder verifies a
-/// two-instance feeder proof inside one 2^22 chunk, and that transition's
+/// two-instance A feeder proof inside one 2^23 chunk, and that transition's
 /// actual successor proof is one instance. Every input's fixture set is
 /// validated first (current FSV identities and config, file digests, every
 /// layer natively verified and chained, the trusted final artifact); the
@@ -679,8 +686,8 @@ fn resumed_feeder_chains_match_the_fresh_chain() {
 #[test]
 #[ignore = "validates the feeder fixtures and runs the production feeder verifier over the two-instance proofs"]
 fn production_feeder_merge_gate() {
-    let program = feeder_program(FsvProgram::UnifiedRecursionLayerL1Feeder);
-    let chunk = UnrolledCircuitType::Unified22.get_domain_size() as u64;
+    let program = feeder_program(FsvProgram::UnifiedRecursionLayerL1FeederA);
+    let chunk = UnrolledCircuitType::Unified.get_domain_size() as u64;
     let mut found = false;
     for input in inputs() {
         let dir = fixture_dir().join(input.name);
@@ -707,13 +714,13 @@ fn production_feeder_merge_gate() {
                 layer + 1
             );
             feeder_proof_instances(&successor.proof, Some(1)).unwrap();
-            let successor_output = native_verify_unified_l1_feeder(stream_of(&successor)).unwrap();
+            let successor_output = native_verify_layer(&successor).unwrap();
             ensure_recursion_chain_binds_program(
                 &successor_output,
                 &rebuild_chain(&successor.chain_end_params).unwrap().hash(),
             )
             .unwrap();
-            let native = native_verify_unified_l1_feeder(stream_of(&fixture)).unwrap();
+            let native = native_verify_layer(&fixture).unwrap();
             let report = ProductionFeederVerifier
                 .predict(&program, stream_of(&fixture))
                 .unwrap();
@@ -768,7 +775,7 @@ fn production_wrap_program_gate() {
         let manifest = verify_input(&dir, &input).unwrap();
         let fixture = load_layer(&dir, manifest.layers.len() - 1).unwrap();
         feeder_proof_instances(&fixture.proof, Some(1)).unwrap();
-        let native = native_verify_unified_l1_feeder(stream_of(&fixture)).unwrap();
+        let native = native_verify_layer(&fixture).unwrap();
         ensure_recursion_chain_binds_program(
             &native,
             &rebuild_chain(&fixture.chain_end_params).unwrap().hash(),
@@ -970,8 +977,8 @@ impl FeederObserver for GpuChainObserver<'_> {
             if rebuild_chain(&state.chain_end_params)?.hash() != fixture.chain_hash {
                 return Err(format!("GPU feeder layer {layer} chain hash differs"));
             }
-            let native_output =
-                native_verify_unified_l1_feeder(build_unified_stream(&state.setups, &state.proof))?;
+            let native_output = validate_feeder_proof(&state.proof, None)?
+                .native_verify(build_unified_stream(&state.setups, &state.proof))?;
             if native_output != fixture.native_output {
                 return Err(format!("GPU feeder layer {layer} native output differs"));
             }

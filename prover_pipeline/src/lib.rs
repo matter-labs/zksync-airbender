@@ -1009,7 +1009,7 @@ fn run_feeder_layers(
     loop {
         if layer >= MAX_FEEDER_LAYERS {
             return Err(format!(
-                "L1 feeder chain did not reach one instance within {MAX_FEEDER_LAYERS} layers"
+                "L1 feeder chain did not reach one terminal C instance within {MAX_FEEDER_LAYERS} layers"
             ));
         }
         let role = if layer == 0 {
@@ -1042,10 +1042,10 @@ fn run_feeder_layers(
         let (next_state, pass_timings) =
             advance_feeder_stage(backend, program, profile, &mut chain, state, batch_id, nd)?;
         state = next_state;
-        let instances = feeder_proof_instances(&state.proof, Some(predicted))?;
         if validate_feeder_proof(&state.proof, Some(predicted))? != profile {
             return Err("feeder backend returned a proof under the wrong profile".into());
         }
+        let instances = predicted;
         let verify_start = Instant::now();
         let output = verifier.native_verify(profile, nd(&state.setups, &state.proof))?;
         ensure_recursion_chain_binds_program(&output, &chain.hash())?;
