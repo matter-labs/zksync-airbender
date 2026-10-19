@@ -470,6 +470,34 @@ pub fn verify_unified_circuit_recursion_layer_sec_100_l1_feeder<
     }
 }
 
+/// The L1 feeder statement over the 2^23 feeder circuit of profile A
+/// (`prover::gkr::prover_config::example_configs::l1_feeder_a_config_for_2_23`,
+/// cap 4, merged memory+witness commitment), with the same zero-delegation
+/// rule as [`verify_unified_circuit_recursion_layer_sec_100_l1_feeder`]. Every
+/// feeder layer after a profile-A layer executes this entry.
+pub fn verify_unified_circuit_recursion_layer_sec_100_l1_feeder_a<
+    I: NonDeterminismSource<BabyBearField>,
+    E: ErrorCreator,
+    const REDUCED_ROUNDS: bool,
+>(
+    nd_source: &mut I,
+) -> Result<[u32; 16], E::Error> {
+    use crate::imports::unified_reduced_machine_sec_100_l1_feeder_a as feeder;
+    unsafe {
+        let unified_setup = read_setup_cap::<I, { feeder::CAP_SIZE }>(nd_source);
+        verify_full_statement_for_unified_circuit_without_delegations::<
+            I,
+            E,
+            false,
+            REDUCED_ROUNDS,
+            { feeder::CAP_SIZE },
+            { address_high_bits_shift(feeder::TRACE_LEN_LOG2) },
+            { 1u64 << feeder::TRACE_LEN_LOG2 },
+            _,
+        >(&unified_setup, feeder::verify::<I, E>, nd_source)
+    }
+}
+
 pub fn verify_unrolled_or_unified_circuit_recursion_layer_sec_100<
     I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,

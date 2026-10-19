@@ -269,6 +269,33 @@ fn unified_reduced_machine_l1_feeder() {
     );
 }
 
+/// The 2^23 L1 feeder unified verifier (profile A): the 2^23
+/// `unified_reduced_machine` circuit under `l1_feeder_a_config_for_2_23`
+/// (base LDE 4, cap 4, every later oracle domain at 2^27, a plain-text 2^3
+/// tail) with the MERGED memory+witness base commitment. Generated into
+/// `.../unified_reduced_machine/sec_100_l1_feeder_a`, beside the standard
+/// verifier of the same circuit.
+#[test]
+fn unified_reduced_machine_l1_feeder_a() {
+    let circuit = CircuitData::new(
+        "unified_reduced_machine",
+        "../circuit_defs/unrolled_circuits/unified_reduced_machine",
+    );
+    let prover_config = prover::gkr::prover_config::example_configs::l1_feeder_a_config_for_2_23();
+    let compiled = circuit.compiled_circuit();
+    assert_eq!(
+        compiled.trace_len.trailing_zeros() as usize,
+        prover_config.trace_len_log2,
+        "profile A is computed for the 2^23 unified circuit"
+    );
+    generate_verifier_for_circuit_with_config::<DefaultBabyBearField>(
+        &circuit,
+        &prover_config,
+        &prover::gkr::prover::CommitmentMode::MergedMemoryAndWitness,
+        "sec_100_l1_feeder_a",
+    );
+}
+
 macro_rules! generate_circuit_tests {
     ($($name:ident; $prod_path:expr),* $(,)?) => {
         $(

@@ -13,6 +13,7 @@ pub mod mem_word_only_sec_100;
 pub mod shift_binop_sec_100;
 pub mod unified_reduced_machine_sec_100;
 pub mod unified_reduced_machine_sec_100_l1_feeder;
+pub mod unified_reduced_machine_sec_100_l1_feeder_a;
 pub mod unsigned_mul_div_sec_100;
 
 pub type UnrolledCircuitOutput = add_sub_lui_auipc_mop_sec_100::ConcreteVerifierOutput;

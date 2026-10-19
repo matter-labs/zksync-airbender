@@ -69,18 +69,44 @@ pub fn native_verify_unrolled(stream: Vec<u32>, is_base: bool) -> [u32; 16] {
 /// reported as `Err`.
 #[cfg(feature = "verifiers")]
 pub fn native_verify_unified_l1_feeder(stream: Vec<u32>) -> Result<[u32; 16], String> {
-    use verifier_common::errors::DebugErrorCreator;
+    native_verify_l1_feeder_statement(
+        stream,
+        crate::unified_circuit_statement::verify_unified_circuit_recursion_layer_sec_100_l1_feeder::<
+            _,
+            verifier_common::errors::DebugErrorCreator,
+            USE_REDUCED_BLAKE2_ROUNDS,
+        >,
+    )
+}
+
+/// [`native_verify_unified_l1_feeder`] over a proof of the 2^23 feeder
+/// profile A.
+#[cfg(feature = "verifiers")]
+pub fn native_verify_unified_l1_feeder_a(stream: Vec<u32>) -> Result<[u32; 16], String> {
+    native_verify_l1_feeder_statement(
+        stream,
+        crate::unified_circuit_statement::verify_unified_circuit_recursion_layer_sec_100_l1_feeder_a::<
+            _,
+            verifier_common::errors::DebugErrorCreator,
+            USE_REDUCED_BLAKE2_ROUNDS,
+        >,
+    )
+}
+
+#[cfg(feature = "verifiers")]
+fn native_verify_l1_feeder_statement(
+    stream: Vec<u32>,
+    statement: fn(
+        &mut std::vec::IntoIter<u32>,
+    ) -> Result<[u32; 16], verifier_common::errors::VerificationError>,
+) -> Result<[u32; 16], String> {
     let joined = std::thread::Builder::new()
         .name("unified l1 feeder verifier".to_string())
         .stack_size(1 << 27)
         .spawn(move || {
             let mut it = stream.into_iter();
-            let output = crate::unified_circuit_statement::verify_unified_circuit_recursion_layer_sec_100_l1_feeder::<
-                _,
-                DebugErrorCreator,
-                USE_REDUCED_BLAKE2_ROUNDS,
-            >(&mut it)
-            .map_err(|err| format!("unified l1 feeder proof failed to verify: {err:?}"))?;
+            let output = statement(&mut it)
+                .map_err(|err| format!("unified l1 feeder proof failed to verify: {err:?}"))?;
             let trailing = it.count();
             if trailing != 0 {
                 return Err(format!(
