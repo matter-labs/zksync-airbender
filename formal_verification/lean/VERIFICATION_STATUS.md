@@ -883,15 +883,54 @@ write. Proofs are split at the default proof-step limit; memory/thread ceilings
 are unchanged. These are complete local assignments, not initialized fetched
 execution or new native Rust program exports. No v2 defect is established.
 
+## Initialized unsigned MUL/DIV decoding and native results
+
+[The short public trace claim](Airbender/Review/Trace/Families/MulDiv/Theorems.lean)
+now derives all local numerical interfaces from actual public bytes, seed/PC reads
+and accepted native state/memory/decoder matching. MUL/MULHU/DIVU/REMU selected
+results and actual masked destination writes follow, including zero divisors and
+original x0 destinations. No per-row operand bound, packed selector, zero flag,
+expected read or desired result is supplied. Original Sail operation clauses,
+preparation/retirement and finite fetched MUL/DIV execution remain unfinished.
+
+[Stateful sparse construction](Airbender/Review/Helpers/Decoder/StatefulSetup.lean)
+executes the pinned original Sail decoder in the public initial state. It retains
+native PCs 4*i, unsupported instruction holes, capacity and the complete
+all-minus-one tail. Byte/decoder errors reject construction. Extension-dependent
+decoding reads actual misa; the earlier pure constructors remain available for
+their checked base-ISA families. [The entire decoder-frame proof](Airbender/Proofs/Sail/DecoderFrame.lean)
+is copied unchanged from the pinned source and proves state preservation and
+replay with the same misa. Native two-bit mask equations exclude all sentinel
+slots before membership recovers original source evidence and exact query data.
+
+[Initialized native history](Airbender/Review/Trace/Families/MulDiv/History.lean)
+reuses complete Clean online consistency and latest-read assembly for all three
+native ports. Checked native clock equations discharge the shared instance.
+[Range induction](Airbender/Review/Trace/Families/MulDiv/Values.lean) retains both
+readonly timestamp refreshes and the actual masked destination write, deriving
+every native read, write and terminal word bound. [Numerical assembly](Airbender/Proofs/Trace/Families/MulDiv/Results.lean)
+then invokes the previously checked native arithmetic with these derived inputs.
+
+[Sixteen complete initialized traces](Tests/MulDivInitializedFixture.lean) cover
+all four operations, ordinary/x0 writes and ordinary/zero divisors. Actual public
+bytes and misa=0x40001000 construct their native-shaped setup, including an UNIMP
+hole and the full 2^20-row tail. [Original-decoder regressions](Tests/MulDivDecoderCases.lean)
+reject every opcode when M is disabled. [Boundary regressions](Tests/MulDivMetadata.lean)
+retain locally valid wrong tags and a compensating flag-2/unbounded write, then
+prove full public lookup membership rejects both. These are logical argument
+boundary checks, not native defects or new Rust program-export certificates.
+Physical initialization, setup/compiler refinement, cryptographic enforcement,
+whole-machine/protocol composition and completeness remain separately scoped.
+
 ## Validation
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all fifty-one concrete test modules pass.
+- Library, both CLI entrypoints and all fifty-six concrete test modules pass.
 - Importer regressions: 202 checks pass.
-- Axiom audit: 1080 explicit roots; only propext, Classical.choice and Quot.sound.
-- All sixty-three public Review theorems (eleven circuit claims, forty-three trace claims and nine helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
-- Source provenance: 75 unchanged reused files, four native circuit artifacts, forty native Rust sources, eight native setup artifacts and four exporter source/manifest/lock files.
+- Axiom audit: 1138 explicit roots; only propext, Classical.choice and Quot.sound.
+- All sixty-six public Review theorems (eleven circuit claims, forty-six trace claims and nine helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Source provenance: 76 unchanged reused files, four native circuit artifacts, forty native Rust sources, eight native setup artifacts and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
 - Public Sail x1/PC reads construct the accepted alias fixture; missing register and byte data reject construction.

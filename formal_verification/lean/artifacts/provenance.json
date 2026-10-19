@@ -301,6 +301,10 @@
     {
       "path": "Airbender/Proofs/Arithmetic/Multiplication.lean",
       "sha256": "f949ca8681dd30cf010a3aedb43f4e464a875ec60705df92563a591f8990acb9"
+    },
+    {
+      "path": "Airbender/Proofs/Sail/DecoderFrame.lean",
+      "sha256": "8b0a1ff2bfe736cf05d02a5b000e553650560a6429e8ab9af0521c14007374d2"
     }
   ],
   "circuit_artifacts": [
@@ -3047,6 +3051,163 @@
       "backport_reuse_path": "Tests/JumpControl.lean",
       "backport_reuse_sha256": "ea852e65783bb585cfbd884d60b22b12462fd0f37f8cd23d020cfc0846aba71e",
       "change": "Reuse full imported-equation/lookup satisfaction, nonvacuous public-claim application and altered-output rejection. Split five concrete-pair proofs to retain default proof-step limits. Each operation checks ten full native rows, including zero divisors, maximal values, byte-crossing multiplication/division and actual discarded x0 writes."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Decoder/StatefulSetup.lean",
+      "source_path": "Airbender/Review/Helpers/Decoder/Program.lean",
+      "source_sha256": "8c16ed192fec8e3457da311a3abc38cba24bcf2b91e3171ec983e927fb70b05b",
+      "change": "Copy original programEntryRunWith and programImageRunWith unchanged. Add sparse slots, retaining actual original Sail execution in the supplied public state, native 4*i indices, unsupported holes and full sentinel tail. Missing bytes and decoder errors reject construction."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/StatefulDecoderSetup.lean",
+      "source_path": "Airbender/Proofs/Trace/Program.lean",
+      "source_sha256": "88ce31938a4df60bdc397ced357f26d7182b26b22a86da95b11ccd372371e0e5",
+      "change": "Copy run_entry_source unchanged and invoke the unchanged decoded_misa_frame proof. Adapt existing sparse slot/membership induction to stateful decoding; derive source bytes, unchanged decoder state and indexed PC alignment from successful construction."
+    },
+    {
+      "path": "Airbender/Review/Circuits/MulDiv/Decoder.lean",
+      "source_path": "Airbender/Review/Circuits/MulDiv/Decoder.lean",
+      "source_sha256": "f4ef1aaed72eb637ac7fcca77857d97931e5cb830c08263dbea63481194484de",
+      "change": "Reuse original unsigned MUL/MULHU/DIVU/REMU constructor matching. Rebind native v2 mask 2/0/3/1 and raw funct3 0/3/5/7, retain original x0 opcodes, operands and separate zero flag, and construct native ten-column sparse setup using actual stateful Sail decoding."
+    },
+    {
+      "path": "Tests/MulDivDecoderCases.lean",
+      "source_path": "Tests/MulDivDecoder.lean",
+      "source_sha256": "1265300043804431168f2a955fbbe87041cf45498b65f390a3d43bbd288bdeb0",
+      "change": "Reuse separate original-decoder read-continuation certificates under actual misa reads. Check all four unsigned constructors with ordinary/x0 destinations and explicit disabled-M rejection. Do not copy source x0 exclusions, masks or per-row decoding assumptions."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/StatefulDecoderSetup.lean",
+      "backport_reuse_revision": "c3132514a1c3d40e3f83f9bf97c1e5b8f4cdeb00",
+      "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/NativeSetup.lean",
+      "backport_reuse_sha256": "8e76871b5d658e6bdd0ae880dabd04d6ad8db8618faf136b1e64db4d81402e86",
+      "change": "Reuse the list-length out-of-range proof for the complete native sentinel tail, avoiding reduction of a million-index lookup under the unchanged resource caps."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/StatefulDecoderSetup.lean",
+      "backport_reuse_revision": "c3132514a1c3d40e3f83f9bf97c1e5b8f4cdeb00",
+      "backport_reuse_path": "Airbender/Proofs/Trace/SparseDecoderSetup.lean",
+      "backport_reuse_sha256": "b3200faf227c13c9086cd6b67d1197a8b4ecf44a28a83f00c4dcc2962de761f0",
+      "change": "Reuse length-preserving sparse selection and padding bookkeeping, replacing pure decoding by original Sail execution and proved state preservation."
+    },
+    {
+      "path": "Airbender/Proofs/MulDiv/ArtifactChecks.lean",
+      "backport_reuse_revision": "c3132514a1c3d40e3f83f9bf97c1e5b8f4cdeb00",
+      "backport_reuse_path": "Airbender/Proofs/MulDiv/ArtifactChecks.lean",
+      "backport_reuse_sha256": "5f388d3a0f560e4b4b20bf0645af5ea6b2d9595ba14d899255b8b19153584482",
+      "change": "Extend native rfl certificates to all state/clock columns and three register ports, actual read words and masked final write limbs."
+    },
+    {
+      "path": "Airbender/Proofs/MulDiv/Timestamp.lean",
+      "backport_reuse_revision": "c3132514a1c3d40e3f83f9bf97c1e5b8f4cdeb00",
+      "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/Timestamp.lean",
+      "backport_reuse_sha256": "df050002ed0e6319799ad17db1591ea1ad5b5fcd7203f689fddd0f0d973e1c50",
+      "change": "Reuse native four-tick and previous-write clock calculations. Rebind v2 mul/div Boolean assertions 9..12, clock equations 47/48, prior timestamps 66..74 and native timestamp query slots."
+    },
+    {
+      "path": "Airbender/Proofs/MulDiv/Decoder.lean",
+      "backport_reuse_revision": "c3132514a1c3d40e3f83f9bf97c1e5b8f4cdeb00",
+      "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/Decoder.lean",
+      "backport_reuse_sha256": "4c1f16aedb63e19870f1c28625f317947ef05cc69254a7fee018fa5cc3594f38",
+      "change": "Reuse canonical query extraction and sentinel exclusion. Derive native two-bit mask bound, full public source evidence, exact raw tag, canonical PC/immediate/indices and rd-zero flag from stateful public construction and accepted lookup membership."
+    },
+    {
+      "path": "Airbender/Proofs/MulDiv/Writes.lean",
+      "backport_reuse_revision": "c3132514a1c3d40e3f83f9bf97c1e5b8f4cdeb00",
+      "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/Writes.lean",
+      "backport_reuse_sha256": "10dd49f09155794576d979ea3179d4ab1f17109eb40780431240bfc995dfc045",
+      "change": "Reuse actual-write range preservation structure; derive selected word from native result ranges/low-half Boolean and masked writes from the decoded zero flag."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Context/MulDiv.lean",
+      "backport_reuse_revision": "c3132514a1c3d40e3f83f9bf97c1e5b8f4cdeb00",
+      "backport_reuse_path": "Airbender/Review/Helpers/Context/JumpBranchSlt.lean",
+      "backport_reuse_sha256": "862a9ea4f776cfe14a6f0b2e6110d44ac3685fdec573e5e85917ef2b86a0d950",
+      "change": "Reuse singleton native family registry with actual imported constraints, state/port/decoder columns and Unit setup; no execution coverage is inherited."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Decoder/MulDiv.lean",
+      "backport_reuse_revision": "c3132514a1c3d40e3f83f9bf97c1e5b8f4cdeb00",
+      "backport_reuse_path": "Airbender/Review/Helpers/Decoder/Control.lean",
+      "backport_reuse_sha256": "88d8e1cebfeed16079dd9c4951d2a4708b9e03d3c2b34196f71390fb552b16a8",
+      "change": "Reuse explicit full-table logical decoder membership for every accepted native row."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/MulDiv/History.lean",
+      "backport_reuse_revision": "c3132514a1c3d40e3f83f9bf97c1e5b8f4cdeb00",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/History.lean",
+      "backport_reuse_sha256": "d9e89f4fc7d0ff6b705261df665c642c0ebd12f1fceb01f9d24ea1115c120e73",
+      "change": "Reuse ClockLaws instance and complete unchanged Clean history/latest-read assembly with the checked native mul/div clock connection."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/MulDiv/Decoder.lean",
+      "backport_reuse_revision": "c3132514a1c3d40e3f83f9bf97c1e5b8f4cdeb00",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/Decoder.lean",
+      "backport_reuse_sha256": "297a7d86006e0b8226653d72758e78596acc759e992fb1c3dbca53570e9b7dee",
+      "change": "Reuse row-query routing and public source/zero-flag recovery through native accepted constraints and full stateful sparse membership."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/MulDiv/Values.lean",
+      "backport_reuse_revision": "c3132514a1c3d40e3f83f9bf97c1e5b8f4cdeb00",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/Values.lean",
+      "backport_reuse_sha256": "5ccd1dd0b99fb6ccccc80bba06a150af16b7daf147ba09cd85a3b5518bc258cf",
+      "change": "Reuse native readonly refresh rules and unchanged decreasing-time initialized range induction; bind actual final mul/div masked writes without per-row bounds."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/MulDiv/Results.lean",
+      "backport_reuse_revision": "c3132514a1c3d40e3f83f9bf97c1e5b8f4cdeb00",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/Comparisons.lean",
+      "backport_reuse_sha256": "04adffbd482ace09cfa394b7b4562d06c419c83cf03fed923881a9fb8eef42f2",
+      "change": "Reuse initialized local-interface assembly. Obtain input limb bounds from latest initialized history and native ports, and operation/zero metadata from actual public decoding, then invoke the previously checked four-operation numerical result."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/MulDiv/History.lean",
+      "backport_reuse_revision": "c3132514a1c3d40e3f83f9bf97c1e5b8f4cdeb00",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/JumpBranchSlt/History.lean",
+      "backport_reuse_sha256": "3b0e415864217da0c5f800eaa98e3d604c445a07c6d604e5e231ff58ade19c33",
+      "change": "Reuse short complete Clean history/latest-read theorem from actual public seeds/PC and native logical state/memory matching."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/MulDiv/Values.lean",
+      "backport_reuse_revision": "c3132514a1c3d40e3f83f9bf97c1e5b8f4cdeb00",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/JumpBranchSlt/Values.lean",
+      "backport_reuse_sha256": "238fe4482d253cc73aa08d1683c97204d60fdfde986629a361bc23e091096abf",
+      "change": "Reuse short public read/write/terminal range claim; all local flags, clocks and values are derived."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/MulDiv/Theorems.lean",
+      "backport_reuse_revision": "c3132514a1c3d40e3f83f9bf97c1e5b8f4cdeb00",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/JumpBranchSlt/Comparisons.lean",
+      "backport_reuse_sha256": "c31ef77a932f978eb8655861cf99c99d190bfc38c3a6b799eda8133166f1929c",
+      "change": "Reuse short public-to-internal proof routing. State full source evidence plus native selected and actual masked numerical results, keeping all calculations outside Review. Original Sail operation execution remains separate."
+    },
+    {
+      "path": "Tests/MulDivPublicProgram.lean",
+      "backport_reuse_revision": "c3132514a1c3d40e3f83f9bf97c1e5b8f4cdeb00",
+      "backport_reuse_path": "Tests/ControlComparisons.lean",
+      "backport_reuse_sha256": "6a3a8911fec4018f668e3f9a955ccc6ea82ed7a739b1152186468e5abe5ff5fa",
+      "change": "Reuse concrete original byte/instruction/metadata entries and indexed setup with unsupported hole and complete native capacity. Retain original x0 opcodes."
+    },
+    {
+      "path": "Tests/MulDivInitializedFixture.lean",
+      "backport_reuse_revision": "c3132514a1c3d40e3f83f9bf97c1e5b8f4cdeb00",
+      "backport_reuse_path": "Tests/ControlValues.lean",
+      "backport_reuse_sha256": "21aa4fff6a62e645af9c278a21bd6a335393aa709047c9cc251ff135a7d08a91",
+      "change": "Reuse nonempty native trace/public image, real state/memory matching and actual original byte construction. Check sixteen complete initialized mul/div traces from previously checked local witnesses, actual misa configuration and separate destination register."
+    },
+    {
+      "path": "Tests/MulDivInitialized.lean",
+      "backport_reuse_revision": "c3132514a1c3d40e3f83f9bf97c1e5b8f4cdeb00",
+      "backport_reuse_path": "Tests/ControlComparisons.lean",
+      "backport_reuse_sha256": "6a3a8911fec4018f668e3f9a955ccc6ea82ed7a739b1152186468e5abe5ff5fa",
+      "change": "Reuse short applications of complete initialized history, newest reads, derived native ranges and numerical results for all sixteen constructed traces; retain full-capacity tail and unsupported profile checks."
+    },
+    {
+      "path": "Tests/MulDivMetadata.lean",
+      "backport_reuse_revision": "c3132514a1c3d40e3f83f9bf97c1e5b8f4cdeb00",
+      "backport_reuse_path": "Tests/ControlComparisons.lean",
+      "backport_reuse_sha256": "6a3a8911fec4018f668e3f9a955ccc6ea82ed7a739b1152186468e5abe5ff5fa",
+      "change": "Reuse public history/ranges/result applications and metadata boundary regressions. Cover four operations, ordinary/x0 writes and ordinary/zero divisors without per-row range/result premises; reject locally valid wrong tags and a compensating flag-2 write via full public decoding."
     }
   ],
   "setup_artifacts": [

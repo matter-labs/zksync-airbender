@@ -24,3 +24,7 @@ imports all native equations/queries and proves actual fixed-table effects on a
 nonempty active JAL witness. Its public decoding, initialized original Sail
 execution and terminal-PC/closure assessment remain open; it has no family
 execution claim yet.
+
+## Unsigned MUL/DIV
+
+[The family guide](MulDiv/README.md) covers initialized native history and numerical results for four unsigned operations. It retains stateful original decoding and actual x0 writes; operation clauses, retirement and fetched execution remain separate.

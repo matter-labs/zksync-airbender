@@ -400,11 +400,16 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    unchanged shared integer product theorem has its native v2 byte/carry
    connection; remainder comparison uses checked inverse 32768 and the native
    packed mask. Forty full local assignments apply the public numerical claim.
-   Next derive packed decoding, input bounds and the destination-zero flag from
-   actual public bytes and initialized native history; connect original Sail
-   reads, operation clauses, preparation/retirement and fetched execution. Then
-   continue shift/binop and subword memory. No fetched mul/div coverage is
-   claimed by the local numerical checkpoint.
+   Actual stateful original Sail decoding now derives packed operation and
+   destination-zero metadata. Initialized native matching/public seeds derive
+   every read/write/terminal bound and newest-read history; the short public
+   trace claim obtains all four numerical results without local interfaces.
+   Sixteen complete initialized traces and disabled-M/wrong-tag/bad-flag checks
+   pass. The unchanged source decoder-frame proof retains actual misa reads.
+   Next connect original Sail register reads, operation clauses,
+   preparation/retirement and fetched MUL/DIV execution, then continue
+   shift/binop and subword memory. No original MUL/DIV execution is claimed by
+   the initialized numerical checkpoint.
 4. Rebind bigint/BLAKE/Keccak workers and callers. Retest control validity,
    unissued workers, ROM behavior and request participation on v2 before reusing
    any source finding or temporary premise.

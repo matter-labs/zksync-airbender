@@ -320,3 +320,7 @@ writes, using its artifact/paired-byte connection. This adds no trace execution 
 public decoding, initialized register history and original MUL/DIV retirement
 still require native v2 connections. The existing three execution families and
 shared logical history definitions are unchanged.
+
+## Initialized unsigned MUL/DIV
+
+[The family guide](Families/MulDiv/README.md) routes complete native Clean history, derived read/write/terminal bounds and the short public numerical result. Actual public bytes and stateful original decoding supply operation/zero metadata. Original instruction execution remains open.

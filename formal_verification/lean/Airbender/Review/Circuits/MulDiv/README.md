@@ -32,7 +32,10 @@ boundary operand pairs and both write modes for [MUL](../../../../Tests/MulDivMu
 and [REMU](../../../../Tests/MulDivRemu.lean). Each checks all native constraints,
 applies the public numerical claim and rejects an altered actual write.
 
-Original public decoding, initialized history and Sail execution remain open.
+[Original public decoding](Decoder.lean), initialized history and derived numerical
+interfaces are now checked in [the trace guide](../../Trace/Families/MulDiv/README.md).
+Actual stateful Sail decoding retains misa.M and original x0 instructions.
+Original Sail operation execution, preparation/retirement and fetched traces remain open.
 The row interfaces are not assumed trace results. No v3 semantic theorem is
 promoted without its checked v2 connection. Rust/JSON/compiler refinement,
 physical argument enforcement and completeness remain separate boundaries.

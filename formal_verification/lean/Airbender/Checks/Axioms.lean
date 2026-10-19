@@ -1,3 +1,9 @@
+import Airbender.Proofs.Sail.DecoderFrame
+import Tests.MulDivMetadata
+import Tests.MulDivDecoderCases
+import Tests.MulDivPublicProgram
+import Tests.MulDivInitialized
+import Tests.MulDivInitializedFixture
 import Tests.MulDivWitness
 import Tests.MulDivMul
 import Tests.MulDivMulhu
@@ -1161,3 +1167,63 @@ import Tests.JumpLink
 #print axioms Tests.MulDivRemu.native_constraints
 #print axioms Tests.MulDivRemu.native_results
 #print axioms Tests.MulDivRemu.altered_write_rejected
+
+-- Stateful public mul/div decoding, initialized native history/ranges and numerical results.
+#print axioms Airbender.MulDiv.Proofs.clock_advance
+#print axioms Airbender.MulDiv.Proofs.clock_columns
+#print axioms Airbender.MulDiv.Proofs.clock_effects
+#print axioms Airbender.MulDiv.Proofs.decoded_inputs
+#print axioms Airbender.MulDiv.Proofs.decoded_sources
+#print axioms Airbender.MulDiv.Proofs.decoded_write_rules
+#print axioms Airbender.MulDiv.Proofs.decoded_zero_flag
+#print axioms Airbender.MulDiv.Proofs.decoder_field_bounds
+#print axioms Airbender.MulDiv.Proofs.decoder_member
+#print axioms Airbender.MulDiv.Proofs.fetched_sources
+#print axioms Airbender.MulDiv.Proofs.final_clock_bound
+#print axioms Airbender.MulDiv.Proofs.image_value_bounds
+#print axioms Airbender.MulDiv.Proofs.initialized_results
+#print axioms Airbender.MulDiv.Proofs.memory_clocks
+#print axioms Airbender.MulDiv.Proofs.memory_ports
+#print axioms Airbender.MulDiv.Proofs.packed_mask_bound
+#print axioms Airbender.MulDiv.Proofs.padding_excluded
+#print axioms Airbender.MulDiv.Proofs.query_inputs
+#print axioms Airbender.MulDiv.Proofs.query_mask
+#print axioms Airbender.MulDiv.Proofs.query_tag
+#print axioms Airbender.MulDiv.Proofs.row_decoder_query
+#print axioms Airbender.MulDiv.Proofs.row_write_rule
+#print axioms Airbender.MulDiv.Proofs.selected_bound
+#print axioms Airbender.MulDiv.Proofs.timestamp_equations
+#print axioms Airbender.MulDiv.Proofs.written_limb_bounds
+#print axioms Airbender.MulDiv.public_memory_soundness
+#print axioms Airbender.MulDiv.public_native_results
+#print axioms Airbender.MulDiv.public_value_bounds
+#print axioms Airbender.Reference.Sail.decoded_misa_frame
+#print axioms Airbender.Trace.Proofs.run_entry_source
+#print axioms Airbender.Trace.Proofs.run_slot_selected
+#print axioms Airbender.Trace.Proofs.run_slots_selected
+#print axioms Airbender.Trace.Proofs.run_sparse_setup_selected
+#print axioms Airbender.Trace.Proofs.run_sparse_setup_sources
+#print axioms Airbender.Trace.Proofs.sparse_head_member
+#print axioms Airbender.Trace.Proofs.sparse_row_absent
+#print axioms Tests.MulDivInitialized.first_latest
+#print axioms Tests.MulDivInitialized.hole_and_tail
+#print axioms Tests.MulDivInitialized.insufficient_capacity
+#print axioms Tests.MulDivInitialized.public_bounds
+#print axioms Tests.MulDivInitialized.public_history
+#print axioms Tests.MulDivInitialized.public_results
+#print axioms Tests.MulDivInitialized.signed_profile_rejected
+#print axioms Tests.MulDivInitialized.wrong_flag_native
+#print axioms Tests.MulDivInitialized.wrong_flag_rejected
+#print axioms Tests.MulDivInitialized.wrong_flag_unbounded
+#print axioms Tests.MulDivInitialized.wrong_tag_native
+#print axioms Tests.MulDivInitialized.wrong_tag_rejected
+#print axioms Tests.MulDivInitializedFixture.accepted
+#print axioms Tests.MulDivInitializedFixture.decoded
+#print axioms Tests.MulDivInitializedFixture.decoded_hole
+#print axioms Tests.MulDivInitializedFixture.decoded_slot
+#print axioms Tests.MulDivInitializedFixture.disabled_extension_rejected
+#print axioms Tests.MulDivInitializedFixture.entry_query
+#print axioms Tests.MulDivInitializedFixture.native_constraints
+#print axioms Tests.MulDivInitializedFixture.original_decode
+#print axioms Tests.MulDivInitializedFixture.program_image
+#print axioms Tests.MulDivInitializedFixture.public_inputs

@@ -195,3 +195,7 @@ and native terminal matching under the explicit initial CSR profile. No
 intermediate source evidence, desired steps or terminal closure is supplied.
 The reversed two-row JAL/JALR regression is a logical native trace, with no
 new Rust program-export certificate. General compiler refinement remains open.
+
+## Stateful extension-dependent decoding
+
+[Stateful setup](StatefulSetup.lean) reuses the original Sail interpreter on the public state and keeps sparse indexed holes and the complete native tail. The [unsigned MUL/DIV registry](../../Circuits/MulDiv/Decoder.lean) retains all native masks/tags and original x0 operations. Missing bytes and decoder errors reject construction; unsupported successful results become holes. The unchanged original decoder-frame proof establishes state preservation and replay under the same misa.

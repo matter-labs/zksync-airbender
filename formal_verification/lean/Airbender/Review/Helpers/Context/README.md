@@ -41,3 +41,7 @@ complete Clean consistency and newest reads. No expected read, per-row clock or
 ordering premise is added. [Aliased JAL and lower-clock carry tests](../../../../Tests/ControlHistory.lean)
 pass; stale matching and missing explicit register data reject. Control word bounds,
 actual Sail cell/instruction execution and terminal cell matching remain separate.
+
+## Unsigned MUL/DIV context
+
+[The native registry](MulDiv.lean) binds all imported constraints, state/clock columns, three register ports and decoder metadata. [Initialized history](../../Trace/Families/MulDiv/History.lean) supplies the shared Clean clock/history connection. Original instruction execution remains separate.
