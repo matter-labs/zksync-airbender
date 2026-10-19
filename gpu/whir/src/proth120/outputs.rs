@@ -255,6 +255,7 @@ impl L1WhirPendingReadback {
     /// Standalone readback: also copies the GKR claims, evaluation point and
     /// batching challenge the WHIR proof repeats, and assembles the proof in a
     /// callback of its own.
+    #[allow(clippy::needless_pass_by_value)]
     pub fn schedule_readback_and_assemble(
         mut self,
         memory_cap: &DeviceSlice<Digest>,
