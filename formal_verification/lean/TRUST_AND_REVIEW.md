@@ -980,3 +980,30 @@ negative/wrap rows are not initialized/public-decoder executions or new native
 program exports. No v2 defect is established. Original Sail clauses/retirement,
 complete control execution and terminal instruction-state matching remain open;
 general Rust/compiler/cryptographic refinement stays separate.
+
+## Initialized original comparison clauses and retirement
+
+[Original comparison execution](Airbender/Proofs/Trace/Families/JumpBranchSlt/ComparisonExecution.lean)
+now connects SLT/SLTU/SLTI/SLTIU to their pinned original Sail clauses and normal
+preparation/retirement. The native result proof and initialized matching derive
+both operands, signed/unsigned comparison and the actual masked write. Public
+decoder columns recover exact constructors, indices, immediate sign extension
+and distinct register/immediate masks. Original word-ordering, register access,
+PC preparation, history framing and retirement lemmas are reused unchanged.
+The source nonzero-destination and final-high interfaces are not imported:
+native v2 x0 operations retain their original reads, and actual candidate range
+queries already supply both successor bounds.
+
+[The public segment claim](Airbender/Review/Trace/Families/JumpBranchSlt/ComparisonExecution.lean)
+constructs the complete clock-ordered native cell history and every comparison's
+before/after states. The original clause retires to the exact native output PC
+in those derived states; no operand, result, prepared state, successor or
+intermediate state is supplied. [Regressions](Tests/ComparisonExecution.lean)
+reuse all four separately initialized original-byte fixtures and execute from
+their actual public states. SLTIU-to-x0 reads public x1=123, discards its true
+comparison against sign-extended -1, preserves the complete data state and
+retires PC eight to twelve. This is a segment execution/retirement result;
+general fetched trace composition and terminal instruction-state matching,
+original jump/branch clauses and their CSR effects remain separate. New native
+program export, general Rust/compiler and cryptographic refinement are not
+claimed. No v2 implementation defect is established.

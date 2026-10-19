@@ -189,3 +189,16 @@ decoding. No final-high closure or expected PC is supplied.
 branch cases, with separate full local negative/wrap and taken-alignment checks.
 Local boundary rows are not initialized/public-decoder executions or new native
 exports. Original Sail clauses/retirement remain separate.
+
+## Original comparison clauses and retirement
+
+[The native assembly](../../../Proofs/Trace/Families/JumpBranchSlt/ComparisonExecution.lean)
+connects proved comparison results and actual history accesses to original Sail
+clauses, with shared PC preparation/retirement. V2 retains original x0 reads and
+discarded writes; no source nonzero-rd or final-high interface is copied.
+[The public segment claim](../../Trace/Families/JumpBranchSlt/ComparisonExecution.lean)
+constructs states from complete initialized matching and reaches the exact
+native successor. [Four initialized regressions](../../../../Tests/ComparisonExecution.lean)
+execute original signed/unsigned register/immediate clauses, including true
+SLTIU-to-x0 data stuttering and PC eight to twelve. Original jump/branch CSR
+effects and complete fetched trace/terminal matching remain separate.

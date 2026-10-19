@@ -2585,6 +2585,66 @@
       "backport_reuse_path": "Tests/JumpTarget.lean",
       "backport_reuse_sha256": "e2d6713c82a7d84ee65699cabfe305770daf30205b65272cf674bacd2c46d76a",
       "change": "Reuse full native local target/rollover and alignment-rejection structure. Taken offset two retains valid native cleanup membership but fails actual branch bit-one assertion 26; untaken offset two is ignored while PC+4 wraps normally. Local target carries/ranges and all native constraints are checked, without importing a final-high premise."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/ComparisonExecution.lean",
+      "source_path": "Airbender/Review/Circuits/JumpBranchSlt/Model.lean",
+      "source_sha256": "5a78ddbcfd03e6a41bea932f074246f2b8833e274f0d2d88f816d6d69f41d9cc",
+      "change": "Copy the four-constructor Comparison.Opcode declaration unchanged and adapt original constructor/decoder-data selection into internal assembly helpers. Keep original SLT/SLTU/SLTI/SLTIU and native v2 masks four/eight, including rd=x0; no source nonzero-destination restriction or old word/selector map is copied."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/ComparisonExecution.lean",
+      "source_path": "Airbender/Proofs/JumpBranchSlt/Soundness.lean",
+      "source_sha256": "36ecbe10ba59292fe0564ee8f209074094921a8295f020c11098a36164b79697",
+      "change": "Reuse four-case native numerical result to original Sail signed/unsigned bit-result conversion, original source-read sequencing and clause/write equality structure. Bind actual v2 columns and initialized results; handle original x0 by the unchanged Sail discarded-write theorem, preserving successful source reads."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/ComparisonExecution.lean",
+      "source_path": "Airbender/Proofs/JumpBranchSlt/ComparisonExecution.lean",
+      "source_sha256": "8fe01d7feb988d8c42160af571c32c771ee564509d7a5527a71ed889bc6719ab",
+      "change": "Reuse exact public constructor/data recovery, same-pre-state source/write access, prepared history, original clause dispatch and native retirement assembly. Derive all numerical bounds/results from current initialized v2 proofs; reuse shared PC/history/rebase lemmas unchanged. Both native successor bounds replace the source final-high interface; no expected read, state, result, PC or table-equivalence premise is added."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/ComparisonExecution.lean",
+      "backport_reuse_revision": "174cce42e74ba1325ce7e87da659c8833da89914",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/Comparisons.lean",
+      "backport_reuse_sha256": "04adffbd482ace09cfa394b7b4562d06c419c83cf03fed923881a9fb8eef42f2",
+      "change": "Reuse image_comparisons and image_value_bounds unchanged for all actual masked results and initialized operand ranges. Original Sail clauses consume these derived facts; no desired-result interface is supplied publicly."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/ComparisonExecution.lean",
+      "backport_reuse_revision": "174cce42e74ba1325ce7e87da659c8833da89914",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/RegisterHistory.lean",
+      "backport_reuse_sha256": "d500162f62fbc8a9ea86e68609f15d06c2e64b463dba0c3f8f99cdc1f839cf57",
+      "change": "Reuse complete initialized native segment construction and actual original register accesses unchanged. All three reads remain in the same native instruction pre-state, including aliases; the actual masked write determines the after-state."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/ComparisonExecution.lean",
+      "backport_reuse_revision": "174cce42e74ba1325ce7e87da659c8833da89914",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/ComparisonPC.lean",
+      "backport_reuse_sha256": "c8e5b0d3fd0e218c64f70bdf2300d8ab743b06eff46a5ba89e2e498d5505b143",
+      "change": "Reuse image_comparison_pc unchanged to derive PC+4 and native successor bounds/alignment from actual original public decoding, native range queries and carries, retaining RV32 wrap without final-high closure."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/ComparisonExecution.lean",
+      "backport_reuse_revision": "174cce42e74ba1325ce7e87da659c8833da89914",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/Retirement.lean",
+      "backport_reuse_sha256": "3f85520ecfeff2db6e21200173e8d8d7e3a580a95cdf73d04d7886b2f544b1f6",
+      "change": "Reuse prepared-history and normal_step_native sequencing, original retired-state PC reads and overwrite normalization. Apply to original register comparison clauses; no memory platform/configuration premise is needed."
+    },
+    {
+      "path": "Tests/ComparisonExecution.lean",
+      "backport_reuse_revision": "174cce42e74ba1325ce7e87da659c8833da89914",
+      "backport_reuse_path": "Tests/ControlComparisons.lean",
+      "backport_reuse_sha256": "6a3a8911fec4018f668e3f9a955ccc6ea82ed7a739b1152186468e5abe5ff5fa",
+      "change": "Reuse all four original-byte, separately initialized comparison fixtures, native constraints/matching and public-decoder certificates unchanged. Check original clause execution from actual public states, exact successor PC and true SLTIU-to-x0 source/data stuttering. No new native logical-program export is claimed."
+    },
+    {
+      "path": "Tests/ComparisonExecution.lean",
+      "backport_reuse_revision": "174cce42e74ba1325ce7e87da659c8833da89914",
+      "backport_reuse_path": "Tests/ControlRegisters.lean",
+      "backport_reuse_sha256": "656dc3eb4a90e6167ab58383ce2c7ecd5b0a69d1ca25e7a5d74c7e957b44e1c6",
+      "change": "Reuse singleton native-history extraction and empty-prefix/suffix elimination to derive actual segment states. Recover the original x0 destination from query indices and the real masked write, then derive complete data-state stuttering instead of supplying an expected after-state."
     }
   ],
   "setup_artifacts": [

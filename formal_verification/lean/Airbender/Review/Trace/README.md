@@ -273,3 +273,13 @@ RV32 wrap. [All eighteen initialized cases](../../../Tests/BranchTargets.lean)
 pass, together with separate full native local negative/wrap and taken-only
 misalignment regressions. No per-row decision, carry, parity, bound, expected PC
 or final-high closure is supplied. Original Sail retirement remains open.
+
+[Original comparison execution](Families/JumpBranchSlt/ComparisonExecution.lean)
+now constructs every initialized native segment and invokes original Sail
+SLT/SLTU/SLTI/SLTIU preparation/retirement to its actual output PC. Shared
+history supplies both source reads and the actual masked write. Public decoding
+supplies exact constructors, indices, immediate sign extension and masks.
+[All four unchanged fixtures](../../../Tests/ComparisonExecution.lean) execute
+from their actual public states, including retained x1=123 and complete data
+stuttering for true SLTIU-to-x0. Full fetched control execution/terminal matching
+and original jump/branch clauses remain separate.

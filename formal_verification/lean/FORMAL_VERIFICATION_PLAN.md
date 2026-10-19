@@ -349,9 +349,16 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    initialized cases pass; local taken -4, taken/untaken wrap and misalignment
    rejection are separately checked without claiming initialized wrap execution
    or a new native export certificate.
-   Next connect
-   original control Sail clauses and PC preparation/retirement, then full execution
-   and actual terminal instruction-state matching. General Rust/compiler and cryptographic refinement remain separate. No per-row result/PC or
+   [Original comparison clauses and retirement](Airbender/Review/Trace/Families/JumpBranchSlt/ComparisonExecution.lean)
+   now execute SLT/SLTU/SLTI/SLTIU in constructed initialized-history segments.
+   All operand/result/immediate/PC inputs come from native matching and original
+   public decoding. Unchanged Sail clause, preparation, history-frame and
+   retirement proofs are reused; native x0 handling and both candidate bounds
+   remove the source nonzero-destination/final-high interfaces. The four existing
+   original-byte fixtures execute from actual public states; true SLTIU-to-x0
+   retains x1=123 and data stuttering while retiring PC eight to twelve.
+   Next connect original jump/branch Sail clauses and their actual CSR effects,
+   then full fetched execution and actual terminal instruction-state matching. General Rust/compiler and cryptographic refinement remain separate. No per-row result/PC or
    table-equivalence premise is added.
 
 3. Port unsigned mul/div, shift/binop and subword memory into the same shared

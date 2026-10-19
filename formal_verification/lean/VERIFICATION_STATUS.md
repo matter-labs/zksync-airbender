@@ -24,6 +24,7 @@ not completed v2 coverage.
 | [Native comparison PC advancement](Airbender/Review/Trace/Families/JumpBranchSlt/ComparisonPC.lean) | Actual public decoding and native acceptance derive PC+4 and four-byte alignment for all four comparisons. Native scalar ranges supply both outgoing bounds, Boolean carries retain RV32 wrap and raw candidate routing is preserved. All four initialized fixtures, full local wrap and altered-PC rejection pass; original Sail retirement and branch semantics remain separate. |
 | [Initialized native branch conditions](Airbender/Review/Trace/Families/JumpBranchSlt/Branches.lean) | Original public decoding and initialized matching derive all six branch conditions, equality/sign/borrow flags, both routing bits and actual zero writes. Native inverse equations identify equality and actual scalar/fixed queries resolve signed/unsigned order. Eighteen initialized cases cover both outcomes per opcode; branch targets and original Sail retirement remain separate. |
 | [Initialized native branch targets](Airbender/Review/Trace/Families/JumpBranchSlt/BranchTargets.lean) | The checked six conditions select PC+offset or PC+4 with RV32 wrap and four-byte alignment. Original public decoding derives parity, incoming bounds/alignment and selectors; actual native carry, range, routing and cleanup constraints determine both outgoing limbs. Eighteen initialized cases, local negative/wrap rows and taken-only alignment rejection pass; original Sail clauses/retirement remain separate. |
+| [Initialized original comparison execution](Airbender/Review/Trace/Families/JumpBranchSlt/ComparisonExecution.lean) | Exact original SLT/SLTU/SLTI/SLTIU clauses and shared preparation/retirement reach native output PCs in constructed initialized-history segment states, including retained x0 source reads and discarded writes. All four original-byte fixtures execute from actual public states; full fetched control composition/terminal matching and original jump/branch clauses remain separate. |
 | V2 artifact import | All 34 quadratic and 3 linear equations, four 16-bit and eight 19-bit timestamp queries from the pinned ADD/SUB layout. Bounds/placement guards and both native zero coefficient encodings. |
 | Reused foundation | Unchanged property definitions, word representation/arithmetic and pinned Sail reference/execution lemmas. Source hashes are checked. |
 | Native state/port clocks | Typed physical state and three direct ports, including actual destination writes. Four-tick advancement and strict previous-write/port order follow from imported equations/queries under initial/prior clock bounds and alignment. The initialized-history layer now derives these local inputs from matching and initial boundaries. |
@@ -699,14 +700,41 @@ program exports. No v2 defect is established. Original Sail clauses/retirement,
 complete control execution and terminal instruction-state matching remain open;
 general Rust/compiler/cryptographic refinement stays separate.
 
+## Initialized original comparison clauses and retirement
+
+[Original comparison execution](Airbender/Proofs/Trace/Families/JumpBranchSlt/ComparisonExecution.lean)
+now connects SLT/SLTU/SLTI/SLTIU to their pinned original Sail clauses and normal
+preparation/retirement. The native result proof and initialized matching derive
+both operands, signed/unsigned comparison and the actual masked write. Public
+decoder columns recover exact constructors, indices, immediate sign extension
+and distinct register/immediate masks. Original word-ordering, register access,
+PC preparation, history framing and retirement lemmas are reused unchanged.
+The source nonzero-destination and final-high interfaces are not imported:
+native v2 x0 operations retain their original reads, and actual candidate range
+queries already supply both successor bounds.
+
+[The public segment claim](Airbender/Review/Trace/Families/JumpBranchSlt/ComparisonExecution.lean)
+constructs the complete clock-ordered native cell history and every comparison's
+before/after states. The original clause retires to the exact native output PC
+in those derived states; no operand, result, prepared state, successor or
+intermediate state is supplied. [Regressions](Tests/ComparisonExecution.lean)
+reuse all four separately initialized original-byte fixtures and execute from
+their actual public states. SLTIU-to-x0 reads public x1=123, discards its true
+comparison against sign-extended -1, preserves the complete data state and
+retires PC eight to twelve. This is a segment execution/retirement result;
+general fetched trace composition and terminal instruction-state matching,
+original jump/branch clauses and their CSR effects remain separate. New native
+program export, general Rust/compiler and cryptographic refinement are not
+claimed. No v2 implementation defect is established.
+
 ## Validation
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all forty concrete test modules pass.
+- Library, both CLI entrypoints and all forty-one concrete test modules pass.
 - Importer regressions: 169 checks pass.
-- Axiom audit: 979 explicit roots; only propext, Classical.choice and Quot.sound.
-- All fifty-eight public Review theorems (ten circuit claims, thirty-nine trace claims and nine helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Axiom audit: 986 explicit roots; only propext, Classical.choice and Quot.sound.
+- All fifty-nine public Review theorems (ten circuit claims, forty trace claims and nine helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
 - Source provenance: 73 unchanged reused files, three native circuit artifacts, thirty-six native Rust sources, seven native setup artifacts and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.

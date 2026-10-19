@@ -161,3 +161,11 @@ parity to actual immediate columns 9/10; public metadata also derives incoming
 PC/offset bounds and alignment. Native routing/carries/ranges determine the final
 PC from the checked branch condition, with no supplied parity or closure premise.
 Original Sail instruction retirement remains separate.
+
+[Original comparison retirement](../../Trace/Families/JumpBranchSlt/ComparisonExecution.lean)
+now uses exact native mask four/eight and original SLT/SLTU/SLTI/SLTIU constructor
+evidence to select the pinned Sail clauses. Full query columns recover indices,
+canonical immediate sign extension and x0; initialized history supplies reads
+and writes, while native results/PC proofs supply outputs. Original x0 decoding
+is retained through actual source reads, discarded writes and retirement.
+General fetched control composition and jump/branch CSR effects remain separate.
