@@ -108,7 +108,6 @@ pub struct RamAuxComparisonSet {
 #[derive(Clone, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RelativeTimestampGroup {
     pub read_timestamp: [usize; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
-    pub borrow: usize,
     pub members: Vec<usize>,
 }
 

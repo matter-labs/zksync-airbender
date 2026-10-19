@@ -30,7 +30,6 @@ struct DelegationMemoryLayout {
 };
 
 struct RelativeTimestampGroup {
-  const u32 borrow;
   const u32 members_count;
   const u32 members[MAX_RELATIVE_TIMESTAMP_GROUP_MEMBERS_COUNT];
 };
@@ -48,13 +47,12 @@ struct DelegationAuxLayoutData {
 
 static_assert(sizeof(OptionalRamAuxComparisonSet) == 8);
 static_assert(offsetof(OptionalRamAuxComparisonSet, intermediate_borrow) == 4);
-static_assert(sizeof(RelativeTimestampGroup) == 72);
-static_assert(offsetof(RelativeTimestampGroup, borrow) == 0);
-static_assert(offsetof(RelativeTimestampGroup, members_count) == 4);
-static_assert(offsetof(RelativeTimestampGroup, members) == 8);
+static_assert(sizeof(RelativeTimestampGroup) == 68);
+static_assert(offsetof(RelativeTimestampGroup, members_count) == 0);
+static_assert(offsetof(RelativeTimestampGroup, members) == 4);
 static_assert(offsetof(DelegationAuxLayoutData, relative_timestamp_groups_count) == 512);
 static_assert(offsetof(DelegationAuxLayoutData, relative_timestamp_groups) == 516);
-static_assert(sizeof(DelegationAuxLayoutData) == 1092);
+static_assert(sizeof(DelegationAuxLayoutData) == 1060);
 
 template <typename DESCRIPTION, typename Memory>
 DEVICE_FORCEINLINE void process_delegation_requests_execution(const DelegationProcessingLayout &delegation_state, const DelegationTrace<DESCRIPTION> &oracle,
@@ -225,8 +223,6 @@ DEVICE_FORCEINLINE void process_indirect_memory_accesses(const DelegationMemoryL
     const u32 borrow = invocation_timestamp.get_high() - read_timestamp_value.get_high();
     if (borrow > 1)
       __trap();
-    write_bool_value(group.borrow, borrow, witness);
-    PRINT_U16(W, group.borrow, borrow);
   }
 }
 

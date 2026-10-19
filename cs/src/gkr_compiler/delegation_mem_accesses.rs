@@ -16,7 +16,6 @@ const LOCAL_TIMESTAMP_FOR_INDIRECTS: u32 = 2;
 pub(crate) struct ReadTimestampGroup {
     pub(crate) read_timestamp: [Variable; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
     pub(crate) read_timestamp_places: [GKRAddress; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
-    pub(crate) borrow: Variable,
     pub(crate) members: Vec<usize>,
 }
 
@@ -25,7 +24,6 @@ fn grouped_read_timestamp<F: PrimeField>(
     num_variables: &mut u64,
     all_variables_to_place: &mut BTreeSet<Variable>,
     layers_mapping: &mut HashMap<Variable, usize>,
-    boolean_vars: &mut Vec<Variable>,
     variable_names: &mut HashMap<Variable, String>,
     read_timestamp_groups: &mut BTreeMap<u8, ReadTimestampGroup>,
     group: u8,
@@ -53,21 +51,10 @@ fn grouped_read_timestamp<F: PrimeField>(
             all_variables_to_place,
             layers_mapping,
         );
-        let borrow = add_compiler_defined_base_layer_variable(
-            num_variables,
-            all_variables_to_place,
-            layers_mapping,
-        );
-        boolean_vars.push(borrow);
-        variable_names.insert(
-            borrow,
-            format!("read timestamp group {}, read_ts borrow", group),
-        );
 
         ReadTimestampGroup {
             read_timestamp,
             read_timestamp_places,
-            borrow,
             members: vec![],
         }
     });
@@ -94,20 +81,20 @@ pub(crate) fn compile_read_timestamp_group_constraints<F: PrimeField>(
     for (group, distance) in read_timestamp_group_distances {
         let ReadTimestampGroup {
             read_timestamp,
-            borrow,
             members,
             ..
         } = &read_timestamp_groups[&group];
         assert!(!members.is_empty());
+        let borrow = Expr::<F>::var(invocation_timestamp[1]) - Expr::var(read_timestamp[1]);
         let low = Expr::<F>::var(read_timestamp[0])
             - Expr::var(invocation_timestamp[0])
             - Expr::from(LOCAL_TIMESTAMP_FOR_INDIRECTS) * Expr::var(execute)
             + distance
-            - Expr::from(1u32 << TIMESTAMP_COLUMNS_NUM_BITS) * Expr::var(*borrow);
-        let high = Expr::<F>::var(read_timestamp[1]) - Expr::var(invocation_timestamp[1])
-            + Expr::var(*borrow);
-        for expr in [low, high] {
-            expr.validate_degree_at_most(1);
+            - Expr::from(1u32 << TIMESTAMP_COLUMNS_NUM_BITS) * borrow.clone();
+        low.validate_degree_at_most(1);
+        let booleanity = borrow.clone() * (borrow - Expr::from(1));
+        booleanity.validate_degree_at_most(2);
+        for expr in [low, booleanity] {
             let compiled_constraint = expr.to_max_quadratic_constraint();
             structured_statements.push(StructuredStatement::AssertZero {
                 expr,
@@ -147,7 +134,6 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
                     num_variables,
                     all_variables_to_place,
                     layers_mapping,
-                    boolean_vars,
                     variable_names,
                     read_timestamp_groups,
                     group,
@@ -345,7 +331,6 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
                         num_variables,
                         all_variables_to_place,
                         layers_mapping,
-                        boolean_vars,
                         variable_names,
                         read_timestamp_groups,
                         group,

@@ -242,12 +242,25 @@ fn keccak_vm() -> VmRunOutput<Counters> {
     )
 }
 
-fn addresses(group: &RelativeTimestampGroup) -> [GKRAddress; 3] {
-    [
-        GKRAddress::BaseLayerMemory(group.read_timestamp[0]),
-        GKRAddress::BaseLayerMemory(group.read_timestamp[1]),
-        GKRAddress::BaseLayerWitness(group.borrow),
-    ]
+fn addresses(group: &RelativeTimestampGroup) -> [GKRAddress; 2] {
+    group.read_timestamp.map(GKRAddress::BaseLayerMemory)
+}
+
+fn invocation_high(circuit: &GKRCircuitArtifact<F>) -> GKRAddress {
+    let state = circuit.memory_layout.delegation_state.as_ref().unwrap();
+    GKRAddress::BaseLayerMemory(state.invocation_timestamp[1])
+}
+
+fn borrow(
+    trace: &Trace,
+    circuit: &GKRCircuitArtifact<F>,
+    group: &RelativeTimestampGroup,
+    row: usize,
+) -> F {
+    let [_, high] = addresses(group);
+    let mut borrow = read_cell(trace, invocation_high(circuit), row);
+    borrow.sub_assign(&read_cell(trace, high, row));
+    borrow
 }
 
 fn lowered_constraints_hold(constraints: &[&Relation], trace: &Trace) -> bool {
@@ -271,12 +284,13 @@ fn distance_inputs(
     group: &RelativeTimestampGroup,
 ) -> Vec<GKRAddress> {
     let state = circuit.memory_layout.delegation_state.as_ref().unwrap();
-    let [low, _, borrow] = addresses(group);
+    let [low, high] = addresses(group);
     let known = [
         low,
+        high,
         GKRAddress::BaseLayerMemory(state.invocation_timestamp[0]),
         GKRAddress::BaseLayerMemory(state.execute),
-        borrow,
+        invocation_high(circuit),
     ];
     inputs(low_relation(constraints, group))
         .into_iter()
@@ -308,6 +322,14 @@ fn minus(value: F, delta: u32) -> F {
     value
 }
 
+fn shifted(value: F, delta: i64) -> F {
+    if delta >= 0 {
+        plus(value, delta as u32)
+    } else {
+        minus(value, (-delta) as u32)
+    }
+}
+
 fn tampering_reaches_the_relations<
     D: DelegationAbiDescription,
     const IW: usize,
@@ -323,11 +345,14 @@ fn tampering_reaches_the_relations<
         assert!(!groups.is_empty());
         let mut trace = circuit.trace(&artifact, &circuit.rows);
         assert!(lowered_constraints_hold(&constraints, &trace), "{variant}");
+        let invocation_high = invocation_high(&artifact);
         for row in [0, active / 2, active - 1, active, artifact.trace_len - 1] {
             for group in groups.iter() {
-                let [low, high, borrow] = addresses(group);
-                let [l, h, b] = [low, high, borrow].map(|a| read_cell(&trace, a, row));
+                let [low, high] = addresses(group);
+                let [l, h] = [low, high].map(|a| read_cell(&trace, a, row));
+                let b = borrow(&trace, &artifact, group, row);
                 let context = format!("{variant} row {row} group {:?}", group.members);
+                assert!(b == F::ZERO || b == F::ONE, "{context}");
                 assert!(
                     rejected_with(&constraints, &mut trace, row, &[(low, plus(l, 1))], low),
                     "{context}"
@@ -336,31 +361,23 @@ fn tampering_reaches_the_relations<
                     rejected_with(&constraints, &mut trace, row, &[(high, plus(h, 1))], high),
                     "{context}"
                 );
-                assert!(
-                    rejected_with(
-                        &constraints,
-                        &mut trace,
-                        row,
-                        &[(borrow, F::from_u32_unchecked(1 - b.as_u32_reduced()))],
-                        low
-                    ),
-                    "{context}"
-                );
-                let lift = 2 - b.as_u32_reduced();
-                assert_eq!(
-                    tampered_failures(
-                        &constraints,
-                        &mut trace,
-                        row,
-                        &[
-                            (low, plus(l, lift * LIMB as u32)),
-                            (high, minus(h, lift)),
-                            (borrow, F::from_u32_unchecked(2)),
-                        ]
-                    ),
-                    vec![BTreeSet::from([borrow])],
-                    "{context}: only booleanity rejects a borrow of 2"
-                );
+                let b = b.as_u32_reduced();
+                for forged in [2, -1] {
+                    let lift = forged - b as i64;
+                    assert_eq!(
+                        tampered_failures(
+                            &constraints,
+                            &mut trace,
+                            row,
+                            &[
+                                (low, shifted(l, lift * LIMB as i64)),
+                                (high, shifted(h, -lift))
+                            ]
+                        ),
+                        vec![BTreeSet::from([invocation_high, high])],
+                        "{context}: only booleanity rejects a borrow of {forged}"
+                    );
+                }
                 if row < active {
                     for input in distance_inputs(&artifact, &constraints, group) {
                         let value = read_cell(&trace, input, row);
@@ -375,18 +392,10 @@ fn tampering_reaches_the_relations<
                             "{context} input {input:?}"
                         );
                     }
-                    let other = if b == F::ZERO {
-                        [
-                            (low, plus(l, LIMB as u32)),
-                            (high, minus(h, 1)),
-                            (borrow, F::ONE),
-                        ]
+                    let other = if b == 0 {
+                        [(low, plus(l, LIMB as u32)), (high, minus(h, 1))]
                     } else {
-                        [
-                            (low, minus(l, LIMB as u32)),
-                            (high, plus(h, 1)),
-                            (borrow, F::ZERO),
-                        ]
+                        [(low, minus(l, LIMB as u32)), (high, plus(h, 1))]
                     };
                     assert!(
                         tampered_failures(&constraints, &mut trace, row, &other).is_empty(),
@@ -474,7 +483,8 @@ fn borrows_follow_the_limb_boundaries<
                 distance > 0 && distance < LIMB && distance % 4 == 0,
                 "row {row}"
             );
-            let borrow = trace.column_major_witness_trace[group.borrow][row].as_u32_reduced();
+            let borrow = borrow(&trace, &artifact, group, row).as_u32_reduced();
+            assert!(borrow <= 1, "row {row}");
             assert_eq!(borrow == 1, (invocation % LIMB) + 2 < distance, "row {row}");
             borrows.insert(borrow);
             distances.insert(distance);

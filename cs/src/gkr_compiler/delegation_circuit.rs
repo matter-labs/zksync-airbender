@@ -463,14 +463,8 @@ impl<F: PrimeField> GKRCompiler<F> {
                         };
                         el
                     });
-                    let GKRAddress::BaseLayerWitness(borrow) =
-                        graph.get_address_for_variable(group.borrow)
-                    else {
-                        unreachable!()
-                    };
                     RelativeTimestampGroup {
                         read_timestamp,
-                        borrow,
                         members: group.members,
                     }
                 })
