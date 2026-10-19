@@ -50,6 +50,14 @@ def main():
             (47,200705,65536),(52,8654849,2097152),(53,10752001,65536)]
         assert all(layout["table_offsets"][r["id"]] == r["offset"] for r in regions["tables"])
         print("PASS reproducible actual native truncation/sign-fill/padded-range regions and compiled offsets", flush=True)
+        subprocess.run([str(binary), "--srl-low", str(compiled), str(output)], check=True)
+        assert output.read_bytes() == (ROOT / "artifacts/setup/shift-srl-low-native.json").read_bytes()
+        srl = json.loads(output.read_bytes())
+        assert srl["generic_rows"] == 2097152 and len(srl["tables"]) == 1
+        region = srl["tables"][0]
+        assert (region["id"],region["offset"],region["data"]["length"]) == (50,4460545,2097152)
+        assert layout["table_offsets"][region["id"]] == region["offset"]
+        print("PASS reproducible actual native SRL-low table and compiled offset", flush=True)
         subprocess.run([str(binary), "--small-range", str(output)], check=True)
         assert output.read_bytes() == (ROOT / "artifacts/setup/mul-div-small-range-native.json").read_bytes()
         print("PASS reproducible native unsigned mul/div byte tables", flush=True)

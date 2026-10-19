@@ -3719,6 +3719,146 @@
       "backport_reuse_path": "Airbender/Proofs/Tables/BinaryColumns.lean",
       "backport_reuse_sha256": "e33dc37a0a9182a0ec52420791d050e8b88984dc9665d420c806cdde60a97ad4",
       "change": "Reuse structural actual-column geometry, split into literal block shape and four independent 16-domain upper-mask certificates after the original combined proof reached the resident ceiling. Native bounds derive all partition inputs; resource caps stay unchanged."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/SrlLow.lean",
+      "backport_reuse_revision": "9eb1387ecec49dced773979da6363b59d9ad6b43",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/SmallRange.lean",
+      "backport_reuse_sha256": "48bd9929a7d64385eff31ca63e09876d5b687fd070d001d301b0457187f1083e",
+      "change": "Reuse original Clean static-table construction; model native packed-key 16-bit low-input logical right shift independently from native exported rows."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/NativeSrlLowData.lean",
+      "backport_reuse_revision": "9eb1387ecec49dced773979da6363b59d9ad6b43",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/NativeShiftScalarData.lean",
+      "backport_reuse_sha256": "37f8dc212b48db503c9d461bd34080605c315798e79c19c209a889eff59a220f",
+      "change": "Reuse strict literal native regional data import; retain ID 50, global compiled offset 4460545 and all 2^21 rows."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/NativeSrlLowRows.lean",
+      "backport_reuse_revision": "9eb1387ecec49dced773979da6363b59d9ad6b43",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/NativeShiftScalarRows.lean",
+      "backport_reuse_sha256": "c91841cb5dcaab5208e1e050cda54a32585c0d9288c1fa77a2e29ee2d4f533c5",
+      "change": "Reuse tagged actual native-row observations, with no inserted mathematical output rules."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/NativeSrlLow.lean",
+      "backport_reuse_revision": "9eb1387ecec49dced773979da6363b59d9ad6b43",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/NativeShiftScalars.lean",
+      "backport_reuse_sha256": "008cd5ee53551bd38cd45ee9d1ac30449f99b7dd6bb3f9fdc3fe09a62b7f7b88",
+      "change": "Reuse thin public membership/result claims; derive key/output bounds, zero high output and exact RV32 logical shift from actual native membership."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SrlLowParts.lean",
+      "backport_reuse_revision": "9eb1387ecec49dced773979da6363b59d9ad6b43",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SignFillBlocks.lean",
+      "backport_reuse_sha256": "67030e913e1032580788cabf49c25637f2f85e4162b44ab5d264805f14425349",
+      "change": "Reuse checked literal native-block shapes. Partition actual stored columns into six sublists and prove exact shapes, extents and concatenation; no unexported row recipes."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SrlLowMath.lean",
+      "backport_reuse_revision": "9eb1387ecec49dced773979da6363b59d9ad6b43",
+      "backport_reuse_path": "Airbender/Proofs/Tables/ShiftScalarBounds.lean",
+      "backport_reuse_sha256": "180250094274e86f88255ceba9a12e9b25f3263ff4b0e989bcaaa3adf1f89407",
+      "change": "Reuse separate bounds/bitvector characterization; prove zero-extended RV32 logical right shift using standard toNat_ushiftRight and division-by-powers-of-two lemmas, rather than supplied results."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SrlLowColumns.lean",
+      "backport_reuse_revision": "9eb1387ecec49dced773979da6363b59d9ad6b43",
+      "backport_reuse_path": "Airbender/Proofs/Tables/ShiftScalarColumns.lean",
+      "backport_reuse_sha256": "85f6fcf66e2f5f401813fbddf4622565ed5934e2db76c53e5945eb78830ff0b9",
+      "change": "Copy affine_get and single_get unchanged. Reuse symbolic actual key/zero/tag reads and structural output extent."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SrlLow.lean",
+      "backport_reuse_revision": "9eb1387ecec49dced773979da6363b59d9ad6b43",
+      "backport_reuse_path": "Airbender/Proofs/Tables/ShiftScalars.lean",
+      "backport_reuse_sha256": "6b87044c4a991e98fa15b5f1065e489ba026fde559c64237a36ed50bc545ed2b",
+      "change": "Reuse row assembly, exact original Clean/native membership and canonical-field result lifting. Combine six proved actual-block certificates through unchanged checkBlocks_sound."
+    },
+    {
+      "path": "Tests/NativeSrlLow.lean",
+      "backport_reuse_revision": "9eb1387ecec49dced773979da6363b59d9ad6b43",
+      "backport_reuse_path": "Tests/NativeShiftScalars.lean",
+      "backport_reuse_sha256": "c35f7888e8e04fd370065bf02a8463d8bf55a1ce2d81ca6a05ffc5036a1714a9",
+      "change": "Reuse all-row/membership and actual-offset checks; add independent shifts zero/one/fifteen/sixteen/31, final-bit boundary and malformed result/high-padding/packed-key rejections."
+    },
+    {
+      "path": "Airbender/Import/Setup.lean",
+      "backport_reuse_revision": "9eb1387ecec49dced773979da6363b59d9ad6b43",
+      "backport_reuse_path": "Airbender/Import/Setup.lean",
+      "backport_reuse_sha256": "78317370ed7daa8d0d56f53c197d7327a8ff5ed26a2937e97e1aa281628fba67",
+      "change": "Reuse strict native regional profile, exact metadata/extent/arity and canonicality guards for ID 50. Dynamic compiled selectors remain unsupported."
+    },
+    {
+      "path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_revision": "9eb1387ecec49dced773979da6363b59d9ad6b43",
+      "backport_reuse_path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_sha256": "0773362c894072112f35669c90ff42c5d45f485381052e3799bcbc9926667751",
+      "change": "Reuse literal native regional emission without mathematical recipes or supplied table equivalence."
+    },
+    {
+      "path": "Tests/ArtifactImport.lean",
+      "backport_reuse_revision": "9eb1387ecec49dced773979da6363b59d9ad6b43",
+      "backport_reuse_path": "Tests/ArtifactImport.lean",
+      "backport_reuse_sha256": "b85037d710b118a21a14c1b3551aabf3c913ede7eaec57f3c80a36e2bee52ea5",
+      "change": "Reuse native regional metadata mutation and crossed-profile rejection tests; keep all prior profile guards."
+    },
+    {
+      "path": "scripts/check_native_setup.py",
+      "backport_reuse_revision": "9eb1387ecec49dced773979da6363b59d9ad6b43",
+      "backport_reuse_path": "scripts/check_native_setup.py",
+      "backport_reuse_sha256": "226f75fbab53378ed9f4585f6a68a27b3f9a1e863b03bc50d5657c42efabd550",
+      "change": "Reuse actual native export reproduction and compiled-offset checking for the complete 2^21-row SRL-low table; verify old native outputs remain byte-identical."
+    },
+    {
+      "path": "../native_setup_exporter/src/main.rs",
+      "backport_reuse_revision": "9eb1387ecec49dced773979da6363b59d9ad6b43",
+      "backport_reuse_path": "../native_setup_exporter/src/main.rs",
+      "backport_reuse_sha256": "110f03abaa265b729f809c9e5c6dd5792920fd3d38faa07808bc9cbb782aecbb",
+      "change": "Parameterize the existing selected-table exporter for reuse by native SRL-low and old scalar regions. Preserve native table generation/tagging, sequential table lifetime, layout-derived offsets, unchanged lossless source codec and JSON roundtrip."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SrlLowPart0.lean",
+      "backport_reuse_revision": "9eb1387ecec49dced773979da6363b59d9ad6b43",
+      "backport_reuse_path": "Airbender/Proofs/Tables/BinaryXorCertificate.lean",
+      "backport_reuse_sha256": "97b2dfa20bdb0897d1ef5bb96b7a8db6c0332f25042b410d8faabcaaff941393",
+      "change": "Reuse source-shaped checkBlocks_cons_iff output certificates, but prove every native affine/periodic block symbolically using its finite index bound. Copy the affine getter unchanged; use unchanged periodic_get. No two-million-row enumeration or table-equivalence premise."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SrlLowPart1.lean",
+      "backport_reuse_revision": "9eb1387ecec49dced773979da6363b59d9ad6b43",
+      "backport_reuse_path": "Airbender/Proofs/Tables/BinaryXorCertificate.lean",
+      "backport_reuse_sha256": "97b2dfa20bdb0897d1ef5bb96b7a8db6c0332f25042b410d8faabcaaff941393",
+      "change": "Reuse source-shaped checkBlocks_cons_iff output certificates, but prove every native affine/periodic block symbolically using its finite index bound. Copy the affine getter unchanged; use unchanged periodic_get. No two-million-row enumeration or table-equivalence premise."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SrlLowPart2.lean",
+      "backport_reuse_revision": "9eb1387ecec49dced773979da6363b59d9ad6b43",
+      "backport_reuse_path": "Airbender/Proofs/Tables/BinaryXorCertificate.lean",
+      "backport_reuse_sha256": "97b2dfa20bdb0897d1ef5bb96b7a8db6c0332f25042b410d8faabcaaff941393",
+      "change": "Reuse source-shaped checkBlocks_cons_iff output certificates, but prove every native affine/periodic block symbolically using its finite index bound. Copy the affine getter unchanged; use unchanged periodic_get. No two-million-row enumeration or table-equivalence premise."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SrlLowPart3.lean",
+      "backport_reuse_revision": "9eb1387ecec49dced773979da6363b59d9ad6b43",
+      "backport_reuse_path": "Airbender/Proofs/Tables/BinaryXorCertificate.lean",
+      "backport_reuse_sha256": "97b2dfa20bdb0897d1ef5bb96b7a8db6c0332f25042b410d8faabcaaff941393",
+      "change": "Reuse source-shaped checkBlocks_cons_iff output certificates, but prove every native affine/periodic block symbolically using its finite index bound. Copy the affine getter unchanged; use unchanged periodic_get. No two-million-row enumeration or table-equivalence premise."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SrlLowPart4.lean",
+      "backport_reuse_revision": "9eb1387ecec49dced773979da6363b59d9ad6b43",
+      "backport_reuse_path": "Airbender/Proofs/Tables/BinaryXorCertificate.lean",
+      "backport_reuse_sha256": "97b2dfa20bdb0897d1ef5bb96b7a8db6c0332f25042b410d8faabcaaff941393",
+      "change": "Reuse source-shaped checkBlocks_cons_iff output certificates, but prove every native affine/periodic block symbolically using its finite index bound. Copy the affine getter unchanged; use unchanged periodic_get. No two-million-row enumeration or table-equivalence premise."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SrlLowPart5.lean",
+      "backport_reuse_revision": "9eb1387ecec49dced773979da6363b59d9ad6b43",
+      "backport_reuse_path": "Airbender/Proofs/Tables/BinaryXorCertificate.lean",
+      "backport_reuse_sha256": "97b2dfa20bdb0897d1ef5bb96b7a8db6c0332f25042b410d8faabcaaff941393",
+      "change": "Reuse source-shaped checkBlocks_cons_iff output certificates, but prove every native affine/periodic block symbolically using its finite index bound. Copy the affine getter unchanged; use unchanged periodic_get. No two-million-row enumeration or table-equivalence premise."
     }
   ],
   "setup_artifacts": [
@@ -3830,6 +3970,13 @@
       "profile": "actual native selected scalar/sign-fill regions 47/52/53, offsets 200705/8654849/10752001, lengths 65536/2097152/65536; not a contiguous prefix or full shift family",
       "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py",
       "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5"
+    },
+    {
+      "path": "artifacts/setup/shift-srl-low-native.json",
+      "sha256": "e47f5fe1a3bf54f68e4bb0237e8faa0bc05cbe59cd72beb7302e6794ad3494b4",
+      "profile": "actual native low-input logical-right-shift table, ID 50, compiled offset 4460545, 2097152 rows; other three logical-shift tables and full dynamic circuit remain separate",
+      "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py",
+      "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5"
     }
   ],
   "native_exporter_files": [
@@ -3843,7 +3990,7 @@
     },
     {
       "path": "../native_setup_exporter/src/main.rs",
-      "sha256": "110f03abaa265b729f809c9e5c6dd5792920fd3d38faa07808bc9cbb782aecbb"
+      "sha256": "35947667bd76b724590f8545dee56c97226a2c61bb7cda6c11f2d53831b5f655"
     },
     {
       "path": "../native_setup_exporter/src/columns.rs",

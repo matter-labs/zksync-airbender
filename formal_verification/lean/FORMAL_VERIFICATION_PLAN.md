@@ -442,8 +442,13 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    actual-data/Clean membership, derived key/limb bounds and exact RV32 masks.
    Symbolic 64-domain block proofs retain native shift-zero behavior and original
    compiled noncontiguous offsets. Negative/positive sign boundaries and malformed
-   queries pass. Continue with the four 16-bit logical-shift tables, then faithful
-   dynamic lookup import and numerical/initialized family soundness.
+   queries pass. The actual low-input SRL table now has complete original
+   Clean/native membership and exact zero-extended RV32 logical-shift semantics
+   for all 2,097,152 rows, with derived key/output bounds and zero high output.
+   Six symbolic certificates retain all 74 native blocks and compiled offset
+   4460545 without row enumeration. Shift/final-bit boundaries and malformed
+   queries pass. Continue with both left-shift tables and high-input SRL, then
+   faithful dynamic lookup import and numerical/initialized family soundness.
 4. Rebind bigint/BLAKE/Keccak workers and callers. Retest control validity,
    unissued workers, ROM behavior and request participation on v2 before reusing
    any source finding or temporary premise.

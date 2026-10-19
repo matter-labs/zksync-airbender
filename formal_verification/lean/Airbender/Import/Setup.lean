@@ -337,4 +337,24 @@ def parseShiftScalars (source : String) : Except String ControlArtifact := do
   artifact.validateShiftScalars
   return artifact
 
+/-- Actual native low-input SRL rows, retaining their full compiled placement. -/
+def ControlArtifact.validateSrlLow (artifact : ControlArtifact) : Except String Unit := do
+  unless artifact.version == 1 && artifact.field_modulus == mersenne31Modulus &&
+      artifact.profile == "shift_binop_srl_low" do throw "unsupported native SRL-low profile"
+  unless artifact.generic_rows == 2097152 && artifact.tables.size == 1 do
+    throw "unexpected native SRL-low extent"
+  let some region := artifact.tables[0]? | throw "missing native SRL-low table"
+  unless region.id == 50 && region.offset == 4460545 do throw "unexpected native SRL-low region"
+  region.data.validate 2097152 4
+
+def parseSrlLow (source : String) : Except String ControlArtifact := do
+  let json ← Json.parse source
+  exactKeys json #["version", "field_modulus", "profile", "generic_rows", "tables"]
+  for region in (← (← json.getObjVal? "tables").getArr?) do
+    exactKeys region #["id", "offset", "data"]
+    matrixKeys (← region.getObjVal? "data")
+  let artifact : ControlArtifact ← fromJson? json
+  artifact.validateSrlLow
+  return artifact
+
 end Airbender.Setup

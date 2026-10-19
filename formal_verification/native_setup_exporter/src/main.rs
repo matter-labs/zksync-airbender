@@ -197,13 +197,11 @@ fn export_binary_prefix() -> ControlTables {
 /// Selected actual native tables. Offsets come from the supplied compiled
 /// layout, while row values/tags come only from the native table generator.
 /// Each table is materialized and dropped separately to preserve headroom.
-fn export_shift_scalars(layout_path: &Path) -> ControlTables {
+fn export_shift_regions(layout_path: &Path, selected: &[TableType], profile: &str) -> ControlTables {
     let layout: serde_json::Value = serde_json::from_slice(&std::fs::read(layout_path).unwrap()).unwrap();
     let family = cs::machine::ops::unrolled::shift_binary_csr::shift_binop_csrrw_tables();
-    let selected = [TableType::TruncateShiftAmount, TableType::Sra16BitInputSignFill,
-                    TableType::RangeCheck16WithZeroPads];
     let mut generic_rows = 0;
-    let tables = selected.into_iter().map(|kind| {
+    let tables = selected.iter().copied().map(|kind| {
         assert!(family.contains(&kind));
         let table = kind.generate_table::<Mersenne31Field>();
         let id = table.get_table_id();
@@ -217,7 +215,17 @@ fn export_shift_scalars(layout_path: &Path) -> ControlTables {
         Region { id, offset, data: matrix(&rows) }
     }).collect();
     ControlTables { version: 1, field_modulus: MODULUS,
-        profile: "shift_binop_scalar_regions".into(), generic_rows, tables }
+        profile: profile.into(), generic_rows, tables }
+}
+
+fn export_shift_scalars(layout_path: &Path) -> ControlTables {
+    export_shift_regions(layout_path, &[TableType::TruncateShiftAmount,
+        TableType::Sra16BitInputSignFill, TableType::RangeCheck16WithZeroPads],
+        "shift_binop_scalar_regions")
+}
+
+fn export_srl_low(layout_path: &Path) -> ControlTables {
+    export_shift_regions(layout_path, &[TableType::SrlWith16BitInputLow], "shift_binop_srl_low")
 }
 
 fn export_decoder_padding() -> DecoderPadding {
@@ -413,6 +421,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             serde_json::to_value(&artifact)?,
             serde_json::to_value(recovered)?
         );
+        std::fs::write(args.last().unwrap(), [bytes, vec![b'\n']].concat())?;
+        return Ok(());
+    }
+    if args.len() == 4 && args[1] == "--srl-low" {
+        let artifact = export_srl_low(Path::new(&args[2]));
+        let bytes = serde_json::to_vec_pretty(&artifact)?;
+        let recovered: ControlTables = serde_json::from_slice(&bytes)?;
+        assert_eq!(serde_json::to_value(&artifact)?, serde_json::to_value(recovered)?);
         std::fs::write(args.last().unwrap(), [bytes, vec![b'\n']].concat())?;
         return Ok(());
     }

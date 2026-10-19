@@ -1,3 +1,4 @@
+import Tests.NativeSrlLow
 import Tests.NativeShiftScalars
 import Tests.NativeBinary
 import Tests.ShiftDecoder
@@ -1380,3 +1381,49 @@ import Tests.JumpLink
 #print axioms Tests.NativeShiftScalars.sign_shift_sixteen
 #print axioms Tests.NativeShiftScalars.sign_shift_zero
 #print axioms Tests.NativeShiftScalars.truncation_last
+
+-- All native low-input logical-right-shift rows and exact membership/results.
+#print axioms Airbender.Verification.SrlLowProofs.low_bits
+#print axioms Airbender.Verification.SrlLowProofs.low_bound
+#print axioms Airbender.Verification.SrlLowProofs.native_key
+#print axioms Airbender.Verification.SrlLowProofs.native_membership
+#print axioms Airbender.Verification.SrlLowProofs.native_output
+#print axioms Airbender.Verification.SrlLowProofs.native_output_extent
+#print axioms Airbender.Verification.SrlLowProofs.native_outputs
+#print axioms Airbender.Verification.SrlLowProofs.native_result
+#print axioms Airbender.Verification.SrlLowProofs.native_rows
+#print axioms Airbender.Verification.SrlLowProofs.native_tag
+#print axioms Airbender.Verification.SrlLowProofs.native_zero
+#print axioms Airbender.Verification.SrlLowProofs.outputs_part0
+#print axioms Airbender.Verification.SrlLowProofs.outputs_part1
+#print axioms Airbender.Verification.SrlLowProofs.outputs_part2
+#print axioms Airbender.Verification.SrlLowProofs.outputs_part3
+#print axioms Airbender.Verification.SrlLowProofs.outputs_part4
+#print axioms Airbender.Verification.SrlLowProofs.outputs_part5
+#print axioms Airbender.Verification.SrlLowProofs.part0_extent
+#print axioms Airbender.Verification.SrlLowProofs.part0_shape
+#print axioms Airbender.Verification.SrlLowProofs.part1_extent
+#print axioms Airbender.Verification.SrlLowProofs.part1_shape
+#print axioms Airbender.Verification.SrlLowProofs.part2_extent
+#print axioms Airbender.Verification.SrlLowProofs.part2_shape
+#print axioms Airbender.Verification.SrlLowProofs.part3_extent
+#print axioms Airbender.Verification.SrlLowProofs.part3_shape
+#print axioms Airbender.Verification.SrlLowProofs.part4_extent
+#print axioms Airbender.Verification.SrlLowProofs.part4_shape
+#print axioms Airbender.Verification.SrlLowProofs.part5_extent
+#print axioms Airbender.Verification.SrlLowProofs.part5_shape
+#print axioms Airbender.Verification.SrlLowProofs.parts
+#print axioms Airbender.Verification.native_srl_low_membership
+#print axioms Airbender.Verification.native_srl_low_result
+#print axioms Tests.NativeSrlLow.actual_extent_offset
+#print axioms Tests.NativeSrlLow.all_rows
+#print axioms Tests.NativeSrlLow.below_last_bit
+#print axioms Tests.NativeSrlLow.exact_membership
+#print axioms Tests.NativeSrlLow.last_row
+#print axioms Tests.NativeSrlLow.last_surviving_bit
+#print axioms Tests.NativeSrlLow.no_shift_last_word
+#print axioms Tests.NativeSrlLow.nonzero_high_rejected
+#print axioms Tests.NativeSrlLow.oversized_key_rejected
+#print axioms Tests.NativeSrlLow.shift_one
+#print axioms Tests.NativeSrlLow.shift_sixteen
+#print axioms Tests.NativeSrlLow.wrong_result_rejected

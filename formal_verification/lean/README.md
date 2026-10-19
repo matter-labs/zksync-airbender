@@ -1189,3 +1189,39 @@ shift tables and dynamic constraint import remain next, followed by numerical
 family soundness and initialized execution. Custom CSR/oracle semantics, general
 Rust/JSON/compiler refinement and cryptographic enforcement remain separate.
 No native implementation defect is established.
+
+## Native low-input logical right shift
+
+[Two short public helper claims](Airbender/Review/Helpers/Tables/NativeSrlLow.lean)
+connect original Clean membership to every actual native low-input SRL row.
+Membership derives the packed-key/output bounds, zero high output and exact
+RV32 logical-right-shift result of the zero-extended 16-bit input limb. No
+bounds, output values or table-equivalence premises are supplied.
+
+[The native export](artifacts/setup/shift-srl-low-native.json) retains ID 50,
+compiled offset 4460545 and all 2,097,152 rows. The existing regional exporter
+now shares its unchanged native-generation/codec pipeline with this profile.
+Reproduction checks the entire artifact and actual compiled offset, and retains
+byte-identical output for every existing native profile. Strict import rejects
+changed tags/offsets, field/profile/version, incomplete or noncanonical columns,
+wrong extents and crossed binary/scalar/control/mul-div profiles.
+
+[Actual stored-block partitions](Airbender/Proofs/Tables/SrlLowParts.lean)
+retain all 74 blocks and their exact extents. Six source-shaped output
+certificates, beginning with [the affine/periodic prefix](Airbender/Proofs/Tables/SrlLowPart0.lean),
+prove all block entries symbolically. They reuse unchanged affine and periodic
+getters and the original block checker, avoiding two-million-row enumeration.
+[Independent arithmetic](Airbender/Proofs/Tables/SrlLowMath.lean) connects division
+by powers of two to the standard RV32 bitvector shift; [internal assembly](Airbender/Proofs/Tables/SrlLow.lean)
+combines this with actual native keys, padding, tags and complete membership.
+
+[Regressions](Tests/NativeSrlLow.lean) cover shifts zero/one/fifteen/sixteen/31,
+the final surviving bit and its lower boundary, the actual final native row,
+and malformed output/high-padding/packed-key queries. All certificate modules
+use the same serial Lean and sampled watchdog ceilings.
+
+This closes one of the four native logical-shift table connections. The two
+left-shift tables and high-input right-shift table remain, followed by faithful
+dynamic lookup import, numerical family soundness and initialized execution.
+Custom CSR/oracle semantics, general Rust/JSON/compiler refinement and
+cryptographic enforcement remain separate. No native defect is established.

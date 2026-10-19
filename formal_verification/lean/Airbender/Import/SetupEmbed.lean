@@ -177,4 +177,12 @@ elab "import_native_shift_scalars " name:ident " from " path:str : command => do
   for (region,suffix) in artifact.tables.zip #["Truncate","SignFill","Range"] do
     emitData (mkIdent (name.getId.appendAfter suffix)) region.data region.offset
 
+/-- Literal native low-input logical-right-shift rows only. -/
+elab "import_native_srl_low " name:ident " from " path:str : command => do
+  let artifact ← match parseSrlLow (← IO.FS.readFile path.getString) with
+    | .ok artifact => pure artifact
+    | .error error => throwError "native SRL-low import failed: {error}"
+  let some region := artifact.tables[0]? | throwError "missing native SRL-low table"
+  emitData name region.data region.offset
+
 end Airbender.Setup

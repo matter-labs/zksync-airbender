@@ -54,3 +54,4 @@ import Airbender.Review.Trace.Families.MulDiv.FetchedExecution
 import Airbender.Review.Trace.Families.ShiftBinop.NativeDecoder
 import Airbender.Review.Helpers.Tables.NativeBinary
 import Airbender.Review.Helpers.Tables.NativeShiftScalars
+import Airbender.Review.Helpers.Tables.NativeSrlLow
