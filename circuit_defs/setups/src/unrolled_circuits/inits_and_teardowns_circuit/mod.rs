@@ -20,5 +20,8 @@ pub fn inits_and_teardowns_circuit_setup<A: GoodAllocator>(
         table_driver,
         setup,
         witness_eval_fn: None,
+        prover_configs: circuit_common::prover_configs_for_all_levels(
+            ::inits_and_teardowns::prover_config,
+        ),
     }
 }

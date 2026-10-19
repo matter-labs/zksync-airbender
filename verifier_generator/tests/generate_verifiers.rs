@@ -92,11 +92,8 @@ fn generate_gkr_verifier<MW: FieldWrapper<BaseField = BabyBearField>>(
 
     let files = gkr::generate_gkr_inlined_for_commitment_mode::<MW>(
         &compiled_circuit,
-        prover_config.sumcheck_explicit_output_size_log_2,
-        &prover_config.whir_schedule,
-        prover_config.security_level.security_bits() as u32,
+        prover_config,
         commitment_mode,
-        prover_config.pack_log2,
     );
 
     write_and_fmt(&format!("{}/constants.rs", dir), &files.constants);

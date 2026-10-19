@@ -1,0 +1,114 @@
+{
+  "trace_len_log2": 22,
+  "lde_factor": 2,
+  "cap_size": 16,
+  "base_oracles_values_per_leaf": 2,
+  "sumcheck_explicit_output_size_log_2": 4,
+  "security_level": "Sec100",
+  "whir_schedule": {
+    "base_lde_factor": 2,
+    "cap_size": 16,
+    "whir_steps_schedule": [
+      1,
+      5,
+      5,
+      5,
+      5
+    ],
+    "whir_queries_schedule": [
+      89,
+      15,
+      8,
+      6,
+      5
+    ],
+    "whir_steps_lde_factors": [
+      64,
+      2048,
+      32768,
+      524288
+    ],
+    "whir_pow_schedule": [
+      26,
+      25,
+      27,
+      25,
+      21
+    ]
+  },
+  "same_size_sumcheck_schedule": [
+    {
+      "WindowInitial": {
+        "window": 3
+      }
+    },
+    {
+      "FoldInitial": {
+        "width": 3
+      }
+    },
+    {
+      "WindowContinuing": {
+        "window": 3
+      }
+    },
+    {
+      "FoldContinuing": {
+        "width": 3
+      }
+    },
+    {
+      "WindowContinuing": {
+        "window": 3
+      }
+    },
+    {
+      "FoldContinuing": {
+        "width": 3
+      }
+    },
+    {
+      "WindowContinuing": {
+        "window": 3
+      }
+    },
+    {
+      "FoldContinuing": {
+        "width": 3
+      }
+    },
+    {
+      "WindowContinuing": {
+        "window": 3
+      }
+    },
+    {
+      "FoldContinuing": {
+        "width": 3
+      }
+    },
+    {
+      "WindowContinuing": {
+        "window": 3
+      }
+    },
+    {
+      "FoldContinuing": {
+        "width": 3
+      }
+    },
+    {
+      "WindowContinuing": {
+        "window": 3
+      }
+    },
+    {
+      "FoldContinuing": {
+        "width": 3
+      }
+    },
+    "Tail"
+  ],
+  "dimension_reducing_sumcheck_schedule": {},
+  "pack_log2": 0
+}

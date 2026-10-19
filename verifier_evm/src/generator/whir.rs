@@ -16,6 +16,7 @@
 use super::Lit;
 use field::Proth120;
 use prover::gkr::prover::WhirSchedule;
+use prover::gkr::prover_config::ProverConfig;
 
 /// Every WHIR verifier parameter, derived from `(WhirSchedule, pack_log2, trace_len_log2, widths)`.
 #[derive(Clone, Debug)]
@@ -42,13 +43,10 @@ pub struct WhirGenConfig {
 impl WhirGenConfig {
     /// `num_memwit` = merged memory+witness base width, `num_setup` = generic-lookup setup width
     /// (both pre-packing column counts, from the artifact).
-    pub fn derive(
-        schedule: &WhirSchedule,
-        pack_log2: usize,
-        trace_len_log2: usize,
-        num_memwit: usize,
-        num_setup: usize,
-    ) -> Self {
+    pub fn derive(prover_config: &ProverConfig, num_memwit: usize, num_setup: usize) -> Self {
+        let schedule = &prover_config.whir_schedule;
+        let pack_log2 = prover_config.pack_log2;
+        let trace_len_log2 = prover_config.trace_len_log2;
         let folds = schedule.whir_steps_schedule.clone();
         let queries = schedule.whir_queries_schedule.clone();
         let pow_bits = schedule.whir_pow_schedule.clone();

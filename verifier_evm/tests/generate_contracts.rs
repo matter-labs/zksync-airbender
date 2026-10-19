@@ -12,10 +12,7 @@ mod common;
 use common::production_prover_config;
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::Proth120;
-use prover::gkr::prover_config::example_configs::{
-    EVM_PRODUCTION_PACK_LOG2, EVM_PRODUCTION_TRACE_LEN_LOG2,
-};
-use prover::gkr::prover_config::{pow_bits, ProverConfig};
+
 use std::path::Path;
 use trace_and_split::setups::program_setups::find_binary_exit_point;
 
@@ -51,17 +48,6 @@ fn feeder_exit_pc() -> u32 {
     find_binary_exit_point(&binary)
 }
 
-/// The WHIR batching PoW difficulty, derived for the batched polynomials the WHIR run tests: the
-/// packed `2^(trace + pack_log2)` columns.
-fn whir_batch_pow_bits(circuit: &GKRCircuitArtifact<Proth120>, config: &ProverConfig) -> u32 {
-    pow_bits::batched_proximity_check_pow_bits::<Proth120, Proth120>(
-        config.security_level.security_bits(),
-        EVM_PRODUCTION_TRACE_LEN_LOG2 + EVM_PRODUCTION_PACK_LOG2,
-        config.whir_schedule.base_lde_factor.trailing_zeros() as usize,
-        pow_bits::total_base_oracle_columns(circuit),
-    )
-}
-
 fn generate_contract(final_pc: u32, inits_teardowns_top_bits: &[u32]) -> String {
     let json = std::fs::read_to_string(
         "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
@@ -70,12 +56,11 @@ fn generate_contract(final_pc: u32, inits_teardowns_top_bits: &[u32]) -> String 
     let circuit: GKRCircuitArtifact<Proth120> = serde_json::from_str(&json).unwrap();
 
     let prover_config = production_prover_config();
+    // the packing factor and the WHIR batching PoW come from the prover config
     verifier_evm::generate_verifier(
         &circuit,
         &prover_config,
-        EVM_PRODUCTION_PACK_LOG2,
         EXTERNAL_POW_BITS,
-        whir_batch_pow_bits(&circuit, &prover_config),
         final_pc,
         inits_teardowns_top_bits,
     )

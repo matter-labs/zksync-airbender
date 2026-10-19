@@ -23,7 +23,9 @@ pub struct UnifiedReducedMachineCircuit;
 impl<F: PrimeField> circuit_common::RiscVCycleCircuit<F, true> for UnifiedReducedMachineCircuit {
     const CIRCUIT_FAMILY: u8 =
         common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
-    const DOMAIN_SIZE_LOG2: u32 = 23;
+    fn prover_config(level: circuit_common::SecurityLevel) -> circuit_common::ProverConfig {
+        circuit_common::default_prover_config(TRACE_LEN_LOG2, level)
+    }
     const NUM_INIT_AND_TEARDOWN_PAIRS: usize = 1;
 
     fn circuit_fn<CS: cs::cs::circuit_trait::Circuit<F>>(cs: &mut CS, _bytecode: &[u32]) {
@@ -61,10 +63,10 @@ impl<F: PrimeField> circuit_common::RiscVCycleCircuit<F, true> for UnifiedReduce
     }
 }
 
-pub const TRACE_LEN_LOG2: u32 = <UnifiedReducedMachineCircuit as circuit_common::RiscVCycleCircuit<
-    BabyBearField,
-    true,
->>::DOMAIN_SIZE_LOG2;
+/// log2 of the unified trace length, usable in `const` contexts. The source of
+/// truth is the circuit's `prover_config` (`trace_len_log2`); the
+/// `trace_len_matches_prover_config` test guards this literal against it.
+pub const TRACE_LEN_LOG2: u32 = 23;
 pub const MAX_ROM_SIZE: usize = common_constants::rom::ROM_BYTE_SIZE;
 pub const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize = common_constants::rom::ROM_SECOND_WORD_BITS;
 
@@ -79,7 +81,7 @@ pub fn get_circuit(use_caches: bool) -> cs::gkr_compiler::GKRCircuitArtifact<Bab
 
     // cs::gkr_circuits::unified_reduced_machine::build_unified_artifact::<BabyBearField>(
     //     use_caches,
-    //     <UnifiedReducedMachineCircuit as circuit_common::RiscVCycleCircuit<BabyBearField, true>>::DOMAIN_SIZE_LOG2 as usize,
+    //     <UnifiedReducedMachineCircuit as circuit_common::RiscVCycleCircuit<BabyBearField, true>>::trace_len_log2() as usize,
     //     <UnifiedReducedMachineCircuit as circuit_common::RiscVCycleCircuit<BabyBearField, true>>::NUM_INIT_AND_TEARDOWN_PAIRS as usize,
     // )
 }

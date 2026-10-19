@@ -106,7 +106,7 @@ pub fn prove_l1_wrap_in_recompute_mode(
     // 4. Packed twiddles: the commitment interpolates the packed polynomials
     //    over the 2^(22 + pack_log2) domain.
     let packed_twiddles: Twiddles<Proth120, std::alloc::Global> =
-        Twiddles::new(trace_len << pack_log2, worker);
+        Twiddles::new(1usize << prover_config.whir_message_size_log2(), worker);
 
     // 5. Setup commitment by COSET RECOMPUTATION: the packed setup codeword
     //    (~2^31 elements) is never materialized or cached — the commitment cap

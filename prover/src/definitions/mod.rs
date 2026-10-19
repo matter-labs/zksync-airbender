@@ -26,7 +26,7 @@ pub const DEFAULT_LDE_FACTOR: usize = 2;
 pub const DEFAULT_CAP_SIZE: usize = 16;
 pub const DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2: usize = 4;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[repr(usize)]
 pub enum SecurityLevel {
     Sec100 = 0,

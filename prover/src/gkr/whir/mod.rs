@@ -1092,6 +1092,12 @@ pub fn whir_fold<
     // log2 of the packing factor of the base commitments (0 = unpacked):
     // `trace_len_log2 - pack_log2` is the base-layer column length.
     pack_log2: usize,
+    // Whether memory and witness were committed as ONE merged set (the whole
+    // mem ++ wit sequence in `mem_oracle`, an EMPTY `wit_oracle`) — the
+    // merged commitment modes — or as two separate oracles. Decides how the
+    // base columns are grouped into committed (packed) columns; the oracles
+    // are asserted to have that shape.
+    merged_memory_and_witness: bool,
     original_evaluation_point: Vec<E>,
     batching_challenge: E,
     whir_schedule: &WhirSchedule,
@@ -1260,8 +1266,13 @@ pub fn whir_fold<
     let mem_columns = base_columns(GKRAddress::BaseLayerMemory);
     let wit_columns = base_columns(GKRAddress::BaseLayerWitness);
     let setup_columns = base_columns(GKRAddress::Setup);
-    let merged_mem_and_wit = set_num_columns[1] == 0 && !wit_columns.is_empty();
-    let committed_sets: Vec<(Vec<&[F]>, usize)> = if merged_mem_and_wit {
+    if merged_memory_and_witness {
+        assert_eq!(
+            set_num_columns[1], 0,
+            "a merged memory+witness commitment has no witness oracle"
+        );
+    }
+    let committed_sets: Vec<(Vec<&[F]>, usize)> = if merged_memory_and_witness {
         let mut merged = mem_columns;
         merged.extend(wit_columns);
         vec![
@@ -4506,6 +4517,7 @@ mod test {
             c,
             gkr_storage,
             0,
+            false, // separate memory and witness oracles
             original_evaluation_point,
             E::from_base(F::from_u32_with_reduction(7)),
             &whir_schedule,

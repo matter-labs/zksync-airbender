@@ -377,7 +377,7 @@ pub fn prove_unrolled_execution_with_replayer<
         dst: &mut HashMap<u8, usize>,
     ) {
         assert!(dst
-            .insert(C::CIRCUIT_FAMILY, 1 << C::DOMAIN_SIZE_LOG2)
+            .insert(C::CIRCUIT_FAMILY, 1 << C::trace_len_log2())
             .is_none());
     }
     get_riscv_chunk_size::<false, crate::setups::AddSubLuiAuipcMopCircuit>(&mut family_chunk_sizes);
@@ -394,7 +394,7 @@ pub fn prove_unrolled_execution_with_replayer<
         dst: &mut HashMap<u16, usize>,
     ) {
         assert!(dst
-            .insert(C::DELEGATION_TYPE_ID, 1 << C::DOMAIN_SIZE_LOG2)
+            .insert(C::DELEGATION_TYPE_ID, 1 << C::trace_len_log2())
             .is_none());
     }
     get_delegation_chunk_size::<crate::setups::BigIntDelegationCircuit>(
@@ -729,7 +729,7 @@ pub fn prove_unrolled_execution_with_replayer<
             unreachable!()
         };
         let trace_len = setup.trace_len;
-        let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
+        let prover_config = setup.prover_config(security_level).clone();
         let twiddles_for_size = twiddles
             .entry(trace_len)
             .or_insert_with(|| backend.make_twiddles(trace_len, worker));
@@ -771,7 +771,7 @@ pub fn prove_unrolled_execution_with_replayer<
             unreachable!()
         };
         let trace_len = setup.trace_len;
-        let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
+        let prover_config = setup.prover_config(security_level).clone();
         let twiddles_for_size = twiddles
             .entry(trace_len)
             .or_insert_with(|| backend.make_twiddles(trace_len, worker));
@@ -806,7 +806,9 @@ pub fn prove_unrolled_execution_with_replayer<
         let twiddles_for_size = twiddles
             .entry(trace_len)
             .or_insert_with(|| backend.make_twiddles(trace_len, worker));
-        let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
+        let prover_config = inits_and_teardowns_setup
+            .prover_config(security_level)
+            .clone();
         for (upper_bits, values_and_timestamps) in inits_and_teardowns.iter() {
             let cap = commit_memory_tree_for_inits_and_teardowns::<
                 BabyBearField,
@@ -839,7 +841,7 @@ pub fn prove_unrolled_execution_with_replayer<
         let setup = &blake_round_function_setup;
         if !delegation_circuits.is_empty() {
             let trace_len = setup.trace_len;
-            let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
+            let prover_config = setup.prover_config(security_level).clone();
             let twiddles_for_size = twiddles
                 .entry(trace_len)
                 .or_insert_with(|| backend.make_twiddles(trace_len, worker));
@@ -881,7 +883,7 @@ pub fn prove_unrolled_execution_with_replayer<
         let setup = &bigint_setup;
         if !delegation_circuits.is_empty() {
             let trace_len = setup.trace_len;
-            let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
+            let prover_config = setup.prover_config(security_level).clone();
             let twiddles_for_size = twiddles
                 .entry(trace_len)
                 .or_insert_with(|| backend.make_twiddles(trace_len, worker));
@@ -923,7 +925,7 @@ pub fn prove_unrolled_execution_with_replayer<
         let setup = &keccak_special5_setup;
         if !delegation_circuits.is_empty() {
             let trace_len = setup.trace_len;
-            let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
+            let prover_config = setup.prover_config(security_level).clone();
             let twiddles_for_size = twiddles
                 .entry(trace_len)
                 .or_insert_with(|| backend.make_twiddles(trace_len, worker));
@@ -960,14 +962,13 @@ pub fn prove_unrolled_execution_with_replayer<
     macro_rules! commit_keccak_delegation {
         ($circuit:ty, $abi:ty, $traces:ident, $setup:ident) => {{
             type DelegationDescription = $abi;
-            let delegation_type = <$circuit as DelegationCircuit<
-                BabyBearField,
-            >>::DELEGATION_TYPE_ID;
+            let delegation_type =
+                <$circuit as DelegationCircuit<BabyBearField>>::DELEGATION_TYPE_ID;
             let delegation_circuits = &$traces;
             let setup = &$setup;
             if !delegation_circuits.is_empty() {
                 let trace_len = setup.trace_len;
-                let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
+                let prover_config = setup.prover_config(security_level).clone();
                 let twiddles_for_size = twiddles
                     .entry(trace_len)
                     .or_insert_with(|| backend.make_twiddles(trace_len, worker));
@@ -999,7 +1000,6 @@ pub fn prove_unrolled_execution_with_replayer<
 
                 delegation_memory_trees.insert(delegation_type, per_tree_set);
             }
-
         }};
     }
     commit_keccak_delegation!(
@@ -1154,7 +1154,7 @@ pub fn prove_unrolled_execution_with_replayer<
 
                 // dump setup if it's present for existing machine
                 let trace_len = setup.trace_len;
-                let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
+                let prover_config = setup.prover_config(security_level).clone();
                 let twiddles_for_size = twiddles
                     .entry(trace_len)
                     .or_insert_with(|| backend.make_twiddles(trace_len, worker));
@@ -1185,7 +1185,7 @@ pub fn prove_unrolled_execution_with_replayer<
 
         let setup = &setups[&family_idx];
         let trace_len = setup.trace_len;
-        let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
+        let prover_config = setup.prover_config(security_level).clone();
         let twiddles_for_size = twiddles
             .entry(trace_len)
             .or_insert_with(|| backend.make_twiddles(trace_len, worker));
@@ -1327,7 +1327,7 @@ pub fn prove_unrolled_execution_with_replayer<
                 main_proofs.insert(family_idx, vec![]);
 
                 let trace_len = setup.trace_len;
-                let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
+                let prover_config = setup.prover_config(security_level).clone();
                 let twiddles_for_size = twiddles
                     .entry(trace_len)
                     .or_insert_with(|| backend.make_twiddles(trace_len, worker));
@@ -1357,7 +1357,7 @@ pub fn prove_unrolled_execution_with_replayer<
 
         let setup = &setups[&family_idx];
         let trace_len = setup.trace_len;
-        let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
+        let prover_config = setup.prover_config(security_level).clone();
         let twiddles_for_size = twiddles
             .entry(trace_len)
             .or_insert_with(|| backend.make_twiddles(trace_len, worker));
@@ -1496,7 +1496,7 @@ pub fn prove_unrolled_execution_with_replayer<
     {
         let setup = &inits_and_teardowns_setup;
         let trace_len = setup.trace_len;
-        let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
+        let prover_config = setup.prover_config(security_level).clone();
         let twiddles_for_size = twiddles
             .entry(trace_len)
             .or_insert_with(|| backend.make_twiddles(trace_len, worker));
@@ -1586,7 +1586,7 @@ pub fn prove_unrolled_execution_with_replayer<
         let witness_eval_fn = setups::blake2_with_compression_witness_eval_fn;
         if !delegation_circuits.is_empty() {
             let trace_len = setup.trace_len;
-            let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
+            let prover_config = setup.prover_config(security_level).clone();
             let (proofs, per_tree_set) =
                 prove_delegation_circuit::<Global, DelegationDescription, _, _, _, _, _, _>(
                     &delegation_circuits[..],
@@ -1622,7 +1622,7 @@ pub fn prove_unrolled_execution_with_replayer<
         let witness_eval_fn = setups::bigint_witness_eval_fn;
         if !delegation_circuits.is_empty() {
             let trace_len = setup.trace_len;
-            let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
+            let prover_config = setup.prover_config(security_level).clone();
             let (proofs, per_tree_set) =
                 prove_delegation_circuit::<Global, DelegationDescription, _, _, _, _, _, _>(
                     &delegation_circuits[..],
@@ -1658,7 +1658,7 @@ pub fn prove_unrolled_execution_with_replayer<
         let witness_eval_fn = setups::keccak_special5_witness_eval_fn;
         if !delegation_circuits.is_empty() {
             let trace_len = setup.trace_len;
-            let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
+            let prover_config = setup.prover_config(security_level).clone();
             let (proofs, per_tree_set) =
                 prove_delegation_circuit::<Global, DelegationDescription, _, _, _, _, _, _>(
                     &delegation_circuits[..],
@@ -1687,15 +1687,14 @@ pub fn prove_unrolled_execution_with_replayer<
     macro_rules! prove_keccak_delegation {
         ($circuit:ty, $abi:ty, $traces:ident, $setup:ident, $witness_eval_fn:path) => {{
             type DelegationDescription = $abi;
-            let delegation_type = <$circuit as DelegationCircuit<
-                BabyBearField,
-            >>::DELEGATION_TYPE_ID;
+            let delegation_type =
+                <$circuit as DelegationCircuit<BabyBearField>>::DELEGATION_TYPE_ID;
             let delegation_circuits = $traces;
             let setup = &$setup;
             let witness_eval_fn = $witness_eval_fn;
             if !delegation_circuits.is_empty() {
                 let trace_len = setup.trace_len;
-                let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
+                let prover_config = setup.prover_config(security_level).clone();
                 let (proofs, per_tree_set) =
                     prove_delegation_circuit::<Global, DelegationDescription, _, _, _, _, _, _>(
                         &delegation_circuits[..],
@@ -1719,7 +1718,6 @@ pub fn prove_unrolled_execution_with_replayer<
 
                 aux_delegation_memory_trees.push((delegation_type as u32, per_tree_set));
             }
-
         }};
     }
     prove_keccak_delegation!(

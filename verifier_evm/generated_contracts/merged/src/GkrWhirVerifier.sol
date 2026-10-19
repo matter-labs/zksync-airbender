@@ -111,7 +111,7 @@ contract GkrWhirVerifier {
 
     // ── GKR→WHIR handoff (generated; shared with the WHIR half where the names coincide) ──────
     uint256 constant __TEMPLATE_WHIR_CAP            = 1 << 3; // base-oracle merkle cap size
-    uint256 constant __TEMPLATE_WHIR_BATCH_POW_BITS = 16; // batched_proximity_check_pow_bits
+    uint256 constant __TEMPLATE_WHIR_BATCH_POW_BITS = 12; // batched_proximity_check_pow_bits
     // Base-layer at-point claims (dense in layer0's calldata eval block): mem++wit = NUM_MEMWIT
     // cols, setup = NUM_SETUP cols. The merge folds each 2^PACK_LOG2-chunk by the PACK_LOG2
     // packing coords: NUM_MEMWIT -> MERGED_MW claims, NUM_SETUP -> 1 claim.

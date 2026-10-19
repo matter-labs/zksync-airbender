@@ -57,8 +57,8 @@ fn config_for_supported_level(
     circuit_type: CircuitType,
     security_level: SecurityLevel,
 ) -> ProverConfig {
-    let domain_size_log_2 = circuit_type.get_domain_size_log2() as usize;
-    config_for_security_level_under_pessimistic_conjecture(domain_size_log_2, security_level)
+    // the circuit definition's own config (`CircuitType::prover_config`)
+    circuit_type.prover_config(security_level)
 }
 
 /// PoW bit count for the lookup challenges (`lookup_alpha`, `lookup_additive`),
@@ -86,9 +86,10 @@ pub(crate) fn batched_proximity_check_pow_bits(
 ) -> u32 {
     pow_bits::batched_proximity_check_pow_bits::<BF, E4>(
         prover_config.security_level.security_bits(),
-        compiled_circuit.trace_len.trailing_zeros() as usize,
+        prover_config.whir_message_size_log2(),
         prover_config.whir_schedule.base_lde_factor.trailing_zeros() as usize,
-        pow_bits::total_base_oracle_columns(compiled_circuit),
+        // the PHYSICALLY committed column count (separate memory/witness sets)
+        pow_bits::committed_base_oracle_columns(compiled_circuit, prover_config.pack_log2, false),
     )
 }
 

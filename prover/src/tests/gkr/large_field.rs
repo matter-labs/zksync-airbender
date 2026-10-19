@@ -90,8 +90,6 @@ pub(super) fn circuit_tester_config() -> ProgramConfig {
     }
 }
 
-const TRACE_LEN_LOG2: usize = 22;
-
 pub use crate::gkr::prover_config::example_configs::{
     evm_production_packed_prover_config, EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS,
     EVM_PRODUCTION_PACK_LOG2,
@@ -210,7 +208,14 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
     let num_calls = vm
         .counters
         .get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
-    assert!(num_calls <= (1 << TRACE_LEN_LOG2));
+    // The prover config is the single source of the proving geometry (trace
+    // length, packing, schedules): `pack_log2 = 4` packs the 2^22 base trace
+    // into one 2^26-variate multilinear per column — exactly the
+    // `message_log2 = 26` of the EVM-production WHIR config.
+    let prover_config = evm_production_packed_prover_config(level);
+    let trace_len: usize = 1 << prover_config.trace_len_log2;
+    let pack_log2 = prover_config.pack_log2;
+    assert!(num_calls <= trace_len);
 
     // 3. Build the unified witness trace with precompiles disabled at preprocessing.
     let (full_trace, table_driver, decoder_table, top_bits) =
@@ -219,7 +224,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
             super::unified_reduced_machine_proth120::witness_eval_fn,
             &unified_circuit,
             num_teardown_sets,
-            1 << TRACE_LEN_LOG2,
+            trace_len,
             &worker,
         );
 
@@ -334,21 +339,13 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
     //    message 2^26). Because `pack_log2 = 4` enlarges each column to 2^26 the
     //    packed polynomials match that message size exactly, so the same folds /
     //    queries / lde_factors / pow schedule applies. base LDE 2^5 => 2^31 codeword.
-    let trace_len: usize = 1 << TRACE_LEN_LOG2;
-    let prover_config = evm_production_packed_prover_config(level);
-    // With `pack_log2 = 4` the 2^22 base trace is packed into a single 2^26-variate
-    // multilinear per column — exactly the `message_log2 = 26` of the EVM-production
-    // WHIR config (`generate_whir_input_for_evm_production`), whose parameters we
-    // reuse below. The packing factor is a property of the prover config.
-    let pack_log2 = prover_config.pack_log2;
-    assert_eq!(pack_log2, EVM_PRODUCTION_PACK_LOG2);
 
     println!("Computing setup");
     // The proof function's twiddles are of unified circuit size * (1 << pack_log2):
     // the packed commitment interpolates the merged/packed polynomials over the
     // enlarged domain.
     let packed_twiddles: Twiddles<Proth120, Global> =
-        Twiddles::new(trace_len << pack_log2, &worker);
+        Twiddles::new(1usize << prover_config.whir_message_size_log2(), &worker);
 
     // 5. Construct the setup and obtain an ON-DISK commitment for it: the packed
     //    RS codewords + Merkle tree are computed once via `commit_packed` and cached
@@ -373,15 +370,11 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
         // Commit the packed setup fully in memory: RS codewords + monolithic Merkle
         // tree materialized (byte-identical commitment to the on-disk/split path).
         println!("Committing setup in memory (packed)");
-        SetupCommitment::InMemory(setup.commit_packed::<Keccak256MerkleTreeWithCap>(
+        setup.commit_for_config::<Keccak256MerkleTreeWithCap>(
             &packed_twiddles,
-            lde_factor,
-            values_per_leaf.trailing_zeros() as usize,
-            prover_config.cap_size,
-            TRACE_LEN_LOG2,
-            pack_log2,
+            &prover_config,
             &worker,
-        ))
+        )
     } else {
         // On-disk setup with the "second" (per-coset subtree) tree layout: the packed
         // setup is prepared coset-by-coset — each coset's RS codewords and its cap-size-1
@@ -406,7 +399,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
                 lde_factor,
                 values_per_leaf.trailing_zeros() as usize,
                 prover_config.cap_size,
-                TRACE_LEN_LOG2,
+                prover_config.trace_len_log2,
                 pack_log2,
                 setup_disk_prefix,
                 &worker,
@@ -530,6 +523,8 @@ fn validate_packed_transcript_recipe() {
     }
 
     let worker = Worker::new_with_num_threads(4);
+    // the proof's prover config: the single source of its proving geometry
+    let prover_config = evm_production_packed_prover_config(SecurityLevel::Sec100);
 
     let unified_circuit: GKRCircuitArtifact<Proth120> = {
         let src = std::fs::File::open(
@@ -595,7 +590,7 @@ fn validate_packed_transcript_recipe() {
     }
 
     let lookup_pow_bits = pow_bits::lookup_challenges_pow_bits::<Proth120, Proth120>(
-        SecurityLevel::Sec100.security_bits(),
+        prover_config.security_level.security_bits(),
         pow_bits::lookup_identity_degree(&unified_circuit),
     );
     // prover draws external challenges with pow = max(lookup_pow_bits, external_pow_bits=20)
@@ -648,6 +643,8 @@ fn capture_gkr_dim_reduce_reference() {
     use transcript::Transcript;
 
     let worker = Worker::new_with_num_threads(4);
+    // the proof's prover config: the single source of its proving geometry
+    let prover_config = evm_production_packed_prover_config(SecurityLevel::Sec100);
     let unified_circuit: GKRCircuitArtifact<Proth120> = {
         let src = std::fs::File::open(
             "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
@@ -678,7 +675,7 @@ fn capture_gkr_dim_reduce_reference() {
     );
     let pow = core::cmp::max(
         pow_bits::lookup_challenges_pow_bits::<Proth120, Proth120>(
-            SecurityLevel::Sec100.security_bits(),
+            prover_config.security_level.security_bits(),
             pow_bits::lookup_identity_degree(&unified_circuit),
         ),
         external_pow_bits,
@@ -1151,6 +1148,8 @@ fn verify_dim_reduce_layers() {
 
     type E = Proth120;
     let worker = Worker::new_with_num_threads(4);
+    // the proof's prover config: the single source of its proving geometry
+    let prover_config = evm_production_packed_prover_config(SecurityLevel::Sec100);
     let unified_circuit: GKRCircuitArtifact<Proth120> = serde_json::from_reader(
         std::fs::File::open(
             "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
@@ -1179,7 +1178,7 @@ fn verify_dim_reduce_layers() {
     let mut seed = <Keccak256Transcript as Transcript<Proth120, Proth120>>::commit_initial_u32(&ti);
     let pow = core::cmp::max(
         pow_bits::lookup_challenges_pow_bits::<Proth120, Proth120>(
-            SecurityLevel::Sec100.security_bits(),
+            prover_config.security_level.security_bits(),
             pow_bits::lookup_identity_degree(&unified_circuit),
         ),
         external_pow_bits,
@@ -1900,7 +1899,7 @@ fn verify_dim_reduce_layers() {
     // ===== STEP 4: GKR→WHIR handoff — packed-commitment claims merge + WHIR batching =====
     // Mirrors prover/src/gkr/prover/mod.rs (MergedMemoryAndWitnessSingleCircuitOnly, lines 875-961).
     {
-        let pack_log2 = EVM_PRODUCTION_PACK_LOG2; // this proof's pack_log2
+        let pack_log2 = prover_config.pack_log2; // this proof's pack_log2
         let base_layer_z = point.clone(); // 22-coord layer-0 folding point
         let get = |addr: GKRAddress| -> E {
             *layer0_merged.get(&addr).expect("base-layer claim present")
@@ -1948,11 +1947,13 @@ fn verify_dim_reduce_layers() {
         whir_point.extend_from_slice(&base_layer_z);
 
         // draw WHIR batching challenge (1 el, PoW-gated); validate nonce vs the proof
+        assert_eq!(whir_point.len(), prover_config.whir_message_size_log2());
         let pow = pow_bits::batched_proximity_check_pow_bits::<Proth120, Proth120>(
-            SecurityLevel::Sec100.security_bits(),
-            whir_point.len(),
-            5, // base_lde_factor = 1<<5 (this proof's whir schedule)
-            pow_bits::total_base_oracle_columns(&unified_circuit),
+            prover_config.security_level.security_bits(),
+            prover_config.whir_message_size_log2(),
+            prover_config.whir_schedule.base_lde_factor.trailing_zeros() as usize,
+            // the PHYSICALLY committed (packed, merged mem+wit) columns
+            pow_bits::committed_base_oracle_columns(&unified_circuit, pack_log2, true),
         );
         let (nonce, wbc) = draw_random_field_els_with_pow::<Proth120, Proth120, Keccak256Transcript>(
             &mut seed, 1, pow, &worker,
@@ -2376,7 +2377,7 @@ where
     assert_eq!(max_ram_touch % 4, 0);
     let mut inits_and_teardowns = vm.ram.collect_inits_and_teardowns_sets::<F, Global>(
         worker,
-        TRACE_LEN_LOG2,
+        cycles_per_chunks.trailing_zeros() as usize,
         num_teardown_sets,
         Some(((max_ram_touch as usize) + 4) / 4),
     );

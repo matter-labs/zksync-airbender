@@ -115,7 +115,7 @@ pub fn prove_l1_wrap_in_memory(
     // 4. Packed twiddles: the commitment interpolates the packed polynomials
     //    over the 2^(22 + pack_log2) domain.
     let packed_twiddles: Twiddles<Proth120, std::alloc::Global> =
-        Twiddles::new(trace_len << pack_log2, worker);
+        Twiddles::new(1usize << prover_config.whir_message_size_log2(), worker);
 
     // 5. Setup, then its FULLY IN-MEMORY packed commitment: RS codewords and
     //    the monolithic Merkle tree are materialized (byte-identical
@@ -124,21 +124,14 @@ pub fn prove_l1_wrap_in_memory(
     let setup = GKRSetup::construct(&table_driver, &decoder_table, trace_len, &unified_circuit);
     timings.setup_ms = setup_started.elapsed().as_millis();
 
-    let lde_factor = prover_config.lde_factor;
-    let values_per_leaf = prover_config.base_oracles_values_per_leaf;
-
     println!("L1 wrap: committing setup in memory (packed)");
     let setup_commit_started = std::time::Instant::now();
-    let setup_commitment =
-        SetupCommitment::InMemory(setup.commit_packed::<Keccak256MerkleTreeWithCap>(
-            &packed_twiddles,
-            lde_factor,
-            values_per_leaf.trailing_zeros() as usize,
-            prover_config.cap_size,
-            prover_config.trace_len_log2,
-            pack_log2,
-            worker,
-        ));
+    // the setup geometry (LDE factor, leaf size, cap, packing) is the config's
+    let setup_commitment = setup.commit_for_config::<Keccak256MerkleTreeWithCap>(
+        &packed_twiddles,
+        &prover_config,
+        worker,
+    );
     timings.setup_commit_ms = setup_commit_started.elapsed().as_millis();
 
     // 6. Prove the single unified instance with the packed commitment mode

@@ -20,7 +20,7 @@ use super::{emit_circuit_yul_with_stats, CircuitYulStats, Lit};
 use cs::definitions::{GKRAddress, OutputType};
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::Proth120;
-use prover::gkr::prover_config::ProverConfig;
+use prover::gkr::prover_config::{pow_bits, ProverConfig};
 use std::collections::BTreeSet;
 
 const GKR_TEMPLATE: &str = include_str!("../templates/gkr.sol");
@@ -273,20 +273,23 @@ fn words_for(bytes: usize) -> Lit {
 /// schedule, base rate, merkle cap) comes from `prover_config`, and the base-layer packing factor
 /// from `pack_log2` (the prover's `ProverConfig::pack_log2`). Deriving both halves from the same config is
 /// what guarantees GKR↔WHIR consistency. The remaining parameters are deployment properties of
-/// the *program* (never of a proof): `external_pow_bits` / `whir_batch_pow_bits` are the two
-/// per-circuit PoW difficulties (not part of the WHIR schedule), `final_pc` the program's
+/// the *program* (never of a proof): `external_pow_bits` is the external-challenge PoW
+/// difficulty (not part of the WHIR schedule; the WHIR batching PoW is derived from the
+/// config + the circuit like the prover does), `final_pc` the program's
 /// terminal PC, and `inits_teardowns_top_bits` the RAM-set base chunk index of every
 /// inits/teardowns set the circuit has (one per `memory_layout.teardown_sets` entry, each
 /// fitting a byte) — the prover's preimage must carry exactly these values.
 pub fn generate_verifier(
     circuit: &GKRCircuitArtifact<Proth120>,
     prover_config: &ProverConfig,
-    pack_log2: usize,
     external_pow_bits: u32,
-    whir_batch_pow_bits: u32,
     final_pc: u32,
     inits_teardowns_top_bits: &[u32],
 ) -> String {
+    // Every proving-geometry parameter comes from the prover config: the packing
+    // factor, the message size and the WHIR batching PoW difficulty (which the
+    // prover derives from the config + the circuit exactly like this).
+    let pack_log2 = prover_config.pack_log2;
     assert!(pack_log2 > 0, "pack_log2 must be positive");
     let d = Derived::from(circuit, pack_log2);
     assert_eq!(
@@ -294,14 +297,15 @@ pub fn generate_verifier(
         "prover config trace_len_log2 {} != circuit trace log2 {}",
         prover_config.trace_len_log2, d.rounds
     );
-    // WHIR config derived from the same source the prover used, plus the artifact's widths.
-    let wc = WhirGenConfig::derive(
-        &prover_config.whir_schedule,
-        pack_log2,
-        d.rounds,
-        d.num_memwit,
-        d.num_setup,
+    let whir_batch_pow_bits = pow_bits::batched_proximity_check_pow_bits::<Proth120, Proth120>(
+        prover_config.security_level.security_bits(),
+        prover_config.whir_message_size_log2(),
+        prover_config.whir_schedule.base_lde_factor.trailing_zeros() as usize,
+        // the PHYSICALLY committed (packed, merged mem+wit) column count
+        pow_bits::committed_base_oracle_columns(circuit, pack_log2, true),
     );
+    // WHIR config derived from the same source the prover used, plus the artifact's widths.
+    let wc = WhirGenConfig::derive(prover_config, d.num_memwit, d.num_setup);
     // GKR↔WHIR consistency: the shared parameters must agree between the two halves.
     assert_eq!(
         wc.merged_mw, d.merged_mw,

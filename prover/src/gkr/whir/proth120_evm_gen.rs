@@ -215,6 +215,7 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
         vec![],
         gkr_storage,
         0,
+        false, // separate memory and witness oracles
         z.clone(),
         batching_challenge,
         &schedule,

@@ -221,7 +221,7 @@ pub fn validate_sumcheck_schedule(
     Ok(class)
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ProverConfig {
     /// log2 of the circuit trace length this config was computed for. The
     /// prove entries assert the caller-supplied `trace_len` matches, so a

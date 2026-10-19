@@ -206,7 +206,7 @@ pub fn prove_unified_transition_with_replayer_timed<
 
     let num_unified_calls =
         counters.get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
-    let trace_len_log2 = <setups::unified_reduced_machine::UnifiedReducedMachineCircuit as circuit_common::RiscVCycleCircuit<BabyBearField, true>>::DOMAIN_SIZE_LOG2;
+    let trace_len_log2 = <setups::unified_reduced_machine::UnifiedReducedMachineCircuit as circuit_common::RiscVCycleCircuit<BabyBearField, true>>::trace_len_log2();
 
     let unified_buffers = replay_unified_circuit::<DelegationsAndUnifiedCounters>(
         DelegationsAndUnifiedCounters::default(),
@@ -617,7 +617,7 @@ pub fn prove_unified_transition_with_replayer_precommitted_timed<
 
     let num_unified_calls =
         counters.get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
-    let trace_len_log2 = <setups::unified_reduced_machine::UnifiedReducedMachineCircuit as circuit_common::RiscVCycleCircuit<BabyBearField, true>>::DOMAIN_SIZE_LOG2;
+    let trace_len_log2 = <setups::unified_reduced_machine::UnifiedReducedMachineCircuit as circuit_common::RiscVCycleCircuit<BabyBearField, true>>::trace_len_log2();
 
     let unified_buffers = replay_unified_circuit::<DelegationsAndUnifiedCounters>(
         DelegationsAndUnifiedCounters::default(),

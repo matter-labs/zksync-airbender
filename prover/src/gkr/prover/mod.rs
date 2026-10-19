@@ -2004,7 +2004,9 @@ fn prove_configured_with_gkr_from_forward_eval<
         );
     }
 
-    let mut trace_len_log2_for_whir = trace_len.trailing_zeros() as usize;
+    // The WHIR message size: the committed (packed) column length, from the
+    // config (the entry asserted `trace_len == 2^prover_config.trace_len_log2`).
+    let trace_len_log2_for_whir = prover_config.whir_message_size_log2();
 
     // and for WHIR we may need to reshuffle/merge claims depending on the mode:
     // the merged modes committed memory and witness as ONE column set
@@ -2041,7 +2043,7 @@ fn prove_configured_with_gkr_from_forward_eval<
         // block), so under LSB binding the packing coordinates EXTEND the
         // claim point at the top.
         base_layer_z.extend_from_slice(&extra_coordinates);
-        trace_len_log2_for_whir += pack_log2;
+        debug_assert_eq!(base_layer_z.len(), trace_len_log2_for_whir);
 
         #[cfg(feature = "gkr_self_checks")]
         {
@@ -2107,11 +2109,20 @@ fn prove_configured_with_gkr_from_forward_eval<
     // scales with the number of batched base-oracle columns l and the size of the
     // batched (packed, in the packed mode) polynomials, so it is computed per-circuit
     // here (and identically baked by the verifier generator).
+    let merged_memory_and_witness = matches!(
+        commitment_mode,
+        CommitmentMode::MergedMemoryAndWitness
+            | CommitmentMode::MergedMemoryAndWitnessSingleCircuitOnly { .. }
+    );
     let batched_proximity_pow_bits = pow_bits::batched_proximity_check_pow_bits::<F, E>(
         prover_config.security_level.security_bits(),
         trace_len_log2_for_whir,
         prover_config.whir_schedule.base_lde_factor.trailing_zeros() as usize,
-        pow_bits::total_base_oracle_columns(compiled_circuit),
+        pow_bits::committed_base_oracle_columns(
+            compiled_circuit,
+            pack_log2,
+            merged_memory_and_witness,
+        ),
     );
 
     let (batched_proximity_check_pow_nonce, whir_batching_challenges): (u64, Vec<E>) =
@@ -2154,7 +2165,7 @@ fn prove_configured_with_gkr_from_forward_eval<
     // the packing of the base commitments (0 = unpacked): the batched
     // proximity polynomial is accumulated from the base-layer columns inside
     // `whir_fold`, which consumes the GKR storage
-    let pack_log2_for_whir = trace_len_log2_for_whir - trace_len.trailing_zeros() as usize;
+    let pack_log2_for_whir = prover_config.pack_log2;
     let t_whir = std::time::Instant::now();
     let whir_proof = whir_fold::<F, E, T, TR, B, GB>(
         mem_oracle,
@@ -2165,6 +2176,7 @@ fn prove_configured_with_gkr_from_forward_eval<
         setup_polys_claims,
         gkr_storage,
         pack_log2_for_whir,
+        merged_memory_and_witness,
         base_layer_z.clone(),
         whir_batching_challenge,
         &prover_config.whir_schedule,

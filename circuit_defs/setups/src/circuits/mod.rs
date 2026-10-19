@@ -35,6 +35,10 @@ use prover::definitions::SecurityLevel;
 pub struct DelegationCircuitSetup {
     pub delegation_type: u16,
     pub trace_len: usize,
+    /// The circuit's prover config per security level
+    /// ([`circuit_common::prover_configs_for_all_levels`]): the geometry every
+    /// commitment and proof made from this setup must use.
+    pub prover_configs: Vec<prover::gkr::prover_config::ProverConfig>,
     pub compiled_circuit: GKRCircuitArtifact<BabyBearField>,
     pub table_driver: TableDriver<BabyBearField>,
     pub setup: GKRSetup<BabyBearField>,
@@ -43,16 +47,27 @@ pub struct DelegationCircuitSetup {
     // >,
 }
 
+impl DelegationCircuitSetup {
+    /// The circuit's prover config at `level` — the single source of its
+    /// proving geometry (trace length, schedules, packing).
+    pub fn prover_config(&self, level: SecurityLevel) -> &prover::gkr::prover_config::ProverConfig {
+        let config = circuit_common::prover_config_at(&self.prover_configs, level);
+        assert_eq!(1usize << config.trace_len_log2, self.trace_len);
+        config
+    }
+}
+
 pub fn make_setup_for_delegation_circuit<C: circuit_common::DelegationCircuit<BabyBearField>>(
     use_caches: bool,
 ) -> DelegationCircuitSetup {
     let circuit = C::get_circuit(use_caches);
     let table_driver = C::get_table_driver();
-    let setup = GKRSetup::construct(&table_driver, &[], 1 << C::DOMAIN_SIZE_LOG2, &circuit);
+    let setup = GKRSetup::construct(&table_driver, &[], 1 << C::trace_len_log2(), &circuit);
 
     DelegationCircuitSetup {
         delegation_type: C::DELEGATION_TYPE_ID,
-        trace_len: 1 << C::DOMAIN_SIZE_LOG2,
+        trace_len: 1 << C::trace_len_log2(),
+        prover_configs: circuit_common::prover_configs_for_all_levels(C::prover_config),
         compiled_circuit: circuit,
         table_driver,
         setup,
@@ -112,14 +127,13 @@ fn produce_verifier_setup_for_circuit(
     security_level: SecurityLevel,
     worker: &Worker,
 ) -> verifier_common::DelegationCircuitSetupData<{ prover::definitions::DEFAULT_CAP_SIZE }> {
-    let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(circuit.trace_len.trailing_zeros() as usize, security_level);
-    let twiddles: Twiddles<BabyBearField, Global> = Twiddles::new(circuit.trace_len, worker);
-    let setup_commitment = circuit.setup.commit::<DefaultTreeConstructor>(
+    // the circuit's own config: the geometry the prover commits the setup with
+    let prover_config = circuit.prover_config(security_level);
+    let twiddles: Twiddles<BabyBearField, Global> =
+        Twiddles::new(circuit.trace_len << prover_config.pack_log2, worker);
+    let setup_commitment = circuit.setup.commit_for_config::<DefaultTreeConstructor>(
         &twiddles,
-        prover_config.lde_factor,
-        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-        prover_config.cap_size,
-        circuit.trace_len.trailing_zeros() as usize,
+        &prover_config,
         worker,
     );
 

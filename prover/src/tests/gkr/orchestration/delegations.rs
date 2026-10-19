@@ -129,7 +129,8 @@ fn prove_delegation_inner<O: Oracle<BabyBearField> + DelegationOracleExt>(
             level,
         );
     // the packed commitment interpolates over the enlarged 2^(N + pack_log2) domain
-    let twiddles: Twiddles<_, Global> = Twiddles::new(num_delegation_cycles << pack_log2, worker);
+    let twiddles: Twiddles<_, Global> =
+        Twiddles::new(1usize << prover_config.whir_message_size_log2(), worker);
     let setup = GKRSetup::construct(table_driver, &[], num_delegation_cycles, circuit);
     let setup_commitment = setup.commit_for_config(&twiddles, &prover_config, worker);
 

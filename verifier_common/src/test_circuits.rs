@@ -41,14 +41,35 @@ pub struct CircuitData {
 }
 
 impl CircuitData {
+    /// The serialized prover config the circuit definition generated next to
+    /// its production layout (`<production_path>/generated/prover_config_<level>.json`,
+    /// written by the circuit's artifact generator from its `prover_config`):
+    /// the config the circuit is proved with, and thus the one its verifier is
+    /// generated for.
+    pub fn prover_config_path_for(&self, level: SecurityLevel) -> String {
+        format!(
+            "{}/generated/prover_config_{}.json",
+            self.production_path,
+            level.dir_suffix()
+        )
+    }
+
     pub fn prover_config_for(&self, level: SecurityLevel) -> &ProverConfig {
         let idx = level as usize;
-        self.prover_configs_cache[idx].get_or_init(|| prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(self.compiled_circuit().trace_len.trailing_zeros() as usize, level))
+        self.prover_configs_cache[idx].get_or_init(|| {
+            let path = self.prover_config_path_for(level);
+            let config: ProverConfig = deserialize_from_file(&path);
+            assert_eq!(
+                1usize << config.trace_len_log2,
+                self.compiled_circuit().trace_len,
+                "{path}: trace length differs from the compiled circuit's — regenerate the artifacts"
+            );
+            config
+        })
     }
 
     pub fn whir_schedule_for(&self, level: SecurityLevel) -> &WhirSchedule {
-        let idx = level as usize;
-        &self.prover_configs_cache[idx].get_or_init(|| prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(self.compiled_circuit().trace_len.trailing_zeros() as usize, level)).whir_schedule
+        &self.prover_config_for(level).whir_schedule
     }
 
     pub fn proof_path_for(&self, level: SecurityLevel) -> String {

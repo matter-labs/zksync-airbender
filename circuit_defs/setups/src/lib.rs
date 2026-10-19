@@ -5,9 +5,11 @@ use cs::tables::TableDriver;
 use definitions::MerkleTreeCap;
 use merkle_trees::DefaultTreeConstructor;
 use prover::cs::gkr_compiler::GKRCircuitArtifact;
+use prover::definitions::SecurityLevel;
 use prover::fft::*;
 use prover::field::baby_bear::base::BabyBearField;
 use prover::gkr::prover::setup::GKRSetup;
+use prover::gkr::prover_config::ProverConfig;
 use prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
 use prover::gkr::witness_gen::oracles::*;
 use prover::merkle_trees::MerkleTreeCapVarLength;
@@ -101,6 +103,20 @@ pub struct CircuitSetup<A: GoodAllocator = Global> {
     pub table_driver: TableDriver<BabyBearField>,
     pub setup: GKRSetup<BabyBearField>,
     pub witness_eval_fn: Option<UnrolledCircuitWitnessEvalFn<A>>,
+    /// The circuit's prover config per security level
+    /// ([`circuit_common::prover_configs_for_all_levels`]): the geometry every
+    /// commitment and proof made from this setup must use.
+    pub prover_configs: Vec<ProverConfig>,
+}
+
+impl<A: GoodAllocator> CircuitSetup<A> {
+    /// The circuit's prover config at `level` — the single source of its
+    /// proving geometry (trace length, schedules, packing).
+    pub fn prover_config(&self, level: SecurityLevel) -> &ProverConfig {
+        let config = circuit_common::prover_config_at(&self.prover_configs, level);
+        assert_eq!(1usize << config.trace_len_log2, self.trace_len);
+        config
+    }
 }
 
 pub fn make_setup_for_non_mem_circuit<
@@ -119,7 +135,7 @@ pub fn make_setup_for_non_mem_circuit<
     let setup = GKRSetup::construct(
         &table_driver,
         decoder_table_data,
-        1 << C::DOMAIN_SIZE_LOG2,
+        1 << C::trace_len_log2(),
         &circuit,
     );
 
@@ -137,11 +153,12 @@ pub fn make_setup_for_non_mem_circuit<
 
     CircuitSetup {
         family_idx: C::CIRCUIT_FAMILY,
-        trace_len: 1 << C::DOMAIN_SIZE_LOG2,
+        trace_len: 1 << C::trace_len_log2(),
         compiled_circuit: circuit,
         table_driver,
         setup,
         witness_eval_fn,
+        prover_configs: circuit_common::prover_configs_for_all_levels(C::prover_config),
     }
 }
 
@@ -163,7 +180,7 @@ pub fn make_setup_for_with_mem_circuit<
     let setup = GKRSetup::construct(
         &table_driver,
         decoder_table_data,
-        1 << C::DOMAIN_SIZE_LOG2,
+        1 << C::trace_len_log2(),
         &circuit,
     );
 
@@ -180,11 +197,12 @@ pub fn make_setup_for_with_mem_circuit<
 
     CircuitSetup {
         family_idx: C::CIRCUIT_FAMILY,
-        trace_len: 1 << C::DOMAIN_SIZE_LOG2,
+        trace_len: 1 << C::trace_len_log2(),
         compiled_circuit: circuit,
         table_driver,
         setup,
         witness_eval_fn,
+        prover_configs: circuit_common::prover_configs_for_all_levels(C::prover_config),
     }
 }
 

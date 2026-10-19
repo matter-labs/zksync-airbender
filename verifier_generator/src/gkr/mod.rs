@@ -1,5 +1,6 @@
 use proc_macro2::TokenStream;
 use prover::field::PrimeField;
+use prover::gkr::prover_config::ProverConfig;
 use quote::quote;
 use std::collections::BTreeMap;
 
@@ -1052,17 +1053,12 @@ fn emit_memory_tuple_check<MW: FieldWrapper>(
 
 pub fn generate_gkr_inlined<MW: FieldWrapper>(
     compiled_circuit: &GKRCircuitArtifact<MW::BaseField>,
-    sumcheck_output_size_log_2: usize,
-    whir_schedule: &WhirSchedule,
-    security_bits: u32,
+    prover_config: &ProverConfig,
 ) -> GKRGeneratedFiles {
     generate_gkr_inlined_for_commitment_mode::<MW>(
         compiled_circuit,
-        sumcheck_output_size_log_2,
-        whir_schedule,
-        security_bits,
+        prover_config,
         &prover::gkr::prover::CommitmentMode::SeparateMemoryAndWitness,
-        0,
     )
 }
 
@@ -1080,8 +1076,11 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
 /// its transcript init (self-derived external challenges, final register
 /// state / PC / timestamp) is not generated here — the EVM generator serves it.
 ///
-/// `pack_log2` is the base-commitment packing factor of
-/// `prover::gkr::prover_config::ProverConfig::pack_log2`: every committed set
+/// Every proving-geometry parameter (trace length, explicit sumcheck output
+/// size, WHIR schedule, security level, packing) comes from `prover_config` —
+/// the circuit's own serialized config — so the generated verifier cannot
+/// disagree with the prover. `prover_config.pack_log2` is the base-commitment
+/// packing factor: every committed set
 /// (memory and witness — one merged set in the merged modes — and setup) is
 /// packed by `2^pack_log2` consecutive columns into one committed column of
 /// `2^(trace_len_log2 + pack_log2)` evaluations. With `pack_log2 = 0` the
@@ -1096,13 +1095,19 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
 /// [`CommitmentMode`]: prover::gkr::prover::CommitmentMode
 pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
     compiled_circuit: &GKRCircuitArtifact<MW::BaseField>,
-    sumcheck_output_size_log_2: usize,
-    whir_schedule: &WhirSchedule,
-    security_bits: u32,
+    prover_config: &ProverConfig,
     commitment_mode: &prover::gkr::prover::CommitmentMode,
-    pack_log2: usize,
 ) -> GKRGeneratedFiles {
     use prover::gkr::prover::CommitmentMode;
+    assert_eq!(
+        1usize << prover_config.trace_len_log2,
+        compiled_circuit.trace_len,
+        "the prover config was computed for another trace length than the circuit's"
+    );
+    let sumcheck_output_size_log_2 = prover_config.sumcheck_explicit_output_size_log_2;
+    let whir_schedule = &prover_config.whir_schedule;
+    let security_bits = prover_config.security_level.security_bits() as u32;
+    let pack_log2 = prover_config.pack_log2;
     let merged_base_commitment = match commitment_mode {
         CommitmentMode::SeparateMemoryAndWitness => false,
         CommitmentMode::MergedMemoryAndWitness => true,
@@ -2077,11 +2082,15 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
     let batched_proximity_pow_bits =
         pow_bits::batched_proximity_check_pow_bits::<MW::BaseField, MW::ChallengeField>(
             security_bits as usize,
-            // the batched (packed) polynomial size; the column count stays
-            // the UNPACKED one, exactly as the prover computes it
+            // the batched (packed) polynomial size and the PHYSICALLY
+            // committed (packed) column count, exactly as the prover computes it
             whir_message_size_log2,
             whir_base_lde_factor.trailing_zeros() as usize,
-            pow_bits::total_base_oracle_columns(compiled_circuit),
+            pow_bits::committed_base_oracle_columns(
+                compiled_circuit,
+                pack_log2,
+                merged_base_commitment,
+            ),
         );
     // Derived per-circuit from `security_bits` (same as the batched-proximity bits
     // above), so prover grind and this baked const cannot diverge.

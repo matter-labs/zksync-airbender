@@ -41,6 +41,7 @@ impl CpuCircuitPrecomputations {
                 table_driver,
                 setup,
                 witness_eval_fn,
+                prover_configs: _,
             }) => Precomputed {
                 compiled_circuit: Arc::new(compiled_circuit),
                 setup,
