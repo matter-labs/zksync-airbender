@@ -298,9 +298,17 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    proofs derive every row's actual segment states and original public source
    entry, without a per-row state/read/schedule premise. The exported JAL fixture
    derives both x0 reads, old x1=123 and link write four through the public claim.
-   Next derive native operation semantics and original control Sail clauses,
-   then PC preparation/retirement, full execution and actual terminal instruction-state
-   matching. General Rust/compiler and cryptographic refinement remain separate. No per-row result/PC or
+   [Saved JAL/JALR links](Airbender/Review/Circuits/JumpBranchSlt/Theorems.lean)
+   now follow from native carry equations 29/30, actual scalar ranges and shared
+   modular word addition. Full public decoding supplies PC bounds and the x0 flag;
+   native packed masks one/two recover all selectors before actual masked writes.
+   The exported JAL, new logical JALR/x0 cases, full local native PC+4 wrap and
+   altered-link rejection are checked. The wrap row is not a public-decoder or
+   initialized execution certificate, and the new logical fixture has no new
+   native arbitrary-program export certificate.
+   Next derive native jump targets and comparison/branch semantics, connect
+   original control Sail clauses and PC preparation/retirement, then full execution
+   and actual terminal instruction-state matching. General Rust/compiler and cryptographic refinement remain separate. No per-row result/PC or
    table-equivalence premise is added.
 
 3. Port unsigned mul/div, shift/binop and subword memory into the same shared

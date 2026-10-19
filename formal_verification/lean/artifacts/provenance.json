@@ -2259,6 +2259,53 @@
       "backport_reuse_path": "Tests/ControlHistory.lean",
       "backport_reuse_sha256": "8303ba037c6b1d2c38400d921ac7685ba94f27b1922af03cdf63a7d3ff33d0c2",
       "change": "Reuse the accepted full native JAL -4 trace, original public bytes, explicit initial state and alias-token matching through Tests.ControlValues. Extract singleton history segments from the new public claim and derive both x0 reads, old x1=123 and actual link write four from decoded indices and native port data; use only small kernel-checked canonical residues."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/Selectors.lean",
+      "backport_reuse_revision": "c4144789ba83a19e6d4269d50933a6bd96458786",
+      "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/Selectors.lean",
+      "backport_reuse_sha256": "f0b4b733671e16a354dff34506c25675ebe41e4a4f47a769116892df43db4401",
+      "change": "Preserve every prior selector proof byte for byte; append the same canonical Boolean bounds and bounded packed-mask calculation for jump masks one/two, recovering the jump sum and all three inactive control operation bits."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/Link.lean",
+      "source_path": "Airbender/Proofs/JumpBranchSlt.lean",
+      "source_sha256": "e7ff84f2dc3a7602f60730f7969e905f530e647afb9bf80683f9fa82b422a3a7",
+      "change": "Extract only arithmetic_carries: keep its Boolean-to-natural proof structure, remap source variables 37/38 and assertions 19/20 to actual v2 variables 49/28 and assertions 9/5. Normalize the v2 expanded Boolean polynomial by ring rather than the v3 factored simp expression. Do not copy the source field inverse or unrelated source constraints."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/Link.lean",
+      "source_path": "Airbender/Proofs/JumpBranchSlt/Jump.lean",
+      "source_sha256": "c7e68f1b9bda76441f99342a310e5011ebbce7e735c24a605e58035ef8518615",
+      "change": "Reuse the jump_link proof architecture: lift native low/high carry equations to the unchanged modular word-addition lemma, then derive the actual masked destination. Rebind v2 equations 29/30 and 20..23, raw link 26/27 and destination 38/39. Native carry terms are outside the selector product, requiring the corresponding polynomial combination. Public construction supplies both initial PC limb bounds and the exact zero flag, rather than copying v3 local high-range or Boolean-flag assumptions."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/Link.lean",
+      "backport_reuse_revision": "c4144789ba83a19e6d4269d50933a6bd96458786",
+      "backport_reuse_path": "Airbender/Proofs/Arithmetic/Word.lean",
+      "backport_reuse_sha256": "3d21bbc1aee3b09c7978f3365504e1ad0ed85ad2fd7db957647b8e8cb3efff15",
+      "change": "Reuse Word.add_of_limbs unchanged for saved PC+4, including low carry and RV32 high wrap. Actual v2 scalar queries zero/one supply the saved-word bounds, and the native Boolean assertions supply both carries. No desired output bound, carry or write is supplied to the public claim."
+    },
+    {
+      "path": "Airbender/Review/Circuits/JumpBranchSlt/Theorems.lean",
+      "backport_reuse_revision": "c4144789ba83a19e6d4269d50933a6bd96458786",
+      "backport_reuse_path": "Airbender/Review/Circuits/JumpBranchSlt/Theorems.lean",
+      "backport_reuse_sha256": "8bdb901472b231c487e019d4267f8e889730955527ff20b463820ec14042ae87",
+      "change": "Retain all four existing native public claims unchanged and append one short actual masked-link claim. Full public sparse construction and membership derive PC/zero-flag interfaces; masks one/two classify the JAL/JALR domain, and native packed equations derive all operation selectors. Target calculation and original Sail instruction execution remain separate."
+    },
+    {
+      "path": "Tests/JumpLink.lean",
+      "backport_reuse_revision": "c4144789ba83a19e6d4269d50933a6bd96458786",
+      "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/NativeSetup.lean",
+      "backport_reuse_sha256": "8e76871b5d658e6bdd0ae880dabd04d6ad8db8618faf136b1e64db4d81402e86",
+      "change": "Copy the actual Sail RAM-word reads and three-slot public sparse-constructor certificate structure. Keep the existing first negative-JAL word and add independent logical JALR and JAL-to-x0 words; do not claim a new native arbitrary-program export certificate. No opaque default register-map property is used."
+    },
+    {
+      "path": "Tests/JumpLink.lean",
+      "backport_reuse_revision": "c4144789ba83a19e6d4269d50933a6bd96458786",
+      "backport_reuse_path": "Tests/JumpControl.lean",
+      "backport_reuse_sha256": "ea852e65783bb585cfbd884d60b22b12462fd0f37f8cd23d020cfc0846aba71e",
+      "change": "Reuse every-native-equation/query fixture checking with concrete v2 overrides for odd-source JALR, original JAL-to-x0 and full local RV32 PC+4 wrap. Actual public byte membership proves the first two selected cases, and the prior actually exported JAL is retained. The wrap row is local and is not an initialized/public-decoder trace. Changing the actual destination link while retaining decoder columns is rejected by the new public theorem."
     }
   ],
   "setup_artifacts": [

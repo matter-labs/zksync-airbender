@@ -222,3 +222,10 @@ state. Older/current/newer Sail histories connect every boundary to public
 initialization and the full terminal cell history. [The exported-JAL regression](../../../Tests/ControlRegisters.lean)
 derives both x0 reads, old x1=123 and link write four without supplied intermediate
 states. Original control clauses and native PC/operation semantics remain open.
+
+[Native saved jump links](../Circuits/JumpBranchSlt/Theorems.lean) now derive the
+actual masked PC+4 word for public-decoded JAL/JALR rows. Selectors, PC bounds and
+the x0 flag come from native constraints and public construction. This numerical
+connection complements the checked register histories; original jump targets,
+Sail clauses/PC retirement and complete control execution remain separate. A full
+local native wrap regression is checked, without claiming initialized wrap execution.

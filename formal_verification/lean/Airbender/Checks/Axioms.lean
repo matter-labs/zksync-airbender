@@ -31,6 +31,7 @@ import Tests.NativeJumpSetup
 import Tests.ControlHistory
 import Tests.ControlValues
 import Tests.ControlRegisters
+import Tests.JumpLink
 
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
@@ -950,3 +951,18 @@ import Tests.ControlRegisters
 #print axioms Airbender.JumpBranchSlt.Proofs.image_register_history
 #print axioms Airbender.JumpBranchSlt.public_register_history
 #print axioms Tests.ControlRegisters.initialized_reads_write
+#print axioms Airbender.JumpBranchSlt.Proofs.jump_selectors
+#print axioms Airbender.JumpBranchSlt.Proofs.arithmetic_carries
+#print axioms Airbender.JumpBranchSlt.Proofs.raw_jump_link
+#print axioms Airbender.JumpBranchSlt.Proofs.jump_link
+#print axioms Airbender.JumpBranchSlt.Proofs.public_jump_link
+#print axioms Airbender.JumpBranchSlt.native_jump_link
+#print axioms Tests.JumpLink.program_image
+#print axioms Tests.JumpLink.jalr_native
+#print axioms Tests.JumpLink.zero_native
+#print axioms Tests.JumpLink.wrap_native
+#print axioms Tests.JumpLink.exported_jal_link
+#print axioms Tests.JumpLink.public_jalr_link
+#print axioms Tests.JumpLink.public_x0_link
+#print axioms Tests.JumpLink.wrap_link
+#print axioms Tests.JumpLink.altered_link_rejected

@@ -18,6 +18,7 @@ not completed v2 coverage.
 | [Initialized native control history](Airbender/Review/Trace/Families/JumpBranchSlt/History.lean) | The separate native clock/port registry proves the shared clock contract from actual control equations/queries. Public Sail seeds/PC and complete native matching derive every row/prior clock, complete Clean history and newest reads for all three ports, retaining readonly alias refreshes and actual masked writes. Control word bounds and Sail cell transfers are checked below; original instruction execution remains separate. |
 | Initialized control values/cells | [Word bounds](Airbender/Review/Trace/Families/JumpBranchSlt/Values.lean) derive every native read/write/terminal range from actual public sparse decoding and initialized matching. [Sail cell history](Airbender/Review/Trace/Families/JumpBranchSlt/SailHistory.lean) derives all intermediate cell states in native clock order, including x0 preservation from actual masks. Original control instruction execution and terminal instruction-state matching remain open. |
 | [Initialized control register transfers](Airbender/Review/Trace/Families/JumpBranchSlt/Registers.lean) | Original public decoding and native clock-ordered history derive all original source/destination GPR reads and the actual masked write at constructed row boundaries. Both source reads and the old destination read use one cell-history pre-state, including aliases. Original control clauses, native operation semantics and PC retirement remain open. |
+| [Native saved jump links](Airbender/Review/Circuits/JumpBranchSlt/Theorems.lean) | Full original public decoding and every native constraint derive the actual JAL/JALR PC+4 write, including discarded x0. Native mask classification recovers selectors; actual scalar ranges and Boolean carry equations prove RV32 addition. Exported-JAL, logical JALR/x0, local full native wrap and altered-write rejection regressions pass. Target calculation and original control instruction execution remain open. |
 | V2 artifact import | All 34 quadratic and 3 linear equations, four 16-bit and eight 19-bit timestamp queries from the pinned ADD/SUB layout. Bounds/placement guards and both native zero coefficient encodings. |
 | Reused foundation | Unchanged property definitions, word representation/arithmetic and pinned Sail reference/execution lemmas. Source hashes are checked. |
 | Native state/port clocks | Typed physical state and three direct ports, including actual destination writes. Four-tick advancement and strict previous-write/port order follow from imported equations/queries under initial/prior clock bounds and alignment. The initialized-history layer now derives these local inputs from matching and initial boundaries. |
@@ -524,14 +525,40 @@ transfers; original control instruction clauses, native branch/jump/comparison
 semantics, PC preparation/retirement and full terminal instruction-state matching
 remain open. Physical setup/Rust/compiler/cryptographic refinement stays separate.
 
+## Native saved jump links
+
+[Native link arithmetic](Airbender/Proofs/JumpBranchSlt/Link.lean) now reuses the
+original Boolean carry extraction and unchanged modular word addition. Actual
+v2 assertions 9/5 constrain low/high carries 49/28; equations 29/30 compute the
+saved PC+4 in scalar-ranged columns 26/27. Native equations 20..23 then force the
+actual destination columns 38/39 to that word or the discarded x0 write.
+
+[One short circuit claim](Airbender/Review/Circuits/JumpBranchSlt/Theorems.lean)
+uses actual public sparse construction and full native decoder membership to
+derive both PC bounds and the exact zero flag. Masks one/two classify the native
+JAL/JALR domain; [packed-mask recovery](Airbender/Proofs/JumpBranchSlt/Selectors.lean)
+derives every operation selector. No selector, carry, PC-word bound, flag or
+expected write is supplied. The original v3 field inverse is not reused.
+
+[Regressions](Tests/JumpLink.lean) retain the actually exported negative JAL link,
+check all native constraints for an odd-source JALR and original JAL-to-x0, and
+construct their independent original-byte logical setup. The JALR link is eight;
+the x0 row retains raw link twelve but writes zero. An unmasked x1 link wraps
+from PC 0xfffffffc to zero under all native constraints; that case is a local
+row regression, not an initialized/public-decoder trace. Altered link data fails.
+General native export certificates for the new logical fixture, jump targets,
+comparison/branch semantics, original Sail clauses/PC retirement and full terminal
+instruction-state matching remain open. Rust/compiler/cryptographic refinement
+stays separate.
+
 ## Validation
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all thirty-four concrete test modules pass.
+- Library, both CLI entrypoints and all thirty-five concrete test modules pass.
 - Importer regressions: 169 checks pass.
-- Axiom audit: 890 explicit roots; only propext, Classical.choice and Quot.sound.
-- All fifty-two public Review theorems (nine circuit claims, thirty-four trace claims and nine helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Axiom audit: 905 explicit roots; only propext, Classical.choice and Quot.sound.
+- All fifty-three public Review theorems (ten circuit claims, thirty-four trace claims and nine helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
 - Source provenance: 71 unchanged reused files, three native circuit artifacts, thirty-six native Rust sources, seven native setup artifacts and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.

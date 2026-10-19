@@ -108,3 +108,16 @@ now connect original Sail GPR accessors to actual native source/destination port
 All three reads use a constructed cell-history pre-state, including aliases, and
 the final port performs the actual masked write. Original control operation
 semantics, instruction clauses and PC retirement remain separate.
+
+## Saved jump links
+
+[The native link claim](Theorems.lean) now derives the actual JAL/JALR PC+4 write,
+including discarded x0, from public sparse construction, full lookup membership
+and every native constraint. Jump masks classify the operation domain; actual
+packed-mask equations recover selectors. [Calculations](../../../Proofs/JumpBranchSlt/Link.lean)
+reuse original carry extraction and shared modular addition with v2 equation/column
+bindings. [Tests](../../../../Tests/JumpLink.lean) check public JAL/JALR/x0 links,
+all native constraints for local RV32 wrap, and altered-write rejection. The wrap
+case is not an initialized/public-decoder trace, and the new logical JALR/x0
+words have no new native export certificate. Target calculation and original
+Sail clauses/PC retirement remain open.

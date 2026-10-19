@@ -811,3 +811,29 @@ actual link write four. This connects original register accesses to native cell
 transfers; original control instruction clauses, native branch/jump/comparison
 semantics, PC preparation/retirement and full terminal instruction-state matching
 remain open. Physical setup/Rust/compiler/cryptographic refinement stays separate.
+
+## Native saved jump links
+
+[Native link arithmetic](Airbender/Proofs/JumpBranchSlt/Link.lean) now reuses the
+original Boolean carry extraction and unchanged modular word addition. Actual
+v2 assertions 9/5 constrain low/high carries 49/28; equations 29/30 compute the
+saved PC+4 in scalar-ranged columns 26/27. Native equations 20..23 then force the
+actual destination columns 38/39 to that word or the discarded x0 write.
+
+[One short circuit claim](Airbender/Review/Circuits/JumpBranchSlt/Theorems.lean)
+uses actual public sparse construction and full native decoder membership to
+derive both PC bounds and the exact zero flag. Masks one/two classify the native
+JAL/JALR domain; [packed-mask recovery](Airbender/Proofs/JumpBranchSlt/Selectors.lean)
+derives every operation selector. No selector, carry, PC-word bound, flag or
+expected write is supplied. The original v3 field inverse is not reused.
+
+[Regressions](Tests/JumpLink.lean) retain the actually exported negative JAL link,
+check all native constraints for an odd-source JALR and original JAL-to-x0, and
+construct their independent original-byte logical setup. The JALR link is eight;
+the x0 row retains raw link twelve but writes zero. An unmasked x1 link wraps
+from PC 0xfffffffc to zero under all native constraints; that case is a local
+row regression, not an initialized/public-decoder trace. Altered link data fails.
+General native export certificates for the new logical fixture, jump targets,
+comparison/branch semantics, original Sail clauses/PC retirement and full terminal
+instruction-state matching remain open. Rust/compiler/cryptographic refinement
+stays separate.

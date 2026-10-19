@@ -120,3 +120,8 @@ uses these original public source entries and native query indices to select bot
 Sail source reads, the old destination read and actual masked write. The states
 come from shared native history segmentation; original instruction clauses and
 PC/operation semantics remain a separate connection.
+
+[The native jump-link claim](../../Circuits/JumpBranchSlt/Theorems.lean) uses full
+public construction/membership to derive both PC bounds and the exact x0 flag.
+Masks one/two classify native JAL/JALR; packed native equations recover selectors.
+The public caller supplies no local range, carry, zero flag or desired link.
