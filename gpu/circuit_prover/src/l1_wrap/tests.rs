@@ -89,11 +89,14 @@ fn l1_wrap_staged_bytes_bound() -> usize {
 
 /// Bytes an L1 feeder proof stages: the unified memory cap, the persisted memory
 /// partial trees, the inits-and-teardowns top bits and the external challenges.
-fn l1_feeder_proof_staged_bytes(security: SecurityLevel) -> usize {
-    let unified22 = CircuitType::Unrolled(UnrolledCircuitType::Unified22);
-    let config = crate::config::prover_config(unified22, ProofProfile::L1Feeder, security)
-        .expect("L1 feeder config");
-    let log_domain_size = unified22.get_domain_size().trailing_zeros();
+fn l1_feeder_proof_staged_bytes(
+    circuit: CircuitType,
+    profile: ProofProfile,
+    security: SecurityLevel,
+) -> usize {
+    let config =
+        crate::config::prover_config(circuit, profile, security).expect("L1 feeder config");
+    let log_domain_size = circuit.get_domain_size().trailing_zeros();
     let log_lde_factor = config.lde_factor.trailing_zeros();
     let log_rows_per_leaf = config.base_oracles_values_per_leaf.trailing_zeros();
     let log_tree_cap_size = config.cap_size.trailing_zeros();
@@ -103,7 +106,7 @@ fn l1_feeder_proof_staged_bytes(security: SecurityLevel) -> usize {
         log_rows_per_leaf,
         log_tree_cap_size,
         reduction_layers: resolve_partial_tree_reduction_layers(
-            presets::partial_trees(unified22, ProofProfile::L1Feeder).memory,
+            presets::partial_trees(circuit, profile).memory,
             log_domain_size,
             log_lde_factor,
             log_rows_per_leaf,
@@ -112,10 +115,18 @@ fn l1_feeder_proof_staged_bytes(security: SecurityLevel) -> usize {
         columns_count: 0,
     };
     let trees_bytes = trees.cosets_count() * trees.coset_stride() * size_of::<Blake2sDigest>();
-    assert_eq!(trees_bytes, 2 << 20, "{security:?} L1 feeder partial trees");
+    let expected_trees = match profile {
+        ProofProfile::L1Feeder => 2 << 20,
+        ProofProfile::L1FeederA => 1 << 20,
+        _ => panic!("{profile:?} is not a feeder profile"),
+    };
+    assert_eq!(
+        trees_bytes, expected_trees,
+        "{security:?} {profile:?} partial trees"
+    );
     (1 << log_tree_cap_size) * size_of::<Blake2sDigest>()
         + trees_bytes
-        + unified22.get_num_inits_and_teardowns_sets() * size_of::<u32>()
+        + circuit.get_num_inits_and_teardowns_sets() * size_of::<u32>()
         + EXTERNAL_CHALLENGES_E4_LEN * size_of::<E4>()
 }
 
@@ -124,7 +135,15 @@ fn cpu_h2d_staging_is_the_largest_bundle_rounded_up() {
     let wrap = l1_wrap_staged_bytes_bound();
     let feeder = GPU_SUPPORTED_SECURITY_LEVELS
         .into_iter()
-        .map(l1_feeder_proof_staged_bytes)
+        .flat_map(|security| {
+            [
+                (UnrolledCircuitType::Unified22, ProofProfile::L1Feeder),
+                (UnrolledCircuitType::Unified, ProofProfile::L1FeederA),
+            ]
+            .map(|(circuit, profile)| {
+                l1_feeder_proof_staged_bytes(CircuitType::Unrolled(circuit), profile, security)
+            })
+        })
         .max()
         .unwrap();
     let unit = DEFAULT_H2D_STAGING_BYTES;

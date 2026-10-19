@@ -44,6 +44,39 @@ const UNIFIED22: CircuitType = CircuitType::Unrolled(UnrolledCircuitType::Unifie
 const INITS_AND_TEARDOWNS: CircuitType =
     CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns);
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FeederProfile {
+    A,
+    #[default]
+    C,
+}
+
+impl FeederProfile {
+    fn from_env() -> Self {
+        match std::env::var("M8_CAPACITY_FEEDER_PROFILE").as_deref() {
+            Ok("a") => Self::A,
+            Ok("c") | Err(std::env::VarError::NotPresent) => Self::C,
+            value => panic!("M8_CAPACITY_FEEDER_PROFILE must be a or c, got {value:?}"),
+        }
+    }
+
+    fn identity(self) -> (CircuitType, ProofProfile) {
+        match self {
+            Self::A => (
+                CircuitType::Unrolled(UnrolledCircuitType::Unified),
+                ProofProfile::L1FeederA,
+            ),
+            Self::C => (UNIFIED22, ProofProfile::L1Feeder),
+        }
+    }
+
+    fn config(self) -> ProverConfig {
+        let (circuit, profile) = self.identity();
+        prover_config(circuit, profile, SECURITY_LEVEL).unwrap()
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Family {
@@ -117,20 +150,23 @@ impl Stage {
 }
 
 impl Stage {
-    fn target(self) -> (CircuitType, ProofProfile, u32) {
+    fn target(self, feeder: FeederProfile) -> (CircuitType, ProofProfile, u32) {
         match self {
             Stage::Wrap => (CircuitType::L1Wrap21, ProofProfile::L1Wrap, 21),
-            Stage::FeederCommit | Stage::FeederProof => (UNIFIED22, ProofProfile::L1Feeder, 22),
+            Stage::FeederCommit | Stage::FeederProof => {
+                let (circuit, profile) = feeder.identity();
+                (circuit, profile, circuit.get_domain_size().trailing_zeros())
+            }
         }
     }
 
     /// The stage's (LDE factor, cap size, per-round (queries, PoW)) from its config.
-    fn geometry(self) -> Option<(usize, usize, Vec<(usize, u32)>)> {
+    fn geometry(self, feeder: FeederProfile) -> Option<(usize, usize, Vec<(usize, u32)>)> {
         let config = match self {
             Stage::Wrap => {
                 ProofProfile::L1Wrap.prover_config(l1_wrap_2p21::TRACE_LEN_LOG2, SECURITY_LEVEL)
             }
-            Stage::FeederCommit | Stage::FeederProof => feeder_config(),
+            Stage::FeederCommit | Stage::FeederProof => feeder.config(),
         };
         let schedule = &config.whir_schedule;
         let rounds = schedule
@@ -142,20 +178,17 @@ impl Stage {
         Some((config.lde_factor, config.cap_size, rounds))
     }
 
-    fn policy(self, arena_bytes: usize) -> String {
+    fn policy(self, feeder: FeederProfile, arena_bytes: usize) -> String {
+        let (circuit, profile) = feeder.identity();
         match self {
             Stage::Wrap => format!(
                 "{:?}",
                 presets::policy(CircuitType::L1Wrap21, ProofProfile::L1Wrap, arena_bytes)
             ),
-            Stage::FeederCommit => format!(
-                "{:?}",
-                presets::merged_commit_strategy(UNIFIED22, ProofProfile::L1Feeder)
-            ),
-            Stage::FeederProof => format!(
-                "{:?}",
-                presets::policy(UNIFIED22, ProofProfile::L1Feeder, arena_bytes)
-            ),
+            Stage::FeederCommit => {
+                format!("{:?}", presets::merged_commit_strategy(circuit, profile))
+            }
+            Stage::FeederProof => format!("{:?}", presets::policy(circuit, profile, arena_bytes)),
         }
     }
 }
@@ -180,10 +213,10 @@ impl Follower {
         }
     }
 
-    fn identity(self) -> (CircuitType, ProofProfile) {
+    fn identity(self, feeder: FeederProfile) -> (CircuitType, ProofProfile) {
         match self {
             Follower::StandardIt => (INITS_AND_TEARDOWNS, ProofProfile::Standard),
-            Follower::Feeder => (UNIFIED22, ProofProfile::L1Feeder),
+            Follower::Feeder => feeder.identity(),
             Follower::Wrap => (CircuitType::L1Wrap21, ProofProfile::L1Wrap),
         }
     }
@@ -230,14 +263,36 @@ pub fn case_key(
 }
 
 pub fn candidate_case_keys(family: Family, arena_gib: usize) -> Vec<String> {
+    candidate_profile_case_keys(family, arena_gib, FeederProfile::C)
+}
+
+fn profile_case_key(
+    arena_gib: usize,
+    stage: Stage,
+    follower: Follower,
+    direction: Direction,
+    profile: FeederProfile,
+) -> String {
+    let key = case_key(arena_gib, stage, follower, direction);
+    match profile {
+        FeederProfile::A => format!("{key}-a"),
+        FeederProfile::C => key,
+    }
+}
+
+fn candidate_profile_case_keys(
+    family: Family,
+    arena_gib: usize,
+    profile: FeederProfile,
+) -> Vec<String> {
     family
         .stages()
         .iter()
         .flat_map(|&stage| {
             Follower::ALL.into_iter().flat_map(move |follower| {
-                Direction::ALL
-                    .into_iter()
-                    .map(move |direction| case_key(arena_gib, stage, follower, direction))
+                Direction::ALL.into_iter().map(move |direction| {
+                    profile_case_key(arena_gib, stage, follower, direction, profile)
+                })
             })
         })
         .collect()
@@ -246,6 +301,7 @@ pub fn candidate_case_keys(family: Family, arena_gib: usize) -> Vec<String> {
 #[derive(Clone, Debug)]
 pub struct CapacityCase {
     pub stage: Stage,
+    pub feeder_profile: FeederProfile,
     pub arena_gib: usize,
     pub follower: Follower,
     pub direction: Direction,
@@ -296,6 +352,7 @@ impl CapacityCase {
             });
         Self {
             stage,
+            feeder_profile: FeederProfile::from_env(),
             arena_gib,
             follower,
             direction,
@@ -311,7 +368,13 @@ impl CapacityCase {
     }
 
     pub fn key(&self) -> String {
-        case_key(self.arena_gib, self.stage, self.follower, self.direction)
+        profile_case_key(
+            self.arena_gib,
+            self.stage,
+            self.follower,
+            self.direction,
+            self.feeder_profile,
+        )
     }
 
     pub fn needs_wrap_source(&self) -> bool {
@@ -340,7 +403,8 @@ impl WrapIdentity {
     pub fn current() -> &'static Self {
         static IDENTITY: OnceLock<WrapIdentity> = OnceLock::new();
         IDENTITY.get_or_init(|| {
-            let (lde_factor, tree_cap_size, queries_and_pow) = Stage::Wrap.geometry().unwrap();
+            let (lde_factor, tree_cap_size, queries_and_pow) =
+                Stage::Wrap.geometry(FeederProfile::C).unwrap();
             Self {
                 trace_len_log2: l1_wrap_2p21::TRACE_LEN_LOG2 as u32,
                 lde_factor,
@@ -361,6 +425,8 @@ impl WrapIdentity {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CapacityRow {
     pub schema_version: u32,
+    #[serde(default)]
+    pub feeder_profile: FeederProfile,
     pub case: String,
     pub revision: String,
     pub binary_digest: String,
@@ -508,6 +574,7 @@ fn synthetic_caps(config: &ProverConfig) -> Vec<MerkleTreeCapVarLength> {
 /// production shape, ending in `caps` so it imports as a real artifact would.
 fn synthetic_partial_trees(
     prepared: &PreparedCircuit,
+    config: &ProverConfig,
     caps: &[MerkleTreeCapVarLength],
     memory_reduction_layers: u32,
 ) -> PartialTrees {
@@ -517,7 +584,7 @@ fn synthetic_partial_trees(
             .baby_bear()
             .gkr_programs
             .compiled_circuit(),
-        &feeder_config(),
+        config,
         CommitmentMode::MergedMemoryAndWitness,
         memory_reduction_layers,
     );
@@ -582,10 +649,6 @@ fn clone_setup(setup: &L1WrapSetup) -> L1WrapSetup {
     }
 }
 
-fn feeder_config() -> ProverConfig {
-    prover_config(UNIFIED22, ProofProfile::L1Feeder, SECURITY_LEVEL).unwrap()
-}
-
 type FollowerInputs<'a, B> = (
     Option<gpu_circuit_prover::proof::inputs::GpuGKRProofTransfer<'a, A>>,
     Option<L1WrapInputs<'a, B>>,
@@ -625,13 +688,14 @@ pub fn run_case<B: GoodAllocator>(
             "L1 capacity source artifact differs from the active 2^21 layout"
         );
     }
-    let (target_circuit, target_profile, trace_len_log2) = case.stage.target();
-    let (follower_circuit, follower_profile) = case.follower.identity();
+    let (target_circuit, target_profile, trace_len_log2) = case.stage.target(case.feeder_profile);
+    let (follower_circuit, follower_profile) = case.follower.identity(case.feeder_profile);
     let arena_bytes = case.arena_bytes();
-    let policy = case.stage.policy(arena_bytes);
-    let geometry = case.stage.geometry();
+    let policy = case.stage.policy(case.feeder_profile, arena_bytes);
+    let geometry = case.stage.geometry(case.feeder_profile);
     let mut row = CapacityRow {
         schema_version: SCHEMA_VERSION,
+        feeder_profile: case.feeder_profile,
         case: case.key(),
         revision: revision(),
         binary_digest: binary_digest(),
@@ -689,6 +753,7 @@ fn measure<B: GoodAllocator>(
     context: &mut ProverContext,
     row: &mut CapacityRow,
 ) -> Result<(), &'static str> {
+    let (feeder_circuit, feeder_profile) = case.feeder_profile.identity();
     let target_direction = case.direction.allocation();
     let follower_direction = case.direction.opposite();
     let needs_factory = case.stage != Stage::Wrap || case.follower != Follower::Wrap;
@@ -723,8 +788,20 @@ fn measure<B: GoodAllocator>(
             factory
                 .as_ref()
                 .expect("feeder inputs require the synthetic factory")
-                .prepare_profile(UNIFIED22, ProofProfile::L1Feeder),
+                .prepare_profile(feeder_circuit, feeder_profile),
         )?;
+        assert_eq!(prepared.circuit, feeder_circuit);
+        assert_eq!(prepared.profile, feeder_profile);
+        assert_eq!(
+            prepared
+                .precomputations
+                .baby_bear()
+                .gkr_programs
+                .compiled_circuit()
+                .trace_len,
+            feeder_circuit.get_domain_size(),
+            "capacity feeder trace differs from the selected production circuit",
+        );
         step(
             "setup_initialization",
             context,
@@ -848,7 +925,7 @@ fn measure<B: GoodAllocator>(
         }
         Stage::FeederCommit => {
             let prepared = feeder.as_ref().expect("feeder target inputs");
-            let config = feeder_config();
+            let config = case.feeder_profile.config();
             context.set_allocation_mode(AllocationMode::Inputs(target_direction));
             let before = context.get_used_mem_current();
             let mut target = step(
@@ -856,7 +933,7 @@ fn measure<B: GoodAllocator>(
                 context,
                 merged_commit_inputs(
                     prepared,
-                    case.partial_trees(UNIFIED22, ProofProfile::L1Feeder).setup,
+                    case.partial_trees(feeder_circuit, feeder_profile).setup,
                     context,
                 ),
             )?;
@@ -887,9 +964,9 @@ fn measure<B: GoodAllocator>(
                     &prepared.precomputations.baby_bear().gkr_programs,
                     &config,
                     target,
-                    presets::merged_commit_strategy(UNIFIED22, ProofProfile::L1Feeder),
-                    case.partial_trees(UNIFIED22, ProofProfile::L1Feeder),
-                    presets::persists_memory_partial_trees(UNIFIED22, ProofProfile::L1Feeder),
+                    presets::merged_commit_strategy(feeder_circuit, feeder_profile),
+                    case.partial_trees(feeder_circuit, feeder_profile),
+                    presets::persists_memory_partial_trees(feeder_circuit, feeder_profile),
                     context,
                 ),
             )?;
@@ -902,7 +979,7 @@ fn measure<B: GoodAllocator>(
             drop(follower);
         }
         Stage::FeederProof => {
-            let config = feeder_config();
+            let config = case.feeder_profile.config();
             {
                 let prepared = feeder.as_ref().expect("feeder target inputs");
                 context.set_allocation_mode(AllocationMode::Inputs(target_direction));
@@ -911,7 +988,7 @@ fn measure<B: GoodAllocator>(
                     context,
                     merged_commit_inputs(
                         prepared,
-                        case.partial_trees(UNIFIED22, ProofProfile::L1Feeder).setup,
+                        case.partial_trees(feeder_circuit, feeder_profile).setup,
                         context,
                     ),
                 )?;
@@ -925,9 +1002,9 @@ fn measure<B: GoodAllocator>(
                         &prepared.precomputations.baby_bear().gkr_programs,
                         &config,
                         inputs,
-                        presets::merged_commit_strategy(UNIFIED22, ProofProfile::L1Feeder),
-                        case.partial_trees(UNIFIED22, ProofProfile::L1Feeder),
-                        presets::persists_memory_partial_trees(UNIFIED22, ProofProfile::L1Feeder),
+                        presets::merged_commit_strategy(feeder_circuit, feeder_profile),
+                        case.partial_trees(feeder_circuit, feeder_profile),
+                        presets::persists_memory_partial_trees(feeder_circuit, feeder_profile),
                         context,
                     ),
                 )?;
@@ -954,8 +1031,8 @@ fn measure<B: GoodAllocator>(
                     0,
                     context,
                     prepared,
-                    case.partial_trees(UNIFIED22, ProofProfile::L1Feeder).setup,
-                    case.partial_trees(UNIFIED22, ProofProfile::L1Feeder).memory,
+                    case.partial_trees(feeder_circuit, feeder_profile).setup,
+                    case.partial_trees(feeder_circuit, feeder_profile).memory,
                 ),
             )?;
             step(
@@ -986,8 +1063,8 @@ fn measure<B: GoodAllocator>(
                     FINAL_TRACE_SIZE_LOG_2,
                     target,
                     &plan,
-                    presets::policy(UNIFIED22, ProofProfile::L1Feeder, row.arena_bytes),
-                    case.partial_trees(UNIFIED22, ProofProfile::L1Feeder),
+                    presets::policy(feeder_circuit, feeder_profile, row.arena_bytes),
+                    case.partial_trees(feeder_circuit, feeder_profile),
                     context,
                 ),
             )?;
@@ -1030,6 +1107,7 @@ fn schedule_follower<'a, B: GoodAllocator + 'a>(
     wrap_precomputed: &Option<Arc<L1WrapPrecomputed>>,
     row: &mut CapacityRow,
 ) -> Result<FollowerInputs<'a, B>, &'static str> {
+    let (feeder_circuit, feeder_profile) = case.feeder_profile.identity();
     context.set_allocation_mode(AllocationMode::Inputs(direction));
     let before = context.get_used_mem_current();
     let follower = match case.follower {
@@ -1050,11 +1128,15 @@ fn schedule_follower<'a, B: GoodAllocator + 'a>(
         }
         Follower::Feeder => {
             let prepared = feeder.as_mut().expect("feeder follower inputs");
-            let memory_reduction_layers =
-                case.partial_trees(UNIFIED22, ProofProfile::L1Feeder).memory;
+            let memory_reduction_layers = case.partial_trees(feeder_circuit, feeder_profile).memory;
             if prepared.memory_caps.is_none() {
-                let caps = synthetic_caps(&feeder_config());
-                let trees = synthetic_partial_trees(prepared, &caps, memory_reduction_layers);
+                let caps = synthetic_caps(&case.feeder_profile.config());
+                let trees = synthetic_partial_trees(
+                    prepared,
+                    &case.feeder_profile.config(),
+                    &caps,
+                    memory_reduction_layers,
+                );
                 prepared.set_memory_caps(caps);
                 prepared.set_memory_partial_trees(trees);
             }
@@ -1137,7 +1219,14 @@ pub fn validate_row(row: &CapacityRow, key: &str, revision: &str) -> Result<(), 
     if row.revision != revision {
         return invalid("mixed implementation revision");
     }
-    let parts: Vec<&str> = key.split('-').collect();
+    let core = match row.feeder_profile {
+        FeederProfile::A => match key.strip_suffix("-a") {
+            Some(core) => core,
+            None => return invalid("A profile case key lacks its suffix"),
+        },
+        FeederProfile::C => key,
+    };
+    let parts: Vec<&str> = core.split('-').collect();
     let expected = (|| {
         let [_, arena, stage, follower, direction] = parts.as_slice() else {
             return None;
@@ -1157,8 +1246,11 @@ pub fn validate_row(row: &CapacityRow, key: &str, revision: &str) -> Result<(), 
     let Some((arena_gib, stage, follower, direction)) = expected else {
         return invalid("malformed case key");
     };
-    let (target_circuit, target_profile, trace_len_log2) = stage.target();
-    let (follower_circuit, follower_profile) = follower.identity();
+    if key != profile_case_key(arena_gib, stage, follower, direction, row.feeder_profile) {
+        return invalid("noncanonical case key");
+    }
+    let (target_circuit, target_profile, trace_len_log2) = stage.target(row.feeder_profile);
+    let (follower_circuit, follower_profile) = follower.identity(row.feeder_profile);
     if row.stage != stage
         || row.follower != follower
         || row.direction != direction
@@ -1170,7 +1262,7 @@ pub fn validate_row(row: &CapacityRow, key: &str, revision: &str) -> Result<(), 
     {
         return invalid("identity differs from the case key");
     }
-    let geometry = stage.geometry();
+    let geometry = stage.geometry(row.feeder_profile);
     if row.trace_len_log2 != trace_len_log2
         || row.lde_factor != geometry.as_ref().map(|geometry| geometry.0)
         || row.tree_cap_size != geometry.as_ref().map(|geometry| geometry.1)
@@ -1178,7 +1270,7 @@ pub fn validate_row(row: &CapacityRow, key: &str, revision: &str) -> Result<(), 
     {
         return invalid("trace geometry differs from the production stage");
     }
-    if row.policy != stage.policy(row.arena_bytes) {
+    if row.policy != stage.policy(row.feeder_profile, row.arena_bytes) {
         return invalid("policy differs from the production stage policy");
     }
     if (stage == Stage::Wrap || follower == Follower::Wrap)
@@ -1218,11 +1310,25 @@ pub fn validate_row(row: &CapacityRow, key: &str, revision: &str) -> Result<(), 
     Ok(())
 }
 
+fn rows_profile<'a>(
+    rows: impl IntoIterator<Item = &'a CapacityRow>,
+) -> Result<FeederProfile, String> {
+    let mut rows = rows.into_iter();
+    let profile = rows
+        .next()
+        .map_or(FeederProfile::C, |row| row.feeder_profile);
+    if rows.any(|row| row.feeder_profile != profile) {
+        return Err("L1 capacity rows mix feeder profiles".into());
+    }
+    Ok(profile)
+}
+
 pub fn select_capacity(
     family: Family,
     rows: &BTreeMap<String, CapacityRow>,
     revision: &str,
 ) -> Result<usize, String> {
+    let feeder_profile = rows_profile(rows.values())?;
     for (key, row) in rows {
         validate_row(row, key, revision)?;
         if row.stage.family() != family {
@@ -1230,7 +1336,7 @@ pub fn select_capacity(
         }
     }
     for &arena_gib in family.candidates_gib() {
-        let keys = candidate_case_keys(family, arena_gib);
+        let keys = candidate_profile_case_keys(family, arena_gib, feeder_profile);
         let present: Vec<&CapacityRow> = keys.iter().filter_map(|key| rows.get(key)).collect();
         if present.len() == keys.len() && present.iter().all(|row| row.fits) {
             return Ok(arena_gib);
@@ -1267,7 +1373,8 @@ pub fn qualify_feeder_capacity(
     revision: &str,
     arena_gib: usize,
 ) -> Result<(), String> {
-    for key in candidate_case_keys(Family::Feeder, arena_gib) {
+    let feeder_profile = rows_profile(rows.values())?;
+    for key in candidate_profile_case_keys(Family::Feeder, arena_gib, feeder_profile) {
         let row = rows
             .get(&key)
             .ok_or_else(|| format!("L1 capacity row {key} is missing"))?;
@@ -1287,6 +1394,7 @@ pub fn qualify_wrap_capacity(
     revision: &str,
     qualifying_gib: usize,
 ) -> Result<usize, String> {
+    let feeder_profile = rows_profile(rows.values().filter(|row| row.stage == Stage::Wrap))?;
     if !WRAP_CANDIDATES_GIB.contains(&qualifying_gib) {
         return Err(format!(
             "wrap qualifying arena {qualifying_gib} GiB is not a candidate"
@@ -1305,7 +1413,7 @@ pub fn qualify_wrap_capacity(
             ));
         }
     }
-    for key in candidate_case_keys(Family::Wrap, qualifying_gib) {
+    for key in candidate_profile_case_keys(Family::Wrap, qualifying_gib, feeder_profile) {
         let row = rows
             .get(&key)
             .filter(|row| row.stage == Stage::Wrap)
@@ -1317,7 +1425,7 @@ pub fn qualify_wrap_capacity(
     WRAP_CANDIDATES_GIB
         .into_iter()
         .find(|&arena_gib| {
-            candidate_case_keys(Family::Wrap, arena_gib)
+            candidate_profile_case_keys(Family::Wrap, arena_gib, feeder_profile)
                 .iter()
                 .all(|key| {
                     rows.get(key).is_some_and(|row| {
@@ -1336,6 +1444,7 @@ pub fn feeder_floor_bracket(
     rows: &BTreeMap<String, CapacityRow>,
     revision: &str,
 ) -> Result<(usize, Option<usize>), String> {
+    let feeder_profile = rows_profile(rows.values())?;
     let mut arenas = BTreeMap::<usize, bool>::new();
     for (key, row) in rows {
         validate_feeder_row(row, key, revision)?;
@@ -1346,7 +1455,7 @@ pub fn feeder_floor_bracket(
         *fits &= row.fits;
     }
     for (&arena_gib, &fits) in &arenas {
-        let complete = candidate_case_keys(Family::Feeder, arena_gib)
+        let complete = candidate_profile_case_keys(Family::Feeder, arena_gib, feeder_profile)
             .iter()
             .all(|key| rows.contains_key(key));
         if fits && !complete {
@@ -1400,10 +1509,16 @@ mod cpu_tests {
             .into_iter()
             .find(|direction| direction.name() == parts[4])
             .unwrap();
-        let (target_circuit, target_profile, trace_len_log2) = stage.target();
-        let (follower_circuit, follower_profile) = follower.identity();
+        let feeder_profile = if key.ends_with("-a") {
+            FeederProfile::A
+        } else {
+            FeederProfile::C
+        };
+        let (target_circuit, target_profile, trace_len_log2) = stage.target(feeder_profile);
+        let (follower_circuit, follower_profile) = follower.identity(feeder_profile);
         CapacityRow {
             schema_version: SCHEMA_VERSION,
+            feeder_profile,
             case: key.into(),
             revision: REVISION.into(),
             binary_digest: "0".into(),
@@ -1411,7 +1526,7 @@ mod cpu_tests {
             target_circuit: format!("{target_circuit:?}"),
             target_profile: format!("{target_profile:?}"),
             trace_len_log2,
-            policy: stage.policy(arena_gib << 30),
+            policy: stage.policy(feeder_profile, arena_gib << 30),
             arena_bytes: arena_gib << 30,
             direction,
             follower,
@@ -1424,9 +1539,9 @@ mod cpu_tests {
             measured_peak_bytes: Some(1),
             output_fingerprint: Some("f".into()),
             partial_trees: None,
-            lde_factor: stage.geometry().map(|geometry| geometry.0),
-            tree_cap_size: stage.geometry().map(|geometry| geometry.1),
-            queries_and_pow: stage.geometry().map(|geometry| geometry.2),
+            lde_factor: stage.geometry(feeder_profile).map(|geometry| geometry.0),
+            tree_cap_size: stage.geometry(feeder_profile).map(|geometry| geometry.1),
+            queries_and_pow: stage.geometry(feeder_profile).map(|geometry| geometry.2),
             wrap_identity: (stage == Stage::Wrap || follower == Follower::Wrap)
                 .then(|| WrapIdentity::current().clone()),
             proof_equals_reference: (stage == Stage::Wrap).then_some(true),
@@ -1484,15 +1599,15 @@ mod cpu_tests {
             "feeder-64-feeder_proof-standard_it-descending"
         );
         assert_eq!(
-            Follower::Wrap.identity(),
+            Follower::Wrap.identity(FeederProfile::C),
             (CircuitType::L1Wrap21, ProofProfile::L1Wrap)
         );
         assert_eq!(
-            Follower::Feeder.identity(),
+            Follower::Feeder.identity(FeederProfile::C),
             (UNIFIED22, ProofProfile::L1Feeder)
         );
         assert_eq!(
-            Follower::StandardIt.identity(),
+            Follower::StandardIt.identity(FeederProfile::C),
             (INITS_AND_TEARDOWNS, ProofProfile::Standard)
         );
         for direction in Direction::ALL {
@@ -1503,6 +1618,66 @@ mod cpu_tests {
             .map(|family| family.candidates_gib().len() * family.stages().len() * 6)
             .sum();
         assert_eq!(total, 72);
+    }
+
+    #[test]
+    fn cpu_feeder_a_capacity_identity_and_qualification() {
+        let keys = candidate_profile_case_keys(Family::Feeder, 21, FeederProfile::A);
+        assert_eq!(keys.len(), 12);
+        let rows: BTreeMap<_, _> = keys
+            .iter()
+            .map(|key| (key.clone(), passing_row(key)))
+            .collect();
+        assert_eq!(qualify_feeder_capacity(&rows, REVISION, 21), Ok(()));
+        assert_eq!(select_capacity(Family::Feeder, &rows, REVISION), Ok(21));
+        assert_eq!(feeder_floor_bracket(&rows, REVISION), Ok((21, None)));
+        for row in rows.values() {
+            assert_eq!(row.target_circuit, "Unrolled(Unified)");
+            assert_eq!(row.target_profile, "L1FeederA");
+            assert_eq!(row.trace_len_log2, 23);
+            assert_eq!(row.lde_factor, Some(4));
+            assert_eq!(row.tree_cap_size, Some(4));
+            assert_eq!(
+                row.queries_and_pow.as_deref(),
+                Some(&[(45, 25), (18, 25), (9, 25), (6, 25), (5, 17)][..])
+            );
+            if row.follower == Follower::Feeder {
+                assert_eq!(row.follower_circuit, row.target_circuit);
+                assert_eq!(row.follower_profile, row.target_profile);
+            }
+        }
+
+        let key = &keys[0];
+        let mut wrong = rows[key].clone();
+        wrong.trace_len_log2 = 22;
+        assert!(validate_row(&wrong, key, REVISION)
+            .unwrap_err()
+            .contains("trace geometry"));
+        wrong = rows[key].clone();
+        wrong.feeder_profile = FeederProfile::C;
+        assert!(validate_row(&wrong, key, REVISION).is_err());
+        wrong = rows[key].clone();
+        wrong.case = key.trim_end_matches("-a").into();
+        assert!(validate_row(&wrong, &wrong.case, REVISION).is_err());
+
+        let mut mixed = rows;
+        mixed.extend(complete(Family::Feeder, 21));
+        assert!(qualify_feeder_capacity(&mixed, REVISION, 21)
+            .unwrap_err()
+            .contains("mix feeder profiles"));
+        assert!(select_capacity(Family::Feeder, &mixed, REVISION).is_err());
+        assert!(feeder_floor_bracket(&mixed, REVISION).is_err());
+    }
+
+    #[test]
+    fn cpu_legacy_capacity_rows_default_to_c() {
+        let key = &candidate_case_keys(Family::Feeder, 21)[0];
+        let row = passing_row(key);
+        let mut value = serde_json::to_value(&row).unwrap();
+        value.as_object_mut().unwrap().remove("feeder_profile");
+        let legacy: CapacityRow = serde_json::from_value(value).unwrap();
+        assert_eq!(legacy.feeder_profile, FeederProfile::C);
+        assert_eq!(validate_row(&legacy, key, REVISION), Ok(()));
     }
 
     #[test]
@@ -1582,7 +1757,8 @@ mod cpu_tests {
         }
         let feeder_commit = candidate_case_keys(Family::Feeder, 21)[0].clone();
         let mut swapped = complete(Family::Feeder, 21);
-        swapped.get_mut(&feeder_commit).unwrap().policy = Stage::FeederProof.policy(21 << 30);
+        swapped.get_mut(&feeder_commit).unwrap().policy =
+            Stage::FeederProof.policy(FeederProfile::C, 21 << 30);
         assert!(select_capacity(Family::Feeder, &swapped, REVISION)
             .unwrap_err()
             .contains("policy differs"));
@@ -1624,6 +1800,14 @@ mod cpu_tests {
         rows.extend(complete(Family::Wrap, 21));
         assert_eq!(qualify_wrap_capacity(&rows, REVISION, 30), Ok(21));
         rows.insert(first.clone(), oom(passing_row(&first)));
+        assert_eq!(qualify_wrap_capacity(&rows, REVISION, 30), Ok(30));
+    }
+
+    #[test]
+    fn cpu_wrap_qualification_ignores_other_family_profiles() {
+        let mut rows = complete(Family::Wrap, 30);
+        let key = candidate_profile_case_keys(Family::Feeder, 21, FeederProfile::A)[0].clone();
+        rows.insert(key.clone(), passing_row(&key));
         assert_eq!(qualify_wrap_capacity(&rows, REVISION, 30), Ok(30));
     }
 
