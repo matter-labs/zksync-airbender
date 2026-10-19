@@ -266,7 +266,7 @@ fn cpu_m8_l1_registration_plan() {
         bridge_recursion: (vec![], vec![]),
         unified: (vec![], vec![]),
         feeder_first: (vec![0x13, 1], vec![1]),
-        feeder: (vec![0x13, 2], vec![2]),
+        feeder_a: (vec![0x13, 2], vec![2]),
         feeder_wrap: (vec![0x13, 3], vec![3]),
     };
     let registrations = pipeline_registrations(
@@ -276,15 +276,25 @@ fn cpu_m8_l1_registration_plan() {
         None,
         &fsv,
     );
-    assert_eq!(registrations.len(), 3);
+    assert_eq!(registrations.len(), 5);
     for (program, kind, profile) in [
+        (
+            &fsv.feeder_first,
+            ExecutionKind::Unified,
+            ProofProfile::L1FeederA,
+        ),
         (
             &fsv.feeder_first,
             ExecutionKind::Unified22,
             ProofProfile::L1Feeder,
         ),
         (
-            &fsv.feeder,
+            &fsv.feeder_a,
+            ExecutionKind::Unified,
+            ProofProfile::L1FeederA,
+        ),
+        (
+            &fsv.feeder_a,
             ExecutionKind::Unified22,
             ProofProfile::L1Feeder,
         ),

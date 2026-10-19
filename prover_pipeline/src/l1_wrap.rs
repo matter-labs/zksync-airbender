@@ -317,43 +317,42 @@ pub(super) fn validate_artifact_envelope(artifact: &ProofArtifact) -> Result<(),
 /// The last feeder proof an artifact may carry: one 2^22 instance of the
 /// reduced family under the feeder config, no delegation proofs.
 pub(super) fn validate_last_feeder_proof(proof: &ProgramProof) -> Result<(), String> {
-    validate_feeder_proof(proof, Some(1))
+    if validate_feeder_proof(proof, Some(1))? != FeederProfile::C {
+        return Err("the last feeder proof must be one C instance".into());
+    }
+    Ok(())
 }
 
-/// A feeder proof of `expected` instances (any positive count when `None`):
-/// the reduced family only under the 2^22 feeder circuit and the feeder WHIR
-/// schedule, no delegation proofs.
+/// A feeder proof with a supported trace and the matching profile schedule.
 pub(super) fn validate_feeder_proof(
     proof: &ProgramProof,
     expected: Option<usize>,
-) -> Result<(), String> {
-    feeder_proof_instances(proof, expected)?;
-    let family = UnrolledCircuitType::Unified22.get_family_idx() as u32;
+) -> Result<FeederProfile, String> {
+    let instances = feeder_proof_instances(proof, expected)?;
+    let family = UnrolledCircuitType::Unified.get_family_idx() as u32;
     let compiled = proof
         .compiled_riscv_circuits
         .get(&family)
         .ok_or("feeder proof carries no compiled unified circuit")?;
-    if compiled.trace_len != UnrolledCircuitType::Unified22.get_domain_size() {
-        return Err(format!(
-            "feeder proof circuit has trace length {}, expected {}",
-            compiled.trace_len,
-            UnrolledCircuitType::Unified22.get_domain_size()
-        ));
+    let profile = FeederProfile::ALL
+        .into_iter()
+        .find(|profile| profile.circuit().get_domain_size() == compiled.trace_len)
+        .ok_or_else(|| {
+            format!(
+                "feeder proof circuit has unsupported trace length {}",
+                compiled.trace_len
+            )
+        })?;
+    if profile == FeederProfile::C && instances != 1 {
+        return Err("C is terminal and must contain one feeder instance".into());
     }
-    let expected_schedule = ProofProfile::L1Feeder
-        .prover_config(
-            UnrolledCircuitType::Unified22.get_domain_size_log2() as usize,
-            COMPILED_SECURITY_LEVEL.to_prover(),
-        )
-        .whir_schedule;
+    let expected_schedule = profile.config().whir_schedule;
     for instance in &proof.riscv_proofs[&family] {
         if instance.whir_proof.whir_schedule != expected_schedule {
-            return Err(
-                "feeder proof instance was not proven under the L1 feeder WHIR schedule".into(),
-            );
+            return Err(format!("feeder proof instance was not proven under the {profile:?} L1 feeder WHIR schedule"));
         }
     }
-    Ok(())
+    Ok(profile)
 }
 
 /// `ProofTarget::L1` needs the wrap circuit the wrap program is linked for:

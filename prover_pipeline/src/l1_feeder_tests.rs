@@ -88,13 +88,16 @@ pub(super) fn artifact(target: ProofTarget, n: usize) -> ProofArtifact {
 /// A fake single-instance feeder proof: the reduced family with `instances`
 /// instances, one inits-and-teardowns instance, no delegation proofs.
 pub(super) fn fake_feeder_proof(final_pc: u32, instances: usize) -> ProgramProof {
-    let family = UnrolledCircuitType::Unified22.get_family_idx() as u32;
-    let schedule = ProofProfile::L1Feeder
-        .prover_config(
-            UnrolledCircuitType::Unified22.get_domain_size_log2() as usize,
-            COMPILED_SECURITY_LEVEL.to_prover(),
-        )
-        .whir_schedule;
+    fake_feeder_proof_for_profile(final_pc, instances, FeederProfile::C)
+}
+
+pub(super) fn fake_feeder_proof_for_profile(
+    final_pc: u32,
+    instances: usize,
+    profile: FeederProfile,
+) -> ProgramProof {
+    let family = profile.circuit().get_family_idx() as u32;
+    let schedule = profile.config().whir_schedule;
     let mut proof = empty_proof();
     proof.final_pc = final_pc;
     proof.riscv_proofs.insert(
@@ -107,9 +110,14 @@ pub(super) fn fake_feeder_proof(final_pc: u32, instances: usize) -> ProgramProof
             })
             .collect(),
     );
-    proof
-        .compiled_riscv_circuits
-        .insert(family, unified_reduced_machine_2_22_layout());
+    let layout = match profile {
+        FeederProfile::A => serde_json::from_str(include_str!(
+            "../../circuit_defs/unrolled_circuits/unified_reduced_machine/generated/layout.json"
+        ))
+        .unwrap(),
+        FeederProfile::C => unified_reduced_machine_2_22_layout(),
+    };
+    proof.compiled_riscv_circuits.insert(family, layout);
     proof.num_it_circuits = Some(1);
     proof
 }
@@ -166,7 +174,14 @@ fn feeder_registration_unions_profiles_for_the_same_binary() {
         // The special-opcodes unified binary is registered twice when it is
         // also the final layer: (Unified, Standard) and (Unified22, L1Feeder)
         // are distinct handles with distinct precomputations.
-        assert_eq!(registrations.len(), 8);
+        assert_eq!(
+            registrations.len(),
+            if mode == BlakeMode::BlakeSpecialOpcodes {
+                9
+            } else {
+                10
+            }
+        );
         for (i, fsv) in L1_FEEDER_PROGRAMS.into_iter().enumerate() {
             let (bin, text) = load_fsv_program(fsv_dir(), fsv, BlakeMode::BlakeSpecialOpcodes);
             let key = handle_key(ExecutionKind::Unified22, MachineType::Reduced, &bin, &text);
@@ -177,10 +192,13 @@ fn feeder_registration_unions_profiles_for_the_same_binary() {
             if i == 0 && mode == BlakeMode::BlakeSpecialOpcodes {
                 assert_eq!(
                     registrations[&standard_key].profiles,
-                    BTreeSet::from([ProofProfile::Standard])
+                    BTreeSet::from([ProofProfile::Standard, ProofProfile::L1FeederA])
                 );
             } else {
-                assert!(!registrations.contains_key(&standard_key));
+                assert_eq!(
+                    registrations[&standard_key].profiles,
+                    BTreeSet::from([ProofProfile::L1FeederA])
+                );
             }
         }
         let standard = pipeline_registrations(
@@ -256,18 +274,26 @@ fn registration_matches_remaining_stages_and_reuses_batch_setups() {
         (None, Base, &[0]),
         (None, RecursionUnrolled, &[0, 1, 2]),
         (None, RecursionUnified, &[0, 1, 2, 3, 4, 5]),
-        (None, L1Feeder, &[0, 1, 2, 3, 4, 5, 6, 7]),
-        (None, L1, &[0, 1, 2, 3, 4, 5, 6, 7, 8]),
+        (None, L1Feeder, &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]),
+        (None, L1, &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
         (Some(Base), RecursionUnrolled, &[1, 2]),
         (Some(Base), RecursionUnified, &[1, 2, 3, 4, 5]),
-        (Some(Base), L1Feeder, &[1, 2, 3, 4, 5, 6, 7]),
-        (Some(Base), L1, &[1, 2, 3, 4, 5, 6, 7, 8]),
+        (Some(Base), L1Feeder, &[1, 2, 3, 4, 5, 6, 7, 8, 9]),
+        (Some(Base), L1, &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
         (Some(RecursionUnrolled), RecursionUnified, &[1, 2, 3, 4, 5]),
-        (Some(RecursionUnrolled), L1Feeder, &[1, 2, 3, 4, 5, 6, 7]),
-        (Some(RecursionUnrolled), L1, &[1, 2, 3, 4, 5, 6, 7, 8]),
-        (Some(RecursionUnified), L1Feeder, &[6, 7]),
-        (Some(RecursionUnified), L1, &[6, 7, 8]),
-        (Some(L1Feeder), L1, &[8]),
+        (
+            Some(RecursionUnrolled),
+            L1Feeder,
+            &[1, 2, 3, 4, 5, 6, 7, 8, 9],
+        ),
+        (
+            Some(RecursionUnrolled),
+            L1,
+            &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        ),
+        (Some(RecursionUnified), L1Feeder, &[6, 7, 8, 9]),
+        (Some(RecursionUnified), L1, &[6, 7, 8, 9, 10]),
+        (Some(L1Feeder), L1, &[10]),
     ];
     let loaded = program();
     let user_key = handle_key(
@@ -320,10 +346,22 @@ fn registration_matches_remaining_stages_and_reuses_batch_setups() {
                 ProofProfile::L1Feeder,
             ),
             (
-                FsvProgram::UnifiedRecursionLayerL1Feeder,
+                FsvProgram::UnifiedRecursionLayerL1FeederA,
                 BlakeMode::BlakeSpecialOpcodes,
                 ExecutionKind::Unified22,
                 ProofProfile::L1Feeder,
+            ),
+            (
+                FsvProgram::UnifiedRecursionLayer,
+                BlakeMode::BlakeSpecialOpcodes,
+                ExecutionKind::Unified,
+                ProofProfile::L1FeederA,
+            ),
+            (
+                FsvProgram::UnifiedRecursionLayerL1FeederA,
+                BlakeMode::BlakeSpecialOpcodes,
+                ExecutionKind::Unified,
+                ProofProfile::L1FeederA,
             ),
             (
                 FsvProgram::UnifiedRecursionLayerL1FeederWrap,
@@ -480,43 +518,51 @@ fn feeder_artifacts_claim_their_feeder_layers_after_the_final_layer() {
 }
 
 #[test]
-fn expected_chain_repeats_the_recurrent_feeder_per_claimed_layer() {
-    for feeder_layers in 1..=3u32 {
-        let mut programs = Vec::new();
-        let expected = expected_chain_end_params(
-            ProofTarget::L1Feeder,
-            3 + feeder_layers as usize,
-            feeder_layers,
-            BlakeMode::Compression.tag(),
-            BlakeMode::Compression.tag(),
-            BlakeMode::Compression.tag(),
-            &mut |program| {
-                let entry = match &program {
-                    ChainProgram::User => [0u32; 8],
-                    ChainProgram::Fsv(
-                        FsvProgram::UnifiedRecursionLayer,
-                        _,
-                        SetupMachine::UnifiedL1Feeder,
-                    ) => [10; 8],
-                    ChainProgram::Fsv(
-                        FsvProgram::UnifiedRecursionLayerL1Feeder,
-                        _,
-                        SetupMachine::UnifiedL1Feeder,
-                    ) => [20; 8],
-                    ChainProgram::Fsv(..) => [1; 8],
+fn expected_chain_derives_a_prefix_and_the_last_proof_profile() {
+    for last_profile in FeederProfile::ALL {
+        for feeder_layers in 1..=4u32 {
+            let mut programs = Vec::new();
+            let expected = expected_chain_end_params(
+                ProofTarget::L1Feeder,
+                3 + feeder_layers as usize,
+                feeder_layers,
+                last_profile,
+                BlakeMode::Compression.tag(),
+                BlakeMode::Compression.tag(),
+                BlakeMode::Compression.tag(),
+                &mut |program| {
+                    let entry = match program {
+                        ChainProgram::Fsv(program, _, SetupMachine::L1Feeder(profile)) => {
+                            let role = if program == FsvProgram::UnifiedRecursionLayer {
+                                10
+                            } else {
+                                assert_eq!(program, FsvProgram::UnifiedRecursionLayerL1FeederA);
+                                20
+                            };
+                            [role + if profile == FeederProfile::A { 1 } else { 2 }; 8]
+                        }
+                        _ => [1; 8],
+                    };
+                    programs.push(entry);
+                    Ok(entry)
+                },
+            )
+            .unwrap();
+            assert_eq!(expected.len(), 3 + feeder_layers as usize);
+            for (layer, entry) in expected[3..].iter().enumerate() {
+                let profile = if layer + 1 == feeder_layers as usize {
+                    last_profile
+                } else {
+                    FeederProfile::A
                 };
-                programs.push(entry);
-                Ok(entry)
-            },
-        )
-        .unwrap();
-        assert_eq!(expected.len(), 3 + feeder_layers as usize);
-        assert_eq!(expected[3], [10; 8]);
-        assert!(expected[4..].iter().all(|entry| *entry == [20; 8]));
-        // equal consecutive feeder entries collapse in the chain hash
-        let full = rebuild_chain(&expected).unwrap();
-        let collapsed = rebuild_chain(&expected[..5.min(expected.len())]).unwrap();
-        assert_eq!(full.hash(), collapsed.hash());
+                let role = if layer == 0 { 10 } else { 20 };
+                assert_eq!(
+                    *entry,
+                    [role + if profile == FeederProfile::A { 1 } else { 2 }; 8]
+                );
+            }
+            assert_eq!(programs, expected);
+        }
     }
 }
 
@@ -647,9 +693,21 @@ impl ScriptedChain {
         }
     }
 
+    fn profile(&self, layer: usize) -> FeederProfile {
+        if layer + 1 == self.instances.len() && self.instances[layer] == 1 {
+            FeederProfile::C
+        } else {
+            FeederProfile::A
+        }
+    }
+
     fn report(instances: usize) -> FsvRunReport {
-        let cycles = (instances as u64 * UnrolledCircuitType::Unified22.get_domain_size() as u64)
-            .saturating_sub(7);
+        Self::report_for(FeederProfile::C, instances)
+    }
+
+    fn report_for(profile: FeederProfile, instances: usize) -> FsvRunReport {
+        let cycles =
+            (instances as u64 * profile.circuit().get_domain_size() as u64).saturating_sub(7);
         FsvRunReport {
             cycles,
             output: [0; 16],
@@ -681,17 +739,24 @@ impl ProveBackend for ScriptedChain {
     }
 
     fn prove(&mut self, request: ProveRequest<'_>) -> Result<(ProgramProof, Setups), String> {
-        let spec = feeder_stage(FeederRole::Recurrent);
+        let layer = *self.proven.borrow();
+        let profile = self.profile(layer);
+        let spec = feeder_stage(FeederRole::Recurrent, profile);
         assert_eq!(request.kind, spec.kind);
         assert_eq!(request.profile, spec.profile);
         assert_eq!(request.machine, MachineType::Reduced);
-        let layer = *self.proven.borrow();
         *self.proven.borrow_mut() += 1;
         let instances = self.instances[layer];
         // F1 and the recurrent layers are distinct programs; every recurrent
         // layer proves the same binary, so its end params repeat.
-        let final_pc = if layer == 0 { 1 } else { 2 };
-        let proof = fake_feeder_proof(final_pc, instances);
+        let final_pc = if layer == 0 {
+            1
+        } else if profile == FeederProfile::A {
+            2
+        } else {
+            3
+        };
+        let proof = fake_feeder_proof_for_profile(final_pc, instances, profile);
         self.chain_end_params
             .borrow_mut()
             .push(compute_end_params(&BTreeMap::new(), proof.final_pc));
@@ -721,16 +786,16 @@ impl FeederVerifier for ScriptedChain {
 
     fn predict(&self, _: &ProgramWords, _: Vec<u32>) -> Result<FsvRunReport, String> {
         let layer = *self.proven.borrow();
-        let mut report = Self::report(*self.instances.get(layer).unwrap_or(&1));
+        let mut report = Self::report_for(self.profile(layer), self.instances[layer]);
         // the run reproduces the input's native output: the standard output
         // for F1, the previous feeder layer's output afterwards
         if layer > 0 {
-            report.output = self.native_verify(vec![])?;
+            report.output = self.native_verify(FeederProfile::A, vec![])?;
         }
         Ok(report)
     }
 
-    fn native_verify(&self, _: Vec<u32>) -> Result<[u32; 16], String> {
+    fn native_verify(&self, _: FeederProfile, _: Vec<u32>) -> Result<[u32; 16], String> {
         let mut output = [0; 16];
         output[8..].copy_from_slice(&rebuild_chain(&self.chain_end_params.borrow())?.hash());
         Ok(output)
@@ -740,7 +805,7 @@ impl FeederVerifier for ScriptedChain {
         let mut report = Self::report(1);
         report.cycles = L1_WRAP_PROGRAM_CYCLE_LIMIT as u64 - 7;
         report.counters.cycles = report.cycles as usize;
-        report.output = self.native_verify(vec![])?;
+        report.output = self.native_verify(FeederProfile::A, vec![])?;
         Ok(report)
     }
 }
@@ -785,7 +850,7 @@ fn run_scripted(
 
 #[test]
 fn feeder_loop_converges_and_records_one_history_entry_per_layer() {
-    for script in [&[4usize, 2, 1][..], &[5, 3, 2, 1], &[1]] {
+    for script in [&[2usize, 1, 1][..], &[4, 2, 1], &[5, 3, 2, 1], &[1]] {
         let (state, layers) = run_scripted(script, ScriptedChain::state());
         let state = state.unwrap();
         assert_eq!(state.feeder_layers as usize, script.len());
@@ -800,12 +865,10 @@ fn feeder_loop_converges_and_records_one_history_entry_per_layer() {
                 .collect::<Vec<_>>()
         );
         assert_eq!(feeder_proof_instances(&state.proof, Some(1)).unwrap(), 1);
-        // repeated equal feeder end params collapse in the chain hash
-        if script.len() > 2 {
-            let dedup = rebuild_chain(&state.chain_end_params[..5]).unwrap();
-            let full = rebuild_chain(&state.chain_end_params).unwrap();
-            assert_eq!(dedup.hash(), full.hash());
-        }
+        assert_eq!(
+            validate_feeder_proof(&state.proof, Some(1)).unwrap(),
+            FeederProfile::C
+        );
         // the wrap fit over the last feeder proof
         let fsv = modes_only(compression_modes());
         let harness = ScriptedChain::new(&state, script);
@@ -817,7 +880,9 @@ fn feeder_loop_converges_and_records_one_history_entry_per_layer() {
 #[test]
 fn feeder_loop_rejects_non_decreasing_and_zero_predictions() {
     for (script, needle) in [
-        (&[4usize, 4][..], "not converging"),
+        (&[1usize, 1, 1][..], "not converging"),
+        (&[2, 2, 1], "not converging"),
+        (&[4, 4], "not converging"),
         (&[4, 5], "not converging"),
         (&[3, 0], "predicts no unified instance"),
     ] {
@@ -888,8 +953,8 @@ fn feeder_loop_rejects_incomplete_or_mismatching_prediction_runs_before_proving(
             }
             Ok(report)
         }
-        fn native_verify(&self, nd: Vec<u32>) -> Result<[u32; 16], String> {
-            self.inner.native_verify(nd)
+        fn native_verify(&self, profile: FeederProfile, nd: Vec<u32>) -> Result<[u32; 16], String> {
+            self.inner.native_verify(profile, nd)
         }
         fn wrap_run(&self, program: &ProgramWords, nd: Vec<u32>) -> Result<FsvRunReport, String> {
             self.inner.wrap_run(program, nd)
@@ -959,25 +1024,34 @@ fn feeder_loop_rejects_a_proof_shape_that_misses_its_prediction() {
 }
 
 #[test]
-fn feeder_loop_resumes_mid_chain_and_skips_proving_at_one_instance() {
-    let script = [4usize, 2, 1];
+fn feeder_loop_resumes_both_a_boundaries_and_stops_only_at_c() {
+    let script = [2usize, 1, 1];
     let (full, _) = run_scripted(&script, ScriptedChain::state());
     let full = full.unwrap();
-    // resume after layer 0 (4 instances): layers 1 and 2 remain
+    // resume after layer 0 (two A instances): layers 1 and 2 remain
     let mut after_first = ScriptedChain::state();
     after_first.feeder_layers = 1;
-    after_first.proof = fake_feeder_proof(1, 4);
+    after_first.proof = fake_feeder_proof_for_profile(1, 2, FeederProfile::A);
     after_first.chain_end_params = full.chain_end_params[..4].to_vec();
     let (resumed, layers) = run_scripted(&script, after_first);
     let resumed = resumed.unwrap();
-    assert_eq!(layers, vec![(1, 2, 2), (2, 3, 1)]);
+    assert_eq!(layers, vec![(1, 2, 1), (2, 3, 1)]);
     assert_eq!(resumed.feeder_layers, full.feeder_layers);
     assert_eq!(resumed.chain_end_params, full.chain_end_params);
     assert_eq!(resumed.proof.final_pc, full.proof.final_pc);
-    // resume at a single-instance feeder: nothing to prove
+    // A single A instance must still be followed by C.
+    let mut after_second = ScriptedChain::state();
+    after_second.feeder_layers = 2;
+    after_second.proof = fake_feeder_proof_for_profile(2, 1, FeederProfile::A);
+    after_second.chain_end_params = full.chain_end_params[..5].to_vec();
+    let (resumed, layers) = run_scripted(&script, after_second);
+    let resumed = resumed.unwrap();
+    assert_eq!(layers, vec![(2, 3, 1)]);
+    assert_eq!(resumed.chain_end_params, full.chain_end_params);
+    // C is terminal: nothing to prove.
     let mut done = ScriptedChain::state();
     done.feeder_layers = 3;
-    done.proof = fake_feeder_proof(2, 1);
+    done.proof = fake_feeder_proof(3, 1);
     done.chain_end_params = full.chain_end_params.clone();
     let (skipped, layers) = run_scripted(&[], done);
     let skipped = skipped.unwrap();
@@ -998,9 +1072,9 @@ fn feeder_checkpoint_admission_checks_shape_caps_and_trusted_history() {
             ChainProgram::Fsv(
                 FsvProgram::UnifiedRecursionLayer,
                 _,
-                SetupMachine::UnifiedL1Feeder,
+                SetupMachine::L1Feeder(FeederProfile::A),
             ) => [10; 8],
-            ChainProgram::Fsv(FsvProgram::UnifiedRecursionLayerL1Feeder, _, _) => [20; 8],
+            ChainProgram::Fsv(FsvProgram::UnifiedRecursionLayerL1FeederA, _, _) => [20; 8],
             ChainProgram::Fsv(..) => [2; 8],
         })
     };
@@ -1019,8 +1093,8 @@ fn feeder_checkpoint_admission_checks_shape_caps_and_trusted_history() {
     let checkpoint = || RecursionState {
         stage: ProofTarget::L1Feeder,
         l1: None,
-        proof: fake_feeder_proof(2, 2),
-        setups: caps(16),
+        proof: fake_feeder_proof_for_profile(2, 1, FeederProfile::A),
+        setups: caps(4),
         chain_end_params: vec![[1; 8], [2; 8], [2; 8], [10; 8], [20; 8]],
         input_is_base: false,
         timings: ProofTimingsMs::default(),
@@ -1048,4 +1122,88 @@ fn feeder_checkpoint_admission_checks_shape_caps_and_trusted_history() {
     assert!(admit(&no_proof)
         .unwrap_err()
         .contains("reduced-machine family"));
+}
+
+#[test]
+fn feeder_profile_selection_uses_the_c_chunk_boundary() {
+    let c = UnrolledCircuitType::Unified22.get_domain_size();
+    let a = UnrolledCircuitType::Unified.get_domain_size();
+    for (cycles, expected) in [
+        (c - 1, (FeederProfile::C, 1)),
+        (c, (FeederProfile::C, 1)),
+        (c + 1, (FeederProfile::A, 1)),
+        (a, (FeederProfile::A, 1)),
+        (a + 1, (FeederProfile::A, 2)),
+    ] {
+        let mut report = ScriptedChain::report(1);
+        report.cycles = cycles as u64;
+        report.counters.cycles = cycles;
+        assert_eq!(predicted_feeder_shape(&report).unwrap(), expected);
+    }
+}
+
+#[test]
+fn feeder_proof_profile_requires_the_trace_and_every_instance_schedule() {
+    for profile in FeederProfile::ALL {
+        let proof = fake_feeder_proof_for_profile(0, 1, profile);
+        assert_eq!(validate_feeder_proof(&proof, Some(1)).unwrap(), profile);
+    }
+    let mut proof = fake_feeder_proof_for_profile(0, 2, FeederProfile::A);
+    let family = UnrolledCircuitType::Unified.get_family_idx() as u32;
+    proof.riscv_proofs.get_mut(&family).unwrap()[1]
+        .whir_proof
+        .whir_schedule = FeederProfile::C.config().whir_schedule;
+    assert!(validate_feeder_proof(&proof, None)
+        .unwrap_err()
+        .contains("WHIR schedule"));
+    let proof = fake_feeder_proof_for_profile(0, 2, FeederProfile::C);
+    assert!(validate_feeder_proof(&proof, None)
+        .unwrap_err()
+        .contains("C is terminal"));
+    let proof = fake_feeder_proof_for_profile(0, 1, FeederProfile::A);
+    assert!(l1_wrap::validate_last_feeder_proof(&proof)
+        .unwrap_err()
+        .contains("one C instance"));
+}
+
+#[test]
+fn stale_v5_c_only_history_is_rejected_by_the_derived_trusted_chain() {
+    let mut artifact = feeder_artifact(ProofTarget::L1Feeder, 6, 3);
+    // Today's old chain: F1@C, rec-C@C, rec-C@C. Its internal hash is valid.
+    artifact.chain_end_params[3..].copy_from_slice(&[[71; 8], [72; 8], [72; 8]]);
+    let old_chain = rebuild_chain(&artifact.chain_end_params).unwrap();
+    artifact.chain_hash = old_chain.hash();
+    artifact.chain_preimage = old_chain.preimage();
+    validate_continuation_request(&artifact, ProofTarget::L1).unwrap();
+    let expected = expected_chain_end_params(
+        artifact.target,
+        artifact.chain_end_params.len(),
+        artifact.feeder_layers,
+        FeederProfile::C,
+        &artifact.blake_unrolled,
+        &artifact.blake_bridge,
+        &artifact.blake_final,
+        &mut |program| {
+            Ok(match program {
+                ChainProgram::Fsv(_, _, SetupMachine::L1Feeder(FeederProfile::A)) => [81; 8],
+                ChainProgram::Fsv(_, _, SetupMachine::L1Feeder(FeederProfile::C)) => [82; 8],
+                ChainProgram::User => [1; 8],
+                ChainProgram::Fsv(FsvProgram::UnrolledBaseLayer, _, _) => [2; 8],
+                _ => [3; 8],
+            })
+        },
+    )
+    .unwrap();
+    let error = verify_against_chain(&artifact, &expected).unwrap_err();
+    assert!(error.contains("do not match the trusted per-layer end-params"));
+    assert_eq!(artifact.schema_version, ARTIFACT_SCHEMA_VERSION);
+}
+
+#[test]
+fn public_feeder_artifact_requires_terminal_c() {
+    let mut artifact = feeder_artifact(ProofTarget::L1Feeder, 5, 2);
+    artifact.proof = fake_feeder_proof_for_profile(2, 1, FeederProfile::A);
+    assert!(validate_artifact_envelope(&artifact)
+        .unwrap_err()
+        .contains("one C instance"));
 }

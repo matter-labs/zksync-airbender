@@ -272,7 +272,7 @@ impl FeederObserver for Recorder<'_> {
             return Err("feeder reference observer layer order".into());
         }
         let instances = feeder_proof_instances(&state.proof, None)?;
-        let predicted_instances = predicted_feeder_instances(report)?;
+        let predicted_instances = predicted_feeder_shape(report)?.1;
         let chunk = UnrolledCircuitType::Unified22.get_domain_size() as u64;
         let chunk_margin_cycles = predicted_instances as u64 * chunk - report.cycles;
         let native_output =
@@ -719,7 +719,7 @@ fn production_feeder_merge_gate() {
                 .unwrap();
             validate_prediction_report(&report, &native).unwrap();
             assert_eq!(
-                predicted_feeder_instances(&report).unwrap(),
+                predicted_feeder_shape(&report).unwrap().1,
                 1,
                 "{}",
                 input.name

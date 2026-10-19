@@ -1338,24 +1338,24 @@ fn test_state() -> RecursionState {
     }
 }
 
-/// The first fake feeder layer (program word 1) verifies into two
-/// instances, the second (program word 2) into one: the loop runs F1 then
+/// The first fake feeder layer (program word 1) needs one A instance;
+/// the second (program word 2) fits one C instance. The loop runs F1 then
 /// one recurrent layer. Proofs are verified against the chain their own
 /// preimage records, extended by their end params ([`fake_nd`]).
 struct FakeVerifier;
 
 impl FeederVerifier for FakeVerifier {
     fn native_verify_standard(&self, nd_words: Vec<u32>) -> Result<[u32; 16], String> {
-        self.native_verify(nd_words)
+        self.native_verify(FeederProfile::C, nd_words)
     }
 
     fn predict(&self, program: &ProgramWords, nd_words: Vec<u32>) -> Result<FsvRunReport, String> {
         let mut report = fake_report(fake_instances(program.0[0]));
-        report.output = self.native_verify(nd_words)?;
+        report.output = self.native_verify(FeederProfile::C, nd_words)?;
         Ok(report)
     }
 
-    fn native_verify(&self, nd_words: Vec<u32>) -> Result<[u32; 16], String> {
+    fn native_verify(&self, _: FeederProfile, nd_words: Vec<u32>) -> Result<[u32; 16], String> {
         let mut output = [0u32; 16];
         output[8..].copy_from_slice(&nd_words[..8]);
         Ok(output)
@@ -1411,7 +1411,7 @@ fn test_fsv() -> FsvPrograms {
         },
     );
     fsv.feeder_first = (vec![1], vec![1]);
-    fsv.feeder = (vec![2], vec![2]);
+    fsv.feeder_a = (vec![2], vec![2]);
     fsv.feeder_wrap = (vec![3], vec![3]);
     fsv
 }
@@ -1433,13 +1433,18 @@ impl ProveBackend for FakeBackend {
 
     fn prove(&mut self, request: ProveRequest<'_>) -> Result<(ProgramProof, Setups), String> {
         assert_eq!(request.batch_id, 0);
-        assert_eq!(request.kind, ExecutionKind::Unified22);
-        assert_eq!(request.machine, MachineType::Reduced);
-        assert_eq!(request.profile, ProofProfile::L1Feeder);
-        assert_eq!(request.nd_words.len(), 8);
         let program = request.bin[0];
+        let profile = if program == 1 {
+            FeederProfile::A
+        } else {
+            FeederProfile::C
+        };
+        assert_eq!(request.kind, profile.kind());
+        assert_eq!(request.machine, MachineType::Reduced);
+        assert_eq!(request.profile, profile.proof_profile());
+        assert_eq!(request.nd_words.len(), 8);
         Ok((
-            crate::l1_feeder_tests::fake_feeder_proof(program, fake_instances(program) as usize),
+            crate::l1_feeder_tests::fake_feeder_proof_for_profile(program, 1, profile),
             BTreeMap::new(),
         ))
     }
@@ -1547,10 +1552,14 @@ fn noop_observer_matches_unobserved_result() {
     .unwrap();
     let mut unobserved = test_state();
     let mut chain = rebuild_chain(&unobserved.chain_end_params).unwrap();
-    for program in [&test_fsv().feeder_first, &test_fsv().feeder] {
+    for (program, profile) in [
+        (&test_fsv().feeder_first, FeederProfile::A),
+        (&test_fsv().feeder_a, FeederProfile::C),
+    ] {
         unobserved = advance_feeder_stage(
             &mut FakeBackend,
             program,
+            profile,
             &mut chain,
             unobserved,
             0,
