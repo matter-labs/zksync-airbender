@@ -183,7 +183,7 @@ fn pow_grid(name: &str, max_nonce: u64, blocks: u32) {
     );
 }
 
-pub(super) fn pow_finalize(
+pub(crate) fn pow_finalize(
     seed: &mut DeviceSlice<u8>,
     bits: u32,
     nonce: &DeviceVariable<u64>,

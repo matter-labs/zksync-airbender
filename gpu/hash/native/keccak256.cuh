@@ -3,6 +3,7 @@
 #include "common.cuh"
 #include "primitives/field.cuh"
 #include "primitives/proth120.cuh"
+#include <cuda/atomic>
 #include <type_traits>
 #include <utility>
 
@@ -565,6 +566,33 @@ DEVICE_FORCEINLINE void pow_search_counter(const u8 *seed, const u32 bits, const
         atomicMax(counter_ptr, static_cast<unsigned long long>(POW_STOP));
       return;
     }
+  }
+}
+
+/// Grid-stride search; DETERMINISTIC keeps the minimum nonce, otherwise the first published hit stops it.
+template <bool DETERMINISTIC> DEVICE_FORCEINLINE void pow_search_grid_stride(const u8 *seed, const u32 bits, const u64 max_nonce, u64 *result) {
+  u64 nonce = static_cast<u64>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const u64 stride = static_cast<u64>(gridDim.x) * blockDim.x;
+  u8 current_seed[32];
+  load_seed(seed, current_seed);
+  auto *result_ptr = reinterpret_cast<unsigned long long *>(result);
+  cuda::atomic_ref<unsigned long long, cuda::thread_scope_device> found(*result_ptr);
+  while (nonce < max_nonce) {
+    u8 value[32];
+    pow_digest(current_seed, nonce, value);
+    if (top_bits_are_zero(value, bits)) {
+      if constexpr (DETERMINISTIC)
+        atomicMin(result_ptr, static_cast<unsigned long long>(nonce));
+      else
+        atomicCAS(result_ptr, UINT64_MAX, static_cast<unsigned long long>(nonce));
+    }
+    const u64 published = found.load(cuda::memory_order_relaxed);
+    if (DETERMINISTIC ? published <= nonce : published != UINT64_MAX)
+      break;
+    u64 next;
+    if (!advance(nonce, stride, max_nonce, next))
+      break;
+    nonce = next;
   }
 }
 
