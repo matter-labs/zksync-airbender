@@ -130,6 +130,69 @@ fn write_cost_model_fixture(
     );
 }
 
+/// Proofs per RISC-V family (and per Keccak-f1600 circuit) in the synthetic
+/// cost-model fixtures, so each circuit's verifier cost is measured more than
+/// once per fixture.
+#[cfg(all(not(no_cuda), feature = "verifiers", feature = "deterministic_pow"))]
+const COST_MODEL_REPEATS: usize = 4;
+
+/// Iterations of `push_counted_loop` that fill `COST_MODEL_REPEATS` proofs of
+/// every 2^24-cycle RISC-V family the loop executes, half a proof short of one
+/// more.
+#[cfg(all(not(no_cuda), feature = "verifiers", feature = "deterministic_pow"))]
+const COST_MODEL_FILLER_ITERATIONS: u32 = ((COST_MODEL_REPEATS as u32 - 1) << 24) | (1 << 23);
+
+/// Run `body` `iterations` times, counting down in x6; each iteration also
+/// executes one `addi` and one `bne`.
+#[cfg(all(not(no_cuda), feature = "verifiers", feature = "deterministic_pow"))]
+fn push_counted_loop(binary: &mut Vec<u32>, iterations: u32, body: &[u32]) {
+    let upper = iterations.wrapping_add(0x800) & !0xfff;
+    binary.push(upper | (6 << 7) | 0x37); // lui x6, count high
+    binary.push(((iterations.wrapping_sub(upper) & 0xfff) << 20) | (6 << 15) | (6 << 7) | 0x13);
+    let loop_start = binary.len();
+    binary.extend_from_slice(body);
+    binary.push(0xfff3_0313); // addi x6, x6, -1
+    let offset = (-4 * (binary.len() - loop_start) as i32) as u32;
+    binary.push(
+        ((offset >> 12 & 1) << 31)
+            | ((offset >> 5 & 63) << 25)
+            | (6 << 15)
+            | (1 << 12)
+            | ((offset >> 1 & 15) << 8)
+            | ((offset >> 11 & 1) << 7)
+            | 0x63, // bne x6, x0, loop
+    );
+}
+
+/// Touch one more address window than a single i&t proof can carry.
+#[cfg(all(not(no_cuda), feature = "verifiers", feature = "deterministic_pow"))]
+fn push_window_touches(binary: &mut Vec<u32>) {
+    let window_bits =
+        setups::inits_and_teardowns::TRACE_LEN_LOG2 + setups::inits_and_teardowns::WORD_BITS;
+    for window in 0..=setups::inits_and_teardowns::NUM_INIT_AND_TEARDOWN_SETS {
+        let address =
+            ((window << window_bits) as u32).max(common_constants::rom::ROM_BYTE_SIZE as u32);
+        binary.push(address | (5 << 7) | 0x37); // lui x5, address >> 12
+        binary.push(0x0052_a023); // sw x5, 0(x5)
+    }
+}
+
+/// Assert the repeated-proof counts the synthetic fixtures are built for.
+#[cfg(all(not(no_cuda), feature = "verifiers", feature = "deterministic_pow"))]
+fn assert_repeated_proofs(proof: &crate::upstream::ProgramProof, families: &[u8]) {
+    for family in families {
+        let count = proof
+            .riscv_proofs
+            .get(&(*family as u32))
+            .map_or(0, Vec::len);
+        assert!(
+            count >= COST_MODEL_REPEATS,
+            "family {family}: {count} proofs, expected at least {COST_MODEL_REPEATS}"
+        );
+    }
+    assert_eq!(proof.inits_and_teardown_proofs.len(), 2);
+}
+
 /// Prove `(binary_image, text_section)` with the given non-determinism reads on
 /// the GPU `ExecutionProver` and assemble the `(ProgramProof, Setups)`. The
 /// shared prove tail of every e2e below and of each `run_gpu_recursive_pipeline`
@@ -679,6 +742,9 @@ fn test_program_prover_recursive_pipeline_zksync_os() {
 /// Generate the local, non-authoritative proof/setup inputs used to calibrate
 /// the Sec100 Compression verifier cost model. This deliberately proves two
 /// recursion layers instead of consulting the production scheduling threshold.
+/// The synthetic workloads repeat every circuit they exercise
+/// (`COST_MODEL_REPEATS`; i&t twice) so per-proof prices come from repeated
+/// proofs.
 #[test]
 #[cfg(all(not(no_cuda), feature = "verifiers", feature = "deterministic_pow"))]
 #[ignore = "manual Sec100 cost-model fixture generation (large GPU run)"]
@@ -797,31 +863,24 @@ fn test_generate_sec100_cost_model_fixtures() {
     );
     write_cost_model_fixture(&fixture_dir, "base_alt", &base_alt_proof, &base_alt_setups);
 
-    // 35,000 permutations exceed one 2^22-row proof for each Keccak-f1600 circuit.
-    let permutations = 35_000u32;
-    let upper = (permutations + 0x800) & !0xfff;
+    // 35,000 permutations exceed one 2^22-row proof for each Keccak-f1600
+    // circuit, so 35,000 per repeat fill at least that many proofs.
+    let permutations = 35_000 * COST_MODEL_REPEATS as u32;
     let mut keccak_binary = vec![
         common_constants::rom::ROM_BYTE_SIZE as u32 | (11 << 7) | 0x37, // lui x11, RAM
-        upper | (5 << 7) | 0x37,                                        // lui x5, count high
-        ((permutations.wrapping_sub(upper) & 0xfff) << 20) | (5 << 15) | (5 << 7) | 0x13,
     ];
-    let loop_start = keccak_binary.len();
-    keccak_binary.push(0x0000_0533); // add x10, x0, x0
+    let mut permutation = vec![0x0000_0533]; // add x10, x0, x0
     for i in 0..common_constants::delegation_types::keccak_f1600::NUM_KECCAK_F1600_CALLS {
         let csr = common_constants::delegation_types::keccak_f1600::keccak_f1600_call_csr(i);
-        keccak_binary.push((csr << 20) | 0x1073); // csrrw x0, csr, x0
+        permutation.push((csr << 20) | 0x1073); // csrrw x0, csr, x0
     }
-    keccak_binary.push(0xfff2_8293); // addi x5, x5, -1
-    let offset = (-4 * (keccak_binary.len() - loop_start) as i32) as u32;
-    keccak_binary.push(
-        ((offset >> 12 & 1) << 31)
-            | ((offset >> 5 & 63) << 25)
-            | (5 << 15)
-            | (1 << 12)
-            | ((offset >> 1 & 15) << 8)
-            | ((offset >> 11 & 1) << 7)
-            | 0x63, // bne x5, x0, loop
+    push_counted_loop(&mut keccak_binary, permutations, &permutation);
+    push_counted_loop(
+        &mut keccak_binary,
+        COST_MODEL_FILLER_ITERATIONS,
+        &[0x0065_a023], // sw x6, 0(x11)
     );
+    push_window_touches(&mut keccak_binary);
     keccak_binary.push(0x0000_006f); // jal x0, 0
     let (keccak_proof, keccak_setups) = prove_on_gpu(
         &mut prover,
@@ -836,31 +895,54 @@ fn test_generate_sec100_cost_model_fixtures() {
         common_constants::delegation_types::keccak_f1600::KECCAK_COLUMN_PARITY_CSR_REGISTER,
         common_constants::delegation_types::keccak_f1600::KECCAK_CHI5_CSR_REGISTER,
     ] {
-        assert!(keccak_proof.delegation_proofs[&csr].len() >= 2);
+        assert!(keccak_proof.delegation_proofs[&csr].len() >= COST_MODEL_REPEATS);
     }
+    assert_repeated_proofs(
+        &keccak_proof,
+        &[
+            common_constants::ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX,
+            common_constants::JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX,
+            common_constants::LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX,
+        ],
+    );
     native_verify_unrolled(build_unrolled_stream(&keccak_setups, &keccak_proof), true);
     write_cost_model_fixture(&fixture_dir, "keccak_f1600", &keccak_proof, &keccak_setups);
 
-    // Touch one more window than a single i&t proof can carry.
-    let mut memory_binary = Vec::new();
-    let window_bits =
-        setups::inits_and_teardowns::TRACE_LEN_LOG2 + setups::inits_and_teardowns::WORD_BITS;
-    for window in 0..=setups::inits_and_teardowns::NUM_INIT_AND_TEARDOWN_SETS {
-        let address =
-            ((window << window_bits) as u32).max(common_constants::rom::ROM_BYTE_SIZE as u32);
-        memory_binary.push(address | (5 << 7) | 0x37); // lui x5, address >> 12
-        memory_binary.push(0x0052_a023); // sw x5, 0(x5)
-    }
+    // One instruction of each listed family per iteration, then the i&t windows.
+    let memory_program = |body: &[u32]| {
+        let mut binary = vec![
+            common_constants::rom::ROM_BYTE_SIZE as u32 | (9 << 7) | 0x37, // lui x9, RAM
+        ];
+        push_counted_loop(&mut binary, COST_MODEL_FILLER_ITERATIONS, body);
+        push_window_touches(&mut binary);
+        binary
+    };
+    let mut memory_binary = memory_program(&[
+        0x0063_c3b3, // xor x7, x7, x6
+        0x0263_8433, // mul x8, x7, x6
+        0x0064_a023, // sw x6, 0(x9)
+        0x0064_8223, // sb x6, 4(x9)
+    ]);
     memory_binary.push(0x0000_006f); // jal x0, 0
     let (memory_proof, memory_setups) = prove_on_gpu(
         &mut prover,
         ExecutionKind::Unrolled,
         MachineType::FullUnsigned,
         memory_binary.clone(),
-        memory_binary.clone(),
+        memory_binary,
         vec![],
     );
-    assert_eq!(memory_proof.inits_and_teardown_proofs.len(), 2);
+    assert_repeated_proofs(
+        &memory_proof,
+        &[
+            common_constants::ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX,
+            common_constants::JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX,
+            common_constants::SHIFT_BINARY_CIRCUIT_FAMILY_IDX,
+            common_constants::MUL_DIV_CIRCUIT_FAMILY_IDX,
+            common_constants::LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX,
+            common_constants::LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX,
+        ],
+    );
     native_verify_unrolled(build_unrolled_stream(&memory_setups, &memory_proof), true);
     write_cost_model_fixture(
         &fixture_dir,
@@ -869,10 +951,14 @@ fn test_generate_sec100_cost_model_fixtures() {
         &memory_setups,
     );
 
-    // Price i&t in the recursion verifier as well as the base verifier. Supply
-    // a valid chain hash in x18..x25 so the synthetic reduced-machine program
-    // can be checked by the recursion statement verifier.
-    memory_binary.pop(); // replace the terminal loop after loading the hash
+    // Price i&t and the reduced machine's families in the recursion verifier as
+    // well as the base verifier. Supply a valid chain hash in x18..x25 so the
+    // synthetic reduced-machine program can be checked by the recursion
+    // statement verifier.
+    let mut memory_binary = memory_program(&[
+        0x0063_c3b3, // xor x7, x7, x6
+        0x0064_a023, // sw x6, 0(x9)
+    ]);
     for (i, word) in chain.hash().into_iter().enumerate() {
         let reg = (18 + i) as u32;
         let upper = word.wrapping_add(0x800) & !0xfff;
@@ -889,7 +975,15 @@ fn test_generate_sec100_cost_model_fixtures() {
         memory_binary,
         vec![],
     );
-    assert_eq!(memory_proof.inits_and_teardown_proofs.len(), 2);
+    assert_repeated_proofs(
+        &memory_proof,
+        &[
+            common_constants::ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX,
+            common_constants::JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX,
+            common_constants::SHIFT_BINARY_CIRCUIT_FAMILY_IDX,
+            common_constants::LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX,
+        ],
+    );
     memory_proof.set_recursion_chain(&chain);
     native_verify_unrolled(build_unrolled_stream(&memory_setups, &memory_proof), false);
     write_cost_model_fixture(

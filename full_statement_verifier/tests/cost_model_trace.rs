@@ -24,14 +24,17 @@
 //!
 //! `base` is zkSync OS block 23620012; `base_alt` is hashed Fibonacci with
 //! `(n=15, h=1_200_000)`; `recursion0` and `recursion1` explicitly prove the
-//! Sec100 unrolled base and recursion verifiers. `memory_windows` touches enough
-//! address windows to require two i&t proofs, with `memory_windows_recursion`
-//! covering the recursion verifier separately; `keccak_f1600` produces at least two
-//! proofs for each Keccak-f1600 circuit. The files are non-authoritative
-//! local calibration inputs and must not be committed or consumed by CI.
+//! Sec100 unrolled base and recursion verifiers. The synthetic `memory_windows`
+//! (every base-machine family), `memory_windows_recursion` (every reduced-machine
+//! family, for the recursion verifier) and `keccak_f1600` (each Keccak-f1600
+//! circuit) repeat each circuit they run, so prices come from repeated proofs,
+//! and touch enough address windows for two i&t proofs. The files are
+//! non-authoritative local calibration inputs and must not be committed or
+//! consumed by CI.
 //!
-//! `emit_census_tables` prints the tables to paste into
-//! `src/host_utils/cost_model/census.rs`;
+//! `census_pricing_residual_leaves_margin_on_every_fixture` checks the fit's
+//! premises before any coefficient is chosen. `emit_census_tables` prints the
+//! tables to paste into `src/host_utils/cost_model/census.rs`;
 //! `estimate_matches_measurement_on_every_fixture` and its census sibling are
 //! the acceptance gates.
 
@@ -225,6 +228,47 @@ fn estimate_matches_measurement_on_every_fixture() {
 
 #[test]
 #[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
+fn census_pricing_residual_leaves_margin_on_every_fixture() {
+    let mut failures = Vec::new();
+    for program in [
+        FsvProgram::UnrolledBaseLayer,
+        FsvProgram::UnrolledRecursionLayer,
+    ] {
+        let cals: Vec<_> = trace::calibrate::ALL_FIXTURES
+            .iter()
+            .filter(|f| f.program == program)
+            .map(|f| {
+                (
+                    f.name,
+                    trace::calibrate::calibrate_census_fixture(f.name, f.program),
+                )
+            })
+            .collect();
+        let named: Vec<_> = cals.iter().map(|(name, c)| (*name, c)).collect();
+        let prefit = trace::calibrate::ProgramPrefit::new(&named);
+        for (name, cal) in &cals {
+            print!(
+                "{}",
+                trace::calibrate::render_regions(name, cal, &prefit.prices)
+            );
+        }
+        print!("{}", prefit.report());
+        failures.extend(
+            prefit
+                .failures()
+                .into_iter()
+                .map(|f| format!("{program:?}: {f}")),
+        );
+    }
+    assert!(
+        failures.is_empty(),
+        "the census fit's premises fail:\n{}",
+        failures.join("\n")
+    );
+}
+
+#[test]
+#[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
 fn emit_census_tables() {
     // Sharing a WHIR schedule does not guarantee identical per-proof
     // instruction counts across verifier programs. Fit each program separately.
@@ -313,7 +357,7 @@ fn per_proof_census_spans_agree_within_a_circuit() {
     } in trace::calibrate::ALL_FIXTURES
     {
         let c = trace::calibrate::calibrate_census_fixture(fixture, *program);
-        for (circuit, spans) in &c.spans {
+        for trace::calibrate::RegionCensus { circuit, spans, .. } in &c.regions {
             if spans.len() < 2 {
                 continue;
             }
