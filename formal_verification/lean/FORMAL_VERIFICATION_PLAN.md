@@ -417,9 +417,14 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    retirement now follow from those constructed histories. Native PC gates
    derive bounded modular RV32 successors, including a full imported-row wrap
    regression. Sixteen initialized cases and actual second-MUL alias retirement
-   pass. Next compose complete fetched MUL/DIV execution with stateful decoder
-   replay and actual row boundaries, then shift/binop and subword memory. Local
-   transitions do not yet claim a complete fetched instruction trace.
+   pass. Complete fetched MUL/DIV execution now derives every original
+   fetch/decode/preparation/retirement step, the actual native PC chain and
+   terminal register reads. Stateful composition reuses the unchanged original
+   misa-frame theorem and derives replay through actual native history/PC
+   updates, without pure-decoder, extra ISA, row-step, intermediate-state or
+   terminal-bound premises. Sixteen complete cases, concrete arithmetic final
+   values, a newest-first two-MUL alias program reaching PC eight/x1=x3=861,
+   and empty execution pass. Continue with shift/binop and subword memory.
 4. Rebind bigint/BLAKE/Keccak workers and callers. Retest control validity,
    unissued workers, ROM behavior and request participation on v2 before reusing
    any source finding or temporary premise.

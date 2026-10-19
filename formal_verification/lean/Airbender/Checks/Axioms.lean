@@ -1,3 +1,4 @@
+import Tests.MulDivFetched
 import Tests.MulDivExecution
 import Tests.MulDivPC
 import Tests.MulDivRegisters
@@ -1273,3 +1274,18 @@ import Tests.JumpLink
 #print axioms Tests.MulDivPC.native_wrap_constraints
 #print axioms Tests.MulDivPC.wrapped_value
 #print axioms Tests.MulDivRegisterChain.alias_retirement
+
+-- Complete original stateful fetch/decode/retirement over native MUL/DIV histories.
+#print axioms Airbender.MulDiv.Proofs.image_execution_soundness
+#print axioms Airbender.MulDiv.Proofs.image_fetched_step
+#print axioms Airbender.MulDiv.Proofs.image_terminal_pc_bound
+#print axioms Airbender.MulDiv.public_execution
+#print axioms Airbender.Trace.Proofs.compose_native_rows_run
+#print axioms Airbender.Trace.Proofs.entry_source_retired_state_run
+#print axioms Airbender.Trace.Proofs.step_of_rebased_run
+#print axioms Tests.MulDivFetched.alias_execution
+#print axioms Tests.MulDivFetched.alias_values
+#print axioms Tests.MulDivFetched.empty_execution
+#print axioms Tests.MulDivFetched.initialized_execution
+#print axioms Tests.MulDivFetched.initialized_values
+#print axioms Tests.MulDivFetched.terminal_bound

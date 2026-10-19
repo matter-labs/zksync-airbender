@@ -3330,6 +3330,34 @@
       "backport_reuse_path": "Tests/MulDivRegisterChain.lean",
       "backport_reuse_sha256": "feeb4afc50df9c517e9a0d655ff0425f04638f63f2fce514e61c61bc15b0cd6b",
       "change": "Extend the unchanged actual two-MUL public-byte/native-history fixture with original second-MUL preparation/retirement from PC four to eight after the real prefix update. Derive the decoder entry and both states; keep prior alias/timestamp rejection tests."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/StatefulComposition.lean",
+      "backport_reuse_revision": "70790fa892a18888fa7bf7859f0595a7397fe9ff",
+      "backport_reuse_path": "Airbender/Proofs/Trace/CompositionCore.lean",
+      "backport_reuse_sha256": "35e565fe1982df6ecb97e4cbd8bca1f908c543a2cd6813c744a4ab8716cf9359",
+      "change": "Reuse the native reverse-row composition induction, actual PC boundary chain, real history splitting and normal-step rebasing. Remove only its pureDecoders argument; derive original successful decoding through PC bookkeeping using the unchanged pinned decoded_misa_frame theorem and actual misa preservation. Leave the original shared pure helper and native terminal postconditions unchanged."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/MulDiv/Composition.lean",
+      "backport_reuse_revision": "70790fa892a18888fa7bf7859f0595a7397fe9ff",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/Composition.lean",
+      "backport_reuse_sha256": "7c3eb06b3a1a27093f8ab46774f9322936b0fccd4c3f65e046bb4e7e62d49eca",
+      "change": "Reuse actual native fetched-step construction, terminal PC recovery, clock-derived row permutation/chain, real cell history and unchanged shared terminal-read realization. Rebind the four unsigned native v2 MUL/DIV clauses and use actual stateful original decoding after native history/PC updates. Public setup/image/native matching derive all interfaces; no extra ISA, pure-decoder, replay, intermediate-state, row-step, closure or final-bound premise."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/MulDiv/FetchedExecution.lean",
+      "backport_reuse_revision": "70790fa892a18888fa7bf7859f0595a7397fe9ff",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/JumpBranchSlt/Execution.lean",
+      "backport_reuse_sha256": "4ab749193fcfd972dc4c798ba50c0d1183bde6b72b49db0a760f2eb099a41f94",
+      "change": "Reuse the short public complete-execution pattern and unchanged Realizes/StepWith observations. State actual public construction, native matching, full decoding and tracked-cell alignment; derive terminal PC bounds and finite original fetch/decode/preparation/retirement with actual terminal reads, without control-specific ISA/JALR conditions."
+    },
+    {
+      "path": "Tests/MulDivFetched.lean",
+      "backport_reuse_revision": "70790fa892a18888fa7bf7859f0595a7397fe9ff",
+      "backport_reuse_path": "Tests/ControlExecution.lean",
+      "backport_reuse_sha256": "1844f6422de02720b92a3e5a5fc84f6c78047a355fdeab0796e99fc80771aed0",
+      "change": "Reuse complete original fetched-execution and empty-trace regressions, applying all sixteen existing initialized native MUL/DIV cases and the actual reversed two-MUL alias program. Derive concrete terminal x3 arithmetic results including zero divisors/x0 discard, PC eight and both x1/x3=861 from actual terminal reads. No supplied intermediate state/read/final result; no fetched wraparound or new Rust export claim."
     }
   ],
   "setup_artifacts": [

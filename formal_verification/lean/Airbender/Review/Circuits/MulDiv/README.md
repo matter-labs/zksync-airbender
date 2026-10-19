@@ -48,3 +48,7 @@ Follow the [plan](../../../../FORMAL_VERIFICATION_PLAN.md).
 ## Original local execution and PC retirement
 
 [Original constructor/clause dispatch](Sail.lean) retains all four opcodes and x0 destinations. [The short trace claim](../../Trace/Families/MulDiv/Execution.lean) derives their actual local preparation/retirement from initialized native histories. [Clause calculations](../../../Proofs/MulDiv/Clauses.lean) reuse pinned source arithmetic proofs; [native PC gates](../../../Proofs/MulDiv/PC.lean) retain aligned RV32 rollover. Complete fetched composition remains separate.
+
+## Complete original fetched execution
+
+[The short public fetched theorem](../../Trace/Families/MulDiv/FetchedExecution.lean) now derives complete original Sail execution and actual terminal reads, including stateful decoding after real updates. [Family composition](../../../Proofs/Trace/Families/MulDiv/Composition.lean) connects actual native constraints and initialized matching; [regressions](../../../../Tests/MulDivFetched.lean) cover sixteen cases, concrete results, the reversed alias program and empty execution. Original local PC rollover remains covered; no fetched wraparound fixture is added.

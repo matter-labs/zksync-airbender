@@ -1266,3 +1266,37 @@ composition; no fetched wraparound program or new Rust export is claimed.
 Physical initialization, general Rust/JSON/compiler refinement, cryptographic
 argument enforcement, unified execution/protocol spans and completeness remain
 separately scoped. No native defect is established by this checkpoint.
+
+## Complete fetched MUL/DIV execution
+
+[The short public fetched-execution theorem](Airbender/Review/Trace/Families/MulDiv/FetchedExecution.lean)
+now derives a finite original Sail execution from actual public initialization
+to the native terminal PC and register values. Every step fetches public bytes,
+runs original stateful decoding in its real pre-state, and uses original MUL,
+MULHU, DIVU or REMU preparation/execution/retirement. Actual native equations,
+full decoder membership and initialized matching derive all operand reads,
+ranges, masks, row order, intermediate states and PC boundaries. Terminal PC
+bounds come from native successors or the public initial PC for an empty trace.
+
+[Stateful composition](Airbender/Proofs/Trace/StatefulComposition.lean) adapts the
+existing native row induction and reuses the unchanged original decoder-frame
+proof. It derives replay through PC bookkeeping from actual misa preservation;
+the public claim has no pure-decoder, separate ISA-read, replay or per-row step premise.
+[Family assembly](Airbender/Proofs/Trace/Families/MulDiv/Composition.lean) reuses
+actual code/configuration frames, native clocks, real history splitting and the
+unchanged shared terminal-state/read proof. The prior pure composition helper
+and original Sail/Clean semantics remain unchanged.
+
+[Complete regressions](Tests/MulDivFetched.lean) cover all sixteen initialized
+cases, concrete terminal arithmetic values, original x0 discards, unsigned
+zero-divisor behavior and empty execution. The actual newest-first two-MUL
+alias program now fetches/decodes after a real prefix update and reaches PC
+eight with x1 and x3 equal to 861, without supplied intermediate or final-state
+premises. The previous stale-timestamp negative test remains rejected by native
+memory matching.
+
+The local native PC proof retains aligned RV32 rollover; this checkpoint adds
+no fetched wraparound fixture or new Rust export. Physical initialization,
+general Rust/JSON/compiler refinement, cryptographic argument enforcement,
+unified execution/protocol spans and completeness remain separately scoped.
+Shift/binop and subword memory are next. No native defect is established.

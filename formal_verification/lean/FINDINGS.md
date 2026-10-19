@@ -70,6 +70,8 @@ backport.
 
 | Original local MUL/DIV execution and native PC wrap | [The public instruction-history claim](Airbender/Review/Trace/Families/MulDiv/Execution.lean) derives original four-operation clauses, actual masked writes and original preparation/retirement from constructed native histories. Actual carry/inverse gates derive bounded modular RV32 PC+4; a full imported row wraps 0xfffffffc to zero. Sixteen initialized cases retain zero divisors and x0 retirement; the actual aliased second MUL retires PC four to eight after a real update. Complete fetched stateful-decoder composition remains unfinished; no native defect, fetched wraparound program or compiler refinement is claimed. |
 
+| Complete fetched unsigned MUL/DIV execution | [The public theorem](Airbender/Review/Trace/Families/MulDiv/FetchedExecution.lean) derives finite original Sail fetch/stateful decoding/preparation/retirement from public initialization and full native matching, including actual terminal PC/register reads and bounds. Actual misa/code frames supply replay; no pure-decoder, extra ISA-read, per-row-step or desired-state premise is supplied. Sixteen complete cases, zero divisors/x0, concrete arithmetic results, a reversed two-MUL alias sequence reaching PC eight/x1=x3=861 and empty execution pass. This closes the family execution connection; no native defect, fetched wraparound fixture, new Rust export or cryptographic/compiler refinement is claimed. |
+
 ## V3 findings awaiting v2 assessment
 
 Bigint control masks, unissued workers, worker ROM ports, decoder filler outside the checked ADD/SUB, word-memory and control minus-one profiles,

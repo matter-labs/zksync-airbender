@@ -332,3 +332,7 @@ shared logical history definitions are unchanged.
 ## Original local MUL/DIV preparation and retirement
 
 [The short public instruction-history claim](Families/MulDiv/Execution.lean) derives the original four-operation clauses and actual PC retirement over constructed register histories. All sixteen initialized cases, original x0 retirement and actual aliased second-MUL retirement pass. A full native row checks RV32 PC wrap. Complete fetched composition still needs stateful decoder replay.
+
+## Complete fetched unsigned MUL/DIV execution
+
+[The short public execution theorem](Families/MulDiv/FetchedExecution.lean) derives finite original fetch/stateful decoding/preparation/retirement from actual public initialization and native matching, reaching native terminal PC/register reads. [Regressions](../../../Tests/MulDivFetched.lean) cover all sixteen initialized cases, concrete arithmetic outcomes, x0/zero divisors, actual alias execution and empty rows. Shift/binop and subword memory are next; general compiler/cryptographic and whole-machine/protocol boundaries remain separate.

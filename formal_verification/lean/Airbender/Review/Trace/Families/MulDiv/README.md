@@ -2,7 +2,7 @@
 
 ## Public claims
 
-Start with [the numerical theorem](Theorems.lean), then [history](History.lean)
+Start with [complete fetched execution](FetchedExecution.lean), then [the numerical theorem](Theorems.lean), [history](History.lean)
 and [word bounds](Values.lean). Actual public seed/PC reads, stateful original
 Sail decoding and full native matching derive every local numerical interface.
 The conclusion retains original public source evidence, actual query equality,
@@ -32,7 +32,7 @@ reject locally valid wrong tags and a compensating flag-2/unbounded write using
 actual public membership. Capacity, unsupported signed forms, UNIMP holes and
 the full tail are checked. No implementation defect is established.
 
-Complete finite fetched Sail execution remains unfinished. Native physical initialization, general
+Complete finite fetched Sail execution is now checked in the latest checkpoint below. Native physical initialization, general
 Rust/JSON/compiler refinement, cryptographic enforcement, unified execution,
 protocol composition and completeness remain separately scoped. Follow
 [the plan](../../../../../FORMAL_VERIFICATION_PLAN.md).
@@ -44,3 +44,7 @@ protocol composition and completeness remain separately scoped. Follow
 ## Original local instruction execution
 
 Start with [the instruction-history theorem](Execution.lean) and [its observables](../../../Helpers/Memory/MulDivExecution.lean). They combine real constructed segment states with original MUL/MULHU/DIVU/REMU clauses and actual nextPC preparation/PC retirement. [All sixteen initialized cases](../../../../../Tests/MulDivExecution.lean) and [the actual alias sequence](../../../../../Tests/MulDivRegisterChain.lean) apply the claim; [a full imported native row](../../../../../Tests/MulDivPC.lean) checks RV32 PC wrap. Complete fetched execution still needs stateful decoder composition and native row boundaries; physical initialization, cryptographic enforcement and general compiler refinement remain separate.
+
+## Complete original fetched execution
+
+Start with [the public execution theorem](FetchedExecution.lean), which uses the unchanged shared complete-execution observations. [Internal family assembly](../../../../Proofs/Trace/Families/MulDiv/Composition.lean) derives actual public fetch/stateful decoding, native PC row boundaries and every original clause/retirement step. [Stateful composition](../../../../Proofs/Trace/StatefulComposition.lean) uses actual misa preservation and the unchanged decoder-frame proof instead of supplying replay or purity. [Complete regressions](../../../../../Tests/MulDivFetched.lean) cover all sixteen cases and their arithmetic terminal reads, the reversed alias program reaching PC eight/x1=x3=861 and empty rows. Physical initialization, compiler/cryptographic refinement, unified/protocol execution and completeness remain separate.

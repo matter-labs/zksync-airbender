@@ -203,3 +203,7 @@ new Rust program-export certificate. General compiler refinement remains open.
 ## Original decoder replay through MUL/DIV history
 
 [Actual native GPR history](../../Trace/Families/MulDiv/Registers.lean) preserves public bytes and misa, then invokes the unchanged original decoder frame. [The alias-prefix regression](../../../../Tests/MulDivRegisterChain.lean) obtains original decoding after a real earlier write, without supplied replay or intermediate-state premises.
+
+## Stateful original decoding through complete MUL/DIV execution
+
+[The complete public trace claim](../../Trace/Families/MulDiv/FetchedExecution.lean) replays actual original decoding after native GPR history and PC bookkeeping. [Internal composition](../../../Proofs/Trace/StatefulComposition.lean) uses the unchanged source decoder-frame theorem and actual misa preservation, without a pure certificate, extra ISA-read or supplied replay premise.
