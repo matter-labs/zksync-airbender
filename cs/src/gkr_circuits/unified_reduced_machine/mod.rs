@@ -3,8 +3,6 @@ use super::*;
 mod add_sub_lui_auipc_mop;
 mod binary_shifts;
 mod circuit;
-#[cfg(test)]
-mod column_cuts_tests;
 mod decoder;
 mod jump_branch_slt;
 mod mem_word_only;

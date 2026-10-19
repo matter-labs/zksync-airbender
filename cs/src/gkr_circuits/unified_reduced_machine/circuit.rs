@@ -99,6 +99,9 @@ const UNIFIED_SCRATCH_VAR_COUNT: usize = const_max(
     const_max(F3_SCRATCH_VARS, F4_SCRATCH_VARS),
 );
 
+pub(super) const F3_RS1_BYTE_SPLIT_SLOTS: [usize; 2] = [17, 18];
+pub(super) const F3_RS2_BYTE_SPLIT_SLOTS: [usize; 2] = [19, 20];
+
 /// The shared F1/F2/F4 register (F1 modular-op canonicity witness, F2 saved
 /// PC / comparison result, F4 `top_14`) lives in Family 3's rs1 byte-split slots and the F2
 /// PC temporary in a Family-3 shift-output slot; F1, F2 and F4 use none of them. Family 3's
@@ -106,7 +109,7 @@ const UNIFIED_SCRATCH_VAR_COUNT: usize = const_max(
 /// avoids the shift-output slots: Family 2's RegIsZero peek reads it, and Family 3's
 /// shift outputs depend on slot 0, which that peek writes, so the witness scheduler would
 /// wait on itself.
-const SHARED_REGISTER_SLOTS: [usize; 2] = [17, 18];
+const SHARED_REGISTER_SLOTS: [usize; 2] = F3_RS1_BYTE_SPLIT_SLOTS;
 const F2_PC_TMP_SLOT: usize = 7;
 const _: () = assert!(
     F2_PC_TMP_SLOT >= const_max(const_max(F1_SCRATCH_VARS, F2_SCRATCH_VARS), F4_SCRATCH_VARS)
@@ -662,6 +665,190 @@ mod test {
     use super::*;
     use crate::definitions::OutputType;
     use crate::utils::serialize_to_file;
+
+    fn eval<F: PrimeField>(
+        constraint: &crate::constraint::Constraint<F>,
+        values: &std::collections::HashMap<Variable, F>,
+    ) -> F {
+        let mut result = F::ZERO;
+        for term in constraint.terms.iter() {
+            match term {
+                Term::Constant(c) => {
+                    result.add_assign(c);
+                }
+                Term::Expression {
+                    coeff,
+                    inner,
+                    degree,
+                } => {
+                    let mut t = *coeff;
+                    for v in &inner[..*degree] {
+                        t.mul_assign(&values[v]);
+                    }
+                    result.add_assign(&t);
+                }
+            }
+        }
+        result
+    }
+
+    /// On every admitted row (an executing row whose mask passes the check the decoder table
+    /// build enforces, or a padding row, whose flags are zero): JAL/JALR write rd unless
+    /// rd = x0, SLT writes rd unless rd = x0, a Family 2 row with rd = x0 writes zero, the PC
+    /// advances by 4 exactly on executing non-Family-2 rows, and an executing row has exactly
+    /// one dispatch bit.
+    #[test]
+    fn gates_match_their_flag_semantics_on_admitted_rows() {
+        use super::super::decoder::unified_decoder_mask_violation;
+        use super::super::jump_branch_slt::f2_rd_write_gates;
+        use crate::gkr_circuits::jump_branch_slt_family::{
+            BRANCH_BIT, JALR_BIT, JAL_BIT, RD_IS_ZERO_BIT, SLT_BIT,
+        };
+        use ::field::baby_bear::base::BabyBearField;
+        use ::field::proth120::Proth120;
+
+        fn check<F: PrimeField>() {
+            let execute = Variable(0);
+            let bits: [Variable; UNIFIED_REDUCED_MACHINE_NUM_FLAGS] =
+                core::array::from_fn(|i| Variable(i as u64 + 1));
+            let mask =
+                UnifiedReducedMachineFamilyCircuitMask::from_full_mask(bits.map(Boolean::Is));
+            let f2 = mask.jump_branch_slt();
+            let [jal_or_jalr_writes_rd, slt_writes_rd, rd_is_x0] = f2_rd_write_gates(
+                f2.perform_jal(),
+                f2.perform_jalr(),
+                f2.perform_slt(),
+                f2.perform_branch(),
+                f2.rd_is_zero(),
+            );
+            let gates = [
+                jal_or_jalr_writes_rd,
+                slt_writes_rd,
+                rd_is_x0,
+                pc_bump_gate(execute, &mask),
+                Expr::var(execute) - dispatch_sum(&mask),
+            ]
+            .map(|e| e.to_max_quadratic_constraint());
+
+            let executing: Vec<u32> = (0..1u32 << UNIFIED_REDUCED_MACHINE_NUM_FLAGS)
+                .filter(|&m| unified_decoder_mask_violation(m).is_none())
+                .collect();
+            assert_eq!(executing.len(), 20);
+            for (is_executing, m) in executing.into_iter().map(|m| (true, m)).chain([(false, 0)]) {
+                let mut values: std::collections::HashMap<_, _> = bits
+                    .iter()
+                    .enumerate()
+                    .map(|(i, v)| (*v, F::from_u32_unchecked(m >> i & 1)))
+                    .collect();
+                values.insert(execute, F::from_u32_unchecked(is_executing as u32));
+                let f2_flag = |b: usize| m >> (FAMILY_2_FLAG_OFFSET + b) & 1 == 1;
+                let [jal, jalr, slt, branch, rd_is_zero] =
+                    [JAL_BIT, JALR_BIT, SLT_BIT, BRANCH_BIT, RD_IS_ZERO_BIT].map(f2_flag);
+                let family_2 = jal || jalr || slt || branch;
+                let semantics = [
+                    (jal || jalr) && !rd_is_zero,
+                    slt && !rd_is_zero,
+                    family_2 && rd_is_zero,
+                    is_executing && !family_2,
+                    false,
+                ];
+                for (i, (gate, expected)) in gates.iter().zip(semantics).enumerate() {
+                    assert_eq!(
+                        eval(gate, &values),
+                        if expected { F::ONE } else { F::ZERO },
+                        "gate {i}, execute {is_executing}, mask {m:#b}"
+                    );
+                }
+            }
+        }
+        check::<BabyBearField>();
+        check::<Proth120>();
+    }
+
+    /// The committed layouts and witness graphs of both fields: each scratch slot that holds
+    /// another family's u16 limb (the shared register and the Family 2 PC temporary) has
+    /// exactly one bare RC-16 lookup and no u8 or bool writer. The generated witness function
+    /// reads a masked-off target back at the writer's own width, so a narrow writer would
+    /// truncate the limb.
+    #[test]
+    fn aliased_scratch_slots_are_range_checked_and_written_at_least_u16() {
+        use crate::gkr_compiler::GKRCircuitArtifact;
+        use crate::witness_placer::graph_description::{Expression, RawExpression};
+        use ::field::baby_bear::base::BabyBearField;
+        use ::field::proth120::Proth120;
+
+        fn read_json<T: serde::de::DeserializeOwned>(path: &str) -> T {
+            let file = std::fs::File::open(path).unwrap_or_else(|e| panic!("{path}: {e}"));
+            serde_json::from_reader(std::io::BufReader::new(file)).unwrap()
+        }
+
+        fn check<F: PrimeField + serde::de::DeserializeOwned>(layout: &str, ssa: &str) {
+            let artifact: GKRCircuitArtifact<F> = read_json(layout);
+            let ssa: Vec<Vec<RawExpression<F>>> = read_json(ssa);
+            let slot_var = |slot: usize| {
+                let name = format!("shared scratch var[{slot}]");
+                let vars: Vec<Variable> = artifact
+                    .variable_names
+                    .iter()
+                    .filter(|(_, n)| **n == name)
+                    .map(|(v, _)| *v)
+                    .collect();
+                assert_eq!(vars.len(), 1, "{layout}: {name}");
+                vars[0]
+            };
+            let writer_types = |slot: usize| -> Vec<&'static str> {
+                let var = slot_var(slot);
+                ssa.iter()
+                    .flatten()
+                    .filter_map(|e| match e {
+                        RawExpression::WriteVariable {
+                            into_variable,
+                            source_subexpr,
+                            ..
+                        } if *into_variable == var => Some(match source_subexpr {
+                            Expression::Bool(_) => "bool",
+                            Expression::Field(_) => "field",
+                            Expression::U8(_) => "u8",
+                            Expression::U16(_) => "u16",
+                            Expression::U32(_) => "u32",
+                        }),
+                        _ => None,
+                    })
+                    .collect()
+            };
+            for slot in SHARED_REGISTER_SLOTS.into_iter().chain([F2_PC_TMP_SLOT]) {
+                let addr = artifact.placement_data[&slot_var(slot)];
+                let range_checks = artifact
+                    .range_check_16_lookup_expressions
+                    .iter()
+                    .filter(|l| {
+                        l.input.is_trivial_single_input() && l.input.linear_terms[0].1 == addr
+                    })
+                    .count();
+                assert_eq!(range_checks, 1, "{layout} slot {slot}: RC-16 lookups");
+                let types = writer_types(slot);
+                assert!(types.len() >= 2, "{layout} slot {slot}: writers {types:?}");
+                assert!(
+                    types.iter().all(|t| !matches!(*t, "u8" | "bool")),
+                    "{layout} slot {slot}: writers {types:?}"
+                );
+            }
+            let byte_slot = F3_RS2_BYTE_SPLIT_SLOTS[0];
+            assert!(
+                writer_types(byte_slot).contains(&"u8"),
+                "{layout}: slot {byte_slot}'s byte writer not seen"
+            );
+        }
+
+        check::<BabyBearField>(
+            "compiled_circuits/unified_reduced_machine_layout_gkr.json",
+            "compiled_circuits/unified_reduced_machine_ssa_gkr.json",
+        );
+        check::<Proth120>(
+            "compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
+            "compiled_circuits/unified_reduced_machine_ssa_gkr_proth120.json",
+        );
+    }
 
     #[test]
     fn unified_rs2_sign_lookup_reads_slt_sign_source_scratch() {

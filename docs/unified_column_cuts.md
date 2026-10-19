@@ -18,8 +18,8 @@ relations they enforced are carried by constraints on the retained columns. Noth
 the circuit changes: the memory layout, the lookup counts, the scratch width 41, the
 generic-lookup setup width 10 and every GKR layer above the first keep their dimensions.
 
-`circuit.rs`, `decoder.rs`, `jump_branch_slt.rs`, `binary_shifts.rs`, `add_sub_lui_auipc_mop.rs`,
-`mem_word_only_lw_sw.rs` and `column_cuts_tests.rs` are under
+`circuit.rs`, `decoder.rs`, `jump_branch_slt.rs`, `binary_shifts.rs`, `add_sub_lui_auipc_mop.rs`
+and `mem_word_only_lw_sw.rs` are under
 `cs/src/gkr_circuits/unified_reduced_machine/`; other paths are relative to the repository
 root.
 
@@ -287,9 +287,9 @@ leaves in that slot. Family 3 writes its byte splits as
 |---|---|---|---|
 | Widths of §1 | committed layouts; the generated verifiers declare `[38, 58, 10]` columns for the regular circuit and `[96, 10]` for the feeder variant | | regenerated from the circuit, see §6 |
 | Decoder masks obey the facts of §2 | the panic in `define_decoder_subspace`; `decoder::tests::invalid_decoded_mask_panics`; the existing decoder tests decode a representative of each accepted opcode through the panic (`decoder_family_dispatch_bits_exclusive` and the per-family tests) | `cs` | fail-closed at table build |
-| Each new gate equals its removed helper on every admitted row, and the tie holds there | `column_cuts_tests::column_cut_gates_equal_the_replaced_helpers_on_admitted_rows` | `cs` | the 20 masks that pass `unified_decoder_mask_violation` plus padding, both fields |
-| Slots 17, 18, 7 each carry one bare RC-16 lookup; no u8 or bool writer (§4) | `column_cuts_tests::aliased_slots_are_range_checked_and_written_at_least_u16` | `cs` | committed layouts and SSA graphs, both fields |
-| Forged flags, padding flags, `RD_IS_ZERO` misuse, rd writes on x0/branch, wrong non-F2 PC, forged carry, slot-7 attacks all rejected | `tests::gkr::unified_negative_tests::column_cuts_negative_cases_rejected`, plus the pre-existing `two_family_bits_on_one_row_rejected`, `empty_family_mask_on_executing_row_rejected`, `unified_f2_pooled_var_binds_on_slt_row_rejected`, `unified_top14_pooled_corruption_on_sw_row_rejected`, `unified_mulmod_intermediate_forge_rejected` | `prover` | one honest trace, each case attributed to the named constraint |
+| Each gate matches its flag semantics on every admitted row, and the tie holds there | `circuit::test::gates_match_their_flag_semantics_on_admitted_rows` | `cs` | the 20 masks that pass `unified_decoder_mask_violation` plus padding, both fields |
+| Slots 17, 18, 7 each carry one bare RC-16 lookup; no u8 or bool writer (§4) | `circuit::test::aliased_scratch_slots_are_range_checked_and_written_at_least_u16` | `cs` | committed layouts and SSA graphs, both fields |
+| Forged flags, padding flags, `RD_IS_ZERO` misuse, rd writes on x0/branch, wrong non-F2 PC, forged carry, slot-7 attacks all rejected | `tests::gkr::unified_negative_tests::flag_gate_and_aliased_slot_forgeries_rejected`, plus the pre-existing `two_family_bits_on_one_row_rejected`, `empty_family_mask_on_executing_row_rejected`, `unified_f2_pooled_var_binds_on_slt_row_rejected`, `unified_top14_pooled_corruption_on_sw_row_rejected`, `unified_mulmod_intermediate_forge_rejected` | `prover` | one honest trace, each case attributed to the named constraint |
 | The PC-bump carry at the 0xFFFC boundary | `tests::single_cycle_tests::unified_circuit_tests::pc_carry_boundary_tests::pc_bump_carry_boundary_rejects_forgeries` | `prover` | honest carry, dropped carry, unchanged high limb; both fields |
 | Generated witness code is satisfying on real traces (§4) | `tests::gkr::unified_generated_witness::generated_witness_satisfies_{regular_layout,proth120_wrap_layout}` | `prover` | also asserts a non-F3 row with a register limb above 0xFF in slot 17 |
 | Committed CUDA witness source and forward schedule follow the new layout | `gpu_witness_eval_generator` `tests::{committed_witness_cuh_is_current, every_committed_cuh_is_listed}`; `gpu_gkr_compiler` `every_retained_forward_artifact_validates_compiles_and_encodes` (`tests/forward_corpus.rs`) | GPU crates | currentness guards, no GPU needed; they do not establish GPU execution parity |
@@ -313,7 +313,7 @@ Coverage limits:
   lookup argument. The native round trip enforces that argument on the honest program it
   proves; no adversarial round trip with such an injected corruption was run.
 - No test exhaustively checks that every reader of slot 17, 18 or 7 is inactive on other
-  families' rows; the slot-7 cases of `column_cuts_negative_cases_rejected` check it for the
+  families' rows; the slot-7 cases of `flag_gate_and_aliased_slot_forgeries_rejected` check it for the
   Family 2 constraints on an F3 row. §2 needs the property only for completeness; the
   generated-witness tests and the proof round trips exercise it on real programs.
 - The writer-width rule is checked for slots 17, 18 and 7 only.
@@ -349,10 +349,11 @@ cargo test -p unified_reduced_machine --release --lib test::generate -- --exact
 cargo run --release -p gpu_witness_eval_generator --bin generate -- cs/compiled_circuits/unified_reduced_machine_layout_gkr.json cs/compiled_circuits/unified_reduced_machine_ssa_gkr.json circuit_defs/unrolled_circuits/unified_reduced_machine/generated/witness_generation_fn.cuh
 cargo run --release -p gpu_gkr_compiler --features search --bin gkr-forward-artifact -- --if-stale --circuit unified_reduced_machine --layout cs/compiled_circuits/unified_reduced_machine_layout_gkr.json --output cs/compiled_circuits/unified_reduced_machine_schedule_b4_gkr.json --seed 42 --cache-buckets 4 --population 64 --evaluations 1024
 cargo test -p verifier_generator --no-default-features --test generate_verifiers -- --exact unified_reduced_machine unified_reduced_machine_l1_feeder --test-threads=1
-# the column-cut checks
-cargo test -p cs --release --lib column_cuts
+# the gate, slot, decoder and forgery checks
+cargo test -p cs --release --lib unified_reduced_machine::circuit::test::gates_match_their_flag_semantics_on_admitted_rows
+cargo test -p cs --release --lib unified_reduced_machine::circuit::test::aliased_scratch_slots_are_range_checked_and_written_at_least_u16
 cargo test -p cs --release --lib unified_reduced_machine::decoder::tests
-cargo test -p prover --release --lib column_cuts_negative_cases_rejected
+cargo test -p prover --release --lib flag_gate_and_aliased_slot_forgeries_rejected
 cargo test -p prover --release --lib pc_bump_carry_boundary_rejects_forgeries
 cargo test -p prover --release --lib unified_generated_witness
 ```

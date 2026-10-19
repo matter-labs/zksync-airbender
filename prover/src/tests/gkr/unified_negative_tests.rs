@@ -1440,11 +1440,11 @@ fn generate_malicious_unified_proofs() {
     );
 }
 
-/// Negative cases for the column-cut gates, all on one honest trace (the control passes
-/// arithmetic, ranges and decoder membership). Each case writes cells after witness
-/// generation, checks the named rejection, and restores the cells.
+/// Forgeries of the decoder flags, the rd write, the PC and the aliased scratch slots, all on
+/// one honest trace (the control passes arithmetic, ranges and decoder membership). Each case
+/// writes cells after witness generation, checks the named rejection, and restores the cells.
 #[test]
-fn column_cuts_negative_cases_rejected() {
+fn flag_gate_and_aliased_slot_forgeries_rejected() {
     type F = BabyBearField;
     let (circuit, mut trace, table) = honest_trace_with_decoder_table();
     let addr = |name: &str| find_base_layer_address(&circuit, name);

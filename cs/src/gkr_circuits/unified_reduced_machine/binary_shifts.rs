@@ -1,4 +1,6 @@
-use super::circuit::{LookupRequest, F3_SCRATCH_VARS};
+use super::circuit::{
+    LookupRequest, F3_RS1_BYTE_SPLIT_SLOTS, F3_RS2_BYTE_SPLIT_SLOTS, F3_SCRATCH_VARS,
+};
 use super::*;
 use crate::cs::circuit_trait::*;
 use crate::cs::lookup_utils::peek_lookup_values_unconstrained_into_variables;
@@ -60,10 +62,8 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     let shift_output_chunks = shift_outputs.as_chunks::<4>().0;
 
     let inv_256 = F::from_u32_with_reduction(1 << 8).inverse().unwrap();
-    let rs1_b0 = scratch_space[17];
-    let rs1_b2 = scratch_space[18];
-    let rs2_b0 = scratch_space[19];
-    let rs2_b2 = scratch_space[20];
+    let [rs1_b0, rs1_b2] = F3_RS1_BYTE_SPLIT_SLOTS.map(|slot| scratch_space[slot]);
+    let [rs2_b0, rs2_b2] = F3_RS2_BYTE_SPLIT_SLOTS.map(|slot| scratch_space[slot]);
     let hi_byte = |lo_limb: Variable, lo_byte: Variable| -> Expr<F> {
         (Expr::from(lo_limb) - Expr::from(lo_byte)) * inv_256
     };
