@@ -2435,6 +2435,47 @@
       "backport_reuse_path": "Tests/ControlHistory.lean",
       "backport_reuse_sha256": "8303ba037c6b1d2c38400d921ac7685ba94f27b1922af03cdf63a7d3ff33d0c2",
       "change": "Reuse complete logical memory-token matching and readonly alias refresh semantics. In true SLTIU-to-x0, the destination read consumes the dummy rs2 x0 refresh at time five and the masked zero is written at six. Its query matches the prior actual native export; a wrong positive flag retains its field equation but fails actual scalar query two."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/ComparisonPC.lean",
+      "source_path": "Airbender/Proofs/JumpBranchSlt/PC.lean",
+      "source_sha256": "e6fa20dc4d0c6bddc9a149c5dd220814470334d0429a2ae351aed01d7afb03d4",
+      "change": "Adapt original comparison_pc modular addition and alignment lifting to actual v2 candidate 42/43, carries 50/44 and equations 31/32. Native equations 27/28 route the raw comparison candidate directly, so no source cleanup behavior is copied. Both output limb bounds follow from actual scalar queries four/five, removing the source final-high interface premise. Incoming bounds/alignment and selectors remain internal interfaces discharged by public decoding."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/ComparisonPC.lean",
+      "backport_reuse_revision": "551c02d045b5f6ed7d626314c1eed9deaa3bb044",
+      "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/Target.lean",
+      "backport_reuse_sha256": "eb240e5c7f306f48736fce3c5490c94b49da7df54a4d1a4c5809f1d7f3a0834e",
+      "change": "Reuse pc_carries unchanged and the actual candidate_high_bound binding. Keep native RV32 high-limb wrap and unchanged Word.add_of_limbs; derive comparison-only branch-zero routing from native equations 24/25."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/ComparisonPC.lean",
+      "backport_reuse_revision": "551c02d045b5f6ed7d626314c1eed9deaa3bb044",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/Comparisons.lean",
+      "backport_reuse_sha256": "04adffbd482ace09cfa394b7b4562d06c419c83cf03fed923881a9fb8eef42f2",
+      "change": "Reuse actual row/native normalization, decoded_inputs and comparison_selectors. Public original bytes derive incoming PC bounds/alignment and exact comparison identity. The PC calculation needs no source-register/image boundary or initialized value induction."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/JumpBranchSlt/ComparisonPC.lean",
+      "backport_reuse_revision": "551c02d045b5f6ed7d626314c1eed9deaa3bb044",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/JumpBranchSlt/Targets.lean",
+      "backport_reuse_sha256": "a57a5c23e51dbc0a9f2e06a23a4b9152868371b733447c17f3522aeea113e604",
+      "change": "Keep a single short public native PC/alignment claim; proof assembly stays under Proofs. Omit the register-image boundary because comparison PC depends only on actual public decoded PC and native constraints. Original Sail instruction retirement remains separate."
+    },
+    {
+      "path": "Tests/ComparisonPC.lean",
+      "backport_reuse_revision": "551c02d045b5f6ed7d626314c1eed9deaa3bb044",
+      "backport_reuse_path": "Tests/ControlComparisons.lean",
+      "backport_reuse_sha256": "6a3a8911fec4018f668e3f9a955ccc6ea82ed7a739b1152186468e5abe5ff5fa",
+      "change": "Import the four existing original-byte, separately initialized SLT/SLTU/SLTI/SLTIU fixtures unchanged, with their native acceptance and complete decoding; derive PC+4/alignment through the new public theorem. No new native program export certificate is claimed."
+    },
+    {
+      "path": "Tests/ComparisonPC.lean",
+      "backport_reuse_revision": "551c02d045b5f6ed7d626314c1eed9deaa3bb044",
+      "backport_reuse_path": "Tests/JumpLink.lean",
+      "backport_reuse_sha256": "0edac91dc22af2910184aa5af914704535d1a2960a06ec33a948c70a7f73f2f1",
+      "change": "Reuse the full native local rollover and altered-observable rejection pattern. Preserve all native comparison equations/queries while changing incoming PC to 0xfffffffc, candidate/final PC to zero and both target carries to one. Local wrap is not an initialized/public-decoder trace."
     }
   ],
   "setup_artifacts": [

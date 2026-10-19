@@ -902,3 +902,28 @@ The new logical program has no new general native export certificate. Branch
 semantics, original Sail instruction clauses/PC retirement, complete control
 execution and terminal instruction-state matching remain open; general
 Rust/compiler/cryptographic refinement stays separate.
+
+## Native comparison PC advancement
+
+[Comparison PC arithmetic](Airbender/Proofs/JumpBranchSlt/ComparisonPC.lean)
+now derives PC+4 and four-byte alignment for SLT/SLTU/SLTI/SLTIU, including
+RV32 rollover. Native equations 24/25 exclude branch routing; equations 31/32
+and Boolean carry assertions 10/8 determine candidate 42/43. Actual scalar
+queries four/five bound both limbs. Equations 27/28 route that raw candidate
+directly to final PC 13/14. Unlike the source layout, comparison PC does not
+pass through cleanup. Original modular word addition is reused unchanged;
+no final-high closure assumption is imported.
+
+[One short public claim](Airbender/Review/Trace/Families/JumpBranchSlt/ComparisonPC.lean)
+derives incoming PC bounds/alignment and comparison identity from original
+public bytes, complete decoder membership and native acceptance. It needs no
+register-image boundary: this numerical PC calculation reads no source GPR.
+No per-row selector, carry, range, alignment or expected PC is supplied.
+[Regressions](Tests/ComparisonPC.lean) reuse all four separately initialized
+comparison fixtures, check a full native local 0xfffffffc-to-zero row, and reject
+an altered outgoing PC with unchanged decoder columns. The wrap row is local,
+not an initialized/public-decoder execution or a new native program export.
+Original Sail instruction clauses/retirement, branch semantics and complete
+control execution/terminal instruction-state matching remain open. General
+Rust/compiler/cryptographic refinement remains separate. No new v2 defect is
+established.

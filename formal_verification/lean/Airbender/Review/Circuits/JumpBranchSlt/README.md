@@ -148,3 +148,16 @@ public decoding. [Tests](../../../../Tests/ControlComparisons.lean) check all
 four comparisons with separately initialized states, signed/unsigned disagreement,
 negative immediate, discarded raw one and rejected sign-shift range violation.
 Branch semantics and original Sail instruction/PC execution remain separate.
+
+## Comparison PC advancement
+
+[Native PC arithmetic](../../../Proofs/JumpBranchSlt/ComparisonPC.lean) reuses
+Boolean carries and unchanged word addition, derives both candidate bounds from
+actual scalar queries four/five, and follows raw comparison routing to PC 13/14.
+[The short public claim](../../Trace/Families/JumpBranchSlt/ComparisonPC.lean)
+derives incoming bounds/alignment and selection from original public bytes;
+no register-image boundary or final-high closure premise is needed.
+[Tests](../../../../Tests/ComparisonPC.lean) reuse all four initialized comparison
+histories and check full local RV32 wrap plus altered-PC rejection. The local
+wrap has no initialized/public-decoder execution or new native export claim.
+Original Sail retirement and branch semantics remain separate.

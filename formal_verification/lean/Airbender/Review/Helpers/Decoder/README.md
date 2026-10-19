@@ -138,3 +138,10 @@ use actual original decoder metadata to derive register/immediate mask identity,
 signed/unsigned funct3 and the exact x0 flag. Initialized matching supplies native
 operand bounds; no local selector, sign/borrow bit or desired result is supplied.
 Original Sail instruction execution/retirement and branch semantics remain open.
+
+[Comparison PC advancement](../../Trace/Families/JumpBranchSlt/ComparisonPC.lean)
+uses full original public decoder membership to derive incoming PC bounds,
+alignment and register/immediate comparison identity. Native equations and both
+candidate scalar queries determine PC+4 with RV32 wrap. This PC-only claim needs
+no register-image boundary and supplies no desired PC or final-high closure.
+Original instruction retirement and branch semantics remain separate.

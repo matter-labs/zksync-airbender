@@ -1,4 +1,5 @@
 import Airbender
+import Tests.ComparisonPC
 import Tests.ControlComparisons
 import Tests.JumpTarget
 import Tests.PC
@@ -1009,3 +1010,10 @@ import Tests.JumpLink
 #print axioms Tests.ControlComparisons.exported_sltiu
 #print axioms Tests.ControlComparisons.bad_positive_equation
 #print axioms Tests.ControlComparisons.bad_positive_rejected
+#print axioms Airbender.JumpBranchSlt.Proofs.comparison_pc
+#print axioms Airbender.JumpBranchSlt.Proofs.image_comparison_pc
+#print axioms Airbender.JumpBranchSlt.public_comparison_pc
+#print axioms Tests.ComparisonPC.public_pc
+#print axioms Tests.ComparisonPC.wrap_native
+#print axioms Tests.ComparisonPC.wrap_pc
+#print axioms Tests.ComparisonPC.altered_pc_rejected

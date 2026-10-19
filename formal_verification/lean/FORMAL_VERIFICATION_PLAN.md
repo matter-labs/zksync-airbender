@@ -324,7 +324,14 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    initialized cases cover signed/unsigned disagreement, sign-extended -1,
    discarded true SLTIU-to-x0 and its readonly alias refresh. Its query also occurs
    in the prior native export; new logical-program export is not claimed.
-   Next derive branch semantics and comparison PC advancement, connect
+   [Comparison PC advancement](Airbender/Review/Trace/Families/JumpBranchSlt/ComparisonPC.lean)
+   now follows from actual native candidate/routing equations, Boolean carries
+   and both scalar bounds, retaining RV32 wrap. Public decoding derives incoming
+   ranges/alignment and exact comparison selection; no register-image boundary
+   or per-row PC/carry/result is required. All four initialized fixtures pass;
+   full native wrap and altered-PC rejection are local regressions, not a new
+   initialized wrap execution or native export certificate.
+   Next derive branch semantics, connect
    original control Sail clauses and PC preparation/retirement, then full execution
    and actual terminal instruction-state matching. General Rust/compiler and cryptographic refinement remain separate. No per-row result/PC or
    table-equivalence premise is added.

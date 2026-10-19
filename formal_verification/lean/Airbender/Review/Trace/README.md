@@ -246,3 +246,12 @@ and x0. Native equations and actual scalar/fixed queries derive signs and borrow
 cover signed/unsigned disagreement, sign-extended -1 and discarded true SLTIU-to-x0
 with its real readonly refresh. No expected read/result, selector or bound is
 supplied. Branch semantics and full original instruction/PC execution remain open.
+
+[Comparison PC advancement](Families/JumpBranchSlt/ComparisonPC.lean) now derives
+PC+4 and alignment from public decoding and native acceptance. Comparison rows
+route the ranged raw candidate directly; no source-register/image premise is
+needed. Native carries and both scalar queries retain RV32 wrap.
+[All four initialized fixtures](../../../Tests/ComparisonPC.lean) pass; full
+native local wrap and altered-PC rejection are also checked. Local wrap is not
+an initialized/public-decoder execution. Original Sail instruction retirement,
+branches and complete control execution remain open.
