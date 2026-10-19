@@ -66,6 +66,14 @@ def main():
         assert (region["id"],region["offset"],region["data"]["length"]) == (49,2363393,2097152)
         assert layout["table_offsets"][region["id"]] == region["offset"]
         print("PASS reproducible actual native SLL-high table and compiled offset", flush=True)
+        subprocess.run([str(binary), "--sll-low", str(compiled), str(output)], check=True)
+        assert output.read_bytes() == (ROOT / "artifacts/setup/shift-sll-low-native.json").read_bytes()
+        sll = json.loads(output.read_bytes())
+        assert sll["generic_rows"] == 2097152 and len(sll["tables"]) == 1
+        region = sll["tables"][0]
+        assert (region["id"],region["offset"],region["data"]["length"]) == (48,266241,2097152)
+        assert layout["table_offsets"][region["id"]] == region["offset"]
+        print("PASS reproducible actual native SLL-low table and compiled offset", flush=True)
         subprocess.run([str(binary), "--small-range", str(output)], check=True)
         assert output.read_bytes() == (ROOT / "artifacts/setup/mul-div-small-range-native.json").read_bytes()
         print("PASS reproducible native unsigned mul/div byte tables", flush=True)

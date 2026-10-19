@@ -48,6 +48,50 @@ private def scalarChecks (setupSource : String) : IO Unit := do
   check (rejected (Setup.parseScalars setupSource)) "reject program artifact as scalar export"
   check (rejected (Setup.parse scalarSource)) "reject scalar artifact as program export"
 
+private def sllLowChecks : IO Unit := do
+  let source ← IO.FS.readFile "artifacts/setup/shift-sll-low-native.json"
+  let a ← IO.ofExcept (Setup.parseSllLow source)
+  check (a.generic_rows == 2097152 && a.tables.size == 1) "actual native zero/SLL-low prefix extent"
+  check (rejected ({a with version := 2}.validateSllLow)) "reject SLL-low prefix version"
+  check (rejected ({a with field_modulus := 2013265921}.validateSllLow)) "reject v3 SLL-low prefix field"
+  check (rejected ({a with profile := "jump_branch_slt_fixed"}.validateSllLow)) "reject SLL-low prefix profile"
+  check (rejected ({a with generic_rows := 2097151}.validateSllLow)) "reject incomplete SLL-low prefix"
+  check (rejected ({a with tables := a.tables.extract 1 1}.validateSllLow)) "reject missing native SLL-low region"
+  check (rejected ({a with tables := a.tables ++ a.tables}.validateSllLow)) "reject extra SLL-low regions"
+  check (rejected ({a with tables := a.tables.modify 0 (fun r => {r with id := 51})}.validateSllLow))
+    "reject wrong SLL-low native tag"
+  check (rejected ({a with tables := a.tables.modify 0 (fun r => {r with offset := 0})}.validateSllLow))
+    "reject overlapping SLL-low region"
+  check (rejected ({a with tables := a.tables.modify 0 (fun r => {r with data := {r.data with length := 2097151}})}.validateSllLow))
+    "reject incomplete SLL-low table"
+  check (rejected ({a with tables := a.tables.modify 0 (fun r => {r with data := {r.data with columns := r.data.columns.extract 0 3}})}.validateSllLow))
+    "reject missing SLL-low tag column"
+  check (rejected ({a with tables := a.tables.modify 0 (fun r => {r with data := {r.data with columns := #[⟨#[.affine 2097152 2147483647 0]⟩,⟨#[.affine 2097152 0 0]⟩,⟨#[.affine 2097152 0 0]⟩,⟨#[.affine 2097152 0 0]⟩]}})}.validateSllLow))
+    "reject noncanonical SLL-low field data"
+  check (rejected ({a with tables := a.tables.modify 0 (fun r => {r with data := {r.data with columns := r.data.columns.set! 0 ⟨#[.affine 2097151 0 0]⟩}})}.validateSllLow))
+    "reject incomplete SLL-low column"
+  let j ← IO.ofExcept (Json.parse source)
+  let extra ← IO.ofExcept (replaceField j "invented" (.bool true))
+  check (rejected (Setup.parseSllLow extra.compress)) "reject unknown SLL-low prefix field"
+  check (rejected (Setup.parseControl source)) "reject SLL-low prefix as control tables"
+  check (rejected (Setup.parseSmallRange source)) "reject SLL-low prefix as mul/div table"
+  check (rejected (Setup.parseSllLow (← IO.FS.readFile "artifacts/setup/jump-control-native.json")))
+    "reject control tables as SLL-low prefix"
+
+  check (rejected (Setup.parseBinary source)) "reject SLL-lows as binary prefix"
+  check (rejected (Setup.parseSllLow (← IO.FS.readFile "artifacts/setup/shift-binary-native.json")))
+    "reject binary prefix as SLL-lows"
+
+  check (rejected (Setup.parseShiftScalars source)) "reject SLL-low as shift scalars"
+  check (rejected (Setup.parseSllLow (← IO.FS.readFile "artifacts/setup/shift-scalars-native.json")))
+    "reject shift scalars as SLL-low"
+  check (rejected (Setup.parseSrlLow source)) "reject SLL-low as SRL-low"
+  check (rejected (Setup.parseSllLow (← IO.FS.readFile "artifacts/setup/shift-srl-low-native.json")))
+    "reject SRL-low as SLL-low"
+  check (rejected (Setup.parseSllHigh source)) "reject SLL-low as SLL-high"
+  check (rejected (Setup.parseSllLow (← IO.FS.readFile "artifacts/setup/shift-sll-high-native.json")))
+    "reject SLL-high as SLL-low"
+
 private def sllHighChecks : IO Unit := do
   let source ← IO.FS.readFile "artifacts/setup/shift-sll-high-native.json"
   let a ← IO.ofExcept (Setup.parseSllHigh source)
@@ -653,6 +697,7 @@ def main : IO UInt32 := do
     shiftScalarChecks
     srlLowChecks
     sllHighChecks
+    sllLowChecks
     controlDecoderChecks
     decoderPaddingChecks
     controlChecks

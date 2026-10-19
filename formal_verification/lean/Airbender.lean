@@ -56,3 +56,4 @@ import Airbender.Review.Helpers.Tables.NativeBinary
 import Airbender.Review.Helpers.Tables.NativeShiftScalars
 import Airbender.Review.Helpers.Tables.NativeSrlLow
 import Airbender.Review.Helpers.Tables.NativeSllHigh
+import Airbender.Review.Helpers.Tables.NativeSllLow

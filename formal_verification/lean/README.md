@@ -1264,3 +1264,38 @@ Native low-input SLL and high-input SRL remain, followed by faithful dynamic
 lookup import, numerical family soundness and initialized execution. Custom
 CSR/oracle semantics, general Rust/JSON/compiler refinement and cryptographic
 enforcement remain separate.
+
+## Native low-input logical left shift
+
+[Two short public helper claims](Airbender/Review/Helpers/Tables/NativeSllLow.lean)
+connect original Clean membership to every actual native low-input SLL row.
+Membership derives the packed-key bound, both 16-bit output bounds and exact
+RV32 left-shift semantics after reconstructing the low/high output limbs.
+Carry across bit 16 and truncation past bit 31 follow from the native values;
+no output bounds, table equivalence or desired shift result is assumed.
+
+[The actual native export](artifacts/setup/shift-sll-low-native.json) retains
+ID 48, compiled offset 266241 and all 2,097,152 rows. Strict literal import checks
+its complete canonical four-column data and exact regional metadata. Native
+reproduction preserves all previous profiles byte-for-byte; crossed SLL/SRL and
+scalar/binary/control profiles reject.
+
+[Checked reuse](Airbender/Proofs/Tables/SllLowColumns.lean) identifies the entire
+low-output column with the previously certified native SLL-high output column.
+[Structural geometry](Airbender/Proofs/Tables/SllLowParts.lean) retains all 145
+high-output blocks: six symbolic prefix partitions and the existing 73-block
+SLL-high suffix. [Generic certificate transport](Airbender/Proofs/Tables/BlockTransport.lean)
+reuses those proved values after an independently proved shift-sixteen index
+translation. [Arithmetic](Airbender/Proofs/Tables/SllLowMath.lean) reconstructs
+RV32 results with standard quotient/remainder identities. Existing block
+semantics, checked templates and native codec remain unchanged.
+Direct imported-column normalization reached the resident watchdog limit;
+structural list equality replaces it under unchanged ceilings. The watchdog
+confirmed termination of every owned worker after that limit.
+
+[Regressions](Tests/NativeSllLow.lean) check shifts zero/one/fifteen/sixteen/31,
+first carry and its preceding input, the final surviving bit and the following
+discard boundary, plus malformed low/high/limb/key queries. No native defect is
+established. High-input SRL remains before faithful dynamic constraint import,
+numerical family soundness and initialized execution; general Rust/compiler
+refinement and cryptographic enforcement remain separate.

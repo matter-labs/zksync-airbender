@@ -193,4 +193,12 @@ elab "import_native_sll_high " name:ident " from " path:str : command => do
   let some region := artifact.tables[0]? | throwError "missing native SLL-high table"
   emitData name region.data region.offset
 
+/-- Literal native low-input logical-left-shift rows only. -/
+elab "import_native_sll_low " name:ident " from " path:str : command => do
+  let artifact ← match parseSllLow (← IO.FS.readFile path.getString) with
+    | .ok artifact => pure artifact
+    | .error error => throwError "native SLL-low import failed: {error}"
+  let some region := artifact.tables[0]? | throwError "missing native SLL-low table"
+  emitData name region.data region.offset
+
 end Airbender.Setup

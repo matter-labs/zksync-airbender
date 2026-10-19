@@ -453,8 +453,14 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    ten stored-template certificates retain all 74 native blocks, original
    offset 2363393 and actual shift/discard boundaries. Generic size/output
    assembly keeps imported arrays out of metadata normalization, under the same
-   caps. Continue with low-input SLL and high-input SRL, then faithful dynamic
-   lookup import and numerical/initialized family soundness.
+   caps. Low-input SLL now also has exact actual-data/Clean membership and
+   reconstructed RV32 results for all 2,097,152 rows, deriving both limb bounds.
+   Its low column is identified with checked native SLL-high; all 145 high-output
+   blocks retain native carry/truncation, with six symbolic prefix certificates
+   and a 73-block suffix transported from that existing proof. First-carry,
+   shift-sixteen and final-bit/discard boundaries pass under unchanged caps.
+   Continue with high-input SRL, then faithful dynamic lookup import and
+   numerical/initialized family soundness.
 4. Rebind bigint/BLAKE/Keccak workers and callers. Retest control validity,
    unissued workers, ROM behavior and request participation on v2 before reusing
    any source finding or temporary premise.

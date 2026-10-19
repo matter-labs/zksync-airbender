@@ -4069,6 +4069,153 @@
       "backport_reuse_path": "../native_setup_exporter/src/main.rs",
       "backport_reuse_sha256": "35947667bd76b724590f8545dee56c97226a2c61bb7cda6c11f2d53831b5f655",
       "change": "Reuse unchanged selected-table generation/tagging, sequential lifetime, layout-derived offsets, lossless source codec and JSON roundtrip; add the actual high-input SLL profile."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/SllLow.lean",
+      "backport_reuse_revision": "0d5a3809a4a861b219e925c1ef13100f9eba7e7d",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/SllHigh.lean",
+      "backport_reuse_sha256": "b3233a6e14daac7433df4adf5183250b715be22081a147808101632ba3382285",
+      "change": "Reuse original Clean static-table construction and low-limb reference; independently specify high-limb carry/truncation for the native low-input logical-left shift."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/NativeSllLowData.lean",
+      "backport_reuse_revision": "0d5a3809a4a861b219e925c1ef13100f9eba7e7d",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/NativeSllHighData.lean",
+      "backport_reuse_sha256": "99c93a292ac53955228575c5cdeee6f64c54f34a175db03fa00cd67a1063b8fa",
+      "change": "Reuse strict literal native regional import; retain ID 48, compiled offset 266241 and all 2^21 actual rows."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/NativeSllLowRows.lean",
+      "backport_reuse_revision": "0d5a3809a4a861b219e925c1ef13100f9eba7e7d",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/NativeSllHighRows.lean",
+      "backport_reuse_sha256": "532eadd409e3a4d8b97b5bcbcb9ded53f6baa4ef24fa7ea5099bd75ce4927284",
+      "change": "Reuse actual tagged native-row observations without mathematical result rules in the imported values."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/NativeSllLow.lean",
+      "backport_reuse_revision": "0d5a3809a4a861b219e925c1ef13100f9eba7e7d",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/NativeSllHigh.lean",
+      "backport_reuse_sha256": "f69e48aef89e80f330daffe67e6ed6c018ec1e0c8eef2981bb8b1879b949fa01",
+      "change": "Reuse two short public claims; derive packed-key and both output-limb bounds plus reconstructed RV32 left-shift semantics from actual native membership."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SllLowParts.lean",
+      "backport_reuse_revision": "0d5a3809a4a861b219e925c1ef13100f9eba7e7d",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllHighParts.lean",
+      "backport_reuse_sha256": "57e94f0768b6824368edc6a724f256a089ef506ecb5c50f2107a85cfcd2d2487",
+      "change": "Reuse structural raw-array geometry. Retain 145 actual high-output blocks, six prefix partitions and a checked 73-block identity to previously certified native SLL-high data; no table-equivalence premise."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SllLowMath.lean",
+      "backport_reuse_revision": "0d5a3809a4a861b219e925c1ef13100f9eba7e7d",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllHighMath.lean",
+      "backport_reuse_sha256": "448cb4ae49ba3fb6f76c5eedfbcaaf550beeea07c48ac237e791ae5ac35b825c",
+      "change": "Reuse independent arithmetic/bitvector proof separation. Prove carry/remainder reconstruction and the shift-sixteen translation with standard Nat division and modular multiplication identities."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SllLowColumns.lean",
+      "backport_reuse_revision": "0d5a3809a4a861b219e925c1ef13100f9eba7e7d",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllHighColumns.lean",
+      "backport_reuse_sha256": "6268a35ac7c0d1b9d8f10e46419f5d6ef41e7ae423892de36f7ba848254a16d3",
+      "change": "Copy affine_get and single_get unchanged. Prove actual full low-column identity to checked native SLL-high; retain actual keys, ID 48 tags and high-column extent."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SllLow.lean",
+      "backport_reuse_revision": "0d5a3809a4a861b219e925c1ef13100f9eba7e7d",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllHigh.lean",
+      "backport_reuse_sha256": "bccb18181d37c7099faf00a57171dc602083f3c40ac952843989a91014511b05",
+      "change": "Reuse exact actual-row/Clean membership and canonical-field result assembly. Transport the checked SLL-high suffix through independently proved index translation; certify the remaining actual native carry prefix symbolically."
+    },
+    {
+      "path": "Tests/NativeSllLow.lean",
+      "backport_reuse_revision": "0d5a3809a4a861b219e925c1ef13100f9eba7e7d",
+      "backport_reuse_path": "Tests/NativeSllHigh.lean",
+      "backport_reuse_sha256": "23ac8362696aa7bcd9dc93dea75aeadc1d5127cce3fe1a93d28b5257ea01c640",
+      "change": "Reuse all-row, exact-membership and actual-offset checks. Add shift-zero/one/fifteen/sixteen/31, first carry/final bit/discard boundaries and malformed low/high/limb/key rejections."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SllLowPart0.lean",
+      "backport_reuse_revision": "0d5a3809a4a861b219e925c1ef13100f9eba7e7d",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlLowPart4.lean",
+      "backport_reuse_sha256": "ed52514f397e7b0fcdd52c9f0e037832b2515fa843c87c7391531b02fe5cf632",
+      "change": "Reuse source-shaped symbolic affine/periodic native-block certificates and unchanged getters; derive actual low-input SLL carry values with exact quotient/remainder arithmetic under unchanged caps."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SllLowPart1.lean",
+      "backport_reuse_revision": "0d5a3809a4a861b219e925c1ef13100f9eba7e7d",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlLowPart4.lean",
+      "backport_reuse_sha256": "ed52514f397e7b0fcdd52c9f0e037832b2515fa843c87c7391531b02fe5cf632",
+      "change": "Reuse source-shaped symbolic affine/periodic native-block certificates and unchanged getters; derive actual low-input SLL carry values with exact quotient/remainder arithmetic under unchanged caps."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SllLowPart2.lean",
+      "backport_reuse_revision": "0d5a3809a4a861b219e925c1ef13100f9eba7e7d",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlLowPart3.lean",
+      "backport_reuse_sha256": "dec608613c3cdb0a2f9c83563f799b03249cd4ae4ba8c182b538d8f86708ae47",
+      "change": "Reuse source-shaped symbolic affine/periodic native-block certificates and unchanged getters; derive actual low-input SLL carry values with exact quotient/remainder arithmetic under unchanged caps."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SllLowPart3.lean",
+      "backport_reuse_revision": "0d5a3809a4a861b219e925c1ef13100f9eba7e7d",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlLowPart2.lean",
+      "backport_reuse_sha256": "24fb7b03cbab7ac54991d1710903d1e3291e92763adf93bc2494b7d8e0bbd057",
+      "change": "Reuse source-shaped symbolic affine/periodic native-block certificates and unchanged getters; derive actual low-input SLL carry values with exact quotient/remainder arithmetic under unchanged caps."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SllLowPart4.lean",
+      "backport_reuse_revision": "0d5a3809a4a861b219e925c1ef13100f9eba7e7d",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlLowPart1.lean",
+      "backport_reuse_sha256": "5607b219f448eadce915453ad79578aaf9bb9d87c91320ffc5998e8ff2f3788f",
+      "change": "Reuse source-shaped symbolic affine/periodic native-block certificates and unchanged getters; derive actual low-input SLL carry values with exact quotient/remainder arithmetic under unchanged caps."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SllLowPart5.lean",
+      "backport_reuse_revision": "0d5a3809a4a861b219e925c1ef13100f9eba7e7d",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlLowPart0.lean",
+      "backport_reuse_sha256": "75af5850ed3f5fef4922aaf7d485d54f4802526345ca7eff24e88d9e18dc0163",
+      "change": "Reuse source-shaped symbolic affine/periodic native-block certificates and unchanged getters; derive actual low-input SLL carry values with exact quotient/remainder arithmetic under unchanged caps."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/BlockTransport.lean",
+      "backport_reuse_revision": "0d5a3809a4a861b219e925c1ef13100f9eba7e7d",
+      "backport_reuse_path": "Airbender/Proofs/Tables/ImportedBlocks.lean",
+      "backport_reuse_sha256": "41d90061398ff87591ba1127a78f995620e2a1134968e21862155736fd498797",
+      "change": "Extend the unchanged symbolic block-check framework in a separate module with generic completeness and index/reference transport proofs. Existing block semantics and soundness stay byte-identical."
+    },
+    {
+      "path": "Airbender/Import/Setup.lean",
+      "backport_reuse_revision": "0d5a3809a4a861b219e925c1ef13100f9eba7e7d",
+      "backport_reuse_path": "Airbender/Import/Setup.lean",
+      "backport_reuse_sha256": "d7c41417c963cdd1c8ca176c87b5be4e16809c352e29ffdf0f651f858306d824",
+      "change": "Reuse strict version/field/profile/region/arity/canonicality checks for native ID 48; dynamic compiled selectors remain unsupported."
+    },
+    {
+      "path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_revision": "0d5a3809a4a861b219e925c1ef13100f9eba7e7d",
+      "backport_reuse_path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_sha256": "6029871409a14f3af512a7c1b6cdb4dfbb935754f47760f4fc2c687b33b7bb1e",
+      "change": "Reuse literal-only native regional emission; no mathematical recipes or desired results in import."
+    },
+    {
+      "path": "Tests/ArtifactImport.lean",
+      "backport_reuse_revision": "0d5a3809a4a861b219e925c1ef13100f9eba7e7d",
+      "backport_reuse_path": "Tests/ArtifactImport.lean",
+      "backport_reuse_sha256": "5ec5f72fcd86bc2087cd4c3b1920b86376c745b8d752b8db4f33f2ab2084737d",
+      "change": "Reuse strict regional metadata/data mutations and reject crossed profiles, including SLL-low versus SLL-high and SRL-low."
+    },
+    {
+      "path": "scripts/check_native_setup.py",
+      "backport_reuse_revision": "0d5a3809a4a861b219e925c1ef13100f9eba7e7d",
+      "backport_reuse_path": "scripts/check_native_setup.py",
+      "backport_reuse_sha256": "13847c8c73e45dbfcdde7c3cb9089bcaac47b5ddf6dd57427bef75b51567f9d2",
+      "change": "Reuse actual complete native API export reproduction and compiled-offset checks; previous native artifacts remain byte-identical."
+    },
+    {
+      "path": "../native_setup_exporter/src/main.rs",
+      "backport_reuse_revision": "0d5a3809a4a861b219e925c1ef13100f9eba7e7d",
+      "backport_reuse_path": "../native_setup_exporter/src/main.rs",
+      "backport_reuse_sha256": "78f40f7ffb11a1c2c2b6231f0b82e90c31117473f64b400b60dac1e14ce6823c",
+      "change": "Reuse unchanged actual selected-table generation, tagging, compiled-layout placement and lossless codec. Add the native low-input SLL profile with JSON roundtrip and scoped sequential export."
     }
   ],
   "setup_artifacts": [
@@ -4194,6 +4341,13 @@
       "profile": "actual native high-input logical-left-shift table, ID 49, compiled offset 2363393, 2097152 rows; low-input SLL, high-input SRL and dynamic circuit connection remain separate",
       "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py",
       "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5"
+    },
+    {
+      "path": "artifacts/setup/shift-sll-low-native.json",
+      "sha256": "46867793150af07fda4fd3918ce48c7fd88e21b52483a711c0f8c2f9c57c551f",
+      "profile": "actual native low-input logical-left-shift table, ID 48, compiled offset 266241, 2097152 rows; high-input SRL and dynamic circuit connection remain separate",
+      "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py",
+      "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5"
     }
   ],
   "native_exporter_files": [
@@ -4207,7 +4361,7 @@
     },
     {
       "path": "../native_setup_exporter/src/main.rs",
-      "sha256": "78f40f7ffb11a1c2c2b6231f0b82e90c31117473f64b400b60dac1e14ce6823c"
+      "sha256": "cea5b0d59c0c3e2737aa8fdf89ed99cdaab39a1eb11a9343eba564e82cb606e2"
     },
     {
       "path": "../native_setup_exporter/src/columns.rs",
