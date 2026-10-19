@@ -125,3 +125,10 @@ PC/operation semantics remain a separate connection.
 public construction/membership to derive both PC bounds and the exact x0 flag.
 Masks one/two classify native JAL/JALR; packed native equations recover selectors.
 The public caller supplies no local range, carry, zero flag or desired link.
+
+[Initialized jump targets](../../Trace/Families/JumpBranchSlt/Targets.lean) also
+consume actual original decoding to derive JAL offset parity and exact JAL/JALR
+identity. The unchanged [original Sail decoder proof](../../../Proofs/Sail/Decoder.lean)
+checks the interpreter's appended zero bit; native metadata and full query
+membership transport it to the actual immediate. Source bounds come separately
+from initialized matching. Original instruction execution/retirement remains open.

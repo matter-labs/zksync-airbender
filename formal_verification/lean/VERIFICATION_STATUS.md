@@ -18,7 +18,8 @@ not completed v2 coverage.
 | [Initialized native control history](Airbender/Review/Trace/Families/JumpBranchSlt/History.lean) | The separate native clock/port registry proves the shared clock contract from actual control equations/queries. Public Sail seeds/PC and complete native matching derive every row/prior clock, complete Clean history and newest reads for all three ports, retaining readonly alias refreshes and actual masked writes. Control word bounds and Sail cell transfers are checked below; original instruction execution remains separate. |
 | Initialized control values/cells | [Word bounds](Airbender/Review/Trace/Families/JumpBranchSlt/Values.lean) derive every native read/write/terminal range from actual public sparse decoding and initialized matching. [Sail cell history](Airbender/Review/Trace/Families/JumpBranchSlt/SailHistory.lean) derives all intermediate cell states in native clock order, including x0 preservation from actual masks. Original control instruction execution and terminal instruction-state matching remain open. |
 | [Initialized control register transfers](Airbender/Review/Trace/Families/JumpBranchSlt/Registers.lean) | Original public decoding and native clock-ordered history derive all original source/destination GPR reads and the actual masked write at constructed row boundaries. Both source reads and the old destination read use one cell-history pre-state, including aliases. Original control clauses, native operation semantics and PC retirement remain open. |
-| [Native saved jump links](Airbender/Review/Circuits/JumpBranchSlt/Theorems.lean) | Full original public decoding and every native constraint derive the actual JAL/JALR PC+4 write, including discarded x0. Native mask classification recovers selectors; actual scalar ranges and Boolean carry equations prove RV32 addition. Exported-JAL, logical JALR/x0, local full native wrap and altered-write rejection regressions pass. Target calculation and original control instruction execution remain open. |
+| [Native saved jump links](Airbender/Review/Circuits/JumpBranchSlt/Theorems.lean) | Full original public decoding and every native constraint derive the actual JAL/JALR PC+4 write, including discarded x0. Native mask classification recovers selectors; actual scalar ranges and Boolean carry equations prove RV32 addition. Exported-JAL, logical JALR/x0, local full native wrap and altered-write rejection regressions pass. Target calculation is checked below; original control instruction execution remains open. |
+| [Initialized native jump targets](Airbender/Review/Trace/Families/JumpBranchSlt/Targets.lean) | Actual public bytes, initialized matching and native equations derive every JAL/JALR target and four-byte alignment, including JALR bit-zero clearing. Source/PC/immediate bounds, original JAL parity, selectors and carries are derived. The exported negative JAL and initialized aliasing JALR pass; full original instruction execution/retirement remains open. |
 | V2 artifact import | All 34 quadratic and 3 linear equations, four 16-bit and eight 19-bit timestamp queries from the pinned ADD/SUB layout. Bounds/placement guards and both native zero coefficient encodings. |
 | Reused foundation | Unchanged property definitions, word representation/arithmetic and pinned Sail reference/execution lemmas. Source hashes are checked. |
 | Native state/port clocks | Typed physical state and three direct ports, including actual destination writes. Four-tick advancement and strict previous-write/port order follow from imported equations/queries under initial/prior clock bounds and alignment. The initialized-history layer now derives these local inputs from matching and initial boundaries. |
@@ -546,20 +547,50 @@ construct their independent original-byte logical setup. The JALR link is eight;
 the x0 row retains raw link twelve but writes zero. An unmasked x1 link wraps
 from PC 0xfffffffc to zero under all native constraints; that case is a local
 row regression, not an initialized/public-decoder trace. Altered link data fails.
-General native export certificates for the new logical fixture, jump targets,
+General native export certificates for the new logical fixture,
 comparison/branch semantics, original Sail clauses/PC retirement and full terminal
 instruction-state matching remain open. Rust/compiler/cryptographic refinement
 stays separate.
+
+## Initialized native jump targets
+
+[Native target calculation](Airbender/Proofs/JumpBranchSlt/Target.lean) now reuses
+original modular word addition and bit cleanup with v2 bindings. Assertions 10/8
+constrain carries 50/44; equations 31/32 add PC or rs1 and the immediate into
+candidate 42/43. The actual sixth scalar query bounds the high candidate, so no
+v3 final-high closure premise is imported. Native cleanup query 15, alignment
+assertion 26 and routing equations 27/28 derive the final PC and four-byte alignment.
+JAL preserves its even sum; JALR clears bit zero and rejects a sum with bit one set.
+
+[The short initialized claim](Airbender/Review/Trace/Families/JumpBranchSlt/Targets.lean)
+uses public Sail initialization, complete native matching and full sparse decoder
+membership. Shared initialized induction derives source bounds; actual public
+bytes supply PC/immediate ranges and exact mask identity. The unchanged original
+[Sail decoder parity proof](Airbender/Proofs/Sail/Decoder.lean) and native metadata
+projection derive JAL offset parity. No operand bound, selector, parity, carry,
+expected read or desired target is supplied by the public caller.
+
+[Regressions](Tests/JumpTarget.lean) derive the actually exported negative-JAL
+target 0xfffffffc from public PC zero. A new logical original-byte JALR fixture
+starts at PC four with public x1=257; native matching retains the aliased rs1/rd
+refresh and derives target 264 from odd sum 265. Its full public initialization,
+lookup and every native equation/query are checked. Local JAL-to-x0 and modular
+0xfffffffc-plus-eight target regressions pass. A bit-one JALR target has a valid
+cleanup row but is rejected by native alignment. Local wrap is not an initialized
+execution certificate, and the new logical fixture has no new general native
+export certificate. Original Sail instruction clauses/PC retirement, comparison
+and branch semantics, complete control execution and terminal instruction-state
+matching remain open; Rust/compiler/cryptographic refinement stays separate.
 
 ## Validation
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all thirty-five concrete test modules pass.
+- Library, both CLI entrypoints and all thirty-six concrete test modules pass.
 - Importer regressions: 169 checks pass.
-- Axiom audit: 905 explicit roots; only propext, Classical.choice and Quot.sound.
-- All fifty-three public Review theorems (ten circuit claims, thirty-four trace claims and nine helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
-- Source provenance: 71 unchanged reused files, three native circuit artifacts, thirty-six native Rust sources, seven native setup artifacts and four exporter source/manifest/lock files.
+- Axiom audit: 925 explicit roots; only propext, Classical.choice and Quot.sound.
+- All fifty-four public Review theorems (ten circuit claims, thirty-five trace claims and nine helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Source provenance: 72 unchanged reused files, three native circuit artifacts, thirty-six native Rust sources, seven native setup artifacts and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
 - Public Sail x1/PC reads construct the accepted alias fixture; missing register and byte data reject construction.

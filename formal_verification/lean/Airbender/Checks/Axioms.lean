@@ -1,4 +1,5 @@
 import Airbender
+import Tests.JumpTarget
 import Tests.PC
 import Tests.CircuitRows
 import Tests.Timestamps
@@ -966,3 +967,23 @@ import Tests.JumpLink
 #print axioms Tests.JumpLink.public_x0_link
 #print axioms Tests.JumpLink.wrap_link
 #print axioms Tests.JumpLink.altered_link_rejected
+#print axioms Airbender.Reference.Sail.decoded_offset_even
+#print axioms Airbender.Reference.Sail.sign_extend_low_even
+#print axioms Airbender.JumpBranchSlt.Proofs.decoder_offset_even
+#print axioms Airbender.JumpBranchSlt.Proofs.direct_offset_even
+#print axioms Airbender.JumpBranchSlt.Proofs.pc_carries
+#print axioms Airbender.JumpBranchSlt.Proofs.jump_identity
+#print axioms Airbender.JumpBranchSlt.Proofs.jump_pc
+#print axioms Airbender.JumpBranchSlt.Proofs.image_jump_targets
+#print axioms Airbender.JumpBranchSlt.public_jump_targets
+#print axioms Tests.JumpTarget.program_image
+#print axioms Tests.JumpTarget.native_constraints
+#print axioms Tests.JumpTarget.accepted
+#print axioms Tests.JumpTarget.public_inputs
+#print axioms Tests.JumpTarget.decoded
+#print axioms Tests.JumpTarget.initialized_jalr_target
+#print axioms Tests.JumpTarget.initialized_negative_jal
+#print axioms Tests.JumpTarget.zero_destination_target
+#print axioms Tests.JumpTarget.wrapped_target
+#print axioms Tests.JumpTarget.misaligned_cleanup_valid
+#print axioms Tests.JumpTarget.misaligned_jalr_rejected

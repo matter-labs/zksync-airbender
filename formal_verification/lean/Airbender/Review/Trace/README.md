@@ -226,6 +226,14 @@ states. Original control clauses and native PC/operation semantics remain open.
 [Native saved jump links](../Circuits/JumpBranchSlt/Theorems.lean) now derive the
 actual masked PC+4 word for public-decoded JAL/JALR rows. Selectors, PC bounds and
 the x0 flag come from native constraints and public construction. This numerical
-connection complements the checked register histories; original jump targets,
-Sail clauses/PC retirement and complete control execution remain separate. A full
+connection complements the checked register histories; jump targets are checked
+below, while Sail clauses/PC retirement and complete control execution remain separate. A full
 local native wrap regression is checked, without claiming initialized wrap execution.
+
+[Initialized native jump targets](Families/JumpBranchSlt/Targets.lean) now derive
+every JAL/JALR target and four-byte alignment from actual public initialization,
+complete native matching and original byte decoding. Source ranges come from
+shared history; JAL parity comes from the original Sail decoder. [Regressions](../../../Tests/JumpTarget.lean)
+retain exported negative JAL and initialize an aliasing JALR with public x1=257,
+whose odd sum 265 clears to target 264. No per-row bound, selector, parity, carry
+or desired target is supplied. Full original instruction/PC retirement remains open.

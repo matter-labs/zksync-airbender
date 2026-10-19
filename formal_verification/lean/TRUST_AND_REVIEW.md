@@ -833,7 +833,37 @@ construct their independent original-byte logical setup. The JALR link is eight;
 the x0 row retains raw link twelve but writes zero. An unmasked x1 link wraps
 from PC 0xfffffffc to zero under all native constraints; that case is a local
 row regression, not an initialized/public-decoder trace. Altered link data fails.
-General native export certificates for the new logical fixture, jump targets,
+General native export certificates for the new logical fixture,
 comparison/branch semantics, original Sail clauses/PC retirement and full terminal
 instruction-state matching remain open. Rust/compiler/cryptographic refinement
 stays separate.
+
+## Initialized native jump targets
+
+[Native target calculation](Airbender/Proofs/JumpBranchSlt/Target.lean) now reuses
+original modular word addition and bit cleanup with v2 bindings. Assertions 10/8
+constrain carries 50/44; equations 31/32 add PC or rs1 and the immediate into
+candidate 42/43. The actual sixth scalar query bounds the high candidate, so no
+v3 final-high closure premise is imported. Native cleanup query 15, alignment
+assertion 26 and routing equations 27/28 derive the final PC and four-byte alignment.
+JAL preserves its even sum; JALR clears bit zero and rejects a sum with bit one set.
+
+[The short initialized claim](Airbender/Review/Trace/Families/JumpBranchSlt/Targets.lean)
+uses public Sail initialization, complete native matching and full sparse decoder
+membership. Shared initialized induction derives source bounds; actual public
+bytes supply PC/immediate ranges and exact mask identity. The unchanged original
+[Sail decoder parity proof](Airbender/Proofs/Sail/Decoder.lean) and native metadata
+projection derive JAL offset parity. No operand bound, selector, parity, carry,
+expected read or desired target is supplied by the public caller.
+
+[Regressions](Tests/JumpTarget.lean) derive the actually exported negative-JAL
+target 0xfffffffc from public PC zero. A new logical original-byte JALR fixture
+starts at PC four with public x1=257; native matching retains the aliased rs1/rd
+refresh and derives target 264 from odd sum 265. Its full public initialization,
+lookup and every native equation/query are checked. Local JAL-to-x0 and modular
+0xfffffffc-plus-eight target regressions pass. A bit-one JALR target has a valid
+cleanup row but is rejected by native alignment. Local wrap is not an initialized
+execution certificate, and the new logical fixture has no new general native
+export certificate. Original Sail instruction clauses/PC retirement, comparison
+and branch semantics, complete control execution and terminal instruction-state
+matching remain open; Rust/compiler/cryptographic refinement stays separate.

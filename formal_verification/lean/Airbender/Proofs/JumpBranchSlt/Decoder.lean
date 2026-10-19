@@ -1,3 +1,4 @@
+import Airbender.Proofs.Sail.Decoder
 import Airbender.Review.Circuits.JumpBranchSlt.Decoder
 import Airbender.Proofs.Trace.SparseDecoderSetup
 import Airbender.Proofs.JumpBranchSlt.PC
@@ -130,5 +131,66 @@ theorem public_decoder {w : Nat → ZMod mersenne31Modulus} {setup : SparseDecod
     Fetched w before ∧ (w 13).val < 65536 ∧ (w 14).val < 65536 := by
   obtain ⟨entry, _, source, same⟩ := fetched_sources (by decide) image constraints member
   exact ⟨⟨entry, source, same⟩, pc_bounds constraints (query_mask (by decide) source.fields same)⟩
+
+/-- JAL and branch parity is derived from the actual Sail decoder and the
+    metadata's sign extension, rather than supplied as a row assumption. -/
+theorem decoder_offset_even {before : Reference.RiscV.Sail.State} {entry : ProgramEntry}
+    (source : entry.SourceWith before decoderFields) :
+    match entry.instruction with
+    | .JAL _ | .BTYPE _ => entry.data.immediate.lo % 2 = 0
+    | _ => True := by
+  have decoded := Reference.Sail.decoded_offset_even entry.bits before entry.instruction before
+    source.decoded
+  have fields := source.fields
+  cases kind : entry.instruction
+  case JAL args =>
+    rcases args with ⟨imm, rd⟩
+    cases rd with
+    | Regidx bits =>
+      rw [kind] at fields decoded
+      simp only [decoderFields] at fields
+      rw [← Option.some.inj fields]
+      exact Reference.Sail.sign_extend_low_even (by decide) imm decoded
+  case BTYPE args =>
+    rcases args with ⟨imm, rs2, rs1, op⟩
+    cases rs2 with
+    | Regidx right =>
+      cases rs1 with
+      | Regidx left =>
+        rw [kind] at fields decoded
+        simp only [decoderFields, Option.some.injEq] at fields
+        rw [← fields]
+        exact Reference.Sail.sign_extend_low_even (by decide) imm decoded
+  all_goals trivial
+
+/-- Full native query membership connects direct-offset parity to the original
+    successful Sail decode; it is not supplied by the row caller. -/
+theorem direct_offset_even {w : Nat → ZMod mersenne31Modulus} {entry : ProgramEntry}
+    {before : Reference.RiscV.Sail.State}
+    (source : entry.SourceWith before decoderFields) (query : decoderQuery w = entry.query)
+    (mask : (w 12).val = 1) : (w 9).val % 2 = 0 := by
+  have fieldBounds := decoder_field_bounds source.fields
+  have small : entry.data.mask < mersenne31Modulus := by
+    have cases := fieldBounds.2.1
+    simp only [List.mem_cons, List.mem_nil_iff, or_false] at cases
+    rcases cases with eq | eq | eq | eq | eq <;> rw [eq] <;> decide
+  have packed := congrArg (fun q : Vector (ZMod mersenne31Modulus) 10 => q[9]) query
+  change w 12 = (entry.data.mask : ZMod mersenne31Modulus) at packed
+  have one : entry.data.mask = 1 := by
+    rw [packed, ZMod.val_natCast_of_lt small] at mask
+    exact mask
+  have immediate := Trace.Proofs.native_query_immediate_word (by decide) fieldBounds.1 query
+  change (Word.mk (w 9).val (w 10).val) = entry.data.immediate at immediate
+  have low := congrArg Word.lo immediate
+  change (w 9).val = entry.data.immediate.lo at low
+  rw [low]
+  have parity := decoder_offset_even source
+  have fields := source.fields
+  unfold decoderFields at fields
+  split at fields
+  all_goals first
+    | cases fields
+    | (rw [← Option.some.inj fields] at one ⊢; simp_all)
+  all_goals simpa only [← fields] using parity
 
 end Airbender.JumpBranchSlt.Proofs

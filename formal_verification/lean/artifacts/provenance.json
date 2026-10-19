@@ -285,6 +285,10 @@
     {
       "path": "Airbender/Proofs/Tables/ZeroTail.lean",
       "sha256": "bd5bd468c071342a0bf47e2bdb25fc4c59d806d1572c9f2235bce651425ba28c"
+    },
+    {
+      "path": "Airbender/Proofs/Sail/Decoder.lean",
+      "sha256": "d668dffb439a31d7064b87e09d95fc1bab4c709ca08e9092b0c0cf6cbb2a129f"
     }
   ],
   "circuit_artifacts": [
@@ -2306,6 +2310,59 @@
       "backport_reuse_path": "Tests/JumpControl.lean",
       "backport_reuse_sha256": "ea852e65783bb585cfbd884d60b22b12462fd0f37f8cd23d020cfc0846aba71e",
       "change": "Reuse every-native-equation/query fixture checking with concrete v2 overrides for odd-source JALR, original JAL-to-x0 and full local RV32 PC+4 wrap. Actual public byte membership proves the first two selected cases, and the prior actually exported JAL is retained. The wrap row is local and is not an initialized/public-decoder trace. Changing the actual destination link while retaining decoder columns is rejected by the new public theorem."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/Target.lean",
+      "source_path": "Airbender/Proofs/JumpBranchSlt/PC.lean",
+      "source_sha256": "e6fa20dc4d0c6bddc9a149c5dd220814470334d0429a2ae351aed01d7afb03d4",
+      "change": "Reuse original pc_carries Boolean extraction, rebinding variables 39/40 to native 50/44 and assertions 21/22 to 10/8. Normalize actual expanded Boolean polynomials, preserving the Mersenne31 encoding."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/Target.lean",
+      "source_path": "Airbender/Proofs/JumpBranchSlt/Jump.lean",
+      "source_sha256": "c7e68f1b9bda76441f99342a310e5011ebbce7e735c24a605e58035ef8518615",
+      "change": "Preserve the original jump_pc proof structure: modular word addition, low-limb natural lift, fixed bit-one alignment, direct even-sum preservation, indirect bit-zero cleanup and final alignment. Rebind actual native equations 31/32, final routing 27/28, candidate 42/43 and cleanup 47/48. Derive candidate/final high bounds from actual scalar query five; remove the source final-high closure interface. Native masks derive exact jump identity; all non-jump selectors and branch routes are accounted for."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/Decoder.lean",
+      "source_path": "Airbender/Proofs/JumpBranchSlt/Decoder.lean",
+      "source_sha256": "cb727b8c663ad1170a80a94a9ec2166339358d18c0c540a4535c66319aae90e2",
+      "change": "Copy original decoder_offset_even proof, removing only the obsolete source metadata split on discarded JAL writes. The pinned original Sail Decoder module is copied unchanged. Full native ten-column query equality and actual metadata derive direct immediate parity; no public parity premise is added."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/Targets.lean",
+      "backport_reuse_revision": "d031a53e452e20923bcfadae321d0e26e433257c",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/Values.lean",
+      "backport_reuse_sha256": "5ccd1dd0b99fb6ccccc80bba06a150af16b7daf147ba09cd85a3b5518bc258cf",
+      "change": "Reuse unchanged initialized image_value_bounds to supply native rs1 ranges. Compose actual public decoding, original Sail parity and native jump equations into one initialized target claim; do not supply per-row bounds, selectors, parity, carries, expected reads or targets."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/JumpBranchSlt/Targets.lean",
+      "backport_reuse_revision": "d031a53e452e20923bcfadae321d0e26e433257c",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/JumpBranchSlt/Values.lean",
+      "backport_reuse_sha256": "238fe4482d253cc73aa08d1683c97204d60fdfde986629a361bc23e091096abf",
+      "change": "Keep the same short initialized image/accepted/decoded Review contract and delegate proof assembly to Proofs. Expose actual JAL/JALR PC target and alignment, with source/PC/immediate observables and remaining instruction/retirement boundary explicit."
+    },
+    {
+      "path": "Tests/JumpTarget.lean",
+      "backport_reuse_revision": "d031a53e452e20923bcfadae321d0e26e433257c",
+      "backport_reuse_path": "Tests/JumpLink.lean",
+      "backport_reuse_sha256": "0edac91dc22af2910184aa5af914704535d1a2960a06ec33a948c70a7f73f2f1",
+      "change": "Retain original-byte logical fixture words and native odd-source/x0/wrap assignments. Recheck the JALR row with the actual aliased rd prior-clock refresh. Reuse the original public RAM-image certificate structure; no new general native export is claimed."
+    },
+    {
+      "path": "Tests/JumpTarget.lean",
+      "backport_reuse_revision": "d031a53e452e20923bcfadae321d0e26e433257c",
+      "backport_reuse_path": "Tests/ControlHistory.lean",
+      "backport_reuse_sha256": "8303ba037c6b1d2c38400d921ac7685ba94f27b1922af03cdf63a7d3ff33d0c2",
+      "change": "Reuse actual public register/PC initialization, singleton state matching and complete memory-token permutation checks for the initialized aliasing JALR. Preserve the separately exported negative-JAL fixture through the new public target theorem."
+    },
+    {
+      "path": "Tests/JumpTarget.lean",
+      "backport_reuse_revision": "d031a53e452e20923bcfadae321d0e26e433257c",
+      "backport_reuse_path": "Tests/ControlValues.lean",
+      "backport_reuse_sha256": "21aa4fff6a62e645af9c278a21bd6a335393aa709047c9cc251ff135a7d08a91",
+      "change": "Reuse original-byte public sparse-construction proof structure under explicit registers and PC. New initialized JALR target is 264 from public source 257 plus immediate eight; local x0/wrap and bit-one cleanup/alignment boundaries are checked separately."
     }
   ],
   "setup_artifacts": [

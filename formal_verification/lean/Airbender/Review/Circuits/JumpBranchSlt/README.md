@@ -119,5 +119,19 @@ reuse original carry extraction and shared modular addition with v2 equation/col
 bindings. [Tests](../../../../Tests/JumpLink.lean) check public JAL/JALR/x0 links,
 all native constraints for local RV32 wrap, and altered-write rejection. The wrap
 case is not an initialized/public-decoder trace, and the new logical JALR/x0
-words have no new native export certificate. Target calculation and original
-Sail clauses/PC retirement remain open.
+words have no new native export certificate. Target calculation is checked below;
+original Sail clauses/PC retirement remain open.
+
+## Initialized jump targets
+
+[Native calculations](../../../Proofs/JumpBranchSlt/Target.lean) reuse modular
+addition and bit cleanup with actual target/carry bindings. Candidate high scalar
+query five derives its bound; no v3 final-high closure interface is copied.
+[The short trace claim](../../Trace/Families/JumpBranchSlt/Targets.lean) derives
+source bounds from initialized matching and PC/immediate bounds, jump identity
+and JAL parity from original public decoding. JALR clears bit zero; the native
+bit-one assertion enforces four-byte alignment. [Tests](../../../../Tests/JumpTarget.lean)
+check exported negative JAL, initialized aliasing JALR with public source 257,
+local x0/wrap targets and rejected bit-one targets despite valid cleanup. Full
+original instruction clauses/retirement and terminal instruction-state matching
+remain separate; local wrap and logical-fixture export boundaries stay explicit.
