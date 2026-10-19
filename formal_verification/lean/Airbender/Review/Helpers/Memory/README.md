@@ -84,3 +84,7 @@ zero-word reads, prefix/outside preservation and original boot/configuration
 frames are proved symbolically. The [public loader](../Tables/PaddedROMImage.lean)
 derives complete ROM extraction and boot execution; physical setup/initialization
 enforcement and general Rust refinement remain separate.
+
+## Unsigned MUL/DIV observations
+
+[Register transfer/history observables](MulDiv.lean) describe actual original Sail reads/writes, constructed segment states, final cell matching and code/misa preservation. [The short public claim](../../Trace/Families/MulDiv/Registers.lean) derives them from actual public bytes/seeds and native matching; calculations remain under Proofs.

@@ -324,3 +324,7 @@ shared logical history definitions are unchanged.
 ## Initialized unsigned MUL/DIV
 
 [The family guide](Families/MulDiv/README.md) routes complete native Clean history, derived read/write/terminal bounds and the short public numerical result. Actual public bytes and stateful original decoding supply operation/zero metadata. Original instruction execution remains open.
+
+## Original MUL/DIV register histories
+
+[The short public claim](Families/MulDiv/Registers.lean) constructs actual original Sail register transfers, all segment states and code/misa frames. It includes aliases and original x0 writes. Original operation clauses and PC retirement remain unfinished.

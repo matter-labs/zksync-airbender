@@ -999,3 +999,36 @@ prove full public lookup membership rejects both. These are logical argument
 boundary checks, not native defects or new Rust program-export certificates.
 Physical initialization, setup/compiler refinement, cryptographic enforcement,
 whole-machine/protocol composition and completeness remain separately scoped.
+
+## Original Sail MUL/DIV register histories
+
+[The short public register-history theorem](Airbender/Review/Trace/Families/MulDiv/Registers.lean)
+now derives original Sail operand/old-destination reads and the actual masked
+write from public bytes, initialized seeds and accepted native matching. All
+three reads use the same instruction pre-state, including source/destination
+aliases. Clock-derived ordering and every segment state are constructed.
+[Observable definitions](Airbender/Review/Helpers/Memory/MulDiv.lean) keep the
+public statement short; calculations and proof assembly stay under Proofs.
+
+[Native x0 preservation](Airbender/Proofs/Trace/Families/MulDiv/ZeroRegister.lean)
+uses actual write equations 35/36 and decoder-owned flags, then invokes unchanged
+shared Clean-to-Sail realization. The original generic three-port address/read/
+write declarations are copied unchanged from the pinned source and resolve
+against checked native v2 metadata. [Code/configuration frames](Airbender/Proofs/Trace/Families/MulDiv/CodeHistory.lean)
+preserve every public byte and misa, replaying original stateful decoding in
+real later states without a per-row decoding or CSR-read premise.
+
+[All sixteen initialized cases](Tests/MulDivRegisters.lean) now obtain actual
+Sail writes and full-state stuttering for x0. [A reversed two-row program](Tests/MulDivRegisterChain.lean)
+checks MUL x3,x1,x2 followed by MUL x1,x1,x2, with actual original bytes at PCs
+zero/four and a real first update. The second decoder runs in its constructed
+pre-state; aliased operand/destination reads are 123/7 and the actual write is
+861. The stale old-destination timestamp retains all local constraints, public
+decoding and state matching but fails native memory matching. This validates
+the logical argument boundary, not a native defect or a new Rust export.
+
+Original MUL/DIV operation clauses, preparation/PC retirement and finite fetched
+execution remain unfinished. These are Sail cell-transfer histories, not full
+instruction traces. Physical boot/setup/compiler refinement, cryptographic
+argument enforcement, unified execution/protocol spans and completeness remain
+separately scoped.

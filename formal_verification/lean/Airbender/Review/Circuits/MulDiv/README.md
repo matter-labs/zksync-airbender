@@ -40,3 +40,7 @@ The row interfaces are not assumed trace results. No v3 semantic theorem is
 promoted without its checked v2 connection. Rust/JSON/compiler refinement,
 physical argument enforcement and completeness remain separate boundaries.
 Follow the [plan](../../../../FORMAL_VERIFICATION_PLAN.md).
+
+## Original Sail register connection
+
+[The public register-history claim](../../Trace/Families/MulDiv/Registers.lean) now derives original same-pre-state reads, actual masked writes and every segment state. Actual code/misa frames replay the original stateful decoder. Original MUL/DIV operation clauses and PC retirement remain separate.

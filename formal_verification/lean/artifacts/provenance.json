@@ -3208,6 +3208,61 @@
       "backport_reuse_path": "Tests/ControlComparisons.lean",
       "backport_reuse_sha256": "6a3a8911fec4018f668e3f9a955ccc6ea82ed7a739b1152186468e5abe5ff5fa",
       "change": "Reuse public history/ranges/result applications and metadata boundary regressions. Cover four operations, ordinary/x0 writes and ordinary/zero divisors without per-row range/result premises; reject locally valid wrong tags and a compensating flag-2 write via full public decoding."
+    },
+    {
+      "path": "Airbender/Proofs/MulDiv/PortReads.lean",
+      "source_path": "Airbender/Proofs/MulDiv/PortReads.lean",
+      "source_sha256": "8d759af5eab0d36f1cd6e23535f2ee5dbba57c07ecf98510f7e33df7b41b548e",
+      "change": "Copy nativeEvents, register_addresses, register_reads and register_write declarations unchanged from the pinned source. Resolve them against actual native v2 port/query metadata and retain actual masked destination writes, including x0 and aliases. Omit incompatible source trace wrappers; no source execution theorem is promoted."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/MulDiv/ZeroRegister.lean",
+      "backport_reuse_revision": "223ed59ea9f5a99fdf3cd06956e5640437454529",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/ZeroRegister.lean",
+      "backport_reuse_sha256": "3fc64a9bc49bf8c90d4e8fda8bed44cfa99066acc8b4b60ab09a57a5e87724f1",
+      "change": "Reuse shared zero-value induction, Clean-to-Sail realization and clock-derived row grouping. Rebind actual native MUL/DIV write equations 35/36 and write limbs 60/61; derive rd-zero flags from the full ten-column query without NOP preprocessing or per-row zero-write assumptions."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/MulDiv/CodeHistory.lean",
+      "backport_reuse_revision": "223ed59ea9f5a99fdf3cd06956e5640437454529",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/CodeHistory.lean",
+      "backport_reuse_sha256": "b5870dea10360c65f9df463fa7a272dc3ec2b0936baa1031538f1e40c0870de5",
+      "change": "Reuse actual native register-space and whole-memory frame proofs. Replace pure-decoder replay with the unchanged original decoded_misa_frame lemma and actual history CSR preservation; derive source bytes/original decoding in every realized pre-state without supplying replay."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Memory/MulDiv.lean",
+      "backport_reuse_revision": "223ed59ea9f5a99fdf3cd06956e5640437454529",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/JumpBranchSlt/Registers.lean",
+      "backport_reuse_sha256": "6a0ed91277ce719075c31bd675cb695788cd47f21ff74adadcd9806497083713",
+      "change": "Factor public observable definitions for three same-pre-state original Sail register reads, actual masked write, complete history/final cell matching, segment states and code/misa frames. Keep calculations and proof assembly outside Review helpers; these are conclusions, not desired-state premises."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/MulDiv/RegisterHistory.lean",
+      "backport_reuse_revision": "223ed59ea9f5a99fdf3cd06956e5640437454529",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/RegisterHistory.lean",
+      "backport_reuse_sha256": "d500162f62fbc8a9ea86e68609f15d06c2e64b463dba0c3f8f99cdc1f839cf57",
+      "change": "Reuse initialized native history splitting and real segment-state construction. Apply unchanged original generic three-register port lemmas and derive native prefix membership from full row-event permutation, then replay stateful original decoding through actual code/misa frames."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/MulDiv/Registers.lean",
+      "backport_reuse_revision": "223ed59ea9f5a99fdf3cd06956e5640437454529",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/MulDiv/Theorems.lean",
+      "backport_reuse_sha256": "6d93eefc07886a39ccab1daba7992ae3da412eb901928c168a4841306019440c",
+      "change": "Reuse the short public-to-internal routing pattern. State only actual public setup/image/native matching/alignment and the observable register-history conclusion; original operation execution/PC retirement remain separate."
+    },
+    {
+      "path": "Tests/MulDivRegisters.lean",
+      "backport_reuse_revision": "223ed59ea9f5a99fdf3cd06956e5640437454529",
+      "backport_reuse_path": "Tests/ControlRegisters.lean",
+      "backport_reuse_sha256": "656dc3eb4a90e6167ab58383ce2c7ecd5b0a69d1ca25e7a5d74c7e957b44e1c6",
+      "change": "Reuse nonempty public-history extraction and actual original Sail write application. Cover all sixteen initialized MUL/MULHU/DIVU/REMU cases and original x0 full-state stuttering, with constructed states and no expected read/result premise."
+    },
+    {
+      "path": "Tests/MulDivRegisterChain.lean",
+      "backport_reuse_revision": "223ed59ea9f5a99fdf3cd06956e5640437454529",
+      "backport_reuse_path": "Tests/ControlSequence.lean",
+      "backport_reuse_sha256": "4b918360005de1c46a58a0028434b5a350c2eaccc300c903365a0ca7bc6f00f5",
+      "change": "Reuse reversed two-row native state/memory matching and original public byte construction. Build MUL x3,x1,x2 then MUL x1,x1,x2 with a real prefix update and aliased final destination, rebind the actual native PC inverse at PC four, and derive original pre-state reads 123/7 and write 861. The stale old-destination read passes local constraints/decoding/state matching but fails actual native memory matching. No Rust export or original MUL retirement is claimed."
     }
   ],
   "setup_artifacts": [

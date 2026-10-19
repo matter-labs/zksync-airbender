@@ -37,3 +37,7 @@ execution remain unfinished. Native physical initialization, general
 Rust/JSON/compiler refinement, cryptographic enforcement, unified execution,
 protocol composition and completeness remain separately scoped. Follow
 [the plan](../../../../../FORMAL_VERIFICATION_PLAN.md).
+
+## Original Sail register transfers
+
+[Register history](Registers.lean) derives actual original Sail operand/old-destination reads, masked writes, code/misa preservation and all segment states. [The observable definitions](../../../Helpers/Memory/MulDiv.lean) keep the statement short. The original generic three-port lemmas are copied unchanged; native x0 preservation uses actual v2 equations. [Sixteen initialized cases](../../../../../Tests/MulDivRegisters.lean) check actual writes/full-state x0 stuttering. [A two-MUL alias sequence](../../../../../Tests/MulDivRegisterChain.lean) derives second-row reads 123/7, write 861 and original decoding after a real prefix update. Stale old-destination timestamps pass local equations/decoding/state matching but fail native memory matching. Original operation/PC execution and general refinement remain separate.

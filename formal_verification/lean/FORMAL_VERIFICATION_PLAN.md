@@ -406,10 +406,16 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    trace claim obtains all four numerical results without local interfaces.
    Sixteen complete initialized traces and disabled-M/wrong-tag/bad-flag checks
    pass. The unchanged source decoder-frame proof retains actual misa reads.
-   Next connect original Sail register reads, operation clauses,
-   preparation/retirement and fetched MUL/DIV execution, then continue
-   shift/binop and subword memory. No original MUL/DIV execution is claimed by
-   the initialized numerical checkpoint.
+   Actual Sail operand/old-destination reads, masked writes and every segment
+   state now follow from initialized native history, including aliases and x0.
+   Original three-port declarations are copied unchanged and bound to native
+   v2 metadata. Actual native GPR histories preserve code/misa and replay the
+   stateful original decoder after real updates. Sixteen cases and a reversed
+   aliasing two-MUL program pass; stale old-destination metadata passes local
+   constraints/decoding/state matching but fails native memory matching.
+   Next connect original operation clauses, preparation/PC retirement and
+   fetched MUL/DIV execution, then shift/binop and subword memory. Cell-transfer
+   histories do not claim original instruction retirement.
 4. Rebind bigint/BLAKE/Keccak workers and callers. Retest control validity,
    unissued workers, ROM behavior and request participation on v2 before reusing
    any source finding or temporary premise.

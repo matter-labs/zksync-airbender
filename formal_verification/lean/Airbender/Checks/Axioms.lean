@@ -1,3 +1,5 @@
+import Tests.MulDivRegisters
+import Tests.MulDivRegisterChain
 import Airbender.Proofs.Sail.DecoderFrame
 import Tests.MulDivMetadata
 import Tests.MulDivDecoderCases
@@ -1227,3 +1229,30 @@ import Tests.JumpLink
 #print axioms Tests.MulDivInitializedFixture.original_decode
 #print axioms Tests.MulDivInitializedFixture.program_image
 #print axioms Tests.MulDivInitializedFixture.public_inputs
+
+-- Initialized native MUL/DIV realization as actual original Sail GPR histories.
+#print axioms Airbender.MulDiv.Proofs.decoded_zero_preserving
+#print axioms Airbender.MulDiv.Proofs.entry_source_after_native_history
+#print axioms Airbender.MulDiv.Proofs.image_register_history
+#print axioms Airbender.MulDiv.Proofs.image_row_history
+#print axioms Airbender.MulDiv.Proofs.native_event_register_space
+#print axioms Airbender.MulDiv.Proofs.native_history_memory
+#print axioms Airbender.MulDiv.Proofs.native_zero_writes
+#print axioms Airbender.MulDiv.Proofs.register_addresses
+#print axioms Airbender.MulDiv.Proofs.register_reads
+#print axioms Airbender.MulDiv.Proofs.register_write
+#print axioms Airbender.MulDiv.Proofs.row_zero_write_from_reads
+#print axioms Airbender.MulDiv.public_register_history
+#print axioms Tests.MulDivRegisterChain.accepted
+#print axioms Tests.MulDivRegisterChain.alias_after_update
+#print axioms Tests.MulDivRegisterChain.decoded
+#print axioms Tests.MulDivRegisterChain.native_constraints
+#print axioms Tests.MulDivRegisterChain.program_image
+#print axioms Tests.MulDivRegisterChain.public_history
+#print axioms Tests.MulDivRegisterChain.public_inputs
+#print axioms Tests.MulDivRegisterChain.stale_rejected
+#print axioms Tests.MulDivRegisterChain.state_matching
+#print axioms Tests.MulDivRegisters.actual_write
+#print axioms Tests.MulDivRegisters.aligned
+#print axioms Tests.MulDivRegisters.discarded_state
+#print axioms Tests.MulDivRegisters.initialized_transfers

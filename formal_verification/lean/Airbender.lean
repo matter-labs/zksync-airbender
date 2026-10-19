@@ -48,3 +48,4 @@ import Airbender.Review.Trace.Families.JumpBranchSlt.Execution
 import Airbender.Review.Trace.Families.MulDiv.History
 import Airbender.Review.Trace.Families.MulDiv.Values
 import Airbender.Review.Trace.Families.MulDiv.Theorems
+import Airbender.Review.Trace.Families.MulDiv.Registers
