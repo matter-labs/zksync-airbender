@@ -197,29 +197,9 @@ pub fn fsv_dir() -> String {
     format!("{}/../tools/gkr_verifier", env!("CARGO_MANIFEST_DIR"))
 }
 
-/// The fixture encoding of `gpu/execution_prover/tests/program.rs::write_compressed`.
-#[allow(dead_code)]
-pub fn encode_fixture<T: serde::Serialize>(value: &T) -> Vec<u8> {
-    let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
-    serde_json::to_writer(&mut encoder, value).expect("serialize fixture");
-    encoder.finish().expect("finish fixture compression")
-}
-
-pub fn decode_fixture<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> T {
-    use flate2::read::ZlibDecoder;
-    use std::io::Read;
-
-    let mut decoder = ZlibDecoder::new(bytes);
-    let mut unpacked: Vec<u8> = vec![];
-    decoder
-        .read_to_end(&mut unpacked)
-        .expect("decompress fixture");
-    serde_json::from_slice(&unpacked).expect("deserialize fixture")
-}
-
 fn read_compressed<T: serde::de::DeserializeOwned>(path: &str) -> T {
     let buffer = std::fs::read(path).unwrap_or_else(|e| panic!("open {path}: {e}"));
-    decode_fixture(&buffer)
+    full_statement_verifier::host_utils::fixture_codec::decode(&buffer)
 }
 
 pub fn load_calibration_proof(name: &str) -> (Setups, ProgramProof) {

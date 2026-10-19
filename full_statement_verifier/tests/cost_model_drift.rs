@@ -113,6 +113,7 @@ fn emit_per_circuit_verifier_costs() {
 
 #[test]
 fn calibration_fixture_encoding_round_trips_every_compiled_circuit() {
+    use full_statement_verifier::host_utils::fixture_codec;
     use verifier_common::cs::gkr_compiler::GKRCircuitArtifact;
 
     let dir = format!("{}/cs/compiled_circuits", repo_root());
@@ -125,7 +126,7 @@ fn calibration_fixture_encoding_round_trips_every_compiled_circuit() {
         let artifact: GKRCircuitArtifact<BabyBearField> =
             serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         let decoded: GKRCircuitArtifact<BabyBearField> =
-            trace::decode_fixture(&trace::encode_fixture(&artifact));
+            fixture_codec::decode(&fixture_codec::encode(&artifact, Vec::new()));
         assert!(
             decoded == artifact,
             "{} changed in the fixture encoding",

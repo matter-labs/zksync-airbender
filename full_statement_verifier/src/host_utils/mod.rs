@@ -1,4 +1,5 @@
 pub mod cost_model;
+pub mod fixture_codec;
 
 use crate::program_proof::ProgramProof;
 use crate::recursion_chain::{self, RecursionChain};
