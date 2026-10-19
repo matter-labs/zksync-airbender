@@ -315,4 +315,26 @@ def parseBinary (source : String) : Except String ControlArtifact := do
   artifact.validateBinary
   return artifact
 
+/-- Selected scalar/sign-fill regions, not a contiguous prefix or full family.
+    Offsets retain the actual compiled layout, including unexported regions. -/
+def ControlArtifact.validateShiftScalars (artifact : ControlArtifact) : Except String Unit := do
+  unless artifact.version == 1 && artifact.field_modulus == mersenne31Modulus &&
+      artifact.profile == "shift_binop_scalar_regions" do throw "unsupported native shift scalar profile"
+  unless artifact.generic_rows == 2228224 && artifact.tables.size == 3 do
+    throw "unexpected native shift scalar extent"
+  for (region, (id, offset, length)) in artifact.tables.zip
+      #[(47,200705,65536),(52,8654849,2097152),(53,10752001,65536)] do
+    unless region.id == id && region.offset == offset do throw "unexpected native shift scalar region"
+    region.data.validate length 4
+
+def parseShiftScalars (source : String) : Except String ControlArtifact := do
+  let json ← Json.parse source
+  exactKeys json #["version", "field_modulus", "profile", "generic_rows", "tables"]
+  for region in (← (← json.getObjVal? "tables").getArr?) do
+    exactKeys region #["id", "offset", "data"]
+    matrixKeys (← region.getObjVal? "data")
+  let artifact : ControlArtifact ← fromJson? json
+  artifact.validateShiftScalars
+  return artifact
+
 end Airbender.Setup

@@ -169,4 +169,12 @@ elab "import_native_binary " name:ident " from " path:str : command => do
   for (region,suffix) in artifact.tables.zip #["Zero","Xor","Or","And"] do
     emitData (mkIdent (name.getId.appendAfter suffix)) region.data region.offset
 
+/-- Literal native truncation, sign-fill and zero-padded range rows. -/
+elab "import_native_shift_scalars " name:ident " from " path:str : command => do
+  let artifact ← match parseShiftScalars (← IO.FS.readFile path.getString) with
+    | .ok artifact => pure artifact
+    | .error error => throwError "native shift scalar import failed: {error}"
+  for (region,suffix) in artifact.tables.zip #["Truncate","SignFill","Range"] do
+    emitData (mkIdent (name.getId.appendAfter suffix)) region.data region.offset
+
 end Airbender.Setup

@@ -1,0 +1,728 @@
+{
+  "version": 1,
+  "field_modulus": 2147483647,
+  "profile": "shift_binop_scalar_regions",
+  "generic_rows": 2228224,
+  "tables": [
+    {
+      "id": 47,
+      "offset": 200705,
+      "data": {
+        "length": 65536,
+        "columns": [
+          {
+            "blocks": [
+              {
+                "kind": "affine",
+                "length": 65536,
+                "first": 0,
+                "step": 1
+              }
+            ]
+          },
+          {
+            "blocks": [
+              {
+                "kind": "periodic",
+                "repetitions": 2048,
+                "stride": 0,
+                "values": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7,
+                  8,
+                  9,
+                  10,
+                  11,
+                  12,
+                  13,
+                  14,
+                  15,
+                  16,
+                  17,
+                  18,
+                  19,
+                  20,
+                  21,
+                  22,
+                  23,
+                  24,
+                  25,
+                  26,
+                  27,
+                  28,
+                  29,
+                  30,
+                  31
+                ]
+              }
+            ]
+          },
+          {
+            "blocks": [
+              {
+                "kind": "affine",
+                "length": 65536,
+                "first": 0,
+                "step": 0
+              }
+            ]
+          },
+          {
+            "blocks": [
+              {
+                "kind": "affine",
+                "length": 65536,
+                "first": 47,
+                "step": 0
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 52,
+      "offset": 8654849,
+      "data": {
+        "length": 2097152,
+        "columns": [
+          {
+            "blocks": [
+              {
+                "kind": "affine",
+                "length": 2097152,
+                "first": 0,
+                "step": 1
+              }
+            ]
+          },
+          {
+            "blocks": [
+              {
+                "kind": "affine",
+                "length": 1146880,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 32768,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 49152,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 57344,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 61440,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 63488,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 64512,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 65024,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 65280,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 65408,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 65472,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 65504,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 65520,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 65528,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 65532,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 65534,
+                "step": 0
+              }
+            ]
+          },
+          {
+            "blocks": [
+              {
+                "kind": "affine",
+                "length": 98304,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 32768,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 49152,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 57344,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 61440,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 63488,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 64512,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 65024,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 65280,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 65408,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 65472,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 65504,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 65520,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 65528,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 65532,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 65534,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 65535,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 65535,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 65535,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 65535,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 65535,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 65535,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 65535,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 65535,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 65535,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 65535,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 65535,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 65535,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 65535,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 65535,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 65535,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 0,
+                "step": 0
+              },
+              {
+                "kind": "affine",
+                "length": 32768,
+                "first": 65535,
+                "step": 0
+              }
+            ]
+          },
+          {
+            "blocks": [
+              {
+                "kind": "affine",
+                "length": 2097152,
+                "first": 52,
+                "step": 0
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 53,
+      "offset": 10752001,
+      "data": {
+        "length": 65536,
+        "columns": [
+          {
+            "blocks": [
+              {
+                "kind": "affine",
+                "length": 65536,
+                "first": 0,
+                "step": 1
+              }
+            ]
+          },
+          {
+            "blocks": [
+              {
+                "kind": "affine",
+                "length": 65536,
+                "first": 0,
+                "step": 0
+              }
+            ]
+          },
+          {
+            "blocks": [
+              {
+                "kind": "affine",
+                "length": 65536,
+                "first": 0,
+                "step": 0
+              }
+            ]
+          },
+          {
+            "blocks": [
+              {
+                "kind": "affine",
+                "length": 65536,
+                "first": 53,
+                "step": 0
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -48,6 +48,40 @@ private def scalarChecks (setupSource : String) : IO Unit := do
   check (rejected (Setup.parseScalars setupSource)) "reject program artifact as scalar export"
   check (rejected (Setup.parse scalarSource)) "reject scalar artifact as program export"
 
+private def shiftScalarChecks : IO Unit := do
+  let source ← IO.FS.readFile "artifacts/setup/shift-scalars-native.json"
+  let a ← IO.ofExcept (Setup.parseShiftScalars source)
+  check (a.generic_rows == 2228224 && a.tables.size == 3) "actual native zero/shift scalar prefix extent"
+  check (rejected ({a with version := 2}.validateShiftScalars)) "reject shift scalar prefix version"
+  check (rejected ({a with field_modulus := 2013265921}.validateShiftScalars)) "reject v3 shift scalar prefix field"
+  check (rejected ({a with profile := "jump_branch_slt_fixed"}.validateShiftScalars)) "reject shift scalar prefix profile"
+  check (rejected ({a with generic_rows := 2228223}.validateShiftScalars)) "reject incomplete shift scalar prefix"
+  check (rejected ({a with tables := a.tables.extract 1 3}.validateShiftScalars)) "reject missing native truncation region"
+  check (rejected ({a with tables := a.tables ++ a.tables}.validateShiftScalars)) "reject extra shift scalar regions"
+  check (rejected ({a with tables := a.tables.modify 1 (fun r => {r with id := 47})}.validateShiftScalars))
+    "reject wrong shift scalar native tag"
+  check (rejected ({a with tables := a.tables.modify 1 (fun r => {r with offset := 0})}.validateShiftScalars))
+    "reject overlapping shift scalar region"
+  check (rejected ({a with tables := a.tables.modify 1 (fun r => {r with data := {r.data with length := 2097151}})}.validateShiftScalars))
+    "reject incomplete shift scalar table"
+  check (rejected ({a with tables := a.tables.modify 1 (fun r => {r with data := {r.data with columns := r.data.columns.extract 0 3}})}.validateShiftScalars))
+    "reject missing shift scalar tag column"
+  check (rejected ({a with tables := a.tables.modify 0 (fun r => {r with data := {r.data with columns := #[⟨#[.affine 65536 2147483647 0]⟩,⟨#[.affine 65536 0 0]⟩,⟨#[.affine 65536 0 0]⟩,⟨#[.affine 65536 0 0]⟩]}})}.validateShiftScalars))
+    "reject noncanonical shift scalar field data"
+  check (rejected ({a with tables := a.tables.modify 1 (fun r => {r with data := {r.data with columns := r.data.columns.set! 0 ⟨#[.affine 2097151 0 0]⟩}})}.validateShiftScalars))
+    "reject incomplete shift scalar column"
+  let j ← IO.ofExcept (Json.parse source)
+  let extra ← IO.ofExcept (replaceField j "invented" (.bool true))
+  check (rejected (Setup.parseShiftScalars extra.compress)) "reject unknown shift scalar prefix field"
+  check (rejected (Setup.parseControl source)) "reject shift scalar prefix as control tables"
+  check (rejected (Setup.parseSmallRange source)) "reject shift scalar prefix as mul/div table"
+  check (rejected (Setup.parseShiftScalars (← IO.FS.readFile "artifacts/setup/jump-control-native.json")))
+    "reject control tables as shift scalar prefix"
+
+  check (rejected (Setup.parseBinary source)) "reject shift scalars as binary prefix"
+  check (rejected (Setup.parseShiftScalars (← IO.FS.readFile "artifacts/setup/shift-binary-native.json")))
+    "reject binary prefix as shift scalars"
+
 private def binaryChecks : IO Unit := do
   let source ← IO.FS.readFile "artifacts/setup/shift-binary-native.json"
   let a ← IO.ofExcept (Setup.parseBinary source)
@@ -537,6 +571,7 @@ def main : IO UInt32 := do
     decoderChecks setupSource
     shiftDecoderChecks
     binaryChecks
+    shiftScalarChecks
     controlDecoderChecks
     decoderPaddingChecks
     controlChecks

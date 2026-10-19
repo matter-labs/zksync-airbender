@@ -1354,3 +1354,39 @@ This closes the native binary-table prerequisite. Dynamic selectors, large
 16-bit shift tables, custom CSR/oracle semantics, shift/binop circuit soundness
 and initialized execution remain unfinished. General Rust/JSON/compiler and
 physical cryptographic enforcement remain separate; no native defect is established.
+
+## Native truncation, padded range and sign-fill rows
+
+[Four short public helper claims](Airbender/Review/Helpers/Tables/NativeShiftScalars.lean)
+connect original Clean membership to actual native truncation, sign-fill and
+zero-padded range rows. They derive input/limb bounds, low-five-bit truncation,
+both zero padding fields and the exact RV32 sign-fill mask. Negative input at
+shift zero yields an empty mask, matching the native unbounded shift by 32.
+
+[Actual exported data](artifacts/setup/shift-scalars-native.json) contains all
+2,228,224 selected rows, including the complete 2,097,152-row sign-fill table.
+Native IDs 47/52/53 retain compiled offsets 200705/8654849/10752001; unexported
+regions are not erased from placement metadata. Rust materializes and drops each
+selected table separately, verifies its lossless compression and JSON roundtrip,
+and reproduction compares the artifact and offsets with the pinned native layout.
+
+[Internal geometry](Airbender/Proofs/Tables/ShiftScalarColumns.lean) reuses the
+unchanged affine getters and periodic-column proof. [Lower](Airbender/Proofs/Tables/SignFillLow.lean)
+and [upper](Airbender/Proofs/Tables/SignFillHigh.lean) sign-fill proofs select actual
+constant blocks over 64 symbolic half-limb domains; they do not enumerate two
+million rows. [Independent mask arithmetic](Airbender/Proofs/Tables/ShiftScalarBounds.lean)
+and [membership assembly](Airbender/Proofs/Tables/ShiftScalars.lean) supply the
+short public claims without output, range or table-equivalence premises.
+
+[Regressions](Tests/NativeShiftScalars.lean) cover truncation/range terminal keys,
+negative shifts zero/one/sixteen/31, positive sign boundary and changed results,
+nonzero padding and oversized packed keys. The combined upper-mask proof reached the resident ceiling; splitting it into
+four independent 16-domain certificates resolved the calculation without raising
+resource limits. Strict import rejects crossed profiles,
+wrong native tags/offsets, missing or noncanonical columns and incomplete extents.
+
+This closes the native scalar/sign-fill table prerequisite. Four large logical
+shift tables and dynamic constraint import remain next, followed by numerical
+family soundness and initialized execution. Custom CSR/oracle semantics, general
+Rust/JSON/compiler refinement and cryptographic enforcement remain separate.
+No native implementation defect is established.

@@ -505,6 +505,16 @@
     {
       "path": "../../cs/src/tables/binops.rs",
       "sha256": "f34f0d782bd00a0546d02c1d648ce007f53bd2ea921ce3f178e79d976bfade5b"
+    },
+    {
+      "path": "../../cs/src/tables/shift_opcode_related.rs",
+      "sha256": "7b1a7e937c7cfbb0e69202cde441d1aecb69e6d4bdf9acf7efc2c543f73261a3",
+      "scope": "native active 16-bit truncation/logical-shift/sign-fill generators"
+    },
+    {
+      "path": "../../cs/shift_binop_csrrw_preprocessed_layout.json",
+      "sha256": "fdf11c47b3fc8c792a150e613f803ca4d6cc156f330eff2a1004c88e3ccd5164",
+      "scope": "compiled offset metadata only; dynamic constraints remain unimported"
     }
   ],
   "adaptations": [
@@ -3569,6 +3579,146 @@
       "backport_reuse_path": "../native_setup_exporter/src/main.rs",
       "backport_reuse_sha256": "28caa303eb32112d5a1c00f578fc846bb58a981fe7af01eaf81127249f3a0088",
       "change": "Reuse the native table driver, region ordering/tagging, lossless source codec and checked JSON roundtrip. Materialize only the complete low-ID zero/XOR/OR/AND prefix from the actual native shift family; verify selected low IDs before dumping. Large shifts and custom CSR tables are separately scoped."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/ShiftScalars.lean",
+      "backport_reuse_revision": "c7a8dd445592fbec1eedc07ff688c1f6aa56b15f",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/SmallRange.lean",
+      "backport_reuse_sha256": "48bd9929a7d64385eff31ca63e09876d5b687fd070d001d301b0457187f1083e",
+      "change": "Reuse original Clean static-table construction; define the native 16-bit truncation, padded-range and 21-bit packed sign-fill models independently from exported rows."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/NativeShiftScalarData.lean",
+      "backport_reuse_revision": "c7a8dd445592fbec1eedc07ff688c1f6aa56b15f",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/NativeBinaryData.lean",
+      "backport_reuse_sha256": "42e06cd6d1e2d61a44a023692274923fdcee13e58b1bc471f9bf64fe2471f846",
+      "change": "Reuse strict literal table-data import for selected native scalar/sign-fill regions, retaining full compiled offsets."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/NativeShiftScalarRows.lean",
+      "backport_reuse_revision": "c7a8dd445592fbec1eedc07ff688c1f6aa56b15f",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/NativeBinaryRows.lean",
+      "backport_reuse_sha256": "2363e01af1280299393dad8e21c3e65ba2f759e3a064cb12a31154d273c1fe92",
+      "change": "Reuse actual-column observations and tagged membership for three native-sized domains; no mathematical output recipes in observations."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/NativeShiftScalars.lean",
+      "backport_reuse_revision": "c7a8dd445592fbec1eedc07ff688c1f6aa56b15f",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/NativeBinary.lean",
+      "backport_reuse_sha256": "6c58e715bc1fe7a55279641f6ec59d3d51cc66ddf592384ed30a1c5671c0cce3",
+      "change": "Reuse thin public helper claims; expose exact membership and derive truncation, padding, limb bounds and RV32 sign-fill from actual native data."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/ShiftScalarColumns.lean",
+      "backport_reuse_revision": "c7a8dd445592fbec1eedc07ff688c1f6aa56b15f",
+      "backport_reuse_path": "Airbender/Proofs/MulDiv/SmallRange.lean",
+      "backport_reuse_sha256": "106380d2b151b2aadeb31e1d5aed87af94b3ff3dbd15e879c6ed2ee64deb2881",
+      "change": "Copy affine_get and single_get unchanged; reuse symbolic affine/periodic geometry for native truncation, zero padding and sign-fill key/tag columns."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SignFillLow.lean",
+      "backport_reuse_revision": "c7a8dd445592fbec1eedc07ff688c1f6aa56b15f",
+      "backport_reuse_path": "Airbender/Proofs/Tables/BinaryColumns.lean",
+      "backport_reuse_sha256": "e33dc37a0a9182a0ec52420791d050e8b88984dc9665d420c806cdde60a97ad4",
+      "change": "Reuse structural actual-block geometry; check literal constant-block shape and derive lower sign-fill outputs in 64 symbolic half-limb domains. This is a new v2 16-bit connection, not copied v3 table coverage."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SignFillHigh.lean",
+      "backport_reuse_revision": "c7a8dd445592fbec1eedc07ff688c1f6aa56b15f",
+      "backport_reuse_path": "Airbender/Proofs/Tables/BinaryColumns.lean",
+      "backport_reuse_sha256": "e33dc37a0a9182a0ec52420791d050e8b88984dc9665d420c806cdde60a97ad4",
+      "change": "Reuse structural actual-block geometry for upper sign-fill outputs in 64 symbolic domains, with exact stored affine blocks and no row enumeration."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/ShiftScalarBounds.lean",
+      "backport_reuse_revision": "c7a8dd445592fbec1eedc07ff688c1f6aa56b15f",
+      "backport_reuse_path": "Airbender/Proofs/Tables/Binary.lean",
+      "backport_reuse_sha256": "e42796d652a97d1889ea6a8e815f8eab36cdc02a5b02598bea5a6965a76b294e",
+      "change": "Reuse the separate canonical-result/bounds proof role; independently check all 32 shift amounts and both signs against the original RV32 all-ones bitvector shift, including shift zero."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/ShiftScalars.lean",
+      "backport_reuse_revision": "c7a8dd445592fbec1eedc07ff688c1f6aa56b15f",
+      "backport_reuse_path": "Airbender/Proofs/Tables/Binary.lean",
+      "backport_reuse_sha256": "e42796d652a97d1889ea6a8e815f8eab36cdc02a5b02598bea5a6965a76b294e",
+      "change": "Reuse all-row assembly and exact original Clean/native membership, deriving native key/limb bounds and results without table-equivalence, desired outputs or supplied bounds."
+    },
+    {
+      "path": "Tests/NativeShiftScalars.lean",
+      "backport_reuse_revision": "c7a8dd445592fbec1eedc07ff688c1f6aa56b15f",
+      "backport_reuse_path": "Tests/NativeBinary.lean",
+      "backport_reuse_sha256": "d60b1d234f0036d770bd5bd4d7d44eef8e8c0c4a5d4e1117e5eab71c5928e422",
+      "change": "Reuse all-row/membership, native-offset and malformed-query regressions. Exercise negative zero/one/sixteen/31 shifts, positive sign boundary, terminal truncation/range keys and oversized packed key."
+    },
+    {
+      "path": "Airbender/Import/Setup.lean",
+      "backport_reuse_revision": "c7a8dd445592fbec1eedc07ff688c1f6aa56b15f",
+      "backport_reuse_path": "Airbender/Import/Setup.lean",
+      "backport_reuse_sha256": "f73352ebdf3a55245c43f1d9ec13301bc894b3a04497effed9f37a832d2cfda4",
+      "change": "Reuse strict regional validation for IDs 47/52/53, actual noncontiguous native offsets and lengths, canonical values and exact keys. Dynamic compiled selectors still reject."
+    },
+    {
+      "path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_revision": "c7a8dd445592fbec1eedc07ff688c1f6aa56b15f",
+      "backport_reuse_path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_sha256": "402b2965de0d0dbcc08e50b42f12ab020cec294192c0aa880dcf8d2cb7588133",
+      "change": "Reuse literal regional emission without inserted recipes or assumed table semantics."
+    },
+    {
+      "path": "Tests/ArtifactImport.lean",
+      "backport_reuse_revision": "c7a8dd445592fbec1eedc07ff688c1f6aa56b15f",
+      "backport_reuse_path": "Tests/ArtifactImport.lean",
+      "backport_reuse_sha256": "b9c48129c47e0e9a4d36262533606c69db44facf8e0cc3713e1344d229660b9d",
+      "change": "Reuse profile/metadata/canonicality/extent mutation checks and reject crossed native binary/control/mul-div exports."
+    },
+    {
+      "path": "scripts/check_native_setup.py",
+      "backport_reuse_revision": "c7a8dd445592fbec1eedc07ff688c1f6aa56b15f",
+      "backport_reuse_path": "scripts/check_native_setup.py",
+      "backport_reuse_sha256": "4d5fa83f175aa80697abb674abfa6e1d1e26972477893fcf39408159a9103686",
+      "change": "Reuse actual native API reproducibility; compare selected-region JSON bytes and every offset with the pinned compiled shift layout."
+    },
+    {
+      "path": "../native_setup_exporter/src/main.rs",
+      "backport_reuse_revision": "c7a8dd445592fbec1eedc07ff688c1f6aa56b15f",
+      "backport_reuse_path": "../native_setup_exporter/src/main.rs",
+      "backport_reuse_sha256": "0c55f4fb243fa3ed01333e6261919289e1613ee79f9d11a7d635c2a0779a949f",
+      "change": "Reuse native generators/dump_into, unchanged lossless codec and exact JSON roundtrip. Materialize/drop selected tables individually and read offsets from the supplied pinned compiled layout; exported row count is a selected-domain sum, not a contiguous prefix."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SignFillBlocks.lean",
+      "backport_reuse_revision": "c7a8dd445592fbec1eedc07ff688c1f6aa56b15f",
+      "backport_reuse_path": "Airbender/Proofs/Tables/BinaryColumns.lean",
+      "backport_reuse_sha256": "e33dc37a0a9182a0ec52420791d050e8b88984dc9665d420c806cdde60a97ad4",
+      "change": "Reuse structural actual-column geometry, split into literal block shape and four independent 16-domain upper-mask certificates after the original combined proof reached the resident ceiling. Native bounds derive all partition inputs; resource caps stay unchanged."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SignFillHighPart0.lean",
+      "backport_reuse_revision": "c7a8dd445592fbec1eedc07ff688c1f6aa56b15f",
+      "backport_reuse_path": "Airbender/Proofs/Tables/BinaryColumns.lean",
+      "backport_reuse_sha256": "e33dc37a0a9182a0ec52420791d050e8b88984dc9665d420c806cdde60a97ad4",
+      "change": "Reuse structural actual-column geometry, split into literal block shape and four independent 16-domain upper-mask certificates after the original combined proof reached the resident ceiling. Native bounds derive all partition inputs; resource caps stay unchanged."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SignFillHighPart1.lean",
+      "backport_reuse_revision": "c7a8dd445592fbec1eedc07ff688c1f6aa56b15f",
+      "backport_reuse_path": "Airbender/Proofs/Tables/BinaryColumns.lean",
+      "backport_reuse_sha256": "e33dc37a0a9182a0ec52420791d050e8b88984dc9665d420c806cdde60a97ad4",
+      "change": "Reuse structural actual-column geometry, split into literal block shape and four independent 16-domain upper-mask certificates after the original combined proof reached the resident ceiling. Native bounds derive all partition inputs; resource caps stay unchanged."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SignFillHighPart2.lean",
+      "backport_reuse_revision": "c7a8dd445592fbec1eedc07ff688c1f6aa56b15f",
+      "backport_reuse_path": "Airbender/Proofs/Tables/BinaryColumns.lean",
+      "backport_reuse_sha256": "e33dc37a0a9182a0ec52420791d050e8b88984dc9665d420c806cdde60a97ad4",
+      "change": "Reuse structural actual-column geometry, split into literal block shape and four independent 16-domain upper-mask certificates after the original combined proof reached the resident ceiling. Native bounds derive all partition inputs; resource caps stay unchanged."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SignFillHighPart3.lean",
+      "backport_reuse_revision": "c7a8dd445592fbec1eedc07ff688c1f6aa56b15f",
+      "backport_reuse_path": "Airbender/Proofs/Tables/BinaryColumns.lean",
+      "backport_reuse_sha256": "e33dc37a0a9182a0ec52420791d050e8b88984dc9665d420c806cdde60a97ad4",
+      "change": "Reuse structural actual-column geometry, split into literal block shape and four independent 16-domain upper-mask certificates after the original combined proof reached the resident ceiling. Native bounds derive all partition inputs; resource caps stay unchanged."
     }
   ],
   "setup_artifacts": [
@@ -3673,6 +3823,13 @@
       "profile": "actual native v2 zero/XOR/OR/AND low-ID shift/binop table prefix, IDs 0/4/6/7, offsets 0/1/65537/131073, 196609 rows; excludes large shift and custom CSR tables",
       "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py",
       "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5"
+    },
+    {
+      "path": "artifacts/setup/shift-scalars-native.json",
+      "sha256": "15c5d7ec3b750b7e9c8b62a3217c27a5724997f1fc918dc4398926ccc69ee379",
+      "profile": "actual native selected scalar/sign-fill regions 47/52/53, offsets 200705/8654849/10752001, lengths 65536/2097152/65536; not a contiguous prefix or full shift family",
+      "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py",
+      "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5"
     }
   ],
   "native_exporter_files": [
@@ -3686,7 +3843,7 @@
     },
     {
       "path": "../native_setup_exporter/src/main.rs",
-      "sha256": "0c55f4fb243fa3ed01333e6261919289e1613ee79f9d11a7d635c2a0779a949f"
+      "sha256": "110f03abaa265b729f809c9e5c6dd5792920fd3d38faa07808bc9cbb782aecbb"
     },
     {
       "path": "../native_setup_exporter/src/columns.rs",

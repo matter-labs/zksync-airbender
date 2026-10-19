@@ -100,3 +100,7 @@ General physical setup/argument/compiler refinement remains separate.
 ## Actual native zero and binary prefix
 
 [The mathematical three-column model](Binary.lean), [literal native data](NativeBinaryData.lean) and [tagged row observations](NativeBinaryRows.lean) feed [two short public membership/result claims](NativeBinary.lean). [Internal geometry](../../../Proofs/Tables/BinaryColumns.lean) checks actual keys/tags/extents structurally; [assembly](../../../Proofs/Tables/Binary.lean) uses complete source-shaped XOR/OR/AND output certificates. [Regressions](../../../../Tests/NativeBinary.lean) cover all rows, native zero/offsets, terminal keys and malformed queries. Dynamic selectors, large shifts, CSR/oracle behavior and family execution remain separate.
+
+## Native shift scalar and sign-fill tables
+
+[The short helper claims](./NativeShiftScalars.lean) now connect actual native truncation, zero-padded range and every sign-fill row to original Clean membership and exact results, including negative shift zero. [Internal assembly](../../../Proofs/Tables/ShiftScalars.lean) uses structural constant-block geometry across 64 symbolic domains and independent RV32 mask arithmetic. [Regressions](../../../../Tests/NativeShiftScalars.lean) check boundary cases and malformed queries. Native compiled offsets retain unexported regions. The four large logical-shift tables, dynamic constraint import and initialized family execution remain unfinished.

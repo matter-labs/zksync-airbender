@@ -1,3 +1,4 @@
+import Tests.NativeShiftScalars
 import Tests.NativeBinary
 import Tests.ShiftDecoder
 import Tests.MulDivFetched
@@ -1341,3 +1342,41 @@ import Tests.JumpLink
 #print axioms Tests.NativeBinary.exact_membership
 #print axioms Tests.NativeBinary.last_row
 #print axioms Tests.NativeBinary.zero_row
+
+-- Native truncation, zero-padded range and all 2^21 sign-fill rows.
+#print axioms Airbender.Verification.ShiftScalarProofs.native_membership
+#print axioms Airbender.Verification.ShiftScalarProofs.native_rows
+#print axioms Airbender.Verification.ShiftScalarProofs.range_result
+#print axioms Airbender.Verification.ShiftScalarProofs.range_rows
+#print axioms Airbender.Verification.ShiftScalarProofs.sign_high
+#print axioms Airbender.Verification.ShiftScalarProofs.sign_high_blocks
+#print axioms Airbender.Verification.ShiftScalarProofs.sign_high_part0
+#print axioms Airbender.Verification.ShiftScalarProofs.sign_high_part1
+#print axioms Airbender.Verification.ShiftScalarProofs.sign_high_part2
+#print axioms Airbender.Verification.ShiftScalarProofs.sign_high_part3
+#print axioms Airbender.Verification.ShiftScalarProofs.sign_key
+#print axioms Airbender.Verification.ShiftScalarProofs.sign_low
+#print axioms Airbender.Verification.ShiftScalarProofs.sign_mask
+#print axioms Airbender.Verification.ShiftScalarProofs.sign_result
+#print axioms Airbender.Verification.ShiftScalarProofs.sign_rows
+#print axioms Airbender.Verification.ShiftScalarProofs.sign_tag
+#print axioms Airbender.Verification.ShiftScalarProofs.truncate_result
+#print axioms Airbender.Verification.ShiftScalarProofs.truncate_rows
+#print axioms Airbender.Verification.native_shift_padded_range
+#print axioms Airbender.Verification.native_shift_scalar_membership
+#print axioms Airbender.Verification.native_shift_sign_fill
+#print axioms Airbender.Verification.native_shift_truncation
+#print axioms Tests.NativeShiftScalars.actual_offsets
+#print axioms Tests.NativeShiftScalars.all_rows
+#print axioms Tests.NativeShiftScalars.bad_padding_rejected
+#print axioms Tests.NativeShiftScalars.bad_sign_fill_rejected
+#print axioms Tests.NativeShiftScalars.bad_truncation_rejected
+#print axioms Tests.NativeShiftScalars.exact_membership
+#print axioms Tests.NativeShiftScalars.oversized_shift_key_rejected
+#print axioms Tests.NativeShiftScalars.positive_shift_last
+#print axioms Tests.NativeShiftScalars.range_last
+#print axioms Tests.NativeShiftScalars.sign_shift_last
+#print axioms Tests.NativeShiftScalars.sign_shift_one
+#print axioms Tests.NativeShiftScalars.sign_shift_sixteen
+#print axioms Tests.NativeShiftScalars.sign_shift_zero
+#print axioms Tests.NativeShiftScalars.truncation_last

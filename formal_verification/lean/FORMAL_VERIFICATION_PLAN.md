@@ -438,8 +438,12 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    original Clean/native membership. Native membership derives byte bounds and
    bitwise results; malformed keys/results reject. Geometry is structural and
    all output calculations reuse the source literal-block certificates within
-   unchanged memory caps. Next certify the large native 16-bit shift tables and
-   retained scalar/zero-padding rows, then import dynamic selectors faithfully.
+   unchanged memory caps. Native truncation, zero-padded range and all 2,097,152 sign-fill rows now have checked
+   actual-data/Clean membership, derived key/limb bounds and exact RV32 masks.
+   Symbolic 64-domain block proofs retain native shift-zero behavior and original
+   compiled noncontiguous offsets. Negative/positive sign boundaries and malformed
+   queries pass. Continue with the four 16-bit logical-shift tables, then faithful
+   dynamic lookup import and numerical/initialized family soundness.
 4. Rebind bigint/BLAKE/Keccak workers and callers. Retest control validity,
    unissued workers, ROM behavior and request participation on v2 before reusing
    any source finding or temporary premise.

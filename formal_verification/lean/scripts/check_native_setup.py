@@ -41,6 +41,15 @@ def main():
         assert [(r["id"], r["offset"]) for r in prefix["tables"]] == [(0,0),(4,1),(6,65537),(7,131073)]
         assert all(layout["table_offsets"][r["id"]] == r["offset"] for r in prefix["tables"])
         print("PASS reproducible actual native zero/XOR/OR/AND prefix and compiled offsets", flush=True)
+        compiled = ROOT / "../../cs/shift_binop_csrrw_preprocessed_layout.json"
+        subprocess.run([str(binary), "--shift-scalars", str(compiled), str(output)], check=True)
+        assert output.read_bytes() == (ROOT / "artifacts/setup/shift-scalars-native.json").read_bytes()
+        regions = json.loads(output.read_bytes())
+        assert regions["generic_rows"] == sum(r["data"]["length"] for r in regions["tables"])
+        assert [(r["id"], r["offset"], r["data"]["length"]) for r in regions["tables"]] == [
+            (47,200705,65536),(52,8654849,2097152),(53,10752001,65536)]
+        assert all(layout["table_offsets"][r["id"]] == r["offset"] for r in regions["tables"])
+        print("PASS reproducible actual native truncation/sign-fill/padded-range regions and compiled offsets", flush=True)
         subprocess.run([str(binary), "--small-range", str(output)], check=True)
         assert output.read_bytes() == (ROOT / "artifacts/setup/mul-div-small-range-native.json").read_bytes()
         print("PASS reproducible native unsigned mul/div byte tables", flush=True)

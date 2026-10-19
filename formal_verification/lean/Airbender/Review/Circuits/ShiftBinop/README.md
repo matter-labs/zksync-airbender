@@ -22,3 +22,7 @@ are unfinished. General Rust/JSON/compiler refinement is a separate boundary.
 ## Native binary table prerequisite
 
 [Two short helper claims](../../Helpers/Tables/NativeBinary.lean) now connect actual native XOR/OR/AND rows to original Clean membership and bytewise semantics, retaining the actual conditional zero row and native offsets. [Internal assembly](../../../Proofs/Tables/Binary.lean) reuses full literal-block source output certificates and structural geometry; [regressions](../../../../Tests/NativeBinary.lean) check complete native data and reject malformed keys/results. This does not import the compiled circuit: dynamic selectors, large 16-bit shift tables, custom CSR/oracle semantics and initialized family execution remain unfinished.
+
+## Native shift scalar and sign-fill tables
+
+[The short helper claims](../../Helpers/Tables/NativeShiftScalars.lean) now connect actual native truncation, zero-padded range and every sign-fill row to original Clean membership and exact results, including negative shift zero. [Internal assembly](../../../Proofs/Tables/ShiftScalars.lean) uses structural constant-block geometry across 64 symbolic domains and independent RV32 mask arithmetic. [Regressions](../../../../Tests/NativeShiftScalars.lean) check boundary cases and malformed queries. Native compiled offsets retain unexported regions. The four large logical-shift tables, dynamic constraint import and initialized family execution remain unfinished.
