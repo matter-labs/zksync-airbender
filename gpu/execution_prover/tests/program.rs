@@ -5,6 +5,10 @@
 
 #![allow(unused_imports)]
 
+#[cfg(feature = "verifiers")]
+#[path = "support/cost_model_inputs.rs"]
+mod cost_model_inputs;
+
 mod upstream {
     pub use full_statement_verifier::host_utils::cost_model::estimate_verifier_cycles;
     pub use full_statement_verifier::host_utils::{
@@ -66,16 +70,7 @@ fn load_zksync_os_workload() -> (Vec<u32>, Vec<u32>, Vec<u32>) {
     let raw =
         std::fs::read_to_string(root.join("riscv_transpiler/examples/zksync_os/23620012_witness"))
             .expect("read zkSync OS block-23620012 witness");
-    let raw = raw.trim();
-    assert!(raw.len().is_multiple_of(8));
-    let witness = raw
-        .as_bytes()
-        .chunks(8)
-        .map(|chunk| {
-            u32::from_str_radix(std::str::from_utf8(chunk).unwrap(), 16)
-                .expect("invalid zkSync OS witness word")
-        })
-        .collect();
+    let witness = cost_model_inputs::parse_hex(&raw);
     let (_, binary_image) = read_binary(&root.join("riscv_transpiler/examples/zksync_os/app.bin"));
     let (_, text_section) = read_binary(&root.join("riscv_transpiler/examples/zksync_os/app.text"));
     (binary_image, text_section, witness)
@@ -206,9 +201,18 @@ fn prove_on_gpu(
     reads: Vec<u32>,
 ) -> (crate::upstream::ProgramProof, crate::upstream::Setups) {
     let handle = prover.add_binary(kind, machine, binary_image, text_section, None);
+    prove_registered_on_gpu(prover, &handle, reads)
+}
+
+#[cfg(all(not(no_cuda), feature = "verifiers"))]
+fn prove_registered_on_gpu(
+    prover: &mut ExecutionProver,
+    handle: &gpu_execution_prover::BinaryHandle,
+    reads: Vec<u32>,
+) -> (crate::upstream::ProgramProof, crate::upstream::Setups) {
     let result =
-        prover.commit_memory_and_prove(0, &handle, FlatResponsesSource::new_with_reads(reads));
-    let artifacts = prover.program_artifacts(&handle);
+        prover.commit_memory_and_prove(0, handle, FlatResponsesSource::new_with_reads(reads));
+    let artifacts = prover.program_artifacts(handle);
     assemble_program_proof(&artifacts, result)
 }
 
@@ -742,7 +746,17 @@ fn test_program_prover_recursive_pipeline_zksync_os() {
 /// recursion layers instead of consulting the production scheduling threshold.
 /// The synthetic workloads repeat every circuit they exercise
 /// (`COST_MODEL_REPEATS`; i&t twice) so per-proof prices come from repeated
-/// proofs.
+/// proofs. Output goes to the empty local `COST_MODEL_FIXTURE_DIR`.
+///
+/// Optionally set `COST_MODEL_INPUT_DIR` to an input-only directory containing
+/// `app.bin`, `app.text`, and `inputs/<id>.hex`: concatenated eight-hex-digit
+/// u32 witness words, most significant digit first (trailing whitespace allowed).
+/// Inputs run in lexicographic id order, each through the base and two recursion
+/// stages. The first keeps `base`/`recursion0`/`recursion1`; later inputs append
+/// `_<id>`. The existing synthetic fixtures and `base_alt` run once. A local
+/// zlib-JSON `fixtures_manifest.bin` lists every `(name, is_base_layer)` pair.
+/// Without this variable the committed block-23620012 guest/witness is used.
+/// Never commit local inputs or generated fixtures.
 #[test]
 #[cfg(all(not(no_cuda), feature = "verifiers", feature = "deterministic_pow"))]
 #[ignore = "manual Sec100 cost-model fixture generation (large GPU run)"]
@@ -758,15 +772,60 @@ fn test_generate_sec100_cost_model_fixtures() {
         .map(std::path::PathBuf::from)
         .expect("set COST_MODEL_FIXTURE_DIR to an empty local output directory");
     std::fs::create_dir_all(&fixture_dir).expect("create cost-model fixture directory");
-    for name in [
-        "base",
-        "base_alt",
-        "recursion0",
-        "recursion1",
-        "memory_windows",
-        "memory_windows_recursion",
-        "keccak_f1600",
-    ] {
+    let input_dir = std::env::var_os("COST_MODEL_INPUT_DIR").map(std::path::PathBuf::from);
+    let (base_binary, base_text, inputs) = if let Some(directory) = &input_dir {
+        let paths = cost_model_inputs::discover(directory);
+        let (_, binary) = read_binary(&directory.join("app.bin"));
+        let (_, text) = read_binary(&directory.join("app.text"));
+        let inputs: Vec<_> = paths
+            .into_iter()
+            .map(|(id, path)| (id, cost_model_inputs::load_words(&path)))
+            .collect();
+        (binary, text, inputs)
+    } else {
+        let (binary, text, witness) = load_zksync_os_workload();
+        (binary, text, vec![("default".to_owned(), witness)])
+    };
+    let names: Vec<_> = inputs
+        .iter()
+        .enumerate()
+        .map(|(i, (id, _))| {
+            let suffix = if i == 0 {
+                String::new()
+            } else {
+                format!("_{id}")
+            };
+            [
+                format!("base{suffix}"),
+                format!("recursion0{suffix}"),
+                format!("recursion1{suffix}"),
+            ]
+        })
+        .collect();
+    let mut manifest = Vec::new();
+    for names in &names {
+        manifest.extend([
+            (names[0].clone(), true),
+            (names[1].clone(), false),
+            (names[2].clone(), false),
+        ]);
+    }
+    manifest.extend([
+        ("base_alt".to_owned(), true),
+        ("keccak_f1600".to_owned(), true),
+        ("memory_windows".to_owned(), true),
+        ("memory_windows_recursion".to_owned(), false),
+    ]);
+    assert!(
+        !fixture_dir.join("fixtures_manifest.bin").exists(),
+        "output manifest already exists"
+    );
+    let mut unique_names = std::collections::BTreeSet::new();
+    for (name, _) in &manifest {
+        assert!(
+            unique_names.insert(name),
+            "conflicting local input name {name}"
+        );
         for suffix in ["proof", "setups"] {
             let path = fixture_dir.join(format!("{name}_{suffix}.bin"));
             assert!(!path.exists(), "refusing to overwrite {}", path.display());
@@ -778,73 +837,87 @@ fn test_generate_sec100_cost_model_fixtures() {
         ..Default::default()
     };
     let mut prover = ExecutionProver::with_configuration(configuration);
-
-    let (base_binary, base_text, base_witness) = load_zksync_os_workload();
-    let (base_proof, base_setups) = prove_on_gpu(
-        &mut prover,
+    // Register each common binary once: add_binary retains precomputations,
+    // so registering them anew for every block would grow resident RAM.
+    let guest = prover.add_binary(
         ExecutionKind::Unrolled,
         MachineType::FullUnsigned,
         base_binary,
         base_text,
-        base_witness,
+        None,
     );
-    native_verify_unrolled(build_unrolled_stream(&base_setups, &base_proof), true);
-    write_cost_model_fixture(&fixture_dir, "base", &base_proof, &base_setups);
-
-    let base_end_params = compute_end_params(&base_setups, base_proof.final_pc);
-    let mut chain = FsvRecursionChain::begin(&base_end_params);
     let fsv_dir = artifact_root().join("tools/gkr_verifier");
-    let (base_verifier_bin, base_verifier_text) = load_fsv_program(
+    let (binary, text) = load_fsv_program(
         &fsv_dir,
         FsvProgram::UnrolledBaseLayer,
         BlakeMode::Compression,
     );
-    let (mut recursion0_proof, recursion0_setups) = prove_on_gpu(
-        &mut prover,
+    let base_verifier = prover.add_binary(
         ExecutionKind::Unrolled,
         MachineType::Reduced,
-        base_verifier_bin,
-        base_verifier_text,
-        build_unrolled_stream(&base_setups, &base_proof),
+        binary,
+        text,
+        None,
     );
-    recursion0_proof.set_recursion_chain(&chain);
-    native_verify_unrolled(
-        build_unrolled_stream(&recursion0_setups, &recursion0_proof),
-        false,
-    );
-    write_cost_model_fixture(
-        &fixture_dir,
-        "recursion0",
-        &recursion0_proof,
-        &recursion0_setups,
-    );
-
-    let recursion0_end_params = compute_end_params(&recursion0_setups, recursion0_proof.final_pc);
-    chain.extend(&recursion0_end_params);
-    let (recursion_verifier_bin, recursion_verifier_text) = load_fsv_program(
+    let (binary, text) = load_fsv_program(
         &fsv_dir,
         FsvProgram::UnrolledRecursionLayer,
         BlakeMode::Compression,
     );
-    let (mut recursion1_proof, recursion1_setups) = prove_on_gpu(
-        &mut prover,
+    let recursion_verifier = prover.add_binary(
         ExecutionKind::Unrolled,
         MachineType::Reduced,
-        recursion_verifier_bin,
-        recursion_verifier_text,
-        build_unrolled_stream(&recursion0_setups, &recursion0_proof),
+        binary,
+        text,
+        None,
     );
-    recursion1_proof.set_recursion_chain(&chain);
-    native_verify_unrolled(
-        build_unrolled_stream(&recursion1_setups, &recursion1_proof),
-        false,
-    );
-    write_cost_model_fixture(
-        &fixture_dir,
-        "recursion1",
-        &recursion1_proof,
-        &recursion1_setups,
-    );
+
+    let mut last_chain = None;
+    for ((id, witness), names) in inputs.into_iter().zip(&names) {
+        log::info!("calibration input {id}: {} words", witness.len());
+        let (base_proof, base_setups) = prove_registered_on_gpu(&mut prover, &guest, witness);
+        native_verify_unrolled(build_unrolled_stream(&base_setups, &base_proof), true);
+        write_cost_model_fixture(&fixture_dir, &names[0], &base_proof, &base_setups);
+        let base_end_params = compute_end_params(&base_setups, base_proof.final_pc);
+        let mut chain = FsvRecursionChain::begin(&base_end_params);
+        let (mut recursion0_proof, recursion0_setups) = prove_registered_on_gpu(
+            &mut prover,
+            &base_verifier,
+            build_unrolled_stream(&base_setups, &base_proof),
+        );
+        recursion0_proof.set_recursion_chain(&chain);
+        native_verify_unrolled(
+            build_unrolled_stream(&recursion0_setups, &recursion0_proof),
+            false,
+        );
+        write_cost_model_fixture(
+            &fixture_dir,
+            &names[1],
+            &recursion0_proof,
+            &recursion0_setups,
+        );
+        let recursion0_end_params =
+            compute_end_params(&recursion0_setups, recursion0_proof.final_pc);
+        chain.extend(&recursion0_end_params);
+        let (mut recursion1_proof, recursion1_setups) = prove_registered_on_gpu(
+            &mut prover,
+            &recursion_verifier,
+            build_unrolled_stream(&recursion0_setups, &recursion0_proof),
+        );
+        recursion1_proof.set_recursion_chain(&chain);
+        native_verify_unrolled(
+            build_unrolled_stream(&recursion1_setups, &recursion1_proof),
+            false,
+        );
+        write_cost_model_fixture(
+            &fixture_dir,
+            &names[2],
+            &recursion1_proof,
+            &recursion1_setups,
+        );
+        last_chain = Some(chain);
+    }
+    let chain = last_chain.expect("at least one calibration input");
 
     let (base_alt_binary, base_alt_text) = load_workload("hashed_fibonacci");
     let (base_alt_proof, base_alt_setups) = prove_on_gpu(
@@ -990,6 +1063,7 @@ fn test_generate_sec100_cost_model_fixtures() {
         &memory_proof,
         &memory_setups,
     );
+    write_compressed(&manifest, &fixture_dir.join("fixtures_manifest.bin"));
 }
 
 #[cfg(all(not(no_cuda), feature = "verifiers"))]

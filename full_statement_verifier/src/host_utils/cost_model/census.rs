@@ -39,7 +39,24 @@ pub const CENSUS_DIMS: [CircuitId; NUM_CENSUS_DIMS] = [
 
 pub struct CensusTable {
     pub c0: CensusVec,
+    /// Frozen empirical max-deviation envelope emitted from calibration proofs:
+    /// the ten census dimensions, then total family cycles. Accuracy gates use
+    /// this same reference for every acceptance corpus; point estimates ignore it.
+    pub per_proof_spread: [u64; NUM_CENSUS_DIMS + 1],
     pub v: &'static [(CircuitId, CensusVec)],
+}
+
+/// Frozen reference for manual calibration accuracy gates; this does not add
+/// a margin to the production point estimate or alter verifier execution.
+pub fn calibrated_proof_spread(
+    program: FsvProgram,
+    mode: BlakeMode,
+) -> Result<[u64; NUM_CENSUS_DIMS + 1], EstimateError> {
+    CENSUS_TABLES
+        .iter()
+        .find(|(p, m, _)| *p == program && *m == mode)
+        .map(|(_, _, table)| table.per_proof_spread)
+        .ok_or(EstimateError::UnknownBinary { program, mode })
 }
 
 impl CensusTable {
@@ -111,19 +128,20 @@ pub static CENSUS_TABLES: &[(FsvProgram, BlakeMode, CensusTable)] = &[
         FsvProgram::UnrolledBaseLayer,
         BlakeMode::Compression,
         CensusTable {
-            c0: [21393, 5819, 1232, 0, 87330, 0, 476, 0, 0, 0],
+            c0: [21147, 5606, 1042, 0, 87620, 0, 504, 0, 0, 0],
+            per_proof_spread: [364, 431, 228, 0, 0, 0, 0, 0, 0, 0, 1003],
             v: &[
                 (
                     CircuitId::Riscv(1),
-                    [485290, 54647, 35903, 0, 216155, 0, 55552, 0, 0, 0],
+                    [485297, 54654, 35914, 0, 216155, 0, 55552, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(2),
-                    [501191, 55877, 36046, 0, 224357, 0, 56833, 0, 0, 0],
+                    [501198, 55882, 36045, 0, 224357, 0, 56833, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(3),
-                    [510200, 56648, 36435, 0, 227330, 0, 56896, 0, 0, 0],
+                    [510298, 56766, 36497, 0, 227330, 0, 56896, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(4),
@@ -131,11 +149,11 @@ pub static CENSUS_TABLES: &[(FsvProgram, BlakeMode, CensusTable)] = &[
                 ),
                 (
                     CircuitId::Riscv(16),
-                    [475728, 54067, 35839, 0, 218548, 0, 55552, 0, 0, 0],
+                    [475757, 54102, 35844, 0, 218548, 0, 55552, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(17),
-                    [487408, 54958, 36089, 0, 218515, 0, 56210, 0, 0, 0],
+                    [487443, 54999, 36102, 0, 218515, 0, 56210, 0, 0, 0],
                 ),
                 (
                     CircuitId::InitsAndTeardowns,
@@ -147,7 +165,7 @@ pub static CENSUS_TABLES: &[(FsvProgram, BlakeMode, CensusTable)] = &[
                 ),
                 (
                     CircuitId::Delegation(1994),
-                    [820289, 74325, 36542, 0, 361063, 0, 66878, 0, 0, 0],
+                    [820174, 74229, 36575, 0, 361063, 0, 66878, 0, 0, 0],
                 ),
                 (
                     CircuitId::Delegation(1995),
@@ -155,15 +173,15 @@ pub static CENSUS_TABLES: &[(FsvProgram, BlakeMode, CensusTable)] = &[
                 ),
                 (
                     CircuitId::Delegation(1996),
-                    [703687, 68382, 35682, 0, 312271, 0, 61824, 0, 0, 0],
+                    [703703, 68390, 35665, 0, 312271, 0, 61824, 0, 0, 0],
                 ),
                 (
                     CircuitId::Delegation(1997),
-                    [622227, 62930, 34033, 0, 276620, 0, 58443, 0, 0, 0],
+                    [622154, 62860, 34029, 0, 276620, 0, 58443, 0, 0, 0],
                 ),
                 (
                     CircuitId::Delegation(1998),
-                    [661842, 65034, 34125, 0, 299899, 0, 61453, 0, 0, 0],
+                    [661826, 65013, 34133, 0, 299899, 0, 61453, 0, 0, 0],
                 ),
             ],
         },
@@ -172,31 +190,32 @@ pub static CENSUS_TABLES: &[(FsvProgram, BlakeMode, CensusTable)] = &[
         FsvProgram::UnrolledRecursionLayer,
         BlakeMode::Compression,
         CensusTable {
-            c0: [17764, 4426, 892, 0, 79726, 0, 364, 0, 0, 0],
+            c0: [17725, 4198, 745, 0, 79726, 0, 364, 0, 0, 0],
+            per_proof_spread: [279, 316, 153, 0, 0, 0, 0, 0, 0, 0, 696],
             v: &[
                 (
                     CircuitId::Riscv(1),
-                    [485362, 54720, 35902, 0, 216157, 0, 55552, 0, 0, 0],
+                    [485334, 54695, 35911, 0, 216157, 0, 55552, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(2),
-                    [501161, 55859, 36062, 0, 224359, 0, 56833, 0, 0, 0],
+                    [501185, 55881, 36066, 0, 224359, 0, 56833, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(3),
-                    [510280, 56763, 36514, 0, 227332, 0, 56896, 0, 0, 0],
+                    [510381, 56870, 36546, 0, 227332, 0, 56896, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(16),
-                    [475798, 54155, 35892, 0, 218550, 0, 55552, 0, 0, 0],
+                    [475777, 54147, 35929, 0, 218550, 0, 55552, 0, 0, 0],
                 ),
                 (
                     CircuitId::InitsAndTeardowns,
-                    [343871, 40091, 28345, 0, 150433, 0, 27146, 0, 0, 0],
+                    [343879, 40101, 28307, 0, 150433, 0, 27146, 0, 0, 0],
                 ),
                 (
                     CircuitId::Delegation(1991),
-                    [1627249, 141436, 48409, 0, 699657, 0, 102662, 0, 0, 0],
+                    [1627228, 141430, 48434, 0, 699657, 0, 102662, 0, 0, 0],
                 ),
                 // K2 rows: special5's row scaled by layout size, not calibrated
                 (
@@ -244,6 +263,7 @@ mod tests {
     fn test_table() -> CensusTable {
         CensusTable {
             c0: vec0(800),
+            per_proof_spread: [0; NUM_CENSUS_DIMS + 1],
             v: &TEST_ROWS,
         }
     }
@@ -300,6 +320,7 @@ mod tests {
         ];
         let table = CensusTable {
             c0: vec0(0),
+            per_proof_spread: [0; NUM_CENSUS_DIMS + 1],
             v: &ROWS,
         };
         let counts = [(CircuitId::Riscv(7), 1), (CircuitId::Delegation(7), 1)];

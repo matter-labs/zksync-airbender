@@ -17,6 +17,7 @@ use setups::Setups;
 use verifier_common::field::baby_bear::base::BabyBearField;
 
 pub mod calibrate;
+pub mod fixtures;
 pub mod plan;
 
 const UNROLLED_RECURSION_CYCLES_BOUND: usize = 1 << 28;
@@ -203,15 +204,12 @@ fn read_compressed<T: serde::de::DeserializeOwned>(path: &str) -> T {
 }
 
 pub fn load_calibration_proof(name: &str) -> (Setups, ProgramProof) {
-    let dir = std::env::var("COST_MODEL_FIXTURE_DIR").unwrap_or_else(|_| {
-        panic!(
-            "set COST_MODEL_FIXTURE_DIR to the directory holding \
-             {name}_proof.bin / {name}_setups.bin (zlib-compressed JSON of \
-             ProgramProof / Setups); see the module docs of \
-             tests/cost_model_trace.rs for how to produce and name them"
-        )
-    });
-    let proof = read_compressed(&format!("{dir}/{name}_proof.bin"));
-    let setups = read_compressed(&format!("{dir}/{name}_setups.bin"));
+    let prefix = if std::path::Path::new(name).is_absolute() {
+        std::path::PathBuf::from(name)
+    } else {
+        fixtures::directories()[0].join(name)
+    };
+    let proof = read_compressed(&format!("{}_proof.bin", prefix.display()));
+    let setups = read_compressed(&format!("{}_setups.bin", prefix.display()));
     (setups, proof)
 }
