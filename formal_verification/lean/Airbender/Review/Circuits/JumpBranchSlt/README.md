@@ -202,3 +202,17 @@ native successor. [Four initialized regressions](../../../../Tests/ComparisonExe
 execute original signed/unsigned register/immediate clauses, including true
 SLTIU-to-x0 data stuttering and PC eight to twelve. Original jump/branch CSR
 effects and complete fetched trace/terminal matching remain separate.
+
+## Original branch clauses and retirement
+
+[The native assembly](../../../Proofs/Trace/Families/JumpBranchSlt/BranchExecution.lean)
+reuses checked branch predicates/targets and actual same-pre-state native reads.
+Original public BTYPE metadata supplies indices and sign extension; native mask
+sixteen and actual target ranges replace the source mask/closure interfaces.
+[The public segment claim](../../Trace/Families/JumpBranchSlt/BranchExecution.lean)
+constructs states and reaches original Sail retirement. Initial misa readability
+is explicit, its value unrestricted and its per-row read transported through
+unchanged original CSR frames. [Eighteen regressions](../../../../Tests/BranchExecution.lean)
+reuse native fixtures unchanged with only this real public CSR entry, deriving
+full data-state stuttering and targets. Missing CSR/accessor behavior is an
+original-state boundary. Original jumps and full fetched composition remain open.

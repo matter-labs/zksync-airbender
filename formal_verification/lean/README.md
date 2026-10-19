@@ -26,9 +26,10 @@ Current coverage spans three circuit families:
   including x0 loads and retained native shadow events.
 - [Jumps, branches and comparisons](Airbender/Review/Circuits/JumpBranchSlt/README.md):
   native JAL/JALR links/targets, all six branch conditions/targets and all four
-  comparison results/PCs. Original comparison clauses and retirement now reach
-  native outputs in constructed initialized-history segments. Original
-  jump/branch clauses and complete fetched control execution remain open.
+  comparison results/PCs. Original comparison and branch clauses/retirement
+  now reach native outputs in constructed initialized-history segments, with
+  the documented public ISA CSR boundary for branches. Original jump clauses
+  and complete fetched control execution remain open.
 
 Multiply/divide, shifts/binops, subword memory, delegation and whole-machine
 protocol composition are still unfinished; the [plan](FORMAL_VERIFICATION_PLAN.md)
@@ -801,3 +802,37 @@ general fetched trace composition and terminal instruction-state matching,
 original jump/branch clauses and their CSR effects remain separate. New native
 program export, general Rust/compiler and cryptographic refinement are not
 claimed. No v2 implementation defect is established.
+
+## Initialized original branch clauses and retirement
+
+[Original branch execution](Airbender/Proofs/Trace/Families/JumpBranchSlt/BranchExecution.lean)
+now connects all six native branch conditions and targets to pinned original
+Sail BTYPE clauses and normal preparation/retirement. Complete native matching
+derives both source bounds and actual same-pre-state reads; original public
+decoding derives the BTYPE constructor, indices, funct3 and sign-extended offset.
+The existing native target proof supplies exact PC+offset/PC+4 and four-byte
+alignment, including the previously checked RV32 arithmetic wrap behavior.
+The source branch mask twenty-four and old columns/final-high interface are
+replaced by native v2 mask sixteen, actual ports and derived target bounds.
+
+[The public segment claim](Airbender/Review/Trace/Families/JumpBranchSlt/BranchExecution.lean)
+constructs every before/after state and retires the original clause to the native
+output PC. Original Sail requires a successful misa read on a taken aligned
+target. A real public initial CSR entry is therefore explicit; its value is
+unrestricted. The [original control-flow module](Airbender/Proofs/Sail/ControlFlow.lean)
+is copied unchanged, and [unchanged CSR frame proofs](Airbender/Proofs/Trace/ControlFlowCSR.lean)
+transport that entry through complete native history. No per-row CSR, operand,
+result, prepared state, target PC, final-high closure or intermediate state is
+supplied.
+
+[Regressions](Tests/BranchExecution.lean) reuse all eighteen native original-byte
+fixtures unchanged and add only the actual public misa entry, universally over
+its 32-bit value. Both outcomes of every opcode execute from their actual public
+states, derive complete data-state stuttering from the real discarded write and
+reach the checked target. The prior partial fixtures have no misa entry and the
+original accessor cannot succeed there. This is an explicit original-state
+boundary, not a native constraint defect; a whole missing-CSR branch exception
+trace is not claimed. General fetched control composition/terminal instruction-
+state matching, original JAL/JALR clauses and their landing-pad CSR profile,
+new native program exports and general Rust/compiler/cryptographic refinement
+remain separate.

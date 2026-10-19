@@ -169,3 +169,11 @@ canonical immediate sign extension and x0; initialized history supplies reads
 and writes, while native results/PC proofs supply outputs. Original x0 decoding
 is retained through actual source reads, discarded writes and retirement.
 General fetched control composition and jump/branch CSR effects remain separate.
+
+[Original branch retirement](../../Trace/Families/JumpBranchSlt/BranchExecution.lean)
+now recovers the exact original BTYPE constructor, source indices, sign-extended
+offset and six funct3 tags from public decoding/native query membership. Native
+matching supplies both source words and their bounds; native target proofs
+supply the final PC. The public misa entry is transported by unchanged history
+frames, without per-row desired reads, decisions, states or PCs. Full fetched
+control composition and original jump CSR effects remain separate.

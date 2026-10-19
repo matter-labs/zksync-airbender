@@ -25,6 +25,7 @@ not completed v2 coverage.
 | [Initialized native branch conditions](Airbender/Review/Trace/Families/JumpBranchSlt/Branches.lean) | Original public decoding and initialized matching derive all six branch conditions, equality/sign/borrow flags, both routing bits and actual zero writes. Native inverse equations identify equality and actual scalar/fixed queries resolve signed/unsigned order. Eighteen initialized cases cover both outcomes per opcode; branch targets and original Sail retirement remain separate. |
 | [Initialized native branch targets](Airbender/Review/Trace/Families/JumpBranchSlt/BranchTargets.lean) | The checked six conditions select PC+offset or PC+4 with RV32 wrap and four-byte alignment. Original public decoding derives parity, incoming bounds/alignment and selectors; actual native carry, range, routing and cleanup constraints determine both outgoing limbs. Eighteen initialized cases, local negative/wrap rows and taken-only alignment rejection pass; original Sail clauses/retirement remain separate. |
 | [Initialized original comparison execution](Airbender/Review/Trace/Families/JumpBranchSlt/ComparisonExecution.lean) | Exact original SLT/SLTU/SLTI/SLTIU clauses and shared preparation/retirement reach native output PCs in constructed initialized-history segment states, including retained x0 source reads and discarded writes. All four original-byte fixtures execute from actual public states; full fetched control composition/terminal matching and original jump/branch clauses remain separate. |
+| [Initialized original branch execution](Airbender/Review/Trace/Families/JumpBranchSlt/BranchExecution.lean) | Original BEQ/BNE/BLT/BGE/BLTU/BGEU clauses prepare and retire to exact native targets in constructed initialized-history segments. Actual public misa readability is explicit, with unrestricted value and history-derived CSR preservation. Eighteen unchanged native fixtures execute both outcomes per opcode from configured public states and derive complete data-state stuttering. Original jumps and full fetched control composition/terminal matching remain separate. |
 | V2 artifact import | All 34 quadratic and 3 linear equations, four 16-bit and eight 19-bit timestamp queries from the pinned ADD/SUB layout. Bounds/placement guards and both native zero coefficient encodings. |
 | Reused foundation | Unchanged property definitions, word representation/arithmetic and pinned Sail reference/execution lemmas. Source hashes are checked. |
 | Native state/port clocks | Typed physical state and three direct ports, including actual destination writes. Four-tick advancement and strict previous-write/port order follow from imported equations/queries under initial/prior clock bounds and alignment. The initialized-history layer now derives these local inputs from matching and initial boundaries. |
@@ -727,15 +728,49 @@ original jump/branch clauses and their CSR effects remain separate. New native
 program export, general Rust/compiler and cryptographic refinement are not
 claimed. No v2 implementation defect is established.
 
+## Initialized original branch clauses and retirement
+
+[Original branch execution](Airbender/Proofs/Trace/Families/JumpBranchSlt/BranchExecution.lean)
+now connects all six native branch conditions and targets to pinned original
+Sail BTYPE clauses and normal preparation/retirement. Complete native matching
+derives both source bounds and actual same-pre-state reads; original public
+decoding derives the BTYPE constructor, indices, funct3 and sign-extended offset.
+The existing native target proof supplies exact PC+offset/PC+4 and four-byte
+alignment, including the previously checked RV32 arithmetic wrap behavior.
+The source branch mask twenty-four and old columns/final-high interface are
+replaced by native v2 mask sixteen, actual ports and derived target bounds.
+
+[The public segment claim](Airbender/Review/Trace/Families/JumpBranchSlt/BranchExecution.lean)
+constructs every before/after state and retires the original clause to the native
+output PC. Original Sail requires a successful misa read on a taken aligned
+target. A real public initial CSR entry is therefore explicit; its value is
+unrestricted. The [original control-flow module](Airbender/Proofs/Sail/ControlFlow.lean)
+is copied unchanged, and [unchanged CSR frame proofs](Airbender/Proofs/Trace/ControlFlowCSR.lean)
+transport that entry through complete native history. No per-row CSR, operand,
+result, prepared state, target PC, final-high closure or intermediate state is
+supplied.
+
+[Regressions](Tests/BranchExecution.lean) reuse all eighteen native original-byte
+fixtures unchanged and add only the actual public misa entry, universally over
+its 32-bit value. Both outcomes of every opcode execute from their actual public
+states, derive complete data-state stuttering from the real discarded write and
+reach the checked target. The prior partial fixtures have no misa entry and the
+original accessor cannot succeed there. This is an explicit original-state
+boundary, not a native constraint defect; a whole missing-CSR branch exception
+trace is not claimed. General fetched control composition/terminal instruction-
+state matching, original JAL/JALR clauses and their landing-pad CSR profile,
+new native program exports and general Rust/compiler/cryptographic refinement
+remain separate.
+
 ## Validation
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all forty-one concrete test modules pass.
+- Library, both CLI entrypoints and all forty-two concrete test modules pass.
 - Importer regressions: 169 checks pass.
-- Axiom audit: 986 explicit roots; only propext, Classical.choice and Quot.sound.
-- All fifty-nine public Review theorems (ten circuit claims, forty trace claims and nine helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
-- Source provenance: 73 unchanged reused files, three native circuit artifacts, thirty-six native Rust sources, seven native setup artifacts and four exporter source/manifest/lock files.
+- Axiom audit: 1004 explicit roots; only propext, Classical.choice and Quot.sound.
+- All sixty public Review theorems (ten circuit claims, forty-one trace claims and nine helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Source provenance: 74 unchanged reused files, three native circuit artifacts, thirty-six native Rust sources, seven native setup artifacts and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
 - Public Sail x1/PC reads construct the accepted alias fixture; missing register and byte data reject construction.

@@ -293,6 +293,10 @@
     {
       "path": "Airbender/Proofs/Arithmetic/Comparison.lean",
       "sha256": "368249c542ab085551e195871d2768d611dcd9ee1052dbfc08ece01a8ad18c01"
+    },
+    {
+      "path": "Airbender/Proofs/Sail/ControlFlow.lean",
+      "sha256": "d220d575bc0af1558f3b06d16b7d618e5b3af930c704e8903955a42007920b33"
     }
   ],
   "circuit_artifacts": [
@@ -2645,6 +2649,66 @@
       "backport_reuse_path": "Tests/ControlRegisters.lean",
       "backport_reuse_sha256": "656dc3eb4a90e6167ab58383ce2c7ecd5b0a69d1ca25e7a5d74c7e957b44e1c6",
       "change": "Reuse singleton native-history extraction and empty-prefix/suffix elimination to derive actual segment states. Recover the original x0 destination from query indices and the real masked write, then derive complete data-state stuttering instead of supplying an expected after-state."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/ControlFlowCSR.lean",
+      "source_path": "Airbender/Proofs/Trace/Retirement.lean",
+      "source_sha256": "b8c46e2a078d857218343bfa5eca57c5303bd2336882dbe26741a1551e457063",
+      "change": "Copy the complete cell_write_control_flow_csrs and sail_history_control_flow_csrs declaration block unchanged into a focused module. Actual GPR/RAM effects preserve misa, privilege and security CSRs; no per-row expected CSR is supplied."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/BranchExecution.lean",
+      "source_path": "Airbender/Proofs/JumpBranchSlt/BranchSoundness.lean",
+      "source_sha256": "cc7e50851623d85c227af854dfa0a119d20d0059b1004f2bb1b34ea6ed9e47bc",
+      "change": "Copy the private nativeCondition declaration unchanged and adapt its six-case predicate bridge and original BTYPE reduction/preparation/jump_to_aligned/retire_of_effects proof structure. Bind current native predicates, source words and checked targets; retain actual original misa reading with arbitrary public value and remove source final-high closure."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/BranchExecution.lean",
+      "source_path": "Airbender/Proofs/JumpBranchSlt/BranchExecution.lean",
+      "source_sha256": "79d85a1787aa0f5f0000dee6249a58b534af235d577b701d30e7add2632981ff",
+      "change": "Reuse original public BTYPE/data recovery, native same-pre-state reads, initial-to-row CSR preservation, actual masked write and projected-step identification. Native v2 branch mask sixteen, right 24/25, output 13/14 and actual target proof replace source mask twenty-four and old columns. Derive all ranges/results/PCs and states from initialized matching/public bytes; no desired-result, per-row CSR or closure premise."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/BranchExecution.lean",
+      "backport_reuse_revision": "42d092a46b57ca3fd3e03f526a3b4c4f827d4d35",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/BranchTargets.lean",
+      "backport_reuse_sha256": "76598c847eb67ef490c8c4b4fa7a271864ba722879d4048ecb965cd3b8fcae09",
+      "change": "Reuse initialized branch conditions and exact native targets/alignment unchanged, together with current initialized word bounds. Original Sail predicates agree under derived bounds; no supplied decision, offset, range or final-high interface."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/BranchExecution.lean",
+      "backport_reuse_revision": "42d092a46b57ca3fd3e03f526a3b4c4f827d4d35",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/RegisterHistory.lean",
+      "backport_reuse_sha256": "d500162f62fbc8a9ea86e68609f15d06c2e64b463dba0c3f8f99cdc1f839cf57",
+      "change": "Reuse complete initialized segment construction and actual register accesses unchanged. Native history determines all source reads and after-states, including readonly aliases and the actual zero destination event."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/BranchExecution.lean",
+      "backport_reuse_revision": "42d092a46b57ca3fd3e03f526a3b4c4f827d4d35",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/ComparisonExecution.lean",
+      "backport_reuse_sha256": "35d3ab80ef4818d642cec3e66692f684b803827cf91a0a66fdae886a5a1089c0",
+      "change": "Reuse the short public initialized-segment claim and original decoder-constructor recovery structure. Add only meaningful actual initial misa readability, transport it through the checked prefix, and dispatch original BTYPE clauses to native targets."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/BranchExecution.lean",
+      "backport_reuse_revision": "42d092a46b57ca3fd3e03f526a3b4c4f827d4d35",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Retirement.lean",
+      "backport_reuse_sha256": "61553514a54434011a5b166dafefca4d996a056290ef25f8046de2de88b45e1d",
+      "change": "Reuse retired-state history/PC reads, projected_step_of_write and retired_state_overwrite unchanged. Original retire_of_effects and copied control-flow helpers handle taken targets as well as PC+4."
+    },
+    {
+      "path": "Tests/BranchExecution.lean",
+      "backport_reuse_revision": "42d092a46b57ca3fd3e03f526a3b4c4f827d4d35",
+      "backport_reuse_path": "Tests/Branches.lean",
+      "backport_reuse_sha256": "7bafa20761972f41e7056a8f734cb6cf0bda696677dda026dc8de6004cc2c5ce",
+      "change": "Keep all eighteen native constraints, traces, original words, matching and decoder certificates unchanged. Reuse exact public-byte construction/seed proof structure with only a real misa entry added to the public state. Prove original clauses and complete data-state stuttering for arbitrary misa value and both outcomes of every opcode; no new native program export is claimed."
+    },
+    {
+      "path": "Tests/BranchExecution.lean",
+      "backport_reuse_revision": "42d092a46b57ca3fd3e03f526a3b4c4f827d4d35",
+      "backport_reuse_path": "Tests/ComparisonExecution.lean",
+      "backport_reuse_sha256": "95251bdcbb742231db0faf6949acaa64b588195651dec01b7017009f7ac380f1",
+      "change": "Reuse singleton history extraction, empty-prefix/suffix elimination, actual public-state normal-step rebasing and discarded-write stutter derivation. Check prior missing public misa and failed original accessor symbolically; no whole missing-CSR branch exception trace or desired result premise is claimed."
     }
   ],
   "setup_artifacts": [

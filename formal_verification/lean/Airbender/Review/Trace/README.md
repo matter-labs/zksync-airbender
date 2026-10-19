@@ -283,3 +283,13 @@ supplies exact constructors, indices, immediate sign extension and masks.
 from their actual public states, including retained x1=123 and complete data
 stuttering for true SLTIU-to-x0. Full fetched control execution/terminal matching
 and original jump/branch clauses remain separate.
+
+[Original branch execution](Families/JumpBranchSlt/BranchExecution.lean) now
+constructs all native segment states and retires every original BTYPE clause
+to its checked target. Native matching/public decoding derive reads, bounds,
+sign extension and decisions. A real initial misa entry is explicit, with
+unrestricted value; unchanged CSR frame lemmas transport it through history.
+[All eighteen unchanged native cases](../../../Tests/BranchExecution.lean)
+execute both outcomes per opcode, preserve the complete data state and reach
+the exact target. Missing public CSR/accessor tests retain the original-state
+boundary. Original jumps and full fetched control composition remain separate.

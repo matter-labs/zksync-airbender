@@ -357,8 +357,16 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    remove the source nonzero-destination/final-high interfaces. The four existing
    original-byte fixtures execute from actual public states; true SLTIU-to-x0
    retains x1=123 and data stuttering while retiring PC eight to twelve.
-   Next connect original jump/branch Sail clauses and their actual CSR effects,
-   then full fetched execution and actual terminal instruction-state matching. General Rust/compiler and cryptographic refinement remain separate. No per-row result/PC or
+   [Original branch clauses and retirement](Airbender/Review/Trace/Families/JumpBranchSlt/BranchExecution.lean)
+   now connect all six predicates/targets to original BTYPE clauses in constructed
+   segments. Native matching and public decoding derive all reads, bounds,
+   offsets, conditions and PCs. An actual initial misa entry is explicit, with
+   unrestricted value; unchanged original CSR frame lemmas transport it through
+   history. All eighteen native fixtures are reused unchanged and execute both
+   outcomes per opcode with that public CSR entry, deriving full data stuttering.
+   Missing-entry/accessor regressions retain this original-state boundary.
+   Next connect original JAL/JALR clauses and their actual landing-pad CSR profile,
+   then full fetched control execution and actual terminal instruction-state matching. General Rust/compiler and cryptographic refinement remain separate. No per-row result/PC or
    table-equivalence premise is added.
 
 3. Port unsigned mul/div, shift/binop and subword memory into the same shared
