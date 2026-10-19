@@ -3859,6 +3859,216 @@
       "backport_reuse_path": "Airbender/Proofs/Tables/BinaryXorCertificate.lean",
       "backport_reuse_sha256": "97b2dfa20bdb0897d1ef5bb96b7a8db6c0332f25042b410d8faabcaaff941393",
       "change": "Reuse source-shaped checkBlocks_cons_iff output certificates, but prove every native affine/periodic block symbolically using its finite index bound. Copy the affine getter unchanged; use unchanged periodic_get. No two-million-row enumeration or table-equivalence premise."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/SllHigh.lean",
+      "backport_reuse_revision": "f5a3852cc14daed676399193f062e756a5d44c08",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/SrlLow.lean",
+      "backport_reuse_sha256": "0c39062f8e738ff4d5afa8860ce0466b83b0528a8934a14960a3bee7ff8d703d",
+      "change": "Reuse original Clean static-table construction; model the native high-input 16-bit logical left shift and RV32 truncation independently from exported values."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/NativeSllHighData.lean",
+      "backport_reuse_revision": "f5a3852cc14daed676399193f062e756a5d44c08",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/NativeSrlLowData.lean",
+      "backport_reuse_sha256": "7a2a55ecee1e95acb8435e7106d0253557947163b1c93b36ae1e5ecb21c2b981",
+      "change": "Reuse strict literal native regional import; retain ID 49, compiled offset 2363393 and all 2^21 rows."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/NativeSllHighRows.lean",
+      "backport_reuse_revision": "f5a3852cc14daed676399193f062e756a5d44c08",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/NativeSrlLowRows.lean",
+      "backport_reuse_sha256": "1457eb2f8ad036e9234bcf1645c281c4351bf51eea674d882dcfb3f85b5bf7fb",
+      "change": "Reuse actual tagged native-row observations without inserted mathematical output rules."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/NativeSllHigh.lean",
+      "backport_reuse_revision": "f5a3852cc14daed676399193f062e756a5d44c08",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/NativeSrlLow.lean",
+      "backport_reuse_sha256": "237adbcbb4fa24d6103fd90a8e529120a8dc63e537b3b513361f22ca635930c4",
+      "change": "Reuse two thin public claims; derive key/output bounds, zero low output and exact wrapped RV32 high-input left shift from actual native membership."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SllHighParts.lean",
+      "backport_reuse_revision": "f5a3852cc14daed676399193f062e756a5d44c08",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlLowParts.lean",
+      "backport_reuse_sha256": "786673b46159fc8d3e6814ddce466653f714a012b55c6cb510b142425e994b02",
+      "change": "Reuse six checked actual-block partitions. Add structural native-block shape and generic periodic extent assembly; do not normalize stored values to infer their sizes. No unexported row recipes or equivalence premises."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SllHighMath.lean",
+      "backport_reuse_revision": "f5a3852cc14daed676399193f062e756a5d44c08",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlLowMath.lean",
+      "backport_reuse_sha256": "471c7ffdae1ef7260838a438e3cd7ac1849d6be1dbd05c22a2ce8a861adcb818",
+      "change": "Reuse separate independent bounds/bitvector characterization. Standard multiplication bounds, toNat_shiftLeft and mul_mod_mul_right prove RV32 truncation of the high input limb without casting the whole word into Mersenne31."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SllHighColumns.lean",
+      "backport_reuse_revision": "f5a3852cc14daed676399193f062e756a5d44c08",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlLowColumns.lean",
+      "backport_reuse_sha256": "e60a5a658a1a3b7e97b96f09646a609d133ef3fdb20f08864b0c9bfbe204d4f9",
+      "change": "Copy affine_get and single_get unchanged; adapt actual key, zero-low, native-tag and output-extent observations."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SllHigh.lean",
+      "backport_reuse_revision": "f5a3852cc14daed676399193f062e756a5d44c08",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlLow.lean",
+      "backport_reuse_sha256": "5e97d0a15b46693f5637f3672f0cd2f077f8369ee0b0e77b06183b21f2cc8a3e",
+      "change": "Reuse actual row assembly, exact original Clean/native membership and canonical-field result lifting. Combine six checked symbolic native-block certificates through unchanged checkBlocks_sound."
+    },
+    {
+      "path": "Tests/NativeSllHigh.lean",
+      "backport_reuse_revision": "f5a3852cc14daed676399193f062e756a5d44c08",
+      "backport_reuse_path": "Tests/NativeSrlLow.lean",
+      "backport_reuse_sha256": "780ca63c4660383472e6d9847f2820f651fbfdd30d3fe2bc093dad12964ad02b",
+      "change": "Reuse all-row, membership and actual-offset checks. Add shift-zero/one/fifteen/sixteen/31, top/final-bit discard boundaries and malformed result/low-padding/packed-key rejections."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SllHighPart0.lean",
+      "backport_reuse_revision": "f5a3852cc14daed676399193f062e756a5d44c08",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlLowPart0.lean",
+      "backport_reuse_sha256": "75af5850ed3f5fef4922aaf7d485d54f4802526345ca7eff24e88d9e18dc0163",
+      "change": "Reuse source-shaped symbolic block certificates and the unchanged affine getter."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SllHighPart1.lean",
+      "backport_reuse_revision": "f5a3852cc14daed676399193f062e756a5d44c08",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlLowPart1.lean",
+      "backport_reuse_sha256": "5607b219f448eadce915453ad79578aaf9bb9d87c91320ffc5998e8ff2f3788f",
+      "change": "Reuse source-shaped symbolic block certificates and the unchanged affine getter."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SllHighPart2.lean",
+      "backport_reuse_revision": "f5a3852cc14daed676399193f062e756a5d44c08",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlLowPart2.lean",
+      "backport_reuse_sha256": "24fb7b03cbab7ac54991d1710903d1e3291e92763adf93bc2494b7d8e0bbd057",
+      "change": "Reuse source-shaped symbolic block certificates and the unchanged affine getter."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SllHighPart3.lean",
+      "backport_reuse_revision": "f5a3852cc14daed676399193f062e756a5d44c08",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlLowPart3.lean",
+      "backport_reuse_sha256": "dec608613c3cdb0a2f9c83563f799b03249cd4ae4ba8c182b538d8f86708ae47",
+      "change": "Reuse source-shaped symbolic block certificates and the unchanged affine getter."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SllHighPart4.lean",
+      "backport_reuse_revision": "f5a3852cc14daed676399193f062e756a5d44c08",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlLowPart0.lean",
+      "backport_reuse_sha256": "75af5850ed3f5fef4922aaf7d485d54f4802526345ca7eff24e88d9e18dc0163",
+      "change": "Reuse source-shaped periodic certificates and unchanged periodic_get. Prove the periodic partition generically over arrays, then instantiate checked native template sizes and values to avoid imported-data normalization."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SllHighPart5.lean",
+      "backport_reuse_revision": "f5a3852cc14daed676399193f062e756a5d44c08",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlLowPart5.lean",
+      "backport_reuse_sha256": "53887af7be7e621006f25112016cbd7f16988408385710972fe774e4b4044cda",
+      "change": "Reuse source-shaped symbolic block certificates and the unchanged affine getter."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SllHighTemplate6.lean",
+      "backport_reuse_revision": "f5a3852cc14daed676399193f062e756a5d44c08",
+      "backport_reuse_path": "Airbender/Proofs/Tables/BinaryXorCertificate.lean",
+      "backport_reuse_sha256": "97b2dfa20bdb0897d1ef5bb96b7a8db6c0332f25042b410d8faabcaaff941393",
+      "change": "Adapt the source literal-data kernel certificate pattern to the actual stored periodic template. Use unchanged raw-array getters and structural size lemmas, then kernel-check at most 64 actual queries per calculation; no native_decide or desired-result premise."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SllHighTemplate7.lean",
+      "backport_reuse_revision": "f5a3852cc14daed676399193f062e756a5d44c08",
+      "backport_reuse_path": "Airbender/Proofs/Tables/BinaryXorCertificate.lean",
+      "backport_reuse_sha256": "97b2dfa20bdb0897d1ef5bb96b7a8db6c0332f25042b410d8faabcaaff941393",
+      "change": "Adapt the source literal-data kernel certificate pattern to the actual stored periodic template. Use unchanged raw-array getters and structural size lemmas, then kernel-check at most 64 actual queries per calculation; no native_decide or desired-result premise."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SllHighTemplate8.lean",
+      "backport_reuse_revision": "f5a3852cc14daed676399193f062e756a5d44c08",
+      "backport_reuse_path": "Airbender/Proofs/Tables/BinaryXorCertificate.lean",
+      "backport_reuse_sha256": "97b2dfa20bdb0897d1ef5bb96b7a8db6c0332f25042b410d8faabcaaff941393",
+      "change": "Adapt the source literal-data kernel certificate pattern to the actual stored periodic template. Use unchanged raw-array getters and structural size lemmas, then kernel-check at most 64 actual queries per calculation; no native_decide or desired-result premise."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SllHighTemplate9.lean",
+      "backport_reuse_revision": "f5a3852cc14daed676399193f062e756a5d44c08",
+      "backport_reuse_path": "Airbender/Proofs/Tables/BinaryXorCertificate.lean",
+      "backport_reuse_sha256": "97b2dfa20bdb0897d1ef5bb96b7a8db6c0332f25042b410d8faabcaaff941393",
+      "change": "Adapt the source literal-data kernel certificate pattern to the actual stored periodic template. Use unchanged raw-array getters and structural size lemmas, then kernel-check at most 64 actual queries per calculation; no native_decide or desired-result premise."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SllHighTemplate10.lean",
+      "backport_reuse_revision": "f5a3852cc14daed676399193f062e756a5d44c08",
+      "backport_reuse_path": "Airbender/Proofs/Tables/BinaryXorCertificate.lean",
+      "backport_reuse_sha256": "97b2dfa20bdb0897d1ef5bb96b7a8db6c0332f25042b410d8faabcaaff941393",
+      "change": "Adapt the source literal-data kernel certificate pattern to the actual stored periodic template. Use unchanged raw-array getters and structural size lemmas, then kernel-check at most 64 actual queries per calculation; no native_decide or desired-result premise."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SllHighTemplate11.lean",
+      "backport_reuse_revision": "f5a3852cc14daed676399193f062e756a5d44c08",
+      "backport_reuse_path": "Airbender/Proofs/Tables/BinaryXorCertificate.lean",
+      "backport_reuse_sha256": "97b2dfa20bdb0897d1ef5bb96b7a8db6c0332f25042b410d8faabcaaff941393",
+      "change": "Adapt the source literal-data kernel certificate pattern to the actual stored periodic template. Use unchanged raw-array getters and structural size lemmas, then kernel-check at most 64 actual queries per calculation; no native_decide or desired-result premise."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SllHighTemplate12.lean",
+      "backport_reuse_revision": "f5a3852cc14daed676399193f062e756a5d44c08",
+      "backport_reuse_path": "Airbender/Proofs/Tables/BinaryXorCertificate.lean",
+      "backport_reuse_sha256": "97b2dfa20bdb0897d1ef5bb96b7a8db6c0332f25042b410d8faabcaaff941393",
+      "change": "Adapt the source literal-data kernel certificate pattern to the actual stored periodic template. Use unchanged raw-array getters and structural size lemmas, then kernel-check at most 64 actual queries per calculation; no native_decide or desired-result premise."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SllHighTemplate13.lean",
+      "backport_reuse_revision": "f5a3852cc14daed676399193f062e756a5d44c08",
+      "backport_reuse_path": "Airbender/Proofs/Tables/BinaryXorCertificate.lean",
+      "backport_reuse_sha256": "97b2dfa20bdb0897d1ef5bb96b7a8db6c0332f25042b410d8faabcaaff941393",
+      "change": "Adapt the source literal-data kernel certificate pattern to the actual stored periodic template. Use unchanged raw-array getters and structural size lemmas, then kernel-check at most 64 actual queries per calculation; no native_decide or desired-result premise."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SllHighTemplate14.lean",
+      "backport_reuse_revision": "f5a3852cc14daed676399193f062e756a5d44c08",
+      "backport_reuse_path": "Airbender/Proofs/Tables/BinaryXorCertificate.lean",
+      "backport_reuse_sha256": "97b2dfa20bdb0897d1ef5bb96b7a8db6c0332f25042b410d8faabcaaff941393",
+      "change": "Adapt the source literal-data kernel certificate pattern to the actual stored periodic template. Use unchanged raw-array getters and structural size lemmas, then kernel-check at most 64 actual queries per calculation; no native_decide or desired-result premise."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SllHighTemplate15.lean",
+      "backport_reuse_revision": "f5a3852cc14daed676399193f062e756a5d44c08",
+      "backport_reuse_path": "Airbender/Proofs/Tables/BinaryXorCertificate.lean",
+      "backport_reuse_sha256": "97b2dfa20bdb0897d1ef5bb96b7a8db6c0332f25042b410d8faabcaaff941393",
+      "change": "Adapt the source literal-data kernel certificate pattern to the actual stored periodic template. Use unchanged raw-array getters and structural size lemmas, then kernel-check at most 64 actual queries per calculation; no native_decide or desired-result premise."
+    },
+    {
+      "path": "Airbender/Import/Setup.lean",
+      "backport_reuse_revision": "f5a3852cc14daed676399193f062e756a5d44c08",
+      "backport_reuse_path": "Airbender/Import/Setup.lean",
+      "backport_reuse_sha256": "0d384bf17c901f216ef7bb0094cfdefe642bfd88c41cb18802db6d2209713967",
+      "change": "Reuse strict native regional version/field/profile/metadata/arity/canonicality guards for ID 49; dynamic compiled selectors remain unsupported."
+    },
+    {
+      "path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_revision": "f5a3852cc14daed676399193f062e756a5d44c08",
+      "backport_reuse_path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_sha256": "9465300a8eaf2071f5c4b44d27874b0ea5f4ae89e43944bed4492265fcff4b88",
+      "change": "Reuse literal regional emission without mathematical recipes or table-equivalence premises."
+    },
+    {
+      "path": "Tests/ArtifactImport.lean",
+      "backport_reuse_revision": "f5a3852cc14daed676399193f062e756a5d44c08",
+      "backport_reuse_path": "Tests/ArtifactImport.lean",
+      "backport_reuse_sha256": "57c00509db0aaf9f58a93137f5ed484a9fba86b2d5e1e762b5b6ccd8df6b8227",
+      "change": "Reuse strict native metadata mutations and crossed-profile rejection checks, including SRL-low/SLL-high separation."
+    },
+    {
+      "path": "scripts/check_native_setup.py",
+      "backport_reuse_revision": "f5a3852cc14daed676399193f062e756a5d44c08",
+      "backport_reuse_path": "scripts/check_native_setup.py",
+      "backport_reuse_sha256": "7ea598685bc8cc1d21c0febd09ad151f3a2c11daf5c53d4edaf5b05f9e68715d",
+      "change": "Reuse actual full native export reproduction and compiled-offset checks for SLL-high; preserve byte-identical old native exports."
+    },
+    {
+      "path": "../native_setup_exporter/src/main.rs",
+      "backport_reuse_revision": "f5a3852cc14daed676399193f062e756a5d44c08",
+      "backport_reuse_path": "../native_setup_exporter/src/main.rs",
+      "backport_reuse_sha256": "35947667bd76b724590f8545dee56c97226a2c61bb7cda6c11f2d53831b5f655",
+      "change": "Reuse unchanged selected-table generation/tagging, sequential lifetime, layout-derived offsets, lossless source codec and JSON roundtrip; add the actual high-input SLL profile."
     }
   ],
   "setup_artifacts": [
@@ -3977,6 +4187,13 @@
       "profile": "actual native low-input logical-right-shift table, ID 50, compiled offset 4460545, 2097152 rows; other three logical-shift tables and full dynamic circuit remain separate",
       "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py",
       "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5"
+    },
+    {
+      "path": "artifacts/setup/shift-sll-high-native.json",
+      "sha256": "e69c14fd2b16e25edcc4fad5ec1d4794750fe21cd7cc2cff56e981c58077d900",
+      "profile": "actual native high-input logical-left-shift table, ID 49, compiled offset 2363393, 2097152 rows; low-input SLL, high-input SRL and dynamic circuit connection remain separate",
+      "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py",
+      "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5"
     }
   ],
   "native_exporter_files": [
@@ -3990,7 +4207,7 @@
     },
     {
       "path": "../native_setup_exporter/src/main.rs",
-      "sha256": "35947667bd76b724590f8545dee56c97226a2c61bb7cda6c11f2d53831b5f655"
+      "sha256": "78f40f7ffb11a1c2c2b6231f0b82e90c31117473f64b400b60dac1e14ce6823c"
     },
     {
       "path": "../native_setup_exporter/src/columns.rs",

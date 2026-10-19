@@ -1225,3 +1225,42 @@ left-shift tables and high-input right-shift table remain, followed by faithful
 dynamic lookup import, numerical family soundness and initialized execution.
 Custom CSR/oracle semantics, general Rust/JSON/compiler refinement and
 cryptographic enforcement remain separate. No native defect is established.
+
+## Native high-input logical left shift
+
+[Two short public helper claims](Airbender/Review/Helpers/Tables/NativeSllHigh.lean)
+connect original Clean membership to all actual native high-input SLL rows.
+Membership derives packed-key/output bounds, zero low output and exact wrapped
+RV32 logical-left-shift semantics for the input limb placed in bits 16–31.
+The whole word is reconstructed as a bitvector from its canonical limb; no
+whole-word Mersenne31 cast, output bound or table-equivalence premise is supplied.
+
+[The native export](artifacts/setup/shift-sll-high-native.json) retains ID 49,
+compiled offset 2363393 and all 2,097,152 rows. The unchanged selected-table
+pipeline obtains values/tags from the native Rust API and placement from the
+pinned compiled layout. Reproduction checks the complete artifact and preserves
+byte-identical output for all previous native profiles. Strict import rejects
+changed metadata, noncanonical/incomplete columns and crossed profiles.
+
+[Structural geometry](Airbender/Proofs/Tables/SllHighParts.lean) retains all 74
+actual blocks and six exact partitions. Ten stored templates use the source raw
+array helpers and kernel checks of at most 64 queries per calculation. The
+largest template contains 1024 entries; the combined templates contain 2046.
+[Symbolic periodic assembly](Airbender/Proofs/Tables/SllHighPart4.lean) is proved
+over arrays before instantiating those checked sizes/values. Direct imported-data
+normalization reached the resident/Lean allocation limits; this staging keeps
+the same ceilings and avoids two-million-row enumeration. Every limit/failure
+left no owned surviving worker.
+
+[Independent arithmetic](Airbender/Proofs/Tables/SllHighMath.lean) connects the
+result to the standard RV32 bitvector shift and truncation. [Internal assembly](Airbender/Proofs/Tables/SllHigh.lean)
+combines actual keys, zero padding, tags, full output certificates and canonical
+field values. [Regressions](Tests/NativeSllHigh.lean) check shifts zero/one/fifteen/
+sixteen/31, top-bit loss, the last surviving bit and its next-bit boundary,
+and malformed output/low-padding/packed-key queries. Discarded bits match RV32;
+no native implementation defect is established.
+
+Native low-input SLL and high-input SRL remain, followed by faithful dynamic
+lookup import, numerical family soundness and initialized execution. Custom
+CSR/oracle semantics, general Rust/JSON/compiler refinement and cryptographic
+enforcement remain separate.

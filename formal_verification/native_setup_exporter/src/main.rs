@@ -228,6 +228,10 @@ fn export_srl_low(layout_path: &Path) -> ControlTables {
     export_shift_regions(layout_path, &[TableType::SrlWith16BitInputLow], "shift_binop_srl_low")
 }
 
+fn export_sll_high(layout_path: &Path) -> ControlTables {
+    export_shift_regions(layout_path, &[TableType::SllWith16BitInputHigh], "shift_binop_sll_high")
+}
+
 fn export_decoder_padding() -> DecoderPadding {
     let row = decoder_table_padding::<Mersenne31Field>().map(|value| value.as_u64_reduced() as u32);
     assert!(row.iter().all(|&value| (value as u64) < MODULUS));
@@ -426,6 +430,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if args.len() == 4 && args[1] == "--srl-low" {
         let artifact = export_srl_low(Path::new(&args[2]));
+        let bytes = serde_json::to_vec_pretty(&artifact)?;
+        let recovered: ControlTables = serde_json::from_slice(&bytes)?;
+        assert_eq!(serde_json::to_value(&artifact)?, serde_json::to_value(recovered)?);
+        std::fs::write(args.last().unwrap(), [bytes, vec![b'\n']].concat())?;
+        return Ok(());
+    }
+    if args.len() == 4 && args[1] == "--sll-high" {
+        let artifact = export_sll_high(Path::new(&args[2]));
         let bytes = serde_json::to_vec_pretty(&artifact)?;
         let recovered: ControlTables = serde_json::from_slice(&bytes)?;
         assert_eq!(serde_json::to_value(&artifact)?, serde_json::to_value(recovered)?);

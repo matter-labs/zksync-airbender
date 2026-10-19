@@ -1,3 +1,4 @@
+import Tests.NativeSllHigh
 import Tests.NativeSrlLow
 import Tests.NativeShiftScalars
 import Tests.NativeBinary
@@ -1427,3 +1428,71 @@ import Tests.JumpLink
 #print axioms Tests.NativeSrlLow.shift_one
 #print axioms Tests.NativeSrlLow.shift_sixteen
 #print axioms Tests.NativeSrlLow.wrong_result_rejected
+
+-- All native high-input logical-left-shift rows and exact membership/results.
+#print axioms Airbender.Verification.SllHighProofs.high_bits
+#print axioms Airbender.Verification.SllHighProofs.high_bound
+#print axioms Airbender.Verification.SllHighProofs.native_blocks_shape
+#print axioms Airbender.Verification.SllHighProofs.native_key
+#print axioms Airbender.Verification.SllHighProofs.native_membership
+#print axioms Airbender.Verification.SllHighProofs.native_output
+#print axioms Airbender.Verification.SllHighProofs.native_output_extent
+#print axioms Airbender.Verification.SllHighProofs.native_outputs
+#print axioms Airbender.Verification.SllHighProofs.native_result
+#print axioms Airbender.Verification.SllHighProofs.native_rows
+#print axioms Airbender.Verification.SllHighProofs.native_tag
+#print axioms Airbender.Verification.SllHighProofs.native_zero
+#print axioms Airbender.Verification.SllHighProofs.outputs_part0
+#print axioms Airbender.Verification.SllHighProofs.outputs_part1
+#print axioms Airbender.Verification.SllHighProofs.outputs_part2
+#print axioms Airbender.Verification.SllHighProofs.outputs_part3
+#print axioms Airbender.Verification.SllHighProofs.outputs_part4
+#print axioms Airbender.Verification.SllHighProofs.outputs_part5
+#print axioms Airbender.Verification.SllHighProofs.part0_extent
+#print axioms Airbender.Verification.SllHighProofs.part0_shape
+#print axioms Airbender.Verification.SllHighProofs.part1_extent
+#print axioms Airbender.Verification.SllHighProofs.part1_shape
+#print axioms Airbender.Verification.SllHighProofs.part2_extent
+#print axioms Airbender.Verification.SllHighProofs.part2_shape
+#print axioms Airbender.Verification.SllHighProofs.part3_extent
+#print axioms Airbender.Verification.SllHighProofs.part3_shape
+#print axioms Airbender.Verification.SllHighProofs.part4_extent
+#print axioms Airbender.Verification.SllHighProofs.part4_shape
+#print axioms Airbender.Verification.SllHighProofs.part5_extent
+#print axioms Airbender.Verification.SllHighProofs.part5_shape
+#print axioms Airbender.Verification.SllHighProofs.parts
+#print axioms Airbender.Verification.SllHighProofs.template10_size
+#print axioms Airbender.Verification.SllHighProofs.template10_values
+#print axioms Airbender.Verification.SllHighProofs.template11_size
+#print axioms Airbender.Verification.SllHighProofs.template11_values
+#print axioms Airbender.Verification.SllHighProofs.template12_size
+#print axioms Airbender.Verification.SllHighProofs.template12_values
+#print axioms Airbender.Verification.SllHighProofs.template13_size
+#print axioms Airbender.Verification.SllHighProofs.template13_values
+#print axioms Airbender.Verification.SllHighProofs.template14_size
+#print axioms Airbender.Verification.SllHighProofs.template14_values
+#print axioms Airbender.Verification.SllHighProofs.template15_size
+#print axioms Airbender.Verification.SllHighProofs.template15_values
+#print axioms Airbender.Verification.SllHighProofs.template6_size
+#print axioms Airbender.Verification.SllHighProofs.template6_values
+#print axioms Airbender.Verification.SllHighProofs.template7_size
+#print axioms Airbender.Verification.SllHighProofs.template7_values
+#print axioms Airbender.Verification.SllHighProofs.template8_size
+#print axioms Airbender.Verification.SllHighProofs.template8_values
+#print axioms Airbender.Verification.SllHighProofs.template9_size
+#print axioms Airbender.Verification.SllHighProofs.template9_values
+#print axioms Airbender.Verification.native_sll_high_membership
+#print axioms Airbender.Verification.native_sll_high_result
+#print axioms Tests.NativeSllHigh.actual_extent_offset
+#print axioms Tests.NativeSllHigh.all_rows
+#print axioms Tests.NativeSllHigh.exact_membership
+#print axioms Tests.NativeSllHigh.last_row
+#print axioms Tests.NativeSllHigh.last_surviving_bit
+#print axioms Tests.NativeSllHigh.next_bit_discarded
+#print axioms Tests.NativeSllHigh.no_shift_last_word
+#print axioms Tests.NativeSllHigh.nonzero_low_rejected
+#print axioms Tests.NativeSllHigh.oversized_key_rejected
+#print axioms Tests.NativeSllHigh.shift_one
+#print axioms Tests.NativeSllHigh.shift_sixteen
+#print axioms Tests.NativeSllHigh.top_bit_discarded
+#print axioms Tests.NativeSllHigh.wrong_result_rejected
