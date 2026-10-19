@@ -1022,15 +1022,40 @@ general Rust/JSON/compiler refinement, cryptographic argument enforcement,
 unified execution/protocol spans and completeness remain separately scoped.
 Shift/binop and subword memory are next. No native defect is established.
 
+## Actual native shift/binop decoder data
+
+[The short public data certificate](Airbender/Review/Trace/Families/ShiftBinop/NativeDecoder.lean)
+connects actual Rust preprocessing/materialization to independently read public
+bytes and original Sail decoding for twelve ordinary register/immediate forms,
+their twelve original x0 variants and an unsupported ADD hole. Every one of the
+1,048,576 exported rows is checked. [Internal proofs](Airbender/Proofs/ShiftBinop/NativeSetup.lean)
+check the small prefix and actual stored sentinel blocks structurally, reusing
+existing sparse setup and column proof structure with no table-equality premise.
+
+The native v2 profile retains x0 destinations, uses full sign-extended 16-bit
+binary immediate limbs, and retains SRAI funct7 bits (shift 31 gives immediate
+1055). Its operation mask/tag encoding differs from v3. [Regressions](Tests/ShiftDecoder.lean)
+check those differences and unsupported constructors. Actual exporter runs
+reproduce both fixture and binary-text output, reject unsupported REV8/rotate
+and illegal RV32 shift words, and confirm filtering with an empty CSR allow-list.
+Strict import profiles reject malformed data and crossed arithmetic/control exports.
+
+This is a finite native decoder-data certificate. Dynamic lookup selectors and
+the large shift/binop tables still require a checked constraint import; the
+compiled importer continues rejecting them. Shift/binop circuit soundness,
+initialized execution, custom CSR/oracle semantics, general Rust/compiler
+refinement and cryptographic enforcement remain separate. No native defect is
+established. The next checkpoint is native dynamic table import and membership.
+
 ## Validation
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all sixty-one concrete test modules pass.
-- Importer regressions: 202 checks pass.
-- Axiom audit: 1189 explicit roots; only propext, Classical.choice and Quot.sound.
-- All sixty-nine public Review theorems (eleven circuit claims, forty-nine trace claims and nine helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
-- Source provenance: 76 unchanged reused files, four native circuit artifacts, forty native Rust sources, eight native setup artifacts and four exporter source/manifest/lock files.
+- Library, both CLI entrypoints and all sixty-two concrete test modules pass.
+- Importer regressions: 219 checks pass.
+- Axiom audit: 1206 explicit roots; only propext, Classical.choice and Quot.sound.
+- All seventy public Review theorems (eleven circuit claims, fifty trace claims and nine helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Source provenance: 76 unchanged reused files, four native circuit artifacts, forty-two native Rust sources, nine native setup artifacts and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
 - Public Sail x1/PC reads construct the accepted alias fixture; missing register and byte data reject construction.

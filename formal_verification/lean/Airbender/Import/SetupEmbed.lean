@@ -147,4 +147,18 @@ elab "import_native_small_range " name:ident " from " path:str : command => do
   let some region := artifact.tables[0]? | throwError "missing native byte table"
   emitData name region.data region.offset
 
+/-- Literal actual native shift/binop preprocessing with an empty CSR allow-list.
+    This does not import dynamic lookup constraints or supply instruction semantics. -/
+elab "import_native_shift_decoder " name:ident " from " path:str : command => do
+  let source ← IO.FS.readFile path.getString
+  let artifact ← match parseShiftDecoder source with
+    | .ok artifact => pure artifact
+    | .error error => throwError "native shift decoder import failed: {error}"
+  emitData (mkIdent (name.getId.appendAfter "Decoder")) artifact.decoder 0
+  let column ← columnSyntax artifact.text
+  let textName := mkIdent (name.getId.appendAfter "Text")
+  elabCommand (← `(def $textName : Airbender.Setup.Column := $column))
+  let countName := mkIdent (name.getId.appendAfter "TextWords")
+  elabCommand (← `(def $countName : Nat := $(quote artifact.text_words)))
+
 end Airbender.Setup

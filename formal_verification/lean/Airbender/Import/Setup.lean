@@ -289,4 +289,10 @@ def parseSmallRange (source : String) : Except String ControlArtifact := do
   return artifact
 
 
+def DecoderArtifact.validateShift (artifact : DecoderArtifact) : Except String Unit :=
+  validateDecoder "shift_binop_csrrw" artifact
+
+def parseShiftDecoder (source : String) : Except String DecoderArtifact :=
+  parseDecoderFor "shift_binop_csrrw" source
+
 end Airbender.Setup

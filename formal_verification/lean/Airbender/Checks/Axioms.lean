@@ -1,3 +1,4 @@
+import Tests.ShiftDecoder
 import Tests.MulDivFetched
 import Tests.MulDivExecution
 import Tests.MulDivPC
@@ -1289,3 +1290,22 @@ import Tests.JumpLink
 #print axioms Tests.MulDivFetched.initialized_execution
 #print axioms Tests.MulDivFetched.initialized_values
 #print axioms Tests.MulDivFetched.terminal_bound
+
+-- Actual native shift/binop decoder data and original public Sail setup.
+#print axioms Airbender.Setup.Proofs.constantTail_sound
+#print axioms Airbender.ShiftBinop.Proofs.native_exported_rows
+#print axioms Airbender.ShiftBinop.Proofs.native_exported_tail
+#print axioms Airbender.ShiftBinop.Proofs.native_fixture_decode
+#print axioms Airbender.ShiftBinop.Proofs.native_fixture_image
+#print axioms Airbender.ShiftBinop.Proofs.native_fixture_slot
+#print axioms Airbender.ShiftBinop.Proofs.native_fixture_words
+#print axioms Airbender.ShiftBinop.exported_decoder_fidelity
+#print axioms Tests.ShiftDecoder.actual_text
+#print axioms Tests.ShiftDecoder.all_rows
+#print axioms Tests.ShiftDecoder.constructed
+#print axioms Tests.ShiftDecoder.original_decode
+#print axioms Tests.ShiftDecoder.original_x0
+#print axioms Tests.ShiftDecoder.retained_hole_and_tail
+#print axioms Tests.ShiftDecoder.signed_immediates
+#print axioms Tests.ShiftDecoder.srai_encoding
+#print axioms Tests.ShiftDecoder.unsupported

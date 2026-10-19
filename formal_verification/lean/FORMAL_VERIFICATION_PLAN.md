@@ -424,7 +424,15 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    updates, without pure-decoder, extra ISA, row-step, intermediate-state or
    terminal-bound premises. Sixteen complete cases, concrete arithmetic final
    values, a newest-first two-MUL alias program reaching PC eight/x1=x3=861,
-   and empty execution pass. Continue with shift/binop and subword memory.
+   and empty execution pass. Shift/binop now has an actual native decoder export
+   and an independent public-byte/original-Sail certificate for all twelve
+   ordinary forms, their original x0 variants, an unsupported ADD hole and all
+   1,048,576 rows. Native v2 masks, full immediate limbs and SRAI encoded funct7
+   differ from v3 and are checked directly. Empty CSR allow-list filtering and
+   unsupported REV8/rotate/shift words are reproduced through the actual Rust
+   API. Continue with native dynamic selectors/table import and exact membership,
+   then numerical soundness, initialized execution and subword memory. Keep
+   custom CSR/oracle semantics separate; dynamic compiled lookups still reject.
 4. Rebind bigint/BLAKE/Keccak workers and callers. Retest control validity,
    unissued workers, ROM behavior and request participation on v2 before reusing
    any source finding or temporary premise.

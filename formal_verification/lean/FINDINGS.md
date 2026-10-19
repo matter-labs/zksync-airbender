@@ -72,6 +72,8 @@ backport.
 
 | Complete fetched unsigned MUL/DIV execution | [The public theorem](Airbender/Review/Trace/Families/MulDiv/FetchedExecution.lean) derives finite original Sail fetch/stateful decoding/preparation/retirement from public initialization and full native matching, including actual terminal PC/register reads and bounds. Actual misa/code frames supply replay; no pure-decoder, extra ISA-read, per-row-step or desired-state premise is supplied. Sixteen complete cases, zero divisors/x0, concrete arithmetic results, a reversed two-MUL alias sequence reaching PC eight/x1=x3=861 and empty execution pass. This closes the family execution connection; no native defect, fetched wraparound fixture, new Rust export or cryptographic/compiler refinement is claimed. |
 
+| Native shift/binop decoder migration differences | [The actual native export](artifacts/setup/shift-decoder-native.json) retains original x0 destinations, full sign-extended 16-bit immediate limbs and SRAI encoded funct7 (shift 31 gives 1055); native masks/tags differ from v3. [Independent original Sail proofs](Airbender/Review/Trace/Families/ShiftBinop/NativeDecoder.lean) connect all twelve ordinary forms, their x0 variants, the unsupported ADD hole and every exported row. Actual Rust runs reproduce empty-CSR filtering and unsupported REV8/rotate/illegal RV32 shift rejection. These are profile differences, not a native defect. This finite decoder-data certificate supplies no shift/binop constraint/execution coverage; dynamic table import/membership and custom CSR/oracle semantics remain separate. |
+
 ## V3 findings awaiting v2 assessment
 
 Bigint control masks, unissued workers, worker ROM ports, decoder filler outside the checked ADD/SUB, word-memory and control minus-one profiles,

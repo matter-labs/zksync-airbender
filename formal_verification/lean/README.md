@@ -1099,3 +1099,28 @@ no fetched wraparound fixture or new Rust export. Physical initialization,
 general Rust/JSON/compiler refinement, cryptographic argument enforcement,
 unified execution/protocol spans and completeness remain separately scoped.
 Shift/binop and subword memory are next. No native defect is established.
+
+## Actual native shift/binop decoder data
+
+[The short public data certificate](Airbender/Review/Trace/Families/ShiftBinop/NativeDecoder.lean)
+connects actual Rust preprocessing/materialization to independently read public
+bytes and original Sail decoding for twelve ordinary register/immediate forms,
+their twelve original x0 variants and an unsupported ADD hole. Every one of the
+1,048,576 exported rows is checked. [Internal proofs](Airbender/Proofs/ShiftBinop/NativeSetup.lean)
+check the small prefix and actual stored sentinel blocks structurally, reusing
+existing sparse setup and column proof structure with no table-equality premise.
+
+The native v2 profile retains x0 destinations, uses full sign-extended 16-bit
+binary immediate limbs, and retains SRAI funct7 bits (shift 31 gives immediate
+1055). Its operation mask/tag encoding differs from v3. [Regressions](Tests/ShiftDecoder.lean)
+check those differences and unsupported constructors. Actual exporter runs
+reproduce both fixture and binary-text output, reject unsupported REV8/rotate
+and illegal RV32 shift words, and confirm filtering with an empty CSR allow-list.
+Strict import profiles reject malformed data and crossed arithmetic/control exports.
+
+This is a finite native decoder-data certificate. Dynamic lookup selectors and
+the large shift/binop tables still require a checked constraint import; the
+compiled importer continues rejecting them. Shift/binop circuit soundness,
+initialized execution, custom CSR/oracle semantics, general Rust/compiler
+refinement and cryptographic enforcement remain separate. No native defect is
+established. The next checkpoint is native dynamic table import and membership.

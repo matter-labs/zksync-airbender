@@ -10,7 +10,7 @@ use cs::machine::ops::unrolled::load_store_word_only::{
 };
 use cs::machine::ops::unrolled::{
     decoder_table_padding, materialize_flattened_decoder_table, preprocess_bytecode,
-    AddSubLuiAuipcMopDecoder, JumpSltBranchDecoder, OpcodeFamilyDecoder,
+    AddSubLuiAuipcMopDecoder, JumpSltBranchDecoder, OpcodeFamilyDecoder, ShiftBinaryCsrrwDecoder,
     WordOnlyMemoryFamilyDecoder,
 };
 use cs::tables::{TableDriver, TableType};
@@ -207,6 +207,10 @@ fn export_control_decoder(text: Vec<u32>) -> DecoderArtifact {
     )
 }
 
+fn export_shift_decoder(text: Vec<u32>) -> DecoderArtifact {
+    export_decoder(text, Box::new(ShiftBinaryCsrrwDecoder), "shift_binop_csrrw")
+}
+
 fn export_scalars() -> Scalars {
     let range = TableType::RangeCheckLarge.generate_table::<Mersenne31Field>();
     let mut rows = Vec::new();
@@ -327,6 +331,31 @@ fn export(mut image: Vec<u32>, text: Vec<u32>) -> Artifact {
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args_os().collect();
+    if (args.len() == 3 && args[1] == "--shift-decoder-fixture")
+        || (args.len() == 4 && args[1] == "--shift-decoder")
+    {
+        let words = if args.len() == 3 {
+            // Twelve original RV32 register/immediate forms, then their original
+            // x0 destinations, and an unsupported ADD hole. No CSR is allowed.
+            vec![
+                0x002091b3, 0x0020d1b3, 0x4020d1b3, 0x0020c1b3, 0x0020e1b3, 0x0020f1b3, 0x01f09193,
+                0x01f0d193, 0x41f0d193, 0xfff0c193, 0x8000e193, 0x7ff0f193, 0x00209033, 0x0020d033,
+                0x4020d033, 0x0020c033, 0x0020e033, 0x0020f033, 0x01f09013, 0x01f0d013, 0x41f0d013,
+                0xfff0c013, 0x8000e013, 0x7ff0f013, 0x001080b3,
+            ]
+        } else {
+            read_words(Path::new(&args[2]))?
+        };
+        let artifact = export_shift_decoder(words);
+        let bytes = serde_json::to_vec_pretty(&artifact)?;
+        let recovered: DecoderArtifact = serde_json::from_slice(&bytes)?;
+        assert_eq!(
+            serde_json::to_value(&artifact)?,
+            serde_json::to_value(recovered)?
+        );
+        std::fs::write(args.last().unwrap(), [bytes, vec![b'\n']].concat())?;
+        return Ok(());
+    }
     if args.len() == 3 && args[1] == "--control" {
         let artifact = export_control_tables();
         let bytes = serde_json::to_vec_pretty(&artifact)?;

@@ -48,6 +48,40 @@ private def scalarChecks (setupSource : String) : IO Unit := do
   check (rejected (Setup.parseScalars setupSource)) "reject program artifact as scalar export"
   check (rejected (Setup.parse scalarSource)) "reject scalar artifact as program export"
 
+private def shiftDecoderChecks : IO Unit := do
+  let source ← IO.FS.readFile "artifacts/setup/shift-decoder-native.json"
+  let a ← IO.ofExcept (Setup.parseShiftDecoder source)
+  check (a.text_words == 25 && a.decoder.length == 1048576 && a.decoder.columns.size == 10)
+    "actual native shift/binop decoder extent"
+  check (rejected ({a with version := 2}.validateShift)) "reject shift decoder version"
+  check (rejected ({a with field_modulus := 2013265921}.validateShift)) "reject v3 shift decoder field"
+  check (rejected ({a with family := "add_sub_lui_auipc_mop"}.validateShift)) "reject shift decoder family"
+  check (rejected ({a with text_words := 1048577}.validateShift)) "reject oversized shift text"
+  check (rejected ({a with text_words := 24}.validateShift)) "reject incomplete shift text"
+  check (rejected ({a with text := ⟨#[.dense #[4294967296]]⟩,text_words := 1}.validateShift))
+    "reject oversized shift instruction word"
+  check (rejected ({a with decoder := {a.decoder with length := 1048575}}.validateShift))
+    "reject truncated shift decoder"
+  check (rejected ({a with decoder := {a.decoder with columns := a.decoder.columns.extract 0 9}}.validateShift))
+    "reject missing shift decoder column"
+  check (rejected ({a with decoder := {a.decoder with columns := a.decoder.columns.push ⟨#[.affine 1048576 0 0]⟩}}.validateShift))
+    "reject extra shift decoder column"
+  check (rejected ({a with decoder := {a.decoder with columns :=
+    (#[⟨#[.affine 1048576 2147483647 0]⟩] : Array Setup.Column) ++ a.decoder.columns.extract 1 10}}.validateShift))
+    "reject noncanonical shift decoder data"
+  check (rejected ({a with decoder := {a.decoder with columns :=
+    (#[⟨#[.affine 1048575 0 0]⟩] : Array Setup.Column) ++ a.decoder.columns.extract 1 10}}.validateShift))
+    "reject incomplete shift decoder column"
+  let j ← IO.ofExcept (Json.parse source)
+  let extra ← IO.ofExcept (replaceField j "invented" (.bool true))
+  check (rejected (Setup.parseShiftDecoder extra.compress)) "reject unknown shift decoder field"
+  check (rejected (Setup.parseDecoder source)) "reject shift export as arithmetic decoder"
+  check (rejected (Setup.parseControlDecoder source)) "reject shift export as control decoder"
+  check (rejected (Setup.parseShiftDecoder (← IO.FS.readFile "artifacts/setup/arithmetic-native.json")))
+    "reject arithmetic export as shift decoder"
+  check (rejected (Setup.parseShiftDecoder (← IO.FS.readFile "artifacts/setup/jump-decoder-native.json")))
+    "reject control export as shift decoder"
+
 private def decoderChecks (setupSource : String) : IO Unit := do
   let source ← IO.FS.readFile "artifacts/setup/arithmetic-native.json"
   let artifact ← IO.ofExcept (Setup.parseDecoder source)
@@ -471,6 +505,7 @@ def main : IO UInt32 := do
     check (rejected (fromJson? badBlock : Except String Setup.Block)) "reject unknown compressed block field"
     scalarChecks setupSource
     decoderChecks setupSource
+    shiftDecoderChecks
     controlDecoderChecks
     decoderPaddingChecks
     controlChecks

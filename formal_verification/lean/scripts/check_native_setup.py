@@ -2,6 +2,7 @@
 """Run inside bounded_fv.py: native exporter reproducibility and input checks."""
 from pathlib import Path
 import os
+import json
 import subprocess
 import tempfile
 
@@ -86,6 +87,41 @@ def main():
             text.write_bytes(content)
             output.unlink(missing_ok=True)
             result = subprocess.run([str(binary), "--arithmetic", str(text), str(output)],
+                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            assert result.returncode != 0 and not output.exists(), label
+            print("PASS reject " + label, flush=True)
+        subprocess.run([str(binary), "--shift-decoder-fixture", str(output)], check=True)
+        expected_shift = (ROOT / "artifacts/setup/shift-decoder-native.json").read_bytes()
+        assert output.read_bytes() == expected_shift
+        shift_words = [2134451, 2150835, 1075892659, 2146739, 2154931, 2159027, 32543123, 32559507, 1106301331, 4293968275, 2147541395, 2146496915, 2134067, 2150451, 1075892275, 2146355, 2154547, 2158643, 32542739, 32559123, 1106300947, 4293967891, 2147541011, 2146496531, 1081523]
+        text.write_bytes(b"".join(word.to_bytes(4, "little") for word in shift_words))
+        subprocess.run([str(binary), "--shift-decoder", str(text), str(output)], check=True)
+        assert output.read_bytes() == expected_shift
+        print("PASS reproducible native shift/binop decoder and original x0 binary text", flush=True)
+        # Actual empty CSR allow-list rejects UNIMP/CSRRW; REV8/rotates and
+        # illegal RV32 shift payloads belong outside this ordinary certificate.
+        text.write_bytes(b"".join(word.to_bytes(4, "little") for word in
+            [0xc0001073, 0x6980d193, 0x6010d193, 0x02009193]))
+        subprocess.run([str(binary), "--shift-decoder", str(text), str(output)], check=True)
+        rejected = json.loads(output.read_bytes())
+        def sample(column, index):
+            for block in column["blocks"]:
+                kind = block["kind"]
+                length = block.get("length", len(block.get("values", [])) * block.get("repetitions", 1))
+                if index < length:
+                    if kind == "affine": return block["first"] + block["step"] * index
+                    if kind == "dense": return block["values"][index]
+                    return block["values"][index % len(block["values"])] + block["stride"] * (index // len(block["values"]))
+                index -= length
+            raise AssertionError("missing native column value")
+        assert all(sample(column, i) == (1 << 31) - 2 for i in range(4)
+                   for column in rejected["decoder"]["columns"])
+        print("PASS actual native empty-CSR filtering and unsupported REV8/rotate/shift words", flush=True)
+        for label, content in [("partial shift text", b"xx"),
+                               ("oversized shift text", bytes(4194308))]:
+            text.write_bytes(content)
+            output.unlink(missing_ok=True)
+            result = subprocess.run([str(binary), "--shift-decoder", str(text), str(output)],
                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             assert result.returncode != 0 and not output.exists(), label
             print("PASS reject " + label, flush=True)

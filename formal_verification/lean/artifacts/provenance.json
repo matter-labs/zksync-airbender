@@ -485,6 +485,14 @@
     {
       "path": "../../cs/src/machine/ops/unrolled/decoder/mul_div.rs",
       "sha256": "987d7c32e0f950d8820ab122d05757342c827a77a3c069718f70bba445d1adba"
+    },
+    {
+      "path": "../../cs/src/machine/ops/unrolled/decoder/shift_binop_csrrw.rs",
+      "sha256": "e5860a0966207d798664b369c69b1a814f29984a405dc0b09396812518d6c7a8"
+    },
+    {
+      "path": "../../cs/src/machine/ops/unrolled/shift_binary_csr.rs",
+      "sha256": "83ddbe7c0c4a11e31c1485aec78366e1af41f3174005c8cd281175c958341726"
     }
   ],
   "adaptations": [
@@ -3358,6 +3366,82 @@
       "backport_reuse_path": "Tests/ControlExecution.lean",
       "backport_reuse_sha256": "1844f6422de02720b92a3e5a5fc84f6c78047a355fdeab0796e99fc80771aed0",
       "change": "Reuse complete original fetched-execution and empty-trace regressions, applying all sixteen existing initialized native MUL/DIV cases and the actual reversed two-MUL alias program. Derive concrete terminal x3 arithmetic results including zero divisors/x0 discard, PC eight and both x1/x3=861 from actual terminal reads. No supplied intermediate state/read/final result; no fetched wraparound or new Rust export claim."
+    },
+    {
+      "path": "Airbender/Review/Circuits/ShiftBinop/Decoder.lean",
+      "source_path": "Airbender/Review/Circuits/ShiftBinop/Decoder.lean",
+      "source_sha256": "365c2b3efcdfafc1e205aa1278f88108ca5929019af2f1423f7e36a9f4a59831",
+      "change": "Reuse the original Sail constructor projection structure and shared stateful sparse decoder setup. Rebind native v2 mask/funct3 encoding; retain original x0 destinations, full sign-extended 16-bit immediate limbs and encoded SRAI funct7 bits. Exclude unsupported REV8/rotate and separately scoped CSR/oracle semantics. This is a decoder profile, not a native constraint or instruction execution claim."
+    },
+    {
+      "path": "Airbender/Review/Circuits/ShiftBinop/NativeData.lean",
+      "backport_reuse_revision": "8a2aad47c15eda2243a2a85808c5abf8a93f616c",
+      "backport_reuse_path": "Airbender/Review/Circuits/AddSub/Tables/NativeSetupData.lean",
+      "backport_reuse_sha256": "3ef0594c7c2e5f3b4e1bf56b936f0862115ac9cc697450b1157c85945d9eed12",
+      "change": "Reuse literal native decoder import and independent original public instruction/byte fixture structure. Supply twelve actual ordinary v2 shift/binop forms, their original x0 variants and an unsupported ADD hole; retain the full million-row native capacity."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/ConstantTail.lean",
+      "backport_reuse_revision": "8a2aad47c15eda2243a2a85808c5abf8a93f616c",
+      "backport_reuse_path": "Airbender/Proofs/Tables/ZeroTail.lean",
+      "backport_reuse_sha256": "bd5bd468c071342a0bf47e2bdb25fc4c59d806d1572c9f2235bce651425ba28c",
+      "change": "Adapt the existing structural block/tail proof to a supplied constant stored value. Check actual block data and lengths without enumerating million-row sentinel padding; leave ZeroTail unchanged."
+    },
+    {
+      "path": "Airbender/Proofs/ShiftBinop/NativeSetup.lean",
+      "backport_reuse_revision": "8a2aad47c15eda2243a2a85808c5abf8a93f616c",
+      "backport_reuse_path": "Airbender/Proofs/AddSub/NativeSetup.lean",
+      "backport_reuse_sha256": "7095cb9a51026c8fa0351abc8e9739b31fa7d36aec78a178c67206a2b26e1297",
+      "change": "Reuse independent public-byte/original-decoding and exact exported-row certification. Split actual byte reads into five small proofs; connect all twenty-five original decoder slots and full native capacity, proving sentinel padding structurally from actual literals. No table-equivalence premise or general Rust refinement claim."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ShiftBinop/NativeDecoder.lean",
+      "backport_reuse_revision": "8a2aad47c15eda2243a2a85808c5abf8a93f616c",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/AddSub/NativeDecoder.lean",
+      "backport_reuse_sha256": "516c75b7ace15e01323b6c4e67f26fbbb1d56893815990c97a5b3c2c8bb30d08",
+      "change": "Reuse the short native data fidelity statement: independently constructed original Sail public setup equals every literal exported native decoder row. This finite fixture certificate supplies no dynamic lookup constraints, custom CSR/oracle semantics or shift/binop execution claim."
+    },
+    {
+      "path": "Tests/ShiftDecoder.lean",
+      "backport_reuse_revision": "8a2aad47c15eda2243a2a85808c5abf8a93f616c",
+      "backport_reuse_path": "Tests/NativeArithmeticSetup.lean",
+      "backport_reuse_sha256": "d0f6b2d0ce6286423447a358784a12f9e9633da1050df883857486b8574a649c",
+      "change": "Reuse concrete actual-byte/native-decoder fidelity regressions, checking every ordinary form and original x0 variant, full 16-bit immediate limbs, encoded SRAI, unsupported constructors and complete exported sentinel padding."
+    },
+    {
+      "path": "Airbender/Import/Setup.lean",
+      "backport_reuse_revision": "8a2aad47c15eda2243a2a85808c5abf8a93f616c",
+      "backport_reuse_path": "Airbender/Import/Setup.lean",
+      "backport_reuse_sha256": "1b9e9f7217cdf90e0e4c9b356cbfd66ee366adb9396e0e7bcde1b5e130d77d16",
+      "change": "Reuse the strict generic decoder validator/parser for a separate shift_binop_csrrw family profile; preserve every field, extent, canonicality and unknown-field check and arithmetic/control cross-profile rejection."
+    },
+    {
+      "path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_revision": "8a2aad47c15eda2243a2a85808c5abf8a93f616c",
+      "backport_reuse_path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_sha256": "a2ddb59d33fdf1a574bbde3347d0dd0656e1929fb2803529a53be2a20bdf3eb5",
+      "change": "Reuse literal native decoder/text emission for the separate shift profile. Emit stored column blocks without adding decoder recipes, lookup semantics or accepted circuit constraints."
+    },
+    {
+      "path": "Tests/ArtifactImport.lean",
+      "backport_reuse_revision": "8a2aad47c15eda2243a2a85808c5abf8a93f616c",
+      "backport_reuse_path": "Tests/ArtifactImport.lean",
+      "backport_reuse_sha256": "cc99629b607ee5bc6df1285347bf6f82015bcca16f718022ff4035adddecb6bb",
+      "change": "Reuse existing strict native decoder mutation tests for the shift profile: changed fields/extents, incomplete/noncanonical data, unknown fields and crossed arithmetic/control exports. Keep compiled dynamic-lookup rejection unchanged."
+    },
+    {
+      "path": "scripts/check_native_setup.py",
+      "backport_reuse_revision": "8a2aad47c15eda2243a2a85808c5abf8a93f616c",
+      "backport_reuse_path": "scripts/check_native_setup.py",
+      "backport_reuse_sha256": "af85524b1201589297ed3bcdab87adf393adc038c34ea9400a414b48675b7120",
+      "change": "Reuse scoped actual native exporter reproducibility and invalid binary text checks. Add byte-identical shift fixture/text reproduction, actual empty-CSR allow-list and unsupported REV8/rotate/shift rejection, and partial/oversized text rejection."
+    },
+    {
+      "path": "../native_setup_exporter/src/main.rs",
+      "backport_reuse_revision": "8a2aad47c15eda2243a2a85808c5abf8a93f616c",
+      "backport_reuse_path": "../native_setup_exporter/src/main.rs",
+      "backport_reuse_sha256": "f6a863fbe69aaeebd6b0970b723b48b96e11aa9c8d1f6caf9d7bdaf3cef948e4",
+      "change": "Reuse the actual generic v2 preprocessing/materialization/export path and unchanged source-compatible lossless column codec. Add only the native shift family and fixture/text CLI modes, retaining empty CSR allow-list, bounded little-endian inputs and JSON roundtrip before output."
     }
   ],
   "setup_artifacts": [
@@ -3448,6 +3532,13 @@
     {
       "path": "artifacts/setup/mul-div-small-range-native.json",
       "sha256": "de08a64221be93a48a6535934bb76555d6f1a2a9be1fa89cbf8514c91c1c473e"
+    },
+    {
+      "path": "artifacts/setup/shift-decoder-native.json",
+      "sha256": "cb6f412596ec8271aa2f89c8178c1409202461cba890ae17a5adc053aa009189",
+      "profile": "actual native v2 shift_binop_csrrw preprocessing/materialized 10-column decoder, empty CSR allow-list, 25 public words and full 1048576-row capacity; no dynamic tables or compiled constraints",
+      "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py",
+      "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5"
     }
   ],
   "native_exporter_files": [
@@ -3461,7 +3552,7 @@
     },
     {
       "path": "../native_setup_exporter/src/main.rs",
-      "sha256": "f6a863fbe69aaeebd6b0970b723b48b96e11aa9c8d1f6caf9d7bdaf3cef948e4"
+      "sha256": "28caa303eb32112d5a1c00f578fc846bb58a981fe7af01eaf81127249f3a0088"
     },
     {
       "path": "../native_setup_exporter/src/columns.rs",
