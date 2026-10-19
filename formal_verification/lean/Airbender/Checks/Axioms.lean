@@ -1,3 +1,8 @@
+import Tests.MulDivWitness
+import Tests.MulDivMul
+import Tests.MulDivMulhu
+import Tests.MulDivDivu
+import Tests.MulDivRemu
 import Airbender
 import Tests.MulDivArtifact
 import Tests.ControlSequence
@@ -1122,3 +1127,37 @@ import Tests.JumpLink
 #print axioms Tests.MulDivArtifact.second_overflow
 #print axioms Tests.MulDivArtifact.third_column
 #print axioms Tests.MulDivArtifact.wrong_tag
+
+-- Native unsigned v2 arithmetic and forty complete local witness rows.
+#print axioms Airbender.Arithmetic.product_of_columns
+#print axioms Airbender.MulDiv.native_unsigned_result
+#print axioms Airbender.MulDiv.Proofs.local_ranges
+#print axioms Airbender.MulDiv.Proofs.boolean_values
+#print axioms Airbender.MulDiv.Proofs.selected_flags
+#print axioms Airbender.MulDiv.Proofs.byte_words
+#print axioms Airbender.MulDiv.Proofs.carry_bounds
+#print axioms Airbender.MulDiv.Proofs.word_wiring
+#print axioms Airbender.MulDiv.Proofs.product_with_remainder
+#print axioms Airbender.MulDiv.Proofs.divisor_flag
+#print axioms Airbender.MulDiv.Proofs.remainder_lt_divisor
+#print axioms Airbender.MulDiv.Proofs.division_nonzero
+#print axioms Airbender.MulDiv.Proofs.division_zero
+#print axioms Airbender.MulDiv.Proofs.multiplication_results
+#print axioms Airbender.MulDiv.Proofs.division_results
+#print axioms Airbender.MulDiv.Proofs.selected_raw
+#print axioms Airbender.MulDiv.Proofs.written_mask
+#print axioms Airbender.MulDiv.Proofs.native_result
+#print axioms Airbender.MulDiv.Proofs.native_masked_result
+#print axioms Tests.MulDivWitness.byte_query_contains
+#print axioms Tests.MulDivMul.native_constraints
+#print axioms Tests.MulDivMul.native_results
+#print axioms Tests.MulDivMul.altered_write_rejected
+#print axioms Tests.MulDivMulhu.native_constraints
+#print axioms Tests.MulDivMulhu.native_results
+#print axioms Tests.MulDivMulhu.altered_write_rejected
+#print axioms Tests.MulDivDivu.native_constraints
+#print axioms Tests.MulDivDivu.native_results
+#print axioms Tests.MulDivDivu.altered_write_rejected
+#print axioms Tests.MulDivRemu.native_constraints
+#print axioms Tests.MulDivRemu.native_results
+#print axioms Tests.MulDivRemu.altered_write_rejected

@@ -395,14 +395,16 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    have symbolic certificates; native constraints derive every byte bound.
    Optimized-out scratch variables remain unconsumable. Importer mutation
    checks cover pairing/padding, scratch uses and native profile geometry.
-   Next rebind MUL/MULHU/DIVU/REMU calculations, including zero divisors and
-   native discarded-write behavior, before adding original public decoding,
-   initialized history and Sail execution. No arithmetic coverage is claimed
-   solely from the checked import. The source product proof takes an explicit
-   inverse-scale interface: its -30720 constant must be rebound to native v2
-   32768 (65536 * 32768 = 1 in Mersenne31), along with the native packed mask
-   and different byte/result columns. Reuse the parameterized arithmetic
-   lemmas unchanged where their field minima hold.
+   Native MUL/MULHU/DIVU/REMU numerical results now follow from every accepted
+   equation/query, including zero divisors and actual masked x0 writes. The
+   unchanged shared integer product theorem has its native v2 byte/carry
+   connection; remainder comparison uses checked inverse 32768 and the native
+   packed mask. Forty full local assignments apply the public numerical claim.
+   Next derive packed decoding, input bounds and the destination-zero flag from
+   actual public bytes and initialized native history; connect original Sail
+   reads, operation clauses, preparation/retirement and fetched execution. Then
+   continue shift/binop and subword memory. No fetched mul/div coverage is
+   claimed by the local numerical checkpoint.
 4. Rebind bigint/BLAKE/Keccak workers and callers. Retest control validity,
    unissued workers, ROM behavior and request participation on v2 before reusing
    any source finding or temporary premise.

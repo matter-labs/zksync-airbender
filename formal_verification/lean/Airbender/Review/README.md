@@ -7,6 +7,7 @@ Proofs; artifact interpretation has a separate Import boundary.
 
 | Result | Where to review it |
 | --- | --- |
+| Native unsigned MUL/MULHU/DIVU/REMU numerical results include zero divisors and actual masked x0 writes under explicit local interfaces. | [Unsigned mul/div](Circuits/MulDiv/README.md) |
 | Conditional v2 arithmetic rows agree with original Sail destination/register and PC effects. | [ADD/SUB](Circuits/AddSub/README.md) |
 | Initialized logical v2 memory matching constructs complete Clean history and newest preceding reads. | [Trace history](Trace/README.md) |
 | Public Sail image construction supplies actual seed values and initial PC, rejecting missing registers/bytes. | [Initialization](Trace/Initialization.lean) |

@@ -8,3 +8,9 @@ clock contracts and native logical matching; [decoder](Decoder/README.md) expose
 the native ten-column query; [memory](Memory/README.md) exposes
 port interpretation and initialized history. Their definitions remain independent
 of public whole-execution claims.
+
+[Native mul/div arithmetic](../Circuits/MulDiv/README.md) reuses the unchanged
+shared [integer byte-column theorem](../../Proofs/Arithmetic/Multiplication.lean).
+Its v2 circuit connection derives all byte, carry and output bounds from actual
+queries/assertions; the existing word and logical-history definitions are
+unchanged. Original Sail execution is still a separate connection for this family.

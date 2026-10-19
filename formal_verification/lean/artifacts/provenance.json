@@ -297,6 +297,10 @@
     {
       "path": "Airbender/Proofs/Sail/ControlFlow.lean",
       "sha256": "d220d575bc0af1558f3b06d16b7d618e5b3af930c704e8903955a42007920b33"
+    },
+    {
+      "path": "Airbender/Proofs/Arithmetic/Multiplication.lean",
+      "sha256": "f949ca8681dd30cf010a3aedb43f4e464a875ec60705df92563a591f8990acb9"
     }
   ],
   "circuit_artifacts": [
@@ -2971,6 +2975,78 @@
       "backport_reuse_path": "Tests/ArtifactImport.lean",
       "backport_reuse_sha256": "c0b9f987462753be16999fc703cdf92155b9c26bce13b086b76517c9af28d89b",
       "change": "Reuse mutation-check structure for native paired-byte profile, strict setup export envelope and fail-closed physical mapping; add optimized-out scratch boundaries without treating scratch as a live input."
+    },
+    {
+      "path": "Airbender/Review/Circuits/MulDiv/Model.lean",
+      "source_path": "Airbender/Review/Circuits/MulDiv/Model.lean",
+      "source_sha256": "5692e1e46cad0dc8a044d74fac75779784813e4aaa5c16b45820308cd85c17cf",
+      "change": "Copy Operation and Operation.selector unchanged. Expose native v2 packed mask 2/0/3/1, division/low-half bits and actual input/selected/masked-write words. Use a separate unsigned natural-value reference, without asserting original Sail execution."
+    },
+    {
+      "path": "Airbender/Proofs/MulDiv/Numerics.lean",
+      "source_path": "Airbender/Proofs/MulDiv.lean",
+      "source_sha256": "05777986e6ab2306a8137912672cbcec7caaaafa03cb567203f0126f9c46d9ca",
+      "change": "Reuse native equation/query extraction, Boolean lifting and local range proof structure. Derive v2 packed flags 17/18, scalar ranges, explicit factor/divisor byte encodings and split carry bounds from all retained native constraints."
+    },
+    {
+      "path": "Airbender/Proofs/MulDiv/Product.lean",
+      "source_path": "Airbender/Proofs/MulDiv/Product.lean",
+      "source_sha256": "f9b8a81f2dec654a718d56e04fbcc6cb10cf459e4a97c11a4c104147b7f4b0eb",
+      "change": "Adapt product-role wiring and separately bounded byte-column lifting to v2 division bit 17, explicit byte columns 35..42, split carries 43..49 and actual product/addend words. Invoke the entire unchanged shared product_of_columns theorem; derive all output/byte/carry bounds rather than supplying them. Only the input register bound remains an external local-row interface."
+    },
+    {
+      "path": "Airbender/Proofs/MulDiv/Division.lean",
+      "source_path": "Airbender/Proofs/MulDiv/Product.lean",
+      "source_sha256": "f9b8a81f2dec654a718d56e04fbcc6cb10cf459e4a97c11a4c104147b7f4b0eb",
+      "change": "Adapt strict remainder/borrow and natural division uniqueness assembly. Rebind inverse scale to native Mersenne31 32768, actual scalar comparison words 55/56 and forced borrow 57. Derive divisor zero detection from native inverse equations and all-ones zero-divisor quotient plus dividend remainder from actual v2 equations/product."
+    },
+    {
+      "path": "Airbender/Proofs/MulDiv/Results.lean",
+      "source_path": "Airbender/Proofs/MulDiv/Product.lean",
+      "source_sha256": "f9b8a81f2dec654a718d56e04fbcc6cb10cf459e4a97c11a4c104147b7f4b0eb",
+      "change": "Reuse low/high product decomposition and Nat.div_mod_unique assembly. Bind all four v2 operation results, native low-half flag 18, selected word 50/51 and actual destination-zero-masked write 60/61. Keep calculation assembly under Proofs; no original Sail/history/decoder coverage is inherited."
+    },
+    {
+      "path": "Airbender/Review/Circuits/MulDiv/Theorems.lean",
+      "backport_reuse_revision": "8fc4ea1637495d08a7cf2c9243300dfd279ae044",
+      "backport_reuse_path": "Airbender/Review/Circuits/AddSub/Theorems.lean",
+      "backport_reuse_sha256": "4b05ab896387d2513ee5d116a6df203986ee56786829ab6dff02de9492ca4502",
+      "change": "Reuse short public circuit-theorem routing to an internal proof assembly. State native selected/actual masked numerical results with explicit accepted constraints, packed operation, input bound and actual destination-zero flag; public decoding/history/original Sail remain subsequent connections."
+    },
+    {
+      "path": "Tests/MulDivWitness.lean",
+      "backport_reuse_revision": "8fc4ea1637495d08a7cf2c9243300dfd279ae044",
+      "backport_reuse_path": "Tests/JumpControl.lean",
+      "backport_reuse_sha256": "ea852e65783bb585cfbd884d60b22b12462fd0f37f8cd23d020cfc0846aba71e",
+      "change": "Reuse complete active native witness and exact fixed-query membership construction. Add static assignments for five boundary pairs and four native operation masks, with both actual ordinary/x0 write modes. Numeric data is witness material checked against every native equation/query, not a theorem premise."
+    },
+    {
+      "path": "Tests/MulDivMul.lean",
+      "backport_reuse_revision": "8fc4ea1637495d08a7cf2c9243300dfd279ae044",
+      "backport_reuse_path": "Tests/JumpControl.lean",
+      "backport_reuse_sha256": "ea852e65783bb585cfbd884d60b22b12462fd0f37f8cd23d020cfc0846aba71e",
+      "change": "Reuse full imported-equation/lookup satisfaction, nonvacuous public-claim application and altered-output rejection. Split five concrete-pair proofs to retain default proof-step limits. Each operation checks ten full native rows, including zero divisors, maximal values, byte-crossing multiplication/division and actual discarded x0 writes."
+    },
+    {
+      "path": "Tests/MulDivMulhu.lean",
+      "backport_reuse_revision": "8fc4ea1637495d08a7cf2c9243300dfd279ae044",
+      "backport_reuse_path": "Tests/JumpControl.lean",
+      "backport_reuse_sha256": "ea852e65783bb585cfbd884d60b22b12462fd0f37f8cd23d020cfc0846aba71e",
+      "change": "Reuse full imported-equation/lookup satisfaction, nonvacuous public-claim application and altered-output rejection. Split five concrete-pair proofs to retain default proof-step limits. Each operation checks ten full native rows, including zero divisors, maximal values, byte-crossing multiplication/division and actual discarded x0 writes."
+    },
+    {
+      "path": "Tests/MulDivDivu.lean",
+      "backport_reuse_revision": "8fc4ea1637495d08a7cf2c9243300dfd279ae044",
+      "backport_reuse_path": "Tests/JumpControl.lean",
+      "backport_reuse_sha256": "ea852e65783bb585cfbd884d60b22b12462fd0f37f8cd23d020cfc0846aba71e",
+      "change": "Reuse full imported-equation/lookup satisfaction, nonvacuous public-claim application and altered-output rejection. Split five concrete-pair proofs to retain default proof-step limits. Each operation checks ten full native rows, including zero divisors, maximal values, byte-crossing multiplication/division and actual discarded x0 writes."
+    },
+    {
+      "path": "Tests/MulDivRemu.lean",
+      "backport_reuse_revision": "8fc4ea1637495d08a7cf2c9243300dfd279ae044",
+      "backport_reuse_path": "Tests/JumpControl.lean",
+      "backport_reuse_sha256": "ea852e65783bb585cfbd884d60b22b12462fd0f37f8cd23d020cfc0846aba71e",
+      "change": "Reuse full imported-equation/lookup satisfaction, nonvacuous public-claim application and altered-output rejection. Split five concrete-pair proofs to retain default proof-step limits. Each operation checks ten full native rows, including zero divisors, maximal values, byte-crossing multiplication/division and actual discarded x0 writes."
     }
   ],
   "setup_artifacts": [

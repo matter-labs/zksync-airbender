@@ -17,8 +17,23 @@ are derived from those exact queries, with no supplied numerical ranges.
 and reject overflow, nonzero padding and wrong tags; importer mutations cover
 query omissions/order, scratch uses and native table geometry.
 
-MUL/MULHU/DIVU/REMU arithmetic, zero-divisor behavior, native x0 handling,
-original public decoding, initialized history and Sail execution remain open.
-No v3 semantic theorem is promoted by this artifact checkpoint. Rust/JSON/
-compiler refinement, full physical argument enforcement and completeness remain
-separate boundaries. Follow the [plan](../../../../FORMAL_VERIFICATION_PLAN.md).
+[The numerical theorem](Theorems.lean) now proves all four unsigned results,
+including zero divisors and the actual masked destination write. Review
+[the operation/observable definitions](Model.lean), then its explicit accepted
+constraints, packed mask, input register limb bound and destination-zero flag.
+Every intermediate/output bound comes from native constraints. [Product](../../../Proofs/MulDiv/Product.lean),
+[division](../../../Proofs/MulDiv/Division.lean) and [result assembly](../../../Proofs/MulDiv/Results.lean)
+keep byte-column calculations, Mersenne31 inverse 32768, strict remainder bounds,
+zero-divisor behavior and both actual write limbs outside the public claim.
+
+[Forty full local assignments](../../../../Tests/MulDivWitness.lean) cover five
+boundary operand pairs and both write modes for [MUL](../../../../Tests/MulDivMul.lean),
+[MULHU](../../../../Tests/MulDivMulhu.lean), [DIVU](../../../../Tests/MulDivDivu.lean)
+and [REMU](../../../../Tests/MulDivRemu.lean). Each checks all native constraints,
+applies the public numerical claim and rejects an altered actual write.
+
+Original public decoding, initialized history and Sail execution remain open.
+The row interfaces are not assumed trace results. No v3 semantic theorem is
+promoted without its checked v2 connection. Rust/JSON/compiler refinement,
+physical argument enforcement and completeness remain separate boundaries.
+Follow the [plan](../../../../FORMAL_VERIFICATION_PLAN.md).

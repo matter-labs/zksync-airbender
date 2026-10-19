@@ -1127,6 +1127,37 @@ reject overflow, nonzero third padding and wrong native tags. Importer
 mutations reject missing/repeated/unmapped queries, odd-byte padding changes,
 optimized-out equation/query use, scratch overflow/aliasing and altered table
 profiles/geometry. This closes the unsigned mul/div importer dependency;
-MUL/MULHU/DIVU/REMU numerical correctness, public decoding, initialized history
-and original Sail execution remain unfinished. No native defect is established.
+At this artifact checkpoint numerical correctness, public decoding, initialized
+history and original Sail execution were still unfinished. The numerical
+connection is checked below. No native defect is established.
 General Rust/compiler/physical argument refinement remains separate.
+
+## Native unsigned MUL/MULHU/DIVU/REMU arithmetic
+
+[The public numerical claim](Airbender/Review/Circuits/MulDiv/Theorems.lean)
+now derives both the selected result and actual destination-zero-masked write
+from all accepted native equations/queries. Its explicit local interfaces are
+the native packed operation mask, the input register's two-limb bound and the
+actual destination-zero flag. No quotient, remainder, product, byte/carry/output
+range or desired result is supplied. Public decoding, initialized history and
+original Sail preparation/execution/retirement remain subsequent connections.
+
+[The product connection](Airbender/Proofs/MulDiv/Product.lean) reuses the entire
+unchanged shared integer byte-column theorem. V2 explicit bytes and split
+carries replace source aliases; native queries/assertions derive every needed
+byte/carry/output bound. [Division](Airbender/Proofs/MulDiv/Division.lean)
+rebinds the inverse scale to 32768 in Mersenne31, derives a strict nonzero
+remainder bound from the native borrow and resolves zero divisors to quotient
+0xffffffff and remainder equal to the dividend. [Result assembly](Airbender/Proofs/MulDiv/Results.lean)
+binds native packed masks MUL=2, MULHU=0, DIVU=3, REMU=1, raw result selection
+and both actual masked write limbs. Calculations stay under Proofs.
+
+[Forty full local native witnesses](Tests/MulDivWitness.lean) cover all four
+operations, both ordinary/discarded x0 writes, zero/zero, maximal dividend with
+zero divisor, maximal product, divisor 257 and 123 divided by seven. Each of
+[the four](Tests/MulDivMul.lean) [operation](Tests/MulDivMulhu.lean)
+[modules](Tests/MulDivDivu.lean) [checks](Tests/MulDivRemu.lean) proves every
+native equation/query, applies the public claim and rejects a corrupted actual
+write. Proofs are split at the default proof-step limit; memory/thread ceilings
+are unchanged. These are complete local assignments, not initialized fetched
+execution or new native Rust program exports. No v2 defect is established.
