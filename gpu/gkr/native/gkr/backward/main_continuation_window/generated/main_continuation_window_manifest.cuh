@@ -3,6 +3,6 @@
 
 namespace airbender::gkr::backward {
 
-inline constexpr unsigned BWD_MAIN_CONTINUATION_WINDOW_KERNEL_COUNT = 7;
+inline constexpr unsigned BWD_MAIN_CONTINUATION_WINDOW_KERNEL_COUNT = 8;
 
 } // namespace airbender::gkr::backward

@@ -7,11 +7,12 @@ use super::main_continuation_window::MAIN_CONTINUATION_WINDOW_SHAPE_DEFINED_BITS
 /// `(compiled shape mask, minimum blocks per SM)`, sorted by mask.
 ///
 /// The fused executor uses a separate bound because all nine selector warps share a block.
-pub const MAIN_CONTINUATION_WINDOW_KERNEL_BANK: [(u16, u32); 7] = [
+pub const MAIN_CONTINUATION_WINDOW_KERNEL_BANK: [(u16, u32); 8] = [
     (0x00, 4),
     (0x01, 4),
     (0x03, 4),
     (0x07, 4),
+    (0x0f, 4),
     (0x13, 4),
     (0x17, 4),
     (0x1f, 4),
@@ -260,5 +261,47 @@ mod tests {
     #[test]
     fn cpu_main_continuation_window_manifest_generated_tree_has_no_extra_files() {
         validate_main_continuation_window_generated_tree(&repo_root()).unwrap();
+    }
+
+    #[test]
+    fn cpu_main_continuation_window_kernel_bank_covers_every_committed_layout() {
+        use crate::backward::{compile_continuations, lower_main_continuation_window_program};
+        use cs::gkr_compiler::GKRCircuitArtifact;
+        use field::baby_bear::base::BabyBearField;
+
+        let banked: std::collections::BTreeSet<u16> = MAIN_CONTINUATION_WINDOW_KERNEL_BANK
+            .iter()
+            .map(|(mask, _)| *mask)
+            .collect();
+        let directory = repo_root().join("cs/compiled_circuits");
+        let mut names: Vec<String> = std::fs::read_dir(&directory)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .filter(|name| name.ends_with("_layout_gkr.json"))
+            .collect();
+        names.sort();
+        assert!(names.len() >= 15, "{names:?}");
+        let mut missing = Vec::new();
+        for name in &names {
+            let artifact: GKRCircuitArtifact<BabyBearField> =
+                serde_json::from_slice(&std::fs::read(directory.join(name)).unwrap()).unwrap();
+            let dag =
+                gkr_eval_ir::lower_dag(&artifact).unwrap_or_else(|error| panic!("{name}: {error}"));
+            let continuations =
+                compile_continuations(&dag).unwrap_or_else(|error| panic!("{name}: {error:?}"));
+            for layer in &continuations.layers {
+                let mask = lower_main_continuation_window_program(layer)
+                    .unwrap_or_else(|error| panic!("{name} layer {}: {error}", layer.layer))
+                    .shape
+                    .bits();
+                if !banked.contains(&mask) {
+                    missing.push(format!("{name} layer {}: shape {mask:#04x}", layer.layer));
+                }
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "continuation shapes without a compiled kernel: {missing:?}"
+        );
     }
 }
