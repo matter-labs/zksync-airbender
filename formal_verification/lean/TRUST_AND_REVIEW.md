@@ -864,6 +864,41 @@ lookup and every native equation/query are checked. Local JAL-to-x0 and modular
 0xfffffffc-plus-eight target regressions pass. A bit-one JALR target has a valid
 cleanup row but is rejected by native alignment. Local wrap is not an initialized
 execution certificate, and the new logical fixture has no new general native
-export certificate. Original Sail instruction clauses/PC retirement, comparison
-and branch semantics, complete control execution and terminal instruction-state
+export certificate. Original Sail instruction clauses/PC retirement, branch
+semantics, complete control execution and terminal instruction-state
 matching remain open; Rust/compiler/cryptographic refinement stays separate.
+
+## Initialized native comparison results
+
+[Native comparison calculations](Airbender/Proofs/JumpBranchSlt/Comparison.lean)
+now derive the actual masked SLT/SLTU/SLTI/SLTIU result. Equations 29/30 and
+Boolean carries 49/28 reuse original subtraction/borrow lifting and unchanged
+word arithmetic. Actual scalar queries zero/one range remainder 26/27. Assertions
+18/19 use positive high-limb flags 31/33 and scalar-ranged shifted limbs 32/34;
+the proof keeps this native encoding and complements the flags in the actual
+four-bit control key. Inverse equations 16/17 derive equality-bit Booleanity.
+The checked native conditional table determines signed/unsigned result 35, and
+write equations 20..23 force actual masked destination 38/39.
+
+[One short initialized claim](Airbender/Review/Trace/Families/JumpBranchSlt/Comparisons.lean)
+uses actual public bytes, full sparse decoder membership and complete native
+matching. Native packed masks derive register/immediate selectors; original
+metadata derives signed/unsigned funct3 and the x0 flag. Shared initialized range
+induction supplies both register words, while public decoding bounds the immediate.
+No selector, sign/borrow bit, operand bound, expected read or desired result is
+supplied. The original [signed word-ordering lemmas](Airbender/Proofs/Arithmetic/Comparison.lean)
+are copied unchanged, with source hashes recorded.
+
+[Four separately initialized regressions](Tests/ControlComparisons.lean) compare
+register -1 with one (SLT true, SLTU false), and positive source 123 with the
+sign-extended immediate -1 (SLTI false, SLTIU true). The original SLTIU-to-x0
+retains raw result one but writes zero, with its rd read consuming the dummy x0
+readonly refresh. That query also occurs in the prior actual native export.
+All original-byte construction, public register/PC initialization, native
+constraints and memory matching are checked. A reversed positive flag preserves
+its high-limb field equation with shifted value 98303, but actual scalar query two
+rejects it. This is enforcement of the native range boundary, not a new defect.
+The new logical program has no new general native export certificate. Branch
+semantics, original Sail instruction clauses/PC retirement, complete control
+execution and terminal instruction-state matching remain open; general
+Rust/compiler/cryptographic refinement stays separate.

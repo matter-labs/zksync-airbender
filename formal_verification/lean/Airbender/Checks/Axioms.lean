@@ -1,4 +1,5 @@
 import Airbender
+import Tests.ControlComparisons
 import Tests.JumpTarget
 import Tests.PC
 import Tests.CircuitRows
@@ -987,3 +988,24 @@ import Tests.JumpLink
 #print axioms Tests.JumpTarget.wrapped_target
 #print axioms Tests.JumpTarget.misaligned_cleanup_valid
 #print axioms Tests.JumpTarget.misaligned_jalr_rejected
+#print axioms Airbender.Arithmetic.Word.toInt_of_limbs
+#print axioms Airbender.Arithmetic.Word.signed_lt_iff
+#print axioms Airbender.JumpBranchSlt.Proofs.comparison_selectors
+#print axioms Airbender.JumpBranchSlt.Proofs.comparison_borrow
+#print axioms Airbender.JumpBranchSlt.Proofs.comparison_zero_flag
+#print axioms Airbender.JumpBranchSlt.Proofs.comparison_resolution
+#print axioms Airbender.JumpBranchSlt.Proofs.comparison_destination
+#print axioms Airbender.JumpBranchSlt.Proofs.comparison_field_tag
+#print axioms Airbender.JumpBranchSlt.Proofs.image_comparisons
+#print axioms Airbender.JumpBranchSlt.public_comparisons
+#print axioms Tests.ControlComparisons.program_image
+#print axioms Tests.ControlComparisons.native_constraints
+#print axioms Tests.ControlComparisons.accepted
+#print axioms Tests.ControlComparisons.public_inputs
+#print axioms Tests.ControlComparisons.decoded
+#print axioms Tests.ControlComparisons.public_results
+#print axioms Tests.ControlComparisons.signed_unsigned_differ
+#print axioms Tests.ControlComparisons.immediate_and_mask
+#print axioms Tests.ControlComparisons.exported_sltiu
+#print axioms Tests.ControlComparisons.bad_positive_equation
+#print axioms Tests.ControlComparisons.bad_positive_rejected

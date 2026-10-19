@@ -315,7 +315,16 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    JAL and a new initialized aliasing JALR (public x1=257, odd sum 265, target 264)
    pass, with local x0/wrap and bit-one rejection cases. Logical-fixture native
    export and initialized wrap execution are not claimed.
-   Next derive comparison/branch semantics, connect
+   [Initialized comparison results](Airbender/Review/Trace/Families/JumpBranchSlt/Comparisons.lean)
+   now derive actual SLT/SLTU/SLTI/SLTIU masked writes from native subtraction,
+   positive high-limb flags, actual scalar/fixed queries and initialized matching.
+   Public original decoding derives register/immediate identity, signedness and
+   x0; no sign/borrow bit, operand bound, expected read or result is supplied.
+   Unchanged original signed word-ordering lemmas are reused. Four separately
+   initialized cases cover signed/unsigned disagreement, sign-extended -1,
+   discarded true SLTIU-to-x0 and its readonly alias refresh. Its query also occurs
+   in the prior native export; new logical-program export is not claimed.
+   Next derive branch semantics and comparison PC advancement, connect
    original control Sail clauses and PC preparation/retirement, then full execution
    and actual terminal instruction-state matching. General Rust/compiler and cryptographic refinement remain separate. No per-row result/PC or
    table-equivalence premise is added.

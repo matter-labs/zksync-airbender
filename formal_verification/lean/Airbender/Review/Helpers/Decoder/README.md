@@ -132,3 +132,9 @@ identity. The unchanged [original Sail decoder proof](../../../Proofs/Sail/Decod
 checks the interpreter's appended zero bit; native metadata and full query
 membership transport it to the actual immediate. Source bounds come separately
 from initialized matching. Original instruction execution/retirement remains open.
+
+[Initialized comparisons](../../Trace/Families/JumpBranchSlt/Comparisons.lean)
+use actual original decoder metadata to derive register/immediate mask identity,
+signed/unsigned funct3 and the exact x0 flag. Initialized matching supplies native
+operand bounds; no local selector, sign/borrow bit or desired result is supplied.
+Original Sail instruction execution/retirement and branch semantics remain open.

@@ -237,3 +237,12 @@ shared history; JAL parity comes from the original Sail decoder. [Regressions](.
 retain exported negative JAL and initialize an aliasing JALR with public x1=257,
 whose odd sum 265 clears to target 264. No per-row bound, selector, parity, carry
 or desired target is supplied. Full original instruction/PC retirement remains open.
+
+[Initialized comparison results](Families/JumpBranchSlt/Comparisons.lean) now
+derive all four SLT/SLTU/SLTI/SLTIU actual masked writes. Native matching supplies
+operand ranges; original public metadata supplies immediate choice, signedness
+and x0. Native equations and actual scalar/fixed queries derive signs and borrow.
+[Four independent initialized cases](../../../Tests/ControlComparisons.lean)
+cover signed/unsigned disagreement, sign-extended -1 and discarded true SLTIU-to-x0
+with its real readonly refresh. No expected read/result, selector or bound is
+supplied. Branch semantics and full original instruction/PC execution remain open.

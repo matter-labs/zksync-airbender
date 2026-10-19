@@ -177,4 +177,34 @@ theorem jump_selectors {p : Nat} [Fact p.Prime] (hp : 32 < p) {w : Nat → ZMod 
     | simpa only [Nat.cast_zero, ZMod.natCast_zmod_val] using
         congrArg (fun n : Nat => (n : ZMod p)) zero4
 
+/-- Actual mask four/eight fixes register/immediate comparison identity. -/
+theorem comparison_selectors {p : Nat} [Fact p.Prime] (hp : 32 < p)
+    {w : Nat → ZMod p} (immediate : Bool)
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
+    (mask : (w 12).val = if immediate then 8 else 4) :
+    (w 19 = (if immediate then 0 else 1) ∧ w 20 = (if immediate then 1 else 0)) ∧
+      (w 17 = 0 ∧ w 18 = 0 ∧ w 21 = 0) := by
+  have b0 : (w 17).val ≤ 1 := selector_bound h ⟨0, by decide⟩
+  have b1 : (w 18).val ≤ 1 := selector_bound h ⟨1, by decide⟩
+  have b2 : (w 19).val ≤ 1 := selector_bound h ⟨2, by decide⟩
+  have b3 : (w 20).val ≤ 1 := selector_bound h ⟨3, by decide⟩
+  have b4 : (w 21).val ≤ 1 := selector_bound h ⟨4, by decide⟩
+  have packed := Verification.assertion_of_holds h ⟨33, by rw [constraint_count]; decide⟩
+  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment] at packed
+  have natural : (w 17).val + 2 * (w 18).val + 4 * (w 19).val +
+      8 * (w 20).val + 16 * (w 21).val = (w 12).val := by
+    apply Arithmetic.bounded_nat_eq (F := ZMod p) (p := p)
+      (by omega) (ZMod.val_lt _)
+    simp only [Nat.cast_add, Nat.cast_mul, Nat.cast_ofNat, ZMod.natCast_zmod_val]
+    linear_combination packed
+  have valEq (i n : Nat) (eq : (w i).val = n) : w i = (n : ZMod p) := by
+    rw [← eq]; exact (ZMod.natCast_zmod_val _).symm
+  cases immediate <;> simp only [Bool.false_eq_true,if_false,if_true] at mask ⊢
+  · exact ⟨⟨by simpa using valEq 19 1 (by omega),by simpa using valEq 20 0 (by omega)⟩,
+      by simpa using valEq 17 0 (by omega),by simpa using valEq 18 0 (by omega),
+      by simpa using valEq 21 0 (by omega)⟩
+  · exact ⟨⟨by simpa using valEq 19 0 (by omega),by simpa using valEq 20 1 (by omega)⟩,
+      by simpa using valEq 17 0 (by omega),by simpa using valEq 18 0 (by omega),
+      by simpa using valEq 21 0 (by omega)⟩
+
 end Airbender.JumpBranchSlt.Proofs

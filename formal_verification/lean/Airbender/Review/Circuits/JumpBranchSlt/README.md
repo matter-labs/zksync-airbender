@@ -135,3 +135,16 @@ check exported negative JAL, initialized aliasing JALR with public source 257,
 local x0/wrap targets and rejected bit-one targets despite valid cleanup. Full
 original instruction clauses/retirement and terminal instruction-state matching
 remain separate; local wrap and logical-fixture export boundaries stay explicit.
+
+## Initialized comparison results
+
+[Native calculations](../../../Proofs/JumpBranchSlt/Comparison.lean) preserve
+positive flags 31/33 and derive their complements from actual high-limb shifts
+and scalar queries. Original subtraction/borrow lifting and unchanged signed
+word ordering feed the real conditional table and actual masked writes.
+[The short initialized claim](../../Trace/Families/JumpBranchSlt/Comparisons.lean)
+derives ranges from full matching and selectors/signedness/x0 from original
+public decoding. [Tests](../../../../Tests/ControlComparisons.lean) check all
+four comparisons with separately initialized states, signed/unsigned disagreement,
+negative immediate, discarded raw one and rejected sign-shift range violation.
+Branch semantics and original Sail instruction/PC execution remain separate.

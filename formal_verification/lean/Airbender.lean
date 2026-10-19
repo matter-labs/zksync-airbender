@@ -35,3 +35,4 @@ import Airbender.Review.Trace.Families.JumpBranchSlt.Values
 import Airbender.Review.Trace.Families.JumpBranchSlt.SailHistory
 import Airbender.Review.Trace.Families.JumpBranchSlt.Registers
 import Airbender.Review.Trace.Families.JumpBranchSlt.Targets
+import Airbender.Review.Trace.Families.JumpBranchSlt.Comparisons

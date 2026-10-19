@@ -289,6 +289,10 @@
     {
       "path": "Airbender/Proofs/Sail/Decoder.lean",
       "sha256": "d668dffb439a31d7064b87e09d95fc1bab4c709ca08e9092b0c0cf6cbb2a129f"
+    },
+    {
+      "path": "Airbender/Proofs/Arithmetic/Comparison.lean",
+      "sha256": "368249c542ab085551e195871d2768d611dcd9ee1052dbfc08ece01a8ad18c01"
     }
   ],
   "circuit_artifacts": [
@@ -2363,6 +2367,74 @@
       "backport_reuse_path": "Tests/ControlValues.lean",
       "backport_reuse_sha256": "21aa4fff6a62e645af9c278a21bd6a335393aa709047c9cc251ff135a7d08a91",
       "change": "Reuse original-byte public sparse-construction proof structure under explicit registers and PC. New initialized JALR target is 264 from public source 257 plus immediate eight; local x0/wrap and bit-one cleanup/alignment boundaries are checked separately."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/Comparison.lean",
+      "source_path": "Airbender/Proofs/JumpBranchSlt.lean",
+      "source_sha256": "e7ff84f2dc3a7602f60730f7969e905f530e647afb9bf80683f9fa82b422a3a7",
+      "change": "Adapt original unsigned_borrow lifting using shared Word.borrow_iff, native remainder 26/27, carries 49/28 and equations 29/30. Native register/immediate selectors 19/20 choose separate right operands rather than the source combined register-plus-immediate interface. Adapt comparison destination assembly to actual columns 38/39, route 37 and the decoded x0 mask; no nonzero-destination restriction is imported."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/Comparison.lean",
+      "source_path": "Airbender/Proofs/JumpBranchSlt/Signed.lean",
+      "source_sha256": "87bb48b0b5338e1c6fea6abc742fc98d7924d1a544fe755cb0c303882bc5a578",
+      "change": "Retain signed_resolution strategy: derive unsigned borrow, connect operand high limbs to native sign encoding, assemble a canonical bounded key and use the actual conditional table plus Word.signed_lt_iff. Native positive flags 31/33 and shifted columns 32/34 replace v3 sign lookups; actual scalar ranges derive polarity, inverse equations derive equality-bit Booleanity, and the native four-bit key complements the positive flags. No v3 table encoding or field inverse is copied."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/Selectors.lean",
+      "backport_reuse_revision": "72db4befcc3f3c85ab1dfff9960035520e314687",
+      "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/Selectors.lean",
+      "backport_reuse_sha256": "cf84e9176ff56d9dc2e16f95c88e313fe0260907ca88d52a28281c98f5611c0f",
+      "change": "Keep all existing proofs unchanged; reuse Boolean selector residue bounds and bounded natural packed-mask lifting for exact native comparison masks four/eight."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/Comparison.lean",
+      "backport_reuse_revision": "72db4befcc3f3c85ab1dfff9960035520e314687",
+      "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/Link.lean",
+      "backport_reuse_sha256": "aeef2aec6bceeecb6e71bf369e501fa521e135bac8c61468154827f1a8f9128f",
+      "change": "Reuse unchanged native arithmetic_carries and actual remainder scalar-query bindings. Native subtraction proof supplies no desired borrow, sign, output or table-equivalence premise."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/Comparison.lean",
+      "backport_reuse_revision": "72db4befcc3f3c85ab1dfff9960035520e314687",
+      "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/Writes.lean",
+      "backport_reuse_sha256": "10dd49f09155794576d979ea3179d4ab1f17109eb40780431240bfc995dfc045",
+      "change": "Reuse actual native equations 20..23 and destination columns 38/39. Derive zero link route and selected comparison route before retaining/discarding the actual conditional result."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/Comparisons.lean",
+      "backport_reuse_revision": "72db4befcc3f3c85ab1dfff9960035520e314687",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/Targets.lean",
+      "backport_reuse_sha256": "b98f271dd8736d746c1020dc0d8290486197a72f8d01b87ce4cbea98930d708f",
+      "change": "Reuse initialized image_value_bounds, actual row/port normalization and public native decoder composition. Both register ranges come from matching; immediate bounds and exact operation identity come from original public bytes."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/Comparisons.lean",
+      "backport_reuse_revision": "72db4befcc3f3c85ab1dfff9960035520e314687",
+      "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/Decoder.lean",
+      "backport_reuse_sha256": "9075f111f79787dd976f7c63c745a165a2f35a49e9432469e462300d43194aed",
+      "change": "Reuse unchanged metadata bounds, original source recovery and native query/tag proofs. Actual masks four/eight exclude branch/jump metadata and derive funct3 two/three. Public x0 flags remain exact decoder consequences."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/JumpBranchSlt/Comparisons.lean",
+      "backport_reuse_revision": "72db4befcc3f3c85ab1dfff9960035520e314687",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/JumpBranchSlt/Targets.lean",
+      "backport_reuse_sha256": "a57a5c23e51dbc0a9f2e06a23a4b9152868371b733447c17f3522aeea113e604",
+      "change": "Keep the short initialized image/accepted/decoded contract. Expose actual masked comparison value with native source/immediate observables; calculations stay under Proofs and full instruction/PC execution remains separate."
+    },
+    {
+      "path": "Tests/ControlComparisons.lean",
+      "backport_reuse_revision": "72db4befcc3f3c85ab1dfff9960035520e314687",
+      "backport_reuse_path": "Tests/JumpTarget.lean",
+      "backport_reuse_sha256": "e2d6713c82a7d84ee65699cabfe305770daf30205b65272cf674bacd2c46d76a",
+      "change": "Reuse original-byte RAM/sparse-construction certificates, actual typed singleton row acceptance and public explicit register/PC initialization. Extend to four separately initialized original SLT/SLTU/SLTI/SLTIU cases, with all native equations/queries checked. No new arbitrary-program native export is claimed."
+    },
+    {
+      "path": "Tests/ControlComparisons.lean",
+      "backport_reuse_revision": "72db4befcc3f3c85ab1dfff9960035520e314687",
+      "backport_reuse_path": "Tests/ControlHistory.lean",
+      "backport_reuse_sha256": "8303ba037c6b1d2c38400d921ac7685ba94f27b1922af03cdf63a7d3ff33d0c2",
+      "change": "Reuse complete logical memory-token matching and readonly alias refresh semantics. In true SLTIU-to-x0, the destination read consumes the dummy rs2 x0 refresh at time five and the masked zero is written at six. Its query matches the prior actual native export; a wrong positive flag retains its field equation but fails actual scalar query two."
     }
   ],
   "setup_artifacts": [

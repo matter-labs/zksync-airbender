@@ -20,6 +20,7 @@ not completed v2 coverage.
 | [Initialized control register transfers](Airbender/Review/Trace/Families/JumpBranchSlt/Registers.lean) | Original public decoding and native clock-ordered history derive all original source/destination GPR reads and the actual masked write at constructed row boundaries. Both source reads and the old destination read use one cell-history pre-state, including aliases. Original control clauses, native operation semantics and PC retirement remain open. |
 | [Native saved jump links](Airbender/Review/Circuits/JumpBranchSlt/Theorems.lean) | Full original public decoding and every native constraint derive the actual JAL/JALR PC+4 write, including discarded x0. Native mask classification recovers selectors; actual scalar ranges and Boolean carry equations prove RV32 addition. Exported-JAL, logical JALR/x0, local full native wrap and altered-write rejection regressions pass. Target calculation is checked below; original control instruction execution remains open. |
 | [Initialized native jump targets](Airbender/Review/Trace/Families/JumpBranchSlt/Targets.lean) | Actual public bytes, initialized matching and native equations derive every JAL/JALR target and four-byte alignment, including JALR bit-zero clearing. Source/PC/immediate bounds, original JAL parity, selectors and carries are derived. The exported negative JAL and initialized aliasing JALR pass; full original instruction execution/retirement remains open. |
+| [Initialized native comparison results](Airbender/Review/Trace/Families/JumpBranchSlt/Comparisons.lean) | Native equations, actual scalar/fixed queries, original public metadata and initialized matching derive all four SLT/SLTU/SLTI/SLTIU masked results. Operand ranges, selector identity, signs, borrow and x0 mask are derived. Signed/unsigned disagreement and negative-immediate/x0 regressions pass; branch semantics and original full instruction execution remain open. |
 | V2 artifact import | All 34 quadratic and 3 linear equations, four 16-bit and eight 19-bit timestamp queries from the pinned ADD/SUB layout. Bounds/placement guards and both native zero coefficient encodings. |
 | Reused foundation | Unchanged property definitions, word representation/arithmetic and pinned Sail reference/execution lemmas. Source hashes are checked. |
 | Native state/port clocks | Typed physical state and three direct ports, including actual destination writes. Four-tick advancement and strict previous-write/port order follow from imported equations/queries under initial/prior clock bounds and alignment. The initialized-history layer now derives these local inputs from matching and initial boundaries. |
@@ -578,19 +579,54 @@ lookup and every native equation/query are checked. Local JAL-to-x0 and modular
 0xfffffffc-plus-eight target regressions pass. A bit-one JALR target has a valid
 cleanup row but is rejected by native alignment. Local wrap is not an initialized
 execution certificate, and the new logical fixture has no new general native
-export certificate. Original Sail instruction clauses/PC retirement, comparison
-and branch semantics, complete control execution and terminal instruction-state
+export certificate. Original Sail instruction clauses/PC retirement, branch
+semantics, complete control execution and terminal instruction-state
 matching remain open; Rust/compiler/cryptographic refinement stays separate.
+
+## Initialized native comparison results
+
+[Native comparison calculations](Airbender/Proofs/JumpBranchSlt/Comparison.lean)
+now derive the actual masked SLT/SLTU/SLTI/SLTIU result. Equations 29/30 and
+Boolean carries 49/28 reuse original subtraction/borrow lifting and unchanged
+word arithmetic. Actual scalar queries zero/one range remainder 26/27. Assertions
+18/19 use positive high-limb flags 31/33 and scalar-ranged shifted limbs 32/34;
+the proof keeps this native encoding and complements the flags in the actual
+four-bit control key. Inverse equations 16/17 derive equality-bit Booleanity.
+The checked native conditional table determines signed/unsigned result 35, and
+write equations 20..23 force actual masked destination 38/39.
+
+[One short initialized claim](Airbender/Review/Trace/Families/JumpBranchSlt/Comparisons.lean)
+uses actual public bytes, full sparse decoder membership and complete native
+matching. Native packed masks derive register/immediate selectors; original
+metadata derives signed/unsigned funct3 and the x0 flag. Shared initialized range
+induction supplies both register words, while public decoding bounds the immediate.
+No selector, sign/borrow bit, operand bound, expected read or desired result is
+supplied. The original [signed word-ordering lemmas](Airbender/Proofs/Arithmetic/Comparison.lean)
+are copied unchanged, with source hashes recorded.
+
+[Four separately initialized regressions](Tests/ControlComparisons.lean) compare
+register -1 with one (SLT true, SLTU false), and positive source 123 with the
+sign-extended immediate -1 (SLTI false, SLTIU true). The original SLTIU-to-x0
+retains raw result one but writes zero, with its rd read consuming the dummy x0
+readonly refresh. That query also occurs in the prior actual native export.
+All original-byte construction, public register/PC initialization, native
+constraints and memory matching are checked. A reversed positive flag preserves
+its high-limb field equation with shifted value 98303, but actual scalar query two
+rejects it. This is enforcement of the native range boundary, not a new defect.
+The new logical program has no new general native export certificate. Branch
+semantics, original Sail instruction clauses/PC retirement, complete control
+execution and terminal instruction-state matching remain open; general
+Rust/compiler/cryptographic refinement stays separate.
 
 ## Validation
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all thirty-six concrete test modules pass.
+- Library, both CLI entrypoints and all thirty-seven concrete test modules pass.
 - Importer regressions: 169 checks pass.
-- Axiom audit: 925 explicit roots; only propext, Classical.choice and Quot.sound.
-- All fifty-four public Review theorems (ten circuit claims, thirty-five trace claims and nine helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
-- Source provenance: 72 unchanged reused files, three native circuit artifacts, thirty-six native Rust sources, seven native setup artifacts and four exporter source/manifest/lock files.
+- Axiom audit: 946 explicit roots; only propext, Classical.choice and Quot.sound.
+- All fifty-five public Review theorems (ten circuit claims, thirty-six trace claims and nine helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Source provenance: 73 unchanged reused files, three native circuit artifacts, thirty-six native Rust sources, seven native setup artifacts and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
 - Public Sail x1/PC reads construct the accepted alias fixture; missing register and byte data reject construction.
