@@ -16,7 +16,7 @@ open Spec
 set_option maxHeartbeats 0
 set_option maxRecDepth 100000
 
-theorem main_run (s : State) (codeM codeI codeEP : List Word) (calleesEP : List (Word × List Word)) (FEP : Nat)
+theorem main_run (s : State) (codeM codeI codeEP codeB : List Word) (calleesEP : List (Word × List Word)) (FEP : Nat)
     (codeF : List Word) (Ai Ac Ap Aep Ab Af Afs Aerr src : Word) (x y0 y1 y2 y3 v0 v1 v2 v3 : Word)
     (hI : InitOK Ai src codeI) (hIl : codeI.length = 34) (hAi : Ai.toNat % 4 = 0)
     (hAir : Ai.toNat + 136 + 4 * 1676 ≤ 4194304)
@@ -26,7 +26,7 @@ theorem main_run (s : State) (codeM codeI codeEP : List Word) (calleesEP : List 
     (hEP : ImplementsAtW Aep codeEP calleesEP FEP e4polyPre 16 e4polyPost)
     (hEPr : Aep.toNat + 4 * codeEP.length ≤ 4194304) (hEP4 : Aep.toNat % 4 = 0) (hFEP : FEP ≤ 0x100000)
     (hcalr : ∀ c ∈ calleesEP, c.1.toNat + 4 * c.2.length ≤ 4194304)
-    (hAb : Ab.toNat % 4 = 0) (hAbr : Ab.toNat + 4 * Code.blake2s_compress.length ≤ 4194304)
+    (hBl : MainBlakeOK codeM codeB Ab) (hAbr : Ab.toNat + 4 * codeB.length ≤ 4194304)
     (hAf : Af.toNat % 4 = 0) (hAfr : Af.toNat + 0x78 + 0x84 ≤ 4194304)
     (hAfs : Afs.toNat % 4 = 0) (hAfsr : Afs.toNat + 4 * 113 ≤ 4194304) (hlenF : codeF.length = 113)
     (hbFA : codeF.take 53 = Code.fs_check.take 53) (hbFB : (codeF.drop 54).take 58 = (Code.fs_check.drop 54).take 58)
@@ -38,7 +38,6 @@ theorem main_run (s : State) (codeM codeI codeEP : List Word) (calleesEP : List 
     (hb1 : (codeM.drop 18).take 1 = (Code.main.drop 18).take 1)
     (hb2 : (codeM.drop 20).take 5 = (Code.main.drop 20).take 5)
     (hb3 : (codeM.drop 26).take 7 = (Code.main.drop 26).take 7)
-    (hb4 : (codeM.drop 34).take 34 = (Code.main.drop 34).take 34)
     (hbV : (codeM.drop 69).take 4 = (Code.main.drop 69).take 4)
     (hbF : (codeM.drop 73).take 6 = (Code.main.drop 73).take 6)
     (hb5 : (codeM.drop 80).take 15 = (Code.main.drop 80).take 15)
@@ -46,7 +45,6 @@ theorem main_run (s : State) (codeM codeI codeEP : List Word) (calleesEP : List 
     (dj1 : decode codeM[19]! = some (.jal 1#5 (Ac - 0x84#32)))
     (dj2 : decode codeM[25]! = some (.jal 1#5 (Ap - 0x9c#32)))
     (dj3 : decode codeM[33]! = some (.jal 1#5 (Aep - 0xbc#32)))
-    (dj4 : decode codeM[68]! = some (.jal 1#5 (Ab - 0x148#32)))
     (djf : decode codeM[79]! = some (.jal 1#5 (Afs - 0x174#32)))
     (dj5 : decode codeM[95]! = some (.jal 1#5 (Af - 0x1b4#32)))
     (hpc : s.pc = 0) (cStart : CodeAt s 0 Code.start) (cMain : CodeAt s 0x38#32 codeM)
@@ -57,7 +55,7 @@ theorem main_run (s : State) (codeM codeI codeEP : List Word) (calleesEP : List 
     (cAdd : CodeAt s (Ap + 4294967184#32) Code.add_mod)
     (cCoef : CodeAt s src Code.COEFFS) (cCoef4 : CodeAt s (src + BitVec.ofNat 32 0x190) Code.COEFFS4)
     (cEP : CodeAt s Aep codeEP) (cCal : ∀ c ∈ calleesEP, CodeAt s c.1 c.2)
-    (cBl : CodeAt s Ab Code.blake2s_compress)
+    (cBl : CodeAt s Ab codeB)
     (cFin : CodeAt s Af Code.finish_success) (cExt : CodeAt s (Af + 0x78#32) Code.finish_success_extended)
     (cFs : CodeAt s Afs codeF) (cErr : CodeAt s Aerr Code.finish_error)
     (hram : RamZero s) (rest : List Word) (hin : s.input = x :: y0 :: y1 :: y2 :: y3 :: v0 :: v1 :: v2 :: v3 :: rest) (hxP : x.toNat ≤ P)
@@ -122,15 +120,15 @@ theorem main_run (s : State) (codeM codeI codeEP : List Word) (calleesEP : List 
     rw [hcsT r (by rcases hr with rfl|rfl|rfl|rfl|rfl <;> rv_callee_saved) (by rcases hr with rfl|rfl|rfl|rfl|rfl <;> decide),
       hRq, withInput_getReg]
   obtain ⟨mB, U, hrunB, hpcU, h2U, h9U, h18U, h19U, hcanU, hvalU, hblU, hcoU, hromU⟩ :=
-    main_b T codeM Aep Ab codeEP calleesEP FEP hEP hEPr hEP4 hFEP hcalr hAb hAbr (3#32 * x + 1#32) (T.getReg 10#5)
+    main_b T codeM codeB Aep Ab codeEP calleesEP FEP hEP hEPr hEP4 hFEP hcalr hBl hAbr (3#32 * x + 1#32) (T.getReg 10#5)
       x y0 y1 y2 y3 hpcT h2T h9T rfl ((kT _ (by decide)).trans h20R) ((kT _ (by decide)).trans h21R)
       ((kT _ (by decide)).trans h22R) ((kT _ (by decide)).trans h23R) ((kT _ (by decide)).trans h24R) htabT
       (fun a h1 h2 => by
         rw [hhiT a (by omega), hRq, withInput_mem, hmR', hR, withInput_mem, hcp2 a (by omega),
           blockCopy_outside _ _ _ _ _ (by bv_omega), hm0 a (by right; omega)]
         exact hram a (by simp only [ROM_END]; omega) (by simp only [RAM_END]; omega))
-      (codeAt_of_rom cMain (by rw [hlen]; simp only [ROM_END]; decide) hromT') hlen hb3 hb4
-      _ _ (get 33 (by decide)) (get 68 (by decide)) dj3 dj4
+      (codeAt_of_rom cMain (by rw [hlen]; simp only [ROM_END]; decide) hromT') hlen hb3
+      _ (get 33 (by decide)) dj3
       (codeAt_of_rom cEP (by simp only [ROM_END]; omega) hromT')
       (fun c hc => codeAt_of_rom (cCal c hc) (by have := hcalr c hc; simp only [ROM_END]; omega) hromT')
       (codeAt_of_rom cBl (by simp only [ROM_END]; omega) hromT') hy0p hy1p hy2p hy3p

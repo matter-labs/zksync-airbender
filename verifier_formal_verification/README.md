@@ -6,8 +6,9 @@ Lean specs.
 **Check everything:** `./verify.sh` (rebuilds both binaries, checks the Lean copies, builds all proofs, checks the
 final theorems' statements and axioms).
 
-The guest is built twice (`rust/build.sh`): `build/app_mop.bin` (cargo feature `mop`: BabyBear ops via Airbender's
-field opcodes `mop.rr.N`, as the real verifier) and `build/app.bin` (the same ops in plain Rust, trusting no opcode).
+The guest is built twice (`rust/build.sh`): `build/app_mop.bin` (cargo features `mop`: BabyBear ops via Airbender's
+field opcodes `mop.rr.N`, and `delegation`: Blake2s by seven calls of the round-function delegation, CSR `0x7c7` —
+as the real verifier) and `build/app.bin` (the same ops and Blake2s in plain Rust, trusting no opcode or delegation).
 Both compute a Mersenne31 polynomial, a BabyBear Ext4 polynomial (Horner) and a Blake2s compression (the verifier's
 `blake2s_u32`, 7 rounds) of their input, five words read from Airbender's non-determinism source (CSR `0x7c0`);
 then a Fiat–Shamir check: the digest is the transcript seed, the challenge `z` its first four words, and the prover's

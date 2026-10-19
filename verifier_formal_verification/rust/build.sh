@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds the guest in both variants and writes build/{app,app_mop}.{elf,bin,dis,sym,sha256} plus the Lean copies of
-# the images, lean/image/{Image,ImageMop}.lean. app: BabyBear in plain Rust; app_mop: cargo feature `mop` (field
-# opcodes, as the real verifier).
+# the images, lean/image/{Image,ImageMop}.lean. app: BabyBear in plain Rust; app_mop: cargo features `mop` (field
+# opcodes) and `delegation` (Blake2s by the round-function delegation), as the real verifier.
 set -euo pipefail
 cd "$(dirname "$0")"
 BIN="$(rustc --print sysroot)/lib/rustlib/$(rustc -vV | sed -n 's/^host: //p')/bin"
@@ -57,4 +57,4 @@ LEAN=../lean/image/$ns.lean; mkdir -p "$(dirname $LEAN)"
 }
 
 image app Image
-image app_mop ImageMop --features mop
+image app_mop ImageMop --features mop,delegation

@@ -7,6 +7,17 @@ commit check `git diff --cached --stat` and that no staged file is over ~200 KB.
 Moved here from an earlier prototype repo (as a snapshot; its history, which contains the large Sail model, was
 NOT imported).
 
+=== MOP IMAGE ON THE BLAKE2S DELEGATION (2026-10-19) ===
+- Guest: cargo feature `delegation` (= blake2s_u32/blake2_with_compression); app_mop = mop + delegation, as the real
+  verifier. blake2s_compress is 29 words: counter and last-block words into the extended state, 7 x csrrw x0,
+  0x7c7, x0, return. main changes only in the five stores of the input (BLAKE + 0x80 instead of + 0x40).
+- Proof: BlakeDeleg/Rounds (blakeRound_call per call; blake_calls: 7 calls by induction, invariant BlakeAfter;
+  compress_eq: = Spec.compress), BlakeDeleg/Impl (contract blakeDPre/blakeDPost: rv_steps for the prologue,
+  rv_cut, blake_calls, rv_steps for the epilogue; ~18 s), Delegate (step_delegate, readWords_storeAll,
+  applyEffect_some: any precompile). main's Blake2s part is now one contract, Main/Blake MainBlakeOK, with a proof
+  per image (main_blake: baseline; main_blake_deleg: delegation, block Main4D); main_b / main_run take it as a
+  hypothesis. Final statements unchanged; Accepted holds for the mop image (one run of 7).
+
 === DELEGATIONS: G, BIGINT, KECCAK (2026-10-16) ===
 - Per-call effects from source where the ISA table is silent: G (0x7c8: x12 counter bits 0-6, bit 7 = 7 rounds; G
   k%8 of round k/8, counter wraps), bigint (0x7ca: bigintOp on Nat, result mod 2^256, flag in x12), Keccak special5

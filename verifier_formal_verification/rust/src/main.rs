@@ -132,7 +132,8 @@ pub extern "C" fn fs_check(st: &blake2s_u32::DelegatedBlake2sState, v: &[u32; 4]
 }
 
 /// One Blake2s compression with 7 rounds, as the verifier's transcript: `Blake2RoundFunctionEvaluator` (baseline,
-/// plain Rust in both images). `len_bytes` more input bytes, `last` marks the final block.
+/// plain Rust; feature `delegation`: seven calls of the round-function delegation, CSR 0x7c7). `len_bytes` more input
+/// bytes, `last` marks the final block.
 #[unsafe(no_mangle)]
 #[inline(never)]
 pub extern "C" fn blake2s_compress(st: &mut blake2s_u32::DelegatedBlake2sState, len_bytes: u32, last: bool) {

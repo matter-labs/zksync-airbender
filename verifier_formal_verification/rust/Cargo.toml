@@ -14,6 +14,9 @@ blake2s_u32 = { path = "../../blake2s_u32" }
 # BabyBear field ops via Airbender's field opcodes (mop.rr.N), as the real verifier (field: modular_ops +
 # modular_fma). Default: the same ops in plain Rust.
 mop = []
+# Blake2s via Airbender's round-function delegation (CSR 0x7c7, `blake2_with_compression`), as the real verifier.
+# Default: the baseline Blake2s in plain Rust.
+delegation = ["blake2s_u32/blake2_with_compression"]
 
 [profile.release]
 opt-level = 3

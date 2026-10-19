@@ -80,4 +80,4 @@ def emit (n : String) (code : List Word) (data : Bool) : IO Unit := do
   for (n, a, sz) in blocksMop do
     let code := codeOf ImageMop.bytes a sz
     let shared := blocks.any fun (n', a', sz') => n' == n && codeOf Image.bytes a' sz' == code
-    unless shared do emit (n ++ "_mop") code (dataBlocks.contains n || symBlocks.contains n)
+    unless shared do emit (n ++ "_mop") code (dataBlocks.contains n || symBlocks.contains (n ++ "_mop"))

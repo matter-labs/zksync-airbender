@@ -51,7 +51,7 @@ theorem program_correct_run (s : State) (x y0 y1 y2 y3 v0 v1 v2 v3 : Word) (rest
   have cCoef := codeAt_of_bytesW himg 0x4050 Code.COEFFS (by decide +kernel) hs (by decide +kernel)
   have cCoef4 := codeAt_of_bytesW himg (0x4050 + 0x190) Code.COEFFS4 (by decide +kernel) hs (by decide +kernel)
   simp only [BitVec.ofNat_eq_ofNat] at *
-  have H := main_run s Code.main Code.init Code.ext4_poly
+  have H := main_run s Code.main Code.init Code.ext4_poly Code.blake2s_compress
       [(0x1e84#32 + 4294965620#32, Code.ext4_horner), (0x1e84#32 + 4294965620#32 + 168#32, Code.ext4_mul_add)] 192
       Code.fs_check 0x2598#32 0x2364#32 0x22e8#32 0x1e84#32 0x1b8#32 0x2474#32 0x20b4#32
       0x245c#32 0x4050#32 x y0 y1 y2 y3 v0 v1 v2 v3
@@ -60,11 +60,12 @@ theorem program_correct_run (s : State) (x y0 y1 y2 y3 v0 v1 v2 v3 : Word) (rest
       (ext4_poly_impl 0x1e84#32 (by decide) (by decide)) (by decide +kernel) (by decide) (by decide)
       (by intro c hc; simp only [List.mem_cons, List.not_mem_nil, or_false] at hc
           rcases hc with h | h <;> subst h <;> decide +kernel)
-      (by decide) (by decide +kernel) (by decide) (by decide)
+      (main_blake Code.main 0x1b8#32 (by decide +kernel) (by decide) (by decide +kernel) rfl _ rfl (by decide +kernel))
+      (by decide +kernel) (by decide) (by decide)
       (by decide) (by decide) (by decide +kernel) rfl rfl (by decide +kernel) (by decide +kernel) (by decide) (by decide)
-      (by decide +kernel) rfl rfl rfl rfl rfl rfl rfl rfl rfl
+      (by decide +kernel) rfl rfl rfl rfl rfl rfl rfl rfl
       (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel)
-      (by decide +kernel) (by decide +kernel)
+      (by decide +kernel)
       hpc cStart cMain cInit cMemcpy cComb cInc cDbl cPoly cMul cAdd cCoef cCoef4 cEP
       (by
         intro c hc; simp only [List.mem_cons, List.not_mem_nil, or_false] at hc
