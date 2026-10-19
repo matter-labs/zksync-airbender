@@ -1,13 +1,6 @@
 #include "keccak256.cuh"
-#include <cuda/atomic>
 
 namespace airbender::hash::keccak256 {
-
-DEVICE_FORCEINLINE void load_seed(const u8 *src, u8 seed[32]) {
-#pragma unroll
-  for (u32 byte = 0; byte < 32; byte++)
-    seed[byte] = src[byte];
-}
 
 DEVICE_FORCEINLINE void store_seed(const u8 seed[32], u8 *dst) {
 #pragma unroll
@@ -60,25 +53,8 @@ EXTERN __global__ void ab_keccak256_transcript_draw_fields_kernel(u8 *seed_io, p
   store_seed(seed, seed_io);
 }
 
-EXTERN __global__ void ab_keccak256_pow_kernel(const u8 *seed, const u32 bits, const u64 max_nonce, u64 *result) {
-  u64 nonce = static_cast<u64>(blockIdx.x) * blockDim.x + threadIdx.x;
-  const u64 stride = static_cast<u64>(gridDim.x) * blockDim.x;
-  u8 current_seed[32];
-  load_seed(seed, current_seed);
-  auto *result_ptr = reinterpret_cast<unsigned long long *>(result);
-  cuda::atomic_ref<unsigned long long, cuda::thread_scope_device> found(*result_ptr);
-  while (nonce < max_nonce) {
-    u8 value[32];
-    pow_digest(current_seed, nonce, value);
-    if (top_bits_are_zero(value, bits))
-      atomicMin(result_ptr, static_cast<unsigned long long>(nonce));
-    if (found.load(cuda::memory_order_relaxed) <= nonce)
-      break;
-    u64 next;
-    if (!advance(nonce, stride, max_nonce, next))
-      break;
-    nonce = next;
-  }
+EXTERN __global__ void ab_keccak256_pow_kernel(const u8 *seed, const u32 bits, const u64 max_nonce, const u32 chunk_steps, u64 *counter, u64 *result) {
+  pow_search_counter(seed, bits, max_nonce, chunk_steps, counter, result);
 }
 
 EXTERN __global__ void ab_keccak256_pow_finalize_kernel(u8 *seed_io, const u32 bits, const u64 *nonce) {

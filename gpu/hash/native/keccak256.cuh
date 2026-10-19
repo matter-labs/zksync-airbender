@@ -510,6 +510,14 @@ DEVICE_FORCEINLINE bool top_bits_are_zero(const u8 value[32], u32 bits) {
   return true;
 }
 
+DEVICE_FORCEINLINE void load_seed(const u8 *src, u8 seed[32]) {
+#pragma unroll
+  for (u32 byte = 0; byte < 32; byte++)
+    seed[byte] = src[byte];
+}
+
+constexpr u64 POW_STOP = u64{1} << 63;
+
 DEVICE_FORCEINLINE bool advance(const u64 nonce, const u64 stride, const u64 max_nonce, u64 &next) {
   if (stride > max_nonce || nonce >= max_nonce - stride) {
     next = 0;
@@ -517,6 +525,47 @@ DEVICE_FORCEINLINE bool advance(const u64 nonce, const u64 stride, const u64 max
   }
   next = nonce + stride;
   return true;
+}
+
+/// Min-nonce search: warps claim consecutive chunks of `chunk_steps * 32` nonces from `counter`;
+/// a hit pushes the counter past every valid index, and the claimed chunks are finished.
+DEVICE_FORCEINLINE void pow_search_counter(const u8 *seed, const u32 bits, const u64 max_nonce, const u32 chunk_steps, u64 *counter, u64 *result) {
+  const u32 lane = threadIdx.x & 31;
+  u8 current_seed[32];
+  load_seed(seed, current_seed);
+  auto *counter_ptr = reinterpret_cast<unsigned long long *>(counter);
+  auto *result_ptr = reinterpret_cast<unsigned long long *>(result);
+  bool hit = false;
+  const auto try_nonce = [&](const u64 nonce) {
+    u8 value[32];
+    pow_digest(current_seed, nonce, value);
+    if (top_bits_are_zero(value, bits)) {
+      atomicMin(result_ptr, static_cast<unsigned long long>(nonce));
+      hit = true;
+    }
+  };
+  const u64 chunk = static_cast<u64>(chunk_steps) * 32;
+  while (true) {
+    u64 index = 0;
+    if (lane == 0)
+      index = atomicAdd(counter_ptr, 1ull);
+    index = __shfl_sync(0xffffffffu, index, 0);
+    const u64 start = index * chunk;
+    if (index >= POW_STOP || __umul64hi(index, chunk) != 0 || start >= max_nonce)
+      return;
+    const u64 limit = max_nonce - start;
+#pragma unroll 1
+    for (u32 step = 0; step < chunk_steps; step++) {
+      const u64 offset = step * 32 + lane;
+      if (offset < limit)
+        try_nonce(start + offset);
+    }
+    if (__any_sync(0xffffffffu, hit)) {
+      if (lane == 0)
+        atomicMax(counter_ptr, static_cast<unsigned long long>(POW_STOP));
+      return;
+    }
+  }
 }
 
 } // namespace airbender::hash::keccak256

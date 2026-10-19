@@ -12,6 +12,7 @@ use super::super::{
     keccak256_pow, pow_helpers_probe, transcript_draw_fields, transcript_draw_u32, Seed,
 };
 use super::{download, test_worker, upload, TestRng};
+use crate::pow::pow_chunk_steps;
 use crate::upstream::{
     assemble_query_index, BitSource, Keccak256Seed, Keccak256Transcript, Proth120, Transcript,
 };
@@ -22,6 +23,7 @@ const GUARD: u8 = 0x5c;
 struct PowState {
     seed: DeviceAllocation<u8>,
     nonce: DeviceAllocation<u64>,
+    counter: DeviceAllocation<u64>,
     offset: usize,
 }
 
@@ -32,6 +34,7 @@ impl PowState {
         Self {
             seed: upload(&bytes, stream),
             nonce: upload(&[0x5eed_5eed_5eed_5eed], stream),
+            counter: upload(&[0x5eed_5eed_5eed_5eed], stream),
             offset,
         }
     }
@@ -42,23 +45,39 @@ impl PowState {
 
     fn run(&mut self, bits: u32, stream: &CudaStream) {
         let nonce = unsafe { DeviceVariable::from_raw_parts_mut(self.nonce.as_mut_ptr()) };
+        let counter = unsafe { DeviceVariable::from_raw_parts_mut(self.counter.as_mut_ptr()) };
         keccak256_pow(
             &mut self.seed[self.offset..self.offset + 32],
             bits,
             nonce,
+            counter,
             stream,
         )
         .unwrap();
     }
 
     fn search(&mut self, bits: u32, bound: u64, blocks: u32, stream: &CudaStream) {
+        self.search_from(bits, bound, blocks, 0, stream);
+    }
+
+    fn search_from(
+        &mut self,
+        bits: u32,
+        bound: u64,
+        blocks: u32,
+        first_chunk: u64,
+        stream: &CudaStream,
+    ) {
         let nonce = unsafe { DeviceVariable::from_raw_parts_mut(self.nonce.as_mut_ptr()) };
+        let counter = unsafe { DeviceVariable::from_raw_parts_mut(self.counter.as_mut_ptr()) };
         pow_search_bounded(
             &self.seed[self.offset..self.offset + 32],
             bits,
             bound,
             blocks,
+            first_chunk,
             nonce,
+            counter,
             stream,
         )
         .unwrap();
@@ -84,6 +103,10 @@ impl PowState {
 
     fn read_nonce(&self, stream: &CudaStream) -> u64 {
         download(&self.nonce, 0, stream)[0]
+    }
+
+    fn read_counter(&self, stream: &CudaStream) -> u64 {
+        download(&self.counter, 0, stream)[0]
     }
 }
 
@@ -326,8 +349,8 @@ fn keccak256_pow_boundaries() {
     excluded.search(8, minimum, 1, &stream);
     assert_eq!(
         excluded.read_nonce(&stream),
-        minimum,
-        "exclusive endpoint retains the bound sentinel"
+        u64::MAX,
+        "exclusive endpoint keeps the no-hit sentinel"
     );
     assert_eq!(excluded.read_seed(&stream), endpoint_seed);
     let mut sentinel = PowState::new(&seed, 1, &stream);
@@ -404,6 +427,36 @@ fn keccak256_pow_draw_sequence_parity() {
 }
 
 #[test]
+fn keccak256_pow_counter_reaches_top_of_nonce_domain() {
+    let stream = CudaStream::default();
+    let seed = [0x3cu8; 32];
+    let bits = 4;
+    for blocks in [1, 2, 17] {
+        assert_eq!(pow_chunk_steps(bits, blocks), 1);
+    }
+    let first_chunk = u64::MAX / 32 - 4;
+    let hits: Vec<u64> = (first_chunk * 32..u64::MAX)
+        .filter(|nonce| cpu_predicate(&cpu_digest(&seed, *nonce), bits))
+        .collect();
+    assert!(!hits.is_empty());
+    for blocks in [1, 2, 17] {
+        let mut state = PowState::new(&seed, 0, &stream);
+        state.search_from(bits, u64::MAX, blocks, first_chunk, &stream);
+        assert_eq!(state.read_nonce(&stream), hits[0], "blocks={blocks}");
+    }
+    let chunk = 32 * pow_chunk_steps(256, 1) as u64;
+    let last_chunk = (u64::MAX - 1) / chunk;
+    let mut state = PowState::new(&seed, 0, &stream);
+    state.search_from(256, u64::MAX, 1, last_chunk, &stream);
+    assert_eq!(state.read_nonce(&stream), u64::MAX);
+    assert_eq!(state.read_counter(&stream), last_chunk + 5);
+    let mut state = PowState::new(&seed, 0, &stream);
+    state.search_from(256, u64::MAX, 1, u64::MAX / 32, &stream);
+    assert_eq!(state.read_nonce(&stream), u64::MAX);
+    assert_eq!(state.read_counter(&stream), u64::MAX / 32 + 4);
+}
+
+#[test]
 #[ignore]
 fn keccak256_pow_exhaustion() {
     let seed = [0x5au8; 32];
@@ -412,7 +465,7 @@ fn keccak256_pow_exhaustion() {
     let stream = ManuallyDrop::new(CudaStream::default());
     let mut state = ManuallyDrop::new(PowState::new(&seed, 1, &stream));
     state.search(256, bound, 1, &stream);
-    assert_eq!(state.read_nonce(&stream), bound);
+    assert_eq!(state.read_nonce(&stream), u64::MAX);
     assert_eq!(state.read_seed(&stream), seed);
     state.finalize(256, &stream);
     let error = stream

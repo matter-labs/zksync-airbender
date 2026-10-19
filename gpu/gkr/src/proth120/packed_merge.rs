@@ -286,10 +286,12 @@ where
     memory_copy_async(&mut point[..claim_point.len()], claim_point, stream)?;
     memory_copy_async(&mut point[claim_point.len()..], &extra[..], stream)?;
     memory_copy_async(proof.evaluation_point_device_mut(), &point[..], stream)?;
+    let mut counter = context.alloc(1, AllocationPlacement::BestFit)?;
     keccak256_pow(
         seed,
         batching_pow_bits,
         proof.batched_nonce_device_mut(),
+        &mut counter[0],
         stream,
     )?;
     snapshot(1, seed)?;

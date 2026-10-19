@@ -45,7 +45,8 @@ pub(crate) fn schedule_pow_and_query_indexes(
         "Proth120 WHIR: query phase geometry invalid"
     );
     let stream = context.get_exec_stream();
-    keccak256_pow(seed, pow_bits, nonce_dst, stream)?;
+    let mut counter = context.alloc(1, AllocationPlacement::BestFit)?;
+    keccak256_pow(seed, pow_bits, nonce_dst, &mut counter[0], stream)?;
     let mut raw = context.alloc(
         query_words(queries, query_domain_log2),
         AllocationPlacement::BestFit,
