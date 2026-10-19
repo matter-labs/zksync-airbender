@@ -1206,7 +1206,7 @@ unsafe fn dim_reducing_final_step_accumulator(
 #[doc = " (memory cols → witness cols → setup cols → virtual setups → others)`."]
 #[inline(always)]
 fn check_virtual_setup_inits_and_teardowns<E: ErrorCreator>(
-    state: &LayerState<BabyBearExt4, GKR_ROUNDS, GKR_ADDRS>,
+    state: &LayerState<BabyBearExt4, CLAIM_POINT_CAPACITY, GKR_ADDRS>,
 ) -> Result<(), E::Error> {
     unsafe {
         let pt = state.prev_point.get_unchecked(..24usize);
@@ -1277,7 +1277,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         ts.commit(&mut evals_commit_buf, evals_data_words);
         let evals_slice: &[BabyBearExt4] = unsafe { evals_commit_buf.data_as(32usize) };
-        let mut all_challenges = LazyVec::<BabyBearExt4, { GKR_ROUNDS + 1 }>::new();
+        let mut all_challenges = LazyVec::<BabyBearExt4, { CLAIM_POINT_CAPACITY + 1 }>::new();
         unsafe {
             all_challenges.set_len(5usize);
         }
@@ -1304,12 +1304,12 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             prev_claims.push(claim);
         }
         let prev_point = {
-            let mut lv = LazyVec::<BabyBearExt4, GKR_ROUNDS>::new();
+            let mut lv = LazyVec::<BabyBearExt4, CLAIM_POINT_CAPACITY>::new();
             for i in 0..4usize {
                 lv.push(*all_challenges.get(i));
             }
             unsafe {
-                lv.set_len(GKR_ROUNDS);
+                lv.set_len(CLAIM_POINT_CAPACITY);
             }
             unsafe { lv.into_array() }
         };
@@ -2861,7 +2861,7 @@ impl
         NUM_WITNESS_COMMITS,
         NUM_SETUP_COMMITS,
         PADDING_WORDS,
-        GKR_ROUNDS,
+        CLAIM_POINT_CAPACITY,
         GKR_ADDRS,
     > for VerifierImplementation
 {

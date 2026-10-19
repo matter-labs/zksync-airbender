@@ -376,7 +376,7 @@ fn emit_range_check_eval_check<MW: FieldWrapper>(
         #[doc = " canonical layer-0 layout (memory cols → witness cols → setup cols → virtual setups → others)."]
         #[inline(always)]
         fn #fn_name<E: ErrorCreator>(
-            state: &LayerState<#quartic_struct, GKR_ROUNDS, GKR_ADDRS>,
+            state: &LayerState<#quartic_struct, CLAIM_POINT_CAPACITY, GKR_ADDRS>,
         ) -> Result<(), E::Error> {
             unsafe {
                 // The claim point is in plain VARIABLE order (LSB binding):
@@ -444,7 +444,7 @@ fn emit_inits_and_teardowns_eval_check<MW: FieldWrapper>(
         #[doc = " (memory cols → witness cols → setup cols → virtual setups → others)`."]
         #[inline(always)]
         fn check_virtual_setup_inits_and_teardowns<E: ErrorCreator>(
-            state: &LayerState<#quartic_struct, GKR_ROUNDS, GKR_ADDRS>,
+            state: &LayerState<#quartic_struct, CLAIM_POINT_CAPACITY, GKR_ADDRS>,
         ) -> Result<(), E::Error> {
             unsafe {
                 // The claim point is in plain VARIABLE order (LSB binding):
@@ -1241,9 +1241,14 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
         })
         .collect();
 
-    // The claim point buffer must also hold the `pack_log2` extra coordinates
-    // the packed modes append after the GKR phase.
-    let max_sumcheck_rounds = trace_len_log_2 + pack_log2;
+    // GKR works on the LOGICAL polynomials: every same-size layer sumcheck has
+    // `trace_len_log2` rounds and the GKR claim point has that many
+    // coordinates. The claim-point buffers must additionally hold the
+    // `pack_log2` extra coordinates the packed base commitment appends after
+    // the GKR phase (the WHIR evaluation point has `trace_len_log2 +
+    // pack_log2` coordinates — the committed, packed column size).
+    let max_sumcheck_rounds = trace_len_log_2;
+    let claim_point_capacity = trace_len_log_2 + pack_log2;
 
     let max_unique_addrs_standard = standard_sorted_addrs
         .iter()
@@ -1418,7 +1423,7 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
         ts.commit(&mut evals_commit_buf, evals_data_words);
         let evals_slice: &[#quartic_struct] = unsafe { evals_commit_buf.data_as(#total_evals_needed) };
 
-        let mut all_challenges = LazyVec::<#quartic_struct, { GKR_ROUNDS + 1 }>::new();
+        let mut all_challenges = LazyVec::<#quartic_struct, { CLAIM_POINT_CAPACITY + 1 }>::new();
         unsafe { all_challenges.set_len(#num_challenges); }
         draw_field_els_into::<DRAW_BUF_CAPACITY>(
             ts, all_challenges.as_mut_slice());
@@ -1433,11 +1438,11 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
         #claim_accum_body
 
         let prev_point = {
-            let mut lv = LazyVec::<#quartic_struct, GKR_ROUNDS>::new();
+            let mut lv = LazyVec::<#quartic_struct, CLAIM_POINT_CAPACITY>::new();
             for i in 0..#evaluation_point_len {
                 lv.push(*all_challenges.get(i));
             }
-            unsafe { lv.set_len(GKR_ROUNDS); }
+            unsafe { lv.set_len(CLAIM_POINT_CAPACITY); }
             unsafe { lv.into_array() }
         };
 
@@ -2223,7 +2228,15 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
         use super::common::EXT_DEGREE;
 
         // Upper bound on GKR sumcheck rounds for internal buffers
+        /// Number of rounds of every same-size GKR layer sumcheck = the number
+        /// of GKR claim-point coordinates: log2 of the LOGICAL (trace-length)
+        /// polynomials. Packing does not change it.
         pub const GKR_ROUNDS: usize = #max_sumcheck_rounds;
+        /// Capacity of the claim-point buffers: the GKR point plus the
+        /// `PACK_LOG2` coordinates appended after the GKR phase for the packed
+        /// base commitment (`TRACE_LEN_LOG2 + pack_log2`, the committed column
+        /// size the WHIR point has). Equals `GKR_ROUNDS` when unpacked.
+        pub const CLAIM_POINT_CAPACITY: usize = #claim_point_capacity;
         pub const TRACE_LEN_LOG2: u32 = #trace_len_log2_u32;
         pub const GKR_ADDRS: usize = #max_addrs;
         pub const GKR_EVALS: usize = #max_evals;
@@ -2304,7 +2317,7 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
             NUM_SETUP_COMMITS,
             PADDING_WORDS,
         >;
-        pub type ConcreteGKRVerifierOutput = ::verifier_common::GKRVerifierOutput<#quartic_struct, GKR_ROUNDS, GKR_ADDRS>;
+        pub type ConcreteGKRVerifierOutput = ::verifier_common::GKRVerifierOutput<#quartic_struct, CLAIM_POINT_CAPACITY, GKR_ADDRS>;
         pub type ConcreteVerifierOutput = ::verifier_common::VerifierOutput<#quartic_struct, INIT_AND_TEARDOWN_SETS, CAP_SIZE, NUM_MEMORY_COMMITS, NUM_SETUP_COMMITS>;
 
     };
@@ -2360,7 +2373,7 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
             NUM_WITNESS_COMMITS,
             NUM_SETUP_COMMITS,
             PADDING_WORDS,
-            GKR_ROUNDS,
+            CLAIM_POINT_CAPACITY,
             GKR_ADDRS,
         > for VerifierImplementation {
             #[inline(always)]

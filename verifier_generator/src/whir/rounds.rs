@@ -124,7 +124,7 @@ fn generate_single_oracle_query_body<MW: FieldWrapper>(
 pub fn generate_whir_initial_round<MW: FieldWrapper>(
     whir_schedule: &WhirSchedule,
     oracles: &BTreeMap<OracleType, OracleInfo>,
-    trace_len_log2: usize,
+    message_size_log2: usize,
 ) -> TokenStream {
     let field_use_stmts = MW::field_use_statements();
     let field_struct = MW::field_struct();
@@ -134,7 +134,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
     let params = round_params(
         whir_schedule,
         0,
-        trace_len_log2,
+        message_size_log2,
         whir_schedule.base_lde_factor,
     );
 
@@ -403,7 +403,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
 
 pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
     whir_schedule: &WhirSchedule,
-    trace_len_log2: usize,
+    message_size_log2: usize,
 ) -> TokenStream {
     let field_struct = MW::field_struct();
     let quartic_struct = MW::quartic_struct();
@@ -411,7 +411,7 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
     let num_rounds = whir_schedule.whir_steps_schedule.len();
     let num_internal_rounds = num_rounds - 2;
 
-    let mut poly_size_log2 = trace_len_log2;
+    let mut poly_size_log2 = message_size_log2;
     poly_size_log2 -= whir_schedule.whir_steps_schedule[0];
 
     let mut internal_params: Vec<RoundParams> = Vec::new();
@@ -672,7 +672,7 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
 
 pub fn generate_whir_final_round<MW: FieldWrapper>(
     whir_schedule: &WhirSchedule,
-    trace_len_log2: usize,
+    message_size_log2: usize,
 ) -> TokenStream {
     let field_struct = MW::field_struct();
     let quartic_struct = MW::quartic_struct();
@@ -693,7 +693,7 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
     let num_rounds = whir_schedule.whir_steps_schedule.len();
     let final_round_idx = num_rounds - 1;
 
-    let mut poly_size_log2 = trace_len_log2;
+    let mut poly_size_log2 = message_size_log2;
     for i in 0..final_round_idx {
         poly_size_log2 -= whir_schedule.whir_steps_schedule[i];
     }
