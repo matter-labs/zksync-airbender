@@ -34,6 +34,13 @@ def main():
         subprocess.run([str(binary), "--control", str(output)], check=True)
         assert output.read_bytes() == (ROOT / "artifacts/setup/jump-control-native.json").read_bytes()
         print("PASS reproducible native jump/branch/SLT fixed tables", flush=True)
+        subprocess.run([str(binary), "--binary-prefix", str(output)], check=True)
+        assert output.read_bytes() == (ROOT / "artifacts/setup/shift-binary-native.json").read_bytes()
+        layout = json.loads((ROOT / "../../cs/shift_binop_csrrw_preprocessed_layout.json").read_bytes())
+        prefix = json.loads(output.read_bytes())
+        assert [(r["id"], r["offset"]) for r in prefix["tables"]] == [(0,0),(4,1),(6,65537),(7,131073)]
+        assert all(layout["table_offsets"][r["id"]] == r["offset"] for r in prefix["tables"])
+        print("PASS reproducible actual native zero/XOR/OR/AND prefix and compiled offsets", flush=True)
         subprocess.run([str(binary), "--small-range", str(output)], check=True)
         assert output.read_bytes() == (ROOT / "artifacts/setup/mul-div-small-range-native.json").read_bytes()
         print("PASS reproducible native unsigned mul/div byte tables", flush=True)

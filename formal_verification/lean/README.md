@@ -1124,3 +1124,32 @@ compiled importer continues rejecting them. Shift/binop circuit soundness,
 initialized execution, custom CSR/oracle semantics, general Rust/compiler
 refinement and cryptographic enforcement remain separate. No native defect is
 established. The next checkpoint is native dynamic table import and membership.
+
+## Native zero and binary lookup rows
+
+[Two short public helper claims](Airbender/Review/Helpers/Tables/NativeBinary.lean)
+now identify original Clean XOR/OR/AND membership with actual native tagged rows
+and derive both byte-key bounds and the exact bytewise result. The actual Rust
+driver exports the complete low-ID prefix: zero plus tables 4/6/7 at offsets
+0/1/65537/131073. Reproduction checks those offsets against the native compiled
+layout. All 196,608 binary rows and the conditional zero row are certified.
+
+[Output certificates](Airbender/Proofs/Tables/BinaryXorCertificate.lean) reuse
+the source's full literal-block kernel-check structure; OR and AND have matching
+certificates. [Geometry](Airbender/Proofs/Tables/BinaryColumns.lean) proves actual
+periodic keys, tags and block coverage structurally. [Internal assembly](Airbender/Proofs/Tables/Binary.lean)
+connects these to exact native membership and bitwise results without supplied
+bounds, output values or table-equivalence premises. Two generic source proof
+modules and the mathematical byte-operation definition are copied unchanged.
+
+[Regressions](Tests/NativeBinary.lean) retain native offsets/zero data, cover
+complementary and terminal byte keys and reject byte 256 or a changed XOR result.
+Strict import profiles reject malformed prefix data and crossed control/mul-div
+artifacts. The combined geometry check initially hit Lean's allocation cap;
+splitting it and replacing evaluated coverage with source-shaped structural
+geometry resolved it under the unchanged caps.
+
+This closes the native binary-table prerequisite. Dynamic selectors, large
+16-bit shift tables, custom CSR/oracle semantics, shift/binop circuit soundness
+and initialized execution remain unfinished. General Rust/JSON/compiler and
+physical cryptographic enforcement remain separate; no native defect is established.

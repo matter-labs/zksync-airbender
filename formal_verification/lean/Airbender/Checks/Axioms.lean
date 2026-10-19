@@ -1,3 +1,4 @@
+import Tests.NativeBinary
 import Tests.ShiftDecoder
 import Tests.MulDivFetched
 import Tests.MulDivExecution
@@ -1309,3 +1310,34 @@ import Tests.JumpLink
 #print axioms Tests.ShiftDecoder.signed_immediates
 #print axioms Tests.ShiftDecoder.srai_encoding
 #print axioms Tests.ShiftDecoder.unsupported
+
+-- Actual native zero/binary prefix, complete output certificates and exact membership.
+#print axioms Airbender.Setup.Proofs.checkBlocks_append_iff
+#print axioms Airbender.Setup.Proofs.checkBlocks_cons_iff
+#print axioms Airbender.Setup.Proofs.checkBlocks_nil
+#print axioms Airbender.Setup.Proofs.checkBlocks_sound
+#print axioms Airbender.Setup.Proofs.raw_get_append
+#print axioms Airbender.Setup.Proofs.raw_literal_size
+#print axioms Airbender.Setup.Proofs.raw_size_append
+#print axioms Airbender.Setup.Proofs.raw_toList_append
+#print axioms Airbender.Verification.BinaryCertificate.and_outputs
+#print axioms Airbender.Verification.BinaryCertificate.or_outputs
+#print axioms Airbender.Verification.BinaryCertificate.xor_outputs
+#print axioms Airbender.Verification.BinaryProofs.coverage
+#print axioms Airbender.Verification.BinaryProofs.first
+#print axioms Airbender.Verification.BinaryProofs.native_membership
+#print axioms Airbender.Verification.BinaryProofs.native_result
+#print axioms Airbender.Verification.BinaryProofs.native_rows
+#print axioms Airbender.Verification.BinaryProofs.native_zero
+#print axioms Airbender.Verification.BinaryProofs.second
+#print axioms Airbender.Verification.BinaryProofs.tagged
+#print axioms Airbender.Verification.native_binary_membership
+#print axioms Airbender.Verification.native_binary_result
+#print axioms Tests.NativeBinary.actual_offsets
+#print axioms Tests.NativeBinary.all_rows
+#print axioms Tests.NativeBinary.bad_byte_rejected
+#print axioms Tests.NativeBinary.bad_result_rejected
+#print axioms Tests.NativeBinary.complementary
+#print axioms Tests.NativeBinary.exact_membership
+#print axioms Tests.NativeBinary.last_row
+#print axioms Tests.NativeBinary.zero_row

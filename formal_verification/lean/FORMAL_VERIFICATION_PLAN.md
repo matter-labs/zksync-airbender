@@ -432,7 +432,14 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    unsupported REV8/rotate/shift words are reproduced through the actual Rust
    API. Continue with native dynamic selectors/table import and exact membership,
    then numerical soundness, initialized execution and subword memory. Keep
-   custom CSR/oracle semantics separate; dynamic compiled lookups still reject.
+   custom CSR/oracle semantics separate; dynamic compiled lookups still reject. The
+   actual native zero/XOR/OR/AND low-ID prefix is now reproduced, with checked
+   compiled offsets, all 196,608 binary outputs, actual zero row and exact
+   original Clean/native membership. Native membership derives byte bounds and
+   bitwise results; malformed keys/results reject. Geometry is structural and
+   all output calculations reuse the source literal-block certificates within
+   unchanged memory caps. Next certify the large native 16-bit shift tables and
+   retained scalar/zero-padding rows, then import dynamic selectors faithfully.
 4. Rebind bigint/BLAKE/Keccak workers and callers. Retest control validity,
    unissued workers, ROM behavior and request participation on v2 before reusing
    any source finding or temporary premise.

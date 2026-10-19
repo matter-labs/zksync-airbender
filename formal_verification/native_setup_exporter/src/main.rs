@@ -160,6 +160,40 @@ fn export_small_range() -> ControlTables {
     }
 }
 
+/// The actual native zero/binary table prefix; large shifts and custom CSR
+/// tables remain separate. Driver ordering supplies the native offsets/tags.
+fn export_binary_prefix() -> ControlTables {
+    let mut driver = TableDriver::<Mersenne31Field>::new();
+    let family = cs::machine::ops::unrolled::shift_binary_csr::shift_binop_csrrw_tables();
+    let selected = [TableType::ZeroEntry, TableType::Xor, TableType::Or, TableType::And];
+    let mut prefix: Vec<_> = family.iter().copied().filter(|kind| (*kind as u32) < 8).collect();
+    prefix.sort();
+    assert_eq!(prefix.as_slice(), selected.as_slice());
+    for kind in selected {
+        driver.materialize_table(kind);
+    }
+    let rows = driver.dump_tables();
+    let mut offset = 0;
+    let tables = driver.tables.iter().filter(|table| table.get_size() != 0).map(|table| {
+        let length = table.get_size();
+        let region = Region {
+            id: table.get_table_id(),
+            offset,
+            data: matrix(&rows[offset..offset + length]),
+        };
+        offset += length;
+        region
+    }).collect();
+    assert_eq!(offset, rows.len());
+    ControlTables {
+        version: 1,
+        field_modulus: MODULUS,
+        profile: "shift_binop_binary_prefix".into(),
+        generic_rows: rows.len(),
+        tables,
+    }
+}
+
 fn export_decoder_padding() -> DecoderPadding {
     let row = decoder_table_padding::<Mersenne31Field>().map(|value| value.as_u64_reduced() as u32);
     assert!(row.iter().all(|&value| (value as u64) < MODULUS));
@@ -349,6 +383,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let artifact = export_shift_decoder(words);
         let bytes = serde_json::to_vec_pretty(&artifact)?;
         let recovered: DecoderArtifact = serde_json::from_slice(&bytes)?;
+        assert_eq!(
+            serde_json::to_value(&artifact)?,
+            serde_json::to_value(recovered)?
+        );
+        std::fs::write(args.last().unwrap(), [bytes, vec![b'\n']].concat())?;
+        return Ok(());
+    }
+    if args.len() == 3 && args[1] == "--binary-prefix" {
+        let artifact = export_binary_prefix();
+        let bytes = serde_json::to_vec_pretty(&artifact)?;
+        let recovered: ControlTables = serde_json::from_slice(&bytes)?;
         assert_eq!(
             serde_json::to_value(&artifact)?,
             serde_json::to_value(recovered)?

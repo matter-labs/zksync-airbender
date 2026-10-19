@@ -161,4 +161,12 @@ elab "import_native_shift_decoder " name:ident " from " path:str : command => do
   let countName := mkIdent (name.getId.appendAfter "TextWords")
   elabCommand (← `(def $countName : Nat := $(quote artifact.text_words)))
 
+/-- Literal actual native binary prefix, including the conditional zero row. -/
+elab "import_native_binary " name:ident " from " path:str : command => do
+  let artifact ← match parseBinary (← IO.FS.readFile path.getString) with
+    | .ok artifact => pure artifact
+    | .error error => throwError "native binary prefix import failed: {error}"
+  for (region,suffix) in artifact.tables.zip #["Zero","Xor","Or","And"] do
+    emitData (mkIdent (name.getId.appendAfter suffix)) region.data region.offset
+
 end Airbender.Setup

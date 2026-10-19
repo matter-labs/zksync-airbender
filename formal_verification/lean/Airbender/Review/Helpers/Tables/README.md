@@ -96,3 +96,7 @@ include ID eight; [symbolic certificates](../../../Proofs/MulDiv/SmallRange.lean
 check all 65,536 actual pairs and identify exact Clean membership. Both byte
 bounds follow from membership; nonzero third padding and wrong tags fail.
 General physical setup/argument/compiler refinement remains separate.
+
+## Actual native zero and binary prefix
+
+[The mathematical three-column model](Binary.lean), [literal native data](NativeBinaryData.lean) and [tagged row observations](NativeBinaryRows.lean) feed [two short public membership/result claims](NativeBinary.lean). [Internal geometry](../../../Proofs/Tables/BinaryColumns.lean) checks actual keys/tags/extents structurally; [assembly](../../../Proofs/Tables/Binary.lean) uses complete source-shaped XOR/OR/AND output certificates. [Regressions](../../../../Tests/NativeBinary.lean) cover all rows, native zero/offsets, terminal keys and malformed queries. Dynamic selectors, large shifts, CSR/oracle behavior and family execution remain separate.

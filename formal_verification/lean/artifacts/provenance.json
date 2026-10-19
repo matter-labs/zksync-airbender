@@ -305,6 +305,14 @@
     {
       "path": "Airbender/Proofs/Sail/DecoderFrame.lean",
       "sha256": "8b0a1ff2bfe736cf05d02a5b000e553650560a6429e8ab9af0521c14007374d2"
+    },
+    {
+      "path": "Airbender/Proofs/Tables/ImportedBlocks.lean",
+      "sha256": "41d90061398ff87591ba1127a78f995620e2a1134968e21862155736fd498797"
+    },
+    {
+      "path": "Airbender/Proofs/Tables/LiteralSizes.lean",
+      "sha256": "be19d1b4a58fbe4c038c28069b80767b77676e5d7c0090bca473ec81d827117f"
     }
   ],
   "circuit_artifacts": [
@@ -493,6 +501,10 @@
     {
       "path": "../../cs/src/machine/ops/unrolled/shift_binary_csr.rs",
       "sha256": "83ddbe7c0c4a11e31c1485aec78366e1af41f3174005c8cd281175c958341726"
+    },
+    {
+      "path": "../../cs/src/tables/binops.rs",
+      "sha256": "f34f0d782bd00a0546d02c1d648ce007f53bd2ea921ce3f178e79d976bfade5b"
     }
   ],
   "adaptations": [
@@ -3442,6 +3454,121 @@
       "backport_reuse_path": "../native_setup_exporter/src/main.rs",
       "backport_reuse_sha256": "f6a863fbe69aaeebd6b0970b723b48b96e11aa9c8d1f6caf9d7bdaf3cef948e4",
       "change": "Reuse the actual generic v2 preprocessing/materialization/export path and unchanged source-compatible lossless column codec. Add only the native shift family and fixture/text CLI modes, retaining empty CSR allow-list, bounded little-endian inputs and JSON roundtrip before output."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/BinaryXorCertificate.lean",
+      "source_path": "Airbender/Proofs/Tables/ShiftXorCertificate.lean",
+      "source_sha256": "680b39f58d18888c6ca7d31a536358ad141adfc6ab08ce7f835b37c2a6e69d4e",
+      "change": "Reuse the entire actual-literal block output certificate structure and kernel calculations. Change only imported data/module namespace and native four-column data name. Check every native v2 XOR output under the unchanged source-compatible codec, finite watchdog and fixed memory limits; no supplied equivalence or output premise."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/BinaryOrCertificate.lean",
+      "source_path": "Airbender/Proofs/Tables/ShiftOrCertificate.lean",
+      "source_sha256": "da7884b939b4e0f2feb0c3515cf09837bfc9ef7f979966038694677c4aba4c40",
+      "change": "Reuse the entire actual-literal block output certificate structure and kernel calculations. Change only imported data/module namespace and native four-column data name. Check every native v2 OR output under the unchanged source-compatible codec, finite watchdog and fixed memory limits; no supplied equivalence or output premise."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/BinaryAndCertificate.lean",
+      "source_path": "Airbender/Proofs/Tables/ShiftAndCertificate.lean",
+      "source_sha256": "3aed9d669ec838d2fb3be5464908fe3f0d0839c65a792a05377ee55848e3a830",
+      "change": "Reuse the entire actual-literal block output certificate structure and kernel calculations. Change only imported data/module namespace and native four-column data name. Check every native v2 AND output under the unchanged source-compatible codec, finite watchdog and fixed memory limits; no supplied equivalence or output premise."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/BinaryColumns.lean",
+      "source_path": "Airbender/Proofs/Tables/ImportedBinaryRows.lean",
+      "source_sha256": "1f3e3ba934a5b3eaf47be88e05a66e34c680cbda105223ad30b8e58fa0a780ac",
+      "change": "Reuse source structural coverage simplification over actual literal-array block lengths. Rebind native three-table columns and kinds, avoiding the failed evaluated coverage calculation and keeping memory ceilings unchanged."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/Binary.lean",
+      "source_path": "Airbender/Proofs/ByteTables.lean",
+      "source_sha256": "a38649098c115052b69c09959ae1108330a66e3e0ad61999ed94ef216582bcc8",
+      "declaration": "Airbender.Verification.byteOperation",
+      "change": "Copy the mathematical byteOperation declaration unchanged. Rebind the row/table model separately to three native bytes and IDs 4/6/7; this is not an alternative Sail ISA specification."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/Binary.lean",
+      "backport_reuse_revision": "d6029e21de6bb8dc016821322900f028dc944988",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/SmallRange.lean",
+      "backport_reuse_sha256": "48bd9929a7d64385eff31ca63e09876d5b687fd070d001d301b0457187f1083e",
+      "change": "Reuse the original Clean three-column static table/membership structure; native binary rows add only the checked bitwise output. Original Clean semantics remain unchanged; actual exported data equivalence is a proved conclusion."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/NativeBinaryData.lean",
+      "backport_reuse_revision": "d6029e21de6bb8dc016821322900f028dc944988",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/NativeSmallRangeData.lean",
+      "backport_reuse_sha256": "b4a5f5caf30ed08a5b1a9bf1f6f818095270c05bd511dbe98c1c23b67ad4a442",
+      "change": "Reuse literal native data import structure for the strict zero/XOR/OR/AND prefix; local source-shaped parser recursion/heartbeat settings handle stored literal arrays without changing memory ceilings."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/NativeBinaryRows.lean",
+      "backport_reuse_revision": "d6029e21de6bb8dc016821322900f028dc944988",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/NativeSmallRangeData.lean",
+      "backport_reuse_sha256": "b4a5f5caf30ed08a5b1a9bf1f6f818095270c05bd511dbe98c1c23b67ad4a442",
+      "change": "Expose actual selected native columns and tagged row membership as observations. Do not insert table recipes, output semantics or desired results."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/BinaryColumns.lean",
+      "backport_reuse_revision": "d6029e21de6bb8dc016821322900f028dc944988",
+      "backport_reuse_path": "Airbender/Proofs/MulDiv/SmallRange.lean",
+      "backport_reuse_sha256": "106380d2b151b2aadeb31e1d5aed87af94b3ff3dbd15e879c6ed2ee64deb2881",
+      "change": "Reuse unchanged affine/single-block getter proofs and symbolic actual periodic byte-key/tag calculations. Split geometry from output certificate imports; use the unchanged source literal-size helper to prove actual block coverage structurally after a large evaluated coverage check hit Lean allocation cap."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/Binary.lean",
+      "backport_reuse_revision": "d6029e21de6bb8dc016821322900f028dc944988",
+      "backport_reuse_path": "Airbender/Proofs/MulDiv/SmallRange.lean",
+      "backport_reuse_sha256": "106380d2b151b2aadeb31e1d5aed87af94b3ff3dbd15e879c6ed2ee64deb2881",
+      "change": "Reuse actual exported row and exact Clean membership assembly; connect independently certified output blocks and symbolic key/tag/extent proofs. Derive all byte bounds and exact bitwise results from actual native membership, with no range/result/table-equivalence premises."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/NativeBinary.lean",
+      "backport_reuse_revision": "d6029e21de6bb8dc016821322900f028dc944988",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/NativeScalars.lean",
+      "backport_reuse_sha256": "01f69fa4f75382e9a62c1d9b07b4ecb5fed8bafa82214d935312b1e0f146690f",
+      "change": "Reuse the thin public actual-data membership statement pattern. Expose exact Clean/native membership and its byte bounds/bitwise consequence; keep all calculations and assembly under Proofs."
+    },
+    {
+      "path": "Tests/NativeBinary.lean",
+      "backport_reuse_revision": "d6029e21de6bb8dc016821322900f028dc944988",
+      "backport_reuse_path": "Tests/NativeScalars.lean",
+      "backport_reuse_sha256": "ef1b801e000f96e90b8b7cee6f485e19fb8320730077972e61219fe04f97a3c8",
+      "change": "Reuse all-row fidelity and malformed-query regression structure. Check all actual binary rows, literal conditional zero, actual offsets, complementary and terminal keys, and rejection of byte 256 or a changed XOR result."
+    },
+    {
+      "path": "Airbender/Import/Setup.lean",
+      "backport_reuse_revision": "d6029e21de6bb8dc016821322900f028dc944988",
+      "backport_reuse_path": "Airbender/Import/Setup.lean",
+      "backport_reuse_sha256": "c1a936465b91962b6a95c48b8838fedf9d78a87cae385d701140ef628274cc02",
+      "change": "Reuse strict native regional table validation with a separate zero/binary prefix profile, exact IDs/order/offsets/extents and complete canonical four-column data. Keep compiled dynamic selectors rejected."
+    },
+    {
+      "path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_revision": "d6029e21de6bb8dc016821322900f028dc944988",
+      "backport_reuse_path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_sha256": "3ae4ec1cdfc2fe381cc223795502c4126a685d471c71261576892a6a1a9fce5b",
+      "change": "Reuse literal regional native table emission for zero/XOR/OR/AND, without mathematical recipes or lookup assumptions."
+    },
+    {
+      "path": "Tests/ArtifactImport.lean",
+      "backport_reuse_revision": "d6029e21de6bb8dc016821322900f028dc944988",
+      "backport_reuse_path": "Tests/ArtifactImport.lean",
+      "backport_reuse_sha256": "8f1f87dcd4c982d075c5654671c8268332c68d0cd271da7aae88eea90090034f",
+      "change": "Reuse native regional artifact mutation tests for strict prefix metadata, missing/extra regions, changed ID/offsets, incomplete/canonical columns and crossed control/mul-div profiles."
+    },
+    {
+      "path": "scripts/check_native_setup.py",
+      "backport_reuse_revision": "d6029e21de6bb8dc016821322900f028dc944988",
+      "backport_reuse_path": "scripts/check_native_setup.py",
+      "backport_reuse_sha256": "f0de3d941be3ef95a4c08de81d9ea0b32e6346c8707840db4b8c01a95b553246",
+      "change": "Reuse bounded actual native export reproducibility; reproduce the zero/binary prefix exactly and check its offsets against the native compiled shift layout. General Rust/JSON/compiler refinement remains separate."
+    },
+    {
+      "path": "../native_setup_exporter/src/main.rs",
+      "backport_reuse_revision": "d6029e21de6bb8dc016821322900f028dc944988",
+      "backport_reuse_path": "../native_setup_exporter/src/main.rs",
+      "backport_reuse_sha256": "28caa303eb32112d5a1c00f578fc846bb58a981fe7af01eaf81127249f3a0088",
+      "change": "Reuse the native table driver, region ordering/tagging, lossless source codec and checked JSON roundtrip. Materialize only the complete low-ID zero/XOR/OR/AND prefix from the actual native shift family; verify selected low IDs before dumping. Large shifts and custom CSR tables are separately scoped."
     }
   ],
   "setup_artifacts": [
@@ -3539,6 +3666,13 @@
       "profile": "actual native v2 shift_binop_csrrw preprocessing/materialized 10-column decoder, empty CSR allow-list, 25 public words and full 1048576-row capacity; no dynamic tables or compiled constraints",
       "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py",
       "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5"
+    },
+    {
+      "path": "artifacts/setup/shift-binary-native.json",
+      "sha256": "df6320fd74bad17500c689239b112c868c638a8b43ad0fd147f4dba995cb28eb",
+      "profile": "actual native v2 zero/XOR/OR/AND low-ID shift/binop table prefix, IDs 0/4/6/7, offsets 0/1/65537/131073, 196609 rows; excludes large shift and custom CSR tables",
+      "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py",
+      "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5"
     }
   ],
   "native_exporter_files": [
@@ -3552,7 +3686,7 @@
     },
     {
       "path": "../native_setup_exporter/src/main.rs",
-      "sha256": "28caa303eb32112d5a1c00f578fc846bb58a981fe7af01eaf81127249f3a0088"
+      "sha256": "0c55f4fb243fa3ed01333e6261919289e1613ee79f9d11a7d635c2a0779a949f"
     },
     {
       "path": "../native_setup_exporter/src/columns.rs",

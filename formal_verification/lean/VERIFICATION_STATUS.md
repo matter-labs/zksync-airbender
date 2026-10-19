@@ -1047,15 +1047,44 @@ initialized execution, custom CSR/oracle semantics, general Rust/compiler
 refinement and cryptographic enforcement remain separate. No native defect is
 established. The next checkpoint is native dynamic table import and membership.
 
+## Native zero and binary lookup rows
+
+[Two short public helper claims](Airbender/Review/Helpers/Tables/NativeBinary.lean)
+now identify original Clean XOR/OR/AND membership with actual native tagged rows
+and derive both byte-key bounds and the exact bytewise result. The actual Rust
+driver exports the complete low-ID prefix: zero plus tables 4/6/7 at offsets
+0/1/65537/131073. Reproduction checks those offsets against the native compiled
+layout. All 196,608 binary rows and the conditional zero row are certified.
+
+[Output certificates](Airbender/Proofs/Tables/BinaryXorCertificate.lean) reuse
+the source's full literal-block kernel-check structure; OR and AND have matching
+certificates. [Geometry](Airbender/Proofs/Tables/BinaryColumns.lean) proves actual
+periodic keys, tags and block coverage structurally. [Internal assembly](Airbender/Proofs/Tables/Binary.lean)
+connects these to exact native membership and bitwise results without supplied
+bounds, output values or table-equivalence premises. Two generic source proof
+modules and the mathematical byte-operation definition are copied unchanged.
+
+[Regressions](Tests/NativeBinary.lean) retain native offsets/zero data, cover
+complementary and terminal byte keys and reject byte 256 or a changed XOR result.
+Strict import profiles reject malformed prefix data and crossed control/mul-div
+artifacts. The combined geometry check initially hit Lean's allocation cap;
+splitting it and replacing evaluated coverage with source-shaped structural
+geometry resolved it under the unchanged caps.
+
+This closes the native binary-table prerequisite. Dynamic selectors, large
+16-bit shift tables, custom CSR/oracle semantics, shift/binop circuit soundness
+and initialized execution remain unfinished. General Rust/JSON/compiler and
+physical cryptographic enforcement remain separate; no native defect is established.
+
 ## Validation
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all sixty-two concrete test modules pass.
-- Importer regressions: 219 checks pass.
-- Axiom audit: 1206 explicit roots; only propext, Classical.choice and Quot.sound.
-- All seventy public Review theorems (eleven circuit claims, fifty trace claims and nine helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
-- Source provenance: 76 unchanged reused files, four native circuit artifacts, forty-two native Rust sources, nine native setup artifacts and four exporter source/manifest/lock files.
+- Library, both CLI entrypoints and all sixty-three concrete test modules pass.
+- Importer regressions: 236 checks pass.
+- Axiom audit: 1235 explicit roots; only propext, Classical.choice and Quot.sound.
+- All seventy-two public Review theorems (eleven circuit claims, fifty trace claims and eleven helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Source provenance: 78 unchanged reused files, four native circuit artifacts, forty-three native Rust sources, ten native setup artifacts and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
 - Public Sail x1/PC reads construct the accepted alias fixture; missing register and byte data reject construction.

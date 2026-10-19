@@ -48,6 +48,36 @@ private def scalarChecks (setupSource : String) : IO Unit := do
   check (rejected (Setup.parseScalars setupSource)) "reject program artifact as scalar export"
   check (rejected (Setup.parse scalarSource)) "reject scalar artifact as program export"
 
+private def binaryChecks : IO Unit := do
+  let source ← IO.FS.readFile "artifacts/setup/shift-binary-native.json"
+  let a ← IO.ofExcept (Setup.parseBinary source)
+  check (a.generic_rows == 196609 && a.tables.size == 4) "actual native zero/binary prefix extent"
+  check (rejected ({a with version := 2}.validateBinary)) "reject binary prefix version"
+  check (rejected ({a with field_modulus := 2013265921}.validateBinary)) "reject v3 binary prefix field"
+  check (rejected ({a with profile := "jump_branch_slt_fixed"}.validateBinary)) "reject binary prefix profile"
+  check (rejected ({a with generic_rows := 196608}.validateBinary)) "reject incomplete binary prefix"
+  check (rejected ({a with tables := a.tables.extract 1 4}.validateBinary)) "reject missing native zero row"
+  check (rejected ({a with tables := a.tables ++ a.tables}.validateBinary)) "reject extra binary regions"
+  check (rejected ({a with tables := a.tables.modify 1 (fun r => {r with id := 6})}.validateBinary))
+    "reject wrong binary native tag"
+  check (rejected ({a with tables := a.tables.modify 1 (fun r => {r with offset := 0})}.validateBinary))
+    "reject overlapping binary region"
+  check (rejected ({a with tables := a.tables.modify 1 (fun r => {r with data := {r.data with length := 65535}})}.validateBinary))
+    "reject incomplete binary table"
+  check (rejected ({a with tables := a.tables.modify 1 (fun r => {r with data := {r.data with columns := r.data.columns.extract 0 3}})}.validateBinary))
+    "reject missing binary tag column"
+  check (rejected ({a with tables := a.tables.modify 0 (fun r => {r with data := {r.data with columns := #[⟨#[.dense #[2147483647]]⟩,⟨#[.dense #[0]]⟩,⟨#[.dense #[0]]⟩,⟨#[.dense #[0]]⟩]}})}.validateBinary))
+    "reject noncanonical binary field data"
+  check (rejected ({a with tables := a.tables.modify 1 (fun r => {r with data := {r.data with columns := r.data.columns.set! 0 ⟨#[.affine 65535 0 0]⟩}})}.validateBinary))
+    "reject incomplete binary column"
+  let j ← IO.ofExcept (Json.parse source)
+  let extra ← IO.ofExcept (replaceField j "invented" (.bool true))
+  check (rejected (Setup.parseBinary extra.compress)) "reject unknown binary prefix field"
+  check (rejected (Setup.parseControl source)) "reject binary prefix as control tables"
+  check (rejected (Setup.parseSmallRange source)) "reject binary prefix as mul/div table"
+  check (rejected (Setup.parseBinary (← IO.FS.readFile "artifacts/setup/jump-control-native.json")))
+    "reject control tables as binary prefix"
+
 private def shiftDecoderChecks : IO Unit := do
   let source ← IO.FS.readFile "artifacts/setup/shift-decoder-native.json"
   let a ← IO.ofExcept (Setup.parseShiftDecoder source)
@@ -506,6 +536,7 @@ def main : IO UInt32 := do
     scalarChecks setupSource
     decoderChecks setupSource
     shiftDecoderChecks
+    binaryChecks
     controlDecoderChecks
     decoderPaddingChecks
     controlChecks

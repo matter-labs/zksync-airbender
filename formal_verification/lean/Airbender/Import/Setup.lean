@@ -295,4 +295,24 @@ def DecoderArtifact.validateShift (artifact : DecoderArtifact) : Except String U
 def parseShiftDecoder (source : String) : Except String DecoderArtifact :=
   parseDecoderFor "shift_binop_csrrw" source
 
+/-- A strict actual native zero/XOR/OR/AND prefix, not the complete shift family. -/
+def ControlArtifact.validateBinary (artifact : ControlArtifact) : Except String Unit := do
+  unless artifact.version == 1 && artifact.field_modulus == mersenne31Modulus &&
+      artifact.profile == "shift_binop_binary_prefix" do throw "unsupported native binary prefix"
+  unless artifact.generic_rows == 196609 && artifact.tables.size == 4 do
+    throw "unexpected native binary prefix extent"
+  for (region, (id, offset, length)) in artifact.tables.zip #[(0,0,1),(4,1,65536),(6,65537,65536),(7,131073,65536)] do
+    unless region.id == id && region.offset == offset do throw "unexpected native binary prefix region"
+    region.data.validate length 4
+
+def parseBinary (source : String) : Except String ControlArtifact := do
+  let json ← Json.parse source
+  exactKeys json #["version", "field_modulus", "profile", "generic_rows", "tables"]
+  for region in (← (← json.getObjVal? "tables").getArr?) do
+    exactKeys region #["id", "offset", "data"]
+    matrixKeys (← region.getObjVal? "data")
+  let artifact : ControlArtifact ← fromJson? json
+  artifact.validateBinary
+  return artifact
+
 end Airbender.Setup

@@ -18,3 +18,7 @@ circuit still requires dynamic table-selector import and exact large-table
 membership. Its import remains rejected; circuit soundness, initialized Sail
 execution, custom CSR/oracle semantics and physical cryptographic enforcement
 are unfinished. General Rust/JSON/compiler refinement is a separate boundary.
+
+## Native binary table prerequisite
+
+[Two short helper claims](../../Helpers/Tables/NativeBinary.lean) now connect actual native XOR/OR/AND rows to original Clean membership and bytewise semantics, retaining the actual conditional zero row and native offsets. [Internal assembly](../../../Proofs/Tables/Binary.lean) reuses full literal-block source output certificates and structural geometry; [regressions](../../../../Tests/NativeBinary.lean) check complete native data and reject malformed keys/results. This does not import the compiled circuit: dynamic selectors, large 16-bit shift tables, custom CSR/oracle semantics and initialized family execution remain unfinished.

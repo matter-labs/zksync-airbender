@@ -16,3 +16,7 @@ checkpoint. Numerical soundness, initialized history, original instruction
 retirement and complete fetched execution remain unfinished for this family.
 The exporter uses an empty CSR allow-list; custom CSR/oracle semantics and
 general Rust/compiler/cryptographic refinement remain separate.
+
+## Native zero and binary rows
+
+[The table helper claims](../../../Helpers/Tables/NativeBinary.lean) now certify the actual native zero/XOR/OR/AND prefix, all binary outputs and exact original Clean membership. [Internal assembly](../../../../Proofs/Tables/Binary.lean) derives byte bounds/results from actual native data, with [malformed-query regressions](../../../../../Tests/NativeBinary.lean). Large 16-bit shifts and dynamic constraint import are next; initialized history, original retirement and fetched shift/binop execution remain open.
