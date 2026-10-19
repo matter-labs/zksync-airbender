@@ -24,6 +24,7 @@ STEMS=(
     fsv_unified_recursion_layer_sec_100_blake2_with_compression
     fsv_unified_recursion_layer_sec_100_special_opcodes_extension
     fsv_unified_recursion_layer_sec_100_l1_feeder_special_opcodes_extension
+    fsv_unified_recursion_layer_sec_100_l1_feeder_a_special_opcodes_extension
     fsv_unified_recursion_layer_sec_100_l1_feeder_wrap_special_opcodes_extension
     add_sub_lui_auipc_mop_sec_100
     jump_branch_slt_sec_100
