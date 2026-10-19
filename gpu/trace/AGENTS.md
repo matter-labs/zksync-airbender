@@ -59,9 +59,10 @@ because the witness CUDA it guards moved here.
 
 ## Native code (`gpu_trace_native`)
 
-- **Archive / `links` key**: `gpu_trace_native` (`build.rs` is a one-line
+- **Archive / `links` key**: `gpu_trace_native` (`build.rs` is a
   `gpu_native_build::CudaArchive::new("gpu_trace_native", "GPU_TRACE").build()`
-  call — no `export_include`, no `deterministic_pow`).
+  call — no `export_include`, no `deterministic_pow` — preceded by
+  `cargo:rerun-if-changed` for each generated witness header, see below).
 - **Kernel count**: 52 — 24 literal (`memory_delegation.cu` 14,
   `memory_unrolled.cu` 7, `multiplicities.cu` 3) plus 28 token-pasted witness
   and fused stage-1 kernels (two per circuit under `witness/circuits/`). The
@@ -79,7 +80,9 @@ because the witness CUDA it guards moved here.
 - **Header relationships**: self-contained. It needs only `gpu_core`'s base
   headers (`DEP_GPU_CORE_NATIVE_INCLUDE`) plus its own local headers and the
   committed generated witness bodies under
-  `circuit_defs/**/generated/witness_generation_fn.cuh`. It does not
+  `circuit_defs/**/generated/witness_generation_fn.cuh`. Those bodies sit
+  outside `native/`, so `build.rs` tracks each one explicitly; a regenerated
+  `.cuh` reruns the native build. It does not
   `export_include` — nothing includes `gpu_trace`'s native headers
   cross-crate — and it carries no PoW kernel (that stays in `gpu_hash`).
 
