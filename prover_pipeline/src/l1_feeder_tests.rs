@@ -580,6 +580,28 @@ fn l1_target_is_accepted_once_the_wrap_circuit_matches_the_wrap_program() {
     validate_continuation_targets(ProofTarget::RecursionUnified, ProofTarget::L1Feeder).unwrap();
 }
 
+/// A feeder artifact is admitted against the trusted chain of the supplied
+/// program before its continuation proves anything: a history that hashes
+/// consistently but is not the program's chain is rejected.
+#[test]
+fn feeder_continuation_requires_the_trusted_chain() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/hashed_fibonacci");
+    let source = ProgramSource::from_paths(
+        dir.join("app_plain.bin").to_string_lossy().into_owned(),
+        None,
+    );
+    let loaded = load_program(&source).unwrap();
+    let mut artifact = feeder_artifact(ProofTarget::L1Feeder, 6, 3);
+    artifact.program_bin_keccak = keccak256(&loaded.bin_bytes);
+    artifact.program_text_keccak = keccak256(&loaded.text_bytes);
+    validate_continuation_request(&artifact, ProofTarget::L1).unwrap();
+    let error = admit_continuation(&artifact, &source, ProofTarget::L1).unwrap_err();
+    assert!(
+        error.contains("do not match the trusted per-layer end-params"),
+        "{error}"
+    );
+}
+
 /// A feeder-loop harness: the backend proves one fake feeder proof per
 /// request with the scripted instance count; the verifier predicts the next
 /// scripted count and verifies every proof against the chain the backend

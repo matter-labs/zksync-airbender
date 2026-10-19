@@ -1855,10 +1855,7 @@ impl ProgramProver {
         artifact: ProofArtifact,
         observer: &mut dyn FeederObserver,
     ) -> Result<ProofArtifact, String> {
-        validate_continuation_request(&artifact, self.config.target)?;
-        if artifact.schema_version == LEGACY_ARTIFACT_SCHEMA_VERSION {
-            verify_artifact(&artifact, &self.source)?;
-        }
+        admit_continuation(&artifact, &self.source, self.config.target)?;
         let loaded = load_and_validate_program(&self.source, &artifact)?;
         let blake = PipelineBlakeModes::continuing(&artifact, || self.fsv.modes())?;
         if blake != self.fsv.modes() {
@@ -2399,6 +2396,22 @@ fn validate_artifact_chain(artifact: &ProofArtifact) -> Result<(), String> {
     let chain = rebuild_chain(&artifact.chain_end_params)?;
     if chain.hash() != artifact.chain_hash || chain.preimage() != artifact.chain_preimage {
         return Err("artifact chain_hash/chain_preimage do not match chain_end_params".to_string());
+    }
+    Ok(())
+}
+
+/// Bind continued feeder history to the supplied program before backend work.
+/// The wrap verifies the feeder proof without checking the artifact's history.
+fn admit_continuation(
+    artifact: &ProofArtifact,
+    source: &ProgramSource,
+    target: ProofTarget,
+) -> Result<(), String> {
+    validate_continuation_request(artifact, target)?;
+    if artifact.schema_version == LEGACY_ARTIFACT_SCHEMA_VERSION
+        || artifact.target >= ProofTarget::L1Feeder
+    {
+        verify_artifact(artifact, source)?;
     }
     Ok(())
 }
