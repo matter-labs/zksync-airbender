@@ -48,6 +48,53 @@ private def scalarChecks (setupSource : String) : IO Unit := do
   check (rejected (Setup.parseScalars setupSource)) "reject program artifact as scalar export"
   check (rejected (Setup.parse scalarSource)) "reject scalar artifact as program export"
 
+private def srlHighChecks : IO Unit := do
+  let source ← IO.FS.readFile "artifacts/setup/shift-srl-high-native.json"
+  let a ← IO.ofExcept (Setup.parseSrlHigh source)
+  check (a.generic_rows == 2097152 && a.tables.size == 1) "actual native zero/SRL-high prefix extent"
+  check (rejected ({a with version := 2}.validateSrlHigh)) "reject SRL-high prefix version"
+  check (rejected ({a with field_modulus := 2013265921}.validateSrlHigh)) "reject v3 SRL-high prefix field"
+  check (rejected ({a with profile := "jump_branch_slt_fixed"}.validateSrlHigh)) "reject SRL-high prefix profile"
+  check (rejected ({a with generic_rows := 2097151}.validateSrlHigh)) "reject incomplete SRL-high prefix"
+  check (rejected ({a with tables := a.tables.extract 1 1}.validateSrlHigh)) "reject missing native SRL-high region"
+  check (rejected ({a with tables := a.tables ++ a.tables}.validateSrlHigh)) "reject extra SRL-high regions"
+  check (rejected ({a with tables := a.tables.modify 0 (fun r => {r with id := 48})}.validateSrlHigh))
+    "reject wrong SRL-high native tag"
+  check (rejected ({a with tables := a.tables.modify 0 (fun r => {r with offset := 0})}.validateSrlHigh))
+    "reject overlapping SRL-high region"
+  check (rejected ({a with tables := a.tables.modify 0 (fun r => {r with data := {r.data with length := 2097151}})}.validateSrlHigh))
+    "reject incomplete SRL-high table"
+  check (rejected ({a with tables := a.tables.modify 0 (fun r => {r with data := {r.data with columns := r.data.columns.extract 0 3}})}.validateSrlHigh))
+    "reject missing SRL-high tag column"
+  check (rejected ({a with tables := a.tables.modify 0 (fun r => {r with data := {r.data with columns := #[⟨#[.affine 2097152 2147483647 0]⟩,⟨#[.affine 2097152 0 0]⟩,⟨#[.affine 2097152 0 0]⟩,⟨#[.affine 2097152 0 0]⟩]}})}.validateSrlHigh))
+    "reject noncanonical SRL-high field data"
+  check (rejected ({a with tables := a.tables.modify 0 (fun r => {r with data := {r.data with columns := r.data.columns.set! 0 ⟨#[.affine 2097151 0 0]⟩}})}.validateSrlHigh))
+    "reject incomplete SRL-high column"
+  let j ← IO.ofExcept (Json.parse source)
+  let extra ← IO.ofExcept (replaceField j "invented" (.bool true))
+  check (rejected (Setup.parseSrlHigh extra.compress)) "reject unknown SRL-high prefix field"
+  check (rejected (Setup.parseControl source)) "reject SRL-high prefix as control tables"
+  check (rejected (Setup.parseSmallRange source)) "reject SRL-high prefix as mul/div table"
+  check (rejected (Setup.parseSrlHigh (← IO.FS.readFile "artifacts/setup/jump-control-native.json")))
+    "reject control tables as SRL-high prefix"
+
+  check (rejected (Setup.parseBinary source)) "reject SRL-highs as binary prefix"
+  check (rejected (Setup.parseSrlHigh (← IO.FS.readFile "artifacts/setup/shift-binary-native.json")))
+    "reject binary prefix as SRL-highs"
+
+  check (rejected (Setup.parseShiftScalars source)) "reject SRL-high as shift scalars"
+  check (rejected (Setup.parseSrlHigh (← IO.FS.readFile "artifacts/setup/shift-scalars-native.json")))
+    "reject shift scalars as SRL-high"
+  check (rejected (Setup.parseSrlLow source)) "reject SRL-high as SRL-low"
+  check (rejected (Setup.parseSrlHigh (← IO.FS.readFile "artifacts/setup/shift-srl-low-native.json")))
+    "reject SRL-low as SRL-high"
+  check (rejected (Setup.parseSllHigh source)) "reject SRL-high as SLL-high"
+  check (rejected (Setup.parseSrlHigh (← IO.FS.readFile "artifacts/setup/shift-sll-high-native.json")))
+    "reject SLL-high as SRL-high"
+  check (rejected (Setup.parseSllLow source)) "reject SRL-high as SLL-low"
+  check (rejected (Setup.parseSrlHigh (← IO.FS.readFile "artifacts/setup/shift-sll-low-native.json")))
+    "reject SLL-low as SRL-high"
+
 private def sllLowChecks : IO Unit := do
   let source ← IO.FS.readFile "artifacts/setup/shift-sll-low-native.json"
   let a ← IO.ofExcept (Setup.parseSllLow source)
@@ -698,6 +745,7 @@ def main : IO UInt32 := do
     srlLowChecks
     sllHighChecks
     sllLowChecks
+    srlHighChecks
     controlDecoderChecks
     decoderPaddingChecks
     controlChecks

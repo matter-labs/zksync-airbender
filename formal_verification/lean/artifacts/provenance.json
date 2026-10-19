@@ -4216,6 +4216,209 @@
       "backport_reuse_path": "../native_setup_exporter/src/main.rs",
       "backport_reuse_sha256": "78f40f7ffb11a1c2c2b6231f0b82e90c31117473f64b400b60dac1e14ce6823c",
       "change": "Reuse unchanged actual selected-table generation, tagging, compiled-layout placement and lossless codec. Add the native low-input SLL profile with JSON roundtrip and scoped sequential export."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/SrlHigh.lean",
+      "backport_reuse_revision": "e3d6901f454895ba2ba1ec8005209cdcfedbf59f",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/SllLow.lean",
+      "backport_reuse_sha256": "92062c2bec93e2c68ec0247cef6fe9f8dae5405ef27174b9dea305c93aae13d7",
+      "change": "Reuse original Clean static-table construction and the existing SRL-low high-limb reference; independently specify native high-input right-shift low output."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/NativeSrlHighData.lean",
+      "backport_reuse_revision": "e3d6901f454895ba2ba1ec8005209cdcfedbf59f",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/NativeSrlLowData.lean",
+      "backport_reuse_sha256": "7a2a55ecee1e95acb8435e7106d0253557947163b1c93b36ae1e5ecb21c2b981",
+      "change": "Reuse strict literal native regional import; retain ID 51, compiled offset 6557697 and all 2^21 actual rows."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/NativeSrlHighRows.lean",
+      "backport_reuse_revision": "e3d6901f454895ba2ba1ec8005209cdcfedbf59f",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/NativeSrlLowRows.lean",
+      "backport_reuse_sha256": "1457eb2f8ad036e9234bcf1645c281c4351bf51eea674d882dcfb3f85b5bf7fb",
+      "change": "Reuse actual tagged native-row observations without desired mathematical result rules in imported data."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/NativeSrlHigh.lean",
+      "backport_reuse_revision": "e3d6901f454895ba2ba1ec8005209cdcfedbf59f",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/NativeSllLow.lean",
+      "backport_reuse_sha256": "c8123863599ed52e189249193005e5711648086d22da981d54cc1f2e007d8555",
+      "change": "Reuse two short public claims; derive packed-key/both-limb bounds and reconstructed RV32 high-input logical-right-shift semantics from actual native membership."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SrlHighParts.lean",
+      "backport_reuse_revision": "e3d6901f454895ba2ba1ec8005209cdcfedbf59f",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllLowParts.lean",
+      "backport_reuse_sha256": "dd9eacc584666cba45d9b0b07c69a7b9831fe8997ff662b186ebd543c548a31c",
+      "change": "Reuse structural raw-array geometry and native suffix assembly. Retain all 146 actual blocks, ten rotated templates, five prefix partitions and 73 blocks from the checked native SRL-low suffix; generic array geometry avoids closed-template normalization."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SrlHighColumns.lean",
+      "backport_reuse_revision": "e3d6901f454895ba2ba1ec8005209cdcfedbf59f",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllLowColumns.lean",
+      "backport_reuse_sha256": "5347f8c9a6769d3f474e7f7b82f80710d709350760016500beeccf3d5d93aa5f",
+      "change": "Copy affine_get, single_get and staged column_eq unchanged. Check full actual high-column identity to native SRL-low; retain actual keys/tags and complete low-output extent."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SrlHighMath.lean",
+      "backport_reuse_revision": "e3d6901f454895ba2ba1ec8005209cdcfedbf59f",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllLowMath.lean",
+      "backport_reuse_sha256": "dc579f90818191c9944d9bf3bd80e60016bacb6291a5c8bbf25f96ffb9c629b5",
+      "change": "Reuse independent arithmetic/bitvector proof separation and exact limb reconstruction. Derive division commutation, shift-sixteen translation and RV32 right shifts with standard Nat quotient/remainder identities."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SrlHigh.lean",
+      "backport_reuse_revision": "e3d6901f454895ba2ba1ec8005209cdcfedbf59f",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllLow.lean",
+      "backport_reuse_sha256": "d8647b55611bb28d3021be2619a2ce00b119419c221abfa7608b5b53eb8d6797",
+      "change": "Reuse actual row assembly, exact Clean/native membership, unchanged generic certificate transport and canonical-field result lifting. Discharge every native prefix/suffix certificate and limb bound."
+    },
+    {
+      "path": "Tests/NativeSrlHigh.lean",
+      "backport_reuse_revision": "e3d6901f454895ba2ba1ec8005209cdcfedbf59f",
+      "backport_reuse_path": "Tests/NativeSllLow.lean",
+      "backport_reuse_sha256": "cb9ab632ff541a8076a2bfc457718900e93ed669fe061ba904d44dee54f990ca",
+      "change": "Reuse all-row/membership/offset and malformed-query checks. Add rotated-template cross-shift edges, partial affine/reset boundaries, shifts zero/one/fifteen/sixteen/31 and final-bit boundaries."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SrlHighPart0.lean",
+      "backport_reuse_revision": "e3d6901f454895ba2ba1ec8005209cdcfedbf59f",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllHighPart4.lean",
+      "backport_reuse_sha256": "389d52d26370df92a0b045621e8933f86e2f72adc0c00475b5ddb9ed73c8da6e",
+      "change": "Reuse generic symbolic native-block calculations and unchanged affine getter. Retain actual one-word shifts of periodic starts, the merged initial zero block and the shortened shift-eleven affine block; instantiate proved stored values only after generic assembly."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SrlHighPart1.lean",
+      "backport_reuse_revision": "e3d6901f454895ba2ba1ec8005209cdcfedbf59f",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllLowPart1.lean",
+      "backport_reuse_sha256": "e7169680be911b7fde4c33479eb2a8707628b926d0df53961913a1aeb827f5b7",
+      "change": "Reuse generic symbolic native-block calculations and unchanged affine getter. Retain actual one-word shifts of periodic starts, the merged initial zero block and the shortened shift-eleven affine block; instantiate proved stored values only after generic assembly."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SrlHighPart2.lean",
+      "backport_reuse_revision": "e3d6901f454895ba2ba1ec8005209cdcfedbf59f",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllLowPart1.lean",
+      "backport_reuse_sha256": "e7169680be911b7fde4c33479eb2a8707628b926d0df53961913a1aeb827f5b7",
+      "change": "Reuse generic symbolic native-block calculations and unchanged affine getter. Retain actual one-word shifts of periodic starts, the merged initial zero block and the shortened shift-eleven affine block; instantiate proved stored values only after generic assembly."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SrlHighPart3.lean",
+      "backport_reuse_revision": "e3d6901f454895ba2ba1ec8005209cdcfedbf59f",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllLowPart1.lean",
+      "backport_reuse_sha256": "e7169680be911b7fde4c33479eb2a8707628b926d0df53961913a1aeb827f5b7",
+      "change": "Reuse generic symbolic native-block calculations and unchanged affine getter. Retain actual one-word shifts of periodic starts, the merged initial zero block and the shortened shift-eleven affine block; instantiate proved stored values only after generic assembly."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SrlHighPart4.lean",
+      "backport_reuse_revision": "e3d6901f454895ba2ba1ec8005209cdcfedbf59f",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllLowPart1.lean",
+      "backport_reuse_sha256": "e7169680be911b7fde4c33479eb2a8707628b926d0df53961913a1aeb827f5b7",
+      "change": "Reuse generic symbolic native-block calculations and unchanged affine getter. Retain actual one-word shifts of periodic starts, the merged initial zero block and the shortened shift-eleven affine block; instantiate proved stored values only after generic assembly."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SrlHighTemplate1.lean",
+      "backport_reuse_revision": "e3d6901f454895ba2ba1ec8005209cdcfedbf59f",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllHighTemplate15.lean",
+      "backport_reuse_sha256": "eea228a3742677cb8619dbaa57ae282451ef7af4a85de43aba61040285140c0c",
+      "change": "Reuse structural literal-template geometry and bounded 64-query kernel certificates. Check the actual rotated native template, including its trailing zero, rather than adding a table recipe or assuming equivalence; adapt raw-array routing to the native 146-block layout."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SrlHighTemplate2.lean",
+      "backport_reuse_revision": "e3d6901f454895ba2ba1ec8005209cdcfedbf59f",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllHighTemplate14.lean",
+      "backport_reuse_sha256": "be57efb29fb7addb16731553db80d65c0feadccec97ed0f9571c21965e586a0a",
+      "change": "Reuse structural literal-template geometry and bounded 64-query kernel certificates. Check the actual rotated native template, including its trailing zero, rather than adding a table recipe or assuming equivalence; adapt raw-array routing to the native 146-block layout."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SrlHighTemplate3.lean",
+      "backport_reuse_revision": "e3d6901f454895ba2ba1ec8005209cdcfedbf59f",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllHighTemplate13.lean",
+      "backport_reuse_sha256": "80ec84e783a933bab736071d90ecda378a69d005396ab0091c0fc58e5f9fc70b",
+      "change": "Reuse structural literal-template geometry and bounded 64-query kernel certificates. Check the actual rotated native template, including its trailing zero, rather than adding a table recipe or assuming equivalence; adapt raw-array routing to the native 146-block layout."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SrlHighTemplate4.lean",
+      "backport_reuse_revision": "e3d6901f454895ba2ba1ec8005209cdcfedbf59f",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllHighTemplate12.lean",
+      "backport_reuse_sha256": "0c382efa4cb789d491288da4eee24498ef8fe8b8a7f5bd26d7dc56235f3663c8",
+      "change": "Reuse structural literal-template geometry and bounded 64-query kernel certificates. Check the actual rotated native template, including its trailing zero, rather than adding a table recipe or assuming equivalence; adapt raw-array routing to the native 146-block layout."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SrlHighTemplate5.lean",
+      "backport_reuse_revision": "e3d6901f454895ba2ba1ec8005209cdcfedbf59f",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllHighTemplate11.lean",
+      "backport_reuse_sha256": "c3d342e74972f2e5be4277647cb65913d780ed024e7a0e85930ba300b79bc649",
+      "change": "Reuse structural literal-template geometry and bounded 64-query kernel certificates. Check the actual rotated native template, including its trailing zero, rather than adding a table recipe or assuming equivalence; adapt raw-array routing to the native 146-block layout."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SrlHighTemplate6.lean",
+      "backport_reuse_revision": "e3d6901f454895ba2ba1ec8005209cdcfedbf59f",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllHighTemplate10.lean",
+      "backport_reuse_sha256": "e781a1cf37fa7c76148c767f7504b7b68ec277617fe7215da83cafc9002b03b0",
+      "change": "Reuse structural literal-template geometry and bounded 64-query kernel certificates. Check the actual rotated native template, including its trailing zero, rather than adding a table recipe or assuming equivalence; adapt raw-array routing to the native 146-block layout."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SrlHighTemplate7.lean",
+      "backport_reuse_revision": "e3d6901f454895ba2ba1ec8005209cdcfedbf59f",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllHighTemplate9.lean",
+      "backport_reuse_sha256": "8f1cb8d9531cb1cc8838de6bbd3aea969902d3ef3149c95024c44adbd9dbdadf",
+      "change": "Reuse structural literal-template geometry and bounded 64-query kernel certificates. Check the actual rotated native template, including its trailing zero, rather than adding a table recipe or assuming equivalence; adapt raw-array routing to the native 146-block layout."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SrlHighTemplate8.lean",
+      "backport_reuse_revision": "e3d6901f454895ba2ba1ec8005209cdcfedbf59f",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllHighTemplate8.lean",
+      "backport_reuse_sha256": "9f94fa02214fe39808ea4943a16e6c45fc3f58df192824a9d94bb4f520219468",
+      "change": "Reuse structural literal-template geometry and bounded 64-query kernel certificates. Check the actual rotated native template, including its trailing zero, rather than adding a table recipe or assuming equivalence; adapt raw-array routing to the native 146-block layout."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SrlHighTemplate9.lean",
+      "backport_reuse_revision": "e3d6901f454895ba2ba1ec8005209cdcfedbf59f",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllHighTemplate7.lean",
+      "backport_reuse_sha256": "e693b03240856085fdc62fa591aa17fb618ae6bf26bb90228b8049a9425ba98d",
+      "change": "Reuse structural literal-template geometry and bounded 64-query kernel certificates. Check the actual rotated native template, including its trailing zero, rather than adding a table recipe or assuming equivalence; adapt raw-array routing to the native 146-block layout."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/SrlHighTemplate10.lean",
+      "backport_reuse_revision": "e3d6901f454895ba2ba1ec8005209cdcfedbf59f",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllHighTemplate6.lean",
+      "backport_reuse_sha256": "607ea3530264301c53e02a8e13e169607ca2f0cd466c21852c2d0f10351385ca",
+      "change": "Reuse structural literal-template geometry and bounded 64-query kernel certificates. Check the actual rotated native template, including its trailing zero, rather than adding a table recipe or assuming equivalence; adapt raw-array routing to the native 146-block layout."
+    },
+    {
+      "path": "Airbender/Import/Setup.lean",
+      "backport_reuse_revision": "e3d6901f454895ba2ba1ec8005209cdcfedbf59f",
+      "backport_reuse_path": "Airbender/Import/Setup.lean",
+      "backport_reuse_sha256": "3d53f7c25702ba495f97c305fc1d1234e8e6f0a4e8b27df4a0445b2a36f89ec4",
+      "change": "Reuse strict version/field/profile/region/arity/canonicality checks for native ID 51; general dynamic compiled selectors remain unsupported."
+    },
+    {
+      "path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_revision": "e3d6901f454895ba2ba1ec8005209cdcfedbf59f",
+      "backport_reuse_path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_sha256": "55945493540b262c88d819299fcc49b8e3ea6d1a2cfa06e923cbcbfb380198cb",
+      "change": "Reuse literal-only regional emission; no mathematical output recipes or desired results in import."
+    },
+    {
+      "path": "Tests/ArtifactImport.lean",
+      "backport_reuse_revision": "e3d6901f454895ba2ba1ec8005209cdcfedbf59f",
+      "backport_reuse_path": "Tests/ArtifactImport.lean",
+      "backport_reuse_sha256": "07ea8b489f42f9cfea969415ff828fadb6a77aeab98e73c06f937ac836b65473",
+      "change": "Reuse strict native metadata/data mutation and crossed-profile rejection, including all four logical-shift profiles."
+    },
+    {
+      "path": "scripts/check_native_setup.py",
+      "backport_reuse_revision": "e3d6901f454895ba2ba1ec8005209cdcfedbf59f",
+      "backport_reuse_path": "scripts/check_native_setup.py",
+      "backport_reuse_sha256": "d0b0cca2ed7b860841902b10469682195dcc028da43664fdbaf46eec423fa307",
+      "change": "Reuse complete actual native API reproduction and compiled-offset checks; retain byte-identical reproduction of every previous profile."
+    },
+    {
+      "path": "../native_setup_exporter/src/main.rs",
+      "backport_reuse_revision": "e3d6901f454895ba2ba1ec8005209cdcfedbf59f",
+      "backport_reuse_path": "../native_setup_exporter/src/main.rs",
+      "backport_reuse_sha256": "cea5b0d59c0c3e2737aa8fdf89ed99cdaab39a1eb11a9343eba564e82cb606e2",
+      "change": "Reuse unchanged selected-table generation/tagging, compiled-layout offsets, lossless codec and JSON roundtrip. Add the actual high-input SRL profile with scoped sequential export."
     }
   ],
   "setup_artifacts": [
@@ -4348,6 +4551,13 @@
       "profile": "actual native low-input logical-left-shift table, ID 48, compiled offset 266241, 2097152 rows; high-input SRL and dynamic circuit connection remain separate",
       "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py",
       "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5"
+    },
+    {
+      "path": "artifacts/setup/shift-srl-high-native.json",
+      "sha256": "b2262f957be0fabb8abb346c7f4c96fa2f88f56af216b7228583b5a23130f1d8",
+      "profile": "actual native high-input logical-right-shift table, ID 51, compiled offset 6557697, 2097152 rows; completes helper membership/results for all four native logical-shift limb tables; dynamic circuit connection remains separate",
+      "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py",
+      "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5"
     }
   ],
   "native_exporter_files": [
@@ -4361,7 +4571,7 @@
     },
     {
       "path": "../native_setup_exporter/src/main.rs",
-      "sha256": "cea5b0d59c0c3e2737aa8fdf89ed99cdaab39a1eb11a9343eba564e82cb606e2"
+      "sha256": "6f84c2b9eb8b59e1904de312ef0cfb1f448dcde208ce507500b41fe5b1143985"
     },
     {
       "path": "../native_setup_exporter/src/columns.rs",

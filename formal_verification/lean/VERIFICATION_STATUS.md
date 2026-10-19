@@ -1222,15 +1222,49 @@ established. High-input SRL remains before faithful dynamic constraint import,
 numerical family soundness and initialized execution; general Rust/compiler
 refinement and cryptographic enforcement remain separate.
 
+## Native high-input logical right shift
+
+[Two short public helper claims](Airbender/Review/Helpers/Tables/NativeSrlHigh.lean)
+connect original Clean membership to all 2,097,152 actual high-input SRL rows.
+Membership derives the packed-key and both output-limb bounds, then exact RV32
+logical-right-shift semantics for the input placed in bits 16–31. Reconstruction
+uses canonical limbs; no whole-word Mersenne31 cast, desired result or
+table-equivalence premise is supplied.
+
+[The actual native export](artifacts/setup/shift-srl-high-native.json) retains
+ID 51 and compiled offset 6557697. Strict literal import preserves its complete
+four-column data; native reproduction preserves every prior profile byte-for-byte.
+Crossed profiles, changed metadata, incomplete/noncanonical data and unknown fields
+reject. Compiler/JSON/Rust refinement remains a separate fidelity boundary.
+
+[Checked reuse](Airbender/Proofs/Tables/SrlHighColumns.lean) identifies the entire
+high-output column with native SRL-low. [All 146 low-output blocks](Airbender/Proofs/Tables/SrlHighParts.lean)
+retain their actual geometry: the initial zero block spans 65,537 rows, ten
+periodic templates start one word into each shift and the first shift-eleven
+affine block has 2,047 rows. Ten structural template proofs use kernel checks of
+at most 64 stored entries per calculation. Five symbolic prefix partitions and
+[unchanged generic transport](Airbender/Proofs/Tables/BlockTransport.lean) reuse
+73 native SRL-low blocks after an independently proved shift-sixteen translation.
+[Arithmetic](Airbender/Proofs/Tables/SrlHighMath.lean) derives both reconstructed
+limbs and standard bitvector semantics without two-million-row enumeration.
+
+[Regressions](Tests/NativeSrlHigh.lean) check rotated-template/cross-shift edges,
+the shortened affine/reset boundary, shifts zero/one/fifteen/sixteen/31 and final
+surviving bits, plus malformed low/high/limb/key queries. No native defect is
+established. Helper membership/results are now checked for all four native
+logical-shift limb tables. Faithful dynamic constraint import, numerical family
+soundness and initialized shift/binop execution remain unfinished; general
+Rust/compiler refinement and cryptographic enforcement remain separate.
+
 ## Validation
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all sixty-seven concrete test modules pass.
-- Importer regressions: 324 checks pass.
-- Axiom audit: 1437 explicit roots; only propext, Classical.choice and Quot.sound.
-- All eighty-two public Review theorems (eleven circuit claims, fifty trace claims and twenty-one helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
-- Source provenance: 78 unchanged reused files, four native circuit artifacts, forty-four native Rust sources plus compiled shift-offset metadata, fourteen native setup artifacts and four exporter source/manifest/lock files.
+- Library, both CLI entrypoints and all sixty-eight concrete test modules pass.
+- Importer regressions: 351 checks pass.
+- Axiom audit: 1513 explicit roots; only propext, Classical.choice and Quot.sound.
+- All eighty-four public Review theorems (eleven circuit claims, fifty trace claims and twenty-three helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Source provenance: 78 unchanged reused files, four native circuit artifacts, forty-four native Rust sources plus compiled shift-offset metadata, fifteen native setup artifacts and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
 - Public Sail x1/PC reads construct the accepted alias fixture; missing register and byte data reject construction.

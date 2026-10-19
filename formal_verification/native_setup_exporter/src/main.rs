@@ -228,6 +228,10 @@ fn export_srl_low(layout_path: &Path) -> ControlTables {
     export_shift_regions(layout_path, &[TableType::SrlWith16BitInputLow], "shift_binop_srl_low")
 }
 
+fn export_srl_high(layout_path: &Path) -> ControlTables {
+    export_shift_regions(layout_path, &[TableType::SrlWith16BitInputHigh], "shift_binop_srl_high")
+}
+
 fn export_sll_high(layout_path: &Path) -> ControlTables {
     export_shift_regions(layout_path, &[TableType::SllWith16BitInputHigh], "shift_binop_sll_high")
 }
@@ -434,6 +438,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if args.len() == 4 && args[1] == "--srl-low" {
         let artifact = export_srl_low(Path::new(&args[2]));
+        let bytes = serde_json::to_vec_pretty(&artifact)?;
+        let recovered: ControlTables = serde_json::from_slice(&bytes)?;
+        assert_eq!(serde_json::to_value(&artifact)?, serde_json::to_value(recovered)?);
+        std::fs::write(args.last().unwrap(), [bytes, vec![b'\n']].concat())?;
+        return Ok(());
+    }
+    if args.len() == 4 && args[1] == "--srl-high" {
+        let artifact = export_srl_high(Path::new(&args[2]));
         let bytes = serde_json::to_vec_pretty(&artifact)?;
         let recovered: ControlTables = serde_json::from_slice(&bytes)?;
         assert_eq!(serde_json::to_value(&artifact)?, serde_json::to_value(recovered)?);

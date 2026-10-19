@@ -459,8 +459,15 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    blocks retain native carry/truncation, with six symbolic prefix certificates
    and a 73-block suffix transported from that existing proof. First-carry,
    shift-sixteen and final-bit/discard boundaries pass under unchanged caps.
-   Continue with high-input SRL, then faithful dynamic lookup import and
-   numerical/initialized family soundness.
+   High-input SRL now also has exact actual-data/Clean membership and RV32
+   results for all 2,097,152 rows. The full high column reuses checked SRL-low;
+   all 146 low-output blocks retain rotated/cross-shift templates, the 65,537-row
+   initial zero block and the shortened shift-eleven affine block. Ten bounded
+   template certificates, five symbolic partitions and a transported 73-block
+   native SRL-low suffix derive every value and both limb bounds. All four native
+   logical-shift limb tables now have checked helper membership/results.
+   Continue with faithful dynamic lookup import and numerical/initialized family
+   soundness.
 4. Rebind bigint/BLAKE/Keccak workers and callers. Retest control validity,
    unissued workers, ROM behavior and request participation on v2 before reusing
    any source finding or temporary premise.
