@@ -198,6 +198,7 @@ pub fn fsv_dir() -> String {
 }
 
 /// The fixture encoding of `gpu/execution_prover/tests/program.rs::write_compressed`.
+#[allow(dead_code)]
 pub fn encode_fixture<T: serde::Serialize>(value: &T) -> Vec<u8> {
     let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
     serde_json::to_writer(&mut encoder, value).expect("serialize fixture");
