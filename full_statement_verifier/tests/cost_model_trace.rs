@@ -6,7 +6,7 @@
 //! codegen drift but does not validate the committed model's accuracy.
 //!
 //! Fixtures live in `$COST_MODEL_FIXTURE_DIR` as `<fixture>_proof.bin` /
-//! `<fixture>_setups.bin`: zlib-compressed bincode of `ProgramProof` and `Setups`.
+//! `<fixture>_setups.bin`: zlib-compressed JSON of `ProgramProof` and `Setups`.
 //! Generate the Sec100 Compression fixtures with the ignored GPU test
 //! `test_generate_sec100_cost_model_fixtures` in
 //! `gpu/execution_prover/tests/program.rs`. It

@@ -197,26 +197,35 @@ pub fn fsv_dir() -> String {
     format!("{}/../tools/gkr_verifier", env!("CARGO_MANIFEST_DIR"))
 }
 
-fn read_compressed<T: serde::de::DeserializeOwned>(path: &str) -> T {
+/// The fixture encoding of `gpu/execution_prover/tests/program.rs::write_compressed`.
+pub fn encode_fixture<T: serde::Serialize>(value: &T) -> Vec<u8> {
+    let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+    serde_json::to_writer(&mut encoder, value).expect("serialize fixture");
+    encoder.finish().expect("finish fixture compression")
+}
+
+pub fn decode_fixture<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> T {
     use flate2::read::ZlibDecoder;
     use std::io::Read;
 
-    let mut src = std::fs::File::open(path).unwrap_or_else(|e| panic!("open {path}: {e}"));
-    let mut buffer = vec![];
-    src.read_to_end(&mut buffer).expect("read fixture");
-    let mut decoder = ZlibDecoder::new(&buffer[..]);
+    let mut decoder = ZlibDecoder::new(bytes);
     let mut unpacked: Vec<u8> = vec![];
     decoder
         .read_to_end(&mut unpacked)
         .expect("decompress fixture");
-    bincode::deserialize_from(&unpacked[..]).expect("deserialize fixture")
+    serde_json::from_slice(&unpacked).expect("deserialize fixture")
+}
+
+fn read_compressed<T: serde::de::DeserializeOwned>(path: &str) -> T {
+    let buffer = std::fs::read(path).unwrap_or_else(|e| panic!("open {path}: {e}"));
+    decode_fixture(&buffer)
 }
 
 pub fn load_calibration_proof(name: &str) -> (Setups, ProgramProof) {
     let dir = std::env::var("COST_MODEL_FIXTURE_DIR").unwrap_or_else(|_| {
         panic!(
             "set COST_MODEL_FIXTURE_DIR to the directory holding \
-             {name}_proof.bin / {name}_setups.bin (zlib-compressed bincode of \
+             {name}_proof.bin / {name}_setups.bin (zlib-compressed JSON of \
              ProgramProof / Setups); see the module docs of \
              tests/cost_model_trace.rs for how to produce and name them"
         )

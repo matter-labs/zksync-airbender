@@ -92,7 +92,7 @@ fn write_compressed<T: serde::Serialize>(value: &T, path: &std::path::Path) {
         .open(&temporary)
         .unwrap_or_else(|err| panic!("create {}: {err}", temporary.display()));
     let mut encoder = flate2::write::ZlibEncoder::new(file, flate2::Compression::default());
-    bincode::serialize_into(&mut encoder, value).expect("serialize calibration fixture");
+    serde_json::to_writer(&mut encoder, value).expect("serialize calibration fixture");
     let file = encoder.finish().expect("finish fixture compression");
     file.sync_all().expect("sync calibration fixture");
     std::fs::rename(&temporary, path).unwrap_or_else(|err| {
