@@ -452,7 +452,7 @@ mod tests {
     fn cpu_partial_trees_reach_cached_and_replayed_proofs() {
         use crate::test_support::{TestBackend, PROOF_PARTIAL_TREES};
         use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
-        const BATCH: u64 = 8021;
+        const BATCH: u64 = 8030;
         let program = vec![0x0001_2083, 0xffdf_f06f]; // lw x1, 0(x2); jal x0, -4
         let cycles = 4 * riscv_transpiler::jit::TRACE_CHUNK_LEN as u32;
         let mut prover = ExecutionProver::<TestBackend>::new();
