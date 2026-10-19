@@ -28,8 +28,9 @@ Current coverage spans three circuit families:
   native JAL/JALR links/targets, all six branch conditions/targets and all four
   comparison results/PCs. All original control clauses and retirement now reach
   native outputs in constructed initialized-history segments, with documented
-  public ISA/landing-pad CSR profiles. Complete fetched control execution
-  remains open.
+  public ISA/landing-pad CSR profiles. [Complete fetched control execution](Airbender/Review/Trace/Families/JumpBranchSlt/Execution.lean)
+  now derives finite original Sail execution, terminal PC/register matching and
+  raw terminal PC bounds from accepted native matching and public inputs.
 
 Multiply/divide, shifts/binops, subword memory, delegation and whole-machine
 protocol composition are still unfinished; the [plan](FORMAL_VERIFICATION_PLAN.md)
@@ -868,3 +869,31 @@ privilege accessor cannot succeed. No native defect or whole missing-CSR
 exception trace is claimed. Full fetched control composition and terminal
 instruction-state matching, new native program exports and general
 Rust/compiler/cryptographic refinement remain separate.
+
+## Fetched control execution and terminal matching
+
+[The complete control claim](Airbender/Review/Trace/Families/JumpBranchSlt/Execution.lean)
+now composes JAL/JALR, all six branches and SLT/SLTU/SLTI/SLTIU into finite
+original Sail execution from public initialization. The unchanged shared
+composer derives actual row order, intermediate states, fetch/decode evidence
+and every preparation/execution/retirement step. Native register history
+preserves the public instruction bytes. Existing native retirement proofs
+supply each row's behavior; actual terminal PC and tracked register reads
+follow from full state/memory matching. Scalar candidate queries and state
+matching also derive both raw terminal PC limb bounds, including empty traces;
+no source terminal-closure premise is copied.
+
+The actual initial misa entry and conditional JALR Machine/MLPE-clear profile
+remain explicit; history transports their reads. No schedule, intermediate
+state, expected read/result, per-row step or terminal bound is supplied.
+[Existing jump/branch fixtures and an empty trace](Tests/ControlExecution.lean)
+check fetched execution, including negative JAL and all eighteen branch cases.
+[A two-row logical native program](Tests/ControlSequence.lean) presents JAL then
+aliasing JALR in reverse witness order: JAL writes x1=4, JALR consumes that link
+and writes x1=8, and the composed execution ends at PC four. A stale x1=124
+variant still passes every local native constraint, public decoder membership
+and full state matching, but actual memory matching rejects it. This is a
+checked enforcement boundary, not a native defect or a new Rust program-export
+certificate. Unified whole-machine/protocol composition, remaining families,
+physical initialization/teardown and general Rust/compiler/cryptographic
+refinement remain separate.

@@ -373,11 +373,26 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    transports the profile. Existing negative JAL and aliasing JALR fixtures
    execute original retirement and the exact native link write in the same
    constructed after-state; JAL has no privilege/security entries.
-   Next connect full fetched control execution and actual terminal instruction-state matching. General Rust/compiler and cryptographic refinement remain separate. No per-row result/PC or
-   table-equivalence premise is added.
+   [Complete fetched control execution](Airbender/Review/Trace/Families/JumpBranchSlt/Execution.lean)
+   now reuses the unchanged shared composer and all twelve original control
+   constructors. Actual native history preserves public bytes; state/memory
+   matching derives row order, intermediate states and terminal PC/GPR reads.
+   Scalar candidate queries also bound raw terminal PC limbs, including empty
+   traces. Existing jump/branch fixtures and a reversed two-row JAL/JALR program
+   pass; stale source data passes local constraints/decoding/state matching but
+   fails memory matching. Keep the explicit initial CSR profile. This closes
+   standalone checked control-family fetched composition, without adding a
+   source closure premise. Continue with the remaining ordinary families below;
+   new native program exports, whole-machine/protocol spans, general
+   Rust/compiler and cryptographic refinement remain separate. No per-row
+   result/PC or table-equivalence premise is added.
 
 3. Port unsigned mul/div, shift/binop and subword memory into the same shared
    context; retain their family-specific assumptions and supported ISA profile.
+   The native unsigned mul/div layout has eleven 8-bit range columns; the
+   current importer deliberately rejects them. First connect those actual
+   columns/lookups and add fail-closed importer checks before importing its
+   arithmetic proofs or claiming native multiply/divide coverage.
 4. Rebind bigint/BLAKE/Keccak workers and callers. Retest control validity,
    unissued workers, ROM behavior and request participation on v2 before reusing
    any source finding or temporary premise.

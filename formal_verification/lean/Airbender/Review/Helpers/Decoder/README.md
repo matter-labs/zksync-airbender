@@ -184,3 +184,14 @@ native masks one/two while retaining JAL's raw funct3 bits. Native link/target
 proofs and actual history derive all remaining row inputs. Real initial CSR
 profiles are transported through history; no per-row desired read, link,
 target or after-state is supplied. Full fetched control composition remains open.
+
+[Complete fetched control execution](../../Trace/Families/JumpBranchSlt/Execution.lean)
+now replays original public decoding at each constructed state. Actual native
+register-space metadata and initialized GPR history preserve all public code
+bytes; successful setup construction provides the unchanged pure original
+decoder equation. Public constructors dispatch to existing comparison, branch
+and jump retirement. The shared composer derives the full finite execution
+and native terminal matching under the explicit initial CSR profile. No
+intermediate source evidence, desired steps or terminal closure is supplied.
+The reversed two-row JAL/JALR regression is a logical native trace, with no
+new Rust program-export certificate. General compiler refinement remains open.

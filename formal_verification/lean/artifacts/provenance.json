@@ -2783,6 +2783,104 @@
       "backport_reuse_path": "Tests/BranchExecution.lean",
       "backport_reuse_sha256": "611b620601116ba4467c57041172e6ce3de5d9eba4b0111d088d0c987be4ba20",
       "change": "Reuse actual CSR-initialized byte-image construction, public seed proofs, singleton history extraction, empty prefix/suffix elimination and normal-step rebasing. Check old missing original privilege accessor symbolically; no whole missing-CSR exception trace is claimed."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/CodeHistory.lean",
+      "backport_reuse_revision": "fc0d7f34c4b37772de0f397e9f1be412b2c285c4",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Composition.lean",
+      "backport_reuse_sha256": "88d0fd8304e6539d54a439ba41f0f56b38ea237e2263e6c77c659addfa528ab5",
+      "change": "Adapt the three register-space, byte-memory frame and public source replay declarations to actual v2 control ports; retain original Clean history and original pure decoding."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/Composition.lean",
+      "backport_reuse_revision": "fc0d7f34c4b37772de0f397e9f1be412b2c285c4",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Composition.lean",
+      "backport_reuse_sha256": "88d0fd8304e6539d54a439ba41f0f56b38ea237e2263e6c77c659addfa528ab5",
+      "change": "Reuse fetched-row and finite native trace assembly plus terminal-bound derivation. Dispatch actual decoded v2 masks to checked original control retirement; derive terminal bounds from actual candidate range queries and full state matching, including empty traces."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/Composition.lean",
+      "backport_reuse_revision": "fc0d7f34c4b37772de0f397e9f1be412b2c285c4",
+      "backport_reuse_path": "Airbender/Proofs/Trace/CompositionCore.lean",
+      "backport_reuse_sha256": "35e565fe1982df6ecb97e4cbd8bca1f908c543a2cd6813c744a4ab8716cf9359",
+      "change": "Reuse compose_native_rows and native_trace_postconditions unchanged to construct row order, every intermediate state and original fetched step, and terminal PC/register reads from actual initialized matching."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/Composition.lean",
+      "backport_reuse_revision": "fc0d7f34c4b37772de0f397e9f1be412b2c285c4",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/JumpExecution.lean",
+      "backport_reuse_sha256": "25d556e0245bb84224c366002c0fbeb56fbd231287b5e802110071e9b13b1eb0",
+      "change": "Reuse original jump retirement connection unchanged, including actual masked writes, v2 PC wrap and initial-only JALR Machine/MLPE-clear CSR profile."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/Composition.lean",
+      "backport_reuse_revision": "fc0d7f34c4b37772de0f397e9f1be412b2c285c4",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/BranchExecution.lean",
+      "backport_reuse_sha256": "e439b43ad3d6e158e0ab826a562226d9bfac51785c46c40a7b8a7e6535e4463d",
+      "change": "Reuse all six original branch retirement connections unchanged; actual initialized history transports the public ISA read."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/Composition.lean",
+      "backport_reuse_revision": "fc0d7f34c4b37772de0f397e9f1be412b2c285c4",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/ComparisonExecution.lean",
+      "backport_reuse_sha256": "35d3ab80ef4818d642cec3e66692f684b803827cf91a0a66fdae886a5a1089c0",
+      "change": "Reuse all four original comparison retirement connections unchanged, including native x0 masking and derived actual PC."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/Composition.lean",
+      "backport_reuse_revision": "fc0d7f34c4b37772de0f397e9f1be412b2c285c4",
+      "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/PC.lean",
+      "backport_reuse_sha256": "7788c003c796841fd75f49d6f7612fea781b4e5b6aa76361160b04efde7c440d",
+      "change": "Reuse pc_bounds unchanged: actual native low/high scalar queries and cleanup/routing bound both raw final PC limbs; no copied v3 closure interface."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/Composition.lean",
+      "backport_reuse_revision": "fc0d7f34c4b37772de0f397e9f1be412b2c285c4",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/Decoder.lean",
+      "backport_reuse_sha256": "297a7d86006e0b8226653d72758e78596acc759e992fb1c3dbca53570e9b7dee",
+      "change": "Reuse decoded_sources and decoded_mask_flag unchanged; actual public original constructor and complete native ten-column query derive row identity and PC."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/JumpBranchSlt/Execution.lean",
+      "backport_reuse_revision": "fc0d7f34c4b37772de0f397e9f1be412b2c285c4",
+      "backport_reuse_path": "Airbender/Review/Trace/Execution.lean",
+      "backport_reuse_sha256": "b23e3677e819213350b0c5bbb8401fdd677573d2bf5dee803f1cfaf2dd4e569a",
+      "change": "Reuse StepWith and Realizes definitions unchanged for the short public control statement, retaining actual original fetch/decode/normalStep and terminal tokens."
+    },
+    {
+      "path": "Tests/ControlExecution.lean",
+      "backport_reuse_revision": "fc0d7f34c4b37772de0f397e9f1be412b2c285c4",
+      "backport_reuse_path": "Tests/JumpExecution.lean",
+      "backport_reuse_sha256": "23e2e37f5f0299d5e2989fc98c51892552035c8fff1d764870a46565a188bef6",
+      "change": "Reuse existing exported negative JAL and logical aliasing JALR byte images, initialized matching, decoder evidence and actual CSR profile; strengthen their claim to full fetched execution."
+    },
+    {
+      "path": "Tests/ControlExecution.lean",
+      "backport_reuse_revision": "fc0d7f34c4b37772de0f397e9f1be412b2c285c4",
+      "backport_reuse_path": "Tests/BranchExecution.lean",
+      "backport_reuse_sha256": "611b620601116ba4467c57041172e6ce3de5d9eba4b0111d088d0c987be4ba20",
+      "change": "Reuse all eighteen native branch fixtures and public CSR/byte-image evidence unchanged; strengthen their claim to full fetched execution and add a separate empty-row fixture."
+    },
+    {
+      "path": "Tests/ControlSequence.lean",
+      "backport_reuse_revision": "fc0d7f34c4b37772de0f397e9f1be412b2c285c4",
+      "backport_reuse_path": "Tests/JumpControl.lean",
+      "backport_reuse_sha256": "ea852e65783bb585cfbd884d60b22b12462fd0f37f8cd23d020cfc0846aba71e",
+      "change": "Reuse the actual native JAL assignment shape; change concrete immediate, PC and clock data to build JAL x1,+4 as the first row of a new logical dependent trace. No Rust export certificate is claimed."
+    },
+    {
+      "path": "Tests/ControlSequence.lean",
+      "backport_reuse_revision": "fc0d7f34c4b37772de0f397e9f1be412b2c285c4",
+      "backport_reuse_path": "Tests/JumpLink.lean",
+      "backport_reuse_sha256": "0edac91dc22af2910184aa5af914704535d1a2960a06ec33a948c70a7f73f2f1",
+      "change": "Reuse the actual native JALR assignment shape; change concrete PCs, prior clocks and values for JALR x1,0(x1). Both real/stale variants satisfy all native equations/queries, public decoding and state matching; only actual native memory matching rejects the stale link."
+    },
+    {
+      "path": "Tests/ControlSequence.lean",
+      "backport_reuse_revision": "fc0d7f34c4b37772de0f397e9f1be412b2c285c4",
+      "backport_reuse_path": "Tests/ArithmeticExecution.lean",
+      "backport_reuse_sha256": "a20250b88effb3abb821a87007035d4e366e628e85bd0cb8d3023fac6120b7c2",
+      "change": "Reuse reversed dependent-row fixture structure, explicit native state/memory permutation checks, public initialization and extraction of actual terminal values from composed Realizes. Derive the intermediate link four and terminal x1 eight without read/state/result premises."
     }
   ],
   "setup_artifacts": [

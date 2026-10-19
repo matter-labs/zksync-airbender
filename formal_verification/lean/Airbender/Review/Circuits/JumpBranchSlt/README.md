@@ -228,3 +228,17 @@ CSR state transported through complete history. [Regressions](../../../../Tests/
 reuse negative JAL and aliasing JALR, including original target cleanup and the
 same constructed after-state for native writes and retirement. JAL-only states
 have no privilege/security entries. Full fetched composition remains separate.
+
+## Fetched control execution and terminal matching
+
+[The complete initialized claim](../../Trace/Families/JumpBranchSlt/Execution.lean)
+now composes all twelve supported original constructors through unchanged
+shared fetch/retirement assembly and the checked native per-row connections.
+State/memory matching derives actual order, intermediate states and terminal
+PC/register reads. Actual scalar candidate ranges also derive raw terminal
+PC bounds without the source closure interface. The initial CSR profile is
+unchanged. [Existing jump/branch/empty fixtures](../../../../Tests/ControlExecution.lean)
+and [reversed dependent JAL/JALR](../../../../Tests/ControlSequence.lean) pass;
+local constraints, public decoding and state matching accept the stale-link
+variant, while full native memory matching rejects it. This is logical native
+coverage, not a new Rust export certificate or whole-machine protocol claim.

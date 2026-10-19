@@ -301,3 +301,15 @@ Machine/MLPE-clear CSR data, transported through history. JAL needs no landing-
 pad entries. [Existing initialized fixtures](../../../Tests/JumpExecution.lean)
 execute negative JAL and aliasing JALR with exact native writes. Full fetched
 control composition and terminal instruction-state matching remain open.
+
+[Complete fetched control execution](Families/JumpBranchSlt/Execution.lean)
+now composes all twelve supported original constructors and derives native
+terminal PC/register matching. The unchanged shared composer constructs order,
+states, fetch/decoding and retirement; actual GPR history preserves public
+bytes. Candidate range queries/state matching bound raw terminal PC limbs,
+including empty traces. Initial misa and conditional JALR Machine/MLPE-clear
+profile remain explicit. [Existing fixtures](../../../Tests/ControlExecution.lean)
+and [reversed dependent JAL/JALR](../../../Tests/ControlSequence.lean) pass;
+stale-link data passes local constraints/decoding/state matching and fails
+native memory matching. No per-row step, desired state/read/result or terminal
+closure premise is supplied. Whole-machine/protocol/init/teardown remain open.

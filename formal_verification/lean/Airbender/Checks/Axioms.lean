@@ -1,4 +1,6 @@
 import Airbender
+import Tests.ControlSequence
+import Tests.ControlExecution
 import Tests.JumpExecution
 import Tests.BranchExecution
 import Tests.ComparisonExecution
@@ -1084,3 +1086,23 @@ import Tests.JumpLink
 #print axioms Tests.JumpExecution.initialized_execution
 #print axioms Tests.JumpExecution.jal_no_landing_profile
 #print axioms Tests.JumpExecution.missing_privilege_read
+
+#print axioms Airbender.JumpBranchSlt.Proofs.native_event_register_space
+#print axioms Airbender.JumpBranchSlt.Proofs.native_history_memory
+#print axioms Airbender.JumpBranchSlt.Proofs.entry_source_after_native_history
+#print axioms Airbender.JumpBranchSlt.Proofs.image_fetched_step
+#print axioms Airbender.JumpBranchSlt.Proofs.image_terminal_pc_bound
+#print axioms Airbender.JumpBranchSlt.Proofs.image_execution_soundness
+#print axioms Airbender.JumpBranchSlt.public_execution
+#print axioms Tests.ControlExecution.jumps
+#print axioms Tests.ControlExecution.branches
+#print axioms Tests.ControlExecution.empty_execution
+#print axioms Tests.ControlSequence.program_image
+#print axioms Tests.ControlSequence.native_constraints
+#print axioms Tests.ControlSequence.state_matching
+#print axioms Tests.ControlSequence.accepted
+#print axioms Tests.ControlSequence.public_inputs
+#print axioms Tests.ControlSequence.decoded
+#print axioms Tests.ControlSequence.execution
+#print axioms Tests.ControlSequence.stale_rejected
+#print axioms Tests.ControlSequence.final_values
