@@ -22,6 +22,7 @@ not completed v2 coverage.
 | [Initialized native jump targets](Airbender/Review/Trace/Families/JumpBranchSlt/Targets.lean) | Actual public bytes, initialized matching and native equations derive every JAL/JALR target and four-byte alignment, including JALR bit-zero clearing. Source/PC/immediate bounds, original JAL parity, selectors and carries are derived. The exported negative JAL and initialized aliasing JALR pass; full original instruction execution/retirement remains open. |
 | [Initialized native comparison results](Airbender/Review/Trace/Families/JumpBranchSlt/Comparisons.lean) | Native equations, actual scalar/fixed queries, original public metadata and initialized matching derive all four SLT/SLTU/SLTI/SLTIU masked results. Operand ranges, selector identity, signs, borrow and x0 mask are derived. Signed/unsigned disagreement and negative-immediate/x0 regressions pass; branch semantics and original full instruction execution remain open. |
 | [Native comparison PC advancement](Airbender/Review/Trace/Families/JumpBranchSlt/ComparisonPC.lean) | Actual public decoding and native acceptance derive PC+4 and four-byte alignment for all four comparisons. Native scalar ranges supply both outgoing bounds, Boolean carries retain RV32 wrap and raw candidate routing is preserved. All four initialized fixtures, full local wrap and altered-PC rejection pass; original Sail retirement and branch semantics remain separate. |
+| [Initialized native branch conditions](Airbender/Review/Trace/Families/JumpBranchSlt/Branches.lean) | Original public decoding and initialized matching derive all six branch conditions, equality/sign/borrow flags, both routing bits and actual zero writes. Native inverse equations identify equality and actual scalar/fixed queries resolve signed/unsigned order. Eighteen initialized cases cover both outcomes per opcode; branch targets and original Sail retirement remain separate. |
 | V2 artifact import | All 34 quadratic and 3 linear equations, four 16-bit and eight 19-bit timestamp queries from the pinned ADD/SUB layout. Bounds/placement guards and both native zero coefficient encodings. |
 | Reused foundation | Unchanged property definitions, word representation/arithmetic and pinned Sail reference/execution lemmas. Source hashes are checked. |
 | Native state/port clocks | Typed physical state and three direct ports, including actual destination writes. Four-tick advancement and strict previous-write/port order follow from imported equations/queries under initial/prior clock bounds and alignment. The initialized-history layer now derives these local inputs from matching and initial boundaries. |
@@ -644,14 +645,41 @@ control execution/terminal instruction-state matching remain open. General
 Rust/compiler/cryptographic refinement remains separate. No new v2 defect is
 established.
 
+## Initialized native branch conditions
+
+[Native branch calculations](Airbender/Proofs/JumpBranchSlt/Branch.lean) now
+derive BEQ/BNE/BLT/BGE/BLTU/BGEU conditions from actual constraints. Original
+word subtraction/borrow and signed ordering are reused unchanged. Scalar
+queries zero/one range remainder 26/27; inverse equations 16/17 identify equality
+bit 29 with equality of both operand words. The unchanged positive-high proof
+is shared with comparisons, preserving native flags 31/33 and scalar queries
+two/three. The actual conditional table determines result 35; equations 24/25
+derive taken/complement 46/45. Equations 20..23 force the actual unused write
+38/39 to zero independently of the decoder-owned x0 flag.
+
+[One short initialized claim](Airbender/Review/Trace/Families/JumpBranchSlt/Branches.lean)
+derives both operand bounds from complete native matching and branch identity
+and all six funct3 tags from original public bytes/decoding. No per-row range,
+selector, equality/sign/borrow bit, expected read or desired condition is supplied.
+[Eighteen initialized regressions](Tests/Branches.lean) use the six original
+branch words and operand pairs (-1,1), (1,-1) and (1,1). Every opcode has both
+outcomes; signed/unsigned disagreement, equality, complementary routing and
+the retained zero destination event are checked through full native acceptance,
+public initialization and decoder membership. A false equality flag and false
+BEQ answer satisfy the actual conditional table but fail the native inverse
+equation. This confirms enforcement, not a new v2 defect. The new logical program
+has no new native export certificate. Branch target arithmetic, original Sail
+clauses/retirement and complete control execution/terminal instruction-state
+matching remain open; general Rust/compiler/cryptographic refinement is separate.
+
 ## Validation
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all thirty-eight concrete test modules pass.
+- Library, both CLI entrypoints and all thirty-nine concrete test modules pass.
 - Importer regressions: 169 checks pass.
-- Axiom audit: 953 explicit roots; only propext, Classical.choice and Quot.sound.
-- All fifty-six public Review theorems (ten circuit claims, thirty-seven trace claims and nine helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Axiom audit: 969 explicit roots; only propext, Classical.choice and Quot.sound.
+- All fifty-seven public Review theorems (ten circuit claims, thirty-eight trace claims and nine helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
 - Source provenance: 73 unchanged reused files, three native circuit artifacts, thirty-six native Rust sources, seven native setup artifacts and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.

@@ -2476,6 +2476,67 @@
       "backport_reuse_path": "Tests/JumpLink.lean",
       "backport_reuse_sha256": "0edac91dc22af2910184aa5af914704535d1a2960a06ec33a948c70a7f73f2f1",
       "change": "Reuse the full native local rollover and altered-observable rejection pattern. Preserve all native comparison equations/queries while changing incoming PC to 0xfffffffc, candidate/final PC to zero and both target carries to one. Local wrap is not an initialized/public-decoder trace."
+    },
+    {
+      "path": "Airbender/Review/Circuits/JumpBranchSlt/Branch.lean",
+      "source_path": "Airbender/Proofs/JumpBranchSlt/Branch.lean",
+      "source_sha256": "7bc09e74301c629d56b106a79e64c34d7b9100ca5ac366dd08825822c7b21191",
+      "change": "Extract the six original branch_resolution predicates as a small numerical reference indexed by actual native funct3. Unsupported tags are false and original public metadata excludes them. Original Sail clause execution/retirement remains separate; no source whole-trace or terminal-closure interfaces are copied."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/Branch.lean",
+      "source_path": "Airbender/Proofs/JumpBranchSlt/Branch.lean",
+      "source_sha256": "7bc09e74301c629d56b106a79e64c34d7b9100ca5ac366dd08825822c7b21191",
+      "change": "Adapt branch_bits subtraction/borrow, bounded zero-remainder and equality lifting to native operands 22..25, remainder 26/27 and carries 49/28. Actual inverse equations 16/17 identify equality bit 29 instead of a source zero lookup. Preserve native positive flags 31/33 and four-bit key before actual conditional resolution for six original tags. Derive routing 45/46 and actual zero writes 38/39 from native equations; no source x0-mask or final-high closure premise is copied. Branch PC/execution remains separate."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/Comparison.lean",
+      "backport_reuse_revision": "af6a5663137edff2be9d88d6fb7cd59b4300a4da",
+      "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/Comparison.lean",
+      "backport_reuse_sha256": "86321f8670dd5ec151471b747ce8cf47cb6b5ed10db26dae3234a2823f7c4367",
+      "change": "Expose only positive_high for reuse by branches; its proof body and every existing comparison proof remain byte-identical. No Review surface or interface changes."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/Selectors.lean",
+      "backport_reuse_revision": "af6a5663137edff2be9d88d6fb7cd59b4300a4da",
+      "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/Selectors.lean",
+      "backport_reuse_sha256": "adf0da1ea2ca3f413a3971b264d8af65a2eea5ec06dbb044d6e121a92128fa0d",
+      "change": "Keep all existing selector proofs unchanged and reuse their Boolean residue bounds and bounded packed-mask lifting for native branch mask sixteen."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/Branch.lean",
+      "backport_reuse_revision": "af6a5663137edff2be9d88d6fb7cd59b4300a4da",
+      "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/Comparison.lean",
+      "backport_reuse_sha256": "86321f8670dd5ec151471b747ce8cf47cb6b5ed10db26dae3234a2823f7c4367",
+      "change": "Reuse unchanged arithmetic_carries, positive_high, Word.borrow_iff, Word.sub_of_limbs, signed ordering, actual range-query bindings and canonical control-key assembly. Native branch equality is derived from the inverse equations rather than supplied."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/Branches.lean",
+      "backport_reuse_revision": "af6a5663137edff2be9d88d6fb7cd59b4300a4da",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/Comparisons.lean",
+      "backport_reuse_sha256": "04adffbd482ace09cfa394b7b4562d06c419c83cf03fed923881a9fb8eef42f2",
+      "change": "Reuse original public-source recovery, exact native decoder columns/tag projection and initialized image_value_bounds. Derive both register bounds from complete matching, branch identity from packed masks and all six tags from original BTYPE metadata."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/JumpBranchSlt/Branches.lean",
+      "backport_reuse_revision": "af6a5663137edff2be9d88d6fb7cd59b4300a4da",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/JumpBranchSlt/Comparisons.lean",
+      "backport_reuse_sha256": "c31ef77a932f978eb8655861cf99c99d190bfc38c3a6b799eda8133166f1929c",
+      "change": "Keep one short public image/initialized/accepted/decoded claim over native observables and the six numerical predicates. All calculations and assembly remain under Proofs; branch targets and original Sail execution remain explicitly separate."
+    },
+    {
+      "path": "Tests/Branches.lean",
+      "backport_reuse_revision": "af6a5663137edff2be9d88d6fb7cd59b4300a4da",
+      "backport_reuse_path": "Tests/ControlComparisons.lean",
+      "backport_reuse_sha256": "6a3a8911fec4018f668e3f9a955ccc6ea82ed7a739b1152186468e5abe5ff5fa",
+      "change": "Reuse original-byte construction, separately initialized singleton native histories, complete three-port matching and public result application. Add six original branch words and eighteen independently accepted cases covering both outcomes per opcode, equality and opposite signed/unsigned orderings. Kernel-check polynomial lists and provide explicit range/fixed-table witnesses in three small finite groups; no new native program-export certificate is claimed."
+    },
+    {
+      "path": "Tests/Branches.lean",
+      "backport_reuse_revision": "af6a5663137edff2be9d88d6fb7cd59b4300a4da",
+      "backport_reuse_path": "Tests/ControlComparisons.lean",
+      "backport_reuse_sha256": "6a3a8911fec4018f668e3f9a955ccc6ea82ed7a739b1152186468e5abe5ff5fa",
+      "change": "Reuse malformed native-flag regression structure. A false equality flag and false BEQ result satisfy actual conditional membership, but native inverse equation sixteen rejects the row. No v2 implementation defect is inferred."
     }
   ],
   "setup_artifacts": [

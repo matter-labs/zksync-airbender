@@ -703,3 +703,30 @@ Original Sail instruction clauses/retirement, branch semantics and complete
 control execution/terminal instruction-state matching remain open. General
 Rust/compiler/cryptographic refinement remains separate. No new v2 defect is
 established.
+
+## Initialized native branch conditions
+
+[Native branch calculations](Airbender/Proofs/JumpBranchSlt/Branch.lean) now
+derive BEQ/BNE/BLT/BGE/BLTU/BGEU conditions from actual constraints. Original
+word subtraction/borrow and signed ordering are reused unchanged. Scalar
+queries zero/one range remainder 26/27; inverse equations 16/17 identify equality
+bit 29 with equality of both operand words. The unchanged positive-high proof
+is shared with comparisons, preserving native flags 31/33 and scalar queries
+two/three. The actual conditional table determines result 35; equations 24/25
+derive taken/complement 46/45. Equations 20..23 force the actual unused write
+38/39 to zero independently of the decoder-owned x0 flag.
+
+[One short initialized claim](Airbender/Review/Trace/Families/JumpBranchSlt/Branches.lean)
+derives both operand bounds from complete native matching and branch identity
+and all six funct3 tags from original public bytes/decoding. No per-row range,
+selector, equality/sign/borrow bit, expected read or desired condition is supplied.
+[Eighteen initialized regressions](Tests/Branches.lean) use the six original
+branch words and operand pairs (-1,1), (1,-1) and (1,1). Every opcode has both
+outcomes; signed/unsigned disagreement, equality, complementary routing and
+the retained zero destination event are checked through full native acceptance,
+public initialization and decoder membership. A false equality flag and false
+BEQ answer satisfy the actual conditional table but fail the native inverse
+equation. This confirms enforcement, not a new v2 defect. The new logical program
+has no new native export certificate. Branch target arithmetic, original Sail
+clauses/retirement and complete control execution/terminal instruction-state
+matching remain open; general Rust/compiler/cryptographic refinement is separate.

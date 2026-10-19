@@ -331,7 +331,16 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    or per-row PC/carry/result is required. All four initialized fixtures pass;
    full native wrap and altered-PC rejection are local regressions, not a new
    initialized wrap execution or native export certificate.
-   Next derive branch semantics, connect
+   [Initialized branch conditions](Airbender/Review/Trace/Families/JumpBranchSlt/Branches.lean)
+   now derive all six predicates, taken/complement bits and actual zero writes.
+   Original subtraction, signed ordering and the unchanged positive-high proof
+   are reused; actual inverse equations identify equality, while scalar/fixed
+   queries resolve signs and borrow. Public original metadata derives mask/tag
+   identity and complete matching supplies both operand ranges. Eighteen
+   initialized cases cover both outcomes per opcode, opposite signed/unsigned
+   orderings and equality. A false equality/table answer fails the native inverse
+   equation; no new defect or native program-export certificate is claimed.
+   Next derive branch target arithmetic, connect
    original control Sail clauses and PC preparation/retirement, then full execution
    and actual terminal instruction-state matching. General Rust/compiler and cryptographic refinement remain separate. No per-row result/PC or
    table-equivalence premise is added.

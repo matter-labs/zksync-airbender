@@ -255,3 +255,12 @@ needed. Native carries and both scalar queries retain RV32 wrap.
 native local wrap and altered-PC rejection are also checked. Local wrap is not
 an initialized/public-decoder execution. Original Sail instruction retirement,
 branches and complete control execution remain open.
+
+[Initialized branch conditions](Families/JumpBranchSlt/Branches.lean) now derive
+all six predicates, both routing bits and actual zero writes. Native inverse
+equations identify equality; actual scalar/fixed queries resolve signed/unsigned
+order. Original public decoding derives branch identity/tags and full matching
+supplies both operand ranges, with no per-row flags, bounds or desired result.
+[Eighteen initialized cases](../../../Tests/Branches.lean) check both outcomes
+for every opcode and retain the real zero destination event. Branch targets and
+original Sail clauses/retirement remain separate.

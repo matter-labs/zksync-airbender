@@ -44,7 +44,7 @@ theorem comparison_borrow {w : Nat → ZMod mersenne31Modulus} {left right : Wor
     omega
 
 /-- The native high-limb shift uses a positive flag, complementary to sign. -/
-private theorem positive_high {hi shifted flag : ZMod mersenne31Modulus} {high : Nat}
+theorem positive_high {hi shifted flag : ZMod mersenne31Modulus} {high : Nat}
     (bound : high < 65536) (mapping : hi = (high : ZMod mersenne31Modulus))
     (range : shifted.val < 65536) (bit : flag = 0 ∨ flag = 1)
     (equation : hi - 32768 - shifted + 65536*flag = 0) :

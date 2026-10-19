@@ -207,4 +207,27 @@ theorem comparison_selectors {p : Nat} [Fact p.Prime] (hp : 32 < p)
       by simpa using valEq 17 0 (by omega),by simpa using valEq 18 0 (by omega),
       by simpa using valEq 21 0 (by omega)⟩
 
+/-- Packed mask sixteen recovers the branch selector and every inactive family. -/
+theorem branch_selectors {p : Nat} [Fact p.Prime] (hp : 32 < p) {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
+    (mask : (w 12).val = 16) :
+    w 21 = 1 ∧ w 17 = 0 ∧ w 18 = 0 ∧ w 19 = 0 ∧ w 20 = 0 := by
+  have b0 : (w 17).val ≤ 1 := selector_bound h ⟨0,by decide⟩
+  have b1 : (w 18).val ≤ 1 := selector_bound h ⟨1,by decide⟩
+  have b2 : (w 19).val ≤ 1 := selector_bound h ⟨2,by decide⟩
+  have b3 : (w 20).val ≤ 1 := selector_bound h ⟨3,by decide⟩
+  have b4 : (w 21).val ≤ 1 := selector_bound h ⟨4,by decide⟩
+  have packed := Verification.assertion_of_holds h ⟨33,by rw [constraint_count]; decide⟩
+  simp [importedConstraints,FlatOperation.constraints,Expression.eval,Verification.environment] at packed
+  have natural : (w 17).val + 2*(w 18).val + 4*(w 19).val + 8*(w 20).val +
+      16*(w 21).val = (w 12).val := by
+    apply Arithmetic.bounded_nat_eq (F := ZMod p) (p := p) (by omega) (ZMod.val_lt _)
+    simp only [Nat.cast_add,Nat.cast_mul,Nat.cast_ofNat,ZMod.natCast_zmod_val]
+    linear_combination packed
+  have valEq (i n : Nat) (eq : (w i).val = n) : w i = (n : ZMod p) := by
+    rw [← eq]; exact (ZMod.natCast_zmod_val _).symm
+  exact ⟨by simpa using valEq 21 1 (by omega),by simpa using valEq 17 0 (by omega),
+    by simpa using valEq 18 0 (by omega),by simpa using valEq 19 0 (by omega),
+    by simpa using valEq 20 0 (by omega)⟩
+
 end Airbender.JumpBranchSlt.Proofs

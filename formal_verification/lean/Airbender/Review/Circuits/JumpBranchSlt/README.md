@@ -161,3 +161,17 @@ no register-image boundary or final-high closure premise is needed.
 histories and check full local RV32 wrap plus altered-PC rejection. The local
 wrap has no initialized/public-decoder execution or new native export claim.
 Original Sail retirement and branch semantics remain separate.
+
+## Initialized branch conditions
+
+[The six reference predicates](Branch.lean) remain separate from
+[native calculations](../../../Proofs/JumpBranchSlt/Branch.lean). Original
+subtraction/borrow and signed word ordering, actual inverse equations and
+scalar/fixed queries derive equality, positive flags and the conditional result.
+Native taken/complement bits and actual zero writes follow from routing equations.
+[One short initialized claim](../../Trace/Families/JumpBranchSlt/Branches.lean)
+derives operands from matching and mask/tags from original public decoding.
+[Eighteen regressions](../../../../Tests/Branches.lean) cover both outcomes per
+opcode, signed/unsigned disagreement and equality; a false equality/table answer
+fails the native inverse equation. Branch targets and original Sail retirement
+remain open; no new native program export or v2 defect is claimed.

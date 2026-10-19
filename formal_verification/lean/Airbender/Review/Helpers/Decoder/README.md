@@ -145,3 +145,11 @@ alignment and register/immediate comparison identity. Native equations and both
 candidate scalar queries determine PC+4 with RV32 wrap. This PC-only claim needs
 no register-image boundary and supplies no desired PC or final-high closure.
 Original instruction retirement and branch semantics remain separate.
+
+[Initialized branches](../../Trace/Families/JumpBranchSlt/Branches.lean) now
+derive the native mask sixteen selector and original funct3 tags 0/1/4/5/6/7
+from actual public bytes/decoding. Full native matching supplies both register
+word bounds. Native subtraction/inverse/positive-flag equations and actual fixed
+membership determine every condition; no caller-supplied equality/sign/borrow
+bit or desired answer is used. Branch targets and original Sail retirement
+remain separate.

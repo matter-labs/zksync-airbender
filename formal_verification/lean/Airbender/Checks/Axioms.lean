@@ -1,4 +1,5 @@
 import Airbender
+import Tests.Branches
 import Tests.ComparisonPC
 import Tests.ControlComparisons
 import Tests.JumpTarget
@@ -1017,3 +1018,19 @@ import Tests.JumpLink
 #print axioms Tests.ComparisonPC.wrap_native
 #print axioms Tests.ComparisonPC.wrap_pc
 #print axioms Tests.ComparisonPC.altered_pc_rejected
+#print axioms Airbender.JumpBranchSlt.Proofs.positive_high
+#print axioms Airbender.JumpBranchSlt.Proofs.branch_selectors
+#print axioms Airbender.JumpBranchSlt.Proofs.branch_flags
+#print axioms Airbender.JumpBranchSlt.Proofs.branch_resolution
+#print axioms Airbender.JumpBranchSlt.Proofs.branch_effects
+#print axioms Airbender.JumpBranchSlt.Proofs.branch_field_tag
+#print axioms Airbender.JumpBranchSlt.Proofs.image_branches
+#print axioms Airbender.JumpBranchSlt.public_branches
+#print axioms Tests.Branches.program_image
+#print axioms Tests.Branches.native_constraints
+#print axioms Tests.Branches.accepted
+#print axioms Tests.Branches.public_inputs
+#print axioms Tests.Branches.decoded
+#print axioms Tests.Branches.public_results
+#print axioms Tests.Branches.bad_equality_table
+#print axioms Tests.Branches.bad_equality_rejected
