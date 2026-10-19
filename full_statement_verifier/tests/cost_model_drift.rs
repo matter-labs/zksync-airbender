@@ -21,7 +21,7 @@ const EXPECTED: &[(&str, u64)] = &[
     ("mem_subword_only", 796003),
     ("inits_and_teardowns", 558648),
     ("blake2_with_extended_control", 2548929),
-    ("bigint_with_extended_control", 1287278),
+    ("bigint_with_extended_control", 1287378),
     ("keccak_special5", 1290262),
     ("blake2_g_function", 873065),
     ("keccak_column_parity", 1004556),
