@@ -365,8 +365,15 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    history. All eighteen native fixtures are reused unchanged and execute both
    outcomes per opcode with that public CSR entry, deriving full data stuttering.
    Missing-entry/accessor regressions retain this original-state boundary.
-   Next connect original JAL/JALR clauses and their actual landing-pad CSR profile,
-   then full fetched control execution and actual terminal instruction-state matching. General Rust/compiler and cryptographic refinement remain separate. No per-row result/PC or
+   [Original JAL/JALR clauses and retirement](Airbender/Review/Trace/Families/JumpBranchSlt/JumpExecution.lean)
+   now reuse unchanged pure definitions and the complete original retirement
+   declaration. Native links, targets, actual reads/writes and public constructors
+   derive all row interfaces. Initial misa is readable; only traces containing
+   JALR need actual Machine privilege and MLPE-clear mseccfg. Unchanged history
+   transports the profile. Existing negative JAL and aliasing JALR fixtures
+   execute original retirement and the exact native link write in the same
+   constructed after-state; JAL has no privilege/security entries.
+   Next connect full fetched control execution and actual terminal instruction-state matching. General Rust/compiler and cryptographic refinement remain separate. No per-row result/PC or
    table-equivalence premise is added.
 
 3. Port unsigned mul/div, shift/binop and subword memory into the same shared

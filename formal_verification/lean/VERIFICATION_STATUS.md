@@ -26,6 +26,7 @@ not completed v2 coverage.
 | [Initialized native branch targets](Airbender/Review/Trace/Families/JumpBranchSlt/BranchTargets.lean) | The checked six conditions select PC+offset or PC+4 with RV32 wrap and four-byte alignment. Original public decoding derives parity, incoming bounds/alignment and selectors; actual native carry, range, routing and cleanup constraints determine both outgoing limbs. Eighteen initialized cases, local negative/wrap rows and taken-only alignment rejection pass; original Sail clauses/retirement remain separate. |
 | [Initialized original comparison execution](Airbender/Review/Trace/Families/JumpBranchSlt/ComparisonExecution.lean) | Exact original SLT/SLTU/SLTI/SLTIU clauses and shared preparation/retirement reach native output PCs in constructed initialized-history segment states, including retained x0 source reads and discarded writes. All four original-byte fixtures execute from actual public states; full fetched control composition/terminal matching and original jump/branch clauses remain separate. |
 | [Initialized original branch execution](Airbender/Review/Trace/Families/JumpBranchSlt/BranchExecution.lean) | Original BEQ/BNE/BLT/BGE/BLTU/BGEU clauses prepare and retire to exact native targets in constructed initialized-history segments. Actual public misa readability is explicit, with unrestricted value and history-derived CSR preservation. Eighteen unchanged native fixtures execute both outcomes per opcode from configured public states and derive complete data-state stuttering. Original jumps and full fetched control composition/terminal matching remain separate. |
+| [Initialized original jump execution](Airbender/Review/Trace/Families/JumpBranchSlt/JumpExecution.lean) | Original JAL/JALR clauses retire to native targets and actual masked link writes in constructed history segments. Actual initial misa is readable; traces containing JALR use Machine privilege and MLPE-clear mseccfg, transported through history. The existing negative JAL and aliasing JALR execute from public states, reaching 0xfffffffc/link four and 264/link eight. JAL needs no privilege/security entries. Full fetched control composition/terminal matching remains separate. |
 | V2 artifact import | All 34 quadratic and 3 linear equations, four 16-bit and eight 19-bit timestamp queries from the pinned ADD/SUB layout. Bounds/placement guards and both native zero coefficient encodings. |
 | Reused foundation | Unchanged property definitions, word representation/arithmetic and pinned Sail reference/execution lemmas. Source hashes are checked. |
 | Native state/port clocks | Typed physical state and three direct ports, including actual destination writes. Four-tick advancement and strict previous-write/port order follow from imported equations/queries under initial/prior clock bounds and alignment. The initialized-history layer now derives these local inputs from matching and initial boundaries. |
@@ -762,14 +763,46 @@ state matching, original JAL/JALR clauses and their landing-pad CSR profile,
 new native program exports and general Rust/compiler/cryptographic refinement
 remain separate.
 
+## Initialized original jump clauses and retirement
+
+[Original jump execution](Airbender/Proofs/Trace/Families/JumpBranchSlt/JumpExecution.lean)
+now connects checked native JAL/JALR links and aligned targets to pinned original
+clauses and preparation/retirement. [Pure jump definitions](Airbender/Proofs/JumpBranchSlt/JumpModel.lean)
+and the complete [original retirement declaration](Airbender/Proofs/Sail/JumpRetirement.lean)
+are copied unchanged into internal modules. Native v2 masks one/two, immediate
+9/10, actual masked destination 38/39 and PC 13/14 replace the source layout.
+JAL's original raw funct3 bits and x0 masking remain intact. Existing native
+queries and matching derive ranges/targets, including RV32 wrap, without the
+source final-high closure premise or supplied link/read/result/state.
+
+[The public segment claim](Airbender/Review/Trace/Families/JumpBranchSlt/JumpExecution.lean)
+constructs every history segment and executes its exact public-decoded clause.
+A real initial misa entry has unrestricted value. Traces containing JALR use
+actual initial Machine privilege and a real mseccfg value with MLPE clear;
+other security bits are unrestricted. Unchanged CSR frames derive those reads
+at every row. JAL-only traces need no privilege/security entries. Original
+landing-pad behavior is retained under this explicit platform profile.
+
+[Regressions](Tests/JumpExecution.lean) reuse the unchanged exported negative-JAL
+and logical aliasing-JALR native histories, bytes and decoder certificates,
+adding only actual public CSR entries. JAL retires PC zero to 0xfffffffc and
+writes link four over x1=123. JALR reads old x1=257 before its aliased link write
+eight and retires PC four to 264, clearing bit zero of 265. Both original
+retirements share the exact native write's constructed after-state. The JAL
+state has no privilege/security entry; the prior partial JALR state's original
+privilege accessor cannot succeed. No native defect or whole missing-CSR
+exception trace is claimed. Full fetched control composition and terminal
+instruction-state matching, new native program exports and general
+Rust/compiler/cryptographic refinement remain separate.
+
 ## Validation
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all forty-two concrete test modules pass.
+- Library, both CLI entrypoints and all forty-three concrete test modules pass.
 - Importer regressions: 169 checks pass.
-- Axiom audit: 1004 explicit roots; only propext, Classical.choice and Quot.sound.
-- All sixty public Review theorems (ten circuit claims, forty-one trace claims and nine helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Axiom audit: 1015 explicit roots; only propext, Classical.choice and Quot.sound.
+- All sixty-one public Review theorems (ten circuit claims, forty-two trace claims and nine helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
 - Source provenance: 74 unchanged reused files, three native circuit artifacts, thirty-six native Rust sources, seven native setup artifacts and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.

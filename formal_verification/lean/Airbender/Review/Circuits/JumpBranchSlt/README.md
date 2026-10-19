@@ -216,3 +216,15 @@ unchanged original CSR frames. [Eighteen regressions](../../../../Tests/BranchEx
 reuse native fixtures unchanged with only this real public CSR entry, deriving
 full data-state stuttering and targets. Missing CSR/accessor behavior is an
 original-state boundary. Original jumps and full fetched composition remain open.
+
+## Original jump clauses and retirement
+
+[The native assembly](../../../Proofs/Trace/Families/JumpBranchSlt/JumpExecution.lean)
+binds actual masked links 38/39, targets 13/14 and original public constructors
+to the unchanged original jump retirement declaration. Native matching/queries
+derive all local inputs and actual after-states. [The public claim](../../Trace/Families/JumpBranchSlt/JumpExecution.lean)
+retains actual initial misa and, for traces containing JALR, Machine/MLPE-clear
+CSR state transported through complete history. [Regressions](../../../../Tests/JumpExecution.lean)
+reuse negative JAL and aliasing JALR, including original target cleanup and the
+same constructed after-state for native writes and retirement. JAL-only states
+have no privilege/security entries. Full fetched composition remains separate.

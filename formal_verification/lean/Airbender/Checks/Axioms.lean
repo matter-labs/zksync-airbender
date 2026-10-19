@@ -1,4 +1,5 @@
 import Airbender
+import Tests.JumpExecution
 import Tests.BranchExecution
 import Tests.ComparisonExecution
 import Tests.BranchTargets
@@ -1072,3 +1073,14 @@ import Tests.JumpLink
 #print axioms Tests.BranchExecution.initialized_execution
 #print axioms Tests.BranchExecution.missing_isa
 #print axioms Tests.BranchExecution.missing_isa_read
+#print axioms Airbender.Reference.RiscV.Sail.retire_jump
+#print axioms Airbender.JumpBranchSlt.Proofs.original_jump_step
+#print axioms Airbender.JumpBranchSlt.Proofs.jump_encoding
+#print axioms Airbender.JumpBranchSlt.Proofs.image_jump_retirement
+#print axioms Airbender.JumpBranchSlt.Proofs.image_jump_execution
+#print axioms Airbender.JumpBranchSlt.public_jump_execution
+#print axioms Tests.JumpExecution.program_image
+#print axioms Tests.JumpExecution.public_inputs
+#print axioms Tests.JumpExecution.initialized_execution
+#print axioms Tests.JumpExecution.jal_no_landing_profile
+#print axioms Tests.JumpExecution.missing_privilege_read

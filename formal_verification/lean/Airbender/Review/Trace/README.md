@@ -293,3 +293,11 @@ unrestricted value; unchanged CSR frame lemmas transport it through history.
 execute both outcomes per opcode, preserve the complete data state and reach
 the exact target. Missing public CSR/accessor tests retain the original-state
 boundary. Original jumps and full fetched control composition remain separate.
+
+[Original jump execution](Families/JumpBranchSlt/JumpExecution.lean) constructs
+JAL/JALR segments and retires original clauses to native targets and actual
+masked links. Real initial misa is readable; traces containing JALR use actual
+Machine/MLPE-clear CSR data, transported through history. JAL needs no landing-
+pad entries. [Existing initialized fixtures](../../../Tests/JumpExecution.lean)
+execute negative JAL and aliasing JALR with exact native writes. Full fetched
+control composition and terminal instruction-state matching remain open.

@@ -2709,6 +2709,80 @@
       "backport_reuse_path": "Tests/ComparisonExecution.lean",
       "backport_reuse_sha256": "95251bdcbb742231db0faf6949acaa64b588195651dec01b7017009f7ac380f1",
       "change": "Reuse singleton history extraction, empty-prefix/suffix elimination, actual public-state normal-step rebasing and discarded-write stutter derivation. Check prior missing public misa and failed original accessor symbolically; no whole missing-CSR branch exception trace or desired result premise is claimed."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/JumpModel.lean",
+      "source_path": "Airbender/Review/Circuits/JumpBranchSlt/Jump.lean",
+      "source_sha256": "82e7b27f09d62e3d2320090ae78f5976b15734aa6a03898cea35a85809c67204",
+      "change": "Copy Instruction, indirect, Input, base, instruction, execution and spec declarations unchanged into a focused internal module. Omit source native layout/trace mappings and interfaces; no original pure jump definition is replaced."
+    },
+    {
+      "path": "Airbender/Proofs/Sail/JumpRetirement.lean",
+      "source_path": "Airbender/Proofs/Sail/JumpRetirement.lean",
+      "source_sha256": "e88d0ead2d78b011a98c53c70c15d13df0f33cea2a01d7627d84616babde46f4",
+      "change": "Copy the complete retire_jump declaration unchanged, adapting only imports/wrapper and omitting enlarged source elaboration budgets. Original JAL/JALR clauses retain real misa reading, JALR landing-pad reads/effects, masked link writes and retirement."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/JumpExecution.lean",
+      "source_path": "Airbender/Proofs/JumpBranchSlt/Execution.lean",
+      "source_sha256": "ccec8180c599f57690aea00fd632fab4237356391d9b15cdf749c3abb6b9b46b",
+      "change": "Reuse original local-jump assembly: public constructor/data recovery, sign extension, same-pre-state reads, initial-to-row CSR preservation, original retirement and identification with the actual native masked write. Bind v2 mask one/two independent of x0, raw JAL funct3, immediate 9/10, destination 38/39 and PC 13/14. Native results/queries derive all ranges/targets without the source final-high premise. Initial Machine/MLPE-clear profile is required only if JALR occurs."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/JumpExecution.lean",
+      "backport_reuse_revision": "37866487cb6f24704a70dd7fb0d96025c8c3127d",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/Targets.lean",
+      "backport_reuse_sha256": "b98f271dd8736d746c1020dc0d8290486197a72f8d01b87ce4cbea98930d708f",
+      "change": "Reuse initialized native jump targets/alignment unchanged; native scalar queries, public metadata and matching derive all local bounds and PC inputs, including v2 rollover."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/JumpExecution.lean",
+      "backport_reuse_revision": "37866487cb6f24704a70dd7fb0d96025c8c3127d",
+      "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/Link.lean",
+      "backport_reuse_sha256": "aeef2aec6bceeecb6e71bf369e501fa521e135bac8c61468154827f1a8f9128f",
+      "change": "Reuse public_jump_link unchanged to derive the actual masked destination from accepted equations and public decoder membership. Preserve x0 masking and PC+4 rather than supplying an expected link."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/JumpExecution.lean",
+      "backport_reuse_revision": "37866487cb6f24704a70dd7fb0d96025c8c3127d",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/RegisterHistory.lean",
+      "backport_reuse_sha256": "d500162f62fbc8a9ea86e68609f15d06c2e64b463dba0c3f8f99cdc1f839cf57",
+      "change": "Reuse complete initialized segment construction and actual same-pre-state reads/writes unchanged, retaining aliases and discarded writes."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/JumpExecution.lean",
+      "backport_reuse_revision": "37866487cb6f24704a70dd7fb0d96025c8c3127d",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/BranchExecution.lean",
+      "backport_reuse_sha256": "e439b43ad3d6e158e0ab826a562226d9bfac51785c46c40a7b8a7e6535e4463d",
+      "change": "Reuse the short constructed segment/retirement claim, native query word/index binding, source constructor recovery and projected-step identification. Retain a real initial ISA entry and derive JALR CSR reads from an explicit initial profile."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/JumpExecution.lean",
+      "backport_reuse_revision": "37866487cb6f24704a70dd7fb0d96025c8c3127d",
+      "backport_reuse_path": "Airbender/Proofs/Trace/ControlFlowCSR.lean",
+      "backport_reuse_sha256": "ca7e9b7a303bc16563507c013d6ece46fdd9955e76e482a7567b43f66a5eac76",
+      "change": "Reuse unchanged original CSR frame declarations to transport misa, privilege and security through actual native history; no row CSR values are supplied."
+    },
+    {
+      "path": "Tests/JumpExecution.lean",
+      "backport_reuse_revision": "37866487cb6f24704a70dd7fb0d96025c8c3127d",
+      "backport_reuse_path": "Tests/JumpTarget.lean",
+      "backport_reuse_sha256": "e2d6713c82a7d84ee65699cabfe305770daf30205b65272cf674bacd2c46d76a",
+      "change": "Reuse logical aliasing JALR assignment, trace, matching, original bytes and decoder certificates unchanged. Add real misa, Machine and MLPE-clear security entries, universally over the allowed public values. Prove original retirement and actual link write with one constructed after-state; no new native program export."
+    },
+    {
+      "path": "Tests/JumpExecution.lean",
+      "backport_reuse_revision": "37866487cb6f24704a70dd7fb0d96025c8c3127d",
+      "backport_reuse_path": "Tests/ControlValues.lean",
+      "backport_reuse_sha256": "21aa4fff6a62e645af9c278a21bd6a335393aa709047c9cc251ff135a7d08a91",
+      "change": "Reuse existing negative exported JAL public-byte image and initialized acceptance/decoder evidence unchanged. Add only actual public misa; derive original RV32 target wrap and link four, with privilege/security entries absent."
+    },
+    {
+      "path": "Tests/JumpExecution.lean",
+      "backport_reuse_revision": "37866487cb6f24704a70dd7fb0d96025c8c3127d",
+      "backport_reuse_path": "Tests/BranchExecution.lean",
+      "backport_reuse_sha256": "611b620601116ba4467c57041172e6ce3de5d9eba4b0111d088d0c987be4ba20",
+      "change": "Reuse actual CSR-initialized byte-image construction, public seed proofs, singleton history extraction, empty prefix/suffix elimination and normal-step rebasing. Check old missing original privilege accessor symbolically; no whole missing-CSR exception trace is claimed."
     }
   ],
   "setup_artifacts": [

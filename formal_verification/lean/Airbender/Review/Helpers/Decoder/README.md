@@ -177,3 +177,10 @@ matching supplies both source words and their bounds; native target proofs
 supply the final PC. The public misa entry is transported by unchanged history
 frames, without per-row desired reads, decisions, states or PCs. Full fetched
 control composition and original jump CSR effects remain separate.
+
+[Original jump retirement](../../Trace/Families/JumpBranchSlt/JumpExecution.lean)
+recovers exact original JAL/JALR constructors, indices, sign extension and
+native masks one/two while retaining JAL's raw funct3 bits. Native link/target
+proofs and actual history derive all remaining row inputs. Real initial CSR
+profiles are transported through history; no per-row desired read, link,
+target or after-state is supplied. Full fetched control composition remains open.

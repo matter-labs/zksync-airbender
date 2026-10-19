@@ -26,10 +26,10 @@ Current coverage spans three circuit families:
   including x0 loads and retained native shadow events.
 - [Jumps, branches and comparisons](Airbender/Review/Circuits/JumpBranchSlt/README.md):
   native JAL/JALR links/targets, all six branch conditions/targets and all four
-  comparison results/PCs. Original comparison and branch clauses/retirement
-  now reach native outputs in constructed initialized-history segments, with
-  the documented public ISA CSR boundary for branches. Original jump clauses
-  and complete fetched control execution remain open.
+  comparison results/PCs. All original control clauses and retirement now reach
+  native outputs in constructed initialized-history segments, with documented
+  public ISA/landing-pad CSR profiles. Complete fetched control execution
+  remains open.
 
 Multiply/divide, shifts/binops, subword memory, delegation and whole-machine
 protocol composition are still unfinished; the [plan](FORMAL_VERIFICATION_PLAN.md)
@@ -836,3 +836,35 @@ trace is not claimed. General fetched control composition/terminal instruction-
 state matching, original JAL/JALR clauses and their landing-pad CSR profile,
 new native program exports and general Rust/compiler/cryptographic refinement
 remain separate.
+
+## Initialized original jump clauses and retirement
+
+[Original jump execution](Airbender/Proofs/Trace/Families/JumpBranchSlt/JumpExecution.lean)
+now connects checked native JAL/JALR links and aligned targets to pinned original
+clauses and preparation/retirement. [Pure jump definitions](Airbender/Proofs/JumpBranchSlt/JumpModel.lean)
+and the complete [original retirement declaration](Airbender/Proofs/Sail/JumpRetirement.lean)
+are copied unchanged into internal modules. Native v2 masks one/two, immediate
+9/10, actual masked destination 38/39 and PC 13/14 replace the source layout.
+JAL's original raw funct3 bits and x0 masking remain intact. Existing native
+queries and matching derive ranges/targets, including RV32 wrap, without the
+source final-high closure premise or supplied link/read/result/state.
+
+[The public segment claim](Airbender/Review/Trace/Families/JumpBranchSlt/JumpExecution.lean)
+constructs every history segment and executes its exact public-decoded clause.
+A real initial misa entry has unrestricted value. Traces containing JALR use
+actual initial Machine privilege and a real mseccfg value with MLPE clear;
+other security bits are unrestricted. Unchanged CSR frames derive those reads
+at every row. JAL-only traces need no privilege/security entries. Original
+landing-pad behavior is retained under this explicit platform profile.
+
+[Regressions](Tests/JumpExecution.lean) reuse the unchanged exported negative-JAL
+and logical aliasing-JALR native histories, bytes and decoder certificates,
+adding only actual public CSR entries. JAL retires PC zero to 0xfffffffc and
+writes link four over x1=123. JALR reads old x1=257 before its aliased link write
+eight and retires PC four to 264, clearing bit zero of 265. Both original
+retirements share the exact native write's constructed after-state. The JAL
+state has no privilege/security entry; the prior partial JALR state's original
+privilege accessor cannot succeed. No native defect or whole missing-CSR
+exception trace is claimed. Full fetched control composition and terminal
+instruction-state matching, new native program exports and general
+Rust/compiler/cryptographic refinement remain separate.
