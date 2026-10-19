@@ -2537,6 +2537,54 @@
       "backport_reuse_path": "Tests/ControlComparisons.lean",
       "backport_reuse_sha256": "6a3a8911fec4018f668e3f9a955ccc6ea82ed7a739b1152186468e5abe5ff5fa",
       "change": "Reuse malformed native-flag regression structure. A false equality flag and false BEQ result satisfy actual conditional membership, but native inverse equation sixteen rejects the row. No v2 implementation defect is inferred."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/BranchPC.lean",
+      "source_path": "Airbender/Proofs/JumpBranchSlt/Branch.lean",
+      "source_sha256": "7bc09e74301c629d56b106a79e64c34d7b9100ca5ac366dd08825822c7b21191",
+      "change": "Adapt source branch_pc increment selection, bounded limb lifting, parity/alignment and modular word addition to actual v2 candidate 42/43, PC carries 50/44, taken/complement 46/45 and equations 24..28/31..32. Both actual scalar queries four/five derive candidate bounds, removing the source final-high closure premise. Preserve raw untaken versus cleaned taken routing and prove the taken bit-one assertion plus original parity leaves cleanup unchanged. Local selection/PC/offset/parity interfaces are discharged by the initialized public assembly."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/Decoder.lean",
+      "backport_reuse_revision": "899bdf0c6b8a7ecc206f578ded1aa98a4f930150",
+      "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/Decoder.lean",
+      "backport_reuse_sha256": "9075f111f79787dd976f7c63c745a165a2f35a49e9432469e462300d43194aed",
+      "change": "Keep all existing decoder proofs unchanged. Copy direct_offset_even structure for branch mask sixteen, reusing unchanged decoder_offset_even and original Sail sign-extension parity rather than supplying a per-row parity premise."
+    },
+    {
+      "path": "Airbender/Proofs/JumpBranchSlt/BranchPC.lean",
+      "backport_reuse_revision": "899bdf0c6b8a7ecc206f578ded1aa98a4f930150",
+      "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/Target.lean",
+      "backport_reuse_sha256": "eb240e5c7f306f48736fce3c5490c94b49da7df54a4d1a4c5809f1d7f3a0834e",
+      "change": "Reuse native pc_carries, candidate_high_bound, fixed cleanup values and exact native equation bindings. Original Word.add_of_limbs is reused unchanged. Both actual scalar candidate queries supply bounds; preserve native RV32 rollover and reject taken bit-one misalignment."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/BranchTargets.lean",
+      "backport_reuse_revision": "899bdf0c6b8a7ecc206f578ded1aa98a4f930150",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/Branches.lean",
+      "backport_reuse_sha256": "9c184eeda388dbe96fc3b15968c41f56e4f7f2b27ddc00fc7da34a820d92bdb3",
+      "change": "Reuse image_branches unchanged to derive the actual taken bit from original public decoding and initialized operand ranges. Reuse decoded_inputs and original source/query evidence for PC/offset bounds, incoming alignment, branch selection and derived offset parity. No supplied decision, carry, range, parity or desired PC."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/JumpBranchSlt/BranchTargets.lean",
+      "backport_reuse_revision": "899bdf0c6b8a7ecc206f578ded1aa98a4f930150",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/JumpBranchSlt/Branches.lean",
+      "backport_reuse_sha256": "b08fc2f970f4dac8b772fdd8a40b09e82c8be288366426c9389aa062f6180f64",
+      "change": "Preserve the single short image/initialized/accepted/decoded contract. Expose calculated native PC and alignment under the six original reference predicates; proof assembly remains under Proofs and original Sail retirement remains separate."
+    },
+    {
+      "path": "Tests/BranchTargets.lean",
+      "backport_reuse_revision": "899bdf0c6b8a7ecc206f578ded1aa98a4f930150",
+      "backport_reuse_path": "Tests/Branches.lean",
+      "backport_reuse_sha256": "7bafa20761972f41e7056a8f734cb6cf0bda696677dda026dc8de6004cc2c5ce",
+      "change": "Reuse all eighteen original-byte initialized histories, their actual acceptance/public seeds/PC and decoder certificates unchanged. Apply the new public target claim. Reuse the small polynomial kernel checks plus explicit native lookup witnesses for three local negative/taken-wrap/untaken-wrap boundary rows; no initialized boundary execution or new native program-export certificate is claimed."
+    },
+    {
+      "path": "Tests/BranchTargets.lean",
+      "backport_reuse_revision": "899bdf0c6b8a7ecc206f578ded1aa98a4f930150",
+      "backport_reuse_path": "Tests/JumpTarget.lean",
+      "backport_reuse_sha256": "e2d6713c82a7d84ee65699cabfe305770daf30205b65272cf674bacd2c46d76a",
+      "change": "Reuse full native local target/rollover and alignment-rejection structure. Taken offset two retains valid native cleanup membership but fails actual branch bit-one assertion 26; untaken offset two is ignored while PC+4 wraps normally. Local target carries/ranges and all native constraints are checked, without importing a final-high premise."
     }
   ],
   "setup_artifacts": [

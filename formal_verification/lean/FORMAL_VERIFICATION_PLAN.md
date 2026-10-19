@@ -340,7 +340,16 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    initialized cases cover both outcomes per opcode, opposite signed/unsigned
    orderings and equality. A false equality/table answer fails the native inverse
    equation; no new defect or native program-export certificate is claimed.
-   Next derive branch target arithmetic, connect
+   [Initialized branch targets](Airbender/Review/Trace/Families/JumpBranchSlt/BranchTargets.lean)
+   now follow the checked decisions to PC+offset or PC+4, retaining RV32 wrap and
+   four-byte alignment. Original decoder/sign-extension lemmas derive offset
+   parity; public metadata derives PC/offset ranges, alignment and selectors.
+   Native carries, both scalar candidate queries and taken-only bit-one checks
+   derive exact outgoing words, with no final-high closure premise. All eighteen
+   initialized cases pass; local taken -4, taken/untaken wrap and misalignment
+   rejection are separately checked without claiming initialized wrap execution
+   or a new native export certificate.
+   Next connect
    original control Sail clauses and PC preparation/retirement, then full execution
    and actual terminal instruction-state matching. General Rust/compiler and cryptographic refinement remain separate. No per-row result/PC or
    table-equivalence premise is added.

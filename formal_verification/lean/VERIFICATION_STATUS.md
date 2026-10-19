@@ -23,6 +23,7 @@ not completed v2 coverage.
 | [Initialized native comparison results](Airbender/Review/Trace/Families/JumpBranchSlt/Comparisons.lean) | Native equations, actual scalar/fixed queries, original public metadata and initialized matching derive all four SLT/SLTU/SLTI/SLTIU masked results. Operand ranges, selector identity, signs, borrow and x0 mask are derived. Signed/unsigned disagreement and negative-immediate/x0 regressions pass; branch semantics and original full instruction execution remain open. |
 | [Native comparison PC advancement](Airbender/Review/Trace/Families/JumpBranchSlt/ComparisonPC.lean) | Actual public decoding and native acceptance derive PC+4 and four-byte alignment for all four comparisons. Native scalar ranges supply both outgoing bounds, Boolean carries retain RV32 wrap and raw candidate routing is preserved. All four initialized fixtures, full local wrap and altered-PC rejection pass; original Sail retirement and branch semantics remain separate. |
 | [Initialized native branch conditions](Airbender/Review/Trace/Families/JumpBranchSlt/Branches.lean) | Original public decoding and initialized matching derive all six branch conditions, equality/sign/borrow flags, both routing bits and actual zero writes. Native inverse equations identify equality and actual scalar/fixed queries resolve signed/unsigned order. Eighteen initialized cases cover both outcomes per opcode; branch targets and original Sail retirement remain separate. |
+| [Initialized native branch targets](Airbender/Review/Trace/Families/JumpBranchSlt/BranchTargets.lean) | The checked six conditions select PC+offset or PC+4 with RV32 wrap and four-byte alignment. Original public decoding derives parity, incoming bounds/alignment and selectors; actual native carry, range, routing and cleanup constraints determine both outgoing limbs. Eighteen initialized cases, local negative/wrap rows and taken-only alignment rejection pass; original Sail clauses/retirement remain separate. |
 | V2 artifact import | All 34 quadratic and 3 linear equations, four 16-bit and eight 19-bit timestamp queries from the pinned ADD/SUB layout. Bounds/placement guards and both native zero coefficient encodings. |
 | Reused foundation | Unchanged property definitions, word representation/arithmetic and pinned Sail reference/execution lemmas. Source hashes are checked. |
 | Native state/port clocks | Typed physical state and three direct ports, including actual destination writes. Four-tick advancement and strict previous-write/port order follow from imported equations/queries under initial/prior clock bounds and alignment. The initialized-history layer now derives these local inputs from matching and initial boundaries. |
@@ -672,14 +673,40 @@ has no new native export certificate. Branch target arithmetic, original Sail
 clauses/retirement and complete control execution/terminal instruction-state
 matching remain open; general Rust/compiler/cryptographic refinement is separate.
 
+## Initialized native branch targets
+
+[Native branch PC arithmetic](Airbender/Proofs/JumpBranchSlt/BranchPC.lean)
+now derives PC+offset when taken and PC+4 otherwise, preserving RV32 wrap and
+four-byte alignment. Equations 24/25 derive complementary routing; equations
+31/32 and the unchanged native Boolean-carry proof determine candidate 42/43.
+Actual scalar queries four/five bound both limbs. An untaken row routes the raw
+candidate; a taken row uses cleanup, but original offset parity and native
+assertion 26 exclude either low target bit before cleanup. Both cases therefore
+retain the exact calculated word. Original modular word addition is reused
+unchanged; no final-high closure premise is imported.
+
+[One short initialized claim](Airbender/Review/Trace/Families/JumpBranchSlt/BranchTargets.lean)
+reuses the checked six branch conditions from initialized matching. Original
+public decoding derives incoming PC/offset bounds, alignment, exact selectors
+and offset parity through the unchanged Sail decoder/sign-extension lemmas.
+No per-row bound, parity, carry, decision or desired PC is supplied.
+[Regressions](Tests/BranchTargets.lean) reuse all eighteen initialized original
+branch cases. Full local native rows additionally cover taken offset -4, taken
+PC+8 wrap and untaken PC+4 wrap with ignored offset two. A taken offset-two row
+has valid cleanup membership but fails the actual bit-one assertion. The local
+negative/wrap rows are not initialized/public-decoder executions or new native
+program exports. No v2 defect is established. Original Sail clauses/retirement,
+complete control execution and terminal instruction-state matching remain open;
+general Rust/compiler/cryptographic refinement stays separate.
+
 ## Validation
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all thirty-nine concrete test modules pass.
+- Library, both CLI entrypoints and all forty concrete test modules pass.
 - Importer regressions: 169 checks pass.
-- Axiom audit: 969 explicit roots; only propext, Classical.choice and Quot.sound.
-- All fifty-seven public Review theorems (ten circuit claims, thirty-eight trace claims and nine helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Axiom audit: 979 explicit roots; only propext, Classical.choice and Quot.sound.
+- All fifty-eight public Review theorems (ten circuit claims, thirty-nine trace claims and nine helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
 - Source provenance: 73 unchanged reused files, three native circuit artifacts, thirty-six native Rust sources, seven native setup artifacts and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.

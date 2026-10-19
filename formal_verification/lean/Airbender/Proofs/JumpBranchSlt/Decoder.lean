@@ -192,5 +192,35 @@ theorem direct_offset_even {w : Nat → ZMod mersenne31Modulus} {entry : Program
     | cases fields
     | (rw [← Option.some.inj fields] at one ⊢; simp_all)
   all_goals simpa only [← fields] using parity
+/-- Full native query membership connects branch-offset parity to the original
+    successful Sail decode; it is not supplied by the row caller. -/
+theorem branch_offset_even {w : Nat → ZMod mersenne31Modulus} {entry : ProgramEntry}
+    {before : Reference.RiscV.Sail.State}
+    (source : entry.SourceWith before decoderFields) (query : decoderQuery w = entry.query)
+    (mask : (w 12).val = 16) : (w 9).val % 2 = 0 := by
+  have fieldBounds := decoder_field_bounds source.fields
+  have small : entry.data.mask < mersenne31Modulus := by
+    have cases := fieldBounds.2.1
+    simp only [List.mem_cons, List.mem_nil_iff, or_false] at cases
+    rcases cases with eq | eq | eq | eq | eq <;> rw [eq] <;> decide
+  have packed := congrArg (fun q : Vector (ZMod mersenne31Modulus) 10 => q[9]) query
+  change w 12 = (entry.data.mask : ZMod mersenne31Modulus) at packed
+  have branch : entry.data.mask = 16 := by
+    rw [packed, ZMod.val_natCast_of_lt small] at mask
+    exact mask
+  have immediate := Trace.Proofs.native_query_immediate_word (by decide) fieldBounds.1 query
+  change (Word.mk (w 9).val (w 10).val) = entry.data.immediate at immediate
+  have low := congrArg Word.lo immediate
+  change (w 9).val = entry.data.immediate.lo at low
+  rw [low]
+  have parity := decoder_offset_even source
+  have fields := source.fields
+  unfold decoderFields at fields
+  split at fields
+  all_goals first
+    | cases fields
+    | (rw [← Option.some.inj fields] at branch ⊢; simp_all)
+  all_goals simpa only [← fields] using parity
+
 
 end Airbender.JumpBranchSlt.Proofs

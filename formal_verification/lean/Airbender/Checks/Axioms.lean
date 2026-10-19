@@ -1,4 +1,5 @@
 import Airbender
+import Tests.BranchTargets
 import Tests.Branches
 import Tests.ComparisonPC
 import Tests.ControlComparisons
@@ -1034,3 +1035,13 @@ import Tests.JumpLink
 #print axioms Tests.Branches.public_results
 #print axioms Tests.Branches.bad_equality_table
 #print axioms Tests.Branches.bad_equality_rejected
+#print axioms Airbender.JumpBranchSlt.Proofs.branch_offset_even
+#print axioms Airbender.JumpBranchSlt.Proofs.branch_pc
+#print axioms Airbender.JumpBranchSlt.Proofs.image_branch_targets
+#print axioms Airbender.JumpBranchSlt.public_branch_targets
+#print axioms Tests.BranchTargets.public_targets
+#print axioms Tests.BranchTargets.native_constraints
+#print axioms Tests.BranchTargets.local_targets
+#print axioms Tests.BranchTargets.untaken_offset_two
+#print axioms Tests.BranchTargets.misaligned_cleanup
+#print axioms Tests.BranchTargets.misaligned_rejected

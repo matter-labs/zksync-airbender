@@ -175,3 +175,17 @@ derives operands from matching and mask/tags from original public decoding.
 opcode, signed/unsigned disagreement and equality; a false equality/table answer
 fails the native inverse equation. Branch targets and original Sail retirement
 remain open; no new native program export or v2 defect is claimed.
+
+## Initialized branch targets
+
+[Native target arithmetic](../../../Proofs/JumpBranchSlt/BranchPC.lean) reuses
+Boolean carries and original modular word addition. Both candidate bounds come
+from actual scalar queries four/five. Original decoded parity and the taken
+bit-one assertion prevent cleanup from changing a taken target; untaken routing
+retains raw PC+4. [The short initialized claim](../../Trace/Families/JumpBranchSlt/BranchTargets.lean)
+reuses the checked six conditions and derives all PC/offset inputs from public
+decoding. No final-high closure or expected PC is supplied.
+[Regressions](../../../../Tests/BranchTargets.lean) reuse all eighteen initialized
+branch cases, with separate full local negative/wrap and taken-alignment checks.
+Local boundary rows are not initialized/public-decoder executions or new native
+exports. Original Sail clauses/retirement remain separate.

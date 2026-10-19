@@ -730,3 +730,29 @@ equation. This confirms enforcement, not a new v2 defect. The new logical progra
 has no new native export certificate. Branch target arithmetic, original Sail
 clauses/retirement and complete control execution/terminal instruction-state
 matching remain open; general Rust/compiler/cryptographic refinement is separate.
+
+## Initialized native branch targets
+
+[Native branch PC arithmetic](Airbender/Proofs/JumpBranchSlt/BranchPC.lean)
+now derives PC+offset when taken and PC+4 otherwise, preserving RV32 wrap and
+four-byte alignment. Equations 24/25 derive complementary routing; equations
+31/32 and the unchanged native Boolean-carry proof determine candidate 42/43.
+Actual scalar queries four/five bound both limbs. An untaken row routes the raw
+candidate; a taken row uses cleanup, but original offset parity and native
+assertion 26 exclude either low target bit before cleanup. Both cases therefore
+retain the exact calculated word. Original modular word addition is reused
+unchanged; no final-high closure premise is imported.
+
+[One short initialized claim](Airbender/Review/Trace/Families/JumpBranchSlt/BranchTargets.lean)
+reuses the checked six branch conditions from initialized matching. Original
+public decoding derives incoming PC/offset bounds, alignment, exact selectors
+and offset parity through the unchanged Sail decoder/sign-extension lemmas.
+No per-row bound, parity, carry, decision or desired PC is supplied.
+[Regressions](Tests/BranchTargets.lean) reuse all eighteen initialized original
+branch cases. Full local native rows additionally cover taken offset -4, taken
+PC+8 wrap and untaken PC+4 wrap with ignored offset two. A taken offset-two row
+has valid cleanup membership but fails the actual bit-one assertion. The local
+negative/wrap rows are not initialized/public-decoder executions or new native
+program exports. No v2 defect is established. Original Sail clauses/retirement,
+complete control execution and terminal instruction-state matching remain open;
+general Rust/compiler/cryptographic refinement stays separate.

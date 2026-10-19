@@ -153,3 +153,11 @@ word bounds. Native subtraction/inverse/positive-flag equations and actual fixed
 membership determine every condition; no caller-supplied equality/sign/borrow
 bit or desired answer is used. Branch targets and original Sail retirement
 remain separate.
+
+[Initialized branch targets](../../Trace/Families/JumpBranchSlt/BranchTargets.lean)
+reuse the original successful Sail decoder's implicit zero offset bit and its
+unchanged sign-extension proof. Complete native query membership connects that
+parity to actual immediate columns 9/10; public metadata also derives incoming
+PC/offset bounds and alignment. Native routing/carries/ranges determine the final
+PC from the checked branch condition, with no supplied parity or closure premise.
+Original Sail instruction retirement remains separate.

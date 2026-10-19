@@ -264,3 +264,12 @@ supplies both operand ranges, with no per-row flags, bounds or desired result.
 [Eighteen initialized cases](../../../Tests/Branches.lean) check both outcomes
 for every opcode and retain the real zero destination event. Branch targets and
 original Sail clauses/retirement remain separate.
+
+[Initialized branch targets](Families/JumpBranchSlt/BranchTargets.lean) now
+follow each checked branch condition to PC+offset or PC+4. Public original
+decoding supplies bounds/alignment and derives offset parity through unchanged
+Sail lemmas; actual native queries/routing derive exact aligned targets with
+RV32 wrap. [All eighteen initialized cases](../../../Tests/BranchTargets.lean)
+pass, together with separate full native local negative/wrap and taken-only
+misalignment regressions. No per-row decision, carry, parity, bound, expected PC
+or final-high closure is supplied. Original Sail retirement remains open.
