@@ -328,3 +328,7 @@ shared logical history definitions are unchanged.
 ## Original MUL/DIV register histories
 
 [The short public claim](Families/MulDiv/Registers.lean) constructs actual original Sail register transfers, all segment states and code/misa frames. It includes aliases and original x0 writes. Original operation clauses and PC retirement remain unfinished.
+
+## Original local MUL/DIV preparation and retirement
+
+[The short public instruction-history claim](Families/MulDiv/Execution.lean) derives the original four-operation clauses and actual PC retirement over constructed register histories. All sixteen initialized cases, original x0 retirement and actual aliased second-MUL retirement pass. A full native row checks RV32 PC wrap. Complete fetched composition still needs stateful decoder replay.

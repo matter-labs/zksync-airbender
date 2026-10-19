@@ -413,9 +413,13 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    stateful original decoder after real updates. Sixteen cases and a reversed
    aliasing two-MUL program pass; stale old-destination metadata passes local
    constraints/decoding/state matching but fails native memory matching.
-   Next connect original operation clauses, preparation/PC retirement and
-   fetched MUL/DIV execution, then shift/binop and subword memory. Cell-transfer
-   histories do not claim original instruction retirement.
+   Original MUL/MULHU/DIVU/REMU clauses and local nextPC preparation/PC
+   retirement now follow from those constructed histories. Native PC gates
+   derive bounded modular RV32 successors, including a full imported-row wrap
+   regression. Sixteen initialized cases and actual second-MUL alias retirement
+   pass. Next compose complete fetched MUL/DIV execution with stateful decoder
+   replay and actual row boundaries, then shift/binop and subword memory. Local
+   transitions do not yet claim a complete fetched instruction trace.
 4. Rebind bigint/BLAKE/Keccak workers and callers. Retest control validity,
    unissued workers, ROM behavior and request participation on v2 before reusing
    any source finding or temporary premise.

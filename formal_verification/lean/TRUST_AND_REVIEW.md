@@ -1233,3 +1233,36 @@ execution remain unfinished. These are Sail cell-transfer histories, not full
 instruction traces. Physical boot/setup/compiler refinement, cryptographic
 argument enforcement, unified execution/protocol spans and completeness remain
 separately scoped.
+
+## Original local MUL/DIV execution and PC retirement
+
+[The short public instruction-history theorem](Airbender/Review/Trace/Families/MulDiv/Execution.lean)
+now combines constructed real register histories with original local MUL,
+MULHU, DIVU and REMU execution. [Its observable definitions](Airbender/Review/Helpers/Memory/MulDivExecution.lean)
+record original instruction identity, actual native successor bounds and the
+original preparation/clause/retirement transition for every native row. Public
+bytes, initialized matching and decoder membership derive the operand ranges,
+register reads, operation selection, x0 behavior and PC inputs.
+
+[Original clause assembly](Airbender/Proofs/MulDiv/Clauses.lean) reuses the pinned
+source's signed low-product, unsigned high-product and integer division/remainder
+proofs against actual native v2 results and masked writes. [Local retirement](Airbender/Proofs/MulDiv/Execution.lean)
+transports real native cell histories through Sail's own nextPC preparation and
+PC retirement, identifying the complete actual after-state. Original discarded
+x0 operations and source/destination aliases are retained.
+
+[The native PC proof](Airbender/Proofs/MulDiv/PC.lean) checks actual Boolean,
+carry and inverse gates, deriving both successor bounds and modular RV32 PC+4.
+[A full imported native row](Tests/MulDivPC.lean) satisfies every equation and
+lookup while wrapping 0xfffffffc to zero. [All sixteen initialized cases](Tests/MulDivExecution.lean)
+execute the original four clauses, including zero divisors and x0 writes that
+still retire PC. [The actual alias sequence](Tests/MulDivRegisterChain.lean) now
+executes and retires the second original MUL from PC four to eight after its
+real prefix update.
+
+These are original local instruction transitions over constructed histories.
+Complete finite fetched MUL/DIV execution still needs stateful-decoder-aware
+composition; no fetched wraparound program or new Rust export is claimed.
+Physical initialization, general Rust/JSON/compiler refinement, cryptographic
+argument enforcement, unified execution/protocol spans and completeness remain
+separately scoped. No native defect is established by this checkpoint.

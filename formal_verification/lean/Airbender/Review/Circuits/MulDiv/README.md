@@ -44,3 +44,7 @@ Follow the [plan](../../../../FORMAL_VERIFICATION_PLAN.md).
 ## Original Sail register connection
 
 [The public register-history claim](../../Trace/Families/MulDiv/Registers.lean) now derives original same-pre-state reads, actual masked writes and every segment state. Actual code/misa frames replay the original stateful decoder. Original MUL/DIV operation clauses and PC retirement remain separate.
+
+## Original local execution and PC retirement
+
+[Original constructor/clause dispatch](Sail.lean) retains all four opcodes and x0 destinations. [The short trace claim](../../Trace/Families/MulDiv/Execution.lean) derives their actual local preparation/retirement from initialized native histories. [Clause calculations](../../../Proofs/MulDiv/Clauses.lean) reuse pinned source arithmetic proofs; [native PC gates](../../../Proofs/MulDiv/PC.lean) retain aligned RV32 rollover. Complete fetched composition remains separate.

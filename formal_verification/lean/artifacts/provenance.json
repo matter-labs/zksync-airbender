@@ -3263,6 +3263,73 @@
       "backport_reuse_path": "Tests/ControlSequence.lean",
       "backport_reuse_sha256": "4b918360005de1c46a58a0028434b5a350c2eaccc300c903365a0ca7bc6f00f5",
       "change": "Reuse reversed two-row native state/memory matching and original public byte construction. Build MUL x3,x1,x2 then MUL x1,x1,x2 with a real prefix update and aliased final destination, rebind the actual native PC inverse at PC four, and derive original pre-state reads 123/7 and write 861. The stale old-destination read passes local constraints/decoding/state matching but fails actual native memory matching. No Rust export or original MUL retirement is claimed."
+    },
+    {
+      "path": "Airbender/Review/Circuits/MulDiv/Sail.lean",
+      "source_path": "Airbender/Review/Circuits/MulDiv/Model.lean",
+      "source_sha256": "5692e1e46cad0dc8a044d74fac75779784813e4aaa5c16b45820308cd85c17cf",
+      "change": "Adapt the original four-constructor dispatch to explicit operation/register arguments and existing native v2 operation data. Keep signed/signed low MUL, unsigned high MULHU and true unsigned DIV/REM flags; dispatch only to unchanged generated Sail clauses, including original x0 instructions."
+    },
+    {
+      "path": "Airbender/Proofs/MulDiv/Clauses.lean",
+      "source_path": "Airbender/Proofs/MulDiv/Soundness.lean",
+      "source_sha256": "4c6cc841095dade24bfbfb7f2403e985dac3703015f5d18b49c4706e9969a2e2",
+      "change": "Reuse original clause proof assembly and unchanged mul_low_signed, mul_high_unsigned, truncate_nat and integer division/remainder lemmas. Replace source one-hot selectors/word columns with checked native v2 numerical results and actual masked writes. Recover exact original constructor from full decoder fields, preserve aliases and use Sail write_zero for discarded values."
+    },
+    {
+      "path": "Airbender/Proofs/MulDiv/Execution.lean",
+      "source_path": "Airbender/Proofs/MulDiv/Execution.lean",
+      "source_sha256": "2580806ae2431babf2aa2578146edbbe0212d971845211df12c26c2aec96a061",
+      "change": "Reuse original local execution/retirement assembly against actual native v2 ports, incoming PC 0/1, successor PC 13/14 and actual destination 60/61. Keep aligned RV32 wrap via checked native carry/inverse gates instead of source no-overflow assumptions; transport actual cell history through original preparation and identify the complete actual retirement state."
+    },
+    {
+      "path": "Airbender/Proofs/MulDiv/PC.lean",
+      "backport_reuse_revision": "d434028e69a5cdfeaaf092357f56b5f7adda6069",
+      "backport_reuse_path": "Airbender/Proofs/AddSub/PC.lean",
+      "backport_reuse_sha256": "2dadbc797c1f6c80e819771710d4202dbe50c14aae0557fff8d1aa9f33ebee13",
+      "change": "Reuse the checked native v2 aligned PC carry/inverse calculation. Rebind Boolean assertions 7/8, low gates 37/38/39, high gates 40/41/42 and high inverse column 64. Derive successor bounds and BitVec PC+4 including top-of-RV32 rollover; no final bound or no-overflow premise."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Memory/MulDivExecution.lean",
+      "backport_reuse_revision": "d434028e69a5cdfeaaf092357f56b5f7adda6069",
+      "backport_reuse_path": "Airbender/Review/Helpers/Memory/MulDiv.lean",
+      "backport_reuse_sha256": "74f0715b2756e7ee4d0a6ce6778ad52156272c42c7763e830f4c167c403e99e9",
+      "change": "Extend existing register-history observables with exact original instruction identity, native successor bounds and original local preparation/clause/retirement from actual history. Constructed states remain supplied by the existing history conclusion; complete fetched composition remains separate."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/MulDiv/Execution.lean",
+      "backport_reuse_revision": "d434028e69a5cdfeaaf092357f56b5f7adda6069",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/MulDiv/Results.lean",
+      "backport_reuse_sha256": "c1a29f99a0d9288e294d318c4cf88009ee275f4fad97001aa7742920a504ac93",
+      "change": "Reuse initialized native interface recovery: actual public source/query, decoder-owned PC bounds/alignment, accepted native equations and read ranges. Derive original local operation/retirement for every actual row alongside constructed register histories, without supplied operands, selectors, reads, results or final-state predicates."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/MulDiv/Execution.lean",
+      "backport_reuse_revision": "d434028e69a5cdfeaaf092357f56b5f7adda6069",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/MulDiv/Registers.lean",
+      "backport_reuse_sha256": "5d474c48b240cb792ab5cc2e8a11f89ddc276ed5553b746a5d32dfab5f8b58bf",
+      "change": "Reuse the short public routing pattern for actual initialization, full native matching and decoded setup. Keep observable instruction-history conclusion in Review helpers and all calculations/proof assembly under Proofs."
+    },
+    {
+      "path": "Tests/MulDivExecution.lean",
+      "backport_reuse_revision": "d434028e69a5cdfeaaf092357f56b5f7adda6069",
+      "backport_reuse_path": "Tests/MulDivRegisters.lean",
+      "backport_reuse_sha256": "847006bbd5f352abb8fb14589e7f2cc35b2f5a529561d20563858d219b3a2471",
+      "change": "Reuse actual initialized public history extraction for all sixteen operation/write/divisor cases. Check original local Sail preparation/retirement with real constructed states, and prove discarded x0 data still retires PC to four."
+    },
+    {
+      "path": "Tests/MulDivPC.lean",
+      "backport_reuse_revision": "d434028e69a5cdfeaaf092357f56b5f7adda6069",
+      "backport_reuse_path": "Tests/MulDivMul.lean",
+      "backport_reuse_sha256": "84899b5405860351f5d8c2b57bc076b8f17d70671885488da5d364e865c9f01a",
+      "change": "Reuse full native constraint/lookup witness checking. Rebind native PC 0xfffffffc to zero with both carry flags and actual inverse witnesses; check every imported equation and lookup, successor theorem and concrete boundary values. No fetched wraparound program or Rust export is claimed."
+    },
+    {
+      "path": "Tests/MulDivRegisterChain.lean",
+      "backport_reuse_revision": "d434028e69a5cdfeaaf092357f56b5f7adda6069",
+      "backport_reuse_path": "Tests/MulDivRegisterChain.lean",
+      "backport_reuse_sha256": "feeb4afc50df9c517e9a0d655ff0425f04638f63f2fce514e61c61bc15b0cd6b",
+      "change": "Extend the unchanged actual two-MUL public-byte/native-history fixture with original second-MUL preparation/retirement from PC four to eight after the real prefix update. Derive the decoder entry and both states; keep prior alias/timestamp rejection tests."
     }
   ],
   "setup_artifacts": [

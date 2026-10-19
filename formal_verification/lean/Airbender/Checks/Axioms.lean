@@ -1,3 +1,5 @@
+import Tests.MulDivExecution
+import Tests.MulDivPC
 import Tests.MulDivRegisters
 import Tests.MulDivRegisterChain
 import Airbender.Proofs.Sail.DecoderFrame
@@ -1256,3 +1258,18 @@ import Tests.JumpLink
 #print axioms Tests.MulDivRegisters.aligned
 #print axioms Tests.MulDivRegisters.discarded_state
 #print axioms Tests.MulDivRegisters.initialized_transfers
+
+-- Original local MUL/DIV clauses and native RV32 preparation/retirement.
+#print axioms Airbender.MulDiv.Proofs.clause_of_reads
+#print axioms Airbender.MulDiv.Proofs.decoder_instruction
+#print axioms Airbender.MulDiv.Proofs.image_instruction_history
+#print axioms Airbender.MulDiv.Proofs.local_row_execution
+#print axioms Airbender.MulDiv.Proofs.native_clause
+#print axioms Airbender.MulDiv.Proofs.native_pc_successor
+#print axioms Airbender.MulDiv.public_instruction_history
+#print axioms Tests.MulDivExecution.discarded_retirement
+#print axioms Tests.MulDivExecution.initialized_execution
+#print axioms Tests.MulDivPC.native_wrap
+#print axioms Tests.MulDivPC.native_wrap_constraints
+#print axioms Tests.MulDivPC.wrapped_value
+#print axioms Tests.MulDivRegisterChain.alias_retirement

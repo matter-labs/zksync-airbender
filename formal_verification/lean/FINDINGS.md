@@ -68,6 +68,8 @@ backport.
 
 | Actual MUL/DIV Sail GPR histories and decoder replay | [The public claim](Airbender/Review/Trace/Families/MulDiv/Registers.lean) constructs all segment states and original same-pre-state register reads/actual masked writes from native matching and public initialization. Native x0 equations retain original discarded opcodes. Actual GPR histories preserve code and misa, so the original stateful decoder replays after real updates. Sixteen initialized cases and a two-MUL source/destination alias sequence pass; the stale old-destination timestamp passes local constraints/decoding/state matching but fails native memory matching. This is a checked logical argument/configuration boundary, not a native defect or full MUL/DIV instruction/PC execution. |
 
+| Original local MUL/DIV execution and native PC wrap | [The public instruction-history claim](Airbender/Review/Trace/Families/MulDiv/Execution.lean) derives original four-operation clauses, actual masked writes and original preparation/retirement from constructed native histories. Actual carry/inverse gates derive bounded modular RV32 PC+4; a full imported row wraps 0xfffffffc to zero. Sixteen initialized cases retain zero divisors and x0 retirement; the actual aliased second MUL retires PC four to eight after a real update. Complete fetched stateful-decoder composition remains unfinished; no native defect, fetched wraparound program or compiler refinement is claimed. |
+
 ## V3 findings awaiting v2 assessment
 
 Bigint control masks, unissued workers, worker ROM ports, decoder filler outside the checked ADD/SUB, word-memory and control minus-one profiles,

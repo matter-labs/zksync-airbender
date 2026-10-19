@@ -1,3 +1,4 @@
+import Airbender.Review.Trace.Families.MulDiv.Execution
 import Tests.MulDivRegisters
 
 namespace Tests.MulDivRegisterChain
@@ -251,5 +252,42 @@ theorem alias_after_update : ∃ rowBefore after : State,
       WordColumns.code,WordColumns.evaluate,memoryWord,Nat.unpair_pair,
       Word.toBitVec,Word.value,limbBase] at left right written ⊢
     all_goals assumption
+
+/-- The original aliased second MUL executes and retires PC four to eight after
+    a real prefix update. All segment states and native interfaces are derived. -/
+theorem alias_retirement : ∃ rowBefore after : State,
+    SailHistory [Cell.register 0,.register 1,.register 2,.register 3]
+      (rowEvents (trace false).memoryEpoch
+        (Tests.MulDivInitializedFixture.nativeRow .mul false false)).reverse before rowBefore ∧
+    aliasEntry.SourceWith rowBefore MulDiv.decoderFields ∧
+    run (normalStep (MulDiv.clause .mul 1 2 1)) (retiredState rowBefore 4) =
+      .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after 8) := by
+  obtain ⟨registers,steps⟩ := MulDiv.public_instruction_history program_image public_inputs accepted
+    (decoded false) Tests.MulDivRegisters.aligned
+  obtain ⟨history,rows,after,_,permutation,ordered,_,_,_,_,transfers⟩ := registers
+  have shape := sorted_rows permutation ordered
+  obtain ⟨actual,present,rowBefore,rowAfter,_,source,query,earlier,current,later,_⟩ :=
+    transfers [] (aliasRow false) [Tests.MulDivInitializedFixture.nativeRow .mul false false] shape
+  change SailHistory _ [] rowAfter after at later
+  cases later
+  have only (actual : MulDiv.ProgramEntry) (present : actual ∈ setup.program)
+      (query : (aliasRow false).decoderQuery = actual.query) : actual = aliasEntry := by
+    have choice : actual = Tests.MulDivInitializedFixture.entry .mul false ∨ actual = aliasEntry := by
+      simpa [setup,SparseDecoderSetup.program] using present
+    rcases choice with first | second
+    · subst actual
+      have pc := congrArg (fun q : Vector (ZMod mersenne31Modulus) 10 => q[0]) query
+      change (4 : ZMod mersenne31Modulus) = 0 at pc
+      exact False.elim ((by decide : (4 : ZMod mersenne31Modulus) ≠ 0) pc)
+    · exact second
+  have same := only actual present query
+  subst actual
+  obtain ⟨actual,present,_,query,execution⟩ := steps (aliasRow false) (by simp [trace])
+  have same := only actual present query
+  subst actual
+  have checked := execution.2.2 _ _ current
+  change run (normalStep (MulDiv.clause .mul 1 2 1)) (retiredState rowBefore 4) =
+    .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after 8) at checked
+  exact ⟨rowBefore,after,earlier,source,checked⟩
 
 end Tests.MulDivRegisterChain

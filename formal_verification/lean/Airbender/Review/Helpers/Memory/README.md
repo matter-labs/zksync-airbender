@@ -88,3 +88,7 @@ enforcement and general Rust refinement remain separate.
 ## Unsigned MUL/DIV observations
 
 [Register transfer/history observables](MulDiv.lean) describe actual original Sail reads/writes, constructed segment states, final cell matching and code/misa preservation. [The short public claim](../../Trace/Families/MulDiv/Registers.lean) derives them from actual public bytes/seeds and native matching; calculations remain under Proofs.
+
+## Original local MUL/DIV execution observations
+
+[Instruction-history observations](MulDivExecution.lean) combine constructed real register histories, original instruction identity, native successor bounds and original local Sail preparation/retirement. [The short public theorem](../../Trace/Families/MulDiv/Execution.lean) derives all interfaces; complete fetched composition remains separate.
