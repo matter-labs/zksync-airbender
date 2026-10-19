@@ -818,7 +818,10 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
 
     let values_are_equal_for_perform_eq =
         Boolean::and(&all_zeroes, &result_of_boolean.toggle(), cs);
-    let perform_eq_bit = Boolean::and(&perform_eq_boolean, &values_are_equal_for_perform_eq, cs);
+    cs.set_name_for_variable(
+        values_are_equal_for_perform_eq.get_variable().unwrap(),
+        "values are equal for perform eq",
+    );
 
     // now we need to resolve a condition
     // - for all add/sub ops our return register is just an overflow
@@ -836,7 +839,7 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
     let mut expr = Expr::var(result_of_variable).mask(perform_add_boolean)
         + Expr::var(result_of_variable).mask(perform_sub_boolean)
         + Expr::var(result_of_variable).mask(perform_sub_negate_boolean)
-        + Expr::from(perform_eq_bit).mask(perform_eq_boolean)
+        + Expr::from(values_are_equal_for_perform_eq).mask(perform_eq_boolean)
         + Expr::from(all_zeroes.toggle()).mask(perform_mul_low_boolean);
     // memcopy is same as addition
     expr = expr + Expr::var(result_of_variable).mask(perform_memcopy_boolean);
@@ -916,6 +919,37 @@ mod test {
             &ssa_forms,
             "compiled_circuits/bigint_with_extended_control_ssa_gkr.json",
         );
+    }
+
+    #[test]
+    fn bigint_with_control_commits_160_witness_columns() {
+        use crate::definitions::GKRAddress;
+        use ::field::baby_bear::base::BabyBearField;
+
+        let compiled = compile_delegation_circuit_into_gkr::<BabyBearField>(
+            &|cs| bigint_with_extended_control_delegation_circuit_table_addition_fn(cs),
+            &|cs| {
+                let _ = define_bigint_with_extended_control_delegation_circuit(cs);
+            },
+            22,
+        );
+
+        assert_eq!(compiled.memory_layout.total_width, 97);
+        assert_eq!(compiled.witness_layout.total_width, 160);
+        assert_eq!(compiled.num_generic_lookups, 61);
+        assert_eq!(compiled.range_check_16_lookup_expressions.len(), 32);
+        assert_eq!(compiled.timestamp_range_check_lookup_expressions.len(), 41);
+        assert_eq!(compiled.degree_1_constraints.len(), 2);
+        assert_eq!(compiled.degree_2_constraints.len(), 114);
+
+        let equality_flags: Vec<_> = compiled
+            .variable_names
+            .iter()
+            .filter(|(_, name)| name.as_str() == "values are equal for perform eq")
+            .map(|(variable, _)| compiled.placement_data[variable])
+            .collect();
+        assert_eq!(equality_flags.len(), 1);
+        assert!(matches!(equality_flags[0], GKRAddress::BaseLayerWitness(_)));
     }
 
     #[test]
