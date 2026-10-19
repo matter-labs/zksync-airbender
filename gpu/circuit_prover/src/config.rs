@@ -1,7 +1,11 @@
 //! Prover configuration policy.
 //!
 //! Maps a `CircuitType` + `SecurityLevel` to the canonical upstream
-//! `ProverConfig`, and owns the GPU-supported-security-level contract. Lives in
+//! `ProverConfig`, and owns the GPU-supported-security-level contract. The
+//! canonical configs are UNPACKED (`ProverConfig::pack_log2 == 0`); the GPU
+//! prover does not implement base-commitment packing, and every GPU entry that
+//! takes a `ProverConfig` rejects a packed one first
+//! (`gpu_trace::trace::memory::assert_unpacked_prover_config`). Lives in
 //! the prover layer because `ProverConfig` is a `prove()` input (see
 //! `proof/mod.rs`): `execution` calls down into this and threads the result
 //! into `prove()`. The low `witness::circuit_type` enum stays a pure
@@ -94,11 +98,14 @@ mod tests {
     use gpu_trace::witness::circuit_type::UnrolledCircuitType;
 
     #[test]
-    fn builds_prover_config_for_all_supported_security_levels() {
+    fn cpu_builds_prover_config_for_all_supported_security_levels() {
         let circuit_type = CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns);
         for &level in GPU_SUPPORTED_SECURITY_LEVELS.iter() {
             let cfg = prover_config(circuit_type, level).unwrap();
             assert_eq!(cfg.security_level, level);
+            // the GPU prover implements only the unpacked base commitment
+            assert_eq!(cfg.pack_log2, 0);
+            gpu_trace::trace::memory::assert_unpacked_prover_config(&cfg);
         }
     }
 
