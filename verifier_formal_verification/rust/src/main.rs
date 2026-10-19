@@ -8,6 +8,10 @@ mod bb;
 #[unsafe(no_mangle)]
 static mut BLAKE: blake2s_u32::DelegatedBlake2sState = unsafe { core::mem::zeroed() };
 
+/// A second evaluator for the Merkle path (`BLAKE` keeps the transcript seed).
+#[unsafe(no_mangle)]
+static mut MERKLE: blake2s_u32::DelegatedBlake2sState = unsafe { core::mem::zeroed() };
+
 #[unsafe(no_mangle)]
 #[inline(never)]
 pub extern "C" fn u32_inc(x: u32) -> u32 {
@@ -140,6 +144,52 @@ pub extern "C" fn blake2s_compress(st: &mut blake2s_u32::DelegatedBlake2sState, 
     unsafe { st.run_round_function_with_byte_len::<true>(len_bytes as usize, last) }
 }
 
+/// One level of a Merkle path: the node in `st.state` and its sibling `sib` (`right != 0`: the node is the right
+/// child) into the parent, the verifier's two-to-one hash: Blake2s (7 rounds) of the 64-byte block `left ‖ right`.
+#[unsafe(no_mangle)]
+#[inline(never)]
+pub extern "C" fn merkle_step(st: &mut blake2s_u32::DelegatedBlake2sState, right: u32, sib: &[u32; 8]) {
+    let node = st.state;
+    let buf = st.get_witness_buffer();
+    if right != 0 {
+        buf[..8].copy_from_slice(sib);
+        buf[8..16].copy_from_slice(&node);
+    } else {
+        buf[..8].copy_from_slice(&node);
+        buf[8..16].copy_from_slice(sib);
+    }
+    st.state = blake2s_u32::CONFIGURED_IV;
+    st.t = 0;
+    blake2s_compress(st, 64, true);
+}
+
+/// A Merkle path from `leaf` to a root, all from the non-determinism source: the root (8 words), the depth `d` (at
+/// most 32), then per level the side word and the sibling (8 words). A wrong root ends the run with
+/// `zksync_os_finish_error`.
+#[unsafe(no_mangle)]
+#[inline(never)]
+pub extern "C" fn merkle_check(leaf: &[u32; 8]) {
+    let root: [u32; 8] = core::array::from_fn(|_| riscv_common::csr_read_word());
+    let d = riscv_common::csr_read_word();
+    if d > 32 {
+        riscv_common::zksync_os_finish_error()
+    }
+    let st = unsafe { &mut *(&raw mut MERKLE) };
+    st.state = *leaf;
+    for _ in 0..d {
+        let right = riscv_common::csr_read_word();
+        let sib: [u32; 8] = core::array::from_fn(|_| riscv_common::csr_read_word());
+        merkle_step(st, right, &sib);
+    }
+    let mut diff = 0;
+    for i in 0..8 {
+        diff |= st.state[i] ^ root[i];
+    }
+    if core::hint::black_box(diff) != 0 {
+        riscv_common::zksync_os_finish_error()
+    }
+}
+
 #[unsafe(link_section = ".init.rust")]
 #[unsafe(export_name = "_start_rust")]
 unsafe extern "C" fn start_rust() -> ! {
@@ -166,5 +216,7 @@ fn main() -> ! {
     // source; `fs_check` fails the run if it is wrong
     let v: [u32; 4] = core::array::from_fn(|_| riscv_common::csr_read_word());
     fs_check(st, &v);
+    // a Merkle path from the digest to a root
+    merkle_check(&st.state);
     riscv_common::zksync_os_finish_success(&[c, p, e[0], e[1], e[2], e[3], st.state[0], st.state[1]])
 }

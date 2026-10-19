@@ -1,6 +1,7 @@
 import Human.RV32
 import Human.Spec
 import Human.SpecBlake
+import Human.SpecMerkle
 import DelegationsTest
 import Image
 import ImageMop
@@ -70,21 +71,40 @@ def claim (x : Nat) (y : List Nat) : List Nat :=
     BitVec.ofNat 32 y[3]!]
   poly4 [d[0].toNat % p, d[1].toNat % p, d[2].toNat % p, d[3].toNat % p]
 
-/-- A wrong claim must end in `zksync_os_finish_error`: the run gets stuck. -/
-def runBad (name : String) (bytes : Array (BitVec 8)) (halt : Nat) (x : Nat) (y : List Nat) : IO Bool := do
+def seed (x : Nat) (y : List Nat) : Vector Word 8 :=
+  Spec.blake5 #v[BitVec.ofNat 32 x, BitVec.ofNat 32 y[0]!, BitVec.ofNat 32 y[1]!, BitVec.ofNat 32 y[2]!,
+    BitVec.ofNat 32 y[3]!]
+
+/-- A Merkle path of `d` levels (sides alternating, pseudo-random siblings). -/
+def path (x d : Nat) : List Spec.MerkleStep :=
+  (List.range d).map fun k => (BitVec.ofNat 32 (k % 2 * (x + 7)),
+    Vector.ofFn fun i : Fin 8 => BitVec.ofNat 32 ((x + 1) * 2654435761 * (k + 3) + i.val * 40503))
+
+/-- The ways a run can go: all right; a wrong claim; a wrong root; too deep a path (33 levels). -/
+inductive Case | ok | badClaim | badRoot | tooDeep
+deriving BEq
+
+def input (x : Nat) (y : List Nat) (c : Case) : List Word :=
+  let v := if c == .badClaim then (claim x y).modifyHead (· + 1) else claim x y
+  let pth := path x (if c == .tooDeep then 33 else 3)
+  let root := Spec.merkleRoot (seed x y) pth
+  let root := if c == .badRoot then root.set 0 (root[0] + 1) else root
+  (x :: y ++ v).map (BitVec.ofNat 32 ·) ++ Spec.pathInput root pth
+
+/-- A failing case must end in `zksync_os_finish_error`: the run gets stuck. -/
+def runBad (name : String) (bytes : Array (BitVec 8)) (halt : Nat) (x : Nat) (y : List Nat) (c : Case) :
+    IO Bool := do
   let base := mem0 bytes
-  let v := (claim x y).modifyHead (· + 1)
-  let inp : List Word := (x :: y ++ v).map (BitVec.ofNat 32 ·)
-  let s0 : State := { pc := 0, regFile := fun _ => 0, mem := base, input := inp }
-  match ← runFlat base 2000 s0 halt with
-  | none => IO.println s!"{name} x = {x}, wrong claim: stuck OK"; return true
-  | some s => IO.println s!"{name} x = {x}, wrong claim: pc = {s.pc.toNat} MISMATCH"; return false
+  let s0 : State := { pc := 0, regFile := fun _ => 0, mem := base, input := input x y c }
+  let what := match c with | .badClaim => "wrong claim" | .badRoot => "wrong root" | _ => "33 levels"
+  match ← runFlat base 4000 s0 halt with
+  | none => IO.println s!"{name} x = {x}, {what}: stuck OK"; return true
+  | some s => IO.println s!"{name} x = {x}, {what}: pc = {s.pc.toNat} MISMATCH"; return false
 
 def runOne (name : String) (bytes : Array (BitVec 8)) (halt : Nat) (x : Nat) (y : List Nat) : IO Bool := do
   let base := mem0 bytes
-  let inp : List Word := (x :: y ++ claim x y).map (BitVec.ofNat 32 ·)
-  let s0 : State := { pc := 0, regFile := fun _ => 0, mem := base, input := inp }
-  match ← runFlat base 2000 s0 halt with
+  let s0 : State := { pc := 0, regFile := fun _ => 0, mem := base, input := input x y .ok }
+  match ← runFlat base 4000 s0 halt with
   | none => IO.println s!"{name} x = {x}, y = {y}: stuck"; return false
   | some s =>
     let got := [(s.getReg 10).toNat, (s.getReg 11).toNat % P, (s.getReg 12).toNat, (s.getReg 13).toNat,
@@ -98,6 +118,7 @@ def main : IO UInt32 := do
   for (x, y) in [(0, [0, 0, 0, 0]), (5, [1, 2, 3, 4]), (123456789, [p - 1, 7, 0, 1234567]), (P, [5, p - 2, 11, 0])] do
     ok := (← runOne "app    " Image.bytes Image.halt x y) && ok
     ok := (← runOne "app_mop" ImageMop.bytes ImageMop.halt x y) && ok
-    ok := (← runBad "app    " Image.bytes Image.halt x y) && ok
-    ok := (← runBad "app_mop" ImageMop.bytes ImageMop.halt x y) && ok
+    for c in [Case.badClaim, .badRoot, .tooDeep] do
+      ok := (← runBad "app    " Image.bytes Image.halt x y c) && ok
+      ok := (← runBad "app_mop" ImageMop.bytes ImageMop.halt x y c) && ok
   return if ok then 0 else 1

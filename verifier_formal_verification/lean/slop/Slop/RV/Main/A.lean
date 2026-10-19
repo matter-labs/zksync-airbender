@@ -36,14 +36,14 @@ theorem main_init (S : State) (codeM codeI : List Word) (Ai src : Word)
     (hI : InitOK Ai src codeI) (hIl : codeI.length = 34) (hAi : Ai.toNat % 4 = 0)
     (hAir : Ai.toNat + 136 + 4 * 1676 ≤ 4194304) (hsrc : src.toNat + 912 ≤ 4194304)
     (hpc : S.pc = 0x38#32) (h2 : S.getReg 2#5 = 0x13ffff0#32) (hra : (S.getReg 1#5).toNat % 4 = 0)
-    (hmain : CodeAt S 0x38#32 codeM) (hlen : codeM.length = 96) (hb0 : codeM.take 12 = Code.main.take 12)
+    (hmain : CodeAt S 0x38#32 codeM) (hlen : codeM.length = 98) (hb0 : codeM.take 12 = Code.main.take 12)
     (j0 : Word) (hj0 : codeM[12]? = some j0) (dj0 : decode j0 = some (.jal 1#5 (Ai - 0x68#32)))
     (hinit : CodeAt S Ai codeI) (hmc : CodeAt S (Ai + 136#32) Code.memcpy) :
     ∃ m S2, run m S = some S2 ∧ S2.pc = 0x6c#32 ∧ S2.getReg 2#5 = 0x13fff80#32 ∧
       (∀ a : Word, 0x13ffff0 ≤ a.toNat → S2.mem a = blockCopy S.mem 20971520#32 src 912 a) ∧
       (∀ b : Word, b.toNat < ROM_END → S2.mem b = S.mem b) := by
   have h2n : (S.getReg 2#5).toNat = 0x13ffff0 := by rw [h2]; rfl
-  have hl : Code.main.length = 96 := by decide +kernel
+  have hl : Code.main.length = 98 := by decide +kernel
   obtain ⟨_, e12⟩ := List.getElem?_eq_some_iff.mp hj0
   simp only [ROM_END, RAM_END] at *
   ------------------------------------------------------------------ prologue, `init`
@@ -51,7 +51,7 @@ theorem main_init (S : State) (codeM codeI : List Word) (Ai src : Word)
   obtain ⟨T0, hrun0, hrel0, hrom0, -, hfr0⟩ := block_jal _ Main0.instrs Main0.σ S 0x38#32 (Ai - 0x68#32) [rF] []
     Main0.dec Main0.run hpc (by decide) (by simp [hl, ROM_END]) hc0 j0
     ((hmain 12 (by omega)).trans e12) dj0 (by simp; bv_omega) (by sym_side) (by simp) (by decide +kernel)
-  simp only [List.length_take, hl, show min 12 96 = 12 from rfl] at hrun0
+  simp only [List.length_take, hl, show min 12 98 = 12 from rfl] at hrun0
   set S1 := (T0.setPC (0x38#32 + BitVec.ofNat 32 (4 * 12) + (Ai - 0x68#32))).setReg 1#5
     (0x38#32 + BitVec.ofNat 32 (4 * 12) + 4) with hS1
   have s1sp : S1.getReg 2#5 = 0x13fff80#32 := by
@@ -88,7 +88,7 @@ theorem main_init (S : State) (codeM codeI : List Word) (Ai src : Word)
 
 /-- The five input reads (`csrrw s4/s5/s6/s7/s8, 0x7c0, x0`), from `main + 0x34`. -/
 theorem main_reads (R : State) (codeM : List Word) (x y0 y1 y2 y3 : Word) (rest : List Word)
-    (hpc : R.pc = 0x6c#32) (hmain : CodeAt R 0x38#32 codeM) (hlen : codeM.length = 96)
+    (hpc : R.pc = 0x6c#32) (hmain : CodeAt R 0x38#32 codeM) (hlen : codeM.length = 98)
     (hb : (codeM.drop 13).take 5 = (Code.main.drop 13).take 5)
     (hin : R.input = x :: y0 :: y1 :: y2 :: y3 :: rest) :
     ∃ R', run 5 R = some R' ∧ R'.pc = 0x80#32 ∧ R'.mem = R.mem ∧ R'.input = rest ∧
@@ -144,7 +144,7 @@ theorem main_a (S R : State) (codeM : List Word) (Ac Ap src : Word) (x : Word)
     (hAp : 256 ≤ Ap.toNat) (hAp4 : Ap.toNat % 4 = 0) (hApr : Ap.toNat + 4 * Code.poly_eval.length ≤ 4194304)
     (hsrc : src.toNat + 912 ≤ 4194304)
     (hpc : R.pc = 0x80#32) (h2 : R.getReg 2#5 = 0x13fff80#32) (h20 : R.getReg 20#5 = x)
-    (hmain : CodeAt R 0x38#32 codeM) (hlen : codeM.length = 96)
+    (hmain : CodeAt R 0x38#32 codeM) (hlen : codeM.length = 98)
     (hb1 : (codeM.drop 18).take 1 = (Code.main.drop 18).take 1)
     (hb2 : (codeM.drop 20).take 5 = (Code.main.drop 20).take 5)
     (j1 j2 : Word) (hj1 : codeM[19]? = some j1) (hj2 : codeM[25]? = some j2)
@@ -162,7 +162,7 @@ theorem main_a (S R : State) (codeM : List Word) (Ac Ap src : Word) (x : Word)
       CodeMem T.mem (0x1400000#32 + BitVec.ofNat 32 0x190) Code.COEFFS4 ∧
       (∀ a : Word, 0x13fff80 ≤ a.toNat → T.mem a = R.mem a) ∧
       (∀ b : Word, b.toNat < ROM_END → T.mem b = R.mem b) := by
-  have hl : Code.main.length = 96 := by decide +kernel
+  have hl : Code.main.length = 98 := by decide +kernel
   obtain ⟨_, e19⟩ := List.getElem?_eq_some_iff.mp hj1
   obtain ⟨_, e25⟩ := List.getElem?_eq_some_iff.mp hj2
   simp only [ROM_END, RAM_END] at *
@@ -177,7 +177,7 @@ theorem main_a (S R : State) (codeM : List Word) (Ac Ap src : Word) (x : Word)
           0x38#32 + BitVec.ofNat 32 (4 * 19) by decide]
       exact (hmain 19 (by omega)).trans e19)
     dj1 (by simp; bv_omega) (by simp) (by simp) (by decide +kernel)
-  simp only [List.length_take, List.length_drop, hl, show min 1 (96 - 18) = 1 from rfl] at hrunb1
+  simp only [List.length_take, List.length_drop, hl, show min 1 (98 - 18) = 1 from rfl] at hrunb1
   set S3 := (T1.setPC (0x38#32 + BitVec.ofNat 32 (4 * 18) + BitVec.ofNat 32 (4 * 1) + (Ac - 0x84#32))).setReg 1#5
     (0x38#32 + BitVec.ofNat 32 (4 * 18) + BitVec.ofNat 32 (4 * 1) + 4) with hS3
   have j3 : ∀ r : Reg, r ≠ 1#5 → S3.getReg r = T1.getReg r := fun r hr => by rw [hS3, jal_getReg _ _ _ _ hr]
@@ -236,7 +236,7 @@ theorem main_a (S R : State) (codeM : List Word) (Ac Ap src : Word) (x : Word)
           0x38#32 + BitVec.ofNat 32 (4 * 25) by decide]
       exact (hmain 25 (by omega)).trans e25)
     dj2 (by simp; bv_omega) (by simp) (by simp) (by decide +kernel)
-  simp only [List.length_take, List.length_drop, hl, show min 5 (96 - 20) = 5 from rfl] at hrunb2
+  simp only [List.length_take, List.length_drop, hl, show min 5 (98 - 20) = 5 from rfl] at hrunb2
   set S5 := (T2.setPC (0x38#32 + BitVec.ofNat 32 (4 * 20) + BitVec.ofNat 32 (4 * 5) + (Ap - 0x9c#32))).setReg 1#5
     (0x38#32 + BitVec.ofNat 32 (4 * 20) + BitVec.ofNat 32 (4 * 5) + 4) with hS5
   have j5 : ∀ r : Reg, r ≠ 1#5 → S5.getReg r = T2.getReg r := fun r hr => by rw [hS5, jal_getReg _ _ _ _ hr]

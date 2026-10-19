@@ -30,6 +30,8 @@ def blocks : List (String × Nat × Nat) :=
    ("finish_success", Image.finish_success, Image.finish_success_size),
    ("finish_success_extended", Image.finish_success_extended, Image.finish_success_extended_size),
    ("fs_check", Image.fs_check, Image.fs_check_size), ("finish_error", Image.finish_error, Image.finish_error_size),
+   ("merkle_check", Image.merkle_check, Image.merkle_check_size),
+   ("merkle_step", Image.merkle_step, Image.merkle_step_size),
    ("init", Image.init, Image.init_size), ("memcpy", Image.memcpy, Image.memcpy_size),
    -- constant tables (data, not code): their ROM copies
    ("COEFFS", Image.sirodata + (Image.COEFFS - Image.srodata), Image.COEFFS_size),
@@ -49,6 +51,8 @@ def blocksMop : List (String × Nat × Nat) :=
    ("finish_success", ImageMop.finish_success, ImageMop.finish_success_size),
    ("finish_success_extended", ImageMop.finish_success_extended, ImageMop.finish_success_extended_size),
    ("fs_check", ImageMop.fs_check, ImageMop.fs_check_size), ("finish_error", ImageMop.finish_error, ImageMop.finish_error_size),
+   ("merkle_check", ImageMop.merkle_check, ImageMop.merkle_check_size),
+   ("merkle_step", ImageMop.merkle_step, ImageMop.merkle_step_size),
    ("init", ImageMop.init, ImageMop.init_size), ("memcpy", ImageMop.memcpy, ImageMop.memcpy_size),
    ("COEFFS", ImageMop.sirodata + (ImageMop.COEFFS - ImageMop.srodata), ImageMop.COEFFS_size),
    ("COEFFS4", ImageMop.sirodata + (ImageMop.COEFFS4 - ImageMop.srodata), ImageMop.COEFFS4_size)]

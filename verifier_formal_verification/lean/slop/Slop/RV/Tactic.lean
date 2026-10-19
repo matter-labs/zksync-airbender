@@ -327,7 +327,7 @@ def rvAbstractValues (bound : Nat := 25) : TacticM Unit := withMainContext do
     evalTactic (← `(tactic| generalize $h:ident : $es = $v:ident at $locs*))
 
 /-- `rv_cut`: in a goal `∃ m s', run m X = some s' ∧ …`, replaces the (grown) state term `X` by a fresh state with
-facts `cut_pc`, `cut_mem`, `cut_r1 … cut_r31` giving its PC, memory and registers in normal form (in terms of the
+facts `cut_pc`, `cut_mem`, `cut_r1 … cut_r31`, `cut_input` giving its PC, memory, registers and input in normal form (in terms of the
 start state). Later `rv_steps` use them, so the cost of a step no longer grows with the number of steps taken.
 Facts of an earlier cut are consumed and cleared. `rv_cut with h₁, …`: also normalize with `hᵢ` (e.g. a returned
 call's `∀ i, calleeSaved i → S₁.getReg i = …`, discharged by `rv_callee_saved`). -/
@@ -344,10 +344,11 @@ elab_rules : tactic | `(tactic| rv_cut $[with $xs,*]?) => withMainContext do
   let old := (← getLCtx).foldl (init := #[]) fun acc d =>
     if !d.isImplementationDetail && d.userName.toString.startsWith "cut_" then acc.push d.userName else acc
   let lhs (k : Nat) (S : Expr) : MetaM Expr :=
-    if k = 0 then mkAppM ``State.pc #[S] else if k = 1 then mkAppM ``State.mem #[S] else do
+    if k = 0 then mkAppM ``State.pc #[S] else if k = 1 then mkAppM ``State.mem #[S]
+    else if k = 33 then mkAppM ``State.input #[S] else do
       mkAppM ``State.getReg #[S, ← mkAppOptM ``OfNat.ofNat #[mkApp (mkConst ``BitVec) (mkNatLit 5),
         mkRawNatLit (k - 1), none]]
-  let names := #["pc", "mem"] ++ (List.range 31).toArray.map fun i => s!"r{i + 1}"
+  let names := #["pc", "mem"] ++ (List.range 31).toArray.map (fun i => s!"r{i + 1}") ++ #["input"]
   -- new goal: ∀ S, S.pc = X.pc → S.mem = X.mem → S.getReg 1 = X.getReg 1 → … → G[S]; the right-hand sides are
   -- then normalized by `simp` (with the facts of the previous cut)
   let newTy ← withLocalDeclD `S (mkConst ``State) fun S => do

@@ -77,10 +77,12 @@ theorem stuck_never_halts (s T : State) (m : Nat) (h : run m s = some T) (hT : s
 
 /-- With a wrong Fiat–Shamir claim the program ends at `zksync_os_finish_error` (for the Sail-side transfer). -/
 def StuckOnBadClaim (bytes : Array (BitVec 8)) : Prop :=
-  ∀ (start : State) (x y0 y1 y2 y3 v0 v1 v2 v3 : Word) (rest : List Word), start.pc = 0 →
-    ImageLoaded bytes start → RamZero start →
-    start.input = x :: y0 :: y1 :: y2 :: y3 :: v0 :: v1 :: v2 :: v3 :: rest → x.toNat ≤ Spec.P →
+  ∀ (start : State) (x y0 y1 y2 y3 v0 v1 v2 v3 : Word) (root : Vector Word 8) (path : List Spec.MerkleStep)
+    (rest : List Word), start.pc = 0 → ImageLoaded bytes start → RamZero start →
+    start.input = x :: y0 :: y1 :: y2 :: y3 :: v0 :: v1 :: v2 :: v3 :: (Spec.pathInput root path ++ rest) →
+    path.length ≤ 32 → x.toNat ≤ Spec.P →
     y0.toNat < BabyBearP → y1.toNat < BabyBearP → y2.toNat < BabyBearP → y3.toNat < BabyBearP →
-    ¬ Spec.claimOK #v[x, y0, y1, y2, y3] #v[v0, v1, v2, v3] → ∃ m W, run m start = some W ∧ AtFinishError W
+    ¬ (Spec.claimOK #v[x, y0, y1, y2, y3] #v[v0, v1, v2, v3] ∧ Spec.pathOK #v[x, y0, y1, y2, y3] root path) →
+    ∃ m W, run m start = some W ∧ AtFinishError W
 
 end RV

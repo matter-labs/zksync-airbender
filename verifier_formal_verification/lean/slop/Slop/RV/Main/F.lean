@@ -12,7 +12,7 @@ set_option maxHeartbeats 0
 
 /-- The four claim reads (`csrrw a0/a1/a2/a3, 0x7c0, x0`), from `main + 0x114`. -/
 theorem main_reads_v (R : State) (codeM : List Word) (v0 v1 v2 v3 : Word) (rest : List Word)
-    (hpc : R.pc = 0x14c#32) (hmain : CodeAt R 0x38#32 codeM) (hlen : codeM.length = 96)
+    (hpc : R.pc = 0x14c#32) (hmain : CodeAt R 0x38#32 codeM) (hlen : codeM.length = 98)
     (hb : (codeM.drop 69).take 4 = (Code.main.drop 69).take 4) (hin : R.input = v0 :: v1 :: v2 :: v3 :: rest) :
     ∃ R', run 4 R = some R' ∧ R'.pc = 0x15c#32 ∧ R'.mem = R.mem ∧ R'.input = rest ∧
       R'.getReg 10#5 = v0 ∧ R'.getReg 11#5 = v1 ∧ R'.getReg 12#5 = v2 ∧ R'.getReg 13#5 = v3 ∧
@@ -74,7 +74,7 @@ theorem main_f (U : State) (codeM codeF codeEP : List Word) (calleesEP : List (W
     (hpc : U.pc = 0x15c#32) (h2 : U.getReg 2#5 = 0x13fff80#32) (h19 : U.getReg 19#5 = 0x1401000#32)
     (h10 : U.getReg 10#5 = v0) (h11 : U.getReg 11#5 = v1) (h12 : U.getReg 12#5 = v2) (h13 : U.getReg 13#5 = v3)
     (htab : CodeMem U.mem (0x1400000#32 + BitVec.ofNat 32 0x190) Code.COEFFS4)
-    (hmain : CodeAt U 0x38#32 codeM) (hlen : codeM.length = 96)
+    (hmain : CodeAt U 0x38#32 codeM) (hlen : codeM.length = 98)
     (hbF : (codeM.drop 73).take 6 = (Code.main.drop 73).take 6)
     (jf : Word) (hjf : codeM[79]? = some jf) (djf : decode jf = some (.jal 1#5 (Afs - 0x174#32)))
     (hfs : CodeAt U Afs codeF) (hEPc : CodeAt U Aep codeEP) (hcal : ∀ c ∈ calleesEP, CodeAt U c.1 c.2)
@@ -86,7 +86,7 @@ theorem main_f (U : State) (codeM codeF codeEP : List Word) (calleesEP : List (W
         (∀ b : Word, b.toNat < ROM_END → W.mem b = U.mem b)) ∧
       (ofLimbs (v0.toNat : F) (v1.toNat : F) (v2.toNat : F) (v3.toNat : F) ≠ poly4 (limbsAt U.mem 0x1401000#32) →
         AtFinishError W) := by
-  have hl : Code.main.length = 96 := by decide +kernel
+  have hl : Code.main.length = 98 := by decide +kernel
   obtain ⟨_, e79⟩ := List.getElem?_eq_some_iff.mp hjf
   simp only [ROM_END, RAM_END] at *
   have h2n : (U.getReg 2#5).toNat = 0x13fff80 := by rw [h2]; rfl
@@ -103,7 +103,7 @@ theorem main_f (U : State) (codeM codeF codeEP : List Word) (calleesEP : List (W
       exact (hmain 79 (by omega)).trans e79)
     djf (by rw [show ((Code.main.drop 73).take 6).length = 6 by decide +kernel, eF]; exact hAfs) (by sym_side)
     (by simp) (by decide +kernel)
-  simp only [List.length_take, List.length_drop, hl, show min 6 (96 - 73) = 6 from rfl] at hrun0
+  simp only [List.length_take, List.length_drop, hl, show min 6 (98 - 73) = 6 from rfl] at hrun0
   set S := (T0.setPC (0x38#32 + BitVec.ofNat 32 (4 * 73) + BitVec.ofNat 32 (4 * 6) + (Afs - 0x174#32))).setReg 1#5
     (0x38#32 + BitVec.ofNat 32 (4 * 73) + BitVec.ofNat 32 (4 * 6) + 4) with hS
   have j : ∀ r : Reg, r ≠ 1#5 → S.getReg r = T0.getReg r := fun r hr => by rw [hS, jal_getReg _ _ _ _ hr]

@@ -91,7 +91,7 @@ macro "init_run_proof" code:ident src:term:max dsrc:term:max : tactic => `(tacti
       simp only [rv_state, r_set, jump_r, next_r, h0, h1, h2, h8, h10, h11, h12, h13, ite_false, show ¬ (i = 0) from h0]
 ))
 
-/-- `init` at `A` (with `memcpy` right after it, at `A + 136`): copies `.rodata` (912 bytes, from ROM `0x4050`
+/-- `init` at `A` (with `memcpy` right after it, at `A + 136`): copies `.rodata` (912 bytes, from ROM `0x4334`
 to RAM `0x1400000`) and its empty `.data`; returns to `ra` with the memory outside its frames a block copy,
 ROM unchanged, and every register outside `a0 … a5` restored or untouched. -/
 theorem init_run (A : Word) (hA : A.toNat % 4 = 0) (hAr : A.toNat + 136 + 4 * 1676 ≤ 4194304) (S : State)
@@ -100,9 +100,9 @@ theorem init_run (A : Word) (hA : A.toNat % 4 = 0) (hAr : A.toNat + 136 + 4 * 16
     (hsp2 : (S.getReg 2#5).toNat ≤ 20971520) (hra : (S.getReg 1#5).toNat % 4 = 0) :
     ∃ m S', run m S = some S' ∧ S'.pc = S.getReg 1#5 ∧
       (∀ a : Word, a.toNat + 32 < (S.getReg 2#5).toNat ∨ (S.getReg 2#5).toNat ≤ a.toNat →
-        S'.mem a = blockCopy S.mem 20971520#32 16464#32 912 a) ∧
+        S'.mem a = blockCopy S.mem 20971520#32 17204#32 912 a) ∧
       (∀ b : Word, b.toNat < ROM_END → S'.mem b = S.mem b) ∧
       (∀ i : Reg, i ≠ 10#5 → i ≠ 11#5 → i ≠ 12#5 → i ≠ 13#5 → i ≠ 14#5 → i ≠ 15#5 → S'.getReg i = S.getReg i) := by
-  init_run_proof Code.init 16464#32 24576#32
+  init_run_proof Code.init 17204#32 24576#32
 
 end RV

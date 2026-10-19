@@ -7,6 +7,22 @@ commit check `git diff --cached --stat` and that no staged file is over ~200 KB.
 Moved here from an earlier prototype repo (as a snapshot; its history, which contains the large Sail model, was
 NOT imported).
 
+=== POC 6: MERKLE PATH (LOOP, INPUT-DRIVEN DEPTH) (2026-10-19) ===
+- Guest: after fs_check, main calls merkle_check(&BLAKE.state): root (8 words) and depth d (<= 32, else
+  finish_error) from the input, the leaf copied into a second evaluator MERKLE (0x1401100), then d times: side word
+  + sibling (9 reads), merkle_step (the node and sibling into `left || right`, IV and counter reset, tail call of
+  blake2s_compress(st, 64, true)); a mismatch with the root ends in finish_error. main gains two words.
+- Spec (Human/SpecMerkle.lean): hash2 l r = compress configuredIV (l ++ r) 64 true (= the delegation's compression
+  mode, checked in run_image), merkleRoot (fold), pathInput, pathOK. Final statements (both machines): input
+  x :: y :: v :: pathInput root path ++ rest, path.length <= 32; claim and path right -> halt with the outputs;
+  either wrong -> no run reaches halt.
+- Proof: Merkle/Block (+Mop) (merkle_step's middle by the symbolic executor; ~5 s), Merkle/Step (+Mop)
+  (prologue/branch by rv_steps, block, tail call into the blake2s_compress contract), Merkle/Exit (compare, ret or
+  finish_error_stuck), Merkle/Loop (induction on the levels left; input-aware call helper run_callAtW_input: the
+  contract on the empty-input copy, lifted), Merkle/Check (prologue, reads via run_reads, depth guard, leaf copy),
+  Main/M; main_run takes merkle_step's contract (either image). rv_cut now also records the input (cut_input).
+- Slow files to split later: Merkle/Loop, Merkle/Check (~100 s each), Merkle/Exit (~40 s).
+
 === MOP IMAGE ON THE BLAKE2S DELEGATION (2026-10-19) ===
 - Guest: cargo feature `delegation` (= blake2s_u32/blake2_with_compression); app_mop = mop + delegation, as the real
   verifier. blake2s_compress is 29 words: counter and last-block words into the extended state, 7 x csrrw x0,

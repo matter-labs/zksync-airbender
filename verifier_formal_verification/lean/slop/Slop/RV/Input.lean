@@ -107,3 +107,49 @@ theorem step_read (s : State) (w : Word) (rd : Reg) (v : Word) (rest : List Word
   simp only [exec, hin]; rfl
 
 end RV
+
+namespace RV
+
+/-- The state after reading the words `ps.map (·.2)` into the registers `ps.map (·.1)`, one instruction each. -/
+def readsTo (R : State) : List (Reg × Word) → State
+  | [] => R
+  | (rd, v) :: ps => readsTo (R.setReg rd v).nextInstr ps
+
+theorem readsTo_withInput : ∀ (ps : List (Reg × Word)) (R : State) (t u : List Word),
+    (readsTo (R.withInput t) ps).withInput u = (readsTo R ps).withInput u
+  | [], _, _, _ => rfl
+  | (rd, v) :: ps, R, t, u => readsTo_withInput ps ((R.setReg rd v).nextInstr) t u
+
+theorem readsTo_withInput_comm : ∀ (ps : List (Reg × Word)) (R : State) (t : List Word),
+    (readsTo R ps).withInput t = readsTo (R.withInput t) ps
+  | [], _, _ => rfl
+  | (rd, v) :: ps, R, t => readsTo_withInput_comm ps ((R.setReg rd v).nextInstr) t
+
+/-- A run of input reads (`csrrw rdᵢ, 0x7c0, x0`). -/
+theorem run_reads : ∀ (ps : List (Reg × Word)) (R : State) (rest : List Word),
+    R.input = ps.map (·.2) ++ rest → R.pc.toNat % 4 = 0 → R.pc.toNat + 4 * ps.length ≤ ROM_END →
+    (∀ i (h : i < ps.length),
+      decode (read R.mem (R.pc + BitVec.ofNat 32 (4 * i)) 4) = some (.inputRead (ps[i]'h).1)) →
+    run ps.length R = some ((readsTo R ps).withInput rest)
+  | [], R, rest, hin, _, _, _ => by
+    simp only [List.map_nil, List.nil_append] at hin
+    simp only [List.length_nil, run, readsTo, Option.some.injEq]
+    rw [← hin]; rfl
+  | (rd, v) :: ps, R, rest, hin, hpc, hrom, hdec => by
+    simp only [List.map_cons, List.cons_append] at hin
+    simp only [List.length_cons] at hrom
+    have h0 := hdec 0 (by simp)
+    simp only [BitVec.add_zero, List.getElem_cons_zero, Nat.mul_zero, BitVec.ofNat_eq_ofNat] at h0
+    have hs := step_read R _ rd v _ hpc (by omega) rfl h0 hin
+    have hpc1 : ((R.setReg rd v).nextInstr.withInput (ps.map (·.2) ++ rest)).pc = R.pc + 4 := rfl
+    have ih := run_reads ps ((R.setReg rd v).nextInstr.withInput (ps.map (·.2) ++ rest)) rest rfl
+      (by rw [hpc1]; bv_omega) (by rw [hpc1]; simp only [ROM_END] at hrom ⊢; bv_omega)
+      (fun i h => by
+        have := hdec (i + 1) (by simp; omega)
+        rw [hpc1, BitVec.add_assoc, show (4 : Word) + BitVec.ofNat 32 (4 * i) = BitVec.ofNat 32 (4 * (i + 1)) by
+          bv_omega]
+        simpa using this)
+    rw [List.length_cons, run_succ, hs, Option.bind_some, ih, readsTo_withInput]
+    rfl
+
+end RV

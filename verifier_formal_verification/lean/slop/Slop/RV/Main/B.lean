@@ -26,7 +26,7 @@ theorem main_b (T : State) (codeM codeB : List Word) (Aep Ab : Word) (codeEP : L
     (h22 : T.getReg 22#5 = y1) (h23 : T.getReg 23#5 = y2) (h24 : T.getReg 24#5 = y3)
     (htab : CodeMem T.mem (0x1400000#32 + BitVec.ofNat 32 0x190) Code.COEFFS4)
     (hz : ∀ a : Word, 0x1401000 ≤ a.toNat → a.toNat < 0x1401100 → T.mem a = 0)
-    (hmain : CodeAt T 0x38#32 codeM) (hlen : codeM.length = 96)
+    (hmain : CodeAt T 0x38#32 codeM) (hlen : codeM.length = 98)
     (hb3 : (codeM.drop 26).take 7 = (Code.main.drop 26).take 7)
     (j3 : Word) (hj3 : codeM[33]? = some j3) (dj3 : decode j3 = some (.jal 1#5 (Aep - 0xbc#32)))
     (hEPc : CodeAt T Aep codeEP) (hcal : ∀ c ∈ calleesEP, CodeAt T c.1 c.2)
@@ -40,7 +40,7 @@ theorem main_b (T : State) (codeM codeB : List Word) (Aep Ab : Word) (codeEP : L
       wordsAt U.mem 0x1401000#32 8 = blake5 #v[x, y0, y1, y2, y3] ∧
       CodeMem U.mem (0x1400000#32 + BitVec.ofNat 32 0x190) Code.COEFFS4 ∧
       (∀ b : Word, b.toNat < ROM_END → U.mem b = T.mem b) := by
-  have hl : Code.main.length = 96 := by decide +kernel
+  have hl : Code.main.length = 98 := by decide +kernel
   obtain ⟨_, e33⟩ := List.getElem?_eq_some_iff.mp hj3
   have h2n : (T.getReg 2#5).toNat = 0x13fff80 := by rw [h2]; rfl
   simp only [ROM_END, RAM_END] at *
@@ -55,7 +55,7 @@ theorem main_b (T : State) (codeM codeB : List Word) (Aep Ab : Word) (codeEP : L
           0x38#32 + BitVec.ofNat 32 (4 * 33) by decide]
       exact (hmain 33 (by omega)).trans e33)
     dj3 (by simp; bv_omega) (by sym_side) (by simp) (by decide +kernel)
-  simp only [List.length_take, List.length_drop, hl, show min 7 (96 - 26) = 7 from rfl] at hrun3
+  simp only [List.length_take, List.length_drop, hl, show min 7 (98 - 26) = 7 from rfl] at hrun3
   set S1 := (T3.setPC (0x38#32 + BitVec.ofNat 32 (4 * 26) + BitVec.ofNat 32 (4 * 7) + (Aep - 0xbc#32))).setReg 1#5
     (0x38#32 + BitVec.ofNat 32 (4 * 26) + BitVec.ofNat 32 (4 * 7) + 4) with hS1
   have j1 : ∀ r : Reg, r ≠ 1#5 → S1.getReg r = T3.getReg r := fun r hr => by rw [hS1, jal_getReg _ _ _ _ hr]

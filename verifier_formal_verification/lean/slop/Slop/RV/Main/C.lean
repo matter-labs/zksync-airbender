@@ -3,7 +3,7 @@ import Slop.RV.Finish
 import Slop.RV.FinishExt
 
 /-! `main`, last part (both images): the 8 output words to `zksync_os_finish_success`, which ends at its final
-self-jump with the outputs in `x10 … x25`. From `main + 0x140`. -/
+self-jump with the outputs in `x10 … x25`. From `main + 0x148`. -/
 
 namespace RV
 open _root_.RV.Sym Spec
@@ -17,40 +17,40 @@ open MainC
 
 theorem main_c (U : State) (codeM : List Word) (Af : Word) (c p e0 e1 e2 e3 d0 d1 : Word)
     (hAf : Af.toNat % 4 = 0) (hAfr : Af.toNat + 0x78 + 0x84 ≤ 4194304)
-    (hpc : U.pc = 0x178#32) (h2 : U.getReg 2#5 = 0x13fff80#32) (h9 : U.getReg 9#5 = c) (h18 : U.getReg 18#5 = p)
+    (hpc : U.pc = 0x180#32) (h2 : U.getReg 2#5 = 0x13fff80#32) (h9 : U.getReg 9#5 = c) (h18 : U.getReg 18#5 = p)
     (h19 : U.getReg 19#5 = 0x1401000#32)
     (he0 : read U.mem 0x13fff88#32 4 = e0) (he1 : read U.mem 0x13fff8c#32 4 = e1)
     (he2 : read U.mem 0x13fff90#32 4 = e2) (he3 : read U.mem 0x13fff94#32 4 = e3)
     (hd0 : read U.mem 0x1401000#32 4 = d0) (hd1 : read U.mem 0x1401004#32 4 = d1)
-    (hmain : CodeAt U 0x38#32 codeM) (hlen : codeM.length = 96)
-    (hb5 : (codeM.drop 80).take 15 = (Code.main.drop 80).take 15)
-    (j5 : Word) (hj5 : codeM[95]? = some j5) (dj5 : decode j5 = some (.jal 1#5 (Af - 0x1b4#32)))
+    (hmain : CodeAt U 0x38#32 codeM) (hlen : codeM.length = 98)
+    (hb5 : (codeM.drop 82).take 15 = (Code.main.drop 82).take 15)
+    (j5 : Word) (hj5 : codeM[97]? = some j5) (dj5 : decode j5 = some (.jal 1#5 (Af - 0x1bc#32)))
     (hfin : CodeAt U Af Code.finish_success) (hext : CodeAt U (Af + 0x78#32) Code.finish_success_extended) :
     ∃ m W, run m U = some W ∧ W.pc = Af + 0x78#32 + 0x80#32 ∧ W.getReg 10#5 = c ∧ W.getReg 11#5 = p ∧
       W.getReg 12#5 = e0 ∧ W.getReg 13#5 = e1 ∧ W.getReg 14#5 = e2 ∧ W.getReg 15#5 = e3 ∧
       W.getReg 16#5 = d0 ∧ W.getReg 17#5 = d1 ∧
       (∀ i : Reg, 18 ≤ i.toNat → i.toNat ≤ 25 → W.getReg i = 0) ∧
       (∀ b : Word, b.toNat < ROM_END → W.mem b = U.mem b) := by
-  have hl : Code.main.length = 96 := by decide +kernel
+  have hl : Code.main.length = 98 := by decide +kernel
   have lf : Code.finish_success.length = 30 := by decide +kernel
   have le : Code.finish_success_extended.length = 33 := by decide +kernel
-  obtain ⟨_, e95⟩ := List.getElem?_eq_some_iff.mp hj5
+  obtain ⟨_, e97⟩ := List.getElem?_eq_some_iff.mp hj5
   have h2n : (U.getReg 2#5).toNat = 0x13fff80 := by rw [h2]; rfl
   have h19n : (U.getReg 19#5).toNat = 0x1401000 := by rw [h19]; rfl
   simp only [ROM_END, RAM_END] at *
-  have hc5 : CodeAt U (0x38#32 + BitVec.ofNat 32 (4 * 80)) ((Code.main.drop 80).take 15) :=
-    hb5 ▸ codeAt_take (codeAt_drop hmain 80 (by rw [hlen]; bv_omega)) 15
-  obtain ⟨T5, hrun5, hrel5, hrom5, hout5, -⟩ := block_jal _ Main5.instrs Main5.σ U _ (Af - 0x1b4#32) [rF, rBl]
+  have hc5 : CodeAt U (0x38#32 + BitVec.ofNat 32 (4 * 82)) ((Code.main.drop 82).take 15) :=
+    hb5 ▸ codeAt_take (codeAt_drop hmain 82 (by rw [hlen]; bv_omega)) 15
+  obtain ⟨T5, hrun5, hrel5, hrom5, hout5, -⟩ := block_jal _ Main5.instrs Main5.σ U _ (Af - 0x1bc#32) [rF, rBl]
     [] Main5.dec Main5.run (by rw [hpc]; decide) (by decide) (by simp [hl, ROM_END]) hc5 j5
     (by
-      rw [show ((Code.main.drop 80).take 15).length = 15 by decide +kernel,
-        show (0x38#32 + BitVec.ofNat 32 (4 * 80) + BitVec.ofNat 32 (4 * 15) : Word) =
-          0x38#32 + BitVec.ofNat 32 (4 * 95) by decide]
-      exact (hmain 95 (by omega)).trans e95)
+      rw [show ((Code.main.drop 82).take 15).length = 15 by decide +kernel,
+        show (0x38#32 + BitVec.ofNat 32 (4 * 82) + BitVec.ofNat 32 (4 * 15) : Word) =
+          0x38#32 + BitVec.ofNat 32 (4 * 97) by decide]
+      exact (hmain 97 (by omega)).trans e97)
     dj5 (by simp; bv_omega) (by sym_side) (by simp) (by decide +kernel)
-  simp only [List.length_take, List.length_drop, hl, show min 15 (96 - 80) = 15 from rfl] at hrun5
-  set S1 := (T5.setPC (0x38#32 + BitVec.ofNat 32 (4 * 80) + BitVec.ofNat 32 (4 * 15) + (Af - 0x1b4#32))).setReg 1#5
-    (0x38#32 + BitVec.ofNat 32 (4 * 80) + BitVec.ofNat 32 (4 * 15) + 4) with hS1
+  simp only [List.length_take, List.length_drop, hl, show min 15 (98 - 82) = 15 from rfl] at hrun5
+  set S1 := (T5.setPC (0x38#32 + BitVec.ofNat 32 (4 * 82) + BitVec.ofNat 32 (4 * 15) + (Af - 0x1bc#32))).setReg 1#5
+    (0x38#32 + BitVec.ofNat 32 (4 * 82) + BitVec.ofNat 32 (4 * 15) + 4) with hS1
   have j1 : ∀ r : Reg, r ≠ 1#5 → S1.getReg r = T5.getReg r := fun r hr => by rw [hS1, jal_getReg _ _ _ _ hr]
   have hpc1 : S1.pc = Af := by rw [hS1, jal_pc]; bv_omega
   have s1rom : ∀ b : Word, b.toNat < 4194304 → S1.mem b = U.mem b := fun b hb => by

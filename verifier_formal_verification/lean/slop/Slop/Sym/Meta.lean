@@ -46,6 +46,10 @@ theorem wf_of_run (instrs : List Instr) (σ : SState) (h : symRun instrs initSta
   (symRun_mono (ctxOf State0) instrs State0 initState σ (rel_init State0) condsOK_init h).2.1.1
 
 /-- A loaded word, read back: node `i` loads 4 bytes at register `b` (initial value) plus `k`. -/
+theorem val_const {p : Pool} (hw : p.WF) (c : Ctx) (i : Nat) (w : Word) (hi : i < p.len)
+    (h : nodeAt p i = .const w) : p.val c i = w := by
+  rw [(nodeAt_spec c p hw i hi).2, h]; rfl
+
 theorem load_val (instrs : List Instr) (σ : SState) (hrun : symRun instrs initState = some σ) (S : State)
     (i b : Nat) (k : Word) (sg : Bool) (hb : b < 32) (hi : i < σ.pool.len) (h : nodeAt σ.pool i = .load 4 sg b k) :
     σ.pool.val (ctxOf S) i = read S.mem (S.getReg (BitVec.ofNat 5 b) + k) 4 := by

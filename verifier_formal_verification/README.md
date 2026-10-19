@@ -12,7 +12,9 @@ as the real verifier) and `build/app.bin` (the same ops and Blake2s in plain Rus
 Both compute a Mersenne31 polynomial, a BabyBear Ext4 polynomial (Horner) and a Blake2s compression (the verifier's
 `blake2s_u32`, 7 rounds) of their input, five words read from Airbender's non-determinism source (CSR `0x7c0`);
 then a Fiat–Shamir check: the digest is the transcript seed, the challenge `z` its first four words, and the prover's
-claim `v = poly4 z` (four more words from the non-determinism source) is checked — a wrong claim fails the run.
+claim `v = poly4 z` (four more words from the non-determinism source) is checked — a wrong claim fails the run; then
+a Merkle path from the digest to a root (root, depth ≤ 32, and per level a side word and a sibling, all from the
+input; the verifier's two-to-one Blake2s hash) — a wrong root fails the run.
 
 ## What a human reads (`lean/human/`, ~200 lines)
 - `Human/State.lean` — the machine state (registers, PC, byte memory, the non-determinism input).
@@ -27,7 +29,8 @@ claim `v = poly4 z` (four more words from the non-determinism source) is checked
 - `Human/Spec.lean`, `Human/SpecPoly.lean`, `Human/SpecExt4.lean` — what the program should compute
   (`combine x = 3x + 1`, a polynomial over Mersenne31, a polynomial over BabyBear's `F[w]/(w⁴ - 11)`), and
   `Human/SpecBlake.lean` (Blake2s compression, RFC 7693, 7 rounds), `Human/SpecFS.lean` (the challenge and the
-  claim the program checks).
+  claim the program checks), `Human/SpecMerkle.lean` (the two-to-one hash, the root a path leads to, how the path is
+  read).
 - `Human/Theorems.lean` — the final statement `ProgramCorrectOf`: from reset, with the image loaded, RAM zero and an
   input starting with the five words and the claim: if the claim is right, the program reaches its final self-jump
   with the outputs in `a0 … a7` and stays there; if it is wrong, no run ever reaches it. `ProgramCorrect` (plain

@@ -1,5 +1,6 @@
 import Human.Delegations
 import Human.SpecBlake
+import Human.SpecMerkle
 open RV Spec RV.Delegation
 
 /-! Sanity checks of `Human/Delegations.lean` (compiled, not a proof): complete runs of each precompile, call by
@@ -37,6 +38,16 @@ def checkBlakeRound (w : List Nat) : Bool :=
     w.map (BitVec.ofNat 32 ·) ++ List.replicate 11 0).toArray
   match calls .blakeRound B 48 7 (start B ws (BitVec.ofNat 32 B) (BitVec.ofNat 32 (B + 128)) ((0b1001 : Word) <<< 16)) with
   | some s => (wordsAt s.mem B 8).toList == (blake5 (Vector.ofFn fun i : Fin 5 => BitVec.ofNat 32 (w.getD i 0))).toList
+  | none => false
+
+/-- Blake2s round function (0x7c7) in compression mode (`x12 = 0b1101 << 16`: 7 rounds, two-to-one, the state at
+`x10` the left half): 7 calls = `hash2`. -/
+def checkCompression (seed : Nat) : Bool :=
+  let ws := rnd seed 48
+  let l : Vector Word 8 := Vector.ofFn fun i => ws[i.val]!
+  let r : Vector Word 8 := Vector.ofFn fun i => ws[32 + i.val]!
+  match calls .blakeRound B 48 7 (start B ws (BitVec.ofNat 32 B) (BitVec.ofNat 32 (B + 128)) ((0b1101 : Word) <<< 16)) with
+  | some s => (wordsAt s.mem B 8).toList == (hash2 l r).toList
   | none => false
 
 /-- G function (0x7c8): 56 calls from `x12 = 0x80` are 7 rounds of `Spec.round`; `x12` back to `0x80`. -/
@@ -98,6 +109,7 @@ def delegationChecks : IO Bool := do
   let mut ok := true
   for (name, good) in [("blake2s round (0x7c7) x 7 = blake5", checkBlakeRound [5, 1, 2, 3, 4] &&
         checkBlakeRound [123456789, 2013265920, 7, 0, 1234567]),
+      ("blake2s round (0x7c7) compression mode x 7 = hash2", checkCompression 0 && checkCompression 1),
       ("blake2s G (0x7c8) x 56 = 7 rounds", checkG 0 && checkG 1),
       ("bigint (0x7ca) ops and flags", checkBigint),
       ("keccak tables, keccakF test vector", checkKeccakTables),

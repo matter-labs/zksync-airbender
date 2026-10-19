@@ -30,18 +30,14 @@ abbrev rBlD : Region := ⟨0, 0x1401000, 0x1401094, 4⟩
 end MainBl
 open MainBl
 
-theorem val_const {p : Pool} (hw : p.WF) (c : Ctx) (i : Nat) (w : Word) (hi : i < p.len)
-    (h : nodeAt p i = .const w) : p.val c i = w := by
-  rw [(nodeAt_spec c p hw i hi).2, h]; rfl
-
 /-- The baseline Blake2s (`Code.blake2s_compress`, state +0, block +64, counter +128). -/
-theorem main_blake (codeM : List Word) (Ab : Word) (hlen : codeM.length = 96)
+theorem main_blake (codeM : List Word) (Ab : Word) (hlen : codeM.length = 98)
     (hAb : Ab.toNat % 4 = 0) (hAbr : Ab.toNat + 4 * Code.blake2s_compress.length ≤ 4194304)
     (hb4 : (codeM.drop 34).take 34 = (Code.main.drop 34).take 34)
     (j4 : Word) (hj4 : codeM[68]? = some j4) (dj4 : decode j4 = some (.jal 1#5 (Ab - 0x148#32))) :
     MainBlakeOK codeM Code.blake2s_compress Ab := by
   intro S2 hpc2' hmain hbl s2sp hz
-  have hl : Code.main.length = 96 := by decide +kernel
+  have hl : Code.main.length = 98 := by decide +kernel
   obtain ⟨_, e68⟩ := List.getElem?_eq_some_iff.mp hj4
   simp only [ROM_END, RAM_END] at *
   have hpc2 : S2.pc = 0x38#32 + BitVec.ofNat 32 (4 * 34) := by rw [hpc2']; rfl
@@ -56,7 +52,7 @@ theorem main_blake (codeM : List Word) (Ab : Word) (hlen : codeM.length = 96)
           0x38#32 + BitVec.ofNat 32 (4 * 68) by decide]
       exact (hmain 68 (by omega)).trans e68)
     dj4 (by simp; bv_omega) (by sym_side) (by simp) (by decide +kernel)
-  simp only [List.length_take, List.length_drop, hl, show min 34 (96 - 34) = 34 from rfl] at hrun4
+  simp only [List.length_take, List.length_drop, hl, show min 34 (98 - 34) = 34 from rfl] at hrun4
   set S3 := (T4.setPC (0x38#32 + BitVec.ofNat 32 (4 * 34) + BitVec.ofNat 32 (4 * 34) + (Ab - 0x148#32))).setReg 1#5
     (0x38#32 + BitVec.ofNat 32 (4 * 34) + BitVec.ofNat 32 (4 * 34) + 4) with hS3
   have j3' : ∀ r : Reg, r ≠ 1#5 → S3.getReg r = T4.getReg r := fun r hr => by rw [hS3, jal_getReg _ _ _ _ hr]
@@ -146,13 +142,13 @@ theorem main_blake (codeM : List Word) (Ab : Word) (hlen : codeM.length = 96)
 
 /-- Blake2s by the round-function delegation (`Code.blake2s_compress_mop`, state +0, extended state +32, block +128,
 counter +192). -/
-theorem main_blake_deleg (codeM : List Word) (Ab : Word) (hlen : codeM.length = 96)
+theorem main_blake_deleg (codeM : List Word) (Ab : Word) (hlen : codeM.length = 98)
     (hAb : Ab.toNat % 4 = 0) (hAbr : Ab.toNat + 4 * Code.blake2s_compress_mop.length ≤ 4194304)
     (hb4 : (codeM.drop 34).take 34 = (Code.main_mop.drop 34).take 34)
     (j4 : Word) (hj4 : codeM[68]? = some j4) (dj4 : decode j4 = some (.jal 1#5 (Ab - 0x148#32))) :
     MainBlakeOK codeM Code.blake2s_compress_mop Ab := by
   intro S2 hpc2' hmain hbl s2sp hz
-  have hl : Code.main_mop.length = 96 := by decide +kernel
+  have hl : Code.main_mop.length = 98 := by decide +kernel
   obtain ⟨_, e68⟩ := List.getElem?_eq_some_iff.mp hj4
   simp only [ROM_END, RAM_END] at *
   have hpc2 : S2.pc = 0x38#32 + BitVec.ofNat 32 (4 * 34) := by rw [hpc2']; rfl
@@ -167,7 +163,7 @@ theorem main_blake_deleg (codeM : List Word) (Ab : Word) (hlen : codeM.length = 
           0x38#32 + BitVec.ofNat 32 (4 * 68) by decide]
       exact (hmain 68 (by omega)).trans e68)
     dj4 (by simp; bv_omega) (by sym_side) (by simp) (by decide +kernel)
-  simp only [List.length_take, List.length_drop, hl, show min 34 (96 - 34) = 34 from rfl] at hrun4
+  simp only [List.length_take, List.length_drop, hl, show min 34 (98 - 34) = 34 from rfl] at hrun4
   set S3 := (T4.setPC (0x38#32 + BitVec.ofNat 32 (4 * 34) + BitVec.ofNat 32 (4 * 34) + (Ab - 0x148#32))).setReg 1#5
     (0x38#32 + BitVec.ofNat 32 (4 * 34) + BitVec.ofNat 32 (4 * 34) + 4) with hS3
   have j3' : ∀ r : Reg, r ≠ 1#5 → S3.getReg r = T4.getReg r := fun r hr => by rw [hS3, jal_getReg _ _ _ _ hr]

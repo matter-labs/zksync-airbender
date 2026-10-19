@@ -270,6 +270,13 @@ theorem exec_mop (s : State) op rd rs1 rs2 (hrd : ¬ rd = 0) :
 end RV
 
 namespace RV
+/-- Only the input read moves the input: the other state operations keep it. -/
+theorem setReg_input (s : State) (r : Reg) (v : Word) : (s.setReg r v).input = s.input := rfl
+theorem nextInstr_input (s : State) : s.nextInstr.input = s.input := rfl
+theorem setPC_input (s : State) (t : Word) : (s.setPC t).input = s.input := rfl
+theorem store_input (s : State) (a v : Word) (n : Nat) : (s.store a v n).input = s.input := rfl
+
+attribute [rv_state] setReg_input nextInstr_input setPC_input store_input
 attribute [rv_state] r_zero5 next_pc set_pc store_pc jump_pc set_mem next_mem store_mem jump_mem next_r store_r jump_r
   ite_true ite_false BitVec.ofNat_eq_ofNat BitVec.add_assoc BitVec.add_zero Bool.false_eq_true
 attribute [rv_side] ROM_END RAM_END aligned writable readable and_not_one_of_aligned Cond.holds bne_iff_ne
