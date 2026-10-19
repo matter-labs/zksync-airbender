@@ -414,6 +414,40 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
         ))
     }
 
+    /// [`Self::commit`] / [`Self::commit_packed`] driven by the prover config:
+    /// the setup is committed exactly as the prover expects it (same LDE
+    /// factor, leaf size, cap and `pack_log2`). `twiddles` must cover the
+    /// `2^(trace_len_log2 + pack_log2)` domain.
+    pub fn commit_for_config<T: ColumnMajorMerkleTreeConstructor<F>>(
+        &self,
+        twiddles: &Twiddles<F, Global>,
+        prover_config: &crate::gkr::prover_config::ProverConfig,
+        worker: &Worker,
+    ) -> SetupCommitment<F, T> {
+        let whir_first_fold_step_log2 =
+            prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize;
+        if prover_config.pack_log2 == 0 {
+            self.commit(
+                twiddles,
+                prover_config.lde_factor,
+                whir_first_fold_step_log2,
+                prover_config.cap_size,
+                prover_config.trace_len_log2,
+                worker,
+            )
+        } else {
+            SetupCommitment::InMemory(self.commit_packed(
+                twiddles,
+                prover_config.lde_factor,
+                whir_first_fold_step_log2,
+                prover_config.cap_size,
+                prover_config.trace_len_log2,
+                prover_config.pack_log2,
+                worker,
+            ))
+        }
+    }
+
     /// Logical equivalent of [`Self::commit`], but commits the setup polynomials
     /// using the packing approach: groups of `2^pack_log2` setup columns are merged
     /// into a single `(trace_len_log2 + pack_log2)`-variate multilinear (via

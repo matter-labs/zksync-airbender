@@ -27,14 +27,14 @@ pub type Proof = GKRProof<Proth120, Proth120, Keccak256MerkleTreeWithCap>;
 pub(crate) fn build_transcript_input(proof: &Proof, aux: &CommitmentMode) -> Vec<u32> {
     use cs::definitions::split_timestamp;
 
-    let CommitmentMode::MergedAndPackedMemoryAndWitness {
+    let CommitmentMode::MergedMemoryAndWitnessSingleCircuitOnly {
         register_final_state,
         final_pc,
         final_timestamp,
         ..
     } = aux
     else {
-        panic!("aux data must be MergedAndPackedMemoryAndWitness");
+        panic!("aux data must be MergedMemoryAndWitnessSingleCircuitOnly");
     };
 
     let mut ti: Vec<u32> = Vec::new();
@@ -106,12 +106,12 @@ impl VerifiedMark {
 /// Compute the registry mark for `proof` + `aux` (see [`VerifiedMark`]).
 pub fn verified_mark(proof: &Proof, aux: &CommitmentMode) -> VerifiedMark {
     use sha3::Digest;
-    let CommitmentMode::MergedAndPackedMemoryAndWitness {
+    let CommitmentMode::MergedMemoryAndWitnessSingleCircuitOnly {
         register_final_state,
         ..
     } = aux
     else {
-        panic!("aux data must be MergedAndPackedMemoryAndWitness");
+        panic!("aux data must be MergedMemoryAndWitnessSingleCircuitOnly");
     };
     let regs = |first: usize| -> [u8; 32] {
         let mut w = [0u8; 32];

@@ -137,6 +137,32 @@ impl Backend<Proth120, Proth120> for Proth120WorkStealingLazyBackend {
         pack_polys_parallel_from_hypercubes_to_monomials(evals, pack_log2, worker)
     }
 
+    fn lde_packed_polys_from_hypercubes(
+        &self,
+        evals: &[&[Proth120]],
+        pack_log2: usize,
+        twiddles: &Twiddles<Proth120, Global>,
+        lde_factor: usize,
+        _pool: &dyn AllocationPool<Proth120, Proth120>,
+        worker: &Worker,
+    ) -> Vec<ColumnMajorBaseOracleForCoset<Proth120>> {
+        ws_lde_packed_polys_from_hypercubes(
+            evals,
+            pack_log2,
+            twiddles,
+            lde_factor,
+            &|block| {
+                crate::gkr::whir::hypercube_to_monomial::multivariate_hypercube_evals_into_coeffs_radix4(
+                    block,
+                    block.len().trailing_zeros(),
+                )
+            },
+            &|m, o, t| fft::proth120_lazy::lde_coset_lazy_r8(m, o, t),
+            &|m, o, t, w| fft::proth120_lazy::lde_coset_lazy_parallel_r8(m, o, t, w),
+            worker,
+        )
+    }
+
     fn update_eq_poly(
         &self,
         eq_poly: &mut [Proth120],

@@ -2,8 +2,8 @@
 //!
 //! The WHIR proving configuration (fold/query/PoW schedule, base rate, merkle cap) is NOT
 //! encoded in the circuit artifact — it must be supplied by the caller as the same
-//! `prover::gkr::prover::WhirSchedule` the prover used. Together with `pack_log2` (from the GKR
-//! `CommitmentMode`) and the artifact's column widths, that fully determines every WHIR verifier
+//! `prover::gkr::prover::WhirSchedule` the prover used. Together with `pack_log2` (the prover's
+//! `ProverConfig::pack_log2`) and the artifact's column widths, that fully determines every WHIR verifier
 //! parameter, so GKR and WHIR are driven from one source and cannot drift.
 //!
 //! This module derives all of those parameters ([`WhirGenConfig`]), renders the per-round

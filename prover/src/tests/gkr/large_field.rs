@@ -3,7 +3,7 @@
 //! Runs the plain `basic_fibonacci` program (reduced machine, no oracles, no
 //! precompiles) and TRIES to prove one unified-circuit instance with the packed
 //! commitment mode
-//! [`CommitmentMode::MergedAndPackedMemoryAndWitness`](crate::gkr::prover::CommitmentMode).
+//! [`CommitmentMode::MergedMemoryAndWitnessSingleCircuitOnly`](crate::gkr::prover::CommitmentMode).
 //!
 //! Notes vs the full `unified_circuit.rs` flow:
 //!   * precompiles are DISABLED at preprocessing — the supported-CSR set passed to
@@ -116,7 +116,7 @@ fn load_boundary_transcript_prefix() -> (
                 .expect("aux data — run gkr_unified_packed_commitment_basic_fibonacci first");
         serde_json::from_reader(src).expect("deserialize CommitmentMode aux data")
     };
-    let CommitmentMode::MergedAndPackedMemoryAndWitness {
+    let CommitmentMode::MergedMemoryAndWitnessSingleCircuitOnly {
         register_final_state,
         final_pc,
         final_timestamp,
@@ -124,7 +124,7 @@ fn load_boundary_transcript_prefix() -> (
         ..
     } = aux
     else {
-        panic!("aux data must be MergedAndPackedMemoryAndWitness");
+        panic!("aux data must be MergedMemoryAndWitnessSingleCircuitOnly");
     };
     let mut prefix = Vec::with_capacity(32 * 3 + 3);
     for reg in register_final_state.iter() {
@@ -188,11 +188,6 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
 ) {
     let worker = Worker::new_with_num_threads(num_threads);
     let level = SecurityLevel::Sec100;
-    // With `pack_log2 = 4` the 2^22 base trace is packed into a single 2^26-variate
-    // multilinear per column — exactly the `message_log2 = 26` of the EVM-production
-    // WHIR config (`generate_whir_input_for_evm_production`), whose parameters we
-    // reuse below.
-    let pack_log2 = 4usize;
     let external_challenges_pow_bits = 20u32;
 
     // 1. Run the plain program (reduced machine, no precompiles).
@@ -341,6 +336,12 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
     //    queries / lde_factors / pow schedule applies. base LDE 2^5 => 2^31 codeword.
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
     let prover_config = evm_production_packed_prover_config(level);
+    // With `pack_log2 = 4` the 2^22 base trace is packed into a single 2^26-variate
+    // multilinear per column — exactly the `message_log2 = 26` of the EVM-production
+    // WHIR config (`generate_whir_input_for_evm_production`), whose parameters we
+    // reuse below. The packing factor is a property of the prover config.
+    let pack_log2 = prover_config.pack_log2;
+    assert_eq!(pack_log2, EVM_PRODUCTION_PACK_LOG2);
 
     println!("Computing setup");
     // The proof function's twiddles are of unified circuit size * (1 << pack_log2):
@@ -439,8 +440,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
     // 6. Prove one unified circuit instance with the packed commitment mode.
     let external_challenges = dummy_external_challenges::<Proth120, Proth120>();
 
-    let commitment_mode = CommitmentMode::MergedAndPackedMemoryAndWitness {
-        pack_log2,
+    let commitment_mode = CommitmentMode::MergedMemoryAndWitnessSingleCircuitOnly {
         external_challenges_pow_bits,
         final_pc: vm.final_pc(),
         final_timestamp: vm.final_timestamp(),
@@ -510,7 +510,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
     }
 }
 
-/// STEP 1 of the EVM GKR verifier: reproduce the `MergedAndPackedMemoryAndWitness`
+/// STEP 1 of the EVM GKR verifier: reproduce the `MergedMemoryAndWitnessSingleCircuitOnly`
 /// Fiat-Shamir transcript purely from the serialized proof + circuit, and check the
 /// derived challenges (nonce + `GKRExternalChallenges`) match what the prover stored.
 ///
@@ -1898,9 +1898,9 @@ fn verify_dim_reduce_layers() {
     );
 
     // ===== STEP 4: GKR→WHIR handoff — packed-commitment claims merge + WHIR batching =====
-    // Mirrors prover/src/gkr/prover/mod.rs (MergedAndPackedMemoryAndWitness, lines 875-961).
+    // Mirrors prover/src/gkr/prover/mod.rs (MergedMemoryAndWitnessSingleCircuitOnly, lines 875-961).
     {
-        let pack_log2 = 4usize; // this proof's pack_log2
+        let pack_log2 = EVM_PRODUCTION_PACK_LOG2; // this proof's pack_log2
         let base_layer_z = point.clone(); // 22-coord layer-0 folding point
         let get = |addr: GKRAddress| -> E {
             *layer0_merged.get(&addr).expect("base-layer claim present")

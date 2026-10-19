@@ -38,6 +38,7 @@ pub fn l1_feeder_config_for_2_23() -> ProverConfig {
     const L1_FEEDER_BASE_LDE_FACTOR: usize = 16;
     ProverConfig {
         trace_len_log2: 23,
+        pack_log2: 0,
         same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(23),
         dimension_reducing_sumcheck_schedule: Default::default(),
         lde_factor: L1_FEEDER_BASE_LDE_FACTOR,
@@ -72,6 +73,7 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
     match trace_len_log_2 {
         20 => ProverConfig {
             trace_len_log2: trace_len_log_2,
+            pack_log2: 0,
             same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(
                 trace_len_log_2,
             ),
@@ -92,6 +94,7 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
         },
         21 => ProverConfig {
             trace_len_log2: trace_len_log_2,
+            pack_log2: 0,
             same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(
                 trace_len_log_2,
             ),
@@ -112,6 +115,7 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
         },
         22 => ProverConfig {
             trace_len_log2: trace_len_log_2,
+            pack_log2: 0,
             same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(
                 trace_len_log_2,
             ),
@@ -132,6 +136,7 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
         },
         23 => ProverConfig {
             trace_len_log2: trace_len_log_2,
+            pack_log2: 0,
             same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(
                 trace_len_log_2,
             ),
@@ -157,6 +162,7 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
         },
         24 => ProverConfig {
             trace_len_log2: trace_len_log_2,
+            pack_log2: 0,
             same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(
                 trace_len_log_2,
             ),
@@ -181,6 +187,36 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
     }
 }
 
+/// [`config_for_security_level_under_pessimistic_conjecture`] for a PACKED base
+/// commitment (`pack_log2 > 0`): the GKR side (trace length, same-size
+/// sumcheck schedule, explicit sumcheck output) is the `trace_len_log2`
+/// config's, while the WHIR side (base LDE factor, cap, values per leaf and
+/// the whole fold/query/PoW schedule) is the config of the packed message size
+/// `trace_len_log2 + pack_log2` — the WHIR run starts from the
+/// `2^(trace_len_log2 + pack_log2)`-variate packed polynomials, so its
+/// schedule must be the one computed for that size. `pack_log2 == 0` returns
+/// the plain config.
+pub fn packed_config_for_security_level_under_pessimistic_conjecture(
+    trace_len_log2: usize,
+    pack_log2: usize,
+    level: SecurityLevel,
+) -> ProverConfig {
+    let mut config = config_for_security_level_under_pessimistic_conjecture(trace_len_log2, level);
+    if pack_log2 > 0 {
+        let whir_side = config_for_security_level_under_pessimistic_conjecture(
+            trace_len_log2 + pack_log2,
+            level,
+        );
+        config.pack_log2 = pack_log2;
+        config.lde_factor = whir_side.lde_factor;
+        config.cap_size = whir_side.cap_size;
+        config.base_oracles_values_per_leaf = whir_side.base_oracles_values_per_leaf;
+        config.whir_schedule = whir_side.whir_schedule;
+        config.validate_for_whir_message_size(config.whir_message_size_log2());
+    }
+    config
+}
+
 /// Base trace length of the EVM-production packed mode (the single 2^22
 /// unified circuit chunk the L1 verifies).
 pub const EVM_PRODUCTION_TRACE_LEN_LOG2: usize = 22;
@@ -199,6 +235,7 @@ pub fn evm_production_packed_prover_config(level: SecurityLevel) -> ProverConfig
     ProverConfig {
         // circuit trace length; the WHIR message is 2^(22 + pack_log2) = 2^26
         trace_len_log2: EVM_PRODUCTION_TRACE_LEN_LOG2,
+        pack_log2: EVM_PRODUCTION_PACK_LOG2,
         // the EVM verifier (gkr.sol) consumes monomial [c0..c3] rounds;
         // keep these proofs on the windowed schedule (transcript-identical
         // to naive)

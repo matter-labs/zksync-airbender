@@ -134,6 +134,32 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> Backend<F, E>
         pack_polys_parallel_from_hypercubes_to_monomials(evals, pack_log2, worker)
     }
 
+    fn lde_packed_polys_from_hypercubes(
+        &self,
+        evals: &[&[F]],
+        pack_log2: usize,
+        twiddles: &Twiddles<F, Global>,
+        lde_factor: usize,
+        _pool: &dyn AllocationPool<F, E>,
+        worker: &Worker,
+    ) -> Vec<ColumnMajorBaseOracleForCoset<F>> {
+        ws_lde_packed_polys_from_hypercubes(
+            evals,
+            pack_log2,
+            twiddles,
+            lde_factor,
+            &|block| {
+                crate::gkr::whir::hypercube_to_monomial::multivariate_hypercube_evals_into_coeffs_radix4(
+                    block,
+                    block.len().trailing_zeros(),
+                )
+            },
+            &|m, o, t| fft::lde_coset_natural_seq_fused(m, o, t),
+            &|m, o, t, w| lde_coset_canonical_parallel(m, o, t, w),
+            worker,
+        )
+    }
+
     fn update_eq_poly(
         &self,
         eq_poly: &mut [E],

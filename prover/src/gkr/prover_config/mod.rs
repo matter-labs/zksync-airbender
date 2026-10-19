@@ -250,14 +250,32 @@ pub struct ProverConfig {
     /// NaiveSumcheck for every round otherwise. Each entry must satisfy
     /// [`validate_sumcheck_schedule`] for its key.
     pub dimension_reducing_sumcheck_schedule: BTreeMap<usize, Vec<SumcheckStep>>,
+    /// log2 of the BASE-COMMITMENT packing factor. Every committed column set
+    /// (memory and witness — separately in `SeparateMemoryAndWitness`, as one
+    /// merged set in the merged modes — and the setup) is packed by
+    /// `2^pack_log2` consecutive columns into ONE `(trace_len_log2 +
+    /// pack_log2)`-variate multilinear (block `y` of the packed poly is
+    /// sub-poly `y`; a short tail group is zero-padded), which is LDE'd and
+    /// Merkle-committed over the enlarged domain. The WHIR message is then
+    /// `2^(trace_len_log2 + pack_log2)` and the base claims are merged with
+    /// `pack_log2` extra claim-point coordinates drawn after the GKR phase.
+    /// `0` = unpacked (one committed column per base column). Twiddles passed
+    /// to the prover must cover the `2^(trace_len_log2 + pack_log2)` domain.
+    pub pack_log2: usize,
 }
 
 impl ProverConfig {
+    /// log2 of the WHIR message size — the committed (packed) column length
+    /// `trace_len_log2 + pack_log2`; equal to [`Self::trace_len_log2`] when
+    /// unpacked.
+    pub fn whir_message_size_log2(&self) -> usize {
+        self.trace_len_log2 + self.pack_log2
+    }
+
     /// Structural validation of the WHIR schedule for a starting polynomial of
-    /// `message_size_log2` variables — equal to [`Self::trace_len_log2`] for
-    /// the separate/merged commitment modes and `trace_len_log2 + pack_log2`
-    /// for the packed mode. Called by the prove entries after they assert the
-    /// caller's `trace_len` against `trace_len_log2`.
+    /// `message_size_log2` variables — [`Self::whir_message_size_log2`], i.e.
+    /// `trace_len_log2 + pack_log2`. Called by the prove entries after they
+    /// assert the caller's `trace_len` against `trace_len_log2`.
     ///
     /// Beyond shape consistency, enforces the plain-text floor: every
     /// COMMITTED intermediate oracle must be an LDE of a polynomial of at

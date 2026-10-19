@@ -30,7 +30,7 @@ use prover::gkr::whir::ColumnMajorBaseOracleForLDE;
 use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
 use prover::tests::gkr::large_field::{
     build_unified_trace_without_precompiles, evm_production_packed_prover_config,
-    EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS, EVM_PRODUCTION_PACK_LOG2,
+    EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS,
 };
 use prover::tests::gkr::orchestration::common::{
     dummy_external_challenges, run_vm_and_capture, ProgramConfig,
@@ -66,10 +66,11 @@ pub fn prove_l1_wrap_in_recompute_mode(
     aux_output_path: &Path,
     worker: &Worker,
 ) -> L1Proof {
-    let pack_log2 = EVM_PRODUCTION_PACK_LOG2;
     let external_challenges_pow_bits = EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS;
     let level = prover::definitions::SecurityLevel::Sec100;
     let prover_config = evm_production_packed_prover_config(level);
+    // the base-commitment packing is a property of the prover config
+    let pack_log2 = prover_config.pack_log2;
     let trace_len = 1usize << prover_config.trace_len_log2;
 
     // 1. Run the program on the reduced machine and capture the execution.
@@ -138,8 +139,7 @@ pub fn prove_l1_wrap_in_recompute_mode(
     //    (self-derived external challenges from the boundary state).
     let external_challenges = dummy_external_challenges::<Proth120, Proth120>();
 
-    let commitment_mode = CommitmentMode::MergedAndPackedMemoryAndWitness {
-        pack_log2,
+    let commitment_mode = CommitmentMode::MergedMemoryAndWitnessSingleCircuitOnly {
         external_challenges_pow_bits,
         final_pc: vm.final_pc(),
         final_timestamp: vm.final_timestamp(),

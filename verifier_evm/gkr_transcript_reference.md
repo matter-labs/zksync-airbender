@@ -1,4 +1,4 @@
-# GKR EVM verifier — STEP 1 reference: transcript init (MergedAndPackedMemoryAndWitness)
+# GKR EVM verifier — STEP 1 reference: transcript init (MergedMemoryAndWitnessSingleCircuitOnly)
 
 Validated in pure Rust against `prover/unified_circuit_proof_proth120.json` by the test
 `prover/src/tests/gkr/large_field.rs::validate_packed_transcript_recipe` (fast; no proving).

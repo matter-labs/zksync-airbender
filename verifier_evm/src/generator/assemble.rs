@@ -271,7 +271,7 @@ fn words_for(bytes: usize) -> Lit {
 ///
 /// The circuit *layout* comes from the artifact; the WHIR *proving config* (fold/query/PoW
 /// schedule, base rate, merkle cap) comes from `prover_config`, and the base-layer packing factor
-/// from `pack_log2` (the GKR `CommitmentMode`). Deriving both halves from the same config is
+/// from `pack_log2` (the prover's `ProverConfig::pack_log2`). Deriving both halves from the same config is
 /// what guarantees GKR↔WHIR consistency. The remaining parameters are deployment properties of
 /// the *program* (never of a proof): `external_pow_bits` / `whir_batch_pow_bits` are the two
 /// per-circuit PoW difficulties (not part of the WHIR schedule), `final_pc` the program's

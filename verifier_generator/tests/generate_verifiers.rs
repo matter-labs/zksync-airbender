@@ -96,6 +96,7 @@ fn generate_gkr_verifier<MW: FieldWrapper<BaseField = BabyBearField>>(
         &prover_config.whir_schedule,
         prover_config.security_level.security_bits() as u32,
         commitment_mode,
+        prover_config.pack_log2,
     );
 
     write_and_fmt(&format!("{}/constants.rs", dir), &files.constants);
@@ -111,14 +112,16 @@ fn generate_whir_verifier<MW: FieldWrapper>(
 ) {
     let whir_schedule = &prover_config.whir_schedule;
 
+    // Every WHIR-side size derives from the committed (packed) column length,
+    // `trace_len_log2 + pack_log2`.
+    let message_size_log2 = gkr_files.whir_message_size_log2;
     let whir_initial = whir::generate_whir_initial_round::<MW>(
         whir_schedule,
         &gkr_files.oracles,
-        gkr_files.trace_len_log2,
+        message_size_log2,
     );
-    let whir_internal =
-        whir::generate_whir_internal_rounds::<MW>(whir_schedule, gkr_files.trace_len_log2);
-    let whir_final = whir::generate_whir_final_round::<MW>(whir_schedule, gkr_files.trace_len_log2);
+    let whir_internal = whir::generate_whir_internal_rounds::<MW>(whir_schedule, message_size_log2);
+    let whir_final = whir::generate_whir_final_round::<MW>(whir_schedule, message_size_log2);
 
     // Compute max hash buf size across all WHIR rounds (padded to 16-word boundary)
     let initial_vpf = 1usize << whir_schedule.whir_steps_schedule[0];
@@ -260,6 +263,27 @@ fn unified_reduced_machine_l1_feeder() {
         &prover_config,
         &prover::gkr::prover::CommitmentMode::MergedMemoryAndWitness,
         "sec_100_l1_feeder",
+    );
+}
+
+/// Packed base commitment: the `blake2_with_extended_control` 2^20 circuit
+/// with `pack_log2 = 4` (2^24 WHIR message, the 2^24 WHIR schedule). Generated
+/// into `.../blake2_with_extended_control/sec_100_pack4`; the proof fixture
+/// is verified by `tests/packed_verify.rs`.
+#[test]
+fn blake2_with_extended_control_pack4() {
+    use verifier_common::test_circuits::packed_fixture;
+    let circuit = packed_fixture::circuit();
+    let prover_config = packed_fixture::prover_config();
+    assert_eq!(
+        circuit.compiled_circuit().trace_len.trailing_zeros() as usize,
+        prover_config.trace_len_log2,
+    );
+    generate_verifier_for_circuit_with_config::<DefaultBabyBearField>(
+        circuit,
+        &prover_config,
+        &packed_fixture::commitment_mode(),
+        packed_fixture::DIR_SUFFIX,
     );
 }
 

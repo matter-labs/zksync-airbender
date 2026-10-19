@@ -1,8 +1,54 @@
+//! Base (memory / witness) commitments of the prover's initial stage. Every
+//! routine takes the [`ProverConfig`] and derives ALL of the commitment geometry
+//! from it — LDE factor, leaf size (`base_oracles_values_per_leaf`), cap,
+//! `trace_len_log2` and the packing `pack_log2` — so a commitment made here (or
+//! ahead of the proof, by a caller that later passes the same config) cannot
+//! disagree with the proof. `twiddles` must cover the
+//! `2^(trace_len_log2 + pack_log2)` domain.
+
 use super::*;
 use crate::allocation_pool::AllocationPool;
 use crate::gkr::prover::commitment_utils::*;
+use crate::gkr::prover_config::ProverConfig;
 use crate::gkr::whir::coset_commit::CosetByCosetBaseCommitment;
 
+fn mem_inputs<F: PrimeField>(
+    witness_eval_data: &GKRFullWitnessTrace<F, Global, Global>,
+) -> Vec<&[F]> {
+    witness_eval_data
+        .column_major_memory_trace
+        .iter()
+        .map(|el| &el[..])
+        .collect()
+}
+
+fn wit_inputs<F: PrimeField>(
+    witness_eval_data: &GKRFullWitnessTrace<F, Global, Global>,
+) -> Vec<&[F]> {
+    witness_eval_data
+        .column_major_witness_trace
+        .iter()
+        .map(|el| &el[..])
+        .collect()
+}
+
+/// Memory columns followed by witness columns: the layout of the merged
+/// commitment and of the merged claims.
+fn merged_inputs<F: PrimeField>(
+    witness_eval_data: &GKRFullWitnessTrace<F, Global, Global>,
+) -> Vec<&[F]> {
+    witness_eval_data
+        .column_major_memory_trace
+        .iter()
+        .chain(witness_eval_data.column_major_witness_trace.iter())
+        .map(|el| &el[..])
+        .collect()
+}
+
+/// Commit memory and witness as two SEPARATE base oracles, each packed by
+/// `2^pack_log2` consecutive columns (`pack_log2 == 0`: one committed column per
+/// base column — see [`commit_trace_part_for_config`]). Every RS codeword is
+/// materialized in memory.
 pub fn commit_separate_memory_and_witness_subtrees<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -12,46 +58,26 @@ pub fn commit_separate_memory_and_witness_subtrees<
     backend: &B,
     witness_eval_data: &GKRFullWitnessTrace<F, Global, Global>,
     twiddles: &B::TwiddleSet,
-    lde_factor: usize,
-    whir_first_fold_step_log2: usize,
-    tree_cap_size: usize,
-    trace_len_log2: usize,
+    prover_config: &ProverConfig,
     pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) -> (
     ColumnMajorBaseOracleForLDE<F, T>,
     ColumnMajorBaseOracleForLDE<F, T>,
 ) {
-    let mem_inputs: Vec<_> = witness_eval_data
-        .column_major_memory_trace
-        .iter()
-        .map(|el| &el[..])
-        .collect();
-    let mem: ColumnMajorBaseOracleForLDE<F, T> = commit_trace_part(
+    let mem: ColumnMajorBaseOracleForLDE<F, T> = commit_trace_part_for_config(
         backend,
-        &mem_inputs,
+        &mem_inputs(witness_eval_data),
         twiddles,
-        lde_factor,
-        whir_first_fold_step_log2,
-        tree_cap_size,
-        trace_len_log2,
+        prover_config,
         pool,
         worker,
     );
-
-    let wit_inputs: Vec<_> = witness_eval_data
-        .column_major_witness_trace
-        .iter()
-        .map(|el| &el[..])
-        .collect();
-    let wit: ColumnMajorBaseOracleForLDE<F, T> = commit_trace_part(
+    let wit: ColumnMajorBaseOracleForLDE<F, T> = commit_trace_part_for_config(
         backend,
-        &wit_inputs,
+        &wit_inputs(witness_eval_data),
         twiddles,
-        lde_factor,
-        whir_first_fold_step_log2,
-        tree_cap_size,
-        trace_len_log2,
+        prover_config,
         pool,
         worker,
     );
@@ -59,6 +85,14 @@ pub fn commit_separate_memory_and_witness_subtrees<
     (mem, wit)
 }
 
+/// Commit the union of the memory and witness columns (memory columns first,
+/// then witness) as ONE base oracle, packed by `2^pack_log2` consecutive
+/// columns (`pack_log2 == 0`: unpacked). Our packing relies on the observation
+/// that one can make a multilinear poly m(Y, X) such that m(0, X) = a(X) and
+/// m(1, X) = b(X), and the same trick works for deriving evaluations at a
+/// random point: m(r', r) = a(r) + (b(r) - a(r)) * r'. We just need to have the
+/// matching enumeration of the extending coordinates in both cases (see
+/// `merge_claims`). Every RS codeword is materialized in memory.
 pub fn commit_merged_memory_and_witness_subtrees<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -68,246 +102,153 @@ pub fn commit_merged_memory_and_witness_subtrees<
     backend: &B,
     witness_eval_data: &GKRFullWitnessTrace<F, Global, Global>,
     twiddles: &B::TwiddleSet,
-    lde_factor: usize,
-    whir_first_fold_step_log2: usize,
-    tree_cap_size: usize,
-    trace_len_log2: usize,
+    prover_config: &ProverConfig,
     pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) -> ColumnMajorBaseOracleForLDE<F, T> {
-    let merged_inputs: Vec<_> = witness_eval_data
-        .column_major_memory_trace
-        .iter()
-        .chain(witness_eval_data.column_major_witness_trace.iter())
-        .map(|el| &el[..])
-        .collect();
-    let merged: ColumnMajorBaseOracleForLDE<F, T> = commit_trace_part(
+    commit_trace_part_for_config(
         backend,
-        &merged_inputs,
+        &merged_inputs(witness_eval_data),
         twiddles,
-        lde_factor,
-        whir_first_fold_step_log2,
-        tree_cap_size,
-        trace_len_log2,
+        prover_config,
         pool,
         worker,
-    );
-
-    merged
+    )
 }
 
-pub fn commit_packed_merged_memory_and_witness_subtrees<
+/// Coset-by-coset commitment of one (non-empty) column set with the config's
+/// geometry, packed by `2^pack_log2` consecutive columns (`pack_log2 == 0`:
+/// unpacked). The resulting commitment keeps only the compact per-column
+/// monomial forms + the small top tree and serves round-0 queries by batched
+/// per-coset recomputation. Byte-identical to the materialized
+/// [`commit_trace_part_for_config`] oracle.
+fn coset_recompute_commitment<
     F: PrimeField + TwoAdicField,
-    E: FieldExtension<F> + Field,
     T: ColumnMajorMerkleTreeConstructor<F>,
-    B: crate::gkr::prover::backend::Backend<F, E>,
 >(
-    backend: &B,
-    witness_eval_data: &GKRFullWitnessTrace<F, Global, Global>,
-    twiddles: &B::TwiddleSet,
-    lde_factor: usize,
-    whir_first_fold_step_log2: usize,
-    tree_cap_size: usize,
-    trace_len_log2: usize,
-    pack_log2: usize,
-    pool: &dyn AllocationPool<F, E>,
+    inputs: &[&[F]],
+    twiddles: &Twiddles<F, Global>,
+    prover_config: &ProverConfig,
     worker: &Worker,
-) -> ColumnMajorBaseOracleForLDE<F, T> {
-    // our packing relies on the observation that one can make multilinear poly m(Y, X) such
-    // that m(0, X) = a(X) and m(1, X) = b(X), and same trick would work about deriving evaluations
-    // on random point m(r', r) = a(r) + (b(r) - a(r)) * r'. We just need to have the matching
-    // enumeration of extending coordinates in both cases
-    let merged_inputs: Vec<_> = witness_eval_data
-        .column_major_memory_trace
-        .iter()
-        .chain(witness_eval_data.column_major_witness_trace.iter())
-        .map(|el| &el[..])
-        .collect();
-
-    let t_commit = std::time::Instant::now();
-    let monomials =
-        backend.pack_polys_from_hypercubes_to_monomials(&merged_inputs, pack_log2, pool, worker);
-    let new_coset_size_log2 = trace_len_log2 + pack_log2;
-    for m in monomials.iter() {
-        assert_eq!(m.len(), 1usize << new_coset_size_log2);
+) -> CosetByCosetBaseCommitment<F, T> {
+    for column in inputs.iter() {
+        assert_eq!(
+            column.len(),
+            1usize << prover_config.trace_len_log2,
+            "every committed column must have 2^trace_len_log2 = 2^{} elements",
+            prover_config.trace_len_log2
+        );
     }
-
-    // now get RS code words and make trees
-
-    let values_per_leaf = 1 << whir_first_fold_step_log2;
-    use crate::gkr::whir::{InMemoryBaseOracle, MaterializedCosets};
-    let cosets =
-        backend.lde_packed_monomials_into_cosets(monomials, twiddles, lde_factor, pool, worker);
-    assert_eq!(cosets.len(), lde_factor);
-
-    let tree = crate::gkr::prover::stages::commitment_utils::build_tree_over_cosets::<F, T>(
-        &cosets,
-        values_per_leaf,
-        tree_cap_size,
-        worker,
-    );
-
-    println!(
-        "[timing] packed base commit: {} packed polys 2^{}, lde {} -> {:.3?} (LDE+tree)",
-        cosets[0].original_values_normal_order.len(),
-        new_coset_size_log2,
-        lde_factor,
-        t_commit.elapsed()
-    );
-
-    ColumnMajorBaseOracleForLDE::InMemory(InMemoryBaseOracle {
-        cosets: MaterializedCosets { cosets },
-        tree,
-        values_per_leaf,
-        coset_size_log2: new_coset_size_log2,
-    })
+    let whir_first_fold_step_log2 =
+        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize;
+    if prover_config.pack_log2 == 0 {
+        CosetByCosetBaseCommitment::<F, T>::commit(
+            inputs,
+            twiddles,
+            prover_config.lde_factor,
+            whir_first_fold_step_log2,
+            prover_config.cap_size,
+            prover_config.trace_len_log2,
+            worker,
+        )
+    } else {
+        // pack + monomialize over ALL (base + pack_log2) variables at once, so
+        // each packed poly is one faithful multilinear (consistent with
+        // `merge_claims`); the packed LDE codeword (2^(N + pack_log2) x
+        // lde_factor) is never materialized whole.
+        CosetByCosetBaseCommitment::<F, T>::commit_packed(
+            inputs,
+            twiddles,
+            prover_config.lde_factor,
+            whir_first_fold_step_log2,
+            prover_config.cap_size,
+            prover_config.trace_len_log2,
+            prover_config.pack_log2,
+            worker,
+        )
+    }
 }
 
-/// Commit one column set coset-by-coset: the resulting oracle keeps only the
-/// compact commitment (per-column monomial forms + the small top tree) and serves
-/// round-0 queries by batched per-coset recomputation. An empty column set yields
-/// an empty in-memory oracle (nothing to commit or recompute). Byte-identical
-/// commitment to [`commit_trace_part`].
+/// Commit one column set coset-by-coset ([`coset_recompute_commitment`]). An
+/// empty column set yields an empty in-memory oracle over the packed domain
+/// (nothing to commit or recompute).
 fn commit_trace_part_recompute<
     F: PrimeField + TwoAdicField,
     T: ColumnMajorMerkleTreeConstructor<F>,
 >(
-    columns: &[Vec<F>],
+    inputs: &[&[F]],
     twiddles: &Twiddles<F, Global>,
-    lde_factor: usize,
-    whir_first_fold_step_log2: usize,
-    tree_cap_size: usize,
-    trace_len_log2: usize,
+    prover_config: &ProverConfig,
     worker: &Worker,
 ) -> ColumnMajorBaseOracleForLDE<F, T> {
-    if columns.is_empty() {
+    if inputs.is_empty() {
         return ColumnMajorBaseOracleForLDE::empty(
-            1 << whir_first_fold_step_log2,
-            trace_len_log2,
-            lde_factor,
+            prover_config.base_oracles_values_per_leaf,
+            prover_config.whir_message_size_log2(),
+            prover_config.lde_factor,
         );
     }
-    let inputs: Vec<&[F]> = columns.iter().map(|c| &c[..]).collect();
-    ColumnMajorBaseOracleForLDE::CosetRecompute(CosetByCosetBaseCommitment::<F, T>::commit(
-        &inputs,
+    ColumnMajorBaseOracleForLDE::CosetRecompute(coset_recompute_commitment::<F, T>(
+        inputs,
         twiddles,
-        lde_factor,
-        whir_first_fold_step_log2,
-        tree_cap_size,
-        trace_len_log2,
+        prover_config,
         worker,
     ))
 }
 
 /// Coset-by-coset (recompute) sibling of
 /// [`commit_separate_memory_and_witness_subtrees`]: memory and witness are
-/// committed separately, each serving round-0 queries by batched recomputation.
+/// committed separately (each packed by `2^pack_log2`), each serving round-0
+/// queries by batched recomputation.
 pub fn commit_separate_memory_and_witness_recompute<
     F: PrimeField + TwoAdicField,
     T: ColumnMajorMerkleTreeConstructor<F>,
 >(
     witness_eval_data: &GKRFullWitnessTrace<F, Global, Global>,
     twiddles: &Twiddles<F, Global>,
-    lde_factor: usize,
-    whir_first_fold_step_log2: usize,
-    tree_cap_size: usize,
-    trace_len_log2: usize,
+    prover_config: &ProverConfig,
     worker: &Worker,
 ) -> (
     ColumnMajorBaseOracleForLDE<F, T>,
     ColumnMajorBaseOracleForLDE<F, T>,
 ) {
     let mem = commit_trace_part_recompute(
-        &witness_eval_data.column_major_memory_trace,
+        &mem_inputs(witness_eval_data),
         twiddles,
-        lde_factor,
-        whir_first_fold_step_log2,
-        tree_cap_size,
-        trace_len_log2,
+        prover_config,
         worker,
     );
     let wit = commit_trace_part_recompute(
-        &witness_eval_data.column_major_witness_trace,
+        &wit_inputs(witness_eval_data),
         twiddles,
-        lde_factor,
-        whir_first_fold_step_log2,
-        tree_cap_size,
-        trace_len_log2,
+        prover_config,
         worker,
     );
     (mem, wit)
 }
 
 /// Coset-by-coset (recompute) sibling of
-/// [`commit_merged_memory_and_witness_subtrees`]: commits the union of
-/// memory+witness columns (no packing), byte-identical to the materialized
-/// merged oracle.
+/// [`commit_merged_memory_and_witness_subtrees`]: commits the union of the
+/// memory+witness columns (packed by `2^pack_log2`), byte-identical to the
+/// materialized merged oracle.
 pub fn commit_merged_memory_and_witness_recompute<
     F: PrimeField + TwoAdicField,
     T: ColumnMajorMerkleTreeConstructor<F>,
 >(
     witness_eval_data: &GKRFullWitnessTrace<F, Global, Global>,
     twiddles: &Twiddles<F, Global>,
-    lde_factor: usize,
-    whir_first_fold_step_log2: usize,
-    tree_cap_size: usize,
-    trace_len_log2: usize,
+    prover_config: &ProverConfig,
     worker: &Worker,
 ) -> ColumnMajorBaseOracleForLDE<F, T> {
-    let merged_inputs: Vec<&[F]> = witness_eval_data
-        .column_major_memory_trace
-        .iter()
-        .chain(witness_eval_data.column_major_witness_trace.iter())
-        .map(|el| &el[..])
-        .collect();
+    let merged_inputs = merged_inputs(witness_eval_data);
     assert!(
         !merged_inputs.is_empty(),
         "merged memory+witness commitment requires at least one column"
     );
-    ColumnMajorBaseOracleForLDE::CosetRecompute(CosetByCosetBaseCommitment::<F, T>::commit(
+    ColumnMajorBaseOracleForLDE::CosetRecompute(coset_recompute_commitment::<F, T>(
         &merged_inputs,
         twiddles,
-        lde_factor,
-        whir_first_fold_step_log2,
-        tree_cap_size,
-        trace_len_log2,
-        worker,
-    ))
-}
-
-/// Coset-by-coset (recompute) sibling of
-/// [`commit_packed_merged_memory_and_witness_subtrees`]: packs groups of
-/// `2^pack_log2` merged memory+witness columns into single multilinears and
-/// commits them coset-by-coset, keeping only the packed monomial forms + the
-/// small top tree. The packed LDE codeword (2^(N + pack_log2) x lde_factor) is
-/// never materialized whole.
-pub fn commit_packed_merged_memory_and_witness_recompute<
-    F: PrimeField + TwoAdicField,
-    T: ColumnMajorMerkleTreeConstructor<F>,
->(
-    witness_eval_data: &GKRFullWitnessTrace<F, Global, Global>,
-    twiddles: &Twiddles<F, Global>,
-    lde_factor: usize,
-    whir_first_fold_step_log2: usize,
-    tree_cap_size: usize,
-    trace_len_log2: usize,
-    pack_log2: usize,
-    worker: &Worker,
-) -> ColumnMajorBaseOracleForLDE<F, T> {
-    let merged_inputs: Vec<&[F]> = witness_eval_data
-        .column_major_memory_trace
-        .iter()
-        .chain(witness_eval_data.column_major_witness_trace.iter())
-        .map(|el| &el[..])
-        .collect();
-    ColumnMajorBaseOracleForLDE::CosetRecompute(CosetByCosetBaseCommitment::<F, T>::commit_packed(
-        &merged_inputs,
-        twiddles,
-        lde_factor,
-        whir_first_fold_step_log2,
-        tree_cap_size,
-        trace_len_log2,
-        pack_log2,
+        prover_config,
         worker,
     ))
 }

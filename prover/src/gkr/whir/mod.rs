@@ -1241,12 +1241,15 @@ pub fn whir_fold<
     // The batched proximity polynomial straight from the base layer: the
     // committed columns' hypercube evaluations weighted by the powers of the
     // batching challenge (no codeword batching / IFFT round trip). The
-    // columns come in commitment order — memory then witness (one committed
-    // set when the commitment merged them, two otherwise: the same sequence
-    // either way), then setup; virtual setup polys are not committed. Each
-    // set is packed by `2^pack_log2` consecutive columns into one committed
-    // column (sub-poly `y` of a pack is block `y` of the packed poly) and the
-    // batching powers run over the COMMITTED columns.
+    // columns come in commitment order — memory then witness, then setup;
+    // virtual setup polys are not committed. Each COMMITTED SET is packed by
+    // `2^pack_log2` consecutive columns into one committed column (sub-poly
+    // `y` of a pack is block `y` of the packed poly; a short tail group is
+    // zero-padded) and the batching powers run over the COMMITTED columns, so
+    // the sets must follow the oracles: a merged commitment (every base column
+    // in the memory oracle, an empty witness oracle) packed the mem ++ wit
+    // sequence as ONE set, separate memory and witness oracles packed each on
+    // its own (the two structures only coincide when unpacked).
     let base_len = 1usize << (trace_len_log2 - pack_log2);
     let pack = 1usize << pack_log2;
     let base_columns = |key: fn(usize) -> GKRAddress| -> Vec<&[F]> {
@@ -1254,13 +1257,37 @@ pub fn whir_fold<
             .map_while(|i| gkr_storage.try_get_base_poly(key(i)))
             .collect()
     };
-    let mut mem_wit_columns = base_columns(GKRAddress::BaseLayerMemory);
-    mem_wit_columns.extend(base_columns(GKRAddress::BaseLayerWitness));
+    let mem_columns = base_columns(GKRAddress::BaseLayerMemory);
+    let wit_columns = base_columns(GKRAddress::BaseLayerWitness);
     let setup_columns = base_columns(GKRAddress::Setup);
-    let mut terms: Vec<BatchedBaseColumn<'_, F, E>> =
-        Vec::with_capacity(mem_wit_columns.len() + setup_columns.len());
+    let merged_mem_and_wit = set_num_columns[1] == 0 && !wit_columns.is_empty();
+    let committed_sets: Vec<(Vec<&[F]>, usize)> = if merged_mem_and_wit {
+        let mut merged = mem_columns;
+        merged.extend(wit_columns);
+        vec![
+            (merged, set_num_columns[0]),
+            (setup_columns, set_num_columns[2]),
+        ]
+    } else {
+        vec![
+            (mem_columns, set_num_columns[0]),
+            (wit_columns, set_num_columns[1]),
+            (setup_columns, set_num_columns[2]),
+        ]
+    };
+    let mut terms: Vec<BatchedBaseColumn<'_, F, E>> = Vec::with_capacity(
+        committed_sets
+            .iter()
+            .map(|(set, _)| set.len())
+            .sum::<usize>(),
+    );
     let mut committed = 0usize;
-    for set in [&mem_wit_columns, &setup_columns] {
+    for (set, expected_committed) in committed_sets.iter() {
+        assert_eq!(
+            set.len().div_ceil(pack),
+            *expected_committed,
+            "one committed (packed) column per group of 2^{pack_log2} base-layer columns"
+        );
         for (c, column) in set.iter().enumerate() {
             assert_eq!(column.len(), base_len, "base-layer column length");
             terms.push(BatchedBaseColumn {
@@ -1297,8 +1324,7 @@ pub fn whir_fold<
         gkr_backend.accumulate_base_columns_into(dst, &terms, worker)
     });
     drop(terms);
-    drop(mem_wit_columns);
-    drop(setup_columns);
+    drop(committed_sets);
     let t_release = std::time::Instant::now();
     gkr_storage.release_into(pool);
     println!(

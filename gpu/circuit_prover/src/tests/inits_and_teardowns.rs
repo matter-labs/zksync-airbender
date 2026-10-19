@@ -302,10 +302,7 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
                 &NaiveBackend,
                 &make_full_trace(),
                 &twiddles,
-                whir_schedule.base_lde_factor,
-                whir_schedule.whir_steps_schedule[0],
-                whir_schedule.cap_size,
-                trace_len.trailing_zeros() as usize,
+                &prover_config,
                 &prover::allocation_pool::GenericAllocationPool::proxy(),
                 &worker,
             );

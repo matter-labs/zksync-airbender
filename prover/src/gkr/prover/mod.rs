@@ -71,13 +71,18 @@ pub mod utils;
 pub enum CommitmentMode {
     SeparateMemoryAndWitness,
     MergedMemoryAndWitness,
-    MergedAndPackedMemoryAndWitness {
-        pack_log2: usize,
+    /// The merged memory+witness commitment of the SINGLE-circuit (L1 wrap)
+    /// flow: the external (permutation-argument) challenges are not "external"
+    /// anymore — they are re-derived from a transcript seeded with the boundary
+    /// state carried here (register final state, final pc/timestamp) together
+    /// with the setup and merged caps. Base-commitment packing is NOT a mode:
+    /// it is [`ProverConfig::pack_log2`] and applies to every mode.
+    MergedMemoryAndWitnessSingleCircuitOnly {
         external_challenges_pow_bits: u32,
         register_final_state: [crate::definitions::FinalRegisterValue; 32],
         final_pc: u32,
         final_timestamp: TimestampScalar,
-    }, // this mode assumes that external challenges are not "external" anymore
+    },
 }
 
 /// How the RS codewords of the memory/witness base commitments are physically
@@ -538,6 +543,29 @@ pub(crate) fn apply_row_wise<'a, A: 'static + Send + Sync, B: 'static + Send + S
     });
 }
 
+/// The historical, mode-dependent default [`WhirOracleStorage`] of the entries
+/// that take no explicit storage policy: coset recomputation for the
+/// single-circuit (L1 wrap) mode and whenever the base commitment is PACKED
+/// (`ProverConfig::pack_log2 > 0` — the packed codewords are `2^pack_log2`
+/// times larger), everything materialized otherwise.
+fn default_storage_for(
+    prover_config: &ProverConfig,
+    commitment_mode: CommitmentMode,
+) -> WhirOracleStorage {
+    match commitment_mode {
+        CommitmentMode::MergedMemoryAndWitnessSingleCircuitOnly { .. } => {
+            WhirOracleStorage::fully_recompute()
+        }
+        CommitmentMode::SeparateMemoryAndWitness | CommitmentMode::MergedMemoryAndWitness => {
+            if prover_config.pack_log2 > 0 {
+                WhirOracleStorage::fully_recompute()
+            } else {
+                WhirOracleStorage::fully_in_memory()
+            }
+        }
+    }
+}
+
 /// Backward-compatible entry point: takes the in-memory setup commitment directly
 /// and selects the RS-codeword storage policy that reproduces the historical,
 /// mode-dependent behavior (packed mode recomputes; the others materialize). Use
@@ -561,14 +589,7 @@ pub fn prove_configured_with_gkr<
     worker: &Worker,
 ) -> GKRProof<F, E, T> {
     // Preserve the historical, mode-dependent storage policy for existing callers.
-    let storage = match commitment_mode {
-        CommitmentMode::MergedAndPackedMemoryAndWitness { .. } => {
-            WhirOracleStorage::fully_recompute()
-        }
-        CommitmentMode::SeparateMemoryAndWitness | CommitmentMode::MergedMemoryAndWitness => {
-            WhirOracleStorage::fully_in_memory()
-        }
-    };
+    let storage = default_storage_for(prover_config, commitment_mode);
     let pool_handle = crate::allocation_pool::default_pool_for::<F, E>();
     let pool: &dyn AllocationPool<F, E> = &*pool_handle;
     prove_configured_with_gkr_impl::<F, E, T, TR, _, _>(
@@ -623,14 +644,7 @@ pub fn prove_configured_with_gkr_with_backends_and_pool<
     pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) -> GKRProof<F, E, T> {
-    let storage = match commitment_mode {
-        CommitmentMode::MergedAndPackedMemoryAndWitness { .. } => {
-            WhirOracleStorage::fully_recompute()
-        }
-        CommitmentMode::SeparateMemoryAndWitness | CommitmentMode::MergedMemoryAndWitness => {
-            WhirOracleStorage::fully_in_memory()
-        }
-    };
+    let storage = default_storage_for(prover_config, commitment_mode);
     prove_configured_with_gkr_impl::<F, E, T, TR, B, GB>(
         compiled_circuit,
         external_challenges,
@@ -972,6 +986,13 @@ fn prove_configured_with_gkr_merged_precommitted_impl<
         matches!(merged_oracle, ColumnMajorBaseOracleForLDE::InMemory(_)),
         "the caller must supply a fully materialized (in-memory) merged oracle"
     );
+    assert_eq!(
+        merged_oracle.coset_size_log2(),
+        prover_config.whir_message_size_log2(),
+        "the precommitted merged oracle must be committed with the config's packing: \
+         2^(trace_len_log2 + pack_log2) = 2^{} values per column",
+        prover_config.whir_message_size_log2(),
+    );
     assert_eq!(compiled_circuit.trace_len, trace_len);
     assert!(trace_len.is_power_of_two());
     assert_eq!(
@@ -981,7 +1002,7 @@ fn prove_configured_with_gkr_merged_precommitted_impl<
          trace length is {trace_len}",
         prover_config.trace_len_log2,
     );
-    prover_config.validate_for_whir_message_size(prover_config.trace_len_log2);
+    prover_config.validate_for_whir_message_size(prover_config.whir_message_size_log2());
     if !witness_eval_data.column_major_memory_trace.is_empty() {
         assert_eq!(
             witness_eval_data.column_major_memory_trace[0].len(),
@@ -1046,7 +1067,7 @@ fn prove_configured_with_gkr_merged_precommitted_impl<
 
     let wit_oracle = ColumnMajorBaseOracleForLDE::empty(
         prover_config.base_oracles_values_per_leaf,
-        trace_len.trailing_zeros() as usize,
+        prover_config.whir_message_size_log2(),
         prover_config.lde_factor,
     );
 
@@ -1114,12 +1135,7 @@ fn prove_configured_with_gkr_impl<
         prover_config.trace_len_log2,
     );
     // The WHIR run starts from the (possibly packed) committed message size.
-    let whir_message_size_log2 = prover_config.trace_len_log2
-        + match &commitment_mode {
-            CommitmentMode::MergedAndPackedMemoryAndWitness { pack_log2, .. } => *pack_log2,
-            CommitmentMode::SeparateMemoryAndWitness | CommitmentMode::MergedMemoryAndWitness => 0,
-        };
-    prover_config.validate_for_whir_message_size(whir_message_size_log2);
+    prover_config.validate_for_whir_message_size(prover_config.whir_message_size_log2());
     if !witness_eval_data.column_major_memory_trace.is_empty() {
         assert_eq!(
             witness_eval_data.column_major_memory_trace[0].len(),
@@ -1155,10 +1171,7 @@ fn prove_configured_with_gkr_impl<
                         backend,
                         &witness_eval_data,
                         twiddles,
-                        prover_config.lde_factor,
-                        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-                        prover_config.cap_size,
-                        trace_len.trailing_zeros() as usize,
+                        prover_config,
                         pool,
                         worker,
                     )
@@ -1167,10 +1180,7 @@ fn prove_configured_with_gkr_impl<
                     stages::initial_commit::commit_separate_memory_and_witness_recompute::<F, T>(
                         &witness_eval_data,
                         twiddles.plain(),
-                        prover_config.lde_factor,
-                        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-                        prover_config.cap_size,
-                        trace_len.trailing_zeros() as usize,
+                        prover_config,
                         worker,
                     )
                 }
@@ -1243,10 +1253,7 @@ fn prove_configured_with_gkr_impl<
                         backend,
                         &witness_eval_data,
                         twiddles,
-                        prover_config.lde_factor,
-                        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-                        prover_config.cap_size,
-                        trace_len.trailing_zeros() as usize,
+                        prover_config,
                         pool,
                         worker,
                     )
@@ -1255,10 +1262,7 @@ fn prove_configured_with_gkr_impl<
                     stages::initial_commit::commit_merged_memory_and_witness_recompute::<F, T>(
                         &witness_eval_data,
                         twiddles.plain(),
-                        prover_config.lde_factor,
-                        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-                        prover_config.cap_size,
-                        trace_len.trailing_zeros() as usize,
+                        prover_config,
                         worker,
                     )
                 }
@@ -1307,15 +1311,14 @@ fn prove_configured_with_gkr_impl<
                 merged_oracle,
                 ColumnMajorBaseOracleForLDE::empty(
                     prover_config.base_oracles_values_per_leaf,
-                    trace_len.trailing_zeros() as usize,
+                    prover_config.whir_message_size_log2(),
                     prover_config.lde_factor,
                 ),
                 lookup_challenges_pow_nonce,
                 [lookup_alpha, lookup_additive_part],
             )
         }
-        CommitmentMode::MergedAndPackedMemoryAndWitness {
-            pack_log2,
+        CommitmentMode::MergedMemoryAndWitnessSingleCircuitOnly {
             external_challenges_pow_bits,
             register_final_state,
             final_pc,
@@ -1323,41 +1326,30 @@ fn prove_configured_with_gkr_impl<
         } => {
             // in this mode we will re-derive external challenges.
             //
-            // The packed polynomials are 2^(N + pack_log2) and their LDE codeword (x
-            // base_lde_factor) is very large. `Recompute` builds a coset-by-coset
-            // commitment (keeps only the packed monomial forms + the small top tree);
-            // round-0 base queries are served by batched coset recomputation inside
-            // `whir_fold`. `InMemory` materializes the whole packed codeword; both
-            // yield the same proof.
+            // The merged memory+witness set is committed exactly like in
+            // `MergedMemoryAndWitness`, packed by `prover_config.pack_log2` when
+            // non-zero. Packed polynomials are 2^(N + pack_log2) and their LDE
+            // codeword (x base_lde_factor) is very large: `Recompute` builds a
+            // coset-by-coset commitment (keeps only the packed monomial forms + the
+            // small top tree) and serves round-0 base queries by batched coset
+            // recomputation inside `whir_fold`; `InMemory` materializes the whole
+            // codeword. Both yield the same proof.
             let merged_oracle = match rs_codeword_source {
                 RsCodewordSource::InMemory => {
-                    stages::initial_commit::commit_packed_merged_memory_and_witness_subtrees::<
-                        F,
-                        E,
-                        T,
-                        B,
-                    >(
+                    stages::initial_commit::commit_merged_memory_and_witness_subtrees::<F, E, T, B>(
                         backend,
                         &witness_eval_data,
                         twiddles,
-                        prover_config.lde_factor,
-                        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-                        prover_config.cap_size,
-                        trace_len.trailing_zeros() as usize,
-                        pack_log2,
+                        prover_config,
                         pool,
                         worker,
                     )
                 }
                 RsCodewordSource::Recompute => {
-                    stages::initial_commit::commit_packed_merged_memory_and_witness_recompute::<F, T>(
+                    stages::initial_commit::commit_merged_memory_and_witness_recompute::<F, T>(
                         &witness_eval_data,
                         twiddles.plain(),
-                        prover_config.lde_factor,
-                        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-                        prover_config.cap_size,
-                        trace_len.trailing_zeros() as usize,
-                        pack_log2,
+                        prover_config,
                         worker,
                     )
                 }
@@ -1435,7 +1427,7 @@ fn prove_configured_with_gkr_impl<
                 merged_oracle,
                 ColumnMajorBaseOracleForLDE::empty(
                     prover_config.base_oracles_values_per_leaf,
-                    trace_len.trailing_zeros() as usize,
+                    prover_config.whir_message_size_log2(),
                     prover_config.lde_factor,
                 ),
                 lookup_challenges_pow_nonce,
@@ -2014,69 +2006,70 @@ fn prove_configured_with_gkr_from_forward_eval<
 
     let mut trace_len_log2_for_whir = trace_len.trailing_zeros() as usize;
 
-    // and for WHIR we may need to reshuffle/merge claims depending on the mode
+    // and for WHIR we may need to reshuffle/merge claims depending on the mode:
+    // the merged modes committed memory and witness as ONE column set
     let (mem_polys_claims, wit_polys_claims, setup_polys_claims) = match commitment_mode {
         CommitmentMode::SeparateMemoryAndWitness => {
             (mem_polys_claims, wit_polys_claims, setup_polys_claims)
         }
-        CommitmentMode::MergedMemoryAndWitness => {
+        CommitmentMode::MergedMemoryAndWitness
+        | CommitmentMode::MergedMemoryAndWitnessSingleCircuitOnly { .. } => {
             // just move all witness claims to the memory same order
             let mut merged_claims = mem_polys_claims;
             merged_claims.extend(wit_polys_claims);
 
             (merged_claims, Vec::new(), setup_polys_claims)
         }
-        CommitmentMode::MergedAndPackedMemoryAndWitness { pack_log2, .. } => {
-            // in the same manner - we should be consistent with how we packed polynomials.
+    };
 
-            // NOTE: this only allows Keccak trascript, that doesn't buffer and instead hashes every time
-            assert!(
-                core::any::TypeId::of::<TR>() == core::any::TypeId::of::<Keccak256Transcript>()
-            );
+    // Packed base commitments (`ProverConfig::pack_log2 > 0`): every committed
+    // column set (memory, witness, setup) was packed by `2^pack_log2`
+    // consecutive columns, so its claims must be merged in the same manner.
+    let pack_log2 = prover_config.pack_log2;
+    let (mem_polys_claims, wit_polys_claims, setup_polys_claims) = if pack_log2 > 0 {
+        // We already have all prover-controlled variables in the transcript, so we can just draw
+        // extra coordinates' values here
+        let extra_coordinates: Vec<E> = draw_random_field_els::<F, E, TR>(&mut seed, pack_log2);
 
-            // We already have all prover-controlled variables in the transcript, so we can just draw
-            // extra coordinates' values here
-            let extra_coordinates: Vec<E> = draw_random_field_els::<F, E, TR>(&mut seed, pack_log2);
-
-            // now recursively merge
-            let mut merged_claims = mem_polys_claims;
-            merged_claims.extend(wit_polys_claims);
-
-            let [merged_claims, setup_polys_claims] = [merged_claims, setup_polys_claims]
+        // now recursively merge every committed set (an empty set stays empty)
+        let [mem_polys_claims, wit_polys_claims, setup_polys_claims] =
+            [mem_polys_claims, wit_polys_claims, setup_polys_claims]
                 .map(|input| merge_claims(&input, &extra_coordinates));
 
-            // and we need to update claim point: the pack index occupies the HIGH
-            // bits of the packed enumeration (sub-polys are concatenated block by
-            // block), so under LSB binding the packing coordinates EXTEND the
-            // claim point at the top.
-            base_layer_z.extend_from_slice(&extra_coordinates);
-            trace_len_log2_for_whir += pack_log2;
+        // and we need to update claim point: the pack index occupies the HIGH
+        // bits of the packed enumeration (sub-polys are concatenated block by
+        // block), so under LSB binding the packing coordinates EXTEND the
+        // claim point at the top.
+        base_layer_z.extend_from_slice(&extra_coordinates);
+        trace_len_log2_for_whir += pack_log2;
 
-            #[cfg(feature = "gkr_self_checks")]
-            {
-                use crate::gkr::prover::stages::commitment_utils::compute_column_major_monomial_form_from_main_domain;
-                use crate::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
+        #[cfg(feature = "gkr_self_checks")]
+        {
+            use crate::gkr::prover::stages::commitment_utils::compute_column_major_monomial_form_from_main_domain;
+            use crate::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
 
-                // Reconstruct every packed polynomial from the committed base oracle
-                // and check that its multilinear evaluation at the (now extended)
-                // claim point matches the merged claim we just derived. We take the
-                // FIRST coset (offset == 1, i.e. the base evaluation domain), invert
-                // its NTT to recover the packed poly's monomial coefficients, turn
-                // those into hypercube evaluations, and evaluate at `base_layer_z`.
+            // Reconstruct every packed polynomial from the committed base oracles
+            // and check that its multilinear evaluation at the (now extended)
+            // claim point matches the merged claim we just derived. We take the
+            // FIRST coset (offset == 1, i.e. the base evaluation domain), invert
+            // its NTT to recover the packed poly's monomial coefficients, turn
+            // those into hypercube evaluations, and evaluate at `base_layer_z`.
+            let eq_at_point =
+                crate::gkr::sumcheck::eq_poly::make_eq_poly_in_full_lsb::<E>(&base_layer_z, worker);
+            let eq_at_point = eq_at_point.last().expect("eq poly has a full layer");
+            for (oracle, claims) in [
+                (&mem_oracle, &mem_polys_claims),
+                (&wit_oracle, &wit_polys_claims),
+            ] {
                 assert_eq!(
-                    mem_oracle.num_columns(),
-                    merged_claims.len(),
+                    oracle.num_columns(),
+                    claims.len(),
                     "one committed packed column per merged claim"
                 );
-                let eq_at_point = crate::gkr::sumcheck::eq_poly::make_eq_poly_in_full_lsb::<E>(
-                    &base_layer_z,
-                    worker,
-                );
-                let eq_at_point = eq_at_point.last().expect("eq poly has a full layer");
-                for (column_index, expected_claim) in merged_claims.iter().enumerate() {
+                for (column_index, expected_claim) in claims.iter().enumerate() {
                     // Reduce the base-domain column to monomial coefficients: evals
                     // need IFFT, monomials are already there.
-                    let column = mem_oracle.main_domain_column(column_index);
+                    let column = oracle.main_domain_column(column_index);
                     let mut hypercube_evals = if column.is_monomials() {
                         column.into_owned()
                     } else {
@@ -2102,9 +2095,11 @@ fn prove_configured_with_gkr_from_forward_eval<
                     );
                 }
             }
-
-            (merged_claims, Vec::new(), setup_polys_claims)
         }
+
+        (mem_polys_claims, wit_polys_claims, setup_polys_claims)
+    } else {
+        (mem_polys_claims, wit_polys_claims, setup_polys_claims)
     };
 
     // The WHIR batching challenge is gated behind a proof-of-work; the GKR sumcheck
@@ -2222,7 +2217,7 @@ fn prove_configured_with_gkr_from_forward_eval<
     }
 
     #[cfg(feature = "gkr_self_checks")]
-    if let CommitmentMode::MergedAndPackedMemoryAndWitness {
+    if let CommitmentMode::MergedMemoryAndWitnessSingleCircuitOnly {
         register_final_state,
         final_pc,
         final_timestamp,
@@ -2283,7 +2278,15 @@ fn prove_configured_with_gkr_from_forward_eval<
     }
 }
 
-fn merge_claims<F: Field>(input: &[F], extra_coordinates: &[F]) -> Vec<F> {
+/// Merge the multilinear claims of ONE packed column set: with
+/// `pack_log2 = extra_coordinates.len()`, every group of `2^pack_log2`
+/// consecutive claims (a short tail group is zero-padded, mirroring the
+/// zero-padded tail sub-polys of the packing) is folded pairwise by the extra
+/// coordinates in order — `a + (b - a) * r_i` for the claims differing in pack
+/// index bit `i` — into the single claim of the packed polynomial at the
+/// claim point extended by `extra_coordinates` at the top. An empty input
+/// yields an empty output. The verifier performs the identical merge.
+pub fn merge_claims<F: Field>(input: &[F], extra_coordinates: &[F]) -> Vec<F> {
     let pack_log2 = extra_coordinates.len();
     let mut result = vec![];
     for chunk in input.chunks(1 << pack_log2) {

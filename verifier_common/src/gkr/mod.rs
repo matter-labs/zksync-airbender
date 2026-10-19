@@ -271,3 +271,167 @@ pub struct GKRVerifierOutput<E: Field, const ROUNDS: usize, const ADDRS: usize> 
     pub whir_batching_challenge: E,
     pub base_layer_claims: LazyVec<E, ADDRS>,
 }
+
+/// Merge the base-layer claims of a PACKED base commitment, in place.
+///
+/// Mirrors the prover's `merge_claims` (`prover::gkr::prover`): the base
+/// columns of every committed set are packed by `2^pack_log2` consecutive
+/// columns into one committed column (block `y` of the packed poly is
+/// sub-poly `y`; a short tail group is zero-padded), so every group of
+/// `2^pack_log2` consecutive claims collapses to ONE claim by binding the
+/// `pack_log2 = extra_coordinates.len()` extra claim-point coordinates
+/// forward: adjacent claims `(a, b)` — differing in pack-index bit 0 — become
+/// `a + (b - a) * r_0`, the results pair up under `r_1`, and so on.
+///
+/// `set_lens` are the UNPACKED column counts of the committed sets in
+/// commitment order ([memory, witness, setup]; the witness set is empty in the
+/// merged modes), laid out contiguously at the front of `claims`. The merged
+/// sets are written contiguously at the front of `claims` (each set is
+/// `ceil(len / 2^pack_log2)` long) and their total length is returned.
+/// Entries past the input sets are left untouched. With no extra coordinates
+/// (`pack_log2 = 0`) the claims are unchanged.
+#[inline(always)]
+pub fn merge_packed_claims<E: Field>(
+    claims: &mut [E],
+    set_lens: &[usize],
+    extra_coordinates: &[E],
+) -> usize {
+    let pack = 1usize << extra_coordinates.len();
+    let mut in_off = 0usize;
+    let mut out_off = 0usize;
+    for &len in set_lens {
+        let mut chunk_start = in_off;
+        let mut remaining = len;
+        while remaining > 0 {
+            let chunk_len = if remaining < pack { remaining } else { pack };
+            // Fold the group in place: level `i` halves the live prefix, reading
+            // past it as zero (the prover's zero padding of a short tail group).
+            let mut live = chunk_len;
+            for r in extra_coordinates.iter() {
+                let half = live.div_ceil(2);
+                let mut i = 0;
+                while i < half {
+                    let a = claims[chunk_start + 2 * i];
+                    let mut t = if 2 * i + 1 < live {
+                        claims[chunk_start + 2 * i + 1]
+                    } else {
+                        E::ZERO
+                    };
+                    t.sub_assign(&a);
+                    t.mul_assign(r);
+                    t.add_assign(&a);
+                    claims[chunk_start + i] = t;
+                    i += 1;
+                }
+                live = half;
+            }
+            debug_assert_eq!(live, 1);
+            // `out_off <= chunk_start`: outputs never overtake unread input.
+            claims[out_off] = claims[chunk_start];
+            out_off += 1;
+            remaining -= chunk_len;
+            chunk_start += pack;
+        }
+        in_off += len;
+    }
+    out_off
+}
+
+#[cfg(test)]
+mod merge_packed_claims_tests {
+    use super::merge_packed_claims;
+    use field::baby_bear::base::BabyBearField;
+    use field::baby_bear::ext4::BabyBearExt4;
+    use field::{Field, FieldExtension, PrimeField};
+
+    /// Reference: the prover's `merge_claims` (allocating, per set).
+    fn reference_merge<F: Field>(input: &[F], extra_coordinates: &[F]) -> Vec<F> {
+        let pack_log2 = extra_coordinates.len();
+        let mut result = vec![];
+        for chunk in input.chunks(1 << pack_log2) {
+            let mut input = chunk.to_vec();
+            input.resize(1 << pack_log2, F::ZERO);
+            let mut buffer = vec![];
+            for merge_point in extra_coordinates.iter() {
+                for pair in input.chunks(2) {
+                    let (a, b) = (pair[0], pair[1]);
+                    let mut t = b;
+                    t.sub_assign(&a);
+                    t.mul_assign(merge_point);
+                    t.add_assign(&a);
+                    buffer.push(t);
+                }
+                core::mem::swap(&mut input, &mut buffer);
+                buffer.clear();
+            }
+            assert_eq!(input.len(), 1);
+            result.push(input[0]);
+        }
+        result
+    }
+
+    fn pseudo_random_el(state: &mut u64) -> BabyBearExt4 {
+        let mut coeffs = [BabyBearField::ZERO; 4];
+        for c in coeffs.iter_mut() {
+            // xorshift64*
+            *state ^= *state >> 12;
+            *state ^= *state << 25;
+            *state ^= *state >> 27;
+            let word = (state.wrapping_mul(0x2545F4914F6CDD1D) >> 32) as u32;
+            *c = BabyBearField::from_raw_repr_with_reduction(word);
+        }
+        <BabyBearExt4 as FieldExtension<BabyBearField>>::from_coeffs(coeffs)
+    }
+
+    #[test]
+    fn matches_prover_merge_claims_per_set() {
+        let mut state = 0x9E3779B97F4A7C15u64;
+        for pack_log2 in 0..4usize {
+            let pack = 1usize << pack_log2;
+            for set_lens in [
+                [0usize, 0, 0],
+                [1, 0, 0],
+                [pack, pack, pack],
+                [pack + 1, 0, 1],
+                [3 * pack - 1, pack - 1 + 1, 2],
+                [7, 0, 5],
+                [13, 11, 4],
+                [40, 0, 17],
+            ] {
+                let extra: Vec<BabyBearExt4> = (0..pack_log2)
+                    .map(|_| pseudo_random_el(&mut state))
+                    .collect();
+                let total: usize = set_lens.iter().sum();
+                // trailing entries (virtual setup etc.) must survive untouched
+                let tail = 3;
+                let input: Vec<BabyBearExt4> = (0..total + tail)
+                    .map(|_| pseudo_random_el(&mut state))
+                    .collect();
+
+                let mut expected = Vec::new();
+                let mut off = 0;
+                for &len in &set_lens {
+                    let set = &input[off..off + len];
+                    // the prover's own merge is the source of truth
+                    let from_prover = prover::gkr::prover::merge_claims(set, &extra);
+                    assert_eq!(from_prover, reference_merge(set, &extra));
+                    expected.extend(from_prover);
+                    off += len;
+                }
+
+                let mut claims = input.clone();
+                let merged = merge_packed_claims(&mut claims, &set_lens, &extra);
+                assert_eq!(
+                    merged,
+                    set_lens.iter().map(|l| l.div_ceil(pack)).sum::<usize>()
+                );
+                assert_eq!(
+                    &claims[..merged],
+                    &expected[..],
+                    "pack_log2 {pack_log2}, sets {set_lens:?}"
+                );
+                assert_eq!(&claims[total..], &input[total..]);
+            }
+        }
+    }
+}

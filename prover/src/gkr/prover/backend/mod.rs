@@ -434,6 +434,31 @@ pub trait Backend<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>: S
         worker: &Worker,
     ) -> Vec<Vec<F>>;
 
+    /// The PACKED base commitment's whole LDE pipeline in one call: pack
+    /// groups of `2^pack_log2` hypercube columns (zero-padded tail group) into
+    /// `(N + pack_log2)`-variate multilinears, bring them to monomial form and
+    /// LDE every packed poly into all `lde_factor` cosets — the fusion of
+    /// [`Self::pack_polys_from_hypercubes_to_monomials`] and
+    /// [`Self::lde_packed_monomials_into_cosets`]. The default is that plain
+    /// composition; the work-stealing backends fuse the packing copy with the
+    /// top-variable butterflies of the evals -> coeffs transform and run the
+    /// block-local transforms as a task grid (see
+    /// `ws_lde_packed_polys_from_hypercubes`). Values MUST equal the
+    /// composition's (proofs must not depend on the backend).
+    fn lde_packed_polys_from_hypercubes(
+        &self,
+        evals: &[&[F]],
+        pack_log2: usize,
+        twiddles: &Self::TwiddleSet,
+        lde_factor: usize,
+        pool: &dyn AllocationPool<F, E>,
+        worker: &Worker,
+    ) -> Vec<ColumnMajorBaseOracleForCoset<F>> {
+        let monomials =
+            self.pack_polys_from_hypercubes_to_monomials(evals, pack_log2, pool, worker);
+        self.lde_packed_monomials_into_cosets(monomials, twiddles, lde_factor, pool, worker)
+    }
+
     /// Boolean-hypercube evaluations → multilinear monomial coefficients (the
     /// SUB Mobius transform, natural LSB order), OUT OF PLACE: `whir_fold`'s
     /// batched proximity polynomial keeps its evaluation form for the
@@ -861,6 +886,137 @@ fn ws_lde_packed_monomials_into_cosets<F: PrimeField + TwoAdicField>(
             })
             .collect()
     }
+}
+
+/// Fused `hypercube evals -> packed monomial forms -> coset LDEs` of
+/// [`Backend::lde_packed_polys_from_hypercubes`] for the work-stealing
+/// backends. The `(N + pack_log2)`-variate evals -> coeffs (Mobius) transform
+/// is a product of per-variable butterflies that commute, so it is split by
+/// variable set and fused with the packing copy:
+///   1. the `pack_log2` TOP variables (the block index): ONE parallel pass
+///      over position chunks that copies the `2^pack_log2` source columns'
+///      chunk into the packed poly's blocks (zeros for a missing tail column)
+///      and runs the block-level butterflies on the in-cache chunk — the
+///      reference's serial concatenation copy disappears;
+///   2. the `N` low variables (block-local): a task grid over ALL blocks of
+///      all packed polys — `block_transform_serial` per block when there are
+///      at least as many blocks as threads (no barriers at all), the
+///      worker-parallel transform block by block otherwise;
+///   3. the poly x coset LDE grid ([`ws_lde_packed_monomials_into_cosets`]).
+/// Same field operations as the reference composition in a different order:
+/// the values are identical (exact arithmetic) — see the parity tests.
+fn ws_lde_packed_polys_from_hypercubes<F: PrimeField + TwoAdicField>(
+    evals: &[&[F]],
+    pack_log2: usize,
+    twiddles: &Twiddles<F, Global>,
+    lde_factor: usize,
+    block_transform_serial: &(impl Fn(&mut [F]) + Sync),
+    serial_kernel: &(impl Fn(&[F], F, &[F]) -> Vec<F> + Sync),
+    parallel_kernel: &(impl Fn(&[F], F, &[F], &Worker) -> Vec<F> + Sync),
+    worker: &Worker,
+) -> Vec<ColumnMajorBaseOracleForCoset<F>> {
+    use worker::rayon::prelude::*;
+
+    assert!(!evals.is_empty());
+    let n = evals[0].len();
+    assert!(n.is_power_of_two());
+    let n_log = n.trailing_zeros();
+    for column in evals.iter() {
+        assert_eq!(column.len(), n);
+    }
+    let pack = 1usize << pack_log2;
+    let num_packed = evals.len().div_ceil(pack);
+
+    // Every element of every packed buffer is written by pass 1 before any read.
+    let mut monomials: Vec<Vec<F>> = (0..num_packed)
+        .map(|_| {
+            let mut v: Vec<F> = Vec::with_capacity(n * pack);
+            #[allow(clippy::uninit_vec)]
+            unsafe {
+                v.set_len(n * pack)
+            };
+            v
+        })
+        .collect();
+
+    // Pass 1: copy + top-variable butterflies, over position chunks small
+    // enough for all `pack` block chunks of a task to stay in cache.
+    let chunk = ((1usize << 18) / (pack * core::mem::size_of::<F>())).clamp(1, n);
+    {
+        // (first source column of the packed poly, first position, block chunks)
+        let mut tasks: Vec<(usize, usize, Vec<&mut [F]>)> = Vec::new();
+        for (k, packed) in monomials.iter_mut().enumerate() {
+            let mut block_chunks: Vec<_> = packed
+                .chunks_mut(n)
+                .map(|block| block.chunks_mut(chunk))
+                .collect();
+            for c in 0..n.div_ceil(chunk) {
+                let dsts: Vec<&mut [F]> = block_chunks
+                    .iter_mut()
+                    .map(|it| it.next().expect("every block has the same chunks"))
+                    .collect();
+                tasks.push((k * pack, c * chunk, dsts));
+            }
+        }
+        worker.pool.install(|| {
+            tasks
+                .into_par_iter()
+                .for_each(|(first_column, first_position, mut dsts)| {
+                    for (j, dst) in dsts.iter_mut().enumerate() {
+                        match evals.get(first_column + j) {
+                            Some(src) => dst
+                                .copy_from_slice(&src[first_position..first_position + dst.len()]),
+                            None => dst.fill(F::ZERO),
+                        }
+                    }
+                    // variable `b` of the block index: block (j | 1 << b) -= block j
+                    for b in 0..pack_log2 {
+                        let s = 1usize << b;
+                        for j in 0..pack {
+                            if j & s != 0 {
+                                continue;
+                            }
+                            let (lo, hi) = dsts.split_at_mut(j | s);
+                            let lo: &[F] = &*lo[j];
+                            let hi: &mut [F] = &mut *hi[0];
+                            for (h, l) in hi.iter_mut().zip(lo.iter()) {
+                                h.sub_assign(l);
+                            }
+                        }
+                    }
+                });
+        });
+    }
+
+    // Pass 2: block-local transforms over the N low variables.
+    {
+        let blocks: Vec<&mut [F]> = monomials
+            .iter_mut()
+            .flat_map(|packed| packed.chunks_mut(n))
+            .collect();
+        if blocks.len() >= worker.get_num_cores() {
+            worker.pool.install(|| {
+                blocks
+                    .into_par_iter()
+                    .for_each(|block| block_transform_serial(block))
+            });
+        } else {
+            for block in blocks {
+                crate::gkr::whir::hypercube_to_monomial::parallel_multivariate_hypercube_evals_into_coeffs(
+                    block, n_log, worker,
+                );
+            }
+        }
+    }
+
+    ws_lde_packed_monomials_into_cosets(
+        monomials,
+        twiddles,
+        lde_factor,
+        serial_kernel,
+        parallel_kernel,
+        worker,
+    )
 }
 
 /// Grid body of the single-poly LDE methods (base- and extension-field twins)
@@ -1709,5 +1865,121 @@ mod tests {
             assert_eq!(oa, ob);
             assert_eq!(&da[..], &db[..]);
         }
+    }
+
+    fn check_equal_packed_cosets<F: PrimeField + TwoAdicField>(
+        a: &[ColumnMajorBaseOracleForCoset<F>],
+        b: &[ColumnMajorBaseOracleForCoset<F>],
+    ) {
+        assert_eq!(a.len(), b.len());
+        for (ca, cb) in a.iter().zip(b.iter()) {
+            assert_eq!(ca.offset, cb.offset);
+            assert_eq!(ca.coset_size_log2, cb.coset_size_log2);
+            assert_eq!(
+                ca.original_values_normal_order.len(),
+                cb.original_values_normal_order.len()
+            );
+            for (x, y) in ca
+                .original_values_normal_order
+                .iter()
+                .zip(cb.original_values_normal_order.iter())
+            {
+                assert_eq!(x.offset, y.offset);
+                assert_eq!(x.to_vec(), y.to_vec());
+            }
+        }
+    }
+
+    /// `(num_threads, num_cols, n_log, pack_log2, lde)` shapes for the fused
+    /// packed pipeline: padding (column counts that are not a multiple of the
+    /// pack), both block-grid regimes (blocks >= threads: serial per-block
+    /// transforms; blocks < threads: worker-parallel transforms), several
+    /// pack factors including the degenerate `pack_log2 = 0`.
+    const PACKED_HYPERCUBE_SHAPES: &[(usize, usize, usize, usize, usize)] = &[
+        // 5 cols -> 2 packed polys (3 zero blocks); 8 blocks >= 4 threads
+        (4, 5, 10, 2, 4),
+        // 4 blocks < 8 threads: worker-parallel block transforms
+        (8, 3, 8, 1, 2),
+        // pack 8, 16 blocks of tiny columns (below the SIMD transforms' floor)
+        (2, 9, 3, 3, 2),
+        // one column packed by 16 (15 zero blocks), several position chunks
+        (4, 1, 12, 4, 2),
+        // pack_log2 = 0 degenerates to hypercube -> monomials -> LDE
+        (4, 4, 10, 0, 4),
+    ];
+
+    /// [`Backend::lde_packed_polys_from_hypercubes`] of `backend` (its fused
+    /// pipeline) must produce exactly the naive default's values — the plain
+    /// `pack_polys_from_hypercubes_to_monomials` +
+    /// `lde_packed_monomials_into_cosets` composition.
+    fn check_packed_hypercube_lde_parity<
+        F: PrimeField + TwoAdicField + Rand,
+        E: FieldExtension<F> + Field,
+        B: Backend<F, E>,
+    >(
+        backend: &B,
+    ) {
+        for &(num_threads, num_cols, n_log, pack_log2, lde) in PACKED_HYPERCUBE_SHAPES {
+            let worker = Worker::new_with_num_threads(num_threads);
+            let n = 1usize << n_log;
+            let packed_n = n << pack_log2;
+            let twiddles = Twiddles::<F, Global>::new(packed_n, &worker);
+            let backend_twiddles = backend.make_twiddles(packed_n, &worker);
+            let cols: Vec<Vec<F>> = rand_cols(num_cols, n);
+            let col_refs: Vec<&[F]> = cols.iter().map(|c| &c[..]).collect();
+            let pool = GenericAllocationPool::proxy();
+
+            let reference = Backend::<F, E>::lde_packed_polys_from_hypercubes(
+                &NaiveBackend,
+                &col_refs,
+                pack_log2,
+                &twiddles,
+                lde,
+                &pool,
+                &worker,
+            );
+            let fused = backend.lde_packed_polys_from_hypercubes(
+                &col_refs,
+                pack_log2,
+                &backend_twiddles,
+                lde,
+                &pool,
+                &worker,
+            );
+            assert_eq!(reference.len(), lde);
+            assert_eq!(
+                reference[0].original_values_normal_order.len(),
+                num_cols.div_ceil(1 << pack_log2)
+            );
+            check_equal_packed_cosets(&reference, &fused);
+        }
+    }
+
+    #[test]
+    fn work_stealing_packed_hypercube_lde_matches_naive() {
+        check_packed_hypercube_lde_parity::<BabyBearField, BabyBearExt4, _>(&WorkStealingBackend);
+        check_packed_hypercube_lde_parity::<Proth120, Proth120, _>(&WorkStealingBackend);
+        check_packed_hypercube_lde_parity::<Proth120, Proth120, _>(
+            &Proth120WorkStealingLazyBackend,
+        );
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    #[test]
+    fn baby_bear_neon_packed_hypercube_lde_matches_naive() {
+        check_packed_hypercube_lde_parity::<BabyBearField, BabyBearExt4, _>(
+            &BabyBearNeonWorkStealingBackend,
+        );
+    }
+
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+    #[test]
+    fn baby_bear_avx2_packed_hypercube_lde_matches_naive() {
+        check_packed_hypercube_lde_parity::<BabyBearField, BabyBearExt4, _>(
+            &BabyBearAvx2WorkStealingBackend,
+        );
+        check_packed_hypercube_lde_parity::<BabyBearField, BabyBearExt4, _>(
+            &BabyBearAvx512WorkStealingBackend::default(),
+        );
     }
 }
