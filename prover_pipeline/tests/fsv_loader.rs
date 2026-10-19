@@ -50,9 +50,11 @@ fn regular_fsv_padding_preserves_proof_bytes() {
         BlakeMode::Compression,
     );
     let prove = |padded: bool| {
-        let mut config = CpuExecutionProverConfiguration::default();
-        config.max_thread_pool_threads = Some(24);
-        config.ram_config = riscv_transpiler::jit::JitRunnerRam::Tiny;
+        let config = CpuExecutionProverConfiguration {
+            max_thread_pool_threads: Some(24),
+            ram_config: riscv_transpiler::jit::JitRunnerRam::Tiny,
+            ..Default::default()
+        };
         let mut prover = CpuExecutionProver::with_configuration(config);
         let mut binary = bin.clone();
         let mut code = text.clone();

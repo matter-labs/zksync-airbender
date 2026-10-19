@@ -150,7 +150,10 @@ struct CheckedTape {
 impl InstructionTape for CheckedTape {
     #[inline(always)]
     fn read_instruction(&self, pc: u32) -> Instruction {
-        assert!(pc % 4 == 0, "unaligned fsv instruction fetch at 0x{pc:08x}");
+        assert!(
+            pc.is_multiple_of(4),
+            "unaligned fsv instruction fetch at 0x{pc:08x}"
+        );
         assert!(
             (pc as usize / 4) < self.words,
             "fsv instruction fetch outside text at 0x{pc:08x}"
@@ -182,7 +185,7 @@ impl<const ROM_BITS: usize> CheckedRam<ROM_BITS> {
     #[inline(always)]
     fn check_and_observe(&self, address: u32) {
         assert!(
-            address % 4 == 0,
+            address.is_multiple_of(4),
             "unaligned fsv memory access at 0x{address:08x}"
         );
         assert!(

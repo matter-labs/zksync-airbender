@@ -151,7 +151,7 @@ fn replay<const CSR: u16, const IW: usize, const VO: usize>(
         let mut ram = ReplayerRam::<{ ROM_SECOND_WORD_BITS }> {
             ram_log: &mut ram_log,
         };
-        let mut buffers = vec![&mut rows[..]];
+        let mut buffers = [&mut rows[..]];
         let mut tracer = DelegationDestinationHolder::<
             '_,
             CSR,
@@ -553,7 +553,7 @@ fn borrows_follow_the_limb_boundaries<
             let read = read_timestamp(&trace, group, row);
             let distance = invocation + 2 - read;
             assert!(
-                distance > 0 && distance < LIMB && distance % 4 == 0,
+                distance > 0 && distance < LIMB && distance.is_multiple_of(4),
                 "row {row}"
             );
             let borrow = trace.column_major_witness_trace[group.borrow][row].as_u32_reduced();

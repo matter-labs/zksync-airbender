@@ -406,7 +406,7 @@ mod tests {
         assert_eq!(config.base_oracles_values_per_leaf, 2);
         assert_eq!(config.sumcheck_explicit_output_size_log_2, 2);
         config.validate_for_whir_message_size(message_log2);
-        assert!(EXTERNAL_CHALLENGES_POW_BITS <= 25);
+        const { assert!(EXTERNAL_CHALLENGES_POW_BITS <= 25) };
 
         let schedule = &config.whir_schedule;
         assert_eq!(schedule.whir_steps_schedule, vec![1, 4, 4, 4, 4]);
