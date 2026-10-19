@@ -185,6 +185,11 @@ fn validate_profile_set(
         circuit_type != UNIFIED22 || profiles.iter().eq([ProofProfile::L1Feeder].iter()),
         "CircuitType::Unrolled(UnrolledCircuitType::Unified22) requires exactly ProofProfile::L1Feeder, got {profiles:?}"
     );
+    assert!(
+        !profiles.contains(&ProofProfile::L1FeederA)
+            || circuit_type == CircuitType::Unrolled(UnrolledCircuitType::Unified),
+        "ProofProfile::L1FeederA requires CircuitType::Unrolled(UnrolledCircuitType::Unified), got {circuit_type:?}"
+    );
     profiles
 }
 
@@ -284,7 +289,7 @@ mod cpu_tests {
     use super::*;
     use gpu_trace::witness::circuit_type::{DelegationCircuitType, UnrolledMemoryCircuitType};
     use std::panic::{catch_unwind, AssertUnwindSafe};
-    use ProofProfile::{L1Feeder, L1Wrap, Standard};
+    use ProofProfile::{L1Feeder, L1FeederA, L1Wrap, Standard};
 
     const UNIFIED: CircuitType = CircuitType::Unrolled(UnrolledCircuitType::Unified);
     const UNIFIED22: CircuitType = CircuitType::Unrolled(UnrolledCircuitType::Unified22);
@@ -321,6 +326,13 @@ mod cpu_tests {
             validate_profile_set(UNIFIED, false, &[Standard]),
             set(&[Standard])
         );
+        assert_eq!(
+            validate_profile_set(UNIFIED, false, &[L1FeederA, Standard, L1FeederA]),
+            set(&[Standard, L1FeederA])
+        );
+        for circuit in [inits_and_teardowns, memory, delegation, UNIFIED22] {
+            assert!(catch_unwind(|| validate_profile_set(circuit, false, &[L1FeederA])).is_err());
+        }
         for circuit in [inits_and_teardowns, memory, delegation] {
             assert_eq!(
                 validate_profile_set(circuit, false, &[Standard, Standard]),
@@ -486,15 +498,24 @@ mod cpu_tests {
 
     #[test]
     fn cpu_m8_feeder_geometry() {
-        // the L1 feeder is the 2^22 circuit; the 2^23 one is Standard-only
-        let mut geometries = setup_geometries(UNIFIED, &[Standard], SecurityLevel::Sec100);
+        let mut geometries =
+            setup_geometries(UNIFIED, &[Standard, L1FeederA], SecurityLevel::Sec100);
         geometries.extend(setup_geometries(
             UNIFIED22,
             &[L1Feeder],
             SecurityLevel::Sec100,
         ));
-        assert!(geometries.keys().eq([Standard, L1Feeder].iter()));
+        assert!(geometries.keys().eq([Standard, L1Feeder, L1FeederA].iter()));
         assert_ne!(geometries[&L1Feeder], geometries[&Standard]);
+        assert_ne!(geometries[&L1FeederA], geometries[&Standard]);
+        assert_ne!(geometries[&L1FeederA], geometries[&L1Feeder]);
+        let cache = ProfileSetupCache::<(), SetupGeometry>::new((), geometries.clone());
+        cache
+            .get_or_try_init(|_, geometry| Ok::<_, &str>(geometry))
+            .unwrap();
+        assert_eq!(cache.get(Standard), geometries[&Standard]);
+        assert_eq!(cache.get(L1FeederA), geometries[&L1FeederA]);
+        assert_eq!(cache.get(L1Feeder), geometries[&L1Feeder]);
         for (&profile, geometry) in &geometries {
             let circuit = if profile == L1Feeder {
                 UNIFIED22

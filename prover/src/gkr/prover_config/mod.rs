@@ -9,11 +9,20 @@ pub mod pow_bits;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ProofProfile {
     Standard,
+    /// The 2^22 L1 feeder (profile C).
     L1Feeder,
     L1Wrap,
+    /// The 2^23 L1 feeder at base LDE 4 (profile A).
+    L1FeederA,
 }
 
 impl ProofProfile {
+    /// The L1 feeder profiles: merged memory+witness commitment, recomputed
+    /// base oracles, the L1 feeder memory policy.
+    pub fn is_l1_feeder(self) -> bool {
+        matches!(self, Self::L1Feeder | Self::L1FeederA)
+    }
+
     pub fn prover_config(
         self,
         trace_len_log2: usize,
@@ -32,6 +41,13 @@ impl ProofProfile {
                     "ProofProfile::L1Feeder requires the 2^22 unified circuit"
                 );
                 example_configs::l1_feeder_config_for_2_22()
+            }
+            Self::L1FeederA => {
+                assert_eq!(
+                    trace_len_log2, 23,
+                    "ProofProfile::L1FeederA requires the 2^23 unified circuit"
+                );
+                example_configs::l1_feeder_a_config_for_2_23()
             }
             Self::L1Wrap => {
                 assert_eq!(

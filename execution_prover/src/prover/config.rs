@@ -14,7 +14,8 @@ use execution_prover_model::MachineType;
 ///
 /// - `Unrolled`: per-family circuits (split memory / non-memory / I&T).
 /// - `Unified`: the 2^23 reduced-machine unified circuit (single circuit
-///   family, `MachineType::Reduced` only, `ProofProfile::Standard` only).
+///   family, `MachineType::Reduced` only, `ProofProfile::Standard` and/or
+///   `ProofProfile::L1FeederA`).
 /// - `Unified22`: the 2^22 unified circuit of the L1 feeder layers
 ///   (`MachineType::Reduced`, exactly `ProofProfile::L1Feeder`).
 /// - `L1Wrap21`: the 2^21 Proth120 L1 wrap (`MachineType::Reduced`, exactly

@@ -106,7 +106,7 @@ impl CpuJobs {
 }
 
 fn whir_storage(profile: ProofProfile) -> WhirOracleStorage {
-    if profile == ProofProfile::L1Feeder {
+    if profile.is_l1_feeder() {
         WhirOracleStorage::recompute_base_materialized_intermediates()
     } else {
         WhirOracleStorage::fully_in_memory()

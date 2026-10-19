@@ -36,9 +36,12 @@ pub fn select_auto_arena_bytes(available: usize) -> usize {
     }
 }
 
-/// `ProofProfile::L1Feeder` and `UnrolledCircuitType::Unified22` imply each other.
+/// `ProofProfile::L1Feeder` and `UnrolledCircuitType::Unified22` imply each
+/// other; `ProofProfile::L1FeederA` requires `UnrolledCircuitType::Unified`,
+/// which also proves `ProofProfile::Standard`.
 fn is_l1_feeder(circuit: CircuitType, profile: ProofProfile) -> bool {
     const UNIFIED22: CircuitType = CircuitType::Unrolled(UnrolledCircuitType::Unified22);
+    const UNIFIED: CircuitType = CircuitType::Unrolled(UnrolledCircuitType::Unified);
     assert!(
         profile != ProofProfile::L1Feeder || circuit == UNIFIED22,
         "ProofProfile::L1Feeder requires CircuitType::Unrolled(UnrolledCircuitType::Unified22), got {circuit:?}"
@@ -47,7 +50,11 @@ fn is_l1_feeder(circuit: CircuitType, profile: ProofProfile) -> bool {
         circuit != UNIFIED22 || profile == ProofProfile::L1Feeder,
         "CircuitType::Unrolled(UnrolledCircuitType::Unified22) requires ProofProfile::L1Feeder, got {profile:?}"
     );
-    profile == ProofProfile::L1Feeder
+    assert!(
+        profile != ProofProfile::L1FeederA || circuit == UNIFIED,
+        "ProofProfile::L1FeederA requires CircuitType::Unrolled(UnrolledCircuitType::Unified), got {circuit:?}"
+    );
+    profile.is_l1_feeder()
 }
 
 pub fn policy(
@@ -86,7 +93,7 @@ pub fn admit_l1_feeder(arena_bytes: usize) {
     use l1_feeder::{L1_FEEDER_FLOOR_BYTES, L1_FEEDER_FLOOR_SOURCE};
     assert!(
         arena_bytes >= L1_FEEDER_FLOOR_BYTES,
-        "ProofProfile::L1Feeder requires an arena of at least {L1_FEEDER_FLOOR_BYTES} bytes ({L1_FEEDER_FLOOR_SOURCE} floor), got {arena_bytes}"
+        "an L1 feeder proof requires an arena of at least {L1_FEEDER_FLOOR_BYTES} bytes ({L1_FEEDER_FLOOR_SOURCE} floor), got {arena_bytes}"
     );
 }
 
@@ -261,6 +268,50 @@ mod cpu_tests {
         }
     }
 
+    /// Profile A runs the L1 feeder policy on the 2^23 unified circuit, which
+    /// keeps proving `ProofProfile::Standard` under its generated policy.
+    #[test]
+    fn cpu_feeder_a_policy() {
+        let unified = CircuitType::Unrolled(UnrolledCircuitType::Unified);
+        let unified22 = CircuitType::Unrolled(UnrolledCircuitType::Unified22);
+        let a = ProofProfile::L1FeederA;
+        assert_eq!(policy(unified, a, 21 << 30), l1_feeder::POLICY);
+        assert_eq!(partial_trees(unified, a), l1_feeder::PARTIAL_TREES);
+        assert_eq!(
+            merged_commit_strategy(unified, a),
+            MergedCommitStrategy::Monomials
+        );
+        assert!(persists_memory_partial_trees(unified, a));
+        assert_eq!(
+            policy(unified, ProofProfile::Standard, 21 << 30),
+            generated::policy(unified, 21 << 30)
+        );
+        let named_panic = |circuit: CircuitType, expected: String| {
+            let panic = std::panic::catch_unwind(|| policy(circuit, a, 21 << 30))
+                .expect_err("a mismatched L1FeederA identity must panic");
+            assert_eq!(
+                panic
+                    .downcast_ref::<String>()
+                    .expect("named L1FeederA panic"),
+                &expected
+            );
+        };
+        named_panic(
+            unified22,
+            format!("CircuitType::Unrolled(UnrolledCircuitType::Unified22) requires ProofProfile::L1Feeder, got {a:?}"),
+        );
+        for circuit in [
+            CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns),
+            CircuitType::Delegation(DelegationCircuitType::BigIntWithControl),
+            CircuitType::L1Wrap21,
+        ] {
+            named_panic(
+                circuit,
+                format!("ProofProfile::L1FeederA requires CircuitType::Unrolled(UnrolledCircuitType::Unified), got {circuit:?}"),
+            );
+        }
+    }
+
     #[test]
     fn cpu_m8_admission() {
         use l1_feeder::{L1_FEEDER_FLOOR_BYTES, L1_FEEDER_FLOOR_SOURCE};
@@ -282,7 +333,7 @@ mod cpu_tests {
                 admit_l1_feeder,
                 L1_FEEDER_FLOOR_BYTES - 1,
                 format!(
-                    "ProofProfile::L1Feeder requires an arena of at least {L1_FEEDER_FLOOR_BYTES} bytes (measured floor), got {}",
+                    "an L1 feeder proof requires an arena of at least {L1_FEEDER_FLOOR_BYTES} bytes (measured floor), got {}",
                     L1_FEEDER_FLOOR_BYTES - 1
                 ),
             ),

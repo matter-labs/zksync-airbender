@@ -110,7 +110,7 @@ fn gpu_prover(memory_preset: MemoryPreset) -> ExecutionProver<GpuBackend> {
 /// The W4 feeder gates run at the 30 GiB preset; the other cases keep Auto.
 fn gpu_preset(profile: ProofProfile) -> MemoryPreset {
     match profile {
-        ProofProfile::L1Feeder => MemoryPreset::GiB30,
+        ProofProfile::L1Feeder | ProofProfile::L1FeederA => MemoryPreset::GiB30,
         ProofProfile::Standard | ProofProfile::L1Wrap => MemoryPreset::Auto,
     }
 }

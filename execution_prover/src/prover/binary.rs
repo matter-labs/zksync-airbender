@@ -40,11 +40,19 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 "ProofProfile::L1Feeder requires ExecutionKind::Unified22"
             );
         }
+        if profiles.contains(&ProofProfile::L1FeederA) {
+            assert_eq!(
+                execution_kind,
+                ExecutionKind::Unified,
+                "ProofProfile::L1FeederA requires ExecutionKind::Unified"
+            );
+        }
         match execution_kind {
-            ExecutionKind::Unified => assert_eq!(
-                profiles,
-                [ProofProfile::Standard],
-                "ExecutionKind::Unified requires exactly ProofProfile::Standard"
+            ExecutionKind::Unified => assert!(
+                profiles
+                    .iter()
+                    .all(|profile| matches!(profile, ProofProfile::Standard | ProofProfile::L1FeederA)),
+                "ExecutionKind::Unified admits only ProofProfile::Standard and ProofProfile::L1FeederA, got {profiles:?}"
             ),
             ExecutionKind::Unified22 => assert_eq!(
                 profiles,

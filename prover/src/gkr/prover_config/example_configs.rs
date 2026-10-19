@@ -65,51 +65,92 @@ pub static L1_FEEDER_QUERIES_AND_POW: LazyLock<[(usize, u32); 5]> = LazyLock::ne
     )
 });
 
-/// The "L1 feeder" configuration for the 2^22 unified circuit: base LDE 16
-/// (2^22 x 16 = 2^26) and every intermediate oracle domain at 2^26 too
-/// (ladder [32, 1024, 32768, 1048576] for the post-fold poly sizes
-/// [2^21, 2^16, 2^11, 2^6]); the schedule stops at the 2^3 polynomial
-/// (plain-text tail). Cap 16 is forced at LDE 16 (coset commit cap <= LDE,
-/// memory-cap split cap >= LDE). The queries and PoW of every round are
-/// [`L1_FEEDER_QUERIES_AND_POW`]. Purpose: make proofs of every feeder
-/// layer cheap to VERIFY so a layer verifying two 2^22 chunks fits one
-/// 2^22 chunk and the last layer's verification fits the L1 (Proth120)
-/// wrapper's 2^21 unified circuit; prove these layers with the RS/tree
-/// RECOMPUTATION storage policy.
-pub fn l1_feeder_config_for_2_22() -> ProverConfig {
-    const L1_FEEDER_TRACE_LEN_LOG2: usize = 22;
-    const L1_FEEDER_CAP_SIZE: usize = 16;
-    let whir_queries_schedule = L1_FEEDER_QUERIES_AND_POW
-        .iter()
-        .map(|(queries, _)| *queries)
-        .collect();
-    let whir_pow_schedule = L1_FEEDER_QUERIES_AND_POW
-        .iter()
-        .map(|(_, pow)| *pow)
-        .collect();
+const L1_FEEDER_A_BASE_LDE_FACTOR: usize = 4;
+
+/// The per-round PoW bits of the 2^23 L1 feeder configuration (profile A),
+/// rounds 0..5 at rates 2^-2 / 2^-5 / 2^-10 / 2^-15 / 2^-20, under the same
+/// rule and ceiling as [`L1_FEEDER_POW_BITS`]; asserted by
+/// `l1_feeder_a_23_shape_and_security`.
+pub const L1_FEEDER_A_POW_BITS: [u32; 5] = [25, 25, 25, 25, 17];
+
+/// The per-round (queries, PoW bits) of profile A, derived from
+/// [`L1_FEEDER_A_POW_BITS`] and the round rates; pinned by
+/// `l1_feeder_a_23_rounds_are_pinned`.
+pub static L1_FEEDER_A_QUERIES_AND_POW: LazyLock<[(usize, u32); 5]> = LazyLock::new(|| {
+    queries_and_pow_under_pessimistic_conjecture(
+        SecurityLevel::Sec100,
+        L1_FEEDER_A_BASE_LDE_FACTOR,
+        &L1_FEEDER_WHIR_STEPS_LDE_FACTORS,
+        L1_FEEDER_A_POW_BITS,
+    )
+});
+
+/// An L1 feeder configuration over the ladder [32, 1024, 32768, 1048576]:
+/// cap = base LDE (coset commit cap <= LDE, memory-cap split cap >= LDE), and
+/// the folds stop at the 2^3 polynomial, whose 8 monomial coefficients ship
+/// in plain text.
+fn l1_feeder_config(
+    trace_len_log2: usize,
+    base_lde_factor: usize,
+    whir_steps_schedule: Vec<usize>,
+    queries_and_pow: &[(usize, u32); 5],
+) -> ProverConfig {
     ProverConfig {
-        trace_len_log2: L1_FEEDER_TRACE_LEN_LOG2,
+        trace_len_log2,
         same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(
-            L1_FEEDER_TRACE_LEN_LOG2,
+            trace_len_log2,
         ),
         dimension_reducing_sumcheck_schedule: Default::default(),
-        lde_factor: L1_FEEDER_BASE_LDE_FACTOR,
-        cap_size: L1_FEEDER_CAP_SIZE,
+        lde_factor: base_lde_factor,
+        cap_size: base_lde_factor,
         base_oracles_values_per_leaf: 2,
         sumcheck_explicit_output_size_log_2: DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
         security_level: SecurityLevel::Sec100,
         whir_schedule: WhirSchedule {
-            base_lde_factor: L1_FEEDER_BASE_LDE_FACTOR,
-            cap_size: L1_FEEDER_CAP_SIZE,
-            // Total fold 19: the WHIR run STOPS at the 2^3 polynomial and
-            // ships its 8 monomial coefficients in plain text.
-            whir_steps_schedule: vec![1, 5, 5, 5, 3],
-            whir_queries_schedule,
-            // every oracle domain = 2^26
+            base_lde_factor,
+            cap_size: base_lde_factor,
+            whir_steps_schedule,
+            whir_queries_schedule: queries_and_pow
+                .iter()
+                .map(|(queries, _)| *queries)
+                .collect(),
             whir_steps_lde_factors: L1_FEEDER_WHIR_STEPS_LDE_FACTORS.to_vec(),
-            whir_pow_schedule,
+            whir_pow_schedule: queries_and_pow.iter().map(|(_, pow)| *pow).collect(),
         },
     }
+}
+
+/// The "L1 feeder" configuration for the 2^22 unified circuit (profile C):
+/// base LDE 16 (2^22 x 16 = 2^26) and every intermediate oracle domain at
+/// 2^26 too (post-fold poly sizes [2^21, 2^16, 2^11, 2^6]), folds
+/// [1, 5, 5, 5, 3]. The queries and PoW of every round are
+/// [`L1_FEEDER_QUERIES_AND_POW`]. Purpose: make proofs of every feeder
+/// layer cheap to VERIFY so the last layer's verification fits the L1
+/// (Proth120) wrapper's 2^21 unified circuit; prove these layers with the
+/// RS/tree RECOMPUTATION storage policy.
+pub fn l1_feeder_config_for_2_22() -> ProverConfig {
+    l1_feeder_config(
+        22,
+        L1_FEEDER_BASE_LDE_FACTOR,
+        vec![1, 5, 5, 5, 3],
+        &L1_FEEDER_QUERIES_AND_POW,
+    )
+}
+
+/// The 2^23 L1 feeder configuration (profile A): base LDE 4 (2^23 x 4 =
+/// 2^25), every intermediate oracle domain at 2^27 (post-fold poly sizes
+/// [2^22, 2^17, 2^12, 2^7]), folds [1, 5, 5, 5, 4], the queries and PoW of
+/// [`L1_FEEDER_A_QUERIES_AND_POW`]. Feeder layers whose verifier program
+/// exceeds one 2^22 chunk are proven here: the low base LDE keeps the
+/// coset-by-coset proving work small, and a proof still verifies within one
+/// 2^22 chunk.
+pub fn l1_feeder_a_config_for_2_23() -> ProverConfig {
+    l1_feeder_config(
+        23,
+        L1_FEEDER_A_BASE_LDE_FACTOR,
+        vec![1, 5, 5, 5, 4],
+        &L1_FEEDER_A_QUERIES_AND_POW,
+    )
 }
 
 pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) -> ProverConfig {
@@ -343,6 +384,7 @@ mod tests {
             assert_every_round_preserves_security_margin(&config);
         }
         assert_every_round_preserves_security_margin(&l1_feeder_config_for_2_22());
+        assert_every_round_preserves_security_margin(&l1_feeder_a_config_for_2_23());
         assert_every_round_preserves_security_margin(&l1_wrap_2p21::packed_prover_config(
             SecurityLevel::Sec100,
         ));
@@ -422,44 +464,53 @@ mod tests {
         }
     }
 
-    #[test]
-    fn l1_feeder_22_shape_and_security() {
-        let config = l1_feeder_config_for_2_22();
-        assert_eq!(config.trace_len_log2, 22);
-        assert_eq!(config.lde_factor, 16);
-        assert_eq!(config.cap_size, 16);
+    /// The shape and per-round security of an L1 feeder config: cap = LDE,
+    /// the 2^3 plain-text tail, the oracle domains `domains_log2`, and per
+    /// round no grind above the feeder ceiling, the first-round security
+    /// margin of the standard configs at the least PoW that meets it, and at
+    /// least the pessimistic conjecture's query count at its PoW.
+    fn assert_l1_feeder_shape_and_security(
+        config: &ProverConfig,
+        trace_len_log2: usize,
+        lde_factor: usize,
+        whir_steps_schedule: [usize; 5],
+        queries_and_pow: &[(usize, u32); 5],
+        domains_log2: [usize; 5],
+        rate_bits: [u32; 5],
+    ) {
+        assert_eq!(config.trace_len_log2, trace_len_log2);
+        assert_eq!(config.lde_factor, lde_factor);
+        assert_eq!(config.cap_size, lde_factor);
         assert_eq!(config.base_oracles_values_per_leaf, 2);
-        config.validate_for_whir_message_size(22);
+        config.validate_for_whir_message_size(trace_len_log2);
 
         let schedule = &config.whir_schedule;
-        assert_eq!(schedule.whir_steps_schedule, vec![1, 5, 5, 5, 3]);
+        assert_eq!(schedule.whir_steps_schedule, whir_steps_schedule);
         assert_eq!(
             schedule.whir_steps_lde_factors,
             vec![32, 1024, 32768, 1048576]
         );
-        for (round, (queries, pow)) in L1_FEEDER_QUERIES_AND_POW.iter().enumerate() {
+        for (round, (queries, pow)) in queries_and_pow.iter().enumerate() {
             assert_eq!(schedule.whir_queries_schedule[round], *queries);
             assert_eq!(schedule.whir_pow_schedule[round], *pow);
         }
 
-        // every oracle domain is 2^26
         let mut poly_size_log2 = config.trace_len_log2;
         let mut lde_factors = core::iter::once(schedule.base_lde_factor)
             .chain(schedule.whir_steps_lde_factors.iter().copied());
         let mut rate_bits_per_round = Vec::new();
+        let mut domains_log2_per_round = Vec::new();
         for fold_log2 in &schedule.whir_steps_schedule {
             let lde_factor = lde_factors.next().unwrap();
-            assert_eq!(poly_size_log2 + lde_factor.trailing_zeros() as usize, 26);
+            domains_log2_per_round.push(poly_size_log2 + lde_factor.trailing_zeros() as usize);
             rate_bits_per_round.push(lde_factor.trailing_zeros());
             poly_size_log2 -= fold_log2;
         }
         assert_eq!(poly_size_log2, 3);
         assert!(lde_factors.next().is_none());
-        assert_eq!(rate_bits_per_round, vec![4, 5, 10, 15, 20]);
+        assert_eq!(domains_log2_per_round, domains_log2);
+        assert_eq!(rate_bits_per_round, rate_bits);
 
-        // every round: no grind above the ceiling, the first-round security
-        // margin of the standard configs, and at least the pessimistic
-        // conjecture's query count at its PoW
         for round in 0..5 {
             let rate_bits = rate_bits_per_round[round];
             let pow = schedule.whir_pow_schedule[round];
@@ -480,6 +531,32 @@ mod tests {
                 "round {round}"
             );
         }
+    }
+
+    #[test]
+    fn l1_feeder_22_shape_and_security() {
+        assert_l1_feeder_shape_and_security(
+            &l1_feeder_config_for_2_22(),
+            22,
+            16,
+            [1, 5, 5, 5, 3],
+            &L1_FEEDER_QUERIES_AND_POW,
+            [26; 5],
+            [4, 5, 10, 15, 20],
+        );
+    }
+
+    #[test]
+    fn l1_feeder_a_23_shape_and_security() {
+        assert_l1_feeder_shape_and_security(
+            &l1_feeder_a_config_for_2_23(),
+            23,
+            4,
+            [1, 5, 5, 5, 4],
+            &L1_FEEDER_A_QUERIES_AND_POW,
+            [25, 27, 27, 27, 27],
+            [2, 5, 10, 15, 20],
+        );
     }
 
     /// (rate bits, queries, PoW bits) of every WHIR round.
@@ -505,6 +582,26 @@ mod tests {
                 (20, 5, 17)
             ]
         );
+    }
+
+    #[test]
+    fn l1_feeder_a_23_rounds_are_pinned() {
+        let config = l1_feeder_a_config_for_2_23();
+        assert_eq!(
+            rounds(&config),
+            [
+                (2, 45, 25),
+                (5, 18, 25),
+                (10, 9, 25),
+                (15, 6, 25),
+                (20, 5, 17)
+            ]
+        );
+        let floors: Vec<u32> = rounds(&config)
+            .iter()
+            .map(|&(rate_bits, queries, pow)| 6 * pow + 5 * queries as u32 * rate_bits)
+            .collect();
+        assert_eq!(floors, [600, 600, 600, 600, 602]);
     }
 
     #[test]

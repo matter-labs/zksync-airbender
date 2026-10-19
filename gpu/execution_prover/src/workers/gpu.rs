@@ -330,7 +330,7 @@ fn schedule_phase_one<'a>(
                 commitment_mode,
                 profile,
             } = req;
-            if profile == ProofProfile::L1Feeder {
+            if profile.is_l1_feeder() {
                 crate::memory_policy::admit_l1_feeder(context.get_mem_size());
             }
             let state = RequestState {
@@ -368,7 +368,7 @@ fn schedule_phase_one<'a>(
                 commitment_mode,
                 profile,
             } = req;
-            if profile == ProofProfile::L1Feeder {
+            if profile.is_l1_feeder() {
                 crate::memory_policy::admit_l1_feeder(context.get_mem_size());
             }
             let state = RequestState {

@@ -41,11 +41,11 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             binary_holder.profiles.contains(&profile),
             "ProofProfile::{profile:?} was not declared for this binary"
         );
-        if profile == ProofProfile::L1Feeder {
+        if profile.is_l1_feeder() {
             assert_eq!(
                 commitment_mode,
                 CommitmentMode::MergedMemoryAndWitness,
-                "ProofProfile::L1Feeder requires CommitmentMode::MergedMemoryAndWitness"
+                "ProofProfile::{profile:?} requires CommitmentMode::MergedMemoryAndWitness"
             );
         }
         match commitment_mode {

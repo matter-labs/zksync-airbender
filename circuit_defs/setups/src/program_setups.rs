@@ -102,12 +102,14 @@ pub fn compute_unified_program_setups_for_profile<A: GoodAllocator + 'static>(
     worker: &Worker,
 ) -> Setups {
     let unified_setup = match profile {
-        ProofProfile::Standard => unified_reduced_machine_circuit_setup::<A>(
-            binary_image,
-            text_section,
-            use_caches,
-            worker,
-        ),
+        ProofProfile::Standard | ProofProfile::L1FeederA => {
+            unified_reduced_machine_circuit_setup::<A>(
+                binary_image,
+                text_section,
+                use_caches,
+                worker,
+            )
+        }
         ProofProfile::L1Feeder => unified_reduced_machine_2_22_circuit_setup::<A>(
             binary_image,
             text_section,

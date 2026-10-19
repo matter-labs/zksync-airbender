@@ -200,6 +200,78 @@ fn unified_rejects_the_l1_feeder_profile() {
     );
 }
 
+/// One 2^23 handle serves the final layer (Standard) and the 2^23 feeder
+/// (L1FeederA): each request carries its own profile and commitment mode.
+#[test]
+fn unified_serves_the_standard_and_the_l1_feeder_a_profiles() {
+    use crate::ProofProfile::{L1FeederA, Standard};
+    use execution_prover_model::circuit_type::UnrolledCircuitType;
+    const STANDARD_BATCH: u64 = 8012;
+    const FEEDER_BATCH: u64 = 8013;
+    let (prover, handle) = unified_prover(ExecutionKind::Unified, &[L1FeederA, Standard]);
+    let reads = || QuasiUARTSource::new_with_reads(vec![]);
+    for (batch, mode, profile) in [
+        (
+            STANDARD_BATCH,
+            CommitmentMode::SeparateMemoryAndWitness,
+            Standard,
+        ),
+        (
+            FEEDER_BATCH,
+            CommitmentMode::MergedMemoryAndWitness,
+            L1FeederA,
+        ),
+    ] {
+        let ticket = prover.commit_memory(batch, &handle, reads(), mode, profile);
+        assert_eq!(ticket.profile, profile);
+        prover.prove(batch, ticket, reads());
+    }
+    let recorded = PROFILES.lock().unwrap();
+    let unified = CircuitType::Unrolled(UnrolledCircuitType::Unified);
+    for (batch, profile) in [(STANDARD_BATCH, Standard), (FEEDER_BATCH, L1FeederA)] {
+        let requests: Vec<_> = recorded
+            .iter()
+            .filter(|(request_batch, circuit, ..)| *request_batch == batch && *circuit == unified)
+            .collect();
+        for proving in [false, true] {
+            assert!(requests
+                .iter()
+                .any(|(_, _, is_proof, _)| *is_proof == proving));
+        }
+        assert!(requests
+            .iter()
+            .all(|(.., request_profile)| *request_profile == profile));
+    }
+}
+
+#[test]
+#[should_panic(expected = "ProofProfile::L1FeederA requires ExecutionKind::Unified")]
+fn unified22_rejects_the_l1_feeder_a_profile() {
+    unified_prover(
+        ExecutionKind::Unified22,
+        &[
+            crate::ProofProfile::L1Feeder,
+            crate::ProofProfile::L1FeederA,
+        ],
+    );
+}
+
+#[test]
+#[should_panic(
+    expected = "ProofProfile::L1FeederA requires CommitmentMode::MergedMemoryAndWitness"
+)]
+fn l1_feeder_a_with_separate_mode_is_rejected() {
+    let (prover, handle) =
+        unified_prover(ExecutionKind::Unified, &[crate::ProofProfile::L1FeederA]);
+    prover.commit_memory(
+        1,
+        &handle,
+        QuasiUARTSource::new_with_reads(vec![]),
+        CommitmentMode::SeparateMemoryAndWitness,
+        crate::ProofProfile::L1FeederA,
+    );
+}
+
 #[test]
 #[should_panic(expected = "ProofProfile::L1Feeder requires CommitmentMode::MergedMemoryAndWitness")]
 fn l1_feeder_with_separate_mode_is_rejected() {

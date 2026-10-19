@@ -115,6 +115,13 @@ mod tests {
             )
             .unwrap();
             assert_eq!(geometry(&feeder), (22, 16, 16, 2));
+            let feeder_a = prover_config(
+                CircuitType::Unrolled(UnrolledCircuitType::Unified),
+                ProofProfile::L1FeederA,
+                level,
+            )
+            .unwrap();
+            assert_eq!(geometry(&feeder_a), (23, 4, 4, 2));
             let wrap = prover_config(CircuitType::L1Wrap21, ProofProfile::L1Wrap, level).unwrap();
             assert_eq!(geometry(&wrap), (21, 128, 8, 2));
             assert_eq!(wrap.security_level, level);
