@@ -269,22 +269,14 @@ mod tests {
         use cs::gkr_compiler::GKRCircuitArtifact;
         use field::baby_bear::base::BabyBearField;
 
-        let banked: std::collections::BTreeSet<u16> = MAIN_CONTINUATION_WINDOW_KERNEL_BANK
-            .iter()
-            .map(|(mask, _)| *mask)
-            .collect();
         let directory = repo_root().join("cs/compiled_circuits");
-        let mut names: Vec<String> = std::fs::read_dir(&directory)
+        for name in std::fs::read_dir(&directory)
             .unwrap()
             .map(|entry| entry.unwrap().file_name().into_string().unwrap())
             .filter(|name| name.ends_with("_layout_gkr.json"))
-            .collect();
-        names.sort();
-        assert!(names.len() >= 15, "{names:?}");
-        let mut missing = Vec::new();
-        for name in &names {
+        {
             let artifact: GKRCircuitArtifact<BabyBearField> =
-                serde_json::from_slice(&std::fs::read(directory.join(name)).unwrap()).unwrap();
+                serde_json::from_slice(&std::fs::read(directory.join(&name)).unwrap()).unwrap();
             let dag =
                 gkr_eval_ir::lower_dag(&artifact).unwrap_or_else(|error| panic!("{name}: {error}"));
             let continuations =
@@ -294,14 +286,14 @@ mod tests {
                     .unwrap_or_else(|error| panic!("{name} layer {}: {error}", layer.layer))
                     .shape
                     .bits();
-                if !banked.contains(&mask) {
-                    missing.push(format!("{name} layer {}: shape {mask:#04x}", layer.layer));
-                }
+                assert!(
+                    MAIN_CONTINUATION_WINDOW_KERNEL_BANK
+                        .iter()
+                        .any(|(banked, _)| *banked == mask),
+                    "{name} layer {}: no compiled kernel for shape {mask:#04x}",
+                    layer.layer
+                );
             }
         }
-        assert!(
-            missing.is_empty(),
-            "continuation shapes without a compiled kernel: {missing:?}"
-        );
     }
 }

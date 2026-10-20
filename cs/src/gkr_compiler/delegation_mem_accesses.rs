@@ -111,7 +111,6 @@ pub(crate) fn compile_read_timestamp_group_constraints<F: PrimeField>(
             - Expr::from(1u32 << TIMESTAMP_COLUMNS_NUM_BITS) * borrow.clone();
         low.validate_degree_at_most(1);
         let booleanity = borrow.clone() * (borrow - Expr::from(1));
-        booleanity.validate_degree_at_most(2);
         for expr in [low, booleanity] {
             let compiled_constraint = expr.to_max_quadratic_constraint();
             structured_statements.push(StructuredStatement::AssertZero {

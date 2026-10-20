@@ -120,18 +120,15 @@ r_hi = I_hi − b                 (R2)
 b (b − 1) = 0                   (R3)
 ```
 
-R2 fixes the borrow as `b = I_hi − r_hi`, an affine expression in two committed memory columns,
-so `b` is not a column. The compiler substitutes it into R1 and R3
-(`compile_read_timestamp_group_constraints`) and enforces
+Substituting R2's `b = I_hi − r_hi` into R1 and R3 removes the borrow column and enforces
 
 ```text
 r_lo − I_lo − 2e + k − R·(I_hi − r_hi) = 0          (R1, degree 1)
 (I_hi − r_hi)(I_hi − r_hi − 1) = 0                  (R3, degree 2)
 ```
 
-on every row. For any assignment of the committed columns these two hold exactly when some `b`
-satisfies R1 to R3, and that `b` is `I_hi − r_hi`; the argument uses no property of the row, so
-it covers active and padding rows alike. The rest of this document reads `b` as `I_hi − r_hi`.
+on every row. These hold exactly when R1 to R3 hold with `b = I_hi − r_hi`,
+for active and padding rows alike. Below, `b` means `I_hi − r_hi`.
 
 These equations hold in the base field. They do not separately range-check the read limbs or
 select their normalized representation: with `b = 0`, `(r_lo + R, r_hi − 1)` satisfies them
@@ -210,7 +207,6 @@ with the main machine's committed limbs.
 | `prover/src/gkr/witness_gen/delegation_circuits/memory.rs` | CPU witness: checks that all members recorded the same timestamp and that `I_hi − r_hi` is 0 or 1 |
 | `gpu/trace/src/witness/memory_delegation.rs`, `native/witness/memory_delegation.cuh` | the same on GPU; fixed-size group ABI |
 | `cs/src/gkr_compiler/aux_layout_test.rs` | every member's tuple references its group's committed pair, every read-timestamp column lies in the memory subtree, every memory-tuple cache relation depends on memory-subtree columns only, every ungrouped access has its comparison |
-| `cs/src/gkr_compiler/aux_layout_test.rs` (`relative_timestamp_group_borrows_are_derived_from_committed_limbs`) | the compiled R1 and R3 of every group, read from the committed layouts |
 | `prover/src/tests/gkr/relative_timestamps.rs` | R1 and R3 on compiled layouts, limb-boundary borrows, a forged high limb that only R3 rejects, the alternative limb representation, padding, and retimed, skipped and interleaved sequences |
 
 A circuit that requests no groups gets the per-access comparison for every access.
