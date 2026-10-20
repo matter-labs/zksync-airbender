@@ -1259,10 +1259,10 @@ Rust/compiler refinement and cryptographic enforcement remain separate.
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all ninety-seven concrete test modules pass.
+- Library, both CLI entrypoints and all ninety-eight concrete test modules pass.
 - Importer regressions: 473 checks pass.
-- Axiom audit: 1961 explicit roots; only propext, Classical.choice and Quot.sound.
-- All one hundred and eleven public Review theorems (twenty-six circuit claims, fifty-eight trace claims and twenty-seven helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Axiom audit: 2014 explicit roots; only propext, Classical.choice and Quot.sound.
+- All one hundred and twenty public Review theorems (thirty-five circuit claims, fifty-eight trace claims and twenty-seven helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
 - Source provenance: 79 unchanged reused files, six native circuit artifacts, forty-nine native Rust sources plus compiled shift-offset metadata, twenty native setup artifacts and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
@@ -1825,6 +1825,44 @@ numerical load/store effects, public/native decoding, initialized memory/history
 original Sail execution and whole-machine composition. No native defect is
 established. FINDINGS and its historical archive, original Clean/Sail semantics,
 native source/exporter/codec and resource ceilings are unchanged.
+
+## Native subword tagged-query resolution checkpoint (2026-10-20)
+
+[Internal partition](Airbender/Proofs/SubwordMemory/NativeRegions.lean) now proves
+the exact seven-region decomposition of the complete native subword table.
+Literal fourth-column reads and public separator/ROM tags derive tag uniqueness
+and the canonical selector set 0, 23, 44, 45, 46, 54, 55. No region is omitted
+because it is expected to be unused by a later routing proof. The existing
+affine tag getter is copied unchanged from the checked v2 shift-region proof.
+
+[Exact resolution](Airbender/Proofs/SubwordMemory/NativeResolution.lean) connects
+each selected tag to the already certified helper membership: offset/trap,
+signed/unsigned load data, original-RAM clearing and written-value placement,
+alongside the public separator and aligned word ROM. Tag zero requires the
+actual all-zero query. These are proved equivalences, not assumed table-equivalence
+premises. All native literal data, region offsets, import semantics and the
+public ROM model are unchanged.
+
+[The short public claims](Airbender/Review/Circuits/SubwordMemory/Lookups.lean)
+expose these seven connections and canonical selector bounds. Both per-slot
+bounds follow from original Clean native acceptance through the existing
+accepted-query extraction theorem, which is retained unchanged. They require
+no witness-supplied selector bound, expected result, routing or intermediate
+state. Operation-specific tag choices still require the native routing equations.
+
+[Thirty kernel regression roots](Tests/SubwordLookups.lean) cover every region,
+separator boundaries, native trap and x0 raw keys, signed/unsigned loads, both
+store byte positions, altered outputs/unused fields, crossed store regions,
+unsupported tags, ROM word/byte key distinction, UNIMP tail and canonical field
+tag wrap. Previous helper rejection proofs are reused. These malformed-input
+rejections and isolated raw keys add no confirmed native defect.
+
+Next: derive the ROM/RAM/load/store routing and actual limb preselection, then
+numerical operation effects, public/native decoding, initialized memory/history,
+original Sail execution and whole-machine composition. General native export/
+compiler refinement, runtime CSR binding and physical verifier enforcement
+remain separate boundaries. FINDINGS and its historical archive, native sources,
+original Clean/Sail, exporter/codec and all resource ceilings remain unchanged.
 
 ## Historical coverage and boundary notes
 

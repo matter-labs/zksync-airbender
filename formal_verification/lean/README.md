@@ -73,6 +73,11 @@ metadata. Its short public claim extracts both evaluated dynamic queries.
 V2 has one word-indexed ROM region; v3 byte/halfword ROM regions do not apply.
 Subword operation effects, initialized history and original execution remain open.
 
+[Native subword tag resolution](Airbender/Review/Circuits/SubwordMemory/Lookups.lean)
+now derives canonical selectors from acceptance and connects all seven regions
+to the existing helpers, including exact all-zero disabling and word-indexed ROM.
+Operation routing, limb preselection and initialized execution remain unfinished.
+
 The arithmetic checkpoint includes complete initialized ADD/ADDI/SUB/LUI/AUIPC normal-path
 execution and conditional row soundness, including actual masked destination
 writes, original-opcode discarded x0 writes and aligned 32-bit PC wraparound. Native ten-column decoder placement/query order is checked;

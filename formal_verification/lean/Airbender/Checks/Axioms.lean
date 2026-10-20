@@ -89,6 +89,8 @@ import Tests.SubwordStorePlace
 
 import Tests.SubwordArtifact
 
+import Tests.SubwordLookups
+
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
 #print axioms Airbender.AddSub.Proofs.constraint_count
@@ -2120,3 +2122,57 @@ import Tests.SubwordArtifact
 #print axioms Tests.SubwordArtifact.aligned_query_member
 #print axioms Tests.SubwordArtifact.aligned_wrong_byte_key_rejected
 #print axioms Tests.SubwordArtifact.aligned_changed_output_rejected
+
+#print axioms Airbender.SubwordMemory.NativeLookupProofs.contains_iff_region
+#print axioms Airbender.SubwordMemory.NativeLookupProofs.region_row_tag
+#print axioms Airbender.SubwordMemory.NativeLookupProofs.region_tag_bound
+#print axioms Airbender.SubwordMemory.NativeLookupProofs.region_tag_injective
+#print axioms Airbender.SubwordMemory.NativeLookupProofs.accepted_selector
+#print axioms Airbender.SubwordMemory.NativeLookupProofs.selected_membership
+#print axioms Airbender.SubwordMemory.NativeLookupProofs.separator_membership
+#print axioms Airbender.SubwordMemory.NativeLookupProofs.offset_membership
+#print axioms Airbender.SubwordMemory.NativeLookupProofs.load_membership
+#print axioms Airbender.SubwordMemory.NativeLookupProofs.rom_membership
+#print axioms Airbender.SubwordMemory.NativeLookupProofs.store_clear_membership
+#print axioms Airbender.SubwordMemory.NativeLookupProofs.store_place_membership
+#print axioms Airbender.SubwordMemory.NativeLookupProofs.zero_membership
+#print axioms Tests.SubwordLookups.actual_zero
+#print axioms Tests.SubwordLookups.nonzero_inactive_rejected
+#print axioms Tests.SubwordLookups.unsupported_selector_rejected
+#print axioms Tests.SubwordLookups.byte_rom_tag_rejected
+#print axioms Tests.SubwordLookups.separator_rom_edge
+#print axioms Tests.SubwordLookups.separator_ram_edge
+#print axioms Tests.SubwordLookups.offset_native_trap
+#print axioms Tests.SubwordLookups.offset_native_x0_raw_key
+#print axioms Tests.SubwordLookups.load_signed_byte
+#print axioms Tests.SubwordLookups.load_signed_half
+#print axioms Tests.SubwordLookups.load_unsigned_half
+#print axioms Tests.SubwordLookups.load_last_raw_key
+#print axioms Tests.SubwordLookups.store_clear_even
+#print axioms Tests.SubwordLookups.store_clear_odd
+#print axioms Tests.SubwordLookups.store_place_even
+#print axioms Tests.SubwordLookups.store_place_odd
+#print axioms Tests.SubwordLookups.wrong_offset_rejected
+#print axioms Tests.SubwordLookups.wrong_trap_rejected
+#print axioms Tests.SubwordLookups.wrong_load_low_rejected
+#print axioms Tests.SubwordLookups.wrong_load_high_rejected
+#print axioms Tests.SubwordLookups.wrong_clear_rejected
+#print axioms Tests.SubwordLookups.wrong_clear_unused_rejected
+#print axioms Tests.SubwordLookups.wrong_place_rejected
+#print axioms Tests.SubwordLookups.wrong_place_unused_rejected
+#print axioms Tests.SubwordLookups.crossed_store_regions_rejected
+#print axioms Tests.SubwordLookups.aligned_rom_member
+#print axioms Tests.SubwordLookups.byte_key_rejected
+#print axioms Tests.SubwordLookups.changed_rom_output_rejected
+#print axioms Tests.SubwordLookups.aligned_rom_tail
+#print axioms Tests.SubwordLookups.canonical_field_selector
+#print axioms Airbender.SubwordMemory.Proofs.native_selectors
+#print axioms Airbender.SubwordMemory.native_lookup_selector
+#print axioms Airbender.SubwordMemory.native_lookup_selectors
+#print axioms Airbender.SubwordMemory.native_lookup_zero
+#print axioms Airbender.SubwordMemory.native_lookup_separator
+#print axioms Airbender.SubwordMemory.native_lookup_offset
+#print axioms Airbender.SubwordMemory.native_lookup_load
+#print axioms Airbender.SubwordMemory.native_lookup_rom
+#print axioms Airbender.SubwordMemory.native_lookup_store_clear
+#print axioms Airbender.SubwordMemory.native_lookup_store_place

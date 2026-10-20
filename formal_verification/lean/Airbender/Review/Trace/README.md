@@ -349,3 +349,9 @@ queries are extracted from native acceptance. Generic history machinery has not
 yet been instantiated for subword operations: public/native decoding, read/write
 bounds, byte-store composition, initialized Sail reads/retirement and complete
 family execution remain unfinished. Local import adds no subword trace coverage.
+
+The [subword local connections](../Circuits/SubwordMemory/Lookups.lean) now derive
+canonical selectors and resolve all seven native tagged regions to their helpers.
+These local results do not add initialized subword history or execution coverage.
+Native operation routing, selected limbs and actual read/write effects are still
+needed before instantiating the generic history and original Sail transport.

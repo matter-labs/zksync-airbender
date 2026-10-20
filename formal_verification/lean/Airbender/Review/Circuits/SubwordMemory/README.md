@@ -35,3 +35,22 @@ Next: accepted tag resolution, operation routing, actual limb preselection,
 numerical load/store effects, public/native decoding, initialized history and
 original Sail execution. This checkpoint adds no native defect or subword
 execution/whole-machine theorem.
+
+## Accepted tag resolution
+
+[The public claims](Lookups.lean) now derive canonical selectors for both slots
+and expose exact membership for all seven native tags. [Internal partition](../../../Proofs/SubwordMemory/NativeRegions.lean)
+retains every region and proves tag uniqueness from actual literal columns and
+public separator/ROM rows. Its symbolic affine getter is copied unchanged from
+the checked v2 shift proof. [Resolution](../../../Proofs/SubwordMemory/NativeResolution.lean)
+reuses complete fixed-table certificates; tag zero requires three zero fields.
+The equivalences are proved, with no supplied table-equivalence or expected-result
+premise. Original accepted-query extraction is unchanged.
+
+[Thirty regressions](../../../../Tests/SubwordLookups.lean) cover all regions,
+native value boundaries, malformed outputs/tags/unused fields, crossed store
+regions, word-indexed ROM/UNIMP tail and canonical field tag wrap. Odd/raw x0
+keys remain isolated table cases. These checks add no native defect finding.
+
+Native equations must still derive operation-specific tags and limb preselection
+before numerical subword effects and initialized original Sail execution.

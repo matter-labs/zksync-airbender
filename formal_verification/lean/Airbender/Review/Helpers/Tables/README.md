@@ -189,3 +189,12 @@ derive both limbs and canonical index and connect the byte-addressed row model.
 [The circuit guide](../../Circuits/SubwordMemory/README.md) describes all seven
 regions and accepted query extraction. Native export/compiler refinement,
 subword routing and initialized original instruction execution remain separate.
+
+## Subword accepted-tag resolution
+
+[The native subword connections](../../Circuits/SubwordMemory/Lookups.lean)
+now resolve each actual tag to these certified helpers, the separator or aligned
+public ROM. The native zero region requires the exact all-zero tuple. Canonical
+per-slot selector bounds follow from original Clean acceptance; table equivalence
+is proved internally, not supplied as a premise. Operation-specific tag choices,
+limb selection, native instruction effects and initialized execution remain open.

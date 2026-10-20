@@ -5889,6 +5889,48 @@
       "backport_reuse_path": "Airbender.lean",
       "backport_reuse_sha256": "ec9cf96f3c14d7151b95ca552c757052d3bc010fddf7e7cf3133685b9260c04f",
       "change": "Export the short subword native query-extraction claim through the library entrypoint."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/NativeRegions.lean",
+      "backport_reuse_revision": "b026074e03e8e26390cd4b7d5f756f8ab41272d0",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/NativeRegions.lean",
+      "backport_reuse_sha256": "9df97344b68bf0f1227df2fe70bd0fd58d270c7d3e6d37e47839dac3970b1513",
+      "change": "Adapt the already checked v2 partition/tag-injectivity proof to all seven subword regions. Public separator/ROM rows use an explicit dependent region row; every literal fixed region retains native data and tag. Derive canonical supported selectors and exact selected-region membership, without a table-equivalence premise."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/NativeResolution.lean",
+      "backport_reuse_revision": "b026074e03e8e26390cd4b7d5f756f8ab41272d0",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/NativeResolution.lean",
+      "backport_reuse_sha256": "d6dd2c861deeada5531da8b77b50a0d61c9516b776b6b5b0383be59b5157b7a3",
+      "change": "Adapt exact tagged membership resolution to zero, separator, offset/trap, signed/unsigned load data, aligned public ROM, store-clear and store-place. Reuse complete native fixed-table certificates by import. Prove zero disables only an actual all-zero query; routing and execution remain separate."
+    },
+    {
+      "path": "Tests/SubwordLookups.lean",
+      "backport_reuse_revision": "b026074e03e8e26390cd4b7d5f756f8ab41272d0",
+      "backport_reuse_path": "Tests/ShiftLookups.lean",
+      "backport_reuse_sha256": "25e45c57f2a5eee23b97a68af701b1440501bd8e0a6c9ce33762c38d29a4bb64",
+      "change": "Adapt all-region positive/negative native query regressions and reuse prior certified helper rejections. Thirty kernel roots retain canonical field tags, zero, separator boundary, trap/x0 raw keys, signed/unsigned loads, store parity, crossed regions, ROM key units and UNIMP tail. Isolated raw keys are not full-row or architectural defect claims."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/NativeQueries.lean",
+      "backport_reuse_revision": "b026074e03e8e26390cd4b7d5f756f8ab41272d0",
+      "backport_reuse_path": "Airbender/Proofs/SubwordMemory/NativeQueries.lean",
+      "backport_reuse_sha256": "c302034481ab2944bec435fd566979d8e2808c78520c2736f7f50a3762ca0a5b",
+      "change": "Retain the accepted-query extraction theorem unchanged and derive both canonical selector bounds from native acceptance and the complete proved region partition."
+    },
+    {
+      "path": "Airbender/Review/Circuits/SubwordMemory/Lookups.lean",
+      "backport_reuse_revision": "b026074e03e8e26390cd4b7d5f756f8ab41272d0",
+      "backport_reuse_path": "Airbender/Review/Circuits/SubwordMemory/Lookups.lean",
+      "backport_reuse_sha256": "f12867a79f4f240739d4c29148efef375f8229b5eec5f8148a8c6689753165bd",
+      "change": "Retain the existing short query claim unchanged; expose canonical selectors and seven exact native/helper membership equivalences. All calculations remain under Proofs; no result, routing or equivalence premise is added."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/NativeRegions.lean",
+      "backport_reuse_revision": "b026074e03e8e26390cd4b7d5f756f8ab41272d0",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/NativeRegions.lean",
+      "backport_reuse_sha256": "9df97344b68bf0f1227df2fe70bd0fd58d270c7d3e6d37e47839dac3970b1513",
+      "change": "Copy private constant_tag unchanged from the checked v2 shift-region proof; it proves actual affine literal tag reads symbolically, without increasing proof or resource limits."
     }
   ],
   "setup_artifacts": [
