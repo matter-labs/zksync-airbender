@@ -32,11 +32,12 @@ theorem extracted : initialImage before cells = some tokens := by
 
 theorem native_query : (ROM.table cells tokens).Contains #[]
     #v[16, 0x5678, 0x1234, 0, 0, 0, 0, 0, 34] := by
-  change ∃ i : Fin 2, _
-  refine ⟨1, ?_⟩
-  change _ = (ROM.rows cells tokens).get _
-  simp only [List.get_eq_getElem, rows_eq]
-  decide
+  have present : (#v[16, 0x5678, 0x1234, 0, 0, 0, 0, 0, 34] : Vector (ZMod babyBearModulus) 9) ∈
+      ROM.rows cells tokens := by
+    rw [rows_eq]
+    exact List.mem_cons_of_mem _ (List.mem_singleton.mpr (by decide))
+  obtain ⟨i, equal⟩ := List.mem_iff_get.mp present
+  exact ⟨i, equal.symm⟩
 
 -- The read result is obtained through modeled table membership and public bytes.
 theorem actual_bytes : (Sail.ArchSem.readBytes (ue := SailRV32.exception) 4 16).run before =
@@ -52,17 +53,27 @@ theorem disabled_zero : ∀ query, (ROM.table cells tokens).Contains #[] query �
 
 theorem wrong_value_rejected : ¬ (ROM.table cells tokens).Contains #[]
     #v[16, 0x5679, 0x1234, 0, 0, 0, 0, 0, 34] := by
-  change ¬ ∃ i : Fin 2, _
   change ¬ ∃ i : Fin 2, _ = (ROM.rows cells tokens).get i
-  simp only [List.get_eq_getElem, rows_eq]
-  decide
+  rintro ⟨i, equal⟩
+  have present : (#v[16, 0x5679, 0x1234, 0, 0, 0, 0, 0, 34] : Vector (ZMod babyBearModulus) 9) ∈
+      ROM.rows cells tokens := equal ▸ List.get_mem (ROM.rows cells tokens) i
+  rw [rows_eq] at present
+  simp only [List.mem_cons] at present
+  rcases present with h | h
+  · exact absurd h (by decide)
+  · exact absurd h (by decide)
 
 theorem missing_address_rejected : ¬ (ROM.table cells tokens).Contains #[]
     #v[20, 0x5678, 0x1234, 0, 0, 0, 0, 0, 34] := by
-  change ¬ ∃ i : Fin 2, _
   change ¬ ∃ i : Fin 2, _ = (ROM.rows cells tokens).get i
-  simp only [List.get_eq_getElem, rows_eq]
-  decide
+  rintro ⟨i, equal⟩
+  have present : (#v[20, 0x5678, 0x1234, 0, 0, 0, 0, 0, 34] : Vector (ZMod babyBearModulus) 9) ∈
+      ROM.rows cells tokens := equal ▸ List.get_mem (ROM.rows cells tokens) i
+  rw [rows_eq] at present
+  simp only [List.mem_cons] at present
+  rcases present with h | h
+  · exact absurd h (by decide)
+  · exact absurd h (by decide)
 
 /-- A readonly native refresh preserves the entire uniform table-byte binding. -/
 theorem table_after_refresh : ∃ events,
