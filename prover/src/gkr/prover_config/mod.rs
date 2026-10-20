@@ -221,6 +221,18 @@ pub fn validate_sumcheck_schedule(
     Ok(class)
 }
 
+/// How the memory and witness base columns are committed: as two base oracles
+/// (two caps in the transcript, two round-0 Merkle paths per query) or as ONE
+/// merged oracle holding the memory columns followed by the witness columns
+/// (one cap, one path). A property of the proving geometry — part of the
+/// [`ProverConfig`] the circuit is proved and verified with — not of how the
+/// proof is used (see `prover::gkr::prover::OperationMode` for that).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum CommitmentMode {
+    SeparateMemoryAndWitness,
+    MergedMemoryAndWitness,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ProverConfig {
     /// log2 of the circuit trace length this config was computed for. The
@@ -262,9 +274,43 @@ pub struct ProverConfig {
     /// `0` = unpacked (one committed column per base column). Twiddles passed
     /// to the prover must cover the `2^(trace_len_log2 + pack_log2)` domain.
     pub pack_log2: usize,
+    /// Whether memory and witness are committed as two base oracles or as one
+    /// merged oracle (see [`CommitmentMode`]). Decides the transcript layout,
+    /// the committed (packed) column grouping and thus the generated verifier.
+    pub commitment_mode: CommitmentMode,
 }
 
 impl ProverConfig {
+    /// A bare config for WHIR-only drivers and tests: an unpacked
+    /// `SeparateMemoryAndWitness` commitment of `2^trace_len_log2` columns
+    /// under `whir_schedule` (the base LDE factor, cap and round-0 leaf size are
+    /// the schedule's); the GKR-side schedules are the all-naive defaults.
+    pub fn whir_only(
+        trace_len_log2: usize,
+        whir_schedule: WhirSchedule,
+        security_level: SecurityLevel,
+    ) -> Self {
+        Self {
+            trace_len_log2,
+            lde_factor: whir_schedule.base_lde_factor,
+            cap_size: whir_schedule.cap_size,
+            base_oracles_values_per_leaf: 1usize << whir_schedule.whir_steps_schedule[0],
+            sumcheck_explicit_output_size_log_2:
+                crate::definitions::DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
+            security_level,
+            whir_schedule,
+            same_size_sumcheck_schedule: naive_same_size_schedule(),
+            dimension_reducing_sumcheck_schedule: Default::default(),
+            pack_log2: 0,
+            commitment_mode: CommitmentMode::SeparateMemoryAndWitness,
+        }
+    }
+
+    /// Whether memory and witness were committed as ONE merged base oracle.
+    pub fn merged_memory_and_witness(&self) -> bool {
+        matches!(self.commitment_mode, CommitmentMode::MergedMemoryAndWitness)
+    }
+
     /// log2 of the WHIR message size — the committed (packed) column length
     /// `trace_len_log2 + pack_log2`; equal to [`Self::trace_len_log2`] when
     /// unpacked.

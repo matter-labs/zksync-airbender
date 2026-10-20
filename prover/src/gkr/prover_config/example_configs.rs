@@ -39,6 +39,8 @@ pub fn l1_feeder_config_for_2_23() -> ProverConfig {
     ProverConfig {
         trace_len_log2: 23,
         pack_log2: 0,
+        // the L1 feeder flow commits the single merged memory+witness tree
+        commitment_mode: CommitmentMode::MergedMemoryAndWitness,
         same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(23),
         dimension_reducing_sumcheck_schedule: Default::default(),
         lde_factor: L1_FEEDER_BASE_LDE_FACTOR,
@@ -74,6 +76,7 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
         20 => ProverConfig {
             trace_len_log2: trace_len_log_2,
             pack_log2: 0,
+            commitment_mode: CommitmentMode::SeparateMemoryAndWitness,
             same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(
                 trace_len_log_2,
             ),
@@ -95,6 +98,7 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
         21 => ProverConfig {
             trace_len_log2: trace_len_log_2,
             pack_log2: 0,
+            commitment_mode: CommitmentMode::SeparateMemoryAndWitness,
             same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(
                 trace_len_log_2,
             ),
@@ -116,6 +120,7 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
         22 => ProverConfig {
             trace_len_log2: trace_len_log_2,
             pack_log2: 0,
+            commitment_mode: CommitmentMode::SeparateMemoryAndWitness,
             same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(
                 trace_len_log_2,
             ),
@@ -137,6 +142,7 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
         23 => ProverConfig {
             trace_len_log2: trace_len_log_2,
             pack_log2: 0,
+            commitment_mode: CommitmentMode::SeparateMemoryAndWitness,
             same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(
                 trace_len_log_2,
             ),
@@ -163,6 +169,7 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
         24 => ProverConfig {
             trace_len_log2: trace_len_log_2,
             pack_log2: 0,
+            commitment_mode: CommitmentMode::SeparateMemoryAndWitness,
             same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(
                 trace_len_log_2,
             ),
@@ -236,6 +243,7 @@ pub fn evm_production_packed_prover_config(level: SecurityLevel) -> ProverConfig
         // circuit trace length; the WHIR message is 2^(22 + pack_log2) = 2^26
         trace_len_log2: EVM_PRODUCTION_TRACE_LEN_LOG2,
         pack_log2: EVM_PRODUCTION_PACK_LOG2,
+        commitment_mode: CommitmentMode::MergedMemoryAndWitness,
         // the EVM verifier (gkr.sol) consumes monomial [c0..c3] rounds;
         // keep these proofs on the windowed schedule (transcript-identical
         // to naive)

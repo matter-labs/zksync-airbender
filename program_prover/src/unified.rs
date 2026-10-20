@@ -18,7 +18,7 @@ use prover::field::baby_bear::ext4::BabyBearExt4;
 use prover::field::*;
 use prover::gkr::prover::GKRExternalChallenges;
 use prover::gkr::prover::{
-    prove_configured_with_gkr_with_storage_and_backend, Backend, CommitmentMode, GKRBackend,
+    prove_configured_with_gkr_with_storage_and_backend, Backend, GKRBackend, OperationMode,
     TwiddleSetOps, WhirOracleStorage,
 };
 use prover::gkr::witness_gen::family_circuits::evaluate_gkr_witness_for_executor_family;
@@ -827,7 +827,7 @@ fn prove_unified_execution_with_replayer_impl<
                 &setup_commitment,
                 twiddles_for_size,
                 &prover_config,
-                CommitmentMode::SeparateMemoryAndWitness,
+                OperationMode::MultipleChunks,
                 storage,
                 top_bits.clone(),
                 trace_len,

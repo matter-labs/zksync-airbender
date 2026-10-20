@@ -6,7 +6,7 @@
 //! the reference assembler in `prover/src/tests/gkr/large_field.rs`.
 
 use field::{Field, Proth120};
-use prover::gkr::prover::CommitmentMode;
+use prover::gkr::prover::OperationMode;
 
 use crate::seed::{Circuit, Proof};
 
@@ -116,7 +116,7 @@ fn circuit_blob(circuit: &Circuit, proof: &Proof) -> Vec<u8> {
 /// Assemble the full GKR-verifier calldata (gkr.sol stream order):
 ///   preimage ‖ external-challenge PoW nonce (BE8) ‖ output-evals ‖ dim-reduce blob
 ///   ‖ circuit-layer blob ‖ WHIR-batching PoW nonce (BE8).
-pub fn gkr_calldata(circuit: &Circuit, proof: &Proof, aux: &CommitmentMode) -> Vec<u8> {
+pub fn gkr_calldata(circuit: &Circuit, proof: &Proof, aux: &OperationMode) -> Vec<u8> {
     let mut cd: Vec<u8> = Vec::new();
     cd.extend_from_slice(&crate::seed::commit_seed_preimage(circuit, proof, aux));
     cd.extend_from_slice(&proof.lookup_challenges_pow_nonce.to_be_bytes());
@@ -138,7 +138,7 @@ pub fn gkr_calldata(circuit: &Circuit, proof: &Proof, aux: &CommitmentMode) -> V
 pub fn merged_calldata(
     circuit: &Circuit,
     proof: &Proof,
-    aux: &CommitmentMode,
+    aux: &OperationMode,
     folds: &[usize],
     queries: &[usize],
 ) -> Vec<u8> {
@@ -153,7 +153,7 @@ pub fn merged_calldata(
 pub fn whir_stream(
     _circuit: &Circuit,
     proof: &Proof,
-    _aux: &CommitmentMode,
+    _aux: &OperationMode,
     folds: &[usize],
     queries: &[usize],
 ) -> Vec<u8> {

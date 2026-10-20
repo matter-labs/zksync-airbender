@@ -291,6 +291,10 @@ pub fn generate_verifier(
     // prover derives from the config + the circuit exactly like this).
     let pack_log2 = prover_config.pack_log2;
     assert!(pack_log2 > 0, "pack_log2 must be positive");
+    assert!(
+        prover_config.merged_memory_and_witness(),
+        "the EVM verifier serves the single merged memory+witness commitment"
+    );
     let d = Derived::from(circuit, pack_log2);
     assert_eq!(
         prover_config.trace_len_log2, d.rounds,

@@ -3,7 +3,7 @@
 //! Runs the plain `basic_fibonacci` program (reduced machine, no oracles, no
 //! precompiles) and TRIES to prove one unified-circuit instance with the packed
 //! commitment mode
-//! [`CommitmentMode::MergedMemoryAndWitnessSingleCircuitOnly`](crate::gkr::prover::CommitmentMode).
+//! [`OperationMode::SingleChunk`](crate::gkr::prover::OperationMode).
 //!
 //! Notes vs the full `unified_circuit.rs` flow:
 //!   * precompiles are DISABLED at preprocessing — the supported-CSR set passed to
@@ -25,7 +25,7 @@ use crate::definitions::SecurityLevel;
 #[cfg(test)]
 use crate::gkr::prover::setup::GKRSetup;
 #[cfg(test)]
-use crate::gkr::prover::CommitmentMode;
+use crate::gkr::prover::OperationMode;
 use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
 use crate::gkr::witness_gen::family_circuits::{
     build_unified_table_driver, evaluate_gkr_witness_for_executor_family, GKRFullWitnessTrace,
@@ -95,7 +95,7 @@ pub use crate::gkr::prover_config::example_configs::{
     EVM_PRODUCTION_PACK_LOG2,
 };
 
-/// Load the serialized `CommitmentMode` aux data and build the transcript prefix the packed
+/// Load the serialized `OperationMode` aux data and build the transcript prefix the packed
 /// prover now prepends before the top-bits/caps: the 32 register final states as
 /// (value, ts_low, ts_high) u32 triples, then (final_pc, final_ts_low, final_ts_high).
 /// Returns (prefix_u32, register_final_state, final_pc, final_timestamp, external_pow_bits).
@@ -108,13 +108,13 @@ fn load_boundary_transcript_prefix() -> (
     u32,
 ) {
     use crate::cs::definitions::split_timestamp;
-    let aux: CommitmentMode = {
+    let aux: OperationMode = {
         let src =
             std::fs::File::open("unified_circuit_proof_proth120_commitment_mod_aux_data.json")
                 .expect("aux data — run gkr_unified_packed_commitment_basic_fibonacci first");
-        serde_json::from_reader(src).expect("deserialize CommitmentMode aux data")
+        serde_json::from_reader(src).expect("deserialize OperationMode aux data")
     };
-    let CommitmentMode::MergedMemoryAndWitnessSingleCircuitOnly {
+    let OperationMode::SingleChunk {
         register_final_state,
         final_pc,
         final_timestamp,
@@ -122,7 +122,7 @@ fn load_boundary_transcript_prefix() -> (
         ..
     } = aux
     else {
-        panic!("aux data must be MergedMemoryAndWitnessSingleCircuitOnly");
+        panic!("aux data must be OperationMode::SingleChunk");
     };
     let mut prefix = Vec::with_capacity(32 * 3 + 3);
     for reg in register_final_state.iter() {
@@ -433,7 +433,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
     // 6. Prove one unified circuit instance with the packed commitment mode.
     let external_challenges = dummy_external_challenges::<Proth120, Proth120>();
 
-    let commitment_mode = CommitmentMode::MergedMemoryAndWitnessSingleCircuitOnly {
+    let operation_mode = OperationMode::SingleChunk {
         external_challenges_pow_bits,
         final_pc: vm.final_pc(),
         final_timestamp: vm.final_timestamp(),
@@ -481,7 +481,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
         &setup_commitment,
         &packed_twiddles,
         &prover_config,
-        commitment_mode,
+        operation_mode,
         storage,
         top_bits,
         trace_len,
@@ -497,13 +497,13 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
     if !fully_in_memory {
         serialize_to_file(&proof, "unified_circuit_proof_proth120.json");
         serialize_to_file(
-            &commitment_mode,
+            &operation_mode,
             "unified_circuit_proof_proth120_commitment_mod_aux_data.json",
         );
     }
 }
 
-/// STEP 1 of the EVM GKR verifier: reproduce the `MergedMemoryAndWitnessSingleCircuitOnly`
+/// STEP 1 of the EVM GKR verifier: reproduce the `OperationMode::SingleChunk`
 /// Fiat-Shamir transcript purely from the serialized proof + circuit, and check the
 /// derived challenges (nonce + `GKRExternalChallenges`) match what the prover stored.
 ///
@@ -1899,7 +1899,7 @@ fn verify_dim_reduce_layers() {
     );
 
     // ===== STEP 4: GKR→WHIR handoff — packed-commitment claims merge + WHIR batching =====
-    // Mirrors prover/src/gkr/prover/mod.rs (MergedMemoryAndWitnessSingleCircuitOnly, lines 875-961).
+    // Mirrors prover/src/gkr/prover/mod.rs (OperationMode::SingleChunk).
     {
         let pack_log2 = prover_config.pack_log2; // this proof's pack_log2
         let base_layer_z = point.clone(); // 22-coord layer-0 folding point

@@ -13,7 +13,7 @@ use crate::definitions::{
 use crate::gkr::prover::prove_configured_with_gkr_with_backends;
 use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::stages::commitment_utils::commit_trace_part;
-use crate::gkr::prover::CommitmentMode;
+use crate::gkr::prover::OperationMode;
 use crate::gkr::prover::{GKRExternalChallenges, GKRProof};
 use crate::gkr::prover_config::example_configs;
 use crate::gkr::witness_gen::family_circuits::{
@@ -892,7 +892,7 @@ pub fn prove_built_unified_trace(
         &unified_setup_commitment,
         &unified_twiddles,
         &prover_config,
-        CommitmentMode::SeparateMemoryAndWitness,
+        OperationMode::MultipleChunks,
         inits_and_teardowns_top_bits,
         trace_len,
         &crate::gkr::prover::WorkStealingBackend,

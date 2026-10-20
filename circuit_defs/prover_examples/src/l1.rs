@@ -22,7 +22,7 @@ use prover::fft::Twiddles;
 use prover::field::Proth120;
 use prover::gkr::prover::setup::GKRSetup;
 use prover::gkr::prover::{
-    prove_configured_with_gkr_with_storage_and_backend, CommitmentMode, GKRProof, NaiveGKRBackend,
+    prove_configured_with_gkr_with_storage_and_backend, GKRProof, NaiveGKRBackend, OperationMode,
     Proth120WorkStealingLazyBackend, SetupCommitment, WhirOracleStorage,
 };
 use prover::gkr::whir::coset_commit::CosetByCosetBaseCommitment;
@@ -52,7 +52,7 @@ fn serialize_pretty_to_file<T: serde::Serialize>(el: &T, path: &Path) {
 
 /// Prove `program`'s execution as a single Proth120 packed unified proof in
 /// the recompute (memory-light) mode with the EVM-production parameters, and
-/// write the proof + its `CommitmentMode` aux data (the boundary state the
+/// write the proof + its `OperationMode` aux data (the boundary state the
 /// EVM transcript recipe replays) as pretty JSON — the exact fixture pair the
 /// verifier_evm generation and the two-transaction test consume.
 ///
@@ -139,7 +139,7 @@ pub fn prove_l1_wrap_in_recompute_mode(
     //    (self-derived external challenges from the boundary state).
     let external_challenges = dummy_external_challenges::<Proth120, Proth120>();
 
-    let commitment_mode = CommitmentMode::MergedMemoryAndWitnessSingleCircuitOnly {
+    let operation_mode = OperationMode::SingleChunk {
         external_challenges_pow_bits,
         final_pc: vm.final_pc(),
         final_timestamp: vm.final_timestamp(),
@@ -166,7 +166,7 @@ pub fn prove_l1_wrap_in_recompute_mode(
         &setup_commitment,
         &packed_twiddles,
         &prover_config,
-        commitment_mode,
+        operation_mode,
         WhirOracleStorage::fully_recompute(),
         top_bits,
         trace_len,

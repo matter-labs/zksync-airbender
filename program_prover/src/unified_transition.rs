@@ -1,4 +1,4 @@
-//! Delegation-free unified proving under `CommitmentMode::MergedMemoryAndWitness`
+//! Delegation-free unified proving under `CommitmentMode::MergedMemoryAndWitness` (the config's commitment mode)
 //! — the "transition"/feeder driver of the L1 recursion tail.
 //!
 //! Mirrors [`crate::unified::prove_unified_execution_with_replayer`] with three
@@ -38,7 +38,7 @@ use prover::field::baby_bear::ext4::BabyBearExt4;
 use prover::field::*;
 use prover::gkr::prover::GKRExternalChallenges;
 use prover::gkr::prover::{
-    prove_configured_with_gkr_with_storage_and_backend, Backend, CommitmentMode, GKRBackend,
+    prove_configured_with_gkr_with_storage_and_backend, Backend, GKRBackend, OperationMode,
     WhirOracleStorage,
 };
 use prover::gkr::witness_gen::family_circuits::evaluate_gkr_witness_for_executor_family;
@@ -236,6 +236,10 @@ pub fn prove_unified_transition_with_replayer_timed<
     assert_eq!(
         unified_prover_config.trace_len_log2,
         trace_len.trailing_zeros() as usize
+    );
+    assert!(
+        unified_prover_config.merged_memory_and_witness(),
+        "this driver commits the single merged memory+witness tree"
     );
 
     let num_circuits_to_prove = num_unified_calls.div_ceil(trace_len);
@@ -448,7 +452,7 @@ pub fn prove_unified_transition_with_replayer_timed<
                 &setup_commitment,
                 twiddles_for_size,
                 &prover_config,
-                CommitmentMode::MergedMemoryAndWitness,
+                OperationMode::MultipleChunks,
                 whir_oracle_storage,
                 top_bits.clone(),
                 trace_len,
@@ -645,6 +649,10 @@ pub fn prove_unified_transition_with_replayer_precommitted_timed<
         unified_prover_config.trace_len_log2,
         trace_len.trailing_zeros() as usize
     );
+    assert!(
+        unified_prover_config.merged_memory_and_witness(),
+        "this driver commits the single merged memory+witness tree"
+    );
 
     let num_circuits_to_prove = num_unified_calls.div_ceil(trace_len);
     assert_eq!(unified_buffers.len(), num_circuits_to_prove);
@@ -827,7 +835,7 @@ pub fn prove_unified_transition_with_replayer_precommitted_timed<
                 &setup_commitment,
                 twiddles_for_size,
                 &prover_config,
-                CommitmentMode::MergedMemoryAndWitness,
+                OperationMode::MultipleChunks,
                 storage,
                 top_bits.clone(),
                 trace_len,

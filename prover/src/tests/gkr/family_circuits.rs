@@ -1214,7 +1214,7 @@ fn add_sub_family_bench_in_memory() {
 /// the add/sub/lui/auipc/mop family circuit, but prove it twice under different
 /// RS-codeword storage policies ([`RsCodewordSource::InMemory`] vs
 /// [`RsCodewordSource::Recompute`]) and assert the two proofs are byte-identical.
-/// The storage policy is orthogonal to the (fixed) `CommitmentMode`, so it must not
+/// The storage policy is orthogonal to the (fixed) prover config, so it must not
 /// change the proof.
 #[test]
 #[ignore = "production-scale 2^24 RS storage parity; run explicitly"]

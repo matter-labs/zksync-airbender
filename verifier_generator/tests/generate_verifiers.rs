@@ -85,16 +85,11 @@ fn generate_common<MW: FieldWrapper>() {
 fn generate_gkr_verifier<MW: FieldWrapper<BaseField = BabyBearField>>(
     circuit: &CircuitData,
     prover_config: &prover::gkr::prover_config::ProverConfig,
-    commitment_mode: &prover::gkr::prover::CommitmentMode,
     dir: &str,
 ) -> GKRGeneratedFiles {
     let compiled_circuit = circuit.compiled_circuit();
 
-    let files = gkr::generate_gkr_inlined_for_commitment_mode::<MW>(
-        &compiled_circuit,
-        prover_config,
-        commitment_mode,
-    );
+    let files = gkr::generate_gkr_inlined::<MW>(&compiled_circuit, prover_config);
 
     write_and_fmt(&format!("{}/constants.rs", dir), &files.constants);
     write_and_fmt(&format!("{}/gkr.rs", dir), &files.gkr);
@@ -167,25 +162,18 @@ fn generate_verifier_for_circuit<MW: FieldWrapper<BaseField = BabyBearField>>(
     level: SecurityLevel,
 ) {
     let prover_config = circuit.prover_config_for(level);
-    generate_verifier_for_circuit_with_config::<MW>(
-        circuit,
-        prover_config,
-        &prover::gkr::prover::CommitmentMode::SeparateMemoryAndWitness,
-        level.dir_suffix(),
-    );
+    generate_verifier_for_circuit_with_config::<MW>(circuit, prover_config, level.dir_suffix());
 }
 
 /// Like [`generate_verifier_for_circuit`] but with an EXPLICIT prover config,
-/// base [`CommitmentMode`] and output dir suffix — for special-purpose
+/// output dir suffix — for special-purpose
 /// verifier variants whose LDE factor / WHIR schedule / base-commitment shape
 /// differ from the standard per-level configs (e.g. the high-LDE, merged-tree
 /// "L1 feeder" unified verifier).
 ///
-/// [`CommitmentMode`]: prover::gkr::prover::CommitmentMode
 fn generate_verifier_for_circuit_with_config<MW: FieldWrapper<BaseField = BabyBearField>>(
     circuit: &CircuitData,
     prover_config: &prover::gkr::prover_config::ProverConfig,
-    commitment_mode: &prover::gkr::prover::CommitmentMode,
     dir_suffix: &str,
 ) {
     ensure_common();
@@ -197,7 +185,7 @@ fn generate_verifier_for_circuit_with_config<MW: FieldWrapper<BaseField = BabyBe
     let dir = format!("{}/{}", circuit.generated_dir(), dir_suffix);
     std::fs::create_dir_all(&dir).unwrap();
 
-    let gkr_files = generate_gkr_verifier::<MW>(circuit, prover_config, commitment_mode, &dir);
+    let gkr_files = generate_gkr_verifier::<MW>(circuit, prover_config, &dir);
     generate_whir_verifier::<MW>(prover_config, &dir, &gkr_files);
 
     let mod_rs = quote::quote! {
@@ -258,7 +246,6 @@ fn unified_reduced_machine_l1_feeder() {
     generate_verifier_for_circuit_with_config::<DefaultBabyBearField>(
         circuit,
         &prover_config,
-        &prover::gkr::prover::CommitmentMode::MergedMemoryAndWitness,
         "sec_100_l1_feeder",
     );
 }
@@ -279,7 +266,6 @@ fn blake2_with_extended_control_pack4() {
     generate_verifier_for_circuit_with_config::<DefaultBabyBearField>(
         circuit,
         &prover_config,
-        &packed_fixture::commitment_mode(),
         packed_fixture::DIR_SUFFIX,
     );
 }

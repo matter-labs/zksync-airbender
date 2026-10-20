@@ -6,7 +6,7 @@ use crate::definitions::SecurityLevel;
 use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::{
     prove_configured_with_gkr_with_storage, prove_configured_with_gkr_with_storage_and_backend,
-    CommitmentMode, DefaultBabyBearBackend, SetupCommitment, WhirOracleStorage,
+    DefaultBabyBearBackend, OperationMode, SetupCommitment, WhirOracleStorage,
 };
 use crate::gkr::prover::{GKRExternalChallenges, GKRProof};
 use crate::gkr::prover_config::example_configs;
@@ -179,7 +179,7 @@ pub fn prove_built_family_trace_with_prover_config_and_gkr_backend<
         &setup_commitment,
         &twiddles,
         prover_config,
-        CommitmentMode::SeparateMemoryAndWitness,
+        OperationMode::MultipleChunks,
         WhirOracleStorage::fully_in_memory(),
         Vec::new(),
         trace_len,
@@ -302,7 +302,7 @@ pub fn prove_built_family_trace_on_disk_setup(
         &setup_commitment,
         &twiddles,
         &prover_config,
-        CommitmentMode::SeparateMemoryAndWitness,
+        OperationMode::MultipleChunks,
         WhirOracleStorage::fully_in_memory(),
         Vec::new(),
         trace_len,
@@ -313,7 +313,7 @@ pub fn prove_built_family_trace_on_disk_setup(
 /// Like [`prove_built_family_trace`] but lets the caller pick the WHIR oracle
 /// storage policy ([`WhirOracleStorage`]: base RS-codeword source + intermediate
 /// oracle mode) via the config-aware prover entry point. The setup commitment is
-/// always in-memory. For a fixed [`CommitmentMode`] the resulting proof must be
+/// always in-memory. For a fixed config the resulting proof must be
 /// identical across storage policies — see
 /// `add_sub_family_rs_codeword_source_parity`.
 pub fn prove_built_family_trace_with_rs_source(
@@ -357,7 +357,7 @@ pub fn prove_built_family_trace_with_rs_source(
         &setup_commitment,
         &twiddles,
         &prover_config,
-        CommitmentMode::SeparateMemoryAndWitness,
+        OperationMode::MultipleChunks,
         storage,
         Vec::new(),
         trace_len,
@@ -710,7 +710,7 @@ pub fn prove_inits_and_teardowns(
         &setup_commitment,
         &twiddles,
         &prover_config,
-        CommitmentMode::SeparateMemoryAndWitness,
+        OperationMode::MultipleChunks,
         WhirOracleStorage::fully_in_memory(),
         inits_and_teardowns_top_bits,
         trace_len,

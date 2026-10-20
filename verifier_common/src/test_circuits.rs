@@ -195,10 +195,6 @@ pub mod packed_fixture {
         )
     }
 
-    pub fn commitment_mode() -> prover::gkr::prover::CommitmentMode {
-        prover::gkr::prover::CommitmentMode::SeparateMemoryAndWitness
-    }
-
     pub fn proof_path() -> String {
         format!(
             "{}/prover/test_proofs/{}_sec_100_pack4_gkr_proof.json",

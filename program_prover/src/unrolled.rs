@@ -27,9 +27,9 @@ use prover::fft::*;
 use prover::field::baby_bear::base::BabyBearField;
 use prover::field::baby_bear::ext4::BabyBearExt4;
 use prover::field::*;
-use prover::gkr::prover::CommitmentMode;
 use prover::gkr::prover::GKRExternalChallenges;
 use prover::gkr::prover::GKRProof;
+use prover::gkr::prover::OperationMode;
 use prover::gkr::prover::{
     prove_configured_with_gkr_with_backends, Backend, GKRBackend, TwiddleSetOps,
 };
@@ -1284,7 +1284,7 @@ pub fn prove_unrolled_execution_with_replayer<
                 &setup_commitment,
                 &*twiddles_for_size,
                 &prover_config,
-                CommitmentMode::SeparateMemoryAndWitness,
+                OperationMode::MultipleChunks,
                 vec![],
                 trace_len,
                 backend,
@@ -1448,7 +1448,7 @@ pub fn prove_unrolled_execution_with_replayer<
                 &setup_commitment,
                 &*twiddles_for_size,
                 &prover_config,
-                CommitmentMode::SeparateMemoryAndWitness,
+                OperationMode::MultipleChunks,
                 vec![],
                 trace_len,
                 backend,
@@ -1532,7 +1532,7 @@ pub fn prove_unrolled_execution_with_replayer<
                 &setup_commitment,
                 &*twiddles_for_size,
                 &prover_config,
-                CommitmentMode::SeparateMemoryAndWitness,
+                OperationMode::MultipleChunks,
                 upper_bits.clone(),
                 trace_len,
                 backend,
@@ -1907,7 +1907,7 @@ pub(crate) fn prove_delegation_circuit<
             &setup_commitment,
             &*twiddles_for_size,
             prover_config,
-            CommitmentMode::SeparateMemoryAndWitness,
+            OperationMode::MultipleChunks,
             vec![],
             trace_len,
             backend,

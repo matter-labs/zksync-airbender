@@ -253,7 +253,7 @@ mod imp {
             prover::merkle_trees::DefaultTreeConstructor,
         > {
             use prover::gkr::prover::{
-                prove_configured_with_gkr_with_storage_and_backend_and_pool, CommitmentMode,
+                prove_configured_with_gkr_with_storage_and_backend_and_pool, OperationMode,
             };
             use prover::merkle_trees::DefaultTreeConstructor;
             use prover::transcript::Blake2sTranscript;
@@ -272,7 +272,7 @@ mod imp {
                 setup_commitment,
                 twiddles,
                 prover_config,
-                CommitmentMode::SeparateMemoryAndWitness,
+                OperationMode::MultipleChunks,
                 storage,
                 Vec::new(),
                 trace_len,

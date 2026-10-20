@@ -1050,18 +1050,7 @@ fn emit_memory_tuple_check<MW: FieldWrapper>(
     }
 }
 
-pub fn generate_gkr_inlined<MW: FieldWrapper>(
-    compiled_circuit: &GKRCircuitArtifact<MW::BaseField>,
-    prover_config: &ProverConfig,
-) -> GKRGeneratedFiles {
-    generate_gkr_inlined_for_commitment_mode::<MW>(
-        compiled_circuit,
-        prover_config,
-        &prover::gkr::prover::CommitmentMode::SeparateMemoryAndWitness,
-    )
-}
-
-/// [`generate_gkr_inlined`] with an explicit base [`CommitmentMode`].
+/// Generate the inlined GKR verifier for `prover_config` (its `commitment_mode` picks the base commitment layout).
 ///
 /// `SeparateMemoryAndWitness` (the default of every pre-existing entry) emits
 /// the historical two-tree verifier. `MergedMemoryAndWitness` emits a verifier
@@ -1092,12 +1081,10 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
 /// columns) derives from the message size `trace_len_log2 + pack_log2`.
 ///
 /// [`CommitmentMode`]: prover::gkr::prover::CommitmentMode
-pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
+pub fn generate_gkr_inlined<MW: FieldWrapper>(
     compiled_circuit: &GKRCircuitArtifact<MW::BaseField>,
     prover_config: &ProverConfig,
-    commitment_mode: &prover::gkr::prover::CommitmentMode,
 ) -> GKRGeneratedFiles {
-    use prover::gkr::prover::CommitmentMode;
     assert_eq!(
         1usize << prover_config.trace_len_log2,
         compiled_circuit.trace_len,
@@ -1107,23 +1094,10 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
     let whir_schedule = &prover_config.whir_schedule;
     let security_bits = prover_config.security_level.security_bits() as u32;
     let pack_log2 = prover_config.pack_log2;
-    let merged_base_commitment = match commitment_mode {
-        CommitmentMode::SeparateMemoryAndWitness => false,
-        CommitmentMode::MergedMemoryAndWitness => true,
-        CommitmentMode::MergedMemoryAndWitnessSingleCircuitOnly { .. } => {
-            // Base commitment layout: the merged memory+witness tree, exactly
-            // as `MergedMemoryAndWitness`. What the CPU verifier does NOT
-            // generate is this mode's transcript init: the external
-            // challenges are self-derived from the transcript behind a PoW
-            // (plus the final register state / PC / timestamp commitment)
-            // instead of being supplied by the caller as `verify_impl` does.
-            unimplemented!(
-                "no generated CPU verifier for the self-derived external-challenge transcript \
-                 init of CommitmentMode::MergedMemoryAndWitnessSingleCircuitOnly (its merged \
-                 base commitment itself is the MergedMemoryAndWitness layout)"
-            )
-        }
-    };
+    // The generated verifier takes caller-supplied external challenges
+    // (`OperationMode::MultipleChunks`); the self-derived transcript init of
+    // `OperationMode::SingleChunk` is served by the EVM generator only.
+    let merged_base_commitment = prover_config.merged_memory_and_witness();
     // The packed base commitment: every committed set is packed by
     // `2^pack_log2` consecutive columns, so the WHIR message (the committed
     // column length) is `2^(trace_len_log2 + pack_log2)`.

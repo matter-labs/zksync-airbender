@@ -24,7 +24,7 @@ use prover::fft::Twiddles;
 use prover::field::Proth120;
 use prover::gkr::prover::setup::GKRSetup;
 use prover::gkr::prover::{
-    prove_configured_with_gkr_with_storage_and_backend, CommitmentMode, GKRProof, NaiveGKRBackend,
+    prove_configured_with_gkr_with_storage_and_backend, GKRProof, NaiveGKRBackend, OperationMode,
     Proth120WorkStealingLazyBackend, SetupCommitment, WhirOracleStorage,
 };
 use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
@@ -60,7 +60,7 @@ pub struct L1WrapTimings {
 
 /// Prove `program`'s execution as a single Proth120 packed unified proof with
 /// ALL oracles in memory and the EVM-production parameters. Returns the proof,
-/// the `CommitmentMode` aux data (the boundary state the EVM transcript recipe
+/// the `OperationMode` aux data (the boundary state the EVM transcript recipe
 /// replays — the exact fixture pair the verifier_evm generation and the
 /// two-transaction test consume), and the timing breakdown.
 ///
@@ -71,7 +71,7 @@ pub fn prove_l1_wrap_in_memory(
     program: &ProgramConfig,
     circuit_layout_path: &Path,
     worker: &Worker,
-) -> (L1Proof, CommitmentMode, L1WrapTimings) {
+) -> (L1Proof, OperationMode, L1WrapTimings) {
     let mut timings = L1WrapTimings::default();
     let external_challenges_pow_bits = EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS;
     let level = prover::definitions::SecurityLevel::Sec100;
@@ -139,7 +139,7 @@ pub fn prove_l1_wrap_in_memory(
     //    oracle materialized in RAM.
     let external_challenges = dummy_external_challenges::<Proth120, Proth120>();
 
-    let commitment_mode = CommitmentMode::MergedMemoryAndWitnessSingleCircuitOnly {
+    let operation_mode = OperationMode::SingleChunk {
         external_challenges_pow_bits,
         final_pc: vm.final_pc(),
         final_timestamp: vm.final_timestamp(),
@@ -166,7 +166,7 @@ pub fn prove_l1_wrap_in_memory(
         &setup_commitment,
         &packed_twiddles,
         &prover_config,
-        commitment_mode,
+        operation_mode,
         WhirOracleStorage::fully_in_memory_continuous(),
         top_bits,
         trace_len,

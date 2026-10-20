@@ -8,12 +8,12 @@ mod common;
 
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::Proth120;
-use prover::gkr::prover::{CommitmentMode, GKRProof};
+use prover::gkr::prover::{GKRProof, OperationMode};
 use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
 
 type Proof = GKRProof<Proth120, Proth120, Keccak256MerkleTreeWithCap>;
 
-fn load() -> (GKRCircuitArtifact<Proth120>, Proof, CommitmentMode) {
+fn load() -> (GKRCircuitArtifact<Proth120>, Proof, OperationMode) {
     let circuit = serde_json::from_reader(
         std::fs::File::open(
             "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",

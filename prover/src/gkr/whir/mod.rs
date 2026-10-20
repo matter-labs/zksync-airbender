@@ -73,6 +73,7 @@ use crate::gkr::prover::transcript_utils::{
     draw_query_bits, draw_random_field_els,
 };
 use crate::gkr::prover::WhirSchedule;
+use crate::gkr::prover_config::ProverConfig;
 use crate::gkr::sumcheck::access_and_fold::GKRStorage;
 use crate::gkr::sumcheck::*;
 use crate::gkr::whir::coset_commit::CosetByCosetBaseCommitment;
@@ -1089,22 +1090,19 @@ pub fn whir_fold<
     // hypercube evaluations the batched proximity polynomial is accumulated
     // from; it is released to `pool` right after.
     gkr_storage: GKRStorage<F, E>,
-    // log2 of the packing factor of the base commitments (0 = unpacked):
-    // `trace_len_log2 - pack_log2` is the base-layer column length.
-    pack_log2: usize,
-    // Whether memory and witness were committed as ONE merged set (the whole
-    // mem ++ wit sequence in `mem_oracle`, an EMPTY `wit_oracle`) — the
-    // merged commitment modes — or as two separate oracles. Decides how the
-    // base columns are grouped into committed (packed) columns; the oracles
-    // are asserted to have that shape.
-    merged_memory_and_witness: bool,
+    // The proving geometry: the WHIR schedule (folds, queries, PoW, LDE
+    // factors, the tree cap), the message size `trace_len_log2 + pack_log2`
+    // (the committed column length), the packing factor (`trace_len_log2 -
+    // pack_log2` is the base-layer column length) and the commitment mode —
+    // whether memory and witness were committed as ONE merged set (the whole
+    // mem ++ wit sequence in `mem_oracle`, an EMPTY `wit_oracle`) or as two
+    // separate oracles, which decides how the base columns are grouped into
+    // committed (packed) columns; the oracles are asserted to have that shape.
+    prover_config: &ProverConfig,
     original_evaluation_point: Vec<E>,
     batching_challenge: E,
-    whir_schedule: &WhirSchedule,
     twiddles: &B::TwiddleSet,
     mut transcript_seed: TR::Seed,
-    tree_cap_size: usize,
-    trace_len_log2: usize,
     // Compute backend for the in-memory-path heavy ops (intermediate-oracle LDEs,
     // the batched poly's hypercube -> monomial transform). The backend must not
     // change any produced values.
@@ -1122,6 +1120,11 @@ pub fn whir_fold<
     worker: &Worker,
 ) -> WhirPolyCommitProof<F, E, T> {
     let two_inv = F::TWO.inverse().unwrap();
+    let whir_schedule = &prover_config.whir_schedule;
+    let pack_log2 = prover_config.pack_log2;
+    let merged_memory_and_witness = prover_config.merged_memory_and_witness();
+    let tree_cap_size = whir_schedule.cap_size;
+    let trace_len_log2 = prover_config.whir_message_size_log2();
 
     let evals_refs = [&mem_polys_claims, &wit_polys_claims, &setup_polys_claims];
     // Per-set accessors (0 = memory, 1 = witness, 2 = setup). The setup set is served
@@ -4516,15 +4519,15 @@ mod test {
             &setup_commitment,
             c,
             gkr_storage,
-            0,
-            false, // separate memory and witness oracles
+            &crate::gkr::prover_config::ProverConfig::whir_only(
+                size.trailing_zeros() as usize,
+                whir_schedule,
+                crate::definitions::SecurityLevel::Sec100,
+            ),
             original_evaluation_point,
             E::from_base(F::from_u32_with_reduction(7)),
-            &whir_schedule,
             &twiddles,
             ::transcript::Seed::default(),
-            1,
-            size.trailing_zeros() as usize,
             &crate::gkr::prover::backend::NaiveBackend,
             &crate::gkr::prover::gkr_backend::NaiveGKRBackend,
             WhirIntermediateOracleMode::Monolithic,

@@ -100,5 +100,6 @@
     "Tail"
   ],
   "dimension_reducing_sumcheck_schedule": {},
-  "pack_log2": 0
+  "pack_log2": 0,
+  "commitment_mode": "SeparateMemoryAndWitness"
 }

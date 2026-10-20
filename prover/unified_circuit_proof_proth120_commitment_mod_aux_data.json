@@ -1,5 +1,5 @@
 {
-  "MergedMemoryAndWitnessSingleCircuitOnly": {
+  "SingleChunk": {
     "external_challenges_pow_bits": 20,
     "register_final_state": [
       {

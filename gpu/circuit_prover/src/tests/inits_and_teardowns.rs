@@ -271,7 +271,7 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
             &setup_commitment,
             &twiddles,
             &prover_config,
-            CommitmentMode::SeparateMemoryAndWitness,
+            OperationMode::MultipleChunks,
             top_bits.clone(),
             trace_len,
             &worker,

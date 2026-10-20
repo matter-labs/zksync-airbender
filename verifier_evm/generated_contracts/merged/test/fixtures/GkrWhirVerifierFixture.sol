@@ -272,7 +272,7 @@ contract GkrWhirVerifierFixture {
         }
 
         function transcript_init(ptr) -> next_ptr {
-            // Proth120 packed-mode transcript (MergedMemoryAndWitnessSingleCircuitOnly), validated
+            // Proth120 packed-mode transcript (OperationMode::SingleChunk), validated
             // keccak-for-keccak in step1_test/GkrStep1.sol against the real proof.
             //   seed = keccak256(preimage)                       // commit_initial_u32 (916 B: regs+PC+topbits+caps)
             //   nonce = calldata[preimage..preimage+8] (BE u64)

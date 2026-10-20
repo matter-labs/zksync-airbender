@@ -67,18 +67,27 @@ pub mod test_forge;
 pub mod transcript_utils;
 pub mod utils;
 
+pub use crate::gkr::prover_config::CommitmentMode;
+
+/// How the proof is USED, which decides the transcript's handling of the
+/// permutation-argument ("external") challenges. Orthogonal to the proving
+/// geometry in [`ProverConfig`] (commitment mode, packing, schedules).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[allow(clippy::large_enum_variant)]
-pub enum CommitmentMode {
-    SeparateMemoryAndWitness,
-    MergedMemoryAndWitness,
-    /// The merged memory+witness commitment of the SINGLE-circuit (L1 wrap)
-    /// flow: the external (permutation-argument) challenges are not "external"
-    /// anymore — they are re-derived from a transcript seeded with the boundary
-    /// state carried here (register final state, final pc/timestamp) together
-    /// with the setup and merged caps. Base-commitment packing is NOT a mode:
-    /// it is [`ProverConfig::pack_log2`] and applies to every mode.
-    MergedMemoryAndWitnessSingleCircuitOnly {
+pub enum OperationMode {
+    /// One of several chunks of a program: the external challenges are
+    /// supplied by the caller (derived over all chunks' memory commitments
+    /// outside this proof), so the prover performs no Fiat-Shamir
+    /// transformation related to the permutation argument — it only commits
+    /// the challenges it was given.
+    MultipleChunks,
+    /// A single standalone chunk (the L1 wrap): the external challenges are
+    /// not "external" anymore — they are re-derived, behind a PoW of
+    /// `external_challenges_pow_bits`, from a transcript seeded with the
+    /// boundary state carried here (register final state, final pc/timestamp)
+    /// together with the setup and base-commitment caps (one or two, per the
+    /// config's [`CommitmentMode`]).
+    SingleChunk {
         external_challenges_pow_bits: u32,
         register_final_state: [crate::definitions::FinalRegisterValue; 32],
         final_pc: u32,
@@ -551,13 +560,11 @@ pub(crate) fn apply_row_wise<'a, A: 'static + Send + Sync, B: 'static + Send + S
 /// times larger), everything materialized otherwise.
 fn default_storage_for(
     prover_config: &ProverConfig,
-    commitment_mode: CommitmentMode,
+    operation_mode: OperationMode,
 ) -> WhirOracleStorage {
-    match commitment_mode {
-        CommitmentMode::MergedMemoryAndWitnessSingleCircuitOnly { .. } => {
-            WhirOracleStorage::fully_recompute()
-        }
-        CommitmentMode::SeparateMemoryAndWitness | CommitmentMode::MergedMemoryAndWitness => {
+    match operation_mode {
+        OperationMode::SingleChunk { .. } => WhirOracleStorage::fully_recompute(),
+        OperationMode::MultipleChunks => {
             if prover_config.pack_log2 > 0 {
                 WhirOracleStorage::fully_recompute()
             } else {
@@ -584,13 +591,13 @@ pub fn prove_configured_with_gkr<
     setup_commitment: &SetupCommitment<F, T>,
     twiddles: &Twiddles<F, Global>,
     prover_config: &ProverConfig,
-    commitment_mode: CommitmentMode,
+    operation_mode: OperationMode,
     inits_and_teardowns_top_bits: Vec<u32>,
     trace_len: usize,
     worker: &Worker,
 ) -> GKRProof<F, E, T> {
     // Preserve the historical, mode-dependent storage policy for existing callers.
-    let storage = default_storage_for(prover_config, commitment_mode);
+    let storage = default_storage_for(prover_config, operation_mode);
     let pool_handle = crate::allocation_pool::default_pool_for::<F, E>();
     let pool: &dyn AllocationPool<F, E> = &*pool_handle;
     prove_configured_with_gkr_impl::<F, E, T, TR, _, _>(
@@ -601,7 +608,7 @@ pub fn prove_configured_with_gkr<
         setup_commitment,
         twiddles,
         prover_config,
-        commitment_mode,
+        operation_mode,
         storage,
         inits_and_teardowns_top_bits,
         trace_len,
@@ -637,7 +644,7 @@ pub fn prove_configured_with_gkr_with_backends_and_pool<
     setup_commitment: &SetupCommitment<F, T>,
     twiddles: &B::TwiddleSet,
     prover_config: &ProverConfig,
-    commitment_mode: CommitmentMode,
+    operation_mode: OperationMode,
     inits_and_teardowns_top_bits: Vec<u32>,
     trace_len: usize,
     backend: &B,
@@ -645,7 +652,7 @@ pub fn prove_configured_with_gkr_with_backends_and_pool<
     pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) -> GKRProof<F, E, T> {
-    let storage = default_storage_for(prover_config, commitment_mode);
+    let storage = default_storage_for(prover_config, operation_mode);
     prove_configured_with_gkr_impl::<F, E, T, TR, B, GB>(
         compiled_circuit,
         external_challenges,
@@ -654,7 +661,7 @@ pub fn prove_configured_with_gkr_with_backends_and_pool<
         setup_commitment,
         twiddles,
         prover_config,
-        commitment_mode,
+        operation_mode,
         storage,
         inits_and_teardowns_top_bits,
         trace_len,
@@ -680,7 +687,7 @@ pub fn prove_configured_with_gkr_with_backends<
     setup_commitment: &SetupCommitment<F, T>,
     twiddles: &B::TwiddleSet,
     prover_config: &ProverConfig,
-    commitment_mode: CommitmentMode,
+    operation_mode: OperationMode,
     inits_and_teardowns_top_bits: Vec<u32>,
     trace_len: usize,
     backend: &B,
@@ -697,7 +704,7 @@ pub fn prove_configured_with_gkr_with_backends<
         setup_commitment,
         twiddles,
         prover_config,
-        commitment_mode,
+        operation_mode,
         inits_and_teardowns_top_bits,
         trace_len,
         backend,
@@ -728,7 +735,7 @@ pub fn prove_configured_with_gkr_with_storage<
     setup_commitment: &SetupCommitment<F, T>,
     twiddles: &Twiddles<F, Global>,
     prover_config: &ProverConfig,
-    commitment_mode: CommitmentMode,
+    operation_mode: OperationMode,
     storage: WhirOracleStorage,
     inits_and_teardowns_top_bits: Vec<u32>,
     trace_len: usize,
@@ -744,7 +751,7 @@ pub fn prove_configured_with_gkr_with_storage<
         setup_commitment,
         twiddles,
         prover_config,
-        commitment_mode,
+        operation_mode,
         storage,
         inits_and_teardowns_top_bits,
         trace_len,
@@ -777,7 +784,7 @@ pub fn prove_configured_with_gkr_with_storage_and_backend_and_pool<
     setup_commitment: &SetupCommitment<F, T>,
     twiddles: &B::TwiddleSet,
     prover_config: &ProverConfig,
-    commitment_mode: CommitmentMode,
+    operation_mode: OperationMode,
     storage: WhirOracleStorage,
     inits_and_teardowns_top_bits: Vec<u32>,
     trace_len: usize,
@@ -794,7 +801,7 @@ pub fn prove_configured_with_gkr_with_storage_and_backend_and_pool<
         setup_commitment,
         twiddles,
         prover_config,
-        commitment_mode,
+        operation_mode,
         storage,
         inits_and_teardowns_top_bits,
         trace_len,
@@ -820,7 +827,7 @@ pub fn prove_configured_with_gkr_with_storage_and_backend<
     setup_commitment: &SetupCommitment<F, T>,
     twiddles: &B::TwiddleSet,
     prover_config: &ProverConfig,
-    commitment_mode: CommitmentMode,
+    operation_mode: OperationMode,
     storage: WhirOracleStorage,
     inits_and_teardowns_top_bits: Vec<u32>,
     trace_len: usize,
@@ -838,7 +845,7 @@ pub fn prove_configured_with_gkr_with_storage_and_backend<
         setup_commitment,
         twiddles,
         prover_config,
-        commitment_mode,
+        operation_mode,
         storage,
         inits_and_teardowns_top_bits,
         trace_len,
@@ -871,7 +878,7 @@ pub fn prove_configured_with_gkr_merged_with_precommitted_oracle_and_pool<
     setup_commitment: &SetupCommitment<F, T>,
     twiddles: &B::TwiddleSet,
     prover_config: &ProverConfig,
-    commitment_mode: CommitmentMode,
+    operation_mode: OperationMode,
     storage: WhirOracleStorage,
     inits_and_teardowns_top_bits: Vec<u32>,
     trace_len: usize,
@@ -889,7 +896,7 @@ pub fn prove_configured_with_gkr_merged_with_precommitted_oracle_and_pool<
         setup_commitment,
         twiddles,
         prover_config,
-        commitment_mode,
+        operation_mode,
         storage,
         inits_and_teardowns_top_bits,
         trace_len,
@@ -916,7 +923,7 @@ pub fn prove_configured_with_gkr_merged_with_precommitted_oracle<
     setup_commitment: &SetupCommitment<F, T>,
     twiddles: &B::TwiddleSet,
     prover_config: &ProverConfig,
-    commitment_mode: CommitmentMode,
+    operation_mode: OperationMode,
     storage: WhirOracleStorage,
     inits_and_teardowns_top_bits: Vec<u32>,
     trace_len: usize,
@@ -935,7 +942,7 @@ pub fn prove_configured_with_gkr_merged_with_precommitted_oracle<
         setup_commitment,
         twiddles,
         prover_config,
-        commitment_mode,
+        operation_mode,
         storage,
         inits_and_teardowns_top_bits,
         trace_len,
@@ -965,7 +972,7 @@ fn prove_configured_with_gkr_merged_precommitted_impl<
     setup_commitment: &SetupCommitment<F, T>,
     twiddles: &B::TwiddleSet,
     prover_config: &ProverConfig,
-    commitment_mode: CommitmentMode,
+    operation_mode: OperationMode,
     storage: WhirOracleStorage,
     inits_and_teardowns_top_bits: Vec<u32>,
     trace_len: usize,
@@ -975,8 +982,12 @@ fn prove_configured_with_gkr_merged_precommitted_impl<
     worker: &Worker,
 ) -> GKRProof<F, E, T> {
     assert!(
-        matches!(commitment_mode, CommitmentMode::MergedMemoryAndWitness),
+        prover_config.merged_memory_and_witness(),
         "the precommitted-oracle entry supports only CommitmentMode::MergedMemoryAndWitness"
+    );
+    assert!(
+        matches!(operation_mode, OperationMode::MultipleChunks),
+        "the precommitted-oracle entry takes caller-supplied external challenges"
     );
     assert_eq!(
         storage.base_rs_source,
@@ -1080,7 +1091,7 @@ fn prove_configured_with_gkr_merged_precommitted_impl<
         setup_commitment,
         twiddles,
         prover_config,
-        commitment_mode,
+        operation_mode,
         storage,
         inits_and_teardowns_top_bits,
         trace_len,
@@ -1116,7 +1127,7 @@ fn prove_configured_with_gkr_impl<
     setup_commitment: &SetupCommitment<F, T>,
     twiddles: &B::TwiddleSet,
     prover_config: &ProverConfig,
-    commitment_mode: CommitmentMode,
+    operation_mode: OperationMode,
     storage: WhirOracleStorage,
     inits_and_teardowns_top_bits: Vec<u32>,
     trace_len: usize,
@@ -1163,10 +1174,17 @@ fn prove_configured_with_gkr_impl<
         wit_oracle,
         lookup_challenges_pow_nonce,
         [lookup_alpha, lookup_additive_part],
-    ) = match commitment_mode {
-        CommitmentMode::SeparateMemoryAndWitness => {
-            // first we would commit to the witness - WHIR commitment itself is just the same as FRI commitment
-            let (mem_oracle, wit_oracle) = match rs_codeword_source {
+    ) = {
+        // 1. The base commitment: by the config's commitment mode (packed by
+        //    `prover_config.pack_log2` when non-zero). Packed polynomials are
+        //    2^(N + pack_log2) and their LDE codeword (x base_lde_factor) is very
+        //    large: `Recompute` builds a coset-by-coset commitment (keeps only
+        //    the packed monomial forms + the small top tree) and serves round-0
+        //    base queries by batched coset recomputation inside `whir_fold`;
+        //    `InMemory` materializes the whole codeword. Both yield the same
+        //    proof. A merged commitment leaves the witness oracle EMPTY.
+        let (mem_oracle, wit_oracle) = match prover_config.commitment_mode {
+            CommitmentMode::SeparateMemoryAndWitness => match rs_codeword_source {
                 RsCodewordSource::InMemory => {
                     stages::initial_commit::commit_separate_memory_and_witness_subtrees::<F, E, T, B>(
                         backend,
@@ -1185,256 +1203,177 @@ fn prove_configured_with_gkr_impl<
                         worker,
                     )
                 }
-            };
-
-            let mut transcript_input = vec![];
-            // we should commit all "external" variables,
-            // that are still part of the circuit, even though they are not formally the public input
-
-            // circuit sequence and delegation type
-            transcript_input.extend_from_slice(&inits_and_teardowns_top_bits[..]);
-
-            external_challenges.flatten_into_buffer(&mut transcript_input);
-
-            // commit our setup
-            if !setup.hypercube_evals.is_empty() {
-                flatten_merkle_caps_iter_into(
-                    Some(setup_commitment.get_cap()).into_iter(),
-                    &mut transcript_input,
-                );
+            },
+            CommitmentMode::MergedMemoryAndWitness => {
+                let merged_oracle = match rs_codeword_source {
+                    RsCodewordSource::InMemory => {
+                        stages::initial_commit::commit_merged_memory_and_witness_subtrees::<
+                            F,
+                            E,
+                            T,
+                            B,
+                        >(
+                            backend,
+                            &witness_eval_data,
+                            twiddles,
+                            prover_config,
+                            pool,
+                            worker,
+                        )
+                    }
+                    RsCodewordSource::Recompute => {
+                        stages::initial_commit::commit_merged_memory_and_witness_recompute::<F, T>(
+                            &witness_eval_data,
+                            twiddles.plain(),
+                            prover_config,
+                            worker,
+                        )
+                    }
+                };
+                (
+                    merged_oracle,
+                    ColumnMajorBaseOracleForLDE::empty(
+                        prover_config.base_oracles_values_per_leaf,
+                        prover_config.whir_message_size_log2(),
+                        prover_config.lde_factor,
+                    ),
+                )
             }
+        };
 
-            // memory
-            if compiled_circuit.memory_layout.total_width > 0 {
+        // 2. The transcript init: by the operation mode. We should commit all
+        //    "external" variables that are still part of the circuit, even
+        //    though they are not formally the public input.
+        let mut transcript_input = vec![];
+        match operation_mode {
+            OperationMode::MultipleChunks => {
+                // circuit sequence and delegation type
+                transcript_input.extend_from_slice(&inits_and_teardowns_top_bits[..]);
+                // the caller-supplied external challenges
+                external_challenges.flatten_into_buffer(&mut transcript_input);
+            }
+            OperationMode::SingleChunk {
+                register_final_state,
+                final_pc,
+                final_timestamp,
+                ..
+            } => {
+                // the external challenges are re-derived below, from the boundary
+                // state: register final state — flattened the same way as the full
+                // statement verifier, and in general it can be flattened to
+                // (32+1) * 3 u32 words -> bytes without interpretation for the L1
+                // verifier
+                let mut registers_buffer = [0u32; 32 * 3];
+                for reg_idx in 0..32 {
+                    let value = register_final_state[reg_idx].value;
+                    let (timestamp_low, timestamp_high) =
+                        split_timestamp(register_final_state[reg_idx].last_access_timestamp);
+                    registers_buffer[reg_idx * 3] = value;
+                    registers_buffer[reg_idx * 3 + 1] = timestamp_low;
+                    registers_buffer[reg_idx * 3 + 2] = timestamp_high;
+                }
+                transcript_input.extend(registers_buffer);
+
+                let mut final_pc_buffer = [0u32; 3];
+                final_pc_buffer[0] = final_pc;
+                final_pc_buffer[1] = split_timestamp(final_timestamp).0;
+                final_pc_buffer[2] = split_timestamp(final_timestamp).1;
+                transcript_input.extend(final_pc_buffer);
+
+                // inits and teardown bits
+                transcript_input.extend_from_slice(&inits_and_teardowns_top_bits[..]);
+            }
+        }
+
+        // commit our setup
+        if !setup.hypercube_evals.is_empty() {
+            flatten_merkle_caps_iter_into(
+                Some(setup_commitment.get_cap()).into_iter(),
+                &mut transcript_input,
+            );
+        }
+
+        // and the base commitment caps, by the commitment mode
+        match prover_config.commitment_mode {
+            CommitmentMode::SeparateMemoryAndWitness => {
+                // memory
+                if compiled_circuit.memory_layout.total_width > 0 {
+                    flatten_merkle_caps_iter_into(
+                        Some(mem_oracle.get_cap()).into_iter(),
+                        &mut transcript_input,
+                    );
+                }
+                // and witness
+                if compiled_circuit.witness_layout.total_width > 0 {
+                    flatten_merkle_caps_iter_into(
+                        Some(wit_oracle.get_cap()).into_iter(),
+                        &mut transcript_input,
+                    );
+                }
+            }
+            CommitmentMode::MergedMemoryAndWitness => {
                 flatten_merkle_caps_iter_into(
                     Some(mem_oracle.get_cap()).into_iter(),
                     &mut transcript_input,
                 );
             }
-
-            // and witness
-            if compiled_circuit.witness_layout.total_width > 0 {
-                flatten_merkle_caps_iter_into(
-                    Some(wit_oracle.get_cap()).into_iter(),
-                    &mut transcript_input,
-                );
-            }
-
-            let mut seed =
-                <TR as ::transcript::Transcript<F, E>>::commit_initial_u32(&transcript_input);
-
-            // Now we need to draw prove-local challenges, and in our case it's just a challenge for lookups,
-            // and challenge to batch all constraints. They are gated behind a proof-of-work; commit-before-draw
-            // is satisfied by `commit_initial` above.
-            let lookup_challenges_pow_bits = pow_bits::lookup_challenges_pow_bits::<F, E>(
-                prover_config.security_level.security_bits(),
-                pow_bits::lookup_identity_degree(compiled_circuit),
-            );
-            let (lookup_challenges_pow_nonce, challenges): (u64, Vec<E>) =
-                draw_random_field_els_with_pow::<F, E, TR>(
-                    &mut seed,
-                    2,
-                    lookup_challenges_pow_bits,
-                    worker,
-                );
-            let [lookup_alpha, lookup_additive_part] = challenges.try_into().unwrap();
-
-            (
-                seed,
-                mem_oracle,
-                wit_oracle,
-                lookup_challenges_pow_nonce,
-                [lookup_alpha, lookup_additive_part],
-            )
         }
-        CommitmentMode::MergedMemoryAndWitness => {
-            let merged_oracle = match rs_codeword_source {
-                RsCodewordSource::InMemory => {
-                    stages::initial_commit::commit_merged_memory_and_witness_subtrees::<F, E, T, B>(
-                        backend,
-                        &witness_eval_data,
-                        twiddles,
-                        prover_config,
-                        pool,
-                        worker,
-                    )
+
+        let mut seed =
+            <TR as ::transcript::Transcript<F, E>>::commit_initial_u32(&transcript_input);
+
+        // 3. The prove-local challenges: the lookup challenges (alpha + additive),
+        //    and in the single-chunk mode the external challenges too. They are
+        //    gated behind a proof-of-work; commit-before-draw is satisfied by
+        //    `commit_initial` above.
+        let lookup_challenges_pow_bits = pow_bits::lookup_challenges_pow_bits::<F, E>(
+            prover_config.security_level.security_bits(),
+            pow_bits::lookup_identity_degree(compiled_circuit),
+        );
+        let (lookup_challenges_pow_nonce, [lookup_alpha, lookup_additive_part]) =
+            match operation_mode {
+                OperationMode::MultipleChunks => {
+                    let (lookup_challenges_pow_nonce, challenges): (u64, Vec<E>) =
+                        draw_random_field_els_with_pow::<F, E, TR>(
+                            &mut seed,
+                            2,
+                            lookup_challenges_pow_bits,
+                            worker,
+                        );
+                    (lookup_challenges_pow_nonce, challenges.try_into().unwrap())
                 }
-                RsCodewordSource::Recompute => {
-                    stages::initial_commit::commit_merged_memory_and_witness_recompute::<F, T>(
-                        &witness_eval_data,
-                        twiddles.plain(),
-                        prover_config,
-                        worker,
-                    )
+                OperationMode::SingleChunk {
+                    external_challenges_pow_bits,
+                    ..
+                } => {
+                    let pow_bits =
+                        core::cmp::max(lookup_challenges_pow_bits, external_challenges_pow_bits);
+                    let num_challenges = GKRExternalChallenges::<F, E>::TOTAL_CHALLENGES + 2;
+                    let (lookup_challenges_pow_nonce, challenges): (u64, Vec<E>) =
+                        draw_random_field_els_with_pow::<F, E, TR>(
+                            &mut seed,
+                            num_challenges,
+                            pow_bits,
+                            worker,
+                        );
+                    external_challenges = GKRExternalChallenges::from_slice(
+                        &challenges[..GKRExternalChallenges::<F, E>::TOTAL_CHALLENGES],
+                    );
+                    let lookup_challenges: [E; 2] = challenges
+                        [GKRExternalChallenges::<F, E>::TOTAL_CHALLENGES..]
+                        .try_into()
+                        .unwrap();
+                    (lookup_challenges_pow_nonce, lookup_challenges)
                 }
             };
 
-            let mut transcript_input = vec![];
-            // we should commit all "external" variables,
-            // that are still part of the circuit, even though they are not formally the public input
-
-            // circuit sequence and delegation type
-            transcript_input.extend_from_slice(&inits_and_teardowns_top_bits[..]);
-
-            external_challenges.flatten_into_buffer(&mut transcript_input);
-
-            // commit our setup
-            if !setup.hypercube_evals.is_empty() {
-                flatten_merkle_caps_iter_into(
-                    Some(setup_commitment.get_cap()).into_iter(),
-                    &mut transcript_input,
-                );
-            }
-
-            flatten_merkle_caps_iter_into(
-                Some(merged_oracle.get_cap()).into_iter(),
-                &mut transcript_input,
-            );
-
-            let mut seed =
-                <TR as ::transcript::Transcript<F, E>>::commit_initial_u32(&transcript_input);
-
-            let lookup_challenges_pow_bits = pow_bits::lookup_challenges_pow_bits::<F, E>(
-                prover_config.security_level.security_bits(),
-                pow_bits::lookup_identity_degree(compiled_circuit),
-            );
-            let (lookup_challenges_pow_nonce, challenges): (u64, Vec<E>) =
-                draw_random_field_els_with_pow::<F, E, TR>(
-                    &mut seed,
-                    2,
-                    lookup_challenges_pow_bits,
-                    worker,
-                );
-            let [lookup_alpha, lookup_additive_part] = challenges.try_into().unwrap();
-
-            (
-                seed,
-                merged_oracle,
-                ColumnMajorBaseOracleForLDE::empty(
-                    prover_config.base_oracles_values_per_leaf,
-                    prover_config.whir_message_size_log2(),
-                    prover_config.lde_factor,
-                ),
-                lookup_challenges_pow_nonce,
-                [lookup_alpha, lookup_additive_part],
-            )
-        }
-        CommitmentMode::MergedMemoryAndWitnessSingleCircuitOnly {
-            external_challenges_pow_bits,
-            register_final_state,
-            final_pc,
-            final_timestamp,
-        } => {
-            // in this mode we will re-derive external challenges.
-            //
-            // The merged memory+witness set is committed exactly like in
-            // `MergedMemoryAndWitness`, packed by `prover_config.pack_log2` when
-            // non-zero. Packed polynomials are 2^(N + pack_log2) and their LDE
-            // codeword (x base_lde_factor) is very large: `Recompute` builds a
-            // coset-by-coset commitment (keeps only the packed monomial forms + the
-            // small top tree) and serves round-0 base queries by batched coset
-            // recomputation inside `whir_fold`; `InMemory` materializes the whole
-            // codeword. Both yield the same proof.
-            let merged_oracle = match rs_codeword_source {
-                RsCodewordSource::InMemory => {
-                    stages::initial_commit::commit_merged_memory_and_witness_subtrees::<F, E, T, B>(
-                        backend,
-                        &witness_eval_data,
-                        twiddles,
-                        prover_config,
-                        pool,
-                        worker,
-                    )
-                }
-                RsCodewordSource::Recompute => {
-                    stages::initial_commit::commit_merged_memory_and_witness_recompute::<F, T>(
-                        &witness_eval_data,
-                        twiddles.plain(),
-                        prover_config,
-                        worker,
-                    )
-                }
-            };
-
-            let mut transcript_input = vec![];
-            // we should commit all "external" variables,
-            // that are still part of the circuit, even though they are not formally the public input
-
-            // register final state - flatten same way as full statement verifier,
-            // and in general it can be flattened to (32+1) * 3 u32 words -> bytes without interpretation
-            // for L1 verifier
-            let mut registers_buffer = [0u32; 32 * 3];
-            for reg_idx in 0..32 {
-                let value = register_final_state[reg_idx].value;
-                let (timestamp_low, timestamp_high) =
-                    split_timestamp(register_final_state[reg_idx].last_access_timestamp);
-                registers_buffer[reg_idx * 3] = value;
-                registers_buffer[reg_idx * 3 + 1] = timestamp_low;
-                registers_buffer[reg_idx * 3 + 2] = timestamp_high;
-            }
-            transcript_input.extend(registers_buffer);
-
-            let mut final_pc_buffer = [0u32; 3];
-            final_pc_buffer[0] = final_pc;
-            final_pc_buffer[1] = split_timestamp(final_timestamp).0;
-            final_pc_buffer[2] = split_timestamp(final_timestamp).1;
-            transcript_input.extend(final_pc_buffer);
-
-            // inits and teardown bits
-            transcript_input.extend_from_slice(&inits_and_teardowns_top_bits[..]);
-
-            // commit our setup
-            if !setup.hypercube_evals.is_empty() {
-                flatten_merkle_caps_iter_into(
-                    Some(setup_commitment.get_cap()).into_iter(),
-                    &mut transcript_input,
-                );
-            }
-
-            flatten_merkle_caps_iter_into(
-                Some(merged_oracle.get_cap()).into_iter(),
-                &mut transcript_input,
-            );
-
-            let mut seed =
-                <TR as ::transcript::Transcript<F, E>>::commit_initial_u32(&transcript_input);
-
-            let lookup_challenges_pow_bits = pow_bits::lookup_challenges_pow_bits::<F, E>(
-                prover_config.security_level.security_bits(),
-                pow_bits::lookup_identity_degree(compiled_circuit),
-            );
-
-            let pow_bits = core::cmp::max(lookup_challenges_pow_bits, external_challenges_pow_bits);
-
-            let num_challenges = GKRExternalChallenges::<F, E>::TOTAL_CHALLENGES + 2;
-
-            let (lookup_challenges_pow_nonce, challenges): (u64, Vec<E>) =
-                draw_random_field_els_with_pow::<F, E, TR>(
-                    &mut seed,
-                    num_challenges,
-                    pow_bits,
-                    worker,
-                );
-            external_challenges = GKRExternalChallenges::from_slice(
-                &challenges[..GKRExternalChallenges::<F, E>::TOTAL_CHALLENGES],
-            );
-            let [lookup_alpha, lookup_additive_part] = challenges
-                [GKRExternalChallenges::<F, E>::TOTAL_CHALLENGES..]
-                .try_into()
-                .unwrap();
-
-            (
-                seed,
-                merged_oracle,
-                ColumnMajorBaseOracleForLDE::empty(
-                    prover_config.base_oracles_values_per_leaf,
-                    prover_config.whir_message_size_log2(),
-                    prover_config.lde_factor,
-                ),
-                lookup_challenges_pow_nonce,
-                [lookup_alpha, lookup_additive_part],
-            )
-        }
+        (
+            seed,
+            mem_oracle,
+            wit_oracle,
+            lookup_challenges_pow_nonce,
+            [lookup_alpha, lookup_additive_part],
+        )
     };
 
     let t_gkr_phase = std::time::Instant::now();
@@ -1459,7 +1398,7 @@ fn prove_configured_with_gkr_impl<
         setup_commitment,
         twiddles,
         prover_config,
-        commitment_mode,
+        operation_mode,
         storage,
         inits_and_teardowns_top_bits,
         trace_len,
@@ -1567,7 +1506,7 @@ fn prove_configured_with_gkr_from_forward_eval<
     setup_commitment: &SetupCommitment<F, T>,
     twiddles: &B::TwiddleSet,
     prover_config: &ProverConfig,
-    commitment_mode: CommitmentMode,
+    operation_mode: OperationMode,
     storage: WhirOracleStorage,
     inits_and_teardowns_top_bits: Vec<u32>,
     trace_len: usize,
@@ -2011,19 +1950,19 @@ fn prove_configured_with_gkr_from_forward_eval<
 
     // and for WHIR we may need to reshuffle/merge claims depending on the mode:
     // the merged modes committed memory and witness as ONE column set
-    let (mem_polys_claims, wit_polys_claims, setup_polys_claims) = match commitment_mode {
-        CommitmentMode::SeparateMemoryAndWitness => {
-            (mem_polys_claims, wit_polys_claims, setup_polys_claims)
-        }
-        CommitmentMode::MergedMemoryAndWitness
-        | CommitmentMode::MergedMemoryAndWitnessSingleCircuitOnly { .. } => {
-            // just move all witness claims to the memory same order
-            let mut merged_claims = mem_polys_claims;
-            merged_claims.extend(wit_polys_claims);
+    let (mem_polys_claims, wit_polys_claims, setup_polys_claims) =
+        match prover_config.commitment_mode {
+            CommitmentMode::SeparateMemoryAndWitness => {
+                (mem_polys_claims, wit_polys_claims, setup_polys_claims)
+            }
+            CommitmentMode::MergedMemoryAndWitness => {
+                // just move all witness claims to the memory same order
+                let mut merged_claims = mem_polys_claims;
+                merged_claims.extend(wit_polys_claims);
 
-            (merged_claims, Vec::new(), setup_polys_claims)
-        }
-    };
+                (merged_claims, Vec::new(), setup_polys_claims)
+            }
+        };
 
     // Packed base commitments (`ProverConfig::pack_log2 > 0`): every committed
     // column set (memory, witness, setup) was packed by `2^pack_log2`
@@ -2117,11 +2056,7 @@ fn prove_configured_with_gkr_from_forward_eval<
     // scales with the number of batched base-oracle columns l and the size of the
     // batched (packed, in the packed mode) polynomials, so it is computed per-circuit
     // here (and identically baked by the verifier generator).
-    let merged_memory_and_witness = matches!(
-        commitment_mode,
-        CommitmentMode::MergedMemoryAndWitness
-            | CommitmentMode::MergedMemoryAndWitnessSingleCircuitOnly { .. }
-    );
+    let merged_memory_and_witness = prover_config.merged_memory_and_witness();
     let batched_proximity_pow_bits = pow_bits::batched_proximity_check_pow_bits::<F, E>(
         prover_config.security_level.security_bits(),
         trace_len_log2_for_whir,
@@ -2173,7 +2108,6 @@ fn prove_configured_with_gkr_from_forward_eval<
     // the packing of the base commitments (0 = unpacked): the batched
     // proximity polynomial is accumulated from the base-layer columns inside
     // `whir_fold`, which consumes the GKR storage
-    let pack_log2_for_whir = prover_config.pack_log2;
     let t_whir = std::time::Instant::now();
     let whir_proof = whir_fold::<F, E, T, TR, B, GB>(
         mem_oracle,
@@ -2183,15 +2117,11 @@ fn prove_configured_with_gkr_from_forward_eval<
         setup_commitment,
         setup_polys_claims,
         gkr_storage,
-        pack_log2_for_whir,
-        merged_memory_and_witness,
+        prover_config,
         base_layer_z.clone(),
         whir_batching_challenge,
-        &prover_config.whir_schedule,
         twiddles,
         seed,
-        prover_config.whir_schedule.cap_size,
-        trace_len_log2_for_whir,
         backend,
         gkr_backend,
         intermediate_oracle_mode,
@@ -2237,12 +2167,12 @@ fn prove_configured_with_gkr_from_forward_eval<
     }
 
     #[cfg(feature = "gkr_self_checks")]
-    if let CommitmentMode::MergedMemoryAndWitnessSingleCircuitOnly {
+    if let OperationMode::SingleChunk {
         register_final_state,
         final_pc,
         final_timestamp,
         ..
-    } = commitment_mode
+    } = operation_mode
     {
         // self-check, write set/read set
         let mut registers_buffer = [0u32; 32 * 3];
