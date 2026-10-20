@@ -4,12 +4,11 @@ use era_cudart::slice::DeviceSlice;
 
 use crate::proof::memory_policy::ProofMemoryPolicy;
 use crate::upstream::{GKRCircuitArtifact, WhirSchedule};
-use gpu_core::primitives::context::{DeviceAllocation, UnsafeAccessor};
+use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr::backward::GpuGKRBackwardScheduledExecution;
 use gpu_gkr::base_layer_claims::{
     schedule_prepare_base_layer_claims_with_sources, GpuGKRBaseLayerClaimsScheduledExecution,
-    ScheduledBaseLayerClaimsState,
 };
 use gpu_gkr::proof_layout::ProofLayout;
 use gpu_gkr::setup::GpuGKRSetupTransfer;
@@ -20,8 +19,6 @@ use gpu_whir::fold::{schedule_gpu_whir_fold_with_sources, GpuWhirFoldScheduledEx
 
 pub(in crate::proof) struct WhirPhaseResult {
     pub(in crate::proof) base_layer_claims_scheduled: GpuGKRBaseLayerClaimsScheduledExecution,
-    pub(in crate::proof) base_layer_claims_shared_state:
-        UnsafeAccessor<ScheduledBaseLayerClaimsState>,
     pub(in crate::proof) whir_scheduled: GpuWhirFoldScheduledExecution,
 }
 
@@ -64,7 +61,6 @@ pub(in crate::proof) fn schedule_whir_phase<'a>(
         final_device_seed,
         context,
     )?;
-    let base_layer_claims_shared_state = base_layer_claims_scheduled.shared_state_handle();
     let setup_trace_holder = setup_transfer
         .as_mut()
         .map(|setup| &mut setup.trace_holder)
@@ -150,7 +146,6 @@ pub(in crate::proof) fn schedule_whir_phase<'a>(
 
     Ok(WhirPhaseResult {
         base_layer_claims_scheduled,
-        base_layer_claims_shared_state,
         whir_scheduled,
     })
 }

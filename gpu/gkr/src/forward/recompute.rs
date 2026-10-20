@@ -380,7 +380,7 @@ impl ForwardReplay {
             &self.lookup_fill_values,
             context,
         )?;
-        super::vm::launch_fwd_vm_streaming(&lowered.desc, self.blocks, context)?;
+        super::vm::launch_fwd_vm_streaming(&lowered, self.blocks, context)?;
         range.end(context.get_exec_stream())?;
         Ok(())
     }

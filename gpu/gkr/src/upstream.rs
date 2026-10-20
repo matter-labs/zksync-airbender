@@ -5,8 +5,8 @@
 // -----------------------------------------------------------------------
 
 pub(crate) use gkr_eval_ir::{
-    ChallengeKey, ChallengePower, ChallengeRef, FieldKind, PermutationSlot, RangeWidth, ReadPlace,
-    VirtualSetupKind,
+    ChallengeKey, ChallengePower, ChallengeRef, FieldKind, InitsAndTeardownsTopBitsRef,
+    PermutationSlot, RangeWidth, ReadPlace, VirtualSetupKind,
 };
 
 // -----------------------------------------------------------------------

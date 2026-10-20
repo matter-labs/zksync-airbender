@@ -49,26 +49,6 @@ impl GpuGKRBackwardScheduledExecution {
             .expect("backward layer-0 claim layout must be set before consumption")
             .addresses
     }
-
-    /// Release device buffers after all consumers have been enqueued.
-    pub fn release_device_buffers(&mut self) {
-        // Final backward handoff buffers — WHIR fold setup has already drawn the
-        // base batching challenge from the rolling seed on-device by this point.
-        self.final_device_seed = None;
-        self.final_device_claim_point_and_batching = None;
-        // Per-layer next-layer handoff buffers — already `.take()`-en into the
-        // following layer by the orchestrator; null any residual explicitly.
-        for layer in &mut self.dimension_reducing_layers {
-            layer.device_seed = None;
-            layer.device_claim_point_for_next_layer = None;
-            layer.device_claims_for_next_layer = None;
-        }
-        for layer in &mut self.main_layers {
-            layer.device_seed = None;
-            layer.device_claim_point_for_next_layer = None;
-            layer.device_claims_for_next_layer = None;
-        }
-    }
 }
 
 impl GpuGKRDimensionReducingBackwardState {

@@ -98,3 +98,19 @@ fn zero_length_alloc_takes_no_space() {
     assert_eq!(alloc.used_mem_current(), 0);
     alloc.free(data);
 }
+
+#[test]
+fn is_free_reports_only_unallocated_ranges() {
+    let backend = TestBackend(vec![0u8; 4 * BIG_CHUNK]);
+    let allocator =
+        StaticAllocator::<_, NonConcurrentInnerStaticAllocatorWrapper<_>>::new([backend], BIG_LCS);
+    let first = allocator
+        .alloc::<u8>(BIG_CHUNK, AllocationPlacement::Bottom)
+        .unwrap();
+    let base = first.data.ptr.as_ptr() as usize;
+    assert!(!allocator.is_free(base, 1));
+    assert!(allocator.is_free(base + BIG_CHUNK, 3 * BIG_CHUNK));
+    assert!(!allocator.is_free(base + BIG_CHUNK, 4 * BIG_CHUNK));
+    drop(first);
+    assert!(allocator.is_free(base, 4 * BIG_CHUNK));
+}

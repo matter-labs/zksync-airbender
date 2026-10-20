@@ -79,6 +79,11 @@ pub(crate) enum CosetsHolder<T> {
     None(std::marker::PhantomData<T>),
 }
 
+/// Device range (address, reserved bytes) of an allocation.
+pub fn device_range<T>(allocation: &DeviceAllocation<T>) -> (usize, usize) {
+    (allocation.as_ptr() as usize, allocation.allocated_bytes())
+}
+
 #[doc(hidden)]
 pub enum TreesHolder {
     Full(DeviceAllocation<Digest>),
@@ -294,6 +299,24 @@ impl<T> TraceHolder<T> {
             trees,
             unified_device_cap: None,
         })
+    }
+
+    /// Device ranges (address, reserved bytes) this holder currently owns.
+    pub fn device_ranges(&self) -> Vec<(usize, usize)> {
+        let mut ranges = Vec::new();
+        if let Some(evals) = &self.raw_hypercube_evals {
+            ranges.push(device_range(evals));
+        }
+        if let CosetsHolder::Full(cosets) = &self.cosets {
+            ranges.push(device_range(cosets));
+        }
+        if let TreesHolder::Full(trees) | TreesHolder::Partial(trees) = &self.trees {
+            ranges.push(device_range(trees));
+        }
+        if let Some(cap) = &self.unified_device_cap {
+            ranges.push(device_range(cap));
+        }
+        ranges
     }
 
     /// Returns the unified device cap populated by `commit_all` or

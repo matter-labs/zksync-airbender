@@ -1,6 +1,6 @@
-use crate::trace::holder::{bitreverse_index, TraceHolder, TreesCacheMode};
+use crate::trace::holder::{bitreverse_index, device_range, TraceHolder, TreesCacheMode};
 use crate::trace::tracing_data::{
-    DelegationTracingDataDevice, TracingDataDevice, UnrolledTracingDataDevice,
+    trace_replay_inputs, DelegationTracingDataDevice, TracingDataDevice, UnrolledTracingDataDevice,
 };
 use crate::witness::circuit_type::{CircuitType, UnrolledCircuitType};
 use crate::witness::memory_delegation::generate_memory_values_delegation;
@@ -10,6 +10,7 @@ use crate::witness::memory_unrolled::{
     generate_memory_values_unrolled_unified,
 };
 use crate::witness::trace_unrolled::{ExecutorFamilyDecoderData, PAGE_SIZE_LOG2};
+use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::UnsafeMutAccessor;
 use gpu_core::primitives::device_structures::DeviceMatrixMut;
@@ -24,6 +25,7 @@ use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
+use era_cudart::stream::CudaStream;
 use fft::GoodAllocator;
 
 pub struct MemoryCommitmentJob<'a> {
@@ -52,41 +54,17 @@ impl<'a> MemoryCommitmentJob<'a> {
     }
 }
 
-fn commit_memory_inner<'a>(
+/// Writes the memory columns of `circuit_type` into `memory`.
+fn generate_memory_values(
     circuit_type: CircuitType,
     compiled_circuit: &GKRCircuitArtifact<BF>,
     decoder_table: Option<&DeviceSlice<ExecutorFamilyDecoderData>>,
     inits_and_teardowns: Option<&crate::witness::trace_unrolled::InitsAndTeardownsTraceDevice>,
     tracing_data: Option<&TracingDataDevice>,
-    prover_config: &ProverConfig,
-    inputs: Option<TransferKeepalive<'a>>,
-    context: &ProverContext,
-) -> CudaResult<MemoryCommitmentJob<'a>> {
-    assert_eq!(
-        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-        prover_config.whir_schedule.whir_steps_schedule[0]
-    );
-    let log_lde_factor = prover_config.lde_factor.trailing_zeros();
-    let log_rows_per_leaf = prover_config.base_oracles_values_per_leaf.trailing_zeros();
-    let log_tree_cap_size = prover_config.cap_size.trailing_zeros();
-    let trace_len = compiled_circuit.trace_len;
-    assert!(trace_len.is_power_of_two());
-    let log_domain_size = trace_len.trailing_zeros();
-    let memory_columns_count = compiled_circuit.memory_layout.total_width;
-    let mut memory_holder = TraceHolder::new(
-        log_domain_size,
-        log_lde_factor,
-        log_rows_per_leaf,
-        log_tree_cap_size,
-        memory_columns_count,
-        TreesCacheMode::CachePartial,
-        context,
-    )?;
-    let range = Range::new("commit_memory")?;
-    let stream = context.get_exec_stream();
-    range.start(stream)?;
-    let evaluations = memory_holder.get_uninit_hypercube_evals_mut();
-    let memory = &mut DeviceMatrixMut::new(evaluations, trace_len);
+    memory: &mut DeviceMatrixMut<BF>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let log_domain_size = compiled_circuit.trace_len.trailing_zeros();
     match (circuit_type, tracing_data.as_ref()) {
         (
             CircuitType::Delegation(circuit_type),
@@ -258,16 +236,77 @@ fn commit_memory_inner<'a>(
             "commit_memory received an unsupported witness shape for circuit {circuit_type:?}"
         ),
     }
-    let _ = evaluations;
-    memory_holder.commit_all(context)?;
+    Ok(())
+}
+
+fn commit_memory_inner<'a>(
+    circuit_type: CircuitType,
+    compiled_circuit: &GKRCircuitArtifact<BF>,
+    decoder_table: Option<&DeviceSlice<ExecutorFamilyDecoderData>>,
+    inits_and_teardowns: Option<&crate::witness::trace_unrolled::InitsAndTeardownsTraceDevice>,
+    tracing_data: Option<&TracingDataDevice>,
+    prover_config: &ProverConfig,
+    inputs: Option<TransferKeepalive<'a>>,
+    context: &ProverContext,
+) -> CudaResult<MemoryCommitmentJob<'a>> {
+    assert_eq!(
+        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+        prover_config.whir_schedule.whir_steps_schedule[0]
+    );
+    let log_lde_factor = prover_config.lde_factor.trailing_zeros();
+    let log_rows_per_leaf = prover_config.base_oracles_values_per_leaf.trailing_zeros();
+    let log_tree_cap_size = prover_config.cap_size.trailing_zeros();
+    let trace_len = compiled_circuit.trace_len;
+    assert!(trace_len.is_power_of_two());
+    let log_domain_size = trace_len.trailing_zeros();
+    let memory_columns_count = compiled_circuit.memory_layout.total_width;
+    let mut memory_holder = TraceHolder::new(
+        log_domain_size,
+        log_lde_factor,
+        log_rows_per_leaf,
+        log_tree_cap_size,
+        memory_columns_count,
+        TreesCacheMode::CachePartial,
+        context,
+    )?;
+    let range = Range::new("commit_memory")?;
+    let stream = context.get_exec_stream();
+    let key = format!("commit_memory|{circuit_type:?}|{prover_config:?}");
+    let cap_size = 1usize << log_tree_cap_size;
+    let mut cap = context.alloc::<Digest>(cap_size, AllocationPlacement::BestFit)?;
+    let mut replay_ranges = memory_holder.device_ranges();
+    replay_ranges.push(device_range(&cap));
+    if let Some(decoder_table) = decoder_table {
+        replay_ranges.push((decoder_table.as_ptr() as usize, size_of_val(decoder_table)));
+    }
+    let replay_inputs = trace_replay_inputs(inits_and_teardowns, tracing_data, &mut replay_ranges);
+    context.replay_phase(
+        &key,
+        &replay_ranges,
+        &replay_inputs,
+        || range.start(stream),
+        || {
+            let evaluations = memory_holder.get_uninit_hypercube_evals_mut();
+            generate_memory_values(
+                circuit_type,
+                compiled_circuit,
+                decoder_table,
+                inits_and_teardowns,
+                tracing_data,
+                &mut DeviceMatrixMut::new(evaluations, trace_len),
+                stream,
+            )?;
+            // SAFETY: a `Digest` is a plain array of `u32` words.
+            memory_holder.commit_all_into(unsafe { cap.transmute_mut() }, context)
+        },
+        |_| (),
+    )?;
     // Schedule a D2H of the unified device cap into a pinned host buffer; the
     // callback below slices that single contiguous cap into per-coset
     // `MerkleTreeCapVarLength` entries (canonical bit-reversed coset order).
-    let log_lde = memory_holder.log_lde_factor;
-    let lde_factor = 1usize << log_lde;
-    let cap_size = 1usize << log_tree_cap_size;
+    let lde_factor = 1usize << log_lde_factor;
     let mut cap_host = unsafe { context.alloc_host_uninit_slice::<Digest>(cap_size) };
-    memory_copy_async(&mut cap_host, memory_holder.unified_device_cap(), stream)?;
+    memory_copy_async(&mut cap_host, &cap, stream)?;
     let cap_host_accessor = cap_host.get_accessor();
     let mut tree_caps = Box::new(None);
     let dst_tree_caps_accessor = UnsafeMutAccessor::new(tree_caps.as_mut());
@@ -280,7 +319,7 @@ fn commit_memory_inner<'a>(
             .map(|_| MerkleTreeCapVarLength { cap: Vec::new() })
             .collect();
         for stage1_pos in 0..lde_factor {
-            let natural_coset_index = bitreverse_index(stage1_pos, log_lde);
+            let natural_coset_index = bitreverse_index(stage1_pos, log_lde_factor);
             per_coset_caps[natural_coset_index].cap =
                 unified[stage1_pos * per_coset..(stage1_pos + 1) * per_coset].to_vec();
         }
@@ -296,7 +335,9 @@ fn commit_memory_inner<'a>(
     // scheduled-not-completed lifetime rule is satisfied.
     drop(cap_host);
     range.end(stream)?;
-    let is_finished_event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
+    let is_finished_event = CudaEvent::create_with_flags(
+        CudaEventCreateFlags::DISABLE_TIMING | CudaEventCreateFlags::BLOCKING_SYNC,
+    )?;
     is_finished_event.record(stream)?;
     let job = MemoryCommitmentJob {
         is_finished_event,
