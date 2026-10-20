@@ -889,7 +889,15 @@ mod affine_timestamp_tests {
             permutation_argument_additive_part: E::from_base(F::from_u32_unchecked(43)),
             _marker: core::marker::PhantomData,
         };
-        let memory = [vec![83, 524283, 1], vec![2, 7, 3]].map(|column| {
+        let memory = [
+            vec![83, 524283, 1],
+            vec![2, 7, 3],
+            vec![5, 6, 7],
+            vec![11, 12, 13],
+            vec![17, 18, 19],
+            vec![23, 24, 25],
+        ]
+        .map(|column| {
             column
                 .into_iter()
                 .map(F::from_u32_unchecked)
@@ -905,8 +913,8 @@ mod affine_timestamp_tests {
         let witness_refs: Vec<_> = witness.iter().map(Vec::as_slice).collect();
         for value in [
             RamWordRepresentation::Zero,
-            RamWordRepresentation::U16Limbs([0, 1]),
-            RamWordRepresentation::U8Limbs([0, 1, 0, 1]),
+            RamWordRepresentation::U16Limbs([2, 3]),
+            RamWordRepresentation::U8Limbs([2, 3, 4, 5]),
         ] {
             let mut relation = relation.clone();
             relation.value = value;
@@ -943,15 +951,14 @@ mod affine_timestamp_tests {
                     }
                     vec![value]
                 });
-                let materialized = [
-                    vec![memory[0][row]],
-                    vec![memory[1][row]],
-                    values[0].clone(),
-                    values[1].clone(),
-                ];
+                let materialized: Vec<_> = memory
+                    .iter()
+                    .map(|column| vec![column[row]])
+                    .chain(values)
+                    .collect();
                 let refs: Vec<_> = materialized.iter().map(Vec::as_slice).collect();
                 let mut normal = relation.clone();
-                normal.timestamp = CompiledMemoryTimestamp::Normal([2, 3]);
+                normal.timestamp = CompiledMemoryTimestamp::Normal([6, 7]);
                 assert_eq!(
                     actual,
                     evaluate_memory_query(&normal, 0, &refs, &[], &challenges)
