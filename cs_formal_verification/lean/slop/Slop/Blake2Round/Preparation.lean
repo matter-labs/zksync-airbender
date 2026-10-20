@@ -1,4 +1,6 @@
 import Slop.Blake2Round.ArtifactChecks
+import Slop.Blake2Round.OpIndex
+import Slop.Blake2G.OpIndex
 import Human.Circuits.Blake2Round.Preparation
 import Slop.Constraints
 import Slop.Arithmetic.Lemmas
@@ -92,8 +94,8 @@ theorem chaining {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     by rw [constraint_count]; have := i.isLt; omega⟩
   have high := Verification.assertion_of_holds h ⟨6 + 4 * i.val,
     by rw [constraint_count]; have := i.isLt; omega⟩
-  cases compression <;> fin_cases i <;>
-    simp [importedConstraints, FlatOperation.constraints, Expression.eval,
+  cases compression <;> fin_cases i <;> op_index at lo high <;>
+    simp [Expression.eval,
       Verification.environment, selected, words, Variables.chainingInputs,
       Variables.stateReads, configured_limbs] at lo high ⊢
   all_goals constructor
@@ -111,8 +113,8 @@ theorem extended {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
           (words w Variables.extendedReads)[14])
       else words w Variables.extendedReads := by
   have normal := Verification.assertion_of_holds h ⟨3, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment] at normal
+  op_index at normal
+  simp [Expression.eval, Verification.environment] at normal
   have normalFlag : w 153 = (if first then 1 else 0) * (1 - if compression then 1 else 0) := by
     rw [← firstFlag, ← compressionFlag]
     linear_combination -normal
@@ -133,8 +135,9 @@ theorem extended {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
   have high := Verification.assertion_of_holds h ⟨hiIndices[i],
     by rw [constraint_count]; fin_cases i <;> norm_num [hiIndices]⟩
   clear h normal
-  fin_cases i <;> simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, loIndices, hiIndices] at lo high
+  fin_cases i <;> simp only [loIndices, hiIndices, Fin.getElem_fin, Vector.getElem_mk,
+    List.getElem_toArray, List.getElem_cons_zero, List.getElem_cons_succ] at lo high <;>
+    op_index at lo high <;> simp [Expression.eval, Verification.environment] at lo high
   all_goals cases first <;> cases compression
   all_goals simp only [Bool.false_eq_true, ↓reduceIte]
   all_goals simp only [Fin.getElem_fin, get_append8]
@@ -154,8 +157,8 @@ theorem message {p : Nat} [Fact p.Prime]
       else words w Variables.stateReads ++ (words w Variables.messageReads).take 8 := by
   have rightMode := Verification.assertion_of_holds h ⟨52, by rw [constraint_count]; decide⟩
   have leftMode := Verification.assertion_of_holds h ⟨53, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment] at rightMode leftMode
+  op_index at rightMode leftMode
+  simp [Expression.eval, Verification.environment] at rightMode leftMode
   have rightValue : w 202 = (if compression then 1 else 0) * (if right then 1 else 0) := by
     rw [← compressionFlag, ← rightFlag]
     linear_combination -rightMode
@@ -175,7 +178,7 @@ theorem message {p : Nat} [Fact p.Prime]
   have high := Verification.assertion_of_holds h ⟨55 + 2 * i.val,
     by rw [constraint_count]; have := i.isLt; omega⟩
   clear h rightMode leftMode
-  fin_cases i <;> simp [importedConstraints, FlatOperation.constraints, Expression.eval,
+  fin_cases i <;> op_index at lo high <;> simp [Expression.eval,
     Verification.environment] at lo high
   all_goals cases compression <;> cases right
   all_goals simp only [Bool.false_eq_true, Bool.not_false, Bool.not_true, ↓reduceIte]
