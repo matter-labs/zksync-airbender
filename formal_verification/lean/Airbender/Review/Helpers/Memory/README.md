@@ -106,3 +106,13 @@ reuses the three original pinned declarations unchanged with checked v2 metadata
 [All twenty-four regressions](../../../../Tests/ShiftRegisters.lean) reach actual
 Sail numerical writes and all twelve discarded whole-state stutters. Original
 instruction clauses and PC/fetched execution remain separate.
+
+## Ordinary shift/binop original clauses
+
+[Clause-history observables](ShiftBinopClauses.lean) now connect retained original
+Sail instructions to the actual native row histories and constructed GPR states.
+[The short public claim](../../Trace/Families/ShiftBinop/Clauses.lean) derives
+original clause execution, source bounds, selected operands and actual result
+writes from initialized native matching and public decoding. [All twenty-four regressions](../../../../Tests/ShiftClauses.lean) execute the original clauses;
+all twelve x0 variants preserve the whole data state. PC preparation/retirement
+and complete fetched execution remain separate.

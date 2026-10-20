@@ -1837,3 +1837,34 @@ Original instruction clauses, PC preparation/retirement and complete fetched
 execution remain unfinished. Runtime CSR/worker protocols, physical cryptographic
 enforcement and general compiler refinement remain separate. This is coverage,
 not a new defect finding; the findings bar and historical archive are unchanged.
+
+## Initialized original Sail shift/binop clauses
+
+[The short public clause-history claim](Airbender/Review/Trace/Families/ShiftBinop/Clauses.lean)
+now derives original Sail clause execution for all six ordinary operations and
+all twelve register/immediate forms from actual public code/initialization and
+full accepted native matching/decoding. [Observables](Airbender/Review/Helpers/Memory/ShiftBinopClauses.lean)
+retain original instructions, actual constructed GPR histories and the same
+native row pre/post states. Source reads, source bounds, selected operands,
+masked writes and intermediate states are derived rather than supplied.
+
+[Internal clause assembly](Airbender/Proofs/ShiftBinop/Clauses.lean) executes the
+original pinned register/immediate clauses through the unchanged original
+dispatcher. Actual native routing and public immediate columns determine the
+complete selected operand. Sign extension is retained; SRAI's original encoded
+funct7 bits are proved to leave its architectural low-five-bit shift count
+unchanged. Actual native numerical results and masked destination writes reach
+the original clause's same after-state, including original x0 opcodes and aliases.
+[Initialized assembly](Airbender/Proofs/Trace/Families/ShiftBinop/Clauses.lean)
+derives source bounds and exact original entries from the existing initialized
+history and actual original public decoding.
+
+[All twenty-four complete regressions](Tests/ShiftClauses.lean) now construct
+original Sail clause executions and actual native transfers with preserved
+code/misa. All twelve original x0 variants actually execute and preserve the
+whole data state, including all six immediate/destination aliases. Original
+RV32 profile decoding still rejects shift amounts 32 and 63. PC preparation,
+retirement and complete fetched execution remain next. Custom CSR/worker
+protocols, physical cryptographic enforcement and general compiler refinement
+remain separate. This adds coverage, with no new defect finding; the findings
+standard and historical archive are unchanged.

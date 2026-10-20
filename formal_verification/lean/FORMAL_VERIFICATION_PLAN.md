@@ -525,7 +525,16 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    replays after actual GPR updates. Twenty-four complete fixtures derive actual
    transfers/numerical writes; all twelve x0 variants preserve the entire Sail
    data state, including the six immediate/x0 readonly aliases. Continue with
-   original instruction clauses, PC preparation/retirement and fetched execution.
+   PC preparation/retirement and fetched execution. Original clauses are now
+   checked for all six ordinary operations and twelve register/immediate forms:
+   actual native routing/public immediate columns derive the selected operand,
+   SRAI's encoded funct7 bits provably leave its low-five-bit shift count unchanged,
+   and native numerical results/masked writes execute the retained original Sail
+   instruction into the same actual history after-state. The short public
+   clause-history claim derives source bounds and all row states from initialized
+   native matching and original public decoding. Twenty-four complete fixtures
+   reach actual original clause execution; all twelve x0 variants preserve the
+   whole data state. The RV32 profile continues to reject amounts 32 and 63.
    Derive actual source reads and states from native matching/public history.
 4. Rebind bigint/BLAKE/Keccak workers and callers. Retest control validity,
    unissued workers, ROM behavior and request participation on v2 before reusing

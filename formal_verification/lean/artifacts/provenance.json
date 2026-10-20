@@ -4957,6 +4957,43 @@
       "backport_reuse_revision": "11aa8dc34a5e2ca86a3403ca4bdb6846b89276e9",
       "backport_reuse_path": "Tests/MulDivRegisters.lean",
       "backport_reuse_sha256": "847006bbd5f352abb8fb14589e7f2cc35b2f5a529561d20563858d219b3a2471"
+    },
+    {
+      "path": "Airbender/Proofs/ShiftBinop/Clauses.lean",
+      "change": "Adapt original pinned shift-clause execution/bind and low-five-bit mechanics and verified v2 MUL/DIV native-result/actual-write assembly to all twelve ordinary shift/binop register/immediate forms. Use the original retained instruction and original dispatcher. Derive the complete selected register/sign-extended immediate operand from actual native routing/query columns; prove SRAI funct7 does not alter its low-five-bit count. Native numerical results and actual masked writes execute the original clause into the same actual history state, retaining original x0 opcodes and aliases. PC preparation/retirement and fetched execution remain separate.",
+      "backport_reuse_revision": "5b74fad97a777e0e05ad4edb660f196c49987712",
+      "backport_reuse_path": "Airbender/Proofs/MulDiv/Clauses.lean",
+      "backport_reuse_sha256": "6a6ea3dac1a631ceb49a948fbbece84969273afe773ba6bddd1bd726159685b3",
+      "source_path": "Airbender/Proofs/Sail/ShiftRetirement.lean",
+      "source_sha256": "5703a6b84dd60f82838c390c04b201d8b5cd52bc5f12c4a439ca37c40bcc643f"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Memory/ShiftBinopClauses.lean",
+      "change": "Adapt short v2 MUL/DIV execution-history observables to ordinary shift/binop clause execution on actual native row histories. Preserve original instructions and actual states; expose the explicit clause-only boundary before PC retirement/fetched execution. All segment states remain constructed by initialized RegisterHistory.",
+      "backport_reuse_revision": "5b74fad97a777e0e05ad4edb660f196c49987712",
+      "backport_reuse_path": "Airbender/Review/Helpers/Memory/MulDivExecution.lean",
+      "backport_reuse_sha256": "015a123ed8c834167452380bd807a482d6ad7d78d175e0478706effcfbd3866a"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ShiftBinop/Clauses.lean",
+      "change": "Adapt verified v2 MUL/DIV initialized execution assembly to shift/binop clauses. Derive source bounds from actual initialized native history and original entries from full native public decoding, then connect actual three-port Sail transfers to the retained original clause. No desired result, read, intermediate state, table equivalence or decoder replay is supplied.",
+      "backport_reuse_revision": "5b74fad97a777e0e05ad4edb660f196c49987712",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/MulDiv/Execution.lean",
+      "backport_reuse_sha256": "4b5b3c0bb56d05cf89b33d24b20ab43ceeaa27472c5e473028c9e792d4ab773a"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ShiftBinop/Clauses.lean",
+      "change": "Adapt the short v2 public initialized MUL/DIV execution claim to clause-only shift/binop history. Acceptance, actual public initialization/code and tracked-cell alignment are the visible premises; proof calculations stay under Proofs. Full PC/fetched execution is not claimed.",
+      "backport_reuse_revision": "5b74fad97a777e0e05ad4edb660f196c49987712",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/MulDiv/Execution.lean",
+      "backport_reuse_sha256": "74b9e1ebd609c38fd78371393794d6f4e3e0c05550f916fbb4e6a7b1d0399116"
+    },
+    {
+      "path": "Tests/ShiftClauses.lean",
+      "change": "Extend current verified shift register-history fixtures to original clause execution for all 24 accepted ordinary/x0 rows. Construct actual after-states and retain actual native transfers plus code/misa frames. All 12 original x0 instructions actually execute as whole-data-state stutters. RV64-sized immediate amounts 32 and 63 remain excluded by the actual RV32 native decoder profile.",
+      "backport_reuse_revision": "5b74fad97a777e0e05ad4edb660f196c49987712",
+      "backport_reuse_path": "Tests/ShiftRegisters.lean",
+      "backport_reuse_sha256": "a6fc8c5a31a3dc94cb4aa69622e8cf0a2dd8a820b8a6e713afa9cc8397fe5d4b"
     }
   ],
   "setup_artifacts": [

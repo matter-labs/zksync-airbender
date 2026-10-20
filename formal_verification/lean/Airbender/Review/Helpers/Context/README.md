@@ -87,3 +87,13 @@ uses full decoder membership and actual masked writes, retaining readonly alias
 refreshes. [Complete regressions](../../../../Tests/ShiftRegisters.lean) cover all
 twenty-four ordinary/x0 rows and twelve discarded whole-state stutters. Actual
 original instruction execution and PC/fetched composition remain next.
+
+## Shift/binop original Sail clause execution
+
+[The initialized clause-history claim](../../Trace/Families/ShiftBinop/Clauses.lean)
+now adds retained original instruction execution to actual native GPR histories.
+Source bounds, selected operands, sign extension and SRAI's low-five-bit count
+are derived. [Twenty-four complete fixtures](../../../../Tests/ShiftClauses.lean)
+reach actual original clauses and twelve whole-data-state x0 stutters; actual
+RV32 decoding excludes shift amounts 32 and 63. PC retirement/fetched composition
+remain next.

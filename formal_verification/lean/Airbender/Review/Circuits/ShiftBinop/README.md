@@ -181,3 +181,15 @@ and shared cell-history realization derive all intermediate states.
 Sail numerical writes for all twenty-four ordinary/x0 forms; all twelve x0
 variants preserve the whole data state. Original instruction clauses and PC/fetch
 execution remain next; earlier sections retain their checkpoint scope.
+
+## Original initialized Sail clauses
+
+[The short public clause-history claim](../../Trace/Families/ShiftBinop/Clauses.lean)
+now derives actual original Sail clause execution from public code/initialization
+and accepted native matching/decoding. [Internal assembly](../../../Proofs/ShiftBinop/Clauses.lean)
+connects native routing, exact sign-extended immediates, SRAI funct7 truncation,
+whole numerical results and actual masked writes to retained original clauses.
+[All twenty-four regressions](../../../../Tests/ShiftClauses.lean) reach actual
+clause executions; all twelve original x0 variants preserve the whole data state.
+PC preparation/retirement and fetched execution remain next; earlier sections
+retain their checkpoint scope.

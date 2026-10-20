@@ -1,3 +1,4 @@
+import Tests.ShiftClauses
 import Tests.ShiftRegisters
 import Tests.ShiftResults
 import Tests.ShiftValues
@@ -1870,3 +1871,13 @@ import Tests.JumpLink
 #print axioms Tests.ShiftRegisters.actual_write
 #print axioms Tests.ShiftRegisters.result_write
 #print axioms Tests.ShiftRegisters.discarded_state
+
+#print axioms Airbender.ShiftBinop.Proofs.encoded_shift_amount
+#print axioms Airbender.ShiftBinop.Proofs.decoded_clause_of_reads
+#print axioms Airbender.ShiftBinop.Proofs.entry_selected_operand
+#print axioms Airbender.ShiftBinop.Proofs.native_clause
+#print axioms Airbender.ShiftBinop.Proofs.image_clause_history
+#print axioms Airbender.ShiftBinop.public_clause_history
+#print axioms Tests.ShiftClauses.initialized_clauses
+#print axioms Tests.ShiftClauses.discarded_clauses
+#print axioms Tests.ShiftClauses.illegal_shift_immediates

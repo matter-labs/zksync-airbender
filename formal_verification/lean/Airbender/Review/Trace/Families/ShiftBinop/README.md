@@ -113,3 +113,15 @@ the original stateful decoder after GPR updates. [Twenty-four regressions](../..
 derive actual numerical result writes and all twelve x0 whole-state stutters,
 including immediate/x0 aliases. Original instruction clauses and PC/fetched
 execution remain next; earlier sections retain scope.
+
+## Actual original Sail clause histories
+
+[The short public theorem](Clauses.lean) now adds original clause execution for
+all six ordinary operations and twelve register/immediate forms to the actual
+constructed GPR histories. [Observables](../../../Helpers/Memory/ShiftBinopClauses.lean)
+retain original instructions and the same native pre/post states. [Assembly](../../../../Proofs/Trace/Families/ShiftBinop/Clauses.lean)
+derives source bounds and exact original entries from initialized native matching
+and full public decoding. [Complete regressions](../../../../../Tests/ShiftClauses.lean)
+cover all twenty-four rows and twelve actual x0 clause stutters, plus exclusion
+of RV64-sized immediate shifts. PC retirement and fetched execution remain next;
+earlier sections retain scope.
