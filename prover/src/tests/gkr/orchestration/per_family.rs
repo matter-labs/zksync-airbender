@@ -148,15 +148,13 @@ pub fn prove_built_family_trace_with_prover_config_and_gkr_backend<
     );
     let t_setup = std::time::Instant::now();
     let setup = GKRSetup::construct(table_driver, decoder_table_data, trace_len, circuit);
-    let setup_commitment = setup.commit_with_backend::<DefaultTreeConstructor, BabyBearExt4, _>(
-        &backend,
-        &twiddles,
-        prover_config.lde_factor,
-        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-        prover_config.cap_size,
-        trace_len.trailing_zeros() as usize,
-        worker,
-    );
+    let setup_commitment = setup
+        .commit_for_config_with_backend::<DefaultTreeConstructor, BabyBearExt4, _>(
+            &backend,
+            &twiddles,
+            &prover_config,
+            worker,
+        );
     println!(
         "[timing] setup construct + commit: {:.3?}",
         t_setup.elapsed()
@@ -225,15 +223,10 @@ pub fn prove_built_family_trace_on_disk_setup(
 
     // 1) Commit the setup in memory (RS codewords + tree), the standard way. Unwrap the
     //    owned `SetupCommitment::InMemory` to reach the oracle for on-disk serialization.
-    let SetupCommitment::InMemory(setup_oracle) = setup.commit::<DefaultTreeConstructor>(
-        &twiddles,
-        prover_config.lde_factor,
-        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-        prover_config.cap_size,
-        trace_len.trailing_zeros() as usize,
-        worker,
-    ) else {
-        unreachable!("GKRSetup::commit always returns the InMemory variant")
+    let SetupCommitment::InMemory(setup_oracle) =
+        setup.commit_for_config::<DefaultTreeConstructor>(&twiddles, &prover_config, worker)
+    else {
+        unreachable!("GKRSetup::commit_for_config always returns the InMemory variant")
     };
     let values_per_leaf = setup_oracle.values_per_leaf();
     let coset_size_log2 = setup_oracle.coset_size_log2();
@@ -241,9 +234,9 @@ pub fn prove_built_family_trace_on_disk_setup(
     // 2) Write the RS codewords (one file per coset) and the monolithic tree to disk.
     //    The tree goes out through `write_disk_artifacts` (the only disk serializer):
     //    it rebuilds the tree from the materialized cosets — byte-identical to
-    //    `setup.commit`'s tree since the coset order + bitreverse flags match.
+    //    `commit_for_config`'s tree since the coset order + bitreverse flags match.
     let ColumnMajorBaseOracleForLDE::InMemory(ref setup_in_memory) = setup_oracle else {
-        unreachable!("setup.commit produces the in-memory (materialized) variant")
+        unreachable!("commit_for_config produces the in-memory (materialized) variant")
     };
     let materialized: &MaterializedCosets<BabyBearField> = &setup_in_memory.cosets;
     let coset_paths = materialized
@@ -349,14 +342,7 @@ pub fn prove_built_family_trace_with_rs_source(
     }
     let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, worker);
     let setup = GKRSetup::construct(table_driver, decoder_table_data, trace_len, circuit);
-    let setup_commitment = setup.commit(
-        &twiddles,
-        prover_config.lde_factor,
-        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-        prover_config.cap_size,
-        trace_len.trailing_zeros() as usize,
-        worker,
-    );
+    let setup_commitment = setup.commit_for_config(&twiddles, &prover_config, worker);
 
     prove_configured_with_gkr_with_storage::<
         BabyBearField,
@@ -702,14 +688,7 @@ pub fn prove_inits_and_teardowns(
         &backend, trace_len, worker,
     );
     let setup = GKRSetup::construct(&table_driver, &[], trace_len, &circuit);
-    let setup_commitment = setup.commit(
-        twiddles.plain(),
-        prover_config.lde_factor,
-        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-        prover_config.cap_size,
-        trace_len.trailing_zeros() as usize,
-        worker,
-    );
+    let setup_commitment = setup.commit_for_config(twiddles.plain(), &prover_config, worker);
 
     let inits_and_teardowns_top_bits: Vec<u32> = (0..circuit.memory_layout.teardown_sets.len())
         .map(|el| el as u32)

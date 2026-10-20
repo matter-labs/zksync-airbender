@@ -872,14 +872,8 @@ pub fn prove_built_unified_trace(
         trace_len,
         unified_circuit,
     );
-    let unified_setup_commitment = unified_setup.commit(
-        &unified_twiddles,
-        prover_config.lde_factor,
-        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-        prover_config.cap_size,
-        trace_len.trailing_zeros() as usize,
-        worker,
-    );
+    let unified_setup_commitment =
+        unified_setup.commit_for_config(&unified_twiddles, &prover_config, worker);
 
     println!("Trying to prove (unified)");
     let now = std::time::Instant::now();

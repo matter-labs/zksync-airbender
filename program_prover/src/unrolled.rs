@@ -697,7 +697,9 @@ pub fn prove_unrolled_execution_with_replayer<
 
     let inits_and_teardowns = ram.collect_inits_and_teardowns_sets::<BabyBearField, _>(
         worker,
-        setups::inits_and_teardowns::TRACE_LEN_LOG2 as usize,
+        inits_and_teardowns_setup
+            .prover_config(security_level)
+            .trace_len_log2,
         setups::inits_and_teardowns::NUM_INIT_AND_TEARDOWN_SETS,
         None,
     );
@@ -1158,12 +1160,9 @@ pub fn prove_unrolled_execution_with_replayer<
                 let twiddles_for_size = twiddles
                     .entry(trace_len)
                     .or_insert_with(|| backend.make_twiddles(trace_len, worker));
-                let setup_commitment = setup.setup.commit::<DefaultTreeConstructor>(
+                let setup_commitment = setup.setup.commit_for_config::<DefaultTreeConstructor>(
                     twiddles_for_size.plain(),
-                    prover_config.lde_factor,
-                    prover_config.whir_schedule.whir_steps_schedule[0],
-                    prover_config.cap_size,
-                    trace_len.trailing_zeros() as usize,
+                    &prover_config,
                     worker,
                 );
 
@@ -1189,12 +1188,9 @@ pub fn prove_unrolled_execution_with_replayer<
         let twiddles_for_size = twiddles
             .entry(trace_len)
             .or_insert_with(|| backend.make_twiddles(trace_len, worker));
-        let setup_commitment = setup.setup.commit::<DefaultTreeConstructor>(
+        let setup_commitment = setup.setup.commit_for_config::<DefaultTreeConstructor>(
             twiddles_for_size.plain(),
-            prover_config.lde_factor,
-            prover_config.whir_schedule.whir_steps_schedule[0],
-            prover_config.cap_size,
-            trace_len.trailing_zeros() as usize,
+            &prover_config,
             worker,
         );
 
@@ -1331,12 +1327,9 @@ pub fn prove_unrolled_execution_with_replayer<
                 let twiddles_for_size = twiddles
                     .entry(trace_len)
                     .or_insert_with(|| backend.make_twiddles(trace_len, worker));
-                let setup_commitment = setup.setup.commit::<DefaultTreeConstructor>(
+                let setup_commitment = setup.setup.commit_for_config::<DefaultTreeConstructor>(
                     twiddles_for_size.plain(),
-                    prover_config.lde_factor,
-                    prover_config.whir_schedule.whir_steps_schedule[0],
-                    prover_config.cap_size,
-                    trace_len.trailing_zeros() as usize,
+                    &prover_config,
                     worker,
                 );
 
@@ -1361,12 +1354,9 @@ pub fn prove_unrolled_execution_with_replayer<
         let twiddles_for_size = twiddles
             .entry(trace_len)
             .or_insert_with(|| backend.make_twiddles(trace_len, worker));
-        let setup_commitment = setup.setup.commit::<DefaultTreeConstructor>(
+        let setup_commitment = setup.setup.commit_for_config::<DefaultTreeConstructor>(
             twiddles_for_size.plain(),
-            prover_config.lde_factor,
-            prover_config.whir_schedule.whir_steps_schedule[0],
-            prover_config.cap_size,
-            trace_len.trailing_zeros() as usize,
+            &prover_config,
             worker,
         );
 
@@ -1500,14 +1490,10 @@ pub fn prove_unrolled_execution_with_replayer<
         let twiddles_for_size = twiddles
             .entry(trace_len)
             .or_insert_with(|| backend.make_twiddles(trace_len, worker));
-        let setup_commitment = setup.setup.commit(
-            twiddles_for_size.plain(),
-            prover_config.lde_factor,
-            prover_config.whir_schedule.whir_steps_schedule[0],
-            prover_config.cap_size,
-            trace_len.trailing_zeros() as usize,
-            worker,
-        );
+        let setup_commitment =
+            setup
+                .setup
+                .commit_for_config(twiddles_for_size.plain(), &prover_config, worker);
 
         use prover::gkr::witness_gen::family_circuits::evaluate_init_and_teardown_memory_witness;
         use prover::gkr::witness_gen::family_circuits::GKRFullWitnessTrace;
@@ -1835,14 +1821,10 @@ pub(crate) fn prove_delegation_circuit<
     let twiddles_for_size = twiddles
         .entry(trace_len)
         .or_insert_with(|| backend.make_twiddles(trace_len, worker));
-    let setup_commitment = setup.setup.commit(
-        twiddles_for_size.plain(),
-        prover_config.lde_factor,
-        prover_config.whir_schedule.whir_steps_schedule[0],
-        prover_config.cap_size,
-        trace_len.trailing_zeros() as usize,
-        worker,
-    );
+    let setup_commitment =
+        setup
+            .setup
+            .commit_for_config(twiddles_for_size.plain(), &prover_config, worker);
 
     let mut per_tree_set = vec![];
 

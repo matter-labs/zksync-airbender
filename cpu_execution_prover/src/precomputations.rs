@@ -74,12 +74,9 @@ impl CpuCircuitPrecomputations {
         worker: &Worker,
     ) -> &SetupCommitment<BF, DefaultTreeConstructor> {
         self.setup_commitment.get_or_init(|| {
-            self.setup.commit::<DefaultTreeConstructor>(
+            self.setup.commit_for_config::<DefaultTreeConstructor>(
                 twiddles.plain(),
-                config.lde_factor,
-                config.whir_schedule.whir_steps_schedule[0],
-                config.cap_size,
-                self.trace_len_log2(),
+                &config,
                 worker,
             )
         })

@@ -948,6 +948,13 @@ pub fn commit_trace_part_for_config<
             prover_config.trace_len_log2
         );
     }
+    assert!(
+        twiddles.plain().domain_size >= 1usize << prover_config.whir_message_size_log2(),
+        "the twiddles cover a 2^{} domain but the (packed) commitment interpolates over \
+         2^(trace_len_log2 + pack_log2) = 2^{}",
+        twiddles.plain().domain_size.trailing_zeros(),
+        prover_config.whir_message_size_log2()
+    );
     commit_trace_part_with_packing::<F, E, T, B>(
         backend,
         input_on_hypercube,

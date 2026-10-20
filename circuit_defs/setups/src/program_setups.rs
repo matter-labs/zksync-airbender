@@ -14,7 +14,7 @@
 
 use super::*;
 use prover::definitions::SecurityLevel;
-use prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture;
+use prover::gkr::prover_config::ProverConfig;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 
@@ -64,9 +64,13 @@ pub fn compute_unrolled_program_setups<C: MachineConfig, A: GoodAllocator + 'sta
         worker,
     );
     commit_setup_params(
-        per_family
-            .into_iter()
-            .map(|(family_idx, setup)| (family_idx as u32, setup.trace_len, setup.setup)),
+        per_family.into_iter().map(|(family_idx, setup)| {
+            (
+                family_idx as u32,
+                setup.prover_config(security_level).clone(),
+                setup.setup,
+            )
+        }),
         security_level,
         worker,
     )
@@ -87,7 +91,7 @@ pub fn compute_unified_program_setups<A: GoodAllocator + 'static>(
     commit_setup_params(
         core::iter::once((
             common_constants::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX as u32,
-            unified_setup.trace_len,
+            unified_setup.prover_config(security_level).clone(),
             unified_setup.setup,
         )),
         security_level,
@@ -95,27 +99,26 @@ pub fn compute_unified_program_setups<A: GoodAllocator + 'static>(
     )
 }
 
+/// Commit every setup with ITS circuit's prover config (the geometry the
+/// provers use), keyed by circuit family.
 fn commit_setup_params(
-    circuit_setups: impl Iterator<Item = (u32, usize, GKRSetup<BabyBearField>)>,
+    circuit_setups: impl Iterator<Item = (u32, ProverConfig, GKRSetup<BabyBearField>)>,
     security_level: SecurityLevel,
     worker: &Worker,
 ) -> Setups {
     let mut twiddles: HashMap<usize, Twiddles<BabyBearField, Global>> = HashMap::new();
     let mut result: Setups = BTreeMap::new();
-    for (family_idx, trace_len, setup) in circuit_setups {
-        let prover_config = config_for_security_level_under_pessimistic_conjecture(
-            trace_len.trailing_zeros() as usize,
-            security_level,
-        );
+    for (family_idx, prover_config, setup) in circuit_setups {
+        assert_eq!(prover_config.security_level, security_level);
+        let trace_len = 1usize << prover_config.trace_len_log2;
+        // the commitment interpolates over the (packed) 2^(trace_len_log2 + pack_log2) domain
+        let twiddles_size = 1usize << prover_config.whir_message_size_log2();
         let twiddles_for_size = twiddles
-            .entry(trace_len)
-            .or_insert_with(|| Twiddles::new(trace_len, worker));
-        let setup_commitment = setup.commit::<DefaultTreeConstructor>(
+            .entry(twiddles_size)
+            .or_insert_with(|| Twiddles::new(twiddles_size, worker));
+        let setup_commitment = setup.commit_for_config::<DefaultTreeConstructor>(
             &*twiddles_for_size,
-            prover_config.lde_factor,
-            prover_config.whir_schedule.whir_steps_schedule[0],
-            prover_config.cap_size,
-            trace_len.trailing_zeros() as usize,
+            &prover_config,
             worker,
         );
         result.insert(

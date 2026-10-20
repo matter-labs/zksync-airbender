@@ -68,7 +68,7 @@ pub struct UnifiedTransitionTimings {
     pub setup_ms: u128,
     /// Pre-challenge MERGED memory+witness tree commitments (all chunks).
     pub merged_tree_commit_ms: u128,
-    /// The setup oracle commitment (`GKRSetup::commit`).
+    /// The setup oracle commitment (`GKRSetup::commit_for_config_with_backend`).
     pub setup_commit_ms: u128,
     /// GKR witness evaluation (all chunks).
     pub witness_eval_ms: u128,
@@ -372,18 +372,15 @@ pub fn prove_unified_transition_with_replayer_timed<
     // (recompute on memory-constrained machines, in-memory on large ones).
     {
         let twiddles_for_size = &twiddles[&trace_len];
-        // GKRSetup::commit runs on the naive backend internally and consumes
-        // only the plain radix-2 tables (not performance-sensitive).
+        // The setup is committed with the prover config's geometry on the proving
+        // backend (`GKRSetup::commit_for_config_with_backend`).
         let setup_commit_started = std::time::Instant::now();
         let setup_commitment = unified_setup
             .setup
-            .commit_with_backend::<DefaultTreeConstructor, BabyBearExt4, _>(
+            .commit_for_config_with_backend::<DefaultTreeConstructor, BabyBearExt4, _>(
                 backend,
                 twiddles_for_size,
-                prover_config.lde_factor,
-                prover_config.whir_schedule.whir_steps_schedule[0],
-                prover_config.cap_size,
-                trace_len.trailing_zeros() as usize,
+                &prover_config,
                 worker,
             );
         timings.setup_commit_ms = setup_commit_started.elapsed().as_millis();
@@ -790,18 +787,15 @@ pub fn prove_unified_transition_with_replayer_precommitted_timed<
     // witness trace and merged oracle of each chunk (no cloning).
     {
         let twiddles_for_size = &twiddles[&trace_len];
-        // GKRSetup::commit runs on the naive backend internally and consumes
-        // only the plain radix-2 tables (not performance-sensitive).
+        // The setup is committed with the prover config's geometry on the proving
+        // backend (`GKRSetup::commit_for_config_with_backend`).
         let setup_commit_started = std::time::Instant::now();
         let setup_commitment = unified_setup
             .setup
-            .commit_with_backend::<DefaultTreeConstructor, BabyBearExt4, _>(
+            .commit_for_config_with_backend::<DefaultTreeConstructor, BabyBearExt4, _>(
                 backend,
                 twiddles_for_size,
-                prover_config.lde_factor,
-                prover_config.whir_schedule.whir_steps_schedule[0],
-                prover_config.cap_size,
-                trace_len.trailing_zeros() as usize,
+                &prover_config,
                 worker,
             );
         timings.setup_commit_ms = setup_commit_started.elapsed().as_millis();

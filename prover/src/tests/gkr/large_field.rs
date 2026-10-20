@@ -152,7 +152,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci() {
 
 /// Copy of [`gkr_unified_packed_commitment_basic_fibonacci`] configured for large
 /// external cloud machines: 64 worker threads and FULLY IN-MEMORY oracles — the
-/// packed setup is committed in memory (`GKRSetup::commit_packed`, no on-disk
+/// packed setup is committed in memory (`GKRSetup::commit_for_config`, no on-disk
 /// cache) and the memory/witness base + intermediate WHIR oracles are fully
 /// materialized (`WhirOracleStorage::fully_in_memory()`). The proof must be
 /// byte-identical to the recompute-based run; this variant does not (re)write the
@@ -348,7 +348,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
         Twiddles::new(1usize << prover_config.whir_message_size_log2(), &worker);
 
     // 5. Construct the setup and obtain an ON-DISK commitment for it: the packed
-    //    RS codewords + Merkle tree are computed once via `commit_packed` and cached
+    //    RS codewords + Merkle tree are computed once via `commit_for_config` and cached
     //    on disk; this and subsequent runs read them back lazily through
     //    `SetupCommitment::OnDisk` (so the setup never has to sit in RAM while
     //    proving). Delete the `*.rscw`/`*.tree` cache files to force a recompute.

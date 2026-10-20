@@ -5,7 +5,7 @@
 //!
 //! Analog of `prover_examples::l1::prove_l1_wrap_in_recompute_mode`, with the
 //! opposite storage policy: the packed setup is committed fully in memory
-//! (`GKRSetup::commit_packed`, no coset recomputation and no on-disk staging)
+//! (`GKRSetup::commit_for_config`, no coset recomputation and no on-disk staging)
 //! and the memory/witness base + intermediate WHIR oracles are fully
 //! materialized, intermediates in one contiguous buffer per oracle
 //! (`WhirOracleStorage::fully_in_memory_continuous()`). Meant for large
@@ -51,7 +51,7 @@ pub struct L1WrapTimings {
     pub trace_build_ms: u128,
     /// `GKRSetup::construct` (tables + setup hypercube evals).
     pub setup_ms: u128,
-    /// The in-memory packed setup commitment (`GKRSetup::commit_packed`).
+    /// The in-memory packed setup commitment (`GKRSetup::commit_for_config`).
     pub setup_commit_ms: u128,
     /// The packed `prove_configured_*` call (includes the in-proof merged
     /// memory+witness commitment — the packed mode commits it itself).

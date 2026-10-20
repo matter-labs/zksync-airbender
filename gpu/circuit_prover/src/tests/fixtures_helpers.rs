@@ -257,12 +257,9 @@ pub(super) fn finish_proof_fixture(
         drop(memory_trace);
 
         let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-        let setup_commitment = setup.commit(
+        let setup_commitment = setup.commit_for_config(
             &twiddles,
-            whir_schedule.base_lde_factor,
-            whir_schedule.whir_steps_schedule[0],
-            whir_schedule.cap_size,
-            trace_len.trailing_zeros() as usize,
+            &prover_config,
             &worker,
         );
         let expected_cpu_proof =
@@ -670,12 +667,9 @@ pub(super) fn finish_proof_fixture_memory(
         drop(memory_trace);
 
         let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-        let setup_commitment = setup.commit(
+        let setup_commitment = setup.commit_for_config(
             &twiddles,
-            whir_schedule.base_lde_factor,
-            whir_schedule.whir_steps_schedule[0],
-            whir_schedule.cap_size,
-            trace_len.trailing_zeros() as usize,
+            &prover_config,
             &worker,
         );
         let expected_cpu_proof =

@@ -736,16 +736,15 @@ fn prove_unified_execution_with_replayer_impl<
     let mut unified_proofs = vec![];
     {
         let twiddles_for_size = &twiddles[&trace_len];
-        // GKRSetup::commit runs on the naive backend internally and consumes
-        // only the plain radix-2 tables (not performance-sensitive).
-        let setup_commitment = unified_setup.setup.commit::<DefaultTreeConstructor>(
-            twiddles_for_size.plain(),
-            prover_config.lde_factor,
-            prover_config.whir_schedule.whir_steps_schedule[0],
-            prover_config.cap_size,
-            trace_len.trailing_zeros() as usize,
-            worker,
-        );
+        // The setup is committed with the prover config's geometry on the naive
+        // backend (`GKRSetup::commit_for_config`, not performance-sensitive).
+        let setup_commitment = unified_setup
+            .setup
+            .commit_for_config::<DefaultTreeConstructor>(
+                twiddles_for_size.plain(),
+                &prover_config,
+                worker,
+            );
 
         risc_v_setup_params.insert(
             REDUCED_MACHINE_CIRCUIT_FAMILY_IDX as u32,
