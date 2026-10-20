@@ -1,7 +1,8 @@
 import Slop.RV.Merkle.Exit
-import Slop.RV.Merkle.Step
+import Slop.RV.Merkle.Contract
 import Slop.RV.Input
 import Slop.RV.CallW
+import Slop.RV.Frame
 
 /-! `merkle_check`, the loop (from word 46, `k ≥ 1` levels to go): read the side word and the sibling, call
 `merkle_step` (any implementation of its contract), count down; at 0, the end (`mc_exit`). By induction on `k`. -/
@@ -134,11 +135,18 @@ theorem mc_loop (A : Word) (codeS : List Word) (calleesS : List (Word × List Wo
   simp only [ROM_END] at hrom' hsp0r
   rv_steps 11 with pc', g', h2, h9, h26
   rv_cut with in', g'
+  -- the sibling's stores, below `sp₀ - 52`
+  obtain ⟨l8, hl8d⟩ : ∃ l : List (Nat × Word), l = [(84, sib[0]), (80, sib[1]), (76, sib[2]), (72, sib[3]),
+      (68, sib[4]), (64, sib[5]), (60, sib[6]), (56, sib[7])] := ⟨_, rfl⟩
+  have hMk : S.mem = frameWrites L'.mem (s0.getReg 2#5) l8 := by rw [cut_mem, hl8d]; rfl
+  have hl8 : ∀ p ∈ l8, 56 ≤ p.1 ∧ p.1 ≤ 84 ∧ p.1 % 4 = 0 := by
+    rw [hl8d]; intro p hp; simp only [List.mem_cons, List.not_mem_nil, or_false] at hp
+    rcases hp with rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl <;> simp
+  have hl8D : ∀ p ∈ l8, 56 ≤ p.1 ∧ p.1 ≤ 84 := fun p hp => ⟨(hl8 p hp).1, (hl8 p hp).2.1⟩
   have srom : ∀ b : Word, b.toNat < ROM_END → S.mem b = s0.mem b := fun b hb => by
     simp only [ROM_END] at hb
-    rw [cut_mem]
-    repeat rw [write_outside (h := Or.inl (by bv_omega)) (ha := by bv_omega)]
-    rw [m', hromL b (by simp only [ROM_END]; omega)]
+    rw [hMk, frameWrites_outside _ 56 84 (by decide) (by omega) _ _ _ hl8D (by omega), m',
+      hromL b (by simp only [ROM_END]; omega)]
   apply run_callAtW_input hS S _ (by rw [cut_pc])
     (fun c hc => codeAt_of_rom (hcal c hc) (hcalr c hc) srom)
     ⟨by rw [show S.pc = A + 0x1bc#32 by rw [cut_pc]]; exact codeAt_of_rom hcS hSr srom,
@@ -155,17 +163,29 @@ theorem mc_loop (A : Word) (codeS : List Word) (calleesS : List (Word × List Wo
   have rd : ∀ b : Word, b.toNat + 4 ≤ 2 ^ 32 →
       b.toNat + 4 ≤ (s0.getReg 2#5).toNat - 84 ∨ (s0.getReg 2#5).toNat - 52 ≤ b.toNat →
       read S.mem b 4 = read L.mem b 4 := fun b hb1 hb => by
-    rw [cut_mem, m']
-    repeat rw [read_write_disjoint (h := by bv_omega) (ha := by bv_omega) (hc := by bv_omega)]
+    rw [hMk, read_frameWrites_out _ 56 84 (by decide) (by omega) _ _ _ hl8D (by omega) hb1, m']
   have nodeS : readWords S.mem MERKLE 8 = readWords L.mem MERKLE 8 := by
     apply Vector.ext; intro i hi
     simp only [readWords, Vector.getElem_ofFn]
-    exact rd _ (by bv_omega) (by right; bv_omega)
+    exact rd _ (by rw [BitVec.toNat_add]; simp; omega) (by right; rw [BitVec.toNat_add]; simp; omega)
   have sibS : readWords S.mem (s0.getReg 2#5 + 4294967212#32) 8 = sib := by
+    have hsp4 : (s0.getReg 2#5).toNat % 4 = 0 := by omega
+    have lk : ∀ c, 56 ≤ c → c ≤ 84 → c % 4 = 0 →
+        read S.mem (s0.getReg 2#5 + BitVec.ofNat 32 (4294967296 - c)) 4 =
+          frameLookup c (read L'.mem (s0.getReg 2#5 + BitVec.ofNat 32 (4294967296 - c)) 4) l8 := fun c h1 h2 h3 => by
+      rw [hMk]; exact read_frameWrites _ hsp4 _ _ c (fun p hp => ⟨by have := hl8 p hp; omega,
+        by have := (hl8 p hp).2.1; omega, (hl8 p hp).2.2⟩) (by omega) (by omega) h3
     apply Vector.ext; intro i hi
-    simp only [readWords, Vector.getElem_ofFn, cut_mem, g', h2]
-    interval_cases i <;> simp only [BitVec.add_assoc, BitVec.reduceAdd, Nat.reduceMul, BitVec.ofNat_eq_ofNat] <;>
-      repeat (first | rw [read_write_same4] | rw [read_write_disjoint (h := by bv_omega) (ha := by bv_omega) (hc := by bv_omega)])
+    simp only [readWords, Vector.getElem_ofFn, BitVec.add_assoc]
+    interval_cases i
+    · exact (lk 84 (by decide) (by decide) (by decide)).trans (by simp [frameLookup, hl8d])
+    · exact (lk 80 (by decide) (by decide) (by decide)).trans (by simp [frameLookup, hl8d])
+    · exact (lk 76 (by decide) (by decide) (by decide)).trans (by simp [frameLookup, hl8d])
+    · exact (lk 72 (by decide) (by decide) (by decide)).trans (by simp [frameLookup, hl8d])
+    · exact (lk 68 (by decide) (by decide) (by decide)).trans (by simp [frameLookup, hl8d])
+    · exact (lk 64 (by decide) (by decide) (by decide)).trans (by simp [frameLookup, hl8d])
+    · exact (lk 60 (by decide) (by decide) (by decide)).trans (by simp [frameLookup, hl8d])
+    · exact (lk 56 (by decide) (by decide) (by decide)).trans (by simp [frameLookup, hl8d])
   have hnode' : readWords U.mem MERKLE 8 = merkleRoot leaf (path.take (j + 1)) := by
     have hp := hpost
     simp only [merklePost, withInput_getReg, withInput_mem, cut_r10, cut_r11, cut_r12] at hp
@@ -174,30 +194,29 @@ theorem mc_loop (A : Word) (codeS : List Word) (calleesS : List (Word × List Wo
   have sp' : (S.getReg 2#5).toNat = (s0.getReg 2#5).toNat - 96 := by rw [cut_r2, h2]; bv_omega
   have umem : ∀ a : Word, a.toNat + F < (s0.getReg 2#5).toNat ∨ (s0.getReg 2#5).toNat - 52 ≤ a.toNat →
       a.toNat < MERKLE.toNat ∨ MERKLE.toNat + len ≤ a.toNat → U.mem a = L.mem a := fun a ha hb => by
-    rw [hmemU a (by rw [sp']; omega) (by rw [cut_r10]; exact hb), cut_mem]
-    repeat rw [write_outside (h := by bv_omega) (ha := by bv_omega)]
-    rw [m']
-  have ur : ∀ (b : Word), b.toNat + 4 ≤ 2 ^ 32 → (s0.getReg 2#5).toNat - 52 ≤ b.toNat →
-      b.toNat + 4 ≤ MERKLE.toNat → read U.mem b 4 = read L.mem b 4 := fun b h1 h2' h3 =>
-    read_congr _ _ _ _ (fun i hi => umem _ (by right; bv_omega) (by left; bv_omega))
+    rw [hmemU a (by rw [sp']; omega) (by rw [cut_r10]; exact hb), hMk,
+      frameWrites_outside _ 56 84 (by decide) (by omega) _ _ _ hl8D (by omega), m']
   have uR : ∀ r : Reg, calleeSaved r → U.getReg r = L.getReg r := fun r hr => by
     rw [hcsU r hr]
     rcases calleeSaved_cases r hr with h|h|h|h|h|h|h|h|h|h|h|h|h <;> subst h <;> assumption
-  have urd : ∀ (b : Word) (v : Word), (s0.getReg 2#5).toNat - 52 ≤ b.toNat → b.toNat + 4 ≤ (s0.getReg 2#5).toNat →
-      read L.mem b 4 = v → read U.mem b 4 = v := fun b v h1 h2' h3 => by
-    rw [ur b (by omega) h1 (by rw [show MERKLE.toNat = 0x1401100 from rfl]; omega)]; exact h3
+  -- a saved word of the frame (offset `c` below `sp₀`) is kept
+  have urd : ∀ c, 4 ≤ c → c ≤ 52 → ∀ v, read L.mem (s0.getReg 2#5 + BitVec.ofNat 32 (4294967296 - c)) 4 = v →
+      read U.mem (s0.getReg 2#5 + BitVec.ofNat 32 (4294967296 - c)) 4 = v := fun c h1 h2 v h3 => by
+    have ea := frame_addr (s0.getReg 2#5) c (by omega) (by omega)
+    rw [← h3]
+    exact read_congr _ _ _ _ (fun i hi => umem _ (by right; rw [BitVec.toNat_add, ea]; simp; omega)
+      (by left; rw [BitVec.toNat_add, ea, show MERKLE.toNat = 0x1401100 from rfl]; simp; omega))
   have ufr : MFrame s0 F len root U :=
     ⟨(uR _ (by rv_callee_saved)).trans h2, (uR _ (by rv_callee_saved)).trans h26,
       (uR _ (by rv_callee_saved)).trans r0, (uR _ (by rv_callee_saved)).trans r1, (uR _ (by rv_callee_saved)).trans r2,
       (uR _ (by rv_callee_saved)).trans r3, (uR _ (by rv_callee_saved)).trans r4, (uR _ (by rv_callee_saved)).trans r5,
       (uR _ (by rv_callee_saved)).trans r6, (uR _ (by rv_callee_saved)).trans r7,
-      urd _ _ (by bv_omega) (by bv_omega) v1, urd _ _ (by bv_omega) (by bv_omega) v8,
-      urd _ _ (by bv_omega) (by bv_omega) v9, urd _ _ (by bv_omega) (by bv_omega) v18,
-      urd _ _ (by bv_omega) (by bv_omega) v19, urd _ _ (by bv_omega) (by bv_omega) v20,
-      urd _ _ (by bv_omega) (by bv_omega) v21, urd _ _ (by bv_omega) (by bv_omega) v22,
-      urd _ _ (by bv_omega) (by bv_omega) v23, urd _ _ (by bv_omega) (by bv_omega) v24,
-      urd _ _ (by bv_omega) (by bv_omega) v25, urd _ _ (by bv_omega) (by bv_omega) v26,
-      urd _ _ (by bv_omega) (by bv_omega) v27,
+      urd 4 (by decide) (by decide) _ v1, urd 8 (by decide) (by decide) _ v8, urd 12 (by decide) (by decide) _ v9,
+      urd 16 (by decide) (by decide) _ v18, urd 20 (by decide) (by decide) _ v19,
+      urd 24 (by decide) (by decide) _ v20, urd 28 (by decide) (by decide) _ v21,
+      urd 32 (by decide) (by decide) _ v22, urd 36 (by decide) (by decide) _ v23,
+      urd 40 (by decide) (by decide) _ v24, urd 44 (by decide) (by decide) _ v25,
+      urd 48 (by decide) (by decide) _ v26, urd 52 (by decide) (by decide) _ v27,
       fun a ha hb => by
         rw [umem a (by rcases ha with h | h <;> [left; right] <;> omega) hb]; exact hmL a ha hb,
       fun b hb => by
@@ -209,7 +228,7 @@ theorem mc_loop (A : Word) (codeS : List Word) (calleesS : List (Word × List Wo
   have u27 : U.getReg 27#5 = BitVec.ofNat 32 (k + 1) := (uR _ (by rv_callee_saved)).trans h27
   have u9 : U.getReg 9#5 = MERKLE := (uR _ (by rv_callee_saved)).trans h9
   have uin : U.input = pathWords (path.drop (j + 1)) ++ rest := hinU.trans cut_input
-  clear hpost hmemU hcsU rd nodeS sibS umem ur urd hcodeL hcodeL' srom
+  clear hpost hmemU hcsU rd nodeS sibS umem urd hcodeL hcodeL' srom
   rv_code_facts hcodeU Code.merkle_check
   rv_steps 1 with hpcU', u27
   by_cases hk : k = 0

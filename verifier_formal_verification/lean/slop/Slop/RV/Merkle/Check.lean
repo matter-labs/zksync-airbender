@@ -1,4 +1,5 @@
 import Slop.RV.Merkle.Loop
+import Slop.RV.Frame
 
 /-! `merkle_check(leaf)`, the whole function: the prologue, the root and the depth (9 input reads), the depth
 check (at most 32), the leaf copied into `MERKLE.state`, then the loop (`mc_loop`) or, for depth 0, the end
@@ -84,59 +85,86 @@ theorem merkle_check_run (A : Word) (codeS : List Word) (calleesS : List (Word �
   rv_step_simp with pc', g'
   rv_steps 17 with pc', g'
   rv_cut with in'
-  -- the frame: what the prologue saved, the root, memory outside the frame and `MERKLE`
-  have rdC : ∀ (b : Word), b.toNat + 4 ≤ (s0.getReg 2#5).toNat → (s0.getReg 2#5).toNat - 52 ≤ b.toNat →
-      read S.mem b 4 = read (write (write (write (write (write (write (write (write (write (write (write (write
-        (write s0.mem (s0.getReg 2#5 + 4294967292#32) (s0.getReg 1#5) 4) (s0.getReg 2#5 + 4294967288#32)
-        (s0.getReg 8#5) 4) (s0.getReg 2#5 + 4294967284#32) (s0.getReg 9#5) 4) (s0.getReg 2#5 + 4294967280#32)
-        (s0.getReg 18#5) 4) (s0.getReg 2#5 + 4294967276#32) (s0.getReg 19#5) 4) (s0.getReg 2#5 + 4294967272#32)
-        (s0.getReg 20#5) 4) (s0.getReg 2#5 + 4294967268#32) (s0.getReg 21#5) 4) (s0.getReg 2#5 + 4294967264#32)
-        (s0.getReg 22#5) 4) (s0.getReg 2#5 + 4294967260#32) (s0.getReg 23#5) 4) (s0.getReg 2#5 + 4294967256#32)
-        (s0.getReg 24#5) 4) (s0.getReg 2#5 + 4294967252#32) (s0.getReg 25#5) 4) (s0.getReg 2#5 + 4294967248#32)
-        (s0.getReg 26#5) 4) (s0.getReg 2#5 + 4294967244#32) (s0.getReg 27#5) 4) b 4 := fun b h1 h2' => by
-    have hb : b.toNat + 4 ≤ 20971520 := by omega
-    rw [cut_mem]
-    simp (disch := decide) only [read_write_hi hb]
-    rw [Lm]
-  have sv : ∀ (k : Word) (v : Word), (s0.getReg 2#5 + k).toNat + 4 ≤ (s0.getReg 2#5).toNat →
-      (s0.getReg 2#5).toNat - 52 ≤ (s0.getReg 2#5 + k).toNat →
-      read (write (write (write (write (write (write (write (write (write (write (write (write
-        (write s0.mem (s0.getReg 2#5 + 4294967292#32) (s0.getReg 1#5) 4) (s0.getReg 2#5 + 4294967288#32)
-        (s0.getReg 8#5) 4) (s0.getReg 2#5 + 4294967284#32) (s0.getReg 9#5) 4) (s0.getReg 2#5 + 4294967280#32)
-        (s0.getReg 18#5) 4) (s0.getReg 2#5 + 4294967276#32) (s0.getReg 19#5) 4) (s0.getReg 2#5 + 4294967272#32)
-        (s0.getReg 20#5) 4) (s0.getReg 2#5 + 4294967268#32) (s0.getReg 21#5) 4) (s0.getReg 2#5 + 4294967264#32)
-        (s0.getReg 22#5) 4) (s0.getReg 2#5 + 4294967260#32) (s0.getReg 23#5) 4) (s0.getReg 2#5 + 4294967256#32)
-        (s0.getReg 24#5) 4) (s0.getReg 2#5 + 4294967252#32) (s0.getReg 25#5) 4) (s0.getReg 2#5 + 4294967248#32)
-        (s0.getReg 26#5) 4) (s0.getReg 2#5 + 4294967244#32) (s0.getReg 27#5) 4) (s0.getReg 2#5 + k) 4 = v →
-      read S.mem (s0.getReg 2#5 + k) 4 = v := fun k v h1 h2' h => (rdC _ h1 h2').trans h
+  -- the frame: the prologue's stores (below `sp`) and the leaf's (below `MERKLE + 32`) as lists
+  have hsp4 : (s0.getReg 2#5).toNat % 4 = 0 := by omega
+  obtain ⟨l13, hl13d⟩ : ∃ l : List (Nat × Word), l = [(4, s0.getReg 1#5), (8, s0.getReg 8#5),
+      (12, s0.getReg 9#5), (16, s0.getReg 18#5), (20, s0.getReg 19#5), (24, s0.getReg 20#5), (28, s0.getReg 21#5),
+      (32, s0.getReg 22#5), (36, s0.getReg 23#5), (40, s0.getReg 24#5), (44, s0.getReg 25#5), (48, s0.getReg 26#5),
+      (52, s0.getReg 27#5)] := ⟨_, rfl⟩
+  obtain ⟨l8, hl8d⟩ : ∃ l : List (Nat × Word), l = [(4, read L'.mem (s0.getReg 10#5 + 28#32) 4),
+      (8, read L'.mem (s0.getReg 10#5 + 24#32) 4), (12, read L'.mem (s0.getReg 10#5 + 20#32) 4),
+      (16, read L'.mem (s0.getReg 10#5 + 16#32) 4), (20, read L'.mem (s0.getReg 10#5 + 12#32) 4),
+      (24, read L'.mem (s0.getReg 10#5 + 8#32) 4), (28, read L'.mem (s0.getReg 10#5 + 4#32) 4),
+      (32, read L'.mem (s0.getReg 10#5) 4)] := ⟨_, rfl⟩
+  have hPro : L'.mem = frameWrites s0.mem (s0.getReg 2#5) l13 := by rw [Lm, hl13d]; rfl
+  have hMk : S.mem = frameWrites L'.mem 0x1401120#32 l8 := by rw [cut_mem, hl8d]; rfl
+  have hl13 : ∀ p ∈ l13, 4 ≤ p.1 ∧ p.1 ≤ 52 ∧ p.1 % 4 = 0 := by
+    rw [hl13d]; intro p hp; simp only [List.mem_cons, List.not_mem_nil, or_false] at hp
+    rcases hp with rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl <;> simp
+  have hl8 : ∀ p ∈ l8, 4 ≤ p.1 ∧ p.1 ≤ 32 ∧ p.1 % 4 = 0 := by
+    rw [hl8d]; intro p hp; simp only [List.mem_cons, List.not_mem_nil, or_false] at hp
+    rcases hp with rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl <;> simp
+  have hl13s : ∀ p ∈ l13, 4 ≤ p.1 ∧ p.1 ≤ (s0.getReg 2#5).toNat ∧ p.1 % 4 = 0 := fun p hp =>
+    ⟨(hl13 p hp).1, by have := (hl13 p hp).2.1; omega, (hl13 p hp).2.2⟩
+  have hl8s : ∀ p ∈ l8, 4 ≤ p.1 ∧ p.1 ≤ (0x1401120#32 : Word).toNat ∧ p.1 % 4 = 0 := fun p hp =>
+    ⟨(hl8 p hp).1, by have := (hl8 p hp).2.1; simp; omega, (hl8 p hp).2.2⟩
+  have hl13D : ∀ p ∈ l13, 4 ≤ p.1 ∧ p.1 ≤ 52 := fun p hp => ⟨(hl13 p hp).1, (hl13 p hp).2.1⟩
+  have hl8D : ∀ p ∈ l8, 4 ≤ p.1 ∧ p.1 ≤ 32 := fun p hp => ⟨(hl8 p hp).1, (hl8 p hp).2.1⟩
+  -- a saved word, read in the frame
+  have vf : ∀ c, 4 ≤ c → c ≤ 52 → c % 4 = 0 →
+      read S.mem (s0.getReg 2#5 + BitVec.ofNat 32 (4294967296 - c)) 4 =
+        frameLookup c (read s0.mem (s0.getReg 2#5 + BitVec.ofNat 32 (4294967296 - c)) 4) l13 := by
+    intro c h1 h2 h3
+    have ea := frame_addr (s0.getReg 2#5) c (by omega) (by omega)
+    rw [hMk, read_frameWrites_out _ 4 32 (by decide) (by decide) _ _ _ hl8D (Or.inl (by rw [ea]; simp; omega)) (by rw [ea]; omega),
+      hPro]
+    exact read_frameWrites _ hsp4 _ _ c hl13s h1 (by omega) h3
   have frC : MFrame s0 F len root S := by
     refine ⟨by rw [cut_r2, Lsp], cut_r26, cut_r25, cut_r24, cut_r23, cut_r22, cut_r20, cut_r21, cut_r19, cut_r18,
-      ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
-    rotate_right 2
-    all_goals first
-      | (apply sv _ _ (by bv_omega) (by bv_omega)
-         simp (disch := decide) only [read_write_off, read_write_same4])
-      | skip
+      (vf 4 (by decide) (by decide) (by decide)).trans (by simp [frameLookup, hl13d]),
+      (vf 8 (by decide) (by decide) (by decide)).trans (by simp [frameLookup, hl13d]),
+      (vf 12 (by decide) (by decide) (by decide)).trans (by simp [frameLookup, hl13d]),
+      (vf 16 (by decide) (by decide) (by decide)).trans (by simp [frameLookup, hl13d]),
+      (vf 20 (by decide) (by decide) (by decide)).trans (by simp [frameLookup, hl13d]),
+      (vf 24 (by decide) (by decide) (by decide)).trans (by simp [frameLookup, hl13d]),
+      (vf 28 (by decide) (by decide) (by decide)).trans (by simp [frameLookup, hl13d]),
+      (vf 32 (by decide) (by decide) (by decide)).trans (by simp [frameLookup, hl13d]),
+      (vf 36 (by decide) (by decide) (by decide)).trans (by simp [frameLookup, hl13d]),
+      (vf 40 (by decide) (by decide) (by decide)).trans (by simp [frameLookup, hl13d]),
+      (vf 44 (by decide) (by decide) (by decide)).trans (by simp [frameLookup, hl13d]),
+      (vf 48 (by decide) (by decide) (by decide)).trans (by simp [frameLookup, hl13d]),
+      (vf 52 (by decide) (by decide) (by decide)).trans (by simp [frameLookup, hl13d]), ?_, ?_⟩
     · intro a ha hb
-      rw [cut_mem]
-      repeat rw [write_outside (h := by bv_omega) (ha := by bv_omega)]
-      rw [Lm]
-      repeat rw [write_outside (h := by bv_omega) (ha := by bv_omega)]
+      rw [hMk, frameWrites_outside _ 4 32 (by decide) (by decide) _ _ _ hl8D (by have : MERKLE.toNat = 0x1401100 := rfl; simp; omega), hPro,
+        frameWrites_outside _ 4 52 (by decide) (by omega) _ _ _ hl13D (by omega)]
     · intro b hb
       simp only [ROM_END] at hb
-      rw [cut_mem]
-      repeat rw [write_outside (h := by bv_omega) (ha := by bv_omega)]
-      rw [Lm]
-      repeat rw [write_outside (h := by bv_omega) (ha := by bv_omega)]
+      rw [hMk, frameWrites_outside _ 4 32 (by decide) (by decide) _ _ _ hl8D (by simp; omega), hPro,
+        frameWrites_outside _ 4 52 (by decide) (by omega) _ _ _ hl13D (by omega)]
   -- the leaf, copied into `MERKLE.state`
   have hleaf : readWords S.mem MERKLE 8 = readWords s0.mem (s0.getReg 10#5) 8 := by
-    rw [cut_mem, readWords_merkle]
     apply Vector.ext; intro i hi
     simp only [readWords, Vector.getElem_ofFn]
-    rw [Lm]
-    interval_cases i <;> simp only [Vector.getElem_mk, List.getElem_toArray, List.getElem_cons_succ,
-      List.getElem_cons_zero, Nat.reduceMul, BitVec.ofNat_eq_ofNat, BitVec.add_zero] <;>
-      exact read_above_frame _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ (by bv_omega) (by omega) (by bv_omega)
+    have ab : ∀ k : Word, k.toNat ≤ 28 → read L'.mem (s0.getReg 10#5 + k) 4 = read s0.mem (s0.getReg 10#5 + k) 4 :=
+      fun k hk => by
+        rw [hPro]
+        apply read_frameWrites_out _ 4 52 (by decide) (by omega) _ _ _ hl13D
+        · right; rw [BitVec.toNat_add]; simp; omega
+        · rw [BitVec.toNat_add]; simp; omega
+    have lk : ∀ c, 4 ≤ c → c ≤ 32 → c % 4 = 0 →
+        read S.mem (0x1401120#32 + BitVec.ofNat 32 (4294967296 - c)) 4 =
+          frameLookup c (read L'.mem (0x1401120#32 + BitVec.ofNat 32 (4294967296 - c)) 4)
+            l8 := fun c h1 h2 h3 => by
+      rw [hMk]; exact read_frameWrites _ (by decide) _ _ c hl8s h1 (by simp; omega) h3
+    interval_cases i
+    · exact (lk 32 (by decide) (by decide) (by decide)).trans (by simp [frameLookup, hl8d]; simpa using ab 0#32 (by decide))
+    · exact (lk 28 (by decide) (by decide) (by decide)).trans (by simp [frameLookup, hl8d]; exact ab 4#32 (by decide))
+    · exact (lk 24 (by decide) (by decide) (by decide)).trans (by simp [frameLookup, hl8d]; exact ab 8#32 (by decide))
+    · exact (lk 20 (by decide) (by decide) (by decide)).trans (by simp [frameLookup, hl8d]; exact ab 12#32 (by decide))
+    · exact (lk 16 (by decide) (by decide) (by decide)).trans (by simp [frameLookup, hl8d]; exact ab 16#32 (by decide))
+    · exact (lk 12 (by decide) (by decide) (by decide)).trans (by simp [frameLookup, hl8d]; exact ab 20#32 (by decide))
+    · exact (lk 8 (by decide) (by decide) (by decide)).trans (by simp [frameLookup, hl8d]; exact ab 24#32 (by decide))
+    · exact (lk 4 (by decide) (by decide) (by decide)).trans (by simp [frameLookup, hl8d]; exact ab 28#32 (by decide))
   have hlE : Code.finish_error.length = 6 := by decide +kernel
   have cpc := cut_pc
   have c9 := cut_r9

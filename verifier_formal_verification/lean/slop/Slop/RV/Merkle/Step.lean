@@ -3,7 +3,7 @@ import Slop.RV.CallW
 import Slop.RV.CopyRun
 import Slop.RV.Merkle.Block
 import Slop.RV.Jal
-import Human.SpecMerkle
+import Slop.RV.Merkle.Contract
 
 /-! `merkle_step(st, right, sib)`: one level of a Merkle path, the node in `st.state` and the sibling at `sib` into
 the parent (`Spec.hash2`): the side branch (by steps), the block (`merkle_block`), a tail call of
@@ -13,20 +13,6 @@ namespace RV
 open Spec
 set_option maxHeartbeats 0
 set_option maxRecDepth 100000
-
-/-- The parent of the node at `a0` (`st.state`) and the sibling at `a2` (`a1 ≠ 0`: the node is the right child). -/
-def merklePost (s s' : State) : Prop :=
-  readWords s'.mem (s.getReg 10#5) 8 =
-    if s.getReg 11#5 ≠ 0 then hash2 (readWords s.mem (s.getReg 12#5) 8) (readWords s.mem (s.getReg 10#5) 8)
-    else hash2 (readWords s.mem (s.getReg 10#5) 8) (readWords s.mem (s.getReg 12#5) 8)
-
-/-- The evaluator (`len` bytes, `al`-aligned) in RAM above `sp`, the sibling (8 words) in RAM above `sp`, outside
-it. -/
-def merklePre (al len : Nat) (s : State) : Prop :=
-  (s.getReg 10#5).toNat % al = 0 ∧ (s.getReg 2#5).toNat ≤ (s.getReg 10#5).toNat ∧
-  (s.getReg 10#5).toNat + len ≤ RAM_END ∧ (s.getReg 12#5).toNat % 4 = 0 ∧
-  (s.getReg 2#5).toNat ≤ (s.getReg 12#5).toNat ∧ (s.getReg 12#5).toNat + 32 ≤ RAM_END ∧
-  ((s.getReg 12#5).toNat + 32 ≤ (s.getReg 10#5).toNat ∨ (s.getReg 10#5).toNat + len ≤ (s.getReg 12#5).toNat)
 
 theorem setReg0_getReg (T : State) (v : Word) (r : Reg) : (T.setReg 0#5 v).getReg r = T.getReg r := by
   unfold State.getReg State.setReg
