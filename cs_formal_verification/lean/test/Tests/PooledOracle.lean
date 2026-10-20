@@ -197,9 +197,7 @@ private theorem decoding (entry : PooledProgramEntry) (member : entry ∈ progra
   rcases member with rfl | rfl | rfl
   all_goals
     dsimp only [readEntry, shiftEntry]
-    simp only [SailRV32.Functions.encdec_backwards,
-      SailRV32.Functions.currentlyEnabled, SailRV32.Functions.hartSupports]
-    rfl
+    with_unfolding_all rfl
 
 private theorem fields (entry : PooledProgramEntry) (member : entry ∈ program) :
     NonDeterminism.Pooled.decoderFields entry.instruction = some entry.data := by
