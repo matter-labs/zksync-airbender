@@ -6,9 +6,8 @@ import Slop.RV.FsCheck.Blocks
 import Slop.RV.Code.merkle_check
 import Human.SpecMerkle
 import Slop.RV.Merkle.MFrame
-import Slop.Block.Out
-import Slop.Block.Tail
-import Slop.Block.ExitRuns
+import Slop.Block.Block
+import Slop.RV.Merkle.ExitRuns
 
 /-! `merkle_check`, the end (from word 68): the node in `MERKLE.state` against the root (in `s9 … s2`), then either
 the epilogue and `ret` (they match) or `zksync_os_finish_error` (they differ: the run gets stuck). -/
@@ -239,7 +238,7 @@ theorem mc_exit (s0 E : State) (A : Word) (F len : Nat) (root : Vector Word 8) (
     have hjal : run 1 (S6.setPC (A + BitVec.ofNat 32 (4 * 110))) =
         some (((S6.setPC (A + BitVec.ofNat 32 (4 * 110))).setPC (A + 0x3d4#32)).setReg 1#5
           (A + BitVec.ofNat 32 (4 * 110 + 4))) :=
-      run_jal (T := S6.setPC (A + BitVec.ofNat 32 (4 * 110))) hcode hal hromL (fun b hb => hrom6 b hb) 110 0x21c000ef#32 (by decide +kernel) rfl 0x21c#32
+      run_jal (T := S6.setPC (A + BitVec.ofNat 32 (4 * 110))) hcode hal hromL (fun b hb => hrom6 b hb) 110 0x21c000ef#32 (by decide +kernel) rfl 1#5 0x21c#32
         (by decide +kernel) (A + 0x3d4#32) (by bv_omega) (by bv_omega)
     have hjs := run_trans (run_trans hrun6 hbt) hjal
     set S' := ((S6.setPC (A + BitVec.ofNat 32 (4 * 110))).setPC (A + 0x3d4#32)).setReg 1#5

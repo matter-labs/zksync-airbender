@@ -2,9 +2,8 @@ import Slop.RV.Halt
 import Slop.RV.CopyRun
 import Slop.RV.Code.finish_success
 import Slop.RV.Code.finish_success_extended
-import Slop.Block.Out
-import Slop.Block.Tail
-import Slop.Block.FinishRuns
+import Slop.Block.Block
+import Slop.RV.FinishRuns
 
 /-! riscv_common's `zksync_os_finish_success` (the output protocol), at any address. -/
 
@@ -43,7 +42,7 @@ theorem finish_success_run (A : Word) (hA : A.toNat % 4 = 0) (hAr : A.toNat + 0x
   obtain ⟨S1, hrun1, hpc1, -, hrel, hrom1, hout, -⟩ := block_at _ 0 29 FinSucc.instrs FinSucc.σ S A
     [⟨2, -80, 0, 16⟩, ⟨10, 0, 32, 4⟩] [(⟨10, 0, 32, 4⟩, ⟨2, -80, 0, 16⟩)] FinSucc.dec FinSucc.run (by decide)
     (by rw [hpc]; bv_omega) hA hrom hc1 (by sym_side) (by sym_side) (by decide +kernel)
-  have hj := run_jal hc1 hA hrom hrom1 29 _ rfl hpc1 4#32 rfl (A + 0x78#32) (by bv_omega) (by bv_omega)
+  have hj := run_jal hc1 hA hrom hrom1 29 _ rfl hpc1 1#5 4#32 rfl (A + 0x78#32) (by bv_omega) (by bv_omega)
   -- the array: word `k` of the frame is the word at `a0 + k'`, or 0
   have W : ∀ (k k' v : Word), outOK FinSucc.σ [⟨2, -80, 0, 16⟩, ⟨10, 0, 32, 4⟩] [(⟨10, 0, 32, 4⟩, ⟨2, -80, 0, 16⟩)]
       2 k = true → outNode FinSucc.σ 2 k < FinSucc.σ.pool.len →

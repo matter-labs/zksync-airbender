@@ -1,8 +1,8 @@
 import Slop.RV.Halt
 import Slop.RV.CopyRun
 import Slop.RV.Code.finish_success_extended
-import Slop.Block.Out
-import Slop.Block.FinishRuns
+import Slop.Block.Block
+import Slop.RV.FinishRuns
 
 /-! riscv_common's `zksync_os_finish_success_extended`, at any address: the outputs land in `x10 … x25`. -/
 

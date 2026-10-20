@@ -1,7 +1,6 @@
 import Slop.RV.MulMod
 import Slop.RV.Code.poly_eval
-import Slop.Block.Flow
-import Slop.Block.Loop
+import Slop.Block.Block
 import Slop.Sym.Func
 
 /-! The Horner loop of `poly_eval` (loop head at `poly_eval + 0x3c`): one iteration, then induction on the
@@ -50,50 +49,41 @@ theorem poly_epi (A : Word) (S : State) (sp0 ra0 v8 v9 v18 v19 : Word) (hA4 : A.
     ∃ m S', run m S = some S' ∧ S'.pc = ra0 ∧ S'.getReg 2#5 = sp0 ∧ S'.getReg 8#5 = v8 ∧ S'.getReg 9#5 = v9 ∧
       S'.getReg 18#5 = v18 ∧ S'.getReg 19#5 = v19 ∧ S'.mem = S.mem ∧ S'.getReg 10#5 = S.getReg 10#5 ∧
       (∀ i : Reg, 20 ≤ i.toNat → i.toNat ≤ 27 → S'.getReg i = S.getReg i) := by
-  have hL6 : ((Code.poly_eval.drop 24).take 6).length = 6 := rfl
-  have w22 : read S.mem S.pc 4 = 0x0080006f#32 := by
-    rw [hpc, show A + 88#32 = A + BitVec.ofNat 32 (4 * 22) from rfl]
-    exact hcode 22 (by decide)
   obtain ⟨S4, hrun1, hpc4, hS4r, hS4m⟩ : ∃ S4, run 1 S = some S4 ∧ S4.pc = A + 96#32 ∧
       (∀ r : Reg, S4.getReg r = S.getReg r) ∧ S4.mem = S.mem :=
-    ⟨_, run_j S 0x0080006f#32 8#32 (by rw [hpc]; bv_omega) (by rw [hpc]; simp only [ROM_END]; bv_omega) w22
-      decode_poly_eval_0080006f (by rw [hpc]; bv_omega), by rw [x0_pc, hpc]; bv_omega, fun r => x0_getReg S _ _ r, rfl⟩
+    ⟨_, run_jal hcode hA4 (by rw [show Code.poly_eval.length = 31 from rfl]; simp only [ROM_END]; omega)
+      (fun _ _ => rfl) 22 0x0080006f#32 (by decide +kernel) (by rw [hpc]; try rfl) 0#5 8#32
+      decode_poly_eval_0080006f (A + 96#32) (by bv_omega) (by bv_omega), by rw [x0_pc], fun r => x0_getReg S _ _ r, rfl⟩
   have h2S4 : S4.getReg 2#5 = sp0 + 4294967264#32 := by rw [hS4r, h2]
   -- a stack slot: `S4`'s `sp + k` is `sp0 + c`
   have fr : ∀ k c : Word, 4294967264#32 + k = c → read S.mem (S4.getReg 2#5 + k) 4 = read S.mem (sp0 + c) 4 :=
     fun k c hk => by rw [h2S4, BitVec.add_assoc, hk]
   have hcS4 : CodeAt S4 A Code.poly_eval := codeAt_mem_eq hS4m hcode
-  have hc3 : CodeAt S4 (A + 96#32) ((Code.poly_eval.drop 24).take 6) := by
-    have h := codeAt_take (codeAt_drop hcS4 24 (by have : Code.poly_eval.length = 31 := rfl; omega)) 6
-    rwa [show A + BitVec.ofNat 32 (4 * 24) = A + 96#32 from rfl] at h
   have hR : ∀ R ∈ [PolyR.rS], R.b < 32 ∧ R.Holds (ctxOf S4) initPool := by
     have h2n : (S4.getReg 2#5).toNat = sp0.toNat - 32 := by rw [h2S4]; bv_omega
     simp (disch := decide) only [List.forall_mem_cons, List.not_mem_nil, IsEmpty.forall_iff, implies_true,
       and_true, RV.Sym.Region.Holds, RV.Sym.initPool_val, RV.ROM_END, RV.RAM_END, PolyR.rS]
     omega
-  obtain ⟨T, hrunT, hpcT, hrelT, hromT, -, hfrT⟩ := block_ret ((Code.poly_eval.drop 24).take 6) PL3.instrs PL3.σ S4
-    (A + 96#32) [PolyR.rS] [] PL3.dec PL3.run hpc4 (by bv_omega)
-    (by rw [hL6]; simp only [ROM_END]; bv_omega) hc3
-    (by rw [hS4m, hL6, show A + 96#32 + BitVec.ofNat 32 (4 * 6) = A + BitVec.ofNat 32 (4 * 30) by bv_omega]
-        exact hcode 30 (by decide))
+  obtain ⟨T, hrunT, hpcT, hrelT, hromT, -, hfrT⟩ := block_ret 24 6 PL3.instrs PL3.σ [PolyR.rS] []
+    PL3.dec PL3.run (by decide) (by rw [hpc4]; try rfl) (by bv_omega)
+    (by rw [show Code.poly_eval.length = 31 from rfl]; simp only [ROM_END]; bv_omega) hcS4 (by decide +kernel)
     hR (by simp) (by decide +kernel)
     (fun S' hrel => by
-      rw [reg_load PL3.instrs PL3.run hrel 1#5 2 28#32 (by decide) (by decide +kernel) (by decide +kernel), hS4m, fr 28#32 4294967292#32 (by decide), h1]
+      rw [Rel.reg_load PL3.instrs PL3.run hrel 1#5 2 28#32 (by decide) (by decide +kernel) (by decide +kernel), hS4m, fr 28#32 4294967292#32 (by decide), h1]
       exact hra)
-  rw [hL6] at hrunT
   have e1 : T.getReg 1#5 = ra0 := by
-    rw [reg_load PL3.instrs PL3.run hrelT 1#5 2 28#32 (by decide) (by decide +kernel) (by decide +kernel),
+    rw [Rel.reg_load PL3.instrs PL3.run hrelT 1#5 2 28#32 (by decide) (by decide +kernel) (by decide +kernel),
       hS4m, fr 28#32 4294967292#32 (by decide), h1]
   refine ⟨_, T, run_trans hrun1 hrunT, by rw [hpcT, e1], ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · rw [hrelT.reg_addr PL3.instrs PL3.run 2#5 2 32#32 (by decide) (by decide +kernel) (by decide +kernel), h2S4]
     bv_omega
-  · rw [reg_load PL3.instrs PL3.run hrelT 8#5 2 24#32 (by decide) (by decide +kernel) (by decide +kernel),
+  · rw [Rel.reg_load PL3.instrs PL3.run hrelT 8#5 2 24#32 (by decide) (by decide +kernel) (by decide +kernel),
       hS4m, fr 24#32 4294967288#32 (by decide), h8]
-  · rw [reg_load PL3.instrs PL3.run hrelT 9#5 2 20#32 (by decide) (by decide +kernel) (by decide +kernel),
+  · rw [Rel.reg_load PL3.instrs PL3.run hrelT 9#5 2 20#32 (by decide) (by decide +kernel) (by decide +kernel),
       hS4m, fr 20#32 4294967284#32 (by decide), h9]
-  · rw [reg_load PL3.instrs PL3.run hrelT 18#5 2 16#32 (by decide) (by decide +kernel) (by decide +kernel),
+  · rw [Rel.reg_load PL3.instrs PL3.run hrelT 18#5 2 16#32 (by decide) (by decide +kernel) (by decide +kernel),
       hS4m, fr 16#32 4294967280#32 (by decide), h18]
-  · rw [reg_load PL3.instrs PL3.run hrelT 19#5 2 12#32 (by decide) (by decide +kernel) (by decide +kernel),
+  · rw [Rel.reg_load PL3.instrs PL3.run hrelT 19#5 2 12#32 (by decide) (by decide +kernel) (by decide +kernel),
       hS4m, fr 12#32 4294967276#32 (by decide), h19]
   · funext a
     rw [hfrT [] (by decide +kernel) (by simp) a (by simp), hS4m]
@@ -233,21 +223,11 @@ theorem poly_loop (A T : Word) (C : List Word) (hA : 256 ≤ A.toNat) (hAr : A.t
       hslot0 b (Or.inl (by simp only [ROM_END] at hb; omega))
     have hcode2 : CodeAt S2 A Code.poly_eval :=
       codeAt_of_rom hcode (by simp only [ROM_END]; rw [hLp]; omega) hROM2
-    have hcodeB : CodeAt S2 (A + 80#32) ((Code.poly_eval.drop 20).take 1) := by
-      have h := codeAt_take (codeAt_drop hcode2 20 (by rw [hLp]; omega)) 1
-      rwa [show A + BitVec.ofNat 32 (4 * 20) = A + 80#32 from rfl] at h
-    have hjwB : read S2.mem (A + 80#32 + BitVec.ofNat 32 (4 * ((Code.poly_eval.drop 20).take 1).length)) 4 =
-        0xfe0914e3#32 := by
-      rw [show ((Code.poly_eval.drop 20).take 1).length = 1 from rfl,
-        show A + 80#32 + BitVec.ofNat 32 (4 * 1) = A + BitVec.ofNat 32 (4 * 21) by bv_omega]
-      exact hcode2 21 (by decide)
-    have hL1 : ((Code.poly_eval.drop 20).take 1).length = 1 := rfl
-    obtain ⟨S3, hr3, hpc3, hrel3, -, -, hfr3⟩ := block_branch ((Code.poly_eval.drop 20).take 1) PL2.instrs PL2.σ S2
-      (A + 80#32) [] [] PL2.dec PL2.run hpc2' (by bv_omega)
-      (by rw [hL1]; simp only [ROM_END]; bv_omega) hcodeB 0xfe0914e3#32 hjwB
-      .ne 18#5 0#5 0xffffffe8#32 decode_poly_eval_fe0914e3
-      (by rw [hL1]; bv_omega) (by simp) (by simp) (by decide +kernel)
-    rw [hL1] at hr3 hpc3
+    obtain ⟨S3, hr3, hpc3, hrel3, -, -, hfr3⟩ := block_branch 20 1 PL2.instrs PL2.σ [] [] PL2.dec PL2.run
+      (by decide) (by rw [hpc2']; try rfl) (by bv_omega)
+      (by rw [show Code.poly_eval.length = 31 from rfl]; simp only [ROM_END]; bv_omega) hcode2
+      0xfe0914e3#32 (by decide +kernel) .ne 18#5 0#5 0xffffffe8#32 decode_poly_eval_fe0914e3 15
+      (by decide +kernel) (by simp) (by simp) (by decide +kernel)
     have hmem3 : ∀ a : Word, S3.mem a = S2.mem a := fun a => hfr3 [] (by decide +kernel) (by simp) a (by simp)
     have r0 : S3.getReg 0#5 = 0#32 := r_zero5 S3
     have r18 : S3.getReg 18#5 = BitVec.ofNat 32 j := by
@@ -304,10 +284,10 @@ theorem poly_loop (A T : Word) (C : List Word) (hA : 256 ≤ A.toNat) (hAr : A.t
       have hne : BitVec.ofNat 32 j ≠ 0#32 := by bv_omega
       rw [decide_eq_false hne] at hr3
       simp only [Bool.not_false, ↓reduceIte] at hr3
-      have hpcL : (S3.setPC (A + 80#32 + BitVec.ofNat 32 (4 * 1) + 0xffffffe8#32)).pc = A + 60#32 := by
-        rw [jump_pc]; bv_omega
+      have hpcL : (S3.setPC (A + BitVec.ofNat 32 (4 * 15))).pc = A + 60#32 := by
+        rw [jump_pc]
       obtain ⟨n, s', hrun, hp, hA10, hB10, hx2s, hx8s, hx9s, hx18s, hx19s, hregs, hmems⟩ :=
-        ih (S3.setPC (A + 80#32 + BitVec.ofNat 32 (4 * 1) + 0xffffffe8#32)) sp0 ra0 v8 v9 v18 v19 x
+        ih (S3.setPC (A + BitVec.ofNat 32 (4 * 15))) sp0 ra0 v8 v9 v18 v19 x
           (S2.getReg 10#5) (by omega) (by omega) hpcL
           (by rw [jump_r, r2]) (by rw [jump_r, r9]) (by rw [jump_r, r18])
           (by rw [jump_r, r19]; bv_omega) (by rw [jump_r, r10]) h2a

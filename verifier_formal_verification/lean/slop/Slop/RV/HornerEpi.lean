@@ -1,6 +1,6 @@
 import Slop.RV.Ext4Call
 import Slop.RV.Code.ext4_horner
-import Slop.Block.Flow
+import Slop.Block.Block
 
 /-! The epilogue of `ext4_horner`, shared by the `n = 0` path and the loop exit: one symbolic block (words 26 … 40)
 and `ret`. -/
@@ -38,23 +38,21 @@ theorem horner_epi (A sp0 out ra v8 v9 v18 v19 v20 : Word) (S : State) (hA : A.t
   have fr : ∀ k c v : Word, 4294967248#32 + k = c → read S.mem (sp0 + c) 4 = v →
       read S.mem (S.getReg (BitVec.ofNat 5 2) + k) 4 = v := fun k c v hk h => by rw [e2, BitVec.add_assoc, hk, h]
   have hL : ((Code.ext4_horner.drop 26).take 15).length = 15 := rfl
-  obtain ⟨T, hrun, hpcT, hrel, -, hout, hfr⟩ := block_ret _ HEpi.instrs HEpi.σ S _
-    [⟨2, 0, 48, 4⟩, ⟨9, 0, 16, 4⟩] [(⟨9, 0, 16, 4⟩, ⟨2, 0, 48, 4⟩)] HEpi.dec HEpi.run
-    (by rw [hpc]; try rfl) (by bv_omega) (by simp only [List.length_take, List.length_drop, ROM_END]; bv_omega) hc
-    (by rw [hL, show A + BitVec.ofNat 32 (4 * 26) + BitVec.ofNat 32 (4 * 15) = A + BitVec.ofNat 32 (4 * 41) by
-      bv_omega]; exact hcode 41 (by decide))
+  obtain ⟨T, hrun, hpcT, hrel, -, hout, hfr⟩ := block_ret 26 15 HEpi.instrs HEpi.σ
+    [⟨2, 0, 48, 4⟩, ⟨9, 0, 16, 4⟩] [(⟨9, 0, 16, 4⟩, ⟨2, 0, 48, 4⟩)] HEpi.dec HEpi.run (by decide)
+    (by rw [hpc]; try rfl) (by bv_omega) (by rw [show Code.ext4_horner.length = 42 from rfl]; simp only [ROM_END]; omega) hcode (by decide +kernel)
     (by sym_side) (by sym_side) (by decide +kernel)
     (fun S' h => by
-      rw [reg_load _ HEpi.run h 1#5 2 44#32 (by decide) (by decide +kernel) (by decide +kernel), fr _ _ _ (by decide) h1]
+      rw [Rel.reg_load _ HEpi.run h 1#5 2 44#32 (by decide) (by decide +kernel) (by decide +kernel), fr _ _ _ (by decide) h1]
       exact hra)
   have rl : ∀ (r : Reg) (k c v : Word), 4294967248#32 + k = c → (HEpi.σ.reg r).val < HEpi.σ.pool.len →
       nodeAt HEpi.σ.pool (HEpi.σ.reg r).val = .load 4 true 2 k → read S.mem (sp0 + c) 4 = v →
-      T.getReg r = v := fun r k c v hk hi hn h => by rw [reg_load _ HEpi.run hrel r 2 k (by decide) hi hn, fr _ _ _ hk h]
+      T.getReg r = v := fun r k c v hk hi hn h => by rw [Rel.reg_load _ HEpi.run hrel r 2 k (by decide) hi hn, fr _ _ _ hk h]
   -- `out[k] = acc[k]`
   have ok : ∀ k : Word, outOK HEpi.σ [⟨2, 0, 48, 4⟩, ⟨9, 0, 16, 4⟩] [(⟨9, 0, 16, 4⟩, ⟨2, 0, 48, 4⟩)] 9 k = true →
       outNode HEpi.σ 9 k < HEpi.σ.pool.len → nodeAt HEpi.σ.pool (outNode HEpi.σ 9 k) = .load 4 true 2 (8#32 + k) →
       read T.mem (out + k) 4 = read S.mem (sp0 + 4294967256#32 + k) 4 := fun k h hi hn => by
-    rw [← e9, out_load _ HEpi.run (hout 9 k (by decide) h) 2 _ (by decide) hi hn, e2, ← BitVec.add_assoc,
+    rw [← e9, out_load _ HEpi.run hout 9 k 2 _ (by decide) (by decide) h hi hn, e2, ← BitVec.add_assoc,
       BitVec.add_assoc sp0]; simp only [BitVec.reduceAdd]
   have o0 := ok 0#32 (by decide +kernel) (by decide +kernel) (by decide +kernel)
   have o4 := ok 4#32 (by decide +kernel) (by decide +kernel) (by decide +kernel)
@@ -72,6 +70,7 @@ theorem horner_epi (A sp0 out ra v8 v9 v18 v19 v20 : Word) (S : State) (hA : A.t
   · simp only [canon4, BitVec.add_assoc, BitVec.reduceAdd, o0, o4, o8, o12]; exact id
   · simp only [e4At, BitVec.add_assoc, BitVec.reduceAdd, o0, o4, o8, o12]
   · intro a ha
-    exact frame1 9 0 16 hfr (by decide +kernel) (by decide) (by simp only [h9n, ROM_END, RAM_END]; omega) a
-      (by simp only [h9n]; omega)
+    exact out_frame hfr ⟨9, 0, 16, 1⟩ (by decide +kernel) (by decide)
+      (by simp only [Region.Holds, initPool_val _ _ (by decide : 9 < 32), h9n, ROM_END, RAM_END]; omega) a
+      (by simp only [Region.Outside, h9n]; omega)
 end RV

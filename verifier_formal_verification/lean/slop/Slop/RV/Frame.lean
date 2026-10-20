@@ -1,4 +1,4 @@
-import Slop.RV.Mem
+import Slop.Block.Mem
 
 /-! A stack frame's stores as a list: the words `v` stored at `sp - c` for each `(c, v)` (`frameWrites`), read back by
 a lookup in the list (`read_frameWrites`), and memory outside the frame unchanged (`frameWrites_outside`). Proven
@@ -16,10 +16,11 @@ def frameWrites (m : Word → BitVec 8) (sp : Word) : List (Nat × Word) → Wor
 def frameLookup (c : Nat) (d : Word) (l : List (Nat × Word)) : Word :=
   l.foldl (fun acc p => if p.1 = c then p.2 else acc) d
 
+/-- The address `sp - c` (written `sp + (2³² - c)`) of a frame slot: `toNat_wrap` at `k = 2³² - c`. -/
 theorem frame_addr (sp : Word) (c : Nat) (hc : c ≤ sp.toNat) (hc0 : 0 < c) :
     (sp + BitVec.ofNat 32 (4294967296 - c)).toNat = sp.toNat - c := by
-  have := sp.isLt
-  rw [BitVec.toNat_add, BitVec.toNat_ofNat]; omega
+  have := toNat_wrap sp (4294967296 - c) (by omega) (by omega)
+  omega
 
 /-- A word at an offset in the frame reads as the last one stored there. -/
 theorem read_frameWrites (sp : Word) (hsp : sp.toNat % 4 = 0) :
