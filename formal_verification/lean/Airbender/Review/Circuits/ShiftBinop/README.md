@@ -21,7 +21,8 @@ dynamic import to exact helper membership and derive all selector domains.
 and actual x0 writes with derived operand bounds. [The shift contribution claim](Shifts.lean)
 derives exact canonical-key contributions and selected-word assembly. [Initialized history](../../Trace/Families/ShiftBinop/History.lean)
 now derives native clocks and latest reads from original public seeds and matching.
-Initialized source-word bounds and source-key binding, whole architectural shifts, Sail execution, custom CSR/oracle
+[Initialized word ranges](../../Trace/Families/ShiftBinop/Values.lean) and
+[canonical source keys](../../Trace/Families/ShiftBinop/Sources.lean) are now derived. Whole architectural shifts, Sail execution, custom CSR/oracle
 semantics and physical cryptographic enforcement remain unfinished. General
 Rust/JSON/compiler refinement is a separate boundary.
 
@@ -134,3 +135,17 @@ retain actual destination masks and readonly x0 refreshes; all six stale
 immediate/x0 variants fail logical memory matching while passing local equations.
 Source-word bounds, packed-key binding and original Sail cell/instruction
 execution remain the next connections. Earlier sections retain their scope.
+
+## Initialized ranges and canonical source keys
+
+[The public range claim](../../Trace/Families/ShiftBinop/Values.lean) derives every
+native read/write/terminal bound through unchanged initialized time induction.
+[The public source claim](../../Trace/Families/ShiftBinop/Sources.lean) derives
+actual natural packed-key values, source remainders, amount quotients and bounded
+selected limbs. [Source observables](SourcesModel.lean) expose only native columns
+and conclusions. [Internal lifting](../../../Proofs/ShiftBinop/ShiftSourceBounds.lean)
+retains actual contribution semantics and separately checked SLL/SRL/SRA half
+non-overlap across all 32 amounts. [Regressions](../../../../Tests/ShiftValues.lean)
+apply both initialized claims to complete ordinary/x0 histories and all twelve
+shift cases. Whole architectural shifts and Sail cell/instruction execution remain
+separate; older sections retain their checkpoint scope.

@@ -4767,6 +4767,85 @@
       "backport_reuse_path": "Tests/MulDivInitialized.lean",
       "backport_reuse_sha256": "8decfe41d70c5efdd2d3db59dea496558a1bf5bb7b1081ae16502c1c89bb498c",
       "change": "Adapt v2 public-history applications to all twenty-four complete initialized native shift/binop rows. Derive latest reads, initial/prior clock inputs and four-tick advancement from public seed reads and native acceptance; retain the exact prior refresh time for every immediate/x0 alias. No word bound, expected read or original instruction-execution premise."
+    },
+    {
+      "path": "Airbender/Proofs/ShiftBinop/LimbModel.lean",
+      "change": "Adapt the existing native shift contribution references to internal bounded-source 16-bit limb pieces and their raw low/high sums. Preserve SRA sign-fill/low/high order and the exact zero inactive contribution. This is internal calculation data, not a public desired-output premise.",
+      "backport_reuse_revision": "5c0b75f3aa80a51c0b0a363b48416710e124b7fe",
+      "backport_reuse_path": "Airbender/Review/Circuits/ShiftBinop/ShiftModel.lean",
+      "backport_reuse_sha256": "d5e0799b9441ef670ab14c9ad58ffb6ac42dd7baf360fa1559daa3562e423f7a"
+    },
+    {
+      "path": "Airbender/Proofs/ShiftBinop/SllLimbBounds.lean",
+      "change": "Task-authored universal SLL half non-overlap calculation for arbitrary bounded source limbs and all 32 native shift amounts. Normalize only symbolic Nat/BitVec arithmetic; no new table data, native_decide certificate or raised resource setting."
+    },
+    {
+      "path": "Airbender/Proofs/ShiftBinop/SrlLimbBounds.lean",
+      "change": "Task-authored universal SRL half non-overlap calculation for arbitrary bounded source limbs and all 32 native shift amounts, retaining the literal inactive zero slot."
+    },
+    {
+      "path": "Airbender/Proofs/ShiftBinop/SraLimbBounds.lean",
+      "change": "Task-authored universal SRA half non-overlap calculation for both sign domains and all 32 native shift amounts. Exact native sign fill and logical low/high contributions remain disjoint; no byte-based v3 table or widening assumption is imported."
+    },
+    {
+      "path": "Airbender/Proofs/ShiftBinop/ShiftSourceBounds.lean",
+      "change": "Adapt v2 canonical field-to-Nat lifting and decoded shift contribution assembly. Derive exact packed-key values/quotients/remainders from bounded native source reads and reconstruct actual contribution words through canonical Word encoding; derive canonical selected limbs from independently proved half non-overlap.",
+      "backport_reuse_revision": "5c0b75f3aa80a51c0b0a363b48416710e124b7fe",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/ShiftContributions.lean",
+      "backport_reuse_sha256": "787091b3cffb8af67e81500129ba88c5d387880d9886f57070af670644087f42"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Decoder/ShiftBinop.lean",
+      "change": "Adapt the checked v2 complete sparse/padded decoder membership interface to the actual shift/binop trace registry and its native ten-column query.",
+      "backport_reuse_revision": "5c0b75f3aa80a51c0b0a363b48416710e124b7fe",
+      "backport_reuse_path": "Airbender/Review/Helpers/Decoder/MulDiv.lean",
+      "backport_reuse_sha256": "4a14de6e09c98cafca06c61b9fdb0c4c40b6c8492ef2f7d86121c80b6270aea2"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ShiftBinop/Values.lean",
+      "change": "Adapt v2 initialized write-preservation/range induction. Actual public decoding selects native shift half bounds or binary result bounds, and the exact x0 mask bounds the actual destination write. Earlier native read bounds are supplied by the unchanged shared history induction, not added to the public interface.",
+      "backport_reuse_revision": "5c0b75f3aa80a51c0b0a363b48416710e124b7fe",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/MulDiv/Values.lean",
+      "backport_reuse_sha256": "d500295c05228309098427ecaa97a1739f044401dbdd4fb61dcfd029e6ad736d"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ShiftBinop/Values.lean",
+      "change": "Adapt the short v2 initialized word-bound theorem to shift/binop public byte construction, original Sail seeds/PC and accepted native matching. Derive all native read/write/terminal ranges without per-row bounds, flags, expected reads or desired outputs.",
+      "backport_reuse_revision": "5c0b75f3aa80a51c0b0a363b48416710e124b7fe",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/MulDiv/Values.lean",
+      "backport_reuse_sha256": "fd4a6a20572268ba802349ce7f166a43f0f0163362079df492eed64f79c335d4"
+    },
+    {
+      "path": "Tests/ShiftValuesFixture.lean",
+      "change": "Adapt pinned v2 NativeSetup public byte/slot/image certificates to all twenty-four initialized shift/binop histories. Replay the original Sail decoder via the existing misa-frame theorem after native GPR/PC changes. The public seed-read proof also adapts Tests/ShiftHistoryFixture.lean at this same revision; actual memory/permutation fixtures remain unchanged.",
+      "backport_reuse_revision": "5c0b75f3aa80a51c0b0a363b48416710e124b7fe",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/NativeSetup.lean",
+      "backport_reuse_sha256": "71d05a92b73a1b7893ac6e9455aef94d2ef2b6b600b500b38f618f2ff75a3a53"
+    },
+    {
+      "path": "Tests/ShiftValues.lean",
+      "change": "Adapt v2 public initialized fixture applications to all twenty-four ordinary/x0 traces. Derive every native read/write/terminal bound and apply the public source-key claim; twelve actual shift cases retain canonical packed keys, selected bounds and inactive zero slots using initialized source bounds.",
+      "backport_reuse_revision": "5c0b75f3aa80a51c0b0a363b48416710e124b7fe",
+      "backport_reuse_path": "Tests/MulDivInitialized.lean",
+      "backport_reuse_sha256": "8decfe41d70c5efdd2d3db59dea496558a1bf5bb7b1081ae16502c1c89bb498c"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ShiftBinop/SourcesModel.lean",
+      "change": "Task-authored short public observables for canonical native packed source keys, quotient/remainder, actual source bounds and selected bounds. Original Sail cell/GPR transport and whole architectural shift execution remain separately scoped."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ShiftBinop/Sources.lean",
+      "change": "Adapt v2 original-public-decoding/native-contribution theorem assembly. The shared initialized value theorem supplies the actual first-port source bound; derive exact canonical key values and source/amount quotient/remainder for every selected native shift without a source/key-bound premise.",
+      "backport_reuse_revision": "5c0b75f3aa80a51c0b0a363b48416710e124b7fe",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/ShiftContributions.lean",
+      "backport_reuse_sha256": "787091b3cffb8af67e81500129ba88c5d387880d9886f57070af670644087f42"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ShiftBinop/Sources.lean",
+      "change": "Adapt the short v2 initialized public theorem interface to canonical native shift source keys. Public bytes, original Sail seeds, native matching and full decoder membership supply all conclusions; calculation and range induction remain under Proofs.",
+      "backport_reuse_revision": "5c0b75f3aa80a51c0b0a363b48416710e124b7fe",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/MulDiv/Values.lean",
+      "backport_reuse_sha256": "fd4a6a20572268ba802349ce7f166a43f0f0163362079df492eed64f79c335d4"
     }
   ],
   "setup_artifacts": [

@@ -1,3 +1,4 @@
+import Tests.ShiftValues
 import Tests.ShiftHistory
 import Tests.ShiftContributions
 import Tests.ShiftBinary
@@ -1803,3 +1804,29 @@ import Tests.JumpLink
 #print axioms Tests.ShiftHistory.derived_clocks
 #print axioms Tests.ShiftHistory.native_clock_advances
 #print axioms Tests.ShiftHistory.x0_alias_clock
+
+#print axioms Airbender.ShiftBinop.Proofs.sll_limb_bounds
+#print axioms Airbender.ShiftBinop.Proofs.srl_limb_bounds
+#print axioms Airbender.ShiftBinop.Proofs.sra_limb_bounds
+#print axioms Airbender.ShiftBinop.Proofs.canonical_shift_key
+#print axioms Airbender.ShiftBinop.Proofs.shift_part_words
+#print axioms Airbender.ShiftBinop.Proofs.shift_selected_bounds
+#print axioms Airbender.ShiftBinop.Proofs.row_decoder_query
+#print axioms Airbender.ShiftBinop.Proofs.entry_selected_bounds
+#print axioms Airbender.ShiftBinop.Proofs.row_write_rule
+#print axioms Airbender.ShiftBinop.Proofs.decoded_write_rules
+#print axioms Airbender.ShiftBinop.Proofs.image_value_bounds
+#print axioms Airbender.ShiftBinop.public_value_bounds
+#print axioms Tests.ShiftValuesFixture.native_fixture_words
+#print axioms Tests.ShiftValuesFixture.public_decode
+#print axioms Tests.ShiftValuesFixture.public_slot
+#print axioms Tests.ShiftValuesFixture.program_image
+#print axioms Tests.ShiftValuesFixture.public_inputs
+#print axioms Tests.ShiftValuesFixture.decoded
+#print axioms Tests.ShiftValues.public_bounds
+#print axioms Tests.ShiftValues.source_bounds
+#print axioms Tests.ShiftValues.public_sources
+#print axioms Tests.ShiftValues.concrete_sources
+#print axioms Airbender.ShiftBinop.Proofs.shift_source_binding
+#print axioms Airbender.ShiftBinop.Proofs.image_shift_sources
+#print axioms Airbender.ShiftBinop.public_shift_sources

@@ -502,8 +502,15 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    six immediate/x0 stale-clock alternatives pass local equations but fail full
    memory matching. Native two-carry equations and eight timestamp queries derive
    all row/prior bounds, alignment and port order without local clock premises.
-   Continue with initialized word bounds and canonical packed-key source binding,
-   then architectural shift results, Sail cell transfers and original execution.
+   Initialized word bounds and canonical packed-key source binding are now
+   derived from actual public code, Sail seeds/PC and accepted native matching.
+   Separate bounded SLL/SRL/SRA half calculations cover all shift amounts/signs;
+   shared time induction supplies read bounds, exact masking bounds actual writes
+   and natural key lifting recovers source/amount quotient and remainder.
+   All twenty-four ordinary/x0 fixtures and twelve concrete shifts pass these
+   public claims without local range, source/key or desired-output premises.
+   Continue with whole architectural shift results, Sail cell/GPR transfers and
+   original instruction/fetched execution.
    Derive actual source reads and states from native matching/public history.
 4. Rebind bigint/BLAKE/Keccak workers and callers. Retest control validity,
    unissued workers, ROM behavior and request participation on v2 before reusing

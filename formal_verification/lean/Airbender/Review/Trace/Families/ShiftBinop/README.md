@@ -15,8 +15,9 @@ The sections below retain successive decoder/table checkpoints. Current native
 [local import](../../../Circuits/ShiftBinop/Artifact.lean), [binary word results](../../../Circuits/ShiftBinop/Binary.lean)
 and [shift contributions](../../../Circuits/ShiftBinop/Shifts.lean) are checked.
 [Initialized history](History.lean) now derives clocks and latest reads from
-public seeds and native matching. Source-word bounds, canonical shift-key binding,
-original instruction retirement and fetched execution remain unfinished.
+public seeds and native matching. [Word bounds](Values.lean) and
+[canonical shift-key binding](Sources.lean) are now derived from initialization.
+Whole architectural shifts, original instruction retirement and fetched execution remain unfinished.
 The exporter uses an empty CSR allow-list; custom CSR/oracle semantics and
 general Rust/compiler/cryptographic refinement remain separate.
 
@@ -68,3 +69,18 @@ second port's readonly refresh at time five; six stale alternatives pass local
 constraints but fail actual native memory matching. [Public applications](../../../../../Tests/ShiftHistory.lean)
 need no expected read or local clock premise. Initialized word bounds, canonical
 packed-key binding and original Sail cell/instruction execution remain open.
+
+## Initialized word ranges and source keys
+
+[All native word bounds](Values.lean) now follow from actual public code/Sail seeds
+and accepted matching, using the unchanged shared time induction. The native
+write rule combines binary results or independently checked shift half sums with
+actual decoded x0 masking. [Canonical source keys](Sources.lean) derive the exact
+native source/amount packing without supplied operand or key bounds.
+[Internal assembly](../../../../Proofs/Trace/Families/ShiftBinop/Sources.lean)
+keeps actual source columns, quotient/remainder and literal inactive zero keys.
+[Original-byte fixtures](../../../../../Tests/ShiftValuesFixture.lean) retain the
+actual native program and replay original decoding under the same misa image;
+[twenty-four initialized applications](../../../../../Tests/ShiftValues.lean)
+cover ordinary/x0 histories and all twelve concrete shifts. Whole architectural
+shifts, Sail cell/GPR transfers and original instruction execution remain next.

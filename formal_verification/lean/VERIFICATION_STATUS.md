@@ -1259,10 +1259,10 @@ Rust/compiler refinement and cryptographic enforcement remain separate.
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all eighty-four concrete test modules pass.
+- Library, both CLI entrypoints and all eighty-six concrete test modules pass.
 - Importer regressions: 386 checks pass.
-- Axiom audit: 1670 explicit roots; only propext, Classical.choice and Quot.sound.
-- All ninety-nine public Review theorems (twenty-five circuit claims, fifty-one trace claims and twenty-three helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Axiom audit: 1695 explicit roots; only propext, Classical.choice and Quot.sound.
+- All one hundred and one public Review theorems (twenty-five circuit claims, fifty-three trace claims and twenty-three helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
 - Source provenance: 78 unchanged reused files, five native circuit artifacts, forty-six native Rust sources plus compiled shift-offset metadata, sixteen native setup artifacts and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
@@ -1489,6 +1489,45 @@ actual Sail cell transfers and original shift/binop instruction/fetched executio
 Runtime CSR setup, worker protocols, cryptography and general Rust/JSON/compiler
 refinement remain separate boundaries. Earlier sections retain their checkpoint
 scope.
+
+
+## Initialized shift/binop word bounds and canonical source keys
+
+[The short value claim](Airbender/Review/Trace/Families/ShiftBinop/Values.lean)
+now derives every native read, actual write and terminal word range from original
+public code construction, actual Sail seeds/PC and accepted native matching.
+[Native write preservation](Airbender/Proofs/Trace/Families/ShiftBinop/Values.lean)
+uses full native decoder membership to select binary results or shift sums and
+retain the exact x0-masked destination. Readonly ports keep their actual refreshes.
+The unchanged shared time induction supplies the earlier source bounds; no
+per-row operand/read/range or desired-result premise is added.
+
+[Internal limb references](Airbender/Proofs/ShiftBinop/LimbModel.lean) preserve two
+native 16-bit source limbs, all 32 shift amounts and SRA's sign-fill/low/high
+order. Separate [SLL](Airbender/Proofs/ShiftBinop/SllLimbBounds.lean),
+[SRL](Airbender/Proofs/ShiftBinop/SrlLimbBounds.lean) and
+[SRA](Airbender/Proofs/ShiftBinop/SraLimbBounds.lean) calculations prove that every
+actual contribution half sum is canonical, including both sign domains. No v3
+byte-table layout or unchecked overlap assumption is used.
+
+[The short source claim](Airbender/Review/Trace/Families/ShiftBinop/Sources.lean)
+now derives exact natural packed-key values and their source/amount remainders
+and quotients, together with actual source/selected bounds. [Observables](Airbender/Review/Circuits/ShiftBinop/SourcesModel.lean)
+retain actual native columns and literal inactive zero slots. [Field lifting](Airbender/Proofs/ShiftBinop/ShiftSourceBounds.lean)
+uses initialized source bounds to exclude Mersenne31 wrap; [trace assembly](Airbender/Proofs/Trace/Families/ShiftBinop/Sources.lean)
+combines those bounds with original decoded entries and accepted contributions.
+Canonical-source binding is derived, rather than postulated.
+
+[Original-byte fixtures](Tests/ShiftValuesFixture.lean) preserve the actual native
+25-slot public program and replay the unchanged original Sail decoder after GPR/PC
+updates with the same misa image. [Initialized applications](Tests/ShiftValues.lean)
+cover all twenty-four ordinary/x0 rows and all twelve concrete shift cases,
+including corrected readonly x0 alias clocks and bounded discarded selected words.
+Whole architectural shift results, actual Sail cell/GPR transfers and original
+instruction/fetched execution remain unfinished. Runtime CSR configuration,
+worker protocols, cryptographic enforcement and general compiler refinement stay
+separate. This is proof coverage, not a new defect finding; the findings bar and
+historical coverage archive are unchanged.
 
 ## Historical coverage and boundary notes
 

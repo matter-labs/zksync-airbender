@@ -57,3 +57,14 @@ derive every local/prior clock input and latest reads from initialization and
 native matching. [Twenty-four initialized cases](../../../../Tests/ShiftHistory.lean)
 retain readonly x0 refreshes; stale aliases fail matching. Word bounds and
 original Sail cell/instruction execution remain separate.
+
+## Shift/binop initialized ranges
+
+[The native public decoder interface](../Decoder/ShiftBinop.lean) retains full
+sparse/padded membership. [Native write preservation](../../../Proofs/Trace/Families/ShiftBinop/Values.lean)
+now combines decoded masks and actual contributions with the unchanged time
+induction, deriving [all native word ranges](../../Trace/Families/ShiftBinop/Values.lean).
+[Canonical packed keys](../../Trace/Families/ShiftBinop/Sources.lean) use these
+derived source bounds. [All twenty-four initialized regressions](../../../../Tests/ShiftValues.lean)
+retain original code bytes, actual x0 masking and readonly refreshes. No expected
+read, key, result or local range premise is introduced.

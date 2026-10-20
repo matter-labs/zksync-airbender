@@ -211,3 +211,12 @@ new Rust program-export certificate. General compiler refinement remains open.
 ## Native v2 shift/binop decoder fidelity
 
 [The original constructor projection](../../Circuits/ShiftBinop/Decoder.lean) retains native v2 x0, full immediate limbs and SRAI funct7 bits. [The short data certificate](../../Trace/Families/ShiftBinop/NativeDecoder.lean) connects independent original public reads/decoding to every actual exported row; [internal assembly](../../../Proofs/ShiftBinop/NativeSetup.lean) checks the stored sentinel tail structurally. This finite fixture certificate leaves dynamic table constraints, initialized shift/binop execution and custom CSR/oracle semantics open.
+
+## Native shift/binop initialized membership
+
+[The shift/binop interface](ShiftBinop.lean) uses the actual imported ten-column
+query and complete sparse/padded public setup. [Initialized native ranges](../../Trace/Families/ShiftBinop/Values.lean)
+and [canonical packed source keys](../../Trace/Families/ShiftBinop/Sources.lean)
+now consume this membership and actual public construction. Native constraints
+exclude unsupported/sentinel rows and original decoding supplies operation masks
+and x0 flags; no local field/range or table-equivalence premise is added.
