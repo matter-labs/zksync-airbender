@@ -1719,3 +1719,15 @@ actual Sail cell transfers and original shift/binop instruction/fetched executio
 Runtime CSR setup, worker protocols, cryptography and general Rust/JSON/compiler
 refinement remain separate boundaries. Earlier sections retain their checkpoint
 scope.
+
+## Finding classification and closure
+
+[The findings register](FINDINGS.md) uses the pinned v3 review standard. An accepted
+counterexample is evidence at its exact tested relation; a concrete pinned source
+validation defect does not require a full forged proof. Neither is fixed by adding
+a Lean premise or completing a conditional proof. Track unresolved implementation
+and physical-enforcement bindings separately from intentional profiles, properties
+actually derived/rejected in stronger claims, and ordinary proof coverage.
+The [historical coverage notes](VERIFICATION_STATUS.md#historical-coverage-and-boundary-notes)
+retain all 71 former register entries without counting them as defects. No native-v2
+defect has yet been established by this backport; unassessed paths remain open.

@@ -525,3 +525,12 @@ Faithful Rust/JSON/Lean generation, full compiled argument correspondence,
 cryptographic lookup/memory/statement enforcement and completeness remain
 separate milestones. Every promoted public theorem needs a nonvacuous regression,
 an explicit axiom root and resolved review-guide links.
+
+## Findings discipline
+
+Use the [same finding-status bar as the pinned v3 review](FINDINGS.md#assessment-standard):
+retain accepted native/reference discrepancies and concrete source defects at their
+exact scope without requiring a full forged proof. An assumption or narrower
+conditional theorem is not a fix. Keep unresolved bindings and supported profiles
+explicit, retest v3 candidates on actual v2 paths, and put coverage/milestone notes
+in verification status rather than inflating the findings register.
