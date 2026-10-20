@@ -1,56 +1,11 @@
-import Slop.Sail.Sequential
+import Slop.Sail.MisaWalk
 import Slop.Arithmetic.Word
 
 namespace Airbender.Reference.Sail
+open Reference.RiscV.Sail _root_.Sail.ArchSem
 
--- Properties of successful outputs of the existing Sail interpreter. These
--- proof rules inspect the original generated decoder, without reimplementing it.
-private def Returns {α : Type} (property : α → Prop) (action : SailRV32.SailM α) : Prop :=
-  ∀ before value after, run action before = .ok value after → property value
-
-private theorem returns_pure {α : Type} (property : α → Prop) (value : α)
-    (h : property value) : Returns property (pure value) := by
-  intro before actual after executed
-  exact (EStateM.Result.ok.inj executed).1 ▸ h
-
-private theorem returns_bind {α β : Type} (property : β → Prop)
-    (action : SailRV32.SailM α) (next : α → SailRV32.SailM β)
-    (h : ∀ value, Returns property (next value)) : Returns property (action >>= next) := by
-  intro before value after executed
-  cases first : run action before with
-  | error error middle =>
-    rw [run_bind_of_error _ _ _ _ _ first] at executed
-    cases executed
-  | ok result middle =>
-    rw [run_bind_of_ok _ _ _ _ _ first] at executed
-    exact h result middle value after executed
-
-private theorem returns_ite {α : Type} (property : α → Prop) (condition : Prop)
-    [Decidable condition] (yes no : SailRV32.SailM α)
-    (hy : Returns property yes) (hn : Returns property no) :
-    Returns property (if condition then yes else no) := by
-  by_cases selected : condition <;> simp [selected, hy, hn]
-
-private def optionProperty {α : Type} (property : α → Prop) : Option α → Prop
-  | none => True
-  | some value => property value
-
-private theorem returns_bind_with {α β : Type} (property : β → Prop)
-    (firstProperty : α → Prop) (action : SailRV32.SailM α)
-    (next : α → SailRV32.SailM β)
-    (hfirst : Returns firstProperty action)
-    (hnext : ∀ value, firstProperty value → Returns property (next value)) :
-    Returns property (action >>= next) := by
-  intro before value after executed
-  cases firstRun : run action before with
-  | error error middle =>
-    rw [run_bind_of_error _ _ _ _ _ firstRun] at executed
-    cases executed
-  | ok result middle =>
-    rw [run_bind_of_ok _ _ _ _ _ firstRun] at executed
-    exact hnext result (hfirst before result middle firstRun) middle value after executed
-
-private def evenOffsets : SailRV32.instruction → Prop
+/-- The offsets of JAL and branches are even: their implicit zero bit is part of the value. -/
+def evenOffsets : SailRV32.instruction → Prop
   | .JAL (imm, _) => imm.toNat % 2 = 0
   | .BTYPE (imm, _, _, _) => imm.toNat % 2 = 0
   | _ => True
@@ -60,11 +15,42 @@ private theorem appended_zero_even {n : Nat} (upperBits : BitVec n) :
   change (upperBits.toNat <<< 1 ||| 0) % 2 = 0
   simp [Nat.shiftLeft_eq]
 
-attribute [irreducible] Returns
+open Lean Meta in
+/-- The leaf rule of `Walk.prove` in `returns` mode: a `pure` value of the decoder satisfies
+    `Q` when it is an instruction whose offset ends in the appended `+++ 0#1` (the JAL and
+    branch clauses), or when it has no offset. -/
+partial def offsetProof (Q v : Expr) : MetaM Expr := do
+  if Q.isAppOfArity ``optionProperty 2 then
+    let v ← whnfCore v
+    if v.isAppOfArity ``Option.none 1 then return mkConst ``True.intro
+    if v.isAppOfArity ``Option.some 2 then return ← offsetProof Q.appArg! v.appArg!
+    throwError "offset walk: option value {v} is not a constructor"
+  unless Q.isConstOf ``evenOffsets do
+    throwError "offset walk: unexpected property {Q}"
+  let v ← whnfCore v
+  if v.isFVar then throwError "offset walk: value {v} has no property in scope"
+  let fn := v.getAppFn
+  if fn.isConstOf ``SailRV32.instruction.JAL || fn.isConstOf ``SailRV32.instruction.BTYPE then
+    -- JAL (imm, rd) and BTYPE (imm, …): the offset is the first component of the tuple
+    let tuple ← whnfCore v.appArg!
+    let imm ← whnfCore (tuple.getArg! 2)
+    unless imm.getAppNumArgs ≥ 2 do
+      throwError "offset walk: offset {imm} is not an appended value"
+    let upper := imm.getArg! (imm.getAppNumArgs - 2)
+    let n := (← inferType upper).appArg!
+    return mkApp2 (mkConst ``appended_zero_even) n upper
+  return mkConst ``True.intro
 
-set_option backward.isDefEq.respectTransparency false in
-set_option maxRecDepth 65536 in
-set_option maxHeartbeats 2000000 in
+open Lean Elab Tactic in
+/-- Closes `Returns evenOffsets e` for the goal's decoder body `e` (unfold the decoder first). -/
+elab "offset_walk" : tactic => do
+  let g ← getMainGoal
+  let ty ← g.getType
+  let pf ← Walk.prove { mode := .returns offsetProof, leaves := fun _ _ => pure none }
+    (ty.getArg! 0) (ty.getArg! 1) ty.appArg!
+  g.assign pf
+  replaceMainGoal []
+
 /-- The original decoder supplies the implicit zero bit of JAL/branch offsets.
     This holds for successful decoding, including any effects in other clauses. -/
 theorem decoded_offset_even (bits : BitVec 32) :
@@ -76,17 +62,7 @@ theorem decoded_offset_even (bits : BitVec 32) :
       | _ => True := by
   have checked : Returns evenOffsets (SailRV32.Functions.encdec_backwards bits) := by
     unfold SailRV32.Functions.encdec_backwards
-    repeat' first
-      | assumption
-      | trivial
-      | (apply returns_pure; dsimp [optionProperty, evenOffsets])
-      | (apply returns_bind_with (firstProperty := optionProperty evenOffsets) <;>
-          try (intro result satisfies; cases result))
-      | apply returns_ite
-      | (apply returns_bind; intro)
-      | exact appended_zero_even _
-      | split
-      | (unfold Returns; intro before value after executed; cases executed)
+    offset_walk
   unfold Returns at checked
   exact checked
 
