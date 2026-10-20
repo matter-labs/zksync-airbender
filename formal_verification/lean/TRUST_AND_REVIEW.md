@@ -1622,3 +1622,33 @@ budgets. Wrong sign-fill tags, wrong immediate selection and injected CSR bits
 reject. Numerical word results, actual Sail register reads, initialized family
 history/execution and runtime CSR setup remain separate. No native defect is
 established.
+
+## Native binary numerical results and actual x0 writes
+
+[The short public binary claim](Airbender/Review/Circuits/ShiftBinop/Binary.lean)
+now derives exact native XOR/OR/AND results for register and immediate forms from
+original public-byte construction, native decoder membership and accepted native
+constraints. [References and observables](Airbender/Review/Circuits/ShiftBinop/BinaryModel.lean)
+retain the actual first-source limbs, selected second operand, selected result
+and masked destination write. Both input words and the selected result are
+bounded conclusions, including when the decoded destination is x0.
+
+[Four-query extraction and native equation assembly](Airbender/Proofs/ShiftBinop/BinaryQueries.lean)
+retain the actual Mersenne31 inverse of 256, 8388608. Every accepted byte key and
+result is below 256; native equations therefore reconstruct six canonical limbs.
+[Word assembly](Airbender/Proofs/ShiftBinop/BinaryValues.lean) uses original bitvector
+concatenation lemmas to prove exact RV32 operations, preserving full word values
+above the field modulus. [Actual masking and decoded assembly](Airbender/Proofs/ShiftBinop/BinaryResults.lean)
+derive discarded x0 writes from native destination equations and the public
+entry's zero flag. No operand-bound, selected-output, table-equivalence or
+individual operation-bit premise is added to the public claim.
+
+[Regressions](Tests/ShiftBinary.lean) reuse complete accepted native fixtures for
+all twelve binary register/immediate/x0 cases, apply the public result root and
+retain negative immediates, full RV32 values above Mersenne31 and nonzero selected
+results discarded at x0. Corrupted byte reconstruction, selected limbs and x0
+writes reject. No native implementation defect is established. Native shift
+numerical assembly, family clocks/ports, initialized register/history transport
+and original Sail instruction execution remain open. Runtime CSR setup, worker
+protocol enforcement, cryptography and general Rust/JSON/compiler refinement
+remain separate boundaries. The preceding sections are earlier checkpoints.

@@ -1,3 +1,4 @@
+import Tests.ShiftBinary
 import Tests.ShiftRouting
 import Tests.ShiftLookups
 import Tests.ShiftArtifact
@@ -1745,3 +1746,21 @@ import Tests.JumpLink
 #print axioms Tests.ShiftRouting.wrong_sign_fill_tag_rejected
 #print axioms Tests.ShiftRouting.wrong_immediate_operand_rejected
 #print axioms Tests.ShiftRouting.injected_csr_bit_rejected
+
+#print axioms Airbender.ShiftBinop.Proofs.binary_queries
+#print axioms Airbender.ShiftBinop.Proofs.binary_bytes
+#print axioms Airbender.ShiftBinop.Proofs.binary_pairs
+#print axioms Airbender.ShiftBinop.Proofs.word_of_byte_pairs
+#print axioms Airbender.ShiftBinop.Proofs.binary_pack
+#print axioms Airbender.ShiftBinop.Proofs.binary_pair_values
+#print axioms Airbender.ShiftBinop.Proofs.binary_selected
+#print axioms Airbender.ShiftBinop.Proofs.written_mask
+#print axioms Airbender.ShiftBinop.Proofs.entry_binary_result
+#print axioms Airbender.ShiftBinop.Proofs.fetched_binary_result
+#print axioms Airbender.ShiftBinop.native_decoded_binary_result
+#print axioms Tests.ShiftBinary.concrete_results
+#print axioms Tests.ShiftBinary.public_results
+#print axioms Tests.ShiftBinary.signed_immediates_and_x0
+#print axioms Tests.ShiftBinary.wrong_selected_word_rejected
+#print axioms Tests.ShiftBinary.nonzero_x0_write_rejected
+#print axioms Tests.ShiftBinary.wrong_byte_reconstruction_rejected

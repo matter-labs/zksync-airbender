@@ -483,8 +483,14 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    limbs and disabled ordinary delegation multiplicity. The six-bit bound rejects
    the complete sentinel tail. Full native fixtures cover all twelve forms and
    their x0 variants; all 96 tagged queries and public routing applications pass.
-   Continue with exact native query values and selected/written word results,
-   then native clocks/ports, initialized history and original Sail execution.
+   Native XOR/OR/AND now derive all four accepted byte queries, both source-word
+   bounds and exact selected RV32 results, including immediate forms. Native
+   inverse-256 equations reconstruct all input/output limbs; original decoded x0
+   flags derive the actual masked writes. Twelve complete binary fixtures retain
+   sign-extended immediates and word values above Mersenne31; corrupted bytes,
+   selected results and x0 writes reject under unchanged caps.
+   Continue with native shift selected/written word results, then native
+   clocks/ports, initialized history and original Sail execution.
    Derive actual source reads and states from native matching/public history.
 4. Rebind bigint/BLAKE/Keccak workers and callers. Retest control validity,
    unissued workers, ROM behavior and request participation on v2 before reusing

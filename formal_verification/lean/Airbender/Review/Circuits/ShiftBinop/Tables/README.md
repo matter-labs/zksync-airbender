@@ -20,3 +20,14 @@ The [complete row regressions](../../../../../Tests/ShiftRouting.lean) retain al
 96 actual tagged memberships across twelve ordinary forms and x0 variants.
 Exact full-word arithmetic, initialized execution and runtime CSR binding remain
 separate from this table-routing connection.
+
+## Binary query values and RV32 assembly
+
+[The native binary result claim](../Binary.lean) now uses all four accepted byte
+queries to derive exact XOR/OR/AND words and actual x0-masked writes, including
+immediate forms. The [internal query equations](../../../../Proofs/ShiftBinop/BinaryQueries.lean)
+retain the Mersenne31 inverse of 256; byte bounds derive both source-word bounds.
+[Regressions](../../../../../Tests/ShiftBinary.lean) preserve full RV32 results
+above Mersenne31 and sign-extended immediates. Native shift word assembly,
+initialized execution and runtime CSR binding remain separate. Earlier sections
+retain their checkpoint scope.

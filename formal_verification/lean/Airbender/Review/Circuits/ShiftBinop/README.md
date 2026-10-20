@@ -17,7 +17,9 @@ The sections below preserve the successive decoder/table checkpoints. The curren
 [routing claim](Routing.lean) binds all four table tags and operand selection to
 original public decoding; [lookup claims](Lookups.lean) connect the complete native
 dynamic import to exact helper membership and derive all selector domains.
-Numerical circuit soundness, initialized Sail execution, custom CSR/oracle
+[The binary result claim](Binary.lean) now proves exact selected XOR/OR/AND words
+and actual x0 writes with derived operand bounds. Shift numerical assembly,
+initialized Sail execution, custom CSR/oracle
 semantics and physical cryptographic enforcement remain unfinished. General
 Rust/JSON/compiler refinement is a separate boundary.
 
@@ -85,3 +87,18 @@ cover all twelve forms and x0 variants, with checked original public routing and
 malformed-tag/operand/CSR-bit rejection. Numerical word results, actual Sail
 register reads, initialized family execution and delegation protocol soundness
 remain unfinished.
+
+## Native XOR/OR/AND results
+
+[The short public numerical claim](Binary.lean) derives both operand bounds,
+the selected RV32 operation and actual x0-masked writes from original public
+construction, native decoder membership and accepted constraints.
+[References](BinaryModel.lean) retain actual native word observations.
+[Query assembly](../../../Proofs/ShiftBinop/BinaryQueries.lean) uses all four byte
+lookups and the native inverse-256 equations. [Word assembly](../../../Proofs/ShiftBinop/BinaryValues.lean)
+preserves full 32-bit values above Mersenne31; [masking and source assembly](../../../Proofs/ShiftBinop/BinaryResults.lean)
+derive original decoded x0 behavior. [Regressions](../../../../Tests/ShiftBinary.lean)
+cover all twelve binary register/immediate/x0 forms and corrupted byte/result/write
+rejections using complete accepted native fixtures. Native shifts, initialized
+register/history transport, original Sail execution and runtime CSR binding remain
+unfinished. Earlier sections retain their checkpoint scope.
