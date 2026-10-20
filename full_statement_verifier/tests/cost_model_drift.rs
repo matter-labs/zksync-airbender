@@ -110,3 +110,29 @@ fn emit_per_circuit_verifier_costs() {
         println!("(\"{circuit}\", {}),", guest_cycles(circuit));
     }
 }
+
+#[test]
+fn calibration_fixture_encoding_round_trips_every_compiled_circuit() {
+    use full_statement_verifier::host_utils::fixture_codec;
+    use verifier_common::cs::gkr_compiler::GKRCircuitArtifact;
+
+    let dir = format!("{}/cs/compiled_circuits", repo_root());
+    let mut checked = 0;
+    for entry in std::fs::read_dir(&dir).unwrap() {
+        let path = entry.unwrap().path();
+        if !path.to_string_lossy().ends_with("_layout_gkr.json") {
+            continue;
+        }
+        let artifact: GKRCircuitArtifact<BabyBearField> =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        let decoded: GKRCircuitArtifact<BabyBearField> =
+            fixture_codec::decode(&fixture_codec::encode(&artifact, Vec::new()));
+        assert!(
+            decoded == artifact,
+            "{} changed in the fixture encoding",
+            path.display()
+        );
+        checked += 1;
+    }
+    assert!(checked > 0);
+}

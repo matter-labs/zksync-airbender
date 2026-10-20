@@ -17,6 +17,7 @@ use setups::Setups;
 use verifier_common::field::baby_bear::base::BabyBearField;
 
 pub mod calibrate;
+pub mod fixtures;
 pub mod plan;
 
 const UNROLLED_RECURSION_CYCLES_BOUND: usize = 1 << 28;
@@ -198,30 +199,13 @@ pub fn fsv_dir() -> String {
 }
 
 fn read_compressed<T: serde::de::DeserializeOwned>(path: &str) -> T {
-    use flate2::read::ZlibDecoder;
-    use std::io::Read;
-
-    let mut src = std::fs::File::open(path).unwrap_or_else(|e| panic!("open {path}: {e}"));
-    let mut buffer = vec![];
-    src.read_to_end(&mut buffer).expect("read fixture");
-    let mut decoder = ZlibDecoder::new(&buffer[..]);
-    let mut unpacked: Vec<u8> = vec![];
-    decoder
-        .read_to_end(&mut unpacked)
-        .expect("decompress fixture");
-    bincode::deserialize_from(&unpacked[..]).expect("deserialize fixture")
+    let buffer = std::fs::read(path).unwrap_or_else(|e| panic!("open {path}: {e}"));
+    full_statement_verifier::host_utils::fixture_codec::decode(&buffer)
 }
 
 pub fn load_calibration_proof(name: &str) -> (Setups, ProgramProof) {
-    let dir = std::env::var("COST_MODEL_FIXTURE_DIR").unwrap_or_else(|_| {
-        panic!(
-            "set COST_MODEL_FIXTURE_DIR to the directory holding \
-             {name}_proof.bin / {name}_setups.bin (zlib-compressed bincode of \
-             ProgramProof / Setups); see the module docs of \
-             tests/cost_model_trace.rs for how to produce and name them"
-        )
-    });
-    let proof = read_compressed(&format!("{dir}/{name}_proof.bin"));
-    let setups = read_compressed(&format!("{dir}/{name}_setups.bin"));
+    let directory = std::env::var("COST_MODEL_FIXTURE_DIR").expect("set COST_MODEL_FIXTURE_DIR");
+    let proof = read_compressed(&format!("{directory}/{name}_proof.bin"));
+    let setups = read_compressed(&format!("{directory}/{name}_setups.bin"));
     (setups, proof)
 }

@@ -16,12 +16,12 @@ serde = { workspace = true, default-features = false, features = ["derive", "all
 
 # Host-only (pulls the full prover stack) — gated behind `host_utils`, never in RISC-V builds.
 setups = { workspace = true, optional = true }
+flate2 = { version = "*", optional = true }
+serde_json = { version = "*", optional = true }
 
 [dev-dependencies]
 serde_json = "*"
 riscv_transpiler = { workspace = true }
-bincode = { version = "1.3" }
-flate2 = "*"
 
 [features]
 verifiers = []
@@ -40,7 +40,7 @@ verifier_stats = ["verifier_common/verifier_stats"]
 # Host-side recursion-driver helpers (setup-map streams, native verification,
 # fsv binary loading). Implies `proof_utils` (std build + `ProgramProof`); the
 # native_verify_* wrappers additionally need `verifiers` + a security level.
-host_utils = ["proof_utils", "dep:setups"]
+host_utils = ["proof_utils", "dep:setups", "dep:flate2", "dep:serde_json"]
 default = ["verifiers", "proof_utils"]
 
 [lints]
