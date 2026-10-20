@@ -1,6 +1,9 @@
 import Slop.Blake2Round.ColumnG
 import Slop.Blake2Round.Lookups
 import Slop.Blake2Round.ArtifactChecks
+import Slop.Blake2Round.OpIndex
+import Slop.Blake2Round.Eval
+import Slop.Blake2G.OpIndex
 
 set_option warningAsError true
 -- one call's goals may not use every lemma of the shared simp set
@@ -23,9 +26,9 @@ theorem column_g_queries_3 {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
   have member := Verification.lookup_of_holds h
     ⟨2 + 18 * (3 : Fin 4).val + i.val, by rw [lookup_count]; have size := i.isLt; simp; omega⟩
   fin_cases i
+  all_goals op_index at member ⊢
   all_goals apply padded_membership member
   all_goals ext j hj
-  all_goals interval_cases j <;>
-    simp [Expression.eval, Verification.environment, columnGBase, Blake2G.Proofs.assemble, padXor]
+  all_goals interval_cases j <;> eval_entry [columnGBase, Blake2G.Proofs.assemble, padXor]
 
 end Airbender.Blake2Round.Proofs
