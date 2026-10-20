@@ -14,10 +14,10 @@ if grep -rnE '^\s*(public\s+)?import\s+(Slop|Tests|Checks)(\.|$)' human; then fa
 echo "== 2. Lean build (spec + proofs + importer)"
 lake build Human Slop airbender_import 2>&1 | tail -1
 
-echo "== 3. Regressions and axiom audits"
+echo "== 3. Regressions; final statements (each slop/Slop/Final theorem proves its human/ ...Claim, test/Checks/Claims.lean); axiom audits"
 lake build Test airbender_tests 2>&1 | tail -1
 lake exe airbender_tests
-for audit in Axioms TraceAxioms; do
+for audit in Claims Axioms TraceAxioms; do
   out=$(lake env lean "test/Checks/$audit.lean")
   # Lean wraps long axiom lists over several lines: join before matching
   lists=$(tr '\n' ' ' <<<"$out" | grep -oE "depends on axioms: \[[^]]*\]" | tr -s ' ' || true)

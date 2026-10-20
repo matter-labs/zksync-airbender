@@ -44,6 +44,7 @@ name = "Test"
 srcDir = "test"
 roots = [
   "Checks.Axioms",
+  "Checks.Claims",
   "Checks.TraceAxioms",
   "Tests.ArtifactImport",
   "Tests.Bigint",

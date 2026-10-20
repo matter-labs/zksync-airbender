@@ -1,0 +1,31 @@
+import Human.Circuits.AddSub.Reference
+import Human.Circuits.JumpBranchSlt.Model
+import Human.Circuits.ShiftBinop.Model
+import Human.Circuits.WordMemory.Model
+import Human.Helpers.Context.Registries.JumpBranchSlt
+import Human.Helpers.Context.Registries.MulDiv
+import Human.Helpers.Context.Registries.ShiftBinop
+import Human.Helpers.Context.Registries.SubwordMemory
+import Human.Helpers.Core.BabyBearPrime
+import Human.Helpers.Memory.SailHistory
+
+-- The statements proven in slop/Slop/Final/Circuits/WordMemory/Theorems.lean (checked by verify.sh).
+
+namespace Airbender.WordMemory
+open Reference.RiscV.Sail Trace _root_.Sail.ArchSem
+
+/-- Every LW/SW row in the initialized shared history agrees with original Sail:
+    effective address, transferred data, GPR/memory effects and PC retirement.
+    Public initialization, modeled tables and platform conditions are listed in
+    `Model.lean`; bounds and successful reads/accesses are derived internally. -/
+def SoundnessClaim : Prop :=
+  ∀ [MemoryPlatform SailRV32.exception] {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1) (trace : PooledTrace p) (initial : State) (cells : List Cell) (program : List PooledProgramEntry),
+    InterfaceAssumptions trace initial cells program →
+    Properties.Soundness (circuitModel trace initial cells program).relation spec
+
+def BabyBearSoundnessClaim : Prop :=
+  ∀ [MemoryPlatform SailRV32.exception] (trace : PooledTrace babyBearModulus) (initial : State) (cells : List Cell) (program : List PooledProgramEntry),
+    InterfaceAssumptions trace initial cells program →
+    Properties.Soundness (circuitModel trace initial cells program).relation spec
+
+end Airbender.WordMemory

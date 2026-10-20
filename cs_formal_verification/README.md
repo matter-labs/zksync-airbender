@@ -13,8 +13,11 @@ does not import the proofs, runs the regressions and the axiom audits, checks th
   `Human/Helpers/Properties.lean`), whole-trace execution contracts (`Human/Trace/`) and the JSON importer that turns
   an artifact into Clean constraints (`Human/Import/`). It imports only Mathlib, Clean, the Sail model and itself
   (`./verify.sh` step 1). Its directory READMEs are the review guide.
+  The final statements are `def …Claim : Prop` in `Human/**/Theorems.lean` (and `Human/Trace/Soundness.lean`),
+  imported by `Human.lean`.
 - `lean/slop/` — everything else (kernel-checked, not meant to be read): supporting calculations, proof assembly and
-  artifact guards (`Slop/`), and the public claim theorems (`Slop/Final/`, laid out like `Human/`).
+  artifact guards (`Slop/`), and the proofs of the final statements (`Slop/Final/`, laid out like `Human/`;
+  `test/Checks/Claims.lean` checks each theorem against its `…Claim` by name and type, and its axioms).
 - `lean/test/` — regressions and fixtures (`Tests/`), the axiom audits (`Checks/`).
 - `lean/sail-rv32/` — the generated Sail RV32 slice (Lean) with its provenance; `sail/` — its generator
   (`sail/generate_sail.py`, `sail/sail_slice.ml`, `sail/SailPlatform.lean`) and the reviewed upstream Sail sources (`sail/sail-riscv/`).
