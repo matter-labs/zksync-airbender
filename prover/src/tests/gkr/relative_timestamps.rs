@@ -31,8 +31,8 @@ use std::alloc::Global;
 use std::collections::{BTreeMap, BTreeSet};
 use worker::Worker;
 
-type F = BabyBearField;
-type Trace = GKRFullWitnessTrace<F, Global, Global>;
+pub(super) type F = BabyBearField;
+pub(super) type Trace = GKRFullWitnessTrace<F, Global, Global>;
 type Counters = DelegationsAndFamiliesCounters;
 type Row<const IW: usize, const VO: usize> =
     DelegationWitness<NUM_KECCAK_F1600_REGISTER_ACCESSES, NUM_KECCAK_F1600_INDIRECT_READS, IW, VO>;
@@ -251,9 +251,9 @@ fn addresses(group: &RelativeTimestampGroup) -> [GKRAddress; 3] {
     ]
 }
 
-type Relation = CompiledMaxQuadraticGKRRelation<F>;
+pub(super) type Relation = CompiledMaxQuadraticGKRRelation<F>;
 
-fn lowered_constraints(circuit: &GKRCircuitArtifact<F>) -> Vec<&Relation> {
+pub(super) fn lowered_constraints(circuit: &GKRCircuitArtifact<F>) -> Vec<&Relation> {
     let constraints: Vec<&Relation> = circuit
         .layers
         .iter()
@@ -304,7 +304,11 @@ fn evaluate(relation: &Relation, trace: &Trace, row: usize) -> F {
     result
 }
 
-fn failing(constraints: &[&Relation], trace: &Trace, row: usize) -> Vec<BTreeSet<GKRAddress>> {
+pub(super) fn failing(
+    constraints: &[&Relation],
+    trace: &Trace,
+    row: usize,
+) -> Vec<BTreeSet<GKRAddress>> {
     constraints
         .iter()
         .filter(|relation| evaluate(relation, trace, row) != F::ZERO)
@@ -346,7 +350,7 @@ fn distance_inputs(
         .collect()
 }
 
-fn tampered_failures(
+pub(super) fn tampered_failures(
     constraints: &[&Relation],
     trace: &mut Trace,
     row: usize,
