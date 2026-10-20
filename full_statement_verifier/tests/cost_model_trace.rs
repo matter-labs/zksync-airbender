@@ -32,10 +32,9 @@
 //! non-authoritative local calibration inputs and must not be committed or
 //! consumed by CI.
 //! Optional local block corpora are described in the generator's doc comment.
-//! Their local `fixtures_manifest.bin` includes every generated block/stage.
-//! Set `COST_MODEL_FIXTURE_DIR` to one output, or `COST_MODEL_FIXTURE_DIRS` to an
-//! OS-path-list of outputs to calibrate/accept their pool (colon-separated on
-//! Unix). Duplicate directories, omitted pairs and unlisted extras fail closed.
+//! Set `COST_MODEL_FIXTURE_DIR` to one generated output directory. The loader
+//! discovers every `*_proof.bin` and its matching `*_setups.bin`; fixture names
+//! containing `recursion` select the recursion verifier.
 //!
 //! `emit_census_tables` prints the fitted tables for `census.rs`. The total and
 //! census acceptance gates allow the original 0.1% family / 0.05% delegation
@@ -291,16 +290,20 @@ fn census_estimate_matches_measurement_on_every_fixture() {
         estimate_verifier_census, CENSUS_DIMS, NUM_CENSUS_DIMS,
     };
     for Fixture { name, program } in &all_fixtures() {
-        let (trace, _) = trace::calibrate::trace_fixture(name, *program);
+        let (t, _) = trace::calibrate::trace_fixture(name, *program);
         let proof = trace::load_calibration_proof(name).1;
         let estimate = estimate_verifier_census(&proof, *program, BlakeMode::Compression).unwrap();
         assert_eq!(estimate.len(), NUM_CENSUS_DIMS);
         for (d, (dim, value)) in estimate.iter().enumerate() {
             assert_eq!(*dim, CENSUS_DIMS[d]);
-            let measured = trace.total_census[d];
+            let measured = t.total_census[d];
             let error = value.abs_diff(measured);
             let budget = acceptance_budget(&proof, *program, d, measured);
-            assert!(error <= budget, "{name} dim {d} ({dim:?}): estimate {value} vs measured {measured}: {error} > {budget}");
+            assert!(
+                error <= budget,
+                "{name} dim {d} ({dim:?}): estimate {value} vs measured {measured}: \
+                 {error} > {budget}"
+            );
         }
     }
 }

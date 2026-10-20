@@ -204,12 +204,8 @@ fn read_compressed<T: serde::de::DeserializeOwned>(path: &str) -> T {
 }
 
 pub fn load_calibration_proof(name: &str) -> (Setups, ProgramProof) {
-    let prefix = if std::path::Path::new(name).is_absolute() {
-        std::path::PathBuf::from(name)
-    } else {
-        fixtures::directories()[0].join(name)
-    };
-    let proof = read_compressed(&format!("{}_proof.bin", prefix.display()));
-    let setups = read_compressed(&format!("{}_setups.bin", prefix.display()));
+    let directory = std::env::var("COST_MODEL_FIXTURE_DIR").expect("set COST_MODEL_FIXTURE_DIR");
+    let proof = read_compressed(&format!("{directory}/{name}_proof.bin"));
+    let setups = read_compressed(&format!("{directory}/{name}_setups.bin"));
     (setups, proof)
 }

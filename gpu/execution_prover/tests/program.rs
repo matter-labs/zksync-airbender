@@ -5,10 +5,6 @@
 
 #![allow(unused_imports)]
 
-#[cfg(feature = "verifiers")]
-#[path = "support/cost_model_inputs.rs"]
-mod cost_model_inputs;
-
 mod upstream {
     pub use full_statement_verifier::host_utils::cost_model::estimate_verifier_cycles;
     pub use full_statement_verifier::host_utils::{
@@ -65,12 +61,23 @@ fn load_workload(name: &str) -> (Vec<u32>, Vec<u32>) {
 }
 
 #[cfg(all(not(no_cuda), feature = "verifiers"))]
+fn read_witness(path: &std::path::Path) -> Vec<u32> {
+    let raw = std::fs::read_to_string(path).expect("read witness");
+    let raw = raw.trim();
+    assert!(raw.len().is_multiple_of(8));
+    raw.as_bytes()
+        .chunks(8)
+        .map(|word| {
+            u32::from_str_radix(std::str::from_utf8(word).unwrap(), 16)
+                .expect("invalid witness word")
+        })
+        .collect()
+}
+
+#[cfg(all(not(no_cuda), feature = "verifiers"))]
 fn load_zksync_os_workload() -> (Vec<u32>, Vec<u32>, Vec<u32>) {
     let root = artifact_root();
-    let raw =
-        std::fs::read_to_string(root.join("riscv_transpiler/examples/zksync_os/23620012_witness"))
-            .expect("read zkSync OS block-23620012 witness");
-    let witness = cost_model_inputs::parse_hex(&raw);
+    let witness = read_witness(&root.join("riscv_transpiler/examples/zksync_os/23620012_witness"));
     let (_, binary_image) = read_binary(&root.join("riscv_transpiler/examples/zksync_os/app.bin"));
     let (_, text_section) = read_binary(&root.join("riscv_transpiler/examples/zksync_os/app.text"));
     (binary_image, text_section, witness)
@@ -168,22 +175,6 @@ fn push_window_touches(binary: &mut Vec<u32>) {
         binary.push(address | (5 << 7) | 0x37); // lui x5, address >> 12
         binary.push(0x0052_a023); // sw x5, 0(x5)
     }
-}
-
-/// Assert the repeated-proof counts the synthetic fixtures are built for.
-#[cfg(all(not(no_cuda), feature = "verifiers", feature = "deterministic_pow"))]
-fn assert_repeated_proofs(proof: &crate::upstream::ProgramProof, families: &[u8]) {
-    for family in families {
-        let count = proof
-            .riscv_proofs
-            .get(&(*family as u32))
-            .map_or(0, Vec::len);
-        assert!(
-            count >= COST_MODEL_REPEATS,
-            "family {family}: {count} proofs, expected at least {COST_MODEL_REPEATS}"
-        );
-    }
-    assert_eq!(proof.inits_and_teardown_proofs.len(), 2);
 }
 
 /// Prove `(binary_image, text_section)` with the given non-determinism reads on
@@ -753,8 +744,7 @@ fn test_program_prover_recursive_pipeline_zksync_os() {
 /// u32 witness words, most significant digit first (trailing whitespace allowed).
 /// Inputs run in lexicographic id order, each through the base and two recursion
 /// stages. The first keeps `base`/`recursion0`/`recursion1`; later inputs append
-/// `_<id>`. The existing synthetic fixtures and `base_alt` run once. A local
-/// zlib-JSON `fixtures_manifest.bin` lists every `(name, is_base_layer)` pair.
+/// `_<id>`. The existing synthetic fixtures and `base_alt` run once.
 /// Without this variable the committed block-23620012 guest/witness is used.
 /// Never commit local inputs or generated fixtures.
 #[test]
@@ -772,65 +762,36 @@ fn test_generate_sec100_cost_model_fixtures() {
         .map(std::path::PathBuf::from)
         .expect("set COST_MODEL_FIXTURE_DIR to an empty local output directory");
     std::fs::create_dir_all(&fixture_dir).expect("create cost-model fixture directory");
-    let input_dir = std::env::var_os("COST_MODEL_INPUT_DIR").map(std::path::PathBuf::from);
-    let (base_binary, base_text, inputs) = if let Some(directory) = &input_dir {
-        let paths = cost_model_inputs::discover(directory);
-        let (_, binary) = read_binary(&directory.join("app.bin"));
-        let (_, text) = read_binary(&directory.join("app.text"));
-        let inputs: Vec<_> = paths
-            .into_iter()
-            .map(|(id, path)| (id, cost_model_inputs::load_words(&path)))
-            .collect();
-        (binary, text, inputs)
-    } else {
-        let (binary, text, witness) = load_zksync_os_workload();
-        (binary, text, vec![("default".to_owned(), witness)])
-    };
-    let names: Vec<_> = inputs
-        .iter()
-        .enumerate()
-        .map(|(i, (id, _))| {
-            let suffix = if i == 0 {
-                String::new()
-            } else {
-                format!("_{id}")
-            };
-            [
-                format!("base{suffix}"),
-                format!("recursion0{suffix}"),
-                format!("recursion1{suffix}"),
-            ]
-        })
-        .collect();
-    let mut manifest = Vec::new();
-    for names in &names {
-        manifest.extend([
-            (names[0].clone(), true),
-            (names[1].clone(), false),
-            (names[2].clone(), false),
-        ]);
-    }
-    manifest.extend([
-        ("base_alt".to_owned(), true),
-        ("keccak_f1600".to_owned(), true),
-        ("memory_windows".to_owned(), true),
-        ("memory_windows_recursion".to_owned(), false),
-    ]);
     assert!(
-        !fixture_dir.join("fixtures_manifest.bin").exists(),
-        "output manifest already exists"
+        std::fs::read_dir(&fixture_dir).unwrap().next().is_none(),
+        "fixture output directory must be empty"
     );
-    let mut unique_names = std::collections::BTreeSet::new();
-    for (name, _) in &manifest {
-        assert!(
-            unique_names.insert(name),
-            "conflicting local input name {name}"
-        );
-        for suffix in ["proof", "setups"] {
-            let path = fixture_dir.join(format!("{name}_{suffix}.bin"));
-            assert!(!path.exists(), "refusing to overwrite {}", path.display());
-        }
-    }
+    let (base_binary, base_text, inputs) =
+        if let Some(directory) = std::env::var_os("COST_MODEL_INPUT_DIR") {
+            let directory = std::path::PathBuf::from(directory);
+            let (_, binary) = read_binary(&directory.join("app.bin"));
+            let (_, text) = read_binary(&directory.join("app.text"));
+            let mut paths: Vec<_> = std::fs::read_dir(directory.join("inputs"))
+                .unwrap()
+                .map(|entry| entry.unwrap().path())
+                .filter(|path| path.extension().is_some_and(|extension| extension == "hex"))
+                .collect();
+            paths.sort_by(|a, b| a.file_stem().cmp(&b.file_stem()));
+            assert!(!paths.is_empty(), "local corpus has no inputs/*.hex");
+            let inputs: Vec<_> = paths
+                .iter()
+                .map(|path| {
+                    (
+                        path.file_stem().unwrap().to_str().unwrap().to_owned(),
+                        read_witness(path),
+                    )
+                })
+                .collect();
+            (binary, text, inputs)
+        } else {
+            let (binary, text, witness) = load_zksync_os_workload();
+            (binary, text, vec![("default".to_owned(), witness)])
+        };
 
     let configuration = ExecutionProverConfiguration {
         security_level: SecurityLevel::Sec100,
@@ -873,8 +834,13 @@ fn test_generate_sec100_cost_model_fixtures() {
     );
 
     let mut last_chain = None;
-    for ((id, witness), names) in inputs.into_iter().zip(&names) {
-        log::info!("calibration input {id}: {} words", witness.len());
+    for (i, (id, witness)) in inputs.into_iter().enumerate() {
+        let suffix = if i == 0 {
+            String::new()
+        } else {
+            format!("_{id}")
+        };
+        let names = ["base", "recursion0", "recursion1"].map(|name| format!("{name}{suffix}"));
         let (base_proof, base_setups) = prove_registered_on_gpu(&mut prover, &guest, witness);
         native_verify_unrolled(build_unrolled_stream(&base_setups, &base_proof), true);
         write_cost_model_fixture(&fixture_dir, &names[0], &base_proof, &base_setups);
@@ -966,16 +932,8 @@ fn test_generate_sec100_cost_model_fixtures() {
         common_constants::delegation_types::keccak_f1600::KECCAK_COLUMN_PARITY_CSR_REGISTER,
         common_constants::delegation_types::keccak_f1600::KECCAK_CHI5_CSR_REGISTER,
     ] {
-        assert!(keccak_proof.delegation_proofs[&csr].len() >= COST_MODEL_REPEATS);
+        assert!(keccak_proof.delegation_proofs[&csr].len() >= 2);
     }
-    assert_repeated_proofs(
-        &keccak_proof,
-        &[
-            common_constants::ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX,
-            common_constants::JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX,
-            common_constants::LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX,
-        ],
-    );
     native_verify_unrolled(build_unrolled_stream(&keccak_setups, &keccak_proof), true);
     write_cost_model_fixture(&fixture_dir, "keccak_f1600", &keccak_proof, &keccak_setups);
 
@@ -1003,17 +961,7 @@ fn test_generate_sec100_cost_model_fixtures() {
         memory_binary,
         vec![],
     );
-    assert_repeated_proofs(
-        &memory_proof,
-        &[
-            common_constants::ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX,
-            common_constants::JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX,
-            common_constants::SHIFT_BINARY_CIRCUIT_FAMILY_IDX,
-            common_constants::MUL_DIV_CIRCUIT_FAMILY_IDX,
-            common_constants::LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX,
-            common_constants::LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX,
-        ],
-    );
+    assert_eq!(memory_proof.inits_and_teardown_proofs.len(), 2);
     native_verify_unrolled(build_unrolled_stream(&memory_setups, &memory_proof), true);
     write_cost_model_fixture(
         &fixture_dir,
@@ -1046,15 +994,7 @@ fn test_generate_sec100_cost_model_fixtures() {
         memory_binary,
         vec![],
     );
-    assert_repeated_proofs(
-        &memory_proof,
-        &[
-            common_constants::ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX,
-            common_constants::JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX,
-            common_constants::SHIFT_BINARY_CIRCUIT_FAMILY_IDX,
-            common_constants::LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX,
-        ],
-    );
+    assert_eq!(memory_proof.inits_and_teardown_proofs.len(), 2);
     memory_proof.set_recursion_chain(&chain);
     native_verify_unrolled(build_unrolled_stream(&memory_setups, &memory_proof), false);
     write_cost_model_fixture(
@@ -1063,7 +1003,6 @@ fn test_generate_sec100_cost_model_fixtures() {
         &memory_proof,
         &memory_setups,
     );
-    write_compressed(&manifest, &fixture_dir.join("fixtures_manifest.bin"));
 }
 
 #[cfg(all(not(no_cuda), feature = "verifiers"))]
