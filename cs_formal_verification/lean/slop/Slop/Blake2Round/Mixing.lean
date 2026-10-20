@@ -1,6 +1,14 @@
 import Slop.Blake2G.Soundness
 import Slop.Blake2Round.Lookups
 import Slop.Blake2Round.ArtifactChecks
+import Slop.Blake2Round.ColumnGFlags0
+import Slop.Blake2Round.ColumnGFlags1
+import Slop.Blake2Round.ColumnGFlags2
+import Slop.Blake2Round.ColumnGFlags3
+import Slop.Blake2Round.ColumnGQueries0
+import Slop.Blake2Round.ColumnGQueries1
+import Slop.Blake2Round.ColumnGQueries2
+import Slop.Blake2Round.ColumnGQueries3
 
 set_option warningAsError true
 
@@ -9,22 +17,6 @@ namespace Airbender.Blake2Round.Proofs
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2000000
 
--- Rename each column invocation's actual input and temporary columns. Its output
--- words are expressions in this artifact, not separate allocated variables.
-def columnGBase {p : Nat} (call : Fin 4) (w : Nat → ZMod p) (column : Nat) : ZMod p :=
-  match column with
-  | 15 => w (155 + 4 * call.val) | 16 => w (157 + 4 * call.val)
-  | 19 => w (171 + 4 * call.val) | 20 => w (173 + 4 * call.val)
-  | 23 => w (186 + 2 * call.val) | 24 => w (187 + 2 * call.val)
-  | 27 => w (#v[198, 194, 200, 196][call]) | 28 => w (#v[199, 195, 201, 197][call])
-  | 33 => w (236 + 4 * call.val) | 34 => w (237 + 4 * call.val)
-  | 35 => w (238 + 4 * call.val) | 36 => w (239 + 4 * call.val)
-  | n => w (n + 231 + 46 * call.val)
-
-def columnGAssignment {p : Nat} (call : Fin 4) (w : Nat → ZMod p) (column : Nat) : ZMod p :=
-  Blake2G.Proofs.assemble (columnGBase call w) column
-
-set_option maxHeartbeats 16000000 in
 /-- Each column call's twelve actual Boolean assertions and eighteen native XOR
     memberships imply the previously verified G arithmetic fragment. Assembly
     equations hold by construction of the internal output expressions. -/
@@ -35,21 +27,11 @@ theorem column_g_holds {p : Nat} [Fact p.Prime] (call : Fin 4) {w : Nat → ZMod
       (Blake2G.Proofs.mixingConstraints (Blake2G.setupTable (fun _ => Vector.replicate 7 0))) := by
   apply Blake2G.Proofs.assembled_holds
   · intro k
-    have flag := Verification.assertion_of_holds h
-      ⟨197 + 12 * call.val + k.val, by rw [constraint_count]; have size := k.isLt; have callSize := call.isLt; omega⟩
-    fin_cases call <;> fin_cases k
-    all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-      Verification.environment, columnGBase, Blake2G.Variables.booleanColumns,
-      mul_eq_zero, ← sub_eq_add_neg, sub_eq_zero] at flag ⊢
-    all_goals exact flag
+    fin_cases call
+    exacts [column_g_flags_0 h k, column_g_flags_1 h k, column_g_flags_2 h k, column_g_flags_3 h k]
   · intro i
-    have member := Verification.lookup_of_holds h
-      ⟨18 * call.val + i.val + 2, by rw [lookup_count]; have size := i.isLt; have callSize := call.isLt; omega⟩
-    fin_cases call <;> fin_cases i
-    all_goals apply padded_membership member
-    all_goals ext j hj
-    all_goals interval_cases j <;>
-      simp [Expression.eval, Verification.environment, columnGBase, Blake2G.Proofs.assemble, padXor]
+    fin_cases call
+    exacts [column_g_queries_0 h i, column_g_queries_1 h i, column_g_queries_2 h i, column_g_queries_3 h i]
 
 /-- Reuse the same G soundness theorem for all four column calls. The mapping
     selects their internal input/output expressions; it assumes no G result. -/

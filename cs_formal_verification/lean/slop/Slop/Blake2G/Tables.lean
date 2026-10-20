@@ -3,6 +3,7 @@ import Mathlib.Tactic.FinCases
 
 namespace Airbender.Blake2G.Proofs
 
+set_option maxRecDepth 100000 in
 private theorem xor_rows {control : Fin 512 → Vector Nat 7} (index : Fin 344896)
     (kind : Fin 5) (selected : (setupRow control index)[8] = (#v[4, 17, 18, 19, 20][kind])) :
     (setupRow control index)[0] < 2 ^ (#v[8, 3, 4, 7, 9][kind]) ∧
