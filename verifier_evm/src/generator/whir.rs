@@ -15,7 +15,6 @@
 
 use super::Lit;
 use field::Proth120;
-use prover::gkr::prover::WhirSchedule;
 use prover::gkr::prover_config::ProverConfig;
 
 /// Every WHIR verifier parameter, derived from `(WhirSchedule, pack_log2, trace_len_log2, widths)`.

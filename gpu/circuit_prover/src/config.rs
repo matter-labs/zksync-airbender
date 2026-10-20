@@ -11,10 +11,7 @@
 //! into `prove()`. The low `witness::circuit_type` enum stays a pure
 //! domain type with no `ProverConfig`/`SecurityLevel` coupling.
 
-use crate::upstream::{
-    config_for_security_level_under_pessimistic_conjecture, pow_bits, GKRCircuitArtifact,
-    ProverConfig, SecurityLevel,
-};
+use crate::upstream::{pow_bits, GKRCircuitArtifact, ProverConfig, SecurityLevel};
 use gpu_core::primitives::field::{BF, E4};
 use gpu_trace::witness::circuit_type::CircuitType;
 
@@ -96,6 +93,7 @@ pub(crate) fn batched_proximity_check_pow_bits(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::upstream::config_for_security_level_under_pessimistic_conjecture;
     use gpu_trace::witness::circuit_type::UnrolledCircuitType;
 
     #[test]

@@ -2173,6 +2173,9 @@ fn prove_configured_with_gkr_from_forward_eval<
             .mul_assign(&teardown_set_computed.inverse().expect("must not be zero"));
     }
 
+    // the operation mode only feeds the single-chunk grand-product self-check
+    #[cfg(not(feature = "gkr_self_checks"))]
+    let _ = &operation_mode;
     #[cfg(feature = "gkr_self_checks")]
     if let OperationMode::SingleChunk {
         register_final_state,

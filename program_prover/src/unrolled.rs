@@ -1571,7 +1571,6 @@ pub fn prove_unrolled_execution_with_replayer<
         let setup = &blake_round_function_setup;
         let witness_eval_fn = setups::blake2_with_compression_witness_eval_fn;
         if !delegation_circuits.is_empty() {
-            let trace_len = setup.trace_len;
             let prover_config = setup.prover_config(security_level).clone();
             let (proofs, per_tree_set) =
                 prove_delegation_circuit::<Global, DelegationDescription, _, _, _, _, _, _>(
@@ -1607,7 +1606,6 @@ pub fn prove_unrolled_execution_with_replayer<
         let setup = &bigint_setup;
         let witness_eval_fn = setups::bigint_witness_eval_fn;
         if !delegation_circuits.is_empty() {
-            let trace_len = setup.trace_len;
             let prover_config = setup.prover_config(security_level).clone();
             let (proofs, per_tree_set) =
                 prove_delegation_circuit::<Global, DelegationDescription, _, _, _, _, _, _>(
@@ -1643,7 +1641,6 @@ pub fn prove_unrolled_execution_with_replayer<
         let setup = &keccak_special5_setup;
         let witness_eval_fn = setups::keccak_special5_witness_eval_fn;
         if !delegation_circuits.is_empty() {
-            let trace_len = setup.trace_len;
             let prover_config = setup.prover_config(security_level).clone();
             let (proofs, per_tree_set) =
                 prove_delegation_circuit::<Global, DelegationDescription, _, _, _, _, _, _>(
@@ -1679,7 +1676,6 @@ pub fn prove_unrolled_execution_with_replayer<
             let setup = &$setup;
             let witness_eval_fn = $witness_eval_fn;
             if !delegation_circuits.is_empty() {
-                let trace_len = setup.trace_len;
                 let prover_config = setup.prover_config(security_level).clone();
                 let (proofs, per_tree_set) =
                     prove_delegation_circuit::<Global, DelegationDescription, _, _, _, _, _, _>(

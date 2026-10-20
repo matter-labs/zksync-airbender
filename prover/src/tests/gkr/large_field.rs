@@ -632,8 +632,7 @@ fn validate_packed_transcript_recipe() {
 #[test]
 fn capture_gkr_dim_reduce_reference() {
     use crate::gkr::prover::transcript_utils::{
-        commit_field_els, draw_fresh_random_field_els, draw_random_field_els,
-        draw_random_field_els_with_pow,
+        commit_field_els, draw_random_field_els, draw_random_field_els_with_pow,
     };
     use crate::gkr::prover::utils::flatten_merkle_caps_iter_into;
     use crate::gkr::prover::GKRProof;
