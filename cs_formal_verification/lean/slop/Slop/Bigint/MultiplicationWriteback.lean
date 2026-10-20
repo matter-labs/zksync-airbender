@@ -1,5 +1,6 @@
 import Human.Circuits.Bigint.Multiplication
 import Slop.Bigint.EqualityGates
+import Slop.Bigint.OpIndex
 
 namespace Airbender.Bigint.Multiplication.Proofs
 open Arithmetic
@@ -27,8 +28,9 @@ theorem native_writes {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
     by rw [constraint_count]; have := i.isLt; omega⟩
   cases operation <;> norm_num [Operation.index, Variables.operations] at f0 f1 f2 f3 f4 f5 f6
   all_goals fin_cases i
-  all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, f0, f1, f2, f3, f4, f5, f6] at gate
+  all_goals op_index at gate
+  all_goals simp only [Expression.eval, Verification.environment, f0, f1, f2, f3, f4, f5, f6] at gate
+  all_goals push_cast at gate
   all_goals norm_num [Variables.writtenLimbs]
   all_goals linear_combination -gate
 
@@ -41,8 +43,9 @@ theorem native_high_sum {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
   have eq := flags 5
   norm_num [Variables.operations] at low eq
   have gate := Verification.assertion_of_holds h ⟨83, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, low, eq] at gate
+  op_index at gate
+  simp only [Expression.eval, Verification.environment, low, eq] at gate
+  push_cast at gate
   norm_num [Fin.sum_univ_succ]
   linear_combination gate
 
@@ -63,12 +66,14 @@ theorem native_control {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
   have low := Verification.assertion_of_holds h ⟨90, by rw [constraint_count]; decide⟩
   have high := Verification.assertion_of_holds h ⟨91, by rw [constraint_count]; decide⟩
   cases operation <;> norm_num [Operation.index, Variables.operations] at f0 f1 f2 f3 f5 f6
-  all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, f0, f1, f2, f3, f5, f6] at low high
+  all_goals op_index at low high
+  all_goals simp only [Expression.eval, Verification.environment, f0, f1, f2, f3, f5, f6] at low high
+  all_goals push_cast at low high
   all_goals refine ⟨?_, high⟩
   · rw [zeroCheck] at low
     by_cases isZero : w 210 = 0 <;> simp only [isZero, ↓reduceIte] at low ⊢
     all_goals linear_combination -low
-  · exact low
+  · show w 57 = 0
+    linear_combination -low
 
 end Airbender.Bigint.Multiplication.Proofs
