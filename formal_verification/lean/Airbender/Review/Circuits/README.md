@@ -8,7 +8,7 @@
 | Word-memory rows | [Guide](WordMemory/README.md), [theorem](WordMemory/Theorems.lean), [model](WordMemory/Model.lean); complete initialized fetched Sail execution under documented ROM/RAM/platform profiles |
 | Jump/branch/SLT fixed effects, public/native exported decoding and PC bounds | [Guide](JumpBranchSlt/README.md), [claims](JumpBranchSlt/Theorems.lean), [observables](JumpBranchSlt/Model.lean); [complete fetched execution](../Trace/Families/JumpBranchSlt/Execution.lean) and terminal matching checked under the stated initial CSR profile |
 | Unsigned MUL/DIV numerical results and actual masked writes | [Guide](MulDiv/README.md), [claim](MulDiv/Theorems.lean); all four numerical results and zero divisors checked under explicit local interfaces; public decoding/history/original Sail remain open |
-| Subword native lookup import | [Guide](SubwordMemory/README.md), [claim](SubwordMemory/Lookups.lean), [artifact](SubwordMemory/Artifact.lean); complete native metadata, evaluated queries, canonical selectors and exact seven-region helper resolution; operation/history/execution open |
+| Subword native lookup import | [Guide](SubwordMemory/README.md), [claim](SubwordMemory/Lookups.lean), [artifact](SubwordMemory/Artifact.lean); complete native metadata, seven-region resolution and derived ROM/RAM/load/store routing with actual query fields; numerical effects/history/execution open |
 
 The remaining v2 families are tracked in the [plan](../../../FORMAL_VERIFICATION_PLAN.md).
 Local row soundness and whole execution are distinct milestones.

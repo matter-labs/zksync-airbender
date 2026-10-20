@@ -777,3 +777,47 @@ original Sail execution and whole-machine composition. General native export/
 compiler refinement, runtime CSR binding and physical verifier enforcement
 remain separate boundaries. FINDINGS and its historical archive, native sources,
 original Clean/Sail, exporter/codec and all resource ceilings remain unchanged.
+
+## Native subword operation-routing checkpoint (2026-10-20)
+
+[Controls](Airbender/Proofs/SubwordMemory/Controls.lean) derive store, size and
+upper-limb Booleanity from native equations. The actual fixed separator derives
+RAM/ROM selection and the low six high-address bits. Native acceptance excludes
+stores into ROM. The two optimized equations determine tags 46/45 for ROM loads,
+45/0 for RAM loads and 54/55 for stores. Native mixed-port modes/addresses and
+three separate ROM/load-RAM/old-store-RAM limb muxes are also derived.
+
+[Field selection](Airbender/Proofs/SubwordMemory/QueryFields.lean) derives all
+three fields of both native dynamic queries in each accepted mode. V2 ROM keeps
+its field inverse of four and word-index key. Load/clear/place keys retain the
+actual offset and raw funct3 encoding. The inverse-coefficient proof pattern is
+adapted from checked v2 binary-query proofs with small kernel-checked Mersenne31
+characteristic identities; resource/proof limits and native coefficients are
+unchanged. Selected limbs, query keys and results are conclusions, not premises.
+
+[Four short public claims](Airbender/Review/Circuits/SubwordMemory/Routing.lean)
+expose exhaustive accepted modes and the exact ROM-load, RAM-load and store
+connections. [Observables](Airbender/Review/Circuits/SubwordMemory/RoutingModel.lean)
+name selected native limbs and keys. [Internal assembly](Airbender/Proofs/SubwordMemory/Routing.lean)
+uses original Clean acceptance and the existing proved tagged-table resolution.
+A RAM load has an actual all-zero second slot. Stores query old RAM data for
+clearing and the source register's low limb for placement. No result, table
+equivalence, selector-bound or intermediate-state premise is added.
+
+[Six complete native fixtures](Tests/SubwordRouting.lean) satisfy all 51 original
+equations and fourteen lookups, with two-row proof partitions. They cover lower
+and upper ROM loads, a nonzero ROM word index, signed odd-byte/upper-half RAM
+loads, x0, an odd-byte store and a halfword store. Public routing claims are
+applied to these accepted rows. Concrete writes and eight mutations check crossed
+store tags, byte-address ROM keys, wrong RAM/store limbs, nonzero disabled fields,
+ROM stores, non-Boolean upper selectors and mixed addresses. These local fixtures
+do not assert public decoding, initialized history or original instruction execution.
+
+Next: derive general numerical subword effects, decoder/control connections,
+initialized reads and history, original Sail execution and whole-machine composition.
+Five other ordinary families already have initialized fetched execution; the sixth
+subword family, delegation/custom/CSR and unified/terminal/padding/initialization
+boundaries remain unfinished. General export/compiler refinement and physical
+verifier/cryptographic enforcement remain separate. No new confirmed native defect
+is established. FINDINGS and its historical archive, native sources/artifacts,
+original Clean/Sail, exporter/codec and all resource ceilings remain unchanged.

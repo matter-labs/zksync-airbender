@@ -54,3 +54,23 @@ keys remain isolated table cases. These checks add no native defect finding.
 
 Native equations must still derive operation-specific tags and limb preselection
 before numerical subword effects and initialized original Sail execution.
+
+## Accepted operation routing
+
+[Four public claims](Routing.lean) now derive the exhaustive native modes and
+connect actual ROM-load, RAM-load and store queries to certified helper membership.
+[Observables](RoutingModel.lean) retain native limb selectors, offset/funct3 keys
+and the v2 word ROM key. [Controls](../../../Proofs/SubwordMemory/Controls.lean)
+derive Booleanity, separator bits, forbidden ROM stores, tags, mixed addresses
+and all three limb muxes. [Field calculations](../../../Proofs/SubwordMemory/QueryFields.lean)
+and [assembly](../../../Proofs/SubwordMemory/Routing.lean) remain internal.
+
+No tag, intermediate read/result, expected query or table equivalence is assumed.
+A RAM load disables its second slot with the actual zero tuple; a store clears
+old RAM data and places the source low limb. [Six complete accepted rows](../../../../Tests/SubwordRouting.lean)
+check every native equation and lookup, nonzero ROM word indexing, upper/lower
+loads, signed data, x0 and stores. Eight native-equation mutations are rejected.
+
+General numerical effects, native/public decoding, initialized memory/history,
+original Sail execution and composition remain unfinished. These local accepted
+rows add no initialized execution coverage and no confirmed native defect.

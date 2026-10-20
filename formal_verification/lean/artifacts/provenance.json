@@ -5931,6 +5931,90 @@
       "backport_reuse_path": "Airbender/Proofs/ShiftBinop/NativeRegions.lean",
       "backport_reuse_sha256": "9df97344b68bf0f1227df2fe70bd0fd58d270c7d3e6d37e47839dac3970b1513",
       "change": "Copy private constant_tag unchanged from the checked v2 shift-region proof; it proves actual affine literal tag reads symbolically, without increasing proof or resource limits."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/Controls.lean",
+      "backport_reuse_revision": "36838ebfa3ab84d132976e150829ce7f387e105c",
+      "backport_reuse_path": "Airbender/Proofs/WordMemory/Tables.lean",
+      "backport_reuse_sha256": "19dcf3c51cdb364af28a3e6068baaa1950e88928741c37152f560729048df4b9",
+      "change": "Adapt native fixed-separator extraction and canonical high-address outputs to the checked subword columns; derive store/RAM/size/upper Boolean controls, rejected ROM stores, both optimized dynamic selectors, actual mixed-port addresses and three distinct limb muxes from original native equations."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/Controls.lean",
+      "backport_reuse_revision": "36838ebfa3ab84d132976e150829ce7f387e105c",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/Selectors.lean",
+      "backport_reuse_sha256": "b69f7de563ab0bc770083a41ee0c06b187030a8c466de9a6e51b20e358a6c6d2",
+      "change": "Reuse the accepted native Boolean-equation extraction pattern for store, size and upper selectors. This adapts the pattern, not an unchanged whole-file copy; no selector, read bound or intermediate result is assumed."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/QueryFields.lean",
+      "backport_reuse_revision": "36838ebfa3ab84d132976e150829ce7f387e105c",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/BinaryQueries.lean",
+      "backport_reuse_sha256": "e57ad300ab7d345fa71a4253a2814648fa604db26be7777e480f872356a0a6c3",
+      "change": "Adapt inverse-coefficient native algebra to all six multiplexed fields in each ROM-load, RAM-load and store case. Small kernel-checked multiples of the unchanged Mersenne31 characteristic normalize coefficients. No large table enumeration, proof-limit increase or expected-result premise."
+    },
+    {
+      "path": "Airbender/Review/Circuits/SubwordMemory/RoutingModel.lean",
+      "backport_reuse_revision": "36838ebfa3ab84d132976e150829ce7f387e105c",
+      "backport_reuse_path": "Airbender/Review/Circuits/ShiftBinop/RoutingModel.lean",
+      "backport_reuse_sha256": "84d3bdc82dda46cab948fea7820a1544f9ca6c106e6e6afaa1153a0a5d4740e8",
+      "change": "Adapt the small public observable/property surface to actual subword mode tags, selected limbs, native offset/funct3 keys and v2 aligned word ROM. Keep computations and proof assembly under Proofs."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/Routing.lean",
+      "backport_reuse_revision": "36838ebfa3ab84d132976e150829ce7f387e105c",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/BinaryQueries.lean",
+      "backport_reuse_sha256": "e57ad300ab7d345fa71a4253a2814648fa604db26be7777e480f872356a0a6c3",
+      "change": "Adapt accepted tagged-query assembly to an exhaustive three-mode partition and exact ROM/load/clear/place helper membership; derive RAM range and actual all-zero disabled slot from acceptance. General numerical effects and initialized execution remain open."
+    },
+    {
+      "path": "Airbender/Review/Circuits/SubwordMemory/Routing.lean",
+      "backport_reuse_revision": "36838ebfa3ab84d132976e150829ce7f387e105c",
+      "backport_reuse_path": "Airbender/Review/Circuits/ShiftBinop/Routing.lean",
+      "backport_reuse_sha256": "e65992003bfd14562ac61950de4f32f791c3747ca1a5cecdc1570537879fd3de",
+      "change": "Adapt short public theorem wrappers for native exhaustive modes and conditional ROM load, RAM load and store routing. The only case premises observe store control and high-address range; tags and intermediate reads/results are derived."
+    },
+    {
+      "path": "Tests/SubwordRoutingFixture.lean",
+      "backport_reuse_revision": "36838ebfa3ab84d132976e150829ce7f387e105c",
+      "backport_reuse_path": "Tests/ShiftRoutingWitness.lean",
+      "backport_reuse_sha256": "d3a36ccd4d1a3c72c0985191286e649769a095dbf9f861c6af08debd13c94c7d",
+      "change": "Adapt complete native witness arrays to six subword local accepted rows: lower/upper ROM, signed RAM loads including x0, odd-byte and halfword stores. Every equation and all fourteen lookups are subsequently kernel checked. No public decoder or initialized-history claim is made."
+    },
+    {
+      "path": "Tests/SubwordRoutingFixture.lean",
+      "backport_reuse_revision": "36838ebfa3ab84d132976e150829ce7f387e105c",
+      "backport_reuse_path": "Tests/ShiftRoutingQueries.lean",
+      "backport_reuse_sha256": "6da461655b8719aedc8c48a5592d94dd5ad608662e719840d8f8b51491a19117",
+      "change": "Adapt constructive full tagged-table membership for both slots of all six full-row fixtures, using the already certified helper connections without evaluating the nine-million-row combined table."
+    },
+    {
+      "path": "Tests/SubwordRoutingPart0.lean",
+      "backport_reuse_revision": "36838ebfa3ab84d132976e150829ce7f387e105c",
+      "backport_reuse_path": "Tests/ShiftRoutingPart0.lean",
+      "backport_reuse_sha256": "082c4bf55ad7d6999f39998d31dd6a1b7714d9e4335ae34fbbba938f2f407d73",
+      "change": "Adapt bounded two-row proof partitions checking every native equation, range/timestamp query, fixed offset/separator and both actual dynamic queries under original Clean acceptance."
+    },
+    {
+      "path": "Tests/SubwordRoutingPart1.lean",
+      "backport_reuse_revision": "36838ebfa3ab84d132976e150829ce7f387e105c",
+      "backport_reuse_path": "Tests/ShiftRoutingPart0.lean",
+      "backport_reuse_sha256": "082c4bf55ad7d6999f39998d31dd6a1b7714d9e4335ae34fbbba938f2f407d73",
+      "change": "Adapt bounded two-row proof partitions checking every native equation, range/timestamp query, fixed offset/separator and both actual dynamic queries under original Clean acceptance."
+    },
+    {
+      "path": "Tests/SubwordRoutingPart2.lean",
+      "backport_reuse_revision": "36838ebfa3ab84d132976e150829ce7f387e105c",
+      "backport_reuse_path": "Tests/ShiftRoutingPart0.lean",
+      "backport_reuse_sha256": "082c4bf55ad7d6999f39998d31dd6a1b7714d9e4335ae34fbbba938f2f407d73",
+      "change": "Adapt bounded two-row proof partitions checking every native equation, range/timestamp query, fixed offset/separator and both actual dynamic queries under original Clean acceptance."
+    },
+    {
+      "path": "Tests/SubwordRouting.lean",
+      "backport_reuse_revision": "36838ebfa3ab84d132976e150829ce7f387e105c",
+      "backport_reuse_path": "Tests/ShiftRouting.lean",
+      "backport_reuse_sha256": "bdaaa6d35b5ab645708367987ce4f4bd42bbbb8107f52bcb900ec5b0e0747fdd",
+      "change": "Adapt nonvacuous public theorem applications to all six checked native rows, concrete word-index/write regressions and eight native-equation mutations: crossed store tag, byte ROM key, wrong load/store limb, nonzero disabled slot, ROM store, non-Boolean upper selector and wrong mixed address."
     }
   ],
   "setup_artifacts": [

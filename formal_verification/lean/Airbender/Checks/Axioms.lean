@@ -91,6 +91,8 @@ import Tests.SubwordArtifact
 
 import Tests.SubwordLookups
 
+import Tests.SubwordRouting
+
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
 #print axioms Airbender.AddSub.Proofs.constraint_count
@@ -2176,3 +2178,54 @@ import Tests.SubwordLookups
 #print axioms Airbender.SubwordMemory.native_lookup_rom
 #print axioms Airbender.SubwordMemory.native_lookup_store_clear
 #print axioms Airbender.SubwordMemory.native_lookup_store_place
+
+#print axioms Airbender.SubwordMemory.Proofs.store_bit
+#print axioms Airbender.SubwordMemory.Proofs.separator_query
+#print axioms Airbender.SubwordMemory.Proofs.separator_values
+#print axioms Airbender.SubwordMemory.Proofs.ram_bit
+#print axioms Airbender.SubwordMemory.Proofs.store_requires_ram
+#print axioms Airbender.SubwordMemory.Proofs.size_bit
+#print axioms Airbender.SubwordMemory.Proofs.upper_bit
+#print axioms Airbender.SubwordMemory.Proofs.selector_equations
+#print axioms Airbender.SubwordMemory.Proofs.rom_tags
+#print axioms Airbender.SubwordMemory.Proofs.ram_tags
+#print axioms Airbender.SubwordMemory.Proofs.store_tags
+#print axioms Airbender.SubwordMemory.Proofs.port_addresses
+#print axioms Airbender.SubwordMemory.Proofs.selected_limbs
+#print axioms Airbender.SubwordMemory.Proofs.rom_fields
+#print axioms Airbender.SubwordMemory.Proofs.ram_fields
+#print axioms Airbender.SubwordMemory.Proofs.store_fields
+#print axioms Airbender.SubwordMemory.Proofs.mode_routing
+#print axioms Airbender.SubwordMemory.Proofs.rom_load_routing
+#print axioms Airbender.SubwordMemory.Proofs.ram_load_routing
+#print axioms Airbender.SubwordMemory.Proofs.store_routing
+#print axioms Airbender.SubwordMemory.native_operation_modes
+#print axioms Airbender.SubwordMemory.native_rom_load_routing
+#print axioms Airbender.SubwordMemory.native_ram_load_routing
+#print axioms Airbender.SubwordMemory.native_store_routing
+#print axioms Tests.SubwordRoutingFixture.lookup_members
+#print axioms Tests.SubwordRoutingPart0.accepted_0
+#print axioms Tests.SubwordRoutingPart0.accepted_1
+#print axioms Tests.SubwordRoutingPart1.accepted_2
+#print axioms Tests.SubwordRoutingPart1.accepted_3
+#print axioms Tests.SubwordRoutingPart2.accepted_4
+#print axioms Tests.SubwordRoutingPart2.accepted_5
+#print axioms Tests.SubwordRouting.native_constraints
+#print axioms Tests.SubwordRouting.all_modes
+#print axioms Tests.SubwordRouting.rom_signed_lower
+#print axioms Tests.SubwordRouting.rom_unsigned_upper
+#print axioms Tests.SubwordRouting.ram_signed_odd
+#print axioms Tests.SubwordRouting.ram_signed_upper_x0
+#print axioms Tests.SubwordRouting.store_odd_byte
+#print axioms Tests.SubwordRouting.store_halfword
+#print axioms Tests.SubwordRouting.rom_word_index
+#print axioms Tests.SubwordRouting.actual_odd_store
+#print axioms Tests.SubwordRouting.actual_half_store
+#print axioms Tests.SubwordRouting.crossed_store_tag_rejected
+#print axioms Tests.SubwordRouting.wrong_rom_byte_key_rejected
+#print axioms Tests.SubwordRouting.wrong_ram_limb_rejected
+#print axioms Tests.SubwordRouting.wrong_store_old_limb_rejected
+#print axioms Tests.SubwordRouting.nonzero_disabled_slot_rejected
+#print axioms Tests.SubwordRouting.rom_store_rejected
+#print axioms Tests.SubwordRouting.nonboolean_upper_rejected
+#print axioms Tests.SubwordRouting.wrong_mixed_address_rejected

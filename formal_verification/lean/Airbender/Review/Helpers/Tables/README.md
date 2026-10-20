@@ -198,3 +198,11 @@ public ROM. The native zero region requires the exact all-zero tuple. Canonical
 per-slot selector bounds follow from original Clean acceptance; table equivalence
 is proved internally, not supplied as a premise. Operation-specific tag choices,
 limb selection, native instruction effects and initialized execution remain open.
+
+## Subword operation-specific connections
+
+[Native routing](../../Circuits/SubwordMemory/Routing.lean) now connects ROM-load,
+RAM-load and store inputs to the certified load/clear/place helpers. Actual tags,
+limb muxes, query fields and RAM-load zero disabling follow from native acceptance.
+Six complete local native rows check these connections nonvacuously. General
+numerical instruction effects, decoding and initialized execution remain open.

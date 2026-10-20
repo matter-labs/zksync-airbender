@@ -355,3 +355,10 @@ canonical selectors and resolve all seven native tagged regions to their helpers
 These local results do not add initialized subword history or execution coverage.
 Native operation routing, selected limbs and actual read/write effects are still
 needed before instantiating the generic history and original Sail transport.
+
+[Subword operation routing](../Circuits/SubwordMemory/Routing.lean) now derives
+actual mode tags and query fields from native equations and separator membership.
+Six complete local accepted rows cover ROM/RAM loads, x0 and stores, but public
+instruction decoding and initialized memory/history are still required before
+original Sail transport. The subword family adds no initialized execution claim
+at this checkpoint; general numerical effects are the next dependency.

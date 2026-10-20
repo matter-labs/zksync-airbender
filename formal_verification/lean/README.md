@@ -17,7 +17,7 @@ This is the v2 backport based on dev revision
 formalization revision 805909325; exact source identities and hashes are in
 [provenance](artifacts/provenance.json). Circuit and runtime Rust are unchanged.
 
-Current execution coverage spans four circuit families:
+Current execution coverage spans five circuit families:
 
 - [ADD/ADDI/SUB/LUI/AUIPC](Airbender/Review/Trace/Families/AddSub/Theorems.lean):
   complete initialized original Sail execution and native terminal matching.
@@ -59,13 +59,13 @@ initialized history and original instruction execution remain unfinished.
 
 The [original-RAM-limb clearing helper](Airbender/Review/Helpers/Tables/SubwordStoreClearTheorems.lean)
 certifies all 2,097,152 actual native store-clear rows, including both byte masks,
-all four offsets and retained unused zero outputs. Written-value placement and
-full subword native/history/original instruction execution remain unfinished.
+all four offsets and retained unused zero outputs. Written-value placement is also certified; general subword numerical effects,
+initialized history and original instruction execution remain unfinished.
 
 The [written-value placement helper](Airbender/Review/Helpers/Tables/SubwordStorePlaceTheorems.lean)
 certifies all 2,097,152 actual native placement rows, preserving SB byte positions,
-SH full limbs at all raw offsets and unused zero outputs. Subword ROM regions,
-full accepted constraints, initialized history and original execution remain open.
+SH full limbs at all raw offsets and unused zero outputs. The actual v2 ROM region, complete native import and operation routing are also
+connected; initialized history and original execution remain open.
 
 The [native subword import](Airbender/Review/Circuits/SubwordMemory/README.md)
 retains all 51 equations, fourteen queries and actual state/port/decoder/setup
@@ -76,7 +76,11 @@ Subword operation effects, initialized history and original execution remain ope
 [Native subword tag resolution](Airbender/Review/Circuits/SubwordMemory/Lookups.lean)
 now derives canonical selectors from acceptance and connects all seven regions
 to the existing helpers, including exact all-zero disabling and word-indexed ROM.
-Operation routing, limb preselection and initialized execution remain unfinished.
+[Native operation routing](Airbender/Review/Circuits/SubwordMemory/Routing.lean)
+now derives all three accepted modes, actual query fields, ROM/RAM/load/store
+limb selection and all-zero disabling. Six complete accepted rows and eight
+mutation rejections pass. General numerical effects, public decoding and
+initialized execution remain unfinished.
 
 The arithmetic checkpoint includes complete initialized ADD/ADDI/SUB/LUI/AUIPC normal-path
 execution and conditional row soundness, including actual masked destination
