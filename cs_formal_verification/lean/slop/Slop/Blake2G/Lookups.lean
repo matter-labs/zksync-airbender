@@ -1,6 +1,7 @@
 import Slop.Blake2G.ArtifactChecks
 import Slop.Blake2G.Tables
 import Slop.Blake2G.Fragment
+import Slop.Blake2G.OpIndex
 import Human.Helpers.Properties
 import Slop.Constraints
 
@@ -31,10 +32,12 @@ theorem data_lookups {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
       (Verification.environment w) at member
   fin_cases q
   all_goals first
-    | exact xor_lookup hp 0 member (by simp [importedConstraints, FlatOperation.lookups, Expression.eval, Verification.environment])
-    | exact xor_lookup hp 1 member (by simp [importedConstraints, FlatOperation.lookups, Expression.eval, Verification.environment])
-    | exact xor_lookup hp 2 member (by simp [importedConstraints, FlatOperation.lookups, Expression.eval, Verification.environment])
-    | exact xor_lookup hp 3 member (by simp [importedConstraints, FlatOperation.lookups, Expression.eval, Verification.environment])
-    | exact xor_lookup hp 4 member (by simp [importedConstraints, FlatOperation.lookups, Expression.eval, Verification.environment])
+    | rw [Airbender.Blake2G.importedConstraints.lookup_0] at member ⊢ | rw [Airbender.Blake2G.importedConstraints.lookup_1] at member ⊢ | rw [Airbender.Blake2G.importedConstraints.lookup_2] at member ⊢ | rw [Airbender.Blake2G.importedConstraints.lookup_3] at member ⊢ | rw [Airbender.Blake2G.importedConstraints.lookup_4] at member ⊢ | rw [Airbender.Blake2G.importedConstraints.lookup_5] at member ⊢ | rw [Airbender.Blake2G.importedConstraints.lookup_6] at member ⊢ | rw [Airbender.Blake2G.importedConstraints.lookup_7] at member ⊢ | rw [Airbender.Blake2G.importedConstraints.lookup_8] at member ⊢ | rw [Airbender.Blake2G.importedConstraints.lookup_9] at member ⊢ | rw [Airbender.Blake2G.importedConstraints.lookup_10] at member ⊢ | rw [Airbender.Blake2G.importedConstraints.lookup_11] at member ⊢ | rw [Airbender.Blake2G.importedConstraints.lookup_12] at member ⊢ | rw [Airbender.Blake2G.importedConstraints.lookup_13] at member ⊢ | rw [Airbender.Blake2G.importedConstraints.lookup_14] at member ⊢ | rw [Airbender.Blake2G.importedConstraints.lookup_15] at member ⊢ | rw [Airbender.Blake2G.importedConstraints.lookup_16] at member ⊢ | rw [Airbender.Blake2G.importedConstraints.lookup_17] at member ⊢ | rw [Airbender.Blake2G.importedConstraints.lookup_18] at member ⊢ | rw [Airbender.Blake2G.importedConstraints.lookup_19] at member ⊢ | rw [Airbender.Blake2G.importedConstraints.lookup_20] at member ⊢
+  all_goals first
+    | exact xor_lookup hp 0 member (by simp [Expression.eval, Verification.environment])
+    | exact xor_lookup hp 1 member (by simp [Expression.eval, Verification.environment])
+    | exact xor_lookup hp 2 member (by simp [Expression.eval, Verification.environment])
+    | exact xor_lookup hp 3 member (by simp [Expression.eval, Verification.environment])
+    | exact xor_lookup hp 4 member (by simp [Expression.eval, Verification.environment])
 
 end Airbender.Blake2G.Proofs
