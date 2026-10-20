@@ -6015,6 +6015,67 @@
       "backport_reuse_path": "Tests/ShiftRouting.lean",
       "backport_reuse_sha256": "bdaaa6d35b5ab645708367987ce4f4bd42bbbb8107f52bcb900ec5b0e0747fdd",
       "change": "Adapt nonvacuous public theorem applications to all six checked native rows, concrete word-index/write regressions and eight native-equation mutations: crossed store tag, byte ROM key, wrong load/store limb, nonzero disabled slot, ROM store, non-Boolean upper selector and wrong mixed address."
+    },
+    {
+      "path": "Airbender/Review/Circuits/SubwordMemory/ValuesModel.lean",
+      "backport_reuse_revision": "7ce0888143693b82cacc1156620faeb356fa91a2",
+      "backport_reuse_path": "Airbender/Review/Circuits/SubwordMemory/RoutingModel.lean",
+      "backport_reuse_sha256": "ce5467a9fce6108c118c165beb5615a282dfe1ed327463eef91e7c35bbfd78b0",
+      "change": "Adapt the small native observable surface to exact offset/mask controls, public ROM words, canonical load candidates and actual masked/stored writes. Keep raw key encodings and separate decoder/read-bound/history/architectural connections."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/OffsetValues.lean",
+      "backport_reuse_revision": "7ce0888143693b82cacc1156620faeb356fa91a2",
+      "backport_reuse_path": "Airbender/Proofs/SubwordMemory/Controls.lean",
+      "backport_reuse_sha256": "0e87de3e00543fecfdbf6b2d085ad2a2791d25bd22b0857bd3ea9c200845bc2b",
+      "change": "Adapt actual fixed-lookup extraction and Boolean-control transport. Split generic original Clean membership, exact native entry and three field evaluations to avoid the default recursion limit without increasing it. Derive offset/mask meanings, absence of the native trap bit and upper-limb selector from acceptance, preserving the original x0 exception."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/OffsetValues.lean",
+      "backport_reuse_revision": "7ce0888143693b82cacc1156620faeb356fa91a2",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/Selectors.lean",
+      "backport_reuse_sha256": "b69f7de563ab0bc770083a41ee0c06b187030a8c466de9a6e51b20e358a6c6d2",
+      "change": "Adapt bounded field-to-natural packed-selector reasoning. Prove native mask bounds and middle-bit decomposition symbolically; derive size/high-half values with no supplied alignment, trap exclusion or selector meaning."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/WriteValues.lean",
+      "backport_reuse_revision": "7ce0888143693b82cacc1156620faeb356fa91a2",
+      "backport_reuse_path": "Airbender/Proofs/SubwordMemory/QueryFields.lean",
+      "backport_reuse_sha256": "79c9c8d7750747b5e6734274aa838921970ea63a4690f6322b17a56e217dc941",
+      "change": "Adapt the checked native inverse-coefficient pattern for both load-candidate muxes. Derive actual x0 scaling and exact store writes from original equations. Small kernel characteristic identities retain Mersenne31 coefficients and all resource/proof limits."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/Values.lean",
+      "backport_reuse_revision": "7ce0888143693b82cacc1156620faeb356fa91a2",
+      "backport_reuse_path": "Airbender/Proofs/SubwordMemory/Routing.lean",
+      "backport_reuse_sha256": "9a34f2c3f51cc9a9add288b2839c71b9b36856a25e619576cef1528725b876ec",
+      "change": "Reuse proved native routing to transport exact certified load/clear/place values and output bounds into actual candidate/write columns. Retain v2 word-indexed public ROM and raw offset/funct3 keys; add no expected-result, selector or table-equivalence premise."
+    },
+    {
+      "path": "Airbender/Review/Circuits/SubwordMemory/Values.lean",
+      "backport_reuse_revision": "7ce0888143693b82cacc1156620faeb356fa91a2",
+      "backport_reuse_path": "Airbender/Review/Circuits/SubwordMemory/Routing.lean",
+      "backport_reuse_sha256": "05bc549f06e30fff006d45dbff592cccf8c7ab4c23d017e423ee603147292b2e",
+      "change": "Adapt short public wrappers for accepted offset controls, ROM/RAM load values and stored writes. Expose exact implications for both supported x0 flag values without claiming Boolean public decoding from local constraints."
+    },
+    {
+      "path": "Tests/SubwordValues.lean",
+      "backport_reuse_revision": "7ce0888143693b82cacc1156620faeb356fa91a2",
+      "backport_reuse_path": "Tests/SubwordRouting.lean",
+      "backport_reuse_sha256": "546a13d6c36ffa72355bfdfc73e1975eab8f0eb24122acd9f579ad1651fc386c",
+      "change": "Reuse the six complete accepted native fixtures unchanged; apply every new value/control claim nonvacuously, retain nonzero x0 candidates and exact writes, and add nine native rejections for candidate/write/offset/selector/trap mutations. No new architectural or finding claim."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/WriteValues.lean",
+      "source_path": "Airbender/Proofs/SubwordMemory/Stores.lean",
+      "source_sha256": "45849c2a38f4c71838adad5c7f48330cc528ab325687a1241d971f3a38f4cd44",
+      "change": "Adapt the v3 store merge/assembly proof approach to actual native v2 polynomial columns, size/upper selectors and two distinct literal clearing/placement tables. No v3 table, field, active-mask or store-result theorem is imported as v2 coverage."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/Values.lean",
+      "source_path": "Airbender/Proofs/SubwordMemory/Data.lean",
+      "source_sha256": "f284444a8f4674cce1a5dc871f34f0e2100688679365b1292f06a16a41fd18ee",
+      "change": "Adapt certificate-to-candidate value transport from the pinned v3 data proof approach. V2 uses its checked native tags, Mersenne31 field, canonical raw keys, actual masked writes and one aligned word ROM; decoded byte/halfword/Sail normalization remains open."
     }
   ],
   "setup_artifacts": [

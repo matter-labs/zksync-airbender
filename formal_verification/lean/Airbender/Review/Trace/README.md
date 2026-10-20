@@ -362,3 +362,10 @@ Six complete local accepted rows cover ROM/RAM loads, x0 and stores, but public
 instruction decoding and initialized memory/history are still required before
 original Sail transport. The subword family adds no initialized execution claim
 at this checkpoint; general numerical effects are the next dependency.
+
+[Subword native values](../Circuits/SubwordMemory/Values.lean) now derive exact
+offset/trap controls, bounded load candidates, actual x0 scaling and store
+clearing/placement write assembly. The original six full rows support all new
+claims nonvacuously. Actual decoder membership, packed-key normalization and
+initialized source/old-RAM/whole-write bounds are still required before original
+Sail transport. This checkpoint adds no initialized subword execution claim.

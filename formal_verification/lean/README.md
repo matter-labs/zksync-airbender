@@ -79,8 +79,11 @@ to the existing helpers, including exact all-zero disabling and word-indexed ROM
 [Native operation routing](Airbender/Review/Circuits/SubwordMemory/Routing.lean)
 now derives all three accepted modes, actual query fields, ROM/RAM/load/store
 limb selection and all-zero disabling. Six complete accepted rows and eight
-mutation rejections pass. General numerical effects, public decoding and
-initialized execution remain unfinished.
+mutation rejections pass. [Native value/write claims](Airbender/Review/Circuits/SubwordMemory/Values.lean)
+now derive offset/trap controls, candidate values/bounds, actual masked load writes
+and clearing/placement store assembly. Nine new rejection checks pass. Decoded
+byte/halfword key normalization, initialized read/write bounds and original Sail
+execution remain unfinished.
 
 The arithmetic checkpoint includes complete initialized ADD/ADDI/SUB/LUI/AUIPC normal-path
 execution and conditional row soundness, including actual masked destination

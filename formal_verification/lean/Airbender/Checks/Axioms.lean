@@ -93,6 +93,8 @@ import Tests.SubwordLookups
 
 import Tests.SubwordRouting
 
+import Tests.SubwordValues
+
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
 #print axioms Airbender.AddSub.Proofs.constraint_count
@@ -2229,3 +2231,40 @@ import Tests.SubwordRouting
 #print axioms Tests.SubwordRouting.rom_store_rejected
 #print axioms Tests.SubwordRouting.nonboolean_upper_rejected
 #print axioms Tests.SubwordRouting.wrong_mixed_address_rejected
+
+#print axioms Airbender.SubwordMemory.Proofs.offset_mask_bound
+#print axioms Airbender.SubwordMemory.Proofs.offset_mask_upper
+#print axioms Airbender.SubwordMemory.Proofs.offset_query
+#print axioms Airbender.SubwordMemory.Proofs.accepted_offset_values
+#print axioms Airbender.SubwordMemory.Proofs.rom_load_candidate
+#print axioms Airbender.SubwordMemory.Proofs.ram_load_candidate
+#print axioms Airbender.SubwordMemory.Proofs.load_write_mask
+#print axioms Airbender.SubwordMemory.Proofs.load_write_cases
+#print axioms Airbender.SubwordMemory.Proofs.store_write_mux
+#print axioms Airbender.SubwordMemory.Proofs.rom_load_values
+#print axioms Airbender.SubwordMemory.Proofs.ram_load_values
+#print axioms Airbender.SubwordMemory.Proofs.store_values
+#print axioms Airbender.SubwordMemory.native_offset_values
+#print axioms Airbender.SubwordMemory.native_rom_load_values
+#print axioms Airbender.SubwordMemory.native_ram_load_values
+#print axioms Airbender.SubwordMemory.native_store_values
+#print axioms Airbender.SubwordMemory.native_load_write_cases
+#print axioms Tests.SubwordValues.all_offsets
+#print axioms Tests.SubwordValues.rom_values_0
+#print axioms Tests.SubwordValues.rom_values_1
+#print axioms Tests.SubwordValues.ram_values_2
+#print axioms Tests.SubwordValues.ram_values_3
+#print axioms Tests.SubwordValues.store_values_4
+#print axioms Tests.SubwordValues.store_values_5
+#print axioms Tests.SubwordValues.ordinary_load_write
+#print axioms Tests.SubwordValues.x0_load_write
+#print axioms Tests.SubwordValues.store_unused_fields
+#print axioms Tests.SubwordValues.changed_rom_candidate_rejected
+#print axioms Tests.SubwordValues.changed_ram_candidate_rejected
+#print axioms Tests.SubwordValues.changed_masked_load_rejected
+#print axioms Tests.SubwordValues.nonzero_x0_write_rejected
+#print axioms Tests.SubwordValues.changed_store_low_rejected
+#print axioms Tests.SubwordValues.changed_store_high_rejected
+#print axioms Tests.SubwordValues.wrong_upper_offset_rejected
+#print axioms Tests.SubwordValues.wrong_native_offset_rejected
+#print axioms Tests.SubwordValues.native_trap_rejected

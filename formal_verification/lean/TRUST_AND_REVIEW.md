@@ -2148,3 +2148,50 @@ boundaries remain unfinished. General export/compiler refinement and physical
 verifier/cryptographic enforcement remain separate. No new confirmed native defect
 is established. FINDINGS and its historical archive, native sources/artifacts,
 original Clean/Sail, exporter/codec and all resource ceilings remain unchanged.
+
+## Native subword value/write checkpoint (2026-10-20)
+
+[Offset controls](Airbender/Proofs/SubwordMemory/OffsetValues.lean) now derive the
+actual fixed offset query, its canonical key bound and exact offset/mask values.
+Native Boolean size/upper controls and the packed-mask equation force the retained
+mask below four, so a native trap bit cannot occur in an accepted row. The size
+bit is the mask's low bit and the upper-limb selector is exactly offset / 2.
+The original table, all trap rows and explicit misaligned-load-to-x0 exception
+remain unchanged; this is native control reasoning, not an architectural alignment
+or x0 correctness claim. A generic original Clean lookup bridge and three separate
+field reductions avoid a recursion-limit failure without raising proof limits.
+
+[Actual writes](Airbender/Proofs/SubwordMemory/WriteValues.lean) now connect native
+ROM/RAM data outputs to both load-candidate columns and the actual written register
+columns. The original (1 - rd_is_x0) scaling remains exact. For either supported
+flag value, writes equal the candidate or zero; Boolean decoding itself is still
+a public-decoder dependency, not a new local premise. Native store equations
+assemble certified clearing/placement outputs, preserve the opposite old limb
+in subword mode and retain the full-word source mux in the raw native relation.
+
+[Value assembly](Airbender/Proofs/SubwordMemory/Values.lean) derives actual canonical
+load candidate values and both candidate bounds, public word-indexed ROM contents,
+cleared/placed values, their bounds and unused zeros. The v3 data/merge proof
+approaches are adapted with exact source identities, alongside checked v2 reuse.
+No v3 native result is assumed: actual v2 tables, field, query keys, columns and
+write equations supply the connections. No expected result, selected read, table
+equivalence, alignment or read bound is supplied as a premise.
+
+[Five short public claims](Airbender/Review/Circuits/SubwordMemory/Values.lean)
+use the small [observable interface](Airbender/Review/Circuits/SubwordMemory/ValuesModel.lean).
+[Test applications](Tests/SubwordValues.lean) reuse all six complete native fixtures
+unchanged, preserving signed data, upper/lower loads, nonzero ROM word indexing,
+x0 and stores. The original nonzero x0 candidate is retained before its zero
+write. Nine rejections cover changed ROM/RAM candidates, actual writes, nonzero
+x0 writes, wrong offsets/upper selectors and a native trap-bearing key. Rejected
+mutations are coverage evidence and add no confirmed native defect.
+
+Next: connect actual native/public decoding to supported byte/halfword operations,
+normalize packed raw keys over that domain, derive source/old-RAM read and whole
+write bounds from initialized history, then reach original Sail execution and
+whole-machine composition. Canonical lookup values and field write assembly do
+not claim these remaining connections. The sixth ordinary family, delegation/
+custom/CSR and unified/terminal/padding/initialization boundaries remain unfinished.
+General export/compiler refinement and physical verifier/cryptographic enforcement
+remain separate. FINDINGS and its historical archive, native sources/artifacts,
+original Clean/Sail, exporter/codec and resource/proof ceilings are unchanged.

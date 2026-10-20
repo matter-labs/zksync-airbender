@@ -206,3 +206,13 @@ RAM-load and store inputs to the certified load/clear/place helpers. Actual tags
 limb muxes, query fields and RAM-load zero disabling follow from native acceptance.
 Six complete local native rows check these connections nonvacuously. General
 numerical instruction effects, decoding and initialized execution remain open.
+
+## Subword accepted values and writes
+
+[Native value claims](../../Circuits/SubwordMemory/Values.lean) now transport
+these certified helper results to actual candidate and write columns. Offset
+controls derive the high-half selector and exclude native trap bits while
+retaining every original row and the x0 exception. Load candidate bounds and
+store contribution bounds are derived; initialized reads and whole store-write
+bounds still require history. Raw-key normalization and original Sail effects
+remain separate dependencies. Rejected mutations add no defect finding.

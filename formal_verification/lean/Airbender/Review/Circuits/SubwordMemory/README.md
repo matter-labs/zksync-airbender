@@ -74,3 +74,21 @@ loads, signed data, x0 and stores. Eight native-equation mutations are rejected.
 General numerical effects, native/public decoding, initialized memory/history,
 original Sail execution and composition remain unfinished. These local accepted
 rows add no initialized execution coverage and no confirmed native defect.
+
+## Accepted values and actual writes
+
+[Five public claims](Values.lean) now derive exact offset/mask values, absence
+of the native trap bit and upper-limb selection; they connect certified load
+values and candidate bounds to actual masked register writes, and clearing/
+placement values to actual store writes. [Observables](ValuesModel.lean) keep
+raw native keys and original x0 scaling. [Offset reductions](../../../Proofs/SubwordMemory/OffsetValues.lean),
+[write equations](../../../Proofs/SubwordMemory/WriteValues.lean) and
+[value assembly](../../../Proofs/SubwordMemory/Values.lean) remain internal.
+The exact original x0 exception and all native table rows remain present.
+
+[Tests](../../../../Tests/SubwordValues.lean) apply the results to the unchanged
+six complete rows and reject nine mutations of candidates, actual writes,
+offsets/selectors and a trap-bearing key. No desired result, read bound or
+unchecked decoder interpretation is assumed. Decoded byte/halfword key
+normalization, initialized source/old-RAM and whole-write bounds, original Sail
+execution and composition remain unfinished. No confirmed defect is added.
