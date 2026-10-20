@@ -327,19 +327,13 @@ pub fn prove_built_family_trace_with_rs_source(
     storage: WhirOracleStorage,
     worker: &Worker,
 ) -> GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> {
-    let mut prover_config = example_configs::config_for_security_level_under_pessimistic_conjecture(
+    // The production family config (cap 16 over an LDE factor of 2) is used
+    // as-is: the coset-by-coset (`Recompute`) commitments support any cap size,
+    // including a cap that lives inside the cosets.
+    let prover_config = example_configs::config_for_security_level_under_pessimistic_conjecture(
         trace_len.trailing_zeros() as usize,
         level,
     );
-    // `RsCodewordSource::Recompute` (coset-by-coset) requires `cap_size <= lde_factor`
-    // (the cap must sit at or above the per-coset subtree roots). The default family
-    // config has cap_size (16) > lde_factor (2), so clamp the cap for this parity
-    // path — applied identically to both storage policies, so the comparison stays
-    // apples-to-apples.
-    if prover_config.cap_size > prover_config.lde_factor {
-        prover_config.cap_size = prover_config.lde_factor;
-        prover_config.whir_schedule.cap_size = prover_config.lde_factor;
-    }
     let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, worker);
     let setup = GKRSetup::construct(table_driver, decoder_table_data, trace_len, circuit);
     let setup_commitment = setup.commit_for_config(&twiddles, &prover_config, worker);

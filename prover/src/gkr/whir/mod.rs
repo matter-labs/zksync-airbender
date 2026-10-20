@@ -3787,11 +3787,11 @@ fn fold_coset<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>(
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::gkr::prover::WhirSchedule;
     use crate::{
         field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4},
         merkle_trees::blake2s_for_everything_tree::Blake2sU32MerkleTreeWithCap,
     };
-    use crate::gkr::prover::WhirSchedule;
     use field::FieldExtension;
     use rand::{rngs::ThreadRng, RngCore};
 

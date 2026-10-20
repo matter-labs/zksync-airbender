@@ -25,6 +25,7 @@
 use super::coset_commit::CosetByCosetBaseCommitment;
 use super::*;
 use crate::gkr::prover::stages::commitment_utils::commit_trace_part;
+use crate::gkr::prover::WhirSchedule;
 use crate::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
 use field::Proth120;
 use rand::{Rng, SeedableRng};

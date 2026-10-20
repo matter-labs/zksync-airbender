@@ -558,6 +558,13 @@ pub(crate) fn apply_row_wise<'a, A: 'static + Send + Sync, B: 'static + Send + S
 /// single-circuit (L1 wrap) mode and whenever the base commitment is PACKED
 /// (`ProverConfig::pack_log2 > 0` — the packed codewords are `2^pack_log2`
 /// times larger), everything materialized otherwise.
+/// The storage policy the backward-compatible prove entries use: coset-by-coset
+/// recomputation for the single-chunk and packed cases (their RS codewords are
+/// too large to materialize), everything in memory otherwise. Every policy is
+/// valid for every `ProverConfig` — the coset-by-coset commitments support any
+/// cap size, so a `cap_size` above the LDE factor (the family configs' cap 16
+/// over an LDE factor of 2, packed or not) never has to fall back to the
+/// in-memory policy.
 fn default_storage_for(
     prover_config: &ProverConfig,
     operation_mode: OperationMode,
@@ -1506,7 +1513,7 @@ fn prove_configured_with_gkr_from_forward_eval<
     setup_commitment: &SetupCommitment<F, T>,
     twiddles: &B::TwiddleSet,
     prover_config: &ProverConfig,
-    _operation_mode: OperationMode,
+    operation_mode: OperationMode,
     storage: WhirOracleStorage,
     inits_and_teardowns_top_bits: Vec<u32>,
     trace_len: usize,

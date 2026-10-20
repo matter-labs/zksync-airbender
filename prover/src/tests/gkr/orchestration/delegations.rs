@@ -139,8 +139,12 @@ fn prove_delegation_inner<O: Oracle<BabyBearField> + DelegationOracleExt>(
         prover_config.whir_message_size_log2()
     );
     let now = std::time::Instant::now();
-    // every oracle materialized: the packed path exercises the backend's fused
-    // `lde_packed_polys_from_hypercubes` commitment
+    // The default storage policy of the packed mode (`fully_recompute`): the
+    // in-proof memory/witness commitment is coset-by-coset with the cap (16)
+    // INSIDE the cosets (LDE factor 2), and round-0 queries recompute their
+    // coset. The proof must stay byte-identical to the fully materialized one
+    // (the committed fixture), which exercises the backend's fused
+    // `lde_packed_polys_from_hypercubes` commitment for the setup.
     let proof = prove_configured_with_gkr_with_storage_and_backend::<
         BabyBearField,
         BabyBearExt4,
@@ -157,7 +161,7 @@ fn prove_delegation_inner<O: Oracle<BabyBearField> + DelegationOracleExt>(
         &twiddles,
         &prover_config,
         OperationMode::MultipleChunks,
-        WhirOracleStorage::fully_in_memory(),
+        WhirOracleStorage::fully_recompute(),
         Vec::new(),
         num_delegation_cycles,
         &crate::gkr::prover::WorkStealingBackend,

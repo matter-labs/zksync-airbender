@@ -330,6 +330,14 @@ impl ProverConfig {
     /// polynomial ships as explicit monomial coefficients, which is strictly
     /// cheaper than another LDE + Merkle commitment + query round for both
     /// prover and verifier.
+    ///
+    /// Also checks the Merkle geometry of EVERY committed oracle (the base
+    /// oracles and each intermediate one): LDE factors, cap and leaf sizes are
+    /// powers of two, a leaf never exceeds its coset, and the cap never exceeds
+    /// the tree's leaf count. These are the only geometric constraints — the
+    /// storage policy ([`WhirOracleStorage`](crate::gkr::prover::WhirOracleStorage),
+    /// in-memory, coset-by-coset recompute or on-disk) imposes none of its own,
+    /// in particular no relation between `cap_size` and the LDE factors.
     pub fn validate_for_whir_message_size(&self, message_size_log2: usize) {
         use crate::definitions::DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2;
 
@@ -345,6 +353,50 @@ impl ProverConfig {
             self.base_oracles_values_per_leaf,
             1usize << schedule.whir_steps_schedule[0],
             "base-oracle leaves hold exactly one round-0 fold worth of values"
+        );
+        assert!(
+            self.lde_factor.is_power_of_two() && self.lde_factor >= 2,
+            "base LDE factor {} must be a power of two >= 2",
+            self.lde_factor
+        );
+        assert!(
+            self.cap_size.is_power_of_two(),
+            "cap size {} must be a power of two",
+            self.cap_size
+        );
+        for (i, lde_factor) in schedule.whir_steps_lde_factors.iter().enumerate() {
+            assert!(
+                lde_factor.is_power_of_two() && *lde_factor >= 2,
+                "WHIR round {i} LDE factor {lde_factor} must be a power of two >= 2"
+            );
+        }
+
+        // Merkle geometry of the oracle committed with LDE factor `lde_factor`
+        // over a 2^poly_size_log2 polynomial, `2^values_per_leaf_log2` values
+        // per leaf: valid for any `cap_size` up to the number of leaves.
+        let check_tree = |what: &str,
+                          poly_size_log2: usize,
+                          lde_factor: usize,
+                          values_per_leaf_log2: usize| {
+            assert!(
+                values_per_leaf_log2 <= poly_size_log2,
+                "{what}: a leaf of 2^{values_per_leaf_log2} values exceeds the 2^{poly_size_log2} coset"
+            );
+            let num_leaves_log2 =
+                poly_size_log2 + lde_factor.trailing_zeros() as usize - values_per_leaf_log2;
+            assert!(
+                self.cap_size.trailing_zeros() as usize <= num_leaves_log2,
+                "{what}: cap size {} exceeds the tree's 2^{num_leaves_log2} leaves \
+                 (2^{poly_size_log2} polynomial, LDE factor {lde_factor}, \
+                 2^{values_per_leaf_log2} values per leaf)",
+                self.cap_size
+            );
+        };
+        check_tree(
+            "base oracles",
+            message_size_log2,
+            self.lde_factor,
+            schedule.whir_steps_schedule[0],
         );
 
         let mut poly_size_log2 = message_size_log2;
@@ -363,6 +415,14 @@ impl ProverConfig {
                     "WHIR round {round} would commit an LDE of a 2^{poly_size_log2} polynomial \
                      (below the 2^{DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2} plain-text floor): \
                      terminate the schedule here and ship the tail in plain text instead"
+                );
+                // the oracle committed after this round: its leaves hold one
+                // NEXT-round fold worth of values
+                check_tree(
+                    &format!("WHIR round {round} intermediate oracle"),
+                    poly_size_log2,
+                    schedule.whir_steps_lde_factors[round],
+                    schedule.whir_steps_schedule[round + 1],
                 );
             }
         }
@@ -726,5 +786,61 @@ mod test {
             &BlakeHashBabyBearExt4CostModel,
         );
         dbg!(prover_config);
+    }
+}
+
+#[cfg(test)]
+mod geometry_validation_tests {
+    use super::example_configs::{
+        config_for_security_level_under_pessimistic_conjecture,
+        packed_config_for_security_level_under_pessimistic_conjecture,
+    };
+    use crate::definitions::SecurityLevel;
+
+    #[test]
+    fn example_configs_pass_for_every_storage_policy() {
+        // Unpacked and packed family shapes (cap 16 over an LDE factor of 2 — the
+        // cap lives inside the cosets); the validation has no cap/LDE relation.
+        for trace_len_log2 in [20usize, 22, 23, 24] {
+            let config = config_for_security_level_under_pessimistic_conjecture(
+                trace_len_log2,
+                SecurityLevel::Sec100,
+            );
+            assert!(config.cap_size > config.lde_factor);
+            config.validate_for_whir_message_size(config.whir_message_size_log2());
+        }
+        let packed = packed_config_for_security_level_under_pessimistic_conjecture(
+            20,
+            4,
+            SecurityLevel::Sec100,
+        );
+        packed.validate_for_whir_message_size(packed.whir_message_size_log2());
+    }
+
+    #[test]
+    #[should_panic(expected = "cap size")]
+    fn cap_larger_than_base_tree_is_rejected() {
+        let mut config =
+            config_for_security_level_under_pessimistic_conjecture(20, SecurityLevel::Sec100);
+        // 2^20 message x LDE 2 / 2 values per leaf = 2^20 leaves
+        config.cap_size = 1 << 21;
+        config.whir_schedule.cap_size = 1 << 21;
+        config.validate_for_whir_message_size(config.whir_message_size_log2());
+    }
+
+    #[test]
+    #[should_panic(expected = "intermediate oracle")]
+    fn cap_larger_than_an_intermediate_tree_is_rejected() {
+        let mut config =
+            config_for_security_level_under_pessimistic_conjecture(20, SecurityLevel::Sec100);
+        // shrink the first intermediate oracle's LDE so its tree has fewer leaves
+        // than the cap: poly 2^(20 - fold0), LDE 2, leaves / 2^fold1
+        config.whir_schedule.whir_steps_lde_factors[0] = 2;
+        let fold0 = config.whir_schedule.whir_steps_schedule[0];
+        let fold1 = config.whir_schedule.whir_steps_schedule[1];
+        let leaves_log2 = 20 - fold0 + 1 - fold1;
+        config.cap_size = 1 << (leaves_log2 + 1);
+        config.whir_schedule.cap_size = config.cap_size;
+        config.validate_for_whir_message_size(config.whir_message_size_log2());
     }
 }
