@@ -95,7 +95,7 @@ private theorem program_image (remainder : Bool) :
       repeat' first
         | (with_unfolding_all rfl)
         | (with_unfolding_all conv_lhs => arg 1; whnf
-           rw [@run_read_cont (inferInstance : _root_.Sail.ArchSem.Arch)
+           erw [@run_read_cont (inferInstance : _root_.Sail.ArchSem.Arch)
              _ _ SailRV32.Register.misa _ _ _ isa])
   simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, bind, Option.bind]
   cases remainder <;> rfl
