@@ -63,6 +63,24 @@ fn grouped_read_timestamp<F: PrimeField>(
     (entry.read_timestamp, entry.read_timestamp_places)
 }
 
+/// Callers must constrain `2 < distance < R = 2^19` on active rows and `distance = 0`
+/// on padding. Keccak's control lookups enforce `distance = 4 * delta`: register gaps
+/// are 1 call, theta/rho gaps are at most 6, and chi5 gaps are `5 + y - j <= 9`
+/// (`y, j` in `0..5`). Thus the canonical sequence has maximum gap `N = 9` and
+/// `4 * N = 36`; see `keccak_f1600_read_distances_match_the_schedule`.
+///
+/// A call with invocation timestamp `I` writes at `I + 2`. In canonical Keccak
+/// sequences its actual predecessor is `r = I + 2 - distance`, so
+/// `2 <= I - r <= 34 < R`. For normalized timestamps matched by the memory argument,
+/// `b = I_hi - r_hi` is therefore in `{0, 1}`. Conversely, the low-limb equation and
+/// Booleanity imply the per-access read-before-write checks under the caller's
+/// distance bound; see `docs/keccak_relative_read_timestamps.md`, sections 3 and 5.
+/// All-zero padding has `b = 0` and satisfies both equations.
+///
+/// Here `b` is the borrow in `I + 2 - distance`. The conventional intermediate
+/// borrow for `r - (I + 2)` is `a = 1 - b` on active rows. Substituting `a` gives
+/// the same polynomials; `b` is kept because substitution changes their serialized
+/// expression trees.
 pub(crate) fn compile_read_timestamp_group_constraints<F: PrimeField>(
     structured_statements: &mut Vec<StructuredStatement<F>>,
     read_timestamp_groups: &BTreeMap<u8, ReadTimestampGroup>,
