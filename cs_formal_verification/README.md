@@ -22,6 +22,8 @@ does not import the proofs, runs the regressions and the axiom audits, checks th
   licence, so never committed); `lean/check_review.py` — review-guide and audit-coverage check.
 - `docs/` — [status](docs/VERIFICATION_STATUS.md), [trust and review boundaries](docs/TRUST_AND_REVIEW.md),
   [plan](docs/FORMAL_VERIFICATION_PLAN.md), and the pinned Airbender reference (`docs/airbender/00-master.md`).
+- `docs/shared/` — 1:1 copy of `verifier_formal_verification/docs/`, kept in sync, not edited here; in particular
+  [Lean strategies](docs/shared/lean-strategies.md), the rules for operating, proving and specifying in Lean.
 
 ## What is checked
 
