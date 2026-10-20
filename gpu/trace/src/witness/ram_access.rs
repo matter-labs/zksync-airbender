@@ -193,7 +193,10 @@ impl From<CSRamReadQuery> for RamReadQuery {
         Self {
             in_cycle_write_index: value.in_cycle_write_index,
             address: value.address.into(),
-            read_timestamp: value.read_timestamp.map(|x| x as u32),
+            read_timestamp: value
+                .read_timestamp
+                .map(|columns| columns.map(|x| u32::try_from(x).unwrap()))
+                .unwrap_or([u32::MAX; NUM_TIMESTAMP_COLUMNS_FOR_RAM]),
             read_value: value.read_value.into(),
         }
     }
@@ -214,7 +217,10 @@ impl From<CSRamWriteQuery> for RamWriteQuery {
         Self {
             in_cycle_write_index: value.in_cycle_write_index,
             address: value.address.into(),
-            read_timestamp: value.read_timestamp.map(|x| x as u32),
+            read_timestamp: value
+                .read_timestamp
+                .map(|columns| columns.map(|x| u32::try_from(x).unwrap()))
+                .unwrap_or([u32::MAX; NUM_TIMESTAMP_COLUMNS_FOR_RAM]),
             read_value: value.read_value.into(),
             write_value: value.write_value.into(),
         }
@@ -255,6 +261,35 @@ impl From<CSRamAuxComparisonSet> for RamAuxComparisonSet {
     fn from(value: CSRamAuxComparisonSet) -> Self {
         Self {
             intermediate_borrow: value.intermediate_borrow.into(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod cpu_tests {
+    use super::*;
+
+    #[test]
+    fn derived_timestamp_sentinel_preserves_ordinary_timestamp_columns() {
+        for timestamp in [None, Some([7, 9])] {
+            let expected = timestamp
+                .map(|columns| columns.map(|column| column as u32))
+                .unwrap_or([u32::MAX; NUM_TIMESTAMP_COLUMNS_FOR_RAM]);
+            let read = RamReadQuery::from(CSRamReadQuery {
+                in_cycle_write_index: 2,
+                address: CSRamAddress::ConstantRegister(10),
+                read_timestamp: timestamp,
+                read_value: CSRamWordRepresentation::Zero,
+            });
+            let write = RamWriteQuery::from(CSRamWriteQuery {
+                in_cycle_write_index: 2,
+                address: CSRamAddress::ConstantRegister(10),
+                read_timestamp: timestamp,
+                read_value: CSRamWordRepresentation::Zero,
+                write_value: CSRamWordRepresentation::Zero,
+            });
+            assert_eq!(read.read_timestamp, expected);
+            assert_eq!(write.read_timestamp, expected);
         }
     }
 }

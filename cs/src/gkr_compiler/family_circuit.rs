@@ -387,7 +387,7 @@ impl<F: PrimeField> GKRCompiler<F> {
                 let query_columns = RamReadQuery {
                     in_cycle_write_index: memory_query.local_timestamp_in_cycle(),
                     address,
-                    read_timestamp,
+                    read_timestamp: Some(read_timestamp),
                     read_value,
                 };
 
@@ -434,7 +434,7 @@ impl<F: PrimeField> GKRCompiler<F> {
                 let query_columns = RamWriteQuery {
                     in_cycle_write_index: memory_query.local_timestamp_in_cycle(),
                     address,
-                    read_timestamp,
+                    read_timestamp: Some(read_timestamp),
                     read_value,
                     write_value,
                 };

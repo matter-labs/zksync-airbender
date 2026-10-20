@@ -176,7 +176,7 @@ pub(crate) fn materialize_vector_lookup_input<F: PrimeField, E: FieldExtension<F
 }
 
 pub(crate) fn materialize_memory_tuple<F: PrimeField, E: FieldExtension<F> + Field>(
-    rel: &SpecialMemoryContributionRelation,
+    rel: &SpecialMemoryContributionRelation<F>,
     gkr_storage: &GKRStorage<F, E>,
     trace_len: usize,
     external_challenges: &GKRExternalChallenges<F, E>,
@@ -211,6 +211,14 @@ pub(crate) fn materialize_memory_tuple<F: PrimeField, E: FieldExtension<F> + Fie
             sources.push(src);
         }
         let sources_ref = &sources[..];
+        let witness_sources: Vec<_> =
+            if matches!(&rel.timestamp, CompiledMemoryTimestamp::Affine(_)) {
+                (0..compiled_circuit.witness_layout.total_width)
+                    .map(|column| gkr_storage.get_base_layer(GKRAddress::BaseLayerWitness(column)))
+                    .collect()
+            } else {
+                Vec::new()
+            };
 
         apply_row_wise::<F, _>(
             vec![],
@@ -228,6 +236,7 @@ pub(crate) fn materialize_memory_tuple<F: PrimeField, E: FieldExtension<F> + Fie
                         rel,
                         absolute_row_idx,
                         sources_ref,
+                        &witness_sources,
                         external_challenges,
                     );
 
@@ -284,9 +293,10 @@ pub(crate) fn mem_access_fn<F: PrimeField>(
 }
 
 pub(crate) fn evaluate_memory_query<F: PrimeField, E: FieldExtension<F> + Field>(
-    rel: &SpecialMemoryContributionRelation,
+    rel: &SpecialMemoryContributionRelation<F>,
     row: usize,
     base_layer_memory_sources: &[&[F]],
+    base_layer_witness_sources: &[&[F]],
     external_challenges: &GKRExternalChallenges<F, E>,
 ) -> E {
     let mut result = external_challenges.permutation_argument_additive_part;
@@ -377,8 +387,37 @@ pub(crate) fn evaluate_memory_query<F: PrimeField, E: FieldExtension<F> + Field>
     }
     // timestamp is a little special as we do add constant offset
 
-    match rel.timestamp {
+    match &rel.timestamp {
         CompiledMemoryTimestamp::Zero => {}
+        CompiledMemoryTimestamp::Affine(limbs) => {
+            for (limb_index, limb) in limbs.iter().enumerate() {
+                let mut value = limb.constant;
+                for (coefficient, address) in limb.linear_terms.iter() {
+                    let mut term = match *address {
+                        GKRAddress::BaseLayerMemory(column) => {
+                            mem_access_fn(base_layer_memory_sources, column, row)
+                        }
+                        GKRAddress::BaseLayerWitness(column) => {
+                            mem_access_fn(base_layer_witness_sources, column, row)
+                        }
+                        _ => panic!("RAM timestamp inputs must belong to a committed subtree"),
+                    };
+                    term.mul_assign(coefficient);
+                    value.add_assign(&term);
+                }
+                if limb_index == 0 {
+                    value.add_assign(&F::from_u32_unchecked(rel.timestamp_offset));
+                }
+                let mut term = external_challenges.permutation_argument_linearization_challenges
+                    [if limb_index == 0 {
+                        PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX
+                    } else {
+                        PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX
+                    }];
+                term.mul_assign_by_base(&value);
+                result.add_assign(&term);
+            }
+        }
         CompiledMemoryTimestamp::Normal(ts) => {
             {
                 let mut t = external_challenges.permutation_argument_linearization_challenges
@@ -448,7 +487,7 @@ pub(crate) fn evaluate_memory_query<F: PrimeField, E: FieldExtension<F> + Field>
 }
 
 pub(crate) fn memory_query_as_flattened_relation<F: PrimeField, E: FieldExtension<F> + Field>(
-    rel: &SpecialMemoryContributionRelation,
+    rel: &SpecialMemoryContributionRelation<F>,
     external_challenges: &GKRExternalChallenges<F, E>,
 ) -> (BTreeMap<GKRAddress, E>, E) {
     let mut result = BTreeMap::new();
@@ -544,8 +583,35 @@ pub(crate) fn memory_query_as_flattened_relation<F: PrimeField, E: FieldExtensio
     }
     // timestamp is a little special as we do add constant offset
 
-    match rel.timestamp {
+    match &rel.timestamp {
         CompiledMemoryTimestamp::Zero => {}
+        CompiledMemoryTimestamp::Affine(limbs) => {
+            for (limb_index, limb) in limbs.iter().enumerate() {
+                let challenge = external_challenges.permutation_argument_linearization_challenges
+                    [if limb_index == 0 {
+                        PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX
+                    } else {
+                        PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX
+                    }];
+                for (coefficient, address) in limb.linear_terms.iter() {
+                    let mut term = challenge;
+                    term.mul_assign_by_base(coefficient);
+                    result
+                        .entry(*address)
+                        .and_modify(|previous: &mut E| {
+                            previous.add_assign(&term);
+                        })
+                        .or_insert(term);
+                }
+                let mut constant = limb.constant;
+                if limb_index == 0 {
+                    constant.add_assign(&F::from_u32_unchecked(rel.timestamp_offset));
+                }
+                let mut term = challenge;
+                term.mul_assign_by_base(&constant);
+                constant_term.add_assign(&term);
+            }
+        }
         CompiledMemoryTimestamp::Normal(ts) => {
             {
                 let mut t = external_challenges.permutation_argument_linearization_challenges
@@ -773,4 +839,124 @@ pub(crate) fn fill_setup_column<E: Field>(
             });
         }
     });
+}
+
+#[cfg(test)]
+mod affine_timestamp_tests {
+    use super::*;
+    use cs::definitions::gkr::LinearRelation;
+    use field::baby_bear::{base::BabyBearField as F, ext4::BabyBearExt4 as E};
+
+    #[test]
+    fn affine_timestamp_matches_materialized_limbs_and_flattened_relation() {
+        let mut minus_one = F::ONE;
+        minus_one.negate();
+        let relation = SpecialMemoryContributionRelation {
+            address_space: CompiledAddressSpaceRelationStrict::Constant(1),
+            address: CompiledAddressStrict::U16Space(0),
+            timestamp: CompiledMemoryTimestamp::Affine([
+                LinearRelation {
+                    linear_terms: vec![
+                        (F::ONE, GKRAddress::BaseLayerMemory(0)),
+                        (
+                            F::from_u32_unchecked(1 << 19),
+                            GKRAddress::BaseLayerWitness(0),
+                        ),
+                        (minus_one, GKRAddress::BaseLayerWitness(1)),
+                        (F::ONE, GKRAddress::BaseLayerWitness(1)),
+                    ]
+                    .into_boxed_slice(),
+                    constant: F::from_u32_unchecked(3),
+                },
+                LinearRelation {
+                    linear_terms: vec![
+                        (F::ONE, GKRAddress::BaseLayerMemory(1)),
+                        (minus_one, GKRAddress::BaseLayerWitness(0)),
+                    ]
+                    .into_boxed_slice(),
+                    constant: F::ZERO,
+                },
+            ]),
+            value: RamWordRepresentation::Zero,
+            timestamp_offset: 2,
+        };
+        let challenges = GKRExternalChallenges::<F, E> {
+            permutation_argument_linearization_challenges: core::array::from_fn(|i| {
+                <E as FieldExtension<F>>::from_coeffs(core::array::from_fn(|j| {
+                    F::from_u32_unchecked((11 + i * 7 + j) as u32)
+                }))
+            }),
+            permutation_argument_additive_part: E::from_base(F::from_u32_unchecked(43)),
+            _marker: core::marker::PhantomData,
+        };
+        let memory = [vec![83, 524283, 1], vec![2, 7, 3]].map(|column| {
+            column
+                .into_iter()
+                .map(F::from_u32_unchecked)
+                .collect::<Vec<_>>()
+        });
+        let witness = [vec![0, 1, 1], vec![0, 4, 9]].map(|column| {
+            column
+                .into_iter()
+                .map(F::from_u32_unchecked)
+                .collect::<Vec<_>>()
+        });
+        let memory_refs: Vec<_> = memory.iter().map(Vec::as_slice).collect();
+        let witness_refs: Vec<_> = witness.iter().map(Vec::as_slice).collect();
+        for value in [
+            RamWordRepresentation::Zero,
+            RamWordRepresentation::U16Limbs([0, 1]),
+            RamWordRepresentation::U8Limbs([0, 1, 0, 1]),
+        ] {
+            let mut relation = relation.clone();
+            relation.value = value;
+            let (terms, constant) = memory_query_as_flattened_relation(&relation, &challenges);
+            for row in 0..3 {
+                let actual =
+                    evaluate_memory_query(&relation, row, &memory_refs, &witness_refs, &challenges);
+                let mut flattened = constant;
+                for (address, coefficient) in &terms {
+                    let value = match *address {
+                        GKRAddress::BaseLayerMemory(column) => memory[column][row],
+                        GKRAddress::BaseLayerWitness(column) => witness[column][row],
+                        _ => unreachable!(),
+                    };
+                    let mut term = *coefficient;
+                    term.mul_assign_by_base(&value);
+                    flattened.add_assign(&term);
+                }
+                assert_eq!(actual, flattened);
+                let CompiledMemoryTimestamp::Affine(limbs) = &relation.timestamp else {
+                    unreachable!()
+                };
+                let values = limbs.each_ref().map(|limb| {
+                    let mut value = limb.constant;
+                    for (coefficient, address) in &limb.linear_terms {
+                        let input = match *address {
+                            GKRAddress::BaseLayerMemory(column) => memory[column][row],
+                            GKRAddress::BaseLayerWitness(column) => witness[column][row],
+                            _ => unreachable!(),
+                        };
+                        let mut term = input;
+                        term.mul_assign(coefficient);
+                        value.add_assign(&term);
+                    }
+                    vec![value]
+                });
+                let materialized = [
+                    vec![memory[0][row]],
+                    vec![memory[1][row]],
+                    values[0].clone(),
+                    values[1].clone(),
+                ];
+                let refs: Vec<_> = materialized.iter().map(Vec::as_slice).collect();
+                let mut normal = relation.clone();
+                normal.timestamp = CompiledMemoryTimestamp::Normal([2, 3]);
+                assert_eq!(
+                    actual,
+                    evaluate_memory_query(&normal, 0, &refs, &[], &challenges)
+                );
+            }
+        }
+    }
 }

@@ -21,8 +21,8 @@ pub fn addr_to_idx(addr: &GKRAddress, sorted: &[GKRAddress]) -> usize {
         .unwrap_or_else(|_| panic!("address {:?} not found in sorted list", addr))
 }
 
-fn collect_mem_expr_addrs(
-    rel: &SpecialMemoryContributionRelation,
+fn collect_mem_expr_addrs<F: PrimeField>(
+    rel: &SpecialMemoryContributionRelation<F>,
     addrs: &mut BTreeSet<GKRAddress>,
 ) {
     match &rel.address_space {
@@ -62,6 +62,13 @@ fn collect_mem_expr_addrs(
         CompiledMemoryTimestamp::Normal(ts) => {
             addrs.insert(GKRAddress::BaseLayerMemory(ts[0]));
             addrs.insert(GKRAddress::BaseLayerMemory(ts[1]));
+        }
+        CompiledMemoryTimestamp::Affine(limbs) => {
+            for limb in limbs {
+                for &(_, address) in limb.linear_terms.iter() {
+                    addrs.insert(address);
+                }
+            }
         }
     }
     match &rel.value {

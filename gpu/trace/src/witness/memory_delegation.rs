@@ -121,10 +121,7 @@ impl From<&CSRelativeTimestampGroup> for RelativeTimestampGroup {
             *dst = src as u32;
         }
         Self {
-            borrow: {
-                assert!(value.borrow <= u32::MAX as usize);
-                value.borrow as u32
-            },
+            borrow: u32::try_from(value.borrow).unwrap(),
             members_count: members_count as u32,
             members,
         }
@@ -392,4 +389,34 @@ pub fn generate_memory_and_witness_values_delegation<
         count,
     );
     GenerateMemoryAndWitnessValuesFunction(T::MEMORY_AND_WITNESS_SIGNATURE).launch(&config, &args)
+}
+
+#[cfg(test)]
+mod cpu_tests {
+    use super::*;
+
+    #[test]
+    fn relative_timestamp_placement_survives_cuda_metadata_conversion() {
+        let source = GKRAuxLayoutData {
+            shuffle_ram_timestamp_comparison_aux_vars: vec![None; 4],
+            relative_timestamp_groups: vec![
+                CSRelativeTimestampGroup {
+                    borrow: 11,
+                    members: vec![0, 1],
+                },
+                CSRelativeTimestampGroup {
+                    borrow: 12,
+                    members: vec![2, 3],
+                },
+            ],
+        };
+        let converted = DelegationAuxLayoutData::from(&source);
+        assert_eq!(converted.relative_timestamp_groups_count, 2);
+        assert_eq!(converted.relative_timestamp_groups[0].borrow, 11);
+        assert_eq!(
+            &converted.relative_timestamp_groups[1].members[..2],
+            &[2, 3]
+        );
+        assert_eq!(converted.relative_timestamp_groups[1].borrow, 12);
+    }
 }

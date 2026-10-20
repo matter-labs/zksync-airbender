@@ -1,7 +1,7 @@
 //! Memory-tuple / grand-product / mask / inits-teardowns lowering for the DAG IR.
 //!
-//! A memory tuple lowers to an affine expression over base-layer memory reads,
-//! constants, and permutation challenges:
+//! A memory tuple lowers to an affine expression over committed base-layer
+//! memory and witness reads, constants, and permutation challenges:
 //!
 //! ```text
 //! tuple = Challenge(PermutationAdditive)
@@ -13,13 +13,14 @@
 
 use cs::definitions::gkr::{AddressSpaceType, RamWordRepresentation};
 use cs::definitions::{
-    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
+    GKRAddress, PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
 };
 use cs::gkr_compiler::{
     CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
     InitsOrTeardownsTimestampAndValue, SpecialMemoryContributionRelation,
 };
+use field::PrimeField;
 
 use super::super::{
     ArenaBuilder, ChallengeKey, ChallengePower, ChallengeRef, ExprId, PermutationSlot, ReadPlace,
@@ -92,9 +93,9 @@ fn slot_for_address_high() -> PermutationSlot {
 ///
 /// `minus_one` is the reduced base-field `−1` (`F::CHARACTERISTICS − 1`), used to
 /// encode the `IsRegister` `1 − bit` rewrite without a `Sub`/`Neg` node.
-pub(super) fn lower_memory_tuple(
+pub(super) fn lower_memory_tuple<F: PrimeField>(
     arena: &mut ArenaBuilder,
-    rel: &SpecialMemoryContributionRelation,
+    rel: &SpecialMemoryContributionRelation<F>,
     minus_one: u32,
 ) -> Result<ExprId, String> {
     let mut terms: Vec<ExprId> = Vec::with_capacity(8);
@@ -109,7 +110,7 @@ pub(super) fn lower_memory_tuple(
     address_terms(arena, &rel.address, &mut terms)?;
 
     // timestamp contribution.
-    timestamp_terms(arena, &rel.timestamp, rel.timestamp_offset, &mut terms);
+    timestamp_terms(arena, &rel.timestamp, rel.timestamp_offset, &mut terms)?;
 
     // value contribution.
     value_terms(arena, &rel.value, &mut terms);
@@ -208,13 +209,14 @@ fn address_terms(
 }
 
 /// Append the timestamp linearization terms. `Normal([lo, hi])` adds
-/// `ch(TsLow)·(mem[lo] + timestamp_offset) + ch(TsHigh)·mem[hi]`; `Zero` adds nothing.
-fn timestamp_terms(
+/// `ch(TsLow)·(mem[lo] + timestamp_offset) + ch(TsHigh)·mem[hi]`;
+/// `Affine` reads committed memory and witness columns; `Zero` adds nothing.
+fn timestamp_terms<F: PrimeField>(
     arena: &mut ArenaBuilder,
-    timestamp: &CompiledMemoryTimestamp,
+    timestamp: &CompiledMemoryTimestamp<F>,
     timestamp_offset: u32,
     terms: &mut Vec<ExprId>,
-) {
+) -> Result<(), String> {
     match timestamp {
         CompiledMemoryTimestamp::Zero => {}
         CompiledMemoryTimestamp::Normal(ts) => {
@@ -235,6 +237,126 @@ fn timestamp_terms(
             let hi = mem_read(arena, ts[1]);
             terms.push(challenge_scaled(arena, PermutationSlot::TimestampHigh, hi));
         }
+        CompiledMemoryTimestamp::Affine(limbs) => {
+            for (limb_idx, limb) in limbs.iter().enumerate() {
+                let mut parts = Vec::with_capacity(limb.linear_terms.len() + 2);
+                let offset = if limb_idx == 0 { timestamp_offset } else { 0 };
+                let mut limb_constant = limb.constant;
+                limb_constant.add_assign(&F::from_u32_with_reduction(offset));
+                parts.push(constant(arena, limb_constant.as_u32_reduced()));
+                for &(coefficient, address) in limb.linear_terms.iter() {
+                    let place = match address {
+                        GKRAddress::BaseLayerMemory(column) => {
+                            ReadPlace::BaseLayerMemory { column }
+                        }
+                        GKRAddress::BaseLayerWitness(column) => {
+                            ReadPlace::BaseLayerWitness { column }
+                        }
+                        other => {
+                            return Err(format!(
+                                "affine timestamp has unsupported address {other:?}"
+                            ))
+                        }
+                    };
+                    let source = arena.intern_source(SourceKind::Read { place });
+                    let read = arena.source_expr(source);
+                    let coeff = constant(arena, coefficient.as_u32_reduced());
+                    parts.push(arena.mul(vec![coeff, read]));
+                }
+                let inner = arena.add(parts);
+                let slot = if limb_idx == 0 {
+                    PermutationSlot::TimestampLow
+                } else {
+                    PermutationSlot::TimestampHigh
+                };
+                terms.push(challenge_scaled(arena, slot, inner));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod affine_timestamp_tests {
+    use super::*;
+    use cs::definitions::gkr::LinearRelation;
+    use field::baby_bear::base::BabyBearField as F;
+    use field::Field;
+
+    fn evaluate(arena: &ArenaBuilder, id: ExprId) -> F {
+        match &arena.exprs()[id.0 as usize] {
+            super::super::super::Expr::Source(source) => {
+                match &arena.sources()[source.0 as usize] {
+                    SourceKind::Constant { value } => F::from_u32_with_reduction(*value),
+                    SourceKind::Read {
+                        place: ReadPlace::BaseLayerMemory { column: 7 },
+                    } => F::from_u32_with_reduction(7),
+                    SourceKind::Read {
+                        place: ReadPlace::BaseLayerWitness { column: 3 },
+                    } => F::from_u32_with_reduction(3),
+                    SourceKind::Challenge {
+                        reference:
+                            ChallengeRef {
+                                key:
+                                    ChallengeKey::PermutationLinearization(
+                                        PermutationSlot::TimestampLow,
+                                    ),
+                                ..
+                            },
+                    } => F::from_u32_with_reduction(11),
+                    SourceKind::Challenge {
+                        reference:
+                            ChallengeRef {
+                                key:
+                                    ChallengeKey::PermutationLinearization(
+                                        PermutationSlot::TimestampHigh,
+                                    ),
+                                ..
+                            },
+                    } => F::from_u32_with_reduction(13),
+                    other => panic!("unexpected source {other:?}"),
+                }
+            }
+            super::super::super::Expr::Add(parts) => {
+                parts.iter().fold(F::ZERO, |mut acc, &part| {
+                    acc.add_assign(&evaluate(arena, part));
+                    acc
+                })
+            }
+            super::super::super::Expr::Mul(parts) => parts.iter().fold(F::ONE, |mut acc, &part| {
+                acc.mul_assign(&evaluate(arena, part));
+                acc
+            }),
+        }
+    }
+
+    #[test]
+    fn affine_timestamp_accumulates_repeated_memory_and_witness_inputs() {
+        let field = F::from_u32_with_reduction;
+        let timestamp = CompiledMemoryTimestamp::Affine([
+            LinearRelation {
+                linear_terms: vec![
+                    (field(2), GKRAddress::BaseLayerMemory(7)),
+                    (field(2), GKRAddress::BaseLayerMemory(7)),
+                    (field(3), GKRAddress::BaseLayerWitness(3)),
+                ]
+                .into_boxed_slice(),
+                constant: field(5),
+            },
+            LinearRelation {
+                linear_terms: vec![(field(1), GKRAddress::BaseLayerWitness(3))].into_boxed_slice(),
+                constant: field(1),
+            },
+        ]);
+        let mut arena = ArenaBuilder::new();
+        let mut terms = Vec::new();
+        timestamp_terms(&mut arena, &timestamp, 2, &mut terms).unwrap();
+        assert_eq!(terms.len(), 2);
+        assert_eq!(
+            evaluate(&arena, terms[0]),
+            field(11 * (5 + 2 + 2 * 7 + 2 * 7 + 3 * 3))
+        );
+        assert_eq!(evaluate(&arena, terms[1]), field(13 * (1 + 3)));
     }
 }
 

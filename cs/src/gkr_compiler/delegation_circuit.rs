@@ -149,7 +149,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             vec![];
         let mut indirect_access_variable_offsets = BTreeMap::new();
         let mut read_timestamp_groups = BTreeMap::new();
-        let mut alignment_range_check_expressions = vec![];
+        let mut additional_timestamp_range_checks = vec![];
         use crate::gkr_compiler::delegation_mem_accesses::{
             compile_read_timestamp_group_constraints, compile_register_and_indirect_mem_accesses,
         };
@@ -164,11 +164,12 @@ impl<F: PrimeField> GKRCompiler<F> {
             &mut ram_access_sets,
             &mut ram_augmented_sets,
             &mut indirect_access_variable_offsets,
-            &mut alignment_range_check_expressions,
+            &mut additional_timestamp_range_checks,
             &mut read_timestamp_groups,
         );
         compile_read_timestamp_group_constraints(
-            &mut structured_statements,
+            &mut graph,
+            &mut additional_timestamp_range_checks,
             &read_timestamp_groups,
             read_timestamp_group_distances,
             delegation_circuit_state.execute,
@@ -201,6 +202,24 @@ impl<F: PrimeField> GKRCompiler<F> {
             &layers_mapping,
         );
 
+        // Derived timestamps can depend on control-lookup outputs and borrows
+        // in the witness subtree. Place those operands before building RAM caches.
+        let timestamp_inputs: BTreeSet<_> = graph
+            .derived_timestamps
+            .values()
+            .flat_map(|limbs| limbs.iter())
+            .flat_map(|limb| limb.to_max_quadratic_constraint().stable_variable_set())
+            .collect();
+        for variable in timestamp_inputs {
+            if all_variables_to_place.contains(&variable) {
+                graph.layout_witness_subtree_multiple_variables(
+                    [variable],
+                    &mut all_variables_to_place,
+                    &layers_mapping,
+                );
+            }
+        }
+
         use crate::gkr_compiler::memory_like_grand_product::layout_initial_grand_product_accumulation;
 
         let (
@@ -227,7 +246,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             &ram_augmented_sets,
             delegation_circuit_state.invocation_timestamp,
         );
-        timestamp_range_check_expressions_to_compile.extend(alignment_range_check_expressions);
+        timestamp_range_check_expressions_to_compile.extend(additional_timestamp_range_checks);
 
         let total_timestamp_range_check_lookups =
             timestamp_range_check_expressions_to_compile.len() as u64 * trace_len as u64;
@@ -441,19 +460,12 @@ impl<F: PrimeField> GKRCompiler<F> {
             let relative_timestamp_groups = read_timestamp_groups
                 .into_values()
                 .map(|group| {
-                    let read_timestamp = group.read_timestamp_places.map(|el| {
-                        let GKRAddress::BaseLayerMemory(el) = el else {
-                            unreachable!()
-                        };
-                        el
-                    });
                     let GKRAddress::BaseLayerWitness(borrow) =
                         graph.get_address_for_variable(group.borrow)
                     else {
                         unreachable!()
                     };
                     RelativeTimestampGroup {
-                        read_timestamp,
                         borrow,
                         members: group.members,
                     }

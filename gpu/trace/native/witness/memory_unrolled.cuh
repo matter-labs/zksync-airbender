@@ -165,6 +165,8 @@ DEVICE_FORCEINLINE void process_shuffle_ram_access_set(const UnrolledMemoryLayou
   case Readonly: {
     const auto query = payload.ram_read_query;
     address = query.address;
+    if (query.read_timestamp[0] == 0xffffffff)
+      __trap(); // Derived timestamps are supported only by delegation layouts.
     copy_timestamp(query.read_timestamp, read_timestamp_columns);
     read_value = query.read_value;
     break;
@@ -172,6 +174,8 @@ DEVICE_FORCEINLINE void process_shuffle_ram_access_set(const UnrolledMemoryLayou
   case Write: {
     const auto query = payload.ram_write_query;
     address = query.address;
+    if (query.read_timestamp[0] == 0xffffffff)
+      __trap(); // Derived timestamps are supported only by delegation layouts.
     copy_timestamp(query.read_timestamp, read_timestamp_columns);
     read_value = query.read_value;
     break;

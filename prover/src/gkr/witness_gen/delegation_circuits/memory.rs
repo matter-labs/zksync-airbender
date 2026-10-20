@@ -167,10 +167,9 @@ pub(crate) unsafe fn gkr_evaluate_indirect_memory_accesses<
                     Placeholder::DelegationRegisterReadTimestamp(reg_idx as usize),
                     proxy.absolute_row_idx,
                 );
-                proxy.write_timestamp_value_into_columns(
-                    mem_query.get_read_timestamp_columns(),
-                    read_ts,
-                );
+                if let Some(columns) = mem_query.get_read_timestamp_columns() {
+                    proxy.write_timestamp_value_into_columns(columns, read_ts);
+                }
 
                 match mem_query.get_read_value_columns() {
                     RamWordRepresentation::Zero => {
@@ -235,10 +234,9 @@ pub(crate) unsafe fn gkr_evaluate_indirect_memory_accesses<
                     },
                     proxy.absolute_row_idx,
                 );
-                proxy.write_timestamp_value_into_columns(
-                    mem_query.get_read_timestamp_columns(),
-                    read_ts,
-                );
+                if let Some(columns) = mem_query.get_read_timestamp_columns() {
+                    proxy.write_timestamp_value_into_columns(columns, read_ts);
+                }
 
                 match mem_query.get_read_value_columns() {
                     RamWordRepresentation::Zero => {
