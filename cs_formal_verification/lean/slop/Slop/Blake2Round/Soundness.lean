@@ -2,79 +2,20 @@ import Human.Circuits.Blake2Round.Mixing
 import Slop.Blake2Round.Diagonal
 import Slop.Blake2Round.Reference
 
+import Slop.Blake2Round.Soundness.ColumnMapping
+import Slop.Blake2Round.Soundness.DiagonalMapping
+import Slop.Blake2Round.Soundness.Interfaces
+import Slop.Blake2Round.Soundness.Writes0
+import Slop.Blake2Round.Soundness.Writes1
+import Slop.Blake2Round.Soundness.Writes2
+import Slop.Blake2Round.Soundness.Writes3
+
 set_option warningAsError true
 
 namespace Airbender.Blake2Round.Proofs
 
 set_option maxRecDepth 16384
 set_option maxHeartbeats 4000000
-
-def gOutput {p : Nat} (w : Nat → ZMod p) : Blake2G.Words :=
-  ⟨⟨(w 17).val, (w 18).val⟩, ⟨(w 21).val, (w 22).val⟩,
-    ⟨(w 25).val, (w 26).val⟩, ⟨(w 29).val, (w 30).val⟩⟩
-
-def columnOutputs {p : Nat} (w : Nat → ZMod p) (call : Fin 4) : Blake2G.Words :=
-  gOutput (columnGAssignment call w)
-
-def diagonalOutputs {p : Nat} (w : Nat → ZMod p) (call : Fin 4) : Blake2G.Words :=
-  gOutput (diagonalGAssignment call w)
-
-private theorem column_mapping {p : Nat} {w : Nat → ZMod p}
-    {input : Mixing.Input} {output : Mixing.Output}
-    (mapping : Mixing.WordMapping input output w) (call : Fin 4) :
-    Blake2G.WordMapping (callInput 0 call input.state input.message)
-      (columnOutputs w call) (columnGAssignment call w) := by
-  rw [mapping.state, mapping.message]
-  fin_cases call <;> constructor
-  all_goals simp [callInput, callConstants, Specs.BLAKE3.roundConstants,
-    Blake2G.State.Proofs.project, Preparation.words, Variables.preparedState,
-    Variables.scheduledMessage, columnOutputs, gOutput, columnGAssignment,
-    columnGBase, Blake2G.Proofs.assemble, Fin.getElem_fin]
-
-private theorem diagonal_mapping {p : Nat} {w : Nat → ZMod p}
-    {input : Mixing.Input} {output : Mixing.Output}
-    (mapping : Mixing.WordMapping input output w) (call : Fin 4) :
-    Blake2G.WordMapping
-      (callInput 1 call (phaseUpdate 0 input.state (columnOutputs w)) input.message)
-      (diagonalOutputs w call) (diagonalGAssignment call w) := by
-  rw [mapping.message]
-  fin_cases call <;> constructor
-  all_goals simp [callInput, callConstants, Specs.BLAKE3.roundConstants,
-    phaseUpdate, callUpdate, Blake2G.State.Proofs.project, Blake2G.State.Proofs.update,
-    Preparation.words, Variables.scheduledMessage, columnOutputs, diagonalOutputs,
-    gOutput, columnGAssignment, columnGBase, diagonalGAssignment, diagonalGBase,
-    Blake2G.Proofs.assemble, Fin.getElem_fin]
-
-private theorem column_interface {p : Nat} {w : Nat → ZMod p}
-    {input : Mixing.Input} {output : Mixing.Output}
-    (interface : Mixing.InterfaceAssumptions input output w) (call : Fin 4) :
-    Blake2G.InterfaceAssumptions (callInput 0 call input.state input.message)
-      (columnOutputs w call) (columnGAssignment call w) := by
-  fin_cases call <;> constructor
-  all_goals simp only [callInput, callConstants, Specs.BLAKE3.roundConstants,
-    Blake2G.State.Proofs.project]
-  all_goals first
-    | exact (interface.additionInputs 0).1 | exact (interface.additionInputs 1).1
-    | exact (interface.additionInputs 2).1 | exact (interface.additionInputs 3).1
-    | exact (interface.additionInputs 0).2 | exact (interface.additionInputs 1).2
-    | exact (interface.additionInputs 2).2 | exact (interface.additionInputs 3).2
-    | exact interface.messages 0 | exact interface.messages 1
-    | exact interface.messages 2 | exact interface.messages 3
-    | exact interface.messages 4 | exact interface.messages 5
-    | exact interface.messages 6 | exact interface.messages 7
-
-private theorem diagonal_messages {p : Nat} {w : Nat → ZMod p}
-    {input : Mixing.Input} {output : Mixing.Output}
-    (interface : Mixing.InterfaceAssumptions input output w) (call : Fin 4) :
-    (callInput 1 call (phaseUpdate 0 input.state (columnOutputs w)) input.message).mx.Bounded ∧
-      (callInput 1 call (phaseUpdate 0 input.state (columnOutputs w)) input.message).my.Bounded := by
-  fin_cases call <;> constructor
-  all_goals simp only [callInput, callConstants, Specs.BLAKE3.roundConstants]
-  all_goals first
-    | exact interface.messages 8 | exact interface.messages 9
-    | exact interface.messages 10 | exact interface.messages 11
-    | exact interface.messages 12 | exact interface.messages 13
-    | exact interface.messages 14 | exact interface.messages 15
 
 /-- The 32 imported write equations connect the eight G results to the
     allocated output words. This includes their exact limb values. -/
@@ -83,34 +24,16 @@ theorem extended_writes {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
       (importedConstraints setupTable)) (initial : Vector Arithmetic.Word 16) :
     Preparation.words w Mixing.extendedWrites =
       phaseUpdate 1 (phaseUpdate 0 initial (columnOutputs w)) (diagonalOutputs w) := by
-  have word (i : Fin 16) :
-      (Preparation.words w Mixing.extendedWrites)[i] =
-        (phaseUpdate 1 (phaseUpdate 0 initial (columnOutputs w)) (diagonalOutputs w))[i] := by
-    have low := Verification.assertion_of_holds h
-      ⟨120 + 2 * i.val, by rw [constraint_count]; have size := i.isLt; omega⟩
-    have high := Verification.assertion_of_holds h
-      ⟨121 + 2 * i.val, by rw [constraint_count]; have size := i.isLt; omega⟩
-    fin_cases i
-    all_goals simp [Preparation.words, Mixing.extendedWrites, phaseUpdate, callUpdate,
-      callConstants, Specs.BLAKE3.roundConstants, Blake2G.State.Proofs.update,
-      columnOutputs, diagonalOutputs, gOutput, columnGAssignment, diagonalGAssignment,
-      diagonalGBase, columnGBase, Blake2G.Proofs.assemble, Fin.getElem_fin,
-      Arithmetic.Word.mk.injEq]
-    all_goals constructor
-    all_goals apply congrArg ZMod.val
-    all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-      Verification.environment, Blake2G.Proofs.secondAlo, Blake2G.Proofs.secondAhi,
-      Blake2G.Proofs.secondClo, Blake2G.Proofs.secondChi, Blake2G.Proofs.firstAlo,
-      Blake2G.Proofs.firstAhi, Blake2G.Proofs.firstClo, Blake2G.Proofs.firstChi,
-      diagonalGBase, columnGAssignment, columnGBase, Blake2G.Proofs.assemble] at low high ⊢
-    all_goals solve
-      | linear_combination low
-      | linear_combination -low
-      | linear_combination high
-      | linear_combination -high
   apply Vector.ext
   intro i hi
-  exact word ⟨i, hi⟩
+  have size : i < 16 := hi
+  by_cases c0 : i < 4
+  · exact extended_words_0 h initial ⟨i, hi⟩ (Nat.zero_le _) c0
+  by_cases c1 : i < 8
+  · exact extended_words_1 h initial ⟨i, hi⟩ (by show _ ≤ i; omega) c1
+  by_cases c2 : i < 12
+  · exact extended_words_2 h initial ⟨i, hi⟩ (by show _ ≤ i; omega) c2
+  exact extended_words_3 h initial ⟨i, hi⟩ (by show _ ≤ i; omega) size
 
 /-- Soundness of all eight mixing calls and the allocated 16-word writeback,
     with only the stated initial addition-input and selected-message bounds. -/
