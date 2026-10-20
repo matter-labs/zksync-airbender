@@ -253,11 +253,7 @@ where
     );
     let twiddles: Twiddles<_, Global> = Twiddles::new(num_delegation_cycles, worker);
     let setup = CpuGKRSetup::construct(table_driver, &[], num_delegation_cycles, circuit);
-    let setup_commitment = setup.commit_for_config(
-        &twiddles,
-        &prover_config,
-        worker,
-    );
+    let setup_commitment = setup.commit_for_config(&twiddles, &prover_config, worker);
     prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor, Blake2sTranscript>(
         circuit,
         external_challenges,
@@ -983,11 +979,7 @@ fn prepare_unified_fixture(
 
     let (expected_cpu_proof, delegation_grand_product_factors) = if compute_cpu_reference {
         let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-        let setup_commitment = setup.commit_for_config(
-            &twiddles,
-            &prover_config,
-            &worker,
-        );
+        let setup_commitment = setup.commit_for_config(&twiddles, &prover_config, &worker);
         let expected_cpu_proof =
             prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor, Blake2sTranscript>(
                 &compiled_circuit,

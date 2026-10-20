@@ -253,11 +253,7 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
 
     // --- CPU reference proof (only when requested) ---
     let expected_cpu_proof = if compute_cpu_reference {
-        let setup_commitment = setup.commit_for_config(
-            &twiddles,
-            &prover_config,
-            &worker,
-        );
+        let setup_commitment = setup.commit_for_config(&twiddles, &prover_config, &worker);
         Some(prove_configured_with_gkr::<
             BF,
             E4,

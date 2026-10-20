@@ -16,12 +16,12 @@ use crate::upstream::{
     DefaultTreeConstructor, FieldExtension, MerkleTreeCapVarLength, PrimeField, VirtualSetupPoly,
 };
 // test-only direct upstream imports (the `#[cfg(test)]` exemption of the upstream rule)
+use gpu_core::primitives::field::E4;
+use gpu_ops::simple::set_by_ref;
 use prover::allocation_pool::GenericAllocationPool;
 use prover::gkr::prover::backend::NaiveBackend;
 use prover::gkr::prover::stages::commitment_utils::commit_trace_part;
 use prover::gkr::prover::SetupCommitment;
-use gpu_core::primitives::field::E4;
-use gpu_ops::simple::set_by_ref;
 
 fn make_test_cpu_setup(
     trace_len: usize,

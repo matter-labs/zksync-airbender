@@ -33,7 +33,7 @@ RUN apt-get update && apt-get install -y \
 # `[unstable]` config section, and the `cargo-features` manifest flag); those are
 # unlocked with the `RUSTC_BOOTSTRAP=1` trick set inside `dump_bin.sh`, so no
 # nightly toolchain is required.
-ENV RUST_VERSION=1.98.0
+ENV RUST_VERSION=1.99.1
 
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain "$RUST_VERSION"
 

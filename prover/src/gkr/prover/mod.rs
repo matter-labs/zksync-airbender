@@ -1506,7 +1506,7 @@ fn prove_configured_with_gkr_from_forward_eval<
     setup_commitment: &SetupCommitment<F, T>,
     twiddles: &B::TwiddleSet,
     prover_config: &ProverConfig,
-    operation_mode: OperationMode,
+    _operation_mode: OperationMode,
     storage: WhirOracleStorage,
     inits_and_teardowns_top_bits: Vec<u32>,
     trace_len: usize,

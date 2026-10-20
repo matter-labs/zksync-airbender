@@ -72,7 +72,6 @@ use crate::gkr::prover::transcript_utils::{
     add_whir_commitment_to_transcript, commit_field_els, draw_fresh_random_field_els,
     draw_query_bits, draw_random_field_els,
 };
-use crate::gkr::prover::WhirSchedule;
 use crate::gkr::prover_config::ProverConfig;
 use crate::gkr::sumcheck::access_and_fold::GKRStorage;
 use crate::gkr::sumcheck::*;
@@ -3792,6 +3791,7 @@ mod test {
         field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4},
         merkle_trees::blake2s_for_everything_tree::Blake2sU32MerkleTreeWithCap,
     };
+    use crate::gkr::prover::WhirSchedule;
     use field::FieldExtension;
     use rand::{rngs::ThreadRng, RngCore};
 
