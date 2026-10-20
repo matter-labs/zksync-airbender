@@ -113,3 +113,13 @@ actual public construction. The short exported-decoder claim consumes full nativ
 constraints and actual membership, deriving source evidence and PC bounds. This
 concrete input certificate leaves arbitrary-program Rust decoder refinement,
 initialized original control execution and physical trace/argument binding open.
+
+The subword offset mode accepts --subword-offset LAYOUT.json OUTPUT.json and
+materializes only the actual native offset/trap table. Its table ID comes from
+the native table and its offset comes from the supplied compiled v2 layout.
+The pinned artifact retains all 2,097,152 four-field rows at native ID 44 and
+offset 65,537; the standard gate reproduces it byte for byte. Independent Lean
+certificates check its complete width/limb/trap semantics, including the explicit
+native misaligned-load-to-x0 exception. Remaining subword regions, full circuit
+constraints, original instruction execution and physical setup/argument binding
+are separate. No dependency, codec, memory ceiling or other exporter mode changes.

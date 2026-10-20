@@ -31,6 +31,14 @@ def main():
         assert output.read_bytes() == (ROOT / "artifacts/setup/word-memory-native.json").read_bytes()
         print("PASS reproducible native setup export", flush=True)
         binary = TARGET / "debug/airbender-v2-native-setup-exporter"
+        subword_layout = ROOT / "../../cs/subword_only_load_store_preprocessed_layout.json"
+        subprocess.run([str(binary), "--subword-offset", str(subword_layout), str(output)], check=True)
+        assert output.read_bytes() == (ROOT / "artifacts/setup/subword-offset-native.json").read_bytes()
+        subword = json.loads(output.read_bytes())
+        region, = subword["tables"]
+        assert (region["id"], region["offset"], region["data"]["length"]) == (44,65537,2097152)
+        assert json.loads(subword_layout.read_bytes())["table_offsets"][region["id"]] == region["offset"]
+        print("PASS reproducible actual native subword offset/trap region and compiled placement", flush=True)
         subprocess.run([str(binary), "--control", str(output)], check=True)
         assert output.read_bytes() == (ROOT / "artifacts/setup/jump-control-native.json").read_bytes()
         print("PASS reproducible native jump/branch/SLT fixed tables", flush=True)

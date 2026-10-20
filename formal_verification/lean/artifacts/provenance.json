@@ -335,6 +335,10 @@
     {
       "path": "../../cs/shift_binop_csrrw_preprocessed_layout.json",
       "sha256": "fdf11c47b3fc8c792a150e613f803ca4d6cc156f330eff2a1004c88e3ccd5164"
+    },
+    {
+      "path": "../../cs/subword_only_load_store_preprocessed_layout.json",
+      "sha256": "6b58d4da289e00aaa14764cde45ad84d0659ce7773a618a5228fe0692e52c72b"
     }
   ],
   "native_sources": [
@@ -527,6 +531,18 @@
     {
       "path": "../../cs/src/csr_properties.rs",
       "sha256": "049a376d811ee4b97f89fa611e905f6a589b64ded6d3d331a8ab66f89914f08d"
+    },
+    {
+      "path": "../../cs/src/tables/memory_opcode_related.rs",
+      "sha256": "8ce3dcc5c28c8d77db06d4828d8e2d160bea651f97f9087a0e57591614dbe1f9"
+    },
+    {
+      "path": "../../cs/src/machine/ops/unrolled/load_store_subword_only.rs",
+      "sha256": "4ce2a9f92679aae29ac82fcc645e705d5ab7a416761136ac7a5b2453fdfb4d1a"
+    },
+    {
+      "path": "../../cs/src/machine/ops/unrolled/load_store.rs",
+      "sha256": "ddd6da8c20ef850718d9c96fe4c817fb7e36e4c44e6621f325c92fc7bc39ca8d"
     }
   ],
   "adaptations": [
@@ -5066,6 +5082,69 @@
       "backport_reuse_revision": "8529958a2fb2f15c178caffa8eab6e14e23e75bb",
       "backport_reuse_path": "Tests/MulDivFetched.lean",
       "backport_reuse_sha256": "ee7a79adcf27c052819dfa60bd0e30ec0a674a12de04e22cdec8a9a11cc463e7"
+    },
+    {
+      "path": "Airbender/Import/Setup.lean",
+      "backport_reuse_revision": "3d9717e1a5a5eb6e23df9ddb88abd0a142cd353c",
+      "backport_reuse_path": "Airbender/Import/Setup.lean",
+      "backport_reuse_sha256": "e8e2b7636deb66f20a379f921ac734df36ba2819e3ce921f9d1034058f23e645",
+      "change": "Reuse strict native region/matrix/field validation for the exact v2 subword offset/trap region, ID 44 and compiled offset 65537; reject crossed profiles and structural mutations."
+    },
+    {
+      "path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_revision": "3d9717e1a5a5eb6e23df9ddb88abd0a142cd353c",
+      "backport_reuse_path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_sha256": "c812092dcb9bb16f3d48124a8437372f841c41ef0d1559972d9e88036965e7c7",
+      "change": "Reuse the lossless literal emitter for all actual exported subword offset/trap rows. No row recipe or circuit acceptance is inserted."
+    },
+    {
+      "path": "Tests/ArtifactImport.lean",
+      "backport_reuse_revision": "3d9717e1a5a5eb6e23df9ddb88abd0a142cd353c",
+      "backport_reuse_path": "Tests/ArtifactImport.lean",
+      "backport_reuse_sha256": "810853ebe2be12ef07d6a644f59fc90bb2b8c5a578de62f9bc767c0d73ab16ba",
+      "change": "Retain all existing checks and add fourteen exact native subword offset/field/tag/placement/shape/profile/canonicality rejection checks."
+    },
+    {
+      "path": "scripts/check_native_setup.py",
+      "backport_reuse_revision": "3d9717e1a5a5eb6e23df9ddb88abd0a142cd353c",
+      "backport_reuse_path": "scripts/check_native_setup.py",
+      "backport_reuse_sha256": "13e87baab9c79f8605987109d6fa16f58baf3091709e81e37dfcd3e32a930dec",
+      "change": "Retain offline locked scoped single-job check/build and reproduce the native offset/trap region byte for byte, with ID and full compiled placement checked independently."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/NativeSubwordOffsetData.lean",
+      "backport_reuse_revision": "3d9717e1a5a5eb6e23df9ddb88abd0a142cd353c",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/NativeShiftScalarData.lean",
+      "backport_reuse_sha256": "37f8dc212b48db503c9d461bd34080605c315798e79c19c209a889eff59a220f",
+      "change": "Reuse the native literal-data module pattern for the separate complete v2 subword offset/trap region."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/SubwordOffset.lean",
+      "backport_reuse_revision": "3d9717e1a5a5eb6e23df9ddb88abd0a142cd353c",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/WordROM.lean",
+      "backport_reuse_sha256": "6ccef544884aa5b88d71fb8eb5208e269ee55f28ae19d414b76ed1d2d61e91ee",
+      "change": "Reuse original Clean static table construction. Define exact source-shaped v2 offset/trap semantics for every 21-bit key, including invalid encodings and the explicit x0 load exception. Full circuit and original instruction behavior remain separate."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/Offset.lean",
+      "backport_reuse_revision": "3d9717e1a5a5eb6e23df9ddb88abd0a142cd353c",
+      "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/ControlTables.lean",
+      "backport_reuse_sha256": "b183f814449652bfd5d646a1f7033a698b0b2209ccc777508d60ab8861a86682",
+      "change": "Reuse native fixed-table certificate and exact Clean/native membership transport. The affine getter is copied unchanged from the native scalar certificate. New small symbolic periodic-block reads cover all 32 control groups and every address-low pattern without full-domain enumeration or larger proof/resource limits."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/SubwordOffsetTheorems.lean",
+      "backport_reuse_revision": "3d9717e1a5a5eb6e23df9ddb88abd0a142cd353c",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/NativeBinary.lean",
+      "backport_reuse_sha256": "6c58e715bc1fe7a55279641f6ec59d3d51cc66ddf592384ed30a1c5671c0cce3",
+      "change": "Reuse the short native helper claim shape, exposing canonical key, exact offset and complete trap/width/limb mask with calculations under Proofs."
+    },
+    {
+      "path": "Tests/SubwordOffset.lean",
+      "backport_reuse_revision": "3d9717e1a5a5eb6e23df9ddb88abd0a142cd353c",
+      "backport_reuse_path": "Tests/NativeBinary.lean",
+      "backport_reuse_sha256": "d60b1d234f0036d770bd5bd4d7d44eef8e8c0c4a5d4e1117e5eab71c5928e422",
+      "change": "Adapt complete native row and malformed membership regressions to the actual v2 offset/trap table. Retain ordinary/x0 misalignment, high limb, invalid encoding and store controls; make no accepted-row or architectural discrepancy claim."
     }
   ],
   "setup_artifacts": [
@@ -5212,6 +5291,13 @@
       "profile": "exact native compilation-test CSR properties (nondeterminism enabled, empty delegation CSR list), ID 25, offset 196609, 4096 rows; runtime CSR setup/configuration and custom execution remain separate",
       "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py",
       "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5"
+    },
+    {
+      "path": "artifacts/setup/subword-offset-native.json",
+      "sha256": "865fb569608ae84f0c73f56083048ca8dad05f2242ae1571cb70a8ce11336325",
+      "profile": "actual native v2 offset/trap table ID 44, compiled offset 65537, all 2097152 tagged rows; other subword regions and full circuit/execution remain separate",
+      "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py",
+      "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5"
     }
   ],
   "native_exporter_files": [
@@ -5225,7 +5311,7 @@
     },
     {
       "path": "../native_setup_exporter/src/main.rs",
-      "sha256": "fee6f12d75ee2787aba97a696cd9430a87e278e54090bcc278cc53713235c215"
+      "sha256": "c3013df402e4fd5cf213b7892bbe2635f271a358021059f8a5f3335b20800adc"
     },
     {
       "path": "../native_setup_exporter/src/columns.rs",

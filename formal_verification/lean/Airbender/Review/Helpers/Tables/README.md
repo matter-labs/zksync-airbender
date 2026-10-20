@@ -129,3 +129,14 @@ includes every stored helper row at its actual offset. Existing helper result
 certificates are unchanged. The additional CSR data is the exact compilation
 fixture, with runtime setup binding/custom execution explicitly separate.
 Numerical shift/binop composition and initialized execution remain open.
+
+## Native subword offset/trap table
+
+[The public helper](SubwordOffsetTheorems.lean) and [source-shaped model](SubwordOffset.lean)
+retain every 21-bit native key and the complete offset/width/limb/trap result.
+[The literal-data certificate](../../../Proofs/SubwordMemory/Offset.lean) checks all
+2,097,152 actual exported rows symbolically, with tag 44 and compiled offset 65,537.
+[Regressions](../../../../Tests/SubwordOffset.lean) retain native misalignment,
+x0-load waiver, invalid encoding and store behavior, and reject changed queries.
+This table is a foundation for full subword constraint/decoder/history/execution
+work; its isolated keys do not establish accepted circuit behavior or a defect.

@@ -1,0 +1,342 @@
+{
+  "version": 1,
+  "field_modulus": 2147483647,
+  "profile": "subword_memory_offset_mask",
+  "generic_rows": 2097152,
+  "tables": [
+    {
+      "id": 44,
+      "offset": 65537,
+      "data": {
+        "length": 2097152,
+        "columns": [
+          {
+            "blocks": [
+              {
+                "kind": "affine",
+                "length": 2097152,
+                "first": 0,
+                "step": 1
+              }
+            ]
+          },
+          {
+            "blocks": [
+              {
+                "kind": "periodic",
+                "repetitions": 524288,
+                "stride": 0,
+                "values": [
+                  0,
+                  1,
+                  2,
+                  3
+                ]
+              }
+            ]
+          },
+          {
+            "blocks": [
+              {
+                "kind": "periodic",
+                "repetitions": 16384,
+                "stride": 0,
+                "values": [
+                  1,
+                  1,
+                  3,
+                  3
+                ]
+              },
+              {
+                "kind": "periodic",
+                "repetitions": 16384,
+                "stride": 0,
+                "values": [
+                  1,
+                  5,
+                  3,
+                  7
+                ]
+              },
+              {
+                "kind": "periodic",
+                "repetitions": 16384,
+                "stride": 0,
+                "values": [
+                  0,
+                  4,
+                  6,
+                  6
+                ]
+              },
+              {
+                "kind": "periodic",
+                "repetitions": 16384,
+                "stride": 0,
+                "values": [
+                  4,
+                  4,
+                  6,
+                  6
+                ]
+              },
+              {
+                "kind": "periodic",
+                "repetitions": 16384,
+                "stride": 0,
+                "values": [
+                  1,
+                  1,
+                  3,
+                  3
+                ]
+              },
+              {
+                "kind": "periodic",
+                "repetitions": 16384,
+                "stride": 0,
+                "values": [
+                  1,
+                  5,
+                  3,
+                  7
+                ]
+              },
+              {
+                "kind": "periodic",
+                "repetitions": 32768,
+                "stride": 0,
+                "values": [
+                  4,
+                  4,
+                  6,
+                  6
+                ]
+              },
+              {
+                "kind": "periodic",
+                "repetitions": 16384,
+                "stride": 0,
+                "values": [
+                  1,
+                  1,
+                  3,
+                  3
+                ]
+              },
+              {
+                "kind": "periodic",
+                "repetitions": 16384,
+                "stride": 0,
+                "values": [
+                  1,
+                  5,
+                  3,
+                  7
+                ]
+              },
+              {
+                "kind": "periodic",
+                "repetitions": 16384,
+                "stride": 0,
+                "values": [
+                  0,
+                  4,
+                  6,
+                  6
+                ]
+              },
+              {
+                "kind": "periodic",
+                "repetitions": 16384,
+                "stride": 0,
+                "values": [
+                  4,
+                  4,
+                  6,
+                  6
+                ]
+              },
+              {
+                "kind": "periodic",
+                "repetitions": 16384,
+                "stride": 0,
+                "values": [
+                  1,
+                  1,
+                  3,
+                  3
+                ]
+              },
+              {
+                "kind": "periodic",
+                "repetitions": 16384,
+                "stride": 0,
+                "values": [
+                  1,
+                  5,
+                  3,
+                  7
+                ]
+              },
+              {
+                "kind": "periodic",
+                "repetitions": 32768,
+                "stride": 0,
+                "values": [
+                  4,
+                  4,
+                  6,
+                  6
+                ]
+              },
+              {
+                "kind": "periodic",
+                "repetitions": 16384,
+                "stride": 0,
+                "values": [
+                  1,
+                  1,
+                  3,
+                  3
+                ]
+              },
+              {
+                "kind": "periodic",
+                "repetitions": 16384,
+                "stride": 0,
+                "values": [
+                  1,
+                  5,
+                  3,
+                  7
+                ]
+              },
+              {
+                "kind": "periodic",
+                "repetitions": 16384,
+                "stride": 0,
+                "values": [
+                  0,
+                  4,
+                  6,
+                  6
+                ]
+              },
+              {
+                "kind": "periodic",
+                "repetitions": 16384,
+                "stride": 0,
+                "values": [
+                  4,
+                  4,
+                  6,
+                  6
+                ]
+              },
+              {
+                "kind": "periodic",
+                "repetitions": 16384,
+                "stride": 0,
+                "values": [
+                  1,
+                  1,
+                  3,
+                  3
+                ]
+              },
+              {
+                "kind": "periodic",
+                "repetitions": 16384,
+                "stride": 0,
+                "values": [
+                  1,
+                  5,
+                  3,
+                  7
+                ]
+              },
+              {
+                "kind": "periodic",
+                "repetitions": 32768,
+                "stride": 0,
+                "values": [
+                  4,
+                  4,
+                  6,
+                  6
+                ]
+              },
+              {
+                "kind": "periodic",
+                "repetitions": 32768,
+                "stride": 0,
+                "values": [
+                  1,
+                  1,
+                  3,
+                  3
+                ]
+              },
+              {
+                "kind": "periodic",
+                "repetitions": 16384,
+                "stride": 0,
+                "values": [
+                  0,
+                  0,
+                  2,
+                  2
+                ]
+              },
+              {
+                "kind": "periodic",
+                "repetitions": 16384,
+                "stride": 0,
+                "values": [
+                  4,
+                  4,
+                  6,
+                  6
+                ]
+              },
+              {
+                "kind": "periodic",
+                "repetitions": 32768,
+                "stride": 0,
+                "values": [
+                  1,
+                  1,
+                  3,
+                  3
+                ]
+              },
+              {
+                "kind": "periodic",
+                "repetitions": 32768,
+                "stride": 0,
+                "values": [
+                  4,
+                  4,
+                  6,
+                  6
+                ]
+              }
+            ]
+          },
+          {
+            "blocks": [
+              {
+                "kind": "affine",
+                "length": 2097152,
+                "first": 44,
+                "step": 0
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

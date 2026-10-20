@@ -1259,11 +1259,11 @@ Rust/compiler refinement and cryptographic enforcement remain separate.
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all ninety-two concrete test modules pass.
-- Importer regressions: 386 checks pass.
-- Axiom audit: 1759 explicit roots; only propext, Classical.choice and Quot.sound.
-- All one hundred and six public Review theorems (twenty-five circuit claims, fifty-eight trace claims and twenty-three helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
-- Source provenance: 78 unchanged reused files, five native circuit artifacts, forty-six native Rust sources plus compiled shift-offset metadata, sixteen native setup artifacts and four exporter source/manifest/lock files.
+- Library, both CLI entrypoints and all ninety-three concrete test modules pass.
+- Importer regressions: 400 checks pass.
+- Axiom audit: 1775 explicit roots; only propext, Classical.choice and Quot.sound.
+- All one hundred and seven public Review theorems (twenty-five circuit claims, fifty-eight trace claims and twenty-four helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Source provenance: 78 unchanged reused files, six native circuit artifacts, forty-nine native Rust sources plus compiled shift-offset metadata, seventeen native setup artifacts and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
 - Public Sail x1/PC reads construct the accepted alias fixture; missing register and byte data reject construction.
@@ -1660,6 +1660,33 @@ memory coverage, runtime CSR setup, delegation and unified protocol/terminal
 boundaries remain separately scoped. General compiler refinement and physical
 cryptographic enforcement are unchanged boundaries. This is coverage progress;
 no new native-v2 defect is established and the findings standard is unchanged.
+
+## Native subword offset/trap table checkpoint (2026-10-20)
+
+The native v2 offset/trap table now has an actual export and a complete kernel
+certificate for all 2,097,152 rows. Its native tag is 44 and its compiled offset
+is 65,537. [Literal data](Airbender/Review/Helpers/Tables/NativeSubwordOffsetData.lean)
+comes from the unchanged pinned table generator and lossless shared codec;
+[strict import](Airbender/Import/Setup.lean) rejects changed field, profile, tag,
+placement, extent, shape and noncanonical values. The standard native gate
+reproduces the JSON byte for byte under the existing shared-lock watchdog.
+
+[The small public helper](Airbender/Review/Helpers/Tables/SubwordOffsetTheorems.lean)
+derives a canonical 21-bit key, its exact low-two-bit offset and the complete
+native width/limb/trap mask. [Internal calculations](Airbender/Proofs/SubwordMemory/Offset.lean)
+check all stored blocks symbolically over 32 control groups and every low-address
+pattern, and prove exact original Clean/native tagged membership without a table
+equivalence premise. The original affine getter and membership transport are
+reused from verified v2 certificates. No proof or resource ceilings were raised.
+
+[Regressions](Tests/SubwordOffset.lean) retain ordinary misaligned halfword/word
+loads, the explicit native misaligned-load-to-x0 exception, high-half selection,
+invalid encoding and store controls, and reject altered offset/trap queries.
+The table alone admits some keys that the full decoder/circuit must assess.
+No accepted subword row, Sail execution or native defect is claimed here. The
+remaining load/store/ROM regions, full native constraint import, public decoding,
+initialized reads and original subword instruction execution remain unfinished.
+The findings standard and historical findings/coverage archive are unchanged.
 
 ## Historical coverage and boundary notes
 

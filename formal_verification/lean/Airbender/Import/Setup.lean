@@ -437,4 +437,25 @@ def parseShiftCsrProperties (source : String) : Except String ControlArtifact :=
   artifact.validateShiftCsrProperties
   return artifact
 
+/-- Actual native v2 subword offset/trap region, including its compiled placement.
+    Other subword lookup regions and full circuit import remain separate. -/
+def ControlArtifact.validateSubwordOffset (artifact : ControlArtifact) : Except String Unit := do
+  unless artifact.version == 1 && artifact.field_modulus == mersenne31Modulus &&
+      artifact.profile == "subword_memory_offset_mask" do throw "unsupported native subword offset profile"
+  unless artifact.generic_rows == 2097152 && artifact.tables.size == 1 do
+    throw "unexpected native subword offset extent"
+  let some region := artifact.tables[0]? | throw "missing native subword offset table"
+  unless region.id == 44 && region.offset == 65537 do throw "unexpected native subword offset region"
+  region.data.validate 2097152 4
+
+def parseSubwordOffset (source : String) : Except String ControlArtifact := do
+  let json ← Json.parse source
+  exactKeys json #["version", "field_modulus", "profile", "generic_rows", "tables"]
+  for region in (← (← json.getObjVal? "tables").getArr?) do
+    exactKeys region #["id", "offset", "data"]
+    matrixKeys (← region.getObjVal? "data")
+  let artifact : ControlArtifact ← fromJson? json
+  artifact.validateSubwordOffset
+  return artifact
+
 end Airbender.Setup

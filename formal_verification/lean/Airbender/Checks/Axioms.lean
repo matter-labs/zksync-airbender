@@ -79,6 +79,8 @@ import Tests.ControlValues
 import Tests.ControlRegisters
 import Tests.JumpLink
 
+import Tests.SubwordOffset
+
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
 #print axioms Airbender.AddSub.Proofs.constraint_count
@@ -1903,3 +1905,20 @@ import Tests.JumpLink
 #print axioms Tests.ShiftFetched.terminal_bound
 #print axioms Tests.ShiftFetched.initialized_values
 #print axioms Tests.ShiftFetched.empty_execution
+
+#print axioms Airbender.SubwordMemory.Proofs.native_offset_rows
+#print axioms Airbender.SubwordMemory.Proofs.offset_lookup
+#print axioms Airbender.SubwordMemory.Proofs.offset_values
+#print axioms Airbender.Verification.SubwordOffset.native_values
+#print axioms Airbender.Tests.SubwordOffset.complete_native_rows
+#print axioms Airbender.Tests.SubwordOffset.halfword_trap
+#print axioms Airbender.Tests.SubwordOffset.halfword_x0_waiver
+#print axioms Airbender.Tests.SubwordOffset.high_halfword_trap
+#print axioms Airbender.Tests.SubwordOffset.high_halfword_x0_waiver
+#print axioms Airbender.Tests.SubwordOffset.high_byte
+#print axioms Airbender.Tests.SubwordOffset.word_trap
+#print axioms Airbender.Tests.SubwordOffset.word_x0_waiver
+#print axioms Airbender.Tests.SubwordOffset.invalid_x0_still_traps
+#print axioms Airbender.Tests.SubwordOffset.stores_have_no_x0_waiver
+#print axioms Airbender.Tests.SubwordOffset.wrong_offset_rejected
+#print axioms Airbender.Tests.SubwordOffset.wrong_trap_rejected

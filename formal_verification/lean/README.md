@@ -46,6 +46,11 @@ protocol composition are still unfinished; the [plan](FORMAL_VERIFICATION_PLAN.m
 tracks the remaining dependencies. The checkpoint details below retain their
 original snapshot structure.
 
+The [subword offset/trap helper](Airbender/Review/Helpers/Tables/SubwordOffsetTheorems.lean)
+now has a complete certificate over its actual 2,097,152 native exported rows,
+including the explicit misaligned-load-to-x0 rule. This is the first subword
+fixed-table connection; full subword circuit/history/execution remains unfinished.
+
 The arithmetic checkpoint includes complete initialized ADD/ADDI/SUB/LUI/AUIPC normal-path
 execution and conditional row soundness, including actual masked destination
 writes, original-opcode discarded x0 writes and aligned 32-bit PC wraparound. Native ten-column decoder placement/query order is checked;
