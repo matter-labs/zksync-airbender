@@ -46,19 +46,6 @@ pub struct CensusTable {
     pub v: &'static [(CircuitId, CensusVec)],
 }
 
-/// Frozen reference for manual calibration accuracy gates; this does not add
-/// a margin to the production point estimate or alter verifier execution.
-pub fn calibrated_proof_spread(
-    program: FsvProgram,
-    mode: BlakeMode,
-) -> Result<[u64; NUM_CENSUS_DIMS + 1], EstimateError> {
-    CENSUS_TABLES
-        .iter()
-        .find(|(p, m, _)| *p == program && *m == mode)
-        .map(|(_, _, table)| table.per_proof_spread)
-        .ok_or(EstimateError::UnknownBinary { program, mode })
-}
-
 impl CensusTable {
     fn lookup(&self, circuit: CircuitId) -> Result<&CensusVec, EstimateError> {
         self.v
