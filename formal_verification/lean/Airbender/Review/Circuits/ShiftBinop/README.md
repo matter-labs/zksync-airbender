@@ -18,8 +18,9 @@ The sections below preserve the successive decoder/table checkpoints. The curren
 original public decoding; [lookup claims](Lookups.lean) connect the complete native
 dynamic import to exact helper membership and derive all selector domains.
 [The binary result claim](Binary.lean) now proves exact selected XOR/OR/AND words
-and actual x0 writes with derived operand bounds. Shift numerical assembly,
-initialized Sail execution, custom CSR/oracle
+and actual x0 writes with derived operand bounds. [The shift contribution claim](Shifts.lean)
+derives exact canonical-key contributions and selected-word assembly. Initialized
+source-key binding, whole architectural shifts, Sail execution, custom CSR/oracle
 semantics and physical cryptographic enforcement remain unfinished. General
 Rust/JSON/compiler refinement is a separate boundary.
 
@@ -102,3 +103,20 @@ cover all twelve binary register/immediate/x0 forms and corrupted byte/result/wr
 rejections using complete accepted native fixtures. Native shifts, initialized
 register/history transport, original Sail execution and runtime CSR binding remain
 unfinished. Earlier sections retain their checkpoint scope.
+
+## Native shift contributions
+
+[The short public contribution claim](Shifts.lean) derives native truncation,
+exact bounded SLL/SRL/sign-fill contributions and actual selected-word assembly
+from original public decoding and accepted native constraints.
+[References](ShiftModel.lean) expose canonical packed keys and native slot/source
+order. [Actual equations](../../../Proofs/ShiftBinop/ShiftEquations.lean) bind keys
+and selected sums; [table resolution](../../../Proofs/ShiftBinop/ShiftParts.lean)
+retains all checked native helper results and literal inactive zero slots.
+[Internal selected assembly](../../../Proofs/ShiftBinop/ShiftContributions.lean)
+lifts both three-limb sums without field wrap. [Regressions](../../../../Tests/ShiftContributions.lean)
+cover all twelve shift register/immediate/x0 cases, SRAI 1055→31, native sign-fill
+order, shift-31 boundaries and malformed key/inactive/missing-fill rejection.
+Canonical packed-key source binding needs initialized bounded reads before
+claiming architectural shifts; family clocks/history and original Sail execution
+remain unfinished. Earlier sections retain their checkpoint scope.

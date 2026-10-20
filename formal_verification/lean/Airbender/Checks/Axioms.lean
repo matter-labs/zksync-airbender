@@ -1,3 +1,4 @@
+import Tests.ShiftContributions
 import Tests.ShiftBinary
 import Tests.ShiftRouting
 import Tests.ShiftLookups
@@ -1764,3 +1765,19 @@ import Tests.JumpLink
 #print axioms Tests.ShiftBinary.wrong_selected_word_rejected
 #print axioms Tests.ShiftBinary.nonzero_x0_write_rejected
 #print axioms Tests.ShiftBinary.wrong_byte_reconstruction_rejected
+
+#print axioms Airbender.ShiftBinop.Proofs.native_part_result
+#print axioms Airbender.ShiftBinop.Proofs.shift_equations
+#print axioms Airbender.ShiftBinop.Proofs.shift_part_members
+#print axioms Airbender.ShiftBinop.Proofs.shift_truncation
+#print axioms Airbender.ShiftBinop.Proofs.shift_sum_value
+#print axioms Airbender.ShiftBinop.Proofs.selected_shift_contributions
+#print axioms Airbender.ShiftBinop.Proofs.entry_shift_contributions
+#print axioms Airbender.ShiftBinop.Proofs.fetched_shift_contributions
+#print axioms Airbender.ShiftBinop.native_decoded_shift_contributions
+#print axioms Tests.ShiftContributions.concrete_contributions
+#print axioms Tests.ShiftContributions.public_contributions
+#print axioms Tests.ShiftContributions.srai_parts_and_shift_boundaries
+#print axioms Tests.ShiftContributions.nonzero_inactive_part_rejected
+#print axioms Tests.ShiftContributions.wrong_packed_key_rejected
+#print axioms Tests.ShiftContributions.missing_sign_fill_rejected

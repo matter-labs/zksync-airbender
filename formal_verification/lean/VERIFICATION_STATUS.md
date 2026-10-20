@@ -1259,10 +1259,10 @@ Rust/compiler refinement and cryptographic enforcement remain separate.
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all eighty concrete test modules pass.
+- Library, both CLI entrypoints and all eighty-one concrete test modules pass.
 - Importer regressions: 386 checks pass.
-- Axiom audit: 1635 explicit roots; only propext, Classical.choice and Quot.sound.
-- All ninety-seven public Review theorems (twenty-four circuit claims, fifty trace claims and twenty-three helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Axiom audit: 1650 explicit roots; only propext, Classical.choice and Quot.sound.
+- All ninety-eight public Review theorems (twenty-five circuit claims, fifty trace claims and twenty-three helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
 - Source provenance: 78 unchanged reused files, five native circuit artifacts, forty-six native Rust sources plus compiled shift-offset metadata, sixteen native setup artifacts and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
@@ -1422,3 +1422,37 @@ numerical assembly, family clocks/ports, initialized register/history transport
 and original Sail instruction execution remain open. Runtime CSR setup, worker
 protocol enforcement, cryptography and general Rust/JSON/compiler refinement
 remain separate boundaries. The preceding sections are earlier checkpoints.
+
+## Native shift contributions and selected-word assembly
+
+[The short shift contribution claim](Airbender/Review/Circuits/ShiftBinop/Shifts.lean)
+now derives the actual native low-five-bit truncation, all three contribution
+slots and exact selected-word assembly for SLL/SRL/SRA and their immediate forms.
+[References and observables](Airbender/Review/Circuits/ShiftBinop/ShiftModel.lean)
+retain actual key/result columns, source columns and native slot order. The first
+query bounds the selected low operand below 65536, computes its remainder modulo
+32 and forces its padding field to zero.
+
+[Native equation assembly](Airbender/Proofs/ShiftBinop/ShiftEquations.lean) recovers
+each packed source/amount field equation from accepted constraints. [Contribution
+resolution](Airbender/Proofs/ShiftBinop/ShiftParts.lean) connects each actual tagged
+query to the checked native SLL/SRL/sign-fill helper and derives key bounds, both
+output-limb bounds and exact canonical-key RV32 contributions. SLL/SRL's inactive
+third slot is the literal native zero row. SRA uses sign fill, low-input SRL and
+high-input SRL in that order. [Selected assembly](Airbender/Proofs/ShiftBinop/ShiftContributions.lean)
+lifts both native three-limb sums without Mersenne31 wrap and derives exact RV32
+addition of the contributions; no preselected result or input-range premise is
+added to the public claim.
+
+[Regressions](Tests/ShiftContributions.lean) reuse complete accepted native rows
+for all twelve shift register/immediate/x0 cases and apply the public root.
+SRAI retains encoded immediate 1055, truncates to 31 and combines 0xfffffffe,
+zero and one. SLLI/SRLI shift-31 and discarded x0-selected values pass; corrupt
+packed keys, nonzero inactive contributions and omitted sign fill reject.
+This checkpoint states contributions of actual canonical packed keys. Binding
+their quotient/remainder to initialized bounded source reads, canonical selected
+limbs and complete architectural shifts remains unfinished, as do family clocks,
+initialized register/history transport and original Sail instruction execution.
+Runtime CSR setup, worker protocol enforcement, cryptography and general
+Rust/JSON/compiler refinement remain separate. No native defect is established;
+earlier sections retain their checkpoint scope.

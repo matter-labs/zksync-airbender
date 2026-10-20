@@ -489,8 +489,16 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    flags derive the actual masked writes. Twelve complete binary fixtures retain
    sign-extended immediates and word values above Mersenne31; corrupted bytes,
    selected results and x0 writes reject under unchanged caps.
-   Continue with native shift selected/written word results, then native
-   clocks/ports, initialized history and original Sail execution.
+   Native SLL/SRL/SRA contributions now follow from original public decoding,
+   all four accepted queries and native equations. The low operand is bounded
+   and truncated modulo 32; each canonical packed key has exact bounded native
+   contribution semantics. Both actual selected-limb sums and RV32 contribution
+   addition are derived without input-range or desired-output premises. Twelve
+   complete shift fixtures retain SRAI encoded funct7, native sign-fill order,
+   shift-31/x0 boundaries and malformed key/inactive/sign-fill rejection.
+   Continue with native clocks/ports and initialized bounds to identify packed
+   source limbs, then complete architectural shift results and original Sail
+   execution. Canonical source-read binding remains a history obligation.
    Derive actual source reads and states from native matching/public history.
 4. Rebind bigint/BLAKE/Keccak workers and callers. Retest control validity,
    unissued workers, ROM behavior and request participation on v2 before reusing

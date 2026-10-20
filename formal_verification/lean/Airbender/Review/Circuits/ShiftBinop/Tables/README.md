@@ -31,3 +31,15 @@ retain the Mersenne31 inverse of 256; byte bounds derive both source-word bounds
 above Mersenne31 and sign-extended immediates. Native shift word assembly,
 initialized execution and runtime CSR binding remain separate. Earlier sections
 retain their checkpoint scope.
+
+## Actual native shift contributions
+
+[The shift contribution claim](../Shifts.lean) now derives truncation and resolves
+all three actual contribution slots to bounded native SLL/SRL/sign-fill results.
+SLL/SRL retain the literal inactive zero row; SRA retains sign-fill/low-SRL/high-SRL
+order. [Native equation assembly](../../../../Proofs/ShiftBinop/ShiftEquations.lean)
+binds packed keys and selected sums; [regressions](../../../../../Tests/ShiftContributions.lean)
+cover every shift register/immediate/x0 form and reject malformed keys, nonzero
+inactive contributions and missing sign fill. Initialized bounded source reads
+must identify key quotient/remainder before promoting complete architectural
+shift execution. Earlier sections retain their checkpoint scope.

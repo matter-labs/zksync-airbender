@@ -4678,6 +4678,39 @@
       "backport_reuse_revision": "20351bbea6b8bea4917fc47f8c0376ba6a299769",
       "backport_reuse_path": "Tests/ShiftRouting.lean",
       "backport_reuse_sha256": "bdaaa6d35b5ab645708367987ce4f4bd42bbbb8107f52bcb900ec5b0e0747fdd"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ShiftBinop/ShiftModel.lean",
+      "change": "Task-authored actual native shift contribution observables, canonical packed-key RV32 references, native slot/source order and selected-word assembly conclusion. No source-limb range or architectural GPR execution premise; initialized canonical-source binding remains separate."
+    },
+    {
+      "path": "Airbender/Proofs/ShiftBinop/ShiftParts.lean",
+      "change": "Task-authored combined-native-table resolution assembly using the existing checked SLL-low/high, SRL-low/high, sign-fill and exact zero-row claims. Derive all packed-key/result bounds and exact canonical-key contribution semantics without a table-equivalence premise."
+    },
+    {
+      "path": "Airbender/Proofs/ShiftBinop/ShiftEquations.lean",
+      "change": "Adapt the v2 native binary query/equation extraction pattern to three decoded shift kinds. Retain native truncation, all packed source/amount key equations, literal inactive zero slots and both selected sums; operation bits and actual tags come from original ordinary decoding.",
+      "backport_reuse_revision": "f9a9647382a815e358e9acf36951333b2b1d2b8e",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/BinaryQueries.lean",
+      "backport_reuse_sha256": "e57ad300ab7d345fa71a4253a2814648fa604db26be7777e480f872356a0a6c3"
+    },
+    {
+      "path": "Airbender/Proofs/ShiftBinop/ShiftContributions.lean",
+      "change": "Adapt the v2 decoded-entry/public-image result assembly to native shifts. New bounded three-limb sum lifting preserves Mersenne31 and RV32 wrap while deriving exact selected contribution assembly; initialized source bounds and whole architectural shifts remain separate.",
+      "backport_reuse_revision": "f9a9647382a815e358e9acf36951333b2b1d2b8e",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/BinaryResults.lean",
+      "backport_reuse_sha256": "e5bd426b654f50c3cec42d869aa6dae6f3f946db2fa524118c9e66caa05334d0"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ShiftBinop/Shifts.lean",
+      "change": "Task-authored short public native shift contribution claim from original public bytes, native decoder membership and accepted constraints; calculations remain under Proofs and no original Sail instruction-execution claim is made."
+    },
+    {
+      "path": "Tests/ShiftContributions.lean",
+      "change": "Adapt the existing complete native binary fixture/public-application scaffold to all twelve shift register/immediate/x0 forms. Regressions retain SRAI funct7 truncation, actual sign-fill/low/high contribution order, shift-31 boundaries and discarded selected values; corrupt packed keys, inactive contributions and missing sign fill reject.",
+      "backport_reuse_revision": "f9a9647382a815e358e9acf36951333b2b1d2b8e",
+      "backport_reuse_path": "Tests/ShiftBinary.lean",
+      "backport_reuse_sha256": "205c79f301fbf7f60c987d894d8506d5175628307b1db2ed833f7c27999bf152"
     }
   ],
   "setup_artifacts": [
