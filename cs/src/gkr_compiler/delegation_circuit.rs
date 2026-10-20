@@ -169,7 +169,9 @@ impl<F: PrimeField> GKRCompiler<F> {
         );
         compile_read_timestamp_group_constraints(
             &mut structured_statements,
+            &mut graph,
             &read_timestamp_groups,
+            &boolean_vars,
             read_timestamp_group_distances,
             delegation_circuit_state.execute,
             delegation_circuit_state.invocation_timestamp,
@@ -200,6 +202,24 @@ impl<F: PrimeField> GKRCompiler<F> {
             &delegation_circuit_state,
             &layers_mapping,
         );
+
+        // Derived timestamps can depend on control-lookup outputs and borrows
+        // in the witness subtree. Place those operands before building RAM caches.
+        let timestamp_inputs: BTreeSet<_> = graph
+            .derived_timestamps
+            .values()
+            .flat_map(|limbs| limbs.iter())
+            .flat_map(|limb| limb.to_max_quadratic_constraint().stable_variable_set())
+            .collect();
+        for variable in timestamp_inputs {
+            if all_variables_to_place.contains(&variable) {
+                graph.layout_witness_subtree_multiple_variables(
+                    [variable],
+                    &mut all_variables_to_place,
+                    &layers_mapping,
+                );
+            }
+        }
 
         use crate::gkr_compiler::memory_like_grand_product::layout_initial_grand_product_accumulation;
 
@@ -438,22 +458,24 @@ impl<F: PrimeField> GKRCompiler<F> {
                         })
                 })
                 .collect();
+            let packed_borrow_column = read_timestamp_groups
+                .values()
+                .find(|group| group.packed)
+                .map(|group| graph.get_address_for_variable(group.borrow).as_memory());
             let relative_timestamp_groups = read_timestamp_groups
                 .into_values()
                 .map(|group| {
-                    let read_timestamp = group.read_timestamp_places.map(|el| {
-                        let GKRAddress::BaseLayerMemory(el) = el else {
+                    let borrow = if group.packed {
+                        usize::MAX
+                    } else {
+                        let GKRAddress::BaseLayerWitness(column) =
+                            graph.get_address_for_variable(group.borrow)
+                        else {
                             unreachable!()
                         };
-                        el
-                    });
-                    let GKRAddress::BaseLayerWitness(borrow) =
-                        graph.get_address_for_variable(group.borrow)
-                    else {
-                        unreachable!()
+                        column
                     };
                     RelativeTimestampGroup {
-                        read_timestamp,
                         borrow,
                         members: group.members,
                     }
@@ -463,6 +485,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             GKRAuxLayoutData {
                 shuffle_ram_timestamp_comparison_aux_vars,
                 relative_timestamp_groups,
+                packed_borrow_column,
             }
         };
 

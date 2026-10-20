@@ -15,9 +15,10 @@ DEVICE_FORCEINLINE void generate(const DelegationMemoryLayout &layout, const Del
 }
 
 EXTERN __global__ void ab_generate_memory_values_bigint_with_control_kernel(const __grid_constant__ DelegationMemoryLayout layout,
+                                                                            const __grid_constant__ DelegationAuxLayoutData aux_layout_data,
                                                                             const __grid_constant__ BigintWithControlOracle oracle,
                                                                             const matrix_setter<bf, st_modifier::cg> memory, const unsigned count) {
-  generate<false>(layout, {}, oracle, memory, memory, count);
+  generate<false>(layout, aux_layout_data, oracle, memory, memory, count);
 }
 
 EXTERN __global__ void ab_generate_memory_and_witness_values_bigint_with_control_kernel(const __grid_constant__ DelegationMemoryLayout layout,
@@ -30,9 +31,10 @@ EXTERN __global__ void ab_generate_memory_and_witness_values_bigint_with_control
 }
 
 EXTERN __global__ void ab_generate_memory_values_blake2_with_compression_kernel(const __grid_constant__ DelegationMemoryLayout layout,
+                                                                                const __grid_constant__ DelegationAuxLayoutData aux_layout_data,
                                                                                 const __grid_constant__ Blake2WithCompressionOracle oracle,
                                                                                 const matrix_setter<bf, st_modifier::cg> memory, const unsigned count) {
-  generate<false>(layout, {}, oracle, memory, memory, count);
+  generate<false>(layout, aux_layout_data, oracle, memory, memory, count);
 }
 
 EXTERN __global__ void ab_generate_memory_and_witness_values_blake2_with_compression_kernel(const __grid_constant__ DelegationMemoryLayout layout,
@@ -45,9 +47,10 @@ EXTERN __global__ void ab_generate_memory_and_witness_values_blake2_with_compres
 }
 
 EXTERN __global__ void ab_generate_memory_values_keccak_special5_kernel(const __grid_constant__ DelegationMemoryLayout layout,
+                                                                        const __grid_constant__ DelegationAuxLayoutData aux_layout_data,
                                                                         const __grid_constant__ KeccakSpecial5Oracle oracle,
                                                                         const matrix_setter<bf, st_modifier::cg> memory, const unsigned count) {
-  generate<false>(layout, {}, oracle, memory, memory, count);
+  generate<false>(layout, aux_layout_data, oracle, memory, memory, count);
 }
 
 EXTERN __global__ void ab_generate_memory_and_witness_values_keccak_special5_kernel(const __grid_constant__ DelegationMemoryLayout layout,
@@ -59,9 +62,10 @@ EXTERN __global__ void ab_generate_memory_and_witness_values_keccak_special5_ker
 }
 
 EXTERN __global__ void ab_generate_memory_values_keccak_column_parity_kernel(const __grid_constant__ DelegationMemoryLayout layout,
+                                                                             const __grid_constant__ DelegationAuxLayoutData aux_layout_data,
                                                                              const __grid_constant__ KeccakColumnParityOracle oracle,
                                                                              const matrix_setter<bf, st_modifier::cg> memory, const unsigned count) {
-  generate<false>(layout, {}, oracle, memory, memory, count);
+  generate<false>(layout, aux_layout_data, oracle, memory, memory, count);
 }
 
 EXTERN __global__ void ab_generate_memory_and_witness_values_keccak_column_parity_kernel(const __grid_constant__ DelegationMemoryLayout layout,
@@ -74,9 +78,10 @@ EXTERN __global__ void ab_generate_memory_and_witness_values_keccak_column_parit
 }
 
 EXTERN __global__ void ab_generate_memory_values_keccak_theta_rho_kernel(const __grid_constant__ DelegationMemoryLayout layout,
+                                                                         const __grid_constant__ DelegationAuxLayoutData aux_layout_data,
                                                                          const __grid_constant__ KeccakThetaRhoOracle oracle,
                                                                          const matrix_setter<bf, st_modifier::cg> memory, const unsigned count) {
-  generate<false>(layout, {}, oracle, memory, memory, count);
+  generate<false>(layout, aux_layout_data, oracle, memory, memory, count);
 }
 
 EXTERN __global__ void ab_generate_memory_and_witness_values_keccak_theta_rho_kernel(const __grid_constant__ DelegationMemoryLayout layout,
@@ -88,9 +93,10 @@ EXTERN __global__ void ab_generate_memory_and_witness_values_keccak_theta_rho_ke
 }
 
 EXTERN __global__ void ab_generate_memory_values_keccak_chi5_kernel(const __grid_constant__ DelegationMemoryLayout layout,
+                                                                    const __grid_constant__ DelegationAuxLayoutData aux_layout_data,
                                                                     const __grid_constant__ KeccakChi5Oracle oracle,
                                                                     const matrix_setter<bf, st_modifier::cg> memory, const unsigned count) {
-  generate<false>(layout, {}, oracle, memory, memory, count);
+  generate<false>(layout, aux_layout_data, oracle, memory, memory, count);
 }
 
 EXTERN __global__ void ab_generate_memory_and_witness_values_keccak_chi5_kernel(const __grid_constant__ DelegationMemoryLayout layout,
@@ -102,9 +108,10 @@ EXTERN __global__ void ab_generate_memory_and_witness_values_keccak_chi5_kernel(
 }
 
 EXTERN __global__ void ab_generate_memory_values_blake2_g_function_kernel(const __grid_constant__ DelegationMemoryLayout layout,
+                                                                          const __grid_constant__ DelegationAuxLayoutData aux_layout_data,
                                                                           const __grid_constant__ Blake2GFunctionOracle oracle,
                                                                           const matrix_setter<bf, st_modifier::cg> memory, const unsigned count) {
-  generate<false>(layout, {}, oracle, memory, memory, count);
+  generate<false>(layout, aux_layout_data, oracle, memory, memory, count);
 }
 
 EXTERN __global__ void ab_generate_memory_and_witness_values_blake2_g_function_kernel(const __grid_constant__ DelegationMemoryLayout layout,

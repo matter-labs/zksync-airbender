@@ -137,14 +137,14 @@ define_kernel_variants! {
         BaseCopy(BaseFieldCopyGKRRelation),
         ExtCopy(ExtensionCopyGKRRelation),
         Product(SameSizeProductGKRRelation),
-        ProductWithoutCaches(SameSizeProductGKRRelationWithoutCaches),
+        ProductWithoutCaches(SameSizeProductGKRRelationWithoutCaches<F>),
         MaskIdentity(MaskIntoIdentityProductGKRRelation),
         #[allow(dead_code)]
         PairwiseProductDimensionReducing(PairwiseProductDimensionReducingGKRRelation),
         MaxQuadratic(MaxQuadraticGKRRelation::<F, E>),
         MaterializeSingleLookupInput(MaterializeSingleLookupInputGKRRelation<F>),
         MaterializeVectorLookupInput(MaterializeVectorLookupInputGKRRelation<F, E>),
-        MaterializeMemoryAccess(MaterializeMemoryTermGKRRelation),
+        MaterializeMemoryAccess(MaterializeMemoryTermGKRRelation<F>),
         InitsAndTeardownsInitialProduct(InitsAndTeardownsInitialProductWithoutCachesGKRRelation),
     }
     // 2 challenges, two outputs

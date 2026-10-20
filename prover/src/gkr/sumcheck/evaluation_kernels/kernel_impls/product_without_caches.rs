@@ -4,13 +4,13 @@ use super::*;
 use cs::gkr_compiler::SpecialMemoryContributionRelation;
 
 #[derive(Debug)]
-pub struct SameSizeProductGKRRelationWithoutCaches {
-    pub inputs: [SpecialMemoryContributionRelation; 2],
+pub struct SameSizeProductGKRRelationWithoutCaches<F: PrimeField> {
+    pub inputs: [SpecialMemoryContributionRelation<F>; 2],
     pub output: GKRAddress,
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
-    for SameSizeProductGKRRelationWithoutCaches
+    for SameSizeProductGKRRelationWithoutCaches<F>
 {
     fn num_challenges(&self) -> usize {
         1

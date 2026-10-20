@@ -167,10 +167,9 @@ pub(crate) unsafe fn gkr_evaluate_indirect_memory_accesses<
                     Placeholder::DelegationRegisterReadTimestamp(reg_idx as usize),
                     proxy.absolute_row_idx,
                 );
-                proxy.write_timestamp_value_into_columns(
-                    mem_query.get_read_timestamp_columns(),
-                    read_ts,
-                );
+                if let Some(columns) = mem_query.get_read_timestamp_columns() {
+                    proxy.write_timestamp_value_into_columns(columns, read_ts);
+                }
 
                 match mem_query.get_read_value_columns() {
                     RamWordRepresentation::Zero => {
@@ -235,10 +234,9 @@ pub(crate) unsafe fn gkr_evaluate_indirect_memory_accesses<
                     },
                     proxy.absolute_row_idx,
                 );
-                proxy.write_timestamp_value_into_columns(
-                    mem_query.get_read_timestamp_columns(),
-                    read_ts,
-                );
+                if let Some(columns) = mem_query.get_read_timestamp_columns() {
+                    proxy.write_timestamp_value_into_columns(columns, read_ts);
+                }
 
                 match mem_query.get_read_value_columns() {
                     RamWordRepresentation::Zero => {
@@ -317,7 +315,7 @@ pub(crate) unsafe fn gkr_evaluate_indirect_memory_accesses<
         }
     }
 
-    if COMPUTE_WITNESS {
+    {
         let oracle = proxy.oracle;
         let row = proxy.absolute_row_idx;
         let read_ts_of_access = |access_idx: usize| {
@@ -341,10 +339,12 @@ pub(crate) unsafe fn gkr_evaluate_indirect_memory_accesses<
             oracle.get_timestamp_witness_from_placeholder(placeholder, row)
         };
         let (_, invocation_ts_high) = split_timestamp(invocation_ts);
-        for group in compiled_circuit
+        let mut packed_borrows = 0u32;
+        for (group_index, group) in compiled_circuit
             .aux_layout_data
             .relative_timestamp_groups
             .iter()
+            .enumerate()
         {
             let read_ts = read_ts_of_access(group.members[0]);
             for &member in group.members[1..].iter() {
@@ -365,7 +365,17 @@ pub(crate) unsafe fn gkr_evaluate_indirect_memory_accesses<
                 invocation_ts,
                 row,
             );
-            proxy.write_boolean_value_into_columns::<false>(group.borrow, borrow == 1);
+            assert!(group_index < 32);
+            packed_borrows |= borrow << group_index;
+            if COMPUTE_WITNESS && group.borrow != usize::MAX {
+                proxy.write_boolean_value_into_columns::<false>(group.borrow, borrow == 1);
+            }
+        }
+        if let Some(column) = compiled_circuit.aux_layout_data.packed_borrow_column {
+            proxy.write_field_value_into_columns::<true>(
+                column,
+                F::from_u32_unchecked(packed_borrows),
+            );
         }
     }
 

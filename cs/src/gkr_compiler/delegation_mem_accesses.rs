@@ -15,8 +15,8 @@ const LOCAL_TIMESTAMP_FOR_INDIRECTS: u32 = 2;
 
 pub(crate) struct ReadTimestampGroup {
     pub(crate) read_timestamp: [Variable; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
-    pub(crate) read_timestamp_places: [GKRAddress; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
     pub(crate) borrow: Variable,
+    pub(crate) packed: bool,
     pub(crate) members: Vec<usize>,
 }
 
@@ -30,35 +30,30 @@ fn grouped_read_timestamp<F: PrimeField>(
     read_timestamp_groups: &mut BTreeMap<u8, ReadTimestampGroup>,
     group: u8,
     access_idx: usize,
-) -> (
-    [Variable; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
-    [GKRAddress; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
-) {
+) -> [Variable; NUM_TIMESTAMP_COLUMNS_FOR_RAM] {
+    let packed = read_timestamp_groups.is_empty();
     let entry = read_timestamp_groups.entry(group).or_insert_with(|| {
+        // These identities are resolved to affine expressions before RAM compilation;
+        // they are deliberately not allocated in either committed subtree.
         let read_timestamp = std::array::from_fn(|_| {
-            add_compiler_defined_base_layer_variable(
-                num_variables,
-                all_variables_to_place,
-                layers_mapping,
-            )
+            let variable = Variable(*num_variables);
+            *num_variables += 1;
+            variable
         });
-        for (limb, variable) in read_timestamp.iter().enumerate() {
-            variable_names.insert(
-                *variable,
-                format!("read timestamp group {}, read_ts[{}]", group, limb),
-            );
-        }
-        let read_timestamp_places = graph.layout_memory_subtree_multiple_variables(
-            read_timestamp,
-            all_variables_to_place,
-            layers_mapping,
-        );
         let borrow = add_compiler_defined_base_layer_variable(
             num_variables,
             all_variables_to_place,
             layers_mapping,
         );
-        boolean_vars.push(borrow);
+        if packed {
+            graph.layout_memory_subtree_multiple_variables(
+                [borrow],
+                all_variables_to_place,
+                layers_mapping,
+            );
+        } else {
+            boolean_vars.push(borrow);
+        }
         variable_names.insert(
             borrow,
             format!("read timestamp group {}, read_ts borrow", group),
@@ -66,19 +61,24 @@ fn grouped_read_timestamp<F: PrimeField>(
 
         ReadTimestampGroup {
             read_timestamp,
-            read_timestamp_places,
             borrow,
+            packed,
             members: vec![],
         }
     });
     entry.members.push(access_idx);
 
-    (entry.read_timestamp, entry.read_timestamp_places)
+    entry.read_timestamp
 }
 
+// Soundness contract: witness inputs to each distance must be uniquely
+// constrained from committed memory (the Keccak x10 control lookups do this).
+// Borrow normalization or an early borrow commitment alone does not pin distance.
 pub(crate) fn compile_read_timestamp_group_constraints<F: PrimeField>(
     structured_statements: &mut Vec<StructuredStatement<F>>,
+    graph: &mut GKRGraph<F>,
     read_timestamp_groups: &BTreeMap<u8, ReadTimestampGroup>,
+    boolean_vars: &[Variable],
     read_timestamp_group_distances: BTreeMap<u8, Expr<F>>,
     execute: Variable,
     invocation_timestamp: [Variable; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
@@ -91,30 +91,81 @@ pub(crate) fn compile_read_timestamp_group_constraints<F: PrimeField>(
         read_timestamp_groups.keys().collect::<Vec<_>>(),
         read_timestamp_group_distances.keys().collect::<Vec<_>>(),
     );
+    let packed_group = read_timestamp_groups.values().find(|group| group.packed);
+    assert!(read_timestamp_groups.len() < 32);
+    assert!((1u128 << read_timestamp_groups.len()) < F::CHARACTERISTICS_U128);
+    let mut packed_borrow_expression = None;
+    if let Some(packed_group) = packed_group {
+        assert!(
+            read_timestamp_groups.first_key_value().unwrap().1.packed,
+            "packed group must be the smallest group key"
+        );
+        assert!(
+            read_timestamp_groups
+                .values()
+                .filter(|group| !group.packed)
+                .all(|group| boolean_vars.contains(&group.borrow)),
+            "packed composition requires every retained borrow's boolean constraint"
+        );
+        let mut difference = Expr::var(packed_group.borrow);
+        let mut packed_weight = F::ONE;
+        let mut other_bits = Vec::new();
+        for (index, group) in read_timestamp_groups.values().enumerate() {
+            let weight = F::from_u32_unchecked(1u32 << index);
+            if group.packed {
+                packed_weight = weight;
+            } else {
+                difference = difference - Expr::constant(weight) * Expr::var(group.borrow);
+                other_bits.push((weight, group.borrow));
+            }
+        }
+        // B = sum(2^i b_i). Eliminate one bit's witness column and enforce
+        // its booleanity. Reduce the other diagonal terms using their retained
+        // boolean constraints, keeping this quadratic as sparse as possible.
+        // This reduction is valid only jointly with those boolean constraints.
+        let mut constraint = difference.clone() * difference.clone()
+            - Expr::constant(packed_weight) * difference.clone();
+        for (weight, bit) in other_bits {
+            let mut square = weight;
+            square.mul_assign(&weight);
+            let value = Expr::var(bit);
+            constraint =
+                constraint - Expr::constant(square) * (value.clone() * value.clone() - value);
+        }
+        structured_statements.push(StructuredStatement::AssertZero {
+            compiled_constraint: constraint.to_max_quadratic_constraint(),
+            expr: constraint,
+            prevent_optimizations: true,
+        });
+        packed_borrow_expression =
+            Some(difference * Expr::constant(packed_weight.inverse().unwrap()));
+    }
     for (group, distance) in read_timestamp_group_distances {
         let ReadTimestampGroup {
             read_timestamp,
             borrow,
             members,
+            packed,
             ..
         } = &read_timestamp_groups[&group];
         assert!(!members.is_empty());
-        let low = Expr::<F>::var(read_timestamp[0])
-            - Expr::var(invocation_timestamp[0])
-            - Expr::from(LOCAL_TIMESTAMP_FOR_INDIRECTS) * Expr::var(execute)
-            + distance
-            - Expr::from(1u32 << TIMESTAMP_COLUMNS_NUM_BITS) * Expr::var(*borrow);
-        let high = Expr::<F>::var(read_timestamp[1]) - Expr::var(invocation_timestamp[1])
-            + Expr::var(*borrow);
-        for expr in [low, high] {
-            expr.validate_degree_at_most(1);
-            let compiled_constraint = expr.to_max_quadratic_constraint();
-            structured_statements.push(StructuredStatement::AssertZero {
-                expr,
-                compiled_constraint,
-                prevent_optimizations: true,
-            });
-        }
+        let borrow_expression = if *packed {
+            packed_borrow_expression
+                .clone()
+                .expect("packed bit has a defining expression")
+        } else {
+            Expr::var(*borrow)
+        };
+        let low = Expr::<F>::var(invocation_timestamp[0])
+            + Expr::from(LOCAL_TIMESTAMP_FOR_INDIRECTS) * Expr::var(execute)
+            - distance
+            + Expr::from(1u32 << TIMESTAMP_COLUMNS_NUM_BITS) * borrow_expression.clone();
+        let high = Expr::<F>::var(invocation_timestamp[1]) - borrow_expression;
+        // The committed packed word uniquely fixes every boolean borrow bit.
+        assert!(graph
+            .derived_timestamps
+            .insert(*read_timestamp, [low, high])
+            .is_none());
     }
 }
 
@@ -142,7 +193,7 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
         } = memory_query;
         let ([read_timestamp_low, read_timestamp_high], read_timestamp, borrow_var) =
             if let Some(group) = read_timestamp_group {
-                let (read_timestamp_vars, read_timestamp) = grouped_read_timestamp(
+                let read_timestamp_vars = grouped_read_timestamp(
                     graph,
                     num_variables,
                     all_variables_to_place,
@@ -153,7 +204,7 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
                     group,
                     ram_access_sets.len(),
                 );
-                (read_timestamp_vars, read_timestamp, None)
+                (read_timestamp_vars, None, None)
             } else {
                 let [read_timestamp_low, read_timestamp_high] = std::array::from_fn(|_| {
                     add_compiler_defined_base_layer_variable(
@@ -195,7 +246,7 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
                 };
                 (
                     [read_timestamp_low, read_timestamp_high],
-                    read_timestamp,
+                    Some(read_timestamp),
                     Some(borrow_var),
                 )
             };
@@ -221,12 +272,14 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
         };
         ram_augmented_sets.push((register_ram_query.clone(), partial_data));
 
-        let read_timestamp = read_timestamp.map(|el| {
-            let GKRAddress::BaseLayerMemory(el) = el else {
-                unreachable!()
-            };
+        let read_timestamp = read_timestamp.map(|pair| {
+            pair.map(|el| {
+                let GKRAddress::BaseLayerMemory(el) = el else {
+                    unreachable!()
+                };
 
-            el
+                el
+            })
         });
 
         let register_read_value_vars = register_read_value;
@@ -334,7 +387,7 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
 
             let ([read_timestamp_low, read_timestamp_high], read_timestamp, borrow_var) =
                 if let Some(group) = indirect_access.read_timestamp_group() {
-                    let (read_timestamp_vars, read_timestamp) = grouped_read_timestamp(
+                    let read_timestamp_vars = grouped_read_timestamp(
                         graph,
                         num_variables,
                         all_variables_to_place,
@@ -345,7 +398,7 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
                         group,
                         ram_access_sets.len(),
                     );
-                    (read_timestamp_vars, read_timestamp, None)
+                    (read_timestamp_vars, None, None)
                 } else {
                     let [read_timestamp_low, read_timestamp_high] = std::array::from_fn(|_| {
                         add_compiler_defined_base_layer_variable(
@@ -393,7 +446,7 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
                     };
                     (
                         [read_timestamp_low, read_timestamp_high],
-                        read_timestamp,
+                        Some(read_timestamp),
                         Some(borrow_var),
                     )
                 };
@@ -421,12 +474,14 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
             };
             ram_augmented_sets.push((indirect_ram_query.clone(), partial_data));
 
-            let read_timestamp = read_timestamp.map(|el| {
-                let GKRAddress::BaseLayerMemory(el) = el else {
-                    unreachable!()
-                };
+            let read_timestamp = read_timestamp.map(|pair| {
+                pair.map(|el| {
+                    let GKRAddress::BaseLayerMemory(el) = el else {
+                        unreachable!()
+                    };
 
-                el
+                    el
+                })
             });
 
             let indirect_read_value_vars = indirect_read_value;

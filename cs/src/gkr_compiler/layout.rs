@@ -8,6 +8,8 @@ pub struct GKRAuxLayoutData {
     pub shuffle_ram_timestamp_comparison_aux_vars: Vec<Option<RamAuxComparisonSet>>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub relative_timestamp_groups: Vec<RelativeTimestampGroup>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub packed_borrow_column: Option<usize>,
 }
 
 #[serde_with::serde_as]

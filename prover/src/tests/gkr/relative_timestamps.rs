@@ -1,7 +1,8 @@
 use super::orchestration::common::{run_vm_and_capture, ProgramConfig, VmRunOutput};
 use super::{
-    check_satisfied, deserialize_from_file, parse_delegation_ram_accesses_from_full_trace,
-    read_cell, write_cell,
+    check_lookups_in_range, check_satisfied, compiled_derived_read_timestamp,
+    deserialize_from_file, evaluate_no_field_linear,
+    parse_delegation_ram_accesses_from_full_witness, read_cell, write_cell,
 };
 use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
 use crate::gkr::witness_gen::delegation_circuits::{
@@ -9,7 +10,7 @@ use crate::gkr::witness_gen::delegation_circuits::{
 };
 use crate::gkr::witness_gen::family_circuits::GKRFullWitnessTrace;
 use crate::tracers::oracles::transpiler_oracles::delegation::DelegationOracle;
-use ::cs::definitions::gkr::RelativeTimestampGroup;
+use ::cs::definitions::gkr::{LinearRelation, RelativeTimestampGroup};
 use ::cs::definitions::GKRAddress;
 use ::cs::gkr_compiler::{CompiledMaxQuadraticGKRRelation, GKRCircuitArtifact, GKRRelation};
 use ::cs::tables::TableDriver;
@@ -65,10 +66,19 @@ struct KeccakCircuit<D: DelegationAbiDescription, const IW: usize, const VO: usi
 
 impl<D: DelegationAbiDescription, const IW: usize, const VO: usize> KeccakCircuit<D, IW, VO> {
     fn artifact(&self, variant: &str) -> GKRCircuitArtifact<F> {
-        deserialize_from_file(&format!(
+        let mut artifact: GKRCircuitArtifact<F> = deserialize_from_file(&format!(
             "../cs/compiled_circuits/{}_{variant}.json",
             self.stem
-        ))
+        ));
+        // These are proof-free witness/relation checks, not validation of the
+        // committed artifact's proof geometry. Retain enough rows for every
+        // lookup table, timestamp multiplicity bin, and at least one padding row.
+        artifact.trace_len = artifact
+            .total_tables_size
+            .max(1 << TIMESTAMP_COLUMNS_NUM_BITS)
+            .max(self.rows.len() + 1)
+            .next_power_of_two();
+        artifact
     }
 
     fn trace(&self, circuit: &GKRCircuitArtifact<F>, rows: &[Row<IW, VO>]) -> Trace {
@@ -99,30 +109,12 @@ impl<D: DelegationAbiDescription, const IW: usize, const VO: usize> KeccakCircui
 
     fn tuples(&self, rows: &[Row<IW, VO>]) -> (Tuples, Tuples) {
         let circuit = self.artifact(VARIANTS[0]);
-        let oracle = DelegationOracle::<
-            '_,
-            D,
-            NUM_KECCAK_F1600_REGISTER_ACCESSES,
-            NUM_KECCAK_F1600_INDIRECT_READS,
-            IW,
-            VO,
-        > {
-            cycle_data: rows,
-            marker: core::marker::PhantomData,
-        };
-        let memory = evaluate_gkr_memory_witness_for_delegation_circuit(
-            &circuit,
-            circuit.trace_len,
-            &oracle,
-            &Worker::new(),
-            Global,
-            Global,
-        );
+        let trace = self.trace(&circuit, rows);
         let (mut writes, mut reads, mut delegations) =
             (BTreeSet::new(), BTreeSet::new(), BTreeSet::new());
-        parse_delegation_ram_accesses_from_full_trace(
+        parse_delegation_ram_accesses_from_full_witness(
             &circuit,
-            &memory,
+            &trace,
             &mut writes,
             &mut reads,
             &mut delegations,
@@ -243,12 +235,82 @@ fn keccak_vm() -> VmRunOutput<Counters> {
     )
 }
 
-fn addresses(group: &RelativeTimestampGroup) -> [GKRAddress; 3] {
-    [
-        GKRAddress::BaseLayerMemory(group.read_timestamp[0]),
-        GKRAddress::BaseLayerMemory(group.read_timestamp[1]),
-        GKRAddress::BaseLayerWitness(group.borrow),
-    ]
+fn borrow_address(group: &RelativeTimestampGroup) -> Option<GKRAddress> {
+    if group.borrow == usize::MAX {
+        None
+    } else {
+        Some(GKRAddress::BaseLayerWitness(group.borrow))
+    }
+}
+
+fn borrow_value(
+    circuit: &GKRCircuitArtifact<F>,
+    trace: &Trace,
+    group_index: usize,
+    row: usize,
+) -> F {
+    let groups = &circuit.aux_layout_data.relative_timestamp_groups;
+    if let Some(address) = borrow_address(&groups[group_index]) {
+        return read_cell(trace, address, row);
+    }
+    assert_eq!(group_index, 0, "only the first packed borrow is eliminated");
+    let mut value = read_cell(
+        trace,
+        GKRAddress::BaseLayerMemory(circuit.aux_layout_data.packed_borrow_column.unwrap()),
+        row,
+    );
+    for (index, group) in groups.iter().enumerate().skip(1) {
+        let mut bit = read_cell(trace, borrow_address(group).unwrap(), row);
+        bit.mul_assign(&F::from_u32_unchecked(1 << index));
+        value.sub_assign(&bit);
+    }
+    value
+}
+
+fn timestamp_limbs(
+    circuit: &GKRCircuitArtifact<F>,
+    group: &RelativeTimestampGroup,
+) -> [LinearRelation<F>; 2] {
+    let limbs = compiled_derived_read_timestamp(
+        circuit,
+        &circuit.memory_layout.ram_access_sets[group.members[0]],
+    );
+    for &member in &group.members {
+        assert_eq!(
+            circuit.memory_layout.ram_access_sets[member].get_read_timestamp_columns(),
+            None
+        );
+        assert_eq!(
+            compiled_derived_read_timestamp(
+                circuit,
+                &circuit.memory_layout.ram_access_sets[member]
+            ),
+            limbs
+        );
+    }
+    limbs
+}
+
+fn timestamp_matches_oracle<const IW: usize, const VO: usize>(
+    circuit: &GKRCircuitArtifact<F>,
+    trace: &Trace,
+    row: usize,
+    oracle: &Row<IW, VO>,
+) -> bool {
+    let timestamps: Vec<_> = read_timestamps(oracle).collect();
+    circuit
+        .aux_layout_data
+        .relative_timestamp_groups
+        .iter()
+        .all(|group| {
+            let limbs = timestamp_limbs(circuit, group).map(|limb| {
+                evaluate_no_field_linear(&limb, trace, row).as_u32_reduced() as TimestampScalar
+            });
+            group
+                .members
+                .iter()
+                .all(|&member| limbs == [timestamps[member] % LIMB, timestamps[member] / LIMB])
+        })
 }
 
 type Relation = CompiledMaxQuadraticGKRRelation<F>;
@@ -317,35 +379,6 @@ fn lowered_constraints_hold(constraints: &[&Relation], trace: &Trace) -> bool {
         .all(|row| failing(constraints, trace, row).is_empty())
 }
 
-fn low_relation<'a>(constraints: &[&'a Relation], group: &RelativeTimestampGroup) -> &'a Relation {
-    let [low, ..] = addresses(group);
-    let mut relations = constraints
-        .iter()
-        .filter(|relation| inputs(relation).contains(&low));
-    let relation = relations.next().unwrap();
-    assert!(relations.next().is_none());
-    relation
-}
-
-fn distance_inputs(
-    circuit: &GKRCircuitArtifact<F>,
-    constraints: &[&Relation],
-    group: &RelativeTimestampGroup,
-) -> Vec<GKRAddress> {
-    let state = circuit.memory_layout.delegation_state.as_ref().unwrap();
-    let [low, _, borrow] = addresses(group);
-    let known = [
-        low,
-        GKRAddress::BaseLayerMemory(state.invocation_timestamp[0]),
-        GKRAddress::BaseLayerMemory(state.execute),
-        borrow,
-    ];
-    inputs(low_relation(constraints, group))
-        .into_iter()
-        .filter(|place| !known.contains(place))
-        .collect()
-}
-
 fn tampered_failures(
     constraints: &[&Relation],
     trace: &mut Trace,
@@ -404,81 +437,149 @@ fn tampering_reaches_the_relations<
         let groups = &artifact.aux_layout_data.relative_timestamp_groups;
         assert!(!groups.is_empty());
         let mut trace = circuit.trace(&artifact, &circuit.rows);
+        // The challenge-independent memory pass must already contain every value
+        // later used by the full witness pass, including early bits or packed B.
+        let oracle = DelegationOracle::<
+            '_,
+            D,
+            NUM_KECCAK_F1600_REGISTER_ACCESSES,
+            NUM_KECCAK_F1600_INDIRECT_READS,
+            IW,
+            VO,
+        > {
+            cycle_data: &circuit.rows,
+            marker: core::marker::PhantomData,
+        };
+        let early = evaluate_gkr_memory_witness_for_delegation_circuit(
+            &artifact,
+            artifact.trace_len,
+            &oracle,
+            &Worker::new(),
+            Global,
+            Global,
+        );
+        assert_eq!(
+            early.column_major_trace, trace.column_major_memory_trace,
+            "{variant}: the full witness pass changed pre-challenge memory"
+        );
+        drop(early);
+
         assert!(lowered_constraints_hold(&constraints, &trace), "{variant}");
+        assert!(check_lookups_in_range(&artifact, &trace), "{variant}");
+        for (row, oracle) in circuit.rows.iter().enumerate() {
+            assert!(
+                timestamp_matches_oracle(&artifact, &trace, row, oracle),
+                "{variant} row {row}"
+            );
+        }
         for row in [0, active / 2, active - 1, active, artifact.trace_len - 1] {
-            for group in groups.iter() {
-                let [low, high, borrow] = addresses(group);
-                let [l, h, b] = [low, high, borrow].map(|a| read_cell(&trace, a, row));
-                let context = format!("{variant} row {row} group {:?}", group.members);
-                assert!(
-                    rejected_with(&constraints, &mut trace, row, &[(low, plus(l, 1))], low),
-                    "{context}"
-                );
-                assert!(
-                    rejected_with(&constraints, &mut trace, row, &[(high, plus(h, 1))], high),
-                    "{context}"
-                );
+            for (group_index, group) in groups.iter().enumerate() {
+                let limbs = timestamp_limbs(&artifact, group);
+                let honest_limbs = limbs
+                    .each_ref()
+                    .map(|limb| evaluate_no_field_linear(limb, &trace, row));
+                if row >= active {
+                    assert_eq!(honest_limbs, [F::ZERO; 2]);
+                }
+                let b = borrow_value(&artifact, &trace, group_index, row);
+                assert!(b == F::ZERO || b == F::ONE);
+                let address = borrow_address(group).unwrap_or_else(|| {
+                    GKRAddress::BaseLayerMemory(
+                        artifact.aux_layout_data.packed_borrow_column.unwrap(),
+                    )
+                });
+                let original = read_cell(&trace, address, row);
+                let invalid = plus(original, 2 - b.as_u32_reduced());
                 assert!(
                     rejected_with(
                         &constraints,
                         &mut trace,
                         row,
-                        &[(borrow, F::from_u32_unchecked(1 - b.as_u32_reduced()))],
-                        low
+                        &[(address, invalid)],
+                        address
                     ),
-                    "{context}"
+                    "{variant} group {group_index}: nonboolean borrow"
                 );
-                let lift = 2 - b.as_u32_reduced();
-                assert_eq!(
-                    tampered_failures(
-                        &constraints,
-                        &mut trace,
-                        row,
-                        &[
-                            (low, plus(l, lift * LIMB as u32)),
-                            (high, minus(h, lift)),
-                            (borrow, F::from_u32_unchecked(2)),
-                        ]
-                    ),
-                    vec![BTreeSet::from([borrow])],
-                    "{context}: only booleanity rejects a borrow of 2"
-                );
-                if row < active {
-                    for input in distance_inputs(&artifact, &constraints, group) {
-                        let value = read_cell(&trace, input, row);
-                        assert!(
-                            rejected_with(
-                                &constraints,
-                                &mut trace,
-                                row,
-                                &[(input, plus(value, 1))],
-                                low
-                            ),
-                            "{context} input {input:?}"
-                        );
-                    }
-                    let other = if b == F::ZERO {
-                        [
-                            (low, plus(l, LIMB as u32)),
-                            (high, minus(h, 1)),
-                            (borrow, F::ONE),
-                        ]
-                    } else {
-                        [
-                            (low, minus(l, LIMB as u32)),
-                            (high, plus(h, 1)),
-                            (borrow, F::ZERO),
-                        ]
-                    };
+                let other = if b == F::ZERO {
+                    plus(original, 1)
+                } else {
+                    minus(original, 1)
+                };
+                write_cell(&mut trace, address, row, other);
+                let alternate_low =
+                    evaluate_no_field_linear(&limbs[0], &trace, row).as_u32_reduced();
+                if artifact.aux_layout_data.packed_borrow_column.is_some() && group_index != 0 {
+                    // Holding committed B fixed, a witness bit change makes q nonboolean.
+                    assert!(!failing(&constraints, &trace, row).is_empty());
+                } else {
                     assert!(
-                        tampered_failures(&constraints, &mut trace, row, &other).is_empty(),
-                        "{context}: the other limb pair of the same timestamp is left to the memory permutation"
+                        alternate_low >= LIMB as u32,
+                        "other boolean borrow must be unnormalized"
                     );
+                    {
+                        // This alternative changes the early commitment; RAM matching
+                        // supplies normalization, not a local normalization lookup.
+                        assert!(matches!(address, GKRAddress::BaseLayerMemory(_)));
+                        let alternate_limbs = limbs
+                            .each_ref()
+                            .map(|limb| evaluate_no_field_linear(limb, &trace, row));
+                        assert_ne!(
+                            alternate_limbs, honest_limbs,
+                            "committed borrow tampering must change the RAM read tuple"
+                        );
+                        if row < active {
+                            assert!(!timestamp_matches_oracle(
+                                &artifact,
+                                &trace,
+                                row,
+                                &circuit.rows[row]
+                            ));
+                        }
+                    }
                 }
+                write_cell(&mut trace, address, row, original);
             }
         }
-        assert!(lowered_constraints_hold(&constraints, &trace), "{variant}");
-        assert!(check_satisfied(&artifact, &trace), "{variant}");
+        // Every non-borrow witness operand of a derived timestamp is a
+        // control-table output. Its mutation must reach the actual RAM tuple.
+        let mut known = BTreeSet::new();
+        let state = artifact.memory_layout.delegation_state.as_ref().unwrap();
+        known.extend(state.invocation_timestamp.map(GKRAddress::BaseLayerMemory));
+        known.insert(GKRAddress::BaseLayerMemory(state.execute));
+        for group in groups {
+            if let Some(address) = borrow_address(group) {
+                known.insert(address);
+            }
+        }
+        if let Some(column) = artifact.aux_layout_data.packed_borrow_column {
+            known.insert(GKRAddress::BaseLayerMemory(column));
+        }
+        let distance_inputs: BTreeSet<_> = groups
+            .iter()
+            .flat_map(|group| timestamp_limbs(&artifact, group))
+            .flat_map(|limb| {
+                limb.linear_terms
+                    .into_vec()
+                    .into_iter()
+                    .map(|(_, address)| address)
+            })
+            .filter(|address| !known.contains(address))
+            .collect();
+        assert!(!distance_inputs.is_empty());
+        for row in [0, active / 2, active - 1] {
+            for &input in &distance_inputs {
+                let original = read_cell(&trace, input, row);
+                write_cell(&mut trace, input, row, plus(original, 1));
+                assert!(
+                    !timestamp_matches_oracle(&artifact, &trace, row, &circuit.rows[row]),
+                    "distance input {input:?} must affect a RAM timestamp"
+                );
+                write_cell(&mut trace, input, row, original);
+            }
+        }
+        assert!(lowered_constraints_hold(&constraints, &trace));
+        assert!(check_satisfied(&artifact, &trace));
+        assert!(check_lookups_in_range(&artifact, &trace));
     }
 }
 
@@ -498,10 +599,16 @@ fn shift<const IW: usize, const VO: usize>(row: &mut Row<IW, VO>, members: &[usi
     }
 }
 
-fn read_timestamp(trace: &Trace, group: &RelativeTimestampGroup, row: usize) -> TimestampScalar {
-    let [low, high] = group.read_timestamp.map(|column| {
-        trace.column_major_memory_trace[column][row].as_u32_reduced() as TimestampScalar
+fn read_timestamp(
+    circuit: &GKRCircuitArtifact<F>,
+    trace: &Trace,
+    group: &RelativeTimestampGroup,
+    row: usize,
+) -> TimestampScalar {
+    let [low, high] = timestamp_limbs(circuit, group).map(|limb| {
+        evaluate_no_field_linear(&limb, trace, row).as_u32_reduced() as TimestampScalar
     });
+    assert!(low < LIMB && high < LIMB);
     low + high * LIMB
 }
 
@@ -545,18 +652,25 @@ fn borrows_follow_the_limb_boundaries<
         &lowered_constraints(&artifact),
         &trace
     ));
+    assert!(check_lookups_in_range(&artifact, &trace));
     let mut distances = BTreeSet::new();
     let mut borrows = BTreeSet::new();
     for (row, witness) in rows.iter().enumerate() {
+        assert!(timestamp_matches_oracle(&artifact, &trace, row, witness));
         let invocation = witness.write_timestamp;
-        for group in artifact.aux_layout_data.relative_timestamp_groups.iter() {
-            let read = read_timestamp(&trace, group, row);
+        for (group_index, group) in artifact
+            .aux_layout_data
+            .relative_timestamp_groups
+            .iter()
+            .enumerate()
+        {
+            let read = read_timestamp(&artifact, &trace, group, row);
             let distance = invocation + 2 - read;
             assert!(
                 distance > 0 && distance < LIMB && distance % 4 == 0,
                 "row {row}"
             );
-            let borrow = trace.column_major_witness_trace[group.borrow][row].as_u32_reduced();
+            let borrow = borrow_value(&artifact, &trace, group_index, row).as_u32_reduced();
             assert_eq!(borrow == 1, (invocation % LIMB) + 2 < distance, "row {row}");
             borrows.insert(borrow);
             distances.insert(distance);
@@ -783,25 +897,14 @@ fn interleaved_touch_is_rejected(
             theta_rho: honest.theta_rho.clone(),
             chi5: rows.clone(),
         };
-        assert!(over_consumed(calls, &repointed, &words, &touched).is_empty());
+        assert!(!over_consumed(calls, &repointed, &words, &touched).is_empty());
     }
     let artifact = chi5.artifact(VARIANTS[0]);
-    let constraints = lowered_constraints(&artifact);
-    let group = artifact
-        .aux_layout_data
-        .relative_timestamp_groups
-        .iter()
-        .find(|group| {
-            group
-                .members
-                .contains(&(NUM_KECCAK_F1600_REGISTER_ACCESSES + 2 * lane))
-        })
-        .unwrap();
     let trace = chi5.trace(&artifact, &rows);
-    let [low, ..] = addresses(group);
-    assert!(failing(&constraints, &trace, row)
-        .iter()
-        .any(|inputs| inputs.contains(&low)));
+    assert!(
+        !timestamp_matches_oracle(&artifact, &trace, row, &rows[row]),
+        "derived RAM tuple must retain the scheduled producer after an interleaved touch"
+    );
 }
 
 fn relations_hold<D: DelegationAbiDescription, const IW: usize, const VO: usize>(
@@ -812,7 +915,10 @@ fn relations_hold<D: DelegationAbiDescription, const IW: usize, const VO: usize>
     let constraints = lowered_constraints(&artifact);
     let trace = circuit.trace(&artifact, rows);
     (0..rows.len())
-        .map(|row| failing(&constraints, &trace, row).is_empty())
+        .map(|row| {
+            failing(&constraints, &trace, row).is_empty()
+                && timestamp_matches_oracle(&artifact, &trace, row, &rows[row])
+        })
         .collect()
 }
 
@@ -863,7 +969,10 @@ fn interleaved_cycle_is_rejected(calls: &(ColumnParity, ThetaRho, Chi5), gap: Ti
             }
         },
     );
-    assert!(unmatched_reads(calls, &honest).is_empty());
+    assert!(
+        !unmatched_reads(calls, &honest).is_empty(),
+        "compiled derived tuples retain the fixed schedule across an inserted gap"
+    );
     for (rows, held) in [
         (
             theta_rho

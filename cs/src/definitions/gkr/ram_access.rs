@@ -41,7 +41,7 @@ pub enum RamAddress {
 pub struct RamReadQuery {
     pub in_cycle_write_index: u32,
     pub address: RamAddress,
-    pub read_timestamp: [usize; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
+    pub read_timestamp: Option<[usize; NUM_TIMESTAMP_COLUMNS_FOR_RAM]>,
     pub read_value: RamWordRepresentation,
 }
 
@@ -56,7 +56,7 @@ pub enum RamWordRepresentation {
 pub struct RamWriteQuery {
     pub in_cycle_write_index: u32,
     pub address: RamAddress,
-    pub read_timestamp: [usize; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
+    pub read_timestamp: Option<[usize; NUM_TIMESTAMP_COLUMNS_FOR_RAM]>,
     pub read_value: RamWordRepresentation,
     pub write_value: RamWordRepresentation,
 }
@@ -75,7 +75,9 @@ impl RamQuery {
         }
     }
 
-    pub const fn get_read_timestamp_columns(&self) -> [usize; NUM_TIMESTAMP_COLUMNS_FOR_RAM] {
+    pub const fn get_read_timestamp_columns(
+        &self,
+    ) -> Option<[usize; NUM_TIMESTAMP_COLUMNS_FOR_RAM]> {
         match self {
             Self::Readonly(el) => el.read_timestamp,
             Self::Write(el) => el.read_timestamp,
@@ -107,7 +109,6 @@ pub struct RamAuxComparisonSet {
 
 #[derive(Clone, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RelativeTimestampGroup {
-    pub read_timestamp: [usize; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
     pub borrow: usize,
     pub members: Vec<usize>,
 }

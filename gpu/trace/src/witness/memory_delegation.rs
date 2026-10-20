@@ -122,8 +122,11 @@ impl From<&CSRelativeTimestampGroup> for RelativeTimestampGroup {
         }
         Self {
             borrow: {
-                assert!(value.borrow <= u32::MAX as usize);
-                value.borrow as u32
+                if value.borrow == usize::MAX {
+                    u32::MAX
+                } else {
+                    u32::try_from(value.borrow).unwrap()
+                }
             },
             members_count: members_count as u32,
             members,
@@ -164,6 +167,7 @@ impl From<Option<CSRamAuxComparisonSet>> for OptionalRamAuxComparisonSet {
 pub(crate) struct DelegationAuxLayoutData {
     shuffle_ram_timestamp_comparison_aux_vars:
         [OptionalRamAuxComparisonSet; MAX_DELEGATION_RAM_ACCESS_SETS_COUNT],
+    packed_borrow_column: u32,
     relative_timestamp_groups_count: u32,
     relative_timestamp_groups:
         [RelativeTimestampGroup; MAX_DELEGATION_RELATIVE_TIMESTAMP_GROUPS_COUNT],
@@ -177,9 +181,10 @@ const _: () = {
     assert!(offset_of!(RelativeTimestampGroup, borrow) == 0);
     assert!(offset_of!(RelativeTimestampGroup, members_count) == 4);
     assert!(offset_of!(RelativeTimestampGroup, members) == 8);
-    assert!(offset_of!(DelegationAuxLayoutData, relative_timestamp_groups_count) == 512);
-    assert!(offset_of!(DelegationAuxLayoutData, relative_timestamp_groups) == 516);
-    assert!(size_of::<DelegationAuxLayoutData>() == 1092);
+    assert!(offset_of!(DelegationAuxLayoutData, packed_borrow_column) == 512);
+    assert!(offset_of!(DelegationAuxLayoutData, relative_timestamp_groups_count) == 516);
+    assert!(offset_of!(DelegationAuxLayoutData, relative_timestamp_groups) == 520);
+    assert!(size_of::<DelegationAuxLayoutData>() == 1096);
 };
 
 impl Default for DelegationAuxLayoutData {
@@ -187,6 +192,7 @@ impl Default for DelegationAuxLayoutData {
         Self {
             shuffle_ram_timestamp_comparison_aux_vars: [OptionalRamAuxComparisonSet::default();
                 MAX_DELEGATION_RAM_ACCESS_SETS_COUNT],
+            packed_borrow_column: u32::MAX,
             relative_timestamp_groups_count: 0,
             relative_timestamp_groups: [RelativeTimestampGroup::default();
                 MAX_DELEGATION_RELATIVE_TIMESTAMP_GROUPS_COUNT],
@@ -234,6 +240,10 @@ impl From<&GKRAuxLayoutData> for DelegationAuxLayoutData {
             *dst = src.into();
         }
         result.relative_timestamp_groups_count = groups_count as u32;
+        result.packed_borrow_column = value
+            .packed_borrow_column
+            .map(|column| u32::try_from(column).unwrap())
+            .unwrap_or(u32::MAX);
 
         result
     }
@@ -242,6 +252,7 @@ impl From<&GKRAuxLayoutData> for DelegationAuxLayoutData {
 cuda_kernel_signature_arguments_and_function!(
     GenerateMemoryValues<T>,
     layout: DelegationMemoryLayout,
+    aux_layout_data: DelegationAuxLayoutData,
     trace: DelegationTraceRaw<T>,
     memory: MutPtrAndStride<BF>,
     count: u32,
@@ -263,6 +274,7 @@ macro_rules! generate_delegation_kernels {
             cuda_kernel_declaration!(
                 [<ab_generate_memory_values_ $name _kernel>](
                     layout: DelegationMemoryLayout,
+                    aux_layout_data: DelegationAuxLayoutData,
                     trace: DelegationTraceRaw<$type>,
                     memory: MutPtrAndStride<BF>,
                     count: u32,
@@ -350,7 +362,8 @@ pub(crate) fn generate_memory_values_delegation<
     let memory = memory.as_mut_ptr_and_stride();
     let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-    let args = GenerateMemoryValuesArguments::new(layout, trace, memory, count);
+    let aux_layout_data = (&compiled_circuit.aux_layout_data).into();
+    let args = GenerateMemoryValuesArguments::new(layout, aux_layout_data, trace, memory, count);
     GenerateMemoryValuesFunction(T::MEMORY_SIGNATURE).launch(&config, &args)
 }
 
@@ -392,4 +405,36 @@ pub fn generate_memory_and_witness_values_delegation<
         count,
     );
     GenerateMemoryAndWitnessValuesFunction(T::MEMORY_AND_WITNESS_SIGNATURE).launch(&config, &args)
+}
+
+#[cfg(test)]
+mod cpu_tests {
+    use super::*;
+
+    #[test]
+    fn relative_timestamp_placement_survives_cuda_metadata_conversion() {
+        let source = GKRAuxLayoutData {
+            shuffle_ram_timestamp_comparison_aux_vars: vec![None; 4],
+            relative_timestamp_groups: vec![
+                CSRelativeTimestampGroup {
+                    borrow: usize::MAX,
+                    members: vec![0, 1],
+                },
+                CSRelativeTimestampGroup {
+                    borrow: 12,
+                    members: vec![2, 3],
+                },
+            ],
+            packed_borrow_column: Some(17),
+        };
+        let converted = DelegationAuxLayoutData::from(&source);
+        assert_eq!(converted.packed_borrow_column, 17);
+        assert_eq!(converted.relative_timestamp_groups_count, 2);
+        assert_eq!(converted.relative_timestamp_groups[0].borrow, u32::MAX);
+        assert_eq!(
+            &converted.relative_timestamp_groups[1].members[..2],
+            &[2, 3]
+        );
+        assert_eq!(converted.relative_timestamp_groups[1].borrow, 12);
+    }
 }

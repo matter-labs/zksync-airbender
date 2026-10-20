@@ -201,31 +201,39 @@ impl CompiledAddressStrict {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum CompiledMemoryTimestamp {
+pub enum CompiledMemoryTimestamp<F: PrimeField> {
     Zero,
     Normal([usize; NUM_TIMESTAMP_COLUMNS_FOR_RAM]),
+    Affine([LinearRelation<F>; NUM_TIMESTAMP_COLUMNS_FOR_RAM]),
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct SpecialMemoryContributionRelation {
+pub struct SpecialMemoryContributionRelation<F: PrimeField> {
     pub address_space: CompiledAddressSpaceRelationStrict,
     pub address: CompiledAddressStrict,
-    pub timestamp: CompiledMemoryTimestamp,
+    pub timestamp: CompiledMemoryTimestamp<F>,
     pub value: RamWordRepresentation,
     pub timestamp_offset: u32,
 }
 
-impl SpecialMemoryContributionRelation {
+impl<F: PrimeField> SpecialMemoryContributionRelation<F> {
     pub(crate) fn dependencies(&self) -> Vec<GKRAddress> {
         let mut result = Vec::with_capacity(8);
         if let Some(a) = self.address_space.dependency() {
             result.push(a);
         }
         result.extend(self.address.dependencies());
-        match self.timestamp {
+        match &self.timestamp {
             CompiledMemoryTimestamp::Zero => {}
             CompiledMemoryTimestamp::Normal(ts) => {
                 result.extend(ts.map(GKRAddress::BaseLayerMemory));
+            }
+            CompiledMemoryTimestamp::Affine(limbs) => {
+                result.extend(
+                    limbs
+                        .iter()
+                        .flat_map(|limb| limb.linear_terms.iter().map(|(_, address)| *address)),
+                );
             }
         }
 
@@ -372,7 +380,7 @@ pub enum GKRRelation<F: PrimeField> {
     },
     // Computes (memory tuple) * (memory tuple) without intermediate cache relations
     InitialGrandProductWithoutCaches {
-        input: [SpecialMemoryContributionRelation; 2],
+        input: [SpecialMemoryContributionRelation<F>; 2],
         output: GKRAddress,
     },
     // Computes (memory tuple) * (single scalar in extension)
@@ -383,7 +391,7 @@ pub enum GKRRelation<F: PrimeField> {
     },
     // Materialize memory expression
     MaterializeGrandProductTermExpression {
-        input: SpecialMemoryContributionRelation,
+        input: SpecialMemoryContributionRelation<F>,
         output: GKRAddress,
     },
     // Computes (single scalar in extension) * (single scalar in extension)
@@ -1121,7 +1129,7 @@ pub enum GKRCacheRelation<F: PrimeField> {
         range_check_width: usize,
     },
     VectorizedLookup(VectorLookupRelation<F>),
-    MemoryTuple(SpecialMemoryContributionRelation),
+    MemoryTuple(SpecialMemoryContributionRelation<F>),
     VectorizedLookupSetup(Box<[GKRAddress]>),
 }
 

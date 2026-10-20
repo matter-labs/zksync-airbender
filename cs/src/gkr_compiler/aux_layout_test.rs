@@ -1,5 +1,5 @@
 use crate::definitions::GKRAddress;
-use crate::gkr_compiler::{GKRCacheRelation, GKRCircuitArtifact};
+use crate::gkr_compiler::{CompiledMemoryTimestamp, GKRCacheRelation, GKRCircuitArtifact};
 use field::baby_bear::base::BabyBearField;
 use field::proth120::Proth120;
 use field::PrimeField;
@@ -23,38 +23,62 @@ fn check_comparisons<F: PrimeField>(name: &str, artifact: &GKRCircuitArtifact<F>
     assert!(
         accesses
             .iter()
-            .flat_map(|access| access.get_read_timestamp_columns())
-            .chain(groups.iter().flat_map(|group| group.read_timestamp))
+            .flat_map(|access| access.get_read_timestamp_columns().into_iter().flatten())
             .all(|column| column < width),
         "{name}"
     );
-    assert!(
-        artifact
-            .layers
-            .iter()
-            .flat_map(|layer| layer.cached_relations.values())
-            .filter(|relation| matches!(relation, GKRCacheRelation::MemoryTuple(..)))
-            .flat_map(|relation| relation.dependencies())
-            .all(
-                |address| matches!(address, GKRAddress::BaseLayerMemory(column) if column < width)
-            ),
-        "{name}"
-    );
+    for relation in artifact
+        .layers
+        .iter()
+        .flat_map(|layer| layer.cached_relations.values())
+    {
+        let GKRCacheRelation::MemoryTuple(tuple) = relation else {
+            continue;
+        };
+        // Only derived timestamp limbs may refer to witness columns. Address,
+        // value, and ordinary timestamps retain their memory-only invariant.
+        if let CompiledMemoryTimestamp::Affine(limbs) = &tuple.timestamp {
+            for (_, address) in limbs.iter().flat_map(|limb| limb.linear_terms.iter()) {
+                assert!(
+                    match address {
+                        GKRAddress::BaseLayerMemory(column) => *column < width,
+                        GKRAddress::BaseLayerWitness(column) =>
+                            *column < artifact.witness_layout.total_width,
+                        _ => false,
+                    },
+                    "{name}: invalid affine timestamp input {address:?}"
+                );
+            }
+        }
+        let mut ordinary = tuple.clone();
+        if matches!(ordinary.timestamp, CompiledMemoryTimestamp::Affine(_)) {
+            ordinary.timestamp = CompiledMemoryTimestamp::Zero;
+        }
+        assert!(GKRCacheRelation::MemoryTuple(ordinary).dependencies().iter().all(
+            |address| matches!(address, GKRAddress::BaseLayerMemory(column) if *column < width)
+        ), "{name}: non-timestamp tuple input escaped the memory subtree");
+    }
     if groups.is_empty() {
         assert!(comparisons.iter().all(Option::is_some), "{name}");
         return;
     }
     assert_eq!(comparisons.len(), accesses.len(), "{name}");
     let mut grouped = BTreeSet::new();
-    let mut group_columns = BTreeSet::new();
     for group in groups {
         assert!(!group.members.is_empty(), "{name}");
-        assert!(group_columns.insert(group.read_timestamp), "{name}");
+        if group.borrow == usize::MAX {
+            assert!(
+                artifact.aux_layout_data.packed_borrow_column.is_some(),
+                "{name}"
+            );
+        } else {
+            assert!(group.borrow < artifact.witness_layout.total_width, "{name}");
+        }
         for &member in group.members.iter() {
             assert!(grouped.insert(member), "{name} access {member}");
             assert_eq!(
                 accesses[member].get_read_timestamp_columns(),
-                group.read_timestamp,
+                None,
                 "{name} access {member}"
             );
         }
@@ -67,7 +91,7 @@ fn check_comparisons<F: PrimeField>(name: &str, artifact: &GKRCircuitArtifact<F>
         );
         if comparison.is_some() {
             assert!(
-                !group_columns.contains(&access.get_read_timestamp_columns()),
+                access.get_read_timestamp_columns().is_some(),
                 "{name} access {access_idx}"
             );
         }

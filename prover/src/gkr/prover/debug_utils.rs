@@ -281,7 +281,7 @@ fn evaluate_vectorized_lookup_from_claims<F: PrimeField, E: FieldExtension<F> + 
 
 #[cfg(feature = "gkr_self_checks")]
 fn evaluate_memory_tuple_from_claims<F: PrimeField, E: FieldExtension<F> + Field>(
-    rel: &SpecialMemoryContributionRelation,
+    rel: &SpecialMemoryContributionRelation<F>,
     claims: &BTreeMap<GKRAddress, E>,
     external_challenges: &GKRExternalChallenges<F, E>,
 ) -> E {
@@ -367,8 +367,23 @@ fn evaluate_memory_tuple_from_claims<F: PrimeField, E: FieldExtension<F> + Field
             }
         }
     }
-    match rel.timestamp {
+    match &rel.timestamp {
         CompiledMemoryTimestamp::Zero => {}
+        CompiledMemoryTimestamp::Affine(limbs) => {
+            for (index, limb) in limbs.iter().enumerate() {
+                let mut value = evaluate_linear_relation_from_claims::<F, E>(limb, claims);
+                if index == 0 {
+                    value.add_assign_base(&F::from_u32_unchecked(rel.timestamp_offset));
+                }
+                let mut term = challenges[if index == 0 {
+                    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX
+                } else {
+                    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX
+                }];
+                term.mul_assign(&value);
+                result.add_assign(&term);
+            }
+        }
         CompiledMemoryTimestamp::Normal(ts) => {
             {
                 let mut t = challenges[PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];

@@ -170,6 +170,7 @@ pub fn compile_inits_and_teardowns_circuit<F: PrimeField, const WORD_BITS: u32>(
         aux_layout_data: GKRAuxLayoutData {
             shuffle_ram_timestamp_comparison_aux_vars: Vec::new(),
             relative_timestamp_groups: Vec::new(),
+            packed_borrow_column: None,
         },
         _marker: core::marker::PhantomData,
     }

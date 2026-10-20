@@ -15,6 +15,8 @@ namespace airbender::trace::witness::memory::delegation {
 #define MAX_RELATIVE_TIMESTAMP_GROUPS_COUNT 8
 #define MAX_RELATIVE_TIMESTAMP_GROUP_MEMBERS_COUNT 16
 
+static_assert(MAX_RELATIVE_TIMESTAMP_GROUPS_COUNT <= 16, "packed borrows must fit in u16");
+
 struct DelegationProcessingLayout {
   const u32 execute;
   const u32 invocation_timestamp[NUM_TIMESTAMP_COLUMNS_FOR_RAM];
@@ -42,6 +44,7 @@ struct OptionalRamAuxComparisonSet {
 
 struct DelegationAuxLayoutData {
   const OptionalRamAuxComparisonSet shuffle_ram_timestamp_comparison_aux_vars[MAX_RAM_ACCESS_SETS_COUNT];
+  const u32 packed_borrow_column;
   const u32 relative_timestamp_groups_count;
   const RelativeTimestampGroup relative_timestamp_groups[MAX_RELATIVE_TIMESTAMP_GROUPS_COUNT];
 };
@@ -52,9 +55,10 @@ static_assert(sizeof(RelativeTimestampGroup) == 72);
 static_assert(offsetof(RelativeTimestampGroup, borrow) == 0);
 static_assert(offsetof(RelativeTimestampGroup, members_count) == 4);
 static_assert(offsetof(RelativeTimestampGroup, members) == 8);
-static_assert(offsetof(DelegationAuxLayoutData, relative_timestamp_groups_count) == 512);
-static_assert(offsetof(DelegationAuxLayoutData, relative_timestamp_groups) == 516);
-static_assert(sizeof(DelegationAuxLayoutData) == 1092);
+static_assert(offsetof(DelegationAuxLayoutData, packed_borrow_column) == 512);
+static_assert(offsetof(DelegationAuxLayoutData, relative_timestamp_groups_count) == 516);
+static_assert(offsetof(DelegationAuxLayoutData, relative_timestamp_groups) == 520);
+static_assert(sizeof(DelegationAuxLayoutData) == 1096);
 
 template <typename DESCRIPTION, typename Memory>
 DEVICE_FORCEINLINE void process_delegation_requests_execution(const DelegationProcessingLayout &delegation_state, const DelegationTrace<DESCRIPTION> &oracle,
@@ -116,8 +120,10 @@ DEVICE_FORCEINLINE void process_indirect_memory_accesses(const DelegationMemoryL
       case ConstantRegister: {
         const u32 register_index = query.address.payload.constant_register_access_address.register_index;
         read_timestamp_value = oracle.get_witness_from_placeholder_ts({DelegationRegisterReadTimestamp, register_index}, index);
-        write_timestamp_value(query.read_timestamp, read_timestamp_value, memory);
-        PRINT_TS(M, query.read_timestamp, read_timestamp_value);
+        if (query.read_timestamp[0] != 0xffffffff) {
+          write_timestamp_value(query.read_timestamp, read_timestamp_value, memory);
+          PRINT_TS(M, query.read_timestamp, read_timestamp_value);
+        }
 
         const u32 read_value_value = oracle.get_witness_from_placeholder_u32({DelegationRegisterReadValue, register_index}, index);
         write_ram_word_value(query.read_value, read_value_value, memory);
@@ -129,8 +135,10 @@ DEVICE_FORCEINLINE void process_indirect_memory_accesses(const DelegationMemoryL
         const u32 register_index = address.base_register_index;
         const u32 word_index = address.indirect_access_idx_for_register;
         read_timestamp_value = oracle.get_witness_from_placeholder_ts({DelegationIndirectReadTimestamp, {register_index, word_index}}, index);
-        write_timestamp_value(query.read_timestamp, read_timestamp_value, memory);
-        PRINT_TS(M, query.read_timestamp, read_timestamp_value);
+        if (query.read_timestamp[0] != 0xffffffff) {
+          write_timestamp_value(query.read_timestamp, read_timestamp_value, memory);
+          PRINT_TS(M, query.read_timestamp, read_timestamp_value);
+        }
 
         const u32 read_value_value = oracle.get_witness_from_placeholder_u32({DelegationIndirectReadValue, {register_index, word_index}}, index);
         write_ram_word_value(query.read_value, read_value_value, memory);
@@ -150,8 +158,10 @@ DEVICE_FORCEINLINE void process_indirect_memory_accesses(const DelegationMemoryL
       case ConstantRegister: {
         const u32 register_index = query.address.payload.constant_register_access_address.register_index;
         read_timestamp_value = oracle.get_witness_from_placeholder_ts({DelegationRegisterReadTimestamp, register_index}, index);
-        write_timestamp_value(query.read_timestamp, read_timestamp_value, memory);
-        PRINT_TS(M, query.read_timestamp, read_timestamp_value);
+        if (query.read_timestamp[0] != 0xffffffff) {
+          write_timestamp_value(query.read_timestamp, read_timestamp_value, memory);
+          PRINT_TS(M, query.read_timestamp, read_timestamp_value);
+        }
 
         const u32 read_value_value = oracle.get_witness_from_placeholder_u32({DelegationRegisterReadValue, register_index}, index);
         write_ram_word_value(query.read_value, read_value_value, memory);
@@ -167,8 +177,10 @@ DEVICE_FORCEINLINE void process_indirect_memory_accesses(const DelegationMemoryL
         const u32 register_index = address.base_register_index;
         const u32 word_index = address.indirect_access_idx_for_register;
         read_timestamp_value = oracle.get_witness_from_placeholder_ts({DelegationIndirectReadTimestamp, {register_index, word_index}}, index);
-        write_timestamp_value(query.read_timestamp, read_timestamp_value, memory);
-        PRINT_TS(M, query.read_timestamp, read_timestamp_value);
+        if (query.read_timestamp[0] != 0xffffffff) {
+          write_timestamp_value(query.read_timestamp, read_timestamp_value, memory);
+          PRINT_TS(M, query.read_timestamp, read_timestamp_value);
+        }
 
         const u32 read_value_value = oracle.get_witness_from_placeholder_u32({DelegationIndirectReadValue, {register_index, word_index}}, index);
         write_ram_word_value(query.read_value, read_value_value, memory);
@@ -201,9 +213,7 @@ DEVICE_FORCEINLINE void process_indirect_memory_accesses(const DelegationMemoryL
     PRINT_U16(W, borrow_address, intermediate_borrow);
   }
 
-  if (!COMPUTE_WITNESS)
-    return;
-
+  u32 packed_borrows = 0;
   for (u32 group_idx = 0; group_idx < MAX_RELATIVE_TIMESTAMP_GROUPS_COUNT; ++group_idx) {
     if (group_idx == aux_layout_data.relative_timestamp_groups_count)
       break;
@@ -225,8 +235,15 @@ DEVICE_FORCEINLINE void process_indirect_memory_accesses(const DelegationMemoryL
     const u32 borrow = invocation_timestamp.get_high() - read_timestamp_value.get_high();
     if (borrow > 1)
       __trap();
-    write_bool_value(group.borrow, borrow, witness);
-    PRINT_U16(W, group.borrow, borrow);
+    packed_borrows |= borrow << group_idx;
+    if (COMPUTE_WITNESS && group.borrow != 0xffffffff) {
+      write_bool_value(group.borrow, borrow, witness);
+      PRINT_U16(W, group.borrow, borrow);
+    }
+  }
+  if (aux_layout_data.packed_borrow_column != 0xffffffff) {
+    write_u16_value(aux_layout_data.packed_borrow_column, static_cast<u16>(packed_borrows), memory);
+    PRINT_U16(M, aux_layout_data.packed_borrow_column, packed_borrows);
   }
 }
 

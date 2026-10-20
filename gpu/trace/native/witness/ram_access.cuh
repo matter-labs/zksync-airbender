@@ -90,6 +90,7 @@ struct RamWordRepresentation {
 struct RamReadQuery {
   u32 in_cycle_write_index;
   RamAddress address;
+  // Both entries are 0xffffffff when the timestamp is derived from a group.
   u32 read_timestamp[NUM_TIMESTAMP_COLUMNS_FOR_RAM];
   RamWordRepresentation read_value;
 };
@@ -97,6 +98,7 @@ struct RamReadQuery {
 struct RamWriteQuery {
   u32 in_cycle_write_index;
   RamAddress address;
+  // Both entries are 0xffffffff when the timestamp is derived from a group.
   u32 read_timestamp[NUM_TIMESTAMP_COLUMNS_FOR_RAM];
   RamWordRepresentation read_value;
   RamWordRepresentation write_value;

@@ -972,7 +972,12 @@ pub(crate) fn parse_shuffle_ram_accesses<F: PrimeField>(
             .iter()
             .enumerate()
         {
-            let read_ts = read_timestamp(trace_row, access.get_read_timestamp_columns());
+            let read_ts = read_timestamp(
+                trace_row,
+                access
+                    .get_read_timestamp_columns()
+                    .expect("ordinary RAM parser requires timestamp columns"),
+            );
             let read_value = match access.get_read_value_columns() {
                 RamWordRepresentation::U16Limbs(words) => read_u32(trace_row, words),
                 RamWordRepresentation::U8Limbs(bytes) => read_u32_from_u8x4(trace_row, bytes),
@@ -1147,7 +1152,12 @@ pub(crate) fn parse_delegation_ram_accesses<F: PrimeField>(
                     let value = read_u32(trace_row, read_value_columns);
                     read_value = value;
                     write_value = value;
-                    read_ts = read_timestamp(trace_row, readonly_access.read_timestamp);
+                    read_ts = read_timestamp(
+                        trace_row,
+                        readonly_access.read_timestamp.expect(
+                            "derived timestamps must be materialized by the full-witness parser",
+                        ),
+                    );
                     match readonly_access.address {
                         RamAddress::ConstantRegister(reg) => {
                             assert!(reg < 32);
@@ -1189,7 +1199,12 @@ pub(crate) fn parse_delegation_ram_accesses<F: PrimeField>(
                         unreachable!()
                     };
                     write_value = read_u32(trace_row, write_value_columns);
-                    read_ts = read_timestamp(trace_row, read_write_access.read_timestamp);
+                    read_ts = read_timestamp(
+                        trace_row,
+                        read_write_access.read_timestamp.expect(
+                            "derived timestamps must be materialized by the full-witness parser",
+                        ),
+                    );
                     match read_write_access.address {
                         RamAddress::ConstantRegister(reg) => {
                             assert!(reg < 32);
@@ -1306,6 +1321,129 @@ pub(crate) fn parse_delegation_ram_accesses_from_full_trace<F: PrimeField>(
         read_memory_trace_row(witness, row, &mut buffer);
         parse_delegation_ram_accesses(
             compiled_circuit,
+            &buffer,
+            write_set,
+            read_set,
+            delegation_read_set,
+            delegation_type,
+            row,
+        );
+    }
+}
+
+/// Find the actual compiled read-timestamp limbs, independently of witness-generation
+/// metadata. Read-value columns identify each RAM access; cached and uncached
+/// copies must agree when both occur.
+#[cfg(test)]
+fn compiled_derived_read_timestamp<F: PrimeField>(
+    circuit: &GKRCircuitArtifact<F>,
+    access: &RamQuery,
+) -> [LinearRelation<F>; NUM_TIMESTAMP_COLUMNS_FOR_RAM] {
+    use cs::gkr_compiler::{CompiledMemoryTimestamp, GKRCacheRelation, GKRRelation};
+    let mut tuples = Vec::new();
+    for layer in &circuit.layers {
+        for relation in layer.cached_relations.values() {
+            if let GKRCacheRelation::MemoryTuple(tuple) = relation {
+                tuples.push(tuple);
+            }
+        }
+        for gate in layer
+            .gates_with_external_connections
+            .iter()
+            .chain(&layer.gates)
+        {
+            match &gate.enforced_relation {
+                GKRRelation::InitialGrandProductWithoutCaches { input, .. } => tuples.extend(input),
+                GKRRelation::MaterializeGrandProductTermExpression { input, .. } => {
+                    tuples.push(input)
+                }
+                _ => (),
+            }
+        }
+    }
+    let mut found = None;
+    for tuple in tuples {
+        if tuple.value != access.get_read_value_columns() {
+            continue;
+        }
+        let CompiledMemoryTimestamp::Affine(limbs) = &tuple.timestamp else {
+            continue;
+        };
+        assert_eq!(
+            tuple.timestamp_offset, 0,
+            "derived read timestamp already contains its full offset"
+        );
+        if let Some(previous) = &found {
+            assert_eq!(previous, limbs);
+        } else {
+            found = Some(limbs.clone());
+        }
+    }
+    found.expect("derived read access is missing its compiled affine RAM tuple")
+}
+
+/// Parse actual derived RAM tuples using both committed subtrees, without proving.
+#[cfg(test)]
+fn parse_delegation_ram_accesses_from_full_witness<
+    F: PrimeField,
+    A: GoodAllocator,
+    B: GoodAllocator,
+>(
+    circuit: &GKRCircuitArtifact<F>,
+    witness: &GKRFullWitnessTrace<F, A, B>,
+    write_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
+    read_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
+    delegation_read_set: &mut BTreeSet<(bool, u32, TimestampScalar)>,
+    delegation_type: u16,
+) {
+    let mut materialized = circuit.clone();
+    let mut expressions = Vec::new();
+    for (original, access) in circuit
+        .memory_layout
+        .ram_access_sets
+        .iter()
+        .zip(&mut materialized.memory_layout.ram_access_sets)
+    {
+        if original.get_read_timestamp_columns().is_some() {
+            continue;
+        }
+        let columns = [
+            circuit.memory_layout.total_width + expressions.len(),
+            circuit.memory_layout.total_width + expressions.len() + 1,
+        ];
+        expressions.extend(compiled_derived_read_timestamp(circuit, original));
+        match access {
+            RamQuery::Readonly(query) => query.read_timestamp = Some(columns),
+            RamQuery::Write(query) => query.read_timestamp = Some(columns),
+        }
+    }
+    let mut buffer = Vec::new();
+    let execute = circuit
+        .memory_layout
+        .delegation_state
+        .as_ref()
+        .unwrap()
+        .execute;
+    for row in 0..circuit.trace_len {
+        // Disabled rows contribute no RAM accesses. Skip them before materializing
+        // affine limbs; padding constraints are checked by the relation tests.
+        if witness.column_major_memory_trace[execute][row] == F::ZERO {
+            continue;
+        }
+        buffer.clear();
+        buffer.extend(
+            witness
+                .column_major_memory_trace
+                .iter()
+                .map(|column| column[row]),
+        );
+        buffer.extend(
+            expressions
+                .iter()
+                .map(|expression| evaluate_no_field_linear(expression, witness, row)),
+        );
+        parse_delegation_ram_accesses(
+            &materialized,
             &buffer,
             write_set,
             read_set,

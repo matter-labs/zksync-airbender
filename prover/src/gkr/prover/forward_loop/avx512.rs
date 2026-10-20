@@ -325,10 +325,11 @@ unsafe fn eval_plan(plan: &Plan, row0: usize) -> Limbs {
 /// memory column pointers; `None` for the shapes that need integer
 /// arithmetic on reduced values (dynamic offsets) or the generic address
 /// form.
-fn compile_mem_query(
-    rel: &SpecialMemoryContributionRelation,
+fn compile_mem_query<F: PrimeField>(
+    rel: &SpecialMemoryContributionRelation<F>,
     ch: &GKRExternalChallenges<BF, BE>,
     mem_cols: &[usize],
+    wit_cols: &[usize],
 ) -> Option<Plan> {
     let lin = &ch.permutation_argument_linearization_challenges;
     let one = one_raw();
@@ -391,8 +392,33 @@ fn compile_mem_query(
         }
         CompiledAddressStrict::U32SpaceGeneric(..) => return None,
     }
-    match rel.timestamp {
+    match &rel.timestamp {
         CompiledMemoryTimestamp::Zero => {}
+        CompiledMemoryTimestamp::Affine(limbs) => {
+            for (index, limb) in limbs.iter().enumerate() {
+                let mut cols = Vec::new();
+                for (coefficient, address) in limb.linear_terms.iter() {
+                    let column = match *address {
+                        GKRAddress::BaseLayerMemory(column) => mem_cols[column],
+                        GKRAddress::BaseLayerWitness(column) => wit_cols[column],
+                        _ => return None,
+                    };
+                    cols.push((
+                        BF::from_u32_unchecked(coefficient.as_u32_reduced()).raw_u32_value(),
+                        column,
+                    ));
+                }
+                let mut constant = BF::from_u32_unchecked(limb.constant.as_u32_reduced());
+                if index == 0 {
+                    constant.add_assign(&BF::from_u32_unchecked(rel.timestamp_offset));
+                }
+                plan.linear(
+                    &lin[if index == 0 { TS_LOW } else { TS_HIGH }],
+                    cols,
+                    constant.raw_u32_value(),
+                );
+            }
+        }
         CompiledMemoryTimestamp::Normal(ts) => {
             plan.linear(
                 &lin[TS_LOW],
@@ -1375,7 +1401,7 @@ pub fn pairwise_product<F: PrimeField, E: FieldExtension<F> + Field>(
 /// when the relation is not compilable (the caller runs the scalar path).
 #[cfg(not(feature = "gkr_test_forge"))]
 pub fn materialize_memory_tuple<F: PrimeField, E: FieldExtension<F> + Field>(
-    rel: &SpecialMemoryContributionRelation,
+    rel: &SpecialMemoryContributionRelation<F>,
     storage: &GKRStorage<F, E>,
     trace_len: usize,
     external_challenges: &GKRExternalChallenges<F, E>,
@@ -1384,7 +1410,14 @@ pub fn materialize_memory_tuple<F: PrimeField, E: FieldExtension<F> + Field>(
     worker: &Worker,
 ) -> Option<AllocationType<E>> {
     let cols = mem_col_ptrs(storage, compiled_circuit);
-    let plan = compile_mem_query(rel, challenges_bb(external_challenges), &cols)?;
+    let wit_cols: Vec<_> = if matches!(&rel.timestamp, CompiledMemoryTimestamp::Affine(_)) {
+        (0..compiled_circuit.witness_layout.total_width)
+            .map(|column| base_ptr(storage.get_base_layer(GKRAddress::BaseLayerWitness(column))))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let plan = compile_mem_query(rel, challenges_bb(external_challenges), &cols, &wit_cols)?;
     Some(make_ext(pool, trace_len, |dst| {
         run_blocks(trace_len, worker, |r| unsafe { plan_block(&plan, dst, r) })
     }))
@@ -1392,7 +1425,7 @@ pub fn materialize_memory_tuple<F: PrimeField, E: FieldExtension<F> + Field>(
 
 /// InitialGrandProductWithoutCaches: `false` when a query is not compilable.
 pub fn product_without_caches<F: PrimeField, E: FieldExtension<F> + Field>(
-    inputs: &[SpecialMemoryContributionRelation; 2],
+    inputs: &[SpecialMemoryContributionRelation<F>; 2],
     output: GKRAddress,
     storage: &mut GKRStorage<F, E>,
     external_challenges: &GKRExternalChallenges<F, E>,
@@ -1404,9 +1437,19 @@ pub fn product_without_caches<F: PrimeField, E: FieldExtension<F> + Field>(
 ) -> bool {
     let cols = mem_col_ptrs(storage, compiled_circuit);
     let ch = challenges_bb(external_challenges);
+    let wit_cols: Vec<_> = if inputs
+        .iter()
+        .any(|input| matches!(&input.timestamp, CompiledMemoryTimestamp::Affine(_)))
+    {
+        (0..compiled_circuit.witness_layout.total_width)
+            .map(|column| base_ptr(storage.get_base_layer(GKRAddress::BaseLayerWitness(column))))
+            .collect()
+    } else {
+        Vec::new()
+    };
     let (Some(pl), Some(pr)) = (
-        compile_mem_query(&inputs[0], ch, &cols),
-        compile_mem_query(&inputs[1], ch, &cols),
+        compile_mem_query(&inputs[0], ch, &cols, &wit_cols),
+        compile_mem_query(&inputs[1], ch, &cols, &wit_cols),
     ) else {
         return false;
     };
