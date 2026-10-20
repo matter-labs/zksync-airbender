@@ -82,7 +82,7 @@ private theorem configuration : FlatMemoryConfiguration before := by
       Tests.TraceExecution.before = .ok ()
         { Tests.TraceExecution.before with regs := Tests.TraceExecution.before.regs.insert .x1 0 } := by
     simp only [SailRV32.Functions.wX_bits, SailRV32.Functions.wX,
-      SailRV32.Functions.regval_into_reg, write_callback_pure, freeM_pure_bind]
+      SailRV32.Functions.regval_into_reg, write_callback_pure]
     exact run_bind_of_ok _ _ _ _ _ (write_register .x1 0 Tests.TraceExecution.before)
   have preserved := configuration_gpr_write Tests.TraceExecution.configuration 1 0 written
   exact configuration_register_frame
@@ -138,9 +138,8 @@ theorem native_constraints : FlatOperation.ConstraintsHoldFlat
     | (change ∃ i : Fin 2, _
        refine ⟨1, ?_⟩
        simp [ROM.rows, cells, physical, Tests.TraceExecution.cells, ROMView.nativeBootImage,
-         ROM.row, Cell.initialToken, MemoryToken.word, Word.ofBitVec, ROM.limit, limbBase,
-         List.filterMap_cons, List.filterMap_nil]
-       rfl)
+         ROM.row, Cell.initialToken, MemoryToken.word, Word.ofBitVec, ROM.limit, limbBase]
+       with_unfolding_all rfl)
 
 theorem native_accepted : Accepted trace := by
   constructor
