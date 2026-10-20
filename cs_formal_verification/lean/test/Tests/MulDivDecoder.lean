@@ -55,7 +55,7 @@ theorem all_instruction_forms : ∀ sample ∈ samples,
     repeat' first
       | (with_unfolding_all rfl)
       | (with_unfolding_all conv_lhs => arg 1; whnf
-         rw [@Reference.Sail.run_read_cont (inferInstance : _root_.Sail.ArchSem.Arch)
+         erw [@Reference.Sail.run_read_cont (inferInstance : _root_.Sail.ArchSem.Arch)
            _ _ SailRV32.Register.misa _ _ _ (misa_read _ _)])
 
 private def excluded : List (BitVec 32 × SailRV32.instruction) := [
@@ -90,7 +90,7 @@ theorem unsupported_forms_rejected : ∀ sample ∈ excluded,
     repeat' first
       | (with_unfolding_all rfl)
       | (with_unfolding_all conv_lhs => arg 1; whnf
-         rw [@Reference.Sail.run_read_cont (inferInstance : _root_.Sail.ArchSem.Arch)
+         erw [@Reference.Sail.run_read_cont (inferInstance : _root_.Sail.ArchSem.Arch)
            _ _ SailRV32.Register.misa _ _ _ (misa_read _ _)])
 
 private def entry (remainder : Bool) : Airbender.MulDiv.ProgramEntry :=
@@ -112,7 +112,7 @@ theorem accepted_row_fetched (remainder rollover : Bool) :
           repeat' first
             | (with_unfolding_all rfl)
             | (with_unfolding_all conv_lhs => arg 1; whnf
-               rw [@Reference.Sail.run_read_cont (inferInstance : _root_.Sail.ArchSem.Arch)
+               erw [@Reference.Sail.run_read_cont (inferInstance : _root_.Sail.ArchSem.Arch)
            _ _ SailRV32.Register.misa _ _ _ (misa_read _ _)])) (by cases remainder <;> rfl))
     (Verification.holds_of_sublist (Tests.MulDivTimestamp.constraints remainder rollover)
       (List.sublist_append_left _ _))
@@ -154,7 +154,7 @@ theorem disabled_extension_rejected :
     repeat' first
       | (with_unfolding_all rfl)
       | (with_unfolding_all conv_lhs => arg 1; whnf
-         rw [@Reference.Sail.run_read_cont (inferInstance : _root_.Sail.ArchSem.Arch)
+         erw [@Reference.Sail.run_read_cont (inferInstance : _root_.Sail.ArchSem.Arch)
            _ _ SailRV32.Register.misa _ _ _ isa])
   have bytes : (Cell.ram 0).read state = .ok 0x022081b3 state :=
     Reference.RiscV.Sail.written_word_read _ 0 _
