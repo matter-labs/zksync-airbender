@@ -46,10 +46,10 @@ theorem rev8 {state : Airbender.Reference.RiscV.Sail.State}
     run (Functions.encdec_backwards 0x6980d193) state =
       .ok (.REV8 (.Regidx 1, .Regidx 3)) state := by
   have isa := Airbender.Reference.RiscV.Sail.read_register configured
+  -- Each misa read is one `erw` (`rw` no longer matches the decoder's `do` shape up to instances)
   repeat' first
     | (with_unfolding_all rfl)
-    | (with_unfolding_all conv_lhs => arg 1; whnf
-       rw [@run_read_cont (inferInstance : _root_.Sail.ArchSem.Arch)
-         _ _ Register.misa _ _ _ isa])
+    | erw [@run_read_cont (inferInstance : _root_.Sail.ArchSem.Arch) _ _ Register.misa _ _ _ isa]
+    | (with_unfolding_all conv_lhs => arg 1; whnf)
 
 end Tests.SailDecoder
