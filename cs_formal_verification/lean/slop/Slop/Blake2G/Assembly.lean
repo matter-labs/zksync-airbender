@@ -1,4 +1,5 @@
 import Slop.Blake2G.SecondHalf
+import Slop.Blake2G.OpIndex
 
 namespace Airbender.Blake2G.Proofs
 
@@ -36,8 +37,7 @@ theorem assembled_holds {p : Nat} [Fact p.Prime]
         ((FlatOperation.constraints (mixingConstraints setup)).get
           ⟨j.val, by rw [mixing_constraint_count]; have size := j.isLt; omega⟩).eval
           (Verification.environment (assemble base)) = 0 := by
-      fin_cases j <;> simp [mixingConstraints, importedConstraints,
-        FlatOperation.constraints, Expression.eval, Verification.environment,
+      fin_cases j <;> op_index <;> simp [Expression.eval, Verification.environment,
         assemble, secondAlo, secondAhi, secondClo, secondChi,
         firstAlo, firstAhi, firstClo, firstChi] <;> ring
     have carries (k : Fin 12) :
@@ -47,8 +47,8 @@ theorem assembled_holds {p : Nat} [Fact p.Prime]
       have flag := flags k
       fin_cases k <;> simp [Variables.booleanColumns] at flag
       all_goals rcases flag with flag | flag
-      all_goals simp [mixingConstraints, importedConstraints, FlatOperation.constraints,
-        Expression.eval, Verification.environment, assemble, flag]
+      all_goals op_index
+      all_goals simp [Expression.eval, Verification.environment, assemble, flag]
     change Fin 20 at i
     by_cases early : i.val < 8
     · exact outputs ⟨i.val, early⟩
