@@ -1,4 +1,5 @@
 import Slop.Bigint.AdditiveFields
+import Slop.Bigint.OpIndex
 
 namespace Airbender.Bigint.Multiplication.Proofs
 open Arithmetic
@@ -27,8 +28,9 @@ theorem merged_product {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
   all_goals have gate := Verification.assertion_of_holds h ⟨51 + i.val,
     by rw [constraint_count]; have := i.isLt; omega⟩
   all_goals fin_cases i
-  all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, f0, f1, f2, f3, f4, f5, f6] at gate
+  all_goals op_index at gate
+  all_goals simp only [Expression.eval, Verification.environment, f0, f1, f2, f3, f4, f5, f6] at gate
+  all_goals push_cast at gate
   all_goals linear_combination gate
 
 /-- Selected multiplication ranges all 32 product limbs, including the low half
@@ -48,9 +50,11 @@ theorem product_ranges {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
     have member := Verification.lookup_of_holds h ⟨i.val,
       by rw [lookup_count]; have := i.isLt; omega⟩
     fin_cases i
+    all_goals op_index at member
     all_goals have bound := Verification.range16_bound member
-    all_goals simpa [importedConstraints, FlatOperation.lookups, Expression.eval,
-      Verification.environment] using bound
+    all_goals push_cast at bound
+    all_goals simpa only [Expression.eval, Verification.environment, zero_add, add_zero, one_mul, mul_one,
+      Nat.reduceAdd] using bound
   intro i
   by_cases lower : i.val < 16
   · exact low ⟨i.val, lower⟩
