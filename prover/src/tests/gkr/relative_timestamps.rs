@@ -1,19 +1,20 @@
+use super::constraint_check::{
+    failing, inputs, lowered_constraints, tampered_failures, Relation, Trace, F,
+};
 use super::orchestration::common::{run_vm_and_capture, ProgramConfig, VmRunOutput};
 use super::{
     check_satisfied, deserialize_from_file, parse_delegation_ram_accesses_from_full_trace,
-    read_cell, write_cell,
+    read_cell,
 };
 use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
 use crate::gkr::witness_gen::delegation_circuits::{
     evaluate_gkr_memory_witness_for_delegation_circuit, evaluate_gkr_witness_for_delegation_circuit,
 };
-use crate::gkr::witness_gen::family_circuits::GKRFullWitnessTrace;
 use crate::tracers::oracles::transpiler_oracles::delegation::DelegationOracle;
 use ::cs::definitions::gkr::RelativeTimestampGroup;
 use ::cs::definitions::GKRAddress;
-use ::cs::gkr_compiler::{CompiledMaxQuadraticGKRRelation, GKRCircuitArtifact, GKRRelation};
+use ::cs::gkr_compiler::GKRCircuitArtifact;
 use ::cs::tables::TableDriver;
-use ::field::baby_bear::base::BabyBearField;
 use ::field::{Field, PrimeField};
 use common_constants::keccak_f1600::*;
 use common_constants::{
@@ -31,8 +32,6 @@ use std::alloc::Global;
 use std::collections::{BTreeMap, BTreeSet};
 use worker::Worker;
 
-pub(super) type F = BabyBearField;
-pub(super) type Trace = GKRFullWitnessTrace<F, Global, Global>;
 type Counters = DelegationsAndFamiliesCounters;
 type Row<const IW: usize, const VO: usize> =
     DelegationWitness<NUM_KECCAK_F1600_REGISTER_ACCESSES, NUM_KECCAK_F1600_INDIRECT_READS, IW, VO>;
@@ -251,71 +250,6 @@ fn addresses(group: &RelativeTimestampGroup) -> [GKRAddress; 3] {
     ]
 }
 
-pub(super) type Relation = CompiledMaxQuadraticGKRRelation<F>;
-
-pub(super) fn lowered_constraints(circuit: &GKRCircuitArtifact<F>) -> Vec<&Relation> {
-    let constraints: Vec<&Relation> = circuit
-        .layers
-        .iter()
-        .flat_map(|layer| {
-            layer
-                .gates_with_external_connections
-                .iter()
-                .chain(layer.gates.iter())
-        })
-        .filter_map(|gate| match &gate.enforced_relation {
-            GKRRelation::EnforceSingleMaxQuadraticConstraint { input, .. } => Some(input),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(
-        constraints.len(),
-        circuit.degree_1_constraints.len() + circuit.degree_2_constraints.len()
-    );
-    constraints
-}
-
-fn inputs(relation: &Relation) -> BTreeSet<GKRAddress> {
-    relation
-        .quadratic_terms
-        .iter()
-        .flat_map(|(a, terms)| std::iter::once(*a).chain(terms.iter().map(|(_, b)| *b)))
-        .chain(relation.linear_terms.iter().map(|(_, a)| *a))
-        .collect()
-}
-
-fn evaluate(relation: &Relation, trace: &Trace, row: usize) -> F {
-    let mut result = relation.constant;
-    for (a, terms) in relation.quadratic_terms.iter() {
-        let mut inner = F::ZERO;
-        for (coefficient, b) in terms.iter() {
-            let mut term = *coefficient;
-            term.mul_assign(&read_cell(trace, *b, row));
-            inner.add_assign(&term);
-        }
-        inner.mul_assign(&read_cell(trace, *a, row));
-        result.add_assign(&inner);
-    }
-    for (coefficient, a) in relation.linear_terms.iter() {
-        let mut term = *coefficient;
-        term.mul_assign(&read_cell(trace, *a, row));
-        result.add_assign(&term);
-    }
-    result
-}
-
-pub(super) fn failing(
-    constraints: &[&Relation],
-    trace: &Trace,
-    row: usize,
-) -> Vec<BTreeSet<GKRAddress>> {
-    constraints
-        .iter()
-        .filter(|relation| evaluate(relation, trace, row) != F::ZERO)
-        .map(|relation| inputs(relation))
-        .collect()
-}
-
 fn lowered_constraints_hold(constraints: &[&Relation], trace: &Trace) -> bool {
     (0..trace.column_major_memory_trace[0].len())
         .all(|row| failing(constraints, trace, row).is_empty())
@@ -348,26 +282,6 @@ fn distance_inputs(
         .into_iter()
         .filter(|place| !known.contains(place))
         .collect()
-}
-
-pub(super) fn tampered_failures(
-    constraints: &[&Relation],
-    trace: &mut Trace,
-    row: usize,
-    tampered: &[(GKRAddress, F)],
-) -> Vec<BTreeSet<GKRAddress>> {
-    let honest: Vec<F> = tampered
-        .iter()
-        .map(|(address, _)| read_cell(trace, *address, row))
-        .collect();
-    for (address, value) in tampered {
-        write_cell(trace, *address, row, *value);
-    }
-    let result = failing(constraints, trace, row);
-    for ((address, _), value) in tampered.iter().zip(honest) {
-        write_cell(trace, *address, row, value);
-    }
-    result
 }
 
 fn rejected_with(

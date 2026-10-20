@@ -43,6 +43,8 @@ pub mod orchestration;
 #[cfg(test)]
 mod bigint_eq_result;
 #[cfg(test)]
+mod constraint_check;
+#[cfg(test)]
 mod family_circuits;
 // Also exposed under `feature = "test"`: the L1 wrap driver in
 // `prover_examples` reuses the Proth120 unified packed-proving pieces
