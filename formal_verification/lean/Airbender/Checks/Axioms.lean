@@ -1,3 +1,4 @@
+import Tests.ShiftRegisters
 import Tests.ShiftResults
 import Tests.ShiftValues
 import Tests.ShiftHistory
@@ -1847,3 +1848,25 @@ import Tests.JumpLink
 #print axioms Tests.ShiftResults.public_results
 #print axioms Tests.ShiftResults.concrete_results
 #print axioms Tests.ShiftResults.concrete_outputs
+
+#print axioms Airbender.ShiftBinop.Proofs.decoded_entries
+#print axioms Airbender.ShiftBinop.Proofs.decoded_sources
+#print axioms Airbender.ShiftBinop.Proofs.row_zero_write_from_reads
+#print axioms Airbender.ShiftBinop.Proofs.decoded_zero_preserving
+#print axioms Airbender.ShiftBinop.Proofs.native_zero_writes
+#print axioms Airbender.ShiftBinop.Proofs.image_row_history
+#print axioms Airbender.ShiftBinop.Proofs.register_addresses
+#print axioms Airbender.ShiftBinop.Proofs.register_reads
+#print axioms Airbender.ShiftBinop.Proofs.register_write
+#print axioms Airbender.ShiftBinop.Proofs.native_event_register_space
+#print axioms Airbender.ShiftBinop.Proofs.native_history_memory
+#print axioms Airbender.ShiftBinop.Proofs.entry_source_after_native_history
+#print axioms Airbender.ShiftBinop.Proofs.image_register_history
+#print axioms Airbender.ShiftBinop.public_register_history
+#print axioms Tests.ShiftRegisters.aligned
+#print axioms Tests.ShiftRegisters.entry_query_pc
+#print axioms Tests.ShiftRegisters.entry_unique
+#print axioms Tests.ShiftRegisters.initialized_transfers
+#print axioms Tests.ShiftRegisters.actual_write
+#print axioms Tests.ShiftRegisters.result_write
+#print axioms Tests.ShiftRegisters.discarded_state

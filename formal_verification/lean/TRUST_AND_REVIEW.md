@@ -1803,3 +1803,37 @@ Original Sail cell/GPR transfers, instruction clauses, PC retirement and fetched
 execution remain unfinished. Runtime CSR/worker protocols, physical cryptographic
 enforcement and general compiler refinement remain separate. This is coverage,
 not a new defect finding; the finding standard and historical archive are unchanged.
+
+## Initialized original Sail shift/binop register histories
+
+[The short public register-history claim](Airbender/Review/Trace/Families/ShiftBinop/Registers.lean)
+now constructs actual original Sail GPR reads/writes, all native-clock-ordered
+segment states, final cell matching and code/misa preservation from actual public
+code/seeds/PC and full native matching/decoding. Public tracked-cell alignment
+remains explicit. No expected read, intermediate state, result, write or decoder
+replay is supplied. [Observables](Airbender/Review/Helpers/Memory/ShiftBinop.lean)
+retain the first two readonly accesses and the actual masked destination port;
+all three reads use the same real row pre-state, including aliases.
+
+[Native x0 preservation](Airbender/Proofs/Trace/Families/ShiftBinop/ZeroRegister.lean)
+uses the original rd/zero-flag lookup columns and actual mask equations 39/40,
+with write columns 59/60. Readonly refreshes preserve their exact reads. The
+unchanged shared decreasing-time and Clean-to-Sail realization/grouping proofs
+derive the actual intermediate cell histories. [Source-entry recovery](Airbender/Proofs/Trace/Families/ShiftBinop/Decoder.lean)
+uses the complete native padded decoder and rejects every sentinel-tail row.
+
+[The three port transport declarations](Airbender/Proofs/ShiftBinop/PortReads.lean)
+are copied unchanged from the pinned original source and checked against actual
+v2 port/decoder metadata. [Code/configuration frames](Airbender/Proofs/Trace/Families/ShiftBinop/CodeHistory.lean)
+use native register-space addresses and the unchanged original stateful Sail
+misa-frame theorem to replay decoding after real GPR updates. [Internal assembly](Airbender/Proofs/Trace/Families/ShiftBinop/RegisterHistory.lean)
+derives every row's source/destination transfers and all segment states.
+
+[All twenty-four regressions](Tests/ShiftRegisters.lean) derive the original
+entry from its actual native PC query, original Sail transfers, actual numerical
+result writes and preserved code/misa. All twelve original x0 variants preserve
+the entire Sail data state, including six immediate/x0 readonly aliases.
+Original instruction clauses, PC preparation/retirement and complete fetched
+execution remain unfinished. Runtime CSR/worker protocols, physical cryptographic
+enforcement and general compiler refinement remain separate. This is coverage,
+not a new defect finding; the findings bar and historical archive are unchanged.

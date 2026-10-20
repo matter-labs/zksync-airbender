@@ -23,7 +23,8 @@ derives exact canonical-key contributions and selected-word assembly. [Initializ
 now derives native clocks and latest reads from original public seeds and matching.
 [Initialized word ranges](../../Trace/Families/ShiftBinop/Values.lean) and
 [canonical source keys](../../Trace/Families/ShiftBinop/Sources.lean) are now derived. [Whole numerical results](../../Trace/Families/ShiftBinop/Theorems.lean)
-are now checked. Sail execution, custom CSR/oracle
+are now checked. [Actual Sail GPR/cell transport](../../Trace/Families/ShiftBinop/Registers.lean)
+is now derived. Original instruction execution, custom CSR/oracle
 semantics and physical cryptographic enforcement remain unfinished. General
 Rust/JSON/compiler refinement is a separate boundary.
 
@@ -166,3 +167,17 @@ canonical outputs and exact decoded x0 masking; [initialized assembly](../../../
 derives the source bounds. [Twenty-four complete regressions](../../../../Tests/ShiftResults.lean)
 check concrete whole results and all discarded writes. Actual Sail cell/GPR and
 instruction execution remain next; older sections retain their checkpoint scope.
+
+## Original initialized Sail register transport
+
+[The short public history claim](../../Trace/Families/ShiftBinop/Registers.lean)
+derives original Sail source/old-destination reads, actual masked writes, all
+segment states and code/misa frames from original public initialization and full
+native matching/decoding. [Observables](../../Helpers/Memory/ShiftBinop.lean)
+retain the common pre-state and actual native three-port order. [Port transport](../../../Proofs/ShiftBinop/PortReads.lean)
+reuses the three original pinned declarations unchanged; [native x0 preservation](../../../Proofs/Trace/Families/ShiftBinop/ZeroRegister.lean)
+and shared cell-history realization derive all intermediate states.
+[Complete regressions](../../../../Tests/ShiftRegisters.lean) reach actual original
+Sail numerical writes for all twenty-four ordinary/x0 forms; all twelve x0
+variants preserve the whole data state. Original instruction clauses and PC/fetch
+execution remain next; earlier sections retain their checkpoint scope.

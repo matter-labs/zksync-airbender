@@ -17,8 +17,8 @@ and [shift contributions](../../../Circuits/ShiftBinop/Shifts.lean) are checked.
 [Initialized history](History.lean) now derives clocks and latest reads from
 public seeds and native matching. [Word bounds](Values.lean) and
 [canonical shift-key binding](Sources.lean) are now derived from initialization.
-[Whole numerical results](Theorems.lean) are now checked. Sail cell/GPR transport,
-original instruction retirement and fetched execution remain unfinished.
+[Whole numerical results](Theorems.lean) are now checked. [Sail cell/GPR transport](Registers.lean) is now derived.
+Original instruction retirement and fetched execution remain unfinished.
 The exporter uses an empty CSR allow-list; custom CSR/oracle semantics and
 general Rust/compiler/cryptographic refinement remain separate.
 
@@ -98,3 +98,18 @@ uses the shared derived source ranges. [All twenty-four regressions](../../../..
 apply the public theorem and derive concrete outputs, including SRAI 1055→31,
 sign-extended immediates and discarded writes. Sail cell/GPR transport and
 original instruction/fetched execution remain next; earlier sections retain scope.
+
+## Actual original Sail register histories
+
+[The short public theorem](Registers.lean) now constructs all original Sail
+GPR transfers and segment states, retaining readonly aliases and actual x0
+masking. [Observables](../../../Helpers/Memory/ShiftBinop.lean) expose actual
+reads/writes, original source replay, final cell matching and code/misa frames.
+[Native zero preservation](../../../../Proofs/Trace/Families/ShiftBinop/ZeroRegister.lean)
+feeds the unchanged shared cell-history realization; [port transport](../../../../Proofs/ShiftBinop/PortReads.lean)
+reuses three original pinned declarations unchanged under actual v2 metadata.
+[Code frames](../../../../Proofs/Trace/Families/ShiftBinop/CodeHistory.lean) replay
+the original stateful decoder after GPR updates. [Twenty-four regressions](../../../../../Tests/ShiftRegisters.lean)
+derive actual numerical result writes and all twelve x0 whole-state stutters,
+including immediate/x0 aliases. Original instruction clauses and PC/fetched
+execution remain next; earlier sections retain scope.

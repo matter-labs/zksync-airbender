@@ -516,8 +516,16 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    truncation equals the whole selected operand's architectural low-five bits.
    All twenty-four ordinary/x0 traces apply the short public numerical claim and
    derive concrete results. SRA sign calculations remain split under default
-   heartbeat and fixed memory caps. Continue with Sail cell/GPR transfers and
-   original instruction/fetched execution.
+   heartbeat and fixed memory caps. Actual original Sail cell/GPR transport is
+   now constructed from initialized matching and original public decoding: all
+   native-clock-ordered segment states, common pre-state source/old-destination
+   reads, actual masked writes, final cell matching and code/misa preservation
+   are conclusions. The three original pinned register-port transport declarations
+   are reused unchanged with checked v2 metadata; stateful original decoding
+   replays after actual GPR updates. Twenty-four complete fixtures derive actual
+   transfers/numerical writes; all twelve x0 variants preserve the entire Sail
+   data state, including the six immediate/x0 readonly aliases. Continue with
+   original instruction clauses, PC preparation/retirement and fetched execution.
    Derive actual source reads and states from native matching/public history.
 4. Rebind bigint/BLAKE/Keccak workers and callers. Retest control validity,
    unissued workers, ROM behavior and request participation on v2 before reusing

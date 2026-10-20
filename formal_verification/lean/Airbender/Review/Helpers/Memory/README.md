@@ -92,3 +92,17 @@ enforcement and general Rust refinement remain separate.
 ## Original local MUL/DIV execution observations
 
 [Instruction-history observations](MulDivExecution.lean) combine constructed real register histories, original instruction identity, native successor bounds and original local Sail preparation/retirement. [The short public theorem](../../Trace/Families/MulDiv/Execution.lean) derives all interfaces; complete fetched composition remains separate.
+
+## Ordinary shift/binop register histories
+
+[Actual transfer/history observables](ShiftBinop.lean) retain original Sail
+source and old-destination reads in the same pre-state, actual masked writes,
+constructed segment states, source replay, code/misa frames and final cell matching.
+[The short public claim](../../Trace/Families/ShiftBinop/Registers.lean) derives
+these from actual public initialization and complete native matching/decoding.
+[Native x0 preservation](../../../Proofs/Trace/Families/ShiftBinop/ZeroRegister.lean)
+connects to the unchanged shared cell-history realization; [port transport](../../../Proofs/ShiftBinop/PortReads.lean)
+reuses the three original pinned declarations unchanged with checked v2 metadata.
+[All twenty-four regressions](../../../../Tests/ShiftRegisters.lean) reach actual
+Sail numerical writes and all twelve discarded whole-state stutters. Original
+instruction clauses and PC/fetched execution remain separate.

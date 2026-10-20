@@ -77,3 +77,13 @@ SLL/SRL/SRA/XOR/OR/AND results and canonical actual masked writes. No expected
 source, result or local range premise is added. [Complete regressions](../../../../Tests/ShiftResults.lean)
 retain original public bytes and all twenty-four ordinary/x0 cases. Original
 Sail cell/GPR and instruction execution remain separate connections.
+
+## Shift/binop original Sail cell and GPR transport
+
+[The initialized register-history claim](../../Trace/Families/ShiftBinop/Registers.lean)
+now derives all actual Sail segment states, original GPR reads/writes, final cell
+matching and code/misa frames. [Native zero preservation](../../../Proofs/Trace/Families/ShiftBinop/ZeroRegister.lean)
+uses full decoder membership and actual masked writes, retaining readonly alias
+refreshes. [Complete regressions](../../../../Tests/ShiftRegisters.lean) cover all
+twenty-four ordinary/x0 rows and twelve discarded whole-state stutters. Actual
+original instruction execution and PC/fetched composition remain next.

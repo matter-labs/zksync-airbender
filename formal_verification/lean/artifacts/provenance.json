@@ -4899,6 +4899,64 @@
       "backport_reuse_revision": "f6531c205ad998968809bb57ec49175f9ab6f7c0",
       "backport_reuse_path": "Tests/ShiftValues.lean",
       "backport_reuse_sha256": "90db9baea93c1cd44d2e487757d3111f2097edd7a82ee21013ea1a94135560e9"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ShiftBinop/Decoder.lean",
+      "change": "Adapt verified v2 MUL/DIV source-entry assembly to the native Mersenne31 shift/binop registry. Actual native constraints exclude the complete decoder sentinel tail; actual public construction supplies original Sail bytes/decoding without an entry or table-equivalence premise.",
+      "backport_reuse_revision": "11aa8dc34a5e2ca86a3403ca4bdb6846b89276e9",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/MulDiv/Decoder.lean",
+      "backport_reuse_sha256": "5aa3dfcd520be4df602f88a25410bb9d0a2e1299153b2aa3c1777fd0ae2a34aa"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ShiftBinop/ZeroRegister.lean",
+      "change": "Adapt verified v2 native x0 preservation and shared Clean-to-Sail row realization. Shift/binop uses actual mask equations 39/40 and write columns 59/60. Full native decoding derives the zero flag; shared clock/history laws construct all intermediate cell states from public seeds and native matching.",
+      "backport_reuse_revision": "11aa8dc34a5e2ca86a3403ca4bdb6846b89276e9",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/MulDiv/ZeroRegister.lean",
+      "backport_reuse_sha256": "adc8ae077b4a8fa7810f005718e7287ea007c7d1ebc986447bd95a234ac412d7"
+    },
+    {
+      "path": "Airbender/Proofs/ShiftBinop/PortReads.lean",
+      "change": "Reuse the three original pinned ShiftBinop register_addresses/register_reads/register_write declarations unchanged, with native v2 artifact/decoder/history imports. The v2 MUL/DIV port module provides the verified import arrangement; namespace and explicit nativeEvents field parameter are adapted. Actual v2 metadata discharges the unchanged port-shape connections.",
+      "backport_reuse_revision": "11aa8dc34a5e2ca86a3403ca4bdb6846b89276e9",
+      "backport_reuse_path": "Airbender/Proofs/MulDiv/PortReads.lean",
+      "backport_reuse_sha256": "badc79248fbceb9e663042c4e4321cc78c1bda24f4e0976c28f7db3f57e6cd52",
+      "source_path": "Airbender/Proofs/ShiftBinop/PortReads.lean",
+      "source_sha256": "61c66c4aeba9e149e0e9fdfa7024a0faba8eaffdb520c720586d85ff9db9bbde"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ShiftBinop/CodeHistory.lean",
+      "change": "Adapt verified v2 native register-space and code/misa history frames to shift/binop. The unchanged original stateful Sail misa-frame theorem replays each decoded entry after actual GPR updates; no extra decoder-replay, code-byte equality or ISA premise is added.",
+      "backport_reuse_revision": "11aa8dc34a5e2ca86a3403ca4bdb6846b89276e9",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/MulDiv/CodeHistory.lean",
+      "backport_reuse_sha256": "75832de00e48ec14bef67fcdddd9accbf7975aa208848a2507c1bb674b3e5740"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Memory/ShiftBinop.lean",
+      "change": "Adapt the short v2 register transfer/history observables to native shift/binop. Actual original Sail source/old-destination reads, actual masked writes, all segment states, source replay, code/misa frames and final cell matching are conclusions. Original instruction/PC execution remains separate.",
+      "backport_reuse_revision": "11aa8dc34a5e2ca86a3403ca4bdb6846b89276e9",
+      "backport_reuse_path": "Airbender/Review/Helpers/Memory/MulDiv.lean",
+      "backport_reuse_sha256": "74f0715b2756e7ee4d0a6ce6778ad52156272c42c7763e830f4c167c403e99e9"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ShiftBinop/RegisterHistory.lean",
+      "change": "Adapt verified v2 initialized register-history assembly to shift/binop. Public seed/PC reads, actual public code, full native matching/decoding and the public tracked-cell alignment domain construct all segment states and GPR transfers, retaining readonly aliases and actual x0 stutters.",
+      "backport_reuse_revision": "11aa8dc34a5e2ca86a3403ca4bdb6846b89276e9",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/MulDiv/RegisterHistory.lean",
+      "backport_reuse_sha256": "f5020090ef217ab2514cfcabbb4c550301586d8ea234616bc5ed3ccb6ee1aa8a"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ShiftBinop/Registers.lean",
+      "change": "Adapt the short v2 public initialized register-history claim to shift/binop. The public interface keeps actual initialization/native acceptance and tracked-cell alignment visible; calculation and assembly remain under Proofs.",
+      "backport_reuse_revision": "11aa8dc34a5e2ca86a3403ca4bdb6846b89276e9",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/MulDiv/Registers.lean",
+      "backport_reuse_sha256": "5d474c48b240cb792ab5cc2e8a11f89ddc276ed5553b746a5d32dfab5f8b58bf"
+    },
+    {
+      "path": "Tests/ShiftRegisters.lean",
+      "change": "Adapt v2 initialized original Sail transfer regressions to all 24 complete shift/binop fixtures. Derive the exact original entry from its native PC query, all actual transfers/writes and preserved code/misa. Numerical results feed original Sail writes; all twelve x0 variants preserve the whole Sail data state, including immediate/x0 aliases.",
+      "backport_reuse_revision": "11aa8dc34a5e2ca86a3403ca4bdb6846b89276e9",
+      "backport_reuse_path": "Tests/MulDivRegisters.lean",
+      "backport_reuse_sha256": "847006bbd5f352abb8fb14589e7f2cc35b2f5a529561d20563858d219b3a2471"
     }
   ],
   "setup_artifacts": [
