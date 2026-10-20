@@ -1,4 +1,6 @@
 import Slop.Blake2Round.ArtifactChecks
+import Slop.Blake2Round.OpIndex
+import Slop.Blake2G.OpIndex
 import Human.Circuits.Blake2Round.Schedule
 import Slop.Constraints
 import Slop.Arithmetic.Lemmas
@@ -34,8 +36,9 @@ theorem equations {p : Nat} [Fact p.Prime]
   have high := Verification.assertion_of_holds h ⟨87 + 2 * j.val,
     by rw [constraint_count]; have := j.isLt; omega⟩
   clear h
-  fin_cases j <;> simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment] at lo high
+  fin_cases j <;> op_index at lo high <;> simp only [CharP.cast_eq_zero, Expression.eval,
+    Int.cast_neg, Int.cast_one, Int.cast_zero, Int.ofNat_eq_natCast, Int.reduceNegSucc, Nat.cast_one,
+    Verification.environment, mul_neg, mul_one, neg_mul, one_mul, zero_add] at lo high
   all_goals norm_num [Fin.sum_univ_succ, Variables.scheduledMessage, Variables.preparedMessage,
     Variables.roundBits, column, Blake2G.Control.messageSchedule, Fin.ofNat]
   all_goals constructor
