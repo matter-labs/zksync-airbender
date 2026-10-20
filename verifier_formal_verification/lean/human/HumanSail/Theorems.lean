@@ -1,4 +1,5 @@
 import HumanSail.Airbender
+import HumanSail.Checks
 import Human.Theorems
 
 /-! # What ties our fast spec to Sail (statements only)
@@ -82,10 +83,10 @@ def ProgramCorrectOf (bytes : Array (BitVec 8)) (halt : Nat) : Prop :=
         run numSteps ⟨start, x :: y0 :: y1 :: y2 :: y3 :: v0 :: v1 :: v2 :: v3 :: (Spec.pathInput root path ++ rest)⟩ = some final' →
         final'.sail.regs .PC ≠ BitVec.ofNat 32 halt)
 
-/-- 3. for the plain-Rust image (`build/app.bin`). -/
-def ProgramCorrect : Prop := RV.Accepted Image.bytes ∧ ProgramCorrectOf Image.bytes Image.halt
+/-- 3. for the plain-Rust image (`build/app.bin`), with the checks pinning down the machine (`Checks.lean`). -/
+def ProgramCorrect : Prop := RV.Accepted Image.bytes ∧ MachineChecks ∧ ProgramCorrectOf Image.bytes Image.halt
 
-/-- 3. for the field-opcode image (`build/app_mop.bin`: field opcodes and the Blake2s delegation). -/
-def ProgramCorrectMop : Prop := RV.Accepted ImageMop.bytes ∧ ProgramCorrectOf ImageMop.bytes ImageMop.halt
+/-- 3. for the field-opcode image (`build/app_mop.bin`: field opcodes and the Blake2s delegation), with the checks. -/
+def ProgramCorrectMop : Prop := RV.Accepted ImageMop.bytes ∧ MachineChecks ∧ ProgramCorrectOf ImageMop.bytes ImageMop.halt
 
 end Airbender

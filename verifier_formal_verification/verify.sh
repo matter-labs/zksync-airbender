@@ -37,7 +37,7 @@ for t in "${thms[@]}"; do
 done
 echo "== 5. Our spec vs Sail (needs the generated Sail model: sail/regen.sh)"
 if [[ -d lean/sail-rv32/SailRV32 ]]; then
-  out=$(cd lean && lake build HumanSail Slop.Sail.Config Slop.Equiv.Decode Slop.Equiv.Final 2>&1 \
+  out=$(cd lean && lake build HumanSail Slop.Equiv.Decode Slop.Equiv.Final 2>&1 \
     | grep -E "error|Build completed" ; lake env lean --stdin <<'LEAN'
 import Slop.Equiv.Decode
 import Slop.Equiv.Final

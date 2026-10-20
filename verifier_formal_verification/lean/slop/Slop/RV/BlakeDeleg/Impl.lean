@@ -2,6 +2,7 @@ import Slop.RV.Tactic
 import Slop.RV.CopyRun
 import Slop.RV.CallW
 import Slop.RV.BlakeDeleg.Rounds
+import Slop.Block.Mem
 import Slop.RV.Code.blake2s_compress_mop
 
 /-! `blake2s_compress(st, len, last)` by Airbender's round-function delegation (`blake2_with_compression`): the
@@ -9,7 +10,7 @@ counter and last-block words into the extended state, seven calls of CSR `0x7c7`
 
 namespace RV
 open Spec
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 set_option maxRecDepth 100000
 
 /-- The evaluator (state +0, extended state +32, block +128, counter +192) 128-aligned in RAM above `sp`, `last` a
@@ -38,7 +39,7 @@ theorem blake2s_compress_mop_impl (A : Word) :
   have srom : ∀ b : Word, b.toNat < ROM_END → S.mem b = s.mem b := fun b hb => by
     simp only [ROM_END] at hb
     rw [cut_mem]
-    repeat rw [write_outside (h := Or.inl (by bv_omega)) (ha := by bv_omega)]
+    simp (disch := base_omega) only [write_base_outside, write_wrap_outside]
   have hlen : Code.blake2s_compress_mop.length = 29 := rfl
   have hcS := codeAt_of_rom hcode (by rw [hlen]; simp only [ROM_END]; omega) srom
   obtain ⟨T, hrunT, hT⟩ := blake_calls S (s.getReg 10#5) (by simp only [ROM_END]; omega) h128
@@ -63,20 +64,22 @@ theorem blake2s_compress_mop_impl (A : Word) :
         read S.mem b 4 = read s.mem b 4 := by
       intro b h1 h2 h3
       rw [cut_mem]
-      repeat rw [read_write_disjoint (h := by bv_omega) (ha := by bv_omega) (hc := by bv_omega)]
+      simp (disch := base_omega) only [read_write_at, read_write_wrap]
     have hS : readWords S.mem (s.getReg 10#5) 8 = readWords s.mem (s.getReg 10#5) 8 := by
       apply Vector.ext; intro i hi
       simp only [readWords, Vector.getElem_ofFn]
-      exact rS _ (by bv_omega) (by bv_omega) (by bv_omega)
+      exact rS _ (by simp (disch := base_omega) only [toNat_base]; omega) (by simp (disch := base_omega) only [toNat_base]; omega)
+        (by simp (disch := base_omega) only [toNat_base]; omega)
     have mS : readWords S.mem (s.getReg 10#5 + 128#32) 16 = readWords s.mem (s.getReg 10#5 + 128#32) 16 := by
       apply Vector.ext; intro i hi
       simp only [readWords, Vector.getElem_ofFn]
-      exact rS _ (by bv_omega) (by bv_omega) (by bv_omega)
+      exact rS _ (by simp (disch := base_omega) only [toNat_base]; omega) (by simp (disch := base_omega) only [toNat_base]; omega)
+        (by simp (disch := base_omega) only [toNat_base]; omega)
     have e12 : (readWords S.mem (s.getReg 10#5 + 32#32) 16)[12] =
         (read s.mem (s.getReg 10#5 + 192#32) 4 + s.getReg 11#5) ^^^ IV 4 := by
       simp only [readWords, Vector.getElem_ofFn]
-      rw [show s.getReg 10#5 + 32#32 + BitVec.ofNat 32 (4 * 12) = s.getReg 10#5 + 80#32 by bv_omega, cut_mem,
-        read_write_disjoint (h := by bv_omega) (ha := by bv_omega) (hc := by bv_omega), read_write_same4, ← cvdef_0]
+      rw [show s.getReg 10#5 + 32#32 + BitVec.ofNat 32 (4 * 12) = s.getReg 10#5 + 80#32 by bv_omega, cut_mem]
+      simp (disch := base_omega) only [read_write_at, read_write_wrap, read_write_same4, ← cvdef_0]
       rfl
     have e14 : (readWords S.mem (s.getReg 10#5 + 32#32) 16)[14] =
         (if decide (s.getReg 12#5 = 1#32) = true then 0xFFFFFFFF#32 else 0#32) ^^^ IV 6 := by
@@ -85,9 +88,8 @@ theorem blake2s_compress_mop_impl (A : Word) :
         read_write_same4]
       rcases hl with h | h <;> rw [h] <;> rfl
     have hc : read T.mem (s.getReg 10#5 + 192#32) 4 = read s.mem (s.getReg 10#5 + 192#32) 4 + s.getReg 11#5 := by
-      rw [read_of_outside tm _ _ (by bv_omega), cut_mem,
-        read_write_disjoint (h := by bv_omega) (ha := by bv_omega) (hc := by bv_omega),
-        read_write_disjoint (h := by bv_omega) (ha := by bv_omega) (hc := by bv_omega), read_write_same4, cvdef_1]
+      rw [read_of_outside tm _ _ (by bv_omega), cut_mem]
+      simp (disch := base_omega) only [read_write_at, read_write_wrap, read_write_same4, ← cvdef_1]
     refine ⟨?_, hc⟩
     rw [th, if_pos rfl, compress_eq _ _ _ _ _ e12 e14, hS, mS]
   · have trr' : ∀ i, calleeSaved i → T.getReg i = S.getReg i := fun i hi =>
@@ -98,6 +100,6 @@ theorem blake2s_compress_mop_impl (A : Word) :
   · intro a ha hb
     simp only [set_mem, jump_mem, next_mem]
     rw [tm a (by omega), cut_mem]
-    repeat rw [write_outside (h := by bv_omega) (ha := by bv_omega)]
+    simp (disch := base_omega) only [write_base_outside, write_wrap_outside]
 
 end RV

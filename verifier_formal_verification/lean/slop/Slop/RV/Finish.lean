@@ -2,11 +2,17 @@ import Slop.RV.Halt
 import Slop.RV.CopyRun
 import Slop.RV.Code.finish_success
 import Slop.RV.Code.finish_success_extended
+import Slop.Block.Out
+import Slop.Block.Tail
+import Slop.Block.FinishRuns
 
 /-! riscv_common's `zksync_os_finish_success` (the output protocol), at any address. -/
 
 namespace RV
-set_option maxHeartbeats 0
+open _root_.RV.Sym
+set_option maxHeartbeats 400000
+
+-- words 0 … 28 (straight-line; word 29 is the call of `zksync_os_finish_success_extended`)
 
 /-- riscv_common's `zksync_os_finish_success` (at `A`), called with `a0` pointing to the 8 output words (in RAM, at
 or above `sp`): builds the 16-word output array (the 8 words, then 8 zeros) in its frame and jumps to
@@ -31,12 +37,43 @@ theorem finish_success_run (A : Word) (hA : A.toNat % 4 = 0) (hAr : A.toNat + 0x
       read S'.mem (S.getReg 2#5 + 4294967272#32) 4 = 0 ∧ read S'.mem (S.getReg 2#5 + 4294967276#32) 4 = 0 ∧
       read S'.mem (S.getReg 2#5 + 4294967280#32) 4 = 0 ∧ read S'.mem (S.getReg 2#5 + 4294967284#32) 4 = 0 ∧
       (∀ b : Word, b.toNat < ROM_END → S'.mem b = S.mem b) := by
-  rv_code_facts hc1 Code.finish_success
-  rv_steps 30 with hpc, h10, h0, h1, h2, h3, h4, h5, h6, h7
-  rv_ret
-  refine ⟨by rv_regs <;> (rw [hpc] <;> bv_omega), by rv_regs, by rv_regs, ?_⟩
-  simp (disch := first | decide | rv_disch) only [rv_state, read_write_off, read_write_off0l, read_write_off0r,
-    read_write_same4, true_and]
-  intro b hb
-  simp (disch := first | assumption | (simp only [writable, ROM_END, RAM_END]; bv_omega)) only [rv_state, write_rom]
+  have hL : Code.finish_success.length = 30 := rfl
+  have hrom : A.toNat + 4 * Code.finish_success.length ≤ ROM_END := by simp only [ROM_END, hL]; omega
+  have hPn : (S.getReg 10#5).toNat = P.toNat := by rw [h10]
+  obtain ⟨S1, hrun1, hpc1, -, hrel, hrom1, hout, -⟩ := block_at _ 0 29 FinSucc.instrs FinSucc.σ S A
+    [⟨2, -80, 0, 16⟩, ⟨10, 0, 32, 4⟩] [(⟨10, 0, 32, 4⟩, ⟨2, -80, 0, 16⟩)] FinSucc.dec FinSucc.run (by decide)
+    (by rw [hpc]; bv_omega) hA hrom hc1 (by sym_side) (by sym_side) (by decide +kernel)
+  have hj := run_jal hc1 hA hrom hrom1 29 _ rfl hpc1 4#32 rfl (A + 0x78#32) (by bv_omega) (by bv_omega)
+  -- the array: word `k` of the frame is the word at `a0 + k'`, or 0
+  have W : ∀ (k k' v : Word), outOK FinSucc.σ [⟨2, -80, 0, 16⟩, ⟨10, 0, 32, 4⟩] [(⟨10, 0, 32, 4⟩, ⟨2, -80, 0, 16⟩)]
+      2 k = true → outNode FinSucc.σ 2 k < FinSucc.σ.pool.len →
+      nodeAt FinSucc.σ.pool (outNode FinSucc.σ 2 k) = .load 4 true 10 k' → read S.mem (P + k') 4 = v →
+      read S1.mem (S.getReg 2#5 + k) 4 = v := fun k k' v hok hi hn hv => by
+    rw [← hv, ← h10]; exact out_load _ FinSucc.run hout 2 k 10 k' (by decide) (by decide) hok hi hn
+  have Z : ∀ k : Word, outOK FinSucc.σ [⟨2, -80, 0, 16⟩, ⟨10, 0, 32, 4⟩] [(⟨10, 0, 32, 4⟩, ⟨2, -80, 0, 16⟩)]
+      2 k = true → outNode FinSucc.σ 2 k < FinSucc.σ.pool.len →
+      nodeAt FinSucc.σ.pool (outNode FinSucc.σ 2 k) = .const 0 → read S1.mem (S.getReg 2#5 + k) 4 = 0 :=
+    fun k hok hi hn => out_const FinSucc.wf hout 2 k 0 (by decide) hok hi hn
+  refine ⟨29 + 1, _, run_trans hrun1 hj, rfl,
+    by rw [jal_getReg _ _ _ _ (by decide)]
+       exact hrel.reg_addr _ FinSucc.run 2#5 2 _ (by decide) (by decide +kernel) (by decide +kernel),
+    by rw [jal_getReg _ _ _ _ (by decide)]
+       exact hrel.reg_addr _ FinSucc.run 10#5 2 _ (by decide) (by decide +kernel) (by decide +kernel), ?_⟩
+  simp only [jal_mem]
+  refine ⟨W _ 0#32 _ (by decide +kernel) (by decide +kernel) (by decide +kernel) (by rw [BitVec.add_zero]; exact h0),
+    W _ 4#32 _ (by decide +kernel) (by decide +kernel) (by decide +kernel) h1,
+    W _ 8#32 _ (by decide +kernel) (by decide +kernel) (by decide +kernel) h2,
+    W _ 12#32 _ (by decide +kernel) (by decide +kernel) (by decide +kernel) h3,
+    W _ 16#32 _ (by decide +kernel) (by decide +kernel) (by decide +kernel) h4,
+    W _ 20#32 _ (by decide +kernel) (by decide +kernel) (by decide +kernel) h5,
+    W _ 24#32 _ (by decide +kernel) (by decide +kernel) (by decide +kernel) h6,
+    W _ 28#32 _ (by decide +kernel) (by decide +kernel) (by decide +kernel) h7,
+    Z _ (by decide +kernel) (by decide +kernel) (by decide +kernel),
+    Z _ (by decide +kernel) (by decide +kernel) (by decide +kernel),
+    Z _ (by decide +kernel) (by decide +kernel) (by decide +kernel),
+    Z _ (by decide +kernel) (by decide +kernel) (by decide +kernel),
+    Z _ (by decide +kernel) (by decide +kernel) (by decide +kernel),
+    Z _ (by decide +kernel) (by decide +kernel) (by decide +kernel),
+    Z _ (by decide +kernel) (by decide +kernel) (by decide +kernel),
+    Z _ (by decide +kernel) (by decide +kernel) (by decide +kernel), hrom1⟩
 end RV

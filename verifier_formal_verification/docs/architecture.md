@@ -1,5 +1,9 @@
 # Proof architecture (decided 2026-10-12, after an architecture review)
 
+> Historical. The current layout is in `README.md`. The first Sail route described below (`step`/`Retired`/`Runs`,
+> `Contract.lean`, `Config.lean`, `StepAddi.lean`) was removed on 2026-10-20; the machine's single-instruction checks
+> are now `human/HumanSail/Checks.lean` (`MachineChecks`), a conjunct of `Airbender.ProgramCorrect`.
+
 ## Trusted surface (what a human audits)
 - `sail/` pins + `sail/config/airbender-rv32im.json` (diff vs stock) + `sail/patches/` (3 trivial externs, lean-sail 4.34 compat).
 - `rust/` build flags + `rust/build.sh`; `verify.sh` checks `lean/image/Image.lean` == `build/app.bin`.

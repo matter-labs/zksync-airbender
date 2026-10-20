@@ -1,5 +1,4 @@
-import Slop.Sail.Airbender
-import Slop.Sail.Contract
+import HumanSail.Airbender
 import Human.Spec
 
 /-! Simp lemmas describing how `Human.runSail` interprets the basic `SailM` operations. -/

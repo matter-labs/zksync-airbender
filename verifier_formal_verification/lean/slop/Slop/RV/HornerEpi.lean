@@ -1,12 +1,15 @@
 import Slop.RV.Ext4Call
 import Slop.RV.Code.ext4_horner
+import Slop.Block.Flow
 
-/-! The epilogue of `ext4_horner`, shared by the `n = 0` path and the loop exit. -/
+/-! The epilogue of `ext4_horner`, shared by the `n = 0` path and the loop exit: one symbolic block (words 26 … 40)
+and `ret`. -/
 
 namespace RV
-open Spec
-set_option maxHeartbeats 0
-set_option linter.unusedSimpArgs false
+open Spec RV.Sym RV.Block
+set_option maxHeartbeats 400000
+
+sym_run HEpi := (Code.ext4_horner.drop 26).take 15
 
 /-- The epilogue of `ext4_horner` (from `+0x68`): copies `acc` (at `sp0 - 40`) to `out` (`s1`), restores the saved
 registers from the frame and returns. -/
@@ -25,20 +28,50 @@ theorem horner_epi (A sp0 out ra v8 v9 v18 v19 v20 : Word) (S : State) (hA : A.t
       (canon4 S.mem (sp0 + 4294967256#32) → canon4 S'.mem out) ∧
       e4At S'.mem out = e4At S.mem (sp0 + 4294967256#32) ∧
       (∀ a : Word, a.toNat < out.toNat ∨ out.toNat + 16 ≤ a.toNat → S'.mem a = S.mem a) := by
-  rv_code_facts_range hcode Code.ext4_horner 26 42
-  rv_steps 16 with hpc, h2, h9, h1, h8, h9', h18, h19, h20
-  rv_ret
-  refine ⟨by rv_regs, by rv_regs, by rv_regs, by rv_regs, by rv_regs, by rv_regs, by rv_regs, ?_, ?_, ?_, ?_⟩
-  · intro i hi1 hi2
-    rcases (by bv_omega : i = 21#5 ∨ i = 22#5 ∨ i = 23#5 ∨ i = 24#5 ∨ i = 25#5 ∨ i = 26#5 ∨ i = 27#5) with
-      h|h|h|h|h|h|h <;> subst h <;> rv_regs
-  · simp only [canon4]
-    simp (disch := rv_disch) only [rv_state, BitVec.reduceAdd, read_write_same4, read_write_off, read_write_off0r,
-      read_write_off0l, read_write_disjoint, BitVec.add_assoc]
-    exact id
-  · simp only [e4At]
-    simp (disch := rv_disch) only [rv_state, BitVec.reduceAdd, read_write_same4, read_write_off, read_write_off0r,
-      read_write_off0l, read_write_disjoint, BitVec.add_assoc]
+  have e2 : S.getReg (BitVec.ofNat 5 2) = sp0 + 4294967248#32 := h2
+  have e9 : S.getReg (BitVec.ofNat 5 9) = out := h9
+  have h2n : (S.getReg (BitVec.ofNat 5 2)).toNat = sp0.toNat - 48 := by rw [e2]; bv_omega
+  have h9n : (S.getReg (BitVec.ofNat 5 9)).toNat = out.toNat := by rw [e9]
+  have hc : CodeAt S (A + BitVec.ofNat 32 (4 * 26)) ((Code.ext4_horner.drop 26).take 15) :=
+    codeAt_take (codeAt_drop hcode 26 (by simp only [Code.ext4_horner, List.length_cons, List.length_nil]; omega)) 15
+  -- a frame slot, as the block addresses it
+  have fr : ∀ k c v : Word, 4294967248#32 + k = c → read S.mem (sp0 + c) 4 = v →
+      read S.mem (S.getReg (BitVec.ofNat 5 2) + k) 4 = v := fun k c v hk h => by rw [e2, BitVec.add_assoc, hk, h]
+  have hL : ((Code.ext4_horner.drop 26).take 15).length = 15 := rfl
+  obtain ⟨T, hrun, hpcT, hrel, -, hout, hfr⟩ := block_ret _ HEpi.instrs HEpi.σ S _
+    [⟨2, 0, 48, 4⟩, ⟨9, 0, 16, 4⟩] [(⟨9, 0, 16, 4⟩, ⟨2, 0, 48, 4⟩)] HEpi.dec HEpi.run
+    (by rw [hpc]; try rfl) (by bv_omega) (by simp only [List.length_take, List.length_drop, ROM_END]; bv_omega) hc
+    (by rw [hL, show A + BitVec.ofNat 32 (4 * 26) + BitVec.ofNat 32 (4 * 15) = A + BitVec.ofNat 32 (4 * 41) by
+      bv_omega]; exact hcode 41 (by decide))
+    (by sym_side) (by sym_side) (by decide +kernel)
+    (fun S' h => by
+      rw [reg_load _ HEpi.run h 1#5 2 44#32 (by decide) (by decide +kernel) (by decide +kernel), fr _ _ _ (by decide) h1]
+      exact hra)
+  have rl : ∀ (r : Reg) (k c v : Word), 4294967248#32 + k = c → (HEpi.σ.reg r).val < HEpi.σ.pool.len →
+      nodeAt HEpi.σ.pool (HEpi.σ.reg r).val = .load 4 true 2 k → read S.mem (sp0 + c) 4 = v →
+      T.getReg r = v := fun r k c v hk hi hn h => by rw [reg_load _ HEpi.run hrel r 2 k (by decide) hi hn, fr _ _ _ hk h]
+  -- `out[k] = acc[k]`
+  have ok : ∀ k : Word, outOK HEpi.σ [⟨2, 0, 48, 4⟩, ⟨9, 0, 16, 4⟩] [(⟨9, 0, 16, 4⟩, ⟨2, 0, 48, 4⟩)] 9 k = true →
+      outNode HEpi.σ 9 k < HEpi.σ.pool.len → nodeAt HEpi.σ.pool (outNode HEpi.σ 9 k) = .load 4 true 2 (8#32 + k) →
+      read T.mem (out + k) 4 = read S.mem (sp0 + 4294967256#32 + k) 4 := fun k h hi hn => by
+    rw [← e9, out_load _ HEpi.run (hout 9 k (by decide) h) 2 _ (by decide) hi hn, e2, ← BitVec.add_assoc,
+      BitVec.add_assoc sp0]; simp only [BitVec.reduceAdd]
+  have o0 := ok 0#32 (by decide +kernel) (by decide +kernel) (by decide +kernel)
+  have o4 := ok 4#32 (by decide +kernel) (by decide +kernel) (by decide +kernel)
+  have o8 := ok 8#32 (by decide +kernel) (by decide +kernel) (by decide +kernel)
+  have o12 := ok 12#32 (by decide +kernel) (by decide +kernel) (by decide +kernel)
+  rw [BitVec.add_zero, BitVec.add_zero] at o0
+  simp only [BitVec.add_assoc, BitVec.reduceAdd] at o4 o8 o12
+  refine ⟨_, T, hrun, ?_, ?_, rl _ 40#32 _ _ (by decide) (by decide +kernel) (by decide +kernel) h8,
+    rl _ 36#32 _ _ (by decide) (by decide +kernel) (by decide +kernel) h9', rl _ 32#32 _ _ (by decide) (by decide +kernel) (by decide +kernel) h18,
+    rl _ 28#32 _ _ (by decide) (by decide +kernel) (by decide +kernel) h19, rl _ 24#32 _ _ (by decide) (by decide +kernel) (by decide +kernel) h20,
+    regs_same_range _ HEpi.run hrel 21 27 (by decide +kernel), ?_, ?_, ?_⟩
+  · rw [hpcT, rl _ 44#32 _ _ (by decide) (by decide +kernel) (by decide +kernel) h1]
+  · rw [hrel.reg_addr _ HEpi.run 2#5 2 48#32 (by decide) (by decide +kernel) (by decide +kernel), e2,
+      BitVec.add_assoc]; simp only [BitVec.reduceAdd, BitVec.add_zero]
+  · simp only [canon4, BitVec.add_assoc, BitVec.reduceAdd, o0, o4, o8, o12]; exact id
+  · simp only [e4At, BitVec.add_assoc, BitVec.reduceAdd, o0, o4, o8, o12]
   · intro a ha
-    simp (disch := rv_disch) only [rv_state, write_outside]
+    exact frame1 9 0 16 hfr (by decide +kernel) (by decide) (by simp only [h9n, ROM_END, RAM_END]; omega) a
+      (by simp only [h9n]; omega)
 end RV

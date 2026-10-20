@@ -1,5 +1,4 @@
-import Slop.Sail.Airbender
-import Slop.Sail.Contract
+import HumanSail.Airbender
 import Human.Spec
 import Slop.Sail.Monad
 
@@ -159,53 +158,8 @@ theorem runOracle_sound {α : Type} (known : (r : Register) → Option (Register
     runSail m s = .ok a s :=
   oracleGo_sound known km s hk hm _ m a h
 
-/-! Demo: `addi a0, a0, 1` (word 0x00150513) with known non-volatile registers from `resetState`. -/
-
+/-- What the oracle knows of any `Configured` state: the registers a program cannot change, as after reset. -/
 noncomputable def knownDemo : (r : Register) → Option (RegisterType r) :=
-  fun r => if writtenByProgram r then none else some (resetState.regs r)
-
-/-- Bool test for `ADDI rd=a0, rs1=a0, imm=1` (`instruction` has no `DecidableEq`). -/
-def isAddi : instruction → Bool
-  | .ITYPE (imm, .Regidx rs1, .Regidx rd, .ADDI) =>
-      decide (imm = 1#12) && decide (rs1 = (10#5 : BitVec 5)) && decide (rd = (10#5 : BitVec 5))
-  | _ => false
-
-theorem isAddi_eq {i : instruction} (h : isAddi i = true) :
-    i = .ITYPE (1#12, .Regidx 10#5, .Regidx 10#5, .ADDI) := by
-  cases i with
-  | ITYPE p =>
-    obtain ⟨imm, ⟨rs1⟩, ⟨rd⟩, op⟩ := p
-    cases op <;> simp only [isAddi, Bool.and_eq_true, decide_eq_true_eq, Bool.false_eq_true] at h
-    obtain ⟨⟨h1, h2⟩, h3⟩ := h
-    subst h1; subst h2; subst h3; rfl
-  | _ => simp [isAddi] at h
-
-theorem demo_bool :
-    (runOracle knownDemo (fun _ => none) (ext_decode 0x00150513#32)).map isAddi = some true := by
-  decide +kernel
-
-theorem demo :
-    runOracle knownDemo (fun _ => none) (ext_decode 0x00150513#32)
-      = some (.ITYPE (1#12, .Regidx 10#5, .Regidx 10#5, .ADDI)) := by
-  have hb := demo_bool
-  revert hb
-  cases runOracle knownDemo (fun _ => none) (ext_decode 0x00150513#32) with
-  | none => intro hb; simp at hb
-  | some i =>
-    intro hb
-    simp only [Option.map_some, Option.some.injEq] at hb
-    rw [isAddi_eq hb]
-
-theorem demo_runF (s : SailState) (hs : Configured s) :
-    runSail (ext_decode 0x00150513#32) s = .ok (.ITYPE (1#12, .Regidx 10#5, .Regidx 10#5, .ADDI)) s := by
-  refine runOracle_sound knownDemo (fun _ => none) s demo ?_ ?_
-  · intro r v h
-    unfold knownDemo at h
-    split at h
-    · simp at h
-    · rename_i hv
-      cases h
-      exact hs r (by simpa using hv)
-  · intro i b h; simp at h
+  fun r => if Airbender.writtenByProgram r then none else some (Airbender.resetState.regs r)
 
 end Slop

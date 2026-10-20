@@ -1,11 +1,7 @@
 import Human
 import Slop.Sail.Monad
 import Slop.Sail.Oracle
-import Slop.Sail.Writes
 import Slop.Sail.KernelRfl
-import Slop.Sail.KernelEval
-import Slop.Sail.StepDemo
-import Slop.Sail.StepAddi
 import Slop.RV.Combine
 import Slop.RV.FinalMop
 import Slop.RV.FinalPlain
