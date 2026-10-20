@@ -30,6 +30,8 @@ jobs:
       RUSTFLAGS: "-D warnings"
       # Preserve all supported architectures when reusing cached native objects.
       CUDAARCHS: "80;89;90;120"
+      # Compile architecture variants concurrently to shorten long single-file builds.
+      CUDAFLAGS: "--threads=4"
       RUSTC_WRAPPER: sccache
       CMAKE_CUDA_COMPILER_LAUNCHER: sccache
       SCCACHE_GHA_ENABLED: "true"
@@ -71,13 +73,14 @@ jobs:
         run: |
           mkdir -p build-diagnostics
           {
+            date -u
             rustc -Vv
             nvcc --version
             cmake --version
             gcc --version
             lscpu
             free -h
-            for setting in /sys/fs/cgroup/cpu.max /sys/fs/cgroup/memory.max; do
+            for setting in /sys/fs/cgroup/cpu.max /sys/fs/cgroup/cpu.stat /sys/fs/cgroup/memory.max /proc/pressure/cpu; do
               if [[ -f "$setting" ]]; then
                 echo "$setting"
                 cat "$setting"
@@ -118,6 +121,15 @@ jobs:
           mkdir -p build-diagnostics
           sccache --show-stats --stats-format=json > build-diagnostics/sccache.json
           sccache --show-stats
+          {
+            date -u
+            for setting in /sys/fs/cgroup/cpu.stat /sys/fs/cgroup/memory.peak /sys/fs/cgroup/memory.events /proc/pressure/cpu; do
+              if [ -r "$setting" ]; then
+                echo "$setting"
+                cat "$setting"
+              fi
+            done
+          } > build-diagnostics/resources-after.txt
 
       - name: Upload build diagnostics
         if: always()
