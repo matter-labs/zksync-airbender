@@ -47,15 +47,15 @@ theorem compression_binding_at_boundary [Fact p.Prime] (hp : 8388608 ≤ p)
   have stateTracked : ∀ i : Fin 8, Cell.ram (statePointer + BitVec.ofNat 32 (4 * (0 + i.val))) ∈ cells := by
     intro i
     have actual := tracked ⟨i.val, by omega⟩
-    simpa only [Fin.val_mk, if_pos (show i.val < 24 by omega), Nat.zero_add] using actual
+    simpa only [Fin.val_mk, ite_eq_left (show i.val < 24 by omega), Nat.zero_add] using actual
   have extendedTracked : ∀ i : Fin 16, Cell.ram (statePointer + BitVec.ofNat 32 (4 * (8 + i.val))) ∈ cells := by
     intro i
     have actual := tracked ⟨8 + i.val, by omega⟩
-    simpa only [Fin.val_mk, if_pos (show 8 + i.val < 24 by omega)] using actual
+    simpa only [Fin.val_mk, ite_eq_left (show 8 + i.val < 24 by omega)] using actual
   have messageTracked : ∀ i : Fin 16, Cell.ram (messagePointer + BitVec.ofNat 32 (4 * (0 + i.val))) ∈ cells := by
     intro i
     have actual := tracked ⟨24 + i.val, by omega⟩
-    simpa only [Fin.val_mk, if_neg (show ¬ 24 + i.val < 24 by omega), Nat.add_sub_cancel_left,
+    simpa only [Fin.val_mk, ite_eq_right (show ¬ 24 + i.val < 24 by omega), Nat.add_sub_cancel_left,
       Nat.zero_add] using actual
   refine ⟨after, statePointer, messagePointer, physicalState initial statePointer,
     blockWords initial messagePointer 16 0, physicalState after statePointer, ?_, trace, result⟩

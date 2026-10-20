@@ -47,44 +47,44 @@ theorem physical_pi (round : Nat) (column lane : Fin 5) :
 theorem rows_bound (key : Fin 4096) (lane : Fin 6) : (rows key)[lane] < 31 := by
   dsimp only [rows]
   by_cases valid : key.val / 8 % 8 < 5
-  · rw [if_pos valid]
+  · rw [ite_eq_left valid]
     by_cases iota : key.val % 8 = 0 ∧ key.val / 64 % 32 ≤ 24 ∧ 2048 ≤ key.val
-    · rw [if_pos iota]; simp only [Fin.getElem_fin, Vector.getElem_ofFn]
+    · rw [ite_eq_left iota]; simp only [Fin.getElem_fin, Vector.getElem_ofFn]
       split_ifs with small
       · exact Nat.lt_trans (physical_bound _ _) (by decide)
       · omega
-    · rw [if_neg iota]
+    · rw [ite_eq_right iota]
       by_cases mix : (key.val % 8 = 1 ∨ key.val % 8 = 2) ∧ key.val / 64 % 32 < 24
-      · rw [if_pos mix]; fin_cases lane <;> norm_num
-      · rw [if_neg mix]
+      · rw [ite_eq_left mix]; fin_cases lane <;> norm_num
+      · rw [ite_eq_right mix]
         by_cases theta : key.val % 8 = 3 ∧ key.val / 64 % 32 < 24
-        · rw [if_pos theta]; simp only [Fin.getElem_fin, Vector.getElem_ofFn]
+        · rw [ite_eq_left theta]; simp only [Fin.getElem_fin, Vector.getElem_ofFn]
           split_ifs with small
           · exact Nat.lt_trans (physical_bound _ _) (by decide)
           · have := Nat.mod_lt (key.val / 8 % 8 + 4) (by decide : 0 < 5); omega
-        · rw [if_neg theta]
+        · rw [ite_eq_right theta]
           by_cases rho : key.val % 8 = 4 ∧ key.val / 64 % 32 < 24
-          · rw [if_pos rho]; simp only [Fin.getElem_fin, Vector.getElem_ofFn]
+          · rw [ite_eq_left rho]; simp only [Fin.getElem_fin, Vector.getElem_ofFn]
             split_ifs
             · exact Nat.lt_trans (physical_bound _ _) (by decide)
             · decide
-          · rw [if_neg rho]
+          · rw [ite_eq_right rho]
             by_cases chi1 : key.val % 8 = 5 ∧ key.val / 64 % 32 < 24
-            · rw [if_pos chi1]; simp only [Fin.getElem_fin, Vector.getElem_ofFn]
+            · rw [ite_eq_left chi1]; simp only [Fin.getElem_fin, Vector.getElem_ofFn]
               split_ifs
               · exact Nat.lt_trans (physical_bound _ _) (by decide)
               · have := lane.isLt; omega
-            · rw [if_neg chi1]
+            · rw [ite_eq_right chi1]
               by_cases chi2 : key.val % 8 = 6 ∧ key.val / 64 % 32 < 24
-              · rw [if_pos chi2]; simp only [Fin.getElem_fin, Vector.getElem_ofFn]
+              · rw [ite_eq_left chi2]; simp only [Fin.getElem_fin, Vector.getElem_ofFn]
                 split_ifs
                 all_goals first
                   | exact Nat.lt_trans (physical_bound _ _) (by decide)
                   | (have := lane.isLt; omega)
-              · rw [if_neg chi2]
+              · rw [ite_eq_right chi2]
                 split_ifs
                 · simp only [Fin.getElem_fin, Vector.getElem_replicate]; norm_num
                 · fin_cases lane <;> norm_num
-  · rw [if_neg valid]; fin_cases lane <;> norm_num
+  · rw [ite_eq_right valid]; fin_cases lane <;> norm_num
 
 end Airbender.Keccak.Controller.Proofs

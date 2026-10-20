@@ -52,7 +52,7 @@ theorem mix_rotated_limb {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
   have key (i : Fin 4) : (w (102 + 24 * operation.val + i.val)).val =
       (w (aColumns second)[operation][i]).val + 65536 := by
     have routes := mix_routes (by omega) second h active selected operation i
-    simp only [rotation, if_true] at routes
+    simp only [rotation, ite_true] at routes
     have natural : w (102 + 24 * operation.val + i.val) =
         (((w (aColumns second)[operation][i]).val + 65536 : Nat) : ZMod p) := by
       simpa only [Nat.cast_add, Nat.cast_ofNat, ZMod.natCast_zmod_val] using routes.1
@@ -72,7 +72,7 @@ theorem mix_rotated_limb {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
   have sourceBound := bounds limb
   have priorBound := bounds (previous limb)
   have routes := mix_routes (by omega) second h active selected operation limb
-  simp only [rotation, if_true] at routes
+  simp only [rotation, ite_true] at routes
   have natural : (((w (118 + 24 * operation.val + limb.val)).val +
       (w (110 + 24 * operation.val + (previous limb).val)).val : Nat) : ZMod p) =
       w (cColumns second)[operation][limb] := by

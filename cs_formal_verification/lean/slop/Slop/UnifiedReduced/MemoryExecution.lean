@@ -29,7 +29,7 @@ theorem word_register_retirement [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatf
   cases mode : input.store
   · have spec : stepSpec (retiredState before (Control.initialPC w).toBitVec)
         (Airbender.WordMemory.execution input) input.rd ⟨Control.destination w, Control.finalPC w⟩ := by
-      simpa only [Airbender.WordMemory.spec, mode, Bool.false_eq_true, if_false,
+      simpa only [Airbender.WordMemory.spec, mode, Bool.false_eq_true, ite_false,
         atRow, outputData, outputPC] using result.2
     have index : entry.data.rd = match input.rd with | .Regidx bits => bits := by
       rw [metadata]; simp [WordMemory.Proofs.metadata, mode]
@@ -53,7 +53,7 @@ theorem word_register_retirement [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatf
     have spec : stepSpec (retiredState before (Control.initialPC w).toBitVec)
         (Airbender.WordMemory.execution input) zeroRegister ⟨⟨0, 0⟩, Control.finalPC w⟩
         (writeMemory (size := 4) (Word.mk (w 44).val (w 45).val).toBitVec (Control.destination w).toBitVec) := by
-      simpa only [mode, if_true, atRow, address, outputData, outputPC] using result.2
+      simpa only [mode, ite_true, atRow, address, outputData, outputPC] using result.2
     obtain ⟨written, normal, projected⟩ := spec
     have effects := store_effects store addressBound epoch history
     have same := (EStateM.Result.ok.inj (projected.symm.trans effects)).2

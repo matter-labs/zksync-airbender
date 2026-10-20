@@ -51,7 +51,7 @@ theorem xorrot_soundness_from_history [Fact p.Prime] (hp : 524288 < p)
       have bound := i.isLt
       interval_cases i.val
       all_goals first | exact False.elim (bit rfl) | decide
-    simpa only [noBit, Bool.false_eq_true, if_false] using flag
+    simpa only [noBit, Bool.false_eq_true, ite_false] using flag
   have selected : w 26 = 0 ∧ w 27 = 1 := by
     refine ⟨zero 15 (by decide), ?_⟩
     have flag := flags 16

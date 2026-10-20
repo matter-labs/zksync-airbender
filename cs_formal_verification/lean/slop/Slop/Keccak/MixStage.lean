@@ -53,7 +53,7 @@ theorem stage_writes [Fact p.Prime] (hp : 1048576 ≤ p)
     apply Vector.ext
     intro i hi
     interval_cases i
-    all_goals simp only [Bool.false_eq_true, if_false, Vector.getElem_ofFn,
+    all_goals simp only [Bool.false_eq_true, ite_false, Vector.getElem_ofFn,
       Vector.getElem_mk, List.getElem_toArray, List.getElem_cons_zero, List.getElem_cons_succ]
     all_goals first | exact f2 | exact c0 | exact f4 | exact c1 | exact c2 | exact f0
   · have s0 := mix_rotation_operation hp true holds active selected 0 (by decide) (bound 0)
@@ -78,7 +78,7 @@ theorem stage_writes [Fact p.Prime] (hp : 1048576 ≤ p)
     apply Vector.ext
     intro i hi
     interval_cases i
-    all_goals simp only [if_true, Vector.getElem_ofFn, Vector.getElem_mk,
+    all_goals simp only [ite_true, Vector.getElem_ofFn, Vector.getElem_mk,
       List.getElem_toArray, List.getElem_cons_zero, List.getElem_cons_succ]
     all_goals first | exact c0 | exact s3 | exact c1 | exact s4 | exact s1 | exact c2
 

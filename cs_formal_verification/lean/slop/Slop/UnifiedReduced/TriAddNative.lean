@@ -129,7 +129,7 @@ theorem triadd_soundness_from_history [Fact p.Prime] (hp : 524288 < p)
   have interfaces : TriAdd.Calculation.InterfaceAssumptions input output w := {
     active := active
     selected := by
-      simp only [metadata.2, if_false]
+      simp only [metadata.2, ite_false]
       change w 20 = 1
       exact selected
     ranges := fun _ => ⟨words.left.symm ▸ l, words.right.symm ▸ r,

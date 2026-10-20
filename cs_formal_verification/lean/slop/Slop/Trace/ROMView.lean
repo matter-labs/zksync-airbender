@@ -302,12 +302,12 @@ theorem seed_cell {before : Reference.RiscV.Sail.State} {cells : List Cell}
   | ram address =>
     by_cases inside : address.toNat < ROM.limit
     · have masked := (shadow_ram address).mpr inside
-      simp only [token, Cell.initialToken, if_pos masked, public_word_read read]
+      simp only [token, Cell.initialToken, ite_eq_left masked, public_word_read read]
     · have zero : value = 0 := (EStateM.Result.ok.inj
         (read.symm.trans (profile.ram address member (Nat.le_of_not_gt inside)))).1
       subst value
       have unmasked := mt (shadow_ram address).mp inside
-      simp only [token, Cell.initialToken, if_neg unmasked]
+      simp only [token, Cell.initialToken, ite_eq_right unmasked]
 
 theorem seed_image {before : Reference.RiscV.Sail.State} {cells : List Cell}
     {image : List (MemoryToken p)} (profile : InitialProfile before cells)

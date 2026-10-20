@@ -161,13 +161,13 @@ theorem effective_address {p : Nat} [Fact p.Prime] (hp : 262144 < p)
   have hi := mapping.2.2.2.2.2
   have lowField : (source.lo : ZMod p) + immediate.lo =
       cell.lo + w 35 + 2 * w 36 + 65536 * w 37 := by
-    cases store <;> simp only [Bool.false_eq_true, if_false, if_true] at selected lo hi
+    cases store <;> simp only [Bool.false_eq_true, ite_false, ite_true] at selected lo hi
     all_goals
       simp [importedConstraints, FlatOperation.constraints, Expression.eval,
         Verification.environment, selected, mapping.1, mapping.2.2.1, lo] at low
       linear_combination -(source.lo + immediate.lo - cell.lo - w 35 - 2 * w 36) * inverse - 65536 * low
   have highField : w 37 + (source.hi : ZMod p) + immediate.hi = cell.hi + 65536 * w 38 := by
-    cases store <;> simp only [Bool.false_eq_true, if_false, if_true] at selected lo hi
+    cases store <;> simp only [Bool.false_eq_true, ite_false, ite_true] at selected lo hi
     all_goals
       simp [importedConstraints, FlatOperation.constraints, Expression.eval,
         Verification.environment, selected, mapping.1, mapping.2.1,

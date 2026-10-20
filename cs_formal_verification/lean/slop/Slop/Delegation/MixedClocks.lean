@@ -23,7 +23,7 @@ theorem machine_ports_ordinary [Fact p.Prime] {data : RequestTrace p}
   have notSelected : ¬ (row.family == .addSub && decide (Requests.Selected row.assignment)) = true := by
     intro selected
     exact ordinary (List.mem_filter.mpr ⟨member, selected⟩)
-  simp only [machinePorts, if_neg notSelected]
+  simp only [machinePorts, ite_eq_right notSelected]
 
 theorem machine_port_native (row : Trace.Row p PooledFamily)
     {port : MemoryPort} (member : port ∈ machinePorts row) : port ∈ row.ports := by

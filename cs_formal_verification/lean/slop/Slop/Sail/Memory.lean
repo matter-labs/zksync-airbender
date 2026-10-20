@@ -25,7 +25,7 @@ theorem load {before : State} {imm : BitVec 12} {rs1 rd : SailRV32.regidx}
         SailRV32.Functions.wX_bits rd (SailRV32.Functions.extend_value unsigned value)
         pure SailRV32.Functions.RETIRE_SUCCESS) before := by
   have bound : decide (width ≤ SailRV32.Functions.xlen_bytes) = true := by
-    simpa [SailRV32.Functions.xlen_bytes] using small
+    simp only [SailRV32.Functions.xlen_bytes]; exact decide_eq_true_iff.mpr small
   have assertion (message : String) : SailRV32.assert true message = (pure () : SailRV32.SailM Unit) := rfl
   simp only [SailRV32.Functions.execute_LOAD, bound]
   rw [assertion, freeM_pure_bind, run_bind_of_ok _ _ _ _ _ read]

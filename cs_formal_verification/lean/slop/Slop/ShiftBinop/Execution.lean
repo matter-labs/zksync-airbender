@@ -87,7 +87,7 @@ theorem local_row_execution {p : Nat} [Fact p.Prime]
     have a := flags 0
     have b := flags 1
     cases operation
-    all_goals simp only [Operation.isShift, if_true]
+    all_goals simp only [Operation.isShift, ite_true]
     all_goals constructor
     all_goals first
       | (simpa [shape, data, Operation.isShift, importedConstraintsDecoderColumns, Nat.testBit] using a)

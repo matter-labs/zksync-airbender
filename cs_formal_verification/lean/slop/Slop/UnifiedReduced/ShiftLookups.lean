@@ -33,7 +33,7 @@ theorem ordinary_region {before : Reference.RiscV.Sail.State} {i : Fin 2097537} 
   by_cases top : i.val < 1048961
   · by_cases first : i.val < 524545
     · have same : row before i = binaryRow ⟨i.val, first⟩ := by
-        simp only [row, top, dif_pos, fixedRow, first]
+        simp only [row, top, dite_eq_left, fixedRow, first]
       rw [same] at selected
       have bound := shift_tag_bound ⟨i.val, first⟩
       have oldTag : (shiftBinopRow ⟨i.val, first⟩)[9] = tag := by
@@ -50,7 +50,7 @@ theorem ordinary_region {before : Reference.RiscV.Sail.State} {i : Fin 2097537} 
         simp only [oldTag]
         rcases valid with rfl | rfl | rfl <;> rfl
       · rfl
-    · have same : row before i = fixedRow ⟨i.val, top⟩ := dif_pos top
+    · have same : row before i = fixedRow ⟨i.val, top⟩ := dite_eq_left top
       rw [same] at selected
       have other := fixed_other_tags ⟨i.val, top⟩ first
       rcases valid with rfl | rfl | rfl <;> omega

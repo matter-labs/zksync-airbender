@@ -93,10 +93,10 @@ theorem finalization_soundness {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
   have flag := finalization_flag holds mapping interface.roundMask
   unfold Finalization.spec
   split_ifs with final
-  · have enabled : w 152 = 1 := by simpa only [if_pos final] using flag
+  · have enabled : w 152 = 1 := by simpa only [ite_eq_left final] using flag
     rw [mapping.output, mapping.chaining, mapping.extended]
     exact final_xor_writes hp compatible holds enabled
-  · have disabled : w 152 = 0 := by simpa only [if_neg final] using flag
+  · have disabled : w 152 = 0 := by simpa only [ite_eq_right final] using flag
     rw [mapping.output, mapping.state]
     exact chaining_preserved holds disabled
 

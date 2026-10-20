@@ -25,10 +25,10 @@ theorem workvector_binding_at_boundary [Fact p.Prime] (hp : 8388608 ≤ p)
   have initialReadable := boundary_readable inputs.memory
   have stateTracked : ∀ i : Fin 16, Cell.ram (statePointer + BitVec.ofNat 32 (4 * (0 + i.val))) ∈ cells := by
     intro i
-    simpa only [if_true, Nat.zero_add] using tracked true i
+    simpa only [ite_true, Nat.zero_add] using tracked true i
   have messageTracked : ∀ i : Fin 16, Cell.ram (messagePointer + BitVec.ofNat 32 (4 * (0 + i.val))) ∈ cells := by
     intro i
-    simpa only [Bool.false_eq_true, if_false, Nat.zero_add] using tracked false i
+    simpa only [Bool.false_eq_true, ite_false, Nat.zero_add] using tracked false i
   refine ⟨after, statePointer, messagePointer, physicalWords initial statePointer,
     physicalWords initial messagePointer, physicalWords after statePointer, ?_, trace, result⟩
   refine ⟨⟨stateRead, messageRead⟩, Blake2Round.Proofs.block_at stateTracked initialReadable,

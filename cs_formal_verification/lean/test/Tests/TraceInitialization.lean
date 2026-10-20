@@ -60,7 +60,7 @@ private theorem profile : InitialProfile before cells := by
 theorem canonical_boot_image : bootImage before cells = some trace.initialMemory := by
   simp only [bootImage, cells, Tests.TraceExecution.cells, List.cons_append, List.nil_append,
     List.mapM_cons, List.mapM_nil, rom, show (0 : BitVec 32).toNat < ROM.limit from by decide,
-    show ¬(4194304 : BitVec 32).toNat < ROM.limit from by decide, if_pos,
+    show ¬(4194304 : BitVec 32).toNat < ROM.limit from by decide, ite_eq_left,
     bind, Option.bind]
   rfl
 

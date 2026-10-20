@@ -74,7 +74,7 @@ theorem soundness_from_history [Fact p.Prime] (hp : 4194304 ≤ p)
     cases form : immediate input.opcode
     · simpa [metadata, form] using encoded
     · have zero := registers.2
-      simp only [metadata, form, if_true] at zero
+      simp only [metadata, form, ite_true] at zero
       change EStateM.Result.ok (0 : BitVec 32) input.before = .ok (rightWord w).toBitVec input.before at zero
       have limbs := Word.eq_zero_of_bounded rightRegisterBound (EStateM.Result.ok.inj zero).1.symm
       constructor <;> apply ZMod.val_injective
@@ -86,7 +86,7 @@ theorem soundness_from_history [Fact p.Prime] (hp : 4194304 ≤ p)
     · have plain : w 8 = 0 ∧ w 9 = 0 := by simpa [form] using preprocessing
       simp [form, comparisonRight, rightWord, plain.1, plain.2]
     · have zero : w 42 = 0 ∧ w 43 = 0 := by simpa [form] using preprocessing
-      simp only [form, if_true, comparisonRight, zero.1, zero.2, zero_add, encoded.1, encoded.2]
+      simp only [form, ite_true, comparisonRight, zero.1, zero.2, zero_add, encoded.1, encoded.2]
       have bounded : (metadata input).immediate.Bounded := by
         simpa [metadata, form] using Word.ofBitVec_bound (SailRV32.Functions.sign_extend (m := 32) input.encodedImmediate)
       exact congrArg₂ Word.mk (ZMod.val_natCast_of_lt (lt_trans bounded.1 limbSize))

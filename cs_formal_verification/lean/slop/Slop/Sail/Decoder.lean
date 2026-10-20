@@ -96,7 +96,7 @@ theorem sign_extend_low_even {n : Nat} (positive : 0 < n) (bits : BitVec n)
     (Arithmetic.Word.ofBitVec (SailRV32.Functions.sign_extend (m := 32) bits)).lo % 2 = 0 := by
   have low : bits.getLsbD 0 = false := Nat.mod_two_eq_zero_iff_testBit_zero.mp even
   have extended : (bits.signExtend 32).getLsbD 0 = false := by
-    rw [BitVec.getLsbD_signExtend, if_pos positive, low, Bool.and_false]
+    rw [BitVec.getLsbD_signExtend, ite_eq_left positive, low, Bool.and_false]
   have evenExtended : (bits.signExtend 32).toNat % 2 = 0 :=
     Nat.mod_two_eq_zero_iff_testBit_zero.mpr extended
   change ((bits.signExtend 32).toNat % 65536) % 2 = 0

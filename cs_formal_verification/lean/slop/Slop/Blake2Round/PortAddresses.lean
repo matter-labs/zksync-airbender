@@ -27,14 +27,14 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 8388608 ≤ p)
   intro i hi
   simp only [Vector.getElem_map, expected, Vector.getElem_ofFn]
   by_cases state : i < 24
-  · rw [if_pos state, state_port_layout ⟨i, state⟩]
+  · rw [ite_eq_left state, state_port_layout ⟨i, state⟩]
     exact Verification.IndirectPort.constant_address (by omega) rfl
       mapping.statePointer (stateNoCarry ⟨i, state⟩)
   · have size : i - 24 < 16 := by omega
     have index : 24 + (i - 24) = i := by omega
     have port := message_port_layout ⟨i - 24, size⟩
     simp only [index] at port
-    rw [if_neg state, port]
+    rw [ite_eq_right state, port]
     exact Verification.IndirectPort.constant_address (by omega) rfl
       mapping.messagePointer (messageNoCarry ⟨i - 24, size⟩)
 

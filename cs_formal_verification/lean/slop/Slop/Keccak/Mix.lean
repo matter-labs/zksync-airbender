@@ -20,7 +20,7 @@ theorem mix_preserved {p : Nat} [Fact p.Prime]
   intro limb bound
   change limb < 4 at bound
   have equation := Verification.assertion_of_holds h
-    ⟨(if second then 112 else 100) + 4 * i.val + limb, by rw [constraint_count]; cases second <;> simp only [Bool.false_eq_true, if_false, if_true] <;> omega⟩
+    ⟨(if second then 112 else 100) + 4 * i.val + limb, by rw [constraint_count]; cases second <;> simp only [Bool.false_eq_true, ite_false, ite_true] <;> omega⟩
   cases second <;> fin_cases i <;> interval_cases limb
   all_goals simp [Variables.modeColumns, mixMode] at selected
   all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,

@@ -44,7 +44,7 @@ theorem ac_limb_xor {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
   have write := final_write (limb.castLE (by omega)) h enabled
   have activeWrite : w (7 + 4 * (limb.val / 2) + limb.val % 2) =
       w (633 + 7 * limb.val) + 128 * w (634 + 7 * limb.val) := by
-    simpa only [Fin.val_castLE, if_pos limb.isLt] using write
+    simpa only [Fin.val_castLE, ite_eq_left limb.isLt] using write
   have second := xor_limb_chunks hp (width := 7) (remaining := 9) (by decide) q2 q3
     (xChunks := rfl) (recover _ _) activeWrite
   refine ⟨first.1, second.2.1, first.2.1, second.2.2.1, ?_⟩
@@ -142,7 +142,7 @@ theorem bd_limb_xor {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
         23 + 4 * (limb.val / 2) + limb.val % 2 := by omega
     have lowIndex : 633 + 7 * (8 + limb.val) = 689 + 7 * limb.val := by omega
     have highIndex : 634 + 7 * (8 + limb.val) = 690 + 7 * limb.val := by omega
-    simpa only [Fin.val_mk, if_neg large, index, lowIndex, highIndex] using write
+    simpa only [Fin.val_mk, ite_eq_right large, index, lowIndex, highIndex] using write
   have second := xor_limb_chunks hp (width := 8) (remaining := 8) (by decide) q2 q3
     dChunks regroup activeWrite
   refine ⟨first.2.1, first.1, second.1, second.2.2.1, ?_⟩

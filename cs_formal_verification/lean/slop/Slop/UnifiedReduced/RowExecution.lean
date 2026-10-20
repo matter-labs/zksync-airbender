@@ -72,7 +72,7 @@ theorem row_clause_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatfor
       cases source : input.rs1 with
       | Regidx index =>
         apply inputs.loads entry present input.encodedImmediate index
-        simpa only [load, Bool.false_eq_true, if_false, zero, source, zeroRegister] using encoding
+        simpa only [load, Bool.false_eq_true, ite_false, zero, source, zeroRegister] using encoding
     exact word_execution_from_memory hp inverse accepted member
       inputs.boot inputs.configuration inputs.ordinary destination words state (state.symm ▸ position)
       source memory query encoding history

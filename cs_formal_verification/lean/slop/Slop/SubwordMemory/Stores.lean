@@ -146,12 +146,12 @@ theorem store_byte_encoding {p : Nat} [Fact p.Prime] (hp : 262144 < p)
   cases byte <;> cases highByte <;> cases highHalf <;> fin_cases i
   all_goals solve
     | (have := aligned rfl; contradiction)
-    | (simp only [Bool.false_eq_true, if_false, if_true] at newNat ⊢
+    | (simp only [Bool.false_eq_true, ite_false, ite_true] at newNat ⊢
        apply BitVec.eq_of_toNat_eq
        simp only [BitVec.extractLsb', BitVec.toNat_ofNat, BitVec.toNat_setWidth, sourceNat, oldNat, newNat]
-       simp only [Bool.false_eq_true, if_false, if_true]
+       simp only [Bool.false_eq_true, ite_false, ite_true]
        norm_num only [Nat.reducePow, Nat.reduceMul, Nat.reduceAdd, Nat.reduceSub, Nat.le_refl,
-         Nat.zero_le, Nat.reduceLT, and_self, true_and, false_and, if_false, if_true,
+         Nat.zero_le, Nat.reduceLT, and_self, true_and, false_and, ite_false, ite_true,
          Nat.shiftRight_eq_div_pow, Nat.div_one]
        simp only [BitVec.toNat_ofNat, Word.value, limbBase]
        omega)

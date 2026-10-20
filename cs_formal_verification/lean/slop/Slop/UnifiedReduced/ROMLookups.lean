@@ -31,12 +31,12 @@ theorem rom_region {before : Reference.RiscV.Sail.State} {i : Fin 2097537}
       #v[4 * key.val, (Word.ofBitVec (ROM.words before key.val)).lo,
         (Word.ofBitVec (ROM.words before key.val)).hi, 0, 0, 0, 0, 0, 0, 34] := by
   by_cases fixed : i.val < 1048961
-  · have equal : row before i = fixedRow ⟨i.val, fixed⟩ := dif_pos fixed
+  · have equal : row before i = fixedRow ⟨i.val, fixed⟩ := dite_eq_left fixed
     rw [equal] at selected
     exact False.elim (fixed_nonrom ⟨i.val, fixed⟩ selected)
   · have bound := i.isLt
     refine ⟨⟨i.val - 1048961, by omega⟩, ?_⟩
-    simp only [row, dif_neg fixed]
+    simp only [row, dite_eq_right fixed]
 
 theorem rom_lookup [Fact p.Prime] (hp : 4194304 ≤ p)
     {before : Reference.RiscV.Sail.State} {entry : Vector (Expression (ZMod p)) 10}

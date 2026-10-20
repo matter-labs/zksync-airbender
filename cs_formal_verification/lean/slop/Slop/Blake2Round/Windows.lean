@@ -65,11 +65,11 @@ theorem window_binding [Fact p.Prime] (hp : 8388608 ≤ p)
   have stateTracked : ∀ i : Fin 8, Cell.ram (statePointer + BitVec.ofNat 32 (4 * (0 + i.val))) ∈ cells := by
     intro i
     have actual := domain ⟨i.val, by omega⟩
-    simpa only [Fin.val_mk, if_pos (show i.val < 24 by omega), Nat.zero_add] using actual
+    simpa only [Fin.val_mk, ite_eq_left (show i.val < 24 by omega), Nat.zero_add] using actual
   have extendedTracked : ∀ i : Fin 16, Cell.ram (statePointer + BitVec.ofNat 32 (4 * (8 + i.val))) ∈ cells := by
     intro i
     have actual := domain ⟨8 + i.val, by omega⟩
-    simpa only [Fin.val_mk, if_pos (show 8 + i.val < 24 by omega)] using actual
+    simpa only [Fin.val_mk, ite_eq_left (show 8 + i.val < 24 by omega)] using actual
   have atWindow : Compression.WordMapping before atFinish statePointer messagePointer input output message :=
     ⟨mapping.pointers, mapping.inputState, mapping.inputExtended, mapping.messageWords,
       transfer stateTracked mapping.outputState, transfer extendedTracked mapping.outputExtended⟩

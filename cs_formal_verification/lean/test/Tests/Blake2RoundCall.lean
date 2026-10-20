@@ -26,7 +26,7 @@ theorem another_round_rejected [Fact p.Prime] (hp : 8192 ≤ p)
       (Blake2Round.importedConstraints setup) := by
   intro holds
   have mask := Blake2Round.Proofs.exclusive_mask hp holds flags round control other
-  rw [if_neg different, wrong] at mask
+  rw [ite_eq_right different, wrong] at mask
   exact one_ne_zero mask
 
 theorem changed_request_flags_rejected [Fact p.Prime] (hp : 8192 ≤ p)

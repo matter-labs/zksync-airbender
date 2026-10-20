@@ -98,13 +98,13 @@ theorem soundness_from_history [Fact p.Prime] (hp : 524288 < p)
     · have plain : w 8 = 0 ∧ w 9 = 0 := by simpa [metadata, form] using immediate
       have right := UnifiedReduced.Proofs.binary_register_bytes (by dsimp [limbBase] at limbSize; omega)
         byteInverse modelCore selected other load plain input.operation.tag valid funct3
-      simpa only [words.right, rightOperand, form, Bool.false_eq_true, if_false, rightWord] using right
+      simpa only [words.right, rightOperand, form, Bool.false_eq_true, ite_false, rightWord] using right
     · have bounded := rightBound
       have bounded : (rightWord w).Bounded := by
         simpa [readToken, MemoryToken.word, MemoryPort.readCode, WordColumns.code, pairCode,
           importedConstraintsMemoryPorts, rightWord] using bounded
       have zero := registers.2
-      simp only [metadata, form, if_true] at zero
+      simp only [metadata, form, ite_true] at zero
       change EStateM.Result.ok (0 : BitVec 32) input.before = .ok (rightWord w).toBitVec input.before at zero
       have limbs := Word.eq_zero_of_bounded bounded (EStateM.Result.ok.inj zero).1.symm
       have lo := congrArg Word.lo limbs
@@ -119,7 +119,7 @@ theorem soundness_from_history [Fact p.Prime] (hp : 524288 < p)
           Nat.shiftRight_eq_div_pow] using immediate
       have right := UnifiedReduced.Proofs.binary_immediate_bytes (by dsimp [limbBase] at limbSize; omega)
         byteInverse modelCore selected other load input.encodedImmediate packed fields input.operation.tag valid funct3
-      simpa only [words.right, rightOperand, form, if_true] using right
+      simpa only [words.right, rightOperand, form, ite_true] using right
   have result := UnifiedReduced.Proofs.binary_destination (by dsimp [limbBase] at limbSize; omega)
     modelCore selected other input.operation.tag valid funct3
     (words.left.symm ▸ leftBytes) rightBytes

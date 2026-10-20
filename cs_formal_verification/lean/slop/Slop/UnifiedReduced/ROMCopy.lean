@@ -41,7 +41,7 @@ theorem row_word_copy [Fact p.Prime] (hp : 4194304 ≤ p)
         exact lt_of_lt_of_le ranges.1 (by change 65536 ≤ p; omega)
       have high : (Trace.ROMView.publicWord before (Nat.pair 1 (Nat.pair (w 38).val (w 39).val))).hi < p := by
         exact lt_of_lt_of_le ranges.2 (by change 65536 ≤ p; omega)
-      simp only [row, load, rom, Bool.false_eq_true, if_false, and_self, if_true, readData,
+      simp only [row, load, rom, Bool.false_eq_true, ite_false, and_self, ite_true, readData,
         show (43 = 42) = False by decide,
         ZMod.val_natCast_of_lt low, ZMod.val_natCast_of_lt high]
       exact value.2.2.trans physical.symm

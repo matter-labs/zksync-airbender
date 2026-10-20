@@ -37,7 +37,7 @@ theorem trace_soundness {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.except
   have clauseMatches : instructionClause entry.instruction = some (execution input) := by
     rw [encoding]
     cases mode : input.store <;>
-      simp only [mode, execution, instruction, instructionClause, Bool.false_eq_true, if_false, if_true, Option.get_some]
+      simp only [mode, execution, instruction, instructionClause, Bool.false_eq_true, ite_false, ite_true, Option.get_some]
   have sameClause := Option.some.inj (clauseBound.symm.trans clauseMatches)
   rw [sameClause, ← atState] at normal
   have sourceWord : input.source = Word.mk (w 17).val (w 18).val :=
@@ -79,13 +79,13 @@ theorem trace_soundness {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.except
     cases mode : input.store
     · cases sourceIndex : input.rs1 with | Regidx rs1 =>
         cases destinationIndex : input.rd with | Regidx rd =>
-          simp only [mode, Bool.false_eq_true, if_false, sourceIndex, destinationIndex, decoderFields, instruction] at fields
+          simp only [mode, Bool.false_eq_true, ite_false, sourceIndex, destinationIndex, decoderFields, instruction] at fields
           split at fields
           · rw [← Option.some.inj fields] at localFamily
             cases localFamily
           · have selected : w 10 = 0 := by simpa [← Option.some.inj fields] using selector
             refine ⟨addressFor (by simpa [mode] using selected), ?_⟩
-            simp only [mode, Bool.false_eq_true, if_false]
+            simp only [mode, Bool.false_eq_true, ite_false]
             have written := word_history_load_write limbSize core selected query trace.memoryEpoch normalized
             rw [← Option.some.inj fields] at written
             change run (SailRV32.Functions.wX_bits (.Regidx rd)
@@ -96,17 +96,17 @@ theorem trace_soundness {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.except
             exact ⟨_, normal, by simpa only [destinationIndex] using projected⟩
     · cases sourceIndex : input.rs1 with | Regidx rs1 =>
         cases secondIndex : input.rs2 with | Regidx rs2 =>
-          simp only [mode, if_true, sourceIndex, secondIndex, decoderFields, instruction] at fields
+          simp only [mode, ite_true, sourceIndex, secondIndex, decoderFields, instruction] at fields
           have selected : w 10 = 1 := by simpa [← Option.some.inj fields] using selector
           refine ⟨addressFor (by simpa [mode] using selected), ?_⟩
-          simp only [mode, if_true]
+          simp only [mode, ite_true]
           have written := pooled_word_native_transport (by omega) inverse accepted
             assumptions.initialization.clocks
             (retired_state_image assumptions.initialization.image (Word.mk (w 0).val (w 1).val).toBitVec)
             member true selected normalized
-          simp only [if_true] at written
+          simp only [ite_true] at written
           have address : output.address = Word.mk (w 25).val (w 26).val := by
-            simpa only [mode, if_true] using addressWord
+            simpa only [mode, ite_true] using addressWord
           rw [← address, ← dataWord] at written
           have projected := projected_step_of_cell_write (.ram output.address.toBitVec)
             output.data.toBitVec output.pc written

@@ -24,7 +24,7 @@ theorem last_write_max (history : MemoryAccessList)
         change event.1 < time at greater
         change time ≤ event.1 at less
         omega
-      simpa only [MemoryAccessList.lastWriteValue, if_neg different] using
+      simpa only [MemoryAccessList.lastWriteValue, ite_eq_right different] using
         ih (List.Pairwise.of_cons sorted) member
           (fun other present => latest other (List.mem_cons_of_mem _ present))
 

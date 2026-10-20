@@ -21,7 +21,7 @@ private theorem last_write_unique (history : MemoryAccessList)
         have pair := List.nodup_cons.mp unique
         intro equal
         exact pair.1 (List.mem_map.mpr ⟨event, member, equal.symm⟩)
-      simpa only [MemoryAccessList.lastWriteValue, if_neg distinct] using
+      simpa only [MemoryAccessList.lastWriteValue, ite_eq_right distinct] using
         ih (List.Pairwise.of_cons sorted) (List.nodup_cons.mp unique).2 member
 
 theorem seed_history_matches {p : Nat} {before : State} {cells : List Cell}
@@ -113,7 +113,7 @@ theorem matches_after_write {cells : List Cell} {history : TimestampSortedMemory
   · have distinctCode : key ≠ other.addressCode := by
       intro sameCode
       exact same (cell_address_injective (sameCode.symm.trans address.symm))
-    simpa only [MemoryAccessList.lastWriteValue, if_neg distinctCode] using
+    simpa only [MemoryAccessList.lastWriteValue, ite_eq_right distinctCode] using
       cell_write_frame written same (aligned cell member) (aligned other otherMember)
         (boundState other otherMember)
 

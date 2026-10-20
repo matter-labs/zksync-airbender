@@ -44,13 +44,13 @@ theorem native_window_steps (data : MemoryData p) (lower upper : Nat) :
           !decide ((timeOfPair edge.2.time).value ≤ lower)) =
       if lower < rowWriteTime row ∧ rowWriteTime row ≤ upper then row.memorySteps else [] := by
     by_cases inside : lower < rowWriteTime row ∧ rowWriteTime row ≤ upper
-    · rw [if_pos inside]
+    · rw [ite_eq_left inside]
       apply List.filter_eq_self.mpr
       intro edge member
       obtain ⟨port, present, rfl⟩ := List.mem_map.mp member
       rw [row_write_time row (by simpa using present)]
       simp [Nat.not_le.mpr inside.1, inside.2]
-    · rw [if_neg inside]
+    · rw [ite_eq_right inside]
       apply List.filter_eq_nil_iff.mpr
       intro edge member
       obtain ⟨port, present, rfl⟩ := List.mem_map.mp member
@@ -65,8 +65,8 @@ theorem native_window_steps (data : MemoryData p) (lower upper : Nat) :
     simp only [List.filter_cons, List.flatMap_cons]
     rw [rowFilter]
     by_cases inside : lower < rowWriteTime row ∧ rowWriteTime row ≤ upper
-    · simp only [decide_eq_true inside, if_true, if_pos inside, List.flatMap_cons, ih]
-    · simp only [decide_eq_false inside, Bool.false_eq_true, if_false, if_neg inside,
+    · simp only [decide_eq_true inside, ite_true, ite_eq_left inside, List.flatMap_cons, ih]
+    · simp only [decide_eq_false inside, Bool.false_eq_true, ite_false, ite_eq_right inside,
         List.nil_append, ih]
 
 theorem native_prefix_steps (data : MemoryData p) (cutoff : Nat) :
@@ -76,13 +76,13 @@ theorem native_prefix_steps (data : MemoryData p) (cutoff : Nat) :
       row.memorySteps.filter (fun edge => decide ((timeOfPair edge.2.time).value ≤ cutoff)) =
       if row.writeTime ≤ cutoff then row.memorySteps else [] := by
     by_cases inside : row.writeTime ≤ cutoff
-    · rw [if_pos inside]
+    · rw [ite_eq_left inside]
       apply List.filter_eq_self.mpr
       intro edge member
       obtain ⟨port, present, rfl⟩ := List.mem_map.mp member
       rw [row_write_time row (by simpa using present)]
       exact decide_eq_true inside
-    · rw [if_neg inside]
+    · rw [ite_eq_right inside]
       apply List.filter_eq_nil_iff.mpr
       intro edge member
       obtain ⟨port, present, rfl⟩ := List.mem_map.mp member
@@ -96,8 +96,8 @@ theorem native_prefix_steps (data : MemoryData p) (cutoff : Nat) :
     simp only [List.filter_cons, List.flatMap_cons]
     rw [rowFilter]
     by_cases inside : row.writeTime ≤ cutoff
-    · simp only [decide_eq_true inside, if_true, if_pos inside, List.flatMap_cons, ih]
-    · simp only [decide_eq_false inside, Bool.false_eq_true, if_false, if_neg inside,
+    · simp only [decide_eq_true inside, ite_true, ite_eq_left inside, List.flatMap_cons, ih]
+    · simp only [decide_eq_false inside, Bool.false_eq_true, ite_false, ite_eq_right inside,
         List.nil_append, ih]
 
 def NativeWindow [Fact p.Prime] (data : MemoryData p) (before : State) (cells : List Cell)

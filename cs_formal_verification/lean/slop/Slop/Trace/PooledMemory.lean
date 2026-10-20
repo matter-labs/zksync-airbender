@@ -60,7 +60,7 @@ theorem pooled_word_address {p : Nat} [Fact p.Prime]
     (List.sublist_append_left (WordMemory.importedConstraints trace.rom.wordMemory)
       WordMemory.importedConstraintsTimestampLookups)
   cases store
-  all_goals dsimp only [Bool.false_eq_true, if_false, if_true] at selected ⊢
+  all_goals dsimp only [Bool.false_eq_true, ite_false, ite_true] at selected ⊢
   · have portMember : WordMemory.importedConstraintsMemoryPorts[1] ∈
         (⟨.wordMemory, w⟩ : Row p PooledFamily).ports := by
       change WordMemory.importedConstraintsMemoryPorts[1] ∈ WordMemory.importedConstraintsMemoryPorts
@@ -106,7 +106,7 @@ theorem pooled_word_native_transport {p : Nat} [Fact p.Prime]
   have oneValue : (1 : ZMod p).val = 1 := by
     simpa only [Nat.cast_one] using ZMod.val_natCast_of_lt (by omega : 1 < p)
   cases store
-  · simp only [Bool.false_eq_true, if_false] at selected ⊢
+  · simp only [Bool.false_eq_true, ite_false] at selected ⊢
     have present : WordMemory.importedConstraintsMemoryPorts[1] ∈
         (⟨.wordMemory, w⟩ : Row p PooledFamily).ports := by
       change WordMemory.importedConstraintsMemoryPorts[1] ∈ WordMemory.importedConstraintsMemoryPorts
@@ -116,7 +116,7 @@ theorem pooled_word_native_transport {p : Nat} [Fact p.Prime]
           simp [WordMemory.importedConstraintsMemoryPorts, MemoryAddress.code, selected, pairCode, oneValue])
     have read := native_history_read trace.memoryEpoch rfl rfl rfl history present cell.2
     simpa [WordMemory.importedConstraintsMemoryPorts, MemoryPort.readCode, pairCode, memoryWord, MemoryAddress.word, Cell.read] using read
-  · simp only [if_true] at selected ⊢
+  · simp only [ite_true] at selected ⊢
     have present : WordMemory.importedConstraintsMemoryPorts[2] ∈
         (⟨.wordMemory, w⟩ : Row p PooledFamily).ports := by
       change WordMemory.importedConstraintsMemoryPorts[2] ∈ WordMemory.importedConstraintsMemoryPorts

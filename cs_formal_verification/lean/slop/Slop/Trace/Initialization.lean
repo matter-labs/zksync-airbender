@@ -22,9 +22,9 @@ theorem boot_image {before : State} {cells : List Cell}
     | register index => rw [profile.registers index]
     | ram address =>
       by_cases rom : address.toNat < ROM.limit
-      · simp only [if_pos rom]
+      · simp only [ite_eq_left rom]
         rfl
-      · simp only [if_neg rom, profile.ram address List.mem_cons_self (Nat.le_of_not_gt rom)]
+      · simp only [ite_eq_right rom, profile.ram address List.mem_cons_self (Nat.le_of_not_gt rom)]
 
 /-- Fixed boot PC/time and the canonical seed discharge all existing initial
     PC/clock/image premises. Per-row bounds remain derived by the trace proofs. -/

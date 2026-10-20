@@ -59,7 +59,7 @@ theorem filtered_architectural_tokens {p : Nat}
     intro token member
     obtain ⟨edge, present, rfl⟩ := List.mem_map.mp member
     cases written with
-    | false => simpa only [Bool.false_eq_true, if_false, bne_iff_ne] using (workerAddresses edge present).1
+    | false => simpa only [Bool.false_eq_true, ite_false, bne_iff_ne] using (workerAddresses edge present).1
     | true => simpa only [ite_true, bne_iff_ne] using (workerAddresses edge present).2
   simp only [List.map_append, List.filter_append, removed, kept, List.nil_append]
 

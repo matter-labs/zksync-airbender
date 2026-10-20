@@ -26,7 +26,7 @@ theorem opposite_register_address {p : Nat} [Fact p.Prime] (hp : limbBase < p)
   change (w 5).val = entry.data.rs1.toNat ∧ (w 6).val = entry.data.rs2.toNat ∧
     (w 7).val = entry.data.rd.toNat at indices
   have wiring := register_address store h selected
-  cases store <;> simp only [Bool.false_eq_true, if_false, if_true] at selected wiring ⊢
+  cases store <;> simp only [Bool.false_eq_true, ite_false, ite_true] at selected wiring ⊢
   all_goals simp [importedConstraintsMemoryPorts, MemoryAddress.code, pairCode, Cell.addressCode,
     selected, wiring.1, wiring.2, indices.2.1, indices.2.2]
 

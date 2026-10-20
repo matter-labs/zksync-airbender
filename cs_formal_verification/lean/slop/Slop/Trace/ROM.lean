@@ -48,7 +48,7 @@ theorem member {p : Nat} [Fact p.Prime] {before : Reference.RiscV.Sail.State}
     | register index => simp at mapped
     | ram address =>
       by_cases low : address.toNat < limit
-      · simp only [low, if_true, Option.some.injEq] at mapped
+      · simp only [low, ite_true, Option.some.injEq] at mapped
         right
         refine ⟨address, bits, ?_, low, read, ?_⟩
         · exact (List.of_mem_zip zipped).1

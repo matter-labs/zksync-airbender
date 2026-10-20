@@ -46,10 +46,10 @@ theorem hash_span_at_target [Fact p.Prime] (hp : 16777216 ≤ p)
       exact ⟨(reads i).1, Delegation.Proofs.terminal_mapping_read source target addresses (tracked i) (reads i).2⟩
     have stateTracked : ∀ i : Fin 16, Cell.ram (statePointer + BitVec.ofNat 32 (4 * (0 + i.val))) ∈ cells := by
       intro i
-      simpa only [if_true, Nat.zero_add] using domain true i
+      simpa only [ite_true, Nat.zero_add] using domain true i
     have messageTracked : ∀ i : Fin 16, Cell.ram (messagePointer + BitVec.ofNat 32 (4 * (0 + i.val))) ∈ cells := by
       intro i
-      simpa only [Bool.false_eq_true, if_false, Nat.zero_add] using domain false i
+      simpa only [Bool.false_eq_true, ite_false, Nat.zero_add] using domain false i
     exact ⟨statePointer, messagePointer, input, message, output,
       ⟨mapping.pointers, mapping.inputWords, mapping.messageWords,
         transfer stateTracked mapping.outputWords, transfer messageTracked mapping.messageUnchanged⟩, target, result⟩
@@ -74,11 +74,11 @@ theorem hash_span_at_target [Fact p.Prime] (hp : 16777216 ≤ p)
     have stateTracked : ∀ i : Fin 8, Cell.ram (statePointer + BitVec.ofNat 32 (4 * (0 + i.val))) ∈ cells := by
       intro i
       have actual := domain ⟨i.val, by omega⟩
-      simpa only [Fin.val_mk, if_pos (show i.val < 24 by omega), Nat.zero_add] using actual
+      simpa only [Fin.val_mk, ite_eq_left (show i.val < 24 by omega), Nat.zero_add] using actual
     have extendedTracked : ∀ i : Fin 16, Cell.ram (statePointer + BitVec.ofNat 32 (4 * (8 + i.val))) ∈ cells := by
       intro i
       have actual := domain ⟨8 + i.val, by omega⟩
-      simpa only [Fin.val_mk, if_pos (show 8 + i.val < 24 by omega)] using actual
+      simpa only [Fin.val_mk, ite_eq_left (show 8 + i.val < 24 by omega)] using actual
     exact ⟨statePointer, messagePointer, input, message, output,
       ⟨mapping.pointers, mapping.inputState, mapping.inputExtended, mapping.messageWords,
         transfer stateTracked mapping.outputState, transfer extendedTracked mapping.outputExtended⟩, target, result⟩

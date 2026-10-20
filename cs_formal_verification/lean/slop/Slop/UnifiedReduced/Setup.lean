@@ -81,7 +81,7 @@ theorem wide_region {before : Reference.RiscV.Sail.State} {i : Fin 2097537} {tag
   by_cases top : i.val < 1048961
   · by_cases first : i.val < 524545
     · have same : row before i = binaryRow ⟨i.val, first⟩ := by
-        simp only [row, top, dif_pos, fixedRow, first]
+        simp only [row, top, dite_eq_left, fixedRow, first]
       refine ⟨⟨i.val, first⟩, same, ?_⟩
       rw [same] at selected
       have bound := shift_tag_bound ⟨i.val, first⟩
@@ -89,7 +89,7 @@ theorem wide_region {before : Reference.RiscV.Sail.State} {i : Fin 2097537} {tag
       unfold binaryTag at selected
       rcases wide with rfl | rfl | rfl
       all_goals split_ifs at selected <;> omega
-    · have same : row before i = fixedRow ⟨i.val, top⟩ := dif_pos top
+    · have same : row before i = fixedRow ⟨i.val, top⟩ := dite_eq_left top
       have bound : (row before i)[9] < 52 := by
         rw [same]
         exact fixed_outside_tag ⟨i.val, top⟩ first

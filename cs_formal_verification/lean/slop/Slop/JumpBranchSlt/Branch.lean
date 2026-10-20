@@ -49,7 +49,7 @@ private theorem branch_bits {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
     by_cases lt : left.value < right.value
     · simp [lt, borrow.mpr lt]
     · have := mt borrow.mp lt
-      simp only [if_neg lt]
+      simp only [ite_eq_right lt]
       omega
   have sum : (w 34 + w 35).val = remainder.lo + remainder.hi := by
     have cast : w 34 + w 35 = ((remainder.lo + remainder.hi : Nat) : ZMod p) := by

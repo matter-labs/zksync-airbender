@@ -49,7 +49,7 @@ theorem signed_resolution {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
         apply lt
         apply unsigned.mp
         simpa [eq] using canonical
-      simp only [if_neg lt]
+      simp only [ite_eq_right lt]
       omega
   have result := values.2.2.1
   rw [key] at result

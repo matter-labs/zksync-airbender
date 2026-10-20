@@ -18,7 +18,7 @@ private theorem finalized_rounds (state : Vector Nat 25) {n : Nat} (bound : n < 
   induction n with
   | zero => simp [deferredRounds, roundBody, keccakRound, Fin.foldl_succ]
   | succ n ih =>
-    rw [deferredRounds, if_neg (Nat.succ_ne_zero n)]
+    rw [deferredRounds, ite_eq_right (Nat.succ_ne_zero n)]
     simp only [Nat.add_sub_cancel]
     rw [ih (by omega)]
     conv_rhs => rw [Fin.foldl_succ_last]

@@ -39,10 +39,10 @@ private theorem truncation_rows (i : Fin 524545)
     dsimp only at selected
     split_ifs at selected <;> simp [binaryByteRow] at selected
     all_goals omega
-  simp only [shiftBinopRow, show i.val ≠ 0 by omega, if_false,
+  simp only [shiftBinopRow, show i.val ≠ 0 by omega, ite_false,
     show ¬ i.val < 257 by omega, show ¬ i.val < 65793 by omega,
     show ¬ i.val < 131329 by omega, show ¬ i.val < 196865 by omega,
-    interval.2, if_true]
+    interval.2, ite_true]
   have tuple (a b : Fin 256) :
       (#v[a.val, b.val, a.val % 32, 0, 0, 0, 0, 0, 0, 8] : Vector Nat 10)[0] < 256 ∧
       (#v[a.val, b.val, a.val % 32, 0, 0, 0, 0, 0, 0, 8] : Vector Nat 10)[1] < 256 ∧

@@ -62,7 +62,7 @@ theorem shift_contribution_halves (tag : Nat) (valid : tag = 1 ∨ tag = 2 ∨ t
     · simp [f, shiftOperation, BitVec.shiftLeft_and_distrib, BitVec.extractLsb'_and]
     · simp [f, shiftOperation, BitVec.ushiftRight_and_distrib, BitVec.extractLsb'_and]
     · simp [f, shiftOperation, BitVec.sshiftRight_and_distrib, BitVec.extractLsb'_and]
-    · simp only [f, shiftOperation, Nat.reduceEqDiff, if_false, Reference.Sail.rev8_bytes]
+    · simp only [f, shiftOperation, Nat.reduceEqDiff, ite_false, Reference.Sail.rev8_bytes]
       fin_cases half
       all_goals
         apply BitVec.eq_of_getLsbD_eq
@@ -78,7 +78,7 @@ theorem shift_contribution_halves (tag : Nat) (valid : tag = 1 ∨ tag = 2 ∨ t
     · simp [f, shiftOperation, BitVec.shiftLeft_or_distrib, BitVec.extractLsb'_or]
     · simp [f, shiftOperation, BitVec.ushiftRight_or_distrib, BitVec.extractLsb'_or]
     · simp [f, shiftOperation, BitVec.sshiftRight_or_distrib, BitVec.extractLsb'_or]
-    · simp only [f, shiftOperation, Nat.reduceEqDiff, if_false, Reference.Sail.rev8_bytes]
+    · simp only [f, shiftOperation, Nat.reduceEqDiff, ite_false, Reference.Sail.rev8_bytes]
       fin_cases half
       all_goals
         apply BitVec.eq_of_getLsbD_eq

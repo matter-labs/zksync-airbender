@@ -68,7 +68,7 @@ theorem native_physical_step [Fact p.Prime] {w : Nat → ZMod p}
     have actual := (observed ⟨slot, present⟩).2
     simp only [Fin.getElem_fin] at actual
     rw [index] at actual
-    rw [micro_step_get, dif_pos present]
+    rw [micro_step_get, dite_eq_left present]
     exact actual.symm.trans (value.trans (micro_value_eq (scheduleControl ⟨call.val, by omega⟩)
       roundBound (fun lane => physicalLanes before pointer
         ⟨(slotIndices call)[lane], Controller.Proofs.rows_bound _ lane⟩) ⟨slot, present⟩))
@@ -84,7 +84,7 @@ theorem native_physical_step [Fact p.Prime] {w : Nat → ZMod p}
       physical (fun lane => by
         change (slotIndices call)[lane] ≠ physical.val
         exact untouched lane)
-    rw [micro_step_get, dif_neg present]
+    rw [micro_step_get, dite_eq_right present]
     exact frame
 
 end Airbender.Keccak.Proofs

@@ -62,7 +62,7 @@ theorem public_image : programImageWith NonDeterminism.decoderFields before [0, 
     some [readEntry, writeEntry] := by
   have read := bytes false
   have write := bytes true
-  simp only [Bool.false_eq_true, if_false, if_true] at read write
+  simp only [Bool.false_eq_true, ite_false, ite_true] at read write
   simp only [programImageWith, List.mapM_cons, List.mapM_nil, programEntryWith,
     read, write, read_decoding, write_decoding, bind, Option.bind]
   rfl

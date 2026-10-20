@@ -84,9 +84,9 @@ theorem mixed_window_steps [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
       simp only [Bool.and_eq_true, Bool.not_eq_true', decide_eq_false_iff_not, decide_eq_true_eq, Nat.not_le]
       exact and_comm.trans (instruction_window_clock aligned first last (by omega) (by omega) ordered)
     by_cases inside : lower ≤ Delegation.Caller.startClock row ∧ Delegation.Caller.startClock row < upper
-    · simp only [decide_eq_true inside, if_true]
+    · simp only [decide_eq_true inside, ite_true]
       exact List.filter_eq_self.mpr (fun edge present => (portFilter edge present).trans (decide_eq_true inside))
-    · simp only [decide_eq_false inside, Bool.false_eq_true, if_false]
+    · simp only [decide_eq_false inside, Bool.false_eq_true, ite_false]
       apply List.filter_eq_nil_iff.mpr
       intro edge present
       rw [portFilter edge present, decide_eq_false inside]

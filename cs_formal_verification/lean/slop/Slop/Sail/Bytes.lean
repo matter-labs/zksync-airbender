@@ -25,17 +25,17 @@ theorem sign_extend_high_bytes (imm : BitVec 12) (i : Fin 2) :
     have high : ¬ 16 + 8 * i.val + k < 12 := by omega
     cases hsign : imm.msb <;>
       simp only [BitVec.getLsbD_extractLsb', hk, decide_true, Bool.true_and,
-        BitVec.getLsbD_signExtend, within, high, if_false, hsign]
+        BitVec.getLsbD_signExtend, within, high, ite_false, hsign]
     all_goals interval_cases k <;> decide
   rw [bytes]
   cases hsign : imm.msb
   · have small := threshold.mpr hsign
-    simp only [Bool.false_eq_true, if_false, if_pos small, BitVec.toNat_ofNat]
+    simp only [Bool.false_eq_true, ite_false, ite_eq_left small, BitVec.toNat_ofNat]
   · have large : ¬ ((imm.signExtend 32).extractLsb' 8 8).toNat < 128 := by
       intro small
       have impossible := (threshold.mp small).symm.trans hsign
       cases impossible
-    simp only [if_true, if_neg large, BitVec.toNat_ofNat]
+    simp only [ite_true, ite_eq_right large, BitVec.toNat_ofNat]
 
 set_option maxRecDepth 4096 in
 /-- The original Sail byte loop, specialized to RV32. -/

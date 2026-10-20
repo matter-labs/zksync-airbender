@@ -397,7 +397,7 @@ theorem complete_mixed_trace [MemoryPlatform SailRV32.exception] :
   subst cell
   have value : (ROMView.token before (token 1 14 0xbeef 0)).word.toBitVec = 0xbeef := by
     simp only [ROMView.token, ROMView.shadow, token, Cell.addressCode, Nat.unpair_pair,
-      Nat.reduceEqDiff, false_and, if_false, MemoryToken.word]
+      Nat.reduceEqDiff, false_and, ite_false, MemoryToken.word]
     rfl
   rw [value] at read
   exact ⟨after, execution, pc, read⟩

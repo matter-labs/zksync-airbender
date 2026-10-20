@@ -35,7 +35,7 @@ theorem pooled_row_soundness {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.e
   have clauseMatches : instructionClause entry.instruction = some (execution input) := by
     rw [encoding]
     cases mode : input.store <;> cases width : input.byte <;>
-      simp only [mode, width, execution, instruction, instructionClause, Bool.false_eq_true, if_false, if_true, Option.get_some]
+      simp only [mode, width, execution, instruction, instructionClause, Bool.false_eq_true, ite_false, ite_true, Option.get_some]
   have same := Option.some.inj (clauseBound.symm.trans clauseMatches)
   rw [same, ← atState] at normal
   have pcWord : output.pc = Word.mk (w 13).val (w 14).val :=
@@ -83,23 +83,23 @@ theorem pooled_row_soundness {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.e
             exact (aligned_cell_index address.1 address.2.1 address.2.2.1).symm
           refine ⟨addressFor, ?_⟩
           cases mode : input.store
-          · simp only [Bool.false_eq_true, if_false]
-            have select : w 10 = 0 := by simpa only [mode, Bool.false_eq_true, if_false] using selected
+          · simp only [Bool.false_eq_true, ite_false]
+            have select : w 10 = 0 := by simpa only [mode, Bool.false_eq_true, ite_false] using selected
             have written := destination_write limbSize trace.memoryEpoch core select query normalized
             have atRD : originalEntry.data.rd = rd := by
-              simp only [shape, rowData, mode, Bool.false_eq_true, if_false]
+              simp only [shape, rowData, mode, Bool.false_eq_true, ite_false]
             rw [atRD, dataValue] at written
             have projected := projected_step_of_write rd ⟨output.data, output.pc⟩ written
             rw [retired_state_overwrite] at projected
             exact ⟨_, normal, by simpa only [destinationIndex] using projected⟩
-          · simp only [if_true]
-            have select : w 10 = 1 := by simpa only [mode, if_true] using selected
+          · simp only [ite_true]
+            have select : w 10 = 1 := by simpa only [mode, ite_true] using selected
             have cell := pooled_subword_cell clockSize inverse accepted assumptions.initialization.clocks
               assumptions.initialization.image member true select
             have written := native_history_write trace.memoryEpoch rfl rfl rfl normalized
               (ports := importedConstraintsMemoryPorts) (port := importedConstraintsMemoryPorts[2]) rfl cell.2.2
             have atCell : output.cell = Word.mk (w 27).val (w 28).val := by
-              simpa only [mode, if_true] using cellWord
+              simpa only [mode, ite_true] using cellWord
             have location : (importedConstraintsMemoryPorts[2].address.word w).toBitVec = output.cell.toBitVec := by
               change (Word.mk (w 27).val (w 28).val).toBitVec = output.cell.toBitVec
               rw [← atCell]

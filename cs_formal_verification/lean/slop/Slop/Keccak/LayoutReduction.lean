@@ -36,7 +36,7 @@ private def cachedLane (round : Nat) (lane : Fin 25) : Nat :=
 theorem physical_cached (round : Nat) (lane : Fin 25) :
     Controller.physicalLane round lane = cachedLane round lane := by
   by_cases bound : round < 25
-  · simpa only [cachedLane, dif_pos bound, Fin.getElem_fin] using layout_cache_correct ⟨round, bound⟩ lane
-  · simp only [cachedLane, dif_neg bound]
+  · simpa only [cachedLane, dite_eq_left bound, Fin.getElem_fin] using layout_cache_correct ⟨round, bound⟩ lane
+  · simp only [cachedLane, dite_eq_right bound]
 
 end Airbender.Keccak.Proofs

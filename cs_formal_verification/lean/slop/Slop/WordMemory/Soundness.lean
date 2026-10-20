@@ -37,7 +37,7 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 196608 < p)
   have sourceRead := Sail.rX_nextPC (pc := output.pc.toBitVec) input.rs1 interface.sourceRead
   refine ⟨address, ?_⟩
   cases mode : input.store
-  · simp only [Bool.false_eq_true, if_false]
+  · simp only [Bool.false_eq_true, ite_false]
     apply Sail.retire_of_destination interface.pcRead pc.2.2
     have bytes : readBytes (ue := SailRV32.exception) 4
         (input.source.toBitVec + input.immediate.toBitVec).toNat input.before =
@@ -67,7 +67,7 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 196608 < p)
     simpa [execution, instruction, Trace.instructionClause, mode, Sail.writeResult]
       using executed.trans (by simpa only [Sail.writeResult] using resultRun)
   · have copiedData := data (classified.2 mode)
-    simp only [if_true]
+    simp only [ite_true]
     apply Sail.retire_with_memory interface.pcRead
     obtain ⟨written, memoryRun, registers⟩ :=
       Sail.write_word_frame output.address.toBitVec input.readData.toBitVec prepared

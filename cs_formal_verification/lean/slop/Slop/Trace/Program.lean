@@ -27,10 +27,10 @@ theorem decoder_field_bounds {instruction : SailRV32.instruction} {data : Decode
       else some ⟨.wordMemory, rs1, 0, rd,
         Word.ofBitVec (SailRV32.Functions.sign_extend (m := 32) imm), 0, 0⟩) = some data at fields
     by_cases zero : (rd : BitVec 5) = 0
-    · rw [if_pos zero, Option.some.injEq] at fields
+    · rw [ite_eq_left zero, Option.some.injEq] at fields
       subst data
       exact arithmetic_field_bounds _ _ _ _ (by decide)
-    · rw [if_neg zero, Option.some.injEq] at fields
+    · rw [ite_eq_right zero, Option.some.injEq] at fields
       subst data
       exact ⟨Word.ofBitVec_bound _, by change 0 ≤ 4; decide⟩
   all_goals first

@@ -247,7 +247,7 @@ theorem chi_written_bounds {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
         w (15 + 8 * sources[i].val + (#v[0, 1, 4, 5] : Vector Nat 4)[limb]) := by
       have equation := Verification.assertion_of_holds h
         ⟨(if second then 144 else 132) + 4 * i.val + limb.val,
-          by rw [constraint_count]; cases second <;> simp only [Bool.false_eq_true, if_false, if_true] <;> omega⟩
+          by rw [constraint_count]; cases second <;> simp only [Bool.false_eq_true, ite_false, ite_true] <;> omega⟩
       cases second <;> fin_cases i <;> fin_cases limb
       all_goals simp [Variables.modeColumns, chiMode] at selected
       all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,

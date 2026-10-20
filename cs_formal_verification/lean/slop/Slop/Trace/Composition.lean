@@ -63,10 +63,10 @@ theorem row_instruction_step (profile : ISAProfile) {p : Nat} [Fact p.Prime] [Me
         rename_i _ imm rs1 rd encoding
         change (if (rd : BitVec 5) = 0 then _ else _) = some entry.data at fields
         by_cases zero : (rd : BitVec 5) = 0
-        · rw [if_pos zero, Option.some.injEq] at fields
+        · rw [ite_eq_left zero, Option.some.injEq] at fields
           rw [← fields] at family
           cases family
-        · rw [if_neg zero, Option.some.injEq] at fields
+        · rw [ite_eq_right zero, Option.some.injEq] at fields
           refine ⟨SailRV32.Functions.execute_LOAD imm (.Regidx rs1) (.Regidx rd) false 4, ?_, ?_⟩
           · cases profile with
             | sail => rw [encoding]; rfl

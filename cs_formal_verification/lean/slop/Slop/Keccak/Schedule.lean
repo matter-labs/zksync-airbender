@@ -23,9 +23,9 @@ theorem schedule_next (i : Fin 649) :
       (scheduleControl ⟨i.val + 1, by have := i.isLt; omega⟩).packed := by
   have stageBound : i.val % 27 < 27 := Nat.mod_lt _ (by decide)
   have nextStage : (i.val + 1) % 27 = if i.val % 27 = 26 then 0 else i.val % 27 + 1 := by
-    by_cases last : i.val % 27 = 26 <;> simp only [last, if_true, if_false] <;> omega
+    by_cases last : i.val % 27 = 26 <;> simp only [last, ite_true, ite_false] <;> omega
   have nextRound : (i.val + 1) / 27 = i.val / 27 + if i.val % 27 = 26 then 1 else 0 := by
-    by_cases last : i.val % 27 = 26 <;> simp only [last, if_true, if_false] <;> omega
+    by_cases last : i.val % 27 = 26 <;> simp only [last, ite_true, ite_false] <;> omega
   simp only [scheduleControl, ControlState.packed, ControlState.nextPacked]
   rw [nextStage, nextRound]
   interval_cases i.val % 27 <;> simp

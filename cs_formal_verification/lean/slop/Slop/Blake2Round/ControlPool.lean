@@ -257,7 +257,7 @@ theorem pool_modes [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     exact Verification.holds_of_sublist holds (List.sublist_append_left
       (importedConstraints setupTable) importedConstraintsTimestampLookups)
   have flags := control_flags (by dsimp [timestampBase] at hp; omega) core flags actualRound read
-  haveI : Fact (1 < p) := ⟨(Fact.out : p.Prime).one_lt⟩
+  have : Fact (1 < p) := ⟨(Fact.out : p.Prime).one_lt⟩
   have one (column : Nat) : decide (row.assignment column = 1) = decide ((row.assignment column).val = 1) := by
     apply Bool.eq_iff_iff.mpr
     simp only [decide_eq_true_eq]

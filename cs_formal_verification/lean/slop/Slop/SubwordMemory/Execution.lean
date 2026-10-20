@@ -216,10 +216,10 @@ theorem local_execution {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.except
   have checked := soundness hp addressInverse program input output w ⟨interface, h, mapping⟩
   cases mode : store
   · have inputMode : input.store = false := mode
-    simp only [spec, inputMode, Bool.false_eq_true, if_false] at checked
+    simp only [spec, inputMode, Bool.false_eq_true, ite_false] at checked
     change _ ∧ stepSpec input.before (execution input) input.rd ⟨output.data, output.pc⟩ at checked
     obtain ⟨_, checkedAfter, normal, projected⟩ := checked
-    have selectedLoad : w 10 = 0 := by simpa only [mode, Bool.false_eq_true, if_false] using selected
+    have selectedLoad : w 10 = 0 := by simpa only [mode, Bool.false_eq_true, ite_false] using selected
     have written := destination_write limbField epoch h selectedLoad query history'
     have write : run (SailRV32.Functions.wX_bits (.Regidx entry.data.rd) output.data.toBitVec)
         input.before = .ok () (Trace.retiredState after currentPC) := by
@@ -233,11 +233,11 @@ theorem local_execution {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.except
       cases byte <;> simp [execution, instruction, input, rowInput, rowInstruction, instructionClause, shape, rowData, mode, Option.get_some]
     · simpa [input, output, rowInput, rowOutput, currentPC, Trace.Proofs.retired_state_overwrite] using normal
   · have inputMode : input.store = true := mode
-    simp only [spec, inputMode, if_true] at checked
+    simp only [spec, inputMode, ite_true] at checked
     change _ ∧ stepSpec input.before (execution input) zeroRegister ⟨⟨0, 0⟩, output.pc⟩
       (writeMemory (size := 4) output.cell.toBitVec output.data.toBitVec) at checked
     obtain ⟨_, checkedAfter, normal, projected⟩ := checked
-    have selectedStore : w 10 = 1 := by simpa only [mode, if_true] using selected
+    have selectedStore : w 10 = 1 := by simpa only [mode, ite_true] using selected
     have written := nativeWrite selectedStore history'
     have write : run ((Cell.ram output.cell.toBitVec).write output.data.toBitVec)
         input.before = .ok () (Trace.retiredState after currentPC) := by

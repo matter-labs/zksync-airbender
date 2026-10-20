@@ -128,7 +128,7 @@ private theorem public_image (store : Bool) :
       get, getThe, MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get, EStateM.pure,
       before, Std.ExtHashMap.getElem_insert]
   cases store
-  all_goals simp only [cells, Bool.false_eq_true, if_false, if_true, initialImage,
+  all_goals simp only [cells, Bool.false_eq_true, ite_false, ite_true, initialImage,
     List.mapM_cons, List.mapM_nil, first, second, bytes]
   all_goals decide
 
@@ -148,7 +148,7 @@ private theorem public_inputs (store : Bool) :
   constructor
   · cases store <;> decide
   · intro cell member
-    cases store <;> simp only [cells, Bool.false_eq_true, if_false, if_true,
+    cases store <;> simp only [cells, Bool.false_eq_true, ite_false, ite_true,
       List.mem_cons, List.not_mem_nil, or_false] at member
     all_goals rcases member with rfl | rfl | rfl
     all_goals simp [Cell.Aligned]

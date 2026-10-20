@@ -76,7 +76,7 @@ theorem word_row_address [Fact p.Prime] (hp : ROM.limit < p)
   change (Word.mk (w 8).val (w 9).val).Bounded at immediate
   cases store
   all_goals
-    dsimp only [Bool.false_eq_true, if_false, if_true] at selected ⊢
+    dsimp only [Bool.false_eq_true, ite_false, ite_true] at selected ⊢
   · have present : WordMemory.importedConstraintsMemoryPorts[1] ∈
         (⟨.wordMemory, w⟩ : Row p).ports := by
       simp [Row.ports, WordMemory.importedConstraintsMemoryPorts]
@@ -147,7 +147,7 @@ theorem local_word_transport {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.e
     change (Word.mk (w 25).val (w 26).val).toBitVec.toNat % 4 = 0 at alignment
     rw [address.2.1] at alignment domain
     have register := word_history_register_read limbSize true core selected query epoch history
-    simp only [if_true] at register
+    simp only [ite_true] at register
     have classified := WordMemory.Proofs.rom_selection
       (by dsimp [ROM.limit] at hp; omega) true core selected
       (address := ⟨(w 25).val, (w 26).val⟩) (ZMod.natCast_zmod_val _).symm address.1
@@ -203,14 +203,14 @@ theorem word_row_transport [Fact p.Prime] [MemoryPlatform SailRV32.exception]
   apply local_word_transport hp core (ROM.Proofs.value_boundary limbSize image setup).disabledROM
     trace.memoryEpoch aligned ordinary store selected query address configuration history
   cases store
-  · simp only [Bool.false_eq_true, if_false] at selected ⊢
+  · simp only [Bool.false_eq_true, ite_false] at selected ⊢
     have bytes := row_history_ram_read clockSize inverse accepted boundary image member
       (port := WordMemory.importedConstraintsMemoryPorts[1])
       (by simp [Row.ports, WordMemory.importedConstraintsMemoryPorts]) (by
         refine ⟨Nat.pair (w 19).val (w 20).val, ?_⟩
         simp [WordMemory.importedConstraintsMemoryPorts, MemoryAddress.code, selected, pairCode, oneValue]) history
     simpa [WordMemory.importedConstraintsMemoryPorts, MemoryPort.readCode, memoryWord, pairCode, MemoryAddress.word] using bytes
-  · simp only [if_true] at selected ⊢
+  · simp only [ite_true] at selected ⊢
     have written := row_history_ram_write clockSize inverse accepted boundary image member
       (port := WordMemory.importedConstraintsMemoryPorts[2])
       (by simp [Row.ports, WordMemory.importedConstraintsMemoryPorts]) rfl (by
@@ -279,7 +279,7 @@ theorem word_row_store_execution [Fact p.Prime] [MemoryPlatform SailRV32.excepti
   simp only [data] at selected
   have transport := word_row_transport hp inverse accepted boundary image setup aligned
     ordinary member true selected fields query configuration history
-  simp only [if_true] at transport
+  simp only [ite_true] at transport
   exact local_word_store_execution limbSize fields query instruction transport
 
 set_option backward.isDefEq.respectTransparency false in

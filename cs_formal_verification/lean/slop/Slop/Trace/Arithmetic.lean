@@ -440,7 +440,7 @@ theorem local_arithmetic_instruction_execution {p : Nat} [Fact p.Prime]
     · cases profile with
       | sail => exact False.elim (loads rfl imm rs1 (by simpa only [zero] using encoding))
       | airbender =>
-        rw [if_pos zero, Option.some.injEq] at fields
+        rw [ite_eq_left zero, Option.some.injEq] at fields
         let nop : ProgramEntry := { entry with instruction := .ITYPE (0, .Regidx 0, .Regidx 0, .ADDI) }
         have nopFields : decoderFields nop.instruction = some nop.data := by
           change some (arithmeticFields 0 0 0 0 1) = some entry.data
@@ -448,7 +448,7 @@ theorem local_arithmetic_instruction_execution {p : Nat} [Fact p.Prime]
         have checked := checkedFor nopFields (actual := nop) query .addi 0 0 0 0 0 rfl
         refine ⟨SailRV32.Functions.execute_ITYPE 0 (.Regidx 0) (.Regidx 0) .ADDI, ?_, checked⟩
         rw [encoding, zero]; rfl
-    · rw [if_neg zero, Option.some.injEq] at fields
+    · rw [ite_eq_right zero, Option.some.injEq] at fields
       rw [← fields] at family
       cases family
   case h_7 =>

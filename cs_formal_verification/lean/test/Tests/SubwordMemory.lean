@@ -282,7 +282,7 @@ example (byte : Bool) : (Word.mk ((romRow byte) 33).val ((romRow byte) 34).val).
     (cell := ⟨4, 0⟩) (by decide) byte true byte (!byte) (satisfies_rom byte)
     rfl rfl rfl rfl rfl rfl (by cases byte <;> rfl) ⟨rfl, rfl⟩
     ⟨by decide, by decide⟩ (by decide) (by cases byte <;> decide)
-  cases byte <;> simpa only [Bool.not_false, Bool.not_true, Bool.false_eq_true, if_false,
-    if_true, Bool.not_true, Nat.reduceAdd, Nat.reduceMul] using result.2
+  cases byte <;> simpa only [Bool.not_false, Bool.not_true, Bool.false_eq_true, ite_false,
+    ite_true, Bool.not_true, Nat.reduceAdd, Nat.reduceMul] using result.2
 
 end Tests.SubwordMemory

@@ -169,7 +169,7 @@ theorem worker_clock_group [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     apply List.flatMap_congr
     intro other included
     by_cases actual : Delegation.Requests.Live (Delegation.Requests.fulfillment other)
-    · simp only [actual, decide_true, if_true]
+    · simp only [actual, decide_true, ite_true]
     · simp only [actual, decide_false]
       apply List.filter_eq_nil_iff.mpr
       intro event present equal

@@ -78,9 +78,9 @@ theorem row_zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase <
       (Nat.pair (row.assignment 27).val (row.assignment 28).val) =
       Nat.pair 0 (Nat.pair 0 0) at address
     cases store : entry.data.mask.testBit 0
-    · have selected : row.assignment 10 = 0 := by simpa only [store, Bool.false_eq_true, if_false] using flag
+    · have selected : row.assignment 10 = 0 := by simpa only [store, Bool.false_eq_true, ite_false] using flag
       have register := register_address false core selected
-      simp only [Bool.false_eq_true, if_false] at register
+      simp only [Bool.false_eq_true, ite_false] at register
       have index := (Trace.Proofs.native_query_indices hp query).2.2
       change (row.assignment 7).val = entry.data.rd.toNat at index
       rw [selected, ZMod.val_zero] at address
@@ -90,7 +90,7 @@ theorem row_zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase <
         apply BitVec.eq_of_toNat_eq
         exact index.symm.trans zeroLo
       exact (decoder_load_nonzero source.fields store zero).elim
-    · have selected : row.assignment 10 = 1 := by simpa only [store, if_true] using flag
+    · have selected : row.assignment 10 = 1 := by simpa only [store, ite_true] using flag
       simp [selected, ZMod.val_one] at address
 
 theorem zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)

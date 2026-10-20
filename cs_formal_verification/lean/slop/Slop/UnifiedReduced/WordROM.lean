@@ -21,13 +21,13 @@ theorem word_rom_selection [Fact p.Prime] (hp : 131072 < p)
     cases store
     all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
       Verification.environment, selected, other] at index
-    all_goals simp only [Bool.false_eq_true, if_false, if_true]
+    all_goals simp only [Bool.false_eq_true, ite_false, ite_true]
     all_goals linear_combination index
   have equation : w 86 + 64 = w (if store then 45 else 39) + 65536 * w 54 := by
     cases store
     all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
       Verification.environment, selected, other] at residue
-    all_goals simp only [Bool.false_eq_true, if_false, if_true] at indexed ⊢
+    all_goals simp only [Bool.false_eq_true, ite_false, ite_true] at indexed ⊢
     all_goals linear_combination residue + indexed
   have range : (w 86).val < 65536 := by simpa [Expression.eval, Verification.environment, limbBase] using range
   have upper : (w (if store then 45 else 39)).val < 65536 := by
@@ -60,7 +60,7 @@ theorem word_rom_selection [Fact p.Prime] (hp : 131072 < p)
   change w 54 = (if (w 45).val < 64 then 1 else 0) at classify
   by_contra below
   have small : (w 45).val < 64 := by omega
-  rw [if_pos small, readonly] at classify
+  rw [ite_eq_left small, readonly] at classify
   exact zero_ne_one classify
 
 end Airbender.UnifiedReduced.Proofs

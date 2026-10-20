@@ -33,7 +33,7 @@ theorem Word.signed_lt_iff {left right : Word}
     omega
   unfold wordModulus at lv rv
   by_cases lp : left.hi < 32768 <;> by_cases rp : right.hi < 32768 <;>
-    simp only [lp, rp, if_true, if_false, true_and, false_and, true_or, false_or,
+    simp only [lp, rp, ite_true, ite_false, true_and, false_and, true_or, false_or,
       iff_false, iff_true] <;> omega
 
 end Airbender.Arithmetic

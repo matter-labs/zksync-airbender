@@ -108,13 +108,13 @@ theorem soundness : Properties.Soundness (circuitModel (p := babyBearModulus)).r
       · have nonzero : w 210 ≠ 0 := by
           intro bad
           exact (split.2.2.mp overflow) (zero.mp bad)
-        simp only [nonzero, ↓reduceIte, if_pos overflow,
+        simp only [nonzero, ↓reduceIte, ite_eq_left overflow,
           show (1 : ZMod babyBearModulus).val = 1 from by decide, ZMod.val_zero]
       · have highZero : halfValue w 16 = 0 := by
           by_contra nonzero
           exact overflow (split.2.2.mpr nonzero)
         have isZero := zero.mpr highZero
-        simp only [isZero, ↓reduceIte, if_neg overflow, ZMod.val_zero]
+        simp only [isZero, ↓reduceIte, ite_eq_right overflow, ZMod.val_zero]
     · simp only [ZMod.val_zero]
 
 end Airbender.Bigint.Multiplication.Proofs

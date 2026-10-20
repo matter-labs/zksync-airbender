@@ -81,7 +81,7 @@ theorem effective_address {p : Nat} [Fact p.Prime] (hp : 196608 < p)
   have high := Verification.assertion_of_holds h ⟨4, by rw [constraint_count]; decide⟩
   have lo := mapping.2.2.2.2.1
   have hi := mapping.2.2.2.2.2
-  cases store <;> simp only [Bool.false_eq_true, if_false, if_true] at selected lo hi
+  cases store <;> simp only [Bool.false_eq_true, ite_false, ite_true] at selected lo hi
   all_goals
     simp [importedConstraints, FlatOperation.constraints, Expression.eval,
       Verification.environment, selected, mapping.1, mapping.2.1,
@@ -182,7 +182,7 @@ theorem data_lookup {p : Nat} [Fact p.Prime] {rom : Table (ZMod p) (fields 9)}
     linear_combination tag
   have keyEq : w 39 = w 35 * ((if store then w 25 else w 19) +
       65536 * (if store then w 26 else w 20)) := by
-    cases store <;> simp only [Bool.false_eq_true, if_false, if_true] at selected ⊢
+    cases store <;> simp only [Bool.false_eq_true, ite_false, ite_true] at selected ⊢
     all_goals
       simp only [selected, rEq] at address key
       linear_combination key + w 35 * address

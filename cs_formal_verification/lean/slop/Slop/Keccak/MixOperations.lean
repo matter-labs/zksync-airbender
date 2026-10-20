@@ -122,7 +122,7 @@ theorem mix_xor_limb {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
   have low := mix_xor_bytes hp second h active selected operation xor ⟨2 * limb.val, by omega⟩
   have high := mix_xor_bytes hp second h active selected operation xor ⟨2 * limb.val + 1, by omega⟩
   have routes := mix_routes (by omega) second h active selected operation limb
-  simp only [xor, Bool.false_eq_true, if_false] at routes
+  simp only [xor, Bool.false_eq_true, ite_false] at routes
   have ia : 103 + 24 * operation.val + 2 * limb.val =
       102 + 24 * operation.val + (2 * limb.val + 1) := by omega
   have ib : 111 + 24 * operation.val + 2 * limb.val =

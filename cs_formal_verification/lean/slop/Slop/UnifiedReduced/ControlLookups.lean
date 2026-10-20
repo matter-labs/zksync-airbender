@@ -24,11 +24,11 @@ private theorem control_location {before : Reference.RiscV.Sail.State} {i : Fin 
     (valid : tag = 1 ∨ tag = 5 ∨ tag = 2 ∨ tag = 51) (selected : (row before i)[9] = tag) :
     controlOffset tag ≤ i.val ∧ i.val < controlOffset tag + controlSize tag := by
   by_cases top : i.val < 1048961
-  · have same : row before i = fixedRow ⟨i.val, top⟩ := dif_pos top
+  · have same : row before i = fixedRow ⟨i.val, top⟩ := dite_eq_left top
     rw [same] at selected
     by_cases first : i.val < 524545
     · have same : fixedRow ⟨i.val, top⟩ = binaryRow ⟨i.val, first⟩ := by
-        simp only [fixedRow, first, dif_pos]
+        simp only [fixedRow, first, dite_eq_left]
       rw [same] at selected
       have tags := binary_tags ⟨i.val, first⟩
       rcases valid with rfl | rfl | rfl | rfl <;> omega

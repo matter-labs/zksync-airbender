@@ -86,10 +86,10 @@ theorem window_binding [Fact p.Prime] (hp : 8388608 ≤ p)
     exact ⟨(reads i).1, terminal_mapping_read source target finishInputs.addresses (tracked i) (reads i).2⟩
   have stateTracked : ∀ i : Fin 16, Cell.ram (statePointer + BitVec.ofNat 32 (4 * (0 + i.val))) ∈ cells := by
     intro i
-    simpa only [if_true, Nat.zero_add] using domain true i
+    simpa only [ite_true, Nat.zero_add] using domain true i
   have messageTracked : ∀ i : Fin 16, Cell.ram (messagePointer + BitVec.ofNat 32 (4 * (0 + i.val))) ∈ cells := by
     intro i
-    simpa only [Bool.false_eq_true, if_false, Nat.zero_add] using domain false i
+    simpa only [Bool.false_eq_true, ite_false, Nat.zero_add] using domain false i
   have atWindow : WorkVector.WordMapping atStart atFinish statePointer messagePointer input message output :=
     ⟨mapping.pointers, mapping.inputWords, mapping.messageWords,
       transfer stateTracked mapping.outputWords, transfer messageTracked mapping.messageUnchanged⟩

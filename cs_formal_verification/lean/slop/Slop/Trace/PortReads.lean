@@ -190,7 +190,7 @@ theorem word_history_register_read [Fact p.Prime] (hp : Arithmetic.limbBase < p)
   cases store
   · have address : WordMemory.importedConstraintsMemoryPorts[2].address.code w =
         (Cell.register entry.data.rd).addressCode := by
-      simp only [Bool.false_eq_true, if_false] at selected wiring
+      simp only [Bool.false_eq_true, ite_false] at selected wiring
       simp [WordMemory.importedConstraintsMemoryPorts, MemoryAddress.code, pairCode,
         Cell.addressCode, selected, wiring.1, wiring.2, indices.2.2]
     have read := row_history_read epoch history
@@ -200,7 +200,7 @@ theorem word_history_register_read [Fact p.Prime] (hp : Arithmetic.limbBase < p)
       memoryWord, Nat.unpair_pair, Cell.read] using read
   · have address : WordMemory.importedConstraintsMemoryPorts[1].address.code w =
         (Cell.register entry.data.rs2).addressCode := by
-      simp only [if_true] at selected wiring
+      simp only [ite_true] at selected wiring
       simp [WordMemory.importedConstraintsMemoryPorts, MemoryAddress.code, pairCode,
         Cell.addressCode, selected, wiring.1, wiring.2, indices.2.1]
     have read := row_history_read epoch history
@@ -223,7 +223,7 @@ theorem word_history_load_write [Fact p.Prime] (hp : Arithmetic.limbBase < p)
   change (w 5).val = entry.data.rs1.toNat ∧ (w 6).val = entry.data.rs2.toNat ∧
     (w 7).val = entry.data.rd.toNat at indices
   have wiring := WordMemory.Proofs.register_address false constraints selected
-  simp only [Bool.false_eq_true, if_false] at wiring
+  simp only [Bool.false_eq_true, ite_false] at wiring
   have address : WordMemory.importedConstraintsMemoryPorts[2].address.code w =
       (Cell.register entry.data.rd).addressCode := by
     simp [WordMemory.importedConstraintsMemoryPorts, MemoryAddress.code, pairCode,

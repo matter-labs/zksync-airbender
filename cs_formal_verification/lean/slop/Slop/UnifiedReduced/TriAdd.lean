@@ -18,7 +18,7 @@ private theorem triadd_result {p : Nat} [Fact p.Prime] (hp : 196608 < p)
     (mapping : TriAdd.Calculation.WordMapping input output w) (nonzero : input.rd ≠ Sail.zeroRegister) :
     output.destination.toBitVec = input.oldDestination.toBitVec + input.left.toBitVec + input.right.toBitVec := by
   have selected := interfaces.selected
-  simp only [nonzero, if_false] at selected
+  simp only [nonzero, ite_false] at selected
   have other := dispatch_exclusive (by omega) h interfaces.active 9 selected
   have s11 : w 11 = 0 := other 0 (by decide)
   have s12 : w 12 = 0 := other 1 (by decide)

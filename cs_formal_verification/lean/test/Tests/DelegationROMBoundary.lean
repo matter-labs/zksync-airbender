@@ -172,7 +172,7 @@ theorem worker_token_changes_under_rom_view :
   intro equal
   have value := congrArg MemoryToken.value equal
   simp only [Trace.ROMView.token, address, Trace.ROMView.shadow_ram, show (0 : BitVec 32).toNat < ROM.limit by decide,
-    if_true, physical] at value
+    ite_true, physical] at value
   have impossible : ¬ Nat.pair (Word.ofBitVec (Tests.DelegationCaller.entry .bigint).bits).lo
       (Word.ofBitVec (Tests.DelegationCaller.entry .bigint).bits).hi = (readToken assignment statePort).value := by
     decide +kernel

@@ -36,7 +36,7 @@ private theorem division_destination {p : Nat} [Fact p.Prime] (hp : 536870912 �
     have value := division_by_zero (by omega) remainder h selected other zeroFields
     cases remainder <;> simpa [zero, Word.toBitVec] using value
   · have value := division_nonzero hp inverse h remainder selected other leftBound zero
-    simp only [if_neg zero, Word.toBitVec, value]
+    simp only [ite_eq_right zero, Word.toBitVec, value]
 
 theorem soundness {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
     (inverse : (-30720 : ZMod p) * 65536 = 1) :
@@ -112,7 +112,7 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
       rw [destination]
       have maxValue : SailRV32.Functions.to_bits_truncate (l := 32) (-1) =
           BitVec.ofNat 32 4294967295 := by decide
-      by_cases zero : input.right.value = 0 <;> simp only [zero, if_true, if_false]
+      by_cases zero : input.right.value = 0 <;> simp only [zero, ite_true, ite_false]
       · rw [maxValue]
       · rw [← Int.natCast_ediv, Sail.truncate_nat]
     · simp only [SailRV32.Functions.execute_REM]
@@ -120,7 +120,7 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
       simp [_root_.Sail.BitVec.toNatInt, Word.toBitVec_toNat interface.leftBound,
         Word.toBitVec_toNat rightBound, result, operation] at destination ⊢
       rw [destination]
-      by_cases zero : input.right.value = 0 <;> simp only [zero, if_true, if_false]
+      by_cases zero : input.right.value = 0 <;> simp only [zero, ite_true, ite_false]
       · rw [Sail.truncate_nat]
       · rw [← Int.ofNat_tmod, Sail.truncate_nat]
   obtain ⟨after, write⟩ := Sail.write_success input.rd output.destination.toBitVec prepared

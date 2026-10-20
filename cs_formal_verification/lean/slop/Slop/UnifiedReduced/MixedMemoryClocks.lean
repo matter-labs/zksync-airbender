@@ -15,7 +15,7 @@ theorem machine_ports_caller [Fact p.Prime] {data : RequestTrace p}
     {row : Trace.Row p UnifiedFamily} (member : row ∈ data.callers) :
     machinePorts row = architecturalPorts := by
   have selected : Selected row.assignment := of_decide_eq_true (List.mem_filter.mp member).2
-  simp only [machinePorts, if_pos selected]
+  simp only [machinePorts, ite_eq_left selected]
 
 theorem machine_ports_ordinary [Fact p.Prime] {data : RequestTrace p}
     {row : Trace.Row p UnifiedFamily} (member : row ∈ data.machine.rows)
@@ -23,7 +23,7 @@ theorem machine_ports_ordinary [Fact p.Prime] {data : RequestTrace p}
   have notSelected : ¬ Selected row.assignment := by
     intro selected
     exact ordinary (List.mem_filter.mpr ⟨member, decide_eq_true selected⟩)
-  simp only [machinePorts, if_neg notSelected]
+  simp only [machinePorts, ite_eq_right notSelected]
 
 theorem machine_port_native (row : Trace.Row p UnifiedFamily)
     {port : MemoryPort} (member : port ∈ machinePorts row) : port ∈ row.ports := by

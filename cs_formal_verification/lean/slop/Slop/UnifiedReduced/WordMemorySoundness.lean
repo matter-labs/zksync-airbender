@@ -54,7 +54,7 @@ private theorem retire_ram [MemoryPlatform SailRV32.exception]
   let prepared : State := { input.before with regs := input.before.regs.insert .nextPC output.pc.toBitVec }
   have register := rX_nextPC (pc := output.pc.toBitVec) input.rs1 sourceRead
   cases mode : input.store
-  · simp only [Bool.false_eq_true, if_false]
+  · simp only [Bool.false_eq_true, ite_false]
     apply retire_of_destination pcRead successor
     have bytes := loadRead mode
     rw [address, ← copied] at bytes
@@ -69,7 +69,7 @@ private theorem retire_ram [MemoryPlatform SailRV32.exception]
       rfl
     exact ⟨written, by simpa [Airbender.WordMemory.execution, Airbender.WordMemory.instruction, Trace.instructionClause, mode]
       using executed.trans (by simpa only [writeResult] using projected), projected⟩
-  · simp only [if_true]
+  · simp only [ite_true]
     apply retire_with_memory pcRead
     obtain ⟨written, memoryRun, registers⟩ := write_word_frame output.address.toBitVec input.readData.toBitVec prepared
     have virtual := access.store mode output.pc.toBitVec input.readData.toBitVec register

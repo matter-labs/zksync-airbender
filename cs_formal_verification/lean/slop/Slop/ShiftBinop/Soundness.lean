@@ -149,7 +149,7 @@ private theorem shift_count {p : Nat} [Fact p.Prime] (hp : 256 < p)
     rw [source] at truncated
     norm_num at truncated
     simp [reverse, immediate, truncated]
-  simp only [reverse, if_false]
+  simp only [reverse, ite_false]
   cases kind : input.immediate
   · have source : w 25 = ((input.right.extractLsb' 0 8).toNat : ZMod p) := by
       simpa [kind, reverse] using mapping.shiftLowByte shift
@@ -167,7 +167,7 @@ private theorem shift_count {p : Nat} [Fact p.Prime] (hp : 256 < p)
     rw [source] at truncated
     norm_num at truncated
     have zero : w 35 = 0 := truncated
-    simp only [if_true, zero, zero_add, immediate]
+    simp only [ite_true, zero, zero_add, immediate]
     rw [ZMod.val_natCast, Nat.mod_eq_of_lt (by
       have := (input.encodedImmediate.extractLsb' 0 5).isLt; omega)]
 

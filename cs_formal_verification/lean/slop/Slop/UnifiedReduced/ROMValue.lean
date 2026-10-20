@@ -40,7 +40,7 @@ theorem word_rom_value [Fact p.Prime] (hp : 4194304 ≤ p)
   change w 54 = (if (w 39).val < 64 then 1 else 0) at classify
   have inside : (w 39).val < 64 := by
     by_contra outside
-    rw [if_neg outside, rom] at classify
+    rw [ite_eq_right outside, rom] at classify
     exact one_ne_zero classify
   have lowBound := Verification.range16_bound (Verification.lookup_of_holds holds ⟨6, by rw [lookup_count]; decide⟩)
   have lowBound : (w 38).val < 65536 := by

@@ -35,7 +35,7 @@ private theorem standard_selectors {p : Nat} [Fact p.Prime] (hp : 18 < p)
   have selected := dc.selected
   have other := dispatch_exclusive hp h dc.active (standardSelector input) selected
   cases hop : input.row.opcode <;>
-    simp only [standardSelector, nonzero, if_false, hop] at selected other ⊢
+    simp only [standardSelector, nonzero, ite_false, hop] at selected other ⊢
   all_goals repeat' apply And.intro
   all_goals first
     | exact selected

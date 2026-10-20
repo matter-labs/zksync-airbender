@@ -286,14 +286,14 @@ theorem prepared_round_two_bits_rejected [Fact p.Prime] (hp : 8388608 ≤ p)
     (firstBit : worker.assignment Blake2Round.Variables.roundBits[first] = 1)
     (lastBit : worker.assignment Blake2Round.Variables.roundBits[last] = 1) : False := by
   obtain ⟨round, mask⟩ := UnifiedReduced.Caller.prepared_round_masks_soundness hp clockInverse accepted context aligned worker member
-  haveI : Fact (1 < p) := ⟨(Fact.out : p.Prime).one_lt⟩
+  have : Fact (1 < p) := ⟨(Fact.out : p.Prime).one_lt⟩
   by_cases same : first = round
   · have other : last ≠ round := by omega
     have zero := mask last
-    rw [if_neg other, lastBit] at zero
+    rw [ite_eq_right other, lastBit] at zero
     exact one_ne_zero zero
   · have zero := mask first
-    rw [if_neg same, firstBit] at zero
+    rw [ite_eq_right same, firstBit] at zero
     exact one_ne_zero zero
 
 private def chainedBefore : State := wordWriteState (before 0) 4 0x00000613
@@ -642,14 +642,14 @@ theorem prepared_round_region_two_bits_rejected [Fact p.Prime] (hp : 8388608 ≤
     (firstBit : worker.assignment Blake2Round.Variables.roundBits[first] = 1)
     (lastBit : worker.assignment Blake2Round.Variables.roundBits[last] = 1) : False := by
   obtain ⟨round, mask⟩ := UnifiedReduced.Caller.prepared_round_region_masks_soundness hp clockInverse accepted context scope worker member
-  haveI : Fact (1 < p) := ⟨(Fact.out : p.Prime).one_lt⟩
+  have : Fact (1 < p) := ⟨(Fact.out : p.Prime).one_lt⟩
   by_cases same : first = round
   · have other : last ≠ round := by omega
     have zero := mask last
-    rw [if_neg other, lastBit] at zero
+    rw [ite_eq_right other, lastBit] at zero
     exact one_ne_zero zero
   · have zero := mask first
-    rw [if_neg same, firstBit] at zero
+    rw [ite_eq_right same, firstBit] at zero
     exact one_ne_zero zero
 
 private def sequentialBefore (custom : Bool) : State := wordWriteState (wordWriteState initialState 0 (if custom then 0xc2c64673 else 0x00c60633)) 4 0x00000613

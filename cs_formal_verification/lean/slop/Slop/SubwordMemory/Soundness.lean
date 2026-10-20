@@ -77,7 +77,7 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
     cases eq : highHalf <;> simp [offset, low, eq]
   refine ⟨cellCorrect, ?_⟩
   cases mode : input.store
-  · simp only [Bool.false_eq_true, if_false]
+  · simp only [Bool.false_eq_true, ite_false]
     have load : w 10 = 0 := by simpa [mode] using interface.selected
     let nativeWord := if output.cell.hi < 64 then program (output.cell.value / 4) else input.readData.toBitVec
     have loaded : readBytes (ue := SailRV32.exception) 4 output.cell.value input.before =
@@ -93,7 +93,7 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
         rw [← mapping.outputLo, ← mapping.outputHi] at data
         have read := interface.romImage mode inROM
         rw [cellNat] at read
-        simpa only [nativeWord, inROM, if_true] using And.intro read data.2
+        simpa only [nativeWord, inROM, ite_true] using And.intro read data.2
       · have outside : 64 ≤ output.cell.hi := by omega
         have ram : w 41 = 0 := by simpa [inROM] using classified.1
         have data := ram_load_data (by omega : 262144 < p) input.byte input.signed highByte highHalf h
@@ -102,7 +102,7 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
         rw [← mapping.outputLo, ← mapping.outputHi] at data
         have read := interface.loadRead mode outside
         rw [← cellCorrect, cellNat] at read
-        simpa only [nativeWord, inROM, if_false] using And.intro read data.2
+        simpa only [nativeWord, inROM, ite_false] using And.intro read data.2
     have bytes := Sail.read_subword input.byte offsetBound even loaded.1
     rw [← naturalAddress] at bytes
     have access := interface.memory.load mode output.pc.toBitVec _ sourceRead bytes
@@ -121,7 +121,7 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
     cases hb : input.byte <;>
       simpa [execution, instruction, Trace.instructionClause, mode, hb, Sail.writeResult] using
         executed.trans (by simpa only [Sail.writeResult] using resultRun)
-  · simp only [if_true]
+  · simp only [ite_true]
     have store : w 10 = 1 := by simpa [mode] using interface.selected
     have dataMapping := And.intro mapping.readLo (And.intro (mapping.oldLo mode) (mapping.oldHi mode))
     have outside := classified.2 mode

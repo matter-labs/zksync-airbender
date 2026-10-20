@@ -75,9 +75,9 @@ theorem call_state_trace [Fact p.Prime] (hp : 8388608 ≤ p)
   have actualMask := exclusive_mask (by norm_num [timestampBase] at clockBound; omega) core flags round read
   have same : chosen = round := by
     have one := actualMask chosen
-    rw [mask chosen, if_pos rfl] at one
+    rw [mask chosen, ite_eq_left rfl] at one
     by_contra different
-    rw [if_neg different] at one
+    rw [ite_eq_right different] at one
     exact one_ne_zero one
   subst chosen
   obtain ⟨events, eventPerm, current, observed⟩ := ports i.val (by simpa only [List.length_reverse, count] using i.isLt)

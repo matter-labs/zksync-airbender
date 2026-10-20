@@ -266,7 +266,7 @@ theorem unsigned_destination {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
   by_cases lt : left.value < right.value
   · have one := comparison.mpr lt
     have oneVal : (1 : ZMod p).val = 1 := ZMod.val_one'' (by omega)
-    simp only [if_pos lt]
+    simp only [ite_eq_left lt]
     simp [one, oneVal]
   · have notOne : w 38 ≠ 1 := fun one => lt (comparison.mp one)
     have flag := Verification.assertion_of_holds h
@@ -274,7 +274,7 @@ theorem unsigned_destination {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
     simp [importedConstraints, FlatOperation.constraints, Expression.eval,
       Verification.environment, mul_eq_zero, ← sub_eq_add_neg, sub_eq_zero] at flag
     have zero : w 38 = 0 := flag.resolve_right notOne
-    simp only [if_neg lt]
+    simp only [ite_eq_right lt]
     simp [zero]
 
 end Airbender.JumpBranchSlt.Proofs

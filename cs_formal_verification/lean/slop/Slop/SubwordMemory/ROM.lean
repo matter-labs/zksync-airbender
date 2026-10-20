@@ -38,7 +38,7 @@ private theorem rom_values {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
       | (change (45 : Nat) < p; omega)
   have natural : (subwordRow program i)[8] = (if byte then 45 else 44) := by
     apply bounded_nat_eq (F := ZMod p) (p := p) tagBound
-      (by cases byte <;> simp only [Bool.false_eq_true, if_false, if_true] <;> omega)
+      (by cases byte <;> simp only [Bool.false_eq_true, ite_false, ite_true] <;> omega)
     simpa only [Vector.getElem_map] using selected
   have indexBound := i.isLt
   cases byte <;> unfold subwordRow at natural ⊢ <;> dsimp only at natural ⊢
@@ -53,11 +53,11 @@ private theorem rom_values {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
     | (change (45 : Nat) = 44 at natural; contradiction)
     | (change (44 : Nat) = 44 at natural
        refine ⟨i.val - 655361, by omega, ?_, ?_, ?_⟩
-       all_goals simp_all only [romKey, romData, Bool.false_eq_true, if_false, Nat.div_one, Vector.getElem_map]
+       all_goals simp_all only [romKey, romData, Bool.false_eq_true, ite_false, Nat.div_one, Vector.getElem_map]
        all_goals rfl)
     | (change (45 : Nat) = 45 at natural
        refine ⟨i.val - 4849665, by omega, ?_, ?_, ?_⟩
-       all_goals simp_all only [romKey, romData, if_true, Vector.getElem_map]
+       all_goals simp_all only [romKey, romData, ite_true, Vector.getElem_map]
        all_goals rfl)
 
 /-- Every modeled ROM row returns canonical result limbs, independently of
@@ -101,7 +101,7 @@ private theorem rom_decode (byte signed highHalf highByte : Bool) {cell : Word} 
   cases byte <;> cases signed <;> cases highHalf <;> cases highByte
   all_goals solve
     | (have := aligned rfl; contradiction)
-    | (simp only [romKey, Bool.false_eq_true, if_false, if_true, Nat.div_one] at size key ⊢
+    | (simp only [romKey, Bool.false_eq_true, ite_false, ite_true, Nat.div_one] at size key ⊢
        have signBit : i / 4 % 2 < 2 := Nat.mod_lt _ (by decide)
        have halfBit : i / 2 % 2 < 2 := Nat.mod_lt _ (by decide)
        have byteBit : i % 2 < 2 := Nat.mod_lt _ (by decide)
@@ -139,7 +139,7 @@ theorem subword_rom_result {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
       8388608 * (if highHalf then 1 else 0) + 16777216 * (if highByte then 1 else 0) < p := by
     cases signed <;> cases highHalf <;> cases highByte <;> simp <;> omega
   have keyBound : romKey byte i < p := by
-    cases byte <;> simp only [romKey, Bool.false_eq_true, if_false, if_true, Nat.div_one] at size ⊢ <;> omega
+    cases byte <;> simp only [romKey, Bool.false_eq_true, ite_false, ite_true, Nat.div_one] at size ⊢ <;> omega
   have natural := bounded_nat_eq (F := ZMod p) (p := p) inputBound keyBound (input.symm.trans key)
   have decoded := rom_decode byte signed highHalf highByte bounded inROM size aligned natural
   let half := (program (cell.value / 4)).toNat / (if highHalf then 65536 else 1) % 65536
@@ -190,8 +190,8 @@ theorem subword_rom_result {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
     omega
   have halfEq : (if highHalf then word.hi else word.lo) = half := by
     cases highHalf
-    · simp only [word, half, native, Bool.false_eq_true, if_false, Nat.div_one]
-    · simp only [word, half, native, if_true]
+    · simp only [word, half, native, Bool.false_eq_true, ite_false, Nat.div_one]
+    · simp only [word, half, native, ite_true]
       apply (Nat.mod_eq_of_lt (show (program (cell.value / 4)).toNat / 65536 < 65536 by omega)).symm
   have slice := subword_extract byte highHalf highByte word wordBound aligned
   rw [nativeEq, halfEq] at slice
@@ -199,9 +199,9 @@ theorem subword_rom_result {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
   · change _ = SailRV32.Functions.extend_value (!signed)
       ((program (cell.value / 4) >>> (8 * ((if highByte then 1 else 0) + 2 * (if highHalf then 1 else 0)))).setWidth 16)
     rw [slice]
-    simp only [Bool.false_eq_true, if_false]
+    simp only [Bool.false_eq_true, ite_false]
   · change _ = SailRV32.Functions.extend_value (!signed)
       ((program (cell.value / 4) >>> (8 * ((if highByte then 1 else 0) + 2 * (if highHalf then 1 else 0)))).setWidth 8)
     rw [slice]
-    simp only [if_true]
+    simp only [ite_true]
 end Airbender.Verification

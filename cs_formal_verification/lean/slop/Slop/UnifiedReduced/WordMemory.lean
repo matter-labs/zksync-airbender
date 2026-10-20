@@ -31,7 +31,7 @@ theorem word_memory_address [Fact p.Prime] (hp : 196608 < p)
   cases store
   all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
     Verification.environment, selected, other] at low high
-  all_goals simp only [Bool.false_eq_true, if_false, if_true] at result ⊢
+  all_goals simp only [Bool.false_eq_true, ite_false, ite_true] at result ⊢
   all_goals apply (by simpa [Word.toBitVec, Word.value] using result : _ → _ → _)
   all_goals first | linear_combination low | linear_combination high
 
@@ -65,7 +65,7 @@ theorem word_memory_ram [Fact p.Prime] (hp : 131072 < p)
     cases store
     all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
       Verification.environment, selected, other] at index
-    all_goals simp only [Bool.false_eq_true, if_false, if_true]
+    all_goals simp only [Bool.false_eq_true, ite_false, ite_true]
     all_goals linear_combination index
   have upper : (w (if store then 45 else 39)).val < limbBase := by
     cases store

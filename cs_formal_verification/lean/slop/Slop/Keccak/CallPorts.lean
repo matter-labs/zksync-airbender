@@ -20,7 +20,7 @@ theorem scheduled_lane_indices [Fact p.Prime] {w : Nat → ZMod p}
     (control : (w Variables.controlReadLo).val = (scheduleControl ⟨i.val, by omega⟩).packed) :
     ∀ lane : Fin 6, (w (7 + lane.val)).val =
       (Controller.rows (Fin.ofNat 4096 ((scheduleControl ⟨i.val, by omega⟩).packed + 2048)))[lane] := by
-  haveI : Fact (1 < p) := ⟨(Fact.out : p.Prime).one_lt⟩
+  have : Fact (1 < p) := ⟨(Fact.out : p.Prime).one_lt⟩
   obtain ⟨key, keyValue, selected⟩ := effects.indices
   have keyEqual : key = Fin.ofNat 4096 ((scheduleControl ⟨i.val, by omega⟩).packed + 2048) := by
     apply Fin.ext
@@ -94,20 +94,20 @@ theorem scheduled_ports_distinct [Fact p.Prime] (hp : 65536 ≤ p) {w : Nat → 
   have bBound := b.isLt
   apply Fin.ext
   by_cases first : a.val < 2
-  · rw [if_pos first] at sameCode
+  · rw [ite_eq_left first] at sameCode
     by_cases second : b.val < 2
-    · rw [if_pos second] at sameCode
+    · rw [ite_eq_left second] at sameCode
       have equal := (Nat.pair_eq_pair.mp (Nat.pair_eq_pair.mp sameCode).2).1
       omega
-    · rw [if_neg second] at sameCode
+    · rw [ite_eq_right second] at sameCode
       have impossible := (Nat.pair_eq_pair.mp sameCode).1
       omega
-  · rw [if_neg first] at sameCode
+  · rw [ite_eq_right first] at sameCode
     by_cases second : b.val < 2
-    · rw [if_pos second] at sameCode
+    · rw [ite_eq_left second] at sameCode
       have impossible := (Nat.pair_eq_pair.mp sameCode).1
       omega
-    · rw [if_neg second] at sameCode
+    · rw [ite_eq_right second] at sameCode
       have low := (Nat.pair_eq_pair.mp (Nat.pair_eq_pair.mp sameCode).2).1
       have sameLane : (w (7 + (a.val - 2) / 2)).val = (w (7 + (b.val - 2) / 2)).val := by omega
       have equal := @lanes ⟨(a.val - 2) / 2, by omega⟩

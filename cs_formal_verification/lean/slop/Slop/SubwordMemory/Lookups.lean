@@ -41,7 +41,7 @@ theorem subword_ram_values {p : Nat} [Fact p.Prime] (hp : 262144 < p)
       | (change (45 : Nat) < p; omega)
   have natural : (subwordRow program i)[8] = (if byte then 43 else 42) := by
     apply bounded_nat_eq (F := ZMod p) (p := p) tagBound
-      (by cases byte <;> simp only [Bool.false_eq_true, if_false, if_true] <;> omega)
+      (by cases byte <;> simp only [Bool.false_eq_true, ite_false, ite_true] <;> omega)
     simpa only [Vector.getElem_map] using selected
   have indexBound := i.isLt
   cases byte <;> unfold subwordRow at natural ⊢ <;> dsimp only at natural ⊢
@@ -93,7 +93,7 @@ theorem subword_store_values {p : Nat} [Fact p.Prime] (hp : 262144 < p)
       | (change (45 : Nat) < p; omega)
   have natural : (subwordRow program i)[8] = (if clear then 30 else 29) := by
     apply bounded_nat_eq (F := ZMod p) (p := p) tagBound
-      (by cases clear <;> simp only [Bool.false_eq_true, if_false, if_true] <;> omega)
+      (by cases clear <;> simp only [Bool.false_eq_true, ite_false, ite_true] <;> omega)
     simpa only [Vector.getElem_map] using selected
   have indexBound := i.isLt
   cases clear <;> unfold subwordRow at natural ⊢ <;> dsimp only at natural ⊢
@@ -152,7 +152,7 @@ theorem subword_store_contribution_bound (clear : Bool) (key : Nat) :
   have halfBound : key % 65536 < 65536 := Nat.mod_lt _ (by decide)
   have byteBound : key % 256 < 256 := Nat.mod_lt _ (by decide)
   unfold subwordStoreContribution
-  cases clear <;> simp only [Bool.false_eq_true, if_false, if_true]
+  cases clear <;> simp only [Bool.false_eq_true, ite_false, ite_true]
   all_goals split_ifs <;> omega
 
 /-- A bounded packed input selects the unique fixed store-table contribution. -/
@@ -200,7 +200,7 @@ theorem extend_subword_limbs (byte signed : Bool) (value : Nat)
     · apply BitVec.eq_of_toNat_eq
       simp only [Word.toBitVec, Word.value, limbBase, SailRV32.Functions.extend_value,
         SailRV32.Functions.zero_extend, SailRV32.Functions.sign_extend, Sail.BitVec.zeroExtend,
-        Sail.BitVec.signExtend, Bool.false_eq_true, if_false, if_true,
+        Sail.BitVec.signExtend, Bool.false_eq_true, ite_false, ite_true,
         BitVec.zeroExtend, BitVec.toNat_signExtend, BitVec.msb_eq_decide,
         BitVec.toNat_setWidth, BitVec.toNat_ofNat]
       norm_num only [Nat.reducePow, Nat.reduceSub, Nat.reduceMul, Nat.reduceAdd, Bool.false_and,
@@ -272,7 +272,7 @@ theorem subword_packed_extension (byte signed highByte : Bool) (half : Nat) (bou
   have canonical (n : Nat) : BitVec.ofNat 8 (n % 256) = BitVec.ofNat 8 n := by
     apply BitVec.eq_of_toNat_eq
     simp
-  cases byte <;> simpa only [low, sign, high, Bool.false_eq_true, if_false, if_true, canonical] using ext
+  cases byte <;> simpa only [low, sign, high, Bool.false_eq_true, ite_false, ite_true, canonical] using ext
 
 theorem subword_extract (byte highHalf highByte : Bool) (word : Word) (bound : word.Bounded)
     (aligned : byte = false → highByte = false) :
@@ -288,7 +288,7 @@ theorem subword_extract (byte highHalf highByte : Bool) (word : Word) (bound : w
   cases byte <;> cases highHalf <;> cases highByte
   all_goals first
     | (have := aligned rfl; contradiction)
-    | (simp only [Bool.false_eq_true, if_false, if_true]
+    | (simp only [Bool.false_eq_true, ite_false, ite_true]
        apply BitVec.eq_of_toNat_eq
        simp only [BitVec.toNat_setWidth, BitVec.toNat_ushiftRight, BitVec.toNat_ofNat, canonical]
        norm_num only [Nat.reducePow, Nat.reduceMul, Nat.reduceAdd, Nat.div_one, Nat.shiftRight_eq_div_pow]

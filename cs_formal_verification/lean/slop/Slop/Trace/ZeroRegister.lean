@@ -29,10 +29,10 @@ theorem decoder_zero_nop {instruction : SailRV32.instruction} {data : DecoderDat
       else some ⟨.wordMemory, rs1, 0, rd,
         Word.ofBitVec (SailRV32.Functions.sign_extend (m := 32) imm), 0, 0⟩) = some data at fields
     by_cases discarded : (rd : BitVec 5) = 0
-    · rw [if_pos discarded, Option.some.injEq] at fields
+    · rw [ite_eq_left discarded, Option.some.injEq] at fields
       subst data
       rfl
-    · rw [if_neg discarded, Option.some.injEq] at fields
+    · rw [ite_eq_right discarded, Option.some.injEq] at fields
       subst data
       cases family
   all_goals first
@@ -55,10 +55,10 @@ theorem decoder_load_nonzero {instruction : SailRV32.instruction} {data : Decode
       else some ⟨.wordMemory, rs1, 0, rd,
         Word.ofBitVec (SailRV32.Functions.sign_extend (m := 32) imm), 0, 0⟩) = some data at fields
     by_cases discarded : (rd : BitVec 5) = 0
-    · rw [if_pos discarded, Option.some.injEq] at fields
+    · rw [ite_eq_left discarded, Option.some.injEq] at fields
       subst data
       cases family
-    · rw [if_neg discarded, Option.some.injEq] at fields
+    · rw [ite_eq_right discarded, Option.some.injEq] at fields
       subst data
       exact discarded
   all_goals first
