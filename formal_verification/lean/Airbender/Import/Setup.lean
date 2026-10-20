@@ -479,4 +479,26 @@ def parseSubwordLoad (source : String) : Except String ControlArtifact := do
   artifact.validateSubwordLoad
   return artifact
 
+/-- Actual native v2 subword store-clear region, including its compiled placement.
+    Other subword lookup regions and full circuit import remain separate. -/
+def ControlArtifact.validateSubwordStoreClear (artifact : ControlArtifact) : Except String Unit := do
+  unless artifact.version == 1 && artifact.field_modulus == mersenne31Modulus &&
+      artifact.profile == "subword_memory_store_clear" do throw "unsupported native subword store-clear profile"
+  unless artifact.generic_rows == 2097152 && artifact.tables.size == 1 do
+    throw "unexpected native subword store-clear extent"
+  let some region := artifact.tables[0]? | throw "missing native subword store-clear table"
+  unless region.id == 54 && region.offset == 5308417 do throw "unexpected native subword store-clear region"
+  region.data.validate 2097152 4
+
+def parseSubwordStoreClear (source : String) : Except String ControlArtifact := do
+  let json ← Json.parse source
+  exactKeys json #["version", "field_modulus", "profile", "generic_rows", "tables"]
+  for region in (← (← json.getObjVal? "tables").getArr?) do
+    exactKeys region #["id", "offset", "data"]
+    matrixKeys (← region.getObjVal? "data")
+  let artifact : ControlArtifact ← fromJson? json
+  artifact.validateSubwordStoreClear
+  return artifact
+
+
 end Airbender.Setup

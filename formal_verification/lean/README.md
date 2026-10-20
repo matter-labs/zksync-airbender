@@ -57,6 +57,11 @@ byte and halfword outputs, all offsets and retained unused keys. Its small publi
 claim derives both output bounds from lookup membership. Full subword circuit,
 initialized history and original instruction execution remain unfinished.
 
+The [original-RAM-limb clearing helper](Airbender/Review/Helpers/Tables/SubwordStoreClearTheorems.lean)
+certifies all 2,097,152 actual native store-clear rows, including both byte masks,
+all four offsets and retained unused zero outputs. Written-value placement and
+full subword native/history/original instruction execution remain unfinished.
+
 The arithmetic checkpoint includes complete initialized ADD/ADDI/SUB/LUI/AUIPC normal-path
 execution and conditional row soundness, including actual masked destination
 writes, original-opcode discarded x0 writes and aligned 32-bit PC wraparound. Native ten-column decoder placement/query order is checked;

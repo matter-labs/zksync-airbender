@@ -634,3 +634,34 @@ Full subword constraints, remaining store/ROM regions, public decoding,
 initialized native memory/history, original instruction execution and physical
 argument binding remain unfinished. The findings standard and historical
 findings/coverage archive are unchanged.
+
+## Native subword original-RAM clearing table checkpoint (2026-10-20)
+
+The native v2 original-RAM-limb clearing table now has a complete certificate for
+all 2,097,152 actual exported rows. Its native ID is 54 and compiled offset is
+5,308,417, obtained from the actual generator and compiled layout. [Literal data](Airbender/Review/Helpers/Tables/NativeSubwordStoreClearData.lean)
+uses the unchanged pinned native generator and lossless shared codec. Strict
+import checks field, profile, tag, placement, extent, shape and canonicality;
+the standard native gate reproduces the JSON byte for byte.
+
+[The short public helper](Airbender/Review/Helpers/Tables/SubwordStoreClearTheorems.lean)
+derives the canonical key, exact retained original RAM byte, unused zero output
+and 16-bit bound from original Clean lookup membership. The key retains the
+preselected limb, both offset bits and raw funct3. SB preserves the byte outside
+the selected write position. SH, SW and all unused funct3 keys retain the native
+zero outputs. These isolated keys do not establish accepted full store behavior.
+
+[Internal proof assembly](Airbender/Proofs/SubwordMemory/StoreClear.lean) covers
+all actual affine/periodic blocks symbolically over 32 control groups, reusing
+the verified native block helpers and pinned v3 periodic upper-byte proof.
+Exact tagged native/Clean membership is proved; no table-equivalence premise,
+expected output, new axiom or increased proof/resource limit is used.
+[Fourteen kernel regression roots](Tests/SubwordStoreClear.lean) cover all four
+offsets, retained/cleared byte boundaries, SH/SW/unused zero outputs and rejection
+of changed clearing or unused fields. Fourteen new importer checks retain strict
+malformed-artifact rejection and crossed native-region checks.
+
+The written-value placement table, subword ROM regions, full native constraints,
+limb preselection, public decoding, initialized memory/history, original subword
+instruction execution and physical argument binding remain unfinished. No native
+defect is established; the findings bar and historical coverage archive are unchanged.

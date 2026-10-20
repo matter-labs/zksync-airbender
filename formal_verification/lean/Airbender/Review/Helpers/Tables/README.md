@@ -154,3 +154,15 @@ exercise signs, all offsets, unsigned outputs and changed-query rejection.
 The preselected limb is part of the table key. Full native constraints, limb
 selection, initialized memory, decoder and original instruction execution remain
 separate; table keys alone do not establish circuit acceptance or a defect.
+
+## Native subword original-RAM clearing
+
+[The public helper](SubwordStoreClearTheorems.lean) derives exact native clearing,
+the unused zero output and canonical bounds. [The model](SubwordStoreClear.lean)
+retains all 21-bit keys and all four offsets. [Internal assembly](../../../Proofs/SubwordMemory/StoreClear.lean)
+checks all 2,097,152 literal native rows at ID 54 and compiled offset 5,308,417,
+with symbolic block selection and the pinned periodic upper-byte proof.
+[Regressions](../../../../Tests/SubwordStoreClear.lean) cover both byte masks,
+all offsets, SH/SW/unused keys and changed-query rejection. Written-value
+placement, actual limb selection, full accepted stores, initialized history and
+original Sail execution remain separate. This certificate adds no defect finding.

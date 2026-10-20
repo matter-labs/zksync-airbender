@@ -691,6 +691,33 @@ private def subwordLoadChecks : IO Unit := do
   let extra ← IO.ofExcept (replaceField json "invented" (.bool true))
   check (rejected (Setup.parseSubwordLoad extra.compress)) "reject unknown subword load fields"
 
+private def subwordStoreClearChecks : IO Unit := do
+  let source ← IO.FS.readFile "artifacts/setup/subword-store-clear-native.json"
+  let artifact ← IO.ofExcept (Setup.parseSubwordStoreClear source)
+  check (artifact.generic_rows == 2097152 && artifact.tables.size == 1)
+    "actual native subword store-clear extent"
+  let some region := artifact.tables[0]? | throw (IO.userError "missing subword store-clear region")
+  let some outputColumn := region.data.columns[1]? | throw (IO.userError "missing subword store-clear column")
+  let some unusedColumn := region.data.columns[2]? | throw (IO.userError "missing subword store-clear unused column")
+  let some tagColumn := region.data.columns[3]? | throw (IO.userError "missing subword tag column")
+  check (region.id == 54 && region.offset == 5308417 && region.data.columns.size == 4)
+    "actual native subword store-clear ID, placement and tagged width"
+  check (rejected ({artifact with version := 2}.validateSubwordStoreClear)) "reject subword store-clear version"
+  check (rejected ({artifact with field_modulus := 2013265921}.validateSubwordStoreClear)) "reject v3 subword store-clear field"
+  check (rejected ({artifact with profile := "shift_binop_scalar_regions"}.validateSubwordStoreClear)) "reject crossed subword store-clear profile"
+  check (rejected ({artifact with generic_rows := 2097151}.validateSubwordStoreClear)) "reject subword store-clear extent"
+  check (rejected ({artifact with tables := #[]}.validateSubwordStoreClear)) "reject missing subword store-clear region"
+  check (rejected ({artifact with tables := #[region, region]}.validateSubwordStoreClear)) "reject duplicate subword store-clear region"
+  check (rejected ({artifact with tables := #[{region with id := 45}]}.validateSubwordStoreClear)) "reject changed subword store-clear tag"
+  check (rejected ({artifact with tables := #[{region with offset := 2162689}]}.validateSubwordStoreClear)) "reject shifted subword store-clear placement"
+  check (rejected ({artifact with tables := #[{region with data := {region.data with length := 2097151}}]}.validateSubwordStoreClear)) "reject truncated subword store-clear region"
+  check (rejected ({artifact with tables := #[{region with data := {region.data with columns := #[]}}]}.validateSubwordStoreClear)) "reject missing subword store-clear columns"
+  check (rejected ({artifact with tables := #[{region with data := {region.data with columns :=
+    #[⟨#[.affine 2097152 2147483647 0]⟩,outputColumn,unusedColumn,tagColumn]}}]}.validateSubwordStoreClear)) "reject noncanonical subword store-clear data"
+  let json ← IO.ofExcept (Json.parse source)
+  let extra ← IO.ofExcept (replaceField json "invented" (.bool true))
+  check (rejected (Setup.parseSubwordStoreClear extra.compress)) "reject unknown subword store-clear fields"
+
 def main : IO UInt32 := do
   try
     let source ← IO.FS.readFile "../../cs/add_sub_lui_auipc_mop_preprocessed_layout.json"
@@ -867,6 +894,7 @@ def main : IO UInt32 := do
     check (rejected (fromJson? badBlock : Except String Setup.Block)) "reject unknown compressed block field"
     subwordOffsetChecks
     subwordLoadChecks
+    subwordStoreClearChecks
     scalarChecks setupSource
     decoderChecks setupSource
     shiftDecoderChecks

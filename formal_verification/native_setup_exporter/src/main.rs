@@ -254,6 +254,24 @@ fn export_subword_load(layout_path: &Path) -> ControlTables {
         tables: vec![Region { id, offset, data: matrix(&rows) }] }
 }
 
+/// One actual native subword store-clear region, materialized independently.
+fn export_subword_store_clear(layout_path: &Path) -> ControlTables {
+    let kind = TableType::MemStoreClearOriginalRamValueLimb;
+    assert!(cs::machine::ops::unrolled::load_store_subword_only::subword_only_load_store_tables().contains(&kind));
+    let table = kind.generate_table::<Mersenne31Field>();
+    let id = table.get_table_id();
+    assert_eq!(id, kind as u32);
+    let length = table.get_size();
+    let mut rows = Vec::with_capacity(length);
+    table.dump_into::<4>(&mut rows, Some(id));
+    assert_eq!(rows.len(), length);
+    let layout: serde_json::Value = serde_json::from_slice(&std::fs::read(layout_path).unwrap()).unwrap();
+    let offset = layout["table_offsets"][id as usize].as_u64().unwrap() as usize;
+    ControlTables { version: 1, field_modulus: MODULUS,
+        profile: "subword_memory_store_clear".into(), generic_rows: length,
+        tables: vec![Region { id, offset, data: matrix(&rows) }] }
+}
+
 fn export_shift_scalars(layout_path: &Path) -> ControlTables {
     export_shift_regions(layout_path, &[TableType::TruncateShiftAmount,
         TableType::Sra16BitInputSignFill, TableType::RangeCheck16WithZeroPads],
@@ -508,6 +526,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if args.len() == 4 && args[1] == "--subword-load" {
         let artifact = export_subword_load(Path::new(&args[2]));
+        let bytes = serde_json::to_vec_pretty(&artifact)?;
+        let recovered: ControlTables = serde_json::from_slice(&bytes)?;
+        assert_eq!(serde_json::to_value(&artifact)?, serde_json::to_value(recovered)?);
+        std::fs::write(args.last().unwrap(), [bytes, vec![b'\n']].concat())?;
+        return Ok(());
+    }
+    if args.len() == 4 && args[1] == "--subword-store-clear" {
+        let artifact = export_subword_store_clear(Path::new(&args[2]));
         let bytes = serde_json::to_vec_pretty(&artifact)?;
         let recovered: ControlTables = serde_json::from_slice(&bytes)?;
         assert_eq!(serde_json::to_value(&artifact)?, serde_json::to_value(recovered)?);

@@ -133,3 +133,13 @@ Lean checks exact signed/unsigned outputs from the preselected limb/offset/funct
 key and derives canonical bounds. Full circuit acceptance, original instruction
 execution and physical argument binding remain separate. The shared codec,
 dependencies, memory limits and other exporter modes are unchanged.
+
+The original-RAM store-clear mode accepts --subword-store-clear LAYOUT.json
+OUTPUT.json and materializes the actual native clearing table. Native ID 54 and
+compiled offset 5,308,417 come from the generator and supplied v2 layout; all
+2,097,152 tagged rows, four offsets and unused outputs are retained. The standard
+gate reproduces the pinned JSON byte for byte. Lean checks exact SB retention of
+the byte outside the selected write position and native zero outputs for other
+funct3 keys. Written-value placement, accepted constraints, original instruction
+execution and physical argument binding remain separate. Shared codec,
+dependencies, memory limits and all other exporter modes are unchanged.

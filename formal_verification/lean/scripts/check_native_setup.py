@@ -46,6 +46,13 @@ def main():
         assert (region["id"], region["offset"], region["data"]["length"]) == (45,2162689,2097152)
         assert json.loads(subword_layout.read_bytes())["table_offsets"][region["id"]] == region["offset"]
         print("PASS reproducible actual native subword load-data region and compiled placement", flush=True)
+        subprocess.run([str(binary), "--subword-store-clear", str(subword_layout), str(output)], check=True)
+        assert output.read_bytes() == (ROOT / "artifacts/setup/subword-store-clear-native.json").read_bytes()
+        load = json.loads(output.read_bytes())
+        region, = load["tables"]
+        assert (region["id"], region["offset"], region["data"]["length"]) == (54,5308417,2097152)
+        assert json.loads(subword_layout.read_bytes())["table_offsets"][region["id"]] == region["offset"]
+        print("PASS reproducible actual native subword store-clear region and compiled placement", flush=True)
         subprocess.run([str(binary), "--control", str(output)], check=True)
         assert output.read_bytes() == (ROOT / "artifacts/setup/jump-control-native.json").read_bytes()
         print("PASS reproducible native jump/branch/SLT fixed tables", flush=True)

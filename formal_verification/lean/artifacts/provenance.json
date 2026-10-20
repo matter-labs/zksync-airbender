@@ -5647,6 +5647,71 @@
       "backport_reuse_path": "scripts/check_native_setup.py",
       "backport_reuse_sha256": "c5d275c89f4439c07327db5fbc28e2015c53fb46febcbf46b4fca2941fdf7990",
       "change": "Retain scoped offline locked single-job native checks; reproduce the complete native load-data JSON byte for byte and independently check its actual compiled placement."
+    },
+    {
+      "path": "Airbender/Import/Setup.lean",
+      "backport_reuse_revision": "afc45102aecf04432446cd8c49f1e2bb28a91968",
+      "backport_reuse_path": "Airbender/Import/Setup.lean",
+      "backport_reuse_sha256": "63cee69fbd162716fa8b330f28bb37d22962c201eadfcba7c015744f742d7d59",
+      "change": "Reuse strict native validation for actual store-clear ID 54, compiled offset 5308417 and the complete tagged 21-bit domain; retain prior modes."
+    },
+    {
+      "path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_revision": "afc45102aecf04432446cd8c49f1e2bb28a91968",
+      "backport_reuse_path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_sha256": "8eb238f59c0d633fff12e90cf0713702cb504f57d192f0418ec4fe3d71af508b",
+      "change": "Reuse the unchanged lossless literal emitter for native store-clear blocks and columns, after strict parsing; no recipe or expected output is inserted."
+    },
+    {
+      "path": "Tests/ArtifactImport.lean",
+      "backport_reuse_revision": "afc45102aecf04432446cd8c49f1e2bb28a91968",
+      "backport_reuse_path": "Tests/ArtifactImport.lean",
+      "backport_reuse_sha256": "5fc0098257d2bf66b13dbc58bb40182b75439fdc72d7d1a1a2d8b3b9600cf763",
+      "change": "Retain existing checks and add fourteen actual native store-clear field/profile/tag/placement/extent/shape/canonicality rejection checks."
+    },
+    {
+      "path": "scripts/check_native_setup.py",
+      "backport_reuse_revision": "afc45102aecf04432446cd8c49f1e2bb28a91968",
+      "backport_reuse_path": "scripts/check_native_setup.py",
+      "backport_reuse_sha256": "8266bf30bf7768548ab0758731d7314ad4ac5e64f13fd2a68bf30ce8d30ae70a",
+      "change": "Retain offline locked scoped native checks and reproduce actual store-clear rows byte for byte with native ID and compiled placement checked independently."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/NativeSubwordStoreClearData.lean",
+      "backport_reuse_revision": "afc45102aecf04432446cd8c49f1e2bb28a91968",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/NativeSubwordLoadData.lean",
+      "backport_reuse_sha256": "b5d78bcc40704130d2d83107607f97e4b3181d950a84bc711ba93f75acdfb2b9",
+      "change": "Reuse the strict native literal-data module pattern for the original-RAM-limb store-clear region."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/SubwordStoreClear.lean",
+      "backport_reuse_revision": "afc45102aecf04432446cd8c49f1e2bb28a91968",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/SubwordLoad.lean",
+      "backport_reuse_sha256": "1ba9ad48c14fba99b8777f3f6732b2bcbf6e81b895a5c99a026187fdba624379",
+      "change": "Reuse original Clean static-table construction over all 21-bit native keys. Define source-shaped SB retention of the non-overwritten byte, with zero for every other funct3 and the unused output."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/StoreClear.lean",
+      "backport_reuse_revision": "afc45102aecf04432446cd8c49f1e2bb28a91968",
+      "backport_reuse_path": "Airbender/Proofs/SubwordMemory/Load.lean",
+      "backport_reuse_sha256": "1cc1e43cfc94a9b7159622f4a0d2be15990a53b7ec6a4428fa5a381d2fc9f26b",
+      "change": "Reuse verified native block helpers and exact Clean/native row/membership transport. Adapt the pinned v3 periodic upper-byte getter to the complete native v2 four-offset/funct3 domain. Symbolic block selection covers all 32 groups without enumeration, new assumptions or increased limits.",
+      "source_path": "Airbender/Proofs/Tables/ImportedStoreClear.lean",
+      "source_sha256": "47f921bef5972e51ae6dd29d58d82b07fa78ed8946283395ab15d519b1716ff9"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/SubwordStoreClearTheorems.lean",
+      "backport_reuse_revision": "afc45102aecf04432446cd8c49f1e2bb28a91968",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/SubwordLoadTheorems.lean",
+      "backport_reuse_sha256": "091b16795c850d4ce4227e764efe8c41c0fb4512cf1f04685cf9effab1fac57c",
+      "change": "Reuse short public helper shape deriving canonical key, exact retained byte, unused zero and output bound from lookup membership. Preselection and accepted original stores remain separate."
+    },
+    {
+      "path": "Tests/SubwordStoreClear.lean",
+      "backport_reuse_revision": "afc45102aecf04432446cd8c49f1e2bb28a91968",
+      "backport_reuse_path": "Tests/SubwordLoad.lean",
+      "backport_reuse_sha256": "1f7b829c6459488fa2c3b8901459cf704905da1d2d7e3809dd9acfc669704696",
+      "change": "Reuse complete native row and malformed membership regressions for all four offsets, retained/cleared byte patterns, SH/SW/unused keys and altered output rejection."
     }
   ],
   "setup_artifacts": [
@@ -5807,6 +5872,13 @@
       "profile": "actual native v2 signed/unsigned subword load-data table ID 45, compiled offset 2162689, all 2097152 tagged rows; preselected limb, offset and funct3 retained, including unused keys; full accepted circuit and Sail execution remain separate",
       "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py",
       "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5"
+    },
+    {
+      "path": "artifacts/setup/subword-store-clear-native.json",
+      "sha256": "bb21733ccca28c11273dc628bdb01431a9256e0f1a2291e282669b16d3484615",
+      "profile": "actual native v2 original-RAM-limb clearing table ID 54, compiled offset 5308417, all 2097152 tagged rows; retains every offset/funct3 key and unused zero output; full native limb selection, accepted stores and execution remain separate",
+      "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py",
+      "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5"
     }
   ],
   "native_exporter_files": [
@@ -5820,7 +5892,7 @@
     },
     {
       "path": "../native_setup_exporter/src/main.rs",
-      "sha256": "57bd0b275442ad05fbe1c800bdeed50e1060d445c6347e334d3870545e2709bd"
+      "sha256": "913097440c05933ca06f0af84d13f54db9321cd8ec1656fe28cd6cc4344686fc"
     },
     {
       "path": "../native_setup_exporter/src/columns.rs",

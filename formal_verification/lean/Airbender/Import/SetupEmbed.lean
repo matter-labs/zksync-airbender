@@ -257,4 +257,13 @@ elab "import_native_subword_load " name:ident " from " path:str : command => do
   elabCommand (← `(def $name : Airbender.Setup.TableData 4 :=
     ⟨$(quote region.data.length), $(quote region.offset), #v[$[$columns],*]⟩))
 
+/-- Literal native v2 original-RAM-limb clearing rows. -/
+elab "import_native_subword_store_clear " name:ident " from " path:str : command => do
+  let artifact ← match parseSubwordStoreClear (← IO.FS.readFile path.getString) with
+    | .ok artifact => pure artifact
+    | .error error => throwError "native subword store-clear import failed: {error}"
+  let some region := artifact.tables[0]? | throwError "missing native subword store-clear table"
+  emitData name region.data region.offset
+
+
 end Airbender.Setup
