@@ -1,6 +1,8 @@
 import Slop.Blake2Round.DiagonalG
 import Slop.Blake2Round.Lookups
 import Slop.Blake2Round.ArtifactChecks
+import Slop.Blake2Round.OpIndex
+import Slop.Blake2G.OpIndex
 import Slop.Blake2G.Soundness
 import Mathlib.Tactic.ReduceModChar
 
@@ -25,11 +27,15 @@ theorem diagonal_g_flags_3 {p : Nat} [Fact p.Prime]
   subst p
   unfold babyBearModulus at *
   have flag := Verification.assertion_of_holds h
-    ⟨245 + 12 * (3 : Fin 4).val + k.val, by rw [constraint_count]; have size := k.isLt; simp; omega⟩
+    ⟨245 + 12 * 3 + k.val, by rw [constraint_count]; have size := k.isLt; simp; omega⟩
   fin_cases k
-  all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, diagonalGBase, Blake2G.Variables.booleanColumns,
-    mul_eq_zero, ← sub_eq_add_neg, sub_eq_zero] at flag ⊢
+  all_goals op_index at flag
+  all_goals simp only [Expression.eval, Int.ofNat_eq_natCast, Nat.cast_one, Int.cast_one,
+    Airbender.Verification.environment, one_mul, CharP.cast_eq_zero, Int.cast_zero, zero_add,
+    Int.reduceNegSucc, Int.cast_neg, ← sub_eq_add_neg, mul_eq_zero, sub_eq_zero, diagonalGBase,
+    Blake2G.Variables.booleanColumns, add_zero, Vector.getElem_mk, List.getElem_toArray,
+    List.getElem_cons_succ, List.getElem_cons_zero, Nat.reduceAdd, Fin.isValue,
+    Fin.coe_ofNat_eq_mod, Nat.zero_mod, mul_zero] at flag ⊢
   all_goals exact flag
 
 end Airbender.Blake2Round.Proofs
