@@ -25,16 +25,12 @@ private def writeEntry : ProgramEntry :=
 private theorem read_decoding : SailRV32.Functions.encdec_backwards readEntry.bits =
     (.pure readEntry.instruction : SailRV32.SailM SailRV32.instruction) := by
   dsimp only [readEntry, writeEntry]
-  simp only [SailRV32.Functions.encdec_backwards]
-  simp only [SailRV32.Functions.currentlyEnabled, SailRV32.Functions.hartSupports]
-  rfl
+  with_unfolding_all rfl
 
 private theorem write_decoding : SailRV32.Functions.encdec_backwards writeEntry.bits =
     (.pure writeEntry.instruction : SailRV32.SailM SailRV32.instruction) := by
   dsimp only [readEntry, writeEntry]
-  simp only [SailRV32.Functions.encdec_backwards]
-  simp only [SailRV32.Functions.currentlyEnabled, SailRV32.Functions.hartSupports]
-  rfl
+  with_unfolding_all rfl
 
 theorem original_read_decoder (state : State) :
     run (SailRV32.Functions.encdec_backwards 0x7C0010F3) state =
